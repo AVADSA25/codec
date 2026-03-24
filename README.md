@@ -84,17 +84,17 @@ cd codec
 
 ```bash
 # Core
-pip install pynput sounddevice soundfile numpy requests
+pip3 install pynput sounddevice soundfile numpy requests
 
 # Audio recording
 brew install sox
 
 # TTS (optional but recommended)
-pip install mlx-audio misaki num2words phonemizer-fork spacy
-python -m spacy download en_core_web_sm
+pip3 install mlx-audio misaki num2words phonemizer-fork spacy
+python3 -m spacy download en_core_web_sm
 
 # STT (optional but recommended)  
-pip install mlx-whisper
+pip3 install mlx-whisper
 ```
 
 ### 3. Start your services
@@ -111,7 +111,7 @@ ollama pull llama3.2:8b
 
 **TTS** (voice output):
 ```bash
-python -m mlx_audio.server --port 8085
+python3 -m mlx_audio.server --port 8085
 ```
 
 **STT** (voice input):
