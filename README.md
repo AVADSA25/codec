@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="logo.png" alt="CODEC" width="280"/>
+  <img src="https://i.imgur.com/RbrQ7Bt.png" alt="CODEC" width="280"/>
 </p>
 
 <h1 align="center">CODEC</h1>
