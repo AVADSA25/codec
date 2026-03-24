@@ -76,7 +76,7 @@ You: "Play the next song"
 ### 1. Clone the repo
 
 ```bash
-git clone https://github.com/opencodec/codec.git
+git clone https://github.com/AVADSA25/codec.git
 cd codec
 ```
 
