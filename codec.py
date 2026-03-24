@@ -7,19 +7,6 @@ import threading, tempfile, subprocess, sys, os, time, sqlite3, json, re, base64
 from datetime import datetime
 from pynput import keyboard
 
-# Map config key names to pynput keys
-def _resolve_key(name):
-    name = name.lower().strip()
-    if name.startswith('f') and name[1:].isdigit():
-        return getattr(keyboard.Key, name, None)
-    if len(name) == 1:
-        return name
-    return getattr(keyboard.Key, name, None)
-
-KEY_TOGGLE = _resolve_key(_cfg.get("key_toggle", "f13"))
-KEY_VOICE  = _resolve_key(_cfg.get("key_voice", "f18"))
-KEY_TEXT   = _resolve_key(_cfg.get("key_text", "f16"))
-
 # ── CONFIG (load from ~/.codec/config.json or use defaults) ───────────────────
 CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
 _cfg = {}
@@ -65,6 +52,19 @@ WAKE_PHRASES       = _cfg.get("wake_phrases", ['hey', 'aq', 'eq', 'iq', 'okay q'
 WAKE_ENERGY        = _cfg.get("wake_energy", 200)
 WAKE_CHUNK_SEC     = _cfg.get("wake_chunk_sec", 3.0)
 DRAFT_KEYWORDS_CFG = _cfg.get("draft_keywords", [])
+
+# Map config key names to pynput keys
+def _resolve_key(name):
+    name = name.lower().strip()
+    if name.startswith('f') and name[1:].isdigit():
+        return getattr(keyboard.Key, name, None)
+    if len(name) == 1:
+        return name
+    return getattr(keyboard.Key, name, None)
+
+KEY_TOGGLE = _resolve_key(_cfg.get("key_toggle", "f13"))
+KEY_VOICE  = _resolve_key(_cfg.get("key_voice", "f18"))
+KEY_TEXT   = _resolve_key(_cfg.get("key_text", "f16"))
 
 # ── UTILITIES ─────────────────────────────────────────────────────────────────
 def strip_think(text):
