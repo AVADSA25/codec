@@ -23,39 +23,52 @@ def clear():
 
 def banner():
     print(f"""
-{O}    ╔══════════════════════════════════════════════════╗
-    ║                                                  ║
-    ║    ██████  ██████  ██████  ███████  ██████        ║
-    ║   ██      ██    ██ ██   ██ ██      ██            ║
-    ║   ██      ██    ██ ██   ██ █████   ██            ║
-    ║   ██      ██    ██ ██   ██ ██      ██            ║
-    ║    ██████  ██████  ██████  ███████  ██████        ║
-    ║                                                  ║
-    ║         {W}Open Source AI Agent Framework{O}           ║
-    ║              {D}opencodec.org{O}                       ║
-    ╚══════════════════════════════════════════════════╝{X}
+{O}
+   ██████  ██████  ██████  ███████  ██████
+  ██      ██    ██ ██   ██ ██      ██
+  ██      ██    ██ ██   ██ █████   ██
+  ██      ██    ██ ██   ██ ██      ██
+   ██████  ██████  ██████  ███████  ██████
+
+  {W}opencodec.org  ·  AVA Digital LLC{O}
+  {D}─────────────────────────────────────────{R}
 """)
 
 def ask(prompt, options=None, default=None):
-    """Ask user a question with numbered options"""
+    """Ask user a question with arrow-key selection or numbered fallback"""
     print(f"\n{O}{'─'*50}{X}")
     print(f"{W}{prompt}{X}")
     if options:
-        for i, opt in enumerate(options, 1):
-            marker = f"{G}►{X}" if default and opt == default else " "
-            print(f"  {marker} {O}{i}{X}  {opt}")
-        while True:
-            d_hint = f" [{options.index(default)+1}]" if default else ""
-            choice = input(f"\n{O}  >{X} Choose{d_hint}: ").strip()
-            if not choice and default:
-                return default
-            try:
-                idx = int(choice) - 1
-                if 0 <= idx < len(options):
-                    return options[idx]
-            except ValueError:
-                pass
-            print(f"  {R}Invalid choice. Try again.{X}")
+        try:
+            from simple_term_menu import TerminalMenu
+            default_idx = options.index(default) if default in options else 0
+            menu = TerminalMenu(
+                options,
+                cursor_index=default_idx,
+                menu_cursor="  ► ",
+                menu_cursor_style=("fg_yellow", "bold"),
+                menu_highlight_style=("fg_yellow", "bold"),
+            )
+            idx = menu.show()
+            if idx is None:
+                return default or options[0]
+            return options[idx]
+        except ImportError:
+            for i, opt in enumerate(options, 1):
+                marker = f"{G}►{X}" if default and opt == default else " "
+                print(f"  {marker} {O}{i}{X}  {opt}")
+            while True:
+                d_hint = f" [{options.index(default)+1}]" if default else ""
+                choice = input(f"\n{O}  >{X} Choose{d_hint}: ").strip()
+                if not choice and default:
+                    return default
+                try:
+                    idx = int(choice) - 1
+                    if 0 <= idx < len(options):
+                        return options[idx]
+                except ValueError:
+                    pass
+                print(f"  {R}Invalid choice. Try again.{X}")
     else:
         d_hint = f" [{default}]" if default else ""
         val = input(f"\n{O}  >{X}{d_hint}: ").strip()
@@ -156,7 +169,7 @@ def main():
     elif "OpenAI" in llm_choice:
         config["llm_provider"] = "openai"
         config["llm_base_url"] = "https://api.openai.com/v1"
-        config["llm_model"] = ask_text("Model", "gpt-4o-mini")
+        config["llm_model"] = ask_text("Model", "gpt-4o")
         api_key = ask_text("OpenAI API key")
         config["llm_api_key"] = api_key
         config["llm_kwargs"] = {}
@@ -172,7 +185,13 @@ def main():
     elif "Gemini" in llm_choice:
         config["llm_provider"] = "gemini"
         config["llm_base_url"] = "https://generativelanguage.googleapis.com/v1beta/openai"
-        config["llm_model"] = ask_text("Model", "gemini-2.0-flash")
+        gemini_model = ask("Select Gemini model:", [
+            "gemini-2.5-flash — Fast, free tier available",
+            "gemini-2.5-flash-lite — Cheapest, high volume",
+            "gemini-3.1-pro-preview — Most powerful, paid",
+            "gemini-3-flash-preview — Strong reasoning, paid",
+        ], default="gemini-2.5-flash — Fast, free tier available")
+        config["llm_model"] = gemini_model.split(" — ")[0]
         api_key = ask_text("Gemini API key")
         config["llm_api_key"] = api_key
         config["llm_kwargs"] = {}
@@ -316,8 +335,8 @@ def main():
         default_phrases = "hey,aq,eq,iq,okay q,a q,hey q,hey queue"
         phrases = ask_text("Wake phrases (comma-separated)", default_phrases)
         config["wake_phrases"] = [p.strip() for p in phrases.split(",")]
-        config["wake_energy"] = int(ask_text("Mic energy threshold (100-500, lower=more sensitive)", "200"))
-        config["wake_chunk_sec"] = float(ask_text("Listen chunk duration in seconds", "3.0"))
+        config["wake_energy"] = 200
+        config["wake_chunk_sec"] = 3.0
     else:
         config["wake_phrases"] = []
         config["wake_energy"] = 200
