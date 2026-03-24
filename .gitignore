@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.DS_Store
+.codec/config.json
+*.db
+*.mp3
+*.wav
+.vscode/
+.idea/
