@@ -7,6 +7,19 @@ import threading, tempfile, subprocess, sys, os, time, sqlite3, json, re, base64
 from datetime import datetime
 from pynput import keyboard
 
+# Map config key names to pynput keys
+def _resolve_key(name):
+    name = name.lower().strip()
+    if name.startswith('f') and name[1:].isdigit():
+        return getattr(keyboard.Key, name, None)
+    if len(name) == 1:
+        return name
+    return getattr(keyboard.Key, name, None)
+
+KEY_TOGGLE = _resolve_key(_cfg.get("key_toggle", "f13"))
+KEY_VOICE  = _resolve_key(_cfg.get("key_voice", "f18"))
+KEY_TEXT   = _resolve_key(_cfg.get("key_text", "f16"))
+
 # ── CONFIG (load from ~/.codec/config.json or use defaults) ───────────────────
 CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
 _cfg = {}
@@ -823,7 +836,7 @@ def wake_word_listener():
 # ── KEYBOARD ──────────────────────────────────────────────────────────────────
 def on_press(key):
     now = time.time()
-    if key == keyboard.Key.f13:
+    if key == KEY_TOGGLE:
         if now - state["last_f13"] < 0.8: return
         state["last_f13"] = now
         if state["active"]:
@@ -837,7 +850,7 @@ def on_press(key):
             print("[Q] ON -- F18=voice | F16=text | *=screen | +=doc")
         return
     if not state["active"]: return
-    if key == keyboard.Key.f16:
+    if key == KEY_TEXT:
         if not state["recording"]: push(do_text)
         return
     if key == keyboard.Key.f18:
@@ -864,7 +877,7 @@ def on_press(key):
         return
 
 def on_release(key):
-    if key == keyboard.Key.f18 and state["recording"]:
+    if key == KEY_VOICE and state["recording"]:
         push(do_stop_voice)
 
 # ── MAIN ──────────────────────────────────────────────────────────────────────
