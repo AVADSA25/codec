@@ -42,4 +42,3 @@ def run(task, app="", ctx=""):
     if "brightness down" in low:
         return "Brightness control requires System Preferences access. Try: Hey Q, open display settings."
     return None
-SKILL

@@ -888,6 +888,9 @@ def main():
         except: pass
 
     stream_label = "ON" if STREAMING else "OFF"
+    kt = _cfg.get("key_toggle", "f13").upper()
+    kv = _cfg.get("key_voice", "f18").upper()
+    kx = _cfg.get("key_text", "f16").upper()
     wake_label = "ON" if WAKE_WORD else "OFF"
     O = "\033[38;2;232;113;26m"
     D = "\033[38;2;80;80;80m"
