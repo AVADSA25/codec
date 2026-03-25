@@ -2,7 +2,7 @@
 import signal
 signal.signal(signal.SIGINT, lambda *a: None)
 signal.signal(signal.SIGTERM, lambda *a: None)
-"""CODEC v1.1 | F13=on/off | F18=voice | F16=text | *=screenshot | +=doc | Wake word"""
+"""CODEC v1.1.1 | Config-driven keys | *=screenshot | +=doc | Wake word"""
 import threading, tempfile, subprocess, sys, os, time, sqlite3, json, re, base64
 from datetime import datetime
 from pynput import keyboard
@@ -617,7 +617,7 @@ def build_session_script(safe_sys, session_id):
     L.append("print(O+'    ║    ██████  ██████  ██████  ███████  ██████        ║')")
     L.append("print(O+'    ║                                          v1.1    ║')")
     L.append("print(O+'    ╠══════════════════════════════════════════════════╣')")
-    L.append("print(O+'    ║'+W+'  F18 voice   F16 text   ** screen   ++ doc   '+O+'║')")
+    L.append("print(O+'    ║'+W+'  " + _cfg.get('key_voice','f18').upper() + " voice   " + _cfg.get('key_text','f16').upper() + " text   ** screen   ++ doc   '+O+'║')")
     L.append("print(O+'    ║'+W+'  Hey Q = wake word   type exit to close    '+O+'║')")
     L.append("print(O+'    ╠══════════════════════════════════════════════════╣')")
     L.append("print(O+'    ║'+D+'  Stream='+ss+'  Memory=ON  Skills=ON             '+O+'║')")
@@ -771,7 +771,7 @@ def do_screenshot_question():
     ctx = screenshot_ctx()
     if ctx:
         state["screen_ctx"] = ctx
-        print(f"[Q] Screenshot captured ({len(ctx)} chars). Use F18/F16 to ask about it.")
+        print(f"[Q] Screenshot captured ({len(ctx)} chars). Use " + _cfg.get("key_voice","f18").upper() + "/" + _cfg.get("key_text","f16").upper() + " to ask about it.")
     else:
         state["screen_ctx"] = ""
 
@@ -881,7 +881,7 @@ def on_press(key):
         else:
             state["active"] = True
             push(lambda: show_overlay('CODEC ON  ' + _cfg.get('key_voice','f18').upper() + '=voice  ' + _cfg.get('key_text','f16').upper() + '=text  **=screen  ++=doc', '#E8711A', 3000))
-            print("[Q] ON -- F18=voice | F16=text | *=screen | +=doc")
+            print("[Q] ON -- " + _cfg.get("key_voice","f18").upper() + "=voice | " + _cfg.get("key_text","f16").upper() + "=text | *=screen | +=doc")
         return
     if not state["active"]: return
     if key == KEY_TEXT:
@@ -916,7 +916,13 @@ def on_release(key):
         push(do_stop_voice)
 
 # ── MAIN ──────────────────────────────────────────────────────────────────────
+def _handle_sigint(sig, frame):
+    print("\n[Q] Shutting down...")
+    import sys; sys.exit(0)
+
 def main():
+    import signal
+    signal.signal(signal.SIGINT, _handle_sigint)
     if "--dry-run" in sys.argv:
         print("[CODEC] DRY RUN MODE — commands will be printed, not executed")
         global DRY_RUN
@@ -960,7 +966,7 @@ def main():
     convs = get_recent_conversations(10)
     if convs: print(f"[Q] Persistent memory: {len(convs)} messages from past sessions")
     if WAKE_WORD: print("[Q] Wake word: ON")
-    print("[Q] Online. Press F13 to activate.")
+    print("[Q] Online. Press " + _cfg.get("key_toggle","f13").upper() + " to activate.")
 
     threading.Thread(target=worker, daemon=True).start()
     if WAKE_WORD:
