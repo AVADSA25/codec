@@ -488,10 +488,18 @@ def build_session_script(safe_sys, session_id):
     L.append("        DANGEROUS = ['rm -rf','rm -r /','sudo','shutdown','reboot','killall','mkfs','dd if=','chmod 777','curl | bash','wget | bash','defaults delete','diskutil erase']")
     L.append("        cmd_lower = code.lower()")
     L.append("        if any(d in cmd_lower for d in DANGEROUS):")
-    L.append("            print(f'[SAFETY] Blocked dangerous command: {code[:80]}')")
+    L.append("            print(f'\\n[SAFETY] ⚠️  Flagged: {code[:80]}')")
     L.append("            with open(os.path.expanduser('~/.codec/audit.log'), 'a') as _af:")
-    L.append("                _af.write(f'[{time.strftime(\"%Y-%m-%dT%H:%M:%S\")}] BLOCKED: {code[:200]}\\n')")
-    L.append("            return 'BLOCKED: This command was flagged as potentially dangerous. Use Terminal directly if intended.'")
+    L.append("                _af.write(f'[{time.strftime(\"%Y-%m-%dT%H:%M:%S\")}] FLAGGED: {code[:200]}\\n')")
+    L.append("            confirm = input('[SAFETY] Execute this command? (y/n): ').strip().lower()")
+    L.append("            if confirm != 'y':")
+    L.append("                print('[SAFETY] Command cancelled by user.')")
+    L.append("                with open(os.path.expanduser('~/.codec/audit.log'), 'a') as _af:")
+    L.append("                    _af.write(f'[{time.strftime(\"%Y-%m-%dT%H:%M:%S\")}] DENIED: {code[:200]}\\n')")
+    L.append("                return 'Command cancelled by user for safety.'")
+    L.append("            print('[SAFETY] User confirmed. Executing...')")
+    L.append("            with open(os.path.expanduser('~/.codec/audit.log'), 'a') as _af:")
+    L.append("                _af.write(f'[{time.strftime(\"%Y-%m-%dT%H:%M:%S\")}] APPROVED: {code[:200]}\\n')")
     L.append("        if action == 'applescript': r = subprocess.run(['osascript','-e',code], capture_output=True, text=True, timeout=30)")
     L.append("        else: r = subprocess.run(['bash','-c',code], capture_output=True, text=True, timeout=30)")
     L.append("        out = r.stdout.strip(); err = r.stderr.strip()")
@@ -959,6 +967,14 @@ def main():
     ╚══════════════════════════════════════════════════╝{R}""")
 
     load_skills()
+
+    # Warm up Kokoro TTS so first response isn't silent
+    if TTS_ENGINE == "kokoro":
+        try:
+            import requests as _rq
+            _rq.post(KOKORO_URL, json={"model": KOKORO_MODEL, "input": "ready", "voice": TTS_VOICE}, timeout=30)
+            print("[Q] TTS warmed up")
+        except: print("[Q] TTS warmup skipped")
     print("[Q] Whisper: HTTP (port 8084)")
     print("[Q] Vision: Qwen VL (port 8082)")
     mem = get_memory(3)
