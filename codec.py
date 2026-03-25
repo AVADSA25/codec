@@ -1012,6 +1012,34 @@ def main():
     print("[Q] Online. Press " + _cfg.get("key_toggle","f13").upper() + " to activate.")
 
     # PWA command polling — checks for commands sent from phone dashboard
+    def pwa_dispatch(task):
+        """Handle PWA command and save response to DB"""
+        app = "CODEC Dashboard"
+        audit("PWA_CMD", task[:200])
+        # Try skills first
+        if len(task) < 500:
+            skill = check_skill(task)
+            if skill:
+                result = run_skill(skill, task, app)
+                if result is not None:
+                    speak_text(result)
+                    # Save response to DB
+                    try:
+                        _c = sqlite3.connect(DB_PATH)
+                        _c.execute("UPDATE sessions SET response=? WHERE task=? AND app=? ORDER BY id DESC LIMIT 1",
+                            (str(result)[:500], task[:200], app))
+                        _c.commit(); _c.close()
+                    except: pass
+                    # Write response file for dashboard
+                    try:
+                        with open("/tmp/q_pwa_response.json", "w") as _rf:
+                            json.dump({"task": task, "response": str(result), "ts": datetime.now().isoformat()}, _rf)
+                    except: pass
+                    print(f"[Q] PWA skill response: {str(result)[:100]}")
+                    return
+        # Not a skill — dispatch normally
+        dispatch(task)
+
     def pwa_poller():
         import json as _json
         while True:
@@ -1024,8 +1052,7 @@ def main():
                     source = data.get("source", "")
                     if task and source == "pwa":
                         print(f"[Q] PWA command: {task[:80]}")
-                        audit("PWA_CMD", task[:200])
-                        push(lambda t=task: dispatch(t))
+                        push(lambda t=task: pwa_dispatch(t))
             except: pass
             time.sleep(1.5)
 
