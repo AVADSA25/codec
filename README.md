@@ -181,6 +181,22 @@ Built-in protections:
 
 What we are adding in v2: command preview mode, allowlist and blocklist for commands, confirmation prompts for system-level changes, and a full audit log.
 
+## Safety and Guardrails
+
+CODEC takes safety seriously. This is a tool with real computer control, and that requires real safeguards.
+
+Built-in protections:
+
+- No deletion without confirmation. The Q-Agent will never delete files, folders, or data without explicitly asking you first. This is hardcoded into the agent — not a suggestion, a rule.
+- 8-step execution cap. No task can run more than 8 steps, preventing runaway command chains.
+- Skill isolation. The 13 built-in skills handle common tasks instantly without calling the LLM at all — no risk of misinterpretation for things like volume, timer, calculator.
+- Dispatch classification. Every command goes through a classifier before execution — it determines whether something is a skill, a draft, a question, or a task before any action is taken.
+- Wake word filtering. Background noise and TV audio are filtered out so CODEC doesn't act on random sounds.
+- Local-first by design. You choose what runs locally and what touches the cloud. With Ollama or MLX, zero data leaves your machine.
+- You pick the LLM. The guardrails of whatever model you connect apply on top of CODEC own safety rules.
+
+What we are adding in v2: command preview mode, allowlist and blocklist for commands, confirmation prompts for system-level changes, and a full audit log.
+
 ## Architecture
 
 codec.py           → Main: keyboard listener, wake word, dispatch
