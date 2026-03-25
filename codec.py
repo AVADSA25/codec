@@ -846,7 +846,7 @@ def on_press(key):
             print("[Q] OFF")
         else:
             state["active"] = True
-            push(lambda: show_overlay('CODEC ON  F18=voice  F16=text  **=screen  ++=doc', '#E8711A', 3000))
+            push(lambda: show_overlay('CODEC ON  ' + _cfg.get('key_voice','f18').upper() + '=voice  ' + _cfg.get('key_text','f16').upper() + '=text  **=screen  ++=doc', '#E8711A', 3000))
             print("[Q] ON -- F18=voice | F16=text | *=screen | +=doc")
         return
     if not state["active"]: return
@@ -888,9 +888,9 @@ def main():
         except: pass
 
     stream_label = "ON" if STREAMING else "OFF"
-    kt = _cfg.get("key_toggle", "f13").upper()
-    kv = _cfg.get("key_voice", "f18").upper()
-    kx = _cfg.get("key_text", "f16").upper()
+    kt = _cfg.get("key_toggle", "f13").upper().ljust(3)
+    kv = _cfg.get("key_voice", "f18").upper().ljust(3)
+    kx = _cfg.get("key_text", "f16").upper().ljust(3)
     wake_label = "ON" if WAKE_WORD else "OFF"
     O = "\033[38;2;232;113;26m"
     D = "\033[38;2;80;80;80m"
