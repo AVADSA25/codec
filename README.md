@@ -138,6 +138,18 @@ Drop in ⁠ ~/.codec/skills/ ⁠ — auto-loads on restart.
 
 ## Configuration
 
+Re-run the wizard anytime to change your settings:
+
+```bash
+python3 setup_codec.py
+```
+
+Or check your current config:
+
+```bash
+cat ~/.codec/config.json
+```
+
 Setup wizard saves to ⁠ ~/.codec/config.json ⁠. Edit directly or re-run ⁠ python3 setup_codec.py ⁠.
 
 See ⁠ config.json.example ⁠ for all options.
