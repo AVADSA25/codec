@@ -2,7 +2,7 @@
 import signal
 signal.signal(signal.SIGINT, lambda *a: None)
 signal.signal(signal.SIGTERM, lambda *a: None)
-"""CODEC v1.0 | F13=on/off | F18=voice | F16=text | *=screenshot | +=doc | Wake word"""
+"""CODEC v1.1 | F13=on/off | F18=voice | F16=text | *=screenshot | +=doc | Wake word"""
 import threading, tempfile, subprocess, sys, os, time, sqlite3, json, re, base64
 from datetime import datetime
 from pynput import keyboard
@@ -582,7 +582,7 @@ def build_session_script(safe_sys, session_id):
     L.append("print(O+'    ║   ██      ██    ██ ██   ██ █████   ██            ║')")
     L.append("print(O+'    ║   ██      ██    ██ ██   ██ ██      ██            ║')")
     L.append("print(O+'    ║    ██████  ██████  ██████  ███████  ██████        ║')")
-    L.append("print(O+'    ║                                          v1.0    ║')")
+    L.append("print(O+'    ║                                          v1.1    ║')")
     L.append("print(O+'    ╠══════════════════════════════════════════════════╣')")
     L.append("print(O+'    ║'+W+'  F18 voice   F16 text   ** screen   ++ doc   '+O+'║')")
     L.append("print(O+'    ║'+W+'  Hey Q = wake word   type exit to close    '+O+'║')")
@@ -904,7 +904,7 @@ def main():
     ║   ██      ██    ██ ██   ██ █████   ██            ║
     ║   ██      ██    ██ ██   ██ ██      ██            ║
     ║    ██████  ██████  ██████  ███████  ██████        ║
-    ║                                          v1.0    ║
+    ║                                          v1.1    ║
     ╠══════════════════════════════════════════════════╣
     ║{W}  F13  toggle ON/OFF    **  screenshot + ask    {O}║
     ║{W}  F18  voice command    ++  document analysis   {O}║
