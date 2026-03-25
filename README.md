@@ -3,7 +3,7 @@
 </p>
 
 <h1 align="center">CODEC</h1>
-<p align="center"><strong>Open Source AI Control for Your Computer</strong></p>
+<p align="center"><strong>Open Source Computer Command Framework</strong></p>
 <p align="center">
   Voice-controlled, local-first AI agent that runs on your machine with any LLM.<br/>
   No cloud. No subscription. No data leaves your computer.
