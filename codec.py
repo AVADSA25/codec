@@ -9,6 +9,7 @@ from pynput import keyboard
 
 # ── CONFIG (load from ~/.codec/config.json or use defaults) ───────────────────
 CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
+DRY_RUN = False
 _cfg = {}
 if os.path.exists(CONFIG_PATH):
     try:
@@ -32,6 +33,30 @@ TTS_ENGINE        = _cfg.get("tts_engine", "kokoro")
 KOKORO_URL        = _cfg.get("tts_url", "http://localhost:8085/v1/audio/speech")
 KOKORO_MODEL      = _cfg.get("tts_model", "mlx-community/Kokoro-82M-bf16")
 TTS_VOICE         = _cfg.get("tts_voice", "am_adam")
+# ── AUDIT LOG ─────────────────────────────────────────────────────────────────
+AUDIT_LOG = os.path.expanduser("~/.codec/audit.log")
+def audit(action, detail=""):
+    try:
+        with open(AUDIT_LOG, "a") as f:
+            from datetime import datetime as _dt
+            f.write(f"[{_dt.now().isoformat()}] {action}: {detail}\n")
+    except: pass
+
+# ── DANGEROUS COMMAND SAFETY ──────────────────────────────────────────────────
+DANGEROUS_PATTERNS = [
+    "rm -rf", "rm -r /", "rmdir", "sudo rm", "mkfs", "dd if=",
+    "shutdown", "reboot", "halt", "killall", "pkill",
+    "sudo", "chmod 777", "chown", "> /dev/", ":(){ :|:& };:",
+    "curl | bash", "wget | bash", "curl | sh", "wget | sh",
+    "defaults delete", "diskutil erase", "networksetup",
+    "osascript -e \'tell application \"System Events\"",
+]
+REQUIRE_CONFIRM = _cfg.get("require_confirmation", True)
+
+def is_dangerous(cmd):
+    cmd_lower = cmd.lower()
+    return any(p in cmd_lower for p in DANGEROUS_PATTERNS)
+
 
 # STT
 STT_ENGINE        = _cfg.get("stt_engine", "whisper_http")
@@ -459,6 +484,14 @@ def build_session_script(safe_sys, session_id):
     L.append("")
     L.append("def run_code(action, code):")
     L.append("    try:")
+    L.append("        # Safety: check dangerous commands")
+    L.append("        DANGEROUS = ['rm -rf','rm -r /','sudo','shutdown','reboot','killall','mkfs','dd if=','chmod 777','curl | bash','wget | bash','defaults delete','diskutil erase']")
+    L.append("        cmd_lower = code.lower()")
+    L.append("        if any(d in cmd_lower for d in DANGEROUS):")
+    L.append("            print(f'[SAFETY] Blocked dangerous command: {code[:80]}')")
+    L.append("            with open(os.path.expanduser('~/.codec/audit.log'), 'a') as _af:")
+    L.append("                _af.write(f'[{time.strftime(\"%Y-%m-%dT%H:%M:%S\")}] BLOCKED: {code[:200]}\\n')")
+    L.append("            return 'BLOCKED: This command was flagged as potentially dangerous. Use Terminal directly if intended.'")
     L.append("        if action == 'applescript': r = subprocess.run(['osascript','-e',code], capture_output=True, text=True, timeout=30)")
     L.append("        else: r = subprocess.run(['bash','-c',code], capture_output=True, text=True, timeout=30)")
     L.append("        out = r.stdout.strip(); err = r.stderr.strip()")
@@ -631,6 +664,7 @@ def close_session():
 # ── DISPATCH ──────────────────────────────────────────────────────────────────
 def dispatch(task):
     app = focused_app()
+    audit("TASK", f"{task[:200]} | App: {app}")
     print(f"[Q] Task: {task[:80]} | App: {app}")
     subprocess.Popen(["osascript", "-e", f'display notification "Heard: {task[:50]}" with title "Q"'],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -733,7 +767,7 @@ def do_document_input():
 
 # ── SCREENSHOT SHORTCUT ──────────────────────────────────────────────────────
 def do_screenshot_question():
-    push(lambda: show_overlay('Screenshot captured  F18=voice  F16=text', '#E8711A', 5000))
+    push(lambda: show_overlay('Screenshot captured  ' + _cfg.get('key_voice','f18').upper() + '=voice  ' + _cfg.get('key_text','f16').upper() + '=text', '#E8711A', 5000))
     ctx = screenshot_ctx()
     if ctx:
         state["screen_ctx"] = ctx
@@ -853,11 +887,12 @@ def on_press(key):
     if key == KEY_TEXT:
         if not state["recording"]: push(do_text)
         return
-    if key == keyboard.Key.f18:
+    if key == KEY_VOICE:
         if not state["recording"]:
             state["recording"] = True
             push(do_start_recording)
-            push(lambda: show_overlay('REC  release F18 to send', '#E8711A', 30000))
+            _kv_label = _cfg.get('key_voice','f18').upper()
+            push(lambda: show_overlay(f'REC  release {_kv_label} to send', '#E8711A', 30000))
         return
     if hasattr(key, 'char') and key.char == '*':
         if now - state["last_star"] < 0.5:
@@ -882,15 +917,19 @@ def on_release(key):
 
 # ── MAIN ──────────────────────────────────────────────────────────────────────
 def main():
+    if "--dry-run" in sys.argv:
+        print("[CODEC] DRY RUN MODE — commands will be printed, not executed")
+        global DRY_RUN
+        DRY_RUN = True
     init_db()
     for f in [SESSION_ALIVE, TASK_QUEUE_FILE, DRAFT_TASK_FILE]:
         try: os.unlink(f)
         except: pass
 
     stream_label = "ON" if STREAMING else "OFF"
-    kt = _cfg.get("key_toggle", "f13").upper().ljust(3)
-    kv = _cfg.get("key_voice", "f18").upper().ljust(3)
-    kx = _cfg.get("key_text", "f16").upper().ljust(3)
+    kt = _cfg.get("key_toggle", "f13").upper().ljust(4)
+    kv = _cfg.get("key_voice", "f18").upper().ljust(4)
+    kx = _cfg.get("key_text", "f16").upper().ljust(4)
     wake_label = "ON" if WAKE_WORD else "OFF"
     O = "\033[38;2;232;113;26m"
     D = "\033[38;2;80;80;80m"
@@ -906,9 +945,9 @@ def main():
     ║    ██████  ██████  ██████  ███████  ██████        ║
     ║                                          v1.1    ║
     ╠══════════════════════════════════════════════════╣
-    ║{W}  F13  toggle ON/OFF    **  screenshot + ask    {O}║
-    ║{W}  F18  voice command    ++  document analysis   {O}║
-    ║{W}  F16  text input       Hey Q  wake word        {O}║
+    ║{W}  {kt}  toggle ON/OFF    **  screenshot + ask    {O}║
+    ║{W}  {kv}  voice command    ++  document analysis   {O}║
+    ║{W}  {kx}  text input       Hey Q  wake word        {O}║
     ╠══════════════════════════════════════════════════╣
     ║{D}  Stream={stream_label}  Wake={wake_label}  Memory=ON  Skills=ON       {O}║
     ╚══════════════════════════════════════════════════╝{R}""")
