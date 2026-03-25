@@ -1011,6 +1011,25 @@ def main():
     if WAKE_WORD: print("[Q] Wake word: ON")
     print("[Q] Online. Press " + _cfg.get("key_toggle","f13").upper() + " to activate.")
 
+    # PWA command polling — checks for commands sent from phone dashboard
+    def pwa_poller():
+        import json as _json
+        while True:
+            try:
+                if os.path.exists(TASK_QUEUE_FILE):
+                    with open(TASK_QUEUE_FILE) as _f:
+                        data = _json.load(_f)
+                    os.unlink(TASK_QUEUE_FILE)
+                    task = data.get("task", "").strip()
+                    source = data.get("source", "")
+                    if task and source == "pwa":
+                        print(f"[Q] PWA command: {task[:80]}")
+                        audit("PWA_CMD", task[:200])
+                        push(lambda t=task: dispatch(t))
+            except: pass
+            time.sleep(1.5)
+
+    threading.Thread(target=pwa_poller, daemon=True).start()
     threading.Thread(target=worker, daemon=True).start()
     if WAKE_WORD:
         threading.Thread(target=wake_word_listener, daemon=True).start()
