@@ -903,7 +903,7 @@ def on_press(key):
             print("[Q] OFF")
         else:
             state["active"] = True
-            push(lambda: show_overlay('CODEC ON  ' + _cfg.get('key_voice','f18').upper() + '=voice  ' + _cfg.get('key_text','f16').upper() + '=text  **=screen  ++=doc', '#E8711A', 3000))
+            push(lambda: show_overlay('CODEC ON  ' + _cfg.get('key_voice','f18').upper() + '=voice  ' + _cfg.get('key_text','f16').upper() + '=text  **=screen  ++=doc  --=chat', '#E8711A', 3000))
             print("[Q] ON -- " + _cfg.get("key_voice","f18").upper() + "=voice | " + _cfg.get("key_text","f16").upper() + "=text | *=screen | +=doc")
         return
     if not state["active"]: return
@@ -934,9 +934,10 @@ def on_press(key):
         state["last_plus"] = now
         return
     if hasattr(key, 'char') and key.char == '-':
+        print(f'[DEBUG] Minus detected, last={state.get("last_minus",0)}, gap={now - state.get("last_minus",0):.2f}')
         if now - state.get("last_minus", 0.0) < 0.5:
             print("[Q] Minus x2 -- live chat mode")
-            pipecat_url = _cfg.get("pipecat_url", "http://localhost:3000")
+            pipecat_url = _cfg.get("pipecat_url", "http://localhost:3000/auto")
             push(lambda: show_overlay('Live Chat connecting...', '#E8711A', 3000))
             audit("LIVECHAT", pipecat_url)
             subprocess.Popen(["open", "-a", "Google Chrome", pipecat_url])
