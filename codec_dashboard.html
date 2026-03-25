@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0a0a0a">
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" href="https://i.imgur.com/RbrQ7Bt.png">
+<link rel="apple-touch-icon" href="https://i.imgur.com/RbrQ7Bt.png">
+<title>CODEC</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0a0a; --bg2: #141414; --bg3: #1e1e1e; --bg4: #282828;
+  --fg: #e8e8e8; --fg2: #a0a0a0; --fg3: #666;
+  --accent: #E8711A; --accent2: #ff9a4d; --accent-bg: rgba(232,113,26,0.08);
+  --danger: #ff4444; --success: #44cc66;
+  --border: #222; --radius: 12px;
+  --font: 'DM Sans', -apple-system, sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+[data-theme="light"] {
+  --bg: #f5f2ed; --bg2: #ffffff; --bg3: #f0ece6; --bg4: #e8e4de;
+  --fg: #1a1a1a; --fg2: #555; --fg3: #999;
+  --accent-bg: rgba(232,113,26,0.06);
+  --border: #ddd;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { 
+  font-family: var(--font); background: var(--bg); color: var(--fg);
+  height: 100%; overflow: hidden; -webkit-tap-highlight-color: transparent;
+}
+.app { 
+  display: flex; flex-direction: column; height: 100vh;
+  padding-top: var(--safe-top); padding-bottom: var(--safe-bottom);
+}
+
+/* ── Header ── */
+.header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 20px; border-bottom: 1px solid var(--border);
+  background: var(--bg2); flex-shrink: 0;
+}
+.header-left { display: flex; align-items: center; gap: 12px; }
+.header img { width: 36px; height: 36px; border-radius: 8px; }
+.header h1 { font-family: var(--mono); font-size: 18px; font-weight: 700; letter-spacing: 2px; }
+.header-right { display: flex; align-items: center; gap: 10px; }
+.status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); flex-shrink: 0; }
+.status-dot.on { background: var(--success); box-shadow: 0 0 8px rgba(68,204,102,0.5); }
+.theme-btn {
+  background: none; border: 1px solid var(--border); color: var(--fg2); 
+  width: 32px; height: 32px; border-radius: 8px; cursor: pointer; font-size: 16px;
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* ── Tabs ── */
+.tabs {
+  display: flex; border-bottom: 1px solid var(--border); background: var(--bg2);
+  overflow-x: auto; flex-shrink: 0; -webkit-overflow-scrolling: touch;
+}
+.tab {
+  flex: 1; min-width: 70px; padding: 12px 8px; text-align: center; font-size: 11px;
+  font-weight: 500; color: var(--fg3); border: none; background: none; cursor: pointer;
+  border-bottom: 2px solid transparent; transition: all 0.2s; text-transform: uppercase;
+  letter-spacing: 0.5px; font-family: var(--mono);
+}
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab span { display: block; font-size: 18px; margin-bottom: 2px; }
+
+/* ── Content ── */
+.content { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.panel { display: none; padding: 16px; min-height: 100%; }
+.panel.active { display: block; }
+
+/* ── Command Input ── */
+.cmd-area { 
+  padding: 16px 20px; border-top: 1px solid var(--border); background: var(--bg2);
+  flex-shrink: 0; padding-bottom: calc(52px + var(--safe-bottom));
+}
+.cmd-row { display: flex; gap: 8px; }
+.cmd-input {
+  flex: 1; background: var(--bg3); border: 1px solid var(--border); color: var(--fg);
+  padding: 12px 16px; border-radius: var(--radius); font-size: 15px; font-family: var(--font);
+  outline: none; transition: border 0.2s;
+}
+.cmd-input:focus { border-color: var(--accent); }
+.cmd-input::placeholder { color: var(--fg3); }
+.cmd-btn {
+  background: var(--accent); color: #fff; border: none; padding: 12px 16px;
+  border-radius: var(--radius); font-weight: 600; cursor: pointer; font-size: 15px;
+  transition: all 0.15s; flex-shrink: 0;
+}
+.cmd-btn:active { transform: scale(0.95); opacity: 0.9; }
+.mic-btn {
+  background: var(--bg3); border: 1px solid var(--border); color: var(--fg2);
+  width: 46px; height: 46px; border-radius: var(--radius); cursor: pointer; font-size: 20px;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  transition: all 0.2s;
+}
+.mic-btn.recording { background: var(--danger); color: #fff; border-color: var(--danger); animation: pulse 1s infinite; }
+@keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.6; } }
+
+/* ── Cards ── */
+.card {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 14px 16px; margin-bottom: 10px; transition: all 0.2s;
+}
+.card:active { transform: scale(0.99); }
+.card-time { font-family: var(--mono); font-size: 11px; color: var(--fg3); margin-bottom: 4px; }
+.card-task { font-size: 14px; color: var(--fg); line-height: 1.4; }
+.card-app { font-size: 11px; color: var(--accent); margin-top: 4px; font-weight: 500; }
+.card-response { font-size: 13px; color: var(--fg2); margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); line-height: 1.4; }
+.card-role { 
+  display: inline-block; font-family: var(--mono); font-size: 10px; font-weight: 600;
+  padding: 2px 8px; border-radius: 4px; margin-bottom: 4px; text-transform: uppercase;
+}
+.card-role.user { background: var(--accent-bg); color: var(--accent); }
+.card-role.assistant { background: rgba(68,204,102,0.1); color: var(--success); }
+
+/* ── Status Panel ── */
+.stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+.stat-card {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 16px; text-align: center;
+}
+.stat-val { font-family: var(--mono); font-size: 22px; font-weight: 700; color: var(--accent); }
+.stat-label { font-size: 11px; color: var(--fg3); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+.config-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 0; border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.config-key { color: var(--fg2); font-family: var(--mono); font-size: 12px; }
+.config-val { color: var(--fg); font-weight: 500; text-align: right; max-width: 60%; word-break: break-all; }
+
+/* ── Audit ── */
+.audit-line {
+  font-family: var(--mono); font-size: 11px; color: var(--fg2); padding: 8px 0;
+  border-bottom: 1px solid var(--border); line-height: 1.5; word-break: break-all;
+}
+.audit-line .tag {
+  display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 600;
+  margin-right: 4px;
+}
+.tag-task { background: rgba(232,113,26,0.15); color: var(--accent); }
+.tag-blocked { background: rgba(255,68,68,0.15); color: var(--danger); }
+.tag-wake { background: rgba(68,204,102,0.15); color: var(--success); }
+.tag-pwa { background: rgba(100,140,255,0.15); color: #8cacff; }
+
+/* ── Skills ── */
+.skill-card {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 14px 16px; margin-bottom: 8px;
+}
+.skill-name { font-family: var(--mono); font-weight: 600; color: var(--accent); font-size: 14px; }
+.skill-triggers { font-size: 12px; color: var(--fg2); margin-top: 4px; }
+
+/* ── Empty state ── */
+.empty { text-align: center; padding: 60px 20px; color: var(--fg3); }
+.empty-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.3; }
+.empty-text { font-size: 14px; }
+
+/* ── Refresh indicator ── */
+.refreshing { text-align: center; padding: 12px; color: var(--fg3); font-size: 12px; }
+
+/* ── Screenshot Modal ── */
+.modal-overlay {
+  display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.85);
+  z-index:100; justify-content:center; align-items:center; padding:20px;
+}
+.modal-overlay.show { display:flex; }
+.modal-overlay img { max-width:100%; max-height:90vh; border-radius:8px; border:1px solid var(--border); }
+.modal-close { position:fixed; top:16px; right:16px; background:var(--bg3); color:var(--fg); border:none;
+  width:40px; height:40px; border-radius:50%; font-size:20px; cursor:pointer; z-index:101; }
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <div class="header-left">
+      <img src="https://i.imgur.com/RbrQ7Bt.png" alt="CODEC">
+      <h1>CODEC</h1>
+    </div>
+    <div class="header-right">
+      <div class="status-dot" id="statusDot" title="CODEC status"></div>
+      <button class="theme-btn" id="voiceBtn" onclick="toggleVoice()" title="Voice replies">🔇</button>
+      <button class="theme-btn" id="screenBtn" onclick="takeScreenshot()" title="Screenshot Mac">🖥️</button>
+      <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">☀️</button>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" onclick="showTab('chat')" id="tab-chat"><span>💬</span>Chat</button>
+    <button class="tab" onclick="showTab('history')" id="tab-history"><span>📋</span>History</button>
+    <button class="tab" onclick="showTab('audit')" id="tab-audit"><span>🔒</span>Audit</button>
+    <button class="tab" onclick="showTab('status')" id="tab-status"><span>⚙️</span>Status</button>
+  </div>
+
+  <div class="content">
+
+
+    <!-- History Panel -->
+    <div class="panel" id="panel-history">
+      <div id="historyList"></div>
+    </div>
+
+    <!-- Chat Panel (main screen) -->
+    <div class="panel active" id="panel-chat">
+      <div id="cmdResult" style="display:none" class="card">
+        <div class="card-task" id="cmdResultText"></div>
+      </div>
+      <div id="chatList"></div>
+    </div>
+
+    <!-- Audit Panel -->
+    <div class="panel" id="panel-audit">
+      <div id="auditList"></div>
+    </div>
+
+    <!-- Status Panel -->
+    <div class="panel" id="panel-status">
+      <div class="stat-grid" id="statGrid"></div>
+      <h3 style="font-family:var(--mono);font-size:13px;color:var(--fg2);margin:16px 0 8px;letter-spacing:1px">CONFIGURATION</h3>
+      <div id="configList"></div>
+      <h3 style="font-family:var(--mono);font-size:13px;color:var(--fg2);margin:16px 0 8px;letter-spacing:1px">SKILLS</h3>
+      <div id="skillsList"></div>
+    </div>
+  </div>
+
+  <div class="cmd-area">
+    <div class="cmd-row">
+      <button class="mic-btn" id="micBtn" onclick="toggleMic()">🎙️</button>
+      <input type="text" class="cmd-input" id="cmdInput" placeholder="Type a command..." autocomplete="off">
+      <button class="cmd-btn" onclick="sendCmd()">Send</button>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="mic-btn" style="flex:1;width:auto;font-size:13px;gap:4px" onclick="startLiveChat()">🎤 Live Chat</button>
+      <button class="mic-btn" style="flex:1;width:auto;font-size:13px" onclick="uploadFile()">📎 Upload</button>
+      <button class="mic-btn" style="flex:1;width:auto;font-size:13px" onclick="pasteClipboard()">📋 Paste</button>
+    </div>
+    <input type="file" id="fileInput" accept="image/*,.pdf,.txt,.md,.csv,.json,.py,.doc,.docx" style="display:none" onchange="handleFile(event)">
+  </div>
+</div>
+
+<div class="modal-overlay" id="screenModal" onclick="closeScreenshot()">
+  <button class="modal-close" onclick="closeScreenshot()">✕</button>
+  <img id="screenImg" src="">
+</div>
+
+<script>
+// ── State ──
+let currentTab = 'chat';
+let isRecording = false;
+let recognition = null;
+
+// ── Theme ──
+function toggleTheme() {
+  const html = document.documentElement;
+  const current = html.getAttribute('data-theme');
+  const next = current === 'light' ? 'dark' : 'light';
+  html.setAttribute('data-theme', next);
+  localStorage.setItem('codec-theme', next);
+  document.getElementById('themeBtn').textContent = next === 'light' ? '🌙' : '☀️';
+  document.querySelector('meta[name="theme-color"]').content = next === 'light' ? '#f5f2ed' : '#0a0a0a';
+}
+(function() {
+  const saved = localStorage.getItem('codec-theme') || 'dark';
+  if (saved === 'light') {
+    document.documentElement.setAttribute('data-theme', 'light');
+    document.getElementById('themeBtn').textContent = '🌙';
+  }
+})();
+
+// ── Tabs ──
+function showTab(id) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-' + id).classList.add('active');
+  document.getElementById('panel-' + id).classList.add('active');
+  currentTab = id;
+  if (id === 'history') loadHistory();
+  if (id === 'chat') loadChat();
+  if (id === 'history') loadHistory();
+  if (id === 'audit') loadAudit();
+  if (id === 'status') loadStatus();
+}
+
+// ── Send Command ──
+async function sendCmd() {
+  const input = document.getElementById('cmdInput');
+  const task = input.value.trim();
+  if (!task) return;
+  input.value = '';
+  
+  const result = document.getElementById('cmdResult');
+  const text = document.getElementById('cmdResultText');
+  result.style.display = 'block';
+  text.innerHTML = '<span style="color:var(--accent)">⏳ Sending:</span> ' + escHtml(task);
+  
+  try {
+    const r = await fetch('/api/command', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({task})
+    });
+    const data = await r.json();
+    if (data.status === 'queued') {
+      text.innerHTML = '<span style="color:var(--accent)">⏳ Thinking...</span> ' + escHtml(task);
+    } else {
+      text.innerHTML = '<span style="color:var(--danger)">✗ Error:</span> ' + escHtml(data.error || 'Unknown');
+    }
+  } catch(e) {
+    text.innerHTML = '<span style="color:var(--danger)">✗ Failed:</span> ' + escHtml(e.message);
+  }
+  loadChat();
+  // Poll for response
+  let pollCount = 0;
+  const pollResp = setInterval(async () => {
+    pollCount++;
+    if (pollCount > 20) { clearInterval(pollResp); return; }
+    try {
+      const pr = await fetch('/api/response');
+      const pd = await pr.json();
+      if (pd.response) {
+        text.innerHTML = '<span style="color:var(--success)">Q:</span> ' + escHtml(pd.response);
+        clearInterval(pollResp);
+        loadChat();
+        playResponse(pd.response);
+      }
+    } catch {}
+  }, 1500);
+}
+
+document.getElementById('cmdInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') sendCmd();
+});
+
+// ── Voice Input ──
+function toggleMic() {
+  const btn = document.getElementById('micBtn');
+  if (isRecording) {
+    recognition?.stop();
+    isRecording = false;
+    btn.classList.remove('recording');
+    return;
+  }
+  if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+    alert('Speech recognition not supported in this browser. Try Chrome.');
+    return;
+  }
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognition = new SR();
+  recognition.lang = 'en-US';
+  recognition.interimResults = false;
+  recognition.continuous = false;
+  recognition.onresult = e => {
+    const text = e.results[0][0].transcript;
+    document.getElementById('cmdInput').value = text;
+    isRecording = false;
+    btn.classList.remove('recording');
+    sendCmd();
+  };
+  recognition.onerror = () => { isRecording = false; btn.classList.remove('recording'); };
+  recognition.onend = () => { isRecording = false; btn.classList.remove('recording'); };
+  recognition.start();
+  isRecording = true;
+  btn.classList.add('recording');
+}
+
+// ── Load Data ──
+async function loadRecentCmds() {
+  try {
+    const r = await fetch('/api/history?limit=5');
+    const data = await r.json();
+    const el = document.getElementById('recentCmds');
+    if (!data.length) { el.innerHTML = '<div class="empty"><div class="empty-icon">🎙️</div><div class="empty-text">No commands yet. Type or speak one above.</div></div>'; return; }
+    el.innerHTML = '<div style="font-family:var(--mono);font-size:11px;color:var(--fg3);margin:16px 0 8px;letter-spacing:1px">RECENT</div>' +
+      data.map(d => `<div class="card"><div class="card-time">${fmtTime(d.timestamp)}</div><div class="card-task">${escHtml(d.task)}</div><div class="card-app">${escHtml(d.app)}</div>${d.response ? '<div class="card-response">' + escHtml(d.response) + '</div>' : ''}</div>`).join('');
+  } catch {}
+}
+
+async function loadHistory() {
+  const el = document.getElementById('historyList');
+  el.innerHTML = '<div class="refreshing">Loading...</div>';
+  try {
+    const r = await fetch('/api/history?limit=50');
+    const data = await r.json();
+    if (!data.length) { el.innerHTML = '<div class="empty"><div class="empty-icon">📋</div><div class="empty-text">No task history yet.</div></div>'; return; }
+    el.innerHTML = data.map(d => `<div class="card"><div class="card-time">${fmtTime(d.timestamp)}</div><div class="card-task">${escHtml(d.task)}</div><div class="card-app">${escHtml(d.app)}</div>${d.response ? '<div class="card-response">' + escHtml(d.response) + '</div>' : ''}</div>`).join('');
+  } catch(e) { el.innerHTML = '<div class="empty"><div class="empty-text">Error loading history</div></div>'; }
+}
+
+async function loadChat() {
+  const el = document.getElementById('chatList');
+  el.innerHTML = '<div class="refreshing">Loading...</div>';
+  try {
+    const r = await fetch('/api/conversations?limit=100');
+    const data = await r.json();
+    if (!data.length) { el.innerHTML = '<div class="empty"><div class="empty-icon">💬</div><div class="empty-text">No conversations yet.</div></div>'; return; }
+    const reversed = data;
+    el.innerHTML = data.map(d => {
+      const roleClass = d.role === 'user' ? 'user' : 'assistant';
+      const label = d.role === 'user' ? 'YOU' : 'Q';
+      return `<div class="card"><div class="card-role ${roleClass}">${label}</div><div class="card-time">${fmtTime(d.timestamp)}</div><div class="card-task">${escHtml(d.content?.substring(0, 500) || '')}</div></div>`;
+    }).join('');
+  } catch(e) { el.innerHTML = '<div class="empty"><div class="empty-text">Error loading chat</div></div>'; }
+}
+
+async function loadAudit() {
+  const el = document.getElementById('auditList');
+  el.innerHTML = '<div class="refreshing">Loading...</div>';
+  try {
+    const r = await fetch('/api/audit?limit=50');
+    const data = await r.json();
+    if (!data.length) { el.innerHTML = '<div class="empty"><div class="empty-icon">🔒</div><div class="empty-text">Audit log is empty.</div></div>'; return; }
+    el.innerHTML = data.map(d => {
+      let line = escHtml(d.line);
+      let tag = '';
+      if (line.includes('TASK:')) tag = '<span class="tag tag-task">TASK</span>';
+      else if (line.includes('BLOCKED') || line.includes('FLAGGED')) tag = '<span class="tag tag-blocked">BLOCKED</span>';
+      else if (line.includes('WAKE')) tag = '<span class="tag tag-wake">WAKE</span>';
+      else if (line.includes('PWA')) tag = '<span class="tag tag-pwa">PWA</span>';
+      return `<div class="audit-line">${tag}${line}</div>`;
+    }).join('');
+  } catch(e) { el.innerHTML = '<div class="empty"><div class="empty-text">Error loading audit log</div></div>'; }
+}
+
+async function loadStatus() {
+  try {
+    const [statusR, skillsR] = await Promise.all([fetch('/api/status'), fetch('/api/skills')]);
+    const status = await statusR.json();
+    const skills = await skillsR.json();
+    
+    const dot = document.getElementById('statusDot');
+    dot.classList.toggle('on', status.alive);
+    
+    document.getElementById('statGrid').innerHTML = `
+      <div class="stat-card"><div class="stat-val">${status.alive ? '🟢' : '🔴'}</div><div class="stat-label">CODEC</div></div>
+      <div class="stat-card"><div class="stat-val">${skills.length}</div><div class="stat-label">Skills</div></div>
+      <div class="stat-card"><div class="stat-val">${status.config.llm_provider?.toUpperCase()}</div><div class="stat-label">LLM</div></div>
+      <div class="stat-card"><div class="stat-val">${status.config.tts_engine?.toUpperCase()}</div><div class="stat-label">TTS</div></div>
+    `;
+    
+    const cfg = status.config;
+    document.getElementById('configList').innerHTML = Object.entries(cfg).map(([k,v]) =>
+      `<div class="config-row"><span class="config-key">${k}</span><span class="config-val">${escHtml(String(v))}</span></div>`
+    ).join('');
+    
+    document.getElementById('skillsList').innerHTML = skills.map(s =>
+      `<div class="skill-card"><div class="skill-name">${escHtml(s.name)}</div><div class="skill-triggers">${s.triggers.map(t => '"' + escHtml(t) + '"').join(', ')}</div></div>`
+    ).join('');
+  } catch(e) { console.error(e); }
+}
+
+// ── Helpers ──
+function escHtml(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+function fmtTime(ts) {
+  if (!ts) return '';
+  try {
+    const d = new Date(ts);
+    const now = new Date();
+    const today = now.toDateString() === d.toDateString();
+    const time = d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+    return today ? time : d.toLocaleDateString([], {month:'short', day:'numeric'}) + ' ' + time;
+  } catch { return ts; }
+}
+
+// ── Voice Replies ──
+let voiceEnabled = localStorage.getItem('codec-voice') === 'true';
+function toggleVoice() {
+  voiceEnabled = !voiceEnabled;
+  localStorage.setItem('codec-voice', voiceEnabled);
+  document.getElementById('voiceBtn').textContent = voiceEnabled ? '🔊' : '🔇';
+}
+(function() {
+  if (voiceEnabled) document.getElementById('voiceBtn').textContent = '🔊';
+})();
+
+async function playResponse(text) {
+  if (!voiceEnabled || !text) return;
+  try {
+    const audio = new Audio('/api/tts?text=' + encodeURIComponent(text.substring(0, 300)));
+    audio.play();
+  } catch(e) { console.log('TTS error:', e); }
+}
+
+// ── Screenshot ──
+async function takeScreenshot() {
+  document.getElementById('screenBtn').textContent = '⏳';
+  try {
+    const img = document.getElementById('screenImg');
+    img.src = '/api/screenshot?' + Date.now();
+    document.getElementById('screenModal').classList.add('show');
+  } catch(e) { alert('Screenshot failed'); }
+  document.getElementById('screenBtn').textContent = '🖥️';
+}
+function closeScreenshot() { document.getElementById('screenModal').classList.remove('show'); }
+
+// ── Live Chat (Pipecat) ──
+function startLiveChat() {
+  window.open('https://call.lucyvpa.com/auto', '_blank');
+}
+
+// ── File Upload ──
+function uploadFile() { document.getElementById('fileInput').click(); }
+async function handleFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const result = document.getElementById('cmdResult');
+  const text = document.getElementById('cmdResultText');
+  result.style.display = 'block';
+  
+  if (file.type.startsWith('image/')) {
+    text.innerHTML = '<span style="color:var(--accent)">⏳ Analyzing image...</span>';
+    const reader = new FileReader();
+    reader.onload = async () => {
+      // Resize image to stay under size limits
+      const img = new Image();
+      img.onload = async () => {
+        const canvas = document.createElement('canvas');
+        const maxDim = 1024;
+        let w = img.width, h = img.height;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) { h = Math.round(h * maxDim / w); w = maxDim; }
+          else { w = Math.round(w * maxDim / h); h = maxDim; }
+        }
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        const base64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+      try {
+        const r = await fetch('/api/command', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({task: 'Describe and analyze this image in detail', image: base64})
+        });
+        const data = await r.json();
+        if (data.response) {
+          text.innerHTML = '<span style="color:var(--success)">Q:</span> ' + escHtml(data.response);
+          loadChat();
+          playResponse(data.response);
+        } else {
+          text.innerHTML = '<span style="color:var(--success)">✓ Image sent — waiting...</span>';
+          let pc = 0;
+          const pi = setInterval(async () => {
+            pc++; if (pc > 20) { clearInterval(pi); return; }
+            try {
+              const pr = await fetch('/api/response');
+              const pd = await pr.json();
+              if (pd.response) { text.innerHTML = '<span style="color:var(--success)">Q:</span> ' + escHtml(pd.response); clearInterval(pi); loadChat(); playResponse(pd.response); }
+            } catch {}
+          }, 1500);
+        }
+      } catch(err) { text.innerHTML = '<span style="color:var(--danger)">Error: ' + escHtml(err.message) + '</span>'; }
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  } else if (file.name.toLowerCase().endsWith('.pdf')) {
+    text.innerHTML = '<span style="color:var(--accent)">⏳ Extracting PDF text...</span>';
+    const reader2 = new FileReader();
+    reader2.onload = async () => {
+      const base64 = reader2.result.split(',')[1];
+      try {
+        const r = await fetch('/api/upload', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({filename: file.name, data: base64})
+        });
+        const data = await r.json();
+        if (data.text && data.text.trim()) {
+          document.getElementById('cmdInput').value = 'Summarize this document (' + file.name + '): ' + data.text.substring(0, 400);
+          text.innerHTML = '<span style="color:var(--success)">✓ ' + escHtml(file.name) + ' ready — tap Send</span>';
+        } else {
+          text.innerHTML = '<span style="color:var(--danger)">Could not extract text from PDF (may be image-based)</span>';
+        }
+      } catch(err) { text.innerHTML = '<span style="color:var(--danger)">Error: ' + escHtml(err.message) + '</span>'; }
+    };
+    reader2.readAsDataURL(file);
+  } else {
+    text.innerHTML = '<span style="color:var(--accent)">⏳ Extracting document...</span>';
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64 = reader.result.split(',')[1];
+      try {
+        const r = await fetch('/api/upload', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({filename: file.name, data: base64})
+        });
+        const data = await r.json();
+        if (data.text) {
+          const preview = data.text.substring(0, 400);
+          document.getElementById('cmdInput').value = 'Analyze this document (' + file.name + '): ' + preview;
+          text.innerHTML = '<span style="color:var(--success)">✓ ' + escHtml(file.name) + ' extracted — edit and send</span>';
+        } else {
+          text.innerHTML = '<span style="color:var(--danger)">Error: ' + escHtml(data.error || 'Could not read file') + '</span>';
+        }
+      } catch(err) { text.innerHTML = '<span style="color:var(--danger)">Error: ' + escHtml(err.message) + '</span>'; }
+    };
+    reader.readAsDataURL(file);
+  }
+  e.target.value = '';
+}
+
+// ── Paste Clipboard ──
+async function pasteClipboard() {
+  try {
+    // Try reading phone clipboard
+    const text = await navigator.clipboard.readText();
+    if (text) {
+      document.getElementById('cmdInput').value = text;
+      return;
+    }
+  } catch {}
+  // Fallback: get Mac clipboard
+  try {
+    const r = await fetch('/api/clipboard');
+    const data = await r.json();
+    if (data.content) {
+      document.getElementById('cmdInput').value = data.content.substring(0, 500);
+    }
+  } catch {}
+}
+
+// ── Init ──
+loadChat();
+setInterval(async () => {
+  try {
+    const r = await fetch('/api/status');
+    const s = await r.json();
+    document.getElementById('statusDot').classList.toggle('on', s.alive);
+  } catch {}
+}, 10000);
+
+// ── PWA install ──
+let deferredPrompt;
+window.addEventListener('beforeinstallprompt', e => { deferredPrompt = e; });
+</script>
+</body>
+</html>

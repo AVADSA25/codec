@@ -310,6 +310,96 @@ Your MacBook becomes a thin client — all the heavy lifting happens on the serv
 
 ---
 
+## Phone Dashboard (PWA)
+
+Control CODEC from your phone — anywhere, anytime. No app store, no third-party services, no data leaking to Telegram or WhatsApp. Your commands travel directly from your phone to your machine through Cloudflare Zero Trust, encrypted end-to-end, authenticated by email.
+
+### What you get
+
+- **Text commands** from your phone — Q answers silently (no voice on your computer)
+- **Voice input** from your phone mic — tap the mic button and speak
+- **Voice replies** — hear Q's answers through your phone speaker (toggle on/off)
+- **PDF & document upload** — analyze files directly from your phone
+- **Live voice chat** — one tap to launch real-time conversation via Pipecat
+- **Screenshot your Mac** — see your computer screen from anywhere
+- **Clipboard access** — paste from phone or grab your Mac's clipboard
+- **Chat history** — full conversation log, searchable
+- **Audit log** — every action CODEC took, timestamped
+- **Dark & light mode**
+- **PWA** — add to home screen, works like a native app
+
+### Setup
+
+#### 1. Install dependencies
+```bash
+pip3 install fastapi uvicorn
+```
+
+#### 2. Start the dashboard
+```bash
+python3 codec_dashboard.py
+```
+
+This starts the dashboard on port 8090. Test it locally: `http://localhost:8090`
+
+#### 3. Keep it running
+```bash
+pm2 start "python3 codec_dashboard.py" --name codec-dashboard
+pm2 save
+```
+
+#### 4. Expose to the internet (Cloudflare Tunnel)
+
+If you want phone access from outside your network, use Cloudflare Tunnel:
+```bash
+# Install cloudflared
+brew install cloudflared
+
+# Create a tunnel (one-time setup)
+cloudflared tunnel create my-tunnel
+cloudflared tunnel route dns my-tunnel codec.yourdomain.com
+```
+
+Add to your tunnel config (`~/.cloudflared/config.yml`):
+```yaml
+ingress:
+  - hostname: codec.yourdomain.com
+    service: http://localhost:8090
+  # ... your other services
+  - service: http_status:404  # must be last
+```
+
+Start the tunnel:
+```bash
+cloudflared tunnel run my-tunnel
+```
+
+#### 5. Secure with email authentication (recommended)
+
+In Cloudflare Zero Trust dashboard:
+1. Go to Access > Applications > Add Application
+2. Type: Self-hosted, Domain: `codec.yourdomain.com`
+3. Add policy: Allow specific emails only
+
+Only authorized emails can access your dashboard. No passwords to remember — Cloudflare sends a one-time code.
+
+#### 6. Add to your phone home screen
+
+Open `codec.yourdomain.com` in Chrome on your phone, tap the three-dot menu > "Add to Home Screen". It becomes a PWA app with the CODEC icon — one tap to open.
+
+### Why not Telegram / WhatsApp / Discord?
+
+Every message you send through a third-party service is stored on their servers, analyzed by their algorithms, and subject to their terms of service. With CODEC's phone dashboard:
+
+- **Your commands go directly to your machine** — no middleman
+- **Cloudflare encrypts everything** — end-to-end TLS
+- **Email authentication** — only you can access it
+- **No account needed** — no sign-ups, no tracking, no ads
+- **You own the infrastructure** — your tunnel, your domain, your rules
+
+This is what local-first AI looks like on mobile.
+
+
 ## Support the Project
 
 CODEC is free and open source. If it saves you time or you want to see it grow, consider supporting development:

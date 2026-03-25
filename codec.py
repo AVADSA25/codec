@@ -1022,12 +1022,18 @@ def main():
             if skill:
                 result = run_skill(skill, task, app)
                 if result is not None:
-                    speak_text(result)
-                    # Save response to DB
+                    print(f"[Q] PWA response (silent): {str(result)[:100]}")
+                    # Save response to DB + conversations
                     try:
+                        _ts = datetime.now().isoformat()
+                        _sid = "pwa_" + datetime.now().strftime("%Y%m%d_%H%M%S")
                         _c = sqlite3.connect(DB_PATH)
                         _c.execute("UPDATE sessions SET response=? WHERE task=? AND app=? ORDER BY id DESC LIMIT 1",
                             (str(result)[:500], task[:200], app))
+                        _c.execute("INSERT INTO conversations (session_id,timestamp,role,content) VALUES (?,?,?,?)",
+                            (_sid, _ts, "user", task[:500]))
+                        _c.execute("INSERT INTO conversations (session_id,timestamp,role,content) VALUES (?,?,?,?)",
+                            (_sid, _ts, "assistant", str(result)[:500]))
                         _c.commit(); _c.close()
                     except: pass
                     # Write response file for dashboard
@@ -1037,8 +1043,44 @@ def main():
                     except: pass
                     print(f"[Q] PWA skill response: {str(result)[:100]}")
                     return
-        # Not a skill — dispatch normally
-        dispatch(task)
+        # Not a skill — call LLM directly, no TTS, no terminal window
+        try:
+            import requests as _rq
+            headers = {"Content-Type": "application/json"}
+            if LLM_API_KEY: headers["Authorization"] = f"Bearer {LLM_API_KEY}"
+            body = {
+                "model": QWEN_MODEL,
+                "messages": [
+                    {"role": "system", "content": "You are Q, a helpful AI assistant. Answer concisely in 1-3 sentences."},
+                    {"role": "user", "content": task}
+                ],
+                "max_tokens": 300,
+                "stream": False
+            }
+            body.update(LLM_KWARGS)
+            r = _rq.post(QWEN_BASE_URL + "/chat/completions", json=body, headers=headers, timeout=30)
+            answer = r.json()["choices"][0]["message"]["content"].strip()
+            # Remove thinking tags if present
+            if "</think>" in answer: answer = answer.split("</think>")[-1].strip()
+            print(f"[Q] PWA answer (silent): {answer[:100]}")
+            # Save to sessions + conversations
+            _ts = datetime.now().isoformat()
+            _sid = "pwa_" + datetime.now().strftime("%Y%m%d_%H%M%S")
+            _c = sqlite3.connect(DB_PATH)
+            _c.execute("INSERT INTO sessions (timestamp,task,app,response) VALUES (?,?,?,?)",
+                (_ts, task[:200], "CODEC Dashboard", answer[:500]))
+            _c.execute("INSERT INTO conversations (session_id,timestamp,role,content) VALUES (?,?,?,?)",
+                (_sid, _ts, "user", task[:500]))
+            _c.execute("INSERT INTO conversations (session_id,timestamp,role,content) VALUES (?,?,?,?)",
+                (_sid, _ts, "assistant", answer[:500]))
+            _c.commit(); _c.close()
+            # Write response for dashboard
+            with open("/tmp/q_pwa_response.json", "w") as _rf:
+                json.dump({"task": task, "response": answer, "ts": datetime.now().isoformat()}, _rf)
+        except Exception as _e:
+            print(f"[Q] PWA LLM error: {_e}")
+            with open("/tmp/q_pwa_response.json", "w") as _rf:
+                json.dump({"task": task, "response": f"Error: {str(_e)[:200]}", "ts": datetime.now().isoformat()}, _rf)
 
     def pwa_poller():
         import json as _json
