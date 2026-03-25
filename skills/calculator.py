@@ -1,7 +1,7 @@
 """CODEC Skill: Calculator"""
 SKILL_NAME = "calculator"
 SKILL_DESCRIPTION = "Quick math calculations"
-SKILL_TRIGGERS = ["calculate", "what is", "how much is", "times", "plus", "minus", "divided by", "percent of"]
+SKILL_TRIGGERS = ["calculate", "how much is", "times", "plus", "minus", "divided by", "percent of", "square root"]
 
 def run(task, app="", ctx=""):
     """Evaluate math expressions safely"""
