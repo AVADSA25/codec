@@ -323,7 +323,7 @@ state = {
     "recording": False,
     "rec_proc": None,
     "audio_path": None,
-    "last_f13": 0.0,
+    "last_f13": 0.0, "last_minus": 0.0,
     "last_star": 0.0,
     "screen_ctx": "",
     "last_plus": 0.0,
@@ -853,10 +853,21 @@ def wake_word_listener():
                     if any(phrase in text for phrase in WAKE_PHRASES):
                         command = text
                         for phrase in WAKE_PHRASES: command = command.replace(phrase, "").strip()
-                        if len(command) > 3:
+                        # Noise filter: reject music/movie/TV false triggers
+                        noise_words = ['music','yeah','baby','oh','la','da','na','hmm','ooh','ah','uh']
+                        def _is_noise(txt):
+                            words = txt.lower().split()
+                            if len(words) < 2: return True
+                            real = [w for w in words if len(w) > 2 and w not in noise_words]
+                            return len(real) < 1
+                        if len(command) > 3 and not _is_noise(command):
                             print(f"[Q] Wake + command: {command}")
+                            audit("WAKE_CMD", command[:200])
                             push(lambda: show_overlay('Heard you!', '#E8711A', 1500))
                             push(lambda cmd=command: dispatch(cmd))
+                        elif len(command) > 3:
+                            print(f"[Q] Wake noise rejected: {command}")
+                            audit("WAKE_NOISE", command[:200])
                         else:
                             print("[Q] Wake word detected! Listening...")
                             push(lambda: show_overlay('Listening...', '#E8711A', 5000))
@@ -865,9 +876,13 @@ def wake_word_listener():
                             tmp2 = tempfile.NamedTemporaryFile(suffix=".wav", delete=False); tmp2.close()
                             sf.write(tmp2.name, full_audio, sample_rate)
                             task = transcribe(tmp2.name)
-                            if task:
+                            if task and not _is_noise(task):
                                 print(f"[Q] Heard: {task}")
+                                audit("WAKE_TASK", task[:200])
                                 push(lambda t=task: dispatch(t))
+                            elif task:
+                                print(f"[Q] Post-wake noise rejected: {task}")
+                                audit("WAKE_NOISE", task[:200])
             except: pass
             finally:
                 try: os.unlink(tmp.name)
@@ -917,6 +932,17 @@ def on_press(key):
             state["last_plus"] = 0.0
             return
         state["last_plus"] = now
+        return
+    if hasattr(key, 'char') and key.char == '-':
+        if now - state.get("last_minus", 0.0) < 0.5:
+            print("[Q] Minus x2 -- live chat mode")
+            pipecat_url = _cfg.get("pipecat_url", "http://localhost:3000")
+            push(lambda: show_overlay('Live Chat connecting...', '#E8711A', 3000))
+            audit("LIVECHAT", pipecat_url)
+            subprocess.Popen(["open", "-a", "Google Chrome", pipecat_url])
+            state["last_minus"] = 0.0
+            return
+        state["last_minus"] = now
         return
 
 def on_release(key):
