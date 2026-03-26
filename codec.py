@@ -625,10 +625,10 @@ def build_session_script(safe_sys, session_id):
     L.append("print(O+'    ║  ██████  ██████  ██████  ███████  ██████  ║')")
     L.append("print(O+'    ║                                   v1.2.0  ║')")
     L.append("print(O+'    ╠═══════════════════════════════════════════╣')")
-    L.append("print(O+'    ║'+W+'  " + _cfg.get('key_voice','f18').upper() + " voice  " + _cfg.get('key_text','f16').upper() + " text  ** screen  ++ doc'+O+' ║')")
-    L.append("print(O+'    ║'+W+'  Hey Q = wake word  type exit to close '+O+'║')")
+    L.append("print(O+'    ║'+W+'  " + _cfg.get('key_voice','f18').upper() + " voice  " + _cfg.get('key_text','f16').upper() + " text  ** screen  ++ doc  '+O+'║')")
+    L.append("print(O+'    ║'+W+'  Hey Q = wake word  type exit to close  '+O+'║')")
     L.append("print(O+'    ╠═══════════════════════════════════════════╣')")
-    L.append("print(O+'    ║'+D+'  Stream='+ss+'  Memory=ON  Skills=ON      '+O+'║')")
+    L.append("print(O+'    ║'+D+'  Stream='+ss+'  Memory=ON  Skills=ON        '+O+'║')")
     L.append("print(O+'    ╚═══════════════════════════════════════════╝'+R)")
     L.append("")
     L.append("queued = check_queue()")
@@ -986,11 +986,11 @@ def main():
     ║  ██████  ██████  ██████  ███████  ██████  ║
     ║                                   v1.2.0  ║
     ╠═══════════════════════════════════════════╣
-    ║{W}  {kt} toggle    {kv} voice    ** screen  {O}║
-    ║{W}  {kx} text      ++ doc      -- chat    {O}║
-    ║{W}  Hey Q = wake word (hands-free)        {O}║
+    ║{W}  {kt} toggle   {kv} voice   ** screen    {O}║
+    ║{W}  {kx} text     ++ doc     -- chat      {O}║
+    ║{W}  Hey Q = wake word (hands-free)          {O}║
     ╠═══════════════════════════════════════════╣
-    ║{D}  Stream={stream_label}  Wake={wake_label}  Skills=ON       {O}║
+    ║{D}  Stream={stream_label}  Wake={wake_label}  Skills=ON         {O}║
     ╚═══════════════════════════════════════════╝{R}""")
 
     load_skills()

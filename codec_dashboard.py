@@ -238,13 +238,106 @@ async def upload_document(request: Request):
             pdf_path = "/tmp/q_pwa_upload.pdf"
             with open(pdf_path, "wb") as f: f.write(raw)
             r = subprocess.run(["pdftotext", pdf_path, "-"], capture_output=True, text=True, timeout=30)
-            text_content = r.stdout[:5000].strip()
+            text_content = r.stdout[:200000].strip()
             if not text_content:
                 text_content = ""
             return {"status": "ok", "text": text_content, "filename": filename}
         else:
-            text_content = raw.decode("utf-8", errors="ignore")[:5000]
+            text_content = raw.decode("utf-8", errors="ignore")[:200000]
             return {"status": "ok", "text": text_content, "filename": filename}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.get("/chat", response_class=HTMLResponse)
+async def chat_page():
+    chat_path = os.path.join(DASHBOARD_DIR, "codec_chat.html")
+    with open(chat_path) as f:
+        return f.read()
+
+
+# Q Chat conversation storage
+QCHAT_DB = os.path.expanduser("~/.codec/qchat.db")
+
+def qchat_db():
+    import sqlite3
+    conn = sqlite3.connect(QCHAT_DB)
+    conn.execute('''CREATE TABLE IF NOT EXISTS qchat_sessions (
+        id TEXT PRIMARY KEY, title TEXT, created_at TEXT, updated_at TEXT)''')
+    conn.execute('''CREATE TABLE IF NOT EXISTS qchat_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, role TEXT,
+        content TEXT, timestamp TEXT)''')
+    conn.commit()
+    return conn
+
+@app.get("/api/qchat/sessions")
+async def qchat_sessions():
+    conn = qchat_db()
+    rows = conn.execute("SELECT id, title, updated_at FROM qchat_sessions ORDER BY updated_at DESC LIMIT 30").fetchall()
+    conn.close()
+    return [{"id": r[0], "title": r[1], "updated_at": r[2]} for r in rows]
+
+@app.get("/api/qchat/session/{sid}")
+async def qchat_session(sid: str):
+    conn = qchat_db()
+    rows = conn.execute("SELECT role, content, timestamp FROM qchat_messages WHERE session_id=? ORDER BY id ASC", (sid,)).fetchall()
+    conn.close()
+    return [{"role": r[0], "content": r[1], "timestamp": r[2]} for r in rows]
+
+@app.post("/api/qchat/save")
+async def qchat_save(request: Request):
+    body = await request.json()
+    sid = body.get("session_id", "")
+    title = body.get("title", "New Chat")
+    messages = body.get("messages", [])
+    from datetime import datetime
+    now = datetime.now().isoformat()
+    conn = qchat_db()
+    conn.execute("INSERT OR REPLACE INTO qchat_sessions (id, title, created_at, updated_at) VALUES (?, ?, COALESCE((SELECT created_at FROM qchat_sessions WHERE id=?), ?), ?)",
+        (sid, title[:60], sid, now, now))
+    for m in messages:
+        conn.execute("INSERT INTO qchat_messages (session_id, role, content, timestamp) VALUES (?, ?, ?, ?)",
+            (sid, m.get("role","user"), m.get("content",""), now))
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+@app.post("/api/chat")
+async def chat_completion(request: Request):
+    """Direct LLM chat with full context window"""
+    body = await request.json()
+    messages = body.get("messages", [])
+    if not messages:
+        return JSONResponse({"error": "No messages"}, status_code=400)
+    try:
+        import requests as rq
+        config = {}
+        try:
+            with open(CONFIG_PATH) as f: config = json.load(f)
+        except: pass
+        base_url = config.get("llm_base_url", "http://localhost:8081/v1")
+        model = config.get("llm_model", "mlx-community/Qwen3.5-35B-A3B-4bit")
+        api_key = config.get("llm_api_key", "")
+        kwargs = config.get("llm_kwargs", {})
+        headers = {"Content-Type": "application/json"}
+        if api_key: headers["Authorization"] = f"Bearer {api_key}"
+        payload = {
+            "model": model,
+            "messages": messages,
+            "max_tokens": 28000,
+            "temperature": 0.7,
+            "top_p": 0.9,
+            "frequency_penalty": 1.1,
+            "stream": False
+        }
+        payload.update(kwargs)
+        r = rq.post(f"{base_url}/chat/completions", json=payload, headers=headers, timeout=300)
+        data = r.json()
+        answer = data["choices"][0]["message"]["content"].strip()
+        # Strip thinking tags
+        import re
+        answer = re.sub(r'<think>[\s\S]*?</think>', '', answer).strip()
+        answer = re.sub(r'###\s*FINAL ANSWER:\s*', '', answer).strip()
+        return {"response": answer, "model": model}
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 

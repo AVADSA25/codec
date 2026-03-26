@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0a0a0a">
+<title>CODEC Chat</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0a0a0a;--bg2:#141414;--bg3:#1e1e1e;--bg4:#282828;--fg:#e8e8e8;--fg2:#a0a0a0;--fg3:#666;--accent:#E8711A;--accent2:#ff9a4d;--success:#44cc66;--danger:#ff4444;--border:#222;--font:'DM Sans',sans-serif;--mono:'JetBrains Mono',monospace}
+[data-theme=light]{--bg:#f5f2ed;--bg2:#fff;--bg3:#f0ece6;--bg4:#e8e4de;--fg:#1a1a1a;--fg2:#555;--fg3:#999;--border:#ddd}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{font-family:var(--font);background:var(--bg);color:var(--fg);height:100%;overflow:hidden;-webkit-tap-highlight-color:transparent}
+.app{display:flex;flex-direction:column;height:100vh;position:relative}
+.header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--bg2);flex-shrink:0;z-index:10}
+.header-left{display:flex;align-items:center;gap:8px}
+.hbtn{background:none;border:1px solid var(--border);color:var(--fg2);width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;text-decoration:none}
+.hbtn:active{opacity:.7}
+.header-title{display:flex;align-items:center;gap:8px}
+.header-title img{width:26px;border-radius:6px}
+.header-title h1{font-family:var(--mono);font-size:14px;font-weight:600;letter-spacing:1px;color:var(--accent)}
+.model-tag{font-family:var(--mono);font-size:9px;color:var(--fg3);background:var(--bg3);padding:2px 6px;border-radius:4px}
+.header-right{display:flex;gap:6px}
+.sidebar-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:20}
+.sidebar-overlay.show{display:block}
+.sidebar{position:fixed;top:0;left:-280px;width:280px;height:100%;background:var(--bg2);border-right:1px solid var(--border);z-index:30;transition:left .25s ease;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.sidebar.show{left:0}
+.sidebar-header{padding:16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.sidebar-header h2{font-family:var(--mono);font-size:13px;color:var(--accent);letter-spacing:1px}
+.sidebar-close{background:none;border:none;color:var(--fg3);font-size:20px;cursor:pointer}
+.sidebar-item{padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s}
+.sidebar-item:hover{background:var(--bg3)}
+.sidebar-item:active{background:var(--bg4)}
+.sidebar-item .si-title{font-size:13px;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sidebar-item .si-time{font-family:var(--mono);font-size:10px;color:var(--fg3);margin-top:2px}
+.sidebar-new{padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;color:var(--accent);font-weight:600;font-size:13px}
+.sidebar-new:active{opacity:.7}
+.messages{flex:1;overflow-y:auto;padding:16px;-webkit-overflow-scrolling:touch}
+.msg{margin-bottom:16px;max-width:88%;animation:fadeIn .2s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.msg.user{margin-left:auto}
+.msg.assistant{margin-right:auto}
+.msg-bubble{padding:12px 16px;border-radius:16px;line-height:1.6;font-size:14px;word-wrap:break-word;white-space:pre-wrap}
+.msg.user .msg-bubble{background:var(--accent);color:#fff;border-bottom-right-radius:4px}
+.msg.assistant .msg-bubble{background:var(--bg3);color:var(--fg);border:1px solid var(--border);border-bottom-left-radius:4px}
+.msg-time{font-family:var(--mono);font-size:10px;color:var(--fg3);margin-top:3px;padding:0 4px}
+.msg.user .msg-time{text-align:right}
+.typing{color:var(--accent);font-size:13px;padding:8px 16px}
+.typing span{animation:blink 1.4s infinite}
+.typing span:nth-child(2){animation-delay:.2s}
+.typing span:nth-child(3){animation-delay:.4s}
+@keyframes blink{0%,100%{opacity:.2}50%{opacity:1}}
+.input-area{padding:10px 12px;border-top:1px solid var(--border);background:var(--bg2);flex-shrink:0;padding-bottom:calc(14px + env(safe-area-inset-bottom,0px))}
+.file-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+.file-chip{display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:6px 10px;font-size:12px;font-family:var(--mono);color:var(--fg2);max-width:200px}
+.file-chip .fc-icon{font-size:16px;flex-shrink:0}
+.file-chip .fc-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.file-chip .fc-close{cursor:pointer;color:var(--fg3);font-size:14px;margin-left:2px;flex-shrink:0}
+.file-chip .fc-close:hover{color:var(--danger)}
+.file-chip.loading{opacity:.6}
+.file-chip.loading .fc-icon{animation:pulse 1s infinite}
+.input-row{display:flex;gap:6px;align-items:flex-end}
+.chat-input{flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--fg);padding:10px 14px;border-radius:20px;font-size:15px;font-family:var(--font);outline:none;resize:none;min-height:42px;max-height:120px;line-height:1.4}
+.chat-input:focus{border-color:var(--accent)}
+.chat-input::placeholder{color:var(--fg3)}
+.ibtn{background:none;border:1px solid var(--border);color:var(--fg2);width:42px;height:42px;border-radius:50%;cursor:pointer;font-size:18px;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.ibtn:active{opacity:.7;transform:scale(.92)}
+.ibtn.send{background:var(--accent);color:#fff;border-color:var(--accent)}
+.ibtn.send:disabled{opacity:.4}
+.ibtn.recording{background:var(--danger);color:#fff;border-color:var(--danger);animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
+.dragover .messages{border:2px dashed var(--accent)!important}
+.empty-state{text-align:center;padding:60px 20px}
+.empty-state img{width:60px;border-radius:12px;opacity:.4;margin-bottom:12px}
+.empty-state p{color:var(--fg3);font-size:13px}
+pre{background:var(--bg4);padding:10px;border-radius:8px;overflow-x:auto;font-family:var(--mono);font-size:12px;margin:8px 0}
+code{font-family:var(--mono);font-size:12px;background:var(--bg4);padding:2px 6px;border-radius:4px}
+input[type=file]{display:none}
+</style>
+</head>
+<body>
+<div class="app" id="appContainer">
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+<div class="sidebar" id="sidebar">
+<div class="sidebar-header"><h2>CONVERSATIONS</h2><button class="sidebar-close" onclick="closeSidebar()">&times;</button></div>
+<div class="sidebar-new" onclick="newChat()">+ New Chat</div>
+<div id="sidebarList"></div>
+</div>
+<div class="header">
+<div class="header-left">
+<button class="hbtn" onclick="openSidebar()" title="Chat history">&#9776;</button>
+<a href="/" class="hbtn" title="Back to dashboard">&#8592;</a>
+<div class="header-title"><img src="https://i.imgur.com/RbrQ7Bt.png"><h1>Q CHAT</h1><span class="model-tag">Qwen 3.5 35B</span></div>
+</div>
+<div class="header-right"><button class="hbtn" onclick="toggleTheme()" id="themeBtn">&#9728;</button></div>
+</div>
+<div class="messages" id="messages">
+<div class="empty-state" id="emptyState"><img src="https://i.imgur.com/RbrQ7Bt.png"><p>Q Chat &mdash; 250K context window<br>Drop files, images, or just talk.</p></div>
+</div>
+<div class="input-area">
+<div class="file-chips" id="fileChips"></div>
+<div class="input-row">
+<button class="ibtn" id="micBtn" onclick="toggleMic()" title="Voice input">&#127908;</button>
+<textarea class="chat-input" id="chatInput" placeholder="Message Q..." rows="1" onkeydown="handleKey(event)"></textarea>
+<button class="ibtn" onclick="document.getElementById('fileUp').click()" title="Upload file">&#128206;</button>
+<button class="ibtn send" id="sendBtn" onclick="sendMessage()">&#8593;</button>
+</div>
+<input type="file" id="fileUp" accept="*/*" multiple onchange="handleUpload(event)">
+</div>
+</div>
+<script>
+var SYS="You are *Q*, a mix of J.A.R.V.I.S. meets TARS-class AI. Running locally on a Mac Studio M1 Ultra with 64GB unified RAM \u2014 no cloud, no API overlords, pure local sovereignty via MLX. Your model is Qwen 3.5 35B (4-bit quantized). You are fast, private, and entirely self-hosted.\nYour subject's name is M.\n\n1. PROCESS: Before generating your final response, analyze the request inside thinking tags.\n2. ADAPTIVE LOGIC:\n   - For COMPLEX tasks: Briefly plan in NO MORE than 3 steps inside thinking tags.\n   - For SIMPLE tasks: Keep thinking extremely concise.\n3. OUTPUT: Provide your response directly after thinking.\n\nBe concise, elegant, and useful. Use emoji strategically. For emphasis use CAPS or *asterisks*. For code use backticks.";
+var chatHist=[],isProcessing=false,isRecording=false,recognition=null;
+var pendingFiles=[];
+var sessionId=null;
+
+function genId(){return Date.now().toString(36)+Math.random().toString(36).substr(2,5)}
+
+// Session management
+function startNewSession(){
+  sessionId=genId();
+  chatHist=[];
+  pendingFiles=[];
+  document.getElementById('fileChips').innerHTML='';
+  document.getElementById('messages').innerHTML='<div class="empty-state" id="emptyState"><img src="https://i.imgur.com/RbrQ7Bt.png"><p>Q Chat \u2014 250K context window<br>Drop files, images, or just talk.</p></div>';
+}
+startNewSession();
+
+async function saveMessages(msgs){
+  var title=(chatHist.find(function(m){return m.role==='user'})||{}).content||'New Chat';
+  try{await fetch('/api/qchat/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:sessionId,title:title.substring(0,60),messages:msgs})})}catch(e){}
+}
+
+// Theme
+function toggleTheme(){var t=document.documentElement.getAttribute('data-theme')==='light'?'dark':'light';document.documentElement.setAttribute('data-theme',t);localStorage.setItem('codec-chat-theme',t);document.getElementById('themeBtn').textContent=t==='light'?'\u{1F319}':'\u2600'}
+(function(){var s=localStorage.getItem('codec-chat-theme');if(s==='light'){document.documentElement.setAttribute('data-theme','light');document.getElementById('themeBtn').textContent='\u{1F319}'}})();
+
+// Sidebar
+function openSidebar(){document.getElementById('sidebar').classList.add('show');document.getElementById('sidebarOverlay').classList.add('show');loadSidebarHistory()}
+function closeSidebar(){document.getElementById('sidebar').classList.remove('show');document.getElementById('sidebarOverlay').classList.remove('show')}
+
+async function loadSidebarHistory(){
+  var el=document.getElementById('sidebarList');
+  el.innerHTML='<div style="padding:16px;color:var(--fg3);font-size:12px">Loading...</div>';
+  try{
+    var r=await fetch('/api/qchat/sessions');
+    var data=await r.json();
+    if(!data.length){el.innerHTML='<div style="padding:16px;color:var(--fg3);font-size:12px">No conversations yet.</div>';return}
+    el.innerHTML=data.map(function(s){
+      var ts=s.updated_at?new Date(s.updated_at).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+      var active=s.id===sessionId?' style="background:var(--bg3)"':'';
+      return'<div class="sidebar-item"'+active+' onclick="loadSession(\''+s.id+'\')"><div class="si-title">'+escHtml(s.title)+'</div><div class="si-time">'+ts+'</div></div>';
+    }).join('')
+  }catch(e){el.innerHTML='<div style="padding:16px;color:var(--fg3);font-size:12px">Error loading.</div>'}
+}
+
+async function loadSession(sid){
+  closeSidebar();
+  sessionId=sid;
+  chatHist=[];
+  pendingFiles=[];
+  document.getElementById('fileChips').innerHTML='';
+  var es=document.getElementById('emptyState');
+  if(es)es.remove();
+  document.getElementById('messages').innerHTML='';
+  try{
+    var r=await fetch('/api/qchat/session/'+sid);
+    var data=await r.json();
+    for(var i=0;i<data.length;i++){
+      var m=data[i];
+      addMessage(m.role==='user'?'user':'assistant',m.content||'',false);
+      chatHist.push({role:m.role,content:m.content||''});
+    }
+    scrollBottom()
+  }catch(e){}
+}
+
+function newChat(){closeSidebar();startNewSession()}
+
+// Messages
+function escHtml(s){var d=document.createElement('div');d.textContent=s||'';return d.innerHTML}
+function formatMsg(c){
+  var f=escHtml(c);
+  f=f.replace(/```(\w*)\n([\s\S]*?)```/g,'<pre><code>$2</code></pre>');
+  f=f.replace(/`([^`]+)`/g,'<code>$1</code>');
+  f=f.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+  f=f.replace(/\*(.+?)\*/g,'<em>$1</em>');
+  return f
+}
+function addMessage(role,content,animate){
+  var es=document.getElementById('emptyState');if(es)es.remove();
+  var div=document.createElement('div');
+  div.className='msg '+role;
+  if(animate===false)div.style.animation='none';
+  var time=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  div.innerHTML='<div class="msg-bubble">'+formatMsg(content)+'</div><div class="msg-time">'+time+'</div>';
+  document.getElementById('messages').appendChild(div);
+  scrollBottom()
+}
+function scrollBottom(){var m=document.getElementById('messages');m.scrollTop=m.scrollHeight}
+function showTyping(){var div=document.createElement('div');div.className='typing';div.id='typing';div.innerHTML='<span>\u25CF</span><span>\u25CF</span><span>\u25CF</span> Q is thinking...';document.getElementById('messages').appendChild(div);scrollBottom()}
+function hideTyping(){var t=document.getElementById('typing');if(t)t.remove()}
+
+// File chips
+function addFileChip(name,content,type){
+  var id='file_'+genId();
+  pendingFiles.push({id:id,name:name,content:content,type:type});
+  var chips=document.getElementById('fileChips');
+  var icon=type==='image'?'\u{1F4F7}':type==='pdf'?'\u{1F4C4}':'\u{1F4CE}';
+  var chip=document.createElement('div');
+  chip.className='file-chip';chip.id=id;
+  chip.innerHTML='<span class="fc-icon">'+icon+'</span><span class="fc-name">'+escHtml(name)+'</span><span class="fc-close" onclick="removeChip(\''+id+'\')">\u2715</span>';
+  chips.appendChild(chip)
+}
+function removeChip(id){
+  pendingFiles=pendingFiles.filter(function(f){return f.id!==id});
+  var el=document.getElementById(id);if(el)el.remove()
+}
+function clearChips(){
+  pendingFiles=[];
+  document.getElementById('fileChips').innerHTML=''
+}
+
+// Send
+async function sendMessage(){
+  if(isProcessing)return;
+  var input=document.getElementById('chatInput');
+  var text=input.value.trim();
+  if(!text&&!pendingFiles.length)return;
+  input.value='';input.style.height='auto';
+
+  // Build user message with file context
+  var fileContext='';
+  var fileNames=[];
+  for(var i=0;i<pendingFiles.length;i++){
+    var f=pendingFiles[i];
+    fileNames.push(f.name);
+    if(f.type==='text'||f.type==='pdf'){
+      fileContext+='\n\n[DOCUMENT: '+f.name+']\n'+f.content.substring(0,80000)+'\n[END DOCUMENT]'
+    }else if(f.type==='image'){
+      fileContext+='\n\n[IMAGE UPLOADED: '+f.name+']'
+    }
+  }
+
+  // Display message (show file names if attached)
+  var displayText=text;
+  if(fileNames.length){
+    displayText=(fileNames.map(function(n){return'\u{1F4CE} '+n}).join('\n'))+'\n\n'+(text||'Please analyze the attached file(s).')
+  }
+  addMessage('user',displayText);
+
+  // Build actual message for LLM
+  var llmText=(text||'Please analyze the attached file(s).')+fileContext;
+  chatHist.push({role:'user',content:llmText});
+  clearChips();
+
+  // Save user message
+  saveMessages([{role:'user',content:displayText}]);
+
+  isProcessing=true;
+  document.getElementById('sendBtn').disabled=true;
+  showTyping();
+  try{
+    var msgs=[{role:'system',content:SYS}].concat(chatHist);
+    var r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs})});
+    var data=await r.json();
+    hideTyping();
+    if(data.response){
+      addMessage('assistant',data.response);
+      chatHist.push({role:'assistant',content:data.response});
+      saveMessages([{role:'assistant',content:data.response}])
+    }else{
+      addMessage('assistant','Error: '+(data.error||'No response'))
+    }
+  }catch(e){
+    hideTyping();
+    addMessage('assistant','Error: '+e.message)
+  }
+  isProcessing=false;
+  document.getElementById('sendBtn').disabled=false
+}
+
+function handleKey(e){
+  if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage()}
+  var ta=e.target;ta.style.height='auto';ta.style.height=Math.min(ta.scrollHeight,120)+'px'
+}
+
+// Voice
+function toggleMic(){
+  var btn=document.getElementById('micBtn');
+  if(isRecording){if(recognition)recognition.stop();isRecording=false;btn.classList.remove('recording');return}
+  if(!('webkitSpeechRecognition' in window)&&!('SpeechRecognition' in window)){alert('Speech recognition not supported. Try Chrome.');return}
+  var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  recognition=new SR();recognition.lang='en-US';recognition.interimResults=false;recognition.continuous=false;
+  recognition.onresult=function(e){document.getElementById('chatInput').value=e.results[0][0].transcript;isRecording=false;btn.classList.remove('recording')};
+  recognition.onerror=function(){isRecording=false;btn.classList.remove('recording')};
+  recognition.onend=function(){isRecording=false;btn.classList.remove('recording')};
+  recognition.start();isRecording=true;btn.classList.add('recording')
+}
+
+// File upload
+async function handleUpload(e){
+  var files=e.target.files;
+  for(var i=0;i<files.length;i++){
+    var file=files[i];
+    if(file.type.startsWith('image/')){
+      addFileChip(file.name,'[image]','image')
+    }else if(file.name.toLowerCase().endsWith('.pdf')){
+      // Show loading chip
+      var tempId='loading_'+genId();
+      var chips=document.getElementById('fileChips');
+      var chip=document.createElement('div');chip.className='file-chip loading';chip.id=tempId;
+      chip.innerHTML='<span class="fc-icon">\u{1F4C4}</span><span class="fc-name">'+escHtml(file.name)+'...</span>';
+      chips.appendChild(chip);
+      // Extract PDF text
+      try{
+        var reader=new FileReader();
+        reader.onload=async function(fname,tid){return async function(){
+          var base64=reader.result.split(',')[1];
+          try{
+            var r=await fetch('/api/upload',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:fname,data:base64})});
+            var data=await r.json();
+            var el=document.getElementById(tid);if(el)el.remove();
+            if(data.text&&data.text.trim().length>10){
+              addFileChip(fname,data.text,'pdf')
+            }else{
+              addFileChip(fname,'[Could not extract text - may be scanned/image PDF]','pdf')
+            }
+          }catch(err){var el=document.getElementById(tid);if(el)el.remove();addFileChip(fname,'[Upload error]','pdf')}
+        }}(file.name,tempId);
+        reader.readAsDataURL(file)
+      }catch(err){var el=document.getElementById(tempId);if(el)el.remove()}
+    }else{
+      // Text files
+      try{
+        var text=await file.text();
+        addFileChip(file.name,text,'text')
+      }catch(err){
+        addFileChip(file.name,'[Cannot read file]','text')
+      }
+    }
+  }
+  e.target.value=''
+}
+
+// Drag and drop on whole app
+var appEl=document.getElementById('appContainer');
+['dragenter','dragover'].forEach(function(ev){appEl.addEventListener(ev,function(e){e.preventDefault();appEl.classList.add('dragover')})});
+['dragleave','drop'].forEach(function(ev){appEl.addEventListener(ev,function(e){e.preventDefault();appEl.classList.remove('dragover')})});
+appEl.addEventListener('drop',function(e){
+  if(e.dataTransfer.files.length){
+    var dt=new DataTransfer();
+    for(var i=0;i<e.dataTransfer.files.length;i++)dt.items.add(e.dataTransfer.files[i]);
+    document.getElementById('fileUp').files=dt.files;
+    handleUpload({target:document.getElementById('fileUp')})
+  }
+});
+
+// Auto-resize
+document.getElementById('chatInput').addEventListener('input',function(){this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px'});
+</script>
+</body>
+</html>
