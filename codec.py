@@ -616,20 +616,20 @@ def build_session_script(safe_sys, session_id):
     L.append("D = chr(27)+'[38;2;80;80;80m'")
     L.append("W = chr(27)+'[38;2;200;200;200m'")
     L.append("R = chr(27)+'[0m'")
-    L.append("print(O+'    ╔══════════════════════════════════════════════════╗')")
-    L.append("print(O+'    ║                                                  ║')")
-    L.append("print(O+'    ║    ██████  ██████  ██████  ███████  ██████        ║')")
-    L.append("print(O+'    ║   ██      ██    ██ ██   ██ ██      ██            ║')")
-    L.append("print(O+'    ║   ██      ██    ██ ██   ██ █████   ██            ║')")
-    L.append("print(O+'    ║   ██      ██    ██ ██   ██ ██      ██            ║')")
-    L.append("print(O+'    ║    ██████  ██████  ██████  ███████  ██████        ║')")
-    L.append("print(O+'    ║                                          v1.2    ║')")
-    L.append("print(O+'    ╠══════════════════════════════════════════════════╣')")
-    L.append("print(O+'    ║'+W+'  " + _cfg.get('key_voice','f18').upper() + " voice   " + _cfg.get('key_text','f16').upper() + " text   ** screen   ++ doc   '+O+'║')")
-    L.append("print(O+'    ║'+W+'  Hey Q = wake word   type exit to close    '+O+'║')")
-    L.append("print(O+'    ╠══════════════════════════════════════════════════╣')")
-    L.append("print(O+'    ║'+D+'  Stream='+ss+'  Memory=ON  Skills=ON             '+O+'║')")
-    L.append("print(O+'    ╚══════════════════════════════════════════════════╝'+R)")
+    L.append("print(O+'    ╔═══════════════════════════════════════════╗')")
+    L.append("print(O+'    ║                                           ║')")
+    L.append("print(O+'    ║  ██████  ██████  ██████  ███████  ██████  ║')")
+    L.append("print(O+'    ║ ██      ██    ██ ██   ██ ██      ██       ║')")
+    L.append("print(O+'    ║ ██      ██    ██ ██   ██ █████   ██       ║')")
+    L.append("print(O+'    ║ ██      ██    ██ ██   ██ ██      ██       ║')")
+    L.append("print(O+'    ║  ██████  ██████  ██████  ███████  ██████  ║')")
+    L.append("print(O+'    ║                                   v1.2.0  ║')")
+    L.append("print(O+'    ╠═══════════════════════════════════════════╣')")
+    L.append("print(O+'    ║'+W+'  " + _cfg.get('key_voice','f18').upper() + " voice  " + _cfg.get('key_text','f16').upper() + " text  ** screen  ++ doc'+O+' ║')")
+    L.append("print(O+'    ║'+W+'  Hey Q = wake word  type exit to close '+O+'║')")
+    L.append("print(O+'    ╠═══════════════════════════════════════════╣')")
+    L.append("print(O+'    ║'+D+'  Stream='+ss+'  Memory=ON  Skills=ON      '+O+'║')")
+    L.append("print(O+'    ╚═══════════════════════════════════════════╝'+R)")
     L.append("")
     L.append("queued = check_queue()")
     L.append("if queued: process_input(queued['task'], h)")
@@ -977,21 +977,21 @@ def main():
     W = "\033[38;2;200;200;200m"
     R = "\033[0m"
     print(f"""
-{O}    ╔══════════════════════════════════════════════════╗
-    ║                                                  ║
-    ║    ██████  ██████  ██████  ███████  ██████        ║
-    ║   ██      ██    ██ ██   ██ ██      ██            ║
-    ║   ██      ██    ██ ██   ██ █████   ██            ║
-    ║   ██      ██    ██ ██   ██ ██      ██            ║
-    ║    ██████  ██████  ██████  ███████  ██████        ║
-    ║                                          v1.2    ║
-    ╠══════════════════════════════════════════════════╣
-    ║{W}  {kt}  toggle ON/OFF    **  screenshot + ask    {O}║
-    ║{W}  {kv}  voice command    ++  document analysis   {O}║
-    ║{W}  {kx}  text input       Hey Q  wake word        {O}║
-    ╠══════════════════════════════════════════════════╣
-    ║{D}  Stream={stream_label}  Wake={wake_label}  Memory=ON  Skills=ON       {O}║
-    ╚══════════════════════════════════════════════════╝{R}""")
+{O}    ╔═══════════════════════════════════════════╗
+    ║                                           ║
+    ║  ██████  ██████  ██████  ███████  ██████  ║
+    ║ ██      ██    ██ ██   ██ ██      ██       ║
+    ║ ██      ██    ██ ██   ██ █████   ██       ║
+    ║ ██      ██    ██ ██   ██ ██      ██       ║
+    ║  ██████  ██████  ██████  ███████  ██████  ║
+    ║                                   v1.2.0  ║
+    ╠═══════════════════════════════════════════╣
+    ║{W}  {kt} toggle    {kv} voice    ** screen  {O}║
+    ║{W}  {kx} text      ++ doc      -- chat    {O}║
+    ║{W}  Hey Q = wake word (hands-free)        {O}║
+    ╠═══════════════════════════════════════════╣
+    ║{D}  Stream={stream_label}  Wake={wake_label}  Skills=ON       {O}║
+    ╚═══════════════════════════════════════════╝{R}""")
 
     load_skills()
 
