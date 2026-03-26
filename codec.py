@@ -2,7 +2,7 @@
 import signal
 signal.signal(signal.SIGINT, lambda *a: None)
 signal.signal(signal.SIGTERM, lambda *a: None)
-"""CODEC v1.1.1 | Config-driven keys | *=screenshot | +=doc | Wake word"""
+"""CODEC v1.2.0 | Voice + Text + Phone | *=screenshot | +=doc | --=livechat | Wake word"""
 import threading, tempfile, subprocess, sys, os, time, sqlite3, json, re, base64
 from datetime import datetime
 from pynput import keyboard
@@ -623,7 +623,7 @@ def build_session_script(safe_sys, session_id):
     L.append("print(O+'    ║   ██      ██    ██ ██   ██ █████   ██            ║')")
     L.append("print(O+'    ║   ██      ██    ██ ██   ██ ██      ██            ║')")
     L.append("print(O+'    ║    ██████  ██████  ██████  ███████  ██████        ║')")
-    L.append("print(O+'    ║                                          v1.1    ║')")
+    L.append("print(O+'    ║                                          v1.2    ║')")
     L.append("print(O+'    ╠══════════════════════════════════════════════════╣')")
     L.append("print(O+'    ║'+W+'  " + _cfg.get('key_voice','f18').upper() + " voice   " + _cfg.get('key_text','f16').upper() + " text   ** screen   ++ doc   '+O+'║')")
     L.append("print(O+'    ║'+W+'  Hey Q = wake word   type exit to close    '+O+'║')")
@@ -984,7 +984,7 @@ def main():
     ║   ██      ██    ██ ██   ██ █████   ██            ║
     ║   ██      ██    ██ ██   ██ ██      ██            ║
     ║    ██████  ██████  ██████  ███████  ██████        ║
-    ║                                          v1.1    ║
+    ║                                          v1.2    ║
     ╠══════════════════════════════════════════════════╣
     ║{W}  {kt}  toggle ON/OFF    **  screenshot + ask    {O}║
     ║{W}  {kv}  voice command    ++  document analysis   {O}║
