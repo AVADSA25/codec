@@ -1089,12 +1089,13 @@ def main():
                 if os.path.exists(TASK_QUEUE_FILE):
                     with open(TASK_QUEUE_FILE) as _f:
                         data = _json.load(_f)
-                    os.unlink(TASK_QUEUE_FILE)
-                    task = data.get("task", "").strip()
                     source = data.get("source", "")
-                    if task and source == "pwa":
-                        print(f"[Q] PWA command: {task[:80]}")
-                        push(lambda t=task: pwa_dispatch(t))
+                    if source == "pwa":
+                        os.unlink(TASK_QUEUE_FILE)
+                        task = data.get("task", "").strip()
+                        if task:
+                            print(f"[Q] PWA command: {task[:80]}")
+                            push(lambda t=task: pwa_dispatch(t))
             except: pass
             time.sleep(1.5)
 
