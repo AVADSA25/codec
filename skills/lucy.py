@@ -1,7 +1,7 @@
-"""Lucy VPA — Delegate tasks to Lucy via n8n webhook"""
+"""Lucy VPA — Delegate complex tasks to Lucy via n8n webhook"""
 SKILL_NAME = "lucy"
-SKILL_TRIGGERS = ["ask lucy", "tell lucy", "lucy", "delegate", "send to lucy", "email", "calendar", "schedule", "book", "invoice", "expense", "calorie"]
-SKILL_DESCRIPTION = "Delegates tasks to Lucy, your virtual personal assistant (email, calendar, reminders, invoices, expenses, and more)"
+SKILL_TRIGGERS = ["ask lucy", "tell lucy", "lucy", "delegate", "send to lucy", "invoice", "expense", "calorie", "daily briefing", "book a call", "vapi"]
+SKILL_DESCRIPTION = "Delegates complex tasks to Lucy — invoices, expenses, calorie tracking, phone calls, and multi-step workflows"
 
 import requests, json
 
@@ -9,7 +9,6 @@ LUCY_WEBHOOK = "http://localhost:5678/webhook/q-to-lucy"
 
 def run(task, app="", ctx=""):
     try:
-        # Clean the task — remove trigger words
         clean = task.lower()
         for word in ["ask lucy", "tell lucy", "lucy", "delegate to lucy", "send to lucy"]:
             clean = clean.replace(word, "").strip()
@@ -20,17 +19,19 @@ def run(task, app="", ctx=""):
             "message": clean,
             "source": "codec",
             "app": app
-        }, timeout=30)
+        }, timeout=300)
 
         if r.status_code == 200:
             try:
                 data = r.json()
                 if isinstance(data, dict) and data.get("output"):
                     return data["output"]
-                return f"Lucy is on it: {clean}"
+                return "Lucy responded but no output parsed"
             except:
-                return f"Lucy is on it: {clean}"
+                return r.text[:500] if r.text else "Lucy processed but no response"
         else:
-            return f"Lucy didn't respond (status {r.status_code})"
+            return f"Lucy error (status {r.status_code})"
+    except requests.exceptions.Timeout:
+        return "Lucy is still thinking - check Telegram for her response"
     except Exception as e:
-        return f"Couldn't reach Lucy: {str(e)}"
+        return f"Could not reach Lucy: {str(e)}"
