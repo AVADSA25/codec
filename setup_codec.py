@@ -119,7 +119,7 @@ def main():
     input(f"\n{O}  Press Enter to begin...{X}")
 
     config = {}
-    total_steps = 7
+    total_steps = 8
 
     # ── STEP 1: LLM ──────────────────────────────────────────────────────────
     clear()
@@ -382,6 +382,16 @@ def main():
         "music": "Control Spotify/Apple Music",
         "clipboard": "Clipboard history",
         "app_switch": "Switch apps by name",
+        "create_skill": "Create new skills with natural language",
+        "lucy": "Delegate tasks to Lucy VPA (requires n8n)",
+        "google_calendar": "Check Google Calendar events",
+        "google_gmail": "Check Gmail inbox and search emails",
+        "google_drive": "Search Google Drive files",
+        "google_docs": "Create and read Google Docs",
+        "google_sheets": "Read and write Google Sheets",
+        "google_slides": "Create Google Slides presentations",
+        "google_tasks": "Manage Google Tasks",
+        "google_keep": "Create Google Keep notes",
     }
 
     print(f"\n{W}  Available skills:{X}")
@@ -398,6 +408,41 @@ def main():
 
     print(f"\n{G}  ✓ {len(config['skills'])} skills selected{X}")
 
+    # ── STEP 8: PHONE DASHBOARD ────────────────────────────────────────────────
+    clear()
+    banner()
+    section("Phone Dashboard", 8, total_steps)
+    print(f"\n{W}  CODEC includes a phone dashboard (PWA) that lets you{X}")
+    print(f"{W}  control your Mac from your phone — text, voice, files.{X}")
+    print(f"\n{D}  It runs as a lightweight web server on port 8090.{X}")
+    print(f"{D}  Access locally at http://localhost:8090{X}")
+    print(f"{D}  Or remotely via Cloudflare Tunnel for secure access anywhere.{X}")
+    config["dashboard_enabled"] = ask_yn("\nEnable phone dashboard?", True)
+    if config["dashboard_enabled"]:
+        config["dashboard_port"] = int(ask_text("Dashboard port", "8090"))
+        print(f"\n{W}  Remote access options:{X}")
+        print(f"  {O}1.{X} Local only (http://localhost:{config['dashboard_port']})")
+        print(f"  {O}2.{X} Cloudflare Tunnel (recommended for remote access)")
+        print(f"  {O}3.{X} I'll set up remote access myself")
+        remote = ask("Remote access:", [
+            "Local only",
+            "Cloudflare Tunnel (I'll set it up later)",
+            "I'll handle it myself"
+        ], default="Local only")
+        if "Cloudflare" in remote:
+            print(f"\n{D}  To set up Cloudflare Tunnel:{X}")
+            print(f"  {W}1.{X} Install: brew install cloudflared")
+            print(f"  {W}2.{X} Login: cloudflared tunnel login")
+            print(f"  {W}3.{X} Create tunnel: cloudflared tunnel create my-codec")
+            print(f"  {W}4.{X} Route: cloudflared tunnel route dns my-codec codec.yourdomain.com")
+            print(f"  {W}5.{X} Add to config.yml: hostname: codec.yourdomain.com → http://localhost:{config['dashboard_port']}")
+            print(f"  {W}6.{X} Add Zero Trust email auth in Cloudflare dashboard")
+        print(f"\n{W}  To start the dashboard:{X}")
+        print(f"  {D}python3 codec_dashboard.py{X}")
+        print(f"  {D}Or: pm2 start python3 -- -u codec_dashboard.py --name codec-dashboard{X}")
+        print(f"\n{W}  On your phone:{X}")
+        print(f"  {D}Open the URL in Chrome → Add to Home Screen → PWA installed{X}")
+    print(f"\n{G}  ✓ Dashboard: {'ON' if config['dashboard_enabled'] else 'OFF'}{X}")
     # ── SAVE CONFIG ───────────────────────────────────────────────────────────
     clear()
     banner()

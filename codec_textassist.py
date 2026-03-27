@@ -46,8 +46,14 @@ overlay("\\u26a1 Processing...", "#00aaff", 8000)
 try:
     result = call_qwen(text, MODE)
     if MODE == "explain":
-        subprocess.run(["pbcopy"], input=result.encode(), check=True)
-        overlay("\\u2705 Explanation copied! Cmd+V to paste", "#44cc66", 3000)
+        # Write to temp file and open in Terminal
+        import tempfile
+        tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, prefix="codec_explain_")
+        tmp.write(result)
+        tmp.close()
+        subprocess.run(["osascript", "-e", 'tell application "Terminal" to activate'])
+        subprocess.run(["osascript", "-e", f'tell application "Terminal" to do script "clear && echo && echo CODEC_EXPLAIN && echo && cat {tmp.name} && echo && echo ━━━━━━━━━━━━━━━━━━━━━"'])
+        overlay("\u2705 Opened in Terminal", "#44cc66", 2000)
     else:
         subprocess.run(["pbcopy"], input=result.encode(), check=True)
         time.sleep(0.3)
