@@ -203,6 +203,7 @@ html, body {
     <button class="tab" onclick="showTab('history')" id="tab-history"><span>📋</span>History</button>
     <button class="tab" onclick="showTab('audit')" id="tab-audit"><span>🔒</span>Audit</button>
     <button class="tab" onclick="showTab('status')" id="tab-status"><span>⚙️</span>Status</button>
+    <a href="/chat" class="tab" style="text-decoration:none"><span>🧠</span>Deep Chat</a>
   </div>
 
   <div class="content">
@@ -537,27 +538,20 @@ async function handleFile(e) {
         canvas.getContext('2d').drawImage(img, 0, 0, w, h);
         const base64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
       try {
-        const r = await fetch('/api/command', {
+        const r = await fetch('/api/vision', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({task: 'Describe and analyze this image in detail', image: base64})
+          body: JSON.stringify({prompt: 'Describe and analyze this image in detail', image: base64})
         });
         const data = await r.json();
         if (data.response) {
           text.innerHTML = '<span style="color:var(--success)">Q:</span> ' + escHtml(data.response);
           loadChat();
           playResponse(data.response);
+        } else if (data.error) {
+          text.innerHTML = '<span style="color:var(--danger)">Vision error: ' + escHtml(data.error) + '</span>';
         } else {
-          text.innerHTML = '<span style="color:var(--success)">✓ Image sent — waiting...</span>';
-          let pc = 0;
-          const pi = setInterval(async () => {
-            pc++; if (pc > 20) { clearInterval(pi); return; }
-            try {
-              const pr = await fetch('/api/response');
-              const pd = await pr.json();
-              if (pd.response) { text.innerHTML = '<span style="color:var(--success)">Q:</span> ' + escHtml(pd.response); clearInterval(pi); loadChat(); playResponse(pd.response); }
-            } catch {}
-          }, 1500);
+          text.innerHTML = '<span style="color:var(--danger)">No response from vision model</span>';
         }
       } catch(err) { text.innerHTML = '<span style="color:var(--danger)">Error: ' + escHtml(err.message) + '</span>'; }
       };

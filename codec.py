@@ -2,7 +2,7 @@
 import signal
 signal.signal(signal.SIGINT, lambda *a: None)
 signal.signal(signal.SIGTERM, lambda *a: None)
-"""CODEC v1.2.0 | Voice + Text + Phone | *=screenshot | +=doc | --=livechat | Wake word"""
+"""CODEC v1.3.0 | Voice + Text + Phone + Google | *=screenshot | +=doc | --=livechat | Wake word"""
 import threading, tempfile, subprocess, sys, os, time, sqlite3, json, re, base64
 from datetime import datetime
 from pynput import keyboard
@@ -118,6 +118,90 @@ c.create_text(w//2,h//2,text='{text}',fill='{color}',font=('Helvetica',13))
 root.mainloop()
 """
     subprocess.Popen([sys.executable, "-c", s], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+def show_recording_overlay(key_label="F18"):
+    s = """
+import tkinter as tk
+root=tk.Tk()
+root.overrideredirect(True)
+root.attributes('-topmost',True)
+root.attributes('-alpha',0.95)
+root.configure(bg='#0a0a0a')
+sw=root.winfo_screenwidth()
+sh=root.winfo_screenheight()
+w,h=360,54
+x=(sw-w)//2
+y=sh-130
+root.geometry(f'{w}x{h}+{x}+{y}')
+cv=tk.Canvas(root,bg='#0a0a0a',highlightthickness=0,width=w,height=h)
+cv.pack()
+cv.create_rectangle(1,1,w-1,h-1,outline='#E8711A',width=1)
+dot=cv.create_oval(14,17,27,30,fill='#ff3b3b',outline='')
+cv.create_text(w//2+8,h//2,text='\U0001f3a4  Recording — release """ + key_label + """ to send',fill='#eeeeee',font=('Helvetica',13))
+on=[True]
+def pulse():
+    on[0]=not on[0]
+    cv.itemconfig(dot,fill='#ff3b3b' if on[0] else '#550000')
+    root.after(400,pulse)
+pulse()
+root.mainloop()
+"""
+    return subprocess.Popen([sys.executable, "-c", s], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+def show_processing_overlay(text="Transcribing...", duration=4000):
+    s = f"""
+import tkinter as tk
+root=tk.Tk()
+root.overrideredirect(True)
+root.attributes('-topmost',True)
+root.attributes('-alpha',0.95)
+root.configure(bg='#0a0a0a')
+sw=root.winfo_screenwidth()
+sh=root.winfo_screenheight()
+w,h=260,54
+x=(sw-w)//2
+y=sh-130
+root.geometry(f'{{w}}x{{h}}+{{x}}+{{y}}')
+cv=tk.Canvas(root,bg='#0a0a0a',highlightthickness=0,width=w,height=h)
+cv.pack()
+cv.create_rectangle(1,1,w-1,h-1,outline='#00aaff',width=1)
+cv.create_text(w//2,h//2,text='\u26a1 {text}',fill='#00aaff',font=('Helvetica',13))
+root.after({duration},root.destroy)
+root.mainloop()
+"""
+    subprocess.Popen([sys.executable, "-c", s], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+def show_toggle_overlay(is_on, shortcuts=""):
+    color = '#E8711A' if is_on else '#ff3333'
+    label = 'C O D E C' if is_on else 'S I G N I N G   O U T'
+    dur = 3000 if is_on else 1500
+    # Play sound
+    import threading
+    snd = '/System/Library/Sounds/Blow.aiff' if is_on else '/System/Library/Sounds/Funk.aiff'
+    threading.Thread(target=lambda: subprocess.run(['afplay', snd], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL), daemon=True).start()
+    s = f"""
+import tkinter as tk
+root=tk.Tk()
+root.overrideredirect(True)
+root.attributes('-topmost',True)
+root.attributes('-alpha',0.95)
+root.configure(bg='#0a0a0a')
+sw=root.winfo_screenwidth()
+sh=root.winfo_screenheight()
+w,h=440,78
+x=(sw-w)//2
+y=sh-140
+root.geometry(f'{{w}}x{{h}}+{{x}}+{{y}}')
+cv=tk.Canvas(root,bg='#0a0a0a',highlightthickness=0,width=w,height=h)
+cv.pack()
+cv.create_rectangle(1,1,w-1,h-1,outline='{color}',width=1)
+cv.create_text(w//2,39 if not '{shortcuts}' else 24,text='{label}',fill='{color}',font=('Helvetica',18,'bold'))
+if '{shortcuts}': cv.create_text(w//2,55,text='{shortcuts}',fill='#aaaaaa',font=('Helvetica',13))
+root.after({dur},root.destroy)
+root.mainloop()
+"""
+    subprocess.Popen([sys.executable, "-c", s], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
 
 # ── DETECTION ────────────────────────────────────────────────────────────────
 DRAFT_KEYWORDS = [
@@ -623,12 +707,12 @@ def build_session_script(safe_sys, session_id):
     L.append("print(O+'    ║ ██      ██    ██ ██   ██ █████   ██       ║')")
     L.append("print(O+'    ║ ██      ██    ██ ██   ██ ██      ██       ║')")
     L.append("print(O+'    ║  ██████  ██████  ██████  ███████  ██████  ║')")
-    L.append("print(O+'    ║                                   v1.2.0  ║')")
+    L.append("print(O+'    ║                                   v1.3.0  ║')")
     L.append("print(O+'    ╠═══════════════════════════════════════════╣')")
-    L.append("print(O+'    ║'+W+'  " + _cfg.get('key_voice','f18').upper() + " voice  " + _cfg.get('key_text','f16').upper() + " text  ** screen  ++ doc     '+O+'║')")
-    L.append("print(O+'    ║'+W+'  Hey Q = wake word  type exit to close     '+O+'║')")
+    L.append("print(O+'    ║'+W+'  " + _cfg.get('key_voice','f18').upper() + " voice  " + _cfg.get('key_text','f16').upper() + " text  ** screen  ++ doc       '+O+'║')")
+    L.append("print(O+'    ║'+W+'  Hey Q = wake word  type exit to close       '+O+'║')")
     L.append("print(O+'    ╠═══════════════════════════════════════════╣')")
-    L.append("print(O+'    ║'+D+'  Stream='+ss+'  Memory=ON  Skills=ON           '+O+'║')")
+    L.append("print(O+'    ║'+D+'  Stream='+ss+'  Memory=ON  Skills=ON             '+O+'║')")
     L.append("print(O+'    ╚═══════════════════════════════════════════╝'+R)")
     L.append("")
     L.append("queued = check_queue()")
@@ -814,7 +898,7 @@ def do_stop_voice():
         except: pass
         return
     print("[Q] Transcribing...")
-    push(lambda: show_overlay('Transcribing...', '#E8711A', 2000))
+    push(lambda: show_processing_overlay('Transcribing...', 3000)); [state.get('rec_overlay') and state['rec_overlay'].terminate()]
     task = transcribe(audio)
     if not task: print("[Q] No speech detected"); return
     print(f"[Q] Heard: {task}")
@@ -898,12 +982,12 @@ def on_press(key):
         state["last_f13"] = now
         if state["active"]:
             state["active"] = False
-            push(lambda: show_overlay('CODEC OFF', '#ff3333', 1500))
+            push(lambda: show_toggle_overlay(False, ''))
             push(close_session)
             print("[Q] OFF")
         else:
             state["active"] = True
-            push(lambda: show_overlay('CODEC ON  ' + _cfg.get('key_voice','f18').upper() + '=voice  ' + _cfg.get('key_text','f16').upper() + '=text  **=screen  ++=doc  --=chat', '#E8711A', 3000))
+            push(lambda: show_toggle_overlay(True, _cfg.get('key_voice','f18').upper()+'=voice  '+_cfg.get('key_text','f16').upper()+'=text  **=screen  ++=doc  --=chat'))
             print("[Q] ON -- " + _cfg.get("key_voice","f18").upper() + "=voice | " + _cfg.get("key_text","f16").upper() + "=text | *=screen | +=doc")
         return
     if not state["active"]: return
@@ -915,7 +999,7 @@ def on_press(key):
             state["recording"] = True
             push(do_start_recording)
             _kv_label = _cfg.get('key_voice','f18').upper()
-            push(lambda: show_overlay(f'REC  release {_kv_label} to send', '#E8711A', 30000))
+            state['rec_overlay'] = show_recording_overlay(_kv_label)
         return
     if hasattr(key, 'char') and key.char == '*':
         if now - state["last_star"] < 0.5:
@@ -984,7 +1068,7 @@ def main():
     ║ ██      ██    ██ ██   ██ █████   ██       ║
     ║ ██      ██    ██ ██   ██ ██      ██       ║
     ║  ██████  ██████  ██████  ███████  ██████  ║
-    ║                                   v1.2.0  ║
+    ║                                   v1.3.0  ║
     ╠═══════════════════════════════════════════╣
     ║{W}  {kt} toggle   {kv} voice   ** screen       {O}║
     ║{W}  {kx} text     ++ doc     -- chat          {O}║

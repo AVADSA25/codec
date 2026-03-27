@@ -148,6 +148,46 @@ async def send_command(request: Request):
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
+
+@app.post("/api/vision")
+async def vision_analyze(request: Request):
+    """Send image to Qwen Vision model for analysis"""
+    body = await request.json()
+    image_b64 = body.get("image", "")
+    prompt = body.get("prompt", "Describe and analyze this image in detail.")
+    if not image_b64:
+        return JSONResponse({"error": "No image data"}, status_code=400)
+    try:
+        import requests as rq
+        config = {}
+        try:
+            with open(CONFIG_PATH) as f: config = json.load(f)
+        except: pass
+        vision_url = config.get("vision_base_url", "http://localhost:8082/v1")
+        vision_model = config.get("vision_model", "mlx-community/Qwen2.5-VL-7B-Instruct-4bit")
+        payload = {
+            "model": vision_model,
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}},
+                    {"type": "text", "text": prompt}
+                ]
+            }],
+            "max_tokens": 4000,
+            "temperature": 0.7
+        }
+        headers = {"Content-Type": "application/json"}
+        r = rq.post(f"{vision_url}/chat/completions", json=payload, headers=headers, timeout=120)
+        data = r.json()
+        answer = data["choices"][0]["message"]["content"].strip()
+        with open(AUDIT_LOG, "a") as f:
+            f.write(f"[{datetime.now().isoformat()}] VISION: {prompt[:100]}\n")
+        return {"response": answer, "model": vision_model}
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return JSONResponse({"error": str(e)}, status_code=500)
+
 @app.get("/api/response")
 async def get_response():
     """Get latest PWA command response"""
@@ -301,6 +341,40 @@ async def qchat_save(request: Request):
     conn.close()
     return {"ok": True}
 
+
+@app.post("/api/upload_image")
+async def upload_image(request: Request):
+    """Upload image, send to vision, return description"""
+    body = await request.json()
+    image_b64 = body.get("data", "")
+    filename = body.get("filename", "image.jpg")
+    prompt = body.get("prompt", "Describe and analyze this image in detail.")
+    if not image_b64 or len(image_b64) < 100:
+        return JSONResponse({"error": "No image data"}, status_code=400)
+    try:
+        import requests as rq
+        config = {}
+        try:
+            with open(CONFIG_PATH) as f: config = json.load(f)
+        except: pass
+        vision_url = config.get("vision_base_url", "http://localhost:8082/v1")
+        vision_model = config.get("vision_model", "mlx-community/Qwen2.5-VL-7B-Instruct-4bit")
+        payload = {
+            "model": vision_model,
+            "messages": [{"role": "user", "content": [
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}},
+                {"type": "text", "text": prompt}
+            ]}],
+            "max_tokens": 4000, "temperature": 0.7
+        }
+        r = rq.post(f"{vision_url}/chat/completions", json=payload, headers={"Content-Type": "application/json"}, timeout=120)
+        data = r.json()
+        answer = data["choices"][0]["message"]["content"].strip()
+        return {"text": answer, "filename": filename}
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return JSONResponse({"error": str(e)}, status_code=500)
+
 @app.post("/api/chat")
 async def chat_completion(request: Request):
     """Direct LLM chat with full context window"""
@@ -308,6 +382,42 @@ async def chat_completion(request: Request):
     messages = body.get("messages", [])
     if not messages:
         return JSONResponse({"error": "No messages"}, status_code=400)
+
+    # Check for images — route to vision model
+    images = body.get("images", [])
+    if images:
+        import requests as rq2
+        config2 = {}
+        try:
+            with open(CONFIG_PATH) as f: config2 = json.load(f)
+        except: pass
+        vision_url = config2.get("vision_base_url", "http://localhost:8082/v1")
+        vision_model = config2.get("vision_model", "mlx-community/Qwen2.5-VL-7B-Instruct-4bit")
+        # Build multimodal message: last user text + all images
+        last_text = ""
+        for m in reversed(messages):
+            if m.get("role") == "user" and isinstance(m.get("content"), str):
+                last_text = m["content"]
+                break
+        if not last_text:
+            last_text = "Describe and analyze this image in detail."
+        mm_content = []
+        for img_b64 in images:
+            mm_content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}})
+        mm_content.append({"type": "text", "text": last_text})
+        v_payload = {
+            "model": vision_model,
+            "messages": [{"role": "user", "content": mm_content}],
+            "max_tokens": 4000,
+            "temperature": 0.7
+        }
+        vr = rq2.post(f"{vision_url}/chat/completions", json=v_payload, headers={"Content-Type": "application/json"}, timeout=120)
+        vdata = vr.json()
+        vanswer = vdata["choices"][0]["message"]["content"].strip()
+        import re as re2
+        vanswer = re2.sub(r'<think>[\s\S]*?</think>', '', vanswer).strip()
+        return {"response": vanswer, "model": vision_model}
+
     try:
         import requests as rq
         config = {}

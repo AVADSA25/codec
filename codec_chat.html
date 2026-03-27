@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#0a0a0a">
-<title>CODEC Chat</title>
+<title>CODEC Deep Chat</title>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#0a0a0a;--bg2:#141414;--bg3:#1e1e1e;--bg4:#282828;--fg:#e8e8e8;--fg2:#a0a0a0;--fg3:#666;--accent:#E8711A;--accent2:#ff9a4d;--success:#44cc66;--danger:#ff4444;--border:#222;--font:'DM Sans',sans-serif;--mono:'JetBrains Mono',monospace}
@@ -51,7 +51,7 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--fg);height:10
 .typing span:nth-child(2){animation-delay:.2s}
 .typing span:nth-child(3){animation-delay:.4s}
 @keyframes blink{0%,100%{opacity:.2}50%{opacity:1}}
-.input-area{padding:10px 12px;border-top:1px solid var(--border);background:var(--bg2);flex-shrink:0;padding-bottom:calc(14px + env(safe-area-inset-bottom,0px))}
+.input-area{padding:10px 12px;border-top:1px solid var(--border);background:var(--bg2);flex-shrink:0;padding-bottom:calc(36px + env(safe-area-inset-bottom,32px));margin-bottom:20px}
 .file-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
 .file-chip{display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:6px 10px;font-size:12px;font-family:var(--mono);color:var(--fg2);max-width:200px}
 .file-chip .fc-icon{font-size:16px;flex-shrink:0}
@@ -91,12 +91,12 @@ input[type=file]{display:none}
 <div class="header-left">
 <button class="hbtn" onclick="openSidebar()" title="Chat history">&#9776;</button>
 <a href="/" class="hbtn" title="Back to dashboard">&#8592;</a>
-<div class="header-title"><img src="https://i.imgur.com/RbrQ7Bt.png"><h1>Q CHAT</h1><span class="model-tag">Qwen 3.5 35B</span></div>
+<div class="header-title"><img src="https://i.imgur.com/RbrQ7Bt.png"><h1>DEEP CHAT</h1><span class="model-tag">Qwen 3.5 35B</span></div>
 </div>
 <div class="header-right"><button class="hbtn" onclick="toggleTheme()" id="themeBtn">&#9728;</button></div>
 </div>
 <div class="messages" id="messages">
-<div class="empty-state" id="emptyState"><img src="https://i.imgur.com/RbrQ7Bt.png"><p>Q Chat &mdash; 250K context window<br>Drop files, images, or just talk.</p></div>
+<div class="empty-state" id="emptyState"><img src="https://i.imgur.com/RbrQ7Bt.png"><p>Deep Chat &mdash; 250K context window<br>Drop files, images, or just talk.</p></div>
 </div>
 <div class="input-area">
 <div class="file-chips" id="fileChips"></div>
@@ -123,7 +123,7 @@ function startNewSession(){
   chatHist=[];
   pendingFiles=[];
   document.getElementById('fileChips').innerHTML='';
-  document.getElementById('messages').innerHTML='<div class="empty-state" id="emptyState"><img src="https://i.imgur.com/RbrQ7Bt.png"><p>Q Chat \u2014 250K context window<br>Drop files, images, or just talk.</p></div>';
+  document.getElementById('messages').innerHTML='<div class="empty-state" id="emptyState"><img src="https://i.imgur.com/RbrQ7Bt.png"><p>Deep Chat \u2014 250K context window<br>Drop files, images, or just talk.</p></div>';
 }
 startNewSession();
 
@@ -204,6 +204,7 @@ function hideTyping(){var t=document.getElementById('typing');if(t)t.remove()}
 
 // File chips
 function addFileChip(name,content,type){
+  console.log("[CHIP] name="+name+" type="+type+" contentLen="+(content?content.length:0));
   var id='file_'+genId();
   pendingFiles.push({id:id,name:name,content:content,type:type});
   var chips=document.getElementById('fileChips');
@@ -239,7 +240,7 @@ async function sendMessage(){
     if(f.type==='text'||f.type==='pdf'){
       fileContext+='\n\n[DOCUMENT: '+f.name+']\n'+f.content.substring(0,80000)+'\n[END DOCUMENT]'
     }else if(f.type==='image'){
-      fileContext+='\n\n[IMAGE UPLOADED: '+f.name+']'
+      fileContext+='\n\n[IMAGE ANALYSIS of '+f.name+']\n'+f.content.substring(0,80000)+'\n[END IMAGE]'
     }
   }
 
@@ -250,6 +251,9 @@ async function sendMessage(){
   }
   addMessage('user',displayText);
 
+  // Images are pre-analyzed at upload time, no separate collection needed
+  var imageData=[];
+
   // Build actual message for LLM
   var llmText=(text||'Please analyze the attached file(s).')+fileContext;
   chatHist.push({role:'user',content:llmText});
@@ -258,12 +262,23 @@ async function sendMessage(){
   // Save user message
   saveMessages([{role:'user',content:displayText}]);
 
+  // If images present, include them in the request
+  var hasImages=imageData.length>0;
+
   isProcessing=true;
   document.getElementById('sendBtn').disabled=true;
   showTyping();
   try{
     var msgs=[{role:'system',content:SYS}].concat(chatHist);
-    var r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs})});
+    var r;
+    window.__dbg='imgs='+imageData.length+' len='+(imageData[0]?imageData[0].length:0);
+    document.title=window.__dbg;
+    console.log(window.__dbg);
+    if(hasImages){
+      r=await fetch('/api/vision',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:msgs[msgs.length-1].content||'Describe this image in detail',image:imageData[0]})});
+    }else{
+      r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs})});
+    }
     var data=await r.json();
     hideTyping();
     if(data.response){
@@ -305,7 +320,29 @@ async function handleUpload(e){
   for(var i=0;i<files.length;i++){
     var file=files[i];
     if(file.type.startsWith('image/')){
-      addFileChip(file.name,'[image]','image')
+      var tid='loading_'+genId();
+      var chips=document.getElementById('fileChips');
+      var chip=document.createElement('div');chip.className='file-chip loading';chip.id=tid;
+      chip.innerHTML='<span class="fc-icon">\u{1F4F7}</span><span class="fc-name">'+escHtml(file.name)+' (analyzing...)...</span>';
+      chips.appendChild(chip);
+      (function(theFile,loadId){
+        var reader=new FileReader();
+        reader.onload=async function(){
+          var b64=reader.result.split(',')[1];
+          try{
+            var r=await fetch('/api/upload_image',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:theFile.name,data:b64})});
+            var data=await r.json();
+            var el=document.getElementById(loadId);if(el)el.remove();
+            if(data.text){
+              addFileChip(theFile.name,'[IMAGE ANALYSIS: '+data.text+']','image')
+            }else{
+              addFileChip(theFile.name,'[Image upload failed]','image')
+            }
+          }catch(err){var el=document.getElementById(loadId);if(el)el.remove();addFileChip(theFile.name,'[Image error]','image')}
+        };
+        reader.readAsDataURL(theFile);
+      })(file,tid);
+      continue
     }else if(file.name.toLowerCase().endsWith('.pdf')){
       // Show loading chip
       var tempId='loading_'+genId();
