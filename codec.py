@@ -772,6 +772,16 @@ def dispatch(task):
                 subprocess.Popen(["osascript", "-e", f'display notification "{str(result)[:80]}" with title "Q Skill"'],
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 print(f"[Q] Skill response: {str(result)[:100]}")
+                # Save to DB for dashboard history
+                try:
+                    import sqlite3
+                    from datetime import datetime
+                    _db = sqlite3.connect(os.path.expanduser("~/.q_memory.db"))
+                    _sid = "skill_" + datetime.now().strftime("%Y%m%d_%H%M%S")
+                    _db.execute("INSERT INTO conversations (session_id,timestamp,role,content) VALUES (?,?,?,?)", (_sid, datetime.now().isoformat(), "user", task[:500]))
+                    _db.execute("INSERT INTO conversations (session_id,timestamp,role,content) VALUES (?,?,?,?)", (_sid, datetime.now().isoformat(), "assistant", re.sub(r"<[^>]+>", "", str(result))[:2000]))
+                    _db.commit(); _db.close()
+                except: pass
                 return
 
     if is_draft(task):
@@ -898,7 +908,12 @@ def do_stop_voice():
         except: pass
         return
     print("[Q] Transcribing...")
-    push(lambda: show_processing_overlay('Transcribing...', 3000)); [state.get('rec_overlay') and state['rec_overlay'].terminate()]
+    # Kill recording overlay
+    if state.get('rec_overlay'):
+        try: state['rec_overlay'].terminate()
+        except: pass
+        state['rec_overlay'] = None
+    push(lambda: show_processing_overlay('Transcribing...', 4000))
     task = transcribe(audio)
     if not task: print("[Q] No speech detected"); return
     print(f"[Q] Heard: {task}")
@@ -1032,6 +1047,11 @@ def on_press(key):
 
 def on_release(key):
     if key == KEY_VOICE and state["recording"]:
+        # Kill recording overlay immediately
+        if state.get('rec_overlay'):
+            try: state['rec_overlay'].terminate()
+            except: pass
+            state['rec_overlay'] = None
         push(do_stop_voice)
 
 # ── MAIN ──────────────────────────────────────────────────────────────────────
