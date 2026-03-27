@@ -52,6 +52,19 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);height:100vh
 .resize-handle:hover{background:var(--accent)}
 .run-status{font-size:11px;color:var(--text2);margin-left:auto;font-family:var(--mono)}
 .mobile-block{display:none;padding:40px;text-align:center}
+.vibe-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:20}
+.vibe-overlay.show{display:block}
+.vibe-sidebar{position:fixed;top:0;left:-280px;width:280px;height:100%;background:var(--bg2);border-right:1px solid var(--border);z-index:30;transition:left .25s ease;overflow-y:auto}
+.vibe-sidebar.show{left:0}
+.vs-header{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.vs-header h2{font-family:var(--mono);font-size:13px;color:var(--accent);letter-spacing:1px}
+.vs-close{background:none;border:none;color:var(--text2);font-size:20px;cursor:pointer}
+.vs-new{padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;color:var(--accent);font-weight:600;font-size:13px}
+.vs-new:active{opacity:.7}
+.vs-item{padding:10px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s}
+.vs-item:hover{background:var(--bg3)}
+.vs-item .vs-title{font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vs-item .vs-meta{font-family:var(--mono);font-size:10px;color:var(--text2);margin-top:2px}
 .preview-panel{display:none;flex:1;flex-direction:column;border-left:1px solid var(--border);min-width:0;order:2}
 .preview-panel.show{display:flex}
 .preview-header{display:flex;align-items:center;justify-content:space-between;padding:6px 12px;background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0}
@@ -64,6 +77,12 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);height:100vh
 </style>
 </head>
 <body>
+<div class="vibe-overlay" id="vibeOverlay" onclick="closeVibeSidebar()"></div>
+<div class="vibe-sidebar" id="vibeSidebar">
+<div class="vs-header"><h2>PROJECTS</h2><button class="vs-close" onclick="closeVibeSidebar()">&times;</button></div>
+<div class="vs-new" onclick="newVibeSession()">+ New Project</div>
+<div id="vibeSessionList"></div>
+</div>
 <div class="mobile-block">
 <h2 style="color:#E8711A;margin-bottom:12px">&#9889; Vibe Code</h2>
 <p style="color:#888;margin-bottom:20px">Vibe Code requires a desktop browser.</p>
@@ -71,7 +90,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);height:100vh
 </div>
 <div class="topbar">
 <div class="topbar-left">
-<span class="topbar-title">&#9889; VIBE CODE</span>
+<button class="tbtn" onclick="openVibeSidebar()" style="font-size:16px;width:32px;padding:0">&#9776;</button><span class="topbar-title">&#9889; VIBE CODE</span>
 <input id="fileName" class="file-input" value="untitled.py">
 <select id="langSelect" class="lang-select" onchange="changeLang()">
 <option value="python">Python</option>
@@ -306,6 +325,91 @@ addOutput('system','\u{1F441} Preview opened in new window');
 addVibeMsg('assistant','Preview works with HTML/CSS/JS files. Change language to HTML or ask me to build a web page!');
 }
 }
+
+// Session management
+var vibeSessionId=Date.now().toString(36)+Math.random().toString(36).substr(2,5);
+
+function openVibeSidebar(){
+document.getElementById('vibeSidebar').classList.add('show');
+document.getElementById('vibeOverlay').classList.add('show');
+loadVibeSessions();
+}
+function closeVibeSidebar(){
+document.getElementById('vibeSidebar').classList.remove('show');
+document.getElementById('vibeOverlay').classList.remove('show');
+}
+
+async function loadVibeSessions(){
+var el=document.getElementById('vibeSessionList');
+el.innerHTML='<div style="padding:16px;color:var(--text2);font-size:12px">Loading...</div>';
+try{
+var r=await fetch('/api/vibe/sessions');
+var data=await r.json();
+if(!data.length){el.innerHTML='<div style="padding:16px;color:var(--text2);font-size:12px">No projects yet.</div>';return}
+el.innerHTML=data.map(function(s){
+var ts=s.updated_at?new Date(s.updated_at).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+var active=s.id===vibeSessionId?' style="background:var(--bg3)"':'';
+return'<div class="vs-item"'+active+' onclick="loadVibeSession(\''+s.id+'\')"><div class="vs-title">'+escH(s.title)+'</div><div class="vs-meta">'+ts+' \u2022 '+s.language+'</div></div>';
+}).join('')
+}catch(e){el.innerHTML='<div style="padding:16px;color:var(--text2);font-size:12px">Error loading.</div>'}
+}
+
+async function loadVibeSession(sid){
+closeVibeSidebar();
+vibeSessionId=sid;
+try{
+var r=await fetch('/api/vibe/session/'+sid);
+var data=await r.json();
+if(data.session){
+editor.setValue(data.session.code||'');
+document.getElementById('fileName').value=data.session.title||'untitled.py';
+var lang=data.session.language||'python';
+document.getElementById('langSelect').value=lang;
+monaco.editor.setModelLanguage(editor.getModel(),lang);
+}
+var chatEl=document.getElementById('chatMessages');
+chatEl.innerHTML='';
+vibeHist=[];
+if(data.messages&&data.messages.length){
+for(var i=0;i<data.messages.length;i++){
+var m=data.messages[i];
+addVibeMsg(m.role==='user'?'user':'assistant',m.content||'');
+vibeHist.push({role:m.role,content:m.content||''});
+}
+}else{
+addVibeMsg('assistant','\u{1F44B} Loaded project: '+(data.session?data.session.title:'unknown'));
+}
+addOutput('system','\u{1F4C2} Loaded project: '+(data.session?data.session.title:''));
+}catch(e){addOutput('stderr','Load error: '+e.message)}
+}
+
+function newVibeSession(){
+closeVibeSidebar();
+vibeSessionId=Date.now().toString(36)+Math.random().toString(36).substr(2,5);
+vibeHist=[];
+editor.setValue('# New project\n\n');
+document.getElementById('fileName').value='untitled.py';
+document.getElementById('langSelect').value='python';
+monaco.editor.setModelLanguage(editor.getModel(),'python');
+var chatEl=document.getElementById('chatMessages');
+chatEl.innerHTML='';
+addVibeMsg('assistant','\u{1F44B} New project. What are we building?');
+addOutput('system','\u{1F195} New project started');
+}
+
+async function saveVibeSession(){
+var code=editor.getValue();
+var title=document.getElementById('fileName').value;
+var lang=document.getElementById('langSelect').value;
+var newMsgs=vibeHist.slice(-2);
+try{
+await fetch('/api/vibe/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:vibeSessionId,title:title,language:lang,code:code,messages:newMsgs})});
+}catch(e){}
+}
+
+// Auto-save after each Q response
+var origVibeSend=vibeSend;
+vibeSend=async function(){await origVibeSend();setTimeout(saveVibeSession,1000)};
 
 // Resize handle
 (function(){

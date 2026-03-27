@@ -375,6 +375,58 @@ async def upload_image(request: Request):
         import traceback; traceback.print_exc()
         return JSONResponse({"error": str(e)}, status_code=500)
 
+# Vibe Code session storage
+VIBE_DB = os.path.expanduser("~/.codec/vibe.db")
+
+def vibe_db():
+    import sqlite3
+    conn = sqlite3.connect(VIBE_DB)
+    conn.execute('''CREATE TABLE IF NOT EXISTS vibe_sessions (
+        id TEXT PRIMARY KEY, title TEXT, language TEXT, code TEXT, created_at TEXT, updated_at TEXT)''')
+    conn.execute('''CREATE TABLE IF NOT EXISTS vibe_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, role TEXT,
+        content TEXT, timestamp TEXT)''')
+    conn.commit()
+    return conn
+
+@app.get("/api/vibe/sessions")
+async def vibe_sessions():
+    conn = vibe_db()
+    rows = conn.execute("SELECT id, title, language, updated_at FROM vibe_sessions ORDER BY updated_at DESC LIMIT 30").fetchall()
+    conn.close()
+    return [{"id": r[0], "title": r[1], "language": r[2], "updated_at": r[3]} for r in rows]
+
+@app.get("/api/vibe/session/{sid}")
+async def vibe_session(sid: str):
+    conn = vibe_db()
+    session = conn.execute("SELECT id, title, language, code FROM vibe_sessions WHERE id=?", (sid,)).fetchone()
+    msgs = conn.execute("SELECT role, content, timestamp FROM vibe_messages WHERE session_id=? ORDER BY id ASC", (sid,)).fetchall()
+    conn.close()
+    return {
+        "session": {"id": session[0], "title": session[1], "language": session[2], "code": session[3]} if session else None,
+        "messages": [{"role": r[0], "content": r[1], "timestamp": r[2]} for r in msgs]
+    }
+
+@app.post("/api/vibe/save")
+async def vibe_save(request: Request):
+    body = await request.json()
+    sid = body.get("session_id", "")
+    title = body.get("title", "Untitled")
+    language = body.get("language", "python")
+    code = body.get("code", "")
+    messages = body.get("messages", [])
+    from datetime import datetime
+    now = datetime.now().isoformat()
+    conn = vibe_db()
+    conn.execute("INSERT OR REPLACE INTO vibe_sessions (id, title, language, code, created_at, updated_at) VALUES (?, ?, ?, ?, COALESCE((SELECT created_at FROM vibe_sessions WHERE id=?), ?), ?)",
+        (sid, title[:60], language, code, sid, now, now))
+    for m in messages:
+        conn.execute("INSERT INTO vibe_messages (session_id, role, content, timestamp) VALUES (?, ?, ?, ?)",
+            (sid, m.get("role","user"), m.get("content",""), now))
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
 @app.get("/vibe", response_class=HTMLResponse)
 async def vibe_page():
     vibe_path = os.path.join(DASHBOARD_DIR, "codec_vibe.html")
