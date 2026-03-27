@@ -187,6 +187,8 @@ var html='';
 if(beforeCode)html+=escH(beforeCode).replace(/\n/g,'<br>')+'<br><br>';
 html+='<pre><code>'+escH(code)+'</code></pre>';
 html+='<button class="apply-btn" onclick="applyCode(this)" data-code="'+btoa(unescape(encodeURIComponent(code)))+'">&#128229; Apply to Editor</button>';
+// Auto-apply to editor
+applyCodeDirect(code);
 if(afterCode)html+='<br><br>'+escH(afterCode).replace(/\n/g,'<br>');
 addVibeMsg('assistant',html,true);
 }else{
@@ -201,6 +203,21 @@ addVibeMsg('assistant','Error: '+e.message);
 }
 }
 
+function applyCodeDirect(code){
+editor.setValue(code);
+if(code.includes('import ')||code.includes('def '))monaco.editor.setModelLanguage(editor.getModel(),'python');
+else if(code.includes('function ')||code.includes('const '))monaco.editor.setModelLanguage(editor.getModel(),'javascript');
+else if(code.startsWith('#!/bin/bash'))monaco.editor.setModelLanguage(editor.getModel(),'shell');
+else if(code.trim().startsWith('<!DOCTYPE')||code.trim().startsWith('<html'))monaco.editor.setModelLanguage(editor.getModel(),'html');
+// Update language dropdown
+var m=editor.getModel();var lang=m.getLanguageId();
+var sel=document.getElementById('langSelect');
+if(lang==='python')sel.value='python';
+else if(lang==='javascript')sel.value='javascript';
+else if(lang==='html')sel.value='html';
+else if(lang==='shell')sel.value='bash';
+addOutput('system','\u{1F4E5} Code auto-applied to editor');
+}
 function applyCode(btn){
 var code=decodeURIComponent(escape(atob(btn.dataset.code)));
 editor.setValue(code);
@@ -211,9 +228,13 @@ addOutput('system','\u{1F4E5} Code applied to editor');
 }
 
 async function runCode(){
-var code=editor.getValue();
-var lang=document.getElementById('langSelect').value;
+
 var fname=document.getElementById('fileName').value;
+var lang=document.getElementById('langSelect').value;
+var code=editor.getValue();
+if(lang==='html'||code.trim().startsWith('<!DOCTYPE')||code.trim().startsWith('<html')){
+previewCode();return;
+}
 document.getElementById('runStatus').textContent='\u23f3 Running...';
 addOutput('system','\u25b6 Running '+fname+'...');
 try{
@@ -263,8 +284,7 @@ setTimeout(function(){document.getElementById('runStatus').textContent=''},2000)
 }
 
 async function previewCode(){
-var code=editor.getValue();
-var lang=document.getElementById('langSelect').value;
+
 if(lang==='html'||code.trim().startsWith('<!DOCTYPE')||code.trim().startsWith('<html')){
 try{
 await fetch('/api/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:code})});
