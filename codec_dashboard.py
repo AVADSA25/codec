@@ -381,6 +381,23 @@ async def vibe_page():
     with open(vibe_path) as f:
         return f.read()
 
+@app.post("/api/preview")
+async def preview_code(request: Request):
+    body = await request.json()
+    code = body.get("code", "")
+    preview_path = "/tmp/codec_preview.html"
+    with open(preview_path, "w") as f:
+        f.write(code)
+    return {"url": "/preview_frame", "path": preview_path}
+
+@app.get("/preview_frame", response_class=HTMLResponse)
+async def preview_frame():
+    try:
+        with open("/tmp/codec_preview.html") as f:
+            return f.read()
+    except:
+        return "<html><body style='background:#0a0a0a;color:#888;padding:40px;font-family:sans-serif'><h2>No preview available</h2><p>Write some HTML and click Preview.</p></body></html>"
+
 @app.post("/api/run_code")
 async def run_code(request: Request):
     import asyncio, time as _time

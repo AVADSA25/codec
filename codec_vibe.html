@@ -18,9 +18,9 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);height:100vh
 .tbtn:hover{border-color:var(--accent);color:var(--accent)}
 .file-input{background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:2px 8px;color:var(--text);font-size:12px;font-family:var(--mono);width:180px}
 .lang-select{background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:11px}
-.split-container{display:flex;flex:1;overflow:hidden}
-.editor-panel{flex:1;display:flex;flex-direction:column;border-right:1px solid var(--border);min-width:0}
-.chat-panel{width:380px;min-width:280px;display:flex;flex-direction:column}
+.split-container{display:flex;flex:1;overflow:hidden}.chat-panel{order:-1}.resize-handle{order:0}.editor-panel{order:1}
+.editor-panel{flex:1;display:flex;flex-direction:column;min-width:0}
+.chat-panel{width:380px;min-width:280px;display:flex;flex-direction:column;border-right:1px solid var(--border)}
 #editor-container{flex:1}
 .editor-toolbar{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--bg2);border-top:1px solid var(--border);flex-shrink:0}
 .tool-btn{padding:6px 14px;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;font-family:var(--font)}
@@ -52,6 +52,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);height:100vh
 .resize-handle:hover{background:var(--accent)}
 .run-status{font-size:11px;color:var(--text2);margin-left:auto;font-family:var(--mono)}
 .mobile-block{display:none;padding:40px;text-align:center}
+@keyframes bounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-8px)}}
 @media(max-width:768px){.split-container,.topbar,.output-panel,.editor-toolbar{display:none!important}.mobile-block{display:block}}
 </style>
 </head>
@@ -87,6 +88,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);height:100vh
 <button class="tool-btn btn-run" onclick="runCode()">&#9654; Run</button>
 <button class="tool-btn btn-save" onclick="saveFile()">&#128190; Save</button>
 <button class="tool-btn btn-save" onclick="copyCode()">&#128203; Copy</button>
+<button class="tool-btn btn-save" onclick="previewCode()">&#128065; Preview</button>
 <button class="tool-btn btn-skill" onclick="saveAsSkill()">&#9889; Save as Skill</button>
 <span class="run-status" id="runStatus"></span>
 </div>
@@ -127,7 +129,7 @@ fn.value=fn.value.replace(/\.[^.]+$/,'')+ext;
 }
 
 var vibeHist=[];
-var VIBE_SYS="You are Q, an elite coding assistant inside CODEC Vibe Code mode.\n\nRULES:\n1. When asked to write code, output ONLY a single fenced code block with the complete file.\n2. When asked to fix code, output ONLY the corrected fenced code block.\n3. Brief explanations go BEFORE the code block, never inside it.\n4. If the user says 'fix line X', you can see their current editor content (provided as context).\n5. Always write production-quality, well-commented code.\n6. For CODEC skills, use: SKILL_NAME, SKILL_TRIGGERS list, SKILL_DESCRIPTION string, def run(task, app, ctx) function.";
+var VIBE_SYS="You are Q, an expert software engineer inside CODEC Vibe Code mode. You write flawless, production-grade code on the first attempt.\n\nCODING RULES:\n1. Output a SINGLE fenced code block with the COMPLETE file. Never partial code.\n2. Think step by step before coding. Plan the architecture, then implement.\n3. For games/visual apps: use proper game loops, collision detection, sprite rendering, smooth animations at 60fps. Use requestAnimationFrame, not setInterval.\n4. For HTML/CSS/JS: write modern, responsive, visually polished code. Use CSS variables, flexbox/grid, smooth transitions.\n5. For Python: clean PEP8, type hints, error handling, docstrings.\n6. Brief explanation BEFORE the code block (2-3 sentences max). Never explain inside the code block.\n7. When fixing code: output the COMPLETE corrected file, not just the changed lines.\n8. For CODEC skills: include SKILL_NAME, SKILL_TRIGGERS list, SKILL_DESCRIPTION, def run(task, app, ctx).\n9. Make it BEAUTIFUL. Add colors, gradients, animations, polish. Never ship ugly defaults.\n10. If building a game: proper physics, collision bounds, score tracking, restart logic, sound effects via Web Audio API if browser-based.";
 
 function escH(s){var d=document.createElement('div');d.textContent=s;return d.innerHTML}
 
@@ -158,13 +160,20 @@ contextMsg+='\n\n[CURRENT EDITOR CONTENT \u2014 '+document.getElementById('fileN
 }
 addVibeMsg('user',text);
 vibeHist.push({role:'user',content:contextMsg});
-addVibeMsg('assistant','\u23f3 Thinking...');
+var thinkDiv=document.createElement('div');thinkDiv.className='msg msg-assistant';thinkDiv.id='thinkingMsg';
+thinkDiv.innerHTML='<div style="display:flex;align-items:center;gap:10px"><div style="display:flex;gap:3px"><span style="width:8px;height:8px;border-radius:50%;background:#E8711A;animation:bounce 1.4s infinite">'+
+'</span><span style="width:8px;height:8px;border-radius:50%;background:#E8711A;animation:bounce 1.4s infinite 0.2s">'+
+'</span><span style="width:8px;height:8px;border-radius:50%;background:#E8711A;animation:bounce 1.4s infinite 0.4s">'+
+'</span></div><span style="color:#888;font-size:12px" id="thinkText">Q is thinking...</span></div>';
+document.getElementById('chatMessages').appendChild(thinkDiv);
+document.getElementById('chatMessages').scrollTop=document.getElementById('chatMessages').scrollHeight;
+var thinkPhrases=['Analyzing requirements...','Architecting solution...','Writing code...','Polishing output...'];
+var ti=0;var thinkTimer=setInterval(function(){ti++;if(ti<thinkPhrases.length)document.getElementById('thinkText').textContent=thinkPhrases[ti]},2000);
 try{
 var msgs=[{role:'system',content:VIBE_SYS}].concat(vibeHist);
 var r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs})});
 var data=await r.json();
-var chatEl=document.getElementById('chatMessages');
-chatEl.removeChild(chatEl.lastChild);
+clearInterval(thinkTimer);var tm=document.getElementById('thinkingMsg');if(tm)tm.remove();
 if(data.response){
 var response=data.response.replace(/<think>[\s\S]*?<\/think>/g,'').replace(/###\s*FINAL ANSWER:\s*/g,'').trim();
 vibeHist.push({role:'assistant',content:response});
@@ -187,8 +196,7 @@ addVibeMsg('assistant',response);
 addVibeMsg('assistant','Error: '+(data.error||'No response'));
 }
 }catch(e){
-var chatEl=document.getElementById('chatMessages');
-chatEl.removeChild(chatEl.lastChild);
+clearInterval(thinkTimer);var tm=document.getElementById('thinkingMsg');if(tm)tm.remove();
 addVibeMsg('assistant','Error: '+e.message);
 }
 }
@@ -252,6 +260,20 @@ function copyCode(){
 navigator.clipboard.writeText(editor.getValue());
 document.getElementById('runStatus').textContent='\u{1F4CB} Copied!';
 setTimeout(function(){document.getElementById('runStatus').textContent=''},2000);
+}
+
+async function previewCode(){
+var code=editor.getValue();
+var lang=document.getElementById('langSelect').value;
+if(lang==='html'||code.trim().startsWith('<!DOCTYPE')||code.trim().startsWith('<html')){
+try{
+await fetch('/api/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:code})});
+window.open('/preview_frame','_blank','width=800,height=600');
+addOutput('system','\u{1F441} Preview opened in new window');
+}catch(e){addOutput('stderr','Preview error: '+e.message)}
+}else{
+addVibeMsg('assistant','Preview works with HTML/CSS/JS files. Change language to HTML or ask me to build a web page!');
+}
 }
 
 // Resize handle
