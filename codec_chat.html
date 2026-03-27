@@ -77,6 +77,9 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--fg);height:10
 pre{background:var(--bg4);padding:10px;border-radius:8px;overflow-x:auto;font-family:var(--mono);font-size:12px;margin:8px 0}
 code{font-family:var(--mono);font-size:12px;background:var(--bg4);padding:2px 6px;border-radius:4px}
 input[type=file]{display:none}
+.mode-toggle{display:flex;gap:4px;padding:4px;background:var(--bg3);border-radius:8px}
+.mode-btn{padding:5px 10px;border:none;border-radius:6px;cursor:pointer;font-size:11px;background:transparent;color:var(--fg2);font-family:var(--font)}
+.mode-btn.active{background:var(--accent);color:#fff}
 </style>
 </head>
 <body>
@@ -92,6 +95,10 @@ input[type=file]{display:none}
 <button class="hbtn" onclick="openSidebar()" title="Chat history">&#9776;</button>
 <a href="/" class="hbtn" title="Back to dashboard">&#8592;</a>
 <div class="header-title"><img src="https://i.imgur.com/RbrQ7Bt.png"><h1>DEEP CHAT</h1><span class="model-tag">Qwen 3.5 35B</span></div>
+</div>
+<div class="mode-toggle" id="modeToggle">
+<button class="mode-btn active" onclick="setMode('chat')" id="modeChatBtn">&#128172; Chat</button>
+<button class="mode-btn" onclick="setMode('research')" id="modeResearchBtn">&#128300; Deep Research</button>
 </div>
 <div class="header-right"><button class="hbtn" onclick="toggleTheme()" id="themeBtn">&#9728;</button></div>
 </div>
@@ -114,6 +121,14 @@ var SYS="You are *Q*, a mix of J.A.R.V.I.S. meets TARS-class AI. Running locally
 var chatHist=[],isProcessing=false,isRecording=false,recognition=null;
 var pendingFiles=[];
 var sessionId=null;
+var chatMode='chat';
+
+function setMode(mode){
+  chatMode=mode;
+  document.getElementById('modeChatBtn').classList.toggle('active',mode==='chat');
+  document.getElementById('modeResearchBtn').classList.toggle('active',mode==='research');
+  document.getElementById('chatInput').placeholder=mode==='research'?'Enter research topic... (takes 2-5 min)':'Message Q...'
+}
 
 function genId(){return Date.now().toString(36)+Math.random().toString(36).substr(2,5)}
 
@@ -230,6 +245,55 @@ async function sendMessage(){
   var text=input.value.trim();
   if(!text&&!pendingFiles.length)return;
   input.value='';input.style.height='auto';
+
+  // Deep Research mode
+  if(chatMode==='research'){
+    var researchText=text||'';
+    if(!researchText)return;
+    addMessage('user','&#128300; Deep Research: '+researchText);
+    var statusEl=null;
+    function updateStatus(msg){
+      if(!statusEl){
+        var es=document.getElementById('emptyState');if(es)es.remove();
+        var div=document.createElement('div');div.className='msg assistant';
+        div.innerHTML='<div class="msg-bubble" id="researchStatus"></div>';
+        document.getElementById('messages').appendChild(div);
+        statusEl=document.getElementById('researchStatus');
+      }
+      statusEl.textContent=msg;scrollBottom();
+    }
+    isProcessing=true;document.getElementById('sendBtn').disabled=true;
+    updateStatus('\u23F3 Starting deep research... This takes 2-5 minutes.\n\nSearching the web, analyzing sources, writing report...');
+    try{
+      var r=await fetch('/api/deep_research',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({topic:researchText})});
+      var job=await r.json();
+      if(job.error){updateStatus('Error: '+job.error);isProcessing=false;document.getElementById('sendBtn').disabled=false;return;}
+      var elapsed=0;
+      var poll=setInterval(async function(){
+        elapsed+=10;
+        updateStatus('\u23F3 Researching... ('+elapsed+'s elapsed)\n\nSearching the web, analyzing sources, writing report...');
+        try{
+          var pr=await fetch('/api/deep_research/'+job.job_id);
+          var data=await pr.json();
+          if(data.status==='running')return;
+          clearInterval(poll);
+          if(statusEl)statusEl.parentElement.remove();
+          if(data.doc_url){
+            addMessage('assistant','\u2705 **Research Complete!** ('+data.elapsed_seconds+'s)\n\n\uD83D\uDCC4 **'+data.title+'**\n\n\uD83D\uDD17 [Open Full Report in Google Docs]('+data.doc_url+')\n\n**Preview:**\n'+data.report_preview);
+          }else if(data.report){
+            addMessage('assistant','\u2705 **Research Complete!** (Google Docs unavailable, showing here)\n\n'+data.report);
+          }else{
+            addMessage('assistant','Error: '+(data.error||'Research failed'));
+          }
+        }catch(pe){clearInterval(poll);addMessage('assistant','Poll error: '+pe.message)}
+        isProcessing=false;document.getElementById('sendBtn').disabled=false;
+      },10000);
+    }catch(e){
+      updateStatus('Research error: '+e.message);
+      isProcessing=false;document.getElementById('sendBtn').disabled=false;
+    }
+    return;
+  }
 
   // Build user message with file context
   var fileContext='';

@@ -10,7 +10,7 @@
 
 **CODEC** is an open source framework that connects any LLM directly to your Mac — voice, keyboard, wake word, phone dashboard, and a full IDE. You speak or type, your machine executes. Not a chatbot. Not a wrapper. An actual bridge between you and your operating system.
 
-Built in one week. 24 skills. Zero cloud dependency. MIT licensed.
+24 skills. Zero cloud dependency. MIT licensed.
 
 [opencodec.org](https://opencodec.org) | [GitHub](https://github.com/AVADSA25/codec)
 

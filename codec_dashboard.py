@@ -502,6 +502,45 @@ async def save_skill(request: Request):
     with open(path, "w") as f: f.write(content)
     return {"path": path, "skill": filename, "size": len(content)}
 
+# In-memory job store for deep research (survives for session lifetime)
+_research_jobs: dict = {}
+
+@app.post("/api/deep_research")
+async def deep_research_start(request: Request):
+    """Start deep research job — returns job_id immediately (avoids proxy timeouts)"""
+    import asyncio, threading, uuid
+    body = await request.json()
+    topic = body.get("topic", "")
+    if not topic or len(topic) < 5:
+        return JSONResponse({"error": "Topic too short"}, status_code=400)
+
+    job_id = str(uuid.uuid4())[:8]
+    _research_jobs[job_id] = {"status": "running", "topic": topic, "started": datetime.now().isoformat()}
+
+    def _run():
+        try:
+            from deep_research import run_deep_research
+            result = run_deep_research(topic)
+            _research_jobs[job_id].update(result)
+            _research_jobs[job_id]["status"] = result.get("status", "complete")
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            _research_jobs[job_id]["status"] = "error"
+            _research_jobs[job_id]["error"] = str(e)
+
+    threading.Thread(target=_run, daemon=True).start()
+    return {"job_id": job_id, "status": "running", "topic": topic}
+
+
+@app.get("/api/deep_research/{job_id}")
+async def deep_research_status(job_id: str):
+    """Poll research job status"""
+    job = _research_jobs.get(job_id)
+    if not job:
+        return JSONResponse({"error": "Job not found"}, status_code=404)
+    return job
+
+
 @app.post("/api/chat")
 async def chat_completion(request: Request):
     """Direct LLM chat with full context window"""
