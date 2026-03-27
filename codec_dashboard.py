@@ -375,6 +375,64 @@ async def upload_image(request: Request):
         import traceback; traceback.print_exc()
         return JSONResponse({"error": str(e)}, status_code=500)
 
+@app.get("/vibe", response_class=HTMLResponse)
+async def vibe_page():
+    vibe_path = os.path.join(DASHBOARD_DIR, "codec_vibe.html")
+    with open(vibe_path) as f:
+        return f.read()
+
+@app.post("/api/run_code")
+async def run_code(request: Request):
+    import asyncio, time as _time
+    body = await request.json()
+    code = body.get("code", "")
+    language = body.get("language", "python")
+    filename = body.get("filename", "script.py")
+    if not code.strip():
+        return JSONResponse({"error": "No code"}, status_code=400)
+    BLOCKED = ["rm -rf /", "sudo rm", "mkfs", "> /dev/sd", "dd if=", ":(){ :|:"]
+    for b in BLOCKED:
+        if b in code.lower():
+            return JSONResponse({"error": f"Blocked: {b}"}, status_code=403)
+    import tempfile
+    ext = {"python": ".py", "javascript": ".js", "bash": ".sh"}.get(language, ".txt")
+    tmp = tempfile.NamedTemporaryFile(suffix=ext, delete=False, mode="w")
+    tmp.write(code); tmp.close()
+    cmd = {"python": ["python3.13", tmp.name], "javascript": ["node", tmp.name], "bash": ["bash", tmp.name]}.get(language, ["python3.13", tmp.name])
+    start = _time.time()
+    try:
+        proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, cwd=os.path.expanduser("~"))
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
+        return {"stdout": stdout.decode(errors="replace")[:10000], "stderr": stderr.decode(errors="replace")[:5000], "exit_code": proc.returncode, "elapsed": round(_time.time()-start,1)}
+    except asyncio.TimeoutError:
+        return {"stdout":"","stderr":"Timed out (30s)","exit_code":-1,"elapsed":30}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+    finally:
+        try: os.unlink(tmp.name)
+        except: pass
+
+@app.post("/api/save_file")
+async def save_file(request: Request):
+    body = await request.json()
+    filename = os.path.basename(body.get("filename", "untitled.py"))
+    content = body.get("content", "")
+    directory = os.path.expanduser(body.get("directory", "~/codec-workspace"))
+    os.makedirs(directory, exist_ok=True)
+    path = os.path.join(directory, filename)
+    with open(path, "w") as f: f.write(content)
+    return {"path": path, "size": len(content)}
+
+@app.post("/api/save_skill")
+async def save_skill(request: Request):
+    body = await request.json()
+    filename = os.path.basename(body.get("filename", "custom_skill.py"))
+    if not filename.endswith(".py"): filename += ".py"
+    content = body.get("content", "")
+    path = os.path.join(os.path.expanduser("~/.codec/skills"), filename)
+    with open(path, "w") as f: f.write(content)
+    return {"path": path, "skill": filename, "size": len(content)}
+
 @app.post("/api/chat")
 async def chat_completion(request: Request):
     """Direct LLM chat with full context window"""

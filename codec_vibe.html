@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CODEC — Vibe Code</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/editor/editor.main.min.css">
+<style>
+:root{--bg:#0a0a0a;--bg2:#141414;--bg3:#1e1e1e;--text:#e0e0e0;--text2:#888;--accent:#E8711A;--success:#00ff88;--danger:#ff3b3b;--border:#2a2a2a;--font:'DM Sans',-apple-system,sans-serif;--mono:'JetBrains Mono','SF Mono','Fira Code',monospace}
+[data-theme=light]{--bg:#f5f2ed;--bg2:#fff;--bg3:#f0ece6;--text:#1a1a1a;--text2:#666;--border:#ddd}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:var(--font);background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:8px 16px;background:var(--bg2);border-bottom:1px solid var(--border);height:48px;flex-shrink:0}
+.topbar-left{display:flex;align-items:center;gap:12px}
+.topbar-title{font-size:14px;font-weight:700;color:var(--accent);font-family:var(--mono);letter-spacing:1px}
+.topbar-actions{display:flex;gap:8px;align-items:center}
+.tbtn{padding:4px 12px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--text2);cursor:pointer;font-size:12px;text-decoration:none;display:flex;align-items:center;gap:4px}
+.tbtn:hover{border-color:var(--accent);color:var(--accent)}
+.file-input{background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:2px 8px;color:var(--text);font-size:12px;font-family:var(--mono);width:180px}
+.lang-select{background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:11px}
+.split-container{display:flex;flex:1;overflow:hidden}
+.editor-panel{flex:1;display:flex;flex-direction:column;border-right:1px solid var(--border);min-width:0}
+.chat-panel{width:380px;min-width:280px;display:flex;flex-direction:column}
+#editor-container{flex:1}
+.editor-toolbar{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--bg2);border-top:1px solid var(--border);flex-shrink:0}
+.tool-btn{padding:6px 14px;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;font-family:var(--font)}
+.btn-run{background:#00aa55;color:#fff}
+.btn-run:hover{background:#00cc66}
+.btn-save{background:var(--bg3);color:var(--text);border:1px solid var(--border)}
+.btn-save:hover{border-color:var(--accent)}
+.btn-skill{background:var(--accent);color:#fff}
+.btn-skill:hover{background:#d4650f}
+.output-panel{height:140px;background:#080808;border-top:1px solid var(--border);font-family:var(--mono);font-size:12px;padding:8px 12px;overflow-y:auto;color:#aaa;white-space:pre-wrap;flex-shrink:0}
+.output-panel .stdout{color:var(--text)}
+.output-panel .stderr{color:var(--danger)}
+.output-panel .system{color:var(--accent)}
+.chat-header{padding:10px 12px;background:var(--bg2);border-bottom:1px solid var(--border);font-size:13px;font-weight:600;color:var(--accent);font-family:var(--mono)}
+.chat-messages{flex:1;overflow-y:auto;padding:12px;-webkit-overflow-scrolling:touch}
+.chat-input-area{display:flex;gap:8px;padding:8px 12px;background:var(--bg2);border-top:1px solid var(--border);flex-shrink:0}
+.chat-input{flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;font-family:var(--font);resize:none;outline:none;min-height:40px;max-height:100px}
+.chat-input:focus{border-color:var(--accent)}
+.chat-send{padding:8px 16px;background:var(--accent);color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600}
+.chat-send:hover{background:#d4650f}
+.msg{margin-bottom:12px;padding:10px 12px;border-radius:10px;font-size:13px;line-height:1.6;word-wrap:break-word}
+.msg-user{background:var(--accent);color:#fff;margin-left:20%;border-bottom-right-radius:3px}
+.msg-assistant{background:var(--bg2);border:1px solid var(--border);margin-right:10%;border-bottom-left-radius:3px}
+.msg-assistant pre{background:#111;padding:8px;border-radius:6px;margin:8px 0;overflow-x:auto;font-family:var(--mono);font-size:12px}
+.msg-assistant code{font-family:var(--mono);font-size:12px}
+.apply-btn{display:inline-block;margin-top:6px;padding:5px 12px;background:var(--accent);color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:11px;font-weight:600}
+.apply-btn:hover{background:#d4650f}
+.resize-handle{width:4px;cursor:col-resize;background:var(--border);flex-shrink:0}
+.resize-handle:hover{background:var(--accent)}
+.run-status{font-size:11px;color:var(--text2);margin-left:auto;font-family:var(--mono)}
+.mobile-block{display:none;padding:40px;text-align:center}
+@media(max-width:768px){.split-container,.topbar,.output-panel,.editor-toolbar{display:none!important}.mobile-block{display:block}}
+</style>
+</head>
+<body>
+<div class="mobile-block">
+<h2 style="color:#E8711A;margin-bottom:12px">&#9889; Vibe Code</h2>
+<p style="color:#888;margin-bottom:20px">Vibe Code requires a desktop browser.</p>
+<a href="/chat" style="color:#E8711A;font-weight:600">&#8592; Back to Deep Chat</a>
+</div>
+<div class="topbar">
+<div class="topbar-left">
+<span class="topbar-title">&#9889; VIBE CODE</span>
+<input id="fileName" class="file-input" value="untitled.py">
+<select id="langSelect" class="lang-select" onchange="changeLang()">
+<option value="python">Python</option>
+<option value="javascript">JavaScript</option>
+<option value="bash">Bash</option>
+<option value="html">HTML</option>
+<option value="json">JSON</option>
+<option value="markdown">Markdown</option>
+</select>
+</div>
+<div class="topbar-actions">
+<a href="/chat" class="tbtn">&#128172; Deep Chat</a>
+<a href="/" class="tbtn">&#8592; Dashboard</a>
+<button class="tbtn" onclick="toggleTheme()" id="themeBtn">&#9728;</button>
+</div>
+</div>
+<div class="split-container">
+<div class="editor-panel" id="editorPanel">
+<div id="editor-container"></div>
+<div class="editor-toolbar">
+<button class="tool-btn btn-run" onclick="runCode()">&#9654; Run</button>
+<button class="tool-btn btn-save" onclick="saveFile()">&#128190; Save</button>
+<button class="tool-btn btn-save" onclick="copyCode()">&#128203; Copy</button>
+<button class="tool-btn btn-skill" onclick="saveAsSkill()">&#9889; Save as Skill</button>
+<span class="run-status" id="runStatus"></span>
+</div>
+</div>
+<div class="resize-handle" id="resizeHandle"></div>
+<div class="chat-panel" id="chatPanel">
+<div class="chat-header">Q &#8212; Vibe Code Assistant</div>
+<div class="chat-messages" id="chatMessages">
+<div class="msg msg-assistant">&#128075; I'm Q in Vibe Code mode. Tell me what to build and I'll write the code.<br><br>Try: <em>"Build a Python script that checks Bitcoin price"</em><br>Or: <em>"Convert this to a CODEC skill"</em></div>
+</div>
+<div class="chat-input-area">
+<textarea id="vibeInput" class="chat-input" rows="2" placeholder="Describe what to build..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();vibeSend()}"></textarea>
+<button class="chat-send" onclick="vibeSend()">Send</button>
+</div>
+</div>
+</div>
+<div class="output-panel" id="outputPanel"><span class="system">CODEC Vibe Code &#8212; Ready</span></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
+<script>
+var editor;
+require.config({paths:{vs:'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs'}});
+require(['vs/editor/editor.main'],function(){
+editor=monaco.editor.create(document.getElementById('editor-container'),{
+value:'# Write your code here or ask Q to build something\n\n',
+language:'python',theme:'vs-dark',fontSize:13,
+fontFamily:"'JetBrains Mono','SF Mono','Fira Code',monospace",
+minimap:{enabled:false},lineNumbers:'on',scrollBeyondLastLine:false,
+automaticLayout:true,tabSize:4,wordWrap:'on',padding:{top:8}
+});
+});
+
+function changeLang(){
+var lang=document.getElementById('langSelect').value;
+monaco.editor.setModelLanguage(editor.getModel(),lang);
+var fn=document.getElementById('fileName');
+var ext={python:'.py',javascript:'.js',bash:'.sh',html:'.html',json:'.json',markdown:'.md'}[lang]||'.txt';
+fn.value=fn.value.replace(/\.[^.]+$/,'')+ext;
+}
+
+var vibeHist=[];
+var VIBE_SYS="You are Q, an elite coding assistant inside CODEC Vibe Code mode.\n\nRULES:\n1. When asked to write code, output ONLY a single fenced code block with the complete file.\n2. When asked to fix code, output ONLY the corrected fenced code block.\n3. Brief explanations go BEFORE the code block, never inside it.\n4. If the user says 'fix line X', you can see their current editor content (provided as context).\n5. Always write production-quality, well-commented code.\n6. For CODEC skills, use: SKILL_NAME, SKILL_TRIGGERS list, SKILL_DESCRIPTION string, def run(task, app, ctx) function.";
+
+function escH(s){var d=document.createElement('div');d.textContent=s;return d.innerHTML}
+
+function addVibeMsg(role,text,isHtml){
+var el=document.getElementById('chatMessages');
+var div=document.createElement('div');
+div.className='msg msg-'+(role==='user'?'user':'assistant');
+if(isHtml){div.innerHTML=text}else{div.innerHTML=escH(text).replace(/\n/g,'<br>')}
+el.appendChild(div);el.scrollTop=el.scrollHeight;
+}
+
+function addOutput(type,text){
+var el=document.getElementById('outputPanel');
+var span=document.createElement('span');
+span.className=type;span.textContent='\n'+text;
+el.appendChild(span);el.scrollTop=el.scrollHeight;
+}
+
+async function vibeSend(){
+var input=document.getElementById('vibeInput');
+var text=input.value.trim();
+if(!text)return;
+input.value='';
+var editorContent=editor?editor.getValue():'';
+var contextMsg=text;
+if(editorContent.trim().length>5){
+contextMsg+='\n\n[CURRENT EDITOR CONTENT \u2014 '+document.getElementById('fileName').value+']\n```\n'+editorContent+'\n```';
+}
+addVibeMsg('user',text);
+vibeHist.push({role:'user',content:contextMsg});
+addVibeMsg('assistant','\u23f3 Thinking...');
+try{
+var msgs=[{role:'system',content:VIBE_SYS}].concat(vibeHist);
+var r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs})});
+var data=await r.json();
+var chatEl=document.getElementById('chatMessages');
+chatEl.removeChild(chatEl.lastChild);
+if(data.response){
+var response=data.response.replace(/<think>[\s\S]*?<\/think>/g,'').replace(/###\s*FINAL ANSWER:\s*/g,'').trim();
+vibeHist.push({role:'assistant',content:response});
+var codeMatch=response.match(/```[\w]*\n([\s\S]*?)```/);
+if(codeMatch){
+var code=codeMatch[1];
+var beforeCode=response.substring(0,response.indexOf('```')).trim();
+var lastIdx=response.lastIndexOf('```');
+var afterCode=response.substring(lastIdx+3).trim();
+var html='';
+if(beforeCode)html+=escH(beforeCode).replace(/\n/g,'<br>')+'<br><br>';
+html+='<pre><code>'+escH(code)+'</code></pre>';
+html+='<button class="apply-btn" onclick="applyCode(this)" data-code="'+btoa(unescape(encodeURIComponent(code)))+'">&#128229; Apply to Editor</button>';
+if(afterCode)html+='<br><br>'+escH(afterCode).replace(/\n/g,'<br>');
+addVibeMsg('assistant',html,true);
+}else{
+addVibeMsg('assistant',response);
+}
+}else{
+addVibeMsg('assistant','Error: '+(data.error||'No response'));
+}
+}catch(e){
+var chatEl=document.getElementById('chatMessages');
+chatEl.removeChild(chatEl.lastChild);
+addVibeMsg('assistant','Error: '+e.message);
+}
+}
+
+function applyCode(btn){
+var code=decodeURIComponent(escape(atob(btn.dataset.code)));
+editor.setValue(code);
+if(code.includes('import ')||code.includes('def '))monaco.editor.setModelLanguage(editor.getModel(),'python');
+else if(code.includes('function ')||code.includes('const '))monaco.editor.setModelLanguage(editor.getModel(),'javascript');
+else if(code.startsWith('#!/bin/bash'))monaco.editor.setModelLanguage(editor.getModel(),'shell');
+addOutput('system','\u{1F4E5} Code applied to editor');
+}
+
+async function runCode(){
+var code=editor.getValue();
+var lang=document.getElementById('langSelect').value;
+var fname=document.getElementById('fileName').value;
+document.getElementById('runStatus').textContent='\u23f3 Running...';
+addOutput('system','\u25b6 Running '+fname+'...');
+try{
+var r=await fetch('/api/run_code',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:code,language:lang,filename:fname})});
+var data=await r.json();
+if(data.stdout)addOutput('stdout',data.stdout);
+if(data.stderr)addOutput('stderr',data.stderr);
+var status=data.exit_code===0?'\u2705 Done':'\u274c Exit: '+data.exit_code;
+document.getElementById('runStatus').textContent=status+' ('+data.elapsed+'s)';
+addOutput('system',status+' in '+data.elapsed+'s');
+}catch(e){
+document.getElementById('runStatus').textContent='\u274c Error';
+addOutput('stderr','Run error: '+e.message);
+}
+}
+
+async function saveFile(){
+var code=editor.getValue();
+var fname=document.getElementById('fileName').value;
+try{
+var r=await fetch('/api/save_file',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:fname,content:code,directory:'~/codec-workspace'})});
+var data=await r.json();
+addOutput('system','\u{1F4BE} Saved: '+(data.path||fname));
+}catch(e){addOutput('stderr','Save error: '+e.message)}
+}
+
+async function saveAsSkill(){
+var code=editor.getValue();
+if(!code.includes('SKILL_TRIGGERS')||!code.includes('def run(')){
+addVibeMsg('assistant','\u26a0\ufe0f Not a valid CODEC skill. Needs SKILL_TRIGGERS list and def run(task, app, ctx). Ask me to convert your code to skill format!');
+return;
+}
+var fname=document.getElementById('fileName').value;
+if(!fname.endsWith('.py'))fname+='.py';
+try{
+var r=await fetch('/api/save_skill',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:fname,content:code})});
+var data=await r.json();
+addOutput('system','\u26a1 Skill saved: '+data.path);
+addVibeMsg('assistant','\u26a1 Skill <strong>'+fname+'</strong> saved! Restart CODEC to load: <code>pm2 restart ava-autopilot</code>',true);
+}catch(e){addOutput('stderr','Skill save error: '+e.message)}
+}
+
+function copyCode(){
+navigator.clipboard.writeText(editor.getValue());
+document.getElementById('runStatus').textContent='\u{1F4CB} Copied!';
+setTimeout(function(){document.getElementById('runStatus').textContent=''},2000);
+}
+
+// Resize handle
+(function(){
+var handle=document.getElementById('resizeHandle');
+var ep=document.getElementById('editorPanel');
+var cp=document.getElementById('chatPanel');
+var dragging=false;
+handle.addEventListener('mousedown',function(e){dragging=true;e.preventDefault()});
+document.addEventListener('mousemove',function(e){
+if(!dragging)return;
+var container=document.querySelector('.split-container');
+var rect=container.getBoundingClientRect();
+var ratio=(e.clientX-rect.left)/rect.width;
+ratio=Math.max(0.3,Math.min(0.8,ratio));
+ep.style.flex='none';ep.style.width=(ratio*100)+'%';
+cp.style.width=((1-ratio)*100)+'%';
+});
+document.addEventListener('mouseup',function(){dragging=false});
+})();
+
+// Theme
+function toggleTheme(){
+var t=document.documentElement.getAttribute('data-theme');
+var next=t==='light'?'dark':'light';
+document.documentElement.setAttribute('data-theme',next);
+if(editor)monaco.editor.setTheme(next==='light'?'vs':'vs-dark');
+document.getElementById('themeBtn').textContent=next==='light'?'\u{1F319}':'\u2600';
+}
+
+// Auto-resize textarea
+document.getElementById('vibeInput').addEventListener('input',function(){
+this.style.height='auto';this.style.height=Math.min(this.scrollHeight,100)+'px';
+});
+</script>
+</body>
+</html>
