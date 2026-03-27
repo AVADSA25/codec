@@ -178,7 +178,7 @@ span.className=type;span.textContent='\n'+text;
 el.appendChild(span);el.scrollTop=el.scrollHeight;
 }
 
-async function vibeSend(){
+async function vibeSend(){console.log('vibeSend called');
 var input=document.getElementById('vibeInput');
 var text=input.value.trim();
 if(!text)return;
@@ -223,6 +223,7 @@ if(afterCode)html+='<br><br>'+escH(afterCode).replace(/\n/g,'<br>');
 addVibeMsg('assistant',html,true);
 }else{
 addVibeMsg('assistant',response);
+setTimeout(saveVibeSession,500);
 }
 }else{
 addVibeMsg('assistant','Error: '+(data.error||'No response'));
@@ -258,12 +259,26 @@ addOutput('system','\u{1F4E5} Code applied to editor');
 }
 
 async function runCode(){
-
-var fname=document.getElementById('fileName').value;
-var lang=document.getElementById('langSelect').value;
 var code=editor.getValue();
-if(lang==='html'||code.trim().startsWith('<!DOCTYPE')||code.trim().startsWith('<html')){
+var lang=document.getElementById('langSelect').value;
+var fname=document.getElementById('fileName').value;
+if(lang==='html'||code.trim().startsWith('<!DOCTYPE')||code.trim().startsWith('<html')||code.includes('<canvas')){
 previewCode();return;
+}
+document.getElementById('runStatus').textContent='\u23f3 Running...';
+addOutput('system','\u25b6 Running '+fname+'...');
+try{
+var r=await fetch('/api/run_code',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:code,language:lang,filename:fname})});
+var data=await r.json();
+if(data.stdout)addOutput('stdout',data.stdout);
+if(data.stderr)addOutput('stderr',data.stderr);
+var status=data.exit_code===0?'\u2705 Done':'\u274c Exit: '+data.exit_code;
+document.getElementById('runStatus').textContent=status+' ('+data.elapsed+'s)';
+addOutput('system',status+' in '+data.elapsed+'s');
+}catch(e){
+document.getElementById('runStatus').textContent='\u274c Error';
+addOutput('stderr','Run error: '+e.message);
+}
 }
 document.getElementById('runStatus').textContent='\u23f3 Running...';
 addOutput('system','\u25b6 Running '+fname+'...');
@@ -408,8 +423,7 @@ await fetch('/api/vibe/save',{method:'POST',headers:{'Content-Type':'application
 }
 
 // Auto-save after each Q response
-var origVibeSend=vibeSend;
-vibeSend=async function(){await origVibeSend();setTimeout(saveVibeSession,1000)};
+// Auto-save handled inside vibeSend
 
 // Resize handle
 (function(){
