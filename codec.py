@@ -129,15 +129,15 @@ root.attributes('-alpha',0.95)
 root.configure(bg='#0a0a0a')
 sw=root.winfo_screenwidth()
 sh=root.winfo_screenheight()
-w,h=360,54
+w,h=440,78
 x=(sw-w)//2
 y=sh-130
 root.geometry(f'{w}x{h}+{x}+{y}')
 cv=tk.Canvas(root,bg='#0a0a0a',highlightthickness=0,width=w,height=h)
 cv.pack()
 cv.create_rectangle(1,1,w-1,h-1,outline='#E8711A',width=1)
-dot=cv.create_oval(14,17,27,30,fill='#ff3b3b',outline='')
-cv.create_text(w//2+8,h//2,text='\U0001f3a4  Recording — release """ + key_label + """ to send',fill='#eeeeee',font=('Helvetica',13))
+dot=cv.create_oval(14,29,27,42,fill='#ff3b3b',outline='')
+cv.create_text(w//2+8,39,text='\U0001f3a4  Recording — release """ + key_label + """ to send',fill='#eeeeee',font=('Helvetica',13))
 on=[True]
 def pulse():
     on[0]=not on[0]
@@ -709,10 +709,10 @@ def build_session_script(safe_sys, session_id):
     L.append("print(O+'    ║  ██████  ██████  ██████  ███████  ██████  ║')")
     L.append("print(O+'    ║                                   v1.3.0  ║')")
     L.append("print(O+'    ╠═══════════════════════════════════════════╣')")
-    L.append("print(O+'    ║'+W+'  " + _cfg.get('key_voice','f18').upper() + " voice  " + _cfg.get('key_text','f16').upper() + " text  ** screen  ++ doc       '+O+'║')")
-    L.append("print(O+'    ║'+W+'  Hey Q = wake word  type exit to close       '+O+'║')")
+    L.append("print(O+'    ║'+W+'  " + _cfg.get('key_voice','f18').upper() + " voice  " + _cfg.get('key_text','f16').upper() + " text  ** screen  ++ doc  '+O+'║')")
+    L.append("print(O+'    ║'+W+'  Hey Q = wake word  type exit to close  '+O+'║')")
     L.append("print(O+'    ╠═══════════════════════════════════════════╣')")
-    L.append("print(O+'    ║'+D+'  Stream='+ss+'  Memory=ON  Skills=ON             '+O+'║')")
+    L.append("print(O+'    ║'+D+'  Stream='+ss+'  Memory=ON  Skills=ON      '+O+'║')")
     L.append("print(O+'    ╚═══════════════════════════════════════════╝'+R)")
     L.append("")
     L.append("queued = check_queue()")
@@ -774,12 +774,12 @@ def dispatch(task):
                 print(f"[Q] Skill response: {str(result)[:100]}")
                 # Save to DB for dashboard history
                 try:
-                    import sqlite3
-                    from datetime import datetime
-                    _db = sqlite3.connect(os.path.expanduser("~/.q_memory.db"))
-                    _sid = "skill_" + datetime.now().strftime("%Y%m%d_%H%M%S")
-                    _db.execute("INSERT INTO conversations (session_id,timestamp,role,content) VALUES (?,?,?,?)", (_sid, datetime.now().isoformat(), "user", task[:500]))
-                    _db.execute("INSERT INTO conversations (session_id,timestamp,role,content) VALUES (?,?,?,?)", (_sid, datetime.now().isoformat(), "assistant", re.sub(r"<[^>]+>", "", str(result))[:2000]))
+                    import sqlite3 as _sql3
+                    _now = __import__('datetime').datetime.now()
+                    _db = _sql3.connect(os.path.expanduser("~/.q_memory.db"))
+                    _sid = "skill_" + _now.strftime("%Y%m%d_%H%M%S")
+                    _db.execute("INSERT INTO conversations (session_id,timestamp,role,content) VALUES (?,?,?,?)", (_sid, _now.isoformat(), "user", task[:500]))
+                    _db.execute("INSERT INTO conversations (session_id,timestamp,role,content) VALUES (?,?,?,?)", (_sid, _now.isoformat(), "assistant", re.sub(r"<[^>]+>", "", str(result))[:2000]))
                     _db.commit(); _db.close()
                 except: pass
                 return
