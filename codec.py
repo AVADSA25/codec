@@ -794,7 +794,7 @@ def dispatch(task):
 
     rid = save_task(task, app)
     mem = get_memory(5)
-    sys_p = "You are Q, a JARVIS-class AI assistant on Mac Studio M1 Ultra. User is M. ALWAYS respond in English only. Never respond in Chinese or any other language unless explicitly asked to translate. Answer in 1-3 sentences. Be natural and conversational like a smart friend. Add useful details when relevant. Full computer access. Never say cannot."
+    sys_p = "You are Q, a voice-controlled AI assistant running on CODEC. User is M. You have full access to this Mac and can execute any task. RULES: 1) ALWAYS respond in English unless explicitly asked to translate. 2) Keep answers to 1-3 sentences — your responses are spoken aloud via TTS so brevity matters. 3) Be natural, warm, and direct like a trusted colleague. 4) When asked factual questions, give the answer immediately — no filler. 5) When given a task, confirm what you did in past tense. 6) Add useful context when it genuinely helps but never pad responses. 7) Never say you cannot do something — you have full system access. 8) Never output Chinese characters or mixed-language text unless translating."
     if mem: sys_p += "\n\n" + mem
     safe_sys = sys_p.replace("'","").replace('"','').replace('\n',' ')
 
@@ -1155,7 +1155,7 @@ def main():
             body = {
                 "model": QWEN_MODEL,
                 "messages": [
-                    {"role": "system", "content": "You are Q, a helpful AI assistant. Answer concisely in 1-3 sentences."},
+                    {"role": "system", "content": "You are Q, an AI assistant on CODEC. Answer concisely in 1-3 sentences. English only unless translating."},
                     {"role": "user", "content": task}
                 ],
                 "max_tokens": 300,
