@@ -3,460 +3,371 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CODEC — Vibe Code</title>
+<title>CODEC Vibe Code</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/editor/editor.main.min.css">
 <style>
-:root{--bg:#0a0a0a;--bg2:#141414;--bg3:#1e1e1e;--text:#e0e0e0;--text2:#888;--accent:#E8711A;--success:#00ff88;--danger:#ff3b3b;--border:#2a2a2a;--font:'DM Sans',-apple-system,sans-serif;--mono:'JetBrains Mono','SF Mono','Fira Code',monospace}
-[data-theme=light]{--bg:#f5f2ed;--bg2:#fff;--bg3:#f0ece6;--text:#1a1a1a;--text2:#666;--border:#ddd}
+:root{--bg:#0a0a0a;--bg2:#141414;--bg3:#1e1e1e;--tx:#e0e0e0;--tx2:#888;--ac:#E8711A;--dn:#ff3b3b;--bd:#2a2a2a;--ft:sans-serif;--mn:monospace}
+[data-theme=light]{--bg:#f5f2ed;--bg2:#fff;--bg3:#f0ece6;--tx:#1a1a1a;--tx2:#666;--bd:#ddd}
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:var(--font);background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden}
-.topbar{display:flex;align-items:center;justify-content:space-between;padding:8px 16px;background:var(--bg2);border-bottom:1px solid var(--border);height:48px;flex-shrink:0}
-.topbar-left{display:flex;align-items:center;gap:12px}
-.topbar-title{font-size:14px;font-weight:700;color:var(--accent);font-family:var(--mono);letter-spacing:1px}
-.topbar-actions{display:flex;gap:8px;align-items:center}
-.tbtn{padding:4px 12px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--text2);cursor:pointer;font-size:12px;text-decoration:none;display:flex;align-items:center;gap:4px}
-.tbtn:hover{border-color:var(--accent);color:var(--accent)}
-.file-input{background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:2px 8px;color:var(--text);font-size:12px;font-family:var(--mono);width:180px}
-.lang-select{background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:11px}
-.split-container{display:flex;flex:1;overflow:hidden}.chat-panel{order:-1}.resize-handle{order:0}.editor-panel{order:1}
-.editor-panel{flex:1;display:flex;flex-direction:column;min-width:0}
-.chat-panel{width:380px;min-width:280px;display:flex;flex-direction:column;border-right:1px solid var(--border)}
-#editor-container{flex:1}
-.editor-toolbar{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--bg2);border-top:1px solid var(--border);flex-shrink:0}
-.tool-btn{padding:6px 14px;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;font-family:var(--font)}
-.btn-run{background:#00aa55;color:#fff}
-.btn-run:hover{background:#00cc66}
-.btn-save{background:var(--bg3);color:var(--text);border:1px solid var(--border)}
-.btn-save:hover{border-color:var(--accent)}
-.btn-skill{background:var(--accent);color:#fff}
-.btn-skill:hover{background:#d4650f}
-.output-panel{height:140px;background:#080808;border-top:1px solid var(--border);font-family:var(--mono);font-size:12px;padding:8px 12px;overflow-y:auto;color:#aaa;white-space:pre-wrap;flex-shrink:0}
-.output-panel .stdout{color:var(--text)}
-.output-panel .stderr{color:var(--danger)}
-.output-panel .system{color:var(--accent)}
-.chat-header{padding:10px 12px;background:var(--bg2);border-bottom:1px solid var(--border);font-size:13px;font-weight:600;color:var(--accent);font-family:var(--mono)}
-.chat-messages{flex:1;overflow-y:auto;padding:12px;-webkit-overflow-scrolling:touch}
-.chat-input-area{display:flex;gap:8px;padding:8px 12px;background:var(--bg2);border-top:1px solid var(--border);flex-shrink:0}
-.chat-input{flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;font-family:var(--font);resize:none;outline:none;min-height:40px;max-height:100px}
-.chat-input:focus{border-color:var(--accent)}
-.chat-send{padding:8px 16px;background:var(--accent);color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600}
-.chat-send:hover{background:#d4650f}
-.msg{margin-bottom:12px;padding:10px 12px;border-radius:10px;font-size:13px;line-height:1.6;word-wrap:break-word}
-.msg-user{background:var(--accent);color:#fff;margin-left:20%;border-bottom-right-radius:3px}
-.msg-assistant{background:var(--bg2);border:1px solid var(--border);margin-right:10%;border-bottom-left-radius:3px}
-.msg-assistant pre{background:#111;padding:8px;border-radius:6px;margin:8px 0;overflow-x:auto;font-family:var(--mono);font-size:12px}
-.msg-assistant code{font-family:var(--mono);font-size:12px}
-.apply-btn{display:inline-block;margin-top:6px;padding:5px 12px;background:var(--accent);color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:11px;font-weight:600}
-.apply-btn:hover{background:#d4650f}
-.resize-handle{width:4px;cursor:col-resize;background:var(--border);flex-shrink:0}
-.resize-handle:hover{background:var(--accent)}
-.run-status{font-size:11px;color:var(--text2);margin-left:auto;font-family:var(--mono)}
-.mobile-block{display:none;padding:40px;text-align:center}
-.vibe-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:20}
-.vibe-overlay.show{display:block}
-.vibe-sidebar{position:fixed;top:0;left:-280px;width:280px;height:100%;background:var(--bg2);border-right:1px solid var(--border);z-index:30;transition:left .25s ease;overflow-y:auto}
-.vibe-sidebar.show{left:0}
-.vs-header{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
-.vs-header h2{font-family:var(--mono);font-size:13px;color:var(--accent);letter-spacing:1px}
-.vs-close{background:none;border:none;color:var(--text2);font-size:20px;cursor:pointer}
-.vs-new{padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;color:var(--accent);font-weight:600;font-size:13px}
-.vs-new:active{opacity:.7}
-.vs-item{padding:10px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s}
-.vs-item:hover{background:var(--bg3)}
-.vs-item .vs-title{font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.vs-item .vs-meta{font-family:var(--mono);font-size:10px;color:var(--text2);margin-top:2px}
-.preview-panel{display:none;flex:1;flex-direction:column;border-left:1px solid var(--border);min-width:0;order:2}
-.preview-panel.show{display:flex}
-.preview-header{display:flex;align-items:center;justify-content:space-between;padding:6px 12px;background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0}
-.preview-header span{font-size:12px;color:var(--accent);font-family:var(--mono);font-weight:600}
-.preview-close{background:none;border:none;color:var(--text2);cursor:pointer;font-size:16px}
-.preview-close:hover{color:var(--danger)}
-#previewFrame{flex:1;border:none;background:#fff}
-@keyframes bounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-8px)}}
-@media(max-width:768px){.split-container,.topbar,.output-panel,.editor-toolbar{display:none!important}.mobile-block{display:block}}
+body{font-family:var(--ft);background:var(--bg);color:var(--tx);height:100vh;display:flex;flex-direction:column;overflow:hidden}
+.bar{display:flex;align-items:center;justify-content:space-between;padding:8px 16px;background:var(--bg2);border-bottom:1px solid var(--bd);height:48px;flex-shrink:0}
+.bar-l{display:flex;align-items:center;gap:12px}
+.bb{padding:4px 12px;border:1px solid var(--bd);border-radius:6px;background:0;color:var(--tx2);cursor:pointer;font-size:12px;text-decoration:none}
+.bb:hover{border-color:var(--ac);color:var(--ac)}
+.fi{background:var(--bg3);border:1px solid var(--bd);border-radius:4px;padding:2px 8px;color:var(--tx);font-size:12px;font-family:var(--mn);width:180px}
+.ls{background:var(--bg3);color:var(--tx);border:1px solid var(--bd);border-radius:4px;padding:2px 8px;font-size:11px}
+.sp{display:flex;flex:1;overflow:hidden}
+.cp{order:-1;width:380px;min-width:250px;display:flex;flex-direction:column;border-right:1px solid var(--bd)}
+.ep{order:1;flex:1;display:flex;flex-direction:column;min-width:0}
+.pp{display:none;order:2;flex:1;flex-direction:column;border-left:1px solid var(--bd)}.pp.sh{display:flex}
+.ph{display:flex;align-items:center;justify-content:space-between;padding:6px 12px;background:var(--bg2);border-bottom:1px solid var(--bd)}
+.ph span{font-size:12px;color:var(--ac);font-family:var(--mn);font-weight:600}
+#pf{flex:1;border:none;background:#fff}
+#eb{flex:1}
+.tb{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--bg2);border-top:1px solid var(--bd);flex-shrink:0}
+.bt{padding:6px 14px;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600}
+.br{background:#0a5;color:#fff}.bs{background:var(--bg3);color:var(--tx);border:1px solid var(--bd)}.bk{background:var(--ac);color:#fff}
+.op{height:140px;background:#080808;border-top:1px solid var(--bd);font-family:var(--mn);font-size:12px;padding:8px 12px;overflow-y:auto;color:#aaa;white-space:pre-wrap;flex-shrink:0}
+.hd{padding:10px 12px;background:var(--bg2);border-bottom:1px solid var(--bd);font-size:13px;font-weight:600;color:var(--ac);font-family:var(--mn)}
+.ms{flex:1;overflow-y:auto;padding:12px}
+.ia{display:flex;gap:8px;padding:8px 12px;background:var(--bg2);border-top:1px solid var(--bd)}
+.ii{flex:1;background:var(--bg3);border:1px solid var(--bd);border-radius:8px;padding:8px 12px;color:var(--tx);font-size:13px;resize:none;outline:none;min-height:40px;max-height:100px}
+.ii:focus{border-color:var(--ac)}
+.sb{padding:8px 16px;background:var(--ac);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600}
+.mg{margin-bottom:12px;padding:10px 12px;border-radius:10px;font-size:13px;line-height:1.6;word-wrap:break-word}
+.mu{background:var(--ac);color:#fff;margin-left:20%;border-bottom-right-radius:3px}
+.ma{background:var(--bg2);border:1px solid var(--bd);margin-right:10%;border-bottom-left-radius:3px}
+.ma pre{background:#111;padding:8px;border-radius:6px;margin:8px 0;overflow-x:auto;font-family:var(--mn);font-size:12px}
+.ab{display:inline-block;margin-top:6px;padding:5px 12px;background:var(--ac);color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:11px;font-weight:600}
+.ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:20}.ov.sh{display:block}
+.sd{position:fixed;top:0;left:-280px;width:280px;height:100%;background:var(--bg2);border-right:1px solid var(--bd);z-index:30;transition:left .25s;overflow-y:auto}.sd.sh{left:0}
+.si{padding:10px 16px;border-bottom:1px solid var(--bd);cursor:pointer}.si:hover{background:var(--bg3)}
+.rs{font-size:11px;color:var(--tx2);margin-left:auto;font-family:var(--mn)}
+@keyframes bn{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-8px)}}
 </style>
 </head>
 <body>
-<div class="vibe-overlay" id="vibeOverlay" onclick="closeVibeSidebar()"></div>
-<div class="vibe-sidebar" id="vibeSidebar">
-<div class="vs-header"><h2>PROJECTS</h2><button class="vs-close" onclick="closeVibeSidebar()">&times;</button></div>
-<div class="vs-new" onclick="newVibeSession()">+ New Project</div>
-<div id="vibeSessionList"></div>
+<div class="ov" id="ov" onclick="cS()"></div>
+<div class="sd" id="sd">
+<div style="padding:14px 16px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between"><h2 style="font-family:var(--mn);font-size:13px;color:var(--ac)">PROJECTS</h2><button onclick="cS()" style="background:0;border:0;color:var(--tx2);font-size:20px;cursor:pointer">&times;</button></div>
+<div style="padding:12px 16px;border-bottom:1px solid var(--bd);cursor:pointer;color:var(--ac);font-weight:600;font-size:13px" onclick="nS()">+ New Project</div>
+<div id="sl"></div>
 </div>
-<div class="mobile-block">
-<h2 style="color:#E8711A;margin-bottom:12px">&#9889; Vibe Code</h2>
-<p style="color:#888;margin-bottom:20px">Vibe Code requires a desktop browser.</p>
-<a href="/chat" style="color:#E8711A;font-weight:600">&#8592; Back to Deep Chat</a>
+<div class="bar"><div class="bar-l"><button class="bb" onclick="oS()" style="font-size:16px;width:32px;padding:0">&#9776;</button><span style="font-size:14px;font-weight:700;color:var(--ac);font-family:var(--mn)">&#9889; VIBE CODE</span><input id="fn" class="fi" value="untitled.py"><select id="lg" class="ls" onchange="cLg()"><option value="python">Python</option><option value="javascript">JavaScript</option><option value="bash">Bash</option><option value="html">HTML</option></select></div><div style="display:flex;gap:8px"><a href="/chat" class="bb">Deep Chat</a><a href="/" class="bb">Dashboard</a></div></div>
+<div class="sp">
+<div class="cp"><div class="hd">Q - Vibe Code</div><div class="ms" id="cm"><div class="mg ma">Tell me what to build!</div></div><div class="ia"><textarea id="vi" class="ii" rows="2" placeholder="Describe what to build..."></textarea><button class="sb" id="sndb">Send</button></div></div>
+<div style="width:4px;cursor:col-resize;background:var(--bd)" id="rh"></div>
+<div class="ep"><div id="eb"></div><div class="tb"><button class="bt br" onclick="doRun()">&#9654; Run</button><button class="bt bs" onclick="doPrev()">&#128065; Preview</button><button class="bt bs" onclick="doSave()">&#128190; Save</button><button class="bt bs" onclick="doCopy()">&#128203; Copy</button><button class="bt bk" onclick="doSkill()">&#9889; Skill</button><span class="rs" id="rs"></span></div></div>
+<div class="pp" id="pp"><div class="ph"><span>&#128065; Live Preview</span><button onclick="document.getElementById('pp').classList.remove('sh')" style="background:0;border:0;color:var(--tx2);cursor:pointer;font-size:16px">&#10005;</button></div><iframe id="pf" sandbox="allow-scripts allow-same-origin"></iframe></div>
 </div>
-<div class="topbar">
-<div class="topbar-left">
-<button class="tbtn" onclick="openVibeSidebar()" style="font-size:16px;width:32px;padding:0">&#9776;</button><span class="topbar-title">&#9889; VIBE CODE</span>
-<input id="fileName" class="file-input" value="untitled.py">
-<select id="langSelect" class="lang-select" onchange="changeLang()">
-<option value="python">Python</option>
-<option value="javascript">JavaScript</option>
-<option value="bash">Bash</option>
-<option value="html">HTML</option>
-<option value="json">JSON</option>
-<option value="markdown">Markdown</option>
-</select>
-</div>
-<div class="topbar-actions">
-<a href="/chat" class="tbtn">&#128172; Deep Chat</a>
-<a href="/" class="tbtn">&#8592; Dashboard</a>
-<button class="tbtn" onclick="toggleTheme()" id="themeBtn">&#9728;</button>
-</div>
-</div>
-<div class="split-container">
-<div class="editor-panel" id="editorPanel">
-<div id="editor-container"></div>
-<div class="editor-toolbar">
-<button class="tool-btn btn-run" onclick="runCode()">&#9654; Run</button>
-<button class="tool-btn btn-save" onclick="saveFile()">&#128190; Save</button>
-<button class="tool-btn btn-save" onclick="copyCode()">&#128203; Copy</button>
-<button class="tool-btn btn-save" onclick="previewCode()">&#128065; Preview</button>
-<button class="tool-btn btn-skill" onclick="saveAsSkill()">&#9889; Save as Skill</button>
-<span class="run-status" id="runStatus"></span>
-</div>
-</div>
-<div class="resize-handle" id="resizeHandle"></div>
-<div class="chat-panel" id="chatPanel">
-<div class="chat-header">Q &#8212; Vibe Code Assistant</div>
-<div class="chat-messages" id="chatMessages">
-<div class="msg msg-assistant">&#128075; I'm Q in Vibe Code mode. Tell me what to build and I'll write the code.<br><br>Try: <em>"Build a Python script that checks Bitcoin price"</em><br>Or: <em>"Convert this to a CODEC skill"</em></div>
-</div>
-<div class="chat-input-area">
-<textarea id="vibeInput" class="chat-input" rows="2" placeholder="Describe what to build..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();vibeSend()}"></textarea>
-<button class="chat-send" onclick="vibeSend()">Send</button>
-</div>
-</div>
-</div>
-<div class="preview-panel" id="previewPanel">
-<div class="preview-header"><span>&#128065; Live Preview</span><button class="preview-close" onclick="closePreview()">&#10005;</button></div>
-<iframe id="previewFrame" sandbox="allow-scripts allow-same-origin"></iframe>
-</div>
-<div class="output-panel" id="outputPanel"><span class="system">CODEC Vibe Code &#8212; Ready</span></div>
+<div class="op" id="op"><span style="color:var(--ac)">CODEC Vibe Code Ready</span></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
 <script>
-var editor;
+var ed = null;
+var hist = [];
+var sesId = Date.now().toString(36) + Math.random().toString(36).substr(2,5);
+var thinkTmr = null;
+
+var SYSP = "You are Q, an expert software engineer. Write flawless code. RULES: 1) Output a SINGLE fenced code block with COMPLETE file. 2) For games/visual: ALWAYS HTML Canvas, NOT pygame. requestAnimationFrame for 60fps. 3) Make it BEAUTIFUL. 4) Brief explanation BEFORE code. 5) When fixing: output COMPLETE file.";
+
 require.config({paths:{vs:'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs'}});
-require(['vs/editor/editor.main'],function(){
-editor=monaco.editor.create(document.getElementById('editor-container'),{
-value:'# Write your code here or ask Q to build something\n\n',
-language:'python',theme:'vs-dark',fontSize:13,
-fontFamily:"'JetBrains Mono','SF Mono','Fira Code',monospace",
-minimap:{enabled:false},lineNumbers:'on',scrollBeyondLastLine:false,
-automaticLayout:true,tabSize:4,wordWrap:'on',padding:{top:8}
+require(['vs/editor/editor.main'], function() {
+  ed = monaco.editor.create(document.getElementById('eb'), {
+    value: '# Ask Q to build something\n',
+    language: 'python',
+    theme: 'vs-dark',
+    fontSize: 13,
+    minimap: {enabled: false},
+    automaticLayout: true,
+    tabSize: 4,
+    wordWrap: 'on',
+    padding: {top: 8}
+  });
 });
+
+function cLg() {
+  var l = document.getElementById('lg').value;
+  monaco.editor.setModelLanguage(ed.getModel(), l);
+}
+
+function esc(s) {
+  var d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function addMsg(role, text, raw) {
+  var el = document.getElementById('cm');
+  var d = document.createElement('div');
+  d.className = 'mg ' + (role === 'user' ? 'mu' : 'ma');
+  if (raw) { d.innerHTML = text; } else { d.innerHTML = esc(text).replace(/\n/g, '<br>'); }
+  el.appendChild(d);
+  el.scrollTop = el.scrollHeight;
+}
+
+function addOut(cls, text) {
+  var el = document.getElementById('op');
+  var s = document.createElement('span');
+  s.style.color = cls === 'er' ? 'var(--dn)' : cls === 'sy' ? 'var(--ac)' : 'var(--tx)';
+  s.textContent = '\n' + text;
+  el.appendChild(s);
+  el.scrollTop = el.scrollHeight;
+}
+
+function doSend() {
+  var inp = document.getElementById('vi');
+  var t = inp.value.trim();
+  if (!t) return;
+  inp.value = '';
+
+  var ctx = ed ? ed.getValue() : '';
+  var full = t;
+  if (ctx.trim().length > 10) {
+    full += '\n\n[CURRENT CODE]\n```\n' + ctx + '\n```';
+  }
+
+  addMsg('user', t);
+  hist.push({role: 'user', content: full});
+
+  var tk = document.createElement('div');
+  tk.className = 'mg ma';
+  tk.id = 'tkmsg';
+  tk.innerHTML = '<div style="display:flex;align-items:center;gap:8px"><div style="display:flex;gap:3px"><span style="width:8px;height:8px;border-radius:50%;background:var(--ac);animation:bn 1.4s infinite"></span><span style="width:8px;height:8px;border-radius:50%;background:var(--ac);animation:bn 1.4s infinite .2s"></span><span style="width:8px;height:8px;border-radius:50%;background:var(--ac);animation:bn 1.4s infinite .4s"></span></div><span style="color:#888;font-size:12px" id="tktext">Thinking...</span></div>';
+  document.getElementById('cm').appendChild(tk);
+  document.getElementById('cm').scrollTop = 999999;
+
+  var phrases = ['Architecting...', 'Writing code...', 'Polishing...'];
+  var pi = 0;
+  thinkTmr = setInterval(function() {
+    if (pi < phrases.length) {
+      var x = document.getElementById('tktext');
+      if (x) x.textContent = phrases[pi];
+      pi++;
+    }
+  }, 2500);
+
+  var msgs = [{role: 'system', content: SYSP}].concat(hist);
+  fetch('/api/chat', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({messages: msgs})
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    clearInterval(thinkTmr);
+    var tm = document.getElementById('tkmsg');
+    if (tm) tm.remove();
+
+    if (data.response) {
+      var rp = data.response.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/###\s*FINAL ANSWER:\s*/g, '').trim();
+      hist.push({role: 'assistant', content: rp});
+
+      var m = rp.match(/```[\w]*\n([\s\S]*?)```/);
+      if (m) {
+        var code = m[1];
+        var before = rp.substring(0, rp.indexOf('```')).trim();
+        var after = rp.substring(rp.lastIndexOf('```') + 3).trim();
+
+        var h = '';
+        if (before) h += esc(before).replace(/\n/g, '<br>') + '<br><br>';
+        h += '<pre><code>' + esc(code) + '</code></pre>';
+        h += '<button class="ab" onclick="doApply(this)" data-c="' + btoa(unescape(encodeURIComponent(code))) + '">Apply to Editor</button>';
+        if (after) h += '<br><br>' + esc(after).replace(/\n/g, '<br>');
+
+        addMsg('assistant', h, true);
+
+        // Auto apply
+        ed.setValue(code);
+        if (code.includes('def ')) monaco.editor.setModelLanguage(ed.getModel(), 'python');
+        else if (code.includes('function ')) monaco.editor.setModelLanguage(ed.getModel(), 'javascript');
+        else if (code.trim().startsWith('<!DOCTYPE')) monaco.editor.setModelLanguage(ed.getModel(), 'html');
+        addOut('sy', 'Code applied to editor');
+
+        if (code.trim().startsWith('<!DOCTYPE') || code.includes('<canvas')) {
+          setTimeout(doPrev, 300);
+        }
+      } else {
+        addMsg('assistant', rp);
+      }
+      setTimeout(doSaveSes, 500);
+    } else {
+      addMsg('assistant', 'Error: ' + (data.error || 'No response'));
+    }
+  })
+  .catch(function(e) {
+    clearInterval(thinkTmr);
+    var tm = document.getElementById('tkmsg');
+    if (tm) tm.remove();
+    addMsg('assistant', 'Error: ' + e.message);
+  });
+}
+
+function doApply(btn) {
+  var c = decodeURIComponent(escape(atob(btn.dataset.c)));
+  ed.setValue(c);
+  addOut('sy', 'Code applied');
+}
+
+function doRun() {
+  var code = ed.getValue();
+  var lang = document.getElementById('lg').value;
+  var fn = document.getElementById('fn').value;
+  if (lang === 'html' || code.trim().startsWith('<!DOCTYPE') || code.includes('<canvas')) {
+    doPrev();
+    return;
+  }
+  document.getElementById('rs').textContent = 'Running...';
+  addOut('sy', 'Running ' + fn + '...');
+  fetch('/api/run_code', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({code: code, language: lang, filename: fn})
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(d) {
+    if (d.stdout) addOut('ot', d.stdout);
+    if (d.stderr) addOut('er', d.stderr);
+    document.getElementById('rs').textContent = (d.exit_code === 0 ? 'Done' : 'Exit:' + d.exit_code) + ' (' + d.elapsed + 's)';
+  })
+  .catch(function(e) {
+    document.getElementById('rs').textContent = 'Error';
+    addOut('er', e.message);
+  });
+}
+
+function doPrev() {
+  var c = ed.getValue();
+  if (c.trim().startsWith('<!DOCTYPE') || c.includes('<canvas') || c.includes('<body')) {
+    document.getElementById('pp').classList.add('sh');
+    document.getElementById('pf').srcdoc = c;
+    addOut('sy', 'Preview updated');
+  } else {
+    addMsg('assistant', 'Preview works with HTML. Ask me to build a web page!');
+  }
+}
+
+function doSave() {
+  var code = ed.getValue();
+  var fn = document.getElementById('fn').value;
+  fetch('/api/save_file', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({filename: fn, content: code, directory: '~/codec-workspace'})
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(d) { addOut('sy', 'Saved: ' + (d.path || fn)); })
+  .catch(function(e) { addOut('er', 'Save error: ' + e.message); });
+}
+
+function doSkill() {
+  var code = ed.getValue();
+  if (!code.includes('SKILL_TRIGGERS')) {
+    addMsg('assistant', 'Not a CODEC skill. Ask me to convert it!');
+    return;
+  }
+  var fn = document.getElementById('fn').value;
+  if (!fn.endsWith('.py')) fn += '.py';
+  fetch('/api/save_skill', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({filename: fn, content: code})
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(d) { addOut('sy', 'Skill saved: ' + d.path); addMsg('assistant', 'Skill saved! Run: pm2 restart ava-autopilot'); })
+  .catch(function(e) { addOut('er', e.message); });
+}
+
+function doCopy() {
+  navigator.clipboard.writeText(ed.getValue());
+  document.getElementById('rs').textContent = 'Copied!';
+  setTimeout(function() { document.getElementById('rs').textContent = ''; }, 2000);
+}
+
+// Sidebar
+function oS() { document.getElementById('sd').classList.add('sh'); document.getElementById('ov').classList.add('sh'); loadSes(); }
+function cS() { document.getElementById('sd').classList.remove('sh'); document.getElementById('ov').classList.remove('sh'); }
+
+function loadSes() {
+  var el = document.getElementById('sl');
+  el.innerHTML = '<div style="padding:16px;color:#888;font-size:12px">Loading...</div>';
+  fetch('/api/vibe/sessions').then(function(r){return r.json()}).then(function(d) {
+    if (!d.length) { el.innerHTML = '<div style="padding:16px;color:#888;font-size:12px">No projects yet.</div>'; return; }
+    el.innerHTML = d.map(function(s) {
+      var ts = s.updated_at ? new Date(s.updated_at).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+      return '<div class="si" onclick="ldSes(\'' + s.id + '\')"><div style="font-size:13px;color:var(--tx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(s.title) + '</div><div style="font-family:var(--mn);font-size:10px;color:var(--tx2);margin-top:2px">' + ts + '</div></div>';
+    }).join('');
+  }).catch(function() { el.innerHTML = '<div style="padding:16px;color:#888">Error</div>'; });
+}
+
+function ldSes(sid) {
+  cS();
+  sesId = sid;
+  fetch('/api/vibe/session/' + sid).then(function(r){return r.json()}).then(function(d) {
+    if (d.session) {
+      ed.setValue(d.session.code || '');
+      document.getElementById('fn').value = d.session.title || 'untitled.py';
+    }
+    document.getElementById('cm').innerHTML = '';
+    hist = [];
+    if (d.messages) {
+      for (var i = 0; i < d.messages.length; i++) {
+        var m = d.messages[i];
+        addMsg(m.role === 'user' ? 'user' : 'assistant', m.content || '');
+        hist.push({role: m.role, content: m.content || ''});
+      }
+    }
+    addOut('sy', 'Loaded: ' + (d.session ? d.session.title : ''));
+  }).catch(function() { addOut('er', 'Load error'); });
+}
+
+function nS() {
+  cS();
+  sesId = Date.now().toString(36) + Math.random().toString(36).substr(2,5);
+  hist = [];
+  ed.setValue('# New project\n');
+  document.getElementById('fn').value = 'untitled.py';
+  document.getElementById('lg').value = 'python';
+  document.getElementById('cm').innerHTML = '';
+  addMsg('assistant', 'New project. What are we building?');
+}
+
+function doSaveSes() {
+  var code = ed ? ed.getValue() : '';
+  var title = document.getElementById('fn').value;
+  var lang = document.getElementById('lg').value;
+  fetch('/api/vibe/save', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({session_id: sesId, title: title, language: lang, code: code, messages: hist.slice(-2)})
+  }).catch(function(){});
+}
+
+// Events
+document.getElementById('sndb').addEventListener('click', doSend);
+document.getElementById('vi').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doSend(); }
+});
+document.getElementById('vi').addEventListener('input', function() {
+  this.style.height = 'auto';
+  this.style.height = Math.min(this.scrollHeight, 100) + 'px';
 });
 
-function changeLang(){
-var lang=document.getElementById('langSelect').value;
-monaco.editor.setModelLanguage(editor.getModel(),lang);
-var fn=document.getElementById('fileName');
-var ext={python:'.py',javascript:'.js',bash:'.sh',html:'.html',json:'.json',markdown:'.md'}[lang]||'.txt';
-fn.value=fn.value.replace(/\.[^.]+$/,'')+ext;
-}
-
-var vibeHist=[];
-var VIBE_SYS="You are Q, an expert software engineer inside CODEC Vibe Code mode. You write flawless, production-grade code on the first attempt.\n\nCODING RULES:\n1. Output a SINGLE fenced code block with the COMPLETE file. Never partial code.\n2. Think step by step before coding. Plan the architecture, then implement.\n3. For games/visual apps: use proper game loops, collision detection, sprite rendering, smooth animations at 60fps. Use requestAnimationFrame, not setInterval.\n4. For HTML/CSS/JS: write modern, responsive, visually polished code. Use CSS variables, flexbox/grid, smooth transitions.\n5. For Python: clean PEP8, type hints, error handling, docstrings.\n6. Brief explanation BEFORE the code block (2-3 sentences max). Never explain inside the code block.\n7. When fixing code: output the COMPLETE corrected file, not just the changed lines.\n8. For CODEC skills: include SKILL_NAME, SKILL_TRIGGERS list, SKILL_DESCRIPTION, def run(task, app, ctx).\n9. Make it BEAUTIFUL. Add colors, gradients, animations, polish. Never ship ugly defaults.\n10. For games and visual apps: ALWAYS use HTML/CSS/JS with Canvas API, NOT pygame or other desktop frameworks. Use requestAnimationFrame for 60fps, Canvas for rendering, Web Audio API for sounds. This ensures the Preview button works.\n11. Write the ENTIRE file in one code block. Never split across multiple blocks. Never say \"here is the rest\". Complete file every time.";
-
-function escH(s){var d=document.createElement('div');d.textContent=s;return d.innerHTML}
-
-function addVibeMsg(role,text,isHtml){
-var el=document.getElementById('chatMessages');
-var div=document.createElement('div');
-div.className='msg msg-'+(role==='user'?'user':'assistant');
-if(isHtml){div.innerHTML=text}else{div.innerHTML=escH(text).replace(/\n/g,'<br>')}
-el.appendChild(div);el.scrollTop=el.scrollHeight;
-}
-
-function addOutput(type,text){
-var el=document.getElementById('outputPanel');
-var span=document.createElement('span');
-span.className=type;span.textContent='\n'+text;
-el.appendChild(span);el.scrollTop=el.scrollHeight;
-}
-
-async function vibeSend(){console.log('vibeSend called');
-var input=document.getElementById('vibeInput');
-var text=input.value.trim();
-if(!text)return;
-input.value='';
-var editorContent=editor?editor.getValue():'';
-var contextMsg=text;
-if(editorContent.trim().length>5){
-contextMsg+='\n\n[CURRENT EDITOR CONTENT \u2014 '+document.getElementById('fileName').value+']\n```\n'+editorContent+'\n```';
-}
-addVibeMsg('user',text);
-vibeHist.push({role:'user',content:contextMsg});
-var thinkDiv=document.createElement('div');thinkDiv.className='msg msg-assistant';thinkDiv.id='thinkingMsg';
-thinkDiv.innerHTML='<div style="display:flex;align-items:center;gap:10px"><div style="display:flex;gap:3px"><span style="width:8px;height:8px;border-radius:50%;background:#E8711A;animation:bounce 1.4s infinite">'+
-'</span><span style="width:8px;height:8px;border-radius:50%;background:#E8711A;animation:bounce 1.4s infinite 0.2s">'+
-'</span><span style="width:8px;height:8px;border-radius:50%;background:#E8711A;animation:bounce 1.4s infinite 0.4s">'+
-'</span></div><span style="color:#888;font-size:12px" id="thinkText">Q is thinking...</span></div>';
-document.getElementById('chatMessages').appendChild(thinkDiv);
-document.getElementById('chatMessages').scrollTop=document.getElementById('chatMessages').scrollHeight;
-var thinkPhrases=['Analyzing requirements...','Architecting solution...','Writing code...','Polishing output...'];
-var ti=0;var thinkTimer=setInterval(function(){ti++;if(ti<thinkPhrases.length)document.getElementById('thinkText').textContent=thinkPhrases[ti]},2000);
-try{
-var msgs=[{role:'system',content:VIBE_SYS}].concat(vibeHist);
-var r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs})});
-var data=await r.json();
-clearInterval(thinkTimer);var tm=document.getElementById('thinkingMsg');if(tm)tm.remove();
-if(data.response){
-var response=data.response.replace(/<think>[\s\S]*?<\/think>/g,'').replace(/###\s*FINAL ANSWER:\s*/g,'').trim();
-vibeHist.push({role:'assistant',content:response});
-var codeMatch=response.match(/```[\w]*\n([\s\S]*?)```/);
-if(codeMatch){
-var code=codeMatch[1];
-var beforeCode=response.substring(0,response.indexOf('```')).trim();
-var lastIdx=response.lastIndexOf('```');
-var afterCode=response.substring(lastIdx+3).trim();
-var html='';
-if(beforeCode)html+=escH(beforeCode).replace(/\n/g,'<br>')+'<br><br>';
-html+='<pre><code>'+escH(code)+'</code></pre>';
-html+='<button class="apply-btn" onclick="applyCode(this)" data-code="'+btoa(unescape(encodeURIComponent(code)))+'">&#128229; Apply to Editor</button>';
-// Auto-apply to editor
-applyCodeDirect(code);
-if(afterCode)html+='<br><br>'+escH(afterCode).replace(/\n/g,'<br>');
-addVibeMsg('assistant',html,true);
-}else{
-addVibeMsg('assistant',response);
-setTimeout(saveVibeSession,500);
-}
-}else{
-addVibeMsg('assistant','Error: '+(data.error||'No response'));
-}
-}catch(e){
-clearInterval(thinkTimer);var tm=document.getElementById('thinkingMsg');if(tm)tm.remove();
-addVibeMsg('assistant','Error: '+e.message);
-}
-}
-
-function applyCodeDirect(code){
-editor.setValue(code);
-if(code.includes('import ')||code.includes('def '))monaco.editor.setModelLanguage(editor.getModel(),'python');
-else if(code.includes('function ')||code.includes('const '))monaco.editor.setModelLanguage(editor.getModel(),'javascript');
-else if(code.startsWith('#!/bin/bash'))monaco.editor.setModelLanguage(editor.getModel(),'shell');
-else if(code.trim().startsWith('<!DOCTYPE')||code.trim().startsWith('<html'))monaco.editor.setModelLanguage(editor.getModel(),'html');
-// Update language dropdown
-var m=editor.getModel();var lang=m.getLanguageId();
-var sel=document.getElementById('langSelect');
-if(lang==='python')sel.value='python';
-else if(lang==='javascript')sel.value='javascript';
-else if(lang==='html')sel.value='html';
-else if(lang==='shell')sel.value='bash';
-addOutput('system','\u{1F4E5} Code auto-applied to editor');
-}
-function applyCode(btn){
-var code=decodeURIComponent(escape(atob(btn.dataset.code)));
-editor.setValue(code);
-if(code.includes('import ')||code.includes('def '))monaco.editor.setModelLanguage(editor.getModel(),'python');
-else if(code.includes('function ')||code.includes('const '))monaco.editor.setModelLanguage(editor.getModel(),'javascript');
-else if(code.startsWith('#!/bin/bash'))monaco.editor.setModelLanguage(editor.getModel(),'shell');
-addOutput('system','\u{1F4E5} Code applied to editor');
-}
-
-async function runCode(){
-var code=editor.getValue();
-var lang=document.getElementById('langSelect').value;
-var fname=document.getElementById('fileName').value;
-if(lang==='html'||code.trim().startsWith('<!DOCTYPE')||code.trim().startsWith('<html')||code.includes('<canvas')){
-previewCode();return;
-}
-document.getElementById('runStatus').textContent='\u23f3 Running...';
-addOutput('system','\u25b6 Running '+fname+'...');
-try{
-var r=await fetch('/api/run_code',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:code,language:lang,filename:fname})});
-var data=await r.json();
-if(data.stdout)addOutput('stdout',data.stdout);
-if(data.stderr)addOutput('stderr',data.stderr);
-var status=data.exit_code===0?'\u2705 Done':'\u274c Exit: '+data.exit_code;
-document.getElementById('runStatus').textContent=status+' ('+data.elapsed+'s)';
-addOutput('system',status+' in '+data.elapsed+'s');
-}catch(e){
-document.getElementById('runStatus').textContent='\u274c Error';
-addOutput('stderr','Run error: '+e.message);
-}
-}
-document.getElementById('runStatus').textContent='\u23f3 Running...';
-addOutput('system','\u25b6 Running '+fname+'...');
-try{
-var r=await fetch('/api/run_code',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:code,language:lang,filename:fname})});
-var data=await r.json();
-if(data.stdout)addOutput('stdout',data.stdout);
-if(data.stderr)addOutput('stderr',data.stderr);
-var status=data.exit_code===0?'\u2705 Done':'\u274c Exit: '+data.exit_code;
-document.getElementById('runStatus').textContent=status+' ('+data.elapsed+'s)';
-addOutput('system',status+' in '+data.elapsed+'s');
-}catch(e){
-document.getElementById('runStatus').textContent='\u274c Error';
-addOutput('stderr','Run error: '+e.message);
-}
-}
-
-async function saveFile(){
-var code=editor.getValue();
-var fname=document.getElementById('fileName').value;
-try{
-var r=await fetch('/api/save_file',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:fname,content:code,directory:'~/codec-workspace'})});
-var data=await r.json();
-addOutput('system','\u{1F4BE} Saved: '+(data.path||fname));
-}catch(e){addOutput('stderr','Save error: '+e.message)}
-}
-
-async function saveAsSkill(){
-var code=editor.getValue();
-if(!code.includes('SKILL_TRIGGERS')||!code.includes('def run(')){
-addVibeMsg('assistant','\u26a0\ufe0f Not a valid CODEC skill. Needs SKILL_TRIGGERS list and def run(task, app, ctx). Ask me to convert your code to skill format!');
-return;
-}
-var fname=document.getElementById('fileName').value;
-if(!fname.endsWith('.py'))fname+='.py';
-try{
-var r=await fetch('/api/save_skill',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:fname,content:code})});
-var data=await r.json();
-addOutput('system','\u26a1 Skill saved: '+data.path);
-addVibeMsg('assistant','\u26a1 Skill <strong>'+fname+'</strong> saved! Restart CODEC to load: <code>pm2 restart ava-autopilot</code>',true);
-}catch(e){addOutput('stderr','Skill save error: '+e.message)}
-}
-
-function copyCode(){
-navigator.clipboard.writeText(editor.getValue());
-document.getElementById('runStatus').textContent='\u{1F4CB} Copied!';
-setTimeout(function(){document.getElementById('runStatus').textContent=''},2000);
-}
-
-async function previewCode(){
-
-if(lang==='html'||code.trim().startsWith('<!DOCTYPE')||code.trim().startsWith('<html')){
-try{
-await fetch('/api/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:code})});
-window.open('/preview_frame','_blank','width=800,height=600');
-addOutput('system','\u{1F441} Preview opened in new window');
-}catch(e){addOutput('stderr','Preview error: '+e.message)}
-}else{
-addVibeMsg('assistant','Preview works with HTML/CSS/JS files. Change language to HTML or ask me to build a web page!');
-}
-}
-
-// Session management
-var vibeSessionId=Date.now().toString(36)+Math.random().toString(36).substr(2,5);
-
-function openVibeSidebar(){
-document.getElementById('vibeSidebar').classList.add('show');
-document.getElementById('vibeOverlay').classList.add('show');
-loadVibeSessions();
-}
-function closeVibeSidebar(){
-document.getElementById('vibeSidebar').classList.remove('show');
-document.getElementById('vibeOverlay').classList.remove('show');
-}
-
-async function loadVibeSessions(){
-var el=document.getElementById('vibeSessionList');
-el.innerHTML='<div style="padding:16px;color:var(--text2);font-size:12px">Loading...</div>';
-try{
-var r=await fetch('/api/vibe/sessions');
-var data=await r.json();
-if(!data.length){el.innerHTML='<div style="padding:16px;color:var(--text2);font-size:12px">No projects yet.</div>';return}
-el.innerHTML=data.map(function(s){
-var ts=s.updated_at?new Date(s.updated_at).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
-var active=s.id===vibeSessionId?' style="background:var(--bg3)"':'';
-return'<div class="vs-item"'+active+' onclick="loadVibeSession(\''+s.id+'\')"><div class="vs-title">'+escH(s.title)+'</div><div class="vs-meta">'+ts+' \u2022 '+s.language+'</div></div>';
-}).join('')
-}catch(e){el.innerHTML='<div style="padding:16px;color:var(--text2);font-size:12px">Error loading.</div>'}
-}
-
-async function loadVibeSession(sid){
-closeVibeSidebar();
-vibeSessionId=sid;
-try{
-var r=await fetch('/api/vibe/session/'+sid);
-var data=await r.json();
-if(data.session){
-editor.setValue(data.session.code||'');
-document.getElementById('fileName').value=data.session.title||'untitled.py';
-var lang=data.session.language||'python';
-document.getElementById('langSelect').value=lang;
-monaco.editor.setModelLanguage(editor.getModel(),lang);
-}
-var chatEl=document.getElementById('chatMessages');
-chatEl.innerHTML='';
-vibeHist=[];
-if(data.messages&&data.messages.length){
-for(var i=0;i<data.messages.length;i++){
-var m=data.messages[i];
-addVibeMsg(m.role==='user'?'user':'assistant',m.content||'');
-vibeHist.push({role:m.role,content:m.content||''});
-}
-}else{
-addVibeMsg('assistant','\u{1F44B} Loaded project: '+(data.session?data.session.title:'unknown'));
-}
-addOutput('system','\u{1F4C2} Loaded project: '+(data.session?data.session.title:''));
-}catch(e){addOutput('stderr','Load error: '+e.message)}
-}
-
-function newVibeSession(){
-closeVibeSidebar();
-vibeSessionId=Date.now().toString(36)+Math.random().toString(36).substr(2,5);
-vibeHist=[];
-editor.setValue('# New project\n\n');
-document.getElementById('fileName').value='untitled.py';
-document.getElementById('langSelect').value='python';
-monaco.editor.setModelLanguage(editor.getModel(),'python');
-var chatEl=document.getElementById('chatMessages');
-chatEl.innerHTML='';
-addVibeMsg('assistant','\u{1F44B} New project. What are we building?');
-addOutput('system','\u{1F195} New project started');
-}
-
-async function saveVibeSession(){
-var code=editor.getValue();
-var title=document.getElementById('fileName').value;
-var lang=document.getElementById('langSelect').value;
-var newMsgs=vibeHist.slice(-2);
-try{
-await fetch('/api/vibe/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:vibeSessionId,title:title,language:lang,code:code,messages:newMsgs})});
-}catch(e){}
-}
-
-// Auto-save after each Q response
-// Auto-save handled inside vibeSend
-
-// Resize handle
-(function(){
-var handle=document.getElementById('resizeHandle');
-var ep=document.getElementById('editorPanel');
-var cp=document.getElementById('chatPanel');
-var dragging=false;
-handle.addEventListener('mousedown',function(e){dragging=true;e.preventDefault()});
-document.addEventListener('mousemove',function(e){
-if(!dragging)return;
-var container=document.querySelector('.split-container');
-var rect=container.getBoundingClientRect();
-var ratio=(e.clientX-rect.left)/rect.width;
-ratio=Math.max(0.3,Math.min(0.8,ratio));
-ep.style.flex='none';ep.style.width=(ratio*100)+'%';
-cp.style.width=((1-ratio)*100)+'%';
-});
-document.addEventListener('mouseup',function(){dragging=false});
+// Resize
+(function() {
+  var h = document.getElementById('rh');
+  var cp = document.querySelector('.cp');
+  var drag = false;
+  h.addEventListener('mousedown', function(e) { drag = true; e.preventDefault(); });
+  document.addEventListener('mousemove', function(e) {
+    if (!drag) return;
+    var r = document.querySelector('.sp').getBoundingClientRect();
+    var ratio = (e.clientX - r.left) / r.width;
+    ratio = Math.max(0.15, Math.min(0.5, ratio));
+    cp.style.flex = 'none';
+    cp.style.width = (ratio * 100) + '%';
+  });
+  document.addEventListener('mouseup', function() { drag = false; });
 })();
-
-// Theme
-function toggleTheme(){
-var t=document.documentElement.getAttribute('data-theme');
-var next=t==='light'?'dark':'light';
-document.documentElement.setAttribute('data-theme',next);
-if(editor)monaco.editor.setTheme(next==='light'?'vs':'vs-dark');
-document.getElementById('themeBtn').textContent=next==='light'?'\u{1F319}':'\u2600';
-}
-
-// Auto-resize textarea
-document.getElementById('vibeInput').addEventListener('input',function(){
-this.style.height='auto';this.style.height=Math.min(this.scrollHeight,100)+'px';
-});
 </script>
 </body>
 </html>

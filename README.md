@@ -1,440 +1,275 @@
-<p align="center">
-  <img src="https://i.imgur.com/RbrQ7Bt.png" alt="CODEC" width="280"/>
-</p>
+# CODEC — Open Source Computer Command Framework
 
-<h1 align="center">CODEC</h1>
-<p align="center"><strong>Open Source Computer Command Framework</strong></p>
-<p align="center">
-  Voice-controlled, local-first AI agent that runs on your machine with any LLM.<br/>
-  No cloud. No subscription. No data leaves your computer.
-</p>
-<p align="center">
-  <a href="https://opencodec.org">opencodec.org</a> · <a href="https://avadigital.ai">AVA Digital LLC</a>
-</p>
-<p align="center">
-  <a href="#support-the-project">☕ Support the Project</a> · <a href="#professional-setup">🏢 Enterprise Setup</a>
-</p>
+> **Your voice. Your computer. Your rules.**
+> Turn any LLM into a full computer agent — voice, text, always-on, fully local.
 
----
+[![MIT License](https://img.shields.io/badge/License-MIT-orange.svg)](LICENSE)
+[![macOS](https://img.shields.io/badge/Platform-macOS-blue.svg)]()
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10+-green.svg)]()
+[![Stars](https://img.shields.io/github/stars/AVADSA25/codec?style=social)](https://github.com/AVADSA25/codec)
 
-## What is CODEC?
+**CODEC** is an open source framework that connects any LLM directly to your Mac — voice, keyboard, wake word, phone dashboard, and a full IDE. You speak or type, your machine executes. Not a chatbot. Not a wrapper. An actual bridge between you and your operating system.
 
-CODEC turns your computer into a voice-controlled AI workstation. Press a key or say *"Hey Q"* — CODEC listens, thinks (using any LLM you choose), and acts: opening apps, drafting messages, reading your screen, analyzing documents, controlling Spotify, setting timers, writing code, and anything else you can describe.
+Built in one week. 24 skills. Zero cloud dependency. MIT licensed.
 
-A private, open-source alternative to Siri/Alexa that actually controls your computer — and writes its own plugins.
-
-*Built for macOS.* Linux support planned.
-
-```
-"Hey Q, open Safari and go to GitHub"             → Opens Safari, navigates to github.com
-"Draft a reply saying thanks for the update"       → Reads screen, writes contextual reply, pastes it
-"What's on my screen?"                             → Screenshots display, describes what it sees
-"Play the next song"                               → Spotify skips to next track
-"Create a skill that checks Bitcoin price"         → Writes, installs, and activates a new skill
-"Remind me to review the PR at 3pm"               → Sets a native Apple Reminder
-"Translate good morning to Japanese"               → Speaks the translation aloud
-"How much disk space do I have?"                   → Checks system and reports back
-```
-
-### Advanced Use Cases
-
-CODEC is not just a voice assistant — it is an AI agent with full computer control.
-
-```
-"Read my screen and summarize the email thread"    → Vision captures display, LLM summarizes
-"Open Notes and create a meeting summary"          → Launches Apple Notes, writes structured notes
-"Find all PDFs on my desktop and list them"        → Runs shell commands, reports results
-"Draft a message to the team about the deadline"   → Reads chat context, composes professional reply
-"Set volume to 30 and play my playlist"            → Chains multiple commands in one request
-"Switch to VS Code and explain the selected code"  → App switch + screen read + code analysis
-"Create a skill that monitors my CPU temperature"  → Self-writes a Python skill and installs it live
-```
-
-Double-tap `--` to launch **live voice-to-voice chat** — a real-time conversation with your AI, powered by Pipecat. No buttons, auto-connects. Like having JARVIS on speed dial.
+[opencodec.org](https://opencodec.org) | [GitHub](https://github.com/AVADSA25/codec)
 
 ---
 
-## Quickstart
+## What It Does
 
-### 1. Clone
+You say **"Hey Q, open Safari and search for flights to Tokyo"** — it opens your browser and does it.
+
+You say **"draft a reply saying I'll review it tonight"** — it reads your screen, sees the email or Slack message, writes a polished reply, and pastes it right into the text field.
+
+You say **"what's on my screen"** — it screenshots your display, runs it through a vision model, and describes everything it sees.
+
+You say **"create a skill that checks Bitcoin price"** — it writes a Python plugin on the spot, drops it in the skills folder, and it works immediately.
+
+You say **"ask Lucy to schedule lunch with John tomorrow at 2pm"** — it delegates to your personal AI assistant running on n8n, who adds the event to your Google Calendar and confirms back through voice.
+
+From your phone at dinner, you type **"check if the backup finished"** — your Mac runs the command silently and sends back the result through your own Cloudflare tunnel.
+
+All of this works by voice, by text, by wake word, or from your phone.
+
+---
+
+## Quick Start
 
 ```bash
 git clone https://github.com/AVADSA25/codec.git
 cd codec
-```
-
-### 2. Install dependencies
-
-```bash
 pip3 install pynput sounddevice soundfile numpy requests simple-term-menu
 brew install sox
-```
-
-### 3. Run the setup wizard
-
-```bash
 python3 setup_codec.py
-```
-
-The wizard walks you through everything: choose your LLM (Ollama, OpenAI, Gemini, Anthropic, MLX, or any compatible server), choose your voice engine (Kokoro 82M, macOS Say, or disable), choose your STT (Whisper local server or disable), set keyboard shortcuts (defaults or custom), enable wake word ("Hey Q" hands-free activation), and pick your skills (14 built-in plugins plus self-writing skill creator).
-
-### 4. Start CODEC
-
-```bash
 python3 codec.py
 ```
 
-Press your toggle key to activate (default F13), then use your configured voice key (default F18) to speak commands.
-
-### 5. Keep CODEC always running (recommended)
-
-Use PM2 to keep CODEC running in the background and auto-start on reboot:
-
-```bash
-npm install -g pm2
-pm2 start "python3 codec.py" --name codec
-pm2 save
-pm2 startup
-```
-
-Run the command that `pm2 startup` outputs to enable auto-start on reboot. CODEC will survive reboots and run 24/7.
-
-**macOS permissions required:** CODEC needs keyboard access. Grant permissions in System Settings > Privacy & Security for both **Accessibility** and **Input Monitoring** (add Terminal or your Python binary).
-
-### Optional: Voice Services
-
-If you chose Kokoro TTS or Whisper STT in the wizard, start them before running CODEC:
-
-```bash
-# TTS (voice output) — Kokoro 82M, optimized for Apple Silicon
-pip3 install mlx-audio misaki num2words phonemizer-fork spacy
-python3 -m spacy download en_core_web_sm
-python3 -m mlx_audio.server --host 0.0.0.0 --port 8085
-
-# STT (voice input) — Whisper Large v3 Turbo via MLX
-pip3 install mlx-whisper fastapi uvicorn
-python3 whisper_server.py
-```
-
-Both servers expose OpenAI-compatible endpoints, so they work across your local network. Use `--host 0.0.0.0` to allow LAN access from other machines.
+Five minutes from clone to "Hey Q, what time is it."
 
 ---
 
-## Features
+## Features at a Glance
 
-- **Voice Commands** — Hold your voice key to speak, release to send
-- **Wake Word** — Say "Hey Q" hands-free, with intelligent noise filtering that rejects TV, music, and background chatter
-- **Screen Reading** — Double-tap `**` to screenshot and ask about what you see
-- **Document Analysis** — Double-tap `++` to load any file (PDF, text, code, images)
-- **Live Voice Chat** — Double-tap `--` to launch a real-time voice conversation via Pipecat (optional)
-- **Draft & Paste** — Say "draft a reply" and CODEC reads the screen, writes a contextual response, and pastes it into your active app
-- **Task Execution** — Q-Agent runs bash and AppleScript commands step by step with safety checks
-- **Command Chaining** — Multi-step instructions in one go ("set volume to 30 and play my playlist")
-- **Self-Writing Skills** — Say "create a skill that does X" and CODEC writes and installs a Python plugin on the fly
-- **Streaming Responses** — See words as the LLM generates them in real time
-- **Persistent Memory** — Remembers context across sessions
-- **15 Built-in Skills** — Calculator, weather, timer, Spotify, volume, notes, reminders, translate, and more
-- **Custom Skills** — Drop a `.py` file in `~/.codec/skills/` or let CODEC write one for you
-- **Consistent Voice** — Kokoro 82M TTS (82 million params, fast on Apple Silicon) or macOS Say
-- **Multi-Machine Support** — Run voice services on a powerful Mac, control from any Mac on the network
+### Voice and Text Control
+- **Hold-to-talk voice** — hold F18, speak, release. Whisper transcribes, LLM processes, Kokoro speaks the answer.
+- **Text input** — press F16 for a dialog box.
+- **Wake word** — say "Hey Q" hands-free from across the room.
+- **Draft and paste** — reads your screen, writes a reply, pastes it into whatever app you're using. Slack, WhatsApp, email, anything.
+- **Live voice chat** — double-tap minus for real-time voice-to-voice conversation via Pipecat.
 
-## Supported LLM Providers
+### Right-Click Text Assistant
+Select any text in any app, right-click, Services:
+- **CODEC Proofread** — fixes spelling, grammar, punctuation. Replaces the text instantly.
+- **CODEC Elevate** — rewrites to be more polished and professional.
+- **CODEC Explain** — explains the text in simple terms, opens in Terminal.
 
-| Provider | Setup |
-|---|---|
-| **Ollama** | Free, local — `ollama serve` then select in wizard |
-| **LM Studio** | Local GUI — start server then select in wizard |
-| **MLX Server** | Apple Silicon optimized — best performance on M-series chips |
-| **OpenAI** | Enter API key in wizard |
-| **Anthropic** | Enter API key in wizard |
-| **Google Gemini** | Enter API key in wizard (free tier available) |
-| **Any OpenAI-compatible** | Enter URL in wizard — works with vLLM, TGI, LocalAI, etc. |
+Works system-wide. Particularly useful for dyslexia and ADHD.
 
-## Skills
+### 24 Built-in Skills
+Skills fire instantly without calling the LLM.
 
-| Skill | Example |
-|---|---|
-| Calculator | "Calculate 25 times 47" |
-| Weather | "Weather in Tokyo" |
-| Time & Date | "What time is it in London" |
-| System Info | "How much disk space" / "Show battery" |
-| Web Search | "Search for SpaceX latest launch" |
-| Translate | "Say good morning in Japanese" |
-| Notes | "Take a note: call bank tomorrow" |
-| Timer | "Timer for 5 minutes" — speaks when done |
-| Volume | "Volume to 50" / "Mute" |
-| Reminders | "Remind me to review the PR" |
-| Music | "Play Spotify" / "Next song" / "Pause" |
-| Clipboard | "Show clipboard history" |
-| App Switch | "Switch to Chrome" / "Open Terminal" |
-| Create Skill | "Create a skill that checks Bitcoin price" |
+| Skill | What it does |
+|-------|-------------|
+| Calculator | Quick math |
+| Weather | Current weather by city |
+| Time and Date | Current time and date |
+| System Info | CPU, disk, memory stats |
+| Web Search | DuckDuckGo instant answers |
+| Translate | Multi-language translation |
+| Apple Notes | Save and read notes |
+| Timer | Set timers with voice alerts |
+| Volume | Volume control by voice |
+| Apple Reminders | Add to Apple Reminders |
+| Music | Control Spotify and Apple Music |
+| Clipboard | Clipboard history |
+| App Switch | Switch apps by name |
+| Create Skill | Write new skills with natural language |
+| Lucy VPA | Delegate tasks to external AI assistant |
+| Google Calendar | Check your schedule |
+| Google Gmail | Check inbox and search emails |
+| Google Drive | Search and list files |
+| Google Docs | Create and read documents |
+| Google Sheets | Read and write spreadsheets |
+| Google Slides | Create presentations |
+| Google Tasks | Manage task lists |
+| Google Keep | Create and manage notes |
 
-### Create Your Own
+Custom skills are Python files. Write 20 lines, drop in a folder, CODEC loads it.
 
-```python
-"""My Custom Skill"""
-SKILL_NAME = "my_skill"
-SKILL_TRIGGERS = ["trigger phrase", "another trigger"]
-SKILL_DESCRIPTION = "What this skill does"
+### Google Workspace Integration
+Direct access to Calendar, Gmail, Drive, Docs, Sheets, Slides, Tasks, and Keep. Pure Python, no n8n required. One-time OAuth setup.
 
-def run(task, app="", ctx=""):
-    # Your logic here — full Python, shell commands, APIs, AppleScript
-    return "Response spoken back to you"
-```
+### Phone Dashboard (PWA)
+Control your Mac from your phone anywhere on the planet.
+- Text commands, voice input, voice replies
+- Screenshot your Mac display live
+- Upload PDFs and images for AI analysis
+- Full chat history and audit log
+- Dark and light mode
 
-Drop in `~/.codec/skills/` — auto-loads on restart. Or just ask CODEC: *"Create a skill that does X"* and it writes one for you using your LLM.
+Two Python files. FastAPI backend, vanilla HTML frontend. No React, no npm. Point Cloudflare Tunnel at port 8090, add email auth, done.
+
+### Deep Chat — 250K Context Window
+Full AI chat at `/chat` on your dashboard. Drop entire codebases, long documents, research papers. File upload with PDF extraction, drag and drop, microphone input, conversation history sidebar.
+
+### Vibe Code — AI-Powered IDE
+Split-screen coding environment at `/vibe`. Monaco editor (VS Code engine), Q Chat sidebar, live preview panel. Ask Q to build something, code appears in the editor, preview opens automatically. Run Python, JavaScript, or Bash directly. Save as CODEC skill with one click. Project history sidebar.
+
+### Agent Delegation
+CODEC delegates complex tasks to external AI agents via webhooks. The Lucy skill sends commands to n8n workflows. Lucy responds directly back to Q through a synchronous webhook — fully private, no Telegram. This works with any webhook system: n8n, Make, Zapier, custom APIs.
+
+### Multi-Machine Setup
+Run your LLM on a Mac Studio, use a MacBook Air as a thin client over LAN. The Air sends voice to the Studio's Whisper, gets answers from the Studio's LLM, hears audio from the Studio's Kokoro. No model needed on the Air.
+
+---
+
+## Security
+
+- **Dangerous command blocker** — rm -rf, sudo, shutdown and 20+ patterns require y/n confirmation
+- **Full audit log** — every action logged to ~/.codec/audit.log with timestamps
+- **Dry-run mode** — see what would execute without running anything
+- **Wake word noise filter** — rejects TV and music false triggers
+- **8-step execution cap** on agent tasks
+- **Skill isolation** — common tasks skip the LLM
+- **Cloudflare Zero Trust** — email auth on phone dashboard
+- **Code sandbox** — Vibe Code has 30-second timeout and blocks dangerous commands
+
+---
 
 ## Keyboard Shortcuts
 
-All shortcuts are configurable via `setup_codec.py` or `~/.codec/config.json`.
-
-| Default Key | Action |
-|---|---|
-| F13 | Toggle ON/OFF |
-| F18 | Hold to record, release to send |
+| Shortcut | Action |
+|----------|--------|
+| F13 | Toggle CODEC ON/OFF (with sound) |
+| F18 (hold) | Record voice, release to send |
 | F16 | Text input dialog |
-| `**` | Double-tap star — screenshot and ask |
-| `++` | Double-tap plus — load document for analysis |
-| `--` | Double-tap minus — live voice chat (requires Pipecat) |
-| "Hey Q" | Wake word (always-on, hands-free) |
+| ** (double-tap) | Screenshot and ask about screen |
+| ++ (double-tap) | Open file picker for document analysis |
+| -- (double-tap) | Live voice chat via Pipecat |
+| Right-click Services | Text Assistant |
+| Hey Q | Wake word activation |
 
-**MacBook users:** MacBooks only have F1-F12. The setup wizard offers laptop-friendly defaults like `fn+F5`, `fn+F6`, `fn+F7`. You can also set "Use F1, F2, etc. keys as standard function keys" to ON in System Settings > Keyboard to avoid holding fn every time.
-
-## Configuration
-
-Re-run the wizard anytime:
-
-```bash
-python3 setup_codec.py
-```
-
-Or edit directly:
-
-```bash
-cat ~/.codec/config.json
-```
-
-Key config options include LLM provider and model, TTS/STT engine and voice, keyboard shortcuts, wake word phrases and sensitivity, draft keywords, pipecat URL for live chat, and require_confirmation for dangerous commands.
-
-See `config.json.example` for all options.
-
-## Safety and Guardrails
-
-CODEC takes safety seriously. This is a tool with real computer control, and that requires real safeguards.
-
-### Built-in protections (v1.1.1)
-
-- **Dangerous command blocker.** CODEC maintains a blocklist of dangerous patterns (`rm -rf`, `sudo`, `shutdown`, `killall`, `dd`, `diskutil erase`, `curl|bash`, etc.). When the LLM generates a flagged command, CODEC warns you and asks for explicit confirmation before executing. Every flagged command is logged.
-
-- **Full audit log.** Every task, command, wake word event, and blocked action is timestamped and written to `~/.codec/audit.log`. Review exactly what CODEC did and when.
-
-- **Dry-run mode.** Start with `python3 codec.py --dry-run` to see what commands would execute without running them. Perfect for testing or building trust before going live.
-
-- **Interactive confirmation.** Dangerous commands show a `[SAFETY] Execute this command? (y/n)` prompt. You decide — CODEC never runs risky commands silently.
-
-- **No deletion without confirmation.** The Q-Agent will never delete files, folders, or data without asking first. Hardcoded, not optional.
-
-- **8-step execution cap.** No task can run more than 8 steps, preventing runaway command chains.
-
-- **Skill isolation.** Built-in skills handle common tasks without calling the LLM — no risk of misinterpretation for volume, timer, calculator, etc.
-
-- **Wake word noise filtering.** Background noise, TV, and music are filtered using word-level analysis. CODEC won't act on random sounds.
-
-- **Local-first by design.** You choose what runs locally and what touches the cloud. With Ollama or MLX, zero data leaves your machine.
-
-- **You pick the LLM.** The guardrails of whatever model you connect apply on top of CODEC's own safety rules.
-
-### Planned for v2
-
-- Command preview mode — see what CODEC will do before it executes, with confirm/deny UI
-- Customizable allowlist/blocklist for commands via config
-- Signed commits and dependency pinning as the project grows
-- Phone dashboard for remote monitoring
-
-Have suggestions for additional safety measures? Open an issue. We take this seriously.
-
-## Architecture
-
-```
-codec.py           → Main: keyboard listener, wake word, dispatch, safety checks
-codec_watcher.py   → Draft agent: reads screen, writes + pastes replies
-whisper_server.py  → STT server (optional)
-setup_codec.py     → Interactive setup wizard (7 steps)
-~/.codec/skills/   → Plugin folder (15 built-in + custom + self-written)
-~/.codec/config.json → Your config
-~/.codec/audit.log → Safety audit trail
-```
-
-## Live Voice Chat (Optional)
-
-CODEC supports live voice-to-voice chat via [Pipecat](https://github.com/pipecat-ai/pipecat). Double-tap `--` to instantly open a real-time conversation in your browser — auto-connects, no clicking.
-
-Think of it as two modes: **F18** is task mode (record a command, get a result), and **--** is conversation mode (live back-and-forth like talking to a person).
-
-Requires a separate Pipecat server. See the [Pipecat docs](https://docs.pipecat.ai/) for setup. Configure in your config:
-
-```json
-{
-  "pipecat_url": "http://localhost:3000/auto"
-}
-```
-
-## Multi-Machine Setup
-
-Run CODEC on a lightweight MacBook while offloading LLM, TTS, and STT to a powerful Mac on the same network.
-
-**On your server Mac (e.g., Mac Studio):**
-
-```bash
-# LLM — Qwen 3.5 35B via MLX
-python3 -m mlx_lm.server --model mlx-community/Qwen3.5-35B-A3B-4bit --port 8081
-
-# TTS — Kokoro 82M (use --host 0.0.0.0 for LAN access)
-python3 -m mlx_audio.server --host 0.0.0.0 --port 8085
-
-# STT — Whisper Large v3 Turbo
-python3 whisper_server.py
-```
-
-**On your client Mac (e.g., MacBook Air), set config.json:**
-
-```json
-{
-  "llm_base_url": "http://192.168.1.73:8081/v1",
-  "tts_url": "http://192.168.1.73:8085/v1/audio/speech",
-  "stt_url": "http://192.168.1.73:8084/v1/audio/transcriptions"
-}
-```
-
-Your MacBook becomes a thin client — all the heavy lifting happens on the server.
+All shortcuts are configurable in ~/.codec/config.json.
 
 ---
 
-## Phone Dashboard (PWA)
+## Supported LLMs
 
-Control CODEC from your phone — anywhere, anytime. No app store, no third-party services, no data leaking to Telegram or WhatsApp. Your commands travel directly from your phone to your machine through Cloudflare Zero Trust, encrypted end-to-end, authenticated by email.
+| Provider | Setup |
+|----------|-------|
+| Ollama | ollama serve, select in wizard |
+| LM Studio | Start server, point to localhost:1234 |
+| MLX Server | mlx_lm.server, point to localhost:8081 |
+| OpenAI | Paste API key |
+| Anthropic | Paste API key |
+| Google Gemini | Paste API key (free tier works) |
+| Any OpenAI-compatible | Enter base URL and model |
 
-### What you get
+Tested on Mac Studio M1 Ultra with Qwen 3.5 35B locally, and on MacBook Air M2 with Gemini free tier.
 
-- **Text commands** from your phone — Q answers silently (no voice on your computer)
-- **Voice input** from your phone mic — tap the mic button and speak
-- **Voice replies** — hear Q's answers through your phone speaker (toggle on/off)
-- **PDF & document upload** — analyze files directly from your phone
-- **Live voice chat** — one tap to launch real-time conversation via Pipecat
-- **Screenshot your Mac** — see your computer screen from anywhere
-- **Clipboard access** — paste from phone or grab your Mac's clipboard
-- **Chat history** — full conversation log, searchable
-- **Audit log** — every action CODEC took, timestamped
-- **Dark & light mode**
-- **PWA** — add to home screen, works like a native app
+---
 
-### Setup
+## Phone Dashboard Setup
 
-#### 1. Install dependencies
-```bash
-pip3 install fastapi uvicorn
-```
-
-#### 2. Start the dashboard
 ```bash
 python3 codec_dashboard.py
 ```
 
-This starts the dashboard on port 8090. Test it locally: `http://localhost:8090`
+Local: http://localhost:8090
 
-#### 3. Keep it running
-```bash
-pm2 start "python3 codec_dashboard.py" --name codec-dashboard
-pm2 save
-```
-
-#### 4. Expose to the internet (Cloudflare Tunnel)
-
-If you want phone access from outside your network, use Cloudflare Tunnel:
-```bash
-# Install cloudflared
-brew install cloudflared
-
-# Create a tunnel (one-time setup)
-cloudflared tunnel create my-tunnel
-cloudflared tunnel route dns my-tunnel codec.yourdomain.com
-```
-
-Add to your tunnel config (`~/.cloudflared/config.yml`):
-```yaml
-ingress:
-  - hostname: codec.yourdomain.com
-    service: http://localhost:8090
-  # ... your other services
-  - service: http_status:404  # must be last
-```
-
-Start the tunnel:
-```bash
-cloudflared tunnel run my-tunnel
-```
-
-#### 5. Secure with email authentication (recommended)
-
-In Cloudflare Zero Trust dashboard:
-1. Go to Access > Applications > Add Application
-2. Type: Self-hosted, Domain: `codec.yourdomain.com`
-3. Add policy: Allow specific emails only
-
-Only authorized emails can access your dashboard. No passwords to remember — Cloudflare sends a one-time code.
-
-#### 6. Add to your phone home screen
-
-Open `codec.yourdomain.com` in Chrome on your phone, tap the three-dot menu > "Add to Home Screen". It becomes a PWA app with the CODEC icon — one tap to open.
-
-### Why not Telegram / WhatsApp / Discord?
-
-Every message you send through a third-party service is stored on their servers, analyzed by their algorithms, and subject to their terms of service. With CODEC's phone dashboard:
-
-- **Your commands go directly to your machine** — no middleman
-- **Cloudflare encrypts everything** — end-to-end TLS
-- **Email authentication** — only you can access it
-- **No account needed** — no sign-ups, no tracking, no ads
-- **You own the infrastructure** — your tunnel, your domain, your rules
-
-This is what local-first AI looks like on mobile.
-
-
-## Support the Project
-
-CODEC is free and open source. If it saves you time or you want to see it grow, consider supporting development:
-
-☕ **PayPal:** [ava.dsa25@proton.me](https://www.paypal.com/paypalme/avadsa25)
-
-Every contribution helps fund development, testing on new hardware, and keeping CODEC independent and ad-free. Thank you.
-
-⭐ **Star this repo** if you find CODEC useful — it helps others discover the project.
-
-## Professional Setup
-
-**Need AI infrastructure for your business?**
-
-[AVA Digital LLC](https://avadigital.ai) specializes in deploying private, local AI systems for businesses and professionals. We design and configure complete voice-controlled AI workstations from the ground up — hardware selection, local LLM deployment, voice pipelines, custom skill development, multi-machine networks, and ongoing support.
-
-Services include:
-
-- **CODEC deployment** — Full setup, configuration, and customization for your workflow
-- **Local LLM hosting** — Private AI that runs on your hardware, your data stays yours
-- **Custom skill development** — Purpose-built CODEC skills for your industry or workflow
-- **Multi-machine AI networks** — Distribute LLM, TTS, and STT across your office
-- **AI workflow automation** — Voice-driven automation pipelines with n8n, Pipecat, and more
-- **Consulting** — Architecture guidance for local-first AI infrastructure
-
-📧 **ava.dsa25@proton.me** · 🌐 **[avadigital.ai](https://avadigital.ai)** · 🌐 **[opencodec.org](https://opencodec.org)**
+Remote via Cloudflare Tunnel:
+1. brew install cloudflared
+2. cloudflared tunnel create my-codec
+3. cloudflared tunnel route dns my-codec codec.yourdomain.com
+4. Add to config.yml, add email auth in Zero Trust
+5. On phone: open URL in Chrome, Add to Home Screen
 
 ---
 
-## License
+## Google Workspace Setup
 
-MIT License — use it however you want.
+```bash
+pip3 install google-api-python-client google-auth-oauthlib --break-system-packages
+```
 
-## Credits
+1. Google Cloud Console — Create OAuth Client ID (Desktop app)
+2. Download JSON to ~/.codec/google_credentials.json
+3. Enable Calendar, Gmail, Drive, Docs, Sheets, Slides, Tasks APIs
+4. Run auth: python3 reauth_google.py
+5. All Google skills work immediately
 
-Built by [AVA Digital LLC](https://avadigital.ai) · [opencodec.org](https://opencodec.org)
+---
 
-Powered by: [Ollama](https://ollama.com) · [Kokoro TTS](https://huggingface.co/hexgrad/Kokoro-82M) · [Whisper](https://github.com/openai/whisper) · [MLX](https://github.com/ml-explore/mlx) · [Pipecat](https://github.com/pipecat-ai/pipecat)
+## Custom Skills
+
+```python
+"""My Custom Skill"""
+SKILL_NAME = "btc_price"
+SKILL_TRIGGERS = ["bitcoin price", "btc price", "check bitcoin"]
+SKILL_DESCRIPTION = "Check current Bitcoin price"
+
+import requests
+
+def run(task, app="", ctx=""):
+    r = requests.get("https://api.coindesk.com/v1/bpi/currentprice.json", timeout=10)
+    price = r.json()["bpi"]["USD"]["rate"]
+    return f"Bitcoin is currently ${price}"
+```
+
+Drop in ~/.codec/skills/, restart CODEC. Or use Vibe Code to build and save skills visually.
+
+---
+
+## Project Structure
+
+```
+codec.py              — Main agent
+codec_watcher.py      — Draft and paste agent
+codec_textassist.py   — Right-click text assistant
+codec_dashboard.py    — Dashboard server (PWA + Deep Chat + Vibe Code)
+codec_dashboard.html  — Phone dashboard
+codec_chat.html       — Deep Chat interface
+codec_vibe.html       — Vibe Code IDE
+setup_codec.py        — 8-step interactive installer
+whisper_server.py     — Local Whisper STT server
+reauth_google.py      — Google OAuth helper
+skills/               — 24 skill plugins
+```
+
+---
+
+## Requirements
+
+- macOS (Ventura or later)
+- Python 3.10+
+- sox (brew install sox)
+- An LLM (local or cloud)
+- Optional: Whisper for STT, Kokoro for TTS
+
+Linux support planned.
+
+---
+
+## Contributing
+
+MIT licensed. Use it however you want. Found a bug? Open an issue. Built a skill? Submit a PR. Want Linux support? Let's talk.
+
+---
+
+## Support
+
+PayPal: ava.dsa25@proton.me
+
+Professional AI automation services:
+AVA Digital LLC — custom AI agents, n8n workflows, voice automation.
+
+mikarina@avadigital.ai | [avadigital.ai](https://avadigital.ai) | [opencodec.org](https://opencodec.org)
+
+---
+
+MIT License — CODEC v1.3.0
+
+Built by Mickael Farina — AVA Digital LLC
+EITCA/AI Certified | Based in Marbella, Spain
+We speak AI, so you don't have to.
