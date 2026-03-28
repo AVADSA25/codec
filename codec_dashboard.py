@@ -543,12 +543,27 @@ async def deep_research_status(job_id: str):
 
 @app.post("/api/forge")
 async def forge_skill(request: Request):
-    """Convert arbitrary code into a CODEC skill using the LLM"""
+    """Convert arbitrary code (or a URL to code) into a CODEC skill using the LLM"""
     import re as _re
     body = await request.json()
     code = body.get("code", "").strip()
-    if not code or len(code) < 20:
-        return JSONResponse({"error": "No code provided (min 20 chars)"}, status_code=400)
+    if not code or len(code) < 4:
+        return JSONResponse({"error": "No code provided"}, status_code=400)
+
+    # Fix 2 — URL import: if code is a URL, fetch the source first
+    source_url = None
+    if code.startswith(("http://", "https://")):
+        try:
+            import requests as _rq_url
+            resp = _rq_url.get(code, timeout=15, headers={"User-Agent": "CODEC-Forge/1.0"})
+            if resp.status_code != 200:
+                return JSONResponse({"error": f"URL fetch failed: {resp.status_code} {code}"}, status_code=400)
+            source_url = code
+            code = resp.text.strip()
+            if not code:
+                return JSONResponse({"error": "URL returned empty content"}, status_code=400)
+        except Exception as e:
+            return JSONResponse({"error": f"URL fetch error: {e}"}, status_code=400)
 
     cfg = {}
     try:
@@ -563,28 +578,34 @@ async def forge_skill(request: Request):
     headers = {"Content-Type": "application/json"}
     if api_key: headers["Authorization"] = "Bearer " + api_key
 
+    url_note = f"\n(Fetched from: {source_url})" if source_url else ""
+
+    # Fix 3 — Better prompt: explicitly forbid hallucination, anchor on actual code
     prompt = f"""Convert the following code into a CODEC skill Python file.
+
+CRITICAL: Convert THIS EXACT CODE below. Do NOT invent a weather skill or any other unrelated skill.
+Base the skill NAME, DESCRIPTION, TRIGGERS, and implementation ENTIRELY on the actual code provided.{url_note}
 
 OUTPUT ONLY the Python file content — no markdown, no backticks, no explanation.
 
-Follow this EXACT format:
-\"\"\"CODEC Skill: [Descriptive Name]\"\"\"
-SKILL_NAME = "[lowercase_name_with_underscores]"
-SKILL_DESCRIPTION = "[One line: what this skill does]"
-SKILL_TRIGGERS = ["natural phrase 1", "natural phrase 2", "natural phrase 3", "natural phrase 4"]
+EXACT FORMAT REQUIRED:
+\"\"\"CODEC Skill: [Name derived from the actual code]\"\"\"
+SKILL_NAME = "[lowercase_name_matching_what_the_code_does]"
+SKILL_DESCRIPTION = "[One line describing what THIS code actually does]"
+SKILL_TRIGGERS = ["phrase 1", "phrase 2", "phrase 3", "phrase 4"]
 
-import os, requests, json  # only what's needed
+import os, json  # only imports actually needed
 
 def run(task, app="", ctx=""):
-    # Implementation using the converted code
-    return "Response string"  # must return a string
+    # Wrap the actual code logic here
+    return "result string"  # must return a string
 
 RULES:
-- SKILL_NAME: lowercase, underscores only, descriptive
-- SKILL_TRIGGERS: 3-5 natural phrases a user would say to activate this
+- SKILL_NAME: lowercase, underscores only — name it after what the code ACTUALLY does
+- SKILL_TRIGGERS: natural phrases a user would say to run THIS specific skill
 - run() must always return a string
-- Wrap the original logic cleanly; add helpful error handling
-- If the original code fetches data, return a formatted summary string
+- Preserve the core logic of the original code
+- Add error handling around external calls
 
 CODE TO CONVERT:
 {code}"""
@@ -592,7 +613,7 @@ CODE TO CONVERT:
     try:
         import requests as rq_forge
         payload = {"model": model, "messages": [{"role": "user", "content": prompt}],
-                   "max_tokens": 1200, "temperature": 0.2}
+                   "max_tokens": 1500, "temperature": 0.1}
         payload.update(kwargs)
         r = rq_forge.post(base_url + "/chat/completions", json=payload, headers=headers, timeout=90)
         if r.status_code != 200:
@@ -602,6 +623,15 @@ CODE TO CONVERT:
         raw = _re.sub(r'<think>[\s\S]*?</think>', '', raw).strip()
         raw = _re.sub(r'^```[\w]*\n?', '', raw).strip()
         raw = _re.sub(r'\n?```$', '', raw).strip()
+
+        # Fix 1 — Title line: if first line isn't valid Python, wrap it as a docstring
+        lines = raw.split('\n')
+        if lines:
+            first = lines[0].strip()
+            valid_starts = ('"""', "'''", 'import ', 'from ', 'SKILL_', '#', 'def ', 'class ', '@')
+            if first and not any(first.startswith(s) for s in valid_starts):
+                lines[0] = '"""' + first + '"""'
+                raw = '\n'.join(lines)
 
         if "SKILL_NAME" not in raw or "def run" not in raw:
             return JSONResponse({"error": "LLM output is not a valid skill", "raw": raw}, status_code=422)
@@ -626,8 +656,12 @@ CODE TO CONVERT:
         if os.path.isdir(repo_skills):
             with open(os.path.join(repo_skills, f"{skill_name}.py"), "w") as f: f.write(raw)
 
+        msg = f"Skill '{skill_name}' forged!"
+        if source_url:
+            msg += f" (imported from URL)"
+        msg += " Run: pm2 restart ava-autopilot"
         return {"skill_name": skill_name, "path": filepath, "code": raw,
-                "message": f"Skill '{skill_name}' forged! Run: pm2 restart ava-autopilot"}
+                "source_url": source_url, "message": msg}
 
     except Exception as e:
         import traceback; traceback.print_exc()
