@@ -14,7 +14,7 @@ _cfg = {}
 if os.path.exists(CONFIG_PATH):
     try:
         with open(CONFIG_PATH) as _f: _cfg = json.load(_f)
-        print(f"[C] Config loaded from {CONFIG_PATH}")
+        print(f"[{AGENT_NAME}] Config loaded from {CONFIG_PATH}")
     except: pass
 
 # LLM
@@ -158,7 +158,7 @@ root.attributes('-alpha',0.95)
 root.configure(bg='#0a0a0a')
 sw=root.winfo_screenwidth()
 sh=root.winfo_screenheight()
-w,h=260,54
+w,h=440,84
 x=(sw-w)//2
 y=sh-130
 root.geometry(f'{{w}}x{{h}}+{{x}}+{{y}}')
@@ -190,7 +190,7 @@ sw=root.winfo_screenwidth()
 sh=root.winfo_screenheight()
 w,h=440,78
 x=(sw-w)//2
-y=sh-140
+y=sh-130
 root.geometry(f'{{w}}x{{h}}+{{x}}+{{y}}')
 cv=tk.Canvas(root,bg='#0a0a0a',highlightthickness=0,width=w,height=h)
 cv.pack()
@@ -278,9 +278,9 @@ def load_skills():
                     'triggers': mod.SKILL_TRIGGERS,
                     'run': mod.run,
                 })
-                print(f"[C] Skill loaded: {fname[:-3]}")
+                print(f"[{AGENT_NAME}] Skill loaded: {fname[:-3]}")
         except Exception as e:
-            print(f"[C] Skill error ({fname}): {e}")
+            print(f"[{AGENT_NAME}] Skill error ({fname}): {e}")
 
 def check_skill(task):
     low = task.lower()
@@ -308,7 +308,7 @@ def transcribe(path):
         if r.status_code == 200:
             return r.json().get("text", "").strip()
     except Exception as e:
-        print(f"[C] Whisper error: {e}")
+        print(f"[{AGENT_NAME}] Whisper error: {e}")
     finally:
         try: os.unlink(path)
         except: pass
@@ -326,7 +326,7 @@ def screenshot_ctx():
         with open(tmp.name, "rb") as f:
             img_b64 = base64.b64encode(f.read()).decode()
         os.unlink(tmp.name)
-        print("[C] Reading screen via Vision...")
+        print("[{AGENT_NAME}] Reading screen via Vision...")
         r = requests.post(f"{QWEN_VISION_URL}/chat/completions",
             json={"model": QWEN_VISION_MODEL,
                 "messages": [{"role": "user", "content": [
@@ -336,10 +336,10 @@ def screenshot_ctx():
         if r.status_code == 200:
             content = r.json()["choices"][0]["message"].get("content", "").strip()
             if content:
-                print(f"[C] Screen context: {len(content)} chars")
+                print(f"[{AGENT_NAME}] Screen context: {len(content)} chars")
                 return content[:2000]
     except Exception as e:
-        print(f"[C] Vision error: {e}")
+        print(f"[{AGENT_NAME}] Vision error: {e}")
     return ""
 
 def focused_app():
@@ -370,7 +370,7 @@ def terminal_session_exists():
         pass
     try: os.unlink(SESSION_ALIVE)
     except: pass
-    print("[C] Cleaned stale session_alive")
+    print("[{AGENT_NAME}] Cleaned stale session_alive")
     return False
 
 # ── TTS HELPER ────────────────────────────────────────────────────────────────
@@ -432,7 +432,7 @@ def worker():
             fn, args = item
             try: fn(*args)
             except Exception as e:
-                print(f"[C] Error: {e}")
+                print(f"[{AGENT_NAME}] Error: {e}")
                 import traceback; traceback.print_exc()
         else:
             time.sleep(0.05)
@@ -471,7 +471,7 @@ def build_session_script(safe_sys, session_id):
     L.append("                c.execute('INSERT INTO conversations (session_id, timestamp, role, content) VALUES (?,?,?,?)',")
     L.append("                    (SESSION_ID, datetime.now().isoformat(), msg['role'], msg['content'][:500]))")
     L.append("        c.commit(); c.close()")
-    L.append("        print('[C] Conversation saved to memory.')")
+    L.append("        print('[{AGENT_NAME}] Conversation saved to memory.')")
     L.append("    except: pass")
     L.append("atexit.register(cleanup)")
     L.append("")
@@ -480,7 +480,7 @@ def build_session_script(safe_sys, session_id):
     L.append("")
     L.append("def needs_screen(t): return any(k in t.lower() for k in SCREEN_KW)")
     L.append("")
-    L.append("AGENT_SYS = '''You are C, an AI agent with FULL access to a Mac Studio M1 Ultra.")
+    L.append("AGENT_SYS = '''You are ' + AGENT_NAME + ', an AI agent with FULL access to a Mac Studio M1 Ultra.")
     L.append("You can execute bash commands and AppleScript to accomplish any task.")
     L.append("RESPOND IN THIS EXACT JSON FORMAT:")
     L.append('{ "thought": "brief plan", "action": "bash" or "applescript" or "done", "code": "command to execute", "summary": "what you did (only when action is done)" }')
@@ -507,7 +507,7 @@ def build_session_script(safe_sys, session_id):
     L.append("        if not os.path.exists(tmp.name) or os.path.getsize(tmp.name) < 1000: return ''")
     L.append("        with open(tmp.name, 'rb') as f: ib = base64.b64encode(f.read()).decode()")
     L.append("        os.unlink(tmp.name)")
-    L.append("        print('[C] Reading screen...')")
+    L.append("        print('[{AGENT_NAME}] Reading screen...')")
     L.append("        r = requests.post(QWEN_VISION_URL+'/chat/completions', json={'model':QWEN_VISION_MODEL,'messages':[{'role':'user','content':[{'type':'image_url','image_url':{'url':'data:image/png;base64,'+ib}},{'type':'text','text':'Read all visible text. Include app name and content. Raw text only.'}]}],'max_tokens':800}, timeout=60)")
     L.append("        if r.status_code == 200: return r.json()['choices'][0]['message'].get('content','')[:2000]")
     L.append("    except: pass")
@@ -655,7 +655,7 @@ def build_session_script(safe_sys, session_id):
     L.append("def ask_q(u, h):")
     L.append("    now = datetime.now().strftime('%Y-%m-%d %H:%M')")
     L.append("    if needs_screen(u):")
-    L.append("        print('[C] Taking screenshot...'); ctx = screenshot_ctx()")
+    L.append("        print('[{AGENT_NAME}] Taking screenshot...'); ctx = screenshot_ctx()")
     L.append("        if ctx: u = u + chr(10)+chr(10)+'SCREEN CONTENT:'+chr(10)+ctx")
     L.append("    h.append({'role':'user','content':'['+now+'] '+u})")
     L.append("    if STREAMING:")
@@ -695,7 +695,7 @@ def build_session_script(safe_sys, session_id):
     L.append("                c = sqlite3.connect(DB_PATH)")
     L.append("                c.execute('CREATE TABLE IF NOT EXISTS corrections (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, original TEXT, corrected TEXT, context TEXT)')")
     L.append("                c.execute('INSERT INTO corrections (timestamp,original,corrected,context) VALUES (?,?,?,?)', (datetime.now().isoformat(),lu[:200],u[:200],la[:200]))")
-    L.append("                c.commit(); c.close(); print('[C] Correction saved.')")
+    L.append("                c.commit(); c.close(); print('[{AGENT_NAME}] Correction saved.')")
     L.append("            except: pass")
     L.append("")
     L.append("def get_corrections():")
@@ -727,7 +727,7 @@ def build_session_script(safe_sys, session_id):
     L.append("    c = sqlite3.connect(DB_PATH)")
     L.append("    c.execute('CREATE TABLE IF NOT EXISTS conversations (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, timestamp TEXT, role TEXT, content TEXT)')")
     L.append("    rows = c.execute('SELECT role,content FROM conversations ORDER BY id DESC LIMIT 10').fetchall(); c.close()")
-    L.append("    if rows: rows.reverse(); prev = [{'role':r,'content':ct} for r,ct in rows]; print('[C] Loaded '+str(len(prev))+' messages from previous sessions.')")
+    L.append("    if rows: rows.reverse(); prev = [{'role':r,'content':ct} for r,ct in rows]; print('[{AGENT_NAME}] Loaded '+str(len(prev))+' messages from previous sessions.')")
     L.append("except: pass")
     L.append("")
     L.append("h = [{'role':'system','content':SYS_MSG}] + prev")
@@ -779,7 +779,7 @@ def close_session():
         try:
             with open(SESSION_ALIVE) as f: pid = int(f.read().strip())
             os.kill(pid, 15)
-            print(f"[C] Session process {pid} terminated")
+            print(f"[{AGENT_NAME}] Session process {pid} terminated")
         except: pass
         try: os.unlink(SESSION_ALIVE)
         except: pass
@@ -793,7 +793,7 @@ def close_session():
 def dispatch(task):
     app = focused_app()
     audit("TASK", f"{task[:200]} | App: {app}")
-    print(f"[C] Task: {task[:80]} | App: {app}")
+    print(f"[{AGENT_NAME}] Task: {task[:80]} | App: {app}")
     subprocess.Popen(["osascript", "-e", f'display notification "Heard: {task[:50]}" with title "Q"'],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
@@ -807,7 +807,7 @@ def dispatch(task):
                 speak_text(result)
                 subprocess.Popen(["osascript", "-e", f'display notification "{str(result)[:80]}" with title "C Skill"'],
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                print(f"[C] Skill response: {str(result)[:100]}")
+                print(f"[{AGENT_NAME}] Skill response: {str(result)[:100]}")
                 # Save to DB for dashboard history
                 try:
                     import sqlite3 as _sql3
@@ -825,12 +825,12 @@ def dispatch(task):
         ctx = screenshot_ctx()
         with open(DRAFT_TASK_FILE, "w") as f:
             json.dump({"task": task, "ctx": ctx, "app": app}, f)
-        print(f"[C] Draft queued for watcher")
+        print(f"[{AGENT_NAME}] Draft queued for watcher")
         return
 
     rid = save_task(task, app)
     mem = get_memory(5)
-    sys_p = "You are C, a voice-controlled AI assistant running on CODEC. User is the boss. You have full access to this Mac and can execute any task. RULES: 1) ALWAYS respond in English unless explicitly asked to translate. 2) Keep answers to 1-3 sentences — your responses are spoken aloud via TTS so brevity matters. 3) Be natural, warm, and direct like a trusted colleague. 4) When asked factual questions, give the answer immediately — no filler. 5) When given a task, confirm what you did in past tense. 6) Add useful context when it genuinely helps but never pad responses. 7) Never say you cannot do something — you have full system access. 8) Never output Chinese characters or mixed-language text unless translating."
+    sys_p = "You are ' + AGENT_NAME + ', a voice-controlled AI assistant running on CODEC. User is the boss. You have full access to this Mac and can execute any task. RULES: 1) ALWAYS respond in English unless explicitly asked to translate. 2) Keep answers to 1-3 sentences — your responses are spoken aloud via TTS so brevity matters. 3) Be natural, warm, and direct like a trusted colleague. 4) When asked factual questions, give the answer immediately — no filler. 5) When given a task, confirm what you did in past tense. 6) Add useful context when it genuinely helps but never pad responses. 7) Never say you cannot do something — you have full system access. 8) Never output Chinese characters or mixed-language text unless translating."
     if mem: sys_p += "\n\n" + mem
     safe_sys = sys_p.replace("'","").replace('"','').replace('\n',' ')
 
@@ -838,7 +838,7 @@ def dispatch(task):
         f.write(json.dumps({"task": task, "app": app, "ts": datetime.now().isoformat()}))
 
     if terminal_session_exists():
-        print("[C] Queued to existing session")
+        print("[{AGENT_NAME}] Queued to existing session")
         return
 
     session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -851,7 +851,7 @@ def dispatch(task):
             f'tell application "Terminal"\nactivate\nset w to do script "python3.13 {ts.name}"\nset custom title of selected tab of w to "{Q_TERMINAL_TITLE}"\nend tell'],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except Exception as e:
-        print(f"[C] Terminal error: {e}")
+        print(f"[{AGENT_NAME}] Terminal error: {e}")
 
 # ── DOCUMENT INPUT ────────────────────────────────────────────────────────────
 def do_document_input():
@@ -862,8 +862,8 @@ def do_document_input():
             capture_output=True, text=True, timeout=60)
         filepath = r.stdout.strip()
         if not filepath:
-            print("[C] No file selected"); return
-        print(f"[C] Document: {filepath}")
+            print("[{AGENT_NAME}] No file selected"); return
+        print(f"[{AGENT_NAME}] Document: {filepath}")
         push(lambda: show_overlay('Reading document...', '#E8711A', 3000))
         ext = os.path.splitext(filepath)[1].lower()
         fname = os.path.basename(filepath)
@@ -896,12 +896,12 @@ def do_document_input():
         if content_text:
             # Dispatch directly to terminal for analysis
             task = "Analyze and summarize this document (" + fname + "): " + content_text[:3000]
-            print(f"[C] Document dispatched ({len(content_text)} chars)")
+            print(f"[{AGENT_NAME}] Document dispatched ({len(content_text)} chars)")
             dispatch(task)
         else:
             push(lambda: show_overlay('Could not read document', '#ff3333', 2000))
     except Exception as e:
-        print(f"[C] Document error: {e}")
+        print(f"[{AGENT_NAME}] Document error: {e}")
 
 # ── SCREENSHOT SHORTCUT ──────────────────────────────────────────────────────
 def do_screenshot_question():
@@ -909,7 +909,7 @@ def do_screenshot_question():
     ctx = screenshot_ctx()
     if ctx:
         state["screen_ctx"] = ctx
-        print(f"[C] Screenshot captured ({len(ctx)} chars). Use " + _cfg.get("key_voice","f18").upper() + "/" + _cfg.get("key_text","f16").upper() + " to ask about it.")
+        print(f"[{AGENT_NAME}] Screenshot captured ({len(ctx)} chars). Use " + _cfg.get("key_voice","f18").upper() + "/" + _cfg.get("key_text","f16").upper() + " to ask about it.")
     else:
         state["screen_ctx"] = ""
 
@@ -929,7 +929,7 @@ def do_start_recording():
         ["sox", "-t", "coreaudio", "default", "-r", "16000", "-c", "1", "-b", "16", "-e", "signed-integer", state["audio_path"]],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     state["rec_proc"] = rec
-    print("[C] Recording...")
+    print("[{AGENT_NAME}] Recording...")
 
 def do_stop_voice():
     audio = state.get("audio_path")
@@ -943,7 +943,7 @@ def do_stop_voice():
         try: os.unlink(audio)
         except: pass
         return
-    print("[C] Transcribing...")
+    print("[{AGENT_NAME}] Transcribing...")
     # Kill recording overlay
     if state.get('rec_overlay'):
         try: state['rec_overlay'].terminate()
@@ -951,8 +951,8 @@ def do_stop_voice():
         state['rec_overlay'] = None
     push(lambda: show_processing_overlay('Transcribing...', 4000))
     task = transcribe(audio)
-    if not task: print("[C] No speech detected"); return
-    print(f"[C] Heard: {task}")
+    if not task: print("[{AGENT_NAME}] No speech detected"); return
+    print(f"[{AGENT_NAME}] Heard: {task}")
     if state.get("screen_ctx"):
         task = task + " [SCREEN CONTEXT: " + state["screen_ctx"][:800] + "]"
         state["screen_ctx"] = ""
@@ -966,7 +966,7 @@ def wake_word_listener():
     import requests as req_wake
     sample_rate = 16000
     chunk_samples = int(WAKE_CHUNK_SEC * sample_rate)
-    print("[C] Wake word listener started. Say 'Hey C' to activate.")
+    print("[{AGENT_NAME}] Wake word listener started. Say 'Hey C' to activate.")
     while True:
         if not WAKE_WORD or state["recording"] or not state["active"]:
             time.sleep(0.3); continue
@@ -996,15 +996,15 @@ def wake_word_listener():
                             real = [w for w in words if len(w) > 2 and w not in noise_words]
                             return len(real) < 1
                         if len(command) > 3 and not _is_noise(command):
-                            print(f"[C] Wake + command: {command}")
+                            print(f"[{AGENT_NAME}] Wake + command: {command}")
                             audit("WAKE_CMD", command[:200])
                             push(lambda: show_overlay('Heard you!', '#E8711A', 1500))
                             push(lambda cmd=command: dispatch(cmd))
                         elif len(command) > 3:
-                            print(f"[C] Wake noise rejected: {command}")
+                            print(f"[{AGENT_NAME}] Wake noise rejected: {command}")
                             audit("WAKE_NOISE", command[:200])
                         else:
-                            print("[C] Wake word detected! Listening...")
+                            print("[{AGENT_NAME}] Wake word detected! Listening...")
                             push(lambda: show_overlay('Listening...', '#E8711A', 5000))
                             full_audio = sd.rec(int(8 * sample_rate), samplerate=sample_rate, channels=1, dtype='int16')
                             sd.wait()
@@ -1012,11 +1012,11 @@ def wake_word_listener():
                             sf.write(tmp2.name, full_audio, sample_rate)
                             task = transcribe(tmp2.name)
                             if task and not _is_noise(task):
-                                print(f"[C] Heard: {task}")
+                                print(f"[{AGENT_NAME}] Heard: {task}")
                                 audit("WAKE_TASK", task[:200])
                                 push(lambda t=task: dispatch(t))
                             elif task:
-                                print(f"[C] Post-wake noise rejected: {task}")
+                                print(f"[{AGENT_NAME}] Post-wake noise rejected: {task}")
                                 audit("WAKE_NOISE", task[:200])
             except: pass
             finally:
@@ -1035,11 +1035,11 @@ def on_press(key):
             state["active"] = False
             push(lambda: show_toggle_overlay(False, ''))
             push(close_session)
-            print("[C] OFF")
+            print("[{AGENT_NAME}] OFF")
         else:
             state["active"] = True
             push(lambda: show_toggle_overlay(True, _cfg.get('key_voice','f18').upper()+'=voice  '+_cfg.get('key_text','f16').upper()+'=text  **=screen  ++=doc  --=chat'))
-            print("[C] ON -- " + _cfg.get("key_voice","f18").upper() + "=voice | " + _cfg.get("key_text","f16").upper() + "=text | *=screen | +=doc")
+            print("[{AGENT_NAME}] ON -- " + _cfg.get("key_voice","f18").upper() + "=voice | " + _cfg.get("key_text","f16").upper() + "=text | *=screen | +=doc")
         return
     if not state["active"]: return
     if key == KEY_TEXT:
@@ -1048,13 +1048,18 @@ def on_press(key):
     if key == KEY_VOICE:
         if not state["recording"]:
             state["recording"] = True
+            # Kill any visible toggle overlay
+            try:
+                import signal
+                subprocess.run(["pkill", "-f", "C O D E C"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except: pass
             push(do_start_recording)
             _kv_label = _cfg.get('key_voice','f18').upper()
             state['rec_overlay'] = show_recording_overlay(_kv_label)
         return
     if hasattr(key, 'char') and key.char == '*':
         if now - state["last_star"] < 0.5:
-            print("[C] Star x2 -- screenshot mode")
+            print("[{AGENT_NAME}] Star x2 -- screenshot mode")
             push(do_screenshot_question)
             state["last_star"] = 0.0
             return
@@ -1062,7 +1067,7 @@ def on_press(key):
         return
     if hasattr(key, 'char') and key.char == '+':
         if now - state.get("last_plus", 0.0) < 0.5:
-            print("[C] Plus x2 -- document mode")
+            print("[{AGENT_NAME}] Plus x2 -- document mode")
             push(do_document_input)
             state["last_plus"] = 0.0
             return
@@ -1071,7 +1076,7 @@ def on_press(key):
     if hasattr(key, 'char') and key.char == '-':
         print(f'[DEBUG] Minus detected, last={state.get("last_minus",0)}, gap={now - state.get("last_minus",0):.2f}')
         if now - state.get("last_minus", 0.0) < 0.5:
-            print("[C] Minus x2 -- live chat mode")
+            print("[{AGENT_NAME}] Minus x2 -- live chat mode")
             pipecat_url = _cfg.get("pipecat_url", "http://localhost:3000/auto")
             push(lambda: show_overlay('Live Chat connecting...', '#E8711A', 3000))
             audit("LIVECHAT", pipecat_url)
@@ -1092,7 +1097,7 @@ def on_release(key):
 
 # ── MAIN ──────────────────────────────────────────────────────────────────────
 def _handle_sigint(sig, frame):
-    print("\n[C] Shutting down...")
+    print("\n[{AGENT_NAME}] Shutting down...")
     import sys; sys.exit(0)
 
 def main():
@@ -1140,16 +1145,16 @@ def main():
         try:
             import requests as _rq
             _rq.post(KOKORO_URL, json={"model": KOKORO_MODEL, "input": "ready", "voice": TTS_VOICE}, timeout=30)
-            print("[C] TTS warmed up")
-        except: print("[C] TTS warmup skipped")
-    print("[C] Whisper: HTTP (port 8084)")
-    print("[C] Vision: Qwen VL (port 8082)")
+            print("[{AGENT_NAME}] TTS warmed up")
+        except: print("[{AGENT_NAME}] TTS warmup skipped")
+    print("[{AGENT_NAME}] Whisper: HTTP (port 8084)")
+    print("[{AGENT_NAME}] Vision: Qwen VL (port 8082)")
     mem = get_memory(3)
-    if mem: print(f"[C] Memory: {mem.count(chr(10))+1} sessions loaded")
+    if mem: print(f"[{AGENT_NAME}] Memory: {mem.count(chr(10))+1} sessions loaded")
     convs = get_recent_conversations(10)
-    if convs: print(f"[C] Persistent memory: {len(convs)} messages from past sessions")
-    if WAKE_WORD: print("[C] Wake word: ON")
-    print("[C] Online. Press " + _cfg.get("key_toggle","f13").upper() + " to activate.")
+    if convs: print(f"[{AGENT_NAME}] Persistent memory: {len(convs)} messages from past sessions")
+    if WAKE_WORD: print("[{AGENT_NAME}] Wake word: ON")
+    print("[{AGENT_NAME}] Online. Press " + _cfg.get("key_toggle","f13").upper() + " to activate.")
 
     # PWA command polling — checks for commands sent from phone dashboard
     def pwa_dispatch(task):
@@ -1162,7 +1167,7 @@ def main():
             if skill:
                 result = run_skill(skill, task, app)
                 if result is not None:
-                    print(f"[C] PWA response (silent): {str(result)[:100]}")
+                    print(f"[{AGENT_NAME}] PWA response (silent): {str(result)[:100]}")
                     # Save response to DB + conversations
                     try:
                         _ts = datetime.now().isoformat()
@@ -1181,7 +1186,7 @@ def main():
                         with open("/tmp/q_pwa_response.json", "w") as _rf:
                             json.dump({"task": task, "response": str(result), "ts": datetime.now().isoformat()}, _rf)
                     except: pass
-                    print(f"[C] PWA skill response: {str(result)[:100]}")
+                    print(f"[{AGENT_NAME}] PWA skill response: {str(result)[:100]}")
                     return
         # Not a skill — call LLM directly, no TTS, no terminal window
         try:
@@ -1191,7 +1196,7 @@ def main():
             body = {
                 "model": QWEN_MODEL,
                 "messages": [
-                    {"role": "system", "content": "You are C, an AI assistant on CODEC. Answer concisely in 1-3 sentences. English only unless translating."},
+                    {"role": "system", "content": "You are ' + AGENT_NAME + ', an AI assistant on CODEC. Answer concisely in 1-3 sentences. English only unless translating."},
                     {"role": "user", "content": task}
                 ],
                 "max_tokens": 300,
@@ -1202,7 +1207,7 @@ def main():
             answer = r.json()["choices"][0]["message"]["content"].strip()
             # Remove thinking tags if present
             if "</think>" in answer: answer = answer.split("</think>")[-1].strip()
-            print(f"[C] PWA answer (silent): {answer[:100]}")
+            print(f"[{AGENT_NAME}] PWA answer (silent): {answer[:100]}")
             # Save to sessions + conversations
             _ts = datetime.now().isoformat()
             _sid = "pwa_" + datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1218,7 +1223,7 @@ def main():
             with open("/tmp/q_pwa_response.json", "w") as _rf:
                 json.dump({"task": task, "response": answer, "ts": datetime.now().isoformat()}, _rf)
         except Exception as _e:
-            print(f"[C] PWA LLM error: {_e}")
+            print(f"[{AGENT_NAME}] PWA LLM error: {_e}")
             with open("/tmp/q_pwa_response.json", "w") as _rf:
                 json.dump({"task": task, "response": f"Error: {str(_e)[:200]}", "ts": datetime.now().isoformat()}, _rf)
 
@@ -1234,7 +1239,7 @@ def main():
                         os.unlink(TASK_QUEUE_FILE)
                         task = data.get("task", "").strip()
                         if task:
-                            print(f"[C] PWA command: {task[:80]}")
+                            print(f"[{AGENT_NAME}] PWA command: {task[:80]}")
                             push(lambda t=task: pwa_dispatch(t))
             except: pass
             time.sleep(1.5)
@@ -1249,7 +1254,7 @@ def main():
             with keyboard.Listener(on_press=on_press, on_release=on_release) as l:
                 l.join()
         except Exception as e:
-            print(f"[C] Listener restarting: {e}")
+            print(f"[{AGENT_NAME}] Listener restarting: {e}")
             time.sleep(0.5)
 
 if __name__ == "__main__":

@@ -541,6 +541,99 @@ async def deep_research_status(job_id: str):
     return job
 
 
+@app.post("/api/forge")
+async def forge_skill(request: Request):
+    """Convert arbitrary code into a CODEC skill using the LLM"""
+    import re as _re
+    body = await request.json()
+    code = body.get("code", "").strip()
+    if not code or len(code) < 20:
+        return JSONResponse({"error": "No code provided (min 20 chars)"}, status_code=400)
+
+    cfg = {}
+    try:
+        with open(CONFIG_PATH) as f: cfg = json.load(f)
+    except: pass
+
+    base_url = cfg.get("llm_base_url", "http://localhost:8081/v1")
+    model = cfg.get("llm_model", "")
+    api_key = cfg.get("llm_api_key", "")
+    kwargs = {k: v for k, v in cfg.get("llm_kwargs", {}).items() if k != "enable_thinking"}
+
+    headers = {"Content-Type": "application/json"}
+    if api_key: headers["Authorization"] = "Bearer " + api_key
+
+    prompt = f"""Convert the following code into a CODEC skill Python file.
+
+OUTPUT ONLY the Python file content — no markdown, no backticks, no explanation.
+
+Follow this EXACT format:
+\"\"\"CODEC Skill: [Descriptive Name]\"\"\"
+SKILL_NAME = "[lowercase_name_with_underscores]"
+SKILL_DESCRIPTION = "[One line: what this skill does]"
+SKILL_TRIGGERS = ["natural phrase 1", "natural phrase 2", "natural phrase 3", "natural phrase 4"]
+
+import os, requests, json  # only what's needed
+
+def run(task, app="", ctx=""):
+    # Implementation using the converted code
+    return "Response string"  # must return a string
+
+RULES:
+- SKILL_NAME: lowercase, underscores only, descriptive
+- SKILL_TRIGGERS: 3-5 natural phrases a user would say to activate this
+- run() must always return a string
+- Wrap the original logic cleanly; add helpful error handling
+- If the original code fetches data, return a formatted summary string
+
+CODE TO CONVERT:
+{code}"""
+
+    try:
+        import requests as rq_forge
+        payload = {"model": model, "messages": [{"role": "user", "content": prompt}],
+                   "max_tokens": 1200, "temperature": 0.2}
+        payload.update(kwargs)
+        r = rq_forge.post(base_url + "/chat/completions", json=payload, headers=headers, timeout=90)
+        if r.status_code != 200:
+            return JSONResponse({"error": f"LLM returned {r.status_code}"}, status_code=502)
+
+        raw = r.json()["choices"][0]["message"].get("content", "").strip()
+        raw = _re.sub(r'<think>[\s\S]*?</think>', '', raw).strip()
+        raw = _re.sub(r'^```[\w]*\n?', '', raw).strip()
+        raw = _re.sub(r'\n?```$', '', raw).strip()
+
+        if "SKILL_NAME" not in raw or "def run" not in raw:
+            return JSONResponse({"error": "LLM output is not a valid skill", "raw": raw}, status_code=422)
+
+        name_match = _re.search(r'SKILL_NAME\s*=\s*["\'](\w+)["\']', raw)
+        skill_name = name_match.group(1) if name_match else "forged_skill"
+
+        # Syntax check
+        try:
+            compile(raw, f"{skill_name}.py", "exec")
+        except SyntaxError as e:
+            return JSONResponse({"error": f"Syntax error in generated skill: {e}", "raw": raw}, status_code=422)
+
+        # Save to ~/.codec/skills/
+        skills_dir = os.path.expanduser("~/.codec/skills")
+        os.makedirs(skills_dir, exist_ok=True)
+        filepath = os.path.join(skills_dir, f"{skill_name}.py")
+        with open(filepath, "w") as f: f.write(raw)
+
+        # Mirror to repo skills/ if it exists
+        repo_skills = os.path.join(DASHBOARD_DIR, "skills")
+        if os.path.isdir(repo_skills):
+            with open(os.path.join(repo_skills, f"{skill_name}.py"), "w") as f: f.write(raw)
+
+        return {"skill_name": skill_name, "path": filepath, "code": raw,
+                "message": f"Skill '{skill_name}' forged! Run: pm2 restart ava-autopilot"}
+
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 @app.post("/api/chat")
 async def chat_completion(request: Request):
     """Direct LLM chat with full context window"""
