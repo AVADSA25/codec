@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>CODEC — Voice Call</title>
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+
+        :root {
+            --ac: #E8711A;
+            --bg: #0a0a0f;
+            --bg2: #111118;
+            --tx: #e0e0e0;
+            --tx2: #888;
+            --bd: #222230;
+            --green: #00e676;
+            --blue: #40c4ff;
+        }
+
+        body {
+            font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg);
+            color: var(--tx);
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Ambient background glow — reacts to state */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background: radial-gradient(ellipse 60% 60% at 50% 50%, rgba(232,113,26,0.04) 0%, transparent 70%);
+            transition: all 1s ease;
+            pointer-events: none;
+        }
+        body.state-listening::before { background: radial-gradient(ellipse 60% 60% at 50% 50%, rgba(0,230,118,0.05) 0%, transparent 70%); }
+        body.state-speaking::before  { background: radial-gradient(ellipse 70% 70% at 50% 50%, rgba(232,113,26,0.08) 0%, transparent 70%); }
+        body.state-processing::before { background: radial-gradient(ellipse 60% 60% at 50% 50%, rgba(64,196,255,0.06) 0%, transparent 70%); }
+
+        /* Back nav */
+        .back {
+            position: absolute; top: 18px; left: 18px;
+            color: var(--tx2); text-decoration: none;
+            font-size: 13px; letter-spacing: 0.02em;
+            display: flex; align-items: center; gap: 6px;
+            transition: color 0.2s;
+        }
+        .back:hover { color: var(--ac); }
+
+        /* Brand */
+        .brand {
+            position: absolute; top: 18px;
+            font-size: 13px; font-weight: 700;
+            color: var(--ac); letter-spacing: 0.12em;
+            font-family: 'SF Mono', monospace;
+        }
+
+        /* Main layout */
+        .call-container {
+            display: flex; flex-direction: column;
+            align-items: center; gap: 28px;
+            max-width: 420px; width: 100%; padding: 24px;
+        }
+
+        /* ── Avatar ring ── */
+        .avatar-wrap {
+            position: relative;
+            width: 172px; height: 172px;
+        }
+
+        .ring-outer {
+            position: absolute; inset: 0;
+            border-radius: 50%;
+            border: 1.5px solid rgba(232,113,26,0.25);
+            animation: spin-slow 8s linear infinite;
+        }
+        .ring-outer::after {
+            content: '';
+            position: absolute;
+            top: -2px; left: 50%;
+            width: 6px; height: 6px;
+            margin-left: -3px;
+            border-radius: 50%;
+            background: var(--ac);
+            box-shadow: 0 0 8px 2px var(--ac);
+        }
+        @keyframes spin-slow { 100% { transform: rotate(360deg); } }
+
+        .ring-inner {
+            position: absolute; inset: 12px;
+            border-radius: 50%;
+            border: 1px solid var(--bd);
+            transition: border-color 0.4s, box-shadow 0.4s;
+        }
+        .state-listening .ring-inner {
+            border-color: rgba(0,230,118,0.5);
+            box-shadow: 0 0 20px rgba(0,230,118,0.15);
+            animation: pulse-green 1.5s ease-in-out infinite;
+        }
+        .state-speaking .ring-inner {
+            border-color: rgba(232,113,26,0.7);
+            box-shadow: 0 0 24px rgba(232,113,26,0.25);
+            animation: pulse-orange 0.6s ease-in-out infinite;
+        }
+        .state-processing .ring-inner {
+            border-color: rgba(64,196,255,0.6);
+            box-shadow: 0 0 20px rgba(64,196,255,0.15);
+        }
+        @keyframes pulse-green {
+            0%,100% { transform: scale(1); opacity:0.7; }
+            50%      { transform: scale(1.04); opacity:1; }
+        }
+        @keyframes pulse-orange {
+            0%,100% { transform: scale(1); opacity:0.8; }
+            50%      { transform: scale(1.06); opacity:1; }
+        }
+
+        .avatar-core {
+            position: absolute; inset: 24px;
+            border-radius: 50%;
+            background: var(--bg2);
+            border: 1px solid var(--bd);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 56px;
+            user-select: none;
+        }
+
+        /* Waveform bars (shown while Q is speaking) */
+        .waveform {
+            position: absolute; bottom: 16px;
+            left: 50%; transform: translateX(-50%);
+            display: flex; gap: 3px; align-items: flex-end;
+            height: 20px; opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .state-speaking .waveform { opacity: 1; }
+        .waveform .bar {
+            width: 3px; background: var(--ac); border-radius: 2px;
+            animation: wave 0.8s ease-in-out infinite;
+        }
+        .waveform .bar:nth-child(1) { animation-delay: 0s;    height: 8px;  }
+        .waveform .bar:nth-child(2) { animation-delay: 0.1s;  height: 14px; }
+        .waveform .bar:nth-child(3) { animation-delay: 0.2s;  height: 20px; }
+        .waveform .bar:nth-child(4) { animation-delay: 0.15s; height: 14px; }
+        .waveform .bar:nth-child(5) { animation-delay: 0.05s; height: 8px;  }
+        @keyframes wave {
+            0%,100% { transform: scaleY(1); }
+            50%      { transform: scaleY(1.8); }
+        }
+
+        /* Timer */
+        .timer {
+            font-size: 20px; font-weight: 300;
+            color: var(--tx2); letter-spacing: 0.08em;
+            font-variant-numeric: tabular-nums;
+            min-height: 28px;
+            font-family: 'SF Mono', 'Menlo', monospace;
+        }
+
+        /* Status label */
+        .status {
+            font-size: 13px; color: var(--tx2);
+            text-align: center; letter-spacing: 0.04em;
+            min-height: 18px; transition: color 0.3s;
+        }
+        .state-listening .status  { color: var(--green); }
+        .state-speaking  .status  { color: var(--ac); }
+        .state-processing .status { color: var(--blue); }
+
+        /* Call button */
+        .call-btn {
+            width: 68px; height: 68px; border-radius: 50%;
+            border: none; cursor: pointer; font-size: 26px;
+            display: flex; align-items: center; justify-content: center;
+            transition: transform 0.15s, box-shadow 0.2s;
+            position: relative; z-index: 1;
+        }
+        .call-btn::after {
+            content: ''; position: absolute; inset: -3px;
+            border-radius: 50%; border: 1px solid transparent;
+            transition: border-color 0.2s;
+        }
+        .call-btn.start {
+            background: linear-gradient(135deg, #00aa55, #00cc66);
+            box-shadow: 0 4px 20px rgba(0,170,85,0.35);
+        }
+        .call-btn.start:hover  { transform: scale(1.07); box-shadow: 0 6px 28px rgba(0,170,85,0.5); }
+        .call-btn.end {
+            background: linear-gradient(135deg, #cc2222, #ff3b3b);
+            box-shadow: 0 4px 20px rgba(255,59,59,0.35);
+        }
+        .call-btn.end:hover    { transform: scale(1.07); box-shadow: 0 6px 28px rgba(255,59,59,0.5); }
+        .call-btn:active       { transform: scale(0.95); }
+
+        /* Transcript */
+        .transcript-wrap {
+            width: 100%; background: var(--bg2);
+            border: 1px solid var(--bd); border-radius: 14px;
+            overflow: hidden; display: flex; flex-direction: column;
+        }
+        .transcript-header {
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--bd);
+            font-size: 10px; font-weight: 600;
+            letter-spacing: 0.1em; color: var(--tx2);
+            font-family: 'SF Mono', monospace;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .tx-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--bd); }
+        .state-listening  .tx-dot { background: var(--green); box-shadow: 0 0 6px var(--green); }
+        .state-speaking   .tx-dot { background: var(--ac);    box-shadow: 0 0 6px var(--ac); }
+        .state-processing .tx-dot { background: var(--blue);  box-shadow: 0 0 6px var(--blue); }
+
+        .transcript {
+            max-height: 220px; overflow-y: auto;
+            padding: 14px; font-size: 13px; line-height: 1.65;
+            scrollbar-width: thin; scrollbar-color: var(--bd) transparent;
+        }
+        .transcript::-webkit-scrollbar       { width: 4px; }
+        .transcript::-webkit-scrollbar-track { background: transparent; }
+        .transcript::-webkit-scrollbar-thumb { background: var(--bd); border-radius: 2px; }
+
+        .tx-line { margin-bottom: 8px; animation: fadeIn 0.2s ease; }
+        .tx-line:last-child { margin-bottom: 0; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; } }
+
+        .tx-line.user      { color: var(--ac); }
+        .tx-line.assistant { color: var(--green); }
+        .tx-line.system    { color: var(--tx2); font-style: italic; font-size: 12px; }
+        .tx-label { font-weight: 700; margin-right: 6px; font-size: 11px; letter-spacing: 0.05em; }
+
+        /* Streaming cursor */
+        .cursor { display: inline-block; width: 2px; height: 12px;
+                  background: var(--green); margin-left: 2px;
+                  animation: blink 0.7s step-end infinite; vertical-align: middle; }
+        @keyframes blink { 50% { opacity: 0; } }
+    </style>
+</head>
+<body id="body">
+    <a href="/" class="back">← Dashboard</a>
+    <span class="brand">⚡ CODEC</span>
+
+    <div class="call-container">
+
+        <!-- Avatar -->
+        <div class="avatar-wrap" id="avatarWrap">
+            <div class="ring-outer"></div>
+            <div class="ring-inner"></div>
+            <div class="avatar-core">⚡</div>
+            <div class="waveform">
+                <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+                <div class="bar"></div><div class="bar"></div>
+            </div>
+        </div>
+
+        <div class="timer" id="timer"></div>
+        <div class="status" id="statusLabel">Tap to start voice call</div>
+
+        <button class="call-btn start" id="callBtn" onclick="toggleCall()">📞</button>
+
+        <!-- Transcript -->
+        <div class="transcript-wrap">
+            <div class="transcript-header">
+                <span>TRANSCRIPT</span>
+                <div class="tx-dot" id="txDot"></div>
+            </div>
+            <div class="transcript" id="transcript">
+                <div class="tx-line system"><span class="tx-label">SYS</span>CODEC Voice — Ready</div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+    /* ── State ── */
+    var ws          = null;
+    var audioCtx    = null;
+    var mediaStream = null;
+    var processor   = null;
+    var isInCall    = false;
+    var timerIv     = null;
+    var callStart   = 0;
+
+    /* ── Audio playback queue ── */
+    var audioQueue  = [];
+    var isPlaying   = false;
+    var curSource   = null;
+
+    /* ── Streaming transcript ── */
+    var streamLine  = null;
+    var streamText  = "";
+
+    /* ── UI helpers ── */
+    function setState(s) {
+        var body = document.getElementById('body');
+        body.className = 'state-' + s;
+        var labels = { idle:'', listening:'Listening…', speaking:'Q is speaking…', processing:'Processing…' };
+        var el = document.getElementById('statusLabel');
+        if (labels[s] !== undefined) el.textContent = labels[s];
+    }
+
+    function addTranscript(role, text) {
+        /* Finish any pending streaming line first */
+        if (streamLine) { streamLine.querySelector('.cursor').remove(); streamLine = null; streamText = ""; }
+        var el   = document.getElementById('transcript');
+        var div  = document.createElement('div');
+        div.className = 'tx-line ' + role;
+        var label = role === 'user' ? 'M' : role === 'assistant' ? 'Q' : 'SYS';
+        div.innerHTML = '<span class="tx-label">' + label + '</span>' + escHtml(text);
+        el.appendChild(div);
+        el.scrollTop = el.scrollHeight;
+    }
+
+    function appendStreamChunk(chunk) {
+        var el = document.getElementById('transcript');
+        if (!streamLine) {
+            streamLine = document.createElement('div');
+            streamLine.className = 'tx-line assistant';
+            streamLine.innerHTML = '<span class="tx-label">Q</span>';
+            el.appendChild(streamLine);
+        }
+        /* Remove cursor, append text, re-add cursor */
+        var cur = streamLine.querySelector('.cursor');
+        if (cur) cur.remove();
+        streamText += escHtml(chunk);
+        streamLine.innerHTML = '<span class="tx-label">Q</span>' + streamText + '<span class="cursor"></span>';
+        el.scrollTop = el.scrollHeight;
+    }
+
+    function escHtml(s) {
+        return String(s)
+            .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+            .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    /* ── Audio playback ── */
+    async function playNext() {
+        if (!audioQueue.length) {
+            isPlaying = false;
+            if (isInCall) setState('listening');
+            return;
+        }
+        isPlaying = true;
+        setState('speaking');
+        var data = audioQueue.shift();
+        try {
+            /* slice to detach, then decode */
+            var buf = await audioCtx.decodeAudioData(data.slice(0));
+            var src = audioCtx.createBufferSource();
+            src.buffer = buf;
+            src.connect(audioCtx.destination);
+            src.onended = function() { curSource = null; playNext(); };
+            src.start();
+            curSource = src;
+        } catch(e) {
+            console.warn('[Voice] Decode error:', e);
+            playNext();
+        }
+    }
+
+    function queueAudio(data) {
+        audioQueue.push(data);
+        if (!isPlaying) playNext();
+    }
+
+    function stopAudio() {
+        audioQueue = [];
+        isPlaying  = false;
+        if (curSource) { try { curSource.stop(); } catch(e){} curSource = null; }
+    }
+
+    /* ── WebSocket ── */
+    function connectWS() {
+        var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        ws = new WebSocket(proto + '//' + location.host + '/ws/voice');
+        ws.binaryType = 'arraybuffer';
+
+        ws.onopen = function() {
+            setState('listening');
+            startMic();
+        };
+
+        ws.onmessage = function(e) {
+            if (e.data instanceof ArrayBuffer) {
+                queueAudio(e.data);
+            } else {
+                try {
+                    var msg = JSON.parse(e.data);
+                    if (msg.type === 'transcript') {
+                        addTranscript(msg.role, msg.text);
+                    } else if (msg.type === 'transcript_chunk') {
+                        appendStreamChunk(msg.text);
+                    } else if (msg.type === 'status') {
+                        if (msg.status === 'processing') setState('processing');
+                        else if (msg.status === 'listening') {
+                            if (!isPlaying) setState('listening');
+                        }
+                    }
+                } catch(err) {}
+            }
+        };
+
+        ws.onclose = function() {
+            if (isInCall) endCall();
+            addTranscript('system', 'Disconnected — transcript saved to memory');
+        };
+
+        ws.onerror = function(e) {
+            console.error('[Voice] WS error:', e);
+            addTranscript('system', 'Connection error');
+        };
+    }
+
+    /* ── Microphone ── */
+    async function startMic() {
+        try {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+            mediaStream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                    sampleRate: 16000, channelCount: 1,
+                    echoCancellation: true, noiseSuppression: true,
+                    autoGainControl: true
+                }
+            });
+            var source = audioCtx.createMediaStreamSource(mediaStream);
+            /* 4096-sample chunks ~= 256 ms at 16 kHz */
+            processor = audioCtx.createScriptProcessor(4096, 1, 1);
+            processor.onaudioprocess = function(e) {
+                if (!ws || ws.readyState !== WebSocket.OPEN) return;
+                var f32 = e.inputBuffer.getChannelData(0);
+                var i16 = new Int16Array(f32.length);
+                for (var i = 0; i < f32.length; i++) {
+                    var s = Math.max(-1, Math.min(1, f32[i]));
+                    i16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                }
+                ws.send(i16.buffer);
+            };
+            source.connect(processor);
+            processor.connect(audioCtx.destination);
+        } catch(e) {
+            addTranscript('system', 'Microphone error: ' + e.message);
+        }
+    }
+
+    function stopMic() {
+        if (processor)    { processor.disconnect();  processor    = null; }
+        if (mediaStream)  { mediaStream.getTracks().forEach(function(t){ t.stop(); }); mediaStream = null; }
+        if (audioCtx)     { audioCtx.close();         audioCtx     = null; }
+    }
+
+    /* ── Call control ── */
+    function toggleCall() {
+        if (isInCall) endCall(); else startCall();
+    }
+
+    function startCall() {
+        isInCall   = true;
+        callStart  = Date.now();
+        var btn    = document.getElementById('callBtn');
+        btn.className = 'call-btn end';
+        btn.textContent = '📵';
+        timerIv = setInterval(updateTimer, 1000);
+        document.getElementById('timer').textContent = '00:00';
+        document.getElementById('transcript').innerHTML = '<div class="tx-line system"><span class="tx-label">SYS</span>Connecting…</div>';
+        setState('processing');
+        connectWS();
+    }
+
+    function endCall() {
+        isInCall = false;
+        var btn = document.getElementById('callBtn');
+        btn.className = 'call-btn start';
+        btn.textContent = '📞';
+        if (timerIv) { clearInterval(timerIv); timerIv = null; }
+        stopAudio();
+        stopMic();
+        if (ws) { try { ws.close(); } catch(e){} ws = null; }
+        setState('idle');
+        document.getElementById('statusLabel').textContent = 'Call ended — transcript saved to memory';
+    }
+
+    function updateTimer() {
+        var s = Math.floor((Date.now() - callStart) / 1000);
+        document.getElementById('timer').textContent =
+            String(Math.floor(s / 60)).padStart(2,'0') + ':' + String(s % 60).padStart(2,'0');
+    }
+
+    /* ── Auto-connect via ?auto=1 ── */
+    if (new URLSearchParams(location.search).get('auto') === '1') {
+        window.addEventListener('load', function() { setTimeout(startCall, 400); });
+    }
+    </script>
+</body>
+</html>

@@ -2,7 +2,7 @@
 import os, json, sqlite3, time
 from datetime import datetime
 from pathlib import Path
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -547,9 +547,8 @@ async def forge_skill(request: Request):
     import re as _re
     body = await request.json()
     code = body.get("code", "").strip()
-    description = body.get("description", "").strip()
-    if (not code or len(code) < 20) and not description:
-        return JSONResponse({"error": "Provide code (min 20 chars) or a description"}, status_code=400)
+    if not code or len(code) < 20:
+        return JSONResponse({"error": "No code provided (min 20 chars)"}, status_code=400)
 
     cfg = {}
     try:
@@ -604,10 +603,6 @@ CODE TO CONVERT:
         raw = _re.sub(r'^```[\w]*\n?', '', raw).strip()
         raw = _re.sub(r'\n?```$', '', raw).strip()
 
-        rawlines = raw.split("\n")
-        if rawlines and rawlines[0].strip() and not rawlines[0].strip().startswith(("import ","from ","SKILL_","\x22\x22\x22","def ","class ","#")):
-            rawlines[0] = "\x22\x22\x22" + rawlines[0].strip() + "\x22\x22\x22"
-            raw = "\n".join(rawlines)
         if "SKILL_NAME" not in raw or "def run" not in raw:
             return JSONResponse({"error": "LLM output is not a valid skill", "raw": raw}, status_code=422)
 
@@ -714,6 +709,34 @@ async def chat_completion(request: Request):
         return {"response": answer, "model": model}
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
+# ── CODEC Voice ──────────────────────────────────────────────────────────────
+
+@app.get("/voice", response_class=HTMLResponse)
+async def voice_page():
+    """Serve the voice call UI."""
+    voice_path = os.path.join(DASHBOARD_DIR, "codec_voice.html")
+    with open(voice_path) as f:
+        return f.read()
+
+@app.websocket("/ws/voice")
+async def voice_websocket(websocket: WebSocket):
+    """WebSocket endpoint — one VoicePipeline per connection."""
+    await websocket.accept()
+    print("[Voice] WebSocket connected")
+    from codec_voice import VoicePipeline
+    pipeline = VoicePipeline(websocket)
+    try:
+        await pipeline.run()
+    except WebSocketDisconnect:
+        print("[Voice] WebSocket disconnected cleanly")
+    except Exception as e:
+        print(f"[Voice] WebSocket error: {e}")
+    finally:
+        pipeline.save_to_memory()
+        await pipeline.close()
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 @app.get("/api/skills")
 async def skills():
