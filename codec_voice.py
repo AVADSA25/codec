@@ -11,6 +11,7 @@ import io
 import json
 import os
 import re
+import sys
 import sqlite3
 import time
 import wave
@@ -400,16 +401,95 @@ class VoicePipeline:
                 return buf[:i + 1].strip(), buf[i + 1:]
         return "", buf
 
+    # ── Crew dispatch ─────────────────────────────────────────────────────
+
+    _CREW_TRIGGERS = {
+        "deep research":        ("deep_research",       lambda t: {"topic": t}),
+        "research on":          ("deep_research",       lambda t: {"topic": t}),
+        "run research":         ("deep_research",       lambda t: {"topic": t}),
+        "morning briefing":     ("daily_briefing",      lambda t: {}),
+        "daily briefing":       ("daily_briefing",      lambda t: {}),
+        "my briefing":          ("daily_briefing",      lambda t: {}),
+        "plan a trip":          ("trip_planner",        lambda t: {"destination": t}),
+        "plan trip to":         ("trip_planner",        lambda t: {"destination": t}),
+        "trip to":              ("trip_planner",        lambda t: {"destination": t}),
+        "competitor analysis":  ("competitor_analysis", lambda t: {"topic": t}),
+        "analyze competitors":  ("competitor_analysis", lambda t: {"topic": t}),
+        "handle my email":      ("email_handler",       lambda t: {}),
+        "check my inbox":       ("email_handler",       lambda t: {}),
+        "email handler":        ("email_handler",       lambda t: {}),
+    }
+
+    async def dispatch_crew_from_voice(self, user_text: str) -> Optional[str]:
+        """Check if user wants a crew. Returns spoken result or None."""
+        low = user_text.lower()
+        for trigger, (crew_name, arg_builder) in self._CREW_TRIGGERS.items():
+            if trigger in low:
+                topic = low.split(trigger, 1)[-1].strip(" ?.,")
+                if not topic:
+                    topic = low
+
+                label = crew_name.replace("_", " ")
+                notify = f"Starting {label}. This will take a few minutes. I'll keep you posted."
+                await self.ws.send_json({"type": "transcript", "role": "assistant", "text": notify})
+                audio = await self.synthesize(notify)
+                if audio:
+                    await self.ws.send_bytes(audio)
+                    self.last_tts_end = time.monotonic()
+
+                # Progress spoken aloud
+                async def voice_cb(update):
+                    status = update.get("status", "")
+                    agent  = update.get("agent", "")
+                    tool   = update.get("tool", "")
+                    if status == "tool_call" and tool:
+                        msg = f"{agent} is using {tool}."
+                    elif status == "agent_start":
+                        msg = f"{agent} is starting, step {update.get('task_num','')} of {update.get('total','')}."
+                    else:
+                        return
+                    await self.ws.send_json({"type": "transcript", "role": "assistant", "text": msg})
+                    audio = await self.synthesize(msg)
+                    if audio:
+                        await self.ws.send_bytes(audio)
+                        self.last_tts_end = time.monotonic()
+
+                _dash = os.path.dirname(os.path.abspath(__file__))
+                if _dash not in sys.path:
+                    sys.path.insert(0, _dash)
+                from codec_agents import run_crew
+                kwargs = arg_builder(topic)
+                result = await run_crew(crew_name, callback=voice_cb, **kwargs)
+
+                if result.get("status") == "complete":
+                    full = result.get("result", "")
+                    elapsed = result.get("elapsed_seconds", "?")
+                    if len(full) > 500:
+                        summary = f"{label.title()} complete. Took {elapsed} seconds."
+                        m = re.search(r'https://docs\.google\.com/\S+', full)
+                        if m:
+                            summary += " Full report saved to Google Docs."
+                        else:
+                            summary += " " + full[:300]
+                        return summary
+                    return full
+                else:
+                    return f"Agent error: {result.get('error', 'unknown')}"
+
+        return None  # Not a crew request
+
     # ── Memory ────────────────────────────────────────────────────────────
 
     def save_to_memory(self):
-        """Write conversation to ~/.q_memory.db (same schema as Pipecat)."""
+        """Write conversation to ~/.q_memory.db via CodecMemory (FTS5 indexed)."""
         try:
-            conn = sqlite3.connect(DB_PATH)
-            conn.execute("""CREATE TABLE IF NOT EXISTS conversations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id TEXT, timestamp TEXT, role TEXT, content TEXT
-            )""")
+            # Import CodecMemory from the dashboard dir
+            _dash = os.path.dirname(os.path.abspath(__file__))
+            if _dash not in sys.path:
+                sys.path.insert(0, _dash)
+            from codec_memory import CodecMemory
+            mem = CodecMemory()
+
             saved = 0
             for msg in self.messages:
                 role = msg.get("role", "")
@@ -420,14 +500,9 @@ class VoicePipeline:
                     content = " ".join(str(p) for p in content)
                 if not content:
                     continue
-                conn.execute(
-                    "INSERT INTO conversations (session_id, timestamp, role, content) VALUES (?,?,?,?)",
-                    (self.session_id, datetime.now().isoformat(), role, str(content)[:2000]),
-                )
+                mem.save(self.session_id, role, str(content)[:2000])
                 saved += 1
-            conn.commit()
-            conn.close()
-            print(f"[Voice] Saved {saved} messages → session {self.session_id}")
+            print(f"[Voice] Saved {saved} messages → session {self.session_id} (FTS5 indexed)")
         except Exception as e:
             print(f"[Voice] Memory save error: {e}")
 
@@ -472,7 +547,21 @@ class VoicePipeline:
                     "type": "transcript", "role": "user", "text": user_text
                 })
 
-                # 2. Skill check
+                # 2a. Crew dispatch (agent pipeline — before skills)
+                crew_result = await self.dispatch_crew_from_voice(user_text)
+                if crew_result:
+                    self.messages.append({"role": "user",      "content": user_text})
+                    self.messages.append({"role": "assistant", "content": crew_result})
+                    await self.ws.send_json({"type": "transcript", "role": "assistant", "text": crew_result})
+                    audio = await self.synthesize(crew_result)
+                    if audio:
+                        await self.ws.send_bytes(audio)
+                        self.last_tts_end = time.monotonic()
+                    self.processing = False
+                    await self.ws.send_json({"type": "status", "status": "listening"})
+                    continue
+
+                # 2b. Skill check
                 skill_match = self._match_skill(user_text)
 
                 if skill_match:

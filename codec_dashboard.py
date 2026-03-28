@@ -738,6 +738,40 @@ async def voice_websocket(websocket: WebSocket):
 
 # ─────────────────────────────────────────────────────────────────────────────
 
+# ── CODEC Agents ─────────────────────────────────────────────────────────────
+
+@app.get("/api/agents/crews")
+async def list_agent_crews():
+    """List available agent crews."""
+    from codec_agents import list_crews
+    return {"crews": list_crews()}
+
+
+@app.post("/api/agents/run")
+async def run_agent_crew(request: Request):
+    """Run an agent crew. Body: {crew: name, ...kwargs}"""
+    body = await request.json()
+    crew_name = body.pop("crew", "")
+    if not crew_name:
+        return JSONResponse({"error": "Missing 'crew' field"}, status_code=400)
+
+    progress_log = []
+
+    def on_progress(update):
+        progress_log.append(update)
+        print(f"[Agents] {update}")
+
+    try:
+        from codec_agents import run_crew
+        result = await run_crew(crew_name, callback=on_progress, **body)
+        result["progress"] = progress_log
+        return result
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+# ─────────────────────────────────────────────────────────────────────────────
+
 # ── CODEC Memory ─────────────────────────────────────────────────────────────
 
 from codec_memory import CodecMemory as _CM

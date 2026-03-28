@@ -98,7 +98,14 @@ input[type=file]{display:none}
 </div>
 <div class="mode-toggle" id="modeToggle">
 <button class="mode-btn active" onclick="setMode('chat')" id="modeChatBtn">&#128172; Chat</button>
-<button class="mode-btn" onclick="setMode('research')" id="modeResearchBtn">&#128300; Research</button>
+<button class="mode-btn" onclick="setMode('research')" id="modeResearchBtn">&#128300; Agents</button>
+<select id="crewSelect" style="display:none;background:var(--bg2,#1a1a1a);color:var(--text,#f0f0f0);border:1px solid var(--border,#333);border-radius:6px;padding:4px 8px;font-size:12px;cursor:pointer;">
+<option value="deep_research">&#128300; Deep Research</option>
+<option value="daily_briefing">&#128203; Daily Briefing</option>
+<option value="trip_planner">&#9992;&#65039; Trip Planner</option>
+<option value="competitor_analysis">&#128202; Competitor Analysis</option>
+<option value="email_handler">&#128231; Email Handler</option>
+</select>
 </div>
 <div class="header-right"><button class="hbtn" onclick="toggleTheme()" id="themeBtn">&#9728;</button></div>
 </div>
@@ -128,8 +135,13 @@ function setMode(mode){
   chatMode=mode;
   document.getElementById('modeChatBtn').classList.toggle('active',mode==='chat');
   document.getElementById('modeResearchBtn').classList.toggle('active',mode==='research');
-  document.getElementById('chatInput').placeholder=mode==='research'?'Enter research topic... (takes 2-5 min)':'Message Q...'
+  var cs=document.getElementById('crewSelect');
+  cs.style.display=mode==='research'?'inline-block':'none';
+  var crew=mode==='research'?cs.value:'deep_research';
+  var hints={'deep_research':'Research topic... (3-6 min)','daily_briefing':'Press send for daily briefing','trip_planner':'Destination + dates...','competitor_analysis':'Market or product to analyze...','email_handler':'Press send to handle inbox'};
+  document.getElementById('chatInput').placeholder=mode==='research'?(hints[crew]||'Enter crew task...'):'Message Q...'
 }
+document.getElementById('crewSelect').addEventListener('change',function(){setMode('research');});
 
 function genId(){return Date.now().toString(36)+Math.random().toString(36).substr(2,5)}
 
@@ -248,13 +260,17 @@ async function sendMessage(){
   if(!text&&!pendingFiles.length)return;
   input.value='';input.style.height='auto';
 
-  // Research mode
+  // Agent / Research mode
   if(chatMode==='research'){
     var researchText=text||'';
-    if(!researchText)return;
-    var userMsg='\uD83D\uDD2C Research: '+researchText;
+    var crew=document.getElementById('crewSelect').value||'deep_research';
+    var noTextCrews=['daily_briefing','email_handler'];
+    if(!researchText&&!noTextCrews.includes(crew))return;
+
+    var crewLabels={'deep_research':'Deep Research','daily_briefing':'Daily Briefing',
+      'trip_planner':'Trip Planner','competitor_analysis':'Competitor Analysis','email_handler':'Email Handler'};
+    var userMsg='\uD83E\uDD16 '+crewLabels[crew]+': '+(researchText||'(running)');
     addMessage('user',userMsg);
-    // Save user message to sidebar history
     chatHist.push({role:'user',content:userMsg});
     saveMessages([{role:'user',content:userMsg}]);
 
@@ -263,47 +279,54 @@ async function sendMessage(){
       if(!statusEl){
         var es=document.getElementById('emptyState');if(es)es.remove();
         var div=document.createElement('div');div.className='msg assistant';
-        div.innerHTML='<div class="msg-bubble" id="researchStatus"></div>';
+        div.innerHTML='<div class="msg-bubble" id="agentStatus"></div>';
         document.getElementById('messages').appendChild(div);
-        statusEl=document.getElementById('researchStatus');
+        statusEl=document.getElementById('agentStatus');
       }
-      statusEl.textContent=msg;scrollBottom();
+      statusEl.innerHTML=msg;scrollBottom();
     }
+
     isProcessing=true;document.getElementById('sendBtn').disabled=true;
-    updateStatus('\u23F3 Starting research... This takes 3-6 minutes.\n\nSearching the web, analyzing sources, writing report...');
+    var crewHints={'deep_research':'Searching the web \u2192 analyzing sources \u2192 writing report...',
+      'daily_briefing':'Checking calendar, weather, news...','trip_planner':'Researching destination \u2192 building itinerary...',
+      'competitor_analysis':'Scouting competitors \u2192 writing analysis...','email_handler':'Reading inbox \u2192 drafting replies...'};
+    updateStatus('\u23F3 Starting '+crewLabels[crew]+'&hellip;\n\n'+( crewHints[crew]||'Running agents...'));
+
+    // Build payload
+    var payload={crew:crew};
+    if(['deep_research','competitor_analysis'].includes(crew))payload.topic=researchText;
+    if(crew==='trip_planner')payload.destination=researchText;
+
+    // Tick timer
+    var elapsed=0;
+    var ticker=setInterval(function(){elapsed+=5;updateStatus('\u23F3 '+crewLabels[crew]+' running&hellip; ('+elapsed+'s)\n\n'+(crewHints[crew]||''));},5000);
+
     try{
-      var r=await fetch('/api/deep_research',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({topic:researchText})});
-      var job=await r.json();
-      if(job.error){updateStatus('Error: '+job.error);isProcessing=false;document.getElementById('sendBtn').disabled=false;return;}
-      var elapsed=0;
-      var poll=setInterval(async function(){
-        elapsed+=10;
-        updateStatus('\u23F3 Researching... ('+elapsed+'s)\n\nSearching the web \u2192 analyzing sources \u2192 writing report \u2192 adding images...');
-        try{
-          var pr=await fetch('/api/deep_research/'+job.job_id);
-          var data=await pr.json();
-          if(data.status==='running')return;
-          clearInterval(poll);
-          if(statusEl)statusEl.parentElement.remove();
-          var resultMsg;
-          if(data.doc_url){
-            resultMsg='\u2705 **Research Complete!** ('+data.elapsed_seconds+'s)\n\n\uD83D\uDCC4 **'+data.title+'**\n\n[Open Full Report in Google Docs]('+data.doc_url+')\n\n**Preview:**\n'+(data.report_preview||'');
-          }else if(data.report){
-            resultMsg='\u2705 **Research Complete!** (Google Docs unavailable)\n\n'+data.report;
-          }else{
-            resultMsg='Error: '+(data.error||'Research failed');
-          }
-          addMessage('assistant',resultMsg);
-          // Save assistant result to sidebar history
-          chatHist.push({role:'assistant',content:resultMsg});
-          saveMessages([{role:'assistant',content:resultMsg}]);
-        }catch(pe){clearInterval(poll);addMessage('assistant','Poll error: '+pe.message)}
-        isProcessing=false;document.getElementById('sendBtn').disabled=false;
-      },10000);
+      var r=await fetch('/api/agents/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      clearInterval(ticker);
+      var data=await r.json();
+      if(statusEl)statusEl.parentElement.remove();
+
+      var resultMsg;
+      if(data.status==='complete'){
+        var result=data.result||'';
+        var docMatch=result.match(/https:\/\/docs\.google\.com\/\S+/);
+        if(docMatch){
+          resultMsg='\u2705 **'+crewLabels[crew]+' Complete!** ('+data.elapsed_seconds+'s)\n\n[Open in Google Docs]('+docMatch[0]+')\n\n'+result.replace(docMatch[0],'').trim();
+        }else{
+          resultMsg='\u2705 **'+crewLabels[crew]+' Complete!** ('+data.elapsed_seconds+'s)\n\n'+result;
+        }
+      }else{
+        resultMsg='\u274C Agent error: '+(data.error||'Unknown error');
+      }
+      addMessage('assistant',resultMsg);
+      chatHist.push({role:'assistant',content:resultMsg});
+      saveMessages([{role:'assistant',content:resultMsg}]);
     }catch(e){
-      updateStatus('Research error: '+e.message);
-      isProcessing=false;document.getElementById('sendBtn').disabled=false;
+      clearInterval(ticker);
+      updateStatus('Agent error: '+e.message);
     }
+    isProcessing=false;document.getElementById('sendBtn').disabled=false;
     return;
   }
 
