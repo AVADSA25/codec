@@ -738,6 +738,36 @@ async def voice_websocket(websocket: WebSocket):
 
 # ─────────────────────────────────────────────────────────────────────────────
 
+# ── CODEC Memory ─────────────────────────────────────────────────────────────
+
+from codec_memory import CodecMemory as _CM
+_memory = _CM()
+
+@app.get("/api/memory/search")
+async def memory_search(q: str = "", limit: int = 10):
+    """Full-text search over all conversations (FTS5 BM25 ranked)."""
+    if not q.strip():
+        return JSONResponse({"error": "Query required"}, status_code=400)
+    return _memory.search(q.strip(), limit=limit)
+
+@app.get("/api/memory/recent")
+async def memory_recent(days: int = 7, limit: int = 50):
+    """Return messages from the past N days."""
+    return _memory.search_recent(days=days, limit=limit)
+
+@app.get("/api/memory/sessions")
+async def memory_sessions(limit: int = 20):
+    """Return distinct sessions with message count and preview."""
+    return _memory.get_sessions(limit=limit)
+
+@app.post("/api/memory/rebuild")
+async def memory_rebuild():
+    """Rebuild FTS index from scratch (use after bulk imports)."""
+    n = _memory.rebuild_fts()
+    return {"indexed": n}
+
+# ─────────────────────────────────────────────────────────────────────────────
+
 @app.get("/api/skills")
 async def skills():
     """List installed skills"""
