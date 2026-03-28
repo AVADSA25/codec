@@ -18,7 +18,7 @@ def call_qwen(text, mode):
         "proofread": "Fix all spelling, grammar, and punctuation errors. Keep same tone. Output ONLY corrected text.",
         "elevate": "Rewrite to be more polished and professional. Keep same meaning. Output ONLY improved text.",
         "explain": "Explain this text simply and concisely. What is it about? Key points?",
-        "reply": "You are a smart, natural communicator. The user has selected a message they received from someone. Write a brief, natural reply to that message. Match the tone — casual if casual, professional if professional. Keep it short (1-3 sentences). Output ONLY the reply text, nothing else. No quotes, no labels, no explanation.",
+        "reply": "You are a smart, natural communicator. The user will give you a message they received, possibly followed by a colon : and their reply direction. If there is a colon with instructions after it, follow those instructions to craft the reply. If there is no colon, write a natural reply matching the tone. Keep it short (1-3 sentences). Output ONLY the reply text. No quotes, no labels, no explanation.",
         "translate": "You are a translator. Translate the following text into English. No matter what language the input is — Ukrainian, Spanish, French, Russian, Chinese, Arabic, anything — always translate to English. Output ONLY the translated English text, nothing else.",
         "prompt": "You are a prompt engineer. Rewrite the following text to be a clear, optimized prompt for an AI language model. Make it specific, structured, and effective. Remove ambiguity, add context where helpful, and ensure the intent is crystal clear. Output ONLY the optimized prompt, nothing else."
     }
