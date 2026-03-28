@@ -26,12 +26,38 @@ A private, open-source alternative to Siri and Alexa that actually controls your
 *Built for macOS.* Linux support planned.
 
 ```
-"Hey CODEC, open Safari and go to GitHub"         → Opens Safari, navigates to github.com
-"Draft a reply saying yes but suggest Thursday"   → Reads screen, writes reply, pastes it
-"What's on my screen?"                            → Screenshots display, describes what it sees
-"What's on my calendar today?"                    → Checks Google Calendar, reads back schedule
-"Research the latest AI agent frameworks"          → Searches web, writes report, creates Google Doc
-"Create a skill that checks Bitcoin price"        → Writes, installs, and activates a new skill
+"Research our top 3 competitors and write a strategic analysis"
+→ CODEC Agents search the web, your LLM synthesises findings,
+  formatted Google Doc delivered in 2 minutes
+
+"I'm getting a 401 on this endpoint — read my screen and fix it"
+→ Screenshots VS Code, identifies the missing auth header,
+  writes the fix, pastes it directly into your editor
+
+"Go through my inbox, categorise everything, draft replies to urgent ones"
+→ Email Handler scans Gmail, prioritises by urgency,
+  drafts contextual replies for your review
+
+"Plan my Tokyo trip March 15 to 22 — flights, hotels, itinerary"
+→ Trip Planner researches options, builds a day-by-day itinerary,
+  adds events to Calendar, saves to Docs
+
+"Give me my morning briefing"
+→ Checks calendar, reads urgent emails, pulls weather and news,
+  delivers a spoken summary — completely hands-free
+
+"Build a REST API for user auth in Python and save it as a skill"
+→ Vibe Code opens, CODEC writes the full API with tests, runs it,
+  Skill Forge saves it as a reusable CODEC skill
+```
+
+### Quick Commands
+```
+"Hey CODEC, what time is it?"                    → Instant answer via skill
+"Set a timer for 10 minutes"                     → Timer with voice alert
+"Open YouTube and search for cooking recipes"    → Chrome opens and navigates
+"What's on my calendar today?"                   → Reads Google Calendar
+"Translate this to English"                      → Translates selected text
 ```
 
 **36 skills · 6 right-click services · 5 AI agent crews · 250K context · FTS5 memory · MIT licensed**

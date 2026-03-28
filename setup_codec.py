@@ -23,15 +23,17 @@ def clear():
 
 def banner():
     print(f"""
-{O}
-   ██████  ██████  ██████  ███████  ██████
-  ██      ██    ██ ██   ██ ██      ██
-  ██      ██    ██ ██   ██ █████   ██
-  ██      ██    ██ ██   ██ ██      ██
-   ██████  ██████  ██████  ███████  ██████
-
-  {W}opencodec.org  ·  AVA Digital LLC{O}
-  {D}─────────────────────────────────────────{R}
+{O}    ╔═══════════════════════════════════════════╗
+    ║  ██████  ██████  ██████  ███████  ██████  ║
+    ║ ██      ██    ██ ██   ██ ██      ██       ║
+    ║ ██      ██    ██ ██   ██ █████   ██       ║
+    ║ ██      ██    ██ ██   ██ ██      ██       ║
+    ║  ██████  ██████  ██████  ███████  ██████  ║
+    ║                            Setup v1.4.0   ║
+    ╚═══════════════════════════════════════════╝{X}
+{W}  Open Source Computer Command Framework
+  7 products: Core · Dictate · Assist · Chat · Vibe · Voice · Remote
+  36 skills · 6 text services · 5 AI agent crews{X}
 """)
 
 def ask(prompt, options=None, default=None):
@@ -119,7 +121,7 @@ def main():
     input(f"\n{O}  Press Enter to begin...{X}")
 
     config = {}
-    total_steps = 8
+    total_steps = 9
 
     # ── STEP 1: LLM ──────────────────────────────────────────────────────────
     clear()
@@ -369,29 +371,47 @@ def main():
     section("Skills", 7, total_steps)
 
     all_skills = {
-        "calculator": "Quick math (25 times 47)",
-        "weather": "Current weather by city",
-        "time_date": "Current time and date",
-        "system_info": "CPU, disk, memory stats",
-        "web_search": "DuckDuckGo instant answers",
-        "translate": "French ↔ English translation",
-        "notes": "Save/read notes via Apple Notes",
-        "timer": "Set timers with voice alerts",
-        "volume": "Volume up/down/mute by voice",
-        "reminders": "Add to Apple Reminders",
-        "music": "Control Spotify/Apple Music",
-        "clipboard": "Clipboard history",
-        "app_switch": "Switch apps by name",
-        "create_skill": "Create new skills with natural language",
-        "lucy": "Delegate tasks to Lucy VPA (requires n8n)",
-        "google_calendar": "Check Google Calendar events",
-        "google_gmail": "Check Gmail inbox and search emails",
-        "google_drive": "Search Google Drive files",
-        "google_docs": "Create and read Google Docs",
-        "google_sheets": "Read and write Google Sheets",
-        "google_slides": "Create Google Slides presentations",
-        "google_tasks": "Manage Google Tasks",
-        "google_keep": "Create Google Keep notes",
+        # System
+        "calculator":       "Quick math calculations",
+        "weather":          "Current weather by city",
+        "time_date":        "Current time and date",
+        "system_info":      "CPU, disk, memory stats",
+        "volume":           "Volume control by voice",
+        "brightness":       "Screen brightness control",
+        "timer":            "Set timers with voice alerts",
+        "music":            "Control Spotify and Apple Music",
+        "notes":            "Save and read Apple Notes",
+        "reminders":        "Add to Apple Reminders",
+        "clipboard":        "Clipboard history",
+        "app_switch":       "Switch apps by name",
+        "web_search":       "DuckDuckGo instant answers",
+        "translate":        "Multi-language translation",
+        "file_search":      "Find files by name via Spotlight",
+        "process_manager":  "List or kill processes",
+        "network_info":     "Local IP, public IP, WiFi name",
+        "screenshot_text":  "OCR — read text from screen via vision",
+        "terminal":         "Run quick terminal commands safely",
+        # Google Workspace
+        "google_calendar":  "Check and manage your calendar",
+        "google_gmail":     "Check inbox and search emails",
+        "google_drive":     "Search and list Drive files",
+        "google_docs":      "Create and read documents",
+        "google_sheets":    "Read and write spreadsheets",
+        "google_slides":    "Create presentations",
+        "google_tasks":     "Manage task lists",
+        "google_keep":      "Create and manage notes",
+        # Chrome
+        "chrome_open":      "Open URLs and websites",
+        "chrome_close":     "Close tabs or quit Chrome",
+        "chrome_search":    "Google search from voice",
+        "chrome_read":      "Read current page content",
+        "chrome_tabs":      "List and switch tabs",
+        # AI Tools
+        "create_skill":     "Write new skills with natural language",
+        "skill_forge":      "Convert any code to a CODEC skill",
+        "memory_search":    "Search past conversations",
+        # External
+        "lucy":             "Delegate tasks to external AI via webhook",
     }
 
     print(f"\n{W}  Available skills:{X}")
@@ -408,10 +428,44 @@ def main():
 
     print(f"\n{G}  ✓ {len(config['skills'])} skills selected{X}")
 
-    # ── STEP 8: PHONE DASHBOARD ────────────────────────────────────────────────
+    # ── STEP 8: CODEC FEATURES ────────────────────────────────────────────────
     clear()
     banner()
-    section("Phone Dashboard", 8, total_steps)
+    section("CODEC Features", 8, total_steps)
+    print(f"\n{W}  CODEC includes these integrated features:{X}")
+    print(f"  {O}CODEC Assist{X}  — 6 right-click text services (Proofread, Elevate, Explain, Prompt, Translate, Reply)")
+    print(f"  {O}CODEC Dictate{X} — Hold right CMD to dictate text anywhere")
+    print(f"  {O}CODEC Chat{X}    — Deep Chat with 250K context + AI Agents")
+    print(f"  {O}CODEC Vibe{X}    — AI-powered IDE with Skill Forge")
+    print(f"  {O}CODEC Voice{X}   — Live voice calls with skill dispatch")
+    print(f"  {O}CODEC Remote{X}  — Phone dashboard via Cloudflare Tunnel")
+    print()
+
+    if ask_yn("Set up CODEC Assist (right-click text services)?", True):
+        print(f"\n{W}  Creating 6 macOS Quick Actions...{X}")
+        print(f"  {G}✓{X} Quick Actions will be created on first CODEC launch")
+        print(f"  {W}  After launch, right-click any selected text → Services → CODEC{X}")
+        config["assist_enabled"] = True
+    else:
+        config["assist_enabled"] = False
+
+    if ask_yn("Enable CODEC Voice (live voice calls)?", True):
+        config["voice_enabled"] = True
+        print(f"  {G}✓{X} CODEC Voice enabled — access via /voice or double-tap --")
+    else:
+        config["voice_enabled"] = False
+
+    if ask_yn("Enable CODEC Agents (multi-agent crews)?", True):
+        config["agents_enabled"] = True
+        print(f"  {G}✓{X} CODEC Agents enabled — 5 crews available in /chat")
+        print(f"  {W}  Crews: Deep Research, Daily Briefing, Trip Planner, Competitor Analysis, Email Handler{X}")
+    else:
+        config["agents_enabled"] = False
+
+    # ── STEP 9: PHONE DASHBOARD ────────────────────────────────────────────────
+    clear()
+    banner()
+    section("Phone Dashboard", 9, total_steps)
     print(f"\n{W}  CODEC includes a phone dashboard (PWA) that lets you{X}")
     print(f"{W}  control your Mac from your phone — text, voice, files.{X}")
     print(f"\n{D}  It runs as a lightweight web server on port 8090.{X}")

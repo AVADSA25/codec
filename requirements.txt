@@ -1,0 +1,16 @@
+pynput>=1.7.6
+sounddevice>=0.4.6
+soundfile>=0.12.1
+numpy>=1.24.0
+requests>=2.31.0
+simple-term-menu>=1.6.0
+httpx>=0.24.0
+
+# Optional: TTS (Kokoro 82M — Apple Silicon)
+# mlx-audio misaki num2words phonemizer-fork spacy
+
+# Optional: STT (Whisper via MLX)
+# mlx-whisper fastapi uvicorn
+
+# Optional: Google Workspace integration
+# google-auth google-auth-oauthlib google-api-python-client
