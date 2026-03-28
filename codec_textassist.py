@@ -17,7 +17,8 @@ def call_qwen(text, mode):
     prompts = {
         "proofread": "Fix all spelling, grammar, and punctuation errors. Keep same tone. Output ONLY corrected text.",
         "elevate": "Rewrite to be more polished and professional. Keep same meaning. Output ONLY improved text.",
-        "explain": "Explain this text simply and concisely. What is it about? Key points?"
+        "explain": "Explain this text simply and concisely. What is it about? Key points?",
+        "prompt": "You are a prompt engineer. Rewrite the following text to be a clear, optimized prompt for an AI language model. Make it specific, structured, and effective. Remove ambiguity, add context where helpful, and ensure the intent is crystal clear. Output ONLY the optimized prompt, nothing else."
     }
     payload = {"model": model, "messages": [
         {"role": "system", "content": prompts.get(mode, prompts["proofread"])},
