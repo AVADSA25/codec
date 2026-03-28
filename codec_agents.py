@@ -623,3 +623,45 @@ def list_crews() -> List[dict]:
         {"name": n, "description": r["description"], "args": r["args"]}
         for n, r in CREW_REGISTRY.items()
     ]
+
+
+# ═══════════════════════════════════════════════════════════════
+# CUSTOM AGENT RUNNER
+# ═══════════════════════════════════════════════════════════════
+
+async def run_custom_agent(
+    name: str,
+    role: str,
+    tools: List[str],
+    max_iterations: int = 8,
+    task: str = "",
+    callback=None,
+) -> dict:
+    """
+    Run a single ad-hoc agent built from the chat UI.
+    tools: list of tool names to give the agent.
+    """
+    start = time.time()
+    all_tools   = get_all_tools()
+    tool_map    = {t.name: t for t in all_tools}
+    sel_tools   = [tool_map[n] for n in tools if n in tool_map]
+
+    agent = Agent(
+        name        = name or "Custom",
+        role        = role or "You are a helpful AI assistant. Complete the user's task.",
+        tools       = sel_tools,
+        max_tool_calls = max(1, max_iterations),
+    )
+
+    async def _cb(update):
+        if callback:
+            await _safe_cb(callback, update)
+
+    try:
+        result  = await agent.run(task, callback=_cb)
+        elapsed = int(time.time() - start)
+        save_to_memory(f"custom_{name}", task, result[:2000])
+        return {"status": "complete", "result": result, "elapsed_seconds": elapsed}
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return {"status": "error", "error": str(e), "elapsed_seconds": int(time.time() - start)}

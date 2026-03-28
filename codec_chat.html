@@ -108,6 +108,25 @@ input[type=file]{display:none}
 .mode-toggle{display:flex;gap:4px;padding:4px;background:var(--bg3);border-radius:8px}
 .mode-btn{padding:5px 10px;border:none;border-radius:6px;cursor:pointer;font-size:11px;background:transparent;color:var(--fg2);font-family:var(--font)}
 .mode-btn.active{background:var(--accent);color:#fff}
+/* ── Custom Agent Builder Panel ── */
+#agentBuilder{display:none;flex-shrink:0;background:var(--surface);border-bottom:1px solid var(--border);padding:14px 16px;gap:12px;flex-direction:column}
+#agentBuilder.show{display:flex}
+.ab-row{display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap}
+.ab-field{display:flex;flex-direction:column;gap:4px;flex:1;min-width:160px}
+.ab-label{font-size:10px;font-weight:600;color:var(--fg2);text-transform:uppercase;letter-spacing:.05em}
+.ab-input{background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--fg);font-size:12px;font-family:var(--font);outline:none;width:100%}
+.ab-input:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(232,113,26,.15)}
+.ab-ta{height:64px;resize:vertical}
+.ab-tools{background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:8px;display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:4px;max-height:120px;overflow-y:auto}
+.ab-tool{display:flex;align-items:center;gap:6px;padding:3px 4px;border-radius:4px;cursor:pointer;font-size:11px;color:var(--fg2)}
+.ab-tool:hover{background:var(--bg4);color:var(--fg)}
+.ab-tool input{accent-color:var(--accent);cursor:pointer}
+.ab-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ab-btn{padding:7px 14px;border-radius:6px;border:none;font-size:12px;font-weight:600;cursor:pointer;transition:opacity .2s;font-family:var(--font)}
+.ab-save{background:var(--surface-2);color:var(--fg2);border:1px solid var(--border)}
+.ab-save:hover{color:var(--fg)}
+.ab-load-wrap{display:flex;align-items:center;gap:6px}
+.ab-select{background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:5px 8px;color:var(--fg2);font-size:11px;font-family:var(--font);cursor:pointer}
 /* ── Page Nav ── */
 .page-nav { display: flex; align-items: center; gap: 2px; }
 .nav-link {
@@ -155,10 +174,43 @@ input[type=file]{display:none}
 <option value="trip_planner">&#9992;&#65039; Trip Planner</option>
 <option value="competitor_analysis">&#128202; Competitor Analysis</option>
 <option value="email_handler">&#128231; Email Handler</option>
+<option value="custom">&#128736; Custom Agent</option>
 </select>
 </div>
 <button class="hbtn" onclick="toggleTheme()" id="themeBtn">&#9728;</button>
 </div>
+</div>
+<!-- ── Custom Agent Builder ── -->
+<div id="agentBuilder">
+  <div class="ab-row">
+    <div class="ab-field" style="max-width:180px">
+      <span class="ab-label">Agent Name</span>
+      <input class="ab-input" id="agentName" placeholder="My Research Agent" value="Custom Agent">
+    </div>
+    <div class="ab-field" style="flex:2">
+      <span class="ab-label">Role / System Prompt</span>
+      <textarea class="ab-input ab-ta" id="agentRole" placeholder="You are an expert researcher. Search the web, analyze sources, and produce a detailed summary."></textarea>
+    </div>
+    <div class="ab-field" style="max-width:80px">
+      <span class="ab-label">Max Steps</span>
+      <input class="ab-input" id="agentMaxIter" type="number" value="8" min="1" max="20">
+    </div>
+  </div>
+  <div class="ab-field">
+    <span class="ab-label">Tools <span id="abToolCount" style="color:var(--accent)"></span></span>
+    <div class="ab-tools" id="abToolGrid">
+      <span style="font-size:11px;color:var(--fg3);padding:4px">Loading tools…</span>
+    </div>
+  </div>
+  <div class="ab-actions">
+    <button class="ab-btn ab-save" onclick="saveCustomAgent()">💾 Save Agent</button>
+    <div class="ab-load-wrap">
+      <select class="ab-select" id="savedAgentSelect" onchange="loadSavedAgent(this.value)">
+        <option value="">Load saved…</option>
+      </select>
+    </div>
+    <span style="font-size:11px;color:var(--fg3)">Type your task below and press Send →</span>
+  </div>
 </div>
 <div class="messages" id="messages">
 <div class="empty-state" id="emptyState"><img src="https://i.imgur.com/RbrQ7Bt.png"><p>Deep Chat &mdash; 250K context window<br>Drop files, images, or just talk.</p></div>
@@ -189,8 +241,17 @@ function setMode(mode){
   var cs=document.getElementById('crewSelect');
   cs.style.display=mode==='research'?'inline-block':'none';
   var crew=mode==='research'?cs.value:'deep_research';
-  var hints={'deep_research':'Research topic... (3-6 min)','daily_briefing':'Press send for daily briefing','trip_planner':'Destination + dates...','competitor_analysis':'Market or product to analyze...','email_handler':'Press send to handle inbox'};
-  document.getElementById('chatInput').placeholder=mode==='research'?(hints[crew]||'Enter crew task...'):'Message Q...'
+  var hints={'deep_research':'Research topic... (3-6 min)','daily_briefing':'Press send for daily briefing','trip_planner':'Destination + dates...','competitor_analysis':'Market or product to analyze...','email_handler':'Press send to handle inbox','custom':'Describe your task for the custom agent...'};
+  document.getElementById('chatInput').placeholder=mode==='research'?(hints[crew]||'Enter crew task...'):'Message Q...';
+  // Show/hide custom agent builder
+  var builder=document.getElementById('agentBuilder');
+  if(mode==='research'&&crew==='custom'){
+    builder.classList.add('show');
+    if(!_toolsLoaded) loadAgentTools();
+    loadSavedAgentList();
+  } else {
+    builder.classList.remove('show');
+  }
 }
 document.getElementById('crewSelect').addEventListener('change',function(){setMode('research');});
 
@@ -319,8 +380,9 @@ async function sendMessage(){
     if(!researchText&&!noTextCrews.includes(crew))return;
 
     var crewLabels={'deep_research':'Deep Research','daily_briefing':'Daily Briefing',
-      'trip_planner':'Trip Planner','competitor_analysis':'Competitor Analysis','email_handler':'Email Handler'};
-    var userMsg='\uD83E\uDD16 '+crewLabels[crew]+': '+(researchText||'(running)');
+      'trip_planner':'Trip Planner','competitor_analysis':'Competitor Analysis','email_handler':'Email Handler',
+      'custom':document.getElementById('agentName').value||'Custom Agent'};
+    var userMsg='\uD83E\uDD16 '+(crewLabels[crew]||crew)+': '+(researchText||'(running)');
     addMessage('user',userMsg);
     chatHist.push({role:'user',content:userMsg});
     saveMessages([{role:'user',content:userMsg}]);
@@ -340,13 +402,22 @@ async function sendMessage(){
     isProcessing=true;document.getElementById('sendBtn').disabled=true;
     var crewHints={'deep_research':'Searching the web \u2192 analyzing sources \u2192 writing report...',
       'daily_briefing':'Checking calendar, weather, news...','trip_planner':'Researching destination \u2192 building itinerary...',
-      'competitor_analysis':'Scouting competitors \u2192 writing analysis...','email_handler':'Reading inbox \u2192 drafting replies...'};
-    updateStatus('\u23F3 Starting '+crewLabels[crew]+'&hellip;\n\n'+( crewHints[crew]||'Running agents...'));
+      'competitor_analysis':'Scouting competitors \u2192 writing analysis...','email_handler':'Reading inbox \u2192 drafting replies...',
+      'custom':'Running custom agent...'};
+    updateStatus('\u23F3 Starting '+(crewLabels[crew]||crew)+'&hellip;\n\n'+( crewHints[crew]||'Running agent...'));
 
     // Build payload
     var payload={crew:crew};
-    if(['deep_research','competitor_analysis'].includes(crew))payload.topic=researchText;
-    if(crew==='trip_planner')payload.destination=researchText;
+    if(crew==='custom'){
+      payload.agent_name=document.getElementById('agentName').value||'Custom Agent';
+      payload.role=document.getElementById('agentRole').value||'';
+      payload.tools=getSelectedTools();
+      payload.max_iterations=parseInt(document.getElementById('agentMaxIter').value||'8');
+      payload.task=researchText;
+    } else {
+      if(['deep_research','competitor_analysis'].includes(crew))payload.topic=researchText;
+      if(crew==='trip_planner')payload.destination=researchText;
+    }
 
     // Tick timer
     var elapsed=0;
@@ -546,6 +617,83 @@ appEl.addEventListener('drop',function(e){
 
 // Auto-resize
 document.getElementById('chatInput').addEventListener('input',function(){this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px'});
+
+// ── Custom Agent Builder ──────────────────────────────────────────────────────
+var _toolsLoaded = false;
+
+async function loadAgentTools() {
+  try {
+    var r = await fetch('/api/agents/tools');
+    var data = await r.json();
+    var grid = document.getElementById('abToolGrid');
+    grid.innerHTML = '';
+    var allNames = data.tools.map(function(t){return t.name;});
+    // default: check all
+    data.tools.forEach(function(t) {
+      var label = document.createElement('label');
+      label.className = 'ab-tool';
+      label.title = t.description;
+      label.innerHTML = '<input type="checkbox" name="abt" value="'+escHtml(t.name)+'" checked> '+escHtml(t.name.replace(/_/g,' '));
+      grid.appendChild(label);
+    });
+    document.getElementById('abToolCount').textContent = '('+data.tools.length+')';
+    _toolsLoaded = true;
+  } catch(e) {
+    document.getElementById('abToolGrid').innerHTML = '<span style="font-size:11px;color:var(--danger)">Failed to load tools</span>';
+  }
+}
+
+function getSelectedTools() {
+  return Array.from(document.querySelectorAll('#abToolGrid input[name="abt"]:checked')).map(function(c){return c.value;});
+}
+
+async function saveCustomAgent() {
+  var body = {
+    name:           document.getElementById('agentName').value.trim() || 'Custom Agent',
+    role:           document.getElementById('agentRole').value.trim(),
+    tools:          getSelectedTools(),
+    max_iterations: parseInt(document.getElementById('agentMaxIter').value || '8'),
+  };
+  try {
+    var r = await fetch('/api/agents/custom/save', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    var d = await r.json();
+    if(d.saved) {
+      addMessage('assistant', '✅ Agent **'+body.name+'** saved to `~/.codec/agents/'+d.id+'.json`');
+      loadSavedAgentList();
+    }
+  } catch(e) { addMessage('assistant', 'Save error: '+e.message); }
+}
+
+async function loadSavedAgentList() {
+  try {
+    var r = await fetch('/api/agents/custom/list');
+    var d = await r.json();
+    var sel = document.getElementById('savedAgentSelect');
+    sel.innerHTML = '<option value="">Load saved…</option>';
+    (d.agents||[]).forEach(function(a) {
+      var opt = document.createElement('option');
+      opt.value = JSON.stringify(a);
+      opt.textContent = a.name || a.id;
+      sel.appendChild(opt);
+    });
+  } catch(e) {}
+}
+
+function loadSavedAgent(json) {
+  if (!json) return;
+  try {
+    var a = JSON.parse(json);
+    if(a.name) document.getElementById('agentName').value = a.name;
+    if(a.role) document.getElementById('agentRole').value = a.role;
+    if(a.max_iterations) document.getElementById('agentMaxIter').value = a.max_iterations;
+    if(a.tools && _toolsLoaded) {
+      document.querySelectorAll('#abToolGrid input[name="abt"]').forEach(function(cb){
+        cb.checked = a.tools.includes(cb.value);
+      });
+    }
+    document.getElementById('savedAgentSelect').value = '';
+  } catch(e) {}
+}
 </script>
 </body>
 </html>

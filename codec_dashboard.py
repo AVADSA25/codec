@@ -783,7 +783,7 @@ async def list_agent_crews():
 
 @app.post("/api/agents/run")
 async def run_agent_crew(request: Request):
-    """Run an agent crew. Body: {crew: name, ...kwargs}"""
+    """Run an agent crew or custom agent. Body: {crew: name, ...kwargs}"""
     body = await request.json()
     crew_name = body.pop("crew", "")
     if not crew_name:
@@ -796,13 +796,65 @@ async def run_agent_crew(request: Request):
         print(f"[Agents] {update}")
 
     try:
-        from codec_agents import run_crew
-        result = await run_crew(crew_name, callback=on_progress, **body)
+        if crew_name == "custom":
+            from codec_agents import run_custom_agent
+            result = await run_custom_agent(
+                name           = body.get("agent_name", "Custom"),
+                role           = body.get("role", ""),
+                tools          = body.get("tools", []),
+                max_iterations = int(body.get("max_iterations", 8)),
+                task           = body.get("task", ""),
+                callback       = on_progress,
+            )
+        else:
+            from codec_agents import run_crew
+            result = await run_crew(crew_name, callback=on_progress, **body)
         result["progress"] = progress_log
         return result
     except Exception as e:
         import traceback; traceback.print_exc()
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+_AGENTS_DIR = os.path.expanduser("~/.codec/agents")
+os.makedirs(_AGENTS_DIR, exist_ok=True)
+
+
+@app.get("/api/agents/tools")
+async def list_agent_tools():
+    """Return all available tool names + descriptions for the custom agent builder."""
+    from codec_agents import get_all_tools
+    tools = get_all_tools()
+    return {"tools": [{"name": t.name, "description": t.description} for t in tools]}
+
+
+@app.post("/api/agents/custom/save")
+async def save_custom_agent(request: Request):
+    """Save a custom agent definition to ~/.codec/agents/"""
+    body = await request.json()
+    name = (body.get("name") or "").strip()
+    if not name:
+        return JSONResponse({"error": "Name required"}, status_code=400)
+    safe_id = re.sub(r"[^\w\-]", "_", name.lower())
+    path = os.path.join(_AGENTS_DIR, safe_id + ".json")
+    with open(path, "w") as f:
+        json.dump({**body, "id": safe_id}, f, indent=2)
+    return {"saved": True, "id": safe_id, "path": path}
+
+
+@app.get("/api/agents/custom/list")
+async def list_custom_agents():
+    """List saved custom agent definitions."""
+    agents = []
+    for f in sorted(os.listdir(_AGENTS_DIR)):
+        if f.endswith(".json"):
+            try:
+                with open(os.path.join(_AGENTS_DIR, f)) as fh:
+                    agents.append(json.load(fh))
+            except Exception:
+                pass
+    return {"agents": agents}
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 
