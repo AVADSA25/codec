@@ -24,7 +24,8 @@ if os.path.exists(CONFIG_PATH):
         with open(CONFIG_PATH) as _f: _cfg = json.load(_f)
         AGENT_NAME = _cfg.get('agent_name', 'C')
         log.info(f"Config loaded from {CONFIG_PATH}")
-    except: pass
+    except Exception as e:
+        log.warning(f"Non-critical error: {e}")
 
 # LLM
 QWEN_BASE_URL     = _cfg.get("llm_base_url", "http://localhost:8081/v1")
@@ -49,7 +50,8 @@ def audit(action, detail=""):
         with open(AUDIT_LOG, "a") as f:
             from datetime import datetime as _dt
             f.write(f"[{_dt.now().isoformat()}] {action}: {detail}\n")
-    except: pass
+    except Exception as e:
+        log.warning(f"Non-critical error: {e}")
 
 # ── DANGEROUS COMMAND SAFETY ──────────────────────────────────────────────────
 DANGEROUS_PATTERNS = [
@@ -260,7 +262,9 @@ def get_memory(n=5):
             r = (resp[:100]+"...") if resp and len(resp)>100 else (resp or "no response")
             lines.append(f"[{ts[:16].replace('T',' ')}] {app} | {task[:60]} | {r}")
         return "\n".join(lines)
-    except: return ""
+    except Exception as e:
+        log.warning(f"Non-critical error: {e}")
+        return ""
 
 def get_recent_conversations(n=10):
     try:
@@ -270,7 +274,9 @@ def get_recent_conversations(n=10):
         if not rows: return []
         rows.reverse()
         return [{"role": r, "content": ct} for r, ct in rows]
-    except: return []
+    except Exception as e:
+        log.warning(f"Non-critical error: {e}")
+        return []
 
 # ── SKILLS ────────────────────────────────────────────────────────────────────
 loaded_skills = []
@@ -326,7 +332,8 @@ def transcribe(path):
         log.error(f"Whisper error: {e}")
     finally:
         try: os.unlink(path)
-        except: pass
+        except Exception as e:
+            log.warning(f"Non-critical error: {e}")
     return ""
 
 # ── SCREENSHOT VISION ────────────────────────────────────────────────────────
@@ -363,7 +370,9 @@ def focused_app():
             'tell application "System Events" to get name of first application process whose frontmost is true'],
             capture_output=True, text=True, timeout=3)
         return r.stdout.strip()
-    except: return "Unknown"
+    except Exception as e:
+        log.warning(f"Non-critical error: {e}")
+        return "Unknown"
 
 def get_text_dialog():
     try:
@@ -371,7 +380,9 @@ def get_text_dialog():
             'set t to text returned of (display dialog "Q - Enter task:" default answer "" with title "CODEC" buttons {"Cancel","Send"} default button "Send")'],
             capture_output=True, text=True, timeout=120)
         return r.stdout.strip()
-    except: return ""
+    except Exception as e:
+        log.warning(f"Non-critical error: {e}")
+        return ""
 
 # ── SESSION CHECK ─────────────────────────────────────────────────────────────
 def terminal_session_exists():
@@ -384,7 +395,8 @@ def terminal_session_exists():
     except (ValueError, ProcessLookupError, PermissionError, FileNotFoundError, OSError):
         pass
     try: os.unlink(SESSION_ALIVE)
-    except: pass
+    except Exception as e:
+        log.warning(f"Non-critical error: {e}")
     log.info("Cleaned stale session_alive")
     return False
 
@@ -414,7 +426,8 @@ def speak_text(text):
                 [tmp.write(c) for c in r.iter_content(4096)]
                 tmp.close()
                 subprocess.Popen(["afplay", tmp.name])
-    except: pass
+    except Exception as e:
+        log.warning(f"Non-critical error: {e}")
 
 # ── STATE ─────────────────────────────────────────────────────────────────────
 state = {
@@ -800,11 +813,14 @@ def close_session():
             with open(SESSION_ALIVE) as f: pid = int(f.read().strip())
             os.kill(pid, 15)
             log.info(f"Session process {pid} terminated")
-        except: pass
+        except Exception as e:
+            log.warning(f"Non-critical error: {e}")
         try: os.unlink(SESSION_ALIVE)
-        except: pass
+        except Exception as e:
+            log.warning(f"Non-critical error: {e}")
     try: os.unlink(TASK_QUEUE_FILE)
-    except: pass
+    except Exception as e:
+        log.warning(f"Non-critical error: {e}")
     subprocess.Popen(["osascript", "-e",
         'tell application "Terminal" to close (every window whose name contains "python3.13 /var/folders")'],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -837,7 +853,8 @@ def dispatch(task):
                     _db.execute("INSERT INTO conversations (session_id,timestamp,role,content) VALUES (?,?,?,?)", (_sid, _now.isoformat(), "user", task[:500]))
                     _db.execute("INSERT INTO conversations (session_id,timestamp,role,content) VALUES (?,?,?,?)", (_sid, _now.isoformat(), "assistant", re.sub(r"<[^>]+>", "", str(result))[:2000]))
                     _db.commit(); _db.close()
-                except: pass
+                except Exception as e:
+                    log.warning(f"Non-critical error: {e}")
                 return
 
     if is_draft(task):
@@ -904,14 +921,16 @@ def do_document_input():
                     ]}], "max_tokens": 1000}, timeout=60)
                 if rv.status_code == 200:
                     content_text = rv.json()["choices"][0]["message"].get("content", "")[:5000]
-            except: pass
+            except Exception as e:
+                log.warning(f"Non-critical error: {e}")
         elif ext == '.pdf':
             try:
                 result = subprocess.run(["bash", "-c",
                     f"python3.13 -c \"import fitz; doc=fitz.open('{filepath}'); print(chr(10).join(p.get_text() for p in doc[:5]))\""],
                     capture_output=True, text=True, timeout=30)
                 content_text = result.stdout.strip()[:5000]
-            except: pass
+            except Exception as e:
+                log.warning(f"Non-critical error: {e}")
 
         if content_text:
             # Dispatch directly to terminal for analysis
@@ -956,18 +975,21 @@ def do_stop_voice():
     rec = state.get("rec_proc")
     if rec:
         try: rec.terminate(); rec.wait(timeout=3)
-        except: pass
+        except Exception as e:
+            log.warning(f"Non-critical error: {e}")
     state["rec_proc"] = None; state["recording"] = False
     if not audio or not os.path.exists(audio): return
     if os.path.getsize(audio) < 1000:
         try: os.unlink(audio)
-        except: pass
+        except Exception as e:
+            log.warning(f"Non-critical error: {e}")
         return
     log.info("Transcribing...")
     # Kill recording overlay
     if state.get('rec_overlay'):
         try: state['rec_overlay'].terminate()
-        except: pass
+        except Exception as e:
+            log.warning(f"Non-critical error: {e}")
         state['rec_overlay'] = None
     push(lambda: show_processing_overlay('Transcribing...', 4000))
     task = transcribe(audio)
@@ -1038,11 +1060,14 @@ def wake_word_listener():
                             elif task:
                                 log.info(f"Post-wake noise rejected: {task}")
                                 audit("WAKE_NOISE", task[:200])
-            except: pass
+            except Exception as e:
+                log.warning(f"Non-critical error: {e}")
             finally:
                 try: os.unlink(tmp.name)
-                except: pass
-        except: time.sleep(0.5)
+                except Exception as e:
+                    log.warning(f"Non-critical error: {e}")
+        except Exception:
+            time.sleep(0.5)
         time.sleep(0.1)
 
 # ── KEYBOARD ──────────────────────────────────────────────────────────────────
@@ -1072,7 +1097,8 @@ def on_press(key):
             try:
                 import signal
                 subprocess.run(["pkill", "-f", "C O D E C"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            except: pass
+            except Exception as e:
+                log.warning(f"Non-critical error: {e}")
             push(do_start_recording)
             _kv_label = _cfg.get('key_voice','f18').upper()
             state['rec_overlay'] = show_recording_overlay(_kv_label)
@@ -1111,7 +1137,8 @@ def on_release(key):
         # Kill recording overlay immediately
         if state.get('rec_overlay'):
             try: state['rec_overlay'].terminate()
-            except: pass
+            except Exception as e:
+                log.warning(f"Non-critical error: {e}")
             state['rec_overlay'] = None
         push(do_stop_voice)
 
@@ -1130,7 +1157,8 @@ def main():
     init_db()
     for f in [SESSION_ALIVE, TASK_QUEUE_FILE, DRAFT_TASK_FILE]:
         try: os.unlink(f)
-        except: pass
+        except Exception as e:
+            log.warning(f"Non-critical error: {e}")
 
     stream_label = "ON" if STREAMING else "OFF"
     kt = _cfg.get("key_toggle", "f13").upper().ljust(4)
@@ -1166,7 +1194,8 @@ def main():
             import requests as _rq
             _rq.post(KOKORO_URL, json={"model": KOKORO_MODEL, "input": "ready", "voice": TTS_VOICE}, timeout=30)
             log.info("TTS warmed up")
-        except: log.warning("TTS warmup skipped")
+        except Exception as e:
+            log.warning(f"TTS warmup skipped: {e}")
     log.info("Whisper: HTTP (port 8084)")
     log.info("Vision: Qwen VL (port 8082)")
     mem = get_memory(3)
@@ -1200,12 +1229,14 @@ def main():
                         _c.execute("INSERT INTO conversations (session_id,timestamp,role,content) VALUES (?,?,?,?)",
                             (_sid, _ts, "assistant", str(result)[:500]))
                         _c.commit(); _c.close()
-                    except: pass
+                    except Exception as e:
+                        log.warning(f"Non-critical error: {e}")
                     # Write response file for dashboard
                     try:
                         with open("/tmp/q_pwa_response.json", "w") as _rf:
                             json.dump({"task": task, "response": str(result), "ts": datetime.now().isoformat()}, _rf)
-                    except: pass
+                    except Exception as e:
+                        log.warning(f"Non-critical error: {e}")
                     log.info(f"PWA skill response: {str(result)[:100]}")
                     return
         # Not a skill — call LLM directly, no TTS, no terminal window
@@ -1261,7 +1292,8 @@ def main():
                         if task:
                             log.info(f"PWA command: {task[:80]}")
                             push(lambda t=task: pwa_dispatch(t))
-            except: pass
+            except Exception as e:
+                log.warning(f"Non-critical error: {e}")
             time.sleep(1.5)
 
     threading.Thread(target=pwa_poller, daemon=True).start()

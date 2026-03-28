@@ -1,6 +1,8 @@
 """Google Docs skill for CODEC — read and search Google Docs"""
 import json, os, datetime
 
+SKILL_NAME = "google_docs"
+
 SKILL_TRIGGERS = ["google docs", "my docs", "my documents", "search docs", "find doc", "open doc", "read doc", "list docs", "show docs"]
 SKILL_DESCRIPTION = "Search and read Google Docs from your Google account"
 

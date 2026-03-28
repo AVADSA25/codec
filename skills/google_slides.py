@@ -1,6 +1,8 @@
 """Google Slides skill for CODEC — list and read presentations"""
 import json, os
 
+SKILL_NAME = "google_slides"
+
 SKILL_TRIGGERS = ["google slides", "my slides", "presentations", "my presentations", "find presentation", "search slides", "open slides", "read slides"]
 SKILL_DESCRIPTION = "Search and read Google Slides presentations"
 

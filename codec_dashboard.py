@@ -48,14 +48,16 @@ async def status():
     try:
         with open(CONFIG_PATH) as f:
             config = json.load(f)
-    except: pass
+    except Exception as e:
+        log.warning(f"Non-critical error: {e}")
 
     # Check if CODEC process is alive
     import subprocess
     try:
         r = subprocess.run(["pgrep", "-f", "codec.py"], capture_output=True, text=True, timeout=3)
         alive = bool(r.stdout.strip())
-    except:
+    except Exception as e:
+        log.warning(f"Non-critical error: {e}")
         alive = False
 
     return {
@@ -162,7 +164,8 @@ async def vision_analyze(request: Request):
         config = {}
         try:
             with open(CONFIG_PATH) as f: config = json.load(f)
-        except: pass
+        except Exception as e:
+            log.warning(f"Non-critical error: {e}")
         vision_url = config.get("vision_base_url", "http://localhost:8082/v1")
         vision_model = config.get("vision_model", "mlx-community/Qwen2.5-VL-7B-Instruct-4bit")
         payload = {
@@ -199,7 +202,8 @@ async def get_response():
             os.unlink(resp_file)
             return data
         return {"response": None}
-    except:
+    except Exception as e:
+        log.warning(f"Non-critical error: {e}")
         return {"response": None}
 
 @app.get("/api/tts")
@@ -212,7 +216,8 @@ async def tts(text: str = ""):
         config = {}
         try:
             with open(CONFIG_PATH) as f: config = json.load(f)
-        except: pass
+        except Exception as e:
+            log.warning(f"Non-critical error: {e}")
         tts_url = config.get("tts_url", "http://localhost:8085/v1/audio/speech")
         tts_model = config.get("tts_model", "mlx-community/Kokoro-82M-bf16")
         tts_voice = config.get("tts_voice", "am_adam")
@@ -356,7 +361,8 @@ async def upload_image(request: Request):
         config = {}
         try:
             with open(CONFIG_PATH) as f: config = json.load(f)
-        except: pass
+        except Exception as e:
+            log.warning(f"Non-critical error: {e}")
         vision_url = config.get("vision_base_url", "http://localhost:8082/v1")
         vision_model = config.get("vision_model", "mlx-community/Qwen2.5-VL-7B-Instruct-4bit")
         payload = {
@@ -447,7 +453,8 @@ async def preview_frame():
     try:
         with open("/tmp/codec_preview.html") as f:
             return f.read()
-    except:
+    except Exception as e:
+        log.warning(f"Non-critical error: {e}")
         return "<html><body style='background:#0a0a0a;color:#888;padding:40px;font-family:sans-serif'><h2>No preview available</h2><p>Write some HTML and click Preview.</p></body></html>"
 
 @app.post("/api/run_code")
@@ -479,7 +486,8 @@ async def run_code(request: Request):
         return JSONResponse({"error": str(e)}, status_code=500)
     finally:
         try: os.unlink(tmp.name)
-        except: pass
+        except Exception as e:
+            log.warning(f"Non-critical error: {e}")
 
 @app.post("/api/save_file")
 async def save_file(request: Request):
@@ -568,7 +576,8 @@ async def forge_skill(request: Request):
     cfg = {}
     try:
         with open(CONFIG_PATH) as f: cfg = json.load(f)
-    except: pass
+    except Exception as e:
+        log.warning(f"Non-critical error: {e}")
 
     base_url = cfg.get("llm_base_url", "http://localhost:8081/v1")
     model = cfg.get("llm_model", "")
@@ -683,7 +692,8 @@ async def chat_completion(request: Request):
         config2 = {}
         try:
             with open(CONFIG_PATH) as f: config2 = json.load(f)
-        except: pass
+        except Exception as e:
+            log.warning(f"Non-critical error: {e}")
         vision_url = config2.get("vision_base_url", "http://localhost:8082/v1")
         vision_model = config2.get("vision_model", "mlx-community/Qwen2.5-VL-7B-Instruct-4bit")
         # Build multimodal message: last user text + all images
@@ -716,7 +726,8 @@ async def chat_completion(request: Request):
         config = {}
         try:
             with open(CONFIG_PATH) as f: config = json.load(f)
-        except: pass
+        except Exception as e:
+            log.warning(f"Non-critical error: {e}")
         base_url = config.get("llm_base_url", "http://localhost:8081/v1")
         model = config.get("llm_model", "mlx-community/Qwen3.5-35B-A3B-4bit")
         api_key = config.get("llm_api_key", "")
@@ -905,9 +916,11 @@ async def skills():
                             if "SKILL_TRIGGERS" in line:
                                 triggers = eval(line.split("=", 1)[1].strip())
                                 break
-                except: pass
+                except Exception as e:
+                    log.warning(f"Non-critical error: {e}")
                 result.append({"name": name, "triggers": triggers})
-    except: pass
+    except Exception as e:
+        log.warning(f"Non-critical error: {e}")
     return result
 
 if __name__ == "__main__":

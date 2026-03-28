@@ -1,6 +1,8 @@
 """Google Tasks skill for CODEC — list and manage tasks"""
 import json, os
 
+SKILL_NAME = "google_tasks"
+
 SKILL_TRIGGERS = ["google tasks", "my tasks", "task list", "to do", "todo", "show tasks", "add task", "complete task", "check tasks"]
 SKILL_DESCRIPTION = "View and manage Google Tasks"
 

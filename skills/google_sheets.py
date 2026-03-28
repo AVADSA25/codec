@@ -1,6 +1,8 @@
 """Google Sheets skill for CODEC — read and search spreadsheets"""
 import json, os
 
+SKILL_NAME = "google_sheets"
+
 SKILL_TRIGGERS = ["google sheets", "my spreadsheets", "spreadsheet", "my sheets", "search sheets", "find sheet", "open sheet", "read sheet", "show sheet"]
 SKILL_DESCRIPTION = "Search and read Google Sheets from your Google account"
 
