@@ -353,12 +353,20 @@
     }
 
     function addTranscript(role, text) {
-        /* Finish any pending streaming line first */
-        if (streamLine) { streamLine.querySelector('.cursor').remove(); streamLine = null; streamText = ""; }
-        var el   = document.getElementById('transcript');
-        var div  = document.createElement('div');
-        div.className = 'tx-line ' + role;
+        var el = document.getElementById('transcript');
         var label = role === 'user' ? 'M' : role === 'assistant' ? 'Q' : 'SYS';
+        /* Assistant final: replace streaming line instead of adding a duplicate */
+        if (role === 'assistant' && streamLine) {
+            var cur = streamLine.querySelector('.cursor');
+            if (cur) cur.remove();
+            streamLine.innerHTML = '<span class="tx-label">' + label + '</span>' + escHtml(text);
+            streamLine = null; streamText = '';
+            el.scrollTop = el.scrollHeight;
+            return;
+        }
+        if (streamLine) { streamLine.querySelector('.cursor').remove(); streamLine = null; streamText = ''; }
+        var div = document.createElement('div');
+        div.className = 'tx-line ' + role;
         div.innerHTML = '<span class="tx-label">' + label + '</span>' + escHtml(text);
         el.appendChild(div);
         el.scrollTop = el.scrollHeight;

@@ -23,16 +23,28 @@ import os, re, datetime, json
 TOKEN_PATH = os.path.expanduser("~/.codec/google_token.json")
 
 # ── Create intent detection ────────────────────────────────────────────────────
-# Instead of exact phrases (brittle), detect VERB + NOUN intent.
-# Any create-verb near a calendar-noun = create intent.
+import re as _re
+
 _CREATE_VERBS  = ["create", "add", "put", "set", "make", "book", "schedule",
                   "insert", "register", "log", "record", "remind", "new"]
 _CALENDAR_NOUNS = ["calendar", "event", "appointment", "meeting", "reminder",
-                   "booking", "slot", "session"]
+                   "booking", "slot", "session", "call"]
+
+# These phrases unambiguously mean READ — override any verb match
+_READ_OVERRIDES = [
+    "check if", "tell me if", "do i have", "am i free",
+    "what do i have", "what's on", "what is on", "any events",
+    "anything on", "anything booked", "anything scheduled",
+    "show my", "list my", "what meetings",
+]
 
 def _is_create_intent(low: str) -> bool:
-    has_verb  = any(v in low for v in _CREATE_VERBS)
-    has_noun  = any(n in low for n in _CALENDAR_NOUNS)
+    # Read overrides always win
+    if any(phrase in low for phrase in _READ_OVERRIDES):
+        return False
+    # Whole-word verb match only (avoids "booked" matching "book")
+    has_verb = any(_re.search(r'\b' + v + r'\b', low) for v in _CREATE_VERBS)
+    has_noun = any(_re.search(r'\b' + n + r'\b', low) for n in _CALENDAR_NOUNS)
     return has_verb and has_noun
 
 # Keep CREATE_WORDS for _parse_title stripping (remove filler from title)
