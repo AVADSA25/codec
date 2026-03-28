@@ -11,6 +11,7 @@ from pynput import keyboard
 CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
 DRY_RUN = False
 _cfg = {}
+AGENT_NAME = 'C'
 if os.path.exists(CONFIG_PATH):
     try:
         with open(CONFIG_PATH) as _f: _cfg = json.load(_f)
