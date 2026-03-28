@@ -547,8 +547,8 @@ async def forge_skill(request: Request):
     import re as _re
     body = await request.json()
     code = body.get("code", "").strip()
-    if not code or len(code) < 20:
-        return JSONResponse({"error": "No code provided (min 20 chars)"}, status_code=400)
+    if (not code or len(code) < 20) and not description:
+        return JSONResponse({"error": "Provide code (min 20 chars) or a description"}, status_code=400)
 
     cfg = {}
     try:
