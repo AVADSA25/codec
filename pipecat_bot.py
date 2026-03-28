@@ -177,6 +177,30 @@ async def run_bot(webrtc_connection):
             print(f"[Pipecat] Memory save error: {e}")
         await task.cancel()
 
+    @task.event_handler("on_close")
+    async def on_task_close(task):
+        print("[Pipecat] Session closing — saving to memory...")
+        try:
+            import sqlite3 as _sq
+            from datetime import datetime as _dt
+            _db = _sq.connect(os.path.expanduser("~/.q_memory.db"))
+            _db.execute("CREATE TABLE IF NOT EXISTS conversations (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, timestamp TEXT, role TEXT, content TEXT)")
+            _sid = "pipecat_" + _dt.now().strftime("%Y%m%d_%H%M%S")
+            _saved = 0
+            for msg in context.messages:
+                if msg.get("role") in ("user", "assistant") and msg.get("content"):
+                    _content = msg["content"]
+                    if isinstance(_content, list):
+                        _content = " ".join(str(p) for p in _content)
+                    _db.execute("INSERT INTO conversations (session_id, timestamp, role, content) VALUES (?,?,?,?)",
+                        (_sid, _dt.now().isoformat(), msg["role"], str(_content)[:2000]))
+                    _saved += 1
+            _db.commit()
+            _db.close()
+            print(f"[Pipecat] Saved {_saved} messages to CODEC memory")
+        except Exception as e:
+            print(f"[Pipecat] Memory save error: {e}")
+
     runner = PipelineRunner(handle_sigint=False)
 
     await runner.run(task)
