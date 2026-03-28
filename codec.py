@@ -2,7 +2,7 @@
 import signal
 signal.signal(signal.SIGINT, lambda *a: None)
 signal.signal(signal.SIGTERM, lambda *a: None)
-"""CODEC v1.3.0 | Voice + Text + Phone + Google | *=screenshot | +=doc | --=livechat | Wake word"""
+"""CODEC v1.4.0 | Voice + Text + Phone + Google | *=screenshot | +=doc | --=livechat | Wake word"""
 import threading, tempfile, subprocess, sys, os, time, sqlite3, json, re, base64
 from datetime import datetime
 from pynput import keyboard
@@ -743,12 +743,12 @@ def build_session_script(safe_sys, session_id):
     L.append("print(O+'    ║ ██      ██    ██ ██   ██ █████   ██       ║')")
     L.append("print(O+'    ║ ██      ██    ██ ██   ██ ██      ██       ║')")
     L.append("print(O+'    ║  ██████  ██████  ██████  ███████  ██████  ║')")
-    L.append("print(O+'    ║                                   v1.3.0  ║')")
+    L.append("print(O+'    ║                                   v1.4.0  ║')")
     L.append("print(O+'    ╠═══════════════════════════════════════════╣')")
     L.append("print(O+'    ║'+W+'  " + _cfg.get('key_voice','f18').upper() + " voice  " + _cfg.get('key_text','f16').upper() + " text  ** screen  ++ doc   '+O+'║')")
     L.append("print(O+'    ║'+W+'  Hey C = wake word  type exit to close    '+O+'║')")
     L.append("print(O+'    ╠═══════════════════════════════════════════╣')")
-    L.append("print(O+'    ║'+D+'  Stream='+ss+'  Memory=ON  Skills=ON       '+O+'║')")
+    L.append("print(O+'    ║'+D+'  Stream='+ss+'  Memory=ON  Skills=ON        '+O+'║')")
     L.append("print(O+'    ╚═══════════════════════════════════════════╝'+R)")
     L.append("")
     L.append("queued = check_queue()")
@@ -1124,7 +1124,7 @@ def main():
     ║ ██      ██    ██ ██   ██ █████   ██       ║
     ║ ██      ██    ██ ██   ██ ██      ██       ║
     ║  ██████  ██████  ██████  ███████  ██████  ║
-    ║                                   v1.3.0  ║
+    ║                                   v1.4.0  ║
     ╠═══════════════════════════════════════════╣
     ║{W}  {kt} toggle   {kv} voice   ** screen       {O}║
     ║{W}  {kx} text     ++ doc     -- chat          {O}║
