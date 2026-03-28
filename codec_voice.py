@@ -20,31 +20,46 @@ from typing import Optional
 import httpx
 import numpy as np
 
-# ── CONFIG ──────────────────────────────────────────────────────────────────
-WHISPER_URL  = "http://localhost:8084/v1/audio/transcriptions"
+# ── CONFIG — defaults (overridden by ~/.codec/config.json) ──────────────────
+WHISPER_URL   = "http://localhost:8084/v1/audio/transcriptions"
 WHISPER_MODEL = "mlx-community/whisper-large-v3-turbo"
-QWEN_URL     = "http://localhost:8081/v1/chat/completions"
-QWEN_MODEL   = "mlx-community/Qwen3.5-35B-A3B-4bit"
-KOKORO_URL   = "http://localhost:8085/v1/audio/speech"
-KOKORO_MODEL = "kokoro"
-KOKORO_VOICE = "am_adam"
-DB_PATH      = os.path.expanduser("~/.q_memory.db")
-SKILLS_DIR   = os.path.expanduser("~/.codec/skills")
+QWEN_URL      = "http://localhost:8081/v1/chat/completions"
+QWEN_MODEL    = "mlx-community/Qwen3.5-35B-A3B-4bit"
+LLM_KWARGS    = {}                              # extra body params (e.g. chat_template_kwargs)
+KOKORO_URL    = "http://localhost:8085/v1/audio/speech"
+KOKORO_MODEL  = "mlx-community/Kokoro-82M-bf16"
+KOKORO_VOICE  = "am_adam"
+DB_PATH       = os.path.expanduser("~/.q_memory.db")
+SKILLS_DIR    = os.path.expanduser("~/.codec/skills")
 
-# Config override — load voice from codec config if present
+# Load all values from ~/.codec/config.json at import time
 _CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
 try:
     with open(_CONFIG_PATH) as _f:
         _cfg = json.load(_f)
-    QWEN_URL    = _cfg.get("llm_base_url", QWEN_URL).rstrip("/v1") + "/v1/chat/completions"
-    QWEN_MODEL  = _cfg.get("llm_model", QWEN_MODEL)
+
+    # LLM — llm_base_url already includes /v1, just append /chat/completions
+    _llm_base = _cfg.get("llm_base_url", "http://localhost:8081/v1").rstrip("/")
+    QWEN_URL   = _llm_base + "/chat/completions"
+    QWEN_MODEL = _cfg.get("llm_model", QWEN_MODEL)
+    LLM_KWARGS = {k: v for k, v in _cfg.get("llm_kwargs", {}).items()
+                  if k != "enable_thinking"}   # safe passthrough
+
+    # TTS
+    KOKORO_URL   = _cfg.get("tts_url",   KOKORO_URL)
+    KOKORO_MODEL = _cfg.get("tts_model", KOKORO_MODEL)
     KOKORO_VOICE = _cfg.get("tts_voice", KOKORO_VOICE)
-except Exception:
-    pass
+
+    # STT
+    WHISPER_URL   = _cfg.get("stt_url",   WHISPER_URL)
+    WHISPER_MODEL = _cfg.get("stt_model", WHISPER_MODEL)
+
+except Exception as _e:
+    print(f"[Voice] Config load warning: {_e} — using defaults")
 
 # ── VAD settings ──────────────────────────────────────────────────────────
 VAD_SILENCE_THRESHOLD  = 500    # RMS energy below this = silence
-VAD_SILENCE_DURATION   = 0.8    # seconds of silence before flushing
+VAD_SILENCE_DURATION   = 1.4    # seconds of silence before flushing (increased to avoid cutting mid-sentence)
 VAD_MIN_SPEECH_SECONDS = 0.3    # minimum speech duration to bother sending
 SAMPLE_RATE            = 16000
 BYTES_PER_SAMPLE       = 2      # int16
@@ -73,9 +88,16 @@ SYSTEM_PROMPT = (
     "or Well before your main answer to reduce perceived latency.\n\n"
     "CRITICAL RULE: Never use thinking tags. Never wrap your response in any XML tags. "
     "Just respond directly with plain spoken text. No internal monologue.\n\n"
-    "You can also execute commands for M. If M asks you to check calendar, send email, "
-    "check tasks, search the web, open chrome, or any other action — you will dispatch "
-    "the skill and report back the result conversationally."
+    "You have direct Google Workspace access: Calendar, Gmail, Drive, Tasks, Docs, Sheets. "
+    "When M asks you to add an event, send an email, check tasks, or any Google action — "
+    "YOU execute it immediately via your built-in skills. "
+    "NEVER say 'I will ask Lucy', NEVER delegate to another assistant. "
+    "You are the one with the tools. Do it yourself and confirm the result to M.\n\n"
+    "ANTI-HALLUCINATION RULE: You will sometimes receive skill results before responding. "
+    "If the skill result says 'No events' or 'calendar is clear', that means NO event was created — "
+    "do NOT say you added anything. Only confirm an action if the skill result explicitly "
+    "says 'Done', 'Added', 'Created', or 'Saved'. "
+    "If a skill fails or returns an error, report the error honestly. Never pretend success."
 )
 
 
@@ -122,13 +144,23 @@ class VoicePipeline:
         print(f"[Voice] {len(self.skills)} skills loaded for voice dispatch")
 
     def _match_skill(self, text: str) -> Optional[dict]:
-        """Return matching skill dict or None."""
+        """
+        Return best matching skill dict or None.
+        Strategy: collect ALL matches, then return the one with the longest
+        trigger phrase — prevents short triggers like 'calendar' or '12'
+        from hijacking phrases that a more specific skill should own.
+        """
         text_lower = text.lower().strip()
+        best_match  = None
+        best_len    = 0
+
         for name, skill in self.skills.items():
             for trigger in skill["triggers"]:
-                if trigger in text_lower:
-                    return {"name": name, "run": skill["run"]}
-        return None
+                if trigger in text_lower and len(trigger) > best_len:
+                    best_len   = len(trigger)
+                    best_match = {"name": name, "run": skill["run"]}
+
+        return best_match
 
     # ── VAD ───────────────────────────────────────────────────────────────
 
@@ -203,7 +235,7 @@ class VoicePipeline:
             "max_tokens": max_tokens,
             "temperature": 0.7,
             "stream": True,
-            "chat_template_kwargs": {"enable_thinking": False},
+            **LLM_KWARGS,
         }
         try:
             async with self._http.stream(
@@ -249,7 +281,7 @@ class VoicePipeline:
         try:
             r = await self._http.post(
                 KOKORO_URL,
-                json={"model": KOKORO_MODEL, "input": text, "voice": KOKORO_VOICE},
+                json={"model": KOKORO_MODEL, "input": text, "voice": KOKORO_VOICE, "speed": 1.1},
             )
             if r.status_code == 200:
                 return r.content

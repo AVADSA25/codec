@@ -55,7 +55,7 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx);height:100vh;dis
 </div>
 <div class="bar"><div class="bar-l"><button class="bb" onclick="oS()" style="font-size:16px;width:32px;padding:0">&#9776;</button><span style="font-size:14px;font-weight:700;color:var(--ac);font-family:var(--mn)">&#9889; VIBE CODE</span><input id="fn" class="fi" value="untitled.py"><select id="lg" class="ls" onchange="cLg()"><option value="python">Python</option><option value="javascript">JavaScript</option><option value="bash">Bash</option><option value="html">HTML</option></select></div><div style="display:flex;gap:8px"><a href="/chat" class="bb">Deep Chat</a><a href="/" class="bb">Dashboard</a></div></div>
 <div class="sp">
-<div class="cp"><div class="hd">Q - Vibe Code</div><div class="ms" id="cm"><div class="mg ma">Tell me what to build!</div></div><div class="ia"><textarea id="vi" class="ii" rows="2" placeholder="Describe what to build..."></textarea><button class="sb" id="sndb">Send</button></div></div>
+<div class="cp"><div class="hd">Q - Vibe Code</div><div class="ms" id="cm"><div class="mg ma">Tell me what to build!</div></div><div class="ia"><textarea id="vi" class="ii" rows="2" placeholder="Describe what to build..."></textarea><button class="sb" id="sndb">Send</button><button class="sb" id="stopb" onclick="doStop()" style="display:none;background:#c0392b;min-width:36px;padding:0 10px">&#9632;</button></div></div>
 <div style="width:4px;cursor:col-resize;background:var(--bd)" id="rh"></div>
 <div class="ep"><div id="eb"></div><div class="tb"><button class="bt br" onclick="doRun()">&#9654; Run</button><button class="bt bs" onclick="doPrev()">&#128065; Preview</button><button class="bt bs" onclick="doSave()">&#128190; Save</button><button class="bt bs" onclick="doCopy()">&#128203; Copy</button><button class="bt bk" onclick="doSkill()">&#9889; Skill</button><button class="bt" onclick="doForge()" style="background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none">&#128296; Forge</button><span class="rs" id="rs"></span></div></div>
 <div class="pp" id="pp"><div class="ph"><span>&#128065; Live Preview</span><button onclick="document.getElementById('pp').classList.remove('sh')" style="background:0;border:0;color:var(--tx2);cursor:pointer;font-size:16px">&#10005;</button></div><iframe id="pf" sandbox="allow-scripts allow-same-origin"></iframe></div>
@@ -114,11 +114,24 @@ function addOut(cls, text) {
   el.scrollTop = el.scrollHeight;
 }
 
+var _vibeAbort = null;
+
+function doStop() {
+  if (_vibeAbort) { _vibeAbort.abort(); _vibeAbort = null; }
+  clearInterval(thinkTmr);
+  var tm = document.getElementById('tkmsg');
+  if (tm) tm.remove();
+  document.getElementById('sndb').style.display = '';
+  document.getElementById('stopb').style.display = 'none';
+}
+
 function doSend() {
   var inp = document.getElementById('vi');
   var t = inp.value.trim();
   if (!t) return;
   inp.value = '';
+  document.getElementById('sndb').style.display = 'none';
+  document.getElementById('stopb').style.display = '';
 
   var ctx = ed ? ed.getValue() : '';
   var full = t;
@@ -146,14 +159,19 @@ function doSend() {
     }
   }, 2500);
 
+  _vibeAbort = new AbortController();
   var msgs = [{role: 'system', content: SYSP}].concat(hist);
   fetch('/api/chat', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({messages: msgs})
+    body: JSON.stringify({messages: msgs}),
+    signal: _vibeAbort.signal
   })
   .then(function(r) { return r.json(); })
   .then(function(data) {
+    _vibeAbort = null;
+    document.getElementById('sndb').style.display = '';
+    document.getElementById('stopb').style.display = 'none';
     clearInterval(thinkTmr);
     var tm = document.getElementById('tkmsg');
     if (tm) tm.remove();
@@ -195,10 +213,13 @@ function doSend() {
     }
   })
   .catch(function(e) {
+    _vibeAbort = null;
+    document.getElementById('sndb').style.display = '';
+    document.getElementById('stopb').style.display = 'none';
     clearInterval(thinkTmr);
     var tm = document.getElementById('tkmsg');
     if (tm) tm.remove();
-    addMsg('assistant', 'Error: ' + e.message);
+    if (e.name !== 'AbortError') addMsg('assistant', 'Error: ' + e.message);
   });
 }
 

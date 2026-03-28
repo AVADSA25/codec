@@ -111,6 +111,7 @@ input[type=file]{display:none}
 <button class="ibtn" id="micBtn" onclick="toggleMic()" title="Voice input">&#127908;</button>
 <textarea class="chat-input" id="chatInput" placeholder="Message Q..." rows="1" onkeydown="handleKey(event)"></textarea>
 <button class="ibtn" onclick="document.getElementById('fileUp').click()" title="Upload file">&#128206;</button>
+<button class="ibtn" onclick="window.open('/voice?auto=1','_self')" title="Start voice call" style="color:#E8711A">&#128222;</button>
 <button class="ibtn send" id="sendBtn" onclick="sendMessage()">&#8593;</button>
 </div>
 <input type="file" id="fileUp" accept="*/*" multiple onchange="handleUpload(event)">
