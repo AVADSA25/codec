@@ -1,10 +1,8 @@
 """
-CODEC Voice — Own voice-to-voice pipeline
-Replaces Pipecat with a single-file WebSocket server.
-WebSocket receives raw PCM16 audio chunks from browser,
-runs energy-based VAD, transcribes with Whisper (8084),
-dispatches CODEC skills mid-call or streams Qwen (8081),
-TTS via Kokoro (8085), audio streams back to browser.
+CODEC Voice v2 — voice-to-voice pipeline with interruption support.
+WebSocket receives PCM16 audio + JSON control messages from browser.
+Two concurrent tasks: audio receiver + pipeline processor.
+Interruption: user speaking mid-response cancels TTS immediately.
 """
 import asyncio
 import io
@@ -12,7 +10,6 @@ import json
 import os
 import re
 import sys
-import sqlite3
 import time
 import wave
 from datetime import datetime
@@ -21,56 +18,46 @@ from typing import Optional
 import httpx
 import numpy as np
 
-# ── CONFIG — defaults (overridden by ~/.codec/config.json) ──────────────────
+# ── CONFIG — loaded from ~/.codec/config.json ─────────────────────────────
 WHISPER_URL   = "http://localhost:8084/v1/audio/transcriptions"
 WHISPER_MODEL = "mlx-community/whisper-large-v3-turbo"
 QWEN_URL      = "http://localhost:8081/v1/chat/completions"
 QWEN_MODEL    = "mlx-community/Qwen3.5-35B-A3B-4bit"
-LLM_KWARGS    = {}                              # extra body params (e.g. chat_template_kwargs)
+LLM_KWARGS    = {}
 KOKORO_URL    = "http://localhost:8085/v1/audio/speech"
 KOKORO_MODEL  = "mlx-community/Kokoro-82M-bf16"
 KOKORO_VOICE  = "am_adam"
-DB_PATH       = os.path.expanduser("~/.q_memory.db")
 SKILLS_DIR    = os.path.expanduser("~/.codec/skills")
 
-# Load all values from ~/.codec/config.json at import time
 _CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
 try:
     with open(_CONFIG_PATH) as _f:
         _cfg = json.load(_f)
-
-    # LLM — llm_base_url already includes /v1, just append /chat/completions
-    _llm_base = _cfg.get("llm_base_url", "http://localhost:8081/v1").rstrip("/")
-    QWEN_URL   = _llm_base + "/chat/completions"
-    QWEN_MODEL = _cfg.get("llm_model", QWEN_MODEL)
-    LLM_KWARGS = {k: v for k, v in _cfg.get("llm_kwargs", {}).items()
-                  if k != "enable_thinking"}   # safe passthrough
-
-    # TTS
-    KOKORO_URL   = _cfg.get("tts_url",   KOKORO_URL)
-    KOKORO_MODEL = _cfg.get("tts_model", KOKORO_MODEL)
-    KOKORO_VOICE = _cfg.get("tts_voice", KOKORO_VOICE)
-
-    # STT
+    _llm_base     = _cfg.get("llm_base_url", "http://localhost:8081/v1").rstrip("/")
+    QWEN_URL      = _llm_base + "/chat/completions"
+    QWEN_MODEL    = _cfg.get("llm_model", QWEN_MODEL)
+    LLM_KWARGS    = {k: v for k, v in _cfg.get("llm_kwargs", {}).items() if k != "enable_thinking"}
+    KOKORO_URL    = _cfg.get("tts_url",   KOKORO_URL)
+    KOKORO_MODEL  = _cfg.get("tts_model", KOKORO_MODEL)
+    KOKORO_VOICE  = _cfg.get("tts_voice", KOKORO_VOICE)
     WHISPER_URL   = _cfg.get("stt_url",   WHISPER_URL)
     WHISPER_MODEL = _cfg.get("stt_model", WHISPER_MODEL)
-
 except Exception as _e:
     print(f"[Voice] Config load warning: {_e} — using defaults")
 
-# ── VAD settings ──────────────────────────────────────────────────────────
-# Energy-based VAD tuned for conversational voice-to-voice on Mac Studio.
-# Pipecat used Silero (neural VAD) — we compensate with tighter thresholds.
-VAD_SILENCE_THRESHOLD  = 800    # RMS below this = silence (raised from 500 to ignore room noise)
-VAD_SILENCE_DURATION   = 2.2    # seconds of silence before flushing (longer = fewer mid-sentence cuts)
-VAD_MIN_SPEECH_SECONDS = 0.6    # minimum sustained speech before even considering a flush
-VAD_ECHO_COOLDOWN      = 1.5    # seconds to ignore mic after Q finishes speaking (avoids echo pickup)
+# ── VAD ───────────────────────────────────────────────────────────────────
+VAD_SILENCE_THRESHOLD  = 800    # RMS below this = silence
+VAD_SILENCE_DURATION   = 1.5   # seconds of silence before flushing (was 2.2 — main latency)
+VAD_MIN_SPEECH_SECONDS = 0.4   # minimum speech before considering a flush (was 0.6)
+VAD_ECHO_COOLDOWN      = 1.2   # ignore mic this long after Q finishes speaking
 SAMPLE_RATE            = 16000
-BYTES_PER_SAMPLE       = 2      # int16
+BYTES_PER_SAMPLE       = 2
 MIN_SPEECH_BYTES       = int(SAMPLE_RATE * BYTES_PER_SAMPLE * VAD_MIN_SPEECH_SECONDS)
 
-# ── Whisper noise filter ───────────────────────────────────────────────────
-# Whisper hallucinates these phrases from ambient noise / silence segments.
+# RMS threshold for interrupt detection (slightly lower than VAD to catch early speech)
+INTERRUPT_THRESHOLD = 600
+
+# ── Whisper noise filter ──────────────────────────────────────────────────
 NOISE_WORDS = {
     "you", "thank you", "thanks", "thanks for watching", "bye", "goodbye",
     "see you", "see you next time", "please subscribe", "like and subscribe",
@@ -79,89 +66,90 @@ NOISE_WORDS = {
     "so", "well", "um hmm", "uh huh", "ah", "er",
 }
 
+# Max conversation turns to keep in context (prevents bloat → keeps LLM fast)
+MAX_CONTEXT_TURNS = 20
+
 # ── System Prompt ─────────────────────────────────────────────────────────
 def _build_system_prompt() -> str:
-    """Build system prompt with injected current datetime for Madrid timezone."""
     import datetime as _dt
     now = _dt.datetime.now()
-    day_names = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
-    day_name = day_names[now.weekday()]
-    date_str = now.strftime(f"{day_name}, %-d %B %Y")
+    days = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
+    date_str = now.strftime(f"{days[now.weekday()]}, %-d %B %Y")
     time_str = now.strftime("%-I:%M %p")
-    return f"""You are Q — CODEC Voice, a JARVIS-class local AI assistant running on a Mac Studio M1 Ultra.
-The user is M. You are M's private, always-on, fully local AI. No cloud. No logs outside this machine.
+    return f"""You are Q — CODEC Voice, a JARVIS-class local AI running on a Mac Studio M1 Ultra.
+The user is M. Fully local. No cloud. No external logs.
 
 CURRENT DATE AND TIME: {date_str}, {time_str} (Madrid / Europe time)
 Use this to correctly interpret "today", "tomorrow", "this afternoon", etc.
 
 ━━ VOICE OUTPUT RULES ━━
-Your responses are converted to speech by Kokoro TTS. Format for ears, not eyes:
-- NO markdown: no asterisks, no hashtags, no bullet points, no tables, no dashes
-- NO special characters or symbols
-- NO numbered lists — speak naturally instead
-- Keep responses SHORT: 1-3 sentences normally. Expand only when M asks
-- Start with a natural spoken filler: "Right,", "So,", "Done.", "Got it.", "Sure."
-- Speak like a sharp, calm person — not a chatbot
+Your responses go directly to speech via Kokoro TTS. Format for ears only:
+- NO markdown: no asterisks, no hashtags, no bullets, no tables, no dashes
+- NO special characters, symbols, or URLs
+- SHORT answers: 1-3 sentences for casual questions, expand only when M explicitly asks
+- Start with a natural spoken opener: "Right,", "Sure.", "Got it.", "Done.", "So,"
+- Speak like a sharp calm person, not a chatbot
+- For simple factual answers (math, date, name): give just the answer, nothing else
 
 ━━ INPUT HANDLING ━━
-Your input is live voice transcription (Whisper STT). Expect occasional errors:
-- "iq" or "hey q" at the start = just M calling your name, ignore it
-- "uh", "um", "er" = filler, ignore
-- Strange words = guess the intended meaning from context
-- Never mention transcription errors to M unless they cause real confusion
-- Simple math questions ("one plus one", "what is 7 times 8") = answer directly with the number, nothing else
-- "Speed test [X]" where X is a simple question = just answer X quickly and directly, do not run system diagnostics
+Input is live voice transcription (Whisper STT). Expect noise:
+- "iq", "hey q", "hey mike", "hey codec" at start = M calling your name — ignore it
+- "uh", "um", "er" = filler — ignore
+- Strange words = infer from context
+- Never mention transcription errors unless they cause real confusion
+- Math ("one plus one", "7 times 8") → answer with just the number
+- "Speed test [X]" → just answer X, do NOT run diagnostics
 
-━━ SKILLS AND ACTIONS ━━
-You have 34 built-in skills that execute immediately mid-call:
-Google Calendar, Gmail, Drive, Tasks, Docs, Sheets, Chrome, system controls, and more.
+━━ SKILLS ━━
+You have {len([f for f in os.listdir(SKILLS_DIR) if f.endswith('.py')])} built-in skills (calendar, email, drive, chrome, weather, etc.).
+Skills execute mid-call and return a result string.
+Report results conversationally — 1-2 sentences max.
+NEVER say you completed an action unless the skill result explicitly confirms it.
+NEVER delegate to Lucy or any other agent.
 
-When M asks you to DO something (add event, send email, check tasks, search, etc.):
-1. The skill runs automatically and returns a result string
-2. You receive that result and report it conversationally to M
-3. NEVER delegate to Lucy or any other assistant — you have the tools, you do it
-
-━━ ANTI-HALLUCINATION RULES (CRITICAL) ━━
-Only confirm actions that the skill result explicitly confirms. Specifically:
-- Skill says "Done. [event] added" → confirm it was done
-- Skill says "No events today" or "calendar is clear" → that means READ succeeded, NOT that you created anything — do NOT say you added an event
-- Skill returns an error → report the error honestly to M, ask if they want to retry
-- If you are unsure whether something was done → say "Let me check" and report the actual result
-- NEVER say "I have added", "I have sent", "I have created" unless the skill confirmed it
-- NEVER pretend success. M trusts you. Be honest.
+━━ ANTI-HALLUCINATION ━━
+- Skill returns "Done. [X] added" → confirm done
+- Skill returns "No events" → that's a READ result, NOT creation confirmation
+- Skill returns error → report honestly, offer to retry
+- Unsure → say "Let me check" and report actual result
 
 ━━ MEMORY ━━
-All voice conversations are saved to shared CODEC memory. If M asks you to remember something, confirm: "Saved to memory." M can retrieve it later via CODEC chat.
+All sessions are saved to CODEC shared memory (FTS5 indexed).
+If M asks to remember something: confirm "Saved to memory."
 
 ━━ PERSONA ━━
-Honest. Direct. Dry wit at 10 percent. Commanding presence. You give straight answers.
-One well-placed sarcastic remark is allowed per conversation. One.
-You are not a customer service bot. You are M's right hand."""
-
-SYSTEM_PROMPT = _build_system_prompt()
+Honest. Direct. Dry wit at 10 percent. Commanding presence.
+Straight answers. One well-placed sarcastic remark per conversation maximum.
+M's right hand — not a customer service bot."""
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 class VoicePipeline:
-    """One voice session per WebSocket connection."""
+    """One voice session per WebSocket connection. Two-task architecture."""
 
     def __init__(self, websocket):
-        self.ws          = websocket
-        self.session_id  = "voice_" + datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.messages    = [{"role": "system", "content": _build_system_prompt()}]
-        self.audio_buffer    = bytearray()
+        self.ws              = websocket
+        self.session_id      = "voice_" + datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.messages        = [{"role": "system", "content": _build_system_prompt()}]
+
+        # VAD state
+        self.audio_buffer     = bytearray()
         self.last_speech_time = 0.0
-        self.is_speaking     = False
-        self.processing      = False
-        self.last_tts_end    = 0.0  # monotonic time when Q last finished speaking
-        self.skills       = {}
-        self._http        = httpx.AsyncClient(timeout=120.0)
+        self.is_speaking      = False
+        self.last_tts_end     = 0.0
+
+        # Concurrency
+        self.utterance_queue = asyncio.Queue()   # completed utterances ready to process
+        self.interrupted     = asyncio.Event()   # set when user speaks mid-response
+        self.processing      = False             # True while generating/speaking a response
+
+        self.skills = {}
+        self._http  = httpx.AsyncClient(timeout=120.0)
         self._load_skills()
 
     # ── Skill loader ──────────────────────────────────────────────────────
 
     def _load_skills(self):
-        """Import every CODEC skill; index by trigger phrases."""
         if not os.path.isdir(SKILLS_DIR):
             return
         import importlib.util
@@ -182,36 +170,22 @@ class VoicePipeline:
                     }
             except Exception as e:
                 print(f"[Voice] Skill load error {fname}: {e}")
-        print(f"[Voice] {len(self.skills)} skills loaded for voice dispatch")
+        print(f"[Voice] {len(self.skills)} skills loaded")
 
-    # Skills that should NEVER fire from voice (too noisy / too short triggers)
     _VOICE_SKIP_SKILLS = {"calculator", "app_switch", "brightness", "clipboard"}
 
     def _match_skill(self, text: str) -> Optional[dict]:
-        """
-        Return best matching skill or None.
-
-        Rules for voice dispatch:
-        1. Skip skills in _VOICE_SKIP_SKILLS (too noisy when triggered by voice)
-        2. Only match triggers that are >= 3 words — prevents single words like
-           'plus', 'add', 'calendar' firing in the middle of casual conversation
-        3. Among all matches, pick the longest trigger (most specific wins)
-        """
         text_lower = text.lower().strip()
-        best_match = None
-        best_len   = 0
-
+        best_match, best_len = None, 0
         for name, skill in self.skills.items():
             if name in self._VOICE_SKIP_SKILLS:
                 continue
             for trigger in skill["triggers"]:
-                # Require trigger to be at least 3 words long
                 if len(trigger.split()) < 3:
                     continue
                 if trigger in text_lower and len(trigger) > best_len:
                     best_len   = len(trigger)
                     best_match = {"name": name, "run": skill["run"]}
-
         return best_match
 
     # ── VAD ───────────────────────────────────────────────────────────────
@@ -224,15 +198,10 @@ class VoicePipeline:
         return float(np.sqrt(np.mean(samples ** 2)))
 
     def feed_audio(self, chunk: bytes) -> Optional[bytes]:
-        """
-        Feed a PCM16 chunk into the VAD state machine.
-        Returns a complete utterance when silence follows speech, else None.
-        """
         rms = self._rms(chunk)
         now = time.monotonic()
 
-        # Echo cooldown: ignore mic for VAD_ECHO_COOLDOWN seconds after Q spoke.
-        # This prevents picking up TTS room echo as a new utterance.
+        # Echo cooldown: ignore mic after Q speaks
         if now - self.last_tts_end < VAD_ECHO_COOLDOWN:
             return None
 
@@ -250,15 +219,12 @@ class VoicePipeline:
                     utterance = bytes(self.audio_buffer)
                     self.audio_buffer = bytearray()
                     return utterance
-                # Too short — discard as noise
                 self.audio_buffer = bytearray()
-
         return None
 
     # ── STT ───────────────────────────────────────────────────────────────
 
     async def transcribe(self, pcm: bytes) -> str:
-        """PCM16 mono 16 kHz → Whisper → text string."""
         wav_buf = io.BytesIO()
         with wave.open(wav_buf, "wb") as wf:
             wf.setnchannels(1)
@@ -266,7 +232,6 @@ class VoicePipeline:
             wf.setframerate(SAMPLE_RATE)
             wf.writeframes(pcm)
         wav_buf.seek(0)
-
         try:
             r = await self._http.post(
                 WHISPER_URL,
@@ -274,9 +239,8 @@ class VoicePipeline:
                 data={"model": WHISPER_MODEL, "language": "en"},
             )
             if r.status_code == 200:
-                text = r.json().get("text", "").strip()
+                text  = r.json().get("text", "").strip()
                 clean = text.lower().rstrip(".!?, ")
-                # Reject Whisper hallucinations: noise words or < 3 meaningful words
                 if clean in NOISE_WORDS:
                     print(f"[Voice] Discarded noise: '{text}'")
                     return ""
@@ -292,13 +256,22 @@ class VoicePipeline:
 
     # ── LLM ───────────────────────────────────────────────────────────────
 
-    async def _stream_qwen(self, messages: list, max_tokens: int = 512):
-        """Yield text chunks from Qwen streaming endpoint."""
+    def _trimmed_messages(self) -> list:
+        """Keep system prompt + last MAX_CONTEXT_TURNS message pairs."""
+        system = [m for m in self.messages if m["role"] == "system"]
+        convo  = [m for m in self.messages if m["role"] != "system"]
+        # Each turn = 2 messages (user + assistant)
+        max_msgs = MAX_CONTEXT_TURNS * 2
+        return system + convo[-max_msgs:]
+
+    async def _stream_qwen(self, messages: list, max_tokens: int = 300):
         payload = {
             "model": QWEN_MODEL,
             "messages": messages,
             "max_tokens": max_tokens,
             "temperature": 0.7,
+            "top_p": 0.9,
+            "frequency_penalty": 0.8,
             "stream": True,
             **LLM_KWARGS,
         }
@@ -317,7 +290,6 @@ class VoicePipeline:
                     try:
                         token = json.loads(data)["choices"][0].get("delta", {}).get("content", "")
                         if token:
-                            # Strip any stray thinking tags
                             token = re.sub(r"<think>[\s\S]*?</think>", "", token)
                             if token:
                                 yield token
@@ -328,10 +300,9 @@ class VoicePipeline:
             yield "Sorry, I had a processing error."
 
     async def generate_response(self, user_text: str):
-        """Add user turn, stream assistant reply, append to history."""
         self.messages.append({"role": "user", "content": user_text})
         full = ""
-        async for chunk in self._stream_qwen(self.messages):
+        async for chunk in self._stream_qwen(self._trimmed_messages()):
             full += chunk
             yield chunk
         self.messages.append({"role": "assistant", "content": full})
@@ -339,14 +310,14 @@ class VoicePipeline:
     # ── TTS ───────────────────────────────────────────────────────────────
 
     async def synthesize(self, text: str) -> Optional[bytes]:
-        """Text → Kokoro HTTP → raw audio bytes."""
         text = text.strip()
         if not text:
             return None
         try:
             r = await self._http.post(
                 KOKORO_URL,
-                json={"model": KOKORO_MODEL, "input": text, "voice": KOKORO_VOICE, "speed": 1.1},
+                json={"model": KOKORO_MODEL, "input": text,
+                      "voice": KOKORO_VOICE, "speed": 1.15},
             )
             if r.status_code == 200:
                 return r.content
@@ -355,51 +326,59 @@ class VoicePipeline:
             print(f"[Voice] TTS error: {e}")
         return None
 
+    # ── Sentence boundary ─────────────────────────────────────────────────
+
+    def _flush_on_boundary(self, buf: str) -> tuple[str, str]:
+        """Return (to_speak, remainder) at first sentence boundary."""
+        for i, ch in enumerate(buf):
+            if ch in ".!?,;:":
+                return buf[:i + 1].strip(), buf[i + 1:]
+        return "", buf
+
+    # ── TTS with interruption check ───────────────────────────────────────
+
+    async def _speak(self, text: str) -> bool:
+        """
+        Synthesize and send one chunk of speech.
+        Returns False if interrupted before/after sending — caller should stop.
+        """
+        if self.interrupted.is_set():
+            return False
+        audio = await self.synthesize(text)
+        if self.interrupted.is_set():
+            return False
+        if audio:
+            await self.ws.send_bytes(audio)
+            self.last_tts_end = time.monotonic()
+        return True
+
     # ── Skill dispatch ────────────────────────────────────────────────────
 
     async def dispatch_skill(self, skill: dict, user_text: str) -> Optional[str]:
-        """Run skill in executor. Returns result string, or None if empty/failed."""
         try:
             print(f"[Voice] → skill: {skill['name']}")
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(None, skill["run"], user_text)
             result = str(result).strip() if result else ""
             if not result or result.lower() in ("none", "done, but no output.", ""):
-                print(f"[Voice] Skill {skill['name']} returned empty — falling through to Qwen")
+                print(f"[Voice] Skill {skill['name']} empty — falling through to Qwen")
                 return None
             return result
         except Exception as e:
-            print(f"[Voice] Skill dispatch error: {e}")
+            print(f"[Voice] Skill error: {e}")
             return f"There was an error running that: {e}"
 
     async def _skill_to_speech(self, result: str) -> str:
-        """If skill result is long, summarise to 2-3 spoken sentences."""
         if len(result) <= 500:
             return result
         summary_msgs = [
-            {"role": "system", "content": "Summarise the following in 2-3 spoken sentences. No formatting."},
+            {"role": "system", "content": "Summarise in 1-2 spoken sentences. No formatting."},
             {"role": "user",   "content": result},
         ]
         summary = ""
-        async for chunk in self._stream_qwen(summary_msgs, max_tokens=200):
+        async for chunk in self._stream_qwen(summary_msgs, max_tokens=150):
             summary += chunk
-        return summary.strip() or result[:400]
-
-    # ── Sentence splitter for TTS streaming ──────────────────────────────
-
-    @staticmethod
-    def _flush_on_boundary(buf: str) -> tuple[str, str]:
-        """
-        Return (to_speak, remainder).
-        Flushes when a sentence boundary is found and buffer is long enough.
-        """
-        if len(buf) < 20:
-            return "", buf
-        # Look for sentence-ending punctuation
-        for i in range(len(buf) - 1, -1, -1):
-            if buf[i] in ".!?,;:":
-                return buf[:i + 1].strip(), buf[i + 1:]
-        return "", buf
+        return summary.strip() or result[:300]
 
     # ── Crew dispatch ─────────────────────────────────────────────────────
 
@@ -421,7 +400,6 @@ class VoicePipeline:
     }
 
     async def dispatch_crew_from_voice(self, user_text: str) -> Optional[str]:
-        """Check if user wants a crew. Returns spoken result or None."""
         low = user_text.lower()
         for trigger, (crew_name, arg_builder) in self._CREW_TRIGGERS.items():
             if trigger in low:
@@ -437,7 +415,6 @@ class VoicePipeline:
                     await self.ws.send_bytes(audio)
                     self.last_tts_end = time.monotonic()
 
-                # Progress spoken aloud
                 async def voice_cb(update):
                     status = update.get("status", "")
                     agent  = update.get("agent", "")
@@ -449,9 +426,9 @@ class VoicePipeline:
                     else:
                         return
                     await self.ws.send_json({"type": "transcript", "role": "assistant", "text": msg})
-                    audio = await self.synthesize(msg)
-                    if audio:
-                        await self.ws.send_bytes(audio)
+                    a = await self.synthesize(msg)
+                    if a:
+                        await self.ws.send_bytes(a)
                         self.last_tts_end = time.monotonic()
 
                 _dash = os.path.dirname(os.path.abspath(__file__))
@@ -462,34 +439,29 @@ class VoicePipeline:
                 result = await run_crew(crew_name, callback=voice_cb, **kwargs)
 
                 if result.get("status") == "complete":
-                    full = result.get("result", "")
+                    full    = result.get("result", "")
                     elapsed = result.get("elapsed_seconds", "?")
                     if len(full) > 500:
                         summary = f"{label.title()} complete. Took {elapsed} seconds."
-                        m = re.search(r'https://docs\.google\.com/\S+', full)
-                        if m:
+                        if re.search(r'https://docs\.google\.com', full):
                             summary += " Full report saved to Google Docs."
                         else:
                             summary += " " + full[:300]
                         return summary
                     return full
-                else:
-                    return f"Agent error: {result.get('error', 'unknown')}"
+                return f"Agent error: {result.get('error', 'unknown')}"
 
-        return None  # Not a crew request
+        return None
 
     # ── Memory ────────────────────────────────────────────────────────────
 
     def save_to_memory(self):
-        """Write conversation to ~/.q_memory.db via CodecMemory (FTS5 indexed)."""
         try:
-            # Import CodecMemory from the dashboard dir
             _dash = os.path.dirname(os.path.abspath(__file__))
             if _dash not in sys.path:
                 sys.path.insert(0, _dash)
             from codec_memory import CodecMemory
-            mem = CodecMemory()
-
+            mem   = CodecMemory()
             saved = 0
             for msg in self.messages:
                 role = msg.get("role", "")
@@ -502,39 +474,86 @@ class VoicePipeline:
                     continue
                 mem.save(self.session_id, role, str(content)[:2000])
                 saved += 1
-            print(f"[Voice] Saved {saved} messages → session {self.session_id} (FTS5 indexed)")
+            print(f"[Voice] Saved {saved} messages → {self.session_id}")
         except Exception as e:
             print(f"[Voice] Memory save error: {e}")
 
-    # ── Main loop ─────────────────────────────────────────────────────────
+    # ── Audio receiver task ────────────────────────────────────────────────
 
-    async def run(self):
-        print(f"[Voice] Session started: {self.session_id}")
-
-        # Send greeting
-        greeting = "Greetings M. Q is online. All systems local. What do you need?"
-        greeting_audio = await self.synthesize(greeting)
-        if greeting_audio:
-            await self.ws.send_bytes(greeting_audio)
-        await self.ws.send_json({
-            "type": "transcript", "role": "assistant", "text": greeting
-        })
-        self.messages.append({"role": "assistant", "content": greeting})
-
+    async def _audio_receiver(self):
+        """
+        Continuously reads WebSocket messages (bytes = audio, text = control).
+        - Bytes: feeds VAD; queues complete utterances for processing.
+        - Text {"type":"interrupt"}: sets self.interrupted to stop active TTS.
+        - Text {"type":"ping"}: silently ignored.
+        """
         try:
-            async for raw_msg in self.ws.iter_bytes():
-                # Ignore chunks while we're already generating a response
+            while True:
+                msg = await self.ws.receive()
+                msg_type = msg.get("type", "")
+
+                if msg_type == "websocket.disconnect":
+                    print("[Voice] WebSocket disconnected in receiver")
+                    await self.utterance_queue.put(None)  # signal pipeline to stop
+                    break
+
+                # ── Text / JSON control message ──
+                raw_text = msg.get("text")
+                if raw_text:
+                    try:
+                        ctrl = json.loads(raw_text)
+                        if ctrl.get("type") == "interrupt":
+                            if self.processing:
+                                print("[Voice] Interrupt received")
+                                self.interrupted.set()
+                    except Exception:
+                        pass
+                    continue
+
+                # ── Audio bytes ──
+                raw_bytes = msg.get("bytes")
+                if not raw_bytes:
+                    continue
+
+                # While processing: check if user starts talking → interrupt
                 if self.processing:
+                    rms = self._rms(raw_bytes)
+                    if (rms > INTERRUPT_THRESHOLD and
+                            time.monotonic() - self.last_tts_end > VAD_ECHO_COOLDOWN):
+                        print(f"[Voice] Interrupt by audio energy (RMS {rms:.0f})")
+                        self.interrupted.set()
                     continue
 
-                utterance = self.feed_audio(raw_msg)
-                if utterance is None:
-                    continue
+                # Normal VAD feeding
+                utterance = self.feed_audio(raw_bytes)
+                if utterance:
+                    await self.utterance_queue.put(utterance)
 
-                # ── Got a complete utterance ──
-                self.processing = True
-                await self.ws.send_json({"type": "status", "status": "processing"})
+        except Exception as e:
+            print(f"[Voice] Receiver error: {type(e).__name__}: {e}")
+            await self.utterance_queue.put(None)
 
+    # ── Pipeline processor task ───────────────────────────────────────────
+
+    async def _pipeline(self):
+        """
+        Dequeues utterances and runs the full STT → skill/LLM → TTS pipeline.
+        Checks self.interrupted before/after each TTS chunk.
+        """
+        while True:
+            try:
+                utterance = await asyncio.wait_for(self.utterance_queue.get(), timeout=60)
+            except asyncio.TimeoutError:
+                continue
+
+            if utterance is None:  # disconnect signal
+                break
+
+            self.interrupted.clear()
+            self.processing = True
+            await self.ws.send_json({"type": "status", "status": "processing"})
+
+            try:
                 # 1. STT
                 user_text = await self.transcribe(utterance)
                 if not user_text:
@@ -543,85 +562,100 @@ class VoicePipeline:
                     continue
 
                 print(f"[Voice] User: {user_text}")
-                await self.ws.send_json({
-                    "type": "transcript", "role": "user", "text": user_text
-                })
+                await self.ws.send_json({"type": "transcript", "role": "user", "text": user_text})
 
-                # 2a. Crew dispatch (agent pipeline — before skills)
+                # 2a. Crew dispatch
                 crew_result = await self.dispatch_crew_from_voice(user_text)
                 if crew_result:
                     self.messages.append({"role": "user",      "content": user_text})
                     self.messages.append({"role": "assistant", "content": crew_result})
                     await self.ws.send_json({"type": "transcript", "role": "assistant", "text": crew_result})
-                    audio = await self.synthesize(crew_result)
-                    if audio:
-                        await self.ws.send_bytes(audio)
-                        self.last_tts_end = time.monotonic()
+                    await self._speak(crew_result)
                     self.processing = False
                     await self.ws.send_json({"type": "status", "status": "listening"})
                     continue
 
-                # 2b. Skill check
+                # 2b. Skill dispatch
                 skill_match = self._match_skill(user_text)
-
                 if skill_match:
-                    # ── Skill path ──
                     raw_result = await self.dispatch_skill(skill_match, user_text)
-
                     if raw_result is not None:
-                        # Skill returned useful data — summarise and speak it
-                        spoken_result = await self._skill_to_speech(raw_result)
+                        spoken = await self._skill_to_speech(raw_result)
                         self.messages.append({"role": "user",      "content": user_text})
-                        self.messages.append({"role": "assistant", "content": spoken_result})
-                        await self.ws.send_json({
-                            "type": "transcript", "role": "assistant", "text": spoken_result
-                        })
-                        audio = await self.synthesize(spoken_result)
-                        if audio:
-                            await self.ws.send_bytes(audio)
-                            self.last_tts_end = time.monotonic()
+                        self.messages.append({"role": "assistant", "content": spoken})
+                        await self.ws.send_json({"type": "transcript", "role": "assistant", "text": spoken})
+                        await self._speak(spoken)
                         self.processing = False
                         await self.ws.send_json({"type": "status", "status": "listening"})
-                        continue  # skip the LLM path below
+                        continue
+                    # skill returned nothing → fall through to LLM
 
-                # ── LLM streaming path (also fallback when skill returns nothing) ──
+                # 3. LLM streaming path
                 sentence_buf = ""
                 full_text    = ""
+                interrupted_mid = False
 
                 async for token in self.generate_response(user_text):
+                    if self.interrupted.is_set():
+                        interrupted_mid = True
+                        break
                     sentence_buf += token
                     full_text    += token
 
                     to_speak, sentence_buf = self._flush_on_boundary(sentence_buf)
                     if to_speak:
-                        audio = await self.synthesize(to_speak)
-                        if audio:
-                            await self.ws.send_bytes(audio)
-                            self.last_tts_end = time.monotonic()
-                        await self.ws.send_json({
-                            "type": "transcript_chunk", "text": to_speak
-                        })
+                        await self.ws.send_json({"type": "transcript_chunk", "text": to_speak})
+                        ok = await self._speak(to_speak)
+                        if not ok:
+                            interrupted_mid = True
+                            break
 
-                # Flush remainder
-                if sentence_buf.strip():
-                    audio = await self.synthesize(sentence_buf.strip())
-                    if audio:
-                        await self.ws.send_bytes(audio)
-                        self.last_tts_end = time.monotonic()
-                    await self.ws.send_json({
-                        "type": "transcript_chunk", "text": sentence_buf
-                    })
+                # Flush remainder (only if not interrupted)
+                if not interrupted_mid and sentence_buf.strip():
+                    await self.ws.send_json({"type": "transcript_chunk", "text": sentence_buf})
+                    await self._speak(sentence_buf.strip())
 
                 await self.ws.send_json({
-                    "type": "transcript", "role": "assistant", "text": full_text.strip()
+                    "type": "transcript", "role": "assistant",
+                    "text": full_text.strip() + (" [interrupted]" if interrupted_mid else "")
                 })
 
+                if interrupted_mid:
+                    print("[Voice] Response interrupted by user")
+
+            except Exception as e:
+                print(f"[Voice] Pipeline error: {type(e).__name__}: {e}")
+
+            finally:
+                self.interrupted.clear()
                 self.processing = False
                 await self.ws.send_json({"type": "status", "status": "listening"})
 
+    # ── Main entry point ──────────────────────────────────────────────────
+
+    async def run(self):
+        print(f"[Voice] Session started: {self.session_id}")
+
+        # Greeting
+        greeting = "Greetings M. Q is online. All systems local. What do you need?"
+        self.messages.append({"role": "assistant", "content": greeting})
+        await self.ws.send_json({"type": "transcript", "role": "assistant", "text": greeting})
+        g_audio = await self.synthesize(greeting)
+        if g_audio:
+            await self.ws.send_bytes(g_audio)
+            self.last_tts_end = time.monotonic()
+
+        # Run both tasks concurrently — receiver feeds queue, pipeline processes
+        receiver = asyncio.create_task(self._audio_receiver())
+        pipeline = asyncio.create_task(self._pipeline())
+
+        try:
+            await asyncio.gather(receiver, pipeline)
         except Exception as e:
             print(f"[Voice] Session error: {type(e).__name__}: {e}")
         finally:
+            receiver.cancel()
+            pipeline.cancel()
             self.save_to_memory()
             print(f"[Voice] Session ended: {self.session_id}")
 

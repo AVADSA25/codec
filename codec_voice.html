@@ -293,6 +293,10 @@
     var isPlaying   = false;
     var curSource   = null;
 
+    /* ── Interrupt detection ── */
+    var INTERRUPT_RMS   = 800;   // mic RMS threshold to trigger interrupt
+    var lastInterruptAt = 0;     // debounce — ms timestamp
+
     /* ── Streaming transcript ── */
     var streamLine  = null;
     var streamText  = "";
@@ -435,6 +439,22 @@
             processor.onaudioprocess = function(e) {
                 if (!ws || ws.readyState !== WebSocket.OPEN) return;
                 var f32 = e.inputBuffer.getChannelData(0);
+
+                /* Interrupt detection: if Q is speaking and user talks, stop TTS */
+                if (isPlaying) {
+                    var sum = 0;
+                    for (var j = 0; j < f32.length; j++) sum += f32[j] * f32[j];
+                    var rms = Math.sqrt(sum / f32.length) * 32768;
+                    var now = Date.now();
+                    if (rms > INTERRUPT_RMS && (now - lastInterruptAt) > 1200) {
+                        lastInterruptAt = now;
+                        ws.send(JSON.stringify({ type: 'interrupt' }));
+                        stopAudio();
+                        setState('listening');
+                        console.log('[Voice] Interrupt sent — rms=' + Math.round(rms));
+                    }
+                }
+
                 var i16 = new Int16Array(f32.length);
                 for (var i = 0; i < f32.length; i++) {
                     var s = Math.max(-1, Math.min(1, f32[i]));
