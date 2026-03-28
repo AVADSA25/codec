@@ -108,7 +108,7 @@ root.attributes('-alpha',0.95)
 root.configure(bg='#0a0a0a')
 sw=root.winfo_screenwidth()
 sh=root.winfo_screenheight()
-w,h=520,56
+w,h=440,84
 x=(sw-w)//2
 y=sh-130
 root.geometry(f'{{w}}x{{h}}+{{x}}+{{y}}')
@@ -131,7 +131,7 @@ root.attributes('-alpha',0.95)
 root.configure(bg='#0a0a0a')
 sw=root.winfo_screenwidth()
 sh=root.winfo_screenheight()
-w,h=440,78
+w,h=440,84
 x=(sw-w)//2
 y=sh-130
 root.geometry(f'{w}x{h}+{x}+{y}')
@@ -190,7 +190,7 @@ root.attributes('-alpha',0.95)
 root.configure(bg='#0a0a0a')
 sw=root.winfo_screenwidth()
 sh=root.winfo_screenheight()
-w,h=440,78
+w,h=440,84
 x=(sw-w)//2
 y=sh-130
 root.geometry(f'{{w}}x{{h}}+{{x}}+{{y}}')
@@ -610,11 +610,11 @@ def build_session_script(safe_sys, session_id):
     L.append("                result['allow'] = True; root.destroy()")
     L.append("            def deny():")
     L.append("                result['allow'] = False; root.destroy()")
-    L.append("            abtn = tk.Button(root, text='✓ Allow', bg='#00aa55', fg='#fff', font=('Helvetica',13,'bold'), border=0, padx=20, pady=6, command=allow)")
+    L.append("            abtn = tk.Button(root, text='✓ Allow', bg='#00cc55', fg='#000', font=('Helvetica',13,'bold'), border=0, padx=20, pady=6, command=allow)")
     L.append("            abtn.place(x=w//2-110, y=140, width=100, height=36)")
-    L.append("            dbtn = tk.Button(root, text='✗ Deny', bg='#cc3333', fg='#fff', font=('Helvetica',13,'bold'), border=0, padx=20, pady=6, command=deny)")
+    L.append("            dbtn = tk.Button(root, text='✗ Deny', bg='#ff4444', fg='#000', font=('Helvetica',13,'bold'), border=0, padx=20, pady=6, command=deny)")
     L.append("            dbtn.place(x=w//2+10, y=140, width=100, height=36)")
-    L.append("            root.after(15000, deny)")
+    L.append("            root.after(120000, deny)")
     L.append("            root.mainloop()")
     L.append("            return result['allow']")
     L.append("        if not _cmd_preview(action, code):")
@@ -750,7 +750,7 @@ def build_session_script(safe_sys, session_id):
     L.append("print(O+'    ║'+W+'  " + _cfg.get('key_voice','f18').upper() + " voice  " + _cfg.get('key_text','f16').upper() + " text  ** screen  ++ doc   '+O+'║')")
     L.append("print(O+'    ║'+W+'  Hey C = wake word  type exit to close    '+O+'║')")
     L.append("print(O+'    ╠═══════════════════════════════════════════╣')")
-    L.append("print(O+'    ║'+D+'  Stream='+ss+'  Memory=ON  Skills=ON        '+O+'║')")
+    L.append("print(O+'    ║'+D+'  Stream='+ss+'  Memory=ON  Skills=ON           '+O+'║')")
     L.append("print(O+'    ╚═══════════════════════════════════════════╝'+R)")
     L.append("")
     L.append("queued = check_queue()")

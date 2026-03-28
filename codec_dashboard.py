@@ -604,6 +604,10 @@ CODE TO CONVERT:
         raw = _re.sub(r'^```[\w]*\n?', '', raw).strip()
         raw = _re.sub(r'\n?```$', '', raw).strip()
 
+        rawlines = raw.split("\n")
+        if rawlines and rawlines[0].strip() and not rawlines[0].strip().startswith(("import ","from ","SKILL_","\x22\x22\x22","def ","class ","#")):
+            rawlines[0] = "\x22\x22\x22" + rawlines[0].strip() + "\x22\x22\x22"
+            raw = "\n".join(rawlines)
         if "SKILL_NAME" not in raw or "def run" not in raw:
             return JSONResponse({"error": "LLM output is not a valid skill", "raw": raw}, status_code=422)
 
