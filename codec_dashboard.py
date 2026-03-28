@@ -295,7 +295,7 @@ async def chat_page():
         return f.read()
 
 
-# Q Chat conversation storage
+# Mike Chat conversation storage
 QCHAT_DB = os.path.expanduser("~/.codec/qchat.db")
 
 def qchat_db():

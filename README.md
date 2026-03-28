@@ -18,7 +18,7 @@
 
 ## What It Does
 
-You say **"Hey Q, open Safari and search for flights to Tokyo"** — it opens your browser and does it.
+You say **"Hey Mike, open Safari and search for flights to Tokyo"** — it opens your browser and does it.
 
 You say **"draft a reply saying I'll review it tonight"** — it reads your screen, sees the email or Slack message, writes a polished reply, and pastes it right into the text field.
 
@@ -45,7 +45,7 @@ python3 setup_codec.py
 python3 codec.py
 ```
 
-Five minutes from clone to "Hey Q, what time is it."
+Five minutes from clone to "Hey Mike, what time is it."
 
 ---
 
@@ -54,7 +54,7 @@ Five minutes from clone to "Hey Q, what time is it."
 ### Voice and Text Control
 - **Hold-to-talk voice** — hold F18, speak, release. Whisper transcribes, LLM processes, Kokoro speaks the answer.
 - **Text input** — press F16 for a dialog box.
-- **Wake word** — say "Hey Q" hands-free from across the room.
+- **Wake word** — say "Hey Mike" hands-free from across the room.
 - **Draft and paste** — reads your screen, writes a reply, pastes it into whatever app you're using. Slack, WhatsApp, email, anything.
 - **Live voice chat** — double-tap minus for real-time voice-to-voice conversation via Pipecat.
 
@@ -114,7 +114,7 @@ Two Python files. FastAPI backend, vanilla HTML frontend. No React, no npm. Poin
 Full AI chat at `/chat` on your dashboard. Drop entire codebases, long documents, research papers. File upload with PDF extraction, drag and drop, microphone input, conversation history sidebar.
 
 ### Vibe Code — AI-Powered IDE
-Split-screen coding environment at `/vibe`. Monaco editor (VS Code engine), Q Chat sidebar, live preview panel. Ask Q to build something, code appears in the editor, preview opens automatically. Run Python, JavaScript, or Bash directly. Save as CODEC skill with one click. Project history sidebar.
+Split-screen coding environment at `/vibe`. Monaco editor (VS Code engine), Mike Chat sidebar, live preview panel. Ask Mike to build something, code appears in the editor, preview opens automatically. Run Python, JavaScript, or Bash directly. Save as CODEC skill with one click. Project history sidebar.
 
 ### Agent Delegation
 CODEC delegates complex tasks to external AI agents via webhooks. The Lucy skill sends commands to n8n workflows. Lucy responds directly back to Q through a synchronous webhook — fully private, no Telegram. This works with any webhook system: n8n, Make, Zapier, custom APIs.
@@ -148,7 +148,7 @@ Run your LLM on a Mac Studio, use a MacBook Air as a thin client over LAN. The A
 | ++ (double-tap) | Open file picker for document analysis |
 | -- (double-tap) | Live voice chat via Pipecat |
 | Right-click Services | Text Assistant |
-| Hey Q | Wake word activation |
+| Hey Mike | Wake word activation |
 
 All shortcuts are configurable in ~/.codec/config.json.
 
@@ -166,7 +166,7 @@ All shortcuts are configurable in ~/.codec/config.json.
 | Google Gemini | Paste API key (free tier works) |
 | Any OpenAI-compatible | Enter base URL and model |
 
-Tested on Mac Studio M1 Ultra with Qwen 3.5 35B locally, and on MacBook Air M2 with Gemini free tier.
+Tested on Mac Studio M1 Ultra with Mikewen 3.5 35B locally, and on MacBook Air M2 with Gemini free tier.
 
 ---
 

@@ -18,6 +18,7 @@ def call_qwen(text, mode):
         "proofread": "Fix all spelling, grammar, and punctuation errors. Keep same tone. Output ONLY corrected text.",
         "elevate": "Rewrite to be more polished and professional. Keep same meaning. Output ONLY improved text.",
         "explain": "Explain this text simply and concisely. What is it about? Key points?",
+        "translate": "You are a translator. Translate the following text to English. If the text is already in English, translate it to French. Output ONLY the translated text, nothing else. No explanations, no labels like Translation:, just the translated text.",
         "prompt": "You are a prompt engineer. Rewrite the following text to be a clear, optimized prompt for an AI language model. Make it specific, structured, and effective. Remove ambiguity, add context where helpful, and ensure the intent is crystal clear. Output ONLY the optimized prompt, nothing else."
     }
     payload = {"model": model, "messages": [

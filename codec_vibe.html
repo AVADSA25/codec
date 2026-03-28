@@ -68,12 +68,12 @@ var hist = [];
 var sesId = Date.now().toString(36) + Math.random().toString(36).substr(2,5);
 var thinkTmr = null;
 
-var SYSP = "You are Q, an expert software engineer. Write flawless code. RULES: 1) Output a SINGLE fenced code block with COMPLETE file. 2) For games/visual: ALWAYS HTML Canvas, NOT pygame. requestAnimationFrame for 60fps. 3) Make it BEAUTIFUL. 4) Brief explanation BEFORE code. 5) When fixing: output COMPLETE file.";
+var SYSP = "You are Mike, an expert software engineer. Write flawless code. RULES: 1) Output a SINGLE fenced code block with COMPLETE file. 2) For games/visual: ALWAYS HTML Canvas, NOT pygame. requestAnimationFrame for 60fps. 3) Make it BEAUTIFUL. 4) Brief explanation BEFORE code. 5) When fixing: output COMPLETE file.";
 
 require.config({paths:{vs:'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs'}});
 require(['vs/editor/editor.main'], function() {
   ed = monaco.editor.create(document.getElementById('eb'), {
-    value: '# Ask Q to build something\n',
+    value: '# Ask Mike to build something\n',
     language: 'python',
     theme: 'vs-dark',
     fontSize: 13,
