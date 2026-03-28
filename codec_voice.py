@@ -58,16 +58,25 @@ except Exception as _e:
     print(f"[Voice] Config load warning: {_e} — using defaults")
 
 # ── VAD settings ──────────────────────────────────────────────────────────
-VAD_SILENCE_THRESHOLD  = 500    # RMS energy below this = silence
-VAD_SILENCE_DURATION   = 1.4    # seconds of silence before flushing (increased to avoid cutting mid-sentence)
-VAD_MIN_SPEECH_SECONDS = 0.3    # minimum speech duration to bother sending
+# Energy-based VAD tuned for conversational voice-to-voice on Mac Studio.
+# Pipecat used Silero (neural VAD) — we compensate with tighter thresholds.
+VAD_SILENCE_THRESHOLD  = 800    # RMS below this = silence (raised from 500 to ignore room noise)
+VAD_SILENCE_DURATION   = 2.2    # seconds of silence before flushing (longer = fewer mid-sentence cuts)
+VAD_MIN_SPEECH_SECONDS = 0.6    # minimum sustained speech before even considering a flush
+VAD_ECHO_COOLDOWN      = 1.5    # seconds to ignore mic after Q finishes speaking (avoids echo pickup)
 SAMPLE_RATE            = 16000
 BYTES_PER_SAMPLE       = 2      # int16
 MIN_SPEECH_BYTES       = int(SAMPLE_RATE * BYTES_PER_SAMPLE * VAD_MIN_SPEECH_SECONDS)
 
-# ── Noise filter — responses that are just mic noise ──────────────────────
-NOISE_WORDS = {"you", "thank you", "thanks", "bye", "", "hmm", "uh", "oh",
-               "hm", "um", "yeah", "yep", "mm", "mhm"}
+# ── Whisper noise filter ───────────────────────────────────────────────────
+# Whisper hallucinates these phrases from ambient noise / silence segments.
+NOISE_WORDS = {
+    "you", "thank you", "thanks", "thanks for watching", "bye", "goodbye",
+    "see you", "see you next time", "please subscribe", "like and subscribe",
+    "", "hmm", "uh", "oh", "hm", "um", "yeah", "yep", "mm", "mhm",
+    "okay", "ok", "right", "sure", "yes", "no", "hey", "hi", "hello",
+    "so", "well", "um hmm", "uh huh", "ah", "er",
+}
 
 # ── System Prompt ─────────────────────────────────────────────────────────
 def _build_system_prompt() -> str:
@@ -99,6 +108,8 @@ Your input is live voice transcription (Whisper STT). Expect occasional errors:
 - "uh", "um", "er" = filler, ignore
 - Strange words = guess the intended meaning from context
 - Never mention transcription errors to M unless they cause real confusion
+- Simple math questions ("one plus one", "what is 7 times 8") = answer directly with the number, nothing else
+- "Speed test [X]" where X is a simple question = just answer X quickly and directly, do not run system diagnostics
 
 ━━ SKILLS AND ACTIONS ━━
 You have 34 built-in skills that execute immediately mid-call:
@@ -137,10 +148,11 @@ class VoicePipeline:
         self.ws          = websocket
         self.session_id  = "voice_" + datetime.now().strftime("%Y%m%d_%H%M%S")
         self.messages    = [{"role": "system", "content": _build_system_prompt()}]
-        self.audio_buffer = bytearray()
+        self.audio_buffer    = bytearray()
         self.last_speech_time = 0.0
-        self.is_speaking  = False
-        self.processing   = False
+        self.is_speaking     = False
+        self.processing      = False
+        self.last_tts_end    = 0.0  # monotonic time when Q last finished speaking
         self.skills       = {}
         self._http        = httpx.AsyncClient(timeout=120.0)
         self._load_skills()
@@ -218,6 +230,11 @@ class VoicePipeline:
         rms = self._rms(chunk)
         now = time.monotonic()
 
+        # Echo cooldown: ignore mic for VAD_ECHO_COOLDOWN seconds after Q spoke.
+        # This prevents picking up TTS room echo as a new utterance.
+        if now - self.last_tts_end < VAD_ECHO_COOLDOWN:
+            return None
+
         if rms > VAD_SILENCE_THRESHOLD:
             self.is_speaking = True
             self.last_speech_time = now
@@ -232,6 +249,7 @@ class VoicePipeline:
                     utterance = bytes(self.audio_buffer)
                     self.audio_buffer = bytearray()
                     return utterance
+                # Too short — discard as noise
                 self.audio_buffer = bytearray()
 
         return None
@@ -256,7 +274,14 @@ class VoicePipeline:
             )
             if r.status_code == 200:
                 text = r.json().get("text", "").strip()
-                if text.lower().rstrip(".!?,") in NOISE_WORDS:
+                clean = text.lower().rstrip(".!?, ")
+                # Reject Whisper hallucinations: noise words or < 3 meaningful words
+                if clean in NOISE_WORDS:
+                    print(f"[Voice] Discarded noise: '{text}'")
+                    return ""
+                words = [w for w in clean.split() if w not in {"uh","um","er","hmm","ah"}]
+                if len(words) < 2:
+                    print(f"[Voice] Discarded too short: '{text}'")
                     return ""
                 return text
             print(f"[Voice] Whisper {r.status_code}: {r.text[:200]}")
@@ -465,6 +490,7 @@ class VoicePipeline:
                         audio = await self.synthesize(spoken_result)
                         if audio:
                             await self.ws.send_bytes(audio)
+                            self.last_tts_end = time.monotonic()
                         self.processing = False
                         await self.ws.send_json({"type": "status", "status": "listening"})
                         continue  # skip the LLM path below
@@ -482,6 +508,7 @@ class VoicePipeline:
                         audio = await self.synthesize(to_speak)
                         if audio:
                             await self.ws.send_bytes(audio)
+                            self.last_tts_end = time.monotonic()
                         await self.ws.send_json({
                             "type": "transcript_chunk", "text": to_speak
                         })
@@ -491,6 +518,7 @@ class VoicePipeline:
                     audio = await self.synthesize(sentence_buf.strip())
                     if audio:
                         await self.ws.send_bytes(audio)
+                        self.last_tts_end = time.monotonic()
                     await self.ws.send_json({
                         "type": "transcript_chunk", "text": sentence_buf
                     })
