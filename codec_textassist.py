@@ -47,7 +47,7 @@ if not text: sys.exit(0)
 overlay("\\u26a1 Processing...", "#00aaff", 8000)
 try:
     result = call_qwen(text, MODE)
-    if MODE == "explain":
+    if MODE in ("explain", "translate"):
         # Write to temp file and open in Terminal
         import tempfile
         tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, prefix="codec_explain_")
