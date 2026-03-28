@@ -3,9 +3,16 @@ import signal
 signal.signal(signal.SIGINT, lambda *a: None)
 signal.signal(signal.SIGTERM, lambda *a: None)
 """CODEC v1.4.0 | Voice + Text + Phone + Google | *=screenshot | +=doc | --=livechat | Wake word"""
-import threading, tempfile, subprocess, sys, os, time, sqlite3, json, re, base64
+import threading, tempfile, subprocess, sys, os, time, sqlite3, json, re, base64, logging
 from datetime import datetime
 from pynput import keyboard
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(asctime)s] [CODEC] %(message)s',
+    datefmt='%H:%M:%S'
+)
+log = logging.getLogger('codec')
 
 # ── CONFIG (load from ~/.codec/config.json or use defaults) ───────────────────
 CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
@@ -16,7 +23,7 @@ if os.path.exists(CONFIG_PATH):
     try:
         with open(CONFIG_PATH) as _f: _cfg = json.load(_f)
         AGENT_NAME = _cfg.get('agent_name', 'C')
-        print(f"[C] Config loaded from {CONFIG_PATH}")
+        log.info(f"Config loaded from {CONFIG_PATH}")
     except: pass
 
 # LLM
@@ -46,11 +53,17 @@ def audit(action, detail=""):
 
 # ── DANGEROUS COMMAND SAFETY ──────────────────────────────────────────────────
 DANGEROUS_PATTERNS = [
-    "rm -rf", "rm -r /", "rmdir", "sudo rm", "mkfs", "dd if=",
+    "rm -rf", "rm -r /", "rm -rf /", "rm -rf ~", "rm -rf /*",
+    "rmdir", "sudo rm", "mkfs", "dd if=",
     "shutdown", "reboot", "halt", "killall", "pkill",
-    "sudo", "chmod 777", "chown", "> /dev/", ":(){ :|:& };:",
+    "sudo", "chmod 777", "chmod -R 777 /", "chown", "chown -R",
+    "> /dev/", "echo > /dev/sda", "mv / /dev/null",
+    ":(){ :|:& };:", "xattr -cr /",
     "curl | bash", "wget | bash", "curl | sh", "wget | sh",
-    "defaults delete", "diskutil erase", "networksetup",
+    "defaults delete", "diskutil erase",
+    "networksetup", "networksetup -setv6",
+    "launchctl unload", "csrutil disable", "nvram", "bless",
+    "scutil --set", "pmset",
     "osascript -e \'tell application \"System Events\"",
 ]
 REQUIRE_CONFIRM = _cfg.get("require_confirmation", True)
@@ -280,9 +293,9 @@ def load_skills():
                     'triggers': mod.SKILL_TRIGGERS,
                     'run': mod.run,
                 })
-                print(f"[C] Skill loaded: {fname[:-3]}")
+                log.info(f"Skill loaded: {fname[:-3]}")
         except Exception as e:
-            print(f"[C] Skill error ({fname}): {e}")
+            log.warning(f"Skill error ({fname}): {e}")
 
 def check_skill(task):
     low = task.lower()
@@ -310,7 +323,7 @@ def transcribe(path):
         if r.status_code == 200:
             return r.json().get("text", "").strip()
     except Exception as e:
-        print(f"[C] Whisper error: {e}")
+        log.error(f"Whisper error: {e}")
     finally:
         try: os.unlink(path)
         except: pass
@@ -328,7 +341,7 @@ def screenshot_ctx():
         with open(tmp.name, "rb") as f:
             img_b64 = base64.b64encode(f.read()).decode()
         os.unlink(tmp.name)
-        print(f"[C] Reading screen via Vision...")
+        log.info("Reading screen via Vision...")
         r = requests.post(f"{QWEN_VISION_URL}/chat/completions",
             json={"model": QWEN_VISION_MODEL,
                 "messages": [{"role": "user", "content": [
@@ -338,10 +351,10 @@ def screenshot_ctx():
         if r.status_code == 200:
             content = r.json()["choices"][0]["message"].get("content", "").strip()
             if content:
-                print(f"[C] Screen context: {len(content)} chars")
+                log.info(f"Screen context: {len(content)} chars")
                 return content[:2000]
     except Exception as e:
-        print(f"[C] Vision error: {e}")
+        log.error(f"Vision error: {e}")
     return ""
 
 def focused_app():
@@ -372,7 +385,7 @@ def terminal_session_exists():
         pass
     try: os.unlink(SESSION_ALIVE)
     except: pass
-    print(f"[C] Cleaned stale session_alive")
+    log.info("Cleaned stale session_alive")
     return False
 
 # ── TTS HELPER ────────────────────────────────────────────────────────────────
@@ -388,7 +401,7 @@ def speak_text(text):
         if not clean: return
         if len(clean) < 50 and any(c in clean for c in '=+-*/'):
             clean = "The answer is " + clean
-        print(f"[TTS] Speaking: {clean[:60]}")
+        log.info(f"TTS: {clean[:60]}")
         if TTS_ENGINE == "macos_say":
             subprocess.Popen(["say", "-v", TTS_VOICE, clean])
         else:
@@ -434,7 +447,7 @@ def worker():
             fn, args = item
             try: fn(*args)
             except Exception as e:
-                print(f"[C] Error: {e}")
+                log.error(f"Worker error: {e}")
                 import traceback; traceback.print_exc()
         else:
             time.sleep(0.05)
@@ -573,7 +586,7 @@ def build_session_script(safe_sys, session_id):
     L.append("def run_code(action, code):")
     L.append("    try:")
     L.append("        # Safety: check dangerous commands")
-    L.append("        DANGEROUS = ['rm -rf','rm -r /','sudo','shutdown','reboot','killall','mkfs','dd if=','chmod 777','curl | bash','wget | bash','defaults delete','diskutil erase']")
+    L.append("        DANGEROUS = ['rm -rf','rm -r /','rm -rf /','rm -rf ~','sudo','shutdown','reboot','halt','killall','mkfs','dd if=','chmod 777','chmod -R 777','chown -R','curl | bash','wget | bash','curl | sh','wget | sh','defaults delete','diskutil erase','launchctl unload','csrutil disable','nvram','scutil --set','pmset',':(){ :|:& };:','xattr -cr /']")
     L.append("        cmd_lower = code.lower()")
     L.append("        if any(d in cmd_lower for d in DANGEROUS):")
     L.append("            print(f'\\n[SAFETY] ⚠️  Flagged: {code[:80]}')")
@@ -786,7 +799,7 @@ def close_session():
         try:
             with open(SESSION_ALIVE) as f: pid = int(f.read().strip())
             os.kill(pid, 15)
-            print(f"[C] Session process {pid} terminated")
+            log.info(f"Session process {pid} terminated")
         except: pass
         try: os.unlink(SESSION_ALIVE)
         except: pass
@@ -800,7 +813,7 @@ def close_session():
 def dispatch(task):
     app = focused_app()
     audit("TASK", f"{task[:200]} | App: {app}")
-    print(f"[C] Task: {task[:80]} | App: {app}")
+    log.info(f"Task: {task[:80]} | App: {app}")
     subprocess.Popen(["osascript", "-e", f'display notification "Heard: {task[:50]}" with title "Q"'],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
@@ -814,7 +827,7 @@ def dispatch(task):
                 speak_text(result)
                 subprocess.Popen(["osascript", "-e", f'display notification "{str(result)[:80]}" with title "C Skill"'],
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                print(f"[C] Skill response: {str(result)[:100]}")
+                log.info(f"Skill response: {str(result)[:100]}")
                 # Save to DB for dashboard history
                 try:
                     import sqlite3 as _sql3
@@ -832,7 +845,7 @@ def dispatch(task):
         ctx = screenshot_ctx()
         with open(DRAFT_TASK_FILE, "w") as f:
             json.dump({"task": task, "ctx": ctx, "app": app}, f)
-        print(f"[C] Draft queued for watcher")
+        log.info("Draft queued for watcher")
         return
 
     rid = save_task(task, app)
@@ -845,7 +858,7 @@ def dispatch(task):
         f.write(json.dumps({"task": task, "app": app, "ts": datetime.now().isoformat()}))
 
     if terminal_session_exists():
-        print(f"[C] Queued to existing session")
+        log.info("Queued to existing session")
         return
 
     session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -858,7 +871,7 @@ def dispatch(task):
             f'tell application "Terminal"\nactivate\nset w to do script "python3.13 {ts.name}"\nset custom title of selected tab of w to "{Q_TERMINAL_TITLE}"\nend tell'],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except Exception as e:
-        print(f"[C] Terminal error: {e}")
+        log.error(f"Terminal error: {e}")
 
 # ── DOCUMENT INPUT ────────────────────────────────────────────────────────────
 def do_document_input():
@@ -869,8 +882,8 @@ def do_document_input():
             capture_output=True, text=True, timeout=60)
         filepath = r.stdout.strip()
         if not filepath:
-            print(f"[C] No file selected"); return
-        print(f"[C] Document: {filepath}")
+            log.info("No file selected"); return
+        log.info(f"Document: {filepath}")
         push(lambda: show_overlay('Reading document...', '#E8711A', 3000))
         ext = os.path.splitext(filepath)[1].lower()
         fname = os.path.basename(filepath)
@@ -903,12 +916,12 @@ def do_document_input():
         if content_text:
             # Dispatch directly to terminal for analysis
             task = "Analyze and summarize this document (" + fname + "): " + content_text[:3000]
-            print(f"[C] Document dispatched ({len(content_text)} chars)")
+            log.info(f"Document dispatched ({len(content_text)} chars)")
             dispatch(task)
         else:
             push(lambda: show_overlay('Could not read document', '#ff3333', 2000))
     except Exception as e:
-        print(f"[C] Document error: {e}")
+        log.error(f"Document error: {e}")
 
 # ── SCREENSHOT SHORTCUT ──────────────────────────────────────────────────────
 def do_screenshot_question():
@@ -916,7 +929,7 @@ def do_screenshot_question():
     ctx = screenshot_ctx()
     if ctx:
         state["screen_ctx"] = ctx
-        print(f"[C] Screenshot captured ({len(ctx)} chars). Use " + _cfg.get("key_voice","f18").upper() + "/" + _cfg.get("key_text","f16").upper() + " to ask about it.")
+        log.info(f"Screenshot captured ({len(ctx)} chars)")
     else:
         state["screen_ctx"] = ""
 
@@ -936,7 +949,7 @@ def do_start_recording():
         ["sox", "-t", "coreaudio", "default", "-r", "16000", "-c", "1", "-b", "16", "-e", "signed-integer", state["audio_path"]],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     state["rec_proc"] = rec
-    print(f"[C] Recording...")
+    log.info("Recording...")
 
 def do_stop_voice():
     audio = state.get("audio_path")
@@ -950,7 +963,7 @@ def do_stop_voice():
         try: os.unlink(audio)
         except: pass
         return
-    print(f"[C] Transcribing...")
+    log.info("Transcribing...")
     # Kill recording overlay
     if state.get('rec_overlay'):
         try: state['rec_overlay'].terminate()
@@ -958,8 +971,8 @@ def do_stop_voice():
         state['rec_overlay'] = None
     push(lambda: show_processing_overlay('Transcribing...', 4000))
     task = transcribe(audio)
-    if not task: print(f"[C] No speech detected"); return
-    print(f"[C] Heard: {task}")
+    if not task: log.info("No speech detected"); return
+    log.info(f"Heard: {task}")
     if state.get("screen_ctx"):
         task = task + " [SCREEN CONTEXT: " + state["screen_ctx"][:800] + "]"
         state["screen_ctx"] = ""
@@ -973,7 +986,7 @@ def wake_word_listener():
     import requests as req_wake
     sample_rate = 16000
     chunk_samples = int(WAKE_CHUNK_SEC * sample_rate)
-    print(f"[C] Wake word listener started. Say 'Hey C' to activate.")
+    log.info("Wake word listener started")
     while True:
         if not WAKE_WORD or state["recording"] or not state["active"]:
             time.sleep(0.3); continue
@@ -1003,15 +1016,15 @@ def wake_word_listener():
                             real = [w for w in words if len(w) > 2 and w not in noise_words]
                             return len(real) < 1
                         if len(command) > 3 and not _is_noise(command):
-                            print(f"[C] Wake + command: {command}")
+                            log.info(f"Wake + command: {command}")
                             audit("WAKE_CMD", command[:200])
                             push(lambda: show_overlay('Heard you!', '#E8711A', 1500))
                             push(lambda cmd=command: dispatch(cmd))
                         elif len(command) > 3:
-                            print(f"[C] Wake noise rejected: {command}")
+                            log.info(f"Wake noise rejected: {command}")
                             audit("WAKE_NOISE", command[:200])
                         else:
-                            print(f"[C] Wake word detected! Listening...")
+                            log.info("Wake word detected! Listening...")
                             push(lambda: show_overlay('Listening...', '#E8711A', 5000))
                             full_audio = sd.rec(int(8 * sample_rate), samplerate=sample_rate, channels=1, dtype='int16')
                             sd.wait()
@@ -1019,11 +1032,11 @@ def wake_word_listener():
                             sf.write(tmp2.name, full_audio, sample_rate)
                             task = transcribe(tmp2.name)
                             if task and not _is_noise(task):
-                                print(f"[C] Heard: {task}")
+                                log.info(f"Heard: {task}")
                                 audit("WAKE_TASK", task[:200])
                                 push(lambda t=task: dispatch(t))
                             elif task:
-                                print(f"[C] Post-wake noise rejected: {task}")
+                                log.info(f"Post-wake noise rejected: {task}")
                                 audit("WAKE_NOISE", task[:200])
             except: pass
             finally:
@@ -1042,11 +1055,11 @@ def on_press(key):
             state["active"] = False
             push(lambda: show_toggle_overlay(False, ''))
             push(close_session)
-            print(f"[C] OFF")
+            log.info("OFF")
         else:
             state["active"] = True
             push(lambda: show_toggle_overlay(True, _cfg.get('key_voice','f18').upper()+'=voice  '+_cfg.get('key_text','f16').upper()+'=text  **=screen  ++=doc  --=chat'))
-            print(f"[C] ON -- " + _cfg.get("key_voice","f18").upper() + "=voice | " + _cfg.get("key_text","f16").upper() + "=text | *=screen | +=doc")
+            log.info("ON -- " + _cfg.get("key_voice","f18").upper() + "=voice | " + _cfg.get("key_text","f16").upper() + "=text | *=screen | +=doc")
         return
     if not state["active"]: return
     if key == KEY_TEXT:
@@ -1066,7 +1079,7 @@ def on_press(key):
         return
     if hasattr(key, 'char') and key.char == '*':
         if now - state["last_star"] < 0.5:
-            print(f"[C] Star x2 -- screenshot mode")
+            log.info("Star x2 -- screenshot mode")
             push(do_screenshot_question)
             state["last_star"] = 0.0
             return
@@ -1074,7 +1087,7 @@ def on_press(key):
         return
     if hasattr(key, 'char') and key.char == '+':
         if now - state.get("last_plus", 0.0) < 0.5:
-            print(f"[C] Plus x2 -- document mode")
+            log.info("Plus x2 -- document mode")
             push(do_document_input)
             state["last_plus"] = 0.0
             return
@@ -1083,7 +1096,7 @@ def on_press(key):
     if hasattr(key, 'char') and key.char == '-':
         print(f'[DEBUG] Minus detected, last={state.get("last_minus",0)}, gap={now - state.get("last_minus",0):.2f}')
         if now - state.get("last_minus", 0.0) < 0.5:
-            print(f"[C] Minus x2 -- live chat mode")
+            log.info("Minus x2 -- live chat mode")
             pipecat_url = _cfg.get("pipecat_url", "http://localhost:3000/auto")
             push(lambda: show_overlay('Live Chat connecting...', '#E8711A', 3000))
             audit("LIVECHAT", pipecat_url)
@@ -1152,16 +1165,16 @@ def main():
         try:
             import requests as _rq
             _rq.post(KOKORO_URL, json={"model": KOKORO_MODEL, "input": "ready", "voice": TTS_VOICE}, timeout=30)
-            print(f"[C] TTS warmed up")
-        except: print(f"[C] TTS warmup skipped")
-    print(f"[C] Whisper: HTTP (port 8084)")
-    print(f"[C] Vision: Qwen VL (port 8082)")
+            log.info("TTS warmed up")
+        except: log.warning("TTS warmup skipped")
+    log.info("Whisper: HTTP (port 8084)")
+    log.info("Vision: Qwen VL (port 8082)")
     mem = get_memory(3)
-    if mem: print(f"[C] Memory: {mem.count(chr(10))+1} sessions loaded")
+    if mem: log.info(f"Memory: {mem.count(chr(10))+1} sessions loaded")
     convs = get_recent_conversations(10)
-    if convs: print(f"[C] Persistent memory: {len(convs)} messages from past sessions")
-    if WAKE_WORD: print(f"[C] Wake word: ON")
-    print(f"[C] Online. Press " + _cfg.get("key_toggle","f13").upper() + " to activate.")
+    if convs: log.info(f"Persistent memory: {len(convs)} messages from past sessions")
+    if WAKE_WORD: log.info("Wake word: ON")
+    log.info("Online. Press " + _cfg.get("key_toggle","f13").upper() + " to activate.")
 
     # PWA command polling — checks for commands sent from phone dashboard
     def pwa_dispatch(task):
@@ -1174,7 +1187,7 @@ def main():
             if skill:
                 result = run_skill(skill, task, app)
                 if result is not None:
-                    print(f"[C] PWA response (silent): {str(result)[:100]}")
+                    log.info(f"PWA response (silent): {str(result)[:100]}")
                     # Save response to DB + conversations
                     try:
                         _ts = datetime.now().isoformat()
@@ -1193,7 +1206,7 @@ def main():
                         with open("/tmp/q_pwa_response.json", "w") as _rf:
                             json.dump({"task": task, "response": str(result), "ts": datetime.now().isoformat()}, _rf)
                     except: pass
-                    print(f"[C] PWA skill response: {str(result)[:100]}")
+                    log.info(f"PWA skill response: {str(result)[:100]}")
                     return
         # Not a skill — call LLM directly, no TTS, no terminal window
         try:
@@ -1214,7 +1227,7 @@ def main():
             answer = r.json()["choices"][0]["message"]["content"].strip()
             # Remove thinking tags if present
             if "</think>" in answer: answer = answer.split("</think>")[-1].strip()
-            print(f"[C] PWA answer (silent): {answer[:100]}")
+            log.info(f"PWA answer (silent): {answer[:100]}")
             # Save to sessions + conversations
             _ts = datetime.now().isoformat()
             _sid = "pwa_" + datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1230,7 +1243,7 @@ def main():
             with open("/tmp/q_pwa_response.json", "w") as _rf:
                 json.dump({"task": task, "response": answer, "ts": datetime.now().isoformat()}, _rf)
         except Exception as _e:
-            print(f"[C] PWA LLM error: {_e}")
+            log.error(f"PWA LLM error: {_e}")
             with open("/tmp/q_pwa_response.json", "w") as _rf:
                 json.dump({"task": task, "response": f"Error: {str(_e)[:200]}", "ts": datetime.now().isoformat()}, _rf)
 
@@ -1246,7 +1259,7 @@ def main():
                         os.unlink(TASK_QUEUE_FILE)
                         task = data.get("task", "").strip()
                         if task:
-                            print(f"[C] PWA command: {task[:80]}")
+                            log.info(f"PWA command: {task[:80]}")
                             push(lambda t=task: pwa_dispatch(t))
             except: pass
             time.sleep(1.5)
@@ -1261,7 +1274,7 @@ def main():
             with keyboard.Listener(on_press=on_press, on_release=on_release) as l:
                 l.join()
         except Exception as e:
-            print(f"[C] Listener restarting: {e}")
+            log.warning(f"Listener restarting: {e}")
             time.sleep(0.5)
 
 if __name__ == "__main__":
