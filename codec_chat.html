@@ -6,16 +6,44 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#0a0a0a">
 <title>CODEC Deep Chat</title>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#0a0a0a;--bg2:#141414;--bg3:#1e1e1e;--bg4:#282828;--fg:#e8e8e8;--fg2:#a0a0a0;--fg3:#666;--accent:#E8711A;--accent2:#ff9a4d;--success:#44cc66;--danger:#ff4444;--border:#222;--font:'DM Sans',sans-serif;--mono:'JetBrains Mono',monospace}
+:root {
+  /* Core palette */
+  --bg: #0a0a0a;
+  --surface: #111111;
+  --surface-2: #1a1a1a;
+  --border: #2a2a2a;
+  --text: #e0e0e0;
+  --text-muted: #888888;
+  --accent: #E8711A;
+  --accent-dim: rgba(232,113,26,0.12);
+  --danger: #ff4444;
+  --success: #44cc66;
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+  --radius: 8px;
+  /* Backward-compat aliases so existing CSS/JS still works */
+  --bg2: #111111; --bg3: #1a1a1a; --bg4: #222222;
+  --fg: #e0e0e0; --fg2: #888888; --fg3: #555555;
+  --ac: #E8711A; --bd: #2a2a2a;
+  --tx: #e0e0e0; --tx2: #888888;
+  --ft: 'Inter', -apple-system, sans-serif;
+  --mn: 'JetBrains Mono', monospace;
+  --dn: #ff4444;
+  --accent2: #ff9a4d;
+  --accent-bg: rgba(232,113,26,0.12);
+  /* Safe area (dashboard only, harmless on others) */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
 [data-theme=light]{--bg:#f5f2ed;--bg2:#fff;--bg3:#f0ece6;--bg4:#e8e4de;--fg:#1a1a1a;--fg2:#555;--fg3:#999;--border:#ddd}
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{font-family:var(--font);background:var(--bg);color:var(--fg);height:100%;overflow:hidden;-webkit-tap-highlight-color:transparent}
 .app{display:flex;flex-direction:column;height:100vh;position:relative}
 .header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--bg2);flex-shrink:0;z-index:10}
 .header-left{display:flex;align-items:center;gap:8px}
-.hbtn{background:none;border:1px solid var(--border);color:var(--fg2);width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;text-decoration:none}
+.hbtn{background:none;border:1px solid var(--border);color:var(--fg2);width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;text-decoration:none;transition:all 0.2s ease}
 .hbtn:active{opacity:.7}
 .header-title{display:flex;align-items:center;gap:8px}
 .header-title img{width:26px;border-radius:6px}
@@ -43,7 +71,7 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--fg);height:10
 .msg.assistant{margin-right:auto}
 .msg-bubble{padding:12px 16px;border-radius:16px;line-height:1.6;font-size:14px;word-wrap:break-word;white-space:pre-wrap}
 .msg.user .msg-bubble{background:var(--accent);color:#fff;border-bottom-right-radius:4px}
-.msg.assistant .msg-bubble{background:var(--bg3);color:var(--fg);border:1px solid var(--border);border-bottom-left-radius:4px}
+.msg.assistant .msg-bubble{background:var(--bg3);color:var(--fg);border:1px solid var(--border);border-bottom-left-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,0.3)}
 .msg-time{font-family:var(--mono);font-size:10px;color:var(--fg3);margin-top:3px;padding:0 4px}
 .msg.user .msg-time{text-align:right}
 .typing{color:var(--accent);font-size:13px;padding:8px 16px}
@@ -62,7 +90,7 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--fg);height:10
 .file-chip.loading .fc-icon{animation:pulse 1s infinite}
 .input-row{display:flex;gap:6px;align-items:flex-end}
 .chat-input{flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--fg);padding:10px 14px;border-radius:20px;font-size:15px;font-family:var(--font);outline:none;resize:none;min-height:42px;max-height:120px;line-height:1.4}
-.chat-input:focus{border-color:var(--accent)}
+.chat-input:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(232,113,26,0.15)}
 .chat-input::placeholder{color:var(--fg3)}
 .ibtn{background:none;border:1px solid var(--border);color:var(--fg2);width:42px;height:42px;border-radius:50%;cursor:pointer;font-size:18px;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .15s}
 .ibtn:active{opacity:.7;transform:scale(.92)}
@@ -80,6 +108,22 @@ input[type=file]{display:none}
 .mode-toggle{display:flex;gap:4px;padding:4px;background:var(--bg3);border-radius:8px}
 .mode-btn{padding:5px 10px;border:none;border-radius:6px;cursor:pointer;font-size:11px;background:transparent;color:var(--fg2);font-family:var(--font)}
 .mode-btn.active{background:var(--accent);color:#fff}
+/* ── Page Nav ── */
+.page-nav { display: flex; align-items: center; gap: 2px; }
+.nav-link {
+  padding: 6px 11px; color: var(--text-muted); text-decoration: none;
+  font-size: 12px; font-weight: 500; border-radius: 6px;
+  border-bottom: 2px solid transparent; transition: all 0.2s ease;
+  letter-spacing: 0.02em; white-space: nowrap;
+}
+.nav-link:hover { color: var(--text); background: var(--surface-2); }
+.nav-link.active { color: var(--accent); border-bottom-color: var(--accent); }
+/* ── Scrollbar ── */
+* { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 </style>
 </head>
 <body>
@@ -93,13 +137,19 @@ input[type=file]{display:none}
 <div class="header">
 <div class="header-left">
 <button class="hbtn" onclick="openSidebar()" title="Chat history">&#9776;</button>
-<a href="/" class="hbtn" title="Back to dashboard">&#8592;</a>
 <div class="header-title"><img src="https://i.imgur.com/RbrQ7Bt.png"><h1>DEEP CHAT</h1><span class="model-tag">Qwen 3.5 35B</span></div>
 </div>
-<div class="mode-toggle" id="modeToggle">
+<nav class="page-nav">
+<a href="/" class="nav-link">Dashboard</a>
+<a href="/chat" class="nav-link active">Chat</a>
+<a href="/vibe" class="nav-link">Vibe</a>
+<a href="/voice" class="nav-link">Voice</a>
+</nav>
+<div class="header-right" style="display:flex;align-items:center;gap:6px">
+<div id="modeToggle" class="mode-toggle">
 <button class="mode-btn active" onclick="setMode('chat')" id="modeChatBtn">&#128172; Chat</button>
 <button class="mode-btn" onclick="setMode('research')" id="modeResearchBtn">&#128300; Agents</button>
-<select id="crewSelect" style="display:none;background:var(--bg2,#1a1a1a);color:var(--text,#f0f0f0);border:1px solid var(--border,#333);border-radius:6px;padding:4px 8px;font-size:12px;cursor:pointer;">
+<select id="crewSelect" style="display:none;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px;cursor:pointer;">
 <option value="deep_research">&#128300; Deep Research</option>
 <option value="daily_briefing">&#128203; Daily Briefing</option>
 <option value="trip_planner">&#9992;&#65039; Trip Planner</option>
@@ -107,7 +157,8 @@ input[type=file]{display:none}
 <option value="email_handler">&#128231; Email Handler</option>
 </select>
 </div>
-<div class="header-right"><button class="hbtn" onclick="toggleTheme()" id="themeBtn">&#9728;</button></div>
+<button class="hbtn" onclick="toggleTheme()" id="themeBtn">&#9728;</button>
+</div>
 </div>
 <div class="messages" id="messages">
 <div class="empty-state" id="emptyState"><img src="https://i.imgur.com/RbrQ7Bt.png"><p>Deep Chat &mdash; 250K context window<br>Drop files, images, or just talk.</p></div>

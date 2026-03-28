@@ -10,16 +10,34 @@
 <link rel="icon" href="https://i.imgur.com/RbrQ7Bt.png">
 <link rel="apple-touch-icon" href="https://i.imgur.com/RbrQ7Bt.png">
 <title>CODEC</title>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg: #0a0a0a; --bg2: #141414; --bg3: #1e1e1e; --bg4: #282828;
-  --fg: #e8e8e8; --fg2: #a0a0a0; --fg3: #666;
-  --accent: #E8711A; --accent2: #ff9a4d; --accent-bg: rgba(232,113,26,0.08);
-  --danger: #ff4444; --success: #44cc66;
-  --border: #222; --radius: 12px;
-  --font: 'DM Sans', -apple-system, sans-serif;
-  --mono: 'JetBrains Mono', monospace;
+  /* Core palette */
+  --bg: #0a0a0a;
+  --surface: #111111;
+  --surface-2: #1a1a1a;
+  --border: #2a2a2a;
+  --text: #e0e0e0;
+  --text-muted: #888888;
+  --accent: #E8711A;
+  --accent-dim: rgba(232,113,26,0.12);
+  --danger: #ff4444;
+  --success: #44cc66;
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+  --radius: 8px;
+  /* Backward-compat aliases so existing CSS/JS still works */
+  --bg2: #111111; --bg3: #1a1a1a; --bg4: #222222;
+  --fg: #e0e0e0; --fg2: #888888; --fg3: #555555;
+  --ac: #E8711A; --bd: #2a2a2a;
+  --tx: #e0e0e0; --tx2: #888888;
+  --ft: 'Inter', -apple-system, sans-serif;
+  --mn: 'JetBrains Mono', monospace;
+  --dn: #ff4444;
+  --accent2: #ff9a4d;
+  --accent-bg: rgba(232,113,26,0.12);
+  /* Safe area (dashboard only, harmless on others) */
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
@@ -52,9 +70,10 @@ html, body {
 .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); flex-shrink: 0; }
 .status-dot.on { background: var(--success); box-shadow: 0 0 8px rgba(68,204,102,0.5); }
 .theme-btn {
-  background: none; border: 1px solid var(--border); color: var(--fg2); 
+  background: none; border: 1px solid var(--border); color: var(--fg2);
   width: 32px; height: 32px; border-radius: 8px; cursor: pointer; font-size: 16px;
   display: flex; align-items: center; justify-content: center;
+  transition: all 0.2s ease;
 }
 
 /* ── Tabs ── */
@@ -87,7 +106,7 @@ html, body {
   padding: 12px 16px; border-radius: var(--radius); font-size: 15px; font-family: var(--font);
   outline: none; transition: border 0.2s;
 }
-.cmd-input:focus { border-color: var(--accent); }
+.cmd-input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(232,113,26,0.15); }
 .cmd-input::placeholder { color: var(--fg3); }
 .cmd-btn {
   background: var(--accent); color: #fff; border: none; padding: 12px 16px;
@@ -108,6 +127,7 @@ html, body {
 .card {
   background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 14px 16px; margin-bottom: 10px; transition: all 0.2s;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
 }
 .card:active { transform: scale(0.99); }
 .card-time { font-family: var(--mono); font-size: 11px; color: var(--fg3); margin-bottom: 4px; }
@@ -126,6 +146,7 @@ html, body {
 .stat-card {
   background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 16px; text-align: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
 }
 .stat-val { font-family: var(--mono); font-size: 22px; font-weight: 700; color: var(--accent); }
 .stat-label { font-size: 11px; color: var(--fg3); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
@@ -155,6 +176,7 @@ html, body {
 .skill-card {
   background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 14px 16px; margin-bottom: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
 }
 .skill-name { font-family: var(--mono); font-weight: 600; color: var(--accent); font-size: 14px; }
 .skill-triggers { font-size: 12px; color: var(--fg2); margin-top: 4px; }
@@ -177,10 +199,22 @@ html, body {
 .modal-close { position:fixed; top:16px; right:16px; background:var(--bg3); color:var(--fg); border:none;
   width:40px; height:40px; border-radius:50%; font-size:20px; cursor:pointer; z-index:101; }
 
+/* ── Page Nav ── */
+.page-nav { display: flex; align-items: center; gap: 2px; }
+.nav-link {
+  padding: 6px 11px; color: var(--text-muted); text-decoration: none;
+  font-size: 12px; font-weight: 500; border-radius: 6px;
+  border-bottom: 2px solid transparent; transition: all 0.2s ease;
+  letter-spacing: 0.02em; white-space: nowrap;
+}
+.nav-link:hover { color: var(--text); background: var(--surface-2); }
+.nav-link.active { color: var(--accent); border-bottom-color: var(--accent); }
 /* ── Scrollbar ── */
-::-webkit-scrollbar { width: 4px; }
+* { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 </style>
 </head>
 <body>
@@ -190,6 +224,12 @@ html, body {
       <img src="https://i.imgur.com/RbrQ7Bt.png" alt="CODEC">
       <h1>CODEC</h1>
     </div>
+    <nav class="page-nav">
+      <a href="/" class="nav-link active">Dashboard</a>
+      <a href="/chat" class="nav-link">Chat</a>
+      <a href="/vibe" class="nav-link">Vibe</a>
+      <a href="/voice" class="nav-link">Voice</a>
+    </nav>
     <div class="header-right">
       <div class="status-dot" id="statusDot" title="CODEC status"></div>
       <button class="theme-btn" id="voiceBtn" onclick="toggleVoice()" title="Voice replies">🔇</button>
@@ -203,8 +243,6 @@ html, body {
     <button class="tab" onclick="showTab('history')" id="tab-history"><span>📋</span>History</button>
     <button class="tab" onclick="showTab('audit')" id="tab-audit"><span>🔒</span>Audit</button>
     <button class="tab" onclick="showTab('status')" id="tab-status"><span>⚙️</span>Status</button>
-    <a href="/chat" class="tab" style="text-decoration:none"><span>🧠</span>Deep Chat</a>
-    <a href="/vibe" class="tab" style="text-decoration:none"><span>⚡</span>Vibe Code</a>
   </div>
 
   <div class="content">

@@ -4,18 +4,41 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>CODEC — Voice Call</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
         * { margin:0; padding:0; box-sizing:border-box; }
 
         :root {
-            --ac: #E8711A;
-            --bg: #0a0a0f;
-            --bg2: #111118;
-            --tx: #e0e0e0;
-            --tx2: #888;
-            --bd: #222230;
-            --green: #00e676;
-            --blue: #40c4ff;
+          /* Core palette */
+          --bg: #0a0a0a;
+          --surface: #111111;
+          --surface-2: #1a1a1a;
+          --border: #2a2a2a;
+          --text: #e0e0e0;
+          --text-muted: #888888;
+          --accent: #E8711A;
+          --accent-dim: rgba(232,113,26,0.12);
+          --danger: #ff4444;
+          --success: #44cc66;
+          --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+          --mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+          --radius: 8px;
+          /* Backward-compat aliases so existing CSS/JS still works */
+          --bg2: #111111; --bg3: #1a1a1a; --bg4: #222222;
+          --fg: #e0e0e0; --fg2: #888888; --fg3: #555555;
+          --ac: #E8711A; --bd: #2a2a2a;
+          --tx: #e0e0e0; --tx2: #888888;
+          --ft: 'Inter', -apple-system, sans-serif;
+          --mn: 'JetBrains Mono', monospace;
+          --dn: #ff4444;
+          --accent2: #ff9a4d;
+          --accent-bg: rgba(232,113,26,0.12);
+          /* Safe area (dashboard only, harmless on others) */
+          --safe-top: env(safe-area-inset-top, 0px);
+          --safe-bottom: env(safe-area-inset-bottom, 0px);
+          /* Voice-specific */
+          --green: #00e676;
+          --blue: #40c4ff;
         }
 
         body {
@@ -44,22 +67,33 @@
         body.state-speaking::before  { background: radial-gradient(ellipse 70% 70% at 50% 50%, rgba(232,113,26,0.08) 0%, transparent 70%); }
         body.state-processing::before { background: radial-gradient(ellipse 60% 60% at 50% 50%, rgba(64,196,255,0.06) 0%, transparent 70%); }
 
-        /* Back nav */
-        .back {
-            position: absolute; top: 18px; left: 18px;
-            color: var(--tx2); text-decoration: none;
-            font-size: 13px; letter-spacing: 0.02em;
-            display: flex; align-items: center; gap: 6px;
-            transition: color 0.2s;
+        /* ── Page Nav ── */
+        .page-nav { display: flex; align-items: center; gap: 2px; }
+        .nav-link {
+          padding: 6px 11px; color: var(--text-muted); text-decoration: none;
+          font-size: 12px; font-weight: 500; border-radius: 6px;
+          border-bottom: 2px solid transparent; transition: all 0.2s ease;
+          letter-spacing: 0.02em; white-space: nowrap;
         }
-        .back:hover { color: var(--ac); }
-
-        /* Brand */
-        .brand {
-            position: absolute; top: 18px;
-            font-size: 13px; font-weight: 700;
-            color: var(--ac); letter-spacing: 0.12em;
-            font-family: 'SF Mono', monospace;
+        .nav-link:hover { color: var(--text); background: var(--surface-2); }
+        .nav-link.active { color: var(--accent); border-bottom-color: var(--accent); }
+        /* ── Scrollbar ── */
+        * { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+        /* ── Voice Header ── */
+        .voice-header {
+          position: absolute; top: 0; left: 0; right: 0;
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 14px 20px;
+          border-bottom: 1px solid var(--border);
+          background: rgba(10,10,15,0.8); backdrop-filter: blur(8px);
+        }
+        .brand-text {
+          font-size: 13px; font-weight: 700; color: var(--accent);
+          letter-spacing: 0.12em; font-family: var(--mono);
         }
 
         /* Main layout */
@@ -204,6 +238,7 @@
             width: 100%; background: var(--bg2);
             border: 1px solid var(--bd); border-radius: 14px;
             overflow: hidden; display: flex; flex-direction: column;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
         }
         .transcript-header {
             padding: 10px 14px;
