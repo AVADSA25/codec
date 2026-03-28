@@ -2,7 +2,7 @@
 SKILL_NAME = "app_switch"
 SKILL_DESCRIPTION = "Switch to any running app by name"
 SKILL_TRIGGERS = ["switch to", "go to", "focus on", "bring up", "activate",
-                   "show me", "open app"]
+                   "show me", "open app", "switch up to", "switch up"]
 import subprocess
 
 # Common app name aliases

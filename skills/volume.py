@@ -10,10 +10,10 @@ def run(task, app="", ctx=""):
     low = task.lower()
     # Volume
     if "mute" in low or "silence" in low:
-        subprocess.run(["osascript", "-e", "set volume with output muted"], timeout=5)
+        subprocess.run(["osascript", "-e", "set volume output volume 0"], timeout=5)
         return "Muted."
     if "unmute" in low:
-        subprocess.run(["osascript", "-e", "set volume without output muted"], timeout=5)
+        subprocess.run(["osascript", "-e", "set volume output volume 50"], timeout=5)
         return "Unmuted."
     if "max volume" in low:
         subprocess.run(["osascript", "-e", "set volume output volume 100"], timeout=5)
