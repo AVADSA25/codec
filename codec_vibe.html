@@ -89,9 +89,67 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx);height:100vh;dis
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+/* ── Forge Modal ── */
+.fm-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:50;align-items:center;justify-content:center}.fm-overlay.sh{display:flex}
+.fm-box{background:var(--surface);border:1px solid var(--border);border-radius:12px;width:520px;max-width:95vw;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 8px 40px rgba(0,0,0,.6)}
+.fm-head{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border)}
+.fm-head h2{font-family:var(--mono);font-size:15px;color:var(--accent);font-weight:700}
+.fm-close{background:none;border:none;color:var(--text-muted);font-size:20px;cursor:pointer;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:4px}
+.fm-close:hover{color:var(--text);background:var(--surface-2)}
+.fm-tabs{display:flex;border-bottom:1px solid var(--border);padding:0 20px;gap:4px}
+.fm-tab{padding:10px 14px;font-size:12px;font-weight:600;color:var(--text-muted);background:none;border:none;cursor:pointer;border-bottom:2px solid transparent;transition:all .2s;font-family:var(--font)}
+.fm-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.fm-tab:hover{color:var(--text)}
+.fm-body{padding:20px;display:flex;flex-direction:column;gap:12px;flex:1}
+.fm-label{font-size:11px;font-weight:600;color:var(--text-muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:4px}
+.fm-ta{width:100%;height:180px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:12px;color:var(--text);font-family:var(--mono);font-size:12px;resize:vertical;outline:none;line-height:1.5}
+.fm-ta:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(232,113,26,.15)}
+.fm-input{width:100%;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:10px 14px;color:var(--text);font-family:var(--mono);font-size:13px;outline:none}
+.fm-input:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(232,113,26,.15)}
+.fm-hint{font-size:11px;color:var(--text-muted);margin-top:2px}
+.fm-foot{display:flex;align-items:center;gap:10px;padding:14px 20px;border-top:1px solid var(--border);background:var(--surface)}
+.fm-forge{padding:9px 20px;background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;transition:opacity .2s;font-family:var(--font)}
+.fm-forge:hover{opacity:.9}
+.fm-forge:disabled{opacity:.5;cursor:not-allowed}
+.fm-status{font-size:12px;color:var(--text-muted);font-family:var(--mono)}
+.fm-panel{display:none}.fm-panel.active{display:block}
 </style>
 </head>
 <body>
+<!-- ── Forge Modal ── -->
+<div class="fm-overlay" id="fmOverlay">
+  <div class="fm-box">
+    <div class="fm-head">
+      <h2>⚡ Skill Forge</h2>
+      <button class="fm-close" onclick="closeForgeModal()">&#10005;</button>
+    </div>
+    <div class="fm-tabs">
+      <button class="fm-tab active" id="ftCode" onclick="setForgeMode('code')">📋 Paste Code</button>
+      <button class="fm-tab" id="ftUrl" onclick="setForgeMode('url')">🔗 GitHub URL</button>
+      <button class="fm-tab" id="ftDesc" onclick="setForgeMode('describe')">✏️ Describe</button>
+    </div>
+    <div class="fm-body">
+      <div class="fm-panel active" id="fmPanelCode">
+        <div class="fm-label">Paste Python or JavaScript code</div>
+        <textarea class="fm-ta" id="forgeCodeInput" placeholder="# Paste any code here — Forge will convert it into a CODEC skill&#10;# with SKILL_TRIGGERS, run() function, and proper structure"></textarea>
+      </div>
+      <div class="fm-panel" id="fmPanelUrl">
+        <div class="fm-label">Raw file URL</div>
+        <input class="fm-input" id="forgeUrlInput" type="text" placeholder="https://raw.githubusercontent.com/user/repo/main/script.py">
+        <div class="fm-hint">Works with any raw .py or .js URL (GitHub, Gist, Pastebin…)</div>
+      </div>
+      <div class="fm-panel" id="fmPanelDesc">
+        <div class="fm-label">Describe what you want</div>
+        <input class="fm-input" id="forgeDescInput" type="text" placeholder="A skill that checks the Bitcoin price and summarizes it">
+        <div class="fm-hint">Q will generate the skill from scratch based on your description</div>
+      </div>
+    </div>
+    <div class="fm-foot">
+      <button class="fm-forge" id="fmForgeBtn" onclick="submitForge()">⚡ Forge Skill</button>
+      <span class="fm-status" id="fmStatus"></span>
+    </div>
+  </div>
+</div>
 <div class="ov" id="ov" onclick="cS()"></div>
 <div class="sd" id="sd">
 <div style="padding:14px 16px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between"><h2 style="font-family:var(--mn);font-size:13px;color:var(--ac)">PROJECTS</h2><button onclick="cS()" style="background:0;border:0;color:var(--tx2);font-size:20px;cursor:pointer">&times;</button></div>
@@ -120,7 +178,7 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx);height:100vh;dis
 <div class="sp">
 <div class="cp"><div class="hd">Q - Vibe Code</div><div class="ms" id="cm"><div class="mg ma">Tell me what to build!</div></div><div class="ia"><textarea id="vi" class="ii" rows="2" placeholder="Describe what to build..."></textarea><button class="sb" id="sndb">Send</button><button class="sb" id="stopb" onclick="doStop()" style="display:none;background:#c0392b;min-width:36px;padding:0 10px">&#9632;</button></div></div>
 <div style="width:4px;cursor:col-resize;background:var(--bd)" id="rh"></div>
-<div class="ep"><div id="eb"></div><div class="tb"><button class="bt br" onclick="doRun()">&#9654; Run</button><button class="bt bs" onclick="doPrev()">&#128065; Preview</button><button class="bt bs" onclick="doSave()">&#128190; Save</button><button class="bt bs" onclick="doCopy()">&#128203; Copy</button><button class="bt bk" onclick="doSkill()">&#9889; Skill</button><button class="bt" onclick="doForge()" style="background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none">&#128296; Forge</button><span class="rs" id="rs"></span></div></div>
+<div class="ep"><div id="eb"></div><div class="tb"><button class="bt br" onclick="doRun()">&#9654; Run</button><button class="bt bs" onclick="doPrev()">&#128065; Preview</button><button class="bt bs" onclick="doSave()">&#128190; Save</button><button class="bt bs" onclick="doCopy()">&#128203; Copy</button><button class="bt bk" onclick="doSkill()" title="Save to ~/.codec/skills/">&#9889; Save Skill</button><button class="bt bs" onclick="doTestSkill()" title="Test skill run() with sample input">&#9654; Test</button><button class="bt" onclick="doForge()" style="background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none">&#128296; Forge</button><span class="rs" id="rs"></span></div></div>
 <div class="pp" id="pp"><div class="ph"><span>&#128065; Live Preview</span><button onclick="document.getElementById('pp').classList.remove('sh')" style="background:0;border:0;color:var(--tx2);cursor:pointer;font-size:16px">&#10005;</button></div><iframe id="pf" sandbox="allow-scripts allow-same-origin"></iframe></div>
 </div>
 <div class="op" id="op"><span style="color:var(--ac)">CODEC Vibe Code Ready</span></div>
@@ -361,41 +419,116 @@ function doSkill() {
   .catch(function(e) { addOut('er', e.message); });
 }
 
+/* ── Forge Modal ── */
+var _forgeMode = 'code';
+
 function doForge() {
-  var code = ed.getValue().trim();
-  if (!code || code.length < 20) {
-    addMsg('assistant', 'Paste some code in the editor first, then hit Forge!');
-    return;
+  // Open modal — clear previous inputs
+  document.getElementById('forgeCodeInput').value = '';
+  document.getElementById('forgeUrlInput').value = '';
+  document.getElementById('forgeDescInput').value = '';
+  document.getElementById('fmStatus').textContent = '';
+  document.getElementById('fmForgeBtn').disabled = false;
+  setForgeMode('code');
+  document.getElementById('fmOverlay').classList.add('sh');
+}
+
+function closeForgeModal() {
+  document.getElementById('fmOverlay').classList.remove('sh');
+}
+
+function setForgeMode(mode) {
+  _forgeMode = mode;
+  ['code','url','describe'].forEach(function(m) {
+    var suffix = m === 'describe' ? 'Desc' : m.charAt(0).toUpperCase() + m.slice(1);
+    document.getElementById('ftCode').classList.toggle('active', m === 'code' && mode === 'code');
+    document.getElementById('ftUrl').classList.toggle('active',  m === 'url'  && mode === 'url');
+    document.getElementById('ftDesc').classList.toggle('active', m === 'describe' && mode === 'describe');
+    document.getElementById('fmPanel' + (m === 'describe' ? 'Desc' : m.charAt(0).toUpperCase() + m.slice(1))).classList.toggle('active', mode === m);
+  });
+}
+
+function submitForge() {
+  var payload = {};
+  if (_forgeMode === 'code') {
+    var code = document.getElementById('forgeCodeInput').value.trim();
+    if (!code) { document.getElementById('fmStatus').textContent = 'Paste some code first'; return; }
+    payload = {code: code};
+  } else if (_forgeMode === 'url') {
+    var url = document.getElementById('forgeUrlInput').value.trim();
+    if (!url) { document.getElementById('fmStatus').textContent = 'Enter a URL first'; return; }
+    payload = {code: url};
+  } else {
+    var desc = document.getElementById('forgeDescInput').value.trim();
+    if (!desc) { document.getElementById('fmStatus').textContent = 'Describe the skill first'; return; }
+    payload = {description: desc};
   }
-  var rs = document.getElementById('rs');
-  rs.textContent = 'Forging...';
-  rs.style.color = '#a78bfa';
-  addMsg('assistant', '&#128296; Forging skill from your code…');
+
+  var btn = document.getElementById('fmForgeBtn');
+  var status = document.getElementById('fmStatus');
+  btn.disabled = true;
+  status.textContent = 'Forging skill…';
+  document.getElementById('rs').textContent = 'Forging...';
+  document.getElementById('rs').style.color = '#a78bfa';
+
   fetch('/api/forge', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({code: code})
+    body: JSON.stringify(payload)
   })
   .then(function(r) { return r.json(); })
   .then(function(d) {
-    rs.textContent = '';
+    btn.disabled = false;
+    document.getElementById('rs').textContent = '';
     if (d.error) {
+      status.textContent = 'Error: ' + d.error;
       addOut('er', 'Forge error: ' + d.error);
-      addMsg('assistant', 'Forge hit an error: ' + d.error);
       return;
     }
-    // Load forged skill into editor for review
+    // Load into editor for review
     ed.setValue(d.code);
     document.getElementById('fn').value = d.skill_name + '.py';
+    monaco.editor.setModelLanguage(ed.getModel(), 'python');
+    closeForgeModal();
     addOut('sy', 'Forged: ' + d.path);
     addMsg('assistant',
-      '&#128296; Skill <strong>' + d.skill_name + '</strong> forged and saved!<br>' +
-      'Review it in the editor, then run:<br><code>pm2 restart ava-autopilot</code>'
+      '&#128296; Skill <strong>' + esc(d.skill_name) + '</strong> forged!<br>' +
+      'Review the code, then click <strong>Test</strong> to try it or <strong>Save Skill</strong> to install.'
     );
   })
   .catch(function(e) {
-    rs.textContent = '';
+    btn.disabled = false;
+    document.getElementById('rs').textContent = '';
+    status.textContent = 'Failed: ' + e.message;
     addOut('er', 'Forge failed: ' + e.message);
+  });
+}
+
+function doTestSkill() {
+  var code = ed.getValue().trim();
+  if (!code.includes('SKILL_TRIGGERS')) {
+    addMsg('assistant', 'No skill in editor yet. Forge one first!');
+    return;
+  }
+  // Append a __main__ test runner to the code
+  var testCode = code + '\n\nif __name__ == "__main__":\n    result = run("test")\n    print("[TEST RESULT]", result if result else "(no output)")\n';
+  var fn = document.getElementById('fn').value || 'skill_test.py';
+  document.getElementById('rs').textContent = 'Testing…';
+  addOut('sy', 'Testing skill run("test")…');
+  fetch('/api/run_code', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({code: testCode, language: 'python', filename: fn})
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(d) {
+    document.getElementById('rs').textContent = d.exit_code === 0 ? 'Test passed' : 'Test failed';
+    if (d.stdout) addOut('ot', d.stdout);
+    if (d.stderr) addOut('er', d.stderr);
+  })
+  .catch(function(e) {
+    document.getElementById('rs').textContent = 'Error';
+    addOut('er', 'Test error: ' + e.message);
   });
 }
 
@@ -463,6 +596,14 @@ function doSaveSes() {
     body: JSON.stringify({session_id: sesId, title: title, language: lang, code: code, messages: hist.slice(-2)})
   }).catch(function(){});
 }
+
+// Close forge modal on overlay click or Escape
+document.getElementById('fmOverlay').addEventListener('click', function(e) {
+  if (e.target === this) closeForgeModal();
+});
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeForgeModal();
+});
 
 // Events
 document.getElementById('sndb').addEventListener('click', doSend);
