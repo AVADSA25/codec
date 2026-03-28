@@ -44,6 +44,7 @@ CODEC Elevate     → Rewrites to be more polished and professional. Replaces te
 CODEC Explain     → Explains in simple terms. Opens in Terminal.
 CODEC Prompt      → Rewrites as an optimized LLM prompt. Replaces text.
 CODEC Translate   → Translates any language to English. Opens in Terminal.
+CODEC Reply       → Reads the selected message, writes a natural reply. Add :direction for intent.
 ```
 
 Works system-wide via macOS Services. Built for accessibility — particularly useful for dyslexia and ADHD. Your AI proofreader and translator is always one right-click away.
@@ -240,7 +241,7 @@ All conversations are saved to a unified SQLite database — voice commands, tex
 | ** (double-tap) | Screenshot and ask about screen |
 | ++ (double-tap) | Open file picker for document analysis |
 | -- (double-tap) | Live voice-to-voice chat via Pipecat |
-| Right-click Services | Text Assistant (5 modes) |
+| Right-click Services | Text Assistant (6 modes) |
 | Hey C | Wake word — hands-free activation |
 
 All shortcuts are configurable. CODEC's default assistant name is C — you can rename it to anything in your config.
