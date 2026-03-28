@@ -36,6 +36,9 @@ def _qwen_model():
 
 SERPER_API_KEY = "5bfdf8c7aed2128f1535bcdd0e2164f46e08b5c1"
 
+# Captures the last Google Docs URL created — fallback if Writer forgets to echo it
+_last_gdoc_url: Optional[str] = None
+
 
 # ═══════════════════════════════════════════════════════════════
 # TOOL
@@ -133,6 +136,8 @@ def _file_write(input_str: str) -> str:
 
 
 def _google_docs_create(input_str: str) -> str:
+    """Create a richly styled Google Doc — reuses codec_gdocs.create_google_doc()."""
+    global _last_gdoc_url
     title = "CODEC Report"
     content = input_str
     if "title:" in input_str.lower():
@@ -143,24 +148,16 @@ def _google_docs_create(input_str: str) -> str:
                 content = input_str.split("content:", 1)[1].strip()
                 break
     try:
-        from google.oauth2.credentials import Credentials
-        from google.auth.transport.requests import Request
-        from googleapiclient.discovery import build
-        token_path = os.path.expanduser("~/.codec/google_token.json")
-        creds = Credentials.from_authorized_user_file(token_path)
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-            with open(token_path, "w") as f:
-                f.write(creds.to_json())
-        docs = build("docs", "v1", credentials=creds)
-        doc = docs.documents().create(body={"title": title}).execute()
-        doc_id = doc["documentId"]
-        doc_url = f"https://docs.google.com/document/d/{doc_id}/edit"
-        docs.documents().batchUpdate(
-            documentId=doc_id,
-            body={"requests": [{"insertText": {"location": {"index": 1}, "text": content}}]}
-        ).execute()
-        return f"Google Doc created: {doc_url}"
+        import sys as _sys
+        _dash = os.path.dirname(os.path.abspath(__file__))
+        if _dash not in _sys.path:
+            _sys.path.insert(0, _dash)
+        from codec_gdocs import create_google_doc
+        doc_url = create_google_doc(title, content)
+        if doc_url:
+            _last_gdoc_url = doc_url
+            return f"Google Doc created: {doc_url}"
+        return "Google Docs error: doc creation returned None"
     except Exception as e:
         return f"Google Docs error: {e}"
 
@@ -295,9 +292,9 @@ Rules:
                 if self.verbose:
                     print(f"[{self.name}] {response[:200]}…")
 
-                # FINAL answer
+                # FINAL answer — rsplit gets the LAST occurrence (skips quoted prompt text)
                 if "FINAL:" in response:
-                    final = response.split("FINAL:", 1)[1].strip()
+                    final = response.rsplit("FINAL:", 1)[1].strip()
                     if callback:
                         await _safe_cb(callback, {"agent": self.name, "status": "complete", "preview": final[:200]})
                     return final
@@ -449,7 +446,8 @@ def deep_research_crew(**kwargs) -> Crew:
             "You are a professional report writer. Synthesize research into a comprehensive "
             "well-structured report: Executive Summary, Key Findings, Analysis, Conclusion, Sources. "
             "Write 2000-5000 words in markdown. Cite sources inline. "
-            "Save to Google Docs when done."
+            "Save to Google Docs when done. "
+            "IMPORTANT: Your FINAL response MUST include the exact Google Docs URL returned by the tool."
         ),
         tools=write_tools, max_tool_calls=2,
     )
@@ -460,7 +458,8 @@ def deep_research_crew(**kwargs) -> Crew:
             f"Search at least 3 different angles. Fetch key source pages and extract details.",
             f"Write a comprehensive report about: {topic}\n"
             f"Use research context provided. Save to Google Docs with title: "
-            f"'CODEC Research: {topic[:80]} — {datetime.now().strftime('%Y-%m-%d')}'"
+            f"'CODEC Research: {topic[:80]} — {datetime.now().strftime('%Y-%m-%d')}'\n"
+            f"After saving, your FINAL response MUST begin with the Google Docs URL on its own line."
         ],
     )
 
@@ -607,6 +606,11 @@ async def run_crew(crew_name: str, callback=None, **kwargs) -> dict:
         crew   = reg["builder"](**kwargs)
         result = await crew.run(callback=callback)
         elapsed = int(time.time() - start)
+
+        # If Writer forgot to include the Google Docs URL, inject it from the captured variable
+        if "docs.google.com" not in result and _last_gdoc_url:
+            result = f"{_last_gdoc_url}\n\n{result}"
+
         save_to_memory(crew_name, f"{crew_name}: {json.dumps(kwargs)}", result[:2000])
         return {"status": "complete", "result": result, "elapsed_seconds": elapsed, "crew": crew_name}
     except Exception as e:
