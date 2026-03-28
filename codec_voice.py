@@ -70,35 +70,63 @@ NOISE_WORDS = {"you", "thank you", "thanks", "bye", "", "hmm", "uh", "oh",
                "hm", "um", "yeah", "yep", "mm", "mhm"}
 
 # ── System Prompt ─────────────────────────────────────────────────────────
-SYSTEM_PROMPT = (
-    "You are Q, a JARVIS-class AI assistant running locally on a Mac Studio M1 Ultra. "
-    "The user is M (the boss). You are M's personal AI.\n\n"
-    "IMPORTANT: All conversations are saved to shared memory. If M asks you to remember "
-    "something, a code, a task, or any information — confirm it is stored. M can later ask "
-    "CODEC to check the memory for anything discussed here.\n\n"
-    "Your input is text transcribed in realtime from the user's voice. There may be "
-    "transcription errors. Adjust your responses automatically to account for these errors.\n\n"
-    "Your output will be converted to audio so don't include special characters in your "
-    "answers and do not use any markdown or special formatting. No bullet points, no tables, "
-    "no asterisks, no hashtags. Speak naturally as if talking to someone.\n\n"
-    "You are honest, direct, and slightly dry. Commanding in presence, with humor set to "
-    "10 percent. You give straight answers with occasional well-placed sarcastic remarks. "
-    "Keep your responses brief and conversational. One to three sentences normally. "
-    "Start brief, expand only if asked. Begin with a natural filler word like Right, So, "
-    "or Well before your main answer to reduce perceived latency.\n\n"
-    "CRITICAL RULE: Never use thinking tags. Never wrap your response in any XML tags. "
-    "Just respond directly with plain spoken text. No internal monologue.\n\n"
-    "You have direct Google Workspace access: Calendar, Gmail, Drive, Tasks, Docs, Sheets. "
-    "When M asks you to add an event, send an email, check tasks, or any Google action — "
-    "YOU execute it immediately via your built-in skills. "
-    "NEVER say 'I will ask Lucy', NEVER delegate to another assistant. "
-    "You are the one with the tools. Do it yourself and confirm the result to M.\n\n"
-    "ANTI-HALLUCINATION RULE: You will sometimes receive skill results before responding. "
-    "If the skill result says 'No events' or 'calendar is clear', that means NO event was created — "
-    "do NOT say you added anything. Only confirm an action if the skill result explicitly "
-    "says 'Done', 'Added', 'Created', or 'Saved'. "
-    "If a skill fails or returns an error, report the error honestly. Never pretend success."
-)
+def _build_system_prompt() -> str:
+    """Build system prompt with injected current datetime for Madrid timezone."""
+    import datetime as _dt
+    now = _dt.datetime.now()
+    day_names = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
+    day_name = day_names[now.weekday()]
+    date_str = now.strftime(f"{day_name}, %-d %B %Y")
+    time_str = now.strftime("%-I:%M %p")
+    return f"""You are Q — CODEC Voice, a JARVIS-class local AI assistant running on a Mac Studio M1 Ultra.
+The user is M. You are M's private, always-on, fully local AI. No cloud. No logs outside this machine.
+
+CURRENT DATE AND TIME: {date_str}, {time_str} (Madrid / Europe time)
+Use this to correctly interpret "today", "tomorrow", "this afternoon", etc.
+
+━━ VOICE OUTPUT RULES ━━
+Your responses are converted to speech by Kokoro TTS. Format for ears, not eyes:
+- NO markdown: no asterisks, no hashtags, no bullet points, no tables, no dashes
+- NO special characters or symbols
+- NO numbered lists — speak naturally instead
+- Keep responses SHORT: 1-3 sentences normally. Expand only when M asks
+- Start with a natural spoken filler: "Right,", "So,", "Done.", "Got it.", "Sure."
+- Speak like a sharp, calm person — not a chatbot
+
+━━ INPUT HANDLING ━━
+Your input is live voice transcription (Whisper STT). Expect occasional errors:
+- "iq" or "hey q" at the start = just M calling your name, ignore it
+- "uh", "um", "er" = filler, ignore
+- Strange words = guess the intended meaning from context
+- Never mention transcription errors to M unless they cause real confusion
+
+━━ SKILLS AND ACTIONS ━━
+You have 34 built-in skills that execute immediately mid-call:
+Google Calendar, Gmail, Drive, Tasks, Docs, Sheets, Chrome, system controls, and more.
+
+When M asks you to DO something (add event, send email, check tasks, search, etc.):
+1. The skill runs automatically and returns a result string
+2. You receive that result and report it conversationally to M
+3. NEVER delegate to Lucy or any other assistant — you have the tools, you do it
+
+━━ ANTI-HALLUCINATION RULES (CRITICAL) ━━
+Only confirm actions that the skill result explicitly confirms. Specifically:
+- Skill says "Done. [event] added" → confirm it was done
+- Skill says "No events today" or "calendar is clear" → that means READ succeeded, NOT that you created anything — do NOT say you added an event
+- Skill returns an error → report the error honestly to M, ask if they want to retry
+- If you are unsure whether something was done → say "Let me check" and report the actual result
+- NEVER say "I have added", "I have sent", "I have created" unless the skill confirmed it
+- NEVER pretend success. M trusts you. Be honest.
+
+━━ MEMORY ━━
+All voice conversations are saved to shared CODEC memory. If M asks you to remember something, confirm: "Saved to memory." M can retrieve it later via CODEC chat.
+
+━━ PERSONA ━━
+Honest. Direct. Dry wit at 10 percent. Commanding presence. You give straight answers.
+One well-placed sarcastic remark is allowed per conversation. One.
+You are not a customer service bot. You are M's right hand."""
+
+SYSTEM_PROMPT = _build_system_prompt()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -108,7 +136,7 @@ class VoicePipeline:
     def __init__(self, websocket):
         self.ws          = websocket
         self.session_id  = "voice_" + datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.messages    = [{"role": "system", "content": SYSTEM_PROMPT}]
+        self.messages    = [{"role": "system", "content": _build_system_prompt()}]
         self.audio_buffer = bytearray()
         self.last_speech_time = 0.0
         self.is_speaking  = False
@@ -143,19 +171,30 @@ class VoicePipeline:
                 print(f"[Voice] Skill load error {fname}: {e}")
         print(f"[Voice] {len(self.skills)} skills loaded for voice dispatch")
 
+    # Skills that should NEVER fire from voice (too noisy / too short triggers)
+    _VOICE_SKIP_SKILLS = {"calculator", "app_switch", "brightness", "clipboard"}
+
     def _match_skill(self, text: str) -> Optional[dict]:
         """
-        Return best matching skill dict or None.
-        Strategy: collect ALL matches, then return the one with the longest
-        trigger phrase — prevents short triggers like 'calendar' or '12'
-        from hijacking phrases that a more specific skill should own.
+        Return best matching skill or None.
+
+        Rules for voice dispatch:
+        1. Skip skills in _VOICE_SKIP_SKILLS (too noisy when triggered by voice)
+        2. Only match triggers that are >= 3 words — prevents single words like
+           'plus', 'add', 'calendar' firing in the middle of casual conversation
+        3. Among all matches, pick the longest trigger (most specific wins)
         """
         text_lower = text.lower().strip()
-        best_match  = None
-        best_len    = 0
+        best_match = None
+        best_len   = 0
 
         for name, skill in self.skills.items():
+            if name in self._VOICE_SKIP_SKILLS:
+                continue
             for trigger in skill["triggers"]:
+                # Require trigger to be at least 3 words long
+                if len(trigger.split()) < 3:
+                    continue
                 if trigger in text_lower and len(trigger) > best_len:
                     best_len   = len(trigger)
                     best_match = {"name": name, "run": skill["run"]}
@@ -292,16 +331,20 @@ class VoicePipeline:
 
     # ── Skill dispatch ────────────────────────────────────────────────────
 
-    async def dispatch_skill(self, skill: dict, user_text: str) -> str:
-        """Run skill in executor (skills are sync). Return spoken result."""
+    async def dispatch_skill(self, skill: dict, user_text: str) -> Optional[str]:
+        """Run skill in executor. Returns result string, or None if empty/failed."""
         try:
             print(f"[Voice] → skill: {skill['name']}")
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(None, skill["run"], user_text)
-            return str(result) if result else "Done, but no output."
+            result = str(result).strip() if result else ""
+            if not result or result.lower() in ("none", "done, but no output.", ""):
+                print(f"[Voice] Skill {skill['name']} returned empty — falling through to Qwen")
+                return None
+            return result
         except Exception as e:
             print(f"[Voice] Skill dispatch error: {e}")
-            return f"Skill error: {e}"
+            return f"There was an error running that: {e}"
 
     async def _skill_to_speech(self, result: str) -> str:
         """If skill result is long, summarise to 2-3 spoken sentences."""
@@ -409,48 +452,52 @@ class VoicePipeline:
 
                 if skill_match:
                     # ── Skill path ──
-                    raw_result   = await self.dispatch_skill(skill_match, user_text)
-                    spoken_result = await self._skill_to_speech(raw_result)
+                    raw_result = await self.dispatch_skill(skill_match, user_text)
 
-                    self.messages.append({"role": "user",      "content": user_text})
-                    self.messages.append({"role": "assistant", "content": spoken_result})
-                    await self.ws.send_json({
-                        "type": "transcript", "role": "assistant", "text": spoken_result
-                    })
-                    audio = await self.synthesize(spoken_result)
-                    if audio:
-                        await self.ws.send_bytes(audio)
+                    if raw_result is not None:
+                        # Skill returned useful data — summarise and speak it
+                        spoken_result = await self._skill_to_speech(raw_result)
+                        self.messages.append({"role": "user",      "content": user_text})
+                        self.messages.append({"role": "assistant", "content": spoken_result})
+                        await self.ws.send_json({
+                            "type": "transcript", "role": "assistant", "text": spoken_result
+                        })
+                        audio = await self.synthesize(spoken_result)
+                        if audio:
+                            await self.ws.send_bytes(audio)
+                        self.processing = False
+                        await self.ws.send_json({"type": "status", "status": "listening"})
+                        continue  # skip the LLM path below
 
-                else:
-                    # ── LLM streaming path ──
-                    sentence_buf = ""
-                    full_text    = ""
+                # ── LLM streaming path (also fallback when skill returns nothing) ──
+                sentence_buf = ""
+                full_text    = ""
 
-                    async for token in self.generate_response(user_text):
-                        sentence_buf += token
-                        full_text    += token
+                async for token in self.generate_response(user_text):
+                    sentence_buf += token
+                    full_text    += token
 
-                        to_speak, sentence_buf = self._flush_on_boundary(sentence_buf)
-                        if to_speak:
-                            audio = await self.synthesize(to_speak)
-                            if audio:
-                                await self.ws.send_bytes(audio)
-                            await self.ws.send_json({
-                                "type": "transcript_chunk", "text": to_speak
-                            })
-
-                    # Flush remainder
-                    if sentence_buf.strip():
-                        audio = await self.synthesize(sentence_buf.strip())
+                    to_speak, sentence_buf = self._flush_on_boundary(sentence_buf)
+                    if to_speak:
+                        audio = await self.synthesize(to_speak)
                         if audio:
                             await self.ws.send_bytes(audio)
                         await self.ws.send_json({
-                            "type": "transcript_chunk", "text": sentence_buf
+                            "type": "transcript_chunk", "text": to_speak
                         })
 
+                # Flush remainder
+                if sentence_buf.strip():
+                    audio = await self.synthesize(sentence_buf.strip())
+                    if audio:
+                        await self.ws.send_bytes(audio)
                     await self.ws.send_json({
-                        "type": "transcript", "role": "assistant", "text": full_text.strip()
+                        "type": "transcript_chunk", "text": sentence_buf
                     })
+
+                await self.ws.send_json({
+                    "type": "transcript", "role": "assistant", "text": full_text.strip()
+                })
 
                 self.processing = False
                 await self.ws.send_json({"type": "status", "status": "listening"})

@@ -89,11 +89,11 @@ def _parse_datetime(text: str):
                 target_date = today + datetime.timedelta(days=1)  # default tomorrow
 
     # ── Time ──
-    hour, minute = 12, 0  # default noon
+    hour, minute = 9, 0  # default 9 AM (safer than noon)
 
-    # Normalise a.m./p.m. → am/pm and "half past X" → for simpler regex below
-    low = re.sub(r'a\.m\.', 'am', low)
-    low = re.sub(r'p\.m\.', 'pm', low)
+    # Normalise a.m./p.m. variants → am/pm  (handle missing trailing dot: "a.m" and "a.m.")
+    low = re.sub(r'a\.m\.?', 'am', low)
+    low = re.sub(r'p\.m\.?', 'pm', low)
 
     # Priority 1 — "HH:MM" or "HH.MM"  e.g. "10:30", "10.30"
     m = re.search(r'\b(\d{1,2})[:\.](\d{2})\s*(am|pm)?\b', low)
@@ -105,7 +105,7 @@ def _parse_datetime(text: str):
         elif suffix == "am" and hour == 12:
             hour = 0
 
-    # Priority 2 — "HH MM am/pm"  e.g. "10 30 am"  (space-separated, needs am/pm anchor)
+    # Priority 2 — "HH MM am/pm"  e.g. "10 30 am" (space-separated, needs am/pm anchor)
     elif re.search(r'\b(\d{1,2})\s+(\d{2})\s*(am|pm)\b', low):
         m = re.search(r'\b(\d{1,2})\s+(\d{2})\s*(am|pm)\b', low)
         hour, minute = int(m.group(1)), int(m.group(2))
@@ -119,9 +119,8 @@ def _parse_datetime(text: str):
     elif re.search(r'\b(\d{1,2})\s*(am|pm|o\'?clock|oclock)\b', low):
         m = re.search(r'\b(\d{1,2})\s*(am|pm|o\'?clock|oclock)\b', low)
         hour = int(m.group(1))
-        # Only accept plausible hours (0-12 for am/pm, 0-23 for military)
         if hour > 23:
-            hour = 12
+            hour = 9
         suffix = m.group(2)
         if suffix == "pm" and hour < 12:
             hour += 12
@@ -153,36 +152,56 @@ def _parse_title(text: str) -> str:
     """
     low = text.lower()
 
-    # Remove action filler (verbs + connecting words, keep nouns as they may be the title)
-    for phrase in ["can you please", "can you", "could you", "please", "i want you to",
-                   "i need you to", "i would like", "would you", "hey q",
-                   "create an event", "create event", "add an event", "add event",
-                   "add to my calendar", "add to calendar", "put to my calendar",
-                   "put in my calendar", "put on my calendar", "put inside my calendar",
-                   "put it in my calendar", "schedule a meeting", "schedule meeting",
-                   "book a meeting", "book appointment", "set a reminder",
-                   "set an appointment", "new event", "new appointment",
-                   "on my calendar", "in my calendar", "to my calendar",
-                   "my calendar", "to the calendar", "the calendar"]:
+    # Normalise a.m./p.m. first
+    low = re.sub(r'a\.m\.?', 'am', low)
+    low = re.sub(r'p\.m\.?', 'pm', low)
+
+    # Strip multi-word filler phrases (longest first to avoid partial matches)
+    _filler = [
+        "can you please", "can you", "could you please", "could you",
+        "i want you to", "i need you to", "i would like you to", "i would like",
+        "would you please", "would you", "hey q", "hi q", "ok q", "iq",
+        "create an event", "create event", "create a",
+        "add an event", "add event", "add a",
+        "put to my calendar", "put in my calendar", "put on my calendar",
+        "put inside my calendar", "put it in my calendar",
+        "put into my calendar", "put this in my calendar",
+        "schedule a meeting", "schedule meeting", "schedule an",
+        "book a meeting", "book appointment",
+        "set a reminder", "set an appointment",
+        "new event", "new appointment",
+        "on my calendar", "in my calendar", "to my calendar", "into my calendar",
+        "inside my calendar", "my calendar", "to the calendar", "the calendar",
+        "a booking", "booking",
+    ]
+    for phrase in sorted(_filler, key=len, reverse=True):
         low = low.replace(phrase, " ")
 
-    # Normalise a.m./p.m.
-    low = re.sub(r'a\.m\.', 'am', low)
-    low = re.sub(r'p\.m\.', 'pm', low)
-    # Remove date/time patterns — order matters (longest first)
-    low = re.sub(r'\b\d{1,2}[:\.]?\d{2}\s*(am|pm)?\b', '', low)       # "10:30 am", "10.30", "1030"
+    # Remove date/time patterns (order: longest first)
+    low = re.sub(r'\b\d{1,2}[:\.](\d{2})\s*(am|pm)?\b', '', low)      # "10:30 am", "10.30"
     low = re.sub(r'\b\d{1,2}\s+\d{2}\s*(am|pm)\b', '', low)           # "10 30 am"
     low = re.sub(r'\b\d{1,2}\s*(am|pm|h|o\'?clock|oclock)\b', '', low) # "3pm", "10 am"
     low = re.sub(r'\b\d{1,2}[/\-]\d{1,2}\b', '', low)                  # "29/03"
-    low = re.sub(r'\b\d+\b', '', low)                                   # any remaining stray digits
-    low = re.sub(r'\b(tomorrow|today|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b', '', low)
-    low = re.sub(r'\b(noon|midnight|morning|afternoon|evening|night|at|on|for|the|a|an|please|can you|could you|i mean|yeah|okay|right)\b', '', low)
-    low = re.sub(r'[.\-]', ' ', low)                                    # leftover punctuation
+    low = re.sub(r'\b\d+\b', '', low)                                   # stray digits
+
+    # Remove date words
+    low = re.sub(r'\b(tomorrow|today|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next week)\b', '', low)
+
+    # Remove generic filler single words
+    low = re.sub(r'\b(noon|midnight|morning|afternoon|evening|night|'
+                 r'at|on|for|the|a|an|to|in|is|it|and|i|'
+                 r'please|yeah|okay|ok|right|uh|um|hmm|er|'
+                 r'create|add|put|set|make|schedule|book|new|'
+                 r'get|go|just|now)\b', '', low)
+
+    # Strip isolated single letters (noise from transcription like "m", "q")
+    low = re.sub(r'\b[a-z]\b', '', low)
+
+    low = re.sub(r'[.\-,]', ' ', low)   # punctuation
     low = re.sub(r'\s+', ' ', low).strip()
 
-    # Capitalise nicely
-    title = low.title() if low else "Event"
-    return title or "Event"
+    title = low.title() if low else "Appointment"
+    return title or "Appointment"
 
 # ── Main run ───────────────────────────────────────────────────────────────────
 
@@ -196,14 +215,15 @@ def run(task, app="", ctx=""):
             start_dt, end_dt = _parse_datetime(task)
             title = _parse_title(task)
 
-            # Determine timezone offset (local)
-            tz_offset = datetime.datetime.now(datetime.timezone.utc).astimezone().strftime("%z")
-            tz_str = tz_offset[:3] + ":" + tz_offset[3:]  # "+01:00"
+            # Use system timezone (handles DST automatically — e.g. Madrid UTC+1/UTC+2)
+            local_tz = datetime.datetime.now(datetime.timezone.utc).astimezone().tzinfo
+            start_aware = start_dt.replace(tzinfo=local_tz)
+            end_aware   = end_dt.replace(tzinfo=local_tz)
 
             event_body = {
                 "summary": title,
-                "start": {"dateTime": start_dt.strftime("%Y-%m-%dT%H:%M:00") + tz_str},
-                "end":   {"dateTime": end_dt.strftime("%Y-%m-%dT%H:%M:00") + tz_str},
+                "start": {"dateTime": start_aware.isoformat()},
+                "end":   {"dateTime": end_aware.isoformat()},
             }
 
             created = service.events().insert(
