@@ -18,7 +18,7 @@
 
 ## What It Does
 
-You say **"Hey Mike, open Safari and search for flights to Tokyo"** — it opens your browser and does it.
+You say **"Hey C, open Safari and search for flights to Tokyo"** — it opens your browser and does it.
 
 You say **"draft a reply saying I'll review it tonight"** — it reads your screen, sees the email or Slack message, writes a polished reply, and pastes it right into the text field.
 
@@ -45,7 +45,7 @@ python3 setup_codec.py
 python3 codec.py
 ```
 
-Five minutes from clone to "Hey Mike, what time is it."
+Five minutes from clone to "Hey C, what time is it."
 
 ---
 
@@ -54,7 +54,7 @@ Five minutes from clone to "Hey Mike, what time is it."
 ### Voice and Text Control
 - **Hold-to-talk voice** — hold F18, speak, release. Whisper transcribes, LLM processes, Kokoro speaks the answer.
 - **Text input** — press F16 for a dialog box.
-- **Wake word** — say "Hey Mike" hands-free from across the room.
+- **Wake word** — say "Hey C" hands-free from across the room.
 - **Draft and paste** — reads your screen, writes a reply, pastes it into whatever app you're using. Slack, WhatsApp, email, anything.
 - **Live voice chat** — double-tap minus for real-time voice-to-voice conversation via Pipecat.
 
@@ -148,7 +148,7 @@ Run your LLM on a Mac Studio, use a MacBook Air as a thin client over LAN. The A
 | ++ (double-tap) | Open file picker for document analysis |
 | -- (double-tap) | Live voice chat via Pipecat |
 | Right-click Services | Text Assistant |
-| Hey Mike | Wake word activation |
+| Hey C | Wake word activation |
 
 All shortcuts are configurable in ~/.codec/config.json.
 

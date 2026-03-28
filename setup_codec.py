@@ -331,8 +331,8 @@ def main():
 
     if config["wake_word_enabled"]:
         print(f"\n{W}  Choose wake phrases (what Whisper might hear):{X}")
-        print(f"{D}  Default: 'hey mike' — Whisper may transcribe as 'hey', 'aq', 'eq', etc.{X}")
-        default_phrases = "hey,aq,eq,iq,okay q,a q,hey mike,hey mikeueue"
+        print(f"{D}  Default: 'hey c' — Whisper may transcribe as 'hey', 'aq', 'eq', etc.{X}")
+        default_phrases = "hey,aq,eq,iq,okay q,a q,hey c,hey cueue"
         phrases = ask_text("Wake phrases (comma-separated)", default_phrases)
         config["wake_phrases"] = [p.strip() for p in phrases.split(",")]
         config["wake_energy"] = 200
@@ -536,7 +536,7 @@ def main():
   ║   {D}pm2 start python3 -- -u codec.py{O}               ║
   ║                                                  ║
   ║   {W}Press F13 to activate, then:{O}                   ║
-  ║   {D}F18 = voice  |  F16 = text  |  Hey Mike{O}          ║
+  ║   {D}F18 = voice  |  F16 = text  |  Hey C{O}          ║
   ║                                                  ║
   ╚══════════════════════════════════════════════════╝{X}
 """)
