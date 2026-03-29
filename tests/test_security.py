@@ -158,3 +158,60 @@ def test_osascript_inputs_sanitized():
     for var in notif_calls:
         assert var.startswith("safe_"), \
             f"osascript embeds unsanitized variable '{var}' — must use safe_ prefix"
+
+
+# ── file_read/file_write path traversal (codec_agents.py) ──────────────────
+
+def test_file_read_uses_realpath():
+    """file_read must resolve symlinks via realpath"""
+    REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    content = open(os.path.join(REPO, "codec_agents.py")).read()
+    file_read_fn = content.split("def _file_read")[1].split("\ndef ")[0]
+    assert "realpath" in file_read_fn, "file_read must use os.path.realpath() to prevent symlink traversal"
+
+
+def test_file_write_uses_realpath():
+    """file_write must resolve symlinks via realpath"""
+    REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    content = open(os.path.join(REPO, "codec_agents.py")).read()
+    file_write_fn = content.split("def _file_write")[1].split("\ndef ")[0]
+    assert "realpath" in file_write_fn, "file_write must use os.path.realpath() to prevent symlink traversal"
+
+
+# ── L.append DANGEROUS list synced ─────────────────────────────────────────
+
+def test_session_script_imports_dangerous_patterns():
+    """build_session_script must import DANGEROUS_PATTERNS, not use hardcoded list"""
+    REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    content = open(os.path.join(REPO, "codec_agent.py")).read()
+    assert "DANGEROUS_PATTERNS" in content, "codec_agent.py must import DANGEROUS_PATTERNS from codec_config"
+
+
+# ── Memory cleanup exists ──────────────────────────────────────────────────
+
+def test_memory_has_cleanup():
+    """Memory system must have a cleanup method for retention management"""
+    REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    content = open(os.path.join(REPO, "codec_memory.py")).read()
+    assert "def cleanup" in content, "codec_memory.py must have a cleanup method"
+    assert "VACUUM" in content, "cleanup should VACUUM the database"
+
+
+# ── save_skill validation ──────────────────────────────────────────────────
+
+def test_save_skill_validates_content():
+    """save_skill must validate skill structure and block dangerous patterns"""
+    REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    content = open(os.path.join(REPO, "codec_dashboard.py")).read()
+    skill_fn = content.split("async def save_skill")[1].split("\nasync def ")[0] if "async def save_skill" in content else ""
+    assert "SKILL_DESCRIPTION" in skill_fn, "save_skill must validate SKILL_DESCRIPTION presence"
+    assert "os.system" in skill_fn or "BLOCKED_IN_SKILLS" in skill_fn, "save_skill must block dangerous patterns"
+
+
+# ── Preview frame CSP ──────────────────────────────────────────────────────
+
+def test_preview_frame_has_csp():
+    """preview_frame must set Content-Security-Policy headers"""
+    REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    content = open(os.path.join(REPO, "codec_dashboard.py")).read()
+    assert "Content-Security-Policy" in content, "preview_frame must set CSP headers"

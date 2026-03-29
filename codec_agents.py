@@ -91,7 +91,10 @@ def _file_read(path: str) -> str:
         path = os.path.expanduser(path)
     elif not path.startswith("/"):
         path = os.path.join(os.path.expanduser("~/codec-workspace"), path)
-    if not path.startswith(os.path.expanduser("~")):
+    # Resolve symlinks and .. to prevent traversal
+    path = os.path.realpath(path)
+    home = os.path.realpath(os.path.expanduser("~"))
+    if not path.startswith(home):
         return "Error: cannot read files outside home directory."
     try:
         with open(path, "r", errors="ignore") as f:
@@ -117,7 +120,10 @@ def _file_write(input_str: str) -> str:
     os.makedirs(workspace, exist_ok=True)
     if not path.startswith("/"):
         path = os.path.join(workspace, path)
-    if not path.startswith(os.path.expanduser("~")):
+    # Resolve symlinks and .. to prevent traversal
+    path = os.path.realpath(path)
+    home = os.path.realpath(os.path.expanduser("~"))
+    if not path.startswith(home):
         return "Error: cannot write outside home directory."
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)

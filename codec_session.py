@@ -513,7 +513,13 @@ ALWAYS respond with valid JSON only."""
         if resp:
             self.h.append({"role": "assistant", "content": resp})
             if len(self.h) > 22:
-                self.h[:] = self.h[:1] + self.h[-20:]
+                try:
+                    sys.path.insert(0, os.path.expanduser("~/codec-repo"))
+                    from codec_compaction import compact_context
+                    compacted = compact_context(self.h[1:], max_recent=5)
+                    self.h[:] = [self.h[0], {"role": "system", "content": compacted}] + self.h[-10:]
+                except Exception:
+                    self.h[:] = self.h[:1] + self.h[-20:]
             return resp
         return "Qwen busy."
 

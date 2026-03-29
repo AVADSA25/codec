@@ -170,6 +170,29 @@ class CodecMemory:
         finally:
             conn.close()
 
+    def cleanup(self, retention_days: int = 90) -> dict:
+        """Delete conversations older than retention_days and VACUUM the database.
+        Returns dict with deleted count and final size."""
+        cutoff = (datetime.now() - timedelta(days=retention_days)).isoformat()
+        conn = sqlite3.connect(self.db_path)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=5000")
+        try:
+            before = conn.execute("SELECT COUNT(*) FROM conversations").fetchone()[0]
+            conn.execute("DELETE FROM conversations WHERE timestamp < ?", (cutoff,))
+            conn.commit()
+            after = conn.execute("SELECT COUNT(*) FROM conversations").fetchone()[0]
+            deleted = before - after
+            # Rebuild FTS after bulk delete
+            if deleted > 0:
+                conn.execute("INSERT INTO conversations_fts(conversations_fts) VALUES('rebuild')")
+                conn.commit()
+            conn.execute("VACUUM")
+            size = os.path.getsize(self.db_path)
+            return {"deleted": deleted, "remaining": after, "size_bytes": size}
+        finally:
+            conn.close()
+
     def rebuild_fts(self) -> int:
         """Full FTS rebuild — use after bulk imports. Returns row count."""
         conn = sqlite3.connect(self.db_path)
@@ -213,5 +236,9 @@ if __name__ == "__main__":
     elif cmd == "rebuild":
         n = mem.rebuild_fts()
         print(f"FTS rebuilt — {n} rows indexed.")
+    elif cmd == "cleanup":
+        days = int(sys.argv[2]) if len(sys.argv) > 2 else 90
+        result = mem.cleanup(retention_days=days)
+        print(f"Cleanup: deleted {result['deleted']} old messages, {result['remaining']} remaining, DB size: {result['size_bytes'] / 1024:.0f} KB")
     else:
         print("Unknown command.")

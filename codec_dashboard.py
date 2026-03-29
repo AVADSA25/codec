@@ -515,10 +515,15 @@ async def preview_code(request: Request):
 async def preview_frame():
     try:
         with open(os.path.expanduser("~/.codec/preview.html")) as f:
-            return f.read()
+            content = f.read()
+        # Restrict preview with CSP — no access to dashboard APIs or external resources
+        return HTMLResponse(content, headers={
+            "Content-Security-Policy": "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; connect-src 'none'; form-action 'none'",
+            "X-Frame-Options": "SAMEORIGIN",
+        })
     except Exception as e:
         log.warning(f"Non-critical error: {e}")
-        return "<html><body style='background:#0a0a0a;color:#888;padding:40px;font-family:sans-serif'><h2>No preview available</h2><p>Write some HTML and click Preview.</p></body></html>"
+        return HTMLResponse("<html><body style='background:#0a0a0a;color:#888;padding:40px;font-family:sans-serif'><h2>No preview available</h2><p>Write some HTML and click Preview.</p></body></html>")
 
 @app.post("/api/run_code")
 async def run_code(request: Request):
@@ -577,6 +582,14 @@ async def save_skill(request: Request):
     filename = os.path.basename(body.get("filename", "custom_skill.py"))
     if not filename.endswith(".py"): filename += ".py"
     content = body.get("content", "")
+    # Validate: must contain SKILL_DESCRIPTION and run function
+    if "SKILL_DESCRIPTION" not in content or "def run(" not in content:
+        return JSONResponse({"error": "Invalid skill: must contain SKILL_DESCRIPTION and def run()"}, status_code=400)
+    # Block dangerous imports/calls in skill code
+    BLOCKED_IN_SKILLS = ["os.system(", "subprocess.Popen(", "eval(", "exec(", "__import__"]
+    for blocked in BLOCKED_IN_SKILLS:
+        if blocked in content:
+            return JSONResponse({"error": f"Blocked pattern in skill code: {blocked}"}, status_code=400)
     path = os.path.join(os.path.expanduser("~/.codec/skills"), filename)
     with open(path, "w") as f: f.write(content)
     return {"path": path, "skill": filename, "size": len(content)}
