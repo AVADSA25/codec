@@ -82,7 +82,7 @@ def _download_skill(skill_entry: dict, registry: dict) -> str | None:
     """Download a skill .py file from GitHub raw."""
     try:
         import requests
-        base_url = registry.get("base_url", "")
+        base_url = registry.get("base_url", "") or SKILLS_BASE_URL
         url      = f"{base_url}/{skill_entry['file']}"
         r = requests.get(url, timeout=30)
         if r.status_code == 200:
