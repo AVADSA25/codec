@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <video src="https://i.imgur.com/J4OqrYZ.mp4" controls width="800"></video>
+  <video src="https://raw.githubusercontent.com/AVADSA25/codec/main/assets/codec-promo.mp4" controls width="800"></video>
 </p>
 
 ---
