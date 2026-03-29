@@ -121,8 +121,8 @@ _GENERIC_HEADING_WORDS = {
     "discussion", "results", "overview", "appendix", "abstract",
 }
 
-# ~3 pages of 11pt text at 150% line spacing in a standard Google Doc
-_CHARS_PER_IMAGE = 9_000
+# ~1 section of body text in a standard Google Doc (~700 words)
+_CHARS_PER_IMAGE = 3_500
 _MAX_IMAGES      = 7   # hero + up to 6 section images
 
 
@@ -227,7 +227,7 @@ def _find_image_positions(positions: list) -> tuple:
 
     for p in positions:
         running += p["end"] - p["start"]
-        if running >= next_thresh and p["type"] == "h2":
+        if running >= next_thresh and p["type"] in ("h2", "h3"):
             if not additional or p["start"] != additional[-1]:
                 additional.append(p["start"])
                 next_thresh += _CHARS_PER_IMAGE
