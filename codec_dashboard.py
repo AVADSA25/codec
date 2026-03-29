@@ -20,11 +20,13 @@ DASHBOARD_DIR = os.path.dirname(os.path.abspath(__file__))
 def get_db():
     return sqlite3.connect(DB_PATH)
 
+_NO_CACHE = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"}
+
 @app.get("/", response_class=HTMLResponse)
 async def index():
     html_path = os.path.join(DASHBOARD_DIR, "codec_dashboard.html")
     with open(html_path) as f:
-        return f.read()
+        return HTMLResponse(f.read(), headers=_NO_CACHE)
 
 @app.get("/manifest.json")
 async def manifest():
@@ -297,7 +299,7 @@ async def upload_document(request: Request):
 async def chat_page():
     chat_path = os.path.join(DASHBOARD_DIR, "codec_chat.html")
     with open(chat_path) as f:
-        return f.read()
+        return HTMLResponse(f.read(), headers=_NO_CACHE)
 
 
 # C Chat conversation storage
@@ -437,7 +439,7 @@ async def vibe_save(request: Request):
 async def vibe_page():
     vibe_path = os.path.join(DASHBOARD_DIR, "codec_vibe.html")
     with open(vibe_path) as f:
-        return f.read()
+        return HTMLResponse(f.read(), headers=_NO_CACHE)
 
 @app.post("/api/preview")
 async def preview_code(request: Request):
@@ -510,8 +512,9 @@ async def save_skill(request: Request):
     with open(path, "w") as f: f.write(content)
     return {"path": path, "skill": filename, "size": len(content)}
 
-# In-memory job store for deep research (survives for session lifetime)
+# In-memory job stores (survive for session lifetime)
 _research_jobs: dict = {}
+_agent_jobs: dict = {}
 
 @app.post("/api/deep_research")
 async def deep_research_start(request: Request):
@@ -886,7 +889,7 @@ async def voice_page():
     """Serve the voice call UI."""
     voice_path = os.path.join(DASHBOARD_DIR, "codec_voice.html")
     with open(voice_path) as f:
-        return f.read()
+        return HTMLResponse(f.read(), headers=_NO_CACHE)
 
 @app.websocket("/ws/voice")
 async def voice_websocket(websocket: WebSocket):
@@ -918,37 +921,66 @@ async def list_agent_crews():
 
 @app.post("/api/agents/run")
 async def run_agent_crew(request: Request):
-    """Run an agent crew or custom agent. Body: {crew: name, ...kwargs}"""
+    """Start an agent crew in background — returns job_id immediately to avoid proxy timeouts."""
+    import uuid, threading
     body = await request.json()
     crew_name = body.pop("crew", "")
     if not crew_name:
         return JSONResponse({"error": "Missing 'crew' field"}, status_code=400)
 
-    progress_log = []
+    job_id = str(uuid.uuid4())[:8]
+    _agent_jobs[job_id] = {
+        "status": "running",
+        "crew": crew_name,
+        "progress": [],
+        "started": datetime.now().isoformat(),
+    }
 
-    def on_progress(update):
-        progress_log.append(update)
-        print(f"[Agents] {update}")
+    def _run():
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        progress_log = _agent_jobs[job_id]["progress"]
 
-    try:
-        if crew_name == "custom":
-            from codec_agents import run_custom_agent
-            result = await run_custom_agent(
-                name           = body.get("agent_name", "Custom"),
-                role           = body.get("role", ""),
-                tools          = body.get("tools", []),
-                max_iterations = int(body.get("max_iterations", 8)),
-                task           = body.get("task", ""),
-                callback       = on_progress,
-            )
-        else:
-            from codec_agents import run_crew
-            result = await run_crew(crew_name, callback=on_progress, **body)
-        result["progress"] = progress_log
-        return result
-    except Exception as e:
-        import traceback; traceback.print_exc()
-        return JSONResponse({"error": str(e)}, status_code=500)
+        def on_progress(update):
+            progress_log.append(update)
+            print(f"[Agents] {update}")
+
+        try:
+            if crew_name == "custom":
+                from codec_agents import run_custom_agent
+                result = loop.run_until_complete(run_custom_agent(
+                    name           = body.get("agent_name", "Custom"),
+                    role           = body.get("role", ""),
+                    tools          = body.get("tools", []),
+                    max_iterations = int(body.get("max_iterations", 8)),
+                    task           = body.get("task", ""),
+                    callback       = on_progress,
+                ))
+            else:
+                from codec_agents import run_crew
+                result = loop.run_until_complete(run_crew(crew_name, callback=on_progress, **body))
+            _agent_jobs[job_id].update(result)
+            _agent_jobs[job_id]["status"] = result.get("status", "complete")
+            _agent_jobs[job_id]["progress"] = progress_log
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            _agent_jobs[job_id]["status"] = "error"
+            _agent_jobs[job_id]["error"] = str(e)
+        finally:
+            loop.close()
+
+    threading.Thread(target=_run, daemon=True).start()
+    return {"job_id": job_id, "status": "running", "crew": crew_name}
+
+
+@app.get("/api/agents/status/{job_id}")
+async def agent_job_status(job_id: str):
+    """Poll agent job status. Returns full result when status != 'running'."""
+    job = _agent_jobs.get(job_id)
+    if not job:
+        return JSONResponse({"error": "Job not found"}, status_code=404)
+    return job
 
 
 _AGENTS_DIR = os.path.expanduser("~/.codec/agents")
