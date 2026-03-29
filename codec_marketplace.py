@@ -95,12 +95,19 @@ def _download_skill(skill_entry: dict, registry: dict) -> str | None:
 
 
 def _install_deps(deps: list) -> None:
+    import re, subprocess, sys
     for dep in deps:
+        if not re.match(r'^[a-zA-Z0-9_.\-]+$', dep):
+            print(f"  ⚠️  Skipping suspicious dependency name: {dep}")
+            continue
         try:
             __import__(dep.replace("-", "_"))
         except ImportError:
             print(f"  Installing dependency: {dep}")
-            os.system(f"pip3.13 install {dep} --break-system-packages --quiet 2>/dev/null || pip3 install {dep} --quiet")
+            subprocess.run(
+                [sys.executable, "-m", "pip", "install", dep, "--break-system-packages", "--quiet"],
+                capture_output=True
+            )
 
 
 # ── Commands ─────────────────────────────────────────────────────────────────

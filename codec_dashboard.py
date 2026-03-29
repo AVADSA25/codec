@@ -8,10 +8,46 @@ from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse as StarletteJSONResponse
 import uvicorn
 
 app = FastAPI(title="CODEC Dashboard")
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:8090", "http://127.0.0.1:8090", "https://codec.lucyvpa.com"], allow_methods=["*"], allow_headers=["*"])
+
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    """Optional bearer token authentication for dashboard endpoints."""
+
+    PUBLIC_ROUTES = {"/", "/chat", "/vibe", "/voice", "/health", "/favicon.ico", "/manifest.json"}
+
+    async def dispatch(self, request, call_next):
+        from codec_config import DASHBOARD_TOKEN
+
+        if not DASHBOARD_TOKEN:
+            return await call_next(request)
+
+        if request.url.path in self.PUBLIC_ROUTES:
+            return await call_next(request)
+
+        if request.url.path.startswith("/static"):
+            return await call_next(request)
+
+        auth = request.headers.get("Authorization", "")
+        if auth == f"Bearer {DASHBOARD_TOKEN}":
+            return await call_next(request)
+
+        token = request.query_params.get("token", "")
+        if token == DASHBOARD_TOKEN:
+            return await call_next(request)
+
+        return StarletteJSONResponse(
+            {"error": "Unauthorized. Set dashboard_token in config.json or pass ?token=YOUR_TOKEN"},
+            status_code=401
+        )
+
+
+app.add_middleware(AuthMiddleware)
 
 DB_PATH = os.path.expanduser("~/.q_memory.db")
 AUDIT_LOG = os.path.expanduser("~/.codec/audit.log")
