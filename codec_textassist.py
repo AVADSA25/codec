@@ -93,6 +93,11 @@ if MODE == "save":
     # Fallback: local file
     if not saved:
         notes_path = os.path.expanduser("~/.codec/saved_notes.txt")
+        # Ensure Desktop shortcut exists
+        desktop_link = os.path.expanduser("~/Desktop/CODEC_Notes.txt")
+        if not os.path.exists(desktop_link):
+            try: os.symlink(notes_path, desktop_link)
+            except: pass
         from datetime import datetime
         with open(notes_path, "a") as nf:
             nf.write(f"\n--- {datetime.now().strftime('%Y-%m-%d %H:%M')} ---\n")

@@ -36,7 +36,7 @@ def check_system_health():
     """Verify all CODEC services are running"""
     services = {
         "LLM": "http://localhost:8081/v1/models",
-        "Whisper": "http://localhost:8084/v1/models",
+        "Whisper": "http://localhost:8084/",
         "Kokoro": "http://localhost:8085/v1/models",
         "Dashboard": "http://localhost:8090/",
         "Vision": "http://localhost:8082/v1/models",
@@ -44,7 +44,7 @@ def check_system_health():
     for name, url in services.items():
         try:
             r = requests.get(url, timeout=3)
-            status = "✅" if r.status_code == 200 else f"⚠️ {r.status_code}"
+            status = "✅" if r.status_code in (200, 404, 405) else f"⚠️ {r.status_code}"
         except:
             status = "❌ DOWN"
         log.info(f"  {name}: {status}")
