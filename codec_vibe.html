@@ -763,10 +763,11 @@ function showEditPanel(element) {
       '<div><label style="color:#888;font-size:10px;text-transform:uppercase;letter-spacing:.05em">Padding</label>' +
            '<input type="number" id="ep-pad" value="' + (parseInt(cs.padding) || 0) + '" style="width:100%;background:#0a0a0a;border:1px solid #2a2a2a;color:#e0e0e0;padding:4px 6px;border-radius:5px;font-size:12px"></div>' +
     '</div>' +
-    '<button onclick="applyEdits()" style="width:100%;padding:8px;background:#E8711A;color:#000;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-size:13px">&#9654; Apply to Preview</button>' +
-    '<p style="color:#555;font-size:10px;margin-top:8px;text-align:center">Preview only — edit code in editor to make permanent</p>';
+    '<button onclick="applyEdits()" style="width:100%;padding:8px;background:#E8711A;color:#000;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-size:13px">&#9654; Apply + Sync to Editor</button>' +
+    '<p style="color:#4a9;font-size:10px;margin-top:8px;text-align:center">&#10003; Changes update both preview AND source code</p>';
 
   panel._el = element;
+  panel._origText = (element.textContent || '').substring(0, 200);
   panel.style.display = 'block';
 }
 
@@ -781,14 +782,85 @@ function applyEdits() {
   var fs      = document.getElementById('ep-fs').value;
   var pad     = document.getElementById('ep-pad').value;
 
-  if (newText !== el.textContent) el.textContent = newText;
+  // ── 1. Apply to live preview immediately ───────────────────────────────────
+  var origText = panel._origText || '';
+  if (newText !== origText) el.textContent = newText;
   el.style.color           = color;
   el.style.backgroundColor = bg;
   el.style.fontSize        = fs + 'px';
   el.style.padding         = pad + 'px';
 
+  // ── 2. Sync back to Monaco source code ────────────────────────────────────
+  if (ed) {
+    var tag      = el.tagName.toLowerCase();
+    var rawClass = (el.className || '').toString().replace('codec-hl', '').trim();
+    var searches = [];
+    if (el.id)    searches.push('id="' + el.id + '"');
+    if (rawClass) searches.push('class="' + rawClass + '"');
+    searches.push('<' + tag);
+
+    var content  = ed.getModel().getValue();
+    var matchIdx = -1;
+    for (var si = 0; si < searches.length; si++) {
+      var fi = content.indexOf(searches[si]);
+      if (fi !== -1) { matchIdx = fi; break; }
+    }
+
+    if (matchIdx !== -1) {
+      // Walk backwards to find the opening < of this tag
+      var tagStart = content.lastIndexOf('<', matchIdx);
+      if (tagStart === -1) tagStart = matchIdx;
+      var tagEnd = content.indexOf('>', tagStart);
+
+      if (tagEnd !== -1) {
+        var openTag = content.substring(tagStart, tagEnd + 1);
+
+        // Build minimal style string — only include properties we're setting
+        var styleStr = [
+          'color:'            + color,
+          'background-color:' + bg,
+          'font-size:'        + fs  + 'px',
+          'padding:'          + pad + 'px'
+        ].join(';');
+
+        // Replace existing style attr, or inject a new one
+        var newOpenTag;
+        if (/style="[^"]*"/.test(openTag)) {
+          newOpenTag = openTag.replace(/style="[^"]*"/, 'style="' + styleStr + '"');
+        } else if (openTag.endsWith('/>')) {
+          newOpenTag = openTag.slice(0, -2) + ' style="' + styleStr + '"/>';
+        } else {
+          newOpenTag = openTag.slice(0, -1) + ' style="' + styleStr + '">';
+        }
+
+        var newContent  = content.substring(0, tagStart) + newOpenTag;
+        var afterOpen   = tagEnd + 1;
+        var closeTag    = '</' + tag + '>';
+        var closeIdx    = content.indexOf(closeTag, afterOpen);
+
+        if (closeIdx !== -1 && newText !== origText) {
+          // Replace inner text content too
+          newContent += newText + content.substring(closeIdx);
+        } else {
+          newContent += content.substring(afterOpen);
+        }
+
+        ed.setValue(newContent);
+        var linePos = ed.getModel().getPositionAt(tagStart);
+        ed.revealLineInCenter(linePos.lineNumber);
+        addOut('sy', '✏️ Synced to editor — line ' + linePos.lineNumber);
+        panel._origText = newText; // update stored text for next apply
+      }
+    } else {
+      addOut('sy', '⚠️ Applied to preview — element not found in source (generated markup?)');
+    }
+  }
+
   var btn = panel.querySelector('button[onclick="applyEdits()"]');
-  if (btn) { btn.textContent = '✓ Applied!'; setTimeout(function() { btn.innerHTML = '&#9654; Apply to Preview'; }, 1500); }
+  if (btn) {
+    btn.textContent = '✓ Synced!';
+    setTimeout(function() { btn.innerHTML = '&#9654; Apply + Sync to Editor'; }, 2000);
+  }
 }
 
 // Close forge modal on overlay click or Escape
