@@ -177,6 +177,9 @@ input[type=file]{display:none}
 <option value="trip_planner">&#9992;&#65039; Trip Planner</option>
 <option value="competitor_analysis">&#128202; Competitor Analysis</option>
 <option value="email_handler">&#128231; Email Handler</option>
+<option value="social_media">&#128247; Social Media</option>
+<option value="code_review">&#128269; Code Review</option>
+<option value="data_analysis">&#128200; Data Analysis</option>
 <option value="custom">&#128736; Custom Agent</option>
 </select>
 </div>
@@ -435,9 +438,32 @@ async function sendMessage(){
     var ticker=setInterval(function(){elapsed+=5;updateStatus('\u23F3 '+crewLabels[crew]+' running&hellip; ('+elapsed+'s)\n\n'+(crewHints[crew]||''));},5000);
 
     try{
+      // POST returns job_id immediately — avoids Cloudflare 100s proxy timeout
       var r=await fetch('/api/agents/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      var startData=await r.json();
+      if(!r.ok||!startData.job_id){
+        clearInterval(ticker);
+        updateStatus('\u274C Agent error: '+(startData.error||'Failed to start'));
+        isProcessing=false;document.getElementById('sendBtn').disabled=false;
+        return;
+      }
+      var jobId=startData.job_id;
+
+      // Poll /api/agents/status/:job_id every 4s until complete
+      var data=await new Promise(function(resolve,reject){
+        var poll=setInterval(async function(){
+          try{
+            var sr=await fetch('/api/agents/status/'+jobId);
+            var sd=await sr.json();
+            if(sd.status!=='running'){
+              clearInterval(poll);
+              resolve(sd);
+            }
+          }catch(pe){clearInterval(poll);reject(pe);}
+        },4000);
+      });
+
       clearInterval(ticker);
-      var data=await r.json();
       if(statusEl)statusEl.parentElement.remove();
 
       var resultMsg;

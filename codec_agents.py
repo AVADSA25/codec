@@ -577,6 +577,129 @@ def email_handler_crew(**kwargs) -> Crew:
     )
 
 
+def social_media_crew(**kwargs) -> Crew:
+    all_tools = get_all_tools()
+    topic = kwargs.get("topic", "the given topic")
+    search_tools = [t for t in all_tools if t.name in ("web_search", "web_fetch")]
+    write_tools  = [t for t in all_tools if t.name in ("google_docs_create",)]
+
+    trend_scout = Agent(
+        name="Trend Scout",
+        role=(
+            "You are a social media trend analyst. Research trending topics, hashtags, "
+            "and viral content. Find what's popular right now on Twitter, LinkedIn, and Instagram. "
+            "Identify key angles, hashtags, and audience interests."
+        ),
+        tools=search_tools, max_tool_calls=5,
+    )
+    content_creator = Agent(
+        name="Content Creator",
+        role=(
+            "You are an expert social media copywriter. Write platform-specific posts: "
+            "Twitter (max 280 chars, punchy, with hashtags), "
+            "LinkedIn (professional tone, 150-300 words, insight-driven), "
+            "Instagram (visual description + engaging caption + hashtags). "
+            "Save all 3 posts to a Google Doc."
+        ),
+        tools=write_tools, max_tool_calls=2,
+    )
+    return Crew(
+        agents=[trend_scout, content_creator],
+        tasks=[
+            f"Research trending content about: {topic}\n"
+            f"Find trending hashtags, popular angles, viral formats, and audience interests.",
+            f"Write 3 platform-specific posts (Twitter, LinkedIn, Instagram) about: {topic}. "
+            "Save all to a Google Doc with title: "
+            "'Social Media Posts: " + topic[:60] + " — " + datetime.now().strftime('%Y-%m-%d') + "'"
+        ],
+    )
+
+
+def code_review_crew(**kwargs) -> Crew:
+    all_tools = get_all_tools()
+    code = kwargs.get("code", "")
+    read_tools     = [t for t in all_tools if t.name in ("file_read",)]
+    audit_tools    = [t for t in all_tools if t.name in ("file_read", "web_search")]
+    improve_tools  = [t for t in all_tools if t.name in ("file_read", "file_write")]
+
+    bug_hunter = Agent(
+        name="Bug Hunter",
+        role=(
+            "You are an expert software engineer specializing in finding bugs. "
+            "Carefully analyze code for logic errors, off-by-one errors, null pointer issues, "
+            "incorrect assumptions, race conditions, and edge cases. Be thorough and specific."
+        ),
+        tools=read_tools, max_tool_calls=3,
+    )
+    security_auditor = Agent(
+        name="Security Auditor",
+        role=(
+            "You are a security expert. Identify security vulnerabilities including: "
+            "injection flaws (SQL, command, XSS), insecure deserialization, authentication issues, "
+            "exposed secrets, insecure dependencies, and OWASP Top 10 issues. "
+            "Reference CVEs or best practices where relevant."
+        ),
+        tools=audit_tools, max_tool_calls=4,
+    )
+    clean_coder = Agent(
+        name="Clean Coder",
+        role=(
+            "You are a software architect focused on code quality. Suggest improvements for: "
+            "readability, naming conventions, function decomposition, DRY principles, "
+            "design patterns, documentation, and maintainability. "
+            "Provide concrete refactoring suggestions."
+        ),
+        tools=improve_tools, max_tool_calls=3,
+    )
+    return Crew(
+        agents=[bug_hunter, security_auditor, clean_coder],
+        tasks=[
+            f"Review this code for bugs, logic errors, and edge cases:\n{code[:3000]}",
+            f"Check the code for security vulnerabilities",
+            f"Suggest improvements for readability and maintainability",
+        ],
+    )
+
+
+def data_analyst_crew(**kwargs) -> Crew:
+    all_tools = get_all_tools()
+    topic = kwargs.get("topic", "the given topic")
+    tool_map = {t.name: t for t in all_tools}
+    gather_tool_names = ["web_search", "web_fetch"]
+    if "google_sheets" in tool_map:
+        gather_tool_names.append("google_sheets")
+    gather_tools = [tool_map[n] for n in gather_tool_names if n in tool_map]
+    write_tools  = [t for t in all_tools if t.name in ("google_docs_create",)]
+
+    data_gatherer = Agent(
+        name="Data Gatherer",
+        role=(
+            "You are a data research specialist. Search for quantitative data, statistics, "
+            "benchmarks, survey results, and research findings. Find multiple credible sources. "
+            "Extract numbers, percentages, trends over time, and comparative data."
+        ),
+        tools=gather_tools, max_tool_calls=5,
+    )
+    analyst = Agent(
+        name="Analyst",
+        role=(
+            "You are a data analyst and business intelligence expert. Analyze the data provided, "
+            "identify trends, patterns, outliers, and correlations. Create actionable insights "
+            "with supporting evidence. Write a structured insights report and save to Google Docs."
+        ),
+        tools=write_tools, max_tool_calls=2,
+    )
+    return Crew(
+        agents=[data_gatherer, analyst],
+        tasks=[
+            f"Gather data and statistics about: {topic}\n"
+            f"Find key metrics, benchmarks, historical trends, and comparative data from credible sources.",
+            f"Analyze the data and write an insights report. Save to Google Docs with title: "
+            "'Data Analysis: " + topic[:60] + " — " + datetime.now().strftime('%Y-%m-%d') + "'"
+        ],
+    )
+
+
 # ═══════════════════════════════════════════════════════════════
 # CREW REGISTRY
 # ═══════════════════════════════════════════════════════════════
@@ -587,7 +710,12 @@ CREW_REGISTRY = {
     "trip_planner":        {"builder": trip_planner_crew,       "description": "Plan a trip: research + itinerary → Google Docs",    "args": ["destination", "dates"]},
     "competitor_analysis": {"builder": competitor_analysis_crew,"description": "Competitive analysis: web research → report",        "args": ["topic"]},
     "email_handler":       {"builder": email_handler_crew,      "description": "Read, categorize, and draft email replies",          "args": []},
+    "social_media":        {"builder": social_media_crew,       "description": "Create platform-specific social media posts",        "args": ["topic"]},
+    "code_review":         {"builder": code_review_crew,        "description": "Review code for bugs, security, quality",            "args": ["code"]},
+    "data_analysis":       {"builder": data_analyst_crew,       "description": "Gather and analyze data on any topic",               "args": ["topic"]},
 }
+
+AVAILABLE_CREWS = CREW_REGISTRY
 
 
 # ═══════════════════════════════════════════════════════════════
