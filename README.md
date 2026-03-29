@@ -70,6 +70,19 @@ A private, open-source alternative to Siri and Alexa that actually controls your
 
 ## Quick Start
 
+```bash
+git clone https://github.com/AVADSA25/codec.git
+cd codec
+./install.sh
+```
+
+That's it. The installer checks dependencies, installs packages, copies skills, and launches the setup wizard in one shot.
+
+### Manual Setup (optional)
+
+<details>
+<summary>Expand for step-by-step</summary>
+
 ### 1. Clone
 
 ```bash
@@ -90,13 +103,15 @@ brew install sox
 python3 setup_codec.py
 ```
 
-The wizard walks you through everything in 8 steps: LLM provider, voice engine, speech-to-text, keyboard shortcuts, wake word, features, skills, and phone dashboard.
+The wizard walks you through everything in 9 steps: LLM provider, voice engine, speech-to-text, keyboard shortcuts, wake word, features, skills, and phone dashboard.
 
 ### 4. Start CODEC
 
 ```bash
 python3 codec.py
 ```
+
+</details>
 
 Press your toggle key to activate (default F13), then use your configured voice key (default F18) to speak commands.
 
