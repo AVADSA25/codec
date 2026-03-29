@@ -606,6 +606,191 @@ function doSaveSes() {
   }).catch(function(){});
 }
 
+// ── Inspect Mode ────────────────────────────────────────────────────────────
+var inspectMode = false;
+
+function toggleInspect() {
+  inspectMode = !inspectMode;
+  var btn = document.getElementById('inspectBtn');
+  btn.classList.toggle('active', inspectMode);
+
+  var iframe = document.getElementById('pf');
+  if (!iframe || !iframe.contentDocument) {
+    if (inspectMode) { addOut('sy', 'Open a Preview first, then click Inspect'); inspectMode = false; btn.classList.remove('active'); }
+    return;
+  }
+  var doc = iframe.contentDocument;
+
+  if (inspectMode) {
+    doc.addEventListener('click',     handleInspectClick, true);
+    doc.addEventListener('mouseover', handleInspectHover, true);
+    doc.addEventListener('mouseout',  handleInspectOut,   true);
+    doc.body.style.cursor = 'crosshair';
+    addOut('sy', '🔍 Inspect ON — click any element in preview');
+  } else {
+    doc.removeEventListener('click',     handleInspectClick, true);
+    doc.removeEventListener('mouseover', handleInspectHover, true);
+    doc.removeEventListener('mouseout',  handleInspectOut,   true);
+    doc.body.style.cursor = '';
+    doc.querySelectorAll('.codec-hl').forEach(function(el) {
+      el.style.outline = '';
+      el.classList.remove('codec-hl');
+    });
+    var ep = document.getElementById('edit-panel');
+    if (ep) ep.style.display = 'none';
+    var tip = document.getElementById('inspect-tooltip');
+    if (tip) tip.style.display = 'none';
+    addOut('sy', '🔍 Inspect OFF');
+  }
+}
+
+function handleInspectHover(e) {
+  if (!inspectMode) return;
+  e.preventDefault(); e.stopPropagation();
+  var iframe = document.getElementById('pf');
+  if (!iframe || !iframe.contentDocument) return;
+  iframe.contentDocument.querySelectorAll('.codec-hl').forEach(function(el) {
+    el.style.outline = ''; el.classList.remove('codec-hl');
+  });
+  e.target.style.outline = '2px solid #E8711A';
+  e.target.classList.add('codec-hl');
+}
+
+function handleInspectOut(e) {
+  if (!inspectMode) return;
+  e.target.style.outline = '';
+  e.target.classList.remove('codec-hl');
+}
+
+function handleInspectClick(e) {
+  if (!inspectMode) return;
+  e.preventDefault(); e.stopPropagation();
+
+  var el = e.target;
+  var tag = el.tagName.toLowerCase();
+  var id = el.id ? '#' + el.id : '';
+  var rawClass = (el.className || '').toString().replace('codec-hl', '').trim();
+  var classes = rawClass ? '.' + rawClass.split(/\s+/).join('.') : '';
+  var text = (el.textContent || '').substring(0, 50).trim();
+
+  // Build ordered list of search strings: most specific first
+  var searches = [];
+  if (el.id)       searches.push('id="' + el.id + '"');
+  if (rawClass)    searches.push('class="' + rawClass + '"');
+  if (text.length > 5 && text.length < 50) searches.push(text);
+  searches.push('<' + tag);
+
+  // Jump to first match in Monaco
+  if (ed) {
+    var content = ed.getModel().getValue();
+    var found = false;
+    for (var i = 0; i < searches.length; i++) {
+      var idx = content.indexOf(searches[i]);
+      if (idx !== -1) {
+        var pos = ed.getModel().getPositionAt(idx);
+        ed.revealLineInCenter(pos.lineNumber);
+        ed.setSelection({
+          startLineNumber: pos.lineNumber, startColumn: 1,
+          endLineNumber:   pos.lineNumber, endColumn: ed.getModel().getLineContent(pos.lineNumber).length + 1
+        });
+        found = true;
+        break;
+      }
+    }
+    showInspectTooltip(e.clientX, e.clientY,
+      tag + id + classes,
+      found ? text || '(no text)' : '(not found in editor — might be generated)');
+  }
+
+  // Show inline edit panel
+  showEditPanel(el);
+}
+
+function showInspectTooltip(x, y, selector, preview) {
+  var tip = document.getElementById('inspect-tooltip');
+  if (!tip) {
+    tip = document.createElement('div');
+    tip.id = 'inspect-tooltip';
+    tip.style.cssText = 'position:fixed;z-index:10000;background:#1a1a1a;border:1px solid #E8711A;color:#e0e0e0;padding:8px 12px;border-radius:6px;font-family:SF Mono,monospace;font-size:12px;max-width:300px;pointer-events:none;transition:opacity .2s;';
+    document.body.appendChild(tip);
+  }
+  tip.innerHTML = '<strong style="color:#E8711A">' + selector + '</strong><br>' + (preview || '').substring(0, 80);
+  tip.style.left = (x + 12) + 'px';
+  tip.style.top  = (y + 12) + 'px';
+  tip.style.display = 'block';
+  tip.style.opacity = '1';
+  clearTimeout(tip._hide);
+  tip._hide = setTimeout(function() { tip.style.display = 'none'; }, 3000);
+}
+
+// ── Inline Edit Panel ────────────────────────────────────────────────────────
+function rgbToHex(rgb) {
+  if (!rgb || rgb === 'rgba(0, 0, 0, 0)') return '#000000';
+  if (rgb.startsWith('#')) return rgb;
+  var m = rgb.match(/\d+/g);
+  if (!m || m.length < 3) return '#000000';
+  return '#' + m.slice(0, 3).map(function(x) { return parseInt(x).toString(16).padStart(2,'0'); }).join('');
+}
+
+function showEditPanel(element) {
+  var panel = document.getElementById('edit-panel');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'edit-panel';
+    panel.style.cssText = 'position:fixed;right:12px;top:60px;width:268px;background:#141414;border:1px solid #2a2a2a;border-radius:10px;padding:14px;z-index:9999;color:#e0e0e0;font-size:13px;box-shadow:0 8px 32px rgba(0,0,0,0.6);';
+    document.body.appendChild(panel);
+  }
+
+  var tag = element.tagName.toLowerCase();
+  var doc = element.ownerDocument;
+  var cs = doc.defaultView ? doc.defaultView.getComputedStyle(element) : {};
+
+  panel.innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">' +
+      '<strong style="color:#E8711A;font-family:monospace">&lt;' + tag + '&gt;</strong>' +
+      '<button onclick="document.getElementById(\'edit-panel\').style.display=\'none\'" ' +
+              'style="background:none;border:none;color:#888;cursor:pointer;font-size:18px;line-height:1">&#10005;</button>' +
+    '</div>' +
+    '<label style="color:#888;font-size:10px;text-transform:uppercase;letter-spacing:.05em">Text content</label>' +
+    '<textarea id="ep-text" rows="2" style="width:100%;background:#0a0a0a;border:1px solid #2a2a2a;color:#e0e0e0;padding:6px 8px;border-radius:5px;margin:3px 0 10px;resize:vertical;font-size:12px;font-family:inherit">' + (element.textContent || '').substring(0, 200) + '</textarea>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">' +
+      '<div><label style="color:#888;font-size:10px;text-transform:uppercase;letter-spacing:.05em">Color</label>' +
+           '<input type="color" id="ep-color" value="' + rgbToHex(cs.color || '') + '" style="width:100%;height:30px;border:none;border-radius:5px;cursor:pointer;background:#0a0a0a"></div>' +
+      '<div><label style="color:#888;font-size:10px;text-transform:uppercase;letter-spacing:.05em">Background</label>' +
+           '<input type="color" id="ep-bg" value="' + rgbToHex(cs.backgroundColor || '') + '" style="width:100%;height:30px;border:none;border-radius:5px;cursor:pointer;background:#0a0a0a"></div>' +
+      '<div><label style="color:#888;font-size:10px;text-transform:uppercase;letter-spacing:.05em">Font size</label>' +
+           '<input type="number" id="ep-fs" value="' + (parseInt(cs.fontSize) || 14) + '" style="width:100%;background:#0a0a0a;border:1px solid #2a2a2a;color:#e0e0e0;padding:4px 6px;border-radius:5px;font-size:12px"></div>' +
+      '<div><label style="color:#888;font-size:10px;text-transform:uppercase;letter-spacing:.05em">Padding</label>' +
+           '<input type="number" id="ep-pad" value="' + (parseInt(cs.padding) || 0) + '" style="width:100%;background:#0a0a0a;border:1px solid #2a2a2a;color:#e0e0e0;padding:4px 6px;border-radius:5px;font-size:12px"></div>' +
+    '</div>' +
+    '<button onclick="applyEdits()" style="width:100%;padding:8px;background:#E8711A;color:#000;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-size:13px">&#9654; Apply to Preview</button>' +
+    '<p style="color:#555;font-size:10px;margin-top:8px;text-align:center">Preview only — edit code in editor to make permanent</p>';
+
+  panel._el = element;
+  panel.style.display = 'block';
+}
+
+function applyEdits() {
+  var panel = document.getElementById('edit-panel');
+  var el = panel ? panel._el : null;
+  if (!el) return;
+
+  var newText = document.getElementById('ep-text').value;
+  var color   = document.getElementById('ep-color').value;
+  var bg      = document.getElementById('ep-bg').value;
+  var fs      = document.getElementById('ep-fs').value;
+  var pad     = document.getElementById('ep-pad').value;
+
+  if (newText !== el.textContent) el.textContent = newText;
+  el.style.color           = color;
+  el.style.backgroundColor = bg;
+  el.style.fontSize        = fs + 'px';
+  el.style.padding         = pad + 'px';
+
+  var btn = panel.querySelector('button[onclick="applyEdits()"]');
+  if (btn) { btn.textContent = '✓ Applied!'; setTimeout(function() { btn.innerHTML = '&#9654; Apply to Preview'; }, 1500); }
+}
+
 // Close forge modal on overlay click or Escape
 document.getElementById('fmOverlay').addEventListener('click', function(e) {
   if (e.target === this) closeForgeModal();
