@@ -43,8 +43,8 @@
 *{margin:0;padding:0;box-sizing:border-box}
 html{background:var(--bg)}
 html,body{font-family:var(--font);background:var(--bg);color:var(--fg);height:100%;overflow:hidden;-webkit-tap-highlight-color:transparent}
-.app{display:flex;flex-direction:column;height:100vh;position:relative;max-width:560px;margin:0 auto;width:100%}
-.header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--bg2);flex-shrink:0;z-index:10}
+.app{display:flex;flex-direction:column;height:100vh;position:relative}
+.header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--bg2);flex-shrink:0;z-index:10;position:relative}
 .header-left{display:flex;align-items:center;gap:8px}
 .hbtn{background:none;border:1px solid var(--border);color:var(--fg2);width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;text-decoration:none;transition:all 0.2s ease}
 .hbtn:active{opacity:.7}
@@ -131,7 +131,7 @@ input[type=file]{display:none}
 .ab-load-wrap{display:flex;align-items:center;gap:6px}
 .ab-select{background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:5px 8px;color:var(--fg2);font-size:11px;font-family:var(--font);cursor:pointer}
 /* ── Page Nav ── */
-.page-nav { display: flex; align-items: center; gap: 2px; }
+.page-nav { display: flex; align-items: center; gap: 2px; position: absolute; left: 50%; transform: translateX(-50%); }
 .nav-link {
   padding: 6px 11px; color: var(--text-muted); text-decoration: none;
   font-size: 12px; font-weight: 500; border-radius: 6px;
