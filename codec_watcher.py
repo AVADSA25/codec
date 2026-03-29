@@ -165,7 +165,7 @@ def handle_draft(task, ctx, app):
                 subprocess.run(["osascript", "-e",
                     f'display notification "Retrying {attempt+1}/3..." with title "CODEC"'],
                     capture_output=True)
-                time.sleep(3)
+                time.sleep(2 ** attempt)
             r = requests.post(f"{QWEN_BASE_URL}/chat/completions",
                 json={
                     "model": QWEN_MODEL,

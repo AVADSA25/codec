@@ -55,8 +55,16 @@ CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
 TASK_QUEUE = os.path.expanduser("~/.codec/task_queue.txt")
 DASHBOARD_DIR = os.path.dirname(os.path.abspath(__file__))
 
+_db_conn = None
+
 def get_db():
-    return sqlite3.connect(DB_PATH)
+    global _db_conn
+    if _db_conn is None:
+        _db_conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+        _db_conn.execute("PRAGMA journal_mode=WAL")
+        _db_conn.execute("PRAGMA busy_timeout=5000")
+        _db_conn.row_factory = sqlite3.Row
+    return _db_conn
 
 _NO_CACHE = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"}
 

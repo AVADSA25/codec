@@ -28,6 +28,8 @@ def load_skill_tools():
         try:
             mod = importlib.import_module(name)
             if hasattr(mod, 'run') and hasattr(mod, 'SKILL_DESCRIPTION'):
+                if not getattr(mod, 'SKILL_MCP_EXPOSE', True):
+                    continue
                 skill_name = getattr(mod, 'SKILL_NAME', name)
                 skill_desc = getattr(mod, 'SKILL_DESCRIPTION', f"CODEC skill: {name}")
 

@@ -2,6 +2,7 @@
 SKILL_NAME = "process_manager"
 SKILL_TRIGGERS = ["kill process", "stop process", "running processes", "what's running", "top processes", "kill app"]
 SKILL_DESCRIPTION = "List top processes or kill a specific one"
+SKILL_MCP_EXPOSE = False  # Too dangerous for remote MCP access
 
 import subprocess
 

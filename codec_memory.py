@@ -16,6 +16,8 @@ class CodecMemory:
 
     def _init_fts(self):
         conn = sqlite3.connect(self.db_path)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=5000")
         try:
             # Ensure conversations table exists
             conn.execute("""CREATE TABLE IF NOT EXISTS conversations (

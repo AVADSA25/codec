@@ -214,27 +214,24 @@ state = {
 }
 
 # ── WORK QUEUE ────────────────────────────────────────────────────────────────
-work_queue = []
-work_lock = threading.Lock()
+import queue
+work_queue = queue.Queue()
 
 def push(fn, *args):
-    with work_lock:
-        work_queue.append((fn, args))
+    work_queue.put((fn, args))
 
 def worker():
     while True:
-        item = None
-        with work_lock:
-            if work_queue:
-                item = work_queue.pop(0)
-        if item:
-            fn, args = item
+        try:
+            fn, args = work_queue.get(timeout=0.5)
             try: fn(*args)
             except Exception as e:
                 log.error(f"Worker error: {e}")
                 import traceback; traceback.print_exc()
-        else:
-            time.sleep(0.05)
+            finally:
+                work_queue.task_done()
+        except queue.Empty:
+            continue
 
 # ── SESSION CLEANUP ───────────────────────────────────────────────────────────
 def close_session():
