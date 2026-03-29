@@ -34,8 +34,6 @@ def _qwen_url():
 def _qwen_model():
     return _cfg().get("llm_model", "mlx-community/Qwen3.5-35B-A3B-4bit")
 
-SERPER_API_KEY = "5bfdf8c7aed2128f1535bcdd0e2164f46e08b5c1"
-
 # Captures the last Google Docs URL created — fallback if Writer forgets to echo it
 _last_gdoc_url: Optional[str] = None
 
@@ -63,19 +61,12 @@ class Tool:
 # ═══════════════════════════════════════════════════════════════
 
 def _web_search(query: str) -> str:
-    import httpx as _hx
-    r = _hx.post(
-        "https://google.serper.dev/search",
-        headers={"X-API-KEY": SERPER_API_KEY, "Content-Type": "application/json"},
-        json={"q": query.strip(), "num": 10},
-        timeout=30,
-    )
-    if r.status_code != 200:
-        return f"Search error: {r.status_code}"
-    results = []
-    for item in r.json().get("organic", [])[:10]:
-        results.append(f"- {item.get('title','')}\n  {item.get('snippet','')}\n  URL: {item.get('link','')}")
-    return "\n\n".join(results) or "No results found."
+    """Search via DuckDuckGo (free, no key) or Serper if configured in ~/.codec/config.json."""
+    import sys as _sys
+    _sys.path.insert(0, os.path.expanduser("~/codec-repo"))
+    from codec_search import search, format_results
+    results = search(query.strip(), max_results=10)
+    return format_results(results, max_snippets=10)
 
 
 def _web_fetch(url: str) -> str:

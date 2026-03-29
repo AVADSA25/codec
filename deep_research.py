@@ -1,12 +1,13 @@
 """
-CODEC Deep Research — CrewAI + Serper + Qwen + Google Docs
+CODEC Deep Research — own Agent framework + DuckDuckGo + Qwen + Google Docs
 """
-import os, re, time
+import os, re, sys, time
 from datetime import datetime
 from crewai import Agent, Task, Crew, Process, LLM
-from crewai_tools import SerperDevTool
 import litellm
 import requests as rq
+
+sys.path.insert(0, os.path.expanduser("~/codec-repo"))
 
 litellm.drop_params = True
 
@@ -33,9 +34,7 @@ def _completion_fixed(**kwargs):
 litellm.completion = _completion_fixed
 
 # ── CONFIG ──
-SERPER_API_KEY = "5bfdf8c7aed2128f1535bcdd0e2164f46e08b5c1"
 PEXELS_API_KEY = "uMkQte71lNmkAfylWcfFY5k8SuUPEPqsZoVEcEJ4kaPIpNf8qzROxJNi"
-os.environ["SERPER_API_KEY"] = SERPER_API_KEY
 
 llm = LLM(
     model="openai/mlx-community/Qwen3.5-35B-A3B-4bit",
@@ -46,7 +45,23 @@ llm = LLM(
 )
 
 # ── TOOLS ──
-search_tool = SerperDevTool(n_results=10)
+from crewai.tools import BaseTool
+
+class _DDGSearchTool(BaseTool):
+    name: str = "web_search"
+    description: str = (
+        "Search the web for any topic. "
+        "Uses DuckDuckGo (free, no API key). "
+        "Input: a plain search query string. "
+        "Returns titles, snippets, and URLs."
+    )
+
+    def _run(self, query: str) -> str:
+        from codec_search import search, format_results
+        results = search(query.strip(), max_results=10)
+        return format_results(results, max_snippets=10)
+
+search_tool = _DDGSearchTool()
 
 
 # ── AGENTS ──
