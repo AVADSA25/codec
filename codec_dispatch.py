@@ -48,6 +48,12 @@ def run_skill(skill, task, app=""):
     """Execute a skill and return its result"""
     try:
         result = skill['run'](task, app)
+        skill_name = skill.get('name', 'unknown')
+        try:
+            with open("/tmp/codec_overlay_events.jsonl", "a") as _f:
+                _f.write(f'{{"type":"skill_fired","name":"{skill_name}"}}\n')
+        except Exception:
+            pass
         return result
     except Exception as e:
         return f"Skill error: {e}"

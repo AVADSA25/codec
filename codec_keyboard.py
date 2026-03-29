@@ -55,6 +55,11 @@ def start_keyboard_listener(state, ctx):
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         state["rec_proc"] = rec
         log.info("Recording...")
+        # SwiftUI overlay event
+        try:
+            with open("/tmp/codec_overlay_events.jsonl", "a") as _f:
+                _f.write('{"type":"recording_start"}\n')
+        except Exception: pass
 
     def do_stop_voice():
         audio = state.get("audio_path")
@@ -76,6 +81,10 @@ def start_keyboard_listener(state, ctx):
                 log.warning(f"Non-critical error: {e}")
             return
         log.info("Transcribing...")
+        try:
+            with open("/tmp/codec_overlay_events.jsonl", "a") as _f:
+                _f.write('{"type":"recording_stop"}\n')
+        except Exception: pass
         if state.get('rec_overlay'):
             try:
                 state['rec_overlay'].terminate()
@@ -217,6 +226,10 @@ def start_keyboard_listener(state, ctx):
                 push(lambda: show_toggle_overlay(False, ''))
                 push(close_session)
                 log.info("OFF")
+                try:
+                    with open("/tmp/codec_overlay_events.jsonl", "a") as _f:
+                        _f.write('{"type":"toggle_off"}\n')
+                except Exception: pass
             else:
                 state["active"] = True
                 push(lambda: show_toggle_overlay(
@@ -227,6 +240,10 @@ def start_keyboard_listener(state, ctx):
                 log.info("ON -- " + cfg.get("key_voice", "f18").upper() +
                          "=voice | " + cfg.get("key_text", "f16").upper() +
                          "=text | *=screen | +=doc")
+                try:
+                    with open("/tmp/codec_overlay_events.jsonl", "a") as _f:
+                        _f.write('{"type":"toggle_on"}\n')
+                except Exception: pass
             return
         if not state["active"]:
             return

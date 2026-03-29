@@ -1081,5 +1081,23 @@ async def skills():
         log.warning(f"Non-critical error: {e}")
     return result
 
+@app.get("/api/cdp/status")
+async def cdp_status():
+    """Check if Chrome is running with CDP enabled."""
+    try:
+        import httpx as _httpx
+        r = _httpx.get("http://localhost:9222/json", timeout=2)
+        tabs = r.json()
+        page_tabs = [t for t in tabs if t.get("type") == "page"]
+        return {
+            "connected": True,
+            "total_tabs": len(tabs),
+            "page_tabs": len(page_tabs),
+            "tabs": [{"title": t.get("title", "")[:60], "url": t.get("url", "")[:80]}
+                     for t in page_tabs[:5]]
+        }
+    except Exception:
+        return {"connected": False, "total_tabs": 0, "page_tabs": 0, "tabs": []}
+
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8090)

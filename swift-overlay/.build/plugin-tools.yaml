@@ -1,0 +1,66 @@
+client:
+  name: basic
+  file-system: device-agnostic
+tools: {}
+targets:
+  "CODECOverlay-arm64-apple-macosx-release.exe": ["<CODECOverlay-arm64-apple-macosx-release.exe>"]
+  "CODECOverlay-arm64-apple-macosx-release.module": ["<CODECOverlay-arm64-apple-macosx-release.module>"]
+  "PackageStructure": ["<PackageStructure>"]
+  "main": ["<CODECOverlay-arm64-apple-macosx-release.exe>","<CODECOverlay-arm64-apple-macosx-release.module>"]
+  "test": ["<CODECOverlay-arm64-apple-macosx-release.exe>","<CODECOverlay-arm64-apple-macosx-release.module>"]
+default: "main"
+nodes:
+  "/Users/mickaelfarina/codec-repo/swift-overlay/Sources/":
+    is-directory-structure: true
+    content-exclusion-patterns: [".git",".build"]
+commands:
+  "/Users/mickaelfarina/codec-repo/swift-overlay/.build/arm64-apple-macosx/release/CODECOverlay.build/sources":
+    tool: write-auxiliary-file
+    inputs: ["<sources-file-list>","/Users/mickaelfarina/codec-repo/swift-overlay/Sources/main.swift"]
+    outputs: ["/Users/mickaelfarina/codec-repo/swift-overlay/.build/arm64-apple-macosx/release/CODECOverlay.build/sources"]
+    description: "Write auxiliary file /Users/mickaelfarina/codec-repo/swift-overlay/.build/arm64-apple-macosx/release/CODECOverlay.build/sources"
+
+  "/Users/mickaelfarina/codec-repo/swift-overlay/.build/arm64-apple-macosx/release/CODECOverlay.product/Objects.LinkFileList":
+    tool: write-auxiliary-file
+    inputs: ["<link-file-list>","/Users/mickaelfarina/codec-repo/swift-overlay/.build/arm64-apple-macosx/release/CODECOverlay.build/main.swift.o"]
+    outputs: ["/Users/mickaelfarina/codec-repo/swift-overlay/.build/arm64-apple-macosx/release/CODECOverlay.product/Objects.LinkFileList"]
+    description: "Write auxiliary file /Users/mickaelfarina/codec-repo/swift-overlay/.build/arm64-apple-macosx/release/CODECOverlay.product/Objects.LinkFileList"
+
+  "/Users/mickaelfarina/codec-repo/swift-overlay/.build/arm64-apple-macosx/release/swift-version--58304C5D6DBC2206.txt":
+    tool: write-auxiliary-file
+    inputs: ["<swift-get-version>","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"]
+    outputs: ["/Users/mickaelfarina/codec-repo/swift-overlay/.build/arm64-apple-macosx/release/swift-version--58304C5D6DBC2206.txt"]
+    always-out-of-date: "true"
+    description: "Write auxiliary file /Users/mickaelfarina/codec-repo/swift-overlay/.build/arm64-apple-macosx/release/swift-version--58304C5D6DBC2206.txt"
+
+  "<CODECOverlay-arm64-apple-macosx-release.exe>":
+    tool: phony
+    inputs: ["/Users/mickaelfarina/codec-repo/swift-overlay/.build/arm64-apple-macosx/release/CODECOverlay"]
+    outputs: ["<CODECOverlay-arm64-apple-macosx-release.exe>"]
+
+  "<CODECOverlay-arm64-apple-macosx-release.module>":
+    tool: phony
+    inputs: ["/Users/mickaelfarina/codec-repo/swift-overlay/.build/arm64-apple-macosx/release/CODECOverlay.build/main.swift.o","/Users/mickaelfarina/codec-repo/swift-overlay/.build/arm64-apple-macosx/release/Modules/CODECOverlay.swiftmodule"]
+    outputs: ["<CODECOverlay-arm64-apple-macosx-release.module>"]
+
+  "C.CODECOverlay-arm64-apple-macosx-release.exe":
+    tool: shell
+    inputs: ["/Users/mickaelfarina/codec-repo/swift-overlay/.build/arm64-apple-macosx/release/CODECOverlay.build/main.swift.o","/Users/mickaelfarina/codec-repo/swift-overlay/.build/arm64-apple-macosx/release/CODECOverlay.product/Objects.LinkFileList"]
+    outputs: ["/Users/mickaelfarina/codec-repo/swift-overlay/.build/arm64-apple-macosx/release/CODECOverlay"]
+    description: "Linking ./.build/arm64-apple-macosx/release/CODECOverlay"
+    args: ["/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc","-L","/Users/mickaelfarina/codec-repo/swift-overlay/.build/arm64-apple-macosx/release","-o","/Users/mickaelfarina/codec-repo/swift-overlay/.build/arm64-apple-macosx/release/CODECOverlay","-module-name","CODECOverlay","-Xlinker","-no_warn_duplicate_libraries","-emit-executable","-Xlinker","-dead_strip","-Xlinker","-alias","-Xlinker","_CODECOverlay_main","-Xlinker","_main","-Xlinker","-rpath","-Xlinker","@loader_path","@/Users/mickaelfarina/codec-repo/swift-overlay/.build/arm64-apple-macosx/release/CODECOverlay.product/Objects.LinkFileList","-Xlinker","-rpath","-Xlinker","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-6.2/macosx","-target","arm64-apple-macosx13.0","-plugin-path","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing","-sdk","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.4.sdk","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-I","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-L","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-g"]
+
+  "C.CODECOverlay-arm64-apple-macosx-release.module":
+    tool: shell
+    inputs: ["/Users/mickaelfarina/codec-repo/swift-overlay/Sources/main.swift","/Users/mickaelfarina/codec-repo/swift-overlay/.build/arm64-apple-macosx/release/swift-version--58304C5D6DBC2206.txt","/Users/mickaelfarina/codec-repo/swift-overlay/.build/arm64-apple-macosx/release/CODECOverlay.build/sources"]
+    outputs: ["/Users/mickaelfarina/codec-repo/swift-overlay/.build/arm64-apple-macosx/release/CODECOverlay.build/main.swift.o","/Users/mickaelfarina/codec-repo/swift-overlay/.build/arm64-apple-macosx/release/Modules/CODECOverlay.swiftmodule"]
+    description: "Compiling Swift Module 'CODECOverlay' (1 sources)"
+    args: ["/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc","-module-name","CODECOverlay","-emit-dependencies","-emit-module","-emit-module-path","/Users/mickaelfarina/codec-repo/swift-overlay/.build/arm64-apple-macosx/release/Modules/CODECOverlay.swiftmodule","-output-file-map","/Users/mickaelfarina/codec-repo/swift-overlay/.build/arm64-apple-macosx/release/CODECOverlay.build/output-file-map.json","-whole-module-optimization","-num-threads","20","-c","@/Users/mickaelfarina/codec-repo/swift-overlay/.build/arm64-apple-macosx/release/CODECOverlay.build/sources","-I","/Users/mickaelfarina/codec-repo/swift-overlay/.build/arm64-apple-macosx/release/Modules","-target","arm64-apple-macosx13.0","-whole-module-optimization","-num-threads","20","-serialize-diagnostics","-O","-j20","-DSWIFT_PACKAGE","-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE","-module-cache-path","/Users/mickaelfarina/codec-repo/swift-overlay/.build/arm64-apple-macosx/release/ModuleCache","-parseable-output","-Xfrontend","-entry-point-function-name","-Xfrontend","CODECOverlay_main","-swift-version","5","-plugin-path","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing","-sdk","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.4.sdk","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-I","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-L","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-g","-Xcc","-isysroot","-Xcc","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.4.sdk","-Xcc","-F","-Xcc","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-Xcc","-fPIC","-Xcc","-g","-package-name","swift_overlay"]
+
+  "PackageStructure":
+    tool: package-structure-tool
+    inputs: ["/Users/mickaelfarina/codec-repo/swift-overlay/Sources/","/Users/mickaelfarina/codec-repo/swift-overlay/Package.swift","/Users/mickaelfarina/codec-repo/swift-overlay/Package.resolved"]
+    outputs: ["<PackageStructure>"]
+    description: "Planning build"
+    allow-missing-inputs: true
+
