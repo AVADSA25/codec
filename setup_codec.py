@@ -11,6 +11,7 @@ G = "\033[38;2;0;200;100m"    # Green
 R = "\033[38;2;255;60;60m"    # Red
 W = "\033[38;2;200;200;200m"  # White
 D = "\033[38;2;100;100;100m"  # Dim
+Y = "\033[38;2;255;200;0m"    # Yellow
 B = "\033[1m"                 # Bold
 X = "\033[0m"                 # Reset
 
@@ -297,28 +298,45 @@ def main():
     banner()
     section("Keyboard Shortcuts", 4, total_steps)
 
-    print(f"\n{W}  Default keyboard shortcuts:{X}")
-    print(f"  {O}F13{X}  →  Toggle CODEC ON/OFF")
-    print(f"  {O}F18{X}  →  Hold to record voice, release to send")
-    print(f"  {O}F16{X}  →  Text input dialog")
-    print(f"  {O}**{X}   →  Double-tap star for screenshot + ask")
-    print(f"  {O}++{X}   →  Double-tap plus for document analysis")
+    print(f"\n{W}  CODEC uses keyboard shortcuts for voice, text, and toggle.{X}")
+    print(f"  {O}Extended keyboard{X} (F13-F18): Best experience, no conflicts")
+    print(f"  {O}Laptop keyboard{X} (F1-F12): Works great, may need macOS tweak")
+    print()
 
-    if ask_yn("Use default shortcuts?", True):
+    kb_type = ask("What keyboard do you have?", ["Extended (has F13-F18 keys)", "Laptop / Compact (F1-F12 only)"])
+
+    if kb_type == 0:
         config["key_toggle"] = "f13"
         config["key_voice"] = "f18"
         config["key_text"] = "f16"
-        config["key_screenshot"] = "*"
-        config["key_document"] = "+"
+        print(f"\n  {G}✓{X} F13 = toggle | F18 = voice | F16 = text")
     else:
-        print(f"\n{D}  Enter key names as pynput recognizes them (f1-f20, or single characters){X}")
-        config["key_toggle"] = ask_text("Toggle ON/OFF key", "f13")
-        config["key_voice"] = ask_text("Voice record key", "f18")
-        config["key_text"] = ask_text("Text input key", "f16")
-        config["key_screenshot"] = ask_text("Screenshot key", "*")
-        config["key_document"] = ask_text("Document key", "+")
+        print(f"\n{W}  Recommended laptop shortcuts:{X}")
+        print(f"  {O}F5{X}  = Toggle CODEC on/off")
+        print(f"  {O}F8{X}  = Hold to record voice")
+        print(f"  {O}F9{X}  = Text input dialog")
+        print()
+        print(f"  {D}Tip: Go to System Settings → Keyboard → enable{X}")
+        print(f"  {D}'Use F1, F2, etc. as standard function keys'{X}")
+        print(f"  {D}Or hold fn when pressing F-keys.{X}")
+        print()
 
-    print(f"\n{G}  ✓ Shortcuts configured{X}")
+        if ask_yn("Use recommended F5/F8/F9?", True):
+            config["key_toggle"] = "f5"
+            config["key_voice"] = "f8"
+            config["key_text"] = "f9"
+        else:
+            config["key_toggle"] = ask_text("Toggle key", "f5")
+            config["key_voice"] = ask_text("Voice key (hold to record)", "f8")
+            config["key_text"] = ask_text("Text input key", "f9")
+
+        print(f"\n  {G}✓{X} {config['key_toggle'].upper()} = toggle | {config['key_voice'].upper()} = voice | {config['key_text'].upper()} = text")
+        print(f"\n  {Y}⚠{X}  Disable conflicting macOS shortcuts:")
+        print(f"  {D}System Settings → Keyboard → Keyboard Shortcuts → Mission Control{X}")
+        print(f"  {D}Uncheck any that conflict with your chosen F-keys.{X}")
+
+    config["key_screenshot"] = "*"
+    config["key_document"] = "+"
 
     # ── STEP 5: WAKE WORD ─────────────────────────────────────────────────────
     clear()
