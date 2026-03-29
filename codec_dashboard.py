@@ -1,6 +1,8 @@
 """CODEC v1.2 — Phone Dashboard & PWA"""
-import os, json, sqlite3, time
+import os, json, sqlite3, time, logging
 from datetime import datetime
+
+log = logging.getLogger("codec_dashboard")
 from pathlib import Path
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
