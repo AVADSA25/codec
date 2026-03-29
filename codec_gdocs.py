@@ -11,7 +11,14 @@ import os
 import re
 import requests as rq
 
-PEXELS_API_KEY = "uMkQte71lNmkAfylWcfFY5k8SuUPEPqsZoVEcEJ4kaPIpNf8qzROxJNi"
+_gdocs_cfg = {}
+try:
+    import json as _json
+    with open(os.path.expanduser("~/.codec/config.json")) as _f:
+        _gdocs_cfg = _json.load(_f)
+except Exception:
+    pass
+PEXELS_API_KEY = _gdocs_cfg.get("pexels_api_key", os.environ.get("PEXELS_API_KEY", ""))
 
 _GENERIC_HEADING_WORDS = {
     "executive", "summary", "introduction", "background", "conclusion",

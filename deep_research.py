@@ -34,7 +34,17 @@ def _completion_fixed(**kwargs):
 litellm.completion = _completion_fixed
 
 # ── CONFIG ──
-PEXELS_API_KEY = "uMkQte71lNmkAfylWcfFY5k8SuUPEPqsZoVEcEJ4kaPIpNf8qzROxJNi"
+_dr_cfg = {}
+try:
+    import json as _json
+    with open(os.path.expanduser("~/.codec/config.json")) as _f:
+        _dr_cfg = _json.load(_f)
+except Exception:
+    pass
+SERPER_API_KEY = _dr_cfg.get("serper_api_key", os.environ.get("SERPER_API_KEY", ""))
+PEXELS_API_KEY = _dr_cfg.get("pexels_api_key", os.environ.get("PEXELS_API_KEY", ""))
+if SERPER_API_KEY:
+    os.environ["SERPER_API_KEY"] = SERPER_API_KEY
 
 llm = LLM(
     model="openai/mlx-community/Qwen3.5-35B-A3B-4bit",

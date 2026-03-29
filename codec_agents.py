@@ -34,6 +34,8 @@ def _qwen_url():
 def _qwen_model():
     return _cfg().get("llm_model", "mlx-community/Qwen3.5-35B-A3B-4bit")
 
+SERPER_API_KEY = _cfg().get("serper_api_key", os.environ.get("SERPER_API_KEY", ""))
+
 # Captures the last Google Docs URL created — fallback if Writer forgets to echo it
 _last_gdoc_url: Optional[str] = None
 
@@ -156,9 +158,8 @@ def _google_docs_create(input_str: str) -> str:
 def _shell_execute(cmd: str) -> str:
     import subprocess
     cmd = cmd.strip()
-    BLOCKED = ["rm -rf /", "sudo rm", "mkfs", "> /dev/sd", "dd if=",
-               ":(){ :|:", "chmod -R 777 /", "deltree", "format c:"]
-    for b in BLOCKED:
+    from codec_config import DANGEROUS_PATTERNS
+    for b in DANGEROUS_PATTERNS:
         if b in cmd.lower():
             return f"BLOCKED: dangerous command ({b})"
     try:

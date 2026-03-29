@@ -48,9 +48,10 @@ WHISPER_URL       = cfg.get("stt_url", "http://localhost:8084/v1/audio/transcrip
 # Paths
 DB_PATH           = os.path.expanduser("~/.q_memory.db")
 Q_TERMINAL_TITLE  = "Q -- CODEC Session"
-TASK_QUEUE_FILE   = "/tmp/q_task_queue.txt"
-DRAFT_TASK_FILE   = "/tmp/q_draft_task.json"
-SESSION_ALIVE     = "/tmp/q_session_alive"
+_CODEC_TMP = os.path.expanduser("~/.codec")
+TASK_QUEUE_FILE   = os.path.join(_CODEC_TMP, "task_queue.txt")
+DRAFT_TASK_FILE   = os.path.join(_CODEC_TMP, "draft_task.json")
+SESSION_ALIVE     = os.path.join(_CODEC_TMP, "session_alive")
 SKILLS_DIR        = os.path.expanduser("~/.codec/skills")
 AUDIT_LOG         = os.path.expanduser("~/.codec/audit.log")
 

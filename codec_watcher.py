@@ -11,7 +11,7 @@ QWEN_VISION_MODEL = "mlx-community/Qwen2.5-VL-7B-Instruct-4bit"
 KOKORO_URL     = "http://localhost:8085/v1/audio/speech"
 KOKORO_MODEL   = "mlx-community/Kokoro-82M-bf16"
 TTS_VOICE      = "am_adam"
-TASK_FILE      = "/tmp/q_draft_task.json"
+TASK_FILE      = os.path.expanduser("~/.codec/draft_task.json")
 
 DRAFT_SYSTEM = """You are Mike, elite AI writing assistant for M (Mickael), French entrepreneur based in Marbella.
 M has dyslexia — fix ALL grammar and spelling mistakes automatically.
