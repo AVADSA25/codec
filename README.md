@@ -15,6 +15,10 @@
   <a href="#support-the-project">☕ Support the Project</a> · <a href="#professional-setup">🏢 Enterprise Setup</a>
 </p>
 
+<p align="center">
+  <video src="https://i.imgur.com/J4OqrYZ.mp4" controls width="800"></video>
+</p>
+
 ---
 
 ## What is CODEC?
