@@ -64,7 +64,7 @@ A private, open-source alternative to Siri and Alexa that actually controls your
 "Translate this to English"                      → Translates selected text
 ```
 
-**36 skills · 6 right-click services · 5 AI agent crews · 250K context · FTS5 memory · MIT licensed**
+**36 skills · 8 right-click services · 5 AI agent crews · 250K context · FTS5 memory · MIT licensed**
 
 ---
 
@@ -161,7 +161,7 @@ A free, open-source SuperWhisper replacement.
 
 ### Frame 3 — CODEC Assist: Right-Click Text Services
 
-Select any text in any app, right-click, and choose from six CODEC services:
+Select any text in any app, right-click, and choose from eight CODEC services:
 
 ```
 CODEC Proofread   → Fixes spelling, grammar, punctuation. Replaces text instantly.
@@ -170,6 +170,8 @@ CODEC Explain     → Explains in simple terms. Opens in Terminal.
 CODEC Prompt      → Rewrites as an optimized LLM prompt. Replaces text.
 CODEC Translate   → Translates any language to English. Opens in Terminal.
 CODEC Reply       → Reads the selected message, writes a natural reply. Add :direction for intent. Replaces text.
+CODEC Read Aloud  → Speaks the selected text via Kokoro TTS. Select an article, right-click, hear it read aloud.
+CODEC Save        → Saves selected text to Google Keep or local notes with timestamp. Quick clip anything.
 ```
 
 Works system-wide via macOS Services. Built for accessibility — particularly useful for dyslexia and ADHD. Your AI proofreader and translator is always one right-click away.
@@ -399,7 +401,7 @@ Remote via Cloudflare Tunnel:
 ```
 codec.py              — Main agent (voice + text + wake word)
 codec_watcher.py      — Draft and paste agent (CODEC Dictate)
-codec_textassist.py   — Right-click text assistant (6 services)
+codec_textassist.py   — Right-click text assistant (8 services)
 codec_dashboard.py    — Dashboard server (PWA + APIs)
 codec_dashboard.html  — Phone dashboard UI
 codec_chat.html       — Deep Chat + Agent Crews

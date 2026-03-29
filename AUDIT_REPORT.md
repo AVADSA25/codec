@@ -272,7 +272,7 @@ Fazm's relay is architecturally identical to CODEC's Cloudflare Tunnel setup. On
 | **Skill system** | ✅ 36 built-in + install-your-own | ❌ | ❌ minimal (3 DB tools) |
 | **Skill Forge** | ✅ Code → skill conversion | ❌ | ❌ |
 | **AI agent crews** | ✅ 5 pre-built + custom builder | ✅ Workflow recorder | ❌ |
-| **Right-click services** | ✅ 6 text services | ❌ | ❌ |
+| **Right-click services** | ✅ 8 text services | ❌ | ❌ |
 | **Dictate (paste anywhere)** | ✅ Right CMD hold | ❌ | ❌ |
 | **Phone dashboard** | ✅ PWA via Cloudflare | ❌ | ✅ via Cloudflare |
 | **Memory / history** | ✅ FTS5 SQLite search | ❌ | basic (Firebase) |

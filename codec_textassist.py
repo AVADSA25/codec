@@ -85,7 +85,8 @@ if MODE == "save":
         keep_mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(keep_mod)
         result = keep_mod.run(f"save note: {save_text[:500]}")
-        if result and "error" not in str(result).lower():
+        if result and any(kw in str(result).lower() for kw in
+                          ("saved", "added", "created", "done", "success", "note saved")):
             saved = True
     except Exception:
         pass
