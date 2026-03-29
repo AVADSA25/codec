@@ -34,6 +34,8 @@ def _qwen_url():
 def _qwen_model():
     return _cfg().get("llm_model", "mlx-community/Qwen3.5-35B-A3B-4bit")
 
+SERPER_API_KEY = _cfg().get("serper_api_key", os.environ.get("SERPER_API_KEY", ""))
+
 # Captures the last Google Docs URL created — fallback if Writer forgets to echo it
 _last_gdoc_url: Optional[str] = None
 
@@ -89,7 +91,10 @@ def _file_read(path: str) -> str:
         path = os.path.expanduser(path)
     elif not path.startswith("/"):
         path = os.path.join(os.path.expanduser("~/codec-workspace"), path)
-    if not path.startswith(os.path.expanduser("~")):
+    # Resolve symlinks and .. to prevent traversal
+    path = os.path.realpath(path)
+    home = os.path.realpath(os.path.expanduser("~"))
+    if not path.startswith(home):
         return "Error: cannot read files outside home directory."
     try:
         with open(path, "r", errors="ignore") as f:
@@ -115,7 +120,10 @@ def _file_write(input_str: str) -> str:
     os.makedirs(workspace, exist_ok=True)
     if not path.startswith("/"):
         path = os.path.join(workspace, path)
-    if not path.startswith(os.path.expanduser("~")):
+    # Resolve symlinks and .. to prevent traversal
+    path = os.path.realpath(path)
+    home = os.path.realpath(os.path.expanduser("~"))
+    if not path.startswith(home):
         return "Error: cannot write outside home directory."
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -156,9 +164,8 @@ def _google_docs_create(input_str: str) -> str:
 def _shell_execute(cmd: str) -> str:
     import subprocess
     cmd = cmd.strip()
-    BLOCKED = ["rm -rf /", "sudo rm", "mkfs", "> /dev/sd", "dd if=",
-               ":(){ :|:", "chmod -R 777 /", "deltree", "format c:"]
-    for b in BLOCKED:
+    from codec_config import DANGEROUS_PATTERNS
+    for b in DANGEROUS_PATTERNS:
         if b in cmd.lower():
             return f"BLOCKED: dangerous command ({b})"
     try:

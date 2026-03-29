@@ -48,9 +48,10 @@ WHISPER_URL       = cfg.get("stt_url", "http://localhost:8084/v1/audio/transcrip
 # Paths
 DB_PATH           = os.path.expanduser("~/.q_memory.db")
 Q_TERMINAL_TITLE  = "Q -- CODEC Session"
-TASK_QUEUE_FILE   = "/tmp/q_task_queue.txt"
-DRAFT_TASK_FILE   = "/tmp/q_draft_task.json"
-SESSION_ALIVE     = "/tmp/q_session_alive"
+_CODEC_TMP = os.path.expanduser("~/.codec")
+TASK_QUEUE_FILE   = os.path.join(_CODEC_TMP, "task_queue.txt")
+DRAFT_TASK_FILE   = os.path.join(_CODEC_TMP, "draft_task.json")
+SESSION_ALIVE     = os.path.join(_CODEC_TMP, "session_alive")
 SKILLS_DIR        = os.path.expanduser("~/.codec/skills")
 AUDIT_LOG         = os.path.expanduser("~/.codec/audit.log")
 
@@ -63,6 +64,10 @@ WAKE_CHUNK_SEC    = cfg.get("wake_chunk_sec", 3.0)
 DRAFT_KEYWORDS_CFG = cfg.get("draft_keywords", [])
 REQUIRE_CONFIRM   = cfg.get("require_confirmation", True)
 
+# Dashboard auth — set in ~/.codec/config.json as "dashboard_token": "your-secret-token"
+# When empty/missing, dashboard runs without auth (local use)
+DASHBOARD_TOKEN   = cfg.get("dashboard_token", "")
+
 # Safety
 DANGEROUS_PATTERNS = [
     "rm -rf", "rm -r /", "rm -rf /", "rm -rf ~", "rm -rf /*",
@@ -72,6 +77,7 @@ DANGEROUS_PATTERNS = [
     "> /dev/", "echo > /dev/sda", "mv / /dev/null",
     ":(){ :|:& };:", "xattr -cr /",
     "curl | bash", "wget | bash", "curl | sh", "wget | sh",
+    "| bash", "| sh",
     "defaults delete", "diskutil erase",
     "networksetup", "networksetup -setv6",
     "launchctl unload", "csrutil disable", "nvram", "bless",
@@ -82,7 +88,7 @@ DANGEROUS_PATTERNS = [
 
 def is_dangerous(cmd):
     cmd_lower = cmd.lower()
-    return any(p in cmd_lower for p in DANGEROUS_PATTERNS)
+    return any(p.lower() in cmd_lower for p in DANGEROUS_PATTERNS)
 
 
 # Draft / screen detection keywords

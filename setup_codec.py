@@ -492,6 +492,12 @@ def main():
     config["dashboard_enabled"] = ask_yn("\nEnable phone dashboard?", True)
     if config["dashboard_enabled"]:
         config["dashboard_port"] = int(ask_text("Dashboard port", "8090"))
+        print(f"\n{W}  Dashboard Security (optional):{X}")
+        print(f"  {D}Set a token to protect your dashboard API.{X}")
+        print(f"  {D}Leave blank for no auth (local use only).{X}")
+        _dash_token = ask_text("Dashboard token (or press Enter to skip)", "")
+        if _dash_token:
+            config["dashboard_token"] = _dash_token
         print(f"\n{W}  Remote access options:{X}")
         print(f"  {O}1.{X} Local only (http://localhost:{config['dashboard_port']})")
         print(f"  {O}2.{X} Cloudflare Tunnel (recommended for remote access)")

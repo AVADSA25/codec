@@ -8,19 +8,63 @@ from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse as StarletteJSONResponse
 import uvicorn
 
 app = FastAPI(title="CODEC Dashboard")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:8090", "http://127.0.0.1:8090", "https://codec.lucyvpa.com"], allow_methods=["*"], allow_headers=["*"])
+
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    """Optional bearer token authentication for dashboard endpoints."""
+
+    PUBLIC_ROUTES = {"/", "/chat", "/vibe", "/voice", "/health", "/favicon.ico", "/manifest.json"}
+
+    async def dispatch(self, request, call_next):
+        from codec_config import DASHBOARD_TOKEN
+
+        if not DASHBOARD_TOKEN:
+            return await call_next(request)
+
+        if request.url.path in self.PUBLIC_ROUTES:
+            return await call_next(request)
+
+        if request.url.path.startswith("/static"):
+            return await call_next(request)
+
+        auth = request.headers.get("Authorization", "")
+        if auth == f"Bearer {DASHBOARD_TOKEN}":
+            return await call_next(request)
+
+        token = request.query_params.get("token", "")
+        if token == DASHBOARD_TOKEN:
+            return await call_next(request)
+
+        return StarletteJSONResponse(
+            {"error": "Unauthorized. Set dashboard_token in config.json or pass ?token=YOUR_TOKEN"},
+            status_code=401
+        )
+
+
+app.add_middleware(AuthMiddleware)
 
 DB_PATH = os.path.expanduser("~/.q_memory.db")
 AUDIT_LOG = os.path.expanduser("~/.codec/audit.log")
 CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
-TASK_QUEUE = os.path.expanduser("/tmp/q_task_queue.txt")
+TASK_QUEUE = os.path.expanduser("~/.codec/task_queue.txt")
 DASHBOARD_DIR = os.path.dirname(os.path.abspath(__file__))
 
+_db_conn = None
+
 def get_db():
-    return sqlite3.connect(DB_PATH)
+    global _db_conn
+    if _db_conn is None:
+        _db_conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+        _db_conn.execute("PRAGMA journal_mode=WAL")
+        _db_conn.execute("PRAGMA busy_timeout=5000")
+        _db_conn.row_factory = sqlite3.Row
+    return _db_conn
 
 _NO_CACHE = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"}
 
@@ -129,7 +173,7 @@ async def send_command(request: Request):
         return JSONResponse({"error": "No command provided"}, status_code=400)
     source = body.get("source", "api")
 
-    queue_path = "/tmp/q_task_queue.txt"
+    queue_path = os.path.expanduser("~/.codec/task_queue.txt")
     entry = json.dumps({
         "task": task,
         "source": source,
@@ -214,7 +258,7 @@ async def vision_analyze(request: Request):
 async def get_response():
     """Get latest PWA command response"""
     try:
-        resp_file = "/tmp/q_pwa_response.json"
+        resp_file = os.path.expanduser("~/.codec/pwa_response.json")
         if os.path.exists(resp_file):
             with open(resp_file) as f:
                 data = json.load(f)
@@ -242,7 +286,7 @@ async def tts(text: str = ""):
         tts_voice = config.get("tts_voice", "am_adam")
         r = rq.post(tts_url, json={"model": tts_model, "input": text[:500], "voice": tts_voice, "speed": 1.1}, timeout=30)
         if r.status_code == 200:
-            audio_path = "/tmp/q_pwa_audio.mp3"
+            audio_path = os.path.expanduser("~/.codec/pwa_audio.mp3")
             with open(audio_path, "wb") as f:
                 f.write(r.content)
             return FileResponse(audio_path, media_type="audio/mpeg")
@@ -255,7 +299,7 @@ async def screenshot():
     """Take screenshot of Mac Studio and return image"""
     import subprocess
     try:
-        path = "/tmp/q_pwa_screenshot.png"
+        path = os.path.expanduser("~/.codec/pwa_screenshot.png")
         subprocess.run(["screencapture", "-x", path], timeout=5)
         if os.path.exists(path):
             return FileResponse(path, media_type="image/png")
@@ -299,7 +343,7 @@ async def upload_document(request: Request):
         raw = base64.b64decode(data)
         ext = os.path.splitext(filename)[1].lower()
         if ext == ".pdf":
-            pdf_path = "/tmp/q_pwa_upload.pdf"
+            pdf_path = os.path.expanduser("~/.codec/pwa_upload.pdf")
             with open(pdf_path, "wb") as f: f.write(raw)
             r = subprocess.run(["pdftotext", pdf_path, "-"], capture_output=True, text=True, timeout=30)
             text_content = r.stdout[:200000].strip()
@@ -462,7 +506,7 @@ async def vibe_page():
 async def preview_code(request: Request):
     body = await request.json()
     code = body.get("code", "")
-    preview_path = "/tmp/codec_preview.html"
+    preview_path = os.path.expanduser("~/.codec/preview.html")
     with open(preview_path, "w") as f:
         f.write(code)
     return {"url": "/preview_frame", "path": preview_path}
@@ -470,11 +514,16 @@ async def preview_code(request: Request):
 @app.get("/preview_frame", response_class=HTMLResponse)
 async def preview_frame():
     try:
-        with open("/tmp/codec_preview.html") as f:
-            return f.read()
+        with open(os.path.expanduser("~/.codec/preview.html")) as f:
+            content = f.read()
+        # Restrict preview with CSP — no access to dashboard APIs or external resources
+        return HTMLResponse(content, headers={
+            "Content-Security-Policy": "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; connect-src 'none'; form-action 'none'",
+            "X-Frame-Options": "SAMEORIGIN",
+        })
     except Exception as e:
         log.warning(f"Non-critical error: {e}")
-        return "<html><body style='background:#0a0a0a;color:#888;padding:40px;font-family:sans-serif'><h2>No preview available</h2><p>Write some HTML and click Preview.</p></body></html>"
+        return HTMLResponse("<html><body style='background:#0a0a0a;color:#888;padding:40px;font-family:sans-serif'><h2>No preview available</h2><p>Write some HTML and click Preview.</p></body></html>")
 
 @app.post("/api/run_code")
 async def run_code(request: Request):
@@ -513,7 +562,15 @@ async def save_file(request: Request):
     body = await request.json()
     filename = os.path.basename(body.get("filename", "untitled.py"))
     content = body.get("content", "")
-    directory = os.path.expanduser(body.get("directory", "~/codec-workspace"))
+    ALLOWED_SAVE_DIRS = [
+        os.path.expanduser("~/codec-workspace"),
+        os.path.expanduser("~/.codec"),
+        os.path.expanduser("~/Desktop"),
+        os.path.expanduser("~/Documents"),
+    ]
+    directory = os.path.realpath(os.path.expanduser(body.get("directory", "~/codec-workspace")))
+    if not any(directory.startswith(allowed) for allowed in ALLOWED_SAVE_DIRS):
+        return JSONResponse({"error": "Directory not allowed"}, status_code=403)
     os.makedirs(directory, exist_ok=True)
     path = os.path.join(directory, filename)
     with open(path, "w") as f: f.write(content)
@@ -525,6 +582,14 @@ async def save_skill(request: Request):
     filename = os.path.basename(body.get("filename", "custom_skill.py"))
     if not filename.endswith(".py"): filename += ".py"
     content = body.get("content", "")
+    # Validate: must contain SKILL_DESCRIPTION and run function
+    if "SKILL_DESCRIPTION" not in content or "def run(" not in content:
+        return JSONResponse({"error": "Invalid skill: must contain SKILL_DESCRIPTION and def run()"}, status_code=400)
+    # Block dangerous imports/calls in skill code
+    BLOCKED_IN_SKILLS = ["os.system(", "subprocess.Popen(", "eval(", "exec(", "__import__"]
+    for blocked in BLOCKED_IN_SKILLS:
+        if blocked in content:
+            return JSONResponse({"error": f"Blocked pattern in skill code: {blocked}"}, status_code=400)
     path = os.path.join(os.path.expanduser("~/.codec/skills"), filename)
     with open(path, "w") as f: f.write(content)
     return {"path": path, "skill": filename, "size": len(content)}

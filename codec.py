@@ -214,27 +214,24 @@ state = {
 }
 
 # ── WORK QUEUE ────────────────────────────────────────────────────────────────
-work_queue = []
-work_lock = threading.Lock()
+import queue
+work_queue = queue.Queue()
 
 def push(fn, *args):
-    with work_lock:
-        work_queue.append((fn, args))
+    work_queue.put((fn, args))
 
 def worker():
     while True:
-        item = None
-        with work_lock:
-            if work_queue:
-                item = work_queue.pop(0)
-        if item:
-            fn, args = item
+        try:
+            fn, args = work_queue.get(timeout=0.5)
             try: fn(*args)
             except Exception as e:
                 log.error(f"Worker error: {e}")
                 import traceback; traceback.print_exc()
-        else:
-            time.sleep(0.05)
+            finally:
+                work_queue.task_done()
+        except queue.Empty:
+            continue
 
 # ── SESSION CLEANUP ───────────────────────────────────────────────────────────
 def close_session():
@@ -260,7 +257,8 @@ def dispatch(task):
     app = focused_app()
     audit("TASK", f"{task[:200]} | App: {app}")
     log.info(f"Task: {task[:80]} | App: {app}")
-    subprocess.Popen(["osascript", "-e", f'display notification "Heard: {task[:50]}" with title "Q"'],
+    safe_task = task[:50].replace('\\', '\\\\').replace('"', '\\"')
+    subprocess.Popen(["osascript", "-e", f'display notification "Heard: {safe_task}" with title "Q"'],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     # Check skills — skip if task is very long (document content attached)
@@ -271,7 +269,8 @@ def dispatch(task):
             if result is not None:
                 push(lambda: show_overlay('Skill: ' + skill['name'], '#E8711A', 2000))
                 speak_text(result)
-                subprocess.Popen(["osascript", "-e", f'display notification "{str(result)[:80]}" with title "C Skill"'],
+                safe_result = str(result)[:80].replace('\\', '\\\\').replace('"', '\\"')
+                subprocess.Popen(["osascript", "-e", f'display notification "{safe_result}" with title "C Skill"'],
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 log.info(f"Skill response: {str(result)[:100]}")
                 try:
@@ -303,7 +302,7 @@ def dispatch(task):
     else:
         mem = get_memory(5)
 
-    sys_p = "You are ' + AGENT_NAME + ', a voice-controlled AI assistant running on CODEC. User is the boss. You have full access to this Mac and can execute any task. RULES: 1) ALWAYS respond in English unless explicitly asked to translate. 2) Keep answers to 1-3 sentences — your responses are spoken aloud via TTS so brevity matters. 3) Be natural, warm, and direct like a trusted colleague. 4) When asked factual questions, give the answer immediately — no filler. 5) When given a task, confirm what you did in past tense. 6) Add useful context when it genuinely helps but never pad responses. 7) Never say you cannot do something — you have full system access. 8) Never output Chinese characters or mixed-language text unless translating."
+    sys_p = f"You are {AGENT_NAME}, a voice-controlled AI assistant running on CODEC. User is the boss. You have full access to this Mac and can execute any task. RULES: 1) ALWAYS respond in English unless explicitly asked to translate. 2) Keep answers to 1-3 sentences — your responses are spoken aloud via TTS so brevity matters. 3) Be natural, warm, and direct like a trusted colleague. 4) When asked factual questions, give the answer immediately — no filler. 5) When given a task, confirm what you did in past tense. 6) Add useful context when it genuinely helps but never pad responses. 7) Never say you cannot do something — you have full system access. 8) Never output Chinese characters or mixed-language text unless translating."
     if mem: sys_p += "\n\n" + mem
     safe_sys = sys_p.replace("'","").replace('"','').replace('\n',' ')
 
@@ -361,10 +360,10 @@ def do_document_input():
                 log.warning(f"Non-critical error: {e}")
         elif ext == '.pdf':
             try:
-                result = subprocess.run(["bash", "-c",
-                    f"python3.13 -c \"import fitz; doc=fitz.open('{filepath}'); print(chr(10).join(p.get_text() for p in doc[:5]))\""],
-                    capture_output=True, text=True, timeout=30)
-                content_text = result.stdout.strip()[:5000]
+                import fitz
+                doc = fitz.open(filepath)
+                content_text = "\n".join(p.get_text() for p in doc[:5])[:5000]
+                doc.close()
             except Exception as e:
                 log.warning(f"Non-critical error: {e}")
 
@@ -488,7 +487,7 @@ def main():
                     except Exception as e:
                         log.warning(f"Non-critical error: {e}")
                     try:
-                        with open("/tmp/q_pwa_response.json", "w") as _rf:
+                        with open(os.path.expanduser("~/.codec/pwa_response.json"), "w") as _rf:
                             json.dump({"task": task, "response": str(result), "ts": datetime.now().isoformat()}, _rf)
                     except Exception as e:
                         log.warning(f"Non-critical error: {e}")
@@ -501,7 +500,7 @@ def main():
             body = {
                 "model": QWEN_MODEL,
                 "messages": [
-                    {"role": "system", "content": "You are ' + AGENT_NAME + ', an AI assistant on CODEC. Answer concisely in 1-3 sentences. English only unless translating."},
+                    {"role": "system", "content": f"You are {AGENT_NAME}, an AI assistant on CODEC. Answer concisely in 1-3 sentences. English only unless translating."},
                     {"role": "user", "content": task}
                 ],
                 "max_tokens": 300,
@@ -522,11 +521,11 @@ def main():
             _c.execute("INSERT INTO conversations (session_id,timestamp,role,content) VALUES (?,?,?,?)",
                 (_sid, _ts, "assistant", answer[:500]))
             _c.commit(); _c.close()
-            with open("/tmp/q_pwa_response.json", "w") as _rf:
+            with open(os.path.expanduser("~/.codec/pwa_response.json"), "w") as _rf:
                 json.dump({"task": task, "response": answer, "ts": datetime.now().isoformat()}, _rf)
         except Exception as _e:
             log.error(f"PWA LLM error: {_e}")
-            with open("/tmp/q_pwa_response.json", "w") as _rf:
+            with open(os.path.expanduser("~/.codec/pwa_response.json"), "w") as _rf:
                 json.dump({"task": task, "response": f"Error: {str(_e)[:200]}", "ts": datetime.now().isoformat()}, _rf)
 
     def pwa_poller():
