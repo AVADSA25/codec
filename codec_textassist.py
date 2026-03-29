@@ -18,6 +18,8 @@ def call_qwen(text, mode):
         "proofread": "Fix all spelling, grammar, and punctuation errors. Keep same tone. Output ONLY corrected text.",
         "elevate": "Rewrite to be more polished and professional. Keep same meaning. Output ONLY improved text.",
         "explain": "Explain this text simply and concisely. What is it about? Key points?",
+        "read_aloud": "READ_ALOUD_MODE",
+        "save": "SAVE_TO_KEEP_MODE",
         "reply": "You are a smart, natural communicator. The user will give you a message they received, possibly followed by a colon : and their reply direction. If there is a colon with instructions after it, follow those instructions to craft the reply. If there is no colon, write a natural reply matching the tone. Keep it short (1-3 sentences). Output ONLY the reply text. No quotes, no labels, no explanation.",
         "translate": "You are a translator. Translate the following text into English. No matter what language the input is — Ukrainian, Spanish, French, Russian, Chinese, Arabic, anything — always translate to English. Output ONLY the translated English text, nothing else.",
         "prompt": "You are a prompt engineer. Rewrite the following text to be a clear, optimized prompt for an AI language model. Make it specific, structured, and effective. Remove ambiguity, add context where helpful, and ensure the intent is crystal clear. Output ONLY the optimized prompt, nothing else."
@@ -44,6 +46,63 @@ r.after({duration},r.destroy);r.mainloop()"""], stdout=subprocess.DEVNULL, stder
 
 text = subprocess.run(["pbpaste"], capture_output=True, text=True).stdout.strip()
 if not text: sys.exit(0)
+
+# ── Read Aloud: speak via Kokoro TTS, no LLM needed ──────────────────────────
+if MODE == "read_aloud":
+    tts_text = text[:2000]
+    cfg = get_config()
+    tts_url   = cfg.get("tts_url",   "http://localhost:8085/v1/audio/speech")
+    tts_model = cfg.get("tts_model", "mlx-community/Kokoro-82M-bf16")
+    tts_voice = cfg.get("tts_voice", "am_adam")
+    overlay("\U0001f50a Reading aloud...", "#E8711A", 6000)
+    try:
+        import tempfile
+        r = requests.post(tts_url, json={
+            "model": tts_model, "input": tts_text, "voice": tts_voice
+        }, timeout=30)
+        if r.status_code == 200:
+            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+                f.write(r.content)
+                mp3_path = f.name
+            subprocess.run(["afplay", mp3_path])
+            os.unlink(mp3_path)
+        else:
+            overlay("\u26a0 TTS unavailable", "#ff3333", 3000)
+    except Exception as e:
+        overlay("\u26a0 TTS error", "#ff3333", 3000)
+        print(f"TTS error: {e}")
+    sys.exit(0)
+
+# ── Save: save to Google Keep or local fallback, no LLM needed ───────────────
+if MODE == "save":
+    save_text = text[:2000]
+    saved = False
+    # Try Google Keep skill
+    try:
+        import importlib.util
+        keep_path = os.path.expanduser("~/.codec/skills/google_keep.py")
+        spec = importlib.util.spec_from_file_location("google_keep", keep_path)
+        keep_mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(keep_mod)
+        result = keep_mod.run(f"save note: {save_text[:500]}")
+        if result and "error" not in str(result).lower():
+            saved = True
+    except Exception:
+        pass
+    # Fallback: local file
+    if not saved:
+        notes_path = os.path.expanduser("~/.codec/saved_notes.txt")
+        from datetime import datetime
+        with open(notes_path, "a") as nf:
+            nf.write(f"\n--- {datetime.now().strftime('%Y-%m-%d %H:%M')} ---\n")
+            nf.write(save_text + "\n")
+        saved = True
+    if saved:
+        subprocess.run(["osascript", "-e",
+            'display notification "Text saved to notes" with title "CODEC Save"'],
+            capture_output=True)
+        overlay("\u2705 Saved!", "#44cc66", 2000)
+    sys.exit(0)
 
 overlay("\\u26a1 Processing...", "#00aaff", 8000)
 try:
