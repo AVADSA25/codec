@@ -42,7 +42,7 @@ llm = LLM(
     base_url="http://localhost:8081/v1",
     api_key="not-needed",
     temperature=0.7,
-    max_tokens=16000,
+    max_tokens=32000,
 )
 
 # ── TOOLS ──
@@ -58,14 +58,14 @@ def build_crew(topic: str):
         tools=[search_tool],
         llm=llm,
         verbose=True,
-        max_iter=10,
+        max_iter=20,
         allow_delegation=False
     )
 
     writer = Agent(
         role="Research Report Writer",
         goal=f"Synthesize research findings into a comprehensive, well-structured report about: {topic}",
-        backstory="You are a professional report writer. You organize information logically with clear sections, cite sources, highlight key findings, and write in a clear professional style. Reports should be 2000-5000 words.",
+        backstory="You are a professional report writer. You organize information logically with clear sections, cite sources, highlight key findings, and write in a clear professional style. Reports should be comprehensive and thorough — aim for 8000-12000 words across 10-15 well-developed sections.",
         llm=llm,
         verbose=True,
         allow_delegation=False
@@ -74,12 +74,13 @@ def build_crew(topic: str):
     research_task = Task(
         description=f"""Research the following topic thoroughly: {topic}
 
-        1. Search for the topic broadly first (3-5 searches with different angles)
-        2. Identify the top 10-15 most relevant and authoritative sources
+        1. Search for the topic broadly first (5-8 searches with different angles)
+        2. Identify the top 15-20 most relevant and authoritative sources
         3. Extract key facts, statistics, expert opinions, and recent developments
-        4. Note any controversies or conflicting information
-        5. Compile all findings with source URLs""",
-        expected_output="Comprehensive research notes with facts, statistics, quotes, and source URLs organized by subtopic",
+        4. Dive deep into each major subtopic with dedicated follow-up searches
+        5. Note any controversies, competing viewpoints, or conflicting data
+        6. Compile all findings with source URLs — the more detail, the better""",
+        expected_output="Extensive research notes with facts, statistics, quotes, source URLs, and deep subtopic coverage — enough material for a 10,000-word report",
         agent=researcher
     )
 
@@ -95,11 +96,13 @@ def build_crew(topic: str):
         6. Sources (numbered list with URLs)
 
         Requirements:
-        - 2000-5000 words
+        - 8000-12000 words minimum — this is a full long-form report, not a summary
+        - Each section should have 3-6 paragraphs of substantive content
         - Professional tone
-        - Include statistics and data where available
+        - Include statistics, data, and specific numbers where available
         - Cite sources inline (e.g., [1], [2])
-        - Use markdown formatting (headers, bold, lists)""",
+        - Use markdown formatting (headers, bold, lists)
+        - Do NOT truncate or cut sections short — complete every section fully""",
         expected_output="A complete, well-structured research report in markdown format with citations",
         agent=writer
     )
