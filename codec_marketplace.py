@@ -20,6 +20,7 @@ from datetime import datetime
 
 # ── Config ──────────────────────────────────────────────────────────────────
 REGISTRY_URL   = "https://raw.githubusercontent.com/AVADSA25/codec-skills/main/registry.json"
+SKILLS_BASE_URL = "https://raw.githubusercontent.com/AVADSA25/codec-skills/main"
 SKILLS_DIR     = os.path.expanduser("~/.codec/skills")
 MARKETPLACE_META = os.path.join(SKILLS_DIR, ".marketplace.json")
 CACHE_DIR      = os.path.expanduser("~/.codec/marketplace_cache")
@@ -131,10 +132,10 @@ def cmd_install(name: str, interactive: bool = True) -> bool:
     meta = _load_marketplace_meta()
     existing = meta["installed"].get(match["name"])
     if existing and existing.get("version") == match["version"]:
-        print(f"✅ '{match['display_name']}' v{match['version']} is already installed.")
+        print(f"✅ '{match.get('display_name', match.get('name', 'unknown'))}' v{match['version']} is already installed.")
         return True
     if existing:
-        print(f"⬆️  Updating '{match['display_name']}' from v{existing.get('version','?')} → v{match['version']}…")
+        print(f"⬆️  Updating '{match.get('display_name', match.get('name', 'unknown'))}' from v{existing.get('version','?')} → v{match['version']}…")
 
     # Install dependencies
     deps = match.get("dependencies", [])
@@ -142,7 +143,7 @@ def cmd_install(name: str, interactive: bool = True) -> bool:
         print(f"📦 Dependencies: {', '.join(deps)}")
         _install_deps(deps)
 
-    print(f"\n  Name:        {match['display_name']}")
+    print(f"\n  Name:        {match.get('display_name', match.get('name', 'unknown'))}")
     print(f"  Author:      {match['author']}" + ("  ✓ verified" if match.get("verified") else ""))
     print(f"  Description: {match['description']}")
     print(f"  Triggers:    {', '.join(match.get('triggers', [])[:4])}")
@@ -160,7 +161,7 @@ def cmd_install(name: str, interactive: bool = True) -> bool:
         except (EOFError, KeyboardInterrupt):
             pass  # Non-interactive (voice/tests) — proceed
 
-    print(f"\nDownloading '{match['display_name']}' v{match['version']}…")
+    print(f"\nDownloading '{match.get('display_name', match.get('name', 'unknown'))}' v{match['version']}…")
     code = _download_skill(match, registry)
     if not code:
         return False
@@ -179,7 +180,7 @@ def cmd_install(name: str, interactive: bool = True) -> bool:
     }
     _save_marketplace_meta(meta)
 
-    print(f"\n✅ '{match['display_name']}' installed → {dest}")
+    print(f"\n✅ '{match.get('display_name', match.get('name', 'unknown'))}' installed → {dest}")
     print(f"   Restart CODEC to activate: pm2 restart ava-autopilot")
     return True
 
@@ -419,7 +420,7 @@ def run(task: str, context: str = "") -> str:
                     "verified":     match.get("verified", False),
                 }
                 _save_marketplace_meta(meta)
-                return f"Installed {match['display_name']} v{match['version']}. Restart CODEC to activate."
+                return f"Installed {match.get('display_name', match.get('name', 'unknown'))} v{match['version']}. Restart CODEC to activate."
 
     if any(w in lower for w in ["search ", "find ", "browse "]):
         for prefix in ["search skills ", "search skill ", "search ", "find skill ", "find ", "browse skills ", "browse "]:
