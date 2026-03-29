@@ -116,6 +116,12 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx);height:100vh;dis
 .fm-forge:disabled{opacity:.5;cursor:not-allowed}
 .fm-status{font-size:12px;color:var(--text-muted);font-family:var(--mono)}
 .fm-panel{display:none}.fm-panel.active{display:block}
+/* ── Inspect Mode ── */
+#inspectBtn.active {
+  background: #E8711A !important;
+  color: #000 !important;
+  box-shadow: 0 0 8px rgba(232,113,26,0.4);
+}
 </style>
 </head>
 <body>
@@ -181,7 +187,7 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx);height:100vh;dis
 <div class="sp">
 <div class="cp"><div class="hd">Q - Vibe Code</div><div class="ms" id="cm"><div class="mg ma">Tell me what to build!</div></div><div class="ia"><textarea id="vi" class="ii" rows="2" placeholder="Describe what to build..."></textarea><button class="sb" id="sndb">Send</button><button class="sb" id="stopb" onclick="doStop()" style="display:none;background:#c0392b;min-width:36px;padding:0 10px">&#9632;</button></div></div>
 <div style="width:4px;cursor:col-resize;background:var(--bd)" id="rh"></div>
-<div class="ep"><div id="eb"></div><div class="tb"><button class="bt br" onclick="doRun()">&#9654; Run</button><button class="bt bs" onclick="doPrev()">&#128065; Preview</button><button class="bt bs" onclick="doSave()">&#128190; Save</button><button class="bt bs" onclick="doCopy()">&#128203; Copy</button><button class="bt bk" onclick="doSkill()" title="Save to ~/.codec/skills/">&#9889; Save Skill</button><button class="bt bs" onclick="doTestSkill()" title="Test skill run() with sample input">&#9654; Test</button><button class="bt" onclick="doForge()" style="background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none">&#128296; Forge</button><span class="rs" id="rs"></span></div></div>
+<div class="ep"><div id="eb"></div><div class="tb"><button class="bt br" onclick="doRun()">&#9654; Run</button><button class="bt bs" onclick="doPrev()">&#128065; Preview</button><button class="bt bs" onclick="doSave()">&#128190; Save</button><button class="bt bs" onclick="doCopy()">&#128203; Copy</button><button class="bt bk" onclick="doSkill()" title="Save to ~/.codec/skills/">&#9889; Save Skill</button><button class="bt bs" onclick="doTestSkill()" title="Test skill run() with sample input">&#9654; Test</button><button class="bt" onclick="doForge()" style="background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none">&#128296; Forge</button><button class="bt bs" id="inspectBtn" onclick="toggleInspect()" title="Click elements in live preview to jump to their code">&#128269; Inspect</button><span class="rs" id="rs"></span></div></div>
 <div class="pp" id="pp"><div class="ph"><span>&#128065; Live Preview</span><button onclick="document.getElementById('pp').classList.remove('sh')" style="background:0;border:0;color:var(--tx2);cursor:pointer;font-size:16px">&#10005;</button></div><iframe id="pf" sandbox="allow-scripts allow-same-origin"></iframe></div>
 </div>
 <div class="op" id="op"><span style="color:var(--ac)">CODEC Vibe Code Ready</span></div>
