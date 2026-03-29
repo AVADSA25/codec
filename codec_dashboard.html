@@ -48,13 +48,15 @@
   --border: #ddd;
 }
 * { margin:0; padding:0; box-sizing:border-box; }
-html, body { 
+html { background: var(--bg); }
+html, body {
   font-family: var(--font); background: var(--bg); color: var(--fg);
   height: 100%; overflow: hidden; -webkit-tap-highlight-color: transparent;
 }
-.app { 
+.app {
   display: flex; flex-direction: column; height: 100vh;
   padding-top: var(--safe-top); padding-bottom: var(--safe-bottom);
+  max-width: 560px; margin: 0 auto; width: 100%;
 }
 
 /* ── Header ── */
