@@ -164,14 +164,14 @@ A free, open-source SuperWhisper replacement.
 Select any text in any app, right-click, and choose from eight CODEC services:
 
 ```
-CODEC Proofread   → Fixes spelling, grammar, punctuation. Replaces text instantly.
-CODEC Elevate     → Rewrites to be more polished and professional. Replaces text.
-CODEC Explain     → Explains in simple terms. Opens in Terminal.
-CODEC Prompt      → Rewrites as an optimized LLM prompt. Replaces text.
-CODEC Translate   → Translates any language to English. Opens in Terminal.
-CODEC Reply       → Reads the selected message, writes a natural reply. Add :direction for intent. Replaces text.
-CODEC Read Aloud  → Speaks the selected text via Kokoro TTS. Select an article, right-click, hear it read aloud.
-CODEC Save        → Saves selected text to Google Keep or local notes with timestamp. Quick clip anything.
+CODEC Proofread    → Fixes spelling, grammar, punctuation. Replaces text instantly.
+CODEC Elevate      → Rewrites to be more polished and professional. Replaces text.
+CODEC Explain      → Explains in simple terms. Opens in Terminal.
+CODEC Prompt       → Rewrites as an optimized LLM prompt. Replaces text.
+CODEC Translate    → Translates any language to English. Opens in Terminal.
+CODEC Reply        → Reads the message, writes a natural reply. Add :direction for intent.
+CODEC Read Aloud   → Speaks the selected text via Kokoro TTS. Up to 2000 chars.
+CODEC Save         → Saves selected text to Google Keep or local notes with timestamp.
 ```
 
 Works system-wide via macOS Services. Built for accessibility — particularly useful for dyslexia and ADHD. Your AI proofreader and translator is always one right-click away.

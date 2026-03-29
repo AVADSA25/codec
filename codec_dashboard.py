@@ -714,10 +714,11 @@ def _fetch_url_content(url: str, max_chars: int = 8000) -> str:
         return ""
 
 
-def _enrich_messages(messages: list, config: dict) -> list:
+def _enrich_messages(messages: list, config: dict, force_search: bool = False) -> list:
     """
     Auto-detect URLs and search intent in the last user message.
     Injects a context message before the last user message when content is found.
+    force_search=True bypasses intent detection and always searches.
     Returns a (possibly modified) copy of the messages list.
     """
     import re as _re
@@ -754,7 +755,7 @@ def _enrich_messages(messages: list, config: dict) -> list:
         'who won', 'stock price', 'weather in', 'news about'
     ]
     lower = last_text.lower()
-    should_search = any(t in lower for t in search_triggers) and not urls
+    should_search = (any(t in lower for t in search_triggers) or force_search) and not urls
     if should_search:
         try:
             import sys, os as _os
@@ -855,7 +856,8 @@ async def chat_completion(request: Request):
         kwargs = config.get("llm_kwargs", {})
         headers = {"Content-Type": "application/json"}
         if api_key: headers["Authorization"] = f"Bearer {api_key}"
-        messages = _enrich_messages(messages, config)
+        force_search = body.get("force_search", False)
+        messages = _enrich_messages(messages, config, force_search=bool(force_search))
         payload = {
             "model": model,
             "messages": messages,

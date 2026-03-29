@@ -104,6 +104,12 @@ def start_keyboard_listener(state, ctx):
         import requests as req_wake
         sample_rate = 16000
         chunk_samples = int(WAKE_CHUNK_SEC * sample_rate)
+        # ── Smoothed energy state (Fazm-inspired decay) ──────────────────────
+        DECAY_RATE       = 0.85    # smoothing decay per chunk
+        NOISE_FLOOR      = 30.0    # absolute floor — ignore mic noise below this
+        MIN_SPEECH_FRAC  = 0.12    # at least 12% of samples must be above threshold
+        CONFIDENCE_FLOOR = -1.0    # reject Whisper segments with avg_logprob below this
+        smoothed_energy  = 0.0
         log.info("Wake word listener started")
         while True:
             if not WAKE_WORD or state["recording"] or not state["active"]:
@@ -112,9 +118,19 @@ def start_keyboard_listener(state, ctx):
             try:
                 audio = sd.rec(chunk_samples, samplerate=sample_rate, channels=1, dtype='int16')
                 sd.wait()
-                energy = np.abs(audio).mean()
-                if energy < WAKE_ENERGY:
+
+                # ── 1. Smoothed energy gate ───────────────────────────────────
+                raw_energy = float(np.abs(audio).mean())
+                smoothed_energy = max(raw_energy, smoothed_energy * DECAY_RATE)
+                if smoothed_energy < max(WAKE_ENERGY, NOISE_FLOOR):
                     continue
+
+                # ── 2. Minimum speech duration (≥12% of chunk above threshold)
+                speech_fraction = float(np.mean(np.abs(audio) > WAKE_ENERGY * 0.4))
+                if speech_fraction < MIN_SPEECH_FRAC:
+                    log.debug(f"Wake: speech too short ({speech_fraction:.0%}), skipping")
+                    continue
+
                 tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
                 tmp.close()
                 sf.write(tmp.name, audio, sample_rate)
@@ -126,7 +142,17 @@ def start_keyboard_listener(state, ctx):
                             data={"model": "mlx-community/whisper-large-v3-turbo", "language": "en"},
                             timeout=10)
                     if r.status_code == 200:
-                        text = r.json().get("text", "").lower().strip()
+                        resp_data = r.json()
+                        text = resp_data.get("text", "").lower().strip()
+
+                        # ── 3. Confidence filter from Whisper segments ────────
+                        segments = resp_data.get("segments", [])
+                        if segments:
+                            avg_logprob = sum(s.get("avg_logprob", -0.5) for s in segments) / len(segments)
+                            if avg_logprob < CONFIDENCE_FLOOR:
+                                log.info(f"Wake: low confidence rejected (logprob={avg_logprob:.2f}): '{text}'")
+                                continue
+
                         if any(phrase in text for phrase in WAKE_PHRASES):
                             command = text
                             for phrase in WAKE_PHRASES:
@@ -138,7 +164,7 @@ def start_keyboard_listener(state, ctx):
                                 if len(words) < 2:
                                     return True
                                 real = [w for w in words if len(w) > 2 and w not in noise_words]
-                                return len(real) < 1
+                                return len(real) < 2  # tightened: require ≥2 real words
 
                             command = clean_transcript(command) or command
                             if len(command) > 3 and not _is_noise(command):

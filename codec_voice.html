@@ -158,6 +158,19 @@
             50%      { transform: scale(1.06); opacity:1; }
         }
 
+        /* ── Live mic energy ring — driven by JS in onaudioprocess ── */
+        .ring-energy {
+            position: absolute; inset: 4px;
+            border-radius: 50%;
+            border: 2px solid transparent;
+            pointer-events: none;
+            transition: transform 0.06s ease-out, box-shadow 0.06s ease-out, border-color 0.06s ease-out;
+            will-change: transform, box-shadow;
+        }
+        .state-listening .ring-energy {
+            border-color: rgba(0,230,118,0.35);
+        }
+
         .avatar-core {
             position: absolute; inset: 24px;
             border-radius: 50%;
@@ -297,6 +310,7 @@
         <div class="avatar-wrap" id="avatarWrap">
             <div class="ring-outer"></div>
             <div class="ring-inner"></div>
+            <div class="ring-energy" id="ringEnergy"></div>
             <div class="avatar-core">⚡</div>
             <div class="waveform">
                 <div class="bar"></div><div class="bar"></div><div class="bar"></div>
@@ -492,11 +506,32 @@
                 if (!ws || ws.readyState !== WebSocket.OPEN) return;
                 var f32 = e.inputBuffer.getChannelData(0);
 
-                /* Interrupt detection: if Q is speaking and user talks, stop TTS */
+                /* ── Always compute RMS for energy ring + interrupt ── */
+                var sum = 0;
+                for (var j = 0; j < f32.length; j++) sum += f32[j] * f32[j];
+                var rms = Math.sqrt(sum / f32.length) * 32768;
+
+                /* ── Energy ring: scales ring border + glow with mic input ── */
+                var re = document.getElementById('ringEnergy');
+                if (re) {
+                    var bodyClass = document.getElementById('body').className;
+                    if (bodyClass.indexOf('state-listening') >= 0) {
+                        var lvl  = Math.min(rms / 2800, 1.0);
+                        var sc   = (1 + lvl * 0.13).toFixed(3);
+                        var glow = Math.round(lvl * 22);
+                        var op   = (0.25 + lvl * 0.6).toFixed(2);
+                        re.style.transform   = 'scale(' + sc + ')';
+                        re.style.boxShadow   = '0 0 ' + glow + 'px rgba(0,230,118,' + op + ')';
+                        re.style.borderColor = 'rgba(0,230,118,' + op + ')';
+                    } else {
+                        re.style.transform   = '';
+                        re.style.boxShadow   = '';
+                        re.style.borderColor = '';
+                    }
+                }
+
+                /* ── Interrupt detection: if Q is speaking and user talks ── */
                 if (isPlaying) {
-                    var sum = 0;
-                    for (var j = 0; j < f32.length; j++) sum += f32[j] * f32[j];
-                    var rms = Math.sqrt(sum / f32.length) * 32768;
                     var now = Date.now();
                     if (rms > INTERRUPT_RMS && (now - lastInterruptAt) > 1200) {
                         lastInterruptAt = now;

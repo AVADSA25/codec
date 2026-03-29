@@ -170,6 +170,7 @@ input[type=file]{display:none}
 <div id="modeToggle" class="mode-toggle">
 <button class="mode-btn active" onclick="setMode('chat')" id="modeChatBtn">&#128172; Chat</button>
 <button class="mode-btn" onclick="setMode('research')" id="modeResearchBtn">&#128300; Agents</button>
+<button class="mode-btn" onclick="toggleWebSearch()" id="modeWebBtn" title="Force web search on every message">&#128269; Web</button>
 <select id="crewSelect" style="display:none;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px;cursor:pointer;">
 <option value="deep_research">&#128300; Deep Research</option>
 <option value="daily_briefing">&#128203; Daily Briefing</option>
@@ -235,6 +236,7 @@ var chatHist=[],isProcessing=false,isRecording=false,recognition=null;
 var pendingFiles=[];
 var sessionId=null;
 var chatMode='chat';
+var webSearchEnabled=false;
 
 function setMode(mode){
   chatMode=mode;
@@ -256,6 +258,13 @@ function setMode(mode){
   }
 }
 document.getElementById('crewSelect').addEventListener('change',function(){setMode('research');});
+
+function toggleWebSearch(){
+  webSearchEnabled=!webSearchEnabled;
+  var btn=document.getElementById('modeWebBtn');
+  btn.classList.toggle('active',webSearchEnabled);
+  btn.title=webSearchEnabled?'Web search ON — every message will search':'Force web search on every message';
+}
 
 function genId(){return Date.now().toString(36)+Math.random().toString(36).substr(2,5)}
 
@@ -500,7 +509,7 @@ async function sendMessage(){
     if(hasImages){
       r=await fetch('/api/vision',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:msgs[msgs.length-1].content||'Describe this image in detail',image:imageData[0]})});
     }else{
-      r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs})});
+      r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs,force_search:webSearchEnabled})});
     }
     var data=await r.json();
     hideTyping();
