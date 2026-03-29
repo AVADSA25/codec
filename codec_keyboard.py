@@ -11,7 +11,7 @@ from pynput import keyboard as kb
 from codec_config import (
     KEY_TOGGLE, KEY_VOICE, KEY_TEXT,
     WAKE_WORD, WAKE_PHRASES, WAKE_ENERGY, WAKE_CHUNK_SEC, WHISPER_URL,
-    cfg,
+    cfg, clean_transcript,
 )
 
 log = logging.getLogger('codec')
@@ -84,6 +84,8 @@ def start_keyboard_listener(state, ctx):
             state['rec_overlay'] = None
         push(lambda: show_processing_overlay('Transcribing...', 4000))
         task = transcribe(audio)
+        if task:
+            task = clean_transcript(task)
         if not task:
             log.info("No speech detected")
             return
@@ -138,6 +140,7 @@ def start_keyboard_listener(state, ctx):
                                 real = [w for w in words if len(w) > 2 and w not in noise_words]
                                 return len(real) < 1
 
+                            command = clean_transcript(command) or command
                             if len(command) > 3 and not _is_noise(command):
                                 log.info(f"Wake + command: {command}")
                                 audit("WAKE_CMD", command[:200])
@@ -155,6 +158,8 @@ def start_keyboard_listener(state, ctx):
                                 tmp2.close()
                                 sf.write(tmp2.name, full_audio, sample_rate)
                                 task = transcribe(tmp2.name)
+                                if task:
+                                    task = clean_transcript(task)
                                 if task and not _is_noise(task):
                                     log.info(f"Heard: {task}")
                                     audit("WAKE_TASK", task[:200])
@@ -204,17 +209,44 @@ def start_keyboard_listener(state, ctx):
                 push(do_text)
             return
         if key == KEY_VOICE:
+            now_v = time.time()
+            _kv_label = cfg.get('key_voice', 'f18').upper()
             if not state["recording"]:
+                # First tap — start normal hold-to-record
                 state["recording"] = True
+                state["ptt_locked"] = False
+                state["last_f18_press"] = now_v
                 try:
-                    import signal as _sig
                     subprocess.run(["pkill", "-f", "C O D E C"],
                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 except Exception as e:
                     log.warning(f"Non-critical error: {e}")
                 push(do_start_recording)
-                _kv_label = cfg.get('key_voice', 'f18').upper()
                 state['rec_overlay'] = show_recording_overlay(_kv_label)
+            elif not state.get("ptt_locked"):
+                # Second tap while recording (not yet locked)
+                if now_v - state.get("last_f18_press", 0.0) < 0.5:
+                    # Double-tap within 0.5s → lock mode
+                    state["ptt_locked"] = True
+                    state["last_f18_press"] = 0.0
+                    if state.get('rec_overlay'):
+                        try:
+                            state['rec_overlay'].terminate()
+                        except Exception as e:
+                            log.warning(f"Non-critical error: {e}")
+                    state['rec_overlay'] = show_overlay(
+                        '\U0001f534 REC LOCKED \u2014 tap ' + _kv_label + ' to stop', '#ff3b3b', 0)
+                    log.info("PTT locked")
+            else:
+                # Tap while locked → stop recording
+                state["ptt_locked"] = False
+                if state.get('rec_overlay'):
+                    try:
+                        state['rec_overlay'].terminate()
+                    except Exception as e:
+                        log.warning(f"Non-critical error: {e}")
+                    state['rec_overlay'] = None
+                push(do_stop_voice)
             return
         if hasattr(key, 'char') and key.char == '*':
             if now - state["last_star"] < 0.5:
@@ -246,7 +278,7 @@ def start_keyboard_listener(state, ctx):
             return
 
     def on_release(key):
-        if key == KEY_VOICE and state["recording"]:
+        if key == KEY_VOICE and state["recording"] and not state.get("ptt_locked"):
             if state.get('rec_overlay'):
                 try:
                     state['rec_overlay'].terminate()

@@ -122,3 +122,51 @@ def _resolve_key(name):
 KEY_TOGGLE = _resolve_key(cfg.get("key_toggle", "f13"))
 KEY_VOICE  = _resolve_key(cfg.get("key_voice", "f18"))
 KEY_TEXT   = _resolve_key(cfg.get("key_text", "f16"))
+
+
+def clean_transcript(text):
+    """Post-process Whisper transcription — strip hallucinations, stutters, misheard words."""
+    if not text:
+        return text
+    import re
+
+    # 1. Strip common Whisper hallucinations (exact match)
+    hallucinations = [
+        "thank you for watching", "thanks for watching", "subscribe to my channel",
+        "please subscribe", "like and subscribe", "thank you for listening",
+        "thanks for listening", "see you next time", "bye bye",
+        "the end", "music playing", "(music)", "[music]",
+        "you", "thank you.", "thanks.", "bye.", "okay.",
+        "(silence)", "[silence]", "...",
+    ]
+    if text.lower().strip() in hallucinations:
+        return ""
+
+    # 2. Remove leading filler words
+    text = re.sub(r'^(um|uh|erm|hmm|ah|oh|like|so|well|okay so|right so|you know)\s+',
+                  '', text, flags=re.IGNORECASE)
+
+    # 3. Remove repeated words (Whisper stutter)
+    text = re.sub(r'\b(\w+)(\s+\1\b)+', r'\1', text, flags=re.IGNORECASE)
+    text = re.sub(r'\b(\w+\s+\w+)(\s+\1\b)+', r'\1', text, flags=re.IGNORECASE)
+
+    # 4. Fix common misheard words
+    replacements = {
+        "kodak": "CODEC", "kodek": "CODEC", "co deck": "CODEC",
+        "kodex": "CODEC", "codex": "CODEC", "codec": "CODEC",
+        "hey cue": "Hey CODEC", "hey queue": "Hey CODEC",
+        "hey que": "Hey CODEC", "hey cu": "Hey CODEC",
+    }
+    for wrong, right in replacements.items():
+        text = re.sub(re.escape(wrong), right, text, flags=re.IGNORECASE)
+
+    # 5. Capitalize first letter
+    if text and text[0].islower():
+        text = text[0].upper() + text[1:]
+
+    # 6. Ensure ends with punctuation
+    text = text.rstrip()
+    if text and text[-1] not in '.!?':
+        text += '.'
+
+    return text.strip()

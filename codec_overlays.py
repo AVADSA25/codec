@@ -25,7 +25,7 @@ c.create_text(w//2,h//2,text='{text}',fill='{color}',font=('Helvetica',13))
 {d}
 root.mainloop()
 """
-    subprocess.Popen([sys.executable, "-c", s], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return subprocess.Popen([sys.executable, "-c", s], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def show_recording_overlay(key_label="F18"):

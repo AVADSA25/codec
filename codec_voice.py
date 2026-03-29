@@ -145,6 +145,7 @@ class VoicePipeline:
 
         self.skills = {}
         self._http  = httpx.AsyncClient(timeout=120.0)
+        self._warmed_up = False
         self._load_skills()
 
     # ── Skill loader ──────────────────────────────────────────────────────
@@ -171,6 +172,30 @@ class VoicePipeline:
             except Exception as e:
                 print(f"[Voice] Skill load error {fname}: {e}")
         print(f"[Voice] {len(self.skills)} skills loaded")
+
+    # ── LLM Warmup ────────────────────────────────────────────────────────
+
+    async def warmup_llm(self):
+        """Pre-load system prompt + recent memory when VAD detects speech start."""
+        if self._warmed_up:
+            return
+        self._warmed_up = True
+        try:
+            _dash = os.path.dirname(os.path.abspath(__file__))
+            if _dash not in sys.path:
+                sys.path.insert(0, _dash)
+            from codec_memory import CodecMemory
+            mem = CodecMemory()
+            context = mem.get_context("recent", 5)
+            if context:
+                base = _build_system_prompt()
+                self.messages[0] = {
+                    "role": "system",
+                    "content": base + "\n\nRecent memory:\n" + context
+                }
+                print("[Voice] Warmup: memory context injected into system prompt")
+        except Exception as e:
+            print(f"[Voice] Warmup error: {e}")
 
     _VOICE_SKIP_SKILLS = {"calculator", "app_switch", "brightness", "clipboard"}
 
@@ -248,6 +273,14 @@ class VoicePipeline:
                 if len(words) < 2:
                     print(f"[Voice] Discarded too short: '{text}'")
                     return ""
+                try:
+                    _dash = os.path.dirname(os.path.abspath(__file__))
+                    if _dash not in sys.path:
+                        sys.path.insert(0, _dash)
+                    from codec_config import clean_transcript as _clean
+                    text = _clean(text) or text
+                except Exception:
+                    pass
                 return text
             print(f"[Voice] Whisper {r.status_code}: {r.text[:200]}")
         except Exception as e:
@@ -301,6 +334,7 @@ class VoicePipeline:
 
     async def generate_response(self, user_text: str):
         self.messages.append({"role": "user", "content": user_text})
+        self._warmed_up = False  # reset so next speech start can warm up again
         full = ""
         async for chunk in self._stream_qwen(self._trimmed_messages()):
             full += chunk
@@ -524,8 +558,11 @@ class VoicePipeline:
                         self.interrupted.set()
                     continue
 
-                # Normal VAD feeding
+                # Normal VAD feeding — trigger warmup on speech start
+                was_speaking = self.is_speaking
                 utterance = self.feed_audio(raw_bytes)
+                if self.is_speaking and not was_speaking and not self._warmed_up:
+                    asyncio.create_task(self.warmup_llm())
                 if utterance:
                     await self.utterance_queue.put(utterance)
 

@@ -677,6 +677,127 @@ CODE TO CONVERT:
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+def _fetch_url_content(url: str, max_chars: int = 8000) -> str:
+    """Fetch a URL and return stripped text content."""
+    try:
+        import httpx
+        from html.parser import HTMLParser
+
+        class _Stripper(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self._skip = False
+                self.chunks = []
+            def handle_starttag(self, tag, attrs):
+                if tag in ('script', 'style', 'nav', 'footer'):
+                    self._skip = True
+            def handle_endtag(self, tag):
+                if tag in ('script', 'style', 'nav', 'footer'):
+                    self._skip = False
+            def handle_data(self, data):
+                if not self._skip:
+                    stripped = data.strip()
+                    if stripped:
+                        self.chunks.append(stripped)
+
+        r = httpx.get(url, timeout=15, follow_redirects=True,
+                       headers={"User-Agent": "Mozilla/5.0 (compatible; CODEC/1.0)"})
+        if 'text/html' in r.headers.get('content-type', ''):
+            parser = _Stripper()
+            parser.feed(r.text)
+            text = ' '.join(parser.chunks)
+        else:
+            text = r.text
+        return text[:max_chars]
+    except Exception as e:
+        log.warning(f"URL fetch failed ({url}): {e}")
+        return ""
+
+
+def _enrich_messages(messages: list, config: dict) -> list:
+    """
+    Auto-detect URLs and search intent in the last user message.
+    Injects a context message before the last user message when content is found.
+    Returns a (possibly modified) copy of the messages list.
+    """
+    import re as _re
+    if not messages:
+        return messages
+
+    # Find last user message
+    last_user_idx = None
+    for i in range(len(messages) - 1, -1, -1):
+        if messages[i].get("role") == "user":
+            last_user_idx = i
+            break
+    if last_user_idx is None:
+        return messages
+
+    last_text = messages[last_user_idx].get("content", "")
+    if not isinstance(last_text, str):
+        return messages
+
+    context_parts = []
+
+    # ── URL detection ──────────────────────────────────────────────────────────
+    urls = _re.findall(r'https?://[^\s\)\]>,"\']+', last_text)
+    for url in urls[:3]:  # cap at 3 URLs per message
+        content = _fetch_url_content(url)
+        if content:
+            context_parts.append(f"[URL CONTENT: {url}]\n{content}\n[END URL CONTENT]")
+            log.info(f"Chat URL fetched: {url} ({len(content)} chars)")
+
+    # ── Search intent detection ────────────────────────────────────────────────
+    search_triggers = [
+        'search for', 'search the web', 'google', 'look up', 'find out',
+        'what is the latest', 'current news', 'recent', 'today\'s', 'right now',
+        'who won', 'stock price', 'weather in', 'news about'
+    ]
+    lower = last_text.lower()
+    should_search = any(t in lower for t in search_triggers) and not urls
+    if should_search:
+        try:
+            import sys, os as _os
+            repo_dir = _os.path.dirname(_os.path.abspath(__file__))
+            if repo_dir not in sys.path:
+                sys.path.insert(0, repo_dir)
+            from codec_search import search, format_results
+            results = search(last_text, max_results=5)
+            if results:
+                context_parts.append(f"[WEB SEARCH RESULTS]\n{format_results(results, max_snippets=5)}\n[END WEB SEARCH RESULTS]")
+                log.info(f"Chat search injected for: {last_text[:80]}")
+        except Exception as e:
+            log.warning(f"Chat search failed: {e}")
+
+    if not context_parts:
+        return messages
+
+    # Inject context as an assistant message just before the last user message
+    context_msg = {"role": "assistant", "content": "\n\n".join(context_parts)}
+    enriched = list(messages)
+    enriched.insert(last_user_idx, context_msg)
+    return enriched
+
+
+@app.post("/api/web_search")
+async def web_search_endpoint(request: Request):
+    """Standalone web search endpoint for the chat UI."""
+    body = await request.json()
+    query = body.get("query", "").strip()
+    if not query:
+        return JSONResponse({"error": "query required"}, status_code=400)
+    try:
+        import sys, os as _os
+        repo_dir = _os.path.dirname(_os.path.abspath(__file__))
+        if repo_dir not in sys.path:
+            sys.path.insert(0, repo_dir)
+        from codec_search import search, format_results
+        results = search(query, max_results=8)
+        return {"results": results, "formatted": format_results(results, max_snippets=8)}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 @app.post("/api/chat")
 async def chat_completion(request: Request):
     """Direct LLM chat with full context window"""
@@ -734,6 +855,7 @@ async def chat_completion(request: Request):
         kwargs = config.get("llm_kwargs", {})
         headers = {"Content-Type": "application/json"}
         if api_key: headers["Authorization"] = f"Bearer {api_key}"
+        messages = _enrich_messages(messages, config)
         payload = {
             "model": model,
             "messages": messages,

@@ -209,6 +209,8 @@ state = {
     "screen_ctx": "",
     "last_plus": 0.0,
     "doc_ctx": "",
+    "ptt_locked": False,
+    "last_f18_press": 0.0,
 }
 
 # ── WORK QUEUE ────────────────────────────────────────────────────────────────
