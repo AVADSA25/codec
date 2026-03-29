@@ -61,12 +61,95 @@ def check_memory_stats():
     except Exception as e:
         log.error(f"Memory stats failed: {e}")
 
+def extract_task_from_message(content: str) -> str:
+    """Extract actionable task from assistant's confirmation message."""
+    import re
+    patterns = [
+        r'logged the task to (.+?)(?:\.|$)',
+        r'task.*?to (.+?)(?:\.|$)',
+        r'queued (.+?) for',
+        r'execute.*?(?:to |: )(.+?)(?:\.|$)',
+        r'will (.+?) for you(?:\.|$)',
+        r'going to (.+?)(?:\.|$)',
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, content, re.IGNORECASE)
+        if match:
+            task = match.group(1).strip()
+            if 5 < len(task) < 200:
+                return task
+    return ""
+
+
+def execute_pending_tasks():
+    """Find and execute tasks saved during voice/chat conversations."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cutoff = (datetime.now() - timedelta(hours=24)).isoformat()
+
+        rows = conn.execute("""
+            SELECT id, content, timestamp FROM conversations
+            WHERE timestamp > ?
+            AND role = 'assistant'
+            AND (
+                content LIKE '%logged the task%'
+                OR content LIKE '%saved%task%'
+                OR content LIKE '%for CODEC to execute%'
+                OR content LIKE '%queued%'
+                OR content LIKE '%will do that for you%'
+            )
+            ORDER BY id DESC LIMIT 5
+        """, (cutoff,)).fetchall()
+        conn.close()
+
+        if not rows:
+            return
+
+        executed_path = os.path.expanduser("~/.codec/executed_tasks.json")
+        try:
+            with open(executed_path) as f:
+                executed = json.load(f)
+        except Exception:
+            executed = []
+
+        for row_id, content, ts in rows:
+            if row_id in executed:
+                continue
+
+            task = extract_task_from_message(content)
+            if not task:
+                continue
+
+            log.info(f"  🚀 Auto-executing: {task[:80]}")
+            try:
+                r = requests.post(
+                    "http://localhost:8090/api/command",
+                    json={"command": task, "source": "heartbeat"},
+                    timeout=60,
+                )
+                if r.status_code == 200:
+                    log.info(f"  ✅ Task queued successfully")
+                    executed.append(row_id)
+                else:
+                    log.warning(f"  ⚠️ /api/command returned {r.status_code}")
+            except Exception as e:
+                log.error(f"  ❌ Task execution failed: {e}")
+
+        with open(executed_path, "w") as f:
+            json.dump(executed[-100:], f)
+
+    except Exception as e:
+        log.error(f"execute_pending_tasks error: {e}")
+
+
 def heartbeat():
-    """Run one heartbeat cycle"""
+    """Run one heartbeat cycle."""
     log.info("═══ CODEC Heartbeat ═══")
     check_system_health()
     check_memory_stats()
     tasks = check_pending_tasks()
+    if tasks:
+        execute_pending_tasks()
     log.info("═══ Heartbeat complete ═══")
     return tasks
 

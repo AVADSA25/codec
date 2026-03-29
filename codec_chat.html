@@ -183,6 +183,7 @@ input[type=file]{display:none}
 <option value="data_analysis">&#128200; Data Analysis</option>
 <option value="custom">&#128736; Custom Agent</option>
 </select>
+<button id="scheduleBtn" class="mode-btn" onclick="showSchedulePanel()" title="Schedule this crew to run automatically" style="display:none">⏰</button>
 </div>
 <button class="hbtn" onclick="toggleTheme()" id="themeBtn">&#9728;</button>
 </div>
@@ -251,6 +252,8 @@ function setMode(mode){
   var crew=mode==='research'?cs.value:'deep_research';
   var hints={'deep_research':'Research topic... (3-6 min)','daily_briefing':'Press send for daily briefing','trip_planner':'Destination + dates...','competitor_analysis':'Market or product to analyze...','email_handler':'Press send to handle inbox','custom':'Describe your task for the custom agent...'};
   document.getElementById('chatInput').placeholder=mode==='research'?(hints[crew]||'Enter crew task...'):'Message Q...';
+  // Show/hide schedule button
+  document.getElementById('scheduleBtn').style.display=mode==='research'?'':'none';
   // Show/hide custom agent builder
   var builder=document.getElementById('agentBuilder');
   if(mode==='research'&&crew==='custom'){
@@ -731,6 +734,23 @@ function loadSavedAgent(json) {
     }
     document.getElementById('savedAgentSelect').value = '';
   } catch(e) {}
+}
+
+function showSchedulePanel() {
+  var crew = document.getElementById('crewSelect').value || 'daily_briefing';
+  var hour = prompt('Run ' + crew + ' every day at what hour? (0-23)', '8');
+  if (!hour) return;
+  fetch('/api/schedules', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({crew: crew, hour: parseInt(hour), minute: 0})
+  }).then(r => r.json()).then(d => {
+    if (d.schedule) {
+      alert('✅ Scheduled! ' + crew + ' will run daily at ' + String(parseInt(hour)).padStart(2,'0') + ':00');
+    } else {
+      alert('Error: ' + (d.error || 'unknown'));
+    }
+  }).catch(e => alert('Schedule error: ' + e));
 }
 </script>
 </body>

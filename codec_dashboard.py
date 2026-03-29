@@ -121,20 +121,33 @@ async def audit(limit: int = 50):
 
 @app.post("/api/command")
 async def send_command(request: Request):
-    """Send a text command to CODEC"""
+    """Queue a command for CODEC to execute (used by heartbeat, scheduler, and PWA)."""
     body = await request.json()
-    task = body.get("task", "").strip()
+    # Accept both 'command' (heartbeat/scheduler) and 'task' (PWA) keys
+    task = (body.get("command") or body.get("task") or "").strip()
     if not task:
-        return JSONResponse({"error": "Empty task"}, status_code=400)
+        return JSONResponse({"error": "No command provided"}, status_code=400)
+    source = body.get("source", "api")
+
+    queue_path = "/tmp/q_task_queue.txt"
+    entry = json.dumps({
+        "task": task,
+        "source": source,
+        "timestamp": datetime.now().isoformat()
+    }) + "\n"
 
     # Write to task queue file — CODEC's dispatch will pick it up
     try:
+        with open(queue_path, "a") as f:
+            f.write(entry)
+
+        # Also write to legacy TASK_QUEUE for backward compat
         with open(TASK_QUEUE, "w") as f:
             json.dump({
                 "task": task,
                 "app": "CODEC Dashboard",
                 "ts": datetime.now().isoformat(),
-                "source": "pwa"
+                "source": source
             }, f)
 
         # Also save to DB
@@ -148,10 +161,12 @@ async def send_command(request: Request):
 
         # Write audit
         with open(AUDIT_LOG, "a") as f:
-            f.write(f"[{datetime.now().isoformat()}] PWA_CMD: {task[:200]}\n")
+            f.write(f"[{datetime.now().isoformat()}] CMD[{source}]: {task[:200]}\n")
 
-        return {"status": "queued", "task": task}
+        log.info(f"[Command] Queued from {source}: {task[:80]}")
+        return {"status": "queued", "command": task, "source": source}
     except Exception as e:
+        log.error(f"[Command] Queue write failed: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
@@ -1023,6 +1038,49 @@ async def list_custom_agents():
             except Exception:
                 pass
     return {"agents": agents}
+
+
+@app.get("/api/schedules")
+async def list_schedules_api():
+    """List all scheduled agent runs."""
+    try:
+        from codec_scheduler import load_schedules
+        return {"schedules": load_schedules()}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/api/schedules")
+async def add_schedule_api(request: Request):
+    """Add a new scheduled agent run."""
+    body = await request.json()
+    required = ["crew"]
+    for field in required:
+        if field not in body:
+            return JSONResponse({"error": f"Missing field: {field}"}, status_code=400)
+    try:
+        from codec_scheduler import add_schedule
+        s = add_schedule(
+            body["crew"],
+            topic=body.get("topic", ""),
+            cron_hour=body.get("hour", 8),
+            cron_minute=body.get("minute", 0),
+            days=body.get("days"),
+        )
+        return {"schedule": s}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.delete("/api/schedules/{sched_id}")
+async def delete_schedule_api(sched_id: str):
+    """Remove a schedule by ID."""
+    try:
+        from codec_scheduler import remove_schedule
+        removed = remove_schedule(sched_id)
+        return {"removed": removed, "id": sched_id}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
