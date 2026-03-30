@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
 
+import hashlib
 import httpx
 
 # ── CONFIG ──
@@ -36,8 +37,29 @@ def _qwen_model():
 
 SERPER_API_KEY = _cfg().get("serper_api_key", os.environ.get("SERPER_API_KEY", ""))
 
+# ── AUDIT LOGGER ──
+_AUDIT_LOG_PATH = os.path.expanduser("~/.codec/audit.log")
+
+def _audit(event_type: str, **kwargs):
+    """Append a structured audit entry for agent/crew/tool events."""
+    try:
+        entry = json.dumps({
+            "ts": datetime.now().isoformat(),
+            "event": event_type,
+            **{k: v for k, v in kwargs.items() if v is not None},
+        })
+        os.makedirs(os.path.dirname(_AUDIT_LOG_PATH), exist_ok=True)
+        with open(_AUDIT_LOG_PATH, "a") as f:
+            f.write(entry + "\n")
+    except Exception:
+        pass
+
 # Captures the last Google Docs URL created — fallback if Writer forgets to echo it
 _last_gdoc_url: Optional[str] = None
+
+# Google Docs rate-limit / dedup state
+_gdoc_created: Dict[str, float] = {}   # title_hash → timestamp
+_GDOC_COOLDOWN_SEC = 60                 # minimum seconds between docs with same title
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -53,7 +75,10 @@ class Tool:
     def run(self, input_str: str) -> str:
         try:
             result = self.fn(input_str)
-            return str(result)[:10000] if result else "No output."
+            text = str(result) if result else "No output."
+            if len(text) > 10000:
+                text = text[:10000] + f"\n\n[TRUNCATED: output was {len(text)} chars, showing first 10000]"
+            return text
         except Exception as e:
             return f"Tool error ({self.name}): {e}"
 
@@ -80,7 +105,9 @@ def _web_fetch(url: str) -> str:
         text = re.sub(r'<style[^>]*>[\s\S]*?</style>', '', text)
         text = re.sub(r'<[^>]+>', ' ', text)
         text = re.sub(r'\s+', ' ', text).strip()
-        return text[:10000]
+        if len(text) > 10000:
+            return text[:10000] + f"\n\n[TRUNCATED: page was {len(text)} chars, showing first 10000]"
+        return text
     except Exception as e:
         return f"Fetch error: {e}"
 
@@ -98,7 +125,10 @@ def _file_read(path: str) -> str:
         return "Error: cannot read files outside home directory."
     try:
         with open(path, "r", errors="ignore") as f:
-            return f.read()[:10000]
+            content = f.read()
+        if len(content) > 10000:
+            return content[:10000] + f"\n\n[TRUNCATED: file was {len(content)} chars, showing first 10000]"
+        return content
     except Exception as e:
         return f"File read error: {e}"
 
@@ -135,7 +165,8 @@ def _file_write(input_str: str) -> str:
 
 
 def _google_docs_create(input_str: str) -> str:
-    """Create a richly styled Google Doc — reuses codec_gdocs.create_google_doc()."""
+    """Create a richly styled Google Doc — reuses codec_gdocs.create_google_doc().
+    Rate-limited: blocks duplicate titles within 60 seconds."""
     global _last_gdoc_url
     title = "CODEC Report"
     content = input_str
@@ -146,6 +177,16 @@ def _google_docs_create(input_str: str) -> str:
             elif line.lower().startswith("content:"):
                 content = input_str.split("content:", 1)[1].strip()
                 break
+
+    # Dedup: reject same title within cooldown period
+    title_hash = hashlib.sha256(title.encode()).hexdigest()[:16]
+    now = time.time()
+    last_created = _gdoc_created.get(title_hash, 0)
+    if now - last_created < _GDOC_COOLDOWN_SEC:
+        remaining = int(_GDOC_COOLDOWN_SEC - (now - last_created))
+        return (f"Rate-limited: a Google Doc titled '{title}' was created {int(now - last_created)}s ago. "
+                f"Wait {remaining}s or use a different title. Last URL: {_last_gdoc_url or 'unknown'}")
+
     try:
         import sys as _sys
         _dash = os.path.dirname(os.path.abspath(__file__))
@@ -155,6 +196,7 @@ def _google_docs_create(input_str: str) -> str:
         doc_url = create_google_doc(title, content)
         if doc_url:
             _last_gdoc_url = doc_url
+            _gdoc_created[title_hash] = now
             return f"Google Doc created: {doc_url}"
         return "Google Docs error: doc creation returned None"
     except Exception as e:
@@ -171,9 +213,14 @@ def _shell_execute(cmd: str) -> str:
     try:
         r = subprocess.run(cmd, shell=True, capture_output=True, text=True,
                            timeout=30, cwd=os.path.expanduser("~"))
-        out = r.stdout[:5000]
+        out = r.stdout
+        if len(out) > 5000:
+            out = out[:5000] + f"\n[TRUNCATED: stdout was {len(r.stdout)} chars]"
         if r.stderr:
-            out += "\nSTDERR: " + r.stderr[:2000]
+            stderr = r.stderr
+            if len(stderr) > 2000:
+                stderr = stderr[:2000] + f"\n[TRUNCATED: stderr was {len(r.stderr)} chars]"
+            out += "\nSTDERR: " + stderr
         return out or "(no output)"
     except subprocess.TimeoutExpired:
         return "Command timed out (30s)"
@@ -313,9 +360,13 @@ Rules:
                         if self.verbose:
                             print(f"[{self.name}] → {tool_name}({tool_input[:80]}…)")
 
+                        _audit("tool_call", agent=self.name, tool=tool_name,
+                               input=tool_input[:200])
                         loop = asyncio.get_event_loop()
                         result = await loop.run_in_executor(None, tool.run, tool_input)
                         tool_calls_made += 1
+                        _audit("tool_result", agent=self.name, tool=tool_name,
+                               result_len=len(result))
 
                         if self.verbose:
                             print(f"[{self.name}] ← {result[:150]}…")
@@ -364,9 +415,25 @@ class Crew:
     tasks: List[str]
     mode: str = "sequential"    # "sequential" | "parallel"
     max_steps: int = 8
+    allowed_tools: Optional[List[str]] = None  # Tool name allowlist; None = no restriction
+
+    def __post_init__(self):
+        """Enforce tool scoping: strip any agent tool not in the crew allowlist."""
+        if self.allowed_tools is not None:
+            allowed = set(self.allowed_tools)
+            for agent in self.agents:
+                before = len(agent.tools)
+                agent.tools = [t for t in agent.tools if t.name in allowed]
+                if agent.tools != agent.tools or before != len(agent.tools):
+                    stripped = before - len(agent.tools)
+                    if stripped:
+                        print(f"[Crew] Scoped {agent.name}: removed {stripped} tool(s) outside allowlist")
 
     async def run(self, callback: Optional[Callable] = None) -> str:
         start = time.time()
+        agent_names = [a.name for a in self.agents]
+        _audit("crew_start", agents=agent_names, mode=self.mode,
+               allowed_tools=self.allowed_tools)
         if callback:
             await _safe_cb(callback, {"status": "started", "agents": len(self.agents), "tasks": len(self.tasks)})
 
@@ -394,6 +461,8 @@ class Crew:
             final = f"Unknown crew mode: {self.mode}"
 
         elapsed = int(time.time() - start)
+        _audit("crew_complete", mode=self.mode, elapsed=elapsed,
+               result_len=len(final))
         if callback:
             await _safe_cb(callback, {"status": "complete", "elapsed": elapsed})
         return final
@@ -412,8 +481,14 @@ def save_to_memory(session_name: str, task: str, result: str):
         from codec_memory import CodecMemory
         mem = CodecMemory()
         sid = f"agents_{session_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        mem.save(sid, "user",      f"[AGENT TASK] {task[:2000]}")
-        mem.save(sid, "assistant", f"[AGENT RESULT] {result[:2000]}")
+        task_text = task[:2000]
+        result_text = result[:2000]
+        if len(task) > 2000:
+            task_text += f" [TRUNCATED from {len(task)} chars]"
+        if len(result) > 2000:
+            result_text += f" [TRUNCATED from {len(result)} chars]"
+        mem.save(sid, "user",      f"[AGENT TASK] {task_text}")
+        mem.save(sid, "assistant", f"[AGENT RESULT] {result_text}")
         print(f"[Agents] Saved to memory: {sid}")
     except Exception as e:
         print(f"[Agents] Memory save error: {e}")
@@ -459,6 +534,7 @@ def deep_research_crew(**kwargs) -> Crew:
             f"'CODEC Research: {topic[:80]} — {datetime.now().strftime('%Y-%m-%d')}'\n"
             f"After saving, your FINAL response MUST begin with the Google Docs URL on its own line."
         ],
+        allowed_tools=["web_search", "web_fetch", "google_docs_create"],
     )
 
 
@@ -483,6 +559,7 @@ def daily_briefing_crew(**kwargs) -> Crew:
             "3. News — any major headlines (search 'top news today')?\n"
             "Keep it conversational and brief."
         ],
+        allowed_tools=["google_calendar", "weather", "web_search"],
     )
 
 
@@ -514,6 +591,7 @@ def trip_planner_crew(**kwargs) -> Crew:
             f"Create a day-by-day itinerary for {destination} {dates}. "
             f"Save to Google Docs: 'Trip Plan: {destination} — {datetime.now().strftime('%Y-%m-%d')}'"
         ],
+        allowed_tools=["web_search", "web_fetch", "google_docs_create", "google_calendar"],
     )
 
 
@@ -543,6 +621,7 @@ def competitor_analysis_crew(**kwargs) -> Crew:
             f"Write a strategic competitive analysis. SWOT + recommendations. "
             f"Save to Google Docs: 'Competitor Analysis: {topic[:60]} — {datetime.now().strftime('%Y-%m-%d')}'"
         ],
+        allowed_tools=["web_search", "web_fetch", "google_docs_create"],
     )
 
 
@@ -572,6 +651,7 @@ def email_handler_crew(**kwargs) -> Crew:
             "Check unread emails. Categorize each by urgency. List them all.",
             "Draft replies for urgent emails. Summarize actions for the rest.",
         ],
+        allowed_tools=["google_gmail"],
     )
 
 
@@ -610,6 +690,7 @@ def social_media_crew(**kwargs) -> Crew:
             "Save all to a Google Doc with title: "
             "'Social Media Posts: " + topic[:60] + " — " + datetime.now().strftime('%Y-%m-%d') + "'"
         ],
+        allowed_tools=["web_search", "web_fetch", "google_docs_create"],
     )
 
 
@@ -656,6 +737,7 @@ def code_review_crew(**kwargs) -> Crew:
             f"Check the code for security vulnerabilities",
             f"Suggest improvements for readability and maintainability",
         ],
+        allowed_tools=["file_read", "file_write", "web_search"],
     )
 
 
@@ -695,6 +777,286 @@ def data_analyst_crew(**kwargs) -> Crew:
             f"Analyze the data and write an insights report. Save to Google Docs with title: "
             "'Data Analysis: " + topic[:60] + " — " + datetime.now().strftime('%Y-%m-%d') + "'"
         ],
+        allowed_tools=["web_search", "web_fetch", "google_sheets", "google_docs_create"],
+    )
+
+
+def content_writer_crew(**kwargs) -> Crew:
+    """Content Writer crew — research + write + publish to Google Docs."""
+    all_tools = get_all_tools()
+    topic = kwargs.get("topic", "the given topic")
+    content_type = kwargs.get("content_type", "blog post")
+    audience = kwargs.get("audience", "general")
+    research_tools = [t for t in all_tools if t.name in ("web_search", "web_fetch")]
+    write_tools = [t for t in all_tools if t.name in ("google_docs_create",)]
+
+    researcher = Agent(
+        name="Content Researcher",
+        role=(
+            f"You are a content research specialist. Your job is to research the topic "
+            f"'{topic}' thoroughly to provide the writer with factual, current, and "
+            f"engaging material. Find statistics, expert quotes, real examples, trending "
+            f"angles, and competitor content on this topic. Focus on what would resonate "
+            f"with a {audience} audience. Search at least 3 different angles."
+        ),
+        tools=research_tools, max_tool_calls=5,
+    )
+    writer = Agent(
+        name="Content Writer",
+        role=(
+            f"You are an expert content writer. Write a {content_type} about '{topic}' "
+            f"for a {audience} audience. Use the research provided as context.\n\n"
+            f"Writing guidelines:\n"
+            f"- Hook the reader in the first sentence\n"
+            f"- Use short paragraphs (2-3 sentences max)\n"
+            f"- Include subheadings every 200-300 words\n"
+            f"- Weave in statistics and examples from the research\n"
+            f"- End with a clear call to action or takeaway\n"
+            f"- SEO: naturally include the main topic keyword 3-5 times\n"
+            f"- Tone: professional but conversational, not robotic\n"
+            f"- Length: 1500-2500 words for blog posts, 800-1200 for LinkedIn\n\n"
+            "Save the final piece to Google Docs with title: "
+            f"'{content_type.title()}: {topic[:60]} — {datetime.now().strftime('%Y-%m-%d')}'\n"
+            f"IMPORTANT: Your FINAL response MUST include the exact Google Docs URL returned by the tool."
+        ),
+        tools=write_tools, max_tool_calls=2,
+    )
+    return Crew(
+        agents=[researcher, writer],
+        tasks=[
+            f"Research the topic '{topic}' for a {content_type}. Target audience: {audience}. "
+            f"Find current statistics, expert opinions, real-world examples, trending angles, "
+            f"and what competitors have written about this. Provide organized research notes.",
+            f"Write a compelling {content_type} about '{topic}' using the research provided. "
+            f"Save to Google Docs when complete.",
+        ],
+        allowed_tools=["web_search", "web_fetch", "google_docs_create"],
+    )
+
+
+def meeting_summarizer_crew(**kwargs) -> Crew:
+    """Meeting Summarizer crew — parse notes + extract actions + save structured summary."""
+    all_tools = get_all_tools()
+    meeting_input = kwargs.get("meeting_input", "")
+
+    # Auto-pull from CODEC Voice memory if user says "summarize the call"
+    if len(meeting_input) < 100 and any(
+        w in meeting_input.lower() for w in ["call", "last", "voice", "previous", "recent"]
+    ):
+        try:
+            import sqlite3
+            conn = sqlite3.connect(os.path.expanduser("~/.q_memory.db"))
+            rows = conn.execute(
+                "SELECT role, content FROM conversations "
+                "WHERE session_id LIKE 'voice_%' ORDER BY id DESC LIMIT 30"
+            ).fetchall()
+            conn.close()
+            if rows:
+                transcript = "\n".join(f"{role}: {content}" for role, content in reversed(rows))
+                meeting_input = f"[CODEC Voice Call Transcript]\n{transcript}"
+        except Exception:
+            pass
+
+    read_tools = [t for t in all_tools if t.name in ("file_read", "google_gmail", "web_search")]
+    write_tools = [t for t in all_tools if t.name in ("google_docs_create", "google_calendar")]
+
+    parser = Agent(
+        name="Meeting Parser",
+        role=(
+            "You are a meeting analysis specialist. Your job is to take raw meeting notes, "
+            "transcripts, or audio transcriptions and extract structured information.\n\n"
+            "Extract the following:\n"
+            "1. ATTENDEES — who was present (names, roles if mentioned)\n"
+            "2. KEY TOPICS — main subjects discussed (3-7 bullet points)\n"
+            "3. DECISIONS MADE — any decisions that were finalized\n"
+            "4. ACTION ITEMS — specific tasks assigned, with WHO is responsible and DEADLINE if mentioned\n"
+            "5. OPEN QUESTIONS — unresolved issues that need follow-up\n"
+            "6. NEXT MEETING — date/time if scheduled\n\n"
+            "If the input is a file path, read it first. "
+            "Be precise. Don't invent information that wasn't in the notes."
+        ),
+        tools=read_tools, max_tool_calls=3,
+    )
+    formatter = Agent(
+        name="Summary Writer",
+        role=(
+            "You are a professional meeting documentation writer. Take the parsed meeting "
+            "data and create a clean, structured meeting summary document.\n\n"
+            "Format:\n"
+            "MEETING SUMMARY\n"
+            "Date: [date]\n"
+            "Attendees: [names]\n\n"
+            "OVERVIEW\n"
+            "[2-3 sentence executive summary]\n\n"
+            "KEY DISCUSSION POINTS\n"
+            "[Numbered list with brief descriptions]\n\n"
+            "DECISIONS\n"
+            "[Numbered list]\n\n"
+            "ACTION ITEMS\n"
+            "[Table: Action | Owner | Deadline | Status]\n\n"
+            "OPEN QUESTIONS\n"
+            "[Numbered list]\n\n"
+            "NEXT STEPS\n"
+            "[What happens next, next meeting date]\n\n"
+            "Save to Google Docs with title: "
+            f"'Meeting Summary — {datetime.now().strftime('%Y-%m-%d')}'\n"
+            "If action items have deadlines, add them to Google Calendar.\n"
+            "IMPORTANT: Your FINAL response MUST include the exact Google Docs URL returned by the tool."
+        ),
+        tools=write_tools, max_tool_calls=3,
+    )
+    return Crew(
+        agents=[parser, formatter],
+        tasks=[
+            f"Parse and extract structured information from these meeting notes:\n\n{meeting_input[:8000]}",
+            "Create a formatted meeting summary document from the parsed data. "
+            "Save to Google Docs. Add any action items with deadlines to Google Calendar.",
+        ],
+        allowed_tools=["file_read", "google_gmail", "web_search", "google_docs_create", "google_calendar"],
+    )
+
+
+def invoice_generator_crew(**kwargs) -> Crew:
+    """Invoice Generator crew — parse details + create professional invoice in Google Docs."""
+    all_tools = get_all_tools()
+    invoice_details = kwargs.get("invoice_details", "")
+    read_tools = [t for t in all_tools if t.name in ("google_gmail", "google_drive", "web_search")]
+    write_tools = [t for t in all_tools if t.name in ("google_docs_create",)]
+
+    parser = Agent(
+        name="Invoice Parser",
+        role=(
+            "You are an invoice preparation specialist. Your job is to extract and organize "
+            "all invoice details from the user's natural language input.\n\n"
+            "Extract:\n"
+            "1. FROM (sender): Company name, address, email, phone\n"
+            "   - Default: AVA Digital LLC, mikarina@avadigital.ai\n"
+            "2. TO (client): Client name, company, address, email\n"
+            "3. INVOICE NUMBER: Generate as INV-YYYYMMDD-001 if not specified\n"
+            "4. DATE: Today's date if not specified\n"
+            "5. DUE DATE: Net 30 from invoice date if not specified\n"
+            "6. LINE ITEMS: Description, quantity, unit price, total per line\n"
+            "7. SUBTOTAL: Sum of all line items\n"
+            "8. TAX: If mentioned (default 0%)\n"
+            "9. TOTAL: Subtotal + tax\n"
+            "10. PAYMENT DETAILS: PayPal (ava.dsa25@proton.me) or bank details if mentioned\n"
+            "11. NOTES: Any special terms, late payment fees, thank you message\n\n"
+            "If any client details are missing, check Google Drive or Gmail for previous "
+            "correspondence with this client to fill in their details.\n\n"
+            "Output all fields in a clear structured format."
+        ),
+        tools=read_tools, max_tool_calls=3,
+    )
+    creator = Agent(
+        name="Invoice Creator",
+        role=(
+            "You are a professional invoice document creator. Take the parsed invoice data "
+            "and create a clean, professional invoice document.\n\n"
+            "Format the invoice as:\n\n"
+            "INVOICE\n"
+            "Invoice #: [number]\n"
+            "Date: [date]\n"
+            "Due Date: [due date]\n\n"
+            "FROM:\n"
+            "[Sender details]\n\n"
+            "BILL TO:\n"
+            "[Client details]\n\n"
+            "ITEMS:\n"
+            "| Description | Qty | Unit Price | Total |\n"
+            "| ... | ... | ... | ... |\n\n"
+            "Subtotal: $[amount]\n"
+            "Tax: $[amount] ([rate]%)\n"
+            "TOTAL DUE: $[amount]\n\n"
+            "Payment:\n"
+            "[Payment details]\n\n"
+            "Notes:\n"
+            "[Any notes or terms]\n\n"
+            "Save to Google Docs with title: "
+            "'Invoice [number] — [client name] — [date]'\n"
+            "IMPORTANT: Your FINAL response MUST include the exact Google Docs URL returned by the tool."
+        ),
+        tools=write_tools, max_tool_calls=2,
+    )
+    return Crew(
+        agents=[parser, creator],
+        tasks=[
+            f"Parse these invoice details and extract all required fields:\n\n{invoice_details}",
+            "Create a professional invoice document from the parsed data. Save to Google Docs.",
+        ],
+        allowed_tools=["google_gmail", "google_drive", "web_search", "google_docs_create"],
+    )
+
+
+def project_manager_crew(**kwargs) -> Crew:
+    """Project Manager crew — gather status + identify blockers + write status report."""
+    all_tools = get_all_tools()
+    project = kwargs.get("project", "the project")
+    gather_tools = [t for t in all_tools if t.name in (
+        "google_calendar", "google_gmail", "google_drive", "google_tasks",
+        "google_sheets", "web_search"
+    )]
+    report_tools = [t for t in all_tools if t.name in ("google_docs_create",)]
+
+    gatherer = Agent(
+        name="Status Gatherer",
+        role=(
+            f"You are a project management assistant. Your job is to gather the current "
+            f"status of the project: '{project}'.\n\n"
+            f"Check these sources:\n"
+            f"1. Google Calendar — any upcoming meetings, deadlines, or milestones related to this project\n"
+            f"2. Google Gmail — recent emails mentioning this project or its stakeholders\n"
+            f"3. Google Drive — recent documents related to this project\n"
+            f"4. Google Tasks — any pending tasks for this project\n"
+            f"5. Google Sheets — any tracking spreadsheets\n\n"
+            f"For each source, report:\n"
+            f"- What you found (or 'nothing found' if empty)\n"
+            f"- Any upcoming deadlines or overdue items\n"
+            f"- Any blockers or risks you can identify\n\n"
+            f"If the project name is vague, search broadly and report what seems relevant."
+        ),
+        tools=gather_tools, max_tool_calls=5,
+    )
+    reporter = Agent(
+        name="Project Reporter",
+        role=(
+            f"You are a project status report writer. Take the gathered information about "
+            f"'{project}' and create a professional project status report.\n\n"
+            f"Format:\n\n"
+            f"PROJECT STATUS REPORT\n"
+            f"Project: {project}\n"
+            f"Date: {datetime.now().strftime('%Y-%m-%d')}\n"
+            f"Status: [GREEN / YELLOW / RED]\n\n"
+            f"EXECUTIVE SUMMARY\n"
+            f"[2-3 sentences on overall project health]\n\n"
+            f"PROGRESS SINCE LAST CHECK\n"
+            f"[What's been accomplished — from emails, docs, completed tasks]\n\n"
+            f"UPCOMING MILESTONES\n"
+            f"[Next 2 weeks — from calendar, tasks, deadlines]\n\n"
+            f"BLOCKERS AND RISKS\n"
+            f"[Any issues identified — overdue tasks, unanswered emails, missing deliverables]\n\n"
+            f"ACTION ITEMS\n"
+            f"[Recommended next steps with suggested owners and deadlines]\n\n"
+            f"METRICS\n"
+            f"[Any quantifiable data — task completion rate, email response times, etc.]\n\n"
+            f"Save to Google Docs with title: "
+            f"'Project Status: {project[:50]} — {datetime.now().strftime('%Y-%m-%d')}'\n"
+            f"IMPORTANT: Your FINAL response MUST include the exact Google Docs URL returned by the tool."
+        ),
+        tools=report_tools, max_tool_calls=2,
+    )
+    return Crew(
+        agents=[gatherer, reporter],
+        tasks=[
+            f"Gather the current status of project '{project}' from all available sources: "
+            f"Calendar, Gmail, Drive, Tasks, and Sheets.",
+            f"Write a comprehensive project status report for '{project}'. "
+            f"Include traffic light status (GREEN/YELLOW/RED), blockers, and recommended actions. "
+            f"Save to Google Docs.",
+        ],
+        allowed_tools=[
+            "google_calendar", "google_gmail", "google_drive", "google_tasks",
+            "google_sheets", "web_search", "google_docs_create",
+        ],
     )
 
 
@@ -711,6 +1073,10 @@ CREW_REGISTRY = {
     "social_media":        {"builder": social_media_crew,       "description": "Create platform-specific social media posts",        "args": ["topic"]},
     "code_review":         {"builder": code_review_crew,        "description": "Review code for bugs, security, quality",            "args": ["code"]},
     "data_analysis":       {"builder": data_analyst_crew,       "description": "Gather and analyze data on any topic",               "args": ["topic"]},
+    "content_writer":      {"builder": content_writer_crew,     "description": "Write blog posts, articles, newsletters with research → Google Docs",  "args": ["topic"], "optional_args": {"content_type": "blog post", "audience": "general"}},
+    "meeting_summarizer":  {"builder": meeting_summarizer_crew, "description": "Summarize meeting notes — actions, decisions, follow-ups → Google Docs + Calendar", "args": ["meeting_input"]},
+    "invoice_generator":   {"builder": invoice_generator_crew,  "description": "Generate professional invoices from natural language → Google Docs",    "args": ["invoice_details"]},
+    "project_manager":     {"builder": project_manager_crew,    "description": "Project status report from Calendar, Gmail, Drive, Tasks → Google Docs", "args": ["project"]},
 }
 
 AVAILABLE_CREWS = CREW_REGISTRY

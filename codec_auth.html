@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>CODEC — Authenticate</title>
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body {
+            font-family: 'SF Pro Display', -apple-system, sans-serif;
+            background: #0a0a0a; color: #e0e0e0;
+            height: 100vh; display: flex; align-items: center; justify-content: center;
+        }
+        .auth-container {
+            text-align: center; max-width: 380px; width: 100%; padding: 32px;
+        }
+        .logo { font-size: 48px; margin-bottom: 16px; }
+        .title { font-size: 22px; font-weight: 600; color: #E8711A; margin-bottom: 6px; }
+        .subtitle { font-size: 13px; color: #666; margin-bottom: 32px; }
+
+        .fingerprint-ring {
+            width: 120px; height: 120px; border-radius: 50%; margin: 0 auto 24px;
+            display: flex; align-items: center; justify-content: center;
+            background: #111; border: 2px solid #333;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+        .fingerprint-ring:hover { border-color: #E8711A; }
+        .fingerprint-ring.waiting { border-color: #E8711A; animation: pulse 1.5s ease-in-out infinite; }
+        .fingerprint-ring.success { border-color: #00ff88; background: #0a1a0f; }
+        .fingerprint-ring.error { border-color: #ff3b3b; background: #1a0a0a; }
+        .fingerprint-icon { font-size: 48px; }
+
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(232,113,26,0.3); }
+            50% { box-shadow: 0 0 0 16px rgba(232,113,26,0); }
+        }
+
+        .auth-btn {
+            padding: 14px 32px; font-size: 15px; font-weight: 500;
+            background: #E8711A; color: #fff; border: none; border-radius: 12px;
+            cursor: pointer; width: 100%; margin-bottom: 12px;
+            transition: background 0.2s;
+        }
+        .auth-btn:hover { background: #d4650f; }
+        .auth-btn:disabled { background: #333; color: #666; cursor: not-allowed; }
+
+        .divider {
+            display: flex; align-items: center; margin: 20px 0; gap: 12px;
+        }
+        .divider::before, .divider::after {
+            content: ''; flex: 1; height: 1px; background: #222;
+        }
+        .divider span { font-size: 11px; color: #444; text-transform: uppercase; letter-spacing: 1px; }
+
+        .pin-section { display: none; }
+        .pin-input-row {
+            display: flex; gap: 8px; justify-content: center; margin-bottom: 16px;
+        }
+        .pin-digit {
+            width: 48px; height: 56px; text-align: center; font-size: 24px;
+            font-weight: 600; letter-spacing: 2px;
+            background: #111; color: #E8711A; border: 2px solid #222;
+            border-radius: 10px; outline: none;
+            transition: border-color 0.2s;
+        }
+        .pin-digit:focus { border-color: #E8711A; }
+        .pin-digit.filled { border-color: #E8711A; }
+
+        .status { font-size: 13px; color: #666; min-height: 20px; margin-top: 16px; }
+        .status.error { color: #ff3b3b; }
+        .status.success { color: #00ff88; }
+
+        .remote-note {
+            background: #111; border: 1px solid #222; border-radius: 8px;
+            padding: 12px; margin-top: 24px; font-size: 12px; color: #555;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <div class="auth-container">
+        <div class="logo">&#9889;</div>
+        <div class="title">CODEC</div>
+        <div class="subtitle">Authentication required</div>
+
+        <!-- Touch ID section -->
+        <div id="touchidSection">
+            <div class="fingerprint-ring" id="fpRing" onclick="authenticate()">
+                <span class="fingerprint-icon" id="fpIcon">&#128274;</span>
+            </div>
+            <button class="auth-btn" id="authBtn" onclick="authenticate()">Authenticate with Touch ID</button>
+        </div>
+
+        <!-- Divider (shown when both methods available) -->
+        <div class="divider" id="divider" style="display:none">
+            <span>or</span>
+        </div>
+
+        <!-- PIN section -->
+        <div class="pin-section" id="pinSection">
+            <div class="pin-input-row">
+                <input type="password" class="pin-digit" id="pin1" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
+                <input type="password" class="pin-digit" id="pin2" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
+                <input type="password" class="pin-digit" id="pin3" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
+                <input type="password" class="pin-digit" id="pin4" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
+                <input type="password" class="pin-digit" id="pin5" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
+                <input type="password" class="pin-digit" id="pin6" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
+            </div>
+            <button class="auth-btn" id="pinBtn" onclick="verifyPin()" style="background:#333">Unlock with PIN</button>
+        </div>
+
+        <div class="status" id="status"></div>
+
+        <div class="remote-note" id="remoteNote" style="display:none;">
+            &#128241; Remote access detected. Touch ID will prompt on your Mac.
+            Keep the Mac awake and nearby.
+        </div>
+    </div>
+
+    <script>
+var isRemote = location.hostname !== 'localhost' && location.hostname !== '127.0.0.1';
+if (isRemote) {
+    document.getElementById('remoteNote').style.display = 'block';
+    document.getElementById('authBtn').textContent = 'Request Touch ID on Mac';
+}
+
+// Auto-redirect if already authenticated
+async function checkAuth() {
+    try {
+        var r = await fetch('/api/auth/status');
+        var data = await r.json();
+        if (data.authenticated) window.location.href = '/';
+    } catch(e) {}
+}
+checkAuth();
+
+// Check which auth methods are available
+async function checkAvailability() {
+    try {
+        var r = await fetch('/api/auth/check');
+        var data = await r.json();
+        var hasTouchID = data.touchid_available;
+        var hasPIN = data.pin_available;
+
+        if (hasTouchID) {
+            document.getElementById('status').textContent = data.method === 'touchID' ? 'Touch ID ready' : (data.method || 'Biometric') + ' ready';
+        } else {
+            document.getElementById('touchidSection').style.display = 'none';
+        }
+
+        if (hasPIN) {
+            document.getElementById('pinSection').style.display = 'block';
+            setupPinInputs();
+        }
+
+        if (hasTouchID && hasPIN) {
+            document.getElementById('divider').style.display = 'flex';
+        }
+
+        if (!hasTouchID && !hasPIN) {
+            document.getElementById('status').textContent = 'No auth method configured';
+            document.getElementById('status').className = 'status error';
+        }
+
+        // If only PIN, focus first digit
+        if (!hasTouchID && hasPIN) {
+            document.getElementById('pin1').focus();
+        }
+    } catch(e) {
+        document.getElementById('status').textContent = 'Could not check auth availability';
+        document.getElementById('status').className = 'status error';
+    }
+}
+checkAvailability();
+
+// ── PIN input handling ──
+function setupPinInputs() {
+    var digits = document.querySelectorAll('.pin-digit');
+    digits.forEach(function(input, i) {
+        input.addEventListener('input', function() {
+            if (this.value.length === 1) {
+                this.classList.add('filled');
+                if (i < digits.length - 1) digits[i+1].focus();
+                // Auto-submit when all 6 digits entered
+                var pin = getPin();
+                if (pin.length === 6) verifyPin();
+            }
+        });
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Backspace' && !this.value && i > 0) {
+                digits[i-1].focus();
+                digits[i-1].value = '';
+                digits[i-1].classList.remove('filled');
+            }
+            if (e.key === 'Enter') verifyPin();
+        });
+        // Only allow digits
+        input.addEventListener('beforeinput', function(e) {
+            if (e.data && !/^\d$/.test(e.data)) e.preventDefault();
+        });
+    });
+}
+
+function getPin() {
+    var pin = '';
+    for (var i = 1; i <= 6; i++) {
+        pin += document.getElementById('pin' + i).value;
+    }
+    return pin;
+}
+
+function clearPin() {
+    for (var i = 1; i <= 6; i++) {
+        var el = document.getElementById('pin' + i);
+        el.value = '';
+        el.classList.remove('filled');
+    }
+    document.getElementById('pin1').focus();
+}
+
+// ── Touch ID auth ──
+async function authenticate() {
+    var ring = document.getElementById('fpRing');
+    var icon = document.getElementById('fpIcon');
+    var btn = document.getElementById('authBtn');
+    var status = document.getElementById('status');
+
+    ring.className = 'fingerprint-ring waiting';
+    icon.innerHTML = '&#128070;';
+    btn.disabled = true;
+    btn.textContent = isRemote ? 'Waiting for Touch ID on Mac...' : 'Touch the sensor...';
+    status.textContent = 'Authenticating...';
+    status.className = 'status';
+
+    try {
+        var r = await fetch('/api/auth/verify', {method: 'POST'});
+        var data = await r.json();
+        if (data.authenticated) {
+            onSuccess(data);
+            ring.className = 'fingerprint-ring success';
+            icon.innerHTML = '&#9989;';
+        } else {
+            ring.className = 'fingerprint-ring error';
+            icon.innerHTML = '&#128274;';
+            status.textContent = data.error || 'Authentication failed';
+            status.className = 'status error';
+            btn.disabled = false;
+            btn.textContent = 'Try Again';
+        }
+    } catch(e) {
+        ring.className = 'fingerprint-ring error';
+        icon.innerHTML = '&#128274;';
+        status.textContent = 'Connection error: ' + e.message;
+        status.className = 'status error';
+        btn.disabled = false;
+        btn.textContent = 'Try Again';
+    }
+}
+
+// ── PIN auth ──
+async function verifyPin() {
+    var pin = getPin();
+    if (pin.length < 4) return;
+
+    var status = document.getElementById('status');
+    var btn = document.getElementById('pinBtn');
+    btn.disabled = true;
+    btn.textContent = 'Verifying...';
+    status.textContent = '';
+    status.className = 'status';
+
+    try {
+        var r = await fetch('/api/auth/pin', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({pin: pin})
+        });
+        var data = await r.json();
+        if (data.authenticated) {
+            onSuccess(data);
+        } else {
+            status.textContent = data.error || 'Incorrect PIN';
+            status.className = 'status error';
+            btn.disabled = false;
+            btn.textContent = 'Unlock with PIN';
+            clearPin();
+            // Shake animation
+            var row = document.querySelector('.pin-input-row');
+            row.style.animation = 'shake 0.3s';
+            setTimeout(function() { row.style.animation = ''; }, 300);
+        }
+    } catch(e) {
+        status.textContent = 'Connection error';
+        status.className = 'status error';
+        btn.disabled = false;
+        btn.textContent = 'Unlock with PIN';
+    }
+}
+
+// ── Shared success handler ──
+function onSuccess(data) {
+    var status = document.getElementById('status');
+    status.textContent = 'Authenticated via ' + (data.method || 'biometrics');
+    status.className = 'status success';
+    document.cookie = 'codec_session=' + data.token + '; path=/; max-age=' + (data.expires_hours * 3600) + '; SameSite=Strict';
+    setTimeout(function() { window.location.href = '/'; }, 600);
+}
+    </script>
+    <style>
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-8px); }
+            75% { transform: translateX(8px); }
+        }
+    </style>
+</body>
+</html>

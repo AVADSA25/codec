@@ -68,6 +68,13 @@ REQUIRE_CONFIRM   = cfg.get("require_confirmation", True)
 # When empty/missing, dashboard runs without auth (local use)
 DASHBOARD_TOKEN   = cfg.get("dashboard_token", "")
 
+# Biometric (Touch ID) auth — requires compiled Swift binary in codec_auth/
+# Set "auth_enabled": true in config.json to activate
+AUTH_ENABLED      = cfg.get("auth_enabled", False)
+AUTH_SESSION_HOURS = cfg.get("auth_session_hours", 24)
+# PIN code auth — alternative to Touch ID, stored as SHA-256 hash
+AUTH_PIN_HASH     = cfg.get("auth_pin_hash", "")  # SHA-256 of the PIN
+
 # Safety
 DANGEROUS_PATTERNS = [
     "rm -rf", "rm -r /", "rm -rf /", "rm -rf ~", "rm -rf /*",

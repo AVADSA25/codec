@@ -431,6 +431,30 @@ class VoicePipeline:
         "handle my email":      ("email_handler",       lambda t: {}),
         "check my inbox":       ("email_handler",       lambda t: {}),
         "email handler":        ("email_handler",       lambda t: {}),
+        # Content Writer
+        "write a blog":         ("content_writer",      lambda t: {"topic": t, "content_type": "blog post"}),
+        "write an article":     ("content_writer",      lambda t: {"topic": t, "content_type": "article"}),
+        "write a post":         ("content_writer",      lambda t: {"topic": t, "content_type": "LinkedIn post"}),
+        "write content":        ("content_writer",      lambda t: {"topic": t}),
+        "write a newsletter":   ("content_writer",      lambda t: {"topic": t, "content_type": "newsletter"}),
+        # Meeting Summarizer
+        "summarize meeting":    ("meeting_summarizer",  lambda t: {"meeting_input": t}),
+        "meeting summary":      ("meeting_summarizer",  lambda t: {"meeting_input": t}),
+        "summarize the call":   ("meeting_summarizer",  lambda t: {"meeting_input": "summarize the last voice call"}),
+        "meeting notes":        ("meeting_summarizer",  lambda t: {"meeting_input": t}),
+        # Invoice Generator
+        "create invoice":       ("invoice_generator",   lambda t: {"invoice_details": t}),
+        "generate invoice":     ("invoice_generator",   lambda t: {"invoice_details": t}),
+        "make invoice":         ("invoice_generator",   lambda t: {"invoice_details": t}),
+        "invoice for":          ("invoice_generator",   lambda t: {"invoice_details": t}),
+        "bill client":          ("invoice_generator",   lambda t: {"invoice_details": t}),
+        # Project Manager
+        "project status":       ("project_manager",     lambda t: {"project": t}),
+        "project update":       ("project_manager",     lambda t: {"project": t}),
+        "check project":        ("project_manager",     lambda t: {"project": t}),
+        "project report":       ("project_manager",     lambda t: {"project": t}),
+        "how is project":       ("project_manager",     lambda t: {"project": t}),
+        "status report":        ("project_manager",     lambda t: {"project": t}),
     }
 
     async def dispatch_crew_from_voice(self, user_text: str) -> Optional[str]:
