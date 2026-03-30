@@ -154,14 +154,28 @@ def execute_pending_tasks():
         log.error(f"execute_pending_tasks error: {e}")
 
 
+_last_cleanup = None
+
 def heartbeat():
     """Run one heartbeat cycle."""
+    global _last_cleanup
     log.info("═══ CODEC Heartbeat ═══")
     check_system_health()
     check_memory_stats()
     tasks = check_pending_tasks()
     if tasks:
         execute_pending_tasks()
+    # Daily memory cleanup — delete entries older than 90 days
+    now = datetime.now()
+    if _last_cleanup is None or (now - _last_cleanup).days >= 1:
+        try:
+            from codec_memory import CodecMemory
+            mem = CodecMemory()
+            mem.cleanup()
+            _last_cleanup = now
+            log.info("Daily memory cleanup complete (90-day retention)")
+        except Exception as e:
+            log.warning(f"Memory cleanup failed: {e}")
     log.info("═══ Heartbeat complete ═══")
     return tasks
 

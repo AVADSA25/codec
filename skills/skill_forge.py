@@ -12,6 +12,12 @@ import os, requests, json, re
 SKILLS_DIR = os.path.expanduser("~/.codec/skills")
 CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
 
+# Same blocklist used by the dashboard's /api/save_skill endpoint
+BLOCKED_IN_SKILLS = [
+    "os.system(", "subprocess.", "eval(", "exec(", "__import__",
+    "importlib", "shutil.rmtree", "open('/etc", "open('/dev", "ctypes",
+]
+
 
 def run(task, app="", ctx=""):
     """Extract code from ctx (clipboard/screen) or task, then forge it into a CODEC skill."""
@@ -123,6 +129,12 @@ CODE TO CONVERT:
             compile(raw, filepath, "exec")
         except SyntaxError as e:
             return f"Forged skill has a syntax error: {e}. Try with simpler code."
+
+        # Blocklist check — reject LLM output containing dangerous patterns (case-insensitive)
+        raw_lower = raw.lower()
+        for blocked in BLOCKED_IN_SKILLS:
+            if blocked.lower() in raw_lower:
+                return f"Forge blocked: generated code contains '{blocked}', which is not allowed in skills."
 
         # Save
         os.makedirs(SKILLS_DIR, exist_ok=True)

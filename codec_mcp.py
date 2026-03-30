@@ -90,7 +90,7 @@ def load_skill_tools():
 @mcp.tool()
 def search_memory(query: str, limit: int = 10) -> str:
     """Search CODEC's conversation memory using FTS5 full-text search"""
-    sys.path.insert(0, os.path.expanduser("~/codec-repo"))
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from codec_memory import CodecMemory
     mem = CodecMemory()
     results = mem.search(query, limit)
@@ -99,7 +99,7 @@ def search_memory(query: str, limit: int = 10) -> str:
 @mcp.tool()
 def get_recent_memory(days: int = 7) -> str:
     """Get recent conversations from CODEC memory"""
-    sys.path.insert(0, os.path.expanduser("~/codec-repo"))
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from codec_memory import CodecMemory
     mem = CodecMemory()
     results = mem.search_recent(days=days, limit=20)

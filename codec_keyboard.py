@@ -16,6 +16,9 @@ from codec_config import (
 
 log = logging.getLogger('codec')
 
+# Lock for thread-safe mutation of shared state fields
+_state_lock = threading.Lock()
+
 
 def start_keyboard_listener(state, ctx):
     """
@@ -66,7 +69,8 @@ def start_keyboard_listener(state, ctx):
             except Exception as e:
                 log.warning(f"Non-critical error: {e}")
         state["rec_proc"] = None
-        state["recording"] = False
+        with _state_lock:
+            state["recording"] = False
         if not audio or not os.path.exists(audio):
             return
         if os.path.getsize(audio) < 1000:
@@ -214,7 +218,8 @@ def start_keyboard_listener(state, ctx):
                 return
             state["last_f13"] = now
             if state["active"]:
-                state["active"] = False
+                with _state_lock:
+                    state["active"] = False
                 push(lambda: show_toggle_overlay(False, ''))
                 push(close_session)
                 log.info("OFF")
@@ -224,7 +229,8 @@ def start_keyboard_listener(state, ctx):
                 except Exception as e:
                     log.warning(f"Toggle off overlay event write failed: {e}")
             else:
-                state["active"] = True
+                with _state_lock:
+                    state["active"] = True
                 push(lambda: show_toggle_overlay(
                     True,
                     cfg.get('key_voice', 'f18').upper() + '=voice  ' +
@@ -250,8 +256,9 @@ def start_keyboard_listener(state, ctx):
             _kv_label = cfg.get('key_voice', 'f18').upper()
             if not state["recording"]:
                 # First tap — start normal hold-to-record
-                state["recording"] = True
-                state["ptt_locked"] = False
+                with _state_lock:
+                    state["recording"] = True
+                    state["ptt_locked"] = False
                 state["last_f18_press"] = now_v
                 try:
                     subprocess.run(["pkill", "-f", "C O D E C"],
@@ -264,7 +271,8 @@ def start_keyboard_listener(state, ctx):
                 # Second tap while recording (not yet locked)
                 if now_v - state.get("last_f18_press", 0.0) < 0.5:
                     # Double-tap within 0.5s → lock mode
-                    state["ptt_locked"] = True
+                    with _state_lock:
+                        state["ptt_locked"] = True
                     state["last_f18_press"] = 0.0
                     if state.get('rec_overlay'):
                         try:
@@ -276,7 +284,8 @@ def start_keyboard_listener(state, ctx):
                     log.info("PTT locked")
             else:
                 # Tap while locked → stop recording
-                state["ptt_locked"] = False
+                with _state_lock:
+                    state["ptt_locked"] = False
                 if state.get('rec_overlay'):
                     try:
                         state['rec_overlay'].terminate()
@@ -302,7 +311,6 @@ def start_keyboard_listener(state, ctx):
             state["last_plus"] = now
             return
         if hasattr(key, 'char') and key.char == '-':
-            print(f'[DEBUG] Minus detected, last={state.get("last_minus", 0)}, gap={now - state.get("last_minus", 0):.2f}')
             if now - state.get("last_minus", 0.0) < 0.5:
                 log.info("Minus x2 -- live chat mode")
                 pipecat_url = cfg.get("pipecat_url", "http://localhost:3000/auto")

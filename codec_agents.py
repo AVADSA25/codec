@@ -226,9 +226,13 @@ def _shell_execute(cmd: str) -> str:
     import subprocess
     cmd = cmd.strip()
     from codec_config import DANGEROUS_PATTERNS
+    cmd_lower = cmd.lower()
     for b in DANGEROUS_PATTERNS:
-        if b in cmd.lower():
-            return f"BLOCKED: dangerous command ({b})"
+        if b.lower() in cmd_lower:
+            _audit("shell_blocked", cmd=cmd[:200], pattern=b)
+            return f"BLOCKED: dangerous command pattern detected ({b}). Command not executed."
+    # Print command for transparency before execution
+    log.info(f"[shell_execute] Running: {cmd[:200]}")
     try:
         r = subprocess.run(cmd, shell=True, capture_output=True, text=True,
                            timeout=30, cwd=os.path.expanduser("~"))
@@ -896,16 +900,17 @@ def meeting_summarizer_crew(**kwargs) -> Crew:
         w in meeting_input.lower() for w in ["call", "last", "voice", "previous", "recent"]
     ):
         try:
-            import sqlite3
-            conn = sqlite3.connect(os.path.expanduser("~/.q_memory.db"))
-            rows = conn.execute(
-                "SELECT role, content FROM conversations "
-                "WHERE session_id LIKE 'voice_%' ORDER BY id DESC LIMIT 30"
-            ).fetchall()
-            conn.close()
+            from codec_memory import CodecMemory
+            mem = CodecMemory()
+            rows = mem.search("voice", limit=30)
             if rows:
-                transcript = "\n".join(f"{role}: {content}" for role, content in reversed(rows))
-                meeting_input = f"[CODEC Voice Call Transcript]\n{transcript}"
+                transcript = "\n".join(
+                    f"{r.get('role','?')}: {r.get('content','')}"
+                    for r in reversed(rows)
+                    if r.get("session_id", "").startswith("voice_")
+                )
+                if transcript:
+                    meeting_input = f"[CODEC Voice Call Transcript]\n{transcript}"
         except Exception:
             pass
 

@@ -23,7 +23,8 @@ def build_session_script(safe_sys, session_id):
     # Resource limits — cap memory and CPU before anything else
     L.append("import resource")
     L.append("try:")
-    L.append("    resource.setrlimit(resource.RLIMIT_AS, (512 * 1024 * 1024, 512 * 1024 * 1024))")
+    L.append("    if hasattr(resource, 'RLIMIT_AS'):")
+    L.append("        resource.setrlimit(resource.RLIMIT_AS, (512 * 1024 * 1024, 512 * 1024 * 1024))")
     L.append("    resource.setrlimit(resource.RLIMIT_CPU, (120, 120))")
     L.append("except Exception: pass")
     L.append("")

@@ -2198,7 +2198,8 @@ async def skills():
                     with open(path) as sf:
                         for line in sf:
                             if "SKILL_TRIGGERS" in line:
-                                triggers = eval(line.split("=", 1)[1].strip())
+                                import ast
+                                triggers = ast.literal_eval(line.split("=", 1)[1].strip())
                                 break
                 except Exception as e:
                     log.warning(f"Non-critical error: {e}")

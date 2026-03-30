@@ -28,7 +28,7 @@ Say *"Hey CODEC"* or press a key — your Mac becomes an AI-powered workstation 
 | **CODEC Core** | 49 voice skills — always-on wake word, say it and it's done |
 | **CODEC Dictate** | Hold F18, speak, release — text appears in any app instantly |
 | **CODEC Assist** | 8 AI services in your right-click menu — Proofread, Elevate, Translate, Reply, and more |
-| **CODEC Chat** | 250K-token context, drag-and-drop files, 12 AI agent crews |
+| **CODEC Chat** | 250K-token context, drag-and-drop files, 12 agent crews |
 | **CODEC Vibe** | AI-powered IDE — describe it, watch the code write itself, live preview |
 | **CODEC Voice** | Call your AI like a phone call — it books, researches, and acts while you talk |
 | **CODEC Remote** | Full dashboard from your phone — Touch ID + PIN, Cloudflare Tunnel |
@@ -238,11 +238,11 @@ A 250K-context AI chat with file uploads, vision, web search, and multi-agent cr
 - 250K token context window
 - File upload: PDF, code, images (vision)
 - Force web search toggle (🔍 Web button)
-- 8 built-in Agent Crews (see below)
+- 12 built-in Agent Crews (see below)
 - Custom agent builder — define role, tools, task
 - Agent scheduling: run crews automatically on a cron schedule
 
-**8 Agent Crews:**
+**12 Agent Crews:**
 
 | Crew | What it does |
 |------|-------------|
@@ -458,7 +458,7 @@ SQLite FTS5 index — instant results across thousands of entries.
 
 ## Skills
 
-CODEC ships with 48 built-in skills. Add more via the Marketplace or write your own.
+CODEC ships with 49 built-in skills. Add more via the Marketplace or write your own.
 
 **Google Workspace**
 
@@ -666,7 +666,7 @@ codec_agent.py        — LLM session builder
 codec_overlays.py     — Overlay popups
 codec_compaction.py   — Context compaction
 codec_memory.py       — FTS5 memory search
-codec_agents.py       — Multi-agent crew framework (8 crews)
+codec_agents.py       — Multi-agent crew framework (12 crews)
 codec_voice.py        — WebSocket voice pipeline
 codec_voice.html      — Voice call UI
 codec_dashboard.py    — Web API + dashboard
@@ -682,7 +682,7 @@ codec_marketplace.py  — Skill Marketplace CLI
 deep_research.py      — Deep Research crew (10k-word reports + images)
 ax_bridge/            — Swift AX accessibility bridge
 swift-overlay/        — SwiftUI status bar app
-skills/               — 48 built-in skills
+skills/               — 49 built-in skills
 tests/                — 212+ pytest tests
 install.sh            — One-line installer
 setup_codec.py        — Setup wizard (9 steps)
@@ -705,7 +705,7 @@ setup_codec.py        — Setup wizard (9 steps)
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). All skill submissions welcome — 48 built-in, marketplace growing.
+See [CONTRIBUTING.md](CONTRIBUTING.md). All skill submissions welcome — 49 built-in, marketplace growing.
 
 ```bash
 git clone https://github.com/AVADSA25/codec.git

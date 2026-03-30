@@ -13,8 +13,8 @@ def load_config():
         try:
             with open(CONFIG_PATH) as f:
                 cfg = json.load(f)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[CODEC] Warning: failed to parse {CONFIG_PATH}: {e}")
     return cfg
 
 
@@ -61,7 +61,6 @@ WAKE_WORD         = cfg.get("wake_word_enabled", True)
 WAKE_PHRASES      = cfg.get("wake_phrases", ['hey', 'aq', 'eq', 'iq', 'okay q', 'a q', 'hey c', 'hey cueue'])
 WAKE_ENERGY       = cfg.get("wake_energy", 200)
 WAKE_CHUNK_SEC    = cfg.get("wake_chunk_sec", 3.0)
-DRAFT_KEYWORDS_CFG = cfg.get("draft_keywords", [])
 REQUIRE_CONFIRM   = cfg.get("require_confirmation", True)
 
 # Dashboard auth — set in ~/.codec/config.json as "dashboard_token": "your-secret-token"
@@ -101,6 +100,10 @@ DANGEROUS_PATTERNS = [
 
 
 def is_dangerous(cmd):
+    """Check if a command matches any dangerous pattern.
+    Uses simple substring matching (case-insensitive) — many patterns contain
+    special characters (e.g. ':(){ :|:& };:') that break regex word boundaries.
+    """
     cmd_lower = cmd.lower()
     return any(p.lower() in cmd_lower for p in DANGEROUS_PATTERNS)
 

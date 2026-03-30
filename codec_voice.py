@@ -357,10 +357,15 @@ class VoicePipeline:
     # ── Sentence boundary ─────────────────────────────────────────────────
 
     def _flush_on_boundary(self, buf: str) -> tuple[str, str]:
-        """Return (to_speak, remainder) at first sentence boundary."""
-        for i, ch in enumerate(buf):
-            if ch in ".!?,;:":
-                return buf[:i + 1].strip(), buf[i + 1:]
+        """Return (to_speak, remainder) at first sentence boundary.
+        Avoids splitting on abbreviations (Dr., Mr., etc.), decimals (3.14), times (10:30)."""
+        import re
+        # Match sentence-ending punctuation NOT preceded by common abbreviations
+        # and NOT followed by a digit (decimals, times)
+        m = re.search(r'(?<!\b(?:Dr|Mr|Mrs|Ms|Jr|Sr|St|vs|etc|approx|incl|govt))[.!?]\s', buf)
+        if m:
+            end = m.end() - 1  # keep the space in remainder
+            return buf[:end].strip(), buf[end:]
         return "", buf
 
     # ── TTS with interruption check ───────────────────────────────────────

@@ -30,7 +30,7 @@ from codec_overlays import (
     show_overlay, show_recording_overlay, show_processing_overlay, show_toggle_overlay,
 )
 from codec_dispatch import load_skills, check_skill, run_skill
-from codec_agent import build_session_script
+from codec_agent import build_session_script, run_session_module
 from codec_compaction import compact_context
 
 # ── AUDIT LOG ─────────────────────────────────────────────────────────────────
@@ -314,13 +314,30 @@ def dispatch(task):
         return
 
     session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-    script = build_session_script(safe_sys, session_id)
-    ts = tempfile.NamedTemporaryFile(suffix=".py", delete=False, mode="w")
-    ts.write(script); ts.close()
+
+    # Use codec_session module (proper importable module) instead of
+    # build_session_script (350+ lines of string-built Python with
+    # AGENT_NAME NameError and API keys written in plaintext).
+    from codec_agent import build_session_params
+    params = build_session_params(safe_sys, session_id)
+    params_file = tempfile.NamedTemporaryFile(suffix=".json", delete=False, mode="w")
+    json.dump(params, params_file)
+    params_file.close()
+
+    repo_dir = os.path.dirname(os.path.abspath(__file__))
+    launcher = tempfile.NamedTemporaryFile(suffix=".py", delete=False, mode="w")
+    launcher.write(f"""import sys, json, os
+sys.path.insert(0, {repr(repo_dir)})
+from codec_session import Session
+params = json.load(open({repr(params_file.name)}))
+s = Session(**params)
+s.run()
+""")
+    launcher.close()
 
     try:
         subprocess.Popen(["osascript", "-e",
-            f'tell application "Terminal"\nactivate\nset w to do script "python3.13 {ts.name}"\nset custom title of selected tab of w to "{Q_TERMINAL_TITLE}"\nend tell'],
+            f'tell application "Terminal"\nactivate\nset w to do script "python3.13 {launcher.name}"\nset custom title of selected tab of w to "{Q_TERMINAL_TITLE}"\nend tell'],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except Exception as e:
         log.error(f"Terminal error: {e}")
@@ -408,8 +425,8 @@ def main():
     signal.signal(signal.SIGINT, _handle_sigint)
     if "--dry-run" in sys.argv:
         print("[CODEC] DRY RUN MODE — commands will be printed, not executed")
-        global DRY_RUN
-        DRY_RUN = True
+        import codec_config
+        codec_config.DRY_RUN = True
     init_db()
     for f in [SESSION_ALIVE, TASK_QUEUE_FILE, DRAFT_TASK_FILE]:
         try: os.unlink(f)
@@ -477,7 +494,7 @@ def main():
                         _ts = datetime.now().isoformat()
                         _sid = "pwa_" + datetime.now().strftime("%Y%m%d_%H%M%S")
                         _c = sqlite3.connect(DB_PATH)
-                        _c.execute("UPDATE sessions SET response=? WHERE task=? AND app=? ORDER BY id DESC LIMIT 1",
+                        _c.execute("UPDATE sessions SET response=? WHERE id=(SELECT id FROM sessions WHERE task=? AND app=? ORDER BY id DESC LIMIT 1)",
                             (str(result)[:500], task[:200], app))
                         _c.execute("INSERT INTO conversations (session_id,timestamp,role,content) VALUES (?,?,?,?)",
                             (_sid, _ts, "user", task[:500]))

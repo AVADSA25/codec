@@ -65,7 +65,7 @@ codec_textassist.py   — Right-click text services
 codec_search.py       — Web search (DuckDuckGo/Serper)
 codec_mcp.py          — MCP server for external tools
 codec_heartbeat.py    — System health monitoring
-skills/               — 41 skill plugins
+skills/               — 49 skill plugins
 tests/                — 168+ pytest tests
 ```
 

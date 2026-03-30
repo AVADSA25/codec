@@ -26,7 +26,9 @@ log = logging.getLogger("codec_session")
 
 def _apply_resource_limits():
     try:
-        resource.setrlimit(resource.RLIMIT_AS, (512 * 1024 * 1024, 512 * 1024 * 1024))
+        # RLIMIT_AS not available on macOS — only set CPU limit
+        if hasattr(resource, "RLIMIT_AS"):
+            resource.setrlimit(resource.RLIMIT_AS, (512 * 1024 * 1024, 512 * 1024 * 1024))
         resource.setrlimit(resource.RLIMIT_CPU, (120, 120))
     except Exception as e:
         log.warning(f"Resource limit setup failed: {e}")
@@ -139,7 +141,9 @@ ALWAYS respond with valid JSON only."""
 
         # Dangerous command patterns — import from config
         try:
-            sys.path.insert(0, os.path.expanduser("~/codec-repo"))
+            _repo_dir = os.path.dirname(os.path.abspath(__file__))
+            if _repo_dir not in sys.path:
+                sys.path.insert(0, _repo_dir)
             from codec_config import DANGEROUS_PATTERNS
             self.DANGEROUS = [p.lower() for p in DANGEROUS_PATTERNS]
         except ImportError:
@@ -158,7 +162,7 @@ ALWAYS respond with valid JSON only."""
             "sqlite3", "echo ", "cat ", "ls ", "pwd", "date", "uptime",
             "whoami", "sw_vers", "which ", "head ", "tail ", "wc ",
             "grep ", "screencapture", "defaults read", "open -a",
-            "open http", "tell application",
+            "open http",
         ]
 
         self.ACTION_WORDS = [
@@ -385,7 +389,7 @@ ALWAYS respond with valid JSON only."""
                     _af.write(f'[{time.strftime("%Y-%m-%dT%H:%M:%S")}] APPROVED: {code[:200]}\n')
 
             # Safe commands skip preview
-            is_safe = any(code.strip().lower().startswith(s) for s in self.SAFE_CMDS) or action == "applescript"
+            is_safe = any(code.strip().lower().startswith(s) for s in self.SAFE_CMDS)
             if not is_safe and not self._cmd_preview(action, code):
                 print("[PREVIEW] Command denied by user.")
                 with open(os.path.expanduser("~/.codec/audit.log"), "a") as _af:
@@ -521,7 +525,9 @@ ALWAYS respond with valid JSON only."""
             self.h.append({"role": "assistant", "content": resp})
             if len(self.h) > 22:
                 try:
-                    sys.path.insert(0, os.path.expanduser("~/codec-repo"))
+                    _repo_dir2 = os.path.dirname(os.path.abspath(__file__))
+                    if _repo_dir2 not in sys.path:
+                        sys.path.insert(0, _repo_dir2)
                     from codec_compaction import compact_context
                     compacted = compact_context(self.h[1:], max_recent=5)
                     self.h[:] = [self.h[0], {"role": "system", "content": compacted}] + self.h[-10:]

@@ -26,8 +26,8 @@ _GENERIC_HEADING_WORDS = {
     "sources", "references", "key", "findings", "analysis", "implications",
     "discussion", "results", "overview", "appendix", "abstract",
 }
-_CHARS_PER_IMAGE = 9_000
-_MAX_IMAGES      = 7
+_CHARS_PER_IMAGE = 6_000   # ~2 pages between images
+_MAX_IMAGES      = 10
 
 
 def _pexels_fetch_one(query: str, page_offset: int = 0):
@@ -239,9 +239,11 @@ def create_google_doc(title: str, content: str) -> str | None:
     LGRAY  = {"red": 0.933, "green": 0.933, "blue": 0.933}   # #EEEEEE table bg
 
     try:
-        # Ensure all CODEC docs start with "CODEC:" prefix
-        if not title.startswith("CODEC:"):
+        # Ensure all CODEC docs start with "CODEC:" prefix (avoid "CODEC: CODEC ...")
+        if not title.upper().startswith("CODEC"):
             title = "CODEC: " + title
+        elif title.startswith("CODEC ") and not title.startswith("CODEC:"):
+            title = "CODEC: " + title[6:]
 
         creds = Credentials.from_authorized_user_file(TOKEN_PATH)
         if creds and creds.expired and creds.refresh_token:
