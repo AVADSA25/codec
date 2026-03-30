@@ -40,8 +40,8 @@ r=tk.Tk();r.overrideredirect(True);r.attributes('-topmost',True);r.attributes('-
 sw=r.winfo_screenwidth();sh=r.winfo_screenheight()
 r.geometry(f'440x84+{{(sw-440)//2}}+{{sh-130}}')
 c=tk.Canvas(r,bg='#0a0a0a',highlightthickness=0,width=440,height=84);c.pack()
-c.create_rectangle(1,1,279,53,outline='{color}',width=1)
-c.create_text(140,27,text='{text}',fill='{color}',font=('Helvetica',13))
+c.create_rectangle(1,1,439,83,outline='{color}',width=1)
+c.create_text(220,42,text='{text}',fill='{color}',font=('Helvetica',16,'bold'))
 r.after({duration},r.destroy);r.mainloop()"""], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 text = subprocess.run(["pbpaste"], capture_output=True, text=True).stdout.strip()

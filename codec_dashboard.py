@@ -93,8 +93,48 @@ AUTH_BINARY = os.path.join(DASHBOARD_DIR, "codec_auth", "codec_auth")
 AUTH_PIN_HASH = _bio_cfg.get("auth_pin_hash", "")  # SHA-256 of user's PIN
 AUTH_COOKIE_NAME = "codec_session"
 
-# In-memory session store (survives for PM2 process lifetime)
+# Persistent session store — survives PM2 restarts
+_SESSION_FILE = os.path.expanduser("~/.codec/.auth_sessions.json")
 _auth_sessions = {}  # token -> {created: datetime, ip: str, method: str}
+
+def _load_sessions():
+    """Load sessions from disk on startup."""
+    global _auth_sessions
+    try:
+        if os.path.isfile(_SESSION_FILE):
+            with open(_SESSION_FILE) as f:
+                raw = json.load(f)
+            now = datetime.now()
+            for tok, data in raw.items():
+                created = datetime.fromisoformat(data["created"])
+                if now - created < timedelta(hours=AUTH_SESSION_HOURS):
+                    _auth_sessions[tok] = {
+                        "created": created,
+                        "ip": data.get("ip", "unknown"),
+                        "method": data.get("method", "unknown"),
+                    }
+            log.info("Restored %d auth session(s) from disk", len(_auth_sessions))
+    except Exception as e:
+        log.warning("Could not load auth sessions: %s", e)
+
+def _save_sessions():
+    """Persist current sessions to disk."""
+    try:
+        os.makedirs(os.path.dirname(_SESSION_FILE), exist_ok=True)
+        raw = {}
+        for tok, data in _auth_sessions.items():
+            raw[tok] = {
+                "created": data["created"].isoformat(),
+                "ip": data.get("ip", "unknown"),
+                "method": data.get("method", "unknown"),
+            }
+        with open(_SESSION_FILE, "w") as f:
+            json.dump(raw, f)
+        os.chmod(_SESSION_FILE, 0o600)
+    except Exception as e:
+        log.warning("Could not save auth sessions: %s", e)
+
+_load_sessions()
 
 def _is_auth_compiled():
     return os.path.isfile(AUTH_BINARY) and os.access(AUTH_BINARY, os.X_OK)
@@ -113,6 +153,7 @@ def _verify_biometric_session(request):
     session = _auth_sessions[token]
     if datetime.now() - session["created"] > timedelta(hours=AUTH_SESSION_HOURS):
         del _auth_sessions[token]
+        _save_sessions()
         return False
     return True
 
@@ -196,6 +237,7 @@ async def auth_verify(request: Request):
                     "ip": client_ip,
                     "method": result.get("method", "unknown"),
                 }
+                _save_sessions()
                 return {
                     "authenticated": True,
                     "method": result.get("method"),
@@ -247,6 +289,7 @@ async def auth_pin(request: Request):
             "ip": client_ip,
             "method": "pin",
         }
+        _save_sessions()
         return {
             "authenticated": True,
             "method": "pin",
@@ -263,6 +306,7 @@ async def auth_logout(request: Request):
     token = request.cookies.get(AUTH_COOKIE_NAME)
     if token and token in _auth_sessions:
         del _auth_sessions[token]
+        _save_sessions()
     return {"logged_out": True}
 
 
