@@ -3,7 +3,7 @@
 </p>
 
 <h1 align="center">CODEC</h1>
-<p align="center"><strong>Open Source Computer Command Framework — v1.5.0</strong></p>
+<p align="center"><strong>Open-Source Intelligent Command Layer for macOS — v1.5.0</strong></p>
 <p align="center">
   Voice-controlled, local-first AI agent that runs on your machine with any LLM.<br/>
   No cloud. No subscription. No data leaves your computer.
