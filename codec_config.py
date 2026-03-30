@@ -75,14 +75,20 @@ AUTH_SESSION_HOURS = cfg.get("auth_session_hours", 24)
 # PIN code auth — alternative to Touch ID, stored as SHA-256 hash
 AUTH_PIN_HASH     = cfg.get("auth_pin_hash", "")  # SHA-256 of the PIN
 
+# MCP tool exposure — opt-in by default (new tools blocked unless explicitly allowed)
+# Set "mcp_default_allow": true in config.json to revert to opt-out behaviour
+MCP_DEFAULT_ALLOW = cfg.get("mcp_default_allow", False)
+# Explicit allowlist of skill names exposed via MCP (used when mcp_default_allow is false)
+MCP_ALLOWED_TOOLS = cfg.get("mcp_allowed_tools", [])
+
 # Safety
 DANGEROUS_PATTERNS = [
     "rm -rf", "rm -r /", "rm -rf /", "rm -rf ~", "rm -rf /*",
     "rmdir", "sudo rm", "mkfs", "dd if=",
     "shutdown", "reboot", "halt", "killall", "pkill",
     "sudo", "chmod 777", "chmod -R 777 /", "chown", "chown -R",
-    "> /dev/", "echo > /dev/sda", "mv / /dev/null",
-    ":(){ :|:& };:", "xattr -cr /",
+    "> /dev/", "echo > /dev/sda", "> /dev/sda", "mv / /dev/null",
+    ":(){ :|:& };:", ":(){:|:&};:", "xattr -cr /",
     "curl | bash", "wget | bash", "curl | sh", "wget | sh",
     "| bash", "| sh",
     "defaults delete", "diskutil erase",
@@ -90,6 +96,7 @@ DANGEROUS_PATTERNS = [
     "launchctl unload", "csrutil disable", "nvram", "bless",
     "scutil --set", "pmset",
     "osascript -e \'tell application \"System Events\"",
+    "init 0", "kill -9 1", "format", "fdisk",
 ]
 
 

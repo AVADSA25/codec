@@ -345,7 +345,9 @@ function onSuccess(data) {
     var status = document.getElementById('status');
     status.textContent = 'Authenticated via ' + (data.method || 'biometrics');
     status.className = 'status success';
-    document.cookie = 'codec_session=' + data.token + '; path=/; max-age=' + (data.expires_hours * 3600) + '; SameSite=Strict';
+    var _ck = 'codec_session=' + data.token + '; path=/; max-age=' + (data.expires_hours * 3600) + '; SameSite=Strict';
+    if (location.protocol === 'https:') _ck += '; Secure';
+    document.cookie = _ck;
     setTimeout(function() { window.location.href = '/'; }, 600);
 }
     </script>

@@ -518,7 +518,7 @@ async function sendCmd() {
 document.getElementById('cmdInput').addEventListener('keydown', function(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendCmd(); } });
 document.getElementById('cmdInput').addEventListener('input', function() { this.style.height = 'auto'; this.style.height = Math.min(this.scrollHeight, 120) + 'px'; });
 
-function lockSession(){fetch('/api/auth/logout',{method:'POST'}).then(function(){document.cookie='codec_session=;path=/;max-age=0;SameSite=Strict';window.location.href='/auth'})}
+function lockSession(){fetch('/api/auth/logout',{method:'POST'}).then(function(){document.cookie='codec_session=;path=/;max-age=0;SameSite=Strict'+(location.protocol==='https:'?';Secure':'');window.location.href='/auth'})}
 
 // ── Voice Input ──
 function toggleMic() {

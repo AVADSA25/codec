@@ -65,7 +65,7 @@ root.configure(bg='#0a0a0a')
 
 sw = root.winfo_screenwidth()
 sh = root.winfo_screenheight()
-w, h = 340, 52
+w, h = 440, 84
 x = (sw - w) // 2
 y = sh - 120
 root.geometry(f'{w}x{h}+{x}+{y}')

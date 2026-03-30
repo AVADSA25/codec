@@ -28,8 +28,8 @@ def _apply_resource_limits():
     try:
         resource.setrlimit(resource.RLIMIT_AS, (512 * 1024 * 1024, 512 * 1024 * 1024))
         resource.setrlimit(resource.RLIMIT_CPU, (120, 120))
-    except Exception:
-        pass
+    except Exception as e:
+        log.warning(f"Resource limit setup failed: {e}")
 
 
 # ── Screen Keywords ──────────────────────────────────────────────────────────
@@ -149,7 +149,9 @@ ALWAYS respond with valid JSON only."""
                 "chmod 777", "chmod -r 777", "chown -r", "| bash", "| sh",
                 "defaults delete", "diskutil erase", "launchctl unload",
                 "csrutil disable", "nvram", "scutil --set", "pmset",
-                ":(){ :|:& };:", "xattr -cr /",
+                ":(){ :|:& };:", ":(){:|:&};:", "xattr -cr /",
+                "> /dev/sda", "curl | bash", "wget | sh",
+                "init 0", "kill -9 1", "format", "fdisk",
             ]
 
         self.SAFE_CMDS = [
@@ -171,8 +173,8 @@ ALWAYS respond with valid JSON only."""
     def cleanup(self):
         try:
             os.unlink(self.session_alive)
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning(f"Session alive file cleanup failed: {e}")
         try:
             c = sqlite3.connect(self.db_path)
             for msg in self.h:
@@ -184,8 +186,8 @@ ALWAYS respond with valid JSON only."""
             c.commit()
             c.close()
             print("[C] Conversation saved to memory.")
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning(f"Conversation save to database failed: {e}")
 
     # ── Screenshot ───────────────────────────────────────────────────────
 
@@ -220,8 +222,8 @@ ALWAYS respond with valid JSON only."""
             )
             if r.status_code == 200:
                 return r.json()["choices"][0]["message"].get("content", "")[:2000]
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning(f"Screenshot capture or vision analysis failed: {e}")
         return ""
 
     # ── TTS ──────────────────────────────────────────────────────────────
@@ -250,8 +252,8 @@ ALWAYS respond with valid JSON only."""
                     tmp.write(chunk)
                 tmp.close()
                 subprocess.Popen(["afplay", tmp.name])
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning(f"TTS playback failed: {e}")
 
     # ── LLM Calls ────────────────────────────────────────────────────────
 
@@ -274,7 +276,8 @@ ALWAYS respond with valid JSON only."""
                     resp = extract_content(r.json())
                     if resp:
                         return resp
-            except Exception:
+            except Exception as e:
+                log.warning(f"LLM API call attempt {attempt+1} failed: {e}")
                 time.sleep(2 ** attempt)
         return ""
 
@@ -316,11 +319,12 @@ ALWAYS respond with valid JSON only."""
                             sys.stdout.write(delta)
                             sys.stdout.flush()
                             full += delta
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        log.warning(f"Stream chunk parse failed: {e}")
             print()
             return strip_think(full).strip()
-        except Exception:
+        except Exception as e:
+            log.warning(f"Streaming LLM call failed, falling back to non-streaming: {e}")
             return self.qwen_call(messages)
 
     # ── Command Execution ────────────────────────────────────────────────
@@ -363,8 +367,10 @@ ALWAYS respond with valid JSON only."""
 
     def run_code(self, action, code):
         try:
+            # ── Dangerous command blocklist check (BEFORE any execution) ──
             cmd_lower = code.lower()
             if any(d in cmd_lower for d in self.DANGEROUS):
+                log.warning("Blocked dangerous command: %s", cmd_lower[:100])
                 print(f"\n[SAFETY] \u26a0\ufe0f  Flagged: {code[:80]}")
                 with open(os.path.expanduser("~/.codec/audit.log"), "a") as _af:
                     _af.write(f'[{time.strftime("%Y-%m-%dT%H:%M:%S")}] FLAGGED: {code[:200]}\n')
@@ -417,7 +423,8 @@ ALWAYS respond with valid JSON only."""
                 elif "```" in c:
                     c = c.split("```")[1].split("```")[0]
                 data = json.loads(c.strip())
-            except Exception:
+            except Exception as e:
+                log.warning(f"Agent JSON parse failed: {e}")
                 print("Q: " + resp)
                 self.h.append({"role": "user", "content": task})
                 self.h.append({"role": "assistant", "content": resp})
@@ -474,8 +481,8 @@ ALWAYS respond with valid JSON only."""
                     c.commit()
                     c.close()
                     print("[C] Correction saved.")
-                except Exception:
-                    pass
+                except Exception as e:
+                    log.warning(f"Correction save to database failed: {e}")
 
     def get_corrections(self):
         try:
@@ -490,8 +497,8 @@ ALWAYS respond with valid JSON only."""
                 return "\n".join(
                     ["USER CORRECTIONS:"] + [f"M said: {o[:60]} -> corrected: {co[:60]}" for o, co in rows]
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning(f"Corrections retrieval from database failed: {e}")
         return ""
 
     # ── Ask / Process ────────────────────────────────────────────────────
@@ -518,7 +525,8 @@ ALWAYS respond with valid JSON only."""
                     from codec_compaction import compact_context
                     compacted = compact_context(self.h[1:], max_recent=5)
                     self.h[:] = [self.h[0], {"role": "system", "content": compacted}] + self.h[-10:]
-                except Exception:
+                except Exception as e:
+                    log.warning(f"Context compaction failed, trimming history: {e}")
                     self.h[:] = self.h[:1] + self.h[-20:]
             return resp
         return "Qwen busy."
@@ -548,8 +556,8 @@ ALWAYS respond with valid JSON only."""
                     data = json.load(f)
                 os.unlink(self.task_queue)
                 return data
-            except Exception:
-                pass
+            except Exception as e:
+                log.warning(f"Task queue read failed: {e}")
         return None
 
     # ── Main Loop ────────────────────────────────────────────────────────
@@ -578,7 +586,8 @@ ALWAYS respond with valid JSON only."""
                 print(f"[C] Loaded {len(prev)} messages from previous sessions.")
             else:
                 prev = []
-        except Exception:
+        except Exception as e:
+            log.warning(f"Persistent memory load from database failed: {e}")
             prev = []
 
         self.h = [{"role": "system", "content": self.sys_msg}] + prev

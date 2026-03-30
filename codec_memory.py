@@ -1,8 +1,24 @@
 """CODEC Memory — SQLite FTS5 full-text search over all conversations."""
-import os, sqlite3
+import os, re, sqlite3
 from datetime import datetime, timedelta
 
 DB_PATH = os.path.expanduser("~/.q_memory.db")
+
+_FTS5_MAX_QUERY_LEN = 200
+_FTS5_OPERATORS = re.compile(r'\b(NEAR|AND|OR|NOT)\b', re.IGNORECASE)
+_FTS5_SPECIAL = re.compile(r'[*"()\^]')
+
+
+def _sanitize_fts_query(raw: str) -> str:
+    """Strip FTS5 special operators/chars to prevent injection.
+
+    Removes: *, ", NEAR, AND, OR, NOT, (, ), ^
+    Truncates to 200 chars. Returns empty string if nothing remains.
+    """
+    q = _FTS5_OPERATORS.sub(' ', raw)
+    q = _FTS5_SPECIAL.sub('', q)
+    q = ' '.join(q.split())          # collapse whitespace
+    return q[:_FTS5_MAX_QUERY_LEN].strip()
 
 
 class CodecMemory:
@@ -85,17 +101,14 @@ class CodecMemory:
 
     def search(self, query: str, limit: int = 10) -> list[dict]:
         """Full-text search ranked by BM25. Returns list of row dicts."""
-        if not query.strip():
+        sanitized = _sanitize_fts_query(query)
+        if not sanitized:
             return []
         conn = sqlite3.connect(self.db_path)
         try:
-            return self._fts_query(conn, query, limit)
+            return self._fts_query(conn, sanitized, limit)
         except sqlite3.OperationalError:
-            # FTS syntax error — retry as quoted phrase
-            try:
-                return self._fts_query(conn, '"' + query.replace('"', '') + '"', limit)
-            except Exception:
-                return []
+            return []
         finally:
             conn.close()
 

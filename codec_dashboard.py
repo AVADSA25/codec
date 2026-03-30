@@ -1,5 +1,5 @@
 """CODEC v1.2 — Phone Dashboard & PWA"""
-import os, json, sqlite3, time, logging, secrets, subprocess
+import os, json, sqlite3, time, logging, secrets, subprocess, hmac
 from datetime import datetime, timedelta
 
 log = logging.getLogger("codec_dashboard")
@@ -13,14 +13,14 @@ from starlette.responses import JSONResponse as StarletteJSONResponse
 import uvicorn
 
 app = FastAPI(title="CODEC Dashboard")
-app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:8090", "http://127.0.0.1:8090", "https://codec.lucyvpa.com"], allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:8090", "http://127.0.0.1:8090", "https://codec.lucyvpa.com"], allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"], allow_headers=["*"])
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
     """Combined auth: bearer token (API) + biometric Touch ID sessions (dashboard)."""
 
     # Routes that never require authentication
-    PUBLIC_ROUTES = {"/auth", "/favicon.ico", "/manifest.json"}
+    PUBLIC_ROUTES = {"/", "/chat", "/vibe", "/voice", "/auth", "/health", "/favicon.ico", "/manifest.json"}
     PUBLIC_PREFIXES = ("/api/auth/", "/static")
 
     async def dispatch(self, request, call_next):
@@ -36,6 +36,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if path.endswith(('.css', '.js', '.png', '.ico', '.svg', '.woff2', '.woff', '.ttf')):
             return await call_next(request)
 
+        # ── Layer 0: No auth configured → allow all ──
+        if not DASHBOARD_TOKEN and (not AUTH_ENABLED or not _auth_available()):
+            return await call_next(request)
+
         # ── Layer 1: Biometric / PIN session check ──
         if AUTH_ENABLED and _auth_available():
             if not _verify_biometric_session(request):
@@ -45,14 +49,16 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 return RedirectResponse(url="/auth")
 
         # ── Layer 2: Bearer token check (for API-key-protected endpoints) ──
+        if not DASHBOARD_TOKEN:
+            return await call_next(request)
         if DASHBOARD_TOKEN:
             # Page routes are covered by biometric auth above; only enforce token on API
             if path.startswith("/api/"):
                 auth = request.headers.get("Authorization", "")
-                if auth == f"Bearer {DASHBOARD_TOKEN}":
+                if hmac.compare_digest(auth, f"Bearer {DASHBOARD_TOKEN}"):
                     return await call_next(request)
                 token = request.query_params.get("token", "")
-                if token == DASHBOARD_TOKEN:
+                if hmac.compare_digest(token, DASHBOARD_TOKEN):
                     return await call_next(request)
                 # If biometric/PIN passed (or disabled), allow through
                 if not AUTH_ENABLED or not _auth_available() or _verify_biometric_session(request):
@@ -894,6 +900,49 @@ async def save_skill(request: Request):
     with open(path, "w") as f: f.write(content)
     return {"path": path, "skill": filename, "size": len(content)}
 
+# In-memory pending skill reviews (human review gate)
+_pending_skills: dict = {}
+
+@app.post("/api/skill/review")
+async def skill_review(request: Request):
+    """Stage LLM-generated skill code for human review — does NOT write to disk."""
+    import uuid
+    body = await request.json()
+    code = body.get("code", "")
+    filename = os.path.basename(body.get("filename", "custom_skill.py"))
+    if not filename.endswith(".py"):
+        filename += ".py"
+    if not code:
+        return JSONResponse({"error": "No code provided"}, status_code=400)
+    review_id = str(uuid.uuid4())[:12]
+    _pending_skills[review_id] = {"code": code, "filename": filename}
+    return {"review_id": review_id, "code": code, "filename": filename}
+
+@app.post("/api/skill/approve")
+async def skill_approve(request: Request):
+    """Approve a pending skill review — writes to disk and removes from pending."""
+    body = await request.json()
+    review_id = body.get("review_id", "")
+    if review_id not in _pending_skills:
+        return JSONResponse({"error": "Review not found or already approved"}, status_code=404)
+    pending = _pending_skills.pop(review_id)
+    code = pending["code"]
+    filename = pending["filename"]
+    # Validate: must contain SKILL_DESCRIPTION and run function
+    if "SKILL_DESCRIPTION" not in code or "def run(" not in code:
+        return JSONResponse({"error": "Invalid skill: must contain SKILL_DESCRIPTION and def run()"}, status_code=400)
+    # Block dangerous imports/calls in skill code
+    BLOCKED_IN_SKILLS = ["os.system(", "subprocess.Popen(", "eval(", "exec(", "__import__"]
+    for blocked in BLOCKED_IN_SKILLS:
+        if blocked in code:
+            return JSONResponse({"error": f"Blocked pattern in skill code: {blocked}"}, status_code=400)
+    skill_dir = os.path.expanduser("~/.codec/skills")
+    os.makedirs(skill_dir, exist_ok=True)
+    path = os.path.join(skill_dir, filename)
+    with open(path, "w") as f:
+        f.write(code)
+    return {"path": path, "skill": filename, "size": len(code)}
+
 # In-memory job stores (survive for session lifetime)
 _research_jobs: dict = {}
 _agent_jobs: dict = {}
@@ -1549,15 +1598,16 @@ async def tasks_page():
 
 # ── CODEC Memory ─────────────────────────────────────────────────────────────
 
-from codec_memory import CodecMemory as _CM
+from codec_memory import CodecMemory as _CM, _sanitize_fts_query
 _memory = _CM()
 
 @app.get("/api/memory/search")
 async def memory_search(q: str = "", limit: int = 10):
     """Full-text search over all conversations (FTS5 BM25 ranked)."""
-    if not q.strip():
+    sanitized = _sanitize_fts_query(q)
+    if not sanitized:
         return JSONResponse({"error": "Query required"}, status_code=400)
-    return _memory.search(q.strip(), limit=limit)
+    return _memory.search(sanitized, limit=limit)
 
 @app.get("/api/memory/recent")
 async def memory_recent(days: int = 7, limit: int = 50):

@@ -22,5 +22,7 @@
   "wake_chunk_sec": 3.0,
   "streaming": true,
   "draft_keywords": ["draft", "reply", "rephrase", "rewrite", "respond", "compose", "tell them", "tell him", "tell her"],
-  "skills": ["calculator", "weather", "time_date", "system_info", "web_search", "translate", "notes", "timer", "volume", "reminders", "music", "clipboard", "app_switch"]
+  "skills": ["calculator", "weather", "time_date", "system_info", "web_search", "translate", "notes", "timer", "volume", "reminders", "music", "clipboard", "app_switch"],
+  "mcp_default_allow": false,
+  "mcp_allowed_tools": ["calculator", "weather", "time_date", "notes", "reminders", "memory_search"]
 }

@@ -14,7 +14,15 @@ from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
 
 import hashlib
+import logging
 import httpx
+
+log = logging.getLogger("codec_agents")
+
+# ── Tool-call validation ──
+_VALID_TOOL_NAME_RE = re.compile(r'^[A-Za-z0-9_.\-]+$')
+_MAX_TOOL_NAME_LEN = 100
+_MAX_TOOL_INPUT_LEN = 50000
 
 # ── CONFIG ──
 CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
@@ -349,6 +357,30 @@ Rules:
                 if m and tool_calls_made < self.max_tool_calls:
                     tool_name  = m.group(1).strip()
                     tool_input = m.group(2).strip()
+
+                    # ── Input validation guards ──────────────────────────
+                    if not tool_name:
+                        log.warning("Rejected malformed tool call: %s", tool_name)
+                        messages.append({"role": "assistant", "content": response})
+                        messages.append({"role": "user", "content": "Empty tool name rejected. Try again or use FINAL:."})
+                        continue
+                    if len(tool_name) > _MAX_TOOL_NAME_LEN:
+                        log.warning("Rejected malformed tool call: %s", tool_name[:120])
+                        messages.append({"role": "assistant", "content": response})
+                        messages.append({"role": "user", "content": "Tool name too long (max 100 chars). Try again or use FINAL:."})
+                        continue
+                    if not _VALID_TOOL_NAME_RE.match(tool_name):
+                        log.warning("Rejected malformed tool call: %s", tool_name[:120])
+                        messages.append({"role": "assistant", "content": response})
+                        messages.append({"role": "user", "content": f"Tool name '{tool_name[:60]}' contains invalid characters. Only alphanumeric, underscore, hyphen, and dot are allowed. Try again or use FINAL:."})
+                        continue
+                    if len(tool_input) > _MAX_TOOL_INPUT_LEN:
+                        log.warning("Rejected malformed tool call: %s", tool_name)
+                        messages.append({"role": "assistant", "content": response})
+                        messages.append({"role": "user", "content": f"Tool input too long ({len(tool_input)} chars, max {_MAX_TOOL_INPUT_LEN}). Try again or use FINAL:."})
+                        continue
+                    # ── End validation guards ─────────────────────────────
+
                     tool = next((t for t in self.tools if t.name == tool_name), None)
 
                     if tool:

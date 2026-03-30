@@ -59,7 +59,8 @@ def start_keyboard_listener(state, ctx):
         try:
             with open("/tmp/codec_overlay_events.jsonl", "a") as _f:
                 _f.write('{"type":"recording_start"}\n')
-        except Exception: pass
+        except Exception as e:
+            log.warning(f"Recording start overlay event write failed: {e}")
 
     def do_stop_voice():
         audio = state.get("audio_path")
@@ -84,7 +85,8 @@ def start_keyboard_listener(state, ctx):
         try:
             with open("/tmp/codec_overlay_events.jsonl", "a") as _f:
                 _f.write('{"type":"recording_stop"}\n')
-        except Exception: pass
+        except Exception as e:
+            log.warning(f"Recording stop overlay event write failed: {e}")
         if state.get('rec_overlay'):
             try:
                 state['rec_overlay'].terminate()
@@ -209,7 +211,8 @@ def start_keyboard_listener(state, ctx):
                         os.unlink(tmp.name)
                     except Exception as e:
                         log.warning(f"Non-critical error: {e}")
-            except Exception:
+            except Exception as e:
+                log.warning(f"Wake word listener error: {e}")
                 time.sleep(0.5)
             time.sleep(0.1)
 
@@ -229,7 +232,8 @@ def start_keyboard_listener(state, ctx):
                 try:
                     with open("/tmp/codec_overlay_events.jsonl", "a") as _f:
                         _f.write('{"type":"toggle_off"}\n')
-                except Exception: pass
+                except Exception as e:
+                    log.warning(f"Toggle off overlay event write failed: {e}")
             else:
                 state["active"] = True
                 push(lambda: show_toggle_overlay(
@@ -243,7 +247,8 @@ def start_keyboard_listener(state, ctx):
                 try:
                     with open("/tmp/codec_overlay_events.jsonl", "a") as _f:
                         _f.write('{"type":"toggle_on"}\n')
-                except Exception: pass
+                except Exception as e:
+                    log.warning(f"Toggle on overlay event write failed: {e}")
             return
         if not state["active"]:
             return

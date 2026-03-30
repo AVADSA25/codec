@@ -76,7 +76,7 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);height:
 .msg.user{margin-left:auto}
 .msg.assistant{margin-right:auto}
 .msg-bubble{padding:10px 14px;border-radius:14px;line-height:1.6;font-size:15px;word-wrap:break-word;white-space:pre-wrap}
-.msg.user .msg-bubble{background:var(--accent);color:#fff;border-bottom-right-radius:4px}
+.msg.user .msg-bubble{background:rgba(232,113,26,0.15);color:var(--text);border:1px solid rgba(232,113,26,0.25);border-bottom-right-radius:4px}
 .msg.assistant .msg-bubble{background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-bottom-left-radius:4px}
 .msg-time{font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-top:3px;padding:0 4px}
 .msg.user .msg-time{text-align:right}
@@ -178,7 +178,7 @@ input[type=file]{display:none}
 [data-theme=light] .icon-btn:hover{border-color:#999;color:#1a1a1a;background:#e8e4de}
 [data-theme=light] .nav-link.active{color:var(--accent);background:var(--accent-dim)}
 [data-theme=light] .mode-btn.active{box-shadow:0 1px 3px rgba(0,0,0,.08)}
-[data-theme=light] .msg.user .msg-bubble{background:var(--accent);color:#fff}
+[data-theme=light] .msg.user .msg-bubble{background:rgba(232,113,26,0.10);color:var(--text);border:1px solid rgba(232,113,26,0.20)}
 
 /* ── Mobile Responsive ── */
 @media (max-width:768px){
@@ -578,7 +578,7 @@ function loadSavedAgent(json){
   if(!json)return;try{var a=JSON.parse(json);if(a.name)document.getElementById('agentName').value=a.name;if(a.role)document.getElementById('agentRole').value=a.role;if(a.max_iterations)document.getElementById('agentMaxIter').value=a.max_iterations;if(a.tools&&_toolsLoaded){document.querySelectorAll('#abToolGrid input[name="abt"]').forEach(function(cb){cb.checked=a.tools.includes(cb.value)})}document.getElementById('savedAgentSelect').value=''}catch(e){}
 }
 
-function lockSession(){fetch('/api/auth/logout',{method:'POST'}).then(function(){document.cookie='codec_session=;path=/;max-age=0;SameSite=Strict';window.location.href='/auth'})}
+function lockSession(){fetch('/api/auth/logout',{method:'POST'}).then(function(){document.cookie='codec_session=;path=/;max-age=0;SameSite=Strict'+(location.protocol==='https:'?';Secure':'');window.location.href='/auth'})}
 
 // ── Header icons (matching dashboard) ──
 var voiceReplyEnabled=localStorage.getItem('codec-voice')==='true';

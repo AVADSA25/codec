@@ -5,6 +5,10 @@ import importlib, os, sys, json
 SKILLS_DIR = os.path.expanduser("~/.codec/skills")
 sys.path.insert(0, SKILLS_DIR)
 
+# Load MCP gating config
+sys.path.insert(0, os.path.dirname(__file__))
+from codec_config import MCP_DEFAULT_ALLOW, MCP_ALLOWED_TOOLS
+
 mcp = FastMCP("CODEC", instructions="Voice-controlled computer agent with 40+ skills")
 
 # Compatibility shim: expose _tools as a dict-like object for introspection
@@ -28,8 +32,23 @@ def load_skill_tools():
         try:
             mod = importlib.import_module(name)
             if hasattr(mod, 'run') and hasattr(mod, 'SKILL_DESCRIPTION'):
-                if not getattr(mod, 'SKILL_MCP_EXPOSE', True):
+                # Per-skill opt-out always wins
+                if getattr(mod, 'SKILL_MCP_EXPOSE', None) is False:
                     continue
+                skill_name_check = getattr(mod, 'SKILL_NAME', name)
+                # Determine whether this skill is allowed via MCP
+                if MCP_DEFAULT_ALLOW:
+                    # Opt-out mode: expose unless the skill explicitly sets SKILL_MCP_EXPOSE = False (handled above)
+                    pass
+                else:
+                    # Opt-in mode (default): only expose if explicitly allowed or skill sets SKILL_MCP_EXPOSE = True
+                    if getattr(mod, 'SKILL_MCP_EXPOSE', None) is True:
+                        pass  # skill explicitly opted in
+                    elif skill_name_check in MCP_ALLOWED_TOOLS or name in MCP_ALLOWED_TOOLS:
+                        pass  # listed in config allowlist
+                    else:
+                        print(f"[MCP] Skip {name}: not in mcp_allowed_tools (opt-in mode)")
+                        continue
                 skill_name = getattr(mod, 'SKILL_NAME', name)
                 skill_desc = getattr(mod, 'SKILL_DESCRIPTION', f"CODEC skill: {name}")
 
