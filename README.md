@@ -23,78 +23,46 @@ You spend **4+ hours a day** switching tabs, copy-pasting, formatting emails, ch
 
 AI chatbots don't fix this. They're another tab. You still copy, paste, switch, click.
 
-## What CODEC Actually Does
-
-CODEC sits on your Mac as an invisible layer. You speak — it acts. Not "here's a suggestion." Not "I generated some text for you to copy." It **does the thing.**
-
-**Monday morning. You open your laptop.**
-
-> *"Hey CODEC"*
-
-> *"What's on my calendar today, anything urgent in my email, and run my competitor briefing"*
-
-Three seconds of talking. CODEC checks your Google Calendar, scans Gmail for urgency, dispatches a research crew across 20+ sources, and delivers a formatted briefing to your Google Docs. You sip your coffee.
-
-**You're deep in code. Bug in production.**
-
-> *"CODEC, read my screen and tell me what's wrong"*
-
-It screenshots your IDE, reads the error, searches your codebase, and explains the fix. You never left your editor. You never opened a browser. You never typed a query.
-
-**WhatsApp pings. Client wants a proposal by noon.**
-
-> *"CODEC, draft a reply saying I'll send it within the hour, professional tone"*
-
-It reads the conversation, drafts the reply, and pastes it directly into the WhatsApp input field. You hit send. Five seconds.
-
-**End of day. You want tomorrow prepped.**
-
-> *"Schedule my daily briefing every morning at 8"*
-
-Done. Tomorrow at 8am, a research agent runs automatically, gathers industry news, checks your calendar, and drops a report in your Drive. You wake up to a briefing you didn't write.
-
----
-
-## Why CODEC and Not [Insert AI Tool]
-
-**It controls your Mac, not just a chat window.** CODEC clicks buttons, fills forms, reads your screen, opens apps, types text into any field. It uses macOS Accessibility and Chrome DevTools Protocol — the same APIs your keyboard and mouse use.
-
-**Everything stays on your machine.** Your conversations, your files, your calendar data, your browsing — none of it goes to any server. Run Qwen, Llama, or Mistral locally. Zero telemetry. Zero analytics. You own every byte.
-
-**It works where you already are.** Select text → right-click → CODEC rewrites it. Hold a key → speak → text appears in any app. Say a wake word from any screen. No new window. No context switch.
-
-**It builds its own tools.** Describe a skill in plain English or paste a GitHub URL — Skill Forge converts it into a CODEC plugin automatically. Your AI gets smarter the more you use it.
-
-**It remembers everything.** Every conversation, every task, every decision — searchable with full-text search. *"What did I say about the Q3 budget last week?"* — instant answer from your private memory.
-
----
-
-## Real Workflows That Save Hours
-
-| Instead of this... | Say this |
-|---|---|
-| Open Gmail → scan 47 emails → identify urgent ones → draft 3 replies → format each one → send | *"Check my email, flag anything urgent, draft replies"* |
-| Open Google Docs → stare at blank page → research 8 sources → write 10 pages → add images → format | *"Deep research AI in healthcare, save to Google Docs"* — full 10,000-word report delivered |
-| Open Calendar → check availability → write email → suggest 3 times → wait → reschedule | *"What's my availability this week? Email Sarah three options for a 30-min call"* |
-| Copy error → open browser → paste → read Stack Overflow → try fix → repeat | *"Read my screen and fix this error"* |
-| Open competitor site → take notes → compare pricing → write analysis → make slides | *"Run competitor analysis on [company]"* — SWOT + positioning delivered to Docs |
-| Open 6 tabs every morning → read news → check stocks → scan industry updates | *"Hey CODEC"* — your morning briefing runs automatically at 8am |
-| Select text → copy → open translator → paste → copy result → paste back | *Right-click → CODEC Translate* — replaced in-place |
-| Write LinkedIn post → rewrite 4 times → check tone → proofread → post | *"Write a LinkedIn post about [topic]"* — done, polished, ready |
-
 ---
 
 ## 7 Products. One System.
 
 | | Product | One-liner |
 |---|---|---|
-| **1** | **CODEC Core** | 50 voice skills — say it and it's done |
-| **2** | **CODEC Dictate** | Hold a key, speak, release — text appears in any app |
-| **3** | **CODEC Assist** | 8 AI services in your right-click menu |
-| **4** | **CODEC Chat** | 250K-context chat with files, vision, web, and 12 agent crews |
-| **5** | **CODEC Vibe** | AI coding IDE — describe it, watch it build, live preview |
-| **6** | **CODEC Voice** | Call your AI like a phone call — it acts while you talk |
-| **7** | **CODEC Remote** | Control your Mac from your phone — Touch ID + 2FA secured |
+| **1** | **CODEC Core** | 50 voice skills, keyboard shortcuts, auto-paste replies — your Mac's AI command layer |
+| **2** | **CODEC Dictate** | Hold a key, speak, release — text appears in any app instantly |
+| **3** | **CODEC Assist** | Select text anywhere → right-click → AI rewrites, translates, replies, proofreads |
+| **4** | **CODEC Chat** | 250K-context chat with file uploads, vision, web search, and 12 autonomous agent crews |
+| **5** | **CODEC Vibe** | AI coding IDE — describe what you want, watch it build, live preview in browser |
+| **6** | **CODEC Voice** | Call your AI like a phone call — it books, researches, and acts while you talk |
+| **7** | **CODEC Remote** | Full dashboard from your phone — Touch ID + PIN + 2FA secured |
+
+### What hits different
+
+**Reply to any message without typing.** Slack pings. WhatsApp buzzes. iMessage lights up. You don't switch apps, don't open keyboards. Press a key, say *"reply saying I'll be there in 10, casual tone"* — CODEC reads the conversation, drafts the reply, and pastes it directly into the chat input. You hit send. Done.
+
+**Keyboard shortcuts that replace entire workflows.** Hold F18 → speak → release. Your voice becomes a command. Double-tap `*` → CODEC screenshots your screen and tells you what it sees. Select any text → right-click → rewrite it, translate it, proofread it, explain it. No app to open. No tab to switch to. It's already there.
+
+**Your screen is the context.** CODEC reads what's in front of you — your IDE, your browser, your email. *"What's wrong with this code?"* It sees the error. *"Summarize this article"* — it reads the page. *"Fill in this form"* — it types into the fields. No copy-paste. No explaining what you're looking at.
+
+**AI agents that work while you don't.** Not chat responses — full autonomous workflows. *"Deep research AI in healthcare"* → 8 agents fan out, run 20+ searches, write a 10,000-word report with images, deliver it to your Google Docs. Schedule any crew to run on repeat — morning briefings, competitor analysis, inbox triage — all on cron.
+
+**Nothing leaves your machine.** Run Qwen, Llama, or Mistral locally. Conversations stored in local SQLite. No cloud. No telemetry. No analytics. Your data is yours. Period.
+
+---
+
+## Real Workflows That Save Hours
+
+| Instead of this... | With CODEC |
+|---|---|
+| Open Gmail → scan 47 emails → draft 3 replies → format → send | *"Check my email, flag anything urgent, draft replies"* |
+| Open Google Docs → blank page → research → write 10 pages → images → format | *"Deep research AI in healthcare, save to Docs"* — 10,000-word report delivered |
+| Slack notification → switch app → read thread → type reply → proofread → send | Press key → *"Reply saying I'll review it tonight"* → pasted into Slack |
+| Copy error → browser → paste → Stack Overflow → try fix → repeat | *"Read my screen and fix this error"* — never leaves your editor |
+| Open competitor site → notes → pricing → write analysis | *"Run competitor analysis on [company]"* — SWOT delivered to Docs |
+| Open 6 tabs → read news → check industry → take notes | Runs automatically at 8am — briefing waiting in your Drive |
+| Select text → copy → open translator → paste → copy result → paste back | Right-click → CODEC Translate — replaced in-place, one click |
+| Write LinkedIn post → rewrite 4 times → check tone → proofread | *"Write a LinkedIn post about [topic]"* — polished, ready to post |
 
 ---
 
@@ -190,13 +158,12 @@ You speak → Whisper STT → intent dispatch → skill / agent crew → action 
 
 | Input | What happens |
 |---|---|
-| *"Hey CODEC..."* | Wake word — always listening, hands-free |
-| Hold F18, speak, release | Voice command with push-to-talk |
+| Hold F18, speak, release | Voice command — say it and it's done |
+| Double-tap F18 | PTT Lock — hands-free recording, tap again to stop |
 | F16 / F9 | Type a command instead of speaking |
-| Double-tap `*` `*` | Screenshot + AI analysis of your screen |
+| Double-tap `*` `*` | Screenshot + AI reads your screen |
+| Double-tap `+` `+` | Analyze document in clipboard |
 | Select text → right-click | 8 AI services in context menu |
-
-**Double-tap F18** to lock recording hands-free. Tap again to stop.
 
 ### 50 Skills
 
