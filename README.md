@@ -19,11 +19,34 @@
 
 ## What is CODEC?
 
-CODEC turns your computer into a voice-controlled AI workstation. Press a key or say *"Hey CODEC"* — CODEC listens, thinks (using any LLM you choose), and acts: opening apps, drafting messages, reading your screen, analyzing documents, researching topics, writing code, and anything else you can describe.
+Say *"Hey CODEC"* or press a key — your Mac becomes an AI-powered workstation that **actually does things**. Not just chat. Real actions: booking meetings, drafting emails, researching competitors, writing code, reading your screen, and controlling your apps.
 
-A private, open-source alternative to Siri and Alexa that actually controls your computer — and writes its own plugins.
+**7 integrated products. One framework.**
 
-*Built for macOS.* Linux support planned.
+| Product | What it does |
+|---------|-------------|
+| **CODEC Core** | 49 voice skills — always-on wake word, say it and it's done |
+| **CODEC Dictate** | Hold F18, speak, release — text appears in any app instantly |
+| **CODEC Assist** | 8 AI services in your right-click menu — Proofread, Elevate, Translate, Reply, and more |
+| **CODEC Chat** | 250K-token context, drag-and-drop files, 12 AI agent crews |
+| **CODEC Vibe** | AI-powered IDE — describe it, watch the code write itself, live preview |
+| **CODEC Voice** | Call your AI like a phone call — it books, researches, and acts while you talk |
+| **CODEC Remote** | Full dashboard from your phone — Touch ID + PIN, Cloudflare Tunnel |
+
+**What makes CODEC different:**
+
+- **It controls your computer** — not just conversation, real actions on your Mac
+- **Always-on wake word** — say *"Hey CODEC"* from anywhere, hands-free
+- **Auto-paste into any chat** — drafts replies for Slack, WhatsApp, iMessage, email
+- **12 AI agent crews** — Deep Research writes 10,000-word reports with images to Google Docs
+- **Touch ID + PIN security** — biometric auth for remote access
+- **Reads your screen** — takes screenshots, analyzes what it sees, helps you fix errors
+- **Writes its own plugins** — Skill Forge turns GitHub repos into CODEC skills automatically
+- **Works with any LLM** — Ollama, MLX, LM Studio (free/local) or OpenAI, Claude, Gemini (cloud)
+- **100% private** — no telemetry, no analytics, no data leaves your machine
+- **Scheduled automations** — daily briefings, competitor analysis, news digests, all on cron
+
+*Built for macOS. Linux support planned.*
 
 ---
 
