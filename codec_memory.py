@@ -58,6 +58,8 @@ class CodecMemory:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 session_id TEXT, timestamp TEXT, role TEXT, content TEXT
             )""")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_conv_session ON conversations(session_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_conv_ts ON conversations(timestamp)")
 
             # Standalone FTS5 table — stores its own copies of all searchable columns.
             # src_id links back to conversations.id for deduplication.

@@ -105,7 +105,8 @@ def speak(text):
                 tmp.write(chunk)
             tmp.close()
             subprocess.Popen(["afplay", tmp.name])
-    except: pass
+    except Exception as e:
+        print(f"[WARN] TTS/speak error: {e}")
 
 def paste_text(text):
     subprocess.run(["pbcopy"], input=text.encode(), timeout=5)

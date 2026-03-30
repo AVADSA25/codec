@@ -273,8 +273,8 @@ class VoicePipeline:
                         sys.path.insert(0, _dash)
                     from codec_config import clean_transcript as _clean
                     text = _clean(text) or text
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"[Voice] Transcript clean warning: {e}")
                 return text
             print(f"[Voice] Whisper {r.status_code}: {r.text[:200]}")
         except Exception as e:
@@ -558,8 +558,8 @@ class VoicePipeline:
                             if self.processing:
                                 print("[Voice] Interrupt received")
                                 self.interrupted.set()
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        print(f"[Voice] WS text parse warning: {e}")
                     continue
 
                 # ── Audio bytes ──
@@ -717,5 +717,5 @@ class VoicePipeline:
     async def close(self):
         try:
             await self._http.aclose()
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[Voice] HTTP client close warning: {e}")

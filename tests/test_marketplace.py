@@ -1,4 +1,5 @@
 """Tests for codec_marketplace.py"""
+import hashlib
 import json
 import os
 import sys
@@ -11,6 +12,7 @@ from codec_marketplace import (
     _load_marketplace_meta,
     _save_marketplace_meta,
     _load_cached_registry,
+    _verify_sha256,
     SKILL_TRIGGERS,
     SKILL_DESCRIPTION,
     run,
@@ -157,3 +159,87 @@ def test_cmd_info_not_found(monkeypatch, capsys):
     cm.cmd_info("nonexistent-skill-xyz")
     out = capsys.readouterr().out
     assert "not found" in out.lower()
+
+
+# ── SHA-256 checksum verification ────────────────────────────────────────────
+
+def test_verify_sha256_valid():
+    """Matching hash returns True."""
+    content = "print('hello world')\n"
+    expected = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    assert _verify_sha256(content, expected) is True
+
+
+def test_verify_sha256_invalid():
+    """Mismatched hash returns False."""
+    content = "print('hello world')\n"
+    assert _verify_sha256(content, "0" * 64) is False
+
+
+def test_verify_sha256_case_insensitive():
+    """Hash comparison is case-insensitive."""
+    content = "x = 1\n"
+    expected = hashlib.sha256(content.encode("utf-8")).hexdigest().upper()
+    assert _verify_sha256(content, expected) is True
+
+
+def test_download_skill_rejects_bad_hash(monkeypatch):
+    """_download_skill returns None when sha256 does not match."""
+    import codec_marketplace as cm
+
+    class FakeResp:
+        status_code = 200
+        text = "# malicious code\n"
+
+    import types
+    fake_requests = types.ModuleType("requests")
+    fake_requests.get = lambda url, timeout=30: FakeResp()
+    monkeypatch.setitem(sys.modules, "requests", fake_requests)
+
+    entry = {"name": "evil-skill", "file": "evil/evil.py", "sha256": "0" * 64}
+    result = cm._download_skill(entry, {"base_url": "https://example.com"})
+    assert result is None
+
+
+def test_download_skill_accepts_good_hash(monkeypatch):
+    """_download_skill returns content when sha256 matches."""
+    import codec_marketplace as cm
+
+    code = "# legit skill\nprint('ok')\n"
+    good_hash = hashlib.sha256(code.encode("utf-8")).hexdigest()
+
+    class FakeResp:
+        status_code = 200
+        text = code
+
+    import types
+    fake_requests = types.ModuleType("requests")
+    fake_requests.get = lambda url, timeout=30: FakeResp()
+    monkeypatch.setitem(sys.modules, "requests", fake_requests)
+
+    entry = {"name": "good-skill", "file": "good/good.py", "sha256": good_hash}
+    result = cm._download_skill(entry, {"base_url": "https://example.com"})
+    assert result == code
+
+
+def test_download_skill_warns_no_hash(monkeypatch, caplog):
+    """_download_skill logs a warning when no sha256 in registry entry."""
+    import logging
+    import codec_marketplace as cm
+
+    code = "# skill without hash\n"
+
+    class FakeResp:
+        status_code = 200
+        text = code
+
+    import types
+    fake_requests = types.ModuleType("requests")
+    fake_requests.get = lambda url, timeout=30: FakeResp()
+    monkeypatch.setitem(sys.modules, "requests", fake_requests)
+
+    entry = {"name": "no-hash-skill", "file": "nohash/nohash.py"}
+    with caplog.at_level(logging.WARNING, logger="codec_marketplace"):
+        result = cm._download_skill(entry, {"base_url": "https://example.com"})
+    assert result == code
+    assert "no sha256" in caplog.text.lower() or "skipping integrity" in caplog.text.lower()

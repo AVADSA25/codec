@@ -45,6 +45,10 @@ def _qwen_model():
 
 SERPER_API_KEY = _cfg().get("serper_api_key", os.environ.get("SERPER_API_KEY", ""))
 
+# ── HTTP connection pools (reuse TCP connections across calls) ──
+_sync_http  = httpx.Client(timeout=30, follow_redirects=True)
+_async_http = httpx.AsyncClient(timeout=180)
+
 # ── AUDIT LOGGER ──
 _AUDIT_LOG_PATH = os.path.expanduser("~/.codec/audit.log")
 
@@ -105,9 +109,8 @@ def _web_search(query: str) -> str:
 
 
 def _web_fetch(url: str) -> str:
-    import httpx as _hx
     try:
-        r = _hx.get(url.strip(), timeout=30, follow_redirects=True)
+        r = _sync_http.get(url.strip())
         text = r.text
         text = re.sub(r'<script[^>]*>[\s\S]*?</script>', '', text)
         text = re.sub(r'<style[^>]*>[\s\S]*?</style>', '', text)
@@ -331,108 +334,107 @@ Rules:
         tool_calls_made = 0
         last_response = ""
 
-        async with httpx.AsyncClient(timeout=180) as client:
-            for _ in range(self.max_tool_calls + 3):
-                payload = {
-                    "model": _qwen_model(),
-                    "messages": messages,
-                    "max_tokens": 4000,
-                    "temperature": 0.7,
-                    "chat_template_kwargs": {"enable_thinking": self.thinking},
-                }
-                try:
-                    r = await client.post(_qwen_url(), json=payload,
-                                          headers={"Content-Type": "application/json"})
-                    data = r.json()
-                    response = data["choices"][0]["message"]["content"].strip()
-                except Exception as e:
-                    return f"LLM error: {e}"
+        for _ in range(self.max_tool_calls + 3):
+            payload = {
+                "model": _qwen_model(),
+                "messages": messages,
+                "max_tokens": 4000,
+                "temperature": 0.7,
+                "chat_template_kwargs": {"enable_thinking": self.thinking},
+            }
+            try:
+                r = await _async_http.post(_qwen_url(), json=payload,
+                                           headers={"Content-Type": "application/json"})
+                data = r.json()
+                response = data["choices"][0]["message"]["content"].strip()
+            except Exception as e:
+                return f"LLM error: {e}"
 
-                # Strip thinking tags
-                response = re.sub(r'<think>[\s\S]*?</think>', '', response).strip()
-                last_response = response
+            # Strip thinking tags
+            response = re.sub(r'<think>[\s\S]*?</think>', '', response).strip()
+            last_response = response
 
-                if self.verbose:
-                    print(f"[{self.name}] {response[:200]}…")
+            if self.verbose:
+                print(f"[{self.name}] {response[:200]}…")
 
-                # FINAL answer — rsplit gets the LAST occurrence (skips quoted prompt text)
-                if "FINAL:" in response:
-                    final = response.rsplit("FINAL:", 1)[1].strip()
+            # FINAL answer — rsplit gets the LAST occurrence (skips quoted prompt text)
+            if "FINAL:" in response:
+                final = response.rsplit("FINAL:", 1)[1].strip()
+                if callback:
+                    await _safe_cb(callback, {"agent": self.name, "status": "complete", "preview": final[:200]})
+                return final
+
+            # TOOL call
+            m = re.search(r'TOOL:\s*(\S+)\s*\nINPUT:\s*([\s\S]*?)(?=\nTOOL:|\nFINAL:|$)', response)
+            if m and tool_calls_made < self.max_tool_calls:
+                tool_name  = m.group(1).strip()
+                tool_input = m.group(2).strip()
+
+                # ── Input validation guards ──────────────────────────
+                if not tool_name:
+                    log.warning("Rejected malformed tool call: %s", tool_name)
+                    messages.append({"role": "assistant", "content": response})
+                    messages.append({"role": "user", "content": "Empty tool name rejected. Try again or use FINAL:."})
+                    continue
+                if len(tool_name) > _MAX_TOOL_NAME_LEN:
+                    log.warning("Rejected malformed tool call: %s", tool_name[:120])
+                    messages.append({"role": "assistant", "content": response})
+                    messages.append({"role": "user", "content": "Tool name too long (max 100 chars). Try again or use FINAL:."})
+                    continue
+                if not _VALID_TOOL_NAME_RE.match(tool_name):
+                    log.warning("Rejected malformed tool call: %s", tool_name[:120])
+                    messages.append({"role": "assistant", "content": response})
+                    messages.append({"role": "user", "content": f"Tool name '{tool_name[:60]}' contains invalid characters. Only alphanumeric, underscore, hyphen, and dot are allowed. Try again or use FINAL:."})
+                    continue
+                if len(tool_input) > _MAX_TOOL_INPUT_LEN:
+                    log.warning("Rejected malformed tool call: %s", tool_name)
+                    messages.append({"role": "assistant", "content": response})
+                    messages.append({"role": "user", "content": f"Tool input too long ({len(tool_input)} chars, max {_MAX_TOOL_INPUT_LEN}). Try again or use FINAL:."})
+                    continue
+                # ── End validation guards ─────────────────────────────
+
+                tool = next((t for t in self.tools if t.name == tool_name), None)
+
+                if tool:
                     if callback:
-                        await _safe_cb(callback, {"agent": self.name, "status": "complete", "preview": final[:200]})
-                    return final
-
-                # TOOL call
-                m = re.search(r'TOOL:\s*(\S+)\s*\nINPUT:\s*([\s\S]*?)(?=\nTOOL:|\nFINAL:|$)', response)
-                if m and tool_calls_made < self.max_tool_calls:
-                    tool_name  = m.group(1).strip()
-                    tool_input = m.group(2).strip()
-
-                    # ── Input validation guards ──────────────────────────
-                    if not tool_name:
-                        log.warning("Rejected malformed tool call: %s", tool_name)
-                        messages.append({"role": "assistant", "content": response})
-                        messages.append({"role": "user", "content": "Empty tool name rejected. Try again or use FINAL:."})
-                        continue
-                    if len(tool_name) > _MAX_TOOL_NAME_LEN:
-                        log.warning("Rejected malformed tool call: %s", tool_name[:120])
-                        messages.append({"role": "assistant", "content": response})
-                        messages.append({"role": "user", "content": "Tool name too long (max 100 chars). Try again or use FINAL:."})
-                        continue
-                    if not _VALID_TOOL_NAME_RE.match(tool_name):
-                        log.warning("Rejected malformed tool call: %s", tool_name[:120])
-                        messages.append({"role": "assistant", "content": response})
-                        messages.append({"role": "user", "content": f"Tool name '{tool_name[:60]}' contains invalid characters. Only alphanumeric, underscore, hyphen, and dot are allowed. Try again or use FINAL:."})
-                        continue
-                    if len(tool_input) > _MAX_TOOL_INPUT_LEN:
-                        log.warning("Rejected malformed tool call: %s", tool_name)
-                        messages.append({"role": "assistant", "content": response})
-                        messages.append({"role": "user", "content": f"Tool input too long ({len(tool_input)} chars, max {_MAX_TOOL_INPUT_LEN}). Try again or use FINAL:."})
-                        continue
-                    # ── End validation guards ─────────────────────────────
-
-                    tool = next((t for t in self.tools if t.name == tool_name), None)
-
-                    if tool:
-                        if callback:
-                            await _safe_cb(callback, {
-                                "agent": self.name, "status": "tool_call",
-                                "tool": tool_name, "input": tool_input[:100]
-                            })
-                        if self.verbose:
-                            print(f"[{self.name}] → {tool_name}({tool_input[:80]}…)")
-
-                        _audit("tool_call", agent=self.name, tool=tool_name,
-                               input=tool_input[:200])
-                        loop = asyncio.get_event_loop()
-                        result = await loop.run_in_executor(None, tool.run, tool_input)
-                        tool_calls_made += 1
-                        _audit("tool_result", agent=self.name, tool=tool_name,
-                               result_len=len(result))
-
-                        if self.verbose:
-                            print(f"[{self.name}] ← {result[:150]}…")
-
-                        messages.append({"role": "assistant", "content": response})
-                        messages.append({
-                            "role": "user",
-                            "content": (
-                                f"Tool result from {tool_name}:\n{result}\n\n"
-                                f"Continue. Use another TOOL or respond with FINAL: "
-                                f"({self.max_tool_calls - tool_calls_made} tool calls remaining)."
-                            )
+                        await _safe_cb(callback, {
+                            "agent": self.name, "status": "tool_call",
+                            "tool": tool_name, "input": tool_input[:100]
                         })
-                    else:
-                        messages.append({"role": "assistant", "content": response})
-                        messages.append({
-                            "role": "user",
-                            "content": f"Tool '{tool_name}' not found. Available: {', '.join(t.name for t in self.tools)}. Try again or use FINAL:."
-                        })
+                    if self.verbose:
+                        print(f"[{self.name}] → {tool_name}({tool_input[:80]}…)")
+
+                    _audit("tool_call", agent=self.name, tool=tool_name,
+                           input=tool_input[:200])
+                    loop = asyncio.get_event_loop()
+                    result = await loop.run_in_executor(None, tool.run, tool_input)
+                    tool_calls_made += 1
+                    _audit("tool_result", agent=self.name, tool=tool_name,
+                           result_len=len(result))
+
+                    if self.verbose:
+                        print(f"[{self.name}] ← {result[:150]}…")
+
+                    messages.append({"role": "assistant", "content": response})
+                    messages.append({
+                        "role": "user",
+                        "content": (
+                            f"Tool result from {tool_name}:\n{result}\n\n"
+                            f"Continue. Use another TOOL or respond with FINAL: "
+                            f"({self.max_tool_calls - tool_calls_made} tool calls remaining)."
+                        )
+                    })
                 else:
-                    # No TOOL/FINAL — treat as final
-                    if callback:
-                        await _safe_cb(callback, {"agent": self.name, "status": "complete", "preview": response[:200]})
-                    return response
+                    messages.append({"role": "assistant", "content": response})
+                    messages.append({
+                        "role": "user",
+                        "content": f"Tool '{tool_name}' not found. Available: {', '.join(t.name for t in self.tools)}. Try again or use FINAL:."
+                    })
+            else:
+                # No TOOL/FINAL — treat as final
+                if callback:
+                    await _safe_cb(callback, {"agent": self.name, "status": "complete", "preview": response[:200]})
+                return response
 
         return last_response
 

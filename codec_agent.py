@@ -341,7 +341,7 @@ def build_session_script(safe_sys, session_id):
     L.append("print(O+'    ║ ██      ██    ██ ██   ██ █████   ██       ║')")
     L.append("print(O+'    ║ ██      ██    ██ ██   ██ ██      ██       ║')")
     L.append("print(O+'    ║  ██████  ██████  ██████  ███████  ██████  ║')")
-    L.append("print(O+'    ║                                   v1.4.0  ║')")
+    L.append("print(O+'    ║                                   v1.5.0  ║')")
     L.append("print(O+'    ╠═══════════════════════════════════════════╣')")
     L.append("print(O+'    ║'+W+'  " + cfg.get('key_voice', 'f18').upper() + " voice  " + cfg.get('key_text', 'f16').upper() + " text  ** screen  ++ doc   '+O+'║')")
     L.append("print(O+'    ║'+W+'  Hey C = wake word  type exit to close    '+O+'║')")

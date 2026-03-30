@@ -120,6 +120,28 @@ a { color: var(--accent); text-decoration: none; }
 .heartbeat-task-item { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border); }
 .heartbeat-task-item:last-child { border-bottom: none; }
 
+/* ── Reports ── */
+.report-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 10px; cursor: pointer; transition: border-color 0.2s, background 0.2s; }
+.report-card:hover { border-color: var(--border-hover); background: var(--surface-2); }
+.report-card.unread { border-left: 3px solid var(--accent); }
+.report-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.report-title { font-size: 14px; font-weight: 600; }
+.report-ts { font-size: 11px; color: var(--text-dim); font-family: var(--mono); }
+.report-body { font-size: 13px; color: var(--text-muted); line-height: 1.5; margin-top: 8px; white-space: pre-wrap; }
+.report-actions-bar { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+
+/* ── Notification bell ── */
+.notif-bell { position: relative; }
+.notif-badge { position: absolute; top: -4px; right: -4px; min-width: 16px; height: 16px; background: var(--accent); color: #fff; font-size: 10px; font-weight: 700; border-radius: 8px; display: flex; align-items: center; justify-content: center; padding: 0 4px; line-height: 1; pointer-events: none; }
+.notif-badge.hidden { display: none; }
+
+/* ── Toast ── */
+.toast-container { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
+.toast { background: var(--surface-2); border: 1px solid var(--border); color: var(--text); padding: 10px 20px; border-radius: var(--radius); font-size: 13px; font-family: var(--font); box-shadow: 0 4px 12px rgba(0,0,0,0.3); opacity: 0; transform: translateY(10px); animation: toastIn 0.25s ease forwards; pointer-events: auto; }
+.toast.out { animation: toastOut 0.25s ease forwards; }
+@keyframes toastIn { to { opacity: 1; transform: translateY(0); } }
+@keyframes toastOut { to { opacity: 0; transform: translateY(10px); } }
+
 /* ── Empty state ── */
 .empty { text-align: center; padding: 48px 20px; color: var(--text-muted); }
 .empty-icon { margin-bottom: 12px; color: var(--text-dim); }
@@ -150,7 +172,7 @@ a { color: var(--accent); text-decoration: none; }
 <div class="header">
   <div class="header-left">
     <a href="/" class="logo-link"><img src="https://i.imgur.com/jD1X5W8.png" alt="CODEC"></a>
-    <h1>CODEC</h1>
+    <h1><a href="/" style="color:inherit;text-decoration:none">CODEC</a></h1>
   </div>
   <nav class="page-nav">
     <a href="/chat" class="nav-link">Chat</a>
@@ -163,6 +185,7 @@ a { color: var(--accent); text-decoration: none; }
     <a href="/" class="icon-btn" title="Home"><svg class="ico" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></a>
     <button class="icon-btn" id="voiceBtn" onclick="toggleVoiceReply()" title="Voice replies"><svg class="ico" viewBox="0 0 24 24"><path d="M11 5L6 9H2v6h4l5 4V5z"/><line x1="23" y1="9" x2="17" y2="15" id="muteX1"/><line x1="17" y1="9" x2="23" y2="15" id="muteX2"/></svg></button>
     <button class="icon-btn" onclick="takeScreenshot()" title="Screenshot"><svg class="ico" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></button>
+    <button class="icon-btn notif-bell" id="notifBellBtn" onclick="showTab('reports')" title="Reports"><svg class="ico" viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg><span class="notif-badge hidden" id="notifBadge">0</span></button>
     <button class="icon-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme"><svg class="ico" viewBox="0 0 24 24" id="themeIco"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg></button>
     <button class="icon-btn" onclick="window.location.href='/#settings'" title="Settings"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg></button>
     <button class="icon-btn" onclick="lockSession()" title="Lock"><svg class="ico" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></button>
@@ -174,6 +197,7 @@ a { color: var(--accent); text-decoration: none; }
     <button class="tab active" onclick="showTab('schedules')" id="tab-schedules"><svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>Schedules</button>
     <button class="tab" onclick="showTab('heartbeat')" id="tab-heartbeat"><svg class="ico ico-sm" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>Heartbeat</button>
     <button class="tab" onclick="showTab('history')" id="tab-history"><svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>History</button>
+    <button class="tab" onclick="showTab('reports')" id="tab-reports"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>Reports</button>
   </div>
 
   <!-- ── Schedules Tab ── -->
@@ -271,7 +295,20 @@ a { color: var(--accent); text-decoration: none; }
       <div class="loading">Loading history...</div>
     </div>
   </div>
+
+  <!-- ── Reports Tab ── -->
+  <div class="tab-panel" id="panel-reports">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <h2 style="font-size:16px; font-weight:600;">Task Reports</h2>
+      <button class="btn btn-sm" onclick="markAllReportsRead()">Mark All Read</button>
+    </div>
+    <div id="reportsList">
+      <div class="loading">Loading reports...</div>
+    </div>
+  </div>
 </div>
+
+<div class="toast-container" id="toastContainer"></div>
 
 <script>
 /* ── Theme ── */
@@ -292,6 +329,19 @@ function showTab(name) {
   document.querySelectorAll('.tab-panel').forEach(function(p){ p.classList.remove('active'); });
   document.getElementById('tab-' + name).classList.add('active');
   document.getElementById('panel-' + name).classList.add('active');
+  window.location.hash = name;
+  if (name === 'reports') loadReports();
+}
+
+/* ── Toast ── */
+function showToast(msg) {
+  var container = document.getElementById('toastContainer');
+  var el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = msg;
+  container.appendChild(el);
+  setTimeout(function(){ el.classList.add('out'); }, 2700);
+  setTimeout(function(){ el.remove(); }, 3000);
 }
 
 /* ── Schedules ── */
@@ -371,13 +421,14 @@ function runNow(id) {
   fetch('/api/schedules/' + id + '/run', { method: 'POST' })
     .then(function(r){ return r.json(); })
     .then(function(data) {
-      if (data.status === 'triggered') {
-        alert('Triggered: ' + (data.crew || id));
+      if (data.status === 'running') {
+        showToast('⏳ Task running — switching to Reports...');
+        setTimeout(function(){ showTab('reports'); loadReports(); }, 800);
       } else {
-        alert(data.error || 'Failed');
+        showToast(data.error || 'Failed to trigger task');
       }
     })
-    .catch(function(e){ alert('Error: ' + e); });
+    .catch(function(e){ showToast('Error: ' + e); });
 }
 
 function deleteSchedule(id) {
@@ -480,6 +531,95 @@ function loadHistory() {
   });
 }
 
+/* ── Reports ── */
+var reports = [];
+var _reportPollTimer = null;
+
+function loadReports() {
+  fetch('/api/notifications').then(function(r){ return r.json(); }).then(function(data) {
+    reports = (data.notifications || data || []).filter(function(n){ return n.type === 'task_report'; });
+    renderReports();
+    // Auto-refresh every 5s if any task is still running
+    var hasRunning = reports.some(function(r){ return r.status === 'running'; });
+    if (hasRunning && !_reportPollTimer) {
+      _reportPollTimer = setInterval(function(){ loadReports(); }, 5000);
+    } else if (!hasRunning && _reportPollTimer) {
+      clearInterval(_reportPollTimer);
+      _reportPollTimer = null;
+    }
+  }).catch(function() {
+    document.getElementById('reportsList').innerHTML = '<div class="empty"><div class="empty-icon"><svg style="width:28px;height:28px;display:inline-block;vertical-align:middle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div><div class="empty-text">Could not load reports</div></div>';
+  });
+}
+
+function renderReports() {
+  var el = document.getElementById('reportsList');
+  if (!reports.length) {
+    el.innerHTML = '<div class="empty"><div class="empty-icon"><svg style="width:28px;height:28px;display:inline-block;vertical-align:middle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div><div class="empty-text">No task reports yet. Reports will appear here after scheduled tasks run.</div></div>';
+    return;
+  }
+  var html = '';
+  reports.forEach(function(r) {
+    var isUnread = !r.read;
+    var status = (r.status || 'info').toLowerCase();
+    var badgeClass = status === 'success' ? 'badge-success' : status === 'error' || status === 'failed' ? 'badge-danger' : status === 'running' ? 'badge-info' : status === 'warning' ? 'badge-info' : 'badge-muted';
+    var statusLabel = status === 'running' ? '⏳ Running...' : status;
+    var ts = r.timestamp ? new Date(r.timestamp).toLocaleString() : (r.created ? new Date(r.created).toLocaleString() : '');
+    html += '<div class="report-card' + (isUnread ? ' unread' : '') + '" onclick="markReportRead(\'' + r.id + '\', this)">';
+    html += '<div class="report-header">';
+    html += '<span class="report-title">' + escHtml(r.title || 'Task Report') + '</span>';
+    html += '<div style="display:flex;align-items:center;gap:8px;">';
+    html += '<span class="badge ' + badgeClass + '">' + escHtml(statusLabel) + '</span>';
+    html += '<span class="report-ts">' + escHtml(ts) + '</span>';
+    html += '</div></div>';
+    if (r.doc_url) {
+      html += '<div style="margin:8px 0;"><a href="' + escHtml(r.doc_url) + '" target="_blank" class="btn btn-primary btn-sm" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;" onclick="event.stopPropagation()"><svg style="width:14px;height:14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>Open Full Report</a></div>';
+    }
+    if (r.body || r.message) {
+      var bodyText = escHtml(r.body || r.message);
+      bodyText = bodyText.replace(/📄\s*\[View Full Report\]\([^)]+\)\n*/g, '');
+      if (bodyText.trim()) {
+        html += '<div class="report-body">' + bodyText.substring(0, 500) + (bodyText.length > 500 ? '...' : '') + '</div>';
+      }
+    }
+    html += '</div>';
+  });
+  el.innerHTML = html;
+}
+
+function markReportRead(id, el) {
+  if (el) el.classList.remove('unread');
+  fetch('/api/notifications/' + id + '/read', { method: 'POST' }).then(function() {
+    pollNotifCount();
+  }).catch(function(){});
+}
+
+function markAllReportsRead() {
+  var promises = [];
+  reports.forEach(function(r) {
+    if (!r.read) {
+      promises.push(fetch('/api/notifications/' + r.id + '/read', { method: 'POST' }));
+    }
+  });
+  Promise.all(promises).then(function() {
+    document.querySelectorAll('.report-card.unread').forEach(function(el){ el.classList.remove('unread'); });
+    reports.forEach(function(r){ r.read = true; });
+    pollNotifCount();
+  }).catch(function(){});
+}
+
+/* ── Notification badge polling ── */
+function pollNotifCount() {
+  fetch('/api/notifications/count').then(function(r){ return r.json(); }).then(function(data) {
+    var count = data.unread || data.count || 0;
+    var badge = document.getElementById('notifBadge');
+    if (badge) {
+      badge.textContent = count;
+      badge.classList.toggle('hidden', count === 0);
+    }
+  }).catch(function(){});
+}
+
 /* ── Utils ── */
 function escHtml(s) {
   var d = document.createElement('div');
@@ -492,6 +632,13 @@ document.addEventListener('DOMContentLoaded', function() {
   loadSchedules();
   loadHeartbeat();
   loadHistory();
+  pollNotifCount();
+  setInterval(pollNotifCount, 30000);
+  // Handle hash-based tab navigation
+  var hash = window.location.hash.replace('#', '');
+  if (hash && document.getElementById('tab-' + hash)) {
+    showTab(hash);
+  }
 });
 
 /* ── Toggle label update ── */

@@ -1,5 +1,6 @@
 """CODEC Heartbeat — periodic check of logs, memory, and pending tasks"""
 import time, sqlite3, os, json, logging, requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [HEARTBEAT] %(message)s', datefmt='%H:%M:%S')
@@ -32,8 +33,18 @@ def check_pending_tasks():
         log.error(f"Task check failed: {e}")
         return []
 
+def _check_one_service(name: str, url: str) -> tuple:
+    """Check a single service endpoint. Returns (name, status_string)."""
+    try:
+        r = requests.get(url, timeout=3)
+        status = "✅" if r.status_code in (200, 404, 405) else f"⚠️ {r.status_code}"
+    except Exception as e:
+        status = "❌ DOWN"
+    return name, status
+
+
 def check_system_health():
-    """Verify all CODEC services are running"""
+    """Verify all CODEC services are running (checks run in parallel)."""
     services = {
         "LLM": "http://localhost:8081/v1/models",
         "Whisper": "http://localhost:8084/",
@@ -41,13 +52,14 @@ def check_system_health():
         "Dashboard": "http://localhost:8090/",
         "Vision": "http://localhost:8082/v1/models",
     }
-    for name, url in services.items():
-        try:
-            r = requests.get(url, timeout=3)
-            status = "✅" if r.status_code in (200, 404, 405) else f"⚠️ {r.status_code}"
-        except:
-            status = "❌ DOWN"
-        log.info(f"  {name}: {status}")
+    with ThreadPoolExecutor(max_workers=len(services)) as pool:
+        futures = {
+            pool.submit(_check_one_service, name, url): name
+            for name, url in services.items()
+        }
+        for future in as_completed(futures):
+            name, status = future.result()
+            log.info(f"  {name}: {status}")
 
 def check_memory_stats():
     """Report memory database stats"""

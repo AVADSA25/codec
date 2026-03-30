@@ -8,6 +8,7 @@ import ast
 import importlib.util
 import logging
 import os
+import re
 from typing import Any, Callable, Dict, List, Optional
 
 log = logging.getLogger("codec")
@@ -158,10 +159,11 @@ class SkillRegistry:
     # ── Trigger matching (replaces check_skill) ─────────────────────────
 
     def match_trigger(self, task: str) -> Optional[str]:
-        """Return the name of the first skill whose triggers match, or None."""
+        """Return the name of the first skill whose triggers match, or None.
+        Uses word-boundary matching to avoid false positives from substrings."""
         low = task.lower()
         for name, meta in self._meta.items():
             triggers = meta.get("SKILL_TRIGGERS", [])
-            if any(t in low for t in triggers):
+            if any(re.search(r'\b' + re.escape(t) + r'\b', low) for t in triggers):
                 return name
         return None

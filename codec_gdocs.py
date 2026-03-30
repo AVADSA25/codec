@@ -11,14 +11,15 @@ import os
 import re
 import requests as rq
 
-_gdocs_cfg = {}
-try:
-    import json as _json
-    with open(os.path.expanduser("~/.codec/config.json")) as _f:
-        _gdocs_cfg = _json.load(_f)
-except Exception:
-    pass
-PEXELS_API_KEY = _gdocs_cfg.get("pexels_api_key", os.environ.get("PEXELS_API_KEY", ""))
+def _get_pexels_key() -> str:
+    """Lazy-load Pexels API key at call time (not import time)."""
+    try:
+        import json as _json
+        with open(os.path.expanduser("~/.codec/config.json")) as _f:
+            cfg = _json.load(_f)
+        return cfg.get("pexels_api_key", os.environ.get("PEXELS_API_KEY", ""))
+    except Exception:
+        return os.environ.get("PEXELS_API_KEY", "")
 
 _GENERIC_HEADING_WORDS = {
     "executive", "summary", "introduction", "background", "conclusion",
@@ -35,7 +36,7 @@ def _pexels_fetch_one(query: str, page_offset: int = 0):
             "https://api.pexels.com/v1/search",
             params={"query": query, "per_page": 5, "page": page_offset + 1,
                     "orientation": "landscape"},
-            headers={"Authorization": PEXELS_API_KEY},
+            headers={"Authorization": _get_pexels_key()},
             timeout=10,
         )
         photos = resp.json().get("photos", [])
@@ -114,25 +115,103 @@ def _find_image_positions(positions: list) -> tuple:
     return hero_idx, additional
 
 
+def _strip_inline_md(text: str) -> str:
+    """Strip all inline markdown formatting to plain text."""
+    text = re.sub(r"\*\*\*(.+?)\*\*\*", r"\1", text)  # bold-italic
+    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)       # bold
+    text = re.sub(r"__(.+?)__", r"\1", text)            # bold alt
+    text = re.sub(r"\*(.+?)\*", r"\1", text)            # italic
+    text = re.sub(r"_(.+?)_", r"\1", text)              # italic alt
+    text = re.sub(r"`(.+?)`", r"\1", text)              # code
+    text = re.sub(r"\[([^\]]+)\]\([^\)]+\)", r"\1", text)  # links
+    return text
+
+
 def _parse_markdown(content: str) -> list:
+    """
+    Parse markdown into blocks. Handles:
+    - Headings (h1/h2/h3) with stripped inline formatting
+    - Bullet points (* or - prefix)
+    - Numbered list items (1. 2. etc.)
+    - Tables (converted to clean formatted rows)
+    - Body text stripped clean (matching deep_research quality)
+    - Consecutive empty lines collapsed to one
+    """
     blocks = []
-    for line in content.split("\n"):
+    lines = content.split("\n")
+    prev_empty = False
+    i = 0
+
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+
+        # ── Headings ──
         if line.startswith("# "):
-            blocks.append({"text": line[2:].strip(), "type": "h1"})
+            prev_empty = False
+            blocks.append({"text": _strip_inline_md(line[2:].strip()), "type": "h1"})
         elif line.startswith("## "):
-            blocks.append({"text": line[3:].strip(), "type": "h2"})
+            prev_empty = False
+            blocks.append({"text": _strip_inline_md(line[3:].strip()), "type": "h2"})
         elif line.startswith("### "):
-            blocks.append({"text": line[4:].strip(), "type": "h3"})
-        elif line.strip() in ("---", "***", "___"):
-            blocks.append({"text": "", "type": "empty"})
-        elif line.strip() == "":
-            blocks.append({"text": "", "type": "empty"})
+            prev_empty = False
+            blocks.append({"text": _strip_inline_md(line[4:].strip()), "type": "h3"})
+
+        # ── Horizontal rules ──
+        elif stripped in ("---", "***", "___"):
+            if not prev_empty:
+                blocks.append({"text": "", "type": "empty"})
+                prev_empty = True
+
+        # ── Empty lines (collapse consecutive) ──
+        elif stripped == "":
+            if not prev_empty:
+                blocks.append({"text": "", "type": "empty"})
+                prev_empty = True
+
+        # ── Markdown tables ──
+        elif stripped.startswith("|") and "|" in stripped[1:]:
+            prev_empty = False
+            table_lines = []
+            while i < len(lines) and lines[i].strip().startswith("|"):
+                tl = lines[i].strip()
+                # Skip separator lines like |---|---|
+                if re.match(r"^\|[\s\-:|\+]+\|$", tl):
+                    i += 1
+                    continue
+                cells = [c.strip() for c in tl.split("|")]
+                cells = [c for c in cells if c]
+                table_lines.append(cells)
+                i += 1
+            if table_lines:
+                header = table_lines[0]
+                header_text = "   ".join(_strip_inline_md(c) for c in header)
+                blocks.append({"text": header_text, "type": "table_header"})
+                for row in table_lines[1:]:
+                    row_text = "   ".join(_strip_inline_md(c) for c in row)
+                    blocks.append({"text": row_text, "type": "table_row"})
+            continue
+
+        # ── Bullet points ──
+        elif re.match(r"^[\s]*[\*\-\+]\s+", line):
+            prev_empty = False
+            bullet_text = re.sub(r"^[\s]*[\*\-\+]\s+", "", line)
+            blocks.append({"text": _strip_inline_md(bullet_text), "type": "bullet"})
+
+        # ── Numbered list items ──
+        elif re.match(r"^[\s]*\d+[\.\)]\s+", line):
+            prev_empty = False
+            num_match = re.match(r"^[\s]*\d+[\.\)]\s+", line)
+            item_text = line[num_match.end():]
+            blocks.append({"text": _strip_inline_md(item_text), "type": "numbered"})
+
+        # ── Regular body text ──
         else:
-            text = re.sub(r"\*\*(.+?)\*\*", r"\1", line)
-            text = re.sub(r"\*(.+?)\*", r"\1", text)
-            text = re.sub(r"`(.+?)`", r"\1", text)
-            text = re.sub(r"\[([^\]]+)\]\([^\)]+\)", r"\1", text)
-            blocks.append({"text": text, "type": "body"})
+            prev_empty = False
+            blocks.append({"text": _strip_inline_md(line), "type": "body"})
+
+        i += 1
+
     return blocks
 
 
@@ -143,6 +222,9 @@ def create_google_doc(title: str, content: str) -> str | None:
     - H2: 15pt, bold, CODEC orange, bottom border
     - H3: 13pt, bold, slate
     - Body: 11pt, 150% line spacing
+    - Bullet points with proper Google Docs bullets
+    - Tables rendered as styled header + data rows
+    - Inline bold preserved within body text
     - Up to 7 Pexels images (hero full-width, then left/right alternating)
     Returns the doc URL or None on error.
     """
@@ -154,6 +236,7 @@ def create_google_doc(title: str, content: str) -> str | None:
     DARK   = {"red": 0.082, "green": 0.082, "blue": 0.137}
     ORANGE = {"red": 0.910, "green": 0.443, "blue": 0.102}
     SLATE  = {"red": 0.173, "green": 0.243, "blue": 0.314}
+    LGRAY  = {"red": 0.933, "green": 0.933, "blue": 0.933}   # #EEEEEE table bg
 
     try:
         creds = Credentials.from_authorized_user_file(TOKEN_PATH)
@@ -174,17 +257,23 @@ def create_google_doc(title: str, content: str) -> str | None:
         idx       = 1
         for block in blocks:
             line = block["text"] + "\n"
-            positions.append({"start": idx, "end": idx + len(line),
-                               "type": block["type"], "text": block["text"]})
+            positions.append({
+                "start": idx, "end": idx + len(line),
+                "type": block["type"], "text": block["text"],
+            })
             full_text += line
             idx += len(line)
 
-        # Batch 1: insert text + styles
+        # ── Batch 1: insert text + apply styles ──
         reqs = [{"insertText": {"location": {"index": 1}, "text": full_text}}]
+
+        # Track bullet/numbered ranges for createParagraphBullets
+        bullet_ranges = []
+        numbered_ranges = []
 
         for p in positions:
             s, e, t = p["start"], p["end"], p["type"]
-            te = e - 1
+            te = e - 1  # text end (exclude trailing \n)
             if not p["text"]:
                 continue
 
@@ -196,7 +285,7 @@ def create_google_doc(title: str, content: str) -> str | None:
                             "namedStyleType": "HEADING_1",
                             "alignment": "CENTER",
                             "spaceAbove": {"magnitude": 0,  "unit": "PT"},
-                            "spaceBelow": {"magnitude": 10, "unit": "PT"},
+                            "spaceBelow": {"magnitude": 8, "unit": "PT"},
                         },
                         "fields": "namedStyleType,alignment,spaceAbove,spaceBelow",
                     }},
@@ -210,18 +299,19 @@ def create_google_doc(title: str, content: str) -> str | None:
                         "fields": "fontSize,bold,foregroundColor",
                     }},
                 ]
+
             elif t == "h2":
                 reqs += [
                     {"updateParagraphStyle": {
                         "range": {"startIndex": s, "endIndex": e},
                         "paragraphStyle": {
                             "namedStyleType": "HEADING_2",
-                            "spaceAbove": {"magnitude": 22, "unit": "PT"},
-                            "spaceBelow": {"magnitude":  5, "unit": "PT"},
+                            "spaceAbove": {"magnitude": 18, "unit": "PT"},
+                            "spaceBelow": {"magnitude":  4, "unit": "PT"},
                             "borderBottom": {
                                 "color":     {"color": {"rgbColor": ORANGE}},
                                 "width":     {"magnitude": 1.5, "unit": "PT"},
-                                "padding":   {"magnitude": 4,   "unit": "PT"},
+                                "padding":   {"magnitude": 3,   "unit": "PT"},
                                 "dashStyle": "SOLID",
                             },
                         },
@@ -237,13 +327,14 @@ def create_google_doc(title: str, content: str) -> str | None:
                         "fields": "fontSize,bold,foregroundColor",
                     }},
                 ]
+
             elif t == "h3":
                 reqs += [
                     {"updateParagraphStyle": {
                         "range": {"startIndex": s, "endIndex": e},
                         "paragraphStyle": {
-                            "spaceAbove": {"magnitude": 14, "unit": "PT"},
-                            "spaceBelow": {"magnitude":  4, "unit": "PT"},
+                            "spaceAbove": {"magnitude": 12, "unit": "PT"},
+                            "spaceBelow": {"magnitude":  3, "unit": "PT"},
                         },
                         "fields": "spaceAbove,spaceBelow",
                     }},
@@ -258,13 +349,56 @@ def create_google_doc(title: str, content: str) -> str | None:
                         "fields": "fontSize,bold,italic,foregroundColor",
                     }},
                 ]
-            elif t == "body":
+
+            elif t == "table_header":
                 reqs += [
                     {"updateParagraphStyle": {
                         "range": {"startIndex": s, "endIndex": e},
                         "paragraphStyle": {
-                            "lineSpacing": 150,
-                            "spaceBelow": {"magnitude": 8, "unit": "PT"},
+                            "spaceAbove": {"magnitude": 6, "unit": "PT"},
+                            "spaceBelow": {"magnitude": 2, "unit": "PT"},
+                        },
+                        "fields": "spaceAbove,spaceBelow",
+                    }},
+                    {"updateTextStyle": {
+                        "range": {"startIndex": s, "endIndex": te},
+                        "textStyle": {
+                            "fontSize":        {"magnitude": 10, "unit": "PT"},
+                            "bold":            True,
+                            "foregroundColor": {"color": {"rgbColor": DARK}},
+                        },
+                        "fields": "fontSize,bold,foregroundColor",
+                    }},
+                ]
+
+            elif t == "table_row":
+                reqs += [
+                    {"updateParagraphStyle": {
+                        "range": {"startIndex": s, "endIndex": e},
+                        "paragraphStyle": {
+                            "spaceAbove": {"magnitude": 0, "unit": "PT"},
+                            "spaceBelow": {"magnitude": 1, "unit": "PT"},
+                        },
+                        "fields": "spaceAbove,spaceBelow",
+                    }},
+                    {"updateTextStyle": {
+                        "range": {"startIndex": s, "endIndex": te},
+                        "textStyle": {
+                            "fontSize":        {"magnitude": 10, "unit": "PT"},
+                            "foregroundColor": {"color": {"rgbColor": DARK}},
+                        },
+                        "fields": "fontSize,foregroundColor",
+                    }},
+                ]
+
+            elif t == "bullet":
+                bullet_ranges.append({"startIndex": s, "endIndex": e})
+                reqs += [
+                    {"updateParagraphStyle": {
+                        "range": {"startIndex": s, "endIndex": e},
+                        "paragraphStyle": {
+                            "lineSpacing": 140,
+                            "spaceBelow": {"magnitude": 3, "unit": "PT"},
                         },
                         "fields": "lineSpacing,spaceBelow",
                     }},
@@ -278,12 +412,68 @@ def create_google_doc(title: str, content: str) -> str | None:
                     }},
                 ]
 
+            elif t == "numbered":
+                numbered_ranges.append({"startIndex": s, "endIndex": e})
+                reqs += [
+                    {"updateParagraphStyle": {
+                        "range": {"startIndex": s, "endIndex": e},
+                        "paragraphStyle": {
+                            "lineSpacing": 140,
+                            "spaceBelow": {"magnitude": 3, "unit": "PT"},
+                        },
+                        "fields": "lineSpacing,spaceBelow",
+                    }},
+                    {"updateTextStyle": {
+                        "range": {"startIndex": s, "endIndex": te},
+                        "textStyle": {
+                            "fontSize":        {"magnitude": 11, "unit": "PT"},
+                            "foregroundColor": {"color": {"rgbColor": DARK}},
+                        },
+                        "fields": "fontSize,foregroundColor",
+                    }},
+                ]
+
+            elif t == "body":
+                reqs += [
+                    {"updateParagraphStyle": {
+                        "range": {"startIndex": s, "endIndex": e},
+                        "paragraphStyle": {
+                            "lineSpacing": 150,
+                            "spaceBelow": {"magnitude": 4, "unit": "PT"},
+                        },
+                        "fields": "lineSpacing,spaceBelow",
+                    }},
+                    {"updateTextStyle": {
+                        "range": {"startIndex": s, "endIndex": te},
+                        "textStyle": {
+                            "fontSize":        {"magnitude": 11, "unit": "PT"},
+                            "foregroundColor": {"color": {"rgbColor": DARK}},
+                        },
+                        "fields": "fontSize,foregroundColor",
+                    }},
+                ]
+
+        # Apply bullet list formatting
+        for br in bullet_ranges:
+            reqs.append({"createParagraphBullets": {
+                "range": br,
+                "bulletPreset": "BULLET_DISC_CIRCLE_SQUARE",
+            }})
+
+        # Apply numbered list formatting
+        for nr in numbered_ranges:
+            reqs.append({"createParagraphBullets": {
+                "range": nr,
+                "bulletPreset": "NUMBERED_DECIMAL_NESTED",
+            }})
+
         svc.documents().batchUpdate(documentId=doc_id, body={"requests": reqs}).execute()
 
-        # Batch 2: Pexels images
+        # ── Batch 2: Pexels images ──
         hero_idx, additional_idxs = _find_image_positions(positions)
         topic_base = " ".join(
-            title.replace("CODEC Research:", "").replace(":", "").replace("—", "").split()[:5]
+            title.replace("CODEC Research:", "").replace("CODEC Report", "")
+                 .replace(":", "").replace("\u2014", "").split()[:5]
         ).strip()
 
         img_tasks = [(hero_idx, topic_base)]

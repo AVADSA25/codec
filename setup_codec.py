@@ -30,7 +30,7 @@ def banner():
     ║ ██      ██    ██ ██   ██ █████   ██       ║
     ║ ██      ██    ██ ██   ██ ██      ██       ║
     ║  ██████  ██████  ██████  ███████  ██████  ║
-    ║                            Setup v1.4.0   ║
+    ║                            Setup v1.5.0   ║
     ╚═══════════════════════════════════════════╝{X}
 {W}  Open Source Computer Command Framework
   7 products: Core · Dictate · Assist · Chat · Vibe · Voice · Remote

@@ -13,10 +13,14 @@ Usage:
 
 Or via CODEC voice: "Hey CODEC, install bitcoin price skill"
 """
+import hashlib
 import json
+import logging
 import os
 import sys
 from datetime import datetime
+
+log = logging.getLogger(__name__)
 
 # ── Config ──────────────────────────────────────────────────────────────────
 REGISTRY_URL   = "https://raw.githubusercontent.com/AVADSA25/codec-skills/main/registry.json"
@@ -78,15 +82,40 @@ def _fetch_registry(silent: bool = False) -> dict:
         return _load_cached_registry()
 
 
+def _verify_sha256(content: str, expected_hash: str) -> bool:
+    """Verify SHA-256 checksum of downloaded skill content."""
+    actual = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    return actual == expected_hash.lower().strip()
+
+
 def _download_skill(skill_entry: dict, registry: dict) -> str | None:
-    """Download a skill .py file from GitHub raw."""
+    """Download a skill .py file from GitHub raw, with SHA-256 verification."""
     try:
         import requests
         base_url = registry.get("base_url", "") or SKILLS_BASE_URL
         url      = f"{base_url}/{skill_entry['file']}"
         r = requests.get(url, timeout=30)
         if r.status_code == 200:
-            return r.text
+            code = r.text
+            expected_hash = skill_entry.get("sha256")
+            if expected_hash:
+                if not _verify_sha256(code, expected_hash):
+                    actual = hashlib.sha256(code.encode("utf-8")).hexdigest()
+                    msg = (
+                        f"SHA-256 mismatch for '{skill_entry.get('name', 'unknown')}': "
+                        f"expected {expected_hash}, got {actual}. "
+                        f"Skill rejected — possible tampering or corrupted download."
+                    )
+                    log.warning(msg)
+                    print(f"\n  !! CHECKSUM FAILED: {msg}")
+                    return None
+            else:
+                log.warning(
+                    "No sha256 checksum in registry for skill '%s' — "
+                    "skipping integrity verification.",
+                    skill_entry.get("name", "unknown"),
+                )
+            return code
         print(f"Download failed: HTTP {r.status_code} from {url}")
         return None
     except Exception as e:

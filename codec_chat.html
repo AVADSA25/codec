@@ -203,6 +203,7 @@ input[type=file]{display:none}
   .input-area{padding:6px 8px;padding-bottom:calc(6px + env(safe-area-inset-bottom,8px))}
   .sidebar{width:260px}
 }
+.notif-bell{position:relative}.notif-badge{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;background:var(--accent);color:#fff;font-size:10px;font-weight:700;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 4px;line-height:1;pointer-events:none}.notif-badge.hidden{display:none}
 </style>
 </head>
 <body>
@@ -220,7 +221,7 @@ input[type=file]{display:none}
 <div class="header">
 <div class="header-left">
 <a href="/" class="logo-link"><img src="https://i.imgur.com/jD1X5W8.png" alt="CODEC"></a>
-<h1>CODEC</h1>
+<h1><a href="/" style="color:inherit;text-decoration:none">CODEC</a></h1>
 </div>
 <nav class="page-nav">
 <a href="/chat" class="nav-link active">Chat</a>
@@ -233,6 +234,7 @@ input[type=file]{display:none}
 <a href="/" class="icon-btn" title="Home"><svg class="ico" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></a>
 <button class="icon-btn" id="voiceBtn" onclick="toggleVoiceReply()" title="Voice replies"><svg class="ico" viewBox="0 0 24 24"><path d="M11 5L6 9H2v6h4l5 4V5z"/><line x1="23" y1="9" x2="17" y2="15" id="muteX1"/><line x1="17" y1="9" x2="23" y2="15" id="muteX2"/></svg></button>
 <button class="icon-btn" onclick="takeScreenshot()" title="Screenshot"><svg class="ico" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></button>
+<a href="/tasks#reports" class="icon-btn notif-bell" id="notifBellBtn" title="Task Reports"><svg class="ico" viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg><span class="notif-badge hidden" id="notifBadge">0</span></a>
 <button class="icon-btn" onclick="toggleTheme()" id="themeBtn" title="Toggle theme">
   <svg class="ico" viewBox="0 0 24 24" id="themeIco"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
 </button>
@@ -595,6 +597,7 @@ function showSchedulePanel(){
   if(!hour)return;
   fetch('/api/schedules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({crew:crew,hour:parseInt(hour),minute:0})}).then(function(r){return r.json()}).then(function(d){if(d.schedule){showToast('Scheduled! '+crew+' daily at '+String(parseInt(hour)).padStart(2,'0')+':00')}else{showToast('Error: '+(d.error||'unknown'))}}).catch(function(e){showToast('Schedule error: '+e)})
 }
+(function(){function pollNotifCount(){fetch('/api/notifications/count').then(function(r){return r.json()}).then(function(d){var c=d.unread||d.count||0;var b=document.getElementById('notifBadge');if(b){b.textContent=c;b.classList.toggle('hidden',c===0)}}).catch(function(){})}pollNotifCount();setInterval(pollNotifCount,30000)})();
 </script>
 </body>
 </html>
