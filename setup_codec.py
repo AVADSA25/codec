@@ -34,7 +34,7 @@ def banner():
     ╚═══════════════════════════════════════════╝{X}
 {W}  Open Source Computer Command Framework
   7 products: Core · Dictate · Assist · Chat · Vibe · Voice · Remote
-  36 skills · 8 text services · 5 AI agent crews{X}
+  36 skills · 8 text services · 12 AI agent crews{X}
 """)
 
 def ask(prompt, options=None, default=None):
@@ -520,6 +520,75 @@ def main():
         print(f"  {D}Or: pm2 start python3 -- -u codec_dashboard.py --name codec-dashboard{X}")
         print(f"\n{W}  On your phone:{X}")
         print(f"  {D}Open the URL in Chrome → Add to Home Screen → PWA installed{X}")
+
+        # ── Dashboard Authentication ──────────────────────────────────────────
+        print(f"\n{O}  ── Dashboard Authentication ──{X}")
+        print(f"  {W}Protect your CODEC dashboard with biometric or PIN authentication.{X}")
+        print(f"  {D}Both can be enabled at the same time (user picks at login).{X}\n")
+        print(f"  {O}1.{X} Touch ID (biometric — requires Mac with Touch ID sensor)")
+        print(f"  {O}2.{X} PIN code (4-6 digit code)")
+        print(f"  {O}3.{X} Both Touch ID + PIN")
+        print(f"  {O}4.{X} None (no login required)")
+        auth_choice = ask("Authentication method:", [
+            "Touch ID only",
+            "PIN code only",
+            "Both Touch ID + PIN",
+            "None"
+        ], default="None")
+
+        if auth_choice != "None":
+            config["auth_enabled"] = True
+            config["auth_session_hours"] = 24
+
+            if "PIN" in auth_choice or "Both" in auth_choice:
+                import hashlib
+                while True:
+                    pin = ask_text("Set your PIN (4-6 digits)", "")
+                    if pin and len(pin) >= 4 and len(pin) <= 6 and pin.isdigit():
+                        config["auth_pin_hash"] = hashlib.sha256(pin.encode()).hexdigest()
+                        print(f"  {G}✓ PIN configured (stored as SHA-256 hash){X}")
+                        break
+                    else:
+                        print(f"  {R}PIN must be 4-6 digits. Try again.{X}")
+
+            if "Touch ID" in auth_choice or "Both" in auth_choice:
+                print(f"\n  {W}Touch ID setup:{X}")
+                print(f"  {D}The Swift binary needs to be compiled on your Mac.{X}")
+                _compile = ask_yn("Compile Touch ID binary now?", True)
+                if _compile:
+                    _auth_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "codec_auth")
+                    _swift = os.path.join(_auth_dir, "main.swift")
+                    _bin = os.path.join(_auth_dir, "codec_auth")
+                    if os.path.exists(_swift):
+                        print(f"  {D}Compiling...{X}")
+                        _r = subprocess.run(
+                            ["swiftc", "-O", "-o", _bin, _swift,
+                             "-framework", "LocalAuthentication", "-framework", "Foundation"],
+                            capture_output=True, text=True
+                        )
+                        if _r.returncode == 0:
+                            print(f"  {G}✓ Touch ID binary compiled successfully{X}")
+                            # Test availability
+                            _t = subprocess.run([_bin, "--check"], capture_output=True, text=True, timeout=5)
+                            if _t.returncode == 0:
+                                _data = json.loads(_t.stdout)
+                                if _data.get("available"):
+                                    print(f"  {G}✓ {_data.get('method', 'Touch ID')} detected and available{X}")
+                                else:
+                                    print(f"  {Y}⚠ Touch ID not available on this Mac — PIN will be primary auth{X}")
+                        else:
+                            print(f"  {R}✗ Compilation failed: {_r.stderr[:200]}{X}")
+                            print(f"  {D}You can compile manually later: cd codec_auth && swiftc -O -o codec_auth main.swift -framework LocalAuthentication -framework Foundation{X}")
+                    else:
+                        print(f"  {R}✗ main.swift not found at {_swift}{X}")
+                else:
+                    print(f"  {D}Compile later: cd codec_auth && swiftc -O -o codec_auth main.swift -framework LocalAuthentication -framework Foundation{X}")
+        else:
+            config["auth_enabled"] = False
+            print(f"  {D}Authentication disabled — dashboard will load without login.{X}")
+
+        print(f"\n{G}  ✓ Auth: {auth_choice}{X}")
+
     print(f"\n{G}  ✓ Dashboard: {'ON' if config['dashboard_enabled'] else 'OFF'}{X}")
     # ── SAVE CONFIG ───────────────────────────────────────────────────────────
     clear()

@@ -1,6 +1,6 @@
 """CODEC v1.2 — Phone Dashboard & PWA"""
-import os, json, sqlite3, time, logging
-from datetime import datetime
+import os, json, sqlite3, time, logging, secrets, subprocess
+from datetime import datetime, timedelta
 
 log = logging.getLogger("codec_dashboard")
 from pathlib import Path
@@ -17,34 +17,52 @@ app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:8090", "http
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
-    """Optional bearer token authentication for dashboard endpoints."""
+    """Combined auth: bearer token (API) + biometric Touch ID sessions (dashboard)."""
 
-    PUBLIC_ROUTES = {"/", "/chat", "/vibe", "/voice", "/health", "/favicon.ico", "/manifest.json"}
+    # Routes that never require authentication
+    PUBLIC_ROUTES = {"/auth", "/favicon.ico", "/manifest.json"}
+    PUBLIC_PREFIXES = ("/api/auth/", "/static")
 
     async def dispatch(self, request, call_next):
         from codec_config import DASHBOARD_TOKEN
+        path = request.url.path
 
-        if not DASHBOARD_TOKEN:
+        # Always allow public routes
+        if path in self.PUBLIC_ROUTES:
+            return await call_next(request)
+        if any(path.startswith(p) for p in self.PUBLIC_PREFIXES):
+            return await call_next(request)
+        # Allow static assets
+        if path.endswith(('.css', '.js', '.png', '.ico', '.svg', '.woff2', '.woff', '.ttf')):
             return await call_next(request)
 
-        if request.url.path in self.PUBLIC_ROUTES:
-            return await call_next(request)
+        # ── Layer 1: Biometric / PIN session check ──
+        if AUTH_ENABLED and _auth_available():
+            if not _verify_biometric_session(request):
+                if path.startswith("/api/") or path.startswith("/ws"):
+                    return StarletteJSONResponse({"error": "Not authenticated"}, status_code=401)
+                from starlette.responses import RedirectResponse
+                return RedirectResponse(url="/auth")
 
-        if request.url.path.startswith("/static"):
-            return await call_next(request)
+        # ── Layer 2: Bearer token check (for API-key-protected endpoints) ──
+        if DASHBOARD_TOKEN:
+            # Page routes are covered by biometric auth above; only enforce token on API
+            if path.startswith("/api/"):
+                auth = request.headers.get("Authorization", "")
+                if auth == f"Bearer {DASHBOARD_TOKEN}":
+                    return await call_next(request)
+                token = request.query_params.get("token", "")
+                if token == DASHBOARD_TOKEN:
+                    return await call_next(request)
+                # If biometric/PIN passed (or disabled), allow through
+                if not AUTH_ENABLED or not _auth_available() or _verify_biometric_session(request):
+                    return await call_next(request)
+                return StarletteJSONResponse(
+                    {"error": "Unauthorized. Set dashboard_token in config.json or pass ?token=YOUR_TOKEN"},
+                    status_code=401
+                )
 
-        auth = request.headers.get("Authorization", "")
-        if auth == f"Bearer {DASHBOARD_TOKEN}":
-            return await call_next(request)
-
-        token = request.query_params.get("token", "")
-        if token == DASHBOARD_TOKEN:
-            return await call_next(request)
-
-        return StarletteJSONResponse(
-            {"error": "Unauthorized. Set dashboard_token in config.json or pass ?token=YOUR_TOKEN"},
-            status_code=401
-        )
+        return await call_next(request)
 
 
 app.add_middleware(AuthMiddleware)
@@ -54,6 +72,44 @@ AUDIT_LOG = os.path.expanduser("~/.codec/audit.log")
 CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
 TASK_QUEUE = os.path.expanduser("~/.codec/task_queue.txt")
 DASHBOARD_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# ── Biometric (Touch ID) Auth ──
+def _load_cfg():
+    try:
+        with open(CONFIG_PATH) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+_bio_cfg = _load_cfg()
+AUTH_ENABLED = _bio_cfg.get("auth_enabled", False)
+AUTH_SESSION_HOURS = _bio_cfg.get("auth_session_hours", 24)
+AUTH_BINARY = os.path.join(DASHBOARD_DIR, "codec_auth", "codec_auth")
+AUTH_PIN_HASH = _bio_cfg.get("auth_pin_hash", "")  # SHA-256 of user's PIN
+AUTH_COOKIE_NAME = "codec_session"
+
+# In-memory session store (survives for PM2 process lifetime)
+_auth_sessions = {}  # token -> {created: datetime, ip: str, method: str}
+
+def _is_auth_compiled():
+    return os.path.isfile(AUTH_BINARY) and os.access(AUTH_BINARY, os.X_OK)
+
+def _auth_available():
+    """Check if any auth method is available (Touch ID binary or PIN configured)."""
+    return _is_auth_compiled() or bool(AUTH_PIN_HASH)
+
+def _verify_biometric_session(request):
+    """Check if the request has a valid auth session cookie."""
+    if not AUTH_ENABLED or not _auth_available():
+        return True
+    token = request.cookies.get(AUTH_COOKIE_NAME)
+    if not token or token not in _auth_sessions:
+        return False
+    session = _auth_sessions[token]
+    if datetime.now() - session["created"] > timedelta(hours=AUTH_SESSION_HOURS):
+        del _auth_sessions[token]
+        return False
+    return True
 
 _db_conn = None
 
@@ -67,6 +123,159 @@ def get_db():
     return _db_conn
 
 _NO_CACHE = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"}
+
+# ═══════════════════════════════════════════════════════════════
+# BIOMETRIC AUTH ENDPOINTS
+# ═══════════════════════════════════════════════════════════════
+
+@app.get("/auth", response_class=HTMLResponse)
+async def auth_page():
+    """Serve the biometric authentication page."""
+    auth_path = os.path.join(DASHBOARD_DIR, "codec_auth.html")
+    if os.path.exists(auth_path):
+        with open(auth_path) as f:
+            return HTMLResponse(f.read(), headers=_NO_CACHE)
+    return HTMLResponse("<h1>Auth page not found</h1>", status_code=500)
+
+
+@app.get("/api/auth/check")
+async def auth_check():
+    """Check which auth methods are available (Touch ID and/or PIN)."""
+    result = {"touchid_available": False, "pin_available": bool(AUTH_PIN_HASH)}
+
+    if _is_auth_compiled():
+        try:
+            r = subprocess.run([AUTH_BINARY, "--check"], capture_output=True, text=True, timeout=5)
+            if r.returncode == 0:
+                data = json.loads(r.stdout)
+                result["touchid_available"] = data.get("available", False)
+                result["method"] = data.get("method", "none")
+        except Exception:
+            pass
+
+    result["available"] = result["touchid_available"] or result["pin_available"]
+    if not result["available"]:
+        result["reason"] = "No auth method configured. Compile Touch ID binary or set auth_pin_hash in config.json."
+    return result
+
+
+@app.post("/api/auth/verify")
+async def auth_verify(request: Request):
+    """Trigger Touch ID verification on the Mac."""
+    if not _is_auth_compiled():
+        return JSONResponse({"error": "Auth binary not compiled"}, status_code=500)
+    try:
+        r = subprocess.run(
+            [AUTH_BINARY, "--verify"],
+            capture_output=True, text=True, timeout=65
+        )
+        if r.returncode == 0:
+            result = json.loads(r.stdout)
+            client_ip = request.client.host if request.client else "unknown"
+
+            # Audit log every attempt
+            try:
+                os.makedirs(os.path.dirname(AUDIT_LOG), exist_ok=True)
+                with open(AUDIT_LOG, "a") as f:
+                    if result.get("authenticated"):
+                        f.write(f"[{datetime.now().isoformat()}] AUTH_SUCCESS: method={result.get('method')} ip={client_ip}\n")
+                    else:
+                        f.write(f"[{datetime.now().isoformat()}] AUTH_FAILED: error={result.get('error')} ip={client_ip}\n")
+            except Exception:
+                pass
+
+            if result.get("authenticated"):
+                token = result.get("token", secrets.token_hex(32))
+                _auth_sessions[token] = {
+                    "created": datetime.now(),
+                    "ip": client_ip,
+                    "method": result.get("method", "unknown"),
+                }
+                return {
+                    "authenticated": True,
+                    "method": result.get("method"),
+                    "token": token,
+                    "expires_hours": AUTH_SESSION_HOURS,
+                }
+            else:
+                return {
+                    "authenticated": False,
+                    "error": result.get("error", "Authentication failed"),
+                }
+        return JSONResponse({"error": "Auth binary failed"}, status_code=500)
+    except subprocess.TimeoutExpired:
+        return JSONResponse({"error": "Authentication timed out"}, status_code=408)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/api/auth/pin")
+async def auth_pin(request: Request):
+    """Verify a PIN code."""
+    import hashlib
+    if not AUTH_PIN_HASH:
+        return JSONResponse({"error": "PIN authentication not configured"}, status_code=400)
+    try:
+        body = await request.json()
+        pin = str(body.get("pin", ""))
+    except Exception:
+        return JSONResponse({"error": "Missing pin field"}, status_code=400)
+
+    pin_hash = hashlib.sha256(pin.encode()).hexdigest()
+    client_ip = request.client.host if request.client else "unknown"
+
+    # Audit log
+    try:
+        os.makedirs(os.path.dirname(AUDIT_LOG), exist_ok=True)
+        with open(AUDIT_LOG, "a") as f:
+            if pin_hash == AUTH_PIN_HASH:
+                f.write(f"[{datetime.now().isoformat()}] AUTH_SUCCESS: method=pin ip={client_ip}\n")
+            else:
+                f.write(f"[{datetime.now().isoformat()}] AUTH_FAILED: method=pin error=wrong_pin ip={client_ip}\n")
+    except Exception:
+        pass
+
+    if pin_hash == AUTH_PIN_HASH:
+        token = secrets.token_hex(32)
+        _auth_sessions[token] = {
+            "created": datetime.now(),
+            "ip": client_ip,
+            "method": "pin",
+        }
+        return {
+            "authenticated": True,
+            "method": "pin",
+            "token": token,
+            "expires_hours": AUTH_SESSION_HOURS,
+        }
+    else:
+        return {"authenticated": False, "error": "Incorrect PIN"}
+
+
+@app.post("/api/auth/logout")
+async def auth_logout(request: Request):
+    """Invalidate the current biometric session."""
+    token = request.cookies.get(AUTH_COOKIE_NAME)
+    if token and token in _auth_sessions:
+        del _auth_sessions[token]
+    return {"logged_out": True}
+
+
+@app.get("/api/auth/status")
+async def auth_status(request: Request):
+    """Check if current session is valid."""
+    valid = _verify_biometric_session(request)
+    return {
+        "authenticated": valid,
+        "auth_enabled": AUTH_ENABLED,
+        "touchid_compiled": _is_auth_compiled(),
+        "pin_configured": bool(AUTH_PIN_HASH),
+    }
+
+
+# ═══════════════════════════════════════════════════════════════
+# DASHBOARD ROUTES
+# ═══════════════════════════════════════════════════════════════
 
 @app.get("/", response_class=HTMLResponse)
 async def index():

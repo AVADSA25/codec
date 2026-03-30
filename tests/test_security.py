@@ -215,3 +215,99 @@ def test_preview_frame_has_csp():
     REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     content = open(os.path.join(REPO, "codec_dashboard.py")).read()
     assert "Content-Security-Policy" in content, "preview_frame must set CSP headers"
+
+
+# ── Per-crew permission scoping ──────────────────────────────────────────────
+
+def test_crew_has_allowed_tools_field():
+    """Crew dataclass must support allowed_tools for permission scoping"""
+    REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    content = open(os.path.join(REPO, "codec_agents.py")).read()
+    assert "allowed_tools" in content, "Crew must have allowed_tools field"
+    assert "__post_init__" in content, "Crew must enforce allowed_tools in __post_init__"
+
+
+def test_all_crews_define_allowed_tools():
+    """Every pre-built crew builder must define an allowed_tools list"""
+    REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    content = open(os.path.join(REPO, "codec_agents.py")).read()
+    import re
+    # Match only the crew builder functions (end with _crew, take **kwargs)
+    crew_defs = re.findall(r'def (\w+_crew)\(\*\*kwargs\)', content)
+    assert len(crew_defs) >= 8, f"Expected at least 8 crew builders, found {len(crew_defs)}"
+    for crew_fn in crew_defs:
+        fn_body = content.split(f"def {crew_fn}(")[1].split("\ndef ")[0]
+        assert "allowed_tools=" in fn_body, \
+            f"{crew_fn} must define allowed_tools in its Crew() call"
+
+
+# ── Google Docs rate limiting ────────────────────────────────────────────────
+
+def test_gdoc_has_rate_limiting():
+    """_google_docs_create must have rate-limiting / dedup logic"""
+    REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    content = open(os.path.join(REPO, "codec_agents.py")).read()
+    gdoc_fn = content.split("def _google_docs_create")[1].split("\ndef ")[0]
+    assert "rate-limit" in gdoc_fn.lower() or "_GDOC_COOLDOWN" in gdoc_fn or "_gdoc_created" in gdoc_fn, \
+        "_google_docs_create must implement rate limiting"
+
+
+# ── Execution audit logging ──────────────────────────────────────────────────
+
+def test_audit_function_exists():
+    """codec_agents must have an _audit() function for structured logging"""
+    REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    content = open(os.path.join(REPO, "codec_agents.py")).read()
+    assert "def _audit(" in content, "Must have _audit() function"
+    assert "audit.log" in content, "Audit must write to audit.log"
+
+
+def test_crew_run_audits():
+    """Crew.run must emit audit events for start/complete"""
+    REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    content = open(os.path.join(REPO, "codec_agents.py")).read()
+    crew_run = content.split("async def run(self, callback")[1].split("\n\n\n")[0]
+    assert "crew_start" in crew_run, "Crew.run must audit crew_start"
+    assert "crew_complete" in crew_run, "Crew.run must audit crew_complete"
+
+
+def test_tool_call_audits():
+    """Agent tool calls must be audited"""
+    REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    content = open(os.path.join(REPO, "codec_agents.py")).read()
+    assert '"tool_call"' in content or "'tool_call'" in content, \
+        "Agent must audit tool_call events"
+
+
+# ── Content truncation notifications ─────────────────────────────────────────
+
+def test_tool_run_truncation_notice():
+    """Tool.run must notify when output is truncated"""
+    REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    content = open(os.path.join(REPO, "codec_agents.py")).read()
+    tool_run = content.split("def run(self, input_str")[1].split("\ndef ")[0]
+    assert "TRUNCATED" in tool_run, "Tool.run must include truncation notice"
+
+
+def test_web_fetch_truncation_notice():
+    """_web_fetch must notify when page content is truncated"""
+    REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    content = open(os.path.join(REPO, "codec_agents.py")).read()
+    fetch_fn = content.split("def _web_fetch")[1].split("\ndef ")[0]
+    assert "TRUNCATED" in fetch_fn, "_web_fetch must include truncation notice"
+
+
+def test_file_read_truncation_notice():
+    """_file_read must notify when file content is truncated"""
+    REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    content = open(os.path.join(REPO, "codec_agents.py")).read()
+    read_fn = content.split("def _file_read")[1].split("\ndef ")[0]
+    assert "TRUNCATED" in read_fn, "_file_read must include truncation notice"
+
+
+def test_shell_execute_truncation_notice():
+    """_shell_execute must notify when output is truncated"""
+    REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    content = open(os.path.join(REPO, "codec_agents.py")).read()
+    shell_fn = content.split("def _shell_execute")[1].split("\ndef ")[0]
+    assert "TRUNCATED" in shell_fn, "_shell_execute must include truncation notice"
