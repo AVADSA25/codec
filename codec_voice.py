@@ -559,10 +559,40 @@ class VoicePipeline:
                 if raw_text:
                     try:
                         ctrl = json.loads(raw_text)
-                        if ctrl.get("type") == "interrupt":
+                        ctrl_type = ctrl.get("type", "")
+
+                        if ctrl_type == "interrupt":
                             if self.processing:
                                 print("[Voice] Interrupt received")
                                 self.interrupted.set()
+
+                        elif ctrl_type == "your_turn":
+                            # Force-flush audio buffer as an utterance (user says "your turn")
+                            if self.audio_buffer and len(self.audio_buffer) >= MIN_SPEECH_BYTES:
+                                utterance = bytes(self.audio_buffer)
+                                self.audio_buffer = bytearray()
+                                self.is_speaking = False
+                                print(f"[Voice] Your-turn: flushing {len(utterance)} bytes")
+                                await self.utterance_queue.put(utterance)
+                            elif self.audio_buffer:
+                                # Buffer too short — discard and notify
+                                self.audio_buffer = bytearray()
+                                self.is_speaking = False
+                                await self.ws.send_json({"type": "status", "status": "listening"})
+                                print("[Voice] Your-turn: buffer too short, discarded")
+                            else:
+                                print("[Voice] Your-turn: no audio buffered")
+
+                        elif ctrl_type == "nudge":
+                            # User tapped "still there?" — send reassurance
+                            if self.processing:
+                                await self.ws.send_json({"type": "transcript", "role": "system", "text": "Still processing — hang on…"})
+                                print("[Voice] Nudge acknowledged — still processing")
+
+                        elif ctrl_type == "hold_start":
+                            # User started hold-to-talk — ensure we're in listening mode
+                            print("[Voice] Hold-to-talk started")
+
                     except Exception as e:
                         print(f"[Voice] WS text parse warning: {e}")
                     continue

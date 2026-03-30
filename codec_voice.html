@@ -275,6 +275,47 @@
         .call-btn.end:hover    { transform: scale(1.07); box-shadow: 0 6px 28px rgba(255,59,59,0.5); }
         .call-btn:active       { transform: scale(0.95); }
 
+        /* ── Action buttons row ── */
+        .action-row {
+            display: flex; gap: 12px; align-items: center;
+            opacity: 0; pointer-events: none; transition: opacity 0.3s;
+        }
+        body.state-listening .action-row,
+        body.state-processing .action-row,
+        body.state-speaking .action-row { opacity: 1; pointer-events: auto; }
+
+        .action-btn {
+            display: flex; align-items: center; gap: 6px;
+            padding: 8px 18px; border-radius: 20px;
+            border: 1px solid var(--border); background: var(--surface-2);
+            color: var(--text-muted); font-size: 13px; font-weight: 500;
+            cursor: pointer; transition: all 0.15s; font-family: var(--font);
+            -webkit-tap-highlight-color: transparent;
+        }
+        .action-btn:hover { border-color: var(--border-hover); color: var(--text); background: var(--surface-3); }
+        .action-btn:active { transform: scale(0.95); }
+        .action-btn svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+        .action-btn.your-turn { border-color: var(--green); color: var(--green); }
+        .action-btn.your-turn:hover { background: rgba(102,187,106,0.1); }
+        body.state-speaking .action-btn.your-turn,
+        body.state-processing .action-btn.your-turn { opacity: 0.3; pointer-events: none; }
+
+        .action-btn.nudge { display: none; }
+        body.state-processing .action-btn.nudge { display: flex; border-color: var(--blue); color: var(--blue); }
+        .action-btn.nudge:hover { background: rgba(64,196,255,0.1); }
+
+        /* Hold-to-talk indicator */
+        .hold-indicator {
+            position: absolute; inset: 0; border-radius: 50%;
+            background: rgba(102,187,106,0.08);
+            border: 2px solid var(--green);
+            opacity: 0; transform: scale(0.95);
+            transition: opacity 0.2s, transform 0.2s;
+            pointer-events: none;
+        }
+        .hold-indicator.active { opacity: 1; transform: scale(1); }
+
         /* Transcript */
         .transcript-wrap {
             width: 100%; background: var(--bg2);
@@ -369,11 +410,12 @@
 
     <div class="call-container">
 
-        <!-- Avatar -->
+        <!-- Avatar (tap-and-hold for push-to-talk) -->
         <div class="avatar-wrap" id="avatarWrap">
             <div class="ring-outer"></div>
             <div class="ring-inner"></div>
             <div class="ring-energy" id="ringEnergy"></div>
+            <div class="hold-indicator" id="holdIndicator"></div>
             <div class="avatar-core"><img src="https://i.imgur.com/jD1X5W8.png" alt="CODEC"></div>
             <div class="waveform">
                 <div class="bar"></div><div class="bar"></div><div class="bar"></div>
@@ -383,6 +425,18 @@
 
         <div class="timer" id="timer"></div>
         <div class="status" id="statusLabel">Tap to start voice call</div>
+
+        <!-- Action row: your turn + nudge -->
+        <div class="action-row" id="actionRow">
+            <button class="action-btn your-turn" id="yourTurnBtn" onclick="sendYourTurn()">
+                <svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>
+                Your Turn
+            </button>
+            <button class="action-btn nudge" id="nudgeBtn" onclick="sendNudge()">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                Still there?
+            </button>
+        </div>
 
         <button class="call-btn start" id="callBtn" onclick="toggleCall()"><svg width="34" height="34" viewBox="0 0 24 24" fill="white"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/></svg></button>
 
@@ -436,13 +490,32 @@
     var streamLine  = null;
     var streamText  = "";
 
+    /* ── Processing timer ── */
+    var processingStart = 0;
+    var processingTmr   = null;
+
     /* ── UI helpers ── */
     function setState(s) {
         var body = document.getElementById('body');
         body.className = 'state-' + s;
-        var labels = { idle:'', listening:'Listening…', speaking:'Q is speaking…', processing:'Processing…' };
         var el = document.getElementById('statusLabel');
-        if (labels[s] !== undefined) el.textContent = labels[s];
+        // Clear processing timer on state change
+        if (processingTmr && s !== 'processing') {
+            clearInterval(processingTmr); processingTmr = null;
+        }
+        if (s === 'idle')       el.textContent = '';
+        else if (s === 'listening')  el.textContent = 'Listening — tap "Your Turn" when done';
+        else if (s === 'speaking')   el.textContent = 'Speaking…';
+        else if (s === 'processing') {
+            processingStart = Date.now();
+            el.textContent = 'Transcribing…';
+            processingTmr = setInterval(function() {
+                var sec = Math.floor((Date.now() - processingStart) / 1000);
+                if (sec < 3)      el.textContent = 'Transcribing…';
+                else if (sec < 8) el.textContent = 'Thinking… ' + sec + 's';
+                else              el.textContent = 'Still working… ' + sec + 's';
+            }, 500);
+        }
     }
 
     function addTranscript(role, text) {
@@ -675,6 +748,65 @@
         document.getElementById('timer').textContent =
             String(Math.floor(s / 60)).padStart(2,'0') + ':' + String(s % 60).padStart(2,'0');
     }
+
+    /* ── "Your Turn" — force-send current audio buffer as utterance ── */
+    function sendYourTurn() {
+        if (!ws || ws.readyState !== WebSocket.OPEN || !isInCall) return;
+        ws.send(JSON.stringify({ type: 'your_turn' }));
+        setState('processing');
+        document.getElementById('statusLabel').textContent = 'Got it — processing…';
+        // Brief haptic feedback on mobile
+        if (navigator.vibrate) navigator.vibrate(30);
+    }
+
+    /* ── Nudge — poke the AI when processing seems stuck ── */
+    function sendNudge() {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        ws.send(JSON.stringify({ type: 'nudge' }));
+        document.getElementById('statusLabel').textContent = 'Nudged — hang on…';
+        if (navigator.vibrate) navigator.vibrate([20, 40, 20]);
+    }
+
+    /* ── Hold-to-talk on avatar ── */
+    (function() {
+        var avatar = document.getElementById('avatarWrap');
+        var holdEl = document.getElementById('holdIndicator');
+        var holdTimer = null;
+        var isHolding = false;
+
+        function startHold(e) {
+            if (!isInCall) return;
+            e.preventDefault();
+            holdTimer = setTimeout(function() {
+                isHolding = true;
+                holdEl.classList.add('active');
+                // Unmute / signal "user speaking" to server
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'hold_start' }));
+                }
+                if (navigator.vibrate) navigator.vibrate(15);
+            }, 200); // 200ms threshold to distinguish tap from hold
+        }
+
+        function endHold(e) {
+            if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+            if (!isHolding) return;
+            isHolding = false;
+            holdEl.classList.remove('active');
+            // Signal "done talking" — force send
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'your_turn' }));
+            }
+            setState('processing');
+        }
+
+        avatar.addEventListener('touchstart', startHold, { passive: false });
+        avatar.addEventListener('touchend', endHold);
+        avatar.addEventListener('touchcancel', endHold);
+        avatar.addEventListener('mousedown', startHold);
+        avatar.addEventListener('mouseup', endHold);
+        avatar.addEventListener('mouseleave', endHold);
+    })();
 
     /* ── Auto-connect via ?auto=1 ── */
     if (new URLSearchParams(location.search).get('auto') === '1') {
