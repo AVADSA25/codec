@@ -148,7 +148,44 @@
             <button class="auth-btn" id="pinBtn" onclick="verifyPin()" style="background:var(--border-hover)">Unlock with PIN</button>
         </div>
 
+        <!-- TOTP 2FA section (hidden until Touch ID/PIN succeeds) -->
+        <div id="totpSection" style="display:none">
+            <div class="divider"><span>2FA Verification</span></div>
+            <div style="font-size:13px;color:var(--text-muted);margin-bottom:16px">Enter the 6-digit code from your authenticator app</div>
+            <div class="pin-input-row">
+                <input type="text" class="pin-digit" id="totp1" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
+                <input type="text" class="pin-digit" id="totp2" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
+                <input type="text" class="pin-digit" id="totp3" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
+                <input type="text" class="pin-digit" id="totp4" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
+                <input type="text" class="pin-digit" id="totp5" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
+                <input type="text" class="pin-digit" id="totp6" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
+            </div>
+            <button class="auth-btn" id="totpBtn" onclick="verifyTotp()">Verify Code</button>
+        </div>
+
+        <!-- TOTP Setup section (shown only during first-time setup) -->
+        <div id="totpSetupSection" style="display:none">
+            <div class="divider"><span>Setup 2FA</span></div>
+            <div style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Scan this QR code with Google Authenticator or Authy</div>
+            <img id="totpQR" style="width:200px;height:200px;margin:0 auto 12px;display:block;border-radius:8px;background:#fff;padding:8px" />
+            <div style="font-size:11px;color:var(--text-dim);margin-bottom:16px;word-break:break-all" id="totpManualKey"></div>
+            <div class="pin-input-row">
+                <input type="text" class="pin-digit" id="setup1" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
+                <input type="text" class="pin-digit" id="setup2" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
+                <input type="text" class="pin-digit" id="setup3" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
+                <input type="text" class="pin-digit" id="setup4" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
+                <input type="text" class="pin-digit" id="setup5" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
+                <input type="text" class="pin-digit" id="setup6" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
+            </div>
+            <button class="auth-btn" id="setupBtn" onclick="confirmTotpSetup()">Confirm &amp; Enable 2FA</button>
+        </div>
+
         <div class="status" id="status"></div>
+
+        <!-- Setup 2FA link (shown when TOTP not yet configured) -->
+        <div id="setup2faLink" style="display:none;margin-top:12px">
+            <a href="#" onclick="startTotpSetup();return false" style="font-size:12px;color:var(--accent);text-decoration:none;opacity:0.7">&#128272; Setup 2FA (Authenticator App)</a>
+        </div>
 
         <div class="remote-note" id="remoteNote" style="display:none;">
             &#128241; Remote access detected. Touch ID will prompt on your Mac.
@@ -209,6 +246,15 @@ async function checkAvailability() {
         if (!hasTouchID && hasPIN) {
             document.getElementById('pin1').focus();
         }
+
+        // Check if TOTP is already configured — if not, show setup link
+        try {
+            var sr = await fetch('/api/auth/status');
+            var sd = await sr.json();
+            if (!sd.totp_enabled && (hasTouchID || hasPIN)) {
+                document.getElementById('setup2faLink').style.display = 'block';
+            }
+        } catch(e2) {}
     } catch(e) {
         document.getElementById('status').textContent = 'Could not check auth availability';
         document.getElementById('status').className = 'status error';
@@ -340,19 +386,245 @@ async function verifyPin() {
     }
 }
 
+// ── Pending TOTP state ──
+var _pendingToken = null;
+var _pendingExpHours = null;
+var _pendingMethod = null;
+var _setupSecret = null;
+
 // ── Shared success handler ──
 function onSuccess(data) {
     var status = document.getElementById('status');
     status.textContent = 'Authenticated via ' + (data.method || 'biometrics');
     status.className = 'status success';
-    var _exp = data.expires_hours * 3600;
-    var _ck = 'codec_session=' + data.token + '; path=/; max-age=' + _exp + '; SameSite=Strict';
+
+    // Check if TOTP 2FA is required
+    _pendingToken = data.token;
+    _pendingExpHours = data.expires_hours;
+    _pendingMethod = data.method;
+
+    // Check auth status to see if TOTP is enabled
+    fetch('/api/auth/status').then(function(r){ return r.json(); }).then(function(s) {
+        if (s.totp_enabled) {
+            // TOTP is configured — show verification step
+            showTotpVerify();
+        } else {
+            // No TOTP — complete login directly
+            completeLogin();
+        }
+    }).catch(function() {
+        // If status check fails, just complete login
+        completeLogin();
+    });
+}
+
+function completeLogin() {
+    var _exp = _pendingExpHours * 3600;
+    var _ck = 'codec_session=' + _pendingToken + '; path=/; max-age=' + _exp + '; SameSite=Strict';
     if (location.protocol === 'https:') _ck += '; Secure';
     document.cookie = _ck;
     // CSRF double-submit token (readable by JS, paired with x-csrf-token header)
-    var _csrf = data.token.substring(0, 16);
+    var _csrf = _pendingToken.substring(0, 16);
     document.cookie = 'codec_csrf=' + _csrf + '; path=/; max-age=' + _exp + '; SameSite=Strict';
+    var status = document.getElementById('status');
+    status.textContent = 'Welcome back';
+    status.className = 'status success';
     setTimeout(function() { window.location.href = '/'; }, 600);
+}
+
+// ── Show TOTP verification step ──
+function showTotpVerify() {
+    // Hide primary auth sections
+    document.getElementById('touchidSection').style.display = 'none';
+    document.getElementById('divider').style.display = 'none';
+    document.getElementById('pinSection').style.display = 'none';
+    document.getElementById('setup2faLink').style.display = 'none';
+    // Show TOTP input
+    document.getElementById('totpSection').style.display = 'block';
+    var status = document.getElementById('status');
+    status.textContent = 'Enter your authenticator code';
+    status.className = 'status';
+    setupDigitInputs('totp', 6, verifyTotp);
+    document.getElementById('totp1').focus();
+}
+
+// ── Verify TOTP code ──
+async function verifyTotp() {
+    var code = getDigits('totp', 6);
+    if (code.length < 6) return;
+
+    var btn = document.getElementById('totpBtn');
+    var status = document.getElementById('status');
+    btn.disabled = true;
+    btn.textContent = 'Verifying...';
+    status.textContent = '';
+    status.className = 'status';
+
+    try {
+        var r = await fetch('/api/auth/totp/verify', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ code: code, token: _pendingToken })
+        });
+        var data = await r.json();
+        if (data.verified) {
+            status.textContent = '2FA verified';
+            status.className = 'status success';
+            completeLogin();
+        } else {
+            status.textContent = data.error || 'Invalid code';
+            status.className = 'status error';
+            btn.disabled = false;
+            btn.textContent = 'Verify Code';
+            clearDigits('totp', 6);
+            // Shake
+            var row = document.querySelector('#totpSection .pin-input-row');
+            row.style.animation = 'shake 0.3s';
+            setTimeout(function() { row.style.animation = ''; }, 300);
+        }
+    } catch(e) {
+        status.textContent = 'Connection error';
+        status.className = 'status error';
+        btn.disabled = false;
+        btn.textContent = 'Verify Code';
+    }
+}
+
+// ── TOTP Setup flow ──
+async function startTotpSetup() {
+    var status = document.getElementById('status');
+    status.textContent = 'Setting up 2FA...';
+    status.className = 'status';
+
+    try {
+        var r = await fetch('/api/auth/totp/setup', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({})
+        });
+        var data = await r.json();
+        if (data.error) {
+            status.textContent = data.error;
+            status.className = 'status error';
+            return;
+        }
+        _setupSecret = data.secret;
+        document.getElementById('setup2faLink').style.display = 'none';
+        // Show QR code
+        document.getElementById('totpQR').src = 'data:image/png;base64,' + data.qr_code;
+        document.getElementById('totpManualKey').textContent = 'Manual key: ' + data.secret;
+        // Show setup section
+        document.getElementById('totpSetupSection').style.display = 'block';
+        setupDigitInputs('setup', 6, confirmTotpSetup);
+        document.getElementById('setup1').focus();
+        status.textContent = 'Scan the QR code, then enter the 6-digit code to confirm';
+        status.className = 'status';
+    } catch(e) {
+        status.textContent = 'Failed to start 2FA setup';
+        status.className = 'status error';
+    }
+}
+
+async function confirmTotpSetup() {
+    var code = getDigits('setup', 6);
+    if (code.length < 6) return;
+
+    var btn = document.getElementById('setupBtn');
+    var status = document.getElementById('status');
+    btn.disabled = true;
+    btn.textContent = 'Confirming...';
+
+    try {
+        var r = await fetch('/api/auth/totp/confirm', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ code: code, secret: _setupSecret })
+        });
+        var data = await r.json();
+        if (data.verified) {
+            status.textContent = '2FA enabled successfully!';
+            status.className = 'status success';
+            document.getElementById('totpSetupSection').style.display = 'none';
+            // If we have a pending token, complete login
+            if (_pendingToken) {
+                setTimeout(function() { completeLogin(); }, 800);
+            }
+        } else {
+            status.textContent = data.error || 'Invalid code. Try again.';
+            status.className = 'status error';
+            btn.disabled = false;
+            btn.textContent = 'Confirm & Enable 2FA';
+            clearDigits('setup', 6);
+            var row = document.querySelector('#totpSetupSection .pin-input-row');
+            row.style.animation = 'shake 0.3s';
+            setTimeout(function() { row.style.animation = ''; }, 300);
+        }
+    } catch(e) {
+        status.textContent = 'Connection error';
+        status.className = 'status error';
+        btn.disabled = false;
+        btn.textContent = 'Confirm & Enable 2FA';
+    }
+}
+
+// ── Generic digit input helpers ──
+function setupDigitInputs(prefix, count, submitFn) {
+    for (var i = 1; i <= count; i++) {
+        (function(idx) {
+            var el = document.getElementById(prefix + idx);
+            // Remove old listeners by cloning
+            var clone = el.cloneNode(true);
+            el.parentNode.replaceChild(clone, el);
+            clone.addEventListener('input', function() {
+                if (this.value.length === 1) {
+                    this.classList.add('filled');
+                    if (idx < count) document.getElementById(prefix + (idx + 1)).focus();
+                    if (getDigits(prefix, count).length === count) submitFn();
+                }
+            });
+            clone.addEventListener('keydown', function(e) {
+                if (e.key === 'Backspace' && !this.value && idx > 1) {
+                    var prev = document.getElementById(prefix + (idx - 1));
+                    prev.focus();
+                    prev.value = '';
+                    prev.classList.remove('filled');
+                }
+                if (e.key === 'Enter') submitFn();
+            });
+            clone.addEventListener('beforeinput', function(e) {
+                if (e.data && !/^\d$/.test(e.data)) e.preventDefault();
+            });
+            // Handle paste on first input
+            if (idx === 1) {
+                clone.addEventListener('paste', function(e) {
+                    e.preventDefault();
+                    var pasted = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '').substring(0, count);
+                    for (var j = 0; j < pasted.length; j++) {
+                        var target = document.getElementById(prefix + (j + 1));
+                        target.value = pasted[j];
+                        target.classList.add('filled');
+                    }
+                    if (pasted.length === count) submitFn();
+                    else if (pasted.length > 0) document.getElementById(prefix + Math.min(pasted.length + 1, count)).focus();
+                });
+            }
+        })(i);
+    }
+}
+
+function getDigits(prefix, count) {
+    var val = '';
+    for (var i = 1; i <= count; i++) val += document.getElementById(prefix + i).value;
+    return val;
+}
+
+function clearDigits(prefix, count) {
+    for (var i = 1; i <= count; i++) {
+        var el = document.getElementById(prefix + i);
+        el.value = '';
+        el.classList.remove('filled');
+    }
+    document.getElementById(prefix + '1').focus();
 }
     </script>
 </body>

@@ -23,7 +23,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
     PUBLIC_ROUTES = {"/", "/chat", "/vibe", "/voice", "/auth", "/health", "/favicon.ico", "/manifest.json"}
     PUBLIC_PREFIXES = ("/api/auth/", "/static")
     # CSRF-exempt paths (auth endpoints handle their own protection)
-    CSRF_EXEMPT = {"/api/auth/verify", "/api/auth/pin", "/api/auth/logout"}
+    CSRF_EXEMPT = {"/api/auth/verify", "/api/auth/pin", "/api/auth/logout",
+                    "/api/auth/totp/setup", "/api/auth/totp/confirm", "/api/auth/totp/verify"}
 
     async def dispatch(self, request, call_next):
         from codec_config import DASHBOARD_TOKEN
@@ -283,6 +284,15 @@ def _auth_available():
     """Check if any auth method is available (Touch ID binary or PIN configured)."""
     return _is_auth_compiled() or bool(AUTH_PIN_HASH)
 
+def _is_totp_enabled():
+    """Check if TOTP 2FA is configured."""
+    try:
+        with open(CONFIG_PATH) as f:
+            return bool(json.load(f).get("totp_secret"))
+    except Exception:
+        return False
+
+
 def _verify_biometric_session(request):
     """Check if the request has a valid auth session cookie."""
     if not AUTH_ENABLED or not _auth_available():
@@ -295,6 +305,9 @@ def _verify_biometric_session(request):
         if datetime.now() - session["created"] > timedelta(hours=AUTH_SESSION_HOURS):
             del _auth_sessions[token]
             _save_sessions()
+            return False
+        # If TOTP is configured, require totp_verified flag
+        if _is_totp_enabled() and not session.get("totp_verified"):
             return False
     return True
 
@@ -461,6 +474,86 @@ async def auth_pin(request: Request):
         return {"authenticated": False, "error": "Incorrect PIN"}
 
 
+@app.post("/api/auth/totp/setup")
+async def totp_setup(request: Request):
+    """Generate TOTP secret + QR code for authenticator app setup."""
+    import pyotp, qrcode, io, base64
+    # Only allow setup if auth is enabled
+    if not AUTH_ENABLED:
+        return JSONResponse({"error": "Auth not enabled"}, status_code=400)
+    secret = pyotp.random_base32()
+    totp = pyotp.TOTP(secret)
+    uri = totp.provisioning_uri(name="CODEC", issuer_name="CODEC")
+    # Generate QR code as base64 PNG
+    img = qrcode.make(uri)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    qr_b64 = base64.b64encode(buf.getvalue()).decode()
+    return {"secret": secret, "qr_code": qr_b64, "uri": uri}
+
+
+@app.post("/api/auth/totp/confirm")
+async def totp_confirm(request: Request):
+    """Verify TOTP code and save secret to config if valid (first-time setup)."""
+    import pyotp
+    body = await request.json()
+    code = str(body.get("code", ""))
+    secret = body.get("secret", "")
+    if not code or not secret:
+        return JSONResponse({"error": "Missing code or secret"}, status_code=400)
+    totp = pyotp.TOTP(secret)
+    if totp.verify(code, valid_window=1):
+        # Save secret to config
+        try:
+            cfg_data = {}
+            if os.path.exists(CONFIG_PATH):
+                with open(CONFIG_PATH) as f:
+                    cfg_data = json.load(f)
+            cfg_data["totp_secret"] = secret
+            with open(CONFIG_PATH, "w") as f:
+                json.dump(cfg_data, f, indent=2)
+        except Exception as e:
+            return JSONResponse({"error": f"Failed to save config: {e}"}, status_code=500)
+        with open(AUDIT_LOG, "a") as f:
+            f.write(f"[{datetime.now().isoformat()}] TOTP_SETUP: 2FA enabled\n")
+        return {"verified": True, "message": "2FA enabled successfully"}
+    return {"verified": False, "error": "Invalid code. Try again."}
+
+
+@app.post("/api/auth/totp/verify")
+async def totp_verify(request: Request):
+    """Verify TOTP code during login (after Touch ID/PIN)."""
+    import pyotp
+    body = await request.json()
+    code = str(body.get("code", ""))
+    pending_token = body.get("token", "")
+    if not code or not pending_token:
+        return JSONResponse({"error": "Missing code or token"}, status_code=400)
+    # Load secret from config
+    totp_secret = ""
+    try:
+        with open(CONFIG_PATH) as f:
+            totp_secret = json.load(f).get("totp_secret", "")
+    except Exception:
+        pass
+    if not totp_secret:
+        return JSONResponse({"error": "TOTP not configured"}, status_code=400)
+    totp = pyotp.TOTP(totp_secret)
+    client_ip = request.client.host if request.client else "unknown"
+    if totp.verify(code, valid_window=1):
+        # Promote pending token to a real session
+        with _auth_lock:
+            if pending_token in _auth_sessions:
+                _auth_sessions[pending_token]["totp_verified"] = True
+                _save_sessions()
+        with open(AUDIT_LOG, "a") as f:
+            f.write(f"[{datetime.now().isoformat()}] TOTP_SUCCESS: ip={client_ip}\n")
+        return {"verified": True, "token": pending_token}
+    with open(AUDIT_LOG, "a") as f:
+        f.write(f"[{datetime.now().isoformat()}] TOTP_FAILED: ip={client_ip}\n")
+    return {"verified": False, "error": "Invalid code"}
+
+
 @app.post("/api/auth/logout")
 async def auth_logout(request: Request):
     """Invalidate the current biometric session."""
@@ -481,6 +574,7 @@ async def auth_status(request: Request):
         "auth_enabled": AUTH_ENABLED,
         "touchid_compiled": _is_auth_compiled(),
         "pin_configured": bool(AUTH_PIN_HASH),
+        "totp_enabled": _is_totp_enabled(),
     }
 
 
