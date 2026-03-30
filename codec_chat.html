@@ -234,6 +234,7 @@ input[type=file]{display:none}
 <a href="/" class="icon-btn" title="Home"><svg class="ico" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></a>
 <button class="icon-btn" id="voiceBtn" onclick="toggleVoiceReply()" title="Voice replies"><svg class="ico" viewBox="0 0 24 24"><path d="M11 5L6 9H2v6h4l5 4V5z"/><line x1="23" y1="9" x2="17" y2="15" id="muteX1"/><line x1="17" y1="9" x2="23" y2="15" id="muteX2"/></svg></button>
 <button class="icon-btn" onclick="takeScreenshot()" title="Screenshot"><svg class="ico" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></button>
+<button class="icon-btn" id="camBtn" onclick="takeWebcamPhoto()" title="Webcam photo"><svg class="ico" viewBox="0 0 24 24"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
 <a href="/tasks#reports" class="icon-btn notif-bell" id="notifBellBtn" title="Task Reports"><svg class="ico" viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg><span class="notif-badge hidden" id="notifBadge">0</span></a>
 <button class="icon-btn" onclick="toggleTheme()" id="themeBtn" title="Toggle theme">
   <svg class="ico" viewBox="0 0 24 24" id="themeIco"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
@@ -590,6 +591,46 @@ function toggleVoiceReply(){voiceReplyEnabled=!voiceReplyEnabled;localStorage.se
 function updateVoiceIcon(){var x1=document.getElementById('muteX1'),x2=document.getElementById('muteX2');if(voiceReplyEnabled){x1.style.display='none';x2.style.display='none'}else{x1.style.display='';x2.style.display=''}}
 updateVoiceIcon();
 async function takeScreenshot(){try{window.open('/api/screenshot?'+Date.now(),'_blank')}catch(e){}}
+
+/* ── Webcam photo capture ── */
+function takeWebcamPhoto() {
+    var btn = document.getElementById('camBtn');
+    btn.style.borderColor = 'var(--accent)';
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } } })
+    .then(function(stream) {
+        var video = document.createElement('video');
+        video.srcObject = stream;
+        video.setAttribute('playsinline', '');
+        video.play();
+        return new Promise(function(resolve) {
+            video.onloadeddata = function() { setTimeout(function() { resolve({ video: video, stream: stream }); }, 300); };
+        });
+    })
+    .then(function(obj) {
+        var canvas = document.createElement('canvas');
+        canvas.width = obj.video.videoWidth;
+        canvas.height = obj.video.videoHeight;
+        canvas.getContext('2d').drawImage(obj.video, 0, 0);
+        obj.stream.getTracks().forEach(function(t) { t.stop(); });
+        var b64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
+        btn.style.borderColor = '';
+        addMsg('system', 'Photo captured — analyzing…');
+        return fetch('/api/webcam', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image: b64, analyze: true, prompt: 'Describe what you see in this photo. Be concise.' })
+        });
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+        if (d.analysis) addMsg('assistant', d.analysis);
+        else if (d.saved) addMsg('system', 'Photo saved: ' + d.filename);
+    })
+    .catch(function(e) {
+        btn.style.borderColor = '';
+        addMsg('system', 'Camera error: ' + e.message);
+    });
+}
 setInterval(async function(){try{var r=await fetch('/api/status');var s=await r.json();document.getElementById('statusDot').classList.toggle('on',s.alive)}catch(e){}},10000);
 fetch('/api/status').then(r=>r.json()).then(s=>{document.getElementById('statusDot').classList.toggle('on',s.alive)}).catch(()=>{});
 

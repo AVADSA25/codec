@@ -880,6 +880,57 @@ async def tts(text: str = ""):
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
+@app.post("/api/webcam")
+async def webcam_capture(request: Request):
+    """Save webcam photo and optionally analyze with vision model"""
+    import base64
+    body = await request.json()
+    image_b64 = body.get("image", "")
+    analyze = body.get("analyze", False)
+    prompt = body.get("prompt", "Describe what you see in this webcam photo.")
+    if not image_b64:
+        return JSONResponse({"error": "No image data"}, status_code=400)
+    try:
+        # Save photo
+        photo_dir = os.path.expanduser("~/.codec/photos")
+        os.makedirs(photo_dir, exist_ok=True)
+        filename = f"webcam_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
+        filepath = os.path.join(photo_dir, filename)
+        with open(filepath, "wb") as f:
+            f.write(base64.b64decode(image_b64))
+        result = {"saved": filepath, "filename": filename}
+        # Optional vision analysis
+        if analyze:
+            try:
+                import requests as rq
+                config = {}
+                try:
+                    with open(CONFIG_PATH) as f: config = json.load(f)
+                except Exception:
+                    pass
+                vision_url = config.get("vision_base_url", "http://localhost:8082/v1")
+                vision_model = config.get("vision_model", "mlx-community/Qwen2.5-VL-7B-Instruct-4bit")
+                payload = {
+                    "model": vision_model,
+                    "messages": [{"role": "user", "content": [
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}},
+                        {"type": "text", "text": prompt}
+                    ]}],
+                    "max_tokens": 4000, "temperature": 0.7
+                }
+                r = rq.post(f"{vision_url}/chat/completions", json=payload,
+                            headers={"Content-Type": "application/json"}, timeout=120)
+                result["analysis"] = r.json()["choices"][0]["message"]["content"].strip()
+                result["model"] = vision_model
+            except Exception as e:
+                result["analysis_error"] = str(e)
+        with open(AUDIT_LOG, "a") as f:
+            f.write(f"[{datetime.now().isoformat()}] WEBCAM: {filename} analyze={analyze}\n")
+        return result
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 @app.get("/api/screenshot")
 async def screenshot():
     """Take screenshot of Mac Studio and return image"""
