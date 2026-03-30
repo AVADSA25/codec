@@ -12,7 +12,7 @@
   <a href="https://opencodec.org">opencodec.org</a> · <a href="https://avadigital.ai">AVA Digital LLC</a>
 </p>
 <p align="center">
-  <a href="#support-the-project">☕ Support the Project</a> · <a href="#professional-setup">🏢 Enterprise Setup</a>
+  <a href="#support-the-project">💰 Support the Project</a> · <a href="#professional-setup">🏢 Enterprise Setup</a>
 </p>
 
 ---
@@ -697,7 +697,7 @@ python3 -m pytest   # all tests must pass
 If CODEC saves you time, consider supporting development:
 
 - ⭐ Star on GitHub
-- ☕ [Buy me a coffee](https://buymeacoffee.com/avadsa)
+- 💰 [Donate via PayPal](https://paypal.me/avadsa25) — ava.dsa25@proton.me
 - 🏢 **Enterprise / Professional Setup:** [avadigital.ai](https://avadigital.ai)
 
 ---

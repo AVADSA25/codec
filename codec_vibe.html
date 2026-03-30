@@ -72,9 +72,9 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx);height:100vh;dis
 .vibe-mic.recording{background:var(--danger);color:#fff;border-color:var(--danger);animation:vibePulse 1s infinite}
 @keyframes vibePulse{0%,100%{opacity:1}50%{opacity:.6}}
 .mg{margin-bottom:12px;padding:10px 12px;border-radius:10px;font-size:14px;line-height:1.6;word-wrap:break-word}
-.mu{background:var(--ac);color:#fff;margin-left:20%;border-bottom-right-radius:3px}
+.mu{background:rgba(232,113,26,0.15);color:var(--tx);border:1px solid rgba(232,113,26,0.25);margin-left:20%;border-bottom-right-radius:3px}
 .ma{background:var(--bg2);border:1px solid var(--bd);margin-right:10%;border-bottom-left-radius:3px}
-.ma pre{background:#111;padding:8px;border-radius:6px;margin:8px 0;overflow-x:auto;font-family:var(--mn);font-size:12px}
+.ma pre{background:var(--bg);padding:8px;border-radius:6px;margin:8px 0;overflow-x:auto;font-family:var(--mn);font-size:12px;border:1px solid var(--bd)}
 .ab{display:inline-block;margin-top:6px;padding:5px 12px;background:var(--ac);color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:11px;font-weight:600}
 .ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:20}.ov.sh{display:block}
 .sd{position:fixed;top:0;left:-280px;width:280px;height:100%;background:var(--bg2);border-right:1px solid var(--bd);z-index:30;transition:left .25s;overflow-y:auto}.sd.sh{left:0}
@@ -131,7 +131,7 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx);height:100vh;dis
 [data-theme=light] .icon-btn{border-color:#bbb;color:#444}
 [data-theme=light] .icon-btn:hover{border-color:#999;color:#1a1a1a;background:#e8e4de}
 [data-theme=light] .nav-link.active{color:var(--accent);background:var(--accent-dim)}
-[data-theme=light] .mu{background:var(--ac);color:#fff}
+[data-theme=light] .mu{background:rgba(232,113,26,0.10);color:var(--tx);border:1px solid rgba(232,113,26,0.20)}
 [data-theme=light] .op{background:#f0ece6;color:#555}
 
 /* ── Mobile Responsive ── */
@@ -260,12 +260,12 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx);height:100vh;dis
   </div>
 </div>
 <div class="sp">
-<div class="cp"><div class="hd"><img src="https://i.imgur.com/jD1X5W8.png" alt="" style="width:18px;height:18px;vertical-align:middle;margin-right:6px;opacity:.7">Vibe Code</div><div class="ms" id="cm"><div class="mg ma">Tell me what to build!</div></div><div class="ia"><button class="vibe-mic" id="vibeMic" onclick="toggleVibeMic()" title="Voice input"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button><textarea id="vi" class="ii" rows="1" placeholder="Describe what to build..."></textarea><button class="sb" id="sndb" title="Send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></button><button class="sb" id="stopb" onclick="doStop()" style="display:none;background:#c0392b" title="Stop"><svg width="14" height="14" viewBox="0 0 24 24" fill="#fff" stroke="none"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></button></div></div>
+<div class="cp"><div class="hd" style="font-size:13px;color:var(--tx2);font-weight:500">Vibe Coding</div><div class="ms" id="cm"><div class="mg ma">Tell me what to build!</div></div><div class="ia"><button class="vibe-mic" id="vibeMic" onclick="toggleVibeMic()" title="Voice input"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button><textarea id="vi" class="ii" rows="1" placeholder="Describe what to build..."></textarea><button class="sb" id="sndb" title="Send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></button><button class="sb" id="stopb" onclick="doStop()" style="display:none;background:#c0392b" title="Stop"><svg width="14" height="14" viewBox="0 0 24 24" fill="#fff" stroke="none"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></button></div></div>
 <div style="width:4px;cursor:col-resize;background:var(--bd)" id="rh"></div>
 <div class="ep"><div id="eb"></div><div class="tb"><button class="bt primary" onclick="doRun()" title="Execute code"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5 3 19 12 5 21 5 3"/></svg>Run</button><button class="bt" onclick="doPrev()" title="Live preview"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>Preview</button><button class="bt" id="inspectBtn" onclick="toggleInspect()" title="Inspect elements"><svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Inspect</button><div class="tb-sep"></div><button class="bt" onclick="doSave()" title="Save file"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save</button><button class="bt" onclick="doCopy()" title="Copy code"><svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>Copy</button><div class="tb-sep"></div><button class="bt accent" onclick="doSkill()" title="Save to ~/.codec/skills/"><svg class="ico ico-sm" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Skill</button><button class="bt" onclick="doTestSkill()" title="Test skill run()"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>Test</button><button class="bt forge" onclick="doForge()" title="AI Forge"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M12 2L15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2z"/></svg>Forge</button><span class="rs" id="rs"></span></div></div>
 <div class="pp" id="pp"><div class="ph"><span>&#128065; Live Preview</span><button onclick="document.getElementById('pp').classList.remove('sh')" style="background:0;border:0;color:var(--tx2);cursor:pointer;font-size:16px">&#10005;</button></div><iframe id="pf" sandbox="allow-scripts allow-same-origin"></iframe></div>
 </div>
-<div class="op" id="op"><span style="color:var(--ac)">CODEC Vibe Code Ready</span></div>
+<div class="op" id="op"><span style="color:var(--ac)">Vibe Coding</span></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
 <script>
 function toggleTheme(){var t=document.documentElement.getAttribute('data-theme')==='light'?'dark':'light';document.documentElement.setAttribute('data-theme',t);localStorage.setItem('codec-theme',t);updateThemeIcon(t);if(typeof monaco!=='undefined')monaco.editor.setTheme(t==='light'?'vs':'vs-dark')}
@@ -412,6 +412,8 @@ function doSend() {
   var t = inp.value.trim();
   if (!t) return;
   inp.value = '';
+  inp.style.height = 'auto';
+  inp.rows = 1;
   document.getElementById('sndb').style.display = 'none';
   document.getElementById('stopb').style.display = '';
 
@@ -423,6 +425,14 @@ function doSend() {
 
   addMsg('user', t);
   hist.push({role: 'user', content: full});
+
+  // Auto-name project from first user message
+  var fnEl = document.getElementById('fn');
+  if (fnEl.value === 'untitled.py' || fnEl.value === 'untitled') {
+    var autoName = t.length > 40 ? t.substring(0, 40).replace(/\s+\S*$/, '') : t;
+    autoName = autoName.replace(/[^a-zA-Z0-9 _-]/g, '').trim().replace(/\s+/g, '-').toLowerCase();
+    if (autoName.length > 3) fnEl.value = autoName;
+  }
 
   var tk = document.createElement('div');
   tk.className = 'mg ma';
@@ -456,7 +466,11 @@ function doSend() {
     }
     var ct = r.headers.get('content-type') || '';
     if (ct.indexOf('application/json') === -1) {
-      return {error: 'Unexpected response from server (not JSON)'};
+      return r.text().then(function(txt) {
+        console.error('[Vibe] Non-JSON response:', r.status, txt.substring(0, 200));
+        if (r.status >= 500) return {error: 'LLM server error (status ' + r.status + '). It may have crashed or timed out — try again.'};
+        return {error: 'Server returned non-JSON response (status ' + r.status + '). The LLM may need restarting.'};
+      });
     }
     return r.json();
   })
@@ -488,13 +502,25 @@ function doSend() {
 
         addMsg('assistant', h, true);
 
-        // Auto apply
-        ed.setValue(code);
-        // Detect language: fence hint first, then auto-detect from code
+        // Typing animation — stream code into editor
         var fenceMap = {python:'python',py:'python',javascript:'javascript',js:'javascript',typescript:'typescript',ts:'typescript',html:'html',css:'css',json:'json',bash:'bash',sh:'bash',go:'go',rust:'rust',rs:'rust',java:'java',cpp:'cpp','c++':'cpp',swift:'swift',ruby:'ruby',rb:'ruby',sql:'sql',yaml:'yaml',yml:'yaml',markdown:'markdown',md:'markdown'};
         var detected = fenceMap[fenceLang.toLowerCase()] || detectLang(code);
         setDetectedLang(detected);
-        addOut('sy', 'Code applied to editor (' + detected + ')');
+        var lines = code.split('\n');
+        var li = 0, codeStr = '';
+        ed.setValue('');
+        addOut('sy', 'Writing code...');
+        var typeTimer = setInterval(function() {
+          if (li < lines.length) {
+            codeStr += (li > 0 ? '\n' : '') + lines[li];
+            ed.setValue(codeStr);
+            ed.revealLine(li + 1);
+            li++;
+          } else {
+            clearInterval(typeTimer);
+            addOut('sy', 'Code ready (' + detected + ')');
+          }
+        }, Math.max(15, Math.min(60, 2000 / lines.length)));
 
         if (code.trim().startsWith('<!DOCTYPE') || code.includes('<canvas')) {
           setTimeout(doPrev, 300);
@@ -556,8 +582,25 @@ function doPrev() {
   var c = ed.getValue();
   if (c.trim().startsWith('<!DOCTYPE') || c.includes('<canvas') || c.includes('<body')) {
     document.getElementById('pp').classList.add('sh');
-    document.getElementById('pf').srcdoc = c;
+    var pf = document.getElementById('pf');
+    pf.srcdoc = c;
     addOut('sy', 'Preview updated');
+    // Listen for preview errors and auto-load to chat
+    pf.onload = function() {
+      try {
+        var iframeWin = pf.contentWindow;
+        if (iframeWin) {
+          iframeWin.onerror = function(msg, src, line) {
+            var errText = 'Preview error (line ' + line + '): ' + msg;
+            addOut('er', errText);
+            addMsg('assistant', '⚠️ Error found in preview — send to fix:\n' + errText);
+            var inp = document.getElementById('vi');
+            inp.value = 'Fix this error: ' + msg + ' at line ' + line;
+            inp.style.height = 'auto';
+          };
+        }
+      } catch(e) {}
+    };
   } else {
     addMsg('assistant', 'Preview works with HTML. Ask Q to build a web page!');
   }
@@ -755,7 +798,7 @@ function loadSes() {
     if (!d.length) { el.innerHTML = '<div style="padding:16px;color:#888;font-size:12px">No projects yet.</div>'; return; }
     el.innerHTML = d.map(function(s) {
       var ts = s.updated_at ? new Date(s.updated_at).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
-      return '<div class="si" onclick="ldSes(\'' + s.id + '\')"><div style="font-size:13px;color:var(--tx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(s.title) + '</div><div style="font-family:var(--mn);font-size:10px;color:var(--tx2);margin-top:2px">' + ts + '</div></div>';
+      return '<div class="si" style="display:flex;align-items:center;gap:8px"><div style="flex:1;min-width:0;cursor:pointer" onclick="ldSes(\'' + s.id + '\')"><div style="font-size:13px;color:var(--tx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(s.title) + '</div><div style="font-family:var(--mn);font-size:10px;color:var(--tx2);margin-top:2px">' + ts + '</div></div><button onclick="event.stopPropagation();delSes(\'' + s.id + '\')" style="background:none;border:none;color:var(--tx2);cursor:pointer;font-size:14px;padding:4px;opacity:.5" title="Delete project">&times;</button></div>';
     }).join('');
   }).catch(function() { el.innerHTML = '<div style="padding:16px;color:#888">Error</div>'; });
 }
@@ -779,6 +822,12 @@ function ldSes(sid) {
     }
     addOut('sy', 'Loaded: ' + (d.session ? d.session.title : ''));
   }).catch(function() { addOut('er', 'Load error'); });
+}
+
+function delSes(sid) {
+  if (!confirm('Delete this project?')) return;
+  fetch('/api/vibe/session/' + sid, {method: 'DELETE'}).then(function() { loadSes(); }).catch(function() {});
+  if (sesId === sid) nS();
 }
 
 function nS() {

@@ -239,6 +239,10 @@ def create_google_doc(title: str, content: str) -> str | None:
     LGRAY  = {"red": 0.933, "green": 0.933, "blue": 0.933}   # #EEEEEE table bg
 
     try:
+        # Ensure all CODEC docs start with "CODEC:" prefix
+        if not title.startswith("CODEC:"):
+            title = "CODEC: " + title
+
         creds = Credentials.from_authorized_user_file(TOKEN_PATH)
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())

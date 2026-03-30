@@ -382,6 +382,7 @@ function renderSchedules() {
     html += '</div>';
     html += '<div class="card-actions">';
     html += '<button class="btn btn-sm btn-primary" onclick="runNow(\'' + s.id + '\')">Run Now</button>';
+    html += '<button class="btn btn-sm" style="background:var(--accent);color:#fff" onclick="editSchedule(\'' + s.id + '\')">Edit</button>';
     html += '<button class="btn btn-sm btn-danger" onclick="deleteSchedule(\'' + s.id + '\')">Delete</button>';
     html += '</div></div>';
   });
@@ -429,6 +430,38 @@ function runNow(id) {
       }
     })
     .catch(function(e){ showToast('Error: ' + e); });
+}
+
+function editSchedule(id) {
+  var sched = schedules.find(function(s) { return s.id === id; });
+  if (!sched) return;
+  var presets = {
+    'every12h': '0 */12 * * *',
+    'every24h': '0 8 * * *',
+    'daily8am': '0 8 * * *',
+    'weekly': '0 9 * * 1',
+    'custom': ''
+  };
+  var currentCron = (sched.cron || []).join(' ');
+  var choice = prompt(
+    'Edit schedule for: ' + (sched.crew || 'task') + '\n\n' +
+    'Current: ' + currentCron + '\n\n' +
+    'Enter new cron (5 fields) or a preset:\n' +
+    '  every12h = every 12 hours\n' +
+    '  daily = every day at 8am\n' +
+    '  weekly = every Monday 9am\n' +
+    '  Or type custom cron: "0 */6 * * *"',
+    currentCron
+  );
+  if (!choice) return;
+  var cron = presets[choice.trim().toLowerCase()] || choice.trim();
+  var parts = cron.split(/\s+/);
+  if (parts.length !== 5) { alert('Invalid cron — need 5 fields (min hour dom month dow)'); return; }
+  fetch('/api/schedules/' + id, {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({cron: parts})
+  }).then(function() { loadSchedules(); }).catch(function(e) { alert('Error: ' + e); });
 }
 
 function deleteSchedule(id) {

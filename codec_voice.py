@@ -197,7 +197,7 @@ class VoicePipeline:
             if name in self._VOICE_SKIP_SKILLS:
                 continue
             for trigger in skill["triggers"]:
-                if len(trigger.split()) < 3:
+                if len(trigger.split()) < 2:
                     continue
                 if trigger in text_lower and len(trigger) > best_len:
                     best_len   = len(trigger)

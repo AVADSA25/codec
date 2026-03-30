@@ -904,7 +904,7 @@ async def set_clipboard(request: Request):
 
 @app.post("/api/upload")
 async def upload_document(request: Request):
-    """Extract text from uploaded PDF or text files"""
+    """Extract text from uploaded PDF, DOCX, CSV, or text files"""
     import base64, subprocess
     body = await request.json()
     filename = body.get("filename", "file")
@@ -914,17 +914,57 @@ async def upload_document(request: Request):
     try:
         raw = base64.b64decode(data)
         ext = os.path.splitext(filename)[1].lower()
+
+        # ── PDF ──
         if ext == ".pdf":
             pdf_path = os.path.expanduser("~/.codec/pwa_upload.pdf")
             with open(pdf_path, "wb") as f: f.write(raw)
-            r = subprocess.run(["pdftotext", pdf_path, "-"], capture_output=True, text=True, timeout=30)
-            text_content = r.stdout[:200000].strip()
+            r = subprocess.run(["pdftotext", "-layout", pdf_path, "-"],
+                               capture_output=True, text=True, timeout=90)
+            text_content = r.stdout[:300000].strip()
             if not text_content:
-                text_content = ""
+                return JSONResponse({"error": "Could not extract text from PDF (may be image-only)"}, status_code=422)
             return {"status": "ok", "text": text_content, "filename": filename}
-        else:
-            text_content = raw.decode("utf-8", errors="ignore")[:200000]
+
+        # ── DOCX ──
+        if ext == ".docx":
+            try:
+                import zipfile, io, xml.etree.ElementTree as ET
+                zf = zipfile.ZipFile(io.BytesIO(raw))
+                xml_content = zf.read("word/document.xml")
+                tree = ET.fromstring(xml_content)
+                ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+                paragraphs = []
+                for p in tree.iter("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p"):
+                    texts = [t.text for t in p.iter("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t") if t.text]
+                    if texts:
+                        paragraphs.append("".join(texts))
+                text_content = "\n".join(paragraphs)[:300000]
+                return {"status": "ok", "text": text_content, "filename": filename}
+            except Exception as e:
+                return JSONResponse({"error": f"DOCX read error: {e}"}, status_code=422)
+
+        # ── CSV / TSV ──
+        if ext in (".csv", ".tsv"):
+            text_content = raw.decode("utf-8", errors="replace")[:300000]
             return {"status": "ok", "text": text_content, "filename": filename}
+
+        # ── Common text formats ──
+        TEXT_EXTS = {".txt", ".md", ".json", ".xml", ".yaml", ".yml", ".html",
+                     ".htm", ".css", ".js", ".ts", ".py", ".sh", ".log", ".sql",
+                     ".toml", ".ini", ".cfg", ".env", ".rst", ".tex", ".rtf"}
+        if ext in TEXT_EXTS:
+            text_content = raw.decode("utf-8", errors="replace")[:300000]
+            return {"status": "ok", "text": text_content, "filename": filename}
+
+        # ── Fallback: try UTF-8 decode ──
+        try:
+            text_content = raw.decode("utf-8")[:300000]
+            return {"status": "ok", "text": text_content, "filename": filename}
+        except UnicodeDecodeError:
+            return JSONResponse({"error": f"Cannot read .{ext.lstrip('.')} files — unsupported binary format"}, status_code=422)
+    except subprocess.TimeoutExpired:
+        return JSONResponse({"error": "PDF too large or complex — processing timed out"}, status_code=408)
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
@@ -1069,6 +1109,14 @@ async def vibe_save(request: Request):
     for m in messages:
         conn.execute("INSERT INTO vibe_messages (session_id, role, content, timestamp) VALUES (?, ?, ?, ?)",
             (sid, m.get("role","user"), m.get("content",""), now))
+    conn.commit()
+    return {"ok": True}
+
+@app.delete("/api/vibe/session/{sid}")
+async def vibe_delete(sid: str):
+    conn = vibe_db()
+    conn.execute("DELETE FROM vibe_messages WHERE session_id=?", (sid,))
+    conn.execute("DELETE FROM vibe_sessions WHERE id=?", (sid,))
     conn.commit()
     return {"ok": True}
 
@@ -1433,7 +1481,8 @@ def _fetch_url_content(url: str, max_chars: int = 8000) -> str:
                         self.chunks.append(stripped)
 
         r = httpx.get(url, timeout=15, follow_redirects=True,
-                       headers={"User-Agent": "Mozilla/5.0 (compatible; CODEC/1.0)"})
+                       headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"})
         if 'text/html' in r.headers.get('content-type', ''):
             parser = _Stripper()
             parser.feed(r.text)

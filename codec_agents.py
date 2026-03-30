@@ -46,7 +46,11 @@ def _qwen_model():
 SERPER_API_KEY = _cfg().get("serper_api_key", os.environ.get("SERPER_API_KEY", ""))
 
 # ── HTTP connection pools (reuse TCP connections across calls) ──
-_sync_http  = httpx.Client(timeout=30, follow_redirects=True)
+_HTTP_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+}
+_sync_http  = httpx.Client(timeout=30, follow_redirects=True, headers=_HTTP_HEADERS)
 _async_http = httpx.AsyncClient(timeout=180)
 
 # ── AUDIT LOGGER ──
@@ -111,6 +115,10 @@ def _web_search(query: str) -> str:
 def _web_fetch(url: str) -> str:
     try:
         r = _sync_http.get(url.strip())
+        if r.status_code in (401, 403):
+            return f"Blocked by site (HTTP {r.status_code}). Site requires JavaScript or blocks automated access."
+        if r.status_code >= 400:
+            return f"HTTP error {r.status_code} fetching {url}"
         text = r.text
         text = re.sub(r'<script[^>]*>[\s\S]*?</script>', '', text)
         text = re.sub(r'<style[^>]*>[\s\S]*?</style>', '', text)
