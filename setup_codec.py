@@ -32,7 +32,7 @@ def banner():
     ║  ██████  ██████  ██████  ███████  ██████  ║
     ║                            Setup v1.5.0   ║
     ╚═══════════════════════════════════════════╝{X}
-{W}  Open Source Computer Command Framework
+{W}  Your Open-Source Intelligent Command Layer
   7 products: Core · Dictate · Assist · Chat · Vibe · Voice · Remote
   36 skills · 8 text services · 12 AI agent crews{X}
 """)

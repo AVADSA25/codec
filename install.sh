@@ -9,7 +9,7 @@ echo " ██      ██    ██ ██   ██ █████   ██"
 echo " ██      ██    ██ ██   ██ ██      ██"
 echo "  ██████  ██████  ██████  ███████  ██████"
 echo ""
-echo "  Open Source Computer Command Framework"
+echo "  Your Open-Source Intelligent Command Layer"
 echo "  https://opencodec.org"
 echo ""
 

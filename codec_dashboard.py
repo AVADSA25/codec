@@ -485,7 +485,7 @@ async def manifest():
     return JSONResponse({
         "name": "CODEC",
         "short_name": "CODEC",
-        "description": "CODEC — Computer Command Framework",
+        "description": "CODEC — Your Open-Source Intelligent Command Layer",
         "start_url": "/",
         "display": "standalone",
         "background_color": "#0a0a0a",
