@@ -40,33 +40,32 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if not DASHBOARD_TOKEN and (not AUTH_ENABLED or not _auth_available()):
             return await call_next(request)
 
-        # ── Layer 1: Biometric / PIN session check ──
-        if AUTH_ENABLED and _auth_available():
-            if not _verify_biometric_session(request):
-                if path.startswith("/api/") or path.startswith("/ws"):
-                    return StarletteJSONResponse({"error": "Not authenticated"}, status_code=401)
-                from starlette.responses import RedirectResponse
-                return RedirectResponse(url="/auth")
+        # ── Layer 1: Token check (API key — works as standalone auth for API) ──
+        if DASHBOARD_TOKEN and path.startswith("/api/"):
+            auth = request.headers.get("Authorization", "")
+            if auth and hmac.compare_digest(auth, f"Bearer {DASHBOARD_TOKEN}"):
+                return await call_next(request)
+            token = request.query_params.get("token", "")
+            if token and hmac.compare_digest(token, DASHBOARD_TOKEN):
+                return await call_next(request)
 
-        # ── Layer 2: Bearer token check (for API-key-protected endpoints) ──
-        if not DASHBOARD_TOKEN:
-            return await call_next(request)
-        if DASHBOARD_TOKEN:
-            # Page routes are covered by biometric auth above; only enforce token on API
-            if path.startswith("/api/"):
-                auth = request.headers.get("Authorization", "")
-                if hmac.compare_digest(auth, f"Bearer {DASHBOARD_TOKEN}"):
-                    return await call_next(request)
-                token = request.query_params.get("token", "")
-                if hmac.compare_digest(token, DASHBOARD_TOKEN):
-                    return await call_next(request)
-                # If biometric/PIN passed (or disabled), allow through
-                if not AUTH_ENABLED or not _auth_available() or _verify_biometric_session(request):
-                    return await call_next(request)
-                return StarletteJSONResponse(
-                    {"error": "Unauthorized. Set dashboard_token in config.json or pass ?token=YOUR_TOKEN"},
-                    status_code=401
-                )
+        # ── Layer 2: Biometric / PIN session check ──
+        if AUTH_ENABLED and _auth_available():
+            if _verify_biometric_session(request):
+                return await call_next(request)
+            # Biometric failed — reject
+            if path.startswith("/api/") or path.startswith("/ws"):
+                return StarletteJSONResponse({"error": "Not authenticated"}, status_code=401)
+            from starlette.responses import RedirectResponse
+            return RedirectResponse(url="/auth")
+
+        # ── Layer 3: No biometric available — token-only mode ──
+        if DASHBOARD_TOKEN and path.startswith("/api/"):
+            # Token was already checked above and didn't match
+            return StarletteJSONResponse(
+                {"error": "Unauthorized. Set dashboard_token in config.json or pass ?token=YOUR_TOKEN"},
+                status_code=401
+            )
 
         return await call_next(request)
 

@@ -102,7 +102,7 @@ root.attributes('-alpha', 0.93)
 root.configure(bg='#0a0a0a')
 sw = root.winfo_screenwidth()
 sh = root.winfo_screenheight()
-w, h = 360, 54
+w, h = 440, 84
 x = (sw - w) // 2
 y = sh - 130
 root.geometry(f'{w}x{h}+{x}+{y}')
@@ -148,7 +148,7 @@ root.attributes('-alpha', 0.93)
 root.configure(bg='#0a0a0a')
 sw = root.winfo_screenwidth()
 sh = root.winfo_screenheight()
-w, h = 260, 54
+w, h = 440, 84
 x = (sw - w) // 2
 y = sh - 130
 root.geometry(f'{w}x{h}+{x}+{y}')
