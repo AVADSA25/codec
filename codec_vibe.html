@@ -8,6 +8,7 @@
 <link rel="apple-touch-icon" href="https://i.imgur.com/jD1X5W8.png">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/editor/editor.main.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.8/purify.min.js"></script>
 <style>
 :root {
   --bg: #121215; --surface: #1a1a1d; --surface-2: #212125; --surface-3: #2a2a2e;
@@ -268,6 +269,8 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx);height:100vh;dis
 <div class="op" id="op"><span style="color:var(--ac)">Vibe Coding</span></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
 <script>
+// CSRF: auto-inject token header on state-changing requests
+(function(){var _f=window.fetch;window.fetch=function(u,o){o=o||{};if(o.method&&o.method!=='GET'){var c=document.cookie.match(/codec_csrf=([^;]+)/);if(c){o.headers=o.headers||{};if(o.headers instanceof Headers){o.headers.set('x-csrf-token',c[1])}else{o.headers['x-csrf-token']=c[1]}}}return _f.call(this,u,o)}})();
 function toggleTheme(){var t=document.documentElement.getAttribute('data-theme')==='light'?'dark':'light';document.documentElement.setAttribute('data-theme',t);localStorage.setItem('codec-theme',t);updateThemeIcon(t);if(typeof monaco!=='undefined')monaco.editor.setTheme(t==='light'?'vs':'vs-dark')}
 function updateThemeIcon(t){var ico=document.getElementById('themeIco');if(t==='light'){ico.innerHTML='<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>'}else{ico.innerHTML='<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>'}}
 function lockSession(){fetch('/api/auth/logout',{method:'POST'}).then(function(){document.cookie='codec_session=;path=/;max-age=0;SameSite=Strict'+(location.protocol==='https:'?';Secure':'');window.location.href='/auth'})}
@@ -382,7 +385,7 @@ function addMsg(role, text, raw) {
   var el = document.getElementById('cm');
   var d = document.createElement('div');
   d.className = 'mg ' + (role === 'user' ? 'mu' : 'ma');
-  if (raw) { d.innerHTML = text; } else { d.innerHTML = esc(text).replace(/\n/g, '<br>'); }
+  if (raw) { d.innerHTML = typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(text) : text; } else { d.innerHTML = esc(text).replace(/\n/g, '<br>'); }
   el.appendChild(d);
   el.scrollTop = el.scrollHeight;
 }

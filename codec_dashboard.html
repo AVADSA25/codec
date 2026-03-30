@@ -421,6 +421,8 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
 <div class="toast" id="toast"></div>
 
 <script>
+// CSRF: auto-inject token header on state-changing requests
+(function(){var _f=window.fetch;window.fetch=function(u,o){o=o||{};if(o.method&&o.method!=='GET'){var c=document.cookie.match(/codec_csrf=([^;]+)/);if(c){o.headers=o.headers||{};if(o.headers instanceof Headers){o.headers.set('x-csrf-token',c[1])}else{o.headers['x-csrf-token']=c[1]}}}return _f.call(this,u,o)}})();
 // ── State ──
 var currentTab = 'chat';
 var isRecording = false;

@@ -101,11 +101,22 @@ DANGEROUS_PATTERNS = [
 
 def is_dangerous(cmd):
     """Check if a command matches any dangerous pattern.
-    Uses simple substring matching (case-insensitive) — many patterns contain
-    special characters (e.g. ':(){ :|:& };:') that break regex word boundaries.
+    Uses word-boundary regex for alphanumeric patterns and substring
+    matching for patterns with special characters.
     """
+    import re
     cmd_lower = cmd.lower()
-    return any(p.lower() in cmd_lower for p in DANGEROUS_PATTERNS)
+    for p in DANGEROUS_PATTERNS:
+        p_lower = p.lower()
+        # Patterns that start/end with word characters can use word boundaries
+        if p_lower[0].isalnum() and p_lower[-1].isalnum():
+            if re.search(r'\b' + re.escape(p_lower) + r'\b', cmd_lower):
+                return True
+        else:
+            # Special-char patterns (fork bombs, pipes, etc.) use substring match
+            if p_lower in cmd_lower:
+                return True
+    return False
 
 
 # Draft / screen detection keywords

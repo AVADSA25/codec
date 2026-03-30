@@ -139,7 +139,7 @@ class VoicePipeline:
         self.last_tts_end     = 0.0
 
         # Concurrency
-        self.utterance_queue = asyncio.Queue()   # completed utterances ready to process
+        self.utterance_queue = asyncio.Queue(maxsize=3)   # completed utterances ready to process
         self.interrupted     = asyncio.Event()   # set when user speaks mid-response
         self.processing      = False             # True while generating/speaking a response
 

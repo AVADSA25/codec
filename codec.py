@@ -30,7 +30,7 @@ from codec_overlays import (
     show_overlay, show_recording_overlay, show_processing_overlay, show_toggle_overlay,
 )
 from codec_dispatch import load_skills, check_skill, run_skill
-from codec_agent import build_session_script, run_session_module
+from codec_agent import build_session_params, run_session_module
 from codec_compaction import compact_context
 
 # ── AUDIT LOG ─────────────────────────────────────────────────────────────────

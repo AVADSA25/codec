@@ -21,6 +21,12 @@ fi
 
 PY_VERSION=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
 echo "✅ Python $PY_VERSION"
+PY_MAJOR=$(echo "$PY_VERSION" | cut -d. -f1)
+PY_MINOR=$(echo "$PY_VERSION" | cut -d. -f2)
+if [ "$PY_MAJOR" -lt 3 ] || ([ "$PY_MAJOR" -eq 3 ] && [ "$PY_MINOR" -lt 10 ]); then
+    echo "❌ Python 3.10+ required. Found $PY_VERSION"
+    exit 1
+fi
 
 # Check macOS
 if [[ "$(uname)" != "Darwin" ]]; then

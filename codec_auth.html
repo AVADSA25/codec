@@ -345,9 +345,13 @@ function onSuccess(data) {
     var status = document.getElementById('status');
     status.textContent = 'Authenticated via ' + (data.method || 'biometrics');
     status.className = 'status success';
-    var _ck = 'codec_session=' + data.token + '; path=/; max-age=' + (data.expires_hours * 3600) + '; SameSite=Strict';
+    var _exp = data.expires_hours * 3600;
+    var _ck = 'codec_session=' + data.token + '; path=/; max-age=' + _exp + '; SameSite=Strict';
     if (location.protocol === 'https:') _ck += '; Secure';
     document.cookie = _ck;
+    // CSRF double-submit token (readable by JS, paired with x-csrf-token header)
+    var _csrf = data.token.substring(0, 16);
+    document.cookie = 'codec_csrf=' + _csrf + '; path=/; max-age=' + _exp + '; SameSite=Strict';
     setTimeout(function() { window.location.href = '/'; }, 600);
 }
     </script>

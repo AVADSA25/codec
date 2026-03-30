@@ -975,6 +975,7 @@ def meeting_summarizer_crew(**kwargs) -> Crew:
 
 def invoice_generator_crew(**kwargs) -> Crew:
     """Invoice Generator crew — parse details + create professional invoice in Google Docs."""
+    from codec_config import cfg
     all_tools = get_all_tools()
     invoice_details = kwargs.get("invoice_details", "")
     read_tools = [t for t in all_tools if t.name in ("google_gmail", "google_drive", "web_search")]
@@ -987,7 +988,7 @@ def invoice_generator_crew(**kwargs) -> Crew:
             "all invoice details from the user's natural language input.\n\n"
             "Extract:\n"
             "1. FROM (sender): Company name, address, email, phone\n"
-            "   - Default: AVA Digital LLC, mikarina@avadigital.ai\n"
+            "   - Default: " + cfg.get("invoice_from_name", "Your Company") + ", " + cfg.get("invoice_from_email", "your@email.com") + "\n"
             "2. TO (client): Client name, company, address, email\n"
             "3. INVOICE NUMBER: Generate as INV-YYYYMMDD-001 if not specified\n"
             "4. DATE: Today's date if not specified\n"
@@ -996,7 +997,7 @@ def invoice_generator_crew(**kwargs) -> Crew:
             "7. SUBTOTAL: Sum of all line items\n"
             "8. TAX: If mentioned (default 0%)\n"
             "9. TOTAL: Subtotal + tax\n"
-            "10. PAYMENT DETAILS: PayPal (ava.dsa25@proton.me) or bank details if mentioned\n"
+            "10. PAYMENT DETAILS: " + cfg.get("invoice_payment_info", "PayPal or bank details if mentioned") + "\n"
             "11. NOTES: Any special terms, late payment fees, thank you message\n\n"
             "If any client details are missing, check Google Drive or Gmail for previous "
             "correspondence with this client to fill in their details.\n\n"
@@ -1190,6 +1191,7 @@ async def run_custom_agent(
     Run a single ad-hoc agent built from the chat UI.
     tools: list of tool names to give the agent.
     """
+    max_iterations = min(max_iterations, 25)
     start = time.time()
     all_tools   = get_all_tools()
     tool_map    = {t.name: t for t in all_tools}

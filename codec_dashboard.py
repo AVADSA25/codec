@@ -22,6 +22,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
     # Routes that never require authentication
     PUBLIC_ROUTES = {"/", "/chat", "/vibe", "/voice", "/auth", "/health", "/favicon.ico", "/manifest.json"}
     PUBLIC_PREFIXES = ("/api/auth/", "/static")
+    # CSRF-exempt paths (auth endpoints handle their own protection)
+    CSRF_EXEMPT = {"/api/auth/verify", "/api/auth/pin", "/api/auth/logout"}
 
     async def dispatch(self, request, call_next):
         from codec_config import DASHBOARD_TOKEN
@@ -35,6 +37,18 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # Allow static assets
         if path.endswith(('.css', '.js', '.png', '.ico', '.svg', '.woff2', '.woff', '.ttf')):
             return await call_next(request)
+
+        # ── CSRF check for state-changing requests ──
+        if request.method in ("POST", "PUT", "DELETE") and path not in self.CSRF_EXEMPT:
+            csrf_cookie = request.cookies.get("codec_csrf", "")
+            csrf_header = request.headers.get("x-csrf-token", "")
+            # Only enforce if auth is enabled (local no-auth mode skips CSRF)
+            if (DASHBOARD_TOKEN or AUTH_ENABLED) and csrf_cookie:
+                if not csrf_header or not hmac.compare_digest(csrf_cookie, csrf_header):
+                    return StarletteJSONResponse(
+                        {"error": "CSRF token mismatch. Refresh the page."},
+                        status_code=403
+                    )
 
         # ── Layer 0: No auth configured → allow all ──
         if not DASHBOARD_TOKEN and (not AUTH_ENABLED or not _auth_available()):
@@ -1296,18 +1310,17 @@ async def deep_research_start(request: Request):
     job_id = str(uuid.uuid4())[:8]
     _research_jobs[job_id] = {"status": "running", "topic": topic, "started": datetime.now().isoformat()}
 
-    def _run():
+    async def _run_async():
         try:
-            from deep_research import run_deep_research
-            result = run_deep_research(topic)
+            from codec_agents import run_crew
+            result = await run_crew("deep_research", topic=topic)
             _research_jobs[job_id].update(result)
-            _research_jobs[job_id]["status"] = result.get("status", "complete")
         except Exception as e:
             import traceback; traceback.print_exc()
             _research_jobs[job_id]["status"] = "error"
             _research_jobs[job_id]["error"] = str(e)
 
-    threading.Thread(target=_run, daemon=True).start()
+    asyncio.create_task(_run_async())
     return {"job_id": job_id, "status": "running", "topic": topic}
 
 
