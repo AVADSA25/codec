@@ -4,32 +4,50 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>CODEC — Authenticate</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --bg: #121215; --surface: #1a1a1d; --surface-2: #212125; --border: #303035; --border-hover: #424248;
+            --text: #ececec; --text-muted: #9a9aa0; --text-dim: #6a6a70;
+            --accent: #E8711A; --accent-hover: #f07d2a;
+            --danger: #ef4444; --success: #22c55e;
+            --font: 'Inter', -apple-system, sans-serif;
+            --mono: 'JetBrains Mono', monospace;
+            --radius-sm: 6px; --radius: 10px;
+        }
+        [data-theme="light"] {
+            --bg: #f7f5f2; --surface: #fff; --surface-2: #f0ece6; --border: #d5d0ca; --border-hover: #bbb;
+            --text: #1a1a1a; --text-muted: #555; --text-dim: #777;
+        }
         * { margin:0; padding:0; box-sizing:border-box; }
         body {
-            font-family: 'SF Pro Display', -apple-system, sans-serif;
-            background: #0a0a0a; color: #e0e0e0;
+            font-family: var(--font);
+            background: var(--bg); color: var(--text);
             height: 100vh; display: flex; align-items: center; justify-content: center;
+            transition: background 0.2s, color 0.2s;
         }
         .auth-container {
-            text-align: center; max-width: 380px; width: 100%; padding: 32px;
+            text-align: center; max-width: 360px; width: 100%; padding: 32px;
         }
-        .logo { font-size: 48px; margin-bottom: 16px; }
-        .title { font-size: 22px; font-weight: 600; color: #E8711A; margin-bottom: 6px; }
-        .subtitle { font-size: 13px; color: #666; margin-bottom: 32px; }
+        .logo { width: 68px; height: 68px; margin: 0 auto 16px; filter: drop-shadow(0 0 18px rgba(232,113,26,0.35)); }
+        .title { font-family: var(--mono); font-size: 24px; font-weight: 700; color: var(--text); letter-spacing: 2px; margin-bottom: 6px; }
+        .subtitle { font-size: 13px; color: var(--text-dim); margin-bottom: 32px; }
 
         .fingerprint-ring {
             width: 120px; height: 120px; border-radius: 50%; margin: 0 auto 24px;
             display: flex; align-items: center; justify-content: center;
-            background: #111; border: 2px solid #333;
+            background: var(--surface); border: 2px solid var(--border);
             transition: all 0.3s;
             cursor: pointer;
         }
-        .fingerprint-ring:hover { border-color: #E8711A; }
-        .fingerprint-ring.waiting { border-color: #E8711A; animation: pulse 1.5s ease-in-out infinite; }
-        .fingerprint-ring.success { border-color: #00ff88; background: #0a1a0f; }
-        .fingerprint-ring.error { border-color: #ff3b3b; background: #1a0a0a; }
-        .fingerprint-icon { font-size: 48px; }
+        .fingerprint-ring:hover { border-color: var(--accent); }
+        .fingerprint-ring.waiting { border-color: var(--accent); animation: pulse 1.5s ease-in-out infinite; }
+        .fingerprint-ring.success { border-color: var(--success); background: #0a1a0f; }
+        .fingerprint-ring.error { border-color: var(--danger); background: #1a0a0a; }
+        [data-theme="light"] .fingerprint-ring.success { background: #eaf7ee; }
+        [data-theme="light"] .fingerprint-ring.error { background: #fdeaea; }
+        [data-theme="light"] .fingerprint-ring.waiting { background: var(--surface); }
+        .fingerprint-icon { font-size: 40px; }
 
         @keyframes pulse {
             0%, 100% { box-shadow: 0 0 0 0 rgba(232,113,26,0.3); }
@@ -37,50 +55,70 @@
         }
 
         .auth-btn {
-            padding: 14px 32px; font-size: 15px; font-weight: 500;
-            background: #E8711A; color: #fff; border: none; border-radius: 12px;
+            padding: 14px 36px; font-size: 14px; font-weight: 600;
+            background: var(--accent); color: #fff; border: none; border-radius: var(--radius);
             cursor: pointer; width: 100%; margin-bottom: 12px;
-            transition: background 0.2s;
+            transition: all 0.15s; font-family: var(--font);
         }
-        .auth-btn:hover { background: #d4650f; }
-        .auth-btn:disabled { background: #333; color: #666; cursor: not-allowed; }
+        .auth-btn:hover { background: var(--accent-hover); }
+        .auth-btn:active { transform: scale(0.98); }
+        .auth-btn:disabled { background: var(--border); color: var(--text-dim); cursor: not-allowed; }
 
         .divider {
             display: flex; align-items: center; margin: 20px 0; gap: 12px;
         }
         .divider::before, .divider::after {
-            content: ''; flex: 1; height: 1px; background: #222;
+            content: ''; flex: 1; height: 1px; background: var(--border);
         }
-        .divider span { font-size: 11px; color: #444; text-transform: uppercase; letter-spacing: 1px; }
+        .divider span { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; font-weight: 500; }
 
         .pin-section { display: none; }
         .pin-input-row {
             display: flex; gap: 8px; justify-content: center; margin-bottom: 16px;
         }
         .pin-digit {
-            width: 48px; height: 56px; text-align: center; font-size: 24px;
+            width: 50px; height: 56px; text-align: center; font-size: 22px;
             font-weight: 600; letter-spacing: 2px;
-            background: #111; color: #E8711A; border: 2px solid #222;
-            border-radius: 10px; outline: none;
-            transition: border-color 0.2s;
+            background: var(--surface); color: var(--accent); border: 1px solid var(--border);
+            border-radius: 8px; outline: none;
+            transition: border-color 0.15s; font-family: var(--mono);
         }
-        .pin-digit:focus { border-color: #E8711A; }
-        .pin-digit.filled { border-color: #E8711A; }
+        .pin-digit:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(232,113,26,0.1); }
+        .pin-digit.filled { border-color: var(--accent); }
 
-        .status { font-size: 13px; color: #666; min-height: 20px; margin-top: 16px; }
-        .status.error { color: #ff3b3b; }
-        .status.success { color: #00ff88; }
+        .status { font-size: 13px; color: var(--text-dim); min-height: 20px; margin-top: 16px; }
+        .status.error { color: var(--danger); }
+        .status.success { color: var(--success); }
 
         .remote-note {
-            background: #111; border: 1px solid #222; border-radius: 8px;
-            padding: 12px; margin-top: 24px; font-size: 12px; color: #555;
+            background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+            padding: 12px; margin-top: 24px; font-size: 12px; color: var(--text-dim);
             line-height: 1.5;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-8px); }
+            75% { transform: translateX(8px); }
+        }
+
+        /* ── Mobile Responsive ── */
+        @media (max-width: 480px) {
+          .auth-container { padding: 24px 16px; }
+          .pin-input-row { gap: 6px; }
+          .pin-digit { width: 44px; height: 50px; font-size: 20px; }
+          .fingerprint-ring { width: 100px; height: 100px; }
+          .fingerprint-icon { font-size: 34px; }
         }
     </style>
 </head>
 <body>
+    <button id="themeBtn" onclick="toggleTheme()" style="position:fixed;top:16px;right:16px;background:none;border:1px solid var(--border);color:var(--text-muted);width:32px;height:32px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center">
+        <svg id="themeIco" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+    </button>
+
     <div class="auth-container">
-        <div class="logo">&#9889;</div>
+        <img class="logo" src="https://i.imgur.com/jD1X5W8.png" alt="CODEC">
         <div class="title">CODEC</div>
         <div class="subtitle">Authentication required</div>
 
@@ -107,7 +145,7 @@
                 <input type="password" class="pin-digit" id="pin5" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
                 <input type="password" class="pin-digit" id="pin6" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
             </div>
-            <button class="auth-btn" id="pinBtn" onclick="verifyPin()" style="background:#333">Unlock with PIN</button>
+            <button class="auth-btn" id="pinBtn" onclick="verifyPin()" style="background:var(--border-hover)">Unlock with PIN</button>
         </div>
 
         <div class="status" id="status"></div>
@@ -119,6 +157,10 @@
     </div>
 
     <script>
+function toggleTheme(){var t=document.documentElement.getAttribute('data-theme')==='light'?'dark':'light';document.documentElement.setAttribute('data-theme',t);localStorage.setItem('codec-theme',t);updateThemeIcon(t)}
+function updateThemeIcon(t){document.getElementById('themeIco').innerHTML=t==='light'?'<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>':'<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>'}
+(function(){var s=localStorage.getItem('codec-theme');if(s==='light'){document.documentElement.setAttribute('data-theme','light');updateThemeIcon('light')}})();
+
 var isRemote = location.hostname !== 'localhost' && location.hostname !== '127.0.0.1';
 if (isRemote) {
     document.getElementById('remoteNote').style.display = 'block';
@@ -307,12 +349,5 @@ function onSuccess(data) {
     setTimeout(function() { window.location.href = '/'; }, 600);
 }
     </script>
-    <style>
-        @keyframes shake {
-            0%, 100% { transform: translateX(0); }
-            25% { transform: translateX(-8px); }
-            75% { transform: translateX(8px); }
-        }
-    </style>
 </body>
 </html>

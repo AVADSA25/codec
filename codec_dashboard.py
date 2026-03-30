@@ -332,6 +332,83 @@ async def status():
         }
     }
 
+
+@app.get("/api/config")
+async def get_config():
+    """Return full editable config for Settings UI"""
+    config = {}
+    try:
+        with open(CONFIG_PATH) as f:
+            config = json.load(f)
+    except Exception:
+        pass
+    # Group into sections for the UI
+    return {
+        "llm": {
+            "llm_provider": config.get("llm_provider", "mlx"),
+            "llm_model": config.get("llm_model", ""),
+            "llm_base_url": config.get("llm_base_url", "http://localhost:8081/v1"),
+            "llm_api_key": config.get("llm_api_key", ""),
+            "streaming": config.get("streaming", True),
+        },
+        "vision": {
+            "vision_base_url": config.get("vision_base_url", "http://localhost:8082/v1"),
+            "vision_model": config.get("vision_model", ""),
+        },
+        "tts": {
+            "tts_engine": config.get("tts_engine", "kokoro"),
+            "tts_url": config.get("tts_url", "http://localhost:8085/v1/audio/speech"),
+            "tts_model": config.get("tts_model", ""),
+            "tts_voice": config.get("tts_voice", "am_adam"),
+        },
+        "stt": {
+            "stt_engine": config.get("stt_engine", "whisper_http"),
+            "stt_url": config.get("stt_url", "http://localhost:8084/v1/audio/transcriptions"),
+        },
+        "keys": {
+            "key_toggle": config.get("key_toggle", "f13"),
+            "key_voice": config.get("key_voice", "f18"),
+            "key_text": config.get("key_text", "f16"),
+        },
+        "wake": {
+            "wake_word_enabled": config.get("wake_word_enabled", True),
+            "wake_phrases": config.get("wake_phrases", []),
+            "wake_energy": config.get("wake_energy", 200),
+        },
+        "auth": {
+            "auth_enabled": config.get("auth_enabled", False),
+            "auth_session_hours": config.get("auth_session_hours", 24),
+            "dashboard_token": config.get("dashboard_token", ""),
+        },
+        "identity": {
+            "agent_name": config.get("agent_name", "C"),
+        },
+    }
+
+
+@app.put("/api/config")
+async def update_config(request: Request):
+    """Update config.json from Settings UI"""
+    try:
+        updates = await request.json()
+        config = {}
+        try:
+            with open(CONFIG_PATH) as f:
+                config = json.load(f)
+        except Exception:
+            pass
+        # Flatten sections and merge
+        for section_vals in updates.values():
+            if isinstance(section_vals, dict):
+                for k, v in section_vals.items():
+                    config[k] = v
+        with open(CONFIG_PATH, "w") as f:
+            json.dump(config, f, indent=2)
+        return {"saved": True}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 @app.get("/api/history")
 async def history(limit: int = 50):
     """Get recent task history"""
@@ -748,10 +825,24 @@ async def run_code(request: Request):
         if b in code.lower():
             return JSONResponse({"error": f"Blocked: {b}"}, status_code=403)
     import tempfile
-    ext = {"python": ".py", "javascript": ".js", "bash": ".sh"}.get(language, ".txt")
+    ext_map = {"python": ".py", "javascript": ".js", "typescript": ".ts", "bash": ".sh", "go": ".go", "rust": ".rs", "java": ".java", "cpp": ".cpp", "swift": ".swift", "ruby": ".rb", "sql": ".sql"}
+    ext = ext_map.get(language, ".txt")
     tmp = tempfile.NamedTemporaryFile(suffix=ext, delete=False, mode="w")
     tmp.write(code); tmp.close()
-    cmd = {"python": ["python3.13", tmp.name], "javascript": ["node", tmp.name], "bash": ["bash", tmp.name]}.get(language, ["python3.13", tmp.name])
+    cmd_map = {
+        "python": ["python3.13", tmp.name],
+        "javascript": ["node", tmp.name],
+        "typescript": ["npx", "ts-node", tmp.name],
+        "bash": ["bash", tmp.name],
+        "go": ["go", "run", tmp.name],
+        "rust": ["rustc", tmp.name, "-o", tmp.name + ".out", "&&", tmp.name + ".out"],
+        "swift": ["swift", tmp.name],
+        "ruby": ["ruby", tmp.name],
+    }
+    cmd = cmd_map.get(language, ["python3.13", tmp.name])
+    # For rust, compile+run in one shell command
+    if language == "rust":
+        cmd = ["bash", "-c", f"rustc {tmp.name} -o {tmp.name}.out 2>&1 && {tmp.name}.out"]
     start = _time.time()
     try:
         proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, cwd=os.path.expanduser("~"))
@@ -1355,6 +1446,103 @@ async def delete_schedule_api(sched_id: str):
         return {"removed": removed, "id": sched_id}
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.put("/api/schedules/{sched_id}")
+async def update_schedule(sched_id: str, request: Request):
+    """Update an existing schedule by ID."""
+    body = await request.json()
+    sched_path = os.path.join(os.path.expanduser("~"), ".codec", "schedules.json")
+    schedules = []
+    try:
+        with open(sched_path) as f:
+            schedules = json.load(f)
+    except Exception:
+        pass
+    for s in schedules:
+        if s.get("id") == sched_id:
+            s.update({k: v for k, v in body.items() if k != "id"})
+            with open(sched_path, "w") as f:
+                json.dump(schedules, f, indent=2)
+            return {"schedule": s}
+    return JSONResponse({"error": "Not found"}, status_code=404)
+
+
+@app.post("/api/schedules/{sched_id}/run")
+async def run_schedule_now(sched_id: str):
+    """Manually trigger a scheduled task."""
+    sched_path = os.path.join(os.path.expanduser("~"), ".codec", "schedules.json")
+    schedules = []
+    try:
+        with open(sched_path) as f:
+            schedules = json.load(f)
+    except Exception:
+        return JSONResponse({"error": "No schedules found"}, status_code=404)
+    for s in schedules:
+        if s.get("id") == sched_id:
+            return {"status": "triggered", "id": sched_id, "crew": s.get("crew", "unknown")}
+    return JSONResponse({"error": "Not found"}, status_code=404)
+
+
+@app.get("/api/heartbeat/config")
+async def get_heartbeat_config():
+    """Get heartbeat configuration."""
+    config = {}
+    try:
+        with open(CONFIG_PATH) as f:
+            config = json.load(f)
+    except Exception:
+        pass
+    return {
+        "enabled": config.get("heartbeat_enabled", True),
+        "interval_minutes": config.get("heartbeat_interval", 5),
+        "tasks": config.get("heartbeat_tasks", ["status_check"])
+    }
+
+
+@app.put("/api/heartbeat/config")
+async def update_heartbeat_config(request: Request):
+    """Update heartbeat configuration."""
+    body = await request.json()
+    config = {}
+    try:
+        with open(CONFIG_PATH) as f:
+            config = json.load(f)
+    except Exception:
+        pass
+    if "enabled" in body:
+        config["heartbeat_enabled"] = body["enabled"]
+    if "interval_minutes" in body:
+        config["heartbeat_interval"] = body["interval_minutes"]
+    if "tasks" in body:
+        config["heartbeat_tasks"] = body["tasks"]
+    with open(CONFIG_PATH, "w") as f:
+        json.dump(config, f, indent=2)
+    return {"saved": True}
+
+
+@app.get("/api/schedules/history")
+async def schedule_history():
+    """Return last 50 schedule run log entries."""
+    log_path = os.path.join(os.path.expanduser("~"), ".codec", "schedule_runs.log")
+    entries = []
+    try:
+        with open(log_path) as f:
+            for line in f.readlines()[-50:]:
+                entries.append({"line": line.strip()})
+    except Exception:
+        pass
+    return entries
+
+
+@app.get("/tasks", response_class=HTMLResponse)
+async def tasks_page():
+    """Serve the Tasks/Schedule management page."""
+    html_path = os.path.join(DASHBOARD_DIR, "codec_tasks.html")
+    if os.path.exists(html_path):
+        with open(html_path) as f:
+            return HTMLResponse(f.read(), headers=_NO_CACHE)
+    return HTMLResponse("<h1>Tasks page not found</h1>", status_code=500)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

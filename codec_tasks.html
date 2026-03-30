@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CODEC — Tasks</title>
+<link rel="icon" href="https://i.imgur.com/jD1X5W8.png">
+<link rel="apple-touch-icon" href="https://i.imgur.com/jD1X5W8.png">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #121215; --surface: #1a1a1d; --surface-2: #212125; --surface-3: #2a2a2e;
+  --border: #303035; --border-hover: #424248;
+  --text: #ececec; --text-muted: #9a9aa0; --text-dim: #6a6a70;
+  --accent: #E8711A; --accent-hover: #f07d2a; --accent-dim: rgba(232,113,26,0.10);
+  --danger: #ef4444; --success: #22c55e; --info: #3b82f6;
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --mono: 'JetBrains Mono', 'SF Mono', monospace;
+  --radius-sm: 6px; --radius: 10px;
+}
+[data-theme="light"] {
+  --bg: #f7f5f2; --surface: #fff; --surface-2: #f0ece6; --surface-3: #e8e4de;
+  --border: #d5d0ca; --border-hover: #bbb;
+  --text: #1a1a1a; --text-muted: #555; --text-dim: #777;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100vh; }
+a { color: var(--accent); text-decoration: none; }
+
+/* ── Header ── */
+.header { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100; }
+.header-left { display: flex; align-items: center; gap: 10px; }
+.header-left img { width: 32px; height: 32px; }
+.header-left h1 { font-family: var(--mono); font-size: 16px; font-weight: 700; letter-spacing: 2px; color: var(--accent); }
+.logo-link { display: flex; align-items: center; }
+.page-nav { display: flex; align-items: center; gap: 1px; position: absolute; left: 50%; transform: translateX(-50%); background: var(--surface-2); border-radius: var(--radius-sm); padding: 2px; }
+.nav-link { padding: 5px 14px; color: var(--text-muted); text-decoration: none; font-size: 12px; font-weight: 500; border-radius: 4px; transition: all 0.15s ease; white-space: nowrap; text-align: center; }
+.nav-link:hover { color: var(--text); }
+.nav-link.active { color: var(--accent); background: var(--accent-dim); }
+.header-right { display: flex; align-items: center; gap: 6px; }
+.icon-btn { background: none; border: 1px solid var(--border); border-radius: var(--radius-sm); width: 30px; height: 30px; cursor: pointer; color: var(--text-muted); transition: all 0.15s ease; display: flex; align-items: center; justify-content: center; }
+.icon-btn:hover { border-color: var(--border-hover); color: var(--text); background: var(--surface-2); }
+.icon-btn:active { transform: scale(0.93); }
+.status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--danger); flex-shrink: 0; transition: all 0.3s; }
+.status-dot.on { background: var(--success); box-shadow: 0 0 6px rgba(34,197,94,0.5); }
+[data-theme="light"] .icon-btn { border-color: #bbb; color: #444; }
+[data-theme="light"] .icon-btn:hover { border-color: #999; color: #1a1a1a; background: #e8e4de; }
+[data-theme="light"] .nav-link.active { color: var(--accent); background: var(--accent-dim); }
+.ico { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.ico-sm { width: 16px; height: 16px; }
+
+/* ── Container ── */
+.container { max-width: 900px; margin: 0 auto; padding: 24px 16px; }
+
+/* ── Tabs ── */
+.tabs { display: flex; gap: 4px; margin-bottom: 24px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 4px; }
+.tab { flex: 1; padding: 10px 16px; border: none; background: none; color: var(--text-muted); font-family: var(--font); font-size: 13px; font-weight: 500; cursor: pointer; border-radius: var(--radius-sm); transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 6px; }
+.tab:hover { color: var(--text); background: var(--surface-2); }
+.tab.active { color: var(--accent); background: var(--accent-dim); }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* ── Cards ── */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 12px; transition: border-color 0.2s; }
+.card:hover { border-color: var(--border-hover); }
+.card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.card-title { font-size: 15px; font-weight: 600; }
+.card-meta { font-size: 12px; color: var(--text-muted); font-family: var(--mono); }
+.card-actions { display: flex; gap: 8px; margin-top: 12px; }
+
+/* ── Buttons ── */
+.btn { padding: 8px 16px; border-radius: var(--radius-sm); font-family: var(--font); font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); transition: all 0.2s; }
+.btn:hover { border-color: var(--border-hover); background: var(--surface-3); }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.btn-danger { color: var(--danger); border-color: var(--danger); background: transparent; }
+.btn-danger:hover { background: rgba(239,68,68,0.1); }
+.btn-sm { padding: 5px 10px; font-size: 12px; }
+
+/* ── Toggle ── */
+.toggle-wrap { display: flex; align-items: center; gap: 8px; }
+.toggle { position: relative; width: 40px; height: 22px; cursor: pointer; }
+.toggle input { display: none; }
+.toggle-slider { position: absolute; inset: 0; background: var(--surface-3); border: 1px solid var(--border); border-radius: 11px; transition: all 0.2s; }
+.toggle-slider::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; background: var(--text-muted); border-radius: 50%; transition: all 0.2s; }
+.toggle input:checked + .toggle-slider { background: var(--accent-dim); border-color: var(--accent); }
+.toggle input:checked + .toggle-slider::after { background: var(--accent); transform: translateX(18px); }
+.toggle-label { font-size: 13px; color: var(--text-muted); }
+
+/* ── Form ── */
+.form-group { margin-bottom: 16px; }
+.form-label { display: block; font-size: 12px; font-weight: 500; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+.form-input, .form-select, .form-textarea { width: 100%; padding: 10px 12px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-family: var(--font); font-size: 14px; transition: border-color 0.2s; }
+.form-input:focus, .form-select:focus, .form-textarea:focus { outline: none; border-color: var(--accent); }
+.form-input::placeholder, .form-textarea::placeholder { color: var(--text-dim); }
+.form-textarea { min-height: 60px; resize: vertical; }
+.form-select { cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%237a7a7a' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px; }
+
+/* ── New Schedule Form ── */
+.new-schedule-form { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; display: none; }
+.new-schedule-form.visible { display: block; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+/* ── Status badges ── */
+.badge { display: inline-block; padding: 3px 8px; border-radius: var(--radius-sm); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+.badge-success { background: rgba(34,197,94,0.1); color: var(--success); }
+.badge-danger { background: rgba(239,68,68,0.1); color: var(--danger); }
+.badge-info { background: rgba(59,130,246,0.1); color: var(--info); }
+.badge-muted { background: var(--surface-3); color: var(--text-muted); }
+
+/* ── History ── */
+.history-entry { display: grid; grid-template-columns: 160px 1fr auto auto; gap: 12px; align-items: center; padding: 12px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 8px; font-size: 13px; }
+.history-ts { font-family: var(--mono); font-size: 12px; color: var(--text-muted); }
+.history-crew { font-weight: 500; }
+.history-duration { font-family: var(--mono); font-size: 12px; color: var(--text-dim); }
+
+/* ── Heartbeat ── */
+.heartbeat-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+.heartbeat-tasks { margin-top: 12px; }
+.heartbeat-task-item { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.heartbeat-task-item:last-child { border-bottom: none; }
+
+/* ── Empty state ── */
+.empty { text-align: center; padding: 48px 20px; color: var(--text-muted); }
+.empty-icon { margin-bottom: 12px; color: var(--text-dim); }
+.empty-text { font-size: 14px; }
+
+/* ── Loading ── */
+.loading { text-align: center; padding: 32px; color: var(--text-dim); font-size: 13px; }
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .header { padding: 10px 12px; }
+  .header-left h1 { display: none; }
+  .page-nav { gap: 2px; }
+  .nav-link { padding: 6px 10px; font-size: 12px; }
+  .container { padding: 16px 12px; }
+  .form-row { grid-template-columns: 1fr; }
+  .history-entry { grid-template-columns: 1fr; gap: 4px; }
+}
+@media (max-width: 480px) {
+  .page-nav { display: none; }
+  .tabs { flex-wrap: wrap; }
+  .tab { font-size: 12px; padding: 8px 12px; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <a href="/" class="logo-link"><img src="https://i.imgur.com/jD1X5W8.png" alt="CODEC"></a>
+    <h1>CODEC</h1>
+  </div>
+  <nav class="page-nav">
+    <a href="/chat" class="nav-link">Chat</a>
+    <a href="/voice" class="nav-link">Voice</a>
+    <a href="/vibe" class="nav-link">Vibe</a>
+    <a href="/tasks" class="nav-link active">Tasks</a>
+  </nav>
+  <div class="header-right">
+    <div class="status-dot" id="statusDot" title="CODEC status"></div>
+    <a href="/" class="icon-btn" title="Home"><svg class="ico" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></a>
+    <button class="icon-btn" id="voiceBtn" onclick="toggleVoiceReply()" title="Voice replies"><svg class="ico" viewBox="0 0 24 24"><path d="M11 5L6 9H2v6h4l5 4V5z"/><line x1="23" y1="9" x2="17" y2="15" id="muteX1"/><line x1="17" y1="9" x2="23" y2="15" id="muteX2"/></svg></button>
+    <button class="icon-btn" onclick="takeScreenshot()" title="Screenshot"><svg class="ico" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></button>
+    <button class="icon-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme"><svg class="ico" viewBox="0 0 24 24" id="themeIco"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg></button>
+    <button class="icon-btn" onclick="window.location.href='/#settings'" title="Settings"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg></button>
+    <button class="icon-btn" onclick="lockSession()" title="Lock"><svg class="ico" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></button>
+  </div>
+</div>
+
+<div class="container">
+  <div class="tabs">
+    <button class="tab active" onclick="showTab('schedules')" id="tab-schedules"><svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>Schedules</button>
+    <button class="tab" onclick="showTab('heartbeat')" id="tab-heartbeat"><svg class="ico ico-sm" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>Heartbeat</button>
+    <button class="tab" onclick="showTab('history')" id="tab-history"><svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>History</button>
+  </div>
+
+  <!-- ── Schedules Tab ── -->
+  <div class="tab-panel active" id="panel-schedules">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <h2 style="font-size:16px; font-weight:600;">Scheduled Tasks</h2>
+      <button class="btn btn-primary btn-sm" onclick="toggleNewForm()">+ New Schedule</button>
+    </div>
+
+    <div class="new-schedule-form" id="newScheduleForm">
+      <h3 style="font-size:14px; font-weight:600; margin-bottom:14px;">Create New Schedule</h3>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Crew</label>
+          <select class="form-select" id="newCrew">
+            <option value="analyst">Analyst</option>
+            <option value="writer">Writer</option>
+            <option value="coder">Coder</option>
+            <option value="researcher">Researcher</option>
+            <option value="advisor">Advisor</option>
+            <option value="teacher">Teacher</option>
+            <option value="planner">Planner</option>
+            <option value="ops">Ops</option>
+            <option value="security">Security</option>
+            <option value="creative">Creative</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Cron Expression</label>
+          <input class="form-input" id="newCron" placeholder="0 8 * * *" value="0 8 * * *">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Topic / Description</label>
+        <input class="form-input" id="newTopic" placeholder="Daily morning briefing...">
+      </div>
+      <div class="form-group">
+        <div class="toggle-wrap">
+          <label class="toggle">
+            <input type="checkbox" id="newEnabled" checked>
+            <span class="toggle-slider"></span>
+          </label>
+          <span class="toggle-label">Enabled</span>
+        </div>
+      </div>
+      <div style="display:flex; gap:8px; justify-content:flex-end;">
+        <button class="btn btn-sm" onclick="toggleNewForm()">Cancel</button>
+        <button class="btn btn-primary btn-sm" onclick="createSchedule()">Create</button>
+      </div>
+    </div>
+
+    <div id="schedulesList">
+      <div class="loading">Loading schedules...</div>
+    </div>
+  </div>
+
+  <!-- ── Heartbeat Tab ── -->
+  <div class="tab-panel" id="panel-heartbeat">
+    <div class="heartbeat-section">
+      <h2 style="font-size:16px; font-weight:600; margin-bottom:16px;">Heartbeat Configuration</h2>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Interval (minutes)</label>
+          <input class="form-input" type="number" id="hbInterval" min="1" max="1440" value="5">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Status</label>
+          <div class="toggle-wrap" style="margin-top:8px;">
+            <label class="toggle">
+              <input type="checkbox" id="hbEnabled" checked>
+              <span class="toggle-slider"></span>
+            </label>
+            <span class="toggle-label" id="hbStatusLabel">Enabled</span>
+          </div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Tasks</label>
+        <div class="heartbeat-tasks" id="hbTasksList"></div>
+        <div style="display:flex; gap:8px; margin-top:10px;">
+          <input class="form-input" id="newHbTask" placeholder="Add a task..." style="flex:1;">
+          <button class="btn btn-sm" onclick="addHbTask()">Add</button>
+        </div>
+      </div>
+      <div style="margin-top:16px; display:flex; justify-content:flex-end;">
+        <button class="btn btn-primary" onclick="saveHeartbeat()">Save Configuration</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── History Tab ── -->
+  <div class="tab-panel" id="panel-history">
+    <h2 style="font-size:16px; font-weight:600; margin-bottom:16px;">Run History</h2>
+    <div id="historyList">
+      <div class="loading">Loading history...</div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ── Theme ── */
+function toggleTheme(){var t=document.documentElement.getAttribute('data-theme')==='light'?'dark':'light';document.documentElement.setAttribute('data-theme',t);localStorage.setItem('codec-theme',t);updateThemeIcon(t)}
+function updateThemeIcon(t){var ico=document.getElementById('themeIco');if(t==='light'){ico.innerHTML='<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>'}else{ico.innerHTML='<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>'}}
+function lockSession(){fetch('/api/auth/logout',{method:'POST'}).then(function(){document.cookie='codec_session=;path=/;max-age=0;SameSite=Strict';window.location.href='/auth'})}
+var _voiceOn=false;
+function toggleVoiceReply(){_voiceOn=!_voiceOn;updateVoiceIcon()}
+function updateVoiceIcon(){var b=document.getElementById('voiceBtn');if(!b)return;var m1=document.getElementById('muteX1'),m2=document.getElementById('muteX2');if(m1)m1.style.display=_voiceOn?'none':'';if(m2)m2.style.display=_voiceOn?'none':'';b.style.borderColor=_voiceOn?'var(--accent)':''}
+function takeScreenshot(){fetch('/api/screenshot',{method:'POST'}).then(function(r){return r.json()}).then(function(d){if(d.path)alert('Screenshot saved: '+d.path)}).catch(function(){})}
+function pollStatus(){fetch('/api/health').then(function(r){return r.json()}).then(function(d){var dot=document.getElementById('statusDot');if(dot){dot.classList.toggle('on',!!d.ok)}}).catch(function(){var dot=document.getElementById('statusDot');if(dot)dot.classList.remove('on')})}
+pollStatus();setInterval(pollStatus,15000);
+(function(){var s=localStorage.getItem('codec-theme');if(s==='light'){document.documentElement.setAttribute('data-theme','light');updateThemeIcon('light')}})();
+
+/* ── Tabs ── */
+function showTab(name) {
+  document.querySelectorAll('.tab').forEach(function(t){ t.classList.remove('active'); });
+  document.querySelectorAll('.tab-panel').forEach(function(p){ p.classList.remove('active'); });
+  document.getElementById('tab-' + name).classList.add('active');
+  document.getElementById('panel-' + name).classList.add('active');
+}
+
+/* ── Schedules ── */
+var schedules = [];
+
+function loadSchedules() {
+  fetch('/api/schedules').then(function(r){ return r.json(); }).then(function(data) {
+    schedules = data.schedules || [];
+    renderSchedules();
+  }).catch(function() {
+    document.getElementById('schedulesList').innerHTML = '<div class="empty"><div class="empty-icon"><svg style="width:28px;height:28px;display:inline-block;vertical-align:middle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div><div class="empty-text">Could not load schedules</div></div>';
+  });
+}
+
+function renderSchedules() {
+  var el = document.getElementById('schedulesList');
+  if (!schedules.length) {
+    el.innerHTML = '<div class="empty"><div class="empty-icon"><svg style="width:28px;height:28px;display:inline-block;vertical-align:middle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div><div class="empty-text">No scheduled tasks yet. Click "+ New Schedule" to create one.</div></div>';
+    return;
+  }
+  var html = '';
+  schedules.forEach(function(s) {
+    var enabled = s.enabled !== false;
+    var cronStr = s.cron || (s.hour !== undefined ? (s.minute || 0) + ' ' + s.hour + ' * * ' + (Array.isArray(s.days) ? s.days.join(',') : (s.days || '*')) : 'N/A');
+    var lastRun = s.last_run || 'Never';
+    html += '<div class="card">';
+    html += '<div class="card-header">';
+    html += '<div><span class="card-title">' + escHtml(s.crew || 'Unknown') + '</span>';
+    if (s.topic) html += '<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">' + escHtml(s.topic) + '</div>';
+    html += '</div>';
+    html += '<div class="toggle-wrap">';
+    html += '<label class="toggle"><input type="checkbox" ' + (enabled ? 'checked' : '') + ' onchange="toggleSchedule(\'' + s.id + '\', this.checked)"><span class="toggle-slider"></span></label>';
+    html += '<span class="badge ' + (enabled ? 'badge-success' : 'badge-muted') + '">' + (enabled ? 'Active' : 'Disabled') + '</span>';
+    html += '</div></div>';
+    html += '<div style="display:flex;gap:16px;font-size:12px;color:var(--text-muted);">';
+    html += '<span style="font-family:var(--mono);"><svg style="width:12px;height:12px;display:inline-block;vertical-align:middle;margin-right:3px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>' + escHtml(cronStr) + '</span>';
+    html += '<span>Last run: ' + escHtml(lastRun) + '</span>';
+    html += '</div>';
+    html += '<div class="card-actions">';
+    html += '<button class="btn btn-sm btn-primary" onclick="runNow(\'' + s.id + '\')">Run Now</button>';
+    html += '<button class="btn btn-sm btn-danger" onclick="deleteSchedule(\'' + s.id + '\')">Delete</button>';
+    html += '</div></div>';
+  });
+  el.innerHTML = html;
+}
+
+function toggleNewForm() {
+  var f = document.getElementById('newScheduleForm');
+  f.classList.toggle('visible');
+}
+
+function createSchedule() {
+  var cronParts = document.getElementById('newCron').value.trim().split(/\s+/);
+  var payload = {
+    crew: document.getElementById('newCrew').value,
+    topic: document.getElementById('newTopic').value,
+    minute: parseInt(cronParts[0]) || 0,
+    hour: parseInt(cronParts[1]) || 8,
+    days: cronParts.length >= 5 ? cronParts[4] : '*'
+  };
+  fetch('/api/schedules', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) })
+    .then(function(r){ return r.json(); })
+    .then(function() {
+      toggleNewForm();
+      document.getElementById('newTopic').value = '';
+      loadSchedules();
+    })
+    .catch(function(e){ alert('Error creating schedule: ' + e); });
+}
+
+function toggleSchedule(id, enabled) {
+  fetch('/api/schedules/' + id, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ enabled: enabled }) })
+    .then(function(){ loadSchedules(); });
+}
+
+function runNow(id) {
+  fetch('/api/schedules/' + id + '/run', { method: 'POST' })
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+      if (data.status === 'triggered') {
+        alert('Triggered: ' + (data.crew || id));
+      } else {
+        alert(data.error || 'Failed');
+      }
+    })
+    .catch(function(e){ alert('Error: ' + e); });
+}
+
+function deleteSchedule(id) {
+  if (!confirm('Delete this schedule?')) return;
+  fetch('/api/schedules/' + id, { method: 'DELETE' })
+    .then(function(){ loadSchedules(); })
+    .catch(function(e){ alert('Error: ' + e); });
+}
+
+/* ── Heartbeat ── */
+var hbTasks = [];
+
+function loadHeartbeat() {
+  fetch('/api/heartbeat/config').then(function(r){ return r.json(); }).then(function(data) {
+    document.getElementById('hbInterval').value = data.interval_minutes || 5;
+    document.getElementById('hbEnabled').checked = data.enabled !== false;
+    document.getElementById('hbStatusLabel').textContent = data.enabled !== false ? 'Enabled' : 'Disabled';
+    hbTasks = data.tasks || ['status_check'];
+    renderHbTasks();
+  }).catch(function() {
+    hbTasks = ['status_check'];
+    renderHbTasks();
+  });
+}
+
+function renderHbTasks() {
+  var el = document.getElementById('hbTasksList');
+  if (!hbTasks.length) {
+    el.innerHTML = '<div style="font-size:13px;color:var(--text-dim);padding:8px 0;">No tasks configured</div>';
+    return;
+  }
+  var html = '';
+  hbTasks.forEach(function(task, i) {
+    html += '<div class="heartbeat-task-item">';
+    html += '<span style="font-family:var(--mono);font-size:13px;flex:1;">' + escHtml(task) + '</span>';
+    html += '<button class="btn btn-sm btn-danger" onclick="removeHbTask(' + i + ')" style="padding:3px 8px;">&#10005;</button>';
+    html += '</div>';
+  });
+  el.innerHTML = html;
+}
+
+function addHbTask() {
+  var inp = document.getElementById('newHbTask');
+  var val = inp.value.trim();
+  if (!val) return;
+  hbTasks.push(val);
+  inp.value = '';
+  renderHbTasks();
+}
+
+function removeHbTask(i) {
+  hbTasks.splice(i, 1);
+  renderHbTasks();
+}
+
+function saveHeartbeat() {
+  var payload = {
+    enabled: document.getElementById('hbEnabled').checked,
+    interval_minutes: parseInt(document.getElementById('hbInterval').value) || 5,
+    tasks: hbTasks
+  };
+  fetch('/api/heartbeat/config', { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) })
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+      if (data.saved) alert('Heartbeat configuration saved.');
+      else alert('Error saving configuration.');
+    })
+    .catch(function(e){ alert('Error: ' + e); });
+}
+
+/* ── History ── */
+function loadHistory() {
+  fetch('/api/schedules/history').then(function(r){ return r.json(); }).then(function(data) {
+    var el = document.getElementById('historyList');
+    if (!data || !data.length) {
+      el.innerHTML = '<div class="empty"><div class="empty-icon"><svg style="width:28px;height:28px;display:inline-block;vertical-align:middle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div><div class="empty-text">No run history yet. Scheduled tasks will appear here after they run.</div></div>';
+      return;
+    }
+    var html = '';
+    data.forEach(function(entry) {
+      var line = entry.line || '';
+      // Try to parse structured entries: "timestamp | crew | status | duration | result"
+      var parts = line.split('|').map(function(s){ return s.trim(); });
+      if (parts.length >= 3) {
+        var status = (parts[2] || '').toLowerCase();
+        var badgeClass = status === 'success' ? 'badge-success' : status === 'failed' ? 'badge-danger' : 'badge-info';
+        html += '<div class="history-entry">';
+        html += '<span class="history-ts">' + escHtml(parts[0]) + '</span>';
+        html += '<span class="history-crew">' + escHtml(parts[1]) + '</span>';
+        html += '<span class="badge ' + badgeClass + '">' + escHtml(parts[2]) + '</span>';
+        html += '<span class="history-duration">' + escHtml(parts[3] || '') + '</span>';
+        html += '</div>';
+      } else {
+        html += '<div class="card" style="padding:10px;margin-bottom:6px;"><span style="font-family:var(--mono);font-size:12px;">' + escHtml(line) + '</span></div>';
+      }
+    });
+    el.innerHTML = html;
+  }).catch(function() {
+    document.getElementById('historyList').innerHTML = '<div class="empty"><div class="empty-icon"><svg style="width:28px;height:28px;display:inline-block;vertical-align:middle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div><div class="empty-text">No run history available.</div></div>';
+  });
+}
+
+/* ── Utils ── */
+function escHtml(s) {
+  var d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+/* ── Init ── */
+document.addEventListener('DOMContentLoaded', function() {
+  loadSchedules();
+  loadHeartbeat();
+  loadHistory();
+});
+
+/* ── Toggle label update ── */
+document.addEventListener('DOMContentLoaded', function() {
+  var hbCheck = document.getElementById('hbEnabled');
+  if (hbCheck) {
+    hbCheck.addEventListener('change', function() {
+      document.getElementById('hbStatusLabel').textContent = this.checked ? 'Enabled' : 'Disabled';
+    });
+  }
+});
+</script>
+</body>
+</html>

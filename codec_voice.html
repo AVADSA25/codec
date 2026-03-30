@@ -11,37 +11,48 @@
         * { margin:0; padding:0; box-sizing:border-box; }
 
         :root {
-          /* Core palette */
-          --bg: #0a0a0a;
-          --surface: #111111;
-          --surface-2: #1a1a1a;
-          --border: #2a2a2a;
-          --text: #e0e0e0;
-          --text-muted: #888888;
-          --accent: #E8711A;
-          --accent-dim: rgba(232,113,26,0.12);
-          --danger: #ff4444;
-          --success: #44cc66;
+          --bg: #121215; --surface: #1a1a1d; --surface-2: #212125; --surface-3: #2a2a2e;
+          --border: #303035; --border-hover: #424248;
+          --text: #ececec; --text-muted: #9a9aa0; --text-dim: #6a6a70;
+          --accent: #E8711A; --accent-hover: #f07d2a; --accent-dim: rgba(232,113,26,0.10);
+          --danger: #ef4444; --success: #22c55e; --info: #3b82f6;
           --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-          --mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
-          --radius: 8px;
-          /* Backward-compat aliases so existing CSS/JS still works */
-          --bg2: #111111; --bg3: #1a1a1a; --bg4: #222222;
-          --fg: #e0e0e0; --fg2: #888888; --fg3: #555555;
-          --ac: #E8711A; --bd: #2a2a2a;
-          --tx: #e0e0e0; --tx2: #888888;
+          --mono: 'JetBrains Mono', 'SF Mono', monospace;
+          --radius: 10px; --radius-sm: 6px;
+          --bg2: #1a1a1d; --bg3: #212125; --bg4: #2a2a2e;
+          --fg: #ececec; --fg2: #9a9aa0; --fg3: #6a6a70;
+          --ac: #E8711A; --bd: #303035;
+          --tx: #ececec; --tx2: #9a9aa0;
           --ft: 'Inter', -apple-system, sans-serif;
           --mn: 'JetBrains Mono', monospace;
-          --dn: #ff4444;
-          --accent2: #ff9a4d;
-          --accent-bg: rgba(232,113,26,0.12);
-          /* Safe area (dashboard only, harmless on others) */
+          --dn: #ef4444;
+          --accent2: #ff9a4d; --accent-bg: rgba(232,113,26,0.10);
           --safe-top: env(safe-area-inset-top, 0px);
           --safe-bottom: env(safe-area-inset-bottom, 0px);
           /* Voice-specific */
           --green: #00e676;
           --blue: #40c4ff;
         }
+
+        /* ── Light mode ── */
+        [data-theme="light"] {
+          --bg: #f7f5f2; --surface: #fff; --surface-2: #f0ece6; --surface-3: #e8e4de;
+          --border: #d5d0ca; --border-hover: #bbb;
+          --text: #1a1a1a; --text-muted: #555; --text-dim: #777;
+          /* Override voice-specific vars */
+          --bg2: #fff; --bd: #d5d0ca; --tx: #1a1a1a; --tx2: #555;
+        }
+        [data-theme="light"] .header { background: rgba(247,245,242,0.95); }
+        [data-theme="light"] .page-nav { background: var(--surface-2); }
+        [data-theme="light"] .nav-link { color: var(--text-muted); }
+        [data-theme="light"] .nav-link:hover { color: var(--text); }
+        [data-theme="light"] .nav-link.active { color: var(--accent); background: var(--accent-dim); }
+        [data-theme="light"] .icon-btn { border-color: #bbb; color: #444; }
+        [data-theme="light"] .icon-btn:hover { border-color: #999; color: #1a1a1a; background: #e8e4de; }
+        [data-theme="light"] body::before { background: radial-gradient(ellipse 60% 60% at 50% 50%, rgba(232,113,26,0.06) 0%, transparent 70%); }
+        [data-theme="light"] .avatar-core { background: #f0ece6; border-color: #d5d0ca; }
+        [data-theme="light"] .transcript { background: #fff; border-color: #d5d0ca; }
+        [data-theme="light"] .transcript-header { border-color: #d5d0ca; }
 
         body {
             font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -50,10 +61,9 @@
             height: 100dvh;
             display: flex;
             flex-direction: column;
-            align-items: center;
-            justify-content: center;
             overflow: hidden;
             position: relative;
+            padding-top: 0;
         }
 
         /* Ambient background glow — reacts to state */
@@ -69,46 +79,55 @@
         body.state-speaking::before  { background: radial-gradient(ellipse 70% 70% at 50% 50%, rgba(232,113,26,0.08) 0%, transparent 70%); }
         body.state-processing::before { background: radial-gradient(ellipse 60% 60% at 50% 50%, rgba(64,196,255,0.06) 0%, transparent 70%); }
 
-        /* ── Page Nav ── */
-        .page-nav { display: flex; align-items: center; gap: 2px; position: absolute; left: 50%; transform: translateX(-50%); }
-        .nav-link {
-          padding: 6px 11px; color: var(--text-muted); text-decoration: none;
-          font-size: 12px; font-weight: 500; border-radius: 6px;
-          border-bottom: 2px solid transparent; transition: all 0.2s ease;
-          letter-spacing: 0.02em; white-space: nowrap;
+        /* ── Unified Header ── */
+        .header {
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 10px 16px; border-bottom: 1px solid var(--border);
+          background: rgba(18,18,21,0.9); backdrop-filter: blur(8px);
+          flex-shrink: 0; position: relative; z-index: 10;
         }
-        .nav-link:hover { color: var(--text); background: var(--surface-2); }
-        .nav-link.active { color: var(--accent); border-bottom-color: var(--accent); }
+        .header-left { display: flex; align-items: center; gap: 10px; }
+        .logo-link { display: flex; align-items: center; text-decoration: none; }
+        .header img { width: 34px; height: 34px; border-radius: 8px; }
+        .header h1 { font-family: var(--mono); font-size: 16px; font-weight: 700; letter-spacing: 2px; color: var(--accent); }
+        .header-right { display: flex; align-items: center; gap: 6px; }
+        .icon-btn { background: none; border: 1px solid var(--border); color: var(--text-muted); width: 30px; height: 30px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.15s; text-decoration: none; }
+        .icon-btn:hover { border-color: var(--border-hover); color: var(--text); background: var(--surface-2); }
+        .icon-btn:active { transform: scale(0.93); }
+        .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--danger); flex-shrink: 0; transition: all 0.3s; }
+        .status-dot.on { background: var(--success); box-shadow: 0 0 6px rgba(34,197,94,0.5); }
+        .ico { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+        .ico-sm { width: 16px; height: 16px; }
+
+        /* ── Page Nav ── */
+        .page-nav { display: flex; align-items: center; gap: 1px; position: absolute; left: 50%; transform: translateX(-50%); background: var(--surface-2); border-radius: var(--radius-sm); padding: 2px; }
+        .nav-link {
+          padding: 5px 14px; color: var(--text-muted); text-decoration: none;
+          font-size: 12px; font-weight: 500; border-radius: 4px;
+          transition: all 0.15s ease; white-space: nowrap; text-align: center;
+        }
+        .nav-link:hover { color: var(--text); }
+        .nav-link.active { color: var(--accent); background: var(--accent-dim); }
         /* ── Scrollbar ── */
         * { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
         ::-webkit-scrollbar { width: 4px; height: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
         ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
-        /* ── Voice Header ── */
-        .voice-header {
-          position: absolute; top: 0; left: 0; right: 0;
-          display: flex; align-items: center; justify-content: space-between;
-          padding: 14px 20px;
-          border-bottom: 1px solid var(--border);
-          background: rgba(10,10,15,0.8); backdrop-filter: blur(8px);
-        }
-        .brand-text {
-          font-size: 13px; font-weight: 700; color: var(--accent);
-          letter-spacing: 0.12em; font-family: var(--mono);
-        }
 
         /* Main layout */
         .call-container {
-            display: flex; flex-direction: column;
-            align-items: center; gap: 28px;
-            max-width: 420px; width: 100%; padding: 24px;
+            flex: 1; display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            gap: 36px;
+            max-width: 600px; width: 100%; padding: 32px;
+            margin: 0 auto;
         }
 
         /* ── Avatar ring ── */
         .avatar-wrap {
             position: relative;
-            width: 172px; height: 172px;
+            width: 240px; height: 240px;
         }
 
         .ring-outer {
@@ -130,7 +149,7 @@
         @keyframes spin-slow { 100% { transform: rotate(360deg); } }
 
         .ring-inner {
-            position: absolute; inset: 12px;
+            position: absolute; inset: 16px;
             border-radius: 50%;
             border: 1px solid var(--bd);
             transition: border-color 0.4s, box-shadow 0.4s;
@@ -172,18 +191,26 @@
         }
 
         .avatar-core {
-            position: absolute; inset: 24px;
+            position: absolute; inset: 32px;
             border-radius: 50%;
             background: var(--bg2);
             border: 1px solid var(--bd);
             display: flex; align-items: center; justify-content: center;
-            font-size: 56px;
             user-select: none;
+            overflow: hidden;
         }
+        .avatar-core img {
+            width: 60%; height: 60%; object-fit: contain;
+            filter: drop-shadow(0 0 12px rgba(232,113,26,0.4));
+            transition: filter 0.4s;
+        }
+        .state-listening .avatar-core img { filter: drop-shadow(0 0 16px rgba(0,230,118,0.5)); }
+        .state-speaking .avatar-core img { filter: drop-shadow(0 0 20px rgba(232,113,26,0.6)); }
+        .state-processing .avatar-core img { filter: drop-shadow(0 0 16px rgba(64,196,255,0.5)); }
 
         /* Waveform bars (shown while Q is speaking) */
         .waveform {
-            position: absolute; bottom: 16px;
+            position: absolute; bottom: 24px;
             left: 50%; transform: translateX(-50%);
             display: flex; gap: 3px; align-items: flex-end;
             height: 20px; opacity: 0;
@@ -194,11 +221,11 @@
             width: 3px; background: var(--ac); border-radius: 2px;
             animation: wave 0.8s ease-in-out infinite;
         }
-        .waveform .bar:nth-child(1) { animation-delay: 0s;    height: 8px;  }
-        .waveform .bar:nth-child(2) { animation-delay: 0.1s;  height: 14px; }
-        .waveform .bar:nth-child(3) { animation-delay: 0.2s;  height: 20px; }
-        .waveform .bar:nth-child(4) { animation-delay: 0.15s; height: 14px; }
-        .waveform .bar:nth-child(5) { animation-delay: 0.05s; height: 8px;  }
+        .waveform .bar:nth-child(1) { animation-delay: 0s;    height: 10px;  }
+        .waveform .bar:nth-child(2) { animation-delay: 0.1s;  height: 18px; }
+        .waveform .bar:nth-child(3) { animation-delay: 0.2s;  height: 26px; }
+        .waveform .bar:nth-child(4) { animation-delay: 0.15s; height: 18px; }
+        .waveform .bar:nth-child(5) { animation-delay: 0.05s; height: 10px;  }
         @keyframes wave {
             0%,100% { transform: scaleY(1); }
             50%      { transform: scaleY(1.8); }
@@ -206,7 +233,7 @@
 
         /* Timer */
         .timer {
-            font-size: 20px; font-weight: 300;
+            font-size: 28px; font-weight: 300;
             color: var(--tx2); letter-spacing: 0.08em;
             font-variant-numeric: tabular-nums;
             min-height: 28px;
@@ -215,7 +242,7 @@
 
         /* Status label */
         .status {
-            font-size: 13px; color: var(--tx2);
+            font-size: 16px; color: var(--tx2);
             text-align: center; letter-spacing: 0.04em;
             min-height: 18px; transition: color 0.3s;
         }
@@ -225,8 +252,8 @@
 
         /* Call button */
         .call-btn {
-            width: 68px; height: 68px; border-radius: 50%;
-            border: none; cursor: pointer; font-size: 26px;
+            width: 72px; height: 72px; border-radius: 50%;
+            border: none; cursor: pointer; font-size: 22px;
             display: flex; align-items: center; justify-content: center;
             transition: transform 0.15s, box-shadow 0.2s;
             position: relative; z-index: 1;
@@ -254,11 +281,12 @@
             border: 1px solid var(--bd); border-radius: 14px;
             overflow: hidden; display: flex; flex-direction: column;
             box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            max-width: 540px;
         }
         .transcript-header {
-            padding: 10px 14px;
+            padding: 12px 16px;
             border-bottom: 1px solid var(--bd);
-            font-size: 10px; font-weight: 600;
+            font-size: 11px; font-weight: 600;
             letter-spacing: 0.1em; color: var(--tx2);
             font-family: 'SF Mono', monospace;
             display: flex; justify-content: space-between; align-items: center;
@@ -269,8 +297,8 @@
         .state-processing .tx-dot { background: var(--blue);  box-shadow: 0 0 6px var(--blue); }
 
         .transcript {
-            max-height: 220px; overflow-y: auto;
-            padding: 14px; font-size: 13px; line-height: 1.65;
+            max-height: 300px; overflow-y: auto;
+            padding: 16px 20px; font-size: 15px; line-height: 1.7;
             scrollbar-width: thin; scrollbar-color: var(--bd) transparent;
         }
         .transcript::-webkit-scrollbar       { width: 4px; }
@@ -283,25 +311,58 @@
 
         .tx-line.user      { color: var(--ac); }
         .tx-line.assistant { color: var(--green); }
-        .tx-line.system    { color: var(--tx2); font-style: italic; font-size: 12px; }
-        .tx-label { font-weight: 700; margin-right: 6px; font-size: 11px; letter-spacing: 0.05em; }
+        .tx-line.system    { color: var(--tx2); font-style: italic; font-size: 13px; }
+        .tx-label { font-weight: 700; margin-right: 6px; font-size: 12px; letter-spacing: 0.05em; }
 
         /* Streaming cursor */
         .cursor { display: inline-block; width: 2px; height: 12px;
                   background: var(--green); margin-left: 2px;
                   animation: blink 0.7s step-end infinite; vertical-align: middle; }
         @keyframes blink { 50% { opacity: 0; } }
+
+        /* ── Mobile Responsive ── */
+        @media (max-width: 768px) {
+          .page-nav { display: none; }
+          .header { padding: 10px 14px; }
+          .avatar-wrap { width: 180px; height: 180px; }
+          .avatar-core { inset: 26px; }
+          .call-container { gap: 24px; padding: 20px; }
+          .transcript-wrap { width: 100%; }
+          .transcript { max-height: 220px; }
+          .call-btn { width: 64px; height: 64px; }
+          .timer { font-size: 24px; }
+        }
+        @media (max-width: 480px) {
+          .avatar-wrap { width: 150px; height: 150px; }
+          .avatar-core { inset: 22px; }
+          .ring-inner { inset: 12px; }
+          .timer { font-size: 20px; }
+          .call-container { gap: 20px; }
+          .call-btn { width: 56px; height: 56px; }
+        }
     </style>
 </head>
 <body id="body">
-    <header class="voice-header">
-      <span class="brand-text">⚡ CODEC</span>
+    <header class="header">
+      <div class="header-left">
+        <a href="/" class="logo-link"><img src="https://i.imgur.com/jD1X5W8.png" alt="CODEC"></a>
+        <h1>CODEC</h1>
+      </div>
       <nav class="page-nav">
-        <a href="/" class="nav-link">Dashboard</a>
         <a href="/chat" class="nav-link">Chat</a>
-        <a href="/vibe" class="nav-link">Vibe</a>
         <a href="/voice" class="nav-link active">Voice</a>
+        <a href="/vibe" class="nav-link">Vibe</a>
+        <a href="/tasks" class="nav-link">Tasks</a>
       </nav>
+      <div class="header-right">
+        <div class="status-dot" id="statusDot" title="CODEC status"></div>
+        <a href="/" class="icon-btn" title="Home"><svg class="ico" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></a>
+        <button class="icon-btn" id="voiceBtn" onclick="toggleVoiceReply()" title="Voice replies"><svg class="ico" viewBox="0 0 24 24"><path d="M11 5L6 9H2v6h4l5 4V5z"/><line x1="23" y1="9" x2="17" y2="15" id="muteX1"/><line x1="17" y1="9" x2="23" y2="15" id="muteX2"/></svg></button>
+        <button class="icon-btn" onclick="takeScreenshot()" title="Screenshot"><svg class="ico" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></button>
+        <button class="icon-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme"><svg class="ico" viewBox="0 0 24 24" id="themeIco"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg></button>
+        <button class="icon-btn" onclick="window.location.href='/#settings'" title="Settings"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg></button>
+        <button class="icon-btn" onclick="lockSession()" title="Lock"><svg class="ico" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></button>
+      </div>
     </header>
 
     <div class="call-container">
@@ -311,7 +372,7 @@
             <div class="ring-outer"></div>
             <div class="ring-inner"></div>
             <div class="ring-energy" id="ringEnergy"></div>
-            <div class="avatar-core">⚡</div>
+            <div class="avatar-core"><img src="https://i.imgur.com/jD1X5W8.png" alt="CODEC"></div>
             <div class="waveform">
                 <div class="bar"></div><div class="bar"></div><div class="bar"></div>
                 <div class="bar"></div><div class="bar"></div>
@@ -321,7 +382,7 @@
         <div class="timer" id="timer"></div>
         <div class="status" id="statusLabel">Tap to start voice call</div>
 
-        <button class="call-btn start" id="callBtn" onclick="toggleCall()"><svg width="28" height="28" viewBox="0 0 24 24" fill="white"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/></svg></button>
+        <button class="call-btn start" id="callBtn" onclick="toggleCall()"><svg width="34" height="34" viewBox="0 0 24 24" fill="white"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/></svg></button>
 
         <!-- Transcript -->
         <div class="transcript-wrap">
@@ -337,6 +398,18 @@
     </div>
 
     <script>
+    /* ── Theme support ── */
+    function toggleTheme(){var t=document.documentElement.getAttribute('data-theme')==='light'?'dark':'light';document.documentElement.setAttribute('data-theme',t);localStorage.setItem('codec-theme',t);updateThemeIcon(t)}
+    function updateThemeIcon(t){var ico=document.getElementById('themeIco');if(t==='light'){ico.innerHTML='<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>'}else{ico.innerHTML='<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>'}}
+    function lockSession(){fetch('/api/auth/logout',{method:'POST'}).then(function(){document.cookie='codec_session=;path=/;max-age=0;SameSite=Strict';window.location.href='/auth'})}
+    var _voiceOn=false;
+    function toggleVoiceReply(){_voiceOn=!_voiceOn;updateVoiceIcon()}
+    function updateVoiceIcon(){var b=document.getElementById('voiceBtn');if(!b)return;var m1=document.getElementById('muteX1'),m2=document.getElementById('muteX2');if(m1)m1.style.display=_voiceOn?'none':'';if(m2)m2.style.display=_voiceOn?'none':'';b.style.borderColor=_voiceOn?'var(--accent)':''}
+    function takeScreenshot(){fetch('/api/screenshot',{method:'POST'}).then(function(r){return r.json()}).then(function(d){if(d.path)alert('Screenshot saved: '+d.path)}).catch(function(){})}
+    function pollStatus(){fetch('/api/health').then(function(r){return r.json()}).then(function(d){var dot=document.getElementById('statusDot');if(dot){dot.classList.toggle('on',!!d.ok)}}).catch(function(){var dot=document.getElementById('statusDot');if(dot)dot.classList.remove('on')})}
+    pollStatus();setInterval(pollStatus,15000);
+    (function(){var s=localStorage.getItem('codec-theme');if(s==='light'){document.documentElement.setAttribute('data-theme','light');updateThemeIcon('light')}})();
+
     /* ── State ── */
     var ws          = null;
     var audioCtx    = null;
