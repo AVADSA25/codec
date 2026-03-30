@@ -148,30 +148,21 @@ class VoicePipeline:
         self._warmed_up = False
         self._load_skills()
 
-    # ── Skill loader ──────────────────────────────────────────────────────
+    # ── Skill loader (lazy via SkillRegistry) ─────────────────────────────
 
     def _load_skills(self):
-        if not os.path.isdir(SKILLS_DIR):
-            return
-        import importlib.util
-        for fname in sorted(os.listdir(SKILLS_DIR)):
-            if not fname.endswith(".py") or fname.startswith("_"):
-                continue
-            try:
-                path = os.path.join(SKILLS_DIR, fname)
-                spec = importlib.util.spec_from_file_location(fname[:-3], path)
-                mod  = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(mod)
-                triggers = getattr(mod, "SKILL_TRIGGERS", [])
-                if triggers and hasattr(mod, "run"):
-                    self.skills[fname[:-3]] = {
-                        "triggers": [t.lower() for t in triggers],
-                        "run":      mod.run,
-                        "desc":     getattr(mod, "SKILL_DESCRIPTION", ""),
-                    }
-            except Exception as e:
-                print(f"[Voice] Skill load error {fname}: {e}")
-        print(f"[Voice] {len(self.skills)} skills loaded")
+        from codec_skill_registry import SkillRegistry
+        self._skill_registry = SkillRegistry(SKILLS_DIR)
+        self._skill_registry.scan()
+        # Build a lightweight dict with triggers only (no module imports)
+        for name in self._skill_registry.names():
+            triggers = self._skill_registry.get_triggers(name)
+            if triggers:
+                self.skills[name] = {
+                    "triggers": [t.lower() for t in triggers],
+                    "desc":     self._skill_registry.get_description(name),
+                }
+        print(f"[Voice] {len(self.skills)} skills registered (lazy)")
 
     # ── LLM Warmup ────────────────────────────────────────────────────────
 
@@ -210,7 +201,10 @@ class VoicePipeline:
                     continue
                 if trigger in text_lower and len(trigger) > best_len:
                     best_len   = len(trigger)
-                    best_match = {"name": name, "run": skill["run"]}
+                    # Lazy-load: get run function from registry on match
+                    mod = self._skill_registry.load(name)
+                    if mod and hasattr(mod, "run"):
+                        best_match = {"name": name, "run": mod.run}
         return best_match
 
     # ── VAD ───────────────────────────────────────────────────────────────

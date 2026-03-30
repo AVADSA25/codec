@@ -598,20 +598,23 @@ ALWAYS respond with valid JSON only."""
         D = "\033[38;2;80;80;80m"
         W = "\033[38;2;200;200;200m"
         R = "\033[0m"
-        print(f"{O}    \u2554{'═' * 43}\u2557")
-        print(f"{O}    ║                                           ║")
-        print(f"{O}    ║  ██████  ██████  ██████  ███████  ██████  ║")
-        print(f"{O}    ║ ██      ██    ██ ██   ██ ██      ██       ║")
-        print(f"{O}    ║ ██      ██    ██ ██   ██ █████   ██       ║")
-        print(f"{O}    ║ ██      ██    ██ ██   ██ ██      ██       ║")
-        print(f"{O}    ║  ██████  ██████  ██████  ███████  ██████  ║")
-        print(f"{O}    ║                                   v1.5.0  ║")
-        print(f"{O}    ╠{'═' * 43}╣")
-        print(f"{O}    ║{W}  {self.key_voice.upper()} voice  {self.key_text.upper()} text  ** screen  ++ doc   {O}║")
-        print(f"{O}    ║{W}  Hey C = wake word  type exit to close    {O}║")
-        print(f"{O}    ╠{'═' * 43}╣")
-        print(f"{O}    ║{D}  Stream={ss}  Memory=ON  Skills=ON          {O}║")
-        print(f"{O}    ╚{'═' * 43}╝{R}")
+        bar = '═' * 43
+        print(
+            f"{O}    ╔{bar}╗\n"
+            f"{O}    ║                                           ║\n"
+            f"{O}    ║  ██████  ██████  ██████  ███████  ██████  ║\n"
+            f"{O}    ║ ██      ██    ██ ██   ██ ██      ██       ║\n"
+            f"{O}    ║ ██      ██    ██ ██   ██ █████   ██       ║\n"
+            f"{O}    ║ ██      ██    ██ ██   ██ ██      ██       ║\n"
+            f"{O}    ║  ██████  ██████  ██████  ███████  ██████  ║\n"
+            f"{O}    ║                                   v1.5.0  ║\n"
+            f"{O}    ╠{bar}╣\n"
+            f"{O}    ║{W}  {self.key_voice.upper()} voice  {self.key_text.upper()} text  ** screen  ++ doc   {O}║\n"
+            f"{O}    ║{W}  Hey C = wake word  type exit to close    {O}║\n"
+            f"{O}    ╠{bar}╣\n"
+            f"{O}    ║{D}  Stream={ss}  Memory=ON  Skills=ON          {O}║\n"
+            f"{O}    ╚{bar}╝{R}"
+        )
 
         # Process any queued task
         queued = self.check_queue()

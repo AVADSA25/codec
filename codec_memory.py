@@ -26,14 +26,32 @@ class CodecMemory:
 
     def __init__(self, db_path: str = DB_PATH):
         self.db_path = db_path
+        self._conn = None
         self._init_fts()
+
+    # ── Connection ────────────────────────────────────────────────────────────
+
+    def _get_conn(self) -> sqlite3.Connection:
+        """Return a reusable connection (created once, kept open)."""
+        if self._conn is None:
+            self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            self._conn.execute("PRAGMA journal_mode=WAL")
+            self._conn.execute("PRAGMA busy_timeout=5000")
+        return self._conn
+
+    def close(self):
+        """Close the persistent connection. Safe to call multiple times."""
+        if self._conn is not None:
+            try:
+                self._conn.close()
+            except Exception:
+                pass
+            self._conn = None
 
     # ── Init ─────────────────────────────────────────────────────────────────
 
     def _init_fts(self):
-        conn = sqlite3.connect(self.db_path)
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA busy_timeout=5000")
+        conn = self._get_conn()
         try:
             # Ensure conversations table exists
             conn.execute("""CREATE TABLE IF NOT EXISTS conversations (
@@ -79,23 +97,20 @@ class CodecMemory:
                     WHERE id NOT IN (SELECT src_id FROM conversations_fts)
                 """)
                 conn.commit()
-        finally:
-            conn.close()
+        except Exception:
+            raise
 
     # ── CRUD ─────────────────────────────────────────────────────────────────
 
     def save(self, session_id: str, role: str, content: str) -> int:
         """Insert one message. Triggers keep FTS in sync automatically."""
-        conn = sqlite3.connect(self.db_path)
-        try:
-            cur = conn.execute(
-                "INSERT INTO conversations (session_id, timestamp, role, content) VALUES (?,?,?,?)",
-                (session_id, datetime.now().isoformat(), role, content[:4000]),
-            )
-            conn.commit()
-            return cur.lastrowid
-        finally:
-            conn.close()
+        conn = self._get_conn()
+        cur = conn.execute(
+            "INSERT INTO conversations (session_id, timestamp, role, content) VALUES (?,?,?,?)",
+            (session_id, datetime.now().isoformat(), role, content[:4000]),
+        )
+        conn.commit()
+        return cur.lastrowid
 
     # ── Search ───────────────────────────────────────────────────────────────
 
@@ -104,13 +119,11 @@ class CodecMemory:
         sanitized = _sanitize_fts_query(query)
         if not sanitized:
             return []
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_conn()
         try:
             return self._fts_query(conn, sanitized, limit)
         except sqlite3.OperationalError:
             return []
-        finally:
-            conn.close()
 
     def _fts_query(self, conn, query: str, limit: int) -> list[dict]:
         rows = conn.execute("""
@@ -130,22 +143,19 @@ class CodecMemory:
     def search_recent(self, days: int = 7, limit: int = 50) -> list[dict]:
         """Return recent conversations from the past N days."""
         since = (datetime.now() - timedelta(days=days)).isoformat()
-        conn = sqlite3.connect(self.db_path)
-        try:
-            rows = conn.execute("""
-                SELECT id, session_id, timestamp, role, content
-                FROM conversations
-                WHERE timestamp >= ?
-                ORDER BY id DESC
-                LIMIT ?
-            """, (since, limit)).fetchall()
-            return [
-                {"id": r[0], "session_id": r[1], "timestamp": r[2],
-                 "role": r[3], "content": r[4]}
-                for r in rows
-            ]
-        finally:
-            conn.close()
+        conn = self._get_conn()
+        rows = conn.execute("""
+            SELECT id, session_id, timestamp, role, content
+            FROM conversations
+            WHERE timestamp >= ?
+            ORDER BY id DESC
+            LIMIT ?
+        """, (since, limit)).fetchall()
+        return [
+            {"id": r[0], "session_id": r[1], "timestamp": r[2],
+             "role": r[3], "content": r[4]}
+            for r in rows
+        ]
 
     def get_context(self, query: str, n: int = 5) -> str:
         """Return a formatted string of top-N matching snippets for LLM injection."""
@@ -161,61 +171,54 @@ class CodecMemory:
 
     def get_sessions(self, limit: int = 20) -> list[dict]:
         """Return distinct sessions with message count and last timestamp."""
-        conn = sqlite3.connect(self.db_path)
-        try:
-            rows = conn.execute("""
-                SELECT session_id,
-                       COUNT(*) AS msg_count,
-                       MIN(timestamp) AS started,
-                       MAX(timestamp) AS last_msg,
-                       MAX(CASE WHEN role='user' THEN content ELSE '' END) AS last_user_msg
-                FROM conversations
-                GROUP BY session_id
-                ORDER BY last_msg DESC
-                LIMIT ?
-            """, (limit,)).fetchall()
-            return [
-                {"session_id": r[0], "msg_count": r[1],
-                 "started": r[2], "last_msg": r[3],
-                 "preview": (r[4] or "")[:100]}
-                for r in rows
-            ]
-        finally:
-            conn.close()
+        conn = self._get_conn()
+        rows = conn.execute("""
+            SELECT session_id,
+                   COUNT(*) AS msg_count,
+                   MIN(timestamp) AS started,
+                   MAX(timestamp) AS last_msg,
+                   MAX(CASE WHEN role='user' THEN content ELSE '' END) AS last_user_msg
+            FROM conversations
+            GROUP BY session_id
+            ORDER BY last_msg DESC
+            LIMIT ?
+        """, (limit,)).fetchall()
+        return [
+            {"session_id": r[0], "msg_count": r[1],
+             "started": r[2], "last_msg": r[3],
+             "preview": (r[4] or "")[:100]}
+            for r in rows
+        ]
 
     def cleanup(self, retention_days: int = 90) -> dict:
         """Delete conversations older than retention_days and VACUUM the database.
         Returns dict with deleted count and final size."""
         cutoff = (datetime.now() - timedelta(days=retention_days)).isoformat()
-        conn = sqlite3.connect(self.db_path)
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA busy_timeout=5000")
-        try:
-            before = conn.execute("SELECT COUNT(*) FROM conversations").fetchone()[0]
-            conn.execute("DELETE FROM conversations WHERE timestamp < ?", (cutoff,))
+        conn = self._get_conn()
+        before = conn.execute("SELECT COUNT(*) FROM conversations").fetchone()[0]
+        conn.execute("DELETE FROM conversations WHERE timestamp < ?", (cutoff,))
+        conn.commit()
+        after = conn.execute("SELECT COUNT(*) FROM conversations").fetchone()[0]
+        deleted = before - after
+        # Rebuild FTS after bulk delete
+        if deleted > 0:
+            conn.execute("INSERT INTO conversations_fts(conversations_fts) VALUES('rebuild')")
             conn.commit()
-            after = conn.execute("SELECT COUNT(*) FROM conversations").fetchone()[0]
-            deleted = before - after
-            # Rebuild FTS after bulk delete
-            if deleted > 0:
-                conn.execute("INSERT INTO conversations_fts(conversations_fts) VALUES('rebuild')")
-                conn.commit()
-            conn.execute("VACUUM")
-            size = os.path.getsize(self.db_path)
-            return {"deleted": deleted, "remaining": after, "size_bytes": size}
-        finally:
-            conn.close()
+        # VACUUM requires closing and reopening (cannot run inside a transaction on reused conn)
+        self.close()
+        tmp = sqlite3.connect(self.db_path)
+        tmp.execute("VACUUM")
+        tmp.close()
+        size = os.path.getsize(self.db_path)
+        return {"deleted": deleted, "remaining": after, "size_bytes": size}
 
     def rebuild_fts(self) -> int:
         """Full FTS rebuild — use after bulk imports. Returns row count."""
-        conn = sqlite3.connect(self.db_path)
-        try:
-            conn.execute("INSERT INTO conversations_fts(conversations_fts) VALUES('rebuild')")
-            conn.commit()
-            count = conn.execute("SELECT COUNT(*) FROM conversations_fts").fetchone()[0]
-            return count
-        finally:
-            conn.close()
+        conn = self._get_conn()
+        conn.execute("INSERT INTO conversations_fts(conversations_fts) VALUES('rebuild')")
+        conn.commit()
+        count = conn.execute("SELECT COUNT(*) FROM conversations_fts").fetchone()[0]
+        return count
 
 
 # ── CLI ──────────────────────────────────────────────────────────────────────

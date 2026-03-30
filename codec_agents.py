@@ -247,30 +247,40 @@ BUILTIN_TOOLS = [
 
 
 # ═══════════════════════════════════════════════════════════════
-# SKILL LOADER
+# SKILL LOADER (lazy via SkillRegistry)
 # ═══════════════════════════════════════════════════════════════
 
+from codec_skill_registry import SkillRegistry
+
+_agents_registry = SkillRegistry(SKILLS_DIR)
+
+
+def _make_lazy_fn(registry: "SkillRegistry", skill_name: str):
+    """Return a callable that lazy-loads the skill module on first call."""
+    def _lazy_run(input_str: str) -> str:
+        mod = registry.load(skill_name)
+        if mod is None or not hasattr(mod, "run"):
+            return f"Skill '{skill_name}' could not be loaded."
+        return mod.run(input_str)
+    return _lazy_run
+
+
 def load_skill_tools() -> List[Tool]:
+    """Scan skills and return Tool objects with lazy-loaded run functions.
+
+    Only metadata is parsed at startup (via AST); the actual module
+    import happens on first invocation of each tool.
+    """
+    _agents_registry.scan()
     tools = []
-    if not os.path.isdir(SKILLS_DIR):
-        return tools
-    for fname in sorted(os.listdir(SKILLS_DIR)):
-        if not fname.endswith(".py"):
-            continue
-        try:
-            path = os.path.join(SKILLS_DIR, fname)
-            spec = importlib.util.spec_from_file_location(fname[:-3], path)
-            mod  = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            if hasattr(mod, "run") and hasattr(mod, "SKILL_DESCRIPTION"):
-                tools.append(Tool(
-                    name=fname[:-3],
-                    description=getattr(mod, "SKILL_DESCRIPTION", fname),
-                    fn=mod.run,
-                ))
-        except Exception as e:
-            print(f"[Agents] Skill load error {fname}: {e}")
-    print(f"[Agents] Loaded {len(tools)} skill tools")
+    for name in _agents_registry.names():
+        desc = _agents_registry.get_description(name)
+        tools.append(Tool(
+            name=name,
+            description=desc,
+            fn=_make_lazy_fn(_agents_registry, name),
+        ))
+    print(f"[Agents] Registered {len(tools)} skill tools (lazy)")
     return tools
 
 

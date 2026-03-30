@@ -1,51 +1,43 @@
-"""CODEC Skill Dispatch — load and match skills from ~/.codec/skills/"""
-import os
-import importlib.util
+"""CODEC Skill Dispatch — load and match skills from ~/.codec/skills/
+
+Uses SkillRegistry for lazy loading: only metadata (name, triggers,
+description) is parsed at startup via AST.  The actual module import
+happens on first invocation of a skill.
+"""
 import logging
 
 from codec_config import SKILLS_DIR
+from codec_skill_registry import SkillRegistry
 
 log = logging.getLogger('codec')
 
-loaded_skills = []
+# Global registry instance shared across codec.py
+registry = SkillRegistry(SKILLS_DIR)
 
 
 def load_skills():
-    """Load all skill plugins from SKILLS_DIR into loaded_skills"""
-    global loaded_skills
-    loaded_skills = []
-    if not os.path.isdir(SKILLS_DIR):
-        return
-    for fname in os.listdir(SKILLS_DIR):
-        if fname.startswith('_') or not fname.endswith('.py'):
-            continue
-        path = os.path.join(SKILLS_DIR, fname)
-        try:
-            spec = importlib.util.spec_from_file_location(fname[:-3], path)
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            if hasattr(mod, 'SKILL_TRIGGERS') and hasattr(mod, 'run'):
-                loaded_skills.append({
-                    'name': getattr(mod, 'SKILL_NAME', fname[:-3]),
-                    'triggers': mod.SKILL_TRIGGERS,
-                    'run': mod.run,
-                })
-                log.info(f"Skill loaded: {fname[:-3]}")
-        except Exception as e:
-            log.warning(f"Skill error ({fname}): {e}")
+    """Scan skill plugins from SKILLS_DIR — extracts metadata only (fast)."""
+    registry.scan()
 
 
 def check_skill(task):
-    """Return matching skill dict for task, or None"""
-    low = task.lower()
-    for skill in loaded_skills:
-        if any(trigger in low for trigger in skill['triggers']):
-            return skill
-    return None
+    """Return a skill-like dict for the matching skill, or None.
+
+    The dict has 'name' and a lazy 'run' key that triggers the actual
+    module import on first call.
+    """
+    name = registry.match_trigger(task)
+    if name is None:
+        return None
+    return {
+        'name': name,
+        'triggers': registry.get_triggers(name),
+        'run': lambda task, app="", **kw: registry.run(name, task, app),
+    }
 
 
 def run_skill(skill, task, app=""):
-    """Execute a skill and return its result"""
+    """Execute a skill and return its result."""
     try:
         result = skill['run'](task, app)
         skill_name = skill.get('name', 'unknown')

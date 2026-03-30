@@ -686,15 +686,24 @@ async function saveConfig() {
     if (data.saved) {
       btn.textContent = 'Saved!';
       btn.classList.add('saved');
-      showToast('Configuration saved');
+      var msg = data.message || 'Configuration saved';
+      showToast(msg);
       setTimeout(function() { btn.textContent = 'Save Changes'; btn.classList.remove('saved'); btn.disabled = false; }, 2000);
-    } else {
-      btn.textContent = 'Error: ' + (data.error || 'Unknown');
+      // Reload settings to reflect any masking changes
+      loadSettings();
+    } else if (data.details && Array.isArray(data.details)) {
+      btn.textContent = 'Validation Error';
       btn.disabled = false;
+      showToast('Validation failed: ' + data.details.join('; '));
+    } else {
+      btn.textContent = 'Error';
+      btn.disabled = false;
+      showToast('Error: ' + (data.error || 'Unknown'));
     }
   } catch(e) {
     btn.textContent = 'Error saving';
     btn.disabled = false;
+    showToast('Network error saving configuration');
   }
 }
 

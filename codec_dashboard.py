@@ -338,9 +338,71 @@ async def status():
     }
 
 
+def _mask_sensitive(value: str) -> str:
+    """Mask sensitive field values, showing only last 4 characters."""
+    if not value or not isinstance(value, str):
+        return ""
+    if len(value) <= 4:
+        return "****"
+    return "*" * (len(value) - 4) + value[-4:]
+
+
+# Fields that contain secrets and must be masked in GET responses
+_SENSITIVE_FIELDS = {"llm_api_key", "dashboard_token", "auth_pin_hash"}
+
+# Validation rules: field -> (type, required, extra_checks)
+# extra_checks is a callable returning (ok, error_msg)
+_VALIDATION_RULES = {
+    "agent_name":          (str,  True,  lambda v: (len(v.strip()) > 0, "agent_name cannot be empty")),
+    "llm_provider":        (str,  True,  lambda v: (len(v.strip()) > 0, "llm_provider cannot be empty")),
+    "llm_model":           (str,  False, None),
+    "llm_base_url":        (str,  False, lambda v: (v == "" or v.startswith("http"), "llm_base_url must be a valid URL")),
+    "llm_api_key":         (str,  False, None),
+    "streaming":           (bool, False, None),
+    "vision_base_url":     (str,  False, lambda v: (v == "" or v.startswith("http"), "vision_base_url must be a valid URL")),
+    "vision_model":        (str,  False, None),
+    "tts_engine":          (str,  False, None),
+    "tts_url":             (str,  False, lambda v: (v == "" or v.startswith("http"), "tts_url must be a valid URL")),
+    "tts_model":           (str,  False, None),
+    "tts_voice":           (str,  False, None),
+    "stt_engine":          (str,  False, None),
+    "stt_url":             (str,  False, lambda v: (v == "" or v.startswith("http"), "stt_url must be a valid URL")),
+    "key_toggle":          (str,  True,  lambda v: (len(v.strip()) > 0, "key_toggle cannot be empty")),
+    "key_voice":           (str,  True,  lambda v: (len(v.strip()) > 0, "key_voice cannot be empty")),
+    "key_text":            (str,  True,  lambda v: (len(v.strip()) > 0, "key_text cannot be empty")),
+    "wake_word_enabled":   (bool, False, None),
+    "wake_phrases":        (list, False, None),
+    "wake_energy":         ((int, float), False, lambda v: (v >= 0, "wake_energy cannot be negative")),
+    "auth_enabled":        (bool, False, None),
+    "auth_session_hours":  ((int, float), False, lambda v: (v > 0, "auth_session_hours must be positive")),
+    "dashboard_token":     (str,  False, None),
+}
+
+
+def _validate_config_updates(flat: dict) -> list:
+    """Validate flattened config values. Returns list of error strings."""
+    errors = []
+    for key, value in flat.items():
+        rule = _VALIDATION_RULES.get(key)
+        if not rule:
+            continue  # allow unknown keys through (forward compat)
+        expected_type, required, check_fn = rule
+        # Skip masked sensitive values (client didn't change them)
+        if key in _SENSITIVE_FIELDS and isinstance(value, str) and value.startswith("*"):
+            continue
+        if not isinstance(value, expected_type):
+            errors.append(f"{key}: expected {expected_type.__name__ if isinstance(expected_type, type) else 'number'}, got {type(value).__name__}")
+            continue
+        if check_fn:
+            ok, msg = check_fn(value)
+            if not ok:
+                errors.append(msg)
+    return errors
+
+
 @app.get("/api/config")
 async def get_config():
-    """Return full editable config for Settings UI"""
+    """Return full editable config for Settings UI (sensitive fields masked)."""
     config = {}
     try:
         with open(CONFIG_PATH) as f:
@@ -348,7 +410,7 @@ async def get_config():
     except Exception:
         pass
     # Group into sections for the UI
-    return {
+    result = {
         "llm": {
             "llm_provider": config.get("llm_provider", "mlx"),
             "llm_model": config.get("llm_model", ""),
@@ -389,11 +451,18 @@ async def get_config():
             "agent_name": config.get("agent_name", "C"),
         },
     }
+    # Mask sensitive fields before sending to the client
+    for section in result.values():
+        if isinstance(section, dict):
+            for key in section:
+                if key in _SENSITIVE_FIELDS:
+                    section[key] = _mask_sensitive(section[key])
+    return result
 
 
 @app.put("/api/config")
 async def update_config(request: Request):
-    """Update config.json from Settings UI"""
+    """Update config.json from Settings UI with input validation."""
     try:
         updates = await request.json()
         config = {}
@@ -402,14 +471,37 @@ async def update_config(request: Request):
                 config = json.load(f)
         except Exception:
             pass
-        # Flatten sections and merge
+
+        # Flatten sections for validation and merge
+        flat = {}
         for section_vals in updates.values():
             if isinstance(section_vals, dict):
                 for k, v in section_vals.items():
-                    config[k] = v
+                    flat[k] = v
+
+        # Validate all incoming values
+        errors = _validate_config_updates(flat)
+        if errors:
+            return JSONResponse({"error": "Validation failed", "details": errors}, status_code=422)
+
+        # Merge validated values, skipping masked sensitive fields
+        changed_keys = []
+        for k, v in flat.items():
+            # If a sensitive field is still masked, the user did not change it — skip
+            if k in _SENSITIVE_FIELDS and isinstance(v, str) and v.startswith("*"):
+                continue
+            config[k] = v
+            changed_keys.append(k)
+
         with open(CONFIG_PATH, "w") as f:
             json.dump(config, f, indent=2)
-        return {"saved": True}
+        return {
+            "saved": True,
+            "message": f"Configuration saved successfully ({len(changed_keys)} field(s) updated).",
+            "updated_fields": changed_keys,
+        }
+    except json.JSONDecodeError:
+        return JSONResponse({"error": "Invalid JSON in request body"}, status_code=400)
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
@@ -657,29 +749,32 @@ async def chat_page():
 # C Chat conversation storage
 QCHAT_DB = os.path.expanduser("~/.codec/qchat.db")
 
+_qchat_conn = None
+
 def qchat_db():
-    import sqlite3
-    conn = sqlite3.connect(QCHAT_DB)
-    conn.execute('''CREATE TABLE IF NOT EXISTS qchat_sessions (
-        id TEXT PRIMARY KEY, title TEXT, created_at TEXT, updated_at TEXT)''')
-    conn.execute('''CREATE TABLE IF NOT EXISTS qchat_messages (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, role TEXT,
-        content TEXT, timestamp TEXT)''')
-    conn.commit()
-    return conn
+    global _qchat_conn
+    if _qchat_conn is None:
+        _qchat_conn = sqlite3.connect(QCHAT_DB, check_same_thread=False)
+        _qchat_conn.execute("PRAGMA journal_mode=WAL")
+        _qchat_conn.execute("PRAGMA busy_timeout=5000")
+        _qchat_conn.execute('''CREATE TABLE IF NOT EXISTS qchat_sessions (
+            id TEXT PRIMARY KEY, title TEXT, created_at TEXT, updated_at TEXT)''')
+        _qchat_conn.execute('''CREATE TABLE IF NOT EXISTS qchat_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, role TEXT,
+            content TEXT, timestamp TEXT)''')
+        _qchat_conn.commit()
+    return _qchat_conn
 
 @app.get("/api/qchat/sessions")
 async def qchat_sessions():
     conn = qchat_db()
     rows = conn.execute("SELECT id, title, updated_at FROM qchat_sessions ORDER BY updated_at DESC LIMIT 30").fetchall()
-    conn.close()
     return [{"id": r[0], "title": r[1], "updated_at": r[2]} for r in rows]
 
 @app.get("/api/qchat/session/{sid}")
 async def qchat_session(sid: str):
     conn = qchat_db()
     rows = conn.execute("SELECT role, content, timestamp FROM qchat_messages WHERE session_id=? ORDER BY id ASC", (sid,)).fetchall()
-    conn.close()
     return [{"role": r[0], "content": r[1], "timestamp": r[2]} for r in rows]
 
 @app.post("/api/qchat/save")
@@ -697,7 +792,6 @@ async def qchat_save(request: Request):
         conn.execute("INSERT INTO qchat_messages (session_id, role, content, timestamp) VALUES (?, ?, ?, ?)",
             (sid, m.get("role","user"), m.get("content",""), now))
     conn.commit()
-    conn.close()
     return {"ok": True}
 
 
@@ -738,22 +832,26 @@ async def upload_image(request: Request):
 # Vibe Code session storage
 VIBE_DB = os.path.expanduser("~/.codec/vibe.db")
 
+_vibe_conn = None
+
 def vibe_db():
-    import sqlite3
-    conn = sqlite3.connect(VIBE_DB)
-    conn.execute('''CREATE TABLE IF NOT EXISTS vibe_sessions (
-        id TEXT PRIMARY KEY, title TEXT, language TEXT, code TEXT, created_at TEXT, updated_at TEXT)''')
-    conn.execute('''CREATE TABLE IF NOT EXISTS vibe_messages (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, role TEXT,
-        content TEXT, timestamp TEXT)''')
-    conn.commit()
-    return conn
+    global _vibe_conn
+    if _vibe_conn is None:
+        _vibe_conn = sqlite3.connect(VIBE_DB, check_same_thread=False)
+        _vibe_conn.execute("PRAGMA journal_mode=WAL")
+        _vibe_conn.execute("PRAGMA busy_timeout=5000")
+        _vibe_conn.execute('''CREATE TABLE IF NOT EXISTS vibe_sessions (
+            id TEXT PRIMARY KEY, title TEXT, language TEXT, code TEXT, created_at TEXT, updated_at TEXT)''')
+        _vibe_conn.execute('''CREATE TABLE IF NOT EXISTS vibe_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, role TEXT,
+            content TEXT, timestamp TEXT)''')
+        _vibe_conn.commit()
+    return _vibe_conn
 
 @app.get("/api/vibe/sessions")
 async def vibe_sessions():
     conn = vibe_db()
     rows = conn.execute("SELECT id, title, language, updated_at FROM vibe_sessions ORDER BY updated_at DESC LIMIT 30").fetchall()
-    conn.close()
     return [{"id": r[0], "title": r[1], "language": r[2], "updated_at": r[3]} for r in rows]
 
 @app.get("/api/vibe/session/{sid}")
@@ -761,7 +859,6 @@ async def vibe_session(sid: str):
     conn = vibe_db()
     session = conn.execute("SELECT id, title, language, code FROM vibe_sessions WHERE id=?", (sid,)).fetchone()
     msgs = conn.execute("SELECT role, content, timestamp FROM vibe_messages WHERE session_id=? ORDER BY id ASC", (sid,)).fetchall()
-    conn.close()
     return {
         "session": {"id": session[0], "title": session[1], "language": session[2], "code": session[3]} if session else None,
         "messages": [{"role": r[0], "content": r[1], "timestamp": r[2]} for r in msgs]
@@ -784,7 +881,6 @@ async def vibe_save(request: Request):
         conn.execute("INSERT INTO vibe_messages (session_id, role, content, timestamp) VALUES (?, ?, ?, ?)",
             (sid, m.get("role","user"), m.get("content",""), now))
     conn.commit()
-    conn.close()
     return {"ok": True}
 
 @app.get("/vibe", response_class=HTMLResponse)
@@ -1550,23 +1646,46 @@ async def get_heartbeat_config():
 
 @app.put("/api/heartbeat/config")
 async def update_heartbeat_config(request: Request):
-    """Update heartbeat configuration."""
+    """Update heartbeat configuration with validation."""
     body = await request.json()
+    # Validate
+    errors = []
+    if "enabled" in body and not isinstance(body["enabled"], bool):
+        errors.append("enabled must be a boolean")
+    if "interval_minutes" in body:
+        iv = body["interval_minutes"]
+        if not isinstance(iv, (int, float)):
+            errors.append("interval_minutes must be a number")
+        elif iv <= 0:
+            errors.append("interval_minutes must be positive")
+    if "tasks" in body and not isinstance(body["tasks"], list):
+        errors.append("tasks must be a list")
+    if errors:
+        return JSONResponse({"error": "Validation failed", "details": errors}, status_code=422)
+
     config = {}
     try:
         with open(CONFIG_PATH) as f:
             config = json.load(f)
     except Exception:
         pass
+    changed = []
     if "enabled" in body:
         config["heartbeat_enabled"] = body["enabled"]
+        changed.append("heartbeat_enabled")
     if "interval_minutes" in body:
         config["heartbeat_interval"] = body["interval_minutes"]
+        changed.append("heartbeat_interval")
     if "tasks" in body:
         config["heartbeat_tasks"] = body["tasks"]
+        changed.append("heartbeat_tasks")
     with open(CONFIG_PATH, "w") as f:
         json.dump(config, f, indent=2)
-    return {"saved": True}
+    return {
+        "saved": True,
+        "message": f"Heartbeat config saved ({len(changed)} field(s) updated).",
+        "updated_fields": changed,
+    }
 
 
 @app.get("/api/schedules/history")
@@ -1667,6 +1786,18 @@ async def cdp_status():
         }
     except Exception:
         return {"connected": False, "total_tabs": 0, "page_tabs": 0, "tabs": []}
+
+@app.on_event("shutdown")
+async def _close_db_connections():
+    """Close all reusable SQLite connections on server shutdown."""
+    global _db_conn, _qchat_conn, _vibe_conn
+    for conn in (_db_conn, _qchat_conn, _vibe_conn):
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+    _db_conn = _qchat_conn = _vibe_conn = None
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8090)
