@@ -55,12 +55,6 @@ def start_keyboard_listener(state, ctx):
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         state["rec_proc"] = rec
         log.info("Recording...")
-        # SwiftUI overlay event
-        try:
-            with open("/tmp/codec_overlay_events.jsonl", "a") as _f:
-                _f.write('{"type":"recording_start"}\n')
-        except Exception as e:
-            log.warning(f"Recording start overlay event write failed: {e}")
 
     def do_stop_voice():
         audio = state.get("audio_path")
@@ -82,11 +76,6 @@ def start_keyboard_listener(state, ctx):
                 log.warning(f"Non-critical error: {e}")
             return
         log.info("Transcribing...")
-        try:
-            with open("/tmp/codec_overlay_events.jsonl", "a") as _f:
-                _f.write('{"type":"recording_stop"}\n')
-        except Exception as e:
-            log.warning(f"Recording stop overlay event write failed: {e}")
         if state.get('rec_overlay'):
             try:
                 state['rec_overlay'].terminate()

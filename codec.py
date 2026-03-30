@@ -2,7 +2,7 @@
 import signal
 signal.signal(signal.SIGINT, lambda *a: None)
 signal.signal(signal.SIGTERM, lambda *a: None)
-"""CODEC v1.4.0 | Voice + Text + Phone + Google | *=screenshot | +=doc | --=livechat | Wake word"""
+"""CODEC v1.5.0 | Voice + Text + Phone + Google | *=screenshot | +=doc | --=livechat | Wake word"""
 import threading, tempfile, subprocess, sys, os, time, sqlite3, json, re, base64, logging
 from datetime import datetime
 
@@ -417,9 +417,9 @@ def main():
             log.warning(f"Non-critical error: {e}")
 
     stream_label = "ON" if STREAMING else "OFF"
-    kt = cfg.get("key_toggle", "f13").upper().ljust(4)
-    kv = cfg.get("key_voice", "f18").upper().ljust(4)
-    kx = cfg.get("key_text", "f16").upper().ljust(4)
+    kt = cfg.get("key_toggle", "f13").upper()
+    kv = cfg.get("key_voice", "f18").upper()
+    kx = cfg.get("key_text", "f16").upper()
     wake_label = "ON" if WAKE_WORD else "OFF"
     O = "\033[38;2;232;113;26m"
     D = "\033[38;2;80;80;80m"
@@ -433,7 +433,7 @@ def main():
     ║ ██      ██    ██ ██   ██ █████   ██       ║
     ║ ██      ██    ██ ██   ██ ██      ██       ║
     ║  ██████  ██████  ██████  ███████  ██████  ║
-    ║                                   v1.4.0  ║
+    ║                                   v1.5.0  ║
     ╠═══════════════════════════════════════════╣
     ║{W}  {kt} toggle   {kv} voice   ** screen       {O}║
     ║{W}  {kx} text     ++ doc     -- chat          {O}║

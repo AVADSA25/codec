@@ -3,7 +3,7 @@
 </p>
 
 <h1 align="center">CODEC</h1>
-<p align="center"><strong>Open-Source Intelligent Command Layer for macOS — v1.5.0</strong></p>
+<p align="center"><strong>Open Source Computer Command Framework — v1.5.0</strong></p>
 <p align="center">
   Voice-controlled, local-first AI agent that runs on your machine with any LLM.<br/>
   No cloud. No subscription. No data leaves your computer.
@@ -24,6 +24,80 @@ CODEC turns your computer into a voice-controlled AI workstation. Press a key or
 A private, open-source alternative to Siri and Alexa that actually controls your computer — and writes its own plugins.
 
 *Built for macOS.* Linux support planned.
+
+---
+
+## Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/quick-chat.png" alt="Quick Chat" width="720"/><br/>
+  <em>Quick Chat — ask anything, drag & drop files, full conversation history</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/chat-analysis.png" alt="Chat with File Analysis" width="720"/><br/>
+  <em>Deep Chat — upload files, select agents, get structured analysis</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/voice-call.png" alt="Voice Call" width="720"/><br/>
+  <em>Voice Call — real-time voice conversation with live transcript</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/vibe-code.png" alt="Vibe Code" width="720"/><br/>
+  <em>Vibe Code — describe what you want, get working code with live preview</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/deep-research.png" alt="Deep Research Report" width="720"/><br/>
+  <em>Deep Research — multi-agent reports delivered to Google Docs</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/tasks.png" alt="Tasks & Schedules" width="720"/><br/>
+  <em>Tasks — scheduled automations, cron jobs, background reports</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/settings.png" alt="Settings" width="720"/><br/>
+  <em>Settings — configure LLM, TTS, STT, hotkeys, wake word, and more</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/agent-options.png" alt="Agent Options" width="420"/><br/>
+  <em>12 specialized agents — Deep Research, Code Review, Content Writer, and more</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/login-auth.png" alt="Authentication" width="320"/><br/>
+  <em>Touch ID + PIN authentication — secure remote access</em>
+</p>
+
+<details>
+<summary><strong>Hotkey Overlays & Terminal</strong></summary>
+<br/>
+<p align="center">
+  <img src="docs/screenshots/f13-toggle.png" alt="F13 Toggle" width="400"/><br/>
+  <em>F13 — Toggle CODEC on/off</em>
+</p>
+<p align="center">
+  <img src="docs/screenshots/f18-recording.png" alt="F18 Recording" width="400"/><br/>
+  <em>F18 — Hold to record voice command</em>
+</p>
+<p align="center">
+  <img src="docs/screenshots/transcribing.png" alt="Transcribing" width="400"/><br/>
+  <em>Transcribing — Whisper processes your speech</em>
+</p>
+<p align="center">
+  <img src="docs/screenshots/right-click-menu.png" alt="Right-Click Menu" width="300"/><br/>
+  <em>Right-click integration — CODEC in every app</em>
+</p>
+<p align="center">
+  <img src="docs/screenshots/terminal.png" alt="Terminal" width="400"/><br/>
+  <em>Terminal — CODEC startup with 49 skills loaded</em>
+</p>
+</details>
 
 ---
 
@@ -241,6 +315,27 @@ CODEC exposes 43 tools as an MCP server. Claude Desktop, Cursor, VS Code Copilot
 
 Then in Claude: *"Use the CODEC google_calendar skill to check my schedule for tomorrow."*
 
+**Exposing Skills via MCP**
+
+By default, skills are **not** exposed to MCP clients (opt-in model). To expose a skill, add `SKILL_MCP_EXPOSE = True` to its header:
+
+```python
+# ~/.codec/skills/my_skill.py
+SKILL_TRIGGERS = ["do my thing"]
+SKILL_DESCRIPTION = "Does the thing"
+SKILL_MCP_EXPOSE = True  # makes this skill available to MCP clients
+
+def run(text: str) -> str:
+    return "Done."
+```
+
+**Global MCP config** (`~/.codec/config.json`):
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `mcp_default_allow` | `false` | If `true`, all skills are exposed unless excluded. If `false` (default), only skills with `SKILL_MCP_EXPOSE = True` are exposed. |
+| `mcp_allowed_tools` | `[]` | Explicit allowlist of skill names. Overrides per-skill flags when non-empty. |
+
 ---
 
 ### 📦 Skill Marketplace
@@ -406,12 +501,38 @@ CODEC ships with 48 built-in skills. Add more via the Marketplace or write your 
 
 CODEC runs entirely on your machine. Nothing is sent to any external server unless you configure it.
 
-- **Subprocess isolation:** All skill scripts run as subprocesses
-- **Resource limits:** 512MB RAM, 120s CPU per skill execution
-- **Safety blocklist:** 30+ dangerous command patterns blocked
-- **Command Preview:** Review and Approve/Deny before any script runs
-- **Skill verification:** Marketplace skills require confirmation; unverified skills show warnings
-- **Google OAuth:** Read+write scopes, token stored in `~/.codec/google_token.json`
+### Authentication
+- **Biometric auth:** Touch ID and PIN-based authentication for the dashboard.
+- **API token auth:** All API endpoints require a bearer token. Token comparison uses timing-safe `hmac.compare_digest` to prevent timing attacks.
+
+### Session Management
+- Cookie-based sessions with `SameSite=Strict`. The `Secure` flag is set conditionally (enabled when served over HTTPS).
+
+### Command Execution
+- **Subprocess isolation:** All skill scripts run as subprocesses with resource limits (512MB RAM, 120s CPU).
+- **Dangerous command blocklist:** Configurable patterns block destructive commands (`rm -rf /`, `mkfs`, `dd`, etc.) before execution.
+- **Command Preview:** Review and Approve/Deny before any script runs.
+
+### Skill Forge
+- LLM-generated skills go through a human review gate before activation.
+- Blocked imports validation prevents skills from importing dangerous modules.
+
+### MCP
+- Default opt-in mode for tool exposure: tools are not exposed to MCP clients unless explicitly enabled.
+
+### Memory
+- FTS5 search queries are sanitized to strip special characters before execution.
+- All database queries use parameterized statements to prevent SQL injection.
+
+### Marketplace
+- Downloaded skills are verified with SHA-256 checksum comparison before installation.
+- Unverified or modified skills show warnings and require explicit confirmation.
+
+### CORS
+- Restricted allowed origins and methods on all API endpoints.
+
+### Google OAuth
+- Read+write scopes, token stored in `~/.codec/google_token.json`.
 
 ---
 

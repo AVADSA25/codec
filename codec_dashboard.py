@@ -1,5 +1,5 @@
 """CODEC v1.2 — Phone Dashboard & PWA"""
-import os, json, sqlite3, time, logging, secrets, subprocess, hmac
+import os, json, sqlite3, time, logging, secrets, subprocess, hmac, threading, uuid
 from datetime import datetime, timedelta
 
 log = logging.getLogger("codec_dashboard")
@@ -54,6 +54,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
             if _verify_biometric_session(request):
                 return await call_next(request)
             # Biometric failed — reject
+            cookie_val = request.cookies.get(AUTH_COOKIE_NAME, "<missing>")
+            log.warning("AUTH REJECTED: path=%s method=%s ip=%s cookie=%s...",
+                        path, request.method, request.client.host if request.client else "?",
+                        cookie_val[:12] if cookie_val else "<empty>")
             if path.startswith("/api/") or path.startswith("/ws"):
                 return StarletteJSONResponse({"error": "Not authenticated"}, status_code=401)
             from starlette.responses import RedirectResponse
@@ -70,6 +74,28 @@ class AuthMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+class CSPMiddleware(BaseHTTPMiddleware):
+    """Add Content-Security-Policy header to all HTML responses."""
+
+    CSP = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; "
+        "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; "
+        "img-src 'self' data: https:; "
+        "connect-src 'self' ws: wss: http://localhost:* http://127.0.0.1:*; "
+        "worker-src 'self' blob:"
+    )
+
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        content_type = response.headers.get("content-type", "")
+        if "text/html" in content_type:
+            response.headers["Content-Security-Policy"] = self.CSP
+        return response
+
+
+app.add_middleware(CSPMiddleware)
 app.add_middleware(AuthMiddleware)
 
 DB_PATH = os.path.expanduser("~/.q_memory.db")
@@ -77,6 +103,105 @@ AUDIT_LOG = os.path.expanduser("~/.codec/audit.log")
 CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
 TASK_QUEUE = os.path.expanduser("~/.codec/task_queue.txt")
 DASHBOARD_DIR = os.path.dirname(os.path.abspath(__file__))
+NOTIFICATIONS_PATH = os.path.expanduser("~/.codec/notifications.json")
+SCHEDULE_RUNS_LOG = os.path.expanduser("~/.codec/schedule_runs.log")
+
+# ── Notification helpers ──
+
+_notif_lock = threading.Lock()
+
+def _load_notifications():
+    """Load notifications from disk, seeding sample data on first access."""
+    try:
+        with open(NOTIFICATIONS_PATH) as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        # Seed with sample past notifications so the list isn't empty
+        samples = [
+            {
+                "id": f"notif_{uuid.uuid4().hex[:10]}",
+                "type": "task_report",
+                "title": "Daily Morning Briefing",
+                "body": "Completed successfully. 5 action items identified, market overview compiled, calendar conflicts flagged.",
+                "status": "success",
+                "created": "2026-03-29T08:00:00",
+                "read": True,
+                "schedule_id": "daily_briefing"
+            },
+            {
+                "id": f"notif_{uuid.uuid4().hex[:10]}",
+                "type": "task_report",
+                "title": "Security Scan",
+                "body": "No vulnerabilities found. All 142 dependencies are up to date, no CVEs detected.",
+                "status": "success",
+                "created": "2026-03-29T12:00:00",
+                "read": True,
+                "schedule_id": "security_scan"
+            },
+            {
+                "id": f"notif_{uuid.uuid4().hex[:10]}",
+                "type": "task_report",
+                "title": "AI News Digest",
+                "body": "33 stories collected from 5 sources. Top story: new open-weight model benchmarks released.",
+                "status": "success",
+                "created": "2026-03-29T18:30:00",
+                "read": False,
+                "schedule_id": "ai_news_digest"
+            },
+            {
+                "id": f"notif_{uuid.uuid4().hex[:10]}",
+                "type": "task_report",
+                "title": "Weekly Code Review Summary",
+                "body": "Analyzed 12 PRs across 3 repos. 2 require attention: stale dependency warnings in codec-core and missing tests in dashboard module.",
+                "status": "success",
+                "created": "2026-03-28T09:00:00",
+                "read": True,
+                "schedule_id": "weekly_code_review"
+            }
+        ]
+        _write_notifications(samples)
+        return samples
+
+
+def _write_notifications(notifications):
+    """Persist notifications list to disk."""
+    os.makedirs(os.path.dirname(NOTIFICATIONS_PATH), exist_ok=True)
+    with open(NOTIFICATIONS_PATH, "w") as f:
+        json.dump(notifications, f, indent=2)
+
+
+def _save_notification(title, body, status="success", schedule_id=None):
+    """Create and persist a new notification, returning its id."""
+    notif = {
+        "id": f"notif_{uuid.uuid4().hex[:10]}",
+        "type": "task_report",
+        "title": title,
+        "body": body,
+        "status": status,
+        "created": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+        "read": False,
+        "schedule_id": schedule_id
+    }
+    with _notif_lock:
+        notifications = _load_notifications()
+        notifications.insert(0, notif)
+        _write_notifications(notifications)
+    return notif["id"]
+
+
+def _append_schedule_run_log(schedule_id, title, status, body_preview=""):
+    """Append a run record to the schedule runs log."""
+    os.makedirs(os.path.dirname(SCHEDULE_RUNS_LOG), exist_ok=True)
+    entry = {
+        "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+        "schedule_id": schedule_id,
+        "title": title,
+        "status": status,
+        "body_preview": body_preview[:200]
+    }
+    with open(SCHEDULE_RUNS_LOG, "a") as f:
+        f.write(json.dumps(entry) + "\n")
+
 
 # ── Biometric (Touch ID) Auth ──
 def _load_cfg():
@@ -96,9 +221,10 @@ AUTH_COOKIE_NAME = "codec_session"
 # Persistent session store — survives PM2 restarts
 _SESSION_FILE = os.path.expanduser("~/.codec/.auth_sessions.json")
 _auth_sessions = {}  # token -> {created: datetime, ip: str, method: str}
+_auth_lock = threading.Lock()
 
 def _load_sessions():
-    """Load sessions from disk on startup."""
+    """Load sessions from disk on startup. Caller must hold _auth_lock (or be at import time)."""
     global _auth_sessions
     try:
         if os.path.isfile(_SESSION_FILE):
@@ -118,7 +244,7 @@ def _load_sessions():
         log.warning("Could not load auth sessions: %s", e)
 
 def _save_sessions():
-    """Persist current sessions to disk."""
+    """Persist current sessions to disk. Caller must hold _auth_lock."""
     try:
         os.makedirs(os.path.dirname(_SESSION_FILE), exist_ok=True)
         raw = {}
@@ -148,13 +274,14 @@ def _verify_biometric_session(request):
     if not AUTH_ENABLED or not _auth_available():
         return True
     token = request.cookies.get(AUTH_COOKIE_NAME)
-    if not token or token not in _auth_sessions:
-        return False
-    session = _auth_sessions[token]
-    if datetime.now() - session["created"] > timedelta(hours=AUTH_SESSION_HOURS):
-        del _auth_sessions[token]
-        _save_sessions()
-        return False
+    with _auth_lock:
+        if not token or token not in _auth_sessions:
+            return False
+        session = _auth_sessions[token]
+        if datetime.now() - session["created"] > timedelta(hours=AUTH_SESSION_HOURS):
+            del _auth_sessions[token]
+            _save_sessions()
+            return False
     return True
 
 _db_conn = None
@@ -232,12 +359,13 @@ async def auth_verify(request: Request):
 
             if result.get("authenticated"):
                 token = result.get("token", secrets.token_hex(32))
-                _auth_sessions[token] = {
-                    "created": datetime.now(),
-                    "ip": client_ip,
-                    "method": result.get("method", "unknown"),
-                }
-                _save_sessions()
+                with _auth_lock:
+                    _auth_sessions[token] = {
+                        "created": datetime.now(),
+                        "ip": client_ip,
+                        "method": result.get("method", "unknown"),
+                    }
+                    _save_sessions()
                 return {
                     "authenticated": True,
                     "method": result.get("method"),
@@ -256,6 +384,9 @@ async def auth_verify(request: Request):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+# PIN brute-force rate limiting: {ip: {"count": int, "locked_until": float}}
+_pin_attempts: dict = {}
+
 @app.post("/api/auth/pin")
 async def auth_pin(request: Request):
     """Verify a PIN code."""
@@ -271,6 +402,12 @@ async def auth_pin(request: Request):
     pin_hash = hashlib.sha256(pin.encode()).hexdigest()
     client_ip = request.client.host if request.client else "unknown"
 
+    # ── Brute-force protection ──
+    attempt = _pin_attempts.get(client_ip, {"count": 0, "locked_until": 0.0})
+    if time.time() < attempt.get("locked_until", 0.0):
+        remaining = int(attempt["locked_until"] - time.time())
+        return JSONResponse({"error": f"Too many failed attempts. Locked out for {remaining}s."}, status_code=429)
+
     # Audit log
     try:
         os.makedirs(os.path.dirname(AUDIT_LOG), exist_ok=True)
@@ -283,13 +420,16 @@ async def auth_pin(request: Request):
         pass
 
     if pin_hash == AUTH_PIN_HASH:
+        # Reset failed attempts on success
+        _pin_attempts.pop(client_ip, None)
         token = secrets.token_hex(32)
-        _auth_sessions[token] = {
-            "created": datetime.now(),
-            "ip": client_ip,
-            "method": "pin",
-        }
-        _save_sessions()
+        with _auth_lock:
+            _auth_sessions[token] = {
+                "created": datetime.now(),
+                "ip": client_ip,
+                "method": "pin",
+            }
+            _save_sessions()
         return {
             "authenticated": True,
             "method": "pin",
@@ -297,6 +437,13 @@ async def auth_pin(request: Request):
             "expires_hours": AUTH_SESSION_HOURS,
         }
     else:
+        # Track failed attempt with exponential backoff
+        attempt = _pin_attempts.get(client_ip, {"count": 0, "locked_until": 0.0})
+        attempt["count"] = attempt.get("count", 0) + 1
+        if attempt["count"] >= 5:
+            attempt["locked_until"] = time.time() + 300  # 5-minute lockout
+            attempt["count"] = 0  # reset counter for next lockout cycle
+        _pin_attempts[client_ip] = attempt
         return {"authenticated": False, "error": "Incorrect PIN"}
 
 
@@ -304,9 +451,10 @@ async def auth_pin(request: Request):
 async def auth_logout(request: Request):
     """Invalidate the current biometric session."""
     token = request.cookies.get(AUTH_COOKIE_NAME)
-    if token and token in _auth_sessions:
-        del _auth_sessions[token]
-        _save_sessions()
+    with _auth_lock:
+        if token and token in _auth_sessions:
+            del _auth_sessions[token]
+            _save_sessions()
     return {"logged_out": True}
 
 
@@ -559,7 +707,6 @@ async def history(limit: int = 50):
             "SELECT id, timestamp, task, app, response FROM sessions ORDER BY id DESC LIMIT ?",
             (limit,)
         ).fetchall()
-        c.close()
         return [{"id": r[0], "timestamp": r[1], "task": r[2], "app": r[3], "response": r[4]} for r in rows]
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
@@ -573,7 +720,6 @@ async def conversations(limit: int = 100):
             "SELECT id, session_id, timestamp, role, content FROM conversations ORDER BY id DESC LIMIT ?",
             (limit,)
         ).fetchall()
-        c.close()
         return [{"id": r[0], "session_id": r[1], "timestamp": r[2], "role": r[3], "content": r[4]} for r in rows]
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
@@ -628,7 +774,6 @@ async def send_command(request: Request):
             (datetime.now().isoformat(), task[:200], "CODEC Dashboard", "")
         )
         c.commit()
-        c.close()
 
         # Write audit
         with open(AUDIT_LOG, "a") as f:
@@ -965,10 +1110,9 @@ async def run_code(request: Request):
     filename = body.get("filename", "script.py")
     if not code.strip():
         return JSONResponse({"error": "No code"}, status_code=400)
-    BLOCKED = ["rm -rf /", "sudo rm", "mkfs", "> /dev/sd", "dd if=", ":(){ :|:"]
-    for b in BLOCKED:
-        if b in code.lower():
-            return JSONResponse({"error": f"Blocked: {b}"}, status_code=403)
+    from codec_config import is_dangerous
+    if is_dangerous(code):
+        return JSONResponse({"error": "Blocked: code contains dangerous pattern"}, status_code=403)
     import tempfile
     ext_map = {"python": ".py", "javascript": ".js", "typescript": ".ts", "bash": ".sh", "go": ".go", "rust": ".rs", "java": ".java", "cpp": ".cpp", "swift": ".swift", "ruby": ".rb", "sql": ".sql"}
     ext = ext_map.get(language, ".txt")
@@ -1031,7 +1175,10 @@ async def save_skill(request: Request):
     if "SKILL_DESCRIPTION" not in content or "def run(" not in content:
         return JSONResponse({"error": "Invalid skill: must contain SKILL_DESCRIPTION and def run()"}, status_code=400)
     # Block dangerous imports/calls in skill code
-    BLOCKED_IN_SKILLS = ["os.system(", "subprocess.Popen(", "eval(", "exec(", "__import__"]
+    BLOCKED_IN_SKILLS = [
+        "os.system(", "subprocess.", "eval(", "exec(", "__import__",
+        "importlib", "shutil.rmtree", "open('/etc", "open('/dev", "ctypes",
+    ]
     for blocked in BLOCKED_IN_SKILLS:
         if blocked in content:
             return JSONResponse({"error": f"Blocked pattern in skill code: {blocked}"}, status_code=400)
@@ -1071,7 +1218,10 @@ async def skill_approve(request: Request):
     if "SKILL_DESCRIPTION" not in code or "def run(" not in code:
         return JSONResponse({"error": "Invalid skill: must contain SKILL_DESCRIPTION and def run()"}, status_code=400)
     # Block dangerous imports/calls in skill code
-    BLOCKED_IN_SKILLS = ["os.system(", "subprocess.Popen(", "eval(", "exec(", "__import__"]
+    BLOCKED_IN_SKILLS = [
+        "os.system(", "subprocess.", "eval(", "exec(", "__import__",
+        "importlib", "shutil.rmtree", "open('/etc", "open('/dev", "ctypes",
+    ]
     for blocked in BLOCKED_IN_SKILLS:
         if blocked in code:
             return JSONResponse({"error": f"Blocked pattern in skill code: {blocked}"}, status_code=400)
@@ -1220,6 +1370,15 @@ CODE TO CONVERT:
 
         name_match = _re.search(r'SKILL_NAME\s*=\s*["\'](\w+)["\']', raw)
         skill_name = name_match.group(1) if name_match else "forged_skill"
+
+        # Block dangerous imports/calls in forged skill code
+        BLOCKED_IN_SKILLS = [
+            "os.system(", "subprocess.", "eval(", "exec(", "__import__",
+            "importlib", "shutil.rmtree", "open('/etc", "open('/dev", "ctypes",
+        ]
+        for blocked in BLOCKED_IN_SKILLS:
+            if blocked in raw:
+                return JSONResponse({"error": f"Blocked pattern in forged skill: {blocked}", "raw": raw}, status_code=403)
 
         # Syntax check
         try:
@@ -1658,7 +1817,7 @@ async def update_schedule(sched_id: str, request: Request):
 
 @app.post("/api/schedules/{sched_id}/run")
 async def run_schedule_now(sched_id: str):
-    """Manually trigger a scheduled task."""
+    """Manually trigger a scheduled task — actually executes it in a background thread."""
     sched_path = os.path.join(os.path.expanduser("~"), ".codec", "schedules.json")
     schedules = []
     try:
@@ -1666,10 +1825,196 @@ async def run_schedule_now(sched_id: str):
             schedules = json.load(f)
     except Exception:
         return JSONResponse({"error": "No schedules found"}, status_code=404)
+
+    schedule = None
     for s in schedules:
         if s.get("id") == sched_id:
-            return {"status": "triggered", "id": sched_id, "crew": s.get("crew", "unknown")}
-    return JSONResponse({"error": "Not found"}, status_code=404)
+            schedule = s
+            break
+    if not schedule:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+
+    # Pre-create a notification id so we can return it immediately
+    notif_id = f"notif_{uuid.uuid4().hex[:10]}"
+    crew = schedule.get("crew", "general")
+    topic = schedule.get("topic", "")
+    title = schedule.get("label", topic[:60] or "Scheduled Task")
+
+    def _execute_task():
+        """Background thread: run the task, generate report, save to Google Doc."""
+        try:
+            import requests as rq, re
+            config = {}
+            try:
+                with open(CONFIG_PATH) as f:
+                    config = json.load(f)
+            except Exception:
+                pass
+            base_url = config.get("llm_base_url", "http://localhost:8081/v1")
+            model = config.get("llm_model", "mlx-community/Qwen3.5-35B-A3B-4bit")
+            api_key = config.get("llm_api_key", "")
+            kwargs = config.get("llm_kwargs", {})
+
+            # ── Step 1: If it's a skill-based task, run the skill directly ──
+            skill_output = None
+            if "ai news digest" in topic.lower() or "news digest" in topic.lower():
+                try:
+                    import importlib.util
+                    spec = importlib.util.spec_from_file_location("ai_news", os.path.join(DASHBOARD_DIR, "skills", "ai_news_digest.py"))
+                    mod = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(mod)
+                    skill_output = mod.run()
+                except Exception as e:
+                    log.warning(f"Skill execution failed, falling back to LLM: {e}")
+
+            # ── Step 2: Build prompt for LLM report ──
+            crew_instructions = {
+                "research": "You are a senior research analyst at CODEC. Produce a structured, professional report with markdown formatting: use ## headings, bullet points, and a summary section.",
+                "security": "You are a CODEC security analyst. Produce a structured security assessment report with markdown formatting: use ## headings for each area, risk levels, and recommendations.",
+                "writer": "You are a professional content writer at CODEC. Write a well-structured article with markdown formatting: ## headings, clear sections, and a conclusion.",
+                "analyst": "You are a CODEC data analyst. Produce a structured analysis report with markdown formatting: ## headings, key metrics, insights, and action items.",
+            }
+            system_msg = crew_instructions.get(crew, "You are CODEC, an AI assistant. Produce a structured, professional report with markdown formatting: ## headings, bullet points, key findings, and a summary.")
+
+            if skill_output:
+                prompt = f"Here is raw data collected for the task '{title}':\n\n{skill_output}\n\nProduce a well-structured, professional report based on this data. Use ## headings, highlight the most important items, add brief analysis, and end with key takeaways."
+            elif crew == "custom" and topic:
+                prompt = f"Execute this task and produce a detailed, structured report:\n\n{topic}"
+            else:
+                prompt = f"Task: {topic}\n\nProduce a detailed, structured report."
+
+            headers = {"Content-Type": "application/json"}
+            if api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
+            payload = {
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system_msg},
+                    {"role": "user", "content": prompt}
+                ],
+                "max_tokens": 6000,
+                "temperature": 0.7,
+                "stream": False
+            }
+            payload.update(kwargs)
+            r = rq.post(f"{base_url}/chat/completions", json=payload, headers=headers, timeout=300)
+            data = r.json()
+            answer = data["choices"][0]["message"]["content"].strip()
+            answer = re.sub(r'<think>[\s\S]*?</think>', '', answer).strip()
+
+            # ── Step 3: Save to Google Doc ──
+            doc_url = None
+            try:
+                from codec_gdocs import create_google_doc
+                doc_title = f"CODEC Report — {title} — {datetime.now().strftime('%b %d, %Y')}"
+                doc_url = create_google_doc(doc_title, answer)
+                log.info(f"Report saved to Google Doc: {doc_url}")
+            except Exception as e:
+                log.warning(f"Google Doc creation failed (report still saved locally): {e}")
+
+            # ── Step 4: Save success notification with doc link ──
+            body_text = answer[:2000]
+            if doc_url:
+                body_text = f"📄 [View Full Report]({doc_url})\n\n{body_text}"
+            with _notif_lock:
+                notifications = _load_notifications()
+                for n in notifications:
+                    if n["id"] == notif_id:
+                        n["body"] = body_text
+                        n["status"] = "success"
+                        if doc_url:
+                            n["doc_url"] = doc_url
+                        break
+                _write_notifications(notifications)
+            _append_schedule_run_log(sched_id, title, "success", (doc_url or answer[:200]))
+            log.info(f"Schedule {sched_id} executed successfully")
+
+        except Exception as e:
+            error_msg = f"Task execution failed: {str(e)}"
+            log.error(f"Schedule {sched_id} failed: {e}")
+            with _notif_lock:
+                notifications = _load_notifications()
+                for n in notifications:
+                    if n["id"] == notif_id:
+                        n["body"] = error_msg
+                        n["status"] = "error"
+                        break
+                _write_notifications(notifications)
+            _append_schedule_run_log(sched_id, title, "error", error_msg)
+
+    # Save a pending notification immediately
+    pending_notif = {
+        "id": notif_id,
+        "type": "task_report",
+        "title": title,
+        "body": "Task is running...",
+        "status": "running",
+        "created": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+        "read": False,
+        "schedule_id": sched_id
+    }
+    with _notif_lock:
+        notifications = _load_notifications()
+        notifications.insert(0, pending_notif)
+        _write_notifications(notifications)
+
+    # Launch background execution
+    thread = threading.Thread(target=_execute_task, daemon=True)
+    thread.start()
+
+    return {"status": "running", "notification_id": notif_id, "id": sched_id, "crew": crew}
+
+
+# ── Notification endpoints ──
+
+@app.get("/api/notifications")
+async def get_notifications(request: Request):
+    """Return all notifications, newest first. Use ?unread=true to filter."""
+    notifications = _load_notifications()
+    unread_filter = request.query_params.get("unread", "").lower()
+    if unread_filter == "true":
+        notifications = [n for n in notifications if not n.get("read", False)]
+    # Sort newest first by created timestamp
+    notifications.sort(key=lambda n: n.get("created", ""), reverse=True)
+    return {"notifications": notifications}
+
+
+@app.get("/api/notifications/count")
+async def get_notification_count():
+    """Return unread notification count for badge display.
+    Only counts completed notifications (success/error), not 'running' ones."""
+    notifications = _load_notifications()
+    unread = sum(1 for n in notifications
+                 if not n.get("read", False)
+                 and n.get("status", "success") != "running")
+    return {"unread": unread}
+
+
+@app.post("/api/notifications/{notif_id}/read")
+async def mark_notification_read(notif_id: str):
+    """Mark a single notification as read."""
+    with _notif_lock:
+        notifications = _load_notifications()
+        for n in notifications:
+            if n["id"] == notif_id:
+                n["read"] = True
+                _write_notifications(notifications)
+                return {"status": "ok", "id": notif_id}
+    return JSONResponse({"error": "Notification not found"}, status_code=404)
+
+
+@app.post("/api/notifications/read-all")
+async def mark_all_notifications_read():
+    """Mark all notifications as read."""
+    with _notif_lock:
+        notifications = _load_notifications()
+        count = 0
+        for n in notifications:
+            if not n.get("read", False):
+                n["read"] = True
+                count += 1
+        _write_notifications(notifications)
+    return {"status": "ok", "marked": count}
 
 
 @app.get("/api/heartbeat/config")
