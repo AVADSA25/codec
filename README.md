@@ -34,7 +34,7 @@ AI chatbots don't fix this. They're another tab. You still copy, paste, switch, 
 | **3** | **CODEC Instant** | Select text, right-click — AI rewrites, translates, replies in-place. Instant. |
 | **4** | **CODEC Chat** | 250K-context chat with file uploads, vision, web search, and 12 autonomous agent crews |
 | **5** | **CODEC Vibe** | AI coding IDE — describe what you want, watch it build, live preview in browser |
-| **6** | **CODEC Voice** | Call your AI like a phone call — it books, researches, and acts while you talk |
+| **6** | **CODEC Voice** | Call your AI like a phone call — speak to interrupt, live webcam feed, it acts while you talk |
 | **7** | **CODEC Overview** | Your AI dashboard — every tool, every agent, one screen |
 
 ### What hits different
@@ -45,9 +45,11 @@ AI chatbots don't fix this. They're another tab. You still copy, paste, switch, 
 
 **Your screen is the context.** CODEC reads what's in front of you — your IDE, your browser, your email. *"What's wrong with this code?"* It sees the error. *"Summarize this article"* — it reads the page. *"Fill in this form"* — it types into the fields. No copy-paste. No explaining what you're looking at.
 
+**Live webcam, not just screenshots.** Click the camera icon on any page — a draggable picture-in-picture feed appears in the corner. Point it at your whiteboard, your front door, a document on your desk. Hit the snapshot button and CODEC analyzes what it sees. The feed stays open while you keep working.
+
 **AI agents that work while you don't.** Not chat responses — full autonomous workflows. *"Deep research AI in healthcare"* → 8 agents fan out, run 20+ searches, write a 10,000-word report with images, deliver it to your Google Docs. Schedule any crew to run on repeat — morning briefings, competitor analysis, inbox triage — all on cron.
 
-**Nothing leaves your machine.** Run Qwen, Llama, or Mistral locally. Conversations stored in local SQLite. No cloud. No telemetry. No analytics. Your data is yours. Period.
+**Nothing leaves your machine.** Run Qwen, Llama, or Mistral locally. Conversations stored in local SQLite. No cloud. No telemetry. No analytics. End-to-end encrypted between your browser and server (AES-256-GCM + ECDH key exchange). Your data is yours. Period.
 
 ---
 
@@ -163,6 +165,7 @@ You speak → Whisper STT → intent dispatch → skill / agent crew → action 
 | F16 / F9 | Type a command instead of speaking |
 | Double-tap `*` `*` | Screenshot + AI reads your screen |
 | Double-tap `+` `+` | Analyze document in clipboard |
+| Camera icon (any page) | Live webcam PIP — drag around, snapshot anytime |
 | Select text → right-click | 8 AI services in context menu |
 
 ### 50+ Skills
@@ -244,7 +247,7 @@ This isn't a marketing section. It's the architecture.
 
 **Run any LLM locally.** Qwen, Llama, Mistral, Gemma — via MLX, Ollama, or LM Studio. Zero API calls if you want. Or use cloud APIs (OpenAI, Claude, Gemini) — your choice.
 
-**Three-factor auth for remote access.** Touch ID biometrics + PIN + TOTP 2FA (Google Authenticator / Authy). Session cookies with `SameSite=Strict`. CSRF double-submit tokens on every state-changing request.
+**5-layer security stack for remote access.** Cloudflare Zero Trust tunnel (or Tailscale VPN — no domain needed) → PIN → Touch ID biometrics → TOTP 2FA (Google Authenticator / Authy) → E2E encryption (AES-256-GCM + ECDH P-256 key exchange). Every request between browser and server is encrypted end-to-end on top of TLS.
 
 **Command safety.** Dangerous command blocklist. Subprocess isolation with resource limits (512MB RAM, 120s CPU). Review-and-approve gate before any script runs. LLM-generated skills require human review.
 
@@ -252,7 +255,8 @@ This isn't a marketing section. It's the architecture.
 
 | Layer | Protection |
 |---|---|
-| Network | Cloudflare Zero Trust tunnel, CORS restricted origins |
+| Network | Cloudflare Zero Trust tunnel or Tailscale VPN, CORS restricted origins |
+| Encryption | AES-256-GCM + ECDH P-256 key exchange, per-session keys |
 | Auth | Touch ID + PIN + TOTP 2FA, timing-safe token comparison |
 | Sessions | `SameSite=Strict`, CSRF tokens, conditional `Secure` flag |
 | Execution | Subprocess isolation, resource limits, command blocklist |
@@ -334,7 +338,8 @@ Custom shortcuts in `~/.codec/config.json`. Restart after changes: `pm2 restart 
 
 - Check: `curl http://localhost:8090/`
 - Restart: `pm2 restart codec-dashboard`
-- Remote: `pm2 logs cloudflared --lines 3 --nostream`
+- Remote via Cloudflare: `pm2 logs cloudflared --lines 3 --nostream`
+- Remote via Tailscale: install Tailscale on your Mac and phone — access CODEC at `http://100.x.x.x:8090` with no domain or tunnel setup needed
 </details>
 
 <details>

@@ -55,7 +55,7 @@ BYTES_PER_SAMPLE       = 2
 MIN_SPEECH_BYTES       = int(SAMPLE_RATE * BYTES_PER_SAMPLE * VAD_MIN_SPEECH_SECONDS)
 
 # RMS threshold for interrupt detection (slightly lower than VAD to catch early speech)
-INTERRUPT_THRESHOLD = 600
+INTERRUPT_THRESHOLD = 1500  # raised from 600 — too sensitive to background noise
 
 # ── Whisper noise filter ──────────────────────────────────────────────────
 NOISE_WORDS = {
@@ -366,7 +366,10 @@ class VoicePipeline:
         import re
         # Match sentence-ending punctuation NOT preceded by common abbreviations
         # and NOT followed by a digit (decimals, times)
-        m = re.search(r'(?<!\b(?:Dr|Mr|Mrs|Ms|Jr|Sr|St|vs|etc|approx|incl|govt))[.!?]\s', buf)
+        # Simple sentence-end: punctuation followed by space (skip abbreviations with a simpler check)
+        m = re.search(r'[.!?]\s+[A-Z]', buf)
+        if not m:
+            m = re.search(r'[.!?]\s', buf)
         if m:
             end = m.end() - 1  # keep the space in remainder
             return buf[:end].strip(), buf[end:]

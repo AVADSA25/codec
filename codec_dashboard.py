@@ -558,9 +558,29 @@ async def totp_verify(request: Request):
 
 @app.post("/api/auth/totp/disable")
 async def totp_disable(request: Request):
-    """Disable TOTP 2FA — requires an authenticated session (and CSRF)."""
+    """Disable TOTP 2FA — requires authenticated session + valid TOTP code."""
     if not _verify_biometric_session(request):
         return JSONResponse({"error": "Authentication required"}, status_code=401)
+    # Require current TOTP code to disable
+    import pyotp
+    try:
+        body = await request.json()
+        code = str(body.get("code", ""))
+    except Exception:
+        return JSONResponse({"error": "Missing TOTP code"}, status_code=400)
+    if not code:
+        return JSONResponse({"error": "Enter your authenticator code to disable 2FA"}, status_code=400)
+    totp_secret = ""
+    try:
+        with open(CONFIG_PATH) as f:
+            totp_secret = json.load(f).get("totp_secret", "")
+    except Exception:
+        pass
+    if not totp_secret:
+        return {"disabled": True}  # already disabled
+    totp = pyotp.TOTP(totp_secret)
+    if not totp.verify(code, valid_window=1):
+        return JSONResponse({"error": "Invalid code"}, status_code=400)
     # Remove totp_secret from config
     try:
         cfg_data = {}
