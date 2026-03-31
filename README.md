@@ -7,6 +7,14 @@
 <p align="center">
   Your voice. Your computer. Your rules.
 </p>
+
+<p align="center"><em>
+Talk to your Mac. It does things.<br/>
+One AI system that replaces the 15 apps you click through every day —<br/>
+drafts emails, runs research, writes code, controls your lights, reads your screen.<br/>
+50+ skills. 12 autonomous agents. Zero tabs.
+</em></p>
+
 <p align="center">
   <a href="https://opencodec.org">opencodec.org</a> · <a href="https://avadigital.ai">AVA Digital LLC</a>
 </p>
