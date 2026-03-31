@@ -190,6 +190,17 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
   overflow: hidden;
 }
+.ui-toggle-group { margin-bottom: 14px; }
+.ui-toggle-group-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent); margin: 0 0 6px; font-weight: 600; }
+.ui-toggle-row { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--border); }
+.ui-toggle-row:last-child { border-bottom: none; }
+.ui-toggle-label { font-size: 12px; color: var(--text-muted); }
+.ui-switch { position: relative; width: 36px; height: 20px; flex-shrink: 0; }
+.ui-switch input { opacity: 0; width: 0; height: 0; }
+.ui-switch .slider { position: absolute; inset: 0; background: var(--surface-2); border: 1px solid var(--border); border-radius: 20px; cursor: pointer; transition: 0.2s; }
+.ui-switch .slider:before { content: ''; position: absolute; width: 14px; height: 14px; left: 2px; top: 2px; background: var(--text-dim); border-radius: 50%; transition: 0.2s; }
+.ui-switch input:checked + .slider { background: var(--accent); border-color: var(--accent); }
+.ui-switch input:checked + .slider:before { transform: translateX(16px); background: #fff; }
 .setting-row {
   display: flex; justify-content: space-between; align-items: center;
   padding: 10px 14px; border-bottom: 1px solid var(--border); transition: background 0.1s;
@@ -408,6 +419,13 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
         </div>
       </div>
       <div class="settings-section" style="margin-top:20px">
+        <div class="settings-title">Page Customization</div>
+        <div class="settings-card" style="padding:12px 16px">
+          <p style="font-size:12px;color:var(--text-dim);margin:0 0 12px">Show or hide UI elements across all CODEC pages. Changes apply instantly.</p>
+          <div id="uiToggles"></div>
+        </div>
+      </div>
+      <div class="settings-section" style="margin-top:20px">
         <div class="settings-title">Skills</div>
         <div id="skillsList"></div>
       </div>
@@ -522,7 +540,7 @@ function showTab(id) {
   if (id === 'history') loadHistory();
   if (id === 'chat') loadChat();
   if (id === 'audit') loadAudit();
-  if (id === 'settings') loadSettings();
+  if (id === 'settings') { loadSettings(); renderUIToggles(); }
 }
 
 // ── Send Command ──
@@ -860,6 +878,85 @@ async function saveConfig() {
     showToast('Network error saving configuration');
   }
 }
+
+// ── Page Customization (UI toggles) ──
+var _uiFeatures = {
+  'Global': [
+    { id: 'screenshot_btn', label: 'Screenshot button', sel: '#screenBtn', default: true },
+    { id: 'photo_btn', label: 'Webcam photo button', sel: '#photoBtn', default: true },
+    { id: 'webcam_pip_btn', label: 'Live webcam PIP button', sel: '#camBtn', default: true },
+    { id: 'voice_btn', label: 'Voice replies button', sel: '#voiceBtn', default: true },
+    { id: 'notif_bell', label: 'Notification bell', sel: '#notifBellBtn', default: true },
+    { id: 'mic_btn', label: 'Mic input button', sel: '#micBtn', default: true },
+  ],
+  'Dashboard': [
+    { id: 'dash_status_grid', label: 'Status grid (stats cards)', sel: '#statGrid', default: true },
+    { id: 'dash_history_tab', label: 'History tab', sel: '#tab-history', default: true },
+    { id: 'dash_audit_tab', label: 'Audit tab', sel: '#tab-audit', default: true },
+    { id: 'dash_phone_btn', label: 'Voice call button', sel: '.ibtn.phone', default: true },
+  ],
+  'Chat': [
+    { id: 'chat_sidebar', label: 'Conversation sidebar', sel: '#sidebar,#sidebarOverlay,.sidebar-toggle', default: true },
+    { id: 'chat_agents', label: 'Agent crews / Research mode', sel: '#modeResearchBtn', default: true },
+    { id: 'chat_agent_builder', label: 'Custom agent builder', sel: '#agentBuilder', default: true },
+  ],
+  'Voice': [
+    { id: 'voice_transcript', label: 'Live transcript', sel: '.transcript-wrap', default: true },
+    { id: 'voice_actions', label: 'Your Turn / Nudge buttons', sel: '#actionRow', default: true },
+  ],
+  'Tasks': [
+    { id: 'tasks_heartbeat', label: 'Heartbeat tab', sel: '#tab-heartbeat', default: true },
+    { id: 'tasks_reports', label: 'Reports tab', sel: '#tab-reports', default: true },
+  ]
+};
+
+function _getUIPrefs() {
+  try { return JSON.parse(localStorage.getItem('codec-ui-prefs') || '{}'); } catch(e) { return {}; }
+}
+function _saveUIPrefs(prefs) {
+  localStorage.setItem('codec-ui-prefs', JSON.stringify(prefs));
+  // Also save to server for cross-device sync
+  fetch('/api/config', { method: 'PUT', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ ui_prefs: prefs }) }).catch(function(){});
+}
+function applyUIPrefs() {
+  var prefs = _getUIPrefs();
+  Object.values(_uiFeatures).forEach(function(group) {
+    group.forEach(function(f) {
+      var visible = prefs[f.id] !== undefined ? prefs[f.id] : f.default;
+      f.sel.split(',').forEach(function(s) {
+        document.querySelectorAll(s.trim()).forEach(function(el) {
+          el.style.display = visible ? '' : 'none';
+        });
+      });
+    });
+  });
+}
+function renderUIToggles() {
+  var container = document.getElementById('uiToggles');
+  if (!container) return;
+  var prefs = _getUIPrefs();
+  var html = '';
+  Object.keys(_uiFeatures).forEach(function(group) {
+    html += '<div class="ui-toggle-group"><div class="ui-toggle-group-title">' + group + '</div>';
+    _uiFeatures[group].forEach(function(f) {
+      var on = prefs[f.id] !== undefined ? prefs[f.id] : f.default;
+      html += '<div class="ui-toggle-row"><span class="ui-toggle-label">' + f.label + '</span>'
+        + '<label class="ui-switch"><input type="checkbox" data-uid="' + f.id + '" ' + (on ? 'checked' : '') + ' onchange="toggleUIFeature(this)"><span class="slider"></span></label></div>';
+    });
+    html += '</div>';
+  });
+  container.innerHTML = html;
+}
+function toggleUIFeature(el) {
+  var prefs = _getUIPrefs();
+  prefs[el.dataset.uid] = el.checked;
+  _saveUIPrefs(prefs);
+  applyUIPrefs();
+  showToast(el.checked ? 'Enabled' : 'Hidden');
+}
+// Apply on page load
+applyUIPrefs();
 
 // ── Helpers ──
 function escHtml(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }

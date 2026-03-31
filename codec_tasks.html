@@ -918,6 +918,8 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 });
+// Apply UI preferences from dashboard settings
+(function(){try{var p=JSON.parse(localStorage.getItem('codec-ui-prefs')||'{}'),m={'screenshot_btn':'#screenBtn','photo_btn':'#photoBtn','webcam_pip_btn':'#camBtn','voice_btn':'#voiceBtn','notif_bell':'#notifBellBtn','mic_btn':'#micBtn','tasks_heartbeat':'#tab-heartbeat','tasks_reports':'#tab-reports'};Object.keys(m).forEach(function(k){if(p[k]===false)m[k].split(',').forEach(function(s){document.querySelectorAll(s.trim()).forEach(function(el){el.style.display='none'})})})}catch(e){}})();
 </script>
 <!-- Preview Modal (screenshot + webcam photo) -->
 <div class="preview-modal" id="previewModal" onclick="closePreview(event)">
