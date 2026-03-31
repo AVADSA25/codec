@@ -3,7 +3,7 @@
 </p>
 
 <h1 align="center">CODEC</h1>
-<p align="center"><strong>Your Open-Source Intelligent Command Layer</strong></p>
+<p align="center"><strong>Open-Source Intelligent Command Layer</strong></p>
 <p align="center">
   Your voice. Your computer. Your rules.
 </p>
