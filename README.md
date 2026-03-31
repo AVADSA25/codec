@@ -4,22 +4,11 @@
 
 <h1 align="center">CODEC</h1>
 <p align="center"><strong>Open-Source Intelligent Command Layer</strong></p>
+<p align="center"><em>What if your computer could actually hear you, see what you see, and speak back?</em></p>
+<p align="center">Your voice. Your computer. Your rules.</p>
+<p align="center">One AI system that replaces the 15 apps you click through every day — drafts emails, runs research, writes code, controls your lights, reads your screen. 50+ skills. 12 autonomous agents. Zero tabs.</p>
 <p align="center">
-  Your voice. Your computer. Your rules.
-</p>
-
-<p align="center"><em>
-Talk to your Mac. It does things.<br/>
-One AI system that replaces the 15 apps you click through every day —<br/>
-drafts emails, runs research, writes code, controls your lights, reads your screen.<br/>
-50+ skills. 12 autonomous agents. Zero tabs.
-</em></p>
-
-<p align="center">
-  <a href="https://opencodec.org">opencodec.org</a> · <a href="https://avadigital.ai">AVA Digital LLC</a>
-</p>
-<p align="center">
-  <a href="#quick-start">Get Started</a> · <a href="#support-the-project">Support</a> · <a href="#professional-setup">Enterprise</a>
+  <a href="https://opencodec.org">opencodec.org</a> · <a href="https://avadigital.ai">AVA Digital LLC</a> · <a href="#quick-start">Get Started</a> · <a href="#support-the-project">Support</a> · <a href="#professional-setup">Enterprise</a>
 </p>
 
 ---
