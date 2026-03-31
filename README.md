@@ -5,8 +5,7 @@
 <h1 align="center">CODEC</h1>
 <p align="center"><strong>Your Open-Source Intelligent Command Layer</strong></p>
 <p align="center">
-  You speak. Your computer acts.<br/>
-  Voice-first. Local-first. Privacy-first.
+  Your voice. Your computer. Your rules.
 </p>
 <p align="center">
   <a href="https://opencodec.org">opencodec.org</a> · <a href="https://avadigital.ai">AVA Digital LLC</a>
