@@ -156,6 +156,77 @@ def execute_pending_tasks():
 
 _last_cleanup = None
 
+
+# ── Configurable Alerts ──────────────────────────────────────────────────
+def check_alerts():
+    """Run user-configured alerts from config.json heartbeat_alerts list.
+    Each alert: { "name": "BTC Price", "type": "price", "asset": "bitcoin",
+                  "threshold_pct": 5, "direction": "any" }
+    Supported types: price (crypto via CoinGecko)
+    """
+    try:
+        with open(CONFIG_PATH) as f:
+            cfg = json.load(f)
+    except Exception:
+        return
+    alerts = cfg.get("heartbeat_alerts", [])
+    if not alerts:
+        return
+    alert_state_path = os.path.expanduser("~/.codec/alert_state.json")
+    try:
+        with open(alert_state_path) as f:
+            state = json.load(f)
+    except Exception:
+        state = {}
+    triggered = []
+    for alert in alerts:
+        atype = alert.get("type", "")
+        name = alert.get("name", "Unknown")
+        if atype == "price":
+            asset = alert.get("asset", "bitcoin")
+            threshold_pct = alert.get("threshold_pct", 5)
+            direction = alert.get("direction", "any")  # up, down, any
+            try:
+                r = requests.get(f"https://api.coingecko.com/api/v3/simple/price?ids={asset}&vs_currencies=usd", timeout=10)
+                price = r.json().get(asset, {}).get("usd")
+                if price is None:
+                    continue
+                last_price = state.get(f"price_{asset}")
+                if last_price:
+                    change_pct = ((price - last_price) / last_price) * 100
+                    if abs(change_pct) >= threshold_pct:
+                        if direction == "any" or (direction == "up" and change_pct > 0) or (direction == "down" and change_pct < 0):
+                            arrow = "📈" if change_pct > 0 else "📉"
+                            msg = f"{arrow} {name}: ${price:,.2f} ({change_pct:+.1f}% since last check)"
+                            log.info(f"  🚨 ALERT: {msg}")
+                            triggered.append(msg)
+                            state[f"price_{asset}"] = price  # reset baseline
+                    else:
+                        log.info(f"  {name}: ${price:,.2f} ({change_pct:+.1f}%) — within threshold")
+                else:
+                    state[f"price_{asset}"] = price
+                    log.info(f"  {name}: ${price:,.2f} (baseline set)")
+            except Exception as e:
+                log.warning(f"  Alert '{name}' failed: {e}")
+    # Save state
+    try:
+        os.makedirs(os.path.dirname(alert_state_path), exist_ok=True)
+        with open(alert_state_path, "w") as f:
+            json.dump(state, f)
+    except Exception:
+        pass
+    # Send triggered alerts to dashboard notification
+    if triggered:
+        for msg in triggered:
+            try:
+                requests.post("http://localhost:8090/api/notifications",
+                              json={"message": msg, "type": "alert", "source": "heartbeat"},
+                              timeout=5)
+            except Exception:
+                pass
+    return triggered
+
+
 def heartbeat():
     """Run one heartbeat cycle."""
     global _last_cleanup
@@ -165,6 +236,8 @@ def heartbeat():
     tasks = check_pending_tasks()
     if tasks:
         execute_pending_tasks()
+    # Configurable alerts (BTC price, etc.)
+    check_alerts()
     # Daily memory cleanup — delete entries older than 90 days
     now = datetime.now()
     if _last_cleanup is None or (now - _last_cleanup).days >= 1:

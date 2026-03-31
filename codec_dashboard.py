@@ -1252,7 +1252,7 @@ async def webcam_snapshot():
     filename = f"webcam_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
     filepath = os.path.join(photo_dir, filename)
     with open(filepath, "wb") as f:
-        f.write(jpeg.tobytes())
+        f.write(data)
     return {"image": b64, "saved": filepath, "filename": filename}
 
 
