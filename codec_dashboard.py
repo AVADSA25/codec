@@ -1,5 +1,5 @@
 """CODEC v1.2 — Phone Dashboard & PWA"""
-import os, json, sqlite3, time, logging, secrets, subprocess, hmac, threading, uuid
+import os, json, sqlite3, time, logging, secrets, subprocess, hmac, threading, uuid, asyncio
 from datetime import datetime, timedelta
 
 log = logging.getLogger("codec_dashboard")
@@ -1198,21 +1198,30 @@ async def webcam_capture(request: Request):
 async def webcam_stream():
     """MJPEG stream from the Mac's webcam — for remote viewing from phone/tablet."""
     import cv2
+    from concurrent.futures import ThreadPoolExecutor
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
         return JSONResponse({"error": "Cannot open webcam"}, status_code=500)
+    _executor = ThreadPoolExecutor(max_workers=1)
+    def _read_frame():
+        ret, frame = cap.read()
+        if not ret:
+            return None
+        _, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+        return jpeg.tobytes()
     async def generate():
+        loop = asyncio.get_event_loop()
         try:
             while True:
-                ret, frame = cap.read()
-                if not ret:
+                data = await loop.run_in_executor(_executor, _read_frame)
+                if data is None:
                     break
-                _, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
                 yield (b"--frame\r\n"
-                       b"Content-Type: image/jpeg\r\n\r\n" + jpeg.tobytes() + b"\r\n")
+                       b"Content-Type: image/jpeg\r\n\r\n" + data + b"\r\n")
                 await asyncio.sleep(0.066)  # ~15 fps
         finally:
             cap.release()
+            _executor.shutdown(wait=False)
     from starlette.responses import StreamingResponse
     return StreamingResponse(generate(), media_type="multipart/x-mixed-replace; boundary=frame")
 
@@ -1221,15 +1230,22 @@ async def webcam_stream():
 async def webcam_snapshot():
     """Capture a single frame from the Mac's webcam and return as JPEG."""
     import cv2, base64
-    cap = cv2.VideoCapture(0)
-    if not cap.isOpened():
-        return JSONResponse({"error": "Cannot open webcam"}, status_code=500)
-    ret, frame = cap.read()
-    cap.release()
-    if not ret:
-        return JSONResponse({"error": "Failed to capture frame"}, status_code=500)
-    _, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
-    b64 = base64.b64encode(jpeg.tobytes()).decode()
+    from concurrent.futures import ThreadPoolExecutor
+    def _capture():
+        cap = cv2.VideoCapture(0)
+        if not cap.isOpened():
+            return None, None
+        ret, frame = cap.read()
+        cap.release()
+        if not ret:
+            return None, None
+        _, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        return jpeg.tobytes(), True
+    loop = asyncio.get_event_loop()
+    data, ok = await loop.run_in_executor(ThreadPoolExecutor(1), _capture)
+    if not ok:
+        return JSONResponse({"error": "Cannot capture from webcam"}, status_code=500)
+    b64 = base64.b64encode(data).decode()
     # Save
     photo_dir = os.path.expanduser("~/.codec/photos")
     os.makedirs(photo_dir, exist_ok=True)
