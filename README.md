@@ -3,9 +3,9 @@
 </p>
 
 <h1 align="center">CODEC</h1>
-<p align="center"><strong>Stop clicking. Start talking.</strong></p>
+<p align="center"><strong>Your Open-Source Intelligent Command Layer</strong></p>
 <p align="center">
-  Open-source AI layer for macOS that <em>does things</em> on your computer.<br/>
+  You speak. Your computer acts.<br/>
   Voice-first. Local-first. Privacy-first.
 </p>
 <p align="center">
