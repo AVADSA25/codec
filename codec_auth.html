@@ -429,7 +429,22 @@ function completeLogin() {
     var status = document.getElementById('status');
     status.textContent = 'Welcome back';
     status.className = 'status success';
-    setTimeout(function() { window.location.href = '/'; }, 600);
+    // E2E key exchange — negotiate encryption keys before redirect
+    _e2eNegotiateAuth().finally(function() {
+        setTimeout(function() { window.location.href = '/'; }, 600);
+    });
+}
+// E2E: ECDH key exchange after auth (sets sessionStorage flag for other pages)
+function _e2eNegotiateAuth() {
+    function _b64(buf){return btoa(String.fromCharCode.apply(null,new Uint8Array(buf)))}
+    function _unb64(s){var b=atob(s),a=new Uint8Array(b.length);for(var i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a}
+    return crypto.subtle.generateKey({name:'ECDH',namedCurve:'P-256'},true,['deriveBits']).then(function(kp){
+        return crypto.subtle.exportKey('raw',kp.publicKey).then(function(pub){
+            return fetch('/api/auth/keyexchange',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pub:_b64(pub)})}).then(function(r){return r.json()}).then(function(d){
+                if(d.pub){sessionStorage.setItem('_e2eReady','1')}
+            });
+        });
+    }).catch(function(e){console.warn('E2E key exchange skipped:',e)});
 }
 
 // ── Show TOTP verification step ──

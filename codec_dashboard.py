@@ -24,7 +24,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
     PUBLIC_PREFIXES = ("/api/auth/", "/static")
     # CSRF-exempt paths (auth endpoints handle their own protection)
     CSRF_EXEMPT = {"/api/auth/verify", "/api/auth/pin", "/api/auth/logout",
-                    "/api/auth/totp/setup", "/api/auth/totp/confirm", "/api/auth/totp/verify"}
+                    "/api/auth/totp/setup", "/api/auth/totp/confirm", "/api/auth/totp/verify",
+                    "/api/auth/keyexchange"}
 
     async def dispatch(self, request, call_next):
         from codec_config import DASHBOARD_TOKEN
@@ -237,6 +238,7 @@ AUTH_COOKIE_NAME = "codec_session"
 _SESSION_FILE = os.path.expanduser("~/.codec/.auth_sessions.json")
 _auth_sessions = {}  # token -> {created: datetime, ip: str, method: str}
 _auth_lock = threading.Lock()
+_e2e_keys = {}  # session_token -> bytes (AES-256 key)
 
 def _load_sessions():
     """Load sessions from disk on startup. Caller must hold _auth_lock (or be at import time)."""
@@ -554,6 +556,33 @@ async def totp_verify(request: Request):
     return {"verified": False, "error": "Invalid code"}
 
 
+@app.post("/api/auth/totp/disable")
+async def totp_disable(request: Request):
+    """Disable TOTP 2FA — requires an authenticated session (and CSRF)."""
+    if not _verify_biometric_session(request):
+        return JSONResponse({"error": "Authentication required"}, status_code=401)
+    # Remove totp_secret from config
+    try:
+        cfg_data = {}
+        if os.path.exists(CONFIG_PATH):
+            with open(CONFIG_PATH) as f:
+                cfg_data = json.load(f)
+        cfg_data.pop("totp_secret", None)
+        with open(CONFIG_PATH, "w") as f:
+            json.dump(cfg_data, f, indent=2)
+    except Exception as e:
+        return JSONResponse({"error": f"Failed to update config: {e}"}, status_code=500)
+    # Clear totp_verified from all active sessions
+    with _auth_lock:
+        for token, session in _auth_sessions.items():
+            session.pop("totp_verified", None)
+        _save_sessions()
+    client_ip = request.client.host if request.client else "unknown"
+    with open(AUDIT_LOG, "a") as f:
+        f.write(f"[{datetime.now().isoformat()}] TOTP_DISABLED: 2FA disabled by ip={client_ip}\n")
+    return {"disabled": True}
+
+
 @app.post("/api/auth/logout")
 async def auth_logout(request: Request):
     """Invalidate the current biometric session."""
@@ -562,6 +591,7 @@ async def auth_logout(request: Request):
         if token and token in _auth_sessions:
             del _auth_sessions[token]
             _save_sessions()
+    _e2e_keys.pop(token, None)
     return {"logged_out": True}
 
 
@@ -576,6 +606,87 @@ async def auth_status(request: Request):
         "pin_configured": bool(AUTH_PIN_HASH),
         "totp_enabled": _is_totp_enabled(),
     }
+
+
+# ═══════════════════════════════════════════════════════════════
+# E2E ENCRYPTION — ECDH key exchange + AES-256-GCM middleware
+# ═══════════════════════════════════════════════════════════════
+
+@app.post("/api/auth/keyexchange")
+async def e2e_keyexchange(request: Request):
+    """ECDH P-256 key exchange — derives shared AES-256-GCM key for E2E encryption."""
+    try:
+        from cryptography.hazmat.primitives.asymmetric import ec
+        from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+        from cryptography.hazmat.primitives import hashes, serialization
+    except ImportError:
+        return JSONResponse({"error": "cryptography library not available"}, status_code=500)
+    body = await request.json()
+    client_pub_b64 = body.get("pub")
+    if not client_pub_b64:
+        return JSONResponse({"error": "missing pub"}, status_code=400)
+    import base64
+    client_pub_raw = base64.b64decode(client_pub_b64)
+    client_pub = ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256R1(), client_pub_raw)
+    server_key = ec.generate_private_key(ec.SECP256R1())
+    shared = server_key.exchange(ec.ECDH(), client_pub)
+    aes_key = HKDF(algorithm=hashes.SHA256(), length=32, salt=None, info=b"codec-e2e").derive(shared)
+    server_pub_raw = server_key.public_key().public_bytes(
+        serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint
+    )
+    token = request.cookies.get(AUTH_COOKIE_NAME, "")
+    if token:
+        _e2e_keys[token] = aes_key
+    return {"pub": base64.b64encode(server_pub_raw).decode()}
+
+
+class E2EMiddleware(BaseHTTPMiddleware):
+    """Transparent AES-256-GCM encryption/decryption for requests with X-E2E: 1 header."""
+
+    async def dispatch(self, request, call_next):
+        if request.headers.get("x-e2e") != "1":
+            return await call_next(request)
+        token = request.cookies.get(AUTH_COOKIE_NAME, "")
+        aes_key = _e2e_keys.get(token) if token else None
+        if not aes_key:
+            return await call_next(request)
+        try:
+            import base64
+            from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+        except ImportError:
+            return await call_next(request)
+        # Decrypt request body if present
+        if request.method in ("POST", "PUT", "DELETE"):
+            raw = await request.body()
+            if raw:
+                try:
+                    envelope = json.loads(raw)
+                    if "iv" in envelope and "ct" in envelope:
+                        iv = base64.b64decode(envelope["iv"])
+                        ct = base64.b64decode(envelope["ct"])
+                        plaintext = AESGCM(aes_key).decrypt(iv, ct, None)
+                        # Replace request body with decrypted content
+                        request._body = plaintext
+                except Exception:
+                    pass  # Not E2E-encrypted or malformed — pass through
+        response = await call_next(request)
+        # Encrypt response body
+        if response.headers.get("content-type", "").startswith("application/json"):
+            body_parts = []
+            async for chunk in response.body_iterator:
+                body_parts.append(chunk if isinstance(chunk, bytes) else chunk.encode())
+            resp_body = b"".join(body_parts)
+            iv = os.urandom(12)
+            ct = AESGCM(aes_key).encrypt(iv, resp_body, None)
+            enc = json.dumps({"iv": base64.b64encode(iv).decode(), "ct": base64.b64encode(ct).decode()})
+            return StarletteJSONResponse(
+                content=json.loads(enc),
+                status_code=response.status_code,
+                headers={"x-e2e": "1"}
+            )
+        return response
+
+app.add_middleware(E2EMiddleware)
 
 
 # ═══════════════════════════════════════════════════════════════

@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from codec_config import MCP_DEFAULT_ALLOW, MCP_ALLOWED_TOOLS
 from codec_skill_registry import SkillRegistry
 
-mcp = FastMCP("CODEC", instructions="Voice-controlled computer agent with 40+ skills")
+mcp = FastMCP("CODEC", instructions="Voice-controlled computer agent with 50+ skills")
 
 # Compatibility shim: expose _tools as a dict-like object for introspection
 class _ToolsProxy:

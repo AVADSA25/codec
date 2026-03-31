@@ -33,8 +33,8 @@ def banner():
     ║                            Setup v1.5.0   ║
     ╚═══════════════════════════════════════════╝{X}
 {W}  Your Open-Source Intelligent Command Layer
-  7 products: Core · Dictate · Assist · Chat · Vibe · Voice · Remote
-  49 skills · 8 text services · 12 AI agent crews{X}
+  7 products: Core · Dictate · Instant · Chat · Vibe · Voice · Overview
+  50+ skills · 8 text services · 12 AI agent crews{X}
 """)
 
 def ask(prompt, options=None, default=None):
@@ -451,15 +451,15 @@ def main():
     banner()
     section("CODEC Features", 8, total_steps)
     print(f"\n{W}  CODEC includes these integrated features:{X}")
-    print(f"  {O}CODEC Assist{X}  — 8 right-click text services (Proofread, Elevate, Explain, Prompt, Translate, Reply, Read Aloud, Save)")
+    print(f"  {O}CODEC Instant{X} — 8 right-click text services (Proofread, Elevate, Explain, Prompt, Translate, Reply, Read Aloud, Save)")
     print(f"  {O}CODEC Dictate{X} — Hold right CMD to dictate text anywhere")
     print(f"  {O}CODEC Chat{X}    — Deep Chat with 250K context + AI Agents")
     print(f"  {O}CODEC Vibe{X}    — AI-powered IDE with Skill Forge")
     print(f"  {O}CODEC Voice{X}   — Live voice calls with skill dispatch")
-    print(f"  {O}CODEC Remote{X}  — Phone dashboard via Cloudflare Tunnel")
+    print(f"  {O}CODEC Overview{X} — Your AI dashboard — every tool, every agent, one screen")
     print()
 
-    if ask_yn("Set up CODEC Assist (right-click text services)?", True):
+    if ask_yn("Set up CODEC Instant (right-click text services)?", True):
         print(f"\n{W}  Creating 8 macOS Quick Actions...{X}")
         print(f"  {G}✓{X} Quick Actions will be created on first CODEC launch")
         print(f"  {W}  After launch, right-click any selected text → Services → CODEC{X}")

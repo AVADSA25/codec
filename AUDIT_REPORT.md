@@ -251,7 +251,7 @@ Fazm's relay is architecturally identical to CODEC's Cloudflare Tunnel setup. On
 - Wake word detection (PTT only)
 - FTS5 memory search
 - Any equivalent to CODEC Dictate (system-wide paste)
-- Right-click text services (CODEC Assist)
+- Right-click text services (CODEC Instant)
 
 ---
 
@@ -285,7 +285,7 @@ Fazm's relay is architecturally identical to CODEC's Cloudflare Tunnel setup. On
 | **Python API** | ✅ native | ✅ PyO3 | ❌ |
 | **Cloudflare orphan cleanup** | ❌ | N/A | ✅ |
 
-**CODEC's moat:** Local LLM support, 36-skill system, Skill Forge, CODEC Agents, CODEC Dictate, CODEC Assist (right-click), wake word, and the ability to run fully offline — none of which Terminator or Fazm offers.
+**CODEC's moat:** Local LLM support, 36-skill system, Skill Forge, CODEC Agents, CODEC Dictate, CODEC Instant (right-click), wake word, and the ability to run fully offline — none of which Terminator or Fazm offers.
 
 **CODEC's gaps:** Real UI element access (AXUIElement), real-time streaming STT, PTT lock mode, session warmup for CODEC Voice.
 

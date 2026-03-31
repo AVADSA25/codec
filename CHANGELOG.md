@@ -23,7 +23,7 @@
 - Error handling: 30+ bare except:pass replaced with logged exceptions
 - Logging framework: structured logging replaces print statements
 - Safety blocklist expanded to 30+ dangerous command patterns
-- Setup wizard: 9 steps, 49 skills, CODEC features configuration
+- Setup wizard: 9 steps, 50+ skills, CODEC features configuration
 
 ### Fixed
 - Command Preview window freezing (now runs as subprocess)

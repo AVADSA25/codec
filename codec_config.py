@@ -23,6 +23,8 @@ cfg = load_config()
 
 # Identity
 AGENT_NAME        = cfg.get('agent_name', 'C')
+ASSISTANT_NAME    = cfg.get('assistant_name', 'CODEC')
+USER_NAME         = cfg.get('user_name', '')
 
 # LLM
 QWEN_BASE_URL     = cfg.get("llm_base_url", "http://localhost:8081/v1")

@@ -51,7 +51,7 @@ pip3 install -r requirements.txt --break-system-packages 2>/dev/null || pip3 ins
 mkdir -p ~/.codec/skills
 
 # Copy skills
-echo "📦 Installing 49 skills..."
+echo "📦 Installing 50+ skills..."
 cp skills/*.py ~/.codec/skills/ 2>/dev/null
 
 # Run setup wizard

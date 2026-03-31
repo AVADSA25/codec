@@ -600,7 +600,7 @@ def daily_briefing_crew(**kwargs) -> Crew:
     scout = Agent(
         name="Scout",
         role=(
-            "You are M's daily briefing assistant. Check today's calendar, current weather, "
+            "You are the user's daily briefing assistant. Check today's calendar, current weather, "
             "and top news. Compile a concise 2-minute spoken briefing. "
             "Write as natural speech — no markdown, no bullet points."
         ),
@@ -609,7 +609,7 @@ def daily_briefing_crew(**kwargs) -> Crew:
     return Crew(
         agents=[scout],
         tasks=[
-            "Compile today's daily briefing for M:\n"
+            "Compile today's daily briefing:\n"
             "1. Calendar — what meetings/events today?\n"
             "2. Weather — what's it like right now?\n"
             "3. News — any major headlines (search 'top news today')?\n"

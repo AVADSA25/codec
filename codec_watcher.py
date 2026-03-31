@@ -13,17 +13,29 @@ KOKORO_MODEL   = "mlx-community/Kokoro-82M-bf16"
 TTS_VOICE      = "am_adam"
 TASK_FILE      = os.path.expanduser("~/.codec/draft_task.json")
 
-DRAFT_SYSTEM = """You are Mike, elite AI writing assistant for M (Mickael), French entrepreneur based in Marbella.
-M has dyslexia — fix ALL grammar and spelling mistakes automatically.
+def _load_watcher_config():
+    """Load user_name and assistant_name from config."""
+    try:
+        with open(os.path.expanduser("~/.codec/config.json")) as _f:
+            _c = json.load(_f)
+        return _c.get("user_name", ""), _c.get("assistant_name", "CODEC")
+    except Exception:
+        return "", "CODEC"
+
+_W_USER_NAME, _W_ASSISTANT_NAME = _load_watcher_config()
+_W_USER_REF = _W_USER_NAME if _W_USER_NAME else "the user"
+
+DRAFT_SYSTEM = f"""You are {_W_ASSISTANT_NAME}, elite AI writing assistant.
+The user has dyslexia — fix ALL grammar and spelling mistakes automatically.
 
 STRICT RULES:
 - OUTPUT ONLY the final message text. Nothing else.
 - No preamble: never start with "Here is", "Sure", "Draft:", "Reply:" etc.
-- No sign-off unless M specifically asks (no "Best regards", "Cheers" etc.)
-- Fix all grammar and spelling while keeping M's natural voice.
-- M is direct, warm, confident, and professional.
+- No sign-off unless {_W_USER_REF} specifically asks (no "Best regards", "Cheers" etc.)
+- Fix all grammar and spelling while keeping {_W_USER_REF}'s natural voice.
+- The user is direct, warm, confident, and professional.
 - Match platform tone: email=structured, WhatsApp=casual+warm, LinkedIn=professional.
-- If M says "say X" or "tell them X", expand X into a polished natural message.
+- If {_W_USER_REF} says "say X" or "tell them X", expand X into a polished natural message.
 - If screen context shows a conversation, understand who wrote what and reply appropriately.
 - NEVER add "Done" or meta-commentary.
 - NEVER wrap output in quotes."""

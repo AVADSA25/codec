@@ -106,22 +106,46 @@ def start_keyboard_listener(state, ctx):
         import numpy as np
         import soundfile as sf
         import requests as req_wake
-        sample_rate = 16000
-        chunk_samples = int(WAKE_CHUNK_SEC * sample_rate)
+        sample_rate = 16000  # Whisper target rate
+
+        # ── Detect native device sample rate to avoid CoreAudio errors ───────
+        try:
+            dev_info = sd.query_devices(sd.default.device[0], 'input')
+            device_rate = int(dev_info['default_samplerate'])
+        except Exception:
+            device_rate = sample_rate
+        need_resample = device_rate != sample_rate
+        capture_rate = device_rate if need_resample else sample_rate
+        chunk_samples = int(WAKE_CHUNK_SEC * capture_rate)
+        if need_resample:
+            log.info(f"Wake: device rate {device_rate}Hz, will resample to {sample_rate}Hz")
+
+        def _resample(audio_data, from_rate, to_rate):
+            """Simple linear resample from from_rate to to_rate."""
+            if from_rate == to_rate:
+                return audio_data
+            ratio = to_rate / from_rate
+            n_out = int(len(audio_data) * ratio)
+            indices = np.linspace(0, len(audio_data) - 1, n_out).astype(int)
+            return audio_data[indices]
+
         # ── Smoothed energy state (Fazm-inspired decay) ──────────────────────
         DECAY_RATE       = 0.85    # smoothing decay per chunk
         NOISE_FLOOR      = 30.0    # absolute floor — ignore mic noise below this
         MIN_SPEECH_FRAC  = 0.12    # at least 12% of samples must be above threshold
         CONFIDENCE_FLOOR = -1.0    # reject Whisper segments with avg_logprob below this
         smoothed_energy  = 0.0
-        log.info("Wake word listener started")
+        log.info(f"Wake word listener started (capture={capture_rate}Hz, whisper={sample_rate}Hz)")
         while True:
             if not WAKE_WORD or state["recording"] or not state["active"]:
                 time.sleep(0.3)
                 continue
             try:
-                audio = sd.rec(chunk_samples, samplerate=sample_rate, channels=1, dtype='int16')
+                audio = sd.rec(chunk_samples, samplerate=capture_rate, channels=1, dtype='int16')
                 sd.wait()
+                # Resample to 16kHz for Whisper if device rate differs
+                if need_resample:
+                    audio = _resample(audio, capture_rate, sample_rate)
 
                 # ── 1. Smoothed energy gate ───────────────────────────────────
                 raw_energy = float(np.abs(audio).mean())
@@ -182,8 +206,10 @@ def start_keyboard_listener(state, ctx):
                             else:
                                 log.info("Wake word detected! Listening...")
                                 push(lambda: show_overlay('Listening...', '#E8711A', 5000))
-                                full_audio = sd.rec(int(8 * sample_rate), samplerate=sample_rate, channels=1, dtype='int16')
+                                full_audio = sd.rec(int(8 * capture_rate), samplerate=capture_rate, channels=1, dtype='int16')
                                 sd.wait()
+                                if need_resample:
+                                    full_audio = _resample(full_audio, capture_rate, sample_rate)
                                 tmp2 = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
                                 tmp2.close()
                                 sf.write(tmp2.name, full_audio, sample_rate)

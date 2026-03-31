@@ -29,19 +29,19 @@ AI chatbots don't fix this. They're another tab. You still copy, paste, switch, 
 
 | | Product | One-liner |
 |---|---|---|
-| **1** | **CODEC Core** | 50 voice skills, keyboard shortcuts, auto-paste replies — your Mac's AI command layer |
+| **1** | **CODEC Core** | 50+ voice skills, keyboard shortcuts, direct chat replies — your Mac's AI command layer |
 | **2** | **CODEC Dictate** | Hold a key, speak, release — text appears in any app instantly |
-| **3** | **CODEC Assist** | Select text anywhere → right-click → AI rewrites, translates, replies, proofreads |
+| **3** | **CODEC Instant** | Select text, right-click — AI rewrites, translates, replies in-place. Instant. |
 | **4** | **CODEC Chat** | 250K-context chat with file uploads, vision, web search, and 12 autonomous agent crews |
 | **5** | **CODEC Vibe** | AI coding IDE — describe what you want, watch it build, live preview in browser |
 | **6** | **CODEC Voice** | Call your AI like a phone call — it books, researches, and acts while you talk |
-| **7** | **CODEC Remote** | Full dashboard from your phone — Touch ID + PIN + 2FA secured |
+| **7** | **CODEC Overview** | Your AI dashboard — every tool, every agent, one screen |
 
 ### What hits different
 
 **Reply to any message without typing.** Slack pings. WhatsApp buzzes. iMessage lights up. You don't switch apps, don't open keyboards. Press a key, say *"reply saying I'll be there in 10, casual tone"* — CODEC reads the conversation, drafts the reply, and pastes it directly into the chat input. You hit send. Done.
 
-**Keyboard shortcuts that replace entire workflows.** Hold F18 → speak → release. Your voice becomes a command. Double-tap `*` → CODEC screenshots your screen and tells you what it sees. Select any text → right-click → rewrite it, translate it, proofread it, explain it. No app to open. No tab to switch to. It's already there.
+**Keyboard shortcuts that replace entire workflows.** Hold F18 → speak → release. Your voice becomes a command. Double-tap `*` → CODEC screenshots your screen and tells you what it sees. Select any text → right-click → CODEC Instant rewrites it, translates it, proofreads it, explains it. No app to open. No tab to switch to. It's already there.
 
 **Your screen is the context.** CODEC reads what's in front of you — your IDE, your browser, your email. *"What's wrong with this code?"* It sees the error. *"Summarize this article"* — it reads the page. *"Fill in this form"* — it types into the fields. No copy-paste. No explaining what you're looking at.
 
@@ -119,7 +119,7 @@ AI chatbots don't fix this. They're another tab. You still copy, paste, switch, 
 </p>
 <p align="center">
   <img src="docs/screenshots/terminal.png" alt="Terminal" width="400"/><br/>
-  <em>50 skills loaded at startup</em>
+  <em>50+ skills loaded at startup</em>
 </p>
 </details>
 
@@ -165,7 +165,7 @@ You speak → Whisper STT → intent dispatch → skill / agent crew → action 
 | Double-tap `+` `+` | Analyze document in clipboard |
 | Select text → right-click | 8 AI services in context menu |
 
-### 50 Skills
+### 50+ Skills
 
 Grouped by what they do, not marketing categories:
 
@@ -200,7 +200,7 @@ Not single prompts — full multi-step AI workflows that run autonomously:
 
 Schedule any crew: *"Run competitor analysis every Monday at 9am"*
 
-### Right-Click Services (CODEC Assist)
+### Right-Click Services (CODEC Instant)
 
 Select text anywhere → right-click:
 
@@ -379,7 +379,7 @@ codec_scheduler.py    — Cron-like agent scheduling
 codec_marketplace.py  — Skill marketplace CLI
 ax_bridge/            — Swift AX accessibility bridge
 swift-overlay/        — SwiftUI status bar app
-skills/               — 50 built-in skills
+skills/               — 50+ built-in skills
 tests/                — 212+ pytest tests
 install.sh            — One-line installer
 setup_codec.py        — Setup wizard (9 steps)
@@ -400,7 +400,7 @@ setup_codec.py        — Setup wizard (9 steps)
 
 ## Contributing
 
-All skill contributions welcome. 50 built-in, marketplace growing.
+All skill contributions welcome. 50+ built-in, marketplace growing.
 
 ```bash
 git clone https://github.com/AVADSA25/codec.git

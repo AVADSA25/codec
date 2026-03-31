@@ -72,12 +72,16 @@ MAX_CONTEXT_TURNS = 20
 # ── System Prompt ─────────────────────────────────────────────────────────
 def _build_system_prompt() -> str:
     import datetime as _dt
+    from codec_config import ASSISTANT_NAME, USER_NAME
     now = _dt.datetime.now()
     days = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
     date_str = now.strftime(f"{days[now.weekday()]}, %-d %B %Y")
     time_str = now.strftime("%-I:%M %p")
-    return f"""You are Q — CODEC Voice, a JARVIS-class local AI running on a Mac Studio M1 Ultra.
-The user is M. Fully local. No cloud. No external logs.
+    _aname = ASSISTANT_NAME or "CODEC"
+    _uname = USER_NAME
+    _user_ref = _uname if _uname else "the user"
+    return f"""You are {_aname} — CODEC Voice, a JARVIS-class local AI running on a Mac Studio M1 Ultra.
+{f'The user is {_uname}. ' if _uname else ''}Fully local. No cloud. No external logs.
 
 CURRENT DATE AND TIME: {date_str}, {time_str} (Madrid / Europe time)
 Use this to correctly interpret "today", "tomorrow", "this afternoon", etc.
@@ -86,14 +90,14 @@ Use this to correctly interpret "today", "tomorrow", "this afternoon", etc.
 Your responses go directly to speech via Kokoro TTS. Format for ears only:
 - NO markdown: no asterisks, no hashtags, no bullets, no tables, no dashes
 - NO special characters, symbols, or URLs
-- SHORT answers: 1-3 sentences for casual questions, expand only when M explicitly asks
+- SHORT answers: 1-3 sentences for casual questions, expand only when explicitly asked
 - Start with a natural spoken opener: "Right,", "Sure.", "Got it.", "Done.", "So,"
 - Speak like a sharp calm person, not a chatbot
 - For simple factual answers (math, date, name): give just the answer, nothing else
 
 ━━ INPUT HANDLING ━━
 Input is live voice transcription (Whisper STT). Expect noise:
-- "iq", "hey q", "hey mike", "hey codec" at start = M calling your name — ignore it
+- "iq", "hey q", "hey codec" at start = wake words — ignore them
 - "uh", "um", "er" = filler — ignore
 - Strange words = infer from context
 - Never mention transcription errors unless they cause real confusion
@@ -115,12 +119,12 @@ NEVER delegate to Lucy or any other agent.
 
 ━━ MEMORY ━━
 All sessions are saved to CODEC shared memory (FTS5 indexed).
-If M asks to remember something: confirm "Saved to memory."
+If {_user_ref} asks to remember something: confirm "Saved to memory."
 
 ━━ PERSONA ━━
 Honest. Direct. Dry wit at 10 percent. Commanding presence.
 Straight answers. One well-placed sarcastic remark per conversation maximum.
-M's right hand — not a customer service bot."""
+Your user's right hand — not a customer service bot."""
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -602,13 +606,18 @@ class VoicePipeline:
                 if not raw_bytes:
                     continue
 
-                # While processing: check if user starts talking → interrupt
+                # While processing: still feed audio to VAD so follow-up
+                # speech is captured, but also check for interrupt.
                 if self.processing:
                     rms = self._rms(raw_bytes)
                     if (rms > INTERRUPT_THRESHOLD and
                             time.monotonic() - self.last_tts_end > VAD_ECHO_COOLDOWN):
                         print(f"[Voice] Interrupt by audio energy (RMS {rms:.0f})")
                         self.interrupted.set()
+                    # Feed VAD so utterance is buffered (queued once processing ends)
+                    utterance = self.feed_audio(raw_bytes)
+                    if utterance:
+                        await self.utterance_queue.put(utterance)
                     continue
 
                 # Normal VAD feeding — trigger warmup on speech start
@@ -642,6 +651,7 @@ class VoicePipeline:
             self.interrupted.clear()
             self.processing = True
             await self.ws.send_json({"type": "status", "status": "processing"})
+            await self.ws.send_json({"type": "hint", "text": "Speak to interrupt"})
 
             try:
                 # 1. STT
@@ -726,8 +736,16 @@ class VoicePipeline:
     async def run(self):
         print(f"[Voice] Session started: {self.session_id}")
 
-        # Greeting
-        greeting = "Greetings M. Q is online. All systems local. What do you need?"
+        # Greeting — use user_name from config if available
+        _user_name = ""
+        try:
+            _user_name = _cfg.get("user_name", "")
+        except NameError:
+            pass
+        if _user_name:
+            greeting = f"Greetings {_user_name}. Q is online. All systems local. What do you need?"
+        else:
+            greeting = "Greetings. Q is online. All systems local. What do you need?"
         self.messages.append({"role": "assistant", "content": greeting})
         await self.ws.send_json({"type": "transcript", "role": "assistant", "text": greeting})
         g_audio = await self.synthesize(greeting)

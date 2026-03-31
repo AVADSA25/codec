@@ -242,11 +242,11 @@ def transcribe_and_type(audio_path):
         if is_draft:
             try:
                 print("[AVA] Draft detected, calling Qwen...")
-                DRAFT_SYS = "You are Q, elite writing assistant for M (Mickael), French entrepreneur. M has dyslexia. OUTPUT ONLY the final message text. No preamble. No explanation. Fix grammar. Keep M personality."
+                DRAFT_SYS = "You are CODEC, elite writing assistant. The user has dyslexia. OUTPUT ONLY the final message text. No preamble. No explanation. Fix grammar. Keep the user's personality."
                 r = _req.post("http://localhost:8081/v1/chat/completions",
                     json={"model":"mlx-community/Qwen3.5-35B-A3B-4bit",
                           "messages":[{"role":"system","content":DRAFT_SYS},
-                                      {"role":"user","content":"M instruction: " + text + "\nWrite the final message text now:"}],
+                                      {"role":"user","content":"User instruction: " + text + "\nWrite the final message text now:"}],
                           "max_tokens":300,"temperature":0.6},
                     timeout=60)
                 if r.status_code == 200:

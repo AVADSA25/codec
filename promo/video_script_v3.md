@@ -49,17 +49,17 @@ Right (orange): "CODEC" with check marks:
 
 | Icon | Name | Line |
 |------|------|------|
-| 🎙️ | CODEC Core | 49 voice skills, always-on wake word |
+| 🎙️ | CODEC Core | 50+ voice skills, always-on wake word |
 | ✍️ | CODEC Dictate | Hold a key, speak, text appears anywhere |
-| 🖱️ | CODEC Assist | 8 AI services in your right-click menu |
+| 🖱️ | CODEC Instant | 8 AI services in your right-click menu |
 | 💬 | CODEC Chat | 250K context, 12 AI agent crews |
 | 🔧 | CODEC Vibe | AI-powered IDE with live preview |
 | 📞 | CODEC Voice | Call your AI — it takes action while you talk |
-| 📱 | CODEC Remote | Control your Mac from your phone |
+| 📱 | CODEC Overview | Your AI dashboard — every tool, every agent, one screen |
 
 Cards glow orange on hover/focus as voiceover mentions each.
 
-**Voiceover:** "Seven integrated products. Core for voice commands. Dictate for transcription. Assist in your right-click menu. Chat with twelve agent crews. Vibe for coding. Voice for live calls. Remote for anywhere access."
+**Voiceover:** "Seven integrated products. Core for voice commands. Dictate for transcription. Instant in your right-click menu. Chat with twelve agent crews. Vibe for coding. Voice for live calls. Overview for your dashboard."
 
 ---
 
@@ -86,9 +86,9 @@ Show the CODEC terminal banner (use actual screenshot: terminal.png) briefly, th
 - Animation: Calendar events list slides in
 - Result badge: "3 meetings found — next one at 2pm" ✅
 
-Bottom text: "49 skills fire instantly. Calendar, Gmail, Google Docs, Chrome, Slack, and more."
+Bottom text: "50+ skills fire instantly. Calendar, Gmail, Google Docs, Chrome, Slack, and more."
 
-**Voiceover:** "CODEC Core. Forty-nine skills that fire by voice. Research competitors and get a full report in Google Docs. Schedule automated briefings. Check your calendar. Gmail, Chrome, Slack, and more — all by voice."
+**Voiceover:** "CODEC Core. Fifty-plus skills that fire by voice. Research competitors and get a full report in Google Docs. Schedule automated briefings. Check your calendar. Gmail, Chrome, Slack, and more — all by voice."
 
 ---
 
@@ -121,7 +121,7 @@ Right-click menu appears with 8 CODEC services (use actual screenshot: right-cli
 3. Text transforms with green glow: "There are a lot of things we need to discuss..."
 4. Quick flash: same menu in Safari, VS Code, Slack (works everywhere)
 
-**Voiceover:** "CODEC Assist. Eight AI services in your right-click menu. Proofread, Elevate, Translate, Reply — select text, right-click, done. Works in every app on your Mac."
+**Voiceover:** "CODEC Instant. Eight AI services in your right-click menu. Proofread, Elevate, Translate, Reply — select text, right-click, done. Works in every app on your Mac."
 
 ---
 
@@ -199,7 +199,7 @@ Quick demo: phone sends voice command → Mac executes it → result appears on 
 
 Show: Quick Chat on phone → Tasks panel → Voice Call — all from mobile.
 
-**Voiceover:** "CODEC Remote. Access your Mac from anywhere. Cloudflare Tunnel with Touch ID authentication. Commands, voice calls, and full dashboard — all from your phone."
+**Voiceover:** "CODEC Overview. Your AI dashboard — every tool, every agent, one screen. Cloudflare Tunnel with Touch ID authentication. Commands, voice calls, and full dashboard — all from your phone."
 
 ---
 
@@ -218,7 +218,7 @@ cd codec && ./install.sh
 python3 codec.py
 ```
 
-CODEC banner appears → "49 skills loaded. Online."
+CODEC banner appears → "50+ skills loaded. Online."
 
 Bottom: "Guided setup wizard. Under 5 minutes."
 
@@ -253,7 +253,7 @@ Right — Security:
 Text fades in sequence (2s apart):
 1. "CODEC" (64px, white)
 2. "Your Open-Source Intelligent Command Layer" (28px, orange)
-3. "49 skills · 8 right-click services · 12 AI agent crews" (22px)
+3. "50+ skills · 8 right-click services · 12 AI agent crews" (22px)
 4. "Built by one person in 6 days." (32px, orange, bold)
 5. "Imagine what you'll build with it." (28px, white)
 
@@ -262,7 +262,7 @@ Then:
 - "opencodec.org" (36px, orange glow)
 - "AVA Digital LLC — avadigital.ai" (16px, dim)
 
-**Voiceover:** "CODEC. Open source. Forty-nine skills. Twelve agent crews. Seven products. Built by one person in six days. Star it. Clone it. Make it yours. Open CODEC dot org."
+**Voiceover:** "CODEC. Open source. Fifty-plus skills. Twelve agent crews. Seven products. Built by one person in six days. Star it. Clone it. Make it yours. Open CODEC dot org."
 
 **Music:** Builds to final note, clean fade.
 
@@ -276,4 +276,4 @@ Then:
 - **Logo:** CODEC octagon at https://i.imgur.com/RbrQ7Bt.png
 - **Transitions:** Smooth fades, no hard cuts. Spring animations for cards/elements appearing.
 - **Text sizing:** Headlines 44-64px, body 24-28px, captions 18-22px. Never smaller than 18px.
-- **Actual stats:** 49 skills, 8 right-click services, 12 agent crews, 250K token context, v1.5.0
+- **Actual stats:** 50+ skills, 8 right-click services, 12 agent crews, 250K token context, v1.5.0
