@@ -40,7 +40,7 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html { background: var(--bg); }
 html, body { font-family: var(--font); background: var(--bg); color: var(--text); height: 100%; overflow: hidden; -webkit-tap-highlight-color: transparent; }
-.app { display: flex; flex-direction: column; height: 100vh; padding-top: var(--safe-top); padding-bottom: var(--safe-bottom); }
+.app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; padding-top: var(--safe-top); padding-bottom: var(--safe-bottom); padding-bottom: env(safe-area-inset-bottom, 0px); }
 
 /* ── Icons (inline SVG) ── */
 .ico { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
@@ -292,7 +292,8 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
 
 /* ── Mobile Responsive ── */
 @media (max-width: 768px) {
-  .page-nav { display: none; }
+  .page-nav{position:fixed;bottom:0;left:0;right:0;z-index:9998;transform:none;border-radius:0;padding:6px 0;justify-content:center;background:var(--surface);border-top:1px solid var(--border);gap:0}
+  .nav-link{padding:8px 12px;font-size:11px}
   .header h1 { font-size: 14px; }
   .header img { width: 26px; height: 26px; }
   .tabs { -webkit-overflow-scrolling: touch; scrollbar-width: none; }
@@ -301,7 +302,7 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
   .settings-section { width: 100%; }
   .card { overflow: hidden; word-break: break-word; }
   .panel { padding: 10px; }
-  .input-area { padding: 8px 10px; padding-bottom: calc(8px + var(--safe-bottom)); }
+  .input-area{padding-bottom:calc(60px + env(safe-area-inset-bottom, 8px))}
   .ibtn { width: 36px; height: 36px; }
 }
 @media (max-width: 480px) {
@@ -317,8 +318,9 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
 .dragover #panel-chat{border:2px dashed var(--accent)!important;border-radius:12px;background:rgba(167,139,250,0.06)}
 .drag-hint{display:none;text-align:center;padding:24px;color:var(--accent);font-size:14px;font-weight:600;letter-spacing:.5px}
 .dragover .drag-hint{display:block}
-.webcam-pip{position:fixed;bottom:80px;right:20px;width:220px;border-radius:14px;overflow:hidden;border:2px solid var(--accent);box-shadow:0 4px 24px rgba(0,0,0,.5);z-index:9999;display:none;background:#000}
-.webcam-pip video{width:100%;display:block;transform:scaleX(-1)}
+.webcam-pip{position:fixed;bottom:80px;right:20px;width:240px;border-radius:14px;overflow:hidden;border:2px solid var(--accent);box-shadow:0 4px 24px rgba(0,0,0,.5);z-index:9999;display:none;background:#000;transition:width .3s,height .3s,border-radius .3s}
+.webcam-pip img,.webcam-pip video{width:100%;display:block}
+.webcam-pip.expanded{width:640px;max-width:90vw;border-radius:10px}
 .pip-bar{display:flex;justify-content:center;gap:10px;padding:6px;background:rgba(0,0,0,.6)}
 .pip-btn{background:rgba(255,255,255,.15);border:none;color:#fff;width:34px;height:34px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s}
 .pip-btn:hover{background:var(--accent)}
@@ -344,7 +346,8 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
       <a href="/" class="icon-btn" title="Home"><svg class="ico" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></a>
       <button class="icon-btn" id="voiceBtn" onclick="toggleVoice()" title="Voice replies"><svg class="ico" viewBox="0 0 24 24"><path d="M11 5L6 9H2v6h4l5 4V5z"/><line x1="23" y1="9" x2="17" y2="15" id="muteX1"/><line x1="17" y1="9" x2="23" y2="15" id="muteX2"/></svg></button>
       <button class="icon-btn" id="screenBtn" onclick="takeScreenshot()" title="Screenshot"><svg class="ico" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></button>
-      <button class="icon-btn" id="camBtn" onclick="toggleWebcamPip()" title="Live camera"><svg class="ico" viewBox="0 0 24 24"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
+      <button class="icon-btn" id="photoBtn" onclick="takeServerPhoto()" title="Photo (Mac webcam)"><svg class="ico" viewBox="0 0 24 24"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
+      <button class="icon-btn" id="camBtn" onclick="toggleWebcamPip()" title="Live video (Mac webcam)"><svg class="ico" viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></button>
       <a href="/tasks#reports" class="icon-btn notif-bell" id="notifBellBtn" title="Task Reports"><svg class="ico" viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg><span class="notif-badge hidden" id="notifBadge">0</span></a>
       <button class="icon-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme"><svg class="ico" viewBox="0 0 24 24" id="themeIco"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg></button>
       <button class="icon-btn" onclick="showTab('settings')" title="Settings"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg></button>
@@ -657,10 +660,14 @@ async function loadTotpStatus() {
       statusEl.textContent = 'Enabled';
       statusEl.style.color = 'var(--success)';
       actionsEl.innerHTML = '<button class="save-config-btn" style="margin:0;background:var(--danger)" onclick="disableTotp()">Disable 2FA</button>';
+    } else if (data.totp_secret_exists) {
+      statusEl.textContent = 'Disabled (secret exists)';
+      statusEl.style.color = 'var(--warning, orange)';
+      actionsEl.innerHTML = '<button class="save-config-btn" style="margin:0" onclick="enableTotp()">Re-enable 2FA</button>';
     } else {
-      statusEl.textContent = 'Disabled';
+      statusEl.textContent = 'Not configured';
       statusEl.style.color = 'var(--text-dim)';
-      actionsEl.innerHTML = '<button class="save-config-btn" style="margin:0" onclick="window.location.href=\'/auth#totp-setup\'">Setup 2FA</button>';
+      actionsEl.innerHTML = '<button class="save-config-btn" style="margin:0" onclick="setupTotpInline()">Setup 2FA</button>';
     }
   } catch(e) {
     var statusEl = document.getElementById('totpStatus');
@@ -683,6 +690,61 @@ async function disableTotp() {
   } catch(e) {
     showToast('Network error disabling 2FA');
   }
+}
+
+async function enableTotp() {
+  var code = prompt('Enter your 6-digit authenticator code to re-enable 2FA:');
+  if (!code || code.length < 6) { showToast('Enter a valid 6-digit code'); return; }
+  try {
+    var r = await fetch('/api/auth/totp/enable', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: code }) });
+    var data = await r.json();
+    if (data.enabled) {
+      showToast('2FA re-enabled successfully!');
+      loadTotpStatus();
+    } else {
+      showToast(data.error || 'Failed to enable 2FA');
+    }
+  } catch(e) {
+    showToast('Network error enabling 2FA');
+  }
+}
+
+async function setupTotpInline() {
+  var actionsEl = document.getElementById('totpActions');
+  actionsEl.innerHTML = '<span style="color:var(--text-dim)">Loading QR code...</span>';
+  try {
+    var r = await fetch('/api/auth/totp/setup', { method: 'POST' });
+    var data = await r.json();
+    if (data.error) { showToast(data.error); loadTotpStatus(); return; }
+    actionsEl.innerHTML =
+      '<div style="text-align:center">' +
+      '<p style="color:var(--text-dim);font-size:12px;margin-bottom:10px">Scan with your authenticator app:</p>' +
+      '<img src="data:image/png;base64,' + data.qr_code + '" style="width:180px;height:180px;border-radius:8px;background:#fff;padding:8px" />' +
+      '<p style="color:var(--text-dim);font-size:11px;margin:10px 0 6px">Then enter the 6-digit code:</p>' +
+      '<input type="text" id="totpSetupCode" maxlength="6" pattern="[0-9]*" inputmode="numeric" ' +
+      'style="width:120px;text-align:center;padding:8px;font-size:18px;letter-spacing:6px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2);color:var(--text);font-family:var(--mono)" />' +
+      '<br/><button class="save-config-btn" style="margin-top:10px" onclick="confirmTotpSetup(\'' + data.secret + '\')">Verify & Enable</button>' +
+      '<button class="save-config-btn" style="margin-top:6px;background:var(--surface-2);color:var(--text-dim)" onclick="loadTotpStatus()">Cancel</button>' +
+      '</div>';
+  } catch(e) {
+    showToast('Error setting up 2FA');
+    loadTotpStatus();
+  }
+}
+
+async function confirmTotpSetup(secret) {
+  var code = document.getElementById('totpSetupCode').value;
+  if (!code || code.length < 6) { showToast('Enter the 6-digit code'); return; }
+  try {
+    var r = await fetch('/api/auth/totp/confirm', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ secret: secret, code: code }) });
+    var data = await r.json();
+    if (data.enabled) {
+      showToast('2FA enabled successfully!');
+      loadTotpStatus();
+    } else {
+      showToast(data.error || 'Invalid code — try again');
+    }
+  } catch(e) { showToast('Verification failed'); }
 }
 
 function renderSettings(cfg) {
@@ -821,41 +883,61 @@ async function playResponse(text) {
   try { new Audio('/api/tts?text=' + encodeURIComponent(text.substring(0, 300))).play(); } catch(e) {}
 }
 
-// ── Live Webcam PIP ──
-var _pipStream = null;
+// ── Server Photo (Mac webcam) ──
+function takeServerPhoto() {
+  var btn = document.getElementById('photoBtn');
+  btn.style.borderColor = 'var(--accent)';
+  showToast('Capturing from Mac webcam...');
+  fetch('/api/webcam/snapshot').then(function(r) { return r.json(); }).then(function(d) {
+    btn.style.borderColor = '';
+    if (d.error) { showToast('Error: ' + d.error); return; }
+    showToast('Photo saved: ' + d.filename);
+    // Auto-analyze
+    fetch('/api/webcam', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: d.image, analyze: true, prompt: 'Describe what you see in this photo. Be concise.' })
+    }).then(function(r2) { return r2.json(); }).then(function(d2) {
+      if (d2.analysis) showToast(d2.analysis);
+    });
+  }).catch(function(e) { btn.style.borderColor = ''; showToast('Camera error: ' + e.message); });
+}
+
+// ── Live Webcam PIP (Mac MJPEG stream) ──
 var _pipDrag = { active: false, x: 0, y: 0 };
 function toggleWebcamPip() {
   var pip = document.getElementById('webcamPip');
   if (pip.style.display === 'block') { closeWebcamPip(); return; }
-  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } } })
-  .then(function(stream) {
-    _pipStream = stream;
-    var video = document.getElementById('pipVideo');
-    video.srcObject = stream;
-    video.play();
-    pip.style.display = 'block';
-    document.getElementById('camBtn').style.borderColor = 'var(--accent)';
-  })
-  .catch(function(e) { showToast('Camera error: ' + e.message); });
+  var img = document.getElementById('pipVideo');
+  img.src = '/api/webcam/stream?' + Date.now();
+  pip.style.display = 'block';
+  document.getElementById('camBtn').style.borderColor = 'var(--accent)';
 }
 function closeWebcamPip() {
-  if (_pipStream) { _pipStream.getTracks().forEach(function(t) { t.stop(); }); _pipStream = null; }
+  var img = document.getElementById('pipVideo');
+  img.src = '';
   document.getElementById('webcamPip').style.display = 'none';
+  document.getElementById('webcamPip').classList.remove('expanded');
   var btn = document.getElementById('camBtn'); if (btn) btn.style.borderColor = '';
 }
+function expandPip() {
+  document.getElementById('webcamPip').classList.toggle('expanded');
+}
 function snapFromPip() {
-  var video = document.getElementById('pipVideo');
-  var canvas = document.createElement('canvas');
-  canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-  canvas.getContext('2d').drawImage(video, 0, 0);
-  var b64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
-  showToast('Snapshot captured — analyzing...');
-  fetch('/api/webcam', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ image: b64, analyze: true, prompt: 'Describe what you see in this photo. Be concise.' })
-  }).then(function(r) { return r.json(); }).then(function(d) {
-    if (d.analysis) showToast(d.analysis);
-    else if (d.saved) showToast('Photo saved: ' + d.filename);
+  showToast('Snapshot from Mac webcam...');
+  fetch('/api/webcam/snapshot').then(function(r) { return r.json(); }).then(function(d) {
+    if (d.error) { showToast('Error: ' + d.error); return; }
+    showToast('Photo saved: ' + d.filename);
+    fetch('/api/webcam', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: d.image, analyze: true, prompt: 'Describe what you see in this photo. Be concise.' })
+    }).then(function(r2) { return r2.json(); }).then(function(d2) {
+      if (d2.analysis) showToast(d2.analysis);
+    });
   }).catch(function(e) { showToast('Snap error: ' + e.message); });
+}
+function savePipFrame() {
+  fetch('/api/webcam/snapshot').then(function(r) { return r.json(); }).then(function(d) {
+    if (d.filename) showToast('Saved: ' + d.filename);
+    else showToast('Error saving');
+  }).catch(function(e) { showToast('Save error: ' + e.message); });
 }
 (function() {
   var pip = document.getElementById('webcamPip'); if (!pip) return;
@@ -976,9 +1058,11 @@ window.addEventListener('beforeinstallprompt', function(e) { deferredPrompt = e;
 })();
 </script>
 <div class="webcam-pip" id="webcamPip">
-  <video id="pipVideo" playsinline muted></video>
+  <img id="pipVideo" alt="Mac Webcam" onclick="expandPip()" style="cursor:pointer" />
   <div class="pip-bar">
-    <button class="pip-btn snap-btn" onclick="snapFromPip()" title="Snapshot"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/></svg></button>
+    <button class="pip-btn snap-btn" onclick="snapFromPip()" title="Snapshot + Analyze"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/></svg></button>
+    <button class="pip-btn" onclick="savePipFrame()" title="Save photo"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg></button>
+    <button class="pip-btn" onclick="expandPip()" title="Expand / Shrink"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>
     <button class="pip-btn" onclick="closeWebcamPip()" title="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
   </div>
 </div>

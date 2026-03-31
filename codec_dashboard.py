@@ -25,7 +25,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
     # CSRF-exempt paths (auth endpoints handle their own protection)
     CSRF_EXEMPT = {"/api/auth/verify", "/api/auth/pin", "/api/auth/logout",
                     "/api/auth/totp/setup", "/api/auth/totp/confirm", "/api/auth/totp/verify",
-                    "/api/auth/keyexchange"}
+                    "/api/auth/totp/enable", "/api/auth/keyexchange"}
 
     async def dispatch(self, request, call_next):
         from codec_config import DASHBOARD_TOKEN
@@ -287,10 +287,11 @@ def _auth_available():
     return _is_auth_compiled() or bool(AUTH_PIN_HASH)
 
 def _is_totp_enabled():
-    """Check if TOTP 2FA is configured."""
+    """Check if TOTP 2FA is configured and not disabled."""
     try:
         with open(CONFIG_PATH) as f:
-            return bool(json.load(f).get("totp_secret"))
+            cfg = json.load(f)
+        return bool(cfg.get("totp_secret")) and not cfg.get("totp_disabled", False)
     except Exception:
         return False
 
@@ -512,13 +513,14 @@ async def totp_confirm(request: Request):
                 with open(CONFIG_PATH) as f:
                     cfg_data = json.load(f)
             cfg_data["totp_secret"] = secret
+            cfg_data.pop("totp_disabled", None)
             with open(CONFIG_PATH, "w") as f:
                 json.dump(cfg_data, f, indent=2)
         except Exception as e:
             return JSONResponse({"error": f"Failed to save config: {e}"}, status_code=500)
         with open(AUDIT_LOG, "a") as f:
             f.write(f"[{datetime.now().isoformat()}] TOTP_SETUP: 2FA enabled\n")
-        return {"verified": True, "message": "2FA enabled successfully"}
+        return {"verified": True, "enabled": True, "message": "2FA enabled successfully"}
     return {"verified": False, "error": "Invalid code. Try again."}
 
 
@@ -581,13 +583,13 @@ async def totp_disable(request: Request):
     totp = pyotp.TOTP(totp_secret)
     if not totp.verify(code, valid_window=1):
         return JSONResponse({"error": "Invalid code"}, status_code=400)
-    # Remove totp_secret from config
+    # Keep the secret but mark TOTP as disabled (allows re-enable without new QR scan)
     try:
         cfg_data = {}
         if os.path.exists(CONFIG_PATH):
             with open(CONFIG_PATH) as f:
                 cfg_data = json.load(f)
-        cfg_data.pop("totp_secret", None)
+        cfg_data["totp_disabled"] = True
         with open(CONFIG_PATH, "w") as f:
             json.dump(cfg_data, f, indent=2)
     except Exception as e:
@@ -601,6 +603,33 @@ async def totp_disable(request: Request):
     with open(AUDIT_LOG, "a") as f:
         f.write(f"[{datetime.now().isoformat()}] TOTP_DISABLED: 2FA disabled by ip={client_ip}\n")
     return {"disabled": True}
+
+
+@app.post("/api/auth/totp/enable")
+async def totp_enable(request: Request):
+    """Re-enable TOTP using existing secret."""
+    if not _verify_biometric_session(request):
+        return JSONResponse({"error": "Auth required"}, status_code=401)
+    import pyotp
+    body = await request.json()
+    code = str(body.get("code", ""))
+    if not code:
+        return JSONResponse({"error": "Enter your authenticator code"}, status_code=400)
+    try:
+        with open(CONFIG_PATH) as f:
+            cfg = json.load(f)
+    except Exception:
+        cfg = {}
+    secret = cfg.get("totp_secret", "")
+    if not secret:
+        return JSONResponse({"error": "No TOTP secret found — use Setup 2FA first"}, status_code=400)
+    totp = pyotp.TOTP(secret)
+    if not totp.verify(code, valid_window=1):
+        return JSONResponse({"error": "Invalid code"}, status_code=400)
+    cfg.pop("totp_disabled", None)
+    with open(CONFIG_PATH, "w") as f:
+        json.dump(cfg, f, indent=2)
+    return {"enabled": True}
 
 
 @app.post("/api/auth/logout")
@@ -619,12 +648,21 @@ async def auth_logout(request: Request):
 async def auth_status(request: Request):
     """Check if current session is valid."""
     valid = _verify_biometric_session(request)
+    # Check if a TOTP secret exists (even if disabled)
+    totp_secret_exists = False
+    try:
+        with open(CONFIG_PATH) as f:
+            cfg = json.load(f)
+        totp_secret_exists = bool(cfg.get("totp_secret"))
+    except Exception:
+        pass
     return {
         "authenticated": valid,
         "auth_enabled": AUTH_ENABLED,
         "touchid_compiled": _is_auth_compiled(),
         "pin_configured": bool(AUTH_PIN_HASH),
         "totp_enabled": _is_totp_enabled(),
+        "totp_secret_exists": totp_secret_exists,
     }
 
 
@@ -1154,6 +1192,52 @@ async def webcam_capture(request: Request):
         return result
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/webcam/stream")
+async def webcam_stream():
+    """MJPEG stream from the Mac's webcam — for remote viewing from phone/tablet."""
+    import cv2
+    cap = cv2.VideoCapture(0)
+    if not cap.isOpened():
+        return JSONResponse({"error": "Cannot open webcam"}, status_code=500)
+    async def generate():
+        try:
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                _, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+                yield (b"--frame\r\n"
+                       b"Content-Type: image/jpeg\r\n\r\n" + jpeg.tobytes() + b"\r\n")
+                await asyncio.sleep(0.066)  # ~15 fps
+        finally:
+            cap.release()
+    from starlette.responses import StreamingResponse
+    return StreamingResponse(generate(), media_type="multipart/x-mixed-replace; boundary=frame")
+
+
+@app.get("/api/webcam/snapshot")
+async def webcam_snapshot():
+    """Capture a single frame from the Mac's webcam and return as JPEG."""
+    import cv2, base64
+    cap = cv2.VideoCapture(0)
+    if not cap.isOpened():
+        return JSONResponse({"error": "Cannot open webcam"}, status_code=500)
+    ret, frame = cap.read()
+    cap.release()
+    if not ret:
+        return JSONResponse({"error": "Failed to capture frame"}, status_code=500)
+    _, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    b64 = base64.b64encode(jpeg.tobytes()).decode()
+    # Save
+    photo_dir = os.path.expanduser("~/.codec/photos")
+    os.makedirs(photo_dir, exist_ok=True)
+    filename = f"webcam_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
+    filepath = os.path.join(photo_dir, filename)
+    with open(filepath, "wb") as f:
+        f.write(jpeg.tobytes())
+    return {"image": b64, "saved": filepath, "filename": filename}
 
 
 @app.get("/api/screenshot")
