@@ -1,21 +1,21 @@
-"""Lucy VPA — Delegate complex tasks to Lucy via n8n webhook"""
-SKILL_NAME = "lucy"
-SKILL_TRIGGERS = ["ask lucy", "tell lucy", "lucy", "delegate", "send to lucy", "invoice", "expense", "calorie", "daily briefing", "book a call", "vapi"]
-SKILL_DESCRIPTION = "Delegates complex tasks to Lucy — invoices, expenses, calorie tracking, phone calls, and multi-step workflows"
+"""CODEC Workflow — Delegate complex tasks via n8n webhook"""
+SKILL_NAME = "delegate"
+SKILL_TRIGGERS = ["delegate", "send to workflow", "invoice", "expense", "calorie", "daily briefing", "book a call", "vapi"]
+SKILL_DESCRIPTION = "Delegates complex tasks to CODEC workflows — invoices, expenses, calorie tracking, phone calls, and multi-step workflows"
 
 import requests, json
 
-LUCY_WEBHOOK = "http://localhost:5678/webhook/q-to-lucy"
+WORKFLOW_WEBHOOK = "http://localhost:5678/webhook/codec-delegate"
 
 def run(task, app="", ctx=""):
     try:
         clean = task.lower()
-        for word in ["ask lucy", "tell lucy", "lucy", "delegate to lucy", "send to lucy"]:
+        for word in ["delegate", "send to workflow"]:
             clean = clean.replace(word, "").strip()
         if not clean:
             clean = task
 
-        r = requests.post(LUCY_WEBHOOK, json={
+        r = requests.post(WORKFLOW_WEBHOOK, json={
             "message": clean,
             "source": "codec",
             "app": app
@@ -26,12 +26,12 @@ def run(task, app="", ctx=""):
                 data = r.json()
                 if isinstance(data, dict) and data.get("output"):
                     return data["output"]
-                return "Lucy responded but no output parsed"
+                return "CODEC workflow responded but no output parsed"
             except:
-                return r.text[:500] if r.text else "Lucy processed but no response"
+                return r.text[:500] if r.text else "CODEC workflow processed but no response"
         else:
-            return f"Lucy error (status {r.status_code})"
+            return f"CODEC workflow error (status {r.status_code})"
     except requests.exceptions.Timeout:
-        return "Lucy is still thinking - check Telegram for her response"
+        return "CODEC workflow is still processing - check Telegram for the response"
     except Exception as e:
-        return f"Could not reach Lucy: {str(e)}"
+        return f"Could not reach CODEC workflow: {str(e)}"

@@ -160,9 +160,10 @@ _last_cleanup = None
 # ── Configurable Alerts ──────────────────────────────────────────────────
 def check_alerts():
     """Run user-configured alerts from config.json heartbeat_alerts list.
-    Each alert: { "name": "BTC Price", "type": "price", "asset": "bitcoin",
-                  "threshold_pct": 5, "direction": "any" }
-    Supported types: price (crypto via CoinGecko)
+    Supported types:
+      - price: Crypto via CoinGecko (asset, threshold_pct, direction)
+      - email_check: Unread email count via local AppleScript (macOS Mail)
+      - disk_usage: Disk space warning when usage exceeds threshold_pct
     """
     try:
         with open(CONFIG_PATH) as f:
@@ -180,6 +181,9 @@ def check_alerts():
         state = {}
     triggered = []
     for alert in alerts:
+        # Skip disabled alerts
+        if alert.get("enabled") is False:
+            continue
         atype = alert.get("type", "")
         name = alert.get("name", "Unknown")
         if atype == "price":
@@ -208,6 +212,43 @@ def check_alerts():
                     log.info(f"  {name}: ${price:,.2f} (baseline set)")
             except Exception as e:
                 log.warning(f"  Alert '{name}' failed: {e}")
+
+        elif atype == "email_check":
+            try:
+                import subprocess
+                script = 'tell application "Mail" to get the unread count of inbox'
+                result = subprocess.run(
+                    ["osascript", "-e", script],
+                    capture_output=True, text=True, timeout=10
+                )
+                count = int(result.stdout.strip()) if result.stdout.strip().isdigit() else 0
+                last_count = state.get("email_unread", 0)
+                if count > 0 and count != last_count:
+                    msg = f"📧 {name}: {count} unread email{'s' if count != 1 else ''}"
+                    log.info(f"  {msg}")
+                    triggered.append(msg)
+                elif count == 0:
+                    log.info(f"  {name}: Inbox clear")
+                state["email_unread"] = count
+            except Exception as e:
+                log.warning(f"  Alert '{name}' failed: {e}")
+
+        elif atype == "disk_usage":
+            try:
+                import shutil
+                usage = shutil.disk_usage("/")
+                used_pct = (usage.used / usage.total) * 100
+                threshold = alert.get("threshold_pct", 90)
+                free_gb = usage.free / (1024**3)
+                if used_pct >= threshold:
+                    msg = f"💾 {name}: {used_pct:.0f}% used — only {free_gb:.1f} GB free"
+                    log.info(f"  🚨 ALERT: {msg}")
+                    triggered.append(msg)
+                else:
+                    log.info(f"  {name}: {used_pct:.0f}% used, {free_gb:.1f} GB free — OK")
+            except Exception as e:
+                log.warning(f"  Alert '{name}' failed: {e}")
+
     # Save state
     try:
         os.makedirs(os.path.dirname(alert_state_path), exist_ok=True)

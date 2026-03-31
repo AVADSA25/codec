@@ -420,12 +420,14 @@ function onSuccess(data) {
 
 function completeLogin() {
     var _exp = _pendingExpHours * 3600;
-    var _ck = 'codec_session=' + _pendingToken + '; path=/; max-age=' + _exp + '; SameSite=Strict';
+    var _ck = 'codec_session=' + _pendingToken + '; path=/; max-age=' + _exp + '; SameSite=Lax';
     if (location.protocol === 'https:') _ck += '; Secure';
     document.cookie = _ck;
+    // Also store in sessionStorage as fallback (Android Chrome may not persist cookies)
+    try { sessionStorage.setItem('codec_session', _pendingToken); } catch(e) {}
     // CSRF double-submit token (readable by JS, paired with x-csrf-token header)
     var _csrf = _pendingToken.substring(0, 16);
-    document.cookie = 'codec_csrf=' + _csrf + '; path=/; max-age=' + _exp + '; SameSite=Strict';
+    document.cookie = 'codec_csrf=' + _csrf + '; path=/; max-age=' + _exp + '; SameSite=Lax';
     var status = document.getElementById('status');
     status.textContent = 'Welcome back';
     status.className = 'status success';

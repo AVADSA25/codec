@@ -78,6 +78,7 @@
         body.state-listening::before { background: radial-gradient(ellipse 60% 60% at 50% 50%, rgba(0,230,118,0.05) 0%, transparent 70%); }
         body.state-speaking::before  { background: radial-gradient(ellipse 70% 70% at 50% 50%, rgba(232,113,26,0.08) 0%, transparent 70%); }
         body.state-processing::before { background: radial-gradient(ellipse 60% 60% at 50% 50%, rgba(64,196,255,0.06) 0%, transparent 70%); }
+        body.state-analyzing_screen::before { background: radial-gradient(ellipse 65% 65% at 50% 50%, rgba(168,85,247,0.08) 0%, transparent 70%); }
 
         /* ── Unified Header ── */
         .header {
@@ -168,6 +169,11 @@
             border-color: rgba(64,196,255,0.6);
             box-shadow: 0 0 20px rgba(64,196,255,0.15);
         }
+        .state-analyzing_screen .ring-inner {
+            border-color: rgba(168,85,247,0.7);
+            box-shadow: 0 0 24px rgba(168,85,247,0.25);
+            animation: pulse-purple 1.0s ease-in-out infinite;
+        }
         @keyframes pulse-green {
             0%,100% { transform: scale(1); opacity:0.7; }
             50%      { transform: scale(1.04); opacity:1; }
@@ -175,6 +181,10 @@
         @keyframes pulse-orange {
             0%,100% { transform: scale(1); opacity:0.8; }
             50%      { transform: scale(1.06); opacity:1; }
+        }
+        @keyframes pulse-purple {
+            0%,100% { transform: scale(1); opacity:0.7; }
+            50%      { transform: scale(1.08); opacity:1; }
         }
 
         /* ── Live mic energy ring — driven by JS in onaudioprocess ── */
@@ -207,6 +217,7 @@
         .state-listening .avatar-core img { filter: drop-shadow(0 0 16px rgba(0,230,118,0.5)); }
         .state-speaking .avatar-core img { filter: drop-shadow(0 0 20px rgba(232,113,26,0.6)); }
         .state-processing .avatar-core img { filter: drop-shadow(0 0 16px rgba(64,196,255,0.5)); }
+        .state-analyzing_screen .avatar-core img { filter: drop-shadow(0 0 20px rgba(168,85,247,0.6)); }
 
         /* Waveform bars (shown while Q is speaking) */
         .waveform {
@@ -249,6 +260,7 @@
         .state-listening .status  { color: var(--green); }
         .state-speaking  .status  { color: var(--ac); }
         .state-processing .status { color: var(--blue); }
+        .state-analyzing_screen .status { color: #a855f7; }
 
         /* Speak-to-interrupt hint */
         .interrupt-hint {
@@ -257,7 +269,8 @@
             transition: opacity 0.3s; margin-top: 2px;
         }
         .state-speaking .interrupt-hint,
-        .state-processing .interrupt-hint { opacity: 1; }
+        .state-processing .interrupt-hint,
+        .state-analyzing_screen .interrupt-hint { opacity: 1; }
 
         /* Call button */
         .call-btn {
@@ -291,7 +304,8 @@
         }
         body.state-listening .action-row,
         body.state-processing .action-row,
-        body.state-speaking .action-row { opacity: 1; pointer-events: auto; }
+        body.state-speaking .action-row,
+        body.state-analyzing_screen .action-row { opacity: 1; pointer-events: auto; }
 
         .action-btn {
             display: flex; align-items: center; gap: 6px;
@@ -345,6 +359,7 @@
         .state-listening  .tx-dot { background: var(--green); box-shadow: 0 0 6px var(--green); }
         .state-speaking   .tx-dot { background: var(--ac);    box-shadow: 0 0 6px var(--ac); }
         .state-processing .tx-dot { background: var(--blue);  box-shadow: 0 0 6px var(--blue); }
+        .state-analyzing_screen .tx-dot { background: #a855f7; box-shadow: 0 0 6px #a855f7; }
 
         .transcript {
             max-height: 300px; overflow-y: auto;
@@ -400,6 +415,11 @@
         .pip-btn:hover{background:var(--accent)}
         .pip-btn.snap-btn{background:rgba(255,80,80,.7)}
         .pip-btn.snap-btn:hover{background:#e33}
+        /* ── Screenshot/Photo Modal ── */
+        .modal-overlay { display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.85); z-index:100; justify-content:center; align-items:center; padding:20px; }
+        .modal-overlay.show { display:flex; }
+        .modal-overlay img { max-width:100%; max-height:90vh; border-radius:var(--radius); border:1px solid var(--border); }
+        .modal-close { position:fixed; top:16px; right:16px; background:var(--surface); color:var(--text); border:1px solid var(--border); width:32px; height:32px; border-radius:50%; font-size:18px; cursor:pointer; z-index:101; display:flex; align-items:center; justify-content:center; }
     </style>
 </head>
 <body id="body">
@@ -475,8 +495,18 @@
     </div>
 
     <script>
-    // CSRF: auto-inject token header on state-changing requests
-    (function(){var _f=window.fetch;window.fetch=function(u,o){o=o||{};if(o.method&&o.method!=='GET'){var c=document.cookie.match(/codec_csrf=([^;]+)/);if(c){o.headers=o.headers||{};if(o.headers instanceof Headers){o.headers.set('x-csrf-token',c[1])}else{o.headers['x-csrf-token']=c[1]}}}return _f.call(this,u,o)}})();
+    // Auth + CSRF: inject session token and CSRF header on all requests
+    // On mobile (Android Chrome), cookies may not persist — fallback to sessionStorage
+    (function(){
+    var _f=window.fetch;
+    function _getSession(){return document.cookie.match(/codec_session=([^;]+)/)?.[1]||sessionStorage.getItem('codec_session')||''}
+    function _injectSession(url){var s=_getSession();if(!s)return url;var sep=url.indexOf('?')>=0?'&':'?';return url+sep+'s='+s}
+    window.fetch=function(u,o){
+      o=o||{};
+      if(typeof u==='string')u=_injectSession(u);
+      if(o.method&&o.method!=='GET'){var c=document.cookie.match(/codec_csrf=([^;]+)/);if(c){o.headers=o.headers||{};if(o.headers instanceof Headers){o.headers.set('x-csrf-token',c[1])}else{o.headers['x-csrf-token']=c[1]}}}
+      return _f.call(this,u,o)};
+    })();
     // E2E encryption layer — AES-256-GCM via ECDH key exchange
     var _e2eKey=null;
     (function(){var _f2=window.fetch;function _b64(buf){return btoa(String.fromCharCode.apply(null,new Uint8Array(buf)))}function _unb64(s){var b=atob(s),a=new Uint8Array(b.length);for(var i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a}
@@ -488,7 +518,7 @@
     /* ── Theme support ── */
     function toggleTheme(){var t=document.documentElement.getAttribute('data-theme')==='light'?'dark':'light';document.documentElement.setAttribute('data-theme',t);localStorage.setItem('codec-theme',t);updateThemeIcon(t)}
     function updateThemeIcon(t){var ico=document.getElementById('themeIco');if(t==='light'){ico.innerHTML='<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>'}else{ico.innerHTML='<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>'}}
-    function lockSession(){fetch('/api/auth/logout',{method:'POST'}).then(function(){document.cookie='codec_session=;path=/;max-age=0;SameSite=Strict'+(location.protocol==='https:'?';Secure':'');window.location.href='/auth'})}
+    function lockSession(){fetch('/api/auth/logout',{method:'POST'}).then(function(){document.cookie='codec_session=;path=/;max-age=0;SameSite=Lax'+(location.protocol==='https:'?';Secure':'');window.location.href='/auth'})}
     var _voiceOn=false;
     function toggleVoiceReply(){_voiceOn=!_voiceOn;updateVoiceIcon()}
     function updateVoiceIcon(){var b=document.getElementById('voiceBtn');if(!b)return;var m1=document.getElementById('muteX1'),m2=document.getElementById('muteX2');if(m1)m1.style.display=_voiceOn?'none':'';if(m2)m2.style.display=_voiceOn?'none':'';b.style.borderColor=_voiceOn?'var(--accent)':''}
@@ -499,10 +529,13 @@
       var btn = document.getElementById('photoBtn');
       btn.style.borderColor = 'var(--accent)';
       addTranscript('system', 'Capturing from Mac webcam...');
-      fetch('/api/webcam/snapshot').then(function(r) { return r.json(); }).then(function(d) {
+      fetch('/api/webcam/snapshot?_t=' + Date.now() + _getAuthParam()).then(function(r) { return r.json(); }).then(function(d) {
         btn.style.borderColor = '';
         if (d.error) { addTranscript('system', 'Error: ' + d.error); return; }
         addTranscript('system', 'Photo saved: ' + d.filename);
+        var img = document.getElementById('screenImg');
+        img.src = 'data:image/jpeg;base64,' + d.image;
+        document.getElementById('screenModal').classList.add('show');
         fetch('/api/webcam', { method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ image: d.image, analyze: true, prompt: 'Describe what you see in this photo. Be concise.' })
         }).then(function(r2) { return r2.json(); }).then(function(d2) {
@@ -510,14 +543,19 @@
         });
       }).catch(function(e) { btn.style.borderColor = ''; addTranscript('system', 'Camera error: ' + e.message); });
     }
+    function closeScreenshot() { document.getElementById('screenModal').classList.remove('show'); }
 
     // ── Live Webcam PIP (Mac MJPEG stream) ──
     var _pipDrag = { active: false, x: 0, y: 0 };
+    function _getAuthParam(first) {
+      var m = document.cookie.match(/codec_session=([^;]+)/);
+      return m ? (first ? '?s=' : '&s=') + m[1] : '';
+    }
     function toggleWebcamPip() {
       var pip = document.getElementById('webcamPip');
       if (pip.style.display === 'block') { closeWebcamPip(); return; }
       var img = document.getElementById('pipVideo');
-      img.src = '/api/webcam/stream?' + Date.now();
+      img.src = '/api/webcam/stream?_t=' + Date.now() + _getAuthParam();
       pip.style.display = 'block';
       document.getElementById('camBtn').style.borderColor = 'var(--accent)';
     }
@@ -533,7 +571,7 @@
     }
     function snapFromPip() {
       addTranscript('system', 'Snapshot from Mac webcam...');
-      fetch('/api/webcam/snapshot').then(function(r) { return r.json(); }).then(function(d) {
+      fetch('/api/webcam/snapshot?_t=' + Date.now() + _getAuthParam()).then(function(r) { return r.json(); }).then(function(d) {
         if (d.error) { addTranscript('system', 'Error: ' + d.error); return; }
         addTranscript('system', 'Photo saved: ' + d.filename);
         fetch('/api/webcam', { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -544,7 +582,7 @@
       }).catch(function(e) { addTranscript('system', 'Snap error: ' + e.message); });
     }
     function savePipFrame() {
-      fetch('/api/webcam/snapshot').then(function(r) { return r.json(); }).then(function(d) {
+      fetch('/api/webcam/snapshot?_t=' + Date.now() + _getAuthParam()).then(function(r) { return r.json(); }).then(function(d) {
         if (d.filename) addTranscript('system', 'Saved: ' + d.filename);
         else addTranscript('system', 'Error saving');
       }).catch(function(e) { addTranscript('system', 'Save error: ' + e.message); });
@@ -605,6 +643,7 @@
         if (s === 'idle')       el.textContent = '';
         else if (s === 'listening')  el.textContent = 'Listening — tap "Your Turn" when done';
         else if (s === 'speaking')   el.textContent = 'Speaking…';
+        else if (s === 'analyzing_screen') el.textContent = '🔍 Analyzing your screen…';
         else if (s === 'processing') {
             processingStart = Date.now();
             el.textContent = 'Transcribing…';
@@ -721,6 +760,7 @@
                         if (hint) hint.textContent = msg.text || '';
                     } else if (msg.type === 'status') {
                         if (msg.status === 'processing') setState('processing');
+                        else if (msg.status === 'analyzing_screen') setState('analyzing_screen');
                         else if (msg.status === 'listening') {
                             if (!isPlaying) setState('listening');
                             var hint = document.getElementById('interruptHint');
@@ -927,5 +967,11 @@
     <button class="pip-btn" onclick="closeWebcamPip()" title="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
   </div>
 </div>
+
+<div class="modal-overlay" id="screenModal" onclick="closeScreenshot()">
+  <button class="modal-close" onclick="closeScreenshot()">&times;</button>
+  <img id="screenImg" src="">
+</div>
+
 </body>
 </html>

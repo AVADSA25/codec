@@ -3,64 +3,86 @@
 </p>
 
 <h1 align="center">CODEC</h1>
-<p align="center"><strong>Open-Source Intelligent Command Layer</strong></p>
-<p align="center"><em>What if your computer could actually hear you, see what you see, and speak back?</em></p>
-<p align="center">Your voice. Your computer. Your rules.</p>
-<p align="center">One AI system that replaces the 15 apps you click through every day — drafts emails, runs research, writes code, controls your lights, reads your screen. 50+ skills. 12 autonomous agents. Zero tabs.</p>
+<p align="center"><strong>Open-Source Intelligent Command Layer for macOS</strong></p>
+<p align="center"><em>Your voice. Your computer. Your rules. No limit.</em></p>
 <p align="center">
   <a href="https://opencodec.org">opencodec.org</a> · <a href="https://avadigital.ai">AVA Digital LLC</a> · <a href="#quick-start">Get Started</a> · <a href="#support-the-project">Support</a> · <a href="#professional-setup">Enterprise</a>
 </p>
 
 ---
 
-## The Problem
+## Why CODEC Exists
 
-You spend **4+ hours a day** switching tabs, copy-pasting, formatting emails, checking calendars, re-reading Slack threads, Googling the same things, clicking through the same 15 steps to get one task done.
+All I wanted was to speak to my computer. Tell it to read my screen and reply to a message. Have it hear me think out loud and act on it — privately, on my hardware, with nothing leaving my machine.
 
-AI chatbots don't fix this. They're another tab. You still copy, paste, switch, click.
+Nothing existed that did this. So I started building.
+
+CODEC is a framework that turns your Mac into a voice-controlled AI workstation. You give it a brain (any LLM — local or cloud), ears (Whisper), a voice (Kokoro), and eyes (vision model). Four ingredients. The rest is Python.
+
+From there, it listens, sees your screen, speaks back, controls your apps, writes code, drafts your messages, researches topics, manages your Google Workspace, and when it doesn't know how to do something — it writes its own plugin and learns.
+
+No cloud. No subscription. No data leaving your machine. MIT licensed.
 
 ---
 
 ## 7 Products. One System.
 
-| | Product | One-liner |
-|---|---|---|
-| **1** | **CODEC Core** | 50+ voice skills, keyboard shortcuts, direct chat replies — your Mac's AI command layer |
-| **2** | **CODEC Dictate** | Hold a key, speak, release — text appears in any app instantly |
-| **3** | **CODEC Instant** | Select text, right-click — AI rewrites, translates, replies in-place. Instant. |
-| **4** | **CODEC Chat** | 250K-context chat with file uploads, vision, web search, and 12 autonomous agent crews |
-| **5** | **CODEC Vibe** | AI coding IDE — describe what you want, watch it build, live preview in browser |
-| **6** | **CODEC Voice** | Call your AI like a phone call — speak to interrupt, live webcam feed, it acts while you talk |
-| **7** | **CODEC Overview** | Your AI dashboard — every tool, every agent, one screen |
+### CODEC Core — The Command Layer
 
-### What hits different
+Always-on voice assistant. Say *"Hey CODEC"* or press F13 to activate. F18 for voice commands. F16 for text input.
 
-**Reply to any message without typing.** Slack pings. WhatsApp buzzes. iMessage lights up. You don't switch apps, don't open keyboards. Press a key, say *"reply saying I'll be there in 10, casual tone"* — CODEC reads the conversation, drafts the reply, and pastes it directly into the chat input. You hit send. Done.
+50+ skills fire instantly: Google Calendar, Gmail, Drive, Docs, Sheets, Tasks, Keep, Chrome automation, web search, Hue lights, timers, Spotify, clipboard, terminal commands, and more. Most skills bypass the LLM entirely — direct action, zero latency.
 
-**Keyboard shortcuts that replace entire workflows.** Hold F18 → speak → release. Your voice becomes a command. Double-tap `*` → CODEC screenshots your screen and tells you what it sees. Select any text → right-click → CODEC Instant rewrites it, translates it, proofreads it, explains it. No app to open. No tab to switch to. It's already there.
+The interaction that made me know this was possible: hands-free, say *"Hey CODEC, look at my screen and reply to this message."* CODEC reads your screen, sees the conversation, writes a contextual response, and pastes it into the text field. Try that with Siri.
 
-**Your screen is the context.** CODEC reads what's in front of you — your IDE, your browser, your email. *"What's wrong with this code?"* It sees the error. *"Summarize this article"* — it reads the page. *"Fill in this form"* — it types into the fields. No copy-paste. No explaining what you're looking at.
+### CODEC Dictate — Hold, Speak, Paste
 
-**Live webcam, not just screenshots.** Click the camera icon on any page — a draggable picture-in-picture feed appears in the corner. Point it at your whiteboard, your front door, a document on your desk. Hit the snapshot button and CODEC analyzes what it sees. The feed stays open while you keep working.
+Hold a key. Say what you mean. Release. Text appears wherever your cursor is. If CODEC detects you're drafting a message, it refines through the LLM first — grammar fixed, tone polished, meaning preserved. Works in every app on macOS. A free, open-source SuperWhisper replacement that runs entirely on your machine.
 
-**AI agents that work while you don't.** Not chat responses — full autonomous workflows. *"Deep research AI in healthcare"* → 8 agents fan out, run 20+ searches, write a 10,000-word report with images, deliver it to your Google Docs. Schedule any crew to run on repeat — morning briefings, competitor analysis, inbox triage — all on cron.
+### CODEC Instant — One Right-Click
 
-**Nothing leaves your machine.** Run Qwen, Llama, or Mistral locally. Conversations stored in local SQLite. No cloud. No telemetry. No analytics. End-to-end encrypted between your browser and server (AES-256-GCM + ECDH key exchange). Your data is yours. Period.
+Select any text, anywhere. Right-click. Eight AI services system-wide: Proofread, Elevate, Explain, Translate, Reply (with `:tone` syntax), Prompt, Read Aloud, Save. Powered by your own LLM. Reducing text manipulation to a single click.
 
----
+### CODEC Chat — 250K Context + 12 Agent Crews
 
-## Real Workflows That Save Hours
+Full conversational AI on your hardware. Long context. File uploads. Image analysis via vision model. Web search. Conversation history.
 
-| Instead of this... | With CODEC |
+Plus 12 autonomous agent crews — not single prompts, full multi-step workflows. Say *"research the latest AI agent frameworks and write a report."* Minutes later there's a formatted Google Doc in your Drive with sources, images, and recommendations. Local inference. Zero cloud costs.
+
+| Crew | Output |
 |---|---|
-| Open Gmail → scan 47 emails → draft 3 replies → format → send | *"Check my email, flag anything urgent, draft replies"* |
-| Open Google Docs → blank page → research → write 10 pages → images → format | *"Deep research AI in healthcare, save to Docs"* — 10,000-word report delivered |
-| Slack notification → switch app → read thread → type reply → proofread → send | Press key → *"Reply saying I'll review it tonight"* → pasted into Slack |
-| Copy error → browser → paste → Stack Overflow → try fix → repeat | *"Read my screen and fix this error"* — never leaves your editor |
-| Open competitor site → notes → pricing → write analysis | *"Run competitor analysis on [company]"* — SWOT delivered to Docs |
-| Open 6 tabs → read news → check industry → take notes | Runs automatically at 8am — briefing waiting in your Drive |
-| Select text → copy → open translator → paste → copy result → paste back | Right-click → CODEC Translate — replaced in-place, one click |
-| Write LinkedIn post → rewrite 4 times → check tone → proofread | *"Write a LinkedIn post about [topic]"* — polished, ready to post |
+| Deep Research | 10,000-word illustrated report → Google Docs |
+| Daily Briefing | Morning news + calendar → Google Docs |
+| Competitor Analysis | SWOT + positioning → Google Docs |
+| Trip Planner | Full itinerary → Google Docs |
+| Email Handler | Triage inbox, draft replies |
+| Social Media | Posts for Twitter, LinkedIn, Instagram |
+| Code Review | Bugs + security + clean code |
+| Data Analysis | Trends + insights report |
+| Content Writer | Blog posts, articles, copy |
+| Meeting Summarizer | Action items from transcripts |
+| Invoice Generator | Professional invoices |
+| Custom Agent | Define your own role, tools, task |
+
+Schedule any crew: *"Run competitor analysis every Monday at 9am"*
+
+The multi-agent framework is under 800 lines. Zero dependencies. No CrewAI. No LangChain.
+
+### CODEC Vibe — AI Coding IDE + Skill Forge
+
+Split-screen in your browser. Monaco editor on the left (same engine as VS Code). AI chat on the right. Describe what you want — CODEC writes it, you click Apply, run it, live preview in browser. Point your cursor to select what needs fixing, auto-reload on errors.
+
+Skill Forge takes it further: describe a new capability in plain English, CODEC converts it into a working plugin. The framework writes its own extensions.
+
+### CODEC Voice — Live Voice Calls
+
+Real-time voice-to-voice conversations with your AI. WebSocket pipeline — no Pipecat, no external dependencies. Call CODEC from your phone, talk naturally, and mid-call say *"check my screen"* — it takes a screenshot, analyzes it, and speaks the result back.
+
+Full transcript saved to memory. Every conversation becomes searchable context for future sessions.
+
+### CODEC Overview — Your Mac in Your Pocket
+
+Private dashboard accessible from any device, anywhere. Cloudflare Tunnel or Tailscale VPN — no port forwarding, no third-party relay. Send commands, view your screen, launch voice calls, manage agents — all from a browser on your phone.
 
 ---
 
@@ -123,141 +145,41 @@ AI chatbots don't fix this. They're another tab. You still copy, paste, switch, 
 
 ---
 
+## What CODEC Replaced
+
+Every feature started by depending on established tools, then was progressively replaced with native code:
+
+| Before | After |
+|---|---|
+| Pipecat | CODEC Voice (own WebSocket pipeline) |
+| CrewAI + LangChain | CODEC Agents (795 lines, zero dependencies) |
+| SuperWhisper | CODEC Dictate (free, open source) |
+| Cursor / Windsurf | CODEC Vibe (Monaco + AI + Skill Forge) |
+| Google Assistant / Siri | CODEC Core (actually controls your computer) |
+| Grammarly | CODEC Instant (right-click services via your own LLM) |
+| ChatGPT | CODEC Chat (250K context, fully local) |
+| Cloud LLM APIs | Local stack (Qwen + Whisper + Kokoro + Vision) |
+| Vector databases | FTS5 SQLite (simpler, faster, yours) |
+
+**External services:** DuckDuckGo for web search. Cloudflare free tier for the tunnel (or Tailscale). Everything else is your hardware, your models, your code.
+
+---
+
 ## Quick Start
 
 ```bash
 git clone https://github.com/AVADSA25/codec.git
 cd codec
-./install.sh        # one-line setup wizard
-python3 codec.py    # start CODEC
+./install.sh
 ```
 
-Or step by step:
+The setup wizard handles everything in 9 steps: LLM, voice, vision, hotkeys, Google OAuth, remote access, and more.
 
-```bash
-pip3 install -r requirements.txt
-python3 setup_codec.py    # guided 9-step configuration
-python3 codec.py
-```
-
-*Requires macOS. Python 3.10+. Linux support planned.*
-
----
-
-## How It Works
-
-### Voice → Action Pipeline
-
-```
-You speak → Whisper STT → intent dispatch → skill / agent crew → action on your Mac
-```
-
-**Triggers:**
-
-| Input | What happens |
-|---|---|
-| Hold F18, speak, release | Voice command — say it and it's done |
-| Double-tap F18 | PTT Lock — hands-free recording, tap again to stop |
-| F16 / F9 | Type a command instead of speaking |
-| Double-tap `*` `*` | Screenshot + AI reads your screen |
-| Double-tap `+` `+` | Analyze document in clipboard |
-| Camera icon (any page) | Live webcam PIP — drag around, snapshot anytime |
-| Select text → right-click | 8 AI services in context menu |
-
-### 50+ Skills
-
-Grouped by what they do, not marketing categories:
-
-**Your day:** Google Calendar, Gmail, Google Tasks, Google Keep, daily briefing, timer, pomodoro
-**Your files:** Google Drive, Google Docs, Google Sheets, Google Slides, file search, clipboard
-**Your browser:** open sites, search, read pages, fill forms, extract data, scroll, manage tabs, automate morning routines
-**Your writing:** draft emails, proofread, elevate, translate, explain, reply, LinkedIn posts
-**Research:** web search, URL summarizer, deep research (10,000-word multi-agent reports), competitor analysis
-**Your Mac:** process manager, network info, brightness, screenshot OCR, terminal commands, AX bridge (click any button in any app)
-**Coding:** Vibe IDE with Monaco editor, live preview, inspect mode, Skill Forge (auto-generate plugins)
-**Smart home:** Philips Hue lights — on/off, brightness, colors, scenes, room targeting
-**Meta:** memory search, skill marketplace (install/publish), scheduler (cron agents)
-
-### 12 Agent Crews
-
-Not single prompts — full multi-step AI workflows that run autonomously:
-
-| Crew | What you get |
-|---|---|
-| **Deep Research** | 10,000-word report with images → Google Docs |
-| **Daily Briefing** | Morning industry news + your calendar → Google Docs |
-| **Competitor Analysis** | SWOT + competitive positioning → Google Docs |
-| **Trip Planner** | Full itinerary with hotels, flights, activities → Google Docs |
-| **Email Handler** | Triage inbox, draft replies, summarize threads |
-| **Social Media** | Platform-specific posts for Twitter, LinkedIn, Instagram |
-| **Code Review** | Bug hunt + security audit + clean code suggestions |
-| **Data Analysis** | Gather data, find trends, write insights report |
-| **Content Writer** | Blog posts, articles, marketing copy |
-| **Meeting Summarizer** | Extract action items from transcripts |
-| **Invoice Generator** | Create and send professional invoices |
-| **Custom Agent** | Build your own — define role, tools, task |
-
-Schedule any crew: *"Run competitor analysis every Monday at 9am"*
-
-### Right-Click Services (CODEC Instant)
-
-Select text anywhere → right-click:
-
-| Service | Result |
-|---|---|
-| Proofread | Grammar, spelling, clarity — fixed and replaced |
-| Elevate | Rewritten at executive level |
-| Translate | Translated to English (or configured language) |
-| Explain | Plain-English explanation |
-| Reply | Smart reply with optional `:tone` syntax |
-| Prompt | Optimized as an LLM prompt |
-| Read Aloud | Spoken via Kokoro TTS |
-| Save | Saved to Google Keep or local notes |
-
-### MCP Server — CODEC Inside Claude, Cursor, VS Code
-
-CODEC exposes tools as an MCP server. Any MCP-compatible client can invoke CODEC skills directly:
-
-```json
-{
-  "mcpServers": {
-    "codec": {
-      "command": "python3",
-      "args": ["/path/to/codec-repo/codec_mcp.py"]
-    }
-  }
-}
-```
-
-Then in Claude Desktop: *"Use CODEC to check my calendar for tomorrow."*
-
-Skills opt-in to MCP exposure with `SKILL_MCP_EXPOSE = True`.
-
----
-
-## Privacy & Security
-
-This isn't a marketing section. It's the architecture.
-
-**Your data never leaves.** CODEC runs on your machine. Conversations, files, calendar data, memory — stored locally in SQLite. No cloud sync. No analytics endpoint. No telemetry. Check the source.
-
-**Run any LLM locally.** Qwen, Llama, Mistral, Gemma — via MLX, Ollama, or LM Studio. Zero API calls if you want. Or use cloud APIs (OpenAI, Claude, Gemini) — your choice.
-
-**5-layer security stack for remote access.** Cloudflare Zero Trust tunnel (or Tailscale VPN — no domain needed) → PIN → Touch ID biometrics → TOTP 2FA (Google Authenticator / Authy) → E2E encryption (AES-256-GCM + ECDH P-256 key exchange). Every request between browser and server is encrypted end-to-end on top of TLS.
-
-**Command safety.** Dangerous command blocklist. Subprocess isolation with resource limits (512MB RAM, 120s CPU). Review-and-approve gate before any script runs. LLM-generated skills require human review.
-
-**Memory is yours.** Full-text search (SQLite FTS5) across every conversation — but only on your machine. Parameterized queries prevent injection. No external memory service.
-
-| Layer | Protection |
-|---|---|
-| Network | Cloudflare Zero Trust tunnel or Tailscale VPN, CORS restricted origins |
-| Encryption | AES-256-GCM + ECDH P-256 key exchange, per-session keys |
-| Auth | Touch ID + PIN + TOTP 2FA, timing-safe token comparison |
-| Sessions | `SameSite=Strict`, CSRF tokens, conditional `Secure` flag |
-| Execution | Subprocess isolation, resource limits, command blocklist |
-| Skills | Blocked imports, human review gate, SHA-256 marketplace verification |
-| Data | Local SQLite, parameterized queries, FTS5 sanitization |
+**Requirements:**
+- macOS Ventura or later
+- Python 3.10+
+- An LLM (Ollama, LM Studio, MLX, or any OpenAI-compatible API)
+- Whisper for voice input, Kokoro for voice output, a vision model for screen reading
 
 ---
 
@@ -285,8 +207,6 @@ Configure in `~/.codec/config.json`:
 
 ## Keyboard Shortcuts
 
-**Extended keyboard (F13-F18):**
-
 | Key | Action |
 |---|---|
 | F13 | Toggle CODEC ON/OFF |
@@ -295,19 +215,105 @@ Configure in `~/.codec/config.json`:
 | F16 | Text input dialog |
 | `* *` | Screenshot + AI analysis |
 | `+ +` | Document mode |
+| Camera icon | Live webcam PIP — drag around, snapshot anytime |
+| Select text → right-click | 8 AI services in context menu |
 
-**Laptop (F1-F12):** F5 = toggle, F8 = voice, F9 = text input
+**Laptop (F1-F12):** F5 = toggle, F8 = voice, F9 = text input. Run `python3 setup_codec.py` → select "Laptop / Compact" in Step 4.
 
 Custom shortcuts in `~/.codec/config.json`. Restart after changes: `pm2 restart open-codec`
 
 ---
 
-## Troubleshooting
+## Privacy & Security
+
+This isn't a marketing section. It's the architecture.
+
+Hey Siri. Hey Alexa. Where do those commands go? Through someone else's servers, hardware, and database. CODEC runs on your machine. Period.
+
+**5-layer security stack:**
+
+| Layer | Protection |
+|---|---|
+| Network | Cloudflare Zero Trust tunnel or Tailscale VPN, CORS restricted origins |
+| Auth | Touch ID + PIN + TOTP 2FA, timing-safe token comparison |
+| Encryption | AES-256-GCM + ECDH P-256 key exchange, per-session keys |
+| Execution | Subprocess isolation, resource limits (512MB RAM, 120s CPU), command blocklist, human review gate |
+| Data | Local SQLite, parameterized queries, FTS5 full-text search — searchable, readable, private, yours |
+
+Every conversation is stored locally in SQLite with FTS5 full-text search. No cloud sync. No analytics. No telemetry. That's not a feature. That's the point.
+
+---
+
+## MCP Server — CODEC Inside Claude, Cursor, VS Code
+
+CODEC exposes tools as an MCP server. Any MCP-compatible client can invoke CODEC skills directly:
+
+```json
+{
+  "mcpServers": {
+    "codec": {
+      "command": "python3",
+      "args": ["/path/to/codec-repo/codec_mcp.py"]
+    }
+  }
+}
+```
+
+Then in Claude Desktop: *"Use CODEC to check my calendar for tomorrow."*
+
+Skills opt-in to MCP exposure with `SKILL_MCP_EXPOSE = True`.
+
+---
+
+## Debugging & Development Assistance
+
+CODEC is a complex system with many moving parts. Loading the project into an AI-assisted IDE dramatically speeds up setup, debugging, and development.
+
+**Recommended tools:**
+
+| Tool | How it helps |
+|---|---|
+| **[Claude Code](https://claude.ai/claude-code)** | Terminal AI — reads your full codebase, runs commands, fixes errors in context |
+| **[Cursor](https://cursor.com)** | AI IDE — navigate CODEC's 60+ files, refactor, debug with full project awareness |
+| **[Windsurf](https://windsurf.ai)** | AI IDE — similar to Cursor, strong at multi-file reasoning |
+| **[Antigravity](https://antigravity.dev)** | AI debugging assistant — paste errors, get fixes with codebase context |
+
+**Quick debug commands:**
+
+```bash
+# Check all services
+pm2 list
+
+# Check specific service logs
+pm2 logs open-codec --lines 30 --nostream        # Main CODEC process
+pm2 logs codec-dashboard --lines 30 --nostream    # Dashboard API
+pm2 logs whisper-stt --lines 10 --nostream        # Speech-to-text
+pm2 logs kokoro-82m --lines 10 --nostream         # Text-to-speech
+
+# Verify LLM is responding
+curl -s http://localhost:8081/v1/models | python3 -m json.tool
+
+# Verify dashboard is up
+curl -s http://localhost:8090/health
+
+# Verify Whisper STT
+curl -s http://localhost:8084/v1/models
+
+# Verify Kokoro TTS
+curl -s http://localhost:8085/v1/models
+
+# Restart everything
+pm2 restart all
+
+# Full health check
+python3 -c "from codec_config import *; print('Config OK')"
+```
+
+**Common issues:**
 
 <details>
 <summary><strong>Keys don't work</strong></summary>
 
-- Laptop? Run `python3 setup_codec.py` → select "Laptop / Compact" in Step 4
 - macOS stealing F-keys? System Settings → Keyboard → "Use F1, F2, etc. as standard function keys"
 - After config change: `pm2 restart open-codec`
 </details>
@@ -318,7 +324,6 @@ Custom shortcuts in `~/.codec/config.json`. Restart after changes: `pm2 restart 
 - Check Whisper: `pm2 logs whisper-stt --lines 5 --nostream`
 - Check mic permission: System Settings → Privacy → Microphone
 - Say "Hey CODEC" clearly — 3 distinct syllables
-- 4-layer noise gate handles most backgrounds, but loud music near the mic can interfere
 </details>
 
 <details>
@@ -332,24 +337,17 @@ Custom shortcuts in `~/.codec/config.json`. Restart after changes: `pm2 restart 
 <details>
 <summary><strong>Dashboard not loading</strong></summary>
 
-- Check: `curl http://localhost:8090/`
+- Check: `curl http://localhost:8090/health`
 - Restart: `pm2 restart codec-dashboard`
 - Remote via Cloudflare: `pm2 logs cloudflared --lines 3 --nostream`
-- Remote via Tailscale: install Tailscale on your Mac and phone — access CODEC at `http://100.x.x.x:8090` with no domain or tunnel setup needed
+- Remote via Tailscale: access CODEC at `http://100.x.x.x:8090` — no domain needed
 </details>
 
 <details>
-<summary><strong>Skills not loading</strong></summary>
+<summary><strong>Agents timing out</strong></summary>
 
-- Check: `pm2 logs open-codec --lines 20 --nostream | grep -i skill`
-- Count: `ls ~/.codec/skills/*.py | wc -l`
-</details>
-
-<details>
-<summary><strong>Agents failing</strong></summary>
-
-- First run takes 2-5 min — multi-step research
-- Check: `pm2 logs codec-dashboard --lines 30 --nostream | grep Agents`
+- First run takes 2-5 min — multi-step research with multiple searches
+- Check: `pm2 logs codec-dashboard --lines 30 --nostream | grep -i agent`
 - Agents run as background jobs — no Cloudflare timeout
 </details>
 
@@ -378,6 +376,7 @@ codec_memory.py       — FTS5 memory search
 codec_heartbeat.py    — Health monitoring + task auto-execution
 codec_scheduler.py    — Cron-like agent scheduling
 codec_marketplace.py  — Skill marketplace CLI
+codec_overlays.py     — AppKit overlay notifications (fullscreen compatible)
 ax_bridge/            — Swift AX accessibility bridge
 swift-overlay/        — SwiftUI status bar app
 skills/               — 50+ built-in skills
@@ -431,6 +430,9 @@ Need CODEC configured for your business, integrated with your tools, or deployed
 
 ---
 
+<p align="center">
+  Star it. Clone it. Rip it apart. Make it yours.
+</p>
 <p align="center">
   Built by <a href="https://avadigital.ai">AVA Digital LLC</a> · MIT License
 </p>

@@ -15,6 +15,10 @@ import wave
 from datetime import datetime
 from typing import Optional
 
+import base64
+import subprocess
+import tempfile
+
 import httpx
 import numpy as np
 
@@ -44,6 +48,24 @@ try:
     WHISPER_MODEL = _cfg.get("stt_model", WHISPER_MODEL)
 except Exception as _e:
     print(f"[Voice] Config load warning: {_e} — using defaults")
+
+# ── Vision config ────────────────────────────────────────────────────────
+VISION_URL   = "http://localhost:8082/v1/chat/completions"
+VISION_MODEL = "mlx-community/Qwen2.5-VL-7B-Instruct-4bit"
+try:
+    VISION_URL   = _cfg.get("vision_base_url", "http://localhost:8082/v1").rstrip("/") + "/chat/completions"
+    VISION_MODEL = _cfg.get("vision_model", VISION_MODEL)
+except Exception:
+    pass
+
+# Screen-related trigger phrases
+_SCREEN_TRIGGERS = re.compile(
+    r"(look at my screen|read my screen|what('?s| is) on my screen|"
+    r"what do you see|analyze my screen|check my screen|see my screen|"
+    r"what('?s| is) on the screen|describe my screen|screen shot|screenshot|"
+    r"look at this|what am i looking at|what('?s| is) this on my screen)",
+    re.IGNORECASE,
+)
 
 # ── VAD ───────────────────────────────────────────────────────────────────
 VAD_SILENCE_THRESHOLD  = 800    # RMS below this = silence
@@ -110,7 +132,7 @@ You have {len([f for f in os.listdir(SKILLS_DIR) if f.endswith('.py')])} built-i
 Skills execute mid-call and return a result string.
 Report results conversationally — 1-2 sentences max.
 NEVER say you completed an action unless the skill result explicitly confirms it.
-NEVER delegate to Lucy or any other agent.
+NEVER delegate to any other agent.
 
 ━━ ANTI-HALLUCINATION ━━
 - Skill returns "Done. [X] added" → confirm done
@@ -331,6 +353,72 @@ class VoicePipeline:
         except Exception as e:
             print(f"[Voice] Qwen error: {e}")
             yield "Sorry, I had a processing error."
+
+    # ── Screenshot + Vision ─────────────────────────────────────────────
+
+    def _is_screen_request(self, text: str) -> bool:
+        """Detect if user is asking to look at their screen."""
+        return bool(_SCREEN_TRIGGERS.search(text))
+
+    async def _take_screenshot(self) -> Optional[str]:
+        """Take a screenshot, downscale to 1280px wide, return base64 JPEG."""
+        path = os.path.expanduser("~/.codec/voice_screenshot.png")
+        try:
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(
+                None,
+                lambda: subprocess.run(
+                    ["screencapture", "-x", path],
+                    timeout=5, check=True,
+                ),
+            )
+            if not os.path.exists(path):
+                return None
+            # Downscale to 1280px wide JPEG to reduce vision model latency
+            def _downscale():
+                from PIL import Image
+                img = Image.open(path)
+                w, h = img.size
+                if w > 1280:
+                    ratio = 1280 / w
+                    img = img.resize((1280, int(h * ratio)), Image.LANCZOS)
+                buf = io.BytesIO()
+                img.save(buf, format="JPEG", quality=75)
+                return base64.b64encode(buf.getvalue()).decode()
+            return await loop.run_in_executor(None, _downscale)
+        except Exception as e:
+            print(f"[Voice] Screenshot failed: {e}")
+        return None
+
+    async def _analyze_screenshot(self, image_b64: str, user_text: str) -> str:
+        """Send screenshot to vision model and return description."""
+        prompt = (
+            f"The user said: \"{user_text}\"\n\n"
+            "Describe what you see on this screen in 2-4 concise sentences. "
+            "Focus on the main content, app, or task visible. "
+            "Be specific about text, UI elements, and what the user appears to be working on."
+        )
+        payload = {
+            "model": VISION_MODEL,
+            "messages": [{"role": "user", "content": [
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}},
+                {"type": "text", "text": prompt},
+            ]}],
+            "max_tokens": 500,
+            "temperature": 0.7,
+        }
+        try:
+            r = await self._http.post(
+                VISION_URL, json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=60.0,
+            )
+            if r.status_code == 200:
+                return r.json()["choices"][0]["message"]["content"].strip()
+            print(f"[Voice] Vision model returned {r.status_code}: {r.text[:200]}")
+        except Exception as e:
+            print(f"[Voice] Vision analysis error: {e}")
+        return ""
 
     async def generate_response(self, user_text: str):
         self.messages.append({"role": "user", "content": user_text})
@@ -668,6 +756,67 @@ class VoicePipeline:
 
                 print(f"[Voice] User: {user_text}")
                 await self.ws.send_json({"type": "transcript", "role": "user", "text": user_text})
+
+                # 1b. Screenshot + Vision — "look at my screen" etc.
+                if self._is_screen_request(user_text):
+                    print("[Voice] Screen analysis requested")
+                    await self.ws.send_json({"type": "status", "status": "analyzing_screen"})
+                    # Speak a quick acknowledgment so user knows it's working
+                    await self._speak("Let me take a look at your screen.")
+                    screenshot_b64 = await self._take_screenshot()
+                    if screenshot_b64:
+                        await self._speak("Got it. Analyzing what I see.")
+                        vision_desc = await self._analyze_screenshot(screenshot_b64, user_text)
+                        if vision_desc:
+                            # Inject screen context into conversation so LLM can discuss it
+                            screen_context = (
+                                f"[SCREEN ANALYSIS] I just looked at the user's screen. "
+                                f"Here's what I see: {vision_desc}"
+                            )
+                            self.messages.append({"role": "user", "content": user_text})
+                            self.messages.append({"role": "system", "content": screen_context})
+                            # Now stream LLM response with screen awareness
+                            await self.ws.send_json({"type": "status", "status": "processing"})
+                            sentence_buf = ""
+                            full_text = ""
+                            interrupted_mid = False
+                            follow_up = (
+                                f"Based on what you see on my screen, respond to what I said: \"{user_text}\". "
+                                "Be helpful and specific about what's visible."
+                            )
+                            async for token in self._stream_qwen(self._trimmed_messages() + [
+                                {"role": "user", "content": follow_up}
+                            ]):
+                                if self.interrupted.is_set():
+                                    interrupted_mid = True
+                                    break
+                                sentence_buf += token
+                                full_text += token
+                                to_speak, sentence_buf = self._flush_on_boundary(sentence_buf)
+                                if to_speak:
+                                    await self.ws.send_json({"type": "transcript_chunk", "text": to_speak})
+                                    ok = await self._speak(to_speak)
+                                    if not ok:
+                                        interrupted_mid = True
+                                        break
+                            if not interrupted_mid and sentence_buf.strip():
+                                await self.ws.send_json({"type": "transcript_chunk", "text": sentence_buf})
+                                await self._speak(sentence_buf.strip())
+                            await self.ws.send_json({
+                                "type": "transcript", "role": "assistant",
+                                "text": full_text.strip() + (" [interrupted]" if interrupted_mid else "")
+                            })
+                            self.messages.append({"role": "assistant", "content": full_text.strip()})
+                            self.processing = False
+                            await self.ws.send_json({"type": "status", "status": "listening"})
+                            continue
+                    # Screenshot failed — tell user and fall through to normal LLM
+                    fail_msg = "Sorry, I couldn't capture your screen right now. What would you like help with?"
+                    await self.ws.send_json({"type": "transcript", "role": "assistant", "text": fail_msg})
+                    await self._speak(fail_msg)
+                    self.processing = False
+                    await self.ws.send_json({"type": "status", "status": "listening"})
+                    continue
 
                 # 2a. Crew dispatch
                 crew_result = await self.dispatch_crew_from_voice(user_text)

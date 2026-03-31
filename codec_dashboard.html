@@ -442,13 +442,25 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
 <div class="toast" id="toast"></div>
 
 <script>
-// CSRF: auto-inject token header on state-changing requests
-(function(){var _f=window.fetch;window.fetch=function(u,o){o=o||{};if(o.method&&o.method!=='GET'){var c=document.cookie.match(/codec_csrf=([^;]+)/);if(c){o.headers=o.headers||{};if(o.headers instanceof Headers){o.headers.set('x-csrf-token',c[1])}else{o.headers['x-csrf-token']=c[1]}}}return _f.call(this,u,o)}})();
+// Auth + CSRF: inject session token and CSRF header on all requests
+// On mobile (Android Chrome), cookies may not persist — fallback to sessionStorage
+(function(){
+var _f=window.fetch;
+function _getSession(){return document.cookie.match(/codec_session=([^;]+)/)?.[1]||sessionStorage.getItem('codec_session')||''}
+function _injectSession(url){var s=_getSession();if(!s)return url;var sep=url.indexOf('?')>=0?'&':'?';return url+sep+'s='+s}
+window.fetch=function(u,o){
+  o=o||{};
+  // Always append session token as query param (mobile cookie fallback)
+  if(typeof u==='string')u=_injectSession(u);
+  // CSRF for state-changing requests
+  if(o.method&&o.method!=='GET'){var c=document.cookie.match(/codec_csrf=([^;]+)/);if(c){o.headers=o.headers||{};if(o.headers instanceof Headers){o.headers.set('x-csrf-token',c[1])}else{o.headers['x-csrf-token']=c[1]}}}
+  return _f.call(this,u,o)};
+})();
 // E2E encryption layer — AES-256-GCM via ECDH key exchange
 var _e2eKey=null;
 (function(){var _f2=window.fetch;function _b64(buf){return btoa(String.fromCharCode.apply(null,new Uint8Array(buf)))}function _unb64(s){var b=atob(s),a=new Uint8Array(b.length);for(var i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a}
 window._e2eNegotiate=function(){return crypto.subtle.generateKey({name:'ECDH',namedCurve:'P-256'},true,['deriveBits']).then(function(kp){return crypto.subtle.exportKey('raw',kp.publicKey).then(function(pub){return _f2('/api/auth/keyexchange',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pub:_b64(pub)})}).then(function(r){return r.json()}).then(function(d){var srvPub=_unb64(d.pub);return crypto.subtle.importKey('raw',srvPub,{name:'ECDH',namedCurve:'P-256'},false,[]).then(function(srvKey){return crypto.subtle.deriveBits({name:'ECDH',public:srvKey},kp.privateKey,256)}).then(function(bits){return crypto.subtle.importKey('raw',bits,{name:'HKDF'},false,['deriveKey'])}).then(function(hkdfKey){return crypto.subtle.deriveKey({name:'HKDF',hash:'SHA-256',salt:new Uint8Array(0),info:new TextEncoder().encode('codec-e2e')},hkdfKey,{name:'AES-GCM',length:256},false,['encrypt','decrypt'])}).then(function(k){_e2eKey=k;sessionStorage.setItem('_e2eReady','1')})})})}).catch(function(e){console.warn('E2E negotiation failed:',e)})};
-window.fetch=function(u,o){o=o||{};if(!_e2eKey)return _f2.call(this,u,o);var method=(o.method||'GET').toUpperCase();if(method!=='GET'&&o.body){var iv=crypto.getRandomValues(new Uint8Array(12));return crypto.subtle.encrypt({name:'AES-GCM',iv:iv},_e2eKey,new TextEncoder().encode(o.body)).then(function(ct){o.body=JSON.stringify({iv:_b64(iv),ct:_b64(ct)});o.headers=o.headers||{};if(o.headers instanceof Headers){o.headers.set('x-e2e','1');o.headers.set('Content-Type','application/json')}else{o.headers['x-e2e']='1';o.headers['Content-Type']='application/json'}return _f2.call(this,u,o)}.bind(this)).then(_decResp)}return _f2.call(this,u,o).then(_decResp)};
+window.fetch=function(u,o){o=o||{};if(!_e2eKey)return _f2.call(this,u,o);var method=(o.method||'GET').toUpperCase();if(method!=='GET'&&o.body){var iv=crypto.getRandomValues(new Uint8Array(12));return crypto.subtle.encrypt({name:'AES-GCM',iv:iv},_e2eKey,new TextEncoder().encode(o.body)).then(function(ct){o.body=JSON.stringify({iv:_b64(iv),ct:_b64(ct)});o.headers=o.headers||{};if(o.headers instanceof Headers){o.headers.set('x-e2e','1');o.headers.set('Content-Type','application/json')}else{o.headers['x-e2e']='1';o.headers['Content-Type']='application/json'}return _f2.call(this,u,o)}.bind(this)).then(function(r){if(r.headers&&r.headers.get('x-e2e-renew')==='1'){console.warn('E2E key expired, re-negotiating...');_e2eKey=null;return window._e2eNegotiate().then(function(){return _f2.call(this,u,o)}.bind(this))}return _decResp(r)}.bind(this))}return _f2.call(this,u,o).then(_decResp)};
 function _decResp(r){if(!_e2eKey||r.headers.get('x-e2e')!=='1')return r;return r.clone().json().then(function(d){if(!d.iv||!d.ct)return r;var iv=_unb64(d.iv),ct=_unb64(d.ct);return crypto.subtle.decrypt({name:'AES-GCM',iv:iv},_e2eKey,ct).then(function(pt){var txt=new TextDecoder().decode(pt);return new Response(txt,{status:r.status,headers:r.headers})})}).catch(function(){return r})}
 if(sessionStorage.getItem('_e2eReady'))window._e2eNegotiate();
 })();
@@ -538,9 +550,15 @@ async function sendCmd() {
   var pollCount = 0;
   var pollResp = setInterval(async function() {
     pollCount++;
-    if (pollCount > 20) { clearInterval(pollResp); return; }
+    if (pollCount > 40) { clearInterval(pollResp); text.innerHTML = '<span style="color:var(--danger)">Timeout:</span> No response after 60s. Try again.'; return; }
     try {
-      var pr = await fetch('/api/response');
+      var pr = await fetch('/api/response?_t=' + Date.now(), {cache: 'no-store'});
+      if (pr.status === 401 || pr.status === 403) {
+        clearInterval(pollResp);
+        text.innerHTML = '<span style="color:var(--danger)">Session expired</span> — refreshing...';
+        setTimeout(function(){ window.location.href = '/auth'; }, 1500);
+        return;
+      }
       var pd = await pr.json();
       if (pd.response) {
         text.innerHTML = '<span style="color:var(--success)">Q:</span> ' + escHtml(pd.response);
@@ -548,14 +566,14 @@ async function sendCmd() {
         loadChat();
         playResponse(pd.response);
       }
-    } catch(e) {}
+    } catch(e) { console.warn('Poll error:', e); }
   }, 1500);
 }
 
 document.getElementById('cmdInput').addEventListener('keydown', function(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendCmd(); } });
 document.getElementById('cmdInput').addEventListener('input', function() { this.style.height = 'auto'; this.style.height = Math.min(this.scrollHeight, 120) + 'px'; });
 
-function lockSession(){fetch('/api/auth/logout',{method:'POST'}).then(function(){document.cookie='codec_session=;path=/;max-age=0;SameSite=Strict'+(location.protocol==='https:'?';Secure':'');window.location.href='/auth'})}
+function lockSession(){fetch('/api/auth/logout',{method:'POST'}).then(function(){document.cookie='codec_session=;path=/;max-age=0;SameSite=Lax'+(location.protocol==='https:'?';Secure':'');window.location.href='/auth'})}
 
 // ── Voice Input ──
 function toggleMic() {
@@ -661,9 +679,9 @@ async function loadTotpStatus() {
       statusEl.style.color = 'var(--success)';
       actionsEl.innerHTML = '<button class="save-config-btn" style="margin:0;background:var(--danger)" onclick="disableTotp()">Disable 2FA</button>';
     } else if (data.totp_secret_exists) {
-      statusEl.textContent = 'Disabled (secret exists)';
+      statusEl.textContent = 'Disabled (secret retained)';
       statusEl.style.color = 'var(--warning, orange)';
-      actionsEl.innerHTML = '<button class="save-config-btn" style="margin:0" onclick="enableTotp()">Re-enable 2FA</button>';
+      actionsEl.innerHTML = '<div style="font-size:12px;color:var(--text-dim);margin-bottom:8px;">Your authenticator entry is still valid. Re-enable uses the same code — no new QR scan needed.</div><button class="save-config-btn" style="margin:0" onclick="enableTotp()">Re-enable 2FA</button>';
     } else {
       statusEl.textContent = 'Not configured';
       statusEl.style.color = 'var(--text-dim)';
@@ -682,7 +700,7 @@ async function disableTotp() {
     var r = await fetch('/api/auth/totp/disable', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: code }) });
     var data = await r.json();
     if (data.disabled) {
-      showToast('2FA has been disabled');
+      showToast('2FA disabled. Your authenticator entry is kept — you can re-enable anytime with the same code.');
       loadTotpStatus();
     } else {
       showToast(data.error || 'Failed to disable 2FA');
@@ -888,10 +906,14 @@ function takeServerPhoto() {
   var btn = document.getElementById('photoBtn');
   btn.style.borderColor = 'var(--accent)';
   showToast('Capturing from Mac webcam...');
-  fetch('/api/webcam/snapshot').then(function(r) { return r.json(); }).then(function(d) {
+  fetch('/api/webcam/snapshot?_t=' + Date.now() + _getAuthParam()).then(function(r) { return r.json(); }).then(function(d) {
     btn.style.borderColor = '';
     if (d.error) { showToast('Error: ' + d.error); return; }
     showToast('Photo saved: ' + d.filename);
+    // Show in the screenshot modal for preview
+    var img = document.getElementById('screenImg');
+    img.src = 'data:image/jpeg;base64,' + d.image;
+    document.getElementById('screenModal').classList.add('show');
     // Auto-analyze
     fetch('/api/webcam', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ image: d.image, analyze: true, prompt: 'Describe what you see in this photo. Be concise.' })
@@ -902,12 +924,17 @@ function takeServerPhoto() {
 }
 
 // ── Live Webcam PIP (Mac MJPEG stream) ──
+// Helper: get session token for img/stream URLs (mobile browsers may not send cookies with img.src)
+function _getAuthParam(first) {
+  var m = document.cookie.match(/codec_session=([^;]+)/);
+  return m ? (first ? '?s=' : '&s=') + m[1] : '';
+}
 var _pipDrag = { active: false, x: 0, y: 0 };
 function toggleWebcamPip() {
   var pip = document.getElementById('webcamPip');
   if (pip.style.display === 'block') { closeWebcamPip(); return; }
   var img = document.getElementById('pipVideo');
-  img.src = '/api/webcam/stream?' + Date.now();
+  img.src = '/api/webcam/stream?_t=' + Date.now() + _getAuthParam();
   pip.style.display = 'block';
   document.getElementById('camBtn').style.borderColor = 'var(--accent)';
 }
@@ -923,7 +950,7 @@ function expandPip() {
 }
 function snapFromPip() {
   showToast('Snapshot from Mac webcam...');
-  fetch('/api/webcam/snapshot').then(function(r) { return r.json(); }).then(function(d) {
+  fetch('/api/webcam/snapshot?_t=' + Date.now() + _getAuthParam()).then(function(r) { return r.json(); }).then(function(d) {
     if (d.error) { showToast('Error: ' + d.error); return; }
     showToast('Photo saved: ' + d.filename);
     fetch('/api/webcam', { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -934,7 +961,7 @@ function snapFromPip() {
   }).catch(function(e) { showToast('Snap error: ' + e.message); });
 }
 function savePipFrame() {
-  fetch('/api/webcam/snapshot').then(function(r) { return r.json(); }).then(function(d) {
+  fetch('/api/webcam/snapshot?_t=' + Date.now() + _getAuthParam()).then(function(r) { return r.json(); }).then(function(d) {
     if (d.filename) showToast('Saved: ' + d.filename);
     else showToast('Error saving');
   }).catch(function(e) { showToast('Save error: ' + e.message); });

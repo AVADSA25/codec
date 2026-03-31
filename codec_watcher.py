@@ -160,11 +160,11 @@ def handle_draft(task, ctx, app):
         platform = "message"
 
     if ctx and len(ctx.strip()) > 10:
-        context_block = f"\n\nSCREEN CONTEXT (what M is currently looking at):\n{ctx[:1200]}"
+        context_block = f"\n\nSCREEN CONTEXT (what the user is currently looking at):\n{ctx[:1200]}"
     else:
-        context_block = "\n\n(No screen context available - write based on M's instruction alone)"
+        context_block = "\n\n(No screen context available - write based on the user's instruction alone)"
 
-    prompt = f"Platform: {platform}\nApp: {app}{context_block}\n\nM's instruction: {task}\n\nWrite the final {platform} text now. Output ONLY the message."
+    prompt = f"Platform: {platform}\nApp: {app}{context_block}\n\nThe user's instruction: {task}\n\nWrite the final {platform} text now. Output ONLY the message."
 
     messages = [
         {"role": "system", "content": DRAFT_SYSTEM},

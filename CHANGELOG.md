@@ -52,7 +52,7 @@
 - Deep Chat — 250K token context window with file upload
 - Phone Dashboard PWA with Cloudflare Tunnel
 - Google OAuth with 7 scopes (read+write)
-- Agent name configurable (default: C, personal: Mike)
+- Agent name configurable (default: C)
 - requirements.txt
 
 ### Changed

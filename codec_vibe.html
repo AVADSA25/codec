@@ -179,6 +179,11 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx);height:100vh;hei
 .pip-btn:hover{background:var(--accent)}
 .pip-btn.snap-btn{background:rgba(255,80,80,.7)}
 .pip-btn.snap-btn:hover{background:#e33}
+/* ── Screenshot/Photo Modal ── */
+.modal-overlay { display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.85); z-index:100; justify-content:center; align-items:center; padding:20px; }
+.modal-overlay.show { display:flex; }
+.modal-overlay img { max-width:100%; max-height:90vh; border-radius:var(--radius); border:1px solid var(--border); }
+.modal-close { position:fixed; top:16px; right:16px; background:var(--surface); color:var(--text); border:1px solid var(--border); width:32px; height:32px; border-radius:50%; font-size:18px; cursor:pointer; z-index:101; display:flex; align-items:center; justify-content:center; }
 </style>
 </head>
 <body>
@@ -280,8 +285,18 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx);height:100vh;hei
 <div class="op" id="op"><span style="color:var(--ac)">Vibe Coding</span></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
 <script>
-// CSRF: auto-inject token header on state-changing requests
-(function(){var _f=window.fetch;window.fetch=function(u,o){o=o||{};if(o.method&&o.method!=='GET'){var c=document.cookie.match(/codec_csrf=([^;]+)/);if(c){o.headers=o.headers||{};if(o.headers instanceof Headers){o.headers.set('x-csrf-token',c[1])}else{o.headers['x-csrf-token']=c[1]}}}return _f.call(this,u,o)}})();
+// Auth + CSRF: inject session token and CSRF header on all requests
+// On mobile (Android Chrome), cookies may not persist — fallback to sessionStorage
+(function(){
+var _f=window.fetch;
+function _getSession(){return document.cookie.match(/codec_session=([^;]+)/)?.[1]||sessionStorage.getItem('codec_session')||''}
+function _injectSession(url){var s=_getSession();if(!s)return url;var sep=url.indexOf('?')>=0?'&':'?';return url+sep+'s='+s}
+window.fetch=function(u,o){
+  o=o||{};
+  if(typeof u==='string')u=_injectSession(u);
+  if(o.method&&o.method!=='GET'){var c=document.cookie.match(/codec_csrf=([^;]+)/);if(c){o.headers=o.headers||{};if(o.headers instanceof Headers){o.headers.set('x-csrf-token',c[1])}else{o.headers['x-csrf-token']=c[1]}}}
+  return _f.call(this,u,o)};
+})();
 // E2E encryption layer — AES-256-GCM via ECDH key exchange
 var _e2eKey=null;
 (function(){var _f2=window.fetch;function _b64(buf){return btoa(String.fromCharCode.apply(null,new Uint8Array(buf)))}function _unb64(s){var b=atob(s),a=new Uint8Array(b.length);for(var i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a}
@@ -292,7 +307,7 @@ if(sessionStorage.getItem('_e2eReady'))window._e2eNegotiate();
 })();
 function toggleTheme(){var t=document.documentElement.getAttribute('data-theme')==='light'?'dark':'light';document.documentElement.setAttribute('data-theme',t);localStorage.setItem('codec-theme',t);updateThemeIcon(t);if(typeof monaco!=='undefined')monaco.editor.setTheme(t==='light'?'vs':'vs-dark')}
 function updateThemeIcon(t){var ico=document.getElementById('themeIco');if(t==='light'){ico.innerHTML='<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>'}else{ico.innerHTML='<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>'}}
-function lockSession(){fetch('/api/auth/logout',{method:'POST'}).then(function(){document.cookie='codec_session=;path=/;max-age=0;SameSite=Strict'+(location.protocol==='https:'?';Secure':'');window.location.href='/auth'})}
+function lockSession(){fetch('/api/auth/logout',{method:'POST'}).then(function(){document.cookie='codec_session=;path=/;max-age=0;SameSite=Lax'+(location.protocol==='https:'?';Secure':'');window.location.href='/auth'})}
 var _voiceOn=false;
 function toggleVoiceReply(){_voiceOn=!_voiceOn;updateVoiceIcon()}
 function updateVoiceIcon(){var b=document.getElementById('voiceBtn');if(!b)return;var m1=document.getElementById('muteX1'),m2=document.getElementById('muteX2');if(m1)m1.style.display=_voiceOn?'none':'';if(m2)m2.style.display=_voiceOn?'none':'';b.style.borderColor=_voiceOn?'var(--accent)':''}
@@ -302,10 +317,13 @@ function takeServerPhoto() {
   var btn = document.getElementById('photoBtn');
   btn.style.borderColor = 'var(--accent)';
   addMsg('system', 'Capturing from Mac webcam...');
-  fetch('/api/webcam/snapshot').then(function(r) { return r.json(); }).then(function(d) {
+  fetch('/api/webcam/snapshot?_t=' + Date.now() + _getAuthParam()).then(function(r) { return r.json(); }).then(function(d) {
     btn.style.borderColor = '';
     if (d.error) { addMsg('system', 'Error: ' + d.error); return; }
     addMsg('system', 'Photo saved: ' + d.filename);
+    var img = document.getElementById('screenImg');
+    img.src = 'data:image/jpeg;base64,' + d.image;
+    document.getElementById('screenModal').classList.add('show');
     fetch('/api/webcam', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ image: d.image, analyze: true, prompt: 'Describe what you see in this photo. Be concise.' })
     }).then(function(r2) { return r2.json(); }).then(function(d2) {
@@ -313,14 +331,19 @@ function takeServerPhoto() {
     });
   }).catch(function(e) { btn.style.borderColor = ''; addMsg('system', 'Camera error: ' + e.message); });
 }
+function closeScreenshot() { document.getElementById('screenModal').classList.remove('show'); }
 
 // ── Live Webcam PIP (Mac MJPEG stream) ──
 var _pipDrag = { active: false, x: 0, y: 0 };
+function _getAuthParam(first) {
+  var m = document.cookie.match(/codec_session=([^;]+)/);
+  return m ? (first ? '?s=' : '&s=') + m[1] : '';
+}
 function toggleWebcamPip() {
   var pip = document.getElementById('webcamPip');
   if (pip.style.display === 'block') { closeWebcamPip(); return; }
   var img = document.getElementById('pipVideo');
-  img.src = '/api/webcam/stream?' + Date.now();
+  img.src = '/api/webcam/stream?_t=' + Date.now() + _getAuthParam();
   pip.style.display = 'block';
   document.getElementById('camBtn').style.borderColor = 'var(--accent)';
 }
@@ -336,7 +359,7 @@ function expandPip() {
 }
 function snapFromPip() {
   addMsg('system', 'Snapshot from Mac webcam...');
-  fetch('/api/webcam/snapshot').then(function(r) { return r.json(); }).then(function(d) {
+  fetch('/api/webcam/snapshot?_t=' + Date.now() + _getAuthParam()).then(function(r) { return r.json(); }).then(function(d) {
     if (d.error) { addMsg('system', 'Error: ' + d.error); return; }
     addMsg('system', 'Photo saved: ' + d.filename);
     fetch('/api/webcam', { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -347,7 +370,7 @@ function snapFromPip() {
   }).catch(function(e) { addMsg('system', 'Snap error: ' + e.message); });
 }
 function savePipFrame() {
-  fetch('/api/webcam/snapshot').then(function(r) { return r.json(); }).then(function(d) {
+  fetch('/api/webcam/snapshot?_t=' + Date.now() + _getAuthParam()).then(function(r) { return r.json(); }).then(function(d) {
     if (d.filename) addMsg('system', 'Saved: ' + d.filename);
     else addMsg('system', 'Error saving');
   }).catch(function(e) { addMsg('system', 'Save error: ' + e.message); });
@@ -1260,5 +1283,11 @@ document.getElementById('vi').addEventListener('input', function() {
     <button class="pip-btn" onclick="closeWebcamPip()" title="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
   </div>
 </div>
+
+<div class="modal-overlay" id="screenModal" onclick="closeScreenshot()">
+  <button class="modal-close" onclick="closeScreenshot()">&times;</button>
+  <img id="screenImg" src="">
+</div>
+
 </body>
 </html>

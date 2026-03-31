@@ -258,7 +258,7 @@ def dispatch(task):
     audit("TASK", f"{task[:200]} | App: {app}")
     log.info(f"Task: {task[:80]} | App: {app}")
     safe_task = task[:50].replace('\\', '\\\\').replace('"', '\\"')
-    subprocess.Popen(["osascript", "-e", f'display notification "Heard: {safe_task}" with title "Q"'],
+    subprocess.Popen(["osascript", "-e", f'display notification "Heard: {safe_task}" with title "CODEC"'],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     # Check skills — skip if task is very long (document content attached)

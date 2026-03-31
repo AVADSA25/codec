@@ -429,7 +429,7 @@ def main():
         "skill_forge":      "Convert any code to a CODEC skill",
         "memory_search":    "Search past conversations",
         # External
-        "lucy":             "Delegate tasks to external AI via webhook",
+        "delegate":         "Delegate tasks to external AI via webhook",
     }
 
     print(f"\n{W}  Available skills:{X}")

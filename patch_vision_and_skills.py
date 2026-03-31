@@ -587,15 +587,15 @@ with open(os.path.join(SKILLS, "google_tasks.py"), "w") as f:
 print("  ✓ google_tasks.py")
 
 # --- google_keep.py ---
-keep_skill = '''"""Google Keep skill for CODEC — note: Keep has no official API, delegate to Lucy"""
+keep_skill = '''"""Google Keep skill for CODEC — note: Keep has no official API, delegate to CODEC workflow"""
 import json, os
 
 SKILL_TRIGGERS = ["google keep", "my notes keep", "keep notes", "show keep"]
-SKILL_DESCRIPTION = "Google Keep notes (delegates to Lucy for full access)"
+SKILL_DESCRIPTION = "Google Keep notes (delegates to CODEC workflow for full access)"
 
 def run(task, context=None):
     return ("\\u26a0\\ufe0f Google Keep does not have an official REST API. "
-            "Try: \\\\"Ask Lucy to check my notes\\\\" \\u2014 Lucy can access Keep via her tools. "
+            "Try: \\\\"Ask CODEC to check my notes\\\\" \\u2014 CODEC can access Keep via workflow tools. "
             "Or use the **notes** skill for Apple Notes: just say \\\\"my notes\\\\" or \\\\"save a note\\\\".")
 '''
 with open(os.path.join(SKILLS, "google_keep.py"), "w") as f:

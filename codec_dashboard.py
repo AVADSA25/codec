@@ -41,11 +41,13 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         # ── CSRF check for state-changing requests ──
+        # Only enforce CSRF if the user has a valid auth session (avoids blocking expired sessions
+        # with stale CSRF cookies — let them fall through to the 401 auth check instead)
         if request.method in ("POST", "PUT", "DELETE") and path not in self.CSRF_EXEMPT:
             csrf_cookie = request.cookies.get("codec_csrf", "")
             csrf_header = request.headers.get("x-csrf-token", "")
-            # Only enforce if auth is enabled (local no-auth mode skips CSRF)
-            if (DASHBOARD_TOKEN or AUTH_ENABLED) and csrf_cookie:
+            session_cookie = request.cookies.get(AUTH_COOKIE_NAME, "")
+            if (DASHBOARD_TOKEN or AUTH_ENABLED) and csrf_cookie and session_cookie:
                 if not csrf_header or not hmac.compare_digest(csrf_cookie, csrf_header):
                     return StarletteJSONResponse(
                         {"error": "CSRF token mismatch. Refresh the page."},
@@ -69,6 +71,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if AUTH_ENABLED and _auth_available():
             if _verify_biometric_session(request):
                 return await call_next(request)
+            # Fallback: accept session token as ?s= query param (for img/stream URLs on mobile)
+            qs_token = request.query_params.get("s", "")
+            if qs_token:
+                with _auth_lock:
+                    if qs_token in _auth_sessions:
+                        session = _auth_sessions[qs_token]
+                        if datetime.now() - session["created"] <= timedelta(hours=AUTH_SESSION_HOURS):
+                            return await call_next(request)
             # Biometric failed — reject
             cookie_val = request.cookies.get(AUTH_COOKIE_NAME, "<missing>")
             log.warning("AUTH REJECTED: path=%s method=%s ip=%s cookie=%s...",
@@ -707,6 +717,14 @@ class E2EMiddleware(BaseHTTPMiddleware):
         token = request.cookies.get(AUTH_COOKIE_NAME, "")
         aes_key = _e2e_keys.get(token) if token else None
         if not aes_key:
+            # E2E header present but server lost key (e.g. after restart) — tell client to re-negotiate
+            if request.method in ("POST", "PUT", "DELETE"):
+                log.warning(f"[E2E] Key missing for session, requesting re-negotiation")
+                return StarletteJSONResponse(
+                    {"error": "E2E key expired. Refreshing encryption.", "e2e_renew": True},
+                    status_code=428,  # Precondition Required
+                    headers={"x-e2e-renew": "1"}
+                )
             return await call_next(request)
         try:
             import base64
@@ -1021,21 +1039,10 @@ async def send_command(request: Request):
     task = (body.get("command") or body.get("task") or "").strip()
     if not task:
         return JSONResponse({"error": "No command provided"}, status_code=400)
-    source = body.get("source", "api")
+    source = body.get("source", "pwa")
 
-    queue_path = os.path.expanduser("~/.codec/task_queue.txt")
-    entry = json.dumps({
-        "task": task,
-        "source": source,
-        "timestamp": datetime.now().isoformat()
-    }) + "\n"
-
-    # Write to task queue file — CODEC's dispatch will pick it up
+    # Write to task queue file — CODEC's pwa_poller will pick it up
     try:
-        with open(queue_path, "a") as f:
-            f.write(entry)
-
-        # Also write to legacy TASK_QUEUE for backward compat
         with open(TASK_QUEUE, "w") as f:
             json.dump({
                 "task": task,
@@ -1105,18 +1112,20 @@ async def vision_analyze(request: Request):
 
 @app.get("/api/response")
 async def get_response():
-    """Get latest PWA command response"""
+    """Get latest PWA command response — returns no-cache headers to prevent stale polls."""
+    headers = {"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache"}
     try:
         resp_file = os.path.expanduser("~/.codec/pwa_response.json")
         if os.path.exists(resp_file):
             with open(resp_file) as f:
                 data = json.load(f)
             os.unlink(resp_file)
-            return data
-        return {"response": None}
+            log.info(f"[Response] Delivered: {str(data.get('response',''))[:80]}")
+            return JSONResponse(content=data, headers=headers)
+        return JSONResponse(content={"response": None}, headers=headers)
     except Exception as e:
-        log.warning(f"Non-critical error: {e}")
-        return {"response": None}
+        log.warning(f"[Response] Error reading response file: {e}")
+        return JSONResponse(content={"response": None}, headers=headers)
 
 @app.get("/api/tts")
 async def tts(text: str = ""):
@@ -2028,6 +2037,8 @@ async def chat_completion(request: Request):
         if api_key: headers["Authorization"] = f"Bearer {api_key}"
         force_search = body.get("force_search", False)
         messages = _enrich_messages(messages, config, force_search=bool(force_search))
+        stream_mode = body.get("stream", False)
+
         payload = {
             "model": model,
             "messages": messages,
@@ -2035,9 +2046,41 @@ async def chat_completion(request: Request):
             "temperature": 0.7,
             "top_p": 0.9,
             "frequency_penalty": 1.1,
-            "stream": False
+            "stream": stream_mode,
         }
         payload.update(kwargs)
+
+        if stream_mode:
+            # SSE streaming — keeps Cloudflare tunnel alive, sends tokens as they arrive
+            import re as _re_stream
+            def _stream_gen():
+                try:
+                    with rq.post(f"{base_url}/chat/completions", json=payload,
+                                 headers=headers, timeout=300, stream=True) as resp:
+                        for line in resp.iter_lines(decode_unicode=True):
+                            if not line or not line.startswith("data: "):
+                                continue
+                            data_str = line[6:]
+                            if data_str == "[DONE]":
+                                yield "data: [DONE]\n\n"
+                                break
+                            try:
+                                chunk = json.loads(data_str)
+                                token = chunk["choices"][0].get("delta", {}).get("content", "")
+                                if token:
+                                    # Strip thinking tags inline
+                                    token = _re_stream.sub(r"<think>[\s\S]*?</think>", "", token)
+                                    if token:
+                                        yield f"data: {json.dumps({'token': token})}\n\n"
+                            except (json.JSONDecodeError, KeyError, IndexError):
+                                continue
+                except Exception as e:
+                    yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            from starlette.responses import StreamingResponse as _SR
+            return _SR(_stream_gen(), media_type="text/event-stream",
+                       headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+        # Non-streaming fallback
         r = rq.post(f"{base_url}/chat/completions", json=payload, headers=headers, timeout=300)
         data = r.json()
         answer = data["choices"][0]["message"]["content"].strip()
@@ -2513,6 +2556,37 @@ async def update_heartbeat_config(request: Request):
         "message": f"Heartbeat config saved ({len(changed)} field(s) updated).",
         "updated_fields": changed,
     }
+
+
+@app.get("/api/heartbeat/alerts")
+async def get_heartbeat_alerts():
+    """Get heartbeat alerts configuration."""
+    config = {}
+    try:
+        with open(CONFIG_PATH) as f:
+            config = json.load(f)
+    except Exception:
+        pass
+    return {"alerts": config.get("heartbeat_alerts", [])}
+
+
+@app.put("/api/heartbeat/alerts")
+async def update_heartbeat_alerts(request: Request):
+    """Update heartbeat alerts configuration."""
+    body = await request.json()
+    alerts = body.get("alerts", [])
+    if not isinstance(alerts, list):
+        return JSONResponse({"error": "alerts must be a list"}, status_code=422)
+    config = {}
+    try:
+        with open(CONFIG_PATH) as f:
+            config = json.load(f)
+    except Exception:
+        pass
+    config["heartbeat_alerts"] = alerts
+    with open(CONFIG_PATH, "w") as f:
+        json.dump(config, f, indent=2)
+    return {"saved": True, "message": f"{len(alerts)} alert(s) saved."}
 
 
 @app.get("/api/schedules/history")

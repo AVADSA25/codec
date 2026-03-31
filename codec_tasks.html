@@ -164,6 +164,24 @@ a { color: var(--accent); text-decoration: none; }
   .tabs { flex-wrap: wrap; }
   .tab { font-size: 12px; padding: 8px 12px; }
 }
+/* ── Alert items ── */
+.alert-item { display: flex; align-items: center; gap: 10px; padding: 12px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); margin-bottom: 8px; }
+.alert-item .alert-icon { font-size: 18px; min-width: 24px; text-align: center; }
+.alert-item .alert-info { flex: 1; }
+.alert-item .alert-name { font-size: 14px; font-weight: 500; }
+.alert-item .alert-meta { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-top: 2px; }
+.alert-item .alert-toggle { }
+.alert-item.disabled { opacity: 0.5; }
+
+/* ── Preview Modal ── */
+.preview-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:10000; align-items:center; justify-content:center; flex-direction:column; gap:12px; }
+.preview-modal.show { display:flex; }
+.preview-modal img { max-width:90vw; max-height:80vh; border-radius:10px; box-shadow:0 4px 30px rgba(0,0,0,0.5); }
+.preview-modal .preview-actions { display:flex; gap:10px; }
+.preview-modal .preview-btn { background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.2); color:#fff; padding:8px 18px; border-radius:20px; font-size:13px; cursor:pointer; font-family:var(--font); transition:background 0.15s; }
+.preview-modal .preview-btn:hover { background:rgba(255,255,255,0.25); }
+.preview-modal .preview-close { position:fixed; top:16px; right:16px; background:none; border:none; color:#fff; font-size:32px; cursor:pointer; line-height:1; }
+
 .webcam-pip{position:fixed;bottom:80px;right:20px;width:240px;border-radius:14px;overflow:hidden;border:2px solid var(--accent);box-shadow:0 4px 24px rgba(0,0,0,.5);z-index:9999;display:none;background:#000;transition:width .3s,height .3s,border-radius .3s}
 .webcam-pip img,.webcam-pip video{width:100%;display:block}
 .webcam-pip.expanded{width:640px;max-width:90vw;border-radius:10px}
@@ -265,7 +283,23 @@ a { color: var(--accent); text-decoration: none; }
 
   <!-- ── Heartbeat Tab ── -->
   <div class="tab-panel" id="panel-heartbeat">
-    <div class="heartbeat-section">
+    <!-- How it works -->
+    <div class="heartbeat-section" style="margin-bottom:16px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:20px;">
+      <h2 style="font-size:16px; font-weight:600; margin-bottom:10px;">How Heartbeat Works</h2>
+      <p style="font-size:13px; color:var(--text-muted); line-height:1.6; margin-bottom:12px;">
+        The heartbeat daemon runs in the background at your chosen interval. Each cycle it checks service health (LLM, Whisper, TTS, Vision, Dashboard), memory stats, pending tasks, and any alerts you configure below. Triggered alerts appear in the Reports tab and as dashboard notifications.
+      </p>
+      <div style="font-size:12px; color:var(--text-dim); line-height:1.6; background:var(--surface-2); border-radius:var(--radius-sm); padding:12px; font-family:var(--mono);">
+        <strong style="color:var(--text-muted);">Alert types:</strong><br>
+        <span style="color:var(--accent);">price</span> — Track crypto prices via CoinGecko. Set asset, threshold %, direction (up/down/any)<br>
+        <span style="color:var(--accent);">email_check</span> — Count unread emails in macOS Mail inbox<br>
+        <span style="color:var(--accent);">disk_usage</span> — Warn when disk usage exceeds a threshold %<br>
+        <span style="color:var(--text-dim); margin-top:6px; display:block;">Toggle alerts on/off without deleting them. Disabled alerts are skipped each cycle.</span>
+      </div>
+    </div>
+
+    <!-- Heartbeat config -->
+    <div class="heartbeat-section" style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:20px; margin-bottom:16px;">
       <h2 style="font-size:16px; font-weight:600; margin-bottom:16px;">Heartbeat Configuration</h2>
       <div class="form-row">
         <div class="form-group">
@@ -295,6 +329,15 @@ a { color: var(--accent); text-decoration: none; }
         <button class="btn btn-primary" onclick="saveHeartbeat()">Save Configuration</button>
       </div>
     </div>
+
+    <!-- Alerts -->
+    <div class="heartbeat-section" style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:20px;">
+      <h2 style="font-size:16px; font-weight:600; margin-bottom:16px;">Alerts</h2>
+      <div id="alertsList"></div>
+      <div style="margin-top:12px; display:flex; justify-content:flex-end;">
+        <button class="btn btn-primary" onclick="saveAlerts()">Save Alerts</button>
+      </div>
+    </div>
   </div>
 
   <!-- ── History Tab ── -->
@@ -320,8 +363,18 @@ a { color: var(--accent); text-decoration: none; }
 <div class="toast-container" id="toastContainer"></div>
 
 <script>
-// CSRF: auto-inject token header on state-changing requests
-(function(){var _f=window.fetch;window.fetch=function(u,o){o=o||{};if(o.method&&o.method!=='GET'){var c=document.cookie.match(/codec_csrf=([^;]+)/);if(c){o.headers=o.headers||{};if(o.headers instanceof Headers){o.headers.set('x-csrf-token',c[1])}else{o.headers['x-csrf-token']=c[1]}}}return _f.call(this,u,o)}})();
+// Auth + CSRF: inject session token and CSRF header on all requests
+// On mobile (Android Chrome), cookies may not persist — fallback to sessionStorage
+(function(){
+var _f=window.fetch;
+function _getSession(){return document.cookie.match(/codec_session=([^;]+)/)?.[1]||sessionStorage.getItem('codec_session')||''}
+function _injectSession(url){var s=_getSession();if(!s)return url;var sep=url.indexOf('?')>=0?'&':'?';return url+sep+'s='+s}
+window.fetch=function(u,o){
+  o=o||{};
+  if(typeof u==='string')u=_injectSession(u);
+  if(o.method&&o.method!=='GET'){var c=document.cookie.match(/codec_csrf=([^;]+)/);if(c){o.headers=o.headers||{};if(o.headers instanceof Headers){o.headers.set('x-csrf-token',c[1])}else{o.headers['x-csrf-token']=c[1]}}}
+  return _f.call(this,u,o)};
+})();
 // E2E encryption layer — AES-256-GCM via ECDH key exchange
 var _e2eKey=null;
 (function(){var _f2=window.fetch;function _b64(buf){return btoa(String.fromCharCode.apply(null,new Uint8Array(buf)))}function _unb64(s){var b=atob(s),a=new Uint8Array(b.length);for(var i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a}
@@ -333,20 +386,39 @@ if(sessionStorage.getItem('_e2eReady'))window._e2eNegotiate();
 /* ── Theme ── */
 function toggleTheme(){var t=document.documentElement.getAttribute('data-theme')==='light'?'dark':'light';document.documentElement.setAttribute('data-theme',t);localStorage.setItem('codec-theme',t);updateThemeIcon(t)}
 function updateThemeIcon(t){var ico=document.getElementById('themeIco');if(t==='light'){ico.innerHTML='<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>'}else{ico.innerHTML='<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>'}}
-function lockSession(){fetch('/api/auth/logout',{method:'POST'}).then(function(){document.cookie='codec_session=;path=/;max-age=0;SameSite=Strict'+(location.protocol==='https:'?';Secure':'');window.location.href='/auth'})}
+function lockSession(){fetch('/api/auth/logout',{method:'POST'}).then(function(){document.cookie='codec_session=;path=/;max-age=0;SameSite=Lax'+(location.protocol==='https:'?';Secure':'');window.location.href='/auth'})}
 var _voiceOn=false;
 function toggleVoiceReply(){_voiceOn=!_voiceOn;updateVoiceIcon()}
 function updateVoiceIcon(){var b=document.getElementById('voiceBtn');if(!b)return;var m1=document.getElementById('muteX1'),m2=document.getElementById('muteX2');if(m1)m1.style.display=_voiceOn?'none':'';if(m2)m2.style.display=_voiceOn?'none':'';b.style.borderColor=_voiceOn?'var(--accent)':''}
-function takeScreenshot(){fetch('/api/screenshot',{method:'POST'}).then(function(r){return r.json()}).then(function(d){if(d.path)alert('Screenshot saved: '+d.path)}).catch(function(){})}
-// ── Server Photo (Mac webcam) ──
+// ── Screenshot (shows preview) ──
+function takeScreenshot(){
+  showToast('Taking screenshot...');
+  var img = document.getElementById('previewImg');
+  img.src = '/api/screenshot?' + Date.now();
+  img.onload = function() {
+    document.getElementById('previewModal').classList.add('show');
+    showToast('Screenshot captured');
+  };
+  img.onerror = function() { showToast('Screenshot failed'); };
+  window._lastPreviewUrl = img.src;
+  window._lastPreviewName = 'codec_screenshot_' + new Date().toISOString().slice(0,19).replace(/[:-]/g,'') + '.png';
+}
+// ── Server Photo (Mac webcam, shows preview) ──
 function takeServerPhoto() {
   var btn = document.getElementById('photoBtn');
   btn.style.borderColor = 'var(--accent)';
   showToast('Capturing from Mac webcam...');
-  fetch('/api/webcam/snapshot').then(function(r) { return r.json(); }).then(function(d) {
+  fetch('/api/webcam/snapshot?_t=' + Date.now() + _getAuthParam()).then(function(r) { return r.json(); }).then(function(d) {
     btn.style.borderColor = '';
     if (d.error) { showToast('Error: ' + d.error); return; }
     showToast('Photo saved: ' + d.filename);
+    // Show preview
+    var img = document.getElementById('previewImg');
+    img.src = 'data:image/jpeg;base64,' + d.image;
+    document.getElementById('previewModal').classList.add('show');
+    window._lastPreviewUrl = img.src;
+    window._lastPreviewName = d.filename || 'webcam_photo.jpg';
+    // Auto-analyze
     fetch('/api/webcam', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ image: d.image, analyze: true, prompt: 'Describe what you see in this photo. Be concise.' })
     }).then(function(r2) { return r2.json(); }).then(function(d2) {
@@ -354,14 +426,37 @@ function takeServerPhoto() {
     });
   }).catch(function(e) { btn.style.borderColor = ''; showToast('Camera error: ' + e.message); });
 }
+// ── Preview Modal ──
+function closePreview(e) {
+  if (e && e.target !== e.currentTarget && !e.target.classList.contains('preview-close')) return;
+  document.getElementById('previewModal').classList.remove('show');
+}
+function downloadPreview() {
+  var a = document.createElement('a');
+  a.href = window._lastPreviewUrl || '';
+  a.download = window._lastPreviewName || 'capture.png';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+function expandPreview() {
+  var img = document.getElementById('previewImg');
+  if (img.style.maxWidth === 'none') {
+    img.style.maxWidth = '90vw'; img.style.maxHeight = '80vh';
+  } else {
+    img.style.maxWidth = 'none'; img.style.maxHeight = 'none';
+  }
+}
 
 // ── Live Webcam PIP (Mac MJPEG stream) ──
 var _pipDrag = { active: false, x: 0, y: 0 };
+function _getAuthParam(first) {
+  var m = document.cookie.match(/codec_session=([^;]+)/);
+  return m ? (first ? '?s=' : '&s=') + m[1] : '';
+}
 function toggleWebcamPip() {
   var pip = document.getElementById('webcamPip');
   if (pip.style.display === 'block') { closeWebcamPip(); return; }
   var img = document.getElementById('pipVideo');
-  img.src = '/api/webcam/stream?' + Date.now();
+  img.src = '/api/webcam/stream?_t=' + Date.now() + _getAuthParam();
   pip.style.display = 'block';
   document.getElementById('camBtn').style.borderColor = 'var(--accent)';
 }
@@ -377,7 +472,7 @@ function expandPip() {
 }
 function snapFromPip() {
   showToast('Snapshot from Mac webcam...');
-  fetch('/api/webcam/snapshot').then(function(r) { return r.json(); }).then(function(d) {
+  fetch('/api/webcam/snapshot?_t=' + Date.now() + _getAuthParam()).then(function(r) { return r.json(); }).then(function(d) {
     if (d.error) { showToast('Error: ' + d.error); return; }
     showToast('Photo saved: ' + d.filename);
     fetch('/api/webcam', { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -388,7 +483,7 @@ function snapFromPip() {
   }).catch(function(e) { showToast('Snap error: ' + e.message); });
 }
 function savePipFrame() {
-  fetch('/api/webcam/snapshot').then(function(r) { return r.json(); }).then(function(d) {
+  fetch('/api/webcam/snapshot?_t=' + Date.now() + _getAuthParam()).then(function(r) { return r.json(); }).then(function(d) {
     if (d.filename) showToast('Saved: ' + d.filename);
     else showToast('Error saving');
   }).catch(function(e) { showToast('Save error: ' + e.message); });
@@ -614,10 +709,61 @@ function saveHeartbeat() {
   fetch('/api/heartbeat/config', { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) })
     .then(function(r){ return r.json(); })
     .then(function(data) {
-      if (data.saved) alert('Heartbeat configuration saved.');
-      else alert('Error saving configuration.');
+      if (data.saved) showToast('Heartbeat configuration saved.');
+      else showToast('Error saving configuration.');
     })
-    .catch(function(e){ alert('Error: ' + e); });
+    .catch(function(e){ showToast('Error: ' + e); });
+}
+
+/* ── Alerts ── */
+var hbAlerts = [];
+function loadAlerts() {
+  fetch('/api/heartbeat/alerts').then(function(r){ return r.json(); }).then(function(data) {
+    hbAlerts = data.alerts || [];
+    renderAlerts();
+  }).catch(function() {
+    hbAlerts = [];
+    renderAlerts();
+  });
+}
+function renderAlerts() {
+  var el = document.getElementById('alertsList');
+  if (!hbAlerts.length) {
+    el.innerHTML = '<div style="font-size:13px;color:var(--text-dim);padding:8px 0;">No alerts configured. Add them in <code>~/.codec/config.json</code> under <code>heartbeat_alerts</code>.</div>';
+    return;
+  }
+  var icons = { price: '💰', email_check: '📧', disk_usage: '💾' };
+  var html = '';
+  hbAlerts.forEach(function(alert, i) {
+    var icon = icons[alert.type] || '🔔';
+    var enabled = alert.enabled !== false;
+    var meta = alert.type;
+    if (alert.type === 'price') meta += ' | ' + (alert.asset || 'bitcoin') + ' | ' + (alert.threshold_pct || 5) + '% ' + (alert.direction || 'any');
+    else if (alert.type === 'disk_usage') meta += ' | threshold: ' + (alert.threshold_pct || 90) + '%';
+    else if (alert.type === 'email_check') meta += ' | macOS Mail inbox';
+    html += '<div class="alert-item' + (enabled ? '' : ' disabled') + '">';
+    html += '<span class="alert-icon">' + icon + '</span>';
+    html += '<div class="alert-info"><div class="alert-name">' + escHtml(alert.name || 'Unnamed') + '</div><div class="alert-meta">' + escHtml(meta) + '</div></div>';
+    html += '<label class="toggle" style="margin:0"><input type="checkbox" ' + (enabled ? 'checked' : '') + ' onchange="toggleAlert(' + i + ',this.checked)"><span class="toggle-slider"></span></label>';
+    html += '</div>';
+  });
+  el.innerHTML = html;
+}
+function toggleAlert(i, on) {
+  if (hbAlerts[i]) {
+    if (on) delete hbAlerts[i].enabled;
+    else hbAlerts[i].enabled = false;
+    renderAlerts();
+  }
+}
+function saveAlerts() {
+  fetch('/api/heartbeat/alerts', { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ alerts: hbAlerts }) })
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+      if (data.saved) showToast('Alerts saved.');
+      else showToast('Error saving alerts.');
+    })
+    .catch(function(e){ showToast('Error: ' + e); });
 }
 
 /* ── History ── */
@@ -752,6 +898,7 @@ function escHtml(s) {
 document.addEventListener('DOMContentLoaded', function() {
   loadSchedules();
   loadHeartbeat();
+  loadAlerts();
   loadHistory();
   pollNotifCount();
   setInterval(pollNotifCount, 30000);
@@ -772,6 +919,22 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 </script>
+<!-- Preview Modal (screenshot + webcam photo) -->
+<div class="preview-modal" id="previewModal" onclick="closePreview(event)">
+  <button class="preview-close" onclick="closePreview()">&times;</button>
+  <img id="previewImg" src="" alt="Preview">
+  <div class="preview-actions">
+    <button class="preview-btn" onclick="downloadPreview()">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Download
+    </button>
+    <button class="preview-btn" onclick="expandPreview()">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+      Full Size
+    </button>
+  </div>
+</div>
+
 <div class="webcam-pip" id="webcamPip">
   <img id="pipVideo" alt="Mac Webcam" onclick="expandPip()" style="cursor:pointer" />
   <div class="pip-bar">
