@@ -11,12 +11,12 @@ log = logging.getLogger("codec_mcp")
 
 # Consolidate sys.path setup (done once, not scattered)
 _REPO_DIR = os.path.dirname(os.path.abspath(__file__))
-SKILLS_DIR = os.path.expanduser("~/.codec/skills")
-for _p in [_REPO_DIR, SKILLS_DIR]:
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
+if _REPO_DIR not in sys.path:
+    sys.path.insert(0, _REPO_DIR)
 
-from codec_config import MCP_DEFAULT_ALLOW, MCP_ALLOWED_TOOLS
+from codec_config import MCP_DEFAULT_ALLOW, MCP_ALLOWED_TOOLS, SKILLS_DIR
+if SKILLS_DIR not in sys.path:
+    sys.path.insert(0, SKILLS_DIR)
 from codec_skill_registry import SkillRegistry
 
 mcp = FastMCP("CODEC", instructions="Voice-controlled computer agent with 50+ skills")

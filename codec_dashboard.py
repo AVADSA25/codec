@@ -3,6 +3,17 @@ import os, json, sqlite3, time, logging, secrets, subprocess, hmac, threading, u
 from datetime import datetime, timedelta
 
 log = logging.getLogger("codec_dashboard")
+
+DASHBOARD_DIR = os.path.dirname(os.path.abspath(__file__))
+
+def _get_skills_dir():
+    """Single source of truth for skills directory — loads from codec_config."""
+    try:
+        from codec_config import SKILLS_DIR
+        return SKILLS_DIR
+    except ImportError:
+        return os.path.join(DASHBOARD_DIR, "skills")
+
 from pathlib import Path
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
@@ -1646,7 +1657,7 @@ async def save_skill(request: Request):
     for blocked in BLOCKED_IN_SKILLS:
         if blocked in content:
             return JSONResponse({"error": f"Blocked pattern in skill code: {blocked}"}, status_code=400)
-    path = os.path.join(os.path.expanduser("~/.codec/skills"), filename)
+    path = os.path.join(_get_skills_dir(), filename)
     with open(path, "w") as f: f.write(content)
     return {"path": path, "skill": filename, "size": len(content)}
 
@@ -1689,7 +1700,7 @@ async def skill_approve(request: Request):
     for blocked in BLOCKED_IN_SKILLS:
         if blocked in code:
             return JSONResponse({"error": f"Blocked pattern in skill code: {blocked}"}, status_code=400)
-    skill_dir = os.path.expanduser("~/.codec/skills")
+    skill_dir = _get_skills_dir()
     os.makedirs(skill_dir, exist_ok=True)
     path = os.path.join(skill_dir, filename)
     with open(path, "w") as f:
@@ -1850,7 +1861,7 @@ CODE TO CONVERT:
             return JSONResponse({"error": f"Syntax error in generated skill: {e}", "raw": raw}, status_code=422)
 
         # Save to ~/.codec/skills/
-        skills_dir = os.path.expanduser("~/.codec/skills")
+        skills_dir = _get_skills_dir()
         os.makedirs(skills_dir, exist_ok=True)
         filepath = os.path.join(skills_dir, f"{skill_name}.py")
         with open(filepath, "w") as f: f.write(raw)
@@ -2666,7 +2677,7 @@ async def memory_rebuild():
 @app.get("/api/skills")
 async def skills():
     """List installed skills"""
-    skills_dir = os.path.expanduser("~/.codec/skills/")
+    skills_dir = _get_skills_dir()
     result = []
     try:
         for f in sorted(os.listdir(skills_dir)):

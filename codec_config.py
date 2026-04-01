@@ -54,7 +54,9 @@ _CODEC_TMP = os.path.expanduser("~/.codec")
 TASK_QUEUE_FILE   = os.path.join(_CODEC_TMP, "task_queue.txt")
 DRAFT_TASK_FILE   = os.path.join(_CODEC_TMP, "draft_task.json")
 SESSION_ALIVE     = os.path.join(_CODEC_TMP, "session_alive")
-SKILLS_DIR        = os.path.expanduser("~/.codec/skills")
+# Skills load from the repo directly — single source of truth
+_REPO_DIR         = os.path.dirname(os.path.abspath(__file__))
+SKILLS_DIR        = cfg.get("skills_dir", os.path.join(_REPO_DIR, "skills"))
 AUDIT_LOG         = os.path.expanduser("~/.codec/audit.log")
 
 # Features

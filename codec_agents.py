@@ -26,7 +26,10 @@ _MAX_TOOL_INPUT_LEN = 50000
 
 # ── CONFIG ──
 CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
-SKILLS_DIR  = os.path.expanduser("~/.codec/skills")
+try:
+    from codec_config import SKILLS_DIR
+except ImportError:
+    SKILLS_DIR = os.path.expanduser("~/.codec/skills")
 DB_PATH     = os.path.expanduser("~/.q_memory.db")
 
 def _cfg():

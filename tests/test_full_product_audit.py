@@ -31,7 +31,7 @@ import pytest
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 REPO = os.path.expanduser("~/codec-repo")
-SKILLS_DIR = os.path.expanduser("~/.codec/skills")
+SKILLS_DIR = os.path.join(REPO, "skills")  # Single source of truth — repo is runtime
 DB_PATH = os.path.expanduser("~/.q_memory.db")
 CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
 AUDIT_LOG = os.path.expanduser("~/.codec/audit.log")
