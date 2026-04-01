@@ -12,8 +12,8 @@
 ---
 
 <p align="center">
-  <a href="https://www.youtube.com/watch?v=u4ENFx5fPug">
-    <img src="https://img.youtube.com/vi/u4ENFx5fPug/maxresdefault.jpg" alt="CODEC Demo" width="660"/>
+  <a href="https://www.youtube.com/watch?v=OEXxvxA0_AE">
+    <img src="https://img.youtube.com/vi/OEXxvxA0_AE/maxresdefault.jpg" alt="CODEC Demo" width="660"/>
   </a>
   <br/>
   <em>Watch the full demo</em>
