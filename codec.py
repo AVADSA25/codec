@@ -62,9 +62,8 @@ def save_task(task, app):
 
 def get_memory(n=5):
     try:
-        c = sqlite3.connect(DB_PATH)
-        rows = c.execute("SELECT timestamp,task,app,response FROM sessions ORDER BY id DESC LIMIT ?", (n,)).fetchall()
-        c.close()
+        with sqlite3.connect(DB_PATH) as c:
+            rows = c.execute("SELECT timestamp,task,app,response FROM sessions ORDER BY id DESC LIMIT ?", (n,)).fetchall()
         if not rows: return ""
         lines = ["RECENT Q SESSIONS:"]
         for ts, task, app, resp in rows:
@@ -77,9 +76,8 @@ def get_memory(n=5):
 
 def get_recent_conversations(n=10):
     try:
-        c = sqlite3.connect(DB_PATH)
-        rows = c.execute("SELECT role, content FROM conversations ORDER BY id DESC LIMIT ?", (n,)).fetchall()
-        c.close()
+        with sqlite3.connect(DB_PATH) as c:
+            rows = c.execute("SELECT role, content FROM conversations ORDER BY id DESC LIMIT ?", (n,)).fetchall()
         if not rows: return []
         rows.reverse()
         return [{"role": r, "content": ct} for r, ct in rows]
@@ -512,14 +510,14 @@ def main():
                     try:
                         _ts = datetime.now().isoformat()
                         _sid = "pwa_" + datetime.now().strftime("%Y%m%d_%H%M%S")
-                        _c = sqlite3.connect(DB_PATH)
-                        _c.execute("UPDATE sessions SET response=? WHERE id=(SELECT id FROM sessions WHERE task=? AND app=? ORDER BY id DESC LIMIT 1)",
-                            (str(result)[:500], task[:200], app))
-                        _c.execute("INSERT INTO conversations (session_id,timestamp,role,content) VALUES (?,?,?,?)",
-                            (_sid, _ts, "user", task[:500]))
-                        _c.execute("INSERT INTO conversations (session_id,timestamp,role,content) VALUES (?,?,?,?)",
-                            (_sid, _ts, "assistant", str(result)[:500]))
-                        _c.commit(); _c.close()
+                        with sqlite3.connect(DB_PATH) as _c:
+                            _c.execute("UPDATE sessions SET response=? WHERE id=(SELECT id FROM sessions WHERE task=? AND app=? ORDER BY id DESC LIMIT 1)",
+                                (str(result)[:500], task[:200], app))
+                            _c.execute("INSERT INTO conversations (session_id,timestamp,role,content) VALUES (?,?,?,?)",
+                                (_sid, _ts, "user", task[:500]))
+                            _c.execute("INSERT INTO conversations (session_id,timestamp,role,content) VALUES (?,?,?,?)",
+                                (_sid, _ts, "assistant", str(result)[:500]))
+                            _c.commit()
                     except Exception as e:
                         log.warning(f"Non-critical error: {e}")
                     try:
@@ -549,14 +547,14 @@ def main():
             log.info(f"PWA answer (silent): {answer[:100]}")
             _ts = datetime.now().isoformat()
             _sid = "pwa_" + datetime.now().strftime("%Y%m%d_%H%M%S")
-            _c = sqlite3.connect(DB_PATH)
-            _c.execute("INSERT INTO sessions (timestamp,task,app,response) VALUES (?,?,?,?)",
-                (_ts, task[:200], "CODEC Dashboard", answer[:500]))
-            _c.execute("INSERT INTO conversations (session_id,timestamp,role,content) VALUES (?,?,?,?)",
-                (_sid, _ts, "user", task[:500]))
-            _c.execute("INSERT INTO conversations (session_id,timestamp,role,content) VALUES (?,?,?,?)",
-                (_sid, _ts, "assistant", answer[:500]))
-            _c.commit(); _c.close()
+            with sqlite3.connect(DB_PATH) as _c:
+                _c.execute("INSERT INTO sessions (timestamp,task,app,response) VALUES (?,?,?,?)",
+                    (_ts, task[:200], "CODEC Dashboard", answer[:500]))
+                _c.execute("INSERT INTO conversations (session_id,timestamp,role,content) VALUES (?,?,?,?)",
+                    (_sid, _ts, "user", task[:500]))
+                _c.execute("INSERT INTO conversations (session_id,timestamp,role,content) VALUES (?,?,?,?)",
+                    (_sid, _ts, "assistant", answer[:500]))
+                _c.commit()
             with open(os.path.expanduser("~/.codec/pwa_response.json"), "w") as _rf:
                 json.dump({"task": task, "response": answer, "ts": datetime.now().isoformat()}, _rf)
         except Exception as _e:

@@ -1558,7 +1558,7 @@ async def preview_frame():
             content = f.read()
         # Restrict preview with CSP — no access to dashboard APIs or external resources
         return HTMLResponse(content, headers={
-            "Content-Security-Policy": "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; connect-src 'none'; form-action 'none'",
+            "Content-Security-Policy": "default-src 'self' 'unsafe-inline' data: blob:; connect-src 'none'; form-action 'none'",
             "X-Frame-Options": "SAMEORIGIN",
         })
     except Exception as e:
