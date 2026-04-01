@@ -11,6 +11,16 @@
 
 ---
 
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=u4ENFx5fPug">
+    <img src="https://img.youtube.com/vi/u4ENFx5fPug/maxresdefault.jpg" alt="CODEC Demo" width="660"/>
+  </a>
+  <br/>
+  <em>Watch the full demo</em>
+</p>
+
+---
+
 ## Why CODEC Exists
 
 All I wanted was to speak to my computer. Tell it to read my screen and reply to a message. Have it hear me think out loud and act on it — privately, on my hardware, with nothing leaving my machine.
