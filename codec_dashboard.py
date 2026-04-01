@@ -266,6 +266,34 @@ _SESSION_FILE = os.path.expanduser("~/.codec/.auth_sessions.json")
 _auth_sessions = {}  # token -> {created: datetime, ip: str, method: str}
 _auth_lock = threading.Lock()
 _e2e_keys = {}  # session_token -> bytes (AES-256 key)
+_E2E_KEYS_FILE = os.path.expanduser("~/.codec/.e2e_keys.json")
+
+def _load_e2e_keys():
+    """Load E2E keys from disk so they survive PM2 restarts."""
+    global _e2e_keys
+    try:
+        if os.path.isfile(_E2E_KEYS_FILE):
+            with open(_E2E_KEYS_FILE) as f:
+                raw = json.load(f)
+            for tok, key_b64 in raw.items():
+                _e2e_keys[tok] = base64.b64decode(key_b64)
+            log.info("Restored %d E2E key(s) from disk", len(_e2e_keys))
+    except Exception as e:
+        log.warning("Could not load E2E keys: %s", e)
+
+def _save_e2e_keys():
+    """Persist E2E keys to disk. Only keep keys for active sessions."""
+    try:
+        os.makedirs(os.path.dirname(_E2E_KEYS_FILE), exist_ok=True)
+        raw = {}
+        for tok, key_bytes in _e2e_keys.items():
+            if tok in _auth_sessions:  # only persist keys for valid sessions
+                raw[tok] = base64.b64encode(key_bytes).decode()
+        with open(_E2E_KEYS_FILE, "w") as f:
+            json.dump(raw, f)
+        os.chmod(_E2E_KEYS_FILE, 0o600)
+    except Exception as e:
+        log.warning("Could not save E2E keys: %s", e)
 
 def _load_sessions():
     """Load sessions from disk on startup. Caller must hold _auth_lock (or be at import time)."""
@@ -305,6 +333,7 @@ def _save_sessions():
         log.warning("Could not save auth sessions: %s", e)
 
 _load_sessions()
+_load_e2e_keys()
 
 def _is_auth_compiled():
     return os.path.isfile(AUTH_BINARY) and os.access(AUTH_BINARY, os.X_OK)
@@ -722,6 +751,7 @@ async def e2e_keyexchange(request: Request):
     token = request.cookies.get(AUTH_COOKIE_NAME, "")
     if token:
         _e2e_keys[token] = aes_key
+        _save_e2e_keys()
     return {"pub": base64.b64encode(server_pub_raw).decode()}
 
 

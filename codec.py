@@ -321,7 +321,9 @@ TOOL DIRECTIVE: If a task requires action, you MUST execute the matching skill. 
 
 MEMORY: All conversations are saved to CODEC shared memory (FTS5 indexed). Reference past conversations naturally when relevant."""
     if mem: sys_p += "\n\n" + mem
-    safe_sys = sys_p.replace("'","").replace('"','').replace('\n',' ')
+    # System prompt is now passed via JSON file (not shell string),
+    # so no need to strip quotes — that was corrupting memory context
+    safe_sys = sys_p
 
     with open(TASK_QUEUE_FILE, "w") as f:
         f.write(json.dumps({"task": task, "app": app, "ts": datetime.now().isoformat()}))

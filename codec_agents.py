@@ -109,7 +109,7 @@ class Tool:
 def _web_search(query: str) -> str:
     """Search via DuckDuckGo (free, no key) or Serper if configured in ~/.codec/config.json."""
     import sys as _sys
-    _sys.path.insert(0, os.path.expanduser("~/codec-repo"))
+    _sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from codec_search import search, format_results
     results = search(query.strip(), max_results=10)
     return format_results(results, max_snippets=10)
@@ -228,12 +228,10 @@ def _google_docs_create(input_str: str) -> str:
 def _shell_execute(cmd: str) -> str:
     import subprocess
     cmd = cmd.strip()
-    from codec_config import DANGEROUS_PATTERNS
-    cmd_lower = cmd.lower()
-    for b in DANGEROUS_PATTERNS:
-        if b.lower() in cmd_lower:
-            _audit("shell_blocked", cmd=cmd[:200], pattern=b)
-            return f"BLOCKED: dangerous command pattern detected ({b}). Command not executed."
+    from codec_config import is_dangerous
+    if is_dangerous(cmd):
+        _audit("shell_blocked", cmd=cmd[:200])
+        return "BLOCKED: dangerous command pattern detected. Command not executed."
     # Print command for transparency before execution
     log.info(f"[shell_execute] Running: {cmd[:200]}")
     try:

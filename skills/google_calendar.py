@@ -59,6 +59,7 @@ def _get_service():
         creds.refresh(Request())
         with open(TOKEN_PATH, "w") as f:
             f.write(creds.to_json())
+        os.chmod(TOKEN_PATH, 0o600)
     return build("calendar", "v3", credentials=creds)
 
 # ── Date/time parsing ──────────────────────────────────────────────────────────

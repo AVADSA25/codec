@@ -1,17 +1,26 @@
 import AppKit
 import SwiftUI
 
-// MARK: - Event Poller (reads /tmp/codec_overlay_events.jsonl)
+// MARK: - Event Poller (reads ~/.codec/overlay_events.jsonl)
 final class EventPoller: NSObject {
     private var timer: Timer?
     private var lastOffset: Int = 0
     weak var appDelegate: AppDelegate?
-    private let eventFile = "/tmp/codec_overlay_events.jsonl"
+    private let eventFile: String = {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        return home + "/.codec/overlay_events.jsonl"
+    }()
 
     func start() {
-        // Create file if missing
+        // Ensure ~/.codec directory exists
+        let dir = (eventFile as NSString).deletingLastPathComponent
+        if !FileManager.default.fileExists(atPath: dir) {
+            try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        }
+        // Create file if missing, with 0600 permissions (owner read/write only)
         if !FileManager.default.fileExists(atPath: eventFile) {
-            FileManager.default.createFile(atPath: eventFile, contents: nil)
+            FileManager.default.createFile(atPath: eventFile, contents: nil,
+                                           attributes: [.posixPermissions: 0o600])
         }
         timer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
             self?.poll()

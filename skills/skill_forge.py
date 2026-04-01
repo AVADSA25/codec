@@ -9,7 +9,10 @@ SKILL_TRIGGERS = [
 
 import os, requests, json, re
 
-SKILLS_DIR = os.path.expanduser("~/.codec/skills")
+try:
+    from codec_config import SKILLS_DIR
+except ImportError:
+    SKILLS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
 
 # Same blocklist used by the dashboard's /api/save_skill endpoint
