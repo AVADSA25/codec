@@ -642,7 +642,7 @@ class VoicePipeline:
         Continuously reads WebSocket messages (bytes = audio, text = control).
         - Bytes: feeds VAD; queues complete utterances for processing.
         - Text {"type":"interrupt"}: sets self.interrupted to stop active TTS.
-        - Text {"type":"ping"}: silently ignored.
+        - Text {"type":"ping"}: responds with pong (heartbeat keepalive).
         """
         try:
             while True:
@@ -688,6 +688,9 @@ class VoicePipeline:
                             if self.processing:
                                 await self.ws.send_json({"type": "transcript", "role": "system", "text": "Still processing — hang on…"})
                                 print("[Voice] Nudge acknowledged — still processing")
+
+                        elif ctrl_type == "ping":
+                            await self.ws.send_json({"type": "pong"})
 
                         elif ctrl_type == "hold_start":
                             # User started hold-to-talk — ensure we're in listening mode

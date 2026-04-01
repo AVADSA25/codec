@@ -33,9 +33,13 @@ LLM_API_KEY       = cfg.get("llm_api_key", "")
 LLM_KWARGS        = cfg.get("llm_kwargs", {})
 LLM_PROVIDER      = cfg.get("llm_provider", "mlx")
 
-# Vision
+# Vision (general — images, documents, screen reading)
 QWEN_VISION_URL   = cfg.get("vision_base_url", "http://localhost:8082/v1")
 QWEN_VISION_MODEL = cfg.get("vision_model", "mlx-community/Qwen2.5-VL-7B-Instruct-4bit")
+
+# UI-TARS (UI-specialist — mouse control coordinate extraction)
+UI_TARS_URL       = cfg.get("ui_tars_base_url", "http://localhost:8083/v1")
+UI_TARS_MODEL     = cfg.get("ui_tars_model", "mlx-community/UI-TARS-1.5-7B-4bit")
 
 # TTS
 TTS_ENGINE        = cfg.get("tts_engine", "kokoro")

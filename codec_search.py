@@ -3,8 +3,40 @@ import httpx
 import json
 import os
 import re
+import time
+import threading
 
 CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
+
+# --- TTL cache for search results ---
+_cache: dict[str, tuple[float, list]] = {}  # key -> (timestamp, results)
+_cache_lock = threading.Lock()
+_CACHE_TTL = 300  # 5 minutes
+_CACHE_MAX = 100
+
+
+def _cache_get(key: str) -> list | None:
+    with _cache_lock:
+        entry = _cache.get(key)
+        if entry and (time.monotonic() - entry[0]) < _CACHE_TTL:
+            return entry[1]
+        _cache.pop(key, None)
+        return None
+
+
+def _cache_put(key: str, value: list) -> None:
+    with _cache_lock:
+        # Evict expired entries if at capacity
+        if len(_cache) >= _CACHE_MAX:
+            now = time.monotonic()
+            expired = [k for k, (ts, _) in _cache.items() if now - ts >= _CACHE_TTL]
+            for k in expired:
+                del _cache[k]
+            # If still at capacity, drop oldest
+            if len(_cache) >= _CACHE_MAX:
+                oldest_key = min(_cache, key=lambda k: _cache[k][0])
+                del _cache[oldest_key]
+        _cache[key] = (time.monotonic(), value)
 
 
 def search_ddg(query: str, max_results: int = 10) -> list:
@@ -100,16 +132,26 @@ def search_serper(query: str, api_key: str, max_results: int = 10) -> list:
 
 
 def search(query: str, max_results: int = 10) -> list:
-    """Auto-select: use Serper if API key configured, otherwise DuckDuckGo"""
+    """Auto-select: use Serper if API key configured, otherwise DuckDuckGo.
+    Results are cached for 5 minutes keyed on (query, max_results)."""
+    cache_key = f"{query}||{max_results}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
     try:
         with open(CONFIG_PATH) as f:
             cfg = json.load(f)
         serper_key = cfg.get("serper_api_key", "").strip()
         if serper_key:
-            return search_serper(query, serper_key, max_results)
+            results = search_serper(query, serper_key, max_results)
+            _cache_put(cache_key, results)
+            return results
     except Exception:
         pass
-    return search_ddg(query, max_results)
+    results = search_ddg(query, max_results)
+    _cache_put(cache_key, results)
+    return results
 
 
 def format_results(results: list, max_snippets: int = 3) -> str:

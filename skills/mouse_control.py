@@ -44,14 +44,16 @@ import logging
 
 log = logging.getLogger("codec.mouse_control")
 
-# ── Config (from codec_config if available, else sensible defaults) ──────────
+# ── Config ───────────────────────────────────────────────────────────────────
+# Mouse control uses UI-TARS (UI-specialist model) on its own port.
+# Qwen Vision (8082) stays for general image/document analysis.
 try:
-    from codec_config import QWEN_VISION_URL, QWEN_VISION_MODEL
-    VISION_URL = QWEN_VISION_URL.rstrip("/") + "/chat/completions"
-    VISION_MODEL = QWEN_VISION_MODEL
+    from codec_config import cfg
+    VISION_URL = cfg.get("ui_tars_base_url", "http://localhost:8083/v1").rstrip("/") + "/chat/completions"
+    VISION_MODEL = cfg.get("ui_tars_model", "mlx-community/UI-TARS-1.5-7B-4bit")
 except ImportError:
-    VISION_URL = "http://localhost:8082/v1/chat/completions"
-    VISION_MODEL = "mlx-community/Qwen2.5-VL-7B-Instruct-4bit"
+    VISION_URL = "http://localhost:8083/v1/chat/completions"
+    VISION_MODEL = "mlx-community/UI-TARS-1.5-7B-4bit"
 
 _SCREENSHOT_PATH = os.path.expanduser("~/.codec/mouse_screen.png")
 _screen_size = None
@@ -103,6 +105,10 @@ def _downscale_screenshot(image_b64, max_width=1280):
         scale = orig_w / max_width
         new_h = int(orig_h / scale)
         img = img.resize((max_width, new_h), Image.LANCZOS)
+
+        # PNG screenshots have alpha channel — convert to RGB for JPEG
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
 
         buf = io.BytesIO()
         img.save(buf, format="JPEG", quality=85)
@@ -250,34 +256,149 @@ def _describe_screen():
 
 
 def _extract_target(task_lower):
-    """Extract the element description from the user's command."""
-    target = task_lower
-    prefixes = [
-        "click on the ", "click on ", "click the ", "click button ", "click where it says ",
-        "click ", "press the button ", "press the ", "press ",
+    """Extract the UI element description from a natural language command.
+
+    Handles conversational requests like:
+    'Hey CODEC, I'm on Cloudflare, can you click the SSL button for me?'
+    → extracts 'SSL button'
+    """
+    import re as _re
+
+    # ── Step 1: Split into sentences and process each one ────────────────
+    sentences = _re.split(r'[.?!]+', task_lower)
+    sentences = [s.strip() for s in sentences if s.strip()]
+
+    # ── Step 2: Noise removal from each sentence ─────────────────────────
+    noise_phrases = [
+        # Filler / location
+        "on my screen", "on the screen", "on screen",
+        "for me please", "for me", "please",
+        "i cannot find it", "i can't find it", "i can not find it",
+        "anywhere", "right now", "now",
+        # Preamble
+        "can you look at it and", "can you look at it",
+        "i'm looking at my screen and",
+        "i need to find it",
+        # Hedging
+        "i mean", "i think",
+    ]
+
+    def _clean_sentence(s):
+        for phrase in sorted(noise_phrases, key=len, reverse=True):
+            s = s.replace(phrase, " ")
+        return " ".join(s.split()).strip()
+
+    # ── Step 3: Action markers ───────────────────────────────────────────
+    action_markers = [
+        # Click variants
+        "click on the ", "click on ", "click the ", "click button ",
+        "click where it says ",
+        "press the button ", "press the ", "press ",
+        # Right / double click
         "right click on the ", "right click the ", "right click on ", "right click ",
         "right-click on the ", "right-click the ", "right-click ",
         "double click on the ", "double click the ", "double click on ", "double click ",
         "double-click on the ", "double-click the ", "double-click ",
+        # Hover / move
         "hover over the ", "hover over ", "hover on the ", "hover on ", "hover ",
         "move mouse to the ", "move mouse to ", "move cursor to the ", "move cursor to ",
         "point to the ", "point to ", "point at the ", "point at ",
+        # Select / tap
         "select the ", "select ", "tap on the ", "tap on ", "tap ",
-        "find on screen ", "where is the ", "where is ", "locate the ", "locate ",
-        "can you spot ", "spot the ", "find it and click ",
-        "find the ", "spot it ", "find and click the ", "find and click ",
+        # Find / locate
+        "where is the ", "where is ", "locate the ", "locate ",
+        "find and click the ", "find and click ",
+        "find the ", "find ",
+        "look for the ", "look for ",
+        # Generic (last resort)
+        "click ",
     ]
-    for prefix in prefixes:
-        if task_lower.startswith(prefix):
-            target = task_lower[len(prefix):].strip().rstrip(".")
-            break
 
-    # Also strip trailing "for me", "please", etc.
-    for suffix in [" for me", " please", " now", " right now"]:
-        if target.endswith(suffix):
-            target = target[:-len(suffix)].strip()
+    # Noise-only sentences to skip entirely
+    skip_patterns = [
+        r"^(can you )?(click|find|locate) it",
+        r"^i (can'?t|cannot) find",
+        r"^(hey |hi )?(codec|kodec)",
+        r"^can you do it",
+        r"^sorry",
+    ]
 
-    return target
+    # ── Step 4: Extract target from each sentence, pick the best one ─────
+    candidates = []
+    for sent in sentences:
+        cleaned = _clean_sentence(sent)
+        if not cleaned or len(cleaned) < 3:
+            continue
+        # Skip pure noise sentences
+        if any(_re.match(p, cleaned) for p in skip_patterns):
+            if not any(m in cleaned for m in action_markers[:10]):
+                continue
+
+        # Try to find an action marker
+        for marker in action_markers:
+            idx = cleaned.find(marker)
+            if idx >= 0:
+                target = cleaned[idx + len(marker):].strip().rstrip(".,!?")
+                if target and len(target) >= 2:
+                    candidates.append(target)
+                break  # Use first (longest) marker match per sentence
+
+    # ── Step 5: Pick the best candidate ──────────────────────────────────
+    # Prefer shorter, cleaner targets (less noise) — but at least 2 chars
+    best_target = ""
+    if candidates:
+        # Remove duplicates, prefer the shortest non-trivial one
+        # (shorter = cleaner extraction, longer = more noise leaked through)
+        unique = list(dict.fromkeys(candidates))
+        # Filter out single common words that are clearly noise
+        noise_words = {"it", "that", "this", "them", "there", "here"}
+        meaningful = [c for c in unique if c not in noise_words]
+        if meaningful:
+            # Prefer shortest meaningful target (least noise)
+            best_target = min(meaningful, key=len)
+        elif unique:
+            best_target = unique[0]
+
+    if not best_target:
+        # Fallback: clean the whole thing and try once more
+        full_cleaned = _clean_sentence(task_lower)
+        for marker in action_markers:
+            idx = full_cleaned.rfind(marker)
+            if idx >= 0:
+                best_target = full_cleaned[idx + len(marker):].strip().rstrip(".,!?")
+                if best_target:
+                    break
+        if not best_target:
+            best_target = task_lower
+
+    # ── Step 6: Final cleanup ────────────────────────────────────────────
+    noise_prefixes = [
+        "hey codec ", "hey kodec ", "hi codec ", "codec ",
+        "can you ", "could you ", "would you ",
+        "the button ", "button the ", "the ",
+    ]
+    for prefix in noise_prefixes:
+        if best_target.startswith(prefix):
+            best_target = best_target[len(prefix):].strip()
+
+    # Truncate at known noise boundaries that leaked through
+    truncate_at = [
+        " can you click", " can you find", " can you locate",
+        " i need to find", " i need to", " i cannot",
+        " i can't", " i can not", " zero trust",
+        " and can you", " could you",
+    ]
+    for trunc in truncate_at:
+        idx = best_target.find(trunc)
+        if idx > 0:
+            best_target = best_target[:idx].strip()
+
+    # Remove context qualifiers ("on cloudflare", "on the page") — anywhere trailing
+    best_target = _re.sub(r'\s+on\s+(cloudflare|the page|the website|chrome|safari|firefox)\b.*$', '', best_target)
+    best_target = best_target.rstrip(".,!?").strip()
+
+    log.info(f"Target extraction: '{task_lower[:80]}' → '{best_target}'")
+    return best_target
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────

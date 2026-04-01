@@ -375,7 +375,7 @@ ALWAYS respond with valid JSON only."""
         try:
             # ── Dangerous command check (uses word-boundary regex from codec_config) ──
             if self._is_dangerous(code):
-                log.warning("Blocked dangerous command: %s", cmd_lower[:100])
+                log.warning("Blocked dangerous command: %s", code.lower()[:100])
                 print(f"\n[SAFETY] \u26a0\ufe0f  Flagged: {code[:80]}")
                 with open(os.path.expanduser("~/.codec/audit.log"), "a") as _af:
                     _af.write(f'[{time.strftime("%Y-%m-%dT%H:%M:%S")}] FLAGGED: {code[:200]}\n')

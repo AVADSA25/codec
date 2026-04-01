@@ -5,9 +5,50 @@ at startup so MCP tool listings work immediately, but the actual module
 import only happens when a tool is first invoked.
 """
 from fastmcp import FastMCP
-import os, sys, json, logging
+import os, sys, json, logging, time
 
 log = logging.getLogger("codec_mcp")
+
+# --- Input validation constants ---
+MCP_MAX_TASK_LENGTH = 5_000
+MCP_MAX_CONTEXT_LENGTH = 10_000
+
+
+def _validate_mcp_input(tool_name: str, task: str, context: str = "") -> str | None:
+    """Validate MCP tool call inputs and log the call.
+
+    Returns an error message string if validation fails, or None if inputs are valid.
+    Every call is audit-logged regardless of validation outcome.
+    """
+    # Audit log every call
+    log.info(
+        "MCP tool call: tool=%s task_len=%s context_len=%s ts=%s",
+        tool_name,
+        len(task) if isinstance(task, str) else "INVALID",
+        len(context) if isinstance(context, str) else "INVALID",
+        time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    )
+
+    # Type checks
+    if not isinstance(task, str):
+        return f"[MCP] Validation error: 'task' must be a string, got {type(task).__name__}"
+    if not isinstance(context, str):
+        return f"[MCP] Validation error: 'context' must be a string, got {type(context).__name__}"
+
+    # Length checks
+    if len(task) > MCP_MAX_TASK_LENGTH:
+        return (
+            f"[MCP] Validation error: 'task' exceeds max length "
+            f"({len(task)} > {MCP_MAX_TASK_LENGTH})"
+        )
+    if len(context) > MCP_MAX_CONTEXT_LENGTH:
+        return (
+            f"[MCP] Validation error: 'context' exceeds max length "
+            f"({len(context)} > {MCP_MAX_CONTEXT_LENGTH})"
+        )
+
+    return None
+
 
 # Consolidate sys.path setup (done once, not scattered)
 _REPO_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -77,6 +118,9 @@ def load_skill_tools():
         def make_tool(registry, sname, sdesc):
             def tool_fn(task: str, context: str = "") -> str:
                 """Execute this CODEC skill with the given task"""
+                err = _validate_mcp_input(sname, task, context)
+                if err is not None:
+                    return err
                 mod = registry.load(sname)
                 if mod is None or not hasattr(mod, "run"):
                     return f"Skill '{sname}' could not be loaded."
@@ -92,6 +136,9 @@ def load_skill_tools():
 @mcp.tool()
 def search_memory(query: str, limit: int = 10) -> str:
     """Search CODEC's conversation memory using FTS5 full-text search"""
+    err = _validate_mcp_input("search_memory", query)
+    if err is not None:
+        return err
     from codec_memory import CodecMemory
     mem = CodecMemory()
     results = mem.search(query, limit)
@@ -100,6 +147,11 @@ def search_memory(query: str, limit: int = 10) -> str:
 @mcp.tool()
 def get_recent_memory(days: int = 7) -> str:
     """Get recent conversations from CODEC memory"""
+    log.info(
+        "MCP tool call: tool=get_recent_memory days=%s ts=%s",
+        days,
+        time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    )
     from codec_memory import CodecMemory
     mem = CodecMemory()
     results = mem.search_recent(days=days, limit=20)

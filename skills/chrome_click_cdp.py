@@ -3,7 +3,7 @@ import sys, os
 sys.path.insert(0, os.path.expanduser("~/codec-repo"))
 
 SKILL_NAME = "chrome_click_cdp"
-SKILL_TRIGGERS = ["click button on page", "click link on page", "press button on website", "click on the"]
+SKILL_TRIGGERS = ["click button on page", "click link on page", "press button on website", "click on the page", "click on the website"]
 SKILL_DESCRIPTION = "Click specific buttons and links on web pages via Chrome DevTools Protocol"
 
 def run(task: str, context: str = "") -> str:
@@ -11,7 +11,7 @@ def run(task: str, context: str = "") -> str:
     import re
 
     if not is_cdp_available():
-        return "Chrome CDP not available. Launch Chrome with --remote-debugging-port=9222"
+        return None  # Fall through so other skills (e.g. mouse_control) can handle it
 
     task_lower = task.lower()
     target = ""

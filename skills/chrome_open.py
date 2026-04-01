@@ -60,20 +60,18 @@ def run(task, app="", ctx=""):
             subprocess.run(["osascript", "-e", script2], capture_output=True, text=True, timeout=5)
             return "Opened a new Chrome tab."
 
-        script = f'''
-tell application "Google Chrome"
-    activate
-    if (count of windows) = 0 then
-        make new window
-        set URL of active tab of front window to "{url}"
-    else
-        make new tab at end of tabs of front window with properties {{URL:"{url}"}}
-    end if
-end tell
-'''
-        r = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=10)
+        # Sanitize URL — strip characters that could escape AppleScript strings
+        safe_url = url.replace('"', '').replace('\\', '').replace("'", '')
+        if not safe_url.startswith(('http://', 'https://', 'file://')):
+            safe_url = 'https://' + safe_url
+
+        # Use `open -a` for safety — no AppleScript string interpolation
+        r = subprocess.run(
+            ["open", "-a", "Google Chrome", safe_url],
+            capture_output=True, text=True, timeout=10
+        )
         if r.returncode == 0:
-            return f"Opened {url} in Chrome."
+            return f"Opened {safe_url} in Chrome."
         else:
             return f"Chrome error: {r.stderr.strip()}"
     except Exception as e:

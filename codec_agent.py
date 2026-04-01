@@ -56,7 +56,7 @@ def run_session_module(safe_sys, session_id, task, timeout=120):
 import sys, json
 sys.path.insert(0, {repr(repo)})
 from codec_session import Session
-params = json.load(open({repr(params_path)}))
+with open({repr(params_path)}) as _pf: params = json.load(_pf)
 s = Session(**params)
 s.run()
 """],

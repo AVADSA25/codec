@@ -161,9 +161,15 @@ class SkillRegistry:
     def match_trigger(self, task: str) -> Optional[str]:
         """Return the name of the first skill whose triggers match, or None.
         Uses word-boundary matching to avoid false positives from substrings."""
+        matches = self.match_all_triggers(task)
+        return matches[0] if matches else None
+
+    def match_all_triggers(self, task: str) -> List[str]:
+        """Return all skill names whose triggers match, in registry order."""
         low = task.lower()
+        matches = []
         for name, meta in self._meta.items():
             triggers = meta.get("SKILL_TRIGGERS", [])
             if any(re.search(r'\b' + re.escape(t) + r'\b', low) for t in triggers):
-                return name
-        return None
+                matches.append(name)
+        return matches

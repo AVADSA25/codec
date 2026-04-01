@@ -734,15 +734,32 @@
         if (curSource) { try { curSource.stop(); } catch(e){} curSource = null; }
     }
 
-    /* ── WebSocket ── */
+    /* ── WebSocket with auto-reconnect ── */
+    var wsRetryCount = 0;
+    var wsRetryMax   = 5;
+    var wsRetryDelay = 1000; /* starts at 1s, doubles each retry, max 30s */
+    var wsRetryTimer = null;
+    var wsIntentionalClose = false;
+    var wsPingTimer  = null;
+
     function connectWS() {
+        wsIntentionalClose = false;
         var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
         ws = new WebSocket(proto + '//' + location.host + '/ws/voice');
         ws.binaryType = 'arraybuffer';
 
         ws.onopen = function() {
+            wsRetryCount = 0;
+            wsRetryDelay = 1000;
             setState('listening');
             startMic();
+            /* Ping every 15s to detect stale connections */
+            if (wsPingTimer) clearInterval(wsPingTimer);
+            wsPingTimer = setInterval(function() {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    try { ws.send(JSON.stringify({type: 'ping'})); } catch(e) {}
+                }
+            }, 15000);
         };
 
         ws.onmessage = function(e) {
@@ -751,6 +768,7 @@
             } else {
                 try {
                     var msg = JSON.parse(e.data);
+                    if (msg.type === 'pong') return; /* heartbeat response */
                     if (msg.type === 'transcript') {
                         addTranscript(msg.role, msg.text);
                     } else if (msg.type === 'transcript_chunk') {
@@ -772,13 +790,30 @@
         };
 
         ws.onclose = function() {
-            if (isInCall) endCall();
-            addTranscript('system', 'Disconnected — transcript saved to memory');
+            if (wsPingTimer) { clearInterval(wsPingTimer); wsPingTimer = null; }
+            if (wsIntentionalClose) {
+                addTranscript('system', 'Disconnected — transcript saved to memory');
+                return;
+            }
+            /* Unexpected disconnect — try to reconnect */
+            if (isInCall && wsRetryCount < wsRetryMax) {
+                wsRetryCount++;
+                var delay = Math.min(wsRetryDelay, 30000);
+                addTranscript('system', 'Connection lost — reconnecting in ' + Math.round(delay/1000) + 's... (attempt ' + wsRetryCount + '/' + wsRetryMax + ')');
+                setState('processing');
+                stopMic();
+                wsRetryTimer = setTimeout(function() {
+                    if (isInCall) connectWS();
+                }, delay);
+                wsRetryDelay *= 2;
+            } else if (isInCall) {
+                addTranscript('system', 'Connection lost — could not reconnect after ' + wsRetryMax + ' attempts');
+                endCall();
+            }
         };
 
         ws.onerror = function(e) {
             console.error('[Voice] WS error:', e);
-            addTranscript('system', 'Connection error');
         };
     }
 
@@ -882,6 +917,9 @@
         if (timerIv) { clearInterval(timerIv); timerIv = null; }
         stopAudio();
         stopMic();
+        if (wsRetryTimer) { clearTimeout(wsRetryTimer); wsRetryTimer = null; }
+        if (wsPingTimer)  { clearInterval(wsPingTimer);  wsPingTimer  = null; }
+        wsIntentionalClose = true;
         if (ws) { try { ws.close(); } catch(e){} ws = null; }
         setState('idle');
         document.getElementById('statusLabel').textContent = 'Call ended — transcript saved to memory';

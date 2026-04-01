@@ -24,30 +24,45 @@ def check_skill(task):
     """Return a skill-like dict for the matching skill, or None.
 
     The dict has 'name' and a lazy 'run' key that triggers the actual
-    module import on first call.
+    module import on first call.  Stores all matching skill names so
+    run_skill can fall through to the next match if a skill returns None.
     """
-    name = registry.match_trigger(task)
-    if name is None:
+    matches = registry.match_all_triggers(task)
+    if not matches:
         return None
+    name = matches[0]
     return {
         'name': name,
         'triggers': registry.get_triggers(name),
+        '_all_matches': matches,
         'run': lambda task, app="", **kw: registry.run(name, task, app),
     }
 
 
 def run_skill(skill, task, app=""):
-    """Execute a skill and return its result."""
-    try:
-        result = skill['run'](task, app)
-        skill_name = skill.get('name', 'unknown')
+    """Execute a skill and return its result.
+
+    If the skill returns None (indicating it can't handle the task),
+    falls through to the next matching skill.
+    """
+    all_matches = skill.get('_all_matches', [skill.get('name')])
+
+    for skill_name in all_matches:
         try:
-            import os as _os
-            _events_path = _os.path.expanduser("~/.codec/overlay_events.jsonl")
-            with open(_events_path, "a") as _f:
-                _f.write(f'{{"type":"skill_fired","name":"{skill_name}"}}\n')
-        except Exception:
-            pass
-        return result
-    except Exception as e:
-        return f"Skill error: {e}"
+            result = registry.run(skill_name, task, app)
+            if result is None:
+                log.info("Skill '%s' returned None — trying next match", skill_name)
+                continue
+            try:
+                import os as _os
+                _events_path = _os.path.expanduser("~/.codec/overlay_events.jsonl")
+                with open(_events_path, "a") as _f:
+                    _f.write(f'{{"type":"skill_fired","name":"{skill_name}"}}\n')
+            except Exception:
+                pass
+            return result
+        except Exception as e:
+            log.warning("Skill '%s' error: %s — trying next match", skill_name, e)
+            continue
+
+    return None  # No skill could handle it
