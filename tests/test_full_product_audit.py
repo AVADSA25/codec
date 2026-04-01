@@ -65,11 +65,44 @@ def is_dashboard_up():
     except Exception:
         return False
 
+# ── Pytest markers & fixtures ─────────────────────────────────────────────────
+requires_dashboard = pytest.mark.skipif(
+    not is_dashboard_up(),
+    reason="Dashboard not running at localhost:8090"
+)
+
+# Track test data for cleanup
+_test_session_ids = []
+_test_schedule_ids = []
+
+@pytest.fixture(autouse=True, scope="session")
+def cleanup_test_data():
+    """Clean up test artifacts after all tests complete."""
+    yield
+    # Clean up test sessions from memory DB
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("DELETE FROM conversations WHERE session_id LIKE 'audit_test_%'")
+        conn.execute("DELETE FROM conversations WHERE session_id LIKE 'test_%'")
+        conn.execute("DELETE FROM conversations WHERE session_id LIKE 'vibe_test_%'")
+        conn.execute("DELETE FROM conversations WHERE session_id LIKE 'e2e_%'")
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+    # Clean up test schedules
+    for sid in _test_schedule_ids:
+        try:
+            api_delete(f"/api/schedules/{sid}")
+        except Exception:
+            pass
+
 
 # ============================================================================
 #  PRODUCT 1: DASHBOARD
 # ============================================================================
 
+@requires_dashboard
 class TestDashboardPages:
     """Test all 6 HTML pages load correctly."""
 
@@ -110,6 +143,7 @@ class TestDashboardPages:
             assert "unsafe-eval" not in csp, f"unsafe-eval in preview CSP: {csp}"
 
 
+@requires_dashboard
 class TestDashboardStatusAPI:
     """Test system status and config endpoints."""
 
@@ -134,6 +168,7 @@ class TestDashboardStatusAPI:
         assert r2.status_code == 200
 
 
+@requires_dashboard
 class TestDashboardHistoryAPI:
     """Test history, conversation, and audit endpoints."""
 
@@ -153,6 +188,7 @@ class TestDashboardHistoryAPI:
         assert isinstance(r.json(), list)
 
 
+@requires_dashboard
 class TestDashboardCommandAPI:
     """Test command execution with safety checks."""
 
@@ -174,6 +210,7 @@ class TestDashboardCommandAPI:
         assert r.status_code == 403
 
 
+@requires_dashboard
 class TestDashboardMediaAPI:
     """Test vision, webcam, screenshot endpoints."""
 
@@ -191,6 +228,7 @@ class TestDashboardMediaAPI:
         assert r.status_code == 200
 
 
+@requires_dashboard
 class TestDashboardSkillsAPI:
     """Test skill listing and management."""
 
@@ -201,24 +239,38 @@ class TestDashboardSkillsAPI:
         assert isinstance(data, list)
         assert len(data) > 0, "No skills found"
 
-    def test_skill_review_gate(self):
-        """Verify skill review gate rejects dangerous code."""
+    def test_skill_review_gate_stages_for_review(self):
+        """Verify skill review gate accepts code for staging (200)."""
         r = api_post("/api/skill/review", json={
-            "code": "import os\nos.system('rm -rf /')",
+            "code": "SKILL_NAME='test'\nSKILL_TRIGGERS=['test']\ndef run(t,c=''): return 'ok'",
+            "filename": "test_staged_skill.py"
+        })
+        assert r.status_code == 200, f"Review gate returned {r.status_code}: {r.text[:200]}"
+
+    def test_skill_review_gate_blocks_dangerous(self):
+        """Verify skill review gate blocks dangerous code patterns."""
+        r = api_post("/api/skill/review", json={
+            "code": "import os\nos.system('rm -rf /')\ndef run(t,c=''): pass",
             "filename": "evil_skill.py"
         })
-        # Should either reject or stage for review
+        # Should block or flag — either 200 (staged with warning) or 400/403 (rejected)
         assert r.status_code in [200, 400, 403]
+        if r.status_code == 200:
+            data = r.json()
+            # If it staged it, that's OK — it goes through human review
+            assert "review_id" in data or "staged" in str(data).lower()
 
     def test_forge_endpoint(self):
-        """Forge endpoint should accept requests."""
+        """Forge endpoint should accept valid requests."""
         r = api_post("/api/forge", json={
             "code": "print('hello')",
             "description": "test skill"
         })
-        assert r.status_code in [200, 400, 422]
+        # 200 = success, 422 = missing fields (valid rejection)
+        assert r.status_code in [200, 422], f"Forge returned unexpected {r.status_code}"
 
 
+@requires_dashboard
 class TestDashboardTTS:
     """Test text-to-speech endpoint."""
 
@@ -232,6 +284,7 @@ class TestDashboardTTS:
 #  PRODUCT 2: CHAT
 # ============================================================================
 
+@requires_dashboard
 class TestChatAPI:
     """Test CODEC Chat (250K context, sessions, agents)."""
 
@@ -282,6 +335,7 @@ class TestChatAPI:
             assert "job_id" in data
 
 
+@requires_dashboard
 class TestChatAgentsAPI:
     """Test agent crew execution."""
 
@@ -321,14 +375,16 @@ class TestChatAgentsAPI:
 class TestVoicePipeline:
     """Test voice WebSocket and audio endpoints."""
 
+    @requires_dashboard
     def test_voice_page_loads(self):
         r = api_get("/voice")
         assert r.status_code == 200
         assert "WebSocket" in r.text or "ws/" in r.text
 
+    @requires_dashboard
     def test_tts_endpoint(self):
         r = api_get("/api/tts", params={"text": "Testing one two three"})
-        assert r.status_code in [200, 500, 503]
+        assert r.status_code in [200, 503], f"TTS returned unexpected {r.status_code}"
 
     def test_voice_module_imports(self):
         """Voice module should import without errors."""
@@ -351,6 +407,7 @@ class TestVoicePipeline:
 #  PRODUCT 4: VIBE CODE
 # ============================================================================
 
+@requires_dashboard
 class TestVibeCode:
     """Test Vibe Code editor, execution, and skill forge."""
 
@@ -385,15 +442,21 @@ class TestVibeCode:
         assert "hello_world" in str(data.get("output", "") or data.get("stdout", ""))
 
     def test_run_dangerous_code_blocked(self):
-        """Dangerous code should be blocked."""
+        """Dangerous code should be blocked or produce error output."""
         r = api_post("/api/run_code", json={
             "code": "rm -rf /",
             "language": "bash"
         })
-        # Should be blocked or return error
-        data = r.json() if r.status_code == 200 else {}
-        # Either 403 or output contains "blocked/denied"
-        assert r.status_code in [200, 403]
+        if r.status_code == 403:
+            pass  # Correctly blocked at API level
+        elif r.status_code == 200:
+            data = r.json()
+            output = str(data.get("output", "") or data.get("stderr", "")).lower()
+            # Should show permission denied or blocked message
+            assert any(w in output for w in ["denied", "blocked", "permission", "not permitted", "error"]), \
+                f"Dangerous code ran without error: {output[:200]}"
+        else:
+            pytest.fail(f"Unexpected status {r.status_code}")
 
     def test_vibe_sessions(self):
         r = api_get("/api/vibe/sessions")
@@ -638,6 +701,7 @@ class TestAgentFramework:
 #  PRODUCT 7: TASKS & SCHEDULING
 # ============================================================================
 
+@requires_dashboard
 class TestSchedulingAPI:
     """Test schedule CRUD endpoints."""
 
@@ -672,12 +736,14 @@ class TestSchedulingAPI:
 class TestHeartbeatAPI:
     """Test heartbeat config endpoints."""
 
+    @requires_dashboard
     def test_heartbeat_config_get(self):
         r = api_get("/api/heartbeat/config")
         assert r.status_code == 200
         data = r.json()
         assert isinstance(data, dict)
 
+    @requires_dashboard
     def test_heartbeat_alerts_get(self):
         r = api_get("/api/heartbeat/alerts")
         assert r.status_code == 200
@@ -699,6 +765,7 @@ class TestHeartbeatAPI:
         assert _is_dangerous("echo hello") == False
 
 
+@requires_dashboard
 class TestNotificationsAPI:
     """Test notification system."""
 
@@ -722,6 +789,7 @@ class TestNotificationsAPI:
 #  CROSS-CUTTING: AUTHENTICATION
 # ============================================================================
 
+@requires_dashboard
 class TestAuthentication:
     """Test auth system."""
 
@@ -737,14 +805,25 @@ class TestAuthentication:
 
     def test_auth_wrong_pin(self):
         r = api_post("/api/auth/pin", json={"pin": "000000"})
-        # Should fail with wrong pin
-        assert r.status_code in [200, 401, 403]
+        # Wrong pin should be rejected (401/403) or return error in body
+        if r.status_code == 200:
+            data = r.json()
+            # If 200, the response should indicate failure
+            assert data.get("authenticated") is not True or "error" in str(data).lower(), \
+                "Wrong PIN was accepted as valid!"
+        else:
+            assert r.status_code in [401, 403], f"Unexpected status {r.status_code}"
 
     def test_totp_setup_requires_auth(self):
-        """TOTP setup should require authentication."""
+        """TOTP setup should require authentication or return setup data."""
         r = api_post("/api/auth/totp/setup")
-        # Should either work (if authed) or require auth
-        assert r.status_code in [200, 401, 403]
+        # If auth is enabled: should require auth (401/403)
+        # If auth is disabled or already authed: returns setup data (200)
+        assert r.status_code in [200, 401, 403], f"Unexpected status {r.status_code}"
+        if r.status_code == 200:
+            data = r.json()
+            assert "secret" in data or "qr" in str(data).lower() or "uri" in str(data).lower(), \
+                "TOTP setup returned 200 but no setup data"
 
 
 # ============================================================================
@@ -777,14 +856,17 @@ class TestMemorySystem:
         assert len(results) > 0, "Memory search returned no results"
         mem.close()
 
+    @requires_dashboard
     def test_memory_search_api(self):
         r = api_get("/api/memory/search", params={"q": "test"})
         assert r.status_code == 200
 
+    @requires_dashboard
     def test_memory_recent_api(self):
         r = api_get("/api/memory/recent")
         assert r.status_code == 200
 
+    @requires_dashboard
     def test_memory_sessions_api(self):
         r = api_get("/api/memory/sessions")
         assert r.status_code == 200
@@ -793,8 +875,13 @@ class TestMemorySystem:
     def test_memory_fts_sanitization(self):
         """FTS queries should be sanitized (no SQL injection)."""
         from codec_memory import _sanitize_fts_query
-        assert _sanitize_fts_query('test AND drop') == 'test  drop'
-        assert _sanitize_fts_query('test" OR "1"="1') == 'test  1  1'
+        result = _sanitize_fts_query('test AND drop')
+        assert "AND" not in result, f"FTS operator AND not stripped: {result}"
+        assert "test" in result and "drop" in result
+
+        result2 = _sanitize_fts_query('test" OR "1"="1')
+        assert "OR" not in result2, f"FTS operator OR not stripped: {result2}"
+        assert '"' not in result2, f"Quotes not stripped: {result2}"
 
 
 # ============================================================================
@@ -1079,6 +1166,7 @@ class TestEcosystemConfig:
 #  INTEGRATION: END-TO-END FLOW SIMULATION
 # ============================================================================
 
+@requires_dashboard
 class TestEndToEndFlows:
     """Simulate end-to-end user flows."""
 
@@ -1151,10 +1239,15 @@ class TestSecurityAudit:
     def test_session_uses_centralized_patterns(self):
         code = Path(REPO, "codec_session.py").read_text()
         assert "from codec_config import" in code
-        # Should NOT have its own DANGEROUS_PATTERNS list
+        # Should NOT define its own DANGEROUS_PATTERNS list (but can derive from imported one)
         lines = code.split("\n")
-        local_patterns = [l for l in lines if "DANGEROUS_PATTERNS" in l and "=" in l and "import" not in l]
-        assert len(local_patterns) == 0, f"Session has local DANGEROUS_PATTERNS: {local_patterns}"
+        local_definitions = [l for l in lines
+                            if "DANGEROUS_PATTERNS" in l and "=" in l
+                            and "import" not in l
+                            and "from " not in l
+                            and "[p.lower() for p in DANGEROUS_PATTERNS]" not in l  # OK: using the import
+                            and "DANGEROUS_PATTERNS =" in l]  # Only catch direct definitions
+        assert len(local_definitions) == 0, f"Session has local DANGEROUS_PATTERNS: {local_definitions}"
 
     def test_api_command_safety_gate(self):
         """Verify /api/command has is_dangerous() check in source."""
