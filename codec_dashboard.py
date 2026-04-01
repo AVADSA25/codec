@@ -12,7 +12,13 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse as StarletteJSONResponse
 import uvicorn
 
-app = FastAPI(title="CODEC Dashboard")
+app = FastAPI(
+    title="CODEC Dashboard",
+    description="CODEC voice-controlled computer agent — dashboard API",
+    version="1.2.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+)
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:8090", "http://127.0.0.1:8090", "https://codec.lucyvpa.com"], allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"], allow_headers=["*"])
 
 
@@ -20,7 +26,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
     """Combined auth: bearer token (API) + biometric Touch ID sessions (dashboard)."""
 
     # Routes that never require authentication
-    PUBLIC_ROUTES = {"/", "/chat", "/vibe", "/voice", "/auth", "/health", "/favicon.ico", "/manifest.json"}
+    PUBLIC_ROUTES = {"/", "/chat", "/vibe", "/voice", "/auth", "/health", "/favicon.ico", "/manifest.json", "/docs", "/redoc", "/openapi.json"}
     PUBLIC_PREFIXES = ("/api/auth/", "/static")
     # CSRF-exempt paths (auth endpoints handle their own protection)
     CSRF_EXEMPT = {"/api/auth/verify", "/api/auth/pin", "/api/auth/logout",
@@ -105,7 +111,7 @@ class CSPMiddleware(BaseHTTPMiddleware):
 
     CSP = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com; "
+        "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; "
         "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; "
         "img-src 'self' data: https:; "
@@ -1040,6 +1046,17 @@ async def send_command(request: Request):
     if not task:
         return JSONResponse({"error": "No command provided"}, status_code=400)
     source = body.get("source", "pwa")
+
+    # ── Safety: reject dangerous commands before queueing ──
+    from codec_config import is_dangerous
+    if is_dangerous(task):
+        log.warning(f"[Command] BLOCKED dangerous command from {source}: {task[:80]}")
+        with open(AUDIT_LOG, "a") as f:
+            f.write(f"[{datetime.now().isoformat()}] BLOCKED[{source}]: {task[:200]}\n")
+        return JSONResponse(
+            {"error": "Command blocked: matches a dangerous pattern. Use the terminal directly for system commands."},
+            status_code=403
+        )
 
     # Write to task queue file — CODEC's pwa_poller will pick it up
     try:

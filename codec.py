@@ -48,16 +48,17 @@ def strip_think(text):
 
 # ── MEMORY / DATABASE ─────────────────────────────────────────────────────────
 def init_db():
-    c = sqlite3.connect(DB_PATH)
-    c.execute("CREATE TABLE IF NOT EXISTS sessions (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, task TEXT, app TEXT, response TEXT)")
-    c.execute("CREATE TABLE IF NOT EXISTS conversations (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, timestamp TEXT, role TEXT, content TEXT)")
-    c.execute("CREATE TABLE IF NOT EXISTS corrections (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, original TEXT, corrected TEXT, context TEXT)")
-    c.commit(); c.close()
+    with sqlite3.connect(DB_PATH) as c:
+        c.execute("CREATE TABLE IF NOT EXISTS sessions (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, task TEXT, app TEXT, response TEXT)")
+        c.execute("CREATE TABLE IF NOT EXISTS conversations (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, timestamp TEXT, role TEXT, content TEXT)")
+        c.execute("CREATE TABLE IF NOT EXISTS corrections (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, original TEXT, corrected TEXT, context TEXT)")
+        c.commit()
 
 def save_task(task, app):
-    c = sqlite3.connect(DB_PATH)
-    cur = c.execute("INSERT INTO sessions (timestamp,task,app,response) VALUES (?,?,?,?)", (datetime.now().isoformat(), task[:200], app, ""))
-    rid = cur.lastrowid; c.commit(); c.close(); return rid
+    with sqlite3.connect(DB_PATH) as c:
+        cur = c.execute("INSERT INTO sessions (timestamp,task,app,response) VALUES (?,?,?,?)", (datetime.now().isoformat(), task[:200], app, ""))
+        c.commit()
+        return cur.lastrowid
 
 def get_memory(n=5):
     try:
@@ -257,6 +258,11 @@ def dispatch(task):
     app = focused_app()
     audit("TASK", f"{task[:200]} | App: {app}")
     log.info(f"Task: {task[:80]} | App: {app}")
+
+    # ── DRY_RUN: log only, do not execute ──
+    if DRY_RUN:
+        log.info(f"[DRY_RUN] Would dispatch: {task[:200]} | App: {app}")
+        return
     safe_task = task[:50].replace('\\', '\\\\').replace('"', '\\"')
     subprocess.Popen(["osascript", "-e", f'display notification "Heard: {safe_task}" with title "CODEC"'],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -274,13 +280,12 @@ def dispatch(task):
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 log.info(f"Skill response: {str(result)[:100]}")
                 try:
-                    import sqlite3 as _sql3
-                    _now = __import__('datetime').datetime.now()
-                    _db = _sql3.connect(os.path.expanduser("~/.q_memory.db"))
-                    _sid = "skill_" + _now.strftime("%Y%m%d_%H%M%S")
-                    _db.execute("INSERT INTO conversations (session_id,timestamp,role,content) VALUES (?,?,?,?)", (_sid, _now.isoformat(), "user", task[:500]))
-                    _db.execute("INSERT INTO conversations (session_id,timestamp,role,content) VALUES (?,?,?,?)", (_sid, _now.isoformat(), "assistant", re.sub(r"<[^>]+>", "", str(result))[:2000]))
-                    _db.commit(); _db.close()
+                    _now = datetime.now()
+                    with sqlite3.connect(DB_PATH) as _db:
+                        _sid = "skill_" + _now.strftime("%Y%m%d_%H%M%S")
+                        _db.execute("INSERT INTO conversations (session_id,timestamp,role,content) VALUES (?,?,?,?)", (_sid, _now.isoformat(), "user", task[:500]))
+                        _db.execute("INSERT INTO conversations (session_id,timestamp,role,content) VALUES (?,?,?,?)", (_sid, _now.isoformat(), "assistant", re.sub(r"<[^>]+>", "", str(result))[:2000]))
+                        _db.commit()
                 except Exception as e:
                     log.warning(f"Non-critical error: {e}")
                 return

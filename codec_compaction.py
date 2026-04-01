@@ -1,9 +1,26 @@
 """Context compaction — summarize old conversations, keep recent raw"""
 import os
+import sys
 import json
 import logging
 
 log = logging.getLogger('codec')
+
+# Load config once at import time (single source of truth via codec_config)
+try:
+    _repo_dir = os.path.dirname(os.path.abspath(__file__))
+    if _repo_dir not in sys.path:
+        sys.path.insert(0, _repo_dir)
+    from codec_config import cfg as _cfg
+    _LLM_BASE_URL = _cfg.get("llm_base_url", "http://localhost:8081/v1")
+    _LLM_MODEL = _cfg.get("llm_model", "")
+    _LLM_API_KEY = _cfg.get("llm_api_key", "")
+    _LLM_KWARGS = _cfg.get("llm_kwargs", {})
+except ImportError:
+    _LLM_BASE_URL = "http://localhost:8081/v1"
+    _LLM_MODEL = ""
+    _LLM_API_KEY = ""
+    _LLM_KWARGS = {}
 
 
 def compact_context(recent_messages: list, max_recent: int = 5, max_summary_tokens: int = 200) -> str:
@@ -31,13 +48,10 @@ def compact_context(recent_messages: list, max_recent: int = 5, max_summary_toke
     summary = None
     try:
         import httpx
-        cfg_path = os.path.expanduser("~/.codec/config.json")
-        with open(cfg_path) as f:
-            cfg = json.load(f)
-        base_url = cfg.get("llm_base_url", "http://localhost:8081/v1")
-        model = cfg.get("llm_model", "")
-        api_key = cfg.get("llm_api_key", "")
-        llm_kwargs = cfg.get("llm_kwargs", {})
+        base_url = _LLM_BASE_URL
+        model = _LLM_MODEL
+        api_key = _LLM_API_KEY
+        llm_kwargs = _LLM_KWARGS
 
         headers = {"Content-Type": "application/json"}
         if api_key:

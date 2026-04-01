@@ -62,16 +62,66 @@ def check_system_health():
             log.info(f"  {name}: {status}")
 
 def check_memory_stats():
-    """Report memory database stats"""
+    """Report memory database stats + size monitoring"""
     try:
         conn = sqlite3.connect(DB_PATH)
         total = conn.execute("SELECT COUNT(*) FROM conversations").fetchone()[0]
         sessions = conn.execute("SELECT COUNT(DISTINCT session_id) FROM conversations").fetchone()[0]
         latest = conn.execute("SELECT timestamp FROM conversations ORDER BY id DESC LIMIT 1").fetchone()
         conn.close()
-        log.info(f"Memory: {total} entries, {sessions} sessions, latest: {latest[0][:16] if latest else 'none'}")
+
+        # Database size monitoring
+        db_size_mb = os.path.getsize(DB_PATH) / (1024 * 1024) if os.path.exists(DB_PATH) else 0
+        size_warn = " ⚠️ LARGE" if db_size_mb > 100 else ""
+        log.info(f"Memory: {total} entries, {sessions} sessions, {db_size_mb:.1f} MB{size_warn}, latest: {latest[0][:16] if latest else 'none'}")
+
+        if db_size_mb > 100:
+            try:
+                requests.post("http://localhost:8090/api/notifications",
+                              json={"message": f"💾 Memory DB is {db_size_mb:.0f} MB — consider running cleanup", "type": "warning", "source": "heartbeat"},
+                              timeout=5)
+            except Exception:
+                pass
     except Exception as e:
         log.error(f"Memory stats failed: {e}")
+
+
+def backup_memory_db():
+    """Create daily backup of memory database to ~/.codec/backups/"""
+    import shutil
+    backup_dir = os.path.expanduser("~/.codec/backups")
+    os.makedirs(backup_dir, exist_ok=True)
+
+    today = datetime.now().strftime("%Y-%m-%d")
+    backup_path = os.path.join(backup_dir, f"memory_{today}.db")
+
+    # Skip if today's backup already exists
+    if os.path.exists(backup_path):
+        return
+
+    if not os.path.exists(DB_PATH):
+        return
+
+    try:
+        # Use SQLite backup API for safe copy (handles WAL mode)
+        src = sqlite3.connect(DB_PATH)
+        dst = sqlite3.connect(backup_path)
+        src.backup(dst)
+        dst.close()
+        src.close()
+
+        # Keep only last 7 backups
+        backups = sorted([f for f in os.listdir(backup_dir) if f.startswith("memory_") and f.endswith(".db")])
+        for old in backups[:-7]:
+            try:
+                os.unlink(os.path.join(backup_dir, old))
+            except Exception:
+                pass
+
+        size_mb = os.path.getsize(backup_path) / (1024 * 1024)
+        log.info(f"Memory backup: {backup_path} ({size_mb:.1f} MB)")
+    except Exception as e:
+        log.warning(f"Memory backup failed: {e}")
 
 def extract_task_from_message(content: str) -> str:
     """Extract actionable task from assistant's confirmation message."""
@@ -93,22 +143,42 @@ def extract_task_from_message(content: str) -> str:
     return ""
 
 
+def _is_dangerous(cmd):
+    """Check command against centralized dangerous patterns."""
+    try:
+        import sys as _sys
+        _repo = os.path.dirname(os.path.abspath(__file__))
+        if _repo not in _sys.path:
+            _sys.path.insert(0, _repo)
+        from codec_config import is_dangerous
+        return is_dangerous(cmd)
+    except ImportError:
+        # Conservative fallback
+        BLOCKED = ["rm -rf", "sudo", "shutdown", "reboot", "killall", "mkfs", "dd if=",
+                    "chmod 777", "| bash", "| sh"]
+        return any(b in cmd.lower() for b in BLOCKED)
+
+
 def execute_pending_tasks():
-    """Find and execute tasks saved during voice/chat conversations."""
+    """Find and execute tasks saved during voice/chat conversations.
+
+    Security: Only matches messages with explicit 'CODEC_TASK:' prefix or
+    very specific logged-task patterns. All extracted tasks are checked
+    against DANGEROUS_PATTERNS before execution.
+    """
     try:
         conn = sqlite3.connect(DB_PATH)
         cutoff = (datetime.now() - timedelta(hours=24)).isoformat()
 
+        # Tightened patterns: require explicit prefix or very specific phrasing
         rows = conn.execute("""
             SELECT id, content, timestamp FROM conversations
             WHERE timestamp > ?
             AND role = 'assistant'
             AND (
-                content LIKE '%logged the task%'
-                OR content LIKE '%saved%task%'
-                OR content LIKE '%for CODEC to execute%'
-                OR content LIKE '%queued%'
-                OR content LIKE '%will do that for you%'
+                content LIKE '%CODEC_TASK:%'
+                OR content LIKE '%logged the task to %'
+                OR content LIKE '%queued for execution:%'
             )
             ORDER BY id DESC LIMIT 5
         """, (cutoff,)).fetchall()
@@ -132,6 +202,12 @@ def execute_pending_tasks():
             if not task:
                 continue
 
+            # ── Safety gate: check extracted task against dangerous patterns ──
+            if _is_dangerous(task):
+                log.warning(f"  🛑 BLOCKED dangerous auto-task: {task[:80]}")
+                executed.append(row_id)  # mark as handled so we don't retry
+                continue
+
             log.info(f"  🚀 Auto-executing: {task[:80]}")
             try:
                 r = requests.post(
@@ -141,6 +217,9 @@ def execute_pending_tasks():
                 )
                 if r.status_code == 200:
                     log.info(f"  ✅ Task queued successfully")
+                    executed.append(row_id)
+                elif r.status_code == 403:
+                    log.warning(f"  🛑 Task blocked by /api/command safety check")
                     executed.append(row_id)
                 else:
                     log.warning(f"  ⚠️ /api/command returned {r.status_code}")
@@ -279,7 +358,8 @@ def heartbeat():
         execute_pending_tasks()
     # Configurable alerts (BTC price, etc.)
     check_alerts()
-    # Daily memory cleanup — delete entries older than 90 days
+    # Daily memory backup + cleanup
+    backup_memory_db()
     now = datetime.now()
     if _last_cleanup is None or (now - _last_cleanup).days >= 1:
         try:

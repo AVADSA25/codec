@@ -240,7 +240,9 @@ def start_keyboard_listener(state, ctx):
     def on_press(key):
         now = time.time()
         if key == KEY_TOGGLE:
-            if now - state["last_f13"] < 0.8:
+            # Mac F13 fires on_press for both keyDown and keyUp (pynput quirk).
+            # Use a 3-second cooldown to prevent the second event from re-toggling.
+            if now - state["last_f13"] < 3.0:
                 return
             state["last_f13"] = now
             if state["active"]:
@@ -250,7 +252,7 @@ def start_keyboard_listener(state, ctx):
                 push(close_session)
                 log.info("OFF")
                 try:
-                    with open("/tmp/codec_overlay_events.jsonl", "a") as _f:
+                    with open(os.path.expanduser("~/.codec/overlay_events.jsonl"), "a") as _f:
                         _f.write('{"type":"toggle_off"}\n')
                 except Exception as e:
                     log.warning(f"Toggle off overlay event write failed: {e}")
@@ -266,7 +268,7 @@ def start_keyboard_listener(state, ctx):
                          "=voice | " + cfg.get("key_text", "f16").upper() +
                          "=text | *=screen | +=doc")
                 try:
-                    with open("/tmp/codec_overlay_events.jsonl", "a") as _f:
+                    with open(os.path.expanduser("~/.codec/overlay_events.jsonl"), "a") as _f:
                         _f.write('{"type":"toggle_on"}\n')
                 except Exception as e:
                     log.warning(f"Toggle on overlay event write failed: {e}")

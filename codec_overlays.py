@@ -20,12 +20,12 @@ def _appkit_overlay(text, color="#E8711A", duration=2500, font_size=13, bold=Fal
     """Launch a native NSPanel overlay that floats above everything including fullscreen."""
     dur_sec = duration / 1000.0 if duration else 0
     s = f'''
-import os, sys, time, threading
+import os, sys, time, threading, objc
 from AppKit import (NSApplication, NSPanel, NSColor, NSTextField, NSFont,
                     NSView, NSMakeRect, NSScreen, NSBezierPath,
                     NSFloatingWindowLevel, NSBorderlessWindowMask,
-                    NSNonactivatingPanelMask, NSUtilityWindowMask)
-from Foundation import NSTimer, NSRunLoop, NSDefaultRunLoopMode
+                    NSNonactivatingPanelMask, NSUtilityWindowMask,
+                    NSObject)
 
 _text = os.environ["OVERLAY_TEXT"]
 _color_hex = os.environ["OVERLAY_COLOR"]
@@ -80,7 +80,7 @@ tc = NSColor.colorWithCalibratedRed_green_blue_alpha_(r, g, b, 1.0)
 
 ty = 30 if not _subtitle else 42
 font_w = {font_size}
-font = NSFont.boldSystemFontOfSize_(font_w) if {str(bold).lower()} else NSFont.systemFontOfSize_(font_w)
+font = NSFont.boldSystemFontOfSize_(font_w) if {bold} else NSFont.systemFontOfSize_(font_w)
 label = NSTextField.alloc().initWithFrame_(NSMakeRect(10, ty, w - 20, 30))
 label.setStringValue_(_text)
 label.setFont_(font)
@@ -105,11 +105,20 @@ if _subtitle:
 panel.orderFrontRegardless()
 
 if {dur_sec} > 0:
-    def close_panel(timer):
-        panel.close()
-        app.terminate_(None)
+    # Use a proper NSObject delegate for NSTimer (compatible with all PyObjC versions)
+    class TimerDelegate(NSObject):
+        @objc.python_method
+        def setup(self, panel_ref, app_ref):
+            self._panel = panel_ref
+            self._app = app_ref
+        def closePanel_(self, timer):
+            self._panel.close()
+            self._app.terminate_(None)
+    delegate = TimerDelegate.alloc().init()
+    delegate.setup(panel, app)
+    from Foundation import NSTimer
     NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
-        {dur_sec}, app, close_panel, None, False
+        {dur_sec}, delegate, b"closePanel:", None, False
     )
 
 app.run()
@@ -182,7 +191,9 @@ root.mainloop()
 
 # ── Public API ──────────────────────────────────────────────────────────
 
-_USE_APPKIT = _has_appkit()
+# AppKit NSPanel overlays unreliable on macOS 15+ (panels vanish behind fullscreen apps).
+# tkinter with overrideredirect + topmost is more reliable.
+_USE_APPKIT = False
 
 
 def show_overlay(text, color="#E8711A", duration=2500):

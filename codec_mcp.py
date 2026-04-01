@@ -9,11 +9,13 @@ import os, sys, json, logging
 
 log = logging.getLogger("codec_mcp")
 
+# Consolidate sys.path setup (done once, not scattered)
+_REPO_DIR = os.path.dirname(os.path.abspath(__file__))
 SKILLS_DIR = os.path.expanduser("~/.codec/skills")
-sys.path.insert(0, SKILLS_DIR)
+for _p in [_REPO_DIR, SKILLS_DIR]:
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
-# Load MCP gating config
-sys.path.insert(0, os.path.dirname(__file__))
 from codec_config import MCP_DEFAULT_ALLOW, MCP_ALLOWED_TOOLS
 from codec_skill_registry import SkillRegistry
 
@@ -90,7 +92,6 @@ def load_skill_tools():
 @mcp.tool()
 def search_memory(query: str, limit: int = 10) -> str:
     """Search CODEC's conversation memory using FTS5 full-text search"""
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from codec_memory import CodecMemory
     mem = CodecMemory()
     results = mem.search(query, limit)
@@ -99,7 +100,6 @@ def search_memory(query: str, limit: int = 10) -> str:
 @mcp.tool()
 def get_recent_memory(days: int = 7) -> str:
     """Get recent conversations from CODEC memory"""
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from codec_memory import CodecMemory
     mem = CodecMemory()
     results = mem.search_recent(days=days, limit=20)

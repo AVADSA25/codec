@@ -22,14 +22,24 @@ from datetime import datetime
 log = logging.getLogger("codec_session")
 
 
+# ── Named Constants ─────────────────────────────────────────────────────────
+MAX_AGENT_STEPS = 8           # Maximum steps per agent loop
+COMPACTION_THRESHOLD = 22     # History length that triggers compaction
+MAX_RECENT_CONTEXT = 5        # Recent messages kept raw during compaction
+SELECT_TIMEOUT_SEC = 0.3      # stdin select() polling interval
+MEMORY_LIMIT_MB = 512         # RLIMIT_AS cap (Linux only)
+CPU_LIMIT_SEC = 120           # RLIMIT_CPU hard cap
+
+
 # ── Resource Limits ──────────────────────────────────────────────────────────
 
 def _apply_resource_limits():
     try:
         # RLIMIT_AS not available on macOS — only set CPU limit
         if hasattr(resource, "RLIMIT_AS"):
-            resource.setrlimit(resource.RLIMIT_AS, (512 * 1024 * 1024, 512 * 1024 * 1024))
-        resource.setrlimit(resource.RLIMIT_CPU, (120, 120))
+            _mem = MEMORY_LIMIT_MB * 1024 * 1024
+            resource.setrlimit(resource.RLIMIT_AS, (_mem, _mem))
+        resource.setrlimit(resource.RLIMIT_CPU, (CPU_LIMIT_SEC, CPU_LIMIT_SEC))
     except Exception as e:
         log.warning(f"Resource limit setup failed: {e}")
 
@@ -139,24 +149,13 @@ RULES:
 3. NEVER delete files or data without confirmation.
 ALWAYS respond with valid JSON only."""
 
-        # Dangerous command patterns — import from config
-        try:
-            _repo_dir = os.path.dirname(os.path.abspath(__file__))
-            if _repo_dir not in sys.path:
-                sys.path.insert(0, _repo_dir)
-            from codec_config import DANGEROUS_PATTERNS
-            self.DANGEROUS = [p.lower() for p in DANGEROUS_PATTERNS]
-        except ImportError:
-            self.DANGEROUS = [
-                "rm -rf", "rm -r /", "rm -rf /", "rm -rf ~", "sudo",
-                "shutdown", "reboot", "halt", "killall", "mkfs", "dd if=",
-                "chmod 777", "chmod -r 777", "chown -r", "| bash", "| sh",
-                "defaults delete", "diskutil erase", "launchctl unload",
-                "csrutil disable", "nvram", "scutil --set", "pmset",
-                ":(){ :|:& };:", ":(){:|:&};:", "xattr -cr /",
-                "> /dev/sda", "curl | bash", "wget | sh",
-                "init 0", "kill -9 1", "format", "fdisk",
-            ]
+        # Dangerous command patterns — single source of truth in codec_config
+        _repo_dir = os.path.dirname(os.path.abspath(__file__))
+        if _repo_dir not in sys.path:
+            sys.path.insert(0, _repo_dir)
+        from codec_config import DANGEROUS_PATTERNS, is_dangerous
+        self.DANGEROUS = [p.lower() for p in DANGEROUS_PATTERNS]
+        self._is_dangerous = is_dangerous
 
         self.SAFE_CMDS = [
             "sqlite3", "echo ", "cat ", "ls ", "pwd", "date", "uptime",
@@ -371,9 +370,8 @@ ALWAYS respond with valid JSON only."""
 
     def run_code(self, action, code):
         try:
-            # ── Dangerous command blocklist check (BEFORE any execution) ──
-            cmd_lower = code.lower()
-            if any(d in cmd_lower for d in self.DANGEROUS):
+            # ── Dangerous command check (uses word-boundary regex from codec_config) ──
+            if self._is_dangerous(code):
                 log.warning("Blocked dangerous command: %s", cmd_lower[:100])
                 print(f"\n[SAFETY] \u26a0\ufe0f  Flagged: {code[:80]}")
                 with open(os.path.expanduser("~/.codec/audit.log"), "a") as _af:
@@ -416,7 +414,7 @@ ALWAYS respond with valid JSON only."""
             {"role": "system", "content": self.AGENT_SYS},
             {"role": "user", "content": "Task: " + task},
         ]
-        for step in range(8):
+        for step in range(MAX_AGENT_STEPS):
             resp = self.qwen_call(am)
             if not resp:
                 return "Qwen did not respond."
@@ -523,13 +521,13 @@ ALWAYS respond with valid JSON only."""
             resp = self.qwen_call(self.h)
         if resp:
             self.h.append({"role": "assistant", "content": resp})
-            if len(self.h) > 22:
+            if len(self.h) > COMPACTION_THRESHOLD:
                 try:
                     _repo_dir2 = os.path.dirname(os.path.abspath(__file__))
                     if _repo_dir2 not in sys.path:
                         sys.path.insert(0, _repo_dir2)
                     from codec_compaction import compact_context
-                    compacted = compact_context(self.h[1:], max_recent=5)
+                    compacted = compact_context(self.h[1:], max_recent=MAX_RECENT_CONTEXT)
                     self.h[:] = [self.h[0], {"role": "system", "content": compacted}] + self.h[-10:]
                 except Exception as e:
                     log.warning(f"Context compaction failed, trimming history: {e}")
@@ -642,7 +640,7 @@ ALWAYS respond with valid JSON only."""
                     self.process_input(queued["task"])
                     break
                 try:
-                    ready, _, _ = select.select([sys.stdin], [], [], 0.3)
+                    ready, _, _ = select.select([sys.stdin], [], [], SELECT_TIMEOUT_SEC)
                     if ready:
                         u = sys.stdin.readline().strip()
                         u = re.sub(r"\x1b\[[0-9;]*[a-zA-Z~]", "", u).strip()

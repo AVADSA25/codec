@@ -42,7 +42,9 @@ def run_skill(skill, task, app=""):
         result = skill['run'](task, app)
         skill_name = skill.get('name', 'unknown')
         try:
-            with open("/tmp/codec_overlay_events.jsonl", "a") as _f:
+            import os as _os
+            _events_path = _os.path.expanduser("~/.codec/overlay_events.jsonl")
+            with open(_events_path, "a") as _f:
                 _f.write(f'{{"type":"skill_fired","name":"{skill_name}"}}\n')
         except Exception:
             pass

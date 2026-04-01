@@ -1,12 +1,51 @@
-"""CODEC Skill: Create New Skills by Voice"""
+"""CODEC Skill: Create New Skills by Voice
+
+Security: Generated code is staged for human review via the dashboard
+review gate. Code is NEVER written to disk without approval.
+"""
 SKILL_NAME = "create_skill"
 SKILL_DESCRIPTION = "Create new CODEC skills by describing what you want"
 SKILL_TRIGGERS = ["create a skill", "make a skill", "new skill", "build a skill",
                    "create skill", "write a skill", "add a skill"]
-import os, requests, json
+import os, requests, json, re, sys
 
 SKILLS_DIR = os.path.expanduser("~/.codec/skills")
 CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
+
+# Dangerous patterns that must NEVER appear in generated skill code
+BLOCKED_IN_SKILLS = [
+    "os.system(", "subprocess.call(", "subprocess.run(", "subprocess.Popen(",
+    "eval(", "exec(", "__import__", "importlib", "shutil.rmtree",
+    "open('/etc", "open('/dev", "ctypes", "os.remove(", "os.unlink(",
+    "os.rmdir(", "shutil.move(", "open('/tmp",
+]
+
+
+def _validate_skill_code(code):
+    """Validate generated skill code for safety and correctness.
+    Returns (ok: bool, error_message: str)."""
+    # Must contain required skill metadata
+    if "SKILL_NAME" not in code or "def run(" not in code:
+        return False, "Generated code doesn't look like a valid skill (missing SKILL_NAME or def run)."
+
+    # Must contain SKILL_DESCRIPTION
+    if "SKILL_DESCRIPTION" not in code:
+        return False, "Generated code missing SKILL_DESCRIPTION."
+
+    # Block dangerous patterns in generated code
+    code_lower = code.lower()
+    for blocked in BLOCKED_IN_SKILLS:
+        if blocked.lower() in code_lower:
+            return False, f"Blocked dangerous pattern in generated code: {blocked}"
+
+    # Must compile
+    try:
+        compile(code, "<generated_skill>", "exec")
+    except SyntaxError as e:
+        return False, f"Generated code has a syntax error: {e}. Try describing the skill differently."
+
+    return True, ""
+
 
 def run(task, app="", ctx=""):
     # Extract what the skill should do
@@ -47,10 +86,10 @@ RULES:
 - ONLY output the Python code, nothing else
 - No markdown, no backticks, no explanation
 - The run() function must return a string
-- Use subprocess for system commands
-- Use requests for HTTP calls
+- Use requests for HTTP calls (NOT subprocess, os.system, eval, or exec)
 - Keep it simple and functional
 - SKILL_NAME must be lowercase with underscores only
+- Do NOT use subprocess, os.system, eval, exec, or __import__
 
 The skill should: {description}"""
 
@@ -65,11 +104,12 @@ The skill should: {description}"""
         # Clean up any markdown
         code = code.replace("```python", "").replace("```", "").strip()
 
-        if "SKILL_NAME" not in code or "def run" not in code:
-            return "Generated code doesn't look like a valid skill. Try again with a clearer description."
+        # Validate safety and correctness BEFORE anything else
+        ok, err = _validate_skill_code(code)
+        if not ok:
+            return err
 
         # Extract skill name from generated code
-        import re
         name_match = re.search(r'SKILL_NAME\s*=\s*["\'](\w+)["\']', code)
         if not name_match:
             return "Could not determine skill name from generated code."
@@ -80,18 +120,27 @@ The skill should: {description}"""
         if os.path.exists(filepath):
             return f"Skill {skill_name} already exists. Delete it first or choose a different name."
 
-        # Validate the code compiles
+        # ── ROUTE THROUGH REVIEW GATE ──
+        # Stage for human review via dashboard API — NEVER write directly to disk
         try:
-            compile(code, filepath, "exec")
-        except SyntaxError as e:
-            return f"Generated code has a syntax error: {e}. Try describing the skill differently."
-
-        # Save it
-        os.makedirs(SKILLS_DIR, exist_ok=True)
-        with open(filepath, "w") as f:
-            f.write(code)
-
-        return f"Skill {skill_name} created and saved. Restart CODEC to load it. File: {filepath}"
+            review_resp = requests.post(
+                "http://localhost:8090/api/skill/review",
+                json={"code": code, "filename": f"{skill_name}.py"},
+                timeout=10,
+            )
+            if review_resp.status_code == 200:
+                review_id = review_resp.json().get("review_id", "?")
+                return (
+                    f"Skill '{skill_name}' generated and staged for review (ID: {review_id}). "
+                    f"Open the Dashboard → Skills to review and approve it before it becomes active."
+                )
+            else:
+                return f"Skill generated but review gate returned error: {review_resp.text[:100]}"
+        except requests.ConnectionError:
+            return (
+                f"Skill '{skill_name}' generated but dashboard is unreachable for review. "
+                f"Start the dashboard and use /api/skill/review to submit it manually."
+            )
 
     except Exception as e:
         return f"Error creating skill: {e}"
