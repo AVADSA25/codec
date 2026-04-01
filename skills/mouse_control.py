@@ -9,14 +9,29 @@ Architecture: screenshot -> Qwen Vision -> coordinates -> pyautogui -> confirm
 SKILL_NAME = "mouse_control"
 SKILL_DESCRIPTION = "Control mouse cursor by voice using screen vision — click, move, scroll, drag any element you can see"
 SKILL_TRIGGERS = [
+    # Direct click commands
     "click on", "click the", "click button", "press the button",
-    "move mouse", "move cursor", "mouse to", "cursor to",
-    "right click", "right-click", "double click", "double-click",
-    "scroll down", "scroll up", "scroll left", "scroll right",
-    "hover over", "hover on", "point to", "point at",
-    "find on screen", "where is the", "locate the",
     "click where it says", "tap on", "select the",
+    # Mouse movement
+    "move mouse", "move cursor", "mouse to", "cursor to",
+    # Right / double click
+    "right click", "right-click", "double click", "double-click",
+    # Scroll
+    "scroll down", "scroll up", "scroll left", "scroll right",
+    # Hover
+    "hover over", "hover on", "point to", "point at",
+    # Screen discovery
+    "find on screen", "where is the", "locate the",
     "can you spot", "spot it", "find it and click",
+    # Natural conversational triggers (how real users talk)
+    "click it", "click that", "click for me",
+    "control my mouse", "control the mouse", "take control of my mouse",
+    "use my mouse", "move my mouse",
+    "click it for me", "can you click",
+    "find the button", "find that button",
+    "look at my screen and click", "see my screen and click",
+    "click on the page", "click on screen",
+    "i can't find", "help me find",
 ]
 
 import subprocess
