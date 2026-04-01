@@ -9,6 +9,14 @@
   <a href="https://opencodec.org">opencodec.org</a> · <a href="https://avadigital.ai">AVA Digital LLC</a> · <a href="#quick-start">Get Started</a> · <a href="#support-the-project">Support</a> · <a href="#professional-setup">Enterprise</a>
 </p>
 
+<p align="center">
+  <img src="https://img.shields.io/badge/features-189-blue?style=flat-square" alt="189 Features"/>
+  <img src="https://img.shields.io/badge/skills-56-orange?style=flat-square" alt="56 Skills"/>
+  <img src="https://img.shields.io/badge/tests-312-green?style=flat-square" alt="312 Tests"/>
+  <img src="https://img.shields.io/badge/core_lines-10%2C405-purple?style=flat-square" alt="10,405 Lines"/>
+  <img src="https://img.shields.io/badge/license-MIT-brightgreen?style=flat-square" alt="MIT License"/>
+</p>
+
 ---
 
 <p align="center">
@@ -37,7 +45,7 @@ No cloud dependency. No subscription. No data leaving the machine. MIT licensed.
 
 Always-on voice assistant. Say *"Hey CODEC"* or press F13 to activate. F18 for voice commands. F16 for text input.
 
-50+ skills fire instantly: Google Calendar, Gmail, Drive, Docs, Sheets, Tasks, Keep, Chrome automation, web search, Hue lights, timers, Spotify, clipboard, terminal commands, and more. Most skills bypass the LLM entirely — direct action, zero latency.
+56 skills fire instantly: Google Calendar, Gmail, Drive, Docs, Sheets, Tasks, Keep, Chrome automation, web search, Hue lights, timers, Spotify, clipboard, terminal commands, and more. Most skills bypass the LLM entirely — direct action, zero latency.
 
 ### Vision Mouse Control — See & Click
 
@@ -399,8 +407,8 @@ codec_marketplace.py  — Skill marketplace CLI
 codec_overlays.py     — AppKit overlay notifications (fullscreen compatible)
 ax_bridge/            — Swift AX accessibility bridge
 swift-overlay/        — SwiftUI status bar app
-skills/               — 50+ built-in skills (incl. vision mouse control)
-tests/                — 212+ pytest tests
+skills/               — 56 built-in skills (incl. vision mouse control)
+tests/                — 312 pytest tests
 install.sh            — One-line installer
 setup_codec.py        — Setup wizard (9 steps)
 ```
@@ -420,7 +428,7 @@ setup_codec.py        — Setup wizard (9 steps)
 
 ## Contributing
 
-All skill contributions welcome. 50+ built-in, marketplace growing.
+All skill contributions welcome. 56 built-in skills, 312 tests, marketplace growing.
 
 ```bash
 git clone https://github.com/AVADSA25/codec.git
