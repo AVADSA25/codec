@@ -1,5 +1,5 @@
 # CODEC PROMO VIDEO v3 — REMOCTION PROMPT
-# Duration: ~3 minutes (180s)
+# Duration: ~3:10 minutes (190s)
 # Style: Dark theme, orange accents (#E8711A), clean motion graphics
 # Font: SF Pro / Inter for UI, JetBrains Mono for code
 # Voice: Confident, clear, measured pace — like an Apple keynote
@@ -21,7 +21,26 @@ Below logo, text fades in sequence:
 
 ---
 
-## SCENE 2: THE PROBLEM (10s → 20s)
+## SCENE 1B: VISION MOUSE CONTROL (10s → 20s)
+
+**Visual:** Screen recording style. A complex settings panel is open (dense UI, small buttons). Orange crosshair cursor pulses center screen.
+
+Voice waveform activates: *"Hey CODEC, find the Export button and click it."*
+
+Animation sequence:
+1. Screen dims slightly — orange scan lines sweep across the UI (vision analysis)
+2. Vision model highlights the Export button with an orange bounding box
+3. Mouse cursor glides smoothly to the button and clicks
+4. Success flash: button depresses, action completes
+5. Badge appears: "Vision AI + Mouse Control — fully local" ✅
+
+Bottom text: "UI-TARS vision model + pyautogui. No cloud. No accessibility API. It literally sees your screen."
+
+**Voiceover:** "Can't find that button? Just ask. CODEC sees your screen with a local vision model, locates the element, and clicks it for you. Voice-controlled mouse. No other open-source assistant does this."
+
+---
+
+## SCENE 2: THE PROBLEM (20s → 30s)
 
 **Visual:** Split comparison. Left side dim/grey, right side orange glow.
 
