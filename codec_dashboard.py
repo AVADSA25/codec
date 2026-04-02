@@ -53,6 +53,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         if any(path.startswith(p) for p in self.PUBLIC_PREFIXES):
             return await call_next(request)
+        # Allow internal localhost requests (scheduler, heartbeat, MCP)
+        client_ip = request.client.host if request.client else ""
+        if client_ip in ("127.0.0.1", "::1", "localhost") and request.headers.get("x-internal") == "codec":
+            return await call_next(request)
         # Allow static assets
         if path.endswith(('.css', '.js', '.png', '.ico', '.svg', '.woff2', '.woff', '.ttf')):
             return await call_next(request)
@@ -2295,6 +2299,24 @@ async def list_custom_agents():
             except Exception:
                 pass
     return {"agents": agents}
+
+
+@app.post("/api/agents/custom/delete")
+async def delete_custom_agent(request: Request):
+    """Delete a saved custom agent definition."""
+    try:
+        body = await request.json()
+        agent_id = (body.get("id") or "").strip()
+        if not agent_id:
+            return JSONResponse({"error": "Agent ID required"}, status_code=400)
+        safe_id = re.sub(r"[^\w\-]", "_", agent_id)
+        path = os.path.join(_AGENTS_DIR, safe_id + ".json")
+        if os.path.exists(path):
+            os.remove(path)
+            return {"deleted": True, "id": safe_id}
+        return JSONResponse({"error": "Agent not found"}, status_code=404)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 @app.get("/api/schedules")

@@ -76,6 +76,15 @@ a { color: var(--accent); text-decoration: none; }
 .btn-danger { color: var(--danger); border-color: var(--danger); background: transparent; }
 .btn-danger:hover { background: rgba(239,68,68,0.1); }
 .btn-sm { padding: 5px 10px; font-size: 12px; }
+.btn-xs { padding: 3px 8px; font-size: 11px; border-radius: 4px; background: var(--surface-2); color: var(--text-muted); border: 1px solid var(--border); cursor: pointer; }
+.btn-xs:hover { background: var(--surface-3); color: var(--text); }
+
+/* ── Day Picker ── */
+.day-chip { cursor: pointer; user-select: none; }
+.day-chip input { display: none; }
+.day-chip span { display: inline-block; padding: 6px 12px; font-size: 12px; font-weight: 500; border-radius: 6px; background: var(--surface-2); color: var(--text-muted); border: 1px solid var(--border); transition: all 0.15s; }
+.day-chip input:checked + span { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); font-weight: 600; }
+.day-chip:hover span { border-color: var(--accent); }
 
 /* ── Toggle ── */
 .toggle-wrap { display: flex; align-items: center; gap: 8px; }
@@ -235,44 +244,53 @@ a { color: var(--accent); text-decoration: none; }
     </div>
 
     <div class="new-schedule-form" id="newScheduleForm">
-      <h3 style="font-size:14px; font-weight:600; margin-bottom:14px;">Create New Schedule</h3>
+      <h3 style="font-size:14px; font-weight:600; margin-bottom:14px;" id="schedFormTitle">Create New Schedule</h3>
+      <input type="hidden" id="schedEditId" value="">
       <div class="form-row">
         <div class="form-group">
-          <label class="form-label">Crew</label>
+          <label class="form-label">Agent Crew</label>
           <select class="form-select" id="newCrew">
-            <option value="analyst">Analyst</option>
-            <option value="writer">Writer</option>
-            <option value="coder">Coder</option>
-            <option value="researcher">Researcher</option>
-            <option value="advisor">Advisor</option>
-            <option value="teacher">Teacher</option>
-            <option value="planner">Planner</option>
-            <option value="ops">Ops</option>
-            <option value="security">Security</option>
-            <option value="creative">Creative</option>
+            <option value="daily_briefing">Daily Briefing</option>
+            <option value="deep_research">Deep Research</option>
+            <option value="competitor_analysis">Competitor Analysis</option>
+            <option value="trip_planner">Trip Planner</option>
+            <option value="email_handler">Email Handler</option>
+            <option value="custom">Custom Agent</option>
           </select>
         </div>
         <div class="form-group">
-          <label class="form-label">Cron Expression</label>
-          <input class="form-input" id="newCron" placeholder="0 8 * * *" value="0 8 * * *">
+          <label class="form-label">Run at</label>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <input type="number" class="form-input" id="newHour" min="0" max="23" value="8" style="width:60px;text-align:center;">
+            <span style="font-size:18px;font-weight:bold;color:var(--text-muted);">:</span>
+            <input type="number" class="form-input" id="newMinute" min="0" max="59" value="0" style="width:60px;text-align:center;" step="5">
+          </div>
         </div>
       </div>
       <div class="form-group">
-        <label class="form-label">Topic / Description</label>
-        <input class="form-input" id="newTopic" placeholder="Daily morning briefing...">
+        <label class="form-label">Repeat on</label>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;" id="dayPicker">
+          <label class="day-chip"><input type="checkbox" value="0" checked><span>Mon</span></label>
+          <label class="day-chip"><input type="checkbox" value="1" checked><span>Tue</span></label>
+          <label class="day-chip"><input type="checkbox" value="2" checked><span>Wed</span></label>
+          <label class="day-chip"><input type="checkbox" value="3" checked><span>Thu</span></label>
+          <label class="day-chip"><input type="checkbox" value="4" checked><span>Fri</span></label>
+          <label class="day-chip"><input type="checkbox" value="5"><span>Sat</span></label>
+          <label class="day-chip"><input type="checkbox" value="6"><span>Sun</span></label>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:6px;">
+          <button class="btn btn-xs" onclick="setDays([0,1,2,3,4])">Weekdays</button>
+          <button class="btn btn-xs" onclick="setDays([5,6])">Weekends</button>
+          <button class="btn btn-xs" onclick="setDays([0,1,2,3,4,5,6])">Every day</button>
+        </div>
       </div>
       <div class="form-group">
-        <div class="toggle-wrap">
-          <label class="toggle">
-            <input type="checkbox" id="newEnabled" checked>
-            <span class="toggle-slider"></span>
-          </label>
-          <span class="toggle-label">Enabled</span>
-        </div>
+        <label class="form-label">Task description</label>
+        <input class="form-input" id="newTopic" placeholder="e.g. Morning news summary, Weekly competitor report...">
       </div>
       <div style="display:flex; gap:8px; justify-content:flex-end;">
         <button class="btn btn-sm" onclick="toggleNewForm()">Cancel</button>
-        <button class="btn btn-primary btn-sm" onclick="createSchedule()">Create</button>
+        <button class="btn btn-primary btn-sm" onclick="saveSchedule()">Save</button>
       </div>
     </div>
 
@@ -549,8 +567,20 @@ function renderSchedules() {
   var html = '';
   schedules.forEach(function(s) {
     var enabled = s.enabled !== false;
-    var cronStr = s.cron || (s.hour !== undefined ? (s.minute || 0) + ' ' + s.hour + ' * * ' + (Array.isArray(s.days) ? s.days.join(',') : (s.days || '*')) : 'N/A');
-    var lastRun = s.last_run || 'Never';
+    var dayNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    var timeStr = '';
+    if (s.hour !== undefined) {
+      var h = s.hour; var ampm = h >= 12 ? 'PM' : 'AM'; var h12 = h % 12 || 12;
+      var m = (s.minute || 0); var mStr = m < 10 ? '0' + m : '' + m;
+      timeStr = h12 + ':' + mStr + ' ' + ampm;
+      if (Array.isArray(s.days)) {
+        if (s.days.length === 7) timeStr += ' every day';
+        else if (s.days.length === 5 && s.days.join(',') === '0,1,2,3,4') timeStr += ' weekdays';
+        else if (s.days.length === 2 && s.days.join(',') === '5,6') timeStr += ' weekends';
+        else timeStr += ' ' + s.days.map(function(d){ return dayNames[d] || d; }).join(', ');
+      }
+    } else { timeStr = 'Not configured'; }
+    var lastRun = s.last_run ? new Date(s.last_run).toLocaleString() : 'Never';
     html += '<div class="card">';
     html += '<div class="card-header">';
     html += '<div><span class="card-title">' + escHtml(s.crew || 'Unknown') + '</span>';
@@ -561,7 +591,7 @@ function renderSchedules() {
     html += '<span class="badge ' + (enabled ? 'badge-success' : 'badge-muted') + '">' + (enabled ? 'Active' : 'Disabled') + '</span>';
     html += '</div></div>';
     html += '<div style="display:flex;gap:16px;font-size:12px;color:var(--text-muted);">';
-    html += '<span style="font-family:var(--mono);"><svg style="width:12px;height:12px;display:inline-block;vertical-align:middle;margin-right:3px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>' + escHtml(cronStr) + '</span>';
+    html += '<span style="font-family:var(--mono);"><svg style="width:12px;height:12px;display:inline-block;vertical-align:middle;margin-right:3px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>' + escHtml(timeStr) + '</span>';
     html += '<span>Last run: ' + escHtml(lastRun) + '</span>';
     html += '</div>';
     html += '<div class="card-actions">';
@@ -575,26 +605,63 @@ function renderSchedules() {
 
 function toggleNewForm() {
   var f = document.getElementById('newScheduleForm');
-  f.classList.toggle('visible');
+  var isVisible = f.classList.contains('visible');
+  if (isVisible) {
+    f.classList.remove('visible');
+    document.getElementById('schedEditId').value = '';
+    document.getElementById('schedFormTitle').textContent = 'Create New Schedule';
+  } else {
+    // Reset form for new schedule
+    document.getElementById('schedEditId').value = '';
+    document.getElementById('schedFormTitle').textContent = 'Create New Schedule';
+    document.getElementById('newCrew').value = 'daily_briefing';
+    document.getElementById('newHour').value = '8';
+    document.getElementById('newMinute').value = '0';
+    document.getElementById('newTopic').value = '';
+    setDays([0,1,2,3,4]);
+    f.classList.add('visible');
+  }
 }
 
-function createSchedule() {
-  var cronParts = document.getElementById('newCron').value.trim().split(/\s+/);
+function setDays(dayList) {
+  var checks = document.querySelectorAll('#dayPicker input[type=checkbox]');
+  checks.forEach(function(cb) { cb.checked = dayList.indexOf(parseInt(cb.value)) >= 0; });
+}
+
+function getSelectedDays() {
+  var days = [];
+  document.querySelectorAll('#dayPicker input[type=checkbox]:checked').forEach(function(cb) {
+    days.push(parseInt(cb.value));
+  });
+  return days.length ? days : [0,1,2,3,4,5,6];
+}
+
+function saveSchedule() {
+  var editId = document.getElementById('schedEditId').value;
   var payload = {
     crew: document.getElementById('newCrew').value,
     topic: document.getElementById('newTopic').value,
-    minute: parseInt(cronParts[0]) || 0,
-    hour: parseInt(cronParts[1]) || 8,
-    days: cronParts.length >= 5 ? cronParts[4] : '*'
+    hour: parseInt(document.getElementById('newHour').value) || 8,
+    minute: parseInt(document.getElementById('newMinute').value) || 0,
+    days: getSelectedDays(),
+    enabled: false
   };
-  fetch('/api/schedules', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) })
+  var url, method;
+  if (editId) {
+    url = '/api/schedules/' + editId;
+    method = 'PUT';
+  } else {
+    url = '/api/schedules';
+    method = 'POST';
+  }
+  fetch(url, { method: method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) })
     .then(function(r){ return r.json(); })
     .then(function() {
       toggleNewForm();
-      document.getElementById('newTopic').value = '';
       loadSchedules();
+      showToast(editId ? 'Schedule updated' : 'Schedule created (disabled by default)');
     })
-    .catch(function(e){ alert('Error creating schedule: ' + e); });
+    .catch(function(e){ alert('Error: ' + e); });
 }
 
 function toggleSchedule(id, enabled) {
@@ -607,7 +674,7 @@ function runNow(id) {
     .then(function(r){ return r.json(); })
     .then(function(data) {
       if (data.status === 'running') {
-        showToast('⏳ Task running — switching to Reports...');
+        showToast('Task started — switching to Reports...');
         setTimeout(function(){ showTab('reports'); loadReports(); }, 800);
       } else {
         showToast(data.error || 'Failed to trigger task');
@@ -619,39 +686,21 @@ function runNow(id) {
 function editSchedule(id) {
   var sched = schedules.find(function(s) { return s.id === id; });
   if (!sched) return;
-  var presets = {
-    'every12h': '0 */12 * * *',
-    'every24h': '0 8 * * *',
-    'daily8am': '0 8 * * *',
-    'weekly': '0 9 * * 1',
-    'custom': ''
-  };
-  var currentCron = (sched.cron || []).join(' ');
-  var choice = prompt(
-    'Edit schedule for: ' + (sched.crew || 'task') + '\n\n' +
-    'Current: ' + currentCron + '\n\n' +
-    'Enter new cron (5 fields) or a preset:\n' +
-    '  every12h = every 12 hours\n' +
-    '  daily = every day at 8am\n' +
-    '  weekly = every Monday 9am\n' +
-    '  Or type custom cron: "0 */6 * * *"',
-    currentCron
-  );
-  if (!choice) return;
-  var cron = presets[choice.trim().toLowerCase()] || choice.trim();
-  var parts = cron.split(/\s+/);
-  if (parts.length !== 5) { alert('Invalid cron — need 5 fields (min hour dom month dow)'); return; }
-  fetch('/api/schedules/' + id, {
-    method: 'PUT',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({cron: parts})
-  }).then(function() { loadSchedules(); }).catch(function(e) { alert('Error: ' + e); });
+  // Populate form with existing values
+  document.getElementById('schedEditId').value = id;
+  document.getElementById('schedFormTitle').textContent = 'Edit Schedule: ' + (sched.crew || 'task');
+  document.getElementById('newCrew').value = sched.crew || 'daily_briefing';
+  document.getElementById('newHour').value = sched.hour !== undefined ? sched.hour : 8;
+  document.getElementById('newMinute').value = sched.minute !== undefined ? sched.minute : 0;
+  document.getElementById('newTopic').value = sched.topic || '';
+  setDays(Array.isArray(sched.days) ? sched.days : [0,1,2,3,4,5,6]);
+  document.getElementById('newScheduleForm').classList.add('visible');
 }
 
 function deleteSchedule(id) {
   if (!confirm('Delete this schedule?')) return;
   fetch('/api/schedules/' + id, { method: 'DELETE' })
-    .then(function(){ loadSchedules(); })
+    .then(function(){ loadSchedules(); showToast('Schedule deleted'); })
     .catch(function(e){ alert('Error: ' + e); });
 }
 

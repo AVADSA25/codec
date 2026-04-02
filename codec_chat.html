@@ -315,6 +315,7 @@ input[type=file]{display:none}
       <select class="ab-select" id="savedAgentSelect" onchange="loadSavedAgent(this.value)">
         <option value="">Load saved...</option>
       </select>
+      <button class="ab-btn" onclick="deleteSelectedAgent()" title="Delete selected agent" style="background:var(--danger);padding:4px 8px;font-size:10px">✕ Delete</button>
     </div>
     <span style="font-size:10px;color:var(--text-dim)">Type your task below and press Send</span>
   </div>
@@ -330,7 +331,7 @@ input[type=file]{display:none}
 <button class="ibtn" id="micBtn" onclick="toggleMic()" title="Voice input">
   <svg class="ico" viewBox="0 0 24 24"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
 </button>
-<textarea class="chat-input" id="chatInput" placeholder="Message Q..." rows="1" onkeydown="handleKey(event)"></textarea>
+<textarea class="chat-input" id="chatInput" placeholder="Message CODEC..." rows="1" onkeydown="handleKey(event)"></textarea>
 <button class="ibtn" onclick="document.getElementById('fileUp').click()" title="Upload file">
   <svg class="ico" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
 </button>
@@ -356,11 +357,18 @@ input[type=file]{display:none}
 var _f=window.fetch;
 function _getSession(){return document.cookie.match(/codec_session=([^;]+)/)?.[1]||sessionStorage.getItem('codec_session')||''}
 function _injectSession(url){var s=_getSession();if(!s)return url;var sep=url.indexOf('?')>=0?'&':'?';return url+sep+'s='+s}
+var _authRedirecting=false;
 window.fetch=function(u,o){
   o=o||{};
   if(typeof u==='string')u=_injectSession(u);
   if(o.method&&o.method!=='GET'){var c=document.cookie.match(/codec_csrf=([^;]+)/);if(c){o.headers=o.headers||{};if(o.headers instanceof Headers){o.headers.set('x-csrf-token',c[1])}else{o.headers['x-csrf-token']=c[1]}}}
-  return _f.call(this,u,o)};
+  return _f.call(this,u,o).then(function(resp){
+    if(resp.status===401&&!_authRedirecting&&typeof u==='string'&&u.indexOf('/api/')>=0&&u.indexOf('/api/auth/')<0){
+      _authRedirecting=true;
+      window.location.href='/auth?redirect='+encodeURIComponent(window.location.pathname+window.location.search);
+    }
+    return resp;
+  })};
 })();
 // E2E encryption layer — AES-256-GCM via ECDH key exchange
 var _e2eKey=null;
@@ -402,7 +410,7 @@ function setMode(mode){
   cs.style.display=mode==='research'?'inline-block':'none';
   var crew=mode==='research'?cs.value:'deep_research';
   var hints={'deep_research':'Research topic... (3-6 min)','daily_briefing':'Press send for daily briefing','trip_planner':'Destination + dates...','competitor_analysis':'Market or product to analyze...','email_handler':'Press send to handle inbox','custom':'Describe your task for the custom agent...'};
-  document.getElementById('chatInput').placeholder=mode==='research'?(hints[crew]||'Enter crew task...'):'Message Q...';
+  document.getElementById('chatInput').placeholder=mode==='research'?(hints[crew]||'Enter crew task...'):'Message CODEC...';
   document.getElementById('scheduleBtn').style.display=mode==='research'?'':'none';
   var builder=document.getElementById('agentBuilder');
   if(mode==='research'&&crew==='custom'){builder.classList.add('show');if(!_toolsLoaded)loadAgentTools();loadSavedAgentList()}else{builder.classList.remove('show')}
@@ -484,8 +492,9 @@ function addMessage(role,content,animate){
   scrollBottom()
 }
 
+var addMsg=addMessage; // alias for webcam code
 function scrollBottom(){var m=document.getElementById('messages');m.scrollTop=m.scrollHeight}
-function showTyping(){var div=document.createElement('div');div.className='typing';div.id='typing';div.innerHTML='<span>\u25CF</span><span>\u25CF</span><span>\u25CF</span> Q is thinking...';document.getElementById('messages').appendChild(div);scrollBottom()}
+function showTyping(){var div=document.createElement('div');div.className='typing';div.id='typing';div.innerHTML='<span>\u25CF</span><span>\u25CF</span><span>\u25CF</span> CODEC is thinking...';document.getElementById('messages').appendChild(div);scrollBottom()}
 function hideTyping(){var t=document.getElementById('typing');if(t)t.remove()}
 
 function addFileChip(name,content,type){
@@ -616,24 +625,83 @@ document.getElementById('chatInput').addEventListener('input',function(){this.st
 
 var _toolsLoaded=false;
 async function loadAgentTools(){
-  try{var r=await fetch('/api/agents/tools');var data=await r.json();var grid=document.getElementById('abToolGrid');grid.innerHTML='';
-  data.tools.forEach(function(t){var label=document.createElement('label');label.className='ab-tool';label.title=t.description;label.innerHTML='<input type="checkbox" name="abt" value="'+escHtml(t.name)+'" checked> '+escHtml(t.name.replace(/_/g,' '));grid.appendChild(label)});
-  document.getElementById('abToolCount').textContent='('+data.tools.length+')';_toolsLoaded=true}catch(e){document.getElementById('abToolGrid').innerHTML='<span style="font-size:10px;color:var(--danger)">Failed to load tools</span>'}
+  try{
+    var r=await fetch('/api/agents/tools');
+    if(!r.ok){
+      // Retry once — session token might not have been injected on first try
+      await new Promise(function(res){setTimeout(res,500)});
+      r=await fetch('/api/agents/tools');
+    }
+    var data=await r.json();
+    if(!data.tools||!data.tools.length){document.getElementById('abToolGrid').innerHTML='<span style="font-size:10px;color:var(--text-dim)">No tools available</span>';return}
+    var grid=document.getElementById('abToolGrid');grid.innerHTML='';
+    data.tools.forEach(function(t){var label=document.createElement('label');label.className='ab-tool';label.title=t.description;label.innerHTML='<input type="checkbox" name="abt" value="'+escHtml(t.name)+'" checked> '+escHtml(t.name.replace(/_/g,' '));grid.appendChild(label)});
+    document.getElementById('abToolCount').textContent='('+data.tools.length+')';_toolsLoaded=true
+  }catch(e){document.getElementById('abToolGrid').innerHTML='<span style="font-size:10px;color:var(--danger)">Failed to load tools: '+escHtml(e.message)+'</span>';console.error('loadAgentTools error:',e)}
 }
 
 function getSelectedTools(){return Array.from(document.querySelectorAll('#abToolGrid input[name="abt"]:checked')).map(function(c){return c.value})}
 
 async function saveCustomAgent(){
-  var body={name:document.getElementById('agentName').value.trim()||'Custom Agent',role:document.getElementById('agentRole').value.trim(),tools:getSelectedTools(),max_iterations:parseInt(document.getElementById('agentMaxIter').value||'8')};
-  try{var r=await fetch('/api/agents/custom/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});var d=await r.json();if(d.saved){addMessage('assistant','Agent **'+body.name+'** saved');loadSavedAgentList()}}catch(e){addMessage('assistant','Save error: '+e.message)}
+  var nameInput=document.getElementById('agentName');
+  var nameVal=nameInput.value.trim();
+  // Auto-name if empty or default
+  if(!nameVal||nameVal==='Custom Agent'){
+    try{var lr=await fetch('/api/agents/custom/list');var ld=await lr.json();var count=(ld.agents||[]).length;nameVal='Agent '+(count+1);nameInput.value=nameVal}catch(e){nameVal='Agent 1';nameInput.value=nameVal}
+  }
+  var body={name:nameVal,role:document.getElementById('agentRole').value.trim(),tools:getSelectedTools(),max_iterations:parseInt(document.getElementById('agentMaxIter').value||'8')};
+  try{
+    var r=await fetch('/api/agents/custom/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    var d=await r.json();
+    console.log('Save response:',JSON.stringify(d));
+    if(d.error){addMessage('assistant','Save error: '+d.error);return}
+    if(d.saved){
+      addMessage('assistant','Agent **'+body.name+'** saved successfully');
+      console.log('Calling loadSavedAgentList...');
+      await loadSavedAgentList();
+      console.log('loadSavedAgentList completed');
+      // Also verify the dropdown state after load
+      var sel=document.getElementById('savedAgentSelect');
+      console.log('Dropdown options after load:',sel?sel.options.length:'NO ELEMENT');
+    }else{addMessage('assistant','Save failed — unexpected response')}
+  }catch(e){console.error('Save error:',e);addMessage('assistant','Save error: '+e.message)}
 }
 
 async function loadSavedAgentList(){
-  try{var r=await fetch('/api/agents/custom/list');var d=await r.json();var sel=document.getElementById('savedAgentSelect');sel.innerHTML='<option value="">Load saved...</option>';(d.agents||[]).forEach(function(a){var opt=document.createElement('option');opt.value=JSON.stringify(a);opt.textContent=a.name||a.id;sel.appendChild(opt)})}catch(e){}
+  var sel=document.getElementById('savedAgentSelect');
+  if(!sel)return;
+  try{
+    var r=await fetch('/api/agents/custom/list');
+    var txt=await r.text();
+    var d=JSON.parse(txt);
+    var agents=d.agents||[];
+    // Clear and rebuild dropdown
+    while(sel.options.length>0)sel.remove(0);
+    var defOpt=document.createElement('option');
+    defOpt.value='';
+    defOpt.textContent=agents.length>0?'Load saved ('+agents.length+')...':'No saved agents';
+    sel.appendChild(defOpt);
+    for(var i=0;i<agents.length;i++){
+      var opt=document.createElement('option');
+      opt.value=JSON.stringify(agents[i]);
+      opt.textContent=agents[i].name||agents[i].id||'Agent '+(i+1);
+      sel.appendChild(opt);
+    }
+  }catch(e){
+    while(sel.options.length>0)sel.remove(0);
+    var errOpt=document.createElement('option');
+    errOpt.value='';errOpt.textContent='Error loading agents';
+    sel.appendChild(errOpt);
+  }
 }
 
 function loadSavedAgent(json){
-  if(!json)return;try{var a=JSON.parse(json);if(a.name)document.getElementById('agentName').value=a.name;if(a.role)document.getElementById('agentRole').value=a.role;if(a.max_iterations)document.getElementById('agentMaxIter').value=a.max_iterations;if(a.tools&&_toolsLoaded){document.querySelectorAll('#abToolGrid input[name="abt"]').forEach(function(cb){cb.checked=a.tools.includes(cb.value)})}document.getElementById('savedAgentSelect').value=''}catch(e){}
+  if(!json)return;try{var a=JSON.parse(json);if(a.name)document.getElementById('agentName').value=a.name;if(a.role)document.getElementById('agentRole').value=a.role;if(a.max_iterations)document.getElementById('agentMaxIter').value=a.max_iterations;if(a.tools&&_toolsLoaded){document.querySelectorAll('#abToolGrid input[name="abt"]').forEach(function(cb){cb.checked=a.tools.includes(cb.value)})}}catch(e){}
+}
+
+async function deleteSelectedAgent(){
+  var sel=document.getElementById('savedAgentSelect');var json=sel.value;if(!json){addMessage('assistant','Select an agent to delete first');return}
+  try{var a=JSON.parse(json);var r=await fetch('/api/agents/custom/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:a.id})});var d=await r.json();if(d.deleted){addMessage('assistant','Agent **'+(a.name||a.id)+'** deleted');await loadSavedAgentList()}else{addMessage('assistant','Delete failed: '+(d.error||'unknown'))}}catch(e){addMessage('assistant','Delete error: '+e.message)}
 }
 
 function lockSession(){fetch('/api/auth/logout',{method:'POST'}).then(function(){document.cookie='codec_session=;path=/;max-age=0;SameSite=Lax'+(location.protocol==='https:'?';Secure':'');window.location.href='/auth'})}

@@ -1,6 +1,15 @@
 """Google Drive — Search and list files"""
 SKILL_NAME = "google_drive"
-SKILL_TRIGGERS = ["search drive", "find file", "find document", "my files", "drive files", "search for file", "find in drive", "google drive", "recent files", "recent documents"]
+SKILL_TRIGGERS = [
+    "search my drive", "search drive", "search in drive", "find in drive", "find on drive",
+    "find file", "find document", "find in my drive",
+    "my files", "drive files", "my documents",
+    "search for file", "search for document",
+    "google drive", "my drive",
+    "recent files", "recent documents",
+    "look in drive", "check drive", "check my drive",
+    "in my drive", "on my drive", "from my drive", "from drive",
+]
 SKILL_DESCRIPTION = "Search and list files in your Google Drive"
 
 import json, os
@@ -22,11 +31,32 @@ def run(task, app="", ctx=""):
         service = _get_service()
         low = task.lower()
 
-        # Extract search term
+        # Extract search term — longest prefix first for greedy matching
         search_term = ""
-        for prefix in ["search drive for", "find file", "find document", "search for file", "find in drive", "search drive"]:
+        for prefix in [
+            "search my drive for", "search drive for", "search in drive for",
+            "find in my drive", "find in drive", "find on drive",
+            "find file", "find document", "find on my drive",
+            "search for file", "search for document",
+            "check my drive for", "check drive for",
+            "look in drive for", "look in my drive for",
+            "from my drive", "from drive",
+            "search my drive", "search drive",
+            "in my drive", "on my drive", "my drive",
+        ]:
             if prefix in low:
                 search_term = low.split(prefix)[-1].strip()
+                # Clean trailing noise
+                for noise in [" what is the", " what's the", " and tell me", " please", " for me",
+                              " can you", " could you", " do you"]:
+                    idx = search_term.find(noise)
+                    if idx > 0:
+                        search_term = search_term[:idx].strip()
+                # Remove filler words from search query
+                filler = {"the", "a", "an", "my", "our", "latest", "most", "recent",
+                          "last", "newest", "oldest", "all", "any", "some", "this", "that"}
+                words = [w for w in search_term.split() if w not in filler]
+                search_term = " ".join(words).strip(".,!?")
                 break
 
         if search_term:

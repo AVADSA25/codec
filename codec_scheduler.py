@@ -16,7 +16,7 @@ logging.basicConfig(
 log = logging.getLogger("scheduler")
 
 SCHEDULE_PATH = os.path.expanduser("~/.codec/schedules.json")
-DASHBOARD_URL = "http://localhost:8090"
+DASHBOARD_URL = "http://127.0.0.1:8090"
 
 os.makedirs(os.path.expanduser("~/.codec"), exist_ok=True)
 
@@ -54,7 +54,7 @@ def add_schedule(
         "hour": cron_hour,
         "minute": cron_minute,
         "days": days if days is not None else [0, 1, 2, 3, 4, 5, 6],
-        "enabled": True,
+        "enabled": False,
         "last_run": None,
         "created": datetime.now().isoformat(),
     }
@@ -90,10 +90,12 @@ def _run_crew(sched: dict):
     if sched.get("topic"):
         payload["topic"] = sched["topic"]
 
+    _headers = {"Content-Type": "application/json", "x-internal": "codec"}
     try:
         r = requests.post(
             f"{DASHBOARD_URL}/api/agents/run",
             json=payload,
+            headers=_headers,
             timeout=30,
         )
         if r.status_code == 200:
@@ -106,6 +108,7 @@ def _run_crew(sched: dict):
                     time.sleep(5)
                     sr = requests.get(
                         f"{DASHBOARD_URL}/api/agents/status/{job_id}",
+                        headers={"x-internal": "codec"},
                         timeout=10,
                     )
                     if sr.status_code == 200:

@@ -41,8 +41,80 @@ import os
 import re
 import time
 import logging
+import ctypes
+import ctypes.util
 
 log = logging.getLogger("codec.mouse_control")
+
+# ── Native macOS click via CoreGraphics (bypasses pyautogui accessibility issues) ──
+_cg = None
+try:
+    _cg_lib = ctypes.util.find_library('CoreGraphics')
+    if _cg_lib:
+        _cg = ctypes.cdll.LoadLibrary(_cg_lib)
+        # CRITICAL: Set proper argtypes/restype to avoid 64-bit pointer truncation on ARM64
+
+        class _CGPoint(ctypes.Structure):
+            _fields_ = [('x', ctypes.c_double), ('y', ctypes.c_double)]
+
+        # CGEventRef CGEventCreateMouseEvent(CGEventSourceRef, CGEventType, CGPoint, CGMouseButton)
+        _cg.CGEventCreateMouseEvent.argtypes = [ctypes.c_void_p, ctypes.c_uint32, _CGPoint, ctypes.c_uint32]
+        _cg.CGEventCreateMouseEvent.restype = ctypes.c_void_p
+
+        # void CGEventPost(CGEventTapLocation, CGEventRef)
+        _cg.CGEventPost.argtypes = [ctypes.c_uint32, ctypes.c_void_p]
+        _cg.CGEventPost.restype = None
+
+        # void CGEventSetIntegerValueField(CGEventRef, CGEventField, int64_t)
+        _cg.CGEventSetIntegerValueField.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_int64]
+        _cg.CGEventSetIntegerValueField.restype = None
+
+        # void CFRelease(CFTypeRef)
+        _cf = ctypes.cdll.LoadLibrary(ctypes.util.find_library('CoreFoundation'))
+        _cf.CFRelease.argtypes = [ctypes.c_void_p]
+        _cf.CFRelease.restype = None
+except Exception:
+    _cg = None
+
+
+def _native_click(x, y, button="left", double=False):
+    """Click using CoreGraphics events — more reliable than pyautogui on macOS."""
+    if not _cg:
+        return False
+    try:
+        point = _CGPoint(float(x), float(y))
+        if button == "right":
+            down_type, up_type, btn = 3, 4, 1  # kCGEventRightMouseDown/Up
+        else:
+            down_type, up_type, btn = 1, 2, 0  # kCGEventLeftMouseDown/Up
+
+        # Move cursor first
+        move_evt = _cg.CGEventCreateMouseEvent(None, 5, point, 0)
+        if move_evt:
+            _cg.CGEventPost(0, move_evt)
+            _cf.CFRelease(move_evt)
+        time.sleep(0.05)
+
+        clicks = 2 if double else 1
+        for i in range(clicks):
+            down_evt = _cg.CGEventCreateMouseEvent(None, down_type, point, btn)
+            if down_evt:
+                _cg.CGEventSetIntegerValueField(down_evt, 1, i + 1)
+                _cg.CGEventPost(0, down_evt)
+                _cf.CFRelease(down_evt)
+            time.sleep(0.02)
+            up_evt = _cg.CGEventCreateMouseEvent(None, up_type, point, btn)
+            if up_evt:
+                _cg.CGEventSetIntegerValueField(up_evt, 1, i + 1)
+                _cg.CGEventPost(0, up_evt)
+                _cf.CFRelease(up_evt)
+            if i < clicks - 1:
+                time.sleep(0.05)
+        log.info(f"Native CG click at ({x}, {y}) button={button} double={double}")
+        return True
+    except Exception as e:
+        log.warning(f"Native click failed: {e}")
+        return False
 
 # ── Config ───────────────────────────────────────────────────────────────────
 # Mouse control uses UI-TARS (UI-specialist model) on its own port.
@@ -158,20 +230,29 @@ def _parse_coordinates(vision_response, scale=1.0):
 
     coords = None
 
-    # Try JSON: {"x": 847, "y": 523}
-    json_match = re.search(r'\{\s*"x"\s*:\s*(\d+)\s*,\s*"y"\s*:\s*(\d+)\s*\}', vision_response)
+    # Normalize: strip quotes around numbers — model sometimes returns {"x": "847", "y": "523"}
+    _resp = re.sub(r'"(-?\d+)"', r'\1', vision_response)
+
+    # Try JSON: {"x": 847, "y": 523} — also handles unquoted keys like {x: 847, y: 523}
+    json_match = re.search(r'\{\s*"?x"?\s*:\s*(-?\d+)\s*,\s*"?y"?\s*:\s*(-?\d+)\s*\}', _resp)
     if json_match:
         coords = (int(json_match.group(1)), int(json_match.group(2)))
 
+    # Try malformed JSON: {"x": 847, 523} (model sometimes omits "y":)
+    if not coords:
+        partial_match = re.search(r'\{\s*"?x"?\s*:\s*(-?\d+)\s*,\s*(-?\d+)\s*\}', _resp)
+        if partial_match:
+            coords = (int(partial_match.group(1)), int(partial_match.group(2)))
+
     # Try parentheses: (847, 523)
     if not coords:
-        paren_match = re.search(r'\((\d+)\s*,\s*(\d+)\)', vision_response)
+        paren_match = re.search(r'\((-?\d+)\s*,\s*(-?\d+)\)', _resp)
         if paren_match:
             coords = (int(paren_match.group(1)), int(paren_match.group(2)))
 
-    # Try "x: 847, y: 523"
+    # Try "x: 847, y: 523" or "x=847, y=523" or loose format
     if not coords:
-        xy_match = re.search(r'x\s*[:=]\s*(\d+)\s*[,;]\s*y\s*[:=]\s*(\d+)', vision_response, re.IGNORECASE)
+        xy_match = re.search(r'x\s*[:=]\s*(-?\d+)\s*[,;\s]+y?\s*[:=]?\s*(-?\d+)', _resp, re.IGNORECASE)
         if xy_match:
             coords = (int(xy_match.group(1)), int(xy_match.group(2)))
 
@@ -187,8 +268,22 @@ def _parse_coordinates(vision_response, scale=1.0):
                 coords = (x, y)
 
     if coords:
+        # Check for "not found" response (-1, -1)
+        if coords[0] < 0 or coords[1] < 0:
+            return None
+
+        x, y = coords
+        sw, sh = _get_screen_size()
+        max_downscaled_w = sw / scale if scale > 1.0 else sw
+
+        if scale > 1.0 and x > max_downscaled_w:
+            # Model returned coordinates in FULL resolution instead of downscaled image
+            # Don't scale — they're already in screen space
+            log.info(f"Coords ({x},{y}) exceed downscaled width {max_downscaled_w:.0f} — assuming full-res coords")
+            return (x, y)
+
         # Scale coordinates back to actual screen resolution
-        return (int(coords[0] * scale), int(coords[1] * scale))
+        return (int(x * scale), int(y * scale))
 
     return None
 
@@ -199,42 +294,74 @@ def _validate_coordinates(x, y):
     return 0 <= x <= sw and 0 <= y <= sh
 
 
-def _find_element(description):
-    """Screenshot screen, ask vision to locate element, return (x, y) or (None, error)."""
+def _find_element(description, retries=2):
+    """Screenshot screen, ask vision to locate element, return (x, y) or (None, error).
+
+    Retries with a refined prompt if the first attempt returns edge coordinates
+    (likely wrong) or fails.
+    """
     image_b64 = _take_screenshot()
     if not image_b64:
         return None, "Could not take screenshot."
 
     sw, sh = _get_screen_size()
-    prompt = (
-        f"Look at this screenshot carefully. The actual screen resolution is {sw}x{sh}.\n"
-        f"Find the UI element described as: '{description}'\n\n"
-        f"Return ONLY the center coordinates of that element as JSON: {{\"x\": N, \"y\": N}}\n"
-        f"where x is pixels from the left edge and y is pixels from the top edge.\n"
-        f"IMPORTANT: Base coordinates on the downscaled image you see. I will scale them back.\n"
-        f"If you cannot find the element, respond with: {{\"x\": -1, \"y\": -1}}\n"
-        f"Return ONLY the JSON, nothing else."
-    )
 
-    response, scale = _ask_vision(image_b64, prompt)
-    if not response:
-        return None, "Vision model did not respond. Is Qwen Vision running at localhost:8082?"
+    # Calculate the downscaled dimensions for the prompt
+    img_w = 1280
+    img_h = int(sh * img_w / sw) if sw > 0 else 720
 
-    log.info(f"Vision response for '{description}': {response[:200]} (scale={scale:.2f})")
+    for attempt in range(retries):
+        if attempt == 0:
+            prompt = (
+                f"Find the UI element: '{description}'\n\n"
+                f"Return the center coordinates as JSON: {{\"x\": N, \"y\": N}}\n"
+                f"The image you see is {img_w}x{img_h} pixels. Top-left is (0,0).\n"
+                f"x ranges from 0 (left) to {img_w} (right). y ranges from 0 (top) to {img_h} (bottom).\n"
+                f"If not found, return: {{\"x\": -1, \"y\": -1}}\n"
+                f"Return ONLY the JSON."
+            )
+        else:
+            # Retry with more explicit instructions and examples
+            prompt = (
+                f"Find the exact center of '{description}' in this screenshot.\n"
+                f"Image dimensions: {img_w}x{img_h} pixels.\n"
+                f"Center of screen = {{\"x\": {img_w//2}, \"y\": {img_h//2}}}\n"
+                f"Top-right corner = {{\"x\": {img_w-100}, \"y\": 50}}\n"
+                f"Return ONLY: {{\"x\": N, \"y\": N}}\n"
+                f"If not found: {{\"x\": -1, \"y\": -1}}"
+            )
 
-    coords = _parse_coordinates(response, scale)
-    if not coords:
-        return None, f"Couldn't locate '{description}' on screen. Try describing it differently."
+        response, scale = _ask_vision(image_b64, prompt)
+        if not response:
+            return None, "Vision model did not respond. Is UI-TARS running at localhost:8083?"
 
-    x, y = coords
-    if x == -1 and y == -1:
-        return None, f"I looked but couldn't find '{description}' on screen."
+        log.info(f"Vision response for '{description}' (attempt {attempt+1}): {response[:200]} (scale={scale:.2f})")
 
-    if not _validate_coordinates(x, y):
-        sw, sh = _get_screen_size()
-        return None, f"Coordinates ({x}, {y}) are outside screen ({sw}x{sh}). Vision may have miscalculated."
+        coords = _parse_coordinates(response, scale)
+        if not coords:
+            if attempt < retries - 1:
+                log.info(f"Retrying vision for '{description}' — no valid coords")
+                continue
+            return None, f"Couldn't locate '{description}' on screen. Try describing it differently."
 
-    return (x, y), None
+        x, y = coords
+
+        # Check for suspicious edge coordinates (likely model confusion)
+        # On the 1280-wide image, x < 10 pixels is almost certainly wrong
+        raw_x = x / scale if scale > 1.0 else x
+        if raw_x < 10 and attempt < retries - 1:
+            log.info(f"Suspicious x={raw_x:.0f} (too close to left edge) — retrying")
+            continue
+
+        if not _validate_coordinates(x, y):
+            if attempt < retries - 1:
+                log.info(f"Coords ({x},{y}) outside screen — retrying")
+                continue
+            return None, f"Coordinates ({x}, {y}) are outside screen ({sw}x{sh}). Vision may have miscalculated."
+
+        return (x, y), None
+
+    return None, f"Couldn't locate '{description}' after {retries} attempts."
 
 
 def _describe_screen():
@@ -281,6 +408,17 @@ def _extract_target(task_lower):
         "i need to find it",
         # Hedging
         "i mean", "i think",
+        # Repeated action tail ("click on it", "click it")
+        "click on it", "click it", "click on that", "click that",
+        "press it", "tap it", "select it",
+        # Positional context
+        "on the top right", "on the top left", "on the bottom right", "on the bottom left",
+        "at the top right", "at the top left", "at the bottom right", "at the bottom left",
+        "in the top right", "in the top left", "in the bottom right", "in the bottom left",
+        "on the right side", "on the left side",
+        "on the top", "on the bottom", "on the right", "on the left",
+        "at the top", "at the bottom",
+        "in the corner", "in the middle", "in the center",
     ]
 
     def _clean_sentence(s):
@@ -375,7 +513,10 @@ def _extract_target(task_lower):
     noise_prefixes = [
         "hey codec ", "hey kodec ", "hi codec ", "codec ",
         "can you ", "could you ", "would you ",
-        "the button ", "button the ", "the ",
+        "the button ", "button the ", "the section ", "the tab ",
+        "button called ", "button named ", "button labeled ",
+        "section called ", "section named ",
+        "button ", "section ", "the ",
     ]
     for prefix in noise_prefixes:
         if best_target.startswith(prefix):
@@ -383,10 +524,26 @@ def _extract_target(task_lower):
 
     # Truncate at known noise boundaries that leaked through
     truncate_at = [
+        " just read", " just look", " just click", " just find",
+        " read the screen", " look at the screen", " on the screen",
         " can you click", " can you find", " can you locate",
         " i need to find", " i need to", " i cannot",
-        " i can't", " i can not", " zero trust",
+        " i can't", " i cant", " i can not", " do it",
         " and can you", " could you",
+        " and click", " and find", " and select",
+        " for me", " please",
+        # Repeated action instructions ("click on X click on it")
+        " click on it", " click it", " click on that", " click that",
+        " press it", " press on it", " tap it", " tap on it",
+        " select it", " find it", " locate it",
+        # Location qualifiers ("upgrade on the top right")
+        " on the top right", " on the top left", " on the bottom right", " on the bottom left",
+        " on the right side", " on the left side", " on the top", " on the bottom",
+        " at the top right", " at the top left", " at the bottom right", " at the bottom left",
+        " at the top", " at the bottom", " in the top right", " in the top left",
+        " in the bottom right", " in the bottom left",
+        " on the right", " on the left",
+        " in the corner", " in the middle", " in the center",
     ]
     for trunc in truncate_at:
         idx = best_target.find(trunc)
@@ -474,26 +631,37 @@ def run(task, app="", ctx=""):
 
     x, y = coords
 
-    # ── Determine action ──
-    if any(w in task_lower for w in ["right click", "right-click"]):
-        pyautogui.moveTo(x, y, duration=0.3)
-        time.sleep(0.1)
-        pyautogui.rightClick()
-        return f"Right-clicked '{target}' at ({x}, {y})."
+    # ── Execute action with error handling ──
+    try:
+        if any(w in task_lower for w in ["right click", "right-click"]):
+            pyautogui.moveTo(x, y, duration=0.3)
+            time.sleep(0.1)
+            if not _native_click(x, y, button="right"):
+                pyautogui.rightClick()
+            action_msg = f"Right-clicked '{target}' at ({x}, {y})."
 
-    elif any(w in task_lower for w in ["double click", "double-click"]):
-        pyautogui.moveTo(x, y, duration=0.3)
-        time.sleep(0.1)
-        pyautogui.doubleClick()
-        return f"Double-clicked '{target}' at ({x}, {y})."
+        elif any(w in task_lower for w in ["double click", "double-click"]):
+            pyautogui.moveTo(x, y, duration=0.3)
+            time.sleep(0.1)
+            if not _native_click(x, y, double=True):
+                pyautogui.doubleClick()
+            action_msg = f"Double-clicked '{target}' at ({x}, {y})."
 
-    elif any(w in task_lower for w in ["hover", "move mouse", "move cursor", "point to", "point at"]):
-        pyautogui.moveTo(x, y, duration=0.3)
-        return f"Moved cursor to '{target}' at ({x}, {y})."
+        elif any(w in task_lower for w in ["hover", "move mouse", "move cursor", "point to", "point at"]):
+            pyautogui.moveTo(x, y, duration=0.3)
+            action_msg = f"Moved cursor to '{target}' at ({x}, {y})."
 
-    else:
-        # Default: single click with visible move
-        pyautogui.moveTo(x, y, duration=0.3)
-        time.sleep(0.1)
-        pyautogui.click()
-        return f"Clicked '{target}' at ({x}, {y})."
+        else:
+            # Default: single click — use native CG click with pyautogui fallback
+            pyautogui.moveTo(x, y, duration=0.3)
+            time.sleep(0.1)
+            if not _native_click(x, y):
+                pyautogui.click()
+            action_msg = f"Clicked '{target}' at ({x}, {y})."
+
+        log.info(f"Mouse action completed: {action_msg}")
+        return action_msg
+
+    except Exception as e:
+        log.error(f"pyautogui action failed at ({x}, {y}): {e}")
+        return f"Mouse action failed at ({x}, {y}): {e}. Check that Accessibility permissions are enabled for this app in System Preferences > Privacy & Security."

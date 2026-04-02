@@ -1,13 +1,25 @@
-"""Google Docs skill for CODEC — read and search Google Docs"""
+"""Google Docs skill for CODEC — search, read, and create Google Docs"""
 import json, os, datetime
 
 SKILL_NAME = "google_docs"
 
-SKILL_TRIGGERS = ["google docs", "my docs", "my documents", "search docs", "find doc", "open doc", "read doc", "list docs", "show docs"]
-SKILL_DESCRIPTION = "Search and read Google Docs from your Google account"
+SKILL_TRIGGERS = [
+    # Create
+    "create a google doc", "create google doc", "create a doc",
+    "make a google doc", "make a doc", "make a document",
+    "new google doc", "new doc", "new document",
+    "write a google doc", "write a doc", "write a document",
+    "create a google document", "create google document",
+    # Read / Search
+    "google docs", "google doc",
+    "my docs", "my documents",
+    "search docs", "find doc", "open doc", "read doc",
+    "list docs", "show docs",
+]
+SKILL_DESCRIPTION = "Search, read, and create Google Docs"
 
 TOKEN_PATH = os.path.expanduser("~/.codec/google_token.json")
-SCOPES = ["https://www.googleapis.com/auth/documents.readonly", "https://www.googleapis.com/auth/drive.readonly"]
+SCOPES = ["https://www.googleapis.com/auth/documents", "https://www.googleapis.com/auth/drive"]
 
 def _get_creds():
     from google.oauth2.credentials import Credentials
@@ -19,17 +31,95 @@ def _get_creds():
             f.write(creds.to_json())
     return creds
 
+
+def _parse_create_request(task):
+    """Extract title and content from natural language."""
+    import re
+    low = task.lower()
+
+    # Extract title from "called X", "named X", "titled X"
+    title = "CODEC Document"
+    title_match = re.search(r'(?:called|named|titled)\s+["\']?([^"\',.]+)["\']?', task, re.I)
+    if title_match:
+        title = title_match.group(1).strip()
+        # Clean trailing filler
+        for filler in [" and write", " and put", " and add", " with content",
+                       " with the text", " with text", " containing"]:
+            idx = title.lower().find(filler)
+            if idx > 0:
+                title = title[:idx].strip()
+
+    # Extract content from "write X in it", "with content X", "containing X", "put X in it"
+    content = ""
+    for pattern in [
+        r'(?:write|put|add)\s+(.+?)\s+(?:in it|in the doc|inside)',
+        r'(?:with (?:the )?(?:content|text|body))\s+(.+?)(?:\.|$)',
+        r'(?:containing|that says|saying)\s+(.+?)(?:\.|$)',
+        r'(?:write|put|add)\s+(.+?)$',
+    ]:
+        m = re.search(pattern, task, re.I)
+        if m:
+            content = m.group(1).strip().rstrip(".,!?")
+            break
+
+    return title, content
+
+
+def _create_doc(task):
+    """Create a new Google Doc with optional content."""
+    from googleapiclient.discovery import build
+    creds = _get_creds()
+
+    title, content = _parse_create_request(task)
+
+    docs_service = build("docs", "v1", credentials=creds)
+
+    # Create the doc
+    doc = docs_service.documents().create(body={"title": title}).execute()
+    doc_id = doc["documentId"]
+    url = f"https://docs.google.com/document/d/{doc_id}/edit"
+
+    # Insert content if provided
+    if content:
+        requests_body = [
+            {"insertText": {"location": {"index": 1}, "text": content}}
+        ]
+        docs_service.documents().batchUpdate(
+            documentId=doc_id,
+            body={"requests": requests_body}
+        ).execute()
+
+    result = f"Created Google Doc: **{title}**\n{url}"
+    if content:
+        result += f"\nContent: \"{content[:100]}{'...' if len(content) > 100 else ''}\""
+    return result
+
+
 def run(task, context=None):
     try:
         from googleapiclient.discovery import build
         creds = _get_creds()
         task_lower = task.lower()
 
+        # ── Create doc ──
+        if any(w in task_lower for w in [
+            "create a google doc", "create google doc", "create a doc",
+            "make a google doc", "make a doc", "make a document",
+            "new google doc", "new doc", "new document",
+            "write a google doc", "write a doc", "write a document",
+            "create a google document", "create google document",
+        ]):
+            return _create_doc(task)
+
+        # ── Search / Read ──
         drive = build("drive", "v3", credentials=creds)
         query_terms = task_lower
-        for w in ["google docs", "my docs", "my documents", "search docs", "find doc", "list docs", "show docs", "open doc", "read doc"]:
+        for w in ["google docs", "google doc", "my docs", "my documents",
+                  "search docs", "find doc", "list docs", "show docs",
+                  "open doc", "read doc", "create a doc", "create doc",
+                  "hey codec", "codec"]:
             query_terms = query_terms.replace(w, "")
-        query_terms = query_terms.strip()
+        query_terms = query_terms.strip(" ,.")
 
         if query_terms and len(query_terms) > 2:
             q = f"mimeType='application/vnd.google-apps.document' and name contains '{query_terms}' and trashed=false"
@@ -37,13 +127,13 @@ def run(task, context=None):
             q = "mimeType='application/vnd.google-apps.document' and trashed=false"
 
         results = drive.files().list(q=q, pageSize=10, orderBy="modifiedTime desc",
-            fields="files(id,name,modifiedTime,owners)").execute()
+            fields="files(id,name,modifiedTime)").execute()
         files = results.get("files", [])
 
         if not files:
             return "No Google Docs found matching your query."
 
-        if any(w in task_lower for w in ["read", "open", "show", "content"]) and len(files) == 1:
+        if any(w in task_lower for w in ["read", "open", "show", "content"]) and len(files) <= 2:
             docs_service = build("docs", "v1", credentials=creds)
             doc = docs_service.documents().get(documentId=files[0]["id"]).execute()
             text_content = ""

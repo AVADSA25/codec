@@ -433,7 +433,10 @@ function completeLogin() {
     status.className = 'status success';
     // E2E key exchange — negotiate encryption keys before redirect
     _e2eNegotiateAuth().finally(function() {
-        setTimeout(function() { window.location.href = '/'; }, 600);
+        var redir = new URLSearchParams(window.location.search).get('redirect') || '/';
+        // Safety: only allow relative redirects (prevent open redirect)
+        if(redir.indexOf('//')>=0 || redir.indexOf(':')>=0) redir = '/';
+        setTimeout(function() { window.location.href = redir; }, 600);
     });
 }
 // E2E: ECDH key exchange after auth (sets sessionStorage flag for other pages)

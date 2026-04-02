@@ -318,6 +318,7 @@ class Agent:
     verbose: bool = True
 
     async def run(self, task: str, context: str = "", callback: Optional[Callable] = None) -> str:
+        self._gdoc_url = None  # Capture real URL from google_docs_create tool
         tool_desc = "\n".join(f"  - {t.name}: {t.description}" for t in self.tools) or "  (no tools)"
 
         system = f"""{self.role}
@@ -370,15 +371,41 @@ Rules:
             if self.verbose:
                 print(f"[{self.name}] {response[:200]}…")
 
+            # ── Check for TOOL call first (before FINAL) ──
+            # This prevents the model from writing both TOOL: and FINAL: in one response
+            # and getting stuck in a rejection loop
+            m = re.search(r'TOOL:\s*(\S+)\s*\nINPUT:\s*([\s\S]*?)(?=\nTOOL:|\nFINAL:|$)', response)
+
             # FINAL answer — rsplit gets the LAST occurrence (skips quoted prompt text)
-            if "FINAL:" in response:
+            if "FINAL:" in response and not (m and tool_calls_made < self.max_tool_calls):
                 final = response.rsplit("FINAL:", 1)[1].strip()
+                # Guard: if agent has google_docs_create but never called it, reject the FINAL
+                has_docs_tool = any(t.name == "google_docs_create" for t in self.tools)
+                called_docs = any("google_docs_create" in str(m_msg.get("content", "")) for m_msg in messages if m_msg["role"] == "user" and "Tool result from" in str(m_msg.get("content", "")))
+                if has_docs_tool and not called_docs and tool_calls_made == 0:
+                    messages.append({"role": "assistant", "content": response})
+                    messages.append({"role": "user", "content": (
+                        "REJECTED: You must use the google_docs_create tool BEFORE giving a FINAL answer. "
+                        "Do NOT invent URLs. Call the tool now with your content."
+                    )})
+                    continue
+                # Guard: replace any fabricated Google Docs URL with the real one
+                if self._gdoc_url and "docs.google.com" in final:
+                    final = re.sub(
+                        r'https://docs\.google\.com/document/d/[A-Za-z0-9_-]+(?:/edit)?(?:\?[^\s)]*)?',
+                        self._gdoc_url,
+                        final
+                    )
+                    log.info(f"[{self.name}] Replaced fabricated URL with real: {self._gdoc_url}")
+                elif self._gdoc_url and "docs.google.com" not in final:
+                    # LLM didn't even include a URL — append it
+                    final = f"{final}\n{self._gdoc_url}"
+                    log.info(f"[{self.name}] Appended real URL to FINAL: {self._gdoc_url}")
                 if callback:
                     await _safe_cb(callback, {"agent": self.name, "status": "complete", "preview": final[:200]})
                 return final
 
-            # TOOL call
-            m = re.search(r'TOOL:\s*(\S+)\s*\nINPUT:\s*([\s\S]*?)(?=\nTOOL:|\nFINAL:|$)', response)
+            # TOOL call (m already computed above)
             if m and tool_calls_made < self.max_tool_calls:
                 tool_name  = m.group(1).strip()
                 tool_input = m.group(2).strip()
@@ -424,6 +451,13 @@ Rules:
                     tool_calls_made += 1
                     _audit("tool_result", agent=self.name, tool=tool_name,
                            result_len=len(result))
+
+                    # Capture real Google Docs URL from tool result
+                    if tool_name == "google_docs_create" and "docs.google.com" in result:
+                        url_match = re.search(r'https://docs\.google\.com/document/d/[A-Za-z0-9_-]+/edit', result)
+                        if url_match:
+                            self._gdoc_url = url_match.group(0)
+                            log.info(f"[{self.name}] Captured real GDoc URL: {self._gdoc_url}")
 
                     if self.verbose:
                         print(f"[{self.name}] ← {result[:150]}…")
@@ -575,9 +609,14 @@ def deep_research_crew(**kwargs) -> Crew:
         role=(
             "You are a professional report writer. Synthesize research into a comprehensive "
             "well-structured report: Executive Summary, Key Findings, Analysis, Conclusion, Sources. "
-            "Write 2000-5000 words in markdown. Cite sources inline. "
-            "Save to Google Docs when done. "
-            "IMPORTANT: Your FINAL response MUST include the exact Google Docs URL returned by the tool."
+            "Write 2000-5000 words in markdown. Cite sources inline.\n"
+            "CRITICAL: You MUST use the google_docs_create tool to save your report. "
+            "Do NOT fabricate or invent a Google Docs URL. The tool will return the real URL. "
+            "NEVER output a FINAL response until you have called google_docs_create and received the actual URL back.\n"
+            "Your FINAL response format MUST be:\n"
+            "1. First line: the exact Google Docs URL returned by the tool\n"
+            "2. Then a blank line\n"
+            "3. Then a 3-5 sentence summary of the key findings from your report"
         ),
         tools=write_tools, max_tool_calls=2,
     )
