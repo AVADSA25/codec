@@ -2,7 +2,8 @@
 SKILL_NAME = "timer"
 SKILL_DESCRIPTION = "Set timers with voice notification when done"
 SKILL_TRIGGERS = ["set a timer", "timer for", "remind me in", "alarm in",
-                   "set timer", "minute timer", "minutes timer", "second timer", "countdown"]
+                   "set timer", "minute timer", "minutes timer", "second timer", "countdown",
+                   "timer", "start a timer", "wake me", "alert me in"]
 import threading, subprocess, re, tempfile
 
 def run(task, app="", ctx=""):

@@ -32,6 +32,7 @@ from codec_overlays import (
 from codec_dispatch import load_skills, check_skill, run_skill
 from codec_agent import build_session_params, run_session_module
 from codec_compaction import compact_context
+from codec_memory import CodecMemory
 
 # ── AUDIT LOG ─────────────────────────────────────────────────────────────────
 def audit(action, detail=""):
@@ -319,7 +320,9 @@ RULES:
 
 TOOL DIRECTIVE: If a task requires action, you MUST execute the matching skill. Do NOT simulate. You have 50+ skills: Google Calendar, Gmail, Drive, Docs, Sheets, Tasks, Keep, Chrome, web search, Hue lights, file system, terminal, screenshot OCR, and 12 agent crews.
 
-MEMORY: All conversations are saved to CODEC shared memory (FTS5 indexed). Reference past conversations naturally when relevant."""
+MEMORY: All conversations are saved to CODEC shared memory (FTS5 indexed). Reference past conversations naturally when relevant.
+
+TODAY: {datetime.now().strftime('%A, %B %d, %Y')}. Use this as the current date for all date-related tasks and references."""
     if mem: sys_p += "\n\n" + mem
     # System prompt is now passed via JSON file (not shell string),
     # so no need to strip quotes — that was corrupting memory context
@@ -414,15 +417,22 @@ def do_document_input():
 
 # ── SCREENSHOT SHORTCUT ───────────────────────────────────────────────────────
 def do_screenshot_question():
-    push(lambda: show_overlay(
-        'Screenshot captured  ' + cfg.get('key_voice','f18').upper() + '=voice  ' + cfg.get('key_text','f16').upper() + '=text',
-        '#E8711A', 5000))
+    push(lambda: show_overlay('Analyzing screen...', '#E8711A', 3000))
     ctx = screenshot_ctx()
     if ctx:
         state["screen_ctx"] = ctx
         log.info(f"Screenshot captured ({len(ctx)} chars)")
+        # Auto-open chat with screenshot context
+        try:
+            import urllib.parse
+            msg = urllib.parse.quote("I just captured your screen. What would you like to know?")
+            subprocess.Popen(["open", f"http://localhost:8090/chat?screen=1&ctx={msg}"],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception as e:
+            log.warning(f"Auto-open chat failed: {e}")
     else:
         state["screen_ctx"] = ""
+        push(lambda: show_overlay('Screenshot failed', '#ff3333', 2000))
 
 # ── TEXT INPUT HANDLER ────────────────────────────────────────────────────────
 def do_text():
@@ -447,6 +457,12 @@ def main():
         import codec_config
         codec_config.DRY_RUN = True
     init_db()
+    # Initialize FTS5 tables, triggers, and backfill any unindexed rows
+    try:
+        _mem = CodecMemory(DB_PATH)
+        log.info("FTS5 memory index ready")
+    except Exception as e:
+        log.warning(f"FTS5 init: {e}")
     for f in [SESSION_ALIVE, TASK_QUEUE_FILE, DRAFT_TASK_FILE]:
         try: os.unlink(f)
         except Exception as e:

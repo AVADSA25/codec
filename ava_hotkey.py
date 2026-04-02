@@ -251,6 +251,9 @@ def transcribe_and_type(audio_path):
                     timeout=60)
                 if r.status_code == 200:
                     refined = r.json()["choices"][0]["message"]["content"].strip()
+                    # Strip Qwen <think> tags
+                    import re as _re
+                    refined = _re.sub(r'<think>.*?</think>', '', refined, flags=_re.DOTALL).strip()
                     if refined:
                         text = refined
                         print(f"[AVA] Refined: {text}")
@@ -292,6 +295,9 @@ def on_press(key):
         if not cmd_held:
             cmd_held = True
             print("[AVA] CMD held — starting recording")
+            threading.Thread(target=lambda: subprocess.run(
+                ['afplay', '/System/Library/Sounds/Blow.aiff'],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL), daemon=True).start()
             show_overlay()
             result = record_audio()
             if result:
@@ -303,6 +309,9 @@ def on_release(key):
     if key == keyboard.Key.cmd_r:
         if cmd_held:
             cmd_held = False
+            threading.Thread(target=lambda: subprocess.run(
+                ['afplay', '/System/Library/Sounds/Funk.aiff'],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL), daemon=True).start()
             hide_overlay()
             
             if recording_proc:

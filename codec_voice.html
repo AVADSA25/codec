@@ -995,7 +995,7 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
     if (new URLSearchParams(location.search).get('auto') === '1') {
         window.addEventListener('load', function() { setTimeout(startCall, 400); });
     }
-    (function(){function pollNotifCount(){fetch('/api/notifications/count').then(function(r){return r.json()}).then(function(d){var c=d.unread||d.count||0;var b=document.getElementById('notifBadge');if(b){b.textContent=c;b.classList.toggle('hidden',c===0)}}).catch(function(){})}pollNotifCount();setInterval(pollNotifCount,30000)})();
+    (function(){function pollNotifCount(){fetch('/api/notifications/count').then(function(r){return r.json()}).then(function(d){var c=d.unread||d.count||0;var b=document.getElementById('notifBadge');if(b){b.textContent=c;b.classList.toggle('hidden',c===0)}}).catch(function(){})}pollNotifCount();setInterval(pollNotifCount,30000);var bell=document.getElementById('notifBellBtn');if(bell)bell.addEventListener('click',function(){fetch('/api/notifications/read-all',{method:'POST'}).catch(function(){});var b=document.getElementById('notifBadge');if(b){b.textContent='0';b.classList.add('hidden')}})})();
     // Apply UI preferences from dashboard settings
     (function(){try{var p=JSON.parse(localStorage.getItem('codec-ui-prefs')||'{}'),m={'screenshot_btn':'#screenBtn','photo_btn':'#photoBtn','webcam_pip_btn':'#camBtn','voice_btn':'#voiceBtn','notif_bell':'#notifBellBtn','mic_btn':'#micBtn','voice_transcript':'.transcript-wrap','voice_actions':'#actionRow'};Object.keys(m).forEach(function(k){if(p[k]===false)m[k].split(',').forEach(function(s){document.querySelectorAll(s.trim()).forEach(function(el){el.style.display='none'})})})}catch(e){}})();
     </script>

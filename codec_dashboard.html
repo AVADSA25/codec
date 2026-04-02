@@ -1160,7 +1160,7 @@ setInterval(async function() {
 
 var deferredPrompt;
 window.addEventListener('beforeinstallprompt', function(e) { deferredPrompt = e; });
-(function(){function pollNotifCount(){fetch('/api/notifications/count').then(function(r){return r.json()}).then(function(d){var c=d.unread||d.count||0;var b=document.getElementById('notifBadge');if(b){b.textContent=c;b.classList.toggle('hidden',c===0)}}).catch(function(){})}pollNotifCount();setInterval(pollNotifCount,30000)})();
+(function(){function pollNotifCount(){fetch('/api/notifications/count').then(function(r){return r.json()}).then(function(d){var c=d.unread||d.count||0;var b=document.getElementById('notifBadge');if(b){b.textContent=c;b.classList.toggle('hidden',c===0)}}).catch(function(){})}pollNotifCount();setInterval(pollNotifCount,30000);var bell=document.getElementById('notifBellBtn');if(bell)bell.addEventListener('click',function(){fetch('/api/notifications/read-all',{method:'POST'}).catch(function(){});var b=document.getElementById('notifBadge');if(b){b.textContent='0';b.classList.add('hidden')}})})();
 
 /* ── Drag & Drop files/images into Quick Chat ── */
 (function(){

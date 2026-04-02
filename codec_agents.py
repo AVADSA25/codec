@@ -568,7 +568,7 @@ def deep_research_crew(**kwargs) -> Crew:
             "Search broadly first (3-5 queries), then fetch the most relevant sources. "
             "Extract key facts, statistics, expert opinions, and recent developments."
         ),
-        tools=search_tools, max_tool_calls=5,
+        tools=search_tools, max_tool_calls=8,
     )
     writer = Agent(
         name="Writer",
@@ -597,26 +597,30 @@ def deep_research_crew(**kwargs) -> Crew:
 
 def daily_briefing_crew(**kwargs) -> Crew:
     all_tools = get_all_tools()
-    scout_tools = [t for t in all_tools if t.name in ("google_calendar", "weather", "web_search")]
+    scout_tools = [t for t in all_tools if t.name in (
+        "google_calendar", "weather", "web_search", "google_tasks", "google_keep"
+    )]
     scout = Agent(
         name="Scout",
         role=(
-            "You are the user's daily briefing assistant. Check today's calendar, current weather, "
-            "and top news. Compile a concise 2-minute spoken briefing. "
+            "You are the user's daily briefing assistant. Check today's calendar, pending tasks, "
+            "saved notes, current weather, and top news. Compile a concise 2-minute spoken briefing. "
             "Write as natural speech — no markdown, no bullet points."
         ),
-        tools=scout_tools, max_tool_calls=4,
+        tools=scout_tools, max_tool_calls=6,
     )
     return Crew(
         agents=[scout],
         tasks=[
             "Compile today's daily briefing:\n"
             "1. Calendar — what meetings/events today?\n"
-            "2. Weather — what's it like right now?\n"
-            "3. News — any major headlines (search 'top news today')?\n"
+            "2. Tasks — any pending or overdue tasks?\n"
+            "3. Notes — any recent reminders in Google Keep?\n"
+            "4. Weather — what's it like right now?\n"
+            "5. News — any major headlines (search 'top news today')?\n"
             "Keep it conversational and brief."
         ],
-        allowed_tools=["google_calendar", "weather", "web_search"],
+        allowed_tools=["google_calendar", "weather", "web_search", "google_tasks", "google_keep"],
     )
 
 
@@ -629,16 +633,20 @@ def trip_planner_crew(**kwargs) -> Crew:
 
     researcher = Agent(
         name="Travel Researcher",
-        role="Research travel destinations. Find flights, hotels, attractions, restaurants, local tips.",
-        tools=research_tools, max_tool_calls=5,
+        role=(
+            "Research travel destinations thoroughly. Find flights, hotels, attractions, restaurants, "
+            "local tips, safety info, and hidden gems. Compare prices across sources."
+        ),
+        tools=research_tools, max_tool_calls=8,
     )
     planner = Agent(
         name="Trip Planner",
         role=(
             "Create a detailed day-by-day itinerary. Organize into morning/afternoon/evening. "
-            "Include estimated costs and travel times. Save to Google Docs."
+            "Include estimated costs and travel times. Save to Google Docs. "
+            "Add key travel dates (departure, return) to Google Calendar."
         ),
-        tools=plan_tools, max_tool_calls=2,
+        tools=plan_tools, max_tool_calls=3,
     )
     return Crew(
         agents=[researcher, planner],
@@ -660,8 +668,12 @@ def competitor_analysis_crew(**kwargs) -> Crew:
 
     scout = Agent(
         name="Web Scout",
-        role="Research competitors and market landscape. Find products, pricing, market position, recent news, reviews.",
-        tools=web_tools, max_tool_calls=5,
+        role=(
+            "Research competitors and market landscape thoroughly. Find products, pricing, "
+            "market position, recent news, reviews, funding, and team size. "
+            "Search each competitor individually for depth."
+        ),
+        tools=web_tools, max_tool_calls=8,
     )
     strategist = Agent(
         name="Strategist",
@@ -698,7 +710,8 @@ def email_handler_crew(**kwargs) -> Crew:
         name="Email Responder",
         role=(
             "Draft brief professional replies for urgent emails. "
-            "Suggest 1-line action for normal emails. Keep M's voice: direct, confident, clear."
+            "Suggest 1-line action for normal emails. "
+            "Tone: direct, confident, clear. Keep replies short — 2-4 sentences max."
         ),
         tools=gmail_tools, max_tool_calls=3,
     )
@@ -725,7 +738,7 @@ def social_media_crew(**kwargs) -> Crew:
             "and viral content. Find what's popular right now on Twitter, LinkedIn, and Instagram. "
             "Identify key angles, hashtags, and audience interests."
         ),
-        tools=search_tools, max_tool_calls=5,
+        tools=search_tools, max_tool_calls=8,
     )
     content_creator = Agent(
         name="Content Creator",
@@ -758,6 +771,9 @@ def code_review_crew(**kwargs) -> Crew:
     audit_tools    = [t for t in all_tools if t.name in ("file_read", "web_search")]
     improve_tools  = [t for t in all_tools if t.name in ("file_read", "file_write")]
 
+    # Truncate code for prompt injection into all tasks
+    code_snippet = code[:3000]
+
     bug_hunter = Agent(
         name="Bug Hunter",
         role=(
@@ -775,7 +791,7 @@ def code_review_crew(**kwargs) -> Crew:
             "exposed secrets, insecure dependencies, and OWASP Top 10 issues. "
             "Reference CVEs or best practices where relevant."
         ),
-        tools=audit_tools, max_tool_calls=4,
+        tools=read_tools, max_tool_calls=4,
     )
     clean_coder = Agent(
         name="Clean Coder",
@@ -783,18 +799,20 @@ def code_review_crew(**kwargs) -> Crew:
             "You are a software architect focused on code quality. Suggest improvements for: "
             "readability, naming conventions, function decomposition, DRY principles, "
             "design patterns, documentation, and maintainability. "
-            "Provide concrete refactoring suggestions."
+            "Provide concrete refactoring suggestions. Do NOT write files — this is a review only."
         ),
-        tools=improve_tools, max_tool_calls=3,
+        tools=read_tools, max_tool_calls=3,
     )
     return Crew(
         agents=[bug_hunter, security_auditor, clean_coder],
         tasks=[
-            f"Review this code for bugs, logic errors, and edge cases:\n{code[:3000]}",
-            f"Check the code for security vulnerabilities",
-            f"Suggest improvements for readability and maintainability",
+            f"Review this code for bugs, logic errors, and edge cases:\n{code_snippet}",
+            f"Review this code for security vulnerabilities:\n{code_snippet}\n\n"
+            f"Also consider the bug findings from the previous reviewer.",
+            f"Review this code for readability and maintainability:\n{code_snippet}\n\n"
+            f"Also consider the bug and security findings from the previous reviewers.",
         ],
-        allowed_tools=["file_read", "file_write", "web_search"],
+        allowed_tools=["file_read"],
     )
 
 
@@ -815,7 +833,7 @@ def data_analyst_crew(**kwargs) -> Crew:
             "benchmarks, survey results, and research findings. Find multiple credible sources. "
             "Extract numbers, percentages, trends over time, and comparative data."
         ),
-        tools=gather_tools, max_tool_calls=5,
+        tools=gather_tools, max_tool_calls=8,
     )
     analyst = Agent(
         name="Analyst",
@@ -856,7 +874,7 @@ def content_writer_crew(**kwargs) -> Crew:
             f"angles, and competitor content on this topic. Focus on what would resonate "
             f"with a {audience} audience. Search at least 3 different angles."
         ),
-        tools=research_tools, max_tool_calls=5,
+        tools=research_tools, max_tool_calls=8,
     )
     writer = Agent(
         name="Content Writer",
@@ -915,7 +933,7 @@ def meeting_summarizer_crew(**kwargs) -> Crew:
         except Exception:
             pass
 
-    read_tools = [t for t in all_tools if t.name in ("file_read", "google_gmail", "web_search")]
+    read_tools = [t for t in all_tools if t.name in ("file_read",)]
     write_tools = [t for t in all_tools if t.name in ("google_docs_create", "google_calendar")]
 
     parser = Agent(
@@ -970,7 +988,7 @@ def meeting_summarizer_crew(**kwargs) -> Crew:
             "Create a formatted meeting summary document from the parsed data. "
             "Save to Google Docs. Add any action items with deadlines to Google Calendar.",
         ],
-        allowed_tools=["file_read", "google_gmail", "web_search", "google_docs_create", "google_calendar"],
+        allowed_tools=["file_read", "google_docs_create", "google_calendar"],
     )
 
 
@@ -979,7 +997,7 @@ def invoice_generator_crew(**kwargs) -> Crew:
     from codec_config import cfg
     all_tools = get_all_tools()
     invoice_details = kwargs.get("invoice_details", "")
-    read_tools = [t for t in all_tools if t.name in ("google_gmail", "google_drive", "web_search")]
+    read_tools = [t for t in all_tools if t.name in ("google_gmail", "google_drive")]
     write_tools = [t for t in all_tools if t.name in ("google_docs_create",)]
 
     parser = Agent(
@@ -1042,7 +1060,7 @@ def invoice_generator_crew(**kwargs) -> Crew:
             f"Parse these invoice details and extract all required fields:\n\n{invoice_details}",
             "Create a professional invoice document from the parsed data. Save to Google Docs.",
         ],
-        allowed_tools=["google_gmail", "google_drive", "web_search", "google_docs_create"],
+        allowed_tools=["google_gmail", "google_drive", "google_docs_create"],
     )
 
 
@@ -1052,7 +1070,7 @@ def project_manager_crew(**kwargs) -> Crew:
     project = kwargs.get("project", "the project")
     gather_tools = [t for t in all_tools if t.name in (
         "google_calendar", "google_gmail", "google_drive", "google_tasks",
-        "google_sheets", "web_search"
+        "google_sheets",
     )]
     report_tools = [t for t in all_tools if t.name in ("google_docs_create",)]
 
@@ -1073,7 +1091,7 @@ def project_manager_crew(**kwargs) -> Crew:
             f"- Any blockers or risks you can identify\n\n"
             f"If the project name is vague, search broadly and report what seems relevant."
         ),
-        tools=gather_tools, max_tool_calls=5,
+        tools=gather_tools, max_tool_calls=7,
     )
     reporter = Agent(
         name="Project Reporter",
@@ -1114,7 +1132,7 @@ def project_manager_crew(**kwargs) -> Crew:
         ],
         allowed_tools=[
             "google_calendar", "google_gmail", "google_drive", "google_tasks",
-            "google_sheets", "web_search", "google_docs_create",
+            "google_sheets", "google_docs_create",
         ],
     )
 

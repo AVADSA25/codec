@@ -164,7 +164,9 @@ ALWAYS respond with valid JSON only."""
             "sqlite3", "echo ", "cat ", "ls ", "pwd", "date", "uptime",
             "whoami", "sw_vers", "which ", "head ", "tail ", "wc ",
             "grep ", "screencapture", "defaults read", "open -a",
-            "open http",
+            "open http", "osascript -e 'set volume", "osascript -e 'get volume",
+            "afplay ", "python3 -c \"import", "pmset", "brightness",
+            "osascript -e 'tell application",
         ]
 
         self.ACTION_WORDS = [
@@ -357,11 +359,17 @@ ALWAYS respond with valid JSON only."""
 
         def allow():
             result["allow"] = True
-            root.after(1, root.destroy)
+            try:
+                root.destroy()
+            except Exception:
+                pass
 
         def deny():
             result["allow"] = False
-            root.after(1, root.destroy)
+            try:
+                root.destroy()
+            except Exception:
+                pass
 
         abtn = tk.Button(root, text="\u2713 Allow", bg="#00cc55", fg="#000", font=("Helvetica", 13, "bold"), border=0, padx=20, pady=6, command=allow)
         abtn.place(x=w // 2 - 110, y=140, width=100, height=36)

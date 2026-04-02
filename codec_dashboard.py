@@ -1,5 +1,5 @@
 """CODEC v1.2 — Phone Dashboard & PWA"""
-import os, json, sqlite3, time, logging, secrets, subprocess, hmac, threading, uuid, asyncio
+import os, json, sqlite3, time, logging, secrets, subprocess, hmac, threading, uuid, asyncio, re
 from datetime import datetime, timedelta
 
 log = logging.getLogger("codec_dashboard")
@@ -2266,15 +2266,18 @@ async def list_agent_tools():
 @app.post("/api/agents/custom/save")
 async def save_custom_agent(request: Request):
     """Save a custom agent definition to ~/.codec/agents/"""
-    body = await request.json()
-    name = (body.get("name") or "").strip()
-    if not name:
-        return JSONResponse({"error": "Name required"}, status_code=400)
-    safe_id = re.sub(r"[^\w\-]", "_", name.lower())
-    path = os.path.join(_AGENTS_DIR, safe_id + ".json")
-    with open(path, "w") as f:
-        json.dump({**body, "id": safe_id}, f, indent=2)
-    return {"saved": True, "id": safe_id, "path": path}
+    try:
+        body = await request.json()
+        name = (body.get("name") or "").strip()
+        if not name:
+            return JSONResponse({"error": "Name required"}, status_code=400)
+        safe_id = re.sub(r"[^\w\-]", "_", name.lower())
+        path = os.path.join(_AGENTS_DIR, safe_id + ".json")
+        with open(path, "w") as f:
+            json.dump({**body, "id": safe_id}, f, indent=2)
+        return {"saved": True, "id": safe_id, "path": path}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 @app.get("/api/agents/custom/list")

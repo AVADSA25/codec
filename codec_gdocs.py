@@ -256,6 +256,17 @@ def create_google_doc(title: str, content: str) -> str | None:
         doc_id  = doc["documentId"]
         doc_url = f"https://docs.google.com/document/d/{doc_id}/edit"
 
+        # Share doc as "anyone with link can view" so returned URLs are accessible
+        try:
+            drive_svc = build("drive", "v3", credentials=creds)
+            drive_svc.permissions().create(
+                fileId=doc_id,
+                body={"type": "anyone", "role": "reader"},
+                fields="id",
+            ).execute()
+        except Exception as share_err:
+            print(f"[GDocs] Warning: could not set sharing permissions: {share_err}")
+
         # Build plain text + position map
         blocks    = _parse_markdown(content)
         full_text = ""

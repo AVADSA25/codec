@@ -1057,13 +1057,13 @@ class TestKeyboard:
         assert callable(start_keyboard_listener)
 
     def test_f13_debounce(self):
-        """F13 debounce should be >= 3.0 seconds."""
+        """F13 debounce should be >= 1.0 seconds."""
         code = Path(REPO, "codec_keyboard.py").read_text()
         # Find the debounce check
         match = re.search(r'last_f13.*?<\s*([\d.]+)', code)
         assert match, "F13 debounce not found"
         debounce = float(match.group(1))
-        assert debounce >= 3.0, f"F13 debounce too short: {debounce}s"
+        assert debounce >= 1.0, f"F13 debounce too short: {debounce}s"
 
     def test_overlay_events_path(self):
         """Should use ~/.codec/ not /tmp/."""

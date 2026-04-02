@@ -151,7 +151,7 @@ def check_and_run():
 
 
 def run_daemon(check_interval: int = 60):
-    """Run check_and_run every minute."""
+    """Run check_and_run every minute, aligned to the start of each minute."""
     schedules = load_schedules()
     log.info(f"Scheduler daemon starting — {len(schedules)} schedule(s) loaded")
     while True:
@@ -159,7 +159,10 @@ def run_daemon(check_interval: int = 60):
             check_and_run()
         except Exception as e:
             log.error(f"Scheduler loop error: {e}")
-        time.sleep(check_interval)
+        # Sleep until the next minute boundary to avoid drift
+        now = time.time()
+        sleep_secs = check_interval - (now % check_interval)
+        time.sleep(max(1, sleep_secs))
 
 
 # ── CODEC Skill (voice control) ──────────────────────────────────────────────

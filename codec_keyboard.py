@@ -20,6 +20,7 @@ log = logging.getLogger('codec')
 _state_lock = threading.Lock()
 
 
+
 def start_keyboard_listener(state, ctx):
     """
     Start all keyboard listeners and the wake word thread.
@@ -169,6 +170,8 @@ def start_keyboard_listener(state, ctx):
                             files={"file": ("wake.wav", f, "audio/wav")},
                             data={"model": "mlx-community/whisper-large-v3-turbo", "language": "en"},
                             timeout=10)
+                    if r.status_code != 200:
+                        log.warning(f"Wake: Whisper returned HTTP {r.status_code}")
                     if r.status_code == 200:
                         resp_data = r.json()
                         text = resp_data.get("text", "").lower().strip()
@@ -181,9 +184,10 @@ def start_keyboard_listener(state, ctx):
                                 log.info(f"Wake: low confidence rejected (logprob={avg_logprob:.2f}): '{text}'")
                                 continue
 
-                        if any(phrase in text for phrase in WAKE_PHRASES):
+                        wake_phrases_lower = [p.lower() for p in WAKE_PHRASES]
+                        if any(phrase in text for phrase in wake_phrases_lower):
                             command = text
-                            for phrase in WAKE_PHRASES:
+                            for phrase in wake_phrases_lower:
                                 command = command.replace(phrase, "").strip()
                             noise_words = ['music', 'yeah', 'baby', 'oh', 'la', 'da', 'na', 'hmm', 'ooh', 'ah', 'uh']
 
@@ -241,8 +245,8 @@ def start_keyboard_listener(state, ctx):
         now = time.time()
         if key == KEY_TOGGLE:
             # Mac F13 fires on_press for both keyDown and keyUp (pynput quirk).
-            # Use a 3-second cooldown to prevent the second event from re-toggling.
-            if now - state["last_f13"] < 3.0:
+            # Use a 1.5-second cooldown to prevent the second event from re-toggling.
+            if now - state["last_f13"] < 1.5:
                 return
             state["last_f13"] = now
             if state["active"]:

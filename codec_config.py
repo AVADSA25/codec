@@ -66,7 +66,7 @@ AUDIT_LOG         = os.path.expanduser("~/.codec/audit.log")
 # Features
 STREAMING         = cfg.get("streaming", True)
 WAKE_WORD         = cfg.get("wake_word_enabled", True)
-WAKE_PHRASES      = cfg.get("wake_phrases", ['hey', 'aq', 'eq', 'iq', 'okay q', 'a q', 'hey c', 'hey cueue'])
+WAKE_PHRASES      = cfg.get("wake_phrases", ['hey codec', 'hey', 'aq', 'eq', 'iq', 'okay q', 'a q', 'hey c', 'hey cueue'])
 WAKE_ENERGY       = cfg.get("wake_energy", 200)
 WAKE_CHUNK_SEC    = cfg.get("wake_chunk_sec", 3.0)
 REQUIRE_CONFIRM   = cfg.get("require_confirmation", True)
