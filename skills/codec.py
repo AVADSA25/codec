@@ -576,7 +576,7 @@ def build_session_script(safe_sys, session_id):
     L.append("print(O+'    ║                                          v1.0    ║')")
     L.append("print(O+'    ╠══════════════════════════════════════════════════╣')")
     L.append("print(O+'    ║'+W+'  F18 voice   F16 text   ** screen   ++ doc   '+O+'║')")
-    L.append("print(O+'    ║'+W+'  Hey CODEC = wake word  type exit to close    '+O+'║')")
+    L.append("print(O+'    ║'+W+'  Hey Q = wake word   type exit to close    '+O+'║')")
     L.append("print(O+'    ╠══════════════════════════════════════════════════╣')")
     L.append("print(O+'    ║'+D+'  Stream='+ss+'  Memory=ON  Skills=ON             '+O+'║')")
     L.append("print(O+'    ╚══════════════════════════════════════════════════╝'+R)")
@@ -780,7 +780,7 @@ def wake_word_listener():
     import requests as req_wake
     sample_rate = 16000
     chunk_samples = int(WAKE_CHUNK_SEC * sample_rate)
-    print("[CODEC] Wake word listener started. Say 'Hey CODEC' to activate.")
+    print("[CODEC] Wake word listener started. Say 'Hey Q' to activate.")
     while True:
         if not WAKE_WORD or state["recording"] or not state["active"]:
             time.sleep(0.3); continue
@@ -896,7 +896,7 @@ def main():
     ╠══════════════════════════════════════════════════╣
     ║{W}  F13  toggle ON/OFF    **  screenshot + ask    {O}║
     ║{W}  F18  voice command    ++  document analysis   {O}║
-    ║{W}  F16  text input       Hey CODEC  wake word        {O}║
+    ║{W}  F16  text input       Hey Q  wake word        {O}║
     ╠══════════════════════════════════════════════════╣
     ║{D}  Stream={stream_label}  Wake={wake_label}  Memory=ON  Skills=ON       {O}║
     ╚══════════════════════════════════════════════════╝{R}""")
