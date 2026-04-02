@@ -1560,9 +1560,12 @@ async def vibe_save(request: Request):
     messages = body.get("messages", [])
     from datetime import datetime
     now = datetime.now().isoformat()
+    full_sync = body.get("full_sync", False)
     conn = vibe_db()
     conn.execute("INSERT OR REPLACE INTO vibe_sessions (id, title, language, code, created_at, updated_at) VALUES (?, ?, ?, ?, COALESCE((SELECT created_at FROM vibe_sessions WHERE id=?), ?), ?)",
         (sid, title[:60], language, code, sid, now, now))
+    if full_sync and messages:
+        conn.execute("DELETE FROM vibe_messages WHERE session_id=?", (sid,))
     for m in messages:
         conn.execute("INSERT INTO vibe_messages (session_id, role, content, timestamp) VALUES (?, ?, ?, ?)",
             (sid, m.get("role","user"), m.get("content",""), now))

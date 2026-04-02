@@ -649,6 +649,7 @@ function doSend() {
           } else {
             clearInterval(typeTimer);
             addOut('sy', 'Code ready (' + detected + ')');
+            doSaveSes();
           }
         }, Math.max(15, Math.min(60, 2000 / lines.length)));
 
@@ -657,8 +658,8 @@ function doSend() {
         }
       } else {
         addMsg('assistant', rp);
+        doSaveSes();
       }
-      setTimeout(doSaveSes, 500);
     } else {
       addMsg('assistant', 'Error: ' + (data.error || 'No response'));
     }
@@ -978,9 +979,12 @@ function doSaveSes() {
   fetch('/api/vibe/save', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({session_id: sesId, title: title, language: lang, code: code, messages: hist.slice(-2)})
+    body: JSON.stringify({session_id: sesId, title: title, language: lang, code: code, messages: hist, full_sync: true})
   }).catch(function(){});
 }
+// Auto-save on navigation away or tab switch
+window.addEventListener('beforeunload', function() { doSaveSes(); });
+document.addEventListener('visibilitychange', function() { if (document.hidden) doSaveSes(); });
 
 // ── Inspect Mode ────────────────────────────────────────────────────────────
 var inspectMode = false;
