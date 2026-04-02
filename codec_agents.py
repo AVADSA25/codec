@@ -639,27 +639,47 @@ def daily_briefing_crew(**kwargs) -> Crew:
     scout_tools = [t for t in all_tools if t.name in (
         "google_calendar", "weather", "web_search", "google_tasks", "google_keep"
     )]
+    write_tools = [t for t in all_tools if t.name in ("google_docs_create",)]
     scout = Agent(
         name="Scout",
         role=(
-            "You are the user's daily briefing assistant. Check today's calendar, pending tasks, "
-            "saved notes, current weather, and top news. Compile a concise 2-minute spoken briefing. "
-            "Write as natural speech — no markdown, no bullet points."
+            "You are the user's daily briefing researcher. Check today's calendar, pending tasks, "
+            "saved notes, current weather, and top news headlines. "
+            "Gather ALL data — be thorough. Include specifics: event times, task names, temperatures, headline details."
         ),
         tools=scout_tools, max_tool_calls=6,
     )
+    writer = Agent(
+        name="Briefing Writer",
+        role=(
+            "You are a professional briefing writer. Take the gathered data and create a polished "
+            "daily briefing report with sections: Executive Summary, Calendar & Schedule, Pending Tasks, "
+            "Weather Forecast, Top News & Market Headlines.\n"
+            "CRITICAL: You MUST use the google_docs_create tool to save the report. "
+            "Do NOT fabricate a Google Docs URL. The tool returns the real URL.\n"
+            "Your FINAL response MUST be:\n"
+            "1. First line: the exact Google Docs URL returned by the tool\n"
+            "2. Then a blank line\n"
+            "3. Then a 3-5 sentence spoken summary of the key points"
+        ),
+        tools=write_tools, max_tool_calls=2,
+    )
+    today = datetime.now().strftime("%A, %B %d, %Y")
     return Crew(
-        agents=[scout],
+        agents=[scout, writer],
         tasks=[
-            "Compile today's daily briefing:\n"
+            "Compile today's daily briefing data:\n"
             "1. Calendar — what meetings/events today?\n"
             "2. Tasks — any pending or overdue tasks?\n"
             "3. Notes — any recent reminders in Google Keep?\n"
             "4. Weather — what's it like right now?\n"
-            "5. News — any major headlines (search 'top news today')?\n"
-            "Keep it conversational and brief."
+            "5. News — search 'top news today' and 'stock market today' for major headlines\n"
+            "Be thorough — include all details.",
+            f"Write a comprehensive Daily Briefing report using the gathered data.\n"
+            f"Save to Google Docs with title: 'Daily Briefing — {today}'\n"
+            f"After saving, your FINAL response MUST begin with the Google Docs URL on its own line."
         ],
-        allowed_tools=["google_calendar", "weather", "web_search", "google_tasks", "google_keep"],
+        allowed_tools=["google_calendar", "weather", "web_search", "google_tasks", "google_keep", "google_docs_create"],
     )
 
 

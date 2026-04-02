@@ -26,24 +26,12 @@ end tell
             title = parts[0]
             url = parts[1] if len(parts) > 1 else ""
 
-        # Extract page text via JavaScript
-        js_script = '''
-tell application "Google Chrome"
-    set pageText to execute active tab of front window javascript "
-        (function() {
-            var body = document.body;
-            if (!body) return 'No content found';
-            var clone = body.cloneNode(true);
-            var remove = clone.querySelectorAll('script,style,nav,footer,header,.nav,.footer,.header,.sidebar,.menu,.ad,.ads,.advertisement');
-            for (var i = 0; i < remove.length; i++) remove[i].remove();
-            var text = clone.innerText || clone.textContent || '';
-            text = text.replace(/\\\\n{3,}/g, '\\\\n\\\\n').trim();
-            return text.substring(0, 8000);
-        })()
-    "
+        # Extract page text via JavaScript — use single-line JS to avoid AppleScript escaping issues
+        js_code = "(function(){var b=document.body;if(!b)return 'No content found';var c=b.cloneNode(true);var r=c.querySelectorAll('script,style,nav,footer,header,.nav,.footer,.header,.sidebar,.menu,.ad,.ads,.advertisement');for(var i=0;i<r.length;i++)r[i].remove();var t=c.innerText||c.textContent||'';return t.substring(0,8000);})()"
+        js_script = f'''tell application "Google Chrome"
+    set pageText to execute active tab of front window javascript "{js_code}"
     return pageText
-end tell
-'''
+end tell'''
         r = subprocess.run(["osascript", "-e", js_script], capture_output=True, text=True, timeout=15)
 
         if r.returncode == 0 and r.stdout.strip():

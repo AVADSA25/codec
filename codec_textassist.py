@@ -124,8 +124,6 @@ try:
         overlay("\u2705 Opened in Terminal", "#44cc66", 2000)
     else:
         subprocess.run(["pbcopy"], input=result.encode(), check=True)
-        time.sleep(0.3)
-        subprocess.run(["osascript", "-e", 'tell application "System Events" to keystroke "v" using command down'])
-        overlay("\\u2705 Text replaced!", "#44cc66", 2000)
+        overlay("\\u2705 Copied! Press ⌘V to paste", "#44cc66", 3000)
 except Exception as e:
     overlay("Error - check terminal", "#ff3333", 3000)

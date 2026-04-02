@@ -195,9 +195,9 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx);height:100vh;hei
       <button class="fm-close" onclick="closeForgeModal()">&#10005;</button>
     </div>
     <div class="fm-tabs">
-      <button class="fm-tab active" id="ftCode" onclick="setForgeMode('code')">Paste Code</button>
-      <button class="fm-tab" id="ftUrl" onclick="setForgeMode('url')">GitHub URL</button>
-      <button class="fm-tab" id="ftDesc" onclick="setForgeMode('describe')">Describe</button>
+      <button class="fm-tab active" id="ftCode" onclick="setForgeMode('code')">Convert Code</button>
+      <button class="fm-tab" id="ftUrl" onclick="setForgeMode('url')">Import from GitHub</button>
+      <button class="fm-tab" id="ftDesc" onclick="setForgeMode('describe')">Generate New Skill</button>
     </div>
     <div class="fm-body">
       <div class="fm-panel active" id="fmPanelCode">
@@ -212,7 +212,7 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx);height:100vh;hei
       <div class="fm-panel" id="fmPanelDesc">
         <div class="fm-label">Describe what you want</div>
         <input class="fm-input" id="forgeDescInput" type="text" placeholder="A skill that checks the Bitcoin price and summarizes it">
-        <div class="fm-hint">Q will generate the skill from scratch based on your description</div>
+        <div class="fm-hint">CODEC will generate the skill from scratch based on your description</div>
       </div>
     </div>
     <div class="fm-foot">
@@ -433,7 +433,7 @@ var SYSP = "You are CODEC Vibe — an elite AI software engineer and creative co
 require.config({paths:{vs:'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs'}});
 require(['vs/editor/editor.main'], function() {
   ed = monaco.editor.create(document.getElementById('eb'), {
-    value: '// Ask Q to build something\n',
+    value: '// Ask CODEC to build something\n',
     language: 'plaintext',
     theme: (localStorage.getItem('codec-theme') === 'light') ? 'vs' : 'vs-dark',
     fontSize: 13,
@@ -733,7 +733,7 @@ function doPrev() {
       } catch(e) {}
     };
   } else {
-    addMsg('assistant', 'Preview works with HTML. Ask Q to build a web page!');
+    addMsg('assistant', 'Preview works with HTML. Ask CODEC to build a web page!');
   }
 }
 

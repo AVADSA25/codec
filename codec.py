@@ -677,7 +677,7 @@ def do_document_input():
     push(lambda: show_overlay('Select document...', '#E8711A', 3000))
     try:
         r = subprocess.run(["osascript", "-e",
-            'set f to POSIX path of (choose file with prompt "Select a document for Q:" of type {"public.item"})'],
+            'set f to POSIX path of (choose file with prompt "Select a document for CODEC:" of type {"public.item"})'],
             capture_output=True, text=True, timeout=60)
         filepath = r.stdout.strip()
         if not filepath:
@@ -724,13 +724,32 @@ def do_document_input():
 
 # ── SCREENSHOT SHORTCUT ──────────────────────────────────────────────────────
 def do_screenshot_question():
-    push(lambda: show_overlay('Screenshot captured  F18=voice  F16=text', '#E8711A', 5000))
+    push(lambda: show_overlay('Analyzing screen...', '#E8711A', 3000))
     ctx = screenshot_ctx()
-    if ctx:
+    if not ctx:
+        push(lambda: show_overlay('Screenshot failed', '#ff3333', 2000))
+        return
+    log.info(f"Screenshot captured ({len(ctx)} chars)")
+    # Show brief summary of what was captured, then open question dialog
+    summary = ctx[:120].replace('"', '\\"').replace('\n', ' ')
+    try:
+        r = subprocess.run(["osascript", "-e",
+            f'set t to text returned of (display dialog '
+            f'"I captured your screen:\\n\\n{summary}…\\n\\nWhat would you like to know about it?" '
+            f'default answer "" with title "CODEC Screenshot" '
+            f'buttons {{"Cancel","Ask"}} default button "Ask")'],
+            capture_output=True, text=True, timeout=120)
+        question = r.stdout.strip()
+        if question:
+            task = question + " [SCREEN CONTEXT: " + ctx[:800] + "]"
+            dispatch(task)
+        else:
+            # User cancelled — save for later F18/F16
+            state["screen_ctx"] = ctx
+            push(lambda: show_overlay('Screenshot saved — use voice or text to ask', '#E8711A', 3000))
+    except Exception as e:
+        log.error(f"Screenshot dialog error: {e}")
         state["screen_ctx"] = ctx
-        print(f"[CODEC] Screenshot captured ({len(ctx)} chars). Use F18/F16 to ask about it.")
-    else:
-        state["screen_ctx"] = ""
 
 # ── TEXT/VOICE HANDLERS ───────────────────────────────────────────────────────
 def do_text():
@@ -885,21 +904,21 @@ def main():
     W = "\033[38;2;200;200;200m"
     R = "\033[0m"
     print(f"""
-{O}    ╔══════════════════════════════════════════════════╗
-    ║                                                  ║
-    ║    ██████  ██████  ██████  ███████  ██████        ║
-    ║   ██      ██    ██ ██   ██ ██      ██            ║
-    ║   ██      ██    ██ ██   ██ █████   ██            ║
-    ║   ██      ██    ██ ██   ██ ██      ██            ║
-    ║    ██████  ██████  ██████  ███████  ██████        ║
-    ║                                          v1.0    ║
-    ╠══════════════════════════════════════════════════╣
-    ║{W}  F13  toggle ON/OFF    **  screenshot + ask    {O}║
-    ║{W}  F18  voice command    ++  document analysis   {O}║
-    ║{W}  F16  text input       Hey CODEC  wake word        {O}║
-    ╠══════════════════════════════════════════════════╣
-    ║{D}  Stream={stream_label}  Wake={wake_label}  Memory=ON  Skills=ON       {O}║
-    ╚══════════════════════════════════════════════════╝{R}""")
+{O}    ╔═══════════════════════════════════════════╗
+    ║                                           ║
+    ║  ██████  ██████  ██████  ███████  ██████  ║
+    ║ ██      ██    ██ ██   ██ ██      ██       ║
+    ║ ██      ██    ██ ██   ██ █████   ██       ║
+    ║ ██      ██    ██ ██   ██ ██      ██       ║
+    ║  ██████  ██████  ██████  ███████  ██████  ║
+    ║                                   v1.5.0  ║
+    ╠═══════════════════════════════════════════╣
+    ║{W}  {kt} toggle   {kv} voice   ** screen       {O}║
+    ║{W}  {kx} text     ++ doc     -- chat          {O}║
+    ║{W}  Hey CODEC = wake word (hands-free)           {O}║
+    ╠═══════════════════════════════════════════╣
+    ║{D}  Stream={stream_label}  Wake={wake_label}  Skills=ON            {O}║
+    ╚═══════════════════════════════════════════╝{R}""")
 
     load_skills()
     print("[CODEC] Whisper: HTTP (port 8084)")

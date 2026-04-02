@@ -903,9 +903,9 @@ class VoicePipeline:
         except NameError:
             pass
         if _user_name:
-            greeting = f"Greetings {_user_name}. Q is online. All systems local. What do you need?"
+            greeting = f"Greetings {_user_name}. CODEC is online. All systems local. What do you need?"
         else:
-            greeting = "Greetings. Q is online. All systems local. What do you need?"
+            greeting = "Greetings. CODEC is online. All systems local. What do you need?"
         self.messages.append({"role": "assistant", "content": greeting})
         await self.ws.send_json({"type": "transcript", "role": "assistant", "text": greeting})
         g_audio = await self.synthesize(greeting)

@@ -288,6 +288,10 @@ a { color: var(--accent); text-decoration: none; }
         <label class="form-label">Task description</label>
         <input class="form-input" id="newTopic" placeholder="e.g. Morning news summary, Weekly competitor report...">
       </div>
+      <div class="form-group" style="display:flex; align-items:center; gap:8px;">
+        <label class="toggle"><input type="checkbox" id="newEnabled"><span class="toggle-slider"></span></label>
+        <label class="form-label" style="margin:0; cursor:pointer;" for="newEnabled">Enabled</label>
+      </div>
       <div style="display:flex; gap:8px; justify-content:flex-end;">
         <button class="btn btn-sm" onclick="toggleNewForm()">Cancel</button>
         <button class="btn btn-primary btn-sm" onclick="saveSchedule()">Save</button>
@@ -551,6 +555,7 @@ var schedules = [];
 
 function loadSchedules() {
   fetch('/api/schedules').then(function(r){ return r.json(); }).then(function(data) {
+    console.log('[CODEC] loadSchedules response:', JSON.stringify(data));
     schedules = data.schedules || [];
     renderSchedules();
   }).catch(function() {
@@ -618,6 +623,7 @@ function toggleNewForm() {
     document.getElementById('newHour').value = '8';
     document.getElementById('newMinute').value = '0';
     document.getElementById('newTopic').value = '';
+    document.getElementById('newEnabled').checked = false;
     setDays([0,1,2,3,4]);
     f.classList.add('visible');
   }
@@ -638,13 +644,20 @@ function getSelectedDays() {
 
 function saveSchedule() {
   var editId = document.getElementById('schedEditId').value;
+  // When editing, preserve the current enabled state; new schedules start disabled
+  var currentEnabled = false;
+  if (editId) {
+    var existing = schedules.find(function(s) { return s.id === editId; });
+    if (existing) currentEnabled = !!existing.enabled;
+  }
+  var enabledCheckbox = document.getElementById('newEnabled');
   var payload = {
     crew: document.getElementById('newCrew').value,
     topic: document.getElementById('newTopic').value,
     hour: parseInt(document.getElementById('newHour').value) || 8,
     minute: parseInt(document.getElementById('newMinute').value) || 0,
     days: getSelectedDays(),
-    enabled: false
+    enabled: enabledCheckbox ? enabledCheckbox.checked : currentEnabled
   };
   var url, method;
   if (editId) {
@@ -654,14 +667,16 @@ function saveSchedule() {
     url = '/api/schedules';
     method = 'POST';
   }
+  console.log('[CODEC] saveSchedule payload:', JSON.stringify(payload));
   fetch(url, { method: method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) })
     .then(function(r){ return r.json(); })
-    .then(function() {
+    .then(function(resp) {
+      console.log('[CODEC] saveSchedule response:', JSON.stringify(resp));
       toggleNewForm();
       loadSchedules();
       showToast(editId ? 'Schedule updated' : 'Schedule created (disabled by default)');
     })
-    .catch(function(e){ alert('Error: ' + e); });
+    .catch(function(e){ console.error('[CODEC] saveSchedule error:', e); alert('Error: ' + e); });
 }
 
 function toggleSchedule(id, enabled) {
@@ -693,6 +708,7 @@ function editSchedule(id) {
   document.getElementById('newHour').value = sched.hour !== undefined ? sched.hour : 8;
   document.getElementById('newMinute').value = sched.minute !== undefined ? sched.minute : 0;
   document.getElementById('newTopic').value = sched.topic || '';
+  document.getElementById('newEnabled').checked = !!sched.enabled;
   setDays(Array.isArray(sched.days) ? sched.days : [0,1,2,3,4,5,6]);
   document.getElementById('newScheduleForm').classList.add('visible');
 }

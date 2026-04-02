@@ -79,6 +79,7 @@ def check_memory_stats():
             try:
                 requests.post("http://localhost:8090/api/notifications",
                               json={"message": f"💾 Memory DB is {db_size_mb:.0f} MB — consider running cleanup", "type": "warning", "source": "heartbeat"},
+                              headers={"x-internal": "codec"},
                               timeout=5)
             except Exception:
                 pass
@@ -294,16 +295,24 @@ def check_alerts():
 
         elif atype == "email_check":
             try:
-                import subprocess
-                script = 'tell application "Mail" to get the unread count of inbox'
-                result = subprocess.run(
-                    ["osascript", "-e", script],
-                    capture_output=True, text=True, timeout=10
-                )
-                count = int(result.stdout.strip()) if result.stdout.strip().isdigit() else 0
+                import importlib.util, sys as _sys
+                _gmail_path = os.path.join(os.path.dirname(__file__), "skills", "google_gmail.py")
+                _spec = importlib.util.spec_from_file_location("google_gmail", _gmail_path)
+                _gmail = importlib.util.module_from_spec(_spec)
+                _spec.loader.exec_module(_gmail)
+                result = _gmail.run("check unread emails")
+                # Count emails from "Found N emails:" pattern
+                import re as _re
+                count_match = _re.search(r'Found (\d+) emails?:', str(result))
+                count = int(count_match.group(1)) if count_match else 0
                 last_count = state.get("email_unread", 0)
                 if count > 0 and count != last_count:
-                    msg = f"📧 {name}: {count} unread email{'s' if count != 1 else ''}"
+                    # Extract first sender/subject
+                    preview = ""
+                    first_line = _re.search(r'\* (.+?)(?:\n|$)', str(result))
+                    if first_line:
+                        preview = f" — {first_line.group(1)[:60]}"
+                    msg = f"📧 {name}: {count} unread email{'s' if count != 1 else ''}{preview}"
                     log.info(f"  {msg}")
                     triggered.append(msg)
                 elif count == 0:
@@ -335,13 +344,37 @@ def check_alerts():
             json.dump(state, f)
     except Exception:
         pass
-    # Send triggered alerts to dashboard notification
+    # Send triggered alerts: save to notifications.json + macOS notification
     if triggered:
+        import uuid as _uuid
+        notif_path = os.path.expanduser("~/.codec/notifications.json")
         for msg in triggered:
+            # macOS notification (visible immediately)
             try:
-                requests.post("http://localhost:8090/api/notifications",
-                              json={"message": msg, "type": "alert", "source": "heartbeat"},
-                              timeout=5)
+                subprocess.run(["osascript", "-e",
+                    f'display notification "{msg[:120]}" with title "CODEC Alert" sound name "Glass"'],
+                    capture_output=True, timeout=5)
+            except Exception:
+                pass
+            # Save to notifications.json for dashboard bell icon
+            try:
+                try:
+                    with open(notif_path) as f:
+                        notifs = json.load(f)
+                except (FileNotFoundError, json.JSONDecodeError):
+                    notifs = []
+                notifs.insert(0, {
+                    "id": f"notif_{_uuid.uuid4().hex[:10]}",
+                    "type": "task_report",
+                    "title": "Heartbeat Alert",
+                    "body": msg,
+                    "status": "warning",
+                    "created": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+                    "read": False,
+                    "schedule_id": "heartbeat",
+                })
+                with open(notif_path, "w") as f:
+                    json.dump(notifs, f, indent=2)
             except Exception:
                 pass
     return triggered

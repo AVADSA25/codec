@@ -41,6 +41,9 @@ def run(task, app="", ctx=""):
                 cleaned = re.sub(re.escape(trigger), '', cleaned, flags=re.IGNORECASE)
             code_to_forge = cleaned.strip()
 
+    # Strip HTML tags if pasted from web/UI
+    code_to_forge = re.sub(r'<[^>]+>', '', code_to_forge).strip()
+
     if not code_to_forge or len(code_to_forge) < 20:
         return (
             "Skill Forge needs some code to work with. "
@@ -105,7 +108,7 @@ CODE TO CONVERT:
         }
         payload.update(safe_kwargs)
 
-        r = requests.post(base_url + "/chat/completions", json=payload, headers=headers, timeout=90)
+        r = requests.post(base_url + "/chat/completions", json=payload, headers=headers, timeout=180)
         if r.status_code != 200:
             return f"Forge failed: LLM returned {r.status_code}. Is the model server running?"
 

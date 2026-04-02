@@ -191,8 +191,8 @@ root.mainloop()
 
 # ── Public API ──────────────────────────────────────────────────────────
 
-# AppKit NSPanel overlays unreliable on macOS 15+ (panels vanish behind fullscreen apps).
-# tkinter with overrideredirect + topmost is more reliable.
+# AppKit NSPanel overlays unreliable on macOS 15+ (timer fails, zombie processes).
+# Use tkinter for overlays; Swift CODECOverlay handles fullscreen-aware recording indicator.
 _USE_APPKIT = False
 
 

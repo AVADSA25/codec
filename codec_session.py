@@ -420,7 +420,7 @@ ALWAYS respond with valid JSON only."""
     # ── Agent Loop ───────────────────────────────────────────────────────
 
     def run_agent(self, task):
-        print("\n[Q-Agent] Task: " + task[:100])
+        print("\n[CODEC-Agent] Task: " + task[:100])
         am = [
             {"role": "system", "content": self.AGENT_SYS},
             {"role": "user", "content": "Task: " + task},
@@ -438,7 +438,7 @@ ALWAYS respond with valid JSON only."""
                 data = json.loads(c.strip())
             except Exception as e:
                 log.warning(f"Agent JSON parse failed: {e}")
-                print("Q: " + resp)
+                print("CODEC: " + resp)
                 self.h.append({"role": "user", "content": task})
                 self.h.append({"role": "assistant", "content": resp})
                 return resp
@@ -525,7 +525,7 @@ ALWAYS respond with valid JSON only."""
                 u = u + "\n\nSCREEN CONTENT:\n" + ctx
         self.h.append({"role": "user", "content": f"[{now}] {u}"})
         if self.streaming:
-            sys.stdout.write("\nQ: ")
+            sys.stdout.write("\nCODEC: ")
             sys.stdout.flush()
             resp = self.qwen_stream(self.h)
         else:
@@ -552,14 +552,31 @@ ALWAYS respond with valid JSON only."""
         corr = self.get_corrections()
         if corr and self.h and self.h[0]["role"] == "system" and "CORRECTIONS" not in self.h[0]["content"]:
             self.h[0]["content"] = self.h[0]["content"] + "\n\n" + corr
+
+        # ── Skill routing (before agent/LLM) ──
+        if len(u) < 500:
+            try:
+                from codec_dispatch import check_skill, run_skill
+                skill = check_skill(u)
+                if skill:
+                    result = run_skill(skill, u, "")
+                    if result is not None:
+                        print(f"\nCODEC: {result}")
+                        self.speak(str(result))
+                        self.h.append({"role": "user", "content": u})
+                        self.h.append({"role": "assistant", "content": str(result)})
+                        return
+            except Exception as e:
+                log.warning(f"Skill check failed: {e}")
+
         if any(w in u.lower().split() for w in self.ACTION_WORDS):
             done = clean_resp(self.run_agent(u))
-            print("\nQ: " + done)
+            print("\nCODEC: " + done)
             self.speak(done)
         else:
             resp = clean_resp(self.ask_q(u))
             if not self.streaming:
-                print("\nQ: " + resp)
+                print("\nCODEC: " + resp)
             self.speak(resp)
 
     # ── Queue Check ──────────────────────────────────────────────────────

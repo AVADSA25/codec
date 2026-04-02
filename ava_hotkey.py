@@ -231,35 +231,41 @@ def transcribe_and_type(audio_path):
             return
         
         print(f"[AVA] Transcribed: {text}")
-        
-        # Draft detection: if draft/reply intent, refine with Qwen first
-        import requests as _req
-        DRAFT_KW = ["draft","reply","rephrase","rewrite","fix my","write a","write an",
-                    "compose","tell them","say that","respond","correct my","please write",
-                    "post saying","comment saying","tweet saying","please say","and say"]
-        is_draft = any(k in text.lower() for k in DRAFT_KW)
-        
-        if is_draft:
-            try:
-                print("[AVA] Draft detected, calling Qwen...")
-                DRAFT_SYS = "You are CODEC, elite writing assistant. The user has dyslexia. OUTPUT ONLY the final message text. No preamble. No explanation. Fix grammar. Keep the user's personality."
-                r = _req.post("http://localhost:8081/v1/chat/completions",
-                    json={"model":"mlx-community/Qwen3.5-35B-A3B-4bit",
-                          "messages":[{"role":"system","content":DRAFT_SYS},
-                                      {"role":"user","content":"User instruction: " + text + "\nWrite the final message text now:"}],
-                          "max_tokens":300,"temperature":0.6},
-                    timeout=60)
-                if r.status_code == 200:
-                    refined = r.json()["choices"][0]["message"]["content"].strip()
-                    # Strip Qwen <think> tags
-                    import re as _re
-                    refined = _re.sub(r'<think>.*?</think>', '', refined, flags=_re.DOTALL).strip()
-                    if refined:
-                        text = refined
-                        print(f"[AVA] Refined: {text}")
-            except Exception as qe:
-                print(f"[AVA] Qwen unavailable, pasting raw: {qe}")
-        
+
+        # Draft mode: ONLY if dictation starts with "draft" — refine with Qwen
+        import re as _re
+        _lower = text.lower().strip()
+        _draft_match = _re.match(r'^draft[\s.,!;:]+', _lower)
+        if _draft_match:
+            body = text[_draft_match.end():].strip()
+            if body:
+                try:
+                    import requests as _req
+                    print("[AVA] Draft mode — refining with Qwen...")
+                    r = _req.post("http://localhost:8081/v1/chat/completions",
+                        json={"model": "mlx-community/Qwen3.5-35B-A3B-4bit",
+                              "messages": [
+                                  {"role": "system", "content": "Rewrite the user message as a polished, professional message. Output ONLY the final text. No preamble, no explanation."},
+                                  {"role": "user", "content": body}
+                              ],
+                              "max_tokens": 300, "temperature": 0.3,
+                              "chat_template_kwargs": {"enable_thinking": False}},
+                        timeout=15)
+                    if r.status_code == 200:
+                        refined = r.json()["choices"][0]["message"]["content"].strip()
+                        if refined:
+                            text = refined
+                            print(f"[AVA] Refined: {text}")
+                        else:
+                            text = body
+                            print("[AVA] Qwen returned empty, using raw body")
+                    else:
+                        text = body
+                        print(f"[AVA] Qwen HTTP {r.status_code}, using raw body")
+                except Exception as qe:
+                    text = body
+                    print(f"[AVA] Qwen error: {qe}, using raw body")
+
         # Copy to clipboard
         pyperclip.copy(text)
         

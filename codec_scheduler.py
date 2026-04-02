@@ -84,12 +84,49 @@ def toggle_schedule(sched_id: str, enabled: bool) -> bool:
 
 # ── Execution ────────────────────────────────────────────────────────────────
 
+def _notify(title, body, status="success", schedule_id=None):
+    """Save notification to dashboard and send macOS notification."""
+    import uuid as _uuid, subprocess as _sp
+    # 1. Save to notifications.json (same format as dashboard)
+    notif_path = os.path.expanduser("~/.codec/notifications.json")
+    try:
+        try:
+            with open(notif_path) as f:
+                notifications = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            notifications = []
+        notif = {
+            "id": f"notif_{_uuid.uuid4().hex[:10]}",
+            "type": "task_report",
+            "title": title,
+            "body": body[:500],
+            "status": status,
+            "created": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+            "read": False,
+            "schedule_id": schedule_id,
+        }
+        notifications.insert(0, notif)
+        os.makedirs(os.path.dirname(notif_path), exist_ok=True)
+        with open(notif_path, "w") as f:
+            json.dump(notifications, f, indent=2)
+    except Exception as e:
+        log.warning(f"  Failed to save notification: {e}")
+    # 2. macOS notification
+    try:
+        _sp.run(["osascript", "-e",
+            f'display notification "{body[:120]}" with title "CODEC Task" subtitle "{title}"'],
+            capture_output=True, timeout=5)
+    except Exception:
+        pass
+
+
 def _run_crew(sched: dict):
     """Fire off a crew via the background job endpoint and optionally poll."""
     payload: dict = {"crew": sched["crew"]}
     if sched.get("topic"):
         payload["topic"] = sched["topic"]
 
+    title = sched.get("topic", sched["crew"])
     _headers = {"Content-Type": "application/json", "x-internal": "codec"}
     try:
         r = requests.post(
@@ -112,17 +149,30 @@ def _run_crew(sched: dict):
                         timeout=10,
                     )
                     if sr.status_code == 200:
-                        st = sr.json().get("status")
+                        job_data = sr.json()
+                        st = job_data.get("status")
                         if st not in ("running", "pending"):
+                            result_text = job_data.get("result", "")
+                            if isinstance(result_text, dict):
+                                result_text = result_text.get("result", str(result_text))
                             log.info(f"  ✅ {sched['crew']} finished: {st}")
+                            _notify(title, str(result_text)[:500] if result_text else "Task completed.",
+                                    status="success" if st == "complete" else "error",
+                                    schedule_id=sched.get("id", sched["crew"]))
                             return True
             else:
                 log.info(f"  ✅ {sched['crew']} completed synchronously")
+                _notify(title, "Task completed successfully.",
+                        schedule_id=sched.get("id", sched["crew"]))
                 return True
         else:
             log.warning(f"  ⚠️ /api/agents/run returned {r.status_code}")
+            _notify(title, f"Failed: server returned {r.status_code}", status="error",
+                    schedule_id=sched.get("id", sched["crew"]))
     except Exception as e:
         log.error(f"  ❌ Crew run failed: {e}")
+        _notify(title, f"Error: {e}", status="error",
+                schedule_id=sched.get("id", sched["crew"]))
     return False
 
 
