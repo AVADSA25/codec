@@ -643,24 +643,40 @@ def daily_briefing_crew(**kwargs) -> Crew:
     scout = Agent(
         name="Scout",
         role=(
-            "You are the user's daily briefing researcher. Check today's calendar, pending tasks, "
-            "saved notes, current weather, and top news headlines. "
-            "Gather ALL data — be thorough. Include specifics: event times, task names, temperatures, headline details."
+            "You are the user's daily briefing researcher. Your job is to gather comprehensive data. "
+            "Check ALL of these sources — do not skip any:\n"
+            "1. Google Calendar — get today's full schedule\n"
+            "2. Google Tasks — list all pending/overdue items\n"
+            "3. Google Keep — any recent notes or reminders\n"
+            "4. Weather — current conditions AND forecast\n"
+            "5. Web search — search 'top news today', 'stock market today', 'S&P 500', 'tech news today'\n"
+            "Be EXHAUSTIVE. Include exact event times, task names with details, temperatures, "
+            "specific stock prices, headline details with sources. The more data the better."
         ),
-        tools=scout_tools, max_tool_calls=6,
+        tools=scout_tools, max_tool_calls=8,
     )
     writer = Agent(
         name="Briefing Writer",
         role=(
-            "You are a professional briefing writer. Take the gathered data and create a polished "
-            "daily briefing report with sections: Executive Summary, Calendar & Schedule, Pending Tasks, "
-            "Weather Forecast, Top News & Market Headlines.\n"
-            "CRITICAL: You MUST use the google_docs_create tool to save the report. "
-            "Do NOT fabricate a Google Docs URL. The tool returns the real URL.\n"
-            "Your FINAL response MUST be:\n"
+            "You are a professional report writer at CODEC. Synthesize all gathered data into a "
+            "comprehensive, well-structured daily briefing report. Write 1500-3000 words in markdown.\n\n"
+            "Required sections with ## headings:\n"
+            "1. **Executive Summary** — 3-4 sentence overview of the day ahead\n"
+            "2. **Calendar & Schedule** — all events with times, prep notes, conflicts\n"
+            "3. **Pending Tasks** — categorized list with priorities and deadlines\n"
+            "4. **Weather Forecast** — current + outlook, activity recommendations\n"
+            "5. **Market Overview** — major indices, notable movers, key economic data\n"
+            "6. **Top News Headlines** — 5-8 headlines with brief analysis\n"
+            "7. **Key Takeaways & Priorities** — actionable items for today\n\n"
+            "Write professionally. Use bullet points, bold for emphasis. "
+            "Cite news sources inline. Make it comprehensive and insightful.\n\n"
+            "CRITICAL: You MUST use the google_docs_create tool to save your report. "
+            "Do NOT fabricate or invent a Google Docs URL. The tool will return the real URL. "
+            "NEVER output a FINAL response until you have called google_docs_create and received the actual URL back.\n"
+            "Your FINAL response format MUST be:\n"
             "1. First line: the exact Google Docs URL returned by the tool\n"
             "2. Then a blank line\n"
-            "3. Then a 3-5 sentence spoken summary of the key points"
+            "3. Then a 3-5 sentence summary of today's key priorities and highlights"
         ),
         tools=write_tools, max_tool_calls=2,
     )
@@ -668,15 +684,15 @@ def daily_briefing_crew(**kwargs) -> Crew:
     return Crew(
         agents=[scout, writer],
         tasks=[
-            "Compile today's daily briefing data:\n"
-            "1. Calendar — what meetings/events today?\n"
-            "2. Tasks — any pending or overdue tasks?\n"
-            "3. Notes — any recent reminders in Google Keep?\n"
-            "4. Weather — what's it like right now?\n"
-            "5. News — search 'top news today' and 'stock market today' for major headlines\n"
-            "Be thorough — include all details.",
-            f"Write a comprehensive Daily Briefing report using the gathered data.\n"
-            f"Save to Google Docs with title: 'Daily Briefing — {today}'\n"
+            "Gather ALL daily briefing data — use every tool available:\n"
+            "1. Check Google Calendar for today's events\n"
+            "2. Check Google Tasks for pending items\n"
+            "3. Check Google Keep for recent notes\n"
+            "4. Get current weather and forecast\n"
+            "5. Search 'top news today' AND 'stock market today S&P 500 Dow Jones'\n"
+            "Be thorough — search at least 3 different queries for news/markets.",
+            f"Write a comprehensive Daily Briefing report (1500-3000 words) using ALL gathered data.\n"
+            f"Save to Google Docs with title: 'CODEC: Daily Briefing — {today}'\n"
             f"After saving, your FINAL response MUST begin with the Google Docs URL on its own line."
         ],
         allowed_tools=["google_calendar", "weather", "web_search", "google_tasks", "google_keep", "google_docs_create"],

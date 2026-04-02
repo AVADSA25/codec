@@ -86,7 +86,15 @@ def toggle_schedule(sched_id: str, enabled: bool) -> bool:
 
 def _notify(title, body, status="success", schedule_id=None):
     """Save notification to dashboard and send macOS notification."""
-    import uuid as _uuid, subprocess as _sp
+    import uuid as _uuid, subprocess as _sp, re as _re
+    # Extract Google Doc URL if present (crew returns it as first line)
+    doc_url = None
+    doc_match = _re.search(r'(https://docs\.google\.com/document/d/[^\s]+)', body)
+    if doc_match:
+        doc_url = doc_match.group(1)
+        # Clean body: remove raw URL line, add markdown link
+        body = _re.sub(r'https://docs\.google\.com/document/d/[^\s]+\n*', '', body).strip()
+        body = f"📄 [View Full Report]({doc_url})\n\n{body}"
     # 1. Save to notifications.json (same format as dashboard)
     notif_path = os.path.expanduser("~/.codec/notifications.json")
     try:
@@ -99,12 +107,14 @@ def _notify(title, body, status="success", schedule_id=None):
             "id": f"notif_{_uuid.uuid4().hex[:10]}",
             "type": "task_report",
             "title": title,
-            "body": body[:500],
+            "body": body[:2000],
             "status": status,
             "created": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
             "read": False,
             "schedule_id": schedule_id,
         }
+        if doc_url:
+            notif["doc_url"] = doc_url
         notifications.insert(0, notif)
         os.makedirs(os.path.dirname(notif_path), exist_ok=True)
         with open(notif_path, "w") as f:
@@ -112,9 +122,10 @@ def _notify(title, body, status="success", schedule_id=None):
     except Exception as e:
         log.warning(f"  Failed to save notification: {e}")
     # 2. macOS notification
+    mac_body = f"Report ready — tap to view" if doc_url else body[:120]
     try:
         _sp.run(["osascript", "-e",
-            f'display notification "{body[:120]}" with title "CODEC Task" subtitle "{title}"'],
+            f'display notification "{mac_body}" with title "CODEC Task" subtitle "{title}"'],
             capture_output=True, timeout=5)
     except Exception:
         pass
