@@ -225,7 +225,8 @@ def create_google_doc(title: str, content: str) -> str | None:
     - Bullet points with proper Google Docs bullets
     - Tables rendered as styled header + data rows
     - Inline bold preserved within body text
-    - Up to 7 Pexels images (hero full-width, then left/right alternating)
+    - Up to 7 Pexels images (hero full-width, rest centered and consistent size)
+    - Images skipped for invoices, meeting summaries, code reviews, etc.
     Returns the doc URL or None on error.
     """
     from google.oauth2.credentials import Credentials
@@ -487,6 +488,17 @@ def create_google_doc(title: str, content: str) -> str | None:
         svc.documents().batchUpdate(documentId=doc_id, body={"requests": reqs}).execute()
 
         # ── Batch 2: Pexels images ──
+        # Skip images for document types that don't need them
+        _title_lower = title.lower()
+        _skip_images = any(kw in _title_lower for kw in [
+            "invoice", "meeting summary", "meeting notes", "minutes",
+            "social media posts", "code review", "email",
+        ])
+        if _skip_images:
+            print(f"[GDocs] Skipping images for: {title}")
+            print(f"[GDocs] Created: {doc_url} (0 images)")
+            return doc_url
+
         hero_idx, additional_idxs = _find_image_positions(positions)
         topic_base = " ".join(
             title.replace("CODEC Research:", "").replace("CODEC Report", "")
@@ -498,13 +510,14 @@ def create_google_doc(title: str, content: str) -> str | None:
             img_tasks.append((i_idx, _smart_query(topic_base, positions, i_idx)))
 
         SPEC_HERO  = (468, 260, "CENTER")
+        # All images centered and consistent size for clean look
         SPEC_CYCLE = [
-            (310, 174, "START"),
-            (348, 196, "END"),
-            (310, 174, "START"),
-            (348, 196, "END"),
             (420, 236, "CENTER"),
-            (310, 174, "START"),
+            (420, 236, "CENTER"),
+            (420, 236, "CENTER"),
+            (420, 236, "CENTER"),
+            (420, 236, "CENTER"),
+            (420, 236, "CENTER"),
         ]
 
         insert_points = []
