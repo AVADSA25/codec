@@ -776,25 +776,28 @@ def email_handler_crew(**kwargs) -> Crew:
     reader = Agent(
         name="Email Reader",
         role=(
-            "Read unread emails. Categorize each as URGENT, NORMAL, LOW, or SPAM. "
-            "For each: sender, subject, category, 1-line summary."
+            "Read unread emails from the inbox. Categorize each as URGENT, NORMAL, LOW, or SPAM. "
+            "For each: sender, subject, category, 1-line summary.\n"
+            "IMPORTANT: When using the google_gmail tool, your input MUST contain the word 'unread' "
+            "to fetch unread emails. Example input: 'check unread emails'"
         ),
         tools=gmail_tools, max_tool_calls=3,
     )
     responder = Agent(
         name="Email Responder",
         role=(
-            "Draft brief professional replies for urgent emails. "
-            "Suggest 1-line action for normal emails. "
-            "Tone: direct, confident, clear. Keep replies short — 2-4 sentences max."
+            "Draft brief professional replies for urgent and normal emails. "
+            "Tone: direct, confident, clear. Keep replies short — 2-4 sentences max.\n"
+            "If there are no emails to reply to, say so clearly."
         ),
         tools=gmail_tools, max_tool_calls=3,
     )
     return Crew(
         agents=[reader, responder],
         tasks=[
-            "Check unread emails. Categorize each by urgency. List them all.",
-            "Draft replies for urgent emails. Summarize actions for the rest.",
+            "Use the google_gmail tool with input 'check unread emails' to fetch all unread emails. "
+            "Categorize each by urgency. List them all with sender, subject, and summary.",
+            "Draft replies for urgent and normal emails. Summarize actions for the rest.",
         ],
         allowed_tools=["google_gmail"],
     )
@@ -806,12 +809,22 @@ def social_media_crew(**kwargs) -> Crew:
     search_tools = [t for t in all_tools if t.name in ("web_search", "web_fetch")]
     write_tools  = [t for t in all_tools if t.name in ("google_docs_create",)]
 
+    # Inject CODEC product context when topic mentions CODEC
+    codec_ctx = ""
+    if "codec" in topic.lower():
+        codec_ctx = (
+            "\n\nIMPORTANT CONTEXT: CODEC is an open-source intelligent command layer for macOS "
+            "— a voice-controlled AI workstation with 56+ skills, multi-agent crews, local LLMs, "
+            "and Google Workspace integration. It is NOT a video codec. "
+            "Website: opencodec.org. Built by AVA Digital."
+        )
+
     trend_scout = Agent(
         name="Trend Scout",
         role=(
             "You are a social media trend analyst. Research trending topics, hashtags, "
             "and viral content. Find what's popular right now on Twitter, LinkedIn, and Instagram. "
-            "Identify key angles, hashtags, and audience interests."
+            "Identify key angles, hashtags, and audience interests." + codec_ctx
         ),
         tools=search_tools, max_tool_calls=8,
     )
@@ -821,19 +834,24 @@ def social_media_crew(**kwargs) -> Crew:
             "You are an expert social media copywriter. Write platform-specific posts: "
             "Twitter (max 280 chars, punchy, with hashtags), "
             "LinkedIn (professional tone, 150-300 words, insight-driven), "
-            "Instagram (visual description + engaging caption + hashtags). "
-            "Save all 3 posts to a Google Doc."
+            "Instagram (visual description + engaging caption + hashtags).\n"
+            "CRITICAL: You MUST use the google_docs_create tool to save your posts. "
+            "Do NOT fabricate a Google Docs URL. The tool returns the real URL.\n"
+            "Your FINAL response format MUST be:\n"
+            "1. First line: the exact Google Docs URL returned by the tool\n"
+            "2. Then the 3 posts" + codec_ctx
         ),
         tools=write_tools, max_tool_calls=2,
     )
     return Crew(
         agents=[trend_scout, content_creator],
         tasks=[
-            f"Research trending content about: {topic}\n"
+            f"Research trending content about: {topic}{codec_ctx}\n"
             f"Find trending hashtags, popular angles, viral formats, and audience interests.",
             f"Write 3 platform-specific posts (Twitter, LinkedIn, Instagram) about: {topic}. "
             "Save all to a Google Doc with title: "
-            "'Social Media Posts: " + topic[:60] + " — " + datetime.now().strftime('%Y-%m-%d') + "'"
+            "'Social Media Posts: " + topic[:60] + " — " + datetime.now().strftime('%Y-%m-%d') + "'\n"
+            "After saving, your FINAL response MUST begin with the Google Docs URL on its own line."
         ],
         allowed_tools=["web_search", "web_fetch", "google_docs_create"],
     )
@@ -1245,15 +1263,14 @@ async def run_crew(crew_name: str, callback=None, **kwargs) -> dict:
             "error": f"Unknown crew: {crew_name}. Available: {list(CREW_REGISTRY.keys())}"
         }
     reg = CREW_REGISTRY[crew_name]
+    # Reset global doc URL to prevent leaks between crew runs
+    global _last_gdoc_url
+    _last_gdoc_url = None
     start = time.time()
     try:
         crew   = reg["builder"](**kwargs)
         result = await crew.run(callback=callback)
         elapsed = int(time.time() - start)
-
-        # If Writer forgot to include the Google Docs URL, inject it from the captured variable
-        if "docs.google.com" not in result and _last_gdoc_url:
-            result = f"{_last_gdoc_url}\n\n{result}"
 
         save_to_memory(crew_name, f"{crew_name}: {json.dumps(kwargs)}", result[:2000])
         return {"status": "complete", "result": result, "elapsed_seconds": elapsed, "crew": crew_name}
