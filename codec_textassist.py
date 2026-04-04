@@ -114,16 +114,48 @@ overlay("\\u26a1 Processing...", "#00aaff", 8000)
 try:
     result = call_qwen(text, MODE)
     if MODE in ("explain", "translate"):
-        # Write to temp file and open in Terminal
-        import tempfile
-        tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, prefix="codec_explain_")
-        tmp.write(result)
-        tmp.close()
-        subprocess.run(["osascript", "-e", 'tell application "Terminal" to activate'])
-        subprocess.run(["osascript", "-e", f'tell application "Terminal" to do script "clear && echo && echo CODEC_EXPLAIN && echo && cat {tmp.name} && echo && echo ━━━━━━━━━━━━━━━━━━━━━"'])
-        overlay("\u2705 Opened in Terminal", "#44cc66", 2000)
+        # Show result in a styled floating window (no Terminal)
+        title = "CODEC Explain" if MODE == "explain" else "CODEC Translate"
+        # Also copy to clipboard so user can paste if needed
+        subprocess.run(["pbcopy"], input=result.encode(), check=True)
+        # Launch a clean floating result window
+        safe_result = result.replace("\\", "\\\\").replace("'", "\\'").replace('"', '\\"').replace("\n", "\\n")
+        subprocess.Popen([sys.executable, "-c", f"""import tkinter as tk
+from tkinter import font as tkfont
+r=tk.Tk()
+r.title('{title}')
+r.attributes('-topmost', True)
+r.configure(bg='#1a1a1a')
+sw=r.winfo_screenwidth();sh=r.winfo_screenheight()
+w,h=560,400
+r.geometry(f'{{w}}x{{h}}+{{(sw-w)//2}}+{{(sh-h)//2}}')
+r.minsize(400,250)
+# Title bar
+hdr=tk.Frame(r,bg='#E8711A',height=36);hdr.pack(fill='x')
+hdr.pack_propagate(False)
+tk.Label(hdr,text='{title}',fg='white',bg='#E8711A',font=('Helvetica',14,'bold')).pack(side='left',padx=12)
+tk.Button(hdr,text='Copy',fg='white',bg='#cc5a00',relief='flat',font=('Helvetica',11),padx=8,
+    command=lambda:[r.clipboard_clear(),r.clipboard_append(txt.get('1.0','end-1c'))]).pack(side='right',padx=6,pady=4)
+# Text area
+txt=tk.Text(r,wrap='word',bg='#1a1a1a',fg='#e0e0e0',font=('Menlo',13),relief='flat',
+    padx=16,pady=12,insertbackground='#E8711A',selectbackground='#E8711A',borderwidth=0)
+txt.pack(fill='both',expand=True)
+txt.insert('1.0','{safe_result}')
+txt.config(state='normal')
+# Footer
+ft=tk.Frame(r,bg='#111',height=32);ft.pack(fill='x')
+ft.pack_propagate(False)
+tk.Label(ft,text='Copied to clipboard  \u00b7  \u2318V to paste',fg='#666',bg='#111',font=('Helvetica',10)).pack(side='left',padx=12)
+tk.Button(ft,text='Close',fg='#999',bg='#222',relief='flat',font=('Helvetica',11),padx=10,
+    command=r.destroy).pack(side='right',padx=8,pady=3)
+r.bind('<Escape>',lambda e:r.destroy())
+r.mainloop()
+"""], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        overlay("\u2705 {title}", "#44cc66", 2000)
     else:
         subprocess.run(["pbcopy"], input=result.encode(), check=True)
-        overlay("\\u2705 Copied! Press ⌘V to paste", "#44cc66", 3000)
+        time.sleep(0.3)
+        subprocess.run(["osascript", "-e", 'tell application "System Events" to keystroke "v" using command down'])
+        overlay("\\u2705 Text replaced!", "#44cc66", 2000)
 except Exception as e:
     overlay("Error - check terminal", "#ff3333", 3000)
