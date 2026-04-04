@@ -295,4 +295,4 @@ Then:
 - **Logo:** CODEC octagon at https://i.imgur.com/RbrQ7Bt.png
 - **Transitions:** Smooth fades, no hard cuts. Spring animations for cards/elements appearing.
 - **Text sizing:** Headlines 44-64px, body 24-28px, captions 18-22px. Never smaller than 18px.
-- **Actual stats:** 50+ skills, 8 right-click services, 12 agent crews, 250K token context, v1.5.0
+- **Actual stats:** 50+ skills, 8 right-click services, 10+ agent crews, 250K token context, v1.5.0

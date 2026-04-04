@@ -1960,8 +1960,8 @@ def _fetch_url_content(url: str, max_chars: int = 8000) -> str:
 
 def _enrich_messages(messages: list, config: dict, force_search: bool = False) -> list:
     """
-    Auto-detect URLs and search intent in the last user message.
-    Injects a context message before the last user message when content is found.
+    Auto-detect URLs, search intent, and memory recall in the last user message.
+    Injects context messages before the last user message when content is found.
     force_search=True bypasses intent detection and always searches.
     Returns a (possibly modified) copy of the messages list.
     """
@@ -1983,6 +1983,43 @@ def _enrich_messages(messages: list, config: dict, force_search: bool = False) -
         return messages
 
     context_parts = []
+    memory_parts = []
+
+    # ── Memory recall ──────────────────────────────────────────────────────────
+    # Always inject relevant memory context so the LLM has cross-session recall
+    try:
+        from codec_memory import CodecMemory
+        mem = CodecMemory()
+        lower = last_text.lower()
+        # Explicit memory triggers → targeted search
+        memory_triggers = [
+            'remember', 'recall', 'earlier', 'before', 'last time',
+            'previously', 'we talked', 'we discussed', 'you said',
+            'did i', 'did we', 'have i', 'have we', 'my previous',
+            'past conversation', 'history', 'do you know my',
+            'what was', 'what did', 'when did',
+        ]
+        has_memory_trigger = any(t in lower for t in memory_triggers)
+        if has_memory_trigger:
+            # Targeted FTS search for the user's query
+            mem_context = mem.get_context(last_text, n=8)
+            if mem_context:
+                memory_parts.append(f"[MEMORY — RELEVANT PAST CONVERSATIONS]\n{mem_context}\n[END MEMORY]")
+                log.info(f"Memory recall injected (targeted): {len(mem_context)} chars")
+        # Always inject recent context (last 5 messages) for continuity
+        recent = mem.search_recent(days=3, limit=5)
+        if recent:
+            lines = ["[RECENT MEMORY — LAST 3 DAYS]"]
+            for r in recent:
+                ts = r["timestamp"][:16].replace("T", " ")
+                snippet = r["content"][:200].replace("\n", " ")
+                lines.append(f"  [{ts}] {r['role'].upper()}: {snippet}")
+            lines.append("[END RECENT MEMORY]")
+            recent_ctx = "\n".join(lines)
+            memory_parts.append(recent_ctx)
+            log.info(f"Recent memory injected: {len(recent)} messages")
+    except Exception as e:
+        log.warning(f"Memory enrichment failed: {e}")
 
     # ── URL detection ──────────────────────────────────────────────────────────
     urls = _re.findall(r'https?://[^\s\)\]>,"\']+', last_text)
@@ -2014,13 +2051,20 @@ def _enrich_messages(messages: list, config: dict, force_search: bool = False) -
         except Exception as e:
             log.warning(f"Chat search failed: {e}")
 
-    if not context_parts:
+    if not context_parts and not memory_parts:
         return messages
 
-    # Inject context as an assistant message just before the last user message
-    context_msg = {"role": "assistant", "content": "\n\n".join(context_parts)}
     enriched = list(messages)
-    enriched.insert(last_user_idx, context_msg)
+
+    # Inject memory + other context as a single user message (hidden context)
+    # Using role "user" with clear [INTERNAL] framing so local LLMs don't choke on mid-conversation "system" role
+    all_context = memory_parts + context_parts
+    if all_context:
+        prefix = ("(INTERNAL CONTEXT — do not echo this block. Use it to inform your answer naturally. "
+                   "Never show raw [MEMORY] or [RECENT MEMORY] tags to the user.)\n\n")
+        context_msg = {"role": "user", "content": prefix + "\n\n".join(all_context)}
+        enriched.insert(last_user_idx, context_msg)
+
     return enriched
 
 

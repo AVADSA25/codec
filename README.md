@@ -71,7 +71,7 @@ Hold a key. Say what you mean. Release. Text appears wherever the cursor is. If 
 
 Select any text, anywhere. Right-click. Eight AI services system-wide: Proofread, Elevate, Explain, Translate, Reply (with `:tone` syntax), Prompt, Read Aloud, Save. Powered by the local LLM.
 
-### CODEC Chat — 250K Context + 12 Agent Crews
+### CODEC Chat — 250K Context + 10+ Agent Crews
 
 Full conversational AI. Long context. File uploads. Image analysis via vision model. Web search. Conversation history.
 
@@ -182,7 +182,7 @@ Private dashboard accessible from any device, anywhere. Cloudflare Tunnel or Tai
 | Clicks UI elements by voice | Vision + mouse control | No | No (Cloud Computer Use only) |
 | Runs 100% local | Yes — all models on device | No | No |
 | Voice-to-voice calls | WebSocket, real-time | Yes but cloud | Yes but cloud |
-| Multi-agent workflows | 12 crews, local LLM | No | Limited |
+| Multi-agent workflows | 10+ crews, local LLM | No | Limited |
 | Right-click AI services | 8 system-wide services | No | No |
 | Writes its own plugins | Skill Forge | No | No |
 | Open source | MIT | No | No |
@@ -389,7 +389,7 @@ codec_config.py       — Configuration + transcript cleaning
 codec_keyboard.py     — Keyboard listener, PTT lock, wake word
 codec_dispatch.py     — Skill matching and dispatch (with fallback)
 codec_agent.py        — LLM session builder
-codec_agents.py       — Multi-agent crew framework (12 crews)
+codec_agents.py       — Multi-agent crew framework (10+ crews)
 codec_voice.py        — WebSocket voice pipeline
 codec_voice.html      — Voice call UI
 codec_dashboard.py    — Web API + dashboard (60+ endpoints)

@@ -814,7 +814,7 @@ def social_media_crew(**kwargs) -> Crew:
     if "codec" in topic.lower():
         codec_ctx = (
             "\n\nIMPORTANT CONTEXT: CODEC is an open-source intelligent command layer for macOS "
-            "— a voice-controlled AI workstation with 56+ skills, multi-agent crews, local LLMs, "
+            "— a voice-controlled AI workstation with 50+ skills, 10+ multi-agent crews, local LLMs, "
             "and Google Workspace integration. It is NOT a video codec. "
             "Website: opencodec.org. Built by AVA Digital."
         )

@@ -34,7 +34,7 @@ def banner():
     ╚═══════════════════════════════════════════╝{X}
 {W}  Your Open-Source Intelligent Command Layer
   7 products: Core · Dictate · Instant · Chat · Vibe · Voice · Overview
-  50+ skills · 8 text services · 12 AI agent crews{X}
+  50+ skills · 8 text services · 10+ AI agent crews{X}
 """)
 
 def ask(prompt, options=None, default=None):
