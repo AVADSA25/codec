@@ -32,6 +32,14 @@ app = FastAPI(
 )
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:8090", "http://127.0.0.1:8090", "https://codec.lucyvpa.com"], allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"], allow_headers=["*"])
 
+# ── Background Services (replaces PM2 daemons for scheduler, heartbeat, watcher) ──
+_bg_tasks: dict = {}
+_bg_status: dict = {
+    "scheduler": {"running": False, "last_tick": None, "errors": 0},
+    "heartbeat": {"running": False, "last_tick": None, "errors": 0},
+    "watcher":   {"running": False, "last_tick": None, "errors": 0},
+}
+
 
 class AuthMiddleware(BaseHTTPMiddleware):
     """Combined auth: bearer token (API) + biometric Touch ID sessions (dashboard)."""
@@ -2822,9 +2830,91 @@ async def cdp_status():
     except Exception:
         return {"connected": False, "total_tabs": 0, "page_tabs": 0, "tabs": []}
 
+# ═══════════════════════════════════════════════════════════════
+# BACKGROUND SERVICES (scheduler, heartbeat, watcher)
+# ═══════════════════════════════════════════════════════════════
+
+async def _bg_scheduler():
+    """Run schedule checks every 60s, aligned to minute boundaries."""
+    from codec_scheduler import check_and_run
+    _bg_status["scheduler"]["running"] = True
+    log.info("[SCHEDULER] Background service started")
+    while True:
+        try:
+            await asyncio.to_thread(check_and_run)
+            _bg_status["scheduler"]["last_tick"] = datetime.now().isoformat()
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            _bg_status["scheduler"]["errors"] += 1
+            log.error(f"[SCHEDULER] Error: {e}")
+        now = time.time()
+        await asyncio.sleep(max(1, 60 - (now % 60)))
+    _bg_status["scheduler"]["running"] = False
+
+
+async def _bg_heartbeat():
+    """Run heartbeat checks every 30 minutes."""
+    from codec_heartbeat import heartbeat
+    _bg_status["heartbeat"]["running"] = True
+    log.info("[HEARTBEAT] Background service started")
+    while True:
+        try:
+            await asyncio.to_thread(heartbeat)
+            _bg_status["heartbeat"]["last_tick"] = datetime.now().isoformat()
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            _bg_status["heartbeat"]["errors"] += 1
+            log.error(f"[HEARTBEAT] Error: {e}")
+        await asyncio.sleep(1800)
+    _bg_status["heartbeat"]["running"] = False
+
+
+async def _bg_watcher():
+    """Poll for draft tasks every 200ms."""
+    from codec_watcher import TASK_FILE, handle_draft
+    _bg_status["watcher"]["running"] = True
+    log.info("[WATCHER] Background service started")
+    while True:
+        try:
+            if os.path.exists(TASK_FILE):
+                with open(TASK_FILE) as f:
+                    data = json.load(f)
+                os.unlink(TASK_FILE)
+                await asyncio.to_thread(
+                    handle_draft, data["task"], data.get("ctx", ""), data.get("app", "")
+                )
+                _bg_status["watcher"]["last_tick"] = datetime.now().isoformat()
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            _bg_status["watcher"]["errors"] += 1
+            log.error(f"[WATCHER] Error: {e}")
+        await asyncio.sleep(0.2)
+    _bg_status["watcher"]["running"] = False
+
+
+@app.on_event("startup")
+async def _start_background_services():
+    """Launch scheduler, heartbeat, and watcher as background async tasks."""
+    _bg_tasks["scheduler"] = asyncio.create_task(_bg_scheduler())
+    _bg_tasks["heartbeat"] = asyncio.create_task(_bg_heartbeat())
+    _bg_tasks["watcher"]   = asyncio.create_task(_bg_watcher())
+    log.info("[STARTUP] Background services launched: scheduler, heartbeat, watcher")
+
+
 @app.on_event("shutdown")
-async def _close_db_connections():
-    """Close all reusable SQLite connections on server shutdown."""
+async def _shutdown_services():
+    """Cancel background services and close SQLite connections."""
+    for name, task in _bg_tasks.items():
+        if task and not task.done():
+            task.cancel()
+            log.info(f"[SHUTDOWN] Cancelling {name}")
+    if _bg_tasks:
+        await asyncio.gather(*_bg_tasks.values(), return_exceptions=True)
+    _bg_tasks.clear()
+    log.info("[SHUTDOWN] All background services stopped")
     global _db_conn, _qchat_conn, _vibe_conn
     for conn in (_db_conn, _qchat_conn, _vibe_conn):
         if conn is not None:
@@ -2833,6 +2923,21 @@ async def _close_db_connections():
             except Exception:
                 pass
     _db_conn = _qchat_conn = _vibe_conn = None
+
+
+@app.get("/api/services/status")
+async def services_status():
+    """Show status of background services (scheduler, heartbeat, watcher)."""
+    result = {}
+    for name, info in _bg_status.items():
+        task = _bg_tasks.get(name)
+        result[name] = {
+            "running": task is not None and not task.done() if task else False,
+            "last_tick": info["last_tick"],
+            "errors": info["errors"],
+        }
+    return result
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8090,

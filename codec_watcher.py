@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """CODEC Q-Watcher v3.0 | Smart draft/reply with Screenshot Vision"""
 import os, time, requests, subprocess, tempfile, json, signal, re, base64
-signal.signal(signal.SIGINT, lambda *a: None)
-signal.signal(signal.SIGTERM, lambda *a: None)
+if __name__ == "__main__":
+    signal.signal(signal.SIGINT, lambda *a: None)
+    signal.signal(signal.SIGTERM, lambda *a: None)
 
 QWEN_BASE_URL  = "http://localhost:8081/v1"
 QWEN_MODEL     = "mlx-community/Qwen3.5-35B-A3B-4bit"
@@ -212,15 +213,16 @@ def handle_draft(task, ctx, app):
         capture_output=True)
     speak("Draft pasted.")
 
-print("[CODEC Watcher v3.0] Running. Screenshot Vision for context.")
-while True:
-    if os.path.exists(TASK_FILE):
-        try:
-            with open(TASK_FILE) as f:
-                data = json.load(f)
-            os.unlink(TASK_FILE)
-            handle_draft(data["task"], data.get("ctx",""), data.get("app",""))
-        except Exception as e:
-            print(f"[Watcher] Error: {e}")
-            import traceback; traceback.print_exc()
-    time.sleep(0.2)
+if __name__ == "__main__":
+    print("[CODEC Watcher v3.0] Running. Screenshot Vision for context.")
+    while True:
+        if os.path.exists(TASK_FILE):
+            try:
+                with open(TASK_FILE) as f:
+                    data = json.load(f)
+                os.unlink(TASK_FILE)
+                handle_draft(data["task"], data.get("ctx",""), data.get("app",""))
+            except Exception as e:
+                print(f"[Watcher] Error: {e}")
+                import traceback; traceback.print_exc()
+        time.sleep(0.2)
