@@ -191,7 +191,6 @@ def check_and_run():
     """Check every minute whether any schedules should fire right now."""
     schedules = load_schedules()
     now = datetime.now()
-    changed = False
 
     for sched in schedules:
         if not sched.get("enabled"):
@@ -204,29 +203,63 @@ def check_and_run():
         if last_run and last_run[:10] == now.strftime("%Y-%m-%d"):
             continue
 
-        log.info(f"🚀 Scheduled run: {sched['crew']} — {sched.get('topic', '')}")
-        success = _run_crew(sched)
-        if success:
-            sched["last_run"] = now.isoformat()
-            changed = True
-
-    if changed:
+        # Mark as fired BEFORE running (prevents double-fire from race conditions)
+        sched["last_run"] = now.isoformat()
         save_schedules(schedules)
+        log.info(f"🚀 Scheduled run: {sched['crew']} — {sched.get('topic', '')}")
+        _run_crew(sched)
+
+
+_PID_FILE = os.path.expanduser("~/.codec/scheduler.pid")
+
+
+def _acquire_pid_lock() -> bool:
+    """Ensure only one scheduler daemon runs. Returns True if lock acquired."""
+    # Check if existing PID is still alive
+    if os.path.exists(_PID_FILE):
+        try:
+            with open(_PID_FILE) as f:
+                old_pid = int(f.read().strip())
+            os.kill(old_pid, 0)  # signal 0 = check if alive
+            log.warning(f"Scheduler already running (PID {old_pid}). Exiting.")
+            return False
+        except (ProcessLookupError, ValueError):
+            pass  # stale PID file, we can take over
+        except PermissionError:
+            log.warning("Scheduler PID exists and is owned by another user. Exiting.")
+            return False
+    # Write our PID
+    os.makedirs(os.path.dirname(_PID_FILE), exist_ok=True)
+    with open(_PID_FILE, "w") as f:
+        f.write(str(os.getpid()))
+    return True
+
+
+def _release_pid_lock():
+    try:
+        os.remove(_PID_FILE)
+    except FileNotFoundError:
+        pass
 
 
 def run_daemon(check_interval: int = 60):
     """Run check_and_run every minute, aligned to the start of each minute."""
-    schedules = load_schedules()
-    log.info(f"Scheduler daemon starting — {len(schedules)} schedule(s) loaded")
-    while True:
-        try:
-            check_and_run()
-        except Exception as e:
-            log.error(f"Scheduler loop error: {e}")
-        # Sleep until the next minute boundary to avoid drift
-        now = time.time()
-        sleep_secs = check_interval - (now % check_interval)
-        time.sleep(max(1, sleep_secs))
+    if not _acquire_pid_lock():
+        sys.exit(0)
+    try:
+        schedules = load_schedules()
+        log.info(f"Scheduler daemon starting (PID {os.getpid()}) — {len(schedules)} schedule(s) loaded")
+        while True:
+            try:
+                check_and_run()
+            except Exception as e:
+                log.error(f"Scheduler loop error: {e}")
+            # Sleep until the next minute boundary to avoid drift
+            now = time.time()
+            sleep_secs = check_interval - (now % check_interval)
+            time.sleep(max(1, sleep_secs))
+    finally:
+        _release_pid_lock()
 
 
 # ── CODEC Skill (voice control) ──────────────────────────────────────────────
