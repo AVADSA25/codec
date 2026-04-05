@@ -322,7 +322,7 @@ class VoicePipeline:
         max_msgs = MAX_CONTEXT_TURNS * 2
         return system + convo[-max_msgs:]
 
-    async def _stream_qwen(self, messages: list, max_tokens: int = 300):
+    async def _stream_qwen(self, messages: list, max_tokens: int = 2000):
         payload = {
             "model": QWEN_MODEL,
             "messages": messages,
@@ -346,7 +346,10 @@ class VoicePipeline:
                     if data == "[DONE]":
                         break
                     try:
-                        token = json.loads(data)["choices"][0].get("delta", {}).get("content", "")
+                        delta = json.loads(data)["choices"][0].get("delta", {})
+                        token = delta.get("content", "") or ""
+                        # Qwen 3.5 puts thinking in reasoning field, answer in content
+                        # Only yield content tokens — reasoning is internal thinking
                         if token:
                             token = re.sub(r"<think>[\s\S]*?</think>", "", token)
                             if token:
@@ -381,6 +384,8 @@ class VoicePipeline:
             def _downscale():
                 from PIL import Image
                 img = Image.open(path)
+                if img.mode == "RGBA":
+                    img = img.convert("RGB")
                 w, h = img.size
                 if w > 1280:
                     ratio = 1280 / w
@@ -509,7 +514,7 @@ class VoicePipeline:
             {"role": "user",   "content": result},
         ]
         summary = ""
-        async for chunk in self._stream_qwen(summary_msgs, max_tokens=150):
+        async for chunk in self._stream_qwen(summary_msgs, max_tokens=1000):
             summary += chunk
         return summary.strip() or result[:300]
 
@@ -767,52 +772,45 @@ class VoicePipeline:
                 if self._is_screen_request(user_text):
                     print("[Voice] Screen analysis requested")
                     await self.ws.send_json({"type": "status", "status": "analyzing_screen"})
-                    # Speak a quick acknowledgment so user knows it's working
-                    await self._speak("Let me take a look at your screen.")
+                    # Camera shutter sound + overlay for visual feedback
+                    asyncio.get_event_loop().run_in_executor(None, lambda: subprocess.Popen(
+                        ["afplay", "/System/Library/Sounds/Tink.aiff"],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+                    asyncio.get_event_loop().run_in_executor(None, lambda: subprocess.Popen(
+                        [sys.executable, "-c",
+                         "import tkinter as tk;r=tk.Tk();r.overrideredirect(1);r.attributes('-topmost',1);"
+                         "r.attributes('-alpha',0.95);r.configure(bg='#0a0a0a');"
+                         "sw=r.winfo_screenwidth();sh=r.winfo_screenheight();"
+                         "w,h=360,60;r.geometry(f'{w}x{h}+{(sw-w)//2}+{sh-130}');"
+                         "c=tk.Canvas(r,bg='#0a0a0a',highlightthickness=0,width=w,height=h);c.pack();"
+                         "c.create_rectangle(1,1,w-1,h-1,outline='#00aaff',width=1);"
+                         "c.create_text(w//2,h//2,text='\U0001f4f7  Analyzing your screen...',fill='#00aaff',font=('Helvetica',13));"
+                         "r.after(8000,r.destroy);r.mainloop()"],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
                     screenshot_b64 = await self._take_screenshot()
+                    print(f"[Voice] Screenshot taken: {'OK' if screenshot_b64 else 'FAILED'}")
                     if screenshot_b64:
-                        await self._speak("Got it. Analyzing what I see.")
+                        self.interrupted.clear()
+                        await self.ws.send_json({"type": "status", "status": "processing"})
+                        print("[Voice] Sending to vision model...")
                         vision_desc = await self._analyze_screenshot(screenshot_b64, user_text)
+                        print(f"[Voice] Vision result: {'OK (' + str(len(vision_desc)) + ' chars)' if vision_desc else 'EMPTY/FAILED'}")
                         if vision_desc:
-                            # Inject screen context into conversation so LLM can discuss it
-                            screen_context = (
-                                f"[SCREEN ANALYSIS] I just looked at the user's screen. "
-                                f"Here's what I see: {vision_desc}"
-                            )
+                            # Speak the vision description directly — no LLM needed
+                            # Clean up vision output for TTS
+                            clean_desc = re.sub(r'[*#`\[\]]', '', vision_desc).strip()
+                            print(f"[Voice] Speaking vision result directly: {clean_desc[:100]}...")
                             self.messages.append({"role": "user", "content": user_text})
-                            self.messages.append({"role": "system", "content": screen_context})
-                            # Now stream LLM response with screen awareness
-                            await self.ws.send_json({"type": "status", "status": "processing"})
-                            sentence_buf = ""
-                            full_text = ""
-                            interrupted_mid = False
-                            follow_up = (
-                                f"Based on what you see on my screen, respond to what I said: \"{user_text}\". "
-                                "Be helpful and specific about what's visible."
-                            )
-                            async for token in self._stream_qwen(self._trimmed_messages() + [
-                                {"role": "user", "content": follow_up}
-                            ]):
-                                if self.interrupted.is_set():
-                                    interrupted_mid = True
-                                    break
-                                sentence_buf += token
-                                full_text += token
-                                to_speak, sentence_buf = self._flush_on_boundary(sentence_buf)
-                                if to_speak:
-                                    await self.ws.send_json({"type": "transcript_chunk", "text": to_speak})
-                                    ok = await self._speak(to_speak)
-                                    if not ok:
-                                        interrupted_mid = True
-                                        break
-                            if not interrupted_mid and sentence_buf.strip():
-                                await self.ws.send_json({"type": "transcript_chunk", "text": sentence_buf})
-                                await self._speak(sentence_buf.strip())
+                            screen_context = f"I looked at your screen. Here's what I see: {clean_desc}"
+                            self.messages.append({"role": "assistant", "content": screen_context})
+                            self.interrupted.clear()
+                            # Send transcript and speak
+                            response_text = f"Here's what I see on your screen. {clean_desc}"
                             await self.ws.send_json({
                                 "type": "transcript", "role": "assistant",
-                                "text": full_text.strip() + (" [interrupted]" if interrupted_mid else "")
+                                "text": response_text
                             })
-                            self.messages.append({"role": "assistant", "content": full_text.strip()})
+                            await self._speak(response_text)
                             self.processing = False
                             await self.ws.send_json({"type": "status", "status": "listening"})
                             continue

@@ -3,9 +3,15 @@ import signal
 signal.signal(signal.SIGINT, lambda *a: None)
 signal.signal(signal.SIGTERM, lambda *a: None)
 """CODEC v1.0 | F13=on/off | F18=voice | F16=text | *=screenshot | +=doc | Wake word"""
-import threading, tempfile, subprocess, sys, os, time, sqlite3, json, re, base64
+import threading, tempfile, subprocess, sys, os, time, sqlite3, json, re, base64, shutil
 from datetime import datetime
 from pynput import keyboard
+
+# Ensure homebrew tools are on PATH (PM2 may not inherit full shell PATH)
+_BREW = "/opt/homebrew/bin"
+if _BREW not in os.environ.get("PATH", ""):
+    os.environ["PATH"] = _BREW + ":" + os.environ.get("PATH", "")
+SOX = shutil.which("sox") or "sox"
 
 # ── CONFIG (load from ~/.codec/config.json or use defaults) ───────────────────
 CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
@@ -41,7 +47,7 @@ WHISPER_URL       = _cfg.get("stt_url", "http://localhost:8084/v1/audio/transcri
 DB_PATH            = os.path.expanduser("~/.q_memory.db")
 Q_TERMINAL_TITLE   = "Q -- CODEC Session"
 TASK_QUEUE_FILE    = "/tmp/q_task_queue.txt"
-DRAFT_TASK_FILE    = "/tmp/q_draft_task.json"
+DRAFT_TASK_FILE    = os.path.expanduser("~/.codec/draft_task.json")
 SESSION_ALIVE      = "/tmp/q_session_alive"
 SKILLS_DIR         = os.path.expanduser("~/.codec/skills")
 
@@ -58,6 +64,7 @@ def strip_think(text):
     return re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()
 
 from codec_overlays import show_overlay, show_recording_overlay, show_processing_overlay, show_toggle_overlay
+from codec_identity import CODEC_VOICE_PROMPT
 
 # ── DETECTION ────────────────────────────────────────────────────────────────
 DRAFT_KEYWORDS = [
@@ -271,6 +278,7 @@ state = {
     "last_star": 0.0,
     "screen_ctx": "",
     "last_plus": 0.0,
+    "last_minus": 0.0,
     "doc_ctx": "",
 }
 
@@ -620,6 +628,7 @@ def dispatch(task):
     if is_draft(task):
         push(lambda: show_overlay('Reading screen...', '#E8711A', 2000))
         ctx = screenshot_ctx()
+        push(lambda: show_processing_overlay('Drafting your message...', 15000))
         with open(DRAFT_TASK_FILE, "w") as f:
             json.dump({"task": task, "ctx": ctx, "app": app}, f)
         print(f"[CODEC] Draft queued for watcher")
@@ -627,8 +636,28 @@ def dispatch(task):
 
     rid = save_task(task, app)
     mem = get_memory(5)
-    sys_p = "You are CODEC, a JARVIS-class AI assistant on Mac Studio M1 Ultra. ALWAYS respond in English only. Never respond in Chinese or any other language unless explicitly asked to translate. Answer in 1-3 sentences. Be natural and conversational like a smart friend. Add useful details when relevant. Full computer access. Never say cannot."
+    # Build rich memory context from CodecMemory (same as chat mode)
+    mem_ctx = ""
+    try:
+        from codec_memory import CodecMemory
+        cm = CodecMemory()
+        targeted = cm.get_context(task, n=5)
+        if targeted:
+            mem_ctx += f"\n\n[MEMORY — RELEVANT PAST CONVERSATIONS]\n{targeted}\n[END MEMORY]"
+        recent = cm.search_recent(days=3, limit=5)
+        if recent:
+            lines = ["[RECENT MEMORY — LAST 3 DAYS]"]
+            for r in recent:
+                ts = r["timestamp"][:16].replace("T", " ")
+                snippet = r["content"][:200].replace("\n", " ")
+                lines.append(f"  [{ts}] {r['role'].upper()}: {snippet}")
+            lines.append("[END RECENT MEMORY]")
+            mem_ctx += "\n\n" + "\n".join(lines)
+    except Exception:
+        pass
+    sys_p = CODEC_VOICE_PROMPT
     if mem: sys_p += "\n\n" + mem
+    if mem_ctx: sys_p += mem_ctx
     safe_sys = sys_p.replace("'","").replace('"','').replace('\n',' ')
 
     with open(TASK_QUEUE_FILE, "w") as f:
@@ -707,7 +736,7 @@ def do_screenshot_question():
     if not ctx:
         push(lambda: show_overlay('Screenshot failed', '#ff3333', 2000))
         return
-    log.info(f"Screenshot captured ({len(ctx)} chars)")
+    print(f"[CODEC] Screenshot captured ({len(ctx)} chars)")
     # Show brief summary of what was captured, then open question dialog
     summary = ctx[:120].replace('"', '\\"').replace('\n', ' ')
     try:
@@ -726,7 +755,7 @@ def do_screenshot_question():
             state["screen_ctx"] = ctx
             push(lambda: show_overlay('Screenshot saved — use voice or text to ask', '#E8711A', 3000))
     except Exception as e:
-        log.error(f"Screenshot dialog error: {e}")
+        print(f"[CODEC] Screenshot dialog error: {e}")
         state["screen_ctx"] = ctx
 
 # ── TEXT/VOICE HANDLERS ───────────────────────────────────────────────────────
@@ -742,7 +771,7 @@ def do_start_recording():
     tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
     state["audio_path"] = tmp.name; tmp.close()
     rec = subprocess.Popen(
-        ["sox", "-t", "coreaudio", "default", "-r", "16000", "-c", "1", "-b", "16", "-e", "signed-integer", state["audio_path"]],
+        [SOX, "-t", "coreaudio", "default", "-r", "16000", "-c", "1", "-b", "16", "-e", "signed-integer", state["audio_path"]],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     state["rec_proc"] = rec
     print("[CODEC] Recording...")
@@ -754,6 +783,11 @@ def do_stop_voice():
         try: rec.terminate(); rec.wait(timeout=3)
         except: pass
     state["rec_proc"] = None; state["recording"] = False
+    ovl = state.get("overlay_proc")
+    if ovl:
+        try: ovl.terminate()
+        except: pass
+        state["overlay_proc"] = None
     if not audio or not os.path.exists(audio): return
     if os.path.getsize(audio) < 1000:
         try: os.unlink(audio)
@@ -771,23 +805,49 @@ def do_stop_voice():
 
 # ── WAKE WORD LISTENER ───────────────────────────────────────────────────────
 def wake_word_listener():
-    import sounddevice as sd
-    import numpy as np
-    import soundfile as sf
     import requests as req_wake
     sample_rate = 16000
-    chunk_samples = int(WAKE_CHUNK_SEC * sample_rate)
-    print("[CODEC] Wake word listener started. Say 'Hey CODEC' to activate.")
+    chunk_sec = WAKE_CHUNK_SEC
+    # Find the Anker webcam mic — always use it for wake word regardless of BT devices
+    wake_device = "default"
+    try:
+        import sounddevice as sd
+        for i, d in enumerate(sd.query_devices()):
+            if d['max_input_channels'] > 0 and 'anker' in d['name'].lower():
+                wake_device = d['name']
+                break
+    except: pass
+    print(f"[CODEC] Wake word listener started (mic: {wake_device}). Say 'Hey CODEC' to activate.")
+    _wake_diag_done = False
     while True:
-        if not WAKE_WORD or state["recording"] or not state["active"]:
+        if not WAKE_WORD or state["recording"]:
             time.sleep(0.3); continue
         try:
-            audio = sd.rec(chunk_samples, samplerate=sample_rate, channels=1, dtype='int16')
-            sd.wait()
-            energy = np.abs(audio).mean()
-            if energy < WAKE_ENERGY: continue
             tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False); tmp.close()
-            sf.write(tmp.name, audio, sample_rate)
+            proc = subprocess.run(
+                [SOX, "-t", "coreaudio", wake_device, "-r", str(sample_rate), "-c", "1",
+                 "-b", "16", "-e", "signed-integer", tmp.name, "trim", "0", str(chunk_sec)],
+                timeout=int(chunk_sec) + 3, capture_output=True)
+            if not os.path.exists(tmp.name) or os.path.getsize(tmp.name) < 500:
+                try: os.unlink(tmp.name)
+                except: pass
+                continue
+            # Check actual audio energy
+            try:
+                import wave, numpy as np
+                wf = wave.open(tmp.name, 'rb')
+                data = np.frombuffer(wf.readframes(wf.getnframes()), dtype=np.int16)
+                wf.close()
+                energy = np.abs(data).mean()
+            except:
+                energy = 0
+            if not _wake_diag_done or energy > 80:
+                print(f"[CODEC] Wake mic: energy={energy:.0f} (threshold={WAKE_ENERGY})")
+                _wake_diag_done = True
+            if energy < WAKE_ENERGY:
+                try: os.unlink(tmp.name)
+                except: pass
+                continue
             try:
                 with open(tmp.name, "rb") as f:
                     r = req_wake.post(WHISPER_URL,
@@ -796,9 +856,25 @@ def wake_word_listener():
                         timeout=10)
                 if r.status_code == 200:
                     text = r.json().get("text", "").lower().strip()
-                    if any(phrase in text for phrase in WAKE_PHRASES):
+                    if not text or len(text) < 2:
+                        continue
+                    # Filter Whisper hallucinations (repetitive gibberish)
+                    if len(text) > 120:
+                        continue
+                    print(f"[CODEC] Wake heard: '{text}'")
+                    # Simple keyword match — if "codec/codex/kodak/kodec" appears anywhere, it's a wake
+                    _WAKE_KEYWORDS = ["codec", "codex", "kodak", "kodec", "kodak", "co-dec", "caudec", "codag"]
+                    _matched = any(kw in text for kw in _WAKE_KEYWORDS)
+                    if _matched:
+                        # Auto-activate if not already on
+                        if not state["active"]:
+                            state["active"] = True
+                            push(lambda: show_toggle_overlay(True, "F18=voice | **=screen | --=chat"))
                         command = text
-                        for phrase in WAKE_PHRASES: command = command.replace(phrase, "").strip()
+                        # Strip wake keywords and common prefixes
+                        for kw in _WAKE_KEYWORDS + ["hey", "and", "hay", "eh", "ay"]:
+                            command = command.replace(kw, "").strip()
+                        command = re.sub(r'^[\s,.\-]+|[\s,.\-]+$', '', command)
                         if len(command) > 3:
                             print(f"[CODEC] Wake + command: {command}")
                             push(lambda: show_overlay('Heard you!', '#E8711A', 1500))
@@ -806,19 +882,24 @@ def wake_word_listener():
                         else:
                             print("[CODEC] Wake word detected! Listening...")
                             push(lambda: show_overlay('Listening...', '#E8711A', 5000))
-                            full_audio = sd.rec(int(8 * sample_rate), samplerate=sample_rate, channels=1, dtype='int16')
-                            sd.wait()
+                            # Record follow-up command (8 seconds)
                             tmp2 = tempfile.NamedTemporaryFile(suffix=".wav", delete=False); tmp2.close()
-                            sf.write(tmp2.name, full_audio, sample_rate)
+                            subprocess.run(
+                                [SOX, "-t", "coreaudio", wake_device, "-r", str(sample_rate), "-c", "1",
+                                 "-b", "16", "-e", "signed-integer", tmp2.name, "trim", "0", "8"],
+                                timeout=12, capture_output=True)
                             task = transcribe(tmp2.name)
                             if task:
                                 print(f"[CODEC] Heard: {task}")
                                 push(lambda t=task: dispatch(t))
-            except: pass
+            except Exception as e:
+                print(f"[CODEC] Wake whisper error: {e}")
             finally:
                 try: os.unlink(tmp.name)
                 except: pass
-        except: time.sleep(0.5)
+        except Exception as e:
+            print(f"[CODEC] Wake listener error: {e}")
+            time.sleep(0.5)
         time.sleep(0.1)
 
 # ── KEYBOARD ──────────────────────────────────────────────────────────────────
@@ -834,8 +915,8 @@ def on_press(key):
             print("[CODEC] OFF")
         else:
             state["active"] = True
-            push(lambda: show_toggle_overlay(True, "F18=voice  F16=text  **=screen  ++=doc"))
-            print("[CODEC] ON -- F18=voice | F16=text | *=screen | +=doc")
+            push(lambda: show_toggle_overlay(True, "F18=voice  F16=text  **=screen  ++=doc  --=chat"))
+            print("[CODEC] ON -- F18=voice | F16=text | *=screen | +=doc | --=chat")
         return
     if not state["active"]: return
     if key == keyboard.Key.f16:
@@ -845,7 +926,7 @@ def on_press(key):
         if not state["recording"]:
             state["recording"] = True
             push(do_start_recording)
-            push(lambda: show_recording_overlay('F18'))
+            state["overlay_proc"] = show_recording_overlay('F18')
         return
     if hasattr(key, 'char') and key.char == '*':
         if now - state["last_star"] < 0.5:
@@ -862,6 +943,16 @@ def on_press(key):
             state["last_plus"] = 0.0
             return
         state["last_plus"] = now
+        return
+    if hasattr(key, 'char') and key.char == '-':
+        if now - state.get("last_minus", 0.0) < 0.5:
+            print("[CODEC] Minus x2 -- live chat mode")
+            pipecat_url = _cfg.get("pipecat_url", "http://localhost:8090/voice?auto=1")
+            push(lambda: show_overlay('Live Chat connecting...', '#E8711A', 3000))
+            subprocess.Popen(["open", "-a", "Google Chrome", pipecat_url])
+            state["last_minus"] = 0.0
+            return
+        state["last_minus"] = now
         return
 
 def on_release(key):

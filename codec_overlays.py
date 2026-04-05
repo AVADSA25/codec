@@ -262,15 +262,15 @@ root.attributes('-alpha',0.95)
 root.configure(bg='#0a0a0a')
 sw=root.winfo_screenwidth()
 sh=root.winfo_screenheight()
-w,h=440,84
+w,h=520,90
 x=(sw-w)//2
 y=sh-130
 root.geometry(f'{{w}}x{{h}}+{{x}}+{{y}}')
 cv=tk.Canvas(root,bg='#0a0a0a',highlightthickness=0,width=w,height=h)
 cv.pack()
 cv.create_rectangle(1,1,w-1,h-1,outline=_color,width=1)
-cv.create_text(w//2,39 if not _shortcuts else 24,text=_label,fill=_color,font=('Helvetica',18,'bold'))
-if _shortcuts: cv.create_text(w//2,55,text=_shortcuts,fill='#aaaaaa',font=('Helvetica',13))
+cv.create_text(w//2,39 if not _shortcuts else 26,text=_label,fill=_color,font=('Helvetica',18,'bold'))
+if _shortcuts: cv.create_text(w//2,58,text=_shortcuts,fill='#aaaaaa',font=('Helvetica',13))
 root.after({dur},root.destroy)
 root.mainloop()
 """

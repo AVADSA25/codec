@@ -349,17 +349,41 @@ python3 -c "from codec_config import *; print('Config OK')"
 <details>
 <summary><strong>Wake word doesn't trigger</strong></summary>
 
-- Check Whisper: `pm2 logs whisper-stt --lines 5 --nostream`
-- Check mic permission: System Settings → Privacy → Microphone
-- Say "Hey CODEC" clearly — 3 distinct syllables
+- **Check logs first**: `pm2 logs open-codec --lines 30 --nostream | grep -i wake`
+- **Energy too low?** Look for `Wake mic: energy=XX (threshold=YY)`. If energy < threshold, speak louder or lower `wake_energy` in `~/.codec/config.json` (default: 130)
+- **Whisper mishearing?** Look for `Wake heard: 'xxx'` — Whisper often transcribes "Hey CODEC" as "and codec", "and kodak", "hey codex". All common variants are matched automatically via keyword detection (any text containing "codec", "codex", "kodak", etc. triggers)
+- **Whisper hallucinating?** Long repetitive transcriptions (100+ chars of gibberish) are filtered automatically
+- **Mic not found?** Listener defaults to "default" CoreAudio device, but prefers Anker webcam mic if found. Check: `python3.13 -c "import sounddevice as sd; [print(f'{i}: {d[\"name\"]}') for i,d in enumerate(sd.query_devices()) if d['max_input_channels']>0]"`
+- **Mic permission?** Python must be in System Settings → Privacy → Microphone. Run `python3.13 request_mic.py` in iTerm to request access
+- **sox not found?** PM2 doesn't inherit shell PATH. CODEC now auto-adds `/opt/homebrew/bin` to PATH and resolves sox via `shutil.which()`
+- **state["active"] blocking?** Wake word now runs independently of F13 toggle — no need to press F13 first. Wake word auto-activates CODEC when triggered
+- **Bluetooth headphones?** A2DP mode records silence from CLI. Use wired mic or webcam mic
 </details>
 
 <details>
-<summary><strong>No voice output</strong></summary>
+<summary><strong>No voice output / Voice call issues</strong></summary>
 
 - Check Kokoro TTS: `curl http://localhost:8085/v1/models`
 - Fallback: `"tts_engine": "say"` in config.json (macOS built-in)
 - Disable: `"tts_engine": "none"`
+- **Qwen 3.5 reasoning/content split**: MLX server puts thinking in `reasoning` field, actual answer in `content`. With low `max_tokens`, model burns all tokens on thinking → empty `content`. Fix: set `max_tokens: 2000+` and only read `content` field, filter `<think>` tags
+- **Voice screenshot silent after "analyzing"**: If mic noise sets `self.interrupted` flag during long operations (screenshot/vision), it kills subsequent responses. Fix: clear `self.interrupted` before speaking response
+- **RGBA→JPEG crash**: macOS screenshots are PNG with alpha (RGBA). Must `img.convert("RGB")` before saving as JPEG
+</details>
+
+<details>
+<summary><strong>Draft/paste not working (IC-1)</strong></summary>
+
+- **Path mismatch**: `DRAFT_TASK_FILE` in codec.py must match `TASK_FILE` in codec_watcher.py. Both should be `~/.codec/draft_task.json`
+- Run smoke test: `python3.13 tests/test_smoke.py` — checks path alignment automatically
+- Check watcher: `pm2 logs codec-dashboard --lines 10 --nostream | grep -i draft`
+</details>
+
+<details>
+<summary><strong>Screenshot crashes (IC-3)</strong></summary>
+
+- **NameError: `log` not defined**: codec.py uses `print()` not `log.info()`. If you see `log.xxx()` calls, replace with `print(f"[CODEC] ...")`
+- Run smoke test: `python3.13 tests/test_smoke.py` — checks for undefined references
 </details>
 
 <details>
@@ -384,9 +408,10 @@ python3 -c "from codec_config import *; print('Config OK')"
 ## Project Structure
 
 ```
-codec.py              — Entry point
+codec.py              — Entry point (hotkeys, dispatch, wake word, recording)
+codec_identity.py     — Shared CODEC identity, voice prompt, chat prompt
 codec_config.py       — Configuration + transcript cleaning
-codec_keyboard.py     — Keyboard listener, PTT lock, wake word
+codec_keyboard.py     — Keyboard listener, PTT lock, wake word (legacy)
 codec_dispatch.py     — Skill matching and dispatch (with fallback)
 codec_agent.py        — LLM session builder
 codec_agents.py       — Multi-agent crew framework (10+ crews)
@@ -409,8 +434,10 @@ ax_bridge/            — Swift AX accessibility bridge
 swift-overlay/        — SwiftUI status bar app
 skills/               — 56 built-in skills (incl. vision mouse control)
 tests/                — 312 pytest tests
+request_mic.py        — macOS microphone permission helper (AVFoundation)
 install.sh            — One-line installer
 setup_codec.py        — Setup wizard (9 steps)
+tests/test_smoke.py   — 26-check regression smoke test
 ```
 
 ---
