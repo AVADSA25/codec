@@ -29,7 +29,9 @@ LLM_API_KEY       = _cfg.get("llm_api_key", "")
 LLM_KWARGS        = _cfg.get("llm_kwargs", {})
 LLM_PROVIDER      = _cfg.get("llm_provider", "mlx")
 
-# Vision (optional — only for local MLX setups)
+# Vision — prefer Gemini Flash (fast cloud), fall back to local Qwen VL
+GEMINI_API_KEY    = _cfg.get("gemini_api_key", os.environ.get("GEMINI_API_KEY", ""))
+VISION_PROVIDER   = _cfg.get("vision_provider", "gemini" if GEMINI_API_KEY else "local")
 QWEN_VISION_URL   = _cfg.get("vision_base_url", "http://localhost:8082/v1")
 QWEN_VISION_MODEL = _cfg.get("vision_model", "mlx-community/Qwen2.5-VL-7B-Instruct-4bit")
 
@@ -145,16 +147,22 @@ def load_skills():
         except Exception as e:
             print(f"[CODEC] Skill error ({fname}): {e}")
 
-def check_skill(task):
+def check_skills_ranked(task):
+    """Return all matching skills, sorted by trigger length (best match first)."""
     low = task.lower()
-    best_skill = None
-    best_len = 0
+    matches = []
+    seen = set()
     for skill in loaded_skills:
         for trigger in skill['triggers']:
-            if trigger in low and len(trigger) > best_len:
-                best_skill = skill
-                best_len = len(trigger)
-    return best_skill
+            if trigger in low and skill['name'] not in seen:
+                matches.append((len(trigger), skill))
+                seen.add(skill['name'])
+    matches.sort(key=lambda x: x[0], reverse=True)
+    return [s for _, s in matches]
+
+def check_skill(task):
+    ranked = check_skills_ranked(task)
+    return ranked[0] if ranked else None
 
 def run_skill(skill, task, app=""):
     try:
@@ -181,10 +189,53 @@ def transcribe(path):
         except: pass
     return ""
 
-# ── SCREENSHOT VISION ────────────────────────────────────────────────────────
+# ── VISION (Gemini Flash or local Qwen VL) ──────────────────────────────────
+def _gemini_vision(img_b64, prompt, max_tokens=800):
+    """Call Gemini Flash vision API. Fast, reliable, free tier."""
+    import requests
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
+    payload = {
+        "contents": [{"parts": [
+            {"inlineData": {"mimeType": "image/png", "data": img_b64}},
+            {"text": prompt}
+        ]}],
+        "generationConfig": {"maxOutputTokens": max_tokens}
+    }
+    r = requests.post(url, json=payload, timeout=30)
+    if r.status_code == 200:
+        candidates = r.json().get("candidates", [])
+        if candidates:
+            parts = candidates[0].get("content", {}).get("parts", [])
+            if parts:
+                return parts[0].get("text", "").strip()
+    else:
+        print(f"[CODEC] Gemini error {r.status_code}: {r.text[:200]}")
+    return ""
+
+def _local_vision(img_b64, prompt, max_tokens=800):
+    """Call local Qwen VL vision API (fallback)."""
+    import requests
+    r = requests.post(f"{QWEN_VISION_URL}/chat/completions",
+        json={"model": QWEN_VISION_MODEL,
+            "messages": [{"role": "user", "content": [
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_b64}"}},
+                {"type": "text", "text": prompt}
+            ]}], "max_tokens": max_tokens}, timeout=60)
+    if r.status_code == 200:
+        return r.json()["choices"][0]["message"].get("content", "").strip()
+    return ""
+
+def vision_describe(img_b64, prompt="Read all visible text on this screen. Include app name, window title, and all message/content text. Output raw text only.", max_tokens=800):
+    """Route vision to Gemini or local based on config."""
+    if VISION_PROVIDER == "gemini" and GEMINI_API_KEY:
+        result = _gemini_vision(img_b64, prompt, max_tokens)
+        if result:
+            return result
+        print("[CODEC] Gemini failed, falling back to local vision...")
+    return _local_vision(img_b64, prompt, max_tokens)
+
 def screenshot_ctx():
     try:
-        import requests
         tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
         tmp.close()
         subprocess.run(["screencapture", "-x", tmp.name], timeout=5)
@@ -193,18 +244,12 @@ def screenshot_ctx():
         with open(tmp.name, "rb") as f:
             img_b64 = base64.b64encode(f.read()).decode()
         os.unlink(tmp.name)
-        print("[CODEC] Reading screen via Vision...")
-        r = requests.post(f"{QWEN_VISION_URL}/chat/completions",
-            json={"model": QWEN_VISION_MODEL,
-                "messages": [{"role": "user", "content": [
-                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_b64}"}},
-                    {"type": "text", "text": "Read all visible text on this screen. Include app name, window title, and all message/content text. Output raw text only."}
-                ]}], "max_tokens": 800}, timeout=60)
-        if r.status_code == 200:
-            content = r.json()["choices"][0]["message"].get("content", "").strip()
-            if content:
-                print(f"[CODEC] Screen context: {len(content)} chars")
-                return content[:2000]
+        provider = "Gemini Flash" if (VISION_PROVIDER == "gemini" and GEMINI_API_KEY) else "Qwen VL"
+        print(f"[CODEC] Reading screen via {provider}...")
+        content = vision_describe(img_b64)
+        if content:
+            print(f"[CODEC] Screen context: {len(content)} chars")
+            return content[:2000]
     except Exception as e:
         print(f"[CODEC] Vision error: {e}")
     return ""
@@ -434,8 +479,71 @@ def build_session_script(safe_sys, session_id):
     L.append("        return strip_think(full).strip()")
     L.append("    except: return qwen_call(messages)")
     L.append("")
+    # ── Safety: dangerous command patterns and confirmation dialog ──
+    L.append("_DANGER_PATTERNS = [")
+    L.append("    'rm ', 'rm\\t', 'rm\\n', 'rm -rf', 'rmdir', 'sudo rm', 'unlink ', 'shred ', 'trash ',")
+    L.append("    'find -delete', '-exec rm', 'mkfs', 'dd if=', 'diskutil erase',")
+    L.append("    'shutdown', 'reboot', 'halt', 'killall', 'pkill', 'sudo',")
+    L.append("    'chmod 777', 'chown', '> /dev/', 'mv / /dev/null',")
+    L.append("    ':(){ :|:& };:', ':(){:|:&};:', 'curl | bash', 'wget | bash', '| bash', '| sh',")
+    L.append("    'defaults delete', 'defaults write', 'csrutil disable', 'nvram',")
+    L.append("    'init 0', 'kill -9 1', 'format', 'fdisk',")
+    L.append("]")
+    L.append("")
+    L.append("def _is_dangerous(cmd):")
+    L.append("    cl = cmd.lower()")
+    L.append("    for p in _DANGER_PATTERNS:")
+    L.append("        pl = p.lower()")
+    L.append("        if pl[0].isalnum() and pl[-1].isalnum():")
+    L.append("            if re.search(r'\\b' + re.escape(pl) + r'\\b', cl): return True")
+    L.append("        else:")
+    L.append("            if pl in cl: return True")
+    L.append("    return False")
+    L.append("")
+    L.append("def _danger_dialog(action, code):")
+    L.append("    import tkinter as tk")
+    L.append("    result = {'allow': False}")
+    L.append("    root = tk.Tk()")
+    L.append("    root.title('CODEC — DANGER')")
+    L.append("    root.overrideredirect(True)")
+    L.append("    root.attributes('-topmost', True)")
+    L.append("    root.configure(bg='#0a0a0a')")
+    L.append("    sw = root.winfo_screenwidth()")
+    L.append("    sh = root.winfo_screenheight()")
+    L.append("    w, h = 520, 230")
+    L.append("    root.geometry(f'{w}x{h}+{(sw-w)//2}+{(sh-h)//2}')")
+    L.append("    cv = tk.Canvas(root, bg='#0a0a0a', highlightthickness=0, width=w, height=150)")
+    L.append("    cv.pack(side='top', fill='x')")
+    L.append("    cv.create_rectangle(1,1,w-1,149, outline='#ff3333', width=2)")
+    L.append("    cv.create_text(w//2, 22, text='\\u26a0  DANGEROUS COMMAND', fill='#ff3333', font=('Helvetica',14,'bold'))")
+    L.append("    cv.create_line(10,42,w-10,42, fill='#553333')")
+    L.append("    cv.create_text(w//2, 75, text=action.upper()+': '+code[:140], fill='#e0e0e0', font=('SF Mono',11), width=w-40)")
+    L.append("    cv.create_text(w//2, 125, text='This can delete data. Are you sure?', fill='#ff9999', font=('Helvetica',11))")
+    L.append("    def allow(): result['allow']=True; root.withdraw(); root.quit(); root.destroy()")
+    L.append("    def deny(): result['allow']=False; root.withdraw(); root.quit(); root.destroy()")
+    L.append("    bf = tk.Frame(root, bg='#0a0a0a')")
+    L.append("    bf.pack(side='top', pady=15)")
+    L.append("    tk.Button(bf, text='\\u2713 Allow', bg='#ff3333', fg='#fff', font=('Helvetica',13,'bold'), border=0, padx=20, pady=6, command=allow).pack(side='left', padx=10)")
+    L.append("    tk.Button(bf, text='\\u2717 Deny', bg='#444', fg='#fff', font=('Helvetica',13,'bold'), border=0, padx=20, pady=6, command=deny).pack(side='left', padx=10)")
+    L.append("    root.after(30000, deny)")
+    L.append("    try: root.mainloop()")
+    L.append("    except: pass")
+    L.append("    try: root.destroy()")
+    L.append("    except: pass")
+    L.append("    return result['allow']")
+    L.append("")
     L.append("def run_code(action, code):")
     L.append("    try:")
+    L.append("        if _is_dangerous(code):")
+    L.append("            print(f'\\n[SAFETY] \\u26a0\\ufe0f  FLAGGED: {code[:80]}')")
+    L.append("            with open(os.path.expanduser('~/.codec/audit.log'),'a') as af: af.write(f'[{time.strftime(\"%Y-%m-%dT%H:%M:%S\")}] shell_flagged: {code[:200]}\\n')")
+    L.append("            if _danger_dialog(action, code):")
+    L.append("                print('[SAFETY] User APPROVED via dialog.')")
+    L.append("                with open(os.path.expanduser('~/.codec/audit.log'),'a') as af: af.write(f'[{time.strftime(\"%Y-%m-%dT%H:%M:%S\")}] APPROVED: {code[:200]}\\n')")
+    L.append("            else:")
+    L.append("                print('[SAFETY] User DENIED via dialog.')")
+    L.append("                with open(os.path.expanduser('~/.codec/audit.log'),'a') as af: af.write(f'[{time.strftime(\"%Y-%m-%dT%H:%M:%S\")}] DENIED: {code[:200]}\\n')")
+    L.append("                return 'Command blocked by user. Dangerous command was denied.'")
     L.append("        if action == 'applescript': r = subprocess.run(['osascript','-e',code], capture_output=True, text=True, timeout=30)")
     L.append("        else: r = subprocess.run(['bash','-c',code], capture_output=True, text=True, timeout=30)")
     L.append("        out = r.stdout.strip(); err = r.stderr.strip()")
@@ -612,10 +720,9 @@ def dispatch(task):
     subprocess.Popen(["osascript", "-e", f'display notification "Heard: {task[:50]}" with title "Q"'],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    # Check skills — skip if task is very long (document content attached)
+    # Check skills — try ranked matches, fall through if skill returns None
     if len(task) < 500:
-        skill = check_skill(task)
-        if skill:
+        for skill in check_skills_ranked(task):
             result = run_skill(skill, task, app)
             if result is not None:
                 push(lambda: show_overlay('Skill: ' + skill['name'], '#E8711A', 2000))
@@ -624,6 +731,7 @@ def dispatch(task):
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 print(f"[CODEC] Skill response: {str(result)[:100]}")
                 return
+            print(f"[CODEC] Skill {skill['name']} returned None, trying next...")
 
     if is_draft(task):
         push(lambda: show_overlay('Reading screen...', '#E8711A', 2000))
@@ -700,24 +808,20 @@ def do_document_input():
                 content_text = f.read()[:5000]
         elif ext in ['.png','.jpg','.jpeg','.gif','.webp']:
             try:
-                import requests as img_req
                 with open(filepath, "rb") as imgf:
                     img_b64 = base64.b64encode(imgf.read()).decode()
-                rv = img_req.post(f"{QWEN_VISION_URL}/chat/completions",
-                    json={"model": QWEN_VISION_MODEL, "messages": [{"role": "user", "content": [
-                        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_b64}"}},
-                        {"type": "text", "text": "Describe this image in detail. Read any text visible."}
-                    ]}], "max_tokens": 1000}, timeout=60)
-                if rv.status_code == 200:
-                    content_text = rv.json()["choices"][0]["message"].get("content", "")[:5000]
-            except: pass
+                content_text = vision_describe(img_b64, "Describe this image in detail. Read any text visible.", 1000)[:5000]
+            except Exception as e:
+                print(f"[CODEC] Image vision error: {e}")
         elif ext == '.pdf':
             try:
-                result = subprocess.run(["bash", "-c",
-                    f"python3.13 -c \"import fitz; doc=fitz.open('{filepath}'); print(chr(10).join(p.get_text() for p in doc[:5]))\""],
-                    capture_output=True, text=True, timeout=30)
-                content_text = result.stdout.strip()[:5000]
-            except: pass
+                import fitz
+                doc = fitz.open(filepath)
+                content_text = "\n".join(p.get_text() for p in doc[:5])[:5000]
+                doc.close()
+                print(f"[CODEC] PDF extracted: {len(content_text)} chars from {len(doc)} pages")
+            except Exception as e:
+                print(f"[CODEC] PDF extraction error: {e}")
 
         if content_text:
             # Dispatch directly to terminal for analysis

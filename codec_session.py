@@ -148,9 +148,17 @@ RESPOND IN THIS EXACT JSON FORMAT:
 RULES:
 1. For URLs: bash open command. For apps: applescript.
 2. Max 8 steps. Execute each fully. Dont say done until ALL complete.
-3. NEVER delete files or data without confirmation.
-4. For screen/mouse requests: use the mouse_control skill via python3.13 as shown above.
-ALWAYS respond with valid JSON only."""
+3. For screen/mouse requests: use the mouse_control skill via python3.13 as shown above.
+ALWAYS respond with valid JSON only.
+
+SAFETY RULES:
+- Dangerous commands (rm, sudo, etc.) will trigger a confirmation dialog on screen.
+  The user must click Allow/Deny. Just execute the command — the safety system handles confirmation.
+- If a command returns "Command blocked by user" or "BLOCKED", tell the user it was blocked.
+- NEVER hallucinate success. If a command fails or is blocked, report the EXACT error honestly.
+- NEVER claim you performed an action you did not actually execute.
+- NEVER say "done" for a task unless you actually ran the command AND got a successful result.
+- When the user confirms a previous request (e.g. "yes delete it"), recall the context and execute."""
 
         # Dangerous command patterns — single source of truth in codec_config
         _repo_dir = os.path.dirname(os.path.abspath(__file__))
@@ -361,17 +369,15 @@ ALWAYS respond with valid JSON only."""
 
         def allow():
             result["allow"] = True
-            try:
-                root.destroy()
-            except Exception:
-                pass
+            root.withdraw()
+            root.quit()
+            root.destroy()
 
         def deny():
             result["allow"] = False
-            try:
-                root.destroy()
-            except Exception:
-                pass
+            root.withdraw()
+            root.quit()
+            root.destroy()
 
         # Bottom section: buttons in a frame (not behind the canvas)
         btn_frame = tk.Frame(root, bg="#0a0a0a")
@@ -381,26 +387,82 @@ ALWAYS respond with valid JSON only."""
         dbtn = tk.Button(btn_frame, text="\u2717 Deny", bg="#888", fg="#000", font=("Helvetica", 13, "bold"), border=0, padx=20, pady=6, command=deny)
         dbtn.pack(side="left", padx=10)
         root.after(120000, deny)
-        root.mainloop()
+        try:
+            root.mainloop()
+        except Exception:
+            pass
+        return result["allow"]
+
+    def _danger_preview(self, action, code):
+        """Show a RED warning preview for dangerous commands. Returns True if user approves."""
+        import tkinter as tk
+        result = {"allow": False}
+        root = tk.Tk()
+        root.title("CODEC — DANGER")
+        root.overrideredirect(True)
+        root.attributes("-topmost", True)
+        root.configure(bg="#0a0a0a")
+        sw = root.winfo_screenwidth()
+        sh = root.winfo_screenheight()
+        w, h = 520, 230
+        root.geometry(f"{w}x{h}+{(sw - w) // 2}+{(sh - h) // 2}")
+
+        cv = tk.Canvas(root, bg="#0a0a0a", highlightthickness=0, width=w, height=150)
+        cv.pack(side="top", fill="x")
+        cv.create_rectangle(1, 1, w - 1, 149, outline="#ff3333", width=2)
+        cv.create_text(w // 2, 22, text="\u26a0  DANGEROUS COMMAND", fill="#ff3333", font=("Helvetica", 14, "bold"))
+        cv.create_line(10, 42, w - 10, 42, fill="#553333")
+        lbl = action.upper() + ": " + code[:140]
+        cv.create_text(w // 2, 75, text=lbl, fill="#e0e0e0", font=("SF Mono", 11), width=w - 40)
+        cv.create_text(w // 2, 125, text="This command can delete data. Are you sure?", fill="#ff9999", font=("Helvetica", 11))
+
+        def allow():
+            result["allow"] = True
+            root.withdraw()
+            root.quit()
+            root.destroy()
+
+        def deny():
+            result["allow"] = False
+            root.withdraw()
+            root.quit()
+            root.destroy()
+
+        btn_frame = tk.Frame(root, bg="#0a0a0a")
+        btn_frame.pack(side="top", pady=15)
+        abtn = tk.Button(btn_frame, text="\u2713 Allow", bg="#ff3333", fg="#fff",
+                         font=("Helvetica", 13, "bold"), border=0, padx=20, pady=6, command=allow)
+        abtn.pack(side="left", padx=10)
+        dbtn = tk.Button(btn_frame, text="\u2717 Deny", bg="#444", fg="#fff",
+                         font=("Helvetica", 13, "bold"), border=0, padx=20, pady=6, command=deny)
+        dbtn.pack(side="left", padx=10)
+        root.after(30000, deny)  # Auto-deny after 30s
+        try:
+            root.mainloop()
+        except Exception:
+            pass
         return result["allow"]
 
     def run_code(self, action, code):
         try:
             # ── Dangerous command check (uses word-boundary regex from codec_config) ──
             if self._is_dangerous(code):
-                log.warning("Blocked dangerous command: %s", code.lower()[:100])
-                print(f"\n[SAFETY] \u26a0\ufe0f  Flagged: {code[:80]}")
+                log.warning("Dangerous command flagged: %s", code.lower()[:100])
+                print(f"\n[SAFETY] \u26a0\ufe0f  FLAGGED: {code[:80]}")
                 with open(os.path.expanduser("~/.codec/audit.log"), "a") as _af:
-                    _af.write(f'[{time.strftime("%Y-%m-%dT%H:%M:%S")}] FLAGGED: {code[:200]}\n')
-                confirm = input("[SAFETY] Execute this command? (y/n): ").strip().lower()
-                if confirm != "y":
-                    print("[SAFETY] Command cancelled by user.")
+                    _af.write(f'[{time.strftime("%Y-%m-%dT%H:%M:%S")}] shell_flagged: {code[:200]}\n')
+
+                # Show danger preview dialog (works in PM2 — uses tkinter, not stdin)
+                if self._danger_preview(action, code):
+                    print("[SAFETY] User APPROVED dangerous command via dialog.")
+                    with open(os.path.expanduser("~/.codec/audit.log"), "a") as _af:
+                        _af.write(f'[{time.strftime("%Y-%m-%dT%H:%M:%S")}] APPROVED: {code[:200]}\n')
+                    # Fall through to execute below
+                else:
+                    print("[SAFETY] User DENIED dangerous command via dialog.")
                     with open(os.path.expanduser("~/.codec/audit.log"), "a") as _af:
                         _af.write(f'[{time.strftime("%Y-%m-%dT%H:%M:%S")}] DENIED: {code[:200]}\n')
-                    return "Command cancelled by user for safety."
-                print("[SAFETY] User confirmed. Executing...")
-                with open(os.path.expanduser("~/.codec/audit.log"), "a") as _af:
-                    _af.write(f'[{time.strftime("%Y-%m-%dT%H:%M:%S")}] APPROVED: {code[:200]}\n')
+                    return "Command blocked by user. Dangerous command was denied."
 
             # Safe commands skip preview
             is_safe = any(code.strip().lower().startswith(s) for s in self.SAFE_CMDS)

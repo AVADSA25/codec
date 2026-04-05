@@ -140,7 +140,7 @@ root.attributes('-alpha',0.95)
 root.configure(bg='#0a0a0a')
 sw=root.winfo_screenwidth()
 sh=root.winfo_screenheight()
-w,h=440,84
+w,h=520,90
 x=(sw-w)//2
 y=sh-130
 root.geometry(f'{{w}}x{{h}}+{{x}}+{{y}}')
@@ -168,15 +168,15 @@ root.attributes('-alpha',0.95)
 root.configure(bg='#0a0a0a')
 sw=root.winfo_screenwidth()
 sh=root.winfo_screenheight()
-w,h=440,84
+w,h=520,90
 x=(sw-w)//2
 y=sh-130
 root.geometry(f'{w}x{h}+{x}+{y}')
 cv=tk.Canvas(root,bg='#0a0a0a',highlightthickness=0,width=w,height=h)
 cv.pack()
 cv.create_rectangle(1,1,w-1,h-1,outline='#E8711A',width=1)
-dot=cv.create_oval(14,29,27,42,fill='#ff3b3b',outline='')
-cv.create_text(w//2+8,42,text='\U0001f3a4  Recording — release ' + _key + ' to send',fill='#eeeeee',font=('Helvetica',13))
+dot=cv.create_oval(14,32,27,45,fill='#ff3b3b',outline='')
+cv.create_text(w//2+8,45,text='\U0001f3a4  Recording — release ' + _key + ' to send',fill='#eeeeee',font=('Helvetica',13))
 on=[True]
 def pulse():
     on[0]=not on[0]
@@ -222,7 +222,7 @@ root.attributes('-alpha',0.95)
 root.configure(bg='#0a0a0a')
 sw=root.winfo_screenwidth()
 sh=root.winfo_screenheight()
-w,h=440,84
+w,h=520,90
 x=(sw-w)//2
 y=sh-130
 root.geometry(f'{{w}}x{{h}}+{{x}}+{{y}}')

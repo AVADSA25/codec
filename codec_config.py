@@ -90,20 +90,33 @@ MCP_ALLOWED_TOOLS = cfg.get("mcp_allowed_tools", [])
 
 # Safety
 DANGEROUS_PATTERNS = [
+    # File deletion — catch ALL rm variants, not just rm -rf
+    "rm ", "rm\t", "rm\n",  # plain rm with any argument
     "rm -rf", "rm -r /", "rm -rf /", "rm -rf ~", "rm -rf /*",
-    "rmdir", "sudo rm", "mkfs", "dd if=",
+    "rmdir", "sudo rm", "unlink ", "shred ", "trash ",
+    "find -delete", "-exec rm", "-exec shred",
+    # Filesystem destruction
+    "mkfs", "dd if=", "diskutil erase", "diskutil eraseDisk",
+    # System control
     "shutdown", "reboot", "halt", "killall", "pkill",
     "sudo", "chmod 777", "chmod -R 777 /", "chown", "chown -R",
+    # Device writes
     "> /dev/", "echo > /dev/sda", "> /dev/sda", "mv / /dev/null",
+    # Fork bombs
     ":(){ :|:& };:", ":(){:|:&};:", "xattr -cr /",
+    # Remote code execution
     "curl | bash", "wget | bash", "curl | sh", "wget | sh",
     "| bash", "| sh",
-    "defaults delete", "diskutil erase",
+    # macOS system tampering
+    "defaults delete", "defaults write",
     "networksetup", "networksetup -setv6",
     "launchctl unload", "csrutil disable", "nvram", "bless",
     "scutil --set", "pmset",
     "osascript -e \'tell application \"System Events\"",
+    # Low-level
     "init 0", "kill -9 1", "format", "fdisk",
+    # Move/overwrite destructive patterns
+    "mv / ", "> /etc/", "> /System/",
 ]
 
 

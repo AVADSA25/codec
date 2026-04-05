@@ -55,9 +55,13 @@ except Exception as _e:
 # ── Vision config ────────────────────────────────────────────────────────
 VISION_URL   = "http://localhost:8082/v1/chat/completions"
 VISION_MODEL = "mlx-community/Qwen2.5-VL-7B-Instruct-4bit"
+GEMINI_API_KEY = ""
+VISION_PROVIDER = "local"
 try:
     VISION_URL   = _cfg.get("vision_base_url", "http://localhost:8082/v1").rstrip("/") + "/chat/completions"
     VISION_MODEL = _cfg.get("vision_model", VISION_MODEL)
+    GEMINI_API_KEY = _cfg.get("gemini_api_key", os.environ.get("GEMINI_API_KEY", ""))
+    VISION_PROVIDER = _cfg.get("vision_provider", "gemini" if GEMINI_API_KEY else "local")
 except Exception:
     pass
 
@@ -399,13 +403,40 @@ class VoicePipeline:
         return None
 
     async def _analyze_screenshot(self, image_b64: str, user_text: str) -> str:
-        """Send screenshot to vision model and return description."""
+        """Send screenshot to vision model (Gemini Flash or local Qwen VL)."""
         prompt = (
             f"The user said: \"{user_text}\"\n\n"
             "Describe what you see on this screen in 2-4 concise sentences. "
             "Focus on the main content, app, or task visible. "
             "Be specific about text, UI elements, and what the user appears to be working on."
         )
+        # Try Gemini Flash first (fast, reliable)
+        if VISION_PROVIDER == "gemini" and GEMINI_API_KEY:
+            try:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
+                payload = {
+                    "contents": [{"parts": [
+                        {"inlineData": {"mimeType": "image/jpeg", "data": image_b64}},
+                        {"text": prompt}
+                    ]}],
+                    "generationConfig": {"maxOutputTokens": 500}
+                }
+                print("[Voice] Sending to Gemini Flash vision...")
+                r = await self._http.post(url, json=payload, timeout=30.0)
+                if r.status_code == 200:
+                    candidates = r.json().get("candidates", [])
+                    if candidates:
+                        parts = candidates[0].get("content", {}).get("parts", [])
+                        if parts:
+                            result = parts[0].get("text", "").strip()
+                            if result:
+                                print(f"[Voice] Gemini vision OK: {len(result)} chars")
+                                return result
+                print(f"[Voice] Gemini failed ({r.status_code}), falling back to local...")
+            except Exception as e:
+                print(f"[Voice] Gemini error: {e}, falling back to local...")
+
+        # Fallback: local Qwen VL
         payload = {
             "model": VISION_MODEL,
             "messages": [{"role": "user", "content": [
