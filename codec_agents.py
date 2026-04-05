@@ -589,18 +589,114 @@ def save_to_memory(session_name: str, task: str, result: str):
 # PRE-BUILT CREWS
 # ═══════════════════════════════════════════════════════════════
 
+async def _elevate_query(raw_topic: str) -> dict:
+    """Refine a raw user query into an optimized research brief.
+
+    Returns dict with:
+      - refined_topic: clear one-line research question
+      - search_queries: list of 4-6 diverse search queries
+      - scope: what to include / exclude
+      - angles: different perspectives to cover
+    """
+    system = (
+        "You are a research query optimizer. The user will give you a rough, informal request. "
+        "Your job is to interpret their TRUE INTENT — not the literal words — and produce a "
+        "structured research brief.\n\n"
+        "RULES:\n"
+        "- Fix typos, grammar, and vague language\n"
+        "- Identify what they ACTUALLY want to learn (not literal keyword interpretation)\n"
+        "- Generate 4-6 diverse search queries that cover different angles\n"
+        "- If the user uses slang or ambiguous terms, interpret them in context\n"
+        "- Never interpret casual words (like 'handful', 'bunch', 'couple') as topic keywords\n"
+        "- Expand abbreviations and clarify jargon\n\n"
+        "Respond in EXACTLY this format (no extra text):\n"
+        "TOPIC: <one clear sentence describing the research goal>\n"
+        "SCOPE: <what to include and what to exclude, 1-2 sentences>\n"
+        "ANGLES: <3-4 different perspectives to investigate, comma-separated>\n"
+        "QUERIES:\n"
+        "1. <first search query>\n"
+        "2. <second search query>\n"
+        "3. <third search query>\n"
+        "4. <fourth search query>\n"
+        "5. <fifth search query (optional)>\n"
+        "6. <sixth search query (optional)>"
+    )
+    payload = {
+        "model": _qwen_model(),
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": f"Research request: {raw_topic}"},
+        ],
+        "max_tokens": 800,
+        "temperature": 0.3,
+        "stream": False,
+    }
+    try:
+        r = await _async_http.post(
+            _qwen_url(), json=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        text = r.json()["choices"][0]["message"]["content"].strip()
+        # Strip thinking tags if present
+        text = re.sub(r'<think>[\s\S]*?</think>', '', text).strip()
+
+        # Parse structured response
+        result = {"refined_topic": raw_topic, "search_queries": [], "scope": "", "angles": ""}
+        for line in text.split("\n"):
+            line = line.strip()
+            if line.upper().startswith("TOPIC:"):
+                result["refined_topic"] = line.split(":", 1)[1].strip()
+            elif line.upper().startswith("SCOPE:"):
+                result["scope"] = line.split(":", 1)[1].strip()
+            elif line.upper().startswith("ANGLES:"):
+                result["angles"] = line.split(":", 1)[1].strip()
+            elif re.match(r'^\d+\.\s', line):
+                q = re.sub(r'^\d+\.\s*', '', line).strip()
+                if q:
+                    result["search_queries"].append(q)
+
+        log.info(f"[QueryElevation] '{raw_topic[:60]}' → '{result['refined_topic'][:60]}'")
+        if result["search_queries"]:
+            log.info(f"[QueryElevation] {len(result['search_queries'])} search queries generated")
+        return result
+    except Exception as e:
+        log.warning(f"[QueryElevation] Failed, using raw topic: {e}")
+        return {"refined_topic": raw_topic, "search_queries": [], "scope": "", "angles": ""}
+
+
 def deep_research_crew(**kwargs) -> Crew:
     all_tools = get_all_tools()
     search_tools = [t for t in all_tools if t.name in ("web_search", "web_fetch")]
     write_tools  = [t for t in all_tools if t.name in ("google_docs_create",)]
     topic = kwargs.get("topic", "the given topic")
+    # Query elevation results (injected by run_crew before building)
+    elevated = kwargs.get("_elevated", {})
+    refined_topic = elevated.get("refined_topic", topic)
+    search_queries = elevated.get("search_queries", [])
+    scope = elevated.get("scope", "")
+    angles = elevated.get("angles", "")
+
+    # Build enhanced research brief for the Researcher agent
+    research_brief = f"Research thoroughly: {refined_topic}\n"
+    if scope:
+        research_brief += f"Scope: {scope}\n"
+    if angles:
+        research_brief += f"Cover these angles: {angles}\n"
+    if search_queries:
+        research_brief += "Suggested search queries (use these as starting points, adapt as needed):\n"
+        for i, q in enumerate(search_queries, 1):
+            research_brief += f"  {i}. {q}\n"
+    research_brief += "Fetch the most relevant source pages and extract key details, stats, and examples."
 
     researcher = Agent(
         name="Researcher",
         role=(
             "You are an elite research analyst. Find comprehensive, accurate, up-to-date information. "
-            "Search broadly first (3-5 queries), then fetch the most relevant sources. "
-            "Extract key facts, statistics, expert opinions, and recent developments."
+            "You have been given a refined research brief with suggested search queries. "
+            "Use the suggested queries as starting points but adapt them based on what you find. "
+            "Search broadly (4-6 queries), then fetch the most relevant sources. "
+            "Extract key facts, statistics, expert opinions, and recent developments. "
+            "Focus on the INTENT of the research, not just literal keywords."
         ),
         tools=search_tools, max_tool_calls=8,
     )
@@ -623,11 +719,10 @@ def deep_research_crew(**kwargs) -> Crew:
     return Crew(
         agents=[researcher, writer],
         tasks=[
-            f"Research thoroughly: {topic}\n"
-            f"Search at least 3 different angles. Fetch key source pages and extract details.",
-            f"Write a comprehensive report about: {topic}\n"
+            research_brief,
+            f"Write a comprehensive report about: {refined_topic}\n"
             f"Use research context provided. Save to Google Docs with title: "
-            f"'CODEC Research: {topic[:80]} — {datetime.now().strftime('%Y-%m-%d')}'\n"
+            f"'CODEC Research: {refined_topic[:80]} — {datetime.now().strftime('%Y-%m-%d')}'\n"
             f"After saving, your FINAL response MUST begin with the Google Docs URL on its own line."
         ],
         allowed_tools=["web_search", "web_fetch", "google_docs_create"],
@@ -1287,6 +1382,21 @@ async def run_crew(crew_name: str, callback=None, **kwargs) -> dict:
     global _last_gdoc_url
     _last_gdoc_url = None
     start = time.time()
+
+    # ── Query Elevation: refine raw user input for research crews ──
+    if crew_name in ("deep_research", "competitor_analysis") and kwargs.get("topic"):
+        try:
+            if callback:
+                await _safe_cb(callback, {"agent": "QueryElevation", "type": "status",
+                                          "message": "Refining your research query..."})
+            elevated = await _elevate_query(kwargs["topic"])
+            kwargs["_elevated"] = elevated
+            if callback:
+                await _safe_cb(callback, {"agent": "QueryElevation", "type": "status",
+                                          "message": f"Research focus: {elevated.get('refined_topic', '')[:100]}"})
+        except Exception as e:
+            log.warning(f"Query elevation failed, proceeding with raw topic: {e}")
+
     try:
         crew   = reg["builder"](**kwargs)
         result = await crew.run(callback=callback)

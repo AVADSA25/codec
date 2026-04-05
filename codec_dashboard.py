@@ -1365,9 +1365,12 @@ async def set_clipboard(request: Request):
 
 @app.post("/api/upload")
 async def upload_document(request: Request):
-    """Extract text from uploaded PDF, DOCX, CSV, or text files"""
+    """Extract text from uploaded PDF, DOCX, CSV, or text files (up to 50MB)"""
     import base64, subprocess
-    body = await request.json()
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Request too large or malformed. Max file size: 50MB."}, status_code=413)
     filename = body.get("filename", "file")
     data = body.get("data", "")
     if not data:
@@ -2832,4 +2835,5 @@ async def _close_db_connections():
     _db_conn = _qchat_conn = _vibe_conn = None
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8090)
+    uvicorn.run(app, host="0.0.0.0", port=8090,
+                h11_max_incomplete_event_size=50 * 1024 * 1024)  # 50MB for large doc uploads
