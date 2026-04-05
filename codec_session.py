@@ -349,13 +349,15 @@ ALWAYS respond with valid JSON only."""
         sh = root.winfo_screenheight()
         w, h = 480, 200
         root.geometry(f"{w}x{h}+{(sw - w) // 2}+{(sh - h) // 2}")
-        cv = tk.Canvas(root, bg="#0a0a0a", highlightthickness=0, width=w, height=h)
-        cv.pack()
-        cv.create_rectangle(1, 1, w - 1, h - 1, outline="#E8711A", width=1)
+
+        # Top section: header + command text on canvas
+        cv = tk.Canvas(root, bg="#0a0a0a", highlightthickness=0, width=w, height=130)
+        cv.pack(side="top", fill="x")
+        cv.create_rectangle(1, 1, w - 1, 129, outline="#E8711A", width=1)
         cv.create_text(w // 2, 20, text="C O D E C  —  Command Preview", fill="#E8711A", font=("Helvetica", 13, "bold"))
         cv.create_line(10, 38, w - 10, 38, fill="#333")
         lbl = action.upper() + ": " + code[:120]
-        cv.create_text(w // 2, 75, text=lbl, fill="#e0e0e0", font=("SF Mono", 11), width=w - 40)
+        cv.create_text(w // 2, 80, text=lbl, fill="#e0e0e0", font=("SF Mono", 11), width=w - 40)
 
         def allow():
             result["allow"] = True
@@ -371,10 +373,13 @@ ALWAYS respond with valid JSON only."""
             except Exception:
                 pass
 
-        abtn = tk.Button(root, text="\u2713 Allow", bg="#00cc55", fg="#000", font=("Helvetica", 13, "bold"), border=0, padx=20, pady=6, command=allow)
-        abtn.place(x=w // 2 - 110, y=140, width=100, height=36)
-        dbtn = tk.Button(root, text="\u2717 Deny", bg="#ff4444", fg="#000", font=("Helvetica", 13, "bold"), border=0, padx=20, pady=6, command=deny)
-        dbtn.place(x=w // 2 + 10, y=140, width=100, height=36)
+        # Bottom section: buttons in a frame (not behind the canvas)
+        btn_frame = tk.Frame(root, bg="#0a0a0a")
+        btn_frame.pack(side="top", pady=15)
+        abtn = tk.Button(btn_frame, text="\u2713 Allow", bg="#00cc55", fg="#000", font=("Helvetica", 13, "bold"), border=0, padx=20, pady=6, command=allow)
+        abtn.pack(side="left", padx=10)
+        dbtn = tk.Button(btn_frame, text="\u2717 Deny", bg="#888", fg="#000", font=("Helvetica", 13, "bold"), border=0, padx=20, pady=6, command=deny)
+        dbtn.pack(side="left", padx=10)
         root.after(120000, deny)
         root.mainloop()
         return result["allow"]
