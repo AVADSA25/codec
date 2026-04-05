@@ -1055,6 +1055,7 @@ async def update_config(request: Request):
 @app.get("/api/history")
 async def history(limit: int = 50):
     """Get recent task history"""
+    limit = min(limit, 500)
     try:
         c = get_db()
         rows = c.execute(
@@ -1068,6 +1069,7 @@ async def history(limit: int = 50):
 @app.get("/api/conversations")
 async def conversations(limit: int = 100):
     """Get recent conversations"""
+    limit = min(limit, 500)
     try:
         c = get_db()
         rows = c.execute(
@@ -1081,6 +1083,7 @@ async def conversations(limit: int = 100):
 @app.get("/api/audit")
 async def audit(limit: int = 50):
     """Get recent audit log entries"""
+    limit = min(limit, 500)
     try:
         if not os.path.exists(AUDIT_LOG):
             return []
@@ -2752,6 +2755,7 @@ _memory = _CM()
 @app.get("/api/memory/search")
 async def memory_search(q: str = "", limit: int = 10):
     """Full-text search over all conversations (FTS5 BM25 ranked)."""
+    limit = min(limit, 500)
     sanitized = _sanitize_fts_query(q)
     if not sanitized:
         return JSONResponse({"error": "Query required"}, status_code=400)
@@ -2760,11 +2764,13 @@ async def memory_search(q: str = "", limit: int = 10):
 @app.get("/api/memory/recent")
 async def memory_recent(days: int = 7, limit: int = 50):
     """Return messages from the past N days."""
+    limit = min(limit, 500)
     return _memory.search_recent(days=days, limit=limit)
 
 @app.get("/api/memory/sessions")
 async def memory_sessions(limit: int = 20):
     """Return distinct sessions with message count and preview."""
+    limit = min(limit, 500)
     return _memory.get_sessions(limit=limit)
 
 @app.post("/api/memory/rebuild")

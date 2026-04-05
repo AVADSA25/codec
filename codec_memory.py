@@ -4,6 +4,8 @@ from datetime import datetime, timedelta
 
 log = logging.getLogger(__name__)
 
+SCHEMA_VERSION = 1
+
 DB_PATH = os.path.expanduser("~/.q_memory.db")
 
 _FTS5_MAX_QUERY_LEN = 200
@@ -91,6 +93,13 @@ class CodecMemory:
 
             conn.commit()
 
+            # Schema versioning — run migrations if needed
+            current_version = conn.execute("PRAGMA user_version").fetchone()[0]
+            if current_version < SCHEMA_VERSION:
+                self._migrate(conn, current_version)
+                conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+                conn.commit()
+
             # Backfill FTS from existing rows not yet indexed
             count = conn.execute("SELECT COUNT(*) FROM conversations_fts").fetchone()[0]
             total = conn.execute("SELECT COUNT(*) FROM conversations").fetchone()[0]
@@ -103,6 +112,15 @@ class CodecMemory:
                 conn.commit()
         except Exception:
             raise
+
+    # ── Migrations ───────────────────────────────────────────────────────────
+
+    def _migrate(self, conn, from_version):
+        """Run schema migrations from from_version to SCHEMA_VERSION."""
+        if from_version < 1:
+            # v1: ensure all baseline tables and indexes exist
+            # (already handled by _init_fts, this is a placeholder for future migrations)
+            pass
 
     # ── CRUD ─────────────────────────────────────────────────────────────────
 
