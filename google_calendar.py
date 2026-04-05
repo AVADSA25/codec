@@ -155,7 +155,7 @@ def _parse_title(text: str) -> str:
 
     # Remove action filler (verbs + connecting words, keep nouns as they may be the title)
     for phrase in ["can you please", "can you", "could you", "please", "i want you to",
-                   "i need you to", "i would like", "would you", "hey q",
+                   "i need you to", "i would like", "would you", "hey codec",
                    "create an event", "create event", "add an event", "add event",
                    "add to my calendar", "add to calendar", "put to my calendar",
                    "put in my calendar", "put on my calendar", "put inside my calendar",

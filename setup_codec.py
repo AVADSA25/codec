@@ -352,7 +352,7 @@ def main():
     if config["wake_word_enabled"]:
         print(f"\n{W}  Choose wake phrases (what Whisper might hear):{X}")
         print(f"{D}  Default: 'hey c' — Whisper may transcribe as 'hey', 'aq', 'eq', etc.{X}")
-        default_phrases = "hey,aq,eq,iq,okay q,a q,hey c,hey cueue"
+        default_phrases = "hey codec,hey,okay codec,hey codex,hey coda,hey queue"
         phrases = ask_text("Wake phrases (comma-separated)", default_phrases)
         config["wake_phrases"] = [p.strip() for p in phrases.split(",")]
         config["wake_energy"] = 200

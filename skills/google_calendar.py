@@ -173,7 +173,7 @@ def _parse_title(text: str) -> str:
     _filler = [
         "can you please", "can you", "could you please", "could you",
         "i want you to", "i need you to", "i would like you to", "i would like",
-        "would you please", "would you", "hey q", "hi q", "ok q", "iq",
+        "would you please", "would you", "hey codec", "hi codec", "ok codec",
         "create an event", "create event", "create a",
         "add an event", "add event", "add a",
         "put to my calendar", "put in my calendar", "put on my calendar",

@@ -38,7 +38,7 @@ def run(task, app="", ctx=""):
     # Brightness
     if "brightness up" in low:
         subprocess.run(["bash", "-c", "brightness=$(osascript -e 'tell application \"System Events\" to tell appearance preferences to get dark mode'); echo $brightness"], timeout=5)
-        return "Brightness control requires System Preferences access. Try: Hey Q, open display settings."
+        return "Brightness control requires System Preferences access. Try: Hey CODEC, open display settings."
     if "brightness down" in low:
-        return "Brightness control requires System Preferences access. Try: Hey Q, open display settings."
+        return "Brightness control requires System Preferences access. Try: Hey CODEC, open display settings."
     return None

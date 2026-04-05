@@ -53,7 +53,7 @@ WHISPER_URL       = cfg.get("stt_url", "http://localhost:8084/v1/audio/transcrip
 
 # Paths
 DB_PATH           = os.path.expanduser("~/.q_memory.db")
-Q_TERMINAL_TITLE  = "Q -- CODEC Session"
+Q_TERMINAL_TITLE  = "CODEC Session"
 _CODEC_TMP = os.path.expanduser("~/.codec")
 TASK_QUEUE_FILE   = os.path.join(_CODEC_TMP, "task_queue.txt")
 DRAFT_TASK_FILE   = os.path.join(_CODEC_TMP, "draft_task.json")
@@ -66,7 +66,7 @@ AUDIT_LOG         = os.path.expanduser("~/.codec/audit.log")
 # Features
 STREAMING         = cfg.get("streaming", True)
 WAKE_WORD         = cfg.get("wake_word_enabled", True)
-WAKE_PHRASES      = cfg.get("wake_phrases", ['hey codec', 'hey', 'aq', 'eq', 'iq', 'okay q', 'a q', 'hey c', 'hey cueue'])
+WAKE_PHRASES      = cfg.get("wake_phrases", ['hey codec', 'hey', 'okay codec', 'hey codex', 'hey coda', 'hey queue'])
 WAKE_ENERGY       = cfg.get("wake_energy", 200)
 WAKE_CHUNK_SEC    = cfg.get("wake_chunk_sec", 3.0)
 REQUIRE_CONFIRM   = cfg.get("require_confirmation", True)

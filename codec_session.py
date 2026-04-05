@@ -743,11 +743,11 @@ SAFETY RULES:
                             break
                         if u.lower() in ["exit", "quit", "bye"]:
                             self.cleanup()
-                            print("\n[Q Session ended]")
+                            print("\n[CODEC Session ended]")
                             sys.exit(0)
                         self.process_input(u)
                         break
                 except (KeyboardInterrupt, EOFError):
                     self.cleanup()
-                    print("\n[Q Session ended]")
+                    print("\n[CODEC Session ended]")
                     sys.exit(0)
