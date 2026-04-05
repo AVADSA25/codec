@@ -913,8 +913,8 @@ def main():
     ║  ██████  ██████  ██████  ███████  ██████  ║
     ║                                   v1.5.0  ║
     ╠═══════════════════════════════════════════╣
-    ║{W}  {kt} toggle   {kv} voice   ** screen       {O}║
-    ║{W}  {kx} text     ++ doc     -- chat          {O}║
+    ║{W}  F13 toggle   F18 voice   ** screen       {O}║
+    ║{W}  F16 text     ++ doc     -- chat          {O}║
     ║{W}  Hey CODEC = wake word (hands-free)           {O}║
     ╠═══════════════════════════════════════════╣
     ║{D}  Stream={stream_label}  Wake={wake_label}  Skills=ON            {O}║
