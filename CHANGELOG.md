@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.5.1 (2026-04-05)
+### Fixed
+- **Security (SE-2):** Dangerous commands (rm, delete, shred) now trigger Allow/Deny dialog in voice sessions — injected full safety system into `build_session_script()` generated temp scripts
+- **Mouse control:** Two-pass vision approach — rough find at 1920px then crop 1000×1000 at full 4K res for precise coordinates. Uses pixel interpretation (not normalized). cliclick cascade for reliable clicks from PM2
+- **App switch routing:** Removed overly generic triggers ("show me"), word-level alias matching prevents "codec" matching "code", returns None for unknown apps so Q-Agent handles them
+- **Dialog close:** All tkinter dialogs (danger preview, command preview) now use withdraw→quit→destroy pattern for instant close instead of orphaned windows
+
+### Changed
+- Vision timeout increased from 30s to 60s for 1920px images
+- Overlay unified to 520×90
+- Expanded dangerous command patterns in codec_config.py
+
 ## v1.5.0 (2026-03-29)
 ### Added
 - MCP Server — 43 tools exposed to Claude Desktop, Cursor, and any MCP client
