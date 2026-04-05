@@ -57,29 +57,7 @@ DRAFT_KEYWORDS_CFG = _cfg.get("draft_keywords", [])
 def strip_think(text):
     return re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()
 
-def show_overlay(text, color="#E8711A", duration=2500):
-    d = f"root.after({duration}, root.destroy)" if duration else ""
-    s = f"""
-import tkinter as tk
-root=tk.Tk()
-root.overrideredirect(True)
-root.attributes('-topmost',True)
-root.attributes('-alpha',0.95)
-root.configure(bg='#0a0a0a')
-sw=root.winfo_screenwidth()
-sh=root.winfo_screenheight()
-w,h=520,56
-x=(sw-w)//2
-y=sh-130
-root.geometry(f'{{w}}x{{h}}+{{x}}+{{y}}')
-c=tk.Canvas(root,bg='#0a0a0a',highlightthickness=0,width=w,height=h)
-c.pack()
-c.create_rectangle(1,1,w-1,h-1,outline='{color}',width=1)
-c.create_text(w//2,h//2,text='{text}',fill='{color}',font=('Helvetica',13))
-{d}
-root.mainloop()
-"""
-    subprocess.Popen([sys.executable, "-c", s], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+from codec_overlays import show_overlay, show_recording_overlay, show_processing_overlay, show_toggle_overlay
 
 # ── DETECTION ────────────────────────────────────────────────────────────────
 DRAFT_KEYWORDS = [
@@ -782,7 +760,7 @@ def do_stop_voice():
         except: pass
         return
     print("[CODEC] Transcribing...")
-    push(lambda: show_overlay('Transcribing...', '#E8711A', 2000))
+    push(lambda: show_processing_overlay('Transcribing...', 2000))
     task = transcribe(audio)
     if not task: print("[CODEC] No speech detected"); return
     print(f"[CODEC] Heard: {task}")
@@ -851,12 +829,12 @@ def on_press(key):
         state["last_f13"] = now
         if state["active"]:
             state["active"] = False
-            push(lambda: show_overlay('CODEC OFF', '#ff3333', 1500))
+            push(lambda: show_toggle_overlay(False))
             push(close_session)
             print("[CODEC] OFF")
         else:
             state["active"] = True
-            push(lambda: show_overlay('CODEC ON  F18=voice  F16=text  **=screen  ++=doc', '#E8711A', 3000))
+            push(lambda: show_toggle_overlay(True, "F18=voice  F16=text  **=screen  ++=doc"))
             print("[CODEC] ON -- F18=voice | F16=text | *=screen | +=doc")
         return
     if not state["active"]: return
@@ -867,7 +845,7 @@ def on_press(key):
         if not state["recording"]:
             state["recording"] = True
             push(do_start_recording)
-            push(lambda: show_overlay('REC  release F18 to send', '#E8711A', 30000))
+            push(lambda: show_recording_overlay('F18'))
         return
     if hasattr(key, 'char') and key.char == '*':
         if now - state["last_star"] < 0.5:
