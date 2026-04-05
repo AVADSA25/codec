@@ -225,6 +225,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     btn.image = NSImage(systemSymbolName: "bolt.slash.fill", accessibilityDescription: "CODEC")
                     btn.image?.isTemplate = true
                 }
+            case "notify":
+                let text = (json["text"] as? String) ?? "CODEC"
+                let duration = (json["duration"] as? Double) ?? 2.5
+                overlay.show(text: text)
+                DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self] in
+                    self?.overlay.hide()
+                }
             default:
                 break
             }
