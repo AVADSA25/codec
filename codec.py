@@ -3,9 +3,11 @@ import signal
 signal.signal(signal.SIGINT, lambda *a: None)
 signal.signal(signal.SIGTERM, lambda *a: None)
 """CODEC v1.0 | F13=on/off | F18=voice | F16=text | *=screenshot | +=doc | Wake word"""
-import threading, tempfile, subprocess, sys, os, time, sqlite3, json, re, base64, shutil
+import logging, threading, tempfile, subprocess, sys, os, time, sqlite3, json, re, base64, shutil
 from datetime import datetime
 from pynput import keyboard
+
+log = logging.getLogger(__name__)
 
 # Ensure homebrew tools are on PATH (PM2 may not inherit full shell PATH)
 _BREW = "/opt/homebrew/bin"
@@ -13,52 +15,21 @@ if _BREW not in os.environ.get("PATH", ""):
     os.environ["PATH"] = _BREW + ":" + os.environ.get("PATH", "")
 SOX = shutil.which("sox") or "sox"
 
-# ── CONFIG (load from ~/.codec/config.json or use defaults) ───────────────────
-CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
-_cfg = {}
-if os.path.exists(CONFIG_PATH):
-    try:
-        with open(CONFIG_PATH) as _f: _cfg = json.load(_f)
-        print(f"[CODEC] Config loaded from {CONFIG_PATH}")
-    except: pass
-
-# LLM
-QWEN_BASE_URL     = _cfg.get("llm_base_url", "http://localhost:8081/v1")
-QWEN_MODEL        = _cfg.get("llm_model", "mlx-community/Qwen3.5-35B-A3B-4bit")
-LLM_API_KEY       = _cfg.get("llm_api_key", "")
-LLM_KWARGS        = _cfg.get("llm_kwargs", {})
-LLM_PROVIDER      = _cfg.get("llm_provider", "mlx")
+# ── CONFIG (single source of truth: codec_config.py) ─────────────────────────
+from codec_config import (
+    cfg as _cfg,
+    QWEN_BASE_URL, QWEN_MODEL, LLM_API_KEY, LLM_KWARGS, LLM_PROVIDER,
+    QWEN_VISION_URL, QWEN_VISION_MODEL,
+    TTS_ENGINE, KOKORO_URL, KOKORO_MODEL, TTS_VOICE,
+    STT_ENGINE, WHISPER_URL,
+    DB_PATH, Q_TERMINAL_TITLE, TASK_QUEUE_FILE, DRAFT_TASK_FILE, SESSION_ALIVE, SKILLS_DIR,
+    STREAMING, WAKE_WORD, WAKE_PHRASES, WAKE_ENERGY, WAKE_CHUNK_SEC,
+)
 
 # Vision — prefer Gemini Flash (fast cloud), fall back to local Qwen VL
+# These are codec.py-specific (not in codec_config)
 GEMINI_API_KEY    = _cfg.get("gemini_api_key", os.environ.get("GEMINI_API_KEY", ""))
 VISION_PROVIDER   = _cfg.get("vision_provider", "gemini" if GEMINI_API_KEY else "local")
-QWEN_VISION_URL   = _cfg.get("vision_base_url", "http://localhost:8082/v1")
-QWEN_VISION_MODEL = _cfg.get("vision_model", "mlx-community/Qwen2.5-VL-7B-Instruct-4bit")
-
-# TTS
-TTS_ENGINE        = _cfg.get("tts_engine", "kokoro")
-KOKORO_URL        = _cfg.get("tts_url", "http://localhost:8085/v1/audio/speech")
-KOKORO_MODEL      = _cfg.get("tts_model", "mlx-community/Kokoro-82M-bf16")
-TTS_VOICE         = _cfg.get("tts_voice", "am_adam")
-
-# STT
-STT_ENGINE        = _cfg.get("stt_engine", "whisper_http")
-WHISPER_URL       = _cfg.get("stt_url", "http://localhost:8084/v1/audio/transcriptions")
-
-# Paths
-DB_PATH            = os.path.expanduser("~/.q_memory.db")
-Q_TERMINAL_TITLE   = "CODEC Session"
-TASK_QUEUE_FILE    = "/tmp/q_task_queue.txt"
-DRAFT_TASK_FILE    = os.path.expanduser("~/.codec/draft_task.json")
-SESSION_ALIVE      = "/tmp/q_session_alive"
-SKILLS_DIR         = os.path.expanduser("~/.codec/skills")
-
-# Features
-STREAMING          = _cfg.get("streaming", True)
-WAKE_WORD          = _cfg.get("wake_word_enabled", True)
-WAKE_PHRASES       = _cfg.get("wake_phrases", ['hey codec', 'hey', 'okay codec', 'hey codex', 'hey coda', 'hey queue'])
-WAKE_ENERGY        = _cfg.get("wake_energy", 200)
-WAKE_CHUNK_SEC     = _cfg.get("wake_chunk_sec", 3.0)
 DRAFT_KEYWORDS_CFG = _cfg.get("draft_keywords", [])
 
 # ─��� SHARED (from codec_core.py — single source of truth) ─────────────────────
@@ -242,8 +213,8 @@ def dispatch(task):
                 lines.append(f"  [{ts}] {r['role'].upper()}: {snippet}")
             lines.append("[END RECENT MEMORY]")
             mem_ctx += "\n\n" + "\n".join(lines)
-    except Exception:
-        pass
+    except Exception as e:
+        log.warning("Memory context retrieval failed: %s", e)
     sys_p = CODEC_VOICE_PROMPT
     if mem: sys_p += "\n\n" + mem
     if mem_ctx: sys_p += mem_ctx
@@ -366,17 +337,17 @@ def do_stop_voice():
     rec = state.get("rec_proc")
     if rec:
         try: rec.terminate(); rec.wait(timeout=3)
-        except: pass
+        except Exception as e: log.debug("Recording process cleanup failed: %s", e)
     state["rec_proc"] = None; state["recording"] = False
     ovl = state.get("overlay_proc")
     if ovl:
         try: ovl.terminate()
-        except: pass
+        except Exception as e: log.debug("Overlay process cleanup failed: %s", e)
         state["overlay_proc"] = None
     if not audio or not os.path.exists(audio): return
     if os.path.getsize(audio) < 1000:
         try: os.unlink(audio)
-        except: pass
+        except Exception as e: log.debug("Audio file cleanup failed: %s", e)
         return
     print("[CODEC] Transcribing...")
     push(lambda: show_processing_overlay('Transcribing...', 2000))
@@ -401,7 +372,7 @@ def wake_word_listener():
             if d['max_input_channels'] > 0 and 'anker' in d['name'].lower():
                 wake_device = d['name']
                 break
-    except: pass
+    except Exception as e: log.debug("Wake mic device detection failed: %s", e)
     print(f"[CODEC] Wake word listener started (mic: {wake_device}). Say 'Hey CODEC' to activate.")
     _wake_diag_done = False
     while True:
@@ -415,7 +386,7 @@ def wake_word_listener():
                 timeout=int(chunk_sec) + 3, capture_output=True)
             if not os.path.exists(tmp.name) or os.path.getsize(tmp.name) < 500:
                 try: os.unlink(tmp.name)
-                except: pass
+                except Exception as e: log.debug("Wake temp file cleanup failed: %s", e)
                 continue
             # Check actual audio energy
             try:
@@ -424,14 +395,15 @@ def wake_word_listener():
                 data = np.frombuffer(wf.readframes(wf.getnframes()), dtype=np.int16)
                 wf.close()
                 energy = np.abs(data).mean()
-            except:
+            except Exception as e:
+                log.debug("Wake audio energy check failed: %s", e)
                 energy = 0
             if not _wake_diag_done or energy > 80:
                 print(f"[CODEC] Wake mic: energy={energy:.0f} (threshold={WAKE_ENERGY})")
                 _wake_diag_done = True
             if energy < WAKE_ENERGY:
                 try: os.unlink(tmp.name)
-                except: pass
+                except Exception as e: log.debug("Wake temp file cleanup failed: %s", e)
                 continue
             try:
                 with open(tmp.name, "rb") as f:
@@ -481,7 +453,7 @@ def wake_word_listener():
                 print(f"[CODEC] Wake whisper error: {e}")
             finally:
                 try: os.unlink(tmp.name)
-                except: pass
+                except Exception as e: log.debug("Wake temp file cleanup failed: %s", e)
         except Exception as e:
             print(f"[CODEC] Wake listener error: {e}")
             time.sleep(0.5)
@@ -549,7 +521,7 @@ def main():
     init_db()
     for f in [SESSION_ALIVE, TASK_QUEUE_FILE, DRAFT_TASK_FILE]:
         try: os.unlink(f)
-        except: pass
+        except Exception as e: log.debug("Startup file cleanup failed (%s): %s", f, e)
 
     stream_label = "ON" if STREAMING else "OFF"
     wake_label = "ON" if WAKE_WORD else "OFF"

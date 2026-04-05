@@ -140,6 +140,60 @@ def is_dangerous(cmd):
     return False
 
 
+def is_dangerous_skill_code(code: str) -> tuple[bool, str]:
+    import ast
+
+    DANGEROUS_MODULES = {
+        "os", "subprocess", "ctypes", "shutil", "importlib", "signal", "pty", "socket",
+    }
+    SAFE_MODULES = {
+        "json", "re", "math", "datetime", "collections", "itertools", "functools",
+        "hashlib", "base64", "urllib.parse", "time", "random", "string", "textwrap",
+        "difflib",
+    }
+    DANGEROUS_CALLS = {
+        "eval", "exec", "compile", "__import__", "globals", "locals", "getattr",
+    }
+    DANGEROUS_ATTRS = {
+        "os.system", "os.popen", "os.execl", "os.execle", "os.execlp", "os.execlpe",
+        "os.execv", "os.execve", "os.execvp", "os.execvpe",
+        "subprocess.run", "subprocess.Popen", "subprocess.call",
+        "shutil.rmtree",
+    }
+
+    try:
+        tree = ast.parse(code)
+    except SyntaxError as e:
+        return (True, f"Syntax error: {e}")
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                top = alias.name.split(".")[0]
+                if top in DANGEROUS_MODULES:
+                    return (True, f"Dangerous import: {alias.name}")
+
+        elif isinstance(node, ast.ImportFrom):
+            if node.module:
+                top = node.module.split(".")[0]
+                if top in DANGEROUS_MODULES and node.module not in SAFE_MODULES:
+                    return (True, f"Dangerous import: from {node.module}")
+
+        elif isinstance(node, ast.Call):
+            func = node.func
+            if isinstance(func, ast.Name) and func.id in DANGEROUS_CALLS:
+                return (True, f"Dangerous call: {func.id}()")
+            if isinstance(func, ast.Attribute):
+                if isinstance(func.value, ast.Name):
+                    full = f"{func.value.id}.{func.attr}"
+                    if full in DANGEROUS_ATTRS:
+                        return (True, f"Dangerous call: {full}()")
+                    if full.rsplit(".", 1)[0] in DANGEROUS_MODULES:
+                        return (True, f"Dangerous call: {full}()")
+
+    return (False, "")
+
+
 # Draft / screen detection keywords
 DRAFT_KEYWORDS = [
     "draft", "reply", "rephrase", "rewrite", "fix my", "say that", "respond",

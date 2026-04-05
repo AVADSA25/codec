@@ -58,8 +58,8 @@ def run_skill(skill, task, app=""):
                 _events_path = _os.path.expanduser("~/.codec/overlay_events.jsonl")
                 with open(_events_path, "a") as _f:
                     _f.write(f'{{"type":"skill_fired","name":"{skill_name}"}}\n')
-            except Exception:
-                pass
+            except Exception as e:
+                log.debug("Overlay event write failed: %s", e)
             return result
         except Exception as e:
             log.warning("Skill '%s' error: %s — trying next match", skill_name, e)

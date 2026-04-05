@@ -2,45 +2,20 @@
 
 Single source of truth. Edit HERE, not in the consumer files.
 """
-import os, sys, json, re, sqlite3, subprocess, tempfile, base64
+import logging, os, sys, json, re, sqlite3, subprocess, tempfile, base64
 from datetime import datetime
 
-# ── CONFIG (same loading as codec.py / skills/codec.py) ─────────────────────
-CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
-_cfg = {}
-if os.path.exists(CONFIG_PATH):
-    try:
-        with open(CONFIG_PATH) as _f: _cfg = json.load(_f)
-    except: pass
+log = logging.getLogger(__name__)
 
-# LLM
-QWEN_BASE_URL     = _cfg.get("llm_base_url", "http://localhost:8081/v1")
-QWEN_MODEL        = _cfg.get("llm_model", "mlx-community/Qwen3.5-35B-A3B-4bit")
-LLM_API_KEY       = _cfg.get("llm_api_key", "")
-LLM_KWARGS        = _cfg.get("llm_kwargs", {})
-LLM_PROVIDER      = _cfg.get("llm_provider", "mlx")
-
-# Vision
-QWEN_VISION_URL   = _cfg.get("vision_base_url", "http://localhost:8082/v1")
-QWEN_VISION_MODEL = _cfg.get("vision_model", "mlx-community/Qwen2.5-VL-7B-Instruct-4bit")
-
-# TTS
-TTS_ENGINE        = _cfg.get("tts_engine", "kokoro")
-KOKORO_URL        = _cfg.get("tts_url", "http://localhost:8085/v1/audio/speech")
-KOKORO_MODEL      = _cfg.get("tts_model", "mlx-community/Kokoro-82M-bf16")
-TTS_VOICE         = _cfg.get("tts_voice", "am_adam")
-
-# STT
-WHISPER_URL       = _cfg.get("stt_url", "http://localhost:8084/v1/audio/transcriptions")
-
-# Paths
-DB_PATH            = os.path.expanduser("~/.q_memory.db")
-TASK_QUEUE_FILE    = "/tmp/q_task_queue.txt"
-SESSION_ALIVE      = "/tmp/q_session_alive"
-SKILLS_DIR         = os.path.expanduser("~/.codec/skills")
-
-# Features
-STREAMING          = _cfg.get("streaming", True)
+# ── CONFIG (single source of truth: codec_config.py) ─────────────────────────
+from codec_config import (
+    QWEN_BASE_URL, QWEN_MODEL, LLM_API_KEY, LLM_KWARGS, LLM_PROVIDER,
+    QWEN_VISION_URL, QWEN_VISION_MODEL,
+    TTS_ENGINE, KOKORO_URL, KOKORO_MODEL, TTS_VOICE,
+    WHISPER_URL,
+    DB_PATH, TASK_QUEUE_FILE, SESSION_ALIVE, SKILLS_DIR,
+    STREAMING,
+)
 
 # ── DETECTION ────────────────────────────────────────────────────────────────
 DRAFT_KEYWORDS = [
@@ -87,7 +62,9 @@ def get_memory(n=5):
             r = (resp[:100]+"...") if resp and len(resp)>100 else (resp or "no response")
             lines.append(f"[{ts[:16].replace('T',' ')}] {app} | {task[:60]} | {r}")
         return "\n".join(lines)
-    except: return ""
+    except Exception as e:
+        log.warning("Recent sessions query failed: %s", e)
+        return ""
 
 def get_recent_conversations(n=10):
     try:
@@ -97,7 +74,9 @@ def get_recent_conversations(n=10):
         if not rows: return []
         rows.reverse()
         return [{"role": r, "content": ct} for r, ct in rows]
-    except: return []
+    except Exception as e:
+        log.warning("Recent conversations query failed: %s", e)
+        return []
 
 # ── SKILLS ────────────────────────────────────────────────────────────────────
 loaded_skills = []
@@ -146,7 +125,7 @@ def transcribe(path):
         print(f"[CODEC] Whisper error: {e}")
     finally:
         try: os.unlink(path)
-        except: pass
+        except Exception as e: log.debug("Audio file cleanup failed: %s", e)
     return ""
 
 # ── UTILITIES ─────────────────────────────────────────────────────────────────
@@ -156,7 +135,9 @@ def focused_app():
             'tell application "System Events" to get name of first application process whose frontmost is true'],
             capture_output=True, text=True, timeout=3)
         return r.stdout.strip()
-    except: return "Unknown"
+    except Exception as e:
+        log.debug("Focused app detection failed: %s", e)
+        return "Unknown"
 
 def get_text_dialog():
     try:
@@ -164,7 +145,9 @@ def get_text_dialog():
             'set t to text returned of (display dialog "CODEC - Enter task:" default answer "" with title "CODEC" buttons {"Cancel","Send"} default button "Send")'],
             capture_output=True, text=True, timeout=120)
         return r.stdout.strip()
-    except: return ""
+    except Exception as e:
+        log.debug("Text dialog failed: %s", e)
+        return ""
 
 # ── SESSION CHECK ─────────────────────────────────────────────────────────────
 def terminal_session_exists():
@@ -177,7 +160,7 @@ def terminal_session_exists():
     except (ValueError, ProcessLookupError, PermissionError, FileNotFoundError, OSError):
         pass
     try: os.unlink(SESSION_ALIVE)
-    except: pass
+    except Exception as e: log.debug("Stale session_alive cleanup failed: %s", e)
     print("[CODEC] Cleaned stale session_alive")
     return False
 
@@ -207,7 +190,7 @@ def speak_text(text):
                 [tmp.write(c) for c in r.iter_content(4096)]
                 tmp.close()
                 subprocess.Popen(["afplay", tmp.name])
-    except: pass
+    except Exception as e: log.warning("TTS speak failed: %s", e)
 
 # ── SESSION CLEANUP ───────────────────────────────────────────────────────────
 def close_session():
@@ -216,11 +199,11 @@ def close_session():
             with open(SESSION_ALIVE) as f: pid = int(f.read().strip())
             os.kill(pid, 15)
             print(f"[CODEC] Session process {pid} terminated")
-        except: pass
+        except Exception as e: log.debug("Session process termination failed: %s", e)
         try: os.unlink(SESSION_ALIVE)
-        except: pass
+        except Exception as e: log.debug("Session alive file cleanup failed: %s", e)
     try: os.unlink(TASK_QUEUE_FILE)
-    except: pass
+    except Exception as e: log.debug("Task queue file cleanup failed: %s", e)
     subprocess.Popen(["osascript", "-e",
         'tell application "Terminal" to close (every window whose name contains "python3.13 /var/folders")'],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

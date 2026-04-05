@@ -35,14 +35,20 @@ def call_qwen(text, mode):
     return re.sub(r'###\s*FINAL ANSWER:\s*', '', result).strip()
 
 def overlay(text, color, duration):
-    subprocess.Popen([sys.executable, "-c", f"""import tkinter as tk
+    import json as _json
+    env = os.environ.copy()
+    env["_OVERLAY_TEXT"] = text
+    env["_OVERLAY_COLOR"] = color
+    env["_OVERLAY_DURATION"] = str(duration)
+    subprocess.Popen([sys.executable, "-c", """import tkinter as tk, os
+t=os.environ['_OVERLAY_TEXT'];c=os.environ['_OVERLAY_COLOR'];d=int(os.environ['_OVERLAY_DURATION'])
 r=tk.Tk();r.overrideredirect(True);r.attributes('-topmost',True);r.attributes('-alpha',0.95);r.configure(bg='#0a0a0a')
 sw=r.winfo_screenwidth();sh=r.winfo_screenheight()
-r.geometry(f'440x84+{{(sw-440)//2}}+{{sh-130}}')
-c=tk.Canvas(r,bg='#0a0a0a',highlightthickness=0,width=440,height=84);c.pack()
-c.create_rectangle(1,1,439,83,outline='{color}',width=1)
-c.create_text(220,42,text='{text}',fill='{color}',font=('Helvetica',16,'bold'))
-r.after({duration},r.destroy);r.mainloop()"""], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+r.geometry(f'440x84+{(sw-440)//2}+{sh-130}')
+cv=tk.Canvas(r,bg='#0a0a0a',highlightthickness=0,width=440,height=84);cv.pack()
+cv.create_rectangle(1,1,439,83,outline=c,width=1)
+cv.create_text(220,42,text=t,fill=c,font=('Helvetica',16,'bold'))
+r.after(d,r.destroy);r.mainloop()"""], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
 
 text = subprocess.run(["pbpaste"], capture_output=True, text=True).stdout.strip()
 if not text: sys.exit(0)

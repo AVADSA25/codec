@@ -1,6 +1,8 @@
 """CODEC Memory — SQLite FTS5 full-text search over all conversations."""
-import os, re, sqlite3
+import logging, os, re, sqlite3
 from datetime import datetime, timedelta
+
+log = logging.getLogger(__name__)
 
 DB_PATH = os.path.expanduser("~/.q_memory.db")
 
@@ -44,8 +46,8 @@ class CodecMemory:
         if self._conn is not None:
             try:
                 self._conn.close()
-            except Exception:
-                pass
+            except Exception as e:
+                log.debug("Memory DB connection close failed: %s", e)
             self._conn = None
 
     # ── Init ─────────────────────────────────────────────────────────────────

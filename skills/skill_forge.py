@@ -10,16 +10,11 @@ SKILL_TRIGGERS = [
 import os, requests, json, re
 
 try:
-    from codec_config import SKILLS_DIR
+    from codec_config import SKILLS_DIR, is_dangerous_skill_code
 except ImportError:
     SKILLS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)))
+    is_dangerous_skill_code = None
 CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
-
-# Same blocklist used by the dashboard's /api/save_skill endpoint
-BLOCKED_IN_SKILLS = [
-    "os.system(", "subprocess.", "eval(", "exec(", "__import__",
-    "importlib", "shutil.rmtree", "open('/etc", "open('/dev", "ctypes",
-]
 
 
 def run(task, app="", ctx=""):
@@ -136,11 +131,10 @@ CODE TO CONVERT:
         except SyntaxError as e:
             return f"Forged skill has a syntax error: {e}. Try with simpler code."
 
-        # Blocklist check — reject LLM output containing dangerous patterns (case-insensitive)
-        raw_lower = raw.lower()
-        for blocked in BLOCKED_IN_SKILLS:
-            if blocked.lower() in raw_lower:
-                return f"Forge blocked: generated code contains '{blocked}', which is not allowed in skills."
+        if is_dangerous_skill_code:
+            dangerous, reason = is_dangerous_skill_code(raw)
+            if dangerous:
+                return f"Forge blocked: {reason}"
 
         # Save
         os.makedirs(SKILLS_DIR, exist_ok=True)

@@ -389,8 +389,8 @@ SAFETY RULES:
         root.after(120000, deny)
         try:
             root.mainloop()
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug("Security dialog mainloop exited: %s", e)
         return result["allow"]
 
     def _danger_preview(self, action, code):
@@ -439,8 +439,8 @@ SAFETY RULES:
         root.after(30000, deny)  # Auto-deny after 30s
         try:
             root.mainloop()
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug("Danger preview dialog mainloop exited: %s", e)
         return result["allow"]
 
     def run_code(self, action, code):

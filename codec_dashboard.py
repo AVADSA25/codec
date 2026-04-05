@@ -92,9 +92,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
             auth = request.headers.get("Authorization", "")
             if auth and hmac.compare_digest(auth, f"Bearer {DASHBOARD_TOKEN}"):
                 return await call_next(request)
-            token = request.query_params.get("token", "")
-            if token and hmac.compare_digest(token, DASHBOARD_TOKEN):
-                return await call_next(request)
 
         # ── Layer 2: Biometric / PIN session check ──
         if AUTH_ENABLED and _auth_available():
@@ -102,7 +99,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 return await call_next(request)
             # Fallback: accept session token as ?s= query param (for img/stream URLs on mobile)
             qs_token = request.query_params.get("s", "")
-            if qs_token:
+            if qs_token and request.method == "GET":
                 with _auth_lock:
                     if qs_token in _auth_sessions:
                         session = _auth_sessions[qs_token]
@@ -122,7 +119,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if DASHBOARD_TOKEN and path.startswith("/api/"):
             # Token was already checked above and didn't match
             return StarletteJSONResponse(
-                {"error": "Unauthorized. Set dashboard_token in config.json or pass ?token=YOUR_TOKEN"},
+                {"error": "Unauthorized. Set dashboard_token in config.json and use the Authorization header."},
                 status_code=401
             )
 
@@ -155,6 +152,17 @@ app.add_middleware(AuthMiddleware)
 
 DB_PATH = os.path.expanduser("~/.q_memory.db")
 AUDIT_LOG = os.path.expanduser("~/.codec/audit.log")
+
+def _audit_write(line: str):
+    """Append to audit log with restricted permissions."""
+    os.makedirs(os.path.dirname(AUDIT_LOG), exist_ok=True)
+    with open(AUDIT_LOG, "a") as f:
+        f.write(line)
+    try:
+        os.chmod(AUDIT_LOG, 0o600)
+    except OSError:
+        pass
+
 CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
 TASK_QUEUE = os.path.expanduser("~/.codec/task_queue.txt")
 DASHBOARD_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -446,12 +454,10 @@ async def auth_verify(request: Request):
 
             # Audit log every attempt
             try:
-                os.makedirs(os.path.dirname(AUDIT_LOG), exist_ok=True)
-                with open(AUDIT_LOG, "a") as f:
-                    if result.get("authenticated"):
-                        f.write(f"[{datetime.now().isoformat()}] AUTH_SUCCESS: method={result.get('method')} ip={client_ip}\n")
-                    else:
-                        f.write(f"[{datetime.now().isoformat()}] AUTH_FAILED: error={result.get('error')} ip={client_ip}\n")
+                if result.get("authenticated"):
+                    _audit_write(f"[{datetime.now().isoformat()}] AUTH_SUCCESS: method={result.get('method')} ip={client_ip}\n")
+                else:
+                    _audit_write(f"[{datetime.now().isoformat()}] AUTH_FAILED: error={result.get('error')} ip={client_ip}\n")
             except Exception:
                 pass
 
@@ -508,12 +514,10 @@ async def auth_pin(request: Request):
 
     # Audit log
     try:
-        os.makedirs(os.path.dirname(AUDIT_LOG), exist_ok=True)
-        with open(AUDIT_LOG, "a") as f:
-            if pin_hash == AUTH_PIN_HASH:
-                f.write(f"[{datetime.now().isoformat()}] AUTH_SUCCESS: method=pin ip={client_ip}\n")
-            else:
-                f.write(f"[{datetime.now().isoformat()}] AUTH_FAILED: method=pin error=wrong_pin ip={client_ip}\n")
+        if pin_hash == AUTH_PIN_HASH:
+            _audit_write(f"[{datetime.now().isoformat()}] AUTH_SUCCESS: method=pin ip={client_ip}\n")
+        else:
+            _audit_write(f"[{datetime.now().isoformat()}] AUTH_FAILED: method=pin error=wrong_pin ip={client_ip}\n")
     except Exception:
         pass
 
@@ -586,8 +590,7 @@ async def totp_confirm(request: Request):
                 json.dump(cfg_data, f, indent=2)
         except Exception as e:
             return JSONResponse({"error": f"Failed to save config: {e}"}, status_code=500)
-        with open(AUDIT_LOG, "a") as f:
-            f.write(f"[{datetime.now().isoformat()}] TOTP_SETUP: 2FA enabled\n")
+        _audit_write(f"[{datetime.now().isoformat()}] TOTP_SETUP: 2FA enabled\n")
         return {"verified": True, "enabled": True, "message": "2FA enabled successfully"}
     return {"verified": False, "error": "Invalid code. Try again."}
 
@@ -618,11 +621,9 @@ async def totp_verify(request: Request):
             if pending_token in _auth_sessions:
                 _auth_sessions[pending_token]["totp_verified"] = True
                 _save_sessions()
-        with open(AUDIT_LOG, "a") as f:
-            f.write(f"[{datetime.now().isoformat()}] TOTP_SUCCESS: ip={client_ip}\n")
+        _audit_write(f"[{datetime.now().isoformat()}] TOTP_SUCCESS: ip={client_ip}\n")
         return {"verified": True, "token": pending_token}
-    with open(AUDIT_LOG, "a") as f:
-        f.write(f"[{datetime.now().isoformat()}] TOTP_FAILED: ip={client_ip}\n")
+    _audit_write(f"[{datetime.now().isoformat()}] TOTP_FAILED: ip={client_ip}\n")
     return {"verified": False, "error": "Invalid code"}
 
 
@@ -668,8 +669,7 @@ async def totp_disable(request: Request):
             session.pop("totp_verified", None)
         _save_sessions()
     client_ip = request.client.host if request.client else "unknown"
-    with open(AUDIT_LOG, "a") as f:
-        f.write(f"[{datetime.now().isoformat()}] TOTP_DISABLED: 2FA disabled by ip={client_ip}\n")
+    _audit_write(f"[{datetime.now().isoformat()}] TOTP_DISABLED: 2FA disabled by ip={client_ip}\n")
     return {"disabled": True}
 
 
@@ -1104,8 +1104,7 @@ async def send_command(request: Request):
     from codec_config import is_dangerous
     if is_dangerous(task):
         log.warning(f"[Command] BLOCKED dangerous command from {source}: {task[:80]}")
-        with open(AUDIT_LOG, "a") as f:
-            f.write(f"[{datetime.now().isoformat()}] BLOCKED[{source}]: {task[:200]}\n")
+        _audit_write(f"[{datetime.now().isoformat()}] BLOCKED[{source}]: {task[:200]}\n")
         return JSONResponse(
             {"error": "Command blocked: matches a dangerous pattern. Use the terminal directly for system commands."},
             status_code=403
@@ -1130,8 +1129,7 @@ async def send_command(request: Request):
         c.commit()
 
         # Write audit
-        with open(AUDIT_LOG, "a") as f:
-            f.write(f"[{datetime.now().isoformat()}] CMD[{source}]: {task[:200]}\n")
+        _audit_write(f"[{datetime.now().isoformat()}] CMD[{source}]: {task[:200]}\n")
 
         log.info(f"[Command] Queued from {source}: {task[:80]}")
         return {"status": "queued", "command": task, "source": source}
@@ -1173,8 +1171,7 @@ async def vision_analyze(request: Request):
         r = rq.post(f"{vision_url}/chat/completions", json=payload, headers=headers, timeout=120)
         data = r.json()
         answer = data["choices"][0]["message"]["content"].strip()
-        with open(AUDIT_LOG, "a") as f:
-            f.write(f"[{datetime.now().isoformat()}] VISION: {prompt[:100]}\n")
+        _audit_write(f"[{datetime.now().isoformat()}] VISION: {prompt[:100]}\n")
         return {"response": answer, "model": vision_model}
     except Exception as e:
         import traceback; traceback.print_exc()
@@ -1266,8 +1263,7 @@ async def webcam_capture(request: Request):
                 result["model"] = vision_model
             except Exception as e:
                 result["analysis_error"] = str(e)
-        with open(AUDIT_LOG, "a") as f:
-            f.write(f"[{datetime.now().isoformat()}] WEBCAM: {filename} analyze={analyze}\n")
+        _audit_write(f"[{datetime.now().isoformat()}] WEBCAM: {filename} analyze={analyze}\n")
         return result
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
@@ -1697,14 +1693,10 @@ async def save_skill(request: Request):
     # Validate: must contain SKILL_DESCRIPTION and run function
     if "SKILL_DESCRIPTION" not in content or "def run(" not in content:
         return JSONResponse({"error": "Invalid skill: must contain SKILL_DESCRIPTION and def run()"}, status_code=400)
-    # Block dangerous imports/calls in skill code
-    BLOCKED_IN_SKILLS = [
-        "os.system(", "subprocess.", "eval(", "exec(", "__import__",
-        "importlib", "shutil.rmtree", "open('/etc", "open('/dev", "ctypes",
-    ]
-    for blocked in BLOCKED_IN_SKILLS:
-        if blocked in content:
-            return JSONResponse({"error": f"Blocked pattern in skill code: {blocked}"}, status_code=400)
+    from codec_config import is_dangerous_skill_code
+    dangerous, reason = is_dangerous_skill_code(content)
+    if dangerous:
+        return JSONResponse({"error": f"Blocked: {reason}"}, status_code=400)
     path = os.path.join(_get_skills_dir(), filename)
     with open(path, "w") as f: f.write(content)
     return {"path": path, "skill": filename, "size": len(content)}
@@ -1740,14 +1732,10 @@ async def skill_approve(request: Request):
     # Validate: must contain SKILL_DESCRIPTION and run function
     if "SKILL_DESCRIPTION" not in code or "def run(" not in code:
         return JSONResponse({"error": "Invalid skill: must contain SKILL_DESCRIPTION and def run()"}, status_code=400)
-    # Block dangerous imports/calls in skill code
-    BLOCKED_IN_SKILLS = [
-        "os.system(", "subprocess.", "eval(", "exec(", "__import__",
-        "importlib", "shutil.rmtree", "open('/etc", "open('/dev", "ctypes",
-    ]
-    for blocked in BLOCKED_IN_SKILLS:
-        if blocked in code:
-            return JSONResponse({"error": f"Blocked pattern in skill code: {blocked}"}, status_code=400)
+    from codec_config import is_dangerous_skill_code
+    dangerous, reason = is_dangerous_skill_code(code)
+    if dangerous:
+        return JSONResponse({"error": f"Blocked: {reason}"}, status_code=400)
     skill_dir = _get_skills_dir()
     os.makedirs(skill_dir, exist_ok=True)
     path = os.path.join(skill_dir, filename)

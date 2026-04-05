@@ -15,6 +15,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 import hashlib
 import logging
+import threading
 import httpx
 
 log = logging.getLogger("codec_agents")
@@ -36,7 +37,8 @@ def _cfg():
     try:
         with open(CONFIG_PATH) as f:
             return json.load(f)
-    except Exception:
+    except Exception as e:
+        log.warning("Config load failed: %s", e)
         return {}
 
 def _qwen_url():
@@ -70,13 +72,14 @@ def _audit(event_type: str, **kwargs):
         os.makedirs(os.path.dirname(_AUDIT_LOG_PATH), exist_ok=True)
         with open(_AUDIT_LOG_PATH, "a") as f:
             f.write(entry + "\n")
-    except Exception:
-        pass
+    except Exception as e:
+        log.debug("Audit log write failed: %s", e)
 
 # Captures the last Google Docs URL created — fallback if Writer forgets to echo it
 _last_gdoc_url: Optional[str] = None
 
 # Google Docs rate-limit / dedup state
+_gdoc_lock = threading.Lock()
 _gdoc_created: Dict[str, float] = {}   # title_hash → timestamp
 _GDOC_COOLDOWN_SEC = 60                 # minimum seconds between docs with same title
 
@@ -202,27 +205,28 @@ def _google_docs_create(input_str: str) -> str:
 
     # Dedup: reject same title within cooldown period
     title_hash = hashlib.sha256(title.encode()).hexdigest()[:16]
-    now = time.time()
-    last_created = _gdoc_created.get(title_hash, 0)
-    if now - last_created < _GDOC_COOLDOWN_SEC:
-        remaining = int(_GDOC_COOLDOWN_SEC - (now - last_created))
-        return (f"Rate-limited: a Google Doc titled '{title}' was created {int(now - last_created)}s ago. "
-                f"Wait {remaining}s or use a different title. Last URL: {_last_gdoc_url or 'unknown'}")
+    with _gdoc_lock:
+        now = time.time()
+        last_created = _gdoc_created.get(title_hash, 0)
+        if now - last_created < _GDOC_COOLDOWN_SEC:
+            remaining = int(_GDOC_COOLDOWN_SEC - (now - last_created))
+            return (f"Rate-limited: a Google Doc titled '{title}' was created {int(now - last_created)}s ago. "
+                    f"Wait {remaining}s or use a different title. Last URL: {_last_gdoc_url or 'unknown'}")
 
-    try:
-        import sys as _sys
-        _dash = os.path.dirname(os.path.abspath(__file__))
-        if _dash not in _sys.path:
-            _sys.path.insert(0, _dash)
-        from codec_gdocs import create_google_doc
-        doc_url = create_google_doc(title, content)
-        if doc_url:
-            _last_gdoc_url = doc_url
-            _gdoc_created[title_hash] = now
-            return f"Google Doc created: {doc_url}"
-        return "Google Docs error: doc creation returned None"
-    except Exception as e:
-        return f"Google Docs error: {e}"
+        try:
+            import sys as _sys
+            _dash = os.path.dirname(os.path.abspath(__file__))
+            if _dash not in _sys.path:
+                _sys.path.insert(0, _dash)
+            from codec_gdocs import create_google_doc
+            doc_url = create_google_doc(title, content)
+            if doc_url:
+                _last_gdoc_url = doc_url
+                _gdoc_created[title_hash] = now
+                return f"Google Doc created: {doc_url}"
+            return "Google Docs error: doc creation returned None"
+        except Exception as e:
+            return f"Google Docs error: {e}"
 
 
 def _shell_execute(cmd: str) -> str:
@@ -1118,8 +1122,8 @@ def meeting_summarizer_crew(**kwargs) -> Crew:
                 )
                 if transcript:
                     meeting_input = f"[CODEC Voice Call Transcript]\n{transcript}"
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning("Voice transcript retrieval failed: %s", e)
 
     read_tools = [t for t in all_tools if t.name in ("file_read",)]
     write_tools = [t for t in all_tools if t.name in ("google_docs_create", "google_calendar")]
