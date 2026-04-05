@@ -57,38 +57,25 @@ DRAFT_KEYWORDS_CFG = _cfg.get("draft_keywords", [])
 def strip_think(text):
     return re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()
 
-_OVERLAY_EVENTS = os.path.expanduser("~/.codec/overlay_events.jsonl")
-
 def show_overlay(text, color="#E8711A", duration=2500):
-    """Send overlay notification via Swift native overlay (falls back to tkinter)."""
-    # Try Swift overlay first (writes to event file that the native app reads)
-    try:
-        event = json.dumps({"type": "notify", "text": text, "duration": duration / 1000.0})
-        with open(_OVERLAY_EVENTS, "a") as f:
-            f.write(event + "\n")
-        return
-    except Exception:
-        pass
-    # Fallback: tkinter overlay if Swift app not available
     d = f"root.after({duration}, root.destroy)" if duration else ""
-    safe_text = text.replace("'", "\\'").replace('"', '\\"')
     s = f"""
 import tkinter as tk
 root=tk.Tk()
 root.overrideredirect(True)
 root.attributes('-topmost',True)
-root.attributes('-alpha',0.92)
-root.configure(bg='#111111')
+root.attributes('-alpha',0.95)
+root.configure(bg='#0a0a0a')
 sw=root.winfo_screenwidth()
 sh=root.winfo_screenheight()
-w,h=560,70
+w,h=520,56
 x=(sw-w)//2
-y=sh-140
+y=sh-130
 root.geometry(f'{{w}}x{{h}}+{{x}}+{{y}}')
-c=tk.Canvas(root,bg='#111111',highlightthickness=0,width=w,height=h)
+c=tk.Canvas(root,bg='#0a0a0a',highlightthickness=0,width=w,height=h)
 c.pack()
-c.create_oval(18,h//2-4,26,h//2+4,fill='{color}',outline='')
-c.create_text(36,h//2,text='{safe_text}',fill='#e8e8e8',font=('SF Pro Display',14),anchor='w',width=w-56)
+c.create_rectangle(1,1,w-1,h-1,outline='{color}',width=1)
+c.create_text(w//2,h//2,text='{text}',fill='{color}',font=('Helvetica',13))
 {d}
 root.mainloop()
 """
