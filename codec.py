@@ -59,23 +59,35 @@ def strip_think(text):
 
 def show_overlay(text, color="#E8711A", duration=2500):
     d = f"root.after({duration}, root.destroy)" if duration else ""
+    safe_text = text.replace("'", "\\'").replace('"', '\\"')
     s = f"""
 import tkinter as tk
 root=tk.Tk()
 root.overrideredirect(True)
 root.attributes('-topmost',True)
-root.attributes('-alpha',0.95)
-root.configure(bg='#0a0a0a')
+root.attributes('-alpha',0.92)
+root.configure(bg='#111111')
 sw=root.winfo_screenwidth()
 sh=root.winfo_screenheight()
-w,h=520,56
+w,h=560,70
 x=(sw-w)//2
-y=sh-130
+y=sh-140
 root.geometry(f'{{w}}x{{h}}+{{x}}+{{y}}')
-c=tk.Canvas(root,bg='#0a0a0a',highlightthickness=0,width=w,height=h)
+c=tk.Canvas(root,bg='#111111',highlightthickness=0,width=w,height=h)
 c.pack()
-c.create_rectangle(1,1,w-1,h-1,outline='{color}',width=1)
-c.create_text(w//2,h//2,text='{text}',fill='{color}',font=('Helvetica',13))
+# Rounded rectangle (simulated with arcs)
+r=14
+c.create_arc(1,1,r*2,r*2,start=90,extent=90,outline='{color}',style='arc',width=2)
+c.create_arc(w-r*2-1,1,w-1,r*2,start=0,extent=90,outline='{color}',style='arc',width=2)
+c.create_arc(1,h-r*2-1,r*2,h-1,start=180,extent=90,outline='{color}',style='arc',width=2)
+c.create_arc(w-r*2-1,h-r*2-1,w-1,h-1,start=270,extent=90,outline='{color}',style='arc',width=2)
+c.create_line(r,1,w-r,1,fill='{color}',width=2)
+c.create_line(r,h-1,w-r,h-1,fill='{color}',width=2)
+c.create_line(1,r,1,h-r,fill='{color}',width=2)
+c.create_line(w-1,r,w-1,h-r,fill='{color}',width=2)
+# CODEC dot + text
+c.create_oval(18,h//2-4,26,h//2+4,fill='{color}',outline='')
+c.create_text(36,h//2,text='{safe_text}',fill='#e8e8e8',font=('SF Pro Display',14),anchor='w',width=w-56)
 {d}
 root.mainloop()
 """
