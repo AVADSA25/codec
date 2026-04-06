@@ -367,26 +367,22 @@ SAFETY RULES:
         lbl = action.upper() + ": " + code[:120]
         cv.create_text(w // 2, 80, text=lbl, fill="#e0e0e0", font=("SF Mono", 11), width=w - 40)
 
-        def allow():
-            result["allow"] = True
-            root.withdraw()
-            root.quit()
-            root.destroy()
-
-        def deny():
-            result["allow"] = False
-            root.withdraw()
-            root.quit()
-            root.destroy()
+        def _close(allowed):
+            result["allow"] = allowed
+            try:
+                root.after(0, root.destroy)
+            except Exception:
+                pass
 
         # Bottom section: buttons in a frame (not behind the canvas)
         btn_frame = tk.Frame(root, bg="#0a0a0a")
         btn_frame.pack(side="top", pady=15)
-        abtn = tk.Button(btn_frame, text="\u2713 Allow", bg="#00cc55", fg="#000", font=("Helvetica", 13, "bold"), border=0, padx=20, pady=6, command=allow)
+        abtn = tk.Button(btn_frame, text="\u2713 Allow", bg="#00cc55", fg="#000", font=("Helvetica", 13, "bold"), border=0, padx=20, pady=6, command=lambda: _close(True))
         abtn.pack(side="left", padx=10)
-        dbtn = tk.Button(btn_frame, text="\u2717 Deny", bg="#888", fg="#000", font=("Helvetica", 13, "bold"), border=0, padx=20, pady=6, command=deny)
+        dbtn = tk.Button(btn_frame, text="\u2717 Deny", bg="#888", fg="#000", font=("Helvetica", 13, "bold"), border=0, padx=20, pady=6, command=lambda: _close(False))
         dbtn.pack(side="left", padx=10)
-        root.after(120000, deny)
+        root.protocol("WM_DELETE_WINDOW", lambda: _close(False))
+        root.after(30000, lambda: _close(False))
         try:
             root.mainloop()
         except Exception as e:
@@ -416,27 +412,23 @@ SAFETY RULES:
         cv.create_text(w // 2, 75, text=lbl, fill="#e0e0e0", font=("SF Mono", 11), width=w - 40)
         cv.create_text(w // 2, 125, text="This command can delete data. Are you sure?", fill="#ff9999", font=("Helvetica", 11))
 
-        def allow():
-            result["allow"] = True
-            root.withdraw()
-            root.quit()
-            root.destroy()
-
-        def deny():
-            result["allow"] = False
-            root.withdraw()
-            root.quit()
-            root.destroy()
+        def _close(allowed):
+            result["allow"] = allowed
+            try:
+                root.after(0, root.destroy)
+            except Exception:
+                pass
 
         btn_frame = tk.Frame(root, bg="#0a0a0a")
         btn_frame.pack(side="top", pady=15)
         abtn = tk.Button(btn_frame, text="\u2713 Allow", bg="#ff3333", fg="#fff",
-                         font=("Helvetica", 13, "bold"), border=0, padx=20, pady=6, command=allow)
+                         font=("Helvetica", 13, "bold"), border=0, padx=20, pady=6, command=lambda: _close(True))
         abtn.pack(side="left", padx=10)
         dbtn = tk.Button(btn_frame, text="\u2717 Deny", bg="#444", fg="#fff",
-                         font=("Helvetica", 13, "bold"), border=0, padx=20, pady=6, command=deny)
+                         font=("Helvetica", 13, "bold"), border=0, padx=20, pady=6, command=lambda: _close(False))
         dbtn.pack(side="left", padx=10)
-        root.after(30000, deny)  # Auto-deny after 30s
+        root.protocol("WM_DELETE_WINDOW", lambda: _close(False))
+        root.after(30000, lambda: _close(False))
         try:
             root.mainloop()
         except Exception as e:
