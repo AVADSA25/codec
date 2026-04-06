@@ -1964,13 +1964,62 @@ async def _bg_watcher():
     _bg_status["watcher"]["running"] = False
 
 
+async def _warmup_vision():
+    """Pre-load Qwen Vision model so first real request is fast (~7s vs ~23s cold)."""
+    await asyncio.sleep(5)  # let other services start first
+    try:
+        config = {}
+        try:
+            with open(CONFIG_PATH) as f: config = json.load(f)
+        except Exception:
+            pass
+        vision_url = config.get("vision_base_url", "http://localhost:8082/v1")
+        import requests as rq
+        # Tiny request just to load model weights into GPU memory
+        payload = {
+            "model": config.get("vision_model", "mlx-community/Qwen2.5-VL-7B-Instruct-4bit"),
+            "messages": [{"role": "user", "content": "Hi"}],
+            "max_tokens": 1,
+        }
+        r = rq.post(f"{vision_url}/chat/completions", json=payload,
+                     headers={"Content-Type": "application/json"}, timeout=60)
+        if r.status_code == 200:
+            log.info("[WARMUP] Vision model pre-loaded successfully")
+        else:
+            log.warning(f"[WARMUP] Vision warmup returned {r.status_code}")
+    except Exception as e:
+        log.warning(f"[WARMUP] Vision warmup failed (model may cold-start on first use): {e}")
+
+
+async def _vision_keepalive():
+    """Ping vision model every 10 minutes to prevent GPU memory eviction."""
+    await asyncio.sleep(120)  # first ping after 2 min (warmup already ran)
+    while True:
+        try:
+            config = {}
+            try:
+                with open(CONFIG_PATH) as f: config = json.load(f)
+            except Exception:
+                pass
+            vision_url = config.get("vision_base_url", "http://localhost:8082/v1")
+            import requests as rq
+            r = rq.get(f"{vision_url}/models", timeout=10)
+            if r.status_code == 200:
+                log.debug("[KEEPALIVE] Vision model alive")
+        except Exception:
+            pass
+        await asyncio.sleep(600)  # every 10 minutes
+
+
 @app.on_event("startup")
 async def _start_background_services():
-    """Launch scheduler, heartbeat, and watcher as background async tasks."""
+    """Launch scheduler, heartbeat, watcher, and vision warmup as background async tasks."""
     _bg_tasks["scheduler"] = asyncio.create_task(_bg_scheduler())
     _bg_tasks["heartbeat"] = asyncio.create_task(_bg_heartbeat())
     _bg_tasks["watcher"]   = asyncio.create_task(_bg_watcher())
-    log.info("[STARTUP] Background services launched: scheduler, heartbeat, watcher")
+    _bg_tasks["vision_warmup"] = asyncio.create_task(_warmup_vision())
+    _bg_tasks["vision_keepalive"] = asyncio.create_task(_vision_keepalive())
+    log.info("[STARTUP] Background services launched: scheduler, heartbeat, watcher, vision-warmup")
 
 
 @app.on_event("shutdown")

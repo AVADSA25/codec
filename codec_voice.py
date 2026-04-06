@@ -524,7 +524,7 @@ class VoicePipeline:
             r = await self._http.post(
                 VISION_URL, json=payload,
                 headers={"Content-Type": "application/json"},
-                timeout=60.0,
+                timeout=120.0,
             )
             if r.status_code == 200:
                 return r.json()["choices"][0]["message"]["content"].strip()

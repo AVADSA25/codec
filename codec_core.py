@@ -311,7 +311,7 @@ def build_session_script(safe_sys, session_id, wake_word_label="CODEC"):
     L.append("        with open(tmp.name, 'rb') as f: ib = base64.b64encode(f.read()).decode()")
     L.append("        os.unlink(tmp.name)")
     L.append("        print('[CODEC] Reading screen...')")
-    L.append("        r = requests.post(QWEN_VISION_URL+'/chat/completions', json={'model':QWEN_VISION_MODEL,'messages':[{'role':'user','content':[{'type':'image_url','image_url':{'url':'data:image/png;base64,'+ib}},{'type':'text','text':'Read all visible text. Include app name and content. Raw text only.'}]}],'max_tokens':800}, timeout=60)")
+    L.append("        r = requests.post(QWEN_VISION_URL+'/chat/completions', json={'model':QWEN_VISION_MODEL,'messages':[{'role':'user','content':[{'type':'image_url','image_url':{'url':'data:image/png;base64,'+ib}},{'type':'text','text':'Read all visible text. Include app name and content. Raw text only.'}]}],'max_tokens':800}, timeout=120)")
     L.append("        if r.status_code == 200: return r.json()['choices'][0]['message'].get('content','')[:2000]")
     L.append("    except: pass")
     L.append("    return ''")

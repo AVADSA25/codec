@@ -234,7 +234,7 @@ SAFETY RULES:
                     ],
                     "max_tokens": 800,
                 },
-                timeout=60,
+                timeout=120,
             )
             if r.status_code == 200:
                 return r.json()["choices"][0]["message"].get("content", "")[:2000]
