@@ -143,6 +143,20 @@ state = {
     "doc_ctx": "",
 }
 
+# ── VOICE CONVERSATION SESSION (persistent across F18 presses) ──────────────
+voice_session = {
+    "messages": [],      # [{role, content}, ...] — full conversation history
+    "started": None,     # ISO timestamp of session start
+    "turn_count": 0,     # number of exchanges
+}
+
+def reset_voice_session():
+    """Clear voice conversation history (called on F13 toggle)."""
+    voice_session["messages"] = []
+    voice_session["started"] = None
+    voice_session["turn_count"] = 0
+    print("[CODEC] Voice session reset")
+
 # ── WORK QUEUE ────────────────────────────────────────────────────────────────
 work_queue = []
 work_lock = threading.Lock()
@@ -174,6 +188,8 @@ def dispatch(task):
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     # Check skills — try ranked matches, fall through if skill returns None
+    skill_fired = False
+    skill_result = None
     if len(task) < 500:
         for skill in check_skills_ranked(task):
             result = run_skill(skill, task, app)
@@ -183,6 +199,31 @@ def dispatch(task):
                 subprocess.Popen(["osascript", "-e", f'display notification "{str(result)[:80]}" with title "CODEC Skill"'],
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 print(f"[CODEC] Skill response: {str(result)[:100]}")
+                skill_fired = True
+                skill_result = str(result)
+                # Add skill exchange to voice session for continuity
+                voice_session["messages"].append({"role": "user", "content": task})
+                voice_session["messages"].append({"role": "assistant", "content": f"[Skill: {skill['name']}] {skill_result}"})
+                voice_session["turn_count"] += 1
+                # Save to shared memory
+                try:
+                    from codec_memory import CodecMemory
+                    cm = CodecMemory()
+                    cm.add("user", task, source="voice")
+                    cm.add("assistant", skill_result[:500], source="voice")
+                except Exception: pass
+                # After skill fires, grab screen context (skill may have opened browser etc)
+                try:
+                    time.sleep(2)  # give browser/app time to load
+                    screen = screenshot_ctx()
+                    if screen and len(screen) > 50:
+                        voice_session["messages"].append({
+                            "role": "system",
+                            "content": f"[SCREEN AFTER SKILL: The user's screen now shows: {screen[:1000]}]"
+                        })
+                        print(f"[CODEC] Post-skill screen captured: {len(screen)} chars")
+                except Exception as e:
+                    print(f"[CODEC] Post-skill screenshot failed: {e}")
                 return
             print(f"[CODEC] Skill {skill['name']} returned None, trying next...")
 
@@ -196,8 +237,9 @@ def dispatch(task):
         return
 
     rid = save_task(task, app)
+
+    # ── Build system prompt with memory ─────────────────────────────────
     mem = get_memory(5)
-    # Build rich memory context from CodecMemory (same as chat mode)
     mem_ctx = ""
     try:
         from codec_memory import CodecMemory
@@ -220,7 +262,19 @@ def dispatch(task):
     if mem: sys_p += "\n\n" + mem
     if mem_ctx: sys_p += mem_ctx
 
-    # ── Direct LLM call for voice-to-voice (no Terminal windows) ─────────
+    # ── Persistent voice conversation (multi-turn) ──────────────────────
+    if not voice_session["started"]:
+        voice_session["started"] = datetime.now().isoformat()
+
+    # Add current user message to session
+    voice_session["messages"].append({"role": "user", "content": task})
+
+    # Build LLM messages: system + conversation history (keep last 20 turns)
+    llm_messages = [{"role": "system", "content": sys_p}]
+    # Trim to last 20 messages to stay within context
+    history = voice_session["messages"][-20:]
+    llm_messages.extend(history)
+
     push(lambda: show_processing_overlay('Thinking...', 15000))
     try:
         import requests as _llm_req
@@ -229,10 +283,7 @@ def dispatch(task):
             headers["Authorization"] = f"Bearer {LLM_API_KEY}"
         payload = {
             "model": QWEN_MODEL,
-            "messages": [
-                {"role": "system", "content": sys_p},
-                {"role": "user", "content": task},
-            ],
+            "messages": llm_messages,
             "max_tokens": 400,
             "temperature": 0.7,
             "chat_template_kwargs": {"enable_thinking": False},
@@ -244,14 +295,17 @@ def dispatch(task):
             answer = data.get("choices", [{}])[0].get("message", {}).get("content", "")
             answer = strip_think(answer).strip()
             if answer:
-                print(f"[CODEC] Voice LLM reply: {answer[:120]}")
+                print(f"[CODEC] Voice reply (turn {voice_session['turn_count']+1}): {answer[:120]}")
+                # Add assistant response to session history
+                voice_session["messages"].append({"role": "assistant", "content": answer})
+                voice_session["turn_count"] += 1
                 # Save response to DB
                 try:
                     c = sqlite3.connect(DB_PATH)
                     c.execute("UPDATE sessions SET response=? WHERE id=?", (answer[:500], rid))
                     c.commit(); c.close()
                 except Exception: pass
-                # Save to memory
+                # Save to shared memory (same store as Chat)
                 try:
                     cm = CodecMemory()
                     cm.add("user", task, source="voice")
@@ -340,8 +394,12 @@ def do_screenshot_question():
             task = question + " [SCREEN CONTEXT: " + ctx[:800] + "]"
             dispatch(task)
         else:
-            # User cancelled — save for later F18/F16
+            # User cancelled — save for later F18/F16 AND inject into voice session
             state["screen_ctx"] = ctx
+            voice_session["messages"].append({
+                "role": "system",
+                "content": f"[SCREEN CAPTURE: The user's screen currently shows: {ctx[:1000]}]"
+            })
             push(lambda: show_overlay('Screenshot saved — use voice or text to ask', '#E8711A', 3000))
     except Exception as e:
         print(f"[CODEC] Screenshot dialog error: {e}")
@@ -502,9 +560,11 @@ def on_press(key):
             state["active"] = False
             push(lambda: show_toggle_overlay(False))
             push(close_session)
+            reset_voice_session()
             print("[CODEC] OFF")
         else:
             state["active"] = True
+            reset_voice_session()
             push(lambda: show_toggle_overlay(True, "F18=voice  F16=text  **=screen  ++=doc  --=chat"))
             print("[CODEC] ON -- F18=voice | F16=text | *=screen | +=doc | --=chat")
         return
