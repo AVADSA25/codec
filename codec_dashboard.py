@@ -1463,15 +1463,66 @@ async def web_search_endpoint(request: Request):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+# ── Chat Tool Calling: safe skills available from Chat ──
+CHAT_SKILL_ALLOWLIST = {
+    "calculator", "weather", "web_search", "bitcoin_price",
+    "system_info", "network_info", "memory_search",
+    "timer", "translate", "file_search", "notes",
+    "reminders", "google_calendar", "google_gmail",
+    "google_docs", "google_drive", "google_sheets",
+    "philips_hue", "music", "clipboard", "password_generator",
+    "qr_generator", "json_formatter", "pomodoro",
+}
+
+def _try_skill(user_text: str):
+    """Check if user_text matches a skill. Returns (skill_name, result) or (None, None)."""
+    try:
+        from codec_dispatch import check_skill, run_skill
+        skill = check_skill(user_text)
+        if skill and skill.get("name") in CHAT_SKILL_ALLOWLIST:
+            result = run_skill(skill, user_text, app="CODEC Chat")
+            if result is not None:
+                return skill["name"], str(result)
+    except Exception as e:
+        log.warning(f"[Chat] Skill check error: {e}")
+    return None, None
+
+
 @app.post("/api/chat")
 async def chat_completion(request: Request):
-    """Direct LLM chat with full context window"""
+    """Direct LLM chat with full context window + tool calling"""
     from codec_metrics import metrics
     metrics.inc("codec_chat_requests_total")
     body = await request.json()
     messages = body.get("messages", [])
     if not messages:
         return JSONResponse({"error": "No messages"}, status_code=400)
+
+    # ── Tool Calling: check if last user message matches a skill ──
+    use_tools = body.get("tools", True)  # frontend can disable with tools:false
+    if use_tools:
+        last_user_text = ""
+        for m in reversed(messages):
+            if m.get("role") == "user" and isinstance(m.get("content"), str):
+                last_user_text = m["content"]
+                break
+        if last_user_text:
+            skill_name, skill_result = await asyncio.to_thread(_try_skill, last_user_text)
+            if skill_result:
+                log.info(f"[Chat] Skill '{skill_name}' handled: {skill_result[:80]}")
+                stream_mode = body.get("stream", False)
+                if stream_mode:
+                    # Return skill result as SSE stream (same format as LLM stream)
+                    async def _skill_stream():
+                        # Send skill indicator
+                        yield f"data: {json.dumps({'skill': skill_name})}\n\n"
+                        # Send the result as a single token, then LLM follow-up
+                        skill_prefix = f"**⚡ {skill_name}**: {skill_result}\n\n"
+                        yield f"data: {json.dumps({'token': skill_prefix})}\n\n"
+                        yield "data: [DONE]\n\n"
+                    return StreamingResponse(_skill_stream(), media_type="text/event-stream")
+                else:
+                    return {"response": f"**⚡ {skill_name}**: {skill_result}", "skill": skill_name}
 
     # Check for images — route to vision model
     images = body.get("images", [])
@@ -2114,6 +2165,13 @@ async def _start_background_services():
     _bg_tasks["watcher"]   = asyncio.create_task(_bg_watcher())
     _bg_tasks["vision_warmup"] = asyncio.create_task(_warmup_vision())
     _bg_tasks["vision_keepalive"] = asyncio.create_task(_vision_keepalive())
+    # Load skill registry for Chat tool calling
+    try:
+        from codec_dispatch import load_skills
+        load_skills()
+        log.info("[STARTUP] Skill registry loaded for Chat tool calling")
+    except Exception as e:
+        log.warning(f"[STARTUP] Skill registry load failed (non-critical): {e}")
     log.info("[STARTUP] Background services launched: scheduler, heartbeat, watcher, vision-warmup")
 
 
