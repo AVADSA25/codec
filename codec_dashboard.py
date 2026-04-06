@@ -595,31 +595,84 @@ async def send_command(request: Request):
             status_code=403
         )
 
-    # Write to task queue file — CODEC's pwa_poller will pick it up
+    # Process command directly via LLM
     try:
-        with open(TASK_QUEUE, "w") as f:
-            json.dump({
-                "task": task,
-                "app": "CODEC Dashboard",
-                "ts": datetime.now().isoformat(),
-                "source": source
-            }, f)
+        import requests as rq
+        config = {}
+        try:
+            with open(CONFIG_PATH) as f: config = json.load(f)
+        except Exception:
+            pass
+        base_url = config.get("llm_base_url", "http://localhost:8081/v1")
+        model = config.get("llm_model", "mlx-community/Qwen3.5-35B-A3B-4bit")
+        api_key = config.get("llm_api_key", "")
+        kwargs = config.get("llm_kwargs", {})
+        headers_llm = {"Content-Type": "application/json"}
+        if api_key: headers_llm["Authorization"] = f"Bearer {api_key}"
 
-        # Also save to DB
+        import uuid as _uuid
+        session_id = f"quickchat-{_uuid.uuid4().hex[:8]}"
+        now = datetime.now().isoformat()
+
+        # Save user message to conversations table (so it appears in chat list)
         c = get_db()
         c.execute(
-            "INSERT INTO sessions (timestamp, task, app, response) VALUES (?,?,?,?)",
-            (datetime.now().isoformat(), task[:200], "CODEC Dashboard", "")
+            "INSERT INTO conversations (session_id, timestamp, role, content) VALUES (?,?,?,?)",
+            (session_id, now, "user", task[:2000])
         )
         c.commit()
 
-        # Write audit
-        _audit_write(f"[{datetime.now().isoformat()}] CMD[{source}]: {task[:200]}\n")
+        _audit_write(f"[{now}] CMD[{source}]: {task[:200]}\n")
+        log.info(f"[Command] Processing from {source}: {task[:80]}")
 
-        log.info(f"[Command] Queued from {source}: {task[:80]}")
-        return {"status": "queued", "command": task, "source": source}
+        # Call LLM in background so response returns fast
+        import asyncio
+        resp_file = os.path.expanduser("~/.codec/pwa_response.json")
+
+        async def _process_command():
+            try:
+                now_str = datetime.now().strftime("%A %B %d, %Y at %H:%M")
+                payload = {
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": f"You are CODEC Flash, a fast local AI assistant running on the user's Mac. Today is {now_str}. Be concise and direct. Answer in 1-3 sentences max."},
+                        {"role": "user", "content": task}
+                    ],
+                    "max_tokens": 4000,
+                    "temperature": 0.7,
+                    "stream": False,
+                }
+                payload.update(kwargs)
+                r = await asyncio.to_thread(
+                    lambda: rq.post(f"{base_url}/chat/completions", json=payload,
+                                    headers=headers_llm, timeout=120)
+                )
+                data = r.json()
+                answer = data["choices"][0]["message"]["content"].strip()
+                import re as _re
+                answer = _re.sub(r'<think>[\s\S]*?</think>', '', answer).strip()
+
+                # Write response for /api/response polling
+                with open(resp_file, "w") as f:
+                    json.dump({"response": answer, "task": task, "ts": datetime.now().isoformat()}, f)
+
+                # Save assistant response to conversations table
+                c2 = get_db()
+                c2.execute(
+                    "INSERT INTO conversations (session_id, timestamp, role, content) VALUES (?,?,?,?)",
+                    (session_id, datetime.now().isoformat(), "assistant", answer[:2000])
+                )
+                c2.commit()
+                log.info(f"[Command] Response ready: {answer[:80]}")
+            except Exception as e:
+                log.error(f"[Command] LLM call failed: {e}")
+                with open(resp_file, "w") as f:
+                    json.dump({"response": f"Error: {e}", "task": task}, f)
+
+        asyncio.create_task(_process_command())
+        return {"status": "processing", "command": task, "source": source}
     except Exception as e:
-        log.error(f"[Command] Queue write failed: {e}")
+        log.error(f"[Command] Failed: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
@@ -1448,9 +1501,10 @@ async def chat_completion(request: Request):
             "top_p": 0.9,
             "frequency_penalty": 1.1,
             "stream": stream_mode,
-            "chat_template_kwargs": {"enable_thinking": thinking},
         }
         payload.update(kwargs)
+        # Override thinking AFTER config merge — frontend toggle wins
+        payload["chat_template_kwargs"] = {"enable_thinking": thinking}
 
         if stream_mode:
             # SSE streaming — keeps Cloudflare tunnel alive, sends tokens as they arrive

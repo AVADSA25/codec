@@ -103,6 +103,15 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);height:
 }
 .msg.assistant:hover .msg-regen{opacity:1}
 .msg-regen:hover{color:var(--accent);border-color:var(--accent)}
+.msg-edit{
+  position:absolute;bottom:4px;left:-32px;
+  background:var(--surface);border:1px solid var(--border);color:var(--text-dim);
+  width:24px;height:24px;border-radius:5px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  opacity:0;transition:all .15s;
+}
+.msg.user:hover .msg-edit{opacity:1}
+.msg-edit:hover{color:var(--accent);border-color:var(--accent)}
 
 .typing{color:var(--accent);font-size:13px;padding:8px 16px}
 .typing span{animation:blink 1.4s infinite}
@@ -207,6 +216,7 @@ input[type=file]{display:none}
   .msg-copy{right:-4px;top:-4px;opacity:0.7}
   .msg.user .msg-copy{left:-4px;right:auto}
   .msg-regen{right:-4px;bottom:-4px;opacity:0.7}
+  .msg-edit{left:-4px;bottom:-4px;opacity:0.7}
   .ibtn{width:36px;height:36px}
 }
 @media (max-width:480px){
@@ -229,7 +239,9 @@ input[type=file]{display:none}
 .modal-overlay { display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.85); z-index:100; justify-content:center; align-items:center; padding:20px; }
 .modal-overlay.show { display:flex; }
 .modal-overlay img { max-width:100%; max-height:90vh; border-radius:var(--radius); border:1px solid var(--border); }
-.modal-close { position:fixed; top:16px; right:16px; background:var(--surface); color:var(--text); border:1px solid var(--border); width:32px; height:32px; border-radius:50%; font-size:18px; cursor:pointer; z-index:101; display:flex; align-items:center; justify-content:center; }
+.modal-close { position:fixed; top:16px; right:16px; background:rgba(30,30,30,0.9); color:#fff; border:2px solid rgba(255,255,255,0.3); width:44px; height:44px; border-radius:50%; font-size:26px; cursor:pointer; z-index:101; display:flex; align-items:center; justify-content:center; transition:background 0.2s, transform 0.2s; }
+.modal-close:hover { background:rgba(220,50,50,0.9); transform:scale(1.1); }
+@media(max-width:600px){ .modal-close { width:52px; height:52px; font-size:30px; top:10px; right:10px; } }
 </style>
 </head>
 <body>
@@ -277,6 +289,9 @@ input[type=file]{display:none}
 </button>
 <div id="modeToggle" class="mode-toggle">
 <button class="mode-btn active" onclick="setMode('chat')" id="modeChatBtn"><svg class="ico" viewBox="0 0 24 24" style="width:14px;height:14px"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>Chat</button>
+<button class="mode-btn active" id="thinkToggle" onclick="toggleThinking()" title="Deep thinking ON — better answers, slower (~15s)">
+  <svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>Think
+</button>
 <button class="mode-btn" onclick="setMode('research')" id="modeResearchBtn"><svg class="ico" viewBox="0 0 24 24" style="width:14px;height:14px"><rect x="4" y="4" width="16" height="16" rx="2"/><circle cx="9" cy="10" r="1.5" fill="currentColor" stroke="none"/><circle cx="15" cy="10" r="1.5" fill="currentColor" stroke="none"/><path d="M9 15h6"/></svg>Agents</button>
 <select id="crewSelect">
 <option value="deep_research">🔍 Deep Research</option>
@@ -359,8 +374,8 @@ input[type=file]{display:none}
 </div>
 
 <div class="modal-overlay" id="screenModal" onclick="closeScreenshot()">
-  <button class="modal-close" onclick="closeScreenshot()">&times;</button>
-  <img id="screenImg" src="">
+  <button class="modal-close" onclick="event.stopPropagation(); closeScreenshot()" aria-label="Close screenshot">&times;</button>
+  <img id="screenImg" src="" onclick="event.stopPropagation()">
 </div>
 
 <div class="toast" id="toast"></div>
@@ -423,6 +438,7 @@ var pendingFiles=[];
 var sessionId=null;
 var chatMode='chat';
 var webSearchEnabled=false;
+var thinkingEnabled=true;
 
 function showToast(msg){var t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(function(){t.classList.remove('show')},1800)}
 function copyMsgText(text,btn){navigator.clipboard.writeText(text).then(function(){btn.classList.add('copied');showToast('Copied');setTimeout(function(){btn.classList.remove('copied')},1500)})}
@@ -459,7 +475,7 @@ function regenerateResponse(btn){
   isProcessing=true;document.getElementById('sendBtn').disabled=true;_showStop();showTyping();
   _currentAbort=new AbortController();
   var msgs=[{role:'system',content:SYS}].concat(chatHist);
-  fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs,force_search:webSearchEnabled,stream:true}),signal:_currentAbort.signal}).then(async function(r){
+  fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs,force_search:webSearchEnabled,thinking:thinkingEnabled,stream:true}),signal:_currentAbort.signal}).then(async function(r){
     if(r.status===401||r.status===403){hideTyping();addMessage('assistant','Session expired — redirecting to login...');setTimeout(function(){window.location.href='/auth'},1500);isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false;return}
     hideTyping();
     var reader=r.body.getReader();var decoder=new TextDecoder();var fullText='';var bubbleId='stream_'+genId();
@@ -495,6 +511,14 @@ function toggleWebSearch(){
   var btn=document.getElementById('modeWebBtn');
   btn.classList.toggle('active',webSearchEnabled);
   btn.title=webSearchEnabled?'Web search ON':'Force web search on every message';
+}
+
+function toggleThinking(){
+  thinkingEnabled=!thinkingEnabled;
+  var btn=document.getElementById('thinkToggle');
+  btn.classList.toggle('active',thinkingEnabled);
+  btn.title=thinkingEnabled?'Deep thinking ON — better answers, slower (~15s)':'Quick mode — fast answers';
+  showToast(thinkingEnabled?'Thinking ON — deeper answers':'Thinking OFF — fast mode');
 }
 
 function genId(){return Date.now().toString(36)+Math.random().toString(36).substr(2,5)}
@@ -559,13 +583,34 @@ function addMessage(role,content,animate){
   div.className='msg '+role;
   if(animate===false)div.style.animation='none';
   var time=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
-  var copyBtn='<button class="msg-copy" onclick="copyMsgText(decodeURIComponent(\''+encodeURIComponent(content)+'\'),this)" title="Copy"><svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button>';
+  var enc=encodeURIComponent(content);
+  var copyBtn='<button class="msg-copy" onclick="copyMsgText(decodeURIComponent(\''+enc+'\'),this)" title="Copy"><svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button>';
+  var editBtn=role==='user'?'<button class="msg-edit" onclick="editMessage(decodeURIComponent(\''+enc+'\'),this)" title="Edit &amp; re-send"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>':'';
   var regenBtn=role==='assistant'?'<button class="msg-regen" onclick="regenerateResponse(this)" title="Regenerate"><svg class="ico ico-sm" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg></button>':'';
-  div.innerHTML=copyBtn+regenBtn+'<div class="msg-bubble">'+formatMsg(content)+'</div><div class="msg-time">'+time+'</div>';
+  div.innerHTML=copyBtn+editBtn+regenBtn+'<div class="msg-bubble">'+formatMsg(content)+'</div><div class="msg-time">'+time+'</div>';
   document.getElementById('messages').appendChild(div);
   scrollBottom()
 }
 
+function editMessage(text,btn){
+  // Put text in input for editing
+  var input=document.getElementById('chatInput');
+  input.value=text;
+  input.style.height='auto';input.style.height=Math.min(input.scrollHeight,120)+'px';
+  input.focus();
+  // Remove this message and everything after it
+  var msgDiv=btn.closest('.msg');
+  if(msgDiv){
+    var msgs=document.getElementById('messages');
+    var siblings=Array.from(msgs.children);
+    var idx=siblings.indexOf(msgDiv);
+    for(var i=siblings.length-1;i>=idx;i--){siblings[i].remove()}
+  }
+  // Trim chat history: find and remove this user message and all after it
+  for(var i=chatHist.length-1;i>=0;i--){
+    if(chatHist[i].role==='user'&&chatHist[i].content===text){chatHist=chatHist.slice(0,i);break}
+  }
+}
 var addMsg=addMessage; // alias for webcam code
 function scrollBottom(){var m=document.getElementById('messages');m.scrollTop=m.scrollHeight}
 function showTyping(){var div=document.createElement('div');div.className='typing';div.id='typing';div.innerHTML='<span>\u25CF</span><span>\u25CF</span><span>\u25CF</span> CODEC is thinking...';document.getElementById('messages').appendChild(div);scrollBottom()}
@@ -662,7 +707,7 @@ async function sendMessage(){
       if(data.response){addMessage('assistant',data.response);chatHist.push({role:'assistant',content:data.response});saveMessages([{role:'assistant',content:data.response}])}
       else{addMessage('assistant','Error: '+(data.error||'No response'))}
     } else {
-      r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs,force_search:webSearchEnabled,stream:true}),signal:_currentAbort.signal});
+      r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs,force_search:webSearchEnabled,thinking:thinkingEnabled,stream:true}),signal:_currentAbort.signal});
       if(r.status===401||r.status===403){hideTyping();addMessage('assistant','Session expired — redirecting to login...');setTimeout(function(){window.location.href='/auth'},1500);isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false;return}
       hideTyping();
       // SSE streaming — render tokens as they arrive
@@ -863,6 +908,7 @@ function takeServerPhoto() {
   }).catch(function(e) { btn.style.borderColor = ''; addMsg('system', 'Camera error: ' + e.message); });
 }
 function closeScreenshot() { document.getElementById('screenModal').classList.remove('show'); }
+document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeScreenshot(); });
 
 // ── Live Webcam PIP (Mac MJPEG stream) ──
 var _pipDrag = { active: false, x: 0, y: 0 };

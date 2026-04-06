@@ -280,7 +280,9 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
 .modal-overlay { display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.85); z-index:100; justify-content:center; align-items:center; padding:20px; }
 .modal-overlay.show { display:flex; }
 .modal-overlay img { max-width:100%; max-height:90vh; border-radius:var(--radius); border:1px solid var(--border); }
-.modal-close { position:fixed; top:16px; right:16px; background:var(--surface); color:var(--text); border:1px solid var(--border); width:32px; height:32px; border-radius:50%; font-size:18px; cursor:pointer; z-index:101; display:flex; align-items:center; justify-content:center; }
+.modal-close { position:fixed; top:16px; right:16px; background:rgba(30,30,30,0.9); color:#fff; border:2px solid rgba(255,255,255,0.3); width:48px; height:48px; border-radius:50%; font-size:28px; cursor:pointer; z-index:101; display:flex; align-items:center; justify-content:center; transition:background 0.2s,transform 0.2s; }
+.modal-close:hover { background:rgba(220,50,50,0.9); transform:scale(1.1); }
+@media(max-width:600px){ .modal-close { width:56px; height:56px; font-size:32px; top:10px; right:10px; } }
 
 /* ── Toast ── */
 .toast {
@@ -446,7 +448,7 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
       <button class="ibtn phone" onclick="startLiveChat()" title="Start voice call">
         <svg class="ico" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.362 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
       </button>
-      <textarea class="chat-input" id="cmdInput" placeholder="Quick message..." rows="1"></textarea>
+      <textarea class="chat-input" id="cmdInput" placeholder="Flash — ask anything..." rows="1"></textarea>
       <button class="ibtn" onclick="uploadFile()" title="Upload file">
         <svg class="ico" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
       </button>
@@ -459,8 +461,8 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
 </div>
 
 <div class="modal-overlay" id="screenModal" onclick="closeScreenshot()">
-  <button class="modal-close" onclick="closeScreenshot()">&times;</button>
-  <img id="screenImg" src="">
+  <button class="modal-close" onclick="event.stopPropagation(); closeScreenshot()" aria-label="Close screenshot">&times;</button>
+  <img id="screenImg" src="" onclick="event.stopPropagation()">
 </div>
 
 <div class="toast" id="toast"></div>
@@ -568,10 +570,12 @@ async function sendCmd() {
   try {
     var r = await fetch('/api/command', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({task: task}) });
     var data = await r.json();
-    if (data.status === 'queued') {
+    if (data.status === 'queued' || data.status === 'processing') {
       text.innerHTML = '<span style="color:var(--accent)">Processing...</span> ' + escHtml(task);
+    } else if (data.error) {
+      text.innerHTML = '<span style="color:var(--danger)">Error:</span> ' + escHtml(data.error);
     } else {
-      text.innerHTML = '<span style="color:var(--danger)">Error:</span> ' + escHtml(data.error || 'Unknown');
+      text.innerHTML = '<span style="color:var(--accent)">Processing...</span> ' + escHtml(task);
     }
   } catch(e) {
     text.innerHTML = '<span style="color:var(--danger)">Failed:</span> ' + escHtml(e.message);
@@ -591,7 +595,7 @@ async function sendCmd() {
       }
       var pd = await pr.json();
       if (pd.response) {
-        text.innerHTML = '<span style="color:var(--success)">CODEC:</span> ' + escHtml(pd.response);
+        text.innerHTML = '<span style="color:var(--success)">Flash:</span> ' + escHtml(pd.response);
         clearInterval(pollResp);
         loadChat();
         playResponse(pd.response);
@@ -1115,6 +1119,7 @@ async function takeScreenshot() {
   } catch(e) { showToast('Screenshot failed'); }
 }
 function closeScreenshot() { document.getElementById('screenModal').classList.remove('show'); }
+document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeScreenshot(); });
 
 // ── Live Chat (Voice) ──
 function startLiveChat() { window.open('/voice?auto=1', '_self'); }
