@@ -219,17 +219,58 @@ def dispatch(task):
     sys_p = CODEC_VOICE_PROMPT
     if mem: sys_p += "\n\n" + mem
     if mem_ctx: sys_p += mem_ctx
-    safe_sys = sys_p.replace('\n', ' ')
 
-    with open(TASK_QUEUE_FILE, "w") as f:
-        f.write(json.dumps({"task": task, "app": app, "ts": datetime.now().isoformat()}))
-
-    if terminal_session_exists():
-        print("[CODEC] Queued to existing session")
-        return
-
-    session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_session_in_terminal(safe_sys, session_id, task)
+    # ── Direct LLM call for voice-to-voice (no Terminal windows) ─────────
+    push(lambda: show_processing_overlay('Thinking...', 15000))
+    try:
+        import requests as _llm_req
+        headers = {}
+        if LLM_API_KEY:
+            headers["Authorization"] = f"Bearer {LLM_API_KEY}"
+        payload = {
+            "model": QWEN_MODEL,
+            "messages": [
+                {"role": "system", "content": sys_p},
+                {"role": "user", "content": task},
+            ],
+            "max_tokens": 400,
+            "temperature": 0.7,
+            "chat_template_kwargs": {"enable_thinking": False},
+        }
+        payload.update(LLM_KWARGS)
+        r = _llm_req.post(f"{QWEN_BASE_URL}/chat/completions", json=payload, headers=headers, timeout=60)
+        if r.status_code == 200:
+            data = r.json()
+            answer = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            answer = strip_think(answer).strip()
+            if answer:
+                print(f"[CODEC] Voice LLM reply: {answer[:120]}")
+                # Save response to DB
+                try:
+                    c = sqlite3.connect(DB_PATH)
+                    c.execute("UPDATE sessions SET response=? WHERE id=?", (answer[:500], rid))
+                    c.commit(); c.close()
+                except Exception: pass
+                # Save to memory
+                try:
+                    cm = CodecMemory()
+                    cm.add("user", task, source="voice")
+                    cm.add("assistant", answer, source="voice")
+                except Exception: pass
+                speak_text(answer)
+                subprocess.Popen(["osascript", "-e",
+                    f'display notification "{answer[:80]}" with title "CODEC"'],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            else:
+                print("[CODEC] Voice LLM returned empty response")
+                speak_text("Sorry, I didn't get a response.")
+        else:
+            print(f"[CODEC] Voice LLM error: {r.status_code} {r.text[:200]}")
+            speak_text("Sorry, the language model is not responding.")
+    except Exception as e:
+        log.error("Voice LLM call failed: %s", e)
+        import traceback; traceback.print_exc()
+        speak_text("Sorry, something went wrong.")
 
 # ── DOCUMENT INPUT ────────────────────────────────────────────────────────────
 def do_document_input():
