@@ -63,6 +63,14 @@ class CodecMemory:
                 session_id TEXT, timestamp TEXT, role TEXT, content TEXT,
                 user_id TEXT DEFAULT 'default'
             )""")
+
+            # Migrate existing tables: add user_id if missing
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(conversations)").fetchall()}
+            if "user_id" not in cols:
+                conn.execute("ALTER TABLE conversations ADD COLUMN user_id TEXT DEFAULT 'default'")
+                conn.commit()
+                log.info("Migrated conversations table: added user_id column")
+
             conn.execute("CREATE INDEX IF NOT EXISTS idx_conv_session ON conversations(session_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_conv_ts ON conversations(timestamp)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_conv_user ON conversations(user_id)")

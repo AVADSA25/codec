@@ -392,6 +392,14 @@ def heartbeat():
     global _last_cleanup
     log.info("═══ CODEC Heartbeat ═══")
     check_system_health()
+    # Run alert-based service monitoring (Telegram/Email/Slack)
+    try:
+        from codec_alerts import check_services_and_alert
+        check_services_and_alert()
+    except ImportError:
+        pass
+    except Exception as e:
+        log.warning(f"Alert check failed: {e}")
     check_memory_stats()
     tasks = check_pending_tasks()
     if tasks:
@@ -413,8 +421,8 @@ def heartbeat():
     log.info("═══ Heartbeat complete ═══")
     return tasks
 
-def run_daemon(interval_minutes=30):
-    """Run heartbeat every N minutes"""
+def run_daemon(interval_minutes=5):
+    """Run heartbeat every N minutes (default 5min for fast failure detection)."""
     log.info(f"Heartbeat daemon starting (every {interval_minutes}min)")
     while True:
         heartbeat()
