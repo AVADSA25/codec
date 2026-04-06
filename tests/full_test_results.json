@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-04-06T21:13:28.299538",
+  "timestamp": "2026-04-06T22:11:57.955004",
   "summary": {
     "total": 37,
     "passed": 37,
@@ -12,112 +12,112 @@
       "section": "auth",
       "name": "PIN authentication",
       "detail": "Session established",
-      "elapsed_s": 0.008,
-      "timestamp": "2026-04-06T21:12:59.725966"
+      "elapsed_s": 0.009,
+      "timestamp": "2026-04-06T22:11:26.089448"
     },
     {
       "status": "PASS",
       "section": "infrastructure",
       "name": "GET / -> 200, contains CODEC",
       "detail": "HTTP 200, len=71296",
-      "elapsed_s": 0.002,
-      "timestamp": "2026-04-06T21:12:59.728052"
+      "elapsed_s": 0.003,
+      "timestamp": "2026-04-06T22:11:26.092142"
     },
     {
       "status": "PASS",
       "section": "infrastructure",
       "name": "GET /api/health -> 200",
       "detail": "HTTP 200",
-      "elapsed_s": 0.001,
-      "timestamp": "2026-04-06T21:12:59.729375"
+      "elapsed_s": 0.002,
+      "timestamp": "2026-04-06T22:11:26.093852"
     },
     {
       "status": "PASS",
       "section": "infrastructure",
       "name": "GET :8081/v1/models -> has Qwen",
       "detail": "Models: mlx-community/Qwen2.5-VL-7B-Instruct-4bit, black-forest-labs/FLUX.1-dev, mlx-community/Qwen2.5-VL-3B-Instruct-4bit",
-      "elapsed_s": 0.035,
-      "timestamp": "2026-04-06T21:12:59.764621"
+      "elapsed_s": 0.049,
+      "timestamp": "2026-04-06T22:11:26.142946"
     },
     {
       "status": "PASS",
       "section": "infrastructure",
       "name": "GET :8082/v1/models -> has VL model",
       "detail": "Models: mlx-community/GLM-4.7-Flash-8bit, mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16, mlx-community/Qwen3.5-35B-A3B-4bit",
-      "elapsed_s": 0.024,
-      "timestamp": "2026-04-06T21:12:59.789118"
+      "elapsed_s": 0.026,
+      "timestamp": "2026-04-06T22:11:26.169171"
     },
     {
       "status": "PASS",
       "section": "infrastructure",
       "name": "GET :8084/ -> whisper running",
       "detail": "HTTP 404",
-      "elapsed_s": 0.002,
-      "timestamp": "2026-04-06T21:12:59.790973"
+      "elapsed_s": 0.003,
+      "timestamp": "2026-04-06T22:11:26.171997"
     },
     {
       "status": "PASS",
       "section": "infrastructure",
       "name": "GET :8085/ -> kokoro running",
       "detail": "HTTP 200",
-      "elapsed_s": 0.002,
-      "timestamp": "2026-04-06T21:12:59.792695"
+      "elapsed_s": 0.003,
+      "timestamp": "2026-04-06T22:11:26.174946"
     },
     {
       "status": "PASS",
       "section": "chat",
       "name": "Chat: 'say hello' -> response exists",
-      "detail": "Response: Hello! How can I help you today?",
-      "elapsed_s": 1.524,
-      "timestamp": "2026-04-06T21:13:01.316459"
+      "detail": "Response: Hello! \ud83d\udc4b How can I help you today?",
+      "elapsed_s": 1.326,
+      "timestamp": "2026-04-06T22:11:27.501041"
     },
     {
       "status": "PASS",
       "section": "chat",
       "name": "Chat: 'calculate 100*42' -> skill=calculator, 4200",
       "detail": "skill=calculator, resp=**\u26a1 calculator**: 100 * 42 = 4200",
-      "elapsed_s": 0.012,
-      "timestamp": "2026-04-06T21:13:01.328767"
+      "elapsed_s": 0.046,
+      "timestamp": "2026-04-06T22:11:27.547283"
     },
     {
       "status": "PASS",
       "section": "chat",
       "name": "Chat: 'weather in Marbella' -> skill=weather",
-      "detail": "skill=weather, resp=**\u26a1 weather**: Weather in Marbella: Cloudy +18\u00c2\u00b0C 56% \u00e2\u0086\u00964km/h",
-      "elapsed_s": 0.269,
-      "timestamp": "2026-04-06T21:13:01.597835"
+      "detail": "skill=weather, resp=**\u26a1 weather**: Weather in Marbella: Cloudy +17\u00c2\u00b0C 59% \u00e2\u0086\u00964km/h",
+      "elapsed_s": 0.289,
+      "timestamp": "2026-04-06T22:11:27.836214"
     },
     {
       "status": "PASS",
       "section": "chat",
       "name": "Chat: 'bitcoin price' -> skill fires",
       "detail": "skill=bitcoin_price, resp=**\u26a1 bitcoin_price**: Could not fetch Bitcoin price",
-      "elapsed_s": 0.043,
-      "timestamp": "2026-04-06T21:13:01.640945"
+      "elapsed_s": 0.048,
+      "timestamp": "2026-04-06T22:11:27.884051"
     },
     {
       "status": "PASS",
       "section": "chat",
       "name": "Chat: stream=true -> SSE data: lines arrive",
       "detail": "11 lines received",
-      "elapsed_s": 0.961,
-      "timestamp": "2026-04-06T21:13:02.601731"
+      "elapsed_s": 1.607,
+      "timestamp": "2026-04-06T22:11:29.490839"
     },
     {
       "status": "PASS",
       "section": "chat",
       "name": "GET /api/qchat/sessions -> array",
       "detail": "Type: list, len=30",
-      "elapsed_s": 0.002,
-      "timestamp": "2026-04-06T21:13:02.603938"
+      "elapsed_s": 0.003,
+      "timestamp": "2026-04-06T22:11:29.494332"
     },
     {
       "status": "PASS",
       "section": "chat",
       "name": "GET /api/qchat/search?q=hello -> array",
       "detail": "Type: list, len=3",
-      "elapsed_s": 0.002,
-      "timestamp": "2026-04-06T21:13:02.605778"
+      "elapsed_s": 0.004,
+      "timestamp": "2026-04-06T22:11:29.498412"
     },
     {
       "status": "PASS",
@@ -125,95 +125,95 @@
       "name": "GET /api/conversations?limit=5 -> array",
       "detail": "Type: list, len=5",
       "elapsed_s": 0.002,
-      "timestamp": "2026-04-06T21:13:02.607384"
+      "timestamp": "2026-04-06T22:11:29.500905"
     },
     {
       "status": "PASS",
       "section": "flash",
       "name": "POST /api/command -> status=processing",
       "detail": "status=processing",
-      "elapsed_s": 0.004,
-      "timestamp": "2026-04-06T21:13:02.610973"
+      "elapsed_s": 0.005,
+      "timestamp": "2026-04-06T22:11:29.505919"
     },
     {
       "status": "PASS",
       "section": "flash",
       "name": "GET /api/response -> response field exists",
-      "detail": "resp=3 plus 3 equals 6.\n\nThat's it!",
-      "elapsed_s": 0.01,
-      "timestamp": "2026-04-06T21:13:17.626541"
+      "detail": "resp=3 plus 3 equals 6.",
+      "elapsed_s": 0.006,
+      "timestamp": "2026-04-06T22:11:44.512379"
     },
     {
       "status": "PASS",
       "section": "voice",
       "name": "TTS: Kokoro speech synthesis",
       "detail": "HTTP 200, audio=33068 bytes",
-      "elapsed_s": 0.311,
-      "timestamp": "2026-04-06T21:13:17.938655"
+      "elapsed_s": 0.339,
+      "timestamp": "2026-04-06T22:11:44.852253"
     },
     {
       "status": "PASS",
       "section": "voice",
       "name": "STT: Whisper transcription -> 'hello'/'test'",
       "detail": "Transcribed: 'Hello, this is a test.'",
-      "elapsed_s": 3.489,
-      "timestamp": "2026-04-06T21:13:21.427621"
+      "elapsed_s": 5.322,
+      "timestamp": "2026-04-06T22:11:50.174725"
     },
     {
       "status": "PASS",
       "section": "vision",
       "name": "Vision: red square -> mentions red/color",
-      "detail": "Response: White.",
-      "elapsed_s": 3.108,
-      "timestamp": "2026-04-06T21:13:24.535863"
+      "detail": "Response: White",
+      "elapsed_s": 2.962,
+      "timestamp": "2026-04-06T22:11:53.138269"
     },
     {
       "status": "PASS",
       "section": "pages",
       "name": "GET /chat -> 200",
       "detail": "HTTP 200, len=77413",
-      "elapsed_s": 0.004,
-      "timestamp": "2026-04-06T21:13:24.540242"
+      "elapsed_s": 0.003,
+      "timestamp": "2026-04-06T22:11:53.141472"
     },
     {
       "status": "PASS",
       "section": "pages",
       "name": "GET /voice -> 200",
       "detail": "HTTP 200, len=58372",
-      "elapsed_s": 0.003,
-      "timestamp": "2026-04-06T21:13:24.543837"
+      "elapsed_s": 0.002,
+      "timestamp": "2026-04-06T22:11:53.143718"
     },
     {
       "status": "PASS",
       "section": "pages",
       "name": "GET /vibe -> 200",
       "detail": "HTTP 200, len=77426",
-      "elapsed_s": 0.003,
-      "timestamp": "2026-04-06T21:13:24.546693"
+      "elapsed_s": 0.004,
+      "timestamp": "2026-04-06T22:11:53.147772"
     },
     {
       "status": "PASS",
       "section": "pages",
       "name": "GET /tasks -> 200",
       "detail": "HTTP 200, len=63518",
-      "elapsed_s": 0.002,
-      "timestamp": "2026-04-06T21:13:24.548755"
+      "elapsed_s": 0.003,
+      "timestamp": "2026-04-06T22:11:53.150332"
     },
     {
       "status": "PASS",
       "section": "vibe",
       "name": "Vibe: HTML code generation -> contains HTML tags",
-      "detail": "Response len=463, snippet=```html\n<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <",
-      "elapsed_s": 3.522,
-      "timestamp": "2026-04-06T21:13:28.070909"
+      "detail": "Response len=511, snippet=```html\n<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <",
+      "elapsed_s": 4.543,
+      "timestamp": "2026-04-06T22:11:57.693616"
     },
     {
       "status": "PASS",
       "section": "memory",
       "name": "GET /api/conversations?limit=5 -> returns data",
       "detail": "len=5, keys=['id', 'session_id', 'timestamp', 'role', 'content']",
-      "elapsed_s": 0.002,
-      "timestamp": "2026-04-06T21:13:28.072826"
+      "elapsed_s": 0.003,
+      "timestamp": "2026-04-06T22:11:57.696271"
     },
     {
       "status": "PASS",
@@ -221,23 +221,23 @@
       "name": "Chat: 'search memory for CODEC' -> response",
       "detail": "resp=**\u26a1 memory_search**: Found 48 results for 'CODEC' across all CODEC history.\nOpen",
       "elapsed_s": 0.024,
-      "timestamp": "2026-04-06T21:13:28.096593"
+      "timestamp": "2026-04-06T22:11:57.720742"
     },
     {
       "status": "PASS",
       "section": "notifications",
       "name": "GET /api/notifications/count -> unread field",
-      "detail": "unread=1",
-      "elapsed_s": 0.004,
-      "timestamp": "2026-04-06T21:13:28.100636"
+      "detail": "unread=0",
+      "elapsed_s": 0.003,
+      "timestamp": "2026-04-06T22:11:57.723553"
     },
     {
       "status": "PASS",
       "section": "upload",
       "name": "POST /api/upload (txt) -> extracts text",
       "detail": "status=ok, text=CODEC test file content. This is a production test verification document.",
-      "elapsed_s": 0.004,
-      "timestamp": "2026-04-06T21:13:28.104918"
+      "elapsed_s": 0.003,
+      "timestamp": "2026-04-06T22:11:57.726715"
     },
     {
       "status": "PASS",
@@ -245,7 +245,7 @@
       "name": "PM2: codec-dashboard",
       "detail": "status=online",
       "elapsed_s": 0.0,
-      "timestamp": "2026-04-06T21:13:28.299434"
+      "timestamp": "2026-04-06T22:11:57.954893"
     },
     {
       "status": "PASS",
@@ -253,7 +253,7 @@
       "name": "PM2: qwen35b",
       "detail": "status=online",
       "elapsed_s": 0.0,
-      "timestamp": "2026-04-06T21:13:28.299460"
+      "timestamp": "2026-04-06T22:11:57.954919"
     },
     {
       "status": "PASS",
@@ -261,7 +261,7 @@
       "name": "PM2: qwen-vision",
       "detail": "status=online",
       "elapsed_s": 0.0,
-      "timestamp": "2026-04-06T21:13:28.299462"
+      "timestamp": "2026-04-06T22:11:57.954922"
     },
     {
       "status": "PASS",
@@ -269,7 +269,7 @@
       "name": "PM2: whisper-stt",
       "detail": "status=online",
       "elapsed_s": 0.0,
-      "timestamp": "2026-04-06T21:13:28.299467"
+      "timestamp": "2026-04-06T22:11:57.954930"
     },
     {
       "status": "PASS",
@@ -277,7 +277,7 @@
       "name": "PM2: kokoro-82m",
       "detail": "status=online",
       "elapsed_s": 0.0,
-      "timestamp": "2026-04-06T21:13:28.299469"
+      "timestamp": "2026-04-06T22:11:57.954932"
     },
     {
       "status": "PASS",
@@ -285,7 +285,7 @@
       "name": "PM2: open-codec",
       "detail": "status=online",
       "elapsed_s": 0.0,
-      "timestamp": "2026-04-06T21:13:28.299471"
+      "timestamp": "2026-04-06T22:11:57.954934"
     },
     {
       "status": "PASS",
@@ -293,7 +293,7 @@
       "name": "PM2: codec-hotkey",
       "detail": "status=online",
       "elapsed_s": 0.0,
-      "timestamp": "2026-04-06T21:13:28.299473"
+      "timestamp": "2026-04-06T22:11:57.954936"
     },
     {
       "status": "PASS",
@@ -301,7 +301,7 @@
       "name": "PM2: codec-dictate",
       "detail": "status=online",
       "elapsed_s": 0.0,
-      "timestamp": "2026-04-06T21:13:28.299474"
+      "timestamp": "2026-04-06T22:11:57.954937"
     }
   ]
 }

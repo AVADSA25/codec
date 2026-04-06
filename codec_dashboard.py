@@ -1079,6 +1079,151 @@ async def qchat_search(q: str = "", limit: int = 20):
     return results
 
 
+# ── Cross-source memory search endpoint ──────────────────────────────────────
+
+@app.post("/api/memory/search")
+async def memory_search_endpoint(request: Request):
+    """Search ALL conversation history across voice, chat, vibe, and flash sources.
+
+    JSON body: {"query": "search term", "limit": 20, "sources": ["chat", "voice", "flash", "all"]}
+    Returns list of: {timestamp, source, role, content, session_id}
+    """
+    body = await request.json()
+    query = (body.get("query") or "").strip()
+    if not query or len(query) < 2:
+        return JSONResponse({"error": "query must be at least 2 characters"}, status_code=400)
+
+    limit = min(int(body.get("limit", 20)), 100)
+    sources = body.get("sources", ["all"])
+    if isinstance(sources, str):
+        sources = [sources]
+    search_all = "all" in sources
+    keyword = f"%{query}%"
+    results = []
+
+    # 1. Voice memory (FTS5 via CodecMemory + conversations table in memory.db)
+    if search_all or "voice" in sources:
+        # FTS5 search (ranked by relevance)
+        try:
+            from codec_memory import CodecMemory
+            mem = CodecMemory()
+            fts_results = mem.search(query, limit=limit)
+            for r in fts_results:
+                results.append({
+                    "timestamp": r.get("timestamp", ""),
+                    "source": "voice",
+                    "role": r.get("role", ""),
+                    "content": (r.get("content", "") or "")[:500],
+                    "session_id": r.get("session_id", ""),
+                })
+        except Exception as e:
+            log.warning(f"Memory search (voice FTS): {e}")
+
+        # Also search conversations table (LIKE fallback for non-FTS matches)
+        try:
+            c = get_db()
+            rows = c.execute(
+                "SELECT session_id, timestamp, role, content FROM conversations "
+                "WHERE content LIKE ? COLLATE NOCASE ORDER BY id DESC LIMIT ?",
+                (keyword, limit)
+            ).fetchall()
+            for r in rows:
+                results.append({
+                    "timestamp": r[1] or "",
+                    "source": "voice",
+                    "role": r[2] or "",
+                    "content": (r[3] or "")[:500],
+                    "session_id": r[0] or "",
+                })
+        except Exception as e:
+            log.warning(f"Memory search (conversations table): {e}")
+
+    # 2. Dashboard chat (qchat.db)
+    if search_all or "chat" in sources:
+        try:
+            conn = qchat_db()
+            rows = conn.execute(
+                """SELECT m.session_id, m.timestamp, m.role, m.content, s.title
+                   FROM qchat_messages m
+                   LEFT JOIN qchat_sessions s ON m.session_id = s.id
+                   WHERE m.content LIKE ? COLLATE NOCASE
+                   ORDER BY m.id DESC LIMIT ?""",
+                (keyword, limit)
+            ).fetchall()
+            for r in rows:
+                results.append({
+                    "timestamp": r[1] or "",
+                    "source": "chat",
+                    "role": r[2] or "",
+                    "content": (r[3] or "")[:500],
+                    "session_id": r[0] or "",
+                })
+        except Exception as e:
+            log.warning(f"Memory search (qchat): {e}")
+
+    # 3. Vibe IDE (vibe.db)
+    if search_all or "vibe" in sources:
+        try:
+            conn = vibe_db()
+            rows = conn.execute(
+                """SELECT m.session_id, m.timestamp, m.role, m.content
+                   FROM vibe_messages m
+                   WHERE m.content LIKE ? COLLATE NOCASE
+                   ORDER BY m.id DESC LIMIT ?""",
+                (keyword, limit)
+            ).fetchall()
+            for r in rows:
+                results.append({
+                    "timestamp": r[1] or "",
+                    "source": "vibe",
+                    "role": r[2] or "",
+                    "content": (r[3] or "")[:500],
+                    "session_id": r[0] or "",
+                })
+        except Exception as e:
+            log.warning(f"Memory search (vibe): {e}")
+
+    # 4. Flash / task sessions (sessions table in memory.db)
+    if search_all or "flash" in sources:
+        try:
+            c = get_db()
+            rows = c.execute(
+                "SELECT id, timestamp, task, app, response FROM sessions "
+                "WHERE task LIKE ? COLLATE NOCASE OR response LIKE ? COLLATE NOCASE "
+                "ORDER BY id DESC LIMIT ?",
+                (keyword, keyword, limit)
+            ).fetchall()
+            for r in rows:
+                # Combine task + response for content
+                task_text = r[2] or ""
+                resp_text = r[4] or ""
+                content = f"[TASK] {task_text}"
+                if resp_text:
+                    content += f"\n[RESPONSE] {resp_text[:300]}"
+                results.append({
+                    "timestamp": r[1] or "",
+                    "source": "flash",
+                    "role": "system",
+                    "content": content[:500],
+                    "session_id": str(r[0]) if r[0] else "",
+                })
+        except Exception as e:
+            log.warning(f"Memory search (sessions/flash): {e}")
+
+    # Deduplicate by content prefix and sort by timestamp descending
+    seen = set()
+    unique = []
+    for r in sorted(results, key=lambda x: x.get("timestamp", ""), reverse=True):
+        key = r["content"][:80]
+        if key not in seen:
+            seen.add(key)
+            unique.append(r)
+    unique = unique[:limit]
+
+    log.info(f"Memory search '{query}': {len(unique)} results from {len(results)} raw hits")
+    return {"query": query, "count": len(unique), "results": unique}
+
+
 @app.post("/api/upload_image")
 async def upload_image(request: Request):
     """Upload image, send to vision, return description"""
@@ -1362,40 +1507,96 @@ def _enrich_messages(messages: list, config: dict, force_search: bool = False) -
     memory_parts = []
 
     # ── Memory recall ──────────────────────────────────────────────────────────
-    # Always inject relevant memory context so the LLM has cross-session recall
+    # Inject relevant memory context from ALL sources (voice, chat, vibe) for
+    # full cross-session recall.
+    lower = last_text.lower()
+    memory_triggers = [
+        'remember', 'recall', 'earlier', 'before', 'last time',
+        'previously', 'we talked', 'we discussed', 'you said',
+        'did i', 'did we', 'have i', 'have we', 'my previous',
+        'past conversation', 'history', 'do you know my',
+        'what was', 'what did', 'when did',
+    ]
+    has_memory_trigger = any(t in lower for t in memory_triggers)
+
+    # 1. Voice memory (FTS5 via CodecMemory) — always inject recent, targeted on trigger
     try:
         from codec_memory import CodecMemory
         mem = CodecMemory()
-        lower = last_text.lower()
-        # Explicit memory triggers → targeted search
-        memory_triggers = [
-            'remember', 'recall', 'earlier', 'before', 'last time',
-            'previously', 'we talked', 'we discussed', 'you said',
-            'did i', 'did we', 'have i', 'have we', 'my previous',
-            'past conversation', 'history', 'do you know my',
-            'what was', 'what did', 'when did',
-        ]
-        has_memory_trigger = any(t in lower for t in memory_triggers)
         if has_memory_trigger:
-            # Targeted FTS search for the user's query
             mem_context = mem.get_context(last_text, n=8)
             if mem_context:
-                memory_parts.append(f"[MEMORY — RELEVANT PAST CONVERSATIONS]\n{mem_context}\n[END MEMORY]")
-                log.info(f"Memory recall injected (targeted): {len(mem_context)} chars")
-        # Always inject recent context (last 5 messages) for continuity
+                memory_parts.append(f"[MEMORY — RELEVANT PAST CONVERSATIONS (VOICE)]\n{mem_context}\n[END MEMORY]")
+                log.info(f"Memory recall injected (voice targeted): {len(mem_context)} chars")
         recent = mem.search_recent(days=3, limit=5)
         if recent:
-            lines = ["[RECENT MEMORY — LAST 3 DAYS]"]
+            lines = ["[RECENT MEMORY — VOICE (LAST 3 DAYS)]"]
             for r in recent:
                 ts = r["timestamp"][:16].replace("T", " ")
                 snippet = r["content"][:200].replace("\n", " ")
                 lines.append(f"  [{ts}] {r['role'].upper()}: {snippet}")
             lines.append("[END RECENT MEMORY]")
-            recent_ctx = "\n".join(lines)
-            memory_parts.append(recent_ctx)
+            memory_parts.append("\n".join(lines))
             log.info(f"Recent memory injected: {len(recent)} messages")
     except Exception as e:
-        log.warning(f"Memory enrichment failed: {e}")
+        log.warning(f"Memory enrichment (voice) failed: {e}")
+
+    # 2. Dashboard chat history (qchat.db) — targeted search on trigger, recent always
+    try:
+        _qc = qchat_db()
+        if has_memory_trigger:
+            keyword = f"%{last_text[:80]}%"
+            qrows = _qc.execute(
+                "SELECT role, content, timestamp FROM qchat_messages "
+                "WHERE content LIKE ? COLLATE NOCASE ORDER BY id DESC LIMIT 6",
+                (keyword,)
+            ).fetchall()
+            if qrows:
+                lines = ["[MEMORY — RELEVANT PAST CHATS]"]
+                for r in qrows:
+                    ts = (r[2] or "")[:16].replace("T", " ")
+                    snippet = (r[1] or "")[:200].replace("\n", " ")
+                    lines.append(f"  [{ts}] {(r[0] or '').upper()}: {snippet}")
+                lines.append("[END MEMORY]")
+                memory_parts.append("\n".join(lines))
+                log.info(f"Memory recall injected (chat targeted): {len(qrows)} msgs")
+        # Recent chat messages for continuity
+        qrecent = _qc.execute(
+            "SELECT role, content, timestamp FROM qchat_messages ORDER BY id DESC LIMIT 5"
+        ).fetchall()
+        if qrecent:
+            lines = ["[RECENT MEMORY — CHAT]"]
+            for r in qrecent:
+                ts = (r[2] or "")[:16].replace("T", " ")
+                snippet = (r[1] or "")[:200].replace("\n", " ")
+                lines.append(f"  [{ts}] {(r[0] or '').upper()}: {snippet}")
+            lines.append("[END RECENT MEMORY]")
+            memory_parts.append("\n".join(lines))
+            log.info(f"Recent chat memory injected: {len(qrecent)} messages")
+    except Exception as e:
+        log.warning(f"Memory enrichment (chat) failed: {e}")
+
+    # 3. Vibe IDE history (vibe.db) — targeted search on trigger only (less relevant day-to-day)
+    if has_memory_trigger:
+        try:
+            _vc = vibe_db()
+            keyword = f"%{last_text[:80]}%"
+            vrows = _vc.execute(
+                "SELECT role, content, timestamp FROM vibe_messages "
+                "WHERE content LIKE ? COLLATE NOCASE ORDER BY id DESC LIMIT 4",
+                (keyword,)
+            ).fetchall()
+            if vrows:
+                lines = ["[MEMORY — RELEVANT VIBE/CODE CONVERSATIONS]"]
+                for r in vrows:
+                    ts = (r[2] or "")[:16].replace("T", " ")
+                    snippet = (r[1] or "")[:200].replace("\n", " ")
+                    lines.append(f"  [{ts}] {(r[0] or '').upper()}: {snippet}")
+                lines.append("[END MEMORY]")
+                memory_parts.append("\n".join(lines))
+                log.info(f"Memory recall injected (vibe targeted): {len(vrows)} msgs")
+        except Exception as e:
+            log.warning(f"Memory enrichment (vibe) failed: {e}")
 
     # ── URL detection ──────────────────────────────────────────────────────────
     urls = _re.findall(r'https?://[^\s\)\]>,"\']+', last_text)
@@ -1471,7 +1672,7 @@ CHAT_SKILL_ALLOWLIST = {
     "reminders", "google_calendar", "google_gmail",
     "google_docs", "google_drive", "google_sheets",
     "philips_hue", "music", "clipboard", "password_generator",
-    "qr_generator", "json_formatter", "pomodoro",
+    "qr_generator", "json_formatter", "pomodoro", "terminal",
 }
 
 def _try_skill(user_text: str):
@@ -2234,6 +2435,84 @@ async def services_status():
             "errors": info["errors"],
         }
     return result
+
+
+# ── Safe Terminal Access for CODEC Chat ───────────────────────────────
+
+_DANGEROUS_PATTERNS = [
+    r'\brm\s+-rf\b',
+    r'\bmkfs\b',
+    r'\bdd\b\s+',
+    r'\bshutdown\b',
+    r'\breboot\b',
+    r'\bhalt\b',
+    r'\bpoweroff\b',
+    r'\bkill\s+-9\b',
+    r'\bpkill\b',
+    r'\bformat\b',
+    r'\bfdisk\b',
+    r'\bsudo\b',
+    r'\.\./\.\.',
+    r'\|\s*rm\b',
+]
+_DANGEROUS_RE = [re.compile(p, re.IGNORECASE) for p in _DANGEROUS_PATTERNS]
+_EXEC_MAX_TIMEOUT = 30
+
+
+class TerminalRequest(BaseModel):
+    command: str = Field(description="Shell command to execute")
+
+
+def _is_command_safe(command: str) -> Optional[str]:
+    """Return a rejection reason if the command is dangerous, else None."""
+    for pattern in _DANGEROUS_RE:
+        if pattern.search(command):
+            return f"matches blocked pattern: {pattern.pattern}"
+    return None
+
+
+@app.post("/api/execute")
+async def execute_terminal(req: TerminalRequest):
+    """Execute a shell command with safety guardrails.
+
+    Blocked patterns: rm -rf, mkfs, dd, shutdown, reboot, halt, poweroff,
+    kill -9, pkill, format, fdisk, sudo, path traversal (../../), pipe to rm.
+    Timeout: 30 seconds.
+    """
+    command = req.command.strip()
+    if not command:
+        return JSONResponse({"error": "Empty command"}, status_code=400)
+
+    # Safety check
+    reason = _is_command_safe(command)
+    if reason is not None:
+        log.warning("[Terminal] BLOCKED command: %s — %s", command, reason)
+        return JSONResponse({"error": f"Command blocked: {reason}", "blocked": True}, status_code=403)
+
+    log.info("[Terminal] Executing: %s", command)
+    try:
+        result = subprocess.run(
+            command,
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=_EXEC_MAX_TIMEOUT,
+            cwd=os.path.expanduser("~"),
+        )
+        output = result.stdout
+        if result.stderr:
+            output += ("\n" if output else "") + result.stderr
+        log.info("[Terminal] Exit %d for: %s", result.returncode, command)
+        return {"output": output, "exit_code": result.returncode, "command": command}
+    except subprocess.TimeoutExpired:
+        log.warning("[Terminal] TIMEOUT after %ds: %s", _EXEC_MAX_TIMEOUT, command)
+        return JSONResponse(
+            {"error": f"Command timed out after {_EXEC_MAX_TIMEOUT}s", "command": command},
+            status_code=408,
+        )
+    except Exception as e:
+        log.error("[Terminal] Error executing '%s': %s", command, e)
+        return JSONResponse({"error": str(e), "command": command}, status_code=500)
 
 
 if __name__ == "__main__":
