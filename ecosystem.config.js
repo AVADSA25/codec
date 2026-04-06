@@ -35,33 +35,10 @@ module.exports = {
       autorestart: true,
     },
 
-    // ── Heartbeat (health checks + task executor) ──
+    // ── Dictation & hotkey listener (keyboard shortcuts, wake word) ──
+    // NOTE: codec-heartbeat and codec-scheduler are unified into codec-dashboard
     {
-      name: "codec-heartbeat",
-      script: "python3",
-      args: "codec_heartbeat.py",
-      cwd: __dirname,
-      max_memory_restart: "128M",
-      restart_delay: 5000,
-      max_restarts: 10,
-      autorestart: true,
-    },
-
-    // ── Scheduler (cron-like task runner) ──
-    {
-      name: "codec-scheduler",
-      script: "python3",
-      args: "codec_scheduler.py",
-      cwd: __dirname,
-      max_memory_restart: "128M",
-      restart_delay: 5000,
-      max_restarts: 10,
-      autorestart: true,
-    },
-
-    // ── Hotkey listener (keyboard shortcuts) ──
-    {
-      name: "codec-hotkey",
+      name: "codec-dictate",
       script: "python3",
       args: "codec_keyboard.py",
       cwd: __dirname,
@@ -80,18 +57,6 @@ module.exports = {
       max_memory_restart: "128M",
       restart_delay: 3000,
       max_restarts: 10,
-      autorestart: true,
-    },
-
-    // ── Dictation service ──
-    {
-      name: "codec-dictate",
-      script: "python3",
-      args: "codec_dictate.py",
-      cwd: __dirname,
-      max_memory_restart: "128M",
-      restart_delay: 3000,
-      max_restarts: 5,
       autorestart: true,
     },
 

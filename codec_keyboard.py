@@ -345,10 +345,10 @@ def start_keyboard_listener(state, ctx):
         if hasattr(key, 'char') and key.char == '-':
             if now - state.get("last_minus", 0.0) < 0.5:
                 log.info("Minus x2 -- live chat mode")
-                pipecat_url = cfg.get("pipecat_url", "http://localhost:3000/auto")
+                voice_url = cfg.get("voice_url", "http://localhost:8090/voice?auto=1")
                 push(lambda: show_overlay('Live Chat connecting...', '#E8711A', 3000))
-                audit("LIVECHAT", pipecat_url)
-                subprocess.Popen(["open", "-a", "Google Chrome", pipecat_url])
+                audit("LIVECHAT", voice_url)
+                subprocess.Popen(["open", "-a", "Google Chrome", voice_url])
                 state["last_minus"] = 0.0
                 return
             state["last_minus"] = now
