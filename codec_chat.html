@@ -249,10 +249,15 @@ input[type=file]{display:none}
 <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
 <div class="sidebar" id="sidebar">
 <div class="sidebar-header"><h2>CONVERSATIONS</h2><button class="sidebar-close" onclick="closeSidebar()">&times;</button></div>
+<div style="padding:0 12px 8px">
+  <input type="text" id="sidebarSearch" placeholder="Search all chats..." oninput="handleSidebarSearch(this.value)"
+    style="width:100%;padding:8px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-family:var(--font);outline:none">
+</div>
 <div class="sidebar-new" onclick="newChat()">
   <svg class="ico ico-sm" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
   New Chat
 </div>
+<div id="sidebarSearchResults" style="display:none"></div>
 <div id="sidebarList"></div>
 </div>
 
@@ -535,8 +540,28 @@ function toggleTheme(){var t=document.documentElement.getAttribute('data-theme')
 function updateThemeIcon(theme){var ico=document.getElementById('themeIco');if(theme==='light'){ico.innerHTML='<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>'}else{ico.innerHTML='<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>'}}
 (function(){var s=localStorage.getItem('codec-theme');if(s==='light'){document.documentElement.setAttribute('data-theme','light');updateThemeIcon('light')}})();
 
-function openSidebar(){document.getElementById('sidebar').classList.add('show');document.getElementById('sidebarOverlay').classList.add('show');loadSidebarHistory()}
+function openSidebar(){document.getElementById('sidebar').classList.add('show');document.getElementById('sidebarOverlay').classList.add('show');loadSidebarHistory();var si=document.getElementById('sidebarSearch');if(si){si.value='';document.getElementById('sidebarSearchResults').style.display='none';document.getElementById('sidebarList').style.display=''}}
 function closeSidebar(){document.getElementById('sidebar').classList.remove('show');document.getElementById('sidebarOverlay').classList.remove('show')}
+
+var _searchTimer=null;
+function handleSidebarSearch(q){
+  clearTimeout(_searchTimer);
+  var resultsEl=document.getElementById('sidebarSearchResults');
+  var listEl=document.getElementById('sidebarList');
+  if(!q||q.length<2){resultsEl.style.display='none';listEl.style.display='';return}
+  _searchTimer=setTimeout(async function(){
+    try{
+      var r=await fetch('/api/qchat/search?q='+encodeURIComponent(q));
+      var data=await r.json();
+      if(!data.length){resultsEl.innerHTML='<div style="padding:16px;color:var(--text-dim);font-size:12px">No results for "'+escHtml(q)+'"</div>';resultsEl.style.display='';listEl.style.display='none';return}
+      resultsEl.innerHTML='<div style="padding:4px 12px 4px;font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px">Search Results</div>'+data.map(function(s){
+        var ts=s.timestamp?new Date(s.timestamp).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+        return'<div class="sidebar-item" onclick="loadSession(\''+s.session_id+'\');closeSidebar()"><div class="si-title">'+escHtml(s.title)+'</div><div style="font-size:11px;color:var(--text-dim);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(s.snippet)+'</div><div class="si-time">'+ts+'</div></div>'
+      }).join('');
+      resultsEl.style.display='';listEl.style.display='none'
+    }catch(e){resultsEl.innerHTML='<div style="padding:16px;color:var(--text-dim);font-size:12px">Search error</div>';resultsEl.style.display='';listEl.style.display='none'}
+  },300)
+}
 
 async function loadSidebarHistory(){
   var el=document.getElementById('sidebarList');

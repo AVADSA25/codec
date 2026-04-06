@@ -376,7 +376,7 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
 
   <div class="tabs">
     <button class="tab active" onclick="showTab('chat')" id="tab-chat">
-      <svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>Quick Chat
+      <svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>Flash
     </button>
     <button class="tab" onclick="showTab('history')" id="tab-history">
       <svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>History
@@ -557,15 +557,42 @@ function showTab(id) {
   if (id === 'settings') { loadSettings(); renderUIToggles(); }
 }
 
+var _pendingImage = null; // {base64, name}
+
 // ── Send Command ──
 async function sendCmd() {
   var input = document.getElementById('cmdInput');
   var task = input.value.trim();
-  if (!task) return;
+  if (!task && !_pendingImage) return;
   input.value = '';
   var result = document.getElementById('cmdResult');
   var text = document.getElementById('cmdResultText');
   result.style.display = 'block';
+  var imgChip = document.getElementById('flashImageChip');
+  if (imgChip) imgChip.remove();
+
+  // ── Image mode: send to vision ──
+  if (_pendingImage) {
+    var imgData = _pendingImage;
+    _pendingImage = null;
+    var prompt = task || 'Describe and analyze this image in detail.';
+    text.innerHTML = '<span style="color:var(--accent)">Analyzing image...</span> ' + escHtml(imgData.name);
+    try {
+      var r = await fetch('/api/vision', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({prompt: prompt, image: imgData.base64}) });
+      var data = await r.json();
+      if (data.response) {
+        text.innerHTML = '<span style="color:var(--success)">Flash:</span> ' + escHtml(data.response);
+        loadChat(); playResponse(data.response);
+      } else {
+        text.innerHTML = '<span style="color:var(--danger)">Vision error:</span> ' + escHtml(data.error || 'No response');
+      }
+    } catch(e) {
+      text.innerHTML = '<span style="color:var(--danger)">Failed:</span> ' + escHtml(e.message);
+    }
+    return;
+  }
+
+  // ── Text mode: send to LLM ──
   text.innerHTML = '<span style="color:var(--accent)">Sending...</span> ' + escHtml(task);
   try {
     var r = await fetch('/api/command', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({task: task}) });
@@ -1134,11 +1161,11 @@ async function handleFile(e) {
   result.style.display = 'block';
 
   if (file.type.startsWith('image/')) {
-    text.innerHTML = '<span style="color:var(--accent)">Analyzing image...</span>';
+    text.innerHTML = '<span style="color:var(--accent)">Image ready — type a question or hit Send</span>';
     var reader = new FileReader();
-    reader.onload = async function() {
+    reader.onload = function() {
       var img = new Image();
-      img.onload = async function() {
+      img.onload = function() {
         var canvas = document.createElement('canvas');
         var maxDim = 1024;
         var w = img.width, h = img.height;
@@ -1149,12 +1176,18 @@ async function handleFile(e) {
         canvas.width = w; canvas.height = h;
         canvas.getContext('2d').drawImage(img, 0, 0, w, h);
         var base64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
-        try {
-          var r = await fetch('/api/vision', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({prompt: 'Describe and analyze this image in detail', image: base64}) });
-          var data = await r.json();
-          if (data.response) { text.innerHTML = '<span style="color:var(--success)">CODEC:</span> ' + escHtml(data.response); loadChat(); playResponse(data.response); }
-          else { text.innerHTML = '<span style="color:var(--danger)">Vision error: ' + escHtml(data.error || 'No response') + '</span>'; }
-        } catch(err) { text.innerHTML = '<span style="color:var(--danger)">Error: ' + escHtml(err.message) + '</span>'; }
+        _pendingImage = { base64: base64, name: file.name };
+        // Show chip above input
+        var existing = document.getElementById('flashImageChip');
+        if (existing) existing.remove();
+        var chip = document.createElement('div');
+        chip.id = 'flashImageChip';
+        chip.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 10px;margin-bottom:4px;background:var(--surface-2,#1e1e22);border:1px solid var(--border);border-radius:8px;font-size:12px;color:var(--text-muted,#999)';
+        chip.innerHTML = '<img src="' + canvas.toDataURL('image/jpeg', 0.3) + '" style="width:32px;height:32px;border-radius:4px;object-fit:cover">' +
+          '<span style="flex:1">' + escHtml(file.name) + '</span>' +
+          '<button onclick="_pendingImage=null;this.parentElement.remove()" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:16px">&times;</button>';
+        var inputArea = document.getElementById('cmdInput').parentElement;
+        inputArea.parentElement.insertBefore(chip, inputArea);
       };
       img.src = reader.result;
     };
@@ -1194,7 +1227,7 @@ var deferredPrompt;
 window.addEventListener('beforeinstallprompt', function(e) { deferredPrompt = e; });
 (function(){function pollNotifCount(){fetch('/api/notifications/count').then(function(r){return r.json()}).then(function(d){var c=d.unread||d.count||0;var b=document.getElementById('notifBadge');if(b){b.textContent=c;b.classList.toggle('hidden',c===0)}}).catch(function(){})}pollNotifCount();setInterval(pollNotifCount,30000);var bell=document.getElementById('notifBellBtn');if(bell)bell.addEventListener('click',function(){fetch('/api/notifications/read-all',{method:'POST'}).catch(function(){});var b=document.getElementById('notifBadge');if(b){b.textContent='0';b.classList.add('hidden')}})})();
 
-/* ── Drag & Drop files/images into Quick Chat ── */
+/* ── Drag & Drop files/images into Flash ── */
 (function(){
   var body = document.body;
   var dragCount = 0;

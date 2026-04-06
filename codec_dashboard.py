@@ -1043,6 +1043,42 @@ async def qchat_save(request: Request):
     return {"ok": True}
 
 
+@app.get("/api/qchat/search")
+async def qchat_search(q: str = "", limit: int = 20):
+    """Search chat history by keyword across all sessions."""
+    if not q or len(q.strip()) < 2:
+        return []
+    conn = qchat_db()
+    keyword = f"%{q.strip()}%"
+    rows = conn.execute(
+        """SELECT m.session_id, s.title, m.content, m.role, m.timestamp
+           FROM qchat_messages m
+           LEFT JOIN qchat_sessions s ON m.session_id = s.id
+           WHERE m.content LIKE ?
+           ORDER BY m.timestamp DESC LIMIT ?""",
+        (keyword, min(limit, 50))
+    ).fetchall()
+    results = []
+    seen_sessions = set()
+    for r in rows:
+        sid = r[0]
+        if sid not in seen_sessions:
+            seen_sessions.add(sid)
+            # Snippet: find keyword position and extract surrounding text
+            content = r[2] or ""
+            idx = content.lower().find(q.strip().lower())
+            start = max(0, idx - 40)
+            snippet = ("..." if start > 0 else "") + content[start:start+120] + ("..." if len(content) > start+120 else "")
+            results.append({
+                "session_id": sid,
+                "title": r[1] or "Untitled",
+                "snippet": snippet,
+                "role": r[3],
+                "timestamp": r[4]
+            })
+    return results
+
+
 @app.post("/api/upload_image")
 async def upload_image(request: Request):
     """Upload image, send to vision, return description"""
