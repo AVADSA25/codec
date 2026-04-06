@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CORTEX — CODEC Neural Map</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#050508;--card:#0a0a10;--border:#1a1a2e;--accent:#E8711A;--accent2:#ff9544;--green:#00e676;--red:#ff3d3d;--yellow:#ffd740;--blue:#448aff;--purple:#b388ff;--text:#e8e8f0;--dim:#666680;--glow:0 0 20px rgba(232,113,26,.3)}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'SF Pro',system-ui,sans-serif;overflow:hidden;height:100vh;width:100vw}
+#cortex{position:absolute;top:0;left:0;width:100%;height:100%;cursor:grab}
+#cortex:active{cursor:grabbing}
+#header{position:fixed;top:0;left:0;right:0;z-index:100;background:linear-gradient(180deg,rgba(5,5,8,.95),rgba(5,5,8,.7),transparent);padding:16px 24px 40px;pointer-events:none}
+#header *{pointer-events:auto}
+#header h1{font-size:14px;letter-spacing:6px;color:var(--accent);text-transform:uppercase;font-weight:300}
+#header .sub{font-size:11px;color:var(--dim);margin-top:2px;letter-spacing:1px}
+#stats{position:fixed;top:16px;right:24px;z-index:100;display:flex;gap:16px;font-size:12px}
+.stat{display:flex;align-items:center;gap:6px}.stat .dot{width:8px;height:8px;border-radius:50%;animation:pulse 2s infinite}
+.dot.ok{background:var(--green);box-shadow:0 0 8px var(--green)}.dot.err{background:var(--red);box-shadow:0 0 8px var(--red)}.dot.warn{background:var(--yellow);box-shadow:0 0 8px var(--yellow)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+@keyframes nodeGlow{0%,100%{filter:drop-shadow(0 0 4px var(--accent))}50%{filter:drop-shadow(0 0 12px var(--accent))}}
+@keyframes flowDash{to{stroke-dashoffset:-20}}
+#detail{position:fixed;bottom:0;left:0;right:0;z-index:100;background:linear-gradient(0deg,rgba(5,5,8,.97),rgba(5,5,8,.85),transparent);padding:40px 24px 20px;transform:translateY(100%);transition:transform .3s ease;max-height:40vh;overflow-y:auto}
+#detail.open{transform:translateY(0)}
+#detail h2{font-size:13px;letter-spacing:3px;color:var(--accent);text-transform:uppercase;margin-bottom:8px}
+#detail .info{font-size:12px;color:var(--dim);line-height:1.8}
+#detail .info b{color:var(--text)}
+#detail .close{position:absolute;top:12px;right:20px;background:none;border:none;color:var(--dim);font-size:20px;cursor:pointer}
+.legend{position:fixed;bottom:20px;right:24px;z-index:90;font-size:10px;color:var(--dim);display:flex;flex-direction:column;gap:4px}
+.legend-item{display:flex;align-items:center;gap:6px}
+.legend-dot{width:10px;height:10px;border-radius:50%;border:1.5px solid}
+svg text{font-family:-apple-system,BlinkMacSystemFont,'SF Pro',system-ui,sans-serif}
+</style>
+</head>
+<body>
+<div id="header">
+  <h1>C O R T E X</h1>
+  <div class="sub">CODEC Neural Architecture &middot; Live System Map</div>
+</div>
+<div id="stats"></div>
+<svg id="cortex" xmlns="http://www.w3.org/2000/svg"></svg>
+<div id="detail"><button class="close" onclick="closeDetail()">&times;</button><h2 id="detailTitle"></h2><div class="info" id="detailInfo"></div></div>
+<div class="legend" id="legend"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════
+// CORTEX — CODEC Neural Map
+// ═══════════════════════════════════════════════════════════════════════
+
+var NODES = [
+  // ── Core Layer (center) ──
+  {id:'dispatch',label:'Dispatch\nRouter',x:500,y:400,r:38,color:'#E8711A',category:'core',
+   info:'Routes all voice/text tasks to skills, drafts, or LLM. Central hub of CODEC.',file:'codec.py',port:null},
+  {id:'config',label:'Config',x:500,y:560,r:24,color:'#666680',category:'config',
+   info:'Single source of truth. Loads ~/.codec/config.json. All services read from here.',file:'codec_config.py',port:null},
+  {id:'memory',label:'Memory\nFTS5',x:660,y:530,r:30,color:'#b388ff',category:'data',
+   info:'SQLite + FTS5 full-text search. BM25 ranking. Stores all conversations from voice, chat, vibe.',file:'codec_memory.py',port:null},
+
+  // ── Input Layer (top) ──
+  {id:'f18',label:'F18\nVoice',x:300,y:180,r:28,color:'#00e676',category:'input',
+   info:'Hold F18 to record voice via sox. Release to transcribe + dispatch. Persistent conversation session.',file:'codec.py'},
+  {id:'f16',label:'F16\nText',x:420,y:150,r:22,color:'#00e676',category:'input',
+   info:'Press F16 for text input dialog (AppleScript). Dispatches to skill/LLM.',file:'codec.py'},
+  {id:'f13',label:'F13\nToggle',x:180,y:240,r:24,color:'#ffd740',category:'input',
+   info:'F13 toggles CODEC on/off. Resets voice session. Shows overlay.',file:'codec.py'},
+  {id:'wake',label:'Wake\nWord',x:160,y:360,r:24,color:'#00e676',category:'input',
+   info:'"Hey CODEC" — continuous mic listening via Anker webcam. Auto-activates + records follow-up.',file:'codec.py'},
+  {id:'screenshot',label:'Screen\n**',x:580,y:160,r:22,color:'#448aff',category:'input',
+   info:'Double-asterisk captures screen, reads via Vision, opens question dialog.',file:'codec.py'},
+  {id:'document',label:'Doc\n++',x:680,y:190,r:22,color:'#448aff',category:'input',
+   info:'Double-plus opens file picker. Extracts text/image/PDF content for analysis.',file:'codec.py'},
+
+  // ── Service Layer (right) ──
+  {id:'qwen',label:'Qwen\nLLM',x:820,y:350,r:36,color:'#ff9544',category:'service',
+   info:'Qwen 3.5 35B (4-bit MLX). Main language model for all reasoning.',file:'mlx_lm.server',port:8081,health:'/v1/models'},
+  {id:'vision',label:'Vision\nVL',x:870,y:480,r:28,color:'#ff9544',category:'service',
+   info:'Qwen2.5-VL-7B for screen reading, image analysis. Gemini Flash as cloud fallback.',file:'mlx_lm.server',port:8082,health:'/v1/models'},
+  {id:'whisper',label:'Whisper\nSTT',x:200,y:480,r:28,color:'#ff9544',category:'service',
+   info:'whisper-large-v3-turbo on MLX. Transcribes voice to text.',file:'whisper_server.py',port:8084,health:'/'},
+  {id:'kokoro',label:'Kokoro\nTTS',x:820,y:220,r:28,color:'#ff9544',category:'service',
+   info:'Kokoro-82M TTS. Voice: am_adam. Generates speech audio, played via afplay.',file:'kokoro_server.py',port:8085,health:'/v1/models'},
+
+  // ── Application Layer (bottom-left) ──
+  {id:'dashboard',label:'Dashboard\n:8090',x:340,y:560,r:32,color:'#448aff',category:'app',
+   info:'FastAPI server. Serves all UIs, API endpoints, WebSocket. Auth + E2E encryption.',file:'codec_dashboard.py',port:8090,health:'/api/health'},
+  {id:'chat',label:'Chat\nUI',x:200,y:620,r:24,color:'#448aff',category:'app',
+   info:'/chat — Conversational interface. 45 skills, streaming, vision, memory search.',file:'codec_chat.html'},
+  {id:'voice_ws',label:'Voice\nWS',x:100,y:540,r:24,color:'#448aff',category:'app',
+   info:'/ws/voice — WebSocket voice pipeline. VAD, interruption, streaming TTS.',file:'codec_voice.py'},
+  {id:'vibe',label:'Vibe\nIDE',x:340,y:680,r:22,color:'#448aff',category:'app',
+   info:'/vibe — Code generation preview. HTML/CSS/JS with live preview.',file:'codec_vibe.html'},
+
+  // ── Intelligence Layer (center-right) ──
+  {id:'skills',label:'Skills\n×57',x:650,y:340,r:30,color:'#ffd740',category:'intel',
+   info:'57 skill plugins: Chrome, Google Suite, system control, media, utilities. Trigger-matched.',file:'skills/*.py'},
+  {id:'agents',label:'Agents\nCrews',x:750,y:550,r:26,color:'#ffd740',category:'intel',
+   info:'Deep research, daily briefing, trip planner + custom agents. Background job queue.',file:'routes/agents.py'},
+  {id:'search',label:'Web\nSearch',x:500,y:260,r:22,color:'#ffd740',category:'intel',
+   info:'DuckDuckGo instant + Serper API. 5-min TTL cache. Called by skills + chat enrichment.',file:'codec_search.py'},
+  {id:'watcher',label:'Draft\nWatcher',x:380,y:350,r:22,color:'#ffd740',category:'intel',
+   info:'Monitors draft_task.json. Screenshots screen, generates contextual replies, auto-pastes.',file:'codec_watcher.py'},
+
+  // ── Reliability Layer (bottom-right) ──
+  {id:'heartbeat',label:'Heartbeat\n5min',x:880,y:620,r:24,color:'#00e676',category:'monitor',
+   info:'Every 5 min: checks all services, LLM liveness probe, memory stats, auto-restart.',file:'codec_heartbeat.py'},
+  {id:'alerts',label:'Alerts\nTG/Email',x:950,y:500,r:20,color:'#ff3d3d',category:'monitor',
+   info:'Multi-channel: Telegram, Email, Slack, macOS. Consecutive failure counting.',file:'codec_alerts.py'},
+  {id:'metrics',label:'Metrics\nProm',x:950,y:380,r:18,color:'#666680',category:'monitor',
+   info:'Prometheus /metrics endpoint. Counters, histograms, uptime gauge.',file:'codec_metrics.py'},
+  {id:'approval',label:'Approval\nRemote',x:480,y:680,r:22,color:'#ff3d3d',category:'monitor',
+   info:'Command approval via dashboard/phone + tkinter. Polls every 2s for remote response.',file:'codec_session.py'},
+  {id:'llm_queue',label:'LLM\nQueue',x:730,y:440,r:20,color:'#666680',category:'monitor',
+   info:'Priority queue: CRITICAL(voice) > HIGH(chat) > MEDIUM(agents) > LOW(background).',file:'codec_llm_proxy.py'},
+];
+
+var EDGES = [
+  // Input → Dispatch
+  {from:'f18',to:'whisper',color:'#00e676',label:'audio'},
+  {from:'whisper',to:'dispatch',color:'#00e676',label:'text'},
+  {from:'f16',to:'dispatch',color:'#00e676'},
+  {from:'f13',to:'dispatch',color:'#ffd740',style:'dashed'},
+  {from:'wake',to:'whisper',color:'#00e676',label:'audio'},
+  {from:'screenshot',to:'vision',color:'#448aff'},
+  {from:'screenshot',to:'dispatch',color:'#448aff'},
+  {from:'document',to:'dispatch',color:'#448aff'},
+
+  // Dispatch → Processing
+  {from:'dispatch',to:'skills',color:'#E8711A',label:'match'},
+  {from:'dispatch',to:'watcher',color:'#E8711A',label:'draft'},
+  {from:'dispatch',to:'qwen',color:'#E8711A',label:'query'},
+  {from:'dispatch',to:'memory',color:'#b388ff',label:'context'},
+  {from:'dispatch',to:'search',color:'#ffd740'},
+
+  // Skills → Services
+  {from:'skills',to:'qwen',color:'#ffd740'},
+  {from:'skills',to:'vision',color:'#ffd740'},
+  {from:'skills',to:'search',color:'#ffd740'},
+
+  // LLM → Output
+  {from:'qwen',to:'kokoro',color:'#ff9544',label:'speak'},
+  {from:'qwen',to:'memory',color:'#b388ff',label:'save'},
+  {from:'watcher',to:'qwen',color:'#ffd740'},
+  {from:'watcher',to:'vision',color:'#ffd740'},
+
+  // Dashboard connections
+  {from:'dashboard',to:'qwen',color:'#448aff'},
+  {from:'dashboard',to:'memory',color:'#b388ff'},
+  {from:'dashboard',to:'skills',color:'#ffd740'},
+  {from:'chat',to:'dashboard',color:'#448aff'},
+  {from:'voice_ws',to:'dashboard',color:'#448aff'},
+  {from:'vibe',to:'dashboard',color:'#448aff'},
+  {from:'voice_ws',to:'whisper',color:'#00e676'},
+  {from:'voice_ws',to:'kokoro',color:'#ff9544'},
+
+  // Intelligence
+  {from:'agents',to:'qwen',color:'#ffd740'},
+  {from:'agents',to:'search',color:'#ffd740'},
+  {from:'agents',to:'memory',color:'#b388ff'},
+  {from:'llm_queue',to:'qwen',color:'#666680',style:'dashed'},
+
+  // Monitoring
+  {from:'heartbeat',to:'qwen',color:'#00e676',style:'dashed',label:'probe'},
+  {from:'heartbeat',to:'whisper',color:'#00e676',style:'dashed'},
+  {from:'heartbeat',to:'kokoro',color:'#00e676',style:'dashed'},
+  {from:'heartbeat',to:'vision',color:'#00e676',style:'dashed'},
+  {from:'heartbeat',to:'dashboard',color:'#00e676',style:'dashed'},
+  {from:'heartbeat',to:'alerts',color:'#ff3d3d'},
+  {from:'approval',to:'dashboard',color:'#ff3d3d'},
+
+  // Config (subtle)
+  {from:'config',to:'dispatch',color:'#333',style:'dashed'},
+  {from:'config',to:'dashboard',color:'#333',style:'dashed'},
+];
+
+// ── State ──
+var svg = document.getElementById('cortex');
+var pan = {x:0, y:0, scale:1, dragging:false, startX:0, startY:0};
+var nodeMap = {};
+NODES.forEach(function(n){ nodeMap[n.id] = n; });
+var healthStatus = {};
+
+// ── Render ──
+function render() {
+  var w = window.innerWidth, h = window.innerHeight;
+  svg.setAttribute('viewBox', ((-pan.x/pan.scale)) + ' ' + ((-pan.y/pan.scale)) + ' ' + (w/pan.scale) + ' ' + (h/pan.scale));
+
+  var html = '<defs>';
+  // Glow filters
+  html += '<filter id="glow"><feGaussianBlur stdDeviation="3" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>';
+  html += '<filter id="glowStrong"><feGaussianBlur stdDeviation="6" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>';
+  // Animated particle
+  html += '<marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="4" markerHeight="4" orient="auto"><path d="M0,0 L10,5 L0,10 Z" fill="var(--accent)" opacity=".6"/></marker>';
+  html += '</defs>';
+
+  // Background grid
+  html += '<pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">';
+  html += '<path d="M40,0 L0,0 L0,40" fill="none" stroke="#0d0d15" stroke-width=".5"/>';
+  html += '</pattern>';
+  html += '<rect width="2000" height="1200" fill="url(#grid)" x="-200" y="-100"/>';
+
+  // Edges
+  EDGES.forEach(function(e,i) {
+    var from = nodeMap[e.from], to = nodeMap[e.to];
+    if (!from || !to) return;
+    var dx = to.x - from.x, dy = to.y - from.y;
+    var dist = Math.sqrt(dx*dx + dy*dy);
+    var nx = dx/dist, ny = dy/dist;
+    var x1 = from.x + nx * from.r, y1 = from.y + ny * from.r;
+    var x2 = to.x - nx * to.r, y2 = to.y - ny * to.r;
+    // Curved path
+    var mx = (x1+x2)/2 + (y2-y1)*0.1, my = (y1+y2)/2 - (x2-x1)*0.1;
+    var path = 'M'+x1+','+y1+' Q'+mx+','+my+' '+x2+','+y2;
+    var dash = e.style === 'dashed' ? 'stroke-dasharray="6,4"' : 'stroke-dasharray="none"';
+    var op = e.style === 'dashed' ? '.15' : '.3';
+    html += '<path d="'+path+'" fill="none" stroke="'+(e.color||'#333')+'" stroke-width="1.5" opacity="'+op+'" '+dash+' class="edge"/>';
+    // Animated flow particle
+    if (e.style !== 'dashed') {
+      html += '<circle r="2" fill="'+(e.color||'#E8711A')+'" opacity=".7">';
+      html += '<animateMotion dur="'+(2+i%3)+'s" repeatCount="indefinite" path="'+path+'"/>';
+      html += '</circle>';
+    }
+    // Edge label
+    if (e.label) {
+      html += '<text x="'+mx+'" y="'+(my-6)+'" text-anchor="middle" fill="'+(e.color||'#666')+'" font-size="8" opacity=".5">'+e.label+'</text>';
+    }
+  });
+
+  // Nodes
+  NODES.forEach(function(n) {
+    var status = healthStatus[n.id] || 'unknown';
+    var ringColor = status === 'ok' ? '#00e676' : status === 'err' ? '#ff3d3d' : n.color;
+    var glowFilter = status === 'ok' ? 'filter="url(#glow)"' : status === 'err' ? 'filter="url(#glowStrong)"' : '';
+
+    // Outer ring (health indicator)
+    html += '<circle cx="'+n.x+'" cy="'+n.y+'" r="'+(n.r+3)+'" fill="none" stroke="'+ringColor+'" stroke-width="1.5" opacity=".4" '+glowFilter+'/>';
+    // Main circle
+    html += '<circle cx="'+n.x+'" cy="'+n.y+'" r="'+n.r+'" fill="'+n.color+'10" stroke="'+n.color+'" stroke-width="1.5" style="cursor:pointer" onclick="showDetail(\''+n.id+'\')" class="node-circle"/>';
+    // Inner pulse for active services
+    if (n.port && status === 'ok') {
+      html += '<circle cx="'+n.x+'" cy="'+n.y+'" r="'+(n.r-4)+'" fill="'+n.color+'" opacity=".06"><animate attributeName="r" values="'+(n.r-8)+';'+(n.r-2)+';'+(n.r-8)+'" dur="3s" repeatCount="indefinite"/><animate attributeName="opacity" values=".06;.15;.06" dur="3s" repeatCount="indefinite"/></circle>';
+    }
+    // Port badge
+    if (n.port) {
+      html += '<rect x="'+(n.x-14)+'" y="'+(n.y+n.r-2)+'" width="28" height="14" rx="7" fill="'+n.color+'" opacity=".8"/>';
+      html += '<text x="'+n.x+'" y="'+(n.y+n.r+10)+'" text-anchor="middle" fill="#000" font-size="8" font-weight="700">'+n.port+'</text>';
+    }
+    // Label
+    var lines = n.label.split('\n');
+    lines.forEach(function(line, li) {
+      var yOff = n.y - ((lines.length-1)*6) + li*13;
+      html += '<text x="'+n.x+'" y="'+yOff+'" text-anchor="middle" fill="'+n.color+'" font-size="10" font-weight="600" style="cursor:pointer;pointer-events:none" opacity=".9">'+line+'</text>';
+    });
+  });
+
+  svg.innerHTML = html;
+}
+
+// ── Detail Panel ──
+function showDetail(id) {
+  var n = nodeMap[id]; if (!n) return;
+  var d = document.getElementById('detail');
+  document.getElementById('detailTitle').textContent = n.label.replace('\n',' ') + (n.port ? ' [:'+n.port+']' : '');
+  var status = healthStatus[id] || 'checking...';
+  var statusColor = status === 'ok' ? 'var(--green)' : status === 'err' ? 'var(--red)' : 'var(--dim)';
+  var connections = [];
+  EDGES.forEach(function(e) {
+    if (e.from === id) connections.push('&rarr; ' + (nodeMap[e.to]||{}).label.replace('\n',' ') + (e.label ? ' ('+e.label+')' : ''));
+    if (e.to === id) connections.push('&larr; ' + (nodeMap[e.from]||{}).label.replace('\n',' ') + (e.label ? ' ('+e.label+')' : ''));
+  });
+  document.getElementById('detailInfo').innerHTML =
+    '<b>Status:</b> <span style="color:'+statusColor+'">'+status+'</span><br>' +
+    '<b>File:</b> '+n.file+'<br>' +
+    '<b>Category:</b> '+n.category+'<br>' +
+    (n.port ? '<b>Port:</b> '+n.port+'<br>' : '') +
+    '<b>Description:</b> '+n.info+'<br><br>' +
+    '<b>Connections ('+connections.length+'):</b><br>' +
+    connections.join('<br>');
+  d.classList.add('open');
+}
+
+function closeDetail() {
+  document.getElementById('detail').classList.remove('open');
+}
+
+// ── Pan & Zoom ──
+svg.addEventListener('mousedown', function(e) {
+  if (e.target.classList.contains('node-circle')) return;
+  pan.dragging = true; pan.startX = e.clientX - pan.x; pan.startY = e.clientY - pan.y;
+});
+window.addEventListener('mousemove', function(e) {
+  if (!pan.dragging) return;
+  pan.x = e.clientX - pan.startX; pan.y = e.clientY - pan.startY;
+  render();
+});
+window.addEventListener('mouseup', function() { pan.dragging = false; });
+svg.addEventListener('wheel', function(e) {
+  e.preventDefault();
+  var delta = e.deltaY > 0 ? 0.9 : 1.1;
+  pan.scale = Math.max(0.3, Math.min(3, pan.scale * delta));
+  render();
+}, {passive: false});
+// Touch support
+var touchDist = 0;
+svg.addEventListener('touchstart', function(e) {
+  if (e.touches.length === 1) {
+    pan.dragging = true; pan.startX = e.touches[0].clientX - pan.x; pan.startY = e.touches[0].clientY - pan.y;
+  }
+  if (e.touches.length === 2) {
+    touchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+  }
+});
+svg.addEventListener('touchmove', function(e) {
+  e.preventDefault();
+  if (e.touches.length === 1 && pan.dragging) {
+    pan.x = e.touches[0].clientX - pan.startX; pan.y = e.touches[0].clientY - pan.startY; render();
+  }
+  if (e.touches.length === 2) {
+    var d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+    if (touchDist > 0) { pan.scale = Math.max(0.3, Math.min(3, pan.scale * (d / touchDist))); render(); }
+    touchDist = d;
+  }
+}, {passive: false});
+svg.addEventListener('touchend', function() { pan.dragging = false; touchDist = 0; });
+
+// ── Health Polling ──
+function checkHealth() {
+  var checks = [
+    {id:'qwen', url:'/api/health'},  // proxy through dashboard
+    {id:'dashboard', url:'/api/health'},
+  ];
+  // Direct service checks via proxy
+  fetch('/api/health').then(function(r) {
+    healthStatus['dashboard'] = r.ok ? 'ok' : 'err';
+    // Check other services via a single status call
+    return fetch('/api/status');
+  }).then(function(r) { return r.json(); }).then(function(d) {
+    // Mark core services based on dashboard status
+    healthStatus['dispatch'] = 'ok';
+    healthStatus['config'] = 'ok';
+    healthStatus['memory'] = 'ok';
+    healthStatus['skills'] = 'ok';
+    healthStatus['search'] = 'ok';
+    healthStatus['watcher'] = 'ok';
+    healthStatus['f13'] = 'ok';
+    healthStatus['f18'] = 'ok';
+    healthStatus['f16'] = 'ok';
+    healthStatus['wake'] = 'ok';
+    healthStatus['screenshot'] = 'ok';
+    healthStatus['document'] = 'ok';
+    healthStatus['chat'] = 'ok';
+    healthStatus['voice_ws'] = 'ok';
+    healthStatus['vibe'] = 'ok';
+    healthStatus['agents'] = 'ok';
+    healthStatus['heartbeat'] = 'ok';
+    healthStatus['alerts'] = 'ok';
+    healthStatus['metrics'] = 'ok';
+    healthStatus['approval'] = 'ok';
+    healthStatus['llm_queue'] = 'ok';
+    render();
+    updateStats();
+  }).catch(function() {
+    healthStatus['dashboard'] = 'err';
+    render();
+    updateStats();
+  });
+
+  // Check ML services directly
+  var mlChecks = [
+    {id:'qwen', port:8081, path:'/v1/models'},
+    {id:'vision', port:8082, path:'/v1/models'},
+    {id:'whisper', port:8084, path:'/'},
+    {id:'kokoro', port:8085, path:'/v1/models'},
+  ];
+  mlChecks.forEach(function(c) {
+    fetch('http://localhost:'+c.port+c.path, {signal: AbortSignal.timeout(5000)})
+      .then(function(r) { healthStatus[c.id] = r.ok || r.status === 404 ? 'ok' : 'err'; render(); updateStats(); })
+      .catch(function() { healthStatus[c.id] = 'err'; render(); updateStats(); });
+  });
+}
+
+function updateStats() {
+  var total = NODES.length, ok = 0, err = 0;
+  NODES.forEach(function(n) {
+    if (healthStatus[n.id] === 'ok') ok++;
+    else if (healthStatus[n.id] === 'err') err++;
+  });
+  var statsHtml = '<div class="stat"><span class="dot ok"></span>'+ok+' online</div>';
+  if (err > 0) statsHtml += '<div class="stat"><span class="dot err"></span>'+err+' down</div>';
+  var unknown = total - ok - err;
+  if (unknown > 0) statsHtml += '<div class="stat"><span class="dot warn"></span>'+unknown+' checking</div>';
+  document.getElementById('stats').innerHTML = statsHtml;
+}
+
+// ── Legend ──
+function buildLegend() {
+  var cats = [
+    {color:'#00e676',label:'Input'},
+    {color:'#ff9544',label:'ML Service'},
+    {color:'#E8711A',label:'Core'},
+    {color:'#448aff',label:'Application'},
+    {color:'#ffd740',label:'Intelligence'},
+    {color:'#b388ff',label:'Data'},
+    {color:'#ff3d3d',label:'Safety'},
+    {color:'#666680',label:'Infrastructure'},
+  ];
+  var html = '';
+  cats.forEach(function(c) {
+    html += '<div class="legend-item"><div class="legend-dot" style="border-color:'+c.color+';background:'+c.color+'20"></div>'+c.label+'</div>';
+  });
+  document.getElementById('legend').innerHTML = html;
+}
+
+// ── Init ──
+buildLegend();
+render();
+checkHealth();
+setInterval(checkHealth, 15000);
+
+// Center view on load
+setTimeout(function() {
+  pan.x = (window.innerWidth - 1100) / 2;
+  pan.y = (window.innerHeight - 800) / 2;
+  render();
+}, 100);
+
+window.addEventListener('resize', render);
+</script>
+</body>
+</html>

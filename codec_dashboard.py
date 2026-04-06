@@ -2305,6 +2305,15 @@ async def tasks_page():
             return HTMLResponse(f.read(), headers=_NO_CACHE)
     return HTMLResponse("<h1>Tasks page not found</h1>", status_code=500)
 
+@app.get("/cortex", response_class=HTMLResponse)
+async def cortex_page():
+    """CORTEX — Live neural architecture map of CODEC."""
+    html_path = os.path.join(DASHBOARD_DIR, "codec_cortex.html")
+    if os.path.exists(html_path):
+        with open(html_path) as f:
+            return HTMLResponse(f.read(), headers=_NO_CACHE)
+    return HTMLResponse("<h1>CORTEX not found</h1>", status_code=500)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 
