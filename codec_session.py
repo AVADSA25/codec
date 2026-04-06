@@ -343,10 +343,153 @@ SAFETY RULES:
             log.warning(f"Streaming LLM call failed, falling back to non-streaming: {e}")
             return self.qwen_call(messages)
 
+    # ── Command Explanation ──────────────────────────────────────────────
+
+    _CMD_EXPLANATIONS = {
+        "ls": "List files and directories",
+        "rm": "Delete files or folders",
+        "mv": "Move or rename files",
+        "cp": "Copy files or folders",
+        "cat": "Display file contents",
+        "grep": "Search text inside files",
+        "find": "Search for files by name or attributes",
+        "mkdir": "Create a new directory",
+        "rmdir": "Remove an empty directory",
+        "chmod": "Change file permissions",
+        "chown": "Change file ownership",
+        "curl": "Download or send data to a URL",
+        "wget": "Download a file from the web",
+        "pip": "Install or manage Python packages",
+        "pip3": "Install or manage Python packages",
+        "brew": "Install or manage macOS packages (Homebrew)",
+        "npm": "Install or manage Node.js packages",
+        "npx": "Run a Node.js package binary",
+        "git": "Run a Git version-control command",
+        "python": "Execute a Python script",
+        "python3": "Execute a Python script",
+        "open": "Open a file or application on macOS",
+        "kill": "Terminate a running process",
+        "killall": "Terminate all processes with a given name",
+        "ps": "Show running processes",
+        "df": "Show disk space usage",
+        "du": "Show directory size",
+        "top": "Show real-time process activity",
+        "htop": "Show real-time process activity",
+        "ssh": "Connect to a remote server",
+        "scp": "Copy files to/from a remote server",
+        "rsync": "Sync files locally or to a remote server",
+        "tar": "Create or extract archive files",
+        "zip": "Compress files into a zip archive",
+        "unzip": "Extract a zip archive",
+        "sudo": "Run a command with admin privileges",
+        "cd": "Change working directory",
+        "echo": "Print text to the terminal",
+        "touch": "Create an empty file or update timestamp",
+        "head": "Show the first lines of a file",
+        "tail": "Show the last lines of a file",
+        "sed": "Find and replace text in files",
+        "awk": "Process and transform text data",
+        "sort": "Sort lines of text",
+        "wc": "Count lines, words, or characters",
+        "osascript": "Run an AppleScript command on macOS",
+        "defaults": "Read or write macOS system preferences",
+        "launchctl": "Manage macOS background services",
+        "pm2": "Manage Node.js process manager",
+        "docker": "Manage Docker containers",
+        "systemctl": "Manage system services (Linux)",
+        "crontab": "Edit scheduled tasks",
+        "xattr": "Manage extended file attributes on macOS",
+        "diskutil": "Manage disks and volumes on macOS",
+        "networksetup": "Configure macOS network settings",
+        "say": "Speak text aloud on macOS",
+        "pbcopy": "Copy text to the clipboard",
+        "pbpaste": "Paste text from the clipboard",
+        "caffeinate": "Prevent the Mac from sleeping",
+        "softwareupdate": "Check for macOS software updates",
+    }
+
+    def _explain_command(self, code):
+        """Return a plain-English explanation of what a shell command does."""
+        code_stripped = code.strip()
+        # Handle pipes/chains — explain the first command
+        first_cmd = re.split(r'[|;&]', code_stripped)[0].strip()
+        parts = first_cmd.split()
+        if not parts:
+            return "Run an empty command"
+
+        base = os.path.basename(parts[0])
+        # Strip leading sudo
+        if base == "sudo" and len(parts) > 1:
+            base = os.path.basename(parts[1])
+            parts = parts[1:]
+
+        explanation = self._CMD_EXPLANATIONS.get(base, f"Run '{base}'")
+
+        # Add specifics based on arguments
+        args_str = " ".join(parts[1:])
+        if args_str:
+            # Detect common dangerous flags
+            danger_flags = []
+            if "-rf" in args_str or "-fr" in args_str:
+                danger_flags.append("recursively and forcefully")
+            if "--force" in args_str:
+                danger_flags.append("forcefully")
+            if "--no-preserve-root" in args_str:
+                danger_flags.append("WITHOUT root protection")
+
+            target = parts[-1] if len(parts) > 1 else ""
+            flag_note = f" ({', '.join(danger_flags)})" if danger_flags else ""
+
+            if base in ("rm", "mv", "cp", "chmod", "chown", "cat", "head", "tail"):
+                return f"{explanation}{flag_note} targeting: {target}"
+            elif base in ("curl", "wget"):
+                urls = [p for p in parts[1:] if p.startswith("http")]
+                if urls:
+                    return f"{explanation}: {urls[0][:80]}"
+            elif base in ("pip", "pip3", "npm", "brew"):
+                if len(parts) > 1:
+                    return f"{explanation} — {parts[1]} {' '.join(parts[2:3])}"
+            elif base == "git":
+                if len(parts) > 1:
+                    return f"{explanation} — git {parts[1]}"
+            elif base in ("kill", "killall"):
+                return f"{explanation}: {args_str}"
+            elif base == "open":
+                return f"{explanation}: {target}"
+
+            if flag_note:
+                return f"{explanation}{flag_note} on: {args_str[:60]}"
+
+        has_pipe = "|" in code_stripped
+        has_chain = "&&" in code_stripped or ";" in code_stripped
+        suffix = ""
+        if has_pipe:
+            suffix = " (piped to other commands)"
+        elif has_chain:
+            suffix = " (chained with other commands)"
+
+        return explanation + suffix
+
+    def _notify_approval_needed(self, action, code, is_danger=False):
+        """Push a notification to the dashboard so the user sees it on phone."""
+        try:
+            explanation = self._explain_command(code)
+            prefix = "DANGEROUS" if is_danger else "Approval needed"
+            title = f"CODEC — {prefix}"
+            body = f"Command: {code[:120]}\nThis will: {explanation}"
+            # Import and call _save_notification from the shared routes module
+            from routes._shared import _save_notification
+            _save_notification(title, body, status="warning")
+            log.info("Approval notification pushed to dashboard")
+        except Exception as e:
+            log.debug("Could not push approval notification: %s", e)
+
     # ── Command Execution ────────────────────────────────────────────────
 
     def _cmd_preview(self, action, code):
         import tkinter as tk
+        self._notify_approval_needed(action, code, is_danger=False)
+        explanation = self._explain_command(code)
         result = {"allow": False}
         root = tk.Tk()
         root.title("CODEC")
@@ -355,17 +498,21 @@ SAFETY RULES:
         root.configure(bg="#0a0a0a")
         sw = root.winfo_screenwidth()
         sh = root.winfo_screenheight()
-        w, h = 480, 200
+        w, h = 500, 250
         root.geometry(f"{w}x{h}+{(sw - w) // 2}+{(sh - h) // 2}")
+        root.focus_force()
 
-        # Top section: header + command text on canvas
-        cv = tk.Canvas(root, bg="#0a0a0a", highlightthickness=0, width=w, height=130)
+        # Top section: header + command + explanation on canvas
+        cv = tk.Canvas(root, bg="#0a0a0a", highlightthickness=0, width=w, height=175)
         cv.pack(side="top", fill="x")
-        cv.create_rectangle(1, 1, w - 1, 129, outline="#E8711A", width=1)
+        cv.create_rectangle(1, 1, w - 1, 173, outline="#E8711A", width=1)
         cv.create_text(w // 2, 20, text="C O D E C  —  Command Preview", fill="#E8711A", font=("Helvetica", 13, "bold"))
         cv.create_line(10, 38, w - 10, 38, fill="#333")
         lbl = action.upper() + ": " + code[:120]
-        cv.create_text(w // 2, 80, text=lbl, fill="#e0e0e0", font=("SF Mono", 11), width=w - 40)
+        cv.create_text(w // 2, 70, text=lbl, fill="#e0e0e0", font=("SF Mono", 11), width=w - 40)
+        cv.create_line(10, 105, w - 10, 105, fill="#333")
+        cv.create_text(w // 2, 115, text="This will:", fill="#E8711A", font=("Helvetica", 11, "bold"), anchor="n")
+        cv.create_text(w // 2, 138, text=explanation[:120], fill="#aaddff", font=("Helvetica", 12), width=w - 50, anchor="n")
 
         def _close(allowed):
             result["allow"] = allowed
@@ -392,6 +539,8 @@ SAFETY RULES:
     def _danger_preview(self, action, code):
         """Show a RED warning preview for dangerous commands. Returns True if user approves."""
         import tkinter as tk
+        self._notify_approval_needed(action, code, is_danger=True)
+        explanation = self._explain_command(code)
         result = {"allow": False}
         root = tk.Tk()
         root.title("CODEC — DANGER")
@@ -400,17 +549,21 @@ SAFETY RULES:
         root.configure(bg="#0a0a0a")
         sw = root.winfo_screenwidth()
         sh = root.winfo_screenheight()
-        w, h = 520, 230
+        w, h = 540, 280
         root.geometry(f"{w}x{h}+{(sw - w) // 2}+{(sh - h) // 2}")
+        root.focus_force()
 
-        cv = tk.Canvas(root, bg="#0a0a0a", highlightthickness=0, width=w, height=150)
+        cv = tk.Canvas(root, bg="#0a0a0a", highlightthickness=0, width=w, height=195)
         cv.pack(side="top", fill="x")
-        cv.create_rectangle(1, 1, w - 1, 149, outline="#ff3333", width=2)
+        cv.create_rectangle(1, 1, w - 1, 193, outline="#ff3333", width=2)
         cv.create_text(w // 2, 22, text="\u26a0  DANGEROUS COMMAND", fill="#ff3333", font=("Helvetica", 14, "bold"))
         cv.create_line(10, 42, w - 10, 42, fill="#553333")
         lbl = action.upper() + ": " + code[:140]
-        cv.create_text(w // 2, 75, text=lbl, fill="#e0e0e0", font=("SF Mono", 11), width=w - 40)
-        cv.create_text(w // 2, 125, text="This command can delete data. Are you sure?", fill="#ff9999", font=("Helvetica", 11))
+        cv.create_text(w // 2, 72, text=lbl, fill="#e0e0e0", font=("SF Mono", 11), width=w - 40)
+        cv.create_line(10, 108, w - 10, 108, fill="#553333")
+        cv.create_text(w // 2, 120, text="This will:", fill="#ff6666", font=("Helvetica", 11, "bold"), anchor="n")
+        cv.create_text(w // 2, 143, text=explanation[:140], fill="#ffaaaa", font=("Helvetica", 12), width=w - 50, anchor="n")
+        cv.create_text(w // 2, 178, text="This command can delete data. Are you sure?", fill="#ff9999", font=("Helvetica", 11))
 
         def _close(allowed):
             result["allow"] = allowed
