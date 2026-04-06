@@ -22,6 +22,8 @@ import tempfile
 import httpx
 import numpy as np
 
+from codec_llm_proxy import llm_queue, Priority
+
 # ── CONFIG — loaded from ~/.codec/config.json ─────────────────────────────
 WHISPER_URL   = "http://localhost:8084/v1/audio/transcriptions"
 WHISPER_MODEL = "mlx-community/whisper-large-v3-turbo"
@@ -406,6 +408,7 @@ class VoicePipeline:
             "stream": True,
             **LLM_KWARGS,
         }
+        await llm_queue.acquire(Priority.CRITICAL)
         try:
             async with self._http.stream(
                 "POST", QWEN_URL,
@@ -432,6 +435,8 @@ class VoicePipeline:
         except Exception as e:
             print(f"[Voice] Qwen error: {e}")
             yield "Sorry, I had a processing error."
+        finally:
+            await llm_queue.release(Priority.CRITICAL)
 
     # ── Screenshot + Vision ─────────────────────────────────────────────
 

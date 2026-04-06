@@ -18,6 +18,8 @@ import logging
 import threading
 import httpx
 
+from codec_llm_proxy import llm_queue, Priority
+
 log = logging.getLogger("codec_agents")
 
 # ── Tool-call validation ──
@@ -360,6 +362,7 @@ Rules:
                 "temperature": 0.7,
                 "chat_template_kwargs": {"enable_thinking": self.thinking},
             }
+            await llm_queue.acquire(Priority.MEDIUM)
             try:
                 r = await _async_http.post(_qwen_url(), json=payload,
                                            headers={"Content-Type": "application/json"})
@@ -367,6 +370,8 @@ Rules:
                 response = data["choices"][0]["message"]["content"].strip()
             except Exception as e:
                 return f"LLM error: {e}"
+            finally:
+                await llm_queue.release(Priority.MEDIUM)
 
             # Strip thinking tags
             response = re.sub(r'<think>[\s\S]*?</think>', '', response).strip()

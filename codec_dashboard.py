@@ -882,17 +882,29 @@ def qchat_db():
         _qchat_conn.execute("PRAGMA journal_mode=WAL")
         _qchat_conn.execute("PRAGMA busy_timeout=5000")
         _qchat_conn.execute('''CREATE TABLE IF NOT EXISTS qchat_sessions (
-            id TEXT PRIMARY KEY, title TEXT, created_at TEXT, updated_at TEXT)''')
+            id TEXT PRIMARY KEY, title TEXT, created_at TEXT, updated_at TEXT,
+            user_id TEXT DEFAULT 'default')''')
         _qchat_conn.execute('''CREATE TABLE IF NOT EXISTS qchat_messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, role TEXT,
-            content TEXT, timestamp TEXT)''')
+            content TEXT, timestamp TEXT, user_id TEXT DEFAULT 'default')''')
+        # Migrate existing tables: add user_id if missing
+        for table in ("qchat_sessions", "qchat_messages"):
+            try:
+                _qchat_conn.execute(f"ALTER TABLE {table} ADD COLUMN user_id TEXT DEFAULT 'default'")
+            except sqlite3.OperationalError:
+                pass
+        _qchat_conn.execute("CREATE INDEX IF NOT EXISTS idx_qchat_sessions_user ON qchat_sessions(user_id)")
+        _qchat_conn.execute("CREATE INDEX IF NOT EXISTS idx_qchat_messages_user ON qchat_messages(user_id)")
         _qchat_conn.commit()
     return _qchat_conn
 
 @app.get("/api/qchat/sessions")
-async def qchat_sessions():
+async def qchat_sessions(user_id: str = None):
     conn = qchat_db()
-    rows = conn.execute("SELECT id, title, updated_at FROM qchat_sessions ORDER BY updated_at DESC LIMIT 30").fetchall()
+    if user_id is not None:
+        rows = conn.execute("SELECT id, title, updated_at FROM qchat_sessions WHERE user_id=? ORDER BY updated_at DESC LIMIT 30", (user_id,)).fetchall()
+    else:
+        rows = conn.execute("SELECT id, title, updated_at FROM qchat_sessions ORDER BY updated_at DESC LIMIT 30").fetchall()
     return [{"id": r[0], "title": r[1], "updated_at": r[2]} for r in rows]
 
 @app.get("/api/qchat/session/{sid}")
@@ -907,14 +919,15 @@ async def qchat_save(request: Request):
     sid = body.get("session_id", "")
     title = body.get("title", "New Chat")
     messages = body.get("messages", [])
+    user_id = body.get("user_id", "default")
     from datetime import datetime
     now = datetime.now().isoformat()
     conn = qchat_db()
-    conn.execute("INSERT OR REPLACE INTO qchat_sessions (id, title, created_at, updated_at) VALUES (?, ?, COALESCE((SELECT created_at FROM qchat_sessions WHERE id=?), ?), ?)",
-        (sid, title[:60], sid, now, now))
+    conn.execute("INSERT OR REPLACE INTO qchat_sessions (id, title, created_at, updated_at, user_id) VALUES (?, ?, COALESCE((SELECT created_at FROM qchat_sessions WHERE id=?), ?), ?, ?)",
+        (sid, title[:60], sid, now, now, user_id))
     for m in messages:
-        conn.execute("INSERT INTO qchat_messages (session_id, role, content, timestamp) VALUES (?, ?, ?, ?)",
-            (sid, m.get("role","user"), m.get("content",""), now))
+        conn.execute("INSERT INTO qchat_messages (session_id, role, content, timestamp, user_id) VALUES (?, ?, ?, ?, ?)",
+            (sid, m.get("role","user"), m.get("content",""), now, user_id))
     conn.commit()
     return {"ok": True}
 
@@ -965,17 +978,29 @@ def vibe_db():
         _vibe_conn.execute("PRAGMA journal_mode=WAL")
         _vibe_conn.execute("PRAGMA busy_timeout=5000")
         _vibe_conn.execute('''CREATE TABLE IF NOT EXISTS vibe_sessions (
-            id TEXT PRIMARY KEY, title TEXT, language TEXT, code TEXT, created_at TEXT, updated_at TEXT)''')
+            id TEXT PRIMARY KEY, title TEXT, language TEXT, code TEXT, created_at TEXT, updated_at TEXT,
+            user_id TEXT DEFAULT 'default')''')
         _vibe_conn.execute('''CREATE TABLE IF NOT EXISTS vibe_messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, role TEXT,
-            content TEXT, timestamp TEXT)''')
+            content TEXT, timestamp TEXT, user_id TEXT DEFAULT 'default')''')
+        # Migrate existing tables: add user_id if missing
+        for table in ("vibe_sessions", "vibe_messages"):
+            try:
+                _vibe_conn.execute(f"ALTER TABLE {table} ADD COLUMN user_id TEXT DEFAULT 'default'")
+            except sqlite3.OperationalError:
+                pass
+        _vibe_conn.execute("CREATE INDEX IF NOT EXISTS idx_vibe_sessions_user ON vibe_sessions(user_id)")
+        _vibe_conn.execute("CREATE INDEX IF NOT EXISTS idx_vibe_messages_user ON vibe_messages(user_id)")
         _vibe_conn.commit()
     return _vibe_conn
 
 @app.get("/api/vibe/sessions")
-async def vibe_sessions():
+async def vibe_sessions(user_id: str = None):
     conn = vibe_db()
-    rows = conn.execute("SELECT id, title, language, updated_at FROM vibe_sessions ORDER BY updated_at DESC LIMIT 30").fetchall()
+    if user_id is not None:
+        rows = conn.execute("SELECT id, title, language, updated_at FROM vibe_sessions WHERE user_id=? ORDER BY updated_at DESC LIMIT 30", (user_id,)).fetchall()
+    else:
+        rows = conn.execute("SELECT id, title, language, updated_at FROM vibe_sessions ORDER BY updated_at DESC LIMIT 30").fetchall()
     return [{"id": r[0], "title": r[1], "language": r[2], "updated_at": r[3]} for r in rows]
 
 @app.get("/api/vibe/session/{sid}")
@@ -996,17 +1021,18 @@ async def vibe_save(request: Request):
     language = body.get("language", "python")
     code = body.get("code", "")
     messages = body.get("messages", [])
+    user_id = body.get("user_id", "default")
     from datetime import datetime
     now = datetime.now().isoformat()
     full_sync = body.get("full_sync", False)
     conn = vibe_db()
-    conn.execute("INSERT OR REPLACE INTO vibe_sessions (id, title, language, code, created_at, updated_at) VALUES (?, ?, ?, ?, COALESCE((SELECT created_at FROM vibe_sessions WHERE id=?), ?), ?)",
-        (sid, title[:60], language, code, sid, now, now))
+    conn.execute("INSERT OR REPLACE INTO vibe_sessions (id, title, language, code, created_at, updated_at, user_id) VALUES (?, ?, ?, ?, COALESCE((SELECT created_at FROM vibe_sessions WHERE id=?), ?), ?, ?)",
+        (sid, title[:60], language, code, sid, now, now, user_id))
     if full_sync and messages:
         conn.execute("DELETE FROM vibe_messages WHERE session_id=?", (sid,))
     for m in messages:
-        conn.execute("INSERT INTO vibe_messages (session_id, role, content, timestamp) VALUES (?, ?, ?, ?)",
-            (sid, m.get("role","user"), m.get("content",""), now))
+        conn.execute("INSERT INTO vibe_messages (session_id, role, content, timestamp, user_id) VALUES (?, ?, ?, ?, ?)",
+            (sid, m.get("role","user"), m.get("content",""), now, user_id))
     conn.commit()
     return {"ok": True}
 

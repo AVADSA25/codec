@@ -38,8 +38,9 @@ from codec_core import (
     init_db, save_task, get_memory, get_recent_conversations,
     loaded_skills, load_skills, run_skill,
     transcribe, speak_text, focused_app, get_text_dialog,
-    terminal_session_exists, close_session, build_session_script,
+    terminal_session_exists, close_session,
 )
+from codec_agent import run_session_in_terminal
 
 from codec_overlays import show_overlay, show_recording_overlay, show_processing_overlay, show_toggle_overlay
 from codec_identity import CODEC_VOICE_PROMPT
@@ -228,16 +229,7 @@ def dispatch(task):
         return
 
     session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-    script = build_session_script(safe_sys, session_id)
-    ts = tempfile.NamedTemporaryFile(suffix=".py", delete=False, mode="w")
-    ts.write(script); ts.close()
-
-    try:
-        subprocess.Popen(["osascript", "-e",
-            f'tell application "Terminal"\nactivate\nset w to do script "python3.13 {ts.name}"\nset custom title of selected tab of w to "{Q_TERMINAL_TITLE}"\nend tell'],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except Exception as e:
-        print(f"[CODEC] Terminal error: {e}")
+    run_session_in_terminal(safe_sys, session_id, task)
 
 # ── DOCUMENT INPUT ────────────────────────────────────────────────────────────
 def do_document_input():

@@ -41,20 +41,32 @@ def needs_screen(t): return any(k in t.lower() for k in SCREEN_KEYWORDS)
 # ── MEMORY ────────────────────────────────────────────────────────────────────
 def init_db():
     c = sqlite3.connect(DB_PATH)
-    c.execute("CREATE TABLE IF NOT EXISTS sessions (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, task TEXT, app TEXT, response TEXT)")
-    c.execute("CREATE TABLE IF NOT EXISTS conversations (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, timestamp TEXT, role TEXT, content TEXT)")
-    c.execute("CREATE TABLE IF NOT EXISTS corrections (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, original TEXT, corrected TEXT, context TEXT)")
+    c.execute("CREATE TABLE IF NOT EXISTS sessions (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, task TEXT, app TEXT, response TEXT, user_id TEXT DEFAULT 'default')")
+    c.execute("CREATE TABLE IF NOT EXISTS conversations (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, timestamp TEXT, role TEXT, content TEXT, user_id TEXT DEFAULT 'default')")
+    c.execute("CREATE TABLE IF NOT EXISTS corrections (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, original TEXT, corrected TEXT, context TEXT, user_id TEXT DEFAULT 'default')")
+    # Migrate existing tables: add user_id column if missing
+    for table in ("sessions", "conversations", "corrections"):
+        try:
+            c.execute(f"ALTER TABLE {table} ADD COLUMN user_id TEXT DEFAULT 'default'")
+        except sqlite3.OperationalError:
+            pass  # column already exists
+    c.execute("CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_conversations_user ON conversations(user_id)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_corrections_user ON corrections(user_id)")
     c.commit(); c.close()
 
-def save_task(task, app):
+def save_task(task, app, user_id="default"):
     c = sqlite3.connect(DB_PATH)
-    cur = c.execute("INSERT INTO sessions (timestamp,task,app,response) VALUES (?,?,?,?)", (datetime.now().isoformat(), task[:200], app, ""))
+    cur = c.execute("INSERT INTO sessions (timestamp,task,app,response,user_id) VALUES (?,?,?,?,?)", (datetime.now().isoformat(), task[:200], app, "", user_id))
     rid = cur.lastrowid; c.commit(); c.close(); return rid
 
-def get_memory(n=5):
+def get_memory(n=5, user_id=None):
     try:
         c = sqlite3.connect(DB_PATH)
-        rows = c.execute("SELECT timestamp,task,app,response FROM sessions ORDER BY id DESC LIMIT ?", (n,)).fetchall()
+        if user_id is not None:
+            rows = c.execute("SELECT timestamp,task,app,response FROM sessions WHERE user_id=? ORDER BY id DESC LIMIT ?", (user_id, n)).fetchall()
+        else:
+            rows = c.execute("SELECT timestamp,task,app,response FROM sessions ORDER BY id DESC LIMIT ?", (n,)).fetchall()
         c.close()
         if not rows: return ""
         lines = ["RECENT Q SESSIONS:"]
@@ -66,10 +78,13 @@ def get_memory(n=5):
         log.warning("Recent sessions query failed: %s", e)
         return ""
 
-def get_recent_conversations(n=10):
+def get_recent_conversations(n=10, user_id=None):
     try:
         c = sqlite3.connect(DB_PATH)
-        rows = c.execute("SELECT role, content FROM conversations ORDER BY id DESC LIMIT ?", (n,)).fetchall()
+        if user_id is not None:
+            rows = c.execute("SELECT role, content FROM conversations WHERE user_id=? ORDER BY id DESC LIMIT ?", (user_id, n)).fetchall()
+        else:
+            rows = c.execute("SELECT role, content FROM conversations ORDER BY id DESC LIMIT ?", (n,)).fetchall()
         c.close()
         if not rows: return []
         rows.reverse()
@@ -212,11 +227,21 @@ def close_session():
 def build_session_script(safe_sys, session_id, wake_word_label="CODEC"):
     """Generate the standalone Terminal session script.
 
+    .. deprecated::
+        Use :func:`codec_agent.run_session_in_terminal` instead.
+        This function writes API keys to temp files and will be removed in a future version.
+
     Args:
         safe_sys: System prompt string
         session_id: Session ID for conversation tracking
         wake_word_label: Display name for wake word banner (default "CODEC")
     """
+    import warnings
+    warnings.warn(
+        "build_session_script() is deprecated, use codec_agent.run_session_in_terminal()",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     L = []
     L.append("import os, sys, requests, json, time, sqlite3, tempfile, subprocess, re, select, atexit, base64")
     L.append("from datetime import datetime")
