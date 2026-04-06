@@ -1,0 +1,108 @@
+{
+  "timestamp": "2026-04-06T20:47:18",
+  "passed": 10,
+  "failed": 0,
+  "skipped": 10,
+  "results": [
+    {
+      "status": "PASS",
+      "name": "Dashboard (GET /)",
+      "detail": "HTTP 200 in 0.00s"
+    },
+    {
+      "status": "PASS",
+      "name": "Health (GET /api/health)",
+      "detail": "HTTP 200"
+    },
+    {
+      "status": "PASS",
+      "name": "LLM Models (8081)",
+      "detail": "12 models, Qwen=yes"
+    },
+    {
+      "status": "PASS",
+      "name": "Vision Models (8082)",
+      "detail": "12 models, VL=yes"
+    },
+    {
+      "status": "PASS",
+      "name": "Whisper STT (8084)",
+      "detail": "HTTP 404"
+    },
+    {
+      "status": "PASS",
+      "name": "Kokoro TTS (8085)",
+      "detail": "HTTP 200"
+    },
+    {
+      "status": "SKIP",
+      "name": "Authentication",
+      "detail": "No CODEC_PIN set \u2014 skipping auth tests"
+    },
+    {
+      "status": "SKIP",
+      "name": "Status (GET /api/status)",
+      "detail": "Auth required"
+    },
+    {
+      "status": "SKIP",
+      "name": "Conversations (GET /api/conversations)",
+      "detail": "Auth required"
+    },
+    {
+      "status": "SKIP",
+      "name": "Chat Sessions",
+      "detail": "Auth required"
+    },
+    {
+      "status": "SKIP",
+      "name": "Chat Search",
+      "detail": "Auth required"
+    },
+    {
+      "status": "SKIP",
+      "name": "Flash Command",
+      "detail": "Auth required"
+    },
+    {
+      "status": "SKIP",
+      "name": "Notifications count",
+      "detail": "Auth required"
+    },
+    {
+      "status": "SKIP",
+      "name": "Chat LLM",
+      "detail": "Auth required"
+    },
+    {
+      "status": "SKIP",
+      "name": "Chat Skill: calculator",
+      "detail": "Auth required"
+    },
+    {
+      "status": "SKIP",
+      "name": "Chat Skill: weather",
+      "detail": "Auth required"
+    },
+    {
+      "status": "PASS",
+      "name": "Page: Chat (/chat)",
+      "detail": "HTTP 200"
+    },
+    {
+      "status": "PASS",
+      "name": "Page: Voice (/voice)",
+      "detail": "HTTP 200"
+    },
+    {
+      "status": "PASS",
+      "name": "Page: Vibe (/vibe)",
+      "detail": "HTTP 200"
+    },
+    {
+      "status": "PASS",
+      "name": "Page: Tasks (/tasks)",
+      "detail": "HTTP 200"
+    }
+  ]
+}

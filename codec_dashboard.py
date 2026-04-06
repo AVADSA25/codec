@@ -1512,6 +1512,7 @@ async def chat_completion(request: Request):
                 log.info(f"[Chat] Skill '{skill_name}' handled: {skill_result[:80]}")
                 stream_mode = body.get("stream", False)
                 if stream_mode:
+                    from starlette.responses import StreamingResponse as _SkillSR
                     # Return skill result as SSE stream (same format as LLM stream)
                     async def _skill_stream():
                         # Send skill indicator
@@ -1520,7 +1521,7 @@ async def chat_completion(request: Request):
                         skill_prefix = f"**⚡ {skill_name}**: {skill_result}\n\n"
                         yield f"data: {json.dumps({'token': skill_prefix})}\n\n"
                         yield "data: [DONE]\n\n"
-                    return StreamingResponse(_skill_stream(), media_type="text/event-stream")
+                    return _SkillSR(_skill_stream(), media_type="text/event-stream")
                 else:
                     return {"response": f"**⚡ {skill_name}**: {skill_result}", "skill": skill_name}
 
@@ -1595,8 +1596,8 @@ async def chat_completion(request: Request):
 
         if stream_mode:
             # SSE streaming — keeps Cloudflare tunnel alive, sends tokens as they arrive
-            import re as _re_stream
             def _stream_gen():
+                in_think = False  # Track whether we're inside <think>...</think>
                 try:
                     with rq.post(f"{base_url}/chat/completions", json=payload,
                                  headers=headers, timeout=300, stream=True) as resp:
@@ -1610,11 +1611,27 @@ async def chat_completion(request: Request):
                             try:
                                 chunk = json.loads(data_str)
                                 token = chunk["choices"][0].get("delta", {}).get("content", "")
+                                if not token:
+                                    continue
+                                # Handle thinking tags that span across chunks
+                                if "<think>" in token:
+                                    in_think = True
+                                    # Keep any text before <think>
+                                    before = token.split("<think>")[0]
+                                    if before:
+                                        yield f"data: {json.dumps({'token': before})}\n\n"
+                                    token = ""
+                                if in_think:
+                                    if "</think>" in token:
+                                        in_think = False
+                                        # Keep any text after </think>
+                                        after = token.split("</think>", 1)[-1]
+                                        if after:
+                                            yield f"data: {json.dumps({'token': after})}\n\n"
+                                    # Skip all thinking content
+                                    continue
                                 if token:
-                                    # Strip thinking tags inline
-                                    token = _re_stream.sub(r"<think>[\s\S]*?</think>", "", token)
-                                    if token:
-                                        yield f"data: {json.dumps({'token': token})}\n\n"
+                                    yield f"data: {json.dumps({'token': token})}\n\n"
                             except (json.JSONDecodeError, KeyError, IndexError):
                                 continue
                 except Exception as e:
