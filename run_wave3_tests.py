@@ -32,9 +32,9 @@ def save_results():
 def test_sl5_memory():
     """SL-5: Memory search after heavy session."""
     log("SL-5: Memory accumulation check")
-    db_path = os.path.expanduser("~/.q_memory.db")
+    db_path = os.path.expanduser("~/.codec/memory.db")
     if not os.path.exists(db_path):
-        record("SL-5", "Memory DB exists", "FAIL", "~/.q_memory.db not found")
+        record("SL-5", "Memory DB exists", "FAIL", "~/.codec/memory.db not found")
         return
     try:
         c = sqlite3.connect(db_path)

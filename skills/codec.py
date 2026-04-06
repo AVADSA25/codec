@@ -38,7 +38,7 @@ STT_ENGINE        = _cfg.get("stt_engine", "whisper_http")
 WHISPER_URL       = _cfg.get("stt_url", "http://localhost:8084/v1/audio/transcriptions")
 
 # Paths
-DB_PATH            = os.path.expanduser("~/.q_memory.db")
+DB_PATH            = os.path.expanduser("~/.codec/memory.db")
 Q_TERMINAL_TITLE   = "CODEC Session"
 TASK_QUEUE_FILE    = "/tmp/q_task_queue.txt"
 DRAFT_TASK_FILE    = "/tmp/q_draft_task.json"

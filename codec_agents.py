@@ -33,7 +33,7 @@ try:
     from codec_config import SKILLS_DIR
 except ImportError:
     SKILLS_DIR = os.path.expanduser("~/.codec/skills")
-DB_PATH     = os.path.expanduser("~/.q_memory.db")
+DB_PATH     = os.path.expanduser("~/.codec/memory.db")
 
 def _cfg():
     try:

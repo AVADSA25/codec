@@ -168,7 +168,7 @@ async def run_bot(webrtc_connection):
         try:
             import sqlite3, os
             from datetime import datetime
-            db_path = os.path.expanduser("~/.q_memory.db")
+            db_path = os.path.expanduser("~/.codec/memory.db")
             conn = sqlite3.connect(db_path)
             conn.execute("""CREATE TABLE IF NOT EXISTS conversations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -197,7 +197,7 @@ async def run_bot(webrtc_connection):
         try:
             import sqlite3 as _sq
             from datetime import datetime as _dt
-            _db = _sq.connect(os.path.expanduser("~/.q_memory.db"))
+            _db = _sq.connect(os.path.expanduser("~/.codec/memory.db"))
             _db.execute("CREATE TABLE IF NOT EXISTS conversations (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, timestamp TEXT, role TEXT, content TEXT)")
             _sid = "pipecat_" + _dt.now().strftime("%Y%m%d_%H%M%S")
             _saved = 0

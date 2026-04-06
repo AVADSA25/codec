@@ -6,8 +6,15 @@ from datetime import datetime, timedelta
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [HEARTBEAT] %(message)s', datefmt='%H:%M:%S')
 log = logging.getLogger('heartbeat')
 
-DB_PATH = os.path.expanduser("~/.q_memory.db")
-CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
+try:
+    import sys as _sys
+    _repo = os.path.dirname(os.path.abspath(__file__))
+    if _repo not in _sys.path:
+        _sys.path.insert(0, _repo)
+    from codec_config import DB_PATH, CONFIG_PATH
+except ImportError:
+    DB_PATH = os.path.expanduser("~/.codec/memory.db")
+    CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
 
 def check_pending_tasks():
     """Check memory for tasks that were saved for later"""

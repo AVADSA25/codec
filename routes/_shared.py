@@ -11,7 +11,11 @@ log = logging.getLogger("codec_dashboard")
 DASHBOARD_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
 TASK_QUEUE = os.path.expanduser("~/.codec/task_queue.txt")
-DB_PATH = os.path.expanduser("~/.q_memory.db")
+try:
+    from codec_config import DB_PATH as _db_path
+    DB_PATH = _db_path
+except ImportError:
+    DB_PATH = os.path.expanduser("~/.codec/memory.db")
 AUDIT_LOG = os.path.expanduser("~/.codec/audit.log")
 NOTIFICATIONS_PATH = os.path.expanduser("~/.codec/notifications.json")
 SCHEDULE_RUNS_LOG = os.path.expanduser("~/.codec/schedule_runs.log")

@@ -47,7 +47,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
     """Combined auth: bearer token (API) + biometric Touch ID sessions (dashboard)."""
 
     # Routes that never require authentication
-    PUBLIC_ROUTES = {"/", "/chat", "/vibe", "/voice", "/auth", "/health", "/metrics", "/favicon.ico", "/manifest.json", "/docs", "/redoc", "/openapi.json"}
+    PUBLIC_ROUTES = {"/", "/chat", "/vibe", "/voice", "/auth", "/health", "/api/health", "/metrics", "/favicon.ico", "/manifest.json", "/docs", "/redoc", "/openapi.json"}
     PUBLIC_PREFIXES = ("/api/auth/", "/static")
     # CSRF-exempt paths (auth endpoints handle their own protection)
     CSRF_EXEMPT = {"/api/auth/verify", "/api/auth/pin", "/api/auth/logout",
@@ -1936,6 +1936,13 @@ async def _shutdown_services():
                 pass
     _shared._db_conn = None
     _qchat_conn = _vibe_conn = None
+
+
+@app.get("/api/health")
+@app.get("/health")
+async def health_check():
+    """Public health endpoint — no auth required."""
+    return {"status": "ok", "service": "CODEC Dashboard", "timestamp": datetime.now().isoformat()}
 
 
 @app.get("/api/services/status")
