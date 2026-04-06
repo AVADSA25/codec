@@ -141,7 +141,8 @@ CODE TO CONVERT:
     try:
         import requests as rq_forge
         payload = {"model": model, "messages": [{"role": "user", "content": prompt}],
-                   "max_tokens": 1500, "temperature": 0.1}
+                   "max_tokens": 1500, "temperature": 0.1,
+                   "chat_template_kwargs": {"enable_thinking": False}}
         payload.update(kwargs)
         r = rq_forge.post(base_url + "/chat/completions", json=payload, headers=headers, timeout=90)
         if r.status_code != 200:

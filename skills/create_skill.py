@@ -94,7 +94,8 @@ RULES:
 The skill should: {description}"""
 
     try:
-        payload = {"model": model, "messages": [{"role": "user", "content": prompt}], "max_tokens": 1000, "temperature": 0.3}
+        payload = {"model": model, "messages": [{"role": "user", "content": prompt}], "max_tokens": 1000, "temperature": 0.3,
+                   "chat_template_kwargs": {"enable_thinking": False}}
         payload.update(kwargs)
         r = requests.post(base_url + "/chat/completions", json=payload, headers=headers, timeout=60)
         if r.status_code != 200:

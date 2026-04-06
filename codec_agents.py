@@ -639,6 +639,7 @@ async def _elevate_query(raw_topic: str) -> dict:
         "max_tokens": 800,
         "temperature": 0.3,
         "stream": False,
+        "chat_template_kwargs": {"enable_thinking": False},
     }
     try:
         r = await _async_http.post(

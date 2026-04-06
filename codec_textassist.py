@@ -27,7 +27,8 @@ def call_qwen(text, mode):
     payload = {"model": model, "messages": [
         {"role": "system", "content": prompts.get(mode, prompts["proofread"])},
         {"role": "user", "content": text}
-    ], "max_tokens": 4000, "temperature": 0.3, "stream": False}
+    ], "max_tokens": 4000, "temperature": 0.3, "stream": False,
+    "chat_template_kwargs": {"enable_thinking": False}}
     payload.update(kwargs)
     r = requests.post(f"{base}/chat/completions", json=payload, timeout=60)
     result = r.json()["choices"][0]["message"]["content"].strip()

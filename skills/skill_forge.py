@@ -99,7 +99,8 @@ CODE TO CONVERT:
             "model": model,
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": 1200,
-            "temperature": 0.2
+            "temperature": 0.2,
+            "chat_template_kwargs": {"enable_thinking": False},
         }
         payload.update(safe_kwargs)
 

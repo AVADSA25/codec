@@ -1445,6 +1445,7 @@ async def chat_completion(request: Request):
             "top_p": 0.9,
             "frequency_penalty": 1.1,
             "stream": stream_mode,
+            "chat_template_kwargs": {"enable_thinking": False},
         }
         payload.update(kwargs)
 
@@ -1637,7 +1638,8 @@ async def run_schedule_now(sched_id: str):
                 ],
                 "max_tokens": 6000,
                 "temperature": 0.7,
-                "stream": False
+                "stream": False,
+                "chat_template_kwargs": {"enable_thinking": False},
             }
             payload.update(kwargs)
             r = rq.post(f"{base_url}/chat/completions", json=payload, headers=headers, timeout=300)

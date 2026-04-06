@@ -406,6 +406,7 @@ class VoicePipeline:
             "top_p": 0.9,
             "frequency_penalty": 0.8,
             "stream": True,
+            "chat_template_kwargs": {"enable_thinking": False},
             **LLM_KWARGS,
         }
         await llm_queue.acquire(Priority.CRITICAL)
