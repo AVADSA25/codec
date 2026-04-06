@@ -23,6 +23,7 @@ from routes._shared import (
     _is_auth_compiled, _auth_available, _is_totp_enabled, _verify_biometric_session,
     _save_sessions, _save_e2e_keys,
     get_db,
+    _pending_approvals, _approval_lock,
 )
 
 from pydantic import BaseModel, Field
@@ -1666,13 +1667,27 @@ async def web_search_endpoint(request: Request):
 
 # ── Chat Tool Calling: safe skills available from Chat ──
 CHAT_SKILL_ALLOWLIST = {
+    # Core utilities
     "calculator", "weather", "web_search", "bitcoin_price",
     "system_info", "network_info", "memory_search",
     "timer", "translate", "file_search", "notes",
-    "reminders", "google_calendar", "google_gmail",
-    "google_docs", "google_drive", "google_sheets",
-    "philips_hue", "music", "clipboard", "password_generator",
+    "reminders", "clipboard", "password_generator",
     "qr_generator", "json_formatter", "pomodoro", "terminal",
+    # Google services
+    "google_calendar", "google_gmail", "google_docs",
+    "google_drive", "google_sheets", "google_keep",
+    "google_tasks", "google_slides",
+    # Browser control
+    "chrome_automate", "chrome_click_cdp", "chrome_read",
+    "chrome_extract", "chrome_fill", "chrome_scroll",
+    "chrome_open", "chrome_close", "chrome_tabs", "chrome_search",
+    # Computer control
+    "screenshot_text", "app_switch", "mouse_control",
+    "brightness", "volume", "process_manager",
+    # Smart home & media
+    "philips_hue", "music",
+    # Self-improvement & meta
+    "ai_news_digest", "scheduler_skill",
 }
 
 def _try_skill(user_text: str):
@@ -2122,6 +2137,58 @@ async def mark_all_notifications_read():
                 count += 1
         _write_notifications(notifications)
     return {"status": "ok", "marked": count}
+
+
+# ── Remote Command Approval (dashboard / phone) ──────────────────────────────
+
+@app.get("/api/approvals")
+async def list_pending_approvals():
+    """List all pending command approvals."""
+    with _approval_lock:
+        pending = []
+        now = time.time()
+        for aid, a in list(_pending_approvals.items()):
+            # Auto-expire after 120 seconds
+            if now - a.get("timestamp", 0) > 120:
+                a["status"] = "expired"
+            if a["status"] == "pending":
+                pending.append({**a, "id": aid})
+        return {"approvals": pending}
+
+@app.get("/api/approvals/count")
+async def pending_approval_count():
+    """Badge count of pending approvals."""
+    with _approval_lock:
+        now = time.time()
+        count = sum(1 for a in _pending_approvals.values()
+                    if a["status"] == "pending" and now - a.get("timestamp", 0) <= 120)
+        return {"count": count}
+
+@app.post("/api/approvals/{approval_id}/allow")
+async def allow_approval(approval_id: str):
+    """Approve a pending command from dashboard/phone."""
+    with _approval_lock:
+        a = _pending_approvals.get(approval_id)
+        if not a:
+            return JSONResponse({"error": "Approval not found"}, status_code=404)
+        if a["status"] != "pending":
+            return JSONResponse({"error": f"Approval already {a['status']}"}, status_code=409)
+        a["status"] = "allowed"
+        log.info(f"[APPROVAL] Remote ALLOW: {a['command'][:80]}")
+        return {"status": "allowed", "command": a["command"][:120]}
+
+@app.post("/api/approvals/{approval_id}/deny")
+async def deny_approval(approval_id: str):
+    """Deny a pending command from dashboard/phone."""
+    with _approval_lock:
+        a = _pending_approvals.get(approval_id)
+        if not a:
+            return JSONResponse({"error": "Approval not found"}, status_code=404)
+        if a["status"] != "pending":
+            return JSONResponse({"error": f"Approval already {a['status']}"}, status_code=409)
+        a["status"] = "denied"
+        log.info(f"[APPROVAL] Remote DENY: {a['command'][:80]}")
+        return {"status": "denied"}
 
 
 @app.get("/api/heartbeat/config")

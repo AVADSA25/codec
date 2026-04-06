@@ -1013,5 +1013,35 @@ function showSchedulePanel(){
     <button class="pip-btn" onclick="closeWebcamPip()" title="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
   </div>
 </div>
+
+<!-- Approval Banner (floats above content) -->
+<div id="approvalBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(135deg,#1a0a00,#2a1500);border-bottom:2px solid #E8711A;padding:12px 16px;animation:slideDown .3s ease">
+  <div id="approvalList" style="max-width:800px;margin:0 auto"></div>
+</div>
+<style>
+@keyframes slideDown{from{transform:translateY(-100%)}to{transform:translateY(0)}}
+.approval-card{background:#111;border:1px solid #E8711A;border-radius:8px;padding:12px 16px;margin-bottom:8px;display:flex;align-items:center;gap:12px}
+.approval-card.danger{border-color:#ff3333}
+.approval-card .cmd{flex:1;font-family:'SF Mono',monospace;font-size:12px;color:#e0e0e0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.approval-card .explain{font-size:11px;color:#aaddff;margin-top:2px}
+.approval-card.danger .explain{color:#ffaaaa}
+.approval-card .label{font-size:11px;font-weight:700;color:#E8711A;text-transform:uppercase;white-space:nowrap}
+.approval-card.danger .label{color:#ff3333}
+.approval-btn{border:none;border-radius:6px;padding:8px 18px;font-weight:700;font-size:13px;cursor:pointer;transition:opacity .2s}
+.approval-btn:hover{opacity:.85}
+.approval-btn.allow{background:#00cc55;color:#000}
+.approval-btn.deny{background:#555;color:#fff}
+.approval-card.danger .approval-btn.allow{background:#ff3333;color:#fff}
+</style>
+<script>
+(function(){
+  var banner=document.getElementById('approvalBanner'),list=document.getElementById('approvalList'),lastCount=0;
+  function render(approvals){if(!approvals.length){banner.style.display='none';return}banner.style.display='block';var h='';approvals.forEach(function(a){var c=a.is_dangerous?'approval-card danger':'approval-card';var p=a.is_dangerous?'&#9888; DANGEROUS':'&#9889; Approval';h+='<div class="'+c+'"><div style="flex:1"><span class="label">'+p+'</span><div class="cmd">'+(a.command||'').replace(/</g,'&lt;').substring(0,120)+'</div><div class="explain">This will: '+(a.explanation||'').replace(/</g,'&lt;').substring(0,120)+'</div></div><button class="approval-btn allow" onclick="approvalAction(\''+a.id+'\',\'allow\')">&#10003; Allow</button><button class="approval-btn deny" onclick="approvalAction(\''+a.id+'\',\'deny\')">&#10007; Deny</button></div>'});list.innerHTML=h}
+  window.approvalAction=function(id,action){fetch('/api/approvals/'+id+'/'+action,{method:'POST'}).then(function(){poll()}).catch(function(e){console.error(e)})};
+  function poll(){fetch('/api/approvals').then(function(r){return r.json()}).then(function(d){var a=d.approvals||[];render(a);if(a.length>lastCount&&lastCount>=0&&Notification&&Notification.permission==='granted'){new Notification('CODEC — '+(a[0].is_dangerous?'DANGEROUS':'Approval needed'),{body:a[0].command.substring(0,80),tag:'codec-approval-'+a[0].id,requireInteraction:true})}lastCount=a.length}).catch(function(){})}
+  if(Notification&&Notification.permission==='default')Notification.requestPermission();
+  poll();setInterval(poll,3000);
+})();
+</script>
 </body>
 </html>

@@ -98,7 +98,7 @@ loaded_skills = []
 
 def load_skills():
     global loaded_skills
-    loaded_skills = []
+    loaded_skills.clear()
     if not os.path.isdir(SKILLS_DIR): return
     for fname in os.listdir(SKILLS_DIR):
         if fname.startswith('_') or not fname.endswith('.py'): continue

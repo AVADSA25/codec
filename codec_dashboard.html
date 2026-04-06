@@ -389,6 +389,26 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
     </button>
   </div>
 
+  <!-- Approval Banner (floats above content) -->
+  <div id="approvalBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(135deg,#1a0a00,#2a1500);border-bottom:2px solid #E8711A;padding:12px 16px;animation:slideDown .3s ease">
+    <div id="approvalList" style="max-width:800px;margin:0 auto"></div>
+  </div>
+  <style>
+  @keyframes slideDown{from{transform:translateY(-100%)}to{transform:translateY(0)}}
+  .approval-card{background:#111;border:1px solid #E8711A;border-radius:8px;padding:12px 16px;margin-bottom:8px;display:flex;align-items:center;gap:12px}
+  .approval-card.danger{border-color:#ff3333}
+  .approval-card .cmd{flex:1;font-family:'SF Mono',monospace;font-size:12px;color:#e0e0e0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .approval-card .explain{font-size:11px;color:#aaddff;margin-top:2px}
+  .approval-card.danger .explain{color:#ffaaaa}
+  .approval-card .label{font-size:11px;font-weight:700;color:#E8711A;text-transform:uppercase;white-space:nowrap}
+  .approval-card.danger .label{color:#ff3333}
+  .approval-btn{border:none;border-radius:6px;padding:8px 18px;font-weight:700;font-size:13px;cursor:pointer;transition:opacity .2s}
+  .approval-btn:hover{opacity:.85}
+  .approval-btn.allow{background:#00cc55;color:#000}
+  .approval-btn.deny{background:#555;color:#fff}
+  .approval-card.danger .approval-btn.allow{background:#ff3333;color:#fff}
+  </style>
+
   <div class="content">
     <!-- Chat Panel (main) -->
     <div class="panel active" id="panel-chat">
@@ -1245,6 +1265,74 @@ window.addEventListener('beforeinstallprompt', function(e) { deferredPrompt = e;
       handleFile({target: fi});
     }
   });
+})();
+
+/* ── Remote Command Approval (poll + render) ── */
+(function(){
+  var banner = document.getElementById('approvalBanner');
+  var list = document.getElementById('approvalList');
+  var lastCount = 0;
+
+  function renderApprovals(approvals) {
+    if (!approvals.length) {
+      banner.style.display = 'none';
+      document.body.style.paddingTop = '';
+      return;
+    }
+    banner.style.display = 'block';
+    var html = '';
+    approvals.forEach(function(a) {
+      var cls = a.is_dangerous ? 'approval-card danger' : 'approval-card';
+      var prefix = a.is_dangerous ? '&#9888; DANGEROUS' : '&#9889; Approval';
+      html += '<div class="' + cls + '">'
+        + '<div style="flex:1"><span class="label">' + prefix + '</span>'
+        + '<div class="cmd">' + (a.command||'').replace(/</g,'&lt;').substring(0,120) + '</div>'
+        + '<div class="explain">This will: ' + (a.explanation||'').replace(/</g,'&lt;').substring(0,120) + '</div></div>'
+        + '<button class="approval-btn allow" onclick="approvalAction(\'' + a.id + '\',\'allow\')">&#10003; Allow</button>'
+        + '<button class="approval-btn deny" onclick="approvalAction(\'' + a.id + '\',\'deny\')">&#10007; Deny</button>'
+        + '</div>';
+    });
+    list.innerHTML = html;
+    // Adjust body padding so content isn't hidden
+    requestAnimationFrame(function(){ document.body.style.paddingTop = banner.offsetHeight + 'px'; });
+  }
+
+  window.approvalAction = function(id, action) {
+    fetch('/api/approvals/' + id + '/' + action, { method: 'POST' })
+      .then(function(r){ return r.json(); })
+      .then(function(){ pollApprovals(); })
+      .catch(function(e){ console.error('Approval action failed:', e); });
+  };
+
+  function pollApprovals() {
+    fetch('/api/approvals').then(function(r){ return r.json(); })
+      .then(function(d) {
+        var approvals = d.approvals || [];
+        renderApprovals(approvals);
+        // Play sound on new approval
+        if (approvals.length > lastCount && lastCount >= 0) {
+          try { new Audio('data:audio/wav;base64,UklGRl9vT19teleGlhVEVYdFNvZnR3YXJlAGRhdGE=').play().catch(function(){}); } catch(e){}
+          if (Notification && Notification.permission === 'granted') {
+            var a = approvals[0];
+            new Notification('CODEC — ' + (a.is_dangerous ? 'DANGEROUS' : 'Approval needed'), {
+              body: a.command.substring(0, 80) + '\n' + a.explanation.substring(0, 60),
+              icon: '/static/icon-192.png',
+              tag: 'codec-approval-' + a.id,
+              requireInteraction: true
+            });
+          }
+        }
+        lastCount = approvals.length;
+      }).catch(function(){});
+  }
+
+  // Request notification permission
+  if (Notification && Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
+
+  pollApprovals();
+  setInterval(pollApprovals, 3000);  // Poll every 3 seconds
 })();
 </script>
 <div class="webcam-pip" id="webcamPip">

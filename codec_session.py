@@ -470,27 +470,59 @@ SAFETY RULES:
 
         return explanation + suffix
 
-    def _notify_approval_needed(self, action, code, is_danger=False):
-        """Push a notification to the dashboard so the user sees it on phone."""
+    def _register_remote_approval(self, action, code, is_danger=False):
+        """Register approval in shared state + push notification. Returns approval_id."""
+        import uuid as _uuid
+        approval_id = _uuid.uuid4().hex[:12]
+        explanation = self._explain_command(code)
         try:
-            explanation = self._explain_command(code)
+            from routes._shared import _pending_approvals, _approval_lock, _save_notification
+            with _approval_lock:
+                _pending_approvals[approval_id] = {
+                    "command": code[:300],
+                    "action": action,
+                    "is_dangerous": is_danger,
+                    "explanation": explanation,
+                    "timestamp": time.time(),
+                    "status": "pending",
+                }
             prefix = "DANGEROUS" if is_danger else "Approval needed"
             title = f"CODEC — {prefix}"
             body = f"Command: {code[:120]}\nThis will: {explanation}"
-            # Import and call _save_notification from the shared routes module
-            from routes._shared import _save_notification
             _save_notification(title, body, status="warning")
-            log.info("Approval notification pushed to dashboard")
+            log.info("Remote approval registered: %s", approval_id)
         except Exception as e:
-            log.debug("Could not push approval notification: %s", e)
+            log.debug("Could not register remote approval: %s", e)
+        return approval_id
+
+    def _check_remote_approval(self, approval_id):
+        """Check if remote approval was granted. Returns 'pending', 'allowed', or 'denied'."""
+        try:
+            from routes._shared import _pending_approvals, _approval_lock
+            with _approval_lock:
+                a = _pending_approvals.get(approval_id)
+                if a:
+                    return a["status"]
+        except Exception:
+            pass
+        return "pending"
+
+    def _cleanup_approval(self, approval_id):
+        """Remove approval from pending list."""
+        try:
+            from routes._shared import _pending_approvals, _approval_lock
+            with _approval_lock:
+                _pending_approvals.pop(approval_id, None)
+        except Exception:
+            pass
 
     # ── Command Execution ────────────────────────────────────────────────
 
     def _cmd_preview(self, action, code):
         import tkinter as tk
-        self._notify_approval_needed(action, code, is_danger=False)
+        approval_id = self._register_remote_approval(action, code, is_danger=False)
         explanation = self._explain_command(code)
-        result = {"allow": False}
+        result = {"allow": False, "decided": False}
         root = tk.Tk()
         root.title("CODEC")
         root.overrideredirect(True)
@@ -515,13 +547,29 @@ SAFETY RULES:
         cv.create_text(w // 2, 138, text=explanation[:120], fill="#aaddff", font=("Helvetica", 12), width=w - 50, anchor="n")
 
         def _close(allowed):
+            if result["decided"]:
+                return
+            result["decided"] = True
             result["allow"] = allowed
             try:
-                root.after(0, root.destroy)
+                root.quit()
+                root.after(100, root.destroy)
             except Exception:
                 pass
 
-        # Bottom section: buttons in a frame (not behind the canvas)
+        # Poll for remote approval every 2 seconds
+        def _poll_remote():
+            if result["decided"]:
+                return
+            status = self._check_remote_approval(approval_id)
+            if status == "allowed":
+                _close(True)
+            elif status == "denied":
+                _close(False)
+            else:
+                root.after(2000, _poll_remote)
+
+        # Bottom section: buttons in a frame
         btn_frame = tk.Frame(root, bg="#0a0a0a")
         btn_frame.pack(side="top", pady=15)
         abtn = tk.Button(btn_frame, text="\u2713 Allow", bg="#00cc55", fg="#000", font=("Helvetica", 13, "bold"), border=0, padx=20, pady=6, command=lambda: _close(True))
@@ -529,19 +577,21 @@ SAFETY RULES:
         dbtn = tk.Button(btn_frame, text="\u2717 Deny", bg="#888", fg="#000", font=("Helvetica", 13, "bold"), border=0, padx=20, pady=6, command=lambda: _close(False))
         dbtn.pack(side="left", padx=10)
         root.protocol("WM_DELETE_WINDOW", lambda: _close(False))
-        root.after(30000, lambda: _close(False))
+        root.after(60000, lambda: _close(False))  # 60s timeout (was 30s)
+        root.after(1000, _poll_remote)  # start polling for remote approval
         try:
             root.mainloop()
         except Exception as e:
             log.debug("Security dialog mainloop exited: %s", e)
+        self._cleanup_approval(approval_id)
         return result["allow"]
 
     def _danger_preview(self, action, code):
         """Show a RED warning preview for dangerous commands. Returns True if user approves."""
         import tkinter as tk
-        self._notify_approval_needed(action, code, is_danger=True)
+        approval_id = self._register_remote_approval(action, code, is_danger=True)
         explanation = self._explain_command(code)
-        result = {"allow": False}
+        result = {"allow": False, "decided": False}
         root = tk.Tk()
         root.title("CODEC — DANGER")
         root.overrideredirect(True)
@@ -566,11 +616,27 @@ SAFETY RULES:
         cv.create_text(w // 2, 178, text="This command can delete data. Are you sure?", fill="#ff9999", font=("Helvetica", 11))
 
         def _close(allowed):
+            if result["decided"]:
+                return
+            result["decided"] = True
             result["allow"] = allowed
             try:
-                root.after(0, root.destroy)
+                root.quit()
+                root.after(100, root.destroy)
             except Exception:
                 pass
+
+        # Poll for remote approval every 2 seconds
+        def _poll_remote():
+            if result["decided"]:
+                return
+            status = self._check_remote_approval(approval_id)
+            if status == "allowed":
+                _close(True)
+            elif status == "denied":
+                _close(False)
+            else:
+                root.after(2000, _poll_remote)
 
         btn_frame = tk.Frame(root, bg="#0a0a0a")
         btn_frame.pack(side="top", pady=15)
@@ -581,11 +647,13 @@ SAFETY RULES:
                          font=("Helvetica", 13, "bold"), border=0, padx=20, pady=6, command=lambda: _close(False))
         dbtn.pack(side="left", padx=10)
         root.protocol("WM_DELETE_WINDOW", lambda: _close(False))
-        root.after(30000, lambda: _close(False))
+        root.after(60000, lambda: _close(False))  # 60s timeout
+        root.after(1000, _poll_remote)  # start polling for remote approval
         try:
             root.mainloop()
         except Exception as e:
             log.debug("Danger preview dialog mainloop exited: %s", e)
+        self._cleanup_approval(approval_id)
         return result["allow"]
 
     def run_code(self, action, code):

@@ -296,6 +296,10 @@ _pending_skills: dict = {}
 _research_jobs: dict = {}
 _agent_jobs: dict = {}
 
+# ── Remote command approval (dashboard/phone) ──
+_pending_approvals: dict = {}  # {approval_id: {command, action, is_dangerous, explanation, timestamp, status}}
+_approval_lock = threading.Lock()
+
 # PIN brute-force rate limiting
 _pin_attempts: dict = {}
 
