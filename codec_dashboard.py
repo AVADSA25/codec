@@ -1436,6 +1436,9 @@ async def chat_completion(request: Request):
         force_search = body.get("force_search", False)
         messages = _enrich_messages(messages, config, force_search=bool(force_search))
         stream_mode = body.get("stream", False)
+        # Dashboard chat & Vibe benefit from thinking mode (deeper answers).
+        # Frontend can send thinking=false to override for speed.
+        thinking = body.get("thinking", True)
 
         payload = {
             "model": model,
@@ -1445,7 +1448,7 @@ async def chat_completion(request: Request):
             "top_p": 0.9,
             "frequency_penalty": 1.1,
             "stream": stream_mode,
-            "chat_template_kwargs": {"enable_thinking": False},
+            "chat_template_kwargs": {"enable_thinking": thinking},
         }
         payload.update(kwargs)
 
@@ -1639,7 +1642,7 @@ async def run_schedule_now(sched_id: str):
                 "max_tokens": 6000,
                 "temperature": 0.7,
                 "stream": False,
-                "chat_template_kwargs": {"enable_thinking": False},
+                "chat_template_kwargs": {"enable_thinking": True},
             }
             payload.update(kwargs)
             r = rq.post(f"{base_url}/chat/completions", json=payload, headers=headers, timeout=300)
