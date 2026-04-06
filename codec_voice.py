@@ -95,6 +95,39 @@ NOISE_WORDS = {
     "so", "well", "um hmm", "uh huh", "ah", "er",
 }
 
+# Common Whisper hallucination phrases (YouTube outros, annotations, artifacts)
+WHISPER_HALLUCINATIONS = {
+    "thank you for watching",
+    "thanks for watching",
+    "please subscribe",
+    "like and subscribe",
+    "see you next time",
+    "see you in the next video",
+    "thanks for listening",
+    "thank you for listening",
+    "please like and subscribe",
+    "don't forget to subscribe",
+    "hit the bell icon",
+    "thank you very much",
+    "thanks for your support",
+    "subtitles by",
+    "transcribed by",
+    "translated by",
+    "copyright",
+    "all rights reserved",
+    "music playing",
+    "applause",
+    "laughter",
+    "silence",
+    "inaudible",
+    "foreign language",
+    "speaking foreign language",
+    "you",
+    "bye",
+    "okay bye",
+    "so",
+}
+
 # Max conversation turns to keep in context (prevents bloat → keeps LLM fast)
 MAX_CONTEXT_TURNS = 20
 
@@ -162,10 +195,22 @@ Your user's right hand — not a customer service bot."""
 class VoicePipeline:
     """One voice session per WebSocket connection. Two-task architecture."""
 
-    def __init__(self, websocket):
+    # Class-level cache for resumable sessions (session_id → messages list)
+    _resumable_sessions: dict[str, list] = {}
+    _RESUME_TTL = 120  # seconds — discard saved sessions older than this
+
+    def __init__(self, websocket, resume_session_id: str | None = None):
         self.ws              = websocket
-        self.session_id      = "voice_" + datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.messages        = [{"role": "system", "content": _build_system_prompt()}]
+        self.session_id      = resume_session_id or "voice_" + datetime.now().strftime("%Y%m%d_%H%M%S")
+        self._disconnect_reason = "unexpected"  # "user" or "unexpected"
+
+        # Resume conversation context if available
+        if resume_session_id and resume_session_id in self._resumable_sessions:
+            saved = self._resumable_sessions.pop(resume_session_id)
+            self.messages = saved
+            print(f"[Voice] Resumed session {resume_session_id} with {len(saved)} messages")
+        else:
+            self.messages = [{"role": "system", "content": _build_system_prompt()}]
 
         # VAD state
         self.audio_buffer     = bytearray()
@@ -182,6 +227,21 @@ class VoicePipeline:
         self._http  = httpx.AsyncClient(timeout=120.0)
         self._warmed_up = False
         self._load_skills()
+
+    def _save_for_resume(self):
+        """Stash conversation state so a reconnecting client can resume."""
+        self._resumable_sessions[self.session_id] = list(self.messages)
+        # Prune stale sessions
+        now = time.monotonic()
+        if not hasattr(VoicePipeline, "_resume_timestamps"):
+            VoicePipeline._resume_timestamps = {}
+        VoicePipeline._resume_timestamps[self.session_id] = now
+        stale = [sid for sid, ts in VoicePipeline._resume_timestamps.items()
+                 if now - ts > self._RESUME_TTL]
+        for sid in stale:
+            self._resumable_sessions.pop(sid, None)
+            VoicePipeline._resume_timestamps.pop(sid, None)
+        print(f"[Voice] Session {self.session_id} saved for resume ({len(self.messages)} messages)")
 
     # ── Skill loader (lazy via SkillRegistry) ─────────────────────────────
 
@@ -297,6 +357,15 @@ class VoicePipeline:
                 clean = text.lower().rstrip(".!?, ")
                 if clean in NOISE_WORDS:
                     print(f"[Voice] Discarded noise: '{text}'")
+                    return ""
+                # Whisper hallucination filter (YouTube outros, annotations, etc.)
+                text_lower = text.strip().lower()
+                if text_lower in WHISPER_HALLUCINATIONS:
+                    print(f"[Voice] Discarded hallucination: '{text}'")
+                    return ""
+                # Detect repetitive hallucinations like "thank you. thank you. thank you."
+                if re.search(r'(.{4,}?)\1{2,}', text_lower):
+                    print(f"[Voice] Discarded repetitive: '{text}'")
                     return ""
                 words = [w for w in clean.split() if w not in {"uh","um","er","hmm","ah"}]
                 if len(words) < 2:
@@ -688,6 +757,9 @@ class VoicePipeline:
                 if msg_type == "websocket.disconnect":
                     print("[Voice] WebSocket disconnected in receiver")
                     await self.utterance_queue.put(None)  # signal pipeline to stop
+                    # If unexpected, save state for possible resume
+                    if self._disconnect_reason != "user":
+                        self._save_for_resume()
                     break
 
                 # ── Text / JSON control message ──
@@ -728,6 +800,13 @@ class VoicePipeline:
                         elif ctrl_type == "ping":
                             await self.ws.send_json({"type": "pong"})
 
+                        elif ctrl_type == "end_call":
+                            # User intentionally ending the call — no resume needed
+                            self._disconnect_reason = "user"
+                            print("[Voice] User ended call intentionally")
+                            await self.utterance_queue.put(None)
+                            return
+
                         elif ctrl_type == "hold_start":
                             # User started hold-to-talk — ensure we're in listening mode
                             print("[Voice] Hold-to-talk started")
@@ -765,6 +844,16 @@ class VoicePipeline:
 
         except Exception as e:
             print(f"[Voice] Receiver error: {type(e).__name__}: {e}")
+            # Try to send reconnect advisory before dying
+            try:
+                await self.ws.send_json({
+                    "type": "reconnect",
+                    "session_id": self.session_id,
+                    "reason": str(e),
+                })
+            except Exception:
+                pass  # connection may already be dead
+            self._save_for_resume()
             await self.utterance_queue.put(None)
 
     # ── Pipeline processor task ───────────────────────────────────────────
@@ -923,24 +1012,39 @@ class VoicePipeline:
     # ── Main entry point ──────────────────────────────────────────────────
 
     async def run(self):
-        print(f"[Voice] Session started: {self.session_id}")
+        is_resumed = self.session_id in getattr(self, '_resumable_sessions', {}) or \
+                     len(self.messages) > 1 and self.messages[-1].get("role") != "system"
+        print(f"[Voice] Session {'resumed' if is_resumed else 'started'}: {self.session_id}")
 
-        # Greeting — use user_name from config if available
-        _user_name = ""
-        try:
-            _user_name = _cfg.get("user_name", "")
-        except NameError:
-            pass
-        if _user_name:
-            greeting = f"Greetings {_user_name}. CODEC is online. All systems local. What do you need?"
+        # Send session ID so client can reconnect to this session
+        await self.ws.send_json({"type": "session", "session_id": self.session_id})
+
+        if is_resumed:
+            # Reconnected — short acknowledgement, no full greeting
+            greeting = "Reconnected. I'm still here. Go ahead."
+            self.messages.append({"role": "assistant", "content": greeting})
+            await self.ws.send_json({"type": "transcript", "role": "assistant", "text": greeting})
+            g_audio = await self.synthesize(greeting)
+            if g_audio:
+                await self.ws.send_bytes(g_audio)
+                self.last_tts_end = time.monotonic()
         else:
-            greeting = "Greetings. CODEC is online. All systems local. What do you need?"
-        self.messages.append({"role": "assistant", "content": greeting})
-        await self.ws.send_json({"type": "transcript", "role": "assistant", "text": greeting})
-        g_audio = await self.synthesize(greeting)
-        if g_audio:
-            await self.ws.send_bytes(g_audio)
-            self.last_tts_end = time.monotonic()
+            # Fresh session — full greeting
+            _user_name = ""
+            try:
+                _user_name = _cfg.get("user_name", "")
+            except NameError:
+                pass
+            if _user_name:
+                greeting = f"Greetings {_user_name}. CODEC is online. All systems local. What do you need?"
+            else:
+                greeting = "Greetings. CODEC is online. All systems local. What do you need?"
+            self.messages.append({"role": "assistant", "content": greeting})
+            await self.ws.send_json({"type": "transcript", "role": "assistant", "text": greeting})
+            g_audio = await self.synthesize(greeting)
+            if g_audio:
+                await self.ws.send_bytes(g_audio)
+                self.last_tts_end = time.monotonic()
 
         # Run both tasks concurrently — receiver feeds queue, pipeline processes
         receiver = asyncio.create_task(self._audio_receiver())

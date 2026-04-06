@@ -518,6 +518,8 @@ def on_release(key):
 
 # ── MAIN ──────────────────────────────────────────────────────────────────────
 def main():
+    from codec_logging import setup_logging
+    setup_logging()
     init_db()
     for f in [SESSION_ALIVE, TASK_QUEUE_FILE, DRAFT_TASK_FILE]:
         try: os.unlink(f)

@@ -742,11 +742,17 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
     var wsRetryTimer = null;
     var wsIntentionalClose = false;
     var wsPingTimer  = null;
+    var wsSessionId  = null; /* server-assigned session ID for resume */
 
     function connectWS() {
         wsIntentionalClose = false;
         var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-        ws = new WebSocket(proto + '//' + location.host + '/ws/voice');
+        var url = proto + '//' + location.host + '/ws/voice';
+        /* If we have a session ID from a previous connection, request resume */
+        if (wsSessionId && wsRetryCount > 0) {
+            url += '?resume=' + encodeURIComponent(wsSessionId);
+        }
+        ws = new WebSocket(url);
         ws.binaryType = 'arraybuffer';
 
         ws.onopen = function() {
@@ -770,6 +776,17 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
                 try {
                     var msg = JSON.parse(e.data);
                     if (msg.type === 'pong') return; /* heartbeat response */
+                    if (msg.type === 'session') {
+                        /* Store session ID so we can resume on reconnect */
+                        wsSessionId = msg.session_id;
+                        return;
+                    }
+                    if (msg.type === 'reconnect') {
+                        /* Server is about to close — save session ID for resume */
+                        if (msg.session_id) wsSessionId = msg.session_id;
+                        console.log('[Voice] Server sent reconnect advisory:', msg.reason);
+                        return;
+                    }
                     if (msg.type === 'transcript') {
                         addTranscript(msg.role, msg.text);
                     } else if (msg.type === 'transcript_chunk') {
@@ -921,7 +938,12 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
         if (wsRetryTimer) { clearTimeout(wsRetryTimer); wsRetryTimer = null; }
         if (wsPingTimer)  { clearInterval(wsPingTimer);  wsPingTimer  = null; }
         wsIntentionalClose = true;
-        if (ws) { try { ws.close(); } catch(e){} ws = null; }
+        if (ws) {
+            try { ws.send(JSON.stringify({type: 'end_call'})); } catch(e) {}
+            try { ws.close(); } catch(e){}
+            ws = null;
+        }
+        wsSessionId = null; /* clear session — no resume after intentional end */
         setState('idle');
         document.getElementById('statusLabel').textContent = 'Call ended — transcript saved to memory';
     }

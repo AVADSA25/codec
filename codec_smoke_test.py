@@ -13,7 +13,7 @@ if os.path.exists(CONFIG_PATH):
 
 REPO_DIR = os.path.dirname(os.path.abspath(__file__))
 SKILLS_DIR = cfg.get("skills_dir", os.path.join(REPO_DIR, "skills"))
-DB_PATH = os.path.expanduser("~/.q_memory.db")
+DB_PATH = os.path.expanduser("~/.codec/memory.db")
 
 # Ports from config (same defaults as codec_config.py)
 LLM_URL       = cfg.get("llm_base_url", "http://localhost:8081/v1")

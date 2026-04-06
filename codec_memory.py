@@ -6,7 +6,7 @@ log = logging.getLogger(__name__)
 
 SCHEMA_VERSION = 1
 
-DB_PATH = os.path.expanduser("~/.q_memory.db")
+from codec_config import DB_PATH  # single source of truth
 
 _FTS5_MAX_QUERY_LEN = 200
 _FTS5_OPERATORS = re.compile(r'\b(NEAR|AND|OR|NOT)\b', re.IGNORECASE)
@@ -26,7 +26,7 @@ def _sanitize_fts_query(raw: str) -> str:
 
 
 class CodecMemory:
-    """Wraps ~/.q_memory.db with an FTS5 virtual table for instant search."""
+    """Wraps ~/.codec/memory.db with an FTS5 virtual table for instant search."""
 
     def __init__(self, db_path: str = DB_PATH):
         self.db_path = db_path

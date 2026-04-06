@@ -52,7 +52,14 @@ STT_ENGINE        = cfg.get("stt_engine", "whisper_http")
 WHISPER_URL       = cfg.get("stt_url", "http://localhost:8084/v1/audio/transcriptions")
 
 # Paths
-DB_PATH           = os.path.expanduser("~/.q_memory.db")
+# Migrate from legacy ~/.q_memory.db to ~/.codec/memory.db
+_LEGACY_DB = os.path.expanduser("~/.q_memory.db")
+_NEW_DB = os.path.expanduser("~/.codec/memory.db")
+if os.path.exists(_LEGACY_DB) and not os.path.exists(_NEW_DB):
+    os.makedirs(os.path.dirname(_NEW_DB), exist_ok=True)
+    import shutil
+    shutil.move(_LEGACY_DB, _NEW_DB)
+DB_PATH = _NEW_DB
 Q_TERMINAL_TITLE  = "CODEC Session"
 _CODEC_TMP = os.path.expanduser("~/.codec")
 TASK_QUEUE_FILE   = os.path.join(_CODEC_TMP, "task_queue.txt")

@@ -2,18 +2,6 @@
 import os, json, sqlite3, time, logging, secrets, subprocess, hmac, threading, uuid, asyncio, re
 from datetime import datetime, timedelta
 
-log = logging.getLogger("codec_dashboard")
-
-DASHBOARD_DIR = os.path.dirname(os.path.abspath(__file__))
-
-def _get_skills_dir():
-    """Single source of truth for skills directory — loads from codec_config."""
-    try:
-        from codec_config import SKILLS_DIR
-        return SKILLS_DIR
-    except ImportError:
-        return os.path.join(DASHBOARD_DIR, "skills")
-
 from pathlib import Path
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
@@ -22,6 +10,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse as StarletteJSONResponse
 import uvicorn
+
+# ── Shared state (canonical source: routes/_shared.py) ──
+from routes._shared import (
+    log, DASHBOARD_DIR, CONFIG_PATH, TASK_QUEUE, DB_PATH,
+    AUDIT_LOG, NOTIFICATIONS_PATH, SCHEDULE_RUNS_LOG,
+    _NO_CACHE, _get_skills_dir, _audit_write,
+    _notif_lock, _load_notifications, _write_notifications,
+    _save_notification, _append_schedule_run_log,
+    AUTH_ENABLED, AUTH_SESSION_HOURS, AUTH_BINARY, AUTH_PIN_HASH, AUTH_COOKIE_NAME,
+    _auth_sessions, _auth_lock, _e2e_keys,
+    _is_auth_compiled, _auth_available, _is_totp_enabled, _verify_biometric_session,
+    _save_sessions, _save_e2e_keys,
+    get_db,
+)
 
 app = FastAPI(
     title="CODEC Dashboard",
@@ -45,7 +47,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
     """Combined auth: bearer token (API) + biometric Touch ID sessions (dashboard)."""
 
     # Routes that never require authentication
-    PUBLIC_ROUTES = {"/", "/chat", "/vibe", "/voice", "/auth", "/health", "/favicon.ico", "/manifest.json", "/docs", "/redoc", "/openapi.json"}
+    PUBLIC_ROUTES = {"/", "/chat", "/vibe", "/voice", "/auth", "/health", "/metrics", "/favicon.ico", "/manifest.json", "/docs", "/redoc", "/openapi.json"}
     PUBLIC_PREFIXES = ("/api/auth/", "/static")
     # CSRF-exempt paths (auth endpoints handle their own protection)
     CSRF_EXEMPT = {"/api/auth/verify", "/api/auth/pin", "/api/auth/logout",
@@ -54,7 +56,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request, call_next):
         from codec_config import DASHBOARD_TOKEN
+        from codec_metrics import metrics
         path = request.url.path
+        metrics.inc("codec_http_requests_total", {"method": request.method, "path": path})
 
         # Always allow public routes
         if path in self.PUBLIC_ROUTES:
@@ -150,621 +154,18 @@ class CSPMiddleware(BaseHTTPMiddleware):
 app.add_middleware(CSPMiddleware)
 app.add_middleware(AuthMiddleware)
 
-DB_PATH = os.path.expanduser("~/.q_memory.db")
-AUDIT_LOG = os.path.expanduser("~/.codec/audit.log")
 
-def _audit_write(line: str):
-    """Append to audit log with restricted permissions."""
-    os.makedirs(os.path.dirname(AUDIT_LOG), exist_ok=True)
-    with open(AUDIT_LOG, "a") as f:
-        f.write(line)
-    try:
-        os.chmod(AUDIT_LOG, 0o600)
-    except OSError:
-        pass
-
-CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
-TASK_QUEUE = os.path.expanduser("~/.codec/task_queue.txt")
-DASHBOARD_DIR = os.path.dirname(os.path.abspath(__file__))
-NOTIFICATIONS_PATH = os.path.expanduser("~/.codec/notifications.json")
-SCHEDULE_RUNS_LOG = os.path.expanduser("~/.codec/schedule_runs.log")
-
-# ── Notification helpers ──
-
-_notif_lock = threading.Lock()
-
-def _load_notifications():
-    """Load notifications from disk, seeding sample data on first access."""
-    try:
-        with open(NOTIFICATIONS_PATH) as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        # Seed with sample past notifications so the list isn't empty
-        samples = [
-            {
-                "id": f"notif_{uuid.uuid4().hex[:10]}",
-                "type": "task_report",
-                "title": "Daily Morning Briefing",
-                "body": "Completed successfully. 5 action items identified, market overview compiled, calendar conflicts flagged.",
-                "status": "success",
-                "created": "2026-03-29T08:00:00",
-                "read": True,
-                "schedule_id": "daily_briefing"
-            },
-            {
-                "id": f"notif_{uuid.uuid4().hex[:10]}",
-                "type": "task_report",
-                "title": "Security Scan",
-                "body": "No vulnerabilities found. All 142 dependencies are up to date, no CVEs detected.",
-                "status": "success",
-                "created": "2026-03-29T12:00:00",
-                "read": True,
-                "schedule_id": "security_scan"
-            },
-            {
-                "id": f"notif_{uuid.uuid4().hex[:10]}",
-                "type": "task_report",
-                "title": "AI News Digest",
-                "body": "33 stories collected from 5 sources. Top story: new open-weight model benchmarks released.",
-                "status": "success",
-                "created": "2026-03-29T18:30:00",
-                "read": False,
-                "schedule_id": "ai_news_digest"
-            },
-            {
-                "id": f"notif_{uuid.uuid4().hex[:10]}",
-                "type": "task_report",
-                "title": "Weekly Code Review Summary",
-                "body": "Analyzed 12 PRs across 3 repos. 2 require attention: stale dependency warnings in codec-core and missing tests in dashboard module.",
-                "status": "success",
-                "created": "2026-03-28T09:00:00",
-                "read": True,
-                "schedule_id": "weekly_code_review"
-            }
-        ]
-        _write_notifications(samples)
-        return samples
+# (Shared state: DB_PATH, AUDIT_LOG, CONFIG_PATH, etc. imported from routes._shared)
 
 
-def _write_notifications(notifications):
-    """Persist notifications list to disk."""
-    os.makedirs(os.path.dirname(NOTIFICATIONS_PATH), exist_ok=True)
-    with open(NOTIFICATIONS_PATH, "w") as f:
-        json.dump(notifications, f, indent=2)
+# (Auth helpers, DB, notifications loaded from routes._shared)
 
 
-def _save_notification(title, body, status="success", schedule_id=None):
-    """Create and persist a new notification, returning its id."""
-    notif = {
-        "id": f"notif_{uuid.uuid4().hex[:10]}",
-        "type": "task_report",
-        "title": title,
-        "body": body,
-        "status": status,
-        "created": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
-        "read": False,
-        "schedule_id": schedule_id
-    }
-    with _notif_lock:
-        notifications = _load_notifications()
-        notifications.insert(0, notif)
-        _write_notifications(notifications)
-    return notif["id"]
-
-
-def _append_schedule_run_log(schedule_id, title, status, body_preview=""):
-    """Append a run record to the schedule runs log."""
-    os.makedirs(os.path.dirname(SCHEDULE_RUNS_LOG), exist_ok=True)
-    entry = {
-        "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
-        "schedule_id": schedule_id,
-        "title": title,
-        "status": status,
-        "body_preview": body_preview[:200]
-    }
-    with open(SCHEDULE_RUNS_LOG, "a") as f:
-        f.write(json.dumps(entry) + "\n")
-
-
-# ── Biometric (Touch ID) Auth ──
-def _load_cfg():
-    try:
-        with open(CONFIG_PATH) as f:
-            return json.load(f)
-    except Exception:
-        return {}
-
-_bio_cfg = _load_cfg()
-AUTH_ENABLED = _bio_cfg.get("auth_enabled", False)
-AUTH_SESSION_HOURS = _bio_cfg.get("auth_session_hours", 24)
-AUTH_BINARY = os.path.join(DASHBOARD_DIR, "codec_auth", "codec_auth")
-AUTH_PIN_HASH = _bio_cfg.get("auth_pin_hash", "")  # SHA-256 of user's PIN
-AUTH_COOKIE_NAME = "codec_session"
-
-# Persistent session store — survives PM2 restarts
-_SESSION_FILE = os.path.expanduser("~/.codec/.auth_sessions.json")
-_auth_sessions = {}  # token -> {created: datetime, ip: str, method: str}
-_auth_lock = threading.Lock()
-_e2e_keys = {}  # session_token -> bytes (AES-256 key)
-_E2E_KEYS_FILE = os.path.expanduser("~/.codec/.e2e_keys.json")
-
-def _load_e2e_keys():
-    """Load E2E keys from disk so they survive PM2 restarts."""
-    global _e2e_keys
-    try:
-        if os.path.isfile(_E2E_KEYS_FILE):
-            with open(_E2E_KEYS_FILE) as f:
-                raw = json.load(f)
-            for tok, key_b64 in raw.items():
-                _e2e_keys[tok] = base64.b64decode(key_b64)
-            log.info("Restored %d E2E key(s) from disk", len(_e2e_keys))
-    except Exception as e:
-        log.warning("Could not load E2E keys: %s", e)
-
-def _save_e2e_keys():
-    """Persist E2E keys to disk. Only keep keys for active sessions."""
-    try:
-        os.makedirs(os.path.dirname(_E2E_KEYS_FILE), exist_ok=True)
-        raw = {}
-        for tok, key_bytes in _e2e_keys.items():
-            if tok in _auth_sessions:  # only persist keys for valid sessions
-                raw[tok] = base64.b64encode(key_bytes).decode()
-        with open(_E2E_KEYS_FILE, "w") as f:
-            json.dump(raw, f)
-        os.chmod(_E2E_KEYS_FILE, 0o600)
-    except Exception as e:
-        log.warning("Could not save E2E keys: %s", e)
-
-def _load_sessions():
-    """Load sessions from disk on startup. Caller must hold _auth_lock (or be at import time)."""
-    global _auth_sessions
-    try:
-        if os.path.isfile(_SESSION_FILE):
-            with open(_SESSION_FILE) as f:
-                raw = json.load(f)
-            now = datetime.now()
-            for tok, data in raw.items():
-                created = datetime.fromisoformat(data["created"])
-                if now - created < timedelta(hours=AUTH_SESSION_HOURS):
-                    _auth_sessions[tok] = {
-                        "created": created,
-                        "ip": data.get("ip", "unknown"),
-                        "method": data.get("method", "unknown"),
-                    }
-            log.info("Restored %d auth session(s) from disk", len(_auth_sessions))
-    except Exception as e:
-        log.warning("Could not load auth sessions: %s", e)
-
-def _save_sessions():
-    """Persist current sessions to disk. Caller must hold _auth_lock."""
-    try:
-        os.makedirs(os.path.dirname(_SESSION_FILE), exist_ok=True)
-        raw = {}
-        for tok, data in _auth_sessions.items():
-            raw[tok] = {
-                "created": data["created"].isoformat(),
-                "ip": data.get("ip", "unknown"),
-                "method": data.get("method", "unknown"),
-            }
-        with open(_SESSION_FILE, "w") as f:
-            json.dump(raw, f)
-        os.chmod(_SESSION_FILE, 0o600)
-    except Exception as e:
-        log.warning("Could not save auth sessions: %s", e)
-
-_load_sessions()
-_load_e2e_keys()
-
-def _is_auth_compiled():
-    return os.path.isfile(AUTH_BINARY) and os.access(AUTH_BINARY, os.X_OK)
-
-def _auth_available():
-    """Check if any auth method is available (Touch ID binary or PIN configured)."""
-    return _is_auth_compiled() or bool(AUTH_PIN_HASH)
-
-def _is_totp_enabled():
-    """Check if TOTP 2FA is configured and not disabled."""
-    try:
-        with open(CONFIG_PATH) as f:
-            cfg = json.load(f)
-        return bool(cfg.get("totp_secret")) and not cfg.get("totp_disabled", False)
-    except Exception:
-        return False
-
-
-def _verify_biometric_session(request):
-    """Check if the request has a valid auth session cookie."""
-    if not AUTH_ENABLED or not _auth_available():
-        return True
-    token = request.cookies.get(AUTH_COOKIE_NAME)
-    with _auth_lock:
-        if not token or token not in _auth_sessions:
-            return False
-        session = _auth_sessions[token]
-        if datetime.now() - session["created"] > timedelta(hours=AUTH_SESSION_HOURS):
-            del _auth_sessions[token]
-            _save_sessions()
-            return False
-        # If TOTP is configured, require totp_verified flag
-        if _is_totp_enabled() and not session.get("totp_verified"):
-            return False
-    return True
-
-_db_conn = None
-
-def get_db():
-    global _db_conn
-    if _db_conn is None:
-        _db_conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-        _db_conn.execute("PRAGMA journal_mode=WAL")
-        _db_conn.execute("PRAGMA busy_timeout=5000")
-        _db_conn.row_factory = sqlite3.Row
-    return _db_conn
-
-_NO_CACHE = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"}
+# (Auth endpoints moved to routes/auth.py)
 
 # ═══════════════════════════════════════════════════════════════
-# BIOMETRIC AUTH ENDPOINTS
+# E2E ENCRYPTION — AES-256-GCM middleware (key exchange in routes/auth.py)
 # ═══════════════════════════════════════════════════════════════
-
-@app.get("/auth", response_class=HTMLResponse)
-async def auth_page():
-    """Serve the biometric authentication page."""
-    auth_path = os.path.join(DASHBOARD_DIR, "codec_auth.html")
-    if os.path.exists(auth_path):
-        with open(auth_path) as f:
-            return HTMLResponse(f.read(), headers=_NO_CACHE)
-    return HTMLResponse("<h1>Auth page not found</h1>", status_code=500)
-
-
-@app.get("/api/auth/check")
-async def auth_check():
-    """Check which auth methods are available (Touch ID and/or PIN)."""
-    result = {"touchid_available": False, "pin_available": bool(AUTH_PIN_HASH)}
-
-    if _is_auth_compiled():
-        try:
-            r = subprocess.run([AUTH_BINARY, "--check"], capture_output=True, text=True, timeout=5)
-            if r.returncode == 0:
-                data = json.loads(r.stdout)
-                result["touchid_available"] = data.get("available", False)
-                result["method"] = data.get("method", "none")
-        except Exception:
-            pass
-
-    result["available"] = result["touchid_available"] or result["pin_available"]
-    if not result["available"]:
-        result["reason"] = "No auth method configured. Compile Touch ID binary or set auth_pin_hash in config.json."
-    return result
-
-
-@app.post("/api/auth/verify")
-async def auth_verify(request: Request):
-    """Trigger Touch ID verification on the Mac."""
-    if not _is_auth_compiled():
-        return JSONResponse({"error": "Auth binary not compiled"}, status_code=500)
-    try:
-        r = subprocess.run(
-            [AUTH_BINARY, "--verify"],
-            capture_output=True, text=True, timeout=65
-        )
-        if r.returncode == 0:
-            result = json.loads(r.stdout)
-            client_ip = request.client.host if request.client else "unknown"
-
-            # Audit log every attempt
-            try:
-                if result.get("authenticated"):
-                    _audit_write(f"[{datetime.now().isoformat()}] AUTH_SUCCESS: method={result.get('method')} ip={client_ip}\n")
-                else:
-                    _audit_write(f"[{datetime.now().isoformat()}] AUTH_FAILED: error={result.get('error')} ip={client_ip}\n")
-            except Exception:
-                pass
-
-            if result.get("authenticated"):
-                token = result.get("token", secrets.token_hex(32))
-                with _auth_lock:
-                    _auth_sessions[token] = {
-                        "created": datetime.now(),
-                        "ip": client_ip,
-                        "method": result.get("method", "unknown"),
-                    }
-                    _save_sessions()
-                return {
-                    "authenticated": True,
-                    "method": result.get("method"),
-                    "token": token,
-                    "expires_hours": AUTH_SESSION_HOURS,
-                }
-            else:
-                return {
-                    "authenticated": False,
-                    "error": result.get("error", "Authentication failed"),
-                }
-        return JSONResponse({"error": "Auth binary failed"}, status_code=500)
-    except subprocess.TimeoutExpired:
-        return JSONResponse({"error": "Authentication timed out"}, status_code=408)
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-
-# PIN brute-force rate limiting: {ip: {"count": int, "locked_until": float}}
-_pin_attempts: dict = {}
-
-@app.post("/api/auth/pin")
-async def auth_pin(request: Request):
-    """Verify a PIN code."""
-    import hashlib
-    if not AUTH_PIN_HASH:
-        return JSONResponse({"error": "PIN authentication not configured"}, status_code=400)
-    try:
-        body = await request.json()
-        pin = str(body.get("pin", ""))
-    except Exception:
-        return JSONResponse({"error": "Missing pin field"}, status_code=400)
-
-    pin_hash = hashlib.sha256(pin.encode()).hexdigest()
-    client_ip = request.client.host if request.client else "unknown"
-
-    # ── Brute-force protection ──
-    attempt = _pin_attempts.get(client_ip, {"count": 0, "locked_until": 0.0})
-    if time.time() < attempt.get("locked_until", 0.0):
-        remaining = int(attempt["locked_until"] - time.time())
-        return JSONResponse({"error": f"Too many failed attempts. Locked out for {remaining}s."}, status_code=429)
-
-    # Audit log
-    try:
-        if pin_hash == AUTH_PIN_HASH:
-            _audit_write(f"[{datetime.now().isoformat()}] AUTH_SUCCESS: method=pin ip={client_ip}\n")
-        else:
-            _audit_write(f"[{datetime.now().isoformat()}] AUTH_FAILED: method=pin error=wrong_pin ip={client_ip}\n")
-    except Exception:
-        pass
-
-    if pin_hash == AUTH_PIN_HASH:
-        # Reset failed attempts on success
-        _pin_attempts.pop(client_ip, None)
-        token = secrets.token_hex(32)
-        with _auth_lock:
-            _auth_sessions[token] = {
-                "created": datetime.now(),
-                "ip": client_ip,
-                "method": "pin",
-            }
-            _save_sessions()
-        return {
-            "authenticated": True,
-            "method": "pin",
-            "token": token,
-            "expires_hours": AUTH_SESSION_HOURS,
-        }
-    else:
-        # Track failed attempt with exponential backoff
-        attempt = _pin_attempts.get(client_ip, {"count": 0, "locked_until": 0.0})
-        attempt["count"] = attempt.get("count", 0) + 1
-        if attempt["count"] >= 5:
-            attempt["locked_until"] = time.time() + 300  # 5-minute lockout
-            attempt["count"] = 0  # reset counter for next lockout cycle
-        _pin_attempts[client_ip] = attempt
-        return {"authenticated": False, "error": "Incorrect PIN"}
-
-
-@app.post("/api/auth/totp/setup")
-async def totp_setup(request: Request):
-    """Generate TOTP secret + QR code for authenticator app setup."""
-    import pyotp, qrcode, io, base64
-    # Only allow setup if auth is enabled
-    if not AUTH_ENABLED:
-        return JSONResponse({"error": "Auth not enabled"}, status_code=400)
-    secret = pyotp.random_base32()
-    totp = pyotp.TOTP(secret)
-    uri = totp.provisioning_uri(name="CODEC", issuer_name="CODEC")
-    # Generate QR code as base64 PNG
-    img = qrcode.make(uri)
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    qr_b64 = base64.b64encode(buf.getvalue()).decode()
-    return {"secret": secret, "qr_code": qr_b64, "uri": uri}
-
-
-@app.post("/api/auth/totp/confirm")
-async def totp_confirm(request: Request):
-    """Verify TOTP code and save secret to config if valid (first-time setup)."""
-    import pyotp
-    body = await request.json()
-    code = str(body.get("code", ""))
-    secret = body.get("secret", "")
-    if not code or not secret:
-        return JSONResponse({"error": "Missing code or secret"}, status_code=400)
-    totp = pyotp.TOTP(secret)
-    if totp.verify(code, valid_window=1):
-        # Save secret to config
-        try:
-            cfg_data = {}
-            if os.path.exists(CONFIG_PATH):
-                with open(CONFIG_PATH) as f:
-                    cfg_data = json.load(f)
-            cfg_data["totp_secret"] = secret
-            cfg_data.pop("totp_disabled", None)
-            with open(CONFIG_PATH, "w") as f:
-                json.dump(cfg_data, f, indent=2)
-        except Exception as e:
-            return JSONResponse({"error": f"Failed to save config: {e}"}, status_code=500)
-        _audit_write(f"[{datetime.now().isoformat()}] TOTP_SETUP: 2FA enabled\n")
-        return {"verified": True, "enabled": True, "message": "2FA enabled successfully"}
-    return {"verified": False, "error": "Invalid code. Try again."}
-
-
-@app.post("/api/auth/totp/verify")
-async def totp_verify(request: Request):
-    """Verify TOTP code during login (after Touch ID/PIN)."""
-    import pyotp
-    body = await request.json()
-    code = str(body.get("code", ""))
-    pending_token = body.get("token", "")
-    if not code or not pending_token:
-        return JSONResponse({"error": "Missing code or token"}, status_code=400)
-    # Load secret from config
-    totp_secret = ""
-    try:
-        with open(CONFIG_PATH) as f:
-            totp_secret = json.load(f).get("totp_secret", "")
-    except Exception:
-        pass
-    if not totp_secret:
-        return JSONResponse({"error": "TOTP not configured"}, status_code=400)
-    totp = pyotp.TOTP(totp_secret)
-    client_ip = request.client.host if request.client else "unknown"
-    if totp.verify(code, valid_window=1):
-        # Promote pending token to a real session
-        with _auth_lock:
-            if pending_token in _auth_sessions:
-                _auth_sessions[pending_token]["totp_verified"] = True
-                _save_sessions()
-        _audit_write(f"[{datetime.now().isoformat()}] TOTP_SUCCESS: ip={client_ip}\n")
-        return {"verified": True, "token": pending_token}
-    _audit_write(f"[{datetime.now().isoformat()}] TOTP_FAILED: ip={client_ip}\n")
-    return {"verified": False, "error": "Invalid code"}
-
-
-@app.post("/api/auth/totp/disable")
-async def totp_disable(request: Request):
-    """Disable TOTP 2FA — requires authenticated session + valid TOTP code."""
-    if not _verify_biometric_session(request):
-        return JSONResponse({"error": "Authentication required"}, status_code=401)
-    # Require current TOTP code to disable
-    import pyotp
-    try:
-        body = await request.json()
-        code = str(body.get("code", ""))
-    except Exception:
-        return JSONResponse({"error": "Missing TOTP code"}, status_code=400)
-    if not code:
-        return JSONResponse({"error": "Enter your authenticator code to disable 2FA"}, status_code=400)
-    totp_secret = ""
-    try:
-        with open(CONFIG_PATH) as f:
-            totp_secret = json.load(f).get("totp_secret", "")
-    except Exception:
-        pass
-    if not totp_secret:
-        return {"disabled": True}  # already disabled
-    totp = pyotp.TOTP(totp_secret)
-    if not totp.verify(code, valid_window=1):
-        return JSONResponse({"error": "Invalid code"}, status_code=400)
-    # Keep the secret but mark TOTP as disabled (allows re-enable without new QR scan)
-    try:
-        cfg_data = {}
-        if os.path.exists(CONFIG_PATH):
-            with open(CONFIG_PATH) as f:
-                cfg_data = json.load(f)
-        cfg_data["totp_disabled"] = True
-        with open(CONFIG_PATH, "w") as f:
-            json.dump(cfg_data, f, indent=2)
-    except Exception as e:
-        return JSONResponse({"error": f"Failed to update config: {e}"}, status_code=500)
-    # Clear totp_verified from all active sessions
-    with _auth_lock:
-        for token, session in _auth_sessions.items():
-            session.pop("totp_verified", None)
-        _save_sessions()
-    client_ip = request.client.host if request.client else "unknown"
-    _audit_write(f"[{datetime.now().isoformat()}] TOTP_DISABLED: 2FA disabled by ip={client_ip}\n")
-    return {"disabled": True}
-
-
-@app.post("/api/auth/totp/enable")
-async def totp_enable(request: Request):
-    """Re-enable TOTP using existing secret."""
-    if not _verify_biometric_session(request):
-        return JSONResponse({"error": "Auth required"}, status_code=401)
-    import pyotp
-    body = await request.json()
-    code = str(body.get("code", ""))
-    if not code:
-        return JSONResponse({"error": "Enter your authenticator code"}, status_code=400)
-    try:
-        with open(CONFIG_PATH) as f:
-            cfg = json.load(f)
-    except Exception:
-        cfg = {}
-    secret = cfg.get("totp_secret", "")
-    if not secret:
-        return JSONResponse({"error": "No TOTP secret found — use Setup 2FA first"}, status_code=400)
-    totp = pyotp.TOTP(secret)
-    if not totp.verify(code, valid_window=1):
-        return JSONResponse({"error": "Invalid code"}, status_code=400)
-    cfg.pop("totp_disabled", None)
-    with open(CONFIG_PATH, "w") as f:
-        json.dump(cfg, f, indent=2)
-    return {"enabled": True}
-
-
-@app.post("/api/auth/logout")
-async def auth_logout(request: Request):
-    """Invalidate the current biometric session."""
-    token = request.cookies.get(AUTH_COOKIE_NAME)
-    with _auth_lock:
-        if token and token in _auth_sessions:
-            del _auth_sessions[token]
-            _save_sessions()
-    _e2e_keys.pop(token, None)
-    return {"logged_out": True}
-
-
-@app.get("/api/auth/status")
-async def auth_status(request: Request):
-    """Check if current session is valid."""
-    valid = _verify_biometric_session(request)
-    # Check if a TOTP secret exists (even if disabled)
-    totp_secret_exists = False
-    try:
-        with open(CONFIG_PATH) as f:
-            cfg = json.load(f)
-        totp_secret_exists = bool(cfg.get("totp_secret"))
-    except Exception:
-        pass
-    return {
-        "authenticated": valid,
-        "auth_enabled": AUTH_ENABLED,
-        "touchid_compiled": _is_auth_compiled(),
-        "pin_configured": bool(AUTH_PIN_HASH),
-        "totp_enabled": _is_totp_enabled(),
-        "totp_secret_exists": totp_secret_exists,
-    }
-
-
-# ═══════════════════════════════════════════════════════════════
-# E2E ENCRYPTION — ECDH key exchange + AES-256-GCM middleware
-# ═══════════════════════════════════════════════════════════════
-
-@app.post("/api/auth/keyexchange")
-async def e2e_keyexchange(request: Request):
-    """ECDH P-256 key exchange — derives shared AES-256-GCM key for E2E encryption."""
-    try:
-        from cryptography.hazmat.primitives.asymmetric import ec
-        from cryptography.hazmat.primitives.kdf.hkdf import HKDF
-        from cryptography.hazmat.primitives import hashes, serialization
-    except ImportError:
-        return JSONResponse({"error": "cryptography library not available"}, status_code=500)
-    body = await request.json()
-    client_pub_b64 = body.get("pub")
-    if not client_pub_b64:
-        return JSONResponse({"error": "missing pub"}, status_code=400)
-    import base64
-    client_pub_raw = base64.b64decode(client_pub_b64)
-    client_pub = ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256R1(), client_pub_raw)
-    server_key = ec.generate_private_key(ec.SECP256R1())
-    shared = server_key.exchange(ec.ECDH(), client_pub)
-    aes_key = HKDF(algorithm=hashes.SHA256(), length=32, salt=None, info=b"codec-e2e").derive(shared)
-    server_pub_raw = server_key.public_key().public_bytes(
-        serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint
-    )
-    token = request.cookies.get(AUTH_COOKIE_NAME, "")
-    if token:
-        _e2e_keys[token] = aes_key
-        _save_e2e_keys()
-    return {"pub": base64.b64encode(server_pub_raw).decode()}
 
 
 class E2EMiddleware(BaseHTTPMiddleware):
@@ -825,7 +226,24 @@ app.add_middleware(E2EMiddleware)
 
 
 # ═══════════════════════════════════════════════════════════════
-# DASHBOARD ROUTES
+# ROUTE MODULES
+# ═══════════════════════════════════════════════════════════════
+
+from routes.auth import router as auth_router
+from routes.skills import router as skills_router
+from routes.agents import router as agents_router
+from routes.memory import router as memory_router
+from routes.websocket import router as websocket_router
+
+app.include_router(auth_router)
+app.include_router(skills_router)
+app.include_router(agents_router)
+app.include_router(memory_router)
+app.include_router(websocket_router)
+
+
+# ═══════════════════════════════════════════════════════════════
+# DASHBOARD ROUTES (remaining in codec_dashboard.py)
 # ═══════════════════════════════════════════════════════════════
 
 @app.get("/", response_class=HTMLResponse)
@@ -848,6 +266,12 @@ async def manifest():
             {"src": "https://i.imgur.com/RbrQ7Bt.png", "sizes": "280x280", "type": "image/png"}
         ]
     })
+
+@app.get("/metrics")
+async def prometheus_metrics():
+    from starlette.responses import PlainTextResponse
+    from codec_metrics import metrics
+    return PlainTextResponse(metrics.render(), media_type="text/plain; version=0.0.4")
 
 @app.get("/api/status")
 async def status():
@@ -1687,239 +1111,16 @@ async def save_file(request: Request):
     with open(path, "w") as f: f.write(content)
     return {"path": path, "size": len(content)}
 
-@app.post("/api/save_skill")
-async def save_skill(request: Request):
-    body = await request.json()
-    filename = os.path.basename(body.get("filename", "custom_skill.py"))
-    if not filename.endswith(".py"): filename += ".py"
-    content = body.get("content", "")
-    # Validate: must contain SKILL_DESCRIPTION and run function
-    if "SKILL_DESCRIPTION" not in content or "def run(" not in content:
-        return JSONResponse({"error": "Invalid skill: must contain SKILL_DESCRIPTION and def run()"}, status_code=400)
-    from codec_config import is_dangerous_skill_code
-    dangerous, reason = is_dangerous_skill_code(content)
-    if dangerous:
-        return JSONResponse({"error": f"Blocked: {reason}"}, status_code=400)
-    path = os.path.join(_get_skills_dir(), filename)
-    with open(path, "w") as f: f.write(content)
-    return {"path": path, "skill": filename, "size": len(content)}
 
-# In-memory pending skill reviews (human review gate)
-_pending_skills: dict = {}
-
-@app.post("/api/skill/review")
-async def skill_review(request: Request):
-    """Stage LLM-generated skill code for human review — does NOT write to disk."""
-    import uuid
-    body = await request.json()
-    code = body.get("code", "")
-    filename = os.path.basename(body.get("filename", "custom_skill.py"))
-    if not filename.endswith(".py"):
-        filename += ".py"
-    if not code:
-        return JSONResponse({"error": "No code provided"}, status_code=400)
-    review_id = str(uuid.uuid4())[:12]
-    _pending_skills[review_id] = {"code": code, "filename": filename}
-    return {"review_id": review_id, "code": code, "filename": filename}
-
-@app.post("/api/skill/approve")
-async def skill_approve(request: Request):
-    """Approve a pending skill review — writes to disk and removes from pending."""
-    body = await request.json()
-    review_id = body.get("review_id", "")
-    if review_id not in _pending_skills:
-        return JSONResponse({"error": "Review not found or already approved"}, status_code=404)
-    pending = _pending_skills.pop(review_id)
-    code = pending["code"]
-    filename = pending["filename"]
-    # Validate: must contain SKILL_DESCRIPTION and run function
-    if "SKILL_DESCRIPTION" not in code or "def run(" not in code:
-        return JSONResponse({"error": "Invalid skill: must contain SKILL_DESCRIPTION and def run()"}, status_code=400)
-    from codec_config import is_dangerous_skill_code
-    dangerous, reason = is_dangerous_skill_code(code)
-    if dangerous:
-        return JSONResponse({"error": f"Blocked: {reason}"}, status_code=400)
-    skill_dir = _get_skills_dir()
-    os.makedirs(skill_dir, exist_ok=True)
-    path = os.path.join(skill_dir, filename)
-    with open(path, "w") as f:
-        f.write(code)
-    return {"path": path, "skill": filename, "size": len(code)}
-
-# In-memory job stores (survive for session lifetime)
-_research_jobs: dict = {}
-_agent_jobs: dict = {}
-
-@app.post("/api/deep_research")
-async def deep_research_start(request: Request):
-    """Start deep research job — returns job_id immediately (avoids proxy timeouts)"""
-    import asyncio, threading, uuid
-    body = await request.json()
-    topic = body.get("topic", "")
-    if not topic or len(topic) < 5:
-        return JSONResponse({"error": "Topic too short"}, status_code=400)
-
-    job_id = str(uuid.uuid4())[:8]
-    _research_jobs[job_id] = {"status": "running", "topic": topic, "started": datetime.now().isoformat()}
-
-    async def _run_async():
-        try:
-            from codec_agents import run_crew
-            result = await run_crew("deep_research", topic=topic)
-            _research_jobs[job_id].update(result)
-        except Exception as e:
-            import traceback; traceback.print_exc()
-            _research_jobs[job_id]["status"] = "error"
-            _research_jobs[job_id]["error"] = str(e)
-
-    asyncio.create_task(_run_async())
-    return {"job_id": job_id, "status": "running", "topic": topic}
+# (Skills endpoints moved to routes/skills.py)
+# (Job stores _pending_skills, _research_jobs, _agent_jobs in routes/_shared.py)
 
 
-@app.get("/api/deep_research/{job_id}")
-async def deep_research_status(job_id: str):
-    """Poll research job status"""
-    job = _research_jobs.get(job_id)
-    if not job:
-        return JSONResponse({"error": "Job not found"}, status_code=404)
-    return job
+# (Deep research endpoints moved to routes/agents.py)
 
 
-@app.post("/api/forge")
-async def forge_skill(request: Request):
-    """Convert arbitrary code (or a URL to code) into a CODEC skill using the LLM"""
-    import re as _re
-    body = await request.json()
-    code = body.get("code", "").strip()
-    if not code or len(code) < 4:
-        return JSONResponse({"error": "No code provided"}, status_code=400)
 
-    # Fix 2 — URL import: if code is a URL, fetch the source first
-    source_url = None
-    if code.startswith(("http://", "https://")):
-        try:
-            import requests as _rq_url
-            resp = _rq_url.get(code, timeout=15, headers={"User-Agent": "CODEC-Forge/1.0"})
-            if resp.status_code != 200:
-                return JSONResponse({"error": f"URL fetch failed: {resp.status_code} {code}"}, status_code=400)
-            source_url = code
-            code = resp.text.strip()
-            if not code:
-                return JSONResponse({"error": "URL returned empty content"}, status_code=400)
-        except Exception as e:
-            return JSONResponse({"error": f"URL fetch error: {e}"}, status_code=400)
-
-    cfg = {}
-    try:
-        with open(CONFIG_PATH) as f: cfg = json.load(f)
-    except Exception as e:
-        log.warning(f"Non-critical error: {e}")
-
-    base_url = cfg.get("llm_base_url", "http://localhost:8081/v1")
-    model = cfg.get("llm_model", "")
-    api_key = cfg.get("llm_api_key", "")
-    kwargs = {k: v for k, v in cfg.get("llm_kwargs", {}).items() if k != "enable_thinking"}
-
-    headers = {"Content-Type": "application/json"}
-    if api_key: headers["Authorization"] = "Bearer " + api_key
-
-    url_note = f"\n(Fetched from: {source_url})" if source_url else ""
-
-    # Fix 3 — Better prompt: explicitly forbid hallucination, anchor on actual code
-    prompt = f"""Convert the following code into a CODEC skill Python file.
-
-CRITICAL: Convert THIS EXACT CODE below. Do NOT invent a weather skill or any other unrelated skill.
-Base the skill NAME, DESCRIPTION, TRIGGERS, and implementation ENTIRELY on the actual code provided.{url_note}
-
-OUTPUT ONLY the Python file content — no markdown, no backticks, no explanation.
-
-EXACT FORMAT REQUIRED:
-\"\"\"CODEC Skill: [Name derived from the actual code]\"\"\"
-SKILL_NAME = "[lowercase_name_matching_what_the_code_does]"
-SKILL_DESCRIPTION = "[One line describing what THIS code actually does]"
-SKILL_TRIGGERS = ["phrase 1", "phrase 2", "phrase 3", "phrase 4"]
-
-import os, json  # only imports actually needed
-
-def run(task, app="", ctx=""):
-    # Wrap the actual code logic here
-    return "result string"  # must return a string
-
-RULES:
-- SKILL_NAME: lowercase, underscores only — name it after what the code ACTUALLY does
-- SKILL_TRIGGERS: natural phrases a user would say to run THIS specific skill
-- run() must always return a string
-- Preserve the core logic of the original code
-- Add error handling around external calls
-
-CODE TO CONVERT:
-{code}"""
-
-    try:
-        import requests as rq_forge
-        payload = {"model": model, "messages": [{"role": "user", "content": prompt}],
-                   "max_tokens": 1500, "temperature": 0.1}
-        payload.update(kwargs)
-        r = rq_forge.post(base_url + "/chat/completions", json=payload, headers=headers, timeout=90)
-        if r.status_code != 200:
-            return JSONResponse({"error": f"LLM returned {r.status_code}"}, status_code=502)
-
-        raw = r.json()["choices"][0]["message"].get("content", "").strip()
-        raw = _re.sub(r'<think>[\s\S]*?</think>', '', raw).strip()
-        raw = _re.sub(r'^```[\w]*\n?', '', raw).strip()
-        raw = _re.sub(r'\n?```$', '', raw).strip()
-
-        # Fix 1 — Title line: if first line isn't valid Python, wrap it as a docstring
-        lines = raw.split('\n')
-        if lines:
-            first = lines[0].strip()
-            valid_starts = ('"""', "'''", 'import ', 'from ', 'SKILL_', '#', 'def ', 'class ', '@')
-            if first and not any(first.startswith(s) for s in valid_starts):
-                lines[0] = '"""' + first + '"""'
-                raw = '\n'.join(lines)
-
-        if "SKILL_NAME" not in raw or "def run" not in raw:
-            return JSONResponse({"error": "LLM output is not a valid skill", "raw": raw}, status_code=422)
-
-        name_match = _re.search(r'SKILL_NAME\s*=\s*["\'](\w+)["\']', raw)
-        skill_name = name_match.group(1) if name_match else "forged_skill"
-
-        # Block dangerous imports/calls in forged skill code
-        BLOCKED_IN_SKILLS = [
-            "os.system(", "subprocess.", "eval(", "exec(", "__import__",
-            "importlib", "shutil.rmtree", "open('/etc", "open('/dev", "ctypes",
-        ]
-        for blocked in BLOCKED_IN_SKILLS:
-            if blocked in raw:
-                return JSONResponse({"error": f"Blocked pattern in forged skill: {blocked}", "raw": raw}, status_code=403)
-
-        # Syntax check
-        try:
-            compile(raw, f"{skill_name}.py", "exec")
-        except SyntaxError as e:
-            return JSONResponse({"error": f"Syntax error in generated skill: {e}", "raw": raw}, status_code=422)
-
-        # Save to ~/.codec/skills/
-        skills_dir = _get_skills_dir()
-        os.makedirs(skills_dir, exist_ok=True)
-        filepath = os.path.join(skills_dir, f"{skill_name}.py")
-        with open(filepath, "w") as f: f.write(raw)
-
-        # Mirror to repo skills/ if it exists
-        repo_skills = os.path.join(DASHBOARD_DIR, "skills")
-        if os.path.isdir(repo_skills):
-            with open(os.path.join(repo_skills, f"{skill_name}.py"), "w") as f: f.write(raw)
-
-        msg = f"Skill '{skill_name}' forged!"
-        if source_url:
-            msg += f" (imported from URL)"
-        msg += " Run: pm2 restart ava-autopilot"
-        return {"skill_name": skill_name, "path": filepath, "code": raw,
-                "source_url": source_url, "message": msg}
-
-    except Exception as e:
-        import traceback; traceback.print_exc()
-        return JSONResponse({"error": str(e)}, status_code=500)
+# (Forge endpoint moved to routes/skills.py)
 
 
 def _fetch_url_content(url: str, max_chars: int = 8000) -> str:
@@ -2092,6 +1293,8 @@ async def web_search_endpoint(request: Request):
 @app.post("/api/chat")
 async def chat_completion(request: Request):
     """Direct LLM chat with full context window"""
+    from codec_metrics import metrics
+    metrics.inc("codec_chat_requests_total")
     body = await request.json()
     messages = body.get("messages", [])
     if not messages:
@@ -2203,166 +1406,9 @@ async def chat_completion(request: Request):
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
-# ── CODEC Voice ──────────────────────────────────────────────────────────────
 
-@app.get("/voice", response_class=HTMLResponse)
-async def voice_page():
-    """Serve the voice call UI."""
-    voice_path = os.path.join(DASHBOARD_DIR, "codec_voice.html")
-    with open(voice_path) as f:
-        return HTMLResponse(f.read(), headers=_NO_CACHE)
-
-@app.websocket("/ws/voice")
-async def voice_websocket(websocket: WebSocket):
-    """WebSocket endpoint — one VoicePipeline per connection."""
-    await websocket.accept()
-    print("[Voice] WebSocket connected")
-    from codec_voice import VoicePipeline
-    pipeline = VoicePipeline(websocket)
-    try:
-        await pipeline.run()
-    except WebSocketDisconnect:
-        print("[Voice] WebSocket disconnected cleanly")
-    except Exception as e:
-        print(f"[Voice] WebSocket error: {e}")
-    finally:
-        pipeline.save_to_memory()
-        await pipeline.close()
-
-# ─────────────────────────────────────────────────────────────────────────────
-
-# ── CODEC Agents ─────────────────────────────────────────────────────────────
-
-@app.get("/api/agents/crews")
-async def list_agent_crews():
-    """List available agent crews."""
-    from codec_agents import list_crews
-    return {"crews": list_crews()}
-
-
-@app.post("/api/agents/run")
-async def run_agent_crew(request: Request):
-    """Start an agent crew in background — returns job_id immediately to avoid proxy timeouts."""
-    import uuid, threading
-    body = await request.json()
-    crew_name = body.pop("crew", "")
-    if not crew_name:
-        return JSONResponse({"error": "Missing 'crew' field"}, status_code=400)
-
-    job_id = str(uuid.uuid4())[:8]
-    _agent_jobs[job_id] = {
-        "status": "running",
-        "crew": crew_name,
-        "progress": [],
-        "started": datetime.now().isoformat(),
-    }
-
-    def _run():
-        import asyncio
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        progress_log = _agent_jobs[job_id]["progress"]
-
-        def on_progress(update):
-            progress_log.append(update)
-            print(f"[Agents] {update}")
-
-        try:
-            if crew_name == "custom":
-                from codec_agents import run_custom_agent
-                result = loop.run_until_complete(run_custom_agent(
-                    name           = body.get("agent_name", "Custom"),
-                    role           = body.get("role", ""),
-                    tools          = body.get("tools", []),
-                    max_iterations = int(body.get("max_iterations", 8)),
-                    task           = body.get("task", ""),
-                    callback       = on_progress,
-                ))
-            else:
-                from codec_agents import run_crew
-                result = loop.run_until_complete(run_crew(crew_name, callback=on_progress, **body))
-            _agent_jobs[job_id].update(result)
-            _agent_jobs[job_id]["status"] = result.get("status", "complete")
-            _agent_jobs[job_id]["progress"] = progress_log
-        except Exception as e:
-            import traceback; traceback.print_exc()
-            _agent_jobs[job_id]["status"] = "error"
-            _agent_jobs[job_id]["error"] = str(e)
-        finally:
-            loop.close()
-
-    threading.Thread(target=_run, daemon=True).start()
-    return {"job_id": job_id, "status": "running", "crew": crew_name}
-
-
-@app.get("/api/agents/status/{job_id}")
-async def agent_job_status(job_id: str):
-    """Poll agent job status. Returns full result when status != 'running'."""
-    job = _agent_jobs.get(job_id)
-    if not job:
-        return JSONResponse({"error": "Job not found"}, status_code=404)
-    return job
-
-
-_AGENTS_DIR = os.path.expanduser("~/.codec/agents")
-os.makedirs(_AGENTS_DIR, exist_ok=True)
-
-
-@app.get("/api/agents/tools")
-async def list_agent_tools():
-    """Return all available tool names + descriptions for the custom agent builder."""
-    from codec_agents import get_all_tools
-    tools = get_all_tools()
-    return {"tools": [{"name": t.name, "description": t.description} for t in tools]}
-
-
-@app.post("/api/agents/custom/save")
-async def save_custom_agent(request: Request):
-    """Save a custom agent definition to ~/.codec/agents/"""
-    try:
-        body = await request.json()
-        name = (body.get("name") or "").strip()
-        if not name:
-            return JSONResponse({"error": "Name required"}, status_code=400)
-        safe_id = re.sub(r"[^\w\-]", "_", name.lower())
-        path = os.path.join(_AGENTS_DIR, safe_id + ".json")
-        with open(path, "w") as f:
-            json.dump({**body, "id": safe_id}, f, indent=2)
-        return {"saved": True, "id": safe_id, "path": path}
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-
-@app.get("/api/agents/custom/list")
-async def list_custom_agents():
-    """List saved custom agent definitions."""
-    agents = []
-    for f in sorted(os.listdir(_AGENTS_DIR)):
-        if f.endswith(".json"):
-            try:
-                with open(os.path.join(_AGENTS_DIR, f)) as fh:
-                    agents.append(json.load(fh))
-            except Exception:
-                pass
-    return {"agents": agents}
-
-
-@app.post("/api/agents/custom/delete")
-async def delete_custom_agent(request: Request):
-    """Delete a saved custom agent definition."""
-    try:
-        body = await request.json()
-        agent_id = (body.get("id") or "").strip()
-        if not agent_id:
-            return JSONResponse({"error": "Agent ID required"}, status_code=400)
-        safe_id = re.sub(r"[^\w\-]", "_", agent_id)
-        path = os.path.join(_AGENTS_DIR, safe_id + ".json")
-        if os.path.exists(path):
-            os.remove(path)
-            return {"deleted": True, "id": safe_id}
-        return JSONResponse({"error": "Agent not found"}, status_code=404)
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+# (Voice/WebSocket endpoints moved to routes/websocket.py)
+# (Agent endpoints moved to routes/agents.py)
 
 
 @app.get("/api/schedules")
@@ -2747,64 +1793,9 @@ async def tasks_page():
 
 # ─────────────────────────────────────────────────────────────────────────────
 
-# ── CODEC Memory ─────────────────────────────────────────────────────────────
 
-from codec_memory import CodecMemory as _CM, _sanitize_fts_query
-_memory = _CM()
-
-@app.get("/api/memory/search")
-async def memory_search(q: str = "", limit: int = 10):
-    """Full-text search over all conversations (FTS5 BM25 ranked)."""
-    limit = min(limit, 500)
-    sanitized = _sanitize_fts_query(q)
-    if not sanitized:
-        return JSONResponse({"error": "Query required"}, status_code=400)
-    return _memory.search(sanitized, limit=limit)
-
-@app.get("/api/memory/recent")
-async def memory_recent(days: int = 7, limit: int = 50):
-    """Return messages from the past N days."""
-    limit = min(limit, 500)
-    return _memory.search_recent(days=days, limit=limit)
-
-@app.get("/api/memory/sessions")
-async def memory_sessions(limit: int = 20):
-    """Return distinct sessions with message count and preview."""
-    limit = min(limit, 500)
-    return _memory.get_sessions(limit=limit)
-
-@app.post("/api/memory/rebuild")
-async def memory_rebuild():
-    """Rebuild FTS index from scratch (use after bulk imports)."""
-    n = _memory.rebuild_fts()
-    return {"indexed": n}
-
-# ─────────────────────────────────────────────────────────────────────────────
-
-@app.get("/api/skills")
-async def skills():
-    """List installed skills"""
-    skills_dir = _get_skills_dir()
-    result = []
-    try:
-        for f in sorted(os.listdir(skills_dir)):
-            if f.endswith(".py") and not f.startswith("_"):
-                path = os.path.join(skills_dir, f)
-                name = f.replace(".py", "")
-                triggers = []
-                try:
-                    with open(path) as sf:
-                        for line in sf:
-                            if "SKILL_TRIGGERS" in line:
-                                import ast
-                                triggers = ast.literal_eval(line.split("=", 1)[1].strip())
-                                break
-                except Exception as e:
-                    log.warning(f"Non-critical error: {e}")
-                result.append({"name": name, "triggers": triggers})
-    except Exception as e:
-        log.warning(f"Non-critical error: {e}")
-    return result
+# (Memory endpoints moved to routes/memory.py)
+# (Skills list endpoint moved to routes/skills.py)
 
 @app.get("/api/cdp/status")
 async def cdp_status():
@@ -2909,14 +1900,16 @@ async def _shutdown_services():
         await asyncio.gather(*_bg_tasks.values(), return_exceptions=True)
     _bg_tasks.clear()
     log.info("[SHUTDOWN] All background services stopped")
-    global _db_conn, _qchat_conn, _vibe_conn
-    for conn in (_db_conn, _qchat_conn, _vibe_conn):
+    import routes._shared as _shared
+    global _qchat_conn, _vibe_conn
+    for conn in (_shared._db_conn, _qchat_conn, _vibe_conn):
         if conn is not None:
             try:
                 conn.close()
             except Exception:
                 pass
-    _db_conn = _qchat_conn = _vibe_conn = None
+    _shared._db_conn = None
+    _qchat_conn = _vibe_conn = None
 
 
 @app.get("/api/services/status")
@@ -2934,5 +1927,7 @@ async def services_status():
 
 
 if __name__ == "__main__":
+    from codec_logging import setup_logging
+    setup_logging()
     uvicorn.run(app, host="0.0.0.0", port=8090,
                 h11_max_incomplete_event_size=50 * 1024 * 1024)  # 50MB for large doc uploads
