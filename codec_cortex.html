@@ -105,7 +105,13 @@ svg text{font-family:'SF Pro Display',-apple-system,system-ui,sans-serif}
 [data-theme="light"] #logViewer{background:rgba(0,0,0,.04);border-color:rgba(0,0,0,.06)}
 [data-theme="light"] .detail-btn{background:rgba(0,0,0,.03);border-color:rgba(0,0,0,.1);color:var(--text)}
 [data-theme="light"] .vs-btn{color:var(--dim)}
-[data-theme="light"] .zone-label{opacity:.1}
+[data-theme="light"] .zone-label{opacity:.35;fill:#666!important}
+[data-theme="light"] .node-c{fill:#ffffff!important;stroke-width:1.8}
+[data-theme="light"] .node-c+circle{fill:none!important}
+[data-theme="light"] svg text[font-size="7.5"]{fill:#555!important;opacity:.7!important}
+[data-theme="light"] svg text[font-size="9"]{fill:#333!important;opacity:.9!important}
+[data-theme="light"] #cortex path:not([d*="M"]){stroke-opacity:1}
+[data-theme="light"] svg g path{stroke-opacity:1}
 [data-theme="light"] #productsView{background:var(--bg)}
 [data-theme="light"] .grid-rect{opacity:0}
 .pc-expand-btn{background:none;border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:4px 10px;color:var(--dim);font-size:9px;cursor:pointer;transition:all .2s;margin-top:10px;letter-spacing:1px}

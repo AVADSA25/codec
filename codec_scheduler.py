@@ -188,26 +188,53 @@ def _run_crew(sched: dict):
 
 
 def check_and_run():
-    """Check every minute whether any schedules should fire right now."""
+    """Check every minute whether any schedules should fire.
+
+    Uses "past scheduled time" logic so tasks fire even if the scheduler
+    starts after the exact minute.  ``last_run`` is only set after a
+    successful execution; ``last_attempt`` prevents rapid re-firing within
+    the same minute.
+    """
     schedules = load_schedules()
     now = datetime.now()
+    today_str = now.strftime("%Y-%m-%d")
+    now_minutes = now.hour * 60 + now.minute  # minutes since midnight
 
     for sched in schedules:
         if not sched.get("enabled"):
             continue
-        if now.hour != sched["hour"] or now.minute != sched["minute"]:
-            continue
         if now.weekday() not in sched.get("days", list(range(7))):
             continue
+
+        sched_minutes = sched["hour"] * 60 + sched["minute"]
+        if now_minutes < sched_minutes:
+            continue  # not yet reached scheduled time today
+
+        # Already successfully ran today — skip
         last_run = sched.get("last_run")
-        if last_run and last_run[:10] == now.strftime("%Y-%m-%d"):
+        if last_run and last_run[:10] == today_str:
             continue
 
-        # Mark as fired BEFORE running (prevents double-fire from race conditions)
-        sched["last_run"] = now.isoformat()
+        # Prevent rapid re-firing within the same minute
+        last_attempt = sched.get("last_attempt")
+        if last_attempt and last_attempt[:16] == now.strftime("%Y-%m-%dT%H:%M"):
+            continue
+
+        # Record attempt timestamp (prevents double-fire from race / same-minute loop)
+        sched["last_attempt"] = now.isoformat()
         save_schedules(schedules)
+
         log.info(f"🚀 Scheduled run: {sched['crew']} — {sched.get('topic', '')}")
-        _run_crew(sched)
+        success = _run_crew(sched)
+
+        # Only mark last_run on success so failed tasks are retried next minute
+        if success:
+            schedules = load_schedules()  # reload in case file changed during long run
+            for s in schedules:
+                if s["id"] == sched["id"]:
+                    s["last_run"] = datetime.now().isoformat()
+                    break
+            save_schedules(schedules)
 
 
 _PID_FILE = os.path.expanduser("~/.codec/scheduler.pid")
