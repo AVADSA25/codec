@@ -608,20 +608,26 @@ def _get_all_prompts():
         "default": CHAT_SYSTEM_PROMPT.strip(),
     }
 
-    # 4. Vibe IDE prompt
+    # 4. Vibe IDE prompt (multi-line JS string concatenation)
     try:
         vibe_path = os.path.join(DASHBOARD_DIR, "codec_vibe.html")
         import re as _re
         with open(vibe_path, "r") as f:
             content = f.read()
-        m = _re.search(r'var SYSP\s*=\s*"(.*?)";', content, _re.DOTALL)
+        # Match: var SYSP = "..." + \n"..." + ... "...";
+        m = _re.search(r'var SYSP\s*=\s*((?:"[^"]*"\s*\+?\s*\n?\s*)+);', content)
         if m:
-            raw = m.group(1).replace('\\n', '\n').replace('\\" ', '" ').replace('" +\n"', '')
+            raw_block = m.group(1)
+            # Extract all quoted strings and join them
+            parts = _re.findall(r'"([^"]*)"', raw_block)
+            joined = "".join(parts)
+            # Unescape \n
+            joined = joined.replace('\\n', '\n')
             prompts["vibe"] = {
                 "label": "Vibe IDE",
                 "description": "AI coding assistant — code output rules, operational modes, Canvas requirements",
                 "file": "codec_vibe.html",
-                "default": raw.strip(),
+                "default": joined.strip(),
             }
     except Exception:
         pass

@@ -1491,10 +1491,20 @@ async function loadPrompts() {
   if (!container) return;
   try {
     var r = await fetch('/api/prompts');
-    _promptsData = await r.json();
+    if (!r.ok) throw new Error('API returned ' + r.status);
+    var data = await r.json();
+    if (data.error) throw new Error(data.error);
+    // Filter out non-prompt keys (like "error")
+    _promptsData = {};
+    Object.keys(data).forEach(function(k) {
+      if (data[k] && typeof data[k] === 'object' && data[k].label) {
+        _promptsData[k] = data[k];
+      }
+    });
+    if (Object.keys(_promptsData).length === 0) throw new Error('No prompts found');
     renderPrompts();
   } catch(e) {
-    container.innerHTML = '<div style="color:var(--text-dim);font-size:12px;padding:8px">Failed to load prompts</div>';
+    container.innerHTML = '<div style="color:var(--text-dim);font-size:12px;padding:8px">Failed to load prompts: ' + e.message + '. Try restarting the dashboard.</div>';
   }
 }
 function renderPrompts() {
