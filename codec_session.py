@@ -19,6 +19,11 @@ import select
 import logging
 from datetime import datetime
 
+try:
+    from codec_audit import log_event
+except ImportError:
+    def log_event(*a, **kw): pass
+
 log = logging.getLogger("codec_session")
 
 
@@ -671,17 +676,20 @@ SAFETY RULES:
                 print(f"\n[SAFETY] \u26a0\ufe0f  FLAGGED: {code[:80]}")
                 with open(os.path.expanduser("~/.codec/audit.log"), "a") as _af:
                     _af.write(f'[{time.strftime("%Y-%m-%dT%H:%M:%S")}] shell_flagged: {code[:200]}\n')
+                log_event("security", "codec-session", f"Command flagged: {code[:80]}", {"action": "flagged"})
 
                 # Show danger preview dialog (works in PM2 — uses tkinter, not stdin)
                 if self._danger_preview(action, code):
                     print("[SAFETY] User APPROVED dangerous command via dialog.")
                     with open(os.path.expanduser("~/.codec/audit.log"), "a") as _af:
                         _af.write(f'[{time.strftime("%Y-%m-%dT%H:%M:%S")}] APPROVED: {code[:200]}\n')
+                    log_event("security", "codec-session", f"Command approved", {"action": "approved"})
                     # Fall through to execute below
                 else:
                     print("[SAFETY] User DENIED dangerous command via dialog.")
                     with open(os.path.expanduser("~/.codec/audit.log"), "a") as _af:
                         _af.write(f'[{time.strftime("%Y-%m-%dT%H:%M:%S")}] DENIED: {code[:200]}\n')
+                    log_event("security", "codec-session", f"Command denied", {"action": "denied"})
                     return "Command blocked by user. Dangerous command was denied."
 
             # Safe commands skip preview

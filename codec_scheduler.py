@@ -8,6 +8,11 @@ from datetime import datetime
 
 import requests
 
+try:
+    from codec_audit import log_event
+except ImportError:
+    def log_event(*a, **kw): pass
+
 logging.basicConfig(
     level=logging.INFO,
     format="[%(asctime)s] [SCHEDULER] %(message)s",
@@ -225,7 +230,10 @@ def check_and_run():
         save_schedules(schedules)
 
         log.info(f"🚀 Scheduled run: {sched['crew']} — {sched.get('topic', '')}")
+        log_event("scheduled", "codec-scheduler", f"Schedule fired: {sched.get('label', sched.get('crew', '?'))}", {"schedule_id": sched.get('id')})
         success = _run_crew(sched)
+        title = sched.get("topic", sched.get("crew", "?"))
+        log_event("scheduled", "codec-scheduler", f"Schedule done: {title}", {"success": success})
 
         # Only mark last_run on success so failed tasks are retried next minute
         if success:

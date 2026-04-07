@@ -19,7 +19,7 @@ body{background:radial-gradient(ellipse at 50% 30%,#0c0a14 0%,#060610 40%,var(--
 #stats{position:fixed;top:18px;right:24px;z-index:100;display:flex;gap:16px;font-size:12px}
 .stat{display:flex;align-items:center;gap:6px}.stat .dot{width:8px;height:8px;border-radius:50%}
 .dot.ok{background:var(--green);box-shadow:0 0 10px var(--green)}.dot.err{background:var(--red);box-shadow:0 0 10px var(--red)}.dot.warn{background:var(--yellow);box-shadow:0 0 8px var(--yellow)}
-#detail{position:fixed;bottom:0;left:0;right:0;z-index:100;background:linear-gradient(0deg,rgba(5,5,8,.98),rgba(5,5,8,.9),transparent);padding:36px 24px 20px;transform:translateY(100%);transition:transform .35s cubic-bezier(.22,1,.36,1);max-height:40vh;overflow-y:auto}
+#detail{position:fixed;bottom:0;left:0;right:0;z-index:150;background:linear-gradient(0deg,rgba(5,5,8,.98),rgba(5,5,8,.9),transparent);padding:36px 24px 20px;transform:translateY(100%);transition:transform .35s cubic-bezier(.22,1,.36,1);max-height:40vh;overflow-y:auto}
 #detail.open{transform:translateY(0)}
 #detail h2{font-size:12px;letter-spacing:4px;color:var(--accent);text-transform:uppercase;margin-bottom:8px}
 #detail .info{font-size:12px;color:var(--dim);line-height:1.9}
@@ -66,12 +66,12 @@ svg text{font-family:'SF Pro Display',-apple-system,system-ui,sans-serif}
 .detail-status-bar{display:flex;align-items:center;gap:8px;margin-bottom:8px}
 .detail-status-dot{width:10px;height:10px;border-radius:50%;animation:pulse 2s infinite}
 /* View switcher */
-#viewSwitch{position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:110;display:flex;gap:0;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;overflow:hidden}
+#viewSwitch{position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:300;display:flex;gap:0;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;overflow:hidden}
 .vs-btn{padding:6px 16px;font-size:10px;letter-spacing:2px;color:var(--dim);cursor:pointer;transition:all .2s;border:none;background:none;text-transform:uppercase;font-family:inherit}
 .vs-btn.active{background:var(--accent);color:#000;font-weight:600}
 .vs-btn:hover:not(.active){background:rgba(255,255,255,.06);color:var(--text)}
 /* Products view */
-#productsView{position:fixed;top:0;left:0;right:0;bottom:0;z-index:50;background:var(--bg);overflow-y:auto;display:none;padding:80px 40px 40px}
+#productsView{position:fixed;top:0;left:0;right:0;bottom:0;z-index:200;background:var(--bg);overflow-y:auto;display:none;padding:80px 40px 80px}
 #productsView.open{display:block}
 .products-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;max-width:1200px;margin:0 auto}
 .product-card{background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:12px;padding:20px;transition:all .3s;cursor:default;position:relative;overflow:hidden}
@@ -104,7 +104,22 @@ svg text{font-family:'SF Pro Display',-apple-system,system-ui,sans-serif}
 [data-theme="light"] .skill-search{background:rgba(0,0,0,.03);border-color:rgba(0,0,0,.1)}
 [data-theme="light"] #logViewer{background:rgba(0,0,0,.04);border-color:rgba(0,0,0,.06)}
 [data-theme="light"] .detail-btn{background:rgba(0,0,0,.03);border-color:rgba(0,0,0,.1);color:var(--text)}
-[data-theme="light"] .vs-btn{color:var(--dim)}
+[data-theme="light"] .vs-btn{color:#555}
+[data-theme="light"] #detail{background:linear-gradient(0deg,rgba(245,243,239,.98),rgba(245,243,239,.95),transparent)}
+[data-theme="light"] #detail .info{color:#555}
+[data-theme="light"] #detail .info b{color:#1a1a2e}
+[data-theme="light"] .detail-btn{background:rgba(0,0,0,.04)!important;border-color:rgba(0,0,0,.12)!important;color:#333!important}
+[data-theme="light"] .legend{color:#666;opacity:.9}
+[data-theme="light"] .legend-dot{border-color:#888}
+[data-theme="light"] #viewSwitch{background:rgba(0,0,0,.05);border-color:rgba(0,0,0,.12)}
+[data-theme="light"] .pc-title{color:#1a1a2e}
+[data-theme="light"] .pc-desc{color:#555}
+[data-theme="light"] .pc-subtitle{color:#777}
+[data-theme="light"] .pc-details{color:#555}
+[data-theme="light"] .pc-details b{color:#1a1a2e}
+[data-theme="light"] .pc-expand-btn{color:#555;border-color:rgba(0,0,0,.15)}
+[data-theme="light"] .products-header h2{color:var(--accent)}
+[data-theme="light"] .products-header p{color:#666}
 [data-theme="light"] .zone-label{opacity:.35;fill:#666!important}
 [data-theme="light"] .node-c{fill:#ffffff!important;stroke-width:1.8}
 [data-theme="light"] .node-c+circle{fill:none!important}
@@ -493,8 +508,16 @@ function showDetail(id) {
     actionsHtml+
     '<div id="logViewer"></div>';
   d.classList.add('open');
+  document.getElementById('settings-float').style.display='none';
+  document.getElementById('activity-feed').style.display='none';
+  document.getElementById('legend').style.display='none';
 }
-function closeDetail(){ document.getElementById('detail').classList.remove('open'); }
+function closeDetail(){
+  document.getElementById('detail').classList.remove('open');
+  document.getElementById('settings-float').style.display='';
+  document.getElementById('activity-feed').style.display='';
+  document.getElementById('legend').style.display='';
+}
 
 function viewLogs(id) {
   var lv = document.getElementById('logViewer');
@@ -529,9 +552,12 @@ function restartService(id) {
 }
 
 // ── Pan & Zoom ──
-svg.addEventListener('mousedown',function(e){ if(e.target.classList.contains('node-c'))return; pan.dragging=true;pan.startX=e.clientX-pan.x;pan.startY=e.clientY-pan.y; });
-window.addEventListener('mousemove',function(e){ if(!pan.dragging)return;pan.x=e.clientX-pan.startX;pan.y=e.clientY-pan.startY;render(); });
-window.addEventListener('mouseup',function(){pan.dragging=false;});
+svg.addEventListener('mousedown',function(e){ if(e.target.classList.contains('node-c'))return; pan.dragging=true;pan.startX=e.clientX-pan.x;pan.startY=e.clientY-pan.y;pan.moved=false; });
+window.addEventListener('mousemove',function(e){ if(!pan.dragging)return;pan.moved=true;pan.x=e.clientX-pan.startX;pan.y=e.clientY-pan.startY;render(); });
+window.addEventListener('mouseup',function(){
+  if(pan.dragging && !pan.moved && document.getElementById('detail').classList.contains('open')){closeDetail();}
+  pan.dragging=false;
+});
 svg.addEventListener('wheel',function(e){ e.preventDefault();var d=e.deltaY>0?.92:1.08;pan.scale=Math.max(.3,Math.min(3,pan.scale*d));render(); },{passive:false});
 // Touch
 var td=0;
@@ -679,12 +705,16 @@ function switchView(view) {
     btns[1].classList.add('active');
     document.getElementById('cortex').style.display = 'none';
     document.getElementById('settings-float').style.display = 'none';
+    document.getElementById('activity-feed').style.display = 'none';
+    document.getElementById('legend').style.display = 'none';
     document.getElementById('productsView').classList.add('open');
     renderProducts();
   } else {
     btns[0].classList.add('active');
     document.getElementById('cortex').style.display = '';
     document.getElementById('settings-float').style.display = '';
+    document.getElementById('activity-feed').style.display = '';
+    document.getElementById('legend').style.display = '';
     document.getElementById('productsView').classList.remove('open');
   }
 }

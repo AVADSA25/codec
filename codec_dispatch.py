@@ -6,6 +6,11 @@ happens on first invocation of a skill.
 """
 import logging
 
+try:
+    from codec_audit import log_event
+except ImportError:
+    def log_event(*a, **kw): pass
+
 from codec_config import SKILLS_DIR
 from codec_skill_registry import SkillRegistry
 
@@ -53,6 +58,7 @@ def run_skill(skill, task, app=""):
             if result is None:
                 log.info("Skill '%s' returned None — trying next match", skill_name)
                 continue
+            log_event("skill", "codec-dispatch", f"Skill: {skill.get('name', '?')}", {"result_len": len(str(result)) if result else 0})
             try:
                 import os as _os
                 _events_path = _os.path.expanduser("~/.codec/overlay_events.jsonl")
@@ -63,6 +69,7 @@ def run_skill(skill, task, app=""):
             return result
         except Exception as e:
             log.warning("Skill '%s' error: %s — trying next match", skill_name, e)
+            log_event("error", "codec-dispatch", f"Skill error: {e}", level="error")
             continue
 
     return None  # No skill could handle it

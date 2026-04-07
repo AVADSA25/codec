@@ -2,6 +2,11 @@
 import os, json, secrets, time, subprocess, hmac
 from datetime import datetime, timedelta
 
+try:
+    from codec_audit import log_event
+except ImportError:
+    def log_event(*a, **kw): pass
+
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
@@ -70,6 +75,8 @@ async def auth_verify(request: Request):
                 pass
 
             if result.get("authenticated"):
+                method = result.get("method", "unknown")
+                log_event("auth", "codec-auth", f"Auth success: {method}", {"method": method})
                 token = result.get("token", secrets.token_hex(32))
                 with _auth_lock:
                     _auth_sessions[token] = {
@@ -85,6 +92,7 @@ async def auth_verify(request: Request):
                     "expires_hours": AUTH_SESSION_HOURS,
                 }
             else:
+                log_event("auth", "codec-auth", f"Auth failed", level="warning")
                 return {
                     "authenticated": False,
                     "error": result.get("error", "Authentication failed"),
@@ -126,6 +134,8 @@ async def auth_pin(request: Request):
         pass
 
     if pin_hash == AUTH_PIN_HASH:
+        method = "pin"
+        log_event("auth", "codec-auth", f"Auth success: {method}", {"method": method})
         _pin_attempts.pop(client_ip, None)
         token = secrets.token_hex(32)
         with _auth_lock:
@@ -142,6 +152,7 @@ async def auth_pin(request: Request):
             "expires_hours": AUTH_SESSION_HOURS,
         }
     else:
+        log_event("auth", "codec-auth", f"Auth failed", level="warning")
         attempt = _pin_attempts.get(client_ip, {"count": 0, "locked_until": 0.0})
         attempt["count"] = attempt.get("count", 0) + 1
         if attempt["count"] >= 5:

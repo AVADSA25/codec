@@ -26,6 +26,11 @@ from routes._shared import (
     _pending_approvals, _approval_lock,
 )
 
+try:
+    from codec_audit import log_event
+except ImportError:
+    def log_event(*a, **kw): pass
+
 from pydantic import BaseModel, Field
 from typing import Optional, List
 
@@ -576,6 +581,34 @@ async def audit(limit: int = 50):
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
+@app.get("/api/audit/stream")
+async def audit_stream(
+    categories: str = "",
+    level: str = "",
+    search: str = "",
+    since: str = "",
+    until: str = "",
+    limit: int = 200
+):
+    """Query audit events with filters."""
+    from codec_audit import read_events
+    cats = [c.strip() for c in categories.split(",") if c.strip()] or None
+    events = read_events(
+        categories=cats,
+        level=level or None,
+        search=search or None,
+        since=since or None,
+        until=until or None,
+        limit=min(limit, 1000)
+    )
+    return {"events": events}
+
+@app.get("/api/audit/stats")
+async def audit_stats():
+    """Get audit event statistics for the last 24 hours."""
+    from codec_audit import get_stats
+    return get_stats(hours=24)
+
 @app.post("/api/command")
 async def send_command(request: Request):
     """Queue a command for CODEC to execute (used by heartbeat, scheduler, and PWA)."""
@@ -625,6 +658,7 @@ async def send_command(request: Request):
 
         _audit_write(f"[{now}] CMD[{source}]: {task[:200]}\n")
         log.info(f"[Command] Processing from {source}: {task[:80]}")
+        log_event("command", "codec-dashboard", f"Command from {source}: {task[:80]}", {"source": source, "task": task[:200]})
 
         # Call LLM in background so response returns fast
         import asyncio
@@ -632,26 +666,41 @@ async def send_command(request: Request):
 
         async def _process_command():
             try:
-                now_str = datetime.now().strftime("%A %B %d, %Y at %H:%M")
-                payload = {
-                    "model": model,
-                    "messages": [
-                        {"role": "system", "content": f"You are CODEC Flash, a fast local AI assistant running on the user's Mac. Today is {now_str}. Be concise and direct. Answer in 1-3 sentences max."},
-                        {"role": "user", "content": task}
-                    ],
-                    "max_tokens": 4000,
-                    "temperature": 0.7,
-                    "stream": False,
-                }
-                payload.update(kwargs)
-                r = await asyncio.to_thread(
-                    lambda: rq.post(f"{base_url}/chat/completions", json=payload,
-                                    headers=headers_llm, timeout=120)
-                )
-                data = r.json()
-                answer = data["choices"][0]["message"]["content"].strip()
-                import re as _re
-                answer = _re.sub(r'<think>[\s\S]*?</think>', '', answer).strip()
+                # ── Try skills first (weather, web_search, bitcoin, etc.) ──
+                skill_answer = None
+                try:
+                    skill_name, skill_result = await asyncio.to_thread(_try_skill, task)
+                    if skill_result:
+                        skill_answer = f"⚡ {skill_name}: {skill_result}"
+                        log.info(f"[Command] Skill '{skill_name}' handled: {skill_result[:80]}")
+                        log_event("skill", "codec-dashboard", f"Dashboard skill: {skill_name}", {"skill": skill_name, "result_len": len(skill_answer)})
+                except Exception as sk_err:
+                    log.warning(f"[Command] Skill check failed: {sk_err}")
+
+                if skill_answer:
+                    answer = skill_answer
+                else:
+                    # ── Fall back to LLM ──
+                    now_str = datetime.now().strftime("%A %B %d, %Y at %H:%M")
+                    payload = {
+                        "model": model,
+                        "messages": [
+                            {"role": "system", "content": f"You are CODEC Flash, a fast local AI assistant running on the user's Mac. Today is {now_str}. Be concise and direct. Answer in 1-3 sentences max."},
+                            {"role": "user", "content": task}
+                        ],
+                        "max_tokens": 4000,
+                        "temperature": 0.7,
+                        "stream": False,
+                    }
+                    payload.update(kwargs)
+                    r = await asyncio.to_thread(
+                        lambda: rq.post(f"{base_url}/chat/completions", json=payload,
+                                        headers=headers_llm, timeout=120)
+                    )
+                    data = r.json()
+                    answer = data["choices"][0]["message"]["content"].strip()
+                    import re as _re
+                    answer = _re.sub(r'<think>[\s\S]*?</think>', '', answer).strip()
 
                 # Write response for /api/response polling
                 with open(resp_file, "w") as f:
@@ -665,8 +714,10 @@ async def send_command(request: Request):
                 )
                 c2.commit()
                 log.info(f"[Command] Response ready: {answer[:80]}")
+                log_event("llm", "codec-dashboard", f"Flash response ready", {"model": model, "answer_len": len(answer)})
             except Exception as e:
                 log.error(f"[Command] LLM call failed: {e}")
+                log_event("error", "codec-dashboard", f"Flash LLM failed: {e}", level="error")
                 with open(resp_file, "w") as f:
                     json.dump({"response": f"Error: {e}", "task": task}, f)
 
@@ -711,6 +762,7 @@ async def vision_analyze(request: Request):
         data = r.json()
         answer = data["choices"][0]["message"]["content"].strip()
         _audit_write(f"[{datetime.now().isoformat()}] VISION: {prompt[:100]}\n")
+        log_event("vision", "codec-dashboard", f"Vision analysis: {prompt[:60]}")
         return {"response": answer, "model": vision_model}
     except Exception as e:
         import traceback; traceback.print_exc()
@@ -725,7 +777,10 @@ async def get_response():
         if os.path.exists(resp_file):
             with open(resp_file) as f:
                 data = json.load(f)
-            os.unlink(resp_file)
+            # Keep file for 10s so multiple polls can catch it, then delete
+            file_age = time.time() - os.path.getmtime(resp_file)
+            if file_age > 10:
+                os.unlink(resp_file)
             log.info(f"[Response] Delivered: {str(data.get('response',''))[:80]}")
             return JSONResponse(content=data, headers=headers)
         return JSONResponse(content={"response": None}, headers=headers)
@@ -2394,6 +2449,7 @@ async def cortex_restart(service: str):
             ["/opt/homebrew/bin/pm2", "restart", pm2_name],
             timeout=10, stderr=subprocess.STDOUT
         )
+        log_event("system", "codec-dashboard", f"Service restart: {service}")
         return {"ok": True, "service": service, "pm2_name": pm2_name, "action": "restarted"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -2407,6 +2463,15 @@ async def cortex_page():
         with open(html_path) as f:
             return HTMLResponse(f.read(), headers=_NO_CACHE)
     return HTMLResponse("<h1>CORTEX not found</h1>", status_code=500)
+
+@app.get("/audit", response_class=HTMLResponse)
+async def audit_page():
+    """AUDIT — Event audit log viewer."""
+    html_path = os.path.join(DASHBOARD_DIR, "codec_audit.html")
+    if os.path.exists(html_path):
+        with open(html_path) as f:
+            return HTMLResponse(f.read(), headers=_NO_CACHE)
+    return HTMLResponse("<h1>Audit page not found</h1>", status_code=500)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

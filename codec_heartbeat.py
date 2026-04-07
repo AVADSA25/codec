@@ -7,6 +7,11 @@ logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [HEARTBEAT] %(mess
 log = logging.getLogger('heartbeat')
 
 try:
+    from codec_audit import log_event
+except ImportError:
+    def log_event(*a, **kw): pass
+
+try:
     import sys as _sys
     _repo = os.path.dirname(os.path.abspath(__file__))
     if _repo not in _sys.path:
@@ -60,6 +65,7 @@ def _check_one_service(name: str, url: str) -> tuple:
                 status = f"⚠️ inference error: {str(e)[:50]}"
     except Exception as e:
         status = "❌ DOWN"
+        log_event("error", "codec-heartbeat", f"Service down: {name}", level="error")
     return name, status
 
 
@@ -432,6 +438,7 @@ def heartbeat():
         except Exception as e:
             log.warning(f"Memory cleanup failed: {e}")
     log.info("═══ Heartbeat complete ═══")
+    log_event("system", "codec-heartbeat", "Heartbeat tick completed")
     return tasks
 
 def run_daemon(interval_minutes=5):

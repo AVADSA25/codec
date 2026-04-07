@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AUDIT STREAM — CODEC</title>
+<link rel="icon" href="https://i.imgur.com/jD1X5W8.png">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #121215; --surface: #1a1a1d; --surface-2: #212125; --surface-3: #2a2a2e;
+  --border: #303035; --border-hover: #424248;
+  --text: #ececec; --text-muted: #9a9aa0; --dim: #6a6a70;
+  --accent: #E8711A; --accent-hover: #f07d2a; --accent-dim: rgba(232,113,26,0.10);
+  --green: #22c55e; --red: #ef4444; --yellow: #ffd740; --blue: #448aff;
+  --purple: #b388ff; --cyan: #26c6da; --pink: #f06292; --teal: #26a69a;
+  --amber: #ffab00; --slate: #78909c; --red-orange: #ff6e40;
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --mono: 'JetBrains Mono', 'SF Mono', monospace;
+  --radius-sm: 6px; --radius: 10px; --radius-lg: 14px;
+}
+[data-theme="light"] {
+  --bg: #f7f5f2; --surface: #ffffff; --surface-2: #f0ece6; --surface-3: #e8e4de;
+  --border: #d5d0ca; --border-hover: #bbb;
+  --text: #1a1a1a; --text-muted: #555; --dim: #777;
+  --accent-dim: rgba(232,113,26,0.08);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { font-family: var(--font); background: var(--bg); color: var(--text); height: 100%; }
+body { display: flex; flex-direction: column; overflow: hidden; }
+
+/* Header */
+.header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 20px; border-bottom: 1px solid var(--border);
+  background: var(--surface); flex-shrink: 0;
+}
+.header-left { display: flex; align-items: center; gap: 12px; }
+.back-link {
+  color: var(--dim); text-decoration: none; font-size: 11px; letter-spacing: 1px;
+  transition: color 0.2s; font-family: var(--mono);
+}
+.back-link:hover { color: var(--accent); }
+.header h1 {
+  font-family: var(--mono); font-size: 15px; font-weight: 700;
+  letter-spacing: 3px; color: var(--accent); text-transform: uppercase;
+}
+.header-right { display: flex; align-items: center; gap: 8px; }
+.icon-btn {
+  background: none; border: 1px solid var(--border); color: var(--text-muted);
+  width: 32px; height: 32px; border-radius: var(--radius-sm); cursor: pointer;
+  display: flex; align-items: center; justify-content: center; transition: all 0.15s;
+  font-size: 14px; text-decoration: none;
+}
+.icon-btn:hover { border-color: var(--border-hover); color: var(--text); background: var(--surface-2); }
+
+/* Stats Bar */
+.stats-bar {
+  display: flex; align-items: center; gap: 0; padding: 0 20px;
+  border-bottom: 1px solid var(--border); background: var(--surface); flex-shrink: 0;
+  overflow-x: auto;
+}
+.stat-item {
+  display: flex; align-items: center; gap: 8px; padding: 10px 18px;
+  border-right: 1px solid var(--border); font-size: 12px; white-space: nowrap;
+}
+.stat-item:last-child { border-right: none; }
+.stat-label { color: var(--dim); font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
+.stat-value { font-family: var(--mono); font-weight: 600; font-size: 16px; }
+.stat-value.errors { color: var(--red); }
+.stat-value.commands { color: var(--accent); }
+.stat-value.skills { color: var(--green); }
+.stat-value.llm { color: var(--blue); }
+
+/* Filter Bar */
+.filter-bar {
+  display: flex; align-items: center; gap: 10px; padding: 10px 20px;
+  border-bottom: 1px solid var(--border); background: var(--surface-2);
+  flex-shrink: 0; flex-wrap: wrap;
+}
+.pills { display: flex; gap: 4px; flex-wrap: wrap; flex: 1; min-width: 200px; }
+.pill {
+  padding: 4px 10px; border-radius: 12px; font-size: 10px; font-weight: 500;
+  letter-spacing: 0.5px; cursor: pointer; border: 1px solid transparent;
+  transition: all 0.15s; opacity: 0.45; user-select: none; text-transform: uppercase;
+}
+.pill.active { opacity: 1; }
+.pill[data-cat="command"]  { color: var(--accent); border-color: var(--accent); }
+.pill[data-cat="command"].active  { background: rgba(232,113,26,0.15); }
+.pill[data-cat="skill"]    { color: var(--green); border-color: var(--green); }
+.pill[data-cat="skill"].active    { background: rgba(34,197,94,0.15); }
+.pill[data-cat="llm"]      { color: var(--blue); border-color: var(--blue); }
+.pill[data-cat="llm"].active      { background: rgba(68,138,255,0.15); }
+.pill[data-cat="auth"]     { color: var(--purple); border-color: var(--purple); }
+.pill[data-cat="auth"].active     { background: rgba(179,136,255,0.15); }
+.pill[data-cat="error"]    { color: var(--red); border-color: var(--red); }
+.pill[data-cat="error"].active    { background: rgba(239,68,68,0.15); }
+.pill[data-cat="scheduled"]{ color: var(--yellow); border-color: var(--yellow); }
+.pill[data-cat="scheduled"].active{ background: rgba(255,215,64,0.15); }
+.pill[data-cat="voice"]    { color: var(--cyan); border-color: var(--cyan); }
+.pill[data-cat="voice"].active    { background: rgba(38,198,218,0.15); }
+.pill[data-cat="vision"]   { color: var(--pink); border-color: var(--pink); }
+.pill[data-cat="vision"].active   { background: rgba(240,98,146,0.15); }
+.pill[data-cat="tts"], .pill[data-cat="stt"] { color: var(--teal); border-color: var(--teal); }
+.pill[data-cat="tts"].active, .pill[data-cat="stt"].active { background: rgba(38,166,154,0.15); }
+.pill[data-cat="system"]   { color: var(--slate); border-color: var(--slate); }
+.pill[data-cat="system"].active   { background: rgba(120,144,156,0.15); }
+.pill[data-cat="security"] { color: var(--red-orange); border-color: var(--red-orange); }
+.pill[data-cat="security"].active { background: rgba(255,110,64,0.15); }
+.pill[data-cat="hotkey"]   { color: var(--amber); border-color: var(--amber); }
+.pill[data-cat="hotkey"].active   { background: rgba(255,171,0,0.15); }
+.pill[data-cat="screenshot"], .pill[data-cat="config"], .pill[data-cat="draft"] {
+  color: var(--slate); border-color: var(--slate);
+}
+.pill[data-cat="screenshot"].active, .pill[data-cat="config"].active, .pill[data-cat="draft"].active {
+  background: rgba(120,144,156,0.15);
+}
+.filter-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.time-btns { display: flex; gap: 2px; background: var(--surface); border-radius: var(--radius-sm); padding: 2px; }
+.time-btn {
+  padding: 4px 10px; font-size: 10px; font-weight: 500; border: none;
+  background: none; color: var(--dim); cursor: pointer; border-radius: 4px;
+  font-family: var(--mono); transition: all 0.15s;
+}
+.time-btn.active { background: var(--accent); color: #000; font-weight: 600; }
+.time-btn:hover:not(.active) { color: var(--text); }
+.search-input {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 5px 10px; color: var(--text); font-size: 11px; width: 160px;
+  font-family: var(--font); outline: none; transition: border-color 0.15s;
+}
+.search-input::placeholder { color: var(--dim); }
+.search-input:focus { border-color: var(--accent); }
+.live-btn {
+  padding: 5px 12px; border-radius: var(--radius-sm); font-size: 10px;
+  font-weight: 600; letter-spacing: 1px; cursor: pointer; border: 1px solid var(--border);
+  background: var(--surface); color: var(--dim); transition: all 0.2s;
+  font-family: var(--mono);
+}
+.live-btn.active { border-color: var(--green); color: var(--green); background: rgba(34,197,94,0.08); }
+
+/* Timeline */
+.timeline-wrap { flex: 1; overflow-y: auto; padding: 0; }
+.timeline { display: flex; flex-direction: column; }
+.event-row {
+  display: flex; align-items: flex-start; gap: 12px; padding: 10px 20px;
+  border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.1s;
+  animation: fadeSlide 0.3s ease;
+}
+.event-row:hover { background: var(--surface-2); }
+.event-row.level-error { border-left: 3px solid var(--red); }
+.event-row.level-warning { border-left: 3px solid var(--yellow); }
+@keyframes fadeSlide { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+.ev-time {
+  font-family: var(--mono); font-size: 11px; color: var(--dim);
+  white-space: nowrap; min-width: 72px; padding-top: 2px;
+}
+.ev-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 5px; }
+.ev-source {
+  font-size: 9px; padding: 2px 7px; border-radius: 10px; font-weight: 500;
+  background: var(--surface-3); color: var(--text-muted); white-space: nowrap;
+  letter-spacing: 0.3px; flex-shrink: 0;
+}
+.ev-summary { flex: 1; font-size: 12px; color: var(--text); line-height: 1.5; min-width: 0; }
+.ev-summary .ev-msg { word-break: break-word; }
+.ev-chevron {
+  color: var(--dim); font-size: 14px; transition: transform 0.2s; flex-shrink: 0;
+  padding-top: 2px; font-family: var(--mono);
+}
+.event-row.expanded .ev-chevron { transform: rotate(90deg); }
+.ev-details {
+  display: none; padding: 8px 20px 14px 112px;
+  border-bottom: 1px solid var(--border); background: var(--surface-2);
+}
+.ev-details.open { display: block; animation: fadeSlide 0.2s ease; }
+.ev-details pre {
+  font-family: var(--mono); font-size: 11px; color: var(--text-muted);
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 12px; overflow-x: auto; line-height: 1.6; white-space: pre-wrap;
+  word-break: break-all; max-height: 300px; overflow-y: auto;
+}
+
+/* Category dot colors */
+.dot-command   { background: var(--accent); }
+.dot-skill     { background: var(--green); }
+.dot-llm       { background: var(--blue); }
+.dot-auth      { background: var(--purple); }
+.dot-error     { background: var(--red); }
+.dot-scheduled { background: var(--yellow); }
+.dot-voice     { background: var(--cyan); }
+.dot-vision    { background: var(--pink); }
+.dot-tts, .dot-stt { background: var(--teal); }
+.dot-system    { background: var(--slate); }
+.dot-security  { background: var(--red-orange); }
+.dot-hotkey    { background: var(--amber); }
+.dot-screenshot, .dot-config, .dot-draft { background: var(--slate); }
+
+/* Empty state */
+.empty-state {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 80px 20px; color: var(--dim);
+}
+.empty-state .empty-icon { font-size: 36px; margin-bottom: 12px; opacity: 0.3; }
+.empty-state h3 { font-size: 14px; font-weight: 500; margin-bottom: 6px; color: var(--text-muted); }
+.empty-state p { font-size: 12px; }
+
+/* Light theme overrides */
+[data-theme="light"] .ev-details pre { background: var(--surface-2); }
+[data-theme="light"] .event-row:hover { background: var(--surface-3); }
+[data-theme="light"] .pill { opacity: 0.5; }
+[data-theme="light"] .pill.active { opacity: 1; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <a href="/" class="back-link">&larr; CODEC</a>
+    <h1>Audit Stream</h1>
+  </div>
+  <div class="header-right">
+    <a href="/cortex" class="icon-btn" title="Cortex Neural Map">&#129504;</a>
+    <button class="icon-btn" id="themeToggle" title="Toggle theme">&#9789;</button>
+  </div>
+</div>
+
+<div class="stats-bar" id="statsBar">
+  <div class="stat-item"><div><div class="stat-label">Events (24h)</div><div class="stat-value" id="statTotal">--</div></div></div>
+  <div class="stat-item"><div><div class="stat-label">Errors</div><div class="stat-value errors" id="statErrors">--</div></div></div>
+  <div class="stat-item"><div><div class="stat-label">Commands</div><div class="stat-value commands" id="statCommands">--</div></div></div>
+  <div class="stat-item"><div><div class="stat-label">Skills</div><div class="stat-value skills" id="statSkills">--</div></div></div>
+  <div class="stat-item"><div><div class="stat-label">LLM Calls</div><div class="stat-value llm" id="statLLM">--</div></div></div>
+</div>
+
+<div class="filter-bar">
+  <div class="pills" id="pills"></div>
+  <div class="filter-right">
+    <div class="time-btns" id="timeBtns">
+      <button class="time-btn" data-range="1h">1h</button>
+      <button class="time-btn active" data-range="6h">6h</button>
+      <button class="time-btn" data-range="24h">24h</button>
+      <button class="time-btn" data-range="7d">7d</button>
+    </div>
+    <input type="text" class="search-input" id="searchInput" placeholder="Search events...">
+    <button class="live-btn" id="liveBtn" onclick="toggleLive()">&#9679; LIVE</button>
+  </div>
+</div>
+
+<div class="timeline-wrap" id="timelineWrap">
+  <div class="timeline" id="timeline"></div>
+</div>
+
+<script>
+const CATEGORIES = [
+  'command','skill','llm','auth','error','scheduled',
+  'voice','vision','tts','stt','system','security',
+  'hotkey','screenshot','config','draft'
+];
+let activeCategories = new Set(CATEGORIES);
+let currentRange = '6h';
+let searchQuery = '';
+let liveMode = false;
+let liveInterval = null;
+let statsInterval = null;
+let events = [];
+let expandedIdx = null;
+let lastTimestamp = null;
+
+// --- Init ---
+function init() {
+  renderPills();
+  bindTimeButtons();
+  bindSearch();
+  loadTheme();
+  fetchStats();
+  fetchEvents();
+  statsInterval = setInterval(fetchStats, 10000);
+}
+
+// --- Theme ---
+function loadTheme() {
+  const saved = localStorage.getItem('codec-theme');
+  if (saved === 'light') document.documentElement.setAttribute('data-theme', 'light');
+}
+document.getElementById('themeToggle').onclick = function() {
+  const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+  if (isLight) {
+    document.documentElement.removeAttribute('data-theme');
+    localStorage.setItem('codec-theme', 'dark');
+  } else {
+    document.documentElement.setAttribute('data-theme', 'light');
+    localStorage.setItem('codec-theme', 'light');
+  }
+};
+
+// --- Pills ---
+function renderPills() {
+  const wrap = document.getElementById('pills');
+  wrap.innerHTML = CATEGORIES.map(c =>
+    `<span class="pill active" data-cat="${c}" onclick="toggleCategory('${c}')">${c}</span>`
+  ).join('');
+}
+function toggleCategory(cat) {
+  if (activeCategories.has(cat)) activeCategories.delete(cat);
+  else activeCategories.add(cat);
+  const pill = document.querySelector(`.pill[data-cat="${cat}"]`);
+  if (pill) pill.classList.toggle('active', activeCategories.has(cat));
+  fetchEvents();
+}
+
+// --- Time range ---
+function bindTimeButtons() {
+  document.querySelectorAll('.time-btn').forEach(btn => {
+    btn.onclick = function() { setTimeRange(this.dataset.range); };
+  });
+}
+function setTimeRange(range) {
+  currentRange = range;
+  document.querySelectorAll('.time-btn').forEach(b => b.classList.toggle('active', b.dataset.range === range));
+  fetchEvents();
+}
+
+function sinceFromRange(range) {
+  const now = new Date();
+  const ms = { '1h': 3600000, '6h': 21600000, '24h': 86400000, '7d': 604800000 };
+  return new Date(now.getTime() - (ms[range] || 21600000)).toISOString();
+}
+
+// --- Search ---
+function bindSearch() {
+  let timer;
+  document.getElementById('searchInput').addEventListener('input', function() {
+    clearTimeout(timer);
+    timer = setTimeout(() => { searchQuery = this.value.trim(); fetchEvents(); }, 300);
+  });
+}
+
+// --- Live mode ---
+function toggleLive() {
+  liveMode = !liveMode;
+  const btn = document.getElementById('liveBtn');
+  btn.classList.toggle('active', liveMode);
+  if (liveMode) {
+    liveInterval = setInterval(fetchLiveEvents, 2000);
+  } else {
+    clearInterval(liveInterval);
+    liveInterval = null;
+  }
+}
+
+// --- API ---
+async function fetchStats() {
+  try {
+    const res = await fetch('/api/audit/stats');
+    if (!res.ok) return;
+    const data = await res.json();
+    document.getElementById('statTotal').textContent = data.total_24h ?? '--';
+    document.getElementById('statErrors').textContent = data.errors_24h ?? '--';
+    const bc = data.by_category || {};
+    document.getElementById('statCommands').textContent = bc.command ?? '--';
+    document.getElementById('statSkills').textContent = bc.skill ?? '--';
+    document.getElementById('statLLM').textContent = bc.llm ?? '--';
+  } catch(e) { /* silent */ }
+}
+
+async function fetchEvents() {
+  const cats = [...activeCategories].join(',');
+  const since = sinceFromRange(currentRange);
+  let url = `/api/audit/stream?categories=${cats}&since=${encodeURIComponent(since)}&limit=200`;
+  if (searchQuery) url += `&search=${encodeURIComponent(searchQuery)}`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return;
+    const data = await res.json();
+    events = data.events || [];
+    lastTimestamp = events.length ? events[0].timestamp : null;
+    expandedIdx = null;
+    renderTimeline(events);
+  } catch(e) {
+    events = [];
+    renderTimeline([]);
+  }
+}
+
+async function fetchLiveEvents() {
+  if (!liveMode || !lastTimestamp) return;
+  const cats = [...activeCategories].join(',');
+  let url = `/api/audit/stream?categories=${cats}&since=${encodeURIComponent(lastTimestamp)}&limit=50`;
+  if (searchQuery) url += `&search=${encodeURIComponent(searchQuery)}`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return;
+    const data = await res.json();
+    const newEvents = data.events || [];
+    if (newEvents.length) {
+      lastTimestamp = newEvents[0].timestamp;
+      events = [...newEvents, ...events];
+      renderTimeline(events);
+    }
+  } catch(e) { /* silent */ }
+}
+
+// --- Render ---
+function formatTimestamp(iso) {
+  if (!iso) return '--:--:--';
+  const d = new Date(iso);
+  return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function levelClass(ev) {
+  if (ev.category === 'error' || ev.level === 'error') return 'level-error';
+  if (ev.level === 'warning') return 'level-warning';
+  return '';
+}
+
+function renderTimeline(evts) {
+  const container = document.getElementById('timeline');
+  if (!evts.length) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">&#128269;</div>
+        <h3>No events found</h3>
+        <p>Try adjusting your filters, time range, or search query.</p>
+      </div>`;
+    return;
+  }
+  let html = '';
+  evts.forEach((ev, i) => {
+    const cat = ev.category || 'system';
+    const isExpanded = expandedIdx === i;
+    html += `<div class="event-row ${levelClass(ev)} ${isExpanded ? 'expanded' : ''}" onclick="expandEvent(${i})">
+      <span class="ev-time">${formatTimestamp(ev.timestamp)}</span>
+      <span class="ev-dot dot-${cat}"></span>
+      <span class="ev-source">${ev.source || cat}</span>
+      <span class="ev-summary"><span class="ev-msg">${escapeHtml(ev.summary || ev.message || '--')}</span></span>
+      <span class="ev-chevron">&#9656;</span>
+    </div>
+    <div class="ev-details ${isExpanded ? 'open' : ''}" id="detail-${i}">
+      <pre>${isExpanded ? prettyJson(ev) : ''}</pre>
+    </div>`;
+  });
+  container.innerHTML = html;
+}
+
+function expandEvent(idx) {
+  if (expandedIdx === idx) {
+    expandedIdx = null;
+  } else {
+    expandedIdx = idx;
+  }
+  // Update just the toggled rows for efficiency
+  document.querySelectorAll('.event-row').forEach((row, i) => {
+    const detail = document.getElementById('detail-' + i);
+    if (i === expandedIdx) {
+      row.classList.add('expanded');
+      detail.classList.add('open');
+      detail.querySelector('pre').textContent = prettyJson(events[i]);
+    } else {
+      row.classList.remove('expanded');
+      detail.classList.remove('open');
+    }
+  });
+}
+
+function prettyJson(obj) {
+  try { return JSON.stringify(obj, null, 2); }
+  catch(e) { return String(obj); }
+}
+
+function escapeHtml(str) {
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+// --- Start ---
+init();
+</script>
+</body>
+</html>
