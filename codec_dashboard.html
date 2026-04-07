@@ -316,6 +316,93 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
 }
 .audit-footer a:hover { text-decoration: underline; }
 [data-theme="light"] .audit-event:hover { background: rgba(0,0,0,0.03); }
+
+/* ── Audit Full Panel ── */
+.audit-stats-bar {
+  display: flex; align-items: center; gap: 0; padding: 0;
+  border-bottom: 1px solid var(--border); background: var(--surface); flex-shrink: 0;
+  overflow-x: auto; border-radius: var(--radius) var(--radius) 0 0;
+}
+.audit-stat-item {
+  display: flex; align-items: center; gap: 8px; padding: 10px 16px;
+  border-right: 1px solid var(--border); font-size: 12px; white-space: nowrap;
+}
+.audit-stat-item:last-child { border-right: none; }
+.audit-stat-label { color: var(--dim, #6a6a70); font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
+.audit-stat-value { font-family: var(--mono); font-weight: 600; font-size: 16px; }
+.audit-stat-value.a-errors { color: #ef4444; }
+.audit-stat-value.a-commands { color: var(--accent, #E8711A); }
+.audit-stat-value.a-skills { color: #22c55e; }
+.audit-stat-value.a-llm { color: #448aff; }
+.audit-filter-bar {
+  display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+  border-bottom: 1px solid var(--border); background: var(--surface-2, #212125);
+  flex-shrink: 0; flex-wrap: wrap;
+}
+.audit-pills { display: flex; gap: 4px; flex-wrap: wrap; flex: 1; min-width: 180px; }
+.audit-pill {
+  padding: 4px 10px; border-radius: 12px; font-size: 10px; font-weight: 500;
+  letter-spacing: 0.5px; cursor: pointer; border: 1px solid transparent;
+  transition: all 0.15s; opacity: 0.45; user-select: none; text-transform: uppercase;
+}
+.audit-pill.active { opacity: 1; }
+.audit-pill[data-cat="command"]  { color: #E8711A; border-color: #E8711A; }
+.audit-pill[data-cat="command"].active  { background: rgba(232,113,26,0.15); }
+.audit-pill[data-cat="skill"]    { color: #22c55e; border-color: #22c55e; }
+.audit-pill[data-cat="skill"].active    { background: rgba(34,197,94,0.15); }
+.audit-pill[data-cat="llm"]      { color: #448aff; border-color: #448aff; }
+.audit-pill[data-cat="llm"].active      { background: rgba(68,138,255,0.15); }
+.audit-pill[data-cat="auth"]     { color: #b388ff; border-color: #b388ff; }
+.audit-pill[data-cat="auth"].active     { background: rgba(179,136,255,0.15); }
+.audit-pill[data-cat="error"]    { color: #ef4444; border-color: #ef4444; }
+.audit-pill[data-cat="error"].active    { background: rgba(239,68,68,0.15); }
+.audit-pill[data-cat="scheduled"]{ color: #ffd740; border-color: #ffd740; }
+.audit-pill[data-cat="scheduled"].active{ background: rgba(255,215,64,0.15); }
+.audit-pill[data-cat="voice"]    { color: #26c6da; border-color: #26c6da; }
+.audit-pill[data-cat="voice"].active    { background: rgba(38,198,218,0.15); }
+.audit-pill[data-cat="vision"]   { color: #f06292; border-color: #f06292; }
+.audit-pill[data-cat="vision"].active   { background: rgba(240,98,146,0.15); }
+.audit-pill[data-cat="tts"], .audit-pill[data-cat="stt"] { color: #26a69a; border-color: #26a69a; }
+.audit-pill[data-cat="tts"].active, .audit-pill[data-cat="stt"].active { background: rgba(38,166,154,0.15); }
+.audit-pill[data-cat="system"]   { color: #78909c; border-color: #78909c; }
+.audit-pill[data-cat="system"].active   { background: rgba(120,144,156,0.15); }
+.audit-pill[data-cat="security"] { color: #ff6e40; border-color: #ff6e40; }
+.audit-pill[data-cat="security"].active { background: rgba(255,110,64,0.15); }
+.audit-pill[data-cat="hotkey"]   { color: #ffab00; border-color: #ffab00; }
+.audit-pill[data-cat="hotkey"].active   { background: rgba(255,171,0,0.15); }
+.audit-pill[data-cat="screenshot"], .audit-pill[data-cat="config"], .audit-pill[data-cat="draft"] {
+  color: #78909c; border-color: #78909c;
+}
+.audit-pill[data-cat="screenshot"].active, .audit-pill[data-cat="config"].active, .audit-pill[data-cat="draft"].active {
+  background: rgba(120,144,156,0.15);
+}
+.audit-filter-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.audit-time-btns { display: flex; gap: 2px; background: var(--surface, #1a1a1d); border-radius: 6px; padding: 2px; }
+.audit-time-btn {
+  padding: 4px 10px; font-size: 10px; font-weight: 500; border: none;
+  background: none; color: var(--dim, #6a6a70); cursor: pointer; border-radius: 4px;
+  font-family: var(--mono); transition: all 0.15s;
+}
+.audit-time-btn.active { background: var(--accent, #E8711A); color: #000; font-weight: 600; }
+.audit-time-btn:hover:not(.active) { color: var(--text); }
+.audit-search-input {
+  background: var(--surface, #1a1a1d); border: 1px solid var(--border); border-radius: 6px;
+  padding: 5px 10px; color: var(--text); font-size: 11px; width: 140px;
+  font-family: var(--font); outline: none; transition: border-color 0.15s;
+}
+.audit-search-input::placeholder { color: var(--dim, #6a6a70); }
+.audit-search-input:focus { border-color: var(--accent, #E8711A); }
+.audit-live-btn {
+  padding: 5px 12px; border-radius: 6px; font-size: 10px;
+  font-weight: 600; letter-spacing: 1px; cursor: pointer; border: 1px solid var(--border);
+  background: var(--surface, #1a1a1d); color: var(--dim, #6a6a70); transition: all 0.2s;
+  font-family: var(--mono);
+}
+.audit-live-btn.active { border-color: #22c55e; color: #22c55e; background: rgba(34,197,94,0.08); }
+.audit-timeline-wrap { overflow-y: auto; max-height: 520px; }
+.audit-timeline { display: flex; flex-direction: column; }
+[data-theme="light"] .audit-pill { opacity: 0.5; }
+[data-theme="light"] .audit-pill.active { opacity: 1; }
 [data-theme="light"] .tag-auth { background: rgba(59,130,246,0.12); color: #2563eb; }
 [data-theme="light"] .tag-crew { background: rgba(34,197,94,0.12); color: #15803d; }
 
@@ -503,8 +590,29 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
 
     <!-- Audit Panel -->
     <div class="panel" id="panel-audit">
-      <div id="auditList"></div>
-      <div class="audit-footer"><a href="/audit">View Full Audit &rarr;</a></div>
+      <div class="audit-stats-bar" id="auditStatsBar">
+        <div class="audit-stat-item"><div><div class="audit-stat-label">Events (24h)</div><div class="audit-stat-value" id="auditStatTotal">--</div></div></div>
+        <div class="audit-stat-item"><div><div class="audit-stat-label">Errors</div><div class="audit-stat-value a-errors" id="auditStatErrors">--</div></div></div>
+        <div class="audit-stat-item"><div><div class="audit-stat-label">Commands</div><div class="audit-stat-value a-commands" id="auditStatCommands">--</div></div></div>
+        <div class="audit-stat-item"><div><div class="audit-stat-label">Skills</div><div class="audit-stat-value a-skills" id="auditStatSkills">--</div></div></div>
+        <div class="audit-stat-item"><div><div class="audit-stat-label">LLM Calls</div><div class="audit-stat-value a-llm" id="auditStatLLM">--</div></div></div>
+      </div>
+      <div class="audit-filter-bar">
+        <div class="audit-pills" id="auditPills"></div>
+        <div class="audit-filter-right">
+          <div class="audit-time-btns" id="auditTimeBtns">
+            <button class="audit-time-btn" data-range="1h">1h</button>
+            <button class="audit-time-btn" data-range="6h">6h</button>
+            <button class="audit-time-btn active" data-range="24h">24h</button>
+            <button class="audit-time-btn" data-range="7d">7d</button>
+          </div>
+          <input type="text" class="audit-search-input" id="auditSearchInput" placeholder="Search events...">
+          <button class="audit-live-btn" id="auditLiveBtn">&#9679; LIVE</button>
+        </div>
+      </div>
+      <div class="audit-timeline-wrap" id="auditTimelineWrap">
+        <div class="audit-timeline" id="auditTimeline"></div>
+      </div>
     </div>
 
     <!-- Settings Panel -->
@@ -786,6 +894,24 @@ async function loadChat() {
 }
 
 var _auditRefreshTimer = null;
+var _auditLiveTimer = null;
+var _auditStatsTimer = null;
+var _auditActiveCategories = new Set([
+  'command','skill','llm','auth','error','scheduled',
+  'voice','vision','tts','stt','system','security',
+  'hotkey','screenshot','config','draft'
+]);
+var _auditAllCategories = [
+  'command','skill','llm','auth','error','scheduled',
+  'voice','vision','tts','stt','system','security',
+  'hotkey','screenshot','config','draft'
+];
+var _auditCurrentRange = '24h';
+var _auditSearchQuery = '';
+var _auditLiveMode = false;
+var _auditEvents = [];
+var _auditLastTimestamp = null;
+var _auditInitialized = false;
 
 function _auditCatClass(cat) {
   if (!cat) return 'audit-cat-system';
@@ -807,16 +933,25 @@ function _auditFormatTime(iso) {
   } catch(e) { return iso; }
 }
 
+function _auditSinceFromRange(range) {
+  var now = new Date();
+  var ms = { '1h': 3600000, '6h': 21600000, '24h': 86400000, '7d': 604800000 };
+  return new Date(now.getTime() - (ms[range] || 86400000)).toISOString();
+}
+
 function _renderAuditEvents(el, events) {
   if (!events.length) {
-    el.innerHTML = '<div class="empty"><div class="empty-icon"><svg class="ico" viewBox="0 0 24 24" style="width:40px;height:40px"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div><div class="empty-text">No audit events yet.</div></div>';
+    el.innerHTML = '<div class="empty"><div class="empty-icon"><svg class="ico" viewBox="0 0 24 24" style="width:40px;height:40px"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div><div class="empty-text">No events found. Try adjusting filters or time range.</div></div>';
     return;
   }
   el.innerHTML = events.map(function(ev) {
     var cat = ev.cat || ev.category || ev.source || 'system';
     var ts = _auditFormatTime(ev.ts || ev.timestamp);
     var summary = escHtml(ev.sum || ev.summary || ev.message || ev.event || ev.detail || '--');
-    return '<div class="audit-event">' +
+    var levelCls = '';
+    if (cat === 'error' || ev.level === 'error') levelCls = ' style="border-left:3px solid #ef4444"';
+    else if (ev.level === 'warning') levelCls = ' style="border-left:3px solid #ffd740"';
+    return '<div class="audit-event"' + levelCls + '>' +
       '<span class="audit-ts">' + ts + '</span>' +
       '<span class="audit-cat ' + _auditCatClass(cat) + '">' + _auditCatLabel(cat) + '</span>' +
       '<span class="audit-summary">' + summary + '</span>' +
@@ -825,7 +960,6 @@ function _renderAuditEvents(el, events) {
 }
 
 function _parseLegacyAudit(data) {
-  // Convert old /api/audit array of {line} into event-like objects
   return data.map(function(d) {
     var raw = d.line || '';
     try {
@@ -835,7 +969,6 @@ function _parseLegacyAudit(data) {
       var detail = j.detail || j.command || '';
       var summary = text + (detail ? ': ' + String(detail).substring(0, 200) : '');
       if (!summary) summary = JSON.stringify(j).substring(0, 300);
-      // Guess category from content
       var low = (text + ' ' + summary).toLowerCase();
       if (low.includes('auth') || low.includes('login') || low.includes('totp') || low.includes('pin')) cat = 'auth';
       else if (low.includes('error') || low.includes('fail')) cat = 'error';
@@ -850,22 +983,106 @@ function _parseLegacyAudit(data) {
   });
 }
 
-async function loadAudit() {
-  var el = document.getElementById('auditList');
-  el.innerHTML = '<div class="refreshing">Loading...</div>';
+function _auditInitPanel() {
+  if (_auditInitialized) return;
+  _auditInitialized = true;
 
-  // Clear any previous auto-refresh
-  if (_auditRefreshTimer) { clearInterval(_auditRefreshTimer); _auditRefreshTimer = null; }
+  // Render pills
+  var pillsEl = document.getElementById('auditPills');
+  if (pillsEl) {
+    pillsEl.innerHTML = _auditAllCategories.map(function(c) {
+      return '<span class="audit-pill active" data-cat="' + c + '">' + c.toUpperCase() + '</span>';
+    }).join('');
+    pillsEl.addEventListener('click', function(e) {
+      var pill = e.target.closest('.audit-pill');
+      if (!pill) return;
+      var cat = pill.getAttribute('data-cat');
+      if (_auditActiveCategories.has(cat)) {
+        _auditActiveCategories.delete(cat);
+        pill.classList.remove('active');
+      } else {
+        _auditActiveCategories.add(cat);
+        pill.classList.add('active');
+      }
+      _auditFetchEvents();
+    });
+  }
+
+  // Time buttons
+  var timeBtns = document.getElementById('auditTimeBtns');
+  if (timeBtns) {
+    timeBtns.addEventListener('click', function(e) {
+      var btn = e.target.closest('.audit-time-btn');
+      if (!btn) return;
+      _auditCurrentRange = btn.getAttribute('data-range');
+      var allBtns = timeBtns.querySelectorAll('.audit-time-btn');
+      for (var i = 0; i < allBtns.length; i++) {
+        allBtns[i].classList.toggle('active', allBtns[i].getAttribute('data-range') === _auditCurrentRange);
+      }
+      _auditFetchEvents();
+    });
+  }
+
+  // Search input (debounced)
+  var searchEl = document.getElementById('auditSearchInput');
+  if (searchEl) {
+    var _searchTimer;
+    searchEl.addEventListener('input', function() {
+      clearTimeout(_searchTimer);
+      _searchTimer = setTimeout(function() {
+        _auditSearchQuery = searchEl.value.trim();
+        _auditFetchEvents();
+      }, 300);
+    });
+  }
+
+  // Live button
+  var liveBtn = document.getElementById('auditLiveBtn');
+  if (liveBtn) {
+    liveBtn.addEventListener('click', function() {
+      _auditLiveMode = !_auditLiveMode;
+      liveBtn.classList.toggle('active', _auditLiveMode);
+      if (_auditLiveMode) {
+        _auditLiveTimer = setInterval(_auditFetchLive, 2000);
+      } else {
+        if (_auditLiveTimer) { clearInterval(_auditLiveTimer); _auditLiveTimer = null; }
+      }
+    });
+  }
+}
+
+async function _auditFetchStats() {
+  try {
+    var res = await fetch('/api/audit/stats');
+    if (!res.ok) return;
+    var data = await res.json();
+    var el;
+    el = document.getElementById('auditStatTotal'); if (el) el.textContent = data.total_24h != null ? data.total_24h : '--';
+    el = document.getElementById('auditStatErrors'); if (el) el.textContent = data.errors_24h != null ? data.errors_24h : '--';
+    var bc = data.by_category || {};
+    el = document.getElementById('auditStatCommands'); if (el) el.textContent = bc.command != null ? bc.command : '--';
+    el = document.getElementById('auditStatSkills'); if (el) el.textContent = bc.skill != null ? bc.skill : '--';
+    el = document.getElementById('auditStatLLM'); if (el) el.textContent = bc.llm != null ? bc.llm : '--';
+  } catch(e) { /* silent */ }
+}
+
+async function _auditFetchEvents() {
+  var el = document.getElementById('auditTimeline');
+  if (!el) return;
+
+  var cats = Array.from(_auditActiveCategories).join(',');
+  var since = _auditSinceFromRange(_auditCurrentRange);
+  var url = '/api/audit/stream?categories=' + encodeURIComponent(cats) + '&since=' + encodeURIComponent(since) + '&limit=100';
+  if (_auditSearchQuery) url += '&search=' + encodeURIComponent(_auditSearchQuery);
 
   try {
-    // Try new stream endpoint first
-    var r = await fetch('/api/audit/stream?limit=50');
+    var r = await fetch(url);
     if (r.ok) {
       var data = await r.json();
-      var events = data.events || [];
-      if (events.length) {
-        _renderAuditEvents(el, events);
-        _startAuditRefresh();
+      _auditEvents = data.events || [];
+      if (_auditEvents.length) {
+        _auditLastTimestamp = _auditEvents[0].ts || _auditEvents[0].timestamp || null;
+        _renderAuditEvents(el, _auditEvents);
         return;
       }
     }
@@ -873,28 +1090,77 @@ async function loadAudit() {
 
   // Fallback: try old /api/audit endpoint
   try {
-    var r2 = await fetch('/api/audit?limit=50');
+    var r2 = await fetch('/api/audit?limit=100');
     if (r2.ok) {
       var legacyData = await r2.json();
       if (legacyData.length) {
-        var events = _parseLegacyAudit(legacyData);
-        _renderAuditEvents(el, events);
-        _startAuditRefresh();
+        _auditEvents = _parseLegacyAudit(legacyData);
+        // Client-side filter for legacy data
+        var filtered = _auditEvents.filter(function(ev) {
+          var cat = (ev.category || 'system').toLowerCase();
+          if (!_auditActiveCategories.has(cat)) return false;
+          if (_auditSearchQuery) {
+            var s = (ev.summary || '').toLowerCase();
+            if (s.indexOf(_auditSearchQuery.toLowerCase()) === -1) return false;
+          }
+          return true;
+        });
+        _auditLastTimestamp = filtered.length ? (filtered[0].timestamp || null) : null;
+        _renderAuditEvents(el, filtered);
         return;
       }
     }
   } catch(e2) { /* ignore */ }
 
-  // Nothing from either endpoint
-  el.innerHTML = '<div class="empty"><div class="empty-icon"><svg class="ico" viewBox="0 0 24 24" style="width:40px;height:40px"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div><div class="empty-text">Audit log is empty.</div></div>';
-  _startAuditRefresh();
+  // Nothing
+  _auditEvents = [];
+  _renderAuditEvents(el, []);
 }
 
-function _startAuditRefresh() {
-  if (_auditRefreshTimer) return;
+async function _auditFetchLive() {
+  if (!_auditLiveMode || !_auditLastTimestamp) return;
+  var el = document.getElementById('auditTimeline');
+  if (!el) return;
+  var cats = Array.from(_auditActiveCategories).join(',');
+  var url = '/api/audit/stream?categories=' + encodeURIComponent(cats) + '&since=' + encodeURIComponent(_auditLastTimestamp) + '&limit=50';
+  if (_auditSearchQuery) url += '&search=' + encodeURIComponent(_auditSearchQuery);
+  try {
+    var r = await fetch(url);
+    if (!r.ok) return;
+    var data = await r.json();
+    var newEvents = data.events || [];
+    if (newEvents.length) {
+      _auditLastTimestamp = newEvents[0].ts || newEvents[0].timestamp;
+      _auditEvents = newEvents.concat(_auditEvents);
+      _renderAuditEvents(el, _auditEvents);
+    }
+  } catch(e) { /* silent */ }
+}
+
+async function loadAudit() {
+  // Initialize filter UI (once)
+  _auditInitPanel();
+
+  // Clear any previous timers
+  if (_auditRefreshTimer) { clearInterval(_auditRefreshTimer); _auditRefreshTimer = null; }
+  if (_auditStatsTimer) { clearInterval(_auditStatsTimer); _auditStatsTimer = null; }
+
+  // Show loading in timeline
+  var el = document.getElementById('auditTimeline');
+  if (el) el.innerHTML = '<div class="refreshing">Loading audit events...</div>';
+
+  // Fetch stats and events in parallel
+  await Promise.all([_auditFetchStats(), _auditFetchEvents()]);
+
+  // Start periodic stats refresh
+  _auditStatsTimer = setInterval(function() {
+    if (currentTab === 'audit') _auditFetchStats();
+  }, 10000);
+
+  // Start periodic event refresh (unless live mode handles it)
   _auditRefreshTimer = setInterval(function() {
-    if (currentTab === 'audit') loadAudit();
-  }, 3000);
+    if (currentTab === 'audit' && !_auditLiveMode) _auditFetchEvents();
+  }, 5000);
 }
 
 // ── Settings ──

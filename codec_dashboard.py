@@ -1724,10 +1724,12 @@ async def web_search_endpoint(request: Request):
 CHAT_SKILL_ALLOWLIST = {
     # Core utilities
     "calculator", "weather", "web_search", "bitcoin_price",
-    "system_info", "network_info", "memory_search",
+    "system", "network_info", "memory_search", "time",
     "timer", "translate", "file_search", "notes",
     "reminders", "clipboard", "password_generator",
-    "qr_generator", "json_formatter", "pomodoro", "terminal",
+    "qr_generator", "json_formatter", "pomodoro",
+    # Terminal / shell (goes through is_dangerous safety check)
+    "terminal",
     # Google services
     "google_calendar", "google_gmail", "google_docs",
     "google_drive", "google_sheets", "google_keep",
@@ -1736,13 +1738,18 @@ CHAT_SKILL_ALLOWLIST = {
     "chrome_automate", "chrome_click_cdp", "chrome_read",
     "chrome_extract", "chrome_fill", "chrome_scroll",
     "chrome_open", "chrome_close", "chrome_tabs", "chrome_search",
-    # Computer control
-    "screenshot_text", "app_switch", "mouse_control",
-    "brightness", "volume", "process_manager",
+    # System control (volume, brightness, apps — NO mouse_control)
+    "screenshot_text", "app_switch",
+    "brightness", "volume_brightness", "process_manager",
+    "ax_control",
+    # PM2 service management
+    "pm2_control",
     # Smart home & media
     "philips_hue", "music",
     # Self-improvement & meta
-    "ai_news_digest", "scheduler_skill",
+    "ai_news_digest", "scheduler",
+    # Skill creation & delegation
+    "create_skill", "skill_forge", "ask_codec_to_build", "delegate",
 }
 
 def _try_skill(user_text: str):
