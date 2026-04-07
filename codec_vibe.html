@@ -91,6 +91,27 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx);height:100vh;hei
 }
 .nav-link:hover { color: var(--text); }
 .nav-link.active { color: var(--accent); background: var(--accent-dim); }
+
+/* ── Side Panel ── */
+.side-panel-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9990}
+.side-panel-overlay.open{display:block}
+.side-panel{position:fixed;top:0;right:-300px;width:300px;height:100%;background:var(--surface);border-left:1px solid var(--border);z-index:9991;transition:right .3s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;box-shadow:-4px 0 24px rgba(0,0,0,.3)}
+.side-panel.open{right:0}
+.side-panel-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border)}
+.side-panel-header h2{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--accent);letter-spacing:2px}
+.side-panel-close{background:none;border:none;color:var(--text-muted);font-size:20px;cursor:pointer;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:4px;transition:all .15s}
+.side-panel-close:hover{color:var(--text);background:var(--surface-2)}
+.side-panel-body{padding:12px;display:flex;flex-direction:column;gap:6px;overflow-y:auto;flex:1}
+.sp-item{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-2);cursor:pointer;transition:all .15s;text-decoration:none;color:var(--text);font-size:13px;font-weight:500}
+.sp-item:hover{border-color:var(--border-hover);background:var(--surface-3);color:var(--text)}
+.sp-item svg{flex-shrink:0}
+.sp-item-label{flex:1}
+.sp-divider{height:1px;background:var(--border);margin:6px 0}
+.menu-btn{background:none;border:1px solid var(--border);color:var(--text-muted);width:30px;height:30px;border-radius:var(--radius-sm);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;font-size:16px}
+.menu-btn:hover{border-color:var(--border-hover);color:var(--text);background:var(--surface-2)}
+.menu-btn:active{transform:scale(.93)}
+.header-right{display:flex;align-items:center;gap:6px}
+
 /* ── Scrollbar ── */
 * { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
 ::-webkit-scrollbar { width: 4px; height: 4px; }
@@ -137,8 +158,9 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx);height:100vh;hei
 
 /* ── Mobile Responsive ── */
 @media (max-width:768px){
-  .page-nav{position:fixed;bottom:0;left:0;right:0;z-index:9998;transform:none;border-radius:0;padding:6px 0;justify-content:center;background:var(--surface);border-top:1px solid var(--bd);gap:0}
-  .nav-link{padding:8px 12px;font-size:11px}
+  .page-nav{position:fixed;bottom:0;left:0;right:0;z-index:9998;transform:none;border-radius:0;padding:6px 0;justify-content:center;background:var(--surface);border-top:1px solid var(--bd);gap:0;overflow-x:auto}
+  .nav-link{padding:8px 8px;font-size:10px}
+  .side-panel{width:280px;right:-280px}
   .sp{flex-direction:column}
   .cp{width:100%;min-width:0;border-right:none;border-bottom:1px solid var(--bd);max-height:50vh}
   .ep{width:100%;min-width:0}
@@ -235,25 +257,33 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx);height:100vh;hei
   <div class="header-left">
     <a href="/" class="logo-link"><img src="https://i.imgur.com/jD1X5W8.png" alt="CODEC"></a>
     <h1><a href="/" style="color:inherit;text-decoration:none">CODEC</a></h1>
+    <div class="status-dot" id="statusDot" title="CODEC status"></div>
   </div>
   <nav class="page-nav">
+    <a href="/" class="nav-link">Flash</a>
     <a href="/chat" class="nav-link">Chat</a>
     <a href="/voice" class="nav-link">Voice</a>
     <a href="/vibe" class="nav-link active">Vibe</a>
     <a href="/tasks" class="nav-link">Tasks</a>
+    <a href="/cortex" class="nav-link">Cortex</a>
+    <a href="/audit" class="nav-link">Audit</a>
   </nav>
   <div class="header-right">
-    <div class="status-dot" id="statusDot" title="CODEC status"></div>
-    <a href="/" class="icon-btn" title="Dashboard"><svg class="ico" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></a>
-    <button class="icon-btn" id="voiceBtn" onclick="toggleVoiceReply()" title="Toggle voice replies"><svg class="ico" viewBox="0 0 24 24"><path d="M11 5L6 9H2v6h4l5 4V5z"/><line x1="23" y1="9" x2="17" y2="15" id="muteX1"/><line x1="17" y1="9" x2="23" y2="15" id="muteX2"/></svg></button>
-    <button class="icon-btn" onclick="takeScreenshot()" title="Take screenshot"><svg class="ico" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></button>
-    <button class="icon-btn" id="photoBtn" onclick="takeServerPhoto()" title="Photo (Mac webcam)"><svg class="ico" viewBox="0 0 24 24"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
-    <button class="icon-btn" id="camBtn" onclick="toggleWebcamPip()" title="Live video (Mac webcam)"><svg class="ico" viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></button>
-    <a href="/tasks#reports" class="icon-btn notif-bell" id="notifBellBtn" title="Task reports"><svg class="ico" viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg><span class="notif-badge hidden" id="notifBadge">0</span></a>
-    <a href="/cortex" class="icon-btn" title="Cortex – Neural Map"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C9 2 6.5 4 6 7c-2 .5-4 3-4 5.5C2 15 4 17 6.5 17H7v2a2 2 0 002 2h6a2 2 0 002-2v-2h.5C20 17 22 15 22 12.5 22 10 20 7.5 18 7c-.5-3-3-5-6-5z"/><path d="M9 10h1.5v3H9z"/><path d="M13.5 10H15v3h-1.5z"/></svg></a>
-    <button class="icon-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme"><svg class="ico" viewBox="0 0 24 24" id="themeIco"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg></button>
-    <button class="icon-btn" onclick="window.location.href='/#settings'" title="Settings"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg></button>
-    <button class="icon-btn" onclick="lockSession()" title="Lock session"><svg class="ico" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></button>
+    <button class="menu-btn" onclick="openSidePanel()" title="Menu">&#9776;</button>
+  </div>
+</div>
+<!-- Side Panel -->
+<div class="side-panel-overlay" id="sidePanelOverlay" onclick="closeSidePanel()"></div>
+<div class="side-panel" id="sidePanel">
+  <div class="side-panel-header"><h2>MENU</h2><button class="side-panel-close" onclick="closeSidePanel()">&times;</button></div>
+  <div class="side-panel-body">
+    <a href="/" class="sp-item"><svg class="ico" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span class="sp-item-label">Home</span></a>
+    <div class="sp-divider"></div>
+    <a href="/tasks#reports" class="sp-item notif-bell" id="notifBellBtn"><svg class="ico" viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg><span class="sp-item-label">Notifications</span><span class="notif-badge hidden" id="notifBadge">0</span></a>
+    <button class="sp-item" id="themeBtn" onclick="toggleTheme()"><svg class="ico" viewBox="0 0 24 24" id="themeIco"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg><span class="sp-item-label">Toggle Theme</span></button>
+    <button class="sp-item" onclick="window.location.href='/#settings'"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg><span class="sp-item-label">Settings</span></button>
+    <div class="sp-divider"></div>
+    <button class="sp-item" onclick="lockSession()" style="color:var(--danger)"><svg class="ico" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg><span class="sp-item-label">Lock Session</span></button>
   </div>
 </div>
 <div class="bar vibe-toolbar">
@@ -290,6 +320,8 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx);height:100vh;hei
 <div class="op" id="op"><span style="color:var(--ac)">Vibe Coding</span></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
 <script>
+function openSidePanel(){document.getElementById('sidePanel').classList.add('open');document.getElementById('sidePanelOverlay').classList.add('open')}
+function closeSidePanel(){document.getElementById('sidePanel').classList.remove('open');document.getElementById('sidePanelOverlay').classList.remove('open')}
 // Auth + CSRF: inject session token and CSRF header on all requests
 // On mobile (Android Chrome), cookies may not persist — fallback to sessionStorage
 (function(){

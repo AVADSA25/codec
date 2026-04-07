@@ -16,7 +16,7 @@ body{background:radial-gradient(ellipse at 50% 30%,#0c0a14 0%,#060610 40%,var(--
 #hud .sub{font-size:10px;color:var(--dim);margin-top:3px;letter-spacing:2px}
 .back-link{color:var(--dim);text-decoration:none;font-size:11px;letter-spacing:1px;transition:color .2s;margin-bottom:4px;display:inline-block}
 .back-link:hover{color:var(--accent)}
-#stats{position:fixed;top:18px;right:24px;z-index:100;display:flex;gap:16px;font-size:12px}
+#stats{position:fixed;top:64px;right:24px;z-index:100;display:flex;gap:16px;font-size:12px}
 .stat{display:flex;align-items:center;gap:6px}.stat .dot{width:8px;height:8px;border-radius:50%}
 .dot.ok{background:var(--green);box-shadow:0 0 10px var(--green)}.dot.err{background:var(--red);box-shadow:0 0 10px var(--red)}.dot.warn{background:var(--yellow);box-shadow:0 0 8px var(--yellow)}
 #detail{position:fixed;bottom:0;left:0;right:0;z-index:150;background:linear-gradient(0deg,rgba(5,5,8,.98),rgba(5,5,8,.9),transparent);padding:36px 24px 20px;transform:translateY(100%);transition:transform .35s cubic-bezier(.22,1,.36,1);max-height:40vh;overflow-y:auto}
@@ -66,12 +66,12 @@ svg text{font-family:'SF Pro Display',-apple-system,system-ui,sans-serif}
 .detail-status-bar{display:flex;align-items:center;gap:8px;margin-bottom:8px}
 .detail-status-dot{width:10px;height:10px;border-radius:50%;animation:pulse 2s infinite}
 /* View switcher */
-#viewSwitch{position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:300;display:flex;gap:0;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;overflow:hidden}
+#viewSwitch{position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:100;display:flex;gap:0;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;overflow:hidden}
 .vs-btn{padding:6px 16px;font-size:10px;letter-spacing:2px;color:var(--dim);cursor:pointer;transition:all .2s;border:none;background:none;text-transform:uppercase;font-family:inherit}
 .vs-btn.active{background:var(--accent);color:#000;font-weight:600}
 .vs-btn:hover:not(.active){background:rgba(255,255,255,.06);color:var(--text)}
 /* Products view */
-#productsView{position:fixed;top:0;left:0;right:0;bottom:0;z-index:200;background:var(--bg);overflow-y:auto;display:none;padding:80px 40px 80px}
+#productsView{position:fixed;top:0;left:0;right:0;bottom:0;z-index:150;background:var(--bg);overflow-y:auto;display:none;padding:80px 40px 80px}
 #productsView.open{display:block}
 .products-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;max-width:1200px;margin:0 auto}
 .product-card{background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:12px;padding:20px;transition:all .3s;cursor:default;position:relative;overflow:hidden}
@@ -146,15 +146,88 @@ svg text{font-family:'SF Pro Display',-apple-system,system-ui,sans-serif}
 .af-new{animation:afFadeIn .3s ease}
 @keyframes afFadeIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
 [data-theme="light"] #activity-feed{background:rgba(245,243,239,.9);border-color:rgba(0,0,0,.08)}
+
+/* ── Unified Header ── */
+.header{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid rgba(255,255,255,.06);background:rgba(5,5,8,.85);backdrop-filter:blur(8px);flex-shrink:0;position:fixed;top:0;left:0;right:0;z-index:200}
+[data-theme="light"] .header{background:rgba(245,243,239,.9);border-color:rgba(0,0,0,.08)}
+.header-left{display:flex;align-items:center;gap:10px}
+.logo-link{display:flex;align-items:center;text-decoration:none}
+.header img{width:34px;height:34px;border-radius:8px}
+.header h1{font-size:14px;letter-spacing:4px;color:var(--accent);text-transform:uppercase;font-weight:300;margin:0}
+.header-right{display:flex;align-items:center;gap:6px}
+.page-nav{display:flex;align-items:center;gap:1px;position:absolute;left:50%;transform:translateX(-50%);background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:2px}
+[data-theme="light"] .page-nav{background:rgba(0,0,0,.05);border-color:rgba(0,0,0,.12)}
+.nav-link{padding:5px 14px;color:var(--dim);text-decoration:none;font-size:12px;font-weight:500;border-radius:4px;transition:all .15s;white-space:nowrap;text-align:center}
+.nav-link:hover{color:var(--text)}
+.nav-link.active{color:var(--accent);background:rgba(232,113,26,.10)}
+.ico{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+.menu-btn{background:none;border:1px solid rgba(255,255,255,.1);color:var(--dim);width:30px;height:30px;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;font-size:16px}
+.menu-btn:hover{border-color:var(--accent);color:var(--text);background:rgba(255,255,255,.04)}
+.menu-btn:active{transform:scale(.93)}
+[data-theme="light"] .menu-btn{border-color:rgba(0,0,0,.15);color:#555}
+[data-theme="light"] .menu-btn:hover{border-color:var(--accent);color:#1a1a2e;background:rgba(0,0,0,.04)}
+/* ── Side Panel ── */
+.side-panel-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9990}
+.side-panel-overlay.open{display:block}
+.side-panel{position:fixed;top:0;right:-300px;width:300px;height:100%;background:rgba(5,5,8,.98);border-left:1px solid rgba(255,255,255,.06);z-index:9991;transition:right .3s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;box-shadow:-4px 0 24px rgba(0,0,0,.3)}
+.side-panel.open{right:0}
+[data-theme="light"] .side-panel{background:rgba(245,243,239,.98);border-color:rgba(0,0,0,.08)}
+.side-panel-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid rgba(255,255,255,.06)}
+[data-theme="light"] .side-panel-header{border-color:rgba(0,0,0,.08)}
+.side-panel-header h2{font-size:12px;font-weight:700;color:var(--accent);letter-spacing:2px}
+.side-panel-close{background:none;border:none;color:var(--dim);font-size:20px;cursor:pointer;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:4px;transition:all .15s}
+.side-panel-close:hover{color:var(--text);background:rgba(255,255,255,.04)}
+.side-panel-body{padding:12px;display:flex;flex-direction:column;gap:6px;overflow-y:auto;flex:1}
+.sp-item{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid rgba(255,255,255,.06);border-radius:6px;background:rgba(255,255,255,.02);cursor:pointer;transition:all .15s;text-decoration:none;color:var(--text);font-size:13px;font-weight:500}
+.sp-item:hover{border-color:var(--accent);background:rgba(232,113,26,.04);color:var(--text)}
+.sp-item svg{flex-shrink:0}
+.sp-item-label{flex:1}
+.sp-divider{height:1px;background:rgba(255,255,255,.06);margin:6px 0}
+[data-theme="light"] .sp-item{border-color:rgba(0,0,0,.08);background:rgba(0,0,0,.02)}
+[data-theme="light"] .sp-item:hover{background:rgba(232,113,26,.04);border-color:var(--accent)}
+[data-theme="light"] .sp-divider{background:rgba(0,0,0,.08)}
+@media (max-width:768px){
+  .page-nav{position:fixed;bottom:0;left:0;right:0;z-index:9998;transform:none;border-radius:0;padding:6px 0;justify-content:center;background:rgba(5,5,8,.95);border-top:1px solid rgba(255,255,255,.06);gap:0;overflow-x:auto}
+  [data-theme="light"] .page-nav{background:rgba(245,243,239,.95);border-color:rgba(0,0,0,.08)}
+  .nav-link{padding:8px 8px;font-size:10px}
+  .side-panel{width:280px;right:-280px}
+}
 </style>
 </head>
 <body>
-<div id="hud">
-  <a href="/" class="back-link">&larr; Dashboard</a>
-  <h1>C O R T E X</h1>
-  <div class="sub">Neural Architecture &middot; Live System Map</div>
+<!-- Unified Header -->
+<div class="header">
+  <div class="header-left">
+    <a href="/" class="logo-link"><img src="https://i.imgur.com/jD1X5W8.png" alt="CODEC"></a>
+    <h1>CORTEX</h1>
+  </div>
+  <nav class="page-nav">
+    <a href="/" class="nav-link">Flash</a>
+    <a href="/chat" class="nav-link">Chat</a>
+    <a href="/voice" class="nav-link">Voice</a>
+    <a href="/vibe" class="nav-link">Vibe</a>
+    <a href="/tasks" class="nav-link">Tasks</a>
+    <a href="/cortex" class="nav-link active">Cortex</a>
+    <a href="/audit" class="nav-link">Audit</a>
+  </nav>
+  <div class="header-right">
+    <button class="menu-btn" onclick="openSidePanel()" title="Menu">&#9776;</button>
+  </div>
 </div>
-<button id="themeToggle" onclick="toggleCortexTheme()" style="position:fixed;top:18px;right:160px;z-index:110;background:none;border:1px solid rgba(255,255,255,.1);border-radius:6px;width:28px;height:28px;cursor:pointer;color:var(--dim);font-size:14px;display:flex;align-items:center;justify-content:center;transition:all .2s" title="Toggle theme">&#9728;</button>
+<!-- Side Panel -->
+<div class="side-panel-overlay" id="sidePanelOverlay" onclick="closeSidePanel()"></div>
+<div class="side-panel" id="sidePanel">
+  <div class="side-panel-header"><h2>MENU</h2><button class="side-panel-close" onclick="closeSidePanel()">&times;</button></div>
+  <div class="side-panel-body">
+    <a href="/" class="sp-item"><svg class="ico" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span class="sp-item-label">Home</span></a>
+    <div class="sp-divider"></div>
+    <a href="/tasks#reports" class="sp-item"><svg class="ico" viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg><span class="sp-item-label">Notifications</span></a>
+    <button class="sp-item" id="themeToggle" onclick="toggleCortexTheme()"><span style="font-size:16px">&#9728;</span><span class="sp-item-label">Toggle Theme</span></button>
+    <button class="sp-item" onclick="window.location.href='/#settings'"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg><span class="sp-item-label">Settings</span></button>
+    <div class="sp-divider"></div>
+    <button class="sp-item" onclick="fetch('/api/auth/logout',{method:'POST'}).then(function(){document.cookie='codec_session=;path=/;max-age=0;SameSite=Lax';window.location.href='/auth'})" style="color:#ef4444"><svg class="ico" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg><span class="sp-item-label">Lock Session</span></button>
+  </div>
+</div>
 <div id="stats"></div>
 <div id="viewSwitch">
   <button class="vs-btn active" onclick="switchView('neural')">Neural Map</button>
@@ -181,6 +254,8 @@ svg text{font-family:'SF Pro Display',-apple-system,system-ui,sans-serif}
 <div class="legend" id="legend"></div>
 
 <script>
+function openSidePanel(){document.getElementById('sidePanel').classList.add('open');document.getElementById('sidePanelOverlay').classList.add('open')}
+function closeSidePanel(){document.getElementById('sidePanel').classList.remove('open');document.getElementById('sidePanelOverlay').classList.remove('open')}
 // Theme
 function toggleCortexTheme(){
   var t = document.documentElement.dataset.theme === 'light' ? '' : 'light';
