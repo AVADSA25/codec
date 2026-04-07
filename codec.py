@@ -261,6 +261,7 @@ def dispatch(task):
     sys_p = CODEC_VOICE_PROMPT
     if mem: sys_p += "\n\n" + mem
     if mem_ctx: sys_p += mem_ctx
+    safe_sys = sys_p.replace('\n', ' ')
 
     # ── Persistent voice conversation (multi-turn) ──────────────────────
     if not voice_session["started"]:
