@@ -283,6 +283,30 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
 .save-config-btn:active { transform: scale(0.98); }
 .save-config-btn.saved { background: var(--success); }
 
+/* ── Prompt Editor ── */
+.prompt-card { background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:10px;overflow:hidden;transition:all .2s }
+.prompt-card.modified { border-color:var(--accent) }
+.prompt-header { display:flex;align-items:center;justify-content:space-between;padding:12px 14px;cursor:pointer;gap:8px }
+.prompt-header:hover { background:var(--surface-3) }
+.prompt-label { font-size:13px;font-weight:600;color:var(--text) }
+.prompt-desc { font-size:11px;color:var(--text-dim);margin-top:2px }
+.prompt-file { font-size:10px;color:var(--text-dim);font-family:var(--mono);opacity:.6 }
+.prompt-modified-badge { font-size:9px;background:var(--accent);color:#fff;padding:2px 6px;border-radius:4px;font-weight:600;text-transform:uppercase }
+.prompt-chevron { color:var(--text-dim);transition:transform .2s;flex-shrink:0 }
+.prompt-card.open .prompt-chevron { transform:rotate(180deg) }
+.prompt-body { display:none;padding:0 14px 14px;animation:fadeIn .2s }
+.prompt-card.open .prompt-body { display:block }
+.prompt-textarea { width:100%;min-height:120px;max-height:400px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:10px;font-family:var(--mono);font-size:11px;line-height:1.5;resize:vertical;box-sizing:border-box }
+.prompt-textarea:focus { outline:none;border-color:var(--accent) }
+.prompt-actions { display:flex;gap:8px;margin-top:8px;justify-content:flex-end }
+.prompt-btn { padding:6px 14px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface-2);color:var(--text);transition:all .15s }
+.prompt-btn:hover { background:var(--surface-3) }
+.prompt-btn.save { background:var(--accent);color:#fff;border-color:var(--accent) }
+.prompt-btn.save:hover { opacity:.85 }
+.prompt-btn.reset { color:var(--text-dim) }
+.prompt-btn.reset:hover { color:var(--danger);border-color:var(--danger) }
+@keyframes fadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+
 /* ── Audit ── */
 .audit-event {
   display: flex; align-items: center; gap: 10px; padding: 8px 12px;
@@ -651,6 +675,11 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
         </div>
       </div>
       <div class="settings-section" style="margin-top:20px">
+        <div class="settings-title">System Prompts</div>
+        <p style="font-size:12px;color:var(--text-dim);margin:0 0 12px;padding:0 4px">These define CODEC's personality and behavior across all interfaces. Edit to customize.</p>
+        <div id="promptsContainer"><div class="refreshing">Loading prompts...</div></div>
+      </div>
+      <div class="settings-section" style="margin-top:20px">
         <div class="settings-title">Skills</div>
         <div id="skillsList"></div>
       </div>
@@ -778,7 +807,7 @@ function showTab(id) {
     var cf = document.getElementById('cortexFrame');
     if (cf && !cf.src.includes('/cortex')) cf.src = '/cortex?embed=1';
   }
-  if (id === 'settings') { loadSettings(); renderUIToggles(); }
+  if (id === 'settings') { loadSettings(); renderUIToggles(); loadPrompts(); }
 }
 
 var _pendingImage = null; // {base64, name}
@@ -1455,6 +1484,81 @@ function applyUIPrefs() {
     });
   });
 }
+// ── System Prompts Editor ──
+var _promptsData = {};
+async function loadPrompts() {
+  var container = document.getElementById('promptsContainer');
+  if (!container) return;
+  try {
+    var r = await fetch('/api/prompts');
+    _promptsData = await r.json();
+    renderPrompts();
+  } catch(e) {
+    container.innerHTML = '<div style="color:var(--text-dim);font-size:12px;padding:8px">Failed to load prompts</div>';
+  }
+}
+function renderPrompts() {
+  var container = document.getElementById('promptsContainer');
+  if (!container || !_promptsData) return;
+  var html = '';
+  var keys = Object.keys(_promptsData);
+  keys.forEach(function(key) {
+    var p = _promptsData[key];
+    var modClass = p.modified ? ' modified' : '';
+    var modBadge = p.modified ? '<span class="prompt-modified-badge">edited</span>' : '';
+    var charCount = (p.value || '').length;
+    html += '<div class="prompt-card' + modClass + '" id="prompt-' + key + '">' +
+      '<div class="prompt-header" onclick="togglePrompt(\'' + key + '\')">' +
+        '<div style="flex:1;min-width:0">' +
+          '<div class="prompt-label">' + p.label + ' ' + modBadge + '</div>' +
+          '<div class="prompt-desc">' + p.description + '</div>' +
+          '<div class="prompt-file">' + p.file + ' — ' + charCount + ' chars</div>' +
+        '</div>' +
+        '<svg class="prompt-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>' +
+      '</div>' +
+      '<div class="prompt-body">' +
+        '<textarea class="prompt-textarea" id="prompt-text-' + key + '" spellcheck="false">' + _escHtml(p.value || p.default || '') + '</textarea>' +
+        '<div class="prompt-actions">' +
+          (p.modified ? '<button class="prompt-btn reset" onclick="resetPrompt(\'' + key + '\')">Reset to Default</button>' : '') +
+          '<button class="prompt-btn save" onclick="savePrompt(\'' + key + '\')">Save</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  });
+  container.innerHTML = html;
+}
+function _escHtml(s) { var d=document.createElement('div');d.textContent=s;return d.innerHTML; }
+function togglePrompt(key) {
+  var card = document.getElementById('prompt-' + key);
+  if (card) card.classList.toggle('open');
+}
+async function savePrompt(key) {
+  var textarea = document.getElementById('prompt-text-' + key);
+  if (!textarea) return;
+  var body = {}; body[key] = textarea.value;
+  try {
+    var r = await fetch('/api/prompts', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+    var d = await r.json();
+    if (d.ok) {
+      _promptsData[key].value = textarea.value;
+      _promptsData[key].modified = textarea.value.trim() !== (_promptsData[key].default || '').trim();
+      renderPrompts();
+      // Flash the card green briefly
+      var card = document.getElementById('prompt-' + key);
+      if (card) { card.style.borderColor='var(--success)'; setTimeout(function(){card.style.borderColor='';},1500); }
+    }
+  } catch(e) { console.error('Save prompt failed:', e); }
+}
+async function resetPrompt(key) {
+  if (!confirm('Reset "' + (_promptsData[key]||{}).label + '" to default?')) return;
+  try {
+    await fetch('/api/prompts/reset', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key:key})});
+    _promptsData[key].value = _promptsData[key].default;
+    _promptsData[key].modified = false;
+    renderPrompts();
+  } catch(e) { console.error('Reset prompt failed:', e); }
+}
+
 function renderUIToggles() {
   var container = document.getElementById('uiToggles');
   if (!container) return;
