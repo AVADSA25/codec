@@ -125,9 +125,13 @@
         .sp-item svg{flex-shrink:0}
         .sp-item-label{flex:1;text-align:center}
         .sp-divider{height:1px;background:var(--border);margin:6px 0}
-        .menu-btn{background:none;border:1px solid var(--border);color:var(--text-muted);width:30px;height:30px;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;font-size:16px}
+        .menu-btn{background:none;border:1px solid var(--border);color:var(--text-muted);width:30px;height:30px;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;font-size:16px;position:relative}
         .menu-btn:hover{border-color:var(--border-hover);color:var(--text);background:var(--surface-2)}
         .menu-btn:active{transform:scale(.93)}
+        .menu-notif-dot{position:absolute;top:-3px;right:-3px;width:10px;height:10px;background:var(--accent,#a78bfa);border-radius:50%;border:2px solid var(--surface,#1a1a2e);display:none;animation:notifPulse 2s infinite}
+        .menu-notif-dot.active{display:block}
+        @keyframes notifPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(1.2)}}
+        .sp-item.notif-highlight{border-color:var(--accent,#a78bfa);background:rgba(167,139,250,0.1);box-shadow:0 0 0 1px var(--accent,#a78bfa)}
 
         /* ── Scrollbar ── */
         * { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
@@ -458,7 +462,7 @@
         <a href="/tasks" class="nav-link">Tasks</a>
       </nav>
       <div class="header-right">
-        <button class="menu-btn" onclick="openSidePanel()" title="Home"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></button>
+        <button class="menu-btn" onclick="openSidePanel()" title="Home" id="menuBtn"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span class="menu-notif-dot" id="menuNotifDot"></span></button>
       </div>
     </header>
     <!-- Side Panel -->
@@ -1052,7 +1056,27 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
     if (new URLSearchParams(location.search).get('auto') === '1') {
         window.addEventListener('load', function() { setTimeout(startCall, 400); });
     }
-    (function(){function pollNotifCount(){fetch('/api/notifications/count').then(function(r){return r.json()}).then(function(d){var c=d.unread||d.count||0;var b=document.getElementById('notifBadge');if(b){b.textContent=c;b.classList.toggle('hidden',c===0)}}).catch(function(){})}pollNotifCount();setInterval(pollNotifCount,30000);var bell=document.getElementById('notifBellBtn');if(bell)bell.addEventListener('click',function(){fetch('/api/notifications/read-all',{method:'POST'}).catch(function(){});var b=document.getElementById('notifBadge');if(b){b.textContent='0';b.classList.add('hidden')}})})();
+    (function(){
+      function pollNotifCount(){
+        fetch('/api/notifications/count').then(function(r){return r.json()}).then(function(d){
+          var c=d.unread||d.count||0;
+          var b=document.getElementById('notifBadge');
+          if(b){b.textContent=c;b.classList.toggle('hidden',c===0)}
+          var dot=document.getElementById('menuNotifDot');
+          if(dot)dot.classList.toggle('active',c>0);
+          var bell=document.getElementById('notifBellBtn');
+          if(bell)bell.classList.toggle('notif-highlight',c>0);
+        }).catch(function(){})
+      }
+      pollNotifCount();setInterval(pollNotifCount,30000);
+      var bell=document.getElementById('notifBellBtn');
+      if(bell)bell.addEventListener('click',function(){
+        fetch('/api/notifications/read-all',{method:'POST'}).catch(function(){});
+        var b=document.getElementById('notifBadge');if(b){b.textContent='0';b.classList.add('hidden')}
+        var dot=document.getElementById('menuNotifDot');if(dot)dot.classList.remove('active');
+        bell.classList.remove('notif-highlight');
+      });
+    })();
     // Apply UI preferences from dashboard settings
     (function(){try{var p=JSON.parse(localStorage.getItem('codec-ui-prefs')||'{}'),m={'screenshot_btn':'#screenBtn','photo_btn':'#photoBtn','webcam_pip_btn':'#camBtn','voice_btn':'#voiceBtn','notif_bell':'#notifBellBtn','mic_btn':'#micBtn','voice_transcript':'.transcript-wrap','voice_actions':'#actionRow'};Object.keys(m).forEach(function(k){if(p[k]===false)m[k].split(',').forEach(function(s){document.querySelectorAll(s.trim()).forEach(function(el){el.style.display='none'})})})}catch(e){}})();
     </script>

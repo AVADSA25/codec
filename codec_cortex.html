@@ -161,9 +161,13 @@ svg text{font-family:'SF Pro Display',-apple-system,system-ui,sans-serif}
 .nav-link:hover{color:var(--text)}
 .nav-link.active{color:var(--accent);background:rgba(232,113,26,.10)}
 .ico{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
-.menu-btn{background:none;border:1px solid rgba(255,255,255,.1);color:var(--dim);width:30px;height:30px;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;font-size:16px}
+.menu-btn{background:none;border:1px solid rgba(255,255,255,.1);color:var(--dim);width:30px;height:30px;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;font-size:16px;position:relative}
 .menu-btn:hover{border-color:var(--accent);color:var(--text);background:rgba(255,255,255,.04)}
 .menu-btn:active{transform:scale(.93)}
+.menu-notif-dot{position:absolute;top:-3px;right:-3px;width:10px;height:10px;background:var(--accent,#a78bfa);border-radius:50%;border:2px solid var(--surface,#1a1a2e);display:none;animation:notifPulse 2s infinite}
+.menu-notif-dot.active{display:block}
+@keyframes notifPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(1.2)}}
+.sp-item.notif-highlight{border-color:var(--accent,#a78bfa);background:rgba(167,139,250,0.1);box-shadow:0 0 0 1px var(--accent,#a78bfa)}
 [data-theme="light"] .menu-btn{border-color:rgba(0,0,0,.15);color:#555}
 [data-theme="light"] .menu-btn:hover{border-color:var(--accent);color:#1a1a2e;background:rgba(0,0,0,.04)}
 /* ── Side Panel ── */
@@ -210,7 +214,7 @@ svg text{font-family:'SF Pro Display',-apple-system,system-ui,sans-serif}
     <a href="/tasks" class="nav-link">Tasks</a>
   </nav>
   <div class="header-right">
-    <button class="menu-btn" onclick="openSidePanel()" title="Home"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></button>
+    <button class="menu-btn" onclick="openSidePanel()" title="Home" id="menuBtn"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span class="menu-notif-dot" id="menuNotifDot"></span></button>
   </div>
 </div>
 <!-- Side Panel -->
@@ -961,6 +965,27 @@ window.addEventListener('resize',fitToScreen);
 var savedTheme = localStorage.getItem('cortex-theme') || '';
 document.getElementById('themeToggle').textContent = savedTheme === 'light' ? '\u{1F319}' : '\u2600';
 if(savedTheme==='light') document.getElementById('themeToggle').style.borderColor='rgba(0,0,0,.1)';
+(function(){
+  function pollNotifCount(){
+    fetch('/api/notifications/count').then(function(r){return r.json()}).then(function(d){
+      var c=d.unread||d.count||0;
+      var b=document.getElementById('notifBadge');
+      if(b){b.textContent=c;b.classList.toggle('hidden',c===0)}
+      var dot=document.getElementById('menuNotifDot');
+      if(dot)dot.classList.toggle('active',c>0);
+      var bell=document.getElementById('notifBellBtn');
+      if(bell)bell.classList.toggle('notif-highlight',c>0);
+    }).catch(function(){})
+  }
+  pollNotifCount();setInterval(pollNotifCount,30000);
+  var bell=document.getElementById('notifBellBtn');
+  if(bell)bell.addEventListener('click',function(){
+    fetch('/api/notifications/read-all',{method:'POST'}).catch(function(){});
+    var b=document.getElementById('notifBadge');if(b){b.textContent='0';b.classList.add('hidden')}
+    var dot=document.getElementById('menuNotifDot');if(dot)dot.classList.remove('active');
+    bell.classList.remove('notif-highlight');
+  });
+})();
 </script>
 </body>
 </html>
