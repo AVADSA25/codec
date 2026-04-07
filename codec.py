@@ -766,7 +766,7 @@ def dispatch(task):
     sys_p = CODEC_VOICE_PROMPT
     if mem: sys_p += "\n\n" + mem
     if mem_ctx: sys_p += mem_ctx
-    safe_sys = sys_p.replace("'","").replace('"','').replace('\n',' ')
+    safe_sys = sys_p.replace('\n', ' ')
 
     with open(TASK_QUEUE_FILE, "w") as f:
         f.write(json.dumps({"task": task, "app": app, "ts": datetime.now().isoformat()}))
