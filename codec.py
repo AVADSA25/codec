@@ -143,6 +143,10 @@ state = {
     "doc_ctx": "",
 }
 
+# ── DISPATCH LOCK — only one dispatch at a time, prevents feedback loops ──
+_dispatch_lock = threading.Lock()
+_dispatch_cooldown = 0.0  # timestamp: ignore wake words until this time
+
 # ── VOICE CONVERSATION SESSION (persistent across F18 presses) ──────────────
 voice_session = {
     "messages": [],      # [{role, content}, ...] — full conversation history
@@ -182,6 +186,18 @@ def worker():
 
 # ── DISPATCH ──────────────────────────────────────────────────────────────────
 def dispatch(task):
+    global _dispatch_cooldown
+    if not _dispatch_lock.acquire(blocking=False):
+        print(f"[CODEC] Dispatch BLOCKED (already processing): {task[:60]}")
+        return
+    try:
+        _dispatch_inner(task)
+    finally:
+        # 6s cooldown after dispatch — prevents wake word from hearing our own TTS
+        _dispatch_cooldown = time.time() + 6.0
+        _dispatch_lock.release()
+
+def _dispatch_inner(task):
     app = focused_app()
     print(f"[CODEC] Task: {task[:80]} | App: {app}")
     subprocess.Popen(["osascript", "-e", f'display notification "Heard: {task[:50]}" with title "CODEC"'],
@@ -272,8 +288,8 @@ def dispatch(task):
 
     # Build LLM messages: system + conversation history (keep last 20 turns)
     llm_messages = [{"role": "system", "content": sys_p}]
-    # Trim to last 20 messages to stay within context
-    history = voice_session["messages"][-20:]
+    # Trim to last 10 messages to keep prompt fast on 35B model
+    history = voice_session["messages"][-10:]
     llm_messages.extend(history)
 
     push(lambda: show_processing_overlay('Thinking...', 15000))
@@ -290,7 +306,7 @@ def dispatch(task):
             "chat_template_kwargs": {"enable_thinking": False},
         }
         payload.update(LLM_KWARGS)
-        r = _llm_req.post(f"{QWEN_BASE_URL}/chat/completions", json=payload, headers=headers, timeout=60)
+        r = _llm_req.post(f"{QWEN_BASE_URL}/chat/completions", json=payload, headers=headers, timeout=120)
         if r.status_code == 200:
             data = r.json()
             answer = data.get("choices", [{}])[0].get("message", {}).get("content", "")
@@ -469,6 +485,12 @@ def wake_word_listener():
     _wake_diag_done = False
     while True:
         if not WAKE_WORD or state["recording"]:
+            time.sleep(0.3); continue
+        # Skip wake processing during dispatch cooldown (prevents hearing our own TTS)
+        if time.time() < _dispatch_cooldown:
+            time.sleep(0.3); continue
+        # Skip if a dispatch is already in progress
+        if _dispatch_lock.locked():
             time.sleep(0.3); continue
         try:
             tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False); tmp.close()

@@ -6,159 +6,330 @@
 <title>CORTEX — CODEC Neural Map</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-:root{--bg:#050508;--card:#0a0a10;--border:#1a1a2e;--accent:#E8711A;--accent2:#ff9544;--green:#00e676;--red:#ff3d3d;--yellow:#ffd740;--blue:#448aff;--purple:#b388ff;--text:#e8e8f0;--dim:#666680;--glow:0 0 20px rgba(232,113,26,.3)}
-body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'SF Pro',system-ui,sans-serif;overflow:hidden;height:100vh;width:100vw}
+:root{--bg:#050508;--accent:#E8711A;--green:#00e676;--red:#ff3d3d;--yellow:#ffd740;--blue:#448aff;--purple:#b388ff;--text:#e8e8f0;--dim:#555}
+body{background:radial-gradient(ellipse at 50% 30%,#0c0a14 0%,#060610 40%,var(--bg) 70%);color:var(--text);font-family:'SF Pro Display',-apple-system,system-ui,sans-serif;overflow:hidden;height:100vh;width:100vw}
 #cortex{position:absolute;top:0;left:0;width:100%;height:100%;cursor:grab}
 #cortex:active{cursor:grabbing}
-#header{position:fixed;top:0;left:0;right:0;z-index:100;background:linear-gradient(180deg,rgba(5,5,8,.95),rgba(5,5,8,.7),transparent);padding:16px 24px 40px;pointer-events:none}
-#header *{pointer-events:auto}
-#header h1{font-size:14px;letter-spacing:6px;color:var(--accent);text-transform:uppercase;font-weight:300}
-#header .sub{font-size:11px;color:var(--dim);margin-top:2px;letter-spacing:1px}
-#stats{position:fixed;top:16px;right:24px;z-index:100;display:flex;gap:16px;font-size:12px}
-.stat{display:flex;align-items:center;gap:6px}.stat .dot{width:8px;height:8px;border-radius:50%;animation:pulse 2s infinite}
-.dot.ok{background:var(--green);box-shadow:0 0 8px var(--green)}.dot.err{background:var(--red);box-shadow:0 0 8px var(--red)}.dot.warn{background:var(--yellow);box-shadow:0 0 8px var(--yellow)}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
-@keyframes nodeGlow{0%,100%{filter:drop-shadow(0 0 4px var(--accent))}50%{filter:drop-shadow(0 0 12px var(--accent))}}
-@keyframes flowDash{to{stroke-dashoffset:-20}}
-#detail{position:fixed;bottom:0;left:0;right:0;z-index:100;background:linear-gradient(0deg,rgba(5,5,8,.97),rgba(5,5,8,.85),transparent);padding:40px 24px 20px;transform:translateY(100%);transition:transform .3s ease;max-height:40vh;overflow-y:auto}
+#hud{position:fixed;top:0;left:0;right:0;z-index:100;background:linear-gradient(180deg,rgba(5,5,8,.95),rgba(5,5,8,.6),transparent);padding:16px 24px 44px;pointer-events:none}
+#hud *{pointer-events:auto}
+#hud h1{font-size:14px;letter-spacing:7px;color:var(--accent);text-transform:uppercase;font-weight:300}
+#hud .sub{font-size:10px;color:var(--dim);margin-top:3px;letter-spacing:2px}
+.back-link{color:var(--dim);text-decoration:none;font-size:11px;letter-spacing:1px;transition:color .2s;margin-bottom:4px;display:inline-block}
+.back-link:hover{color:var(--accent)}
+#stats{position:fixed;top:18px;right:24px;z-index:100;display:flex;gap:16px;font-size:12px}
+.stat{display:flex;align-items:center;gap:6px}.stat .dot{width:8px;height:8px;border-radius:50%}
+.dot.ok{background:var(--green);box-shadow:0 0 10px var(--green)}.dot.err{background:var(--red);box-shadow:0 0 10px var(--red)}.dot.warn{background:var(--yellow);box-shadow:0 0 8px var(--yellow)}
+#detail{position:fixed;bottom:0;left:0;right:0;z-index:100;background:linear-gradient(0deg,rgba(5,5,8,.98),rgba(5,5,8,.9),transparent);padding:36px 24px 20px;transform:translateY(100%);transition:transform .35s cubic-bezier(.22,1,.36,1);max-height:40vh;overflow-y:auto}
 #detail.open{transform:translateY(0)}
-#detail h2{font-size:13px;letter-spacing:3px;color:var(--accent);text-transform:uppercase;margin-bottom:8px}
-#detail .info{font-size:12px;color:var(--dim);line-height:1.8}
+#detail h2{font-size:12px;letter-spacing:4px;color:var(--accent);text-transform:uppercase;margin-bottom:8px}
+#detail .info{font-size:12px;color:var(--dim);line-height:1.9}
 #detail .info b{color:var(--text)}
-#detail .close{position:absolute;top:12px;right:20px;background:none;border:none;color:var(--dim);font-size:20px;cursor:pointer}
-.legend{position:fixed;bottom:20px;right:24px;z-index:90;font-size:10px;color:var(--dim);display:flex;flex-direction:column;gap:4px}
+#detail .close{position:absolute;top:10px;right:20px;background:none;border:none;color:var(--dim);font-size:20px;cursor:pointer;transition:color .2s}
+#detail .close:hover{color:var(--accent)}
+.legend{position:fixed;bottom:16px;right:20px;z-index:90;font-size:9px;color:var(--dim);display:flex;flex-direction:column;gap:3px;opacity:.7}
 .legend-item{display:flex;align-items:center;gap:6px}
 .legend-dot{width:10px;height:10px;border-radius:50%;border:1.5px solid}
-svg text{font-family:-apple-system,BlinkMacSystemFont,'SF Pro',system-ui,sans-serif}
+.zone-label{font-size:10px;letter-spacing:3px;text-transform:uppercase;fill:currentColor;opacity:.15;font-weight:300}
+svg text{font-family:'SF Pro Display',-apple-system,system-ui,sans-serif}
+@keyframes flowDash{to{stroke-dashoffset:-20}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+#skills-panel{position:fixed;left:0;top:0;bottom:0;width:320px;z-index:100;background:linear-gradient(90deg,rgba(5,5,8,.98) 80%,transparent);padding:70px 20px 20px;transform:translateX(-100%);transition:transform .35s cubic-bezier(.22,1,.36,1);overflow-y:auto}
+#skills-panel.open{transform:translateX(0)}
+#skills-panel h2{font-size:11px;letter-spacing:4px;color:var(--accent);text-transform:uppercase;margin-bottom:12px}
+#skills-panel .close{position:absolute;top:16px;right:16px;background:none;border:none;color:var(--dim);font-size:18px;cursor:pointer}
+#skills-panel .close:hover{color:var(--accent)}
+.skill-item{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;font-size:11px;color:var(--dim);transition:background .15s;cursor:default}
+.skill-item:hover{background:rgba(232,113,26,.06);color:var(--text)}
+.skill-dot{width:6px;height:6px;border-radius:50%;background:var(--green);flex-shrink:0}
+.skill-name{color:var(--text);font-weight:500;flex:1}
+.skill-triggers{font-size:9px;color:var(--dim);opacity:.6;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.skill-count{font-size:10px;color:var(--dim);margin-bottom:10px;letter-spacing:1px}
+.skill-search{width:100%;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:6px 10px;color:var(--text);font-size:11px;margin-bottom:12px;outline:none}
+.skill-search:focus{border-color:var(--accent)}
+.skill-search::placeholder{color:var(--dim)}
+#settings-float{position:fixed;bottom:20px;left:20px;z-index:90;background:rgba(5,5,8,.85);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:12px 16px;font-size:10px;color:var(--dim);line-height:1.8;backdrop-filter:blur(10px);max-width:220px}
+#settings-float b{color:var(--text);font-weight:500}
+#settings-float .setting-row{display:flex;justify-content:space-between;gap:8px}
+#settings-float .setting-val{color:var(--accent);text-align:right;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#settings-float h3{font-size:9px;letter-spacing:3px;color:var(--accent);text-transform:uppercase;margin-bottom:6px;opacity:.7}
+#last-check{font-size:10px;color:var(--dim);opacity:.5}
+.detail-actions{display:flex;gap:8px;margin:12px 0}
+.detail-btn{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:5px 12px;color:var(--text);font-size:10px;cursor:pointer;transition:all .2s;letter-spacing:1px}
+.detail-btn:hover{background:rgba(232,113,26,.1);border-color:var(--accent);color:var(--accent)}
+.detail-btn.danger{border-color:rgba(255,61,61,.3)}
+.detail-btn.danger:hover{background:rgba(255,61,61,.1);border-color:var(--red);color:var(--red)}
+.detail-btn.success{border-color:rgba(0,230,118,.3)}
+.detail-btn.success:hover{background:rgba(0,230,118,.1);border-color:var(--green);color:var(--green)}
+.detail-btn:disabled{opacity:.3;cursor:not-allowed}
+#logViewer{background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.05);border-radius:6px;padding:10px;margin-top:10px;font-family:'SF Mono',monospace;font-size:9px;color:var(--dim);line-height:1.6;max-height:200px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;display:none}
+#logViewer.open{display:block}
+.detail-status-bar{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.detail-status-dot{width:10px;height:10px;border-radius:50%;animation:pulse 2s infinite}
+/* View switcher */
+#viewSwitch{position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:110;display:flex;gap:0;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;overflow:hidden}
+.vs-btn{padding:6px 16px;font-size:10px;letter-spacing:2px;color:var(--dim);cursor:pointer;transition:all .2s;border:none;background:none;text-transform:uppercase;font-family:inherit}
+.vs-btn.active{background:var(--accent);color:#000;font-weight:600}
+.vs-btn:hover:not(.active){background:rgba(255,255,255,.06);color:var(--text)}
+/* Products view */
+#productsView{position:fixed;top:0;left:0;right:0;bottom:0;z-index:50;background:var(--bg);overflow-y:auto;display:none;padding:80px 40px 40px}
+#productsView.open{display:block}
+.products-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;max-width:1200px;margin:0 auto}
+.product-card{background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:12px;padding:20px;transition:all .3s;cursor:default;position:relative;overflow:hidden}
+.product-card:hover{border-color:var(--accent);background:rgba(232,113,26,.03);transform:translateY(-2px)}
+.product-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--accent);opacity:0;transition:opacity .3s}
+.product-card:hover::before{opacity:1}
+.pc-header{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.pc-icon{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px}
+.pc-title{font-size:14px;font-weight:600;color:var(--text);letter-spacing:1px}
+.pc-subtitle{font-size:10px;color:var(--dim);letter-spacing:1px}
+.pc-desc{font-size:11px;color:var(--dim);line-height:1.7;margin-bottom:12px}
+.pc-features{display:flex;flex-wrap:wrap;gap:5px}
+.pc-feat{font-size:9px;padding:3px 8px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:4px;color:var(--dim);letter-spacing:.5px}
+.pc-feat:hover{border-color:var(--accent);color:var(--accent)}
+.pc-status{position:absolute;top:16px;right:16px;width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green)}
+.products-header{text-align:center;margin-bottom:30px}
+.products-header h2{font-size:12px;letter-spacing:6px;color:var(--accent);text-transform:uppercase;margin-bottom:4px}
+.products-header p{font-size:10px;color:var(--dim);letter-spacing:2px}
+/* Light theme overrides */
+[data-theme="light"]{--bg:#f5f3ef;--text:#1a1a2e;--dim:#888}
+[data-theme="light"] body{background:radial-gradient(ellipse at 50% 30%,#faf8f5 0%,#f0ede8 40%,#e8e5e0 70%);color:var(--text)}
+[data-theme="light"] #hud{background:linear-gradient(180deg,rgba(245,243,239,.95),rgba(245,243,239,.6),transparent)}
+[data-theme="light"] #detail{background:linear-gradient(0deg,rgba(245,243,239,.98),rgba(245,243,239,.9),transparent)}
+[data-theme="light"] #skills-panel{background:linear-gradient(90deg,rgba(245,243,239,.98) 80%,transparent)}
+[data-theme="light"] #settings-float{background:rgba(245,243,239,.9);border-color:rgba(0,0,0,.08)}
+[data-theme="light"] .product-card{background:rgba(0,0,0,.02);border-color:rgba(0,0,0,.08)}
+[data-theme="light"] .product-card:hover{background:rgba(232,113,26,.04)}
+[data-theme="light"] .pc-feat{background:rgba(0,0,0,.03);border-color:rgba(0,0,0,.08)}
+[data-theme="light"] .skill-item:hover{background:rgba(232,113,26,.06)}
+[data-theme="light"] .skill-search{background:rgba(0,0,0,.03);border-color:rgba(0,0,0,.1)}
+[data-theme="light"] #logViewer{background:rgba(0,0,0,.04);border-color:rgba(0,0,0,.06)}
+[data-theme="light"] .detail-btn{background:rgba(0,0,0,.03);border-color:rgba(0,0,0,.1);color:var(--text)}
+[data-theme="light"] .vs-btn{color:var(--dim)}
+[data-theme="light"] .zone-label{opacity:.1}
+[data-theme="light"] #productsView{background:var(--bg)}
+[data-theme="light"] .grid-rect{opacity:0}
+.pc-expand-btn{background:none;border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:4px 10px;color:var(--dim);font-size:9px;cursor:pointer;transition:all .2s;margin-top:10px;letter-spacing:1px}
+.pc-expand-btn:hover{border-color:var(--accent);color:var(--accent)}
+.pc-details{display:none;margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.06);font-size:10px;color:var(--dim);line-height:1.8}
+.pc-details.open{display:block}
+.pc-details b{color:var(--text);font-weight:500}
+.pc-detail-section{margin-bottom:8px}
+.pc-detail-section h4{font-size:9px;letter-spacing:2px;color:var(--accent);text-transform:uppercase;margin-bottom:4px;opacity:.7}
+[data-theme="light"] .pc-expand-btn{border-color:rgba(0,0,0,.1)}
+[data-theme="light"] .pc-details{border-top-color:rgba(0,0,0,.08)}
+#activity-feed{position:fixed;bottom:20px;right:180px;z-index:90;width:260px;max-height:200px;overflow-y:auto;background:rgba(5,5,8,.85);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:10px;backdrop-filter:blur(10px);font-size:9px;font-family:'SF Mono',monospace}
+#activity-feed h3{font-size:8px;letter-spacing:3px;color:var(--accent);text-transform:uppercase;margin-bottom:6px;opacity:.7}
+.af-item{padding:3px 0;color:var(--dim);border-bottom:1px solid rgba(255,255,255,.03);display:flex;gap:6px;align-items:baseline}
+.af-time{color:var(--accent);opacity:.5;flex-shrink:0}
+.af-msg{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.af-new{animation:afFadeIn .3s ease}
+@keyframes afFadeIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+[data-theme="light"] #activity-feed{background:rgba(245,243,239,.9);border-color:rgba(0,0,0,.08)}
 </style>
 </head>
 <body>
-<div id="header">
+<div id="hud">
+  <a href="/" class="back-link">&larr; Dashboard</a>
   <h1>C O R T E X</h1>
-  <div class="sub">CODEC Neural Architecture &middot; Live System Map</div>
+  <div class="sub">Neural Architecture &middot; Live System Map</div>
 </div>
+<button id="themeToggle" onclick="toggleCortexTheme()" style="position:fixed;top:18px;right:160px;z-index:110;background:none;border:1px solid rgba(255,255,255,.1);border-radius:6px;width:28px;height:28px;cursor:pointer;color:var(--dim);font-size:14px;display:flex;align-items:center;justify-content:center;transition:all .2s" title="Toggle theme">&#9728;</button>
 <div id="stats"></div>
+<div id="viewSwitch">
+  <button class="vs-btn active" onclick="switchView('neural')">Neural Map</button>
+  <button class="vs-btn" onclick="switchView('products')">7 Products</button>
+</div>
 <svg id="cortex" xmlns="http://www.w3.org/2000/svg"></svg>
+<div id="productsView"></div>
 <div id="detail"><button class="close" onclick="closeDetail()">&times;</button><h2 id="detailTitle"></h2><div class="info" id="detailInfo"></div></div>
+<div id="skills-panel">
+  <button class="close" onclick="closeSkills()">&times;</button>
+  <h2>Skills Registry</h2>
+  <input class="skill-search" type="text" placeholder="Search skills..." oninput="filterSkills(this.value)">
+  <div class="skill-count" id="skillCount"></div>
+  <div id="skillList"></div>
+</div>
+<div id="settings-float">
+  <h3>Config</h3>
+  <div id="settingsContent">Loading...</div>
+</div>
+<div id="activity-feed">
+  <h3>Live Activity</h3>
+  <div id="activityList"><div class="af-item"><span class="af-time">--:--</span><span class="af-msg">Waiting for events...</span></div></div>
+</div>
 <div class="legend" id="legend"></div>
 
 <script>
+// Theme
+function toggleCortexTheme(){
+  var t = document.documentElement.dataset.theme === 'light' ? '' : 'light';
+  document.documentElement.dataset.theme = t;
+  localStorage.setItem('cortex-theme', t);
+  document.getElementById('themeToggle').textContent = t === 'light' ? '\u{1F319}' : '\u2600';
+  // Update theme toggle border for light mode
+  document.getElementById('themeToggle').style.borderColor = t === 'light' ? 'rgba(0,0,0,.1)' : 'rgba(255,255,255,.1)';
+}
+(function(){
+  var saved = localStorage.getItem('cortex-theme');
+  if(saved){document.documentElement.dataset.theme=saved;}
+})();
 // ═══════════════════════════════════════════════════════════════════════
-// CORTEX — CODEC Neural Map
+// CORTEX v2 — Human Body Metaphor
+// Brain (LLM) · Eyes (Vision) · Ears (STT) · Mouth (TTS) · Hands (Skills)
+// Heart (Core) · Spine (Dashboard) · Nervous System (Connections)
+// ═══════════════════════════════════════════════════════════════════════
+
+// ── Node icons as SVG path data ──
+var ICONS = {
+  brain:     'M12 2C9 2 6.5 4 6 7c-2 .5-4 3-4 5.5C2 15 4 17 6.5 17H7v2a2 2 0 002 2h6a2 2 0 002-2v-2h.5C20 17 22 15 22 12.5 22 10 20 7.5 18 7c-.5-3-3-5-6-5zM9 10h1.5v3H9zm4.5 0H15v3h-1.5z',
+  eye:       'M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12zm11 4a4 4 0 100-8 4 4 0 000 8zm0-2a2 2 0 110-4 2 2 0 010 4z',
+  ear:       'M6 18l1-4c.5-2 0-4-1-5.5S4 5.5 4 4a8 8 0 0116 0c0 3-2 5-4 6s-3 3-3 5v3',
+  mouth:     'M12 2a10 10 0 100 20 10 10 0 000-20zm-4 12s1.5 2 4 2 4-2 4-2',
+  hand:      'M18 11V6a2 2 0 00-4 0v1a2 2 0 00-4 0v1a2 2 0 00-4 0v5l-2-2a2 2 0 00-3 3l5 5h10l2-8a2 2 0 00-2-2h-1',
+  heart:     'M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z',
+  spine:     'M12 2v20M8 6h8M8 10h8M8 14h8M8 18h8',
+  bolt:      'M13 2L3 14h9l-1 8 10-12h-9l1-8z',
+  key:       'M15 7h4v4M4 17L15 7',
+  shield:    'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z',
+  search:    'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z',
+  monitor:   'M2 3h20v14H2zm6 18h8m-4-4v4',
+  chat:      'M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z',
+  mic:       'M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3zM19 10v2a7 7 0 01-14 0v-2m7 9v4m-4 0h8',
+  toggle:    'M16 3H8a5 5 0 000 10h8a5 5 0 000-10zm0 0a3 3 0 110 6 3 3 0 010-6z',
+  wave:      'M2 12h2l3-9 4 18 4-18 3 9h2',
+  draft:     'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm-2 0v6h6',
+  database:  'M4 7v10c0 2 3.6 4 8 4s8-2 8-4V7M4 7c0 2 3.6 4 8 4s8-2 8-4M4 7c0-2 3.6-4 8-4s8 2 8 4',
+  cpu:       'M4 4h16v16H4zm4-2v2m4-2v2m4-2v2M4 8h-2m2 4h-2m2 4h-2m18-8h2m-2 4h2m-2 4h2M8 22v-2m4 2v-2m4 2v-2',
+  clock:     'M12 2a10 10 0 100 20 10 10 0 000-20zm0 4v6l4 2',
+  alarm:     'M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0',
+  chart:     'M18 20V10M12 20V4M6 20v-6',
+  lock:      'M5 11h14v11H5zm2 0V7a5 5 0 0110 0v4',
+  globe:     'M12 2a10 10 0 100 20 10 10 0 000-20zM2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10A15.3 15.3 0 0112 2z',
+  layers:    'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5',
+};
+
+// ═══════════════════════════════════════════════════════════════════════
+// NODE DEFINITIONS — Organized by Human Body Metaphor
 // ═══════════════════════════════════════════════════════════════════════
 
 var NODES = [
-  // ── Core Layer (center) ──
-  {id:'dispatch',label:'Dispatch\nRouter',x:500,y:400,r:38,color:'#E8711A',category:'core',
-   info:'Routes all voice/text tasks to skills, drafts, or LLM. Central hub of CODEC.',file:'codec.py',port:null},
-  {id:'config',label:'Config',x:500,y:560,r:24,color:'#666680',category:'config',
-   info:'Single source of truth. Loads ~/.codec/config.json. All services read from here.',file:'codec_config.py',port:null},
-  {id:'memory',label:'Memory\nFTS5',x:660,y:530,r:30,color:'#b388ff',category:'data',
-   info:'SQLite + FTS5 full-text search. BM25 ranking. Stores all conversations from voice, chat, vibe.',file:'codec_memory.py',port:null},
+  // ─── BRAIN (top center) — Intelligence & Reasoning ───
+  {id:'qwen',label:'Qwen LLM',x:550,y:130,r:40,color:'#E8711A',icon:'brain',category:'brain',zone:'brain',
+   info:'Qwen 3.5 35B (4-bit MLX). Main language model — all reasoning, conversation, skill routing.',file:'mlx_lm.server',port:8081,health:'/v1/models'},
+  {id:'llm_queue',label:'LLM Queue',x:450,y:100,r:18,color:'#666',icon:'layers',category:'brain',zone:'brain',
+   info:'Priority queue: CRITICAL(voice) > HIGH(chat) > MEDIUM(agents) > LOW(background).',file:'codec_llm_proxy.py'},
+  {id:'memory',label:'Memory',x:660,y:100,r:24,color:'#b388ff',icon:'database',category:'brain',zone:'brain',
+   info:'SQLite + FTS5 full-text search. BM25 ranking. Stores all conversations.',file:'codec_memory.py'},
+  {id:'search',label:'Web Search',x:680,y:180,r:20,color:'#ffd740',icon:'search',category:'brain',zone:'brain',
+   info:'DuckDuckGo + Serper API. 5-min TTL cache. Called by skills + chat enrichment.',file:'codec_search.py'},
 
-  // ── Input Layer (top) ──
-  {id:'f18',label:'F18\nVoice',x:300,y:180,r:28,color:'#00e676',category:'input',
-   info:'Hold F18 to record voice via sox. Release to transcribe + dispatch. Persistent conversation session.',file:'codec.py'},
-  {id:'f16',label:'F16\nText',x:420,y:150,r:22,color:'#00e676',category:'input',
-   info:'Press F16 for text input dialog (AppleScript). Dispatches to skill/LLM.',file:'codec.py'},
-  {id:'f13',label:'F13\nToggle',x:180,y:240,r:24,color:'#ffd740',category:'input',
-   info:'F13 toggles CODEC on/off. Resets voice session. Shows overlay.',file:'codec.py'},
-  {id:'wake',label:'Wake\nWord',x:160,y:360,r:24,color:'#00e676',category:'input',
-   info:'"Hey CODEC" — continuous mic listening via Anker webcam. Auto-activates + records follow-up.',file:'codec.py'},
-  {id:'screenshot',label:'Screen\n**',x:580,y:160,r:22,color:'#448aff',category:'input',
+  // ─── EYES (upper-left) — Vision & Screen Reading ───
+  {id:'vision',label:'Vision VL',x:220,y:140,r:30,color:'#448aff',icon:'eye',category:'eyes',zone:'eyes',
+   info:'Qwen2.5-VL-7B for screen reading, image analysis. Gemini Flash as cloud fallback.',file:'mlx_lm.server',port:8082,health:'/v1/models'},
+  {id:'screenshot',label:'Screen **',x:140,y:100,r:18,color:'#448aff',icon:'monitor',category:'eyes',zone:'eyes',
    info:'Double-asterisk captures screen, reads via Vision, opens question dialog.',file:'codec.py'},
-  {id:'document',label:'Doc\n++',x:680,y:190,r:22,color:'#448aff',category:'input',
+  {id:'document',label:'Doc ++',x:300,y:90,r:18,color:'#448aff',icon:'draft',category:'eyes',zone:'eyes',
    info:'Double-plus opens file picker. Extracts text/image/PDF content for analysis.',file:'codec.py'},
 
-  // ── Service Layer (right) ──
-  {id:'qwen',label:'Qwen\nLLM',x:820,y:350,r:36,color:'#ff9544',category:'service',
-   info:'Qwen 3.5 35B (4-bit MLX). Main language model for all reasoning.',file:'mlx_lm.server',port:8081,health:'/v1/models'},
-  {id:'vision',label:'Vision\nVL',x:870,y:480,r:28,color:'#ff9544',category:'service',
-   info:'Qwen2.5-VL-7B for screen reading, image analysis. Gemini Flash as cloud fallback.',file:'mlx_lm.server',port:8082,health:'/v1/models'},
-  {id:'whisper',label:'Whisper\nSTT',x:200,y:480,r:28,color:'#ff9544',category:'service',
+  // ─── EARS (upper-right) — Hearing & Speech Input ───
+  {id:'whisper',label:'Whisper STT',x:860,y:140,r:30,color:'#00e676',icon:'ear',category:'ears',zone:'ears',
    info:'whisper-large-v3-turbo on MLX. Transcribes voice to text.',file:'whisper_server.py',port:8084,health:'/'},
-  {id:'kokoro',label:'Kokoro\nTTS',x:820,y:220,r:28,color:'#ff9544',category:'service',
+  {id:'f18',label:'F18 Voice',x:800,y:80,r:20,color:'#00e676',icon:'mic',category:'ears',zone:'ears',
+   info:'Hold F18 to record voice. Persistent conversation session across presses.',file:'codec.py'},
+  {id:'wake',label:'Wake Word',x:940,y:100,r:20,color:'#00e676',icon:'wave',category:'ears',zone:'ears',
+   info:'"Hey CODEC" — continuous mic listening via Anker webcam. Auto-activates.',file:'codec.py'},
+  {id:'f16',label:'F16 Text',x:940,y:180,r:18,color:'#00e676',icon:'key',category:'ears',zone:'ears',
+   info:'Press F16 for text input dialog (AppleScript). Dispatches to skill/LLM.',file:'codec.py'},
+
+  // ─── HEART (center) — Core Dispatch & Toggle ───
+  {id:'dispatch',label:'Dispatch',x:550,y:320,r:44,color:'#E8711A',icon:'heart',category:'heart',zone:'heart',
+   info:'Central hub. Routes all voice/text tasks to skills, drafts, or LLM. The heartbeat of CODEC.',file:'codec.py'},
+  {id:'f13',label:'F13 Toggle',x:430,y:300,r:20,color:'#ffd740',icon:'toggle',category:'heart',zone:'heart',
+   info:'Toggles CODEC on/off. Resets voice session. Master switch.',file:'codec.py'},
+  {id:'config',label:'Config',x:670,y:300,r:18,color:'#666',icon:'cpu',category:'heart',zone:'heart',
+   info:'Single source of truth. ~/.codec/config.json. All services read from here.',file:'codec_config.py'},
+  {id:'watcher',label:'Draft Watch',x:440,y:380,r:20,color:'#ffd740',icon:'draft',category:'heart',zone:'heart',
+   info:'Monitors draft_task.json. Screenshots screen, generates contextual replies.',file:'codec_watcher.py'},
+
+  // ─── MOUTH (left-center) — Voice Output ───
+  {id:'kokoro',label:'Kokoro TTS',x:170,y:310,r:30,color:'#ff9544',icon:'mouth',category:'mouth',zone:'mouth',
    info:'Kokoro-82M TTS. Voice: am_adam. Generates speech audio, played via afplay.',file:'kokoro_server.py',port:8085,health:'/v1/models'},
 
-  // ── Application Layer (bottom-left) ──
-  {id:'dashboard',label:'Dashboard\n:8090',x:340,y:560,r:32,color:'#448aff',category:'app',
+  // ─── HANDS (right side) — Skills & Actions ───
+  {id:'skills',label:'Skills x57',x:820,y:320,r:34,color:'#ffd740',icon:'hand',category:'hands',zone:'hands',
+   info:'57 skill plugins: Chrome, Google Suite, system control, media, utilities. Trigger-matched.',file:'skills/*.py'},
+  {id:'agents',label:'Agents',x:920,y:370,r:22,color:'#ffd740',icon:'bolt',category:'hands',zone:'hands',
+   info:'Deep research, daily briefing, trip planner + custom agents. Background job queue.',file:'routes/agents.py'},
+
+  // ─── SPINE (bottom-center) — Dashboard & UIs ───
+  {id:'dashboard',label:'Dashboard',x:550,y:500,r:34,color:'#448aff',icon:'spine',category:'spine',zone:'spine',
    info:'FastAPI server. Serves all UIs, API endpoints, WebSocket. Auth + E2E encryption.',file:'codec_dashboard.py',port:8090,health:'/api/health'},
-  {id:'chat',label:'Chat\nUI',x:200,y:620,r:24,color:'#448aff',category:'app',
+  {id:'chat',label:'Chat UI',x:420,y:530,r:20,color:'#448aff',icon:'chat',category:'spine',zone:'spine',
    info:'/chat — Conversational interface. 45 skills, streaming, vision, memory search.',file:'codec_chat.html'},
-  {id:'voice_ws',label:'Voice\nWS',x:100,y:540,r:24,color:'#448aff',category:'app',
+  {id:'voice_ws',label:'Voice WS',x:680,y:530,r:20,color:'#448aff',icon:'mic',category:'spine',zone:'spine',
    info:'/ws/voice — WebSocket voice pipeline. VAD, interruption, streaming TTS.',file:'codec_voice.py'},
-  {id:'vibe',label:'Vibe\nIDE',x:340,y:680,r:22,color:'#448aff',category:'app',
+  {id:'vibe',label:'Vibe IDE',x:550,y:580,r:18,color:'#448aff',icon:'globe',category:'spine',zone:'spine',
    info:'/vibe — Code generation preview. HTML/CSS/JS with live preview.',file:'codec_vibe.html'},
 
-  // ── Intelligence Layer (center-right) ──
-  {id:'skills',label:'Skills\n×57',x:650,y:340,r:30,color:'#ffd740',category:'intel',
-   info:'57 skill plugins: Chrome, Google Suite, system control, media, utilities. Trigger-matched.',file:'skills/*.py'},
-  {id:'agents',label:'Agents\nCrews',x:750,y:550,r:26,color:'#ffd740',category:'intel',
-   info:'Deep research, daily briefing, trip planner + custom agents. Background job queue.',file:'routes/agents.py'},
-  {id:'search',label:'Web\nSearch',x:500,y:260,r:22,color:'#ffd740',category:'intel',
-   info:'DuckDuckGo instant + Serper API. 5-min TTL cache. Called by skills + chat enrichment.',file:'codec_search.py'},
-  {id:'watcher',label:'Draft\nWatcher',x:380,y:350,r:22,color:'#ffd740',category:'intel',
-   info:'Monitors draft_task.json. Screenshots screen, generates contextual replies, auto-pastes.',file:'codec_watcher.py'},
-
-  // ── Reliability Layer (bottom-right) ──
-  {id:'heartbeat',label:'Heartbeat\n5min',x:880,y:620,r:24,color:'#00e676',category:'monitor',
-   info:'Every 5 min: checks all services, LLM liveness probe, memory stats, auto-restart.',file:'codec_heartbeat.py'},
-  {id:'alerts',label:'Alerts\nTG/Email',x:950,y:500,r:20,color:'#ff3d3d',category:'monitor',
-   info:'Multi-channel: Telegram, Email, Slack, macOS. Consecutive failure counting.',file:'codec_alerts.py'},
-  {id:'metrics',label:'Metrics\nProm',x:950,y:380,r:18,color:'#666680',category:'monitor',
+  // ─── IMMUNE SYSTEM (bottom) — Monitoring & Safety ───
+  {id:'heartbeat',label:'Heartbeat',x:780,y:520,r:22,color:'#00e676',icon:'clock',category:'immune',zone:'immune',
+   info:'Every 5 min: checks all services, LLM liveness probe, auto-restart.',file:'codec_heartbeat.py'},
+  {id:'alerts',label:'Alerts',x:900,y:520,r:18,color:'#ff3d3d',icon:'alarm',category:'immune',zone:'immune',
+   info:'Multi-channel: Telegram, Email, Slack, macOS notifications.',file:'codec_alerts.py'},
+  {id:'metrics',label:'Metrics',x:900,y:460,r:16,color:'#666',icon:'chart',category:'immune',zone:'immune',
    info:'Prometheus /metrics endpoint. Counters, histograms, uptime gauge.',file:'codec_metrics.py'},
-  {id:'approval',label:'Approval\nRemote',x:480,y:680,r:22,color:'#ff3d3d',category:'monitor',
-   info:'Command approval via dashboard/phone + tkinter. Polls every 2s for remote response.',file:'codec_session.py'},
-  {id:'llm_queue',label:'LLM\nQueue',x:730,y:440,r:20,color:'#666680',category:'monitor',
-   info:'Priority queue: CRITICAL(voice) > HIGH(chat) > MEDIUM(agents) > LOW(background).',file:'codec_llm_proxy.py'},
+  {id:'approval',label:'Approval',x:340,y:560,r:20,color:'#ff3d3d',icon:'shield',category:'immune',zone:'immune',
+   info:'Command approval via dashboard/phone + tkinter. Remote allow/deny.',file:'codec_session.py'},
 ];
 
 var EDGES = [
-  // Input → Dispatch
+  // Ears -> Brain
   {from:'f18',to:'whisper',color:'#00e676',label:'audio'},
+  {from:'wake',to:'whisper',color:'#00e676',label:'audio'},
   {from:'whisper',to:'dispatch',color:'#00e676',label:'text'},
   {from:'f16',to:'dispatch',color:'#00e676'},
-  {from:'f13',to:'dispatch',color:'#ffd740',style:'dashed'},
-  {from:'wake',to:'whisper',color:'#00e676',label:'audio'},
-  {from:'screenshot',to:'vision',color:'#448aff'},
+
+  // Eyes -> Brain
+  {from:'screenshot',to:'vision',color:'#448aff',label:'pixels'},
   {from:'screenshot',to:'dispatch',color:'#448aff'},
   {from:'document',to:'dispatch',color:'#448aff'},
+  {from:'vision',to:'dispatch',color:'#448aff',label:'desc'},
 
-  // Dispatch → Processing
+  // Heart pumps to all
   {from:'dispatch',to:'skills',color:'#E8711A',label:'match'},
   {from:'dispatch',to:'watcher',color:'#E8711A',label:'draft'},
-  {from:'dispatch',to:'qwen',color:'#E8711A',label:'query'},
-  {from:'dispatch',to:'memory',color:'#b388ff',label:'context'},
+  {from:'dispatch',to:'qwen',color:'#E8711A',label:'think'},
+  {from:'dispatch',to:'memory',color:'#b388ff',label:'recall'},
   {from:'dispatch',to:'search',color:'#ffd740'},
+  {from:'f13',to:'dispatch',color:'#ffd740',style:'dashed'},
+  {from:'config',to:'dispatch',color:'#444',style:'dashed'},
 
-  // Skills → Services
+  // Brain processes
+  {from:'qwen',to:'kokoro',color:'#ff9544',label:'speak'},
+  {from:'qwen',to:'memory',color:'#b388ff',label:'save'},
+  {from:'llm_queue',to:'qwen',color:'#666',style:'dashed'},
+
+  // Hands execute
   {from:'skills',to:'qwen',color:'#ffd740'},
   {from:'skills',to:'vision',color:'#ffd740'},
   {from:'skills',to:'search',color:'#ffd740'},
-
-  // LLM → Output
-  {from:'qwen',to:'kokoro',color:'#ff9544',label:'speak'},
-  {from:'qwen',to:'memory',color:'#b388ff',label:'save'},
+  {from:'agents',to:'qwen',color:'#ffd740'},
+  {from:'agents',to:'search',color:'#ffd740'},
+  {from:'agents',to:'memory',color:'#b388ff'},
   {from:'watcher',to:'qwen',color:'#ffd740'},
   {from:'watcher',to:'vision',color:'#ffd740'},
 
-  // Dashboard connections
+  // Spine connects UIs
   {from:'dashboard',to:'qwen',color:'#448aff'},
   {from:'dashboard',to:'memory',color:'#b388ff'},
   {from:'dashboard',to:'skills',color:'#ffd740'},
   {from:'chat',to:'dashboard',color:'#448aff'},
   {from:'voice_ws',to:'dashboard',color:'#448aff'},
-  {from:'vibe',to:'dashboard',color:'#448aff'},
   {from:'voice_ws',to:'whisper',color:'#00e676'},
   {from:'voice_ws',to:'kokoro',color:'#ff9544'},
+  {from:'vibe',to:'dashboard',color:'#448aff'},
 
-  // Intelligence
-  {from:'agents',to:'qwen',color:'#ffd740'},
-  {from:'agents',to:'search',color:'#ffd740'},
-  {from:'agents',to:'memory',color:'#b388ff'},
-  {from:'llm_queue',to:'qwen',color:'#666680',style:'dashed'},
-
-  // Monitoring
+  // Immune system monitors
   {from:'heartbeat',to:'qwen',color:'#00e676',style:'dashed',label:'probe'},
   {from:'heartbeat',to:'whisper',color:'#00e676',style:'dashed'},
   {from:'heartbeat',to:'kokoro',color:'#00e676',style:'dashed'},
@@ -166,90 +337,116 @@ var EDGES = [
   {from:'heartbeat',to:'dashboard',color:'#00e676',style:'dashed'},
   {from:'heartbeat',to:'alerts',color:'#ff3d3d'},
   {from:'approval',to:'dashboard',color:'#ff3d3d'},
+];
 
-  // Config (subtle)
-  {from:'config',to:'dispatch',color:'#333',style:'dashed'},
-  {from:'config',to:'dashboard',color:'#333',style:'dashed'},
+// Zone labels
+var ZONES = [
+  {label:'Brain',x:550,y:52,color:'#E8711A'},
+  {label:'Eyes',x:220,y:55,color:'#448aff'},
+  {label:'Ears',x:870,y:45,color:'#00e676'},
+  {label:'Heart',x:550,y:240,color:'#E8711A'},
+  {label:'Mouth',x:170,y:255,color:'#ff9544'},
+  {label:'Hands',x:860,y:255,color:'#ffd740'},
+  {label:'Spine',x:550,y:445,color:'#448aff'},
+  {label:'Immune',x:780,y:580,color:'#ff3d3d'},
 ];
 
 // ── State ──
 var svg = document.getElementById('cortex');
-var pan = {x:0, y:0, scale:1, dragging:false, startX:0, startY:0};
+var pan = {x:0,y:0,scale:1,dragging:false,startX:0,startY:0};
 var nodeMap = {};
 NODES.forEach(function(n){ nodeMap[n.id] = n; });
 var healthStatus = {};
 
+// ── SVG Icon renderer ──
+function renderIcon(cx, cy, iconName, size, color) {
+  var d = ICONS[iconName];
+  if (!d) return '';
+  var s = size / 24;
+  var tx = cx - size/2;
+  var ty = cy - size/2;
+  return '<g transform="translate('+tx+','+ty+') scale('+s+')">' +
+    '<path d="'+d+'" fill="none" stroke="'+color+'" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity=".85"/>' +
+    '</g>';
+}
+
 // ── Render ──
 function render() {
   var w = window.innerWidth, h = window.innerHeight;
-  svg.setAttribute('viewBox', ((-pan.x/pan.scale)) + ' ' + ((-pan.y/pan.scale)) + ' ' + (w/pan.scale) + ' ' + (h/pan.scale));
+  svg.setAttribute('viewBox', ((-pan.x/pan.scale))+' '+((-pan.y/pan.scale))+' '+(w/pan.scale)+' '+(h/pan.scale));
 
   var html = '<defs>';
-  // Glow filters
-  html += '<filter id="glow"><feGaussianBlur stdDeviation="3" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>';
-  html += '<filter id="glowStrong"><feGaussianBlur stdDeviation="6" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>';
-  // Animated particle
-  html += '<marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="4" markerHeight="4" orient="auto"><path d="M0,0 L10,5 L0,10 Z" fill="var(--accent)" opacity=".6"/></marker>';
+  html += '<filter id="glow"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>';
+  html += '<filter id="glowHard"><feGaussianBlur stdDeviation="8" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>';
+  html += '<radialGradient id="nodeGrad" cx="35%" cy="35%"><stop offset="0%" stop-color="#fff" stop-opacity=".08"/><stop offset="100%" stop-color="#000" stop-opacity="0"/></radialGradient>';
   html += '</defs>';
 
-  // Background grid
-  html += '<pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">';
-  html += '<path d="M40,0 L0,0 L0,40" fill="none" stroke="#0d0d15" stroke-width=".5"/>';
+  // Background grid (subtle)
+  html += '<pattern id="grid" width="50" height="50" patternUnits="userSpaceOnUse">';
+  html += '<path d="M50,0 L0,0 L0,50" fill="none" stroke="#0e0e18" stroke-width=".4"/>';
   html += '</pattern>';
-  html += '<rect width="2000" height="1200" fill="url(#grid)" x="-200" y="-100"/>';
+  html += '<rect class="grid-rect" width="2400" height="1400" fill="url(#grid)" x="-400" y="-200"/>';
+
+  // Zone subtle bg blobs
+  ZONES.forEach(function(z) {
+    html += '<circle cx="'+z.x+'" cy="'+(parseInt(z.y)+60)+'" r="120" fill="'+z.color+'" opacity=".012"/>';
+  });
+
+  // Zone labels
+  ZONES.forEach(function(z) {
+    html += '<text x="'+z.x+'" y="'+z.y+'" text-anchor="middle" class="zone-label" fill="'+z.color+'">'+z.label.toUpperCase()+'</text>';
+  });
 
   // Edges
-  EDGES.forEach(function(e,i) {
+  EDGES.forEach(function(e, i) {
     var from = nodeMap[e.from], to = nodeMap[e.to];
     if (!from || !to) return;
-    var dx = to.x - from.x, dy = to.y - from.y;
-    var dist = Math.sqrt(dx*dx + dy*dy);
+    var dx = to.x-from.x, dy = to.y-from.y;
+    var dist = Math.sqrt(dx*dx+dy*dy) || 1;
     var nx = dx/dist, ny = dy/dist;
-    var x1 = from.x + nx * from.r, y1 = from.y + ny * from.r;
-    var x2 = to.x - nx * to.r, y2 = to.y - ny * to.r;
-    // Curved path
-    var mx = (x1+x2)/2 + (y2-y1)*0.1, my = (y1+y2)/2 - (x2-x1)*0.1;
+    var x1 = from.x+nx*from.r, y1 = from.y+ny*from.r;
+    var x2 = to.x-nx*to.r, y2 = to.y-ny*to.r;
+    var mx = (x1+x2)/2+(y2-y1)*0.12, my = (y1+y2)/2-(x2-x1)*0.12;
     var path = 'M'+x1+','+y1+' Q'+mx+','+my+' '+x2+','+y2;
-    var dash = e.style === 'dashed' ? 'stroke-dasharray="6,4"' : 'stroke-dasharray="none"';
-    var op = e.style === 'dashed' ? '.15' : '.3';
-    html += '<path d="'+path+'" fill="none" stroke="'+(e.color||'#333')+'" stroke-width="1.5" opacity="'+op+'" '+dash+' class="edge"/>';
-    // Animated flow particle
-    if (e.style !== 'dashed') {
-      html += '<circle r="2" fill="'+(e.color||'#E8711A')+'" opacity=".7">';
-      html += '<animateMotion dur="'+(2+i%3)+'s" repeatCount="indefinite" path="'+path+'"/>';
-      html += '</circle>';
+    var isDash = e.style === 'dashed';
+    var op = isDash ? '.1' : '.22';
+    html += '<path d="'+path+'" fill="none" stroke="'+(e.color||'#333')+'" stroke-width="1.2" opacity="'+op+'"'+(isDash?' stroke-dasharray="5,4"':'')+'/>';
+    // Flow particles (only on solid connections)
+    if (!isDash) {
+      html += '<circle r="1.8" fill="'+(e.color||'#E8711A')+'" opacity=".6"><animateMotion dur="'+(2.5+i%3)+'s" repeatCount="indefinite" path="'+path+'"/></circle>';
     }
-    // Edge label
     if (e.label) {
-      html += '<text x="'+mx+'" y="'+(my-6)+'" text-anchor="middle" fill="'+(e.color||'#666')+'" font-size="8" opacity=".5">'+e.label+'</text>';
+      html += '<text x="'+mx+'" y="'+(my-5)+'" text-anchor="middle" fill="'+(e.color||'#444')+'" font-size="7.5" opacity=".35">'+e.label+'</text>';
     }
   });
 
   // Nodes
   NODES.forEach(function(n) {
     var status = healthStatus[n.id] || 'unknown';
-    var ringColor = status === 'ok' ? '#00e676' : status === 'err' ? '#ff3d3d' : n.color;
-    var glowFilter = status === 'ok' ? 'filter="url(#glow)"' : status === 'err' ? 'filter="url(#glowStrong)"' : '';
+    var ringColor = status==='ok'?'#00e676':status==='err'?'#ff3d3d':n.color;
+    var glow = status==='ok'?'filter="url(#glow)"':status==='err'?'filter="url(#glowHard)"':'';
+    var ringOp = status==='ok'?'.5':status==='err'?'.7':'.25';
 
-    // Outer ring (health indicator)
-    html += '<circle cx="'+n.x+'" cy="'+n.y+'" r="'+(n.r+3)+'" fill="none" stroke="'+ringColor+'" stroke-width="1.5" opacity=".4" '+glowFilter+'/>';
-    // Main circle
-    html += '<circle cx="'+n.x+'" cy="'+n.y+'" r="'+n.r+'" fill="'+n.color+'10" stroke="'+n.color+'" stroke-width="1.5" style="cursor:pointer" onclick="showDetail(\''+n.id+'\')" class="node-circle"/>';
-    // Inner pulse for active services
-    if (n.port && status === 'ok') {
-      html += '<circle cx="'+n.x+'" cy="'+n.y+'" r="'+(n.r-4)+'" fill="'+n.color+'" opacity=".06"><animate attributeName="r" values="'+(n.r-8)+';'+(n.r-2)+';'+(n.r-8)+'" dur="3s" repeatCount="indefinite"/><animate attributeName="opacity" values=".06;.15;.06" dur="3s" repeatCount="indefinite"/></circle>';
+    // Health ring
+    html += '<circle cx="'+n.x+'" cy="'+n.y+'" r="'+(n.r+4)+'" fill="none" stroke="'+ringColor+'" stroke-width="1.5" opacity="'+ringOp+'" '+glow+'/>';
+    // Main body
+    html += '<circle cx="'+n.x+'" cy="'+n.y+'" r="'+n.r+'" fill="'+n.color+'0a" stroke="'+n.color+'" stroke-width="1.2" style="cursor:pointer" onclick="showDetail(\''+n.id+'\')" class="node-c"/>';
+    // Inner gradient
+    html += '<circle cx="'+n.x+'" cy="'+n.y+'" r="'+n.r+'" fill="url(#nodeGrad)" style="pointer-events:none"/>';
+    // Pulse for active services
+    if (n.port && status==='ok') {
+      html += '<circle cx="'+n.x+'" cy="'+n.y+'" r="'+(n.r-3)+'" fill="'+n.color+'" opacity=".04"><animate attributeName="r" values="'+(n.r-8)+';'+(n.r)+';'+(n.r-8)+'" dur="4s" repeatCount="indefinite"/><animate attributeName="opacity" values=".04;.1;.04" dur="4s" repeatCount="indefinite"/></circle>';
     }
+    // Icon
+    var iconSize = Math.min(n.r * 0.8, 18);
+    html += renderIcon(n.x, n.y - 4, n.icon, iconSize, n.color);
+    // Label below
+    html += '<text x="'+n.x+'" y="'+(n.y+n.r+13)+'" text-anchor="middle" fill="'+n.color+'" font-size="9" font-weight="500" opacity=".75" style="pointer-events:none">'+n.label+'</text>';
     // Port badge
     if (n.port) {
-      html += '<rect x="'+(n.x-14)+'" y="'+(n.y+n.r-2)+'" width="28" height="14" rx="7" fill="'+n.color+'" opacity=".8"/>';
-      html += '<text x="'+n.x+'" y="'+(n.y+n.r+10)+'" text-anchor="middle" fill="#000" font-size="8" font-weight="700">'+n.port+'</text>';
+      html += '<rect x="'+(n.x-13)+'" y="'+(n.y+n.r+17)+'" width="26" height="12" rx="6" fill="'+n.color+'" opacity=".75"/>';
+      html += '<text x="'+n.x+'" y="'+(n.y+n.r+26)+'" text-anchor="middle" fill="#000" font-size="7.5" font-weight="700">'+n.port+'</text>';
     }
-    // Label
-    var lines = n.label.split('\n');
-    lines.forEach(function(line, li) {
-      var yOff = n.y - ((lines.length-1)*6) + li*13;
-      html += '<text x="'+n.x+'" y="'+yOff+'" text-anchor="middle" fill="'+n.color+'" font-size="10" font-weight="600" style="cursor:pointer;pointer-events:none" opacity=".9">'+line+'</text>';
-    });
   });
 
   svg.innerHTML = html;
@@ -257,173 +454,385 @@ function render() {
 
 // ── Detail Panel ──
 function showDetail(id) {
+  if (id === 'skills') { openSkills(); return; }
   var n = nodeMap[id]; if (!n) return;
   var d = document.getElementById('detail');
-  document.getElementById('detailTitle').textContent = n.label.replace('\n',' ') + (n.port ? ' [:'+n.port+']' : '');
+  document.getElementById('detailTitle').textContent = n.label + (n.port ? ' [:'+n.port+']' : '');
   var status = healthStatus[id] || 'checking...';
-  var statusColor = status === 'ok' ? 'var(--green)' : status === 'err' ? 'var(--red)' : 'var(--dim)';
-  var connections = [];
+  var statusColor = status==='ok'?'var(--green)':status==='err'?'var(--red)':'var(--dim)';
+  var statusDotClass = status==='ok'?'ok':status==='err'?'err':'warn';
+  var conns = [];
   EDGES.forEach(function(e) {
-    if (e.from === id) connections.push('&rarr; ' + (nodeMap[e.to]||{}).label.replace('\n',' ') + (e.label ? ' ('+e.label+')' : ''));
-    if (e.to === id) connections.push('&larr; ' + (nodeMap[e.from]||{}).label.replace('\n',' ') + (e.label ? ' ('+e.label+')' : ''));
+    if (e.from===id) conns.push('&rarr; '+(nodeMap[e.to]||{label:'?'}).label+(e.label?' <span style="color:var(--dim)">('+e.label+')</span>':''));
+    if (e.to===id) conns.push('&larr; '+(nodeMap[e.from]||{label:'?'}).label+(e.label?' <span style="color:var(--dim)">('+e.label+')</span>':''));
   });
+
+  // Determine if this node can be restarted/has logs
+  var restartable = ['qwen','vision','whisper','kokoro','dashboard','dispatch','heartbeat','watcher'].indexOf(id) !== -1;
+  var hasLogs = restartable || ['f18','f16','f13','wake','screenshot','document'].indexOf(id) !== -1;
+
+  var actionsHtml = '<div class="detail-actions">';
+  if (hasLogs) actionsHtml += '<button class="detail-btn" onclick="viewLogs(\''+id+'\')">View Logs</button>';
+  if (restartable) actionsHtml += '<button class="detail-btn success" onclick="restartService(\''+id+'\')">Restart</button>';
+  if (n.port) actionsHtml += '<a class="detail-btn" href="http://localhost:'+n.port+'/" target="_blank">Open :'+n.port+'</a>';
+  actionsHtml += '</div>';
+
   document.getElementById('detailInfo').innerHTML =
-    '<b>Status:</b> <span style="color:'+statusColor+'">'+status+'</span><br>' +
-    '<b>File:</b> '+n.file+'<br>' +
-    '<b>Category:</b> '+n.category+'<br>' +
-    (n.port ? '<b>Port:</b> '+n.port+'<br>' : '') +
-    '<b>Description:</b> '+n.info+'<br><br>' +
-    '<b>Connections ('+connections.length+'):</b><br>' +
-    connections.join('<br>');
+    '<div class="detail-status-bar"><span class="detail-status-dot dot '+statusDotClass+'"></span><span style="color:'+statusColor+';font-weight:600">'+status.toUpperCase()+'</span></div>'+
+    '<b>Zone:</b> '+(n.zone||'-').charAt(0).toUpperCase()+(n.zone||'').slice(1)+'<br>'+
+    '<b>File:</b> '+n.file+'<br>'+
+    (n.port?'<b>Port:</b> '+n.port+'<br>':'')+
+    '<b>Info:</b> '+n.info+'<br>'+
+    '<b>Connections:</b> '+conns.length+'<br>'+
+    actionsHtml+
+    '<div id="logViewer"></div>';
   d.classList.add('open');
 }
+function closeDetail(){ document.getElementById('detail').classList.remove('open'); }
 
-function closeDetail() {
-  document.getElementById('detail').classList.remove('open');
+function viewLogs(id) {
+  var lv = document.getElementById('logViewer');
+  if (lv.classList.contains('open') && lv.dataset.service === id) {
+    lv.classList.remove('open'); return;
+  }
+  lv.dataset.service = id;
+  lv.classList.add('open');
+  lv.textContent = 'Loading logs...';
+  fetch('/api/cortex/logs/' + id).then(function(r){return r.json();}).then(function(data) {
+    lv.textContent = data.logs || 'No logs available';
+    lv.scrollTop = lv.scrollHeight;
+  }).catch(function() { lv.textContent = 'Failed to load logs'; });
+}
+
+function restartService(id) {
+  if (!confirm('Restart ' + (nodeMap[id]||{}).label + '?')) return;
+  var hdrs = {'Content-Type':'application/json'};
+  var cm = document.cookie.match(/codec_csrf=([^;]+)/);
+  if (cm) hdrs['x-csrf-token'] = cm[1];
+  fetch('/api/cortex/restart/' + id, {method:'POST', headers:hdrs}).then(function(r){return r.json();}).then(function(data) {
+    if (data.ok) {
+      healthStatus[id] = 'warn';
+      render(); updateStats();
+      alert('Restarted ' + data.pm2_name);
+      // Re-check health after 5s
+      setTimeout(checkHealth, 5000);
+    } else {
+      alert('Failed: ' + (data.error || 'unknown'));
+    }
+  }).catch(function() { alert('Request failed'); });
 }
 
 // ── Pan & Zoom ──
-svg.addEventListener('mousedown', function(e) {
-  if (e.target.classList.contains('node-circle')) return;
-  pan.dragging = true; pan.startX = e.clientX - pan.x; pan.startY = e.clientY - pan.y;
-});
-window.addEventListener('mousemove', function(e) {
-  if (!pan.dragging) return;
-  pan.x = e.clientX - pan.startX; pan.y = e.clientY - pan.startY;
-  render();
-});
-window.addEventListener('mouseup', function() { pan.dragging = false; });
-svg.addEventListener('wheel', function(e) {
-  e.preventDefault();
-  var delta = e.deltaY > 0 ? 0.9 : 1.1;
-  pan.scale = Math.max(0.3, Math.min(3, pan.scale * delta));
-  render();
-}, {passive: false});
-// Touch support
-var touchDist = 0;
-svg.addEventListener('touchstart', function(e) {
-  if (e.touches.length === 1) {
-    pan.dragging = true; pan.startX = e.touches[0].clientX - pan.x; pan.startY = e.touches[0].clientY - pan.y;
-  }
-  if (e.touches.length === 2) {
-    touchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-  }
-});
-svg.addEventListener('touchmove', function(e) {
-  e.preventDefault();
-  if (e.touches.length === 1 && pan.dragging) {
-    pan.x = e.touches[0].clientX - pan.startX; pan.y = e.touches[0].clientY - pan.startY; render();
-  }
-  if (e.touches.length === 2) {
-    var d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-    if (touchDist > 0) { pan.scale = Math.max(0.3, Math.min(3, pan.scale * (d / touchDist))); render(); }
-    touchDist = d;
-  }
-}, {passive: false});
-svg.addEventListener('touchend', function() { pan.dragging = false; touchDist = 0; });
+svg.addEventListener('mousedown',function(e){ if(e.target.classList.contains('node-c'))return; pan.dragging=true;pan.startX=e.clientX-pan.x;pan.startY=e.clientY-pan.y; });
+window.addEventListener('mousemove',function(e){ if(!pan.dragging)return;pan.x=e.clientX-pan.startX;pan.y=e.clientY-pan.startY;render(); });
+window.addEventListener('mouseup',function(){pan.dragging=false;});
+svg.addEventListener('wheel',function(e){ e.preventDefault();var d=e.deltaY>0?.92:1.08;pan.scale=Math.max(.3,Math.min(3,pan.scale*d));render(); },{passive:false});
+// Touch
+var td=0;
+svg.addEventListener('touchstart',function(e){ if(e.touches.length===1){pan.dragging=true;pan.startX=e.touches[0].clientX-pan.x;pan.startY=e.touches[0].clientY-pan.y;} if(e.touches.length===2){td=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);} });
+svg.addEventListener('touchmove',function(e){ e.preventDefault(); if(e.touches.length===1&&pan.dragging){pan.x=e.touches[0].clientX-pan.startX;pan.y=e.touches[0].clientY-pan.startY;render();} if(e.touches.length===2){var d2=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);if(td>0){pan.scale=Math.max(.3,Math.min(3,pan.scale*(d2/td)));render();}td=d2;} },{passive:false});
+svg.addEventListener('touchend',function(){pan.dragging=false;td=0;});
 
-// ── Health Polling ──
+// ── Health Polling (via proxy — no CORS issues) ──
 function checkHealth() {
-  var checks = [
-    {id:'qwen', url:'/api/health'},  // proxy through dashboard
-    {id:'dashboard', url:'/api/health'},
-  ];
-  // Direct service checks via proxy
-  fetch('/api/health').then(function(r) {
-    healthStatus['dashboard'] = r.ok ? 'ok' : 'err';
-    // Check other services via a single status call
-    return fetch('/api/status');
-  }).then(function(r) { return r.json(); }).then(function(d) {
-    // Mark core services based on dashboard status
-    healthStatus['dispatch'] = 'ok';
-    healthStatus['config'] = 'ok';
-    healthStatus['memory'] = 'ok';
-    healthStatus['skills'] = 'ok';
-    healthStatus['search'] = 'ok';
-    healthStatus['watcher'] = 'ok';
-    healthStatus['f13'] = 'ok';
-    healthStatus['f18'] = 'ok';
-    healthStatus['f16'] = 'ok';
-    healthStatus['wake'] = 'ok';
-    healthStatus['screenshot'] = 'ok';
-    healthStatus['document'] = 'ok';
-    healthStatus['chat'] = 'ok';
-    healthStatus['voice_ws'] = 'ok';
-    healthStatus['vibe'] = 'ok';
-    healthStatus['agents'] = 'ok';
-    healthStatus['heartbeat'] = 'ok';
-    healthStatus['alerts'] = 'ok';
-    healthStatus['metrics'] = 'ok';
-    healthStatus['approval'] = 'ok';
-    healthStatus['llm_queue'] = 'ok';
-    render();
-    updateStats();
+  fetch('/api/cortex/health').then(function(r){return r.json();}).then(function(data) {
+    // Map proxy results
+    var serviceNodes = {qwen:1,vision:1,whisper:1,kokoro:1,dashboard:1};
+    Object.keys(data).forEach(function(k){ healthStatus[k] = data[k]; });
+    // Everything else: if dashboard is up, mark logical nodes as ok
+    NODES.forEach(function(n) {
+      if (!serviceNodes[n.id] && !healthStatus[n.id]) {
+        healthStatus[n.id] = data.dashboard === 'ok' ? 'ok' : 'warn';
+      }
+    });
+    render(); updateStats();
+    lastCheckTime = Date.now();
   }).catch(function() {
-    healthStatus['dashboard'] = 'err';
-    render();
-    updateStats();
-  });
-
-  // Check ML services directly
-  var mlChecks = [
-    {id:'qwen', port:8081, path:'/v1/models'},
-    {id:'vision', port:8082, path:'/v1/models'},
-    {id:'whisper', port:8084, path:'/'},
-    {id:'kokoro', port:8085, path:'/v1/models'},
-  ];
-  mlChecks.forEach(function(c) {
-    fetch('http://localhost:'+c.port+c.path, {signal: AbortSignal.timeout(5000)})
-      .then(function(r) { healthStatus[c.id] = r.ok || r.status === 404 ? 'ok' : 'err'; render(); updateStats(); })
-      .catch(function() { healthStatus[c.id] = 'err'; render(); updateStats(); });
+    // Fallback: just check dashboard directly
+    fetch('/api/health').then(function(r) {
+      healthStatus['dashboard'] = r.ok ? 'ok' : 'err';
+      NODES.forEach(function(n){ if(!healthStatus[n.id]) healthStatus[n.id] = r.ok?'ok':'warn'; });
+      render(); updateStats();
+      lastCheckTime = Date.now();
+    }).catch(function() {
+      healthStatus['dashboard'] = 'err'; render(); updateStats();
+      lastCheckTime = Date.now();
+    });
   });
 }
 
 function updateStats() {
-  var total = NODES.length, ok = 0, err = 0;
-  NODES.forEach(function(n) {
-    if (healthStatus[n.id] === 'ok') ok++;
-    else if (healthStatus[n.id] === 'err') err++;
-  });
-  var statsHtml = '<div class="stat"><span class="dot ok"></span>'+ok+' online</div>';
-  if (err > 0) statsHtml += '<div class="stat"><span class="dot err"></span>'+err+' down</div>';
-  var unknown = total - ok - err;
-  if (unknown > 0) statsHtml += '<div class="stat"><span class="dot warn"></span>'+unknown+' checking</div>';
-  document.getElementById('stats').innerHTML = statsHtml;
+  var ok=0, err=0;
+  NODES.forEach(function(n){ if(healthStatus[n.id]==='ok')ok++; else if(healthStatus[n.id]==='err')err++; });
+  var unk = NODES.length - ok - err;
+  var h = '<div class="stat"><span class="dot ok"></span>'+ok+' online</div>';
+  if (err) h += '<div class="stat"><span class="dot err"></span>'+err+' down</div>';
+  if (unk) h += '<div class="stat"><span class="dot warn"></span>'+unk+'</div>';
+  h += ' <span id="last-check"></span>';
+  document.getElementById('stats').innerHTML = h;
 }
 
 // ── Legend ──
-function buildLegend() {
+(function(){
   var cats = [
-    {color:'#00e676',label:'Input'},
-    {color:'#ff9544',label:'ML Service'},
-    {color:'#E8711A',label:'Core'},
-    {color:'#448aff',label:'Application'},
-    {color:'#ffd740',label:'Intelligence'},
-    {color:'#b388ff',label:'Data'},
-    {color:'#ff3d3d',label:'Safety'},
-    {color:'#666680',label:'Infrastructure'},
+    {color:'#E8711A',label:'Brain (LLM)'},
+    {color:'#448aff',label:'Eyes (Vision)'},
+    {color:'#00e676',label:'Ears (STT)'},
+    {color:'#ff9544',label:'Mouth (TTS)'},
+    {color:'#ffd740',label:'Hands (Skills)'},
+    {color:'#448aff',label:'Spine (UI)'},
+    {color:'#ff3d3d',label:'Immune (Safety)'},
   ];
-  var html = '';
-  cats.forEach(function(c) {
-    html += '<div class="legend-item"><div class="legend-dot" style="border-color:'+c.color+';background:'+c.color+'20"></div>'+c.label+'</div>';
+  var html='';
+  cats.forEach(function(c){
+    html+='<div class="legend-item"><div class="legend-dot" style="border-color:'+c.color+';background:'+c.color+'15"></div>'+c.label+'</div>';
   });
-  document.getElementById('legend').innerHTML = html;
+  document.getElementById('legend').innerHTML=html;
+})();
+
+// ── Skills Panel ──
+var allSkills = [];
+
+function loadSkills() {
+  fetch('/api/cortex/skills').then(function(r){return r.json();}).then(function(data) {
+    allSkills = data.skills || [];
+    // Update the Skills node label with real count
+    var skillNode = nodeMap['skills'];
+    if (skillNode) { skillNode.label = 'Skills x' + data.count; render(); }
+    renderSkillsList(allSkills);
+  }).catch(function(){});
 }
 
+function renderSkillsList(skills) {
+  var html = '';
+  skills.forEach(function(s) {
+    var triggers = (s.triggers || []).slice(0, 3).join(', ');
+    html += '<div class="skill-item"><span class="skill-dot"></span><span class="skill-name">' + s.name + '</span><span class="skill-triggers">' + triggers + '</span></div>';
+  });
+  document.getElementById('skillList').innerHTML = html;
+  document.getElementById('skillCount').textContent = skills.length + ' skills loaded';
+}
+
+function filterSkills(q) {
+  q = q.toLowerCase();
+  var filtered = allSkills.filter(function(s) {
+    return s.name.toLowerCase().indexOf(q) !== -1 || (s.triggers || []).some(function(t) { return t.toLowerCase().indexOf(q) !== -1; });
+  });
+  renderSkillsList(filtered);
+}
+
+function openSkills() {
+  document.getElementById('skills-panel').classList.add('open');
+  if (!allSkills.length) loadSkills();
+}
+function closeSkills() { document.getElementById('skills-panel').classList.remove('open'); }
+
+// ── Product Frames ──
+var PRODUCTS = [
+  {name:'CODEC Core',icon:'🎙',color:'#E8711A',
+   desc:'Always-on voice assistant. Hold F18 to talk, F16 for text, wake word activation. The central brain that routes everything.',
+   features:['F13 Toggle','F18 Voice','F16 Text','** Screenshot','++ Document','Wake Word','56 Skills','Persistent Session','Memory FTS5','Draft Watcher'],
+   files:['codec.py','codec_core.py','codec_config.py'],status:'core',
+   details:{shortcuts:['F13 — Toggle on/off','F18 — Hold to record voice','F16 — Text input dialog','** — Screenshot + Vision','++ — Document analysis','-- — Quick chat'],skills:'56 built-in skills: Google Calendar, Gmail, Drive, Docs, Sheets, Tasks, Keep, Chrome, web search, Hue lights, clipboard, terminal, music, timers, calculator, weather, bitcoin, brightness, volume, app switch, mouse control, screenshot OCR',memory:'FTS5-indexed SQLite. BM25 ranking. All conversations logged across all 7 products.',wake:'Always-on "Hey CODEC" via Anker webcam mic. Energy threshold: 200. Auto-activates and records follow-up.',files:['codec.py','codec_core.py','codec_config.py','codec_identity.py','skills/*.py']}},
+  {name:'Vision Mouse',icon:'👁',color:'#448aff',
+   desc:'Screenshot-based UI element detection. Voice-controlled mouse clicks via local vision model. See what you see.',
+   features:['Screen Capture','Vision VL Analysis','Element Detection','Voice Click','UI-TARS','Pixel Coords','Gemini Flash Fallback'],
+   files:['codec.py (screenshot)','skills/mouse_control.py'],status:'vision',
+   details:{how:'Screenshot → Vision VL analysis → Element detection → cliclick mouse action',models:'Qwen2.5-VL-7B (local MLX) + Gemini Flash (cloud fallback)',port:'8082',files:['codec.py','skills/mouse_control.py']}},
+  {name:'CODEC Dictate',icon:'✍️',color:'#00e676',
+   desc:'Hold-to-speak dictation with LLM grammar and tone correction. Works in any macOS app.',
+   features:['Hold to Record','Whisper STT','LLM Refinement','Auto-Paste','Any App','Grammar Fix','Tone Control'],
+   files:['codec_dictate.py'],status:'dictate',
+   details:{how:'Hold key → sox recording → Whisper STT → LLM grammar/tone refinement → auto-paste via pbcopy',port:'8084 (Whisper)',files:['codec_dictate.py']}},
+  {name:'CODEC Instant',icon:'⚡',color:'#ffd740',
+   desc:'Right-click AI services on any selected text system-wide. Proofread, translate, explain, reply.',
+   features:['Proofread','Elevate','Explain','Translate','Reply','Read Aloud','System-wide','Context Menu'],
+   files:['codec_instant.py'],status:'instant',
+   details:{services:['Proofread — Fix grammar and spelling','Elevate — Improve writing quality','Explain — Break down complex text','Translate — Multi-language translation','Reply — Generate contextual replies','Read Aloud — TTS on selected text'],how:'System-wide macOS Services menu. Select text → right-click → CODEC.',files:['codec_instant.py','codec_textassist.py']}},
+  {name:'CODEC Chat',icon:'💬',color:'#b388ff',
+   desc:'Conversational AI with 250K context, file uploads, image analysis, web search, and 12 agent crews.',
+   features:['250K Context','File Upload','Image Analysis','Web Search','12 Agent Crews','Streaming','Skill Execution','Voice Reply','Memory','Code Blocks'],
+   files:['codec_chat.html','codec_dashboard.py'],status:'chat',
+   details:{agents:'12 autonomous crews: Deep Research, Daily Briefing, Trip Planner, Competitor Analysis, Email Handler, Social Media, Code Review, Data Analysis, Content Writer, Meeting Summarizer, Invoice Generator, Project Manager',features:'250K context, file uploads (PDF/image/text), web search with Serper API, skill execution, streaming responses, voice reply toggle, thinking mode toggle, memory search',port:'8090 (/chat)',files:['codec_chat.html','codec_dashboard.py','routes/agents.py']}},
+  {name:'CODEC Vibe',icon:'🎨',color:'#ff9544',
+   desc:'AI coding IDE with Skill Forge. Auto-generates and deploys new plugins from natural language.',
+   features:['Live Preview','HTML/CSS/JS','Skill Forge','Auto Deploy','Code Generation','Template Library'],
+   files:['codec_vibe.html'],status:'vibe',
+   details:{how:'Natural language → LLM generates HTML/CSS/JS → Live preview in iframe → One-click deploy as skill',features:'Skill Forge auto-generates and deploys new plugins from description',port:'8090 (/vibe)',files:['codec_vibe.html']}},
+  {name:'CODEC Voice',icon:'📞',color:'#00e676',
+   desc:'Real-time voice-to-voice calls with live transcription, interruption handling, and mid-call screen analysis.',
+   features:['WebSocket','VAD','Interruption','Live Transcript','Screen Analysis','Streaming TTS','Low Latency'],
+   files:['codec_voice.py'],status:'voice',
+   details:{how:'WebSocket → VAD (voice activity detection) → Whisper STT → LLM → Kokoro TTS → streaming audio back',features:'Interruption handling, live transcription display, mid-call screen analysis, low-latency pipeline',port:'8090 (/voice)',files:['codec_voice.py','codec_voice.html']}},
+];
+
+function switchView(view) {
+  var btns = document.querySelectorAll('.vs-btn');
+  btns.forEach(function(b){b.classList.remove('active');});
+  if (view === 'products') {
+    btns[1].classList.add('active');
+    document.getElementById('cortex').style.display = 'none';
+    document.getElementById('settings-float').style.display = 'none';
+    document.getElementById('productsView').classList.add('open');
+    renderProducts();
+  } else {
+    btns[0].classList.add('active');
+    document.getElementById('cortex').style.display = '';
+    document.getElementById('settings-float').style.display = '';
+    document.getElementById('productsView').classList.remove('open');
+  }
+}
+
+function renderProducts() {
+  var html = '<div class="products-header"><h2>7 Products &middot; One Framework</h2><p>Every capability of the CODEC ecosystem</p></div>';
+  html += '<div class="products-grid">';
+  PRODUCTS.forEach(function(p) {
+    html += '<div class="product-card">';
+    html += '<div class="pc-status"></div>';
+    html += '<div class="pc-header"><div class="pc-icon" style="background:'+p.color+'15;border:1px solid '+p.color+'30">'+p.icon+'</div><div><div class="pc-title">'+p.name+'</div><div class="pc-subtitle">'+p.files[0]+'</div></div></div>';
+    html += '<div class="pc-desc">'+p.desc+'</div>';
+    html += '<div class="pc-features">';
+    p.features.forEach(function(f) {
+      html += '<span class="pc-feat">'+f+'</span>';
+    });
+    html += '</div>';
+    if (p.details) {
+      var pid = p.name.replace(/\s+/g,'-').toLowerCase();
+      html += '<button class="pc-expand-btn" onclick="toggleProductDetails(\''+pid+'\')">Show Details</button>';
+      html += '<div class="pc-details" id="pd-'+pid+'">';
+      var d = p.details;
+      if (d.shortcuts) {
+        html += '<div class="pc-detail-section"><h4>Keyboard Shortcuts</h4>';
+        d.shortcuts.forEach(function(s){ html += s + '<br>'; });
+        html += '</div>';
+      }
+      if (d.skills) html += '<div class="pc-detail-section"><h4>Skills</h4>' + d.skills + '</div>';
+      if (d.memory) html += '<div class="pc-detail-section"><h4>Memory</h4>' + d.memory + '</div>';
+      if (d.wake) html += '<div class="pc-detail-section"><h4>Wake Word</h4>' + d.wake + '</div>';
+      if (d.how) html += '<div class="pc-detail-section"><h4>How It Works</h4>' + d.how + '</div>';
+      if (d.models) html += '<div class="pc-detail-section"><h4>Models</h4>' + d.models + '</div>';
+      if (d.services) {
+        html += '<div class="pc-detail-section"><h4>Services</h4>';
+        d.services.forEach(function(s){ html += s + '<br>'; });
+        html += '</div>';
+      }
+      if (d.agents) html += '<div class="pc-detail-section"><h4>Agent Crews</h4>' + d.agents + '</div>';
+      if (d.features) html += '<div class="pc-detail-section"><h4>Features</h4>' + (typeof d.features === 'string' ? d.features : d.features.join(', ')) + '</div>';
+      if (d.port) html += '<div class="pc-detail-section"><h4>Port</h4>' + d.port + '</div>';
+      if (d.files) html += '<div class="pc-detail-section"><h4>Files</h4>' + d.files.join(', ') + '</div>';
+      html += '</div>';
+    }
+    html += '</div>';
+  });
+  // Supporting systems card
+  html += '<div class="product-card" style="grid-column:1/-1">';
+  html += '<div class="pc-header"><div class="pc-icon" style="background:rgba(102,102,128,.15);border:1px solid rgba(102,102,128,.3)">🔧</div><div><div class="pc-title">Supporting Systems</div><div class="pc-subtitle">Infrastructure</div></div></div>';
+  html += '<div class="pc-features">';
+  ['Dashboard :8090','Cloudflare Tunnel','MCP Server','Task Scheduler','Heartbeat Monitor','Alerts (TG/Email)','Prometheus Metrics','Remote Approval','Memory FTS5','PM2 Process Manager','Skill Marketplace','CORTEX Visualizer'].forEach(function(f) {
+    html += '<span class="pc-feat">'+f+'</span>';
+  });
+  html += '</div></div>';
+  html += '</div>';
+  document.getElementById('productsView').innerHTML = html;
+}
+
+// ── Settings Float ──
+function loadSettings() {
+  fetch('/api/config').then(function(r){return r.json();}).then(function(cfg) {
+    var llm = cfg.llm || {};
+    var tts = cfg.tts || {};
+    var stt = cfg.stt || {};
+    var wake = cfg.wake || {};
+    var model = (llm.llm_model || 'unknown').split('/').pop();
+    var html = '';
+    html += '<div class="setting-row"><b>LLM</b><span class="setting-val">' + model + '</span></div>';
+    html += '<div class="setting-row"><b>Voice</b><span class="setting-val">' + (tts.tts_voice || '?') + '</span></div>';
+    html += '<div class="setting-row"><b>STT</b><span class="setting-val">' + (stt.stt_engine || '?') + '</span></div>';
+    html += '<div class="setting-row"><b>Wake</b><span class="setting-val">' + (wake.wake_word_enabled ? 'ON' : 'OFF') + '</span></div>';
+    html += '<div class="setting-row"><b>TTS</b><span class="setting-val">' + (tts.tts_engine || '?') + '</span></div>';
+    document.getElementById('settingsContent').innerHTML = html;
+  }).catch(function(){ document.getElementById('settingsContent').textContent = 'Offline'; });
+}
+
+function toggleProductDetails(id) {
+  var el = document.getElementById('pd-' + id);
+  if (!el) return;
+  var btn = el.previousElementSibling;
+  if (el.classList.contains('open')) {
+    el.classList.remove('open');
+    if (btn) btn.textContent = 'Show Details';
+  } else {
+    el.classList.add('open');
+    if (btn) btn.textContent = 'Hide Details';
+  }
+}
+
+// ── Live Activity Feed ──
+var lastActivityLine = '';
+function pollActivity() {
+  fetch('/api/cortex/logs/dispatch').then(function(r){return r.json();}).then(function(data) {
+    var lines = (data.logs || '').split('\n').filter(function(l) {
+      return l.indexOf('[CODEC]') !== -1 || l.indexOf('[TTS]') !== -1;
+    });
+    var recent = lines.slice(-8);
+    if (recent.length && recent[recent.length-1] !== lastActivityLine) {
+      lastActivityLine = recent[recent.length-1];
+      var html = '';
+      recent.forEach(function(line) {
+        var timeMatch = line.match(/(\d{2}:\d{2}:\d{2})/);
+        var time = timeMatch ? timeMatch[1].slice(0,5) : '--:--';
+        var msg = line.replace(/.*\[CODEC\]\s*/, '').replace(/.*\[TTS\]\s*/, 'TTS: ').replace(/^\d+\|open-co\s*\|\s*/, '').trim();
+        if (msg.length > 2) {
+          html += '<div class="af-item af-new"><span class="af-time">'+time+'</span><span class="af-msg">'+msg.substring(0,60)+'</span></div>';
+        }
+      });
+      if (html) document.getElementById('activityList').innerHTML = html;
+    }
+  }).catch(function(){});
+}
+
+// ── Health timestamp ──
+var lastCheckTime = 0;
+
 // ── Init ──
-buildLegend();
 render();
 checkHealth();
 setInterval(checkHealth, 15000);
-
-// Center view on load
-setTimeout(function() {
-  pan.x = (window.innerWidth - 1100) / 2;
-  pan.y = (window.innerHeight - 800) / 2;
+loadSkills();
+loadSettings();
+pollActivity();
+setInterval(pollActivity, 3000);
+// Update "last check" timer
+setInterval(function() {
+  var el = document.getElementById('last-check');
+  if (el && lastCheckTime) {
+    var ago = Math.round((Date.now() - lastCheckTime) / 1000);
+    el.textContent = ago + 's ago';
+  }
+}, 1000);
+// Auto-fit: compute bounding box of all nodes and scale to viewport
+function fitToScreen() {
+  var minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  NODES.forEach(function(n){
+    if(n.x-n.r-30<minX)minX=n.x-n.r-30;
+    if(n.y-n.r-50<minY)minY=n.y-n.r-50;
+    if(n.x+n.r+30>maxX)maxX=n.x+n.r+30;
+    if(n.y+n.r+50>maxY)maxY=n.y+n.r+50;
+  });
+  var w=window.innerWidth, h=window.innerHeight;
+  var bw=maxX-minX, bh=maxY-minY;
+  var scaleX=w/bw, scaleY=h/bh;
+  pan.scale=Math.min(scaleX,scaleY)*0.88;
+  pan.x=(w-bw*pan.scale)/2-minX*pan.scale;
+  pan.y=(h-bh*pan.scale)/2-minY*pan.scale;
   render();
-}, 100);
-
-window.addEventListener('resize', render);
+}
+setTimeout(fitToScreen,100);
+window.addEventListener('resize',fitToScreen);
+// Restore theme button state
+var savedTheme = localStorage.getItem('cortex-theme') || '';
+document.getElementById('themeToggle').textContent = savedTheme === 'light' ? '\u{1F319}' : '\u2600';
+if(savedTheme==='light') document.getElementById('themeToggle').style.borderColor='rgba(0,0,0,.1)';
 </script>
 </body>
 </html>

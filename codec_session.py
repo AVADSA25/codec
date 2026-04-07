@@ -553,7 +553,6 @@ SAFETY RULES:
             result["allow"] = allowed
             try:
                 root.quit()
-                root.after(100, root.destroy)
             except Exception:
                 pass
 
@@ -577,12 +576,17 @@ SAFETY RULES:
         dbtn = tk.Button(btn_frame, text="\u2717 Deny", bg="#888", fg="#000", font=("Helvetica", 13, "bold"), border=0, padx=20, pady=6, command=lambda: _close(False))
         dbtn.pack(side="left", padx=10)
         root.protocol("WM_DELETE_WINDOW", lambda: _close(False))
-        root.after(60000, lambda: _close(False))  # 60s timeout (was 30s)
+        root.after(60000, lambda: _close(False))  # 60s timeout
         root.after(1000, _poll_remote)  # start polling for remote approval
         try:
             root.mainloop()
         except Exception as e:
             log.debug("Security dialog mainloop exited: %s", e)
+        # Destroy window AFTER mainloop exits (root.after won't fire after quit)
+        try:
+            root.destroy()
+        except Exception:
+            pass
         self._cleanup_approval(approval_id)
         return result["allow"]
 
@@ -622,7 +626,6 @@ SAFETY RULES:
             result["allow"] = allowed
             try:
                 root.quit()
-                root.after(100, root.destroy)
             except Exception:
                 pass
 
@@ -653,6 +656,10 @@ SAFETY RULES:
             root.mainloop()
         except Exception as e:
             log.debug("Danger preview dialog mainloop exited: %s", e)
+        try:
+            root.destroy()
+        except Exception:
+            pass
         self._cleanup_approval(approval_id)
         return result["allow"]
 
