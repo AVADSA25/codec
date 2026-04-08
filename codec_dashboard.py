@@ -96,7 +96,7 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
-app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:8090", "http://127.0.0.1:8090", "https://codec.lucyvpa.com"], allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"], allow_headers=["*"])
+app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:8090", "http://127.0.0.1:8090", "https://codec.lucyvpa.com"], allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"], allow_headers=["Content-Type", "Authorization", "X-Session-Token", "X-Requested-With"])
 
 # ── Background Services (replaces PM2 daemons for scheduler, heartbeat, watcher) ──
 _bg_tasks: dict = {}

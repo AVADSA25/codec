@@ -113,7 +113,11 @@ DANGEROUS_PATTERNS = [
     ":(){ :|:& };:", ":(){:|:&};:", "xattr -cr /",
     # Remote code execution
     "curl | bash", "wget | bash", "curl | sh", "wget | sh",
-    "| bash", "| sh",
+    "| bash", "| sh", "| python", "| perl", "| ruby", "| node",
+    "wget |", "curl |",
+    # Output redirection to sensitive paths
+    "> ~/", ">> ~/", "> /etc/", ">> /etc/", "> /System/", ">> /System/",
+    "> /Users/", ">> /Users/",
     # macOS system tampering
     "defaults delete", "defaults write",
     "networksetup", "networksetup -setv6",

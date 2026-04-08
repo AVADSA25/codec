@@ -208,7 +208,8 @@ def _dispatch_inner(task):
     app = focused_app()
     log_event("command", "open-codec", f"Voice dispatch: {task[:80]}")
     print(f"[CODEC] Task: {task[:80]} | App: {app}")
-    subprocess.Popen(["osascript", "-e", f'display notification "Heard: {task[:50]}" with title "CODEC"'],
+    _safe_task = task[:50].replace('\\', '\\\\').replace('"', '\\"')
+    subprocess.Popen(["osascript", "-e", f'display notification "Heard: {_safe_task}" with title "CODEC"'],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     # Check skills — try ranked matches, fall through if skill returns None
@@ -235,7 +236,8 @@ def _dispatch_inner(task):
                     cm = CodecMemory()
                     cm.add("user", task, source="voice")
                     cm.add("assistant", skill_result[:500], source="voice")
-                except Exception: pass
+                except Exception as e:
+                    log.warning(f"[CODEC] Memory save failed after skill: {e}")
                 # After skill fires, grab screen context (skill may have opened browser etc)
                 try:
                     time.sleep(2)  # give browser/app time to load
@@ -340,16 +342,19 @@ def _dispatch_inner(task):
                     c = sqlite3.connect(DB_PATH)
                     c.execute("UPDATE sessions SET response=? WHERE id=?", (answer[:500], rid))
                     c.commit(); c.close()
-                except Exception: pass
+                except Exception as e:
+                    log.warning(f"[CODEC] DB save failed: {e}")
                 # Save to shared memory (same store as Chat)
                 try:
                     cm = CodecMemory()
                     cm.add("user", task, source="voice")
                     cm.add("assistant", answer, source="voice")
-                except Exception: pass
+                except Exception as e:
+                    log.warning(f"[CODEC] Memory save failed after LLM: {e}")
                 speak_text(answer)
+                _safe_ans = answer[:80].replace('\\', '\\\\').replace('"', '\\"')
                 subprocess.Popen(["osascript", "-e",
-                    f'display notification "{answer[:80]}" with title "CODEC"'],
+                    f'display notification "{_safe_ans}" with title "CODEC"'],
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             else:
                 print("[CODEC] Voice LLM returned empty response")

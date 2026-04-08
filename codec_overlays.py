@@ -123,7 +123,8 @@ if {dur_sec} > 0:
 
 app.run()
 '''
-    env = {**os.environ, "OVERLAY_TEXT": text, "OVERLAY_COLOR": color, "OVERLAY_SUBTITLE": subtitle}
+    _safe = lambda v: v.replace('\n', ' ').replace('\r', ' ').replace('\x00', '') if v else ''
+    env = {**os.environ, "OVERLAY_TEXT": _safe(text), "OVERLAY_COLOR": _safe(color), "OVERLAY_SUBTITLE": _safe(subtitle)}
     return subprocess.Popen([sys.executable, "-c", s], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
 
 
