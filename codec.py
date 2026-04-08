@@ -346,15 +346,7 @@ def build_session_script(safe_sys, session_id):
     L.append("def cleanup():")
     L.append("    try: os.unlink(SESSION_ALIVE)")
     L.append("    except: pass")
-    L.append("    try:")
-    L.append("        c = sqlite3.connect(DB_PATH)")
-    L.append("        for msg in h:")
-    L.append("            if msg['role'] != 'system':")
-    L.append("                c.execute('INSERT INTO conversations (session_id, timestamp, role, content) VALUES (?,?,?,?)',")
-    L.append("                    (SESSION_ID, datetime.now().isoformat(), msg['role'], msg['content'][:500]))")
-    L.append("        c.commit(); c.close()")
-    L.append("        print('[CODEC] Conversation saved to memory.')")
-    L.append("    except: pass")
+    L.append("    print('[CODEC] Session closed.')")
     L.append("atexit.register(cleanup)")
     L.append("")
     L.append("SCREEN_KW = ['look at my screen','look at the screen',\"what's on my screen\",'whats on my screen','read my screen','see my screen','screen','what am i looking at','what do you see','look at this']")
@@ -627,7 +619,10 @@ def dispatch(task):
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     # Check skills — skip if task is very long (document content attached)
-    if len(task) < 500:
+    # Complex queries (>60 chars or multi-word search) always go to Terminal agent
+    _words = task.split()
+    _is_complex = len(task) > 60 or len(_words) > 8
+    if len(task) < 500 and not _is_complex:
         skill = check_skill(task)
         if skill:
             result = run_skill(skill, task, app)
@@ -658,6 +653,8 @@ def dispatch(task):
 
     if terminal_session_exists():
         print("[CODEC] Queued to existing session")
+        subprocess.Popen(["osascript", "-e", 'tell application "Terminal" to activate'],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return
 
     session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
