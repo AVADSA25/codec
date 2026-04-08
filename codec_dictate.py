@@ -502,12 +502,31 @@ def main():
     model_loaded.wait()
     print("[DICTATE] \U0001f7e2 Ready. Hold right CMD to record. F5 for live dictation.")
 
+    # Cleanup on exit — kill sox, overlays, temp files
+    import atexit, glob as _glob
+    def _cleanup():
+        global recording_proc
+        if recording_proc:
+            try: recording_proc.terminate(); recording_proc.wait(timeout=2)
+            except: pass
+            recording_proc = None
+        hide_overlay()
+        if live_active:
+            stop_live_dictation()
+        for f in _glob.glob(os.path.join(tempfile.gettempdir(), "dictate_*.wav")):
+            try: os.unlink(f)
+            except: pass
+    atexit.register(_cleanup)
+    import signal
+    signal.signal(signal.SIGTERM, lambda *a: (print("[DICTATE] SIGTERM received"), _cleanup(), sys.exit(0)))
+
     # Start keyboard listener
     with keyboard.Listener(on_press=on_press, on_release=on_release) as listener:
         try:
             listener.join()
         except KeyboardInterrupt:
             print("\n[DICTATE] Shutting down.")
+            _cleanup()
 
 if __name__ == "__main__":
     main()

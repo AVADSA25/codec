@@ -42,7 +42,7 @@ module.exports = {
       script: "python3",
       args: "codec_dictate.py",
       cwd: __dirname,
-      max_memory_restart: "64M",
+      max_memory_restart: "768M",
       restart_delay: 2000,
       max_restarts: 10,
       autorestart: true,

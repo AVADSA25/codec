@@ -1,5 +1,6 @@
 """CODEC Skill: Skill Forge — Convert any code into a CODEC skill"""
 SKILL_NAME = "skill_forge"
+SKILL_MCP_EXPOSE = False  # Never expose code execution via MCP
 SKILL_DESCRIPTION = "Converts any code, script, or framework into a working CODEC skill"
 SKILL_TRIGGERS = [
     "forge skill", "import skill", "convert to skill", "make this a skill",

@@ -847,6 +847,12 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
             }
         };
 
+        window.addEventListener('beforeunload', function() {
+            wsIntentionalClose = true;
+            if (ws && ws.readyState === WebSocket.OPEN) { try { ws.close(); } catch(e) {} }
+            stopMic();
+        });
+
         ws.onclose = function() {
             if (wsPingTimer) { clearInterval(wsPingTimer); wsPingTimer = null; }
             if (wsIntentionalClose) {

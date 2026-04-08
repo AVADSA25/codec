@@ -2885,6 +2885,26 @@ async def _vision_keepalive():
         await asyncio.sleep(600)  # every 10 minutes
 
 
+async def _bg_session_cleanup():
+    """Evict expired auth sessions every hour to prevent unbounded growth."""
+    while True:
+        await asyncio.sleep(3600)  # every hour
+        try:
+            with _auth_lock:
+                now = datetime.now()
+                expired = [tok for tok, s in _auth_sessions.items()
+                           if now - s["created"] > timedelta(hours=AUTH_SESSION_HOURS)]
+                for tok in expired:
+                    del _auth_sessions[tok]
+                    _e2e_keys.pop(tok, None)
+                if expired:
+                    _save_sessions()
+                    _save_e2e_keys()
+                    log.info("Session cleanup: evicted %d expired session(s)", len(expired))
+        except Exception as e:
+            log.warning("Session cleanup error: %s", e)
+
+
 @app.on_event("startup")
 async def _start_background_services():
     """Launch scheduler, heartbeat, watcher, and vision warmup as background async tasks."""
@@ -2893,6 +2913,7 @@ async def _start_background_services():
     _bg_tasks["watcher"]   = asyncio.create_task(_bg_watcher())
     _bg_tasks["vision_warmup"] = asyncio.create_task(_warmup_vision())
     _bg_tasks["vision_keepalive"] = asyncio.create_task(_vision_keepalive())
+    _bg_tasks["session_cleanup"] = asyncio.create_task(_bg_session_cleanup())
     # Load skill registry for Chat tool calling
     try:
         from codec_dispatch import load_skills
