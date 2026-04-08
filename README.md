@@ -10,10 +10,10 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/features-189-blue?style=flat-square" alt="189 Features"/>
-  <img src="https://img.shields.io/badge/skills-56-orange?style=flat-square" alt="56 Skills"/>
-  <img src="https://img.shields.io/badge/tests-312-green?style=flat-square" alt="312 Tests"/>
-  <img src="https://img.shields.io/badge/core_lines-10%2C405-purple?style=flat-square" alt="10,405 Lines"/>
+  <img src="https://img.shields.io/badge/features-234-blue?style=flat-square" alt="234 Features"/>
+  <img src="https://img.shields.io/badge/skills-60-orange?style=flat-square" alt="60 Skills"/>
+  <img src="https://img.shields.io/badge/tests-405-green?style=flat-square" alt="405 Tests"/>
+  <img src="https://img.shields.io/badge/lines-61.7K-purple?style=flat-square" alt="61,700 Lines"/>
   <img src="https://img.shields.io/badge/license-MIT-brightgreen?style=flat-square" alt="MIT License"/>
 </p>
 
@@ -39,13 +39,13 @@ No cloud dependency. No subscription. No data leaving the machine. MIT licensed.
 
 ---
 
-## 7 Products. One System.
+## 10 Products. One System.
 
 ### CODEC Core — The Command Layer
 
 Always-on voice assistant. Say *"Hey CODEC"* or press F13 to activate. F18 for voice commands. F16 for text input.
 
-56 skills fire instantly: Google Calendar, Gmail, Drive, Docs, Sheets, Tasks, Keep, Chrome automation, web search, Hue lights, timers, Spotify, clipboard, terminal commands, and more. Most skills bypass the LLM entirely — direct action, zero latency.
+60 skills fire instantly: Google Calendar, Gmail, Drive, Docs, Sheets, Tasks, Keep, Chrome automation, web search, Hue lights, timers, Spotify, clipboard, terminal commands, PM2 control, and more. Most skills bypass the LLM entirely — direct action, zero latency. Skills are matched by trigger specificity — longer, more specific triggers always win over generic ones.
 
 ### Vision Mouse Control — See & Click
 
@@ -65,15 +65,21 @@ Say *"Hey CODEC, click the Submit button"* — CODEC screenshots the screen, sen
 
 ### CODEC Dictate — Hold, Speak, Paste
 
-Hold a key. Say what you mean. Release. Text appears wherever the cursor is. If CODEC detects a message draft, it refines through the LLM — grammar fixed, tone polished, meaning preserved. Works in every app on macOS. A free, open-source SuperWhisper replacement that runs entirely local.
+Hold Cmd+R. Say what you mean. Release. Text appears wherever the cursor is. Press **L** for live typing mode — words appear at the cursor in real-time as you speak.
+
+If CODEC detects a message draft, it refines through the LLM — grammar fixed, tone polished, meaning preserved. Works in every app on macOS. A free, open-source SuperWhisper replacement that runs entirely local.
+
+Native floating overlays: orange-bordered recording panel with pulsing red dot, blue processing indicator, green live-typing display with real-time transcript.
 
 ### CODEC Instant — One Right-Click
 
 Select any text, anywhere. Right-click. Eight AI services system-wide: Proofread, Elevate, Explain, Translate, Reply (with `:tone` syntax), Prompt, Read Aloud, Save. Powered by the local LLM.
 
-### CODEC Chat — 250K Context + 10+ Agent Crews
+### CODEC Chat — 250K Context + 12 Agent Crews
 
-Full conversational AI. Long context. File uploads. Image analysis via vision model. Web search. Conversation history.
+Full conversational AI. Long context. File uploads (drag-and-drop). Image analysis via vision model. Web search. Persistent conversation history with sidebar. Edit and re-send messages. Regenerate responses.
+
+Voice input via continuous microphone with stop button. Streaming responses with typing and thinking indicators.
 
 Plus 12 autonomous agent crews — not single prompts, full multi-step workflows. Say *"research the latest AI agent frameworks and write a report."* Minutes later there's a formatted Google Doc in Drive with sources, images, and recommendations.
 
@@ -94,23 +100,33 @@ Plus 12 autonomous agent crews — not single prompts, full multi-step workflows
 
 Schedule any crew: *"Run competitor analysis every Monday at 9am"*
 
-The multi-agent framework is under 800 lines. Zero dependencies. No CrewAI. No LangChain.
+The multi-agent framework is under 800 lines. Zero dependencies. No CrewAI. No LangChain. 7 built-in tools including web search, file operations, Google Docs, image generation, and vision.
 
 ### CODEC Vibe — AI Coding IDE + Skill Forge
 
-Split-screen in the browser. Monaco editor on the left (same engine as VS Code). AI chat on the right. Describe what's needed — CODEC writes it, click Apply, run it, live preview in browser.
+Split-screen in the browser. Monaco editor on the left (same engine as VS Code, v0.45.0). AI chat on the right. Describe what's needed — CODEC writes it, click Apply, run it, live preview in browser.
 
-Skill Forge takes it further: describe a new capability in plain English, CODEC converts it into a working plugin. The framework writes its own extensions.
+Skill Forge takes it further: three modes — paste code, import from GitHub URL, or describe a capability in plain English. CODEC converts it into a working plugin. The framework writes its own extensions. DOMPurify sanitization on all rendered content.
 
 ### CODEC Voice — Live Voice Calls
 
-Real-time voice-to-voice conversations with the AI. WebSocket pipeline — no Pipecat, no external dependencies. Call CODEC from a phone, talk naturally, and mid-call say *"check my screen"* — it takes a screenshot, analyzes it, and speaks the result back.
+Real-time voice-to-voice conversations with the AI. WebSocket pipeline with auto-reconnect (exponential backoff), heartbeat keepalive, and interrupt detection — no Pipecat, no external dependencies.
+
+Call CODEC from a phone, talk naturally, and mid-call say *"check my screen"* — it takes a screenshot, analyzes it, and speaks the result back. Voice Replies toggle (ON/OFF) persists across all pages.
 
 Full transcript saved to memory. Every conversation becomes searchable context for future sessions.
 
+### CODEC Cortex — System Nerve Center
+
+Visual command center showing all CODEC products in an interactive grid. Neural network SVG map, real-time activity feed, searchable skills panel, and detailed event log viewer. The single-pane-of-glass view of the entire system.
+
+### CODEC Audit — Full Event Trail
+
+Every action CODEC takes is logged across 16 categories: command, skill, llm, auth, error, scheduled, voice, vision, tts, stt, system, security, hotkey, screenshot, config, draft. Filterable by category pills, searchable, with colored timeline dots and expandable event details. JSON-line storage with 50MB rotation.
+
 ### CODEC Overview — Dashboard Anywhere
 
-Private dashboard accessible from any device, anywhere. Cloudflare Tunnel or Tailscale VPN — no port forwarding, no third-party relay. Send commands, view the screen, launch voice calls, manage agents — all from a browser.
+Private dashboard accessible from any device, anywhere. Cloudflare Tunnel or Tailscale VPN — no port forwarding, no third-party relay. 75+ API endpoints. Send commands, view the screen, launch voice calls, manage agents — all from a browser. Installable as a PWA on mobile and desktop.
 
 ---
 
@@ -167,7 +183,7 @@ Private dashboard accessible from any device, anywhere. Cloudflare Tunnel or Tai
 </p>
 <p align="center">
   <img src="docs/screenshots/terminal.png" alt="Terminal" width="400"/><br/>
-  <em>50+ skills loaded at startup</em>
+  <em>60 skills loaded at startup</em>
 </p>
 </details>
 
@@ -182,9 +198,12 @@ Private dashboard accessible from any device, anywhere. Cloudflare Tunnel or Tai
 | Clicks UI elements by voice | Vision + mouse control | No | No (Cloud Computer Use only) |
 | Runs 100% local | Yes — all models on device | No | No |
 | Voice-to-voice calls | WebSocket, real-time | Yes but cloud | Yes but cloud |
-| Multi-agent workflows | 10+ crews, local LLM | No | Limited |
+| Multi-agent workflows | 12 crews, local LLM | No | Limited |
 | Right-click AI services | 8 system-wide services | No | No |
 | Writes its own plugins | Skill Forge | No | No |
+| Live typing at cursor | Dictate L key | No | No |
+| Process watchdog | Auto-kills stuck processes | No | No |
+| Full audit trail | 16 event categories | No | No |
 | Open source | MIT | No | No |
 
 **What CODEC replaced with native code:**
@@ -193,13 +212,14 @@ Private dashboard accessible from any device, anywhere. Cloudflare Tunnel or Tai
 |---|---|
 | Pipecat | CODEC Voice (own WebSocket pipeline) |
 | CrewAI + LangChain | CODEC Agents (795 lines, zero dependencies) |
-| SuperWhisper | CODEC Dictate (free, open source) |
+| SuperWhisper | CODEC Dictate (free, open source, live typing) |
 | Cursor / Windsurf | CODEC Vibe (Monaco + AI + Skill Forge) |
 | Google Assistant / Siri | CODEC Core (actually controls the computer) |
 | Grammarly | CODEC Instant (right-click services via local LLM) |
 | ChatGPT | CODEC Chat (250K context, fully local) |
 | Cloud LLM APIs | Local stack (Qwen + Whisper + Kokoro + Vision) |
 | Vector databases | FTS5 SQLite (simpler, faster, private) |
+| Datadog / Sentry | CODEC Audit (16-category event trail) |
 
 **External services:** DuckDuckGo for web search. Cloudflare free tier for the tunnel (or Tailscale). Everything else runs on local hardware.
 
@@ -253,6 +273,8 @@ Configure in `~/.codec/config.json`:
 | F18 (hold) | Record voice → release to send |
 | F18 (double-tap) | PTT Lock — hands-free recording |
 | F16 | Text input dialog |
+| Cmd+R (hold) | Dictate — hold, speak, release to paste |
+| L (during dictate) | Live typing — words appear at cursor in real-time |
 | `* *` | Screenshot + AI analysis |
 | `+ +` | Document mode |
 | Camera icon | Live webcam PIP — drag around, snapshot anytime |
@@ -266,15 +288,16 @@ Custom shortcuts in `~/.codec/config.json`. Restart after changes: `pm2 restart 
 
 ## Privacy & Security
 
-**5-layer security stack:**
+**6-layer security stack:**
 
 | Layer | Protection |
 |---|---|
-| Network | Cloudflare Zero Trust tunnel or Tailscale VPN, CORS restricted origins |
-| Auth | Touch ID + PIN + TOTP 2FA, timing-safe token comparison |
-| Encryption | AES-256-GCM + ECDH P-256 key exchange, per-session keys |
-| Execution | Subprocess isolation, resource limits (512MB RAM, 120s CPU), command blocklist, human review gate |
-| Data | Local SQLite, parameterized queries, FTS5 full-text search — searchable, private, yours |
+| Network | Cloudflare Zero Trust tunnel or Tailscale VPN, CORS restricted origins with explicit header whitelist |
+| Auth | Touch ID + PIN + TOTP 2FA, timing-safe token comparison, brute-force rate limiting |
+| Encryption | AES-256-GCM + ECDH P-256 key exchange, per-session keys, key persistence across restarts |
+| Execution | Subprocess isolation, resource limits (512MB RAM, 120s CPU), 46+ dangerous command patterns, human review gate |
+| Data | Local SQLite with WAL, parameterized queries, FTS5 full-text search with injection prevention — searchable, private, yours |
+| Audit | Full event trail across 16 categories, 50MB rotating JSON-line logs, every action tracked |
 
 Every conversation is stored locally in SQLite with FTS5 full-text search. No cloud sync. No analytics. No telemetry.
 
@@ -297,7 +320,7 @@ CODEC exposes tools as an MCP server. Any MCP-compatible client can invoke CODEC
 
 Then in Claude Desktop: *"Use CODEC to check my calendar for tomorrow."*
 
-Skills opt-in to MCP exposure with `SKILL_MCP_EXPOSE = True`.
+Skills opt-in to MCP exposure with `SKILL_MCP_EXPOSE = True`. Input validation enforces 5KB task / 10KB context limits with type checking on every call.
 
 ---
 
@@ -321,6 +344,8 @@ pm2 list
 # Check specific service logs
 pm2 logs open-codec --lines 30 --nostream        # Main CODEC process
 pm2 logs codec-dashboard --lines 30 --nostream    # Dashboard API
+pm2 logs codec-dictate --lines 10 --nostream      # Dictation hotkeys
+pm2 logs codec-watchdog --lines 10 --nostream     # Process watchdog
 pm2 logs whisper-stt --lines 10 --nostream        # Speech-to-text
 pm2 logs kokoro-82m --lines 10 --nostream         # Text-to-speech
 
@@ -353,10 +378,10 @@ python3 -c "from codec_config import *; print('Config OK')"
 - **Energy too low?** Look for `Wake mic: energy=XX (threshold=YY)`. If energy < threshold, speak louder or lower `wake_energy` in `~/.codec/config.json` (default: 130)
 - **Whisper mishearing?** Look for `Wake heard: 'xxx'` — Whisper often transcribes "Hey CODEC" as "and codec", "and kodak", "hey codex". All common variants are matched automatically via keyword detection (any text containing "codec", "codex", "kodak", etc. triggers)
 - **Whisper hallucinating?** Long repetitive transcriptions (100+ chars of gibberish) are filtered automatically
-- **Mic not found?** Listener defaults to "default" CoreAudio device, but prefers Anker webcam mic if found. Check: `python3.13 -c "import sounddevice as sd; [print(f'{i}: {d[\"name\"]}') for i,d in enumerate(sd.query_devices()) if d['max_input_channels']>0]"`
-- **Mic permission?** Python must be in System Settings → Privacy → Microphone. Run `python3.13 request_mic.py` in iTerm to request access
-- **sox not found?** PM2 doesn't inherit shell PATH. CODEC now auto-adds `/opt/homebrew/bin` to PATH and resolves sox via `shutil.which()`
-- **state["active"] blocking?** Wake word now runs independently of F13 toggle — no need to press F13 first. Wake word auto-activates CODEC when triggered
+- **Mic not found?** Listener defaults to "default" CoreAudio device, but prefers Anker webcam mic if found. Check: `python3 -c "import sounddevice as sd; [print(f'{i}: {d[\"name\"]}') for i,d in enumerate(sd.query_devices()) if d['max_input_channels']>0]"`
+- **Mic permission?** Python must be in System Settings → Privacy → Microphone. Run `python3 request_mic.py` in iTerm to request access
+- **sox not found?** PM2 doesn't inherit shell PATH. CODEC auto-adds `/opt/homebrew/bin` to PATH and resolves sox via `shutil.which()`
+- **state["active"] blocking?** Wake word runs independently of F13 toggle — no need to press F13 first. Wake word auto-activates CODEC when triggered
 - **Bluetooth headphones?** A2DP mode records silence from CLI. Use wired mic or webcam mic
 </details>
 
@@ -366,16 +391,29 @@ python3 -c "from codec_config import *; print('Config OK')"
 - Check Kokoro TTS: `curl http://localhost:8085/v1/models`
 - Fallback: `"tts_engine": "say"` in config.json (macOS built-in)
 - Disable: `"tts_engine": "none"`
+- **Voice toggle:** Check the burger menu on any page — Voice Replies ON/OFF persists via localStorage across all pages
+- **Double TTS playback?** A dedup guard prevents the same text playing twice. If you hear duplicates, restart: `pm2 restart codec-dashboard`
 - **Qwen 3.5 reasoning/content split**: MLX server puts thinking in `reasoning` field, actual answer in `content`. With low `max_tokens`, model burns all tokens on thinking → empty `content`. Fix: set `max_tokens: 2000+` and only read `content` field, filter `<think>` tags
 - **Voice screenshot silent after "analyzing"**: If mic noise sets `self.interrupted` flag during long operations (screenshot/vision), it kills subsequent responses. Fix: clear `self.interrupted` before speaking response
 - **RGBA→JPEG crash**: macOS screenshots are PNG with alpha (RGBA). Must `img.convert("RGB")` before saving as JPEG
 </details>
 
 <details>
+<summary><strong>Dictate not working</strong></summary>
+
+- **Check logs:** `pm2 logs codec-dictate --lines 20 --nostream`
+- **Cmd+R not recording?** Ensure codec-dictate is running: `pm2 status codec-dictate`. If errored, restart: `pm2 restart codec-dictate`
+- **Text not pasting?** CODEC uses `pyautogui.hotkey('command', 'v')` for reliable cross-app paste. If using osascript keystroke, it can drop the Cmd modifier — this was fixed in v1.5.2
+- **Live typing (L key) not working?** L only activates during an active Cmd+R session or when pressed standalone. Check that pyperclip and pyautogui are installed: `pip3 install pyperclip pyautogui`
+- **Overlay not showing?** Requires tkinter. On Python 3.13: `brew install python-tk@3.13`. The overlay is a separate subprocess — if it crashes, dictation still works (just no visual feedback)
+- **Sox "no default input device"?** Check: `sox -d -r 16000 -c 1 -t wav test.wav trim 0 2` — if this fails, set your mic in System Settings → Sound → Input
+</details>
+
+<details>
 <summary><strong>Draft/paste not working (IC-1)</strong></summary>
 
 - **Path mismatch**: `DRAFT_TASK_FILE` in codec.py must match `TASK_FILE` in codec_watcher.py. Both should be `~/.codec/draft_task.json`
-- Run smoke test: `python3.13 tests/test_smoke.py` — checks path alignment automatically
+- Run smoke test: `python3 tests/test_smoke.py` — checks path alignment automatically
 - Check watcher: `pm2 logs codec-dashboard --lines 10 --nostream | grep -i draft`
 </details>
 
@@ -383,7 +421,7 @@ python3 -c "from codec_config import *; print('Config OK')"
 <summary><strong>Screenshot crashes (IC-3)</strong></summary>
 
 - **NameError: `log` not defined**: codec.py uses `print()` not `log.info()`. If you see `log.xxx()` calls, replace with `print(f"[CODEC] ...")`
-- Run smoke test: `python3.13 tests/test_smoke.py` — checks for undefined references
+- Run smoke test: `python3 tests/test_smoke.py` — checks for undefined references
 </details>
 
 <details>
@@ -403,6 +441,48 @@ python3 -c "from codec_config import *; print('Config OK')"
 - Agents run as background jobs — no Cloudflare timeout
 </details>
 
+<details>
+<summary><strong>Flash Chat empty or not loading</strong></summary>
+
+- **Empty chat?** Check auth — if not authenticated, the API returns `{"error":"Not authenticated"}` instead of an array, which silently fails. Log in first.
+- **Messages in wrong order?** Flash Chat shows newest at bottom (reversed). If you see newest on top, restart: `pm2 restart codec-dashboard`
+- **F13/F16 commands showing in Flash Chat?** Session cleanup was writing to the conversations table. This was fixed — session commands should only appear in History and Audit tabs.
+</details>
+
+<details>
+<summary><strong>Microphone sending messages automatically</strong></summary>
+
+- The mic button in the dashboard and chat uses continuous mode with `interimResults: true`. It does NOT auto-send — you must click the send button.
+- If messages are auto-sending, clear browser cache and reload. An older cached version may have the auto-send behavior.
+- The mic shows a red square stop button while recording. Click it to stop, then send manually.
+</details>
+
+<details>
+<summary><strong>tkinter errors in Terminal sessions</strong></summary>
+
+- Agent sessions spawn in Terminal via `python3.13`. If python3.13 doesn't have tkinter, command preview dialogs fail with `ModuleNotFoundError: No module named '_tkinter'`.
+- Fix: `brew install python-tk@3.13`
+- CODEC wraps all tkinter imports in try/except — if tkinter is missing, safe commands auto-approve and dangerous commands auto-deny.
+</details>
+
+<details>
+<summary><strong>Stuck processes eating RAM</strong></summary>
+
+- CODEC includes a watchdog (`codec-watchdog` in PM2) that monitors all Python, Terminal, and iTerm processes.
+- It only kills processes using >500MB RAM with <0.5% CPU for 10+ consecutive minutes (truly stuck/zombie).
+- Active processes are never killed — a model using 8GB at 80% CPU is safe.
+- Check status: `pm2 logs codec-watchdog --lines 20 --nostream`
+- If the watchdog itself is not running: `pm2 restart codec-watchdog`
+</details>
+
+<details>
+<summary><strong>Complex questions not opening Terminal</strong></summary>
+
+- CODEC routes queries by complexity: short queries (<60 chars AND <8 words) try instant skills first. Longer or complex questions always open a Terminal agent session.
+- If a complex question is handled by a skill instead of Terminal, it's because a skill trigger matched. Check: `pm2 logs open-codec --lines 20 --nostream | grep -i skill`
+- To force Terminal: make sure the question is >60 chars or >8 words, or doesn't match any skill trigger.
+</details>
+
 ---
 
 ## Project Structure
@@ -410,34 +490,40 @@ python3 -c "from codec_config import *; print('Config OK')"
 ```
 codec.py              — Entry point (hotkeys, dispatch, wake word, recording)
 codec_identity.py     — Shared CODEC identity, voice prompt, chat prompt
-codec_config.py       — Configuration + transcript cleaning
-codec_keyboard.py     — Keyboard listener, PTT lock, wake word (legacy)
+codec_config.py       — Configuration + transcript cleaning + 46 dangerous patterns
+codec_dictate.py      — Dictation hotkeys (Cmd+R, L for live typing)
+codec_watchdog.py     — Process monitor (kills stuck/zombie processes)
 codec_dispatch.py     — Skill matching and dispatch (with fallback)
 codec_agent.py        — LLM session builder
-codec_agents.py       — Multi-agent crew framework (10+ crews)
-codec_voice.py        — WebSocket voice pipeline
+codec_agents.py       — Multi-agent crew framework (12 crews, 7 tools)
+codec_voice.py        — WebSocket voice pipeline (reconnect, heartbeat)
 codec_voice.html      — Voice call UI
-codec_dashboard.py    — Web API + dashboard (60+ endpoints)
-codec_dashboard.html  — Dashboard UI
-codec_chat.html       — Chat UI
-codec_vibe.html       — Vibe Code IDE
+codec_dashboard.py    — Web API + dashboard (75+ endpoints)
+codec_dashboard.html  — Dashboard UI (Flash Chat, History, Audit, Settings, Stats, Skills)
+codec_chat.html       — Chat UI (agents, file upload, voice input)
+codec_vibe.html       — Vibe Code IDE (Monaco + Skill Forge)
+codec_cortex.html     — Cortex system overview (neural map, product grid)
+codec_audit.html      — Audit log viewer (16 categories, filterable)
+codec_audit.py        — Audit logger (JSON-line, 50MB rotation, thread-safe)
 codec_auth.html       — Authentication (Touch ID + PIN + TOTP 2FA)
 codec_textassist.py   — 8 right-click services
 codec_search.py       — DuckDuckGo + Serper search
-codec_mcp.py          — MCP server
-codec_memory.py       — FTS5 memory search
-codec_heartbeat.py    — Health monitoring + task auto-execution
+codec_mcp.py          — MCP server (input validation, opt-in exposure)
+codec_memory.py       — FTS5 memory search (WAL, BM25, injection prevention)
+codec_compaction.py   — Context compaction (LLM-based summarization)
+codec_heartbeat.py    — Health monitoring (5 services) + daily DB backup
+codec_session.py      — Agent session runner (resource limits, command preview)
 codec_scheduler.py    — Cron-like agent scheduling
 codec_marketplace.py  — Skill marketplace CLI
 codec_overlays.py     — AppKit overlay notifications (fullscreen compatible)
 ax_bridge/            — Swift AX accessibility bridge
-swift-overlay/        — SwiftUI status bar app
-skills/               — 56 built-in skills (incl. vision mouse control)
-tests/                — 312 pytest tests
+swift-overlay/        — Native macOS status bar app (NSPanel, event JSONL poller)
+skills/               — 60 built-in skills (incl. vision mouse control)
+tests/                — 405 pytest tests across 22 files
 request_mic.py        — macOS microphone permission helper (AVFoundation)
 install.sh            — One-line installer
 setup_codec.py        — Setup wizard (9 steps)
-tests/test_smoke.py   — 26-check regression smoke test
+ecosystem.config.js   — PM2 process management (10+ services)
 ```
 
 ---
@@ -455,7 +541,7 @@ tests/test_smoke.py   — 26-check regression smoke test
 
 ## Contributing
 
-All skill contributions welcome. 56 built-in skills, 312 tests, marketplace growing.
+All skill contributions welcome. 60 built-in skills, 405 tests, marketplace growing.
 
 ```bash
 git clone https://github.com/AVADSA25/codec.git
@@ -463,7 +549,7 @@ cd codec && ./install.sh
 python3 -m pytest   # all tests must pass
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the skill template and trigger matching rules.
 
 ---
 
