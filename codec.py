@@ -38,6 +38,7 @@ VISION_PROVIDER   = _cfg.get("vision_provider", "gemini" if GEMINI_API_KEY else 
 DRAFT_KEYWORDS_CFG = _cfg.get("draft_keywords", [])
 
 # ─��� SHARED (from codec_core.py — single source of truth) ─────────────────────
+import codec_core as _core
 from codec_core import (
     strip_think, is_draft, needs_screen, DRAFT_KEYWORDS, SCREEN_KEYWORDS,
     init_db, save_task, get_memory, get_recent_conversations,
@@ -198,8 +199,9 @@ def dispatch(task):
     try:
         _dispatch_inner(task)
     finally:
-        # 6s cooldown after dispatch — prevents wake word from hearing our own TTS
-        _dispatch_cooldown = time.time() + 6.0
+        # Post-dispatch cooldown — TTS is now blocking so audio is already done
+        # This extra 5s is just a safety buffer for echo/reverb decay
+        _dispatch_cooldown = time.time() + 5.0
         _dispatch_lock.release()
 
 def _dispatch_inner(task):
@@ -285,7 +287,17 @@ def _dispatch_inner(task):
     if mem_ctx: sys_p += mem_ctx
     safe_sys = sys_p.replace('\n', ' ')
 
-    # ── Persistent voice conversation (multi-turn) ──────────────────────
+    # ── Open terminal session (the real CODEC session window) ───────────
+    with open(TASK_QUEUE_FILE, "w") as f:
+        json.dump({"task": task, "app": app, "ts": datetime.now().isoformat()}, f)
+
+    if terminal_session_exists():
+        print("[CODEC] Queued to existing session")
+    else:
+        session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+        run_session_in_terminal(safe_sys, session_id, task)
+
+    # ── Quick voice reply (immediate feedback while terminal loads) ─────
     if not voice_session["started"]:
         voice_session["started"] = datetime.now().isoformat()
 
@@ -408,6 +420,7 @@ def do_screenshot_question():
     summary = ctx[:120].replace('"', '\\"').replace('\n', ' ')
     try:
         r = subprocess.run(["osascript", "-e",
+            f'tell application "System Events"\nset frontmost of first process whose frontmost is true to true\nend tell\n'
             f'set t to text returned of (display dialog '
             f'"I captured your screen:\\n\\n{summary}…\\n\\nWhat would you like to know about it?" '
             f'default answer "" with title "CODEC Screenshot" '
@@ -492,6 +505,12 @@ def wake_word_listener():
     _wake_diag_done = False
     while True:
         if not WAKE_WORD or state["recording"]:
+            time.sleep(0.3); continue
+        # Skip while TTS is actively playing (prevents mic hearing our own voice)
+        if _core.tts_playing:
+            time.sleep(0.3); continue
+        # Skip for 8s after TTS finishes (audio echo / reverb decay)
+        if _core.tts_finished_at and (time.time() - _core.tts_finished_at) < 8.0:
             time.sleep(0.3); continue
         # Skip wake processing during dispatch cooldown (prevents hearing our own TTS)
         if time.time() < _dispatch_cooldown:
@@ -610,7 +629,7 @@ def on_press(key):
             state["overlay_proc"] = show_recording_overlay('F18')
         return
     if hasattr(key, 'char') and key.char == '*':
-        if now - state["last_star"] < 0.5:
+        if now - state["last_star"] < 0.35:
             print("[CODEC] Star x2 -- screenshot mode")
             push(do_screenshot_question)
             state["last_star"] = 0.0

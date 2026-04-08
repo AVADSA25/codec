@@ -229,7 +229,7 @@ root.geometry(f'{{w}}x{{h}}+{{x}}+{{y}}')
 cv=tk.Canvas(root,bg='#0a0a0a',highlightthickness=0,width=w,height=h)
 cv.pack()
 cv.create_rectangle(1,1,w-1,h-1,outline='#00aaff',width=1)
-cv.create_text(w//2,h//2,text='\u26a1 '+_text,fill='#00aaff',font=('Helvetica',13))
+cv.create_text(w//2,h//2,text='⚡ '+_text,fill='#00aaff',font=('Helvetica',13))
 root.after({duration},root.destroy)
 root.mainloop()
 """

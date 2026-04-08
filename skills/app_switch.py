@@ -2,7 +2,7 @@
 SKILL_NAME = "app_switch"
 SKILL_DESCRIPTION = "Switch to any running app by name"
 SKILL_TRIGGERS = ["switch to", "go to", "focus on", "bring up", "activate",
-                   "show me", "open app", "switch up to", "switch up"]
+                   "show me", "open app", "open ", "switch up to", "switch up"]
 import subprocess
 
 # Common app name aliases
@@ -24,7 +24,8 @@ def run(task, app="", ctx=""):
     # Extract app name
     target = low
     for remove in ["switch to", "go to", "focus on", "bring up", "activate",
-                    "show me", "open app", "please", "can you", "the", "app"]:
+                    "show me", "open app", "open ", "please", "can you", "the", "app",
+                    "hey codec", "hey codec,", "codec"]:
         target = target.replace(remove, "")
     target = target.strip()
     if not target or len(target) < 2:

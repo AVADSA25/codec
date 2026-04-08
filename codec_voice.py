@@ -199,7 +199,7 @@ class VoicePipeline:
 
     # Class-level cache for resumable sessions (session_id → messages list)
     _resumable_sessions: dict[str, list] = {}
-    _RESUME_TTL = 120  # seconds — discard saved sessions older than this
+    _RESUME_TTL = 600  # seconds — discard saved sessions older than this (10 min)
 
     def __init__(self, websocket, resume_session_id: str | None = None):
         self.ws              = websocket
@@ -207,9 +207,11 @@ class VoicePipeline:
         self._disconnect_reason = "unexpected"  # "user" or "unexpected"
 
         # Resume conversation context if available
+        self._is_resumed = False
         if resume_session_id and resume_session_id in self._resumable_sessions:
             saved = self._resumable_sessions.pop(resume_session_id)
             self.messages = saved
+            self._is_resumed = True
             print(f"[Voice] Resumed session {resume_session_id} with {len(saved)} messages")
         else:
             self.messages = [{"role": "system", "content": _build_system_prompt()}]
@@ -1018,8 +1020,7 @@ class VoicePipeline:
     # ── Main entry point ──────────────────────────────────────────────────
 
     async def run(self):
-        is_resumed = self.session_id in getattr(self, '_resumable_sessions', {}) or \
-                     len(self.messages) > 1 and self.messages[-1].get("role") != "system"
+        is_resumed = self._is_resumed
         print(f"[Voice] Session {'resumed' if is_resumed else 'started'}: {self.session_id}")
 
         # Send session ID so client can reconnect to this session

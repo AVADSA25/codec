@@ -2,7 +2,7 @@
 
 Single source of truth. Edit HERE, not in the consumer files.
 """
-import logging, os, sys, json, re, sqlite3, subprocess, tempfile, base64
+import logging, os, sys, json, re, sqlite3, subprocess, tempfile, base64, threading, time
 from datetime import datetime
 
 log = logging.getLogger(__name__)
@@ -180,8 +180,14 @@ def terminal_session_exists():
     return False
 
 # ── TTS HELPER ────────────────────────────────────────────────────────────────
+# Global TTS state — wake word listener checks this to avoid hearing our own voice
+tts_playing = False           # True while audio is actively playing
+tts_finished_at = 0.0         # timestamp when last TTS finished (for post-TTS cooldown)
+_tts_lock = threading.Lock()  # serialize TTS calls
+
 def speak_text(text):
-    """Speak text via configured TTS engine"""
+    """Speak text via configured TTS engine. BLOCKING — waits for audio to finish."""
+    global tts_playing, tts_finished_at
     if TTS_ENGINE == "disabled": return
     try:
         clean = text[:300]
@@ -193,18 +199,26 @@ def speak_text(text):
         if len(clean) < 50 and any(c in clean for c in '=+-*/'):
             clean = "The answer is " + clean
         print(f"[TTS] Speaking: {clean[:60]}")
-        if TTS_ENGINE == "macos_say":
-            subprocess.Popen(["say", "-v", TTS_VOICE, clean])
-        else:
-            import requests
-            r = requests.post(KOKORO_URL,
-                json={"model": KOKORO_MODEL, "input": clean, "voice": TTS_VOICE},
-                stream=True, timeout=20)
-            if r.status_code == 200:
-                tmp = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
-                [tmp.write(c) for c in r.iter_content(4096)]
-                tmp.close()
-                subprocess.Popen(["afplay", tmp.name])
+        with _tts_lock:
+            tts_playing = True
+            try:
+                if TTS_ENGINE == "macos_say":
+                    subprocess.run(["say", "-v", TTS_VOICE, clean], timeout=30)
+                else:
+                    import requests
+                    r = requests.post(KOKORO_URL,
+                        json={"model": KOKORO_MODEL, "input": clean, "voice": TTS_VOICE},
+                        stream=True, timeout=20)
+                    if r.status_code == 200:
+                        tmp = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
+                        [tmp.write(c) for c in r.iter_content(4096)]
+                        tmp.close()
+                        subprocess.run(["afplay", tmp.name], timeout=30)
+                        try: os.unlink(tmp.name)
+                        except: pass
+            finally:
+                tts_playing = False
+                tts_finished_at = time.time()
     except Exception as e: log.warning("TTS speak failed: %s", e)
 
 # ── SESSION CLEANUP ───────────────────────────────────────────────────────────

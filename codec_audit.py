@@ -141,6 +141,10 @@ def read_events(
     lines = _tail_lines(AUDIT_STREAM)
     search_lower = search.lower() if search else None
     cats_set = set(categories) if categories else None
+    # Normalize timezone suffixes for reliable string comparison
+    _norm = lambda t: t.replace("+00:00", "Z").replace("+0000", "Z") if t else t
+    since_n = _norm(since)
+    until_n = _norm(until)
 
     results = []  # type: List[Dict]
     for raw in reversed(lines):
@@ -158,9 +162,10 @@ def read_events(
             continue
         if search_lower and search_lower not in ev.get("sum", "").lower():
             continue
-        if since and ev.get("ts", "") < since:
+        ev_ts = _norm(ev.get("ts", ""))
+        if since_n and ev_ts < since_n:
             continue
-        if until and ev.get("ts", "") > until:
+        if until_n and ev_ts > until_n:
             continue
 
         results.append(ev)
