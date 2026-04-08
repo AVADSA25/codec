@@ -552,7 +552,7 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
     <div class="side-panel-body">
       <a href="/" class="sp-item"><svg class="ico" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span class="sp-item-label">Home</span></a>
       <div class="sp-divider"></div>
-      <button class="sp-item" id="voiceBtn" onclick="toggleVoice();closeSidePanel()"><svg class="ico" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 010 14.14"/><path d="M15.54 8.46a5 5 0 010 7.07"/></svg><span class="sp-item-label">Voice Replies</span></button>
+      <button class="sp-item" id="voiceBtn" onclick="toggleVoice();closeSidePanel()"><svg class="ico" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 010 14.14"/><path d="M15.54 8.46a5 5 0 010 7.07"/><line id="muteX1" x1="4" y1="4" x2="20" y2="20" stroke-width="2.5" style="display:none"/><line id="muteX2" x1="4" y1="20" x2="20" y2="4" stroke-width="2.5" style="display:none"/></svg><span class="sp-item-label" style="flex:none">Voice Replies</span><span id="voiceState" style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px"></span></button>
       <button class="sp-item" id="screenBtn" onclick="takeScreenshot();closeSidePanel()"><svg class="ico" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg><span class="sp-item-label">Screenshot</span></button>
       <button class="sp-item" id="photoBtn" onclick="takeServerPhoto();closeSidePanel()"><svg class="ico" viewBox="0 0 24 24"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg><span class="sp-item-label">Photo (Webcam)</span></button>
       <button class="sp-item" id="camBtn" onclick="toggleWebcamPip();closeSidePanel()"><svg class="ico" viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg><span class="sp-item-label">Live Video (PIP)</span></button>
@@ -895,15 +895,37 @@ function lockSession(){fetch('/api/auth/logout',{method:'POST'}).then(function()
 // ── Voice Input ──
 function toggleMic() {
   var btn = document.getElementById('micBtn');
-  if (isRecording) { recognition && recognition.stop(); isRecording = false; btn.classList.remove('recording'); return; }
+  var input = document.getElementById('cmdInput');
+  if (isRecording) {
+    recognition && recognition.stop();
+    isRecording = false;
+    btn.classList.remove('recording');
+    btn.innerHTML = '<svg class="ico" viewBox="0 0 24 24"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>';
+    return;
+  }
   if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) { showToast('Speech recognition not supported'); return; }
   var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   recognition = new SR();
-  recognition.lang = 'en-US'; recognition.interimResults = false; recognition.continuous = false;
-  recognition.onresult = function(e) { document.getElementById('cmdInput').value = e.results[0][0].transcript; isRecording = false; btn.classList.remove('recording'); sendCmd(); };
-  recognition.onerror = function() { isRecording = false; btn.classList.remove('recording'); };
-  recognition.onend = function() { isRecording = false; btn.classList.remove('recording'); };
-  recognition.start(); isRecording = true; btn.classList.add('recording');
+  recognition.lang = 'en-US';
+  recognition.interimResults = true;
+  recognition.continuous = true;
+  var baseText = input.value;
+  var lastFinal = '';
+  recognition.onresult = function(e) {
+    var final = '', interim = '';
+    for (var i = 0; i < e.results.length; i++) {
+      if (e.results[i].isFinal) { final += e.results[i][0].transcript; }
+      else { interim += e.results[i][0].transcript; }
+    }
+    if (final && final !== lastFinal) { baseText += (baseText ? ' ' : '') + final.trim(); lastFinal = final; }
+    input.value = baseText + (interim ? ' ' + interim : '');
+  };
+  recognition.onerror = function(e) { if (e.error !== 'no-speech') { isRecording = false; btn.classList.remove('recording'); btn.innerHTML = '<svg class="ico" viewBox="0 0 24 24"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>'; } };
+  recognition.onend = function() { if (isRecording) recognition.start(); };
+  recognition.start();
+  isRecording = true;
+  btn.classList.add('recording');
+  btn.innerHTML = '<svg class="ico" viewBox="0 0 24 24" style="fill:var(--danger,#ef4444);stroke:var(--danger,#ef4444)"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
 }
 
 // ── Load Data ──
@@ -921,20 +943,26 @@ async function loadHistory() {
   } catch(e) { el.innerHTML = '<div class="empty"><div class="empty-text">Error loading history</div></div>'; }
 }
 
+var _chatLoaded = false;
 async function loadChat() {
   var el = document.getElementById('chatList');
-  el.innerHTML = '<div class="refreshing">Loading...</div>';
+  if (!_chatLoaded) el.innerHTML = '<div class="refreshing">Loading...</div>';
   try {
     var r = await fetch('/api/conversations?limit=100');
     var data = await r.json();
+    if (!Array.isArray(data)) return;
+    _chatLoaded = true;
     if (!data.length) { el.innerHTML = '<div class="empty"><div class="empty-icon"><svg class="ico" viewBox="0 0 24 24" style="width:40px;height:40px"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg></div><div class="empty-text">No conversations yet.</div></div>'; return; }
+    data.reverse();
     el.innerHTML = data.map(function(d) {
       var roleClass = d.role === 'user' ? 'user' : 'assistant';
       var label = d.role === 'user' ? 'YOU' : 'CODEC';
       var content = (d.content || '').substring(0, 500);
       return '<div class="card"><button class="copy-btn" onclick="copyText(decodeURIComponent(\'' + encodeURIComponent(content) + '\'),this)" title="Copy"><svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button><div class="card-role ' + roleClass + '">' + label + '</div><div class="card-time">' + fmtTime(d.timestamp) + '</div><div class="card-task">' + escHtml(content) + '</div></div>';
     }).join('');
-  } catch(e) { el.innerHTML = '<div class="empty"><div class="empty-text">Error loading chat</div></div>'; }
+    var scroller = el.closest('.content') || el.parentElement;
+    setTimeout(function(){ scroller.scrollTop = scroller.scrollHeight; }, 50);
+  } catch(e) { if (!_chatLoaded) el.innerHTML = '<div class="empty"><div class="empty-text">Error loading chat</div></div>'; }
 }
 
 var _auditRefreshTimer = null;
@@ -1615,24 +1643,39 @@ function toggleVoice() {
   voiceEnabled = !voiceEnabled;
   localStorage.setItem('codec-voice', voiceEnabled);
   updateVoiceIcon();
+  if (!voiceEnabled) stopPlayback();
 }
 function updateVoiceIcon() {
-  var btn = document.getElementById('voiceBtn');
   var x1 = document.getElementById('muteX1');
   var x2 = document.getElementById('muteX2');
+  var st = document.getElementById('voiceState');
   if (voiceEnabled) {
-    x1.style.display = 'none';
-    x2.style.display = 'none';
+    if (x1) x1.style.display = 'none';
+    if (x2) x2.style.display = 'none';
+    if (st) { st.textContent = 'ON'; st.style.color = '#0a0a0a'; st.style.background = '#E8711A'; }
   } else {
-    x1.style.display = '';
-    x2.style.display = '';
+    if (x1) x1.style.display = '';
+    if (x2) x2.style.display = '';
+    if (st) { st.textContent = 'OFF'; st.style.color = '#888'; st.style.background = '#2a2a2a'; }
   }
 }
 updateVoiceIcon();
 
+var _currentAudio = null;
+var _lastPlayedText = null;
 async function playResponse(text) {
   if (!voiceEnabled || !text) return;
-  try { new Audio('/api/tts?text=' + encodeURIComponent(text.substring(0, 300))).play(); } catch(e) {}
+  if (text === _lastPlayedText) return;
+  _lastPlayedText = text;
+  try {
+    if (_currentAudio) { _currentAudio.pause(); _currentAudio = null; }
+    _currentAudio = new Audio('/api/tts?text=' + encodeURIComponent(text.substring(0, 300)));
+    _currentAudio.onended = function() { _currentAudio = null; _lastPlayedText = null; };
+    _currentAudio.play();
+  } catch(e) {}
+}
+function stopPlayback() {
+  if (_currentAudio) { _currentAudio.pause(); _currentAudio = null; }
 }
 
 // ── Server Photo (Mac webcam) ──

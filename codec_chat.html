@@ -822,7 +822,7 @@ function toggleMic(){
     input.value=transcript;
     if(e.results[e.results.length-1].isFinal){
       isRecording=false;btn.classList.remove('recording');
-      if(transcript.trim()){setTimeout(function(){sendMessage()},150)}
+      /* user must press send manually */
     }
   };
   recognition.onerror=function(e){isRecording=false;btn.classList.remove('recording');if(e.error!=='no-speech')showToast('Mic error: '+e.error)};

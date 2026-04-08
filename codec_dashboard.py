@@ -854,9 +854,10 @@ async def send_command(request: Request):
                             {"role": "system", "content": f"You are CODEC Flash, a fast local AI assistant running on the user's Mac. Today is {now_str}. Be concise and direct. Answer in 1-3 sentences max."},
                             {"role": "user", "content": task}
                         ],
-                        "max_tokens": 4000,
+                        "max_tokens": 300,
                         "temperature": 0.7,
                         "stream": False,
+                        "chat_template_kwargs": {"enable_thinking": False},
                     }
                     payload.update(kwargs)
                     r = await asyncio.to_thread(
@@ -864,7 +865,10 @@ async def send_command(request: Request):
                                         headers=headers_llm, timeout=120)
                     )
                     data = r.json()
-                    answer = data["choices"][0]["message"]["content"].strip()
+                    msg = data["choices"][0]["message"]
+                    answer = (msg.get("content") or "").strip()
+                    if not answer and msg.get("reasoning"):
+                        answer = msg["reasoning"].strip()
                     import re as _re
                     answer = _re.sub(r'<think>[\s\S]*?</think>', '', answer).strip()
 

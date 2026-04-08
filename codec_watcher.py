@@ -124,9 +124,8 @@ def speak(text):
 def paste_text(text):
     subprocess.run(["pbcopy"], input=text.encode(), timeout=5)
     time.sleep(0.3)
-    subprocess.run(["osascript", "-e",
-        'tell application "System Events" to keystroke "v" using command down'],
-        capture_output=True, timeout=5)
+    import pyautogui
+    pyautogui.hotkey('command', 'v')
 
 def handle_draft(task, ctx, app):
     print(f"[Watcher] Drafting: {task[:60]}")

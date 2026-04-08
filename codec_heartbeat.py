@@ -50,19 +50,6 @@ def _check_one_service(name: str, url: str) -> tuple:
     try:
         r = requests.get(url, timeout=5)
         status = "✅" if r.status_code in (200, 404, 405) else f"⚠️ {r.status_code}"
-        # LLM liveness probe: actually test inference (not just /models)
-        if name == "LLM" and status.startswith("✅"):
-            try:
-                lr = requests.post("http://localhost:8081/v1/chat/completions",
-                    json={"model": "qwen", "messages": [{"role": "user", "content": "ping"}],
-                          "max_tokens": 5, "chat_template_kwargs": {"enable_thinking": False}},
-                    timeout=15)
-                if lr.status_code != 200:
-                    status = f"⚠️ inference failed ({lr.status_code})"
-            except requests.exceptions.Timeout:
-                status = "⚠️ inference TIMEOUT (hung?)"
-            except Exception as e:
-                status = f"⚠️ inference error: {str(e)[:50]}"
     except Exception as e:
         status = "❌ DOWN"
         log_event("error", "codec-heartbeat", f"Service down: {name}", level="error")
@@ -441,8 +428,8 @@ def heartbeat():
     log_event("system", "codec-heartbeat", "Heartbeat tick completed")
     return tasks
 
-def run_daemon(interval_minutes=5):
-    """Run heartbeat every N minutes (default 5min for fast failure detection)."""
+def run_daemon(interval_minutes=20):
+    """Run heartbeat every N minutes."""
     log.info(f"Heartbeat daemon starting (every {interval_minutes}min)")
     while True:
         heartbeat()
@@ -453,4 +440,4 @@ if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "once":
         heartbeat()
     else:
-        run_daemon(5)
+        run_daemon(20)

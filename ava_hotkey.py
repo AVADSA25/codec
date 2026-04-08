@@ -2,6 +2,7 @@
 """
 AVA Hotkey Daemon - SuperWhisper Replacement
 Hold CMD → floating window appears → speak → release CMD → text typed + copied
+F5 → hands-free live dictation with real-time transcript
 
 Requirements: pynput, pyautogui, faster-whisper, Pillow, requests
 Install: pip install pynput pyautogui faster-whisper Pillow requests --break-system-packages
@@ -37,6 +38,14 @@ overlay_proc     = None
 model            = None
 model_loaded     = threading.Event()
 
+# ── HANDS-FREE LIVE DICTATION STATE ─────────────────────────────────────────
+live_active      = False
+live_overlay     = None
+live_thread      = None
+live_stop_event  = threading.Event()
+live_text_file   = os.path.join(tempfile.gettempdir(), "codec_live_dictate.txt")
+# Live dictation triggered by F5 key
+
 # ── LOAD WHISPER ─────────────────────────────────────────────────────────────
 def load_model():
     global model
@@ -45,50 +54,7 @@ def load_model():
     model_loaded.set()
     print("[AVA] Whisper ready.")
 
-# ── OVERLAY (tiny floating window via osascript) ──────────────────────────────
-OVERLAY_SCRIPT = """
-tell application "System Events"
-    -- nothing
-end tell
-
-set overlayText to "🎙 Listening... release ⌘ to transcribe"
-
-do shell script "python3 -c \\"
-import tkinter as tk
-import sys
-
-root = tk.Tk()
-root.overrideredirect(True)
-root.attributes('-topmost', True)
-root.attributes('-alpha', 0.92)
-root.configure(bg='#0a0a0a')
-
-sw = root.winfo_screenwidth()
-sh = root.winfo_screenheight()
-w, h = 440, 84
-x = (sw - w) // 2
-y = sh - 120
-root.geometry(f'{w}x{h}+{x}+{y}')
-
-frame = tk.Frame(root, bg='#0a0a0a', bd=0)
-frame.pack(fill='both', expand=True)
-
-canvas = tk.Canvas(frame, bg='#0a0a0a', highlightthickness=0, width=w, height=h)
-canvas.pack()
-canvas.create_rectangle(2, 2, w-2, h-2, outline='#00ff88', width=1)
-
-dot = canvas.create_oval(16, 18, 28, 30, fill='#ff3b3b', outline='')
-label = canvas.create_text(w//2 + 8, h//2, text='🎙  Listening  —  release ⌘ to transcribe', fill='#ffffff', font=('SF Pro Display', 13))
-
-def pulse():
-    current = canvas.itemcget(dot, 'fill')
-    canvas.itemconfig(dot, fill='#ff3b3b' if current == '#ff0000' else '#ff0000')
-    root.after(500, pulse)
-
-pulse()
-root.mainloop()
-\\""
-"""
+# ── OVERLAY (tiny floating window) ───────────────────────────────────────────
 
 def show_overlay():
     global overlay_proc
@@ -102,15 +68,16 @@ root.attributes('-alpha', 0.93)
 root.configure(bg='#0a0a0a')
 sw = root.winfo_screenwidth()
 sh = root.winfo_screenheight()
-w, h = 440, 84
+w, h = 520, 110
 x = (sw - w) // 2
-y = sh - 130
+y = sh - 140
 root.geometry(f'{w}x{h}+{x}+{y}')
 c = tk.Canvas(root, bg='#0a0a0a', highlightthickness=0, width=w, height=h)
 c.pack()
 c.create_rectangle(1,1,w-1,h-1, outline='#00ff88', width=1)
-dot = c.create_oval(14,17,27,30, fill='#ff3b3b', outline='')
-c.create_text(w//2+10, h//2, text='🎙  Listening  —  release ⌘ to transcribe', fill='#eeeeee', font=('Helvetica', 13))
+dot = c.create_oval(14,22,27,35, fill='#ff3b3b', outline='')
+c.create_text(w//2+10, 30, text='\\U0001f399  Listening  \\u2014  release \\u2318 to transcribe', fill='#eeeeee', font=('Helvetica', 13))
+c.create_text(w//2, 65, text='L = Live typing  \\u2502  \\u2318R = Hold to dictate', fill='#888888', font=('Helvetica', 10))
 def pulse():
     cur = c.itemcget(dot,'fill')
     c.itemconfig(dot, fill='#ff3b3b' if cur=='#550000' else '#550000')
@@ -148,14 +115,14 @@ root.attributes('-alpha', 0.93)
 root.configure(bg='#0a0a0a')
 sw = root.winfo_screenwidth()
 sh = root.winfo_screenheight()
-w, h = 440, 84
+w, h = 520, 90
 x = (sw - w) // 2
 y = sh - 130
 root.geometry(f'{w}x{h}+{x}+{y}')
 c = tk.Canvas(root, bg='#0a0a0a', highlightthickness=0, width=w, height=h)
 c.pack()
 c.create_rectangle(1,1,w-1,h-1, outline='#00aaff', width=1)
-c.create_text(w//2, h//2, text='⚡  Transcribing...', fill='#00aaff', font=('Helvetica', 13))
+c.create_text(w//2, h//2, text='\u26a1  Transcribing...', fill='#00aaff', font=('Helvetica', 13))
 root.after(4000, root.destroy)
 root.mainloop()
 """
@@ -168,22 +135,176 @@ root.mainloop()
     except:
         return None
 
+# ── LIVE DICTATION (hands-free, double-tap Option) ──────────────────────────
+WHISPER_SERVER = "http://localhost:8084/v1/audio/transcriptions"
+SOX_PATH = "/opt/homebrew/bin/sox"
+
+def _live_overlay_script():
+    return f"""
+import tkinter as tk, os, time
+TFILE = {repr(live_text_file)}
+root = tk.Tk()
+root.overrideredirect(True)
+root.attributes('-topmost', True)
+root.attributes('-alpha', 0.93)
+root.configure(bg='#0a0a0a')
+sw = root.winfo_screenwidth()
+sh = root.winfo_screenheight()
+w, h = 620, 110
+x = (sw - w) // 2
+y = sh - 140
+root.geometry(f'{{w}}x{{h}}+{{x}}+{{y}}')
+c = tk.Canvas(root, bg='#0a0a0a', highlightthickness=0, width=w, height=h)
+c.pack()
+c.create_rectangle(1, 1, w-1, h-1, outline='#00ff88', width=1)
+dot = c.create_oval(14, 12, 27, 25, fill='#ff3b3b', outline='')
+c.create_text(20, 18, text='\\U0001f3a4  Live Typing  \\u2014  press L to stop', anchor='w', fill='#00ff88', font=('Helvetica', 10), tags='hdr')
+txt = c.create_text(w//2, 62, text='Listening...', fill='#eeeeee', font=('Menlo', 13), width=w-40, tags='live')
+def poll():
+    try:
+        if os.path.exists(TFILE):
+            with open(TFILE) as f: content = f.read().strip()
+            if content:
+                c.itemconfig('live', text=content[-200:])
+    except: pass
+    root.after(300, poll)
+def pulse():
+    cur = c.itemcget(dot, 'fill')
+    c.itemconfig(dot, fill='#ff3b3b' if cur == '#550000' else '#550000')
+    root.after(400, pulse)
+poll()
+pulse()
+root.mainloop()
+"""
+
+def _live_record_loop():
+    """Record in 3-second chunks, send to Whisper server, accumulate text."""
+    import requests
+    # Clear text file
+    with open(live_text_file, "w") as f:
+        f.write("")
+    full_text = ""
+    chunk_sec = 3
+    while not live_stop_event.is_set():
+        tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+        tmp.close()
+        try:
+            proc = subprocess.run(
+                [SOX_PATH, "-t", "coreaudio", "default", "-r", "16000", "-c", "1",
+                 "-b", "16", "-e", "signed-integer", tmp.name, "trim", "0", str(chunk_sec)],
+                timeout=chunk_sec + 3, capture_output=True
+            )
+            if live_stop_event.is_set():
+                break
+            if not os.path.exists(tmp.name) or os.path.getsize(tmp.name) < 1000:
+                continue
+            # Check energy — skip silence
+            try:
+                import wave as _wave, numpy as _np
+                wf = _wave.open(tmp.name, 'rb')
+                data = _np.frombuffer(wf.readframes(wf.getnframes()), dtype=_np.int16)
+                wf.close()
+                energy = _np.abs(data).mean()
+                if energy < 200:
+                    continue
+            except:
+                pass
+            # Send to Whisper server
+            with open(tmp.name, "rb") as f:
+                r = requests.post(WHISPER_SERVER,
+                    files={"file": ("chunk.wav", f, "audio/wav")},
+                    data={"model": "mlx-community/whisper-large-v3-turbo", "language": "en"},
+                    timeout=10)
+            if r.status_code == 200:
+                chunk_text = r.json().get("text", "").strip()
+                # Filter Whisper hallucinations
+                if chunk_text and len(chunk_text) > 1 and chunk_text.lower() not in ("you", "thank you", "thank you.", "thanks.", "bye.", "the end."):
+                    full_text += chunk_text + " "
+                    with open(live_text_file, "w") as f:
+                        f.write(full_text.strip())
+                    # Type chunk live at cursor position
+                    pyperclip.copy(chunk_text + " ")
+                    time.sleep(0.05)
+                    pyautogui.hotkey('command', 'v')
+                    print(f"[AVA] Live: {chunk_text}")
+        except Exception as e:
+            print(f"[AVA] Live chunk error: {e}")
+        finally:
+            try: os.unlink(tmp.name)
+            except: pass
+    return full_text.strip()
+
+def start_live_dictation():
+    global live_active, live_overlay, live_thread, live_stop_event
+    if live_active:
+        return
+    live_active = True
+    live_stop_event.clear()
+    print("[AVA] \U0001f3a4 Live dictation started — double-tap Option to stop")
+    # Sound
+    threading.Thread(target=lambda: subprocess.run(
+        ['afplay', '/System/Library/Sounds/Blow.aiff'],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL), daemon=True).start()
+    # Show overlay
+    live_overlay = subprocess.Popen(
+        [sys.executable, "-c", _live_overlay_script()],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
+    # Start recording loop in thread
+    live_thread = threading.Thread(target=_live_record_loop, daemon=True)
+    live_thread.start()
+
+def stop_live_dictation():
+    global live_active, live_overlay, live_thread
+    if not live_active:
+        return
+    live_active = False
+    live_stop_event.set()
+    print("[AVA] \u2705 Live dictation stopped — pasting text")
+    # Sound
+    threading.Thread(target=lambda: subprocess.run(
+        ['afplay', '/System/Library/Sounds/Funk.aiff'],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL), daemon=True).start()
+    # Kill overlay
+    if live_overlay:
+        try: live_overlay.terminate()
+        except: pass
+        live_overlay = None
+    # Wait for thread
+    if live_thread:
+        live_thread.join(timeout=5)
+        live_thread = None
+    # Text was already typed live at cursor — just log
+    text = ""
+    try:
+        with open(live_text_file) as f:
+            text = f.read().strip()
+    except: pass
+    if text:
+        print(f"[AVA] \u2705 Done: {text[:80]}")
+    else:
+        print("[AVA] No speech detected in live mode")
+    # Cleanup
+    try: os.unlink(live_text_file)
+    except: pass
+
 # ── AUDIO RECORDING ───────────────────────────────────────────────────────────
 def record_audio():
     """Record audio using sox (built into macOS via brew or system)"""
     global audio_frames
     audio_frames = []
-    
+
     tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
     tmp_path = tmp.name
     tmp.close()
-    
+
     # Use sox to record — comes with macOS or brew install sox
     # Falls back to afrecord (built-in macOS)
     proc = None
+    sox_cmd = SOX_PATH if os.path.exists(SOX_PATH) else "sox"
     try:
         proc = subprocess.Popen(
-            ["sox", "-t", "coreaudio", "default", "-r", "16000", "-c", "1", "-b", "16", tmp_path],
+            [sox_cmd, "-t", "coreaudio", "default", "-r", "16000", "-c", "1", "-b", "16", tmp_path],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL
         )
@@ -197,7 +318,7 @@ def record_audio():
         except FileNotFoundError:
             print("[AVA] sox/rec not found. Install: brew install sox")
             return None
-    
+
     return proc, tmp_path
 
 # ── TRANSCRIBE ────────────────────────────────────────────────────────────────
@@ -205,9 +326,9 @@ def transcribe_and_type(audio_path):
     if not model_loaded.is_set():
         print("[AVA] Model not loaded yet")
         return
-    
+
     proc_overlay = show_processing()
-    
+
     try:
         print(f"[AVA] Transcribing {audio_path}...")
         segments, info = model.transcribe(
@@ -217,19 +338,19 @@ def transcribe_and_type(audio_path):
             vad_filter=True,
             vad_parameters=dict(min_silence_duration_ms=300)
         )
-        
+
         text = " ".join([s.text.strip() for s in segments]).strip()
-        
+
         if proc_overlay:
             try:
                 proc_overlay.terminate()
             except:
                 pass
-        
+
         if not text:
             print("[AVA] No speech detected")
             return
-        
+
         print(f"[AVA] Transcribed: {text}")
 
         # Draft mode: ONLY if dictation starts with "draft" — refine with Qwen
@@ -268,15 +389,15 @@ def transcribe_and_type(audio_path):
 
         # Copy to clipboard
         pyperclip.copy(text)
-        
+
         # Small delay to ensure focus is back on target window
         time.sleep(0.15)
-        
+
         # Type the text using CMD+V (paste) — faster and more reliable than typing
         pyautogui.hotkey('command', 'v')
-        
-        print(f"[AVA] ✅ Typed: {text}")
-        
+
+        print(f"[AVA] \u2705 Typed: {text}")
+
     except Exception as e:
         print(f"[AVA] Transcription error: {e}")
         if proc_overlay:
@@ -296,9 +417,29 @@ recording_path = None
 
 def on_press(key):
     global cmd_held, recording_proc, recording_path
-    
+
+    # ── L key: toggle live dictation (while CMD held → switch; while active → stop) ──
+    if hasattr(key, 'char') and key.char == 'l':
+        if live_active:
+            threading.Thread(target=stop_live_dictation, daemon=True).start()
+            return
+        if cmd_held:
+            # Stop current recording, switch to live mode
+            if recording_proc:
+                try:
+                    recording_proc.terminate()
+                    recording_proc.wait(timeout=2)
+                except: pass
+                recording_proc = None
+                recording_path = None
+            hide_overlay()
+            cmd_held = False
+            threading.Thread(target=start_live_dictation, daemon=True).start()
+            return
+
+    # ── Hold RIGHT CMD only → classic dictation ──
     if key == keyboard.Key.cmd_r:
-        if not cmd_held:
+        if not cmd_held and not live_active:
             cmd_held = True
             print("[AVA] CMD held — starting recording")
             threading.Thread(target=lambda: subprocess.run(
@@ -311,7 +452,7 @@ def on_press(key):
 
 def on_release(key):
     global cmd_held, recording_proc, recording_path
-    
+
     if key == keyboard.Key.cmd_r:
         if cmd_held:
             cmd_held = False
@@ -319,7 +460,7 @@ def on_release(key):
                 ['afplay', '/System/Library/Sounds/Funk.aiff'],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL), daemon=True).start()
             hide_overlay()
-            
+
             if recording_proc:
                 print("[AVA] CMD released — stopping recording")
                 recording_proc.terminate()
@@ -327,7 +468,7 @@ def on_release(key):
                 rp = recording_path
                 recording_proc = None
                 recording_path = None
-                
+
                 # Transcribe in background thread
                 t = threading.Thread(target=transcribe_and_type, args=(rp,), daemon=True)
                 t.start()
@@ -335,30 +476,33 @@ def on_release(key):
 # ── MAIN ──────────────────────────────────────────────────────────────────────
 def main():
     print("""
-╔══════════════════════════════════════════╗
-║     AVA Hotkey Daemon  v1.0              ║
-║     SuperWhisper Replacement             ║
-╠══════════════════════════════════════════╣
-║  Hold ⌘ CMD  →  speak  →  release       ║
-║  Text types into active window           ║
-║  Press Ctrl+C to quit                    ║
-╚══════════════════════════════════════════╝
+\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557
+\u2551     AVA Hotkey Daemon  v1.1                  \u2551
+\u2551     SuperWhisper Replacement                 \u2551
+\u2560\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2563
+\u2551  Hold \u2318R (right CMD) \u2192 speak \u2192 release       \u2551
+\u2551  L  \u2192 Live typing at cursor (while \u2318R or L)  \u2551
+\u2551    Words type live wherever cursor is          \u2551
+\u2551    Press L again to stop                      \u2551
+\u2551  Text types into active window               \u2551
+\u2551  Press Ctrl+C to quit                        \u2551
+\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d
 """)
-    
+
     # Check for sox
-    if subprocess.run(["which", "sox"], capture_output=True).returncode != 0:
-        print("[AVA] ⚠️  sox not found — install with: brew install sox")
+    if not os.path.exists(SOX_PATH) and subprocess.run(["which", "sox"], capture_output=True).returncode != 0:
+        print("[AVA] \u26a0\ufe0f  sox not found \u2014 install with: brew install sox")
         print("[AVA] sox is required for microphone recording")
         sys.exit(1)
-    
+
     # Load whisper in background
     t = threading.Thread(target=load_model, daemon=True)
     t.start()
-    
+
     print("[AVA] Waiting for Whisper to load...")
     model_loaded.wait()
-    print("[AVA] 🟢 Ready. Hold CMD to record.")
-    
+    print("[AVA] \U0001f7e2 Ready. Hold right CMD to record. F5 for live dictation.")
+
     # Start keyboard listener
     with keyboard.Listener(on_press=on_press, on_release=on_release) as listener:
         try:

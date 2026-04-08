@@ -36,19 +36,19 @@ def call_qwen(text, mode):
     return re.sub(r'###\s*FINAL ANSWER:\s*', '', result).strip()
 
 def overlay(text, color, duration):
-    import json as _json
     env = os.environ.copy()
     env["_OVERLAY_TEXT"] = text
     env["_OVERLAY_COLOR"] = color
     env["_OVERLAY_DURATION"] = str(duration)
-    subprocess.Popen([sys.executable, "-c", """import tkinter as tk, os
+    return subprocess.Popen([sys.executable, "-c", """import tkinter as tk, os
 t=os.environ['_OVERLAY_TEXT'];c=os.environ['_OVERLAY_COLOR'];d=int(os.environ['_OVERLAY_DURATION'])
 r=tk.Tk();r.overrideredirect(True);r.attributes('-topmost',True);r.attributes('-alpha',0.95);r.configure(bg='#0a0a0a')
 sw=r.winfo_screenwidth();sh=r.winfo_screenheight()
-r.geometry(f'440x84+{(sw-440)//2}+{sh-130}')
-cv=tk.Canvas(r,bg='#0a0a0a',highlightthickness=0,width=440,height=84);cv.pack()
-cv.create_rectangle(1,1,439,83,outline=c,width=1)
-cv.create_text(220,42,text=t,fill=c,font=('Helvetica',16,'bold'))
+w,h=520,90
+r.geometry(f'{w}x{h}+{(sw-w)//2}+{sh-130}')
+cv=tk.Canvas(r,bg='#0a0a0a',highlightthickness=0,width=w,height=h);cv.pack()
+cv.create_rectangle(1,1,w-1,h-1,outline=c,width=1)
+cv.create_text(w//2,h//2,text=t,fill=c,font=('Helvetica',16,'bold'))
 r.after(d,r.destroy);r.mainloop()"""], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
 
 text = subprocess.run(["pbpaste"], capture_output=True, text=True).stdout.strip()
@@ -117,9 +117,13 @@ if MODE == "save":
         overlay("\u2705 Saved!", "#44cc66", 2000)
     sys.exit(0)
 
-overlay("\\u26a1 Processing...", "#00aaff", 8000)
+_proc_overlay = overlay("⚡ Processing...", "#00aaff", 15000)
 try:
     result = call_qwen(text, MODE)
+    # Kill processing overlay now that we have the result
+    if _proc_overlay:
+        try: _proc_overlay.terminate()
+        except: pass
     if MODE in ("explain", "translate"):
         # Show result in a styled floating window (no Terminal)
         title = "CODEC Explain" if MODE == "explain" else "CODEC Translate"
@@ -141,7 +145,7 @@ r.minsize(400,250)
 hdr=tk.Frame(r,bg='#E8711A',height=36);hdr.pack(fill='x')
 hdr.pack_propagate(False)
 tk.Label(hdr,text='{title}',fg='white',bg='#E8711A',font=('Helvetica',14,'bold')).pack(side='left',padx=12)
-tk.Button(hdr,text='Copy',fg='white',bg='#cc5a00',relief='flat',font=('Helvetica',11),padx=8,
+tk.Button(hdr,text='📋 Copy',fg='#1a1a1a',bg='white',relief='flat',font=('Helvetica',11,'bold'),padx=8,
     command=lambda:[r.clipboard_clear(),r.clipboard_append(txt.get('1.0','end-1c'))]).pack(side='right',padx=6,pady=4)
 # Text area
 txt=tk.Text(r,wrap='word',bg='#1a1a1a',fg='#e0e0e0',font=('Menlo',13),relief='flat',
@@ -162,7 +166,11 @@ r.mainloop()
     else:
         subprocess.run(["pbcopy"], input=result.encode(), check=True)
         time.sleep(0.3)
-        subprocess.run(["osascript", "-e", 'tell application "System Events" to keystroke "v" using command down'])
-        overlay("\\u2705 Text replaced!", "#44cc66", 2000)
+        import pyautogui
+        pyautogui.hotkey('command', 'v')
+        overlay("✅ Text replaced!", "#44cc66", 2000)
 except Exception as e:
+    if _proc_overlay:
+        try: _proc_overlay.terminate()
+        except: pass
     overlay("Error - check terminal", "#ff3333", 3000)

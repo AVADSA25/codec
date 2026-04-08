@@ -239,7 +239,7 @@ svg text{font-family:'SF Pro Display',-apple-system,system-ui,sans-serif}
 <div id="stats"></div>
 <div id="viewSwitch">
   <button class="vs-btn active" onclick="switchView('neural')">Neural Map</button>
-  <button class="vs-btn" onclick="switchView('products')">7 Products</button>
+  <button class="vs-btn" onclick="switchView('products')">6 Products</button>
 </div>
 <svg id="cortex" xmlns="http://www.w3.org/2000/svg"></svg>
 <div id="productsView"></div>
@@ -276,16 +276,28 @@ function openSidePanel(){document.getElementById('sidePanel').classList.add('ope
 function closeSidePanel(){document.getElementById('sidePanel').classList.remove('open');document.getElementById('sidePanelOverlay').classList.remove('open')}
 // Theme
 function toggleCortexTheme(){
-  var t = document.documentElement.dataset.theme === 'light' ? '' : 'light';
-  document.documentElement.dataset.theme = t;
-  localStorage.setItem('cortex-theme', t);
-  document.getElementById('themeToggle').textContent = t === 'light' ? '\u{1F319}' : '\u2600';
-  // Update theme toggle border for light mode
-  document.getElementById('themeToggle').style.borderColor = t === 'light' ? 'rgba(0,0,0,.1)' : 'rgba(255,255,255,.1)';
+  var current = document.documentElement.dataset.theme;
+  var next = current === 'light' ? 'dark' : 'light';
+  document.documentElement.dataset.theme = next === 'dark' ? '' : 'light';
+  localStorage.setItem('codec-theme', next);
+  document.getElementById('themeToggle').textContent = next === 'light' ? '\u{1F319}' : '\u2600';
+  document.getElementById('themeToggle').style.borderColor = next === 'light' ? 'rgba(0,0,0,.1)' : 'rgba(255,255,255,.1)';
 }
 (function(){
-  var saved = localStorage.getItem('cortex-theme');
-  if(saved){document.documentElement.dataset.theme=saved;}
+  var saved = localStorage.getItem('codec-theme') || 'dark';
+  if(saved === 'light'){document.documentElement.dataset.theme='light';}
+  // When embedded as iframe, listen for theme changes from parent page
+  window.addEventListener('storage', function(e){
+    if(e.key === 'codec-theme'){
+      var t = e.newValue || 'dark';
+      document.documentElement.dataset.theme = t === 'light' ? 'light' : '';
+      var btn = document.getElementById('themeToggle');
+      if(btn){
+        btn.textContent = t === 'light' ? '\u{1F319}' : '\u2600';
+        btn.style.borderColor = t === 'light' ? 'rgba(0,0,0,.1)' : 'rgba(255,255,255,.1)';
+      }
+    }
+  });
 })();
 // ═══════════════════════════════════════════════════════════════════════
 // CORTEX v2 — Human Body Metaphor
@@ -759,11 +771,6 @@ var PRODUCTS = [
    features:['F13 Toggle','F18 Voice','F16 Text','Hey CODEC Wake','56 Skills','Google Calendar','Gmail','Drive','Docs','Sheets','Tasks','Keep','Chrome','Web Search','Hue Lights','Timers','Spotify','Clipboard','Terminal','Memory FTS5'],
    files:['codec.py','codec_core.py','codec_config.py'],status:'core',
    details:{shortcuts:['F13 — Toggle on/off','F18 — Hold to record voice','F16 — Text input dialog','** — Screenshot + Vision','++ — Document analysis','-- — Quick chat'],skills:'56 built-in skills: Google Calendar, Gmail, Drive, Docs, Sheets, Tasks, Keep, Chrome automation, web search, Hue lights, clipboard, terminal commands, music, timers, calculator, weather, bitcoin, brightness, volume, app switch, mouse control, screenshot OCR. Most skills bypass the LLM entirely — direct action, zero latency.',memory:'FTS5-indexed SQLite. BM25 ranking. All conversations logged across all 7 products.',wake:'Always-on "Hey CODEC" via Anker webcam mic. Energy threshold: 200. Auto-activates and records follow-up.',files:['codec.py','codec_core.py','codec_config.py','codec_identity.py','skills/*.py']}},
-  {name:'Vision Mouse Control',subtitle:'See & Click',icon:'👁',color:'#448aff',
-   desc:'No other open-source voice assistant does this. Say "Hey CODEC, click the Submit button" — screenshots the screen, sends to UI-TARS vision model, gets pixel coordinates, moves the mouse and clicks. Pure vision, no accessibility API.',
-   features:['Whisper STT ~2s','Target Extraction','Screenshot Capture','UI-TARS Coordinates ~4s','pyautogui Click','Any App','No API Required','Voice-Controlled'],
-   files:['codec.py','skills/mouse_control.py'],status:'vision',
-   details:{how:'1. Whisper transcribes voice command (~2s) → 2. Target extracted from natural speech (instant) → 3. Screenshot captured and downscaled (instant) → 4. UI-TARS locates element by pixel coordinates (~4s) → 5. pyautogui moves cursor and clicks (instant)',example:'"I\'m on Cloudflare and can\'t find the SSL button — click it for me." CODEC strips the conversational noise, extracts "SSL button", and finds it on screen.',models:'UI-TARS-1.5-7B (local MLX) + Gemini Flash (cloud fallback)',port:'8082',files:['codec.py','skills/mouse_control.py']}},
   {name:'CODEC Dictate',subtitle:'Hold, Speak, Paste',icon:'✍️',color:'#00e676',
    desc:'Hold a key. Say what you mean. Release. Text appears wherever the cursor is. If CODEC detects a message draft, it refines through the LLM — grammar fixed, tone polished, meaning preserved. Works in every app on macOS. A free, open-source SuperWhisper replacement that runs entirely local.',
    features:['Hold to Record','Whisper STT','LLM Refinement','Auto-Paste','Any macOS App','Grammar Fix','Tone Polish','Draft Detection'],
@@ -813,7 +820,7 @@ function switchView(view) {
 }
 
 function renderProducts() {
-  var html = '<div class="products-header"><h2>7 Products &middot; One Framework</h2><p>Every capability of the CODEC ecosystem</p></div>';
+  var html = '<div class="products-header"><h2>6 Products &middot; One Framework</h2><p>Every capability of the CODEC ecosystem</p></div>';
   html += '<div class="products-grid">';
   PRODUCTS.forEach(function(p) {
     html += '<div class="product-card">';
@@ -962,7 +969,7 @@ function fitToScreen() {
 setTimeout(fitToScreen,100);
 window.addEventListener('resize',fitToScreen);
 // Restore theme button state
-var savedTheme = localStorage.getItem('cortex-theme') || '';
+var savedTheme = localStorage.getItem('codec-theme') || 'dark';
 document.getElementById('themeToggle').textContent = savedTheme === 'light' ? '\u{1F319}' : '\u2600';
 if(savedTheme==='light') document.getElementById('themeToggle').style.borderColor='rgba(0,0,0,.1)';
 (function(){
