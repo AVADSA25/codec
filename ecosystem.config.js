@@ -40,7 +40,7 @@ module.exports = {
     {
       name: "codec-dictate",
       script: "python3",
-      args: "codec_keyboard.py",
+      args: "codec_dictate.py",
       cwd: __dirname,
       max_memory_restart: "64M",
       restart_delay: 2000,
