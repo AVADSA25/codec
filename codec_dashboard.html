@@ -406,7 +406,7 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
   background: rgba(120,144,156,0.15);
 }
 .audit-filter-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-.audit-time-btns { display: flex; gap: 2px; background: var(--surface, #1a1a1d); border-radius: 6px; padding: 2px; }
+.audit-time-btns { display: none; }
 .audit-time-btn {
   padding: 4px 10px; font-size: 10px; font-weight: 500; border: none;
   background: none; color: var(--dim, #6a6a70); cursor: pointer; border-radius: 4px;
@@ -428,7 +428,7 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
   font-family: var(--mono);
 }
 .audit-live-btn.active { border-color: #22c55e; color: #22c55e; background: rgba(34,197,94,0.08); }
-.audit-timeline-wrap { overflow-y: auto; max-height: 520px; }
+.audit-timeline-wrap { overflow-y: auto; }
 .audit-timeline { display: flex; flex-direction: column; }
 [data-theme="light"] .audit-pill { opacity: 0.5; }
 [data-theme="light"] .audit-pill.active { opacity: 1; }
@@ -621,7 +621,7 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
     <!-- Audit Panel -->
     <div class="panel" id="panel-audit">
       <div class="audit-stats-bar" id="auditStatsBar">
-        <div class="audit-stat-item"><div><div class="audit-stat-label">Events (24h)</div><div class="audit-stat-value" id="auditStatTotal">--</div></div></div>
+        <div class="audit-stat-item"><div><div class="audit-stat-label">Events</div><div class="audit-stat-value" id="auditStatTotal">--</div></div></div>
         <div class="audit-stat-item"><div><div class="audit-stat-label">Errors</div><div class="audit-stat-value a-errors" id="auditStatErrors">--</div></div></div>
         <div class="audit-stat-item"><div><div class="audit-stat-label">Commands</div><div class="audit-stat-value a-commands" id="auditStatCommands">--</div></div></div>
         <div class="audit-stat-item"><div><div class="audit-stat-label">Skills</div><div class="audit-stat-value a-skills" id="auditStatSkills">--</div></div></div>
@@ -630,12 +630,7 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
       <div class="audit-filter-bar">
         <div class="audit-pills" id="auditPills"></div>
         <div class="audit-filter-right">
-          <div class="audit-time-btns" id="auditTimeBtns">
-            <button class="audit-time-btn" data-range="1h">1h</button>
-            <button class="audit-time-btn" data-range="6h">6h</button>
-            <button class="audit-time-btn active" data-range="24h">24h</button>
-            <button class="audit-time-btn" data-range="7d">7d</button>
-          </div>
+          <!-- time range removed — always shows last 24h -->
           <input type="text" class="audit-search-input" id="auditSearchInput" placeholder="Search events...">
           <button class="audit-live-btn" id="auditLiveBtn">&#9679; LIVE</button>
         </div>
@@ -1080,20 +1075,7 @@ function _auditInitPanel() {
     });
   }
 
-  // Time buttons
-  var timeBtns = document.getElementById('auditTimeBtns');
-  if (timeBtns) {
-    timeBtns.addEventListener('click', function(e) {
-      var btn = e.target.closest('.audit-time-btn');
-      if (!btn) return;
-      _auditCurrentRange = btn.getAttribute('data-range');
-      var allBtns = timeBtns.querySelectorAll('.audit-time-btn');
-      for (var i = 0; i < allBtns.length; i++) {
-        allBtns[i].classList.toggle('active', allBtns[i].getAttribute('data-range') === _auditCurrentRange);
-      }
-      _auditFetchEvents();
-    });
-  }
+  // Time buttons removed — always 24h
 
   // Search input (debounced)
   var searchEl = document.getElementById('auditSearchInput');
@@ -1143,8 +1125,8 @@ async function _auditFetchEvents() {
   if (!el) return;
 
   var cats = Array.from(_auditActiveCategories).join(',');
-  var since = _auditSinceFromRange(_auditCurrentRange);
-  var url = '/api/audit/stream?categories=' + encodeURIComponent(cats) + '&since=' + encodeURIComponent(since) + '&limit=100';
+  var since = _auditSinceFromRange('24h');
+  var url = '/api/audit/stream?categories=' + encodeURIComponent(cats) + '&since=' + encodeURIComponent(since) + '&limit=200';
   if (_auditSearchQuery) url += '&search=' + encodeURIComponent(_auditSearchQuery);
 
   try {
@@ -1162,7 +1144,7 @@ async function _auditFetchEvents() {
 
   // Fallback: try old /api/audit endpoint
   try {
-    var r2 = await fetch('/api/audit?limit=100');
+    var r2 = await fetch('/api/audit?limit=200');
     if (r2.ok) {
       var legacyData = await r2.json();
       if (legacyData.length) {
