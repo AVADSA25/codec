@@ -165,11 +165,14 @@ class SkillRegistry:
         return matches[0] if matches else None
 
     def match_all_triggers(self, task: str) -> List[str]:
-        """Return all skill names whose triggers match, in registry order."""
+        """Return all skill names whose triggers match, sorted by specificity (longest trigger first)."""
         low = task.lower()
-        matches = []
+        scored = []
         for name, meta in self._meta.items():
             triggers = meta.get("SKILL_TRIGGERS", [])
-            if any(re.search(r'\b' + re.escape(t) + r'\b', low) for t in triggers):
-                matches.append(name)
-        return matches
+            matched = [t for t in triggers if re.search(r'\b' + re.escape(t) + r'\b', low)]
+            if matched:
+                best = max(len(t) for t in matched)
+                scored.append((best, name))
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return [name for _, name in scored]
