@@ -63,24 +63,24 @@ import tkinter as tk
 root = tk.Tk()
 root.overrideredirect(True)
 root.attributes('-topmost', True)
-root.attributes('-alpha', 0.93)
-root.configure(bg='#0a0a0a')
+root.attributes('-alpha', 0.95)
+root.configure(bg='#111111')
 sw = root.winfo_screenwidth()
 sh = root.winfo_screenheight()
-w, h = 520, 110
+w, h = 680, 88
 x = (sw - w) // 2
-y = sh - 140
+y = sh - 120
 root.geometry(f'{w}x{h}+{x}+{y}')
-c = tk.Canvas(root, bg='#0a0a0a', highlightthickness=0, width=w, height=h)
+c = tk.Canvas(root, bg='#111111', highlightthickness=0, width=w, height=h)
 c.pack()
-c.create_rectangle(1,1,w-1,h-1, outline='#00ff88', width=1)
-dot = c.create_oval(14,22,27,35, fill='#ff3b3b', outline='')
-c.create_text(w//2+10, 30, text='\\U0001f399  Listening  \\u2014  release \\u2318 to transcribe', fill='#eeeeee', font=('Helvetica', 13))
-c.create_text(w//2, 65, text='L = Live typing  \\u2502  \\u2318R = Hold to dictate', fill='#888888', font=('Helvetica', 10))
+c.create_rectangle(2, 2, w-2, h-2, outline='#E8711A', width=2)
+dot = c.create_oval(24, 30, 40, 46, fill='#ff3b3b', outline='')
+c.create_text(w//2+10, 28, text='Listening  \\u2014  release \\u2318 to transcribe', fill='#ffffff', font=('SF Pro Display', 16, 'bold'))
+c.create_text(w//2+10, 58, text='Press L for live typing at cursor', fill='#777777', font=('SF Pro Display', 12))
 def pulse():
     cur = c.itemcget(dot,'fill')
-    c.itemconfig(dot, fill='#ff3b3b' if cur=='#550000' else '#550000')
-    root.after(400, pulse)
+    c.itemconfig(dot, fill='#ff3b3b' if cur=='#440000' else '#440000')
+    root.after(500, pulse)
 pulse()
 root.mainloop()
 """

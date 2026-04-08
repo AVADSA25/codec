@@ -107,5 +107,17 @@ module.exports = {
       max_restarts: 5,
       autorestart: true,
     },
+
+    // ── Watchdog (kills stuck/zombie processes hogging RAM) ──
+    {
+      name: "codec-watchdog",
+      script: "python3",
+      args: "codec_watchdog.py",
+      cwd: __dirname,
+      max_memory_restart: "64M",
+      restart_delay: 5000,
+      max_restarts: 10,
+      autorestart: true,
+    },
   ],
 };
