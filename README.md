@@ -39,19 +39,29 @@ No cloud dependency. No subscription. No data leaving the machine. MIT licensed.
 
 ---
 
-## 10 Products. One System.
+## 7 Products. One System.
 
-### CODEC Core — The Command Layer
+| # | Product | What It Does |
+|:-:|---|---|
+| 1 | **CODEC Core** | Voice command layer + vision mouse control — 60 skills, screen clicks by voice |
+| 2 | **CODEC Dictate** | Hold, speak, paste — live typing at cursor, draft refinement, floating overlays |
+| 3 | **CODEC Instant** | Right-click → 8 AI services system-wide — proofread, translate, reply, explain |
+| 4 | **CODEC Chat** | 250K-context conversational AI + 12 autonomous agent crews |
+| 5 | **CODEC Vibe** | Browser IDE with Monaco editor + Skill Forge — the framework writes its own plugins |
+| 6 | **CODEC Voice** | Real-time voice calls with interrupt detection, screen analysis mid-call |
+| 7 | **CODEC Overview** | Dashboard + Cortex nerve center + full audit trail — accessible from any device |
+
+---
+
+### 1. CODEC Core — The Command Layer
 
 Always-on voice assistant. Say *"Hey CODEC"* or press F13 to activate. F18 for voice commands. F16 for text input.
 
 60 skills fire instantly: Google Calendar, Gmail, Drive, Docs, Sheets, Tasks, Keep, Chrome automation, web search, Hue lights, timers, Spotify, clipboard, terminal commands, PM2 control, and more. Most skills bypass the LLM entirely — direct action, zero latency. Skills are matched by trigger specificity — longer, more specific triggers always win over generic ones.
 
-### Vision Mouse Control — See & Click
+**Vision Mouse Control — See & Click**
 
-**No other open-source voice assistant does this.**
-
-Say *"Hey CODEC, click the Submit button"* — CODEC screenshots the screen, sends it to a local UI-specialist vision model (UI-TARS), gets back pixel coordinates, and moves the mouse to click. Fully voice-controlled. Works on any app. No accessibility API required — pure vision.
+No other open-source voice assistant does this. Say *"Hey CODEC, click the Submit button"* — CODEC screenshots the screen, sends it to a local UI-specialist vision model (UI-TARS), gets back pixel coordinates, and moves the mouse to click. Fully voice-controlled. Works on any app. No accessibility API required — pure vision.
 
 | Step | What happens | Speed |
 |---|---|---|
@@ -63,19 +73,19 @@ Say *"Hey CODEC, click the Submit button"* — CODEC screenshots the screen, sen
 
 *"I'm on Cloudflare and can't find the SSL button — click it for me."* That works. CODEC strips the conversational noise, extracts "SSL button", and finds it on screen.
 
-### CODEC Dictate — Hold, Speak, Paste
+### 2. CODEC Dictate — Hold, Speak, Paste
 
 Hold Cmd+R. Say what you mean. Release. Text appears wherever the cursor is. Press **L** for live typing mode — words appear at the cursor in real-time as you speak.
 
 If CODEC detects a message draft, it refines through the LLM — grammar fixed, tone polished, meaning preserved. Works in every app on macOS. A free, open-source SuperWhisper replacement that runs entirely local.
 
-Native floating overlays: orange-bordered recording panel with pulsing red dot, blue processing indicator, green live-typing display with real-time transcript.
+Native floating overlays: orange-bordered recording panel with pulsing red dot, blue processing indicator, green live-typing display with real-time transcript. Built-in hallucination filter blocks Whisper noise artifacts. atexit + SIGTERM cleanup prevents orphaned subprocesses.
 
-### CODEC Instant — One Right-Click
+### 3. CODEC Instant — One Right-Click
 
 Select any text, anywhere. Right-click. Eight AI services system-wide: Proofread, Elevate, Explain, Translate, Reply (with `:tone` syntax), Prompt, Read Aloud, Save. Powered by the local LLM.
 
-### CODEC Chat — 250K Context + 12 Agent Crews
+### 4. CODEC Chat — 250K Context + 12 Agent Crews
 
 Full conversational AI. Long context. File uploads (drag-and-drop). Image analysis via vision model. Web search. Persistent conversation history with sidebar. Edit and re-send messages. Regenerate responses.
 
@@ -102,31 +112,29 @@ Schedule any crew: *"Run competitor analysis every Monday at 9am"*
 
 The multi-agent framework is under 800 lines. Zero dependencies. No CrewAI. No LangChain. 7 built-in tools including web search, file operations, Google Docs, image generation, and vision.
 
-### CODEC Vibe — AI Coding IDE + Skill Forge
+### 5. CODEC Vibe — AI Coding IDE + Skill Forge
 
 Split-screen in the browser. Monaco editor on the left (same engine as VS Code, v0.45.0). AI chat on the right. Describe what's needed — CODEC writes it, click Apply, run it, live preview in browser.
 
 Skill Forge takes it further: three modes — paste code, import from GitHub URL, or describe a capability in plain English. CODEC converts it into a working plugin. The framework writes its own extensions. DOMPurify sanitization on all rendered content.
 
-### CODEC Voice — Live Voice Calls
+### 6. CODEC Voice — Live Voice Calls
 
 Real-time voice-to-voice conversations with the AI. WebSocket pipeline with auto-reconnect (exponential backoff), heartbeat keepalive, and interrupt detection — no Pipecat, no external dependencies.
 
-Call CODEC from a phone, talk naturally, and mid-call say *"check my screen"* — it takes a screenshot, analyzes it, and speaks the result back. Voice Replies toggle (ON/OFF) persists across all pages.
+Call CODEC from a phone, talk naturally, and mid-call say *"check my screen"* — it takes a screenshot, analyzes it, and speaks the result back. Interrupt-safe: if you speak while vision is processing, it stops immediately instead of playing stale results. Voice Replies toggle (ON/OFF) persists across all pages. TTS dedup guard prevents duplicate audio playback.
 
-Full transcript saved to memory. Every conversation becomes searchable context for future sessions.
+Full transcript saved to memory. Every conversation becomes searchable context for future sessions. VAD thresholds (silence, duration, echo cooldown) fully configurable via `config.json`.
 
-### CODEC Cortex — System Nerve Center
-
-Visual command center showing all CODEC products in an interactive grid. Neural network SVG map, real-time activity feed, searchable skills panel, and detailed event log viewer. The single-pane-of-glass view of the entire system.
-
-### CODEC Audit — Full Event Trail
-
-Every action CODEC takes is logged across 16 categories: command, skill, llm, auth, error, scheduled, voice, vision, tts, stt, system, security, hotkey, screenshot, config, draft. Filterable by category pills, searchable, with colored timeline dots and expandable event details. JSON-line storage with 50MB rotation.
-
-### CODEC Overview — Dashboard Anywhere
+### 7. CODEC Overview — Dashboard, Cortex & Audit
 
 Private dashboard accessible from any device, anywhere. Cloudflare Tunnel or Tailscale VPN — no port forwarding, no third-party relay. 75+ API endpoints. Send commands, view the screen, launch voice calls, manage agents — all from a browser. Installable as a PWA on mobile and desktop.
+
+**Cortex — System Nerve Center**
+Visual command center showing all 7 CODEC products in an interactive grid. Neural network SVG map, real-time activity feed, searchable skills panel, and detailed event log viewer. The single-pane-of-glass view of the entire system.
+
+**Audit — Full Event Trail**
+Every action CODEC takes is logged across 16 categories: command, skill, llm, auth, error, scheduled, voice, vision, tts, stt, system, security, hotkey, screenshot, config, draft. Filterable by category pills, searchable, with colored timeline dots and expandable event details. JSON-line storage with 50MB rotation. Default 24h time range with 1h/6h/24h/7d quick filters.
 
 ---
 
@@ -208,18 +216,18 @@ Private dashboard accessible from any device, anywhere. Cloudflare Tunnel or Tai
 
 **What CODEC replaced with native code:**
 
-| Before | After |
+| Before | After (CODEC Product) |
 |---|---|
-| Pipecat | CODEC Voice (own WebSocket pipeline) |
-| CrewAI + LangChain | CODEC Agents (795 lines, zero dependencies) |
-| SuperWhisper | CODEC Dictate (free, open source, live typing) |
-| Cursor / Windsurf | CODEC Vibe (Monaco + AI + Skill Forge) |
-| Google Assistant / Siri | CODEC Core (actually controls the computer) |
-| Grammarly | CODEC Instant (right-click services via local LLM) |
-| ChatGPT | CODEC Chat (250K context, fully local) |
+| Pipecat | **Voice** — own WebSocket pipeline |
+| CrewAI + LangChain | **Chat** — 795-line agent framework, zero dependencies |
+| SuperWhisper | **Dictate** — free, open source, live typing |
+| Cursor / Windsurf | **Vibe** — Monaco + AI + Skill Forge |
+| Google Assistant / Siri | **Core** — actually controls the computer |
+| Grammarly | **Instant** — right-click services via local LLM |
+| ChatGPT | **Chat** — 250K context, fully local |
 | Cloud LLM APIs | Local stack (Qwen + Whisper + Kokoro + Vision) |
 | Vector databases | FTS5 SQLite (simpler, faster, private) |
-| Datadog / Sentry | CODEC Audit (16-category event trail) |
+| Datadog / Sentry | **Overview** — dashboard + cortex + 16-category audit |
 
 **External services:** DuckDuckGo for web search. Cloudflare free tier for the tunnel (or Tailscale). Everything else runs on local hardware.
 
