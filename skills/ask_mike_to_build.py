@@ -1,7 +1,7 @@
 """CODEC Skill: Build Something"""
-SKILL_NAME = "ask_codec_to_build"
+SKILL_NAME = "ask_mike_to_build"
 SKILL_DESCRIPTION = "Instructs CODEC to construct or create a specified item or project."
-SKILL_TRIGGERS = ["ask codec to build", "codec build something", "have codec create", "codec construct"]
+SKILL_TRIGGERS = ["ask mike to build", "mike build something", "have mike create", "mike construct", "ask codec to build", "codec build something", "have codec create", "codec construct"]
 
 import os, json
 

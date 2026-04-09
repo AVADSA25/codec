@@ -765,6 +765,15 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
     }
 
     function queueAudio(data) {
+        /* Dedup guard: skip if last queued chunk is identical (same bytes) */
+        if (audioQueue.length > 0) {
+            var last = audioQueue[audioQueue.length - 1];
+            if (last.byteLength === data.byteLength) {
+                var a = new Uint8Array(last), b = new Uint8Array(data), dup = true;
+                for (var i = 0; i < a.length; i += 64) { if (a[i] !== b[i]) { dup = false; break; } }
+                if (dup) { console.log('[Voice] Duplicate audio chunk skipped'); return; }
+            }
+        }
         audioQueue.push(data);
         if (!isPlaying) playNext();
     }

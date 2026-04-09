@@ -76,11 +76,15 @@ _SCREEN_TRIGGERS = re.compile(
     re.IGNORECASE,
 )
 
-# ── VAD ───────────────────────────────────────────────────────────────────
-VAD_SILENCE_THRESHOLD  = 800    # RMS below this = silence
-VAD_SILENCE_DURATION   = 1.5   # seconds of silence before flushing (was 2.2 — main latency)
-VAD_MIN_SPEECH_SECONDS = 0.4   # minimum speech before considering a flush (was 0.6)
-VAD_ECHO_COOLDOWN      = 1.2   # ignore mic this long after Q finishes speaking
+# ── VAD (configurable via config.json → "vad" section) ───────────────────
+try:
+    _vad_cfg = _cfg.get("vad", {})
+except NameError:
+    _vad_cfg = {}
+VAD_SILENCE_THRESHOLD  = _vad_cfg.get("silence_threshold", 800)     # RMS below this = silence
+VAD_SILENCE_DURATION   = _vad_cfg.get("silence_duration",  1.5)     # seconds of silence before flushing
+VAD_MIN_SPEECH_SECONDS = _vad_cfg.get("min_speech_seconds", 0.4)    # minimum speech before considering flush
+VAD_ECHO_COOLDOWN      = _vad_cfg.get("echo_cooldown",     1.2)     # ignore mic this long after Q finishes
 SAMPLE_RATE            = 16000
 BYTES_PER_SAMPLE       = 2
 MIN_SPEECH_BYTES       = int(SAMPLE_RATE * BYTES_PER_SAMPLE * VAD_MIN_SPEECH_SECONDS)
@@ -923,6 +927,12 @@ class VoicePipeline:
                         print("[Voice] Sending to vision model...")
                         vision_desc = await self._analyze_screenshot(screenshot_b64, user_text)
                         print(f"[Voice] Vision result: {'OK (' + str(len(vision_desc)) + ' chars)' if vision_desc else 'EMPTY/FAILED'}")
+                        # Check for interrupt after vision inference (user may have spoken)
+                        if self.interrupted.is_set():
+                            print("[Voice] Interrupted during vision inference — discarding result")
+                            self.processing = False
+                            await self.ws.send_json({"type": "status", "status": "listening"})
+                            continue
                         if vision_desc:
                             # Speak the vision description directly — no LLM needed
                             # Clean up vision output for TTS
