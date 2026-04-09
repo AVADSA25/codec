@@ -197,7 +197,7 @@ def check_cycle():
 
 def main():
     print("=" * 60)
-    print("  CODEC Watchdog v1.0")
+    print("  CODEC Watchdog v2.0")
     print(f"  Check every {CHECK_INTERVAL}s | Kill after {IDLE_STRIKES_MAX} idle checks")
     print(f"  RAM threshold: {RSS_MIN_MB} MB | CPU idle: <{CPU_IDLE_THRESH}%")
     print("=" * 60)

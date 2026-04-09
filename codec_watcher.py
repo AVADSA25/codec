@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CODEC Q-Watcher v3.0 | Smart draft/reply with Screenshot Vision"""
+"""CODEC Q-Watcher v2.0 | Smart draft/reply with Screenshot Vision"""
 import os, time, requests, subprocess, tempfile, json, signal, re, base64
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, lambda *a: None)
@@ -213,7 +213,7 @@ def handle_draft(task, ctx, app):
     speak("Draft pasted.")
 
 if __name__ == "__main__":
-    print("[CODEC Watcher v3.0] Running. Screenshot Vision for context.")
+    print("[CODEC Watcher v2.0] Running. Screenshot Vision for context.")
     while True:
         if os.path.exists(TASK_FILE):
             try:

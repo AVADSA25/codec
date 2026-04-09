@@ -1,4 +1,4 @@
-"""CODEC v1.2 — Phone Dashboard & PWA"""
+"""CODEC v2.0 — Phone Dashboard & PWA"""
 import os, json, sqlite3, time, logging, secrets, subprocess, hmac, threading, uuid, asyncio, re
 from datetime import datetime, timedelta
 

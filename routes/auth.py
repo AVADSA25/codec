@@ -119,8 +119,10 @@ async def auth_pin(request: Request):
     pin_hash = hashlib.sha256(pin.encode()).hexdigest()
     client_ip = request.client.host if request.client else "unknown"
 
-    # Brute-force protection
-    attempt = _pin_attempts.get(client_ip, {"count": 0, "locked_until": 0.0})
+    # Brute-force protection — escalating lockout (OWASP standard)
+    # Lockout durations: 30s → 60s → 2min → 5min → 15min → 30min (cap)
+    _LOCKOUT_LADDER = [30, 60, 120, 300, 900, 1800]
+    attempt = _pin_attempts.get(client_ip, {"count": 0, "locked_until": 0.0, "lockout_level": 0})
     if time.time() < attempt.get("locked_until", 0.0):
         remaining = int(attempt["locked_until"] - time.time())
         return JSONResponse({"error": f"Too many failed attempts. Locked out for {remaining}s."}, status_code=429)
@@ -153,13 +155,18 @@ async def auth_pin(request: Request):
         }
     else:
         log_event("auth", "codec-auth", f"Auth failed", level="warning")
-        attempt = _pin_attempts.get(client_ip, {"count": 0, "locked_until": 0.0})
+        attempt = _pin_attempts.get(client_ip, {"count": 0, "locked_until": 0.0, "lockout_level": 0})
         attempt["count"] = attempt.get("count", 0) + 1
         if attempt["count"] >= 5:
-            attempt["locked_until"] = time.time() + 300
+            level = min(attempt.get("lockout_level", 0), len(_LOCKOUT_LADDER) - 1)
+            lockout_secs = _LOCKOUT_LADDER[level]
+            attempt["locked_until"] = time.time() + lockout_secs
+            attempt["lockout_level"] = level + 1
             attempt["count"] = 0
+            log_event("security", "codec-auth", f"PIN lockout level {level + 1}: {lockout_secs}s for {client_ip}", level="warning")
         _pin_attempts[client_ip] = attempt
-        return {"authenticated": False, "error": "Incorrect PIN"}
+        remaining_attempts = 5 - attempt["count"]
+        return {"authenticated": False, "error": f"Incorrect PIN. {remaining_attempts} attempts remaining."}
 
 
 @router.post("/api/auth/totp/setup")

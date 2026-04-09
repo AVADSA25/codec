@@ -2,7 +2,7 @@
   <img src="https://i.imgur.com/RbrQ7Bt.png" alt="CODEC" width="280"/>
 </p>
 
-<h1 align="center">CODEC</h1>
+<h1 align="center">CODEC v2.0</h1>
 <p align="center"><strong>Open-Source Intelligent Command Layer for macOS</strong></p>
 <p align="center"><em>Your voice. Your computer. Your rules. No limit.</em></p>
 <p align="center">
@@ -411,7 +411,7 @@ python3 -c "from codec_config import *; print('Config OK')"
 
 - **Check logs:** `pm2 logs codec-dictate --lines 20 --nostream`
 - **Cmd+R not recording?** Ensure codec-dictate is running: `pm2 status codec-dictate`. If errored, restart: `pm2 restart codec-dictate`
-- **Text not pasting?** CODEC uses `pyautogui.hotkey('command', 'v')` for reliable cross-app paste. If using osascript keystroke, it can drop the Cmd modifier — this was fixed in v1.5.2
+- **Text not pasting?** CODEC uses `pyautogui.hotkey('command', 'v')` for reliable cross-app paste. If using osascript keystroke, it can drop the Cmd modifier — this was fixed in v2.0
 - **Live typing (L key) not working?** L only activates during an active Cmd+R session or when pressed standalone. Check that pyperclip and pyautogui are installed: `pip3 install pyperclip pyautogui`
 - **Overlay not showing?** Requires tkinter. On Python 3.13: `brew install python-tk@3.13`. The overlay is a separate subprocess — if it crashes, dictation still works (just no visual feedback)
 - **Sox "no default input device"?** Check: `sox -d -r 16000 -c 1 -t wav test.wav trim 0 2` — if this fails, set your mic in System Settings → Sound → Input

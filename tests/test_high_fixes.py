@@ -103,16 +103,16 @@ class TestNoBarExcept:
 # ── Fix 8: Version consistency ──
 
 class TestVersionConsistency:
-    """All version strings must be v1.5.0."""
+    """All version strings must be v2.0.0."""
 
     VERSION_FILES = [
-        ("codec.py", r'["\']v?1\.\d+\.\d+["\']'),
-        ("codec_agent.py", r'["\']v?1\.\d+\.\d+["\']'),
-        ("setup_codec.py", r'["\']v?1\.\d+\.\d+["\']'),
+        ("codec.py", r'["\']v?2\.\d+\.\d+["\']'),
+        ("codec_agent.py", r'["\']v?2\.\d+\.\d+["\']'),
+        ("setup_codec.py", r'["\']v?2\.\d+\.\d+["\']'),
     ]
 
     @pytest.mark.parametrize("filename,pattern", VERSION_FILES)
-    def test_version_is_1_5_0(self, filename, pattern):
+    def test_version_is_2_0_0(self, filename, pattern):
         full_path = os.path.join(os.path.dirname(__file__), "..", filename)
         if not os.path.exists(full_path):
             pytest.skip(f"{filename} not found")
@@ -121,7 +121,7 @@ class TestVersionConsistency:
         versions = re.findall(pattern, content)
         for v in versions:
             clean = v.strip("\"'").lstrip("v")
-            assert clean == "1.5.0", f"{filename} has version {v}, expected 1.5.0"
+            assert clean == "2.0.0", f"{filename} has version {v}, expected 2.0.0"
 
 
 # ── Fix 9: Skill trigger word-boundary matching ──

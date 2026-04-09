@@ -1,5 +1,33 @@
 # Changelog
 
+## v2.0.0 (2026-04-09)
+### Added
+- **7-product architecture** — Core, Dictate, Instant, Chat, Vibe, Voice, Overview (Cortex + Audit folded into Overview)
+- **PIN brute-force escalating lockout** — 5 attempts then progressive lockout: 30s → 60s → 2min → 5min → 15min → 30min cap (OWASP standard)
+- **VAD configurable via config.json** — silence threshold, duration, min speech, echo cooldown all tunable without code changes
+- **Voice interrupt after vision** — if user speaks during screen analysis, stale results are discarded immediately
+- **TTS audio dedup guard** — prevents duplicate audio chunks from playing back-to-back
+- **Dictate hallucination filter** — shared filter blocks Whisper noise artifacts across standard and live modes
+- **atexit + SIGTERM cleanup** — dictate properly cleans up sox, overlays, and temp files on shutdown
+- **MCP tool error containment** — try/except wrapper prevents stack traces from leaking to clients
+- **Session eviction** — hourly background cleanup of expired auth sessions
+- **Process watchdog** — kills stuck/zombie processes (>500MB RAM + <0.5% CPU for 10+ min)
+
+### Fixed
+- **Audit page blank** — field name mismatch (ev.timestamp→ev.ts, etc.) caused zero events to display
+- **Whisper heartbeat** — health check was hitting `/` (404) instead of `/health`
+- **Duplicate /api/health route** — removed duplicate that caused FastAPI warning on every startup
+- **Skill name mismatch** — ask_mike_to_build SKILL_NAME now matches filename
+- **Settings fetch error** — cortex loadSettings() now handles non-OK HTTP responses
+- **Processing overlay** — dynamic timing replaces hardcoded 4s timer, overlay stays until transcription completes
+- **Default audit range** — changed from 6h to 24h for better initial view
+
+### Changed
+- All version strings bumped to v2.0.0 across all services and terminal banners
+- CORS explicit header whitelist (no more wildcard)
+- Dangerous command patterns extended (+8 patterns)
+- Overlay text sanitization (newlines, null bytes stripped)
+
 ## v1.5.1 (2026-04-05)
 ### Fixed
 - **Security (SE-2):** Dangerous commands (rm, delete, shred) now trigger Allow/Deny dialog in voice sessions — injected full safety system into `build_session_script()` generated temp scripts

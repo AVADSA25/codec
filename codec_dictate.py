@@ -144,7 +144,7 @@ c = tk.Canvas(root, bg='#0a0a0a', highlightthickness=0, width=w, height=h)
 c.pack()
 c.create_rectangle(1,1,w-1,h-1, outline='#00aaff', width=1)
 c.create_text(w//2, h//2, text='\u26a1  Transcribing...', fill='#00aaff', font=('Helvetica', 13))
-root.after(4000, root.destroy)
+root.after(20000, root.destroy)
 root.mainloop()
 """
         p = subprocess.Popen(
@@ -498,7 +498,7 @@ def on_release(key):
 def main():
     print("""
 \u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557
-\u2551     CODEC Dictate  v2.0                  \u2551
+\u2551     CODEC Dictate  v2.0.0                  \u2551
 \u2551     Hold-to-Speak + Live Typing                 \u2551
 \u2560\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2563
 \u2551  Hold \u2318R (right CMD) \u2192 speak \u2192 release       \u2551

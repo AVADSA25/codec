@@ -2,7 +2,7 @@
 import signal
 signal.signal(signal.SIGINT, lambda *a: None)
 signal.signal(signal.SIGTERM, lambda *a: None)
-"""CODEC v1.0 | F13=on/off | F18=voice | F16=text | *=screenshot | +=doc | Wake word"""
+"""CODEC v2.0 | F13=on/off | F18=voice | F16=text | *=screenshot | +=doc | Wake word"""
 import logging, threading, tempfile, subprocess, sys, os, time, sqlite3, json, re, base64, shutil
 from datetime import datetime
 from pynput import keyboard
@@ -687,7 +687,7 @@ def main():
     ║ ██      ██    ██ ██   ██ █████   ██       ║
     ║ ██      ██    ██ ██   ██ ██      ██       ║
     ║  ██████  ██████  ██████  ███████  ██████  ║
-    ║                                   v1.5.0  ║
+    ║                                   v2.0.0  ║
     ╠═══════════════════════════════════════════╣
     ║{W}  F13 toggle   F18 voice   ** screen       {O}║
     ║{W}  F16 text     ++ doc     -- chat          {O}║
