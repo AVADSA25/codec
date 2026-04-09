@@ -300,8 +300,8 @@ body { display: flex; flex-direction: column; overflow: hidden; }
   <div class="filter-right">
     <div class="time-btns" id="timeBtns">
       <button class="time-btn" data-range="1h">1h</button>
-      <button class="time-btn active" data-range="6h">6h</button>
-      <button class="time-btn" data-range="24h">24h</button>
+      <button class="time-btn" data-range="6h">6h</button>
+      <button class="time-btn active" data-range="24h">24h</button>
       <button class="time-btn" data-range="7d">7d</button>
     </div>
     <input type="text" class="search-input" id="searchInput" placeholder="Search events...">
@@ -326,7 +326,7 @@ const CATEGORIES = [
   'hotkey','screenshot','config','draft'
 ];
 let activeCategories = new Set(CATEGORIES);
-let currentRange = '6h';
+let currentRange = '24h';
 let searchQuery = '';
 let liveMode = false;
 let liveInterval = null;
@@ -442,7 +442,7 @@ async function fetchEvents() {
     if (!res.ok) return;
     const data = await res.json();
     events = data.events || [];
-    lastTimestamp = events.length ? events[0].timestamp : null;
+    lastTimestamp = events.length ? events[0].ts : null;
     expandedIdx = null;
     renderTimeline(events);
   } catch(e) {
@@ -462,7 +462,7 @@ async function fetchLiveEvents() {
     const data = await res.json();
     const newEvents = data.events || [];
     if (newEvents.length) {
-      lastTimestamp = newEvents[0].timestamp;
+      lastTimestamp = newEvents[0].ts;
       events = [...newEvents, ...events];
       renderTimeline(events);
     }
@@ -477,8 +477,8 @@ function formatTimestamp(iso) {
 }
 
 function levelClass(ev) {
-  if (ev.category === 'error' || ev.level === 'error') return 'level-error';
-  if (ev.level === 'warning') return 'level-warning';
+  if (ev.cat === 'error' || ev.lvl === 'error') return 'level-error';
+  if (ev.lvl === 'warning') return 'level-warning';
   return '';
 }
 
@@ -495,13 +495,13 @@ function renderTimeline(evts) {
   }
   let html = '';
   evts.forEach((ev, i) => {
-    const cat = ev.category || 'system';
+    const cat = ev.cat || 'system';
     const isExpanded = expandedIdx === i;
     html += `<div class="event-row ${levelClass(ev)} ${isExpanded ? 'expanded' : ''}" onclick="expandEvent(${i})">
-      <span class="ev-time">${formatTimestamp(ev.timestamp)}</span>
+      <span class="ev-time">${formatTimestamp(ev.ts)}</span>
       <span class="ev-dot dot-${cat}"></span>
-      <span class="ev-source">${ev.source || cat}</span>
-      <span class="ev-summary"><span class="ev-msg">${escapeHtml(ev.summary || ev.message || '--')}</span></span>
+      <span class="ev-source">${ev.src || cat}</span>
+      <span class="ev-summary"><span class="ev-msg">${escapeHtml(ev.sum || ev.message || '--')}</span></span>
       <span class="ev-chevron">&#9656;</span>
     </div>
     <div class="ev-details ${isExpanded ? 'open' : ''}" id="detail-${i}">

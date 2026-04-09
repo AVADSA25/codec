@@ -121,10 +121,14 @@ def load_skill_tools():
                 err = _validate_mcp_input(sname, task, context)
                 if err is not None:
                     return err
-                mod = registry.load(sname)
-                if mod is None or not hasattr(mod, "run"):
-                    return f"Skill '{sname}' could not be loaded."
-                return mod.run(task, context)
+                try:
+                    mod = registry.load(sname)
+                    if mod is None or not hasattr(mod, "run"):
+                        return f"Skill '{sname}' could not be loaded."
+                    return mod.run(task, context)
+                except Exception as e:
+                    _audit(sname, task, f"ERROR: {type(e).__name__}")
+                    return f"Skill '{sname}' failed: {type(e).__name__}: {str(e)[:200]}"
             tool_fn.__name__ = sname
             tool_fn.__doc__ = sdesc
             return tool_fn

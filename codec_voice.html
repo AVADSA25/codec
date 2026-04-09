@@ -800,7 +800,7 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
             wsRetryDelay = 1000;
             setState('listening');
             startMic();
-            /* Ping every 15s to detect stale connections */
+            /* Ping every 8s to detect stale connections */
             if (wsPingTimer) clearInterval(wsPingTimer);
             wsPingTimer = setInterval(function() {
                 if (ws && ws.readyState === WebSocket.OPEN) {

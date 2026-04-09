@@ -2954,13 +2954,6 @@ async def health_check():
     return {"status": "ok", "service": "CODEC Dashboard", "timestamp": datetime.now().isoformat()}
 
 
-@app.get("/api/health")
-@app.get("/health")
-async def health_check():
-    """Public health endpoint — no auth required."""
-    return {"status": "ok", "service": "CODEC Dashboard", "timestamp": datetime.now().isoformat()}
-
-
 @app.get("/api/services/status")
 async def services_status():
     """Show status of background services (scheduler, heartbeat, watcher)."""

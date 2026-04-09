@@ -45,6 +45,28 @@ live_stop_event  = threading.Event()
 live_text_file   = os.path.join(tempfile.gettempdir(), "codec_live_dictate.txt")
 # Live dictation triggered by F5 key
 
+# ── WHISPER HALLUCINATION FILTER ──────────────────────────────────────────────
+WHISPER_HALLUCINATIONS = {
+    "you", "thank you", "thank you.", "thanks.", "thanks for watching.",
+    "thank you for watching.", "please subscribe.", "bye.", "the end.",
+    "thanks for watching!", "like and subscribe.", "see you next time.",
+    "subscribe to the channel.", "please like and subscribe.",
+    "subtitles by the amara.org community", "...", "",
+}
+
+def is_hallucination(text):
+    """Check if transcribed text is a known Whisper hallucination."""
+    t = text.strip().lower()
+    if not t or len(t) <= 1:
+        return True
+    if t in WHISPER_HALLUCINATIONS:
+        return True
+    # Repetitive gibberish (same word 5+ times)
+    words = t.split()
+    if len(words) >= 5 and len(set(words)) == 1:
+        return True
+    return False
+
 # ── LOAD WHISPER ─────────────────────────────────────────────────────────────
 def load_model():
     global model
@@ -217,13 +239,13 @@ def _live_record_loop():
             if r.status_code == 200:
                 chunk_text = r.json().get("text", "").strip()
                 # Filter Whisper hallucinations
-                if chunk_text and len(chunk_text) > 1 and chunk_text.lower() not in ("you", "thank you", "thank you.", "thanks.", "bye.", "the end."):
+                if chunk_text and not is_hallucination(chunk_text):
                     full_text += chunk_text + " "
                     with open(live_text_file, "w") as f:
                         f.write(full_text.strip())
                     # Type chunk live at cursor position
                     pyperclip.copy(chunk_text + " ")
-                    time.sleep(0.05)
+                    time.sleep(0.15)
                     pyautogui.hotkey('command', 'v')
                     print(f"[DICTATE] Live: {chunk_text}")
         except Exception as e:
@@ -303,7 +325,7 @@ def record_audio():
     sox_cmd = SOX_PATH if os.path.exists(SOX_PATH) else "sox"
     try:
         proc = subprocess.Popen(
-            [sox_cmd, "-t", "coreaudio", "default", "-r", "16000", "-c", "1", "-b", "16", tmp_path],
+            [sox_cmd, "-t", "coreaudio", "default", "-r", str(SAMPLE_RATE), "-c", "1", "-b", "16", tmp_path],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL
         )
@@ -346,8 +368,8 @@ def transcribe_and_type(audio_path):
             except:
                 pass
 
-        if not text:
-            print("[DICTATE] No speech detected")
+        if not text or is_hallucination(text):
+            print(f"[DICTATE] No speech or hallucination: {text!r}")
             return
 
         print(f"[DICTATE] Transcribed: {text}")
