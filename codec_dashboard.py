@@ -2130,6 +2130,7 @@ async def chat_completion(request: Request):
             # SSE streaming — keeps Cloudflare tunnel alive, sends tokens as they arrive
             def _stream_gen():
                 in_think = False  # Track whether we're inside <think>...</think>
+                _empty_count = 0  # Track empty content chunks for keepalive
                 try:
                     with rq.post(f"{base_url}/chat/completions", json=payload,
                                  headers=headers, timeout=300, stream=True) as resp:
@@ -2142,8 +2143,14 @@ async def chat_completion(request: Request):
                                 break
                             try:
                                 chunk = json.loads(data_str)
-                                token = chunk["choices"][0].get("delta", {}).get("content", "")
+                                delta = chunk["choices"][0].get("delta", {})
+                                token = delta.get("content", "")
                                 if not token:
+                                    # During thinking phase, send periodic keepalive
+                                    # so the connection stays alive and frontend knows we're working
+                                    _empty_count += 1
+                                    if _empty_count % 10 == 1:
+                                        yield ": keepalive\n\n"
                                     continue
                                 # Handle thinking tags that span across chunks
                                 if "<think>" in token:

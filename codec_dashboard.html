@@ -862,7 +862,7 @@ async function sendCmd() {
     pollCount++;
     var elapsed = Math.round((Date.now() - pollStart) / 1000);
     if (pollCount % 4 === 0) text.innerHTML = '<span style="color:var(--accent)">Processing...</span> ' + escHtml(task) + ' <span style="opacity:.5;font-size:11px">(' + elapsed + 's)</span>';
-    if (pollCount > 90) { clearInterval(pollResp); text.innerHTML = '<span style="color:var(--danger)">Timeout:</span> No response after 3 min. Try again.'; return; }
+    if (pollCount > 200) { clearInterval(pollResp); text.innerHTML = '<span style="color:var(--danger)">Timeout:</span> No response after 5 min. Try again.'; return; }
     try {
       var pr = await fetch('/api/response?_t=' + Date.now(), {cache: 'no-store'});
       if (pr.status === 401 || pr.status === 403) {
