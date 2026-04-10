@@ -841,9 +841,14 @@ async function sendCmd() {
   }
 
   // ── Text mode: send to LLM ──
+  // Persistent Flash Chat session — keeps conversation context
+  if (!window._flashSessionId) {
+    window._flashSessionId = localStorage.getItem('codec-flash-session');
+    if (!window._flashSessionId) { window._flashSessionId = 'flash-' + Date.now().toString(36); localStorage.setItem('codec-flash-session', window._flashSessionId); }
+  }
   text.innerHTML = '<span style="color:var(--accent)">Sending...</span> ' + escHtml(task);
   try {
-    var r = await fetch('/api/command', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({task: task}) });
+    var r = await fetch('/api/command', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({task: task, session_id: window._flashSessionId}) });
     var data = await r.json();
     if (data.status === 'queued' || data.status === 'processing') {
       text.innerHTML = '<span style="color:var(--accent)">Processing...</span> ' + escHtml(task);

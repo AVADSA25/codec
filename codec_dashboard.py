@@ -810,8 +810,8 @@ async def send_command(request: Request):
         headers_llm = {"Content-Type": "application/json"}
         if api_key: headers_llm["Authorization"] = f"Bearer {api_key}"
 
-        import uuid as _uuid
-        session_id = f"quickchat-{_uuid.uuid4().hex[:8]}"
+        # Use persistent session_id from frontend (keeps conversation context)
+        session_id = body.get("session_id") or f"quickchat-{__import__('uuid').uuid4().hex[:8]}"
         now = datetime.now().isoformat()
 
         # Save user message to conversations table (so it appears in chat list)
@@ -821,6 +821,13 @@ async def send_command(request: Request):
             (session_id, now, "user", task[:2000])
         )
         c.commit()
+
+        # Load recent conversation history for context (last 20 messages in this session)
+        _history_rows = c.execute(
+            "SELECT role, content FROM conversations WHERE session_id=? ORDER BY timestamp DESC LIMIT 20",
+            (session_id,)
+        ).fetchall()
+        _history_msgs = [{"role": r[0], "content": r[1]} for r in reversed(_history_rows)]
 
         _audit_write(f"[{now}] CMD[{source}]: {task[:200]}\n")
         log.info(f"[Command] Processing from {source}: {task[:80]}")
@@ -848,12 +855,12 @@ async def send_command(request: Request):
                 else:
                     # ── Fall back to LLM ──
                     now_str = datetime.now().strftime("%A %B %d, %Y at %H:%M")
+                    sys_msg = {"role": "system", "content": f"You are CODEC Flash, a fast local AI assistant running on the user's Mac. Today is {now_str}. Be concise and direct. Answer in 1-3 sentences max."}
+                    # Build messages with conversation history for context
+                    llm_messages = [sys_msg] + _history_msgs
                     payload = {
                         "model": model,
-                        "messages": [
-                            {"role": "system", "content": f"You are CODEC Flash, a fast local AI assistant running on the user's Mac. Today is {now_str}. Be concise and direct. Answer in 1-3 sentences max."},
-                            {"role": "user", "content": task}
-                        ],
+                        "messages": llm_messages,
                         "max_tokens": 300,
                         "temperature": 0.7,
                         "stream": False,
