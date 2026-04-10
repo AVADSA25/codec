@@ -864,7 +864,24 @@ async def send_command(request: Request):
                     sys_msg = {"role": "system", "content": f"You are CODEC Flash, a fast local AI assistant running on the user's Mac. Today is {now_str}. Be concise and direct. Answer in 1-3 sentences max. You DO have memory of this conversation — the chat history is included in these messages. Refer to previous messages naturally when the user asks follow-up questions."}
                     # Build messages with conversation history + cross-session memory
                     log.info(f"[Command] Sending {len(_history_msgs)} history messages to LLM for session {session_id}")
-                    llm_messages = [sys_msg] + _history_msgs
+                    # Also load recent Flash Chat messages from OTHER sessions (for cross-session context)
+                    _cross_rows = c.execute(
+                        "SELECT role, content, timestamp FROM conversations "
+                        "WHERE session_id != ? AND timestamp >= ? "
+                        "ORDER BY timestamp DESC LIMIT 20",
+                        (session_id, (datetime.now() - timedelta(hours=12)).isoformat())
+                    ).fetchall()
+                    if _cross_rows:
+                        _cross_lines = ["[RECENT FLASH CHAT HISTORY — earlier today]"]
+                        for cr in reversed(_cross_rows):
+                            ts = (cr[2] or "")[:16].replace("T", " ")
+                            _cross_lines.append(f"  [{ts}] {(cr[0] or '').upper()}: {(cr[1] or '')[:200]}")
+                        _cross_lines.append("[END RECENT HISTORY]")
+                        _cross_ctx = {"role": "system", "content": "\n".join(_cross_lines)}
+                        llm_messages = [sys_msg, _cross_ctx] + _history_msgs
+                        log.info(f"[Command] Injected {len(_cross_rows)} cross-session messages")
+                    else:
+                        llm_messages = [sys_msg] + _history_msgs
                     # Enrich with memory from voice, deep chat, vibe (same as /api/chat)
                     try:
                         llm_messages = _enrich_messages(llm_messages, config)
