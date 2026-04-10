@@ -841,10 +841,10 @@ async function sendCmd() {
   }
 
   // ── Text mode: send to LLM ──
-  // Persistent Flash Chat session — keeps conversation context
+  // Persistent Flash Chat session — date-based so all messages in a day share context
   if (!window._flashSessionId) {
-    window._flashSessionId = localStorage.getItem('codec-flash-session');
-    if (!window._flashSessionId) { window._flashSessionId = 'flash-' + Date.now().toString(36); localStorage.setItem('codec-flash-session', window._flashSessionId); }
+    var today = new Date().toISOString().slice(0, 10);
+    window._flashSessionId = 'flash-' + today;
   }
   text.innerHTML = '<span style="color:var(--accent)">Sending...</span> ' + escHtml(task);
   try {

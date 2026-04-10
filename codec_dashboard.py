@@ -836,6 +836,12 @@ async def send_command(request: Request):
         # Call LLM in background so response returns fast
         import asyncio
         resp_file = os.path.expanduser("~/.codec/pwa_response.json")
+        # Clear stale response from previous command
+        try:
+            if os.path.exists(resp_file):
+                os.unlink(resp_file)
+        except Exception:
+            pass
 
         async def _process_command():
             try:
