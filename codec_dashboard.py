@@ -846,13 +846,18 @@ async def send_command(request: Request):
         async def _process_command():
             try:
                 # ── Try skills first (weather, web_search, bitcoin, etc.) ──
+                # Skip memory_search — Flash Chat already injects memory context into LLM
+                # Skip skills that open terminal windows (not appropriate for Flash Chat)
+                _FLASH_SKIP_SKILLS = {"memory_search", "open_terminal", "run_command"}
                 skill_answer = None
                 try:
                     skill_name, skill_result = await asyncio.to_thread(_try_skill, task)
-                    if skill_result:
+                    if skill_result and skill_name not in _FLASH_SKIP_SKILLS:
                         skill_answer = f"⚡ {skill_name}: {skill_result}"
                         log.info(f"[Command] Skill '{skill_name}' handled: {skill_result[:80]}")
                         log_event("skill", "codec-dashboard", f"Dashboard skill: {skill_name}", {"skill": skill_name, "result_len": len(skill_answer)})
+                    elif skill_name in _FLASH_SKIP_SKILLS:
+                        log.info(f"[Command] Skipped skill '{skill_name}' — not suitable for Flash Chat")
                 except Exception as sk_err:
                     log.warning(f"[Command] Skill check failed: {sk_err}")
 
