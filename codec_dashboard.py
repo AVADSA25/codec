@@ -862,9 +862,15 @@ async def send_command(request: Request):
                     # ── Fall back to LLM ──
                     now_str = datetime.now().strftime("%A %B %d, %Y at %H:%M")
                     sys_msg = {"role": "system", "content": f"You are CODEC Flash, a fast local AI assistant running on the user's Mac. Today is {now_str}. Be concise and direct. Answer in 1-3 sentences max. You DO have memory of this conversation — the chat history is included in these messages. Refer to previous messages naturally when the user asks follow-up questions."}
-                    # Build messages with conversation history for context
+                    # Build messages with conversation history + cross-session memory
                     log.info(f"[Command] Sending {len(_history_msgs)} history messages to LLM for session {session_id}")
                     llm_messages = [sys_msg] + _history_msgs
+                    # Enrich with memory from voice, deep chat, vibe (same as /api/chat)
+                    try:
+                        llm_messages = _enrich_messages(llm_messages, config)
+                        log.info(f"[Command] After enrichment: {len(llm_messages)} messages")
+                    except Exception as enrich_err:
+                        log.warning(f"[Command] Memory enrichment failed: {enrich_err}")
                     payload = {
                         "model": model,
                         "messages": llm_messages,
