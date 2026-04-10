@@ -867,32 +867,25 @@ async def send_command(request: Request):
                     # ── Fall back to LLM ──
                     now_str = datetime.now().strftime("%A %B %d, %Y at %H:%M")
                     sys_msg = {"role": "system", "content": f"You are CODEC Flash, a fast local AI assistant running on the user's Mac. Today is {now_str}. Be concise and direct. Answer in 1-3 sentences max. You DO have memory of this conversation — the chat history is included in these messages. Refer to previous messages naturally when the user asks follow-up questions."}
-                    # Build messages with conversation history + cross-session memory
-                    log.info(f"[Command] Sending {len(_history_msgs)} history messages to LLM for session {session_id}")
-                    # Also load recent Flash Chat messages from OTHER sessions (for cross-session context)
+                    # Build messages: system + cross-session context + current session
+                    # Keep it compact — Flash Chat has max_tokens=300, don't overload context
                     _cross_rows = c.execute(
                         "SELECT role, content, timestamp FROM conversations "
                         "WHERE session_id != ? AND timestamp >= ? "
-                        "ORDER BY timestamp DESC LIMIT 20",
+                        "ORDER BY timestamp DESC LIMIT 10",
                         (session_id, (datetime.now() - timedelta(hours=12)).isoformat())
                     ).fetchall()
                     if _cross_rows:
-                        _cross_lines = ["[RECENT FLASH CHAT HISTORY — earlier today]"]
+                        _cross_lines = ["[EARLIER CONVERSATIONS TODAY — you DO remember these]"]
                         for cr in reversed(_cross_rows):
                             ts = (cr[2] or "")[:16].replace("T", " ")
-                            _cross_lines.append(f"  [{ts}] {(cr[0] or '').upper()}: {(cr[1] or '')[:200]}")
-                        _cross_lines.append("[END RECENT HISTORY]")
-                        _cross_ctx = {"role": "system", "content": "\n".join(_cross_lines)}
-                        llm_messages = [sys_msg, _cross_ctx] + _history_msgs
-                        log.info(f"[Command] Injected {len(_cross_rows)} cross-session messages")
-                    else:
-                        llm_messages = [sys_msg] + _history_msgs
-                    # Enrich with memory from voice, deep chat, vibe (same as /api/chat)
-                    try:
-                        llm_messages = _enrich_messages(llm_messages, config)
-                        log.info(f"[Command] After enrichment: {len(llm_messages)} messages")
-                    except Exception as enrich_err:
-                        log.warning(f"[Command] Memory enrichment failed: {enrich_err}")
+                            _cross_lines.append(f"  [{ts}] {(cr[0] or '').upper()}: {(cr[1] or '')[:120]}")
+                        _cross_lines.append("[END]")
+                        sys_msg["content"] += "\n\n" + "\n".join(_cross_lines)
+                        log.info(f"[Command] Injected {len(_cross_rows)} cross-session messages into system prompt")
+                    # Cap history to last 10 messages to avoid context overflow
+                    llm_messages = [sys_msg] + _history_msgs[-10:]
+                    log.info(f"[Command] Final: {len(llm_messages)} messages to LLM")
                     payload = {
                         "model": model,
                         "messages": llm_messages,
@@ -901,18 +894,25 @@ async def send_command(request: Request):
                         "stream": False,
                         "chat_template_kwargs": {"enable_thinking": False},
                     }
-                    payload.update(kwargs)
+                    payload.update({k: v for k, v in kwargs.items() if k != "chat_template_kwargs"})
                     r = await asyncio.to_thread(
                         lambda: rq.post(f"{base_url}/chat/completions", json=payload,
                                         headers=headers_llm, timeout=120)
                     )
                     data = r.json()
-                    msg = data["choices"][0]["message"]
-                    answer = (msg.get("content") or "").strip()
-                    if not answer and msg.get("reasoning"):
-                        answer = msg["reasoning"].strip()
-                    import re as _re
-                    answer = _re.sub(r'<think>[\s\S]*?</think>', '', answer).strip()
+                    if "error" in data:
+                        log.error(f"[Command] LLM error: {data['error']}")
+                        answer = f"Sorry, the AI model returned an error. Please try again."
+                    elif "choices" not in data or not data["choices"]:
+                        log.error(f"[Command] LLM returned no choices: {str(data)[:200]}")
+                        answer = "Sorry, the AI model returned an empty response. Please try again."
+                    else:
+                        msg = data["choices"][0]["message"]
+                        answer = (msg.get("content") or "").strip()
+                        if not answer and msg.get("reasoning"):
+                            answer = msg["reasoning"].strip()
+                        import re as _re
+                        answer = _re.sub(r'<think>[\s\S]*?</think>', '', answer).strip()
 
                 # Write response for /api/response polling
                 with open(resp_file, "w") as f:
