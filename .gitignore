@@ -11,4 +11,19 @@ __pycache__/
 .claude/
 swift-overlay/.build/
 promo/
+
+# Internal/non-distribution files
 *.mp4
+AUDIT_*.md
+STRESS_TESTS.md
+WAVE4_RESULTS.md
+ENTERPRISE_FIXES.md
+PRODUCT_BREAKDOWN.md
+run_overnight_tests.py
+run_wave3_tests.py
+verify_7_frames.py
+qwen_proxy.py
+qwen_server.py
+codec_quickchat.html
+patch_vision_and_skills.py
+codec_smoke_test.py
