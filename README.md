@@ -39,7 +39,7 @@ No cloud dependency. No subscription. No data leaving the machine. MIT licensed.
 
 ---
 
-## 8 Products. One System.
+## 7 Products. One System.
 
 | # | Product | What It Does |
 |:-:|---|---|
@@ -50,7 +50,6 @@ No cloud dependency. No subscription. No data leaving the machine. MIT licensed.
 | 5 | **CODEC Vibe** | Browser IDE with Monaco editor + Skill Forge — the framework writes its own plugins |
 | 6 | **CODEC Voice** | Real-time voice calls with interrupt detection, screen analysis mid-call |
 | 7 | **CODEC Overview** | Dashboard + Cortex nerve center + full audit trail — accessible from any device |
-| 8 | **CODEC External** | iMessage + Telegram — Daily Briefing, smart agents, voice notes delivered to your phone |
 
 ---
 
@@ -137,9 +136,9 @@ Visual command center showing all 7 CODEC products in an interactive grid. Neura
 **Audit — Full Event Trail**
 Every action CODEC takes is logged across 16 categories: command, skill, llm, auth, error, scheduled, voice, vision, tts, stt, system, security, hotkey, screenshot, config, draft. Filterable by category pills, searchable, with colored timeline dots and expandable event details. JSON-line storage with 50MB rotation. Default 24h time range with 1h/6h/24h/7d quick filters.
 
-### 8. CODEC External — iMessage & Telegram
+### iMessage & Telegram
 
-CODEC is already accessible from any device via its dashboard (Cloudflare Tunnel or Tailscale). External adds native messaging integration for users who prefer iMessage or Telegram as an interface.
+CODEC is already accessible from any device via its dashboard (Cloudflare Tunnel or Tailscale). iMessage and Telegram are additional interfaces for users who prefer messaging.
 
 iMessage reads the macOS Messages DB, watches for *"Hey CODEC"* or *"Good morning"*, and replies via AppleScript. Telegram uses Bot API long polling — no trigger needed in DMs. Both share the same LLM, skills, and conversation memory as the desktop.
 
@@ -229,7 +228,7 @@ Three smart agents ship built-in: Daily Briefing, Restaurant Decider (location-a
 | Live typing at cursor | Dictate L key | No | No |
 | Process watchdog | Auto-kills stuck processes | No | No |
 | Full audit trail | 16 event categories | No | No |
-| External messaging | iMessage + Telegram + Daily Briefing | No | No |
+| iMessage + Telegram | Daily Briefing, smart agents, voice notes | No | No |
 | Open source | MIT | No | No |
 
 **What CODEC replaced with native code:**
