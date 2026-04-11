@@ -239,7 +239,7 @@ svg text{font-family:'SF Pro Display',-apple-system,system-ui,sans-serif}
 <div id="stats"></div>
 <div id="viewSwitch">
   <button class="vs-btn active" onclick="switchView('neural')">Neural Map</button>
-  <button class="vs-btn" onclick="switchView('products')">6 Products</button>
+  <button class="vs-btn" onclick="switchView('products')">7 Products</button>
 </div>
 <svg id="cortex" xmlns="http://www.w3.org/2000/svg"></svg>
 <div id="productsView"></div>
@@ -800,6 +800,11 @@ var PRODUCTS = [
    features:['WebSocket','VAD','Interruption','Live Transcript','Screen Analysis','Streaming TTS','Low Latency','Memory Save','Searchable History'],
    files:['codec_voice.py'],status:'voice',
    details:{how:'WebSocket → VAD (voice activity detection) → Whisper STT → LLM → Kokoro TTS → streaming audio back. No Pipecat, no external dependencies.',features:'Interruption handling (speak while CODEC is talking → TTS cuts off → listens again), live transcription display, mid-call screen analysis, low-latency pipeline. Full transcript saved to memory — every conversation becomes searchable context for future sessions.',port:'8090 (/voice)',files:['codec_voice.py','codec_voice.html']}},
+  {name:'CODEC Overview',subtitle:'Dashboard + Cortex + Audit',icon:'🌐',color:'#668080',
+   desc:'Private dashboard accessible from any device, anywhere. Cloudflare Tunnel or Tailscale VPN — no port forwarding, no third-party relay. Cortex neural map, real-time activity feed, full audit trail across 16 categories.',
+   features:['Dashboard :8090','Cloudflare Tunnel','Tailscale VPN','MCP Server','Task Scheduler','Heartbeat Monitor','Cortex Visualizer','Audit Stream','Prometheus Metrics','Remote Approval','PM2 Process Manager','Skill Marketplace'],
+   files:['codec_dashboard.py','codec_cortex.html','codec_audit.html'],status:'overview',
+   details:{how:'75+ API endpoints. Send commands, view the screen, launch voice calls, manage agents — all from a browser. Installable as PWA on mobile and desktop.',features:'Cortex neural map, real-time activity feed, searchable skills panel, event log viewer. Audit: 16 categories, filterable, colored timeline, JSON-line storage with 50MB rotation.',port:'8090',files:['codec_dashboard.py','codec_dashboard.html','codec_cortex.html','codec_audit.html']}},
 ];
 
 function switchView(view) {
@@ -824,7 +829,7 @@ function switchView(view) {
 }
 
 function renderProducts() {
-  var html = '<div class="products-header"><h2>6 Products &middot; One Framework</h2><p>Every capability of the CODEC ecosystem</p></div>';
+  var html = '<div class="products-header"><h2>7 Products &middot; One Framework</h2><p>Every capability of the CODEC ecosystem</p></div>';
   html += '<div class="products-grid">';
   PRODUCTS.forEach(function(p) {
     html += '<div class="product-card">';
@@ -866,12 +871,12 @@ function renderProducts() {
     }
     html += '</div>';
   });
-  // Supporting systems card
+  // iMessage & Telegram — additional interfaces
   html += '<div class="product-card" style="grid-column:1/-1">';
-  html += '<div class="pc-header"><div class="pc-icon" style="background:rgba(102,102,128,.15);border:1px solid rgba(102,102,128,.3)">🌐</div><div><div class="pc-title">CODEC Overview</div><div class="pc-subtitle">Dashboard Anywhere</div></div></div>';
-  html += '<div class="pc-desc">Private dashboard accessible from any device, anywhere. Cloudflare Tunnel or Tailscale VPN — no port forwarding, no third-party relay. Send commands, view the screen, launch voice calls, manage agents — all from a browser.</div>';
+  html += '<div class="pc-header"><div class="pc-icon" style="background:rgba(52,199,89,.15);border:1px solid rgba(52,199,89,.3)">💬</div><div><div class="pc-title">iMessage &amp; Telegram</div><div class="pc-subtitle">External Messaging Channels</div></div></div>';
+  html += '<div class="pc-desc">CODEC responds on iMessage and Telegram. Same LLM, same skills, same memory. Say "Good morning" for a Daily Briefing — calendar, weather, markets, Top 10 news, voice note. Say "full report" for a multi-agent deep research report delivered to Google Docs.</div>';
   html += '<div class="pc-features">';
-  ['Dashboard :8090','Cloudflare Tunnel','Tailscale VPN','MCP Server','Task Scheduler','Heartbeat Monitor','Alerts (TG/Email)','Prometheus Metrics','Remote Approval','Memory FTS5','PM2 Process Manager','Skill Marketplace','CORTEX Visualizer','Audit Stream'].forEach(function(f) {
+  ['iMessage Agent','Telegram Bot','Daily Briefing','Voice Notes (TTS)','Deep Report → Docs','Restaurant Decider','Accountability Coach','Photo Vision','Whisper Transcription','PM2 Managed'].forEach(function(f) {
     html += '<span class="pc-feat">'+f+'</span>';
   });
   html += '</div></div>';
