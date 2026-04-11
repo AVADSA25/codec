@@ -54,78 +54,6 @@ No cloud dependency. No subscription. No data leaving the machine. MIT licensed.
 
 ---
 
-## Messaging Channels — CODEC Beyond the Mac
-
-**This is a milestone.** For the first time, CODEC data flows beyond the local machine. The same brain that controls your Mac now responds on iMessage and Telegram.
-
-<p align="center">
-  <img src="assets/imessage-daily-briefing.jpg" alt="CODEC Daily Briefing — iMessage" width="560"/>
-  <br/>
-  <em>CODEC Daily Briefing delivered via iMessage — real calendar, live markets, ranked global news, weather, and a motivational quote. All generated locally, zero cloud dependency.</em>
-</p>
-
-### iMessage Agent
-
-CODEC reads the macOS Messages database, watches for a trigger phrase (*"Hey CODEC"*), processes the message through the full skill + LLM pipeline, and replies via AppleScript. Pure Python, no third-party server, no phone number required — just a Mac logged into iMessage.
-
-| Capability | How |
-|---|---|
-| Text messages | Trigger-based activation, full LLM response |
-| Photos (vision) | Attachments detected, sent to vision model, described and answered |
-| Voice notes | Transcribed via Whisper, then processed as text |
-| Smart agents | Daily Briefing, Restaurant Decider, Accountability Coach — built-in, trigger by name |
-
-Three built-in smart agents ship out of the box:
-- **Daily Briefing** — morning summary of calendar, weather, top news, delivered to iMessage
-- **Restaurant Decider** — "pick a restaurant" triggers location-aware suggestions with cuisine, price, rating
-- **Accountability Coach** — periodic check-ins, goal tracking, motivational nudges
-
-Inspired by [Photon's imessage-kit](https://github.com/photon-hq/imessage-kit) for the macOS Messages DB reading approach. CODEC extends it with full LLM integration, vision, transcription, and multi-agent support.
-
-### Telegram Bot — @Codec_mf_bot
-
-Same CODEC brain, accessible from any device with Telegram. No trigger phrase needed in DMs — every message gets a response.
-
-| Capability | How |
-|---|---|
-| Text messages | Direct LLM response with conversation memory |
-| Photos (vision) | Image sent to vision model, analyzed and answered |
-| Voice messages | Transcribed via Whisper, processed as text |
-| Formatting | Markdown responses with code blocks, bold, lists |
-
-Both services run as PM2-managed processes (`codec-imessage`, `codec-telegram`) with auto-restart and log rotation.
-
-### Daily Briefing — Lucy-Quality Intelligence Report
-
-Say **"Good morning"** on iMessage or Telegram and CODEC delivers a full executive briefing:
-
-- **Calendar** — today's Google Calendar events (real OAuth2 data)
-- **Weather** — current conditions for your location
-- **Markets** — BTC, ETH, SOL live prices with 24h change (CoinGecko)
-- **Top 10 News** — category-ranked from 9 RSS sources (FT, Reuters, BBC, Ars Technica, The Verge, TechCrunch, Al Jazeera, Nature, NPR), deduplicated, with source + link
-- **Inbox** — unread email count (Gmail API)
-- **Tasks** — pending Google Tasks items
-- **Quote + Joke** — motivational closer
-
-On Telegram, CODEC also sends an **80-second voice note** (Kokoro TTS, female voice) with the full briefing read aloud.
-
-For deeper analysis, say **"full report"** — this triggers CODEC Chat's multi-agent Deep Research crew, which produces a 10,000-word illustrated report delivered to Google Docs with a shareable link.
-
----
-
-### 8. CODEC External — iMessage & Telegram
-
-**New in v2.1.** The first time CODEC data leaves the local machine. The same LLM, skills, and agent crews that power the Mac now respond on your phone.
-
-| Channel | Trigger | Voice | Smart Agents |
-|---|---|---|---|
-| **iMessage** | "Hey CODEC" or "Good morning" | Coming soon | Daily Briefing, Restaurant Decider, Accountability Coach |
-| **Telegram** | Any DM (no trigger needed) | 80s voice note | Daily Briefing, Deep Report |
-
-Architecture: pure Python, no frameworks, no Docker. iMessage reads the native macOS Messages DB + replies via AppleScript. Telegram uses Bot API long polling. Both share the same LLM pipeline, skill system, and conversation memory.
-
----
-
 ### 1. CODEC Core — The Command Layer
 
 Always-on voice assistant. Say *"Hey CODEC"* or press F13 to activate. F18 for voice commands. F16 for text input.
@@ -206,11 +134,24 @@ Private dashboard accessible from any device, anywhere. Cloudflare Tunnel or Tai
 **Cortex — System Nerve Center**
 Visual command center showing all 7 CODEC products in an interactive grid. Neural network SVG map, real-time activity feed, searchable skills panel, and detailed event log viewer. The single-pane-of-glass view of the entire system.
 
-**External — Messaging Channels**
-Live status of CODEC's external reach. iMessage and Telegram service health, last message processed, Daily Briefing delivery status, and smart agent activity. Monitor your messaging channels from the same dashboard that controls the Mac.
-
 **Audit — Full Event Trail**
 Every action CODEC takes is logged across 16 categories: command, skill, llm, auth, error, scheduled, voice, vision, tts, stt, system, security, hotkey, screenshot, config, draft. Filterable by category pills, searchable, with colored timeline dots and expandable event details. JSON-line storage with 50MB rotation. Default 24h time range with 1h/6h/24h/7d quick filters.
+
+### 8. CODEC External — iMessage & Telegram
+
+CODEC is already accessible from any device via its dashboard (Cloudflare Tunnel or Tailscale). External adds native messaging integration for users who prefer iMessage or Telegram as an interface.
+
+iMessage reads the macOS Messages DB, watches for *"Hey CODEC"* or *"Good morning"*, and replies via AppleScript. Telegram uses Bot API long polling — no trigger needed in DMs. Both share the same LLM, skills, and conversation memory as the desktop.
+
+**Daily Briefing** — say "Good morning" and receive a full morning report: Google Calendar events, weather, crypto markets, Top 10 ranked news from 9 RSS sources, inbox count, pending tasks, and a quote. On Telegram, this also includes an 80-second voice note. For deeper analysis, say "full report" to trigger the multi-agent Deep Research crew (same as CODEC Chat) — outputs to Google Docs.
+
+<p align="center">
+  <img src="assets/imessage-daily-briefing.jpg" alt="CODEC Daily Briefing — iMessage" width="480"/>
+  <br/>
+  <em>Daily Briefing via iMessage — calendar, markets, ranked news, all generated locally</em>
+</p>
+
+Three smart agents ship built-in: Daily Briefing, Restaurant Decider (location-aware dining), and Accountability Coach (goal tracking). Both services run as PM2 processes with auto-restart.
 
 ---
 
@@ -288,8 +229,7 @@ Every action CODEC takes is logged across 16 categories: command, skill, llm, au
 | Live typing at cursor | Dictate L key | No | No |
 | Process watchdog | Auto-kills stuck processes | No | No |
 | Full audit trail | 16 event categories | No | No |
-| iMessage integration | Trigger-based, photo+voice | No | No |
-| Telegram bot | Full DM support + memory | No | No |
+| External messaging | iMessage + Telegram + Daily Briefing | No | No |
 | Open source | MIT | No | No |
 
 **What CODEC replaced with native code:**
