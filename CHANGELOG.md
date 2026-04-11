@@ -2,11 +2,19 @@
 
 ## v2.1.0 (2026-04-11)
 ### Added
-- **iMessage integration** (`codec_imessage.py`) — trigger-based activation ("Hey CODEC"), processes text, photos (vision), and voice notes (Whisper transcription). Pure Python, reads macOS Messages DB, replies via AppleScript. Inspired by [Photon's imessage-kit](https://github.com/photon-hq/imessage-kit)
-- **Telegram bot** (`codec_telegram.py`) — @Codec_mf_bot, full DM support with conversation memory, Markdown responses. Supports text, photos, and voice messages
-- **Smart iMessage agents** — Daily Briefing (calendar + news + weather), Restaurant Decider (location-aware suggestions), Accountability Coach (goal tracking + check-ins)
-- **First external messaging channels** — CODEC data flows beyond the Mac for the first time. The same brain that controls the desktop now responds on iMessage and Telegram
+- **CODEC External** — new 8th product. First time CODEC data flows beyond the local Mac
+- **iMessage integration** (`codec_imessage.py`) — trigger-based activation ("Hey CODEC" or "Good morning"), processes text, photos (vision), and voice notes (Whisper transcription). Pure Python, reads macOS Messages DB, replies via AppleScript. Inspired by [Photon's imessage-kit](https://github.com/photon-hq/imessage-kit)
+- **Telegram bot** (`codec_telegram.py`) — @Codec_mf_bot, full DM support with conversation memory, Markdown responses. Supports text, photos, voice messages, and 80-second voice note briefings via Kokoro TTS
+- **Daily Briefing** — Lucy-quality executive morning report: real Google Calendar events, live weather, crypto markets (BTC/ETH/SOL via CoinGecko), Top 10 ranked news from 9 RSS feeds (FT, Reuters, BBC, Ars Technica, The Verge, TechCrunch, Al Jazeera, Nature, NPR), Gmail inbox count, pending tasks, motivational quote + joke. Delivered on both iMessage and Telegram
+- **Deep Report via messaging** — say "full report" on iMessage or Telegram to trigger the multi-agent Deep Research crew, outputs a 10,000-word illustrated report to Google Docs
+- **Smart agents** — Restaurant Decider (location-aware dining suggestions), Accountability Coach (goal tracking + check-ins with SQLite persistence)
+- **Voice briefing** — Telegram sends an 80-second audio note with the full briefing read aloud (Kokoro TTS, sentence-level chunking, female voice)
 - **PM2 managed services** — `codec-imessage` and `codec-telegram` with auto-restart and log rotation
+- **Photon Residency demo** — `PHOTON_DEMO.md` standalone pitch document with architecture breakdown
+
+### Fixed
+- **Google Calendar in briefing** — installed `google-api-python-client` for Python 3.14, calendar events now show in Daily Briefing
+- **News readability** — blank lines between each ranked news item for cleaner formatting on mobile
 
 ## v2.0.0 (2026-04-09)
 ### Added

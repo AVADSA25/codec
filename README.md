@@ -39,7 +39,7 @@ No cloud dependency. No subscription. No data leaving the machine. MIT licensed.
 
 ---
 
-## 7 Products. One System.
+## 8 Products. One System.
 
 | # | Product | What It Does |
 |:-:|---|---|
@@ -50,6 +50,7 @@ No cloud dependency. No subscription. No data leaving the machine. MIT licensed.
 | 5 | **CODEC Vibe** | Browser IDE with Monaco editor + Skill Forge — the framework writes its own plugins |
 | 6 | **CODEC Voice** | Real-time voice calls with interrupt detection, screen analysis mid-call |
 | 7 | **CODEC Overview** | Dashboard + Cortex nerve center + full audit trail — accessible from any device |
+| 8 | **CODEC External** | iMessage + Telegram — Daily Briefing, smart agents, voice notes delivered to your phone |
 
 ---
 
@@ -93,6 +94,35 @@ Same CODEC brain, accessible from any device with Telegram. No trigger phrase ne
 | Formatting | Markdown responses with code blocks, bold, lists |
 
 Both services run as PM2-managed processes (`codec-imessage`, `codec-telegram`) with auto-restart and log rotation.
+
+### Daily Briefing — Lucy-Quality Intelligence Report
+
+Say **"Good morning"** on iMessage or Telegram and CODEC delivers a full executive briefing:
+
+- **Calendar** — today's Google Calendar events (real OAuth2 data)
+- **Weather** — current conditions for your location
+- **Markets** — BTC, ETH, SOL live prices with 24h change (CoinGecko)
+- **Top 10 News** — category-ranked from 9 RSS sources (FT, Reuters, BBC, Ars Technica, The Verge, TechCrunch, Al Jazeera, Nature, NPR), deduplicated, with source + link
+- **Inbox** — unread email count (Gmail API)
+- **Tasks** — pending Google Tasks items
+- **Quote + Joke** — motivational closer
+
+On Telegram, CODEC also sends an **80-second voice note** (Kokoro TTS, female voice) with the full briefing read aloud.
+
+For deeper analysis, say **"full report"** — this triggers CODEC Chat's multi-agent Deep Research crew, which produces a 10,000-word illustrated report delivered to Google Docs with a shareable link.
+
+---
+
+### 8. CODEC External — iMessage & Telegram
+
+**New in v2.1.** The first time CODEC data leaves the local machine. The same LLM, skills, and agent crews that power the Mac now respond on your phone.
+
+| Channel | Trigger | Voice | Smart Agents |
+|---|---|---|---|
+| **iMessage** | "Hey CODEC" or "Good morning" | Coming soon | Daily Briefing, Restaurant Decider, Accountability Coach |
+| **Telegram** | Any DM (no trigger needed) | 80s voice note | Daily Briefing, Deep Report |
+
+Architecture: pure Python, no frameworks, no Docker. iMessage reads the native macOS Messages DB + replies via AppleScript. Telegram uses Bot API long polling. Both share the same LLM pipeline, skill system, and conversation memory.
 
 ---
 
@@ -175,6 +205,9 @@ Private dashboard accessible from any device, anywhere. Cloudflare Tunnel or Tai
 
 **Cortex — System Nerve Center**
 Visual command center showing all 7 CODEC products in an interactive grid. Neural network SVG map, real-time activity feed, searchable skills panel, and detailed event log viewer. The single-pane-of-glass view of the entire system.
+
+**External — Messaging Channels**
+Live status of CODEC's external reach. iMessage and Telegram service health, last message processed, Daily Briefing delivery status, and smart agent activity. Monitor your messaging channels from the same dashboard that controls the Mac.
 
 **Audit — Full Event Trail**
 Every action CODEC takes is logged across 16 categories: command, skill, llm, auth, error, scheduled, voice, vision, tts, stt, system, security, hotkey, screenshot, config, draft. Filterable by category pills, searchable, with colored timeline dots and expandable event details. JSON-line storage with 50MB rotation. Default 24h time range with 1h/6h/24h/7d quick filters.
@@ -585,12 +618,39 @@ ecosystem.config.js   — PM2 process management (10+ services)
 
 ---
 
+## Updating CODEC
+
+CODEC updates via `git pull`. No auto-update mechanism — you control when to upgrade.
+
+```bash
+cd ~/codec-repo
+git pull origin main
+pm2 restart all
+```
+
+**If you customized `config.json`** — your config lives in `~/.codec/config.json`, not in the repo. Updates never overwrite it.
+
+**If you added custom skills** — skills in `skills/` are safe. `git pull` only updates core files. If there's a merge conflict on a skill you modified, Git will tell you.
+
+**After major version bumps** (e.g. v2.0 → v2.1), check the [CHANGELOG](CHANGELOG.md) for new config options or dependencies:
+
+```bash
+# Check if new Python packages are needed
+pip3 install -r requirements.txt
+
+# Re-run setup wizard if new features need configuration
+python3 setup_codec.py
+```
+
+---
+
 ## What's Coming
 
+- [ ] iMessage voice notes (TTS briefing delivered as audio attachment)
+- [ ] WhatsApp integration (third messaging channel)
 - [ ] Linux support
 - [ ] Windows via WSL
 - [ ] Multi-machine sync (skills + memory across devices)
-- [ ] WhatsApp integration
 - [ ] iOS app (dictation + remote dashboard)
 - [ ] Streaming voice responses (first token plays while rest generates)
 - [ ] Multi-LLM routing (fast model for simple, strong model for complex)
