@@ -5,6 +5,10 @@ __pycache__/
 *.db
 *.mp3
 *.wav
+*.save
 .vscode/
 .idea/
-.claude/worktrees/
+.claude/
+swift-overlay/.build/
+promo/
+*.mp4
