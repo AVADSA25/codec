@@ -12,7 +12,6 @@ import os
 import subprocess
 import tempfile
 import time
-from typing import Optional
 
 log = logging.getLogger("codec_sandbox")
 

@@ -3,7 +3,7 @@
 Extracted from codec_dashboard.py to avoid circular imports.
 Both codec_dashboard.py and routes/*.py import from here.
 """
-import os, json, threading, logging, secrets, time, hmac, uuid, sqlite3
+import os, json, threading, logging, uuid, sqlite3
 from datetime import datetime, timedelta
 
 log = logging.getLogger("codec_dashboard")

@@ -3,7 +3,7 @@ SKILL_NAME = "file_search"
 SKILL_TRIGGERS = ["find file", "search file", "locate file", "where is file", "find document", "search for file"]
 SKILL_DESCRIPTION = "Search for files by name or content"
 
-import subprocess, os
+import subprocess
 
 def run(task, app="", ctx=""):
     query = task.lower()

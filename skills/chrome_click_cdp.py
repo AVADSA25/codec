@@ -8,7 +8,6 @@ SKILL_DESCRIPTION = "Click specific buttons and links on web pages via Chrome De
 
 def run(task: str, context: str = "") -> str:
     from codec_cdp import is_cdp_available, run_cdp, ChromeCDP
-    import re
 
     if not is_cdp_available():
         return None  # Fall through so other skills (e.g. mouse_control) can handle it

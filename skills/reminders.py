@@ -6,7 +6,7 @@ SKILL_TRIGGERS = ["add reminder", "set reminder", "remind me to", "add to remind
 import subprocess
 
 def run(task, app="", ctx=""):
-    low = task.lower()
+    task.lower()
     reminder = task
     for remove in ["add reminder", "set reminder", "remind me to", "add to reminders",
                     "new reminder", "create reminder", "reminder to", "please", "can you"]:

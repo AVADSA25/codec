@@ -9,7 +9,7 @@ import importlib.util
 import logging
 import os
 import re
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 log = logging.getLogger("codec")
 

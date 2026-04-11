@@ -12,7 +12,7 @@ SKILL_TRIGGERS = [
 ]
 SKILL_DESCRIPTION = "Search and list files in your Google Drive"
 
-import json, os
+import os
 
 TOKEN_PATH = os.path.expanduser("~/.codec/google_token.json")
 

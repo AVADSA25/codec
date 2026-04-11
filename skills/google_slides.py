@@ -1,5 +1,5 @@
 """Google Slides skill for CODEC — list and read presentations"""
-import json, os
+import os
 
 SKILL_NAME = "google_slides"
 

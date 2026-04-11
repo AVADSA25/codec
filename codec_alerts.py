@@ -197,7 +197,7 @@ def check_services_and_alert():
     }
 
     failures = state.get("consecutive_failures", {})
-    last_alert = state.get("last_alert", {})
+    state.get("last_alert", {})
 
     for name, url_tpl in _SERVICES.items():
         url = url_tpl.format(**ports)

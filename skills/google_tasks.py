@@ -1,5 +1,5 @@
 """Google Tasks skill for CODEC — list and manage tasks"""
-import json, os
+import os
 
 SKILL_NAME = "google_tasks"
 

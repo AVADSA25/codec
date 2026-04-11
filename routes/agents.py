@@ -6,7 +6,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from routes._shared import (
-    log, _research_jobs, _agent_jobs, _AGENTS_DIR,
+    _research_jobs, _agent_jobs, _AGENTS_DIR,
 )
 
 router = APIRouter()

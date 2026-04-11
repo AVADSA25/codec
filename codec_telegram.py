@@ -24,8 +24,7 @@ import time
 import logging
 import requests
 import sqlite3
-from datetime import datetime, timedelta
-from pathlib import Path
+from datetime import datetime
 
 # ── Logging ──────────────────────────────────────────────────────────────────
 logging.basicConfig(

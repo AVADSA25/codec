@@ -1,6 +1,6 @@
 """CODEC Dashboard — Auth routes (biometric, PIN, TOTP, E2E key exchange)."""
-import os, json, secrets, time, subprocess, hmac
-from datetime import datetime, timedelta
+import os, json, secrets, time, subprocess
+from datetime import datetime
 
 try:
     from codec_audit import log_event
@@ -11,10 +11,10 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from routes._shared import (
-    log, DASHBOARD_DIR, CONFIG_PATH, AUDIT_LOG, _NO_CACHE,
+    DASHBOARD_DIR, CONFIG_PATH, _NO_CACHE,
     AUTH_ENABLED, AUTH_SESSION_HOURS, AUTH_BINARY, AUTH_PIN_HASH, AUTH_COOKIE_NAME,
     _auth_sessions, _auth_lock, _e2e_keys,
-    _is_auth_compiled, _auth_available, _is_totp_enabled, _verify_biometric_session,
+    _is_auth_compiled, _is_totp_enabled, _verify_biometric_session,
     _save_sessions, _save_e2e_keys, _audit_write, _pin_attempts,
 )
 

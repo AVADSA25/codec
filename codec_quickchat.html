@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CODEC Quick Chat</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #121215; --surface: #1a1a1d; --surface-2: #212125; --surface-3: #2a2a2e;
+  --border: #303035; --border-hover: #424248;
+  --text: #ececec; --text-muted: #9a9aa0; --text-dim: #6a6a70;
+  --accent: #E8711A; --accent-hover: #f07d2a; --accent-dim: rgba(232,113,26,0.10);
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --mono: 'JetBrains Mono', 'SF Mono', monospace;
+  --radius: 10px; --radius-sm: 6px;
+}
+[data-theme="light"] {
+  --bg: #f7f5f2; --surface: #ffffff; --surface-2: #f0ece6; --surface-3: #e8e4de;
+  --border: #d5d0ca; --border-hover: #bbb;
+  --text: #1a1a1a; --text-muted: #555; --text-dim: #777;
+  --accent-dim: rgba(232,113,26,0.08);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { font-family: var(--font); background: var(--bg); color: var(--text); height: 100%; }
+.app { display: flex; flex-direction: column; height: 100vh; }
+
+/* Header */
+.qc-header {
+  display: flex; align-items: center; gap: 10px; padding: 14px 20px;
+  border-bottom: 1px solid var(--border); background: var(--surface); flex-shrink: 0;
+}
+.qc-header h1 { font-size: 14px; font-weight: 600; letter-spacing: 1px; color: var(--accent); flex: 1; }
+.qc-header .count { font-size: 11px; color: var(--text-dim); font-weight: 400; }
+.qc-header .close-btn {
+  background: none; border: none; color: var(--text-muted); font-size: 18px; cursor: pointer;
+  width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+  border-radius: 6px; transition: all .15s;
+}
+.qc-header .close-btn:hover { background: var(--surface-2); color: var(--text); }
+
+/* Messages area */
+.qc-messages {
+  flex: 1; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 16px;
+}
+.qc-messages::-webkit-scrollbar { width: 4px; }
+.qc-messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+/* Message pair */
+.qc-pair { display: flex; flex-direction: column; gap: 8px; }
+.qc-msg {
+  padding: 10px 14px; border-radius: var(--radius); font-size: 13px; line-height: 1.6;
+  max-width: 85%; word-wrap: break-word; white-space: pre-wrap;
+}
+.qc-msg.user {
+  background: var(--accent); color: #fff; align-self: flex-end; border-bottom-right-radius: 3px;
+}
+.qc-msg.assistant {
+  background: var(--surface-2); color: var(--text); align-self: flex-start; border-bottom-left-radius: 3px;
+  border: 1px solid var(--border);
+}
+.qc-msg.no-response {
+  background: var(--surface-2); color: var(--text-dim); align-self: flex-start;
+  border: 1px dashed var(--border); font-style: italic; font-size: 11px;
+}
+.qc-meta {
+  font-size: 10px; color: var(--text-dim); display: flex; align-items: center; gap: 6px;
+}
+.qc-meta.right { justify-content: flex-end; }
+.qc-meta .app-tag {
+  background: var(--surface-3); padding: 1px 6px; border-radius: 4px; font-size: 9px;
+  font-family: var(--mono); letter-spacing: 0.5px;
+}
+
+/* Input area */
+.qc-input-area {
+  display: flex; gap: 8px; padding: 14px 20px; border-top: 1px solid var(--border);
+  background: var(--surface); flex-shrink: 0;
+}
+.qc-input {
+  flex: 1; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 10px 14px; color: var(--text); font-family: var(--font); font-size: 13px;
+  outline: none; resize: none; min-height: 40px; max-height: 120px;
+}
+.qc-input:focus { border-color: var(--accent); }
+.qc-input::placeholder { color: var(--text-dim); }
+.qc-send {
+  background: var(--accent); color: #fff; border: none; border-radius: var(--radius);
+  padding: 0 18px; font-size: 13px; font-weight: 500; cursor: pointer; transition: background .15s;
+  display: flex; align-items: center; gap: 6px; white-space: nowrap;
+}
+.qc-send:hover { background: var(--accent-hover); }
+.qc-send:disabled { opacity: 0.5; cursor: not-allowed; }
+.qc-send .spinner { display: none; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.3);
+  border-top-color: #fff; border-radius: 50%; animation: spin .6s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.qc-send.loading .label { display: none; }
+.qc-send.loading .spinner { display: block; }
+
+/* Empty state */
+.qc-empty {
+  flex: 1; display: flex; align-items: center; justify-content: center; flex-direction: column;
+  color: var(--text-dim); gap: 8px;
+}
+.qc-empty .icon { font-size: 32px; opacity: 0.3; }
+.qc-empty .text { font-size: 13px; }
+
+/* Date separator */
+.qc-date-sep {
+  text-align: center; font-size: 10px; color: var(--text-dim); letter-spacing: 1px;
+  padding: 4px 0; text-transform: uppercase; font-weight: 500;
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="qc-header">
+    <h1>QUICK CHAT <span class="count" id="msgCount"></span></h1>
+    <button class="close-btn" onclick="window.close()" title="Close">&times;</button>
+  </div>
+  <div class="qc-messages" id="messages"></div>
+  <div class="qc-input-area">
+    <textarea class="qc-input" id="chatInput" placeholder="Type a message... (Enter to send)" rows="1"></textarea>
+    <button class="qc-send" id="sendBtn" onclick="sendMessage()">
+      <span class="label">Send</span>
+      <div class="spinner"></div>
+    </button>
+  </div>
+</div>
+
+<script>
+// Theme sync
+(function(){
+  var saved = localStorage.getItem('codec-theme') || 'dark';
+  if (saved === 'light') document.documentElement.setAttribute('data-theme', 'light');
+  window.addEventListener('storage', function(e){
+    if (e.key === 'codec-theme') {
+      var t = e.newValue || 'dark';
+      if (t === 'light') document.documentElement.setAttribute('data-theme', 'light');
+      else document.documentElement.removeAttribute('data-theme');
+    }
+  });
+})();
+
+var messagesEl = document.getElementById('messages');
+var inputEl = document.getElementById('chatInput');
+var sendBtn = document.getElementById('sendBtn');
+var countEl = document.getElementById('msgCount');
+
+// Auto-resize textarea
+inputEl.addEventListener('input', function() {
+  this.style.height = 'auto';
+  this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+});
+
+// Enter to send (Shift+Enter for newline)
+inputEl.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+});
+
+function formatTime(ts) {
+  try {
+    var d = new Date(ts);
+    var now = new Date();
+    var time = d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+    if (d.toDateString() === now.toDateString()) return time;
+    if (d.toDateString() === new Date(now - 86400000).toDateString()) return 'Yesterday ' + time;
+    return d.toLocaleDateString([], {month: 'short', day: 'numeric'}) + ' ' + time;
+  } catch(e) { return ts || ''; }
+}
+
+function getDateKey(ts) {
+  try {
+    var d = new Date(ts);
+    return d.toDateString();
+  } catch(e) { return ''; }
+}
+
+function renderMessages(data) {
+  messagesEl.innerHTML = '';
+  if (!data || data.length === 0) {
+    messagesEl.innerHTML = '<div class="qc-empty"><div class="icon">&#x1F4AC;</div><div class="text">No messages yet. Press F16 or type below.</div></div>';
+    countEl.textContent = '';
+    return;
+  }
+  countEl.textContent = '(' + data.length + ')';
+  // Data comes newest-first, reverse for chronological display
+  var msgs = data.slice().reverse();
+  var lastDate = '';
+  msgs.forEach(function(m) {
+    var dateKey = getDateKey(m.timestamp);
+    if (dateKey !== lastDate) {
+      lastDate = dateKey;
+      var sep = document.createElement('div');
+      sep.className = 'qc-date-sep';
+      var d = new Date(m.timestamp);
+      var now = new Date();
+      if (d.toDateString() === now.toDateString()) sep.textContent = 'Today';
+      else if (d.toDateString() === new Date(now - 86400000).toDateString()) sep.textContent = 'Yesterday';
+      else sep.textContent = d.toLocaleDateString([], {weekday: 'short', month: 'short', day: 'numeric'});
+      messagesEl.appendChild(sep);
+    }
+    var pair = document.createElement('div');
+    pair.className = 'qc-pair';
+
+    // Clean task - remove [SCREEN CONTEXT: ...] for display
+    var cleanTask = m.task.replace(/\s*\[SCREEN CONTEXT:[\s\S]*?\]$/, '').trim();
+
+    // User message
+    var metaR = document.createElement('div');
+    metaR.className = 'qc-meta right';
+    metaR.innerHTML = (m.app ? '<span class="app-tag">' + m.app.replace(/</g,'&lt;') + '</span>' : '') + '<span>' + formatTime(m.timestamp) + '</span>';
+    pair.appendChild(metaR);
+
+    var userMsg = document.createElement('div');
+    userMsg.className = 'qc-msg user';
+    userMsg.textContent = cleanTask;
+    pair.appendChild(userMsg);
+
+    // Assistant response
+    if (m.response && m.response.trim()) {
+      var aMsg = document.createElement('div');
+      aMsg.className = 'qc-msg assistant';
+      aMsg.textContent = m.response;
+      pair.appendChild(aMsg);
+    } else {
+      var noResp = document.createElement('div');
+      noResp.className = 'qc-msg no-response';
+      noResp.textContent = 'No text response (voice only or skill)';
+      pair.appendChild(noResp);
+    }
+    messagesEl.appendChild(pair);
+  });
+  // Scroll to bottom
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+function loadHistory() {
+  fetch('/api/quickchat/history?limit=100')
+    .then(function(r) { return r.json(); })
+    .then(renderMessages)
+    .catch(function(e) { console.error('Failed to load history:', e); });
+}
+
+function sendMessage() {
+  var text = inputEl.value.trim();
+  if (!text) return;
+  sendBtn.classList.add('loading');
+  sendBtn.disabled = true;
+  inputEl.disabled = true;
+
+  // Add user message immediately
+  var pair = document.createElement('div');
+  pair.className = 'qc-pair';
+  var metaR = document.createElement('div');
+  metaR.className = 'qc-meta right';
+  metaR.innerHTML = '<span>' + formatTime(new Date().toISOString()) + '</span>';
+  pair.appendChild(metaR);
+  var userMsg = document.createElement('div');
+  userMsg.className = 'qc-msg user';
+  userMsg.textContent = text;
+  pair.appendChild(userMsg);
+  // Thinking indicator
+  var thinking = document.createElement('div');
+  thinking.className = 'qc-msg assistant';
+  thinking.style.opacity = '0.5';
+  thinking.textContent = 'Thinking...';
+  thinking.id = 'thinking';
+  pair.appendChild(thinking);
+  messagesEl.appendChild(pair);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+
+  inputEl.value = '';
+  inputEl.style.height = 'auto';
+
+  fetch('/api/chat', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'x-internal': 'codec'},
+    body: JSON.stringify({message: text, source: 'quickchat'})
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    var el = document.getElementById('thinking');
+    if (el) {
+      el.style.opacity = '1';
+      el.id = '';
+      el.textContent = data.response || data.answer || data.text || 'Done';
+    }
+  })
+  .catch(function(e) {
+    var el = document.getElementById('thinking');
+    if (el) {
+      el.textContent = 'Error: ' + e.message;
+      el.style.color = '#ef4444';
+      el.style.opacity = '1';
+      el.id = '';
+    }
+  })
+  .finally(function() {
+    sendBtn.classList.remove('loading');
+    sendBtn.disabled = false;
+    inputEl.disabled = false;
+    inputEl.focus();
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  });
+}
+
+// Load on start
+loadHistory();
+inputEl.focus();
+</script>
+</body>
+</html>

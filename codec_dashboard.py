@@ -1,11 +1,10 @@
 """CODEC v2.1 — Phone Dashboard & PWA"""
-import os, json, sqlite3, time, logging, secrets, subprocess, hmac, threading, uuid, asyncio, re
+import os, json, sqlite3, time, subprocess, hmac, threading, uuid, asyncio, re
 from datetime import datetime, timedelta
 
 from pathlib import Path
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
-from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse as StarletteJSONResponse
@@ -13,14 +12,12 @@ import uvicorn
 
 # ── Shared state (canonical source: routes/_shared.py) ──
 from routes._shared import (
-    log, DASHBOARD_DIR, CONFIG_PATH, TASK_QUEUE, DB_PATH,
-    AUDIT_LOG, NOTIFICATIONS_PATH, SCHEDULE_RUNS_LOG,
-    _NO_CACHE, _get_skills_dir, _audit_write,
+    log, DASHBOARD_DIR, CONFIG_PATH, AUDIT_LOG, _NO_CACHE, _audit_write,
     _notif_lock, _load_notifications, _write_notifications,
-    _save_notification, _append_schedule_run_log,
-    AUTH_ENABLED, AUTH_SESSION_HOURS, AUTH_BINARY, AUTH_PIN_HASH, AUTH_COOKIE_NAME,
+    _append_schedule_run_log,
+    AUTH_ENABLED, AUTH_SESSION_HOURS, AUTH_COOKIE_NAME,
     _auth_sessions, _auth_lock, _e2e_keys,
-    _is_auth_compiled, _auth_available, _is_totp_enabled, _verify_biometric_session,
+    _auth_available, _verify_biometric_session,
     _save_sessions, _save_e2e_keys,
     get_db,
     _pending_approvals, _approval_lock,
@@ -642,7 +639,6 @@ def _get_all_prompts():
         "textassist_prompt": ("Prompt Engineer", "Optimize text as an AI prompt"),
     }
     try:
-        from codec_textassist import call_qwen
         # Read the prompts dict from the file directly
         ta_path = os.path.join(DASHBOARD_DIR, "codec_textassist.py")
         with open(ta_path, "r") as f:
@@ -1207,7 +1203,6 @@ async def upload_document(request: Request):
                 zf = zipfile.ZipFile(io.BytesIO(raw))
                 xml_content = zf.read("word/document.xml")
                 tree = ET.fromstring(xml_content)
-                ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
                 paragraphs = []
                 for p in tree.iter("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p"):
                     texts = [t.text for t in p.iter("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t") if t.text]
@@ -1639,7 +1634,7 @@ async def run_code(request: Request):
     body = await request.json()
     code = body.get("code", "")
     language = body.get("language", "python")
-    filename = body.get("filename", "script.py")
+    body.get("filename", "script.py")
     if not code.strip():
         return JSONResponse({"error": "No code"}, status_code=400)
     from codec_config import is_dangerous

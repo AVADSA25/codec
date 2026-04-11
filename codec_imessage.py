@@ -23,7 +23,7 @@ import sqlite3
 import logging
 import subprocess
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 # ── Logging ──────────────────────────────────────────────────────────────────

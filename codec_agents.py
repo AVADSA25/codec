@@ -4,14 +4,13 @@ Replaces CrewAI with ~300 lines. Zero external dependencies.
 Uses CODEC skills as tools + Qwen 3.5 35B with thinking mode.
 """
 import asyncio
-import importlib.util
 import json
 import os
 import re
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 import hashlib
 import logging
@@ -966,8 +965,8 @@ def code_review_crew(**kwargs) -> Crew:
     all_tools = get_all_tools()
     code = kwargs.get("code", "")
     read_tools     = [t for t in all_tools if t.name in ("file_read",)]
-    audit_tools    = [t for t in all_tools if t.name in ("file_read", "web_search")]
-    improve_tools  = [t for t in all_tools if t.name in ("file_read", "file_write")]
+    [t for t in all_tools if t.name in ("file_read", "web_search")]
+    [t for t in all_tools if t.name in ("file_read", "file_write")]
 
     # Truncate code for prompt injection into all tasks
     code_snippet = code[:3000]

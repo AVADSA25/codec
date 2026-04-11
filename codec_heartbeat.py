@@ -50,7 +50,7 @@ def _check_one_service(name: str, url: str) -> tuple:
     try:
         r = requests.get(url, timeout=5)
         status = "✅" if r.status_code in (200, 404, 405) else f"⚠️ {r.status_code}"
-    except Exception as e:
+    except Exception:
         status = "❌ DOWN"
         log_event("error", "codec-heartbeat", f"Service down: {name}", level="error")
     return name, status
@@ -102,7 +102,6 @@ def check_memory_stats():
 
 def backup_memory_db():
     """Create daily backup of memory database to ~/.codec/backups/"""
-    import shutil
     backup_dir = os.path.expanduser("~/.codec/backups")
     os.makedirs(backup_dir, exist_ok=True)
 
@@ -308,7 +307,7 @@ def check_alerts():
 
         elif atype == "email_check":
             try:
-                import importlib.util, sys as _sys
+                import importlib.util
                 _gmail_path = os.path.join(os.path.dirname(__file__), "skills", "google_gmail.py")
                 _spec = importlib.util.spec_from_file_location("google_gmail", _gmail_path)
                 _gmail = importlib.util.module_from_spec(_spec)

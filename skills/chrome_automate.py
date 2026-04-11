@@ -21,7 +21,6 @@ RESEARCH_TABS = [
 ]
 
 def run(task: str, context: str = "") -> str:
-    from codec_cdp import is_cdp_available, run_cdp, ChromeCDP
     import subprocess
 
     task_lower = task.lower()

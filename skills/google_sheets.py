@@ -1,5 +1,5 @@
 """Google Sheets skill for CODEC — read and search spreadsheets"""
-import json, os
+import os
 
 SKILL_NAME = "google_sheets"
 

@@ -3,7 +3,7 @@
 CODEC Setup Wizard — Interactive Configuration
 Run: python3 setup_codec.py
 """
-import os, json, sys, subprocess, time, shutil
+import os, json, sys, subprocess, shutil
 
 # ── COLORS ────────────────────────────────────────────────────────────────────
 O = "\033[38;2;232;113;26m"   # Orange
@@ -650,7 +650,6 @@ def main():
         ("sox (brew)", check_command("sox")),
     ]
 
-    all_ok = True
     missing = []
     for name, ok in deps:
         if ok:
@@ -658,7 +657,6 @@ def main():
         else:
             print(f"  {R}✗{X} {name}")
             missing.append(name)
-            all_ok = False
 
     if missing:
         print(f"\n{R}  Missing dependencies:{X}")

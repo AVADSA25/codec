@@ -288,7 +288,6 @@ def create_google_doc(title: str, content: str) -> str | None:
     DARK   = {"red": 0.082, "green": 0.082, "blue": 0.137}
     ORANGE = {"red": 0.910, "green": 0.443, "blue": 0.102}
     SLATE  = {"red": 0.173, "green": 0.243, "blue": 0.314}
-    LGRAY  = {"red": 0.933, "green": 0.933, "blue": 0.933}   # #EEEEEE table bg
 
     try:
         # Ensure all CODEC docs start with "CODEC:" prefix (avoid "CODEC: CODEC ...")

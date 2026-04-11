@@ -4,7 +4,6 @@ Usage: python3 whisper_server.py
 """
 import mlx_whisper
 from fastapi import FastAPI, UploadFile, File
-from fastapi.responses import JSONResponse
 import tempfile, os, uvicorn
 
 app = FastAPI()

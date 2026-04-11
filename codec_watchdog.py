@@ -12,7 +12,7 @@ This does NOT limit working processes — a model using 10GB at 80% CPU is fine.
 Only targets processes that are stuck: high RAM + zero CPU for extended periods.
 """
 
-import subprocess, time, json, os, signal, datetime, sys, requests
+import subprocess, time, json, os, signal, datetime, requests
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 CHECK_INTERVAL   = 60        # seconds between checks

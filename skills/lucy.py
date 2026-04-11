@@ -3,7 +3,7 @@ SKILL_NAME = "delegate"
 SKILL_TRIGGERS = ["delegate", "send to workflow", "invoice", "expense", "calorie", "daily briefing", "book a call", "vapi"]
 SKILL_DESCRIPTION = "Delegates complex tasks to CODEC workflows — invoices, expenses, calorie tracking, phone calls, and multi-step workflows"
 
-import requests, json
+import requests
 
 WORKFLOW_WEBHOOK = "http://localhost:5678/webhook/codec-delegate"
 

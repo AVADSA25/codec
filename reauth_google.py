@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Re-authenticate Google OAuth with expanded scopes for CODEC"""
-import os, json
+import os
 
 CREDS_PATH = os.path.expanduser("~/.codec/google_credentials.json")
 TOKEN_PATH = os.path.expanduser("~/.codec/google_token.json")

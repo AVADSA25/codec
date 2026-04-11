@@ -1,12 +1,11 @@
 """CODEC Dashboard -- Skill-related routes (save, review, approve, forge, list)."""
-import os, json, re, logging
-from datetime import datetime
+import os, json
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from routes._shared import (
-    log, DASHBOARD_DIR, CONFIG_PATH, _get_skills_dir, _audit_write, _pending_skills,
+    log, DASHBOARD_DIR, CONFIG_PATH, _get_skills_dir, _pending_skills,
 )
 
 router = APIRouter()

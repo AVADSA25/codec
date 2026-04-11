@@ -3,7 +3,7 @@ SKILL_NAME = "google_gmail"
 SKILL_TRIGGERS = ["check email", "check my email", "my emails", "inbox", "unread emails", "new emails", "any emails", "latest emails", "email from", "search email"]
 SKILL_DESCRIPTION = "Check your Gmail inbox, search for emails, and view recent messages"
 
-import json, os
+import os
 
 TOKEN_PATH = os.path.expanduser("~/.codec/google_token.json")
 

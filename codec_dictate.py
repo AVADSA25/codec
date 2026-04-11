@@ -13,8 +13,6 @@ import subprocess
 import sys
 import os
 import time
-import wave
-import struct
 import pyautogui
 import pyperclip
 
@@ -210,7 +208,7 @@ def _live_record_loop():
         tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
         tmp.close()
         try:
-            proc = subprocess.run(
+            subprocess.run(
                 [SOX_PATH, "-t", "coreaudio", "default", "-r", "16000", "-c", "1",
                  "-b", "16", "-e", "signed-integer", tmp.name, "trim", "0", str(chunk_sec)],
                 timeout=chunk_sec + 3, capture_output=True

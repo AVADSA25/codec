@@ -3,7 +3,7 @@ import signal
 signal.signal(signal.SIGINT, lambda *a: None)
 signal.signal(signal.SIGTERM, lambda *a: None)
 """CODEC v1.0 | F13=on/off | F18=voice | F16=text | *=screenshot | +=doc | Wake word"""
-import threading, tempfile, subprocess, sys, os, time, sqlite3, json, re, base64
+import threading, tempfile, subprocess, sys, os, time, json, base64
 from datetime import datetime
 from pynput import keyboard
 
@@ -56,8 +56,7 @@ DRAFT_KEYWORDS_CFG = _cfg.get("draft_keywords", [])
 
 # ── SHARED (from codec_core.py — single source of truth) ────────────────��────
 from codec_core import (
-    strip_think, is_draft, needs_screen, DRAFT_KEYWORDS, SCREEN_KEYWORDS,
-    init_db, save_task, get_memory, get_recent_conversations,
+    is_draft, init_db, save_task, get_memory, get_recent_conversations,
     loaded_skills, load_skills, run_skill,
     transcribe, speak_text, focused_app, get_text_dialog,
     terminal_session_exists, close_session,
@@ -190,7 +189,7 @@ def dispatch(task):
         print(f"[CODEC] Draft queued for watcher")
         return
 
-    rid = save_task(task, app)
+    save_task(task, app)
     mem = get_memory(5)
     sys_p = "You are CODEC, a JARVIS-class AI assistant on Mac Studio M1 Ultra. ALWAYS respond in English only. Never respond in Chinese or any other language unless explicitly asked to translate. Answer in 1-3 sentences. Be natural and conversational like a smart friend. Add useful details when relevant. Full computer access. Never say cannot."
     if mem: sys_p += "\n\n" + mem

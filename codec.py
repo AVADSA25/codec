@@ -3,7 +3,7 @@ import signal
 signal.signal(signal.SIGINT, lambda *a: None)
 signal.signal(signal.SIGTERM, lambda *a: None)
 """CODEC v2.1 | F13=on/off | F18=voice | F16=text | *=screenshot | +=doc | Wake word"""
-import logging, threading, tempfile, subprocess, sys, os, time, sqlite3, json, re, base64, shutil
+import logging, threading, tempfile, subprocess, os, time, sqlite3, json, re, base64, shutil
 from datetime import datetime
 from pynput import keyboard
 
@@ -23,12 +23,9 @@ SOX = shutil.which("sox") or "sox"
 # ── CONFIG (single source of truth: codec_config.py) ─────────────────────────
 from codec_config import (
     cfg as _cfg,
-    QWEN_BASE_URL, QWEN_MODEL, LLM_API_KEY, LLM_KWARGS, LLM_PROVIDER,
-    QWEN_VISION_URL, QWEN_VISION_MODEL,
-    TTS_ENGINE, KOKORO_URL, KOKORO_MODEL, TTS_VOICE,
-    STT_ENGINE, WHISPER_URL,
-    DB_PATH, Q_TERMINAL_TITLE, TASK_QUEUE_FILE, DRAFT_TASK_FILE, SESSION_ALIVE, SKILLS_DIR,
-    STREAMING, WAKE_WORD, WAKE_PHRASES, WAKE_ENERGY, WAKE_CHUNK_SEC,
+    QWEN_BASE_URL, QWEN_MODEL, LLM_API_KEY, LLM_KWARGS, QWEN_VISION_URL, QWEN_VISION_MODEL,
+    WHISPER_URL,
+    DB_PATH, TASK_QUEUE_FILE, DRAFT_TASK_FILE, SESSION_ALIVE, STREAMING, WAKE_WORD, WAKE_ENERGY, WAKE_CHUNK_SEC,
 )
 
 # Vision — prefer Gemini Flash (fast cloud), fall back to local Qwen VL
@@ -40,8 +37,7 @@ DRAFT_KEYWORDS_CFG = _cfg.get("draft_keywords", [])
 # ─��� SHARED (from codec_core.py — single source of truth) ─────────────────────
 import codec_core as _core
 from codec_core import (
-    strip_think, is_draft, needs_screen, DRAFT_KEYWORDS, SCREEN_KEYWORDS,
-    init_db, save_task, get_memory, get_recent_conversations,
+    strip_think, is_draft, init_db, save_task, get_memory, get_recent_conversations,
     loaded_skills, load_skills, run_skill,
     transcribe, speak_text, focused_app, get_text_dialog,
     terminal_session_exists, close_session,
@@ -213,7 +209,6 @@ def _dispatch_inner(task):
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     # Check skills — try ranked matches, fall through if skill returns None
-    skill_fired = False
     skill_result = None
     if len(task) < 500:
         for skill in check_skills_ranked(task):
@@ -224,7 +219,6 @@ def _dispatch_inner(task):
                 subprocess.Popen(["osascript", "-e", f'display notification "{str(result)[:80]}" with title "CODEC Skill"'],
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 print(f"[CODEC] Skill response: {str(result)[:100]}")
-                skill_fired = True
                 skill_result = str(result)
                 # Add skill exchange to voice session for continuity
                 voice_session["messages"].append({"role": "user", "content": task})
@@ -525,7 +519,7 @@ def wake_word_listener():
             time.sleep(0.3); continue
         try:
             tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False); tmp.close()
-            proc = subprocess.run(
+            subprocess.run(
                 [SOX, "-t", "coreaudio", wake_device, "-r", str(sample_rate), "-c", "1",
                  "-b", "16", "-e", "signed-integer", tmp.name, "trim", "0", str(chunk_sec)],
                 timeout=int(chunk_sec) + 3, capture_output=True)

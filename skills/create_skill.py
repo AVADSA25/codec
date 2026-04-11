@@ -7,7 +7,7 @@ SKILL_NAME = "create_skill"
 SKILL_DESCRIPTION = "Create new CODEC skills by describing what you want"
 SKILL_TRIGGERS = ["create a skill", "make a skill", "new skill", "build a skill",
                    "create skill", "write a skill", "add a skill"]
-import os, requests, json, re, sys
+import os, requests, json, re
 
 SKILLS_DIR = os.path.expanduser("~/.codec/skills")
 CONFIG_PATH = os.path.expanduser("~/.codec/config.json")

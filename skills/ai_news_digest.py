@@ -13,7 +13,6 @@ def run(task="", app="", ctx=""):
     import datetime
 
     today = datetime.date.today().strftime("%A, %B %d, %Y")
-    sections = []
 
     # ── Source 1: RSS feeds (XML parsing, no API key needed) ────────────
     rss_items = _fetch_rss_feeds()

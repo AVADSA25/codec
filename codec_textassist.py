@@ -169,7 +169,7 @@ r.mainloop()
         import pyautogui
         pyautogui.hotkey('command', 'v')
         overlay("✅ Text replaced!", "#44cc66", 2000)
-except Exception as e:
+except Exception:
     if _proc_overlay:
         try: _proc_overlay.terminate()
         except: pass

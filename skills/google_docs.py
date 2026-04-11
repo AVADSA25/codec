@@ -1,5 +1,5 @@
 """Google Docs skill for CODEC — search, read, and create Google Docs"""
-import json, os, datetime
+import os
 
 SKILL_NAME = "google_docs"
 
@@ -35,7 +35,7 @@ def _get_creds():
 def _parse_create_request(task):
     """Extract title and content from natural language."""
     import re
-    low = task.lower()
+    task.lower()
 
     # Extract title from "called X", "named X", "titled X"
     title = "CODEC Document"

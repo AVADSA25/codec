@@ -17,7 +17,6 @@ from typing import Optional
 
 import base64
 import subprocess
-import tempfile
 
 import httpx
 import numpy as np

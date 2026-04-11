@@ -19,7 +19,7 @@ def run(task: str, context: str = "") -> str:
         cdp = ChromeCDP()
         await cdp.connect()
         try:
-            url = await cdp.get_url()
+            await cdp.get_url()
             title = await cdp.get_title()
 
             if "link" in task_lower:

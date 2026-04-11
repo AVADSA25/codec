@@ -18,7 +18,7 @@ SKILL_TRIGGERS = [
 ]
 SKILL_DESCRIPTION = "Check and create Google Calendar events by voice"
 
-import os, re, datetime, json
+import os, re, datetime
 
 TOKEN_PATH = os.path.expanduser("~/.codec/google_token.json")
 
