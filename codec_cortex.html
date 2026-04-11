@@ -386,7 +386,7 @@ var NODES = [
    info:'Kokoro-82M TTS. Voice: am_adam. Generates speech audio, played via afplay.',file:'kokoro_server.py',port:8085,health:'/v1/models'},
 
   // ─── HANDS (right side) — Skills & Actions ───
-  {id:'skills',label:'Skills x57',x:820,y:320,r:34,color:'#ffd740',icon:'hand',category:'hands',zone:'hands',
+  {id:'skills',label:'Skills x60',x:820,y:320,r:34,color:'#ffd740',icon:'hand',category:'hands',zone:'hands',
    info:'57 skill plugins: Chrome, Google Suite, system control, media, utilities. Trigger-matched.',file:'skills/*.py'},
   {id:'agents',label:'Agents',x:920,y:370,r:22,color:'#ffd740',icon:'bolt',category:'hands',zone:'hands',
    info:'Deep research, daily briefing, trip planner + custom agents. Background job queue.',file:'routes/agents.py'},
@@ -410,6 +410,12 @@ var NODES = [
    info:'Prometheus /metrics endpoint. Counters, histograms, uptime gauge.',file:'codec_metrics.py'},
   {id:'approval',label:'Approval',x:340,y:560,r:20,color:'#ff3d3d',icon:'shield',category:'immune',zone:'immune',
    info:'Command approval via dashboard/phone + tkinter. Remote allow/deny.',file:'codec_session.py'},
+
+  // ─── EXTERNAL (bottom-left) — Messaging Channels ───
+  {id:'imessage',label:'iMessage',x:170,y:530,r:24,color:'#34c759',icon:'chat',category:'external',zone:'external',
+   info:'Polls macOS Messages DB. Trigger: "Hey CODEC" or "Good morning". Replies via AppleScript. Daily Briefing, smart agents.',file:'codec_imessage.py'},
+  {id:'telegram',label:'Telegram',x:270,y:580,r:24,color:'#29b6f6',icon:'globe',category:'external',zone:'external',
+   info:'Bot API long polling. No trigger in DMs. Voice notes via Kokoro TTS. Daily Briefing + Deep Report.',file:'codec_telegram.py'},
 ];
 
 var EDGES = [
@@ -467,6 +473,15 @@ var EDGES = [
   {from:'heartbeat',to:'dashboard',color:'#00e676',style:'dashed'},
   {from:'heartbeat',to:'alerts',color:'#ff3d3d'},
   {from:'approval',to:'dashboard',color:'#ff3d3d'},
+
+  // External messaging
+  {from:'imessage',to:'qwen',color:'#34c759',label:'msg'},
+  {from:'imessage',to:'skills',color:'#34c759'},
+  {from:'imessage',to:'memory',color:'#b388ff'},
+  {from:'telegram',to:'qwen',color:'#29b6f6',label:'msg'},
+  {from:'telegram',to:'kokoro',color:'#ff9544',label:'voice'},
+  {from:'telegram',to:'skills',color:'#29b6f6'},
+  {from:'telegram',to:'memory',color:'#b388ff'},
 ];
 
 // Zone labels
@@ -479,6 +494,7 @@ var ZONES = [
   {label:'Hands',x:860,y:255,color:'#ffd740'},
   {label:'Spine',x:550,y:445,color:'#448aff'},
   {label:'Immune',x:780,y:580,color:'#ff3d3d'},
+  {label:'External',x:220,y:480,color:'#34c759'},
 ];
 
 // ── State ──
