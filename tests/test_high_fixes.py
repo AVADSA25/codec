@@ -103,7 +103,7 @@ class TestNoBarExcept:
 # ── Fix 8: Version consistency ──
 
 class TestVersionConsistency:
-    """All version strings must be v2.0.0."""
+    """All version strings must be v2.1.0."""
 
     VERSION_FILES = [
         ("codec.py", r'["\']v?2\.\d+\.\d+["\']'),
@@ -121,7 +121,7 @@ class TestVersionConsistency:
         versions = re.findall(pattern, content)
         for v in versions:
             clean = v.strip("\"'").lstrip("v")
-            assert clean == "2.0.0", f"{filename} has version {v}, expected 2.0.0"
+            assert clean == "2.1.0", f"{filename} has version {v}, expected 2.1.0"
 
 
 # ── Fix 9: Skill trigger word-boundary matching ──

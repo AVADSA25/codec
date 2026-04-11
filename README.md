@@ -2,7 +2,7 @@
   <img src="https://i.imgur.com/RbrQ7Bt.png" alt="CODEC" width="280"/>
 </p>
 
-<h1 align="center">CODEC v2.0</h1>
+<h1 align="center">CODEC v2.1</h1>
 <p align="center"><strong>Open-Source Intelligent Command Layer for macOS</strong></p>
 <p align="center"><em>Your voice. Your computer. Your rules. No limit.</em></p>
 <p align="center">
@@ -50,6 +50,49 @@ No cloud dependency. No subscription. No data leaving the machine. MIT licensed.
 | 5 | **CODEC Vibe** | Browser IDE with Monaco editor + Skill Forge — the framework writes its own plugins |
 | 6 | **CODEC Voice** | Real-time voice calls with interrupt detection, screen analysis mid-call |
 | 7 | **CODEC Overview** | Dashboard + Cortex nerve center + full audit trail — accessible from any device |
+
+---
+
+## Messaging Channels — CODEC Beyond the Mac
+
+**This is a milestone.** For the first time, CODEC data flows beyond the local machine. The same brain that controls your Mac now responds on iMessage and Telegram.
+
+<p align="center">
+  <img src="assets/imessage-daily-briefing.jpg" alt="CODEC Daily Briefing — iMessage" width="560"/>
+  <br/>
+  <em>CODEC Daily Briefing delivered via iMessage — real calendar, live markets, ranked global news, weather, and a motivational quote. All generated locally, zero cloud dependency.</em>
+</p>
+
+### iMessage Agent
+
+CODEC reads the macOS Messages database, watches for a trigger phrase (*"Hey CODEC"*), processes the message through the full skill + LLM pipeline, and replies via AppleScript. Pure Python, no third-party server, no phone number required — just a Mac logged into iMessage.
+
+| Capability | How |
+|---|---|
+| Text messages | Trigger-based activation, full LLM response |
+| Photos (vision) | Attachments detected, sent to vision model, described and answered |
+| Voice notes | Transcribed via Whisper, then processed as text |
+| Smart agents | Daily Briefing, Restaurant Decider, Accountability Coach — built-in, trigger by name |
+
+Three built-in smart agents ship out of the box:
+- **Daily Briefing** — morning summary of calendar, weather, top news, delivered to iMessage
+- **Restaurant Decider** — "pick a restaurant" triggers location-aware suggestions with cuisine, price, rating
+- **Accountability Coach** — periodic check-ins, goal tracking, motivational nudges
+
+Inspired by [Photon's imessage-kit](https://github.com/photon-hq/imessage-kit) for the macOS Messages DB reading approach. CODEC extends it with full LLM integration, vision, transcription, and multi-agent support.
+
+### Telegram Bot — @Codec_mf_bot
+
+Same CODEC brain, accessible from any device with Telegram. No trigger phrase needed in DMs — every message gets a response.
+
+| Capability | How |
+|---|---|
+| Text messages | Direct LLM response with conversation memory |
+| Photos (vision) | Image sent to vision model, analyzed and answered |
+| Voice messages | Transcribed via Whisper, processed as text |
+| Formatting | Markdown responses with code blocks, bold, lists |
+
+Both services run as PM2-managed processes (`codec-imessage`, `codec-telegram`) with auto-restart and log rotation.
 
 ---
 
@@ -212,6 +255,8 @@ Every action CODEC takes is logged across 16 categories: command, skill, llm, au
 | Live typing at cursor | Dictate L key | No | No |
 | Process watchdog | Auto-kills stuck processes | No | No |
 | Full audit trail | 16 event categories | No | No |
+| iMessage integration | Trigger-based, photo+voice | No | No |
+| Telegram bot | Full DM support + memory | No | No |
 | Open source | MIT | No | No |
 
 **What CODEC replaced with native code:**
@@ -356,6 +401,8 @@ pm2 logs codec-dictate --lines 10 --nostream      # Dictation hotkeys
 pm2 logs codec-watchdog --lines 10 --nostream     # Process watchdog
 pm2 logs whisper-stt --lines 10 --nostream        # Speech-to-text
 pm2 logs kokoro-82m --lines 10 --nostream         # Text-to-speech
+pm2 logs codec-imessage --lines 10 --nostream     # iMessage agent
+pm2 logs codec-telegram --lines 10 --nostream     # Telegram bot
 
 # Verify LLM is responding
 curl -s http://localhost:8081/v1/models | python3 -m json.tool
@@ -516,6 +563,8 @@ codec_audit.py        — Audit logger (JSON-line, 50MB rotation, thread-safe)
 codec_auth.html       — Authentication (Touch ID + PIN + TOTP 2FA)
 codec_textassist.py   — 8 right-click services
 codec_search.py       — DuckDuckGo + Serper search
+codec_imessage.py     — iMessage agent (trigger-based, vision, voice, smart agents)
+codec_telegram.py     — Telegram bot (DM support, conversation memory, markdown)
 codec_mcp.py          — MCP server (input validation, opt-in exposure)
 codec_memory.py       — FTS5 memory search (WAL, BM25, injection prevention)
 codec_compaction.py   — Context compaction (LLM-based summarization)
@@ -541,6 +590,7 @@ ecosystem.config.js   — PM2 process management (10+ services)
 - [ ] Linux support
 - [ ] Windows via WSL
 - [ ] Multi-machine sync (skills + memory across devices)
+- [ ] WhatsApp integration
 - [ ] iOS app (dictation + remote dashboard)
 - [ ] Streaming voice responses (first token plays while rest generates)
 - [ ] Multi-LLM routing (fast model for simple, strong model for complex)

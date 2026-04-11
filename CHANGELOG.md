@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.1.0 (2026-04-11)
+### Added
+- **iMessage integration** (`codec_imessage.py`) — trigger-based activation ("Hey CODEC"), processes text, photos (vision), and voice notes (Whisper transcription). Pure Python, reads macOS Messages DB, replies via AppleScript. Inspired by [Photon's imessage-kit](https://github.com/photon-hq/imessage-kit)
+- **Telegram bot** (`codec_telegram.py`) — @Codec_mf_bot, full DM support with conversation memory, Markdown responses. Supports text, photos, and voice messages
+- **Smart iMessage agents** — Daily Briefing (calendar + news + weather), Restaurant Decider (location-aware suggestions), Accountability Coach (goal tracking + check-ins)
+- **First external messaging channels** — CODEC data flows beyond the Mac for the first time. The same brain that controls the desktop now responds on iMessage and Telegram
+- **PM2 managed services** — `codec-imessage` and `codec-telegram` with auto-restart and log rotation
+
 ## v2.0.0 (2026-04-09)
 ### Added
 - **7-product architecture** — Core, Dictate, Instant, Chat, Vibe, Voice, Overview (Cortex + Audit folded into Overview)

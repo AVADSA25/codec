@@ -108,6 +108,30 @@ module.exports = {
       autorestart: true,
     },
 
+    // ── iMessage Integration (polls Messages DB, replies via CODEC) ──
+    {
+      name: "codec-imessage",
+      script: "bash",
+      args: "-c 'python3 codec_imessage.py'",
+      cwd: __dirname,
+      max_memory_restart: "128M",
+      restart_delay: 5000,
+      max_restarts: 10,
+      autorestart: true,
+    },
+
+    // ── Telegram Bot (CODEC via Telegram) ──
+    {
+      name: "codec-telegram",
+      script: "bash",
+      args: "-c 'python3 codec_telegram.py'",
+      cwd: __dirname,
+      max_memory_restart: "128M",
+      restart_delay: 5000,
+      max_restarts: 10,
+      autorestart: true,
+    },
+
     // ── Watchdog (kills stuck/zombie processes hogging RAM) ──
     {
       name: "codec-watchdog",

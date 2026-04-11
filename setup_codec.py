@@ -30,7 +30,7 @@ def banner():
     ║ ██      ██    ██ ██   ██ █████   ██       ║
     ║ ██      ██    ██ ██   ██ ██      ██       ║
     ║  ██████  ██████  ██████  ███████  ██████  ║
-    ║                            Setup v2.0.0   ║
+    ║                            Setup v2.1.0   ║
     ╚═══════════════════════════════════════════╝{X}
 {W}  Your Open-Source Intelligent Command Layer
   7 products: Core · Dictate · Instant · Chat · Vibe · Voice · Overview

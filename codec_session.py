@@ -928,7 +928,7 @@ SAFETY RULES:
             f"{O}    ║ ██      ██    ██ ██   ██ █████   ██       ║\n"
             f"{O}    ║ ██      ██    ██ ██   ██ ██      ██       ║\n"
             f"{O}    ║  ██████  ██████  ██████  ███████  ██████  ║\n"
-            f"{O}    ║                                   v2.0.0  ║\n"
+            f"{O}    ║                                   v2.1.0  ║\n"
             f"{O}    ╠{bar}╣\n"
             f"{O}    ║{W}  {self.key_voice.upper()} voice  {self.key_text.upper()} text  ** screen  ++ doc   {O}║\n"
             f"{O}    ║{W}  Hey C = wake word  type exit to close    {O}║\n"

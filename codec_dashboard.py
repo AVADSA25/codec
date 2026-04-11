@@ -1,4 +1,4 @@
-"""CODEC v2.0 — Phone Dashboard & PWA"""
+"""CODEC v2.1 — Phone Dashboard & PWA"""
 import os, json, sqlite3, time, logging, secrets, subprocess, hmac, threading, uuid, asyncio, re
 from datetime import datetime, timedelta
 
@@ -92,7 +92,7 @@ app = FastAPI(
     title="CODEC Dashboard",
     description="CODEC voice-controlled computer agent — dashboard API. "
                 "Full documentation at /docs. Auth via Bearer token or biometric session.",
-    version="2.0.0",
+    version="2.1.0",
     docs_url="/docs",
     redoc_url="/redoc",
 )
