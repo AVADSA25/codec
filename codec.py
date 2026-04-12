@@ -228,22 +228,24 @@ def _dispatch_inner(task):
                 try:
                     from codec_memory import CodecMemory
                     cm = CodecMemory()
-                    cm.add("user", task, source="voice")
-                    cm.add("assistant", skill_result[:500], source="voice")
+                    cm.save("voice", "user", task)
+                    cm.save("voice", "assistant", skill_result[:500])
                 except Exception as e:
                     log.warning(f"[CODEC] Memory save failed after skill: {e}")
-                # After skill fires, grab screen context (skill may have opened browser etc)
-                try:
-                    time.sleep(2)  # give browser/app time to load
-                    screen = screenshot_ctx()
-                    if screen and len(screen) > 50:
-                        voice_session["messages"].append({
-                            "role": "system",
-                            "content": f"[SCREEN AFTER SKILL: The user's screen now shows: {screen[:1000]}]"
-                        })
-                        print(f"[CODEC] Post-skill screen captured: {len(screen)} chars")
-                except Exception as e:
-                    print(f"[CODEC] Post-skill screenshot failed: {e}")
+                # After skill fires, grab screen context in background (don't block queue)
+                def _post_skill_screenshot():
+                    try:
+                        time.sleep(2)
+                        screen = screenshot_ctx()
+                        if screen and len(screen) > 50:
+                            voice_session["messages"].append({
+                                "role": "user",
+                                "content": f"[CONTEXT: My screen now shows: {screen[:1000]}]"
+                            })
+                            print(f"[CODEC] Post-skill screen captured: {len(screen)} chars")
+                    except Exception as e:
+                        print(f"[CODEC] Post-skill screenshot failed: {e}")
+                threading.Thread(target=_post_skill_screenshot, daemon=True).start()
                 return
             print(f"[CODEC] Skill {skill['name']} returned None, trying next...")
 
@@ -303,7 +305,8 @@ def _dispatch_inner(task):
     # Build LLM messages: system + conversation history (keep last 20 turns)
     llm_messages = [{"role": "system", "content": sys_p}]
     # Trim to last 10 messages to keep prompt fast on 35B model
-    history = voice_session["messages"][-10:]
+    # Filter out system messages from history — Qwen requires system only at start
+    history = [m for m in voice_session["messages"][-10:] if m["role"] != "system"]
     llm_messages.extend(history)
 
     push(lambda: show_processing_overlay('Thinking...', 15000))
@@ -341,8 +344,8 @@ def _dispatch_inner(task):
                 # Save to shared memory (same store as Chat)
                 try:
                     cm = CodecMemory()
-                    cm.add("user", task, source="voice")
-                    cm.add("assistant", answer, source="voice")
+                    cm.save("voice", "user", task)
+                    cm.save("voice", "assistant", answer)
                 except Exception as e:
                     log.warning(f"[CODEC] Memory save failed after LLM: {e}")
                 speak_text(answer)
@@ -568,9 +571,9 @@ def wake_word_listener():
                             state["active"] = True
                             push(lambda: show_toggle_overlay(True, "F18=voice | **=screen | --=chat"))
                         command = text
-                        # Strip wake keywords and common prefixes
+                        # Strip wake keywords and common prefixes (case-insensitive)
                         for kw in _WAKE_KEYWORDS + ["hey", "and", "hay", "eh", "ay"]:
-                            command = command.replace(kw, "").strip()
+                            command = re.sub(r'(?i)\b' + re.escape(kw) + r'\b', '', command).strip()
                         command = re.sub(r'^[\s,.\-]+|[\s,.\-]+$', '', command)
                         if len(command) > 3:
                             print(f"[CODEC] Wake + command: {command}")
@@ -619,7 +622,10 @@ def on_press(key):
         return
     if not state["active"]: return
     if key == keyboard.Key.f16:
-        if not state["recording"]: push(do_text)
+        if not state["recording"]:
+            # Run text dialog in its own thread so it opens instantly
+            # (don't wait for work_queue which may be blocked by vision/LLM)
+            threading.Thread(target=do_text, daemon=True).start()
         return
     if key == keyboard.Key.f18:
         if not state["recording"]:
@@ -628,10 +634,11 @@ def on_press(key):
             state["overlay_proc"] = show_recording_overlay('F18')
         return
     if hasattr(key, 'char') and key.char == '*':
-        if now - state["last_star"] < 0.35:
+        if now - state["last_star"] < 0.25 and now - state.get("last_screenshot_time", 0) > 8:
             print("[CODEC] Star x2 -- screenshot mode")
             push(do_screenshot_question)
             state["last_star"] = 0.0
+            state["last_screenshot_time"] = now
             return
         state["last_star"] = now
         return

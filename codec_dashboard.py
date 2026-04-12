@@ -313,6 +313,14 @@ async def index():
     with open(html_path) as f:
         return HTMLResponse(f.read(), headers=_NO_CACHE)
 
+@app.get("/favicon.png")
+@app.get("/favicon.ico")
+async def favicon():
+    fav_path = os.path.join(DASHBOARD_DIR, "favicon.png")
+    if os.path.exists(fav_path):
+        return FileResponse(fav_path, media_type="image/png", headers={"Cache-Control": "public, max-age=86400"})
+    return JSONResponse({"error": "not found"}, status_code=404)
+
 @app.get("/manifest.json")
 async def manifest():
     return JSONResponse({
@@ -324,7 +332,7 @@ async def manifest():
         "background_color": "#0a0a0a",
         "theme_color": "#E8711A",
         "icons": [
-            {"src": "https://i.imgur.com/RbrQ7Bt.png", "sizes": "280x280", "type": "image/png"}
+            {"src": "/favicon.png", "sizes": "2048x2048", "type": "image/png"}
         ]
     })
 
@@ -717,15 +725,21 @@ async def reset_prompt(request: Request):
 
 
 @app.get("/api/conversations")
-async def conversations(limit: int = 100):
-    """Get recent conversations"""
+async def conversations(limit: int = 100, source: str = ""):
+    """Get recent conversations. source=flash filters to Flash Chat only."""
     limit = min(limit, 500)
     try:
         c = get_db()
-        rows = c.execute(
-            "SELECT id, session_id, timestamp, role, content FROM conversations ORDER BY id DESC LIMIT ?",
-            (limit,)
-        ).fetchall()
+        if source == "flash":
+            rows = c.execute(
+                "SELECT id, session_id, timestamp, role, content FROM conversations WHERE session_id LIKE 'flash-%' ORDER BY id DESC LIMIT ?",
+                (limit,)
+            ).fetchall()
+        else:
+            rows = c.execute(
+                "SELECT id, session_id, timestamp, role, content FROM conversations ORDER BY id DESC LIMIT ?",
+                (limit,)
+            ).fetchall()
         return [{"id": r[0], "session_id": r[1], "timestamp": r[2], "role": r[3], "content": r[4]} for r in rows]
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
@@ -977,23 +991,33 @@ async def vision_analyze(request: Request):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 @app.get("/api/response")
-async def get_response():
-    """Get latest PWA command response — returns no-cache headers to prevent stale polls."""
+async def get_response(session_id: str = "", after: str = ""):
+    """Get latest PWA command response — file-based + DB fallback for reliability."""
     headers = {"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache"}
     try:
+        # Primary: check response file (fast path)
         resp_file = os.path.expanduser("~/.codec/pwa_response.json")
         if os.path.exists(resp_file):
             with open(resp_file) as f:
                 data = json.load(f)
-            # Keep file for 10s so multiple polls can catch it, then delete
             file_age = time.time() - os.path.getmtime(resp_file)
             if file_age > 10:
                 os.unlink(resp_file)
-            log.info(f"[Response] Delivered: {str(data.get('response',''))[:80]}")
+            log.info(f"[Response] Delivered (file): {str(data.get('response',''))[:80]}")
             return JSONResponse(content=data, headers=headers)
+        # Fallback: check DB for assistant response newer than 'after' timestamp
+        if session_id and after:
+            c = get_db()
+            row = c.execute(
+                "SELECT content FROM conversations WHERE session_id=? AND role='assistant' AND timestamp>? ORDER BY timestamp DESC LIMIT 1",
+                (session_id, after)
+            ).fetchone()
+            if row and row[0]:
+                log.info(f"[Response] Delivered (db fallback): {str(row[0])[:80]}")
+                return JSONResponse(content={"response": row[0]}, headers=headers)
         return JSONResponse(content={"response": None}, headers=headers)
     except Exception as e:
-        log.warning(f"[Response] Error reading response file: {e}")
+        log.warning(f"[Response] Error reading response: {e}")
         return JSONResponse(content={"response": None}, headers=headers)
 
 @app.get("/api/tts")

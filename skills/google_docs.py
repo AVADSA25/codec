@@ -11,11 +11,12 @@ SKILL_TRIGGERS = [
     "write a google doc", "write a doc", "write a document",
     "create a google document", "create google document",
     # Read / Search
-    "google docs", "google doc",
-    "my docs", "my documents",
-    "search docs", "find doc", "open doc", "read doc",
-    "list docs", "show docs",
+    "search google docs", "search my docs", "find google doc",
+    "open google doc", "read google doc",
+    "list my docs", "show my docs", "my google docs",
 ]
+# Words that indicate this is NOT a google docs intent (e.g. mouse control)
+_SKIP_IF_CONTAINS = ["click", "press", "tap", "scroll", "move mouse", "cursor"]
 SKILL_DESCRIPTION = "Search, read, and create Google Docs"
 
 TOKEN_PATH = os.path.expanduser("~/.codec/google_token.json")
@@ -96,10 +97,13 @@ def _create_doc(task):
 
 
 def run(task, context=None):
+    # Skip if the task is clearly a mouse/click action, not a docs query
+    task_lower = task.lower()
+    if any(skip in task_lower for skip in _SKIP_IF_CONTAINS):
+        return None
     try:
         from googleapiclient.discovery import build
         creds = _get_creds()
-        task_lower = task.lower()
 
         # ── Create doc ──
         if any(w in task_lower for w in [

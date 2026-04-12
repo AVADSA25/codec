@@ -7,8 +7,8 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0a0a0a">
 <link rel="manifest" href="/manifest.json">
-<link rel="icon" href="https://i.imgur.com/jD1X5W8.png">
-<link rel="apple-touch-icon" href="https://i.imgur.com/jD1X5W8.png">
+<link rel="icon" href="/favicon.png">
+<link rel="apple-touch-icon" href="/favicon.png">
 <title>CODEC</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -435,13 +435,28 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
 [data-theme="light"] .tag-auth { background: rgba(59,130,246,0.12); color: #2563eb; }
 [data-theme="light"] .tag-crew { background: rgba(34,197,94,0.12); color: #15803d; }
 
-/* ── Skills ── */
+/* ── Skills & Triggers ── */
 .skill-card {
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 12px 14px; margin-bottom: 6px;
+  padding: 12px 14px; margin-bottom: 6px; position: relative;
 }
+.skill-card.customized { border-left: 3px solid var(--accent); }
+.skill-header { display: flex; justify-content: space-between; align-items: center; }
 .skill-name { font-family: var(--mono); font-weight: 600; color: var(--accent); font-size: 14px; }
-.skill-triggers { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+.skill-desc { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+.skill-triggers { font-size: 11px; color: var(--text-muted); margin-top: 3px; line-height: 1.6; }
+.skill-triggers .trig { display: inline-block; background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; margin: 1px 2px; font-family: var(--mono); font-size: 10px; }
+.skill-edit-btn { background: none; border: 1px solid var(--border); color: var(--text-dim); font-size: 10px; padding: 2px 8px; border-radius: 4px; cursor: pointer; font-family: var(--font); }
+.skill-edit-btn:hover { border-color: var(--accent); color: var(--accent); }
+.skill-edit-area { margin-top: 8px; }
+.skill-edit-area textarea { width: 100%; min-height: 60px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text); font-family: var(--mono); font-size: 11px; border-radius: 4px; padding: 6px 8px; resize: vertical; }
+.skill-edit-actions { display: flex; gap: 6px; margin-top: 6px; }
+.skill-edit-actions button { font-size: 11px; padding: 3px 10px; border-radius: 4px; cursor: pointer; border: 1px solid var(--border); font-family: var(--font); }
+.skill-save-btn { background: var(--accent); color: #fff; border-color: var(--accent) !important; }
+.skill-reset-btn { background: none; color: var(--text-dim); }
+.hotkey-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 14px; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; }
+.hotkey-key { font-family: var(--mono); font-weight: 600; color: var(--accent); font-size: 13px; }
+.hotkey-action { font-size: 12px; color: var(--text-muted); }
 
 /* ── Empty state ── */
 .empty { text-align: center; padding: 50px 20px; color: var(--text-dim); }
@@ -675,7 +690,14 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
         <div id="promptsContainer"><div class="refreshing">Loading prompts...</div></div>
       </div>
       <div class="settings-section" style="margin-top:20px">
-        <div class="settings-title">Skills</div>
+        <div class="settings-title">Keyboard Shortcuts</div>
+        <p style="font-size:12px;color:var(--text-dim);margin:0 0 8px;padding:0 4px">Hardcoded hotkeys — these require code changes to modify.</p>
+        <div id="hotkeysList"></div>
+      </div>
+      <div class="settings-section" style="margin-top:20px">
+        <div class="settings-title">Voice Triggers <span style="font-size:11px;font-weight:400;color:var(--text-dim);margin-left:6px" id="skillCount"></span></div>
+        <p style="font-size:12px;color:var(--text-dim);margin:0 0 4px;padding:0 4px">Each skill is activated by trigger phrases. Click <b>Edit</b> to customize triggers — one per line. Changes apply after CODEC restart (F13 off/on).</p>
+        <input type="text" id="skillFilter" placeholder="Filter skills..." style="width:100%;padding:7px 10px;margin-bottom:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);border-radius:6px;font-size:12px;font-family:var(--font)" oninput="filterSkills(this.value)">
         <div id="skillsList"></div>
       </div>
     </div>
@@ -689,7 +711,7 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
       <button class="ibtn phone" onclick="startLiveChat()" title="Start voice call">
         <svg class="ico" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.362 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
       </button>
-      <textarea class="chat-input" id="cmdInput" placeholder="Flash — ask anything..." rows="1"></textarea>
+      <textarea class="chat-input" id="cmdInput" placeholder="Flash — ask anything..." rows="1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendCmd()}"></textarea>
       <button class="ibtn" onclick="uploadFile()" title="Upload file">
         <svg class="ico" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
       </button>
@@ -861,17 +883,21 @@ async function sendCmd() {
     text.innerHTML = '<span style="color:var(--danger)">Failed:</span> ' + escHtml(e.message);
   }
   loadChat();
+  // Clear any previous poll to prevent stacking
+  if (window._flashPollTimer) clearInterval(window._flashPollTimer);
   var pollCount = 0;
   var pollStart = Date.now();
+  var afterTs = new Date().toISOString();
+  var sid = encodeURIComponent(window._flashSessionId || '');
   var pollResp = setInterval(async function() {
     pollCount++;
     var elapsed = Math.round((Date.now() - pollStart) / 1000);
     if (pollCount % 4 === 0) text.innerHTML = '<span style="color:var(--accent)">Processing...</span> ' + escHtml(task) + ' <span style="opacity:.5;font-size:11px">(' + elapsed + 's)</span>';
-    if (pollCount > 200) { clearInterval(pollResp); text.innerHTML = '<span style="color:var(--danger)">Timeout:</span> No response after 5 min. Try again.'; return; }
+    if (pollCount > 200) { clearInterval(pollResp); window._flashPollTimer = null; text.innerHTML = '<span style="color:var(--danger)">Timeout:</span> No response after 5 min. Try again.'; return; }
     try {
-      var pr = await fetch('/api/response?_t=' + Date.now(), {cache: 'no-store'});
+      var pr = await fetch('/api/response?_t=' + Date.now() + '&session_id=' + sid + '&after=' + encodeURIComponent(afterTs), {cache: 'no-store'});
       if (pr.status === 401 || pr.status === 403) {
-        clearInterval(pollResp);
+        clearInterval(pollResp); window._flashPollTimer = null;
         text.innerHTML = '<span style="color:var(--danger)">Session expired</span> — refreshing...';
         setTimeout(function(){ window.location.href = '/auth'; }, 1500);
         return;
@@ -879,12 +905,13 @@ async function sendCmd() {
       var pd = await pr.json();
       if (pd.response) {
         text.innerHTML = '<span style="color:var(--success)">Flash:</span> ' + escHtml(pd.response);
-        clearInterval(pollResp);
+        clearInterval(pollResp); window._flashPollTimer = null;
         loadChat();
         playResponse(pd.response);
       }
     } catch(e) { console.warn('Poll error:', e); }
   }, 1500);
+  window._flashPollTimer = pollResp;
 }
 
 document.getElementById('cmdInput').addEventListener('keydown', function(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendCmd(); } });
@@ -948,7 +975,7 @@ async function loadChat() {
   var el = document.getElementById('chatList');
   if (!_chatLoaded) el.innerHTML = '<div class="refreshing">Loading...</div>';
   try {
-    var r = await fetch('/api/conversations?limit=100');
+    var r = await fetch('/api/conversations?limit=100&source=flash');
     var data = await r.json();
     if (!Array.isArray(data)) return;
     _chatLoaded = true;
@@ -1243,9 +1270,8 @@ async function loadSettings() {
 
     renderSettings(_configData);
 
-    document.getElementById('skillsList').innerHTML = skills.map(function(s) {
-      return '<div class="skill-card"><div class="skill-name">' + escHtml(s.name) + '</div><div class="skill-triggers">' + s.triggers.map(function(t) { return '"' + escHtml(t) + '"'; }).join(', ') + '</div></div>';
-    }).join('');
+    // Load full trigger data for editable skills section
+    loadTriggerGuide();
     // Load 2FA status
     loadTotpStatus();
   } catch(e) { console.error(e); }
@@ -1823,6 +1849,86 @@ async function handleFile(e) {
 async function pasteClipboard() {
   try { var text = await navigator.clipboard.readText(); if (text) { document.getElementById('cmdInput').value = text; return; } } catch(e) {}
   try { var r = await fetch('/api/clipboard'); var data = await r.json(); if (data.content) document.getElementById('cmdInput').value = data.content.substring(0, 500); } catch(e) {}
+}
+
+// ── Trigger Guide & Skills Editor ──
+var _triggerData = null;
+async function loadTriggerGuide() {
+  try {
+    var r = await fetch('/api/triggers');
+    _triggerData = await r.json();
+    // Hotkeys
+    var hkEl = document.getElementById('hotkeysList');
+    if (hkEl && _triggerData.hotkeys) {
+      hkEl.innerHTML = _triggerData.hotkeys.map(function(h) {
+        return '<div class="hotkey-card"><span class="hotkey-key">' + escHtml(h.key) + '</span><span class="hotkey-action">' + escHtml(h.action) + '</span></div>';
+      }).join('');
+    }
+    // Skills
+    renderSkillCards(_triggerData.skills);
+    var cnt = document.getElementById('skillCount');
+    if (cnt) cnt.textContent = '(' + _triggerData.skills.length + ' skills)';
+  } catch(e) { console.warn('Trigger guide error:', e); }
+}
+
+function renderSkillCards(skills, filter) {
+  var el = document.getElementById('skillsList');
+  if (!el) return;
+  var f = (filter || '').toLowerCase();
+  var html = skills.filter(function(s) {
+    if (!f) return true;
+    return s.name.toLowerCase().indexOf(f) >= 0 || s.description.toLowerCase().indexOf(f) >= 0 || s.triggers.join(' ').toLowerCase().indexOf(f) >= 0;
+  }).map(function(s) {
+    var trigs = s.triggers.map(function(t) { return '<span class="trig">' + escHtml(t) + '</span>'; }).join(' ');
+    var cls = s.customized ? ' customized' : '';
+    return '<div class="skill-card' + cls + '" data-skill="' + escHtml(s.name) + '">' +
+      '<div class="skill-header"><div><div class="skill-name">' + escHtml(s.name) + (s.customized ? ' <span style="color:var(--accent);font-size:10px">CUSTOM</span>' : '') + '</div>' +
+      '<div class="skill-desc">' + escHtml(s.description) + '</div></div>' +
+      '<button class="skill-edit-btn" onclick="toggleSkillEdit(\'' + escHtml(s.name) + '\')">Edit</button></div>' +
+      '<div class="skill-triggers">' + trigs + '</div>' +
+      '<div class="skill-edit-area" id="edit-' + escHtml(s.name) + '" style="display:none">' +
+      '<textarea id="ta-' + escHtml(s.name) + '">' + s.triggers.join('\n') + '</textarea>' +
+      '<div class="skill-edit-actions">' +
+      '<button class="skill-save-btn" onclick="saveSkillTriggers(\'' + escHtml(s.name) + '\')">Save</button>' +
+      '<button class="skill-reset-btn" onclick="resetSkillTriggers(\'' + escHtml(s.name) + '\')">Reset to Default</button>' +
+      '</div></div></div>';
+  }).join('');
+  el.innerHTML = html || '<div class="empty"><div class="empty-text">No skills match filter</div></div>';
+}
+
+function filterSkills(val) {
+  if (_triggerData) renderSkillCards(_triggerData.skills, val);
+}
+
+function toggleSkillEdit(name) {
+  var el = document.getElementById('edit-' + name);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+async function saveSkillTriggers(name) {
+  var ta = document.getElementById('ta-' + name);
+  if (!ta) return;
+  var triggers = ta.value.split('\n').map(function(t) { return t.trim(); }).filter(Boolean);
+  if (!triggers.length) { alert('Add at least one trigger'); return; }
+  try {
+    var body = {}; body[name] = { triggers: triggers };
+    var r = await fetch('/api/triggers', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    var d = await r.json();
+    if (d.status === 'saved') {
+      loadTriggerGuide();
+      alert('Triggers saved! Restart CODEC (F13 off/on) to apply.');
+    }
+  } catch(e) { alert('Save failed: ' + e.message); }
+}
+
+async function resetSkillTriggers(name) {
+  if (!confirm('Reset "' + name + '" triggers to defaults?')) return;
+  try {
+    var body = {}; body[name] = { triggers: null };
+    await fetch('/api/triggers', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    loadTriggerGuide();
+    alert('Reset to defaults! Restart CODEC (F13 off/on) to apply.');
+  } catch(e) { alert('Reset failed: ' + e.message); }
 }
 
 // ── Init ──

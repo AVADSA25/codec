@@ -225,3 +225,95 @@ async def skills():
     except Exception as e:
         log.warning(f"Non-critical error: {e}")
     return result
+
+
+# ── Custom Triggers Management ────────────────────────────────────────────────
+CUSTOM_TRIGGERS_PATH = os.path.expanduser("~/.codec/custom_triggers.json")
+
+
+def _load_custom_triggers() -> dict:
+    try:
+        with open(CUSTOM_TRIGGERS_PATH) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+@router.get("/api/triggers")
+async def list_triggers():
+    """Return all skills with their default + custom triggers and hotkeys."""
+    skills_dir = _get_skills_dir()
+    custom = _load_custom_triggers()
+    skills = []
+    try:
+        for fname in sorted(os.listdir(skills_dir)):
+            if not fname.endswith(".py") or fname.startswith("_"):
+                continue
+            name = fname[:-3]
+            triggers, description = [], ""
+            try:
+                with open(os.path.join(skills_dir, fname)) as f:
+                    src = f.read()
+                import ast
+                for line in src.splitlines():
+                    stripped = line.strip()
+                    if stripped.startswith("SKILL_TRIGGERS"):
+                        # Handle multi-line lists
+                        start = src.index("SKILL_TRIGGERS")
+                        bracket_start = src.index("[", start)
+                        bracket_end = src.index("]", bracket_start) + 1
+                        triggers = ast.literal_eval(src[bracket_start:bracket_end])
+                        break
+                for line in src.splitlines():
+                    stripped = line.strip()
+                    if stripped.startswith("SKILL_DESCRIPTION"):
+                        description = ast.literal_eval(stripped.split("=", 1)[1].strip())
+                        break
+            except Exception:
+                pass
+            custom_triggers = custom.get(name, {}).get("triggers")
+            skills.append({
+                "name": name,
+                "description": description,
+                "default_triggers": triggers,
+                "triggers": custom_triggers if custom_triggers is not None else triggers,
+                "customized": custom_triggers is not None,
+            })
+    except Exception as e:
+        log.warning(f"Trigger list error: {e}")
+    # Hotkeys
+    hotkeys = [
+        {"key": "F13", "action": "Toggle CODEC on/off", "editable": False},
+        {"key": "F18", "action": "Voice command (hold to record)", "editable": False},
+        {"key": "F16", "action": "Text input dialog", "editable": False},
+        {"key": "** (double star)", "action": "Screenshot + vision analysis", "editable": False},
+        {"key": "++ (double plus)", "action": "Document input mode", "editable": False},
+        {"key": "-- (double minus)", "action": "Open live voice chat", "editable": False},
+        {"key": "Right CMD (hold)", "action": "Dictate — speak, release to paste", "editable": False},
+        {"key": "L (during dictate)", "action": "Live typing mode", "editable": False},
+    ]
+    wake_words = ["hey codec", "hey", "okay codec", "hey codex", "hey coda", "hey queue"]
+    return {"skills": skills, "hotkeys": hotkeys, "wake_words": wake_words}
+
+
+@router.post("/api/triggers")
+async def save_triggers(request: Request):
+    """Save custom triggers for one or more skills."""
+    body = await request.json()
+    custom = _load_custom_triggers()
+    for skill_name, data in body.items():
+        triggers = data.get("triggers")
+        if triggers is not None and isinstance(triggers, list):
+            # Filter empty strings
+            triggers = [t.strip().lower() for t in triggers if t.strip()]
+            if triggers:
+                custom[skill_name] = {"triggers": triggers}
+            else:
+                custom.pop(skill_name, None)
+        elif triggers is None:
+            # Reset to default
+            custom.pop(skill_name, None)
+    os.makedirs(os.path.dirname(CUSTOM_TRIGGERS_PATH), exist_ok=True)
+    with open(CUSTOM_TRIGGERS_PATH, "w") as f:
+        json.dump(custom, f, indent=2)
+    return {"status": "saved", "custom_count": len(custom)}

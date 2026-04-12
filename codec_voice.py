@@ -542,6 +542,18 @@ class VoicePipeline:
     async def generate_response(self, user_text: str):
         self.messages.append({"role": "user", "content": user_text})
         self._warmed_up = False  # reset so next speech start can warm up again
+        # Inject targeted memory context for this specific question
+        try:
+            from codec_memory import CodecMemory
+            cm = CodecMemory()
+            targeted = cm.get_context(user_text, n=3)
+            if targeted:
+                self.messages[0] = {
+                    "role": "system",
+                    "content": _build_system_prompt() + f"\n\n[MEMORY — RELEVANT CONTEXT]\n{targeted}\n[END MEMORY]"
+                }
+        except Exception:
+            pass
         full = ""
         async for chunk in self._stream_qwen(self._trimmed_messages()):
             full += chunk

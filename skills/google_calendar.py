@@ -10,7 +10,7 @@ SKILL_TRIGGERS = [
     "create event", "create a meeting", "schedule a meeting", "schedule meeting",
     "schedule an appointment", "book a meeting", "book appointment",
     "set a reminder", "set an appointment", "new event", "new appointment",
-    "remind me",
+    "remind me to", "remind me at", "remind me on", "remind me about",
     # read
     "what's on my calendar", "what is on my calendar", "my schedule", "my events",
     "meetings today", "what do i have today", "what do i have tomorrow", "am i free",

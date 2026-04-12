@@ -96,10 +96,20 @@ def get_recent_conversations(n=10, user_id=None):
 # ── SKILLS ────────────────────────────────────────────────────────────────────
 loaded_skills = []
 
+def _load_custom_triggers():
+    """Load user-customized triggers from ~/.codec/custom_triggers.json."""
+    try:
+        import json as _json
+        with open(os.path.expanduser("~/.codec/custom_triggers.json")) as f:
+            return _json.load(f)
+    except Exception:
+        return {}
+
 def load_skills():
     global loaded_skills
     loaded_skills.clear()
     if not os.path.isdir(SKILLS_DIR): return
+    custom = _load_custom_triggers()
     for fname in os.listdir(SKILLS_DIR):
         if fname.startswith('_') or not fname.endswith('.py'): continue
         path = os.path.join(SKILLS_DIR, fname)
@@ -109,12 +119,18 @@ def load_skills():
             mod = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(mod)
             if hasattr(mod, 'SKILL_TRIGGERS') and hasattr(mod, 'run'):
+                skill_name = getattr(mod, 'SKILL_NAME', fname[:-3])
+                # Use custom triggers if user has overridden them
+                triggers = custom.get(skill_name, {}).get("triggers", mod.SKILL_TRIGGERS)
                 loaded_skills.append({
-                    'name': getattr(mod, 'SKILL_NAME', fname[:-3]),
-                    'triggers': mod.SKILL_TRIGGERS,
+                    'name': skill_name,
+                    'triggers': triggers,
                     'run': mod.run,
                 })
-                print(f"[CODEC] Skill loaded: {fname[:-3]}")
+                if skill_name in custom:
+                    print(f"[CODEC] Skill loaded: {fname[:-3]} (custom triggers)")
+                else:
+                    print(f"[CODEC] Skill loaded: {fname[:-3]}")
         except Exception as e:
             print(f"[CODEC] Skill error ({fname}): {e}")
 

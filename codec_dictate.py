@@ -232,7 +232,7 @@ def _live_record_loop():
             with open(tmp.name, "rb") as f:
                 r = requests.post(WHISPER_SERVER,
                     files={"file": ("chunk.wav", f, "audio/wav")},
-                    data={"model": "mlx-community/whisper-large-v3-turbo", "language": "en"},
+                    data={"model": "mlx-community/whisper-large-v3-turbo"},
                     timeout=10)
             if r.status_code == 200:
                 chunk_text = r.json().get("text", "").strip()
@@ -244,7 +244,9 @@ def _live_record_loop():
                     # Type chunk live at cursor position
                     pyperclip.copy(chunk_text + " ")
                     time.sleep(0.15)
-                    pyautogui.hotkey('command', 'v')
+                    subprocess.run(["osascript", "-e",
+                        'tell application "System Events" to keystroke "v" using command down'],
+                        capture_output=True, timeout=5)
                     print(f"[DICTATE] Live: {chunk_text}")
         except Exception as e:
             print(f"[DICTATE] Live chunk error: {e}")
@@ -352,7 +354,6 @@ def transcribe_and_type(audio_path):
         print(f"[DICTATE] Transcribing {audio_path}...")
         segments, info = model.transcribe(
             audio_path,
-            language="en",
             beam_size=5,
             vad_filter=True,
             vad_parameters=dict(min_silence_duration_ms=300)
@@ -412,8 +413,10 @@ def transcribe_and_type(audio_path):
         # Small delay to ensure focus is back on target window
         time.sleep(0.15)
 
-        # Type the text using CMD+V (paste) — faster and more reliable than typing
-        pyautogui.hotkey('command', 'v')
+        # Paste via osascript — more reliable than pyautogui on macOS
+        subprocess.run(["osascript", "-e",
+            'tell application "System Events" to keystroke "v" using command down'],
+            capture_output=True, timeout=5)
 
         print(f"[DICTATE] \u2705 Typed: {text}")
 

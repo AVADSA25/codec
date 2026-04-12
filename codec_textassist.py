@@ -80,41 +80,27 @@ if MODE == "read_aloud":
         print(f"TTS error: {e}")
     sys.exit(0)
 
-# ── Save: save to Google Keep or local fallback, no LLM needed ───────────────
+# ── Save: save to Apple Notes (primary) + local file backup ─────────────────
 if MODE == "save":
     save_text = text[:2000]
-    saved = False
-    # Try Google Keep skill
+    safe = save_text.replace('"', '\\"').replace("'", "")
+    # Save to Apple Notes
     try:
-        import importlib.util
-        keep_path = os.path.expanduser("~/.codec/skills/google_keep.py")
-        spec = importlib.util.spec_from_file_location("google_keep", keep_path)
-        keep_mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(keep_mod)
-        result = keep_mod.run(f"save note: {save_text[:500]}")
-        if result and any(kw in str(result).lower() for kw in
-                          ("saved", "added", "created", "done", "success", "note saved")):
-            saved = True
+        subprocess.run(["osascript", "-e",
+            f'tell application "Notes" to make new note at folder "Notes" with properties {{body:"{safe}"}}'],
+            capture_output=True, text=True, timeout=10)
     except Exception:
         pass
-    # Fallback: local file
-    if not saved:
-        notes_path = os.path.expanduser("~/.codec/saved_notes.txt")
-        # Ensure Desktop shortcut exists
-        desktop_link = os.path.expanduser("~/Desktop/CODEC_Notes.txt")
-        if not os.path.exists(desktop_link):
-            try: os.symlink(notes_path, desktop_link)
-            except: pass
-        from datetime import datetime
-        with open(notes_path, "a") as nf:
-            nf.write(f"\n--- {datetime.now().strftime('%Y-%m-%d %H:%M')} ---\n")
-            nf.write(save_text + "\n")
-        saved = True
-    if saved:
-        subprocess.run(["osascript", "-e",
-            'display notification "Text saved to notes" with title "CODEC Save"'],
-            capture_output=True)
-        overlay("\u2705 Saved!", "#44cc66", 2000)
+    # Also save local backup
+    notes_path = os.path.expanduser("~/.codec/saved_notes.txt")
+    from datetime import datetime
+    with open(notes_path, "a") as nf:
+        nf.write(f"\n--- {datetime.now().strftime('%Y-%m-%d %H:%M')} ---\n")
+        nf.write(save_text + "\n")
+    subprocess.run(["osascript", "-e",
+        'display notification "Saved to Apple Notes" with title "CODEC Save"'],
+        capture_output=True)
+    overlay("\u2705 Saved to Apple Notes!", "#44cc66", 2000)
     sys.exit(0)
 
 _proc_overlay = overlay("⚡ Processing...", "#00aaff", 15000)
@@ -129,6 +115,29 @@ try:
         title = "CODEC Explain" if MODE == "explain" else "CODEC Translate"
         # Also copy to clipboard so user can paste if needed
         subprocess.run(["pbcopy"], input=result.encode(), check=True)
+        # Speak the result via Kokoro TTS — spawn as subprocess so it survives parent exit
+        cfg = get_config()
+        _tts_env = {**os.environ,
+            "_TTS_URL": cfg.get("tts_url", "http://localhost:8085/v1/audio/speech"),
+            "_TTS_MODEL": cfg.get("tts_model", "mlx-community/Kokoro-82M-bf16"),
+            "_TTS_VOICE": cfg.get("tts_voice", "am_adam"),
+            "_TTS_TEXT": result[:1500]}
+        subprocess.Popen([sys.executable, "-c", """
+import requests, tempfile, subprocess, os
+try:
+    r = requests.post(os.environ['_TTS_URL'], json={
+        "model": os.environ['_TTS_MODEL'],
+        "input": os.environ['_TTS_TEXT'],
+        "voice": os.environ['_TTS_VOICE']
+    }, timeout=30)
+    if r.status_code == 200:
+        f = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
+        f.write(r.content); f.close()
+        subprocess.run(["afplay", f.name])
+        os.unlink(f.name)
+except Exception:
+    pass
+"""], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=_tts_env)
         # Launch a clean floating result window
         safe_result = result.replace("\\", "\\\\").replace("'", "\\'").replace('"', '\\"').replace("\n", "\\n")
         subprocess.Popen([sys.executable, "-c", f"""import tkinter as tk
@@ -166,8 +175,9 @@ r.mainloop()
     else:
         subprocess.run(["pbcopy"], input=result.encode(), check=True)
         time.sleep(0.3)
-        import pyautogui
-        pyautogui.hotkey('command', 'v')
+        subprocess.run(["osascript", "-e",
+            'tell application "System Events" to keystroke "v" using command down'],
+            capture_output=True, timeout=5)
         overlay("✅ Text replaced!", "#44cc66", 2000)
 except Exception:
     if _proc_overlay:

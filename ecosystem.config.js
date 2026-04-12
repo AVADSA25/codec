@@ -39,8 +39,8 @@ module.exports = {
     // NOTE: codec-heartbeat and codec-scheduler are unified into codec-dashboard
     {
       name: "codec-dictate",
-      script: "python3",
-      args: "codec_dictate.py",
+      script: "/usr/local/bin/python3.13",
+      args: "-u codec_dictate.py",
       cwd: __dirname,
       max_memory_restart: "768M",
       restart_delay: 2000,

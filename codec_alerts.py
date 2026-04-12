@@ -222,11 +222,24 @@ def check_services_and_alert():
                 state[f"down_since_{name}"] = now
 
             if failures[name] == 1:
-                # First failure — try auto-restart
+                # First failure — try auto-restart (with cooldown to prevent restart loops)
                 pm2_name = _PM2_NAMES.get(name)
-                if pm2_name:
+                last_restart_key = f"last_restart_{name}"
+                last_restart = state.get(last_restart_key, "")
+                cooldown_ok = True
+                if last_restart:
+                    try:
+                        elapsed = (datetime.fromisoformat(now) - datetime.fromisoformat(last_restart)).total_seconds()
+                        if elapsed < 300:  # 5-minute cooldown between restarts
+                            cooldown_ok = False
+                            log.info("Skipping auto-restart for %s — last restart was %ds ago (cooldown 300s)", name, int(elapsed))
+                    except Exception:
+                        pass
+                if pm2_name and cooldown_ok:
                     log.info("Auto-restarting %s (%s)...", name, pm2_name)
+                    state[last_restart_key] = now
                     _try_restart(pm2_name)
+                    time.sleep(15)  # Vision model needs ~15s to load
                     # Re-check after restart
                     if _check_service(url):
                         failures[name] = 0
