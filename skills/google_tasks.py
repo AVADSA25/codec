@@ -6,18 +6,10 @@ SKILL_NAME = "google_tasks"
 SKILL_TRIGGERS = ["google tasks", "my tasks", "task list", "to do", "todo", "show tasks", "add task", "complete task", "check tasks"]
 SKILL_DESCRIPTION = "View and manage Google Tasks"
 
-TOKEN_PATH = os.path.expanduser("~/.codec/google_token.json")
-SCOPES = ["https://www.googleapis.com/auth/tasks.readonly"]
-
 def _get_creds():
-    from google.oauth2.credentials import Credentials
-    from google.auth.transport.requests import Request
-    creds = Credentials.from_authorized_user_file(TOKEN_PATH, SCOPES)
-    if creds and creds.expired and creds.refresh_token:
-        creds.refresh(Request())
-        with open(TOKEN_PATH, "w") as f:
-            f.write(creds.to_json())
-    return creds
+    import sys; sys.path.insert(0, os.path.expanduser("~/codec-repo"))
+    from codec_google_auth import get_credentials
+    return get_credentials()
 
 def run(task, context=None):
     try:

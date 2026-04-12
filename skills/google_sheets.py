@@ -12,18 +12,10 @@ SKILL_TRIGGERS = [
 ]
 SKILL_DESCRIPTION = "Search, read, and create Google Sheets"
 
-TOKEN_PATH = os.path.expanduser("~/.codec/google_token.json")
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-
 def _get_creds():
-    from google.oauth2.credentials import Credentials
-    from google.auth.transport.requests import Request
-    creds = Credentials.from_authorized_user_file(TOKEN_PATH, SCOPES)
-    if creds and creds.expired and creds.refresh_token:
-        creds.refresh(Request())
-        with open(TOKEN_PATH, "w") as f:
-            f.write(creds.to_json())
-    return creds
+    import sys; sys.path.insert(0, os.path.expanduser("~/codec-repo"))
+    from codec_google_auth import get_credentials
+    return get_credentials()
 
 def _parse_create_request(task):
     """Extract title, columns, and sample rows from a create request using simple parsing."""

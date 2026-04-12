@@ -51,16 +51,9 @@ def _is_create_intent(low: str) -> bool:
 CREATE_WORDS = _CREATE_VERBS + _CALENDAR_NOUNS
 
 def _get_service():
-    from google.oauth2.credentials import Credentials
-    from google.auth.transport.requests import Request
-    from googleapiclient.discovery import build
-    creds = Credentials.from_authorized_user_file(TOKEN_PATH)
-    if creds.expired and creds.refresh_token:
-        creds.refresh(Request())
-        with open(TOKEN_PATH, "w") as f:
-            f.write(creds.to_json())
-        os.chmod(TOKEN_PATH, 0o600)
-    return build("calendar", "v3", credentials=creds)
+    import sys; sys.path.insert(0, os.path.expanduser("~/codec-repo"))
+    from codec_google_auth import build_service
+    return build_service("calendar", "v3")
 
 # ── Date/time parsing ──────────────────────────────────────────────────────────
 

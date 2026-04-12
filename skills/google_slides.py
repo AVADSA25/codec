@@ -6,18 +6,10 @@ SKILL_NAME = "google_slides"
 SKILL_TRIGGERS = ["google slides", "my slides", "presentations", "my presentations", "find presentation", "search slides", "open slides", "read slides"]
 SKILL_DESCRIPTION = "Search and read Google Slides presentations"
 
-TOKEN_PATH = os.path.expanduser("~/.codec/google_token.json")
-SCOPES = ["https://www.googleapis.com/auth/presentations.readonly", "https://www.googleapis.com/auth/drive.readonly"]
-
 def _get_creds():
-    from google.oauth2.credentials import Credentials
-    from google.auth.transport.requests import Request
-    creds = Credentials.from_authorized_user_file(TOKEN_PATH, SCOPES)
-    if creds and creds.expired and creds.refresh_token:
-        creds.refresh(Request())
-        with open(TOKEN_PATH, "w") as f:
-            f.write(creds.to_json())
-    return creds
+    import sys; sys.path.insert(0, os.path.expanduser("~/codec-repo"))
+    from codec_google_auth import get_credentials
+    return get_credentials()
 
 def run(task, context=None):
     try:

@@ -280,11 +280,9 @@ def create_google_doc(title: str, content: str) -> str | None:
     - Images skipped for invoices, meeting summaries, code reviews, etc.
     Returns the doc URL or None on error.
     """
-    from google.oauth2.credentials import Credentials
-    from google.auth.transport.requests import Request
     from googleapiclient.discovery import build
+    from codec_google_auth import get_credentials
 
-    TOKEN_PATH = os.path.expanduser("~/.codec/google_token.json")
     DARK   = {"red": 0.082, "green": 0.082, "blue": 0.137}
     ORANGE = {"red": 0.910, "green": 0.443, "blue": 0.102}
     SLATE  = {"red": 0.173, "green": 0.243, "blue": 0.314}
@@ -296,11 +294,7 @@ def create_google_doc(title: str, content: str) -> str | None:
         elif title.startswith("CODEC ") and not title.startswith("CODEC:"):
             title = "CODEC: " + title[6:]
 
-        creds = Credentials.from_authorized_user_file(TOKEN_PATH)
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-            with open(TOKEN_PATH, "w") as f:
-                f.write(creds.to_json())
+        creds = get_credentials()
 
         svc    = build("docs", "v1", credentials=creds)
         doc    = svc.documents().create(body={"title": title}).execute()
