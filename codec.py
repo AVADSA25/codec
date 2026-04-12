@@ -654,9 +654,6 @@ def on_press(key):
                 return
             state["recording"] = True
             state["rec_start"] = time.time()
-            # Audio feedback — short system sound so user knows recording started
-            subprocess.Popen(["afplay", "/System/Library/Sounds/Tink.aiff"],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             push(do_start_recording)
             state["overlay_proc"] = show_recording_overlay('F18')
         return
@@ -690,8 +687,12 @@ def on_press(key):
 
 def on_release(key):
     if key == keyboard.Key.f18 and state["recording"]:
-        subprocess.Popen(["afplay", "/System/Library/Sounds/Pop.aiff"],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # Kill overlay immediately on release (don't wait for work queue)
+        ovl = state.get("overlay_proc")
+        if ovl:
+            try: ovl.terminate()
+            except: pass
+            state["overlay_proc"] = None
         push(do_stop_voice)
 
 # ── MAIN ──────────────────────────────────────────────────────────────────────
