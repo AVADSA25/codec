@@ -196,8 +196,8 @@ def dispatch(task):
         _dispatch_inner(task)
     finally:
         # Post-dispatch cooldown — TTS is now blocking so audio is already done
-        # This extra 5s is just a safety buffer for echo/reverb decay
-        _dispatch_cooldown = time.time() + 5.0
+        # 1.5s buffer for echo/reverb decay (was 5s — too long, made CODEC feel unresponsive)
+        _dispatch_cooldown = time.time() + 1.5
         _dispatch_lock.release()
 
 def _dispatch_inner(task):
@@ -465,6 +465,7 @@ def do_start_recording():
 def do_stop_voice():
     audio = state.get("audio_path")
     rec = state.get("rec_proc")
+    rec_start = state.get("rec_start", 0)
     if rec:
         try: rec.terminate(); rec.wait(timeout=3)
         except Exception as e: log.debug("Recording process cleanup failed: %s", e)
@@ -475,6 +476,13 @@ def do_stop_voice():
         except Exception as e: log.debug("Overlay process cleanup failed: %s", e)
         state["overlay_proc"] = None
     if not audio or not os.path.exists(audio): return
+    # Reject recordings shorter than 0.5s — just button taps, not speech
+    rec_duration = time.time() - rec_start if rec_start else 0
+    if rec_duration < 0.5:
+        print(f"[CODEC] Recording too short ({rec_duration:.1f}s) — ignored")
+        try: os.unlink(audio)
+        except: pass
+        return
     if os.path.getsize(audio) < 1000:
         try: os.unlink(audio)
         except Exception as e: log.debug("Audio file cleanup failed: %s", e)
@@ -613,7 +621,7 @@ def wake_word_listener():
 def on_press(key):
     now = time.time()
     if key == keyboard.Key.f13:
-        if now - state["last_f13"] < 0.8: return
+        if now - state["last_f13"] < 1.5: return
         state["last_f13"] = now
         if state["active"]:
             state["active"] = False
@@ -637,6 +645,7 @@ def on_press(key):
     if key == keyboard.Key.f18:
         if not state["recording"]:
             state["recording"] = True
+            state["rec_start"] = time.time()
             push(do_start_recording)
             state["overlay_proc"] = show_recording_overlay('F18')
         return

@@ -210,8 +210,13 @@ def speak_text(text):
         clean = re.sub(r'\*+', '', clean)
         clean = re.sub(r'#+\s*', '', clean)
         clean = re.sub(r'`[^`]*`', '', clean)
+        clean = re.sub(r'https?://\S+', '', clean)  # strip URLs — Kokoro chokes on them
+        clean = re.sub(r'<[^>]+>', '', clean)  # strip HTML/XML tags
         clean = clean.replace('"','').replace("'","").strip()
         if not clean: return
+        # Don't speak raw error messages — summarize them
+        if any(err in clean.lower() for err in ['httpconnection', 'httperror', 'traceback', 'errno', 'exception']):
+            clean = "Sorry, there was an error. Please try again."
         if len(clean) < 50 and any(c in clean for c in '=+-*/'):
             clean = "The answer is " + clean
         print(f"[TTS] Speaking: {clean[:60]}")
