@@ -1,7 +1,7 @@
 """CODEC Skill: Web Search via DuckDuckGo (or Serper if key configured)"""
 SKILL_NAME = "web_search"
 SKILL_DESCRIPTION = "Search the web and return a quick answer"
-SKILL_TRIGGERS = ["search for", "google", "look up", "who is", "who won", "latest news"]
+SKILL_TRIGGERS = ["search for", "search the web", "google search", "look up", "who is", "who won", "latest news"]
 
 
 def run(task, app="", ctx=""):

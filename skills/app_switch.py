@@ -1,8 +1,8 @@
 """CODEC Skill: App Switcher"""
 SKILL_NAME = "app_switch"
 SKILL_DESCRIPTION = "Switch to any running app by name"
-SKILL_TRIGGERS = ["switch to", "go to", "focus on", "bring up", "activate",
-                   "show me", "open app", "open ", "switch up to", "switch up"]
+SKILL_TRIGGERS = ["switch to", "go to app", "focus on", "bring up", "activate app",
+                   "open app", "open the app", "switch up to", "switch up"]
 import subprocess
 
 # Common app name aliases
