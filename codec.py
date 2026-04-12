@@ -654,6 +654,9 @@ def on_press(key):
                 return
             state["recording"] = True
             state["rec_start"] = time.time()
+            threading.Thread(target=lambda: subprocess.run(
+                ['afplay', '/System/Library/Sounds/Blow.aiff'],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL), daemon=True).start()
             push(do_start_recording)
             state["overlay_proc"] = show_recording_overlay('F18')
         return
@@ -693,6 +696,9 @@ def on_release(key):
             try: ovl.terminate()
             except: pass
             state["overlay_proc"] = None
+        threading.Thread(target=lambda: subprocess.run(
+            ['afplay', '/System/Library/Sounds/Funk.aiff'],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL), daemon=True).start()
         push(do_stop_voice)
 
 # ── MAIN ──────────────────────────────────────────────────────────────────────
