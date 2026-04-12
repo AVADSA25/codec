@@ -10,10 +10,10 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/features-234-blue?style=flat-square" alt="234 Features"/>
-  <img src="https://img.shields.io/badge/skills-60-orange?style=flat-square" alt="60 Skills"/>
-  <img src="https://img.shields.io/badge/tests-405-green?style=flat-square" alt="405 Tests"/>
-  <img src="https://img.shields.io/badge/lines-61.7K-purple?style=flat-square" alt="61,700 Lines"/>
+  <a href="FEATURES.md"><img src="https://img.shields.io/badge/features-238-blue?style=flat-square" alt="238 Features"/></a>
+  <img src="https://img.shields.io/badge/skills-56-orange?style=flat-square" alt="56 Skills"/>
+  <img src="https://img.shields.io/badge/tests-378-green?style=flat-square" alt="378 Tests"/>
+  <img src="https://img.shields.io/badge/lines-33.9K-purple?style=flat-square" alt="33,900 Lines"/>
   <img src="https://img.shields.io/badge/license-MIT-brightgreen?style=flat-square" alt="MIT License"/>
 </p>
 
@@ -208,6 +208,10 @@ Three smart agents ship built-in: Daily Briefing, Restaurant Decider (location-a
 <p align="center">
   <img src="docs/screenshots/terminal.png" alt="Terminal" width="400"/><br/>
   <em>60 skills loaded at startup</em>
+</p>
+<p align="center">
+  <img src="docs/screenshots/cortex.png" alt="Cortex Neural Map" width="720"/><br/>
+  <em>Cortex — neural map with 28 nodes across 7 zones, live activity feed, config panel</em>
 </p>
 </details>
 
