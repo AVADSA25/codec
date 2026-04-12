@@ -503,8 +503,11 @@ def wake_word_listener():
                 wake_device = d['name']
                 break
     except Exception as e: log.debug("Wake mic device detection failed: %s", e)
-    print(f"[CODEC] Wake word listener started (mic: {wake_device}). Say 'Hey CODEC' to activate.")
+    print(f"[CODEC] Wake word listener started (mic: {wake_device}, threshold={WAKE_ENERGY}). Say 'Hey CODEC' to activate.")
+    if WAKE_ENERGY > 1000:
+        print(f"[CODEC] ⚠️  Wake energy threshold ({WAKE_ENERGY}) is very high — wake word may not trigger. Default is 200.")
     _wake_diag_done = False
+    _wake_low_count = 0  # track consecutive below-threshold to warn user
     while True:
         if not WAKE_WORD or state["recording"]:
             time.sleep(0.3); continue
@@ -544,6 +547,10 @@ def wake_word_listener():
                 print(f"[CODEC] Wake mic: energy={energy:.0f} (threshold={WAKE_ENERGY})")
                 _wake_diag_done = True
             if energy < WAKE_ENERGY:
+                if energy > WAKE_ENERGY * 0.3:
+                    _wake_low_count += 1
+                    if _wake_low_count == 20:
+                        print(f"[CODEC] ⚠️  Mic picks up speech (energy ~{energy:.0f}) but threshold is {WAKE_ENERGY}. Lower wake_energy in ~/.codec/config.json if wake word doesn't trigger.")
                 try: os.unlink(tmp.name)
                 except Exception as e: log.debug("Wake temp file cleanup failed: %s", e)
                 continue

@@ -74,7 +74,8 @@ AUDIT_LOG         = os.path.expanduser("~/.codec/audit.log")
 STREAMING         = cfg.get("streaming", True)
 WAKE_WORD         = cfg.get("wake_word_enabled", True)
 WAKE_PHRASES      = cfg.get("wake_phrases", ['hey codec', 'hey', 'okay codec', 'hey codex', 'hey coda', 'hey queue'])
-WAKE_ENERGY       = cfg.get("wake_energy", 200)
+_raw_wake_energy   = cfg.get("wake_energy", 200)
+WAKE_ENERGY       = max(50, min(int(_raw_wake_energy), 1500))  # clamp 50-1500; >1500 silences mic
 WAKE_CHUNK_SEC    = cfg.get("wake_chunk_sec", 3.0)
 REQUIRE_CONFIRM   = cfg.get("require_confirmation", True)
 
