@@ -644,8 +644,19 @@ def on_press(key):
         return
     if key == keyboard.Key.f18:
         if not state["recording"]:
+            # Don't start recording while TTS is speaking — mic captures speaker output
+            if _core.tts_playing:
+                print("[CODEC] F18 ignored — TTS still playing")
+                return
+            # Don't start if dispatch is still processing (cooldown)
+            if time.time() < _dispatch_cooldown:
+                print("[CODEC] F18 ignored — still processing")
+                return
             state["recording"] = True
             state["rec_start"] = time.time()
+            # Audio feedback — short system sound so user knows recording started
+            subprocess.Popen(["afplay", "/System/Library/Sounds/Tink.aiff"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             push(do_start_recording)
             state["overlay_proc"] = show_recording_overlay('F18')
         return
@@ -679,6 +690,8 @@ def on_press(key):
 
 def on_release(key):
     if key == keyboard.Key.f18 and state["recording"]:
+        subprocess.Popen(["afplay", "/System/Library/Sounds/Pop.aiff"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         push(do_stop_voice)
 
 # ── MAIN ──────────────────────────────────────────────────────────────────────
