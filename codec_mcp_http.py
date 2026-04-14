@@ -20,6 +20,10 @@ _REPO_DIR = os.path.dirname(os.path.abspath(__file__))
 if _REPO_DIR not in sys.path:
     sys.path.insert(0, _REPO_DIR)
 
+# Mark transport as http BEFORE importing codec_config/codec_mcp so the
+# stricter HTTP blocklist applies (python_exec, file_ops, ax_control).
+os.environ["CODEC_MCP_TRANSPORT"] = "http"
+
 # Importing codec_mcp registers all skill tools on the shared `mcp` object.
 import codec_mcp  # noqa: F401  (side-effect: tool registration)
 from codec_mcp import mcp

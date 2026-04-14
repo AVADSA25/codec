@@ -97,9 +97,26 @@ MCP_DEFAULT_ALLOW = cfg.get("mcp_default_allow", False)
 MCP_ALLOWED_TOOLS = cfg.get("mcp_allowed_tools", [])
 # Explicit blocklist — skills here are NEVER exposed via MCP, even in opt-out mode.
 # Use for skills that arbitrary-execute code or could cause system damage.
-MCP_BLOCKED_TOOLS = cfg.get("mcp_blocked_tools", [
-    "python_exec", "terminal", "process_manager", "pm2_control"
-])
+#
+# Transport-aware: HTTP/remote gets the strict set (anything that arbitrary-executes
+# or modifies system state). Stdio (local Claude Desktop / Code) gets the lighter
+# set — those clients have their own per-tool approval dialog as the first gate.
+import os as _os
+_TRANSPORT = _os.environ.get("CODEC_MCP_TRANSPORT", "stdio").lower()
+
+_STDIO_BLOCKED = ["terminal", "process_manager", "pm2_control"]
+_HTTP_BLOCKED = ["python_exec", "terminal", "process_manager", "pm2_control",
+                  "file_ops", "ax_control"]
+
+if _TRANSPORT == "http":
+    # HTTP/remote always uses the strict set — user config cannot soften it.
+    # Merges user-configured entries on top (additive only).
+    _user = cfg.get("mcp_blocked_tools", [])
+    MCP_BLOCKED_TOOLS = sorted(set(_HTTP_BLOCKED) | set(_user))
+else:
+    # Stdio trusts the client's approval dialog. User config wins; default lighter.
+    MCP_BLOCKED_TOOLS = cfg.get("mcp_blocked_tools_stdio",
+                                  cfg.get("mcp_blocked_tools", _STDIO_BLOCKED))
 
 # Safety
 DANGEROUS_PATTERNS = [
