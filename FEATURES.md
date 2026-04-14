@@ -1,6 +1,6 @@
 # CODEC — Full Product Breakdown
 
-> 234 features · 56 skills · 378 tests · 33,900 lines of code
+> 245 features · 57 skills · 378 tests · 34K+ lines of code
 
 ---
 
@@ -161,7 +161,7 @@
 
 ---
 
-## 6. CODEC Skills — 59 features (56 skills + 3 infrastructure)
+## 6. CODEC Skills — 60 features (57 skills + 3 infrastructure)
 
 ### Infrastructure
 
@@ -171,20 +171,23 @@
 | 2 | Skill dispatch with fallback (match_all_triggers, try-next-on-None) |
 | 3 | Skill Marketplace (install, search, list, update, remove, publish) |
 
-### 56 Built-in Skills
+### 57 Built-in Skills
+
+MCP tool name shown where it differs from the file name.
 
 | Category | Skills |
 |---|---|
-| **Google Workspace** | google_calendar, google_docs, google_drive, google_gmail, google_keep, google_sheets, google_slides, google_tasks |
-| **Chrome Automation** | chrome_automate, chrome_click_cdp, chrome_close, chrome_extract, chrome_fill, chrome_open, chrome_read, chrome_scroll, chrome_search, chrome_tabs |
-| **System Control** | app_switch, brightness, clipboard, file_search, network_info, process_manager, system_info, terminal, volume |
-| **Vision & Mouse** | mouse_control (UI-TARS vision click), screenshot_text |
-| **AI & Content** | ai_news_digest, create_skill, skill_forge, translate, web_search, memory_search |
-| **Utilities** | bitcoin_price, calculator, generate_qr_code, json_formatter, notes, password_generator, pomodoro, reminders, time_date, timer, weather |
-| **Smart Home** | philips_hue |
-| **Media** | music |
-| **Messaging** | lucy (AI persona) |
-| **Dev Tools** | ask_mike_to_build, ax_control, openai_demo_runner, scheduler_skill |
+| **Google Workspace** (8) | google_calendar, google_docs, google_drive, google_gmail, google_keep, google_sheets, google_slides, google_tasks |
+| **Chrome Automation** (10) | chrome_automate, chrome_click_cdp, chrome_close, chrome_extract, chrome_fill, chrome_open, chrome_read, chrome_scroll, chrome_search, chrome_tabs |
+| **System Control** (9) | app_switch, brightness, clipboard, file_ops, file_search, network_info, process_manager, `system` (system_info), terminal, `volume_brightness` (volume) |
+| **Vision & Mouse** (2) | mouse_control (UI-TARS vision click), screenshot_text |
+| **AI & Content** (6) | `AI_News_Digest` (ai_news_digest), create_skill, skill_forge, translate, web_search, memory_search |
+| **Memory Layer** (3 — *new in v2.2*) | memory_search (FTS5 conversations), memory_history (temporal facts), memory_entities (CCF compression map) |
+| **Utilities** (11) | bitcoin_price, calculator, json_formatter, notes, password_generator, pomodoro, `qr_generator`, reminders, `time` (time_date), timer, weather |
+| **Smart Home** (1) | philips_hue |
+| **Media** (1) | music (Spotify + Apple Music) |
+| **Delegation** (1) | `delegate` (lucy — AI persona + task orchestrator) |
+| **Dev Tools** (5) | ax_control, pm2_control, python_exec, `scheduler` (scheduler_skill), codec (meta-dispatcher) |
 
 ---
 
@@ -205,10 +208,16 @@
 | 11 | Session runner with resource limits (120s CPU, 512MB RAM) |
 | 12 | Session command preview dialog (Allow/Deny) |
 | 13 | Context compaction (LLM-based summarization) |
-| 14 | MCP Server (skills as MCP tools for Claude, Cursor, VS Code) |
-| 15 | MCP input validation (type checks, length limits, audit logging) |
-| 16 | MCP opt-in/opt-out tool exposure per skill |
-| 17 | MCP memory search + recent memory tools |
+| 14 | MCP Server (skills as MCP tools for Claude Desktop, Claude Code, Cursor, VS Code) |
+| 15 | MCP input validation (type checks, 5KB task / 10KB context limits, audit logging) |
+| 16 | MCP opt-in/opt-out tool exposure per skill (blocklist for python_exec, terminal, pm2_control, process_manager) |
+| 17 | MCP full tool exposure — all 57 skills available as `mcp__codec__*` tools |
+| 18 | MCP tool-name sanitization preserving original SKILL_NAME for registry lookup |
+| 19 | MCP memory search + recent memory tools |
+| 20 | **Tiered Memory Loading** — identity.txt L0/L1 boot payload injected into every session (<200 tokens) |
+| 21 | **Temporal Fact Store** — `facts` table with valid_from/valid_until/superseded_by; auto-supersession on key conflict |
+| 22 | **CCF Compression** — rule-based entity abbreviation + filler stripping for recalled memory blocks (~65% token reduction) |
+| 23 | **Active facts injection** — currently-valid temporal facts auto-added to system prompt on every session build |
 | 18 | Search result TTL caching (5-min TTL, 100 entries, thread-safe) |
 | 19 | Dual search backends (DuckDuckGo + Serper.dev) |
 | 20 | FTS5 full-text search memory (BM25 ranking, injection prevention) |
@@ -275,13 +284,20 @@
 | CODEC Dashboard | 32 |
 | CODEC Vibe | 20 |
 | CODEC Agents | 20 |
-| CODEC Skills | 59 |
-| CODEC Infrastructure | 30 |
+| CODEC Skills | 60 |
+| CODEC Infrastructure | 36 |
 | CODEC Dictate | 15 |
 | CODEC Instant | 12 |
-| **TOTAL** | **238** |
+| **TOTAL** | **245** |
 
-**238 features · 56 skills · 378 tests · 33,900 lines of code**
+**245 features · 57 skills · 378 tests · 34K+ lines of code**
+
+### What's new in v2.2
+
+- **Live MCP bridge** — CODEC exposed as MCP server to Claude Desktop / Claude Code / Cursor. All 57 skills callable from any MCP-compatible client.
+- **Memory Layer upgrade** — three-tier memory with identity boot payload, temporal fact tracking, and CCF rule-based compression.
+- **MCP audit fixes** — skill-name sanitization bug fixed (AI_News_Digest loads), pomodoro stop/status, reminders/notes read path, file_search word-boundary parsing, network_info multi-interface detection.
+- **F5 live dictation** — hands-free typing mode with pipelined audio capture and focus-preserving paste.
 
 ---
 
