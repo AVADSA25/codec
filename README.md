@@ -44,7 +44,7 @@ No cloud dependency. No subscription. No data leaving the machine. MIT licensed.
 | # | Product | What It Does |
 |:-:|---|---|
 | 1 | **CODEC Core** | Voice command layer + vision mouse control — 60 skills, screen clicks by voice |
-| 2 | **CODEC Dictate** | Hold, speak, paste — live typing at cursor, draft refinement, floating overlays |
+| 2 | **CODEC Dictate** | Hold, speak, paste — hands-free F5 live typing at cursor, draft refinement, floating overlays |
 | 3 | **CODEC Instant** | Right-click → 8 AI services system-wide — proofread, translate, reply, explain |
 | 4 | **CODEC Chat** | 250K-context conversational AI + 12 autonomous agent crews |
 | 5 | **CODEC Vibe** | Browser IDE with Monaco editor + Skill Forge — the framework writes its own plugins |
@@ -75,11 +75,11 @@ No other open-source voice assistant does this. Say *"Hey CODEC, click the Submi
 
 ### 2. CODEC Dictate — Hold, Speak, Paste
 
-Hold Cmd+R. Say what you mean. Release. Text appears wherever the cursor is. Press **L** for live typing mode — words appear at the cursor in real-time as you speak.
+Hold Cmd+R. Say what you mean. Release. Text appears wherever the cursor is. Tap **F5** for hands-free live typing — words appear at the cursor in real-time as you speak, continuously, with a visible `LIVE · press F5 to stop` pill top-center. Tap F5 again to stop.
 
 If CODEC detects a message draft, it refines through the LLM — grammar fixed, tone polished, meaning preserved. Works in every app on macOS. A free, open-source SuperWhisper replacement that runs entirely local.
 
-Native floating overlays: orange-bordered recording panel with pulsing red dot, blue processing indicator, green live-typing display with real-time transcript. Built-in hallucination filter blocks Whisper noise artifacts. atexit + SIGTERM cleanup prevents orphaned subprocesses.
+Native floating overlays: orange-bordered recording panel with pulsing red dot, blue processing indicator, red live-typing pill. Pipelined producer/consumer recording ensures zero audio is dropped between chunks. Paste via CGEventPost keeps focus in your clicked field (no URL-bar hijack). English-pinned Whisper prevents auto-translation. Built-in hallucination filter blocks Whisper noise artifacts. atexit + SIGTERM cleanup prevents orphaned subprocesses.
 
 ### 3. CODEC Instant — One Right-Click
 
@@ -229,7 +229,7 @@ Three smart agents ship built-in: Daily Briefing, Restaurant Decider (location-a
 | Multi-agent workflows | 12 crews, local LLM | No | Limited |
 | Right-click AI services | 8 system-wide services | No | No |
 | Writes its own plugins | Skill Forge | No | No |
-| Live typing at cursor | Dictate L key | No | No |
+| Hands-free live typing at cursor | Dictate F5 | No | No |
 | Process watchdog | Auto-kills stuck processes | No | No |
 | Full audit trail | 16 event categories | No | No |
 | iMessage + Telegram | Daily Briefing, smart agents, voice notes | No | No |
@@ -241,7 +241,7 @@ Three smart agents ship built-in: Daily Briefing, Restaurant Decider (location-a
 |---|---|
 | Pipecat | **Voice** — own WebSocket pipeline |
 | CrewAI + LangChain | **Chat** — 795-line agent framework, zero dependencies |
-| SuperWhisper | **Dictate** — free, open source, live typing |
+| SuperWhisper / Apple Dictation | **Dictate** — free, open source, F5 hands-free live typing, 100% local |
 | Cursor / Windsurf | **Vibe** — Monaco + AI + Skill Forge |
 | Google Assistant / Siri | **Core** — actually controls the computer |
 | Grammarly | **Instant** — right-click services via local LLM |
@@ -303,7 +303,7 @@ Configure in `~/.codec/config.json`:
 | F18 (double-tap) | PTT Lock — hands-free recording |
 | F16 | Text input dialog |
 | Cmd+R (hold) | Dictate — hold, speak, release to paste |
-| L (during dictate) | Live typing — words appear at cursor in real-time |
+| F5 | Hands-free live typing — words stream to cursor in real-time; F5 again to stop |
 | `* *` | Screenshot + AI analysis |
 | `+ +` | Document mode |
 | Camera icon | Live webcam PIP — drag around, snapshot anytime |
@@ -435,7 +435,7 @@ python3 -c "from codec_config import *; print('Config OK')"
 - **Check logs:** `pm2 logs codec-dictate --lines 20 --nostream`
 - **Cmd+R not recording?** Ensure codec-dictate is running: `pm2 status codec-dictate`. If errored, restart: `pm2 restart codec-dictate`
 - **Text not pasting?** CODEC uses `pyautogui.hotkey('command', 'v')` for reliable cross-app paste. If using osascript keystroke, it can drop the Cmd modifier — this was fixed in v2.0
-- **Live typing (L key) not working?** L only activates during an active Cmd+R session or when pressed standalone. Check that pyperclip and pyautogui are installed: `pip3 install pyperclip pyautogui`
+- **Hands-free live typing (F5) not working?** Tap F5 (no modifier) to toggle. A red `LIVE · press F5 to stop` pill appears top-center. If F5 also triggers macOS Dictation, disable it: System Settings → Keyboard → Dictation → turn off the shortcut. Check that pyperclip and pyautogui are installed: `pip3 install pyperclip pyautogui`
 - **Overlay not showing?** Requires tkinter. On Python 3.13: `brew install python-tk@3.13`. The overlay is a separate subprocess — if it crashes, dictation still works (just no visual feedback)
 - **Sox "no default input device"?** Check: `sox -d -r 16000 -c 1 -t wav test.wav trim 0 2` — if this fails, set your mic in System Settings → Sound → Input
 </details>
@@ -522,7 +522,7 @@ python3 -c "from codec_config import *; print('Config OK')"
 codec.py              — Entry point (hotkeys, dispatch, wake word, recording)
 codec_identity.py     — Shared CODEC identity, voice prompt, chat prompt
 codec_config.py       — Configuration + transcript cleaning + 46 dangerous patterns
-codec_dictate.py      — Dictation hotkeys (Cmd+R, L for live typing)
+codec_dictate.py      — Dictation hotkeys (Cmd+R hold-to-speak, F5 hands-free live typing)
 codec_watchdog.py     — Process monitor (kills stuck/zombie processes)
 codec_dispatch.py     — Skill matching and dispatch (with fallback)
 codec_agent.py        — LLM session builder

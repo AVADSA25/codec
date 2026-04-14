@@ -1,5 +1,23 @@
 # Changelog
 
+## v2.1.1 (2026-04-14)
+### Added
+- **F5 hands-free live typing** — tap F5 (no modifier) and speak; words stream to the cursor in real-time in any text field. Tap F5 again to stop. Visible red `LIVE · press F5 to stop` pill top-center with pulsing dot
+- **Pipelined live recording** — producer thread records 2s sox chunks back-to-back into a queue; consumer thread transcribes in parallel. Zero audio dropped between chunks
+- **Agent job notifications** — Deep Research, Daily Briefing and other agent completions now surface in the Reports section with Google Docs links. Running/success/error states tracked live
+- **TTS echo filter** — voice transcriptions now strip CODEC's own TTS output when the mic re-captures it, preventing skill mis-triggers
+
+### Fixed
+- **Dictate typing into Chrome URL bar** — live mode was triggered by ⌘+L, which Chrome/Safari/Firefox intercept as "focus address bar". Trigger moved to F5. Paste now via `pyautogui.hotkey` (CGEventPost) instead of `osascript "System Events" keystroke` — no app activation, focus stays in the user's clicked field
+- **Whisper auto-translation** — live dictation occasionally translated English speech to other languages. Now pinned to `language=en, task=transcribe`
+- **Live pill wouldn't close on stop** — tkinter mainloop ignored SIGTERM; added SIGKILL fallback so F5-to-stop reliably dismisses the overlay
+- **Mouse control UI-TARS integration** — was returning `(-1,-1)` due to mismatched prompt format. Switched to native `<|box_start|>(x,y)<|box_end|>` parsing, bumped screenshot downscale to 1920px for retina accuracy
+- **F18 voice recording sounds** — Glass.aiff (press) + Pop.aiff (release) for clear audio feedback
+
+### Changed
+- Dictate startup banner and classic-mode hint updated to reference F5 (was L)
+- Removed large text-preview overlay during live dictation — Gemini-style direct paste at cursor is cleaner and faster
+
 ## v2.1.0 (2026-04-11)
 ### Added
 - **CODEC External** — new 8th product. First time CODEC data flows beyond the local Mac
