@@ -104,7 +104,10 @@ def load_skill_tools():
             continue
 
         # Sanitize tool name to MCP spec (A-Z a-z 0-9 _ - .)
+        # `registry_key` preserves the ORIGINAL SKILL_NAME for registry.load()
+        # lookups; `skill_name` becomes the sanitized MCP-facing name.
         import re as _re
+        registry_key = skill_name  # unsanitized — registry._paths is keyed by this
         safe_name = _re.sub(r'[^A-Za-z0-9_.-]', '_', skill_name).strip('_')
         if safe_name != skill_name:
             print(f"[MCP] Sanitize tool name '{skill_name}' -> '{safe_name}'")
@@ -127,25 +130,26 @@ def load_skill_tools():
         skill_desc = meta.get("SKILL_DESCRIPTION", f"CODEC skill: {name}")
 
         # Create a closure with lazy loading
-        def make_tool(registry, sname, sdesc):
+        def make_tool(registry, sname, rkey, sdesc):
             def tool_fn(task: str, context: str = "") -> str:
                 """Execute this CODEC skill with the given task"""
                 err = _validate_mcp_input(sname, task, context)
                 if err is not None:
                     return err
                 try:
-                    mod = registry.load(sname)
+                    # rkey = original SKILL_NAME (registry lookup key);
+                    # sname = sanitized MCP tool name (for logging/errors)
+                    mod = registry.load(rkey)
                     if mod is None or not hasattr(mod, "run"):
                         return f"Skill '{sname}' could not be loaded."
                     return mod.run(task, context)
                 except Exception as e:
-                    _audit(sname, task, f"ERROR: {type(e).__name__}")
                     return f"Skill '{sname}' failed: {type(e).__name__}: {str(e)[:200]}"
             tool_fn.__name__ = sname
             tool_fn.__doc__ = sdesc
             return tool_fn
 
-        mcp.tool()(make_tool(_mcp_registry, skill_name, skill_desc))
+        mcp.tool()(make_tool(_mcp_registry, skill_name, registry_key, skill_desc))
 
 
 # Also add memory search as a tool

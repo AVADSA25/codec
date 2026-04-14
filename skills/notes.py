@@ -9,7 +9,16 @@ import subprocess
 
 def run(task, app="", ctx=""):
     low = task.lower()
-    if any(k in low for k in ["my notes","show notes","read notes","what did i note","list notes"]):
+    # Read intent: any read verb + "notes" in the phrase. Guard against write verbs.
+    WRITE_VERBS = ("take a note", "save a note", "new note", "add a note",
+                   "make a note", "write a note", "note that", "remember that",
+                   "jot down", "note this", "make note", "with content",
+                   "saying", "that says")
+    READ_VERBS = ("list", "show", "read", "my notes", "open notes", "view notes",
+                  "what notes", "recent notes", "see notes", "what did i note")
+    is_write = any(w in low for w in WRITE_VERBS)
+    is_read = "notes" in low and any(v in low for v in READ_VERBS)
+    if is_read and not is_write:
         subprocess.run(["open", "-a", "Notes"], timeout=5)
         return "Opening Apple Notes."
     # Extract content — prefer explicit markers, fall back to prefix stripping
