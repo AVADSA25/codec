@@ -351,6 +351,18 @@ Then in Claude Desktop: *"Use CODEC to check my calendar for tomorrow."*
 
 Skills opt-in to MCP exposure with `SKILL_MCP_EXPOSE = True`. Input validation enforces 5KB task / 10KB context limits with type checking on every call.
 
+### What this unlocks (that Claude alone can't do)
+
+Claude Desktop/Code/Cursor gain — through this one MCP bridge — everything CODEC already owns on *your* machine:
+
+- **Your Mac, your apps** — native macOS control: mouse/keyboard via vision model, screenshot text extraction, app switching, clipboard, brightness/volume, Philips Hue, Spotify, Apple Notes, Reminders, Clock timers, music. No browser sandbox.
+- **Your memory** — FTS5-searchable history of every CODEC conversation. Claude can recall what *you* said weeks ago, not just this chat.
+- **Your skills, not Anthropic's** — 50+ pluggable CODEC skills instantly callable as tools. Write one locally in Python, it shows up in Claude without a deploy.
+- **Your LLM, your choice** — same skill catalog works whether the brain is local Qwen (offline, private) or cloud Claude. The toolkit outlives the model.
+- **Your voice pipeline** — Whisper STT, Kokoro TTS, wake-word — all reachable from the chat loop if you want voice output of a Claude answer.
+
+One install. Claude stops being a chat window and becomes a driver for the machine it's running on.
+
 ---
 
 ## Debugging & Development
