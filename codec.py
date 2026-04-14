@@ -266,6 +266,8 @@ def _dispatch_inner(task):
     # ── Build system prompt with memory ─────────────────────────────────
     mem = get_memory(5)
     mem_ctx = ""
+    boot_ctx = ""
+    facts_ctx = ""
     try:
         from codec_memory import CodecMemory
         cm = CodecMemory()
@@ -283,7 +285,29 @@ def _dispatch_inner(task):
             mem_ctx += "\n\n" + "\n".join(lines)
     except Exception as e:
         log.warning("Memory context retrieval failed: %s", e)
+
+    # ── Memory upgrade: L0/L1 identity + active temporal facts ──────────
+    try:
+        from codec_memory_upgrade import load_identity, query_valid_facts, compress_rule_based
+        identity = load_identity()
+        if identity:
+            boot_ctx = f"\n\n[IDENTITY — BOOT PAYLOAD]\n{identity}\n[END IDENTITY]"
+        facts = query_valid_facts(limit=20)
+        if facts:
+            lines = ["[ACTIVE FACTS]"]
+            for f in facts:
+                lines.append(f"  {f['key']} = {f['value']}")
+            lines.append("[END FACTS]")
+            facts_ctx = "\n\n" + "\n".join(lines)
+        # Compress the recalled memory block to save tokens (identity+facts stay verbatim)
+        if mem_ctx:
+            mem_ctx = compress_rule_based(mem_ctx)
+    except Exception as e:
+        log.warning("Memory upgrade injection failed: %s", e)
+
     sys_p = CODEC_VOICE_PROMPT
+    if boot_ctx: sys_p += boot_ctx
+    if facts_ctx: sys_p += facts_ctx
     if mem: sys_p += "\n\n" + mem
     if mem_ctx: sys_p += mem_ctx
     safe_sys = sys_p.replace('\n', ' ')

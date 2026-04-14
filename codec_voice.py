@@ -147,7 +147,23 @@ def _build_system_prompt() -> str:
     _aname = ASSISTANT_NAME or "CODEC"
     _uname = USER_NAME
     _user_ref = _uname if _uname else "the user"
-    return f"""You are {_aname} — CODEC Voice, a JARVIS-class local AI running on a Mac Studio M1 Ultra.
+
+    # Memory upgrade: boot identity + active temporal facts
+    _boot = ""
+    try:
+        from codec_memory_upgrade import load_identity, query_valid_facts
+        ident = load_identity()
+        if ident:
+            _boot += f"\n\n[IDENTITY]\n{ident}\n[/IDENTITY]"
+        facts = query_valid_facts(limit=20)
+        if facts:
+            _boot += "\n\n[ACTIVE FACTS]\n" + "\n".join(
+                f"  {f['key']} = {f['value']}" for f in facts
+            ) + "\n[/FACTS]"
+    except Exception:
+        pass
+
+    return f"""You are {_aname} — CODEC Voice, a JARVIS-class local AI running on a Mac Studio M1 Ultra.{_boot}
 {f'The user is {_uname}. ' if _uname else ''}Fully local. No cloud. No external logs.
 
 CURRENT DATE AND TIME: {date_str}, {time_str} (Madrid / Europe time)
