@@ -100,7 +100,7 @@ def load_skill_tools():
 
         # Hard blocklist — skills that arbitrary-execute code or could damage system
         if skill_name in MCP_BLOCKED_TOOLS or name in MCP_BLOCKED_TOOLS:
-            print(f"[MCP] Block {name}: in mcp_blocked_tools")
+            print(f"[MCP] Block {name}: in mcp_blocked_tools", file=sys.stderr)
             continue
 
         # Sanitize tool name to MCP spec (A-Z a-z 0-9 _ - .)
@@ -110,7 +110,7 @@ def load_skill_tools():
         registry_key = skill_name  # unsanitized — registry._paths is keyed by this
         safe_name = _re.sub(r'[^A-Za-z0-9_.-]', '_', skill_name).strip('_')
         if safe_name != skill_name:
-            print(f"[MCP] Sanitize tool name '{skill_name}' -> '{safe_name}'")
+            print(f"[MCP] Sanitize tool name '{skill_name}' -> '{safe_name}'", file=sys.stderr)
             skill_name = safe_name
 
         # Determine whether this skill is allowed via MCP
@@ -124,7 +124,7 @@ def load_skill_tools():
             elif skill_name in MCP_ALLOWED_TOOLS or name in MCP_ALLOWED_TOOLS:
                 pass  # listed in config allowlist
             else:
-                print(f"[MCP] Skip {name}: not in mcp_allowed_tools (opt-in mode)")
+                print(f"[MCP] Skip {name}: not in mcp_allowed_tools (opt-in mode)", file=sys.stderr)
                 continue
 
         skill_desc = meta.get("SKILL_DESCRIPTION", f"CODEC skill: {name}")
@@ -181,5 +181,5 @@ def get_recent_memory(days: int = 7) -> str:
 load_skill_tools()
 
 if __name__ == "__main__":
-    print(f"[MCP] CODEC MCP Server starting with {len(mcp._tools)} tools")
+    print(f"[MCP] CODEC MCP Server starting with {len(mcp._tools)} tools", file=sys.stderr)
     mcp.run(transport="stdio")
