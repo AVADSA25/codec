@@ -27,12 +27,30 @@ def run(task, app="", ctx=""):
     else:
         display = f"{seconds} seconds"
 
-    # Use Apple Clock app to set the timer
+    # Open the macOS Clock app and switch to the Timers tab so the user
+    # visually sees their timer running. The actual countdown is still
+    # driven by the local threading.Timer below (works even if Clock app
+    # launch fails). Clock app on macOS Ventura+ lives at /System/Applications/Clock.app
     try:
-        # Open Clock app and use Shortcuts to set timer via Siri
-        subprocess.Popen(["shortcuts", "run", "Set Timer",
-                          "-i", str(seconds)],
+        subprocess.Popen(["open", "-a", "Clock"],
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # Brief delay so Clock finishes launching before we click the Timers tab
+        import threading as _th
+        def _focus_timers_tab():
+            import time as _t; _t.sleep(0.8)
+            # AppleScript: click the "Timers" toolbar item. If it fails silently
+            # (tab already active, Clock not yet ready), we don't surface it.
+            subprocess.run(["osascript", "-e", '''
+                tell application "Clock" to activate
+                tell application "System Events"
+                    tell process "Clock"
+                        try
+                            click radio button "Timers" of tab group 1 of window 1
+                        end try
+                    end tell
+                end tell
+            '''], capture_output=True, timeout=4)
+        _th.Thread(target=_focus_timers_tab, daemon=True).start()
     except Exception:
         pass
 

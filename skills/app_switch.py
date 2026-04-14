@@ -1,9 +1,9 @@
 """CODEC Skill: App Switcher"""
 SKILL_NAME = "app_switch"
-SKILL_DESCRIPTION = "Switch to any running app by name"
+SKILL_DESCRIPTION = "Switch to any running app by name. If a URL is present, open it in the named browser."
 SKILL_TRIGGERS = ["switch to", "go to app", "focus on", "bring up", "activate app",
                    "open app", "open the app", "switch up to", "switch up"]
-import subprocess
+import subprocess, re
 
 # Common app name aliases
 ALIASES = {
@@ -21,6 +21,32 @@ ALIASES = {
 
 def run(task, app="", ctx=""):
     low = task.lower()
+
+    # ── URL handling: if an http(s):// URL or bare domain is present, open it
+    #   in the requested browser (defaults to Safari). Keeps app focus honored.
+    url_match = re.search(r'https?://\S+', task)
+    if not url_match:
+        # Bare-domain fallback — "time.com", "github.com/foo", etc.
+        dom_match = re.search(r'\b([a-zA-Z0-9-]+\.(?:com|org|net|io|dev|ai|co|app|us|uk|fr|es|de)(?:/\S*)?)\b', task)
+        if dom_match:
+            url_match = dom_match
+    if url_match:
+        url = url_match.group(0)
+        if not url.startswith("http"):
+            url = "https://" + url
+        # Pick browser: default Safari unless Chrome / Firefox / Brave / Arc named
+        browser = "Safari"
+        for name, full in [("chrome", "Google Chrome"), ("firefox", "Firefox"),
+                           ("brave", "Brave Browser"), ("arc", "Arc")]:
+            if name in low:
+                browser = full
+                break
+        try:
+            subprocess.run(["open", "-a", browser, url], capture_output=True, timeout=5)
+            return f"Opened {url} in {browser}."
+        except Exception:
+            return f"Couldn't open {url} in {browser}."
+
     # Extract app name
     target = low
     for remove in ["switch to", "go to", "focus on", "bring up", "activate",
