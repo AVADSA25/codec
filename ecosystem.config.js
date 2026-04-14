@@ -35,6 +35,22 @@ module.exports = {
       autorestart: true,
     },
 
+    // ── CODEC MCP HTTP bridge (remote Claude access via Cloudflare) ──
+    {
+      name: "codec-mcp-http",
+      script: "/usr/local/bin/python3.13",
+      args: "codec_mcp_http.py",
+      cwd: __dirname,
+      env: {
+        CODEC_MCP_HTTP_HOST: "127.0.0.1",
+        CODEC_MCP_HTTP_PORT: "8091",
+      },
+      max_memory_restart: "512M",
+      restart_delay: 3000,
+      max_restarts: 10,
+      autorestart: true,
+    },
+
     // ── Dictation & hotkey listener (keyboard shortcuts, wake word) ──
     // NOTE: codec-heartbeat and codec-scheduler are unified into codec-dashboard
     {
