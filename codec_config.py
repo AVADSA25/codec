@@ -95,6 +95,11 @@ AUTH_PIN_HASH     = cfg.get("auth_pin_hash", "")  # SHA-256 of the PIN
 MCP_DEFAULT_ALLOW = cfg.get("mcp_default_allow", False)
 # Explicit allowlist of skill names exposed via MCP (used when mcp_default_allow is false)
 MCP_ALLOWED_TOOLS = cfg.get("mcp_allowed_tools", [])
+# Explicit blocklist — skills here are NEVER exposed via MCP, even in opt-out mode.
+# Use for skills that arbitrary-execute code or could cause system damage.
+MCP_BLOCKED_TOOLS = cfg.get("mcp_blocked_tools", [
+    "python_exec", "terminal", "process_manager", "pm2_control"
+])
 
 # Safety
 DANGEROUS_PATTERNS = [

@@ -55,7 +55,7 @@ _REPO_DIR = os.path.dirname(os.path.abspath(__file__))
 if _REPO_DIR not in sys.path:
     sys.path.insert(0, _REPO_DIR)
 
-from codec_config import MCP_DEFAULT_ALLOW, MCP_ALLOWED_TOOLS, SKILLS_DIR
+from codec_config import MCP_DEFAULT_ALLOW, MCP_ALLOWED_TOOLS, MCP_BLOCKED_TOOLS, SKILLS_DIR
 if SKILLS_DIR not in sys.path:
     sys.path.insert(0, SKILLS_DIR)
 from codec_skill_registry import SkillRegistry
@@ -97,6 +97,18 @@ def load_skill_tools():
             continue
 
         skill_name = meta.get("SKILL_NAME", name)
+
+        # Hard blocklist — skills that arbitrary-execute code or could damage system
+        if skill_name in MCP_BLOCKED_TOOLS or name in MCP_BLOCKED_TOOLS:
+            print(f"[MCP] Block {name}: in mcp_blocked_tools")
+            continue
+
+        # Sanitize tool name to MCP spec (A-Z a-z 0-9 _ - .)
+        import re as _re
+        safe_name = _re.sub(r'[^A-Za-z0-9_.-]', '_', skill_name).strip('_')
+        if safe_name != skill_name:
+            print(f"[MCP] Sanitize tool name '{skill_name}' -> '{safe_name}'")
+            skill_name = safe_name
 
         # Determine whether this skill is allowed via MCP
         if MCP_DEFAULT_ALLOW:
