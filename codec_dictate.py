@@ -96,7 +96,7 @@ c.pack()
 c.create_rectangle(2, 2, w-2, h-2, outline='#E8711A', width=2)
 dot = c.create_oval(24, 30, 40, 46, fill='#ff3b3b', outline='')
 c.create_text(w//2+10, 28, text='Listening  \\u2014  release \\u2318 to transcribe', fill='#ffffff', font=('SF Pro Display', 16, 'bold'))
-c.create_text(w//2+10, 58, text='Press L for live typing at cursor', fill='#777777', font=('SF Pro Display', 12))
+c.create_text(w//2+10, 58, text='Press F5 for hands-free live typing', fill='#777777', font=('SF Pro Display', 12))
 def pulse():
     cur = c.itemcget(dot,'fill')
     c.itemconfig(dot, fill='#ff3b3b' if cur=='#440000' else '#440000')
@@ -158,101 +158,212 @@ root.mainloop()
 WHISPER_SERVER = "http://localhost:8084/v1/audio/transcriptions"
 SOX_PATH = "/opt/homebrew/bin/sox"
 
+def _live_overlay_script_appkit_DISABLED():
+    """AppKit NSPanel (non-activating) — kept but disabled because on some
+    macOS builds it renders nothing visible when launched from a pm2-managed
+    background process. Tkinter fallback below is used instead."""
+    return """
+import os, sys, objc
+from AppKit import (NSApplication, NSPanel, NSColor, NSTextField, NSFont,
+                    NSView, NSMakeRect, NSScreen, NSBezierPath,
+                    NSBorderlessWindowMask, NSNonactivatingPanelMask,
+                    NSUtilityWindowMask, NSObject)
+from Foundation import NSTimer
+
+app = NSApplication.sharedApplication()
+app.setActivationPolicy_(2)
+
+screen = NSScreen.mainScreen()
+sf = screen.frame()
+w, h = 210, 34
+x = sf.size.width - w - 20
+y = sf.size.height - h - 40
+
+panel = NSPanel.alloc().initWithContentRect_styleMask_backing_defer_(
+    NSMakeRect(x, y, w, h),
+    NSBorderlessWindowMask | NSNonactivatingPanelMask | NSUtilityWindowMask,
+    2, False
+)
+panel.setLevel_(25)
+panel.setOpaque_(False)
+panel.setHasShadow_(True)
+panel.setAlphaValue_(0.95)
+panel.setBackgroundColor_(NSColor.clearColor())
+panel.setIgnoresMouseEvents_(True)
+panel.setCollectionBehavior_(1 << 0 | 1 << 4)
+
+class OverlayView(NSView):
+    def drawRect_(self, rect):
+        bg = NSColor.colorWithCalibratedRed_green_blue_alpha_(0.04, 0.04, 0.04, 0.95)
+        bg.setFill()
+        NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(rect, 8, 8).fill()
+        border = NSColor.colorWithCalibratedRed_green_blue_alpha_(1.0, 0.23, 0.23, 0.9)
+        border.setStroke()
+        inset = NSMakeRect(0.5, 0.5, rect.size.width - 1, rect.size.height - 1)
+        bp = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(inset, 8, 8)
+        bp.setLineWidth_(1.0)
+        bp.stroke()
+
+view = OverlayView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
+panel.setContentView_(view)
+
+# Pulsing red dot (custom view)
+class DotView(NSView):
+    _bright = True
+    def drawRect_(self, rect):
+        if self._bright:
+            c = NSColor.colorWithCalibratedRed_green_blue_alpha_(1.0, 0.23, 0.23, 1.0)
+        else:
+            c = NSColor.colorWithCalibratedRed_green_blue_alpha_(0.4, 0.05, 0.05, 1.0)
+        c.setFill()
+        NSBezierPath.bezierPathWithOvalInRect_(rect).fill()
+
+dot = DotView.alloc().initWithFrame_(NSMakeRect(12, 11, 12, 12))
+view.addSubview_(dot)
+
+label = NSTextField.alloc().initWithFrame_(NSMakeRect(30, 8, w - 36, 20))
+label.setStringValue_('LIVE  ·  press L to stop')
+label.setFont_(NSFont.boldSystemFontOfSize_(12))
+label.setTextColor_(NSColor.colorWithCalibratedRed_green_blue_alpha_(1.0, 0.35, 0.35, 1.0))
+label.setBackgroundColor_(NSColor.clearColor())
+label.setBezeled_(False)
+label.setEditable_(False)
+label.setSelectable_(False)
+view.addSubview_(label)
+
+class PulseDelegate(NSObject):
+    @objc.python_method
+    def setup(self, d):
+        self._d = d
+    def tick_(self, timer):
+        self._d._bright = not self._d._bright
+        self._d.setNeedsDisplay_(True)
+
+pd = PulseDelegate.alloc().init()
+pd.setup(dot)
+NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
+    0.5, pd, b'tick:', None, True
+)
+
+panel.orderFrontRegardless()
+app.run()
+"""
+
 def _live_overlay_script():
-    return f"""
-import tkinter as tk, os, time
-TFILE = {repr(live_text_file)}
+    """Visible tkinter pill: 'LIVE · press F5 to stop' top-center.
+    Focus is no longer a problem because live mode is now triggered by F5
+    (not ⌘+L, which Chrome intercepts as 'focus URL bar')."""
+    return """
+import tkinter as tk
 root = tk.Tk()
 root.overrideredirect(True)
 root.attributes('-topmost', True)
-root.attributes('-alpha', 0.93)
+root.attributes('-alpha', 0.95)
 root.configure(bg='#0a0a0a')
 sw = root.winfo_screenwidth()
-sh = root.winfo_screenheight()
-w, h = 620, 110
+w, h = 260, 40
 x = (sw - w) // 2
-y = sh - 140
-root.geometry(f'{{w}}x{{h}}+{{x}}+{{y}}')
+y = 14
+root.geometry(f'{w}x{h}+{x}+{y}')
 c = tk.Canvas(root, bg='#0a0a0a', highlightthickness=0, width=w, height=h)
 c.pack()
-c.create_rectangle(1, 1, w-1, h-1, outline='#00ff88', width=1)
-dot = c.create_oval(14, 12, 27, 25, fill='#ff3b3b', outline='')
-c.create_text(20, 18, text='\\U0001f3a4  Live Typing  \\u2014  press L to stop', anchor='w', fill='#00ff88', font=('Helvetica', 10), tags='hdr')
-txt = c.create_text(w//2, 62, text='Listening...', fill='#eeeeee', font=('Menlo', 13), width=w-40, tags='live')
-def poll():
-    try:
-        if os.path.exists(TFILE):
-            with open(TFILE) as f: content = f.read().strip()
-            if content:
-                c.itemconfig('live', text=content[-200:])
-    except: pass
-    root.after(300, poll)
+c.create_rectangle(1, 1, w-1, h-1, outline='#ff3b3b', width=2, fill='#0a0a0a')
+dot = c.create_oval(14, 13, 28, 27, fill='#ff3b3b', outline='')
+c.create_text(w//2 + 10, h//2, text='LIVE  \u00b7  press F5 to stop',
+              fill='#ff3b3b', font=('SF Pro Display', 13, 'bold'))
 def pulse():
     cur = c.itemcget(dot, 'fill')
-    c.itemconfig(dot, fill='#ff3b3b' if cur == '#550000' else '#550000')
-    root.after(400, pulse)
-poll()
+    c.itemconfig(dot, fill='#ff3b3b' if cur == '#3a0000' else '#3a0000')
+    root.after(500, pulse)
 pulse()
 root.mainloop()
 """
 
 def _live_record_loop():
-    """Record in 3-second chunks, send to Whisper server, accumulate text."""
-    import requests
-    # Clear text file
-    with open(live_text_file, "w") as f:
-        f.write("")
+    """Pipelined recording + transcription so no audio is dropped between chunks.
+
+    Producer thread: continuously records 2s sox chunks back-to-back into a queue.
+    Consumer (this thread): pulls chunks, sends to Whisper, pastes at cursor.
+
+    Gemini-style: each chunk is pasted at the current cursor position. No reflow.
+    """
+    import requests, queue
+    chunk_sec = 2
+    q = queue.Queue(maxsize=8)
+
+    def _producer():
+        while not live_stop_event.is_set():
+            tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+            tmp.close()
+            try:
+                subprocess.run(
+                    [SOX_PATH, "-t", "coreaudio", "default", "-r", "16000", "-c", "1",
+                     "-b", "16", "-e", "signed-integer", tmp.name, "trim", "0", str(chunk_sec)],
+                    timeout=chunk_sec + 3, capture_output=True
+                )
+                if live_stop_event.is_set():
+                    try: os.unlink(tmp.name)
+                    except: pass
+                    break
+                if os.path.exists(tmp.name) and os.path.getsize(tmp.name) >= 1000:
+                    try:
+                        q.put(tmp.name, timeout=1)
+                    except queue.Full:
+                        try: os.unlink(tmp.name)
+                        except: pass
+                else:
+                    try: os.unlink(tmp.name)
+                    except: pass
+            except Exception as e:
+                print(f"[DICTATE] Producer error: {e}")
+                try: os.unlink(tmp.name)
+                except: pass
+
+    prod = threading.Thread(target=_producer, daemon=True)
+    prod.start()
+
     full_text = ""
-    chunk_sec = 3
-    while not live_stop_event.is_set():
-        tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-        tmp.close()
+    while not live_stop_event.is_set() or not q.empty():
         try:
-            subprocess.run(
-                [SOX_PATH, "-t", "coreaudio", "default", "-r", "16000", "-c", "1",
-                 "-b", "16", "-e", "signed-integer", tmp.name, "trim", "0", str(chunk_sec)],
-                timeout=chunk_sec + 3, capture_output=True
-            )
-            if live_stop_event.is_set():
-                break
-            if not os.path.exists(tmp.name) or os.path.getsize(tmp.name) < 1000:
-                continue
-            # Check energy — skip silence
+            path = q.get(timeout=0.5)
+        except Exception:
+            continue
+        try:
+            # Energy check
             try:
                 import wave as _wave, numpy as _np
-                wf = _wave.open(tmp.name, 'rb')
+                wf = _wave.open(path, 'rb')
                 data = _np.frombuffer(wf.readframes(wf.getnframes()), dtype=_np.int16)
                 wf.close()
-                energy = _np.abs(data).mean()
-                if energy < 200:
+                if _np.abs(data).mean() < 150:
                     continue
             except:
                 pass
-            # Send to Whisper server
-            with open(tmp.name, "rb") as f:
+            with open(path, "rb") as f:
                 r = requests.post(WHISPER_SERVER,
                     files={"file": ("chunk.wav", f, "audio/wav")},
-                    data={"model": "mlx-community/whisper-large-v3-turbo"},
+                    data={"model": "mlx-community/whisper-large-v3-turbo",
+                          "language": "en", "task": "transcribe"},
                     timeout=10)
             if r.status_code == 200:
                 chunk_text = r.json().get("text", "").strip()
-                # Filter Whisper hallucinations
                 if chunk_text and not is_hallucination(chunk_text):
                     full_text += chunk_text + " "
-                    with open(live_text_file, "w") as f:
-                        f.write(full_text.strip())
-                    # Type chunk live at cursor position
-                    pyperclip.copy(chunk_text + " ")
-                    time.sleep(0.15)
-                    subprocess.run(["osascript", "-e",
-                        'tell application "System Events" to keystroke "v" using command down'],
-                        capture_output=True, timeout=5)
-                    print(f"[DICTATE] Live: {chunk_text}")
+                    paste_text = chunk_text + " "
+                    pyperclip.copy(paste_text)
+                    time.sleep(0.05)
+                    # Use pyautogui (CGEventPost) instead of osascript — does NOT
+                    # activate System Events / shift focus. Paste lands in the
+                    # field the user has focused, not the URL bar.
+                    pyautogui.hotkey('command', 'v')
+                    print(f"[DICTATE] Live: '{chunk_text}'")
         except Exception as e:
             print(f"[DICTATE] Live chunk error: {e}")
         finally:
-            try: os.unlink(tmp.name)
+            try: os.unlink(path)
             except: pass
+
+    prod.join(timeout=3)
     return full_text.strip()
 
 def start_live_dictation():
@@ -266,11 +377,13 @@ def start_live_dictation():
     threading.Thread(target=lambda: subprocess.run(
         ['afplay', '/System/Library/Sounds/Blow.aiff'],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL), daemon=True).start()
-    # Show overlay
+    # Show overlay — log stderr to /tmp so we can diagnose if it fails to render
+    _ov_err = open("/tmp/codec_dictate_overlay.log", "w")
     live_overlay = subprocess.Popen(
         [sys.executable, "-c", _live_overlay_script()],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        stdout=subprocess.DEVNULL, stderr=_ov_err
     )
+    print(f"[DICTATE] Overlay subprocess pid={live_overlay.pid}")
     # Start recording loop in thread
     live_thread = threading.Thread(target=_live_record_loop, daemon=True)
     live_thread.start()
@@ -281,33 +394,26 @@ def stop_live_dictation():
         return
     live_active = False
     live_stop_event.set()
-    print("[DICTATE] \u2705 Live dictation stopped — pasting text")
+    print("[DICTATE] \u2705 Live dictation stopped")
     # Sound
     threading.Thread(target=lambda: subprocess.run(
         ['afplay', '/System/Library/Sounds/Funk.aiff'],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL), daemon=True).start()
-    # Kill overlay
+    # Kill overlay — tkinter mainloop sometimes ignores SIGTERM, so SIGKILL it
     if live_overlay:
         try: live_overlay.terminate()
         except: pass
+        try: live_overlay.wait(timeout=0.5)
+        except Exception:
+            try: live_overlay.kill()
+            except: pass
         live_overlay = None
     # Wait for thread
     if live_thread:
         live_thread.join(timeout=5)
         live_thread = None
-    # Text was already typed live at cursor — just log
-    text = ""
-    try:
-        with open(live_text_file) as f:
-            text = f.read().strip()
-    except: pass
-    if text:
-        print(f"[DICTATE] \u2705 Done: {text[:80]}")
-    else:
-        print("[DICTATE] No speech detected in live mode")
-    # Cleanup
-    try: os.unlink(live_text_file)
-    except: pass
+    # Text was already typed live at cursor — nothing to paste
+    print("[DICTATE] \u2705 Live dictation complete")
 
 # ── AUDIO RECORDING ───────────────────────────────────────────────────────────
 def record_audio():
@@ -440,11 +546,13 @@ recording_path = None
 def on_press(key):
     global cmd_held, recording_proc, recording_path
 
-    # ── L key: toggle live dictation (while CMD held → switch; while active → stop) ──
-    if hasattr(key, 'char') and key.char == 'l':
+    # ── F5: toggle live dictation. (Was ⌘+L, but Chrome intercepts ⌘+L to
+    #   focus the URL bar — so typing landed there instead of the chat.) ──
+    if key == keyboard.Key.f5:
         if live_active:
             threading.Thread(target=stop_live_dictation, daemon=True).start()
             return
+        # F5 works standalone OR while CMD held
         if cmd_held:
             # Stop current recording, switch to live mode
             if recording_proc:
@@ -456,8 +564,8 @@ def on_press(key):
                 recording_path = None
             hide_overlay()
             cmd_held = False
-            threading.Thread(target=start_live_dictation, daemon=True).start()
-            return
+        threading.Thread(target=start_live_dictation, daemon=True).start()
+        return
 
     # ── Hold RIGHT CMD only → classic dictation ──
     if key == keyboard.Key.cmd_r:
@@ -503,9 +611,9 @@ def main():
 \u2551     Hold-to-Speak + Live Typing                 \u2551
 \u2560\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2563
 \u2551  Hold \u2318R (right CMD) \u2192 speak \u2192 release       \u2551
-\u2551  L  \u2192 Live typing at cursor (while \u2318R or L)  \u2551
+\u2551  F5 \u2192 Hands-free live typing at cursor       \u2551
 \u2551    Words type live wherever cursor is          \u2551
-\u2551    Press L again to stop                      \u2551
+\u2551    Press F5 again to stop                     \u2551
 \u2551  Text types into active window               \u2551
 \u2551  Press Ctrl+C to quit                        \u2551
 \u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d
@@ -523,7 +631,7 @@ def main():
 
     print("[DICTATE] Waiting for Whisper to load...")
     model_loaded.wait()
-    print("[DICTATE] \U0001f7e2 Ready. Hold right CMD to record. F5 for live dictation.")
+    print("[DICTATE] \U0001f7e2 Ready. Hold right CMD to record. F5 to toggle live dictation.")
 
     # Cleanup on exit — kill sox, overlays, temp files
     import atexit, glob as _glob

@@ -148,6 +148,7 @@ state = {
 # ── DISPATCH LOCK — only one dispatch at a time, prevents feedback loops ──
 _dispatch_lock = threading.Lock()
 _dispatch_cooldown = 0.0  # timestamp: ignore wake words until this time
+_last_tts_text = ""  # last TTS output — used to strip echo from mic recordings
 
 # ── VOICE CONVERSATION SESSION (persistent across F18 presses) ──────────────
 voice_session = {
@@ -215,6 +216,8 @@ def _dispatch_inner(task):
             result = run_skill(skill, task, app)
             if result is not None:
                 push(lambda: show_overlay('Skill: ' + skill['name'], '#E8711A', 2000))
+                global _last_tts_text
+                _last_tts_text = str(result)[:200]
                 speak_text(result)
                 subprocess.Popen(["osascript", "-e", f'display notification "{str(result)[:80]}" with title "CODEC Skill"'],
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -348,6 +351,7 @@ def _dispatch_inner(task):
                     cm.save("voice", "assistant", answer)
                 except Exception as e:
                     log.warning(f"[CODEC] Memory save failed after LLM: {e}")
+                _last_tts_text = answer[:200]
                 speak_text(answer)
                 _safe_ans = answer[:80].replace('\\', '\\\\').replace('"', '\\"')
                 subprocess.Popen(["osascript", "-e",
@@ -491,6 +495,22 @@ def do_stop_voice():
     push(lambda: show_processing_overlay('Transcribing...', 2000))
     task = transcribe(audio)
     if not task: print("[CODEC] No speech detected"); return
+    # Strip TTS echo — mic sometimes captures CODEC's own voice response
+    if _last_tts_text and len(_last_tts_text) > 10:
+        # Build fuzzy fragments from last TTS to match in transcription
+        tts_lower = _last_tts_text.lower()
+        task_lower = task.lower()
+        # Find the longest overlap between end of task and TTS text
+        for frag_len in range(min(len(tts_lower), len(task_lower)), 10, -1):
+            frag = tts_lower[:frag_len]
+            idx = task_lower.find(frag)
+            if idx >= 0:
+                # Everything from this match onward is likely TTS echo
+                cleaned = task[:idx].strip()
+                if len(cleaned) > 5:
+                    print(f"[CODEC] Stripped TTS echo: '{task[idx:idx+60]}...'")
+                    task = cleaned
+                break
     print(f"[CODEC] Heard: {task}")
     if state.get("screen_ctx"):
         task = task + " [SCREEN CONTEXT: " + state["screen_ctx"][:800] + "]"
