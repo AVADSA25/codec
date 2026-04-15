@@ -60,8 +60,6 @@ if SKILLS_DIR not in sys.path:
     sys.path.insert(0, SKILLS_DIR)
 from codec_skill_registry import SkillRegistry
 
-mcp = FastMCP("CODEC", instructions="Voice-controlled computer agent with 50+ skills")
-
 # Compatibility shim: expose _tools as a dict-like object for introspection
 class _ToolsProxy:
     """Proxy that makes len(mcp._tools) work across FastMCP versions."""
@@ -72,13 +70,33 @@ class _ToolsProxy:
     def __iter__(self):
         return iter([k for k in self._server._local_provider._components if k.startswith("tool:")])
 
-mcp._tools = _ToolsProxy(mcp)
 
 # Global registry for MCP skill tools
 _mcp_registry = SkillRegistry(SKILLS_DIR)
 
 
-def load_skill_tools():
+def build_mcp(auth=None):
+    """Build and fully configure a FastMCP server (skills + memory tools).
+
+    Args:
+        auth: optional FastMCP AuthProvider. When None, MCP runs unauthenticated
+              at the protocol layer (suitable for stdio with client-side trust).
+
+    Returns:
+        FastMCP instance with all allowed skill tools and memory tools registered.
+    """
+    m = FastMCP(
+        "CODEC",
+        instructions="Voice-controlled computer agent with 50+ skills",
+        auth=auth,
+    )
+    m._tools = _ToolsProxy(m)
+    _load_skill_tools_into(m)
+    _register_memory_tools(m)
+    return m
+
+
+def _load_skill_tools_into(mcp):
     """Register all allowed skills as MCP tools using lazy loading.
 
     Metadata is extracted via AST (no module import). The actual import
@@ -150,35 +168,42 @@ def load_skill_tools():
             return tool_fn
 
         mcp.tool()(make_tool(_mcp_registry, skill_name, registry_key, skill_desc))
+    # scan once at module load is fine; keep here for callers who pass fresh mcp
 
 
-# Also add memory search as a tool
-@mcp.tool()
-def search_memory(query: str, limit: int = 10) -> str:
-    """Search CODEC's conversation memory using FTS5 full-text search"""
-    err = _validate_mcp_input("search_memory", query)
-    if err is not None:
-        return err
-    from codec_memory import CodecMemory
-    mem = CodecMemory()
-    results = mem.search(query, limit)
-    return json.dumps(results, indent=2)
+def _register_memory_tools(mcp):
+    @mcp.tool()
+    def search_memory(query: str, limit: int = 10) -> str:
+        """Search CODEC's conversation memory using FTS5 full-text search"""
+        err = _validate_mcp_input("search_memory", query)
+        if err is not None:
+            return err
+        from codec_memory import CodecMemory
+        mem = CodecMemory()
+        results = mem.search(query, limit)
+        return json.dumps(results, indent=2)
 
-@mcp.tool()
-def get_recent_memory(days: int = 7) -> str:
-    """Get recent conversations from CODEC memory"""
-    log.info(
-        "MCP tool call: tool=get_recent_memory days=%s ts=%s",
-        days,
-        time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-    )
-    from codec_memory import CodecMemory
-    mem = CodecMemory()
-    results = mem.search_recent(days=days, limit=20)
-    return json.dumps(results, indent=2)
+    @mcp.tool()
+    def get_recent_memory(days: int = 7) -> str:
+        """Get recent conversations from CODEC memory"""
+        log.info(
+            "MCP tool call: tool=get_recent_memory days=%s ts=%s",
+            days,
+            time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        )
+        from codec_memory import CodecMemory
+        mem = CodecMemory()
+        results = mem.search_recent(days=days, limit=20)
+        return json.dumps(results, indent=2)
 
-# Load all skills as tools (metadata only — modules loaded on demand)
-load_skill_tools()
+
+# Default instance for stdio transport (no auth — client-side trust via approval UI)
+mcp = build_mcp()
+
+# Back-compat alias
+def load_skill_tools():
+    _load_skill_tools_into(mcp)
+
 
 if __name__ == "__main__":
     print(f"[MCP] CODEC MCP Server starting with {len(mcp._tools)} tools", file=sys.stderr)
