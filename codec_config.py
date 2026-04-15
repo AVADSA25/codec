@@ -282,7 +282,8 @@ def clean_transcript(text):
         "you", "thank you.", "thanks.", "bye.", "okay.",
         "(silence)", "[silence]", "...",
     ]
-    if text.lower().strip() in hallucinations:
+    stripped = text.lower().strip().rstrip(".,!?;:")
+    if stripped in hallucinations:
         return ""
 
     # 2. Remove leading filler words
