@@ -23,3 +23,5 @@ jobs:
         run: python -m pytest tests/test_skill_contracts.py -v
       - name: OAuth provider unit test
         run: python -m pytest tests/test_oauth_provider.py -v
+      - name: Retry helper unit test
+        run: python -m pytest tests/test_retry.py -v
