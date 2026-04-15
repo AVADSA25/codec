@@ -161,8 +161,9 @@ def _take_screenshot():
     return None
 
 
-def _downscale_screenshot(image_b64, max_width=1280):
-    """Downscale screenshot for faster vision processing (keeps aspect ratio)."""
+def _downscale_screenshot(image_b64, max_width=1920):
+    """Downscale screenshot for vision processing (keeps aspect ratio).
+    1920px keeps sidebar/menu text readable on Retina displays."""
     try:
         from PIL import Image
         import io
@@ -229,8 +230,12 @@ def _parse_coordinates(vision_response, scale=1.0):
 
     coords = None
 
+    # Strip UI-TARS box tokens: <|box_start|>(x,y)<|box_end|>
+    _resp = re.sub(r'<\|box_start\|>', '', vision_response)
+    _resp = re.sub(r'<\|box_end\|>', '', _resp)
+
     # Normalize: strip quotes around numbers — model sometimes returns {"x": "847", "y": "523"}
-    _resp = re.sub(r'"(-?\d+)"', r'\1', vision_response)
+    _resp = re.sub(r'"(-?\d+)"', r'\1', _resp)
 
     # Try JSON: {"x": 847, "y": 523} — also handles unquoted keys like {x: 847, y: 523}
     json_match = re.search(r'\{\s*"?x"?\s*:\s*(-?\d+)\s*,\s*"?y"?\s*:\s*(-?\d+)\s*\}', _resp)
@@ -305,30 +310,17 @@ def _find_element(description, retries=2):
 
     sw, sh = _get_screen_size()
 
-    # Calculate the downscaled dimensions for the prompt
-    img_w = 1280
-    img_h = int(sh * img_w / sw) if sw > 0 else 720
+    # Calculate the downscaled dimensions for the prompt (must match _downscale_screenshot max_width)
+    img_w = min(sw, 1920)
+    img_h = int(sh * img_w / sw) if sw > 0 else 1080
 
     for attempt in range(retries):
         if attempt == 0:
-            prompt = (
-                f"Find the UI element: '{description}'\n\n"
-                f"Return the center coordinates as JSON: {{\"x\": N, \"y\": N}}\n"
-                f"The image you see is {img_w}x{img_h} pixels. Top-left is (0,0).\n"
-                f"x ranges from 0 (left) to {img_w} (right). y ranges from 0 (top) to {img_h} (bottom).\n"
-                f"If not found, return: {{\"x\": -1, \"y\": -1}}\n"
-                f"Return ONLY the JSON."
-            )
+            # UI-TARS works best with simple action-oriented prompts
+            prompt = f"Click on {description}"
         else:
-            # Retry with more explicit instructions and examples
-            prompt = (
-                f"Find the exact center of '{description}' in this screenshot.\n"
-                f"Image dimensions: {img_w}x{img_h} pixels.\n"
-                f"Center of screen = {{\"x\": {img_w//2}, \"y\": {img_h//2}}}\n"
-                f"Top-right corner = {{\"x\": {img_w-100}, \"y\": 50}}\n"
-                f"Return ONLY: {{\"x\": N, \"y\": N}}\n"
-                f"If not found: {{\"x\": -1, \"y\": -1}}"
-            )
+            # Retry with slightly different phrasing
+            prompt = f"Find and click the element labeled '{description}'"
 
         response, scale = _ask_vision(image_b64, prompt)
         if not response:

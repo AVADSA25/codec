@@ -22,7 +22,7 @@ if _REPO_DIR not in sys.path:
 # applies (python_exec, file_ops, ax_control excluded from HTTP reach).
 os.environ["CODEC_MCP_TRANSPORT"] = "http"
 
-from fastmcp.server.auth.providers.in_memory import InMemoryOAuthProvider
+from codec_oauth_provider import PersistentOAuthProvider
 from mcp.server.auth.settings import ClientRegistrationOptions, RevocationOptions
 
 from codec_mcp import build_mcp  # side-effect-free factory
@@ -41,7 +41,7 @@ def main():
 
     # OAuth 2.1 provider with dynamic client registration enabled —
     # claude.ai will auto-register itself as a client on first connect.
-    auth = InMemoryOAuthProvider(
+    auth = PersistentOAuthProvider(
         base_url=public_base,
         client_registration_options=ClientRegistrationOptions(enabled=True),
         revocation_options=RevocationOptions(enabled=True),
