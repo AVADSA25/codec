@@ -1,0 +1,25 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest fastmcp httpx requests pynput pydantic
+      - name: Skill import smoke test
+        run: python tests/test_skill_imports.py
+      - name: Skill contract tests
+        run: python -m pytest tests/test_skill_contracts.py -v
+      - name: OAuth provider unit test
+        run: python -m pytest tests/test_oauth_provider.py -v

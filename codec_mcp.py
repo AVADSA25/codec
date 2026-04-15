@@ -5,9 +5,14 @@ at startup so MCP tool listings work immediately, but the actual module
 import only happens when a tool is first invoked.
 """
 from fastmcp import FastMCP
-import os, sys, json, logging, time
+import os, sys, json, logging, time, asyncio, inspect
 
 log = logging.getLogger("codec_mcp")
+
+# Per-tool timeout (seconds). Prevents one hung skill from blocking the server.
+SKILL_TIMEOUT_SEC = int(os.environ.get("CODEC_SKILL_TIMEOUT", "30"))
+
+from codec_audit import audit as _audit
 
 # --- Input validation constants ---
 MCP_MAX_TASK_LENGTH = 5_000
@@ -15,27 +20,11 @@ MCP_MAX_CONTEXT_LENGTH = 10_000
 
 
 def _validate_mcp_input(tool_name: str, task: str, context: str = "") -> str | None:
-    """Validate MCP tool call inputs and log the call.
-
-    Returns an error message string if validation fails, or None if inputs are valid.
-    Every call is audit-logged regardless of validation outcome.
-    """
-    # Audit log every call
-    log.info(
-        "MCP tool call: tool=%s task_len=%s context_len=%s ts=%s",
-        tool_name,
-        len(task) if isinstance(task, str) else "INVALID",
-        len(context) if isinstance(context, str) else "INVALID",
-        time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-    )
-
-    # Type checks
+    """Validate MCP tool call inputs. Returns error string or None."""
     if not isinstance(task, str):
         return f"[MCP] Validation error: 'task' must be a string, got {type(task).__name__}"
     if not isinstance(context, str):
         return f"[MCP] Validation error: 'context' must be a string, got {type(context).__name__}"
-
-    # Length checks
     if len(task) > MCP_MAX_TASK_LENGTH:
         return (
             f"[MCP] Validation error: 'task' exceeds max length "
@@ -46,7 +35,6 @@ def _validate_mcp_input(tool_name: str, task: str, context: str = "") -> str | N
             f"[MCP] Validation error: 'context' exceeds max length "
             f"({len(context)} > {MCP_MAX_CONTEXT_LENGTH})"
         )
-
     return None
 
 
@@ -147,22 +135,55 @@ def _load_skill_tools_into(mcp):
 
         skill_desc = meta.get("SKILL_DESCRIPTION", f"CODEC skill: {name}")
 
-        # Create a closure with lazy loading
+        # Create a closure with lazy loading, timeout, and audit
         def make_tool(registry, sname, rkey, sdesc):
             def tool_fn(task: str, context: str = "") -> str:
                 """Execute this CODEC skill with the given task"""
+                t0 = time.time()
+                tlen = len(task) if isinstance(task, str) else 0
+                clen = len(context) if isinstance(context, str) else 0
+
                 err = _validate_mcp_input(sname, task, context)
                 if err is not None:
+                    _audit(sname, task_len=tlen, context_len=clen,
+                           duration_ms=(time.time()-t0)*1000,
+                           outcome="validation", error_type="ValidationError")
                     return err
-                try:
-                    # rkey = original SKILL_NAME (registry lookup key);
-                    # sname = sanitized MCP tool name (for logging/errors)
+
+                def _run():
                     mod = registry.load(rkey)
                     if mod is None or not hasattr(mod, "run"):
-                        return f"Skill '{sname}' could not be loaded."
-                    return mod.run(task, context)
-                except Exception as e:
-                    return f"Skill '{sname}' failed: {type(e).__name__}: {str(e)[:200]}"
+                        return None, "load_failed"
+                    try:
+                        return mod.run(task, context), None
+                    except Exception as e:
+                        return None, f"{type(e).__name__}: {str(e)[:200]}"
+
+                # Run with timeout in a worker thread (most skills are sync)
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+                    fut = ex.submit(_run)
+                    try:
+                        result, errmsg = fut.result(timeout=SKILL_TIMEOUT_SEC)
+                    except concurrent.futures.TimeoutError:
+                        _audit(sname, task_len=tlen, context_len=clen,
+                               duration_ms=(time.time()-t0)*1000,
+                               outcome="timeout", error_type="Timeout")
+                        return f"Skill '{sname}' timed out after {SKILL_TIMEOUT_SEC}s."
+
+                dur_ms = (time.time()-t0)*1000
+                if errmsg == "load_failed":
+                    _audit(sname, task_len=tlen, context_len=clen,
+                           duration_ms=dur_ms, outcome="error", error_type="LoadFailed")
+                    return f"Skill '{sname}' could not be loaded."
+                if errmsg:
+                    _audit(sname, task_len=tlen, context_len=clen,
+                           duration_ms=dur_ms, outcome="error",
+                           error_type=errmsg.split(":")[0])
+                    return f"Skill '{sname}' failed: {errmsg}"
+                _audit(sname, task_len=tlen, context_len=clen,
+                       duration_ms=dur_ms, outcome="ok")
+                return result
             tool_fn.__name__ = sname
             tool_fn.__doc__ = sdesc
             return tool_fn
@@ -175,26 +196,40 @@ def _register_memory_tools(mcp):
     @mcp.tool()
     def search_memory(query: str, limit: int = 10) -> str:
         """Search CODEC's conversation memory using FTS5 full-text search"""
+        t0 = time.time()
         err = _validate_mcp_input("search_memory", query)
         if err is not None:
+            _audit("search_memory", task_len=len(query or ""),
+                   duration_ms=(time.time()-t0)*1000, outcome="validation")
             return err
-        from codec_memory import CodecMemory
-        mem = CodecMemory()
-        results = mem.search(query, limit)
-        return json.dumps(results, indent=2)
+        try:
+            from codec_memory import CodecMemory
+            mem = CodecMemory()
+            results = mem.search(query, limit)
+            _audit("search_memory", task_len=len(query),
+                   duration_ms=(time.time()-t0)*1000, outcome="ok")
+            return json.dumps(results, indent=2)
+        except Exception as e:
+            _audit("search_memory", task_len=len(query or ""),
+                   duration_ms=(time.time()-t0)*1000, outcome="error",
+                   error_type=type(e).__name__)
+            return f"search_memory failed: {type(e).__name__}: {e}"
 
     @mcp.tool()
     def get_recent_memory(days: int = 7) -> str:
         """Get recent conversations from CODEC memory"""
-        log.info(
-            "MCP tool call: tool=get_recent_memory days=%s ts=%s",
-            days,
-            time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        )
-        from codec_memory import CodecMemory
-        mem = CodecMemory()
-        results = mem.search_recent(days=days, limit=20)
-        return json.dumps(results, indent=2)
+        t0 = time.time()
+        try:
+            from codec_memory import CodecMemory
+            mem = CodecMemory()
+            results = mem.search_recent(days=days, limit=20)
+            _audit("get_recent_memory", duration_ms=(time.time()-t0)*1000,
+                   outcome="ok", extra={"days": days})
+            return json.dumps(results, indent=2)
+        except Exception as e:
+            _audit("get_recent_memory", duration_ms=(time.time()-t0)*1000,
+                   outcome="error", error_type=type(e).__name__)
+            return f"get_recent_memory failed: {type(e).__name__}: {e}"
 
 
 # Default instance for stdio transport (no auth — client-side trust via approval UI)

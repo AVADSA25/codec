@@ -148,6 +148,18 @@ module.exports = {
       autorestart: true,
     },
 
+    // ── Autopilot (ambient scheduler — fires skills at configured times) ──
+    {
+      name: "codec-autopilot",
+      script: "/usr/local/bin/python3.13",
+      args: "-u codec_autopilot.py",
+      cwd: __dirname,
+      max_memory_restart: "128M",
+      restart_delay: 5000,
+      max_restarts: 10,
+      autorestart: true,
+    },
+
     // ── Watchdog (kills stuck/zombie processes hogging RAM) ──
     {
       name: "codec-watchdog",
