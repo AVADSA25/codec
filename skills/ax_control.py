@@ -10,6 +10,7 @@ SKILL_TRIGGERS = [
     "find button", "accessibility tree", "ui elements"
 ]
 SKILL_DESCRIPTION = "Control any macOS app using native accessibility (AXUIElement). Click buttons, read fields, navigate UI."
+SKILL_MCP_EXPOSE = True
 
 AX_BRIDGE = os.path.expanduser("~/codec-repo/ax_bridge/ax_bridge")
 

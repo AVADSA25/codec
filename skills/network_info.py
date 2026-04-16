@@ -3,6 +3,7 @@ SKILL_NAME = "network_info"
 SKILL_TRIGGERS = ["my ip", "ip address", "wifi", "network info", "internet speed",
                   "am i online", "what network"]
 SKILL_DESCRIPTION = "Show network info, IP address, wifi status"
+SKILL_MCP_EXPOSE = True
 
 import subprocess, requests
 

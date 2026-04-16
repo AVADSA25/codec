@@ -379,6 +379,16 @@
             font-family: 'SF Mono', monospace;
             display: flex; justify-content: space-between; align-items: center;
         }
+        .tx-copy-btn {
+            display: flex; align-items: center; gap: 5px;
+            padding: 4px 9px; font-size: 10px; font-weight: 600;
+            letter-spacing: 0.08em; color: var(--tx2);
+            background: transparent; border: 1px solid var(--bd); border-radius: 6px;
+            cursor: pointer; font-family: 'SF Mono', monospace;
+            transition: all 0.15s ease;
+        }
+        .tx-copy-btn:hover { color: var(--ac); border-color: var(--ac); }
+        .tx-copy-btn.copied { color: var(--green); border-color: var(--green); }
         .tx-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--bd); }
         .state-listening  .tx-dot { background: var(--green); box-shadow: 0 0 6px var(--green); }
         .state-speaking   .tx-dot { background: var(--ac);    box-shadow: 0 0 6px var(--ac); }
@@ -522,7 +532,13 @@
         <div class="transcript-wrap">
             <div class="transcript-header">
                 <span>TRANSCRIPT</span>
-                <div class="tx-dot" id="txDot"></div>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <button id="copyTxBtn" class="tx-copy-btn" title="Copy transcript">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        <span id="copyTxLabel">COPY</span>
+                    </button>
+                    <div class="tx-dot" id="txDot"></div>
+                </div>
             </div>
             <div class="transcript" id="transcript">
                 <div class="tx-line system"><span class="tx-label">SYS</span>CODEC Voice — Ready</div>
@@ -1066,6 +1082,51 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
         avatar.addEventListener('mousedown', startHold);
         avatar.addEventListener('mouseup', endHold);
         avatar.addEventListener('mouseleave', endHold);
+    })();
+
+    /* ── Copy transcript button ── */
+    (function() {
+        var btn = document.getElementById('copyTxBtn');
+        var label = document.getElementById('copyTxLabel');
+        if (!btn) return;
+        btn.addEventListener('click', function() {
+            var lines = document.querySelectorAll('#transcript .tx-line');
+            if (!lines.length) return;
+            var out = [];
+            lines.forEach(function(line) {
+                var roleEl = line.querySelector('.tx-label');
+                var role = roleEl ? roleEl.textContent.trim() : '';
+                var text = line.textContent.replace(role, '').trim();
+                if (text) out.push((role ? '[' + role + '] ' : '') + text);
+            });
+            var payload = out.join('\n');
+            var done = function() {
+                btn.classList.add('copied');
+                label.textContent = 'COPIED';
+                setTimeout(function() {
+                    btn.classList.remove('copied');
+                    label.textContent = 'COPY';
+                }, 1500);
+            };
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(payload).then(done).catch(function() {
+                    // Fallback
+                    var ta = document.createElement('textarea');
+                    ta.value = payload;
+                    document.body.appendChild(ta);
+                    ta.select();
+                    try { document.execCommand('copy'); done(); } catch(e) {}
+                    document.body.removeChild(ta);
+                });
+            } else {
+                var ta = document.createElement('textarea');
+                ta.value = payload;
+                document.body.appendChild(ta);
+                ta.select();
+                try { document.execCommand('copy'); done(); } catch(e) {}
+                document.body.removeChild(ta);
+            }
+        });
     })();
 
     /* ── Auto-connect via ?auto=1 ── */

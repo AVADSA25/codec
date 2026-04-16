@@ -3,6 +3,7 @@ import subprocess
 
 SKILL_NAME = "chrome_tabs"
 SKILL_DESCRIPTION = "List all open Chrome tabs and switch between them"
+SKILL_MCP_EXPOSE = True
 SKILL_TRIGGERS = [
     "my tabs", "chrome tabs", "list tabs", "show tabs", "switch to tab",
     "switch tab", "open tabs", "which tabs", "how many tabs", "tab list"

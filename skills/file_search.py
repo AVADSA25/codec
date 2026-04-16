@@ -4,6 +4,7 @@ SKILL_TRIGGERS = ["find file", "search file", "locate file", "where is file",
                   "find document", "search for file", "find files named",
                   "search for files"]
 SKILL_DESCRIPTION = "Search for files by name or content"
+SKILL_MCP_EXPOSE = True
 
 import subprocess, re
 

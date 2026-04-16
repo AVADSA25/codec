@@ -2,6 +2,7 @@
 SKILL_NAME = "google_gmail"
 SKILL_TRIGGERS = ["check email", "check my email", "my emails", "inbox", "unread emails", "new emails", "any emails", "latest emails", "email from", "search email"]
 SKILL_DESCRIPTION = "Check your Gmail inbox, search for emails, and view recent messages"
+SKILL_MCP_EXPOSE = True
 
 import os
 

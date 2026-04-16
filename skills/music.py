@@ -1,6 +1,7 @@
 """CODEC Skill: Music Control (Spotify + Apple Music)"""
 SKILL_NAME = "music"
 SKILL_DESCRIPTION = "Control Spotify or Apple Music playback"
+SKILL_MCP_EXPOSE = True
 SKILL_TRIGGERS = ["play music", "pause music", "next song", "previous song", "skip song",
                    "play spotify", "pause spotify", "resume music", "stop music", "stop spotify",
                    "what song", "what is playing", "now playing", "play some music",

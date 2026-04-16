@@ -1,6 +1,7 @@
 """CODEC Skill: Clipboard History"""
 SKILL_NAME = "clipboard"
 SKILL_DESCRIPTION = "Track and show clipboard history"
+SKILL_MCP_EXPOSE = True
 SKILL_TRIGGERS = ["clipboard history", "show clipboard", "what did i copy", "last copied",
                    "my clipboard", "paste history", "copied items"]
 import subprocess, sqlite3, os

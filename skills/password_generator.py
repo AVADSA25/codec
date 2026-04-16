@@ -2,6 +2,7 @@
 SKILL_NAME = "password_generator"
 SKILL_TRIGGERS = ["generate password", "new password", "random password", "secure password"]
 SKILL_DESCRIPTION = "Generate secure random passwords"
+SKILL_MCP_EXPOSE = True
 
 import string, secrets
 

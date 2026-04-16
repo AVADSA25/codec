@@ -5,6 +5,7 @@ sys.path.insert(0, os.path.expanduser("~/codec-repo"))
 SKILL_NAME = "chrome_click_cdp"
 SKILL_TRIGGERS = ["click button on page", "click link on page", "press button on website", "click on the page", "click on the website"]
 SKILL_DESCRIPTION = "Click specific buttons and links on web pages via Chrome DevTools Protocol"
+SKILL_MCP_EXPOSE = True
 
 def run(task: str, context: str = "") -> str:
     from codec_cdp import is_cdp_available, run_cdp, ChromeCDP

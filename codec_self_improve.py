@@ -171,8 +171,8 @@ Rules:
 Output ONLY the Python code, no fences, no commentary."""
 
 
-def _draft_skill(gap: dict) -> tuple[str, str] | None:
-    """Ask Qwen to draft a skill. Returns (suggested_name, code) or None."""
+def _draft_skill(gap: dict) -> tuple[str, str, str] | None:
+    """Ask Qwen to draft a skill. Returns (suggested_name, code, raw) or None."""
     evidence = json.dumps(gap.get("examples", []), default=str)[:400]
     prompt = _DRAFT_PROMPT.format(
         kind=gap["kind"], tool=gap["tool"], evidence=evidence
@@ -184,22 +184,36 @@ def _draft_skill(gap: dict) -> tuple[str, str] | None:
                 "model": QWEN_MODEL,
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.3,
-                "max_tokens": 900,
+                "max_tokens": 4000,
+                "chat_template_kwargs": {"enable_thinking": False},
             },
-            timeout=60,
-            max_attempts=3,
+            timeout=120,
+            max_attempts=2,
         )
         r.raise_for_status()
-        code = r.json()["choices"][0]["message"]["content"].strip()
-    except Exception as e:
+        msg = r.json()["choices"][0]["message"]
+        raw = (msg.get("content") or "").strip()
+        if not raw:
+            # Reasoning/thinking models may put output in "reasoning"
+            raw = (msg.get("reasoning") or "").strip()
+    except Exception:
         return None
-    # Strip code fences if LLM included them
-    code = re.sub(r"^```(?:python)?|```$", "", code, flags=re.MULTILINE).strip()
-    # Extract SKILL_NAME
-    m = re.search(r'^SKILL_NAME\s*=\s*["\'](.+?)["\']', code, re.MULTILINE)
+
+    # Strip fenced blocks (more tolerant)
+    code = raw
+    # Prefer content inside a ```python ... ``` block if present
+    fenced = re.search(r"```(?:python)?\s*\n(.+?)\n```", code, re.DOTALL)
+    if fenced:
+        code = fenced.group(1).strip()
+    else:
+        # Strip stray fence lines anywhere
+        code = re.sub(r"^```.*$", "", code, flags=re.MULTILINE).strip()
+
+    # SKILL_NAME anywhere in text (not anchored)
+    m = re.search(r'SKILL_NAME\s*=\s*["\'](.+?)["\']', code)
     if not m:
-        return None
-    return m.group(1), code
+        return ("__unparseable__", code, raw)
+    return (m.group(1), code, raw)
 
 
 def _validate(code: str) -> tuple[bool, str]:
@@ -254,11 +268,22 @@ def run_once(target_date: str | None = None) -> str:
         return f"[{target_date}] No gaps detected in {len(records)} records — all systems nominal."
 
     written = []
+    unparseable_n = 0
     for gap in gaps:
         drafted = _draft_skill(gap)
         if drafted is None:
             continue
-        name, code = drafted
+        name, code, raw = drafted
+        if name == "__unparseable__":
+            unparseable_n += 1
+            out_dir.mkdir(parents=True, exist_ok=True)
+            dbg = out_dir / f"__unparseable_{unparseable_n}.txt"
+            dbg.write_text(
+                f"Gap: {json.dumps(gap, default=str, indent=2)}\n\n"
+                f"--- RAW LLM OUTPUT ---\n{raw}\n"
+            )
+            written.append((f"__unparseable_{unparseable_n}", False))
+            continue
         if name in existing:
             name = f"{name}_v2"
         ok, why = _validate(code)

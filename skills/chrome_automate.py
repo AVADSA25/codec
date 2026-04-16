@@ -6,6 +6,7 @@ SKILL_NAME = "chrome_automate"
 SKILL_TRIGGERS = ["morning tabs", "open work tabs", "research mode", "close everything",
                   "open my tabs", "browser routine", "work mode", "focus mode tabs"]
 SKILL_DESCRIPTION = "Run pre-built browser automation routines: morning tabs, work mode, research mode"
+SKILL_MCP_EXPOSE = True
 
 WORK_TABS = [
     "https://mail.google.com",

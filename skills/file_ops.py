@@ -1,6 +1,7 @@
 """CODEC Skill: File Operations — read, write, append, list files safely."""
 SKILL_NAME = "file_ops"
 SKILL_DESCRIPTION = "Read, write, append, or list files and directories"
+SKILL_MCP_EXPOSE = True
 SKILL_TRIGGERS = [
     "read file", "write file", "create file", "append to file",
     "list files", "list directory", "show file", "cat file",

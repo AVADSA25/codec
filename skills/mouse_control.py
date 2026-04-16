@@ -8,6 +8,7 @@ Architecture: screenshot -> Qwen Vision -> coordinates -> pyautogui -> confirm
 
 SKILL_NAME = "mouse_control"
 SKILL_DESCRIPTION = "Control mouse cursor by voice using screen vision — click, move, scroll, drag any element you can see"
+SKILL_MCP_EXPOSE = True
 SKILL_TRIGGERS = [
     # Direct click commands
     "click on", "click the", "click button", "press the button",

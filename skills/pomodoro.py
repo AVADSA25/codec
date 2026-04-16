@@ -6,6 +6,7 @@ SKILL_TRIGGERS = [
     "end pomodoro", "pomodoro",
 ]
 SKILL_DESCRIPTION = "Pomodoro timer with work/break cycles (start/stop/status)"
+SKILL_MCP_EXPOSE = True
 
 import subprocess, threading, time, os, json
 

@@ -16,6 +16,7 @@ SKILL_TRIGGERS = [
     "do you remember", "have we talked about", "have we discussed",
 ]
 SKILL_DESCRIPTION = "Search ALL past CODEC conversations (voice, chat, vibe) using full-text search"
+SKILL_MCP_EXPOSE = True
 
 import os, sys, sqlite3, subprocess, tempfile
 

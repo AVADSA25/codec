@@ -2,6 +2,7 @@
 SKILL_NAME = "bitcoin_price"
 SKILL_TRIGGERS = ["bitcoin price", "btc price", "check bitcoin", "how much is bitcoin"]
 SKILL_DESCRIPTION = "Check current Bitcoin price in USD"
+SKILL_MCP_EXPOSE = True
 
 import requests
 

@@ -18,6 +18,7 @@ SKILL_TRIGGERS = [
 # Words that indicate this is NOT a google docs intent (e.g. mouse control)
 _SKIP_IF_CONTAINS = ["click", "press", "tap", "scroll", "move mouse", "cursor"]
 SKILL_DESCRIPTION = "Search, read, and create Google Docs"
+SKILL_MCP_EXPOSE = True
 
 def _get_creds():
     import sys; sys.path.insert(0, os.path.expanduser("~/codec-repo"))

@@ -17,6 +17,7 @@ SKILL_TRIGGERS = [
     "next meeting", "check my calendar", "show my calendar", "calendar",
 ]
 SKILL_DESCRIPTION = "Check and create Google Calendar events by voice"
+SKILL_MCP_EXPOSE = True
 
 import os, re, datetime
 

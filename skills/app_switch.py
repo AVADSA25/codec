@@ -1,6 +1,7 @@
 """CODEC Skill: App Switcher"""
 SKILL_NAME = "app_switch"
 SKILL_DESCRIPTION = "Switch to any running app by name. If a URL is present, open it in the named browser."
+SKILL_MCP_EXPOSE = True
 SKILL_TRIGGERS = ["switch to", "go to app", "focus on", "bring up", "activate app",
                    "open app", "open the app", "switch up to", "switch up"]
 import subprocess, re

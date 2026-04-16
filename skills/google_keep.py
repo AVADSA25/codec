@@ -3,6 +3,7 @@
 SKILL_NAME = "google_keep"
 SKILL_TRIGGERS = ["google keep", "my notes keep", "keep notes", "show keep"]
 SKILL_DESCRIPTION = "Google Keep notes (delegates to CODEC workflow for full access)"
+SKILL_MCP_EXPOSE = True
 
 def run(task, app="", ctx=""):
     return (

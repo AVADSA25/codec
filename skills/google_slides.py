@@ -5,6 +5,7 @@ SKILL_NAME = "google_slides"
 
 SKILL_TRIGGERS = ["google slides", "my slides", "presentations", "my presentations", "find presentation", "search slides", "open slides", "read slides"]
 SKILL_DESCRIPTION = "Search and read Google Slides presentations"
+SKILL_MCP_EXPOSE = True
 
 def _get_creds():
     import sys; sys.path.insert(0, os.path.expanduser("~/codec-repo"))

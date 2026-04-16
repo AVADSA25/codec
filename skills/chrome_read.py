@@ -3,6 +3,7 @@ import subprocess
 
 SKILL_NAME = "chrome_read"
 SKILL_DESCRIPTION = "Read and extract text content from the current Chrome tab"
+SKILL_MCP_EXPOSE = True
 SKILL_TRIGGERS = [
     "read this page", "read page", "what's on this page", "whats on this page",
     "read the page", "page content", "extract page", "read website",

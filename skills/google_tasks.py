@@ -12,6 +12,7 @@ SKILL_TRIGGERS = [
     "complete task", "finish task", "mark task",
 ]
 SKILL_DESCRIPTION = "View, add, and manage Google Tasks"
+SKILL_MCP_EXPOSE = True
 
 
 def _get_creds():

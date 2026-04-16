@@ -2,6 +2,7 @@
 import subprocess
 SKILL_NAME = "translate"
 SKILL_DESCRIPTION = "Translate text between any languages"
+SKILL_MCP_EXPOSE = True
 SKILL_TRIGGERS = ["translate", "in french", "in english", "en francais", "en anglais",
                    "in spanish", "in japanese", "in german", "in italian", "in portuguese",
                    "in chinese", "in arabic", "in russian", "in korean", "in dutch",

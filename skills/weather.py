@@ -1,6 +1,7 @@
 """CODEC Skill: Weather"""
 SKILL_NAME = "weather"
 SKILL_DESCRIPTION = "Get current weather for a location"
+SKILL_MCP_EXPOSE = True
 SKILL_TRIGGERS = ["weather", "temperature", "forecast", "how hot", "how cold", "is it raining"]
 
 def run(task, app="", ctx=""):

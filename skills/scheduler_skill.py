@@ -10,6 +10,7 @@ SKILL_TRIGGERS = [
     "list schedules", "show schedules", "remove schedule",
 ]
 SKILL_DESCRIPTION = "Schedule CODEC agent crews to run automatically (daily briefing at 8am, competitor analysis every Monday, etc.)"
+SKILL_MCP_EXPOSE = True
 
 def run(task: str, context: str = "") -> str:
     from codec_scheduler import run as scheduler_run

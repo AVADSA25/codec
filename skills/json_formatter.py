@@ -2,6 +2,7 @@
 SKILL_NAME = "json_formatter"
 SKILL_TRIGGERS = ["format json", "pretty print json", "validate json", "prettify json"]
 SKILL_DESCRIPTION = "Pretty-print and validate JSON text from clipboard"
+SKILL_MCP_EXPOSE = True
 
 import json, subprocess
 

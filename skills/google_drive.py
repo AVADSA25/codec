@@ -11,6 +11,7 @@ SKILL_TRIGGERS = [
     "in my drive", "on my drive", "from my drive", "from drive",
 ]
 SKILL_DESCRIPTION = "Search and list files in your Google Drive"
+SKILL_MCP_EXPOSE = True
 
 import os
 

@@ -1,6 +1,7 @@
 """CODEC Skill: AI News Digest — Daily AI/tech news report from public sources"""
 SKILL_NAME = "AI News Digest"
 SKILL_DESCRIPTION = "Fetch and summarize the latest AI and tech news from public RSS feeds and sources"
+SKILL_MCP_EXPOSE = True
 SKILL_TRIGGERS = [
     "ai news", "ai digest", "tech news", "ai report", "news digest",
     "latest ai news", "what's new in ai", "artificial intelligence news",

@@ -2,6 +2,7 @@
 SKILL_NAME = "delegate"
 SKILL_TRIGGERS = ["delegate", "send to workflow", "invoice", "expense", "calorie", "daily briefing", "book a call", "vapi"]
 SKILL_DESCRIPTION = "Delegates complex tasks to CODEC workflows — invoices, expenses, calorie tracking, phone calls, and multi-step workflows"
+SKILL_MCP_EXPOSE = True
 
 import requests
 

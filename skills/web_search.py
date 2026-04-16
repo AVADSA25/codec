@@ -1,6 +1,7 @@
 """CODEC Skill: Web Search via DuckDuckGo (or Serper if key configured)"""
 SKILL_NAME = "web_search"
 SKILL_DESCRIPTION = "Search the web and return a quick answer"
+SKILL_MCP_EXPOSE = True
 SKILL_TRIGGERS = ["search for", "search the web", "google search", "look up", "who is", "who won", "latest news"]
 
 

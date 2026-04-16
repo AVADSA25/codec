@@ -6,6 +6,7 @@ SKILL_NAME = "chrome_extract"
 SKILL_TRIGGERS = ["extract from page", "get data from page", "scrape page", "get all prices",
                   "get all links", "get all text", "extract links", "get page data"]
 SKILL_DESCRIPTION = "Extract tables, prices, links, and structured data from web pages via CDP"
+SKILL_MCP_EXPOSE = True
 
 def run(task: str, context: str = "") -> str:
     from codec_cdp import is_cdp_available, run_cdp, ChromeCDP

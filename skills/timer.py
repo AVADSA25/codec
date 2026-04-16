@@ -1,6 +1,7 @@
 """CODEC Skill: Timer via Apple Clock app"""
 SKILL_NAME = "timer"
 SKILL_DESCRIPTION = "Set timers using the Apple Clock app"
+SKILL_MCP_EXPOSE = True
 SKILL_TRIGGERS = ["set a timer", "timer for", "remind me in", "alarm in",
                    "set timer", "minute timer", "minutes timer", "second timer", "countdown",
                    "timer", "start a timer", "wake me", "alert me in"]

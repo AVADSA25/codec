@@ -2,6 +2,7 @@
 SKILL_NAME = "brightness"
 SKILL_TRIGGERS = ["brightness", "screen bright", "dim screen", "brighten", "dark screen"]
 SKILL_DESCRIPTION = "Adjust screen brightness"
+SKILL_MCP_EXPOSE = True
 
 import re, ctypes
 

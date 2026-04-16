@@ -1,6 +1,7 @@
 """CODEC Skill: Apple Reminders (add + list)"""
 SKILL_NAME = "reminders"
 SKILL_DESCRIPTION = "Add or list reminders via Apple Reminders app"
+SKILL_MCP_EXPOSE = True
 SKILL_TRIGGERS = [
     # add
     "add reminder", "set reminder", "remind me to", "add to reminders",

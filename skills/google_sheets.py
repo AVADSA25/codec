@@ -11,6 +11,7 @@ SKILL_TRIGGERS = [
     "search sheets", "find sheet", "open sheet", "read sheet", "show sheet",
 ]
 SKILL_DESCRIPTION = "Search, read, and create Google Sheets"
+SKILL_MCP_EXPOSE = True
 
 def _get_creds():
     import sys; sys.path.insert(0, os.path.expanduser("~/codec-repo"))

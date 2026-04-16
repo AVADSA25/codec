@@ -1,6 +1,7 @@
 """CODEC Skill: Brightness & Volume Control"""
 SKILL_NAME = "volume_brightness"
 SKILL_DESCRIPTION = "Control volume and brightness by voice"
+SKILL_MCP_EXPOSE = True
 SKILL_TRIGGERS = ["volume up", "volume down", "set volume", "mute", "unmute",
                    "louder", "quieter", "brightness up", "brightness down",
                    "turn up", "turn down", "volume to", "max volume", "silence"]

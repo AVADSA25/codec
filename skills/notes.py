@@ -1,6 +1,7 @@
 """CODEC Skill: Voice Notes via Apple Notes"""
 SKILL_NAME = "notes"
 SKILL_DESCRIPTION = "Save and recall notes via Apple Notes app"
+SKILL_MCP_EXPOSE = True
 SKILL_TRIGGERS = ["take a note", "save a note", "note that", "remember that",
                    "my notes", "show notes", "read notes", "what did i note", "list notes",
                    "new note", "add a note", "make a note", "write a note", "jot down",

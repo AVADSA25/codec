@@ -6,6 +6,7 @@ SKILL_NAME = "chrome_scroll"
 SKILL_TRIGGERS = ["scroll down", "scroll up", "scroll to bottom", "scroll to top",
                   "page down", "page up", "go to bottom of page", "go to top of page"]
 SKILL_DESCRIPTION = "Scroll web pages up, down, or to specific positions via CDP"
+SKILL_MCP_EXPOSE = True
 
 def run(task: str, context: str = "") -> str:
     from codec_cdp import is_cdp_available, run_cdp, ChromeCDP

@@ -1,6 +1,7 @@
 """CODEC Skill: System Info"""
 SKILL_NAME = "system"
 SKILL_DESCRIPTION = "Quick system information (CPU, memory, disk, uptime)"
+SKILL_MCP_EXPOSE = True
 SKILL_TRIGGERS = ["system info", "cpu usage", "memory usage", "disk space", "uptime", "how much ram", "how much storage"]
 
 def run(task, app="", ctx=""):

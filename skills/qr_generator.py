@@ -2,6 +2,7 @@
 SKILL_NAME = "qr_generator"
 SKILL_TRIGGERS = ["generate qr", "make qr code", "qr code for", "create qr"]
 SKILL_DESCRIPTION = "Generate QR codes from text or URLs"
+SKILL_MCP_EXPOSE = True
 
 import subprocess, os, tempfile, re
 

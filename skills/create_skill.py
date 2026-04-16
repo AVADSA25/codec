@@ -5,6 +5,7 @@ review gate. Code is NEVER written to disk without approval.
 """
 SKILL_NAME = "create_skill"
 SKILL_DESCRIPTION = "Create new CODEC skills by describing what you want"
+SKILL_MCP_EXPOSE = True
 SKILL_TRIGGERS = ["create a skill", "make a skill", "new skill", "build a skill",
                    "create skill", "write a skill", "add a skill"]
 import os, requests, json, re
@@ -76,6 +77,7 @@ def run(task, app="", ctx=""):
 \"\"\"CODEC Skill: [Name]\"\"\"
 SKILL_NAME = "[lowercase_name]"
 SKILL_DESCRIPTION = "[one line description]"
+SKILL_MCP_EXPOSE = True
 SKILL_TRIGGERS = ["trigger phrase 1", "trigger phrase 2", "trigger phrase 3"]
 
 def run(task, app="", ctx=""):
