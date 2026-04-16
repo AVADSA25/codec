@@ -140,10 +140,60 @@ state = {
     "last_f13": 0.0,
     "last_star": 0.0,
     "screen_ctx": "",
+    "screen_ctx_ts": 0.0,   # when screen_ctx was captured; used for TTL expiry
     "last_plus": 0.0,
     "last_minus": 0.0,
     "doc_ctx": "",
 }
+
+# ── SCREEN-CONTEXT RELEVANCE GATE ─────────────────────────────────────────────
+# Tasks that clearly have nothing to do with the screen — skip context injection
+# to prevent the LLM from being confused by stale/irrelevant captured text.
+_TRIVIAL_SCREEN_BYPASS = re.compile(
+    r"^\s*(?:"
+    r"\d+\s*[+\-*/x×÷]\s*\d+"               # arithmetic: "1+1", "5 * 3"
+    r"|what\s*time"                         # "what time is it"
+    r"|time\s*(?:is\s*it|now)?"             # "time now"
+    r"|what'?s?\s+the\s+date"               # "what's the date"
+    r"|bitcoin\s*(?:price)?"                # "bitcoin price"
+    r"|btc\s*price"
+    r"|weather"                             # weather queries
+    r"|calculate\s+"                        # "calculate 5 * 4"
+    r"|speed\s*test"                        # the user's actual failing query
+    r"|ping"
+    r"|hello|hi|hey"                        # greetings
+    r"|status|health|uptime"                # system checks
+    r")\b",
+    re.IGNORECASE,
+)
+_SCREEN_CTX_TTL = 120.0  # seconds — stale screen context expires
+
+def _maybe_screen_context(task: str) -> str:
+    """Return ' [SCREEN CONTEXT: ...]' to append, or '' if skipped.
+
+    Clears expired/used screen_ctx as a side-effect. Keeps existing behavior
+    when the task genuinely looks screen-related; skips for trivial lookups or
+    when the captured screenshot is older than TTL.
+    """
+    ctx = state.get("screen_ctx", "")
+    if not ctx:
+        return ""
+    # TTL: stale screenshots shouldn't follow the user around
+    ts = state.get("screen_ctx_ts", 0.0)
+    if ts and (time.time() - ts) > _SCREEN_CTX_TTL:
+        print(f"[CODEC] Screen context expired ({int(time.time()-ts)}s old) — discarding")
+        state["screen_ctx"] = ""
+        state["screen_ctx_ts"] = 0.0
+        return ""
+    # Relevance: trivial intents ignore screen context
+    if _TRIVIAL_SCREEN_BYPASS.match(task or ""):
+        print(f"[CODEC] Trivial task — skipping screen context injection")
+        return ""
+    # Use it, one-shot
+    out = " [SCREEN CONTEXT: " + ctx[:800] + "]"
+    state["screen_ctx"] = ""
+    state["screen_ctx_ts"] = 0.0
+    return out
 
 # ── DISPATCH LOCK — only one dispatch at a time, prevents feedback loops ──
 _dispatch_lock = threading.Lock()
@@ -467,18 +517,18 @@ def do_screenshot_question():
                 "role": "system",
                 "content": f"[SCREEN CAPTURE: The user's screen currently shows: {ctx[:1000]}]"
             })
+            state["screen_ctx_ts"] = time.time()
             push(lambda: show_overlay('Screenshot saved — use voice or text to ask', '#E8711A', 3000))
     except Exception as e:
         print(f"[CODEC] Screenshot dialog error: {e}")
         state["screen_ctx"] = ctx
+        state["screen_ctx_ts"] = time.time()
 
 # ── TEXT/VOICE HANDLERS ───────────────────────────────────────────────────────
 def do_text():
     task = get_text_dialog()
     if task:
-        if state.get("screen_ctx"):
-            task = task + " [SCREEN CONTEXT: " + state["screen_ctx"][:800] + "]"
-            state["screen_ctx"] = ""
+        task = task + _maybe_screen_context(task)
         dispatch(task)
 
 def do_start_recording():
@@ -536,9 +586,7 @@ def do_stop_voice():
                     task = cleaned
                 break
     print(f"[CODEC] Heard: {task}")
-    if state.get("screen_ctx"):
-        task = task + " [SCREEN CONTEXT: " + state["screen_ctx"][:800] + "]"
-        state["screen_ctx"] = ""
+    task = task + _maybe_screen_context(task)
     dispatch(task)
 
 # ── WAKE WORD LISTENER ───────────────────────────────────────────────────────
