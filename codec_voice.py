@@ -83,7 +83,14 @@ except NameError:
 VAD_SILENCE_THRESHOLD  = _vad_cfg.get("silence_threshold", 800)     # RMS below this = silence
 VAD_SILENCE_DURATION   = _vad_cfg.get("silence_duration",  1.5)     # seconds of silence before flushing
 VAD_MIN_SPEECH_SECONDS = _vad_cfg.get("min_speech_seconds", 0.4)    # minimum speech before considering flush
-VAD_ECHO_COOLDOWN      = _vad_cfg.get("echo_cooldown",     1.2)     # ignore mic this long after Q finishes
+VAD_ECHO_COOLDOWN      = _vad_cfg.get("echo_cooldown",     2.5)     # ignore mic this long after TTS playback FINISHES (was 1.2 — too short for room reverb)
+# Bytes-per-second estimate for Kokoro MP3 output (24 kHz mono ~64 kbps).
+# Used to schedule `last_tts_end` to AFTER browser actually finishes playing,
+# not the moment we send the bytes. Without this, the echo cooldown timer
+# starts while the browser is still playing CODEC's voice, the mic picks
+# it up, and CODEC interrupts itself.
+TTS_BYTES_PER_SEC      = _vad_cfg.get("tts_bytes_per_sec", 8000)
+TTS_BROWSER_DECODE_LAG = _vad_cfg.get("tts_browser_decode_lag", 0.3)  # seconds — extra padding for browser audio buffering
 SAMPLE_RATE            = 16000
 BYTES_PER_SAMPLE       = 2
 MIN_SPEECH_BYTES       = int(SAMPLE_RATE * BYTES_PER_SAMPLE * VAD_MIN_SPEECH_SECONDS)
@@ -626,8 +633,21 @@ class VoicePipeline:
             return False
         if audio:
             await self.ws.send_bytes(audio)
-            self.last_tts_end = time.monotonic()
+            self.last_tts_end = self._tts_playback_end_time(audio)
         return True
+
+    def _tts_playback_end_time(self, audio_bytes: bytes) -> float:
+        """Return the monotonic timestamp at which the BROWSER finishes playing.
+
+        The browser plays the audio for roughly `len(audio) / TTS_BYTES_PER_SEC`
+        seconds after a small decode lag. Setting `last_tts_end` to this future
+        time prevents the VAD from re-engaging while CODEC is still audibly
+        speaking (which is what was creating the echo / self-interrupt loop).
+        """
+        if not audio_bytes:
+            return time.monotonic()
+        duration = len(audio_bytes) / float(TTS_BYTES_PER_SEC)
+        return time.monotonic() + TTS_BROWSER_DECODE_LAG + duration
 
     # ── Skill dispatch ────────────────────────────────────────────────────
 
@@ -714,7 +734,7 @@ class VoicePipeline:
                 audio = await self.synthesize(notify)
                 if audio:
                     await self.ws.send_bytes(audio)
-                    self.last_tts_end = time.monotonic()
+                    self.last_tts_end = self._tts_playback_end_time(audio)
 
                 async def voice_cb(update):
                     status = update.get("status", "")
@@ -730,7 +750,7 @@ class VoicePipeline:
                     a = await self.synthesize(msg)
                     if a:
                         await self.ws.send_bytes(a)
-                        self.last_tts_end = time.monotonic()
+                        self.last_tts_end = self._tts_playback_end_time(a)
 
                 _dash = os.path.dirname(os.path.abspath(__file__))
                 if _dash not in sys.path:

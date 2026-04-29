@@ -2214,6 +2214,32 @@ async def chat_completion(request: Request):
             if m.get("role") == "user" and isinstance(m.get("content"), str):
                 last_user_text = m["content"]
                 break
+        # ── Slash commands (BEFORE skill check / attachment check) ──
+        # Type /help, /skills, /cost, /version, /status, /who, /clear in chat
+        # to invoke meta-controls without an LLM round-trip. Slash dispatch
+        # runs first so /version still works even if the user has an image
+        # attached in the same turn.
+        if last_user_text:
+            try:
+                from codec_slash_commands import parse_slash, dispatch as slash_dispatch
+                parsed = parse_slash(last_user_text)
+            except Exception as e:
+                log.warning(f"slash parser unavailable: {e}")
+                parsed = None
+            if parsed is not None:
+                cmd_name, cmd_args = parsed
+                slash_md = await asyncio.to_thread(slash_dispatch, cmd_name, cmd_args)
+                log.info(f"[Chat] Slash /{cmd_name} handled ({len(slash_md)} chars)")
+                stream_mode = body.get("stream", False)
+                if stream_mode:
+                    from starlette.responses import StreamingResponse as _SlashSR
+                    async def _slash_stream():
+                        yield f"data: {json.dumps({'slash': cmd_name})}\n\n"
+                        yield f"data: {json.dumps({'token': slash_md})}\n\n"
+                        yield "data: [DONE]\n\n"
+                    return _SlashSR(_slash_stream(), media_type="text/event-stream")
+                return {"response": slash_md, "slash": cmd_name}
+
         # Skip skill routing when the user attached a file / image — otherwise the
         # IMAGE ANALYSIS / DOCUMENT context text triggers false-positive skill hits
         # (e.g. a screenshot describing "system dashboard" routes to system_info).
