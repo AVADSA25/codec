@@ -367,12 +367,16 @@ def _dispatch_inner(task):
         json.dump({"task": task, "app": app, "ts": datetime.now().isoformat()}, f)
 
     if terminal_session_exists():
-        print("[CODEC] Queued to existing session")
+        # Warm session: codec_session.py handles the LLM + TTS.
+        # Skip the inline quick-reply to avoid double-TTS (bug fix 2026-04-16).
+        print("[CODEC] Queued to existing session (inline quick-reply skipped)")
+        return
     else:
         session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
         run_session_in_terminal(safe_sys, session_id, task)
 
     # ── Quick voice reply (immediate feedback while terminal loads) ─────
+    # Only runs on COLD START — a warm terminal session handles TTS itself.
     if not voice_session["started"]:
         voice_session["started"] = datetime.now().isoformat()
 

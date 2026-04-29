@@ -105,8 +105,11 @@ import os as _os
 _TRANSPORT = _os.environ.get("CODEC_MCP_TRANSPORT", "stdio").lower()
 
 _STDIO_BLOCKED = ["terminal", "process_manager", "pm2_control"]
+# 2026-04-17: file_ops unblocked on HTTP so claude.ai can save files to the Mac
+# (paired with the new, narrower `file_write` skill). The skill still enforces
+# its own path/filename blocklist — /System, /Library, /etc, .ssh, .env, etc.
 _HTTP_BLOCKED = ["python_exec", "terminal", "process_manager", "pm2_control",
-                  "file_ops", "ax_control"]
+                  "ax_control"]
 
 if _TRANSPORT == "http":
     # HTTP/remote always uses the strict set — user config cannot soften it.

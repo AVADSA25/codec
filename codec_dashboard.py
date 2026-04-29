@@ -258,14 +258,26 @@ class E2EMiddleware(BaseHTTPMiddleware):
             if raw:
                 try:
                     envelope = json.loads(raw)
-                    if "iv" in envelope and "ct" in envelope:
+                except Exception:
+                    envelope = None
+                if isinstance(envelope, dict) and "iv" in envelope and "ct" in envelope:
+                    # This IS an E2E envelope — must decrypt or fail loudly.
+                    # 2026-04-26 bugfix: previously a silent `except: pass` here
+                    # let the encrypted envelope through as the request body, so
+                    # downstream handlers saw {} and replied 400 "No messages".
+                    try:
                         iv = base64.b64decode(envelope["iv"])
                         ct = base64.b64decode(envelope["ct"])
                         plaintext = AESGCM(aes_key).decrypt(iv, ct, None)
-                        # Replace request body with decrypted content
                         request._body = plaintext
-                except Exception:
-                    pass  # Not E2E-encrypted or malformed — pass through
+                    except Exception as e:
+                        log.warning(f"[E2E] Decryption failed (key drift) — forcing re-negotiation: {e}")
+                        return StarletteJSONResponse(
+                            {"error": "E2E key out of sync. Refreshing encryption.", "e2e_renew": True},
+                            status_code=428,
+                            headers={"x-e2e-renew": "1"},
+                        )
+                # else: not an E2E envelope (e.g. JSON body sent unencrypted) — pass through
         response = await call_next(request)
         # Encrypt response body
         if response.headers.get("content-type", "").startswith("application/json"):
@@ -1513,7 +1525,15 @@ async def memory_search_endpoint(request: Request):
 
 @app.post("/api/upload_image")
 async def upload_image(request: Request):
-    """Upload image, send to vision, return description"""
+    """Upload image, send to vision, return description.
+
+    Bugfix 2026-04-16 (Qwen 3.6 migration): reduced max_tokens from 4000 → 1000
+    so vision inference stays well under the Cloudflare tunnel ~100s timeout.
+    Qwen 3.6-35B is ~5x heavier than the old 7B-VL; 4000 tokens of output could
+    push total roundtrip past 90s on cold start and fail client-side.
+    Also: force enable_thinking=false so the model doesn't spend tokens on
+    chain-of-thought before producing the description.
+    """
     body = await request.json()
     image_b64 = body.get("data", "")
     filename = body.get("filename", "image.jpg")
@@ -1527,22 +1547,38 @@ async def upload_image(request: Request):
             with open(CONFIG_PATH) as f: config = json.load(f)
         except Exception as e:
             log.warning(f"Non-critical error: {e}")
-        vision_url = config.get("vision_base_url", "http://localhost:8082/v1")
-        vision_model = config.get("vision_model", "mlx-community/Qwen2.5-VL-7B-Instruct-4bit")
+        vision_url = config.get("vision_base_url", "http://localhost:8083/v1")
+        vision_model = config.get("vision_model", "mlx-community/Qwen3.6-35B-A3B-4bit")
         payload = {
             "model": vision_model,
             "messages": [{"role": "user", "content": [
                 {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}},
                 {"type": "text", "text": prompt}
             ]}],
-            "max_tokens": 4000, "temperature": 0.7
+            "max_tokens": 1000, "temperature": 0.7,
+            "chat_template_kwargs": {"enable_thinking": False},
         }
-        r = rq.post(f"{vision_url}/chat/completions", json=payload, headers={"Content-Type": "application/json"}, timeout=120)
-        data = r.json()
-        answer = data["choices"][0]["message"]["content"].strip()
+        t0 = time.time()
+        r = rq.post(f"{vision_url}/chat/completions", json=payload, headers={"Content-Type": "application/json"}, timeout=90)
+        answer = ""
+        try:
+            data = r.json()
+            answer = data["choices"][0]["message"]["content"].strip()
+            # Strip any thinking tags the model emitted anyway
+            import re as _re
+            answer = _re.sub(r'<think>[\s\S]*?</think>', '', answer).strip()
+        except Exception as parse_err:
+            log.error(f"[upload_image] vision response parse failed: {parse_err}; raw={r.text[:300]}")
+        log.info(f"[upload_image] {filename} -> {len(answer)} chars in {time.time()-t0:.1f}s")
+        if not answer:
+            return JSONResponse({"error": "Vision model returned empty response"}, status_code=502)
         return {"text": answer, "filename": filename}
+    except rq.exceptions.Timeout:
+        log.error(f"[upload_image] vision timeout on {filename}")
+        return JSONResponse({"error": "Vision model timed out (cold start?). Please retry."}, status_code=504)
     except Exception as e:
         import traceback; traceback.print_exc()
+        log.error(f"[upload_image] failed: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
 
 # Vibe Code session storage
@@ -2096,7 +2132,14 @@ def _try_skill(user_text: str):
 
 
 def _try_skill_by_name(name: str, query: str):
-    """Execute a specific skill by name (for LLM-routed skill calls)."""
+    """Execute a specific skill by name (for LLM-routed skill calls).
+
+    For calculator specifically: LLMs often pass natural-language descriptions
+    like "sum of Facebook (4900 + 6100), LinkedIn ...". The calculator skill
+    can't parse that. We try the raw query first, then fall back to extracting
+    every number out of the string and summing/computing locally so the user
+    always gets a number instead of a raw [SKILL:...] tag leaking through.
+    """
     try:
         from codec_dispatch import run_skill
         skill = {"name": name}
@@ -2105,6 +2148,51 @@ def _try_skill_by_name(name: str, query: str):
             return name, str(result)
     except Exception as e:
         log.warning(f"[Chat] LLM skill route error ({name}): {e}")
+
+    # Calculator-specific fallback: rescue messy LLM-routed inputs like
+    #   "sum of Facebook (4900 + 6100), LinkedIn (4127 + 3900), ..."
+    # The LLM almost always means "give me the total" → extract every number
+    # and sum. If the query plainly contains a single arithmetic expression,
+    # we eval that instead.
+    if name == "calculator":
+        try:
+            import re as _re_calc
+            q_lower = query.lower()
+            # Detect a clean arithmetic expression like "47*89" with no other words
+            stripped = _re_calc.sub(r"[^0-9+\-*/().\s]", "", query).strip()
+            stripped = _re_calc.sub(r"\s+", "", stripped)
+            looks_like_clean_expression = (
+                stripped
+                and _re_calc.fullmatch(r"[0-9+\-*/().]+", stripped)
+                and _re_calc.search(r"[+\-*/]", stripped)
+            )
+            if looks_like_clean_expression:
+                try:
+                    val = eval(stripped, {"__builtins__": {}}, {})  # noqa: S307
+                    return name, f"{val:,}"
+                except Exception:
+                    pass
+
+            # Otherwise: pull every number out and decide an op based on intent
+            nums = [float(n) for n in _re_calc.findall(r"\d+(?:\.\d+)?", query)]
+            if len(nums) >= 2:
+                # Default to sum (covers grand total / how many / count / etc).
+                # If user said "product" / "multiply" / "times" → multiply.
+                if any(_re_calc.search(rf"\b{kw}\b", q_lower)
+                       for kw in ("product", "multiply", "multiplied", "times")):
+                    val = 1.0
+                    for n in nums:
+                        val *= n
+                else:
+                    val = sum(nums)
+                # Format integer-clean if no decimals were involved
+                val_int = int(val)
+                if val == val_int:
+                    return name, f"{val_int:,}"
+                return name, f"{val:,.2f}"
+        except Exception as e:
+            log.warning(f"[Chat] calculator fallback failed: {e}")
+
     return name, None
 
 
@@ -2126,7 +2214,17 @@ async def chat_completion(request: Request):
             if m.get("role") == "user" and isinstance(m.get("content"), str):
                 last_user_text = m["content"]
                 break
-        if last_user_text:
+        # Skip skill routing when the user attached a file / image — otherwise the
+        # IMAGE ANALYSIS / DOCUMENT context text triggers false-positive skill hits
+        # (e.g. a screenshot describing "system dashboard" routes to system_info).
+        # Bugfix 2026-04-16: image attachments were being hijacked by skill router.
+        has_attachment = last_user_text and (
+            "[IMAGE ANALYSIS" in last_user_text
+            or "[DOCUMENT:" in last_user_text
+            or "[END IMAGE]" in last_user_text
+            or "[END DOCUMENT]" in last_user_text
+        )
+        if last_user_text and not has_attachment:
             skill_name, skill_result = await asyncio.to_thread(_try_skill, last_user_text)
             if skill_result:
                 log.info(f"[Chat] Skill '{skill_name}' handled: {skill_result[:80]}")
@@ -2202,6 +2300,43 @@ async def chat_completion(request: Request):
         _overrides = _load_prompt_overrides()
         _chat_prompt = _overrides.get("chat", CHAT_SYSTEM_PROMPT)
         sys_prompt = _chat_prompt.format(date=_dt.now().strftime("%A, %B %d, %Y"))
+        # Bugfix 2026-04-16: when the user attaches a file/image, the default
+        # system prompt still teaches the LLM to emit [SKILL:...] tags, which
+        # then leak through the streaming path. Force conversational mode for
+        # this turn so the LLM analyses the attached content directly.
+        if has_attachment:
+            sys_prompt += (
+                "\n\n## This Turn\n"
+                "The user has attached a file or image and its content is already "
+                "embedded in their message between [IMAGE ANALYSIS]/[DOCUMENT] markers. "
+                "Respond conversationally about the attached content. "
+                "DO NOT emit [SKILL:...] tool-calling tags in this response."
+            )
+
+        # Bugfix 2026-04-27: detect content-rewriting intents (format/draft/
+        # rewrite/reword/proofread an email/message/text) — these are pure-text
+        # generation tasks, NOT skill calls. Past failure: LLM emitted
+        # [SKILL:translate:<email body>] for "format my email", which ran the
+        # translate skill on the email and returned "Translation failed."
+        _u_text_lower = (last_user_text or "").lower()
+        _content_rewrite_intent = any(
+            kw in _u_text_lower for kw in (
+                "format my email", "format this email", "format my message",
+                "reformat", "rewrite", "reword", "redraft", "polish",
+                "proofread", "edit my email", "fix my email", "fix the grammar",
+                "make this sound", "translate this", "translate the following",
+                "draft a reply", "draft an email", "draft this",
+            )
+        )
+        if _content_rewrite_intent:
+            sys_prompt += (
+                "\n\n## This Turn\n"
+                "The user is asking you to generate or rewrite text directly "
+                "(format/edit/draft/translate/polish their email or message). "
+                "Respond with the rewritten content as plain prose. "
+                "DO NOT emit [SKILL:...] tool-calling tags in this response — "
+                "the answer IS the rewritten text, no tools needed."
+            )
         # Prepend system message (or replace existing one)
         if messages and messages[0].get("role") == "system":
             messages[0]["content"] = sys_prompt + "\n\n" + messages[0]["content"]
@@ -2231,6 +2366,51 @@ async def chat_completion(request: Request):
             def _stream_gen():
                 in_think = False  # Track whether we're inside <think>...</think>
                 _empty_count = 0  # Track empty content chunks for keepalive
+                # Bugfix 2026-04-16: buffer potential [SKILL:...] tags so the raw
+                # tag never leaks through the stream. When we see "[" we start
+                # buffering; if it resolves to a [SKILL:...] tag we execute the
+                # skill and emit the result; otherwise we flush the buffer.
+                import re as _re
+                skill_buf = ""
+                buffering = False
+                SKILL_RE = _re.compile(r'\[SKILL:(\w+):([^\]]+)\]')
+
+                # Track visible characters emitted to user so we can detect
+                # the "LLM emitted only skill tags + we dropped them all" case
+                # → blank bubble. We append to a list (closure-mutable) instead
+                # of using a nonlocal int because nested defs make rebinding ugly.
+                _visible = [0]
+
+                def _flush_emit(tok):
+                    if tok:
+                        _visible[0] += len(tok)
+                    return f"data: {json.dumps({'token': tok})}\n\n"
+
+                def _resolve_skill_tag(raw_tag):
+                    """Run the skill inline and return its string result.
+
+                    On any failure we DROP the tag (return empty string) instead
+                    of leaking the raw [SKILL:...] tag into the UI. The LLM's
+                    own follow-up prose usually contains the answer anyway.
+                    Bugfix 2026-04-26: previously returned raw_tag on failure,
+                    causing "[SKILL:calculator:sum of...]" to appear in chat.
+                    """
+                    m = SKILL_RE.search(raw_tag)
+                    if not m:
+                        return raw_tag  # not a skill tag at all — emit as-is
+                    s_name, s_query = m.group(1), m.group(2)
+                    if s_name not in CHAT_SKILL_ALLOWLIST:
+                        log.info(f"[Chat] LLM tried disallowed skill {s_name!r} — dropping tag")
+                        return raw_tag.replace(m.group(0), "")
+                    try:
+                        _, s_result = _try_skill_by_name(s_name, s_query)
+                        if s_result:
+                            return raw_tag.replace(m.group(0), f"**{s_result}**")
+                        log.info(f"[Chat] Skill {s_name!r} returned None for {s_query[:60]!r} — dropping tag")
+                    except Exception as e:
+                        log.warning(f"[Chat] Skill {s_name!r} crashed: {e}")
+                    # Drop the tag silently — never leak raw [SKILL:...] to UI
+                    return raw_tag.replace(m.group(0), "")
                 try:
                     with rq.post(f"{base_url}/chat/completions", json=payload,
                                  headers=headers, timeout=300, stream=True) as resp:
@@ -2239,6 +2419,20 @@ async def chat_completion(request: Request):
                                 continue
                             data_str = line[6:]
                             if data_str == "[DONE]":
+                                # Flush any pending buffer before closing
+                                if skill_buf:
+                                    yield _flush_emit(_resolve_skill_tag(skill_buf))
+                                    skill_buf = ""
+                                # Safety net: if the LLM emitted ONLY [SKILL:...] tags
+                                # and we dropped them all, the user gets a blank bubble.
+                                # Send a graceful fallback so they know to retry.
+                                # 2026-04-27 bugfix.
+                                if _visible[0] == 0:
+                                    fallback = (
+                                        "I tried to use a tool that didn't apply here. "
+                                        "Could you rephrase, or just ask me to write it directly?"
+                                    )
+                                    yield _flush_emit(fallback)
                                 yield "data: [DONE]\n\n"
                                 break
                             try:
@@ -2269,10 +2463,69 @@ async def chat_completion(request: Request):
                                             yield f"data: {json.dumps({'token': after})}\n\n"
                                     # Skip all thinking content
                                     continue
-                                if token:
-                                    yield f"data: {json.dumps({'token': token})}\n\n"
+                                if not token:
+                                    continue
+                                # ── [SKILL:...] buffering ──
+                                # Process token char by char looking for tag boundaries
+                                i = 0
+                                while i < len(token):
+                                    if buffering:
+                                        skill_buf += token[i]
+                                        i += 1
+                                        # Validate prefix: must still be a prefix of "[SKILL:"
+                                        # (when short) or must start with "[SKILL:" (when long).
+                                        # As soon as it diverges, it's not a tag — emit raw.
+                                        _SKP = "[SKILL:"
+                                        if len(skill_buf) <= len(_SKP):
+                                            if not _SKP.startswith(skill_buf):
+                                                yield _flush_emit(skill_buf)
+                                                skill_buf = ""
+                                                buffering = False
+                                                continue
+                                        elif not skill_buf.startswith(_SKP):
+                                            yield _flush_emit(skill_buf)
+                                            skill_buf = ""
+                                            buffering = False
+                                            continue
+                                        # Tag complete?
+                                        if skill_buf.endswith("]"):
+                                            # Is it a valid skill tag?
+                                            if SKILL_RE.search(skill_buf):
+                                                yield _flush_emit(_resolve_skill_tag(skill_buf))
+                                            else:
+                                                # Not a skill tag — emit raw
+                                                yield _flush_emit(skill_buf)
+                                            skill_buf = ""
+                                            buffering = False
+                                        # Buffer too long → safety cap.
+                                        # NOTE: newlines are allowed inside a tag because
+                                        # python_exec/terminal queries can be multi-line scripts.
+                                        elif len(skill_buf) > 5000:
+                                            yield _flush_emit(skill_buf)
+                                            skill_buf = ""
+                                            buffering = False
+                                    else:
+                                        # Look for start of potential skill tag
+                                        idx = token.find("[", i)
+                                        if idx == -1:
+                                            # No "[" in rest of token → emit rest
+                                            rest = token[i:]
+                                            if rest:
+                                                yield _flush_emit(rest)
+                                            break
+                                        else:
+                                            # Emit up to "[", start buffering
+                                            before = token[i:idx]
+                                            if before:
+                                                yield _flush_emit(before)
+                                            skill_buf = "["
+                                            buffering = True
+                                            i = idx + 1
                             except (json.JSONDecodeError, KeyError, IndexError):
                                 continue
+                    # Final flush if stream closed without [DONE]
+                    if skill_buf:
+                        yield _flush_emit(_resolve_skill_tag(skill_buf))
                 except Exception as e:
                     yield f"data: {json.dumps({'error': str(e)})}\n\n"
             from starlette.responses import StreamingResponse as _SR
@@ -2747,8 +3000,8 @@ async def cortex_health():
     """Proxy health checks for CORTEX visualization."""
     import httpx
     checks = [
-        {"id": "qwen", "port": 8081, "path": "/v1/models"},
-        {"id": "vision", "port": 8082, "path": "/v1/models"},
+        {"id": "qwen", "port": 8083, "path": "/v1/models"},
+        {"id": "vision", "port": 8083, "path": "/v1/models"},
         {"id": "whisper", "port": 8084, "path": "/"},
         {"id": "kokoro", "port": 8085, "path": "/v1/models"},
     ]

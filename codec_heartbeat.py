@@ -59,11 +59,11 @@ def _check_one_service(name: str, url: str) -> tuple:
 def check_system_health():
     """Verify all CODEC services are running (checks run in parallel)."""
     services = {
-        "LLM": "http://localhost:8081/v1/models",
+        "LLM": "http://localhost:8083/v1/models",
         "Whisper": "http://localhost:8084/health",
         "Kokoro": "http://localhost:8085/v1/models",
         "Dashboard": "http://localhost:8090/",
-        "Vision": "http://localhost:8082/v1/models",
+        "Vision": "http://localhost:8083/v1/models",
     }
     with ThreadPoolExecutor(max_workers=len(services)) as pool:
         futures = {

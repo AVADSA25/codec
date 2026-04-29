@@ -31,8 +31,11 @@ from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 
 from fastmcp.server.auth.providers.in_memory import InMemoryOAuthProvider
 
-ACCESS_TOKEN_TTL = 24 * 60 * 60          # 24h
-REFRESH_TOKEN_TTL = 30 * 24 * 60 * 60    # 30d
+# 2026-04-25: bumped access-token TTL from 24h → 30d so claude.ai connections
+# don't go stale mid-week if the refresh flow doesn't fire. Tokens are still
+# revocable at any moment by clearing ~/.codec/oauth_state.json.
+ACCESS_TOKEN_TTL = 30 * 24 * 60 * 60     # 30d (was 24h)
+REFRESH_TOKEN_TTL = 90 * 24 * 60 * 60    # 90d (was 30d)
 
 _STATE_PATH = Path(os.path.expanduser("~/.codec/oauth_state.json"))
 _STATE_PATH.parent.mkdir(parents=True, exist_ok=True)

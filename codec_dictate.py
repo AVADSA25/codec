@@ -489,8 +489,8 @@ def transcribe_and_type(audio_path):
                 try:
                     import requests as _req
                     print("[DICTATE] Draft mode — refining with Qwen...")
-                    r = _req.post("http://localhost:8081/v1/chat/completions",
-                        json={"model": "mlx-community/Qwen3.5-35B-A3B-4bit",
+                    r = _req.post("http://localhost:8083/v1/chat/completions",
+                        json={"model": "mlx-community/Qwen3.6-35B-A3B-4bit",
                               "messages": [
                                   {"role": "system", "content": "Rewrite the user message as a polished, professional message. Output ONLY the final text. No preamble, no explanation."},
                                   {"role": "user", "content": body}

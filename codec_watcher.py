@@ -5,10 +5,10 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT, lambda *a: None)
     signal.signal(signal.SIGTERM, lambda *a: None)
 
-QWEN_BASE_URL  = "http://localhost:8081/v1"
-QWEN_MODEL     = "mlx-community/Qwen3.5-35B-A3B-4bit"
-QWEN_VISION_URL = "http://localhost:8082/v1"
-QWEN_VISION_MODEL = "mlx-community/Qwen2.5-VL-7B-Instruct-4bit"
+QWEN_BASE_URL  = "http://localhost:8083/v1"
+QWEN_MODEL     = "mlx-community/Qwen3.6-35B-A3B-4bit"
+QWEN_VISION_URL = "http://localhost:8083/v1"
+QWEN_VISION_MODEL = "mlx-community/Qwen3.6-35B-A3B-4bit"
 KOKORO_URL     = "http://localhost:8085/v1/audio/speech"
 KOKORO_MODEL   = "mlx-community/Kokoro-82M-bf16"
 TTS_VOICE      = "am_adam"
