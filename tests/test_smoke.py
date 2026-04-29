@@ -42,9 +42,20 @@ except ImportError as e:
 try:
     from codec_identity import CODEC_IDENTITY, CODEC_VOICE_PROMPT, CODEC_CHAT_PROMPT
     check("codec_identity imports", True)
-    check("Identity mentions 7 products", "7 CODEC PRODUCTS" in CODEC_IDENTITY or "7 products" in CODEC_IDENTITY.lower())
-    check("Identity mentions memory system", "MEMORY SYSTEM" in CODEC_IDENTITY)
-    check("Voice prompt is concise directive", "1-3 sentences" in CODEC_VOICE_PROMPT)
+    # Operating-principles prompt rewrite (April 2026): assert the new
+    # principles are present + the skill invocation mechanic is taught.
+    check("Identity opens with 'You are CODEC'", CODEC_IDENTITY.startswith("You are CODEC"))
+    check("Identity contains 'Stability first'", "Stability first" in CODEC_IDENTITY)
+    check("Identity contains 'Plan before blast radius'", "Plan before blast radius" in CODEC_IDENTITY)
+    check("Identity contains 'Sovereign by default'", "Sovereign by default" in CODEC_IDENTITY)
+    check("Identity teaches [SKILL:...] tag mechanic", "[SKILL:" in CODEC_IDENTITY)
+    check("Identity references memory injection", "[MEMORY]" in CODEC_IDENTITY)
+    check("Identity has {date} placeholder", "{date}" in CODEC_IDENTITY)
+    check("Voice prompt enforces 1-3 sentence brevity", "1–3 plain sentences" in CODEC_VOICE_PROMPT or "1-3 plain sentences" in CODEC_VOICE_PROMPT)
+    check("Voice prompt forbids markdown",
+          "No markdown" in CODEC_VOICE_PROMPT or "no markdown" in CODEC_VOICE_PROMPT)
+    check("Chat prompt allows markdown",
+          "Use markdown" in CODEC_CHAT_PROMPT or "markdown" in CODEC_CHAT_PROMPT.lower())
 except ImportError as e:
     check("codec_identity imports", False, str(e))
 

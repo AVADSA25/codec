@@ -355,7 +355,9 @@ def _dispatch_inner(task):
     except Exception as e:
         log.warning("Memory upgrade injection failed: %s", e)
 
-    sys_p = CODEC_VOICE_PROMPT
+    # 2026-04-29 prompt rewrite: CODEC_VOICE_PROMPT now contains a {date}
+    # placeholder. Format it before use so the LLM doesn't see literal '{date}'.
+    sys_p = CODEC_VOICE_PROMPT.format(date=datetime.now().strftime("%A, %B %d, %Y"))
     if boot_ctx: sys_p += boot_ctx
     if facts_ctx: sys_p += facts_ctx
     if mem: sys_p += "\n\n" + mem
