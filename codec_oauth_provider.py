@@ -31,6 +31,17 @@ from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 
 from fastmcp.server.auth.providers.in_memory import InMemoryOAuthProvider
 
+try:
+    from codec_audit import log_event as _oauth_log_event
+except ImportError:  # pragma: no cover — audit unavailable shouldn't break OAuth
+    def _oauth_log_event(*a, **kw):  # type: ignore[no-redef]
+        pass
+
+
+def _token_id(token_value: str) -> str:
+    """Last 8 chars of an opaque token — safe to log as identifier."""
+    return (token_value or "")[-8:]
+
 # 2026-04-25: bumped access-token TTL from 24h → 30d so claude.ai connections
 # don't go stale mid-week if the refresh flow doesn't fire. Tokens are still
 # revocable at any moment by clearing ~/.codec/oauth_state.json.
@@ -144,6 +155,25 @@ class PersistentOAuthProvider(InMemoryOAuthProvider):
         self._refresh_to_access_map[refresh_value] = access_value
         self._save()
 
+        # token_issued audit (one cid for the issue→refresh chain — covers
+        # this issuance and any subsequent refreshes against the same chain).
+        cid = secrets.token_hex(6)
+        try:
+            _oauth_log_event(
+                "token_issued", "codec-oauth-provider",
+                f"Access token issued for client {client.client_id}",
+                client_id=client.client_id,
+                extra={
+                    "access_token_id": _token_id(access_value),
+                    "refresh_token_id": _token_id(refresh_value),
+                    "expires_in_sec": ACCESS_TOKEN_TTL,
+                    "scope": " ".join(authorization_code.scopes),
+                },
+                correlation_id=cid,
+            )
+        except Exception:
+            pass
+
         return OAuthToken(
             access_token=access_value,
             token_type="Bearer",
@@ -164,6 +194,12 @@ class PersistentOAuthProvider(InMemoryOAuthProvider):
                 "invalid_scope",
                 "Requested scopes exceed those authorized by the refresh token.",
             )
+
+        # Capture the previous-access-id (looked up before we revoke) so
+        # token_refreshed can pair the old/new ids in the audit log.
+        previous_access_id = _token_id(
+            self._refresh_to_access_map.get(refresh_token.token, "")
+        )
 
         self._revoke_internal(refresh_token_str=refresh_token.token)
 
@@ -190,6 +226,26 @@ class PersistentOAuthProvider(InMemoryOAuthProvider):
         self._refresh_to_access_map[refresh_value] = access_value
         self._save()
 
+        # token_refreshed audit. New cid per refresh; design §1.4 leaves
+        # cross-refresh chaining for a follow-up (would need to persist the
+        # original-issuance cid alongside the refresh_token to reuse it).
+        cid = secrets.token_hex(6)
+        try:
+            _oauth_log_event(
+                "token_refreshed", "codec-oauth-provider",
+                f"Access token refreshed for client {client.client_id}",
+                client_id=client.client_id,
+                extra={
+                    "access_token_id": _token_id(access_value),
+                    "previous_id": previous_access_id,
+                    "expires_in_sec": ACCESS_TOKEN_TTL,
+                    "scope": " ".join(scopes),
+                },
+                correlation_id=cid,
+            )
+        except Exception:
+            pass
+
         return OAuthToken(
             access_token=access_value,
             token_type="Bearer",
@@ -201,3 +257,39 @@ class PersistentOAuthProvider(InMemoryOAuthProvider):
     async def revoke_token(self, token) -> None:
         await super().revoke_token(token)
         self._save()
+
+    # ---------- audit-only helpers — invoked by ops paths ----------
+
+    def emit_token_expired(self, access_token_id: str, client_id: str | None,
+                           age_seconds: float | int | None = None) -> None:
+        """Emit token_expired when a token's TTL check fails on validate.
+        Caller passes the last-8 of the access token, the client_id if known,
+        and the token's age in seconds at expiry."""
+        try:
+            _oauth_log_event(
+                "token_expired", "codec-oauth-provider",
+                f"Access token expired for client {client_id or 'unknown'}",
+                client_id=client_id,
+                outcome="denied", level="warning",
+                extra={
+                    "access_token_id": access_token_id,
+                    "age_seconds": age_seconds,
+                },
+            )
+        except Exception:
+            pass
+
+    def emit_state_invalidated(self, reason: str, tokens_cleared: int = 0) -> None:
+        """Emit oauth_state_invalidated for admin clear / corruption /
+        manual delete events. `reason` should be one of:
+            'admin_clear' | 'corruption' | 'manual_delete'
+        """
+        try:
+            _oauth_log_event(
+                "oauth_state_invalidated", "codec-oauth-provider",
+                f"OAuth state invalidated: {reason}",
+                outcome="warning", level="warning",
+                extra={"reason": reason, "tokens_cleared": tokens_cleared},
+            )
+        except Exception:
+            pass
