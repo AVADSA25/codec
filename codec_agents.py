@@ -510,7 +510,14 @@ Rules:
                     _audit("tool_call", agent=self.name, tool=tool_name,
                            input=tool_input[:200])
                     loop = asyncio.get_event_loop()
-                    result = await loop.run_in_executor(None, tool.run, tool_input)
+                    # Propagate contextvars (incl. _correlation_id_var) into
+                    # the executor thread so any _audit fired from inside
+                    # the tool (e.g. _shell_execute → shell_blocked) inherits
+                    # the agent/crew correlation_id. asyncio doesn't do this
+                    # automatically — has to be an explicit copy_context().
+                    ctx = contextvars.copy_context()
+                    result = await loop.run_in_executor(
+                        None, ctx.run, tool.run, tool_input)
                     tool_calls_made += 1
                     _audit("tool_result", agent=self.name, tool=tool_name,
                            result_len=len(result))
