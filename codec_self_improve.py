@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import secrets
 import sys
 from collections import Counter, defaultdict
 from datetime import datetime, timezone, timedelta
@@ -39,11 +40,24 @@ sys.path.insert(0, str(_REPO))
 from codec_config import QWEN_BASE_URL, QWEN_MODEL, SKILLS_DIR, is_dangerous_skill_code
 from codec_retry import retry_post
 
+try:
+    from codec_audit import log_event as _si_log_event
+except ImportError:  # pragma: no cover
+    def _si_log_event(*a, **kw):  # type: ignore[no-redef]
+        pass
+
 _CODEC = Path(os.path.expanduser("~/.codec"))
 _PROPOSALS_ROOT = _CODEC / "skill_proposals"
 _PROPOSALS_ROOT.mkdir(parents=True, exist_ok=True)
 
 MAX_PROPOSALS_PER_RUN = 3
+
+# Map gap-kind → signal_type (per design §1.2)
+_GAP_KIND_TO_SIGNAL = {
+    "missing_tool":   "unknown_tool",
+    "unreliable_tool": "failing_tool",
+    "timeout_prone": "timeout_tool",
+}
 
 
 def _existing_skill_names() -> set[str]:
@@ -257,6 +271,10 @@ def run_once(target_date: str | None = None) -> str:
     if target_date is None:
         target_date = (datetime.now(timezone.utc) - timedelta(days=1)).date().isoformat()
 
+    # One correlation_id per nightly run. Every skill_proposal_staged emit
+    # below shares this ID so the analyzer can bucket the run.
+    run_cid = secrets.token_hex(6)
+
     out_dir = _PROPOSALS_ROOT / target_date
     records = _load_audit_for(target_date)
     if not records:
@@ -289,6 +307,26 @@ def run_once(target_date: str | None = None) -> str:
         ok, why = _validate(code)
         _write_proposal(out_dir, name, code, gap, ok, why)
         written.append((name, ok))
+        # skill_proposal_staged emit — one per proposal, sharing run_cid.
+        try:
+            signal_type = _GAP_KIND_TO_SIGNAL.get(gap.get("kind", ""), "unknown")
+            _si_log_event(
+                "skill_proposal_staged", "codec-self-improve",
+                f"Proposal staged: {name}",
+                outcome="ok" if ok else "warning",
+                level="info" if ok else "warning",
+                extra={
+                    "proposal_path": str((out_dir / f"{name}.md").resolve()),
+                    "skill_name": name,
+                    "signal_type": signal_type,
+                    "validation_passed": ok,
+                    "validation_reason": (why or "clean")[:200],
+                    "target_date": target_date,
+                },
+                correlation_id=run_cid,
+            )
+        except Exception:
+            pass
 
     lines = [f"[{target_date}] Analyzed {len(records)} records, {len(gaps)} gaps, drafted {len(written)} proposal(s):"]
     for name, ok in written:
