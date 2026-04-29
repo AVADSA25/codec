@@ -153,30 +153,38 @@ Rule-based compressor for memory writes that need shrinking. Entity abbreviation
 ### Audit log (`codec_audit.audit()`)
 File: `~/.codec/audit.log`, newline-delimited JSON, daily rotation, 30-day retention. Append is thread-safe via `threading.Lock`.
 
-**Schema status: BEING UNIFIED in Phase 1 Step 1.** Currently two parallel shapes coexist (MCP-style and crew-style). After Phase 1 Step 1, the unified envelope is:
+**Schema status: UNIFIED (schema:1) — Phase 1 Step 1 implemented on the `phase1-step1-audit-unification` branch (HEAD 05f9b80).** The unified envelope is:
 
-```json
+```jsonc
 {
-  "ts": "ISO8601",
-  "event": "tool_call|tool_result|crew_start|crew_complete|skill_run|hook_fired|...",
-  "tool": "skill_or_tool_name",
-  "agent": "Writer | null",
-  "transport": "stdio|http|local|voice|chat|crew",
-  "outcome": "ok|error|timeout|validation",
-  "duration_ms": 120.5,
-  "task_len": 42,
+  "ts":          "2026-04-30T08:14:23.451+00:00",  // ISO8601 UTC, ms
+  "schema":      1,                                  // schema version
+  "event":       "tool_call|tool_result|crew_start|crew_complete|...",
+  "source":      "codec-mcp-http|codec-heartbeat|codec-scheduler|...",
+  "outcome":     "ok|error|timeout|validation|denied|warning",
+  "tool":        "weather",
+  "task_len":    42,
   "context_len": 128,
-  "error_type": null,
-  "extra": { ... }
+  "duration_ms": 120.5,
+  "transport":   "stdio|http|local|voice|chat|crew|scheduler|heartbeat|dispatch|session",
+  "agent":       "Writer | null",
+  "level":       "debug|info|warning|error",
+  "message":     "free-text, ≤ 500 chars",
+  "error_type":  "TimeoutError | null",
+  "error":       "short string ≤ 500 chars",
+  "client_id":   "claude-ai | null",
+  "extra":       { "correlation_id": "a3f7b2c8e409", "...": "..." }
 }
 ```
 
-Old entries remain readable via `codec_audit_analyzer.py` which already accepts both shapes.
+`event=` is a **REQUIRED** kwarg on `audit()` — calling without it raises `TypeError` (per design Q4). `correlation_id` is **REQUIRED** for any operation that emits ≥2 audit lines (paired tool_call/tool_result, crew lifecycle, voice session, schedule run, OAuth chain — see design §1.4 for the full list). It rides under `extra.correlation_id` as a 12-char lowercase-hex string from `secrets.token_hex(6)`.
+
+Pre-Phase-1 entries stay readable: `codec_audit_analyzer.py` already used `.get()` for every field, so legacy records (no `schema`, no `event`, naïve `ts`) bucket cleanly alongside unified ones. Migration plan: leave-as-is, age-out via the 30-day rotation. See `docs/PHASE1-STEP1-DESIGN.md` for the full contract.
 
 ### log_event (`codec_audit.log_event`)
-Thin adapter over `audit()` for lifecycle events (session start/end, scheduler tick, dispatch decision, heartbeat alert). Defined in `codec_audit.py`. Call sites in `codec_session.py`, `codec_scheduler.py`, `codec_dispatch.py`, `codec_heartbeat.py`, `codec_dashboard.py`.
+Real adapter over `audit()` for lifecycle events (session start/end, scheduler tick, dispatch decision, heartbeat alert). Defined in `codec_audit.py`. Call sites in `codec_session.py`, `codec_scheduler.py`, `codec_dispatch.py`, `codec_heartbeat.py`, `codec_dashboard.py`, `codec.py`, `routes/auth.py`.
 
-> **Status:** PRIOR to Phase 1 Step 1, `log_event` was a silent no-op fallback in all 5 modules (the `from codec_audit import log_event` import was failing because the export didn't exist). After Phase 1 Step 1, the adapter is wired through.
+> **Status as of Phase 1 Step 1 (commit 05f9b80):** adapter wired through, correlation_id contract enforced. Prior to this branch, every `log_event` call was a silent no-op (the `try: from codec_audit import log_event` import was failing because the export didn't exist; the `except: def log_event(*a, **kw): pass` fallback ran instead). All 7 modules now import the real adapter and emit canonical event names per §1.2 of the design.
 
 ### Notifications (`~/.codec/notifications.json`)
 Three sources can produce notifications: scheduler (crew completion), heartbeat (threshold alert), autopilot (ambient trigger). All write through `routes/_shared.py:51-127`.
