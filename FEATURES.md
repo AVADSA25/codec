@@ -1,6 +1,13 @@
-# CODEC — Full Product Breakdown
+# Sovereign AI Workstation — Full Product Breakdown
 
-> 245 features · 57 skills · 378 tests · 34K+ lines of code
+> Engine: **CODEC v2.1** — 245 features · 60 skills · 378 tests · 34K+ lines of code
+
+The product name is **Sovereign AI Workstation**. Throughout this document
+and the codebase, **CODEC** refers to the underlying open-source engine /
+codename (visible in `codec_*` Python modules, PM2 process names, and the
+`~/.codec/` config directory). Sub-products keep their established names —
+*CODEC Core*, *CODEC Dictate*, *CODEC Chat*, *CODEC Vibe*, etc. — because
+those are concrete engine components rather than separate products.
 
 ---
 

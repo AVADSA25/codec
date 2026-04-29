@@ -1,27 +1,28 @@
 <p align="center">
-  <img src="https://i.imgur.com/RbrQ7Bt.png" alt="CODEC" width="280"/>
+  <img src="https://i.imgur.com/RbrQ7Bt.png" alt="Sovereign AI Workstation" width="280"/>
 </p>
 
-<h1 align="center">CODEC v2.1</h1>
-<p align="center"><strong>Open-Source Intelligent Command Layer for macOS</strong></p>
-<p align="center"><em>Your voice. Your computer. Your rules. No limit.</em></p>
+<h1 align="center">Sovereign AI Workstation</h1>
+<p align="center"><strong>The open-source AI workstation for macOS, powered by CODEC</strong></p>
+<p align="center"><em>Your voice. Your computer. Your rules.</em></p>
 <p align="center">
-  <a href="https://opencodec.org">opencodec.org</a> · <a href="https://avadigital.ai">AVA Digital LLC</a> · <a href="#quick-start">Get Started</a> · <a href="#support-the-project">Support</a> · <a href="#professional-setup">Enterprise</a>
+  <a href="https://avadigital.ai">avadigital.ai</a> · <a href="https://opencodec.org">opencodec.org</a> · <a href="#quick-start">Get Started</a> · <a href="#support-the-project">Support</a> · <a href="#professional-setup">Enterprise</a>
 </p>
 
 <p align="center">
   <a href="FEATURES.md"><img src="https://img.shields.io/badge/features-238-blue?style=flat-square" alt="238 Features"/></a>
-  <img src="https://img.shields.io/badge/skills-56-orange?style=flat-square" alt="56 Skills"/>
+  <img src="https://img.shields.io/badge/skills-60-orange?style=flat-square" alt="60 Skills"/>
   <img src="https://img.shields.io/badge/tests-378-green?style=flat-square" alt="378 Tests"/>
   <img src="https://img.shields.io/badge/lines-33.9K-purple?style=flat-square" alt="33,900 Lines"/>
   <img src="https://img.shields.io/badge/license-MIT-brightgreen?style=flat-square" alt="MIT License"/>
+  <img src="https://img.shields.io/badge/engine-CODEC%20v2.1-E8711A?style=flat-square" alt="Engine: CODEC v2.1"/>
 </p>
 
 ---
 
 <p align="center">
   <a href="https://www.youtube.com/watch?v=OEXxvxA0_AE">
-    <img src="https://img.youtube.com/vi/OEXxvxA0_AE/maxresdefault.jpg" alt="CODEC Demo" width="660"/>
+    <img src="https://img.youtube.com/vi/OEXxvxA0_AE/maxresdefault.jpg" alt="Sovereign AI Workstation Demo" width="660"/>
   </a>
   <br/>
   <em>Watch the full demo</em>
@@ -29,13 +30,15 @@
 
 ---
 
-## What Is CODEC
+## What This Is
 
-CODEC is a framework that turns a Mac into a voice-controlled AI workstation. Give it a brain (any LLM — local or cloud), ears (Whisper), a voice (Kokoro), and eyes (vision model). The rest is Python.
+**Sovereign AI Workstation** turns a Mac into a voice-controlled AI workstation that you fully own. Give it a brain (any LLM — local or cloud), ears (Whisper), a voice (Kokoro), and eyes (a vision model). The rest is Python.
 
-It listens, sees the screen, speaks back, controls apps, writes code, drafts messages, manages Google Workspace, and when it doesn't know how to do something — it writes its own plugin and learns.
+It listens, sees the screen, speaks back, controls apps, writes code, drafts messages, manages Google Workspace — and when it doesn't know how to do something, it writes its own plugin and learns.
 
-No cloud dependency. No subscription. No data leaving the machine. MIT licensed.
+No cloud dependency. No data leaving the machine unless you choose. No subscription on the open-source build. MIT licensed.
+
+> **Sovereign AI Workstation** is the product brand. **CODEC** (v2.1) is the open-source engine that powers it — the codename you'll see in code paths, skill registries, the `codec_*` PM2 services, and the `~/.codec/` config directory. *Sovereign AI Workstation* is what you ship; *CODEC* is what you ship with. Same way iPhone runs on Darwin, or Tesla Model S runs on Roadster components — one is the product, the other is the engine.
 
 ---
 
