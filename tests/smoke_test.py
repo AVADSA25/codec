@@ -234,7 +234,7 @@ def test_chat_skill_weather():
     """Test Chat skill routing — weather."""
     try:
         r = SESSION.post(f"{BASE}/api/chat",
-                         json={"messages": [{"role": "user", "content": "weather in Marbella"}],
+                         json={"messages": [{"role": "user", "content": "weather in Paris"}],
                                "stream": False},
                          timeout=30)
         if r.status_code == 200:

@@ -166,7 +166,7 @@ class TestTranscribe:
 
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {"text": "What is the weather in Marbella today"}
+        mock_response.json.return_value = {"text": "What is the weather in Paris today"}
         pipeline._http.post = AsyncMock(return_value=mock_response)
 
         # Patch clean_transcript to pass through
@@ -176,7 +176,7 @@ class TestTranscribe:
             pcm = _make_pcm_loud(duration_s=0.5)
             result = _run(pipeline.transcribe(pcm))
 
-        assert result == "What is the weather in Marbella today"
+        assert result == "What is the weather in Paris today"
 
     def test_transcribe_handles_http_error(self):
         """Mock Whisper returning 500, verify transcribe() returns empty string."""

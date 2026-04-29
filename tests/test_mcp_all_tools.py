@@ -18,7 +18,7 @@ from codec_skill_registry import SkillRegistry  # noqa: E402
 # Canonical test prompts per skill. Short, safe, deterministic. Skills
 # not listed here get a generic "ping" — they just need to return non-None.
 CANONICAL_PROMPTS = {
-    "weather": "weather in Marbella",
+    "weather": "weather in Paris",
     "calculator": "2 + 2",
     "bitcoin_price": "bitcoin price",
     "password_generator": "generate password",

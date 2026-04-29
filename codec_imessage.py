@@ -573,7 +573,7 @@ def _gather_briefing_data():
 
     # ── CODEC Skills (weather, calendar, tasks, email) ──
     for skill_name, query, limit in [
-        ("weather",         "weather in Marbella today",     400),
+        ("weather",         "weather today",                 400),
         ("google_calendar", "today's calendar events",       600),
         ("google_tasks",    "pending tasks",                 500),
         ("google_gmail",    "unread emails summary",         400),
@@ -834,7 +834,7 @@ def detect_intent(text, sender):
             f"- Cuisine type\n"
             f"- Price range (use $ to $$$$)\n"
             f"- One-liner on why it fits their request\n\n"
-            f"If they mention Marbella/Spain, recommend from that area. "
+            f"If they mention a city or region, recommend from that area. "
             f"Be decisive — pick ONE place, don't hedge. Keep it to 3-4 sentences max. "
             f"Format it cleanly for iMessage readability."
         )

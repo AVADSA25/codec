@@ -301,7 +301,7 @@ def _gather_briefing_data():
     data = {}
 
     for skill_name, query, limit in [
-        ("weather",         "weather in Marbella today",     400),
+        ("weather",         "weather today",                 400),
         ("google_calendar", "today's calendar events",       600),
         ("google_tasks",    "pending tasks",                 500),
         ("google_gmail",    "unread emails summary",         400),

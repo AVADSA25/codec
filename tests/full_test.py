@@ -242,19 +242,19 @@ def test_chat_api():
     # Weather skill
     try:
         r, t = timed_post(f"{BASE_URL}/api/chat", json={
-            "messages": [{"role": "user", "content": "weather in Marbella"}],
+            "messages": [{"role": "user", "content": "weather in Paris"}],
             "stream": False,
             "thinking": False,
         }, timeout=CHAT_TIMEOUT)
-        if not check_auth(r, sec, "Chat: 'weather in Marbella' -> skill=weather", t):
+        if not check_auth(r, sec, "Chat: 'weather in Paris' -> skill=weather", t):
             data = r.json()
             has_skill = data.get("skill") == "weather"
             has_response = len(data.get("response", "")) > 10
             record("PASS" if (has_skill and has_response) else "FAIL", sec,
-                   "Chat: 'weather in Marbella' -> skill=weather",
+                   "Chat: 'weather in Paris' -> skill=weather",
                    f"skill={data.get('skill')}, resp={data.get('response', '')[:80]}", t)
     except Exception as e:
-        record("FAIL", sec, "Chat: 'weather in Marbella' -> skill=weather", str(e))
+        record("FAIL", sec, "Chat: 'weather in Paris' -> skill=weather", str(e))
 
     # Bitcoin price skill
     try:

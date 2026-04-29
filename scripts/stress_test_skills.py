@@ -61,7 +61,7 @@ MANUAL_ONLY = {
 TASKS = {
     'web_fetch':       'fetch https://example.com',
     'web_search':      'python programming',
-    'weather':         'weather in Marbella',
+    'weather':         'weather in Paris',
     'bitcoin_price':   '',
     'calculator':      '2+2',
     'time_date':       '',
@@ -89,7 +89,7 @@ TASKS = {
     'memory_entities': '',
     'memory_save':     'stress test memory save at ' + datetime.now(timezone.utc).isoformat(),
     'audit_report':    '',
-    'fact_extract':    'Mickael lives in Marbella.',
+    'fact_extract':    'Alice lives in Paris.',
     'music':           'status',
     'volume':          'get',
     'brightness':      'get',

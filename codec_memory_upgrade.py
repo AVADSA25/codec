@@ -194,16 +194,14 @@ def cleanup_expired(older_than_days: int = 365, user_id: str = "default") -> int
 # Phase 3 — CCF (CODEC Compressed Format) rule-based compressor
 # ─────────────────────────────────────────────────────────────────────────────
 
+# Default entity map ships only generic abbreviations. Personal abbreviations
+# (user's name, address, employer, location) are NOT shipped — they get added
+# at runtime by the user via the dashboard's settings panel and persisted
+# locally to ~/.codec/entity_map.json.
 DEFAULT_ENTITY_MAP = {
-    "Mickael Farina": "MF",
-    "Mickael": "MF",
-    "AVA Digital": "AVA",
-    "AVA Digital LLC": "AVA",
     "Claude Desktop": "CD",
     "Claude Code": "CC",
     "Claude Cursor": "CCur",
-    "Marbella": "MRB",
-    "Spain": "ES",
     "Mac Studio": "MS",
     "localhost:8081": "L81",
     "localhost:8082": "L82",
@@ -239,7 +237,7 @@ def compress_rule_based(text: str, entity_map: Optional[dict] = None) -> str:
         return text
     emap = entity_map or _load_entity_map()
     out = text
-    # Sort by length desc so longer phrases match first (Mickael Farina before Mickael)
+    # Sort by length desc so longer phrases match first (e.g., "Acme Inc" before "Acme")
     for full, abbr in sorted(emap.items(), key=lambda kv: -len(kv[0])):
         out = re.sub(r'\b' + re.escape(full) + r'\b', abbr, out, flags=re.IGNORECASE)
     for f in FILLER_WORDS:

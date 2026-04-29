@@ -14,7 +14,7 @@ Config schema (~/.codec/autopilot.json):
         {"name": "news_digest", "at": "07:45", "days": "daily",
          "skill": "ai_news_digest", "task": "latest AI news"},
         {"name": "weather_check", "at": "08:00", "days": "daily",
-         "skill": "weather", "task": "weather in Marbella", "tts": true}
+         "skill": "weather", "task": "weather", "tts": true}
       ]
     }
 
