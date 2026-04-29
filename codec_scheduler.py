@@ -8,10 +8,9 @@ from datetime import datetime
 
 import requests
 
-try:
-    from codec_audit import log_event
-except ImportError:
-    def log_event(*a, **kw): pass
+# Audit emits route through codec_audit.log_event (real adapter, not no-op)
+# per docs/PHASE1-STEP1-DESIGN.md.
+from codec_audit import log_event
 
 logging.basicConfig(
     level=logging.INFO,
@@ -230,10 +229,24 @@ def check_and_run():
         save_schedules(schedules)
 
         log.info(f"🚀 Scheduled run: {sched['crew']} — {sched.get('topic', '')}")
-        log_event("scheduled", "codec-scheduler", f"Schedule fired: {sched.get('label', sched.get('crew', '?'))}", {"schedule_id": sched.get('id')})
+        # One correlation_id per fired schedule — propagates to schedule_done.
+        import secrets as _secrets, time as _time
+        sched_cid = _secrets.token_hex(6)
+        sched_t0 = _time.monotonic()
+        log_event("schedule_fire", "codec-scheduler",
+                  f"Schedule fired: {sched.get('label', sched.get('crew', '?'))}",
+                  extra={"schedule_id": sched.get('id'),
+                         "label": sched.get('label'),
+                         "crew": sched.get('crew')},
+                  correlation_id=sched_cid)
         success = _run_crew(sched)
         title = sched.get("topic", sched.get("crew", "?"))
-        log_event("scheduled", "codec-scheduler", f"Schedule done: {title}", {"success": success})
+        log_event("schedule_done", "codec-scheduler",
+                  f"Schedule done: {title}",
+                  outcome="ok" if success else "error",
+                  duration_ms=(_time.monotonic() - sched_t0) * 1000.0,
+                  extra={"schedule_id": sched.get('id'), "title": title},
+                  correlation_id=sched_cid)
 
         # Only mark last_run on success so failed tasks are retried next minute
         if success:

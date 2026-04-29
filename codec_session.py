@@ -19,10 +19,9 @@ import select
 import logging
 from datetime import datetime
 
-try:
-    from codec_audit import log_event
-except ImportError:
-    def log_event(*a, **kw): pass
+# Audit emits route through the unified envelope (schema:1) per
+# docs/PHASE1-STEP1-DESIGN.md. log_event is now a real adapter, not a no-op.
+from codec_audit import log_event, _cmd_hash, _truncate, _PREVIEW_MAX
 
 log = logging.getLogger("codec_session")
 
@@ -670,20 +669,30 @@ SAFETY RULES:
                 print(f"\n[SAFETY] \u26a0\ufe0f  FLAGGED: {code[:80]}")
                 with open(os.path.expanduser("~/.codec/audit.log"), "a") as _af:
                     _af.write(f'[{time.strftime("%Y-%m-%dT%H:%M:%S")}] shell_flagged: {code[:200]}\n')
-                log_event("security", "codec-session", f"Command flagged: {code[:80]}", {"action": "flagged"})
+                ch = _cmd_hash(code)
+                log_event("command_flagged", "codec-session",
+                          f"Command flagged: {code[:80]}",
+                          extra={"cmd_hash": ch,
+                                 "cmd_preview": _truncate(code, _PREVIEW_MAX)},
+                          outcome="denied", level="warning")
 
                 # Show danger preview dialog (works in PM2 — uses tkinter, not stdin)
                 if self._danger_preview(action, code):
                     print("[SAFETY] User APPROVED dangerous command via dialog.")
                     with open(os.path.expanduser("~/.codec/audit.log"), "a") as _af:
                         _af.write(f'[{time.strftime("%Y-%m-%dT%H:%M:%S")}] APPROVED: {code[:200]}\n')
-                    log_event("security", "codec-session", f"Command approved", {"action": "approved"})
+                    log_event("command_approved", "codec-session",
+                              "Command approved",
+                              extra={"cmd_hash": ch})
                     # Fall through to execute below
                 else:
                     print("[SAFETY] User DENIED dangerous command via dialog.")
                     with open(os.path.expanduser("~/.codec/audit.log"), "a") as _af:
                         _af.write(f'[{time.strftime("%Y-%m-%dT%H:%M:%S")}] DENIED: {code[:200]}\n')
-                    log_event("security", "codec-session", f"Command denied", {"action": "denied"})
+                    log_event("command_denied", "codec-session",
+                              "Command denied",
+                              extra={"cmd_hash": ch},
+                              outcome="denied", level="warning")
                     return "Command blocked by user. Dangerous command was denied."
 
             # Safe commands skip preview

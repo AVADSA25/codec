@@ -9,10 +9,9 @@ from pynput import keyboard
 
 log = logging.getLogger(__name__)
 
-try:
-    from codec_audit import log_event
-except ImportError:
-    def log_event(*a, **kw): pass
+# Audit emits route through the unified log_event adapter (real, not no-op)
+# per docs/PHASE1-STEP1-DESIGN.md.
+from codec_audit import log_event
 
 # Ensure homebrew tools are on PATH (PM2 may not inherit full shell PATH)
 _BREW = "/opt/homebrew/bin"
@@ -253,7 +252,9 @@ def dispatch(task):
 
 def _dispatch_inner(task):
     app = focused_app()
-    log_event("command", "open-codec", f"Voice dispatch: {task[:80]}")
+    log_event("wake_dispatch", "open-codec",
+              f"Voice dispatch: {task[:80]}",
+              extra={"task_preview": task[:200]})
     print(f"[CODEC] Task: {task[:80]} | App: {app}")
     _safe_task = task[:50].replace('\\', '\\\\').replace('"', '\\"')
     subprocess.Popen(["osascript", "-e", f'display notification "Heard: {_safe_task}" with title "CODEC"'],
@@ -413,7 +414,9 @@ def _dispatch_inner(task):
             answer = strip_think(answer).strip()
             if answer:
                 print(f"[CODEC] Voice reply (turn {voice_session['turn_count']+1}): {answer[:120]}")
-                log_event("tts", "open-codec", f"TTS: {answer[:60]}", {"text_len": len(answer)})
+                log_event("tts_speak", "open-codec",
+                          f"TTS: {answer[:60]}",
+                          extra={"text_len": len(answer)})
                 # Add assistant response to session history
                 voice_session["messages"].append({"role": "assistant", "content": answer})
                 voice_session["turn_count"] += 1
@@ -678,7 +681,8 @@ def wake_word_listener():
                     _WAKE_KEYWORDS = ["codec", "codex", "kodak", "kodec", "kodak", "co-dec", "caudec", "codag"]
                     _matched = any(kw in text for kw in _WAKE_KEYWORDS)
                     if _matched:
-                        log_event("voice", "open-codec", "Wake word detected")
+                        log_event("wake_word_detected", "open-codec",
+                                  "Wake word detected")
                         # Auto-activate if not already on
                         if not state["active"]:
                             state["active"] = True
