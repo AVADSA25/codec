@@ -28,6 +28,7 @@ codec_memory_upgrade.py      Facts table, CCF compression, tiered retrieval
 codec_compaction.py          Context compaction — summarize old turns when window fills
 codec_audit.py               Structured audit log (see §6)
 codec_audit_analyzer.py      Audit summary skill (audit_report)
+codec_hooks.py               Plugin lifecycle hooks (Phase 1 Step 2 — see §3)
 codec_scheduler.py           Cron-style scheduler + notification bridge (see §6) — runs as background service inside codec-dashboard, NOT as its own PM2 process
 codec_heartbeat.py           Background service health checks + alerts
 codec_autopilot.py           Ambient triggers (sunset, time-of-day, etc.) — own PM2 process
@@ -78,8 +79,25 @@ Stored as JSON files at `~/.codec/agents/*.json`, keyed by slugified name. CRUD 
 ### Voice-side dispatch
 `codec_voice.py:682-721` — `_CREW_TRIGGERS` maps spoken phrases to crew names. `dispatch_crew_from_voice(user_text)` at `codec_voice.py:723-755` does the matching, builds args, runs the crew, streams progress via TTS.
 
-### Known gaps (tracked for Phase 2)
-- No `PreToolUse` / `PostToolUse` hooks (being added in Phase 1 Step 2)
+### Plugin lifecycle hooks (Phase 1 Step 2)
+
+CODEC supports user-authored Python plugins at `~/.codec/plugins/*.py` that register lifecycle hooks around skill / tool execution. Hooks fire identically across all five execution paths (crew, voice WebSocket, voice wake-word + chat pre-LLM hijack + chat post-LLM tag via `codec_dispatch.run_skill`, MCP stdio + HTTP).
+
+**Lifecycle:** `pre_tool`, `post_tool`, `on_error`, `on_operation_start`, `on_operation_end`. See `docs/PHASE1-STEP2-DESIGN.md` §1 for the full table. All sync, all observe-or-mutate (never async).
+
+**Discovery:** AST parse at startup (mirrors `codec_skill_registry`). A plugin file declares any subset of the five lifecycle functions plus optional `PLUGIN_NAME` / `PLUGIN_DESCRIPTION` / `PLUGIN_PRIORITY` (default 100; lower runs first) / `PLUGIN_TOOL_FILTER` (exact list of tool names; `None` = all tools). Module imports deferred to first hook fire — broken plugins don't break startup.
+
+**Veto:** `pre_tool` may return `HookVeto(reason="…")` to abort the tool call. The wrapper emits a `tool_vetoed` audit event and the caller receives the deterministic string `"Skill 'X' was vetoed by plugin 'Y': <reason>"`. Crew behaviour: agent's ReAct loop sees the veto string as the tool result and decides on its next move (no retry, no fail-the-crew).
+
+**Mutation contract:** `pre_tool` returns `{"task": str, "context": str}` (either or both keys) to mutate; identity fields (`tool_name`, `transport`, `agent`, `correlation_id`, `client_id`, `operation_id`) are immutable and dropped with a warning. `post_tool` returns `str` to replace the result. `on_error` / `on_operation_*` are observe-only.
+
+**Audit:** every successful hook fire emits `hook_fired`; plugin-internal exceptions emit `hook_error` with `level="warning"` (operation still succeeded). `correlation_id` inherits from the wrapping operation per Step 1 §1.4 — never regenerated.
+
+**Trust model:** local Python files curated by the user. No marketplace, no auto-install, no inter-plugin sandbox. Same trust model as skills.
+
+Implementation: `codec_hooks.py` (run_with_hooks + PluginRegistry), wired into `codec_dispatch.py:run_skill` (covers wake-word + chat pre-LLM + chat post-LLM tag), `codec_agents.py:Agent.run` (crew), `codec_voice.py:dispatch_skill` (voice WebSocket), `codec_mcp.py:tool_fn` (MCP stdio + HTTP). Voice WebSocket also fires `emit_operation_start` / `emit_operation_end` from `VoicePipeline.run` start/finally.
+
+### Other known gaps (tracked for Phase 2)
 - No `AskUserQuestion` tool — agents can't pause to ask the user
 - No `stuck` self-detection (repeated identical tool calls)
 - No step budget at chat-handler level (only inside crew runs)
@@ -209,7 +227,8 @@ API endpoints in `codec_dashboard.py`: `GET /api/notifications`, `GET /api/notif
 ## 7. Sandbox + safety boundaries
 
 ### Files & directories
-- `~/.codec/` — all user state (config, memory, audit, schedules, notifications, agents, skills, proposals)
+- `~/.codec/` — all user state (config, memory, audit, schedules, notifications, agents, skills, plugins, proposals)
+- `~/.codec/plugins/*.py` — user-authored lifecycle hook plugins (Phase 1 Step 2; see §3 *Plugin lifecycle hooks*). Same trust model as `~/.codec/skills/`: local Python files curated by the user, no marketplace, no auto-install, no inter-plugin sandbox. Files starting with `_` are skipped.
 - File operations from agent tools go through `codec_sandbox` (path validation against blocklist, size caps)
 - Dangerous code patterns detected by `codec_config.is_dangerous_skill_code` before any skill is staged from `codec_self_improve.py` proposals
 
