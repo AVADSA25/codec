@@ -5,10 +5,12 @@ Two concurrent tasks: audio receiver + pipeline processor.
 Interruption: user speaking mid-response cancels TTS immediately.
 """
 import asyncio
+import contextvars
 import io
 import json
 import os
 import re
+import secrets
 import sys
 import time
 import wave
@@ -21,7 +23,15 @@ import subprocess
 import httpx
 import numpy as np
 
+from codec_audit import log_event as _voice_log_event
 from codec_llm_proxy import llm_queue, Priority
+
+# Per-session correlation_id contextvar — set at VoicePipeline.run entry,
+# inherited by every audit emit during the session lifetime (incl. nested
+# tool calls fired from inside the pipeline). See design §1.4.
+_voice_correlation_id_var: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "codec_voice_correlation_id", default=None
+)
 
 # ── CONFIG — loaded from ~/.codec/config.json ─────────────────────────────
 WHISPER_URL   = "http://localhost:8084/v1/audio/transcriptions"
@@ -1078,7 +1088,21 @@ class VoicePipeline:
 
     async def run(self):
         is_resumed = self._is_resumed
+        # One correlation_id per voice session. Inherited by any nested
+        # tool_call / tool_result / voice_interrupt emits.
+        cid = secrets.token_hex(6)
+        cid_token = _voice_correlation_id_var.set(cid)
+        self._cid = cid
+        run_t0 = time.monotonic()
         print(f"[Voice] Session {'resumed' if is_resumed else 'started'}: {self.session_id}")
+        try:
+            _voice_log_event("voice_session_start", "codec-voice",
+                             f"Voice session {'resumed' if is_resumed else 'started'}",
+                             extra={"session_id": self.session_id,
+                                    "resume_id": self.session_id if is_resumed else None},
+                             correlation_id=cid)
+        except Exception:
+            pass
 
         # Send session ID so client can reconnect to this session
         await self.ws.send_json({"type": "session", "session_id": self.session_id})
@@ -1114,15 +1138,40 @@ class VoicePipeline:
         receiver = asyncio.create_task(self._audio_receiver())
         pipeline = asyncio.create_task(self._pipeline())
 
+        run_outcome = "ok"
+        run_error_type = None
+        run_error = None
         try:
             await asyncio.gather(receiver, pipeline)
         except Exception as e:
+            run_outcome = "error"
+            run_error_type = type(e).__name__
+            run_error = str(e)[:500]
             print(f"[Voice] Session error: {type(e).__name__}: {e}")
         finally:
             receiver.cancel()
             pipeline.cancel()
             self.save_to_memory()
             print(f"[Voice] Session ended: {self.session_id}")
+            try:
+                duration_ms = (time.monotonic() - run_t0) * 1000.0
+                turns = sum(1 for m in self.messages if m.get("role") == "user")
+                _voice_log_event("voice_session_end", "codec-voice",
+                                 f"Voice session ended: {self.session_id}",
+                                 extra={"session_id": self.session_id,
+                                        "turns": turns,
+                                        "disconnect_reason": self._disconnect_reason},
+                                 outcome=run_outcome,
+                                 duration_ms=duration_ms,
+                                 error_type=run_error_type,
+                                 error=run_error,
+                                 correlation_id=cid)
+            except Exception:
+                pass
+            try:
+                _voice_correlation_id_var.reset(cid_token)
+            except Exception:
+                pass
 
     async def close(self):
         try:

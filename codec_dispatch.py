@@ -5,12 +5,12 @@ description) is parsed at startup via AST.  The actual module import
 happens on first invocation of a skill.
 """
 import logging
+import secrets
+import time
 
-try:
-    from codec_audit import log_event
-except ImportError:
-    def log_event(*a, **kw): pass
-
+# Audit emits route through the unified log_event adapter (real, not no-op)
+# per docs/PHASE1-STEP1-DESIGN.md.
+from codec_audit import log_event
 from codec_config import SKILLS_DIR
 from codec_skill_registry import SkillRegistry
 
@@ -51,6 +51,10 @@ def run_skill(skill, task, app=""):
     falls through to the next matching skill.
     """
     all_matches = skill.get('_all_matches', [skill.get('name')])
+    # One correlation_id for the whole dispatch attempt (covers any
+    # fall-through retries across matched skills).
+    cid = secrets.token_hex(6)
+    t0 = time.monotonic()
 
     for skill_name in all_matches:
         try:
@@ -58,7 +62,12 @@ def run_skill(skill, task, app=""):
             if result is None:
                 log.info("Skill '%s' returned None — trying next match", skill_name)
                 continue
-            log_event("skill", "codec-dispatch", f"Skill: {skill.get('name', '?')}", {"result_len": len(str(result)) if result else 0})
+            log_event("wake_dispatch", "codec-dispatch",
+                      f"Skill: {skill.get('name', '?')}",
+                      tool=skill_name,
+                      duration_ms=(time.monotonic() - t0) * 1000.0,
+                      extra={"result_len": len(str(result)) if result else 0},
+                      correlation_id=cid)
             try:
                 import os as _os
                 _events_path = _os.path.expanduser("~/.codec/overlay_events.jsonl")
@@ -69,7 +78,14 @@ def run_skill(skill, task, app=""):
             return result
         except Exception as e:
             log.warning("Skill '%s' error: %s — trying next match", skill_name, e)
-            log_event("error", "codec-dispatch", f"Skill error: {e}", level="error")
+            log_event("wake_skill_error", "codec-dispatch",
+                      f"Skill error: {e}",
+                      tool=skill_name,
+                      outcome="error",
+                      level="error",
+                      error_type=type(e).__name__,
+                      error=str(e)[:500],
+                      correlation_id=cid)
             continue
 
     return None  # No skill could handle it

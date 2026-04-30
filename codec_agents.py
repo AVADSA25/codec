@@ -4,9 +4,11 @@ Replaces CrewAI with ~300 lines. Zero external dependencies.
 Uses CODEC skills as tools + Qwen 3.5 35B with thinking mode.
 """
 import asyncio
+import contextvars
 import json
 import os
 import re
+import secrets
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -17,6 +19,7 @@ import logging
 import threading
 import httpx
 
+from codec_audit import audit as _audit_core
 from codec_llm_proxy import llm_queue, Priority
 
 log = logging.getLogger("codec_agents")
@@ -60,21 +63,66 @@ _sync_http  = httpx.Client(timeout=30, follow_redirects=True, headers=_HTTP_HEAD
 _async_http = httpx.AsyncClient(timeout=180)
 
 # ── AUDIT LOGGER ──
-_AUDIT_LOG_PATH = os.path.expanduser("~/.codec/audit.log")
+# Crew/agent events route through codec_audit.audit() — writes to
+# ~/.codec/audit.log via the unified envelope (schema:1) per
+# docs/PHASE1-STEP1-DESIGN.md. The legacy duplicate audit.log writer
+# (formerly _AUDIT_LOG_PATH at this position) is gone: one writer, one
+# rotation, one threading.Lock. See codec_audit.py for the actual write.
+
+# Correlation-id propagation: a top-level operation (Crew.run, Agent.run when
+# called outside a crew) sets _correlation_id_var; nested emits inherit it
+# automatically. Using contextvars keeps the ID intact across asyncio task
+# boundaries and run_in_executor calls. See design §1.4.
+_correlation_id_var: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "codec_agents_correlation_id", default=None
+)
+
+
+def _new_correlation_id() -> str:
+    """Generate a 12-char lowercase-hex correlation_id (6 bytes)."""
+    return secrets.token_hex(6)
+
 
 def _audit(event_type: str, **kwargs):
-    """Append a structured audit entry for agent/crew/tool events."""
+    """Shim over codec_audit.audit() for crew/agent runtime events.
+
+    Translates the historic crew kwargs (`elapsed`, free-form keys) into the
+    unified envelope. Pulls correlation_id from the contextvar when not
+    passed explicitly. Never raises.
+    """
+    elapsed = kwargs.pop("elapsed", None)
+    duration_ms = kwargs.pop("duration_ms", None)
+    if duration_ms is None and isinstance(elapsed, (int, float)):
+        duration_ms = float(elapsed) * 1000.0
+
+    cid = kwargs.pop("correlation_id", None) or _correlation_id_var.get()
+    tool = kwargs.pop("tool", "") or ""
+    agent = kwargs.pop("agent", None)
+    outcome = kwargs.pop("outcome", "ok")
+    error_type = kwargs.pop("error_type", None)
+    error = kwargs.pop("error", None)
+
+    extra = {k: v for k, v in kwargs.items() if v is not None}
+    # `elapsed` survives as-is in extra (analyzer may want the integer-second form)
+    if elapsed is not None and "elapsed" not in extra:
+        extra["elapsed"] = elapsed
+
     try:
-        entry = json.dumps({
-            "ts": datetime.now().isoformat(),
-            "event": event_type,
-            **{k: v for k, v in kwargs.items() if v is not None},
-        })
-        os.makedirs(os.path.dirname(_AUDIT_LOG_PATH), exist_ok=True)
-        with open(_AUDIT_LOG_PATH, "a") as f:
-            f.write(entry + "\n")
+        _audit_core(
+            tool=tool,
+            event=event_type,
+            source="codec-agents",
+            outcome=outcome,
+            duration_ms=duration_ms,
+            agent=agent,
+            transport="crew",
+            error_type=error_type,
+            error=error,
+            correlation_id=cid,
+            extra=extra or None,
+        )
     except Exception as e:
-        log.debug("Audit log write failed: %s", e)
+        log.debug("Audit emit failed (event=%s): %s", event_type, e)
 
 # Captures the last Google Docs URL created — fallback if Writer forgets to echo it
 _last_gdoc_url: Optional[str] = None
@@ -323,6 +371,13 @@ class Agent:
     verbose: bool = True
 
     async def run(self, task: str, context: str = "", callback: Optional[Callable] = None) -> str:
+        # Inherit correlation_id from the surrounding Crew if there is one;
+        # otherwise (e.g. run_custom_agent — solo agent path) generate our own.
+        # We don't reset the token: the asyncio.Task that owns this context goes
+        # away after the request, and any nested tool calls inside this same
+        # agent run should see the same cid (that's the whole point).
+        if _correlation_id_var.get() is None:
+            _correlation_id_var.set(_new_correlation_id())
         self._gdoc_url = None  # Capture real URL from google_docs_create tool
         tool_desc = "\n".join(f"  - {t.name}: {t.description}" for t in self.tools) or "  (no tools)"
 
@@ -455,7 +510,14 @@ Rules:
                     _audit("tool_call", agent=self.name, tool=tool_name,
                            input=tool_input[:200])
                     loop = asyncio.get_event_loop()
-                    result = await loop.run_in_executor(None, tool.run, tool_input)
+                    # Propagate contextvars (incl. _correlation_id_var) into
+                    # the executor thread so any _audit fired from inside
+                    # the tool (e.g. _shell_execute → shell_blocked) inherits
+                    # the agent/crew correlation_id. asyncio doesn't do this
+                    # automatically — has to be an explicit copy_context().
+                    ctx = contextvars.copy_context()
+                    result = await loop.run_in_executor(
+                        None, ctx.run, tool.run, tool_input)
                     tool_calls_made += 1
                     _audit("tool_result", agent=self.name, tool=tool_name,
                            result_len=len(result))
@@ -529,42 +591,70 @@ class Crew:
                         print(f"[Crew] Scoped {agent.name}: removed {stripped} tool(s) outside allowlist")
 
     async def run(self, callback: Optional[Callable] = None) -> str:
+        # One correlation_id per crew run. All nested agent_start / agent_finish /
+        # tool_call / tool_result entries inherit this ID via the contextvar.
+        cid_token = _correlation_id_var.set(_new_correlation_id())
         start = time.time()
-        agent_names = [a.name for a in self.agents]
-        _audit("crew_start", agents=agent_names, mode=self.mode,
-               allowed_tools=self.allowed_tools)
-        if callback:
-            await _safe_cb(callback, {"status": "started", "agents": len(self.agents), "tasks": len(self.tasks)})
+        try:
+            agent_names = [a.name for a in self.agents]
+            _audit("crew_start", agents=agent_names, mode=self.mode,
+                   allowed_tools=self.allowed_tools)
+            if callback:
+                await _safe_cb(callback, {"status": "started", "agents": len(self.agents), "tasks": len(self.tasks)})
 
-        if self.mode == "sequential":
-            context = ""
-            results = []
-            pairs = list(zip(self.agents, self.tasks))[:self.max_steps]
-            for i, (agent, task) in enumerate(pairs):
-                if callback:
-                    await _safe_cb(callback, {
-                        "status": "agent_start", "agent": agent.name,
-                        "task_num": i + 1, "total": len(pairs)
-                    })
-                result = await agent.run(task, context=context, callback=callback)
-                results.append(result)
-                context = result
+            if self.mode == "sequential":
+                context = ""
+                results = []
+                pairs = list(zip(self.agents, self.tasks))[:self.max_steps]
+                for i, (agent, task) in enumerate(pairs):
+                    if callback:
+                        await _safe_cb(callback, {
+                            "status": "agent_start", "agent": agent.name,
+                            "task_num": i + 1, "total": len(pairs)
+                        })
+                    _audit("agent_start", agent=agent.name,
+                           task_num=i + 1, total=len(pairs))
+                    a_t0 = time.time()
+                    try:
+                        result = await agent.run(task, context=context, callback=callback)
+                    except Exception as a_err:
+                        _audit("agent_finish", agent=agent.name,
+                               duration_ms=(time.time() - a_t0) * 1000.0,
+                               outcome="error",
+                               error_type=type(a_err).__name__,
+                               error=str(a_err)[:500])
+                        raise
+                    _audit("agent_finish", agent=agent.name,
+                           duration_ms=(time.time() - a_t0) * 1000.0,
+                           result_len=len(result) if isinstance(result, str) else None)
+                    results.append(result)
+                    context = result
 
-            final = results[-1] if results else "No results."
+                final = results[-1] if results else "No results."
 
-        elif self.mode == "parallel":
-            coros = [a.run(t, callback=callback) for a, t in zip(self.agents, self.tasks)]
-            results = await asyncio.gather(*coros)
-            final = "\n\n---\n\n".join(results)
-        else:
-            final = f"Unknown crew mode: {self.mode}"
+            elif self.mode == "parallel":
+                coros = [a.run(t, callback=callback) for a, t in zip(self.agents, self.tasks)]
+                results = await asyncio.gather(*coros)
+                final = "\n\n---\n\n".join(results)
+            else:
+                final = f"Unknown crew mode: {self.mode}"
 
-        elapsed = int(time.time() - start)
-        _audit("crew_complete", mode=self.mode, elapsed=elapsed,
-               result_len=len(final))
-        if callback:
-            await _safe_cb(callback, {"status": "complete", "elapsed": elapsed})
-        return final
+            elapsed = int(time.time() - start)
+            _audit("crew_complete", mode=self.mode, elapsed=elapsed,
+                   duration_ms=(time.time() - start) * 1000.0,
+                   result_len=len(final))
+            if callback:
+                await _safe_cb(callback, {"status": "complete", "elapsed": elapsed})
+            return final
+        except Exception as crew_err:
+            _audit("crew_error", mode=self.mode,
+                   duration_ms=(time.time() - start) * 1000.0,
+                   outcome="error",
+                   error_type=type(crew_err).__name__,
+                   error=str(crew_err)[:500])
+            raise
+        finally:
+            _correlation_id_var.reset(cid_token)
 
 
 # ═══════════════════════════════════════════════════════════════

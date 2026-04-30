@@ -23,10 +23,9 @@ from routes._shared import (
     _pending_approvals, _approval_lock,
 )
 
-try:
-    from codec_audit import log_event
-except ImportError:
-    def log_event(*a, **kw): pass
+# Audit emits route through the unified log_event adapter (real, not no-op)
+# per docs/PHASE1-STEP1-DESIGN.md.
+from codec_audit import log_event
 
 from pydantic import BaseModel, Field
 from typing import Optional, List
@@ -853,7 +852,10 @@ async def send_command(request: Request):
 
         _audit_write(f"[{now}] CMD[{source}]: {task[:200]}\n")
         log.info(f"[Command] Processing from {source}: {task[:80]}")
-        log_event("command", "codec-dashboard", f"Command from {source}: {task[:80]}", {"source": source, "task": task[:200]})
+        # task body is intentionally NOT stored here — task_preview only.
+        log_event("chat_command", "codec-dashboard",
+                  f"Command from {source}: {task[:80]}",
+                  extra={"source": source, "task_preview": task[:200]})
 
         # Call LLM in background so response returns fast
         import asyncio
@@ -877,7 +879,10 @@ async def send_command(request: Request):
                     if skill_result and skill_name not in _FLASH_SKIP_SKILLS:
                         skill_answer = f"⚡ {skill_name}: {skill_result}"
                         log.info(f"[Command] Skill '{skill_name}' handled: {skill_result[:80]}")
-                        log_event("skill", "codec-dashboard", f"Dashboard skill: {skill_name}", {"skill": skill_name, "result_len": len(skill_answer)})
+                        log_event("chat_skill", "codec-dashboard",
+                                  f"Dashboard skill: {skill_name}",
+                                  tool=skill_name,
+                                  extra={"result_len": len(skill_answer)})
                     elif skill_name in _FLASH_SKIP_SKILLS:
                         log.info(f"[Command] Skipped skill '{skill_name}' — not suitable for Flash Chat")
                 except Exception as sk_err:
@@ -948,10 +953,22 @@ async def send_command(request: Request):
                 )
                 c2.commit()
                 log.info(f"[Command] Response ready: {answer[:80]}")
-                log_event("llm", "codec-dashboard", f"Flash response ready", {"model": model, "answer_len": len(answer)})
+                log_event("chat_llm", "codec-dashboard",
+                          "Flash response ready",
+                          extra={"model": model, "answer_len": len(answer)})
             except Exception as e:
                 log.error(f"[Command] LLM call failed: {e}")
-                log_event("error", "codec-dashboard", f"Flash LLM failed: {e}", level="error")
+                _err_extra = {}
+                try:
+                    _err_extra["model"] = model
+                except NameError:
+                    pass
+                log_event("chat_llm_error", "codec-dashboard",
+                          f"Flash LLM failed: {e}",
+                          outcome="error", level="error",
+                          error_type=type(e).__name__,
+                          error=str(e)[:500],
+                          extra=_err_extra or None)
                 with open(resp_file, "w") as f:
                     json.dump({"response": f"Error: {e}", "task": task}, f)
 
@@ -996,7 +1013,9 @@ async def vision_analyze(request: Request):
         data = r.json()
         answer = data["choices"][0]["message"]["content"].strip()
         _audit_write(f"[{datetime.now().isoformat()}] VISION: {prompt[:100]}\n")
-        log_event("vision", "codec-dashboard", f"Vision analysis: {prompt[:60]}")
+        log_event("chat_vision", "codec-dashboard",
+                  f"Vision analysis: {prompt[:60]}",
+                  extra={"prompt_preview": prompt[:200]})
         return {"response": answer, "model": vision_model}
     except Exception as e:
         import traceback; traceback.print_exc()
@@ -3101,7 +3120,9 @@ async def cortex_restart(service: str):
             ["/opt/homebrew/bin/pm2", "restart", pm2_name],
             timeout=10, stderr=subprocess.STDOUT
         )
-        log_event("system", "codec-dashboard", f"Service restart: {service}")
+        log_event("service_restart", "codec-dashboard",
+                  f"Service restart: {service}",
+                  extra={"service": service})
         return {"ok": True, "service": service, "pm2_name": pm2_name, "action": "restarted"}
     except Exception as e:
         return {"ok": False, "error": str(e)}

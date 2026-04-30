@@ -2,10 +2,9 @@
 import os, json, secrets, time, subprocess
 from datetime import datetime
 
-try:
-    from codec_audit import log_event
-except ImportError:
-    def log_event(*a, **kw): pass
+# Audit emits route through the unified log_event adapter (real, not no-op)
+# per docs/PHASE1-STEP1-DESIGN.md.
+from codec_audit import log_event
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -76,7 +75,7 @@ async def auth_verify(request: Request):
 
             if result.get("authenticated"):
                 method = result.get("method", "unknown")
-                log_event("auth", "codec-auth", f"Auth success: {method}", {"method": method})
+                log_event("auth_success", "codec-auth", f"Auth success: {method}", extra={"method": method})
                 token = result.get("token", secrets.token_hex(32))
                 with _auth_lock:
                     _auth_sessions[token] = {
@@ -92,7 +91,7 @@ async def auth_verify(request: Request):
                     "expires_hours": AUTH_SESSION_HOURS,
                 }
             else:
-                log_event("auth", "codec-auth", f"Auth failed", level="warning")
+                log_event("auth_reject", "codec-auth", "Auth failed", outcome="denied", level="warning")
                 return {
                     "authenticated": False,
                     "error": result.get("error", "Authentication failed"),
@@ -137,7 +136,7 @@ async def auth_pin(request: Request):
 
     if pin_hash == AUTH_PIN_HASH:
         method = "pin"
-        log_event("auth", "codec-auth", f"Auth success: {method}", {"method": method})
+        log_event("auth_success", "codec-auth", f"Auth success: {method}", extra={"method": method})
         _pin_attempts.pop(client_ip, None)
         token = secrets.token_hex(32)
         with _auth_lock:
@@ -154,7 +153,7 @@ async def auth_pin(request: Request):
             "expires_hours": AUTH_SESSION_HOURS,
         }
     else:
-        log_event("auth", "codec-auth", f"Auth failed", level="warning")
+        log_event("auth_reject", "codec-auth", "Auth failed", outcome="denied", level="warning")
         attempt = _pin_attempts.get(client_ip, {"count": 0, "locked_until": 0.0, "lockout_level": 0})
         attempt["count"] = attempt.get("count", 0) + 1
         if attempt["count"] >= 5:
@@ -163,7 +162,7 @@ async def auth_pin(request: Request):
             attempt["locked_until"] = time.time() + lockout_secs
             attempt["lockout_level"] = level + 1
             attempt["count"] = 0
-            log_event("security", "codec-auth", f"PIN lockout level {level + 1}: {lockout_secs}s for {client_ip}", level="warning")
+            log_event("auth_reject", "codec-auth", f"PIN lockout level {level + 1}: {lockout_secs}s for {client_ip}", outcome="denied", level="warning", extra={"reason": "pin_lockout", "lockout_level": level + 1, "lockout_sec": lockout_secs, "client_ip": client_ip})
         _pin_attempts[client_ip] = attempt
         remaining_attempts = 5 - attempt["count"]
         return {"authenticated": False, "error": f"Incorrect PIN. {remaining_attempts} attempts remaining."}

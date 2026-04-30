@@ -127,26 +127,40 @@ def _fire(trigger: dict, registry: SkillRegistry):
     skill = trigger.get("skill")
     task = trigger.get("task", "")
     tts = bool(trigger.get("tts", False))
+    import secrets as _secrets
+    cid = _secrets.token_hex(6)
     t0 = time.time()
     try:
         mod = registry.load(skill)
         if mod is None or not hasattr(mod, "run"):
             log.error("trigger %s: skill %s not found", name, skill)
-            audit(f"autopilot:{name}", outcome="error", error_type="SkillNotFound",
-                  duration_ms=(time.time()-t0)*1000)
+            audit(f"autopilot:{name}", event="autopilot_fire",
+                  source="codec-autopilot", transport="scheduler",
+                  outcome="error", error_type="SkillNotFound",
+                  duration_ms=(time.time()-t0)*1000,
+                  extra={"trigger_name": name, "skill": skill},
+                  correlation_id=cid)
             return
         result = mod.run(task, "")
         dur_ms = (time.time() - t0) * 1000
         log.info("trigger %s → %s (%.0fms) : %s", name, skill, dur_ms, str(result)[:120])
-        audit(f"autopilot:{name}", outcome="ok",
-              duration_ms=dur_ms, extra={"skill": skill, "task": task[:200]})
+        audit(f"autopilot:{name}", event="autopilot_fire",
+              source="codec-autopilot", transport="scheduler",
+              outcome="ok", duration_ms=dur_ms,
+              extra={"trigger_name": name, "skill": skill,
+                     "task_preview": task[:200]},
+              correlation_id=cid)
         if tts and result:
             _speak(str(result)[:400])
     except Exception as e:
         dur_ms = (time.time() - t0) * 1000
         log.exception("trigger %s failed: %s", name, e)
-        audit(f"autopilot:{name}", outcome="error",
-              error_type=type(e).__name__, duration_ms=dur_ms)
+        audit(f"autopilot:{name}", event="autopilot_fire",
+              source="codec-autopilot", transport="scheduler",
+              outcome="error", error_type=type(e).__name__,
+              error=str(e)[:500], duration_ms=dur_ms,
+              extra={"trigger_name": name, "skill": skill},
+              correlation_id=cid)
 
 
 def _tick(cfg: dict, state: dict, registry: SkillRegistry):

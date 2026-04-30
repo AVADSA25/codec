@@ -6,10 +6,9 @@ from datetime import datetime, timedelta
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [HEARTBEAT] %(message)s', datefmt='%H:%M:%S')
 log = logging.getLogger('heartbeat')
 
-try:
-    from codec_audit import log_event
-except ImportError:
-    def log_event(*a, **kw): pass
+# Audit emits route through the unified log_event adapter (real, not no-op)
+# per docs/PHASE1-STEP1-DESIGN.md.
+from codec_audit import log_event
 
 try:
     import sys as _sys
@@ -52,7 +51,10 @@ def _check_one_service(name: str, url: str) -> tuple:
         status = "✅" if r.status_code in (200, 404, 405) else f"⚠️ {r.status_code}"
     except Exception:
         status = "❌ DOWN"
-        log_event("error", "codec-heartbeat", f"Service down: {name}", level="error")
+        log_event("service_down", "codec-heartbeat",
+                  f"Service down: {name}",
+                  outcome="error", level="error",
+                  extra={"service": name, "url": url})
     return name, status
 
 
@@ -424,7 +426,9 @@ def heartbeat():
         except Exception as e:
             log.warning(f"Memory cleanup failed: {e}")
     log.info("═══ Heartbeat complete ═══")
-    log_event("system", "codec-heartbeat", "Heartbeat tick completed")
+    log_event("heartbeat_tick", "codec-heartbeat",
+              "Heartbeat tick completed",
+              extra={"tasks_run": len(tasks) if hasattr(tasks, '__len__') else None})
     return tasks
 
 def run_daemon(interval_minutes=20):

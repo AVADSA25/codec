@@ -5,7 +5,7 @@ at startup so MCP tool listings work immediately, but the actual module
 import only happens when a tool is first invoked.
 """
 from fastmcp import FastMCP
-import os, sys, json, logging, time, asyncio, inspect
+import os, sys, json, logging, secrets, time, asyncio, inspect
 
 log = logging.getLogger("codec_mcp")
 
@@ -13,6 +13,11 @@ log = logging.getLogger("codec_mcp")
 SKILL_TIMEOUT_SEC = int(os.environ.get("CODEC_SKILL_TIMEOUT", "30"))
 
 from codec_audit import audit as _audit
+
+
+def _new_correlation_id() -> str:
+    """6-byte hex correlation_id, one per top-level tool_fn invocation."""
+    return secrets.token_hex(6)
 
 # --- Input validation constants ---
 MCP_MAX_TASK_LENGTH = 5_000
@@ -84,6 +89,36 @@ def build_mcp(auth=None):
     return m
 
 
+def _register_blocked_stub(mcp, registry_name: str, skill_name: str):
+    """Register a stub for a blocked skill so HTTP call attempts are audited.
+
+    Without this stub, a remote client calling a blocked tool gets
+    "method not found" with no audit trail. The stub emits
+    `mcp_http_blocked` and returns an explicit denial.
+    """
+    blocked_label = skill_name
+
+    def blocked_fn(task: str = "", context: str = "") -> str:
+        cid = _new_correlation_id()
+        _audit(blocked_label, event="mcp_http_blocked",
+               outcome="denied", error_type="HTTPBlocked",
+               transport="http",
+               extra={"reason": "http_blocked", "registry_name": registry_name},
+               correlation_id=cid)
+        return (f"Skill '{blocked_label}' is not available over HTTP transport "
+                f"(in mcp_blocked_tools). Use the local Claude Desktop / Code "
+                f"client if you need this skill.")
+
+    blocked_fn.__name__ = blocked_label
+    blocked_fn.__doc__ = f"[BLOCKED on HTTP] {blocked_label} is not available over remote transport."
+    try:
+        mcp.tool()(blocked_fn)
+    except Exception as e:
+        # Tool registration failure shouldn't break startup. Just log.
+        print(f"[MCP] Could not register blocked-stub for {blocked_label}: {e}",
+              file=sys.stderr)
+
+
 def _load_skill_tools_into(mcp):
     """Register all allowed skills as MCP tools using lazy loading.
 
@@ -107,6 +142,11 @@ def _load_skill_tools_into(mcp):
         # Hard blocklist — skills that arbitrary-execute code or could damage system
         if skill_name in MCP_BLOCKED_TOOLS or name in MCP_BLOCKED_TOOLS:
             print(f"[MCP] Block {name}: in mcp_blocked_tools", file=sys.stderr)
+            # On HTTP/remote transport, register a stub so call-time attempts
+            # are audited (not silently dropped as method-not-found). Stdio
+            # clients have their own approval dialog and don't need the stub.
+            if os.environ.get("CODEC_MCP_TRANSPORT", "stdio").lower() == "http":
+                _register_blocked_stub(mcp, name, skill_name)
             continue
 
         # Sanitize tool name to MCP spec (A-Z a-z 0-9 _ - .)
@@ -142,12 +182,15 @@ def _load_skill_tools_into(mcp):
                 t0 = time.time()
                 tlen = len(task) if isinstance(task, str) else 0
                 clen = len(context) if isinstance(context, str) else 0
+                cid = _new_correlation_id()
 
                 err = _validate_mcp_input(sname, task, context)
                 if err is not None:
-                    _audit(sname, task_len=tlen, context_len=clen,
+                    _audit(sname, event="validation",
+                           task_len=tlen, context_len=clen,
                            duration_ms=(time.time()-t0)*1000,
-                           outcome="validation", error_type="ValidationError")
+                           outcome="validation", error_type="ValidationError",
+                           correlation_id=cid)
                     return err
 
                 def _run():
@@ -166,23 +209,32 @@ def _load_skill_tools_into(mcp):
                     try:
                         result, errmsg = fut.result(timeout=SKILL_TIMEOUT_SEC)
                     except concurrent.futures.TimeoutError:
-                        _audit(sname, task_len=tlen, context_len=clen,
+                        _audit(sname, event="timeout",
+                               task_len=tlen, context_len=clen,
                                duration_ms=(time.time()-t0)*1000,
-                               outcome="timeout", error_type="Timeout")
+                               outcome="timeout", error_type="Timeout",
+                               correlation_id=cid)
                         return f"Skill '{sname}' timed out after {SKILL_TIMEOUT_SEC}s."
 
                 dur_ms = (time.time()-t0)*1000
                 if errmsg == "load_failed":
-                    _audit(sname, task_len=tlen, context_len=clen,
-                           duration_ms=dur_ms, outcome="error", error_type="LoadFailed")
+                    _audit(sname, event="tool_result",
+                           task_len=tlen, context_len=clen,
+                           duration_ms=dur_ms, outcome="error",
+                           error_type="LoadFailed",
+                           correlation_id=cid)
                     return f"Skill '{sname}' could not be loaded."
                 if errmsg:
-                    _audit(sname, task_len=tlen, context_len=clen,
+                    _audit(sname, event="tool_result",
+                           task_len=tlen, context_len=clen,
                            duration_ms=dur_ms, outcome="error",
-                           error_type=errmsg.split(":")[0])
+                           error_type=errmsg.split(":")[0],
+                           correlation_id=cid)
                     return f"Skill '{sname}' failed: {errmsg}"
-                _audit(sname, task_len=tlen, context_len=clen,
-                       duration_ms=dur_ms, outcome="ok")
+                _audit(sname, event="tool_result",
+                       task_len=tlen, context_len=clen,
+                       duration_ms=dur_ms, outcome="ok",
+                       correlation_id=cid)
                 return result
             tool_fn.__name__ = sname
             tool_fn.__doc__ = sdesc
@@ -197,38 +249,50 @@ def _register_memory_tools(mcp):
     def search_memory(query: str, limit: int = 10) -> str:
         """Search CODEC's conversation memory using FTS5 full-text search"""
         t0 = time.time()
+        cid = _new_correlation_id()
         err = _validate_mcp_input("search_memory", query)
         if err is not None:
-            _audit("search_memory", task_len=len(query or ""),
-                   duration_ms=(time.time()-t0)*1000, outcome="validation")
+            _audit("search_memory", event="validation",
+                   task_len=len(query or ""),
+                   duration_ms=(time.time()-t0)*1000, outcome="validation",
+                   correlation_id=cid)
             return err
         try:
             from codec_memory import CodecMemory
             mem = CodecMemory()
             results = mem.search(query, limit)
-            _audit("search_memory", task_len=len(query),
-                   duration_ms=(time.time()-t0)*1000, outcome="ok")
+            _audit("search_memory", event="tool_result",
+                   task_len=len(query),
+                   duration_ms=(time.time()-t0)*1000, outcome="ok",
+                   correlation_id=cid)
             return json.dumps(results, indent=2)
         except Exception as e:
-            _audit("search_memory", task_len=len(query or ""),
+            _audit("search_memory", event="tool_result",
+                   task_len=len(query or ""),
                    duration_ms=(time.time()-t0)*1000, outcome="error",
-                   error_type=type(e).__name__)
+                   error_type=type(e).__name__,
+                   correlation_id=cid)
             return f"search_memory failed: {type(e).__name__}: {e}"
 
     @mcp.tool()
     def get_recent_memory(days: int = 7) -> str:
         """Get recent conversations from CODEC memory"""
         t0 = time.time()
+        cid = _new_correlation_id()
         try:
             from codec_memory import CodecMemory
             mem = CodecMemory()
             results = mem.search_recent(days=days, limit=20)
-            _audit("get_recent_memory", duration_ms=(time.time()-t0)*1000,
-                   outcome="ok", extra={"days": days})
+            _audit("get_recent_memory", event="tool_result",
+                   duration_ms=(time.time()-t0)*1000,
+                   outcome="ok", extra={"days": days},
+                   correlation_id=cid)
             return json.dumps(results, indent=2)
         except Exception as e:
-            _audit("get_recent_memory", duration_ms=(time.time()-t0)*1000,
-                   outcome="error", error_type=type(e).__name__)
+            _audit("get_recent_memory", event="tool_result",
+                   duration_ms=(time.time()-t0)*1000,
+                   outcome="error", error_type=type(e).__name__,
+                   correlation_id=cid)
             return f"get_recent_memory failed: {type(e).__name__}: {e}"
 
 
