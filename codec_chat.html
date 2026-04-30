@@ -520,11 +520,30 @@ function setMode(mode){
   cs.style.display=mode==='research'?'inline-block':'none';
   var crew=mode==='research'?cs.value:'deep_research';
   var hints={'deep_research':'Research topic... (3-6 min)','daily_briefing':'Press send for daily briefing','trip_planner':'Destination + dates...','competitor_analysis':'Market or product to analyze...','email_handler':'Press send to handle inbox','custom':'Describe your task for the custom agent...'};
-  document.getElementById('chatInput').placeholder=mode==='research'?(hints[crew]||'Enter crew task...'):'Message CODEC...';
+  // If the user toggles to chat mode AFTER an agent already produced a
+  // report, the report sits in chatHist as the last assistant message —
+  // any follow-up chat call carries it forward via the messages[] array
+  // sent to /api/chat, so the LLM has the full report as context. Hint
+  // that explicitly in the placeholder so the user knows they can ask
+  // follow-up questions.
+  var hasAgentReport=mode==='chat'&&chatHist.some(function(m){return m.role==='assistant'&&typeof m.content==='string'&&m.content.indexOf('Complete!')!==-1});
+  document.getElementById('chatInput').placeholder=mode==='research'
+      ?(hints[crew]||'Enter crew task...')
+      :(hasAgentReport?'Ask follow-up about the report...':'Message CODEC...');
   document.getElementById('scheduleBtn').style.display=mode==='research'?'':'none';
   var builder=document.getElementById('agentBuilder');
   if(mode==='research'&&crew==='custom'){builder.classList.add('show');if(!_toolsLoaded)loadAgentTools();loadSavedAgentList()}else{builder.classList.remove('show')}
-  if(changed&&!isProcessing)startNewSession();
+  // Live-switch behaviour: only wipe the session when the chat is EMPTY.
+  // If there's already a conversation (e.g. an agent just returned a deep-
+  // research report), keep chatHist intact so the user can flip into chat
+  // mode and continue asking follow-up questions about the report. The
+  // explicit "+" / new-chat button remains the way to start fresh.
+  if(changed&&!isProcessing&&chatHist.length===0)startNewSession();
+  // One-shot toast on first toggle to chat mode after a report — helps
+  // the user discover that context is preserved.
+  if(changed&&mode==='chat'&&hasAgentReport){
+    try{showToast('Context preserved — ask follow-up questions about the report')}catch(e){}
+  }
 }
 
 function regenerateResponse(btn){
