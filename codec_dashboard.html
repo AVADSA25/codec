@@ -776,12 +776,48 @@ function showToast(msg) {
 }
 
 // ── Copy to clipboard ──
+// Two-path implementation: prefer navigator.clipboard (secure-context API),
+// fall back to a hidden textarea + document.execCommand('copy') if the
+// modern API is unavailable (HTTP non-localhost) or the promise rejects
+// (permissions, focus loss, etc.). Always surfaces a toast — success or
+// failure — so the click is never silent.
+function _copyFallback(text) {
+  try {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.top = '0';
+    ta.style.left = '0';
+    ta.style.opacity = '0';
+    ta.style.pointerEvents = 'none';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    ta.setSelectionRange(0, ta.value.length);
+    var ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch (e) {
+    return false;
+  }
+}
+
 function copyText(text, btn) {
-  navigator.clipboard.writeText(text).then(function() {
+  function onOk() {
     btn.classList.add('copied');
     showToast('Copied to clipboard');
     setTimeout(function() { btn.classList.remove('copied'); }, 1500);
-  });
+  }
+  function onFail() {
+    if (_copyFallback(text)) { onOk(); }
+    else { showToast('Copy failed — clipboard not available'); }
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(onOk, onFail).catch(onFail);
+  } else {
+    onFail();
+  }
 }
 
 // ── Theme ──

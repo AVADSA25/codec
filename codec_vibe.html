@@ -957,10 +957,32 @@ function doTestSkill() {
   });
 }
 
+function _copyFallback(text){
+  try{
+    var ta=document.createElement('textarea');
+    ta.value=text;ta.setAttribute('readonly','');
+    ta.style.position='fixed';ta.style.top='0';ta.style.left='0';
+    ta.style.opacity='0';ta.style.pointerEvents='none';
+    document.body.appendChild(ta);ta.focus();ta.select();
+    ta.setSelectionRange(0,ta.value.length);
+    var ok=document.execCommand('copy');
+    document.body.removeChild(ta);return ok;
+  }catch(e){return false}
+}
 function doCopy() {
-  navigator.clipboard.writeText(ed.getValue());
-  document.getElementById('rs').textContent = 'Copied!';
-  setTimeout(function() { document.getElementById('rs').textContent = ''; }, 2000);
+  var text = ed.getValue();
+  function ok(){
+    document.getElementById('rs').textContent = 'Copied!';
+    setTimeout(function() { document.getElementById('rs').textContent = ''; }, 2000);
+  }
+  function fail(){
+    if(_copyFallback(text)){ok()}
+    else{document.getElementById('rs').textContent='Copy failed';
+         setTimeout(function(){document.getElementById('rs').textContent='';},2000);}
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(ok, fail).catch(fail);
+  } else { fail(); }
 }
 
 // Sidebar
