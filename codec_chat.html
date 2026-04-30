@@ -915,6 +915,55 @@ var appEl=document.getElementById('appContainer');
 ['dragleave','drop'].forEach(function(ev){appEl.addEventListener(ev,function(e){e.preventDefault();appEl.classList.remove('dragover')})});
 appEl.addEventListener('drop',function(e){if(e.dataTransfer.files.length){var dt=new DataTransfer();for(var i=0;i<e.dataTransfer.files.length;i++)dt.items.add(e.dataTransfer.files[i]);document.getElementById('fileUp').files=dt.files;handleUpload({target:document.getElementById('fileUp')})}});
 
+// ── Paste image into chat (Cmd+V on a screenshot) ──
+// Document-level so paste anywhere on the chat page is caught — without
+// this, the user has to click into chatInput first before Cmd+V works
+// (and most don't). Walks both clipboardData.files (newer) and
+// clipboardData.items (older); accepts any image/* MIME type. Routes the
+// image through handleUpload — same flow as drag-drop or the file picker.
+function _chatExtractPastedImage(e){
+  if(!e.clipboardData) return null;
+  var files=e.clipboardData.files;
+  if(files && files.length){
+    for(var i=0;i<files.length;i++){
+      var f=files[i];
+      if(f && f.type && f.type.indexOf('image/')===0) return f;
+    }
+  }
+  var items=e.clipboardData.items;
+  if(items && items.length){
+    for(var j=0;j<items.length;j++){
+      var it=items[j];
+      if(it && it.type && it.type.indexOf('image/')===0
+         && typeof it.getAsFile==='function'){
+        var got=it.getAsFile();
+        if(got) return got;
+      }
+    }
+  }
+  return null;
+}
+
+document.addEventListener('paste',function(e){
+  var img=_chatExtractPastedImage(e);
+  if(!img) return;
+  e.preventDefault();
+  try{
+    var ext=(img.type.split('/')[1]||'png').split('+')[0];
+    var renamed=new File([img],'pasted-'+Date.now()+'.'+ext,{type:img.type});
+    var dt=new DataTransfer();
+    dt.items.add(renamed);
+    var fi=document.getElementById('fileUp');
+    fi.files=dt.files;
+    handleUpload({target:fi});
+    try{showToast('Screenshot pasted')}catch(_e){}
+    var ci=document.getElementById('chatInput');
+    if(ci) ci.focus();
+  }catch(err){
+    console.warn('Paste image into chat failed:',err);
+  }
+},true);
+
 document.getElementById('chatInput').addEventListener('input',function(){this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px'});
 
 var _toolsLoaded=false;

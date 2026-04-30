@@ -977,38 +977,70 @@ document.getElementById('cmdInput').addEventListener('keydown', function(e) { if
 document.getElementById('cmdInput').addEventListener('input', function() { this.style.height = 'auto'; this.style.height = Math.min(this.scrollHeight, 120) + 'px'; });
 
 // ── Paste image into chat (Cmd+V on a screenshot) ──
-// Same flow as drag-drop / file-picker: synthesize a fileInput.files event
-// and route through handleFile so vision-canvas + storage-thumbnail are
-// produced identically. Text paste still works (we only preventDefault for
-// image clipboard items).
-document.getElementById('cmdInput').addEventListener('paste', function(e) {
-  if (!e.clipboardData) return;
-  var items = e.clipboardData.items || [];
-  for (var i = 0; i < items.length; i++) {
-    var it = items[i];
-    if (it && it.kind === 'file' && it.type && it.type.indexOf('image/') === 0) {
-      e.preventDefault();
-      var f = it.getAsFile();
-      if (!f) return;
-      try {
-        // Give pasted screenshots a real filename — clipboard-source files
-        // sometimes arrive as "image.png" with no extension or duplicates,
-        // and our chip / vision logs benefit from a unique name.
-        var ext = (f.type.split('/')[1] || 'png').split('+')[0];
-        var renamed = new File([f], 'pasted-' + Date.now() + '.' + ext, { type: f.type });
-        var dt = new DataTransfer();
-        dt.items.add(renamed);
-        var fi = document.getElementById('fileInput');
-        fi.files = dt.files;
-        handleFile({ target: fi });
-      } catch (err) {
-        console.warn('Paste image into chat failed:', err);
-      }
-      return;
+// Document-level handler so paste anywhere on the page routes the image
+// through handleFile (same flow as drag-drop / file-picker). Without
+// document-level binding, the user has to click into cmdInput FIRST
+// before Cmd+V — and most don't.
+//
+// Detection is permissive: walk both `clipboardData.files` (newer) AND
+// `clipboardData.items` (older), accept anything `type.startsWith('image/')`
+// regardless of `kind`. Safari and Chrome populate these slightly
+// differently; we accept the union.
+//
+// Text paste in any input/textarea is preserved — we only preventDefault
+// when we actually find an image. The toast on success makes the
+// behaviour visible so the user knows the paste was caught.
+function _extractPastedImage(e) {
+  if (!e.clipboardData) return null;
+  // Newer API — `clipboardData.files` is a FileList of attachments.
+  var files = e.clipboardData.files;
+  if (files && files.length) {
+    for (var i = 0; i < files.length; i++) {
+      var f = files[i];
+      if (f && f.type && f.type.indexOf('image/') === 0) return f;
     }
   }
-  // No image in clipboard — let default text-paste happen.
-});
+  // Older API — `clipboardData.items` walk.
+  var items = e.clipboardData.items;
+  if (items && items.length) {
+    for (var j = 0; j < items.length; j++) {
+      var it = items[j];
+      if (it && it.type && it.type.indexOf('image/') === 0
+          && typeof it.getAsFile === 'function') {
+        var got = it.getAsFile();
+        if (got) return got;
+      }
+    }
+  }
+  return null;
+}
+
+document.addEventListener('paste', function(e) {
+  // Skip if paste is into a contenteditable (Notion-style rich editors —
+  // we have none, but defensive). Plain inputs/textareas are fine: we
+  // only intercept image-type clipboard items below; text paste
+  // still flows through unchanged because we don't preventDefault unless
+  // we found an image.
+  var img = _extractPastedImage(e);
+  if (!img) return;
+  e.preventDefault();
+  try {
+    var ext = (img.type.split('/')[1] || 'png').split('+')[0];
+    var renamed = new File([img], 'pasted-' + Date.now() + '.' + ext, { type: img.type });
+    var dt = new DataTransfer();
+    dt.items.add(renamed);
+    var fi = document.getElementById('fileInput');
+    fi.files = dt.files;
+    handleFile({ target: fi });
+    try { showToast('Screenshot pasted'); } catch (_e) {}
+    // Make sure the cmd input is focused so the user can type their
+    // question and hit Send without an extra click.
+    var ci = document.getElementById('cmdInput');
+    if (ci) ci.focus();
+  } catch (err) {
+    console.warn('Paste image into chat failed:', err);
+  }
+}, true);  // useCapture=true so we run before any sub-element handlers
 
 function lockSession(){fetch('/api/auth/logout',{method:'POST'}).then(function(){document.cookie='codec_session=;path=/;max-age=0;SameSite=Lax'+(location.protocol==='https:'?';Secure':'');window.location.href='/auth'})}
 
