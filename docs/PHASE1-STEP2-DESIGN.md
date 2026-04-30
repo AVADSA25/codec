@@ -1,9 +1,11 @@
 # PHASE 1 STEP 2 — Plugin Lifecycle Hooks
 
-**Status:** DESIGN. Not implemented.
-**Author:** drafted by Claude Code, reviewed by Mickael + Claude chat before any code is written.
+**Status:** DESIGN v2 — §11 RESOLVED. Ready for implementation prompt.
+**Author:** drafted by Claude Code, reviewed by Mickael + Claude chat 2026-04-30.
 **Depends on:** Phase 1 Step 1 (commit `45d4aa7` on `main`) — unified audit envelope (`schema:1`) + `correlation_id` contract from `docs/PHASE1-STEP1-DESIGN.md` §1.4.
 **Scope:** define a single hook system that lets local Python files in `~/.codec/plugins/*.py` register lifecycle handlers around skill/tool execution, fired identically from all five execution paths. **No code changes in this step.**
+
+**v1 → v2 changes (2026-04-30 reviewer pass):** all 6 §11 questions resolved; three carried tightenings — Q2 added `tool_name` to the immutable-identity-fields list (§6), Q4 added the `hook_error` event spec (§7.5) with `level: "warning"` so a buggy plugin doesn't inflate operation error rates, Q6 renamed `on_session_*` / `session_id` to `on_operation_*` / `operation_id` for vocabulary consistency with Step 1 §1.4 ("operation"). Mass-rename touched ~21 lines across §1, §2, §5, §6, §7, §9, §12, §13. No behavior change implied — purely the contract before code.
 
 ---
 
@@ -38,11 +40,11 @@ Five hooks. All sync, all observe-or-mutate (never async). Scope of each:
 
 | Hook | Fires when | Receives | May return | Audit event when this hook fires |
 |---|---|---|---|---|
-| `pre_tool(ctx)` | Just before any tool/skill is invoked from one of the 5 paths. After input validation (so `task`/`context` are clean). | `HookCtx` (see §1.4) | `None` (unchanged) \| `dict` (mutated `task`/`context`) \| `HookVeto` (abort) | `hook_fired` with `extra.hook_name="pre_tool"` |
-| `post_tool(ctx, result)` | Just after the tool returns. After `tool_result` is logged but **before** the result reaches the caller. | `HookCtx`, `result: str` | `None` (unchanged) \| `str` (replacement result) | `hook_fired` with `extra.hook_name="post_tool"` |
-| `on_error(ctx, exc)` | If invoke raises. Receives the exception object. After the path's existing error-audit emit (`tool_result` with `outcome="error"`) but before the path's own error-formatting/return. | `HookCtx`, `exc: BaseException` | Return value ignored. | `hook_fired` with `extra.hook_name="on_error"` |
-| `on_session_start(ctx)` | At the start of any user-facing session: `voice_session_start`, `crew_start`, `chat_command` (the first `_try_skill` hit per request). Not fired for individual MCP tool calls — those don't form a "session." | `HookCtx` (no `task`/`context`/`tool_name`; sets `session_id`, `transport`, `agent`) | Return value ignored. | `hook_fired` with `extra.hook_name="on_session_start"` |
-| `on_session_end(ctx)` | At the end of the same sessions: `voice_session_end`, `crew_complete`/`crew_error`, end of chat request handler. | `HookCtx` (adds `duration_ms`, `outcome`) | Return value ignored. | `hook_fired` with `extra.hook_name="on_session_end"` |
+| `pre_tool(ctx)` | Just before any tool/skill is invoked from one of the 5 paths. After input validation (so `task`/`context` are clean). | `HookCtx` (see §1.4) | `None` (unchanged) \| `dict` (mutated `task`/`context`) \| `HookVeto` (abort) | `hook_fired` with `extra.hook_name="pre_tool"`, plus `hook_error` if the hook itself raises (§7.5) |
+| `post_tool(ctx, result)` | Just after the tool returns. After `tool_result` is logged but **before** the result reaches the caller. | `HookCtx`, `result: str` | `None` (unchanged) \| `str` (replacement result) | `hook_fired` with `extra.hook_name="post_tool"`, plus `hook_error` if the hook itself raises (§7.5) |
+| `on_error(ctx, exc)` | If invoke raises. Receives the exception object. After the path's existing error-audit emit (`tool_result` with `outcome="error"`) but before the path's own error-formatting/return. | `HookCtx`, `exc: BaseException` | Return value ignored. | `hook_fired` with `extra.hook_name="on_error"`, plus `hook_error` if the hook itself raises (§7.5) |
+| `on_operation_start(ctx)` | At the start of any user-facing operation: `voice_session_start`, `crew_start`, `chat_command` (the first `_try_skill` hit per request). Not fired for individual MCP tool calls — those don't form an "operation envelope." Naming aligns with the §1.4 Step 1 correlation_id contract vocabulary ("any operation emitting ≥2 audit lines"); does **not** collide with the existing `voice_session_*` audit events which retain their Step 1 names. | `HookCtx` (no `task`/`context`/`tool_name`; sets `operation_id`, `transport`, `agent`) | Return value ignored. | `hook_fired` with `extra.hook_name="on_operation_start"`, plus `hook_error` if the hook itself raises (§7.5) |
+| `on_operation_end(ctx)` | At the end of the same operations: `voice_session_end`, `crew_complete`/`crew_error`, end of chat request handler. | `HookCtx` (adds `duration_ms`, `outcome`) | Return value ignored. | `hook_fired` with `extra.hook_name="on_operation_end"`, plus `hook_error` if the hook itself raises (§7.5) |
 
 ### 1.2 Position relative to the audit envelope (Step 1)
 
@@ -107,10 +109,10 @@ class HookCtx:
     agent: Optional[str] = None       # only set in crew path
     client_id: Optional[str] = None   # only set in MCP-HTTP path
 
-    # ── Session hooks (on_session_start / on_session_end) ────────────
-    session_id: Optional[str] = None
-    duration_ms: Optional[float] = None  # only on_session_end
-    outcome: Optional[str] = None        # only on_session_end ("ok"/"error")
+    # ── Operation hooks (on_operation_start / on_operation_end) ──────
+    operation_id: Optional[str] = None    # voice WebSocket session_id, crew run id, etc.
+    duration_ms: Optional[float] = None   # only on_operation_end
+    outcome: Optional[str] = None         # only on_operation_end ("ok"/"error")
 
     # ── Error hook (on_error only) ───────────────────────────────────
     # Exception is passed as a separate positional arg, NOT in ctx,
@@ -161,10 +163,10 @@ def post_tool(ctx, result):
 def on_error(ctx, exc):
     pass
 
-def on_session_start(ctx):
+def on_operation_start(ctx):
     pass
 
-def on_session_end(ctx):
+def on_operation_end(ctx):
     pass
 ```
 
@@ -173,7 +175,7 @@ def on_session_end(ctx):
 Mirror `codec_skill_registry.SkillRegistry`. Parse each `*.py` with `ast` at startup, extract:
 
 1. Top-level constants: `PLUGIN_NAME`, `PLUGIN_DESCRIPTION`, `PLUGIN_PRIORITY`, `PLUGIN_TOOL_FILTER` (via `ast.literal_eval`).
-2. Top-level `def` whose names match the lifecycle set: `pre_tool`, `post_tool`, `on_error`, `on_session_start`, `on_session_end`. Mark the plugin as offering those hooks.
+2. Top-level `def` whose names match the lifecycle set: `pre_tool`, `post_tool`, `on_error`, `on_operation_start`, `on_operation_end`. Mark the plugin as offering those hooks.
 
 A plugin file that defines none of the lifecycle functions is skipped (logged at WARN, not ERROR — same as a skill missing `def run`).
 
@@ -199,10 +201,10 @@ New module: **`codec_hooks.py`** at the repo root. Owns:
 - `HookCtx` dataclass
 - `HookVeto` sentinel
 - `run_with_hooks(...)` — the wrapper from §3
-- `emit_session_start(...)` / `emit_session_end(...)` — thin wrappers over the session hooks
+- `emit_operation_start(...)` / `emit_operation_end(...)` — thin wrappers over the operation hooks
 - A module-level `_registry: PluginRegistry` initialised from `~/.codec/plugins/`
 
-No public API outside `codec_hooks.py` for plugin internals — call sites only see `run_with_hooks`, `emit_session_start`, `emit_session_end`, and `HookVeto`.
+No public API outside `codec_hooks.py` for plugin internals — call sites only see `run_with_hooks`, `emit_operation_start`, `emit_operation_end`, and `HookVeto`.
 
 ---
 
@@ -550,7 +552,7 @@ invoke runs with task="[gated] weather paris"
 This means **ordering matters for mutating plugins**. The doc on plugin authoring (to be written in Step 2 implementation) will state this explicitly. Two plugins that both want to be the canonical pre-processor must coordinate their priority numbers — the registry won't auto-resolve.
 
 For `post_tool`: identical chain.
-For `on_error` / `on_session_start` / `on_session_end`: order matters for human-visible side effects (logs, sidecar files) but no return-value mutation, so the chain is just sequential observation.
+For `on_error` / `on_operation_start` / `on_operation_end`: order matters for human-visible side effects (logs, sidecar files) but no return-value mutation, so the chain is just sequential observation.
 
 ### 5.3 What if two plugins veto?
 
@@ -574,15 +576,28 @@ I recommend the user's proposal verbatim, with one tightening:
 | | `str` | replaces `result` for downstream post_tool hooks + caller |
 | | anything else | logged as warning, treated as `None` |
 | `on_error` | always ignored | observe-only |
-| `on_session_start` | always ignored | observe-only |
-| `on_session_end` | always ignored | observe-only |
+| `on_operation_start` | always ignored | observe-only |
+| `on_operation_end` | always ignored | observe-only |
+
+**Immutable identity fields (per Q2 tightening):** `pre_tool` may return a dict to replace `task` and/or `context`, **but no other ctx field is mutable**. The wrapper ignores any of the following keys if a plugin tries to set them in the returned dict, and logs a warning:
+
+| Field | Why immutable |
+|---|---|
+| `tool_name` | Routing identity. A plugin that wants different routing must veto and let the user retry through a different entry point — not silently rewrite the tool mid-flight. Silent rewrite would break audit pairing (the operation-level `tool_call` already emitted with the old name). |
+| `transport` | Operation identity. Path-determined; not plugin business. |
+| `agent` | Crew operation identity. Set by the crew runtime, not by plugins. |
+| `correlation_id` | Step 1 §1.4 contract. Once generated at the operation entry point, threaded verbatim through every audit emit; mutating it would break the pairing of paired emits inside one operation. |
+| `client_id` | OAuth / MCP-HTTP identity. Set by the transport layer. |
+| `operation_id` | Same envelope identity as the wrapping op (voice WebSocket session, crew run, etc.). |
+
+If the dict contains any of these keys, the wrapper drops them, logs `[hooks] plugin X tried to mutate immutable field 'tool_name'; ignored`, and continues with whatever mutable keys remain. Catches plugin authors who try to "rewrite a chat call as a crew call" — refused at the boundary.
 
 **Tightening over the user's proposal:** explicit "anything else → log warning + None." Without this, a plugin author who returns `result + ""` from `post_tool` thinks they're idempotent, but if they accidentally return `False` or a list (because they forgot the `return result` and Python returned `None` from a single-return-path branch), the wrapper would either crash or misbehave. The explicit warning + None catches typos at runtime with a clear log message: `[hooks] plugin X post_tool returned <list>; ignored`.
 
-**Rationale for the asymmetry (mutate ok on tool, observe-only on error/session):**
+**Rationale for the asymmetry (mutate ok on tool, observe-only on error/operation):**
 
 - `on_error`: by the time on_error fires, the operation already failed. A plugin "fixing" the error by returning a string would silently mask bugs. If a plugin wants retry-on-error, that's not a hook, it's a different feature (maybe Step 6).
-- `on_session_start` / `on_session_end`: a session is an envelope, not a value. There's no result to mutate. A plugin that wanted to "block the session" can do so via pre_tool on the first tool call inside the session — same effect, simpler model.
+- `on_operation_start` / `on_operation_end`: an operation is an envelope, not a value. There's no result to mutate. A plugin that wanted to "block the operation" can do so via pre_tool on the first tool call inside the operation — same effect, simpler model.
 
 **No async hooks.** Sync-only. Reasoning identical to the user's: the skill registry is sync, the `invoke` callable is sync (it might run in a threadpool, but from the wrapper's perspective it's a sync call), and adding async would require either an async wrapper variant or thread-juggling inside every plugin. The simplicity of "you have <1ms of total budget, do your work, return" beats async ergonomics at this scale.
 
@@ -592,7 +607,7 @@ I recommend the user's proposal verbatim, with one tightening:
 
 ### 7.1 `hook_fired` event
 
-Every hook invocation (success, mutation, veto, hook-internal exception) emits one audit line:
+Every successful hook invocation (including a deliberate `HookVeto` return — that's a normal outcome, not a failure) emits one audit line:
 
 ```jsonc
 {
@@ -600,32 +615,30 @@ Every hook invocation (success, mutation, veto, hook-internal exception) emits o
   "schema": 1,
   "event": "hook_fired",
   "source": "codec-hooks",
-  "outcome": "ok|error",
+  "outcome": "ok",
   "transport": "crew|voice|stdio|http|chat|dispatch",
-  "level": "info|warning",
+  "level": "info",
   "duration_ms": 0.21,
   "extra": {
     "correlation_id": "a3f7b2c8e409",   // inherited from operation
     "plugin_name": "cost_tracker",
     "hook_name": "pre_tool",
-    "tool_name": "weather",              // null for session hooks
+    "tool_name": "weather",              // null for operation hooks
     "mutated": false,                    // true if return value mutated state
-    "vetoed": false,                     // true if pre_tool returned HookVeto
-    "error_type": null,                  // if hook itself raised
-    "error": null
+    "vetoed": false                      // true if pre_tool returned HookVeto
   }
 }
 ```
 
-`outcome="error"` only fires when the hook *itself* raised. A plugin returning `HookVeto` is `outcome="ok"` with `vetoed=true`. (The veto on the operation level is `tool_vetoed`, separate event.)
+A plugin returning `HookVeto` is `outcome="ok"` with `vetoed=true`. (The veto on the operation level is `tool_vetoed`, separate event in §4.) When the hook itself raises, the failure is captured by the new `hook_error` event in §7.5 — not by setting `outcome="error"` on `hook_fired`. Splitting the two events keeps `hook_fired` cheap and uniformly shaped on the hot path.
 
 ### 7.2 Where the emit lives
 
 Inside `run_with_hooks`, in two places:
 
-1. **For tool-call hooks**: a small helper `_fire_one(plugin, fn, *args)` wraps the call: monotonic timer, try/except, audit emit. Called from the pre_tool / post_tool / on_error loops.
+1. **For tool-call hooks**: a small helper `_fire_one(plugin, fn, *args)` wraps the call: monotonic timer, try/except, audit emit. Called from the pre_tool / post_tool / on_error loops. On success → `hook_fired`. On plugin exception → `hook_error` (§7.5) and `_fire_one` returns `None` so the chain continues.
 
-2. **For session hooks**: `emit_session_start(...)` and `emit_session_end(...)` each iterate the relevant hook chain and call `_fire_one`.
+2. **For operation hooks**: `emit_operation_start(...)` and `emit_operation_end(...)` each iterate the relevant hook chain and call `_fire_one`.
 
 The emit goes through `codec_audit.log_event(...)` (the Step 1 adapter) — never reinvent. `correlation_id` is passed through verbatim from the wrapping operation; never regenerated in the hook layer.
 
@@ -634,6 +647,7 @@ The emit goes through `codec_audit.log_event(...)` (the Step 1 adapter) — neve
 Per Step 1 §1.4: the wrapping operation generates a `correlation_id` once at its entry point, threads it as a kwarg through every audit emit. `run_with_hooks` receives it as a required kwarg and propagates it into:
 
 - Each `hook_fired` emit (under `extra.correlation_id`)
+- Each `hook_error` emit (under `extra.correlation_id`) — §7.5
 - The `tool_vetoed` emit on veto (under `extra.correlation_id`)
 
 Plugins read it from `ctx.correlation_id` if they want to correlate their own sidecar writes (e.g. `cost_tracker.py` writing one JSONL line per tool call, keyed by cid).
@@ -641,6 +655,48 @@ Plugins read it from `ctx.correlation_id` if they want to correlate their own si
 ### 7.4 Performance budget for the audit emit
 
 From Step 1 perf tests: `audit()` is ~0.1–0.5 ms/call single-thread, ~1–2.5 ms under 10-way contention. The `hook_fired` emit fits inside the §9 perf budget for hook overhead.
+
+### 7.5 `hook_error` event (Q4 tightening)
+
+When a plugin's hook function itself raises (Q4 resolution: log + skip; the user's tool call must not break because of a buggy plugin), `_fire_one` catches the exception and emits a separate audit event:
+
+```jsonc
+{
+  "ts": "...",
+  "schema": 1,
+  "event": "hook_error",
+  "source": "codec-hooks",
+  "outcome": "error",
+  "level": "warning",            // not "error" — the OPERATION still succeeds
+  "transport": "crew|voice|stdio|http|chat|dispatch",
+  "duration_ms": 0.18,           // time spent before the hook raised
+  "tool": "weather",             // null for operation hooks
+  "error_type": "KeyError",
+  "error": "missing key 'x'",    // truncated to _PREVIEW_MAX (200 chars)
+  "extra": {
+    "correlation_id": "a3f7b2c8e409",   // inherited from operation
+    "plugin_name": "cost_tracker",
+    "hook_name": "pre_tool"
+  }
+}
+```
+
+**Required fields:**
+- `event: "hook_error"`
+- `source: "codec-hooks"`
+- `outcome: "error"`
+- `level: "warning"` (not `"error"` — see below)
+- `extra.plugin_name` (the plugin whose hook failed)
+- `extra.hook_name` (which lifecycle the failure happened in)
+- `error_type` (top-level, per Step 1 envelope)
+- `error` (top-level, truncated to `_PREVIEW_MAX` from `codec_audit.py`)
+- `extra.correlation_id` (inherited verbatim from the wrapping operation)
+
+**Why `level: "warning"`, not `"error"`:** the OPERATION still succeeded — the user's tool call ran and returned a result; only one plugin's hook failed and was skipped. `error` level is reserved for failures that broke the operation (`tool_result outcome=error`, `service_down`, `chat_llm_error`). A buggy plugin is operationally a warning, not an error. This keeps `audit_report`'s error-rate metric meaningful — a noisy plugin doesn't inflate the error count and mask real problems.
+
+**Storage cost:** at perf budget (§9: < 5 ms/call with 5 hooks), the steady-state `hook_error` rate is zero — these only fire when a plugin is actually broken. A misbehaving plugin emits one `hook_error` per tool call until the user removes it; not a hot path.
+
+`hook_error` is added to the §1.2 enumeration in Step 1's design as the third hook-layer event (alongside `hook_fired` and `tool_vetoed`).
 
 ---
 
@@ -703,11 +759,11 @@ def test_post_tool_fires_after_invoke():
 def test_post_tool_sees_invoke_result():
 def test_on_error_fires_when_invoke_raises():
 def test_on_error_does_not_fire_on_success():
-def test_on_session_start_fires_at_voice_session_start():
-def test_on_session_end_fires_at_voice_session_end():
-def test_on_session_end_fires_with_outcome_error_when_pipeline_raises():
-def test_session_start_does_not_fire_for_individual_mcp_calls():
-    # MCP tool calls aren't a "session"; sanity check
+def test_on_operation_start_fires_at_voice_session_start():
+def test_on_operation_end_fires_at_voice_session_end():
+def test_on_operation_end_fires_with_outcome_error_when_pipeline_raises():
+def test_operation_start_does_not_fire_for_individual_mcp_calls():
+    # MCP tool calls aren't an operation envelope; sanity check
 def test_pre_tool_after_validation_in_mcp():
     # Validation runs first, then pre_tool sees clean inputs
 ```
@@ -744,6 +800,12 @@ def test_invalid_pre_tool_return_logs_warning_treats_as_none():
 def test_invalid_post_tool_return_logs_warning_treats_as_none():
 def test_plugin_tool_filter_skips_unmatched_tools():
     # PLUGIN_TOOL_FILTER = ["weather"] only fires for weather, skipped for notes
+def test_pre_tool_immutable_field_tool_name_dropped():
+    # Q2 tightening: pre_tool returning {"tool_name": "X", "task": "Y"}
+    # keeps the new task but drops tool_name with a warning log line.
+def test_pre_tool_immutable_fields_transport_agent_correlation_dropped():
+    # transport / agent / correlation_id / client_id / operation_id
+    # are also dropped if a plugin tries to mutate them.
 ```
 
 ### 9.5 `tests/test_hooks_audit_and_perf.py` (~100 LOC)
@@ -752,16 +814,28 @@ def test_plugin_tool_filter_skips_unmatched_tools():
 def test_hook_fired_audit_emitted_per_call():
 def test_hook_fired_carries_plugin_name_hook_name_duration_ms():
 def test_hook_fired_inherits_correlation_id():
-def test_hook_internal_exception_logged_and_skipped():
-    # Plugin raises in pre_tool → hook_fired with outcome="error", invoke continues
+def test_hook_error_emitted_when_plugin_raises():
+    # Q4 tightening: plugin raises in pre_tool → emit hook_error with
+    # event="hook_error", outcome="error", level="warning", error_type,
+    # error (truncated to _PREVIEW_MAX), extra.plugin_name,
+    # extra.hook_name, extra.correlation_id. Operation continues, invoke
+    # still runs.
+def test_hook_error_does_NOT_emit_hook_fired_for_same_call():
+    # Buggy plugin in pre_tool emits hook_error only — not both.
+def test_hook_error_truncates_long_error_message_at_preview_max():
+    # error string > 200 chars → truncated to 200 in audit envelope.
+def test_hook_error_inherits_correlation_id():
+def test_hook_error_level_is_warning_not_error():
+    # Operation succeeds; only the plugin failed. Don't inflate error rate.
 def test_hook_overhead_under_1ms_with_zero_hooks():
     # 1000 invocations: avg run_with_hooks overhead < 1.0 ms with no plugins
 def test_hook_overhead_under_5ms_with_5_hooks():
-    # 5 trivial hooks (pre, post, error, session_start, session_end), each just `pass`
-    # 1000 invocations: avg overhead < 5.0 ms
+    # 5 trivial hooks (pre, post, error, operation_start, operation_end),
+    # each just `pass`. 1000 invocations: avg overhead < 5.0 ms.
 def test_hook_concurrent_no_audit_corruption():
     # 10 threads × 100 invocations × 5 hooks → no JSON corruption in audit.log,
-    # all hook_fired entries parseable, no dropped writes (mirrors Step 1 §4.4)
+    # all hook_fired / hook_error entries parseable, no dropped writes
+    # (mirrors Step 1 §4.4).
 ```
 
 CI multiplier identical to Step 1: under `CI=1` the budgets are 5× looser to avoid flakes on slow runners; the production guard is the post-deploy 24h sample (§10).
@@ -811,20 +885,20 @@ The `scripts/capture_audit_sample.py` script from Step 1 will be reused — it r
 
 ---
 
-## 11 · Open questions for the reviewer
+## 11 · Reviewer resolutions (closed)
 
-Real choices, no padding:
+**Status: RESOLVED.** All six questions decided by the Phase 1 reviewer (Mickael + Claude chat) on 2026-04-30. Three of the six approvals carried tightenings — all three are baked into the body of the doc above (§1, §6, §7, §9, §12, §13).
 
-| # | Question | Recommendation | Why it's a real choice |
-|---|---|---|---|
-| **Q1** | Should `PLUGIN_TOOL_FILTER` be a list of exact tool names only, or also support glob/regex (e.g. `["weather", "google_*"]`)? | **Exact list only** for v1. Globs are a small feature with a non-trivial maintenance surface (priority interactions when one plugin matches `*` and another matches `weather`). Defer globs to a later step if a real use case appears. | A user with 50 google_* skills will copy-paste 50 strings instead of one glob. Real ergonomics cost. |
-| **Q2** | Should `pre_tool` be allowed to mutate `transport`, `agent`, or `correlation_id`? | **No.** Those are operation-identity fields, not plugin business. A plugin that needs different routing should veto and let the user retry through a different entry point. | Some plugin authors will want to "rewrite a chat call as a crew call" — slippery slope. Saying no now is cheaper than retracting later. |
-| **Q3** | Should `pre_llm_call` / `post_llm_call` ship in this step or wait? | **Wait.** Documented in §1.3. Defer until there's a concrete consumer (cost cap, prompt-injection scrub) and a clean answer for what the hook receives in the chat-post-LLM-tag path. | Real cost: shipping it early without a concrete consumer freezes the contract; later changes break user plugins. Conservative wait. |
-| **Q4** | Should hook errors (a plugin raises in `pre_tool`/`post_tool`) be (a) logged + skipped, (b) abort the operation with an error result, or (c) logged + treated as veto? | **(a) logged + skipped.** §3.2 already specifies this. A buggy plugin must not break a working skill; the user sees the error in the audit log and removes/fixes the plugin. | (b) makes a single broken plugin a single point of failure for every tool call. (c) creates implicit veto behavior the plugin author didn't write — confusing. (a) is the unsurprising default. |
-| **Q5** | When a `post_tool` hook chain produces a result that's now larger than the path's expected size (e.g. MCP tool result that exceeds the underlying skill's natural output, blowing through Claude.ai's context budget), do we cap it? | **No cap in the hook layer.** Each path already has its own size handling (MCP truncates at the MCP protocol layer; voice has `_skill_to_speech` summarizing to 500 chars at codec_voice.py:678; chat has its own SSE streaming). Adding a hook-layer cap would silently truncate plugin output and confuse plugin authors. | A plugin that wants to *expand* a result (e.g. adding citations to a search result) is legitimate. The transport layer is the right place to cap, not the hook. |
-| **Q6** | Should `on_session_start` for crew receive the per-agent breakdown (agent names, mode), or just the crew name? | **Both, via `ctx.agent` and `ctx.session_id`.** The HookCtx already carries `agent` (per-agent) and `session_id` (whatever the path uses). Crew passes `agent=None` at the crew-start moment and `agent="<name>"` at each agent-start moment if we choose to fire `on_session_start` per agent. **Default: only fire on_session_start once per crew (at crew_start), not per agent.** | Per-agent fires double the volume for marginal benefit. A plugin that wants per-agent state can use the agent_start audit emit and observe it directly. |
+| # | Question | Resolution |
+|---|---|---|
+| **Q1** | Should `PLUGIN_TOOL_FILTER` be a list of exact tool names only, or also support glob/regex (e.g. `["weather", "google_*"]`)? | **APPROVED** as recommended. Exact list only for v1. Globs are a small feature with a non-trivial maintenance surface (priority interactions when one plugin matches `*` and another matches `weather`). Defer globs to a later step if a real use case appears. |
+| **Q2** | Should `pre_tool` be allowed to mutate `transport`, `agent`, or `correlation_id`? | **APPROVED with tightening.** No, those are operation-identity fields. **Tightening:** lock `tool_name` itself in the immutable-identity-fields list alongside `transport` / `agent` / `correlation_id` / `client_id` / `operation_id`. A plugin that wants different routing must **veto** and let the user retry through a different entry point — silently rewriting `tool_name` mid-flight would break audit pairing (the operation-level `tool_call` already emitted with the old name). The full immutable-fields table is in §6. |
+| **Q3** | Should `pre_llm_call` / `post_llm_call` ship in this step or wait? | **APPROVED** as recommended. Defer until there's a concrete consumer (cost cap, prompt-injection scrub) and a clean answer for what the hook receives in the chat-post-LLM-tag path. Documented in §1.3. |
+| **Q4** | Should hook errors (a plugin raises in `pre_tool`/`post_tool`) be (a) logged + skipped, (b) abort the operation, or (c) logged + treated as veto? | **APPROVED with tightening.** (a) logged + skipped is the only correct option — a buggy plugin must not break a working skill. **Tightening:** specify the audit envelope for plugin-raised errors. New event type **`hook_error`** with required fields `plugin_name`, `hook_name`, `error_type`, `error` (truncated to `_PREVIEW_MAX` = 200 chars), inheriting `correlation_id` from the wrapping operation. `level: "warning"` (not `"error"` — the operation still succeeded; only the plugin failed). `hook_fired` and `hook_error` are split events, never both for the same call. Full spec in §7.5; row added to §1.1's audit-event column for every hook lifecycle. |
+| **Q5** | When a `post_tool` hook chain produces a result larger than the path's expected size, do we cap it? | **APPROVED** as recommended. No cap in the hook layer. Each path already has its own size handling (MCP truncates at the protocol layer; voice has `_skill_to_speech` summarizing at codec_voice.py:678; chat has its own SSE streaming). A plugin that wants to *expand* a result (e.g. adding citations to a search result) is legitimate. |
+| **Q6** | Should `on_session_start` for crew receive the per-agent breakdown, or just the crew name? Default fire-once or fire-per-agent? | **APPROVED with rename.** Default: fire once per crew (not per-agent). **Rename:** `on_session_start` / `on_session_end` → `on_operation_start` / `on_operation_end`. Reasoning: "operation" matches the correlation_id contract vocabulary from Step 1 §1.4 ("required for any operation emitting ≥2 audit lines"). Avoids collision with the existing `voice_session_start` / `voice_session_end` audit events from Step 1 (those keep their names — they refer to literal voice sessions, a narrower scope). The HookCtx field `session_id` is also renamed to `operation_id` for vocabulary consistency. Mass-edit touched ~21 lines across §1, §2, §5, §6, §7, §9, §12, §13. |
 
-The Step 1 design used 5 open questions (all resolved before implementation). This step has 6 — slightly more because it sits on top of an existing schema and the integration surface is larger.
+The Step 1 design used 5 open questions (all resolved before implementation). This step had 6 — slightly more because it sits on top of an existing schema and the integration surface is larger. All six are now resolved; no further reviewer input needed before implementation.
 
 ---
 
@@ -834,12 +908,12 @@ When Phase 1 Step 2 implementation runs, the diff will land:
 
 | File | Δ | What |
 |---|---|---|
-| `codec_hooks.py` (new) | ~+250 LOC | `PluginRegistry`, `HookCtx`, `HookVeto`, `run_with_hooks`, `emit_session_start`, `emit_session_end`, `_fire_one` audit helper, AST discovery |
+| `codec_hooks.py` (new) | ~+265 LOC | `PluginRegistry`, `HookCtx` (incl. `operation_id` field), `HookVeto`, `run_with_hooks`, `emit_operation_start`, `emit_operation_end`, `_fire_one` audit helper (emits `hook_fired` on success, `hook_error` on plugin exception per §7.5), immutable-identity-fields filter on `pre_tool` returns per §6 Q2 tightening, AST discovery |
 | `codec_agents.py` | ~-3 / +12 | Wrap `loop.run_in_executor(None, ctx.run, tool.run, tool_input)` at line 519 with `run_with_hooks`. Handle `HookVeto` return. |
-| `codec_voice.py` | ~-1 / +12 | Wrap `loop.run_in_executor(None, skill["run"], user_text)` at line 668. Handle veto. Wire `on_session_start` / `on_session_end` calls into `VoicePipeline.run` start/finally. |
+| `codec_voice.py` | ~-1 / +12 | Wrap `loop.run_in_executor(None, skill["run"], user_text)` at line 668. Handle veto. Wire `on_operation_start` / `on_operation_end` calls into `VoicePipeline.run` start/finally. |
 | `codec_dispatch.py` | ~-1 / +12 | Wrap `registry.run(skill_name, task, app)` at line 61 with `run_with_hooks`. Handle veto. (Single edit covers paths 2b/3/4.) |
 | `codec_mcp.py` | ~-30 / +50 | Refactor `tool_fn` body — validation pass-through stays where it is; the threadpool/timeout/result block becomes the `invoke` closure passed to `run_with_hooks`. Handle veto via existing `_audit` style. Add `tool_vetoed` event emit. |
-| `codec_audit.py` | 0 LOC | No changes. `log_event("hook_fired", ...)` and `log_event("tool_vetoed", ...)` are routine usages of the existing adapter. |
+| `codec_audit.py` | 0 LOC | No changes. `log_event("hook_fired", ...)`, `log_event("hook_error", ...)`, and `log_event("tool_vetoed", ...)` are routine usages of the existing adapter. |
 | `codec_self_improve.py` | 0 LOC this step | Migration to a hook is **Step 4** scope. This step ships the plumbing, not the migrant. |
 | `AGENTS.md` §3 + new §12 | small update | Status note: "PreToolUse / PostToolUse hooks: implemented in Phase 1 Step 2 (commit `<hash>`)." Plus a new §12 "Plugin authoring guide" pointer. |
 | `tests/test_hooks_discovery.py` (new) | ~80 LOC | §9.1 |
@@ -850,7 +924,7 @@ When Phase 1 Step 2 implementation runs, the diff will land:
 | `~/.codec/plugins/_template.py` (new, optional) | ~40 LOC | Template plugin file with all 5 hooks stubbed. Mirrors `skills/_template.py`. Lives in user state, not in the repo. |
 | `docs/PHASE1-STEP2-POSTMERGE-SAMPLES.md` (new) | small | Reserved for post-merge 24h sampling (§10.4). |
 
-**Net code change:** ~+330 functional LOC (most concentrated in the new `codec_hooks.py`), ~+480 LOC tests, **zero breaking changes** to schema:1 or to skill/crew/voice/MCP/chat behaviour for users who don't drop a plugin file. New audit events (`hook_fired`, `tool_vetoed`) are additive and the existing analyzer tolerates them.
+**Net code change:** ~+345 functional LOC (most concentrated in the new `codec_hooks.py` — slightly higher than the v1 estimate due to the §7.5 `hook_error` emit + the §6 Q2 immutable-fields filter), ~+500 LOC tests (Q4 added 5 new tests for `hook_error` envelope + level + correlation_id inheritance + truncation, Q2 added 2 tests for the immutable-fields filter), **zero breaking changes** to schema:1 or to skill/crew/voice/MCP/chat behaviour for users who don't drop a plugin file. New audit events (`hook_fired`, `hook_error`, `tool_vetoed`) are additive and the existing analyzer tolerates them.
 
 ---
 
@@ -862,13 +936,13 @@ This isn't shipped in Step 2, but the design decisions here were guided by it. T
 
 In **Step 4**, it becomes a plugin at `~/.codec/plugins/self_improve.py` that:
 
-- Implements `on_session_end(ctx)` — every voice/crew/chat session end, increment a counter for the session's tool-call gap signals.
-- Implements a daily flush via `on_session_end` checking the day boundary; when the boundary crosses, run the existing proposal-drafting logic synchronously (fast-fail if Qwen is unavailable; not a hot path).
-- Reads from a sidecar file at `~/.codec/plugin_state/self_improve.jsonl` instead of audit.log directly. The sidecar is written by `on_session_end` itself — eliminates the audit-log polling.
+- Implements `on_operation_end(ctx)` — every voice/crew/chat operation end, increment a counter for the operation's tool-call gap signals.
+- Implements a daily flush via `on_operation_end` checking the day boundary; when the boundary crosses, run the existing proposal-drafting logic synchronously (fast-fail if Qwen is unavailable; not a hot path).
+- Reads from a sidecar file at `~/.codec/plugin_state/self_improve.jsonl` instead of audit.log directly. The sidecar is written by `on_operation_end` itself — eliminates the audit-log polling.
 
 Verification that Step 2's design supports this:
 
-- ✅ `on_session_end` ctx carries `correlation_id` and `transport`, enough to attribute signals to specific sessions.
+- ✅ `on_operation_end` ctx carries `correlation_id` and `transport`, enough to attribute signals to specific operations.
 - ✅ `pre_tool` ctx carries `tool_name` — enough for the unknown-tool / failing-tool / timeout-tool gap kinds.
 - ✅ Audit-log polling stays *available* (the proposal logic can fall back to it if the plugin's sidecar gets corrupted).
 - ✅ The plugin's daily flush doesn't need async — Qwen calls are sync inside the LLM proxy.
@@ -877,4 +951,4 @@ If any of these assumptions break in implementation, this section will be revise
 
 ---
 
-**End of design (v1).** No code modified. No other docs written. Stops here.
+**End of design (v2 — §11 RESOLVED).** No code modified. No other docs written. Stops here.
