@@ -981,10 +981,20 @@ async def send_command(request: Request):
 
 @app.post("/api/vision")
 async def vision_analyze(request: Request):
-    """Send image to Qwen Vision model for analysis"""
+    """Send image to Qwen Vision model for analysis.
+
+    If `session_id` is provided, the user prompt + assistant response are
+    persisted to the conversations table so the chat panel renders them.
+    A small `thumb` (base64 jpeg, max ~256px on the client side) can be
+    embedded inline in the user message via a `[CODEC_IMG_THUMB:...]`
+    sentinel — loadChat() in codec_dashboard.html parses the sentinel
+    and renders the thumbnail. Storage cost: ~10–20 KB per image message.
+    """
     body = await request.json()
     image_b64 = body.get("image", "")
     prompt = body.get("prompt", "Describe and analyze this image in detail.")
+    session_id = (body.get("session_id") or "").strip()
+    thumb_b64 = body.get("thumb", "")
     if not image_b64:
         return JSONResponse({"error": "No image data"}, status_code=400)
     try:
@@ -1016,6 +1026,40 @@ async def vision_analyze(request: Request):
         log_event("chat_vision", "codec-dashboard",
                   f"Vision analysis: {prompt[:60]}",
                   extra={"prompt_preview": prompt[:200]})
+
+        # Persist user msg (with thumbnail sentinel) + assistant msg so the
+        # image appears in the chat panel. Defensive: never let a save error
+        # break the vision response — log + return the answer regardless.
+        if session_id:
+            try:
+                now_iso = datetime.now().isoformat()
+                # Cap thumbnail size to ~60KB of base64 (about a 256x256 jpeg
+                # @ q=0.4); silently drop if larger to keep DB rows lean.
+                # Validate the whole string is base64 so any injection attempt
+                # (e.g. ']<script>') falls through to the no-thumb branch.
+                import re as _re_b64
+                _is_b64 = bool(thumb_b64) and len(thumb_b64) <= 60_000 \
+                    and _re_b64.fullmatch(r'[A-Za-z0-9+/]+={0,2}', thumb_b64) is not None
+                if _is_b64:
+                    user_content = (
+                        (prompt or "Analyze this image")[:2000]
+                        + f"\n[CODEC_IMG_THUMB:data:image/jpeg;base64,{thumb_b64}]"
+                    )
+                else:
+                    user_content = (prompt or "Analyze this image")[:2000]
+                c = get_db()
+                c.execute(
+                    "INSERT INTO conversations (session_id, timestamp, role, content) VALUES (?,?,?,?)",
+                    (session_id, now_iso, "user", user_content),
+                )
+                c.execute(
+                    "INSERT INTO conversations (session_id, timestamp, role, content) VALUES (?,?,?,?)",
+                    (session_id, now_iso, "assistant", answer[:5000]),
+                )
+                c.commit()
+            except Exception as save_err:
+                log.warning(f"[Vision] save to conversations failed: {save_err}")
+
         return {"response": answer, "model": vision_model}
     except Exception as e:
         import traceback; traceback.print_exc()

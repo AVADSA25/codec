@@ -882,18 +882,41 @@ async function sendCmd() {
     var imgData = _pendingImage;
     _pendingImage = null;
     var prompt = task || 'Describe and analyze this image in detail.';
-    text.innerHTML = '<span style="color:var(--accent)">Analyzing image...</span> ' + escHtml(imgData.name);
+    if (!window._flashSessionId) {
+      var today = new Date().toISOString().slice(0, 10);
+      window._flashSessionId = 'flash-' + today;
+    }
+    // Show the thumbnail (already a small data URL on _pendingImage.thumb) in
+    // the result panel immediately so the user sees what they're sending,
+    // and so it's visible while the vision model thinks.
+    var thumbUrl = imgData.thumb || ('data:image/jpeg;base64,' + imgData.base64);
+    var thumbHtml = '<img src="' + thumbUrl + '" alt="' + escHtml(imgData.name || 'image') +
+                    '" style="max-width:240px;max-height:240px;border-radius:8px;display:block;margin:6px 0;border:1px solid var(--border)">';
+    text.innerHTML = thumbHtml +
+      '<span style="color:var(--accent)">Analyzing image...</span> ' + escHtml(imgData.name || '');
     try {
-      var r = await fetch('/api/vision', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({prompt: prompt, image: imgData.base64}) });
+      var r = await fetch('/api/vision', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          prompt: prompt,
+          image: imgData.base64,
+          thumb: imgData.thumb_b64 || '',         // small jpeg b64 for storage
+          session_id: window._flashSessionId
+        })
+      });
       var data = await r.json();
       if (data.response) {
-        text.innerHTML = '<span style="color:var(--success)">Flash:</span> ' + escHtml(data.response);
+        text.innerHTML = thumbHtml +
+          '<span style="color:var(--success)">Flash:</span> ' + escHtml(data.response);
         loadChat(); playResponse(data.response);
       } else {
-        text.innerHTML = '<span style="color:var(--danger)">Vision error:</span> ' + escHtml(data.error || 'No response');
+        text.innerHTML = thumbHtml +
+          '<span style="color:var(--danger)">Vision error:</span> ' + escHtml(data.error || 'No response');
       }
     } catch(e) {
-      text.innerHTML = '<span style="color:var(--danger)">Failed:</span> ' + escHtml(e.message);
+      text.innerHTML = thumbHtml +
+        '<span style="color:var(--danger)">Failed:</span> ' + escHtml(e.message);
     }
     return;
   }
@@ -952,6 +975,40 @@ async function sendCmd() {
 
 document.getElementById('cmdInput').addEventListener('keydown', function(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendCmd(); } });
 document.getElementById('cmdInput').addEventListener('input', function() { this.style.height = 'auto'; this.style.height = Math.min(this.scrollHeight, 120) + 'px'; });
+
+// ── Paste image into chat (Cmd+V on a screenshot) ──
+// Same flow as drag-drop / file-picker: synthesize a fileInput.files event
+// and route through handleFile so vision-canvas + storage-thumbnail are
+// produced identically. Text paste still works (we only preventDefault for
+// image clipboard items).
+document.getElementById('cmdInput').addEventListener('paste', function(e) {
+  if (!e.clipboardData) return;
+  var items = e.clipboardData.items || [];
+  for (var i = 0; i < items.length; i++) {
+    var it = items[i];
+    if (it && it.kind === 'file' && it.type && it.type.indexOf('image/') === 0) {
+      e.preventDefault();
+      var f = it.getAsFile();
+      if (!f) return;
+      try {
+        // Give pasted screenshots a real filename — clipboard-source files
+        // sometimes arrive as "image.png" with no extension or duplicates,
+        // and our chip / vision logs benefit from a unique name.
+        var ext = (f.type.split('/')[1] || 'png').split('+')[0];
+        var renamed = new File([f], 'pasted-' + Date.now() + '.' + ext, { type: f.type });
+        var dt = new DataTransfer();
+        dt.items.add(renamed);
+        var fi = document.getElementById('fileInput');
+        fi.files = dt.files;
+        handleFile({ target: fi });
+      } catch (err) {
+        console.warn('Paste image into chat failed:', err);
+      }
+      return;
+    }
+  }
+  // No image in clipboard — let default text-paste happen.
+});
 
 function lockSession(){fetch('/api/auth/logout',{method:'POST'}).then(function(){document.cookie='codec_session=;path=/;max-age=0;SameSite=Lax'+(location.protocol==='https:'?';Secure':'');window.location.href='/auth'})}
 
@@ -1020,8 +1077,27 @@ async function loadChat() {
     el.innerHTML = data.map(function(d) {
       var roleClass = d.role === 'user' ? 'user' : 'assistant';
       var label = d.role === 'user' ? 'YOU' : 'CODEC';
-      var content = (d.content || '').substring(0, 500);
-      return '<div class="card"><button class="copy-btn" onclick="copyText(decodeURIComponent(\'' + encodeURIComponent(content) + '\'),this)" title="Copy"><svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button><div class="card-role ' + roleClass + '">' + label + '</div><div class="card-time">' + fmtTime(d.timestamp) + '</div><div class="card-task">' + escHtml(content) + '</div></div>';
+      // Pull out any embedded [CODEC_IMG_THUMB:data:image/...;base64,...]
+      // markers and render them inline as <img>. The base64 data URL must
+      // survive escHtml verbatim, so we walk the regex and only escape the
+      // text spans between markers — never the markers themselves.
+      var raw = d.content || '';
+      var IMG_RE = /\[CODEC_IMG_THUMB:(data:image\/[a-zA-Z0-9+.\-]+;base64,[A-Za-z0-9+/=]+)\]/g;
+      // Plain text version for the copy button: strip every marker.
+      var copyText = raw.replace(IMG_RE, '').trim();
+      // Render: walk the regex, alternating escaped text + img tags.
+      // Avoids placeholder-collision risk with arbitrary user prose.
+      var rendered = '';
+      var lastIdx = 0;
+      IMG_RE.lastIndex = 0;
+      var mm;
+      while ((mm = IMG_RE.exec(raw)) !== null) {
+        rendered += escHtml(raw.substring(lastIdx, mm.index));
+        rendered += '<img src="' + mm[1] + '" alt="image" style="max-width:240px;max-height:240px;border-radius:8px;display:block;margin:8px 0;border:1px solid var(--border)">';
+        lastIdx = mm.index + mm[0].length;
+      }
+      rendered += escHtml(raw.substring(lastIdx));
+      return '<div class="card"><button class="copy-btn" onclick="copyText(decodeURIComponent(\'' + encodeURIComponent(copyText) + '\'),this)" title="Copy"><svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button><div class="card-role ' + roleClass + '">' + label + '</div><div class="card-time">' + fmtTime(d.timestamp) + '</div><div class="card-task">' + rendered + '</div></div>';
     }).join('');
     var scroller = el.closest('.content') || el.parentElement;
     setTimeout(function(){ scroller.scrollTop = scroller.scrollHeight; }, 50);
@@ -1836,6 +1912,7 @@ async function handleFile(e) {
     reader.onload = function() {
       var img = new Image();
       img.onload = function() {
+        // Vision-quality canvas: max 1024px, jpeg @ 0.8
         var canvas = document.createElement('canvas');
         var maxDim = 1024;
         var w = img.width, h = img.height;
@@ -1846,15 +1923,35 @@ async function handleFile(e) {
         canvas.width = w; canvas.height = h;
         canvas.getContext('2d').drawImage(img, 0, 0, w, h);
         var base64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
-        _pendingImage = { base64: base64, name: file.name };
+
+        // Storage thumbnail: max 256px, jpeg @ 0.4 — kept small so it can be
+        // embedded in conversations.content without bloating the DB.
+        var thumbCanvas = document.createElement('canvas');
+        var thumbMax = 256;
+        var tw = img.width, th = img.height;
+        if (tw > thumbMax || th > thumbMax) {
+          if (tw > th) { th = Math.round(th * thumbMax / tw); tw = thumbMax; }
+          else { tw = Math.round(tw * thumbMax / th); th = thumbMax; }
+        }
+        thumbCanvas.width = tw; thumbCanvas.height = th;
+        thumbCanvas.getContext('2d').drawImage(img, 0, 0, tw, th);
+        var thumbDataUrl = thumbCanvas.toDataURL('image/jpeg', 0.4);
+        var thumbB64 = thumbDataUrl.split(',')[1];
+
+        _pendingImage = {
+          base64: base64,
+          name: file.name || ('paste-' + Date.now() + '.jpg'),
+          thumb: thumbDataUrl,    // for inline render in result panel
+          thumb_b64: thumbB64     // for server-side storage in conversations
+        };
         // Show chip above input
         var existing = document.getElementById('flashImageChip');
         if (existing) existing.remove();
         var chip = document.createElement('div');
         chip.id = 'flashImageChip';
         chip.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 10px;margin-bottom:4px;background:var(--surface-2,#1e1e22);border:1px solid var(--border);border-radius:8px;font-size:12px;color:var(--text-muted,#999)';
-        chip.innerHTML = '<img src="' + canvas.toDataURL('image/jpeg', 0.3) + '" style="width:32px;height:32px;border-radius:4px;object-fit:cover">' +
-          '<span style="flex:1">' + escHtml(file.name) + '</span>' +
+        chip.innerHTML = '<img src="' + thumbDataUrl + '" style="width:32px;height:32px;border-radius:4px;object-fit:cover">' +
+          '<span style="flex:1">' + escHtml(_pendingImage.name) + '</span>' +
           '<button onclick="_pendingImage=null;this.parentElement.remove()" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:16px">&times;</button>';
         var inputArea = document.getElementById('cmdInput').parentElement;
         inputArea.parentElement.insertBefore(chip, inputArea);
