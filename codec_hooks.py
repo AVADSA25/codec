@@ -265,12 +265,22 @@ class PluginRegistry:
         mod = self._modules.get(plugin.name)
         if mod is None:
             try:
+                import sys
+                module_name = f"codec_plugin_{plugin.name}"
                 spec = importlib.util.spec_from_file_location(
-                    f"codec_plugin_{plugin.name}", plugin.file_path)
+                    module_name, plugin.file_path)
                 if spec is None or spec.loader is None:
                     raise ImportError(f"could not build spec for {plugin.file_path}")
                 mod = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(mod)
+                # Register in sys.modules BEFORE exec_module so the plugin can
+                # import itself transitively without re-loading. Standard
+                # importlib pattern; mirrors codec_skill_registry's caching.
+                sys.modules[module_name] = mod
+                try:
+                    spec.loader.exec_module(mod)
+                except BaseException:
+                    sys.modules.pop(module_name, None)  # roll back on failure
+                    raise
                 self._modules[plugin.name] = mod
                 log.info("Lazy-loaded plugin: %s", plugin.name)
             except Exception as e:
