@@ -171,3 +171,55 @@ async def delete_custom_agent(request: Request):
         return JSONResponse({"error": "Agent not found"}, status_code=404)
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ── Phase 1 Step 3: AskUserQuestion reply path ──────────────────────────────
+# Per docs/PHASE1-STEP3-DESIGN.md §1.5. PWA + voice both POST here.
+# §1.7 strict-consent gate enforced inside codec_ask_user.submit_answer —
+# rejected answers return HTTP 200 with {"ok": False, "rejected": True,
+# "reason": "ambiguous_consent", "remaining_attempts": N} so the panel
+# can re-prompt without an error toast.
+@router.post("/api/agents/answer/{pending_question_id}")
+async def submit_ask_user_answer(pending_question_id: str, request: Request):
+    """Submit a user answer to a pending AskUserQuestion."""
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid_json"}, status_code=400)
+    answer = (body.get("answer") or "").strip()
+    answered_via = (body.get("answered_via") or "pwa").strip().lower()
+    if answered_via not in ("pwa", "voice"):
+        answered_via = "pwa"
+    try:
+        from codec_ask_user import submit_answer
+    except ImportError:
+        return JSONResponse({"error": "ask_user_not_available"}, status_code=503)
+    result = submit_answer(
+        pending_question_id, answer, answered_via=answered_via)
+    if result.get("ok"):
+        return result
+    err = result.get("error")
+    if err == "not_found":
+        return JSONResponse(result, status_code=404)
+    if err in ("already_answered", "already_timed_out"):
+        return JSONResponse(result, status_code=409)
+    if result.get("rejected"):
+        # 200 OK — the panel re-prompts with remaining_attempts.
+        return result
+    return JSONResponse(result, status_code=400)
+
+
+@router.get("/api/agents/pending_questions")
+async def list_pending_questions():
+    """List currently-pending AskUserQuestion records. Used by the dashboard
+    to render the inline answer panel; voice loop also polls this when
+    deciding whether to switch into single-question listen mode."""
+    try:
+        from codec_ask_user import _load_pending_questions
+        data = _load_pending_questions()
+        # Filter to status="pending" only — answered/timed_out are history.
+        pending = [r for r in data.get("pending_questions", [])
+                   if r.get("status") == "pending"]
+        return {"pending_questions": pending, "count": len(pending)}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)

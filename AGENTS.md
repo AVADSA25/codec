@@ -97,11 +97,23 @@ CODEC supports user-authored Python plugins at `~/.codec/plugins/*.py` that regi
 
 Implementation: `codec_hooks.py` (run_with_hooks + PluginRegistry), wired into `codec_dispatch.py:run_skill` (covers wake-word + chat pre-LLM + chat post-LLM tag), `codec_agents.py:Agent.run` (crew), `codec_voice.py:dispatch_skill` (voice WebSocket), `codec_mcp.py:tool_fn` (MCP stdio + HTTP). Voice WebSocket also fires `emit_operation_start` / `emit_operation_end` from `VoicePipeline.run` start/finally.
 
+### AskUserQuestion + stuck detection + step budget (Phase 1 Step 3)
+
+CODEC agents can pause and ask the user a structured question, self-detect when they're stuck in a loop, and enforce a per-turn step budget on the chat handler. See `docs/PHASE1-STEP3-DESIGN.md` (commit b187b8d, §9 RESOLVED).
+
+**AskUserQuestion** (`codec_ask_user.py`): public API `ask(question, *, options=None, timeout=600, destructive=False, destructive_verb=None, agent=None, crew_id=None, asked_from="chat", tool_name=None) -> str`. Blocks the caller's worker thread on `threading.Event.wait()` until the user replies via PWA (`POST /api/agents/answer/{qid}`) or voice (`codec_voice.VoicePipeline._handle_voice_ask_user_answer`). Question state in `~/.codec/pending_questions.json` (atomic write); display surface in `~/.codec/notifications.json` with `type="question"`. Skill shim at `skills/ask_user.py` exposes the tool to the LLM and over MCP. Default 600s timeout; tunable via `~/.codec/config.json:ask_user.timeout_seconds`. Kill switch: `ASKUSER_ENABLED=false`.
+
+**Strict-consent gate (§1.7)**: irreversible actions opt in via `destructive=True`, caller-supplied `destructive_verb`, OR auto-trigger when the calling tool name is in `codec_config._HTTP_BLOCKED`. On strict-consent, the answer must contain the destructive verb literally (case-insensitive); generic "yes"/"ok"/"sure" rejected with re-prompt. After two rejections, the question times out as `ask_user_question_timeout` with `extra.reason="ambiguous_consent"` — does NOT wait for the deadline. Voice ASR layer (`codec_voice._resolve_voice_option_choice`) BYPASSES fuzzy match in strict mode so `submit_answer` evaluates the literal verb-match rule.
+
+**Stuck detection** (`codec_agents.Agent`): per-agent ring buffer of last M=5 (tool_name, args_hash) tuples. Soft warning at N=3 identical calls (banner injected into result string + `stuck_warning` audit emit), escalation at N+2=5 calls (configurable: `ask_user` (default), `abort`, or `warn_only` via `~/.codec/config.json:stuck.escalation_action`). Wired into `Agent.run` post-tool via `run_in_executor` so synchronous `ask_user.ask()` doesn't block the event loop. LLM-self-recognized stuck path: `skills/stuck.py` (companion shim, also routes to `ask_user`). Kill switch: `STUCK_DETECTION_ENABLED=false`.
+
+**Chat-handler step budget** (`codec_dashboard._StepBudget`): per-turn cap on the chat handler. Default routes: `chat=5`, `voice=5`, `mcp=None` (no cap). `consume(kind)` returns False when over limit; `warn_now()` returns True at limit-1 (drives "1 step remaining" prompt suffix); first over-step emits a `step_budget_exhausted` audit line (idempotent). Tune up before tuning out: `~/.codec/config.json:step_budget.{chat,voice}` accepts 8 or 10. Kill switch: `STEP_BUDGET_ENABLED=false`.
+
+**Audit envelope**: all Step 3 events use `outcome="warning"`, `level="warning"`. They are NOT `outcome="error"` because each is an operational signal, not an operation failure (same Q4 tightening as Step 2's `hook_error`). `correlation_id` inherits from the wrapping operation per Step 1 §1.4.
+
 ### Other known gaps (tracked for Phase 2)
-- No `AskUserQuestion` tool — agents can't pause to ask the user
-- No `stuck` self-detection (repeated identical tool calls)
-- No step budget at chat-handler level (only inside crew runs)
 - No formal teammate / sub-agent recursion — Crew is the only multi-agent primitive
+- Self-improve agent doesn't yet emit memory facts on Phase 1 events (Step 4 work)
 
 ## 4. Skill system
 
@@ -204,31 +216,84 @@ Real adapter over `audit()` for lifecycle events (session start/end, scheduler t
 
 > **Status as of Phase 1 Step 1 (commit 05f9b80):** adapter wired through, correlation_id contract enforced. Prior to this branch, every `log_event` call was a silent no-op (the `try: from codec_audit import log_event` import was failing because the export didn't exist; the `except: def log_event(*a, **kw): pass` fallback ran instead). All 7 modules now import the real adapter and emit canonical event names per §1.2 of the design.
 
+### Phase 1 Step 3 audit events (askuser + stuck + step budget)
+Six new event names exported from `codec_audit.py` as module constants. All `outcome="warning"`, `level="warning"` (operational signals, not failures); all inherit `correlation_id` from the wrapping operation per §1.4.
+
+| Event | Source | extra fields |
+|---|---|---|
+| `ask_user_question_emit` | `codec-ask-user` | `pending_question_id`, `question_preview`, `options`, `timeout_seconds`, `agent`, `crew_id`, `asked_from`, `consent_strict`, `destructive_verb` |
+| `ask_user_question_answer` | `codec-ask-user` | `pending_question_id`, `answered_via` (pwa\|voice), `answer_len`, `elapsed_seconds` |
+| `ask_user_question_timeout` | `codec-ask-user` | `pending_question_id`, `elapsed_seconds`, `timeout_seconds`, `reason` (`deadline`\|`ambiguous_consent`), `consent_rejection_count` (only on `ambiguous_consent`) |
+| `stuck_warning` | `codec-agents` | `tool` (top-level), `repeat_count`, `agent` (in message line) |
+| `stuck_escalated` | `codec-agents` | `tool` (top-level), `repeat_count`, `agent`, `action` (`ask_user`\|`abort`\|`warn_only`) |
+| `step_budget_exhausted` | `codec-dashboard` | `budget_type` (`chat_turn`), `limit`, `actual`, `kind`, `correlation_id` |
+
+The constants are also exposed as frozensets for analyzer / introspection: `ASKUSER_EVENTS`, `STUCK_EVENTS`, `STEP3_EVENTS`. `audit_report.py` ingests them as additive event types — no schema bump.
+
 ### Notifications (`~/.codec/notifications.json`)
-Three sources can produce notifications: scheduler (crew completion), heartbeat (threshold alert), autopilot (ambient trigger). All write through `routes/_shared.py:51-127`.
+Four sources can produce notifications: scheduler (crew completion), heartbeat (threshold alert), autopilot (ambient trigger), and Phase 1 Step 3's AskUserQuestion (`type="question"`). All write through `routes/_shared.py:51-127` except AskUserQuestion which writes via `codec_ask_user._write_question_notification`.
 
 Schema:
 ```json
 {
   "id": "notif_<hex>",
-  "type": "task_report|alert|status",
+  "type": "task_report|alert|status|question",
   "title": "...",
   "body": "markdown",
   "status": "success|warning|error",
   "created": "ISO8601",
   "read": false,
   "schedule_id": "sched_<id> | null",
-  "doc_url": "https://... | null"
+  "doc_url": "https://... | null",
+  "pending_question_id": "q_<8hex> | null",
+  "options": ["..."] | null,
+  "agent": "Writer | null",
+  "deadline": "ISO8601 | null",
+  "consent_strict": false
 }
 ```
 
-API endpoints in `codec_dashboard.py`: `GET /api/notifications`, `GET /api/notifications/count`, `POST /api/notifications/read-all`, `POST /api/notifications/{id}/read`, `DELETE /api/notifications/{id}`. Frontend polls `/api/notifications/count` every ~30s.
+`type="question"` adds `pending_question_id`, `options`, `agent`, `deadline`, `consent_strict`. The PWA renders an inline answer panel when these fields are present (see `codec_dashboard.html` AskUserQuestion panel). Reply path: `POST /api/agents/answer/{pending_question_id}` (defined in `routes/agents.py`).
+
+API endpoints in `codec_dashboard.py`: `GET /api/notifications`, `GET /api/notifications/count`, `POST /api/notifications/read-all`, `POST /api/notifications/{id}/read`, `DELETE /api/notifications/{id}`. Frontend polls `/api/notifications/count` every ~30s, and the inline AskUserQuestion panel polls `/api/agents/pending_questions` every 8s.
+
+### Pending questions (`~/.codec/pending_questions.json`)
+Canonical state file for AskUserQuestion. Atomic write via tmp+rename. Schema:
+```json
+{
+  "schema": 1,
+  "pending_questions": [
+    {
+      "id": "q_<8hex>",
+      "operation_id": "<correlation_id>",
+      "correlation_id": "<12hex>",
+      "agent": "Writer | null",
+      "crew_id": "deep_research | null",
+      "question": "...",
+      "options": ["yes","no"] | null,
+      "asked_at": "ISO8601",
+      "deadline": "ISO8601",
+      "timeout_seconds": 600,
+      "status": "pending|answered|timed_out",
+      "answered_at": "ISO8601 | null",
+      "answered_via": "pwa|voice | null",
+      "answer": "...",
+      "asked_from": "chat|voice|crew|mcp",
+      "consent_strict": false,
+      "destructive_verb": "delete | null",
+      "timeout_reason": "deadline|ambiguous_consent | null"
+    }
+  ]
+}
+```
 
 ## 7. Sandbox + safety boundaries
 
 ### Files & directories
 - `~/.codec/` — all user state (config, memory, audit, schedules, notifications, agents, skills, plugins, proposals)
 - `~/.codec/plugins/*.py` — user-authored lifecycle hook plugins (Phase 1 Step 2; see §3 *Plugin lifecycle hooks*). Same trust model as `~/.codec/skills/`: local Python files curated by the user, no marketplace, no auto-install, no inter-plugin sandbox. Files starting with `_` are skipped.
+- `~/.codec/pending_questions.json` — Phase 1 Step 3 canonical state for AskUserQuestion (atomic write; never edit by hand). The reply path goes through `POST /api/agents/answer/{qid}` and the voice handler — both call `codec_ask_user.submit_answer()` which writes the answered status atomically. Direct edits race the in-flight `threading.Event` waiters and break agents.
+- `~/.codec/voice_session.json` — Phase 1 Step 3 voice-session active-marker. Touched by `VoicePipeline.run` start, removed in finally. `codec_ask_user` reads this to decide whether voice should announce and listen for an answer or defer to PWA only.
 - File operations from agent tools go through `codec_sandbox` (path validation against blocklist, size caps)
 - Dangerous code patterns detected by `codec_config.is_dangerous_skill_code` before any skill is staged from `codec_self_improve.py` proposals
 
@@ -299,6 +364,10 @@ These zones break running infrastructure if changed without coordination. NEVER 
 - `codec_identity.py` operating principles — these are user-facing identity, change with care
 - `codec_oauth_provider.py` `ACCESS_TOKEN_TTL` / `REFRESH_TOKEN_TTL` — currently 30d / 90d. Shortening these breaks live claude.ai MCP connections mid-week
 - `~/.codec/oauth_state.json` — clearing this invalidates ALL claude.ai connections; touch only after explicit user OK + `pm2 restart codec-mcp-http`
+- `~/.codec/pending_questions.json` (Phase 1 Step 3) — direct edits race in-flight `threading.Event` waiters; agents will hang or skip answers. Use `POST /api/agents/answer/{qid}` or `codec_ask_user.submit_answer()` instead.
+- `~/.codec/voice_session.json` (Phase 1 Step 3) — voice-session active-marker; `VoicePipeline.run` owns its lifecycle.
+- Phase 1 Step 3 feature-flag env vars — `ASKUSER_ENABLED`, `STUCK_DETECTION_ENABLED`, `STEP_BUDGET_ENABLED` (default true). Set to `false` to disable a feature in production; tests use these to bypass during isolated unit testing. Don't toggle them globally without coordinating — they alter agent behavior across all paths (chat / voice / crew / MCP).
+- `~/.codec/config.json:ask_user.{timeout_seconds, consent_strict_max_attempts}` and `:stuck.{window, repeat_threshold, escalation_action}` and `:step_budget.{chat, voice}` — Phase 1 Step 3 tunables. Bumping `step_budget.chat` to 8 or 10 is the documented "tune up before tuning out" pressure-relief valve, but don't touch the others without referencing the design doc rationale (§1.2 Q1, §1.7, §2.3, §3.2).
 
 ## 11. Working with this repo as a coding agent
 

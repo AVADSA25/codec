@@ -78,6 +78,12 @@ SKIP_SKILLS = {
     # - self_improve: writes Qwen-drafted markdown proposals to
     #   ~/.codec/skill_proposals/. Slow (LLM call) and audit-log noise.
     "memory_search", "clipboard", "self_improve",
+    # Phase 1 Step 3: interactive — block on threading.Event waiting for a
+    # user answer that this MCP smoke test will never provide. Default
+    # timeout is 600s, so calling .run() here would hang the test for
+    # 10 min. The dedicated tests/test_ask_user.py + tests/test_voice_ask_
+    # user.py exercise this skill with proper waiter mocks.
+    "ask_user", "stuck",
 }
 
 

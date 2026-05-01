@@ -1,6 +1,7 @@
 """CODEC v2.1 — Phone Dashboard & PWA"""
-import os, json, sqlite3, time, subprocess, hmac, threading, uuid, asyncio, re
+import os, json, sqlite3, time, subprocess, hmac, threading, uuid, asyncio, re, secrets
 from datetime import datetime, timedelta
+from typing import Optional
 
 from pathlib import Path
 from fastapi import FastAPI, Request
@@ -25,7 +26,7 @@ from routes._shared import (
 
 # Audit emits route through the unified log_event adapter (real, not no-op)
 # per docs/PHASE1-STEP1-DESIGN.md.
-from codec_audit import log_event
+from codec_audit import log_event, STEP_BUDGET_EXHAUSTED
 
 from pydantic import BaseModel, Field
 from typing import Optional, List
@@ -2168,6 +2169,117 @@ def _is_conversational(text: str) -> bool:
     return False
 
 
+# ── Phase 1 Step 3 §3 — chat-handler step budget ──────────────────────────
+# Per-route cap with warn-at-N-1 + forced summary at exhaustion. Crew
+# spawned from chat counts as 1 step toward chat budget; the crew's own
+# 8-step budget is independent. Defaults: chat=5, voice=5, MCP exempt.
+# Bumping to 8 or 10 is a single ~/.codec/config.json edit ("tune up
+# before tuning out" per Q3 reviewer guidance).
+def _step_budget_enabled() -> bool:
+    """Read STEP_BUDGET_ENABLED env var. Default true. Read each call so
+    tests can monkeypatch."""
+    val = (os.environ.get("STEP_BUDGET_ENABLED") or "true").strip().lower()
+    return val not in ("false", "0", "no", "off")
+
+
+def _step_budget_for_route(route: str) -> Optional[int]:
+    """Return the budget cap for the given route, or None for "no cap"
+    (MCP). Read each call so config edits take effect on PM2 restart.
+
+    Defaults per design §3.2:
+        chat:  5
+        voice: 5
+        mcp:   None  (no turn budget — each MCP call is its own turn)
+    """
+    try:
+        with open(CONFIG_PATH) as f:
+            cfg = json.load(f).get("step_budget", {})
+    except Exception:
+        cfg = {}
+    if route == "mcp":
+        return None  # MCP path has no turn concept; SKILL_TIMEOUT_SEC governs.
+    default = 5
+    v = cfg.get(route, default)
+    if v is None:
+        return None
+    if isinstance(v, int) and v > 0:
+        return v
+    return default
+
+
+class _StepBudget:
+    """Per-request counter + warn / exhaustion logic. Construct at request
+    entry; call ``consume(kind)`` before each step; check ``warn_now()``
+    to decide whether to append the "1 step remaining" prompt suffix.
+
+    Threadsafe-friendly: each request has its own instance (no shared
+    state). Audit emits go through log_event so concurrent requests
+    serialise via codec_audit's existing _LOCK.
+    """
+    __slots__ = ("route", "limit", "count", "enabled", "exhausted_emitted",
+                 "correlation_id")
+
+    def __init__(self, route: str = "chat", correlation_id: Optional[str] = None):
+        self.route = route
+        self.limit = _step_budget_for_route(route) if _step_budget_enabled() else None
+        self.count = 0
+        self.enabled = self.limit is not None
+        self.exhausted_emitted = False
+        self.correlation_id = correlation_id
+
+    def consume(self, kind: str = "step") -> bool:
+        """Try to consume one budget step. Returns True if OK to proceed,
+        False if budget would be exhausted by this consumption.
+
+        ``kind`` is a free-form label for telemetry (e.g. "skill_hijack",
+        "llm_call", "post_llm_skill_tag", "crew_spawn"). Logged on the
+        ``step_budget_exhausted`` audit event when the cap is hit.
+        """
+        if not self.enabled:
+            return True
+        self.count += 1
+        if self.count > self.limit:
+            self._emit_exhausted(kind)
+            return False
+        return True
+
+    def warn_now(self) -> bool:
+        """True when we're at limit-1 and the next step would cap. Used
+        by the LLM-call path to inject "⚠ 1 step remaining" into the
+        prompt suffix."""
+        if not self.enabled:
+            return False
+        return self.count == max(0, self.limit - 1)
+
+    def at_limit(self) -> bool:
+        """True if we've already hit the cap (consume returned False)."""
+        if not self.enabled:
+            return False
+        return self.count >= self.limit
+
+    def _emit_exhausted(self, kind: str):
+        if self.exhausted_emitted:
+            return
+        self.exhausted_emitted = True
+        try:
+            log_event(
+                STEP_BUDGET_EXHAUSTED,
+                "codec-dashboard",
+                f"chat step budget exhausted at {self.count} (kind={kind})",
+                extra={
+                    "budget_type": "chat_turn",
+                    "limit": self.limit,
+                    "actual": self.count,
+                    "kind": kind,
+                },
+                outcome="warning",
+                level="warning",
+                correlation_id=self.correlation_id,
+            )
+        except Exception as e:
+            log.warning("[step_budget] emit failed: %s", e)
+
+
 def _try_skill(user_text: str):
     """Check if user_text matches a skill. Returns (skill_name, result) or (None, None).
     Skips skill matching for conversational messages to prevent false triggers."""
@@ -2260,6 +2372,16 @@ async def chat_completion(request: Request):
     if not messages:
         return JSONResponse({"error": "No messages"}, status_code=400)
 
+    # Phase 1 Step 3 §3 — per-turn step budget. One counter for the
+    # entire request; consumed by skill_hijack, llm_call, and each
+    # post-LLM [SKILL:] tag resolution. Budget enforcement is non-
+    # blocking (each path still runs) but audit-event-emitting +
+    # warn-at-N-1 prompt suffix injection. See _StepBudget docstring.
+    _budget = _StepBudget(
+        route="chat",
+        correlation_id=secrets.token_hex(6),
+    )
+
     # ── Tool Calling: check if last user message matches a skill ──
     use_tools = body.get("tools", True)  # frontend can disable with tools:false
     if use_tools:
@@ -2307,6 +2429,7 @@ async def chat_completion(request: Request):
         if last_user_text and not has_attachment:
             skill_name, skill_result = await asyncio.to_thread(_try_skill, last_user_text)
             if skill_result:
+                _budget.consume("skill_hijack")   # pre-LLM hijack consumes 1
                 log.info(f"[Chat] Skill '{skill_name}' handled: {skill_result[:80]}")
                 stream_mode = body.get("stream", False)
                 if stream_mode:
@@ -2380,6 +2503,23 @@ async def chat_completion(request: Request):
         _overrides = _load_prompt_overrides()
         _chat_prompt = _overrides.get("chat", CHAT_SYSTEM_PROMPT)
         sys_prompt = _chat_prompt.format(date=_dt.now().strftime("%A, %B %d, %Y"))
+        # Phase 1 Step 3 §3 — consume one step for the LLM call itself.
+        # If we're now at limit-1, append the "1 step remaining" warning
+        # to the system prompt so the LLM wraps up. If we're already
+        # exhausted, switch to forced-summary mode.
+        if _budget.warn_now():
+            sys_prompt += (
+                "\n\n⚠ 1 step remaining in this turn. Wrap up — do NOT "
+                "emit additional [SKILL:...] tags."
+            )
+        _budget.consume("llm_call")
+        if _budget.at_limit():
+            sys_prompt += (
+                "\n\n## Step Budget Exhausted\n"
+                "You've hit the per-turn step budget. Summarize what you "
+                "accomplished and any blockers in one short paragraph. "
+                "DO NOT emit [SKILL:...] tags or call additional tools."
+            )
         # Bugfix 2026-04-16: when the user attaches a file/image, the default
         # system prompt still teaches the LLM to emit [SKILL:...] tags, which
         # then leak through the streaming path. Force conversational mode for
@@ -2474,10 +2614,19 @@ async def chat_completion(request: Request):
                     own follow-up prose usually contains the answer anyway.
                     Bugfix 2026-04-26: previously returned raw_tag on failure,
                     causing "[SKILL:calculator:sum of...]" to appear in chat.
+
+                    Phase 1 Step 3 §3 — each resolved tag consumes one step
+                    from the chat-turn budget. If exhausted, the tag is
+                    dropped (so the LLM doesn't continue burning steps);
+                    step_budget_exhausted audit was already emitted by
+                    _budget.consume.
                     """
                     m = SKILL_RE.search(raw_tag)
                     if not m:
                         return raw_tag  # not a skill tag at all — emit as-is
+                    if not _budget.consume("post_llm_skill_tag"):
+                        log.info(f"[Chat] step_budget exhausted — dropping [SKILL:...] tag")
+                        return raw_tag.replace(m.group(0), "")
                     s_name, s_query = m.group(1), m.group(2)
                     if s_name not in CHAT_SKILL_ALLOWLIST:
                         log.info(f"[Chat] LLM tried disallowed skill {s_name!r} — dropping tag")

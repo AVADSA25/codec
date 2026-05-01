@@ -14,7 +14,8 @@ import secrets
 import sys
 import time
 import wave
-from datetime import datetime
+from datetime import datetime, timezone
+import logging
 from typing import Optional
 
 import base64
@@ -38,6 +39,140 @@ from codec_llm_proxy import llm_queue, Priority
 _voice_correlation_id_var: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
     "codec_voice_correlation_id", default=None
 )
+
+# ── Phase 1 Step 3 §5.3.1 — fuzzy-option-match for AskUserQuestion ────────
+# When the question carries `options`, the voice ASR layer maps the spoken
+# transcript to the closest option label via:
+#   1. Exact substring match (transcript contains lowercased option label)
+#   2. Curated synonym dict below
+#   3. Levenshtein fallback (≤3 edits AND ≤30% of label length)
+# Strict-consent (§1.7) BYPASSES this layer — irreversible actions force
+# literal verb-match. The asymmetry is deliberate: fuzzy intent inference
+# is wrong for irreversible actions.
+_VOICE_OPTION_SYNONYMS = {
+    "approve":  ["yes", "yeah", "ok", "okay", "go ahead", "do it",
+                 "approve it", "go for it", "sounds good"],
+    "reject":   ["no", "nope", "skip", "skip it", "cancel", "don't",
+                 "abort", "forget it", "nevermind"],
+    "modify":   ["change", "edit", "different", "tweak", "adjust"],
+    "delete":   ["delete", "remove", "destroy", "wipe", "trash"],
+    "send":     ["send", "send it", "transmit", "deliver"],
+    "transfer": ["transfer", "move", "wire", "send money"],
+    "abandon":  ["abandon", "give up", "stop", "quit", "drop it"],
+    "continue": ["continue", "keep going", "carry on", "press on"],
+}
+
+
+def _levenshtein(a: str, b: str) -> int:
+    """Compute Levenshtein distance between two strings. Caps at 100 chars
+    of each input — any sane option label / transcript stays well under."""
+    a = (a or "")[:100]
+    b = (b or "")[:100]
+    if not a:
+        return len(b)
+    if not b:
+        return len(a)
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        curr = [i] + [0] * len(b)
+        for j, cb in enumerate(b, 1):
+            curr[j] = min(
+                prev[j] + 1,
+                curr[j - 1] + 1,
+                prev[j - 1] + (0 if ca == cb else 1),
+            )
+        prev = curr
+    return prev[-1]
+
+
+def _resolve_voice_option_choice(
+    transcript: str,
+    options: list,
+    *,
+    strict: bool = False,
+    destructive_verb: Optional[str] = None,
+) -> str:
+    """Map an ASR transcript to one of the structured option labels.
+
+    Returns the matched option label as-is, OR the raw transcript if no
+    match (treated as free-text by the answer-acceptance path).
+
+    When ``strict=True`` (§1.7 destructive consent), this resolver is
+    BYPASSED — the caller must check the destructive_verb literal-match
+    rule itself. Returns the raw transcript so the strict-consent gate
+    in codec_ask_user.submit_answer evaluates it.
+    """
+    if not isinstance(options, list) or not options:
+        return transcript or ""
+    raw = (transcript or "").strip()
+    if not raw:
+        return raw
+    if strict:
+        # §1.7 — fuzzy-match disabled for irreversible actions.
+        return raw
+    low = raw.lower()
+    # Strip simple punctuation for matching.
+    low = re.sub(r"[^a-z0-9\s]", " ", low).strip()
+    # 1. Exact substring of any option label (case-insensitive).
+    for opt in options:
+        if str(opt).lower() in low:
+            return opt
+    # 2. Synonym map: if any synonym word appears, match the option label
+    #    whose lowercase contains the synonym key.
+    low_words = set(low.split())
+    for opt in options:
+        opt_low = str(opt).lower()
+        for syn_key, syn_phrases in _VOICE_OPTION_SYNONYMS.items():
+            if syn_key in opt_low:
+                # Check if any of this option's synonyms appear in the transcript.
+                for phrase in syn_phrases:
+                    if phrase in low or any(w == phrase for w in low_words):
+                        return opt
+    # 3. Levenshtein fallback (≤3 edits, ≤30% of label length).
+    best_opt = None
+    best_dist = 10**9
+    for opt in options:
+        opt_low = str(opt).lower()
+        dist = _levenshtein(low[:len(opt_low) + 5], opt_low)
+        if dist < best_dist:
+            best_dist = dist
+            best_opt = opt
+    if best_opt is not None:
+        opt_low = str(best_opt).lower()
+        if best_dist <= 3 and best_dist <= max(1, int(0.3 * len(opt_low))):
+            return best_opt
+    # 4. No match — return raw transcript as free-text answer.
+    return raw
+
+
+# ── Phase 1 Step 3 §5.3 — voice-session marker file ───────────────────────
+# ~/.codec/voice_session.json is touched by VoicePipeline.run start and
+# removed in finally. codec_ask_user reads this to decide whether to
+# announce + listen for the answer (active session) vs defer to PWA only.
+_VOICE_SESSION_MARKER = os.path.expanduser("~/.codec/voice_session.json")
+
+
+def _touch_voice_session_marker(session_id: str) -> None:
+    """Write the active-session marker. Best-effort; failures log + continue."""
+    try:
+        with open(_VOICE_SESSION_MARKER, "w") as f:
+            json.dump({
+                "session_id": session_id,
+                "started_at": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
+            }, f)
+    except Exception as e:
+        log = logging.getLogger("codec_voice")
+        log.debug("voice_session marker write failed: %s", e)
+
+
+def _clear_voice_session_marker() -> None:
+    """Remove the active-session marker. Best-effort."""
+    try:
+        if os.path.exists(_VOICE_SESSION_MARKER):
+            os.remove(_VOICE_SESSION_MARKER)
+    except Exception as e:
+        log = logging.getLogger("codec_voice")
+        log.debug("voice_session marker clear failed: %s", e)
 
 # ── CONFIG — loaded from ~/.codec/config.json ─────────────────────────────
 WHISPER_URL   = "http://localhost:8084/v1/audio/transcriptions"
@@ -667,6 +802,110 @@ class VoicePipeline:
 
     # ── Skill dispatch ────────────────────────────────────────────────────
 
+    # ── Phase 1 Step 3 §5.3 — voice AskUserQuestion handlers ─────────
+    async def _poll_pending_question_for_voice(self) -> Optional[dict]:
+        """Check pending_questions.json for a question this voice session
+        should answer. Returns the record dict if one is ready to be
+        announced, otherwise None.
+
+        Strategy: pick the OLDEST status="pending" record whose
+        operation_id matches this session's _cid OR whose asked_from is
+        "voice"/"crew" (background ops the user might want to answer
+        out-loud). Skip questions that have already been announced this
+        session (tracked in self._announced_question_ids)."""
+        if not hasattr(self, "_announced_question_ids"):
+            self._announced_question_ids = set()
+        try:
+            from codec_ask_user import _load_pending_questions
+            data = _load_pending_questions()
+        except Exception as e:
+            print(f"[Voice] ask_user poll failed: {e}")
+            return None
+        for rec in data.get("pending_questions", []):
+            if rec.get("status") != "pending":
+                continue
+            if rec.get("id") in self._announced_question_ids:
+                continue
+            asked_from = rec.get("asked_from", "")
+            # Match: same correlation_id OR a background ask from a crew /
+            # voice operation.
+            if (rec.get("correlation_id") == self._cid
+                    or asked_from in ("crew", "voice")):
+                self._announced_question_ids.add(rec["id"])
+                return rec
+        return None
+
+    async def _announce_pending_question(self, rec: dict) -> None:
+        """TTS-announce the question. If options present, list them."""
+        try:
+            agent = rec.get("agent") or "CODEC"
+            question = rec.get("question") or ""
+            options = rec.get("options")
+            if options:
+                opt_phrase = "Options: " + ", or ".join(str(o) for o in options) + "."
+                announcement = f"{agent} is asking: {question}. {opt_phrase}"
+            else:
+                announcement = f"{agent} is asking: {question}"
+            if rec.get("consent_strict"):
+                verb = rec.get("destructive_verb") or "confirm"
+                announcement += (
+                    f" This is a destructive action — please say the word "
+                    f"'{verb}' clearly to confirm, or say 'cancel' to abort."
+                )
+            await self._speak(announcement)
+        except Exception as e:
+            print(f"[Voice] ask_user announce failed: {e}")
+
+    async def _handle_voice_ask_user_answer(self, qid: str,
+                                             user_text: str) -> None:
+        """Route the user's spoken transcript to /api/agents/answer/{qid}
+        — same backend as the PWA path. Resolves fuzzy options for
+        non-strict-consent questions; passes strict ones through
+        verbatim so codec_ask_user.submit_answer evaluates the literal
+        verb-match rule.
+        """
+        try:
+            from codec_ask_user import _find_pending_record, submit_answer
+            rec = _find_pending_record(qid)
+            if rec is None:
+                await self._speak("Sorry, that question already expired.")
+                return
+            options = rec.get("options")
+            strict = bool(rec.get("consent_strict"))
+            destructive_verb = rec.get("destructive_verb")
+            # Apply fuzzy match (skipped when strict=True per §5.3.1).
+            if options and not strict:
+                resolved = _resolve_voice_option_choice(
+                    user_text, options, strict=False,
+                    destructive_verb=destructive_verb)
+                answer_to_send = resolved
+            else:
+                answer_to_send = user_text
+            result = submit_answer(qid, answer_to_send, answered_via="voice")
+            if result.get("ok"):
+                await self._speak("Got it. Thanks.")
+            elif result.get("rejected") and result.get("reason") == "ambiguous_consent":
+                remaining = result.get("remaining_attempts", 0)
+                if remaining > 0:
+                    await self._speak(
+                        f"That wasn't a clear confirmation. Please say "
+                        f"'{destructive_verb or 'confirm'}' to proceed, or "
+                        f"'cancel' to abort. {remaining} attempt left."
+                    )
+                    # Re-arm: same qid, next utterance is another attempt.
+                    self._awaiting_ask_user = qid
+                else:
+                    await self._speak("Question canceled — too many ambiguous answers.")
+            else:
+                err = result.get("error", "")
+                await self._speak(f"Couldn't record that answer: {err}")
+        except Exception as e:
+            print(f"[Voice] ask_user answer handler failed: {e}")
+            try:
+                await self._speak("Something went wrong recording your answer.")
+            except Exception:
+                pass
+
     async def dispatch_skill(self, skill: dict, user_text: str) -> Optional[str]:
         try:
             print(f"[Voice] → skill: {skill['name']}")
@@ -986,6 +1225,33 @@ class VoicePipeline:
                 print(f"[Voice] User: {user_text}")
                 await self.ws.send_json({"type": "transcript", "role": "user", "text": user_text})
 
+                # Phase 1 Step 3 §5.3 — single-question listen mode.
+                # If an AskUserQuestion is awaiting an answer for THIS
+                # voice session, route this transcript as the answer
+                # (NOT as a new command). Resolve fuzzy options for
+                # non-strict-consent questions; let the strict-consent
+                # gate in codec_ask_user.submit_answer evaluate strict
+                # ones literally.
+                if self._awaiting_ask_user:
+                    qid = self._awaiting_ask_user
+                    self._awaiting_ask_user = None  # consume the slot
+                    await self._handle_voice_ask_user_answer(qid, user_text)
+                    self.processing = False
+                    await self.ws.send_json({"type": "status", "status": "listening"})
+                    continue
+
+                # Otherwise: poll pending_questions.json for a question
+                # this session should answer. If one exists, announce it
+                # via TTS and switch into single-question listen mode for
+                # the NEXT utterance (don't process this one as a command).
+                _q = await self._poll_pending_question_for_voice()
+                if _q is not None:
+                    self._awaiting_ask_user = _q.get("id")
+                    await self._announce_pending_question(_q)
+                    self.processing = False
+                    await self.ws.send_json({"type": "status", "status": "listening"})
+                    continue
+
                 # 1b. Screenshot + Vision — "look at my screen" etc.
                 if self._is_screen_request(user_text):
                     print("[Voice] Screen analysis requested")
@@ -1122,8 +1388,17 @@ class VoicePipeline:
         cid = secrets.token_hex(6)
         cid_token = _voice_correlation_id_var.set(cid)
         self._cid = cid
+        # Phase 1 Step 3 §5.3 — single-question listen mode state.
+        # When non-None, the next user utterance is treated as the answer
+        # to the pending question (NOT a new wake-word command). Cleared
+        # after the answer is routed to /api/agents/answer/{id}.
+        self._awaiting_ask_user = None
         run_t0 = time.monotonic()
         print(f"[Voice] Session {'resumed' if is_resumed else 'started'}: {self.session_id}")
+        # Phase 1 Step 3 §5.3 — touch the active-session marker so
+        # codec_ask_user knows whether to announce-and-listen vs defer
+        # to PWA-only.
+        _touch_voice_session_marker(self.session_id)
         try:
             _voice_log_event("voice_session_start", "codec-voice",
                              f"Voice session {'resumed' if is_resumed else 'started'}",
@@ -1222,6 +1497,10 @@ class VoicePipeline:
                 _voice_correlation_id_var.reset(cid_token)
             except Exception:
                 pass
+            # Phase 1 Step 3 §5.3 — clear the active-session marker so
+            # codec_ask_user falls back to PWA-only for any subsequent
+            # questions. Best-effort; failures don't break shutdown.
+            _clear_voice_session_marker()
 
     async def close(self):
         try:

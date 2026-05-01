@@ -99,6 +99,60 @@ HOOK_EVENT_VETOED = "tool_vetoed"   # pre_tool returned HookVeto — Step 2 §4.
 HOOK_LAYER_EVENTS = frozenset({HOOK_EVENT_FIRED, HOOK_EVENT_ERROR, HOOK_EVENT_VETOED})
 
 
+# ── Phase 1 Step 3 event names (AskUserQuestion + stuck + step budget) ────────
+# Per docs/PHASE1-STEP3-DESIGN.md §6. All level="warning" (operationally not
+# failures — same Q4 reasoning as Step 2's hook_error). Inherits Step 1 §1.4
+# correlation_id from the wrapping operation.
+ASKUSER_EVENT_EMIT     = "ask_user_question_emit"      # agent emits a question
+ASKUSER_EVENT_ANSWER   = "ask_user_question_answer"    # user replies (PWA or voice)
+ASKUSER_EVENT_TIMEOUT  = "ask_user_question_timeout"   # deadline OR ambiguous_consent
+STUCK_EVENT_WARNING    = "stuck_warning"               # N=3 repeats detected
+STUCK_EVENT_ESCALATED  = "stuck_escalated"             # N+2 repeats → ask_user / abort
+STEP_BUDGET_EXHAUSTED  = "step_budget_exhausted"       # per-route cap hit
+
+ASKUSER_EVENTS = frozenset({ASKUSER_EVENT_EMIT, ASKUSER_EVENT_ANSWER, ASKUSER_EVENT_TIMEOUT})
+STUCK_EVENTS   = frozenset({STUCK_EVENT_WARNING, STUCK_EVENT_ESCALATED})
+STEP3_EVENTS   = ASKUSER_EVENTS | STUCK_EVENTS | frozenset({STEP_BUDGET_EXHAUSTED})
+
+# Step 3 event-specific extra-field reservations. These names are documented
+# in §6 and §1.7 of the design doc; reserving them here keeps the analyzer's
+# schema understanding (and any future migration script) discoverable.
+#
+# Use as documentation only — `audit()` and `log_event()` accept arbitrary
+# extra={} fields by design (Step 1 §2.3). The `_RESERVED_TOP` tuple above
+# stays the boundary for top-level reserved fields; these are extra-namespace
+# field names, not top-level, so no `_RESERVED_TOP` change is needed.
+ASKUSER_EXTRA_FIELDS = (
+    "pending_question_id",     # 12-char hex id, "q_<8hex>"
+    "question_preview",        # ≤ _PREVIEW_MAX
+    "options",                 # list[str] | None
+    "timeout_seconds",         # int
+    "agent",                   # str | None (null for solo skill use)
+    "crew_id",                 # str | None
+    "asked_from",              # "chat" | "voice" | "crew" | "mcp"
+    "consent_strict",          # bool — §1.7 strict-consent gate flag
+    "destructive_verb",        # str | None — only when consent_strict=True
+    "answered_via",            # "pwa" | "voice"
+    "answer_len",              # int
+    "elapsed_seconds",         # float
+    "reason",                  # "deadline" | "ambiguous_consent" — on timeout
+    "consent_rejection_count", # int — only when reason="ambiguous_consent"
+)
+
+STUCK_EXTRA_FIELDS = (
+    "tool",                    # str — the repeating tool name (also top-level on emit)
+    "repeat_count",            # int — how many identical calls observed
+    "agent",                   # str — which agent
+    "action",                  # "ask_user" | "abort" | "warn_only" — on escalated
+)
+
+STEP_BUDGET_EXTRA_FIELDS = (
+    "budget_type",             # "chat_turn" | "crew_max_steps" | "agent_max_tool_calls"
+    "limit",                   # int — the budget value that was hit
+    "actual",                  # int — current count when budget hit (== limit)
+)
+
+
 # ── Helpers ────────────────────────────────────────────────────────────────────
 def _truncate(s, max_len: int = _PREVIEW_MAX) -> str:
     """Truncate a string to `max_len` chars. None/non-str → ''. Never raises."""
