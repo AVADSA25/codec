@@ -13,6 +13,38 @@ Two public emitters:
     log_event(...)  — lifecycle/event adapter (heartbeat, scheduler, dispatch, etc.)
 
 Both never raise. Both share the same writer + lock + rotation.
+
+Event-type enumeration (Step 1 §1.2 is the canonical table). Phase 1 Step 2
+adds three hook-layer events (additive; analyzer tolerates):
+
+    HOOK_EVENT_FIRED   = "hook_fired"
+        - emitted by codec_hooks.run_with_hooks per successful hook fire
+          (incl. veto — that's a normal outcome, not a failure).
+        - extra.plugin_name, extra.hook_name, extra.tool_name (null for
+          operation hooks), extra.mutated (bool), extra.vetoed (bool).
+        - outcome="ok", level="info". duration_ms = hook wall-clock,
+          NOT the wrapping operation.
+
+    HOOK_EVENT_ERROR   = "hook_error"      (Step 2 §11 Q4 tightening)
+        - emitted when the plugin's hook function ITSELF raises.
+        - top-level error_type + error (truncated to _PREVIEW_MAX),
+          extra.plugin_name, extra.hook_name. correlation_id inherits.
+        - outcome="error", level="WARNING" — NOT "error". The operation
+          still succeeded; only the plugin failed. Keeps audit_report's
+          error-rate metric meaningful (a noisy plugin doesn't inflate
+          error counts and mask real problems).
+        - hook_fired and hook_error are split events; never both for
+          the same call.
+
+    HOOK_EVENT_VETOED  = "tool_vetoed"
+        - emitted when pre_tool returned HookVeto. Replaces the per-path
+          tool_result emit on vetoed calls.
+        - extra.veto_reason (≤_PREVIEW_MAX), extra.plugin_name,
+          extra.task_preview.
+        - outcome="denied", level="warning".
+
+Constants exported below so callers + analyzer can grep for canonical
+names without typos.
 """
 from __future__ import annotations
 
@@ -53,6 +85,18 @@ _TRANSPORT_BY_SOURCE = {
 _RESERVED_TOP = ("ts", "schema", "event", "source", "outcome", "tool",
                  "duration_ms", "task_len", "context_len", "transport",
                  "agent", "client_id", "level", "message", "error_type", "error")
+
+# Phase 1 Step 2 hook-layer event names. Exported as module constants so
+# codec_hooks.py + tests + audit_report can reference canonical names. The
+# strings are the on-wire `event` values written into ~/.codec/audit.log;
+# changing them is a schema change (would bump _SCHEMA_VERSION).
+HOOK_EVENT_FIRED = "hook_fired"     # successful hook fire (incl. deliberate veto)
+HOOK_EVENT_ERROR = "hook_error"     # plugin's hook function raised — Step 2 §7.5
+HOOK_EVENT_VETOED = "tool_vetoed"   # pre_tool returned HookVeto — Step 2 §4.3
+
+# Quick lookup for the analyzer / introspection: the set of event names
+# emitted by the hook layer (codec-hooks source).
+HOOK_LAYER_EVENTS = frozenset({HOOK_EVENT_FIRED, HOOK_EVENT_ERROR, HOOK_EVENT_VETOED})
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────

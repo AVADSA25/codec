@@ -20,6 +20,7 @@ import threading
 import httpx
 
 from codec_audit import audit as _audit_core
+from codec_hooks import HookVeto, run_with_hooks
 from codec_llm_proxy import llm_queue, Priority
 
 log = logging.getLogger("codec_agents")
@@ -515,9 +516,39 @@ Rules:
                     # the tool (e.g. _shell_execute → shell_blocked) inherits
                     # the agent/crew correlation_id. asyncio doesn't do this
                     # automatically — has to be an explicit copy_context().
+                    #
+                    # Phase 1 Step 2: tool execution flows through run_with_hooks
+                    # so every plugin's pre_tool/post_tool/on_error hooks fire
+                    # uniformly with the crew/voice/chat/MCP paths. Crew veto
+                    # behaviour per §4.4: SKIP — the veto string becomes the
+                    # tool's "result" and the agent's ReAct loop decides what
+                    # to do (try a different tool, or FINAL: with an
+                    # explanation). No retry, no fail-the-crew.
+                    _agent_cid = _correlation_id_var.get() or _new_correlation_id()
+                    _agent_name = self.name
+                    _tool_name_local = tool_name
+                    _tool_input_local = tool_input
+                    _real_tool = tool
+
+                    def _run_tool_with_hooks():
+                        def _inner(t, _c):
+                            return _real_tool.run(t)
+                        return run_with_hooks(
+                            tool_name=_tool_name_local,
+                            task=_tool_input_local,
+                            context="",
+                            transport="crew",
+                            agent=_agent_name,
+                            correlation_id=_agent_cid,
+                            invoke=_inner,
+                        )
+
                     ctx = contextvars.copy_context()
                     result = await loop.run_in_executor(
-                        None, ctx.run, tool.run, tool_input)
+                        None, ctx.run, _run_tool_with_hooks)
+                    if isinstance(result, HookVeto):
+                        result = (f"Tool '{tool_name}' was vetoed by plugin "
+                                  f"'{result.plugin_name}': {result.reason}")
                     tool_calls_made += 1
                     _audit("tool_result", agent=self.name, tool=tool_name,
                            result_len=len(result))

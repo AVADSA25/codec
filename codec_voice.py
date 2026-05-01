@@ -24,6 +24,12 @@ import httpx
 import numpy as np
 
 from codec_audit import log_event as _voice_log_event
+from codec_hooks import (
+    HookVeto,
+    emit_operation_end as _voice_emit_op_end,
+    emit_operation_start as _voice_emit_op_start,
+    run_with_hooks as _voice_run_with_hooks,
+)
 from codec_llm_proxy import llm_queue, Priority
 
 # Per-session correlation_id contextvar — set at VoicePipeline.run entry,
@@ -665,7 +671,30 @@ class VoicePipeline:
         try:
             print(f"[Voice] → skill: {skill['name']}")
             loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(None, skill["run"], user_text)
+            # Phase 1 Step 2: route the voice skill call through the unified
+            # hook surface. self._cid is set at VoicePipeline.run entry per
+            # Step 1 (d); plugins inherit it automatically.
+            _skill_name = skill["name"]
+            _skill_run = skill["run"]
+            _voice_cid = getattr(self, "_cid", None) or _voice_correlation_id_var.get()
+
+            def _run_with_hooks_sync():
+                def _inner(t, _c):
+                    return _skill_run(t)
+                return _voice_run_with_hooks(
+                    tool_name=_skill_name,
+                    task=user_text,
+                    context="",
+                    transport="voice",
+                    correlation_id=_voice_cid or "",
+                    invoke=_inner,
+                )
+
+            ctx = contextvars.copy_context()
+            result = await loop.run_in_executor(None, ctx.run, _run_with_hooks_sync)
+            if isinstance(result, HookVeto):
+                return (f"Skill '{_skill_name}' was vetoed by plugin "
+                        f"'{result.plugin_name}': {result.reason}")
             result = str(result).strip() if result else ""
             if not result or result.lower() in ("none", "done, but no output.", ""):
                 print(f"[Voice] Skill {skill['name']} empty — falling through to Qwen")
@@ -1103,6 +1132,15 @@ class VoicePipeline:
                              correlation_id=cid)
         except Exception:
             pass
+        # Phase 1 Step 2: fire on_operation_start hooks (per-plugin, not the
+        # voice_session_start audit event above — that's Step 1 vocabulary
+        # and intentionally unchanged). Hook layer never raises.
+        try:
+            _voice_emit_op_start(operation_id=self.session_id,
+                                 transport="voice",
+                                 correlation_id=cid)
+        except Exception:
+            pass
 
         # Send session ID so client can reconnect to this session
         await self.ws.send_json({"type": "session", "session_id": self.session_id})
@@ -1166,6 +1204,18 @@ class VoicePipeline:
                                  error_type=run_error_type,
                                  error=run_error,
                                  correlation_id=cid)
+            except Exception:
+                pass
+            # Phase 1 Step 2: fire on_operation_end hooks. Same caveat as
+            # the start emit above — voice_session_end audit event is Step 1
+            # vocabulary and unchanged; on_operation_end is the hook-layer
+            # event with §11 Q6 vocabulary.
+            try:
+                _voice_emit_op_end(operation_id=self.session_id,
+                                   transport="voice",
+                                   correlation_id=cid,
+                                   duration_ms=duration_ms,
+                                   outcome=run_outcome)
             except Exception:
                 pass
             try:

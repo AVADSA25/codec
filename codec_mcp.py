@@ -13,11 +13,18 @@ log = logging.getLogger("codec_mcp")
 SKILL_TIMEOUT_SEC = int(os.environ.get("CODEC_SKILL_TIMEOUT", "30"))
 
 from codec_audit import audit as _audit
+from codec_hooks import HookVeto, run_with_hooks
 
 
 def _new_correlation_id() -> str:
     """6-byte hex correlation_id, one per top-level tool_fn invocation."""
     return secrets.token_hex(6)
+
+
+class _SkillLoadError(Exception):
+    """Sentinel raised inside the invoke closure when registry.load returns
+    None or the loaded module has no run(). Caught one level up so the
+    existing tool_result outcome=error path fires unchanged."""
 
 # --- Input validation constants ---
 MCP_MAX_TASK_LENGTH = 5_000
@@ -193,44 +200,66 @@ def _load_skill_tools_into(mcp):
                            correlation_id=cid)
                     return err
 
-                def _run():
-                    mod = registry.load(rkey)
-                    if mod is None or not hasattr(mod, "run"):
-                        return None, "load_failed"
-                    try:
-                        return mod.run(task, context), None
-                    except Exception as e:
-                        return None, f"{type(e).__name__}: {str(e)[:200]}"
+                # Phase 1 Step 2: refactor per design §3.3 path 5. The
+                # threadpool/timeout/result block becomes the `invoke` closure
+                # passed to run_with_hooks. The invoke closure RAISES on skill
+                # error (instead of returning errmsg) so on_error hooks can
+                # observe the exception cleanly.
+                _transport = os.environ.get("CODEC_MCP_TRANSPORT", "stdio")
 
-                # Run with timeout in a worker thread (most skills are sync)
+                def _invoke(t: str, c: str) -> str:
+                    import concurrent.futures
+                    def _run_inner():
+                        mod = registry.load(rkey)
+                        if mod is None or not hasattr(mod, "run"):
+                            raise _SkillLoadError("load_failed")
+                        return mod.run(t, c)
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+                        fut = ex.submit(_run_inner)
+                        return fut.result(timeout=SKILL_TIMEOUT_SEC)
+
                 import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-                    fut = ex.submit(_run)
-                    try:
-                        result, errmsg = fut.result(timeout=SKILL_TIMEOUT_SEC)
-                    except concurrent.futures.TimeoutError:
-                        _audit(sname, event="timeout",
-                               task_len=tlen, context_len=clen,
-                               duration_ms=(time.time()-t0)*1000,
-                               outcome="timeout", error_type="Timeout",
-                               correlation_id=cid)
-                        return f"Skill '{sname}' timed out after {SKILL_TIMEOUT_SEC}s."
-
-                dur_ms = (time.time()-t0)*1000
-                if errmsg == "load_failed":
+                try:
+                    result = run_with_hooks(
+                        tool_name=sname,
+                        task=task,
+                        context=context,
+                        transport=_transport,
+                        correlation_id=cid,
+                        invoke=_invoke,
+                    )
+                except concurrent.futures.TimeoutError:
+                    _audit(sname, event="timeout",
+                           task_len=tlen, context_len=clen,
+                           duration_ms=(time.time()-t0)*1000,
+                           outcome="timeout", error_type="Timeout",
+                           correlation_id=cid)
+                    return f"Skill '{sname}' timed out after {SKILL_TIMEOUT_SEC}s."
+                except _SkillLoadError:
                     _audit(sname, event="tool_result",
                            task_len=tlen, context_len=clen,
-                           duration_ms=dur_ms, outcome="error",
+                           duration_ms=(time.time()-t0)*1000, outcome="error",
                            error_type="LoadFailed",
                            correlation_id=cid)
                     return f"Skill '{sname}' could not be loaded."
-                if errmsg:
+                except Exception as e:
                     _audit(sname, event="tool_result",
                            task_len=tlen, context_len=clen,
-                           duration_ms=dur_ms, outcome="error",
-                           error_type=errmsg.split(":")[0],
+                           duration_ms=(time.time()-t0)*1000, outcome="error",
+                           error_type=type(e).__name__,
                            correlation_id=cid)
-                    return f"Skill '{sname}' failed: {errmsg}"
+                    return f"Skill '{sname}' failed: {type(e).__name__}: {str(e)[:200]}"
+
+                dur_ms = (time.time()-t0)*1000
+
+                # HookVeto handling per §4 — replaces tool_result on vetoed
+                # calls. tool_vetoed audit was already emitted from inside
+                # run_with_hooks; we just translate the sentinel to the
+                # client-facing string the MCP client receives.
+                if isinstance(result, HookVeto):
+                    return (f"Skill '{sname}' was vetoed by plugin "
+                            f"'{result.plugin_name}': {result.reason}")
+
                 _audit(sname, event="tool_result",
                        task_len=tlen, context_len=clen,
                        duration_ms=dur_ms, outcome="ok",

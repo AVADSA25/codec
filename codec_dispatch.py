@@ -12,6 +12,7 @@ import time
 # per docs/PHASE1-STEP1-DESIGN.md.
 from codec_audit import log_event
 from codec_config import SKILLS_DIR
+from codec_hooks import HookVeto, run_with_hooks
 from codec_skill_registry import SkillRegistry
 
 log = logging.getLogger('codec')
@@ -58,7 +59,28 @@ def run_skill(skill, task, app=""):
 
     for skill_name in all_matches:
         try:
-            result = registry.run(skill_name, task, app)
+            # Wrap registry.run with the plugin hook surface (Phase 1 Step 2).
+            # The cid generated above is the operation correlation_id; hooks
+            # inherit it via run_with_hooks per Step 1 §1.4 + Step 2 §7.3.
+            def _invoke(t, c, _name=skill_name):
+                return registry.run(_name, t, c if c else app)
+            result = run_with_hooks(
+                tool_name=skill_name,
+                task=task,
+                context="",
+                transport="dispatch",
+                correlation_id=cid,
+                invoke=_invoke,
+            )
+            if isinstance(result, HookVeto):
+                # First veto wins per §5.3. Surface a deterministic string to
+                # the caller (codec.py:_dispatch_inner / chat _try_skill /
+                # chat _try_skill_by_name) — same shape as a normal skill
+                # result, just contains the veto reason.
+                log.info("Skill '%s' vetoed by plugin '%s': %s",
+                         skill_name, result.plugin_name, result.reason)
+                return (f"Skill '{skill_name}' was vetoed by plugin "
+                        f"'{result.plugin_name}': {result.reason}")
             if result is None:
                 log.info("Skill '%s' returned None — trying next match", skill_name)
                 continue
