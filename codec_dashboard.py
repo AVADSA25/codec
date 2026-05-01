@@ -389,6 +389,50 @@ async def status():
     }
 
 
+# Phase 2 Step 5 §Q5.6 — debug-gated buffer-inspect endpoint.
+# Anyone with PWA auth can call this with `?debug=1`. Every call emits
+# an `observer_buffer_inspected` audit event so privileged reads are
+# observable in the audit log. NOT linked from the main UI.
+@app.get("/api/observer/buffer")
+async def observer_buffer(request: Request, debug: int = 0):
+    """Return the current ring buffer state. Q5.6 design: debug-only,
+    auth-gated (covered by the dashboard's existing /api/* auth
+    middleware), audit-emitting."""
+    if int(debug) != 1:
+        return {"error": "set ?debug=1 to read live observer buffer"}
+    try:
+        from codec_observer import get_global_buffer
+        from codec_audit import OBSERVER_BUFFER_INSPECTED, log_event as _le
+        buf = get_global_buffer()
+        snap = buf.snapshot()
+        try:
+            client_ip = request.client.host if request.client else "unknown"
+        except Exception:
+            client_ip = "unknown"
+        try:
+            _le(
+                OBSERVER_BUFFER_INSPECTED, "codec-dashboard",
+                f"observer buffer inspected via /api/observer/buffer",
+                extra={
+                    "client_ip": client_ip,
+                    "buffer_entries_returned": len(snap),
+                },
+                outcome="ok", level="info",
+            )
+        except Exception:
+            pass
+        # Return only the metadata + a redacted summary, NOT the raw entries
+        # (raw entries contain titles + OCR text + clipboard content).
+        return {
+            "buffer_depth": len(snap),
+            "summary": buf.render_summary(),
+            "oldest_ts": snap[0].get("ts") if snap else None,
+            "newest_ts": snap[-1].get("ts") if snap else None,
+        }
+    except Exception as e:
+        return {"error": f"observer not available: {e}"}
+
+
 def _mask_sensitive(value: str) -> str:
     """Mask sensitive field values, showing only last 4 characters."""
     if not value or not isinstance(value, str):
@@ -2557,6 +2601,26 @@ async def chat_completion(request: Request):
                 "DO NOT emit [SKILL:...] tool-calling tags in this response — "
                 "the answer IS the rewritten text, no tools needed."
             )
+        # Phase 2 Step 5 — Observer summary injection (gated per §X).
+        # Local Qwen always injects; cloud transports (this chat path uses
+        # local-by-default but may be cloud-routed by the user — pass the
+        # detected transport tag) gate on possessive / continuation /
+        # skill-flag patterns. Returns (summary_or_None, reason); audit
+        # emit fires inside the helper ONLY when summary non-None.
+        try:
+            from codec_observer import maybe_inject_observation_summary
+            _obs_transport = "local" if "localhost" in (config.get("llm_base_url") or "") else "chat"
+            _obs_summary, _obs_reason = maybe_inject_observation_summary(
+                user_prompt=last_user_text or "",
+                transport=_obs_transport,
+                skill_name=None,           # post-LLM tag path, no skill resolved yet
+                skill_module=None,
+            )
+            if _obs_summary:
+                sys_prompt += f"\n\n{_obs_summary}"
+        except Exception as _e:
+            log.debug(f"[observer] injection failed (non-fatal): {_e}")
+
         # Prepend system message (or replace existing one)
         if messages and messages[0].get("role") == "system":
             messages[0]["content"] = sys_prompt + "\n\n" + messages[0]["content"]

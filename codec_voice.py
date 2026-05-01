@@ -728,6 +728,25 @@ class VoicePipeline:
                 }
         except Exception:
             pass
+        # Phase 2 Step 5 — Observer summary injection (gated per §X).
+        # Voice always uses local Qwen by default (transport="local"); if
+        # the user has cloud-routed voice configured (vision_provider=
+        # "gemini"), pass transport="voice" so the cloud-transport gate
+        # applies. Audit emit fires inside the helper.
+        try:
+            from codec_observer import maybe_inject_observation_summary
+            _voice_transport = "voice" if VISION_PROVIDER == "gemini" else "local"
+            _obs_summary, _obs_reason = maybe_inject_observation_summary(
+                user_prompt=user_text or "",
+                transport=_voice_transport,
+                skill_name=None,
+                skill_module=None,
+            )
+            if _obs_summary and self.messages and self.messages[0].get("role") == "system":
+                # Append after memory block, before next user turn
+                self.messages[0]["content"] += f"\n\n{_obs_summary}"
+        except Exception as _e:
+            print(f"[Voice] observer injection failed (non-fatal): {_e}")
         full = ""
         async for chunk in self._stream_qwen(self._trimmed_messages()):
             full += chunk
