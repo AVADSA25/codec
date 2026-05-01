@@ -46,9 +46,25 @@
 Capture at: 2026-04-30 13:23 GMT+2.
 Action: re-run the same trailing-30-min query. Append the row above with the new numbers and a status flag.
 
-## Sample T+8h — pending
+## Sample T+8h — 2026-04-30T17:42:22+02:00
 
-Capture at: 2026-04-30 17:23 GMT+2.
+| field | value |
+|---|---|
+| sample_at_local | 2026-04-30T17:42:22+02:00 |
+| sample_at_utc | 2026-04-30T15:42:22+00:00 |
+| window_cutoff_utc | 2026-04-30T15:12:22+00:00 |
+| total_records | 3 |
+| schema1_records | 3 |
+| legacy_records | 0 |
+| with_duration | 0 |
+| avg_ms | N/A |
+| p95_ms | N/A |
+| delta_vs_baseline_avg | N/A |
+| delta_vs_baseline_p95 | N/A |
+| errors_count | 0 |
+| top_events | `heartbeat_tick: 3` |
+| sources | `codec-heartbeat: 3` |
+| **status** | **ok** — no `duration_ms` entries in window — latency comparison N/A; service health green |
 
 ## Sample T+12h — pending
 
@@ -150,3 +166,25 @@ python3 /Users/mickaelfarina/codec-repo/scripts/capture_audit_sample.py "T+4h"
 ```
 
 It exits **0** for `ok`, **1** for `investigate`, **2** for `revert`. The `revert` exit prints the §5.4 mechanics inline.
+
+---
+
+## Sample T+24h — 2026-05-01T09:48:43+02:00
+
+| field | value |
+|---|---|
+| sample_at_local | 2026-05-01T09:48:43+02:00 |
+| sample_at_utc | 2026-05-01T07:48:43+00:00 |
+| window_cutoff_utc | 2026-05-01T07:18:43+00:00 |
+| total_records | 3 |
+| schema1_records | 3 |
+| legacy_records | 0 |
+| with_duration | 0 |
+| avg_ms | N/A |
+| p95_ms | N/A |
+| delta_vs_baseline_avg | N/A |
+| delta_vs_baseline_p95 | N/A |
+| errors_count | 0 |
+| top_events | `heartbeat_tick: 3` |
+| sources | `codec-heartbeat: 3` |
+| **status** | **ok** — no `duration_ms` entries in window — latency comparison N/A; service health green |

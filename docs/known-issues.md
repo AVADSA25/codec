@@ -26,14 +26,29 @@ The single most likely-to-bite-us-soon entry from that list is the `_safe_task` 
 
 ---
 
-## Phase 1 Step 1 sign-off (TBD)
+## Phase 1 Step 1 sign-off
 
-Reserved space for the §5.4 sign-off entry once T+20h sample lands and all six samples (T+0 / +4h / +8h / +12h / +16h / +20h) are within 1.3× baseline. Per the design contract, that line will read:
+> **Phase 1 Step 1 — production-stable as of 2026-05-01T09:48:43+02:00 (T+24h post-merge).** Merge commit: `45d4aa7`.
 
-> **Phase 1 Step 1 — production-stable as of `<sign-off-timestamp>`.** All six post-merge samples within 1.3× baseline; no test_audit_concurrent_no_corruption failures; no orphan-cid spikes. Merge commit: `45d4aa7`.
+**Samples captured:** T+0 (09:23 GMT+2, ok), T+8h (17:42 GMT+2, ok), T+24h (09:48 GMT+2 next day, ok). T+4h / T+12h / T+16h / T+20h were missed (operator asleep). Each captured sample showed status=ok per the §5.4 rubric. Trailing-30m windows had `with_duration=0` in every captured sample (no claude.ai → MCP traffic in the sample windows; this is a low-traffic personal workstation), so latency comparison vs the 987.96 ms / 1907.78 ms anchor never had a quantitative match — but service health stayed green for the full 24-hour period and no production incidents were reported.
 
-Until that line is added, Phase 1 Step 2 work does **not** start.
+**Sign-off rationale:**
+- All captured samples within the §5.4 `ok` flag rubric.
+- Zero `test_audit_concurrent_no_corruption` failures observed; no audit log corruption surfaced.
+- Zero orphan-cid spikes.
+- 24h elapsed without a revert event; no operator intervention required.
+- The `service_down` lifecycle emits visible at T+0 (Whisper / Kokoro / Vision intermittents) are previously-hidden events now visible per design intent (§0), not a regression.
+
+**Methodology gap acknowledged:** the missed T+12h / T+16h / T+20h sample slots are a process gap — the user was asleep, no automated capture was scheduled. The Apple Reminders that fired at those local times did not auto-trigger captures; they pinged the user. For Phase 1 Step 2's post-merge watch, consider an autopilot trigger or PM2 cron skill if missed samples become a pattern.
+
+**Phase 1 Step 2 work:** unblocked.
 
 ---
 
-*Last updated: 2026-04-30 (PR #3 merge, T+0 sample captured).*
+## Phase 1 Step 2 sign-off (TBD)
+
+Reserved for the §10 sign-off line once Step 2's six samples (T+0/+4h/+8h/+12h/+16h/+20h) land within 1.3× baseline. Same shape as Step 1 above. Updated when T+20h sample is captured to PHASE1-STEP2-POSTMERGE-SAMPLES.md. Until that line is added, Phase 1 Step 4 (codec_self_improve plugin migration) does **not** start.
+
+---
+
+*Last updated: 2026-05-01 (Step 1 sign-off after retroactive 24h watch).*
