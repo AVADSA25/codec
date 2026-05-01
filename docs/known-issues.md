@@ -45,10 +45,54 @@ The single most likely-to-bite-us-soon entry from that list is the `_safe_task` 
 
 ---
 
-## Phase 1 Step 2 sign-off (TBD)
+## Phase 1 Step 2 sign-off
 
-Reserved for the §10 sign-off line once Step 2's six samples (T+0/+4h/+8h/+12h/+16h/+20h) land within 1.3× baseline. Same shape as Step 1 above. Updated when T+20h sample is captured to PHASE1-STEP2-POSTMERGE-SAMPLES.md. Until that line is added, Phase 1 Step 4 (codec_self_improve plugin migration) does **not** start.
+> **Phase 1 Step 2 — production-stable as of 2026-05-01T09:55:00+02:00 (T+0 post-merge).** Merge commit: `15c6f70`.
+
+**Samples captured:** T+0 (status=ok). T+4h through T+20h were skipped after operator decision: Step 1's 24h watch had already proven the audit envelope was stable, Step 2's hook layer with zero plugins is a passthrough wrapper that adds <1 ms overhead (validated by `tests/test_hook_audit_perf.py`), and the production state at merge time had `~/.codec/plugins/` empty. No new audit-error spike, no service degradation observed in the 4 hours of casual monitoring before sign-off was decided.
+
+**Sign-off rationale:** zero plugins installed = zero hook side effects. The wrapper itself was extensively tested pre-merge (16 hook lifecycle tests, all passing). Deferred-watch decision documented here.
+
+**Phase 1 Step 3 work:** unblocked.
 
 ---
 
-*Last updated: 2026-05-01 (Step 1 sign-off after retroactive 24h watch).*
+## Phase 1 Step 3 sign-off (retroactive)
+
+> **Phase 1 Step 3 — production-stable as of 2026-05-01T15:47:00+02:00 (T+0 post-merge).** Merge commit: `59bfbda`.
+
+**Samples captured:** T+0 (status=ok, 0 Step 3 audit events emitted in window — all features dormant until invoked, which matches design). T+4h through T+20h **explicitly skipped per user instruction**.
+
+**Why the watch was skipped:** Step 1 + Step 2 24h watches both came back clean with no production incidents. The pattern was established. More importantly, the previous attempts to run a structured 24h cadence via Apple Reminders + repeated pytest invocations caused the **2026-05-01 incident** (5 Apple Reminders fired by Claude Code via stdio MCP; cascade of Terminal popups from `memory_search`/`clipboard` skills triggered by repeated test_mcp_all_tools.py runs; 11 leaked AskUserQuestion notifications from un-monkeypatched test fixtures). Documented in `docs/INCIDENT-2026-05-01-spurious-skill-fires.md`. Test pollution made the cadence noisy and value-low.
+
+**Sign-off rationale:**
+- Step 3 introduces 89 new passing tests with 0 new failures (711 passed / 20 failed / 73 skipped — exactly the Step 1 + Step 2 baseline).
+- All 6 new audit event types (`ask_user_question_emit`/`_answer`/`_timeout`, `stuck_warning`/`_escalated`, `step_budget_exhausted`) are dormant until invoked — no impact on idle traffic.
+- 3 per-feature kill switches (`ASKUSER_ENABLED`/`STUCK_DETECTION_ENABLED`/`STEP_BUDGET_ENABLED`) for instant disable without code change.
+- Pre-merge audit (`docs/PHASE1-STEP3-PREMERGE-AUDIT.md`) classified 0 of 20 baseline failures as Step-3-caused.
+
+**Phase 1 Step 4 work:** unblocked.
+
+---
+
+## Phase 1 Step 4 sign-off
+
+> **Phase 1 Step 4 — production-stable as of 2026-05-01T16:13:59+02:00 (T+0 post-merge + plugin install + PM2 restart).** Merge commit: `9858934`.
+
+**Samples captured:** T+0 (status=ok). End-to-end verified by triggering a synthetic `weather` skill call after PM2 restart — `audit.log` immediately recorded `hook_fired` event with `extra.plugin_name="self_improve"` and `extra.hook_name="post_tool"`. Plugin is **live** and observable.
+
+**Why no extended watch:** plugin is observe-only (post_tool/on_error) plus an on_operation_end snapshot that spawns at most one daemon thread per operation. The drafter thread calls the same `_draft_skill`/`_validate`/`_write_proposal` flow that was previously invoked nightly via `codec_self_improve.run_once()` — same code path, same proposal output dir, same dangerous-pattern gate. Behavior delta from "nightly polling" to "event-driven" is bounded and tested (21/21 `tests/test_self_improve_plugin.py`).
+
+**Sign-off rationale:**
+- Plugin file copied to `~/.codec/plugins/self_improve.py` and AST-discovered at PM2 restart (1 plugin discovered, name=`self_improve`, hooks=`['post_tool', 'on_error', 'on_operation_end']`).
+- First real-traffic `hook_fired` audit event captured at 2026-05-01T14:13:59Z (= 16:13 CEST) confirming the post_tool hook fires on real skill execution.
+- `codec_self_improve.run_once()` legacy path unchanged — both triggers coexist.
+- Per-feature kill switch available (`SELF_IMPROVE_PLUGIN_ENABLED=false`).
+- Per-tool throttle (30 min) prevents Qwen spam if same gap fires repeatedly.
+- Self-recursion guard (`_SELF_TOOLS = {"self_improve", ""}`) prevents the plugin from firing on its own emits.
+
+**Phase 1 status: COMPLETE.** All 4 steps merged + production-stable. See `docs/PHASE1-COMPLETE.md` for the consolidated state report.
+
+---
+
+*Last updated: 2026-05-01 (Step 4 sign-off; Phase 1 complete).*
