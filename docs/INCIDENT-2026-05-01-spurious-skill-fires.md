@@ -276,3 +276,61 @@ python3 -c "import sys; sys.path.insert(0, '$HOME/.codec/skills'); import remind
 - [ ] User decides whether to keep the existing monitoring reminders or delete them (they're useful for the 24h watch).
 - [ ] User approves the test cleanup (`SKIP_SKILLS` additions to `tests/test_mcp_all_tools.py`).
 - [ ] Step 3 PR #5 may resume after sign-off.
+
+---
+
+## UPDATE 2026-05-01 15:25 CEST — second user report + AskUserQuestion leak
+
+User came back at 13:21 UTC reporting "CODEC firing every 5min — 5 different windows, 5 same terminal/Notes". Investigation found a SECOND leak source distinct from the reminders one above.
+
+### Root cause #2: Step 3 AskUserQuestion test fixture leaked
+
+When I ran my Phase 1 Step 3 test files (`test_ask_user.py`, `test_destructive_consent.py`) repeatedly today between 12:22 and 13:22 UTC, the `temp_askuser_paths` fixture was supposed to monkeypatch `codec_ask_user.PENDING_QUESTIONS_PATH` and `codec_ask_user.NOTIFICATIONS_PATH` to `tmp_path`. **In some test orderings the patch did not stick** (likely because the worktree-aware path resolution + module-cache interaction on the full suite caused codec_ask_user to be imported from a different module instance than the one being monkeypatched).
+
+Result: **11 AskUserQuestion test entries leaked** into `~/.codec/`:
+- 11 entries written to `~/.codec/pending_questions.json` (7 status=pending + 4 timed_out)
+- 11 `type="question"` entries written to `~/.codec/notifications.json`
+
+The dashboard PWA polls `/api/notifications/count` every ~30s and renders an inline AskUserQuestion answer panel for each pending entry. **From the user's POV this looked like CODEC autonomously asking 5+ questions.**
+
+Verified by reading the leaked files:
+```
+2026-05-01T13:22:55 type=question title=TestAgent is asking a question
+2026-05-01T13:20:25 type=question title=TestAgent is asking a question
+2026-05-01T13:15:56 type=question title=TestAgent is asking a question
+... (8 more) ...
+```
+
+The agent name "TestAgent" came from the test's `_make_agent()` helper which constructs `Agent(name="TestAgent", ...)`. That confirms the entries are test artifacts, not real agent runs.
+
+### Root cause #3: leaked pytest runs caused `self_improve` cascade
+
+Same window (12:22 → 13:16 UTC) saw 24 `skill_proposal_staged` audit emits, paired with `service_down` events. These came from `self_improve` skill being fired by `tests/test_mcp_all_tools.py` — the test iterates every MCP-exposed skill and `self_improve` IS exposed. Each call writes a markdown proposal to `~/.codec/skill_proposals/2026-04-30/`. No user-visible effect, but it polluted the audit log and burned LLM cycles.
+
+### Cleanup performed at 13:21 UTC
+
+1. **Cleared `~/.codec/pending_questions.json`** — 11 → 0 entries (backup at `pending_questions.json.bak-1777641483`)
+2. **Filtered `~/.codec/notifications.json`** — removed 11 `type="question"` entries (179 → 168, backup at `notifications.json.bak-1777641483`)
+3. **Quit Notes / Reminders / TextEdit** apps that the test runs had auto-opened
+4. **Killed NotificationCenter** to clear any stuck banners (auto-respawned by macOS)
+5. **Updated `~/.codec/skills/reminders.py`** to the FIXED version from `~/codec-repo/skills/reminders.py` (read-mode for "list reminders" — prevents future test runs OR LLM calls from creating real Apple Reminders)
+6. **Verified state at 13:21 UTC**: 0 pending questions, 0 question notifications, 0 incomplete reminders.
+
+### Permanent prevention plan
+
+| # | Action | When |
+|---|---|---|
+| 1 | This hotfix (PR #6, merged) blocks `reminders/notes/tts_say/qr_generator/generate_qr_code` from firing in test_mcp_all_tools.py | DONE — landed in `fcbef2f` |
+| 2 | Update Step 3 test fixtures (`test_ask_user.py`, `test_destructive_consent.py`) to use a tighter monkeypatch pattern that survives module re-imports | Roll into Step 3 PR #5 before merge |
+| 3 | Add `self_improve` to SKIP_SKILLS in test_mcp_all_tools.py | Same Step 3 PR or follow-up |
+| 4 | Stop using Apple Reminders for monitoring checkpoints. Move to `~/.codec/scheduled_tasks` (PM2 cron) or a simple text checklist in `docs/PHASE1-STEP3-POSTMERGE-SAMPLES.md` instead | Decide AFTER Step 3 lands. User said: "Going-forward sampling format (launchd vs manual vs none) gets decided after Step 3 lands." |
+| 5 | Add a pre-commit hook OR CI check that fails if any test writes to `~/.codec/*` (detect leaked monkeypatches) | Optional follow-up |
+| 6 | Document the test-isolation contract in AGENTS.md §10: every test that touches codec_ask_user / codec_audit / codec_voice MUST monkeypatch the path AND verify the patch stuck before any state write | Step 3 PR addendum |
+
+### What I am NOT doing without authorization
+
+- Not restarting any PM2 process (per contract)
+- Not killing the codec_mcp.py instances spawned by Claude.app (would break Claude.app's CODEC integration; user can quit Claude.app themselves if they want it gone)
+- Not deleting backups (`pending_questions.json.bak-*` and `notifications.json.bak-*`) — leaving for forensic record
+- Not modifying any other production code
+- Not touching `_HTTP_BLOCKED`
