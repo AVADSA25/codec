@@ -371,6 +371,17 @@ class Agent:
     thinking: bool = False      # Keep off by default — adds latency; crews can override
     verbose: bool = True
 
+    # Phase 1 Step 3 §2.2 stuck-detection ring buffer.
+    # Per-agent: each Agent instance tracks its own (tool_name, args_hash)
+    # window of last M=5 calls. When the same key appears N=3 times,
+    # _handle_stuck() fires (warn first, escalate at N+2 = 5).
+    # Defaults loaded from ~/.codec/config.json: stuck.{repeat_threshold,
+    # window, escalation_action} on first Agent.run call. Cached as
+    # instance attrs to avoid re-reading config every loop iteration.
+    _recent_calls: List[tuple] = field(default_factory=list, repr=False)
+    _stuck_warned_keys: set = field(default_factory=set, repr=False)
+    _stuck_escalated_keys: set = field(default_factory=set, repr=False)
+
     async def run(self, task: str, context: str = "", callback: Optional[Callable] = None) -> str:
         # Inherit correlation_id from the surrounding Crew if there is one;
         # otherwise (e.g. run_custom_agent — solo agent path) generate our own.
@@ -553,6 +564,20 @@ Rules:
                     _audit("tool_result", agent=self.name, tool=tool_name,
                            result_len=len(result))
 
+                    # Phase 1 Step 3 §2.2 — stuck detection.
+                    # Run in the executor so the worker thread can call
+                    # ask_user.ask() synchronously without blocking the
+                    # event loop on escalation. The helper returns a
+                    # (possibly modified) result string with a warning
+                    # banner injected, OR an escalation answer string if
+                    # the user told the agent how to proceed.
+                    if _stuck_enabled():
+                        stuck_ctx = contextvars.copy_context()
+                        result = await loop.run_in_executor(
+                            None, stuck_ctx.run,
+                            self._handle_stuck_post_tool, tool_name,
+                            tool_input, result)
+
                     # Capture real Google Docs URL from tool result
                     if tool_name == "google_docs_create" and "docs.google.com" in result:
                         url_match = re.search(r'https://docs\.google\.com/document/d/[A-Za-z0-9_-]+/edit', result)
@@ -585,6 +610,142 @@ Rules:
                 return response
 
         return last_response
+
+    # ── Phase 1 Step 3 §2.2 — stuck detection ──────────────────────────
+    def _handle_stuck_post_tool(self, tool_name: str, tool_input: str,
+                                 result: str) -> str:
+        """Called from Agent.run after each tool result. Records the call
+        in the per-agent ring buffer, detects N=3 / N+2=5 repeats, emits
+        stuck_warning / stuck_escalated audit events, and either injects
+        a soft warning into the result OR invokes ask_user for explicit
+        user direction.
+
+        Runs in a worker thread (via run_in_executor wrapping in
+        Agent.run) so that ask_user.ask()'s threading.Event.wait()
+        doesn't block the asyncio event loop.
+
+        Returns the (possibly modified) result string the agent's ReAct
+        loop will see as the tool result.
+        """
+        try:
+            window, threshold, escalation_action = _load_stuck_config()
+            args_hash = hashlib.sha1(
+                (tool_input or "").encode("utf-8", errors="replace")
+            ).hexdigest()[:8]
+            key = (tool_name, args_hash)
+            self._recent_calls.append(key)
+            if len(self._recent_calls) > window:
+                self._recent_calls = self._recent_calls[-window:]
+            repeat_count = self._recent_calls.count(key)
+            cid = _correlation_id_var.get()
+
+            if repeat_count >= threshold + 2 and key not in self._stuck_escalated_keys:
+                # Escalation: invoke ask_user (synchronously — we're in
+                # a worker thread). Per §2.3.
+                self._stuck_escalated_keys.add(key)
+                action = escalation_action
+                from codec_audit import log_event as _le
+                try:
+                    _le(
+                        "stuck_escalated", "codec-agents",
+                        f"Agent {self.name} stuck calling {tool_name}",
+                        extra={"tool": tool_name,
+                               "repeat_count": repeat_count,
+                               "agent": self.name,
+                               "action": action},
+                        outcome="warning", level="warning",
+                        tool=tool_name,
+                        correlation_id=cid,
+                    )
+                except Exception as e:
+                    log.warning("[stuck] escalation audit failed: %s", e)
+
+                if action == "abort":
+                    raise RuntimeError(
+                        f"Stuck-abort: agent '{self.name}' called {tool_name} "
+                        f"{repeat_count} times with the same args.")
+                if action == "warn_only":
+                    return result + (
+                        f"\n\n[STUCK ESCALATED] Agent has called {tool_name} "
+                        f"{repeat_count} times with the same args; warn_only "
+                        f"mode — proceed with caution.")
+                # Default: ask_user
+                try:
+                    from codec_ask_user import ask
+                    user_directive = ask(
+                        question=(
+                            f"Agent '{self.name}' has called {tool_name} "
+                            f"{repeat_count} times with the same args and keeps "
+                            f"getting the same result. How should I proceed?"
+                        ),
+                        options=["Try a different approach", "Abandon the task",
+                                 "Continue anyway"],
+                        agent=self.name,
+                        asked_from="crew",
+                    )
+                except Exception as e:
+                    log.warning("[stuck] ask_user invoke failed: %s", e)
+                    user_directive = "(ask_user failed — agent should self-recover)"
+                return result + (
+                    f"\n\n[STUCK — user said]: {user_directive}\n"
+                    f"Adjust your strategy based on this directive.")
+
+            if repeat_count >= threshold and key not in self._stuck_warned_keys:
+                # Soft warning: inject a banner into the result. The LLM
+                # will see this and (hopefully) try a different tool.
+                self._stuck_warned_keys.add(key)
+                from codec_audit import log_event as _le
+                try:
+                    _le(
+                        "stuck_warning", "codec-agents",
+                        f"Agent {self.name} repeating {tool_name}",
+                        extra={"tool": tool_name,
+                               "repeat_count": repeat_count,
+                               "agent": self.name},
+                        outcome="warning", level="warning",
+                        tool=tool_name,
+                        correlation_id=cid,
+                    )
+                except Exception as e:
+                    log.warning("[stuck] warning audit failed: %s", e)
+                return result + (
+                    f"\n\n⚠ [STUCK WARNING] You've called {tool_name} "
+                    f"{repeat_count} times with the same args. Try a "
+                    f"different tool, different inputs, or wrap up with "
+                    f"FINAL: — repeating won't help.")
+            return result
+        except Exception as e:
+            log.warning("[stuck] handler failed (non-fatal): %s", e)
+            return result
+
+
+def _stuck_enabled() -> bool:
+    """Read STUCK_DETECTION_ENABLED env var. Default true."""
+    val = (os.environ.get("STUCK_DETECTION_ENABLED") or "true").strip().lower()
+    return val not in ("false", "0", "no", "off")
+
+
+def _load_stuck_config() -> tuple:
+    """Load (window, threshold, escalation_action) from
+    ~/.codec/config.json: stuck.{window, repeat_threshold,
+    escalation_action}. Defaults: window=5, threshold=3, action=ask_user.
+    Read each call so config edits take effect on PM2 restart."""
+    try:
+        import json as _json
+        with open(os.path.expanduser("~/.codec/config.json")) as f:
+            cfg = _json.load(f).get("stuck", {})
+    except Exception:
+        cfg = {}
+    window = cfg.get("window")
+    if not isinstance(window, int) or window < 2:
+        window = 5
+    threshold = cfg.get("repeat_threshold")
+    if not isinstance(threshold, int) or threshold < 2:
+        threshold = 3
+    action = cfg.get("escalation_action")
+    if action not in ("ask_user", "abort", "warn_only"):
+        action = "ask_user"
+    return window, threshold, action
 
 
 async def _safe_cb(callback, data):
