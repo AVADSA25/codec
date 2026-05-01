@@ -2130,6 +2130,152 @@ window.addEventListener('beforeinstallprompt', function(e) { deferredPrompt = e;
   });
 })();
 
+/* ── Phase 1 Step 3: AskUserQuestion inline answer panel ──────────────────
+   Polls /api/agents/pending_questions every 8s. When a pending question
+   appears, surfaces an inline panel at the top of the chat with the
+   question, deadline countdown, optional quick-action option buttons,
+   and a free-text textarea + Send. Strict-consent panels also show a
+   warning banner ("Type the word '<verb>' or click the matching option").
+   Per docs/PHASE1-STEP3-DESIGN.md §5.1 + §1.7. */
+(function(){
+  var POLL_MS = 8000;
+  var _seenQids = new Set();   // panels already rendered for this session
+  var _activePanels = {};      // qid → DOM element
+
+  function _fmtRemaining(deadline){
+    try{
+      var ms = new Date(deadline).getTime() - Date.now();
+      if(ms <= 0) return 'expired';
+      var mins = Math.floor(ms/60000);
+      var secs = Math.floor((ms%60000)/1000);
+      if(mins > 0) return mins+'m '+secs+'s';
+      return secs+'s';
+    }catch(e){return ''}
+  }
+
+  function _esc(s){var d=document.createElement('div');d.textContent=s||'';return d.innerHTML}
+
+  function _renderPanel(q){
+    if(_activePanels[q.id]) return;   // already rendered, just leave it
+    var host = document.getElementById('chatList') || document.body;
+    var panel = document.createElement('div');
+    panel.id = 'askuser-panel-'+q.id;
+    panel.className = 'askuser-panel'+(q.consent_strict?' askuser-strict':'');
+    panel.style.cssText = 'background:var(--surface-2,#1e1e22);border:2px solid '+(q.consent_strict?'#dc6c44':'var(--accent)')+';border-radius:10px;padding:14px 16px;margin:8px 0 16px 0;font-size:13px';
+
+    var who = q.agent ? _esc(q.agent)+' is asking' : 'CODEC is asking';
+    var strictBadge = q.consent_strict
+      ? '<span style="background:#dc6c44;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;margin-left:8px">DESTRUCTIVE</span>'
+      : '';
+    var deadlineHtml = q.deadline
+      ? '<span class="askuser-countdown" data-deadline="'+_esc(q.deadline)+'" style="color:var(--text-dim);font-size:11px;float:right"></span>'
+      : '';
+
+    var optionsHtml = '';
+    if(Array.isArray(q.options) && q.options.length){
+      optionsHtml = '<div class="askuser-options" style="margin:8px 0;display:flex;flex-wrap:wrap;gap:6px">';
+      for(var i=0;i<q.options.length;i++){
+        var opt = q.options[i];
+        optionsHtml += '<button class="askuser-opt-btn" data-qid="'+_esc(q.id)+'" data-opt="'+_esc(opt)+'" '+
+          'style="padding:6px 12px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px">'+
+          _esc(opt)+'</button>';
+      }
+      optionsHtml += '</div>';
+    }
+
+    var verbHint = q.consent_strict
+      ? '<div style="background:#3a1f1a;border:1px solid #dc6c44;color:#dc6c44;padding:6px 10px;border-radius:6px;margin:6px 0;font-size:11px;font-weight:600">⚠ Destructive action — generic "yes" not accepted. Click an option button OR type a phrase containing the action verb.</div>'
+      : '';
+
+    panel.innerHTML =
+      '<div style="display:flex;justify-content:space-between;align-items:start;gap:8px"><div style="flex:1"><strong>'+who+'</strong>'+strictBadge+'<div style="margin:6px 0 8px 0;color:var(--text)">'+_esc(q.question)+'</div></div>'+deadlineHtml+'</div>'+
+      verbHint +
+      optionsHtml +
+      '<div style="display:flex;gap:6px;margin-top:6px"><textarea class="askuser-textarea" data-qid="'+_esc(q.id)+'" placeholder="Type your answer..." style="flex:1;min-height:36px;max-height:120px;padding:6px 8px;background:var(--surface,#0c0c0e);border:1px solid var(--border,#2a2a30);border-radius:6px;color:var(--text);font-size:13px;font-family:inherit;resize:vertical"></textarea>'+
+      '<button class="askuser-send" data-qid="'+_esc(q.id)+'" style="padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px">Send</button></div>'+
+      '<div class="askuser-status" id="askuser-status-'+_esc(q.id)+'" style="margin-top:6px;font-size:11px;color:var(--text-dim);min-height:1em"></div>';
+
+    host.insertBefore(panel, host.firstChild);
+    _activePanels[q.id] = panel;
+    _seenQids.add(q.id);
+
+    // Wire up handlers.
+    panel.querySelectorAll('.askuser-opt-btn').forEach(function(btn){
+      btn.addEventListener('click', function(){_submitAnswer(btn.dataset.qid, btn.dataset.opt)});
+    });
+    panel.querySelector('.askuser-send').addEventListener('click', function(){
+      var ta = panel.querySelector('.askuser-textarea');
+      _submitAnswer(ta.dataset.qid, ta.value.trim());
+    });
+    panel.querySelector('.askuser-textarea').addEventListener('keydown', function(e){
+      if((e.metaKey||e.ctrlKey) && e.key==='Enter'){
+        e.preventDefault();
+        var ta=this; _submitAnswer(ta.dataset.qid, ta.value.trim());
+      }
+    });
+  }
+
+  function _submitAnswer(qid, answer){
+    if(!answer) return;
+    var status = document.getElementById('askuser-status-'+qid);
+    if(status) status.textContent = 'Sending...';
+    fetch('/api/agents/answer/'+encodeURIComponent(qid),{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({answer: answer, answered_via: 'pwa'}),
+    }).then(function(r){return r.json().then(function(d){return {status:r.status,body:d}})})
+      .then(function(res){
+        if(res.body && res.body.ok){
+          if(status) status.textContent = '✓ Answered. Agent unblocked.';
+          // Remove the panel after a short delay so the user sees confirmation.
+          setTimeout(function(){_removePanel(qid)}, 1200);
+        } else if(res.body && res.body.rejected){
+          if(status) status.innerHTML = '<span style="color:#dc6c44">⚠ Rejected — '+
+            _esc(res.body.reason||'try again')+'. '+
+            (res.body.remaining_attempts!=null ? res.body.remaining_attempts+' attempt(s) left.' : '')+'</span>';
+        } else {
+          if(status) status.innerHTML = '<span style="color:#dc6c44">Error: '+_esc((res.body&&res.body.error)||res.status)+'</span>';
+        }
+      }).catch(function(e){
+        if(status) status.innerHTML = '<span style="color:#dc6c44">Network error: '+_esc(e.message)+'</span>';
+      });
+  }
+
+  function _removePanel(qid){
+    var p = _activePanels[qid];
+    if(p && p.parentNode) p.parentNode.removeChild(p);
+    delete _activePanels[qid];
+  }
+
+  function _updateCountdowns(){
+    document.querySelectorAll('.askuser-countdown').forEach(function(el){
+      el.textContent = _fmtRemaining(el.dataset.deadline);
+    });
+  }
+  setInterval(_updateCountdowns, 1000);
+
+  function _pollPending(){
+    fetch('/api/agents/pending_questions').then(function(r){return r.json()})
+      .then(function(d){
+        var pending = (d && d.pending_questions) || [];
+        var seen = new Set();
+        pending.forEach(function(q){
+          seen.add(q.id);
+          _renderPanel(q);
+        });
+        // Drop panels for questions that vanished (answered/timed out elsewhere).
+        Object.keys(_activePanels).forEach(function(qid){
+          if(!seen.has(qid)) _removePanel(qid);
+        });
+      }).catch(function(){});
+  }
+  // Kick off polling after 1s so the dashboard finishes its initial paints.
+  setTimeout(function(){
+    _pollPending();
+    setInterval(_pollPending, POLL_MS);
+  }, 1000);
+})();
+
 /* ── Drag & Drop files/images into Flash ── */
 (function(){
   var body = document.body;
