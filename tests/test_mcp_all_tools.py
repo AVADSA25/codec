@@ -58,13 +58,26 @@ SKIP_SKILLS = {
     "scheduler", "scheduler_skill", "ax_control", "file_ops",
     "python_exec", "terminal", "process_manager", "pm2_control",
     "app_switch", "timer",
-    # 2026-05-01 incident hotfix — macOS UI side effects.
+    # 2026-05-01 incident hotfix v1 — macOS UI side effects.
     # See docs/INCIDENT-2026-05-01-spurious-skill-fires.md.
     # The user's `~/.codec/skills/reminders.py` may be the OLD version with
     # no read-mode; "list reminders" → creates a real Apple Reminder named
     # "list reminders". Tts_say literally speaks via macOS `say`. Notes
     # opens the Notes app. Generate_qr_code writes qr.png to cwd.
     "reminders", "tts_say", "notes", "generate_qr_code", "qr_generator",
+    # 2026-05-01 incident hotfix v2 — Terminal-window-opening skills.
+    # User got bombarded with new Terminal windows every time the test
+    # suite ran because these skills literally `osascript "tell Terminal
+    # to do script ..."` to display their results in a popup window.
+    # On a workstation in active use, that's intolerable noise.
+    # - memory_search: writes results to /tmp/codec_memory_<hash>.txt then
+    #   opens it via osascript. CANONICAL_PROMPTS["memory_search"]="test"
+    #   triggered this on every full-suite run.
+    # - clipboard: same pattern — /tmp/codec_clipboard_<hash>.txt opened
+    #   in a fresh Terminal window.
+    # - self_improve: writes Qwen-drafted markdown proposals to
+    #   ~/.codec/skill_proposals/. Slow (LLM call) and audit-log noise.
+    "memory_search", "clipboard", "self_improve",
 }
 
 
