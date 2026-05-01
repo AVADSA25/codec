@@ -24,12 +24,8 @@ from pathlib import Path
 import pytest
 
 _REPO = Path(__file__).resolve().parents[1]
-_REPO_STR = str(_REPO)
-while _REPO_STR in sys.path:
-    sys.path.remove(_REPO_STR)
-sys.path.insert(0, _REPO_STR)
-for _stale in ("codec_audit", "codec_ask_user", "codec_agents", "codec_voice"):
-    sys.modules.pop(_stale, None)
+if str(_REPO) not in sys.path:
+    sys.path.insert(0, str(_REPO))
 
 import codec_voice
 import codec_ask_user
@@ -219,13 +215,17 @@ def test_voice_session_marker_touch_overwrites_existing(tmp_path, monkeypatch):
 
 class _FakeVoicePipeline:
     """Minimal stand-in that has the attributes _poll_pending_question_for_voice
-    needs: ``self._cid`` and ``self._announced_question_ids``."""
+    needs: ``self._cid`` and ``self._announced_question_ids``. The real method
+    is bound in __init__ so we don't reach into codec_voice at class-definition
+    time (which races with pytest's collection order if codec_voice happens to
+    be cached from a wrong path)."""
     def __init__(self, cid: str):
         self._cid = cid
         self._announced_question_ids = set()
-    # Bind the real method onto the fake.
-    _poll_pending_question_for_voice = (
-        codec_voice.VoicePipeline._poll_pending_question_for_voice)
+        # Bind at instance time so we read the CURRENT codec_voice.VoicePipeline.
+        self._poll_pending_question_for_voice = (
+            codec_voice.VoicePipeline._poll_pending_question_for_voice.__get__(self)
+        )
 
 
 @pytest.fixture

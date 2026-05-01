@@ -24,15 +24,8 @@ from pathlib import Path
 import pytest
 
 _REPO = Path(__file__).resolve().parents[1]
-# Force the worktree path to win even if main repo is already on sys.path —
-# otherwise pytest's conftest may have stuck `~/codec-repo` ahead of us.
-_REPO_STR = str(_REPO)
-while _REPO_STR in sys.path:
-    sys.path.remove(_REPO_STR)
-sys.path.insert(0, _REPO_STR)
-# Drop any cached main-repo codec_audit so the next import resolves from worktree.
-for _stale in ("codec_audit", "codec_ask_user", "codec_agents", "codec_voice"):
-    sys.modules.pop(_stale, None)
+if str(_REPO) not in sys.path:
+    sys.path.insert(0, str(_REPO))
 
 import codec_audit
 import codec_ask_user
