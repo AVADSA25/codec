@@ -22,7 +22,6 @@ CANONICAL_PROMPTS = {
     "calculator": "2 + 2",
     "bitcoin_price": "bitcoin price",
     "password_generator": "generate password",
-    "qr_generator": "qr code for hello",
     "time": "what time is it",
     "time_date": "what time is it",
     "json_formatter": 'format json {"a":1}',
@@ -34,11 +33,8 @@ CANONICAL_PROMPTS = {
     "memory_search": "test",
     "memory_history": "list active facts",
     "memory_entities": "list entities",
-    "tts_say": "say test",  # will fallback to macOS say
     "google_tasks": "list tasks",  # read-only
     "google_calendar": "list today events",
-    "notes": "list notes",  # read intent, opens Notes
-    "reminders": "list reminders",
     "pomodoro": "pomodoro status",
     "file_search": "find file CLAUDE.md",
     "clipboard": "read clipboard",
@@ -62,6 +58,13 @@ SKIP_SKILLS = {
     "scheduler", "scheduler_skill", "ax_control", "file_ops",
     "python_exec", "terminal", "process_manager", "pm2_control",
     "app_switch", "timer",
+    # 2026-05-01 incident hotfix — macOS UI side effects.
+    # See docs/INCIDENT-2026-05-01-spurious-skill-fires.md.
+    # The user's `~/.codec/skills/reminders.py` may be the OLD version with
+    # no read-mode; "list reminders" → creates a real Apple Reminder named
+    # "list reminders". Tts_say literally speaks via macOS `say`. Notes
+    # opens the Notes app. Generate_qr_code writes qr.png to cwd.
+    "reminders", "tts_say", "notes", "generate_qr_code", "qr_generator",
 }
 
 
