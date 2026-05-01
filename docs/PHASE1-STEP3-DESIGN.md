@@ -1,12 +1,14 @@
 # PHASE 1 STEP 3 — `AskUserQuestion` + Stuck Detection + Chat-handler Step Budget
 
-**Status:** DESIGN. Not implemented.
-**Author:** drafted by Claude Code, reviewed by Mickael + Claude chat before any code is written.
+**Status:** DESIGN v2 — §9 RESOLVED. Ready for implementation prompt.
+**Author:** drafted by Claude Code, reviewed by Mickael + Claude chat 2026-05-01.
 **Depends on:**
 - Phase 1 Step 1 (commit `45d4aa7`) — unified audit envelope (`schema:1`) + `correlation_id` contract
 - Phase 1 Step 2 (commit `15c6f70`) — plugin lifecycle hook system (`run_with_hooks`, `HookCtx.operation_id`, `hook_fired` / `hook_error` / `tool_vetoed` events)
 **Source spec:** `~/ava-stack/docs/PHASE2-design-specs.md` §1, §2, §3 — copied verbatim into Appendix A below as the canonical engineering reference (per the 2026-04-30 chat decision: copy not link).
 **Scope:** three of the five `Known gaps (tracked for Phase 2)` from `AGENTS.md` §3 — `AskUserQuestion`, stuck detection, chat-handler step budget. The remaining two (formal teammate / sub-agent recursion, additional self-detection signals) are deferred to Step 5+. **No code changes in this step.**
+
+**v1 → v2 changes (2026-05-01 reviewer pass):** all 7 §9 questions resolved; two carried tightenings — Q3 added inline §3.2 *"tune up before tuning out"* guidance (bump `step_budget.chat` to 8 or 10 before disabling the budget entirely) with `step_budget_exhausted` audit event as the trigger signal, Q5 added §5.3.1 fuzzy-option-match algorithm for voice ASR ("yeah approve" → `Approve`) with strict-consent bypass for irreversible actions. Plus one out-of-band addition that became **new §1.7** — destructive-action consent gate: irreversible actions (`_HTTP_BLOCKED` skills, caller `destructive=True`) require literal verb-match for acceptance, two-strike rejection times out with `extra.reason="ambiguous_consent"`. §6 audit table enriched accordingly. No behavior change implied beyond the resolved questions — this is the contract before code.
 
 ---
 
@@ -157,11 +159,75 @@ Existing schema (per AGENTS.md §6) uses `type ∈ { "task_report", "alert", "st
 
 The PWA badge already polls `/api/notifications/count` every 30s. With the new `type`, the frontend can render question-type entries with a distinct visual (orange pulse vs the existing blue badge for task_reports) and surface the answer affordance inline. See §5 for the full PWA UX.
 
-### 1.7 Resume — operation_id continuity
+### 1.7 Destructive-action confirmation — strict-consent gate
+
+When an `AskUserQuestion` is asked **about** an irreversible action — file delete, send / transfer, any tool listed in `codec_config._HTTP_BLOCKED`, or any tool the caller explicitly marks `destructive=True` — the answer-acceptance path tightens. A casual "yes" or "yeah sure" is **not** sufficient consent. The user has to either click the matching option button or speak/type a phrase containing the destructive verb.
+
+#### When the strict-consent gate fires
+
+The caller of `ask()` opts in via a new kwarg:
+
+```python
+from codec_ask_user import ask
+answer = ask(
+    question="Delete /Users/mickael/Reports/Q1.pdf? This cannot be undone.",
+    options=["Delete it", "Cancel"],
+    destructive=True,                    # ← strict-consent ON
+    destructive_verb="delete",            # ← the keyword that must appear
+    timeout=600,
+)
+```
+
+Three caller-trigger modes — caller specifies whichever fits:
+
+| trigger | how to opt in | when it fires automatically |
+|---|---|---|
+| Explicit `destructive=True` kwarg | caller passes it | caller knows the action is irreversible |
+| Tool-name in `codec_config._HTTP_BLOCKED` | core code introspects the calling agent's pending tool | `ask()` invoked inside a tool_fn for `python_exec` / `terminal` / `process_manager` / `pm2_control` / `ax_control` |
+| Caller-supplied `destructive_verb` | caller passes the verb explicitly | regardless of `destructive` flag — any `destructive_verb` string switches the gate on |
+
+If `destructive=True` and `destructive_verb` is `None`, the gate uses a default verb extracted from the question heuristically (first verb in the question), with a fall-back to the literal word `confirm`. Heuristic stays in core; tested in `tests/test_ask_user.py::test_destructive_verb_default_extraction`.
+
+#### Acceptance rules per channel
+
+**PWA path (`POST /api/agents/answer/{id}`):**
+
+| answer body | accepted? | what the user sees |
+|---|---|---|
+| Click on the matching option button (e.g. `"Delete it"`) | ✅ accepted | answer recorded, agent unblocked |
+| Typed text containing `destructive_verb` case-insensitive (e.g. `"yes delete it"`, `"DELETE"`) | ✅ accepted | same |
+| Generic `"yes"`, `"y"`, `"ok"`, `"sure"`, `"yep"`, `"yeah"` (lowercased, stripped) — none contain the verb | ❌ rejected with re-prompt | UI banner: `"Destructive action — please type the word '<verb>' or click the matching option button"` |
+| Empty / whitespace-only | ❌ rejected with re-prompt | same |
+| Any other text | ✅ accepted (treated as a non-confirming answer; if it doesn't match the verb the answer just isn't `"Delete it"` and the agent's downstream logic decides) |
+
+The handler in `codec_dashboard.py:/api/agents/answer/{id}` checks `pending_questions.json[id].consent_strict == True` and applies the rules. On rejection, the answer is **not** written, no event fires, the panel re-prompts (HTTP 200 with `{"ok": false, "rejected": true, "reason": "ambiguous_consent", "remaining_attempts": <N>}`).
+
+**Voice path:** identical rules applied to the ASR transcript. The Q5 fuzzy-match layer (per §5.3) is **bypassed** when `consent_strict=True` — strict-consent forces literal verb-match, no fuzzy "yeah approve" → "Approve" rewriting. Why: fuzzy-match is permissive on intent inference and that's exactly what we DON'T want for irreversible actions. Different threshold for different stakes.
+
+#### Two-strike timeout
+
+After **two** rejected answers (per channel; PWA-and-voice rejections are summed), the question times out as `ask_user_question_timeout` with `extra.reason="ambiguous_consent"` (vs the normal `extra.reason="deadline"` for clock-driven timeouts). The agent receives the same `"(no answer — timed out)"` sentinel and decides what to do — the design intent is "if the user can't unambiguously consent in two tries, treat as a no-go and let the agent fail safe."
+
+The two-strike limit is configurable via `~/.codec/config.json: ask_user.consent_strict_max_attempts` (default `2`).
+
+#### Audit envelope
+
+`ask_user_question_emit` audit event gains a new `extra.consent_strict` boolean (per §6 update). `ask_user_question_timeout` gains a new `extra.reason` field with the two values `"deadline"` (clock ran out) and `"ambiguous_consent"` (strict-consent rejected twice). Both inherit `correlation_id` per Step 1 §1.4.
+
+#### Cost / risk envelope
+
+This adds ~40 LOC to `codec_ask_user.py` (the strict-consent acceptance helper plus the verb extractor) and 1 audit field. The cost/benefit:
+
+- **Caught failure mode:** "voice agent triggered the wrong destructive action because the user wasn't fully listening, said 'yeah sure' to a question they thought was confirming a non-destructive option." This is a real risk on any voice path that ever calls a `_HTTP_BLOCKED` skill.
+- **False-rejection cost:** the user has to type or say the verb explicitly. ~3 extra characters in PWA, ~1 extra second of voice. Minor.
+
+The ratio favors strict-consent. Same pattern as the existing dangerous-command guard in `codec.py` per AGENTS.md §7 — irreversible operations require explicit acknowledgement, not implicit "yes".
+
+### 1.8 Resume — operation_id continuity
 
 Per Step 1 §1.4: `correlation_id` is generated once at operation entry and threaded through every audit emit. This is preserved across the AskUserQuestion wait — the agent thread holds the same `correlation_id` in its `contextvars` while blocked, and any nested emits (the `ask_user_question_*` chain, plus later `tool_call`/`tool_result` after resume) carry the same id. **The agent does NOT re-emit a fresh envelope on resume.** The blocked-then-unblocked tool call looks like one logical operation in the audit log — exactly the behavior the analyzer's pairing logic expects.
 
-### 1.8 LLM-facing skill (the `skills/ask_user.py` shim)
+### 1.9 LLM-facing skill (the `skills/ask_user.py` shim)
 
 ```python
 SKILL_NAME = "ask_user"
@@ -315,6 +381,20 @@ The chat-handler cap is the **outermost** boundary. A crew spawned from `/api/ch
 
 `mcp: null` means MCP doesn't have a turn concept — each tool call is its own turn, governed by SKILL_TIMEOUT_SEC (30s) and the unchanged blocked-stub registration from Step 2.
 
+**Tune up before tuning out (Q3 reviewer addition):** if the default of 5 turns out tight for the user's normal cascades, the recommended path is to **bump the value, not disable the budget entirely**. A single `~/.codec/config.json` edit takes the cap to 8 (a comfortable middle) or 10 (matches the source spec's 15 less the LLM-call reserve). Restart codec-dashboard, done. The discoverability matters: a user who sees `step_budget_exhausted` events in their audit log should reach for the config edit before reaching for `STEP_BUDGET_ENABLED=false`. The escape hatches are documented in this order in `~/.codec/README.md` and the `/doctor` skill output (Phase 1 Step 4 territory):
+
+```jsonc
+// ~/.codec/config.json — tune progressively before disabling
+"step_budget": {
+  "chat": 5      // ← default. Bump to 8 or 10 if you hit it on normal turns.
+                 //   Disable entirely (STEP_BUDGET_ENABLED=false env var)
+                 //   only as a last resort; you'll lose the runaway-cost
+                 //   safety net.
+}
+```
+
+`step_budget_exhausted` audit events are the signal: if you see >2 in a 24-hour window during normal chat, bump the cap. If you see >10 in 24 hours, *something is genuinely runaway* — fix that, not the cap.
+
 ### 3.3 LLM-visible behavior
 
 Per source spec: at step `budget - 1`, append `"⚠️ 1 step remaining. Wrap up."` to the system prompt suffix for that turn. At budget exhaustion: forcibly switch the LLM call to a "summarize what you have and stop" mode — system prompt becomes `"You've hit the step budget. Summarize what you accomplished and any blockers. Do NOT call more tools."` and `max_tokens` halves.
@@ -388,6 +468,35 @@ This matches the source spec's "voice path" intent. Scope-controlled: only fires
 
 If voice ASR returns empty / "no answer", the voice pipeline calls the same path as PWA timeout (deadline-driven, not user-driven).
 
+#### 5.3.1 Fuzzy option-match for structured options (Q5 reviewer addition)
+
+When the question carries `options` (per Q7 — quick-action button labels also surfaced as voice choices), the voice ASR layer **must** accept free-form natural language and map it to the closest option, NOT require exact keyword grammar. The user saying "yeah approve it" should resolve to the `Approve` option; "skip it" should resolve to `Reject`. Forcing the user to literally say `"Approve"` or `"Reject"` makes voice feel like a command-line — defeating the point of voice.
+
+**Matching algorithm** (in `codec_voice.py` after ASR transcript is produced, before POSTing the answer to `/api/agents/answer/{id}`):
+
+1. Lowercase + strip punctuation from transcript and from each option label.
+2. **Exact substring match** — if `"approve"` is in the transcript, return `"Approve"`. Wins immediately.
+3. **Synonym/intent map** — small hand-curated dict for the most common forms. Lives in `codec_voice.py` as `_VOICE_OPTION_SYNONYMS`:
+   ```python
+   _VOICE_OPTION_SYNONYMS = {
+       "approve":  ["yes", "yeah", "ok", "okay", "go ahead", "do it",
+                    "approve it", "go for it", "sounds good"],
+       "reject":   ["no", "nope", "skip", "skip it", "cancel", "don't",
+                    "abort", "forget it", "nevermind"],
+       "modify":   ["change", "edit", "different", "tweak", "adjust"],
+       "delete":   ["delete", "remove", "destroy", "wipe", "trash"],
+       "send":     ["send", "send it", "transmit", "deliver"],
+       "transfer": ["transfer", "move", "wire", "send money"],
+   }
+   ```
+   The match key is the **lowercased option label**. If `options=["Approve","Reject","Modify"]`, the resolver checks each transcript word against the synonym set for `"approve"`, `"reject"`, `"modify"` and returns the option label whose synonym set has the best hit.
+4. **Levenshtein distance fallback** — if no exact-or-synonym match, compute Levenshtein between the transcript (truncated to 30 chars) and each option label. If the closest distance is ≤ 3 and ≤ 30% of label length, return that option.
+5. **No-match fallback** — return the raw transcript as a free-text answer. Downstream `_dispatch_inner` for `/api/agents/answer/{id}` treats it as a non-structured response; the agent's downstream logic handles "user said something we couldn't map."
+
+Tested in `tests/test_ask_user.py::test_voice_fuzzy_option_match_yeah_approve_resolves_to_Approve` and a parameterised set of common phrases.
+
+**Strict-consent BYPASSES fuzzy match** (per §1.7): when `consent_strict=True`, the voice ASR layer requires the spoken transcript to literally contain the `destructive_verb` (case-insensitive). Synonym-and-Levenshtein paths are disabled. If the user says "yeah delete it" the literal `"delete"` is present — accepted. If they say "yeah do it", no destructive verb in the transcript — rejected, agent re-asks once. Two rejections → timeout with `extra.reason="ambiguous_consent"`. The asymmetry is deliberate: fuzzy-matching an irreversible action is exactly what we don't want.
+
 ---
 
 ## 6 · Audit envelope additions
@@ -396,9 +505,9 @@ Six new event types, all `schema:1` envelope, all inheriting the wrapping operat
 
 | event | source | required `extra` fields | outcome | level |
 |---|---|---|---|---|
-| `ask_user_question_emit` | `codec-ask-user` | `pending_question_id`, `question_preview` (≤ `_PREVIEW_MAX`), `options`, `timeout_seconds`, `agent`, `crew_id`, `asked_from` | `ok` | `info` |
+| `ask_user_question_emit` | `codec-ask-user` | `pending_question_id`, `question_preview` (≤ `_PREVIEW_MAX`), `options`, `timeout_seconds`, `agent`, `crew_id`, `asked_from`, `consent_strict` (bool, §1.7), `destructive_verb` (str\|null, only when `consent_strict=true`) | `ok` | `info` |
 | `ask_user_question_answer` | `codec-ask-user` | `pending_question_id`, `answered_via` (`pwa`\|`voice`), `answer_len`, `elapsed_seconds` | `ok` | `info` |
-| `ask_user_question_timeout` | `codec-ask-user` | `pending_question_id`, `elapsed_seconds`, `timeout_seconds` | `warning` | `warning` |
+| `ask_user_question_timeout` | `codec-ask-user` | `pending_question_id`, `elapsed_seconds`, `timeout_seconds`, `reason` (`deadline`\|`ambiguous_consent`, per §1.7), `consent_rejection_count` (int, only when `reason="ambiguous_consent"`) | `warning` | `warning` |
 | `stuck_warning` | `codec-agents` | `tool`, `repeat_count`, `agent` | `warning` | `warning` |
 | `stuck_escalated` | `codec-agents` | `tool`, `repeat_count`, `agent`, `action` (`ask_user`\|`abort`\|`warn_only`) | `warning` | `warning` |
 | `step_budget_exhausted` | `codec-dashboard` (chat) / `codec-voice` (voice) | `budget_type` (`chat_turn`\|`crew_max_steps`\|`agent_max_tool_calls`), `limit`, `actual` | `warning` | `warning` |
@@ -560,19 +669,29 @@ Hard-revert criteria add three Step 3-specific signals:
 
 ---
 
-## 9 · Open questions for the reviewer
+## 9 · Reviewer resolutions (closed)
 
-| # | Question | Recommendation | Why a real choice |
-|---|---|---|---|
-| **Q1** | `ask_user` timeout default — 60s (source spec) vs 600s (this design's recommendation) vs configurable-no-default? | **600s default + configurable.** 60s is too short for the realistic case (user is doing something else and only checks PWA every few minutes). Configurable-no-default forces every caller to specify; bad ergonomics. | Real ergonomics call. 60s is comfortable for in-the-flow chat, hostile for ambient/background crews. |
-| **Q2** | Stuck thresholds — `N=3, M=5` (this design) vs `N=5, M=10` (more permissive)? | **N=3, M=5.** Source spec says ≥3 repeats is the canonical signal; tighter window catches loops faster. | Higher N would miss tight loops; higher M would generate false positives for legitimate agents that revisit a tool naturally over many turns. |
-| **Q3** | Step budget default — chat=5 (user prompt) vs chat=15 (source spec)? | **chat=5 default**, document chat=15 as the alt. The user prompt is more conservative — catches more pathological cases at the cost of trimming some legitimate cascades. Easy to bump in `~/.codec/config.json` if 5 turns out tight. | Defaults are sticky. Aggressive default → user feedback and we tune up. Loose default → tokens burned before anyone notices. |
-| **Q4** | Stuck detection per-agent (this design) vs per-crew aggregate? | **Per-agent.** Each agent has independent state and independent dysfunction modes. Aggregating would mask one agent's loop behind another's normal activity. | A `deep_research` crew's Researcher and Writer have different work patterns; treating them as one silences signal. |
-| **Q5** | Voice ask_user — TTS+listen during active voice session (this design) vs always defer to PWA? | **TTS+listen if a voice session is currently active.** Closing the loop without forcing context switch is the user-respect move. | Forcing PWA hop mid-voice-session breaks the use case the user is in — talking to CODEC. |
-| **Q6** | Step-budget interaction with crew nesting — chat-spawned crew counts as 1 step toward chat budget (this design) vs each crew internal step counts? | **1 step.** The crew has its own 8-step budget; double-counting punishes legitimate crew work twice. | Counting nested steps inflates the chat-turn budget unpredictably (depends on which crew got spawned). 1-step charge keeps the chat budget about chat. |
-| **Q7** | PWA quick-action buttons — supported in this step (free-text + structured options) vs free-text only first, options in a follow-up step? | **Both in this step.** Adding options is ~30 lines of JS in `codec_dashboard.html` and the affordance is what makes "Approve / Reject" flows actually fast. | Options are the differentiator vs a generic notification. Free-text-only would feel like email. |
+**Status: RESOLVED.** All seven questions decided by the Phase 1 reviewer (Mickael + Claude chat) on 2026-05-01. Two of the seven approvals carried tightenings, plus one out-of-band addition (destructive-action consent) that became §1.7 — all baked into the body of the doc above (§1.7 new, §3.2 amended, §5.3 amended, §6 enriched).
 
-Step 1 had 5 open questions (resolved before merge). Step 2 had 6. Step 3 has 7. The pattern reflects scope: each step layers more user-visible mechanism on the previous, expanding the surface that needs reviewer judgment.
+| # | Question | Resolution |
+|---|---|---|
+| **Q1** | `ask_user` timeout default — 60s (source spec) vs 600s (this design's recommendation) vs configurable-no-default? | **APPROVED** as recommended. 600s default + per-call `timeout` kwarg. Documented in §1.4. |
+| **Q2** | Stuck thresholds — `N=3, M=5` (this design) vs `N=5, M=10` (more permissive)? | **APPROVED** as recommended. `N=3, M=5` per-agent. Documented in §2.2. |
+| **Q3** | Step budget default — chat=5 (user prompt) vs chat=15 (source spec)? | **APPROVED with tightening.** chat=5 default. **Tightening:** §3.2 now documents inline that bumping to 8 or 10 is a single `~/.codec/config.json` edit, with the explicit reasoning *"tune up before tuning out"* — users seeing `step_budget_exhausted` events should reach for the config edit before reaching for `STEP_BUDGET_ENABLED=false`. The escape-hatch order is documented: first `step_budget.chat: 8`, then `: 10`, then `STEP_BUDGET_ENABLED=false` only as last resort. The §3.2 inline guidance also calls out the `step_budget_exhausted` audit-event signal as the trigger to tune — >2 in 24h means tune up; >10 in 24h means *something is genuinely runaway, fix the runaway, not the cap*. |
+| **Q4** | Stuck detection per-agent (this design) vs per-crew aggregate? | **APPROVED** as recommended. Per-agent ring buffer in `Agent` dataclass. Documented in §2.2. |
+| **Q5** | Voice ask_user — TTS+listen during active voice session (this design) vs always defer to PWA? | **APPROVED with constraint.** Voice TTS+listen IS the path for active voice sessions. **Constraint:** when the question carries structured `options` (per Q7), the voice ASR layer MUST accept free-form natural language matched to the closest option ("yeah approve" → `Approve`, "skip it" → `Reject`), not require exact-keyword grammar. New §5.3.1 documents the matching algorithm: exact substring → curated `_VOICE_OPTION_SYNONYMS` dict → Levenshtein fallback (≤3 distance, ≤30% of label length) → no-match falls through as free-text. **Strict-consent bypasses the fuzzy layer** (per §1.7) — for irreversible actions, the literal destructive verb must be present. Asymmetry deliberate: fuzzy-matching an irreversible action is exactly what we don't want. |
+| **Q6** | Step-budget interaction with crew nesting — chat-spawned crew counts as 1 step toward chat budget (this design) vs each crew internal step counts? | **APPROVED** as recommended. Crew-from-chat = 1 step toward chat budget. Crew's own 8-step + agent's 5-step are independent inner budgets. Documented in §3.2. |
+| **Q7** | PWA quick-action buttons — supported in this step (free-text + structured options) vs free-text only first, options in a follow-up step? | **APPROVED** as recommended. Both in this step. Free-text textarea + quick-action option buttons + deadline countdown render in the inline answer panel per §5.1. |
+
+### Out-of-band addition — destructive-action consent gate (became §1.7)
+
+Beyond the seven §9 questions, the reviewer added a new requirement: irreversible actions (file delete, send, transfer, any tool in `codec_config._HTTP_BLOCKED`, or any tool the caller marks `destructive=True`) require strict consent — generic "yes" or "ok" is rejected with a re-prompt; the response must be the matching option button click OR text/speech containing the destructive verb. After two rejections the question times out as `ask_user_question_timeout` with `extra.reason="ambiguous_consent"`.
+
+Cost: ~40 LOC in `codec_ask_user.py` (acceptance helper + verb extractor) + 1 new audit field (`extra.consent_strict=true` on emit, `extra.reason` enum on timeout). Caught failure mode: voice agent triggered the wrong destructive action because the user wasn't fully listening and said "yeah sure" thinking the question was about something benign. Same pattern as the existing dangerous-command guard in `codec.py` per AGENTS.md §7 — irreversible operations require explicit acknowledgement.
+
+Full spec in **§1.7** (caller opt-in via `destructive=True` kwarg or `destructive_verb` parameter or auto-trigger when caller's tool is in `_HTTP_BLOCKED`; PWA + voice acceptance rules; two-strike timeout; audit envelope additions).
+
+Step 1 had 5 open questions (resolved before merge). Step 2 had 6. Step 3 had 7 + 1 out-of-band addition (8 total resolutions). All resolved; no further reviewer input needed before implementation.
 
 ---
 
@@ -580,14 +699,14 @@ Step 1 had 5 open questions (resolved before merge). Step 2 had 6. Step 3 has 7.
 
 | File | Δ | What |
 |---|---|---|
-| `codec_ask_user.py` (new) | ~+220 LOC | Core: `ask()`, `_load_pending_questions()`, `_save_pending_questions()`, `_ASKUSER_EVENTS` registry, threading.Event-based blocking, voice-session TTS+listen fallback, audit emits |
+| `codec_ask_user.py` (new) | ~+260 LOC | Core: `ask()`, `_load_pending_questions()`, `_save_pending_questions()`, `_ASKUSER_EVENTS` registry, threading.Event-based blocking, voice-session TTS+listen fallback, audit emits. **§1.7 strict-consent gate** adds the acceptance helper (`_is_consenting_answer`) + verb extractor (`_default_destructive_verb`) + two-strike rejection counter — ~+40 LOC over the v1 estimate |
 | `skills/ask_user.py` (new) | ~+30 LOC | LLM-facing shim: `SKILL_NAME`, `SKILL_DESCRIPTION`, `SKILL_TRIGGERS`, `def run()` calling `codec_ask_user.ask()` |
 | `skills/stuck.py` (new, optional companion) | ~+50 LOC | Manual stuck-skill the LLM can self-invoke. Builds context summary, calls `ask_user`. Core auto-detect lives in `codec_agents.py` |
 | `codec_agents.py` | ~-2 / +60 | Agent dataclass: `_recent_calls` ring buffer + `stuck_threshold` / `stuck_window` / `stuck_escalation_action` config-loaded fields. `_handle_stuck()` method (warn → escalate). Agent loop: append to `_recent_calls` after each tool, check threshold |
 | `codec_dashboard.py` | ~+90 LOC | `/api/chat` handler: `tool_calls_this_turn` counter + budget check + warn-at-N-1 + force-summary-at-N. New endpoint `POST /api/agents/answer/{id}`. Notification serializer extends to handle `type="question"` entries with deep-link, options, deadline countdown fields. |
 | `codec_dashboard.html` | ~+120 LOC | Question-type notification renderer (orange pulse), inline answer panel with textarea + quick-action buttons, deadline countdown. JS: poll `/api/notifications` for `type="question"` and surface the panel |
-| `codec_voice.py` | ~+45 LOC | Voice-session ask_user fallback: detect active session, TTS-announce, listen for spoken answer, route through `/api/agents/answer/{id}`. State flag `self._awaiting_ask_user` |
-| `codec_audit.py` | ~+15 LOC | Six new event constants + docstring extension of Step 2's enum |
+| `codec_voice.py` | ~+85 LOC | Voice-session ask_user fallback: detect active session, TTS-announce, listen for spoken answer, route through `/api/agents/answer/{id}`. State flag `self._awaiting_ask_user`. **§5.3.1 Q5 fuzzy-option-match layer** adds `_VOICE_OPTION_SYNONYMS` dict + `_resolve_voice_option_choice(transcript, options)` helper (exact substring → synonym map → Levenshtein fallback). Bypassed when `consent_strict=True` per §1.7 — ~+40 LOC over the v1 estimate |
+| `codec_audit.py` | ~+18 LOC | Six new event constants + docstring extension of Step 2's enum, plus the `ask_user_question_emit` / `_timeout` envelope additions (`consent_strict`, `destructive_verb`, `reason`, `consent_rejection_count` fields per §6 §1.7 enrichment) |
 | `routes/_shared.py` | ~+20 LOC | Notification serializer accepts `type="question"` and the new fields (`pending_question_id`, `options`, `agent`, `deadline`); `_save_notification()` accepts a `type` kwarg |
 | `~/.codec/config.json` | small additive | New keys: `ask_user.timeout_seconds`, `stuck.repeat_threshold`, `stuck.window`, `stuck.escalation_action`, `step_budget.chat`, `step_budget.voice` |
 | `AGENTS.md` §3 | small update | Remove "No `AskUserQuestion` tool", "No `stuck` self-detection", "No step budget at chat-handler level" lines from Known-gaps. Add cross-reference to this design doc as Step 3 implementation. |
@@ -597,7 +716,7 @@ Step 1 had 5 open questions (resolved before merge). Step 2 had 6. Step 3 has 7.
 | `tests/test_step3_integration.py` (new) | ~+50 LOC | §7.4 cross-feature |
 | `docs/PHASE1-STEP3-POSTMERGE-SAMPLES.md` (new) | small | Reserved for post-merge 24h sampling per §8.5 |
 
-**Net code change:** ~+595 functional LOC (most concentrated in `codec_ask_user.py` and `codec_dashboard.py`), ~+570 LOC tests, **zero breaking changes** to schema:1, the Step 2 hook contract, or to skill/crew/voice/MCP/chat behaviour for users with default config + all three feature flags on. New audit events (`ask_user_question_emit`/`answer`/`timeout`, `stuck_warning`, `stuck_escalated`, `step_budget_exhausted`) are additive and the existing analyzer tolerates them.
+**Net code change:** ~+680 functional LOC (was ~+595 in v1; the v2 reviewer additions added ~+40 to `codec_ask_user.py` for the strict-consent gate, ~+40 to `codec_voice.py` for the fuzzy-option-match layer, ~+3 to `codec_audit.py` for the enriched envelope, ~+2 to `~/.codec/config.json` keys), ~+650 LOC tests (added strict-consent acceptance tests, fuzzy-match parameterised tests, two-strike timeout test). **Zero breaking changes** to schema:1, the Step 2 hook contract, or to skill/crew/voice/MCP/chat behaviour for users with default config + all three feature flags on. New audit events (`ask_user_question_emit`/`answer`/`timeout`, `stuck_warning`, `stuck_escalated`, `step_budget_exhausted`) are additive and the existing analyzer tolerates them.
 
 ---
 
@@ -609,4 +728,4 @@ The verbatim text is in §1.1, §2.1, §3.1 above (one section per spec, marked 
 
 ---
 
-**End of design (v1).** No code modified. No other docs written. Stops here.
+**End of design (v2 — §9 RESOLVED).** No code modified. No other docs written. Stops here.
