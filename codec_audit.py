@@ -153,6 +153,55 @@ STEP_BUDGET_EXTRA_FIELDS = (
 )
 
 
+# ── Phase 2 Step 5 event names (Continuous Observation Loop) ──────────────────
+# Per docs/PHASE2-STEP5-DESIGN.md §3. `observation_tick` is `level="info"`
+# (operational signal, fires once per poll cycle). `observation_summary_injected`
+# is `level="info"` and inherits the wrapping chat/voice operation's
+# correlation_id (per Step 1 §1.4 — this emit is part of that op, not new).
+# `observation_tick_slow` (Q5.5) is `level="warning"` to flag poll-overrun
+# without changing behavior. `observer_buffer_inspected` (Q5.6) audits any
+# debug-gated read of the live buffer state via the PWA endpoint.
+OBSERVATION_TICK              = "observation_tick"
+OBSERVATION_TICK_SLOW         = "observation_tick_slow"        # Q5.5
+OBSERVATION_SUMMARY_INJECTED  = "observation_summary_injected"
+OBSERVER_BUFFER_INSPECTED     = "observer_buffer_inspected"    # Q5.6
+
+PHASE2_STEP5_EVENTS = frozenset({
+    OBSERVATION_TICK, OBSERVATION_TICK_SLOW,
+    OBSERVATION_SUMMARY_INJECTED, OBSERVER_BUFFER_INSPECTED,
+})
+
+# Step 5 event-specific extra-field reservations.
+# observation_tick / observation_tick_slow are METADATA-ONLY by design —
+# no titles, no OCR text, no clipboard content, no file paths.
+# (See design §3 "What we deliberately do NOT emit".)
+OBSERVATION_TICK_EXTRA_FIELDS = (
+    "active_app",              # str — e.g. "Google Chrome"
+    "active_title_len",        # int — length only
+    "ocr_chars",               # int — length of OCR result
+    "ocr_skipped",             # bool — true if OCR timed out
+    "clipboard_changed",       # bool
+    "clipboard_kind",          # "url" | "text" | "code" | "json" | "image_blob_redacted"
+    "recent_files_count",      # int
+    "idle_seconds",            # float — at time of poll
+    "cadence_used_s",          # int — 60 or 300, selected per Q1
+    "buffer_depth",            # int — current ring buffer length
+    "poll_duration_ms",        # float — for OBSERVATION_TICK_SLOW threshold
+)
+
+OBSERVATION_INJECTION_EXTRA_FIELDS = (
+    "tokens_used",             # int
+    "injection_reason",        # "always_local" | "possessive_match" |
+                               # "continuation_match" | "skill_flag"
+    "buffer_entries_summarized",  # int
+)
+
+OBSERVER_BUFFER_INSPECT_EXTRA_FIELDS = (
+    "client_ip",               # str — who hit the debug endpoint
+    "buffer_entries_returned", # int
+)
+
+
 # ── Helpers ────────────────────────────────────────────────────────────────────
 def _truncate(s, max_len: int = _PREVIEW_MAX) -> str:
     """Truncate a string to `max_len` chars. None/non-str → ''. Never raises."""
