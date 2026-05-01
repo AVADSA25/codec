@@ -1,15 +1,15 @@
-"""CODEC Self-Improvement — nightly gap analyzer.
+"""CODEC Self-Improvement — gap analyzer (legacy nightly + Phase 1 Step 4 plugin).
 
-Replays yesterday's audit.log. For every high-signal gap, asks Qwen to DRAFT
+Replays an audit.log day. For every high-signal gap, asks Qwen to DRAFT
 a proposal for a new or improved skill. Proposals are staged in
 ~/.codec/skill_proposals/ for human review — NEVER auto-deployed.
 
 Signals detected:
   1. Unknown-tool calls (Claude tried a tool name that doesn't exist) —
      strong signal the user wants capability X but CODEC can't do it yet.
-  2. Repeatedly failing tools (≥3 errors, ≥40% error rate) — candidate for
+  2. Repeatedly failing tools (≥5 calls, ≥40% error rate) — candidate for
      rewrite or wrapper.
-  3. Repeated timeouts on same tool — candidate for async/retry wrapper.
+  3. Repeated timeouts on same tool (≥3) — candidate for async/retry wrapper.
 
 Output: one markdown file per proposal at
    ~/.codec/skill_proposals/YYYY-MM-DD/<name>.md
@@ -17,11 +17,53 @@ containing: rationale, example failing calls, proposed code, validation status.
 
 Safety:
   - Generated code is validated via codec_config.is_dangerous_skill_code
-  - Limit: 3 proposals per run
+  - Limit: 3 proposals per run (MAX_PROPOSALS_PER_RUN)
   - Never writes to skills/ directly — review via scripts/promote_skill.py
 
-Run:  python3 codec_self_improve.py
-Auto: wire into autopilot.json at a nightly time.
+────────────────────────────────────────────────────────────────────────
+Two trigger paths share this module's helpers:
+────────────────────────────────────────────────────────────────────────
+
+[1] Legacy nightly / on-demand path — `run_once(target_date)`.
+    Invoked via:
+      - CLI:    `python3 codec_self_improve.py [YYYY-MM-DD]`
+      - skill:  `skills/self_improve.py` → `run_once(date)`
+      - autopilot trigger (if `~/.codec/autopilot.json` enables it)
+    Unchanged behavior. Tests + import paths preserved.
+
+[2] Plugin path — `plugins/self_improve.py` (Phase 1 Step 4).
+    Registers post_tool / on_error / on_operation_end hooks. Captures
+    every tool fire as a signal in an in-memory ring buffer; on each
+    operation-end, snapshots the buffer and runs the SAME helpers
+    (_find_gaps, _draft_skill, _validate, _write_proposal) in a
+    daemon thread. Same proposals end up in the same directory —
+    only the trigger changes.
+
+The plugin path is ADDITIVE. Both paths can run simultaneously; they
+share the same per-day proposal directory. Disable the plugin path
+via `SELF_IMPROVE_PLUGIN_ENABLED=false` or by removing
+`~/.codec/plugins/self_improve.py`.
+
+────────────────────────────────────────────────────────────────────────
+Public test surface (used by both tests/test_self_improve_plugin.py
+and any future tests/test_self_improve.py):
+────────────────────────────────────────────────────────────────────────
+  _existing_skill_names() -> set[str]
+  _load_audit_for(date_str) -> list[dict]
+  _find_gaps(records, existing) -> list[gap_dict]
+  _draft_skill(gap) -> tuple[name, code, raw] | None
+  _validate(code) -> tuple[ok: bool, reason: str]
+  _write_proposal(out_dir, name, code, gap, ok, why) -> None
+  run_once(target_date=None) -> str
+
+  MAX_PROPOSALS_PER_RUN, _GAP_KIND_TO_SIGNAL, _PROPOSALS_ROOT — module
+  constants exposed for the plugin and tests.
+
+These are deliberately named with leading underscore to signal they're
+internal-API-but-stable: the plugin imports them and tests assert on
+them, so renames are breaking changes.
+
+Run (legacy path): python3 codec_self_improve.py
 """
 from __future__ import annotations
 
