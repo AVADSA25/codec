@@ -2138,6 +2138,8 @@ CHAT_SKILL_ALLOWLIST = {
     "ai_news_digest", "scheduler",
     # Skill creation & delegation
     "create_skill", "skill_forge", "ask_codec_to_build", "delegate",
+    # Phase 2 Step 7 — end-of-day shift report (read-only, no destructive side effects)
+    "shift_report",
 }
 
 # ---------------------------------------------------------------------------
