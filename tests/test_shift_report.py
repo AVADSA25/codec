@@ -1,11 +1,12 @@
 """Phase 2 Step 7 tests — skills/shift_report.py + codec_observer fire path.
 
-20 tests covering:
+21 tests covering:
   Assembly (8) — section rendering for each input source
   Notification + state (3) — post + dedup
   Kill switch + config (3)
   Trigger paths (3) — manual / time / idle
   Observer integration (3) — _maybe_fire_shift_report
+  Chat allowlist (1) — shift_report must be in CHAT_SKILL_ALLOWLIST
 
 All tests redirect storage paths to tmp_path. NO real filesystem writes
 to ~/.codec/* outside of explicit fixtures. NO real audit emits to
@@ -389,3 +390,24 @@ def test_observer_already_fired_today_suppresses(temp_state, monkeypatch):
     # State stays as "time"
     state = json.loads((temp_state / "shift_report_state.json").read_text())
     assert state["last_trigger_kind"] == "time"
+
+
+# ────────────────────────────────────────────────────────────────────────
+# Chat allowlist regression test (1)
+# ────────────────────────────────────────────────────────────────────────
+
+def test_shift_report_in_chat_skill_allowlist():
+    """`shift_report` must be in `codec_dashboard.CHAT_SKILL_ALLOWLIST`.
+
+    Regression test for the post-PR-#12 deployment bug: chat path
+    `_try_skill` matched `shift_report` via SKILL_TRIGGERS, but the
+    allowlist gate then dropped it and the LLM fell through to
+    [SKILL:pm2_control:...]. The user typed 'shift report' and got a
+    PM2 service listing instead.
+    """
+    import codec_dashboard
+    assert "shift_report" in codec_dashboard.CHAT_SKILL_ALLOWLIST, (
+        "shift_report skill is not in CHAT_SKILL_ALLOWLIST — chat-path "
+        "dispatch will silently drop the match and fall through to LLM. "
+        "See: docs/known-issues.md → Phase 2 Step 7 sign-off."
+    )
