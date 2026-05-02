@@ -111,9 +111,29 @@ CODEC agents can pause and ask the user a structured question, self-detect when 
 
 **Audit envelope**: all Step 3 events use `outcome="warning"`, `level="warning"`. They are NOT `outcome="error"` because each is an operational signal, not an operation failure (same Q4 tightening as Step 2's `hook_error`). `correlation_id` inherits from the wrapping operation per Step 1 §1.4.
 
-### Other known gaps (tracked for Phase 2)
+### Continuous Observation Loop (Phase 2 Step 5)
+
+CODEC has a background process (`codec-observer` PM2 service, `codec_observer.py`) that polls four cheap signals — frontmost window, screenshot OCR, clipboard delta, recent file changes — and keeps the last 10 minutes of state in a RAM-only ring buffer. On every chat / voice request, an injection helper decides whether to prepend a ≤200-token summary to the LLM's system prompt, gated per the §X "Observation injection contract":
+
+- **`transport="local"`** (local Qwen) → always inject. Cheap + private.
+- **`transport="mcp"`** → never inject. The MCP client (claude.ai, Claude.app) brings its own context.
+- **`transport in {"chat", "voice", "http"}`** → gated on cheap text-pattern checks: possessive-without-context (`"my X"`/`"this Y"` filtered against a stop-noun list), continuation language (`"continue"`, `"where was I"`), or skill-flag (`SKILL_NEEDS_OBSERVATION = True` on a resolved skill module).
+
+**Privacy contract**: 4 layers. (1) RAM only — `collections.deque` wiped on process restart. (2) Audit emits are METADATA-ONLY: lengths, counts, `content_type` tags, but NEVER raw window titles, OCR text, clipboard content, or file paths. (3) Cloud-transport injection gating per §X. (4) NO new system permissions — uses existing skills + primitives (osascript, pbpaste, Quartz, getmtime).
+
+**Cadence**: 60s when active (`CGEventSourceSecondsSinceLastEventType < 60s`); drops to 5min when idle. Long-idle reset wipes buffer at 30min idle.
+
+**Kill switch**: `OBSERVER_ENABLED=false` env var disables polling AND injection.
+
+**Audit events** (4 new): `observation_tick` (per poll, info), `observation_tick_slow` (poll > 150ms, warning), `observation_summary_injected` (gated inject fired, info, inherits cid), `observer_buffer_inspected` (debug-gated PWA read).
+
+**Forward-compat API for Steps 6 + 7**: `get_global_buffer()` exposes the live ring buffer (Step 6 Triggers reads `.snapshot()` for trigger evaluation); `persist_for_shift_report()` writes a summary to `~/.codec/observation_summaries/<ts>.md` (the only persistent observer output, called by Step 7 shift-report assembly).
+
+Implementation: `codec_observer.py` (RingBuffer + poll + injection helper + run_daemon), wired into `codec_dashboard.py:chat_completion` and `codec_voice.py:generate_response`. Debug PWA endpoint at `GET /api/observer/buffer?debug=1` returns metadata-only summary (raw entries never exposed even to authed callers; emits `observer_buffer_inspected` per call).
+
+### Other known gaps (tracked for Phase 2 follow-on)
 - No formal teammate / sub-agent recursion — Crew is the only multi-agent primitive
-- Self-improve agent doesn't yet emit memory facts on Phase 1 events (Step 4 work)
+- Step 6 (Triggers) and Step 7 (Shift Report Crew) — Phase 2 Steps still pending
 
 ## 4. Skill system
 
@@ -229,6 +249,18 @@ Six new event names exported from `codec_audit.py` as module constants. All `out
 | `step_budget_exhausted` | `codec-dashboard` | `budget_type` (`chat_turn`), `limit`, `actual`, `kind`, `correlation_id` |
 
 The constants are also exposed as frozensets for analyzer / introspection: `ASKUSER_EVENTS`, `STUCK_EVENTS`, `STEP3_EVENTS`. `audit_report.py` ingests them as additive event types — no schema bump.
+
+### Phase 2 Step 5 audit events (continuous observation)
+Four new event names exported from `codec_audit.py` for the Continuous Observation Loop. All inherit `correlation_id` per §1.4 (the inject event reuses the wrapping chat/voice op's cid; the tick events generate per-poll cids).
+
+| Event | Source | level | extra fields |
+|---|---|---|---|
+| `observation_tick` | `codec-observer` | info | METADATA-ONLY: `active_app`, `active_title_len`, `ocr_chars`, `ocr_skipped`, `clipboard_changed`, `clipboard_kind`, `recent_files_count`, `idle_seconds`, `cadence_used_s`, `buffer_depth`, `poll_duration_ms` |
+| `observation_tick_slow` | `codec-observer` | warning | Same as `observation_tick` — emitted instead when `poll_duration_ms > poll_slow_threshold_ms` (default 150ms). Q5.5 flag for visibility, no behavior change. |
+| `observation_summary_injected` | `codec-observer` | info | `tokens_used`, `injection_reason` (`always_local`\|`possessive_match`\|`continuation_match`\|`skill_flag`), `buffer_entries_summarized`. `transport` is top-level (reserved). |
+| `observer_buffer_inspected` | `codec-dashboard` | info | `client_ip`, `buffer_entries_returned`. Q5.6 PWA `?debug=1` audit. |
+
+`PHASE2_STEP5_EVENTS` frozenset exposed for analyzer breakdown. `observation_tick` is METADATA-ONLY by design — no titles, no OCR text, no clipboard content, no file paths leak to `~/.codec/audit.log`.
 
 ### Notifications (`~/.codec/notifications.json`)
 Four sources can produce notifications: scheduler (crew completion), heartbeat (threshold alert), autopilot (ambient trigger), and Phase 1 Step 3's AskUserQuestion (`type="question"`). All write through `routes/_shared.py:51-127` except AskUserQuestion which writes via `codec_ask_user._write_question_notification`.
@@ -368,6 +400,9 @@ These zones break running infrastructure if changed without coordination. NEVER 
 - `~/.codec/voice_session.json` (Phase 1 Step 3) — voice-session active-marker; `VoicePipeline.run` owns its lifecycle.
 - Phase 1 Step 3 feature-flag env vars — `ASKUSER_ENABLED`, `STUCK_DETECTION_ENABLED`, `STEP_BUDGET_ENABLED` (default true). Set to `false` to disable a feature in production; tests use these to bypass during isolated unit testing. Don't toggle them globally without coordinating — they alter agent behavior across all paths (chat / voice / crew / MCP).
 - `~/.codec/config.json:ask_user.{timeout_seconds, consent_strict_max_attempts}` and `:stuck.{window, repeat_threshold, escalation_action}` and `:step_budget.{chat, voice}` — Phase 1 Step 3 tunables. Bumping `step_budget.chat` to 8 or 10 is the documented "tune up before tuning out" pressure-relief valve, but don't touch the others without referencing the design doc rationale (§1.2 Q1, §1.7, §2.3, §3.2).
+- `~/.codec/observation_summaries/` (Phase 2 Step 5) — populated only by `codec_observer.persist_for_shift_report()`. Do not add files manually; the Step 7 shift-report assembly relies on the time-stamped naming convention. Safe to delete the whole directory if you want to wipe the persisted history.
+- `OBSERVER_ENABLED` env var (Phase 2 Step 5, default `true`). Setting `false` disables both the polling loop AND the prompt injection. No separate injection kill switch — the buffer is always populated when enabled, only injection is gated.
+- `~/.codec/config.json:observer.{...}` — Phase 2 Step 5 tunables (cadence_active_s, cadence_idle_s, idle_threshold_s, buffer_depth_min, ocr_timeout_ms, ocr_retry_timeout_ms, reset_on_long_idle, reset_idle_threshold_s, summary_max_tokens, poll_slow_threshold_ms, stop_nouns). Don't tune the cadences below 30s without considering OCR cost.
 
 ## 11. Working with this repo as a coding agent
 

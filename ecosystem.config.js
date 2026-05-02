@@ -171,5 +171,25 @@ module.exports = {
       max_restarts: 10,
       autorestart: true,
     },
+
+    // ── Observer (Phase 2 Step 5 — continuous observation loop) ──
+    // Polls active_window + screenshot OCR + clipboard delta + recent
+    // files into a 10-min RAM-only ring buffer. Cadence: 60s active /
+    // 5min idle (per Q1 + Q4). Kill switch: OBSERVER_ENABLED=false.
+    // METADATA-ONLY audit emits — no titles, no OCR text, no clipboard
+    // content, no file paths leaked to ~/.codec/audit.log.
+    {
+      name: "codec-observer",
+      script: "/usr/local/bin/python3.13",
+      args: "-u codec_observer.py",
+      cwd: __dirname,
+      max_memory_restart: "128M",
+      restart_delay: 5000,
+      max_restarts: 10,
+      autorestart: true,
+      env: {
+        OBSERVER_ENABLED: "true",
+      },
+    },
   ],
 };
