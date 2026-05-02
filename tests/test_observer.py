@@ -492,3 +492,61 @@ def test_inject_empty_buffer_returns_skipped(monkeypatch, temp_audit_log):
     # No audit emit on skipped
     recs = _records(temp_audit_log)
     assert _events_of(recs, codec_audit.OBSERVATION_SUMMARY_INJECTED) == []
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 2026-05-02 hotfix — ocr_enabled flag (popup storm mitigation)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_ocr_enabled_false_skips_screenshot_call(fresh_buffer, temp_audit_log,
+                                                  monkeypatch):
+    """When config.observer.ocr_enabled=False, poll() must NOT call
+    _get_screenshot_ocr. Verified by sentinel that raises if called."""
+    cfg = dict(codec_observer._DEFAULT_CONFIG)
+    cfg["ocr_enabled"] = False
+    monkeypatch.setattr(codec_observer, "_idle_seconds", lambda: 0.0)
+    monkeypatch.setattr(codec_observer, "_get_active_window", lambda: {})
+    monkeypatch.setattr(codec_observer, "_get_clipboard_now", lambda: "")
+    monkeypatch.setattr(codec_observer, "_get_recent_files",
+                        lambda window_seconds=300: [])
+
+    def _should_not_be_called(*a, **kw):
+        raise AssertionError("_get_screenshot_ocr called despite ocr_enabled=False")
+    monkeypatch.setattr(codec_observer, "_get_screenshot_ocr",
+                        _should_not_be_called)
+
+    snap = codec_observer.poll(buffer=fresh_buffer, cfg=cfg, emit_audit=True)
+    assert snap["ocr_skipped"] is True
+    assert snap["screenshot_ocr"] == ""
+    # Audit emit still records the skipped state correctly
+    recs = _records(temp_audit_log)
+    extra = _events_of(recs, codec_audit.OBSERVATION_TICK)[0]["extra"]
+    assert extra["ocr_skipped"] is True
+    assert extra["ocr_chars"] == 0
+
+
+def test_ocr_enabled_default_is_true():
+    """Default config has ocr_enabled=True (preserves Step 5 behavior
+    on properly-permissioned machines)."""
+    assert codec_observer._DEFAULT_CONFIG["ocr_enabled"] is True
+
+
+def test_ocr_enabled_true_calls_screenshot(fresh_buffer, temp_audit_log,
+                                              monkeypatch):
+    """Sanity check: when ocr_enabled=True (default), _get_screenshot_ocr
+    IS called. Confirms the new flag isn't accidentally always-bypassing."""
+    cfg = dict(codec_observer._DEFAULT_CONFIG)
+    assert cfg["ocr_enabled"] is True
+    monkeypatch.setattr(codec_observer, "_idle_seconds", lambda: 0.0)
+    monkeypatch.setattr(codec_observer, "_get_active_window", lambda: {})
+    monkeypatch.setattr(codec_observer, "_get_clipboard_now", lambda: "")
+    monkeypatch.setattr(codec_observer, "_get_recent_files",
+                        lambda window_seconds=300: [])
+    call_count = [0]
+
+    def _track_call(*a, **kw):
+        call_count[0] += 1
+        return ("", True)   # mocked skip — doesn't actually screencapture
+    monkeypatch.setattr(codec_observer, "_get_screenshot_ocr", _track_call)
+    codec_observer.poll(buffer=fresh_buffer, cfg=cfg, emit_audit=False)
+    assert call_count[0] == 1

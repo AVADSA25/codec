@@ -120,6 +120,18 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
     "cadence_idle_s": 300,
     "idle_threshold_s": 60,
     "buffer_depth_min": 10,
+    # OCR enable flag (2026-05-02 hotfix). Default True preserves Step 5
+    # design behavior on machines where Screen Recording permission is
+    # granted to the python3.13 process running codec-observer. Set false
+    # to skip the screencapture+Vision call entirely — buffer still gets
+    # active_window + clipboard + recent_files signals, just no OCR.
+    # Flipping this to false is the recommended workaround for the macOS
+    # popup-storm bug when permissions aren't granted to the PM2 child:
+    # screencapture blocks subprocess.run waiting for the popup AND the
+    # ThreadPoolExecutor's `with` exit waits for the thread to finish,
+    # so each poll generates ~2 popups + ~5s of blocking until dismissal.
+    # See ~/.codec/config.json:observer.ocr_enabled to override.
+    "ocr_enabled": True,
     "ocr_timeout_ms": 100,
     "ocr_retry_timeout_ms": 200,         # Q5.1
     "reset_on_long_idle": True,
@@ -514,9 +526,16 @@ def poll(buffer: Optional[RingBuffer] = None,
             "content_type": _classify_clipboard_kind(cb_now),
         }
 
-    # 3. Screenshot OCR (with retry per Q5.1)
-    ocr_text, ocr_skipped = _get_screenshot_ocr(
-        int(cfg["ocr_timeout_ms"]), int(cfg["ocr_retry_timeout_ms"]))
+    # 3. Screenshot OCR (with retry per Q5.1).
+    # 2026-05-02 hotfix: bypass entirely when ocr_enabled=False to avoid
+    # the screencapture popup storm on machines without Screen Recording
+    # permission granted to the PM2 child process. Buffer still gets
+    # active_window + clipboard + recent_files signals.
+    if cfg.get("ocr_enabled", True):
+        ocr_text, ocr_skipped = _get_screenshot_ocr(
+            int(cfg["ocr_timeout_ms"]), int(cfg["ocr_retry_timeout_ms"]))
+    else:
+        ocr_text, ocr_skipped = ("", True)
 
     # 4. Recent files
     recent_files = _get_recent_files(window_seconds=300)
