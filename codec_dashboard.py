@@ -307,12 +307,21 @@ from routes.skills import router as skills_router
 from routes.agents import router as agents_router
 from routes.memory import router as memory_router
 from routes.websocket import router as websocket_router
+# Phase 2 Step 6 — Trigger System PWA endpoints (auth-gated by /api/* middleware).
+try:
+    from routes.triggers import router as triggers_router
+    _has_triggers = True
+except Exception as _e:
+    log.debug(f"[triggers] routes not loaded: {_e}")
+    _has_triggers = False
 
 app.include_router(auth_router)
 app.include_router(skills_router)
 app.include_router(agents_router)
 app.include_router(memory_router)
 app.include_router(websocket_router)
+if _has_triggers:
+    app.include_router(triggers_router)
 
 
 # ═══════════════════════════════════════════════════════════════

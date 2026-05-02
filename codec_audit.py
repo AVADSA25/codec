@@ -202,6 +202,34 @@ OBSERVER_BUFFER_INSPECT_EXTRA_FIELDS = (
 )
 
 
+# ── Phase 2 Step 6 event names (Trigger System) ───────────────────────────────
+# Per docs/PHASE2-STEP6-DESIGN.md §3. trigger_evaluated and trigger_fired are
+# `level="info"` (operational); trigger_blocked is `level="warning"` because
+# block_reason values flag user-action-required or consent-failure states.
+# All inherit `correlation_id` from the wrapping observer poll's cid.
+TRIGGER_EVALUATED = "trigger_evaluated"
+TRIGGER_FIRED     = "trigger_fired"
+TRIGGER_BLOCKED   = "trigger_blocked"
+
+PHASE2_STEP6_EVENTS = frozenset({
+    TRIGGER_EVALUATED, TRIGGER_FIRED, TRIGGER_BLOCKED,
+})
+
+# Step 6 event-specific extra-field reservations.
+TRIGGER_EXTRA_FIELDS = (
+    "trigger_key",                  # "<skill_name>:<sha8(trigger_dict)>"
+    "skill_name",                   # str
+    "trigger_type",                 # window_title_match | clipboard_pattern |
+                                    # file_change | time | compound
+    "match_summary",                # short, on trigger_evaluated
+    "dispatch_correlation_id",      # on trigger_fired only
+    "block_reason",                 # on trigger_blocked only:
+                                    # cooldown | user_skipped |
+                                    # confirmation_timeout |
+                                    # ambiguous_consent | killed
+)
+
+
 # ── Helpers ────────────────────────────────────────────────────────────────────
 def _truncate(s, max_len: int = _PREVIEW_MAX) -> str:
     """Truncate a string to `max_len` chars. None/non-str → ''. Never raises."""

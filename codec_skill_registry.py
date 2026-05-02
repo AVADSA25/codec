@@ -38,6 +38,11 @@ def _extract_metadata(filepath: str) -> Optional[Dict[str, Any]]:
                     "SKILL_DESCRIPTION",
                     "SKILL_TRIGGERS",
                     "SKILL_MCP_EXPOSE",
+                    # Phase 2 Step 6 — declarative auto-fire trigger (Q3).
+                    # AST extraction; validation happens in codec_triggers.
+                    "SKILL_OBSERVATION_TRIGGER",
+                    # Phase 2 Step 5 §X — skill-flag injection override.
+                    "SKILL_NEEDS_OBSERVATION",
                 ):
                     try:
                         meta[target.id] = ast.literal_eval(node.value)
@@ -119,6 +124,13 @@ class SkillRegistry:
     def get_mcp_expose(self, name: str) -> Optional[bool]:
         meta = self._meta.get(name, {})
         return meta.get("SKILL_MCP_EXPOSE", None)
+
+    def get_observation_trigger(self, name: str) -> Optional[Dict[str, Any]]:
+        """Phase 2 Step 6 — return the SKILL_OBSERVATION_TRIGGER dict
+        for a skill, or None if not declared. Validation happens in
+        codec_triggers; this just surfaces what AST extracted."""
+        meta = self._meta.get(name, {})
+        return meta.get("SKILL_OBSERVATION_TRIGGER", None)
 
     # ── Lazy module loading ─────────────────────────────────────────────
 
