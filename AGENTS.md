@@ -166,9 +166,41 @@ After every `codec_observer.poll()`, `codec_triggers.evaluate(snapshot)` walks t
 
 Implementation: `codec_triggers.py` (Trigger dataclass, validation, matchers, dispatch), `codec_skill_registry.py` extension (AST-extracts `SKILL_OBSERVATION_TRIGGER`), `codec_observer.py` integration (calls `evaluate()` after each poll, try/except so failures never break polling), `routes/triggers.py` (PWA endpoints).
 
+### Shift Report (Phase 2 Step 7)
+
+End-of-day summary of everything CODEC observed and accomplished. Single notification with `type="shift_report"` and a 5-section markdown body the PWA renders inline.
+
+**Three trigger paths:**
+- **Time-based** — wall clock matches `~/.codec/config.json:shift_report.daily_at_hour:daily_at_minute` (default 18:00 local). Detected by `codec-observer`'s daemon loop.
+- **Idle-based** — `CGEventSourceSecondsSinceLastEventType` exceeds `shift_report.idle_minutes` (default 30). Same observer detection.
+- **Manual** — user invokes via skill name (`"shift report"`, `"what did i do today"`, `"summarize my day"`) through chat / voice / MCP.
+
+**Per-day dedup** at `~/.codec/shift_report_state.json`: time and idle paths fire at most once per local date; whichever wins suppresses the other. Manual invocations bypass dedup.
+
+**5 sections, ~500-1500 words:**
+1. Completed tasks — successful `tool_result` / `crew_complete` / `hook_fired` / `trigger_fired` counts + most-fired tools
+2. Blocked / stuck moments — `stuck_warning` / `step_budget_exhausted` / `ask_user_question_timeout` / `trigger_blocked` events
+3. Observed work patterns — app time-share from `observation_tick` metadata + count of persisted observer summaries
+4. Pending decisions — open `type="question"` notifications + unreviewed skill proposals
+5. Tomorrow's open threads — `crew_start` without matching `crew_complete`
+
+**Inputs scanned:**
+- Last 24h of `audit.log` + rotated logs (configurable via `lookback_hours`)
+- `~/.codec/notifications.json` entries created in last 24h
+- `~/.codec/observation_summaries/` (only persistent observer output, written by Step 5's `persist_for_shift_report()`)
+- `~/.codec/skill_proposals/<today>/` markdown files
+
+**2 audit events:** `shift_report_started` (info, on assembly begin) + `shift_report_completed` (info, with `extra.{trigger_kind, sections_included, word_count, audit_records_scanned, duration_ms}`). Both share a single `correlation_id` (multi-emit op per Step 1 §1.4).
+
+**Optional auto-save:** if `shift_report.auto_save_path` is set in config (e.g. `~/Documents/CODEC Shift Reports`), the markdown body is also written to `<path>/YYYY-MM-DD.md`. Default `null` (notification-only).
+
+**Kill switch:** `SHIFT_REPORT_ENABLED` env var (default true) — blocks all 3 trigger paths.
+
+Implementation: `skills/shift_report.py` (assembly + rendering + notification post + per-day state), `codec_observer.py` extension (calls `_maybe_fire_shift_report(idle)` after each poll, time + idle detection inside).
+
 ### Other known gaps (tracked for Phase 2 follow-on)
 - No formal teammate / sub-agent recursion — Crew is the only multi-agent primitive
-- Step 7 (Shift Report Crew) — final Phase 2 step still pending
+- (none — Phase 2 complete after Step 7 ships)
 
 ## 4. Skill system
 
@@ -307,6 +339,16 @@ Three new event names. `trigger_evaluated` fires only when a pattern matches (pr
 | `trigger_blocked` | `codec-triggers` | warning | `trigger_key`, `skill_name`, `trigger_type`, `block_reason` (`cooldown` \| `user_skipped` \| `confirmation_timeout` \| `ambiguous_consent`). NOTE: `killed` reason is intentionally NOT emitted to keep audit clean. |
 
 `PHASE2_STEP6_EVENTS` frozenset exposed.
+
+### Phase 2 Step 7 audit events (Shift Report)
+Two new event names. Both `level="info"` (operational). `shift_report_started` opens the assembly operation, `shift_report_completed` closes it with summary stats. Both share a single `correlation_id` (multi-emit op per Step 1 §1.4 — the wrapping operation envelope).
+
+| Event | Source | level | extra fields |
+|---|---|---|---|
+| `shift_report_started` | `codec-shift-report` | info | `trigger_kind` (`time` \| `idle` \| `manual`) |
+| `shift_report_completed` | `codec-shift-report` | info | `trigger_kind`, `sections_included` (0-5), `word_count`, `audit_records_scanned`, `notifications_scanned`, `observer_summaries_used`. `duration_ms` is top-level. |
+
+`PHASE2_STEP7_EVENTS` frozenset exposed.
 
 ### Notifications (`~/.codec/notifications.json`)
 Four sources can produce notifications: scheduler (crew completion), heartbeat (threshold alert), autopilot (ambient trigger), and Phase 1 Step 3's AskUserQuestion (`type="question"`). All write through `routes/_shared.py:51-127` except AskUserQuestion which writes via `codec_ask_user._write_question_notification`.
@@ -452,6 +494,9 @@ These zones break running infrastructure if changed without coordination. NEVER 
 - `~/.codec/triggers_killed.json` (Phase 2 Step 6) — persistent per-trigger kill state. Atomic-write owned by `codec_triggers.set_killed()`; do not edit by hand (the trigger keys are content-hashed and need to match what `discover_triggers()` computes). Use the PWA `POST /api/triggers/{key}/kill` endpoint instead.
 - `TRIGGERS_ENABLED` env var (Phase 2 Step 6, default `true`). Setting `false` skips trigger evaluation entirely; observer keeps polling. Per-trigger kill switch via PWA is the finer knob.
 - `SKILL_OBSERVATION_TRIGGER` declaration in skill files (Phase 2 Step 6) — adding one to a skill makes it auto-fire on observer signals. **High-impact change** — review the cooldown / require_confirmation / destructive flags carefully. Same trust model as plugins.
+- `~/.codec/shift_report_state.json` (Phase 2 Step 7) — per-day fire dedup state (`last_fired_date`, `last_fired_at`, `last_trigger_kind`). Owned by `skills/shift_report.mark_fired_today()`. Safe to delete to force-fire today again; do not hand-edit (atomic-write contract).
+- `SHIFT_REPORT_ENABLED` env var (Phase 2 Step 7, default `true`). False blocks all three trigger paths (time / idle / manual).
+- `~/.codec/config.json:shift_report.{daily_at_hour, daily_at_minute, idle_minutes, lookback_hours, auto_save_path}` — Phase 2 Step 7 tunables. `auto_save_path` is `null` by default (notification-only); set to a directory path to also write `YYYY-MM-DD.md` files.
 
 ## 11. Working with this repo as a coding agent
 

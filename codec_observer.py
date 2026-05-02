@@ -69,6 +69,7 @@ disables polling AND injection. No separate injection kill switch.
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import logging
 import os
@@ -810,7 +811,65 @@ def run_daemon() -> None:
             if len(buf) > 0:
                 buf.clear()
                 log.info("[observer] buffer cleared after long idle")
+
+        # Phase 2 Step 7 — fire shift report at 18:00 local OR after 30 min
+        # idle. Per-day dedup via skills/shift_report._STATE_PATH so the
+        # idle path doesn't repeat. Time path uses a 1-min window
+        # (daily_at_hour, daily_at_minute) — observer runs at >=60s cadence
+        # so a single fire window is sufficient.
+        try:
+            _maybe_fire_shift_report(idle)
+        except Exception as e:
+            log.debug("[observer] shift report check failed: %s", e)
+
         time.sleep(cadence)
+
+
+def _maybe_fire_shift_report(idle_seconds: float) -> None:
+    """Phase 2 Step 7 — check fire conditions, invoke skill if matched.
+
+    Two trigger paths:
+      "time" — wall clock matches daily_at_hour:daily_at_minute (1-min window)
+      "idle" — idle_seconds >= idle_minutes * 60
+
+    Per-day dedup means whichever fires first wins; the other is suppressed.
+    Manual invocations (via skill name from chat / voice / MCP) bypass this.
+    """
+    try:
+        import importlib
+        sys.path.insert(0, os.path.expanduser("~/.codec/skills"))
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)) + "/skills")
+        spec = importlib.util.find_spec("shift_report")
+        if spec is None:
+            return
+        sr_mod = importlib.import_module("shift_report")
+    except Exception:
+        return
+    try:
+        if not sr_mod._enabled():
+            return
+        if sr_mod.already_fired_today():
+            return
+        cfg = sr_mod._load_config()
+        if not cfg.get("enabled", True):
+            return
+
+        # Time path
+        now = datetime.now()
+        hh = int(cfg.get("daily_at_hour", 18))
+        mm = int(cfg.get("daily_at_minute", 0))
+        if now.hour == hh and now.minute == mm:
+            sr_mod.run_with_trigger_kind("time")
+            log.info("[observer] shift report fired (time trigger)")
+            return
+
+        # Idle path
+        idle_minutes = int(cfg.get("idle_minutes", 30))
+        if idle_seconds >= idle_minutes * 60:
+            sr_mod.run_with_trigger_kind("idle")
+            log.info("[observer] shift report fired (idle trigger)")
+    except Exception as e:
+        log.debug("[observer] shift report invocation failed: %s", e)
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -230,6 +230,27 @@ TRIGGER_EXTRA_FIELDS = (
 )
 
 
+# ── Phase 2 Step 7 event names (Shift Report) ─────────────────────────────────
+# Per docs/PHASE2-BLUEPRINT.md §"Step 7". The `shift_report_started` event
+# opens the assembly operation and `shift_report_completed` closes it with
+# summary stats. Both share a single correlation_id per Step 1 §1.4
+# (multi-emit operation envelope).
+SHIFT_REPORT_STARTED   = "shift_report_started"
+SHIFT_REPORT_COMPLETED = "shift_report_completed"
+
+PHASE2_STEP7_EVENTS = frozenset({SHIFT_REPORT_STARTED, SHIFT_REPORT_COMPLETED})
+
+SHIFT_REPORT_EXTRA_FIELDS = (
+    "trigger_kind",            # "time" | "idle" | "manual"
+    "sections_included",       # int — how many of the 5 sections rendered
+    "word_count",              # int — final markdown word count
+    "audit_records_scanned",   # int
+    "notifications_scanned",   # int
+    "observer_summaries_used", # int
+    "duration_ms",             # top-level reserved field — also on completed
+)
+
+
 # ── Helpers ────────────────────────────────────────────────────────────────────
 def _truncate(s, max_len: int = _PREVIEW_MAX) -> str:
     """Truncate a string to `max_len` chars. None/non-str → ''. Never raises."""
