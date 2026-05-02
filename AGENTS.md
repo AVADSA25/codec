@@ -131,9 +131,44 @@ CODEC has a background process (`codec-observer` PM2 service, `codec_observer.py
 
 Implementation: `codec_observer.py` (RingBuffer + poll + injection helper + run_daemon), wired into `codec_dashboard.py:chat_completion` and `codec_voice.py:generate_response`. Debug PWA endpoint at `GET /api/observer/buffer?debug=1` returns metadata-only summary (raw entries never exposed even to authed callers; emits `observer_buffer_inspected` per call).
 
+### Trigger System (Phase 2 Step 6)
+
+CODEC skills can declaratively auto-fire on observer signals. A skill adds a `SKILL_OBSERVATION_TRIGGER` dict alongside its existing `SKILL_TRIGGERS` list:
+
+```python
+SKILL_OBSERVATION_TRIGGER = {
+    "type": "window_title_match",      # or clipboard_pattern / file_change / time / compound
+    "pattern": r"Stripe — Dashboard",
+    "cooldown_seconds": 600,            # min seconds between fires (RAM-only state)
+    "require_confirmation": True,       # PWA approval gate before fire
+    "destructive": False,               # if True, routes through Step 3 §1.7 strict-consent
+}
+```
+
+After every `codec_observer.poll()`, `codec_triggers.evaluate(snapshot)` walks the registered triggers, matches each against the snapshot, and dispatches matches that pass cooldown + consent gates through the existing `codec_dispatch.run_skill` chokepoint (which Step 2's `run_with_hooks` already wraps — every fire is observable by plugins).
+
+**5 trigger types**: `window_title_match` (regex on active title), `clipboard_pattern` (regex on clipboard preview), `file_change` (glob over recent_files), `time` (cron-like "M H D Mo W", ≥1min granularity), `compound` (recursive AND/OR).
+
+**Cooldown**: per-trigger last-fired timestamp in RAM (process restart resets all). Trigger key = `<skill_name>:<sha8(trigger_dict)>` — editing a pattern resets cooldown via key change.
+
+**Per-trigger kill switch**: persistent at `~/.codec/triggers_killed.json`. Toggled via PWA `POST /api/triggers/{key}/kill`. Killed triggers are skipped silently (no `trigger_blocked` audit emit, to avoid spam from popular killed patterns).
+
+**Global kill switch**: `TRIGGERS_ENABLED=false` env var on `codec-observer` skips evaluation entirely.
+
+**Step 6 ships ZERO triggers** — only the plumbing. Skills opt in one-by-one. Same trust model as plugins (user-curated local Python). At merge time, `evaluate()` iterates over zero registered triggers and exits in <1ms.
+
+**3 audit events**: `trigger_evaluated` (info, on match), `trigger_fired` (info, on dispatch), `trigger_blocked` (warning, with `block_reason`).
+
+**PWA endpoints**:
+- `GET /api/triggers` — list all registered triggers + state
+- `GET /api/triggers/{key}` — detail with cooldown_remaining
+- `POST /api/triggers/{key}/kill` — toggle kill state
+
+Implementation: `codec_triggers.py` (Trigger dataclass, validation, matchers, dispatch), `codec_skill_registry.py` extension (AST-extracts `SKILL_OBSERVATION_TRIGGER`), `codec_observer.py` integration (calls `evaluate()` after each poll, try/except so failures never break polling), `routes/triggers.py` (PWA endpoints).
+
 ### Other known gaps (tracked for Phase 2 follow-on)
 - No formal teammate / sub-agent recursion — Crew is the only multi-agent primitive
-- Step 6 (Triggers) and Step 7 (Shift Report Crew) — Phase 2 Steps still pending
+- Step 7 (Shift Report Crew) — final Phase 2 step still pending
 
 ## 4. Skill system
 
@@ -261,6 +296,17 @@ Four new event names exported from `codec_audit.py` for the Continuous Observati
 | `observer_buffer_inspected` | `codec-dashboard` | info | `client_ip`, `buffer_entries_returned`. Q5.6 PWA `?debug=1` audit. |
 
 `PHASE2_STEP5_EVENTS` frozenset exposed for analyzer breakdown. `observation_tick` is METADATA-ONLY by design — no titles, no OCR text, no clipboard content, no file paths leak to `~/.codec/audit.log`.
+
+### Phase 2 Step 6 audit events (Trigger System)
+Three new event names. `trigger_evaluated` fires only when a pattern matches (pre-cooldown, pre-consent — silent on no-match to avoid audit spam). `trigger_fired` is the actual dispatch. `trigger_blocked` fires for any non-firing reason except `killed` (silent). All inherit the wrapping observer poll's `correlation_id`.
+
+| Event | Source | level | extra fields |
+|---|---|---|---|
+| `trigger_evaluated` | `codec-triggers` | info | `trigger_key`, `skill_name`, `trigger_type`, `match_summary` |
+| `trigger_fired` | `codec-triggers` | info | `trigger_key`, `skill_name`, `trigger_type`, `dispatch_correlation_id` |
+| `trigger_blocked` | `codec-triggers` | warning | `trigger_key`, `skill_name`, `trigger_type`, `block_reason` (`cooldown` \| `user_skipped` \| `confirmation_timeout` \| `ambiguous_consent`). NOTE: `killed` reason is intentionally NOT emitted to keep audit clean. |
+
+`PHASE2_STEP6_EVENTS` frozenset exposed.
 
 ### Notifications (`~/.codec/notifications.json`)
 Four sources can produce notifications: scheduler (crew completion), heartbeat (threshold alert), autopilot (ambient trigger), and Phase 1 Step 3's AskUserQuestion (`type="question"`). All write through `routes/_shared.py:51-127` except AskUserQuestion which writes via `codec_ask_user._write_question_notification`.
@@ -402,7 +448,10 @@ These zones break running infrastructure if changed without coordination. NEVER 
 - `~/.codec/config.json:ask_user.{timeout_seconds, consent_strict_max_attempts}` and `:stuck.{window, repeat_threshold, escalation_action}` and `:step_budget.{chat, voice}` — Phase 1 Step 3 tunables. Bumping `step_budget.chat` to 8 or 10 is the documented "tune up before tuning out" pressure-relief valve, but don't touch the others without referencing the design doc rationale (§1.2 Q1, §1.7, §2.3, §3.2).
 - `~/.codec/observation_summaries/` (Phase 2 Step 5) — populated only by `codec_observer.persist_for_shift_report()`. Do not add files manually; the Step 7 shift-report assembly relies on the time-stamped naming convention. Safe to delete the whole directory if you want to wipe the persisted history.
 - `OBSERVER_ENABLED` env var (Phase 2 Step 5, default `true`). Setting `false` disables both the polling loop AND the prompt injection. No separate injection kill switch — the buffer is always populated when enabled, only injection is gated.
-- `~/.codec/config.json:observer.{...}` — Phase 2 Step 5 tunables (cadence_active_s, cadence_idle_s, idle_threshold_s, buffer_depth_min, ocr_timeout_ms, ocr_retry_timeout_ms, reset_on_long_idle, reset_idle_threshold_s, summary_max_tokens, poll_slow_threshold_ms, stop_nouns). Don't tune the cadences below 30s without considering OCR cost.
+- `~/.codec/config.json:observer.{...}` — Phase 2 Step 5 tunables (cadence_active_s, cadence_idle_s, idle_threshold_s, buffer_depth_min, ocr_enabled, ocr_timeout_ms, ocr_retry_timeout_ms, reset_on_long_idle, reset_idle_threshold_s, summary_max_tokens, poll_slow_threshold_ms, stop_nouns). Don't tune the cadences below 30s without considering OCR cost. `ocr_enabled: false` is the recommended baseline if Screen Recording permissions aren't granted to the PM2 child process — bypasses screencapture entirely (see incident `INCIDENT-2026-05-01-spurious-skill-fires.md` and the Step 5 hotfix in PR #10).
+- `~/.codec/triggers_killed.json` (Phase 2 Step 6) — persistent per-trigger kill state. Atomic-write owned by `codec_triggers.set_killed()`; do not edit by hand (the trigger keys are content-hashed and need to match what `discover_triggers()` computes). Use the PWA `POST /api/triggers/{key}/kill` endpoint instead.
+- `TRIGGERS_ENABLED` env var (Phase 2 Step 6, default `true`). Setting `false` skips trigger evaluation entirely; observer keeps polling. Per-trigger kill switch via PWA is the finer knob.
+- `SKILL_OBSERVATION_TRIGGER` declaration in skill files (Phase 2 Step 6) — adding one to a skill makes it auto-fire on observer signals. **High-impact change** — review the cooldown / require_confirmation / destructive flags carefully. Same trust model as plugins.
 
 ## 11. Working with this repo as a coding agent
 

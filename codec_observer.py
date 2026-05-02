@@ -557,6 +557,17 @@ def poll(buffer: Optional[RingBuffer] = None,
         _emit_observation_tick(snapshot, cadence, poll_duration_ms,
                                len(buffer), float(cfg["poll_slow_threshold_ms"]))
 
+    # Phase 2 Step 6 — evaluate registered triggers against this snapshot.
+    # Inline (not a separate PM2 service) — observer poll is the only event
+    # source, so triggers piggyback on the same cadence. Try/except so
+    # trigger failures NEVER break observer polling.
+    if emit_audit:   # only fire triggers from real polls, not test polls
+        try:
+            from codec_triggers import evaluate as _eval_triggers
+            _eval_triggers(snapshot)
+        except Exception as e:
+            log.debug("[observer] trigger evaluation failed (non-fatal): %s", e)
+
     return snapshot
 
 
