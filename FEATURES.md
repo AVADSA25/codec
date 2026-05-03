@@ -1,6 +1,6 @@
 # Sovereign AI Workstation — Full Product Breakdown
 
-> Engine: **CODEC v2.3** — 367 features · 74 skills · 940+ tests · 58K+ lines of production code
+> Engine: **CODEC v2.3** — 368 features · 75 skills · 940+ tests · 58K+ lines of production code
 
 The product name is **Sovereign AI Workstation**. Throughout this document
 and the codebase, **CODEC** refers to the underlying open-source engine /
@@ -182,7 +182,7 @@ and resume-after-restart guarantees throughout.
 
 ---
 
-## 6. CODEC Skills — 78 features (74 skills + 4 infrastructure)
+## 6. CODEC Skills — 79 features (75 skills + 4 infrastructure)
 
 ### Infrastructure
 
@@ -193,7 +193,7 @@ and resume-after-restart guarantees throughout.
 | 3 | Skill Marketplace (install, search, list, update, remove, publish) |
 | 4 | **`SKILL_OBSERVATION_TRIGGER` declarative trigger metadata** — skills opt into auto-fire via 5 trigger types (window_title_match, clipboard_pattern, file_change, time, compound) *(Phase 2 Step 6)* |
 
-### 74 Built-in Skills
+### 75 Built-in Skills
 
 MCP tool name shown where it differs from the file name.
 
@@ -201,7 +201,7 @@ MCP tool name shown where it differs from the file name.
 |---|---|
 | **Google Workspace** (8) | google_calendar, google_docs, google_drive, google_gmail, google_keep, google_sheets, google_slides, google_tasks |
 | **Chrome Automation** (10) | chrome_automate, chrome_click_cdp, chrome_close, chrome_extract, chrome_fill, chrome_open, chrome_read, chrome_scroll, chrome_search, chrome_tabs |
-| **System Control** (10) | app_switch, brightness, clipboard, file_ops, file_search, file_write, network_info, process_manager, `system` (system_info), terminal, `volume_brightness` (volume) |
+| **System Control** (11) | app_switch, brightness, clipboard, file_ops, file_search, file_write, network_info, process_manager, `system` (system_info), terminal, `volume_brightness` (volume) |
 | **Vision & Mouse** (2) | mouse_control (UI-TARS vision click), screenshot_text |
 | **AI & Content** (6) | `AI_News_Digest` (ai_news_digest), create_skill, skill_forge, translate, web_search, memory_search |
 | **Memory Layer** (5) | memory_search (FTS5), memory_history (temporal facts), memory_entities (CCF map), memory_save, auto_memorize, fact_extract |
@@ -494,7 +494,7 @@ notification dispatch.
 | 3. CODEC Dashboard | 32 |
 | 4. CODEC Vibe | 20 |
 | 5. CODEC Agents | 20 |
-| 6. CODEC Skills | 78 |
+| 6. CODEC Skills | 79 |
 | 7. CODEC Infrastructure | 36 |
 | 8. CODEC Dictate | 15 |
 | 9. CODEC Instant | 12 |
@@ -502,9 +502,9 @@ notification dispatch.
 | 11. Phase 2 — Continuous Observation + Automation *(v2.3)* | 24 |
 | 12. Phase 3 — Drop-a-Project Autonomous Agents *(v2.3)* | 32 |
 | 13. Phase 3.5 — UX Polish + Proactive Overlay *(v2.3)* | 24 |
-| **TOTAL** | **367** |
+| **TOTAL** | **368** |
 
-**367 features · 74 skills · 940+ tests · 58K+ lines of production code**
+**368 features · 75 skills · 940+ tests · 58K+ lines of production code**
 
 ### What's new in v2.3 — Phase 1 + 2 + 3 + 3.5
 
