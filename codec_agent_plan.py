@@ -461,3 +461,39 @@ def remove_global_grant(kind: str, value: str) -> None:
 def _now_iso() -> str:
     from datetime import datetime, timezone
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+# ── Status transitions ────────────────────────────────────────────────────────
+class InvalidStatusTransition(ValueError):
+    """Disallowed status transition attempted."""
+
+
+# Step 8 only manages: draft_pending → awaiting_approval → approved/rejected/revised.
+# Step 9 introduces: approved → running → checkpoint_completed/blocked_*/aborted/completed.
+# This map will be EXTENDED in Step 9.
+_VALID_TRANSITIONS: Dict[str, frozenset] = {
+    "draft_pending":      frozenset({"awaiting_approval", "plan_failed"}),
+    "awaiting_approval":  frozenset({"approved", "rejected", "revised"}),
+    "revised":            frozenset({"awaiting_approval"}),
+    "approved":           frozenset({"rejected"}),  # Step 9 will add: running
+    "rejected":           frozenset(),
+    "plan_failed":        frozenset({"draft_pending"}),  # retry path
+}
+
+
+def set_status(agent_id: str, new_status: str, reason: Optional[str] = None) -> None:
+    """Atomically transition manifest.json's status. Raises
+    InvalidStatusTransition if the move violates the state machine."""
+    manifest = load_manifest(agent_id)
+    current = manifest.get("status", "draft_pending")
+    allowed = _VALID_TRANSITIONS.get(current, frozenset())
+    if new_status not in allowed:
+        raise InvalidStatusTransition(
+            f"cannot transition {current!r} → {new_status!r} "
+            f"(allowed: {sorted(allowed)})"
+        )
+    manifest["status"] = new_status
+    manifest["updated_at"] = _now_iso()
+    if reason:
+        manifest["status_reason"] = reason
+    save_manifest(agent_id, manifest)

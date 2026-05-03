@@ -379,3 +379,28 @@ def test_remove_global_grant(temp_codec_dir):
     g = load_global_grants()
     assert "github.com" not in g["network_domains"]
     assert "example.com" in g["network_domains"]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Task 9 — State machine (2 tests)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_state_transition_valid(temp_codec_dir):
+    from codec_agent_plan import set_status, load_state, save_manifest
+    save_manifest("a1", {"agent_id": "a1", "title": "t",
+                         "status": "draft_pending", "created_at": "2026-05-03"})
+    set_status("a1", "awaiting_approval")
+    state = load_state("a1")
+    # Status mirrored in state.json AND manifest.json
+    from codec_agent_plan import load_manifest
+    m = load_manifest("a1")
+    assert m["status"] == "awaiting_approval"
+
+
+def test_state_transition_invalid_raises(temp_codec_dir):
+    import codec_agent_plan as cap
+    cap.save_manifest("a1", {"agent_id": "a1", "status": "draft_pending"})
+
+    # Cannot jump from draft_pending → completed without going through approved
+    with pytest.raises(cap.InvalidStatusTransition):
+        cap.set_status("a1", "completed")
