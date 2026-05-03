@@ -497,3 +497,79 @@ def set_status(agent_id: str, new_status: str, reason: Optional[str] = None) -> 
     if reason:
         manifest["status_reason"] = reason
     save_manifest(agent_id, manifest)
+
+
+# ── Audit helper ──────────────────────────────────────────────────────────────
+def _audit(event: str, source: str, message: str = "",
+           correlation_id: str = "", outcome: str = "ok",
+           level: str = "info", extra: Optional[Dict[str, Any]] = None) -> None:
+    """Lazy-imported codec_audit emit. Centralized so tests can monkeypatch."""
+    try:
+        from codec_audit import audit
+    except Exception as e:
+        log.debug("codec_audit unavailable for %s: %s", event, e)
+        return
+    audit(event=event, source=source, message=message,
+          correlation_id=correlation_id, outcome=outcome,
+          level=level, extra=dict(extra or {}))
+
+
+# ── Public orchestrator ───────────────────────────────────────────────────────
+def _new_agent_id() -> str:
+    return f"agent_{secrets.token_hex(6)}"
+
+
+def create_agent(title: str, description: str,
+                 registry=None,
+                 notification_channels: Optional[List[str]] = None) -> str:
+    """Top-level entry point. Drafts a plan, persists to disk, emits audit.
+    Returns the new agent_id. Status after this call: awaiting_approval
+    (or plan_failed on validation error)."""
+    agent_id = _new_agent_id()
+    cid = secrets.token_hex(6)
+
+    # Initial manifest
+    manifest = {
+        "agent_id": agent_id,
+        "title": title[:120],
+        "status": "draft_pending",
+        "created_at": _now_iso(),
+        "updated_at": _now_iso(),
+        "notification_channels": notification_channels or ["pwa"],
+    }
+    save_manifest(agent_id, manifest)
+    save_state(agent_id, {"current_checkpoint": 0})
+
+    # Draft plan (with clarification loop)
+    try:
+        plan = draft_plan_with_clarification(agent_id, description, registry=registry)
+    except DescriptionTooVagueError as e:
+        set_status(agent_id, "plan_failed", reason=f"too_vague: {e}")
+        _audit("agent_plan_rejected", "codec-agent-plan",
+               f"plan failed (vague): {e}", correlation_id=cid,
+               outcome="warning", level="warning",
+               extra={"agent_id": agent_id, "reason": "too_vague"})
+        raise
+    except (PlanValidationError, QwenUnavailableError) as e:
+        set_status(agent_id, "plan_failed", reason=str(e))
+        _audit("agent_plan_rejected", "codec-agent-plan",
+               f"plan failed: {e}", correlation_id=cid,
+               outcome="error", level="error",
+               extra={"agent_id": agent_id, "reason": str(e)[:200]})
+        raise
+
+    # Persist plan + transition status
+    save_plan(plan)
+    set_status(agent_id, "awaiting_approval")
+
+    _audit("agent_plan_drafted", "codec-agent-plan",
+           f"plan drafted for {title[:60]}", correlation_id=cid,
+           extra={
+               "agent_id": agent_id,
+               "checkpoint_count": len(plan.checkpoints),
+               "estimated_duration_minutes": plan.estimated_duration_minutes,
+               "skills_count": len(plan.permission_manifest.skills),
+               "domains_count": len(plan.permission_manifest.network_domains),
+           })
+
+    return agent_id

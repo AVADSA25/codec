@@ -404,3 +404,53 @@ def test_state_transition_invalid_raises(temp_codec_dir):
     # Cannot jump from draft_pending → completed without going through approved
     with pytest.raises(cap.InvalidStatusTransition):
         cap.set_status("a1", "completed")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Task 10 — create_agent orchestrator (1 test)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_create_agent_full_flow(monkeypatch, temp_codec_dir):
+    import codec_agent_plan as cap
+
+    monkeypatch.setattr(cap, "_qwen_chat", lambda *a, **k: json.dumps({
+        "goals": ["g"],
+        "checkpoints": [{"title": "t", "description": "d",
+                         "skills_needed": ["weather"],
+                         "expected_output": "o", "step_budget": 10}],
+        "permission_manifest": {"read_paths": [], "write_paths": [],
+                                "network_domains": [], "skills": ["weather"],
+                                "destructive_ops": []},
+        "estimated_duration_minutes": 5, "assumptions": [],
+    }))
+
+    fake_registry = MagicMock()
+    fake_registry.names.return_value = ["weather"]
+
+    audit_emits = []
+    def fake_audit(event, source, message, **kw):
+        audit_emits.append((event, kw.get("correlation_id")))
+    monkeypatch.setattr(cap, "_audit", fake_audit)
+
+    agent_id = cap.create_agent(
+        title="Property bot",
+        description="Build a property scraper",
+        registry=fake_registry,
+    )
+    assert agent_id.startswith("agent_")
+
+    # Verify all 3 files written
+    agent_dir = temp_codec_dir / "agents" / agent_id
+    assert (agent_dir / "manifest.json").exists()
+    assert (agent_dir / "plan.json").exists()
+    assert (agent_dir / "state.json").exists()
+
+    # Manifest has correct fields
+    m = cap.load_manifest(agent_id)
+    assert m["title"] == "Property bot"
+    assert m["status"] == "awaiting_approval"
+    assert "created_at" in m
+
+    # Audit emit happened with correlation_id
+    plan_drafted = [(e, c) for e, c in audit_emits if e == "agent_plan_drafted"]
+    assert len(plan_drafted) == 1
