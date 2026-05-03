@@ -141,3 +141,29 @@ def test_post_message_creates_new_banner_outside_60s_window(temp_codec_dir, monk
     notifs = json.loads((temp_codec_dir / "notifications.json").read_text())
     agent_notifs = [n for n in notifs if n.get("agent_id") == "agent_test"]
     assert len(agent_notifs) == 2
+
+
+def test_post_user_reply_writes_to_messages_jsonl(temp_codec_dir):
+    """User reply via post_user_reply writes type=user_reply line."""
+    import codec_agent_messaging as cam
+    cam.post_user_reply(agent_id="agent_test", body="please continue")
+    msg_path = temp_codec_dir / "agents" / "agent_test" / "messages.jsonl"
+    lines = msg_path.read_text().strip().splitlines()
+    rec = json.loads(lines[0])
+    assert rec["type"] == "user_reply"
+    assert rec["body"] == "please continue"
+
+
+def test_get_unread_user_replies_returns_unread(temp_codec_dir):
+    """get_unread_user_replies returns user_reply entries since `since_ts`."""
+    import codec_agent_messaging as cam
+    cam.post_user_reply(agent_id="agent_test", body="r1")
+    time.sleep(0.05)
+    t1 = time.time()
+    time.sleep(0.05)  # ensure r2/r3 ts > t1
+    cam.post_user_reply(agent_id="agent_test", body="r2")
+    cam.post_user_reply(agent_id="agent_test", body="r3")
+
+    unread = cam.get_unread_user_replies(agent_id="agent_test", since_ts=t1)
+    assert len(unread) == 2
+    assert unread[-1]["body"] == "r3"
