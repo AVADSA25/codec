@@ -250,6 +250,37 @@ def test_manual_trigger_bypasses_dedup(temp_state):
     assert len(notifs) == 1
 
 
+def test_manual_5min_cooldown_suppresses_repeats(temp_state):
+    """Two manual fires within 5 min — second is suppressed to prevent
+    button-mash / polling-loop spam. The audit-log loop spotted on
+    2026-05-03 (8 fires in 12 min) motivated this floor."""
+    # First manual fire — should succeed and set last_trigger_kind=manual
+    result1 = shift_report.run("shift report")
+    assert "Shift report posted" in result1
+    # Second manual fire immediately after — suppressed
+    result2 = shift_report.run("shift report")
+    assert "last 5 minutes" in result2
+    notifs = json.loads((temp_state / "notifications.json").read_text())
+    assert len(notifs) == 1   # only the first fire created a notification
+
+
+def test_manual_cooldown_does_not_block_after_5min(temp_state):
+    """Cooldown is time-based; if the last manual fire was >5 min ago,
+    a new manual fire goes through."""
+    from datetime import datetime, timezone, timedelta
+    # Seed state with a manual fire from 6 minutes ago
+    old = (datetime.now(timezone.utc) - timedelta(minutes=6)).isoformat(timespec="seconds")
+    shift_report._save_state({
+        "last_fired_date": shift_report._today_local_date(),
+        "last_fired_at": old,
+        "last_trigger_kind": "manual",
+    })
+    # New manual fire should NOT be suppressed
+    assert shift_report._manual_cooldown_active() is False
+    result = shift_report.run("shift report")
+    assert "Shift report posted" in result
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Kill switch + config (3)
 # ─────────────────────────────────────────────────────────────────────────────

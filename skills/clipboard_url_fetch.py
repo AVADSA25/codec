@@ -39,19 +39,30 @@ SKILL_TRIGGERS = [
 SKILL_MCP_EXPOSE = False  # local-only; no value over MCP since clipboard isn't shared
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Phase 2 Step 6 declarative trigger.
-# Fires when the clipboard preview contains an http(s) URL.
-# Pattern is conservative: bounded character class, no whitespace,
-# no quote chars (avoids accidentally matching JSON-encoded URLs as part
-# of a larger blob).
+# Phase 2 Step 6 declarative trigger — DISABLED BY DEFAULT.
+#
+# Auto-firing on every URL copied to clipboard turned out to be too noisy in
+# practice — the average user copies several URLs per minute while working,
+# and `require_confirmation: True` produced one ask_user notification per
+# fresh URL despite the 10-min cooldown. The trigger was firing every ~7 min
+# with each new URL, blocking the agent runner queue and burying real
+# notifications under "codec-triggers is asking a question" spam.
+#
+# Manual paths still work. Say "fetch the link" / "summarize this URL" or
+# call the skill via MCP / chat / voice — `run()` reads the clipboard at
+# invocation time. The skill itself is fully functional; only the
+# auto-fire-on-clipboard-pattern path is muted.
+#
+# To re-enable, uncomment the dict below. Future work: per-skill enable
+# flag in `~/.codec/triggers.json` so users toggle without editing code.
 # ──────────────────────────────────────────────────────────────────────────────
-SKILL_OBSERVATION_TRIGGER = {
-    "type": "clipboard_pattern",
-    "pattern": r"https?://[^\s<>'\"]+",
-    "cooldown_seconds": 600,        # 10-min per-trigger cooldown
-    "require_confirmation": True,   # ask user before fetch
-    "destructive": False,           # read-only operation
-}
+# SKILL_OBSERVATION_TRIGGER = {
+#     "type": "clipboard_pattern",
+#     "pattern": r"https?://[^\s<>'\"]+",
+#     "cooldown_seconds": 600,        # 10-min per-trigger cooldown
+#     "require_confirmation": True,   # ask user before fetch
+#     "destructive": False,           # read-only operation
+# }
 
 
 import re

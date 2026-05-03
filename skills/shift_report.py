@@ -490,13 +490,38 @@ def run(task: str = "", app: str = "", ctx: str = "") -> str:
     return run_with_trigger_kind(trigger_kind)
 
 
+_MANUAL_COOLDOWN_SECONDS = 300   # 5 min — protects against runaway loops
+
+
+def _manual_cooldown_active() -> bool:
+    """Returns True if a manual shift_report fired within the last
+    `_MANUAL_COOLDOWN_SECONDS` seconds. Prevents button-mash and
+    polling-loop spam from hammering the audit log."""
+    state = _load_state()
+    last = state.get("last_fired_at")
+    if not last or state.get("last_trigger_kind") != "manual":
+        return False
+    try:
+        last_dt = datetime.fromisoformat(last.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return False
+    elapsed = (datetime.now(timezone.utc) - last_dt).total_seconds()
+    return elapsed < _MANUAL_COOLDOWN_SECONDS
+
+
 def run_with_trigger_kind(trigger_kind: str) -> str:
     """Internal entry — used by codec_observer when it knows the trigger
-    kind. Per-day dedup means time AND idle on the same day fire once."""
+    kind. Per-day dedup means time AND idle on the same day fire once.
+    Manual fires bypass per-day dedup but are protected by a 5-min
+    cooldown so a button-mash or polling loop can't pile up reports."""
     if not _enabled():
         return "Shift report is disabled."
     if trigger_kind != "manual" and already_fired_today():
         return f"Shift report already fired today ({trigger_kind} suppressed)."
+    if trigger_kind == "manual" and _manual_cooldown_active():
+        return ("Shift report fired in the last 5 minutes — "
+                "suppressed to prevent loop spam. "
+                "Run again after the cooldown if you need a fresh one.")
 
     # Lazy-import codec_audit so the skill loads cleanly even in stripped envs
     try:
@@ -526,8 +551,9 @@ def run_with_trigger_kind(trigger_kind: str) -> str:
     report = _assemble_shift_report(trigger_kind)
     nid = _post_notification(report)
     saved_path = _maybe_auto_save(report, cfg)
-    if trigger_kind != "manual":
-        mark_fired_today(trigger_kind)
+    # Always mark — manual fires need the timestamp for the 5-min cooldown
+    # check above; idle/time still need it for per-day dedup.
+    mark_fired_today(trigger_kind)
 
     duration_ms = (time.monotonic() - t0) * 1000.0
     try:
