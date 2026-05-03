@@ -117,9 +117,13 @@ def test_plan_hash_changes_when_content_changes():
 @pytest.fixture
 def temp_codec_dir(tmp_path, monkeypatch):
     import codec_agent_plan as cap
+    import codec_audit
     monkeypatch.setattr(cap, "_CODEC_DIR", tmp_path)
     monkeypatch.setattr(cap, "_AGENTS_DIR", tmp_path / "agents")
     monkeypatch.setattr(cap, "_GLOBAL_GRANTS_PATH", tmp_path / "agent_global_grants.json")
+    # Test-pollution fix: redirect codec_audit._AUDIT_LOG so audit emits
+    # during plan creation/approval do NOT leak into production ~/.codec/audit.log.
+    monkeypatch.setattr(codec_audit, "_AUDIT_LOG", tmp_path / "audit.log")
     return tmp_path
 
 
