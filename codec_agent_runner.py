@@ -378,21 +378,27 @@ def _atomic_set_status(agent_id: str, new_status: str,
         log.warning("[%s] set_status %s failed: %s", agent_id, new_status, e)
 
 
-def _run_agent(agent_id: str) -> None:
+def _run_agent(agent_id: str, cid: Optional[str] = None) -> None:
     """The main per-agent thread function. Loads plan + grants,
     verifies plan_hash, walks checkpoints via _execute_checkpoint,
     persists state, emits audit events.
 
     On any unhandled exception: atomic save status=aborted, log,
     emit agent_aborted. Never propagates exceptions to caller (the
-    daemon's thread pool depends on this)."""
+    daemon's thread pool depends on this).
+
+    `cid` lets the daemon's crash-recovery path mint a single correlation_id,
+    emit AGENT_RESUMED under it, then chain all of this run's emits to the
+    same id (Step 1 §1.4 paired-cid contract). When None, generate fresh.
+    """
     from codec_agent_plan import (
         load_plan, load_state, load_manifest, load_grants,
         load_global_grants, save_state, save_manifest,
         compute_plan_hash,
     )
 
-    cid = secrets.token_hex(6)
+    if cid is None:
+        cid = secrets.token_hex(6)
 
     try:
         plan = load_plan(agent_id)
@@ -633,13 +639,19 @@ def _daemon_one_tick() -> None:
             with _threads_lock:
                 has_thread = agent_id in _active_threads and _active_threads[agent_id].is_alive()
             if not has_thread and occupied < MAX_CONCURRENT:
+                # Mint cid here and propagate into _run_agent so AGENT_RESUMED
+                # chains with the agent_started/checkpoint/completed emits that
+                # follow (Step 1 §1.4 paired-cid contract; review I4).
+                recovery_cid = secrets.token_hex(6)
                 _atomic_set_status(agent_id, "crashed_resumed")
                 _audit(AGENT_RESUMED,
                        message=f"resumed {agent_id} after crash/restart",
+                       correlation_id=recovery_cid,
                        extra={"agent_id": agent_id, "recovery": True})
                 # Transition to running and re-spawn
                 _atomic_set_status(agent_id, "running")
-                t = threading.Thread(target=_run_agent, args=(agent_id,), daemon=True,
+                t = threading.Thread(target=_run_agent, args=(agent_id,),
+                                      kwargs={"cid": recovery_cid}, daemon=True,
                                       name=f"agent-{agent_id}")
                 t.start()
                 with _threads_lock:

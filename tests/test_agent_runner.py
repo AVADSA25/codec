@@ -629,7 +629,8 @@ def test_daemon_resumes_after_pm2_restart(monkeypatch, temp_codec_dir):
                                     "status": "running", "title": "x"})
 
     spawned: List[str] = []
-    monkeypatch.setattr(car, "_run_agent", lambda a: spawned.append(a))
+    # Crash-recovery path passes cid kwarg into the thread (review I4)
+    monkeypatch.setattr(car, "_run_agent", lambda a, cid=None: spawned.append(a))
     # Mark NO active thread for "crashed" — simulating fresh PM2 boot
     monkeypatch.setattr(car, "_active_threads", {})
 
@@ -641,6 +642,45 @@ def test_daemon_resumes_after_pm2_restart(monkeypatch, temp_codec_dir):
     m = cap.load_manifest("crashed")
     # Status moved through crashed_resumed back to running (or may still be running if thread is fast)
     assert m["status"] in ("crashed_resumed", "running", "completed", "aborted")
+
+
+def test_daemon_resume_emits_correlation_id_matching_run_agent(monkeypatch, temp_codec_dir):
+    """Step 1 §1.4 paired-cid contract: AGENT_RESUMED on crash recovery must
+    share its correlation_id with the _run_agent operation that follows, so
+    the resume event chains with subsequent agent_started / agent_checkpoint_*
+    / agent_completed emits instead of being orphaned in the audit log.
+
+    Phase 3 Step 9 review I4 fix.
+    """
+    import codec_agent_runner as car
+    import codec_agent_plan as cap
+
+    cap.save_manifest("crashed", {"agent_id": "crashed",
+                                    "status": "running", "title": "x"})
+
+    audit_calls: List[dict] = []
+    def fake_audit(event, source="codec-agent-runner", message="",
+                   correlation_id="", outcome="ok", level="info", extra=None):
+        audit_calls.append({"event": event, "correlation_id": correlation_id})
+    monkeypatch.setattr(car, "_audit", fake_audit)
+
+    received_cid: List[str] = []
+    def fake_run_agent(agent_id, cid=None):
+        received_cid.append(cid or "")
+    monkeypatch.setattr(car, "_run_agent", fake_run_agent)
+    monkeypatch.setattr(car, "_active_threads", {})
+
+    car._daemon_one_tick()
+    time.sleep(0.3)
+
+    resumed = [c for c in audit_calls if c["event"] == car.AGENT_RESUMED]
+    assert len(resumed) == 1, f"expected exactly 1 AGENT_RESUMED emit, got {len(resumed)}"
+    resume_cid = resumed[0]["correlation_id"]
+    assert resume_cid, ("AGENT_RESUMED emitted without correlation_id "
+                        "(Step 1 §1.4 paired-cid contract violation)")
+    assert received_cid == [resume_cid], (
+        f"_run_agent must receive the resume cid to chain emits: "
+        f"got {received_cid}, expected [{resume_cid}]")
 
 
 def test_daemon_global_kill_switch(monkeypatch, temp_codec_dir):
