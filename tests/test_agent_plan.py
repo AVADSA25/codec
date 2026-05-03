@@ -189,3 +189,92 @@ def test_validate_plan_against_registry_rejects_unknown_skill():
     ok, missing = validate_plan_skills(plan, registry=fake_registry)
     assert ok is False
     assert "nonexistent_skill" in missing
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Task 6 — LLM plan drafter (Qwen-3.6, local-only) (3 tests)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_draft_plan_via_qwen_returns_valid_plan(monkeypatch):
+    import codec_agent_plan as cap
+
+    fake_qwen_response = json.dumps({
+        "goals": ["Build property monitor bot"],
+        "checkpoints": [
+            {"title": "Set up bot scaffold", "description": "...",
+             "skills_needed": ["file_ops"], "expected_output": "Bot project dir created",
+             "step_budget": 30},
+            {"title": "Implement scraper", "description": "...",
+             "skills_needed": ["chrome_open", "file_ops"],
+             "expected_output": "Listings JSON written", "step_budget": 60},
+        ],
+        "permission_manifest": {
+            "read_paths": [], "write_paths": ["~/.codec/agents/{agent_id}/artifacts/**"],
+            "network_domains": ["idealista.com", "fotocasa.es"],
+            "skills": ["file_ops", "chrome_open"], "destructive_ops": [],
+        },
+        "estimated_duration_minutes": 90,
+        "assumptions": ["User has Chrome installed"],
+    })
+
+    def fake_qwen_chat(prompt, system_prompt=None, max_tokens=4000, **kw):
+        return fake_qwen_response
+
+    monkeypatch.setattr(cap, "_qwen_chat", fake_qwen_chat)
+
+    fake_registry = MagicMock()
+    fake_registry.names.return_value = ["file_ops", "chrome_open"]
+
+    plan = cap.draft_plan(
+        agent_id="test_agent",
+        description="Build a Telegram bot that scrapes Marbella property listings",
+        registry=fake_registry,
+    )
+    assert plan.agent_id == "test_agent"
+    assert len(plan.checkpoints) == 2
+    assert "idealista.com" in plan.permission_manifest.network_domains
+
+
+def test_draft_plan_rejects_unknown_skill(monkeypatch):
+    import codec_agent_plan as cap
+
+    fake_response = json.dumps({
+        "goals": ["x"], "checkpoints": [
+            {"title": "t", "description": "d",
+             "skills_needed": ["nonexistent_skill_xyz"],
+             "expected_output": "o", "step_budget": 10}
+        ],
+        "permission_manifest": {
+            "read_paths": [], "write_paths": [], "network_domains": [],
+            "skills": ["nonexistent_skill_xyz"], "destructive_ops": [],
+        },
+        "estimated_duration_minutes": 5, "assumptions": [],
+    })
+    monkeypatch.setattr(cap, "_qwen_chat", lambda *a, **k: fake_response)
+
+    fake_registry = MagicMock()
+    fake_registry.names.return_value = ["weather"]  # nonexistent_skill_xyz NOT in registry
+
+    with pytest.raises(cap.PlanValidationError) as exc_info:
+        cap.draft_plan(
+            agent_id="test_agent",
+            description="some project",
+            registry=fake_registry,
+        )
+    assert "nonexistent_skill_xyz" in str(exc_info.value)
+
+
+def test_draft_plan_handles_qwen_unavailable(monkeypatch):
+    import codec_agent_plan as cap
+
+    def raise_connection(*a, **k):
+        raise ConnectionError("qwen3.6 down")
+
+    monkeypatch.setattr(cap, "_qwen_chat", raise_connection)
+
+    with pytest.raises(cap.QwenUnavailableError):
+        cap.draft_plan(
+            agent_id="test_agent",
+            description="x",
+            registry=MagicMock(),
+        )

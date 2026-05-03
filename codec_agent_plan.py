@@ -197,3 +197,152 @@ def validate_plan_skills(plan: Plan, registry=None) -> Tuple[bool, List[str]]:
 
     missing = sorted(needed - known)
     return (len(missing) == 0, missing)
+
+
+# ── Qwen-3.6 client ───────────────────────────────────────────────────────────
+QWEN_URL = "http://127.0.0.1:8090/v1/chat/completions"
+QWEN_MODEL = "qwen3.6"
+QWEN_TIMEOUT = 60  # seconds
+
+
+class QwenUnavailableError(RuntimeError):
+    """Qwen-3.6 service down or unreachable."""
+
+
+class PlanValidationError(ValueError):
+    """Plan failed schema or skill-registry validation."""
+
+
+def _qwen_chat(user_prompt: str, system_prompt: str = "",
+               max_tokens: int = 4000) -> str:
+    """Call local Qwen-3.6 OpenAI-compatible endpoint. Returns the
+    assistant's content string. Raises QwenUnavailableError on
+    network failure or non-2xx response."""
+    import requests  # lazy import — avoid forcing requests on test machines without it
+
+    payload = {
+        "model": QWEN_MODEL,
+        "messages": [
+            {"role": "system", "content": system_prompt or ""},
+            {"role": "user",   "content": user_prompt},
+        ],
+        "max_tokens": max_tokens,
+        "temperature": 0.2,
+    }
+    try:
+        r = requests.post(QWEN_URL, json=payload, timeout=QWEN_TIMEOUT)
+    except requests.exceptions.ConnectionError as e:
+        raise QwenUnavailableError(f"qwen3.6 unreachable: {e}")
+    except requests.exceptions.Timeout:
+        raise QwenUnavailableError("qwen3.6 request timed out")
+    if r.status_code != 200:
+        raise QwenUnavailableError(f"qwen3.6 returned {r.status_code}: {r.text[:200]}")
+    try:
+        data = r.json()
+        return data["choices"][0]["message"]["content"]
+    except (KeyError, json.JSONDecodeError) as e:
+        raise QwenUnavailableError(f"qwen3.6 returned malformed response: {e}")
+
+
+# ── Plan drafting ─────────────────────────────────────────────────────────────
+_PLAN_SYSTEM_PROMPT = """You are CODEC's plan generator. The user describes a project. \
+You return ONLY a JSON object matching this schema:
+
+{
+  "goals":         [<string>, ...],
+  "checkpoints": [
+    {
+      "title":           <string>,
+      "description":     <string>,
+      "skills_needed":   [<skill_name>, ...],
+      "expected_output": <string>,
+      "step_budget":     <int, default 30>
+    }
+  ],
+  "permission_manifest": {
+    "read_paths":      [<glob>, ...],
+    "write_paths":     [<glob — MUST be under ~/.codec/agents/{agent_id}/artifacts/ unless user grants more>, ...],
+    "network_domains": [<domain>, ...],
+    "skills":          [<union of all checkpoints.skills_needed>, ...],
+    "destructive_ops": [<op-id>, ...]
+  },
+  "estimated_duration_minutes": <int>,
+  "assumptions": [<string>, ...]
+}
+
+Rules:
+- Output ONLY valid JSON. No prose before or after.
+- skills_needed MUST be skill names from the user-supplied registry list. Never invent skill names.
+- write_paths default to ~/.codec/agents/{agent_id}/artifacts/** unless the project explicitly requires writing elsewhere.
+- destructive_ops list any irreversible operations (deletes, payments, sending emails on user's behalf). They will require additional consent at runtime.
+- estimated_duration_minutes is your best honest guess.
+"""
+
+
+def draft_plan(agent_id: str, description: str, registry=None,
+               available_skills: Optional[List[str]] = None) -> Plan:
+    """Call Qwen-3.6 with the project description, parse response into Plan,
+    validate against skill registry. Raises PlanValidationError on schema or
+    validation failure; QwenUnavailableError on LLM unavailability."""
+    if registry is None:
+        try:
+            from codec_dispatch import registry as _reg
+            registry = _reg
+        except Exception:
+            raise PlanValidationError("codec_dispatch unavailable; cannot validate skills")
+
+    if available_skills is None:
+        available_skills = sorted(registry.names() or [])
+
+    user_prompt = (
+        f"agent_id: {agent_id}\n\n"
+        f"Available skills (registry): {', '.join(available_skills)}\n\n"
+        f"Project description:\n{description}\n\n"
+        f"Generate the JSON plan now."
+    )
+
+    try:
+        raw = _qwen_chat(user_prompt, _PLAN_SYSTEM_PROMPT)
+    except QwenUnavailableError:
+        raise
+    except (ConnectionError, OSError, RuntimeError) as e:
+        raise QwenUnavailableError(f"qwen3.6 error: {e}")
+
+    # Strip code fences if Qwen wraps in ```json ... ```
+    raw = raw.strip()
+    if raw.startswith("```"):
+        raw = re.sub(r"^```(?:json)?\s*", "", raw)
+        raw = re.sub(r"\s*```\s*$", "", raw)
+
+    try:
+        d = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise PlanValidationError(f"qwen3.6 returned non-JSON: {e}; raw={raw[:300]!r}")
+
+    # Inject schema + agent_id (LLM doesn't need to know schema number)
+    d.setdefault("schema", PLAN_SCHEMA_VERSION)
+    d.setdefault("agent_id", agent_id)
+
+    # Compute checkpoint IDs deterministically
+    for cp in d.get("checkpoints", []):
+        cp.setdefault("id", _stable_checkpoint_id(cp))
+
+    try:
+        plan = plan_from_dict(d)
+    except (KeyError, ValueError, TypeError) as e:
+        raise PlanValidationError(f"plan schema invalid: {e}")
+
+    ok, missing = validate_plan_skills(plan, registry=registry)
+    if not ok:
+        raise PlanValidationError(
+            f"plan references unknown skills: {missing}"
+        )
+
+    return plan
+
+
+def _stable_checkpoint_id(cp_dict: Dict[str, Any]) -> str:
+    """SHA-1 first 8 of (title + description). Stable across re-drafts of
+    the same conceptual checkpoint."""
+    seed = f"{cp_dict.get('title', '')}|{cp_dict.get('description', '')}"
+    return hashlib.sha1(seed.encode("utf-8")).hexdigest()[:8]
