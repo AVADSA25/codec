@@ -110,3 +110,90 @@ def compute_plan_hash(plan: Plan) -> str:
     means someone manually edited plan.json after approval."""
     canonical = json.dumps(plan.to_dict(), sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+# ── Atomic file I/O (tmp+rename pattern from Phase 2) ─────────────────────────
+def _atomic_write_json(path: Path, data: Any) -> None:
+    """Write JSON atomically: write to .tmp, fsync, rename."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, sort_keys=False)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp_path, path)
+
+
+def _read_json(path: Path) -> Optional[Dict[str, Any]]:
+    if not path.exists():
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError) as e:
+        log.warning("read_json failed for %s: %s", path, e)
+        return None
+
+
+def _agent_dir(agent_id: str) -> Path:
+    return _AGENTS_DIR / agent_id
+
+
+# ── Plan R/W ──────────────────────────────────────────────────────────────────
+def save_plan(plan: Plan) -> None:
+    _atomic_write_json(_agent_dir(plan.agent_id) / "plan.json", plan.to_dict())
+
+
+def load_plan(agent_id: str) -> Optional[Plan]:
+    d = _read_json(_agent_dir(agent_id) / "plan.json")
+    return plan_from_dict(d) if d else None
+
+
+# ── State R/W ─────────────────────────────────────────────────────────────────
+def save_state(agent_id: str, state: Dict[str, Any]) -> None:
+    _atomic_write_json(_agent_dir(agent_id) / "state.json", state)
+
+
+def load_state(agent_id: str) -> Dict[str, Any]:
+    return _read_json(_agent_dir(agent_id) / "state.json") or {}
+
+
+# ── Manifest R/W ──────────────────────────────────────────────────────────────
+def save_manifest(agent_id: str, manifest: Dict[str, Any]) -> None:
+    _atomic_write_json(_agent_dir(agent_id) / "manifest.json", manifest)
+
+
+def load_manifest(agent_id: str) -> Dict[str, Any]:
+    return _read_json(_agent_dir(agent_id) / "manifest.json") or {}
+
+
+# ── Grants R/W ────────────────────────────────────────────────────────────────
+def save_grants(agent_id: str, grants: Dict[str, Any]) -> None:
+    _atomic_write_json(_agent_dir(agent_id) / "grants.json", grants)
+
+
+def load_grants(agent_id: str) -> Dict[str, Any]:
+    return _read_json(_agent_dir(agent_id) / "grants.json") or {}
+
+
+# ── Skill-registry validation ─────────────────────────────────────────────────
+def validate_plan_skills(plan: Plan, registry=None) -> Tuple[bool, List[str]]:
+    """Walk every checkpoint's skills_needed; return (ok, missing_skills).
+    If `registry` is None, lazy-imports codec_skill_registry's default
+    instance (via codec_dispatch)."""
+    if registry is None:
+        try:
+            from codec_dispatch import registry as _reg
+            registry = _reg
+        except Exception:
+            log.warning("codec_dispatch unavailable; cannot validate skills")
+            return (False, ["__registry_unavailable__"])
+
+    known = set(registry.names() or [])
+    needed = set()
+    for cp in plan.checkpoints:
+        needed.update(cp.skills_needed)
+    needed.update(plan.permission_manifest.skills)
+
+    missing = sorted(needed - known)
+    return (len(missing) == 0, missing)
