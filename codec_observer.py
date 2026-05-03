@@ -569,6 +569,35 @@ def poll(buffer: Optional[RingBuffer] = None,
         except Exception as e:
             log.debug("[observer] trigger evaluation failed (non-fatal): %s", e)
 
+        # Phase 3.5 — proactive intelligence overlay. After Step 6 triggers,
+        # check declarative patterns (long-form dwell, multi-tab research, ...).
+        # OFF by default (PROACTIVE_OVERLAY_ENABLED env var). Defensive: if
+        # codec_proactive import fails OR a pattern raises, observer keeps
+        # running.
+        try:
+            from codec_proactive import check_for_proactive
+            history = []
+            try:
+                history = list(get_global_buffer().snapshot())
+            except Exception:
+                pass
+            suggestion = check_for_proactive(snapshot, history=history)
+            if suggestion is not None:
+                try:
+                    from codec_agent_messaging import post_message
+                    post_message(
+                        agent_id="proactive",
+                        type="agent_question",   # reuses Step 10 message-type frozen vocab
+                        title=suggestion.title,
+                        body=suggestion.body,
+                        actions=suggestion.actions,
+                        correlation_id=f"proactive_{suggestion.pattern_id}",
+                    )
+                except Exception as e:
+                    log.debug("[observer] proactive post_message failed: %s", e)
+        except Exception as e:
+            log.debug("[observer] proactive check failed (non-fatal): %s", e)
+
     return snapshot
 
 

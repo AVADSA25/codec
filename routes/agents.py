@@ -584,3 +584,52 @@ def silence_endpoint(agent_id: str, body: SilenceBody):
     import codec_agent_messaging as cam
     cam.set_silenced(agent_id, body.silenced)
     return {"agent_id": agent_id, "silenced": cam.is_silenced(agent_id)}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 3.5 — Proactive Intelligence Overlay endpoints
+# ─────────────────────────────────────────────────────────────────────────────
+
+class ProactiveAckBody(BaseModel):
+    pattern_id: str = Field(...)
+
+
+class ProactiveDismissBody(BaseModel):
+    pattern_id: str = Field(...)
+    scope: str = Field("today")  # "today" | "forever"
+
+
+@router.get("/api/proactive/patterns")
+def list_proactive_patterns():
+    """List registered proactive-suggestion patterns + their state.
+    For PWA settings panel."""
+    try:
+        import codec_proactive as cp
+        return {"patterns": cp.list_patterns(), "enabled": cp.is_enabled()}
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
+
+@router.post("/api/proactive/acknowledge")
+def acknowledge_proactive(body: ProactiveAckBody):
+    """User clicked Acknowledge on a proactive suggestion."""
+    try:
+        import codec_proactive as cp
+        cp.acknowledge(body.pattern_id)
+        return {"pattern_id": body.pattern_id, "acknowledged": True}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/api/proactive/dismiss")
+def dismiss_proactive(body: ProactiveDismissBody):
+    """User dismissed a proactive suggestion. scope ∈ {today, forever}."""
+    if body.scope not in ("today", "forever"):
+        raise HTTPException(status_code=400,
+                             detail=f"invalid scope {body.scope!r}; expected 'today' or 'forever'")
+    try:
+        import codec_proactive as cp
+        cp.dismiss(body.pattern_id, scope=body.scope)
+        return {"pattern_id": body.pattern_id, "dismissed_scope": body.scope}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
