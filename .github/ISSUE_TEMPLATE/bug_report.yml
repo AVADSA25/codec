@@ -1,0 +1,91 @@
+name: Bug report
+description: Something isn't working as expected
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please fill in as much detail as you can.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear and concise description of what the bug is.
+      placeholder: When I do X, Y happens instead of Z.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Minimal sequence to reproduce the issue.
+      placeholder: |
+        1. Open `/chat`
+        2. Click 'Project' mode
+        3. Type "..."
+        4. See error
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What you expected to happen.
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs / audit entries
+      description: |
+        Paste relevant lines from `~/.codec/audit.log` or `pm2 logs codec-dashboard --lines 50 --nostream`.
+        Strip any sensitive data (paths, account names, tokens).
+      render: shell
+    validations:
+      required: false
+  - type: input
+    id: codec-version
+    attributes:
+      label: CODEC version / commit
+      description: Output of `git -C ~/codec-repo rev-parse --short HEAD` and `python3.13 --version`.
+      placeholder: "abc1234, Python 3.13.x"
+    validations:
+      required: false
+  - type: dropdown
+    id: pm2-services
+    attributes:
+      label: Which PM2 service is involved?
+      multiple: true
+      options:
+        - codec-dashboard
+        - codec-agent-runner
+        - codec-observer
+        - codec-mcp-http
+        - codec-heartbeat
+        - codec-hotkey
+        - codec-dictate
+        - open-codec
+        - codec-imessage
+        - codec-telegram
+        - codec-watchdog
+        - codec-overlay
+        - none / not applicable
+    validations:
+      required: false
+  - type: input
+    id: macos-version
+    attributes:
+      label: macOS version
+      placeholder: "14.5 (Sonoma) on M1 Ultra"
+    validations:
+      required: false
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Pre-flight check
+      options:
+        - label: I searched existing issues and discussions to confirm this isn't already reported
+          required: true
+        - label: I confirmed the issue happens with all default kill switches enabled (`AGENT_*`, `OBSERVER_*`, `TRIGGERS_*`, etc.)
+          required: false

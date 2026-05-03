@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Discussion / Q&A / "is this a bug?"
+    url: https://github.com/AVADSA25/codec/discussions
+    about: For open-ended questions, setup help, or "I'm not sure if this is a bug yet" — use Discussions instead of opening an issue.
+  - name: Enterprise setup
+    url: https://avadigital.ai
+    about: Custom integration, deployment across a team, or paid setup work.
