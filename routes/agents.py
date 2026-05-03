@@ -272,7 +272,11 @@ def create_agent(body: CreateAgentBody):
         raise HTTPException(status_code=503, detail=f"Qwen-3.6 unavailable: {e}")
 
     manifest = _cap.load_manifest(agent_id)
-    return {"agent_id": agent_id, "status": manifest.get("status", "unknown")}
+    return {
+        "agent_id": agent_id,
+        "status": manifest.get("status", "unknown"),
+        "project_dir": manifest.get("project_dir"),  # Phase 3.5: human-browseable folder
+    }
 
 
 @router.get("/api/agents")

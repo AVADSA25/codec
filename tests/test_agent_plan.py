@@ -121,6 +121,9 @@ def temp_codec_dir(tmp_path, monkeypatch):
     monkeypatch.setattr(cap, "_CODEC_DIR", tmp_path)
     monkeypatch.setattr(cap, "_AGENTS_DIR", tmp_path / "agents")
     monkeypatch.setattr(cap, "_GLOBAL_GRANTS_PATH", tmp_path / "agent_global_grants.json")
+    # Phase 3.5: redirect project root so create_project_folder doesn't
+    # touch the real ~/codec-projects/ during tests.
+    monkeypatch.setattr(cap, "_PROJECT_ROOT", tmp_path / "codec-projects")
     # Test-pollution fix: redirect codec_audit._AUDIT_LOG so audit emits
     # during plan creation/approval do NOT leak into production ~/.codec/audit.log.
     monkeypatch.setattr(codec_audit, "_AUDIT_LOG", tmp_path / "audit.log")
@@ -523,7 +526,7 @@ def test_post_api_agents_creates_drafts(monkeypatch, temp_codec_dir, tmp_path):
         "estimated_duration_minutes": 5, "assumptions": []}))
     fake_reg = MagicMock(); fake_reg.names.return_value = ["weather"]
     monkeypatch.setattr("codec_agent_plan.draft_plan_with_clarification",
-                        lambda agent_id, desc, registry=None, max_rounds=3:
+                        lambda agent_id, desc, registry=None, max_rounds=3, project_dir=None:
                             cap.draft_plan(agent_id, desc, registry=fake_reg))
 
     from routes.agents import router
@@ -790,3 +793,120 @@ def test_e2e_full_lifecycle(monkeypatch, temp_codec_dir):
     events = [e for e, _ in audit_emits]
     assert "agent_plan_drafted" in events
     assert "agent_plan_approved" in events
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 3.5 — Project folder creation (Claude Code-style human-browseable dir)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_slugify_basic():
+    from codec_agent_plan import _slugify
+    assert _slugify("Build a Telegram bot") == "build-a-telegram-bot"
+    assert _slugify("Marbella Property Bot!!!") == "marbella-property-bot"
+    assert _slugify("EUR/USD vol monitor") == "eur-usd-vol-monitor"
+
+
+def test_slugify_handles_unicode_and_empty():
+    from codec_agent_plan import _slugify
+    # Unicode and special chars stripped, ascii-only slug
+    assert _slugify("Café résumé") == "caf-r-sum"
+    # Pure non-alphanumeric falls back to "project"
+    assert _slugify("!!!") == "project"
+    assert _slugify("") == "project"
+
+
+def test_slugify_truncates_long_titles():
+    from codec_agent_plan import _slugify, MAX_PROJECT_SLUG_LEN
+    long_title = "build " + "a-very-long-project-title-" * 10
+    slug = _slugify(long_title)
+    assert len(slug) <= MAX_PROJECT_SLUG_LEN
+    assert not slug.endswith("-")  # trailing dash trimmed
+
+
+def test_create_project_folder_creates_dir(temp_codec_dir):
+    from codec_agent_plan import create_project_folder
+    folder = create_project_folder("Marbella property bot", "agent_abc123")
+    assert folder.exists() and folder.is_dir()
+    assert folder.name == "marbella-property-bot"
+    assert folder.parent == (temp_codec_dir / "codec-projects").resolve()
+
+
+def test_create_project_folder_disambiguates_collisions(temp_codec_dir):
+    from codec_agent_plan import create_project_folder
+    a = create_project_folder("Property bot", "agent_a")
+    b = create_project_folder("Property bot", "agent_b")
+    c = create_project_folder("Property bot", "agent_c")
+    assert a.name == "property-bot"
+    assert b.name == "property-bot-2"
+    assert c.name == "property-bot-3"
+    assert a.exists() and b.exists() and c.exists()
+
+
+def test_create_agent_writes_project_dir_in_manifest(monkeypatch, temp_codec_dir):
+    """create_agent populates manifest.project_dir with the resolved path."""
+    import codec_agent_plan as cap
+    monkeypatch.setattr(cap, "_qwen_chat", lambda *a, **k: json.dumps({
+        "goals": ["g"],
+        "checkpoints": [{"title": "t", "description": "d",
+                         "skills_needed": ["weather"],
+                         "expected_output": "o", "step_budget": 10}],
+        "permission_manifest": {"read_paths": [], "write_paths": [],
+                                "network_domains": [], "skills": ["weather"],
+                                "destructive_ops": []},
+        "estimated_duration_minutes": 5, "assumptions": [],
+    }))
+    fake_reg = MagicMock()
+    fake_reg.names.return_value = ["weather"]
+    monkeypatch.setattr("codec_dispatch.registry", fake_reg, raising=False)
+
+    agent_id = cap.create_agent(title="Property bot for Marbella",
+                                 description="Build a property bot")
+
+    m = cap.load_manifest(agent_id)
+    assert m.get("project_dir"), "manifest must include project_dir after create_agent"
+    pdir = Path(m["project_dir"])
+    assert pdir.exists() and pdir.is_dir()
+    assert pdir.name == "property-bot-for-marbella"
+    # The project folder lives under the configured root (tmp during tests)
+    assert (temp_codec_dir / "codec-projects").resolve() in pdir.parents
+
+
+def test_draft_plan_includes_project_dir_in_qwen_prompt(monkeypatch, temp_codec_dir):
+    """When project_dir is passed to draft_plan, the user_prompt sent to Qwen
+    must include the path so the LLM defaults write_paths to it."""
+    import codec_agent_plan as cap
+    captured = {"prompt": None}
+    def capture(user_prompt, system_prompt, max_tokens=4000):
+        captured["prompt"] = user_prompt
+        return json.dumps({
+            "goals": ["g"], "checkpoints": [{"title": "t", "description": "d",
+                "skills_needed": ["weather"], "expected_output": "o", "step_budget": 10}],
+            "permission_manifest": {"read_paths": [], "write_paths": [],
+                "network_domains": [], "skills": ["weather"], "destructive_ops": []},
+            "estimated_duration_minutes": 5, "assumptions": []})
+    monkeypatch.setattr(cap, "_qwen_chat", capture)
+    fake_reg = MagicMock()
+    fake_reg.names.return_value = ["weather"]
+
+    pdir = temp_codec_dir / "codec-projects" / "test-project"
+    pdir.mkdir(parents=True)
+    cap.draft_plan(agent_id="agent_x", description="build x",
+                    registry=fake_reg, project_dir=pdir)
+
+    assert captured["prompt"] is not None
+    assert str(pdir) in captured["prompt"]
+    assert "Project folder" in captured["prompt"]
+    assert "write_paths" in captured["prompt"]
+
+
+def test_project_root_config_override(temp_codec_dir, monkeypatch):
+    """~/.codec/config.json:agents.project_root_dir overrides the env default."""
+    import codec_agent_plan as cap
+    custom = temp_codec_dir / "my-custom-projects"
+    cfg_path = temp_codec_dir / "config.json"
+    cfg_path.write_text(json.dumps({
+        "agents": {"project_root_dir": str(custom)}
+    }))
+    # _project_root() reads ~/.codec/config.json; _CODEC_DIR is patched to tmp_path
+    folder = cap.create_project_folder("Custom test", "agent_x")
+    assert custom in folder.parents or folder.parent == custom.resolve()

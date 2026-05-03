@@ -59,12 +59,20 @@ except ImportError:
 _CODEC_DIR = Path(os.path.expanduser("~/.codec"))
 _AGENTS_DIR = _CODEC_DIR / "agents"
 _GLOBAL_GRANTS_PATH = _CODEC_DIR / "agent_global_grants.json"
+# Phase 3.5: human-browseable project folder root (Claude Code-style).
+# Each agent gets ~/codec-projects/<slugified-title>/ on creation, openable
+# in any IDE. Override via ~/.codec/config.json:agents.project_root_dir
+# or env CODEC_PROJECT_ROOT_DIR.
+_PROJECT_ROOT = Path(os.path.expanduser(
+    os.environ.get("CODEC_PROJECT_ROOT_DIR", "") or "~/codec-projects"
+))
 
 # ── Schema constants ──────────────────────────────────────────────────────────
 PLAN_SCHEMA_VERSION = 1
 GLOBAL_GRANTS_SCHEMA_VERSION = 1
 DEFAULT_STEP_BUDGET_PER_CHECKPOINT = 30
 MAX_CLARIFYING_ROUNDS = 3
+MAX_PROJECT_SLUG_LEN = 50
 
 
 # ── Dataclasses ───────────────────────────────────────────────────────────────
@@ -302,10 +310,15 @@ Rules:
 
 
 def draft_plan(agent_id: str, description: str, registry=None,
-               available_skills: Optional[List[str]] = None) -> Plan:
+               available_skills: Optional[List[str]] = None,
+               project_dir: Optional[Path] = None) -> Plan:
     """Call Qwen-3.6 with the project description, parse response into Plan,
     validate against skill registry. Raises PlanValidationError on schema or
-    validation failure; QwenUnavailableError on LLM unavailability."""
+    validation failure; QwenUnavailableError on LLM unavailability.
+
+    Phase 3.5: when `project_dir` is provided, the LLM is told to default
+    write_paths to that folder so files the agent creates land somewhere
+    the user can open in an IDE."""
     if registry is None:
         try:
             from codec_dispatch import registry as _reg
@@ -316,9 +329,20 @@ def draft_plan(agent_id: str, description: str, registry=None,
     if available_skills is None:
         available_skills = sorted(registry.names() or [])
 
+    project_hint = ""
+    if project_dir is not None:
+        project_hint = (
+            f"\nProject folder: {project_dir}\n"
+            f"Default write_paths for this agent: \"{project_dir}/**\". "
+            f"Files the user will open in their IDE land here. "
+            f"Don't write outside this folder unless the project description "
+            f"explicitly requires it.\n"
+        )
+
     user_prompt = (
         f"agent_id: {agent_id}\n\n"
-        f"Available skills (registry): {', '.join(available_skills)}\n\n"
+        f"Available skills (registry): {', '.join(available_skills)}\n"
+        f"{project_hint}\n"
         f"Project description:\n{description}\n\n"
         f"Generate the JSON plan now."
     )
@@ -393,16 +417,21 @@ def _ask_user(question: str, *, agent_id: str,
 
 def draft_plan_with_clarification(agent_id: str, description: str,
                                   registry=None,
-                                  max_rounds: int = MAX_CLARIFYING_ROUNDS) -> Plan:
+                                  max_rounds: int = MAX_CLARIFYING_ROUNDS,
+                                  project_dir: Optional[Path] = None) -> Plan:
     """Wrap draft_plan with a clarifying-question loop. If LLM returns
     {"too_vague": True, "clarifying_questions": [...]}, ask user via
     codec_ask_user.ask, append answers to description, retry. After
-    max_rounds without convergence, raise DescriptionTooVagueError."""
+    max_rounds without convergence, raise DescriptionTooVagueError.
+
+    Phase 3.5: `project_dir` (when provided) is forwarded to draft_plan
+    so the LLM defaults write_paths to the human-browseable folder."""
     enriched_description = description
 
     for round_idx in range(max_rounds + 1):
         try:
-            return draft_plan(agent_id, enriched_description, registry=registry)
+            return draft_plan(agent_id, enriched_description, registry=registry,
+                              project_dir=project_dir)
         except PlanValidationError as e:
             # Check if this was a "too_vague" response (sentinel from LLM)
             if "too_vague" in str(e).lower():
@@ -554,6 +583,56 @@ def _audit(event: str, source: str, message: str = "",
           level=level, extra=dict(extra or {}))
 
 
+# ── Project folder (Phase 3.5: Claude Code-style human-browseable dir) ────────
+_SLUG_RE = re.compile(r"[^a-z0-9]+")
+
+
+def _slugify(title: str) -> str:
+    """Convert a title to a filesystem-safe slug.
+    "Build a Telegram bot for Marbella property!" → "build-a-telegram-bot-for-marbella-property".
+    Falls back to "project" if the title has no alphanumeric characters."""
+    s = _SLUG_RE.sub("-", (title or "").lower()).strip("-")
+    if not s:
+        s = "project"
+    return s[:MAX_PROJECT_SLUG_LEN].rstrip("-") or "project"
+
+
+def _project_root() -> Path:
+    """Return the configured project root, with config.json override.
+    Resolved at call time so tests can monkeypatch _PROJECT_ROOT or set
+    CODEC_PROJECT_ROOT_DIR via monkeypatch.setenv."""
+    # config.json override (~/.codec/config.json:agents.project_root_dir)
+    cfg = _CODEC_DIR / "config.json"
+    if cfg.exists():
+        try:
+            data = json.loads(cfg.read_text())
+            override = (data.get("agents") or {}).get("project_root_dir")
+            if override:
+                return Path(os.path.expanduser(override))
+        except Exception:
+            pass
+    return _PROJECT_ROOT
+
+
+def create_project_folder(title: str, agent_id: str) -> Path:
+    """Create a human-browseable project folder for this agent.
+    Returns absolute Path. Disambiguates if the slug already exists."""
+    root = _project_root()
+    root.mkdir(parents=True, exist_ok=True)
+    base_slug = _slugify(title)
+    candidate = root / base_slug
+    suffix = 2
+    while candidate.exists():
+        candidate = root / f"{base_slug}-{suffix}"
+        suffix += 1
+        if suffix > 99:
+            # Pathological case: 99 collisions → fall back to agent_id suffix
+            candidate = root / f"{base_slug}-{agent_id}"
+            break
+    candidate.mkdir(parents=True, exist_ok=False)
+    return candidate.resolve()
+
+
 # ── Public orchestrator ───────────────────────────────────────────────────────
 def _new_agent_id() -> str:
     return f"agent_{secrets.token_hex(6)}"
@@ -564,9 +643,23 @@ def create_agent(title: str, description: str,
                  notification_channels: Optional[List[str]] = None) -> str:
     """Top-level entry point. Drafts a plan, persists to disk, emits audit.
     Returns the new agent_id. Status after this call: awaiting_approval
-    (or plan_failed on validation error)."""
+    (or plan_failed on validation error).
+
+    Phase 3.5: ALSO creates a human-browseable project folder under
+    ~/codec-projects/<slug>/ (or the configured project_root_dir). The
+    plan's permission_manifest.write_paths defaults to this folder, so
+    files the agent creates land where the user can open them in an IDE.
+    """
     agent_id = _new_agent_id()
     cid = secrets.token_hex(6)
+
+    # Phase 3.5: create the human-browseable project folder up-front so
+    # the plan-drafter can reference it as the default write_paths root.
+    try:
+        project_dir = create_project_folder(title, agent_id)
+    except Exception as e:
+        log.warning("[%s] project folder creation failed: %s", agent_id, e)
+        project_dir = None
 
     # Initial manifest
     manifest = {
@@ -576,13 +669,15 @@ def create_agent(title: str, description: str,
         "created_at": _now_iso(),
         "updated_at": _now_iso(),
         "notification_channels": notification_channels or ["pwa"],
+        "project_dir": str(project_dir) if project_dir else None,
     }
     save_manifest(agent_id, manifest)
     save_state(agent_id, {"current_checkpoint": 0})
 
     # Draft plan (with clarification loop)
     try:
-        plan = draft_plan_with_clarification(agent_id, description, registry=registry)
+        plan = draft_plan_with_clarification(agent_id, description, registry=registry,
+                                              project_dir=project_dir)
     except DescriptionTooVagueError as e:
         set_status(agent_id, "plan_failed", reason=f"too_vague: {e}")
         _audit(AGENT_PLAN_REJECTED, "codec-agent-plan",
