@@ -499,3 +499,64 @@ def test_reject_sets_status_with_reason(monkeypatch, temp_codec_dir):
     m = cap.load_manifest(agent_id)
     assert m["status"] == "rejected"
     assert m["status_reason"] == "don't need this"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Task 12 — PWA endpoints (2 tests)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_post_api_agents_creates_drafts(monkeypatch, temp_codec_dir, tmp_path):
+    """POST /api/agents creates an agent and drafts the plan."""
+    from fastapi.testclient import TestClient
+    import codec_agent_plan as cap
+
+    monkeypatch.setattr(cap, "_qwen_chat", lambda *a, **k: json.dumps({
+        "goals": ["g"], "checkpoints": [{"title": "t", "description": "d",
+            "skills_needed": ["weather"], "expected_output": "o", "step_budget": 10}],
+        "permission_manifest": {"read_paths": [], "write_paths": [],
+            "network_domains": [], "skills": ["weather"], "destructive_ops": []},
+        "estimated_duration_minutes": 5, "assumptions": []}))
+    fake_reg = MagicMock(); fake_reg.names.return_value = ["weather"]
+    monkeypatch.setattr("codec_agent_plan.draft_plan_with_clarification",
+                        lambda agent_id, desc, registry=None, max_rounds=3:
+                            cap.draft_plan(agent_id, desc, registry=fake_reg))
+
+    from routes.agents import router
+    from fastapi import FastAPI
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app)
+
+    r = client.post("/api/agents", json={
+        "title": "Property bot",
+        "description": "Build a property scraper",
+        "notification_channels": ["pwa"],
+    })
+    assert r.status_code == 200
+    body = r.json()
+    assert body["agent_id"].startswith("agent_")
+    assert body["status"] == "awaiting_approval"
+
+
+def test_get_api_agents_lists_all(temp_codec_dir):
+    """GET /api/agents returns all agents."""
+    from fastapi.testclient import TestClient
+    import codec_agent_plan as cap
+
+    # Create 2 agents directly via R/W (bypass LLM)
+    cap.save_manifest("agent_a", {"agent_id": "agent_a", "title": "A",
+                                   "status": "awaiting_approval", "created_at": "..."})
+    cap.save_manifest("agent_b", {"agent_id": "agent_b", "title": "B",
+                                   "status": "approved", "created_at": "..."})
+
+    from routes.agents import router
+    from fastapi import FastAPI
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app)
+
+    r = client.get("/api/agents")
+    assert r.status_code == 200
+    body = r.json()
+    ids = {a["agent_id"] for a in body["agents"]}
+    assert ids == {"agent_a", "agent_b"}
