@@ -271,11 +271,52 @@ Implementation: `codec_agent_plan.py` (~640 LOC), `routes/agents.py` (~250 LOC o
 
 Implementation: `codec_agent_runner.py` (~700 LOC), `routes/agents.py` (+120 for Step 9 endpoints), `ecosystem.config.js` (+22 for PM2 entry).
 
-### Other known gaps (tracked for Phase 3 follow-on)
-- No UI yet — Step 10 ships chat mode dropdown + status pills + agent timeline
-- No proactive messaging from agent → user (Step 10)
+### Proactive Messaging + Project Mode (Phase 3 Step 10)
+
+`codec_agent_messaging.py` is the agent ↔ user message dispatch. Backend complete; PWA HTML for the Project-mode dropdown + status pills deferred to Phase 3.5 alongside the proactive intelligence overlay.
+
+**Per-message flow:**
+1. `_run_agent` (Step 9) calls `post_message(agent_id, type, title, body, actions)` at 5 lifecycle points: agent start, checkpoint completion, blocked-on-permission, destructive-rejected abort, and final completion
+2. `post_message` writes the record to `~/.codec/agents/<id>/messages.jsonl` (1:1 timeline preservation, never batched)
+3. `post_message` then updates `~/.codec/notifications.json` — but only ONE banner per agent per `BATCH_WINDOW_SECONDS=60` (Q10). Within the window, the existing banner's `batch_count` increments and `title` updates to "N updates from <agent>: <latest>".
+4. Audit emit `agent_message_sent` with `extra.batched` flag
+
+**Message types** (frozen vocabulary): `agent_update` / `agent_blocked` / `agent_question` / `agent_done` / `agent_aborted` / `user_reply`.
+
+**Silence kill-switch:** `is_silenced(agent_id)` reads `~/.codec/agent_silence.json`. When silenced: `post_message` still writes the timeline but skips notifications. Toggled via `POST /api/agents/{id}/silence {"silenced": bool}`. State is per-agent + persistent (atomic R/W).
+
+**User reply pickup:** `POST /api/agents/{id}/messages {"body": "..."}` writes a `type=user_reply` line to `messages.jsonl` and emits `agent_message_received`. Step 9's `_run_agent` calls `get_unread_user_replies(agent_id, since_ts)` between checkpoints to feed replies into the next `_qwen_next_action` call as additional context.
+
+**Auto-escalation from chat (Q11):** `_classify_chat_message(text)` calls Qwen-3.6 with a structured-JSON prompt and returns `(is_project: bool, estimated_checkpoints: int, reason: str)`. `_should_escalate_to_project(user_text, session_id)` is the 2-signal gate:
+- Signal 1: classifier verdict `is_project=True`
+- Signal 2: `estimated_checkpoints >= ESCALATE_CHECKPOINTS_THRESHOLD = 3`
+- Plus 2 kill conditions: `AGENT_AUTO_ESCALATE_ENABLED=false` env var, OR `session_id` in `_autoescalate_silence_set` (in-memory, mutated under `_AUTOESCALATE_SILENCE_LOCK`)
+
+After the user says "No" once for a session, that session_id is silenced for the rest of the conversation. Resets on new chat session (because `_autoescalate_silence_set` is in-memory).
+
+**3 audit events:** `agent_message_sent`, `agent_message_received`, `agent_auto_escalated_from_chat`. `PHASE3_STEP10_EVENTS` frozenset exposed.
+
+**Reuses:** `~/.codec/notifications.json` (existing PWA infrastructure since Phase 1) · Step 8 storage layout · Step 9 `_run_agent` emit sites · Qwen-3.6 (existing local LLM at `http://127.0.0.1:8090/v1/chat/completions`).
+
+**Kill switches:**
+- `AGENT_AUTO_ESCALATE_ENABLED=false` — chat handler never suggests project promotion
+- Per-agent: `POST /api/agents/{id}/silence {"silenced": true}` — agent runs but no notification banners
+- Per-conversation auto-escalation silence (Q11) — first "No" suppresses for that session
+
+**PWA endpoints (Step 10):**
+- `GET /api/agents/{id}/messages` — return messages.jsonl as a list (newest last)
+- `POST /api/agents/{id}/messages {"body": "..."}` — user reply
+- `POST /api/agents/{id}/silence {"silenced": bool}` — toggle silence
+
+Implementation: `codec_agent_messaging.py` (~270 LOC), `routes/agents.py` (+61 for Step 10 endpoints), `codec_dashboard.py` (+125 for classifier + escalation gate), `codec_agent_runner.py` (+42 for `post_message` integration into 5 emit sites).
+
+### Other known gaps (tracked for Phase 3.5 follow-on)
+- **Project mode UI** — `codec_dashboard.html` does not yet have a mode-dropdown selector or agent status pills. Backend supports project dispatch via `POST /api/agents`; UI affordances deferred to Phase 3.5 alongside proactive overlay.
+- **Proactive intelligence overlay** — observer-driven contextual nudges ("you've been on this Notion doc 30 min, want a summary?") deferred per Q12. Step 10 backend done; Phase 3.5 layers proactive on top.
+- **`blocked_on_qwen` dedicated status** (Step 9 review C2) — Qwen unavailability currently maps to `blocked_on_permission` with reason. Phase 3.5 may introduce dedicated status with daemon-driven auto-resume.
+- **Read-paths runtime enforcement** (Step 9 review M4) — `PermissionManifest.read_paths` declared but not gated; documented inline. Phase 3.5 may add `Action.reads_path` field + LLM prompt update.
 - No formal teammate / sub-agent recursion — Crew is the only multi-agent primitive
-- (Phase 3 complete after Step 10 ships)
+- (Phase 3 backend complete after Step 10 ships; Phase 3.5 = UI + proactive + Step 9 review polish)
 
 ## 4. Skill system
 
@@ -457,6 +498,18 @@ Eight event names. `agent_started` opens the per-agent operation envelope; subse
 
 `PHASE3_STEP9_EVENTS` frozenset exposed.
 
+#### Phase 3 Step 10 events — agent ↔ user messaging
+
+Three event names, all info-level. `agent_message_sent` and `agent_message_received` thread the per-agent `correlation_id` from `_run_agent`'s envelope when called from there; `agent_auto_escalated_from_chat` is independent (chat-handler invocation, no agent yet).
+
+| Event | Source | level | extra fields |
+|---|---|---|---|
+| `agent_message_sent` | `codec-agent-messaging` | info | `agent_id`, `type` (one of `agent_update` \| `agent_blocked` \| `agent_question` \| `agent_done` \| `agent_aborted` \| `user_reply`), `batched` (bool) |
+| `agent_message_received` | `codec-agent-messaging` | info | `agent_id`, `body_len` |
+| `agent_auto_escalated_from_chat` | `codec-dashboard` | info | `session_id`, `estimated_checkpoints`, `verdict`, `silenced` (bool, true if subsequent No) |
+
+`PHASE3_STEP10_EVENTS` frozenset exposed.
+
 ### Notifications (`~/.codec/notifications.json`)
 Four sources can produce notifications: scheduler (crew completion), heartbeat (threshold alert), autopilot (ambient trigger), and Phase 1 Step 3's AskUserQuestion (`type="question"`). All write through `routes/_shared.py:51-127` except AskUserQuestion which writes via `codec_ask_user._write_question_notification`.
 
@@ -615,6 +668,12 @@ These zones break running infrastructure if changed without coordination. NEVER 
 - `AGENT_RUNNER_ENABLED` and `AGENT_RUNNER_MAX_CONCURRENT` env vars (Phase 3 Step 9, defaults `true` / `3`). `AGENT_RUNNER_ENABLED=false` idles the daemon.
 - PM2 `codec-agent-runner` service (Phase 3 Step 9). Stop/restart through PM2; `autorestart: true` provides crash recovery automatically. Don't add HTTP heartbeat probes — daemon doesn't expose HTTP by design.
 - `~/.codec/agents/<id>/state.json` after Step 9 deploy — read/written by `codec_agent_runner._run_agent` mid-checkpoint. Manual edits while an agent is `running` will desync the resume mechanism. To pause an agent: `POST /api/agents/{id}/pause`.
+- `codec_agent_messaging.py` (Phase 3 Step 10) — agent ↔ user message dispatch + 60s batching. Don't refactor without re-running PHASE3-STEP10 design gate. The `BATCH_WINDOW_SECONDS=60` constant is the user-facing batching contract; tune cautiously. The `MAX_MESSAGE_BODY_LEN=5000` constant caps body size in `to_dict()` — never raise without considering audit-log impact.
+- `~/.codec/agents/<id>/messages.jsonl` (Phase 3 Step 10) — append-only message log. Never edit directly; use `post_message` / `post_user_reply` / endpoints. Bare-edits during a running agent will desync the daemon's `since_ts` read position for user replies.
+- `~/.codec/agent_silence.json` (Phase 3 Step 10) — per-agent silence state. Modify only via `set_silenced` or `POST /api/agents/{id}/silence`. Atomic-write contract.
+- `_autoescalate_silence_set` global in `codec_dashboard.py` (Phase 3 Step 10) — in-memory per-session silence state for chat → project escalation. Mutated under `_AUTOESCALATE_SILENCE_LOCK` (`threading.Lock()`); never touch from outside. Resets on dashboard restart by design.
+- `AGENT_AUTO_ESCALATE_ENABLED` env var (Phase 3 Step 10, default `true`). Setting `false` disables the chat-handler "Promote to Project mode?" prompt entirely.
+- `ESCALATE_CHECKPOINTS_THRESHOLD` constant in `codec_dashboard.py` (default 3). Lowering to 1-2 will prompt-escalate even single-skill asks; raising past 5 effectively disables auto-escalation.
 
 ## 11. Working with this repo as a coding agent
 
