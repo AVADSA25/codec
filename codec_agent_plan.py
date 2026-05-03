@@ -496,7 +496,7 @@ _VALID_TRANSITIONS: Dict[str, frozenset] = {
     "draft_pending":         frozenset({"awaiting_approval", "plan_failed"}),
     "awaiting_approval":     frozenset({"approved", "rejected", "revised"}),
     "revised":               frozenset({"awaiting_approval"}),
-    "approved":              frozenset({"rejected", "running"}),  # Step 9: running
+    "approved":              frozenset({"rejected", "running", "aborted"}),  # Step 9: running + tamper abort
     "rejected":              frozenset(),
     "plan_failed":           frozenset({"draft_pending"}),  # retry path
 
