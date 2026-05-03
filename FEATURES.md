@@ -1,6 +1,6 @@
 # Sovereign AI Workstation — Full Product Breakdown
 
-> Engine: **CODEC v2.1** — 245 features · 60 skills · 378 tests · 34K+ lines of code
+> Engine: **CODEC v2.3** — 337 features · 73 skills · 1023 tests · 53K+ lines of code
 
 The product name is **Sovereign AI Workstation**. Throughout this document
 and the codebase, **CODEC** refers to the underlying open-source engine /
@@ -8,6 +8,14 @@ codename (visible in `codec_*` Python modules, PM2 process names, and the
 `~/.codec/` config directory). Sub-products keep their established names —
 *CODEC Core*, *CODEC Dictate*, *CODEC Chat*, *CODEC Vibe*, etc. — because
 those are concrete engine components rather than separate products.
+
+**v2.3 adds Phase 1 (audit + plugin substrate), Phase 2 (continuous
+observation + automation), Phase 3 (drop-a-project autonomous agents),
+and Phase 3.5 (UX polish + proactive overlay)** — sections 10–13 below.
+Phase 3 ships `codec-agent-runner`, the autonomous-agent daemon that makes
+CODEC a "real AI employee" at the substrate level — drop a project, agent
+plans + builds + sends updates back proactively, with permission gates
+and resume-after-restart guarantees throughout.
 
 ---
 
@@ -44,7 +52,7 @@ those are concrete engine components rather than separate products.
 
 ---
 
-## 2. CODEC Chat — 24 features
+## 2. CODEC Chat — 30 features
 
 | # | Feature |
 |:-:|---|
@@ -56,7 +64,7 @@ those are concrete engine components rather than separate products.
 | 6 | Markdown rendering (code blocks, bold, italic, links) |
 | 7 | Copy-to-clipboard on any message |
 | 8 | Voice input via Web Speech API |
-| 9 | Chat mode / Agent mode toggle |
+| 9 | Four-mode chat composer: **Chat / Think / Agents / Project** *(v2.3)* |
 | 10 | 12 pre-built agent crews (dropdown selection) |
 | 11 | Custom Agent Builder (name, role, tools, max iterations) |
 | 12 | Save/load custom agent configurations |
@@ -72,6 +80,12 @@ those are concrete engine components rather than separate products.
 | 22 | Session lock (logout) button |
 | 23 | Flash Chat (quick command panel with filtered history) |
 | 24 | Flash Chat Enter-key send + source-filtered messages |
+| 25 | **Project mode** — drop a project description, Qwen-3.6 drafts plan + permission manifest, you approve once, agent runs autonomously *(v2.3)* |
+| 26 | **Project folder auto-creation** — every project gets `~/codec-projects/<slug>/` (Claude Code-style, openable in any IDE) *(v2.3)* |
+| 27 | **Inline plan review** — Approve / Reject / View plan buttons in chat thread; plan + manifest rendered inline *(v2.3)* |
+| 28 | **Agent status pills** above input — running / paused / blocked / awaiting_approval, with inline approve/pause/resume/abort actions, polls `/api/agents` every 5s *(v2.3)* |
+| 29 | **Auto-escalation gate** — chat-mode message detected as multi-step → "Promote to Project mode?" prompt with 2-signal classifier (Qwen verdict + checkpoint estimate ≥3) *(v2.3)* |
+| 30 | **Per-conversation silence** — first "No" silences the auto-escalation prompt for the rest of that session *(v2.3)* |
 
 ---
 
@@ -168,7 +182,7 @@ those are concrete engine components rather than separate products.
 
 ---
 
-## 6. CODEC Skills — 60 features (57 skills + 3 infrastructure)
+## 6. CODEC Skills — 78 features (74 skills + 4 infrastructure)
 
 ### Infrastructure
 
@@ -177,8 +191,9 @@ those are concrete engine components rather than separate products.
 | 1 | SkillRegistry with AST-based lazy loading (parse metadata without importing) |
 | 2 | Skill dispatch with fallback (match_all_triggers, try-next-on-None) |
 | 3 | Skill Marketplace (install, search, list, update, remove, publish) |
+| 4 | **`SKILL_OBSERVATION_TRIGGER` declarative trigger metadata** — skills opt into auto-fire via 5 trigger types (window_title_match, clipboard_pattern, file_change, time, compound) *(Phase 2 Step 6)* |
 
-### 57 Built-in Skills
+### 74 Built-in Skills
 
 MCP tool name shown where it differs from the file name.
 
@@ -186,15 +201,19 @@ MCP tool name shown where it differs from the file name.
 |---|---|
 | **Google Workspace** (8) | google_calendar, google_docs, google_drive, google_gmail, google_keep, google_sheets, google_slides, google_tasks |
 | **Chrome Automation** (10) | chrome_automate, chrome_click_cdp, chrome_close, chrome_extract, chrome_fill, chrome_open, chrome_read, chrome_scroll, chrome_search, chrome_tabs |
-| **System Control** (9) | app_switch, brightness, clipboard, file_ops, file_search, network_info, process_manager, `system` (system_info), terminal, `volume_brightness` (volume) |
+| **System Control** (10) | app_switch, brightness, clipboard, file_ops, file_search, file_write, network_info, process_manager, `system` (system_info), terminal, `volume_brightness` (volume) |
 | **Vision & Mouse** (2) | mouse_control (UI-TARS vision click), screenshot_text |
 | **AI & Content** (6) | `AI_News_Digest` (ai_news_digest), create_skill, skill_forge, translate, web_search, memory_search |
-| **Memory Layer** (3 — *new in v2.2*) | memory_search (FTS5 conversations), memory_history (temporal facts), memory_entities (CCF compression map) |
-| **Utilities** (11) | bitcoin_price, calculator, json_formatter, notes, password_generator, pomodoro, `qr_generator`, reminders, `time` (time_date), timer, weather |
+| **Memory Layer** (5) | memory_search (FTS5), memory_history (temporal facts), memory_entities (CCF map), memory_save, auto_memorize, fact_extract |
+| **Utilities** (12) | bitcoin_price, calculator, json_formatter, notes, password_generator, pomodoro, `qr_generator`, reminders, `time` (time_date), timer, weather, web_fetch |
+| **Communication** (2) | imessage_send, tts_say |
 | **Smart Home** (1) | philips_hue |
 | **Media** (1) | music (Spotify + Apple Music) |
 | **Delegation** (1) | `delegate` (lucy — AI persona + task orchestrator) |
 | **Dev Tools** (5) | ax_control, pm2_control, python_exec, `scheduler` (scheduler_skill), codec (meta-dispatcher) |
+| **Observability** (4) | audit_report, backup_status, health_check, notification_reader |
+| **Phase 1+ — agent-facing shims** (4) | ask_user (blocking pause + strict-consent), stuck (loop detection), self_improve (audit-driven proposal), shift_report (end-of-day summary) |
+| **Phase 2 first trigger** (1) | clipboard_url_fetch (first real `SKILL_OBSERVATION_TRIGGER` — auto-fetches clipboard URLs with consent gate) |
 
 ---
 
@@ -282,26 +301,223 @@ MCP tool name shown where it differs from the file name.
 
 ---
 
+## 10. Phase 1 — Agent Substrate (18 features) *(v2.3)*
+
+The foundation that Phase 2 + 3 reuse. Audit envelope, plugin lifecycle hooks,
+blocking ask-user with strict-consent, stuck-loop detection, per-checkpoint
+step budget, self_improve as plugin.
+
+| # | Feature |
+|:-:|---|
+| 1 | **Unified audit envelope** (`schema:1`) — every event JSON-line: `ts`, `event`, `source`, `outcome`, `transport`, `correlation_id`, `extra` |
+| 2 | **Paired correlation_id contract** — multi-emit operations share one cid (Step 1 §1.4) so analytics can join `op_started → op_completed` chains |
+| 3 | Daily audit log rotation + 30-day retention, append-only, thread-safe |
+| 4 | `codec_audit.log_event` adapter — backward-compat wrapper for legacy callers |
+| 5 | **5 plugin lifecycle hooks** — `pre_tool` / `post_tool` / `on_error` / `on_operation_start` / `on_operation_end` |
+| 6 | `HookCtx` / `HookVeto` / `PluginRegistry` / `run_with_hooks` — wraps every skill dispatch at the chokepoint |
+| 7 | AST-based plugin discovery — broken plugins never break startup |
+| 8 | Lazy plugin module load — metadata read from disk; module imported on first hook fire |
+| 9 | `hook_fired` / `hook_error` / `tool_vetoed` audit events |
+| 10 | **`AskUserQuestion`** — blocking pause-and-ask via `threading.Event`, atomic state at `~/.codec/pending_questions.json`, PWA + voice answer paths |
+| 11 | **§1.7 strict-consent gate** — literal verb-match for irreversible actions (generic "yes" rejected), two-strike → `ambiguous_consent` timeout |
+| 12 | Voice fuzzy-match for ask-user (3-tier: substring → synonym dict → Levenshtein); strict-consent BYPASSES fuzzy |
+| 13 | **Stuck detection** — per-agent ring buffer M=5; warn at N=3; escalate at N+2=5 (action: `ask_user` / `abort` / `warn_only`) |
+| 14 | **Step budget** — per-turn cap (`chat=5`, `voice=5`, `mcp=None`); warn-at-N-1; one `step_budget_exhausted` audit emit per request |
+| 15 | 6 Phase 1 audit events: `ask_user_question_emit/_answer/_timeout`, `stuck_warning/_escalated`, `step_budget_exhausted` |
+| 16 | 3 kill switches: `ASKUSER_ENABLED` / `STUCK_DETECTION_ENABLED` / `STEP_BUDGET_ENABLED` (env vars, default true) |
+| 17 | **`self_improve` migrated to plugin** — registers `post_tool` / `on_error` / `on_operation_end`; in-memory ring buffer of last 200 signals; per-tool 30-min throttle; daemon thread for LLM draft so user's tool call doesn't block |
+| 18 | Self-recursion guard — `_SELF_TOOLS = {"self_improve", ""}` prevents the plugin from firing on its own emits |
+
+---
+
+## 11. Phase 2 — Continuous Observation + Automation (24 features) *(v2.3)*
+
+Background daemon watches what you're doing (window / clipboard / files);
+declarative skill triggers fire on patterns; end-of-day shift report consolidates
+everything CODEC observed.
+
+| # | Feature |
+|:-:|---|
+| 1 | **`codec-observer` PM2 daemon** — 5s tick, lazy-imports Quartz with graceful non-mac fallback |
+| 2 | **`RingBuffer`** — last 10 minutes of observation snapshots, RAM-only, no disk persistence |
+| 3 | **Observation injection contract (Q5 override)** — always inject for `transport=local`; cloud transports gate on possessive pronoun OR continuation phrase OR `SKILL_NEEDS_OBSERVATION` flag |
+| 4 | OCR-with-retry-once (slow-poll degraded path) when `screencapture` is slow |
+| 5 | **`ocr_enabled` config flag** — bypasses macOS Screen Recording prompts when permission not yet granted to `python3.13` + PM2 parent (default false until explicitly granted) |
+| 6 | Image redaction — never logs raw pixels |
+| 7 | Stop-noun list filters trivial captures from observation summaries |
+| 8 | Observation cardinality control — one `observation_tick` per 5s |
+| 9 | Slow-poll degraded mode emits `observation_tick_slow` (graceful when OCR is disabled or slow) |
+| 10 | `/api/observer/buffer?debug=1` PWA debug endpoint |
+| 11 | Forward-compat snapshot schema reserves keys for Step 6 + 7 |
+| 12 | **5 Phase 2 Step 5 audit events** — `observation_tick`, `_slow`, `_summary_injected`, `observer_started`, `observer_stopped` |
+| 13 | **`SKILL_OBSERVATION_TRIGGER` declarative metadata** — skills opt into auto-fire via 5 matcher types: `window_title_match`, `clipboard_pattern`, `file_change`, `time`, `compound` |
+| 14 | Per-trigger RAM cooldowns (configurable seconds) |
+| 15 | **Persistent kill state at `~/.codec/triggers_killed.json`** — atomic tmp+rename writes |
+| 16 | Stable `sha8` keys per `(skill_name, trigger_type, params_hash)` so kill survives skill rename |
+| 17 | `routes/triggers.py` — 3 PWA endpoints: `GET /api/triggers`, `GET /api/triggers/{key}`, `POST /api/triggers/{key}/kill` |
+| 18 | `codec_ask_user.ask` confirmation gate before any non-explicitly-pre-approved trigger fires |
+| 19 | 3 Step 6 audit events — `trigger_fired`, `trigger_skipped`, `trigger_killed` |
+| 20 | **First real Step 6 trigger shipped** — `clipboard_url_fetch` skill auto-fetches HTTP/HTTPS URLs via consent gate (10-min cooldown per URL) |
+| 21 | **`shift_report` skill** — end-of-day 5-section markdown (Completed tasks · Blocked moments · Observed work patterns · Pending decisions · Tomorrow) |
+| 22 | 3 trigger paths for shift_report: time (daily HH:MM), idle (continuous idle ≥ N min), manual chat invocation |
+| 23 | Per-day dedup at `~/.codec/shift_report_state.json` (atomic) — time/idle paths fire at most once per local-date |
+| 24 | 2 paired Step 7 audit events — `shift_report_started` + `_completed` (extras: trigger_kind, sections_included, word_count, audit_records_scanned, duration_ms) |
+
+---
+
+## 12. Phase 3 — Drop-a-Project Autonomous Agents (32 features) *(v2.3)*
+
+The flagship Phase 3 feature. Drop a project description → Qwen-3.6 drafts a
+plan with explicit permission manifest → user approves once → `codec-agent-runner`
+executes autonomously with permission-gated skill loops, plan-hash tamper detection,
+resume-after-restart, and proactive update messages back to chat.
+
+### Step 8 — Plan + Permission Contract (10 features)
+
+| # | Feature |
+|:-:|---|
+| 1 | **`Plan` / `Checkpoint` / `PermissionManifest` dataclasses** (`schema:1`) — versioned, atomic R/W, JSON-roundtrippable |
+| 2 | **Qwen-3.6 plan drafter** (local-only, no cloud fallback per Q1) — structured-JSON prompt, validates skills against `codec_skill_registry`, rejects unknown skills hard |
+| 3 | **Vague-description clarifying loop (Q3)** — up to 3 rounds of `codec_ask_user.ask` clarifying questions before draft fails with `description_too_vague` |
+| 4 | **Plan-hash tamper detection (Q13)** — `manifest.plan_hash = sha256(canonical plan.json)` computed at approval, verified by Step 9 daemon every tick |
+| 5 | **Global allowlist tier (Q4)** — `~/.codec/agent_global_grants.json` with 4 grant kinds (network_domains / read_paths / write_paths / skills); items in global → marked `auto_approved` in per-agent grants |
+| 6 | Plan revision flow — user edits inline, agent re-validates, flips `awaiting_approval → revised → awaiting_approval` |
+| 7 | State machine — `draft_pending → awaiting_approval → approved/rejected/revised` (Step 9 extends with runtime states) |
+| 8 | **Pre-approval re-validation** — checks skills still exist in registry between draft + approve (handles deleted skills) |
+| 9 | **9 PWA endpoints** — `POST /api/agents` create+draft, `GET /api/agents` list, `GET /api/agents/{id}` detail, `POST /approve/reject/revise`, `GET/POST/DELETE /api/agent_global_grants` |
+| 10 | 6 Step 8 audit events: `agent_plan_drafted/_approved/_rejected/_revised`, `agent_global_grant_added/_removed` |
+
+### Step 9 — Background Execution + Permission Gate (12 features)
+
+| # | Feature |
+|:-:|---|
+| 11 | **`codec-agent-runner` PM2 daemon** — 5s tick, lazy-imports, multi-agent thread pool |
+| 12 | **`Action` dataclass** — skill / task / is_destructive / network_call / network_domain / touches_path / path / reads_path / read_path / kind, returned by Qwen next-action driver |
+| 13 | **`permission_gate(action, agent_grants, global_grants)`** — UNION of grants enforced as skill / write_path / network_domain / read_path matrix; raises `PermissionViolation` on any gap |
+| 14 | **Step 3 §1.7 strict-consent gate as universal floor** — destructive ops STILL hit consent (verb-match) even if pre-approved |
+| 15 | **Per-checkpoint `_execute_checkpoint` loop** — Qwen → permission_gate → strict_consent (if destructive) → run_skill (Step 1+2 hooks fire) → append history → repeat until checkpoint_done OR step_budget cap |
+| 16 | **Resume after PM2 restart (Q5)** — daemon scans `status=running` agents on boot, marks `crashed_resumed`, respawns from last atomic checkpoint save |
+| 17 | **Multi-agent concurrency (Q6, Q8)** — `MAX_CONCURRENT=3` (env var `AGENT_RUNNER_MAX_CONCURRENT`); blocked agents occupy a slot |
+| 18 | Per-agent thread inside daemon, atomic state writes after each operation (resume guarantee) |
+| 19 | **`StepBudgetExhausted` → `paused` (review I2)** — agent paused with reason, user resumes via `POST /api/agents/{id}/extend_budget {additional_steps}` (overrides stored in `state.json`, plan stays immutable) |
+| 20 | **4 PWA endpoints (Step 9)** — `POST /api/agents/{id}/abort`, `/pause`, `/resume`, `/grant` (kind+value) |
+| 21 | 8 Step 9 audit events: `agent_started`, `_checkpoint_started`, `_completed`, `_paused`, `_resumed`, `_blocked_on_permission`, `_completed`, `_aborted` |
+| 22 | `codec_dispatch.run_skill` chokepoint — every skill call wrapped in Step 2's `run_with_hooks` automatically; Phase 3 reuses the entire Step 1+2 substrate |
+
+### Step 10 — Proactive Messaging + Auto-Escalation (10 features)
+
+| # | Feature |
+|:-:|---|
+| 23 | **`AgentMessage` dataclass** — frozen vocab: `agent_update` / `agent_blocked` / `agent_question` / `agent_done` / `agent_aborted` / `user_reply` |
+| 24 | **`post_message` dispatch** — writes to `~/.codec/agents/{id}/messages.jsonl` (append-only timeline) AND `~/.codec/notifications.json` (banner) |
+| 25 | **60s batching window (Q10)** — multiple `agent_update` messages within window merge into ONE banner (count incremented, latest body wins); timeline preserves all entries 1:1 |
+| 26 | **5 `_run_agent` lifecycle emit sites** — agent start, checkpoint completion, blocked-on-permission, destructive-rejected abort, final completion |
+| 27 | **User reply pickup** — `POST /api/agents/{id}/messages` writes `type=user_reply`; daemon picks up between checkpoints, feeds into next Qwen call as additional context |
+| 28 | **Per-agent silence kill-switch** — `POST /api/agents/{id}/silence`, persists at `~/.codec/agent_silence.json`; silenced = timeline written, notifications skipped (no badge spam) |
+| 29 | **Auto-escalation classifier** — Qwen-3.6 driven 2-signal gate (verdict `is_project=True` AND `estimated_checkpoints ≥ 3`) on every chat-mode message |
+| 30 | **Q11 session silence** — first "No" to "Promote to Project mode?" silences for that session (in-memory `_autoescalate_silence_set`, mutex-guarded), resets on new session |
+| 31 | 3 PWA endpoints (Step 10) — `GET /api/agents/{id}/messages`, `POST /api/agents/{id}/messages`, `POST /api/agents/{id}/silence` |
+| 32 | 3 Step 10 audit events: `agent_message_sent`, `_received`, `agent_auto_escalated_from_chat` |
+
+---
+
+## 13. Phase 3.5 — UX Polish + Proactive Overlay (24 features) *(v2.3)*
+
+Closes Phase 3 with the user-facing affordances and review deferrals.
+Project mode in chat composer, IDE-browseable project folders,
+opt-in proactive nudges, dedicated `blocked_on_qwen` status with
+auto-resume, symmetric read/write path enforcement, multi-channel
+notification dispatch.
+
+### Project mode UI (5 features)
+
+| # | Feature |
+|:-:|---|
+| 1 | **Project mode chip in `codec_chat.html`** — alongside Chat / Think / Agents (no emoji, target-icon SVG) |
+| 2 | **Inline project instructions panel** — examples (Marbella property bot, EUR/USD vol monitor, launch plan), shows above messages when Project selected |
+| 3 | **`sendMessage()` Project branch** — POSTs to `/api/agents`, renders **Approve plan / Reject / View plan** buttons inline in chat thread |
+| 4 | **`viewAgentPlan(id)`** — fetches `/api/agents/{id}` and renders the plan + permission manifest as an assistant message before approval |
+| 5 | **Agent status pills above chat input** — color-coded (green running, orange paused/crashed, yellow awaiting_approval, red blocked, grey draft_pending), inline approve/pause/resume/abort actions, polls every 5s, silently hides on 401/403 |
+
+### Project folder (Claude Code-style) (5 features)
+
+| # | Feature |
+|:-:|---|
+| 6 | **`~/codec-projects/<slug>/` auto-creation** at agent spawn — human-browseable folder, openable in any IDE |
+| 7 | **`_slugify(title)`** — lowercase + dash-separated, max 50 chars, unicode stripped, trailing dash trimmed; falls back to "project" if pure-punctuation |
+| 8 | **Collision disambiguation** — `<slug>` → `<slug>-2` → `<slug>-3` → `<slug>-<agent_id>` after 99 collisions |
+| 9 | **`manifest.project_dir`** field — full absolute path stored at creation; surfaced in `POST /api/agents` response and chat composer callout |
+| 10 | **Plan-drafter prompt extension** — Qwen told the project_dir; defaults `permission_manifest.write_paths` to `<project_dir>/**` so files land where the user can open them. Override via env `CODEC_PROJECT_ROOT_DIR` or `~/.codec/config.json:agents.project_root_dir` |
+
+### Proactive intelligence overlay (4 features) — opt-in only
+
+| # | Feature |
+|:-:|---|
+| 11 | **`codec_proactive.py`** — observer-driven contextual nudges. OFF by default (`PROACTIVE_OVERLAY_ENABLED=false`). User opts in. |
+| 12 | **`long_form_dwell` v1 pattern** — fires when active window is on Notion / Google Docs / Substack / Medium / NYTimes / FT / Economist / NewYorker for ≥30 min consecutively. Posts: "Want me to summarize?" with [Acknowledge / Dismiss today / Disable forever] buttons |
+| 13 | **3-gate kill model** — global env switch + per-pattern killed-forever (`~/.codec/proactive_state.json:killed_patterns`) + per-day dismissed (resets next UTC midnight) |
+| 14 | **Rate limits** — per-pattern cooldown 1 hour + global 30-min between any two suggestions (prevents pattern-cluster burst) |
+
+### Step 9 review polish (5 features)
+
+| # | Feature |
+|:-:|---|
+| 15 | **`blocked_on_qwen` dedicated status (review C2)** — distinct from `blocked_on_permission` (no permission to grant; service is just down) |
+| 16 | **Daemon auto-resume on Qwen recovery** — when daemon ticks an agent in `blocked_on_qwen`, probes Qwen with a 1-token call; if alive → transitions to running and respawns. No user click needed |
+| 17 | **`Action.reads_path` + `read_path` fields (review M4)** — symmetric read/write gating; permission_gate now checks `read_path` against `read_paths` UNION |
+| 18 | **Symmetric `~` expansion** — `permission_gate` expands tilde on BOTH the action path AND the grant glob, so `~/Documents/foo` matches grant `~/Documents/**` |
+| 19 | **`recovery_cid` threading** — daemon's crash-recovery `AGENT_RESUMED` emit shares correlation_id with the resumed `_run_agent`'s subsequent emit chain (review I4) |
+
+### Multi-channel notifications (3 features)
+
+| # | Feature |
+|:-:|---|
+| 20 | **`macos` channel** — `osascript display notification` banner. Works out of the box (no setup) |
+| 21 | **`imessage` channel** — reuses `skills/imessage_send._send`; recipient read from `~/.codec/config.json:notifications.imessage_recipient`. Skipped silently if unconfigured |
+| 22 | **`telegram` channel** — direct Bot API call (no daemon coupling). Reads `notifications.telegram_token` + `:telegram_chat_id`. Skipped silently if unconfigured |
+
+### Phase 3 review fast-follow (2 features)
+
+| # | Feature |
+|:-:|---|
+| 23 | **`POST /api/agents/{id}/extend_budget`** — bumps current checkpoint's step_budget via `state.json:step_budget_overrides[checkpoint_id]` (plan stays immutable, plan_hash check intact); transitions paused → running |
+| 24 | **3 new Phase 3.5 audit events** — `proactive_suggestion_emitted`, `_acknowledged`, `_dismissed`. `PHASE35_PROACTIVE_EVENTS` frozenset exposed |
+
+---
+
 ## Summary
 
-| Product | Features |
+| Product / Phase | Features |
 |---|:-:|
-| CODEC Core | 26 |
-| CODEC Chat | 24 |
-| CODEC Dashboard | 32 |
-| CODEC Vibe | 20 |
-| CODEC Agents | 20 |
-| CODEC Skills | 60 |
-| CODEC Infrastructure | 36 |
-| CODEC Dictate | 15 |
-| CODEC Instant | 12 |
-| **TOTAL** | **245** |
+| 1. CODEC Core | 26 |
+| 2. CODEC Chat | 30 |
+| 3. CODEC Dashboard | 32 |
+| 4. CODEC Vibe | 20 |
+| 5. CODEC Agents | 20 |
+| 6. CODEC Skills | 78 |
+| 7. CODEC Infrastructure | 36 |
+| 8. CODEC Dictate | 15 |
+| 9. CODEC Instant | 12 |
+| 10. Phase 1 — Agent Substrate *(v2.3)* | 18 |
+| 11. Phase 2 — Continuous Observation + Automation *(v2.3)* | 24 |
+| 12. Phase 3 — Drop-a-Project Autonomous Agents *(v2.3)* | 32 |
+| 13. Phase 3.5 — UX Polish + Proactive Overlay *(v2.3)* | 24 |
+| **TOTAL** | **367** |
 
-**245 features · 57 skills · 378 tests · 34K+ lines of code**
+**367 features · 74 skills · 1023 tests · 53K+ lines of code**
+
+### What's new in v2.3 — Phase 1 + 2 + 3 + 3.5
+
+**The drop-a-project release.** CODEC becomes a "real AI employee" at the substrate level — drop a project description, agent plans + builds + sends updates back proactively, with permission gates and resume-after-restart guarantees.
+
+- **Phase 1 — Agent substrate** (18 features). Unified audit envelope (`schema:1` + paired `correlation_id` per Step 1 §1.4 contract), 5 plugin lifecycle hooks (`pre_tool` / `post_tool` / `on_error` / `on_operation_*`), `AskUserQuestion` blocking pause with §1.7 strict-consent gate, stuck-loop detection ring buffer, per-turn step budget, `self_improve` migrated to plugin architecture.
+- **Phase 2 — Continuous observation + automation** (24 features). New `codec-observer` PM2 daemon with 10-min RAM ring buffer, observation-injection contract for chat/voice/MCP, declarative `SKILL_OBSERVATION_TRIGGER` (5 matcher types), end-of-day `shift_report` with 5-section markdown.
+- **Phase 3 — Drop-a-project autonomy** (32 features). New `codec-agent-runner` PM2 daemon. Plan + Permission Contract (Step 8) → Background Execution + Permission Gate (Step 9) → Proactive Messaging (Step 10). Plan-hash tamper detection, multi-agent concurrency cap=3, resume from last atomic checkpoint after PM2 restart. 17 new `agent_*` audit events, 17 new PWA endpoints under `/api/agents/`.
+- **Phase 3.5 — UX polish** (24 features). Project mode chip in `codec_chat.html` (Chat / Think / Agents / Project), `~/codec-projects/<slug>/` auto-creation (Claude Code-style human-browseable folder), inline plan-review buttons, agent status pills polling `/api/agents` every 5s, opt-in proactive intelligence overlay (`long_form_dwell` pattern), `blocked_on_qwen` dedicated status with daemon auto-resume on Qwen probe, symmetric read/write path enforcement, multi-channel notification dispatch (macOS / iMessage / Telegram).
 
 ### What's new in v2.2
 
-- **Live MCP bridge** — CODEC exposed as MCP server to Claude Desktop / Claude Code / Cursor. All 57 skills callable from any MCP-compatible client.
+- **Live MCP bridge** — CODEC exposed as MCP server to Claude Desktop / Claude Code / Cursor. All skills callable from any MCP-compatible client.
 - **Memory Layer upgrade** — three-tier memory with identity boot payload, temporal fact tracking, and CCF rule-based compression.
 - **MCP audit fixes** — skill-name sanitization bug fixed (AI_News_Digest loads), pomodoro stop/status, reminders/notes read path, file_search word-boundary parsing, network_info multi-interface detection.
 - **F5 live dictation** — hands-free typing mode with pipelined audio capture and focus-preserving paste.
