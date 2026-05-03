@@ -57,3 +57,87 @@ def test_agent_message_to_dict_includes_ts():
     assert d["agent_id"] == "x"
     assert d["type"] == "agent_done"
     assert "ts" in d  # timestamp injected by to_dict
+
+
+@pytest.fixture
+def temp_codec_dir(tmp_path, monkeypatch):
+    import codec_agent_messaging as cam
+    monkeypatch.setattr(cam, "_CODEC_DIR", tmp_path)
+    monkeypatch.setattr(cam, "_AGENTS_DIR", tmp_path / "agents")
+    monkeypatch.setattr(cam, "_NOTIFICATIONS_PATH", tmp_path / "notifications.json")
+    return tmp_path
+
+
+def test_post_message_appends_to_messages_jsonl(temp_codec_dir):
+    """First message: writes to messages.jsonl + notifications.json."""
+    import codec_agent_messaging as cam
+    cam.post_message(
+        agent_id="agent_test", type="agent_update",
+        title="cp1 done", body="Scraped X listings.",
+        actions=[], correlation_id="cid_abc",
+    )
+    msg_path = temp_codec_dir / "agents" / "agent_test" / "messages.jsonl"
+    assert msg_path.exists()
+    lines = msg_path.read_text().strip().splitlines()
+    assert len(lines) == 1
+    rec = json.loads(lines[0])
+    assert rec["type"] == "agent_update"
+    assert rec["title"] == "cp1 done"
+
+
+def test_post_message_appends_to_notifications_json(temp_codec_dir):
+    """First message creates a notification entry."""
+    import codec_agent_messaging as cam
+    cam.post_message(
+        agent_id="agent_test", type="agent_update",
+        title="cp1 done", body="b", actions=[], correlation_id="cid",
+    )
+    notif_path = temp_codec_dir / "notifications.json"
+    assert notif_path.exists()
+    notifs = json.loads(notif_path.read_text())
+    assert len(notifs) == 1
+    assert notifs[0]["type"] == "agent_update"
+    assert notifs[0]["agent_id"] == "agent_test"
+
+
+def test_post_message_batches_within_60s_window(temp_codec_dir, monkeypatch):
+    """3 messages within batch window → 3 lines in messages.jsonl, 1 banner notification."""
+    import codec_agent_messaging as cam
+    fixed_time = [1700000000.0]  # mutable container
+    monkeypatch.setattr(cam.time, "time", lambda: fixed_time[0])
+
+    cam.post_message(agent_id="agent_test", type="agent_update", title="cp1",
+                     body="b", actions=[], correlation_id="c1")
+    fixed_time[0] += 10  # +10s
+    cam.post_message(agent_id="agent_test", type="agent_update", title="cp2",
+                     body="b", actions=[], correlation_id="c2")
+    fixed_time[0] += 30  # +30s (still within 60s window)
+    cam.post_message(agent_id="agent_test", type="agent_update", title="cp3",
+                     body="b", actions=[], correlation_id="c3")
+
+    # All 3 messages preserved in timeline
+    msg_path = temp_codec_dir / "agents" / "agent_test" / "messages.jsonl"
+    assert len(msg_path.read_text().strip().splitlines()) == 3
+
+    # Only 1 notification (latest, with batch count)
+    notifs = json.loads((temp_codec_dir / "notifications.json").read_text())
+    agent_notifs = [n for n in notifs if n.get("agent_id") == "agent_test"]
+    assert len(agent_notifs) == 1
+    assert "3" in agent_notifs[0]["title"] or agent_notifs[0].get("batch_count") == 3
+
+
+def test_post_message_creates_new_banner_outside_60s_window(temp_codec_dir, monkeypatch):
+    """Two messages 90s apart → 2 separate banners."""
+    import codec_agent_messaging as cam
+    fixed_time = [1700000000.0]
+    monkeypatch.setattr(cam.time, "time", lambda: fixed_time[0])
+
+    cam.post_message(agent_id="agent_test", type="agent_update", title="cp1",
+                     body="b", actions=[], correlation_id="c1")
+    fixed_time[0] += 90  # outside window
+    cam.post_message(agent_id="agent_test", type="agent_update", title="cp2",
+                     body="b", actions=[], correlation_id="c2")
+
+    notifs = json.loads((temp_codec_dir / "notifications.json").read_text())
+    agent_notifs = [n for n in notifs if n.get("agent_id") == "agent_test"]
+    assert len(agent_notifs) == 2
