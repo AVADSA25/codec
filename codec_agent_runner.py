@@ -322,6 +322,52 @@ class StepBudgetExhausted(Exception):
     """Per-checkpoint step budget cap reached without checkpoint_done."""
 
 
+def _build_correction_nudge(pv: "PermissionViolation",
+                            action: Action,
+                            agent_grants: Dict[str, Any],
+                            global_grants: Dict[str, Any]) -> Optional[str]:
+    """PR #35: build a single-shot correction string for the LLM when
+    it picks something outside the allowlist. Returns None for unknown
+    reasons (caller falls back to raise).
+
+    The string is appended to history.result so the next
+    _qwen_next_action call sees it as the most-recent step output, and
+    the model corrects itself instead of looping. We list the FULL
+    allowed set so the model has a closed-world choice — listing
+    nothing was the original PR #34 bug for skills; same logic applies
+    to paths and domains."""
+    reason = pv.reason
+    if reason == "skill_not_authorized":
+        allowed = sorted(set(agent_grants.get("skills", [])) |
+                         set(global_grants.get("skills", [])))
+        return (f"<skill_error: '{action.skill}' is NOT in this agent's "
+                f"permission_manifest.skills. Allowed skills: "
+                f"{', '.join(allowed) or '(none)'}. Pick one of those "
+                f"instead.>")
+    if reason == "path_not_authorized":
+        allowed = sorted(set(agent_grants.get("write_paths", [])) |
+                         set(global_grants.get("write_paths", [])))
+        return (f"<path_error: write to '{action.path}' is NOT under "
+                f"permission_manifest.write_paths. Allowed write_paths "
+                f"(glob patterns): {', '.join(allowed) or '(none)'}. "
+                f"Pick a path that matches one of those globs.>")
+    if reason == "read_path_not_authorized":
+        allowed = sorted(set(agent_grants.get("read_paths", [])) |
+                         set(global_grants.get("read_paths", [])))
+        return (f"<read_path_error: read of '{action.read_path}' is NOT "
+                f"under permission_manifest.read_paths. Allowed read_paths "
+                f"(glob patterns): {', '.join(allowed) or '(none)'}. "
+                f"Pick a read path that matches one of those globs.>")
+    if reason == "domain_not_authorized":
+        allowed = sorted(set(agent_grants.get("network_domains", [])) |
+                         set(global_grants.get("network_domains", [])))
+        return (f"<domain_error: '{action.network_domain}' is NOT in "
+                f"permission_manifest.network_domains. Allowed domains: "
+                f"{', '.join(allowed) or '(none)'}. Use one of those "
+                f"exact domains (no schema, no path).>")
+    return None
+
+
 def _run_skill(skill_name: str, task: str, agent_id: str) -> str:
     """Lazy-imported codec_dispatch.run_skill. Step 1+2 hooks fire
     automatically inside run_skill via run_with_hooks."""
@@ -365,39 +411,33 @@ def _execute_checkpoint(plan_dict: Dict[str, Any],
             return history
 
         # Permission gate (raises PermissionViolation if outside manifest).
-        # Phase 3.5 hotfix: if the LLM hallucinates a skill name (e.g.
-        # "fetch_url" instead of the real "web_fetch"), give it ONE retry
-        # with the corrected skill list as context. Most skill-hallucination
-        # errors recover with a single correction pass; only block on the
-        # SECOND consecutive miss. This dramatically reduces user-visible
+        # Phase 3.5 hotfix (PR #34 + #35): if the LLM hallucinates a skill
+        # name, write path, read path, or network domain, give it ONE retry
+        # with the corrected allowlist as context. Most hallucinations
+        # recover with a single correction pass; only block on the SECOND
+        # consecutive miss. This dramatically reduces user-visible
         # blocked_on_permission events caused by LLM naming drift.
         try:
             permission_gate(action, agent_grants, global_grants)
         except PermissionViolation as pv:
-            if pv.reason == "skill_not_authorized":
-                # Append the failed action to history with a correction nudge
-                # so the next _qwen_next_action call sees the error context.
-                allowed = sorted(set(agent_grants.get("skills", [])) |
-                                 set(global_grants.get("skills", [])))
-                history.append({
-                    "step": len(history),
-                    "skill": action.skill,
-                    "task": action.task[:200],
-                    "result": (f"<skill_error: '{action.skill}' is NOT in this "
-                               f"agent's permission_manifest.skills. Allowed skills: "
-                               f"{', '.join(allowed)}. Pick one of those instead.>"),
-                    "is_destructive": False,
-                    "_skill_correction_nudge": True,
-                })
-                # Re-call Qwen — if it still picks the wrong skill, fall through
-                # and the SECOND permission_gate call will raise normally.
-                action2 = _qwen_next_action(plan_dict, checkpoint, history)
-                if action2.kind == "checkpoint_done":
-                    return history
-                permission_gate(action2, agent_grants, global_grants)
-                action = action2  # use the corrected action going forward
-            else:
-                raise   # path / domain violations not auto-recoverable
+            nudge = _build_correction_nudge(pv, action, agent_grants, global_grants)
+            if nudge is None:
+                raise   # unknown reason — fall through unchanged
+            history.append({
+                "step": len(history),
+                "skill": action.skill,
+                "task": action.task[:200],
+                "result": nudge,
+                "is_destructive": False,
+                "_skill_correction_nudge": True,
+            })
+            # Re-call Qwen — if it still picks something invalid, fall through
+            # and the SECOND permission_gate call will raise normally.
+            action2 = _qwen_next_action(plan_dict, checkpoint, history)
+            if action2.kind == "checkpoint_done":
+                return history
+            permission_gate(action2, agent_grants, global_grants)
+            action = action2  # use the corrected action going forward
 
         # Destructive gate (raises DestructiveOpRejected on user reject)
         if action.is_destructive:
