@@ -245,11 +245,18 @@ def test_destructive_consent_timeout_overnight(monkeypatch):
 
 @pytest.fixture
 def temp_codec_dir(tmp_path, monkeypatch):
-    """Mirrors Step 8 fixture; redirects all codec_agent_plan paths to tmp."""
+    """Mirrors Step 8 fixture; redirects all codec_agent_plan paths to tmp.
+
+    Also redirects codec_audit._AUDIT_LOG so test runs do NOT pollute
+    the production ~/.codec/audit.log. Without this, _run_agent's audit
+    emits during tests leak into the live log (same pattern as the
+    2026-05-01 incident; same fix)."""
     import codec_agent_plan as cap
+    import codec_audit
     monkeypatch.setattr(cap, "_CODEC_DIR", tmp_path)
     monkeypatch.setattr(cap, "_AGENTS_DIR", tmp_path / "agents")
     monkeypatch.setattr(cap, "_GLOBAL_GRANTS_PATH", tmp_path / "agent_global_grants.json")
+    monkeypatch.setattr(codec_audit, "_AUDIT_LOG", tmp_path / "audit.log")
     return tmp_path
 
 

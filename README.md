@@ -10,12 +10,12 @@
 </p>
 
 <p align="center">
-  <a href="FEATURES.md"><img src="https://img.shields.io/badge/features-238-blue?style=flat-square" alt="238 Features"/></a>
-  <img src="https://img.shields.io/badge/skills-60-orange?style=flat-square" alt="60 Skills"/>
-  <img src="https://img.shields.io/badge/tests-378-green?style=flat-square" alt="378 Tests"/>
-  <img src="https://img.shields.io/badge/lines-33.9K-purple?style=flat-square" alt="33,900 Lines"/>
+  <a href="FEATURES.md"><img src="https://img.shields.io/badge/features-260+-blue?style=flat-square" alt="260+ Features"/></a>
+  <img src="https://img.shields.io/badge/skills-73-orange?style=flat-square" alt="73 Skills"/>
+  <img src="https://img.shields.io/badge/tests-1023-green?style=flat-square" alt="1023 Tests"/>
+  <img src="https://img.shields.io/badge/lines-53.3K-purple?style=flat-square" alt="53,300 Lines"/>
   <img src="https://img.shields.io/badge/license-MIT-brightgreen?style=flat-square" alt="MIT License"/>
-  <img src="https://img.shields.io/badge/engine-CODEC%20v2.1-E8711A?style=flat-square" alt="Engine: CODEC v2.1"/>
+  <img src="https://img.shields.io/badge/engine-CODEC%20v2.3-E8711A?style=flat-square" alt="Engine: CODEC v2.3"/>
 </p>
 
 ---
@@ -88,11 +88,15 @@ Native floating overlays: orange-bordered recording panel with pulsing red dot, 
 
 Select any text, anywhere. Right-click. Eight AI services system-wide: Proofread, Elevate, Explain, Translate, Reply (with `:tone` syntax), Prompt, Read Aloud, Save. Powered by the local LLM.
 
-### 4. CODEC Chat — 250K Context + 12 Agent Crews
+### 4. CODEC Chat — 250K Context + 12 Agent Crews + Drop-a-Project Autonomy
 
 Full conversational AI. Long context. File uploads (drag-and-drop). Image analysis via vision model. Web search. Persistent conversation history with sidebar. Edit and re-send messages. Regenerate responses.
 
 Voice input via continuous microphone with stop button. Streaming responses with typing and thinking indicators.
+
+**Four modes** in the chat composer: **Chat / Think / Agents / Project**.
+
+**Project mode (Phase 3 — drop-a-project autonomy).** Type a project description, hit send. CODEC drafts a structured plan via local Qwen-3.6 with an explicit permission manifest (skills, write paths, network domains, destructive ops). You approve once. `codec-agent-runner` (PM2 daemon) picks up the approved plan and executes it autonomously — Qwen ↔ skill loops, permission-gated, plan-hash tamper detection, resume-after-restart, multi-agent concurrency capped at 3. Status pills above the input show running/paused/blocked agents with inline approve/pause/resume/abort actions. Updates post back into the chat thread. Try: *"Build me a Telegram bot that monitors Marbella property listings under €500k"* or *"Watch EUR/USD intraday vol and ping me when 30-min realized vol crosses 0.4%"*.
 
 Plus 12 autonomous agent crews — not single prompts, full multi-step workflows. Say *"research the latest AI agent frameworks and write a report."* Minutes later there's a formatted Google Doc in Drive with sources, images, and recommendations.
 
@@ -114,6 +118,8 @@ Plus 12 autonomous agent crews — not single prompts, full multi-step workflows
 Schedule any crew: *"Run competitor analysis every Monday at 9am"*
 
 The multi-agent framework is under 800 lines. Zero dependencies. No CrewAI. No LangChain. 7 built-in tools including web search, file operations, Google Docs, image generation, and vision.
+
+**Phase 3 substrate** (autonomous agents) reuses Phase 1+2 components: unified audit envelope (Step 1), plugin lifecycle hooks (Step 2), AskUser + strict-consent + step budget (Step 3), continuous observation loop (Step 5), trigger system (Step 6), end-of-day shift report (Step 7). Per-agent state at `~/.codec/agents/<id>/`. Global allowlist tier at `~/.codec/agent_global_grants.json`. 17 new audit events. See `docs/PHASE3-COMPLETE.md` for the full sign-off.
 
 ### 5. CODEC Vibe — AI Coding IDE + Skill Forge
 
@@ -603,6 +609,16 @@ python3 setup_codec.py
 ---
 
 ## What's Coming
+
+**Phase 3.5 (in progress)** — UX + polish on top of the autonomous-agent substrate:
+
+- [ ] **Anchor example end-to-end run** — drop the Marbella property bot project, document the run from plan-draft to final notification (`docs/PHASE35-ANCHOR-EXAMPLE-RUN.md`)
+- [ ] **Proactive intelligence overlay** — observer-driven contextual nudges via Step 6 trigger system (*"You've been on this Notion doc 30 min, want a summary?"*) with strict not-invasive defaults (1 suggestion / hour max, easy dismiss, per-pattern kill switch)
+- [ ] **Dedicated `blocked_on_qwen` status** — daemon-driven auto-resume when Qwen recovers (cleaner UX than reusing `blocked_on_permission` for LLM outages — Step 9 review C2)
+- [ ] **Read-paths runtime enforcement** — `Action.reads_path` field + LLM prompt update to symmetric read/write gating (Step 9 review M4)
+- [ ] **Multi-channel notifications** — at agent-spawn time, optionally route updates to macOS banner / iMessage / Telegram alongside PWA
+
+**Beyond Phase 3:**
 
 - [ ] iMessage voice notes (TTS briefing delivered as audio attachment)
 - [ ] WhatsApp integration (third messaging channel)
