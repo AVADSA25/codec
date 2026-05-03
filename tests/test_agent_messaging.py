@@ -33,3 +33,27 @@ def test_step10_audit_constants_present():
         "agent_message_sent", "agent_message_received",
         "agent_auto_escalated_from_chat",
     })
+
+
+def test_agent_message_dataclass_basic():
+    from codec_agent_messaging import AgentMessage
+    m = AgentMessage(
+        agent_id="agent_test", type="agent_update",
+        title="Checkpoint 2 of 5 done",
+        body="Scraped 150 listings.",
+        actions=[{"label": "View", "endpoint": "/api/agents/agent_test/artifacts"}],
+        correlation_id="abc123",
+    )
+    assert m.agent_id == "agent_test"
+    assert m.type == "agent_update"
+    assert m.actions[0]["label"] == "View"
+
+
+def test_agent_message_to_dict_includes_ts():
+    from codec_agent_messaging import AgentMessage
+    m = AgentMessage(agent_id="x", type="agent_done", title="t", body="b",
+                     actions=[], correlation_id="cid")
+    d = m.to_dict()
+    assert d["agent_id"] == "x"
+    assert d["type"] == "agent_done"
+    assert "ts" in d  # timestamp injected by to_dict
