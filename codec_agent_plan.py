@@ -33,6 +33,28 @@ from typing import Any, Dict, List, Optional, Tuple
 
 log = logging.getLogger("codec_agent_plan")
 
+# Audit event names — mirror codec_audit constants (single source of truth).
+# Imported at module level so emit sites use the constants and any rename in
+# codec_audit will fail loudly here at import time rather than silently drift.
+try:
+    from codec_audit import (  # noqa: E402
+        AGENT_PLAN_DRAFTED,
+        AGENT_PLAN_APPROVED,
+        AGENT_PLAN_REJECTED,
+        AGENT_PLAN_REVISED,
+        AGENT_GLOBAL_GRANT_ADDED,
+        AGENT_GLOBAL_GRANT_REMOVED,
+    )
+except ImportError:
+    # codec_audit not on path during isolated test collection — fall back to
+    # the canonical strings so import doesn't break.
+    AGENT_PLAN_DRAFTED = "agent_plan_drafted"
+    AGENT_PLAN_APPROVED = "agent_plan_approved"
+    AGENT_PLAN_REJECTED = "agent_plan_rejected"
+    AGENT_PLAN_REVISED = "agent_plan_revised"
+    AGENT_GLOBAL_GRANT_ADDED = "agent_global_grant_added"
+    AGENT_GLOBAL_GRANT_REMOVED = "agent_global_grant_removed"
+
 # ── Storage paths (overridable for tests) ─────────────────────────────────────
 _CODEC_DIR = Path(os.path.expanduser("~/.codec"))
 _AGENTS_DIR = _CODEC_DIR / "agents"
@@ -361,10 +383,10 @@ def _ask_user(question: str, *, agent_id: str,
     """Lazy-loaded codec_ask_user.ask wrapper. Returns (status, answer).
     status ∈ {"answered", "ambiguous_consent", "timeout"}."""
     try:
-        from codec_ask_user import ask, TIMEOUT_SENTINEL
+        from codec_ask_user import ask
     except Exception as e:
         log.warning("codec_ask_user unavailable: %s", e)
-        return ("timeout", TIMEOUT_SENTINEL if 'TIMEOUT_SENTINEL' in dir() else None)
+        return ("timeout", None)
     return ask(question, source=f"agent_plan:{agent_id}",
                deadline_seconds=deadline_seconds)
 
@@ -545,14 +567,14 @@ def create_agent(title: str, description: str,
         plan = draft_plan_with_clarification(agent_id, description, registry=registry)
     except DescriptionTooVagueError as e:
         set_status(agent_id, "plan_failed", reason=f"too_vague: {e}")
-        _audit("agent_plan_rejected", "codec-agent-plan",
+        _audit(AGENT_PLAN_REJECTED, "codec-agent-plan",
                f"plan failed (vague): {e}", correlation_id=cid,
                outcome="warning", level="warning",
                extra={"agent_id": agent_id, "reason": "too_vague"})
         raise
     except (PlanValidationError, QwenUnavailableError) as e:
         set_status(agent_id, "plan_failed", reason=str(e))
-        _audit("agent_plan_rejected", "codec-agent-plan",
+        _audit(AGENT_PLAN_REJECTED, "codec-agent-plan",
                f"plan failed: {e}", correlation_id=cid,
                outcome="error", level="error",
                extra={"agent_id": agent_id, "reason": str(e)[:200]})
@@ -562,7 +584,7 @@ def create_agent(title: str, description: str,
     save_plan(plan)
     set_status(agent_id, "awaiting_approval")
 
-    _audit("agent_plan_drafted", "codec-agent-plan",
+    _audit(AGENT_PLAN_DRAFTED, "codec-agent-plan",
            f"plan drafted for {title[:60]}", correlation_id=cid,
            extra={
                "agent_id": agent_id,
@@ -619,7 +641,7 @@ def approve_plan(agent_id: str) -> Dict[str, Any]:
     set_status(agent_id, "approved")
 
     cid = secrets.token_hex(6)
-    _audit("agent_plan_approved", "codec-agent-plan",
+    _audit(AGENT_PLAN_APPROVED, "codec-agent-plan",
            f"plan approved for {agent_id}",
            correlation_id=cid,
            extra={
@@ -637,7 +659,7 @@ def reject_plan(agent_id: str, reason: str = "") -> None:
     set_status(agent_id, "rejected", reason=reason or "no reason")
 
     cid = secrets.token_hex(6)
-    _audit("agent_plan_rejected", "codec-agent-plan",
+    _audit(AGENT_PLAN_REJECTED, "codec-agent-plan",
            f"plan rejected for {agent_id}: {reason[:80]}",
            correlation_id=cid, outcome="warning",
            extra={"agent_id": agent_id, "reason": reason[:200]})
@@ -666,7 +688,7 @@ def revise_plan(agent_id: str, edited_plan_dict: Dict[str, Any],
     set_status(agent_id, "awaiting_approval")
 
     cid = secrets.token_hex(6)
-    _audit("agent_plan_revised", "codec-agent-plan",
+    _audit(AGENT_PLAN_REVISED, "codec-agent-plan",
            f"plan revised for {agent_id}", correlation_id=cid,
            extra={
                "agent_id": agent_id,

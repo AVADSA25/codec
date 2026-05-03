@@ -363,8 +363,11 @@ def add_global_grant(body: GlobalGrantBody):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    _cap._audit("agent_global_grant_added", "codec-agent-plan",
+    import secrets as _secrets
+    cid = _secrets.token_hex(6)
+    _cap._audit(_cap.AGENT_GLOBAL_GRANT_ADDED, "codec-agent-plan",
                f"grant added: {body.kind}={body.value}",
+               correlation_id=cid,
                extra={"kind": body.kind, "value": body.value})
     return _cap.load_global_grants()
 
@@ -376,7 +379,10 @@ def delete_global_grant(body: GlobalGrantBody):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    _cap._audit("agent_global_grant_removed", "codec-agent-plan",
+    import secrets as _secrets
+    cid = _secrets.token_hex(6)
+    _cap._audit(_cap.AGENT_GLOBAL_GRANT_REMOVED, "codec-agent-plan",
                f"grant removed: {body.kind}={body.value}",
+               correlation_id=cid,
                extra={"kind": body.kind, "value": body.value})
     return _cap.load_global_grants()
