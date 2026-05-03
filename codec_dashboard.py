@@ -2444,11 +2444,15 @@ Rules:
 
 def _qwen_chat_classify(user_text: str, max_tokens: int = 300) -> str:
     """Call Qwen-3.6 with the auto-escalation classifier prompt. Returns
-    raw response string. Caller handles JSON parsing + error fallback."""
+    raw response string. Caller handles JSON parsing + error fallback.
+
+    Hotfix: URL + model resolved from codec_config (was hardcoded to the
+    wrong dashboard port 8090; LLM lives at 8083 per ~/.codec/config.json)."""
     try:
         import requests
+        from codec_config import QWEN_BASE_URL, QWEN_MODEL as _qmodel
         payload = {
-            "model": "qwen3.6",
+            "model": _qmodel,
             "messages": [
                 {"role": "system", "content": _AUTO_ESCALATE_SYSTEM_PROMPT},
                 {"role": "user", "content": user_text[:2000]},
@@ -2456,7 +2460,7 @@ def _qwen_chat_classify(user_text: str, max_tokens: int = 300) -> str:
             "max_tokens": max_tokens,
             "temperature": 0.1,
         }
-        r = requests.post("http://127.0.0.1:8090/v1/chat/completions",
+        r = requests.post(f"{QWEN_BASE_URL.rstrip('/')}/chat/completions",
                           json=payload, timeout=15)
         if r.status_code != 200:
             return ""

@@ -230,8 +230,27 @@ def validate_plan_skills(plan: Plan, registry=None) -> Tuple[bool, List[str]]:
 
 
 # ── Qwen-3.6 client ───────────────────────────────────────────────────────────
-QWEN_URL = "http://127.0.0.1:8090/v1/chat/completions"
-QWEN_MODEL = "qwen3.6"
+# Hotfix: read URL+model from ~/.codec/config.json:llm_base_url+llm_model.
+# Falls back to codec_config defaults. Hardcoded values were wrong (8090 is
+# the dashboard port; the LLM lives at 8083).
+def _qwen_url() -> str:
+    try:
+        from codec_config import QWEN_BASE_URL
+        return f"{QWEN_BASE_URL.rstrip('/')}/chat/completions"
+    except Exception:
+        return "http://localhost:8083/v1/chat/completions"
+
+
+def _qwen_model() -> str:
+    try:
+        from codec_config import QWEN_MODEL as _m
+        return _m
+    except Exception:
+        return "mlx-community/Qwen3.6-35B-A3B-4bit"
+
+
+QWEN_URL = _qwen_url()       # back-compat — module-level constant for tests
+QWEN_MODEL = _qwen_model()   # back-compat
 QWEN_TIMEOUT = 60  # seconds
 
 
@@ -247,11 +266,15 @@ def _qwen_chat(user_prompt: str, system_prompt: str = "",
                max_tokens: int = 4000) -> str:
     """Call local Qwen-3.6 OpenAI-compatible endpoint. Returns the
     assistant's content string. Raises QwenUnavailableError on
-    network failure or non-2xx response."""
+    network failure or non-2xx response.
+
+    URL + model resolved at call time via _qwen_url() / _qwen_model()
+    so they pick up ~/.codec/config.json:llm_base_url + :llm_model
+    rather than the deploy-time hardcoded values."""
     import requests  # lazy import — avoid forcing requests on test machines without it
 
     payload = {
-        "model": QWEN_MODEL,
+        "model": _qwen_model(),
         "messages": [
             {"role": "system", "content": system_prompt or ""},
             {"role": "user",   "content": user_prompt},
@@ -260,7 +283,7 @@ def _qwen_chat(user_prompt: str, system_prompt: str = "",
         "temperature": 0.2,
     }
     try:
-        r = requests.post(QWEN_URL, json=payload, timeout=QWEN_TIMEOUT)
+        r = requests.post(_qwen_url(), json=payload, timeout=QWEN_TIMEOUT)
     except requests.exceptions.ConnectionError as e:
         raise QwenUnavailableError(f"qwen3.6 unreachable: {e}")
     except requests.exceptions.Timeout:
