@@ -1,6 +1,6 @@
 # Sovereign AI Workstation — Full Product Breakdown
 
-> Engine: **CODEC v2.3** — 337 features · 73 skills · 1023 tests · 53K+ lines of code
+> Engine: **CODEC v2.3** — 367 features · 74 skills · 940+ tests · 58K+ lines of production code
 
 The product name is **Sovereign AI Workstation**. Throughout this document
 and the codebase, **CODEC** refers to the underlying open-source engine /
@@ -504,7 +504,7 @@ notification dispatch.
 | 13. Phase 3.5 — UX Polish + Proactive Overlay *(v2.3)* | 24 |
 | **TOTAL** | **367** |
 
-**367 features · 74 skills · 1023 tests · 53K+ lines of code**
+**367 features · 74 skills · 940+ tests · 58K+ lines of production code**
 
 ### What's new in v2.3 — Phase 1 + 2 + 3 + 3.5
 

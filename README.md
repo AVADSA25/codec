@@ -10,10 +10,10 @@
 </p>
 
 <p align="center">
-  <a href="FEATURES.md"><img src="https://img.shields.io/badge/features-260+-blue?style=flat-square" alt="260+ Features"/></a>
-  <img src="https://img.shields.io/badge/skills-73-orange?style=flat-square" alt="73 Skills"/>
-  <img src="https://img.shields.io/badge/tests-1023-green?style=flat-square" alt="1023 Tests"/>
-  <img src="https://img.shields.io/badge/lines-53.3K-purple?style=flat-square" alt="53,300 Lines"/>
+  <a href="FEATURES.md"><img src="https://img.shields.io/badge/features-367+-blue?style=flat-square" alt="367+ Features"/></a>
+  <img src="https://img.shields.io/badge/skills-74-orange?style=flat-square" alt="74 Skills"/>
+  <img src="https://img.shields.io/badge/tests-940+-green?style=flat-square" alt="940+ Tests"/>
+  <img src="https://img.shields.io/badge/lines-58K+-purple?style=flat-square" alt="58K+ Lines"/>
   <img src="https://img.shields.io/badge/license-MIT-brightgreen?style=flat-square" alt="MIT License"/>
   <img src="https://img.shields.io/badge/engine-CODEC%20v2.3-E8711A?style=flat-square" alt="Engine: CODEC v2.3"/>
 </p>
@@ -38,7 +38,7 @@ It listens, sees the screen, speaks back, controls apps, writes code, drafts mes
 
 No cloud dependency. No data leaving the machine unless you choose. No subscription on the open-source build. MIT licensed.
 
-> **Sovereign AI Workstation** is the product brand. **CODEC** (v2.1) is the open-source engine that powers it — the codename you'll see in code paths, skill registries, the `codec_*` PM2 services, and the `~/.codec/` config directory. *Sovereign AI Workstation* is what you ship; *CODEC* is what you ship with. Same way iPhone runs on Darwin, or Tesla Model S runs on Roadster components — one is the product, the other is the engine.
+> **Sovereign AI Workstation** is the product brand. **CODEC** (v2.3) is the open-source engine that powers it — the codename you'll see in code paths, skill registries, the `codec_*` PM2 services, and the `~/.codec/` config directory. *Sovereign AI Workstation* is what you ship; *CODEC* is what you ship with. Same way iPhone runs on Darwin, or Tesla Model S runs on Roadster components — one is the product, the other is the engine.
 
 ---
 
@@ -46,7 +46,7 @@ No cloud dependency. No data leaving the machine unless you choose. No subscript
 
 | # | Product | What It Does |
 |:-:|---|---|
-| 1 | **CODEC Core** | Voice command layer + vision mouse control — 60 skills, screen clicks by voice |
+| 1 | **CODEC Core** | Voice command layer + vision mouse control — 74 skills, screen clicks by voice |
 | 2 | **CODEC Dictate** | Hold, speak, paste — hands-free F5 live typing at cursor, draft refinement, floating overlays |
 | 3 | **CODEC Instant** | Right-click → 8 AI services system-wide — proofread, translate, reply, explain |
 | 4 | **CODEC Chat** | 250K-context conversational AI + 12 autonomous agent crews |
@@ -60,7 +60,7 @@ No cloud dependency. No data leaving the machine unless you choose. No subscript
 
 Always-on voice assistant. Say *"Hey CODEC"* or press F13 to activate. F18 for voice commands. F16 for text input.
 
-60 skills fire instantly: Google Calendar, Gmail, Drive, Docs, Sheets, Tasks, Keep, Chrome automation, web search, Hue lights, timers, Spotify, clipboard, terminal commands, PM2 control, and more. Most skills bypass the LLM entirely — direct action, zero latency. Skills are matched by trigger specificity — longer, more specific triggers always win over generic ones.
+74 skills fire instantly: Google Calendar, Gmail, Drive, Docs, Sheets, Tasks, Keep, Chrome automation, web search, Hue lights, timers, Spotify, clipboard, terminal commands, PM2 control, and more. Most skills bypass the LLM entirely — direct action, zero latency. Skills are matched by trigger specificity — longer, more specific triggers always win over generic ones.
 
 **Vision Mouse Control — See & Click**
 
@@ -137,7 +137,7 @@ Full transcript saved to memory. Every conversation becomes searchable context f
 
 ### 7. CODEC Overview — Dashboard, Cortex & Audit
 
-Private dashboard accessible from any device, anywhere. Cloudflare Tunnel or Tailscale VPN — no port forwarding, no third-party relay. 75+ API endpoints. Send commands, view the screen, launch voice calls, manage agents — all from a browser. Installable as a PWA on mobile and desktop.
+Private dashboard accessible from any device, anywhere. Cloudflare Tunnel or Tailscale VPN — no port forwarding, no third-party relay. 135+ API endpoints. Send commands, view the screen, launch voice calls, manage agents — all from a browser. Installable as a PWA on mobile and desktop.
 
 **Cortex — System Nerve Center**
 Visual command center showing all 7 CODEC products in an interactive grid. Neural network SVG map, real-time activity feed, searchable skills panel, and detailed event log viewer. The single-pane-of-glass view of the entire system.
@@ -216,7 +216,7 @@ Three smart agents ship built-in: Daily Briefing, Restaurant Decider (location-a
 </p>
 <p align="center">
   <img src="docs/screenshots/terminal.png" alt="Terminal" width="400"/><br/>
-  <em>60 skills loaded at startup</em>
+  <em>74 skills loaded at startup</em>
 </p>
 <p align="center">
   <img src="docs/screenshots/cortex.png" alt="Cortex Neural Map" width="720"/><br/>
@@ -366,7 +366,7 @@ Claude Desktop/Code/Cursor gain — through this one MCP bridge — everything C
 
 - **Your Mac, your apps** — native macOS control: mouse/keyboard via vision model, screenshot text extraction, app switching, clipboard, brightness/volume, Philips Hue, Spotify, Apple Notes, Reminders, Clock timers, music. No browser sandbox.
 - **Your memory** — FTS5-searchable history of every CODEC conversation. Claude can recall what *you* said weeks ago, not just this chat.
-- **Your skills, not Anthropic's** — 50+ pluggable CODEC skills instantly callable as tools. Write one locally in Python, it shows up in Claude without a deploy.
+- **Your skills, not Anthropic's** — 74 pluggable CODEC skills instantly callable as tools. Write one locally in Python, it shows up in Claude without a deploy.
 - **Your LLM, your choice** — same skill catalog works whether the brain is local Qwen (offline, private) or cloud Claude. The toolkit outlives the model.
 - **Your voice pipeline** — Whisper STT, Kokoro TTS, wake-word — all reachable from the chat loop if you want voice output of a Claude answer.
 
@@ -381,7 +381,7 @@ One install. Claude stops being a chat window and becomes a driver for the machi
 | Tool | How it helps |
 |---|---|
 | **[Claude Code](https://claude.ai/claude-code)** | Terminal AI — reads the full codebase, runs commands, fixes errors in context |
-| **[Cursor](https://cursor.com)** | AI IDE — navigate CODEC's 60+ files, refactor, debug with full project awareness |
+| **[Cursor](https://cursor.com)** | AI IDE — navigate CODEC's 230+ files, refactor, debug with full project awareness |
 | **[Windsurf](https://windsurf.ai)** | AI IDE — strong at multi-file reasoning |
 | **[Antigravity](https://antigravity.dev)** | AI debugging assistant — paste errors, get fixes with codebase context |
 
@@ -550,7 +550,7 @@ codec_agent.py        — LLM session builder
 codec_agents.py       — Multi-agent crew framework (12 crews, 7 tools)
 codec_voice.py        — WebSocket voice pipeline (reconnect, heartbeat)
 codec_voice.html      — Voice call UI
-codec_dashboard.py    — Web API + dashboard (75+ endpoints)
+codec_dashboard.py    — Web API + dashboard (135+ endpoints across routes/)
 codec_dashboard.html  — Dashboard UI (Flash Chat, History, Audit, Settings, Stats, Skills)
 codec_chat.html       — Chat UI (agents, file upload, voice input)
 codec_vibe.html       — Vibe Code IDE (Monaco + Skill Forge)
@@ -572,12 +572,12 @@ codec_marketplace.py  — Skill marketplace CLI
 codec_overlays.py     — AppKit overlay notifications (fullscreen compatible)
 ax_bridge/            — Swift AX accessibility bridge
 swift-overlay/        — Native macOS status bar app (NSPanel, event JSONL poller)
-skills/               — 60 built-in skills (incl. vision mouse control)
-tests/                — 405 pytest tests across 22 files
+skills/               — 74 built-in skills (incl. vision mouse control)
+tests/                — 940+ pytest tests across 53 files
 request_mic.py        — macOS microphone permission helper (AVFoundation)
 install.sh            — One-line installer
 setup_codec.py        — Setup wizard (9 steps)
-ecosystem.config.js   — PM2 process management (10+ services)
+ecosystem.config.js   — PM2 process management (15 services)
 ```
 
 ---
@@ -633,7 +633,7 @@ python3 setup_codec.py
 
 ## Contributing
 
-All skill contributions welcome. 60 built-in skills, 405 tests, marketplace growing.
+All skill contributions welcome. 74 built-in skills, 940+ tests, marketplace growing.
 
 ```bash
 git clone https://github.com/AVADSA25/codec.git
