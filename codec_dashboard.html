@@ -704,6 +704,13 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
   </div>
 
   <div class="input-area">
+    <!-- Phase 3.5 Step 11: Agent status pills (poll /api/agents every 5s) -->
+    <div id="agentStatusPills" style="display:none;margin:0 0 6px 0;flex-wrap:wrap;gap:6px"></div>
+    <!-- Phase 3.5 Step 11: Mode toggle (Chat | Project) -->
+    <div id="chatModeToggle" style="display:flex;gap:4px;margin:0 0 6px 0;font-size:11px">
+      <button class="mode-chip active" data-mode="chat" onclick="setChatMode('chat')" style="padding:3px 10px;background:var(--accent,#26c6da);color:#000;border:none;border-radius:10px;cursor:pointer;font-size:11px">💬 Chat</button>
+      <button class="mode-chip" data-mode="project" onclick="setChatMode('project')" style="padding:3px 10px;background:transparent;color:var(--text);border:1px solid var(--border,#2a2a30);border-radius:10px;cursor:pointer;font-size:11px">🎯 Project</button>
+    </div>
     <div class="input-row">
       <button class="ibtn" id="micBtn" onclick="toggleMic()" title="Voice input">
         <svg class="ico" viewBox="0 0 24 24"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
@@ -865,12 +872,66 @@ function showTab(id) {
 
 var _pendingImage = null; // {base64, name}
 
+// ── Phase 3.5 Step 11: Chat mode (chat | project) ──
+window._chatMode = window._chatMode || 'chat';
+function setChatMode(mode) {
+  window._chatMode = mode;
+  // Update button styles
+  document.querySelectorAll('.mode-chip').forEach(function(btn) {
+    var active = btn.getAttribute('data-mode') === mode;
+    btn.classList.toggle('active', active);
+    btn.style.background = active ? 'var(--accent, #26c6da)' : 'transparent';
+    btn.style.color = active ? '#000' : 'var(--text)';
+    btn.style.border = active ? 'none' : '1px solid var(--border, #2a2a30)';
+  });
+  // Update placeholder
+  var input = document.getElementById('cmdInput');
+  if (input) {
+    input.placeholder = (mode === 'project')
+      ? 'Drop your project here — describe what you want CODEC to build…'
+      : 'Flash — ask anything...';
+  }
+}
+
 // ── Send Command ──
 async function sendCmd() {
   var input = document.getElementById('cmdInput');
   var task = input.value.trim();
   if (!task && !_pendingImage) return;
   input.value = '';
+
+  // Phase 3.5 Step 11: Project mode dispatches to /api/agents
+  if (window._chatMode === 'project' && task) {
+    var pResult = document.getElementById('cmdResult');
+    var pText = document.getElementById('cmdResultText');
+    pResult.style.display = 'block';
+    pText.innerHTML = '<span style="color:var(--accent)">📝 Drafting plan…</span> ' + escHtml(task);
+    try {
+      var pr = await fetch('/api/agents', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({title: task.slice(0, 80), description: task})
+      });
+      if (pr.status === 401 || pr.status === 403) {
+        pText.innerHTML = '<span style="color:var(--danger)">Session expired</span> — refreshing...';
+        setTimeout(function(){ window.location.href = '/auth'; }, 1500);
+        return;
+      }
+      var pd = await pr.json();
+      if (pd.detail) {
+        pText.innerHTML = '<span style="color:var(--danger)">Plan failed:</span> ' + escHtml(pd.detail);
+      } else if (pd.agent_id) {
+        pText.innerHTML = '<span style="color:var(--success)">Project started:</span> agent_id=<code>' + escHtml(pd.agent_id) + '</code><br><span style="opacity:.7">Plan drafted, awaiting your approval. Watch the status pill below or check ~/.codec/agents/' + escHtml(pd.agent_id) + '/plan.json. Approve via: POST /api/agents/' + escHtml(pd.agent_id) + '/approve</span>';
+        refreshAgentStatusPills();
+      } else {
+        pText.innerHTML = '<span style="color:var(--danger)">Unknown response:</span> ' + escHtml(JSON.stringify(pd).slice(0, 200));
+      }
+    } catch(e) {
+      pText.innerHTML = '<span style="color:var(--danger)">Failed to start project:</span> ' + escHtml(e.message);
+    }
+    return;  // don't fall through to chat dispatch
+  }
+
   var result = document.getElementById('cmdResult');
   var text = document.getElementById('cmdResultText');
   result.style.display = 'block';
@@ -975,6 +1036,80 @@ async function sendCmd() {
 
 document.getElementById('cmdInput').addEventListener('keydown', function(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendCmd(); } });
 document.getElementById('cmdInput').addEventListener('input', function() { this.style.height = 'auto'; this.style.height = Math.min(this.scrollHeight, 120) + 'px'; });
+
+// ── Phase 3.5 Step 11: Agent status pills (polls /api/agents every 5s) ──
+async function refreshAgentStatusPills() {
+  var container = document.getElementById('agentStatusPills');
+  if (!container) return;
+  try {
+    var r = await fetch('/api/agents');
+    if (r.status === 401 || r.status === 403) return;  // not authed; pills hidden
+    if (!r.ok) return;
+    var data = await r.json();
+    var pills = (data.agents || []).filter(function(a) {
+      return ['running','paused','blocked_on_permission','blocked_on_destructive',
+              'awaiting_approval','draft_pending','crashed_resumed'].indexOf(a.status) >= 0;
+    }).slice(0, 5);
+    if (pills.length === 0) {
+      container.style.display = 'none';
+      container.innerHTML = '';
+      return;
+    }
+    container.style.display = 'flex';
+    container.innerHTML = pills.map(function(p) {
+      var color = '#888', icon = '';
+      if (p.status === 'running') { color = '#0a0'; icon = '🟢'; }
+      else if (p.status === 'paused') { color = '#fa0'; icon = '⏸'; }
+      else if (p.status === 'awaiting_approval') { color = '#fc0'; icon = '⏳'; }
+      else if (p.status === 'draft_pending') { color = '#888'; icon = '📝'; }
+      else if (p.status === 'blocked_on_permission' || p.status === 'blocked_on_destructive') { color = '#c33'; icon = '🛑'; }
+      else if (p.status === 'crashed_resumed') { color = '#fa0'; icon = '⏵'; }
+      var actions = '';
+      if (p.status === 'awaiting_approval') {
+        actions = '<a href="#" onclick="approveAgent(event,\'' + p.agent_id + '\')" style="color:#fff;margin-left:8px;text-decoration:underline">approve</a>';
+      } else if (p.status === 'paused') {
+        actions = '<a href="#" onclick="resumeAgent(event,\'' + p.agent_id + '\')" style="color:#fff;margin-left:8px;text-decoration:underline">resume</a>';
+      } else if (p.status === 'running') {
+        actions = '<a href="#" onclick="pauseAgent(event,\'' + p.agent_id + '\')" style="color:#fff;margin-left:8px;text-decoration:underline">pause</a>';
+      }
+      actions += '<a href="#" onclick="abortAgent(event,\'' + p.agent_id + '\')" style="color:#fff;margin-left:6px;text-decoration:underline">abort</a>';
+      return '<span style="display:inline-flex;align-items:center;padding:3px 10px;background:' + color + ';color:#fff;border-radius:10px;font-size:11px;font-family:var(--font)">' +
+             icon + ' ' + escHtml((p.title || p.agent_id).slice(0, 40)) + ' · ' + p.status +
+             actions + '</span>';
+    }).join('');
+  } catch(e) { /* silent — pills are decorative */ }
+}
+async function abortAgent(e, agentId) {
+  e.preventDefault();
+  if (!confirm('Abort agent ' + agentId + '?')) return;
+  await fetch('/api/agents/' + encodeURIComponent(agentId) + '/abort', {method: 'POST'});
+  refreshAgentStatusPills();
+}
+async function pauseAgent(e, agentId) {
+  e.preventDefault();
+  await fetch('/api/agents/' + encodeURIComponent(agentId) + '/pause', {method: 'POST'});
+  refreshAgentStatusPills();
+}
+async function resumeAgent(e, agentId) {
+  e.preventDefault();
+  await fetch('/api/agents/' + encodeURIComponent(agentId) + '/resume', {method: 'POST'});
+  refreshAgentStatusPills();
+}
+async function approveAgent(e, agentId) {
+  e.preventDefault();
+  if (!confirm('Approve plan for agent ' + agentId + '?\n\nThis will let codec-agent-runner execute the plan autonomously with the manifest permissions.')) return;
+  var r = await fetch('/api/agents/' + encodeURIComponent(agentId) + '/approve', {method: 'POST'});
+  if (r.ok) {
+    showToast('Plan approved — agent will start within 5s');
+  } else {
+    var d = await r.json().catch(function(){return {};});
+    showToast('Approval failed: ' + (d.detail || r.status));
+  }
+  refreshAgentStatusPills();
+}
+// Start polling on page load
+setInterval(refreshAgentStatusPills, 5000);
+setTimeout(refreshAgentStatusPills, 500);
 
 // ── Paste image into chat (Cmd+V on a screenshot) ──
 // Document-level handler so paste anywhere on the page routes the image
