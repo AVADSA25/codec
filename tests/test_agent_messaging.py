@@ -65,6 +65,14 @@ def temp_codec_dir(tmp_path, monkeypatch):
     monkeypatch.setattr(cam, "_CODEC_DIR", tmp_path)
     monkeypatch.setattr(cam, "_AGENTS_DIR", tmp_path / "agents")
     monkeypatch.setattr(cam, "_NOTIFICATIONS_PATH", tmp_path / "notifications.json")
+    # Also patch codec_agent_plan paths so _run_agent tests don't touch real ~/.codec
+    try:
+        import codec_agent_plan as cap
+        monkeypatch.setattr(cap, "_CODEC_DIR", tmp_path)
+        monkeypatch.setattr(cap, "_AGENTS_DIR", tmp_path / "agents")
+        monkeypatch.setattr(cap, "_GLOBAL_GRANTS_PATH", tmp_path / "agent_global_grants.json")
+    except Exception:
+        pass
     return tmp_path
 
 
@@ -199,3 +207,93 @@ def test_unsilencing_restores_notifications(temp_codec_dir):
     notifs = json.loads((temp_codec_dir / "notifications.json").read_text())
     agent_notifs = [n for n in notifs if n.get("agent_id") == "agent_test"]
     assert len(agent_notifs) == 1  # only the unsilenced one
+
+
+def test_run_agent_posts_started_message_on_spawn(monkeypatch, temp_codec_dir):
+    """When _run_agent transitions approved → running, it posts an
+    agent_update message announcing the start."""
+    import codec_agent_runner as car
+    import codec_agent_plan as cap
+    import codec_agent_messaging as cam
+
+    # Set up an approved agent (mirror Step 9 test fixture pattern)
+    plan_dict = {
+        "schema": 1, "agent_id": "test_agent", "goals": ["g"],
+        "checkpoints": [{"id": "cp0", "title": "t", "description": "d",
+                         "skills_needed": ["weather"], "expected_output": "o",
+                         "step_budget": 5}],
+        "permission_manifest": {"skills": ["weather"], "read_paths": [],
+                                 "write_paths": [], "network_domains": [],
+                                 "destructive_ops": []},
+        "estimated_duration_minutes": 5, "assumptions": [],
+    }
+    plan = cap.plan_from_dict(plan_dict)
+    cap.save_plan(plan)
+    cap.save_grants("test_agent", {"schema": 1, "agent_id": "test_agent",
+                                     "skills": ["weather"], "read_paths": [],
+                                     "write_paths": [], "network_domains": [],
+                                     "destructive_ops": [], "auto_approved": {},
+                                     "approved_at": "x"})
+    cap.save_manifest("test_agent", {"agent_id": "test_agent", "title": "x",
+                                      "status": "approved",
+                                      "plan_hash": cap.compute_plan_hash(plan),
+                                      "created_at": "x", "updated_at": "x"})
+    cap.save_state("test_agent", {"current_checkpoint": 0})
+
+    monkeypatch.setattr(car, "_qwen_next_action", lambda *a, **k:
+        car.Action(skill="", task="", kind="checkpoint_done"))
+
+    car._run_agent("test_agent")
+
+    # messages.jsonl should have at least started + completed messages
+    msg_path = temp_codec_dir / "agents" / "test_agent" / "messages.jsonl"
+    lines = msg_path.read_text().strip().splitlines()
+    types = [json.loads(line)["type"] for line in lines]
+    assert "agent_update" in types  # checkpoint_completed message
+    assert "agent_done" in types or "agent_update" in types  # final completion
+
+
+def test_run_agent_posts_blocked_message_on_permission_violation(monkeypatch, temp_codec_dir):
+    """When _run_agent blocks on permission, posts agent_blocked message
+    with Grant action available."""
+    import codec_agent_runner as car
+    import codec_agent_plan as cap
+
+    plan_dict = {
+        "schema": 1, "agent_id": "test_agent", "goals": ["g"],
+        "checkpoints": [{"id": "cp0", "title": "t", "description": "d",
+                         "skills_needed": ["weather"], "expected_output": "o",
+                         "step_budget": 5}],
+        "permission_manifest": {"skills": ["weather"], "read_paths": [],
+                                 "write_paths": [], "network_domains": [],
+                                 "destructive_ops": []},
+        "estimated_duration_minutes": 5, "assumptions": [],
+    }
+    plan = cap.plan_from_dict(plan_dict)
+    cap.save_plan(plan)
+    cap.save_grants("test_agent", {"schema": 1, "agent_id": "test_agent",
+                                     "skills": ["weather"], "read_paths": [],
+                                     "write_paths": [], "network_domains": [],
+                                     "destructive_ops": [], "auto_approved": {}})
+    cap.save_manifest("test_agent", {"agent_id": "test_agent", "title": "x",
+                                      "status": "approved",
+                                      "plan_hash": cap.compute_plan_hash(plan),
+                                      "created_at": "x", "updated_at": "x"})
+    cap.save_state("test_agent", {"current_checkpoint": 0})
+
+    # Try to call a skill not in grants
+    monkeypatch.setattr(car, "_qwen_next_action", lambda *a, **k:
+        car.Action(skill="terminal", task="ls", kind="skill_call",
+                   is_destructive=False, network_call=False, touches_path=False))
+    monkeypatch.setattr(car, "_run_skill", MagicMock())
+
+    car._run_agent("test_agent")
+
+    # Find blocked message
+    msg_path = temp_codec_dir / "agents" / "test_agent" / "messages.jsonl"
+    lines = msg_path.read_text().strip().splitlines()
+    blocked = [json.loads(l) for l in lines if json.loads(l)["type"] == "agent_blocked"]
+    assert len(blocked) >= 1
+    # Has Grant action
+    grant_actions = [a for a in blocked[0]["actions"] if "grant" in str(a).lower()]
+    assert len(grant_actions) >= 1

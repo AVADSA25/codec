@@ -402,6 +402,10 @@ def _run_agent(agent_id: str, cid: Optional[str] = None) -> None:
         load_global_grants, save_state, save_manifest,
         compute_plan_hash,
     )
+    try:
+        from codec_agent_messaging import post_message
+    except ImportError:
+        post_message = lambda **kw: None  # graceful degradation
 
     if cid is None:
         cid = secrets.token_hex(6)
@@ -453,6 +457,14 @@ def _run_agent(agent_id: str, cid: Optional[str] = None) -> None:
                extra={"agent_id": agent_id,
                       "checkpoint_count": len(plan.checkpoints),
                       "starting_at": current_idx})
+        post_message(agent_id=agent_id, type="agent_update",
+                     title=f"Agent started: {manifest.get('title', agent_id)}",
+                     body=f"Starting plan execution from checkpoint {current_idx + 1} of {len(plan.checkpoints)}.",
+                     actions=[
+                         {"label": "Pause", "endpoint": f"/api/agents/{agent_id}/pause"},
+                         {"label": "Abort", "endpoint": f"/api/agents/{agent_id}/abort"},
+                     ],
+                     correlation_id=cid)
 
         # Walk checkpoints
         history: List[Dict[str, Any]] = []
@@ -490,6 +502,15 @@ def _run_agent(agent_id: str, cid: Optional[str] = None) -> None:
                        correlation_id=cid, outcome="warning", level="warning",
                        extra={"agent_id": agent_id, "checkpoint_id": cp.id,
                               "reason": pv.reason, "needed": pv.needed[:200]})
+                post_message(agent_id=agent_id, type="agent_blocked",
+                             title=f"Blocked: {pv.reason}",
+                             body=f"Agent needs additional permission: `{pv.needed}`. Grant or skip?",
+                             actions=[
+                                 {"label": "Grant", "endpoint": f"/api/agents/{agent_id}/grant",
+                                  "body_hint": {"kind": "<infer from reason>", "value": pv.needed}},
+                                 {"label": "Abort", "endpoint": f"/api/agents/{agent_id}/abort"},
+                             ],
+                             correlation_id=cid)
                 return
             except DestructiveOpRejected as e:
                 _atomic_set_status(agent_id, "aborted",
@@ -498,6 +519,11 @@ def _run_agent(agent_id: str, cid: Optional[str] = None) -> None:
                        correlation_id=cid, outcome="warning", level="warning",
                        extra={"agent_id": agent_id, "checkpoint_id": cp.id,
                               "reason": "destructive_rejected"})
+                post_message(agent_id=agent_id, type="agent_aborted",
+                             title="Aborted: destructive op rejected",
+                             body=f"User rejected a destructive operation. Plan halted.",
+                             actions=[],
+                             correlation_id=cid)
                 return
             except StepBudgetExhausted as e:
                 # Q7: distinguish "destructive_consent_timeout" from real budget hits
@@ -536,12 +562,28 @@ def _run_agent(agent_id: str, cid: Optional[str] = None) -> None:
                    correlation_id=cid,
                    extra={"agent_id": agent_id, "checkpoint_id": cp.id,
                           "checkpoint_idx": idx, "steps_used": len(history)})
+            post_message(agent_id=agent_id, type="agent_update",
+                         title=f"Checkpoint {idx + 1}/{len(plan.checkpoints)}: {cp.title}",
+                         body=f"Completed in {len(history)} step(s). Output: {cp.expected_output[:200]}",
+                         actions=[
+                             {"label": "Pause", "endpoint": f"/api/agents/{agent_id}/pause"},
+                             {"label": "Abort", "endpoint": f"/api/agents/{agent_id}/abort"},
+                         ],
+                         correlation_id=cid)
 
         # All checkpoints done
         _atomic_set_status(agent_id, "completed")
         _audit(AGENT_COMPLETED, message=f"agent completed {agent_id}",
                correlation_id=cid,
                extra={"agent_id": agent_id, "total_steps": len(history)})
+        post_message(agent_id=agent_id, type="agent_done",
+                     title=f"Done: {manifest.get('title', agent_id)}",
+                     body=f"Plan complete. {len(history)} total steps across {len(plan.checkpoints)} checkpoints.",
+                     actions=[
+                         {"label": "View artifacts",
+                          "endpoint": f"/api/agents/{agent_id}/artifacts"},
+                     ],
+                     correlation_id=cid)
 
     except QwenUnavailableError as e:
         # Review fix C2: Qwen-3.6 unavailable is not strictly a permission
