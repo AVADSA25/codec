@@ -240,6 +240,21 @@ SHIFT_REPORT_COMPLETED = "shift_report_completed"
 
 PHASE2_STEP7_EVENTS = frozenset({SHIFT_REPORT_STARTED, SHIFT_REPORT_COMPLETED})
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 3 Step 8 — Plan + Permission Contract
+# ─────────────────────────────────────────────────────────────────────────────
+AGENT_PLAN_DRAFTED         = "agent_plan_drafted"
+AGENT_PLAN_APPROVED        = "agent_plan_approved"
+AGENT_PLAN_REJECTED        = "agent_plan_rejected"
+AGENT_PLAN_REVISED         = "agent_plan_revised"
+AGENT_GLOBAL_GRANT_ADDED   = "agent_global_grant_added"
+AGENT_GLOBAL_GRANT_REMOVED = "agent_global_grant_removed"
+
+PHASE3_STEP8_EVENTS = frozenset({
+    AGENT_PLAN_DRAFTED, AGENT_PLAN_APPROVED, AGENT_PLAN_REJECTED,
+    AGENT_PLAN_REVISED, AGENT_GLOBAL_GRANT_ADDED, AGENT_GLOBAL_GRANT_REMOVED,
+})
+
 SHIFT_REPORT_EXTRA_FIELDS = (
     "trigger_kind",            # "time" | "idle" | "manual"
     "sections_included",       # int — how many of the 5 sections rendered
