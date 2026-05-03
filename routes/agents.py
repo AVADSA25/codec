@@ -223,3 +223,166 @@ async def list_pending_questions():
         return {"pending_questions": pending, "count": len(pending)}
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ── Phase 3 Step 8 — Agent Plan + Permission Contract endpoints ───────────────
+import logging as _logging
+from typing import Any as _Any, Dict as _Dict, List as _List, Optional as _Optional
+
+from fastapi import HTTPException
+from pydantic import BaseModel, Field
+
+import codec_agent_plan as _cap
+
+_log = _logging.getLogger("routes.agents.plan")
+
+
+class CreateAgentBody(BaseModel):
+    title: str = Field(..., min_length=1, max_length=120)
+    description: str = Field(..., min_length=1)
+    notification_channels: _Optional[_List[str]] = Field(default=None)
+
+
+class RejectBody(BaseModel):
+    reason: str = Field(default="", max_length=500)
+
+
+class ReviseBody(BaseModel):
+    edited_plan: _Dict[str, _Any] = Field(...)
+
+
+class GlobalGrantBody(BaseModel):
+    kind: str = Field(...)
+    value: str = Field(..., min_length=1)
+
+
+@router.post("/api/agents")
+def create_agent(body: CreateAgentBody):
+    try:
+        agent_id = _cap.create_agent(
+            title=body.title,
+            description=body.description,
+            notification_channels=body.notification_channels,
+        )
+    except _cap.DescriptionTooVagueError as e:
+        raise HTTPException(status_code=400, detail=f"description too vague: {e}")
+    except _cap.PlanValidationError as e:
+        raise HTTPException(status_code=400, detail=f"plan invalid: {e}")
+    except _cap.QwenUnavailableError as e:
+        raise HTTPException(status_code=503, detail=f"Qwen-3.6 unavailable: {e}")
+
+    manifest = _cap.load_manifest(agent_id)
+    return {"agent_id": agent_id, "status": manifest.get("status", "unknown")}
+
+
+@router.get("/api/agents")
+def list_agents():
+    """List all agents (any status). Returns a thin manifest summary."""
+    out: _List[_Dict[str, _Any]] = []
+    if not _cap._AGENTS_DIR.exists():
+        return {"agents": []}
+    for d in sorted(_cap._AGENTS_DIR.iterdir()):
+        if not d.is_dir():
+            continue
+        m = _cap.load_manifest(d.name)
+        if m:
+            out.append({
+                "agent_id": m.get("agent_id", d.name),
+                "title":    m.get("title", "(untitled)"),
+                "status":   m.get("status", "unknown"),
+                "created_at": m.get("created_at"),
+                "updated_at": m.get("updated_at"),
+            })
+    return {"agents": out}
+
+
+@router.get("/api/agents/{agent_id}")
+def get_agent(agent_id: str):
+    manifest = _cap.load_manifest(agent_id)
+    if not manifest:
+        raise HTTPException(status_code=404, detail=f"agent {agent_id} not found")
+    plan = _cap.load_plan(agent_id)
+    state = _cap.load_state(agent_id)
+    grants = _cap.load_grants(agent_id) or None
+    return {
+        "manifest": manifest,
+        "plan": plan.to_dict() if plan else None,
+        "state": state,
+        "grants": grants,
+    }
+
+
+@router.post("/api/agents/{agent_id}/approve")
+def approve_agent(agent_id: str):
+    manifest = _cap.load_manifest(agent_id)
+    if not manifest:
+        raise HTTPException(status_code=404, detail=f"agent {agent_id} not found")
+    try:
+        grants = _cap.approve_plan(agent_id)
+    except _cap.InvalidStatusTransition as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    return {"agent_id": agent_id, "status": "approved", "grants": grants}
+
+
+@router.post("/api/agents/{agent_id}/reject")
+def reject_agent(agent_id: str, body: RejectBody):
+    manifest = _cap.load_manifest(agent_id)
+    if not manifest:
+        raise HTTPException(status_code=404, detail=f"agent {agent_id} not found")
+    try:
+        _cap.reject_plan(agent_id, reason=body.reason)
+    except _cap.InvalidStatusTransition as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    return {"agent_id": agent_id, "status": "rejected"}
+
+
+@router.post("/api/agents/{agent_id}/revise")
+def revise_agent(agent_id: str, body: ReviseBody):
+    manifest = _cap.load_manifest(agent_id)
+    if not manifest:
+        raise HTTPException(status_code=404, detail=f"agent {agent_id} not found")
+    try:
+        plan = _cap.revise_plan(agent_id, body.edited_plan)
+    except _cap.PlanValidationError as e:
+        raise HTTPException(status_code=400, detail=f"plan invalid: {e}")
+    except _cap.InvalidStatusTransition as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    return {"agent_id": agent_id, "status": "awaiting_approval",
+            "plan": plan.to_dict()}
+
+
+@router.get("/api/agent_global_grants")
+def get_global_grants():
+    return _cap.load_global_grants()
+
+
+@router.post("/api/agent_global_grants")
+def add_global_grant(body: GlobalGrantBody):
+    try:
+        _cap.add_global_grant(body.kind, body.value)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    import secrets as _secrets
+    cid = _secrets.token_hex(6)
+    _cap._audit(_cap.AGENT_GLOBAL_GRANT_ADDED, "codec-agent-plan",
+               f"grant added: {body.kind}={body.value}",
+               correlation_id=cid,
+               extra={"kind": body.kind, "value": body.value})
+    return _cap.load_global_grants()
+
+
+@router.delete("/api/agent_global_grants")
+def delete_global_grant(body: GlobalGrantBody):
+    try:
+        _cap.remove_global_grant(body.kind, body.value)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    import secrets as _secrets
+    cid = _secrets.token_hex(6)
+    _cap._audit(_cap.AGENT_GLOBAL_GRANT_REMOVED, "codec-agent-plan",
+               f"grant removed: {body.kind}={body.value}",
+               correlation_id=cid,
+               extra={"kind": body.kind, "value": body.value})
+    return _cap.load_global_grants()
