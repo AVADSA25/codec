@@ -407,7 +407,19 @@ def _run_agent(agent_id: str) -> None:
         manifest = load_manifest(agent_id)
         stored_hash = manifest.get("plan_hash", "")
         actual_hash = compute_plan_hash(plan)
-        if stored_hash and stored_hash != actual_hash:
+        # Q13 (review fix I1): if stored_hash is missing/empty, the plan was
+        # never properly approved or someone cleared the hash. Either way:
+        # ABORT. The "if stored_hash and ..." pattern silently bypasses
+        # tamper detection on hash absence — that's an attack vector.
+        if not stored_hash:
+            log.warning("[%s] plan_hash absent — refusing to run (never approved or hash tampered)",
+                        agent_id)
+            _atomic_set_status(agent_id, "aborted", reason="plan_hash_missing")
+            _audit(AGENT_ABORTED, message="plan_hash missing",
+                   correlation_id=cid, outcome="error", level="error",
+                   extra={"agent_id": agent_id, "reason": "plan_hash_missing"})
+            return
+        if stored_hash != actual_hash:
             log.warning("[%s] plan_hash tamper: stored=%s actual=%s",
                         agent_id, stored_hash[:8], actual_hash[:8])
             _atomic_set_status(agent_id, "aborted", reason="plan_tampered")
@@ -510,6 +522,16 @@ def _run_agent(agent_id: str) -> None:
                extra={"agent_id": agent_id, "total_steps": len(history)})
 
     except QwenUnavailableError as e:
+        # Review fix C2: Qwen-3.6 unavailable is not strictly a permission
+        # problem, but we route through `blocked_on_permission` for v1
+        # because:
+        #   (a) it's a recoverable block (agent can resume once Qwen is back)
+        #   (b) adding `blocked_on_qwen` requires a new state-machine entry
+        #       + UI changes that should ship together in Step 10
+        # The reason="qwen_unavailable" makes the cause unambiguous in audit,
+        # and the daemon will retry on next tick once Qwen returns.
+        # TODO Step 10 / Phase 3.5: introduce dedicated `blocked_on_qwen`
+        # status with daemon-driven auto-resume on Qwen recovery.
         log.warning("[%s] qwen unavailable: %s", agent_id, e)
         _atomic_set_status(agent_id, "blocked_on_permission",
                            reason=f"qwen_unavailable:{e}")
@@ -554,12 +576,22 @@ def _scan_agents() -> List[Dict[str, Any]]:
 
 def _occupied_slots() -> int:
     """Count active threads + agents in any blocked_* state (Q8 — they
-    occupy a slot). Note: completed/aborted/rejected don't occupy."""
+    occupy a slot). Note: completed/aborted/rejected don't occupy.
+
+    Review fix I3: dedupe so an agent counted as `active_thread` is NOT
+    also counted as `blocked_*` if its status was just transitioned but
+    the thread hasn't been reaped yet."""
     with _threads_lock:
-        active_count = sum(1 for t in _active_threads.values() if t.is_alive())
+        active_ids = {aid for aid, t in _active_threads.items() if t.is_alive()}
+    active_count = len(active_ids)
     blocked_count = 0
     for m in _scan_agents():
-        if m.get("status", "").startswith("blocked_"):
+        agent_id = m.get("agent_id", "")
+        status = m.get("status", "")
+        # Skip if already counted as active (avoid double-count during transition window)
+        if agent_id in active_ids:
+            continue
+        if status.startswith("blocked_"):
             blocked_count += 1
     return active_count + blocked_count
 

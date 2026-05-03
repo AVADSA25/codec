@@ -474,6 +474,25 @@ def test_run_agent_plan_hash_tamper_aborts(monkeypatch, temp_codec_dir):
     assert "tamper" in (m.get("status_reason", "") or "").lower()
 
 
+def test_run_agent_missing_plan_hash_aborts(monkeypatch, temp_codec_dir):
+    """Review fix I1: empty/missing plan_hash means agent was never properly
+    approved or hash was cleared by attacker → ABORT (no silent bypass)."""
+    import codec_agent_runner as car
+    import codec_agent_plan as cap
+    _setup_approved_agent(temp_codec_dir, monkeypatch, num_checkpoints=1)
+
+    # Clear the plan_hash from manifest (simulating tampered manifest or missing hash)
+    manifest = cap.load_manifest("test_agent")
+    manifest["plan_hash"] = ""
+    cap.save_manifest("test_agent", manifest)
+
+    car._run_agent("test_agent")
+
+    m = cap.load_manifest("test_agent")
+    assert m["status"] == "aborted"
+    assert "missing" in (m.get("status_reason", "") or "").lower()
+
+
 def test_run_agent_resume_from_checkpoint(monkeypatch, temp_codec_dir):
     """state.current_checkpoint=1 means skip checkpoint 0 on resume."""
     import codec_agent_runner as car

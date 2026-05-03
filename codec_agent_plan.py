@@ -496,7 +496,14 @@ _VALID_TRANSITIONS: Dict[str, frozenset] = {
     "draft_pending":         frozenset({"awaiting_approval", "plan_failed"}),
     "awaiting_approval":     frozenset({"approved", "rejected", "revised"}),
     "revised":               frozenset({"awaiting_approval"}),
-    "approved":              frozenset({"rejected", "running", "aborted"}),  # Step 9: running + tamper abort
+    # `approved → aborted` (review fix C1): a plan-hash mismatch or
+    # missing-hash check at run-start fires while the agent is still in
+    # `approved` status (before transitioning to `running`). We must allow
+    # that abort path; otherwise the tamper-detection code raises
+    # InvalidStatusTransition and the bare-except handler papers over it.
+    # Plan deviation from PHASE3-STEP9-PLAN.md Task 2 — intentional,
+    # security-critical addition.
+    "approved":              frozenset({"rejected", "running", "aborted"}),
     "rejected":              frozenset(),
     "plan_failed":           frozenset({"draft_pending"}),  # retry path
 
