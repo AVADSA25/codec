@@ -2420,6 +2420,131 @@ def _try_skill_by_name(name: str, query: str):
     return name, None
 
 
+# ── Phase 3 Step 10 — Auto-escalation classifier ──────────────────────────
+
+_AUTO_ESCALATE_SYSTEM_PROMPT = """You are CODEC's chat-input classifier. \
+Given the user's chat message, decide if it represents a "project" — \
+multi-step work that would benefit from autonomous execution by an agent \
+(file writes, browser automation, multi-checkpoint plan) — or a "quick \
+question" suitable for single-shot LLM answer.
+
+Return ONLY a JSON object:
+{
+  "is_project": <bool>,
+  "estimated_checkpoints": <int — best guess of plan size; 0 if not project>,
+  "reason": <short string explaining the verdict>
+}
+
+Rules:
+- Single-shot factual / conversational / explanatory questions → is_project=false.
+- "Build me X", "Set up Y", "Watch Z and tell me when W", "Plan launch of A" → is_project=true.
+- Be honest about checkpoint estimates; under 3 means not worth promoting.
+"""
+
+
+def _qwen_chat_classify(user_text: str, max_tokens: int = 300) -> str:
+    """Call Qwen-3.6 with the auto-escalation classifier prompt. Returns
+    raw response string. Caller handles JSON parsing + error fallback."""
+    try:
+        import requests
+        payload = {
+            "model": "qwen3.6",
+            "messages": [
+                {"role": "system", "content": _AUTO_ESCALATE_SYSTEM_PROMPT},
+                {"role": "user", "content": user_text[:2000]},
+            ],
+            "max_tokens": max_tokens,
+            "temperature": 0.1,
+        }
+        r = requests.post("http://127.0.0.1:8090/v1/chat/completions",
+                          json=payload, timeout=15)
+        if r.status_code != 200:
+            return ""
+        return r.json()["choices"][0]["message"]["content"]
+    except Exception as e:
+        log.debug(f"_qwen_chat_classify failed: {e}")
+        return ""
+
+
+def _classify_chat_message(user_text: str) -> tuple[bool, int, str]:
+    """Returns (is_project, estimated_checkpoints, reason). Falls back to
+    (False, 0, reason) on any failure."""
+    raw = _qwen_chat_classify(user_text)
+    if not raw:
+        return (False, 0, "qwen unavailable")
+
+    raw = raw.strip()
+    if raw.startswith("```"):
+        import re as _re
+        raw = _re.sub(r"^```(?:json)?\s*", "", raw)
+        raw = _re.sub(r"\s*```\s*$", "", raw)
+
+    try:
+        d = json.loads(raw)
+    except json.JSONDecodeError:
+        return (False, 0, "qwen returned non-JSON")
+
+    return (
+        bool(d.get("is_project", False)),
+        int(d.get("estimated_checkpoints", 0)),
+        str(d.get("reason", ""))[:200],
+    )
+
+
+# ── Auto-escalation gate (in-memory session silence per Q11) ──────────────
+
+_AUTOESCALATE_SILENCE_LOCK = threading.Lock()
+_autoescalate_silence_set: set[str] = set()  # session_ids that said "no" once
+
+ESCALATE_CHECKPOINTS_THRESHOLD = 3
+
+
+def silence_session_autoescalate(session_id: str) -> None:
+    """Q11: After user says No once, silence auto-escalation prompts for
+    the rest of this conversation. Resets on new chat session."""
+    with _AUTOESCALATE_SILENCE_LOCK:
+        _autoescalate_silence_set.add(session_id)
+
+
+def _reset_autoescalate_silence_for_test() -> None:
+    """Test-only helper to clear in-memory silence state."""
+    with _AUTOESCALATE_SILENCE_LOCK:
+        _autoescalate_silence_set.clear()
+
+
+def _should_escalate_to_project(user_text: str, session_id: str) -> dict:
+    """2-signal gate (Step 10):
+      Signal 1: classifier verdict (is_project=True)
+      Signal 2: estimated_checkpoints >= ESCALATE_CHECKPOINTS_THRESHOLD
+
+    Plus 2 kill conditions:
+      - AGENT_AUTO_ESCALATE_ENABLED=false
+      - session_id in silence set (Q11)
+
+    Returns: {"escalate": bool, "estimated_checkpoints": int, "reason": str}
+    """
+    import os as _os
+    if _os.environ.get("AGENT_AUTO_ESCALATE_ENABLED", "true").lower() == "false":
+        return {"escalate": False, "estimated_checkpoints": 0,
+                "reason": "kill_switch_off"}
+
+    with _AUTOESCALATE_SILENCE_LOCK:
+        if session_id in _autoescalate_silence_set:
+            return {"escalate": False, "estimated_checkpoints": 0,
+                    "reason": "session_silenced", "silenced": True}
+
+    is_project, n_checkpoints, reason = _classify_chat_message(user_text)
+
+    escalate = is_project and n_checkpoints >= ESCALATE_CHECKPOINTS_THRESHOLD
+
+    return {
+        "escalate": escalate,
+        "estimated_checkpoints": n_checkpoints,
+        "reason": reason,
+        "is_project": is_project,
+    }
+
+
 @app.post("/api/chat")
 async def chat_completion(request: Request):
     """Direct LLM chat with full context window + tool calling"""
