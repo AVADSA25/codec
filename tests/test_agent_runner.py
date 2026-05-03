@@ -865,3 +865,83 @@ def test_extend_budget_endpoint_409_when_not_paused_on_budget(temp_codec_dir):
     r = client.post("/api/agents/a1/extend_budget",
                      json={"additional_steps": 10})
     assert r.status_code == 409
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 3.5 review C2 — blocked_on_qwen dedicated status (3 tests)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_blocked_on_qwen_in_state_machine():
+    """blocked_on_qwen is a valid status with proper transitions."""
+    from codec_agent_plan import _VALID_TRANSITIONS
+    assert "blocked_on_qwen" in _VALID_TRANSITIONS["running"]
+    assert {"running", "aborted"} <= _VALID_TRANSITIONS["blocked_on_qwen"]
+
+
+def test_run_agent_qwen_failure_uses_blocked_on_qwen(monkeypatch, temp_codec_dir):
+    """When Qwen is unavailable mid-run, status transitions to blocked_on_qwen
+    (NOT blocked_on_permission)."""
+    import codec_agent_runner as car
+    import codec_agent_plan as cap
+    _setup_approved_agent(temp_codec_dir, monkeypatch, num_checkpoints=1)
+
+    def raise_qwen(*a, **k):
+        raise car.QwenUnavailableError("simulated outage")
+    monkeypatch.setattr(car, "_qwen_next_action", raise_qwen)
+
+    car._run_agent("test_agent")
+
+    m = cap.load_manifest("test_agent")
+    assert m["status"] == "blocked_on_qwen"
+    assert "qwen_unavailable" in (m.get("status_reason", "") or "")
+
+
+def test_daemon_resumes_blocked_on_qwen_when_qwen_alive(monkeypatch, temp_codec_dir):
+    """When daemon ticks and an agent is blocked_on_qwen, if Qwen is alive
+    (probe succeeds), the daemon transitions back to running and respawns."""
+    import codec_agent_runner as car
+    import codec_agent_plan as cap
+
+    cap.save_manifest("a1", {"agent_id": "a1", "status": "blocked_on_qwen",
+                              "title": "x"})
+    monkeypatch.setattr(car, "_qwen_chat", lambda *a, **k: "ok")  # Qwen alive
+    spawned = []
+    monkeypatch.setattr(car, "_run_agent", lambda agent_id, **kw: spawned.append(agent_id))
+    monkeypatch.setattr(car, "MAX_CONCURRENT", 3)
+
+    car._daemon_one_tick()
+    time.sleep(0.3)
+    assert "a1" in spawned
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 3.5 review M4 — read_paths runtime enforcement (3 tests)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_action_dataclass_supports_reads_path():
+    """Action accepts reads_path + read_path fields."""
+    from codec_agent_runner import Action
+    a = Action(skill="file_ops", task="read template",
+               reads_path=True, read_path="~/Documents/template.md")
+    assert a.reads_path is True
+    assert a.read_path == "~/Documents/template.md"
+
+
+def test_permission_gate_blocks_read_path_outside_grants(basic_grants, empty_global_grants):
+    """Action with reads_path=True and read_path NOT in read_paths → blocked."""
+    from codec_agent_runner import permission_gate, Action, PermissionViolation
+    action = Action(skill="weather", task="read",
+                    reads_path=True, read_path="/etc/passwd")
+    with pytest.raises(PermissionViolation) as exc:
+        permission_gate(action, basic_grants, empty_global_grants)
+    assert exc.value.reason == "read_path_not_authorized"
+    assert exc.value.needed == "/etc/passwd"
+
+
+def test_permission_gate_allows_read_path_in_grants(basic_grants, empty_global_grants):
+    """Action reading a path inside ~/Documents/** (granted) → allowed."""
+    from codec_agent_runner import permission_gate, Action
+    # basic_grants fixture has read_paths=["~/Documents/**"]
+    action = Action(skill="weather", task="read",
+                    reads_path=True, read_path="~/Documents/research/notes.md")
+    permission_gate(action, basic_grants, empty_global_grants)  # no exception

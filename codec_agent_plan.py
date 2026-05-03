@@ -540,10 +540,15 @@ _VALID_TRANSITIONS: Dict[str, frozenset] = {
     "running":               frozenset({"completed", "aborted", "paused",
                                         "blocked_on_permission",
                                         "blocked_on_destructive",
+                                        "blocked_on_qwen",
                                         "crashed_resumed"}),
     "paused":                frozenset({"running", "aborted"}),
     "blocked_on_permission": frozenset({"running", "aborted"}),
     "blocked_on_destructive": frozenset({"running", "aborted"}),
+    # Phase 3.5 review fix C2: dedicated status for Qwen-3.6 unavailability.
+    # Distinct from blocked_on_permission (no permission to grant — service
+    # is just down). Daemon auto-resumes on next tick when Qwen comes back.
+    "blocked_on_qwen":       frozenset({"running", "aborted"}),
     "crashed_resumed":       frozenset({"running", "aborted"}),
     "completed":             frozenset(),
     "aborted":               frozenset(),
