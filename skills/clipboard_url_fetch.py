@@ -39,30 +39,29 @@ SKILL_TRIGGERS = [
 SKILL_MCP_EXPOSE = False  # local-only; no value over MCP since clipboard isn't shared
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Phase 2 Step 6 declarative trigger — DISABLED BY DEFAULT.
+# Phase 2 Step 6 declarative trigger — MUTED BY DEFAULT via runtime config.
 #
-# Auto-firing on every URL copied to clipboard turned out to be too noisy in
-# practice — the average user copies several URLs per minute while working,
-# and `require_confirmation: True` produced one ask_user notification per
-# fresh URL despite the 10-min cooldown. The trigger was firing every ~7 min
-# with each new URL, blocking the agent runner queue and burying real
-# notifications under "codec-triggers is asking a question" spam.
+# The trigger is declared but suppressed by `~/.codec/triggers.json`'s
+# `muted_skills` list (default contents include `clipboard_url_fetch`) —
+# see docs/PHASE2-STEP6-TRIGGER-MUTE.md.
 #
-# Manual paths still work. Say "fetch the link" / "summarize this URL" or
-# call the skill via MCP / chat / voice — `run()` reads the clipboard at
-# invocation time. The skill itself is fully functional; only the
-# auto-fire-on-clipboard-pattern path is muted.
+# Why muted: auto-firing on every URL copied to clipboard was too noisy in
+# practice — users copy several URLs per minute while working, and
+# `require_confirmation: True` produced one ask_user notification per fresh
+# URL despite the 10-min cooldown. The trigger was firing every ~7 min,
+# blocking the agent runner queue and burying real notifications.
 #
-# To re-enable, uncomment the dict below. Future work: per-skill enable
-# flag in `~/.codec/triggers.json` so users toggle without editing code.
+# To re-enable: remove `clipboard_url_fetch` from `muted_skills` in
+# `~/.codec/triggers.json` (no code edit needed). Manual paths always work
+# regardless of mute state.
 # ──────────────────────────────────────────────────────────────────────────────
-# SKILL_OBSERVATION_TRIGGER = {
-#     "type": "clipboard_pattern",
-#     "pattern": r"https?://[^\s<>'\"]+",
-#     "cooldown_seconds": 600,        # 10-min per-trigger cooldown
-#     "require_confirmation": True,   # ask user before fetch
-#     "destructive": False,           # read-only operation
-# }
+SKILL_OBSERVATION_TRIGGER = {
+    "type": "clipboard_pattern",
+    "pattern": r"https?://[^\s<>'\"]+",
+    "cooldown_seconds": 600,        # 10-min per-trigger cooldown
+    "require_confirmation": True,   # ask user before fetch
+    "destructive": False,           # read-only operation
+}
 
 
 import re
