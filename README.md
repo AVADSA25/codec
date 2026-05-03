@@ -10,8 +10,8 @@
 </p>
 
 <p align="center">
-  <a href="FEATURES.md"><img src="https://img.shields.io/badge/features-367+-blue?style=flat-square" alt="367+ Features"/></a>
-  <img src="https://img.shields.io/badge/skills-74-orange?style=flat-square" alt="74 Skills"/>
+  <a href="FEATURES.md"><img src="https://img.shields.io/badge/features-368+-blue?style=flat-square" alt="368+ Features"/></a>
+  <img src="https://img.shields.io/badge/skills-75-orange?style=flat-square" alt="75 Skills"/>
   <img src="https://img.shields.io/badge/tests-940+-green?style=flat-square" alt="940+ Tests"/>
   <img src="https://img.shields.io/badge/lines-58K+-purple?style=flat-square" alt="58K+ Lines"/>
   <img src="https://img.shields.io/badge/license-MIT-brightgreen?style=flat-square" alt="MIT License"/>
@@ -46,7 +46,7 @@ No cloud dependency. No data leaving the machine unless you choose. No subscript
 
 | # | Product | What It Does |
 |:-:|---|---|
-| 1 | **CODEC Core** | Voice command layer + vision mouse control — 74 skills, screen clicks by voice |
+| 1 | **CODEC Core** | Voice command layer + vision mouse control — 75 skills, screen clicks by voice |
 | 2 | **CODEC Dictate** | Hold, speak, paste — hands-free F5 live typing at cursor, draft refinement, floating overlays |
 | 3 | **CODEC Instant** | Right-click → 8 AI services system-wide — proofread, translate, reply, explain |
 | 4 | **CODEC Chat** | 250K-context conversational AI + 12 autonomous agent crews |
@@ -60,7 +60,7 @@ No cloud dependency. No data leaving the machine unless you choose. No subscript
 
 Always-on voice assistant. Say *"Hey CODEC"* or press F13 to activate. F18 for voice commands. F16 for text input.
 
-74 skills fire instantly: Google Calendar, Gmail, Drive, Docs, Sheets, Tasks, Keep, Chrome automation, web search, Hue lights, timers, Spotify, clipboard, terminal commands, PM2 control, and more. Most skills bypass the LLM entirely — direct action, zero latency. Skills are matched by trigger specificity — longer, more specific triggers always win over generic ones.
+75 skills fire instantly: Google Calendar, Gmail, Drive, Docs, Sheets, Tasks, Keep, Chrome automation, web search, Hue lights, timers, Spotify, clipboard, terminal commands, PM2 control, and more. Most skills bypass the LLM entirely — direct action, zero latency. Skills are matched by trigger specificity — longer, more specific triggers always win over generic ones.
 
 **Vision Mouse Control — See & Click**
 
@@ -216,7 +216,7 @@ Three smart agents ship built-in: Daily Briefing, Restaurant Decider (location-a
 </p>
 <p align="center">
   <img src="docs/screenshots/terminal.png" alt="Terminal" width="400"/><br/>
-  <em>74 skills loaded at startup</em>
+  <em>75 skills loaded at startup</em>
 </p>
 <p align="center">
   <img src="docs/screenshots/cortex.png" alt="Cortex Neural Map" width="720"/><br/>
@@ -366,7 +366,7 @@ Claude Desktop/Code/Cursor gain — through this one MCP bridge — everything C
 
 - **Your Mac, your apps** — native macOS control: mouse/keyboard via vision model, screenshot text extraction, app switching, clipboard, brightness/volume, Philips Hue, Spotify, Apple Notes, Reminders, Clock timers, music. No browser sandbox.
 - **Your memory** — FTS5-searchable history of every CODEC conversation. Claude can recall what *you* said weeks ago, not just this chat.
-- **Your skills, not Anthropic's** — 74 pluggable CODEC skills instantly callable as tools. Write one locally in Python, it shows up in Claude without a deploy.
+- **Your skills, not Anthropic's** — 75 pluggable CODEC skills instantly callable as tools. Write one locally in Python, it shows up in Claude without a deploy.
 - **Your LLM, your choice** — same skill catalog works whether the brain is local Qwen (offline, private) or cloud Claude. The toolkit outlives the model.
 - **Your voice pipeline** — Whisper STT, Kokoro TTS, wake-word — all reachable from the chat loop if you want voice output of a Claude answer.
 
@@ -572,7 +572,7 @@ codec_marketplace.py  — Skill marketplace CLI
 codec_overlays.py     — AppKit overlay notifications (fullscreen compatible)
 ax_bridge/            — Swift AX accessibility bridge
 swift-overlay/        — Native macOS status bar app (NSPanel, event JSONL poller)
-skills/               — 74 built-in skills (incl. vision mouse control)
+skills/               — 75 built-in skills (incl. vision mouse control)
 tests/                — 940+ pytest tests across 53 files
 request_mic.py        — macOS microphone permission helper (AVFoundation)
 install.sh            — One-line installer
@@ -633,7 +633,7 @@ python3 setup_codec.py
 
 ## Contributing
 
-All skill contributions welcome. 74 built-in skills, 940+ tests, marketplace growing.
+All skill contributions welcome. 75 built-in skills, 940+ tests, marketplace growing.
 
 ```bash
 git clone https://github.com/AVADSA25/codec.git
