@@ -519,3 +519,64 @@ def extend_budget(agent_id: str, body: ExtendBudgetBody):
         "additional_steps": int(body.additional_steps),
         "status": "running",
     }
+
+
+# ── Phase 3 Step 10 — messaging endpoints ──────────────────────────────────
+
+
+class UserReplyBody(BaseModel):
+    body: str = Field(..., min_length=1, max_length=5000)
+
+
+class SilenceBody(BaseModel):
+    silenced: bool = Field(...)
+
+
+@router.get("/api/agents/{agent_id}/messages")
+def get_messages(agent_id: str):
+    """Return all entries from messages.jsonl as a list (newest last)."""
+    manifest = _cap.load_manifest(agent_id)
+    if not manifest:
+        raise HTTPException(status_code=404, detail=f"agent {agent_id} not found")
+
+    msg_path = _cap._AGENTS_DIR / agent_id / "messages.jsonl"
+    if not msg_path.exists():
+        return {"messages": []}
+
+    out = []
+    with open(msg_path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                out.append(json.loads(line))
+            except Exception:
+                continue
+    return {"messages": out}
+
+
+@router.post("/api/agents/{agent_id}/messages")
+def post_message_endpoint(agent_id: str, body: UserReplyBody):
+    """User → agent reply. Writes type=user_reply to messages.jsonl.
+    Daemon picks up next tick."""
+    manifest = _cap.load_manifest(agent_id)
+    if not manifest:
+        raise HTTPException(status_code=404, detail=f"agent {agent_id} not found")
+
+    import codec_agent_messaging as cam
+    record = cam.post_user_reply(agent_id=agent_id, body=body.body)
+    return {"agent_id": agent_id, "ok": True, "ts": record["ts"]}
+
+
+@router.post("/api/agents/{agent_id}/silence")
+def silence_endpoint(agent_id: str, body: SilenceBody):
+    """Toggle silence for an agent. Silenced = post_message writes timeline
+    but skips notifications.json (no banner spam)."""
+    manifest = _cap.load_manifest(agent_id)
+    if not manifest:
+        raise HTTPException(status_code=404, detail=f"agent {agent_id} not found")
+
+    import codec_agent_messaging as cam
+    cam.set_silenced(agent_id, body.silenced)
+    return {"agent_id": agent_id, "silenced": cam.is_silenced(agent_id)}
