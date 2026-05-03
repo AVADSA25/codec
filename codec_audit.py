@@ -285,6 +285,19 @@ PHASE3_STEP10_EVENTS = frozenset({
     AGENT_AUTO_ESCALATED_FROM_CHAT,
 })
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 3.5 — Proactive Intelligence Overlay (observer-driven nudges)
+# ─────────────────────────────────────────────────────────────────────────────
+PROACTIVE_SUGGESTION_EMITTED      = "proactive_suggestion_emitted"
+PROACTIVE_SUGGESTION_ACKNOWLEDGED = "proactive_suggestion_acknowledged"
+PROACTIVE_SUGGESTION_DISMISSED    = "proactive_suggestion_dismissed"
+
+PHASE35_PROACTIVE_EVENTS = frozenset({
+    PROACTIVE_SUGGESTION_EMITTED,
+    PROACTIVE_SUGGESTION_ACKNOWLEDGED,
+    PROACTIVE_SUGGESTION_DISMISSED,
+})
+
 SHIFT_REPORT_EXTRA_FIELDS = (
     "trigger_kind",            # "time" | "idle" | "manual"
     "sections_included",       # int — how many of the 5 sections rendered
