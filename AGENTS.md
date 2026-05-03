@@ -231,10 +231,51 @@ Drop-a-project planning layer. User describes a project; Qwen-3.6 drafts a struc
 
 Implementation: `codec_agent_plan.py` (~640 LOC), `routes/agents.py` (~250 LOC of new endpoints).
 
+### Background Execution + Permission Gate (Phase 3 Step 9)
+
+`codec_agent_runner.py` is the runtime layer. PM2-managed daemon `codec-agent-runner` polls `~/.codec/agents/*/state.json` every 5s, picks up `status=approved` plans, executes their checkpoints autonomously via Qwen-3.6 ↔ skill loops. **Permission gate** enforces the manifest on every action; outside-manifest = `blocked_on_permission` + `ask_user` notification.
+
+**Per-checkpoint loop** (inside `_execute_checkpoint`):
+1. `_qwen_next_action()` returns either `Action(kind="skill_call", ...)` or `Action(kind="checkpoint_done")`
+2. `permission_gate(action, agent_grants, global_grants)` raises `PermissionViolation` if outside manifest
+3. If `action.is_destructive`: `_enforce_destructive_gate()` calls Step 3 §1.7 strict-consent (literal verb-match required, generic "yes" rejected)
+4. `_run_skill()` dispatches via `codec_dispatch.run_skill` (Step 1+2 hooks fire automatically)
+5. Append result to history, loop until `checkpoint_done` OR `step_budget` cap reached
+
+**Resume policy (Q5):** after PM2 restart, daemon scans for `status=running` agents. Any with no live thread = crashed. Marks `crashed_resumed`, then transitions back to `running` and respawns. Worst case: one operation re-fires from the last atomic checkpoint save (idempotent skills are safe; destructive ops re-hit strict-consent).
+
+**Multi-agent concurrency (Q6, Q8):** default `MAX_CONCURRENT=3`, env var `AGENT_RUNNER_MAX_CONCURRENT`. Blocked agents (any `blocked_*` state) **occupy a slot** — trade-off: 3 simultaneous overnight blocks = no new agent can start until you grant.
+
+**Plan-hash tamper detection (Q13):** at run start, `_run_agent` verifies `manifest.plan_hash == sha256(plan.json)`. Mismatch → `aborted(plan_tampered)`.
+
+**Public API (`codec_agent_runner`):**
+- `_run_agent(agent_id)` — main per-agent thread function (called by daemon)
+- `_daemon_one_tick()` — synchronous test-only wrapper
+- `run_daemon()` — production entry point (PM2 `codec-agent-runner`)
+- `permission_gate(action, agent_grants, global_grants)` — synchronous gate check
+- Dataclasses: `Action`, `ConsentResult`
+- Exceptions: `PermissionViolation`, `DestructiveOpRejected`, `StepBudgetExhausted`, `QwenUnavailableError`
+
+**PWA endpoints (`routes/agents.py` Step 9 additions):** `POST /api/agents/{id}/abort`, `/pause`, `/resume`, `/grant` (body: `kind`, `value` — adds to per-agent grants, unblocks if `blocked_on_permission`).
+
+**Service supervision:** PM2's built-in `autorestart: true` provides crash recovery (no separate heartbeat HTTP probe needed — `codec-agent-runner` is a daemon, not an HTTP service). PM2 max_memory_restart=256M and max_restarts=10.
+
+**8 audit events** (paired correlation_id per `agent_started` operation envelope per Step 1 §1.4): `agent_started`, `agent_checkpoint_started`, `_completed`, `agent_paused`, `agent_resumed`, `agent_blocked_on_permission`, `agent_completed`, `agent_aborted`.
+
+**Kill switches:**
+- `AGENT_RUNNER_ENABLED=false` — daemon idles (still scans, never spawns threads)
+- Per-agent: `POST /api/agents/{id}/abort` (atomic state write)
+- Per-agent: `POST /api/agents/{id}/pause` / `/resume`
+
+**Reuses (no new infrastructure):** Step 1 audit envelope · Step 2 plugin lifecycle hooks (every `run_skill` wrapped automatically) · Step 3 `ask_user` (outside-manifest pause) · Step 3 §1.7 strict-consent (universal floor for destructive ops) · Step 5 observer (passively records agent activity) · Step 7 shift_report (agent activity surfaces in daily summary).
+
+Implementation: `codec_agent_runner.py` (~700 LOC), `routes/agents.py` (+120 for Step 9 endpoints), `ecosystem.config.js` (+22 for PM2 entry).
+
 ### Other known gaps (tracked for Phase 3 follow-on)
-- Step 8 ships planning ONLY — no execution (Step 9 picks that up)
+- No UI yet — Step 10 ships chat mode dropdown + status pills + agent timeline
+- No proactive messaging from agent → user (Step 10)
 - No formal teammate / sub-agent recursion — Crew is the only multi-agent primitive
-- (Phase 3 complete after Steps 9 + 10 ship)
+- (Phase 3 complete after Step 10 ships)
 
 ## 4. Skill system
 
@@ -399,6 +440,23 @@ Six event names. All `level="info"` except `_rejected` (warning). Each is a sing
 
 `PHASE3_STEP8_EVENTS` frozenset exposed.
 
+#### Phase 3 Step 9 events — agent runtime lifecycle
+
+Eight event names. `agent_started` opens the per-agent operation envelope; subsequent events all share that single correlation_id (multi-emit op per Step 1 §1.4). `agent_blocked_on_permission` and `agent_paused` are warning level; `agent_aborted` is error or warning depending on cause; the rest are info.
+
+| Event | Source | level | extra fields |
+|---|---|---|---|
+| `agent_started` | `codec-agent-runner` | info | `agent_id`, `checkpoint_count`, `starting_at` (resume idx) |
+| `agent_checkpoint_started` | `codec-agent-runner` | info | `agent_id`, `checkpoint_id`, `checkpoint_idx` |
+| `agent_checkpoint_completed` | `codec-agent-runner` | info | `agent_id`, `checkpoint_id`, `checkpoint_idx`, `steps_used` |
+| `agent_paused` | `codec-agent-runner` | warning | `agent_id`, `checkpoint_id`, `reason` |
+| `agent_resumed` | `codec-agent-runner` | info | `agent_id`, `recovery` (true=PM2-restart) |
+| `agent_blocked_on_permission` | `codec-agent-runner` | warning | `agent_id`, `checkpoint_id`, `reason`, `needed` |
+| `agent_completed` | `codec-agent-runner` | info | `agent_id`, `total_steps` |
+| `agent_aborted` | `codec-agent-runner` | error\|warning | `agent_id`, `reason` |
+
+`PHASE3_STEP9_EVENTS` frozenset exposed.
+
 ### Notifications (`~/.codec/notifications.json`)
 Four sources can produce notifications: scheduler (crew completion), heartbeat (threshold alert), autopilot (ambient trigger), and Phase 1 Step 3's AskUserQuestion (`type="question"`). All write through `routes/_shared.py:51-127` except AskUserQuestion which writes via `codec_ask_user._write_question_notification`.
 
@@ -552,6 +610,11 @@ These zones break running infrastructure if changed without coordination. NEVER 
 - `~/.codec/agent_global_grants.json` (Phase 3 Step 8) — cross-agent allowlist. Modify only via `add_global_grant()` / `remove_global_grant()` or the `/api/agent_global_grants` endpoints. Atomic-write contract.
 - `AGENT_PLANNING_ENABLED` env var (Phase 3 Step 8, default `true`). Setting `false` blocks plan drafting; existing approved plans are untouched.
 - `MAX_CLARIFYING_ROUNDS` constant in `codec_agent_plan.py` (default 3) — caps the vague-description clarifying loop. Tune up cautiously; users can get stuck in long Q&A loops if too high.
+- `codec_agent_runner.py` (Phase 3 Step 9) — runtime daemon. Don't refactor without re-running the PHASE3-STEP9 design gate. The `MAX_CONCURRENT` constant and `_active_threads` global are mutated under `_threads_lock`; no other code may touch them.
+- `_VALID_TRANSITIONS` in `codec_agent_plan.py` (Phase 3 Step 9 extension) — state machine map. Never remove a transition; only add. Step 10 will extend with paused-with-message states.
+- `AGENT_RUNNER_ENABLED` and `AGENT_RUNNER_MAX_CONCURRENT` env vars (Phase 3 Step 9, defaults `true` / `3`). `AGENT_RUNNER_ENABLED=false` idles the daemon.
+- PM2 `codec-agent-runner` service (Phase 3 Step 9). Stop/restart through PM2; `autorestart: true` provides crash recovery automatically. Don't add HTTP heartbeat probes — daemon doesn't expose HTTP by design.
+- `~/.codec/agents/<id>/state.json` after Step 9 deploy — read/written by `codec_agent_runner._run_agent` mid-checkpoint. Manual edits while an agent is `running` will desync the resume mechanism. To pause an agent: `POST /api/agents/{id}/pause`.
 
 ## 11. Working with this repo as a coding agent
 
