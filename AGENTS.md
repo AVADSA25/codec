@@ -198,9 +198,43 @@ End-of-day summary of everything CODEC observed and accomplished. Single notific
 
 Implementation: `skills/shift_report.py` (assembly + rendering + notification post + per-day state), `codec_observer.py` extension (calls `_maybe_fire_shift_report(idle)` after each poll, time + idle detection inside).
 
-### Other known gaps (tracked for Phase 2 follow-on)
+### Plan + Permission Contract (Phase 3 Step 8)
+
+Drop-a-project planning layer. User describes a project; Qwen-3.6 drafts a structured plan with explicit permission manifest (read paths, write paths, network domains, skills, destructive ops); user approves in PWA; grants persisted to `~/.codec/agents/<id>/grants.json` with `plan_hash` (sha256) for Step 9 tamper detection.
+
+**Storage:**
+- `~/.codec/agents/<id>/manifest.json` — id, title, status, plan_hash, timestamps
+- `~/.codec/agents/<id>/plan.json` — schema:1, goals, checkpoints, permission manifest
+- `~/.codec/agents/<id>/state.json` — current_checkpoint, retry_count
+- `~/.codec/agents/<id>/grants.json` — written at approval, includes `auto_approved` subset (items pre-allowed via global allowlist)
+- `~/.codec/agent_global_grants.json` — cross-agent allowlist (network domains / read paths / write paths / skills)
+
+**Status state machine** (Step 8 only — Step 9 will extend):
+`draft_pending → awaiting_approval → approved/rejected/revised → awaiting_approval (if revised)`. `plan_failed` is terminal-with-retry.
+
+**Public API (`codec_agent_plan`):**
+- `create_agent(title, description, registry=None)` → returns `agent_id`
+- `approve_plan(agent_id)` → returns grants dict (re-validates skills against registry, computes plan_hash)
+- `reject_plan(agent_id, reason="")`
+- `revise_plan(agent_id, edited_plan_dict, registry=None)` → returns Plan
+- `load_global_grants()` / `add_global_grant(kind, value)` / `remove_global_grant(kind, value)`
+
+**PWA endpoints (`routes/agents.py`):** `POST /api/agents` (create + draft), `GET /api/agents` (list), `GET /api/agents/{id}` (detail), `POST /api/agents/{id}/approve`, `/reject`, `/revise`, `GET/POST/DELETE /api/agent_global_grants`.
+
+**LLM:** local Qwen-3.6 only via `http://127.0.0.1:8090/v1/chat/completions` (per Q1 — no cloud fallback).
+
+**Vague-description handling (Q3):** if LLM detects scope is too thin, agent posts up to 3 rounds of clarifying questions via `codec_ask_user.ask` before drafting. After 3 rounds without convergence: status=`plan_failed`, reason=`description_too_vague`.
+
+**Kill switch:** `AGENT_PLANNING_ENABLED=false` blocks drafting (existing plans untouched).
+
+**6 audit events** (paired correlation_id per Step 1 §1.4 contract): `agent_plan_drafted`, `_approved`, `_rejected`, `_revised`, `agent_global_grant_added`, `_removed`.
+
+Implementation: `codec_agent_plan.py` (~640 LOC), `routes/agents.py` (~250 LOC of new endpoints).
+
+### Other known gaps (tracked for Phase 3 follow-on)
+- Step 8 ships planning ONLY — no execution (Step 9 picks that up)
 - No formal teammate / sub-agent recursion — Crew is the only multi-agent primitive
-- (none — Phase 2 complete after Step 7 ships)
+- (Phase 3 complete after Steps 9 + 10 ship)
 
 ## 4. Skill system
 
@@ -350,6 +384,21 @@ Two new event names. Both `level="info"` (operational). `shift_report_started` o
 
 `PHASE2_STEP7_EVENTS` frozenset exposed.
 
+#### Phase 3 Step 8 events — agent planning lifecycle
+
+Six event names. All `level="info"` except `_rejected` (warning). Each is a single-emit operation; the `_drafted → _approved` (or `_drafted → _rejected`) sequence shares no implicit correlation_id since they're independent user-driven transitions (each gets a fresh cid generated at emit time).
+
+| Event | Source | level | extra fields |
+|---|---|---|---|
+| `agent_plan_drafted` | `codec-agent-plan` | info | `agent_id`, `checkpoint_count`, `estimated_duration_minutes`, `skills_count`, `domains_count` |
+| `agent_plan_approved` | `codec-agent-plan` | info | `agent_id`, `plan_hash` (sha256 hex), `checkpoint_count`, `skills_count`, `domains_count` |
+| `agent_plan_rejected` | `codec-agent-plan` | warning | `agent_id`, `reason` (truncated to 200 chars) |
+| `agent_plan_revised` | `codec-agent-plan` | info | `agent_id`, `checkpoint_count` |
+| `agent_global_grant_added` | `codec-agent-plan` | info | `kind` (`network_domains` \| `read_paths` \| `write_paths` \| `skills`), `value` |
+| `agent_global_grant_removed` | `codec-agent-plan` | info | `kind`, `value` |
+
+`PHASE3_STEP8_EVENTS` frozenset exposed.
+
 ### Notifications (`~/.codec/notifications.json`)
 Four sources can produce notifications: scheduler (crew completion), heartbeat (threshold alert), autopilot (ambient trigger), and Phase 1 Step 3's AskUserQuestion (`type="question"`). All write through `routes/_shared.py:51-127` except AskUserQuestion which writes via `codec_ask_user._write_question_notification`.
 
@@ -497,6 +546,12 @@ These zones break running infrastructure if changed without coordination. NEVER 
 - `~/.codec/shift_report_state.json` (Phase 2 Step 7) — per-day fire dedup state (`last_fired_date`, `last_fired_at`, `last_trigger_kind`). Owned by `skills/shift_report.mark_fired_today()`. Safe to delete to force-fire today again; do not hand-edit (atomic-write contract).
 - `SHIFT_REPORT_ENABLED` env var (Phase 2 Step 7, default `true`). False blocks all three trigger paths (time / idle / manual).
 - `~/.codec/config.json:shift_report.{daily_at_hour, daily_at_minute, idle_minutes, lookback_hours, auto_save_path}` — Phase 2 Step 7 tunables. `auto_save_path` is `null` by default (notification-only); set to a directory path to also write `YYYY-MM-DD.md` files.
+- `codec_agent_plan.py` (Phase 3 Step 8) — Plan + Permission Contract module. Don't refactor without re-running the PHASE3-STEP8 design gate. The dataclasses (`Plan`, `Checkpoint`, `PermissionManifest`) and `plan_from_dict()` lock the on-disk schema; bumping `PLAN_SCHEMA_VERSION` requires migration logic.
+- `routes/agents.py` Phase 3 Step 8 endpoints (`/api/agents`, `/api/agent_global_grants`) — don't change endpoint shapes without bumping API version. PWA reads these directly.
+- `~/.codec/agents/<id>/` — per-agent runtime state. Modify only via the documented public API (`codec_agent_plan.create_agent`, `approve_plan`, `reject_plan`, `revise_plan`). Direct edits to `plan.json` after approval will fail Step 9's plan-hash tamper check.
+- `~/.codec/agent_global_grants.json` (Phase 3 Step 8) — cross-agent allowlist. Modify only via `add_global_grant()` / `remove_global_grant()` or the `/api/agent_global_grants` endpoints. Atomic-write contract.
+- `AGENT_PLANNING_ENABLED` env var (Phase 3 Step 8, default `true`). Setting `false` blocks plan drafting; existing approved plans are untouched.
+- `MAX_CLARIFYING_ROUNDS` constant in `codec_agent_plan.py` (default 3) — caps the vague-description clarifying loop. Tune up cautiously; users can get stuck in long Q&A loops if too high.
 
 ## 11. Working with this repo as a coding agent
 
