@@ -908,9 +908,28 @@ function loadHistory() {
 var reports = [];
 var _reportPollTimer = null;
 
+// Phase 3.5 hotfix: Reports tab was filtering to ONLY 'task_report' so all
+// the agent_*/proactive/shift_report/question notifications got dropped
+// (bell counted, nothing rendered). Now shows everything CODEC generates.
+var REPORT_NOTIF_TYPES = [
+  'task_report',                                            // Crews
+  'question',                                               // Phase 1 Step 3 ask_user
+  'shift_report',                                           // Phase 2 Step 7
+  'agent_update', 'agent_blocked', 'agent_question',        // Phase 3 Step 10
+  'agent_done', 'agent_aborted',                            // Phase 3 Step 10
+  'proactive_suggestion',                                   // Phase 3.5
+];
+
 function loadReports() {
   fetch('/api/notifications').then(function(r){ return r.json(); }).then(function(data) {
-    reports = (data.notifications || data || []).filter(function(n){ return n.type === 'task_report'; });
+    var all = data.notifications || data || [];
+    reports = all.filter(function(n){ return REPORT_NOTIF_TYPES.indexOf(n.type) >= 0; });
+    // Newest first
+    reports.sort(function(a, b) {
+      var ta = a.timestamp || a.created || a.ts || '';
+      var tb = b.timestamp || b.created || b.ts || '';
+      return (tb || '').localeCompare(ta || '');
+    });
     renderReports();
     // Auto-refresh every 5s if any task is still running
     var hasRunning = reports.some(function(r){ return r.status === 'running'; });

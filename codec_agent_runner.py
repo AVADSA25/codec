@@ -364,8 +364,40 @@ def _execute_checkpoint(plan_dict: Dict[str, Any],
         if action.kind == "checkpoint_done":
             return history
 
-        # Permission gate (raises PermissionViolation if outside manifest)
-        permission_gate(action, agent_grants, global_grants)
+        # Permission gate (raises PermissionViolation if outside manifest).
+        # Phase 3.5 hotfix: if the LLM hallucinates a skill name (e.g.
+        # "fetch_url" instead of the real "web_fetch"), give it ONE retry
+        # with the corrected skill list as context. Most skill-hallucination
+        # errors recover with a single correction pass; only block on the
+        # SECOND consecutive miss. This dramatically reduces user-visible
+        # blocked_on_permission events caused by LLM naming drift.
+        try:
+            permission_gate(action, agent_grants, global_grants)
+        except PermissionViolation as pv:
+            if pv.reason == "skill_not_authorized":
+                # Append the failed action to history with a correction nudge
+                # so the next _qwen_next_action call sees the error context.
+                allowed = sorted(set(agent_grants.get("skills", [])) |
+                                 set(global_grants.get("skills", [])))
+                history.append({
+                    "step": len(history),
+                    "skill": action.skill,
+                    "task": action.task[:200],
+                    "result": (f"<skill_error: '{action.skill}' is NOT in this "
+                               f"agent's permission_manifest.skills. Allowed skills: "
+                               f"{', '.join(allowed)}. Pick one of those instead.>"),
+                    "is_destructive": False,
+                    "_skill_correction_nudge": True,
+                })
+                # Re-call Qwen — if it still picks the wrong skill, fall through
+                # and the SECOND permission_gate call will raise normally.
+                action2 = _qwen_next_action(plan_dict, checkpoint, history)
+                if action2.kind == "checkpoint_done":
+                    return history
+                permission_gate(action2, agent_grants, global_grants)
+                action = action2  # use the corrected action going forward
+            else:
+                raise   # path / domain violations not auto-recoverable
 
         # Destructive gate (raises DestructiveOpRejected on user reject)
         if action.is_destructive:

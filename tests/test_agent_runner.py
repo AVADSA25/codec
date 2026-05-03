@@ -945,3 +945,53 @@ def test_permission_gate_allows_read_path_in_grants(basic_grants, empty_global_g
     action = Action(skill="weather", task="read",
                     reads_path=True, read_path="~/Documents/research/notes.md")
     permission_gate(action, basic_grants, empty_global_grants)  # no exception
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 3.5 hotfix — LLM skill-name hallucination retry (1 test)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_skill_hallucination_retries_with_corrected_skill_list(monkeypatch, temp_codec_dir):
+    """When LLM picks an unauthorized skill, runner appends a correction nudge
+    to history and re-calls Qwen. If second pick is allowed, execution proceeds.
+    No blocked_on_permission for transient LLM naming drift."""
+    import codec_agent_runner as car
+
+    grants = {"skills": ["weather"], "read_paths": [], "write_paths": [],
+              "network_domains": []}
+    global_grants = {"schema": 1, "version": 0,
+                     "skills": [], "read_paths": [], "write_paths": [], "network_domains": []}
+    checkpoint = {"id": "cp1", "title": "t", "description": "d",
+                  "expected_output": "o", "step_budget": 5}
+
+    # First call returns hallucinated skill; second call returns valid one;
+    # third returns checkpoint_done.
+    actions = [
+        car.Action(skill="fetch_url", task="x", kind="skill_call",   # hallucination
+                   is_destructive=False, network_call=False, touches_path=False),
+        car.Action(skill="weather", task="real call", kind="skill_call",  # corrected
+                   is_destructive=False, network_call=False, touches_path=False),
+        car.Action(skill="", task="", kind="checkpoint_done"),
+    ]
+    idx = {"n": 0}
+    def fake_next(*a, **k):
+        out = actions[idx["n"]]
+        idx["n"] += 1
+        return out
+    monkeypatch.setattr(car, "_qwen_next_action", fake_next)
+    fake_run = MagicMock(return_value="r")
+    monkeypatch.setattr(car, "_run_skill", fake_run)
+
+    history = car._execute_checkpoint(
+        plan_dict={"goals": ["g"]}, checkpoint=checkpoint,
+        agent_grants=grants, global_grants=global_grants,
+        agent_id="agent_test",
+    )
+
+    # The corrected weather call ran (via _run_skill); the hallucinated
+    # fetch_url did NOT run (it never passed permission_gate).
+    fake_run.assert_called_once_with("weather", "real call", "agent_test")
+    # History contains the correction nudge entry
+    nudges = [h for h in history if h.get("_skill_correction_nudge")]
+    assert len(nudges) == 1
+    assert "fetch_url" in nudges[0]["skill"]
