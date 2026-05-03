@@ -191,5 +191,27 @@ module.exports = {
         OBSERVER_ENABLED: "true",
       },
     },
+    // ── Agent Runner (Phase 3 Step 9 — autonomous plan execution) ──
+    // PM2 daemon picks up status=approved plans (from Step 8), executes
+    // their checkpoints autonomously via Qwen-3.6 ↔ skill loops with
+    // permission gate enforcement. Resume after PM2 restart from last
+    // atomic checkpoint (Q5). Multi-agent cap = 3 concurrent (Q6, Q8).
+    // Plan-hash tamper detection at run start (Q13).
+    // Kill switch: AGENT_RUNNER_ENABLED=false (daemon idles).
+    {
+      name: "codec-agent-runner",
+      script: "/usr/local/bin/python3.13",
+      args: "-u codec_agent_runner.py",
+      cwd: __dirname,
+      max_memory_restart: "256M",
+      restart_delay: 5000,
+      max_restarts: 10,
+      autorestart: true,
+      env: {
+        AGENT_RUNNER_ENABLED: "true",
+        AGENT_RUNNER_MAX_CONCURRENT: "3",
+        PYTHONUNBUFFERED: "1",
+      },
+    },
   ],
 };

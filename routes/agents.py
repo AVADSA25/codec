@@ -386,3 +386,76 @@ def delete_global_grant(body: GlobalGrantBody):
                correlation_id=cid,
                extra={"kind": body.kind, "value": body.value})
     return _cap.load_global_grants()
+
+
+class GrantBody(BaseModel):
+    kind: str = Field(...)
+    value: str = Field(..., min_length=1)
+
+
+@router.post("/api/agents/{agent_id}/abort")
+def abort_agent(agent_id: str):
+    manifest = _cap.load_manifest(agent_id)
+    if not manifest:
+        raise HTTPException(status_code=404, detail=f"agent {agent_id} not found")
+    try:
+        _cap.set_status(agent_id, "aborted", reason="user_aborted")
+    except _cap.InvalidStatusTransition as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    return {"agent_id": agent_id, "status": "aborted"}
+
+
+@router.post("/api/agents/{agent_id}/pause")
+def pause_agent(agent_id: str):
+    manifest = _cap.load_manifest(agent_id)
+    if not manifest:
+        raise HTTPException(status_code=404, detail=f"agent {agent_id} not found")
+    try:
+        _cap.set_status(agent_id, "paused", reason="user_paused")
+    except _cap.InvalidStatusTransition as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    return {"agent_id": agent_id, "status": "paused"}
+
+
+@router.post("/api/agents/{agent_id}/resume")
+def resume_agent(agent_id: str):
+    manifest = _cap.load_manifest(agent_id)
+    if not manifest:
+        raise HTTPException(status_code=404, detail=f"agent {agent_id} not found")
+    try:
+        _cap.set_status(agent_id, "running")
+    except _cap.InvalidStatusTransition as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    return {"agent_id": agent_id, "status": "running"}
+
+
+@router.post("/api/agents/{agent_id}/grant")
+def grant_permission(agent_id: str, body: GrantBody):
+    """Grant a missing permission to a blocked agent. Adds the
+    item to per-agent grants.json (NOT global). If status is
+    blocked_on_permission, transitions back to running."""
+    manifest = _cap.load_manifest(agent_id)
+    if not manifest:
+        raise HTTPException(status_code=404, detail=f"agent {agent_id} not found")
+
+    valid_kinds = {"skills", "read_paths", "write_paths", "network_domains"}
+    if body.kind not in valid_kinds:
+        raise HTTPException(status_code=400,
+                             detail=f"invalid kind: {body.kind}; expected one of {sorted(valid_kinds)}")
+
+    grants = _cap.load_grants(agent_id)
+    if not grants:
+        raise HTTPException(status_code=409, detail="agent has no grants yet (not approved?)")
+
+    grants[body.kind] = sorted(set(grants.get(body.kind, []) + [body.value]))
+    _cap.save_grants(agent_id, grants)
+
+    # If blocked, unblock
+    if manifest.get("status") == "blocked_on_permission":
+        try:
+            _cap.set_status(agent_id, "running")
+        except _cap.InvalidStatusTransition:
+            pass  # ignore; just leave as-is
+
+    return {"agent_id": agent_id, "grants": grants,
+            "status": _cap.load_manifest(agent_id).get("status")}
