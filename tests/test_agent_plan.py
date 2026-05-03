@@ -454,3 +454,48 @@ def test_create_agent_full_flow(monkeypatch, temp_codec_dir):
     # Audit emit happened with correlation_id
     plan_drafted = [(e, c) for e, c in audit_emits if e == "agent_plan_drafted"]
     assert len(plan_drafted) == 1
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Task 11 — approve / reject / revise (2 tests)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_approve_writes_grants_and_plan_hash(monkeypatch, temp_codec_dir):
+    import codec_agent_plan as cap
+    monkeypatch.setattr(cap, "_qwen_chat", lambda *a, **k: json.dumps({
+        "goals": ["g"], "checkpoints": [{"title": "t", "description": "d",
+            "skills_needed": ["weather"], "expected_output": "o", "step_budget": 10}],
+        "permission_manifest": {"read_paths": [], "write_paths": [],
+            "network_domains": ["example.com"], "skills": ["weather"],
+            "destructive_ops": []},
+        "estimated_duration_minutes": 5, "assumptions": []}))
+    fake_reg = MagicMock(); fake_reg.names.return_value = ["weather"]
+
+    agent_id = cap.create_agent(title="t", description="d", registry=fake_reg)
+    cap.approve_plan(agent_id)
+
+    m = cap.load_manifest(agent_id)
+    assert m["status"] == "approved"
+    assert "plan_hash" in m
+    assert len(m["plan_hash"]) == 64  # sha256 hex
+
+    grants = cap.load_grants(agent_id)
+    assert "example.com" in grants["network_domains"]
+    assert "weather" in grants["skills"]
+
+
+def test_reject_sets_status_with_reason(monkeypatch, temp_codec_dir):
+    import codec_agent_plan as cap
+    monkeypatch.setattr(cap, "_qwen_chat", lambda *a, **k: json.dumps({
+        "goals": ["g"], "checkpoints": [{"title": "t", "description": "d",
+            "skills_needed": ["weather"], "expected_output": "o", "step_budget": 10}],
+        "permission_manifest": {"read_paths": [], "write_paths": [],
+            "network_domains": [], "skills": ["weather"], "destructive_ops": []},
+        "estimated_duration_minutes": 5, "assumptions": []}))
+    fake_reg = MagicMock(); fake_reg.names.return_value = ["weather"]
+
+    agent_id = cap.create_agent(title="t", description="d", registry=fake_reg)
+    cap.reject_plan(agent_id, reason="don't need this")
+    m = cap.load_manifest(agent_id)
+    assert m["status"] == "rejected"
+    assert m["status_reason"] == "don't need this"

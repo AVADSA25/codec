@@ -573,3 +573,87 @@ def create_agent(title: str, description: str,
            })
 
     return agent_id
+
+
+def approve_plan(agent_id: str) -> Dict[str, Any]:
+    """Transition awaiting_approval → approved. Computes plan_hash for
+    Step 9 tamper detection. Writes grants.json (= full manifest by
+    default — Step 8 doesn't yet support partial grants; approve == all)."""
+    plan = load_plan(agent_id)
+    if plan is None:
+        raise ValueError(f"no plan found for {agent_id!r}")
+
+    plan_hash = compute_plan_hash(plan)
+
+    grants = {
+        "schema": 1,
+        "agent_id": agent_id,
+        "approved_at": _now_iso(),
+        # Initial v1: grants == manifest (no partial grants yet)
+        **asdict(plan.permission_manifest),
+    }
+    save_grants(agent_id, grants)
+
+    # Update manifest with hash + transition status
+    manifest = load_manifest(agent_id)
+    manifest["plan_hash"] = plan_hash
+    manifest["approved_at"] = _now_iso()
+    save_manifest(agent_id, manifest)
+    set_status(agent_id, "approved")
+
+    cid = secrets.token_hex(6)
+    _audit("agent_plan_approved", "codec-agent-plan",
+           f"plan approved for {agent_id}",
+           correlation_id=cid,
+           extra={
+               "agent_id": agent_id, "plan_hash": plan_hash,
+               "checkpoint_count": len(plan.checkpoints),
+               "skills_count": len(plan.permission_manifest.skills),
+               "domains_count": len(plan.permission_manifest.network_domains),
+           })
+
+    return grants
+
+
+def reject_plan(agent_id: str, reason: str = "") -> None:
+    """Transition awaiting_approval → rejected. Plan dir kept for review/TTL."""
+    set_status(agent_id, "rejected", reason=reason or "no reason")
+
+    cid = secrets.token_hex(6)
+    _audit("agent_plan_rejected", "codec-agent-plan",
+           f"plan rejected for {agent_id}: {reason[:80]}",
+           correlation_id=cid, outcome="warning",
+           extra={"agent_id": agent_id, "reason": reason[:200]})
+
+
+def revise_plan(agent_id: str, edited_plan_dict: Dict[str, Any],
+                registry=None) -> Plan:
+    """User submitted an edited plan. Re-validate against registry.
+    On success: persist new plan, transition awaiting_approval → revised
+    → awaiting_approval (immediately) so user re-reviews."""
+    edited_plan_dict.setdefault("schema", PLAN_SCHEMA_VERSION)
+    edited_plan_dict.setdefault("agent_id", agent_id)
+
+    try:
+        plan = plan_from_dict(edited_plan_dict)
+    except (KeyError, ValueError, TypeError) as e:
+        raise PlanValidationError(f"edited plan schema invalid: {e}")
+
+    ok, missing = validate_plan_skills(plan, registry=registry)
+    if not ok:
+        raise PlanValidationError(f"edited plan references unknown skills: {missing}")
+
+    save_plan(plan)
+    # Transition: awaiting_approval → revised → back to awaiting_approval
+    set_status(agent_id, "revised")
+    set_status(agent_id, "awaiting_approval")
+
+    cid = secrets.token_hex(6)
+    _audit("agent_plan_revised", "codec-agent-plan",
+           f"plan revised for {agent_id}", correlation_id=cid,
+           extra={
+               "agent_id": agent_id,
+               "checkpoint_count": len(plan.checkpoints),
+           })
+
+    return plan
