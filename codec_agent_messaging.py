@@ -186,11 +186,11 @@ def post_message(agent_id: str, type: str, title: str, body: str,
     _append_jsonl(msg_path, record)
 
     # Silence kill-switch (Step 10): skip notification, keep messages.jsonl write.
+    batched = False
     if not is_silenced(agent_id):
         # Update notifications.json (with batching for agent_update)
         notifs = _read_notifications()
         now_ts = time.time()
-        batched = False
         if type == "agent_update":
             # Look for recent banner from same agent
             for n in notifs:
@@ -213,13 +213,11 @@ def post_message(agent_id: str, type: str, title: str, body: str,
             notifs.append(notif)
 
         _atomic_write_json(_NOTIFICATIONS_PATH, notifs)
-    else:
-        batched = False
 
     # Audit emit
     _audit(AGENT_MESSAGE_SENT, message=f"{type} for {agent_id}",
            correlation_id=correlation_id,
-           extra={"agent_id": agent_id, "type": type, "batched": False if is_silenced(agent_id) else False})
+           extra={"agent_id": agent_id, "type": type, "batched": batched})
 
     return record
 
