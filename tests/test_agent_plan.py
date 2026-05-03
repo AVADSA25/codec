@@ -628,3 +628,39 @@ def test_post_api_agents_reject_sets_reason(monkeypatch, temp_codec_dir):
     r3 = client.get(f"/api/agents/{agent_id}")
     assert r3.json()["manifest"]["status"] == "rejected"
     assert r3.json()["manifest"]["status_reason"] == "not now"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Task 14 — Global grants endpoints (1 test)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_global_grants_endpoints_full_flow(temp_codec_dir):
+    from fastapi.testclient import TestClient
+    from fastapi import FastAPI
+    from routes.agents import router
+
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app)
+
+    # GET — initially empty
+    r1 = client.get("/api/agent_global_grants")
+    assert r1.status_code == 200
+    assert r1.json()["network_domains"] == []
+
+    # POST — add
+    r2 = client.post("/api/agent_global_grants",
+                      json={"kind": "network_domains", "value": "github.com"})
+    assert r2.status_code == 200
+    assert "github.com" in r2.json()["network_domains"]
+
+    # POST — invalid kind
+    r3 = client.post("/api/agent_global_grants",
+                      json={"kind": "evil_thing", "value": "x"})
+    assert r3.status_code == 400
+
+    # DELETE
+    r4 = client.request("DELETE", "/api/agent_global_grants",
+                         json={"kind": "network_domains", "value": "github.com"})
+    assert r4.status_code == 200
+    assert "github.com" not in r4.json()["network_domains"]
