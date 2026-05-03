@@ -297,3 +297,76 @@ def test_run_agent_posts_blocked_message_on_permission_violation(monkeypatch, te
     # Has Grant action
     grant_actions = [a for a in blocked[0]["actions"] if "grant" in str(a).lower()]
     assert len(grant_actions) >= 1
+
+
+def test_get_api_agents_messages_returns_jsonl(temp_codec_dir):
+    """GET /api/agents/{id}/messages returns messages.jsonl as a list."""
+    from fastapi.testclient import TestClient
+    from fastapi import FastAPI
+    import codec_agent_messaging as cam
+    import codec_agent_plan as cap
+
+    cam.post_message(agent_id="a1", type="agent_update", title="t1",
+                     body="b1", actions=[], correlation_id="c1")
+    cam.post_message(agent_id="a1", type="agent_update", title="t2",
+                     body="b2", actions=[], correlation_id="c2")
+
+    cap.save_manifest("a1", {"agent_id": "a1", "status": "running", "title": "x"})
+
+    from routes.agents import router
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app)
+
+    r = client.get("/api/agents/a1/messages")
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body["messages"]) == 2
+    assert body["messages"][0]["type"] == "agent_update"
+
+
+def test_post_api_agents_messages_writes_user_reply(temp_codec_dir):
+    """POST /api/agents/{id}/messages writes type=user_reply."""
+    from fastapi.testclient import TestClient
+    from fastapi import FastAPI
+    import codec_agent_messaging as cam
+    import codec_agent_plan as cap
+
+    cap.save_manifest("a1", {"agent_id": "a1", "status": "running", "title": "x"})
+
+    from routes.agents import router
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app)
+
+    r = client.post("/api/agents/a1/messages", json={"body": "please continue"})
+    assert r.status_code == 200
+
+    msg_path = temp_codec_dir / "agents" / "a1" / "messages.jsonl"
+    rec = json.loads(msg_path.read_text().strip().splitlines()[-1])
+    assert rec["type"] == "user_reply"
+    assert rec["body"] == "please continue"
+
+
+def test_post_api_agents_silence_toggles_state(temp_codec_dir):
+    from fastapi.testclient import TestClient
+    from fastapi import FastAPI
+    import codec_agent_messaging as cam
+    import codec_agent_plan as cap
+
+    cap.save_manifest("a1", {"agent_id": "a1", "status": "running", "title": "x"})
+
+    from routes.agents import router
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app)
+
+    # Silence
+    r1 = client.post("/api/agents/a1/silence", json={"silenced": True})
+    assert r1.status_code == 200
+    assert cam.is_silenced("a1") is True
+
+    # Unsilence
+    r2 = client.post("/api/agents/a1/silence", json={"silenced": False})
+    assert r2.status_code == 200
+    assert cam.is_silenced("a1") is False
