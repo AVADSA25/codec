@@ -102,3 +102,11 @@ def plan_from_dict(d: Dict[str, Any]) -> Plan:
         estimated_duration_minutes=int(d.get("estimated_duration_minutes", 0)),
         assumptions=list(d.get("assumptions", [])),
     )
+
+
+def compute_plan_hash(plan: Plan) -> str:
+    """SHA-256 of canonical JSON serialization. Stored in manifest at
+    approval time; daemon (Step 9) verifies on every tick. Mismatch
+    means someone manually edited plan.json after approval."""
+    canonical = json.dumps(plan.to_dict(), sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()

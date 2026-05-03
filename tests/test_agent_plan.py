@@ -78,3 +78,33 @@ def test_plan_from_dict_rejects_bad_schema():
     from codec_agent_plan import plan_from_dict
     with pytest.raises(ValueError, match="unsupported plan schema"):
         plan_from_dict({"schema": 99, "agent_id": "x"})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Task 3 — Plan-hash for tamper detection (Q13) (2 tests)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_plan_hash_stable_for_identical_content():
+    from codec_agent_plan import Plan, Checkpoint, PermissionManifest, compute_plan_hash
+    cp = Checkpoint(id="x", title="t", description="d", skills_needed=["s"],
+                    expected_output="o", step_budget=10)
+    pm = PermissionManifest(read_paths=[], write_paths=[], network_domains=[],
+                            skills=["s"], destructive_ops=[])
+    plan_a = Plan(schema=1, agent_id="a1", goals=["g"], checkpoints=[cp],
+                  permission_manifest=pm, estimated_duration_minutes=5, assumptions=[])
+    plan_b = Plan(schema=1, agent_id="a1", goals=["g"], checkpoints=[cp],
+                  permission_manifest=pm, estimated_duration_minutes=5, assumptions=[])
+    assert compute_plan_hash(plan_a) == compute_plan_hash(plan_b)
+
+
+def test_plan_hash_changes_when_content_changes():
+    from codec_agent_plan import Plan, Checkpoint, PermissionManifest, compute_plan_hash
+    cp = Checkpoint(id="x", title="t", description="d", skills_needed=["s"],
+                    expected_output="o", step_budget=10)
+    pm = PermissionManifest(read_paths=[], write_paths=[], network_domains=[],
+                            skills=["s"], destructive_ops=[])
+    plan_a = Plan(schema=1, agent_id="a1", goals=["g"], checkpoints=[cp],
+                  permission_manifest=pm, estimated_duration_minutes=5, assumptions=[])
+    plan_b = Plan(schema=1, agent_id="a1", goals=["g_modified"], checkpoints=[cp],
+                  permission_manifest=pm, estimated_duration_minutes=5, assumptions=[])
+    assert compute_plan_hash(plan_a) != compute_plan_hash(plan_b)
