@@ -59,7 +59,10 @@ DESTRUCTIVE_CONSENT_TIMEOUT_S = 600  # Step 3 §1.7 default — overnight = bloc
 class Action:
     """One proposed step in a checkpoint loop. Returned by
     Qwen-3.6's next-action driver, evaluated by permission_gate,
-    executed via codec_dispatch.run_skill."""
+    executed via codec_dispatch.run_skill.
+
+    Phase 3.5 review M4: `reads_path` + `read_path` added for symmetric
+    read/write gating. `touches_path`/`path` is the write side."""
     skill: str
     task: str
     is_destructive: bool = False
@@ -67,6 +70,8 @@ class Action:
     network_domain: str = ""
     touches_path: bool = False
     path: str = ""
+    reads_path: bool = False        # Phase 3.5 review M4: read enforcement
+    read_path: str = ""             # Phase 3.5 review M4
     kind: str = "skill_call"   # "skill_call" | "checkpoint_done"
 
 
@@ -97,20 +102,30 @@ def permission_gate(action: Action, agent_grants: Dict[str, Any],
     if action.skill not in skills:
         raise PermissionViolation("skill_not_authorized", action.skill)
 
-    # Asymmetry: only write_paths is enforced here. PermissionManifest.read_paths
-    # is declared at approval time for user transparency ("this agent will read X")
-    # but not gated at runtime — Action's grammar has no read/write distinction
-    # (only `touches_path`, treated as a write), and skill-internal reads bypass
-    # the runner anyway. Runtime read enforcement would need a new Action field
-    # + LLM prompt update — out of scope for Step 9.
+    # Phase 3.5 review M4: symmetric read/write gating now active.
+    # `touches_path` = write; `reads_path` = read. Both checked against
+    # respective manifest entries. Note: skill-internal reads (where the
+    # skill itself opens files without going through Action) still bypass
+    # the runner — that's a fundamental limitation of the dispatch model.
     if action.touches_path:
         write_paths = (set(agent_grants.get("write_paths", [])) |
                        set(global_grants.get("write_paths", [])))
-        # fnmatch supports glob patterns the LLM puts in manifest
-        ok = any(fnmatch.fnmatch(action.path, os.path.expanduser(p))
+        # fnmatch supports glob patterns the LLM puts in manifest.
+        # Expand ~ on both sides so "~/Documents/x" matches "~/Documents/**".
+        action_path_abs = os.path.expanduser(action.path)
+        ok = any(fnmatch.fnmatch(action_path_abs, os.path.expanduser(p))
                  for p in write_paths)
         if not ok:
             raise PermissionViolation("path_not_authorized", action.path)
+
+    if action.reads_path and action.read_path:
+        read_paths = (set(agent_grants.get("read_paths", [])) |
+                      set(global_grants.get("read_paths", [])))
+        action_read_abs = os.path.expanduser(action.read_path)
+        ok = any(fnmatch.fnmatch(action_read_abs, os.path.expanduser(p))
+                 for p in read_paths)
+        if not ok:
+            raise PermissionViolation("read_path_not_authorized", action.read_path)
 
     if action.network_call:
         domains = (set(agent_grants.get("network_domains", [])) |
@@ -141,8 +156,10 @@ For a skill call:
   "is_destructive": <bool — true for irreversible ops: file delete, payments, send-on-behalf>,
   "network_call": <bool — true if the skill will make HTTP requests>,
   "network_domain": "<domain if network_call=true, else empty>",
-  "touches_path": <bool — true if the skill writes to a filesystem path>,
-  "path": "<path if touches_path=true, else empty>"
+  "touches_path": <bool — true if the skill WRITES to a filesystem path>,
+  "path": "<path if touches_path=true, else empty>",
+  "reads_path": <bool — true if the skill READS a filesystem path>,
+  "read_path": "<path if reads_path=true, else empty>"
 }
 
 For checkpoint completion:
@@ -151,6 +168,7 @@ For checkpoint completion:
 Rules:
 - skill MUST be in plan.permission_manifest.skills.
 - If you need a skill that's NOT in the manifest, return is_destructive=false and pick the closest available; the runtime will block via permission_gate, escalate to user, and re-call you with the same context.
+- read_path is checked against permission_manifest.read_paths; write path against write_paths. They are independent — a single action can both read and write (e.g. read template.md, write output.md).
 - Output ONLY the JSON. No prose.
 """
 
@@ -225,6 +243,8 @@ def _qwen_next_action(plan_dict: Dict[str, Any], checkpoint: Dict[str, Any],
         network_domain=str(d.get("network_domain", "")),
         touches_path=bool(d.get("touches_path", False)),
         path=str(d.get("path", "")),
+        reads_path=bool(d.get("reads_path", False)),    # Phase 3.5 review M4
+        read_path=str(d.get("read_path", "")),          # Phase 3.5 review M4
         kind="skill_call",
     )
 
@@ -586,23 +606,21 @@ def _run_agent(agent_id: str, cid: Optional[str] = None) -> None:
                      correlation_id=cid)
 
     except QwenUnavailableError as e:
-        # Review fix C2: Qwen-3.6 unavailable is not strictly a permission
-        # problem, but we route through `blocked_on_permission` for v1
-        # because:
-        #   (a) it's a recoverable block (agent can resume once Qwen is back)
-        #   (b) adding `blocked_on_qwen` requires a new state-machine entry
-        #       + UI changes that should ship together in Step 10
-        # The reason="qwen_unavailable" makes the cause unambiguous in audit,
-        # and the daemon will retry on next tick once Qwen returns.
-        # TODO Step 10 / Phase 3.5: introduce dedicated `blocked_on_qwen`
-        # status with daemon-driven auto-resume on Qwen recovery.
+        # Phase 3.5 review fix C2: dedicated `blocked_on_qwen` status.
+        # Distinct from blocked_on_permission — no permission to grant; the
+        # LLM service is just down. The daemon auto-resumes on next tick
+        # when Qwen comes back online (see _daemon_one_tick blocked_on_qwen
+        # branch). Audit emit still uses AGENT_BLOCKED_ON_PERMISSION with
+        # reason="qwen_unavailable" since we don't add a new audit constant
+        # for this — the status is enough to disambiguate.
         log.warning("[%s] qwen unavailable: %s", agent_id, e)
-        _atomic_set_status(agent_id, "blocked_on_permission",
+        _atomic_set_status(agent_id, "blocked_on_qwen",
                            reason=f"qwen_unavailable:{e}")
         _audit(AGENT_BLOCKED_ON_PERMISSION,
                message=f"qwen unavailable: {e}",
                correlation_id=cid, outcome="warning", level="warning",
-               extra={"agent_id": agent_id, "reason": "qwen_unavailable"})
+               extra={"agent_id": agent_id, "reason": "qwen_unavailable",
+                      "status": "blocked_on_qwen"})
     except Exception as e:
         log.exception("[%s] unhandled exception in _run_agent", agent_id)
         _atomic_set_status(agent_id, "aborted",
@@ -710,6 +728,32 @@ def _daemon_one_tick() -> None:
                 _atomic_set_status(agent_id, "running")
                 t = threading.Thread(target=_run_agent, args=(agent_id,),
                                       kwargs={"cid": recovery_cid}, daemon=True,
+                                      name=f"agent-{agent_id}")
+                t.start()
+                with _threads_lock:
+                    _active_threads[agent_id] = t
+                occupied += 1
+
+        elif status == "blocked_on_qwen":
+            # Phase 3.5 review C2: auto-resume when Qwen returns. We probe
+            # Qwen liveness with a tiny request; if the call succeeds, the
+            # agent transitions back to running and the daemon respawns it
+            # next iteration. No user interaction needed for this block —
+            # unlike blocked_on_permission, the user has nothing to grant.
+            if occupied >= MAX_CONCURRENT:
+                continue
+            try:
+                # Probe Qwen with a trivial call; if it succeeds, unblock
+                _qwen_chat("ping", system_prompt="", max_tokens=1)
+                qwen_alive = True
+            except QwenUnavailableError:
+                qwen_alive = False
+            except Exception as e:
+                log.debug("[%s] qwen probe error: %s", agent_id, e)
+                qwen_alive = False
+            if qwen_alive:
+                _atomic_set_status(agent_id, "running")
+                t = threading.Thread(target=_run_agent, args=(agent_id,), daemon=True,
                                       name=f"agent-{agent_id}")
                 t.start()
                 with _threads_lock:
