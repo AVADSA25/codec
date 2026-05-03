@@ -84,6 +84,7 @@ from codec_audit import (
     TRIGGER_EVALUATED,
     TRIGGER_FIRED,
     TRIGGER_BLOCKED,
+    TRIGGER_MUTED,
     log_event as _log_event,
 )
 
@@ -94,6 +95,15 @@ _KILLED_PATH = Path(os.path.expanduser("~/.codec/triggers_killed.json"))
 _KILLED_SCHEMA = 1
 _KILLED_LOCK = threading.Lock()
 
+# Mute config — user-facing soft-disable for whole skills (any pattern they
+# declare). When the file is absent, defaults apply. The hand-edit + restart
+# is the documented path; tests use _refresh_mute_cache() to reload.
+_MUTE_CONFIG_PATH = Path(os.path.expanduser("~/.codec/triggers.json"))
+_DEFAULT_MUTE_CONFIG: Dict[str, Any] = {
+    "muted_skills": ["clipboard_url_fetch"],
+    "muted_until": {},
+}
+
 # ── Module-level state ────────────────────────────────────────────────────────
 # Per-trigger last-fired timestamp (RAM only — process restart resets).
 _LAST_FIRED: Dict[str, float] = {}
@@ -102,6 +112,11 @@ _LAST_FIRED_LOCK = threading.Lock()
 # Cached killed-keys set; reloaded from disk lazily.
 _KILLED_CACHE: Optional[set] = None
 _KILLED_CACHE_LOCK = threading.Lock()
+
+# Cached mute config; reloaded from disk lazily. Hand-edits to the JSON file
+# require either a service restart or a call to _refresh_mute_cache().
+_MUTE_CACHE: Optional[dict] = None
+_MUTE_CACHE_LOCK = threading.Lock()
 
 
 # ── Kill switch ───────────────────────────────────────────────────────────────
@@ -281,6 +296,93 @@ def set_killed(trigger_key: str, killed: bool) -> None:
     _refresh_killed_cache()
 
 
+# ── Runtime mute config ───────────────────────────────────────────────────────
+def _load_mute_config() -> dict:
+    """Read mute config from disk, cached. Returns _DEFAULT_MUTE_CONFIG when
+    the file is missing or malformed (fail-open: no muting on bad config)."""
+    global _MUTE_CACHE
+    with _MUTE_CACHE_LOCK:
+        if _MUTE_CACHE is not None:
+            return dict(_MUTE_CACHE)
+        try:
+            with open(_MUTE_CONFIG_PATH) as f:
+                data = json.load(f)
+            if not isinstance(data, dict):
+                raise ValueError("triggers.json root must be a JSON object")
+            ms = data.get("muted_skills") or []
+            mu = data.get("muted_until") or {}
+            if not isinstance(ms, list):
+                raise ValueError("muted_skills must be a list")
+            if not isinstance(mu, dict):
+                raise ValueError("muted_until must be a dict")
+            cfg = {
+                "muted_skills": [str(s) for s in ms if isinstance(s, str)],
+                "muted_until": {str(k): str(v) for k, v in mu.items()
+                                if isinstance(k, str) and isinstance(v, str)},
+            }
+        except FileNotFoundError:
+            cfg = dict(_DEFAULT_MUTE_CONFIG)
+        except (json.JSONDecodeError, OSError, ValueError) as e:
+            log.warning("triggers.json unreadable (%s); applying defaults", e)
+            cfg = dict(_DEFAULT_MUTE_CONFIG)
+        _MUTE_CACHE = cfg
+        return dict(cfg)
+
+
+def _refresh_mute_cache() -> None:
+    """Invalidate the mute-config cache. Tests + future setter API call this."""
+    global _MUTE_CACHE
+    with _MUTE_CACHE_LOCK:
+        _MUTE_CACHE = None
+
+
+def _parse_iso8601(ts: str) -> Optional[datetime]:
+    """Best-effort ISO-8601 parser. Accepts trailing 'Z' as UTC."""
+    if not isinstance(ts, str) or not ts.strip():
+        return None
+    s = ts.strip()
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    try:
+        return datetime.fromisoformat(s)
+    except ValueError:
+        return None
+
+
+def _resolve_mute(skill_name: str) -> Tuple[bool, str, Optional[str]]:
+    """Internal: returns (muted, source, until_iso). source ∈ {"",
+    "muted_skills", "muted_until"}; until_iso is the raw timestamp when
+    source is "muted_until", else None.
+
+    A skill is muted when either:
+      - its name is in `muted_skills` (permanent until removed), OR
+      - `muted_until[skill]` parses to a future-utc datetime.
+    """
+    cfg = _load_mute_config()
+    muted_skills = cfg.get("muted_skills") or []
+    if skill_name in muted_skills:
+        return (True, "muted_skills", None)
+    until_map = cfg.get("muted_until") or {}
+    until_raw = until_map.get(skill_name)
+    if not until_raw:
+        return (False, "", None)
+    parsed = _parse_iso8601(until_raw)
+    if parsed is None:
+        return (False, "", None)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    if parsed > datetime.now(timezone.utc):
+        return (True, "muted_until", until_raw)
+    return (False, "", None)
+
+
+def _is_muted(skill_name: str) -> bool:
+    """Public bool helper per the spec contract — True if `skill_name` is
+    currently suppressed by ~/.codec/triggers.json."""
+    muted, _, _ = _resolve_mute(skill_name)
+    return muted
+
+
 # ── Cooldown ──────────────────────────────────────────────────────────────────
 def cooldown_remaining(trigger_key: str, cooldown_seconds: int) -> float:
     """Returns seconds until trigger can fire again. 0.0 means ready."""
@@ -448,6 +550,28 @@ def _emit_fired(trigger: Trigger, dispatch_cid: str,
         )
     except Exception as e:
         log.debug("trigger_fired emit failed: %s", e)
+
+
+def _emit_muted(trigger: Trigger, mute_source: str,
+                 until_iso: Optional[str], correlation_id: str) -> None:
+    extra = {
+        "trigger_key": trigger.key,
+        "skill_name": trigger.skill_name,
+        "trigger_type": trigger.type,
+        "mute_source": mute_source,
+    }
+    if until_iso is not None:
+        extra["muted_until"] = until_iso
+    try:
+        _log_event(
+            TRIGGER_MUTED, "codec-triggers",
+            f"trigger muted: {trigger.skill_name} ({mute_source})",
+            extra=extra,
+            outcome="warning", level="warning",
+            correlation_id=correlation_id,
+        )
+    except Exception as e:
+        log.debug("trigger_muted emit failed: %s", e)
 
 
 def _emit_blocked(trigger: Trigger, block_reason: str,
@@ -618,6 +742,20 @@ def evaluate(snapshot: dict, *, registry: Optional[Any] = None,
         # Match found
         _emit_evaluated(trig, summary, cid)
 
+        # Mute check — soft-disable via ~/.codec/triggers.json. Audited
+        # (trigger_muted) so the user sees what they're suppressing.
+        muted, mute_source, until_iso = _resolve_mute(trig.skill_name)
+        if muted:
+            _emit_muted(trig, mute_source, until_iso, cid)
+            entry = {"trigger_key": trig.key,
+                     "skill_name": trig.skill_name,
+                     "status": "blocked_muted",
+                     "mute_source": mute_source}
+            if until_iso is not None:
+                entry["muted_until"] = until_iso
+            out.append(entry)
+            continue
+
         # Cooldown check
         remaining = cooldown_remaining(trig.key, trig.cooldown_seconds)
         if remaining > 0:
@@ -671,10 +809,11 @@ def evaluate(snapshot: dict, *, registry: Optional[Any] = None,
 
 # ── Test helpers ──────────────────────────────────────────────────────────────
 def _reset_state_for_test() -> None:
-    """Clear cooldowns + killed cache. Used only by tests."""
+    """Clear cooldowns + killed cache + mute cache. Used only by tests."""
     with _LAST_FIRED_LOCK:
         _LAST_FIRED.clear()
     _refresh_killed_cache()
+    _refresh_mute_cache()
 
 
 __all__ = [
@@ -688,4 +827,8 @@ __all__ = [
     "mark_fired",
     "_validate_trigger_dict",
     "_KILLED_PATH",
+    "_MUTE_CONFIG_PATH",
+    "_is_muted",
+    "_load_mute_config",
+    "_refresh_mute_cache",
 ]

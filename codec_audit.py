@@ -210,9 +210,10 @@ OBSERVER_BUFFER_INSPECT_EXTRA_FIELDS = (
 TRIGGER_EVALUATED = "trigger_evaluated"
 TRIGGER_FIRED     = "trigger_fired"
 TRIGGER_BLOCKED   = "trigger_blocked"
+TRIGGER_MUTED     = "trigger_muted"
 
 PHASE2_STEP6_EVENTS = frozenset({
-    TRIGGER_EVALUATED, TRIGGER_FIRED, TRIGGER_BLOCKED,
+    TRIGGER_EVALUATED, TRIGGER_FIRED, TRIGGER_BLOCKED, TRIGGER_MUTED,
 })
 
 # Step 6 event-specific extra-field reservations.
@@ -227,6 +228,9 @@ TRIGGER_EXTRA_FIELDS = (
                                     # cooldown | user_skipped |
                                     # confirmation_timeout |
                                     # ambiguous_consent | killed
+    "mute_source",                  # on trigger_muted only:
+                                    # "muted_skills" | "muted_until"
+    "muted_until",                  # on trigger_muted only when source=muted_until
 )
 
 

@@ -46,11 +46,14 @@ def temp_audit_log(tmp_path, monkeypatch):
 
 @pytest.fixture
 def reset_state(monkeypatch, tmp_path):
-    """Reset trigger state + redirect killed-keys file to tmp_path."""
+    """Reset trigger state + redirect killed-keys file + mute config to tmp_path."""
     codec_triggers._reset_state_for_test()
     killed_path = tmp_path / "triggers_killed.json"
+    mute_path = tmp_path / "triggers.json"
     monkeypatch.setattr(codec_triggers, "_KILLED_PATH", killed_path)
+    monkeypatch.setattr(codec_triggers, "_MUTE_CONFIG_PATH", mute_path)
     codec_triggers._refresh_killed_cache()
+    codec_triggers._refresh_mute_cache()
     yield
     codec_triggers._reset_state_for_test()
 
@@ -573,6 +576,55 @@ def test_observer_poll_evaluates_triggers(temp_audit_log, reset_state,
     fresh_buf = codec_observer.RingBuffer(maxlen=10)
     codec_observer.poll(buffer=fresh_buf, cfg=cfg, emit_audit=True)
     assert len(called) == 1, "observer.poll should call triggers.evaluate"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# §7.6 — Runtime mute config (3)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_muted_skill_name_skips_fire(temp_audit_log, reset_state, mock_dispatch):
+    """Skill listed in muted_skills → trigger evaluation skips dispatch and
+    emits trigger_muted. No real fire."""
+    codec_triggers._MUTE_CONFIG_PATH.write_text(
+        json.dumps({"muted_skills": ["skill_x"]}))
+    codec_triggers._refresh_mute_cache()
+
+    t = codec_triggers.Trigger.from_dict(
+        "skill_x", _valid_trigger_dict("window_title_match", "Stripe",
+                                         cooldown=0))
+    fake_reg = MagicMock()
+    fake_reg.names = MagicMock(return_value=["skill_x"])
+    fake_reg.get_observation_trigger = MagicMock(return_value=t.raw)
+    fake_reg.get_meta = MagicMock(return_value={})
+    snap = _make_snapshot(title="Stripe — Dashboard")
+    out = codec_triggers.evaluate(snap, registry=fake_reg, fire=True)
+
+    assert any(r["status"] == "blocked_muted" for r in out)
+    assert mock_dispatch.call_count == 0
+    muted = _events_of(_records(temp_audit_log), codec_audit.TRIGGER_MUTED)
+    assert len(muted) == 1
+    assert muted[0]["extra"]["skill_name"] == "skill_x"
+    assert muted[0]["extra"]["mute_source"] == "muted_skills"
+
+
+def test_muted_until_past_timestamp_not_muted(reset_state):
+    """muted_until[skill] in the past → _is_muted returns False (expired)."""
+    past_iso = "2020-01-01T00:00:00+00:00"
+    codec_triggers._MUTE_CONFIG_PATH.write_text(
+        json.dumps({"muted_until": {"skill_x": past_iso}}))
+    codec_triggers._refresh_mute_cache()
+
+    assert codec_triggers._is_muted("skill_x") is False
+
+
+def test_muted_until_future_timestamp_muted(reset_state):
+    """muted_until[skill] in the future → _is_muted returns True."""
+    future_iso = "2099-01-01T00:00:00+00:00"
+    codec_triggers._MUTE_CONFIG_PATH.write_text(
+        json.dumps({"muted_until": {"skill_x": future_iso}}))
+    codec_triggers._refresh_mute_cache()
+
+    assert codec_triggers._is_muted("skill_x") is True
 
 
 def test_skill_registry_extracts_SKILL_OBSERVATION_TRIGGER(tmp_path):

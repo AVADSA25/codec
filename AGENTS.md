@@ -153,18 +153,20 @@ After every `codec_observer.poll()`, `codec_triggers.evaluate(snapshot)` walks t
 
 **Per-trigger kill switch**: persistent at `~/.codec/triggers_killed.json`. Toggled via PWA `POST /api/triggers/{key}/kill`. Killed triggers are skipped silently (no `trigger_blocked` audit emit, to avoid spam from popular killed patterns).
 
+**Per-skill mute config** (post Step 6 hotfix): persistent at `~/.codec/triggers.json`. JSON file with `muted_skills` (permanent) and `muted_until` (ISO-8601 timestamp). Muted matches DO emit `trigger_muted` (warning), unlike kill which is silent. Default contents (when file missing): `{"muted_skills": ["clipboard_url_fetch"]}`. See `docs/PHASE2-STEP6-TRIGGER-MUTE.md`.
+
 **Global kill switch**: `TRIGGERS_ENABLED=false` env var on `codec-observer` skips evaluation entirely.
 
 **Step 6 ships ZERO triggers** — only the plumbing. Skills opt in one-by-one. Same trust model as plugins (user-curated local Python). At merge time, `evaluate()` iterates over zero registered triggers and exits in <1ms.
 
-**3 audit events**: `trigger_evaluated` (info, on match), `trigger_fired` (info, on dispatch), `trigger_blocked` (warning, with `block_reason`).
+**4 audit events**: `trigger_evaluated` (info, on match), `trigger_fired` (info, on dispatch), `trigger_blocked` (warning, with `block_reason`), `trigger_muted` (warning, with `mute_source`).
 
 **PWA endpoints**:
 - `GET /api/triggers` — list all registered triggers + state
 - `GET /api/triggers/{key}` — detail with cooldown_remaining
 - `POST /api/triggers/{key}/kill` — toggle kill state
 
-Implementation: `codec_triggers.py` (Trigger dataclass, validation, matchers, dispatch), `codec_skill_registry.py` extension (AST-extracts `SKILL_OBSERVATION_TRIGGER`), `codec_observer.py` integration (calls `evaluate()` after each poll, try/except so failures never break polling), `routes/triggers.py` (PWA endpoints).
+Implementation: `codec_triggers.py` (Trigger dataclass, validation, matchers, dispatch, mute config), `codec_skill_registry.py` extension (AST-extracts `SKILL_OBSERVATION_TRIGGER`), `codec_observer.py` integration (calls `evaluate()` after each poll, try/except so failures never break polling), `routes/triggers.py` (PWA endpoints).
 
 ### Shift Report (Phase 2 Step 7)
 
@@ -446,13 +448,14 @@ Four new event names exported from `codec_audit.py` for the Continuous Observati
 `PHASE2_STEP5_EVENTS` frozenset exposed for analyzer breakdown. `observation_tick` is METADATA-ONLY by design — no titles, no OCR text, no clipboard content, no file paths leak to `~/.codec/audit.log`.
 
 ### Phase 2 Step 6 audit events (Trigger System)
-Three new event names. `trigger_evaluated` fires only when a pattern matches (pre-cooldown, pre-consent — silent on no-match to avoid audit spam). `trigger_fired` is the actual dispatch. `trigger_blocked` fires for any non-firing reason except `killed` (silent). All inherit the wrapping observer poll's `correlation_id`.
+Four event names. `trigger_evaluated` fires only when a pattern matches (pre-cooldown, pre-consent — silent on no-match to avoid audit spam). `trigger_fired` is the actual dispatch. `trigger_blocked` fires for any non-firing reason except `killed` (silent). `trigger_muted` fires when an otherwise-eligible match is suppressed by the runtime mute config (`~/.codec/triggers.json` — see `docs/PHASE2-STEP6-TRIGGER-MUTE.md`). All inherit the wrapping observer poll's `correlation_id`.
 
 | Event | Source | level | extra fields |
 |---|---|---|---|
 | `trigger_evaluated` | `codec-triggers` | info | `trigger_key`, `skill_name`, `trigger_type`, `match_summary` |
 | `trigger_fired` | `codec-triggers` | info | `trigger_key`, `skill_name`, `trigger_type`, `dispatch_correlation_id` |
 | `trigger_blocked` | `codec-triggers` | warning | `trigger_key`, `skill_name`, `trigger_type`, `block_reason` (`cooldown` \| `user_skipped` \| `confirmation_timeout` \| `ambiguous_consent`). NOTE: `killed` reason is intentionally NOT emitted to keep audit clean. |
+| `trigger_muted` | `codec-triggers` | warning | `trigger_key`, `skill_name`, `trigger_type`, `mute_source` (`muted_skills` \| `muted_until`), `muted_until` (only when source=`muted_until`) |
 
 `PHASE2_STEP6_EVENTS` frozenset exposed.
 
@@ -654,6 +657,8 @@ These zones break running infrastructure if changed without coordination. NEVER 
 - `~/.codec/triggers_killed.json` (Phase 2 Step 6) — persistent per-trigger kill state. Atomic-write owned by `codec_triggers.set_killed()`; do not edit by hand (the trigger keys are content-hashed and need to match what `discover_triggers()` computes). Use the PWA `POST /api/triggers/{key}/kill` endpoint instead.
 - `TRIGGERS_ENABLED` env var (Phase 2 Step 6, default `true`). Setting `false` skips trigger evaluation entirely; observer keeps polling. Per-trigger kill switch via PWA is the finer knob.
 - `SKILL_OBSERVATION_TRIGGER` declaration in skill files (Phase 2 Step 6) — adding one to a skill makes it auto-fire on observer signals. **High-impact change** — review the cooldown / require_confirmation / destructive flags carefully. Same trust model as plugins.
+- `~/.codec/triggers.json` (Phase 2 Step 6 mute config) — user-facing soft-disable for noisy triggers. Schema: `{"muted_skills": [...], "muted_until": {skill: ISO8601}}`. Cached in `_MUTE_CACHE`; hand-edits require service restart OR `codec_triggers._refresh_mute_cache()`. Default contents (when file missing): `{"muted_skills": ["clipboard_url_fetch"]}` — preserves PR #38's old behavior. **Writing the file replaces defaults entirely; no merge.** See `docs/PHASE2-STEP6-TRIGGER-MUTE.md`.
+- `_DEFAULT_MUTE_CONFIG` in `codec_triggers.py` (Phase 2 Step 6 mute config) — hardcoded fallback when `~/.codec/triggers.json` is missing. Touching this changes the on-fresh-install behavior — coordinate with the user before adding/removing skills from the default list.
 - `~/.codec/shift_report_state.json` (Phase 2 Step 7) — per-day fire dedup state (`last_fired_date`, `last_fired_at`, `last_trigger_kind`). Owned by `skills/shift_report.mark_fired_today()`. Safe to delete to force-fire today again; do not hand-edit (atomic-write contract).
 - `SHIFT_REPORT_ENABLED` env var (Phase 2 Step 7, default `true`). False blocks all three trigger paths (time / idle / manual).
 - `~/.codec/config.json:shift_report.{daily_at_hour, daily_at_minute, idle_minutes, lookback_hours, auto_save_path}` — Phase 2 Step 7 tunables. `auto_save_path` is `null` by default (notification-only); set to a directory path to also write `YYYY-MM-DD.md` files.
