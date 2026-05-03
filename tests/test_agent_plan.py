@@ -278,3 +278,70 @@ def test_draft_plan_handles_qwen_unavailable(monkeypatch):
             description="x",
             registry=MagicMock(),
         )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Task 7 — Vague-description clarifying loop (Q3) (2 tests)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_vague_description_triggers_clarifying_questions(monkeypatch):
+    import codec_agent_plan as cap
+
+    # First Qwen call → "too vague" sentinel
+    # Second call → asks 3 clarifying questions
+    # Third call (after user answers) → returns valid plan
+    call_count = {"n": 0}
+
+    def fake_qwen(*args, **kwargs):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            return json.dumps({"too_vague": True,
+                               "clarifying_questions": ["What platform?", "What output?", "Who's the user?"]})
+        # Subsequent calls return a valid plan
+        return json.dumps({
+            "goals": ["g"],
+            "checkpoints": [{"title": "t", "description": "d",
+                             "skills_needed": ["weather"],
+                             "expected_output": "o", "step_budget": 10}],
+            "permission_manifest": {"read_paths": [], "write_paths": [],
+                                    "network_domains": [], "skills": ["weather"],
+                                    "destructive_ops": []},
+            "estimated_duration_minutes": 5, "assumptions": [],
+        })
+
+    monkeypatch.setattr(cap, "_qwen_chat", fake_qwen)
+
+    fake_ask = MagicMock()
+    fake_ask.return_value = ("answered", "telegram bot, JSON output, real estate buyers")
+    monkeypatch.setattr(cap, "_ask_user", fake_ask)
+
+    fake_registry = MagicMock()
+    fake_registry.names.return_value = ["weather"]
+
+    plan = cap.draft_plan_with_clarification(
+        agent_id="a", description="make codec better",
+        registry=fake_registry,
+    )
+    assert plan is not None
+    assert call_count["n"] >= 2  # at least one re-draft after clarification
+    fake_ask.assert_called()
+
+
+def test_vague_description_max_clarifying_rounds_exceeded(monkeypatch):
+    import codec_agent_plan as cap
+
+    monkeypatch.setattr(cap, "_qwen_chat",
+                        lambda *a, **k: json.dumps({
+                            "too_vague": True,
+                            "clarifying_questions": ["q1", "q2"],
+                        }))
+    monkeypatch.setattr(cap, "_ask_user", lambda *a, **k: ("answered", "still vague"))
+
+    fake_registry = MagicMock()
+    fake_registry.names.return_value = []
+
+    with pytest.raises(cap.DescriptionTooVagueError):
+        cap.draft_plan_with_clarification(
+            agent_id="a", description="x",
+            registry=fake_registry, max_rounds=cap.MAX_CLARIFYING_ROUNDS,
+        )

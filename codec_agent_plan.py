@@ -319,6 +319,10 @@ def draft_plan(agent_id: str, description: str, registry=None,
     except json.JSONDecodeError as e:
         raise PlanValidationError(f"qwen3.6 returned non-JSON: {e}; raw={raw[:300]!r}")
 
+    # Detect "too_vague" sentinel from LLM
+    if d.get("too_vague"):
+        raise PlanValidationError("too_vague: description needs clarification")
+
     # Inject schema + agent_id (LLM doesn't need to know schema number)
     d.setdefault("schema", PLAN_SCHEMA_VERSION)
     d.setdefault("agent_id", agent_id)
@@ -346,3 +350,66 @@ def _stable_checkpoint_id(cp_dict: Dict[str, Any]) -> str:
     the same conceptual checkpoint."""
     seed = f"{cp_dict.get('title', '')}|{cp_dict.get('description', '')}"
     return hashlib.sha1(seed.encode("utf-8")).hexdigest()[:8]
+
+
+class DescriptionTooVagueError(ValueError):
+    """User's project description couldn't be scoped after MAX_CLARIFYING_ROUNDS."""
+
+
+def _ask_user(question: str, *, agent_id: str,
+              deadline_seconds: int = 600) -> Tuple[str, Any]:
+    """Lazy-loaded codec_ask_user.ask wrapper. Returns (status, answer).
+    status ∈ {"answered", "ambiguous_consent", "timeout"}."""
+    try:
+        from codec_ask_user import ask, TIMEOUT_SENTINEL
+    except Exception as e:
+        log.warning("codec_ask_user unavailable: %s", e)
+        return ("timeout", TIMEOUT_SENTINEL if 'TIMEOUT_SENTINEL' in dir() else None)
+    return ask(question, source=f"agent_plan:{agent_id}",
+               deadline_seconds=deadline_seconds)
+
+
+def draft_plan_with_clarification(agent_id: str, description: str,
+                                  registry=None,
+                                  max_rounds: int = MAX_CLARIFYING_ROUNDS) -> Plan:
+    """Wrap draft_plan with a clarifying-question loop. If LLM returns
+    {"too_vague": True, "clarifying_questions": [...]}, ask user via
+    codec_ask_user.ask, append answers to description, retry. After
+    max_rounds without convergence, raise DescriptionTooVagueError."""
+    enriched_description = description
+
+    for round_idx in range(max_rounds + 1):
+        try:
+            return draft_plan(agent_id, enriched_description, registry=registry)
+        except PlanValidationError as e:
+            # Check if this was a "too_vague" response (sentinel from LLM)
+            if "too_vague" in str(e).lower():
+                if round_idx >= max_rounds:
+                    raise DescriptionTooVagueError(
+                        f"description still too vague after {max_rounds} rounds"
+                    )
+                # Re-call qwen JUST to extract clarifying questions
+                raw = _qwen_chat(
+                    user_prompt=enriched_description,
+                    system_prompt="The previous attempt was too vague. Output ONLY a JSON object: "
+                                  "{\"clarifying_questions\": [<q1>, <q2>, <q3>]}",
+                )
+                try:
+                    qs = json.loads(raw).get("clarifying_questions", [])
+                except json.JSONDecodeError:
+                    qs = ["Can you describe what you want CODEC to build, in more concrete terms?"]
+                # Ask user; combine answer with description and retry
+                full_q = "I need clarification before drafting a plan:\n\n" + \
+                         "\n".join(f"  {i+1}. {q}" for i, q in enumerate(qs[:3]))
+                status, ans = _ask_user(full_q, agent_id=agent_id)
+                if status != "answered":
+                    raise DescriptionTooVagueError(
+                        f"clarification not answered (status={status})"
+                    )
+                enriched_description = (
+                    f"{enriched_description}\n\n[user clarification round {round_idx+1}]\n{ans}"
+                )
+            else:
+                raise  # bubble other validation errors
+
+    raise DescriptionTooVagueError(f"reached max_rounds={max_rounds} unexpectedly")
