@@ -1,6 +1,6 @@
 """Phase 3 Step 9 tests — codec_agent_runner.
 
-31 tests covering: audit constants, state machine, permission gate,
+32 tests covering: audit constants, state machine, permission gate,
 Action dataclass, qwen next-action driver, strict-consent integration,
 checkpoint executor, run_agent paths, daemon outer loop, multi-agent
 concurrency, resume-after-restart, plan-hash tamper, PWA endpoints.
@@ -76,7 +76,7 @@ def test_step9_state_transitions_extend_valid_map():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Task 3 — PermissionViolation + permission_gate (4 tests)
+# Task 3 — PermissionViolation + permission_gate (5 tests)
 # ─────────────────────────────────────────────────────────────────────────────
 
 @pytest.fixture
@@ -138,6 +138,17 @@ def test_permission_gate_allows_via_global_allowlist(basic_grants):
                     is_destructive=False, network_call=False, touches_path=False)
     # Should NOT raise — global allowlist covers it
     permission_gate(action, basic_grants, global_grants)
+
+
+def test_permission_gate_blocks_domain_not_in_grants(basic_grants, empty_global_grants):
+    from codec_agent_runner import permission_gate, Action, PermissionViolation
+    action = Action(skill="weather", task="x",
+                    is_destructive=False, network_call=True,
+                    network_domain="evil.com", touches_path=False)
+    with pytest.raises(PermissionViolation) as exc:
+        permission_gate(action, basic_grants, empty_global_grants)
+    assert exc.value.reason == "domain_not_authorized"
+    assert exc.value.needed == "evil.com"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -618,7 +629,8 @@ def test_daemon_resumes_after_pm2_restart(monkeypatch, temp_codec_dir):
                                     "status": "running", "title": "x"})
 
     spawned: List[str] = []
-    monkeypatch.setattr(car, "_run_agent", lambda a: spawned.append(a))
+    # Crash-recovery path passes cid kwarg into the thread (review I4)
+    monkeypatch.setattr(car, "_run_agent", lambda a, cid=None: spawned.append(a))
     # Mark NO active thread for "crashed" — simulating fresh PM2 boot
     monkeypatch.setattr(car, "_active_threads", {})
 
@@ -630,6 +642,45 @@ def test_daemon_resumes_after_pm2_restart(monkeypatch, temp_codec_dir):
     m = cap.load_manifest("crashed")
     # Status moved through crashed_resumed back to running (or may still be running if thread is fast)
     assert m["status"] in ("crashed_resumed", "running", "completed", "aborted")
+
+
+def test_daemon_resume_emits_correlation_id_matching_run_agent(monkeypatch, temp_codec_dir):
+    """Step 1 §1.4 paired-cid contract: AGENT_RESUMED on crash recovery must
+    share its correlation_id with the _run_agent operation that follows, so
+    the resume event chains with subsequent agent_started / agent_checkpoint_*
+    / agent_completed emits instead of being orphaned in the audit log.
+
+    Phase 3 Step 9 review I4 fix.
+    """
+    import codec_agent_runner as car
+    import codec_agent_plan as cap
+
+    cap.save_manifest("crashed", {"agent_id": "crashed",
+                                    "status": "running", "title": "x"})
+
+    audit_calls: List[dict] = []
+    def fake_audit(event, source="codec-agent-runner", message="",
+                   correlation_id="", outcome="ok", level="info", extra=None):
+        audit_calls.append({"event": event, "correlation_id": correlation_id})
+    monkeypatch.setattr(car, "_audit", fake_audit)
+
+    received_cid: List[str] = []
+    def fake_run_agent(agent_id, cid=None):
+        received_cid.append(cid or "")
+    monkeypatch.setattr(car, "_run_agent", fake_run_agent)
+    monkeypatch.setattr(car, "_active_threads", {})
+
+    car._daemon_one_tick()
+    time.sleep(0.3)
+
+    resumed = [c for c in audit_calls if c["event"] == car.AGENT_RESUMED]
+    assert len(resumed) == 1, f"expected exactly 1 AGENT_RESUMED emit, got {len(resumed)}"
+    resume_cid = resumed[0]["correlation_id"]
+    assert resume_cid, ("AGENT_RESUMED emitted without correlation_id "
+                        "(Step 1 §1.4 paired-cid contract violation)")
+    assert received_cid == [resume_cid], (
+        f"_run_agent must receive the resume cid to chain emits: "
+        f"got {received_cid}, expected [{resume_cid}]")
 
 
 def test_daemon_global_kill_switch(monkeypatch, temp_codec_dir):
@@ -731,3 +782,79 @@ def test_post_api_agents_404_for_unknown_id(temp_codec_dir):
 
     r = client.post("/api/agents/nonexistent/abort")
     assert r.status_code == 404
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Review fix I2 — paused on step_budget + /extend_budget endpoint (3 tests)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_run_agent_step_budget_exhausted_pauses_not_blocks(monkeypatch, temp_codec_dir):
+    """Real budget hit (not destructive_consent_timeout) → status=paused
+    with reason=step_budget_exhausted (was: blocked_on_permission)."""
+    import codec_agent_runner as car
+    import codec_agent_plan as cap
+    _setup_approved_agent(temp_codec_dir, monkeypatch, num_checkpoints=1)
+
+    # Always return skill_call (never checkpoint_done) → budget exhausts
+    monkeypatch.setattr(car, "_qwen_next_action", lambda *a, **k:
+        car.Action(skill="weather", task="loop", kind="skill_call",
+                   is_destructive=False, network_call=False, touches_path=False))
+    monkeypatch.setattr(car, "_run_skill", MagicMock(return_value="r"))
+
+    car._run_agent("test_agent")
+
+    m = cap.load_manifest("test_agent")
+    assert m["status"] == "paused"
+    assert m["status_reason"] == "step_budget_exhausted"
+
+
+def test_extend_budget_endpoint_bumps_and_resumes(monkeypatch, temp_codec_dir):
+    """POST /api/agents/{id}/extend_budget writes state.json override,
+    transitions paused → running."""
+    from fastapi.testclient import TestClient
+    from fastapi import FastAPI
+    import codec_agent_plan as cap
+    _setup_approved_agent(temp_codec_dir, monkeypatch, num_checkpoints=1)
+
+    # Set up paused-on-budget state
+    cap.save_manifest("test_agent", {
+        **cap.load_manifest("test_agent"),
+        "status": "paused",
+        "status_reason": "step_budget_exhausted",
+    })
+
+    from routes.agents import router
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app)
+
+    r = client.post("/api/agents/test_agent/extend_budget",
+                     json={"additional_steps": 20})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "running"
+    assert body["additional_steps"] == 20
+
+    # State.json has the override
+    state = cap.load_state("test_agent")
+    cp_id = cap.load_plan("test_agent").checkpoints[0].id
+    assert state["step_budget_overrides"][cp_id] >= 25  # base 5 + 20
+
+
+def test_extend_budget_endpoint_409_when_not_paused_on_budget(temp_codec_dir):
+    """409 if status != paused or status_reason != step_budget_exhausted."""
+    from fastapi.testclient import TestClient
+    from fastapi import FastAPI
+    import codec_agent_plan as cap
+
+    cap.save_manifest("a1", {"agent_id": "a1", "status": "running",
+                              "title": "x"})
+
+    from routes.agents import router
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app)
+
+    r = client.post("/api/agents/a1/extend_budget",
+                     json={"additional_steps": 10})
+    assert r.status_code == 409

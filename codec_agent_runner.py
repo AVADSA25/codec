@@ -97,6 +97,12 @@ def permission_gate(action: Action, agent_grants: Dict[str, Any],
     if action.skill not in skills:
         raise PermissionViolation("skill_not_authorized", action.skill)
 
+    # Asymmetry: only write_paths is enforced here. PermissionManifest.read_paths
+    # is declared at approval time for user transparency ("this agent will read X")
+    # but not gated at runtime — Action's grammar has no read/write distinction
+    # (only `touches_path`, treated as a write), and skill-internal reads bypass
+    # the runner anyway. Runtime read enforcement would need a new Action field
+    # + LLM prompt update — out of scope for Step 9.
     if action.touches_path:
         write_paths = (set(agent_grants.get("write_paths", [])) |
                        set(global_grants.get("write_paths", [])))
@@ -378,21 +384,27 @@ def _atomic_set_status(agent_id: str, new_status: str,
         log.warning("[%s] set_status %s failed: %s", agent_id, new_status, e)
 
 
-def _run_agent(agent_id: str) -> None:
+def _run_agent(agent_id: str, cid: Optional[str] = None) -> None:
     """The main per-agent thread function. Loads plan + grants,
     verifies plan_hash, walks checkpoints via _execute_checkpoint,
     persists state, emits audit events.
 
     On any unhandled exception: atomic save status=aborted, log,
     emit agent_aborted. Never propagates exceptions to caller (the
-    daemon's thread pool depends on this)."""
+    daemon's thread pool depends on this).
+
+    `cid` lets the daemon's crash-recovery path mint a single correlation_id,
+    emit AGENT_RESUMED under it, then chain all of this run's emits to the
+    same id (Step 1 §1.4 paired-cid contract). When None, generate fresh.
+    """
     from codec_agent_plan import (
         load_plan, load_state, load_manifest, load_grants,
         load_global_grants, save_state, save_manifest,
         compute_plan_hash,
     )
 
-    cid = secrets.token_hex(6)
+    if cid is None:
+        cid = secrets.token_hex(6)
 
     try:
         plan = load_plan(agent_id)
@@ -444,14 +456,18 @@ def _run_agent(agent_id: str) -> None:
 
         # Walk checkpoints
         history: List[Dict[str, Any]] = []
+        # Review fix I2: per-checkpoint step_budget overrides applied on resume
+        # after /extend_budget endpoint bumps the cap. Keys are checkpoint IDs.
+        budget_overrides = state.get("step_budget_overrides", {}) or {}
         for idx, cp in enumerate(plan.checkpoints):
             if idx < current_idx:
                 continue  # resume: skip already-completed checkpoints
+            effective_budget = int(budget_overrides.get(cp.id, cp.step_budget))
             cp_dict = {
                 "id": cp.id, "title": cp.title, "description": cp.description,
                 "skills_needed": cp.skills_needed,
                 "expected_output": cp.expected_output,
-                "step_budget": cp.step_budget,
+                "step_budget": effective_budget,
             }
 
             _audit(AGENT_CHECKPOINT_STARTED,
@@ -494,10 +510,16 @@ def _run_agent(agent_id: str) -> None:
                            extra={"agent_id": agent_id, "checkpoint_id": cp.id,
                                   "reason": "destructive_consent_timeout"})
                 else:
-                    _atomic_set_status(agent_id, "blocked_on_permission",
+                    # Review fix I2: real budget hit → paused (not blocked_on_permission).
+                    # User can resolve via POST /api/agents/{id}/extend_budget which
+                    # writes step_budget_overrides[checkpoint_id] to state.json and
+                    # transitions status=paused → running. The plan stays immutable
+                    # (plan_hash tamper check remains intact); the override lives in
+                    # mutable state.json.
+                    _atomic_set_status(agent_id, "paused",
                                        reason="step_budget_exhausted")
-                    _audit(AGENT_BLOCKED_ON_PERMISSION,
-                           message="step budget exhausted",
+                    _audit(AGENT_PAUSED,
+                           message="paused on step budget exhaustion",
                            correlation_id=cid, outcome="warning", level="warning",
                            extra={"agent_id": agent_id, "checkpoint_id": cp.id,
                                   "reason": "step_budget_exhausted"})
@@ -633,13 +655,19 @@ def _daemon_one_tick() -> None:
             with _threads_lock:
                 has_thread = agent_id in _active_threads and _active_threads[agent_id].is_alive()
             if not has_thread and occupied < MAX_CONCURRENT:
+                # Mint cid here and propagate into _run_agent so AGENT_RESUMED
+                # chains with the agent_started/checkpoint/completed emits that
+                # follow (Step 1 §1.4 paired-cid contract; review I4).
+                recovery_cid = secrets.token_hex(6)
                 _atomic_set_status(agent_id, "crashed_resumed")
                 _audit(AGENT_RESUMED,
                        message=f"resumed {agent_id} after crash/restart",
+                       correlation_id=recovery_cid,
                        extra={"agent_id": agent_id, "recovery": True})
                 # Transition to running and re-spawn
                 _atomic_set_status(agent_id, "running")
-                t = threading.Thread(target=_run_agent, args=(agent_id,), daemon=True,
+                t = threading.Thread(target=_run_agent, args=(agent_id,),
+                                      kwargs={"cid": recovery_cid}, daemon=True,
                                       name=f"agent-{agent_id}")
                 t.start()
                 with _threads_lock:
