@@ -560,3 +560,71 @@ def test_get_api_agents_lists_all(temp_codec_dir):
     body = r.json()
     ids = {a["agent_id"] for a in body["agents"]}
     assert ids == {"agent_a", "agent_b"}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Task 13 — Approve/reject integration tests via FastAPI TestClient (2 tests)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_post_api_agents_approve_full_flow(monkeypatch, temp_codec_dir):
+    from fastapi.testclient import TestClient
+    from fastapi import FastAPI
+    import codec_agent_plan as cap
+
+    monkeypatch.setattr(cap, "_qwen_chat", lambda *a, **k: json.dumps({
+        "goals": ["g"], "checkpoints": [{"title": "t", "description": "d",
+            "skills_needed": ["weather"], "expected_output": "o", "step_budget": 10}],
+        "permission_manifest": {"read_paths": [], "write_paths": [],
+            "network_domains": [], "skills": ["weather"], "destructive_ops": []},
+        "estimated_duration_minutes": 5, "assumptions": []}))
+    fake_reg = MagicMock(); fake_reg.names.return_value = ["weather"]
+    # Patch the lazy-import path used inside draft_plan
+    monkeypatch.setattr("codec_dispatch.registry", fake_reg, raising=False)
+
+    from routes.agents import router
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app)
+
+    r1 = client.post("/api/agents", json={
+        "title": "X", "description": "build x"})
+    agent_id = r1.json()["agent_id"]
+
+    r2 = client.post(f"/api/agents/{agent_id}/approve")
+    assert r2.status_code == 200
+    assert r2.json()["status"] == "approved"
+
+    # Manifest now has plan_hash
+    r3 = client.get(f"/api/agents/{agent_id}")
+    assert r3.status_code == 200
+    assert "plan_hash" in r3.json()["manifest"]
+    assert r3.json()["grants"] is not None
+
+
+def test_post_api_agents_reject_sets_reason(monkeypatch, temp_codec_dir):
+    from fastapi.testclient import TestClient
+    from fastapi import FastAPI
+    import codec_agent_plan as cap
+
+    monkeypatch.setattr(cap, "_qwen_chat", lambda *a, **k: json.dumps({
+        "goals": ["g"], "checkpoints": [{"title": "t", "description": "d",
+            "skills_needed": ["weather"], "expected_output": "o", "step_budget": 10}],
+        "permission_manifest": {"read_paths": [], "write_paths": [],
+            "network_domains": [], "skills": ["weather"], "destructive_ops": []},
+        "estimated_duration_minutes": 5, "assumptions": []}))
+    fake_reg = MagicMock(); fake_reg.names.return_value = ["weather"]
+    monkeypatch.setattr("codec_dispatch.registry", fake_reg, raising=False)
+
+    from routes.agents import router
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app)
+
+    r1 = client.post("/api/agents", json={"title": "X", "description": "build x"})
+    agent_id = r1.json()["agent_id"]
+
+    r2 = client.post(f"/api/agents/{agent_id}/reject", json={"reason": "not now"})
+    assert r2.status_code == 200
+    r3 = client.get(f"/api/agents/{agent_id}")
+    assert r3.json()["manifest"]["status"] == "rejected"
+    assert r3.json()["manifest"]["status_reason"] == "not now"
