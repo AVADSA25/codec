@@ -798,9 +798,18 @@ async function sendMessage(){
         pendingDiv.querySelector('.msg-bubble').innerHTML='<span style="color:var(--danger,#f87171)">Plan failed:</span> '+escHtml(pd.detail);
         chatHist.push({role:'assistant',content:'Plan failed: '+pd.detail});
       }else if(pd.agent_id){
+        var folderHtml='';
+        if(pd.project_dir){
+          folderHtml='<div style="margin:6px 0 8px;padding:8px 10px;background:rgba(167,139,250,0.08);border:1px solid var(--accent,#a78bfa);border-radius:6px;font-size:12px">'+
+            '<div style="font-weight:600;color:var(--accent,#a78bfa);margin-bottom:2px">Project folder created</div>'+
+            '<code style="font-size:11px;word-break:break-all">'+escHtml(pd.project_dir)+'</code>'+
+            '<div style="color:var(--text-dim);margin-top:4px;font-size:11px">Open this folder in your IDE to see the agent\'s files as they\'re created. (cmd+click to open in Finder)</div>'+
+          '</div>';
+        }
         var html='<div style="font-weight:600;margin-bottom:6px">Project drafted</div>'+
           '<div style="margin-bottom:6px">agent_id: <code>'+escHtml(pd.agent_id)+'</code></div>'+
-          '<div style="color:var(--text-dim);font-size:12px;margin-bottom:8px">A plan with a permission manifest has been written to <code>~/.codec/agents/'+escHtml(pd.agent_id)+'/plan.json</code>. Review and approve to start.</div>'+
+          folderHtml+
+          '<div style="color:var(--text-dim);font-size:12px;margin-bottom:8px">A plan with a permission manifest has been written. Review and approve to let the agent run autonomously.</div>'+
           '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
             '<button onclick="approveAgentInChat(\''+pd.agent_id+'\',event)" style="padding:6px 14px;background:var(--accent,#a78bfa);color:#000;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">Approve plan</button>'+
             '<button onclick="rejectAgentInChat(\''+pd.agent_id+'\',event)" style="padding:6px 14px;background:transparent;color:var(--text);border:1px solid var(--border,#2a2a30);border-radius:6px;cursor:pointer;font-size:12px">Reject</button>'+
