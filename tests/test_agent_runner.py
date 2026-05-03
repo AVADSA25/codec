@@ -1,6 +1,6 @@
 """Phase 3 Step 9 tests — codec_agent_runner.
 
-31 tests covering: audit constants, state machine, permission gate,
+32 tests covering: audit constants, state machine, permission gate,
 Action dataclass, qwen next-action driver, strict-consent integration,
 checkpoint executor, run_agent paths, daemon outer loop, multi-agent
 concurrency, resume-after-restart, plan-hash tamper, PWA endpoints.
@@ -76,7 +76,7 @@ def test_step9_state_transitions_extend_valid_map():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Task 3 — PermissionViolation + permission_gate (4 tests)
+# Task 3 — PermissionViolation + permission_gate (5 tests)
 # ─────────────────────────────────────────────────────────────────────────────
 
 @pytest.fixture

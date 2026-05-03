@@ -97,6 +97,12 @@ def permission_gate(action: Action, agent_grants: Dict[str, Any],
     if action.skill not in skills:
         raise PermissionViolation("skill_not_authorized", action.skill)
 
+    # Asymmetry: only write_paths is enforced here. PermissionManifest.read_paths
+    # is declared at approval time for user transparency ("this agent will read X")
+    # but not gated at runtime — Action's grammar has no read/write distinction
+    # (only `touches_path`, treated as a write), and skill-internal reads bypass
+    # the runner anyway. Runtime read enforcement would need a new Action field
+    # + LLM prompt update — out of scope for Step 9.
     if action.touches_path:
         write_paths = (set(agent_grants.get("write_paths", [])) |
                        set(global_grants.get("write_paths", [])))
