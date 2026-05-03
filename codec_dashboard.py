@@ -2140,6 +2140,9 @@ CHAT_SKILL_ALLOWLIST = {
     "create_skill", "skill_forge", "ask_codec_to_build", "delegate",
     # Phase 2 Step 7 — end-of-day shift report (read-only, no destructive side effects)
     "shift_report",
+    # Phase 2 Step 6 — first declarative trigger (clipboard URL → web_fetch).
+    # Read-only network fetch, gated by codec_ask_user.ask consent on auto-fire.
+    "clipboard_url_fetch",
 }
 
 # ---------------------------------------------------------------------------
