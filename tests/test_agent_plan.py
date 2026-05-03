@@ -729,3 +729,60 @@ def test_approve_revalidates_skills_against_registry(monkeypatch, temp_codec_dir
     with pytest.raises(cap.PlanValidationError) as exc:
         cap.approve_plan(agent_id)
     assert "calculator" in str(exc.value)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Task 17 — End-to-end integration test (1 test)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_e2e_full_lifecycle(monkeypatch, temp_codec_dir):
+    """End-to-end: drop project → draft → approve → grants written → audit emits paired."""
+    import codec_agent_plan as cap
+    from typing import List, Tuple
+
+    monkeypatch.setattr(cap, "_qwen_chat", lambda *a, **k: json.dumps({
+        "goals": ["Build property bot"],
+        "checkpoints": [
+            {"title": "Scaffold project", "description": "Create dir + skeleton",
+             "skills_needed": ["file_ops"], "expected_output": "Project initialized",
+             "step_budget": 30},
+            {"title": "Implement scraper", "description": "Use chrome to scrape",
+             "skills_needed": ["chrome_open", "file_ops"],
+             "expected_output": "Listings JSON written", "step_budget": 60},
+        ],
+        "permission_manifest": {
+            "read_paths": [],
+            "write_paths": ["~/.codec/agents/{agent_id}/artifacts/**"],
+            "network_domains": ["idealista.com", "fotocasa.es"],
+            "skills": ["file_ops", "chrome_open"], "destructive_ops": [],
+        },
+        "estimated_duration_minutes": 90,
+        "assumptions": ["User has Chrome installed"],
+    }))
+    fake_reg = MagicMock(); fake_reg.names.return_value = ["file_ops", "chrome_open"]
+    monkeypatch.setattr("codec_dispatch.registry", fake_reg, raising=False)
+
+    audit_emits: List[Tuple[str, str]] = []
+    def fake_audit(event, source, message="", correlation_id="", **kw):
+        audit_emits.append((event, correlation_id))
+    monkeypatch.setattr(cap, "_audit", fake_audit)
+
+    # Drop the project
+    agent_id = cap.create_agent(
+        title="Marbella property bot",
+        description="Build a Telegram bot that scrapes Marbella property listings",
+    )
+
+    # Approve
+    grants = cap.approve_plan(agent_id)
+
+    # Verify final state
+    m = cap.load_manifest(agent_id)
+    assert m["status"] == "approved"
+    assert "plan_hash" in m
+    assert grants["network_domains"] == ["idealista.com", "fotocasa.es"]
+
+    # Verify both audit events were emitted (paired correlation_ids will differ — independent ops)
+    events = [e for e, _ in audit_emits]
+    assert "agent_plan_drafted" in events
+    assert "agent_plan_approved" in events
