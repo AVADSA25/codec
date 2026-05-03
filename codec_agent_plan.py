@@ -413,3 +413,51 @@ def draft_plan_with_clarification(agent_id: str, description: str,
                 raise  # bubble other validation errors
 
     raise DescriptionTooVagueError(f"reached max_rounds={max_rounds} unexpectedly")
+
+
+# ── Global allowlist (Q4 — cross-agent permissions) ───────────────────────────
+_GLOBAL_GRANT_KINDS = frozenset({
+    "network_domains", "read_paths", "write_paths", "skills",
+})
+
+
+def _empty_global_grants() -> Dict[str, Any]:
+    return {
+        "schema": GLOBAL_GRANTS_SCHEMA_VERSION, "version": 0,
+        "network_domains": [], "read_paths": [], "write_paths": [], "skills": [],
+    }
+
+
+def load_global_grants() -> Dict[str, Any]:
+    """Read ~/.codec/agent_global_grants.json, returning empty struct if missing."""
+    return _read_json(_GLOBAL_GRANTS_PATH) or _empty_global_grants()
+
+
+def add_global_grant(kind: str, value: str) -> None:
+    """Add `value` to the global allowlist for `kind`. Idempotent.
+    Bumps version and writes atomically."""
+    if kind not in _GLOBAL_GRANT_KINDS:
+        raise ValueError(f"invalid grant kind: {kind!r}; expected one of {sorted(_GLOBAL_GRANT_KINDS)}")
+    g = load_global_grants()
+    if value not in g[kind]:
+        g[kind] = sorted(g[kind] + [value])
+    g["version"] = int(g.get("version", 0)) + 1
+    g["updated_at"] = _now_iso()
+    _atomic_write_json(_GLOBAL_GRANTS_PATH, g)
+
+
+def remove_global_grant(kind: str, value: str) -> None:
+    """Remove `value` from `kind`. Idempotent (no-op if absent)."""
+    if kind not in _GLOBAL_GRANT_KINDS:
+        raise ValueError(f"invalid grant kind: {kind!r}")
+    g = load_global_grants()
+    if value in g[kind]:
+        g[kind] = [v for v in g[kind] if v != value]
+    g["version"] = int(g.get("version", 0)) + 1
+    g["updated_at"] = _now_iso()
+    _atomic_write_json(_GLOBAL_GRANTS_PATH, g)
+
+
+def _now_iso() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")

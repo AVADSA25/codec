@@ -345,3 +345,37 @@ def test_vague_description_max_clarifying_rounds_exceeded(monkeypatch):
             agent_id="a", description="x",
             registry=fake_registry, max_rounds=cap.MAX_CLARIFYING_ROUNDS,
         )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Task 8 — Global allowlist (Q4) (3 tests)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_global_grants_load_returns_empty_when_missing(temp_codec_dir):
+    from codec_agent_plan import load_global_grants
+    g = load_global_grants()
+    assert g == {"schema": 1, "version": 0,
+                 "network_domains": [], "read_paths": [],
+                 "write_paths": [], "skills": []}
+
+
+def test_add_global_grant_persists(temp_codec_dir):
+    from codec_agent_plan import add_global_grant, load_global_grants
+    add_global_grant("network_domains", "github.com")
+    add_global_grant("network_domains", "news.ycombinator.com")
+    add_global_grant("skills", "web_fetch")
+    g = load_global_grants()
+    assert "github.com" in g["network_domains"]
+    assert "news.ycombinator.com" in g["network_domains"]
+    assert "web_fetch" in g["skills"]
+    assert g["version"] == 3  # 3 successful adds
+
+
+def test_remove_global_grant(temp_codec_dir):
+    from codec_agent_plan import add_global_grant, remove_global_grant, load_global_grants
+    add_global_grant("network_domains", "github.com")
+    add_global_grant("network_domains", "example.com")
+    remove_global_grant("network_domains", "github.com")
+    g = load_global_grants()
+    assert "github.com" not in g["network_domains"]
+    assert "example.com" in g["network_domains"]
