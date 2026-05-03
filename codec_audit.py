@@ -273,6 +273,18 @@ PHASE3_STEP9_EVENTS = frozenset({
     AGENT_COMPLETED, AGENT_ABORTED,
 })
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 3 Step 10 — Proactive Messaging + Project Mode UI
+# ─────────────────────────────────────────────────────────────────────────────
+AGENT_MESSAGE_SENT             = "agent_message_sent"
+AGENT_MESSAGE_RECEIVED         = "agent_message_received"
+AGENT_AUTO_ESCALATED_FROM_CHAT = "agent_auto_escalated_from_chat"
+
+PHASE3_STEP10_EVENTS = frozenset({
+    AGENT_MESSAGE_SENT, AGENT_MESSAGE_RECEIVED,
+    AGENT_AUTO_ESCALATED_FROM_CHAT,
+})
+
 SHIFT_REPORT_EXTRA_FIELDS = (
     "trigger_kind",            # "time" | "idle" | "manual"
     "sections_included",       # int — how many of the 5 sections rendered
