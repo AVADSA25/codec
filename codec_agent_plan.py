@@ -583,6 +583,13 @@ def approve_plan(agent_id: str) -> Dict[str, Any]:
     if plan is None:
         raise ValueError(f"no plan found for {agent_id!r}")
 
+    # Re-validate skills against registry (skills may have been deleted between draft & approval)
+    ok, missing = validate_plan_skills(plan)
+    if not ok:
+        raise PlanValidationError(
+            f"plan references skills no longer in registry: {missing}"
+        )
+
     plan_hash = compute_plan_hash(plan)
 
     # Compute auto_approved subset for UI rendering

@@ -470,6 +470,7 @@ def test_approve_writes_grants_and_plan_hash(monkeypatch, temp_codec_dir):
             "destructive_ops": []},
         "estimated_duration_minutes": 5, "assumptions": []}))
     fake_reg = MagicMock(); fake_reg.names.return_value = ["weather"]
+    monkeypatch.setattr("codec_dispatch.registry", fake_reg, raising=False)
 
     agent_id = cap.create_agent(title="t", description="d", registry=fake_reg)
     cap.approve_plan(agent_id)
@@ -698,3 +699,33 @@ def test_approve_marks_global_allowlist_items(monkeypatch, temp_codec_dir):
     # Auto-approved tracking (a metadata field, not a separate set)
     assert grants.get("auto_approved", {}).get("network_domains") == ["github.com"]
     assert grants.get("auto_approved", {}).get("skills") == ["web_fetch"]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Task 16 — Pre-approval re-validation against registry (1 test)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_approve_revalidates_skills_against_registry(monkeypatch, temp_codec_dir):
+    """If a skill was deleted between draft and approval, approval should fail."""
+    import codec_agent_plan as cap
+
+    # Initial plan drafted with weather + calculator
+    monkeypatch.setattr(cap, "_qwen_chat", lambda *a, **k: json.dumps({
+        "goals": ["g"], "checkpoints": [{"title": "t", "description": "d",
+            "skills_needed": ["weather", "calculator"],
+            "expected_output": "o", "step_budget": 10}],
+        "permission_manifest": {"read_paths": [], "write_paths": [],
+            "network_domains": [], "skills": ["weather", "calculator"],
+            "destructive_ops": []},
+        "estimated_duration_minutes": 5, "assumptions": []}))
+    fake_reg = MagicMock(); fake_reg.names.return_value = ["weather", "calculator"]
+    monkeypatch.setattr("codec_dispatch.registry", fake_reg, raising=False)
+
+    agent_id = cap.create_agent(title="X", description="d")
+
+    # Now simulate calculator was deleted
+    fake_reg.names.return_value = ["weather"]
+
+    with pytest.raises(cap.PlanValidationError) as exc:
+        cap.approve_plan(agent_id)
+    assert "calculator" in str(exc.value)
