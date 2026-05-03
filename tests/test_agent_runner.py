@@ -995,3 +995,140 @@ def test_skill_hallucination_retries_with_corrected_skill_list(monkeypatch, temp
     nudges = [h for h in history if h.get("_skill_correction_nudge")]
     assert len(nudges) == 1
     assert "fetch_url" in nudges[0]["skill"]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PR #35 — extend hallucination retry to path / read_path / domain (3 tests)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_domain_hallucination_retries_with_corrected_domain_list(monkeypatch, temp_codec_dir):
+    """When LLM picks an unauthorized network_domain (e.g. bare host instead
+    of the api.* one in the manifest), runner appends a correction nudge
+    listing allowed domains and re-calls Qwen. The corrected call runs."""
+    import codec_agent_runner as car
+
+    grants = {"skills": ["web_fetch"], "read_paths": [], "write_paths": [],
+              "network_domains": ["api.exchangerate-api.com"]}
+    global_grants = {"schema": 1, "version": 0,
+                     "skills": [], "read_paths": [], "write_paths": [], "network_domains": []}
+    checkpoint = {"id": "cp1", "title": "t", "description": "d",
+                  "expected_output": "o", "step_budget": 5}
+
+    actions = [
+        car.Action(skill="web_fetch", task="get rates", kind="skill_call",
+                   is_destructive=False, network_call=True,
+                   network_domain="exchangerate-api.com"),  # bare host — not in manifest
+        car.Action(skill="web_fetch", task="get rates", kind="skill_call",
+                   is_destructive=False, network_call=True,
+                   network_domain="api.exchangerate-api.com"),  # corrected
+        car.Action(skill="", task="", kind="checkpoint_done"),
+    ]
+    idx = {"n": 0}
+    def fake_next(*a, **k):
+        out = actions[idx["n"]]
+        idx["n"] += 1
+        return out
+    monkeypatch.setattr(car, "_qwen_next_action", fake_next)
+    fake_run = MagicMock(return_value="USD/EUR=0.92")
+    monkeypatch.setattr(car, "_run_skill", fake_run)
+
+    history = car._execute_checkpoint(
+        plan_dict={"goals": ["g"]}, checkpoint=checkpoint,
+        agent_grants=grants, global_grants=global_grants,
+        agent_id="agent_test",
+    )
+
+    # Corrected web_fetch ran exactly once; bare-host attempt was rejected pre-execution
+    fake_run.assert_called_once_with("web_fetch", "get rates", "agent_test")
+    nudges = [h for h in history if h.get("_skill_correction_nudge")]
+    assert len(nudges) == 1
+    assert "domain_error" in nudges[0]["result"]
+    assert "api.exchangerate-api.com" in nudges[0]["result"]
+
+
+def test_write_path_hallucination_retries_with_corrected_path_list(monkeypatch, temp_codec_dir):
+    """When LLM picks an unauthorized write path, runner appends a
+    correction nudge listing allowed write_paths globs and re-calls Qwen."""
+    import codec_agent_runner as car
+
+    grants = {"skills": ["file_write"],
+              "read_paths": [], "write_paths": ["~/Documents/agents/**"],
+              "network_domains": []}
+    global_grants = {"schema": 1, "version": 0,
+                     "skills": [], "read_paths": [], "write_paths": [], "network_domains": []}
+    checkpoint = {"id": "cp1", "title": "t", "description": "d",
+                  "expected_output": "o", "step_budget": 5}
+
+    actions = [
+        car.Action(skill="file_write", task="write report", kind="skill_call",
+                   is_destructive=False, touches_path=True,
+                   path="/tmp/report.md"),                           # outside glob
+        car.Action(skill="file_write", task="write report", kind="skill_call",
+                   is_destructive=False, touches_path=True,
+                   path="~/Documents/agents/forex/report.md"),        # corrected
+        car.Action(skill="", task="", kind="checkpoint_done"),
+    ]
+    idx = {"n": 0}
+    def fake_next(*a, **k):
+        out = actions[idx["n"]]
+        idx["n"] += 1
+        return out
+    monkeypatch.setattr(car, "_qwen_next_action", fake_next)
+    fake_run = MagicMock(return_value="ok")
+    monkeypatch.setattr(car, "_run_skill", fake_run)
+
+    history = car._execute_checkpoint(
+        plan_dict={"goals": ["g"]}, checkpoint=checkpoint,
+        agent_grants=grants, global_grants=global_grants,
+        agent_id="agent_test",
+    )
+
+    fake_run.assert_called_once_with("file_write", "write report", "agent_test")
+    nudges = [h for h in history if h.get("_skill_correction_nudge")]
+    assert len(nudges) == 1
+    assert "path_error" in nudges[0]["result"]
+    assert "~/Documents/agents/**" in nudges[0]["result"]
+
+
+def test_read_path_hallucination_retries_with_corrected_path_list(monkeypatch, temp_codec_dir):
+    """When LLM picks an unauthorized read path, runner appends a
+    correction nudge listing allowed read_paths and re-calls Qwen."""
+    import codec_agent_runner as car
+
+    grants = {"skills": ["file_read"],
+              "read_paths": ["~/Documents/research/**"],
+              "write_paths": [], "network_domains": []}
+    global_grants = {"schema": 1, "version": 0,
+                     "skills": [], "read_paths": [], "write_paths": [], "network_domains": []}
+    checkpoint = {"id": "cp1", "title": "t", "description": "d",
+                  "expected_output": "o", "step_budget": 5}
+
+    actions = [
+        car.Action(skill="file_read", task="read", kind="skill_call",
+                   is_destructive=False, reads_path=True,
+                   read_path="/etc/passwd"),                           # outside allowlist
+        car.Action(skill="file_read", task="read", kind="skill_call",
+                   is_destructive=False, reads_path=True,
+                   read_path="~/Documents/research/notes.md"),         # corrected
+        car.Action(skill="", task="", kind="checkpoint_done"),
+    ]
+    idx = {"n": 0}
+    def fake_next(*a, **k):
+        out = actions[idx["n"]]
+        idx["n"] += 1
+        return out
+    monkeypatch.setattr(car, "_qwen_next_action", fake_next)
+    fake_run = MagicMock(return_value="content")
+    monkeypatch.setattr(car, "_run_skill", fake_run)
+
+    history = car._execute_checkpoint(
+        plan_dict={"goals": ["g"]}, checkpoint=checkpoint,
+        agent_grants=grants, global_grants=global_grants,
+        agent_id="agent_test",
+    )
+
+    fake_run.assert_called_once_with("file_read", "read", "agent_test")
+    nudges = [h for h in history if h.get("_skill_correction_nudge")]
+    assert len(nudges) == 1
+    assert "read_path_error" in nudges[0]["result"]
+    assert "~/Documents/research/**" in nudges[0]["result"]
