@@ -32,3 +32,49 @@ def test_audit_constants_present():
         "agent_plan_drafted", "agent_plan_approved", "agent_plan_rejected",
         "agent_plan_revised", "agent_global_grant_added", "agent_global_grant_removed",
     })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Task 2 — Plan/Checkpoint/PermissionManifest dataclasses (3 tests)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_plan_dataclass_basic():
+    from codec_agent_plan import Plan, Checkpoint, PermissionManifest
+    cp = Checkpoint(
+        id="abc123ab", title="Scrape listings", description="...",
+        skills_needed=["chrome_open"], expected_output="JSON of listings",
+        step_budget=30,
+    )
+    pm = PermissionManifest(
+        read_paths=["~/Documents/**"], write_paths=["~/.codec/agents/test/artifacts/**"],
+        network_domains=["example.com"], skills=["chrome_open"], destructive_ops=[],
+    )
+    plan = Plan(
+        schema=1, agent_id="test_agent",
+        goals=["Scrape data"], checkpoints=[cp], permission_manifest=pm,
+        estimated_duration_minutes=15, assumptions=[],
+    )
+    assert plan.schema == 1
+    assert plan.checkpoints[0].title == "Scrape listings"
+    assert plan.permission_manifest.skills == ["chrome_open"]
+
+
+def test_plan_dataclass_to_dict_roundtrip():
+    from codec_agent_plan import Plan, Checkpoint, PermissionManifest, plan_from_dict
+    cp = Checkpoint(id="x", title="t", description="d",
+                    skills_needed=["s"], expected_output="o", step_budget=10)
+    pm = PermissionManifest(read_paths=[], write_paths=[], network_domains=[],
+                            skills=["s"], destructive_ops=[])
+    plan = Plan(schema=1, agent_id="a1", goals=["g"], checkpoints=[cp],
+                permission_manifest=pm, estimated_duration_minutes=5, assumptions=[])
+    d = plan.to_dict()
+    plan2 = plan_from_dict(d)
+    assert plan2.agent_id == plan.agent_id
+    assert plan2.checkpoints[0].id == plan.checkpoints[0].id
+    assert plan2.permission_manifest.skills == plan.permission_manifest.skills
+
+
+def test_plan_from_dict_rejects_bad_schema():
+    from codec_agent_plan import plan_from_dict
+    with pytest.raises(ValueError, match="unsupported plan schema"):
+        plan_from_dict({"schema": 99, "agent_id": "x"})
