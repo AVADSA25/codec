@@ -459,3 +459,63 @@ def grant_permission(agent_id: str, body: GrantBody):
 
     return {"agent_id": agent_id, "grants": grants,
             "status": _cap.load_manifest(agent_id).get("status")}
+
+
+# ── Phase 3 Step 9 review fix I2 — extend step_budget for paused agents ────
+class ExtendBudgetBody(BaseModel):
+    additional_steps: int = Field(..., ge=1, le=100)
+
+
+@router.post("/api/agents/{agent_id}/extend_budget")
+def extend_budget(agent_id: str, body: ExtendBudgetBody):
+    """Bump the current checkpoint's step_budget for an agent paused on
+    step_budget_exhausted. Writes step_budget_overrides[checkpoint_id]
+    in state.json (mutable; does NOT modify plan.json so plan_hash
+    tamper check stays intact). Transitions paused → running so the
+    daemon respawns the thread on its next tick.
+
+    409 if status != paused or status_reason != step_budget_exhausted.
+    Body: {"additional_steps": int} where 1 <= int <= 100.
+    """
+    manifest = _cap.load_manifest(agent_id)
+    if not manifest:
+        raise HTTPException(status_code=404, detail=f"agent {agent_id} not found")
+
+    status = manifest.get("status", "")
+    reason = manifest.get("status_reason", "")
+    if status != "paused" or reason != "step_budget_exhausted":
+        raise HTTPException(
+            status_code=409,
+            detail=f"agent must be paused with reason=step_budget_exhausted "
+                   f"(currently status={status!r}, reason={reason!r})",
+        )
+
+    plan = _cap.load_plan(agent_id)
+    if plan is None:
+        raise HTTPException(status_code=409, detail="agent has no plan")
+    state = _cap.load_state(agent_id)
+    current_idx = int(state.get("current_checkpoint", 0))
+    if current_idx >= len(plan.checkpoints):
+        raise HTTPException(status_code=409, detail="agent has no current checkpoint")
+
+    cp = plan.checkpoints[current_idx]
+    overrides = state.get("step_budget_overrides", {}) or {}
+    base = int(overrides.get(cp.id, cp.step_budget))
+    new_budget = base + int(body.additional_steps)
+    overrides[cp.id] = new_budget
+    state["step_budget_overrides"] = overrides
+    _cap.save_state(agent_id, state)
+
+    try:
+        _cap.set_status(agent_id, "running")
+    except _cap.InvalidStatusTransition as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+    return {
+        "agent_id": agent_id,
+        "checkpoint_id": cp.id,
+        "previous_budget": base,
+        "new_budget": new_budget,
+        "additional_steps": int(body.additional_steps),
+        "status": "running",
+    }

@@ -456,14 +456,18 @@ def _run_agent(agent_id: str, cid: Optional[str] = None) -> None:
 
         # Walk checkpoints
         history: List[Dict[str, Any]] = []
+        # Review fix I2: per-checkpoint step_budget overrides applied on resume
+        # after /extend_budget endpoint bumps the cap. Keys are checkpoint IDs.
+        budget_overrides = state.get("step_budget_overrides", {}) or {}
         for idx, cp in enumerate(plan.checkpoints):
             if idx < current_idx:
                 continue  # resume: skip already-completed checkpoints
+            effective_budget = int(budget_overrides.get(cp.id, cp.step_budget))
             cp_dict = {
                 "id": cp.id, "title": cp.title, "description": cp.description,
                 "skills_needed": cp.skills_needed,
                 "expected_output": cp.expected_output,
-                "step_budget": cp.step_budget,
+                "step_budget": effective_budget,
             }
 
             _audit(AGENT_CHECKPOINT_STARTED,
@@ -506,10 +510,16 @@ def _run_agent(agent_id: str, cid: Optional[str] = None) -> None:
                            extra={"agent_id": agent_id, "checkpoint_id": cp.id,
                                   "reason": "destructive_consent_timeout"})
                 else:
-                    _atomic_set_status(agent_id, "blocked_on_permission",
+                    # Review fix I2: real budget hit → paused (not blocked_on_permission).
+                    # User can resolve via POST /api/agents/{id}/extend_budget which
+                    # writes step_budget_overrides[checkpoint_id] to state.json and
+                    # transitions status=paused → running. The plan stays immutable
+                    # (plan_hash tamper check remains intact); the override lives in
+                    # mutable state.json.
+                    _atomic_set_status(agent_id, "paused",
                                        reason="step_budget_exhausted")
-                    _audit(AGENT_BLOCKED_ON_PERMISSION,
-                           message="step budget exhausted",
+                    _audit(AGENT_PAUSED,
+                           message="paused on step budget exhaustion",
                            correlation_id=cid, outcome="warning", level="warning",
                            extra={"agent_id": agent_id, "checkpoint_id": cp.id,
                                   "reason": "step_budget_exhausted"})

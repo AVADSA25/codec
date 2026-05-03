@@ -782,3 +782,79 @@ def test_post_api_agents_404_for_unknown_id(temp_codec_dir):
 
     r = client.post("/api/agents/nonexistent/abort")
     assert r.status_code == 404
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Review fix I2 — paused on step_budget + /extend_budget endpoint (3 tests)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_run_agent_step_budget_exhausted_pauses_not_blocks(monkeypatch, temp_codec_dir):
+    """Real budget hit (not destructive_consent_timeout) → status=paused
+    with reason=step_budget_exhausted (was: blocked_on_permission)."""
+    import codec_agent_runner as car
+    import codec_agent_plan as cap
+    _setup_approved_agent(temp_codec_dir, monkeypatch, num_checkpoints=1)
+
+    # Always return skill_call (never checkpoint_done) → budget exhausts
+    monkeypatch.setattr(car, "_qwen_next_action", lambda *a, **k:
+        car.Action(skill="weather", task="loop", kind="skill_call",
+                   is_destructive=False, network_call=False, touches_path=False))
+    monkeypatch.setattr(car, "_run_skill", MagicMock(return_value="r"))
+
+    car._run_agent("test_agent")
+
+    m = cap.load_manifest("test_agent")
+    assert m["status"] == "paused"
+    assert m["status_reason"] == "step_budget_exhausted"
+
+
+def test_extend_budget_endpoint_bumps_and_resumes(monkeypatch, temp_codec_dir):
+    """POST /api/agents/{id}/extend_budget writes state.json override,
+    transitions paused → running."""
+    from fastapi.testclient import TestClient
+    from fastapi import FastAPI
+    import codec_agent_plan as cap
+    _setup_approved_agent(temp_codec_dir, monkeypatch, num_checkpoints=1)
+
+    # Set up paused-on-budget state
+    cap.save_manifest("test_agent", {
+        **cap.load_manifest("test_agent"),
+        "status": "paused",
+        "status_reason": "step_budget_exhausted",
+    })
+
+    from routes.agents import router
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app)
+
+    r = client.post("/api/agents/test_agent/extend_budget",
+                     json={"additional_steps": 20})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "running"
+    assert body["additional_steps"] == 20
+
+    # State.json has the override
+    state = cap.load_state("test_agent")
+    cp_id = cap.load_plan("test_agent").checkpoints[0].id
+    assert state["step_budget_overrides"][cp_id] >= 25  # base 5 + 20
+
+
+def test_extend_budget_endpoint_409_when_not_paused_on_budget(temp_codec_dir):
+    """409 if status != paused or status_reason != step_budget_exhausted."""
+    from fastapi.testclient import TestClient
+    from fastapi import FastAPI
+    import codec_agent_plan as cap
+
+    cap.save_manifest("a1", {"agent_id": "a1", "status": "running",
+                              "title": "x"})
+
+    from routes.agents import router
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app)
+
+    r = client.post("/api/agents/a1/extend_budget",
+                     json={"additional_steps": 10})
+    assert r.status_code == 409
