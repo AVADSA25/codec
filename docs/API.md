@@ -140,6 +140,115 @@ List saved custom agents.
 
 ---
 
+## Autonomous Agents (Phase 3 — drop-a-project mode)
+
+The agent system added in Phase 3. User drops a project description; Qwen-3.6 drafts a structured plan with explicit permission manifest; user approves once; `codec-agent-runner` PM2 daemon executes autonomously with permission gate enforcement, tamper detection, and resume-after-restart.
+
+For full design, see `docs/PHASE3-BLUEPRINT.md`. For runtime architecture, see `docs/ARCHITECTURE.md` (Phase 3 sequence diagram).
+
+### POST /api/agents
+Create a new agent and draft its plan via Qwen-3.6 (typical 2–10 s).
+
+```bash
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"title":"Marbella property bot","description":"Build a Telegram bot that monitors Marbella property listings under €500k and pings me on new ones"}' \
+  http://localhost:8090/api/agents
+# → {"agent_id": "agent_abc123", "status": "awaiting_approval"}
+```
+
+### GET /api/agents
+List all agents with current status. Polled by the PWA every 5 s for the agent status pills above the chat input.
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8090/api/agents
+# → {"agents": [{"agent_id":"...","title":"...","status":"running","created_at":"..."}]}
+```
+
+### GET /api/agents/{id}
+Full agent state — manifest + plan + state + grants in one response. The PWA's "View plan" button calls this.
+
+### POST /api/agents/{id}/approve
+Approve drafted plan. Re-validates skills against registry, computes plan_hash (sha256), writes grants.json, transitions `awaiting_approval → approved`. The daemon picks up `approved` agents within 5 s.
+
+### POST /api/agents/{id}/reject
+Body: `{"reason": "..."}` (optional). Transitions to `rejected`; plan dir kept 7 days for review then auto-deleted.
+
+### POST /api/agents/{id}/revise
+Body: `{"edited_plan": { ... full Plan dict ... }}`. User-edited plan, re-validated, transitions `awaiting_approval → revised → awaiting_approval`.
+
+### POST /api/agents/{id}/abort
+Atomic transition to `aborted`. Daemon checks status before each operation.
+
+### POST /api/agents/{id}/pause / /resume
+`paused → running` (resume), or `running → paused` (pause). Idempotent.
+
+### POST /api/agents/{id}/grant
+Grant a missing permission to a `blocked_on_permission` agent. Per-agent only (not global).
+
+```bash
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"kind":"skills","value":"calculator"}' \
+  http://localhost:8090/api/agents/agent_abc123/grant
+```
+
+`kind` ∈ `skills` / `read_paths` / `write_paths` / `network_domains`.
+
+### POST /api/agents/{id}/extend_budget
+Bump current checkpoint's step_budget. Only valid when `status=paused` AND `status_reason=step_budget_exhausted`.
+
+```bash
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"additional_steps":20}' \
+  http://localhost:8090/api/agents/agent_abc123/extend_budget
+```
+
+Returns `{previous_budget, new_budget, status:"running"}`. Override is written to `state.json` (plan stays immutable; tamper-hash check intact).
+
+### GET /api/agents/{id}/messages
+Return the full message timeline from `~/.codec/agents/{id}/messages.jsonl`.
+
+```json
+{"messages":[
+  {"ts":"2026-05-03T12:15:00Z","type":"agent_update","title":"Checkpoint 2/5: Scaffolded bot","body":"...","actions":[...]}
+]}
+```
+
+`type` ∈ `agent_update` / `agent_blocked` / `agent_question` / `agent_done` / `agent_aborted` / `user_reply`.
+
+### POST /api/agents/{id}/messages
+User reply — daemon picks up between checkpoints.
+
+```bash
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  -d '{"body":"please skip the email step and continue"}' \
+  http://localhost:8090/api/agents/agent_abc123/messages
+```
+
+### POST /api/agents/{id}/silence
+Toggle banner silence per-agent. Silenced = timeline messages still written; notifications.json banner skipped (no badge spam).
+
+```bash
+curl -X POST -d '{"silenced":true}' http://localhost:8090/api/agents/agent_abc123/silence
+```
+
+### Global allowlist (cross-agent permissions, Q4)
+
+#### GET /api/agent_global_grants
+Read the global allowlist.
+
+#### POST /api/agent_global_grants
+Add an entry. Body: `{"kind":"network_domains","value":"github.com"}`. Items added here are auto-approved on every future plan.
+
+#### DELETE /api/agent_global_grants
+Remove an entry. Same body shape.
+
+`kind` ∈ `network_domains` / `read_paths` / `write_paths` / `skills`.
+
+---
+
 ## Schedules
 
 ### GET /api/schedules
