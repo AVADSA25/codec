@@ -140,6 +140,17 @@ def test_permission_gate_allows_via_global_allowlist(basic_grants):
     permission_gate(action, basic_grants, global_grants)
 
 
+def test_permission_gate_blocks_domain_not_in_grants(basic_grants, empty_global_grants):
+    from codec_agent_runner import permission_gate, Action, PermissionViolation
+    action = Action(skill="weather", task="x",
+                    is_destructive=False, network_call=True,
+                    network_domain="evil.com", touches_path=False)
+    with pytest.raises(PermissionViolation) as exc:
+        permission_gate(action, basic_grants, empty_global_grants)
+    assert exc.value.reason == "domain_not_authorized"
+    assert exc.value.needed == "evil.com"
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Task 4 — Qwen-3.6 next-action driver (3 tests)
 # ─────────────────────────────────────────────────────────────────────────────
