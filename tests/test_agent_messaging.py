@@ -167,3 +167,35 @@ def test_get_unread_user_replies_returns_unread(temp_codec_dir):
     unread = cam.get_unread_user_replies(agent_id="agent_test", since_ts=t1)
     assert len(unread) == 2
     assert unread[-1]["body"] == "r3"
+
+
+def test_silenced_agent_writes_jsonl_but_no_notification(temp_codec_dir):
+    """When agent is silenced, post_message still writes to messages.jsonl
+    but skips notifications.json (Step 10 silence kill-switch per Q12 / Step 9 §10)."""
+    import codec_agent_messaging as cam
+    cam.set_silenced("agent_test", True)
+    cam.post_message(agent_id="agent_test", type="agent_update",
+                     title="t", body="b", actions=[], correlation_id="cid")
+
+    msg_path = temp_codec_dir / "agents" / "agent_test" / "messages.jsonl"
+    assert msg_path.exists()  # timeline still recorded
+
+    # Notifications was either not written or has 0 entries for this agent
+    if (temp_codec_dir / "notifications.json").exists():
+        notifs = json.loads((temp_codec_dir / "notifications.json").read_text())
+        agent_notifs = [n for n in notifs if n.get("agent_id") == "agent_test"]
+        assert len(agent_notifs) == 0
+
+
+def test_unsilencing_restores_notifications(temp_codec_dir):
+    import codec_agent_messaging as cam
+    cam.set_silenced("agent_test", True)
+    cam.post_message(agent_id="agent_test", type="agent_update", title="t",
+                     body="b", actions=[], correlation_id="cid")
+    cam.set_silenced("agent_test", False)
+    cam.post_message(agent_id="agent_test", type="agent_update", title="t2",
+                     body="b", actions=[], correlation_id="cid")
+
+    notifs = json.loads((temp_codec_dir / "notifications.json").read_text())
+    agent_notifs = [n for n in notifs if n.get("agent_id") == "agent_test"]
+    assert len(agent_notifs) == 1  # only the unsilenced one
