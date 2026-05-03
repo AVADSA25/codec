@@ -634,8 +634,38 @@ function toggleThinking(){
 
 function genId(){return Date.now().toString(36)+Math.random().toString(36).substr(2,5)}
 
-function startNewSession(){sessionId=genId();chatHist=[];pendingFiles=[];document.getElementById('fileChips').innerHTML='';document.getElementById('messages').innerHTML='<div class="empty-state" id="emptyState"><img src="https://i.imgur.com/jD1X5W8.png"><p>Deep Chat \u2014 250K context window<br>Drop files, images, or just talk.</p></div>'}
-startNewSession();
+function startNewSession(){sessionId=genId();localStorage.setItem('codec-chat-session',sessionId);chatHist=[];pendingFiles=[];document.getElementById('fileChips').innerHTML='';document.getElementById('messages').innerHTML='<div class="empty-state" id="emptyState"><img src="https://i.imgur.com/jD1X5W8.png"><p>Deep Chat \u2014 250K context window<br>Drop files, images, or just talk.</p></div>'}
+
+// PR #39: persist sessionId across page reloads. If a previous session
+// exists, load it on boot so the user lands back on the same chat (with
+// any project plan cards rehydrated). Falls back to a fresh session if
+// the previous one's GET returns empty.
+(function bootSession(){
+  var saved=localStorage.getItem('codec-chat-session');
+  if(!saved){startNewSession();return}
+  // Optimistically load \u2014 if the session is empty/missing, we'll start fresh
+  fetch('/api/qchat/session/'+saved).then(function(r){
+    return r.ok?r.json():[];
+  }).then(function(data){
+    if(data&&data.length>0){
+      // Use the saved id and replay history through the same code path
+      // sidebar uses (so the plan-card rehydration runs once the messages
+      // are in the DOM).
+      sessionId=saved;
+      var es=document.getElementById('emptyState');if(es)es.remove();
+      document.getElementById('messages').innerHTML='';
+      chatHist=[];
+      for(var i=0;i<data.length;i++){
+        var m=data[i];
+        addMessage(m.role==='user'?'user':'assistant',m.content||'',false);
+        chatHist.push({role:m.role,content:m.content||''});
+      }
+      rehydrateAgentPlanCards().then(scrollBottom);
+    }else{
+      startNewSession();
+    }
+  }).catch(function(){startNewSession();});
+})();
 
 async function saveMessages(msgs){
   var title=(chatHist.find(function(m){return m.role==='user'})||{}).content||'New Chat';
@@ -684,13 +714,16 @@ async function loadSidebarHistory(){
 }
 
 async function loadSession(sid){
-  closeSidebar();sessionId=sid;chatHist=[];pendingFiles=[];
+  closeSidebar();sessionId=sid;localStorage.setItem('codec-chat-session',sid);chatHist=[];pendingFiles=[];
   document.getElementById('fileChips').innerHTML='';
   var es=document.getElementById('emptyState');if(es)es.remove();
   document.getElementById('messages').innerHTML='';
   try{
     var r=await fetch('/api/qchat/session/'+sid);var data=await r.json();
     for(var i=0;i<data.length;i++){var m=data[i];addMessage(m.role==='user'?'user':'assistant',m.content||'',false);chatHist.push({role:m.role,content:m.content||''})}
+    // PR #39: any assistant message with [CODEC_AGENT_PLAN:<id>] marker
+    // gets replaced by the live plan card (fetched from /api/agents/<id>).
+    await rehydrateAgentPlanCards();
     scrollBottom()
   }catch(e){}
 }
@@ -743,6 +776,119 @@ function editMessage(text,btn){
   }
 }
 var addMsg=addMessage; // alias for webcam code
+
+// ───────────────────────────────────────────────────────────────────────────
+// PR #39 — Agent plan persistence (Project mode)
+// ───────────────────────────────────────────────────────────────────────────
+// Why this exists: Phase 3.5 saved only the bare string "Project drafted:
+// agent_xxx" to chat history; the inline card with approve/reject/view-plan
+// buttons lived only in the DOM. Reloading the chat lost the card.
+//
+// Approach: persist a marker token `[CODEC_AGENT_PLAN:<id>]` inside the
+// assistant message content. On chat session load, scan rendered messages,
+// detect the marker, fetch the agent state, and replace the text bubble
+// with the same card the live flow renders.
+//
+// The card's button callbacks (approveAgentInChat / rejectAgentInChat /
+// viewAgentPlan) only need agent_id, so reload-time rendering matches the
+// live render exactly. Status-aware buttons (e.g. "Resume" on
+// blocked_on_qwen) come for free via the agent state object.
+var AGENT_PLAN_MARKER_RE=/\[CODEC_AGENT_PLAN:(agent_[a-z0-9]+)\]/;
+
+function extractAgentIdFromMessage(content){
+  if(!content||typeof content!=='string')return null;
+  var m=content.match(AGENT_PLAN_MARKER_RE);
+  return m?m[1]:null;
+}
+
+function renderAgentPlanCard(agentId,agentInfo){
+  // agentInfo accepts two shapes:
+  //   - POST /api/agents result: {agent_id, status, project_dir} (flat)
+  //   - GET  /api/agents/<id>:   {manifest: {agent_id, status, ...}, plan, state, grants}
+  // Normalize both into the same view-model.
+  agentInfo=agentInfo||{};
+  var manifest=agentInfo.manifest||agentInfo;   // GET wraps in .manifest, POST is flat
+  var status=manifest.status||'';
+  var reason=manifest.status_reason||'';
+  var projectDir=manifest.project_dir||'';
+  var folderHtml='';
+  if(projectDir){
+    folderHtml='<div style="margin:6px 0 8px;padding:8px 10px;background:rgba(167,139,250,0.08);border:1px solid var(--accent,#a78bfa);border-radius:6px;font-size:12px">'+
+      '<div style="font-weight:600;color:var(--accent,#a78bfa);margin-bottom:2px">Project folder</div>'+
+      '<code style="font-size:11px;word-break:break-all">'+escHtml(projectDir)+'</code>'+
+      '<div style="color:var(--text-dim);margin-top:4px;font-size:11px">Open this folder in your IDE to see the agent\'s files as they\'re created. (cmd+click to open in Finder)</div>'+
+    '</div>';
+  }
+  // Status-aware action buttons. draft_pending / awaiting_approval =
+  // approve+reject+view; running/done/aborted = view-only; blocked_* =
+  // resume+abort+view.
+  var buttonsHtml='';
+  var isPendingApproval=(!status)||status==='draft_pending'||status==='awaiting_approval';
+  var isBlocked=status&&status.indexOf('blocked_')===0;
+  var isTerminal=status==='done'||status==='aborted'||status==='plan_failed';
+  if(isPendingApproval){
+    buttonsHtml=
+      '<button onclick="approveAgentInChat(\''+agentId+'\',event)" style="padding:6px 14px;background:var(--accent,#a78bfa);color:#000;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">Approve plan</button>'+
+      '<button onclick="rejectAgentInChat(\''+agentId+'\',event)" style="padding:6px 14px;background:transparent;color:var(--text);border:1px solid var(--border,#2a2a30);border-radius:6px;cursor:pointer;font-size:12px">Reject</button>'+
+      '<button onclick="viewAgentPlan(\''+agentId+'\',event)" style="padding:6px 14px;background:transparent;color:var(--text);border:1px solid var(--border,#2a2a30);border-radius:6px;cursor:pointer;font-size:12px">View plan</button>';
+  }else if(isBlocked){
+    buttonsHtml=
+      '<button onclick="viewAgentPlan(\''+agentId+'\',event)" style="padding:6px 14px;background:var(--accent,#a78bfa);color:#000;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">View plan + resolve</button>'+
+      '<button onclick="rejectAgentInChat(\''+agentId+'\',event)" style="padding:6px 14px;background:transparent;color:var(--text);border:1px solid var(--border,#2a2a30);border-radius:6px;cursor:pointer;font-size:12px">Abort</button>';
+  }else{
+    buttonsHtml=
+      '<button onclick="viewAgentPlan(\''+agentId+'\',event)" style="padding:6px 14px;background:transparent;color:var(--text);border:1px solid var(--border,#2a2a30);border-radius:6px;cursor:pointer;font-size:12px">View plan</button>';
+  }
+  var statusLine='';
+  if(status){
+    var color=isTerminal?'var(--text-dim)':(isBlocked?'#f87171':'#10b981');
+    var label=status.replace(/_/g,' ');
+    statusLine='<div style="margin-bottom:6px;font-size:11px;color:'+color+'">status: <strong>'+escHtml(label)+'</strong>'+(reason?' ('+escHtml(reason)+')':'')+'</div>';
+  }
+  var subline=isPendingApproval
+    ?'A plan with a permission manifest has been written. Review and approve to let the agent run autonomously.'
+    :(isTerminal?'Agent finished. View plan to see what ran.':'Agent state shown above; click View plan for live progress.');
+  return'<div style="font-weight:600;margin-bottom:6px">Project drafted</div>'+
+    '<div style="margin-bottom:6px">agent_id: <code>'+escHtml(agentId)+'</code></div>'+
+    statusLine+
+    folderHtml+
+    '<div style="color:var(--text-dim);font-size:12px;margin-bottom:8px">'+subline+'</div>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap">'+buttonsHtml+'</div>';
+}
+
+async function rehydrateAgentPlanCards(){
+  // Called after loadSession finishes rendering text messages. Scan
+  // assistant bubbles for the marker, fetch each agent in parallel,
+  // replace the bubble with the rendered card. Failures fall back
+  // to leaving the marker text visible (so the user knows something
+  // is missing rather than seeing nothing).
+  var msgs=document.querySelectorAll('#messages .msg.assistant .msg-bubble');
+  var jobs=[];
+  for(var i=0;i<msgs.length;i++){
+    var bubble=msgs[i];
+    var agentId=extractAgentIdFromMessage(bubble.textContent||'');
+    if(!agentId)continue;
+    jobs.push((function(b,id){
+      return fetch('/api/agents/'+id).then(function(r){
+        return r.ok?r.json():null;
+      }).then(function(info){
+        // GET /api/agents/<id> returns {manifest, plan, state, grants}.
+        // Treat presence of manifest.agent_id as "agent exists".
+        var ok=info&&info.manifest&&info.manifest.agent_id;
+        if(ok){
+          b.innerHTML=renderAgentPlanCard(id,info);
+        }else{
+          // Agent missing (e.g. manifest deleted); show inline notice
+          // but keep the agent_id visible so the user knows what's gone.
+          b.innerHTML='<div style="font-weight:600;margin-bottom:4px">Project: '+escHtml(id)+'</div>'+
+            '<div style="color:var(--text-dim);font-size:12px">Agent state not found — manifest may have been removed.</div>';
+        }
+      }).catch(function(){/* keep raw text on error */});
+    })(bubble,agentId));
+  }
+  if(jobs.length){await Promise.all(jobs)}
+}
+
 function scrollBottom(){var m=document.getElementById('messages');m.scrollTop=m.scrollHeight}
 function showTyping(){var div=document.createElement('div');div.className='typing';div.id='typing';div.innerHTML='<span>\u25CF</span><span>\u25CF</span><span>\u25CF</span> CODEC is thinking...';document.getElementById('messages').appendChild(div);scrollBottom()}
 function hideTyping(){var t=document.getElementById('typing');if(t)t.remove()}
@@ -798,25 +944,14 @@ async function sendMessage(){
         pendingDiv.querySelector('.msg-bubble').innerHTML='<span style="color:var(--danger,#f87171)">Plan failed:</span> '+escHtml(pd.detail);
         chatHist.push({role:'assistant',content:'Plan failed: '+pd.detail});
       }else if(pd.agent_id){
-        var folderHtml='';
-        if(pd.project_dir){
-          folderHtml='<div style="margin:6px 0 8px;padding:8px 10px;background:rgba(167,139,250,0.08);border:1px solid var(--accent,#a78bfa);border-radius:6px;font-size:12px">'+
-            '<div style="font-weight:600;color:var(--accent,#a78bfa);margin-bottom:2px">Project folder created</div>'+
-            '<code style="font-size:11px;word-break:break-all">'+escHtml(pd.project_dir)+'</code>'+
-            '<div style="color:var(--text-dim);margin-top:4px;font-size:11px">Open this folder in your IDE to see the agent\'s files as they\'re created. (cmd+click to open in Finder)</div>'+
-          '</div>';
-        }
-        var html='<div style="font-weight:600;margin-bottom:6px">Project drafted</div>'+
-          '<div style="margin-bottom:6px">agent_id: <code>'+escHtml(pd.agent_id)+'</code></div>'+
-          folderHtml+
-          '<div style="color:var(--text-dim);font-size:12px;margin-bottom:8px">A plan with a permission manifest has been written. Review and approve to let the agent run autonomously.</div>'+
-          '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
-            '<button onclick="approveAgentInChat(\''+pd.agent_id+'\',event)" style="padding:6px 14px;background:var(--accent,#a78bfa);color:#000;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">Approve plan</button>'+
-            '<button onclick="rejectAgentInChat(\''+pd.agent_id+'\',event)" style="padding:6px 14px;background:transparent;color:var(--text);border:1px solid var(--border,#2a2a30);border-radius:6px;cursor:pointer;font-size:12px">Reject</button>'+
-            '<button onclick="viewAgentPlan(\''+pd.agent_id+'\',event)" style="padding:6px 14px;background:transparent;color:var(--text);border:1px solid var(--border,#2a2a30);border-radius:6px;cursor:pointer;font-size:12px">View plan</button>'+
-          '</div>';
-        pendingDiv.querySelector('.msg-bubble').innerHTML=html;
-        chatHist.push({role:'assistant',content:'Project drafted: '+pd.agent_id});
+        pendingDiv.querySelector('.msg-bubble').innerHTML=renderAgentPlanCard(pd.agent_id, pd);
+        // PR #39: persist a marker token so loadSession() can re-render the
+        // card on reload. Plain text content kept short and human-readable
+        // for users on screens that don't grok the marker (e.g. text export).
+        var planMarker='[CODEC_AGENT_PLAN:'+pd.agent_id+']';
+        var planText='Project drafted — agent_id '+pd.agent_id+'  '+planMarker;
+        chatHist.push({role:'assistant',content:planText});
+        saveMessages([{role:'assistant',content:planText}]);
         refreshAgentStatusPills();
       }else{
         pendingDiv.querySelector('.msg-bubble').innerHTML='<span style="color:var(--danger,#f87171)">Unknown response</span>';
