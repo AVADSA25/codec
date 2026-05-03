@@ -214,12 +214,128 @@ def post_message(agent_id: str, type: str, title: str, body: str,
 
         _atomic_write_json(_NOTIFICATIONS_PATH, notifs)
 
+    # Phase 3.5 — multi-channel notification dispatch.
+    # Reads agent's notification_channels from manifest. Each non-`pwa`
+    # channel gets its own dispatch (best-effort; failures don't block).
+    if not is_silenced(agent_id):
+        try:
+            channels = _agent_notification_channels(agent_id)
+            for ch in channels:
+                if ch == "pwa":
+                    continue   # already covered by notifications.json above
+                try:
+                    _dispatch_to_channel(ch, agent_id, title, body, type)
+                except Exception as e:
+                    log.debug("[%s] channel %s dispatch failed: %s", agent_id, ch, e)
+        except Exception as e:
+            log.debug("[%s] channel dispatch wrapper failed: %s", agent_id, e)
+
     # Audit emit
     _audit(AGENT_MESSAGE_SENT, message=f"{type} for {agent_id}",
            correlation_id=correlation_id,
            extra={"agent_id": agent_id, "type": type, "batched": batched})
 
     return record
+
+
+def _agent_notification_channels(agent_id: str) -> List[str]:
+    """Read manifest.notification_channels. Defaults to ['pwa']."""
+    manifest_path = _AGENTS_DIR / agent_id / "manifest.json"
+    if not manifest_path.exists():
+        return ["pwa"]
+    try:
+        data = json.loads(manifest_path.read_text())
+        chs = data.get("notification_channels") or ["pwa"]
+        return [c for c in chs if isinstance(c, str)] or ["pwa"]
+    except Exception:
+        return ["pwa"]
+
+
+def _dispatch_to_channel(channel: str, agent_id: str,
+                         title: str, body: str, msg_type: str) -> None:
+    """Best-effort dispatch to a single channel. Raises on hard failures.
+
+    Supported channels:
+      - "macos": macOS notification banner via osascript display notification
+      - "imessage": send via codec_imessage.send_message helper if available
+      - "telegram": send via codec_telegram.send_message helper if available
+
+    Phase 3.5 multi-channel notifications. Each channel is OPTIONAL —
+    if the underlying tooling isn't configured, dispatch is a no-op.
+    """
+    short_body = (body or "")[:200]
+    short_title = (title or f"CODEC agent {agent_id}")[:80]
+
+    if channel == "macos":
+        # macOS notification banner via osascript. No external dependencies.
+        import subprocess
+        # Sanitize for AppleScript single-quoting
+        def _esc(s: str) -> str:
+            return s.replace("\\", "\\\\").replace('"', '\\"')
+        script = (
+            f'display notification "{_esc(short_body)}" '
+            f'with title "{_esc(short_title)}" '
+            f'subtitle "agent: {_esc(agent_id)}"'
+        )
+        subprocess.run(["osascript", "-e", script], timeout=5,
+                       capture_output=True, check=False)
+        return
+
+    if channel == "imessage":
+        # Reuse the imessage_send skill's _send helper. Recipient is read
+        # from ~/.codec/config.json:notifications.imessage_recipient
+        # (phone number or Apple ID). If unset, skip silently.
+        recipient = _channel_config("imessage_recipient")
+        if not recipient:
+            log.debug("notifications.imessage_recipient not configured; skipping imessage")
+            return
+        try:
+            import sys as _sys
+            from pathlib import Path as _Path
+            skills_dir = str(_Path(__file__).resolve().parent / "skills")
+            if skills_dir not in _sys.path:
+                _sys.path.insert(0, skills_dir)
+            import imessage_send as _ims
+            _ims._send(recipient, f"[{short_title}]\n{short_body}")
+        except Exception as e:
+            log.debug("imessage send failed: %s", e)
+        return
+
+    if channel == "telegram":
+        # Send via Telegram Bot API directly (avoids tight coupling to
+        # codec_telegram.py's daemon internals). Reads token + chat_id
+        # from ~/.codec/config.json:notifications.{telegram_token,telegram_chat_id}.
+        token = _channel_config("telegram_token")
+        chat_id = _channel_config("telegram_chat_id")
+        if not token or not chat_id:
+            log.debug("notifications.telegram_{token,chat_id} not configured; skipping telegram")
+            return
+        try:
+            import requests
+            requests.post(
+                f"https://api.telegram.org/bot{token}/sendMessage",
+                json={"chat_id": chat_id,
+                      "text": f"*{short_title}*\n{short_body}",
+                      "parse_mode": "Markdown"},
+                timeout=5,
+            )
+        except Exception as e:
+            log.debug("telegram send failed: %s", e)
+        return
+
+    log.debug("unknown notification channel: %s", channel)
+
+
+def _channel_config(key: str) -> str:
+    """Read ~/.codec/config.json:notifications.<key>. Empty string if unset."""
+    cfg_path = _CODEC_DIR / "config.json"
+    if not cfg_path.exists():
+        return ""
+    try:
+        data = json.loads(cfg_path.read_text())
+        return str((data.get("notifications") or {}).get(key) or "")
+    except Exception:
+        return ""
 
 
 def post_user_reply(agent_id: str, body: str) -> Dict[str, Any]:

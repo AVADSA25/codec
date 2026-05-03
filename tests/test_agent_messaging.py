@@ -377,3 +377,71 @@ def test_post_api_agents_silence_toggles_state(temp_codec_dir):
     r2 = client.post("/api/agents/a1/silence", json={"silenced": False})
     assert r2.status_code == 200
     assert cam.is_silenced("a1") is False
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 3.5 — Multi-channel notification dispatch (5 tests)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_pwa_only_default_no_extra_dispatch(monkeypatch, temp_codec_dir):
+    """Default channels=['pwa']: no macOS/iMessage/Telegram dispatch."""
+    import codec_agent_messaging as cam
+    import codec_agent_plan as cap
+    cap.save_manifest("a1", {"agent_id": "a1", "title": "x",
+                              "notification_channels": ["pwa"]})
+    dispatched = []
+    monkeypatch.setattr(cam, "_dispatch_to_channel",
+                        lambda ch, *a, **k: dispatched.append(ch))
+    cam.post_message(agent_id="a1", type="agent_update", title="t",
+                     body="b", actions=[], correlation_id="cid")
+    assert dispatched == []  # pwa is skipped (handled inline)
+
+
+def test_macos_channel_dispatched_when_configured(monkeypatch, temp_codec_dir):
+    """When manifest includes 'macos', _dispatch_to_channel called for it."""
+    import codec_agent_messaging as cam
+    import codec_agent_plan as cap
+    cap.save_manifest("a1", {"agent_id": "a1", "title": "x",
+                              "notification_channels": ["pwa", "macos"]})
+    dispatched = []
+    monkeypatch.setattr(cam, "_dispatch_to_channel",
+                        lambda ch, *a, **k: dispatched.append(ch))
+    cam.post_message(agent_id="a1", type="agent_update", title="t",
+                     body="b", actions=[], correlation_id="cid")
+    assert dispatched == ["macos"]
+
+
+def test_dispatch_to_channel_macos_invokes_osascript(monkeypatch, temp_codec_dir):
+    """_dispatch_to_channel('macos', ...) builds an osascript command and runs it."""
+    import codec_agent_messaging as cam
+    captured = {"args": None}
+    class FakeProc:
+        returncode = 0
+    def fake_run(args, **kw):
+        captured["args"] = list(args)
+        return FakeProc()
+    import subprocess
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    cam._dispatch_to_channel("macos", "agent_test", "Test title", "Test body", "agent_update")
+    assert captured["args"] is not None
+    assert captured["args"][0] == "osascript"
+    assert "-e" in captured["args"]
+    # AppleScript text contains the title + body somewhere
+    full = " ".join(captured["args"])
+    assert "Test title" in full
+    assert "Test body" in full
+
+
+def test_imessage_channel_skipped_when_recipient_unset(monkeypatch, temp_codec_dir):
+    """Without config notifications.imessage_recipient, channel is no-op (no exception)."""
+    import codec_agent_messaging as cam
+    # No config.json → _channel_config returns ""
+    cam._dispatch_to_channel("imessage", "agent_test", "T", "B", "agent_update")
+    # Should not raise; should not call any send
+
+
+def test_telegram_channel_skipped_when_unconfigured(monkeypatch, temp_codec_dir):
+    """Without telegram token/chat_id, channel is no-op."""
+    import codec_agent_messaging as cam
+    cam._dispatch_to_channel("telegram", "agent_test", "T", "B", "agent_update")
+    # Should not raise
