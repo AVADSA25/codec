@@ -59,7 +59,12 @@ def _check_one_service(name: str, url: str) -> tuple:
 
 
 def check_system_health():
-    """Verify all CODEC services are running (checks run in parallel)."""
+    """Verify all CODEC services are running (checks run in parallel).
+
+    Only HTTP-exposing services are probed here. PM2-supervised daemons
+    (codec-observer, codec-agent-runner) rely on PM2's autorestart for
+    crash recovery — see AGENTS.md §3 "Background Execution".
+    """
     services = {
         "LLM": "http://localhost:8083/v1/models",
         "Whisper": "http://localhost:8084/health",
