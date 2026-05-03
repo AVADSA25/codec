@@ -490,16 +490,27 @@ class InvalidStatusTransition(ValueError):
     """Disallowed status transition attempted."""
 
 
-# Step 8 only manages: draft_pending → awaiting_approval → approved/rejected/revised.
-# Step 9 introduces: approved → running → checkpoint_completed/blocked_*/aborted/completed.
-# This map will be EXTENDED in Step 9.
+# Step 8 manages: draft_pending → awaiting_approval → approved/rejected/revised.
+# Step 9 adds: approved → running → checkpoint_completed/blocked_*/aborted/completed.
 _VALID_TRANSITIONS: Dict[str, frozenset] = {
-    "draft_pending":      frozenset({"awaiting_approval", "plan_failed"}),
-    "awaiting_approval":  frozenset({"approved", "rejected", "revised"}),
-    "revised":            frozenset({"awaiting_approval"}),
-    "approved":           frozenset({"rejected"}),  # Step 9 will add: running
-    "rejected":           frozenset(),
-    "plan_failed":        frozenset({"draft_pending"}),  # retry path
+    "draft_pending":         frozenset({"awaiting_approval", "plan_failed"}),
+    "awaiting_approval":     frozenset({"approved", "rejected", "revised"}),
+    "revised":               frozenset({"awaiting_approval"}),
+    "approved":              frozenset({"rejected", "running"}),  # Step 9: running
+    "rejected":              frozenset(),
+    "plan_failed":           frozenset({"draft_pending"}),  # retry path
+
+    # Step 9 runtime states
+    "running":               frozenset({"completed", "aborted", "paused",
+                                        "blocked_on_permission",
+                                        "blocked_on_destructive",
+                                        "crashed_resumed"}),
+    "paused":                frozenset({"running", "aborted"}),
+    "blocked_on_permission": frozenset({"running", "aborted"}),
+    "blocked_on_destructive": frozenset({"running", "aborted"}),
+    "crashed_resumed":       frozenset({"running", "aborted"}),
+    "completed":             frozenset(),
+    "aborted":               frozenset(),
 }
 
 

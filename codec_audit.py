@@ -255,6 +255,24 @@ PHASE3_STEP8_EVENTS = frozenset({
     AGENT_PLAN_REVISED, AGENT_GLOBAL_GRANT_ADDED, AGENT_GLOBAL_GRANT_REMOVED,
 })
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 3 Step 9 — Background Execution + Permission Gate
+# ─────────────────────────────────────────────────────────────────────────────
+AGENT_STARTED                 = "agent_started"
+AGENT_CHECKPOINT_STARTED      = "agent_checkpoint_started"
+AGENT_CHECKPOINT_COMPLETED    = "agent_checkpoint_completed"
+AGENT_PAUSED                  = "agent_paused"
+AGENT_RESUMED                 = "agent_resumed"
+AGENT_BLOCKED_ON_PERMISSION   = "agent_blocked_on_permission"
+AGENT_COMPLETED               = "agent_completed"
+AGENT_ABORTED                 = "agent_aborted"
+
+PHASE3_STEP9_EVENTS = frozenset({
+    AGENT_STARTED, AGENT_CHECKPOINT_STARTED, AGENT_CHECKPOINT_COMPLETED,
+    AGENT_PAUSED, AGENT_RESUMED, AGENT_BLOCKED_ON_PERMISSION,
+    AGENT_COMPLETED, AGENT_ABORTED,
+})
+
 SHIFT_REPORT_EXTRA_FIELDS = (
     "trigger_kind",            # "time" | "idle" | "manual"
     "sections_included",       # int — how many of the 5 sections rendered
