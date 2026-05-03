@@ -664,3 +664,37 @@ def test_global_grants_endpoints_full_flow(temp_codec_dir):
                          json={"kind": "network_domains", "value": "github.com"})
     assert r4.status_code == 200
     assert "github.com" not in r4.json()["network_domains"]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Task 15 — Auto-approve via global allowlist (1 test)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_approve_marks_global_allowlist_items(monkeypatch, temp_codec_dir):
+    """When a plan needs github.com and github.com is already in the
+    global allowlist, the approval grants.json should reflect it."""
+    import codec_agent_plan as cap
+
+    # Pre-populate global allowlist
+    cap.add_global_grant("network_domains", "github.com")
+    cap.add_global_grant("skills", "web_fetch")
+
+    monkeypatch.setattr(cap, "_qwen_chat", lambda *a, **k: json.dumps({
+        "goals": ["g"], "checkpoints": [{"title": "t", "description": "d",
+            "skills_needed": ["web_fetch"], "expected_output": "o", "step_budget": 10}],
+        "permission_manifest": {"read_paths": [], "write_paths": [],
+            "network_domains": ["github.com", "example.com"],
+            "skills": ["web_fetch"], "destructive_ops": []},
+        "estimated_duration_minutes": 5, "assumptions": []}))
+    fake_reg = MagicMock(); fake_reg.names.return_value = ["web_fetch"]
+    monkeypatch.setattr("codec_dispatch.registry", fake_reg, raising=False)
+
+    agent_id = cap.create_agent(title="X", description="d")
+    grants = cap.approve_plan(agent_id)
+
+    # All manifest items end up in grants
+    assert "github.com" in grants["network_domains"]
+    assert "example.com" in grants["network_domains"]
+    # Auto-approved tracking (a metadata field, not a separate set)
+    assert grants.get("auto_approved", {}).get("network_domains") == ["github.com"]
+    assert grants.get("auto_approved", {}).get("skills") == ["web_fetch"]

@@ -585,11 +585,21 @@ def approve_plan(agent_id: str) -> Dict[str, Any]:
 
     plan_hash = compute_plan_hash(plan)
 
+    # Compute auto_approved subset for UI rendering
+    global_grants = load_global_grants()
+    auto_approved: Dict[str, List[str]] = {}
+    for kind in ("network_domains", "read_paths", "write_paths", "skills"):
+        plan_items = getattr(plan.permission_manifest, kind)
+        global_items = set(global_grants.get(kind, []))
+        approved_via_global = [item for item in plan_items if item in global_items]
+        if approved_via_global:
+            auto_approved[kind] = approved_via_global
+
     grants = {
         "schema": 1,
         "agent_id": agent_id,
         "approved_at": _now_iso(),
-        # Initial v1: grants == manifest (no partial grants yet)
+        "auto_approved": auto_approved,
         **asdict(plan.permission_manifest),
     }
     save_grants(agent_id, grants)
