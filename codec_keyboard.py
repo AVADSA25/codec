@@ -1,5 +1,6 @@
 """CODEC Keyboard — listener, wake word, recording, double-tap shortcuts"""
 import os
+import re
 import time
 import tempfile
 import subprocess
@@ -95,9 +96,28 @@ def start_keyboard_listener(state, ctx):
             log.info("No speech detected")
             return
         log.info(f"Heard: {task}")
-        if state.get("screen_ctx"):
-            task = task + " [SCREEN CONTEXT: " + state["screen_ctx"][:800] + "]"
-            state["screen_ctx"] = ""
+        # Relevance + TTL gate (mirrors codec.py):
+        #  - skip screen context for trivial intents (math/time/etc.)
+        #  - drop screen context older than 120s
+        ctx = state.get("screen_ctx", "")
+        ts = state.get("screen_ctx_ts", 0.0)
+        if ctx:
+            stale = ts and (time.time() - ts) > 120.0
+            trivial = bool(re.match(
+                r"^\s*(?:\d+\s*[+\-*/x×÷]\s*\d+|what\s*time|time\s*(?:is\s*it|now)?"
+                r"|bitcoin\s*(?:price)?|btc\s*price|weather|calculate\s+"
+                r"|speed\s*test|ping|hello|hi|hey|status|health|uptime)\b",
+                task or "", re.IGNORECASE))
+            if stale:
+                log.info(f"Screen context expired ({int(time.time()-ts)}s old) — discarding")
+                state["screen_ctx"] = ""
+                state["screen_ctx_ts"] = 0.0
+            elif trivial:
+                log.info("Trivial task — skipping screen context injection")
+            else:
+                task = task + " [SCREEN CONTEXT: " + ctx[:800] + "]"
+                state["screen_ctx"] = ""
+                state["screen_ctx_ts"] = 0.0
         dispatch(task)
 
     # ── Wake word listener ────────────────────────────────────────────────────
@@ -345,10 +365,10 @@ def start_keyboard_listener(state, ctx):
         if hasattr(key, 'char') and key.char == '-':
             if now - state.get("last_minus", 0.0) < 0.5:
                 log.info("Minus x2 -- live chat mode")
-                pipecat_url = cfg.get("pipecat_url", "http://localhost:3000/auto")
+                voice_url = cfg.get("voice_url", "http://localhost:8090/voice?auto=1")
                 push(lambda: show_overlay('Live Chat connecting...', '#E8711A', 3000))
-                audit("LIVECHAT", pipecat_url)
-                subprocess.Popen(["open", "-a", "Google Chrome", pipecat_url])
+                audit("LIVECHAT", voice_url)
+                subprocess.Popen(["open", "-a", "Google Chrome", voice_url])
                 state["last_minus"] = 0.0
                 return
             state["last_minus"] = now

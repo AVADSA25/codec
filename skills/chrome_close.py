@@ -3,6 +3,7 @@ import subprocess
 
 SKILL_NAME = "chrome_close"
 SKILL_DESCRIPTION = "Close Chrome tabs, windows, or quit Chrome entirely"
+SKILL_MCP_EXPOSE = True
 SKILL_TRIGGERS = [
     "close tab", "close chrome", "close this tab", "close window",
     "close all tabs", "close browser", "quit chrome", "exit chrome"

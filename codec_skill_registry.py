@@ -9,7 +9,7 @@ import importlib.util
 import logging
 import os
 import re
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 log = logging.getLogger("codec")
 
@@ -38,6 +38,11 @@ def _extract_metadata(filepath: str) -> Optional[Dict[str, Any]]:
                     "SKILL_DESCRIPTION",
                     "SKILL_TRIGGERS",
                     "SKILL_MCP_EXPOSE",
+                    # Phase 2 Step 6 — declarative auto-fire trigger (Q3).
+                    # AST extraction; validation happens in codec_triggers.
+                    "SKILL_OBSERVATION_TRIGGER",
+                    # Phase 2 Step 5 §X — skill-flag injection override.
+                    "SKILL_NEEDS_OBSERVATION",
                 ):
                     try:
                         meta[target.id] = ast.literal_eval(node.value)
@@ -120,6 +125,13 @@ class SkillRegistry:
         meta = self._meta.get(name, {})
         return meta.get("SKILL_MCP_EXPOSE", None)
 
+    def get_observation_trigger(self, name: str) -> Optional[Dict[str, Any]]:
+        """Phase 2 Step 6 — return the SKILL_OBSERVATION_TRIGGER dict
+        for a skill, or None if not declared. Validation happens in
+        codec_triggers; this just surfaces what AST extracted."""
+        meta = self._meta.get(name, {})
+        return meta.get("SKILL_OBSERVATION_TRIGGER", None)
+
     # ── Lazy module loading ─────────────────────────────────────────────
 
     def load(self, name: str) -> Optional[Any]:
@@ -150,7 +162,28 @@ class SkillRegistry:
     # ── Convenience: run a skill by name ────────────────────────────────
 
     def run(self, name: str, task: str, *args, **kwargs) -> Optional[str]:
-        """Load (if needed) and execute a skill's run() function."""
+        """Load (if needed) and execute a skill's run() function.
+
+        If sandboxing is available, user-generated skills run in a sandboxed
+        subprocess. Built-in skills with system access run directly.
+        """
+        filepath = self._paths.get(name)
+        sandboxed = kwargs.pop("sandboxed", False)
+
+        if sandboxed and filepath:
+            try:
+                from codec_sandbox import run_skill_sandboxed
+                ok, result = run_skill_sandboxed(
+                    filepath, task,
+                    app=kwargs.get("app", args[0] if args else ""),
+                    ctx=kwargs.get("ctx", args[1] if len(args) > 1 else ""),
+                )
+                if not ok:
+                    log.warning("Sandboxed skill %s failed: %s", name, result)
+                return result
+            except ImportError:
+                log.warning("codec_sandbox not available, running skill directly")
+
         mod = self.load(name)
         if mod is None or not hasattr(mod, "run"):
             return None

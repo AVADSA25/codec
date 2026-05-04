@@ -52,8 +52,15 @@ STT_ENGINE        = cfg.get("stt_engine", "whisper_http")
 WHISPER_URL       = cfg.get("stt_url", "http://localhost:8084/v1/audio/transcriptions")
 
 # Paths
-DB_PATH           = os.path.expanduser("~/.q_memory.db")
-Q_TERMINAL_TITLE  = "Q -- CODEC Session"
+# Migrate from legacy ~/.q_memory.db to ~/.codec/memory.db
+_LEGACY_DB = os.path.expanduser("~/.q_memory.db")
+_NEW_DB = os.path.expanduser("~/.codec/memory.db")
+if os.path.exists(_LEGACY_DB) and not os.path.exists(_NEW_DB):
+    os.makedirs(os.path.dirname(_NEW_DB), exist_ok=True)
+    import shutil
+    shutil.move(_LEGACY_DB, _NEW_DB)
+DB_PATH = _NEW_DB
+Q_TERMINAL_TITLE  = "CODEC Session"
 _CODEC_TMP = os.path.expanduser("~/.codec")
 TASK_QUEUE_FILE   = os.path.join(_CODEC_TMP, "task_queue.txt")
 DRAFT_TASK_FILE   = os.path.join(_CODEC_TMP, "draft_task.json")
@@ -66,8 +73,9 @@ AUDIT_LOG         = os.path.expanduser("~/.codec/audit.log")
 # Features
 STREAMING         = cfg.get("streaming", True)
 WAKE_WORD         = cfg.get("wake_word_enabled", True)
-WAKE_PHRASES      = cfg.get("wake_phrases", ['hey codec', 'hey', 'aq', 'eq', 'iq', 'okay q', 'a q', 'hey c', 'hey cueue'])
-WAKE_ENERGY       = cfg.get("wake_energy", 200)
+WAKE_PHRASES      = cfg.get("wake_phrases", ['hey codec', 'hey', 'okay codec', 'hey codex', 'hey coda', 'hey queue'])
+_raw_wake_energy   = cfg.get("wake_energy", 200)
+WAKE_ENERGY       = max(50, min(int(_raw_wake_energy), 1500))  # clamp 50-1500; >1500 silences mic
 WAKE_CHUNK_SEC    = cfg.get("wake_chunk_sec", 3.0)
 REQUIRE_CONFIRM   = cfg.get("require_confirmation", True)
 
@@ -87,23 +95,65 @@ AUTH_PIN_HASH     = cfg.get("auth_pin_hash", "")  # SHA-256 of the PIN
 MCP_DEFAULT_ALLOW = cfg.get("mcp_default_allow", False)
 # Explicit allowlist of skill names exposed via MCP (used when mcp_default_allow is false)
 MCP_ALLOWED_TOOLS = cfg.get("mcp_allowed_tools", [])
+# Explicit blocklist — skills here are NEVER exposed via MCP, even in opt-out mode.
+# Use for skills that arbitrary-execute code or could cause system damage.
+#
+# Transport-aware: HTTP/remote gets the strict set (anything that arbitrary-executes
+# or modifies system state). Stdio (local Claude Desktop / Code) gets the lighter
+# set — those clients have their own per-tool approval dialog as the first gate.
+import os as _os
+_TRANSPORT = _os.environ.get("CODEC_MCP_TRANSPORT", "stdio").lower()
+
+_STDIO_BLOCKED = ["terminal", "process_manager", "pm2_control"]
+# 2026-04-17: file_ops unblocked on HTTP so claude.ai can save files to the Mac
+# (paired with the new, narrower `file_write` skill). The skill still enforces
+# its own path/filename blocklist — /System, /Library, /etc, .ssh, .env, etc.
+_HTTP_BLOCKED = ["python_exec", "terminal", "process_manager", "pm2_control",
+                  "ax_control"]
+
+if _TRANSPORT == "http":
+    # HTTP/remote always uses the strict set — user config cannot soften it.
+    # Merges user-configured entries on top (additive only).
+    _user = cfg.get("mcp_blocked_tools", [])
+    MCP_BLOCKED_TOOLS = sorted(set(_HTTP_BLOCKED) | set(_user))
+else:
+    # Stdio trusts the client's approval dialog. User config wins; default lighter.
+    MCP_BLOCKED_TOOLS = cfg.get("mcp_blocked_tools_stdio",
+                                  cfg.get("mcp_blocked_tools", _STDIO_BLOCKED))
 
 # Safety
 DANGEROUS_PATTERNS = [
+    # File deletion — catch ALL rm variants, not just rm -rf
+    "rm ", "rm\t", "rm\n",  # plain rm with any argument
     "rm -rf", "rm -r /", "rm -rf /", "rm -rf ~", "rm -rf /*",
-    "rmdir", "sudo rm", "mkfs", "dd if=",
+    "rmdir", "sudo rm", "unlink ", "shred ", "trash ",
+    "find -delete", "-exec rm", "-exec shred",
+    # Filesystem destruction
+    "mkfs", "dd if=", "diskutil erase", "diskutil eraseDisk",
+    # System control
     "shutdown", "reboot", "halt", "killall", "pkill",
     "sudo", "chmod 777", "chmod -R 777 /", "chown", "chown -R",
+    # Device writes
     "> /dev/", "echo > /dev/sda", "> /dev/sda", "mv / /dev/null",
+    # Fork bombs
     ":(){ :|:& };:", ":(){:|:&};:", "xattr -cr /",
+    # Remote code execution
     "curl | bash", "wget | bash", "curl | sh", "wget | sh",
-    "| bash", "| sh",
-    "defaults delete", "diskutil erase",
+    "| bash", "| sh", "| python", "| perl", "| ruby", "| node",
+    "wget |", "curl |",
+    # Output redirection to sensitive paths
+    "> ~/", ">> ~/", "> /etc/", ">> /etc/", "> /System/", ">> /System/",
+    "> /Users/", ">> /Users/",
+    # macOS system tampering
+    "defaults delete", "defaults write",
     "networksetup", "networksetup -setv6",
     "launchctl unload", "csrutil disable", "nvram", "bless",
     "scutil --set", "pmset",
     "osascript -e \'tell application \"System Events\"",
+    # Low-level
     "init 0", "kill -9 1", "format", "fdisk",
+    # Move/overwrite destructive patterns
+    "mv / ", "> /etc/", "> /System/",
 ]
 
 
@@ -125,6 +175,60 @@ def is_dangerous(cmd):
             if p_lower in cmd_lower:
                 return True
     return False
+
+
+def is_dangerous_skill_code(code: str) -> tuple[bool, str]:
+    import ast
+
+    DANGEROUS_MODULES = {
+        "os", "subprocess", "ctypes", "shutil", "importlib", "signal", "pty", "socket",
+    }
+    SAFE_MODULES = {
+        "json", "re", "math", "datetime", "collections", "itertools", "functools",
+        "hashlib", "base64", "urllib.parse", "time", "random", "string", "textwrap",
+        "difflib",
+    }
+    DANGEROUS_CALLS = {
+        "eval", "exec", "compile", "__import__", "globals", "locals", "getattr",
+    }
+    DANGEROUS_ATTRS = {
+        "os.system", "os.popen", "os.execl", "os.execle", "os.execlp", "os.execlpe",
+        "os.execv", "os.execve", "os.execvp", "os.execvpe",
+        "subprocess.run", "subprocess.Popen", "subprocess.call",
+        "shutil.rmtree",
+    }
+
+    try:
+        tree = ast.parse(code)
+    except SyntaxError as e:
+        return (True, f"Syntax error: {e}")
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                top = alias.name.split(".")[0]
+                if top in DANGEROUS_MODULES:
+                    return (True, f"Dangerous import: {alias.name}")
+
+        elif isinstance(node, ast.ImportFrom):
+            if node.module:
+                top = node.module.split(".")[0]
+                if top in DANGEROUS_MODULES and node.module not in SAFE_MODULES:
+                    return (True, f"Dangerous import: from {node.module}")
+
+        elif isinstance(node, ast.Call):
+            func = node.func
+            if isinstance(func, ast.Name) and func.id in DANGEROUS_CALLS:
+                return (True, f"Dangerous call: {func.id}()")
+            if isinstance(func, ast.Attribute):
+                if isinstance(func.value, ast.Name):
+                    full = f"{func.value.id}.{func.attr}"
+                    if full in DANGEROUS_ATTRS:
+                        return (True, f"Dangerous call: {full}()")
+                    if full.rsplit(".", 1)[0] in DANGEROUS_MODULES:
+                        return (True, f"Dangerous call: {full}()")
+
+    return (False, "")
 
 
 # Draft / screen detection keywords
@@ -181,7 +285,8 @@ def clean_transcript(text):
         "you", "thank you.", "thanks.", "bye.", "okay.",
         "(silence)", "[silence]", "...",
     ]
-    if text.lower().strip() in hallucinations:
+    stripped = text.lower().strip().rstrip(".,!?;:")
+    if stripped in hallucinations:
         return ""
 
     # 2. Remove leading filler words

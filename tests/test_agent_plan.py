@@ -1,0 +1,1019 @@
+"""Phase 3 Step 8 tests — codec_agent_plan + routes/agents.py.
+
+25 tests covering: audit constants, dataclasses, atomic R/W, validation,
+plan-hash, LLM drafter, clarifying loop, global allowlist, state machine,
+PWA endpoints, and end-to-end integration.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import sys
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+_REPO = Path(__file__).resolve().parents[1]
+if str(_REPO) not in sys.path:
+    sys.path.insert(0, str(_REPO))
+
+
+def test_audit_constants_present():
+    """Phase 3 Step 8 adds 6 named events + 1 frozenset."""
+    import codec_audit
+    assert codec_audit.AGENT_PLAN_DRAFTED == "agent_plan_drafted"
+    assert codec_audit.AGENT_PLAN_APPROVED == "agent_plan_approved"
+    assert codec_audit.AGENT_PLAN_REJECTED == "agent_plan_rejected"
+    assert codec_audit.AGENT_PLAN_REVISED == "agent_plan_revised"
+    assert codec_audit.AGENT_GLOBAL_GRANT_ADDED == "agent_global_grant_added"
+    assert codec_audit.AGENT_GLOBAL_GRANT_REMOVED == "agent_global_grant_removed"
+    assert codec_audit.PHASE3_STEP8_EVENTS == frozenset({
+        "agent_plan_drafted", "agent_plan_approved", "agent_plan_rejected",
+        "agent_plan_revised", "agent_global_grant_added", "agent_global_grant_removed",
+    })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Task 2 — Plan/Checkpoint/PermissionManifest dataclasses (3 tests)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_plan_dataclass_basic():
+    from codec_agent_plan import Plan, Checkpoint, PermissionManifest
+    cp = Checkpoint(
+        id="abc123ab", title="Scrape listings", description="...",
+        skills_needed=["chrome_open"], expected_output="JSON of listings",
+        step_budget=30,
+    )
+    pm = PermissionManifest(
+        read_paths=["~/Documents/**"], write_paths=["~/.codec/agents/test/artifacts/**"],
+        network_domains=["example.com"], skills=["chrome_open"], destructive_ops=[],
+    )
+    plan = Plan(
+        schema=1, agent_id="test_agent",
+        goals=["Scrape data"], checkpoints=[cp], permission_manifest=pm,
+        estimated_duration_minutes=15, assumptions=[],
+    )
+    assert plan.schema == 1
+    assert plan.checkpoints[0].title == "Scrape listings"
+    assert plan.permission_manifest.skills == ["chrome_open"]
+
+
+def test_plan_dataclass_to_dict_roundtrip():
+    from codec_agent_plan import Plan, Checkpoint, PermissionManifest, plan_from_dict
+    cp = Checkpoint(id="x", title="t", description="d",
+                    skills_needed=["s"], expected_output="o", step_budget=10)
+    pm = PermissionManifest(read_paths=[], write_paths=[], network_domains=[],
+                            skills=["s"], destructive_ops=[])
+    plan = Plan(schema=1, agent_id="a1", goals=["g"], checkpoints=[cp],
+                permission_manifest=pm, estimated_duration_minutes=5, assumptions=[])
+    d = plan.to_dict()
+    plan2 = plan_from_dict(d)
+    assert plan2.agent_id == plan.agent_id
+    assert plan2.checkpoints[0].id == plan.checkpoints[0].id
+    assert plan2.permission_manifest.skills == plan.permission_manifest.skills
+
+
+def test_plan_from_dict_rejects_bad_schema():
+    from codec_agent_plan import plan_from_dict
+    with pytest.raises(ValueError, match="unsupported plan schema"):
+        plan_from_dict({"schema": 99, "agent_id": "x"})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Task 3 — Plan-hash for tamper detection (Q13) (2 tests)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_plan_hash_stable_for_identical_content():
+    from codec_agent_plan import Plan, Checkpoint, PermissionManifest, compute_plan_hash
+    cp = Checkpoint(id="x", title="t", description="d", skills_needed=["s"],
+                    expected_output="o", step_budget=10)
+    pm = PermissionManifest(read_paths=[], write_paths=[], network_domains=[],
+                            skills=["s"], destructive_ops=[])
+    plan_a = Plan(schema=1, agent_id="a1", goals=["g"], checkpoints=[cp],
+                  permission_manifest=pm, estimated_duration_minutes=5, assumptions=[])
+    plan_b = Plan(schema=1, agent_id="a1", goals=["g"], checkpoints=[cp],
+                  permission_manifest=pm, estimated_duration_minutes=5, assumptions=[])
+    assert compute_plan_hash(plan_a) == compute_plan_hash(plan_b)
+
+
+def test_plan_hash_changes_when_content_changes():
+    from codec_agent_plan import Plan, Checkpoint, PermissionManifest, compute_plan_hash
+    cp = Checkpoint(id="x", title="t", description="d", skills_needed=["s"],
+                    expected_output="o", step_budget=10)
+    pm = PermissionManifest(read_paths=[], write_paths=[], network_domains=[],
+                            skills=["s"], destructive_ops=[])
+    plan_a = Plan(schema=1, agent_id="a1", goals=["g"], checkpoints=[cp],
+                  permission_manifest=pm, estimated_duration_minutes=5, assumptions=[])
+    plan_b = Plan(schema=1, agent_id="a1", goals=["g_modified"], checkpoints=[cp],
+                  permission_manifest=pm, estimated_duration_minutes=5, assumptions=[])
+    assert compute_plan_hash(plan_a) != compute_plan_hash(plan_b)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Task 4 — Atomic R/W (2 tests)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@pytest.fixture
+def temp_codec_dir(tmp_path, monkeypatch):
+    import codec_agent_plan as cap
+    import codec_audit
+    monkeypatch.setattr(cap, "_CODEC_DIR", tmp_path)
+    monkeypatch.setattr(cap, "_AGENTS_DIR", tmp_path / "agents")
+    monkeypatch.setattr(cap, "_GLOBAL_GRANTS_PATH", tmp_path / "agent_global_grants.json")
+    # Phase 3.5: redirect project root so create_project_folder doesn't
+    # touch the real ~/codec-projects/ during tests.
+    monkeypatch.setattr(cap, "_PROJECT_ROOT", tmp_path / "codec-projects")
+    # Test-pollution fix: redirect codec_audit._AUDIT_LOG so audit emits
+    # during plan creation/approval do NOT leak into production ~/.codec/audit.log.
+    monkeypatch.setattr(codec_audit, "_AUDIT_LOG", tmp_path / "audit.log")
+    return tmp_path
+
+
+def test_save_and_load_plan_roundtrip(temp_codec_dir):
+    from codec_agent_plan import (
+        Plan, Checkpoint, PermissionManifest, save_plan, load_plan,
+    )
+    cp = Checkpoint(id="x", title="t", description="d", skills_needed=["s"],
+                    expected_output="o", step_budget=10)
+    pm = PermissionManifest(read_paths=[], write_paths=[], network_domains=[],
+                            skills=["s"], destructive_ops=[])
+    plan = Plan(schema=1, agent_id="agent_test", goals=["g"], checkpoints=[cp],
+                permission_manifest=pm, estimated_duration_minutes=5, assumptions=[])
+    save_plan(plan)
+    loaded = load_plan("agent_test")
+    assert loaded.agent_id == "agent_test"
+    assert loaded.checkpoints[0].title == "t"
+
+
+def test_save_state_atomic(temp_codec_dir):
+    from codec_agent_plan import save_state, load_state
+    save_state("agent_x", {"current_checkpoint": 0, "status": "draft_pending"})
+    state = load_state("agent_x")
+    assert state["current_checkpoint"] == 0
+    assert state["status"] == "draft_pending"
+    # Verify atomic: tmp file is gone after save
+    agent_dir = temp_codec_dir / "agents" / "agent_x"
+    assert not (agent_dir / "state.json.tmp").exists()
+    assert (agent_dir / "state.json").exists()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Task 5 — Skill-registry validation (2 tests)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_validate_plan_against_registry_ok():
+    from codec_agent_plan import (
+        Plan, Checkpoint, PermissionManifest, validate_plan_skills,
+    )
+    cp = Checkpoint(id="x", title="t", description="d",
+                    skills_needed=["weather"], expected_output="o", step_budget=10)
+    pm = PermissionManifest(read_paths=[], write_paths=[], network_domains=[],
+                            skills=["weather"], destructive_ops=[])
+    plan = Plan(schema=1, agent_id="a", goals=["g"], checkpoints=[cp],
+                permission_manifest=pm, estimated_duration_minutes=5, assumptions=[])
+
+    fake_registry = MagicMock()
+    fake_registry.names.return_value = ["weather", "calculator"]
+    ok, missing = validate_plan_skills(plan, registry=fake_registry)
+    assert ok is True
+    assert missing == []
+
+
+def test_validate_plan_against_registry_rejects_unknown_skill():
+    from codec_agent_plan import (
+        Plan, Checkpoint, PermissionManifest, validate_plan_skills,
+    )
+    cp = Checkpoint(id="x", title="t", description="d",
+                    skills_needed=["nonexistent_skill"], expected_output="o", step_budget=10)
+    pm = PermissionManifest(read_paths=[], write_paths=[], network_domains=[],
+                            skills=["nonexistent_skill"], destructive_ops=[])
+    plan = Plan(schema=1, agent_id="a", goals=["g"], checkpoints=[cp],
+                permission_manifest=pm, estimated_duration_minutes=5, assumptions=[])
+
+    fake_registry = MagicMock()
+    fake_registry.names.return_value = ["weather", "calculator"]
+    ok, missing = validate_plan_skills(plan, registry=fake_registry)
+    assert ok is False
+    assert "nonexistent_skill" in missing
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Task 6 — LLM plan drafter (Qwen-3.6, local-only) (3 tests)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_draft_plan_via_qwen_returns_valid_plan(monkeypatch):
+    import codec_agent_plan as cap
+
+    fake_qwen_response = json.dumps({
+        "goals": ["Build property monitor bot"],
+        "checkpoints": [
+            {"title": "Set up bot scaffold", "description": "...",
+             "skills_needed": ["file_ops"], "expected_output": "Bot project dir created",
+             "step_budget": 30},
+            {"title": "Implement scraper", "description": "...",
+             "skills_needed": ["chrome_open", "file_ops"],
+             "expected_output": "Listings JSON written", "step_budget": 60},
+        ],
+        "permission_manifest": {
+            "read_paths": [], "write_paths": ["~/.codec/agents/{agent_id}/artifacts/**"],
+            "network_domains": ["idealista.com", "fotocasa.es"],
+            "skills": ["file_ops", "chrome_open"], "destructive_ops": [],
+        },
+        "estimated_duration_minutes": 90,
+        "assumptions": ["User has Chrome installed"],
+    })
+
+    def fake_qwen_chat(prompt, system_prompt=None, max_tokens=4000, **kw):
+        return fake_qwen_response
+
+    monkeypatch.setattr(cap, "_qwen_chat", fake_qwen_chat)
+
+    fake_registry = MagicMock()
+    fake_registry.names.return_value = ["file_ops", "chrome_open"]
+
+    plan = cap.draft_plan(
+        agent_id="test_agent",
+        description="Build a Telegram bot that scrapes Marbella property listings",
+        registry=fake_registry,
+    )
+    assert plan.agent_id == "test_agent"
+    assert len(plan.checkpoints) == 2
+    assert "idealista.com" in plan.permission_manifest.network_domains
+
+
+def test_draft_plan_rejects_unknown_skill(monkeypatch):
+    import codec_agent_plan as cap
+
+    fake_response = json.dumps({
+        "goals": ["x"], "checkpoints": [
+            {"title": "t", "description": "d",
+             "skills_needed": ["nonexistent_skill_xyz"],
+             "expected_output": "o", "step_budget": 10}
+        ],
+        "permission_manifest": {
+            "read_paths": [], "write_paths": [], "network_domains": [],
+            "skills": ["nonexistent_skill_xyz"], "destructive_ops": [],
+        },
+        "estimated_duration_minutes": 5, "assumptions": [],
+    })
+    monkeypatch.setattr(cap, "_qwen_chat", lambda *a, **k: fake_response)
+
+    fake_registry = MagicMock()
+    fake_registry.names.return_value = ["weather"]  # nonexistent_skill_xyz NOT in registry
+
+    with pytest.raises(cap.PlanValidationError) as exc_info:
+        cap.draft_plan(
+            agent_id="test_agent",
+            description="some project",
+            registry=fake_registry,
+        )
+    assert "nonexistent_skill_xyz" in str(exc_info.value)
+
+
+def test_draft_plan_handles_qwen_unavailable(monkeypatch):
+    import codec_agent_plan as cap
+
+    def raise_connection(*a, **k):
+        raise ConnectionError("qwen3.6 down")
+
+    monkeypatch.setattr(cap, "_qwen_chat", raise_connection)
+
+    with pytest.raises(cap.QwenUnavailableError):
+        cap.draft_plan(
+            agent_id="test_agent",
+            description="x",
+            registry=MagicMock(),
+        )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PR #41 — Plan-time hallucination retry (3 tests)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _make_plan_response(skill_name):
+    """Build a minimal valid-shape plan JSON using one skill name. Used by
+    the retry tests below."""
+    return json.dumps({
+        "goals": ["read markdown files"],
+        "checkpoints": [
+            {"title": "scan", "description": "list and read",
+             "skills_needed": [skill_name],
+             "expected_output": "index.md written", "step_budget": 30},
+        ],
+        "permission_manifest": {
+            "read_paths": ["~/codec-repo/docs/**"],
+            "write_paths": ["~/codec-repo/docs/index.md"],
+            "network_domains": [],
+            "skills": [skill_name], "destructive_ops": [],
+        },
+        "estimated_duration_minutes": 5, "assumptions": [],
+    })
+
+
+def test_draft_plan_retries_on_hallucinated_skill_then_succeeds(monkeypatch):
+    """Real reproducer from 2026-05-04 09:58: user asked CODEC to read
+    markdown files; Qwen drafted a plan with skill `file_read` (does not
+    exist; correct skill is `file_ops`). PR #41 retries ONCE with a
+    correction nudge — second draft picks `file_ops` and succeeds."""
+    import codec_agent_plan as cap
+
+    calls = {"n": 0}
+    def fake_qwen(prompt, *a, **k):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return _make_plan_response("file_read")    # hallucinated
+        return _make_plan_response("file_ops")          # corrected
+    monkeypatch.setattr(cap, "_qwen_chat", fake_qwen)
+
+    fake_registry = MagicMock()
+    fake_registry.names.return_value = ["file_ops", "file_search"]
+
+    plan = cap.draft_plan(
+        agent_id="agent_test",
+        description="Read markdown files in docs and create an index",
+        registry=fake_registry,
+    )
+    # The corrected plan was used
+    assert calls["n"] == 2
+    assert plan.checkpoints[0].skills_needed == ["file_ops"]
+
+
+def test_draft_plan_retry_also_fails_raises_with_both_attempts(monkeypatch):
+    """If the second attempt ALSO hallucinates, raise with both attempts
+    in the error message so the user can see Qwen is consistently confused
+    (vs a one-off transient miss)."""
+    import codec_agent_plan as cap
+
+    responses = iter([
+        _make_plan_response("file_read"),    # first miss
+        _make_plan_response("read_file"),    # second miss (different bad name)
+    ])
+    monkeypatch.setattr(cap, "_qwen_chat", lambda *a, **k: next(responses))
+
+    fake_registry = MagicMock()
+    fake_registry.names.return_value = ["file_ops"]
+
+    with pytest.raises(cap.PlanValidationError) as exc_info:
+        cap.draft_plan(
+            agent_id="agent_test",
+            description="some project",
+            registry=fake_registry,
+        )
+    msg = str(exc_info.value)
+    assert "after retry" in msg
+    assert "file_read" in msg     # first attempt
+    assert "read_file" in msg     # second attempt
+
+
+def test_draft_plan_retry_qwen_unavailable_surfaces_original_error(monkeypatch):
+    """If the retry call itself fails (Qwen flakes between attempts), surface
+    the ORIGINAL validation error — that's more diagnostic than 'qwen flaked
+    on retry'."""
+    import codec_agent_plan as cap
+
+    calls = {"n": 0}
+    def flaky(*a, **k):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return _make_plan_response("file_read")
+        raise ConnectionError("qwen died between attempts")
+    monkeypatch.setattr(cap, "_qwen_chat", flaky)
+
+    fake_registry = MagicMock()
+    fake_registry.names.return_value = ["file_ops"]
+
+    with pytest.raises(cap.PlanValidationError) as exc_info:
+        cap.draft_plan(
+            agent_id="agent_test",
+            description="x",
+            registry=fake_registry,
+        )
+    msg = str(exc_info.value)
+    assert "file_read" in msg            # original missing skill present
+    assert "retry failed" in msg         # cause noted
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Task 7 — Vague-description clarifying loop (Q3) (2 tests)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_vague_description_triggers_clarifying_questions(monkeypatch):
+    import codec_agent_plan as cap
+
+    # First Qwen call → "too vague" sentinel
+    # Second call → asks 3 clarifying questions
+    # Third call (after user answers) → returns valid plan
+    call_count = {"n": 0}
+
+    def fake_qwen(*args, **kwargs):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            return json.dumps({"too_vague": True,
+                               "clarifying_questions": ["What platform?", "What output?", "Who's the user?"]})
+        # Subsequent calls return a valid plan
+        return json.dumps({
+            "goals": ["g"],
+            "checkpoints": [{"title": "t", "description": "d",
+                             "skills_needed": ["weather"],
+                             "expected_output": "o", "step_budget": 10}],
+            "permission_manifest": {"read_paths": [], "write_paths": [],
+                                    "network_domains": [], "skills": ["weather"],
+                                    "destructive_ops": []},
+            "estimated_duration_minutes": 5, "assumptions": [],
+        })
+
+    monkeypatch.setattr(cap, "_qwen_chat", fake_qwen)
+
+    fake_ask = MagicMock()
+    fake_ask.return_value = ("answered", "telegram bot, JSON output, real estate buyers")
+    monkeypatch.setattr(cap, "_ask_user", fake_ask)
+
+    fake_registry = MagicMock()
+    fake_registry.names.return_value = ["weather"]
+
+    plan = cap.draft_plan_with_clarification(
+        agent_id="a", description="make codec better",
+        registry=fake_registry,
+    )
+    assert plan is not None
+    assert call_count["n"] >= 2  # at least one re-draft after clarification
+    fake_ask.assert_called()
+
+
+def test_vague_description_max_clarifying_rounds_exceeded(monkeypatch):
+    import codec_agent_plan as cap
+
+    monkeypatch.setattr(cap, "_qwen_chat",
+                        lambda *a, **k: json.dumps({
+                            "too_vague": True,
+                            "clarifying_questions": ["q1", "q2"],
+                        }))
+    monkeypatch.setattr(cap, "_ask_user", lambda *a, **k: ("answered", "still vague"))
+
+    fake_registry = MagicMock()
+    fake_registry.names.return_value = []
+
+    with pytest.raises(cap.DescriptionTooVagueError):
+        cap.draft_plan_with_clarification(
+            agent_id="a", description="x",
+            registry=fake_registry, max_rounds=cap.MAX_CLARIFYING_ROUNDS,
+        )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Task 8 — Global allowlist (Q4) (3 tests)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_global_grants_load_returns_empty_when_missing(temp_codec_dir):
+    from codec_agent_plan import load_global_grants
+    g = load_global_grants()
+    assert g == {"schema": 1, "version": 0,
+                 "network_domains": [], "read_paths": [],
+                 "write_paths": [], "skills": []}
+
+
+def test_add_global_grant_persists(temp_codec_dir):
+    from codec_agent_plan import add_global_grant, load_global_grants
+    add_global_grant("network_domains", "github.com")
+    add_global_grant("network_domains", "news.ycombinator.com")
+    add_global_grant("skills", "web_fetch")
+    g = load_global_grants()
+    assert "github.com" in g["network_domains"]
+    assert "news.ycombinator.com" in g["network_domains"]
+    assert "web_fetch" in g["skills"]
+    assert g["version"] == 3  # 3 successful adds
+
+
+def test_remove_global_grant(temp_codec_dir):
+    from codec_agent_plan import add_global_grant, remove_global_grant, load_global_grants
+    add_global_grant("network_domains", "github.com")
+    add_global_grant("network_domains", "example.com")
+    remove_global_grant("network_domains", "github.com")
+    g = load_global_grants()
+    assert "github.com" not in g["network_domains"]
+    assert "example.com" in g["network_domains"]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Task 9 — State machine (2 tests)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_state_transition_valid(temp_codec_dir):
+    from codec_agent_plan import set_status, load_state, save_manifest
+    save_manifest("a1", {"agent_id": "a1", "title": "t",
+                         "status": "draft_pending", "created_at": "2026-05-03"})
+    set_status("a1", "awaiting_approval")
+    state = load_state("a1")
+    # Status mirrored in state.json AND manifest.json
+    from codec_agent_plan import load_manifest
+    m = load_manifest("a1")
+    assert m["status"] == "awaiting_approval"
+
+
+def test_state_transition_invalid_raises(temp_codec_dir):
+    import codec_agent_plan as cap
+    cap.save_manifest("a1", {"agent_id": "a1", "status": "draft_pending"})
+
+    # Cannot jump from draft_pending → completed without going through approved
+    with pytest.raises(cap.InvalidStatusTransition):
+        cap.set_status("a1", "completed")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Task 10 — create_agent orchestrator (1 test)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_create_agent_full_flow(monkeypatch, temp_codec_dir):
+    import codec_agent_plan as cap
+
+    monkeypatch.setattr(cap, "_qwen_chat", lambda *a, **k: json.dumps({
+        "goals": ["g"],
+        "checkpoints": [{"title": "t", "description": "d",
+                         "skills_needed": ["weather"],
+                         "expected_output": "o", "step_budget": 10}],
+        "permission_manifest": {"read_paths": [], "write_paths": [],
+                                "network_domains": [], "skills": ["weather"],
+                                "destructive_ops": []},
+        "estimated_duration_minutes": 5, "assumptions": [],
+    }))
+
+    fake_registry = MagicMock()
+    fake_registry.names.return_value = ["weather"]
+
+    audit_emits = []
+    def fake_audit(event, source, message, **kw):
+        audit_emits.append((event, kw.get("correlation_id")))
+    monkeypatch.setattr(cap, "_audit", fake_audit)
+
+    agent_id = cap.create_agent(
+        title="Property bot",
+        description="Build a property scraper",
+        registry=fake_registry,
+    )
+    assert agent_id.startswith("agent_")
+
+    # Verify all 3 files written
+    agent_dir = temp_codec_dir / "agents" / agent_id
+    assert (agent_dir / "manifest.json").exists()
+    assert (agent_dir / "plan.json").exists()
+    assert (agent_dir / "state.json").exists()
+
+    # Manifest has correct fields
+    m = cap.load_manifest(agent_id)
+    assert m["title"] == "Property bot"
+    assert m["status"] == "awaiting_approval"
+    assert "created_at" in m
+
+    # Audit emit happened with correlation_id
+    plan_drafted = [(e, c) for e, c in audit_emits if e == "agent_plan_drafted"]
+    assert len(plan_drafted) == 1
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Task 11 — approve / reject / revise (2 tests)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_approve_writes_grants_and_plan_hash(monkeypatch, temp_codec_dir):
+    import codec_agent_plan as cap
+    monkeypatch.setattr(cap, "_qwen_chat", lambda *a, **k: json.dumps({
+        "goals": ["g"], "checkpoints": [{"title": "t", "description": "d",
+            "skills_needed": ["weather"], "expected_output": "o", "step_budget": 10}],
+        "permission_manifest": {"read_paths": [], "write_paths": [],
+            "network_domains": ["example.com"], "skills": ["weather"],
+            "destructive_ops": []},
+        "estimated_duration_minutes": 5, "assumptions": []}))
+    fake_reg = MagicMock(); fake_reg.names.return_value = ["weather"]
+    monkeypatch.setattr("codec_dispatch.registry", fake_reg, raising=False)
+
+    agent_id = cap.create_agent(title="t", description="d", registry=fake_reg)
+    cap.approve_plan(agent_id)
+
+    m = cap.load_manifest(agent_id)
+    assert m["status"] == "approved"
+    assert "plan_hash" in m
+    assert len(m["plan_hash"]) == 64  # sha256 hex
+
+    grants = cap.load_grants(agent_id)
+    assert "example.com" in grants["network_domains"]
+    assert "weather" in grants["skills"]
+
+
+def test_reject_sets_status_with_reason(monkeypatch, temp_codec_dir):
+    import codec_agent_plan as cap
+    monkeypatch.setattr(cap, "_qwen_chat", lambda *a, **k: json.dumps({
+        "goals": ["g"], "checkpoints": [{"title": "t", "description": "d",
+            "skills_needed": ["weather"], "expected_output": "o", "step_budget": 10}],
+        "permission_manifest": {"read_paths": [], "write_paths": [],
+            "network_domains": [], "skills": ["weather"], "destructive_ops": []},
+        "estimated_duration_minutes": 5, "assumptions": []}))
+    fake_reg = MagicMock(); fake_reg.names.return_value = ["weather"]
+
+    agent_id = cap.create_agent(title="t", description="d", registry=fake_reg)
+    cap.reject_plan(agent_id, reason="don't need this")
+    m = cap.load_manifest(agent_id)
+    assert m["status"] == "rejected"
+    assert m["status_reason"] == "don't need this"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Task 12 — PWA endpoints (2 tests)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_post_api_agents_creates_drafts(monkeypatch, temp_codec_dir, tmp_path):
+    """POST /api/agents creates an agent and drafts the plan."""
+    from fastapi.testclient import TestClient
+    import codec_agent_plan as cap
+
+    monkeypatch.setattr(cap, "_qwen_chat", lambda *a, **k: json.dumps({
+        "goals": ["g"], "checkpoints": [{"title": "t", "description": "d",
+            "skills_needed": ["weather"], "expected_output": "o", "step_budget": 10}],
+        "permission_manifest": {"read_paths": [], "write_paths": [],
+            "network_domains": [], "skills": ["weather"], "destructive_ops": []},
+        "estimated_duration_minutes": 5, "assumptions": []}))
+    fake_reg = MagicMock(); fake_reg.names.return_value = ["weather"]
+    monkeypatch.setattr("codec_agent_plan.draft_plan_with_clarification",
+                        lambda agent_id, desc, registry=None, max_rounds=3, project_dir=None:
+                            cap.draft_plan(agent_id, desc, registry=fake_reg))
+
+    from routes.agents import router
+    from fastapi import FastAPI
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app)
+
+    r = client.post("/api/agents", json={
+        "title": "Property bot",
+        "description": "Build a property scraper",
+        "notification_channels": ["pwa"],
+    })
+    assert r.status_code == 200
+    body = r.json()
+    assert body["agent_id"].startswith("agent_")
+    assert body["status"] == "awaiting_approval"
+
+
+def test_get_api_agents_lists_all(temp_codec_dir):
+    """GET /api/agents returns all agents."""
+    from fastapi.testclient import TestClient
+    import codec_agent_plan as cap
+
+    # Create 2 agents directly via R/W (bypass LLM)
+    cap.save_manifest("agent_a", {"agent_id": "agent_a", "title": "A",
+                                   "status": "awaiting_approval", "created_at": "..."})
+    cap.save_manifest("agent_b", {"agent_id": "agent_b", "title": "B",
+                                   "status": "approved", "created_at": "..."})
+
+    from routes.agents import router
+    from fastapi import FastAPI
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app)
+
+    r = client.get("/api/agents")
+    assert r.status_code == 200
+    body = r.json()
+    ids = {a["agent_id"] for a in body["agents"]}
+    assert ids == {"agent_a", "agent_b"}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Task 13 — Approve/reject integration tests via FastAPI TestClient (2 tests)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_post_api_agents_approve_full_flow(monkeypatch, temp_codec_dir):
+    from fastapi.testclient import TestClient
+    from fastapi import FastAPI
+    import codec_agent_plan as cap
+
+    monkeypatch.setattr(cap, "_qwen_chat", lambda *a, **k: json.dumps({
+        "goals": ["g"], "checkpoints": [{"title": "t", "description": "d",
+            "skills_needed": ["weather"], "expected_output": "o", "step_budget": 10}],
+        "permission_manifest": {"read_paths": [], "write_paths": [],
+            "network_domains": [], "skills": ["weather"], "destructive_ops": []},
+        "estimated_duration_minutes": 5, "assumptions": []}))
+    fake_reg = MagicMock(); fake_reg.names.return_value = ["weather"]
+    # Patch the lazy-import path used inside draft_plan
+    monkeypatch.setattr("codec_dispatch.registry", fake_reg, raising=False)
+
+    from routes.agents import router
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app)
+
+    r1 = client.post("/api/agents", json={
+        "title": "X", "description": "build x"})
+    agent_id = r1.json()["agent_id"]
+
+    r2 = client.post(f"/api/agents/{agent_id}/approve")
+    assert r2.status_code == 200
+    assert r2.json()["status"] == "approved"
+
+    # Manifest now has plan_hash
+    r3 = client.get(f"/api/agents/{agent_id}")
+    assert r3.status_code == 200
+    assert "plan_hash" in r3.json()["manifest"]
+    assert r3.json()["grants"] is not None
+
+
+def test_post_api_agents_reject_sets_reason(monkeypatch, temp_codec_dir):
+    from fastapi.testclient import TestClient
+    from fastapi import FastAPI
+    import codec_agent_plan as cap
+
+    monkeypatch.setattr(cap, "_qwen_chat", lambda *a, **k: json.dumps({
+        "goals": ["g"], "checkpoints": [{"title": "t", "description": "d",
+            "skills_needed": ["weather"], "expected_output": "o", "step_budget": 10}],
+        "permission_manifest": {"read_paths": [], "write_paths": [],
+            "network_domains": [], "skills": ["weather"], "destructive_ops": []},
+        "estimated_duration_minutes": 5, "assumptions": []}))
+    fake_reg = MagicMock(); fake_reg.names.return_value = ["weather"]
+    monkeypatch.setattr("codec_dispatch.registry", fake_reg, raising=False)
+
+    from routes.agents import router
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app)
+
+    r1 = client.post("/api/agents", json={"title": "X", "description": "build x"})
+    agent_id = r1.json()["agent_id"]
+
+    r2 = client.post(f"/api/agents/{agent_id}/reject", json={"reason": "not now"})
+    assert r2.status_code == 200
+    r3 = client.get(f"/api/agents/{agent_id}")
+    assert r3.json()["manifest"]["status"] == "rejected"
+    assert r3.json()["manifest"]["status_reason"] == "not now"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Task 14 — Global grants endpoints (1 test)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_global_grants_endpoints_full_flow(temp_codec_dir):
+    from fastapi.testclient import TestClient
+    from fastapi import FastAPI
+    from routes.agents import router
+
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app)
+
+    # GET — initially empty
+    r1 = client.get("/api/agent_global_grants")
+    assert r1.status_code == 200
+    assert r1.json()["network_domains"] == []
+
+    # POST — add
+    r2 = client.post("/api/agent_global_grants",
+                      json={"kind": "network_domains", "value": "github.com"})
+    assert r2.status_code == 200
+    assert "github.com" in r2.json()["network_domains"]
+
+    # POST — invalid kind
+    r3 = client.post("/api/agent_global_grants",
+                      json={"kind": "evil_thing", "value": "x"})
+    assert r3.status_code == 400
+
+    # DELETE
+    r4 = client.request("DELETE", "/api/agent_global_grants",
+                         json={"kind": "network_domains", "value": "github.com"})
+    assert r4.status_code == 200
+    assert "github.com" not in r4.json()["network_domains"]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Task 15 — Auto-approve via global allowlist (1 test)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_approve_marks_global_allowlist_items(monkeypatch, temp_codec_dir):
+    """When a plan needs github.com and github.com is already in the
+    global allowlist, the approval grants.json should reflect it."""
+    import codec_agent_plan as cap
+
+    # Pre-populate global allowlist
+    cap.add_global_grant("network_domains", "github.com")
+    cap.add_global_grant("skills", "web_fetch")
+
+    monkeypatch.setattr(cap, "_qwen_chat", lambda *a, **k: json.dumps({
+        "goals": ["g"], "checkpoints": [{"title": "t", "description": "d",
+            "skills_needed": ["web_fetch"], "expected_output": "o", "step_budget": 10}],
+        "permission_manifest": {"read_paths": [], "write_paths": [],
+            "network_domains": ["github.com", "example.com"],
+            "skills": ["web_fetch"], "destructive_ops": []},
+        "estimated_duration_minutes": 5, "assumptions": []}))
+    fake_reg = MagicMock(); fake_reg.names.return_value = ["web_fetch"]
+    monkeypatch.setattr("codec_dispatch.registry", fake_reg, raising=False)
+
+    agent_id = cap.create_agent(title="X", description="d")
+    grants = cap.approve_plan(agent_id)
+
+    # All manifest items end up in grants
+    assert "github.com" in grants["network_domains"]
+    assert "example.com" in grants["network_domains"]
+    # Auto-approved tracking (a metadata field, not a separate set)
+    assert grants.get("auto_approved", {}).get("network_domains") == ["github.com"]
+    assert grants.get("auto_approved", {}).get("skills") == ["web_fetch"]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Task 16 — Pre-approval re-validation against registry (1 test)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_approve_revalidates_skills_against_registry(monkeypatch, temp_codec_dir):
+    """If a skill was deleted between draft and approval, approval should fail."""
+    import codec_agent_plan as cap
+
+    # Initial plan drafted with weather + calculator
+    monkeypatch.setattr(cap, "_qwen_chat", lambda *a, **k: json.dumps({
+        "goals": ["g"], "checkpoints": [{"title": "t", "description": "d",
+            "skills_needed": ["weather", "calculator"],
+            "expected_output": "o", "step_budget": 10}],
+        "permission_manifest": {"read_paths": [], "write_paths": [],
+            "network_domains": [], "skills": ["weather", "calculator"],
+            "destructive_ops": []},
+        "estimated_duration_minutes": 5, "assumptions": []}))
+    fake_reg = MagicMock(); fake_reg.names.return_value = ["weather", "calculator"]
+    monkeypatch.setattr("codec_dispatch.registry", fake_reg, raising=False)
+
+    agent_id = cap.create_agent(title="X", description="d")
+
+    # Now simulate calculator was deleted
+    fake_reg.names.return_value = ["weather"]
+
+    with pytest.raises(cap.PlanValidationError) as exc:
+        cap.approve_plan(agent_id)
+    assert "calculator" in str(exc.value)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Task 17 — End-to-end integration test (1 test)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_e2e_full_lifecycle(monkeypatch, temp_codec_dir):
+    """End-to-end: drop project → draft → approve → grants written → audit emits paired."""
+    import codec_agent_plan as cap
+    from typing import List, Tuple
+
+    monkeypatch.setattr(cap, "_qwen_chat", lambda *a, **k: json.dumps({
+        "goals": ["Build property bot"],
+        "checkpoints": [
+            {"title": "Scaffold project", "description": "Create dir + skeleton",
+             "skills_needed": ["file_ops"], "expected_output": "Project initialized",
+             "step_budget": 30},
+            {"title": "Implement scraper", "description": "Use chrome to scrape",
+             "skills_needed": ["chrome_open", "file_ops"],
+             "expected_output": "Listings JSON written", "step_budget": 60},
+        ],
+        "permission_manifest": {
+            "read_paths": [],
+            "write_paths": ["~/.codec/agents/{agent_id}/artifacts/**"],
+            "network_domains": ["idealista.com", "fotocasa.es"],
+            "skills": ["file_ops", "chrome_open"], "destructive_ops": [],
+        },
+        "estimated_duration_minutes": 90,
+        "assumptions": ["User has Chrome installed"],
+    }))
+    fake_reg = MagicMock(); fake_reg.names.return_value = ["file_ops", "chrome_open"]
+    monkeypatch.setattr("codec_dispatch.registry", fake_reg, raising=False)
+
+    audit_emits: List[Tuple[str, str]] = []
+    def fake_audit(event, source, message="", correlation_id="", **kw):
+        audit_emits.append((event, correlation_id))
+    monkeypatch.setattr(cap, "_audit", fake_audit)
+
+    # Drop the project
+    agent_id = cap.create_agent(
+        title="Marbella property bot",
+        description="Build a Telegram bot that scrapes Marbella property listings",
+    )
+
+    # Approve
+    grants = cap.approve_plan(agent_id)
+
+    # Verify final state
+    m = cap.load_manifest(agent_id)
+    assert m["status"] == "approved"
+    assert "plan_hash" in m
+    assert grants["network_domains"] == ["idealista.com", "fotocasa.es"]
+
+    # Verify both audit events were emitted (paired correlation_ids will differ — independent ops)
+    events = [e for e, _ in audit_emits]
+    assert "agent_plan_drafted" in events
+    assert "agent_plan_approved" in events
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 3.5 — Project folder creation (Claude Code-style human-browseable dir)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_slugify_basic():
+    from codec_agent_plan import _slugify
+    assert _slugify("Build a Telegram bot") == "build-a-telegram-bot"
+    assert _slugify("Marbella Property Bot!!!") == "marbella-property-bot"
+    assert _slugify("EUR/USD vol monitor") == "eur-usd-vol-monitor"
+
+
+def test_slugify_handles_unicode_and_empty():
+    from codec_agent_plan import _slugify
+    # Unicode and special chars stripped, ascii-only slug
+    assert _slugify("Café résumé") == "caf-r-sum"
+    # Pure non-alphanumeric falls back to "project"
+    assert _slugify("!!!") == "project"
+    assert _slugify("") == "project"
+
+
+def test_slugify_truncates_long_titles():
+    from codec_agent_plan import _slugify, MAX_PROJECT_SLUG_LEN
+    long_title = "build " + "a-very-long-project-title-" * 10
+    slug = _slugify(long_title)
+    assert len(slug) <= MAX_PROJECT_SLUG_LEN
+    assert not slug.endswith("-")  # trailing dash trimmed
+
+
+def test_create_project_folder_creates_dir(temp_codec_dir):
+    from codec_agent_plan import create_project_folder
+    folder = create_project_folder("Marbella property bot", "agent_abc123")
+    assert folder.exists() and folder.is_dir()
+    assert folder.name == "marbella-property-bot"
+    assert folder.parent == (temp_codec_dir / "codec-projects").resolve()
+
+
+def test_create_project_folder_disambiguates_collisions(temp_codec_dir):
+    from codec_agent_plan import create_project_folder
+    a = create_project_folder("Property bot", "agent_a")
+    b = create_project_folder("Property bot", "agent_b")
+    c = create_project_folder("Property bot", "agent_c")
+    assert a.name == "property-bot"
+    assert b.name == "property-bot-2"
+    assert c.name == "property-bot-3"
+    assert a.exists() and b.exists() and c.exists()
+
+
+def test_create_agent_writes_project_dir_in_manifest(monkeypatch, temp_codec_dir):
+    """create_agent populates manifest.project_dir with the resolved path."""
+    import codec_agent_plan as cap
+    monkeypatch.setattr(cap, "_qwen_chat", lambda *a, **k: json.dumps({
+        "goals": ["g"],
+        "checkpoints": [{"title": "t", "description": "d",
+                         "skills_needed": ["weather"],
+                         "expected_output": "o", "step_budget": 10}],
+        "permission_manifest": {"read_paths": [], "write_paths": [],
+                                "network_domains": [], "skills": ["weather"],
+                                "destructive_ops": []},
+        "estimated_duration_minutes": 5, "assumptions": [],
+    }))
+    fake_reg = MagicMock()
+    fake_reg.names.return_value = ["weather"]
+    monkeypatch.setattr("codec_dispatch.registry", fake_reg, raising=False)
+
+    agent_id = cap.create_agent(title="Property bot for Marbella",
+                                 description="Build a property bot")
+
+    m = cap.load_manifest(agent_id)
+    assert m.get("project_dir"), "manifest must include project_dir after create_agent"
+    pdir = Path(m["project_dir"])
+    assert pdir.exists() and pdir.is_dir()
+    assert pdir.name == "property-bot-for-marbella"
+    # The project folder lives under the configured root (tmp during tests)
+    assert (temp_codec_dir / "codec-projects").resolve() in pdir.parents
+
+
+def test_draft_plan_includes_project_dir_in_qwen_prompt(monkeypatch, temp_codec_dir):
+    """When project_dir is passed to draft_plan, the user_prompt sent to Qwen
+    must include the path so the LLM defaults write_paths to it."""
+    import codec_agent_plan as cap
+    captured = {"prompt": None}
+    def capture(user_prompt, system_prompt, max_tokens=4000):
+        captured["prompt"] = user_prompt
+        return json.dumps({
+            "goals": ["g"], "checkpoints": [{"title": "t", "description": "d",
+                "skills_needed": ["weather"], "expected_output": "o", "step_budget": 10}],
+            "permission_manifest": {"read_paths": [], "write_paths": [],
+                "network_domains": [], "skills": ["weather"], "destructive_ops": []},
+            "estimated_duration_minutes": 5, "assumptions": []})
+    monkeypatch.setattr(cap, "_qwen_chat", capture)
+    fake_reg = MagicMock()
+    fake_reg.names.return_value = ["weather"]
+
+    pdir = temp_codec_dir / "codec-projects" / "test-project"
+    pdir.mkdir(parents=True)
+    cap.draft_plan(agent_id="agent_x", description="build x",
+                    registry=fake_reg, project_dir=pdir)
+
+    assert captured["prompt"] is not None
+    assert str(pdir) in captured["prompt"]
+    assert "Project folder" in captured["prompt"]
+    assert "write_paths" in captured["prompt"]
+
+
+def test_project_root_config_override(temp_codec_dir, monkeypatch):
+    """~/.codec/config.json:agents.project_root_dir overrides the env default."""
+    import codec_agent_plan as cap
+    custom = temp_codec_dir / "my-custom-projects"
+    cfg_path = temp_codec_dir / "config.json"
+    cfg_path.write_text(json.dumps({
+        "agents": {"project_root_dir": str(custom)}
+    }))
+    # _project_root() reads ~/.codec/config.json; _CODEC_DIR is patched to tmp_path
+    folder = cap.create_project_folder("Custom test", "agent_x")
+    assert custom in folder.parents or folder.parent == custom.resolve()

@@ -29,19 +29,54 @@ _GENERIC_HEADING_WORDS = {
 _CHARS_PER_IMAGE = 6_000   # ~2 pages between images
 _MAX_IMAGES      = 10
 
+# Words that produce garbage Pexels results — strip from queries
+_NOISE_WORDS = {
+    "daily", "briefing", "report", "update", "digest", "summary",
+    "codec", "weekly", "monthly", "morning", "evening", "newsletter",
+    "january", "february", "march", "april", "may", "june",
+    "july", "august", "september", "october", "november", "december",
+    "monday", "tuesday", "wednesday", "thursday", "friday",
+    "saturday", "sunday", "today", "edition",
+}
+
+# Curated fallback queries that always produce professional imagery
+_PROFESSIONAL_FALLBACKS = [
+    "modern office business skyline",
+    "global finance stock market data",
+    "technology innovation workspace",
+    "world map global economy",
+    "corporate strategy meeting",
+    "digital analytics dashboard",
+    "city skyline sunrise business district",
+    "trading floor financial markets",
+]
+
 
 def _pexels_fetch_one(query: str, page_offset: int = 0):
+    """Fetch one landscape photo from Pexels, with relevance filtering."""
     try:
         resp = rq.get(
             "https://api.pexels.com/v1/search",
-            params={"query": query, "per_page": 5, "page": page_offset + 1,
+            params={"query": query, "per_page": 15, "page": page_offset + 1,
                     "orientation": "landscape"},
             headers={"Authorization": _get_pexels_key()},
             timeout=10,
         )
         photos = resp.json().get("photos", [])
-        if photos:
-            return photos[0]["src"]["large2x"]
+        if not photos:
+            return None
+        # Filter out photos whose alt text suggests irrelevant content
+        _reject = {"scrabble", "letter", "tile", "wood block", "note", "sticky",
+                    "sign", "paper", "handwriting", "written", "text on",
+                    "copy space", "flat lay", "mockup", "mock up", "placeholder"}
+        for photo in photos:
+            alt = (photo.get("alt") or "").lower()
+            if any(rw in alt for rw in _reject):
+                continue
+            return photo["src"]["large2x"]
+        # All photos looked irrelevant — skip rather than insert garbage
+        print(f"[GDOCS] Pexels: all results irrelevant for '{query}', skipping")
+        return None
     except Exception as e:
         print(f"[GDOCS] Pexels error '{query}': {e}")
     return None
@@ -69,6 +104,14 @@ def _section_body_text(positions: list, after_idx: int, max_chars: int = 600) ->
     return " ".join(parts)
 
 
+def _clean_topic_base(raw: str) -> str:
+    """Strip noise words (dates, generic labels) so Pexels gets useful queries."""
+    words = raw.split()
+    cleaned = [w for w in words
+               if w.lower() not in _NOISE_WORDS and not w.isdigit() and len(w) > 2]
+    return " ".join(cleaned).strip()
+
+
 def _smart_query(topic_base: str, positions: list, insert_idx: int) -> str:
     heading = ""
     for p in positions:
@@ -78,26 +121,34 @@ def _smart_query(topic_base: str, positions: list, insert_idx: int) -> str:
     ctx  = (heading + " " + body).lower()
     kw   = _heading_keywords(heading)
 
+    # Clean noise from topic_base so queries don't contain dates/generic words
+    tb = _clean_topic_base(topic_base)
+
     if any(w in ctx for w in ["statistic", "percent", "%", "billion", "million",
                                "market", "adoption", "growth", "forecast"]):
-        return f"{topic_base} data analytics business"
+        return f"{tb} data analytics business" if tb else "financial data analytics business"
     if any(w in ctx for w in ["hardware", "chip", "processor", "npu", "gpu", "silicon"]):
-        return f"{topic_base} computer hardware chip"
+        return f"{tb} computer hardware chip" if tb else "computer hardware technology chip"
     if any(w in ctx for w in ["privacy", "security", "encryption", "gdpr", "breach"]):
-        return f"{topic_base} cybersecurity data protection"
+        return f"{tb} cybersecurity data protection" if tb else "cybersecurity data protection"
     if any(w in ctx for w in ["global", "enterprise", "fortune", "deployment"]):
-        return f"{topic_base} global enterprise technology"
+        return f"{tb} global enterprise technology" if tb else "global enterprise technology"
     if any(w in ctx for w in ["energy", "power", "carbon", "sustainable", "green"]):
-        return f"{topic_base} sustainable energy environment"
+        return f"{tb} sustainable energy environment" if tb else "sustainable energy environment"
     if any(w in ctx for w in ["medical", "health", "drug", "clinical", "pharma"]):
-        return f"{topic_base} medical health technology"
+        return f"{tb} medical health technology" if tb else "medical health technology"
     if any(w in ctx for w in ["legal", "regulatory", "law", "regulation", "executive order"]):
-        return f"{topic_base} law regulation compliance"
+        return f"{tb} law regulation compliance" if tb else "law regulation compliance"
     if any(w in ctx for w in ["future", "forecast", "trend", "next", "emerging"]):
-        return f"{topic_base} future innovation technology"
+        return f"{tb} future innovation technology" if tb else "future innovation technology"
+    if any(w in ctx for w in ["forex", "currency", "trading", "exchange rate"]):
+        return f"{tb} forex currency trading" if tb else "forex currency trading markets"
+    if any(w in ctx for w in ["ai", "artificial intelligence", "machine learning", "llm", "gpt"]):
+        return f"{tb} artificial intelligence technology" if tb else "artificial intelligence technology"
     if kw:
-        return f"{topic_base} {kw}"
-    return f"{topic_base} technology"
+        return f"{tb} {kw}" if tb else f"professional business {kw}"
+    # Fallback: use cleaned base or a professional default
+    return f"{tb} technology business" if tb else "global business technology professional"
 
 
 def _find_image_positions(positions: list) -> tuple:
@@ -225,18 +276,16 @@ def create_google_doc(title: str, content: str) -> str | None:
     - Bullet points with proper Google Docs bullets
     - Tables rendered as styled header + data rows
     - Inline bold preserved within body text
-    - Up to 7 Pexels images (hero full-width, then left/right alternating)
+    - Up to 7 Pexels images (hero full-width, rest centered and consistent size)
+    - Images skipped for invoices, meeting summaries, code reviews, etc.
     Returns the doc URL or None on error.
     """
-    from google.oauth2.credentials import Credentials
-    from google.auth.transport.requests import Request
     from googleapiclient.discovery import build
+    from codec_google_auth import get_credentials
 
-    TOKEN_PATH = os.path.expanduser("~/.codec/google_token.json")
     DARK   = {"red": 0.082, "green": 0.082, "blue": 0.137}
     ORANGE = {"red": 0.910, "green": 0.443, "blue": 0.102}
     SLATE  = {"red": 0.173, "green": 0.243, "blue": 0.314}
-    LGRAY  = {"red": 0.933, "green": 0.933, "blue": 0.933}   # #EEEEEE table bg
 
     try:
         # Ensure all CODEC docs start with "CODEC:" prefix (avoid "CODEC: CODEC ...")
@@ -245,11 +294,7 @@ def create_google_doc(title: str, content: str) -> str | None:
         elif title.startswith("CODEC ") and not title.startswith("CODEC:"):
             title = "CODEC: " + title[6:]
 
-        creds = Credentials.from_authorized_user_file(TOKEN_PATH)
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-            with open(TOKEN_PATH, "w") as f:
-                f.write(creds.to_json())
+        creds = get_credentials()
 
         svc    = build("docs", "v1", credentials=creds)
         doc    = svc.documents().create(body={"title": title}).execute()
@@ -487,29 +532,53 @@ def create_google_doc(title: str, content: str) -> str | None:
         svc.documents().batchUpdate(documentId=doc_id, body={"requests": reqs}).execute()
 
         # ── Batch 2: Pexels images ──
-        hero_idx, additional_idxs = _find_image_positions(positions)
-        topic_base = " ".join(
-            title.replace("CODEC Research:", "").replace("CODEC Report", "")
-                 .replace(":", "").replace("\u2014", "").split()[:5]
-        ).strip()
+        # Skip images for document types that don't need them
+        _title_lower = title.lower()
+        _skip_images = any(kw in _title_lower for kw in [
+            "invoice", "meeting summary", "meeting notes", "minutes",
+            "social media posts", "code review", "email",
+        ])
+        if _skip_images:
+            print(f"[GDocs] Skipping images for: {title}")
+            print(f"[GDocs] Created: {doc_url} (0 images)")
+            return doc_url
 
-        img_tasks = [(hero_idx, topic_base)]
+        hero_idx, additional_idxs = _find_image_positions(positions)
+        raw_topic = " ".join(
+            title.replace("CODEC Research:", "").replace("CODEC Report", "")
+                 .replace("CODEC:", "").replace(":", "").replace("\u2014", "").split()[:5]
+        ).strip()
+        topic_base = _clean_topic_base(raw_topic)
+
+        # For the hero image, use a broad professional query
+        if topic_base:
+            hero_query = f"{topic_base} professional business"
+        else:
+            hero_query = _PROFESSIONAL_FALLBACKS[0]
+
+        img_tasks = [(hero_idx, hero_query)]
         for i_idx in additional_idxs:
             img_tasks.append((i_idx, _smart_query(topic_base, positions, i_idx)))
 
         SPEC_HERO  = (468, 260, "CENTER")
+        # All images centered and consistent size for clean look
         SPEC_CYCLE = [
-            (310, 174, "START"),
-            (348, 196, "END"),
-            (310, 174, "START"),
-            (348, 196, "END"),
             (420, 236, "CENTER"),
-            (310, 174, "START"),
+            (420, 236, "CENTER"),
+            (420, 236, "CENTER"),
+            (420, 236, "CENTER"),
+            (420, 236, "CENTER"),
+            (420, 236, "CENTER"),
         ]
 
         insert_points = []
         for i, (i_idx, query) in enumerate(img_tasks):
             url = _pexels_fetch_one(query, page_offset=i % 3)
+            # If primary query failed, try a curated professional fallback
+            if not url:
+                fallback_q = _PROFESSIONAL_FALLBACKS[i % len(_PROFESSIONAL_FALLBACKS)]
+                print(f"[GDOCS] Trying fallback query: '{fallback_q}'")
+                url = _pexels_fetch_one(fallback_q, page_offset=0)
             if not url:
                 continue
             w, h, align = SPEC_HERO if i == 0 else SPEC_CYCLE[(i - 1) % len(SPEC_CYCLE)]

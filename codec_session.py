@@ -19,6 +19,10 @@ import select
 import logging
 from datetime import datetime
 
+# Audit emits route through the unified envelope (schema:1) per
+# docs/PHASE1-STEP1-DESIGN.md. log_event is now a real adapter, not a no-op.
+from codec_audit import log_event, _cmd_hash, _truncate, _PREVIEW_MAX
+
 log = logging.getLogger("codec_session")
 
 
@@ -148,9 +152,17 @@ RESPOND IN THIS EXACT JSON FORMAT:
 RULES:
 1. For URLs: bash open command. For apps: applescript.
 2. Max 8 steps. Execute each fully. Dont say done until ALL complete.
-3. NEVER delete files or data without confirmation.
-4. For screen/mouse requests: use the mouse_control skill via python3.13 as shown above.
-ALWAYS respond with valid JSON only."""
+3. For screen/mouse requests: use the mouse_control skill via python3.13 as shown above.
+ALWAYS respond with valid JSON only.
+
+SAFETY RULES:
+- Dangerous commands (rm, sudo, etc.) will trigger a confirmation dialog on screen.
+  The user must click Allow/Deny. Just execute the command — the safety system handles confirmation.
+- If a command returns "Command blocked by user" or "BLOCKED", tell the user it was blocked.
+- NEVER hallucinate success. If a command fails or is blocked, report the EXACT error honestly.
+- NEVER claim you performed an action you did not actually execute.
+- NEVER say "done" for a task unless you actually ran the command AND got a successful result.
+- When the user confirms a previous request (e.g. "yes delete it"), recall the context and execute."""
 
         # Dangerous command patterns — single source of truth in codec_config
         _repo_dir = os.path.dirname(os.path.abspath(__file__))
@@ -183,19 +195,7 @@ ALWAYS respond with valid JSON only."""
             os.unlink(self.session_alive)
         except Exception as e:
             log.warning(f"Session alive file cleanup failed: {e}")
-        try:
-            c = sqlite3.connect(self.db_path)
-            for msg in self.h:
-                if msg["role"] != "system":
-                    c.execute(
-                        "INSERT INTO conversations (session_id, timestamp, role, content) VALUES (?,?,?,?)",
-                        (self.session_id, datetime.now().isoformat(), msg["role"], msg["content"][:500]),
-                    )
-            c.commit()
-            c.close()
-            print("[C] Conversation saved to memory.")
-        except Exception as e:
-            log.warning(f"Conversation save to database failed: {e}")
+        print("[C] Session closed.")
 
     # ── Screenshot ───────────────────────────────────────────────────────
 
@@ -226,7 +226,7 @@ ALWAYS respond with valid JSON only."""
                     ],
                     "max_tokens": 800,
                 },
-                timeout=60,
+                timeout=120,
             )
             if r.status_code == 200:
                 return r.json()["choices"][0]["message"].get("content", "")[:2000]
@@ -335,11 +335,189 @@ ALWAYS respond with valid JSON only."""
             log.warning(f"Streaming LLM call failed, falling back to non-streaming: {e}")
             return self.qwen_call(messages)
 
+    # ── Command Explanation ──────────────────────────────────────────────
+
+    _CMD_EXPLANATIONS = {
+        "ls": "List files and directories",
+        "rm": "Delete files or folders",
+        "mv": "Move or rename files",
+        "cp": "Copy files or folders",
+        "cat": "Display file contents",
+        "grep": "Search text inside files",
+        "find": "Search for files by name or attributes",
+        "mkdir": "Create a new directory",
+        "rmdir": "Remove an empty directory",
+        "chmod": "Change file permissions",
+        "chown": "Change file ownership",
+        "curl": "Download or send data to a URL",
+        "wget": "Download a file from the web",
+        "pip": "Install or manage Python packages",
+        "pip3": "Install or manage Python packages",
+        "brew": "Install or manage macOS packages (Homebrew)",
+        "npm": "Install or manage Node.js packages",
+        "npx": "Run a Node.js package binary",
+        "git": "Run a Git version-control command",
+        "python": "Execute a Python script",
+        "python3": "Execute a Python script",
+        "open": "Open a file or application on macOS",
+        "kill": "Terminate a running process",
+        "killall": "Terminate all processes with a given name",
+        "ps": "Show running processes",
+        "df": "Show disk space usage",
+        "du": "Show directory size",
+        "top": "Show real-time process activity",
+        "htop": "Show real-time process activity",
+        "ssh": "Connect to a remote server",
+        "scp": "Copy files to/from a remote server",
+        "rsync": "Sync files locally or to a remote server",
+        "tar": "Create or extract archive files",
+        "zip": "Compress files into a zip archive",
+        "unzip": "Extract a zip archive",
+        "sudo": "Run a command with admin privileges",
+        "cd": "Change working directory",
+        "echo": "Print text to the terminal",
+        "touch": "Create an empty file or update timestamp",
+        "head": "Show the first lines of a file",
+        "tail": "Show the last lines of a file",
+        "sed": "Find and replace text in files",
+        "awk": "Process and transform text data",
+        "sort": "Sort lines of text",
+        "wc": "Count lines, words, or characters",
+        "osascript": "Run an AppleScript command on macOS",
+        "defaults": "Read or write macOS system preferences",
+        "launchctl": "Manage macOS background services",
+        "pm2": "Manage Node.js process manager",
+        "docker": "Manage Docker containers",
+        "systemctl": "Manage system services (Linux)",
+        "crontab": "Edit scheduled tasks",
+        "xattr": "Manage extended file attributes on macOS",
+        "diskutil": "Manage disks and volumes on macOS",
+        "networksetup": "Configure macOS network settings",
+        "say": "Speak text aloud on macOS",
+        "pbcopy": "Copy text to the clipboard",
+        "pbpaste": "Paste text from the clipboard",
+        "caffeinate": "Prevent the Mac from sleeping",
+        "softwareupdate": "Check for macOS software updates",
+    }
+
+    def _explain_command(self, code):
+        """Return a plain-English explanation of what a shell command does."""
+        code_stripped = code.strip()
+        # Handle pipes/chains — explain the first command
+        first_cmd = re.split(r'[|;&]', code_stripped)[0].strip()
+        parts = first_cmd.split()
+        if not parts:
+            return "Run an empty command"
+
+        base = os.path.basename(parts[0])
+        # Strip leading sudo
+        if base == "sudo" and len(parts) > 1:
+            base = os.path.basename(parts[1])
+            parts = parts[1:]
+
+        explanation = self._CMD_EXPLANATIONS.get(base, f"Run '{base}'")
+
+        # Add specifics based on arguments
+        args_str = " ".join(parts[1:])
+        if args_str:
+            # Detect common dangerous flags
+            danger_flags = []
+            if "-rf" in args_str or "-fr" in args_str:
+                danger_flags.append("recursively and forcefully")
+            if "--force" in args_str:
+                danger_flags.append("forcefully")
+            if "--no-preserve-root" in args_str:
+                danger_flags.append("WITHOUT root protection")
+
+            target = parts[-1] if len(parts) > 1 else ""
+            flag_note = f" ({', '.join(danger_flags)})" if danger_flags else ""
+
+            if base in ("rm", "mv", "cp", "chmod", "chown", "cat", "head", "tail"):
+                return f"{explanation}{flag_note} targeting: {target}"
+            elif base in ("curl", "wget"):
+                urls = [p for p in parts[1:] if p.startswith("http")]
+                if urls:
+                    return f"{explanation}: {urls[0][:80]}"
+            elif base in ("pip", "pip3", "npm", "brew"):
+                if len(parts) > 1:
+                    return f"{explanation} — {parts[1]} {' '.join(parts[2:3])}"
+            elif base == "git":
+                if len(parts) > 1:
+                    return f"{explanation} — git {parts[1]}"
+            elif base in ("kill", "killall"):
+                return f"{explanation}: {args_str}"
+            elif base == "open":
+                return f"{explanation}: {target}"
+
+            if flag_note:
+                return f"{explanation}{flag_note} on: {args_str[:60]}"
+
+        has_pipe = "|" in code_stripped
+        has_chain = "&&" in code_stripped or ";" in code_stripped
+        suffix = ""
+        if has_pipe:
+            suffix = " (piped to other commands)"
+        elif has_chain:
+            suffix = " (chained with other commands)"
+
+        return explanation + suffix
+
+    def _register_remote_approval(self, action, code, is_danger=False):
+        """Register approval in shared state + push notification. Returns approval_id."""
+        import uuid as _uuid
+        approval_id = _uuid.uuid4().hex[:12]
+        explanation = self._explain_command(code)
+        try:
+            from routes._shared import _pending_approvals, _approval_lock, _save_notification
+            with _approval_lock:
+                _pending_approvals[approval_id] = {
+                    "command": code[:300],
+                    "action": action,
+                    "is_dangerous": is_danger,
+                    "explanation": explanation,
+                    "timestamp": time.time(),
+                    "status": "pending",
+                }
+            prefix = "DANGEROUS" if is_danger else "Approval needed"
+            title = f"CODEC — {prefix}"
+            body = f"Command: {code[:120]}\nThis will: {explanation}"
+            _save_notification(title, body, status="warning")
+            log.info("Remote approval registered: %s", approval_id)
+        except Exception as e:
+            log.debug("Could not register remote approval: %s", e)
+        return approval_id
+
+    def _check_remote_approval(self, approval_id):
+        """Check if remote approval was granted. Returns 'pending', 'allowed', or 'denied'."""
+        try:
+            from routes._shared import _pending_approvals, _approval_lock
+            with _approval_lock:
+                a = _pending_approvals.get(approval_id)
+                if a:
+                    return a["status"]
+        except Exception:
+            pass
+        return "pending"
+
+    def _cleanup_approval(self, approval_id):
+        """Remove approval from pending list."""
+        try:
+            from routes._shared import _pending_approvals, _approval_lock
+            with _approval_lock:
+                _pending_approvals.pop(approval_id, None)
+        except Exception:
+            pass
+
     # ── Command Execution ────────────────────────────────────────────────
 
     def _cmd_preview(self, action, code):
-        import tkinter as tk
-        result = {"allow": False}
+        try:
+            import tkinter as tk
+        except ImportError:
+            return True  # auto-approve if no tkinter available
+        approval_id = self._register_remote_approval(action, code, is_danger=False)
+        explanation = self._explain_command(code)
+        result = {"allow": False, "decided": False}
         root = tk.Tk()
         root.title("CODEC")
         root.overrideredirect(True)
@@ -347,55 +525,175 @@ ALWAYS respond with valid JSON only."""
         root.configure(bg="#0a0a0a")
         sw = root.winfo_screenwidth()
         sh = root.winfo_screenheight()
-        w, h = 480, 200
+        w, h = 500, 250
         root.geometry(f"{w}x{h}+{(sw - w) // 2}+{(sh - h) // 2}")
-        cv = tk.Canvas(root, bg="#0a0a0a", highlightthickness=0, width=w, height=h)
-        cv.pack()
-        cv.create_rectangle(1, 1, w - 1, h - 1, outline="#E8711A", width=1)
+        root.focus_force()
+
+        # Top section: header + command + explanation on canvas
+        cv = tk.Canvas(root, bg="#0a0a0a", highlightthickness=0, width=w, height=175)
+        cv.pack(side="top", fill="x")
+        cv.create_rectangle(1, 1, w - 1, 173, outline="#E8711A", width=1)
         cv.create_text(w // 2, 20, text="C O D E C  —  Command Preview", fill="#E8711A", font=("Helvetica", 13, "bold"))
         cv.create_line(10, 38, w - 10, 38, fill="#333")
         lbl = action.upper() + ": " + code[:120]
-        cv.create_text(w // 2, 75, text=lbl, fill="#e0e0e0", font=("SF Mono", 11), width=w - 40)
+        cv.create_text(w // 2, 70, text=lbl, fill="#e0e0e0", font=("SF Mono", 11), width=w - 40)
+        cv.create_line(10, 105, w - 10, 105, fill="#333")
+        cv.create_text(w // 2, 115, text="This will:", fill="#E8711A", font=("Helvetica", 11, "bold"), anchor="n")
+        cv.create_text(w // 2, 138, text=explanation[:120], fill="#aaddff", font=("Helvetica", 12), width=w - 50, anchor="n")
 
-        def allow():
-            result["allow"] = True
+        def _close(allowed):
+            if result["decided"]:
+                return
+            result["decided"] = True
+            result["allow"] = allowed
             try:
-                root.destroy()
+                root.quit()
             except Exception:
                 pass
 
-        def deny():
-            result["allow"] = False
+        # Poll for remote approval every 2 seconds
+        def _poll_remote():
+            if result["decided"]:
+                return
+            status = self._check_remote_approval(approval_id)
+            if status == "allowed":
+                _close(True)
+            elif status == "denied":
+                _close(False)
+            else:
+                root.after(2000, _poll_remote)
+
+        # Bottom section: buttons in a frame
+        btn_frame = tk.Frame(root, bg="#0a0a0a")
+        btn_frame.pack(side="top", pady=15)
+        abtn = tk.Button(btn_frame, text="\u2713 Allow", bg="#00cc55", fg="#000", font=("Helvetica", 13, "bold"), border=0, padx=20, pady=6, command=lambda: _close(True))
+        abtn.pack(side="left", padx=10)
+        dbtn = tk.Button(btn_frame, text="\u2717 Deny", bg="#888", fg="#000", font=("Helvetica", 13, "bold"), border=0, padx=20, pady=6, command=lambda: _close(False))
+        dbtn.pack(side="left", padx=10)
+        root.protocol("WM_DELETE_WINDOW", lambda: _close(False))
+        root.after(60000, lambda: _close(False))  # 60s timeout
+        root.after(1000, _poll_remote)  # start polling for remote approval
+        try:
+            root.mainloop()
+        except Exception as e:
+            log.debug("Security dialog mainloop exited: %s", e)
+        # Destroy window AFTER mainloop exits (root.after won't fire after quit)
+        try:
+            root.destroy()
+        except Exception:
+            pass
+        self._cleanup_approval(approval_id)
+        return result["allow"]
+
+    def _danger_preview(self, action, code):
+        """Show a RED warning preview for dangerous commands. Returns True if user approves."""
+        try:
+            import tkinter as tk
+        except ImportError:
+            return False  # deny dangerous commands if no tkinter for safety
+        approval_id = self._register_remote_approval(action, code, is_danger=True)
+        explanation = self._explain_command(code)
+        result = {"allow": False, "decided": False}
+        root = tk.Tk()
+        root.title("CODEC — DANGER")
+        root.overrideredirect(True)
+        root.attributes("-topmost", True)
+        root.configure(bg="#0a0a0a")
+        sw = root.winfo_screenwidth()
+        sh = root.winfo_screenheight()
+        w, h = 540, 280
+        root.geometry(f"{w}x{h}+{(sw - w) // 2}+{(sh - h) // 2}")
+        root.focus_force()
+
+        cv = tk.Canvas(root, bg="#0a0a0a", highlightthickness=0, width=w, height=195)
+        cv.pack(side="top", fill="x")
+        cv.create_rectangle(1, 1, w - 1, 193, outline="#ff3333", width=2)
+        cv.create_text(w // 2, 22, text="\u26a0  DANGEROUS COMMAND", fill="#ff3333", font=("Helvetica", 14, "bold"))
+        cv.create_line(10, 42, w - 10, 42, fill="#553333")
+        lbl = action.upper() + ": " + code[:140]
+        cv.create_text(w // 2, 72, text=lbl, fill="#e0e0e0", font=("SF Mono", 11), width=w - 40)
+        cv.create_line(10, 108, w - 10, 108, fill="#553333")
+        cv.create_text(w // 2, 120, text="This will:", fill="#ff6666", font=("Helvetica", 11, "bold"), anchor="n")
+        cv.create_text(w // 2, 143, text=explanation[:140], fill="#ffaaaa", font=("Helvetica", 12), width=w - 50, anchor="n")
+        cv.create_text(w // 2, 178, text="This command can delete data. Are you sure?", fill="#ff9999", font=("Helvetica", 11))
+
+        def _close(allowed):
+            if result["decided"]:
+                return
+            result["decided"] = True
+            result["allow"] = allowed
             try:
-                root.destroy()
+                root.quit()
             except Exception:
                 pass
 
-        abtn = tk.Button(root, text="\u2713 Allow", bg="#00cc55", fg="#000", font=("Helvetica", 13, "bold"), border=0, padx=20, pady=6, command=allow)
-        abtn.place(x=w // 2 - 110, y=140, width=100, height=36)
-        dbtn = tk.Button(root, text="\u2717 Deny", bg="#ff4444", fg="#000", font=("Helvetica", 13, "bold"), border=0, padx=20, pady=6, command=deny)
-        dbtn.place(x=w // 2 + 10, y=140, width=100, height=36)
-        root.after(120000, deny)
-        root.mainloop()
+        # Poll for remote approval every 2 seconds
+        def _poll_remote():
+            if result["decided"]:
+                return
+            status = self._check_remote_approval(approval_id)
+            if status == "allowed":
+                _close(True)
+            elif status == "denied":
+                _close(False)
+            else:
+                root.after(2000, _poll_remote)
+
+        btn_frame = tk.Frame(root, bg="#0a0a0a")
+        btn_frame.pack(side="top", pady=15)
+        abtn = tk.Button(btn_frame, text="\u2713 Allow", bg="#ff3333", fg="#fff",
+                         font=("Helvetica", 13, "bold"), border=0, padx=20, pady=6, command=lambda: _close(True))
+        abtn.pack(side="left", padx=10)
+        dbtn = tk.Button(btn_frame, text="\u2717 Deny", bg="#444", fg="#fff",
+                         font=("Helvetica", 13, "bold"), border=0, padx=20, pady=6, command=lambda: _close(False))
+        dbtn.pack(side="left", padx=10)
+        root.protocol("WM_DELETE_WINDOW", lambda: _close(False))
+        root.after(60000, lambda: _close(False))  # 60s timeout
+        root.after(1000, _poll_remote)  # start polling for remote approval
+        try:
+            root.mainloop()
+        except Exception as e:
+            log.debug("Danger preview dialog mainloop exited: %s", e)
+        try:
+            root.destroy()
+        except Exception:
+            pass
+        self._cleanup_approval(approval_id)
         return result["allow"]
 
     def run_code(self, action, code):
         try:
             # ── Dangerous command check (uses word-boundary regex from codec_config) ──
             if self._is_dangerous(code):
-                log.warning("Blocked dangerous command: %s", code.lower()[:100])
-                print(f"\n[SAFETY] \u26a0\ufe0f  Flagged: {code[:80]}")
+                log.warning("Dangerous command flagged: %s", code.lower()[:100])
+                print(f"\n[SAFETY] \u26a0\ufe0f  FLAGGED: {code[:80]}")
                 with open(os.path.expanduser("~/.codec/audit.log"), "a") as _af:
-                    _af.write(f'[{time.strftime("%Y-%m-%dT%H:%M:%S")}] FLAGGED: {code[:200]}\n')
-                confirm = input("[SAFETY] Execute this command? (y/n): ").strip().lower()
-                if confirm != "y":
-                    print("[SAFETY] Command cancelled by user.")
+                    _af.write(f'[{time.strftime("%Y-%m-%dT%H:%M:%S")}] shell_flagged: {code[:200]}\n')
+                ch = _cmd_hash(code)
+                log_event("command_flagged", "codec-session",
+                          f"Command flagged: {code[:80]}",
+                          extra={"cmd_hash": ch,
+                                 "cmd_preview": _truncate(code, _PREVIEW_MAX)},
+                          outcome="denied", level="warning")
+
+                # Show danger preview dialog (works in PM2 — uses tkinter, not stdin)
+                if self._danger_preview(action, code):
+                    print("[SAFETY] User APPROVED dangerous command via dialog.")
+                    with open(os.path.expanduser("~/.codec/audit.log"), "a") as _af:
+                        _af.write(f'[{time.strftime("%Y-%m-%dT%H:%M:%S")}] APPROVED: {code[:200]}\n')
+                    log_event("command_approved", "codec-session",
+                              "Command approved",
+                              extra={"cmd_hash": ch})
+                    # Fall through to execute below
+                else:
+                    print("[SAFETY] User DENIED dangerous command via dialog.")
                     with open(os.path.expanduser("~/.codec/audit.log"), "a") as _af:
                         _af.write(f'[{time.strftime("%Y-%m-%dT%H:%M:%S")}] DENIED: {code[:200]}\n')
-                    return "Command cancelled by user for safety."
-                print("[SAFETY] User confirmed. Executing...")
-                with open(os.path.expanduser("~/.codec/audit.log"), "a") as _af:
-                    _af.write(f'[{time.strftime("%Y-%m-%dT%H:%M:%S")}] APPROVED: {code[:200]}\n')
+                    log_event("command_denied", "codec-session",
+                              "Command denied",
+                              extra={"cmd_hash": ch},
+                              outcome="denied", level="warning")
+                    return "Command blocked by user. Dangerous command was denied."
 
             # Safe commands skip preview
             is_safe = any(code.strip().lower().startswith(s) for s in self.SAFE_CMDS)
@@ -420,7 +718,7 @@ ALWAYS respond with valid JSON only."""
     # ── Agent Loop ───────────────────────────────────────────────────────
 
     def run_agent(self, task):
-        print("\n[Q-Agent] Task: " + task[:100])
+        print("\n[CODEC-Agent] Task: " + task[:100])
         am = [
             {"role": "system", "content": self.AGENT_SYS},
             {"role": "user", "content": "Task: " + task},
@@ -438,7 +736,7 @@ ALWAYS respond with valid JSON only."""
                 data = json.loads(c.strip())
             except Exception as e:
                 log.warning(f"Agent JSON parse failed: {e}")
-                print("Q: " + resp)
+                print("CODEC: " + resp)
                 self.h.append({"role": "user", "content": task})
                 self.h.append({"role": "assistant", "content": resp})
                 return resp
@@ -525,7 +823,7 @@ ALWAYS respond with valid JSON only."""
                 u = u + "\n\nSCREEN CONTENT:\n" + ctx
         self.h.append({"role": "user", "content": f"[{now}] {u}"})
         if self.streaming:
-            sys.stdout.write("\nQ: ")
+            sys.stdout.write("\nCODEC: ")
             sys.stdout.flush()
             resp = self.qwen_stream(self.h)
         else:
@@ -552,14 +850,31 @@ ALWAYS respond with valid JSON only."""
         corr = self.get_corrections()
         if corr and self.h and self.h[0]["role"] == "system" and "CORRECTIONS" not in self.h[0]["content"]:
             self.h[0]["content"] = self.h[0]["content"] + "\n\n" + corr
+
+        # ── Skill routing (before agent/LLM) ──
+        if len(u) < 500:
+            try:
+                from codec_dispatch import check_skill, run_skill
+                skill = check_skill(u)
+                if skill:
+                    result = run_skill(skill, u, "")
+                    if result is not None:
+                        print(f"\nCODEC: {result}")
+                        self.speak(str(result))
+                        self.h.append({"role": "user", "content": u})
+                        self.h.append({"role": "assistant", "content": str(result)})
+                        return
+            except Exception as e:
+                log.warning(f"Skill check failed: {e}")
+
         if any(w in u.lower().split() for w in self.ACTION_WORDS):
             done = clean_resp(self.run_agent(u))
-            print("\nQ: " + done)
+            print("\nCODEC: " + done)
             self.speak(done)
         else:
             resp = clean_resp(self.ask_q(u))
             if not self.streaming:
-                print("\nQ: " + resp)
+                print("\nCODEC: " + resp)
             self.speak(resp)
 
     # ── Queue Check ──────────────────────────────────────────────────────
@@ -622,7 +937,7 @@ ALWAYS respond with valid JSON only."""
             f"{O}    ║ ██      ██    ██ ██   ██ █████   ██       ║\n"
             f"{O}    ║ ██      ██    ██ ██   ██ ██      ██       ║\n"
             f"{O}    ║  ██████  ██████  ██████  ███████  ██████  ║\n"
-            f"{O}    ║                                   v1.5.0  ║\n"
+            f"{O}    ║                                   v2.1.0  ║\n"
             f"{O}    ╠{bar}╣\n"
             f"{O}    ║{W}  {self.key_voice.upper()} voice  {self.key_text.upper()} text  ** screen  ++ doc   {O}║\n"
             f"{O}    ║{W}  Hey C = wake word  type exit to close    {O}║\n"
@@ -659,11 +974,11 @@ ALWAYS respond with valid JSON only."""
                             break
                         if u.lower() in ["exit", "quit", "bye"]:
                             self.cleanup()
-                            print("\n[Q Session ended]")
+                            print("\n[CODEC Session ended]")
                             sys.exit(0)
                         self.process_input(u)
                         break
                 except (KeyboardInterrupt, EOFError):
                     self.cleanup()
-                    print("\n[Q Session ended]")
+                    print("\n[CODEC Session ended]")
                     sys.exit(0)

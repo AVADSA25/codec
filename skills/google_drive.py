@@ -11,20 +11,14 @@ SKILL_TRIGGERS = [
     "in my drive", "on my drive", "from my drive", "from drive",
 ]
 SKILL_DESCRIPTION = "Search and list files in your Google Drive"
+SKILL_MCP_EXPOSE = True
 
-import json, os
-
-TOKEN_PATH = os.path.expanduser("~/.codec/google_token.json")
+import os
 
 def _get_service():
-    from google.oauth2.credentials import Credentials
-    from google.auth.transport.requests import Request
-    from googleapiclient.discovery import build
-    creds = Credentials.from_authorized_user_file(TOKEN_PATH)
-    if creds.expired and creds.refresh_token:
-        creds.refresh(Request())
-        with open(TOKEN_PATH, 'w') as f: f.write(creds.to_json())
-    return build('drive', 'v3', credentials=creds)
+    import sys; sys.path.insert(0, os.path.expanduser("~/codec-repo"))
+    from codec_google_auth import build_service
+    return build_service("drive", "v3")
 
 def run(task, app="", ctx=""):
     try:

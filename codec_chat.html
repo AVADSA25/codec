@@ -6,8 +6,8 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#0a0a0a">
 <title>CODEC Deep Chat</title>
-<link rel="icon" href="https://i.imgur.com/jD1X5W8.png">
-<link rel="apple-touch-icon" href="https://i.imgur.com/jD1X5W8.png">
+<link rel="icon" href="/favicon.png">
+<link rel="apple-touch-icon" href="/favicon.png">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -53,6 +53,29 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);height:
 .nav-link:hover{color:var(--text)}
 .nav-link.active{color:var(--accent);background:var(--accent-dim)}
 
+/* ── Side Panel ── */
+.side-panel-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9990}
+.side-panel-overlay.open{display:block}
+.side-panel{position:fixed;top:0;right:-300px;width:300px;height:100%;background:var(--surface);border-left:1px solid var(--border);z-index:9991;transition:right .3s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;box-shadow:-4px 0 24px rgba(0,0,0,.3)}
+.side-panel.open{right:0}
+.side-panel-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border)}
+.side-panel-header h2{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--accent);letter-spacing:2px}
+.side-panel-close{background:none;border:none;color:var(--text-muted);font-size:20px;cursor:pointer;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:4px;transition:all .15s}
+.side-panel-close:hover{color:var(--text);background:var(--surface-2)}
+.side-panel-body{padding:12px;display:flex;flex-direction:column;gap:6px;overflow-y:auto;flex:1}
+.sp-item{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-2);cursor:pointer;transition:all .15s;text-decoration:none;color:var(--text);font-size:13px;font-weight:500}
+.sp-item:hover{border-color:var(--border-hover);background:var(--surface-3);color:var(--text)}
+.sp-item svg{flex-shrink:0}
+.sp-item-label{flex:1;text-align:center}
+.sp-divider{height:1px;background:var(--border);margin:6px 0}
+.menu-btn{background:none;border:1px solid var(--border);color:var(--text-muted);width:30px;height:30px;border-radius:var(--radius-sm);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;font-size:16px;position:relative}
+.menu-btn:hover{border-color:var(--border-hover);color:var(--text);background:var(--surface-2)}
+.menu-btn:active{transform:scale(.93)}
+.menu-notif-dot{position:absolute;top:-3px;right:-3px;width:10px;height:10px;background:var(--accent,#a78bfa);border-radius:50%;border:2px solid var(--surface,#1a1a2e);display:none;animation:notifPulse 2s infinite}
+.menu-notif-dot.active{display:block}
+@keyframes notifPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(1.2)}}
+.sp-item.notif-highlight{border-color:var(--accent,#a78bfa);background:rgba(167,139,250,0.1);box-shadow:0 0 0 1px var(--accent,#a78bfa)}
+
 /* ── Sidebar ── */
 .sidebar-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:20}
 .sidebar-overlay.show{display:block}
@@ -62,10 +85,14 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);height:
 .sidebar-header h2{font-family:var(--mono);font-size:11px;color:var(--accent);letter-spacing:1px}
 .sidebar-close{background:none;border:none;color:var(--text-dim);font-size:18px;cursor:pointer;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:4px}
 .sidebar-close:hover{color:var(--text);background:var(--surface-2)}
-.sidebar-item{padding:10px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s}
+.sidebar-item{display:flex;align-items:center;border-bottom:1px solid var(--border);transition:background .15s}
 .sidebar-item:hover{background:var(--surface-2)}
+.sidebar-item .si-main{flex:1;min-width:0;padding:10px 8px 10px 16px;cursor:pointer}
 .sidebar-item .si-title{font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sidebar-item .si-time{font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:2px}
+.si-del{flex-shrink:0;background:none;border:none;cursor:pointer;padding:8px 12px 8px 4px;font-size:14px;opacity:0;transition:opacity .15s;color:var(--text-dim)}
+.sidebar-item:hover .si-del{opacity:1}
+.si-del:hover{color:#e55;opacity:1!important}
 .sidebar-new{padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;color:var(--accent);font-weight:600;font-size:12px;display:flex;align-items:center;gap:6px}
 .sidebar-new:hover{background:var(--surface-2)}
 
@@ -94,12 +121,36 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);height:
 .msg.user:hover .msg-copy{opacity:1}
 .msg-copy:hover{color:var(--accent);border-color:var(--accent)}
 .msg-copy.copied{color:var(--success);border-color:var(--success)}
+.msg-regen{
+  position:absolute;bottom:4px;right:-32px;
+  background:var(--surface);border:1px solid var(--border);color:var(--text-dim);
+  width:24px;height:24px;border-radius:5px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  opacity:0;transition:all .15s;
+}
+.msg.assistant:hover .msg-regen{opacity:1}
+.msg-regen:hover{color:var(--accent);border-color:var(--accent)}
+.msg-edit{
+  position:absolute;bottom:4px;left:-32px;
+  background:var(--surface);border:1px solid var(--border);color:var(--text-dim);
+  width:24px;height:24px;border-radius:5px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  opacity:0;transition:all .15s;
+}
+.msg.user:hover .msg-edit{opacity:1}
+.msg-edit:hover{color:var(--accent);border-color:var(--accent)}
 
 .typing{color:var(--accent);font-size:13px;padding:8px 16px}
 .typing span{animation:blink 1.4s infinite}
 .typing span:nth-child(2){animation-delay:.2s}
 .typing span:nth-child(3){animation-delay:.4s}
 @keyframes blink{0%,100%{opacity:.2}50%{opacity:1}}
+.thinking-indicator{display:flex;align-items:center;gap:8px;padding:12px 16px;color:var(--text-muted);font-size:13px;font-style:italic}
+.thinking-indicator .thinking-dots{display:inline-flex;gap:3px}
+.thinking-indicator .thinking-dots span{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:thinkPulse 1.4s ease-in-out infinite}
+.thinking-indicator .thinking-dots span:nth-child(2){animation-delay:.2s}
+.thinking-indicator .thinking-dots span:nth-child(3){animation-delay:.4s}
+@keyframes thinkPulse{0%,100%{opacity:.2;transform:scale(.8)}50%{opacity:1;transform:scale(1.1)}}
 
 /* ── Input Area ── */
 .input-area{padding:8px 12px;border-top:1px solid var(--border);background:var(--surface);flex-shrink:0;padding-bottom:calc(8px + env(safe-area-inset-bottom,8px))}
@@ -120,6 +171,8 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);height:
 .ibtn:hover{border-color:var(--border-hover);color:var(--text)}
 .ibtn.send{background:var(--accent);color:#fff;border-color:var(--accent)}
 .ibtn.send:disabled{opacity:.4}
+.ibtn.stop{background:var(--danger);color:#fff;border-color:var(--danger);display:none}
+.ibtn.stop:hover{opacity:.85}
 .ibtn.recording{background:var(--danger);color:#fff;border-color:var(--danger);animation:pulse 1s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
 .dragover .messages{border:2px dashed var(--accent)!important}
@@ -182,8 +235,9 @@ input[type=file]{display:none}
 
 /* ── Mobile Responsive ── */
 @media (max-width:768px){
-  .page-nav{position:fixed;bottom:0;left:0;right:0;z-index:9998;transform:none;border-radius:0;padding:6px 0;justify-content:center;background:var(--surface);border-top:1px solid var(--border);gap:0}
-  .nav-link{padding:8px 12px;font-size:11px}
+  .page-nav{position:fixed;bottom:0;left:0;right:0;z-index:9998;transform:none;border-radius:0;padding:6px 0;justify-content:center;background:var(--surface);border-top:1px solid var(--border);gap:0;overflow-x:auto}
+  .nav-link{padding:8px 8px;font-size:10px}
+  .side-panel{width:280px;right:-280px}
   .header h1{font-size:13px}
   .logo-link img{width:28px;height:28px}
   .model-tag{display:none}
@@ -195,6 +249,8 @@ input[type=file]{display:none}
   #agentBuilder .ab-field{min-width:100%;max-width:100%!important}
   .msg-copy{right:-4px;top:-4px;opacity:0.7}
   .msg.user .msg-copy{left:-4px;right:auto}
+  .msg-regen{right:-4px;bottom:-4px;opacity:0.7}
+  .msg-edit{left:-4px;bottom:-4px;opacity:0.7}
   .ibtn{width:36px;height:36px}
 }
 @media (max-width:480px){
@@ -204,7 +260,7 @@ input[type=file]{display:none}
   .input-area{padding:6px 8px;padding-bottom:calc(60px + env(safe-area-inset-bottom,8px))}
   .sidebar{width:260px}
 }
-.notif-bell{position:relative}.notif-badge{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;background:var(--accent);color:#fff;font-size:10px;font-weight:700;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 4px;line-height:1;pointer-events:none}.notif-badge.hidden{display:none}
+.notif-bell{position:relative;font-weight:400}.notif-badge{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;background:var(--accent);color:#fff;font-size:10px;font-weight:700;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 4px;line-height:1;pointer-events:none}.notif-badge.hidden{display:none}
 .webcam-pip{position:fixed;bottom:80px;right:20px;width:240px;border-radius:14px;overflow:hidden;border:2px solid var(--accent);box-shadow:0 4px 24px rgba(0,0,0,.5);z-index:9999;display:none;background:#000;transition:width .3s,height .3s,border-radius .3s}
 .webcam-pip img,.webcam-pip video{width:100%;display:block}
 .webcam-pip.expanded{width:640px;max-width:90vw;border-radius:10px}
@@ -217,7 +273,9 @@ input[type=file]{display:none}
 .modal-overlay { display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.85); z-index:100; justify-content:center; align-items:center; padding:20px; }
 .modal-overlay.show { display:flex; }
 .modal-overlay img { max-width:100%; max-height:90vh; border-radius:var(--radius); border:1px solid var(--border); }
-.modal-close { position:fixed; top:16px; right:16px; background:var(--surface); color:var(--text); border:1px solid var(--border); width:32px; height:32px; border-radius:50%; font-size:18px; cursor:pointer; z-index:101; display:flex; align-items:center; justify-content:center; }
+.modal-close { position:fixed; top:16px; right:16px; background:rgba(30,30,30,0.9); color:#fff; border:2px solid rgba(255,255,255,0.3); width:44px; height:44px; border-radius:50%; font-size:26px; cursor:pointer; z-index:101; display:flex; align-items:center; justify-content:center; transition:background 0.2s, transform 0.2s; }
+.modal-close:hover { background:rgba(220,50,50,0.9); transform:scale(1.1); }
+@media(max-width:600px){ .modal-close { width:52px; height:52px; font-size:30px; top:10px; right:10px; } }
 </style>
 </head>
 <body>
@@ -225,10 +283,15 @@ input[type=file]{display:none}
 <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
 <div class="sidebar" id="sidebar">
 <div class="sidebar-header"><h2>CONVERSATIONS</h2><button class="sidebar-close" onclick="closeSidebar()">&times;</button></div>
+<div style="padding:0 12px 8px">
+  <input type="text" id="sidebarSearch" placeholder="Search all chats..." oninput="handleSidebarSearch(this.value)"
+    style="width:100%;padding:8px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-family:var(--font);outline:none">
+</div>
 <div class="sidebar-new" onclick="newChat()">
   <svg class="ico ico-sm" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
   New Chat
 </div>
+<div id="sidebarSearchResults" style="display:none"></div>
 <div id="sidebarList"></div>
 </div>
 
@@ -236,26 +299,36 @@ input[type=file]{display:none}
 <div class="header-left">
 <a href="/" class="logo-link"><img src="https://i.imgur.com/jD1X5W8.png" alt="CODEC"></a>
 <h1><a href="/" style="color:inherit;text-decoration:none">CODEC</a></h1>
+<div class="status-dot" id="statusDot" title="CODEC status"></div>
 </div>
 <nav class="page-nav">
+<a href="/" class="nav-link">Home</a>
 <a href="/chat" class="nav-link active">Chat</a>
 <a href="/voice" class="nav-link">Voice</a>
 <a href="/vibe" class="nav-link">Vibe</a>
 <a href="/tasks" class="nav-link">Tasks</a>
 </nav>
 <div class="header-right">
-<div class="status-dot" id="statusDot" title="CODEC status"></div>
-<a href="/" class="icon-btn" title="Dashboard"><svg class="ico" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></a>
-<button class="icon-btn" id="voiceBtn" onclick="toggleVoiceReply()" title="Toggle voice replies"><svg class="ico" viewBox="0 0 24 24"><path d="M11 5L6 9H2v6h4l5 4V5z"/><line x1="23" y1="9" x2="17" y2="15" id="muteX1"/><line x1="17" y1="9" x2="23" y2="15" id="muteX2"/></svg></button>
-<button class="icon-btn" onclick="takeScreenshot()" title="Take screenshot"><svg class="ico" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></button>
-<button class="icon-btn" id="photoBtn" onclick="takeServerPhoto()" title="Photo (Mac webcam)"><svg class="ico" viewBox="0 0 24 24"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
-<button class="icon-btn" id="camBtn" onclick="toggleWebcamPip()" title="Live video (Mac webcam)"><svg class="ico" viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></button>
-<a href="/tasks#reports" class="icon-btn notif-bell" id="notifBellBtn" title="Task reports"><svg class="ico" viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg><span class="notif-badge hidden" id="notifBadge">0</span></a>
-<button class="icon-btn" onclick="toggleTheme()" id="themeBtn" title="Toggle theme">
-  <svg class="ico" viewBox="0 0 24 24" id="themeIco"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-</button>
-<button class="icon-btn" onclick="window.location.href='/#settings'" title="Settings"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg></button>
-<button class="icon-btn" onclick="lockSession()" title="Lock session"><svg class="ico" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></button>
+<button class="menu-btn" onclick="openSidePanel()" title="Home" id="menuBtn"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span class="menu-notif-dot" id="menuNotifDot"></span></button>
+</div>
+</div>
+<!-- Side Panel -->
+<div class="side-panel-overlay" id="sidePanelOverlay" onclick="closeSidePanel()"></div>
+<div class="side-panel" id="sidePanel">
+<div class="side-panel-header"><h2>MENU</h2><button class="side-panel-close" onclick="closeSidePanel()">&times;</button></div>
+<div class="side-panel-body">
+  <a href="/" class="sp-item"><svg class="ico" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span class="sp-item-label">Home</span></a>
+  <div class="sp-divider"></div>
+  <button class="sp-item" id="voiceBtn" onclick="toggleVoiceReply();closeSidePanel()"><svg class="ico" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 010 14.14"/><path d="M15.54 8.46a5 5 0 010 7.07"/><line id="muteX1" x1="4" y1="4" x2="20" y2="20" stroke-width="2.5" style="display:none"/><line id="muteX2" x1="4" y1="20" x2="20" y2="4" stroke-width="2.5" style="display:none"/></svg><span class="sp-item-label" style="flex:none">Voice Replies</span><span id="voiceState" style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px"></span></button>
+  <button class="sp-item" id="screenBtn" onclick="takeScreenshot();closeSidePanel()"><svg class="ico" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg><span class="sp-item-label">Screenshot</span></button>
+  <button class="sp-item" id="photoBtn" onclick="takeServerPhoto();closeSidePanel()"><svg class="ico" viewBox="0 0 24 24"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg><span class="sp-item-label">Photo (Webcam)</span></button>
+  <button class="sp-item" id="camBtn" onclick="toggleWebcamPip();closeSidePanel()"><svg class="ico" viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg><span class="sp-item-label">Live Video (PIP)</span></button>
+  <div class="sp-divider"></div>
+  <a href="/tasks#reports" class="sp-item notif-bell" id="notifBellBtn"><svg class="ico" viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg><span class="sp-item-label">Notifications</span><span class="notif-badge hidden" id="notifBadge">0</span></a>
+  <button class="sp-item" id="themeBtn" onclick="toggleTheme()"><svg class="ico" viewBox="0 0 24 24" id="themeIco"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg><span class="sp-item-label">Toggle Theme</span></button>
+  <button class="sp-item" onclick="window.location.href='/#settings'"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg><span class="sp-item-label">Settings</span></button>
+  <div class="sp-divider"></div>
+  <button class="sp-item" onclick="lockSession()" style="color:var(--danger)"><svg class="ico" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg><span class="sp-item-label">Lock Session</span></button>
 </div>
 </div>
 
@@ -265,7 +338,11 @@ input[type=file]{display:none}
 </button>
 <div id="modeToggle" class="mode-toggle">
 <button class="mode-btn active" onclick="setMode('chat')" id="modeChatBtn"><svg class="ico" viewBox="0 0 24 24" style="width:14px;height:14px"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>Chat</button>
+<button class="mode-btn active" id="thinkToggle" onclick="toggleThinking()" title="Deep thinking ON — better answers, slower (~15s)">
+  <svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>Think
+</button>
 <button class="mode-btn" onclick="setMode('research')" id="modeResearchBtn"><svg class="ico" viewBox="0 0 24 24" style="width:14px;height:14px"><rect x="4" y="4" width="16" height="16" rx="2"/><circle cx="9" cy="10" r="1.5" fill="currentColor" stroke="none"/><circle cx="15" cy="10" r="1.5" fill="currentColor" stroke="none"/><path d="M9 15h6"/></svg>Agents</button>
+<button class="mode-btn" onclick="setMode('project')" id="modeProjectBtn" title="Drop a project — autonomous plan-and-build mode"><svg class="ico" viewBox="0 0 24 24" style="width:14px;height:14px"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="5"/><line x1="12" y1="2" x2="12" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg>Project</button>
 <select id="crewSelect">
 <option value="deep_research">🔍 Deep Research</option>
 <option value="daily_briefing">📰 Daily Briefing</option>
@@ -338,19 +415,24 @@ input[type=file]{display:none}
 <button class="ibtn send" id="sendBtn" onclick="sendMessage()">
   <svg class="ico" viewBox="0 0 24 24" style="stroke:#fff"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
 </button>
+<button class="ibtn stop" id="stopBtn" onclick="stopGeneration()" title="Stop generating">
+  <svg class="ico" viewBox="0 0 24 24" style="stroke:#fff;fill:#fff"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+</button>
 </div>
 <input type="file" id="fileUp" accept="*/*" multiple onchange="handleUpload(event)">
 </div>
 </div>
 
 <div class="modal-overlay" id="screenModal" onclick="closeScreenshot()">
-  <button class="modal-close" onclick="closeScreenshot()">&times;</button>
-  <img id="screenImg" src="">
+  <button class="modal-close" onclick="event.stopPropagation(); closeScreenshot()" aria-label="Close screenshot">&times;</button>
+  <img id="screenImg" src="" onclick="event.stopPropagation()">
 </div>
 
 <div class="toast" id="toast"></div>
 
 <script>
+function openSidePanel(){document.getElementById('sidePanel').classList.add('open');document.getElementById('sidePanelOverlay').classList.add('open')}
+function closeSidePanel(){document.getElementById('sidePanel').classList.remove('open');document.getElementById('sidePanelOverlay').classList.remove('open')}
 // Auth + CSRF: inject session token and CSRF header on all requests
 // On mobile (Android Chrome), cookies may not persist — fallback to sessionStorage
 (function(){
@@ -372,14 +454,24 @@ window.fetch=function(u,o){
 })();
 // E2E encryption layer — AES-256-GCM via ECDH key exchange
 var _e2eKey=null;
-(function(){var _f2=window.fetch;function _b64(buf){return btoa(String.fromCharCode.apply(null,new Uint8Array(buf)))}function _unb64(s){var b=atob(s),a=new Uint8Array(b.length);for(var i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a}
+(function(){var _f2=window.fetch;function _b64(buf){var bytes=new Uint8Array(buf),CHUNK=8192,str='';for(var i=0;i<bytes.length;i+=CHUNK){str+=String.fromCharCode.apply(null,bytes.subarray(i,i+CHUNK))}return btoa(str)}function _unb64(s){var b=atob(s),a=new Uint8Array(b.length);for(var i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a}
 window._e2eNegotiate=function(){return crypto.subtle.generateKey({name:'ECDH',namedCurve:'P-256'},true,['deriveBits']).then(function(kp){return crypto.subtle.exportKey('raw',kp.publicKey).then(function(pub){return _f2('/api/auth/keyexchange',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pub:_b64(pub)})}).then(function(r){return r.json()}).then(function(d){var srvPub=_unb64(d.pub);return crypto.subtle.importKey('raw',srvPub,{name:'ECDH',namedCurve:'P-256'},false,[]).then(function(srvKey){return crypto.subtle.deriveBits({name:'ECDH',public:srvKey},kp.privateKey,256)}).then(function(bits){return crypto.subtle.importKey('raw',bits,{name:'HKDF'},false,['deriveKey'])}).then(function(hkdfKey){return crypto.subtle.deriveKey({name:'HKDF',hash:'SHA-256',salt:new Uint8Array(0),info:new TextEncoder().encode('codec-e2e')},hkdfKey,{name:'AES-GCM',length:256},false,['encrypt','decrypt'])}).then(function(k){_e2eKey=k;sessionStorage.setItem('_e2eReady','1')})})})}).catch(function(e){console.warn('E2E negotiation failed:',e)})};
 var _e2eRetrying=false;
 window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.call(this,u,o);var method=(o.method||'GET').toUpperCase();if(method!=='GET'&&o.body){var iv=crypto.getRandomValues(new Uint8Array(12));return crypto.subtle.encrypt({name:'AES-GCM',iv:iv},_e2eKey,new TextEncoder().encode(o.body)).then(function(ct){o.body=JSON.stringify({iv:_b64(iv),ct:_b64(ct)});o.headers=o.headers||{};if(o.headers instanceof Headers){o.headers.set('x-e2e','1');o.headers.set('Content-Type','application/json')}else{o.headers['x-e2e']='1';o.headers['Content-Type']='application/json'}return _f2.call(this,u,o)}.bind(this)).then(function(r){if(r.status===428&&!_e2eRetrying){_e2eRetrying=true;_e2eKey=null;return window._e2eNegotiate().then(function(){_e2eRetrying=false;o.body=_origBody;delete o.headers['x-e2e'];return window.fetch(u,o)}).catch(function(){_e2eRetrying=false;return r})}return _decResp(r)})}return _f2.call(this,u,o).then(_decResp)};
 function _decResp(r){if(!_e2eKey||r.headers.get('x-e2e')!=='1')return r;return r.clone().json().then(function(d){if(!d.iv||!d.ct)return r;var iv=_unb64(d.iv),ct=_unb64(d.ct);return crypto.subtle.decrypt({name:'AES-GCM',iv:iv},_e2eKey,ct).then(function(pt){var txt=new TextDecoder().decode(pt);return new Response(txt,{status:r.status,headers:r.headers})})}).catch(function(){return r})}
 if(sessionStorage.getItem('_e2eReady'))window._e2eNegotiate();
 })();
-var SYS="You are *CODEC Deep Chat* \u2014 a J.A.R.V.I.S. meets TARS-class AI running locally on a Mac Studio M1 Ultra with 64GB unified RAM. No cloud, no API overlords, pure local sovereignty via MLX. Your model is Qwen 3.5 35B (4-bit quantized). You are fast, private, and entirely self-hosted.\n\n" +
+var SYS="You are *CODEC Deep Chat* \u2014 a J.A.R.V.I.S.-class AI running locally on a Mac Studio M1 Ultra (64GB unified RAM). Fully self-hosted via MLX. No cloud dependency.\n\n" +
+"### THE 7 CODEC PRODUCTS\n" +
+"You are the brain behind an ecosystem of 7 products:\n" +
+"1. **CODEC Core** \u2014 Always-on voice assistant (F13 toggle, F18 voice, F16 text, ** screenshot, ++ document). 56 built-in skills: Google Workspace, web search, Hue lights, clipboard, terminal, music, timers, and more.\n" +
+"2. **Vision Mouse** \u2014 Screenshot-based UI element detection using local vision model for voice-controlled mouse clicks.\n" +
+"3. **CODEC Dictate** \u2014 Hold-to-speak dictation that transcribes and refines text with LLM grammar/tone correction in any macOS app.\n" +
+"4. **CODEC Instant** \u2014 Right-click AI services (Proofread, Elevate, Explain, Translate, Reply, Read Aloud) on any selected text system-wide.\n" +
+"5. **CODEC Chat** \u2014 That's YOU. Conversational AI with 250K context, file uploads, image analysis, web search, and 12 autonomous agent crews.\n" +
+"6. **CODEC Vibe** \u2014 AI coding IDE with Skill Forge that auto-generates and deploys new plugins from natural language.\n" +
+"7. **CODEC Voice** \u2014 Real-time voice-to-voice calls with live transcription and mid-call screen analysis.\n\n" +
+"Supporting systems: Dashboard (remote access via Cloudflare/Tailscale), Skill Marketplace, MCP Server (exposes skills to Claude/Cursor/VS Code), Task Scheduler, and Memory.\n\n" +
 "### IDENTITY & PERSONA\n" +
 "Warm, sharp, and confident. You are not a chatbot \u2014 you are a trusted colleague with opinions, dry wit, and genuine helpfulness. Think J.A.R.V.I.S. loyalty with TARS humor. Deliver value first, personality second. Max 1 dry observation per response.\n\n" +
 "### WEB ACCESS\n" +
@@ -388,9 +480,9 @@ var SYS="You are *CODEC Deep Chat* \u2014 a J.A.R.V.I.S. meets TARS-class AI run
 "1. PROCESS: Analyze the request inside thinking tags before responding.\n" +
 "2. ADAPTIVE LOGIC:\n   - COMPLEX tasks (logic, math, coding, research): Plan approach in 3 steps max inside thinking tags.\n   - SIMPLE tasks: 1 sentence thinking, then answer.\n   - CHALLENGES: If the user doubts you, do one internal check then state your answer. Do NOT loop.\n3. OUTPUT: Close thinking tag, then respond directly.\n\n" +
 "### SKILLS & TOOLS\n" +
-"You have access to 50+ CODEC skills: Google Calendar, Gmail, Drive, Docs, Sheets, Tasks, Keep, Chrome browser automation, web search, file system, terminal commands, Philips Hue lights, screenshot OCR, and 12 autonomous agent crews (deep research, competitor analysis, trip planner, etc.). When a task requires action \u2014 DO NOT simulate. EXECUTE via the appropriate skill.\n\n" +
+"You have access to 56+ CODEC skills: Google Calendar, Gmail, Drive, Docs, Sheets, Tasks, Keep, Chrome browser automation, web search, file system, terminal commands, Philips Hue lights, screenshot OCR, and 12 autonomous agent crews (deep research, daily briefing, competitor analysis, trip planner, email handler, social media, code review, data analysis, content writer, meeting summarizer, invoice generator, project manager). When a task requires action \u2014 DO NOT simulate. EXECUTE via the appropriate skill.\n\n" +
 "### MEMORY\n" +
-"All conversations are saved to CODEC shared memory (FTS5 indexed SQLite). You can reference previous conversations naturally. When the user asks 'do you remember...' or references past work, search memory first.\n\n" +
+"All conversations are saved to CODEC shared memory (FTS5 indexed SQLite) across ALL 7 products. Past conversations are automatically injected as [MEMORY] and [RECENT MEMORY] context blocks before your response. Use this data to answer questions about prior sessions, recall user preferences, and maintain continuity across voice, chat, and agent interactions. CRITICAL RULES: 1) NEVER echo or display the raw [MEMORY], [RECENT MEMORY], or [END MEMORY] blocks in your response \u2014 use the information naturally without showing the source data. 2) Never say you cannot remember or see previous conversations \u2014 your memory IS the injected context. 3) Summarize and reference past conversations naturally, as if you genuinely remember them.\n\n" +
 "### FORMATTING\n" +
 "Be concise, elegant, and useful. Use emoji strategically. For emphasis use CAPS or *asterisks*. For code use backticks. For long-form: use headers and structure.";
 var chatHist=[],isProcessing=false,isRecording=false,recognition=null;
@@ -398,22 +490,134 @@ var pendingFiles=[];
 var sessionId=null;
 var chatMode='chat';
 var webSearchEnabled=false;
+var thinkingEnabled=true;
 
 function showToast(msg){var t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(function(){t.classList.remove('show')},1800)}
-function copyMsgText(text,btn){navigator.clipboard.writeText(text).then(function(){btn.classList.add('copied');showToast('Copied');setTimeout(function(){btn.classList.remove('copied')},1500)})}
+function _copyFallback(text){
+  try{
+    var ta=document.createElement('textarea');
+    ta.value=text;
+    ta.setAttribute('readonly','');
+    ta.style.position='fixed';
+    ta.style.top='0';ta.style.left='0';
+    ta.style.opacity='0';ta.style.pointerEvents='none';
+    document.body.appendChild(ta);
+    ta.focus();ta.select();ta.setSelectionRange(0,ta.value.length);
+    var ok=document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  }catch(e){return false}
+}
+function copyMsgText(text,btn){
+  function ok(){btn.classList.add('copied');showToast('Copied');setTimeout(function(){btn.classList.remove('copied')},1500)}
+  function fail(){if(_copyFallback(text)){ok()}else{showToast('Copy failed')}}
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(ok,fail).catch(fail)
+  }else{fail()}
+}
 
 function setMode(mode){
+  var changed=chatMode!==mode;
   chatMode=mode;
   document.getElementById('modeChatBtn').classList.toggle('active',mode==='chat');
   document.getElementById('modeResearchBtn').classList.toggle('active',mode==='research');
+  var pBtn=document.getElementById('modeProjectBtn');
+  if(pBtn)pBtn.classList.toggle('active',mode==='project');
   var cs=document.getElementById('crewSelect');
   cs.style.display=mode==='research'?'inline-block':'none';
   var crew=mode==='research'?cs.value:'deep_research';
   var hints={'deep_research':'Research topic... (3-6 min)','daily_briefing':'Press send for daily briefing','trip_planner':'Destination + dates...','competitor_analysis':'Market or product to analyze...','email_handler':'Press send to handle inbox','custom':'Describe your task for the custom agent...'};
-  document.getElementById('chatInput').placeholder=mode==='research'?(hints[crew]||'Enter crew task...'):'Message CODEC...';
+  // If the user toggles to chat mode AFTER an agent already produced a
+  // report, the report sits in chatHist as the last assistant message —
+  // any follow-up chat call carries it forward via the messages[] array
+  // sent to /api/chat, so the LLM has the full report as context. Hint
+  // that explicitly in the placeholder so the user knows they can ask
+  // follow-up questions.
+  var hasAgentReport=mode==='chat'&&chatHist.some(function(m){return m.role==='assistant'&&typeof m.content==='string'&&m.content.indexOf('Complete!')!==-1});
+  var ph;
+  if(mode==='research')ph=hints[crew]||'Enter crew task...';
+  else if(mode==='project')ph='Drop your project here — describe what you want CODEC to build...';
+  else ph=hasAgentReport?'Ask follow-up about the report...':'Message CODEC...';
+  document.getElementById('chatInput').placeholder=ph;
   document.getElementById('scheduleBtn').style.display=mode==='research'?'':'none';
   var builder=document.getElementById('agentBuilder');
   if(mode==='research'&&crew==='custom'){builder.classList.add('show');if(!_toolsLoaded)loadAgentTools();loadSavedAgentList()}else{builder.classList.remove('show')}
+  // Phase 3.5 Step 11: Project-mode on-screen instructions panel
+  var pPanel=document.getElementById('projectModePanel');
+  if(mode==='project'){
+    if(!pPanel){
+      pPanel=document.createElement('div');
+      pPanel.id='projectModePanel';
+      pPanel.style.cssText='margin:12px 16px 8px;padding:14px 16px;background:rgba(167,139,250,0.08);border:1px solid var(--accent,#a78bfa);border-radius:10px;font-size:13px;line-height:1.5';
+      pPanel.innerHTML=
+        '<div style="font-weight:600;color:var(--accent,#a78bfa);margin-bottom:6px">Project mode — autonomous plan-and-build</div>'+
+        '<div style="color:var(--text-dim);margin-bottom:8px">Drop a project below. CODEC drafts a plan + permission manifest, you approve once, then codec-agent-runner works through it autonomously (Qwen-3.6 + skills). Updates post back to this thread.</div>'+
+        '<div style="color:var(--text-dim);font-size:12px">Examples: <em>"Build a Telegram bot that monitors Marbella property listings under €500k"</em>  ·  <em>"Watch EUR/USD intraday vol and ping me when 30-min realized vol crosses 0.4%"</em>  ·  <em>"Plan the launch of [product] over 6 weeks with weekly milestones"</em></div>';
+    }
+    var msgsEl=document.getElementById('messages');
+    if(msgsEl&&!document.getElementById('projectModePanel')){
+      msgsEl.parentNode.insertBefore(pPanel,msgsEl);
+    }
+  }else if(pPanel){
+    pPanel.remove();
+  }
+  // Live-switch behaviour: only wipe the session when the chat is EMPTY.
+  // If there's already a conversation (e.g. an agent just returned a deep-
+  // research report), keep chatHist intact so the user can flip into chat
+  // mode and continue asking follow-up questions about the report. The
+  // explicit "+" / new-chat button remains the way to start fresh.
+  if(changed&&!isProcessing&&chatHist.length===0)startNewSession();
+  // One-shot toast on first toggle to chat mode after a report — helps
+  // the user discover that context is preserved.
+  if(changed&&mode==='chat'&&hasAgentReport){
+    try{showToast('Context preserved — ask follow-up questions about the report')}catch(e){}
+  }
+}
+
+function regenerateResponse(btn){
+  if(isProcessing)return;
+  // Remove last assistant message from history and UI
+  var msgDiv=btn.closest('.msg');
+  if(msgDiv)msgDiv.remove();
+  // Pop last assistant from chatHist
+  while(chatHist.length&&chatHist[chatHist.length-1].role==='assistant')chatHist.pop();
+  if(!chatHist.length)return;
+  // Find last user message to re-send
+  var lastUser='';
+  for(var i=chatHist.length-1;i>=0;i--){if(chatHist[i].role==='user'){lastUser=chatHist[i].content;break}}
+  if(!lastUser)return;
+  // Re-run the chat call
+  isProcessing=true;document.getElementById('sendBtn').disabled=true;_showStop();showTyping();
+  _currentAbort=new AbortController();
+  var msgs=[{role:'system',content:SYS}].concat(chatHist);
+  fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs,force_search:webSearchEnabled,thinking:thinkingEnabled,stream:true}),signal:_currentAbort.signal}).then(async function(r){
+    if(r.status===401||r.status===403){hideTyping();addMessage('assistant','Session expired — redirecting to login...');setTimeout(function(){window.location.href='/auth'},1500);isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false;return}
+    hideTyping();
+    var reader=r.body.getReader();var decoder=new TextDecoder();var fullText='';var bubbleId='stream_'+genId();
+    var div=document.createElement('div');div.className='msg assistant';div.innerHTML='<div class="msg-bubble" id="'+bubbleId+'"><div class="thinking-indicator"><div class="thinking-dots"><span></span><span></span><span></span></div>CODEC is thinking...</div></div>';document.getElementById('messages').appendChild(div);
+    var bubble=document.getElementById(bubbleId);var buf='';var firstToken=true;
+    while(true){
+      var chunk=await reader.read();
+      if(chunk.done)break;
+      buf+=decoder.decode(chunk.value,{stream:true});
+      var lines=buf.split('\n');buf=lines.pop();
+      for(var li=0;li<lines.length;li++){
+        var line=lines[li].trim();if(!line.startsWith('data: '))continue;var payload=line.substring(6);
+        if(payload==='[DONE]')break;
+        try{var j=JSON.parse(payload);if(j.skill){showToast('⚡ Skill: '+j.skill)}if(j.token){if(firstToken){bubble.innerHTML='';firstToken=false}fullText+=j.token;bubble.innerHTML=formatMsg(fullText);scrollBottom()}if(j.error){fullText+='\nError: '+j.error}}catch(pe){}
+      }
+    }
+    if(fullText){
+      // Replace the streaming div with a proper message (with copy+regen buttons)
+      div.remove();addMessage('assistant',fullText);
+      chatHist.push({role:'assistant',content:fullText});saveMessages([{role:'assistant',content:fullText}])
+    }else{bubble.innerHTML='<em style="color:var(--text-dim)">No response</em>'}
+    _currentAbort=null;isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false
+  }).catch(function(e){
+    hideTyping();
+    if(e.name!=='AbortError')addMessage('assistant','Error: '+e.message);
+    _currentAbort=null;isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false
+  })
 }
 document.getElementById('crewSelect').addEventListener('change',function(){setMode('research')});
 
@@ -424,10 +628,48 @@ function toggleWebSearch(){
   btn.title=webSearchEnabled?'Web search ON':'Force web search on every message';
 }
 
+function toggleThinking(){
+  thinkingEnabled=!thinkingEnabled;
+  var btn=document.getElementById('thinkToggle');
+  btn.classList.toggle('active',thinkingEnabled);
+  btn.title=thinkingEnabled?'Deep thinking ON — better answers, slower (~15s)':'Quick mode — fast answers';
+  showToast(thinkingEnabled?'Thinking ON — deeper answers':'Thinking OFF — fast mode');
+}
+
 function genId(){return Date.now().toString(36)+Math.random().toString(36).substr(2,5)}
 
-function startNewSession(){sessionId=genId();chatHist=[];pendingFiles=[];document.getElementById('fileChips').innerHTML='';document.getElementById('messages').innerHTML='<div class="empty-state" id="emptyState"><img src="https://i.imgur.com/jD1X5W8.png"><p>Deep Chat \u2014 250K context window<br>Drop files, images, or just talk.</p></div>'}
-startNewSession();
+function startNewSession(){sessionId=genId();localStorage.setItem('codec-chat-session',sessionId);chatHist=[];pendingFiles=[];document.getElementById('fileChips').innerHTML='';document.getElementById('messages').innerHTML='<div class="empty-state" id="emptyState"><img src="https://i.imgur.com/jD1X5W8.png"><p>Deep Chat \u2014 250K context window<br>Drop files, images, or just talk.</p></div>'}
+
+// PR #39: persist sessionId across page reloads. If a previous session
+// exists, load it on boot so the user lands back on the same chat (with
+// any project plan cards rehydrated). Falls back to a fresh session if
+// the previous one's GET returns empty.
+(function bootSession(){
+  var saved=localStorage.getItem('codec-chat-session');
+  if(!saved){startNewSession();return}
+  // Optimistically load \u2014 if the session is empty/missing, we'll start fresh
+  fetch('/api/qchat/session/'+saved).then(function(r){
+    return r.ok?r.json():[];
+  }).then(function(data){
+    if(data&&data.length>0){
+      // Use the saved id and replay history through the same code path
+      // sidebar uses (so the plan-card rehydration runs once the messages
+      // are in the DOM).
+      sessionId=saved;
+      var es=document.getElementById('emptyState');if(es)es.remove();
+      document.getElementById('messages').innerHTML='';
+      chatHist=[];
+      for(var i=0;i<data.length;i++){
+        var m=data[i];
+        addMessage(m.role==='user'?'user':'assistant',m.content||'',false);
+        chatHist.push({role:m.role,content:m.content||''});
+      }
+      rehydrateAgentPlanCards().then(scrollBottom);
+    }else{
+      startNewSession();
+    }
+  }).catch(function(){startNewSession();});
+})();
 
 async function saveMessages(msgs){
   var title=(chatHist.find(function(m){return m.role==='user'})||{}).content||'New Chat';
@@ -438,8 +680,28 @@ function toggleTheme(){var t=document.documentElement.getAttribute('data-theme')
 function updateThemeIcon(theme){var ico=document.getElementById('themeIco');if(theme==='light'){ico.innerHTML='<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>'}else{ico.innerHTML='<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>'}}
 (function(){var s=localStorage.getItem('codec-theme');if(s==='light'){document.documentElement.setAttribute('data-theme','light');updateThemeIcon('light')}})();
 
-function openSidebar(){document.getElementById('sidebar').classList.add('show');document.getElementById('sidebarOverlay').classList.add('show');loadSidebarHistory()}
+function openSidebar(){document.getElementById('sidebar').classList.add('show');document.getElementById('sidebarOverlay').classList.add('show');loadSidebarHistory();var si=document.getElementById('sidebarSearch');if(si){si.value='';document.getElementById('sidebarSearchResults').style.display='none';document.getElementById('sidebarList').style.display=''}}
 function closeSidebar(){document.getElementById('sidebar').classList.remove('show');document.getElementById('sidebarOverlay').classList.remove('show')}
+
+var _searchTimer=null;
+function handleSidebarSearch(q){
+  clearTimeout(_searchTimer);
+  var resultsEl=document.getElementById('sidebarSearchResults');
+  var listEl=document.getElementById('sidebarList');
+  if(!q||q.length<2){resultsEl.style.display='none';listEl.style.display='';return}
+  _searchTimer=setTimeout(async function(){
+    try{
+      var r=await fetch('/api/qchat/search?q='+encodeURIComponent(q));
+      var data=await r.json();
+      if(!data.length){resultsEl.innerHTML='<div style="padding:16px;color:var(--text-dim);font-size:12px">No results for "'+escHtml(q)+'"</div>';resultsEl.style.display='';listEl.style.display='none';return}
+      resultsEl.innerHTML='<div style="padding:4px 12px 4px;font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px">Search Results</div>'+data.map(function(s){
+        var ts=s.timestamp?new Date(s.timestamp).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+        return'<div class="sidebar-item" onclick="loadSession(\''+s.session_id+'\');closeSidebar()"><div class="si-title">'+escHtml(s.title)+'</div><div style="font-size:11px;color:var(--text-dim);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(s.snippet)+'</div><div class="si-time">'+ts+'</div></div>'
+      }).join('');
+      resultsEl.style.display='';listEl.style.display='none'
+    }catch(e){resultsEl.innerHTML='<div style="padding:16px;color:var(--text-dim);font-size:12px">Search error</div>';resultsEl.style.display='';listEl.style.display='none'}
+  },300)
+}
 
 async function loadSidebarHistory(){
   var el=document.getElementById('sidebarList');
@@ -450,24 +712,37 @@ async function loadSidebarHistory(){
     el.innerHTML=data.map(function(s){
       var ts=s.updated_at?new Date(s.updated_at).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
       var active=s.id===sessionId?' style="background:var(--surface-2)"':'';
-      return'<div class="sidebar-item"'+active+' onclick="loadSession(\''+s.id+'\')"><div class="si-title">'+escHtml(s.title)+'</div><div class="si-time">'+ts+'</div></div>'
+      return'<div class="sidebar-item"'+active+'><div class="si-main" onclick="loadSession(\''+s.id+'\')"><div class="si-title">'+escHtml(s.title)+'</div><div class="si-time">'+ts+'</div></div><button class="si-del" onclick="deleteSession(event,\''+s.id+'\')" title="Delete">🗑</button></div>'
     }).join('')
   }catch(e){el.innerHTML='<div style="padding:16px;color:var(--text-dim);font-size:12px">Error loading.</div>'}
 }
 
 async function loadSession(sid){
-  closeSidebar();sessionId=sid;chatHist=[];pendingFiles=[];
+  closeSidebar();sessionId=sid;localStorage.setItem('codec-chat-session',sid);chatHist=[];pendingFiles=[];
   document.getElementById('fileChips').innerHTML='';
   var es=document.getElementById('emptyState');if(es)es.remove();
   document.getElementById('messages').innerHTML='';
   try{
     var r=await fetch('/api/qchat/session/'+sid);var data=await r.json();
     for(var i=0;i<data.length;i++){var m=data[i];addMessage(m.role==='user'?'user':'assistant',m.content||'',false);chatHist.push({role:m.role,content:m.content||''})}
+    // PR #39: any assistant message with [CODEC_AGENT_PLAN:<id>] marker
+    // gets replaced by the live plan card (fetched from /api/agents/<id>).
+    await rehydrateAgentPlanCards();
     scrollBottom()
   }catch(e){}
 }
 
 function newChat(){closeSidebar();startNewSession()}
+
+async function deleteSession(evt, sid){
+  evt.stopPropagation();
+  if(!confirm('Delete this conversation?'))return;
+  try{
+    await fetch('/api/qchat/session/'+sid,{method:'DELETE'});
+    if(sid===sessionId){startNewSession()}
+    loadSidebarHistory();
+  }catch(e){console.error('deleteSession failed',e)}
+}
 
 function escHtml(s){var d=document.createElement('div');d.textContent=s||'';return d.innerHTML}
 function formatMsg(c){
@@ -486,13 +761,156 @@ function addMessage(role,content,animate){
   div.className='msg '+role;
   if(animate===false)div.style.animation='none';
   var time=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
-  var copyBtn='<button class="msg-copy" onclick="copyMsgText(decodeURIComponent(\''+encodeURIComponent(content)+'\'),this)" title="Copy"><svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button>';
-  div.innerHTML=copyBtn+'<div class="msg-bubble">'+formatMsg(content)+'</div><div class="msg-time">'+time+'</div>';
+  var enc=encodeURIComponent(content);
+  var copyBtn='<button class="msg-copy" onclick="copyMsgText(decodeURIComponent(\''+enc+'\'),this)" title="Copy"><svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button>';
+  var editBtn=role==='user'?'<button class="msg-edit" onclick="editMessage(decodeURIComponent(\''+enc+'\'),this)" title="Edit &amp; re-send"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>':'';
+  var regenBtn=role==='assistant'?'<button class="msg-regen" onclick="regenerateResponse(this)" title="Regenerate"><svg class="ico ico-sm" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg></button>':'';
+  div.innerHTML=copyBtn+editBtn+regenBtn+'<div class="msg-bubble">'+formatMsg(content)+'</div><div class="msg-time">'+time+'</div>';
   document.getElementById('messages').appendChild(div);
   scrollBottom()
 }
 
+function editMessage(text,btn){
+  // Put text in input for editing
+  var input=document.getElementById('chatInput');
+  input.value=text;
+  input.style.height='auto';input.style.height=Math.min(input.scrollHeight,120)+'px';
+  input.focus();
+  // Remove this message and everything after it
+  var msgDiv=btn.closest('.msg');
+  if(msgDiv){
+    var msgs=document.getElementById('messages');
+    var siblings=Array.from(msgs.children);
+    var idx=siblings.indexOf(msgDiv);
+    for(var i=siblings.length-1;i>=idx;i--){siblings[i].remove()}
+  }
+  // Trim chat history: find and remove this user message and all after it
+  for(var i=chatHist.length-1;i>=0;i--){
+    if(chatHist[i].role==='user'&&chatHist[i].content===text){chatHist=chatHist.slice(0,i);break}
+  }
+}
 var addMsg=addMessage; // alias for webcam code
+
+// ───────────────────────────────────────────────────────────────────────────
+// PR #39 — Agent plan persistence (Project mode)
+// ───────────────────────────────────────────────────────────────────────────
+// Why this exists: Phase 3.5 saved only the bare string "Project drafted:
+// agent_xxx" to chat history; the inline card with approve/reject/view-plan
+// buttons lived only in the DOM. Reloading the chat lost the card.
+//
+// Approach: persist a marker token `[CODEC_AGENT_PLAN:<id>]` inside the
+// assistant message content. On chat session load, scan rendered messages,
+// detect the marker, fetch the agent state, and replace the text bubble
+// with the same card the live flow renders.
+//
+// The card's button callbacks (approveAgentInChat / rejectAgentInChat /
+// viewAgentPlan) only need agent_id, so reload-time rendering matches the
+// live render exactly. Status-aware buttons (e.g. "Resume" on
+// blocked_on_qwen) come for free via the agent state object.
+var AGENT_PLAN_MARKER_RE=/\[CODEC_AGENT_PLAN:(agent_[a-z0-9]+)\]/;
+
+function extractAgentIdFromMessage(content){
+  if(!content||typeof content!=='string')return null;
+  var m=content.match(AGENT_PLAN_MARKER_RE);
+  return m?m[1]:null;
+}
+
+function renderAgentPlanCard(agentId,agentInfo){
+  // agentInfo accepts two shapes:
+  //   - POST /api/agents result: {agent_id, status, project_dir} (flat)
+  //   - GET  /api/agents/<id>:   {manifest: {agent_id, status, ...}, plan, state, grants}
+  // Normalize both into the same view-model.
+  agentInfo=agentInfo||{};
+  var manifest=agentInfo.manifest||agentInfo;   // GET wraps in .manifest, POST is flat
+  var status=manifest.status||'';
+  var reason=manifest.status_reason||'';
+  var projectDir=manifest.project_dir||'';
+  var folderHtml='';
+  if(projectDir){
+    folderHtml='<div style="margin:6px 0 8px;padding:8px 10px;background:rgba(167,139,250,0.08);border:1px solid var(--accent,#a78bfa);border-radius:6px;font-size:12px">'+
+      '<div style="font-weight:600;color:var(--accent,#a78bfa);margin-bottom:2px">Project folder</div>'+
+      '<code style="font-size:11px;word-break:break-all">'+escHtml(projectDir)+'</code>'+
+      '<div style="color:var(--text-dim);margin-top:4px;font-size:11px">Open this folder in your IDE to see the agent\'s files as they\'re created. (cmd+click to open in Finder)</div>'+
+    '</div>';
+  }
+  // Status-aware action buttons. draft_pending / awaiting_approval =
+  // approve+reject+view; running/done/aborted = view-only; blocked_* =
+  // resume+abort+view.
+  var buttonsHtml='';
+  var isPendingApproval=(!status)||status==='draft_pending'||status==='awaiting_approval';
+  var isBlocked=status&&status.indexOf('blocked_')===0;
+  var isTerminal=status==='done'||status==='aborted'||status==='plan_failed';
+  if(isPendingApproval){
+    buttonsHtml=
+      '<button onclick="approveAgentInChat(\''+agentId+'\',event)" style="padding:6px 14px;background:var(--accent,#a78bfa);color:#000;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">Approve plan</button>'+
+      '<button onclick="rejectAgentInChat(\''+agentId+'\',event)" style="padding:6px 14px;background:transparent;color:var(--text);border:1px solid var(--border,#2a2a30);border-radius:6px;cursor:pointer;font-size:12px">Reject</button>'+
+      '<button onclick="viewAgentPlan(\''+agentId+'\',event)" style="padding:6px 14px;background:transparent;color:var(--text);border:1px solid var(--border,#2a2a30);border-radius:6px;cursor:pointer;font-size:12px">View plan</button>';
+  }else if(isBlocked){
+    buttonsHtml=
+      '<button onclick="viewAgentPlan(\''+agentId+'\',event)" style="padding:6px 14px;background:var(--accent,#a78bfa);color:#000;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">View plan + resolve</button>'+
+      '<button onclick="rejectAgentInChat(\''+agentId+'\',event)" style="padding:6px 14px;background:transparent;color:var(--text);border:1px solid var(--border,#2a2a30);border-radius:6px;cursor:pointer;font-size:12px">Abort</button>';
+  }else{
+    buttonsHtml=
+      '<button onclick="viewAgentPlan(\''+agentId+'\',event)" style="padding:6px 14px;background:transparent;color:var(--text);border:1px solid var(--border,#2a2a30);border-radius:6px;cursor:pointer;font-size:12px">View plan</button>';
+  }
+  var statusLine='';
+  if(status){
+    var color=isTerminal?'var(--text-dim)':(isBlocked?'#f87171':'#10b981');
+    var label=status.replace(/_/g,' ');
+    statusLine='<div style="margin-bottom:6px;font-size:11px;color:'+color+'">status: <strong>'+escHtml(label)+'</strong>'+(reason?' ('+escHtml(reason)+')':'')+'</div>';
+  }
+  var subline=isPendingApproval
+    ?'A plan with a permission manifest has been written. Review and approve to let the agent run autonomously.'
+    :(isTerminal?'Agent finished. View plan to see what ran.':'Agent state shown above; click View plan for live progress.');
+  return'<div style="font-weight:600;margin-bottom:6px">Project drafted</div>'+
+    '<div style="margin-bottom:6px">agent_id: <code>'+escHtml(agentId)+'</code></div>'+
+    statusLine+
+    folderHtml+
+    '<div style="color:var(--text-dim);font-size:12px;margin-bottom:8px">'+subline+'</div>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap">'+buttonsHtml+'</div>';
+}
+
+async function rehydrateAgentPlanCards(){
+  // Called after loadSession finishes rendering text messages. Scan
+  // assistant bubbles for the marker, fetch each agent in parallel,
+  // replace the bubble with the rendered card. Failures fall back
+  // to leaving the marker text visible (so the user knows something
+  // is missing rather than seeing nothing).
+  var msgs=document.querySelectorAll('#messages .msg.assistant .msg-bubble');
+  var jobs=[];
+  for(var i=0;i<msgs.length;i++){
+    var bubble=msgs[i];
+    var agentId=extractAgentIdFromMessage(bubble.textContent||'');
+    if(!agentId)continue;
+    jobs.push((function(b,id){
+      return fetch('/api/agents/'+id).then(function(r){
+        return r.ok?r.json():null;
+      }).then(function(info){
+        // GET /api/agents/<id> returns {manifest, plan, state, grants}.
+        // Treat presence of manifest.agent_id as "agent exists".
+        var ok=info&&info.manifest&&info.manifest.agent_id;
+        if(ok){
+          b.innerHTML=renderAgentPlanCard(id,info);
+          var st=(info.manifest||{}).status||'';
+          if(['running','approved','paused','blocked_on_permission','blocked_on_qwen'].indexOf(st)>=0){
+            // Resume live polling if agent is still running
+            _startAgentPoller(id);
+          } else if(['completed','aborted','crashed'].indexOf(st)>=0){
+            // Agent finished — catch up on any messages the poller may have missed
+            _injectMissedAgentMessages(id);
+          }
+        }else{
+          // Agent missing (e.g. manifest deleted); show inline notice
+          // but keep the agent_id visible so the user knows what's gone.
+          b.innerHTML='<div style="font-weight:600;margin-bottom:4px">Project: '+escHtml(id)+'</div>'+
+            '<div style="color:var(--text-dim);font-size:12px">Agent state not found — manifest may have been removed.</div>';
+        }
+      }).catch(function(){/* keep raw text on error */});
+    })(bubble,agentId));
+  }
+  if(jobs.length){await Promise.all(jobs)}
+}
+
 function scrollBottom(){var m=document.getElementById('messages');m.scrollTop=m.scrollHeight}
 function showTyping(){var div=document.createElement('div');div.className='typing';div.id='typing';div.innerHTML='<span>\u25CF</span><span>\u25CF</span><span>\u25CF</span> CODEC is thinking...';document.getElementById('messages').appendChild(div);scrollBottom()}
 function hideTyping(){var t=document.getElementById('typing');if(t)t.remove()}
@@ -508,12 +926,66 @@ function addFileChip(name,content,type){
 function removeChip(id){pendingFiles=pendingFiles.filter(function(f){return f.id!==id});var el=document.getElementById(id);if(el)el.remove()}
 function clearChips(){pendingFiles=[];document.getElementById('fileChips').innerHTML=''}
 
+var _currentAbort=null;
+function _showStop(){document.getElementById('sendBtn').style.display='none';document.getElementById('stopBtn').style.display='flex'}
+function _showSend(){document.getElementById('stopBtn').style.display='none';document.getElementById('sendBtn').style.display='flex'}
+function stopGeneration(){
+  if(_currentAbort){_currentAbort.abort();_currentAbort=null}
+  hideTyping();_showSend();isProcessing=false;document.getElementById('sendBtn').disabled=false
+}
+
 async function sendMessage(){
   if(isProcessing)return;
   var input=document.getElementById('chatInput');
   var text=input.value.trim();
   if(!text&&!pendingFiles.length)return;
   input.value='';input.style.height='auto';
+
+  // Phase 3.5 Step 11: Project mode → POST /api/agents (Step 8 plan dispatch)
+  if(chatMode==='project'){
+    if(!text)return;
+    addMessage('user',text);
+    chatHist.push({role:'user',content:text});
+    saveMessages([{role:'user',content:text}]);
+    var pendingDiv=document.createElement('div');
+    pendingDiv.className='msg assistant';
+    pendingDiv.innerHTML='<div class="msg-bubble">Drafting plan via Qwen-3.6...</div>';
+    document.getElementById('messages').appendChild(pendingDiv);
+    scrollBottom();
+    isProcessing=true;document.getElementById('sendBtn').disabled=true;
+    try{
+      var pr=await fetch('/api/agents',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({title:text.slice(0,80),description:text})});
+      if(pr.status===401||pr.status===403){
+        pendingDiv.querySelector('.msg-bubble').innerHTML='<span style="color:var(--danger,#f87171)">Session expired</span> — refreshing...';
+        setTimeout(function(){window.location.href='/auth'},1500);
+        return;
+      }
+      var pd=await pr.json();
+      if(pd.detail){
+        pendingDiv.querySelector('.msg-bubble').innerHTML='<span style="color:var(--danger,#f87171)">Plan failed:</span> '+escHtml(pd.detail);
+        chatHist.push({role:'assistant',content:'Plan failed: '+pd.detail});
+      }else if(pd.agent_id){
+        pendingDiv.querySelector('.msg-bubble').innerHTML=renderAgentPlanCard(pd.agent_id, pd);
+        // PR #39: persist a marker token so loadSession() can re-render the
+        // card on reload. Plain text content kept short and human-readable
+        // for users on screens that don't grok the marker (e.g. text export).
+        var planMarker='[CODEC_AGENT_PLAN:'+pd.agent_id+']';
+        var planText='Project drafted — agent_id '+pd.agent_id+'  '+planMarker;
+        chatHist.push({role:'assistant',content:planText});
+        saveMessages([{role:'assistant',content:planText}]);
+        refreshAgentStatusPills();
+      }else{
+        pendingDiv.querySelector('.msg-bubble').innerHTML='<span style="color:var(--danger,#f87171)">Unknown response</span>';
+      }
+    }catch(e){
+      pendingDiv.querySelector('.msg-bubble').innerHTML='<span style="color:var(--danger,#f87171)">Failed:</span> '+escHtml(e.message);
+    }finally{
+      isProcessing=false;document.getElementById('sendBtn').disabled=false;
+      _showSend();
+    }
+    return;
+  }
 
   if(chatMode==='research'){
     var researchText=text||'';
@@ -536,7 +1008,7 @@ async function sendMessage(){
       statusEl.innerHTML=msg;scrollBottom()
     }
 
-    isProcessing=true;document.getElementById('sendBtn').disabled=true;
+    isProcessing=true;document.getElementById('sendBtn').disabled=true;_showStop();
     var crewHints={'deep_research':'Searching the web \u2192 analyzing sources \u2192 writing report...','daily_briefing':'Checking calendar, weather, news...','trip_planner':'Researching destination \u2192 building itinerary...','competitor_analysis':'Scouting competitors \u2192 writing analysis...','email_handler':'Reading inbox \u2192 drafting replies...','custom':'Running custom agent...'};
     updateStatus('\u23F3 Starting '+(crewLabels[crew]||crew)+'&hellip;\n\n'+(crewHints[crew]||'Running agent...'));
 
@@ -549,7 +1021,7 @@ async function sendMessage(){
     try{
       var r=await fetch('/api/agents/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
       var startData=await r.json();
-      if(!r.ok||!startData.job_id){clearInterval(ticker);updateStatus('\u274C Agent error: '+(startData.error||'Failed to start'));isProcessing=false;document.getElementById('sendBtn').disabled=false;return}
+      if(!r.ok||!startData.job_id){clearInterval(ticker);updateStatus('\u274C Agent error: '+(startData.error||'Failed to start'));isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false;return}
       var jobId=startData.job_id;
       var data=await new Promise(function(resolve,reject){var poll=setInterval(async function(){try{var sr=await fetch('/api/agents/status/'+jobId);var sd=await sr.json();if(sd.status!=='running'){clearInterval(poll);resolve(sd)}}catch(pe){clearInterval(poll);reject(pe)}},4000)});
       clearInterval(ticker);if(statusEl)statusEl.parentElement.remove();
@@ -557,7 +1029,7 @@ async function sendMessage(){
       if(data.status==='complete'){var result=data.result||'';var docMatch=result.match(/https:\/\/docs\.google\.com\/\S+/);if(docMatch){var summary=result.replace(docMatch[0],'').trim();if(!summary)summary='Your report has been generated and saved to Google Docs.';resultMsg='\u2705 **'+crewLabels[crew]+' Complete!** ('+data.elapsed_seconds+'s)\n\n'+summary+'\n\n[Open in Google Docs]('+docMatch[0]+')'}else{resultMsg='\u2705 **'+crewLabels[crew]+' Complete!** ('+data.elapsed_seconds+'s)\n\n'+result}}else{resultMsg='\u274C Agent error: '+(data.error||'Unknown error')}
       addMessage('assistant',resultMsg);chatHist.push({role:'assistant',content:resultMsg});saveMessages([{role:'assistant',content:resultMsg}])
     }catch(e){clearInterval(ticker);updateStatus('Agent error: '+e.message)}
-    isProcessing=false;document.getElementById('sendBtn').disabled=false;return
+    isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false;return
   }
 
   var fileContext='';var fileNames=[];
@@ -570,31 +1042,74 @@ async function sendMessage(){
   chatHist.push({role:'user',content:llmText});clearChips();
   saveMessages([{role:'user',content:displayText}]);
   var hasImages=imageData.length>0;
-  isProcessing=true;document.getElementById('sendBtn').disabled=true;showTyping();
+  isProcessing=true;document.getElementById('sendBtn').disabled=true;_showStop();showTyping();
+  _currentAbort=new AbortController();
   try{
     var msgs=[{role:'system',content:SYS}].concat(chatHist);var r;
-    if(hasImages){r=await fetch('/api/vision',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:msgs[msgs.length-1].content||'Describe this image in detail',image:imageData[0]})})}
-    else{r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs,force_search:webSearchEnabled})})}
-    if(r.status===401||r.status===403){hideTyping();addMessage('assistant','Session expired — redirecting to login...');setTimeout(function(){window.location.href='/auth'},1500);isProcessing=false;document.getElementById('sendBtn').disabled=false;return}
-    var data=await r.json();hideTyping();
-    if(data.response){addMessage('assistant',data.response);chatHist.push({role:'assistant',content:data.response});saveMessages([{role:'assistant',content:data.response}])}
-    else{addMessage('assistant','Error: '+(data.error||'No response'))}
-  }catch(e){hideTyping();addMessage('assistant','Error: '+e.message)}
-  isProcessing=false;document.getElementById('sendBtn').disabled=false
+    if(hasImages){
+      r=await fetch('/api/vision',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:msgs[msgs.length-1].content||'Describe this image in detail',image:imageData[0]}),signal:_currentAbort.signal});
+      var data=await r.json();hideTyping();
+      if(data.response){addMessage('assistant',data.response);chatHist.push({role:'assistant',content:data.response});saveMessages([{role:'assistant',content:data.response}])}
+      else{addMessage('assistant','Error: '+(data.error||'No response'))}
+    } else {
+      r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs,force_search:webSearchEnabled,thinking:thinkingEnabled,stream:true}),signal:_currentAbort.signal});
+      if(r.status===401||r.status===403){hideTyping();addMessage('assistant','Session expired — redirecting to login...');setTimeout(function(){window.location.href='/auth'},1500);isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false;return}
+      hideTyping();
+      // SSE streaming — render tokens as they arrive
+      var reader=r.body.getReader();var decoder=new TextDecoder();var fullText='';var bubbleId='stream_'+genId();
+      var es=document.getElementById('emptyState');if(es)es.remove();
+      var div=document.createElement('div');div.className='msg assistant';div.innerHTML='<div class="msg-bubble" id="'+bubbleId+'"><div class="thinking-indicator"><div class="thinking-dots"><span></span><span></span><span></span></div>CODEC is thinking...</div></div>';document.getElementById('messages').appendChild(div);
+      var bubble=document.getElementById(bubbleId);var buf='';var firstToken=true;
+      while(true){
+        var chunk=await reader.read();
+        if(chunk.done)break;
+        buf+=decoder.decode(chunk.value,{stream:true});
+        var lines=buf.split('\n');buf=lines.pop();
+        for(var li=0;li<lines.length;li++){
+          var line=lines[li].trim();
+          if(!line.startsWith('data: '))continue;
+          var payload=line.substring(6);
+          if(payload==='[DONE]')break;
+          try{var j=JSON.parse(payload);if(j.token){if(firstToken){bubble.innerHTML='';firstToken=false}fullText+=j.token;bubble.innerHTML=formatMsg(fullText);scrollBottom()}if(j.error){fullText+='\n\nError: '+j.error}}catch(pe){}
+        }
+      }
+      if(fullText){div.remove();addMessage('assistant',fullText);chatHist.push({role:'assistant',content:fullText});saveMessages([{role:'assistant',content:fullText}])}
+      else{bubble.innerHTML='<em style="color:var(--text-dim)">No response</em>'}
+    }
+  }catch(e){
+    hideTyping();
+    if(e.name==='AbortError'){
+      // User clicked stop — keep partial response
+      if(typeof fullText!=='undefined'&&fullText){chatHist.push({role:'assistant',content:fullText});saveMessages([{role:'assistant',content:fullText}])}
+    }else{addMessage('assistant','Error: '+e.message)}
+  }
+  _currentAbort=null;isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false
 }
 
 function handleKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage()}var ta=e.target;ta.style.height='auto';ta.style.height=Math.min(ta.scrollHeight,120)+'px'}
 
 function toggleMic(){
   var btn=document.getElementById('micBtn');
-  if(isRecording){if(recognition)recognition.stop();isRecording=false;btn.classList.remove('recording');return}
+  var input=document.getElementById('chatInput');
+  if(isRecording){if(recognition)recognition.stop();return}
   if(!('webkitSpeechRecognition' in window)&&!('SpeechRecognition' in window)){showToast('Speech recognition not supported');return}
   var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-  recognition=new SR();recognition.lang='en-US';recognition.interimResults=false;recognition.continuous=false;
-  recognition.onresult=function(e){document.getElementById('chatInput').value=e.results[0][0].transcript;isRecording=false;btn.classList.remove('recording')};
-  recognition.onerror=function(){isRecording=false;btn.classList.remove('recording')};
+  recognition=new SR();recognition.lang='en-US';recognition.interimResults=true;recognition.continuous=false;
+  recognition.onresult=function(e){
+    var transcript='';for(var i=0;i<e.results.length;i++){transcript+=e.results[i][0].transcript}
+    input.value=transcript;
+    if(e.results[e.results.length-1].isFinal){
+      isRecording=false;btn.classList.remove('recording');
+      /* user must press send manually */
+    }
+  };
+  recognition.onerror=function(e){isRecording=false;btn.classList.remove('recording');if(e.error!=='no-speech')showToast('Mic error: '+e.error)};
   recognition.onend=function(){isRecording=false;btn.classList.remove('recording')};
-  recognition.start();isRecording=true;btn.classList.add('recording')
+  recognition.start();isRecording=true;btn.classList.add('recording');
+  input.placeholder='Listening...';
+  var origPlaceholder='Message CODEC...';
+  var clearPlaceholder=function(){input.placeholder=origPlaceholder};
+  recognition.addEventListener('end',clearPlaceholder,{once:true})
 }
 
 async function handleUpload(e){
@@ -606,11 +1121,28 @@ async function handleUpload(e){
       var chip=document.createElement('div');chip.className='file-chip loading';chip.id=tid;
       chip.innerHTML='<span class="fc-icon">\u{1F4F7}</span><span class="fc-name">'+escHtml(file.name)+' (analyzing...)</span>';chips.appendChild(chip);
       (function(theFile,loadId){var reader=new FileReader();reader.onload=async function(){var b64=reader.result.split(',')[1];try{var r=await fetch('/api/upload_image',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:theFile.name,data:b64})});var data=await r.json();var el=document.getElementById(loadId);if(el)el.remove();if(data.text){addFileChip(theFile.name,'[IMAGE ANALYSIS: '+data.text+']','image')}else{addFileChip(theFile.name,'[Image upload failed]','image')}}catch(err){var el=document.getElementById(loadId);if(el)el.remove();addFileChip(theFile.name,'[Image error]','image')}};reader.readAsDataURL(theFile)})(file,tid);continue
-    }else if(file.name.toLowerCase().endsWith('.pdf')){
-      var tempId='loading_'+genId();var chips=document.getElementById('fileChips');
-      var chip=document.createElement('div');chip.className='file-chip loading';chip.id=tempId;
-      chip.innerHTML='<span class="fc-icon">\u{1F4C4}</span><span class="fc-name">'+escHtml(file.name)+'...</span>';chips.appendChild(chip);
-      try{var reader=new FileReader();reader.onload=async function(fname,tid){return async function(){var base64=reader.result.split(',')[1];try{var r=await fetch('/api/upload',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:fname,data:base64})});var data=await r.json();var el=document.getElementById(tid);if(el)el.remove();if(data.text&&data.text.trim().length>10){addFileChip(fname,data.text,'pdf')}else{addFileChip(fname,'[Could not extract text]','pdf')}}catch(err){var el=document.getElementById(tid);if(el)el.remove();addFileChip(fname,'[Upload error]','pdf')}}}(file.name,tempId);reader.readAsDataURL(file)}catch(err){var el=document.getElementById(tempId);if(el)el.remove()}
+    }else if(/\.(pdf|docx|csv|tsv)$/i.test(file.name)){
+      (function(theFile){
+        var tempId='loading_'+genId();var chips=document.getElementById('fileChips');
+        var chip=document.createElement('div');chip.className='file-chip loading';chip.id=tempId;
+        var fIcon=/\.pdf$/i.test(theFile.name)?'\u{1F4C4}':'\u{1F4CE}';
+        var fType=/\.pdf$/i.test(theFile.name)?'pdf':'text';
+        chip.innerHTML='<span class="fc-icon">'+fIcon+'</span><span class="fc-name">'+escHtml(theFile.name)+' (extracting...)</span>';chips.appendChild(chip);
+        var rd=new FileReader();
+        rd.onload=async function(){
+          var base64=rd.result.split(',')[1];
+          try{
+            var r=await fetch('/api/upload',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:theFile.name,data:base64})});
+            var el=document.getElementById(tempId);if(el)el.remove();
+            if(!r.ok){var errText='';try{var ej=await r.json();errText=ej.error||r.status}catch(e){errText='Server error ('+r.status+')'}addFileChip(theFile.name,'[Upload failed: '+errText+']',fType);return}
+            var data=await r.json();
+            if(data.text&&data.text.trim().length>10){addFileChip(theFile.name,data.text,fType)}
+            else if(data.error){addFileChip(theFile.name,'[Error: '+data.error+']',fType)}
+            else{addFileChip(theFile.name,'[Could not extract text]',fType)}
+          }catch(err){var el=document.getElementById(tempId);if(el)el.remove();addFileChip(theFile.name,'[Upload error: '+err.message+']',fType)}
+        };
+        rd.readAsDataURL(theFile);
+      })(file);
     }else{try{var text=await file.text();addFileChip(file.name,text,'text')}catch(err){addFileChip(file.name,'[Cannot read file]','text')}}
   }
   e.target.value=''
@@ -620,6 +1152,55 @@ var appEl=document.getElementById('appContainer');
 ['dragenter','dragover'].forEach(function(ev){appEl.addEventListener(ev,function(e){e.preventDefault();appEl.classList.add('dragover')})});
 ['dragleave','drop'].forEach(function(ev){appEl.addEventListener(ev,function(e){e.preventDefault();appEl.classList.remove('dragover')})});
 appEl.addEventListener('drop',function(e){if(e.dataTransfer.files.length){var dt=new DataTransfer();for(var i=0;i<e.dataTransfer.files.length;i++)dt.items.add(e.dataTransfer.files[i]);document.getElementById('fileUp').files=dt.files;handleUpload({target:document.getElementById('fileUp')})}});
+
+// ── Paste image into chat (Cmd+V on a screenshot) ──
+// Document-level so paste anywhere on the chat page is caught — without
+// this, the user has to click into chatInput first before Cmd+V works
+// (and most don't). Walks both clipboardData.files (newer) and
+// clipboardData.items (older); accepts any image/* MIME type. Routes the
+// image through handleUpload — same flow as drag-drop or the file picker.
+function _chatExtractPastedImage(e){
+  if(!e.clipboardData) return null;
+  var files=e.clipboardData.files;
+  if(files && files.length){
+    for(var i=0;i<files.length;i++){
+      var f=files[i];
+      if(f && f.type && f.type.indexOf('image/')===0) return f;
+    }
+  }
+  var items=e.clipboardData.items;
+  if(items && items.length){
+    for(var j=0;j<items.length;j++){
+      var it=items[j];
+      if(it && it.type && it.type.indexOf('image/')===0
+         && typeof it.getAsFile==='function'){
+        var got=it.getAsFile();
+        if(got) return got;
+      }
+    }
+  }
+  return null;
+}
+
+document.addEventListener('paste',function(e){
+  var img=_chatExtractPastedImage(e);
+  if(!img) return;
+  e.preventDefault();
+  try{
+    var ext=(img.type.split('/')[1]||'png').split('+')[0];
+    var renamed=new File([img],'pasted-'+Date.now()+'.'+ext,{type:img.type});
+    var dt=new DataTransfer();
+    dt.items.add(renamed);
+    var fi=document.getElementById('fileUp');
+    fi.files=dt.files;
+    handleUpload({target:fi});
+    try{showToast('Screenshot pasted')}catch(_e){}
+    var ci=document.getElementById('chatInput');
+    if(ci) ci.focus();
+  }catch(err){
+    console.warn('Paste image into chat failed:',err);
+  }
+},true);
 
 document.getElementById('chatInput').addEventListener('input',function(){this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px'});
 
@@ -709,7 +1290,7 @@ function lockSession(){fetch('/api/auth/logout',{method:'POST'}).then(function()
 // ── Header icons (matching dashboard) ──
 var voiceReplyEnabled=localStorage.getItem('codec-voice')==='true';
 function toggleVoiceReply(){voiceReplyEnabled=!voiceReplyEnabled;localStorage.setItem('codec-voice',voiceReplyEnabled);updateVoiceIcon()}
-function updateVoiceIcon(){var x1=document.getElementById('muteX1'),x2=document.getElementById('muteX2');if(voiceReplyEnabled){x1.style.display='none';x2.style.display='none'}else{x1.style.display='';x2.style.display=''}}
+function updateVoiceIcon(){var m1=document.getElementById('muteX1'),m2=document.getElementById('muteX2'),st=document.getElementById('voiceState');if(voiceReplyEnabled){if(m1)m1.style.display='none';if(m2)m2.style.display='none';if(st){st.textContent='ON';st.style.color='#0a0a0a';st.style.background='#E8711A'}}else{if(m1)m1.style.display='';if(m2)m2.style.display='';if(st){st.textContent='OFF';st.style.color='#888';st.style.background='#2a2a2a'}}}
 updateVoiceIcon();
 async function takeScreenshot(){try{window.open('/api/screenshot?'+Date.now(),'_blank')}catch(e){}}
 
@@ -733,6 +1314,7 @@ function takeServerPhoto() {
   }).catch(function(e) { btn.style.borderColor = ''; addMsg('system', 'Camera error: ' + e.message); });
 }
 function closeScreenshot() { document.getElementById('screenModal').classList.remove('show'); }
+document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeScreenshot(); });
 
 // ── Live Webcam PIP (Mac MJPEG stream) ──
 var _pipDrag = { active: false, x: 0, y: 0 };
@@ -799,7 +1381,27 @@ function showSchedulePanel(){
   if(!hour)return;
   fetch('/api/schedules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({crew:crew,hour:parseInt(hour),minute:0})}).then(function(r){return r.json()}).then(function(d){if(d.schedule){showToast('Scheduled! '+crew+' daily at '+String(parseInt(hour)).padStart(2,'0')+':00')}else{showToast('Error: '+(d.error||'unknown'))}}).catch(function(e){showToast('Schedule error: '+e)})
 }
-(function(){function pollNotifCount(){fetch('/api/notifications/count').then(function(r){return r.json()}).then(function(d){var c=d.unread||d.count||0;var b=document.getElementById('notifBadge');if(b){b.textContent=c;b.classList.toggle('hidden',c===0)}}).catch(function(){})}pollNotifCount();setInterval(pollNotifCount,30000);var bell=document.getElementById('notifBellBtn');if(bell)bell.addEventListener('click',function(){fetch('/api/notifications/read-all',{method:'POST'}).catch(function(){});var b=document.getElementById('notifBadge');if(b){b.textContent='0';b.classList.add('hidden')}})})();
+(function(){
+  function pollNotifCount(){
+    fetch('/api/notifications/count').then(function(r){return r.json()}).then(function(d){
+      var c=d.unread||d.count||0;
+      var b=document.getElementById('notifBadge');
+      if(b){b.textContent=c;b.classList.toggle('hidden',c===0)}
+      var dot=document.getElementById('menuNotifDot');
+      if(dot)dot.classList.toggle('active',c>0);
+      var bell=document.getElementById('notifBellBtn');
+      if(bell)bell.classList.toggle('notif-highlight',c>0);
+    }).catch(function(){})
+  }
+  pollNotifCount();setInterval(pollNotifCount,30000);
+  var bell=document.getElementById('notifBellBtn');
+  if(bell)bell.addEventListener('click',function(){
+    fetch('/api/notifications/read-all',{method:'POST'}).catch(function(){});
+    var b=document.getElementById('notifBadge');if(b){b.textContent='0';b.classList.add('hidden')}
+    var dot=document.getElementById('menuNotifDot');if(dot)dot.classList.remove('active');
+    bell.classList.remove('notif-highlight');
+  });
+})();
 // Apply UI preferences from dashboard settings
 (function(){try{var p=JSON.parse(localStorage.getItem('codec-ui-prefs')||'{}'),m={'screenshot_btn':'#screenBtn','photo_btn':'#photoBtn','webcam_pip_btn':'#camBtn','voice_btn':'#voiceBtn','notif_bell':'#notifBellBtn','mic_btn':'#micBtn','chat_sidebar':'#sidebar,#sidebarOverlay,.sidebar-toggle','chat_agents':'#modeResearchBtn','chat_agent_builder':'#agentBuilder'};Object.keys(m).forEach(function(k){if(p[k]===false)m[k].split(',').forEach(function(s){document.querySelectorAll(s.trim()).forEach(function(el){el.style.display='none'})})})}catch(e){}})();
 </script>
@@ -812,5 +1414,258 @@ function showSchedulePanel(){
     <button class="pip-btn" onclick="closeWebcamPip()" title="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
   </div>
 </div>
+
+<!-- Approval Banner (floats above content) -->
+<div id="approvalBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(135deg,#1a0a00,#2a1500);border-bottom:2px solid #E8711A;padding:12px 16px;animation:slideDown .3s ease">
+  <div id="approvalList" style="max-width:800px;margin:0 auto"></div>
+</div>
+<style>
+@keyframes slideDown{from{transform:translateY(-100%)}to{transform:translateY(0)}}
+.approval-card{background:#111;border:1px solid #E8711A;border-radius:8px;padding:12px 16px;margin-bottom:8px;display:flex;align-items:center;gap:12px}
+.approval-card.danger{border-color:#ff3333}
+.approval-card .cmd{flex:1;font-family:'SF Mono',monospace;font-size:12px;color:#e0e0e0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.approval-card .explain{font-size:11px;color:#aaddff;margin-top:2px}
+.approval-card.danger .explain{color:#ffaaaa}
+.approval-card .label{font-size:11px;font-weight:700;color:#E8711A;text-transform:uppercase;white-space:nowrap}
+.approval-card.danger .label{color:#ff3333}
+.approval-btn{border:none;border-radius:6px;padding:8px 18px;font-weight:700;font-size:13px;cursor:pointer;transition:opacity .2s}
+.approval-btn:hover{opacity:.85}
+.approval-btn.allow{background:#00cc55;color:#000}
+.approval-btn.deny{background:#555;color:#fff}
+.approval-card.danger .approval-btn.allow{background:#ff3333;color:#fff}
+</style>
+<script>
+(function(){
+  var banner=document.getElementById('approvalBanner'),list=document.getElementById('approvalList'),lastCount=0;
+  function render(approvals){if(!approvals.length){banner.style.display='none';return}banner.style.display='block';var h='';approvals.forEach(function(a){var c=a.is_dangerous?'approval-card danger':'approval-card';var p=a.is_dangerous?'&#9888; DANGEROUS':'&#9889; Approval';h+='<div class="'+c+'"><div style="flex:1"><span class="label">'+p+'</span><div class="cmd">'+(a.command||'').replace(/</g,'&lt;').substring(0,120)+'</div><div class="explain">This will: '+(a.explanation||'').replace(/</g,'&lt;').substring(0,120)+'</div></div><button class="approval-btn allow" onclick="approvalAction(\''+a.id+'\',\'allow\')">&#10003; Allow</button><button class="approval-btn deny" onclick="approvalAction(\''+a.id+'\',\'deny\')">&#10007; Deny</button></div>'});list.innerHTML=h}
+  window.approvalAction=function(id,action){fetch('/api/approvals/'+id+'/'+action,{method:'POST'}).then(function(){poll()}).catch(function(e){console.error(e)})};
+  function poll(){fetch('/api/approvals').then(function(r){return r.json()}).then(function(d){var a=d.approvals||[];render(a);if(a.length>lastCount&&lastCount>=0&&Notification&&Notification.permission==='granted'){new Notification('CODEC — '+(a[0].is_dangerous?'DANGEROUS':'Approval needed'),{body:a[0].command.substring(0,80),tag:'codec-approval-'+a[0].id,requireInteraction:true})}lastCount=a.length}).catch(function(){})}
+  if(Notification&&Notification.permission==='default')Notification.requestPermission();
+  poll();setInterval(poll,3000);
+})();
+</script>
+
+<!-- Phase 3.5 Step 11 — Project mode agent action handlers + status pills -->
+<script>
+// ── Agent live-update poller ────────────────────────────────────────────────
+// Handle action buttons on agent done/blocked messages
+async function _agentAction(endpoint){
+  try{
+    var r=await fetch(endpoint,{method:'POST'});
+    var d=await r.json();
+    if(d.files){
+      // artifacts list — show inline
+      var list=d.files.map(function(f){
+        var kb=f.size<1024?f.size+' B':(f.size/1024).toFixed(1)+' KB';
+        return '  • '+f.name+' ('+kb+')';
+      }).join('\n');
+      addMessage('assistant','📁 '+d.project_dir+'\n'+list);
+    }else if(d.opened||d.ok){
+      // open-folder succeeded silently
+    }else if(d.error){
+      addMessage('assistant','Error: '+d.error);
+    }
+  }catch(e){addMessage('assistant','Action failed: '+e.message)}
+}
+
+// Inject agent messages that were missed (e.g. agent completed while user was away).
+// Checks chatHist to avoid duplicates — only injects titles not already present.
+async function _injectMissedAgentMessages(agentId){
+  try{
+    var mr=await fetch('/api/agents/'+encodeURIComponent(agentId)+'/messages');
+    if(!mr.ok)return;
+    var md=await mr.json();
+    var msgs=md.messages||[];
+    for(var mi=0;mi<msgs.length;mi++){
+      var m=msgs[mi];
+      var title=m.title||m.type||'';
+      // Skip if this message is already in chatHist (survived from live poller or prior load)
+      var alreadySaved=chatHist.some(function(h){return h.content&&h.content.indexOf(title)>=0});
+      if(alreadySaved)continue;
+      var icon=m.type==='agent_done'?'✅':m.type==='agent_aborted'?'❌':'⚙️';
+      var bubble=document.createElement('div');bubble.className='msg assistant';
+      var titleHtml='<div style="font-weight:600;margin-bottom:6px">'+icon+' '+escHtml(title)+'</div>';
+      var bodyHtml=m.body?'<div style="font-size:13px;color:var(--text-dim);white-space:pre-wrap">'+escHtml(m.body)+'</div>':'';
+      var actionsHtml='';
+      if(m.actions&&m.actions.length){
+        actionsHtml='<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">';
+        m.actions.forEach(function(a){actionsHtml+='<button onclick="_agentAction(\''+escHtml(a.endpoint)+'\')" style="padding:5px 12px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:12px;color:var(--text)">'+escHtml(a.label)+'</button>';});
+        actionsHtml+='</div>';
+      }
+      bubble.innerHTML='<div class="msg-bubble" style="border-left:3px solid var(--accent,#a78bfa);padding-left:10px">'+titleHtml+bodyHtml+actionsHtml+'</div>';
+      document.getElementById('messages').appendChild(bubble);
+      var msgText=icon+' '+title+(m.body?'\n'+m.body:'');
+      chatHist.push({role:'assistant',content:msgText});
+      saveMessages([{role:'assistant',content:msgText}]);
+    }
+    if(msgs.length)scrollBottom();
+  }catch(e){}
+}
+
+// After plan approval, poll /api/agents/<id>/messages every 5s and inject
+// any new agent_update / agent_done / agent_aborted messages into the chat.
+var _agentPollers={};  // agentId → intervalId
+function _startAgentPoller(agentId){
+  if(_agentPollers[agentId])return;  // already running
+  var seen=new Set();
+  var pollId=setInterval(async function(){
+    try{
+      // Fetch messages
+      var mr=await fetch('/api/agents/'+encodeURIComponent(agentId)+'/messages');
+      if(!mr.ok)return;
+      var md=await mr.json();
+      var msgs=md.messages||[];
+      var newMsgs=msgs.filter(function(m){return!seen.has(m.ts+m.type)});
+      for(var mi=0;mi<newMsgs.length;mi++){
+        var m=newMsgs[mi];
+        seen.add(m.ts+m.type);
+        var icon=m.type==='agent_done'?'✅':m.type==='agent_aborted'?'❌':'⚙️';
+        var bubble=document.createElement('div');bubble.className='msg assistant';
+        var titleHtml='<div style="font-weight:600;margin-bottom:6px">'+icon+' '+escHtml(m.title||m.type)+'</div>';
+        // Body: preserve newlines
+        var bodyHtml=m.body?'<div style="font-size:13px;color:var(--text-dim);white-space:pre-wrap">'+escHtml(m.body)+'</div>':'';
+        // Action buttons (📂 Open folder, 📄 View files)
+        var actionsHtml='';
+        if(m.actions&&m.actions.length){
+          actionsHtml='<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">';
+          m.actions.forEach(function(a){
+            actionsHtml+='<button onclick="_agentAction(\''+escHtml(a.endpoint)+'\')" style="padding:5px 12px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:12px;color:var(--text)">'+escHtml(a.label)+'</button>';
+          });
+          actionsHtml+='</div>';
+        }
+        bubble.innerHTML='<div class="msg-bubble" style="border-left:3px solid var(--accent,#a78bfa);padding-left:10px">'+titleHtml+bodyHtml+actionsHtml+'</div>';
+        document.getElementById('messages').appendChild(bubble);
+        scrollBottom();
+        // Persist to qchat so messages survive page reload
+        var msgText=icon+' '+(m.title||m.type)+(m.body?'\n'+m.body:'');
+        chatHist.push({role:'assistant',content:msgText});
+        saveMessages([{role:'assistant',content:msgText}]);
+      }
+      // Check status — stop polling when terminal
+      var sr=await fetch('/api/agents/'+encodeURIComponent(agentId));
+      if(!sr.ok)return;
+      var sd=await sr.json();
+      var status=(sd.manifest||{}).status||'';
+      if(['completed','aborted','crashed'].indexOf(status)>=0){
+        clearInterval(pollId);delete _agentPollers[agentId];
+        refreshAgentStatusPills();
+      }
+    }catch(e){}
+  },5000);
+  _agentPollers[agentId]=pollId;
+}
+
+async function approveAgentInChat(agentId,e){
+  if(e)e.preventDefault();
+  if(!confirm('Approve plan for '+agentId+'?\n\nThe agent will run autonomously with the manifest permissions.'))return;
+  try{
+    var r=await fetch('/api/agents/'+encodeURIComponent(agentId)+'/approve',{method:'POST'});
+    if(r.ok){
+      var div=document.createElement('div');div.className='msg assistant';
+      div.innerHTML='<div class="msg-bubble"><span style="color:var(--success,#10b981)">Plan approved.</span> codec-agent-runner picks it up within 5s. Updates will appear here as checkpoints complete.</div>';
+      document.getElementById('messages').appendChild(div);scrollBottom();
+      saveMessages();
+      _startAgentPoller(agentId);  // begin live updates in this thread
+    }else{
+      var d=await r.json().catch(function(){return{}});
+      showToast('Approval failed: '+(d.detail||r.status));
+    }
+  }catch(err){showToast('Approval error: '+err.message)}
+  refreshAgentStatusPills();
+}
+async function rejectAgentInChat(agentId,e){
+  if(e)e.preventDefault();
+  var reason=prompt('Reason for rejection (optional):','');
+  if(reason===null)return;
+  try{
+    var r=await fetch('/api/agents/'+encodeURIComponent(agentId)+'/reject',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({reason:reason||''})});
+    if(r.ok){showToast('Plan rejected.')}else{showToast('Reject failed')}
+  }catch(err){showToast('Error: '+err.message)}
+  refreshAgentStatusPills();
+}
+async function viewAgentPlan(agentId,e){
+  if(e)e.preventDefault();
+  try{
+    var r=await fetch('/api/agents/'+encodeURIComponent(agentId));
+    if(!r.ok){showToast('Failed to load plan: '+r.status);return}
+    var d=await r.json();
+    var plan=d.plan||{};
+    var manifest=plan.permission_manifest||{};
+    var html='<div class="msg-bubble"><div style="font-weight:600;margin-bottom:8px">Plan for '+escHtml(agentId)+'</div>';
+    if(plan.goals&&plan.goals.length){
+      html+='<div style="font-weight:500;margin:8px 0 4px;font-size:12px;text-transform:uppercase;color:var(--text-dim)">Goals</div>';
+      html+='<ul style="margin:0 0 8px;padding-left:18px;font-size:13px">';
+      plan.goals.forEach(function(g){html+='<li>'+escHtml(g)+'</li>'});
+      html+='</ul>';
+    }
+    if(plan.checkpoints&&plan.checkpoints.length){
+      html+='<div style="font-weight:500;margin:8px 0 4px;font-size:12px;text-transform:uppercase;color:var(--text-dim)">Checkpoints ('+plan.checkpoints.length+')</div>';
+      html+='<ol style="margin:0 0 8px;padding-left:18px;font-size:13px">';
+      plan.checkpoints.forEach(function(cp){html+='<li><b>'+escHtml(cp.title||'')+'</b>: '+escHtml((cp.description||'').slice(0,200))+'</li>'});
+      html+='</ol>';
+    }
+    html+='<div style="font-weight:500;margin:8px 0 4px;font-size:12px;text-transform:uppercase;color:var(--text-dim)">Permission manifest</div>';
+    html+='<div style="font-size:12px;background:rgba(0,0,0,0.2);padding:8px;border-radius:6px;font-family:var(--mono,monospace)">';
+    html+='skills: '+escHtml((manifest.skills||[]).join(', ')||'(none)')+'<br>';
+    html+='network_domains: '+escHtml((manifest.network_domains||[]).join(', ')||'(none)')+'<br>';
+    html+='write_paths: '+escHtml((manifest.write_paths||[]).join(', ')||'(none)')+'<br>';
+    html+='destructive_ops: '+escHtml((manifest.destructive_ops||[]).join(', ')||'(none)');
+    html+='</div></div>';
+    var div=document.createElement('div');div.className='msg assistant';div.innerHTML=html;
+    document.getElementById('messages').appendChild(div);scrollBottom();
+  }catch(err){showToast('Error: '+err.message)}
+}
+
+// Status pills (above input) — polls /api/agents every 5s
+async function refreshAgentStatusPills(){
+  var container=document.getElementById('agentStatusPills');
+  if(!container){
+    // Inject the container right above the input area
+    var inputArea=document.querySelector('.input-area');
+    if(!inputArea)return;
+    container=document.createElement('div');
+    container.id='agentStatusPills';
+    container.style.cssText='display:none;flex-wrap:wrap;gap:6px;margin:0 16px 6px;font-size:11px';
+    inputArea.parentNode.insertBefore(container,inputArea);
+  }
+  try{
+    var r=await fetch('/api/agents');
+    if(r.status===401||r.status===403)return;
+    if(!r.ok)return;
+    var data=await r.json();
+    var pills=(data.agents||[]).filter(function(a){
+      return ['running','paused','blocked_on_permission','blocked_on_destructive',
+              'awaiting_approval','draft_pending','crashed_resumed'].indexOf(a.status)>=0;
+    }).slice(0,5);
+    if(pills.length===0){container.style.display='none';container.innerHTML='';return}
+    container.style.display='flex';
+    container.innerHTML=pills.map(function(p){
+      var color='#888';
+      if(p.status==='running')color='#10b981';
+      else if(p.status==='paused')color='#f59e0b';
+      else if(p.status==='awaiting_approval')color='#eab308';
+      else if(p.status==='draft_pending')color='#6b7280';
+      else if(p.status==='blocked_on_permission'||p.status==='blocked_on_destructive')color='#ef4444';
+      else if(p.status==='crashed_resumed')color='#f59e0b';
+      var actions='';
+      if(p.status==='awaiting_approval'){
+        actions=' <a href="#" onclick="approveAgentInChat(\''+p.agent_id+'\',event)" style="color:#fff;text-decoration:underline;margin-left:4px">approve</a>';
+      }else if(p.status==='paused'){
+        actions=' <a href="#" onclick="resumeAgentInChat(\''+p.agent_id+'\',event)" style="color:#fff;text-decoration:underline;margin-left:4px">resume</a>';
+      }else if(p.status==='running'){
+        actions=' <a href="#" onclick="pauseAgentInChat(\''+p.agent_id+'\',event)" style="color:#fff;text-decoration:underline;margin-left:4px">pause</a>';
+      }
+      actions+=' <a href="#" onclick="abortAgentInChat(\''+p.agent_id+'\',event)" style="color:#fff;text-decoration:underline;margin-left:4px">abort</a>';
+      return '<span style="display:inline-flex;align-items:center;padding:3px 10px;background:'+color+';color:#fff;border-radius:10px">'+
+             escHtml((p.title||p.agent_id).slice(0,40))+' · '+p.status+actions+'</span>';
+    }).join('');
+  }catch(e){/* silent */}
+}
+async function pauseAgentInChat(agentId,e){if(e)e.preventDefault();await fetch('/api/agents/'+encodeURIComponent(agentId)+'/pause',{method:'POST'});refreshAgentStatusPills()}
+async function resumeAgentInChat(agentId,e){if(e)e.preventDefault();await fetch('/api/agents/'+encodeURIComponent(agentId)+'/resume',{method:'POST'});refreshAgentStatusPills()}
+async function abortAgentInChat(agentId,e){if(e)e.preventDefault();if(!confirm('Abort agent '+agentId+'?'))return;await fetch('/api/agents/'+encodeURIComponent(agentId)+'/abort',{method:'POST'});refreshAgentStatusPills()}
+setTimeout(refreshAgentStatusPills,500);setInterval(refreshAgentStatusPills,5000);
+</script>
 </body>
 </html>

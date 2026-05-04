@@ -1,5 +1,6 @@
 """CODEC Skill: Skill Forge — Convert any code into a CODEC skill"""
 SKILL_NAME = "skill_forge"
+SKILL_MCP_EXPOSE = False  # Never expose code execution via MCP
 SKILL_DESCRIPTION = "Converts any code, script, or framework into a working CODEC skill"
 SKILL_TRIGGERS = [
     "forge skill", "import skill", "convert to skill", "make this a skill",
@@ -10,16 +11,11 @@ SKILL_TRIGGERS = [
 import os, requests, json, re
 
 try:
-    from codec_config import SKILLS_DIR
+    from codec_config import SKILLS_DIR, is_dangerous_skill_code
 except ImportError:
     SKILLS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)))
+    is_dangerous_skill_code = None
 CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
-
-# Same blocklist used by the dashboard's /api/save_skill endpoint
-BLOCKED_IN_SKILLS = [
-    "os.system(", "subprocess.", "eval(", "exec(", "__import__",
-    "importlib", "shutil.rmtree", "open('/etc", "open('/dev", "ctypes",
-]
 
 
 def run(task, app="", ctx=""):
@@ -40,6 +36,9 @@ def run(task, app="", ctx=""):
             for trigger in SKILL_TRIGGERS:
                 cleaned = re.sub(re.escape(trigger), '', cleaned, flags=re.IGNORECASE)
             code_to_forge = cleaned.strip()
+
+    # Strip HTML tags if pasted from web/UI
+    code_to_forge = re.sub(r'<[^>]+>', '', code_to_forge).strip()
 
     if not code_to_forge or len(code_to_forge) < 20:
         return (
@@ -101,11 +100,12 @@ CODE TO CONVERT:
             "model": model,
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": 1200,
-            "temperature": 0.2
+            "temperature": 0.2,
+            "chat_template_kwargs": {"enable_thinking": False},
         }
         payload.update(safe_kwargs)
 
-        r = requests.post(base_url + "/chat/completions", json=payload, headers=headers, timeout=90)
+        r = requests.post(base_url + "/chat/completions", json=payload, headers=headers, timeout=180)
         if r.status_code != 200:
             return f"Forge failed: LLM returned {r.status_code}. Is the model server running?"
 
@@ -133,11 +133,10 @@ CODE TO CONVERT:
         except SyntaxError as e:
             return f"Forged skill has a syntax error: {e}. Try with simpler code."
 
-        # Blocklist check — reject LLM output containing dangerous patterns (case-insensitive)
-        raw_lower = raw.lower()
-        for blocked in BLOCKED_IN_SKILLS:
-            if blocked.lower() in raw_lower:
-                return f"Forge blocked: generated code contains '{blocked}', which is not allowed in skills."
+        if is_dangerous_skill_code:
+            dangerous, reason = is_dangerous_skill_code(raw)
+            if dangerous:
+                return f"Forge blocked: {reason}"
 
         # Save
         os.makedirs(SKILLS_DIR, exist_ok=True)

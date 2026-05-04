@@ -6,8 +6,19 @@ from datetime import datetime, timedelta
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [HEARTBEAT] %(message)s', datefmt='%H:%M:%S')
 log = logging.getLogger('heartbeat')
 
-DB_PATH = os.path.expanduser("~/.q_memory.db")
-CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
+# Audit emits route through the unified log_event adapter (real, not no-op)
+# per docs/PHASE1-STEP1-DESIGN.md.
+from codec_audit import log_event
+
+try:
+    import sys as _sys
+    _repo = os.path.dirname(os.path.abspath(__file__))
+    if _repo not in _sys.path:
+        _sys.path.insert(0, _repo)
+    from codec_config import DB_PATH, CONFIG_PATH
+except ImportError:
+    DB_PATH = os.path.expanduser("~/.codec/memory.db")
+    CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
 
 def check_pending_tasks():
     """Check memory for tasks that were saved for later"""
@@ -36,21 +47,30 @@ def check_pending_tasks():
 def _check_one_service(name: str, url: str) -> tuple:
     """Check a single service endpoint. Returns (name, status_string)."""
     try:
-        r = requests.get(url, timeout=3)
+        r = requests.get(url, timeout=5)
         status = "✅" if r.status_code in (200, 404, 405) else f"⚠️ {r.status_code}"
-    except Exception as e:
+    except Exception:
         status = "❌ DOWN"
+        log_event("service_down", "codec-heartbeat",
+                  f"Service down: {name}",
+                  outcome="error", level="error",
+                  extra={"service": name, "url": url})
     return name, status
 
 
 def check_system_health():
-    """Verify all CODEC services are running (checks run in parallel)."""
+    """Verify all CODEC services are running (checks run in parallel).
+
+    Only HTTP-exposing services are probed here. PM2-supervised daemons
+    (codec-observer, codec-agent-runner) rely on PM2's autorestart for
+    crash recovery — see AGENTS.md §3 "Background Execution".
+    """
     services = {
-        "LLM": "http://localhost:8081/v1/models",
-        "Whisper": "http://localhost:8084/",
+        "LLM": "http://localhost:8083/v1/models",
+        "Whisper": "http://localhost:8084/health",
         "Kokoro": "http://localhost:8085/v1/models",
         "Dashboard": "http://localhost:8090/",
-        "Vision": "http://localhost:8082/v1/models",
+        "Vision": "http://localhost:8083/v1/models",
     }
     with ThreadPoolExecutor(max_workers=len(services)) as pool:
         futures = {
@@ -79,6 +99,7 @@ def check_memory_stats():
             try:
                 requests.post("http://localhost:8090/api/notifications",
                               json={"message": f"💾 Memory DB is {db_size_mb:.0f} MB — consider running cleanup", "type": "warning", "source": "heartbeat"},
+                              headers={"x-internal": "codec"},
                               timeout=5)
             except Exception:
                 pass
@@ -88,7 +109,6 @@ def check_memory_stats():
 
 def backup_memory_db():
     """Create daily backup of memory database to ~/.codec/backups/"""
-    import shutil
     backup_dir = os.path.expanduser("~/.codec/backups")
     os.makedirs(backup_dir, exist_ok=True)
 
@@ -294,16 +314,24 @@ def check_alerts():
 
         elif atype == "email_check":
             try:
-                import subprocess
-                script = 'tell application "Mail" to get the unread count of inbox'
-                result = subprocess.run(
-                    ["osascript", "-e", script],
-                    capture_output=True, text=True, timeout=10
-                )
-                count = int(result.stdout.strip()) if result.stdout.strip().isdigit() else 0
+                import importlib.util
+                _gmail_path = os.path.join(os.path.dirname(__file__), "skills", "google_gmail.py")
+                _spec = importlib.util.spec_from_file_location("google_gmail", _gmail_path)
+                _gmail = importlib.util.module_from_spec(_spec)
+                _spec.loader.exec_module(_gmail)
+                result = _gmail.run("check unread emails")
+                # Count emails from "Found N emails:" pattern
+                import re as _re
+                count_match = _re.search(r'Found (\d+) emails?:', str(result))
+                count = int(count_match.group(1)) if count_match else 0
                 last_count = state.get("email_unread", 0)
                 if count > 0 and count != last_count:
-                    msg = f"📧 {name}: {count} unread email{'s' if count != 1 else ''}"
+                    # Extract first sender/subject
+                    preview = ""
+                    first_line = _re.search(r'\* (.+?)(?:\n|$)', str(result))
+                    if first_line:
+                        preview = f" — {first_line.group(1)[:60]}"
+                    msg = f"📧 {name}: {count} unread email{'s' if count != 1 else ''}{preview}"
                     log.info(f"  {msg}")
                     triggered.append(msg)
                 elif count == 0:
@@ -335,13 +363,37 @@ def check_alerts():
             json.dump(state, f)
     except Exception:
         pass
-    # Send triggered alerts to dashboard notification
+    # Send triggered alerts: save to notifications.json + macOS notification
     if triggered:
+        import uuid as _uuid
+        notif_path = os.path.expanduser("~/.codec/notifications.json")
         for msg in triggered:
+            # macOS notification (visible immediately)
             try:
-                requests.post("http://localhost:8090/api/notifications",
-                              json={"message": msg, "type": "alert", "source": "heartbeat"},
-                              timeout=5)
+                subprocess.run(["osascript", "-e",
+                    f'display notification "{msg[:120]}" with title "CODEC Alert" sound name "Glass"'],
+                    capture_output=True, timeout=5)
+            except Exception:
+                pass
+            # Save to notifications.json for dashboard bell icon
+            try:
+                try:
+                    with open(notif_path) as f:
+                        notifs = json.load(f)
+                except (FileNotFoundError, json.JSONDecodeError):
+                    notifs = []
+                notifs.insert(0, {
+                    "id": f"notif_{_uuid.uuid4().hex[:10]}",
+                    "type": "task_report",
+                    "title": "Heartbeat Alert",
+                    "body": msg,
+                    "status": "warning",
+                    "created": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+                    "read": False,
+                    "schedule_id": "heartbeat",
+                })
+                with open(notif_path, "w") as f:
+                    json.dump(notifs, f, indent=2)
             except Exception:
                 pass
     return triggered
@@ -352,6 +404,14 @@ def heartbeat():
     global _last_cleanup
     log.info("═══ CODEC Heartbeat ═══")
     check_system_health()
+    # Run alert-based service monitoring (Telegram/Email/Slack)
+    try:
+        from codec_alerts import check_services_and_alert
+        check_services_and_alert()
+    except ImportError:
+        pass
+    except Exception as e:
+        log.warning(f"Alert check failed: {e}")
     check_memory_stats()
     tasks = check_pending_tasks()
     if tasks:
@@ -371,10 +431,13 @@ def heartbeat():
         except Exception as e:
             log.warning(f"Memory cleanup failed: {e}")
     log.info("═══ Heartbeat complete ═══")
+    log_event("heartbeat_tick", "codec-heartbeat",
+              "Heartbeat tick completed",
+              extra={"tasks_run": len(tasks) if hasattr(tasks, '__len__') else None})
     return tasks
 
-def run_daemon(interval_minutes=30):
-    """Run heartbeat every N minutes"""
+def run_daemon(interval_minutes=20):
+    """Run heartbeat every N minutes."""
     log.info(f"Heartbeat daemon starting (every {interval_minutes}min)")
     while True:
         heartbeat()
@@ -385,4 +448,4 @@ if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "once":
         heartbeat()
     else:
-        run_daemon(30)
+        run_daemon(20)

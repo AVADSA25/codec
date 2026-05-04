@@ -2,204 +2,116 @@
 import signal
 signal.signal(signal.SIGINT, lambda *a: None)
 signal.signal(signal.SIGTERM, lambda *a: None)
-"""CODEC v1.0 | F13=on/off | F18=voice | F16=text | *=screenshot | +=doc | Wake word"""
-import threading, tempfile, subprocess, sys, os, time, sqlite3, json, re, base64
+"""CODEC v2.1 | F13=on/off | F18=voice | F16=text | *=screenshot | +=doc | Wake word"""
+import logging, threading, tempfile, subprocess, os, time, sqlite3, json, re, base64, shutil
 from datetime import datetime
 from pynput import keyboard
 
-# ── CONFIG (load from ~/.codec/config.json or use defaults) ───────────────────
-CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
-_cfg = {}
-if os.path.exists(CONFIG_PATH):
-    try:
-        with open(CONFIG_PATH) as _f: _cfg = json.load(_f)
-        print(f"[CODEC] Config loaded from {CONFIG_PATH}")
-    except: pass
+log = logging.getLogger(__name__)
 
-# LLM
-QWEN_BASE_URL     = _cfg.get("llm_base_url", "http://localhost:8081/v1")
-QWEN_MODEL        = _cfg.get("llm_model", "mlx-community/Qwen3.5-35B-A3B-4bit")
-LLM_API_KEY       = _cfg.get("llm_api_key", "")
-LLM_KWARGS        = _cfg.get("llm_kwargs", {})
-LLM_PROVIDER      = _cfg.get("llm_provider", "mlx")
+# Audit emits route through the unified log_event adapter (real, not no-op)
+# per docs/PHASE1-STEP1-DESIGN.md.
+from codec_audit import log_event
 
-# Vision (optional — only for local MLX setups)
-QWEN_VISION_URL   = _cfg.get("vision_base_url", "http://localhost:8082/v1")
-QWEN_VISION_MODEL = _cfg.get("vision_model", "mlx-community/Qwen2.5-VL-7B-Instruct-4bit")
+# Ensure homebrew tools are on PATH (PM2 may not inherit full shell PATH)
+_BREW = "/opt/homebrew/bin"
+if _BREW not in os.environ.get("PATH", ""):
+    os.environ["PATH"] = _BREW + ":" + os.environ.get("PATH", "")
+SOX = shutil.which("sox") or "sox"
 
-# TTS
-TTS_ENGINE        = _cfg.get("tts_engine", "kokoro")
-KOKORO_URL        = _cfg.get("tts_url", "http://localhost:8085/v1/audio/speech")
-KOKORO_MODEL      = _cfg.get("tts_model", "mlx-community/Kokoro-82M-bf16")
-TTS_VOICE         = _cfg.get("tts_voice", "am_adam")
+# ── CONFIG (single source of truth: codec_config.py) ─────────────────────────
+from codec_config import (
+    cfg as _cfg,
+    QWEN_BASE_URL, QWEN_MODEL, LLM_API_KEY, LLM_KWARGS, QWEN_VISION_URL, QWEN_VISION_MODEL,
+    WHISPER_URL,
+    DB_PATH, TASK_QUEUE_FILE, DRAFT_TASK_FILE, SESSION_ALIVE, STREAMING, WAKE_WORD, WAKE_ENERGY, WAKE_CHUNK_SEC,
+)
 
-# STT
-STT_ENGINE        = _cfg.get("stt_engine", "whisper_http")
-WHISPER_URL       = _cfg.get("stt_url", "http://localhost:8084/v1/audio/transcriptions")
-
-# Paths
-DB_PATH            = os.path.expanduser("~/.q_memory.db")
-Q_TERMINAL_TITLE   = "Q -- CODEC Session"
-TASK_QUEUE_FILE    = "/tmp/q_task_queue.txt"
-DRAFT_TASK_FILE    = "/tmp/q_draft_task.json"
-SESSION_ALIVE      = "/tmp/q_session_alive"
-SKILLS_DIR         = os.path.expanduser("~/.codec/skills")
-
-# Features
-STREAMING          = _cfg.get("streaming", True)
-WAKE_WORD          = _cfg.get("wake_word_enabled", True)
-WAKE_PHRASES       = _cfg.get("wake_phrases", ['hey', 'aq', 'eq', 'iq', 'okay q', 'a q', 'hey q', 'hey queue'])
-WAKE_ENERGY        = _cfg.get("wake_energy", 200)
-WAKE_CHUNK_SEC     = _cfg.get("wake_chunk_sec", 3.0)
+# Vision — prefer Gemini Flash (fast cloud), fall back to local Qwen VL
+# These are codec.py-specific (not in codec_config)
+GEMINI_API_KEY    = _cfg.get("gemini_api_key", os.environ.get("GEMINI_API_KEY", ""))
+VISION_PROVIDER   = _cfg.get("vision_provider", "gemini" if GEMINI_API_KEY else "local")
 DRAFT_KEYWORDS_CFG = _cfg.get("draft_keywords", [])
 
-# ── UTILITIES ─────────────────────────────────────────────────────────────────
-def strip_think(text):
-    return re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()
+# ─��� SHARED (from codec_core.py — single source of truth) ─────────────────────
+import codec_core as _core
+from codec_core import (
+    strip_think, is_draft, init_db, save_task, get_memory, get_recent_conversations,
+    loaded_skills, load_skills, run_skill,
+    transcribe, speak_text, focused_app, get_text_dialog,
+    terminal_session_exists, close_session,
+)
+from codec_agent import run_session_in_terminal
 
-def show_overlay(text, color="#E8711A", duration=2500):
-    d = f"root.after({duration}, root.destroy)" if duration else ""
-    s = f"""
-import tkinter as tk
-root=tk.Tk()
-root.overrideredirect(True)
-root.attributes('-topmost',True)
-root.attributes('-alpha',0.95)
-root.configure(bg='#0a0a0a')
-sw=root.winfo_screenwidth()
-sh=root.winfo_screenheight()
-w,h=520,56
-x=(sw-w)//2
-y=sh-130
-root.geometry(f'{{w}}x{{h}}+{{x}}+{{y}}')
-c=tk.Canvas(root,bg='#0a0a0a',highlightthickness=0,width=w,height=h)
-c.pack()
-c.create_rectangle(1,1,w-1,h-1,outline='{color}',width=1)
-c.create_text(w//2,h//2,text='{text}',fill='{color}',font=('Helvetica',13))
-{d}
-root.mainloop()
-"""
-    subprocess.Popen([sys.executable, "-c", s], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+from codec_overlays import show_overlay, show_recording_overlay, show_processing_overlay, show_toggle_overlay
+from codec_identity import CODEC_VOICE_PROMPT
 
-# ── DETECTION ────────────────────────────────────────────────────────────────
-DRAFT_KEYWORDS = [
-    "draft","reply","rephrase","rewrite","fix my","say that","respond",
-    "write a","write an","compose","tell them","tell him","tell her",
-    "say i","say we","message saying","email saying","correct my",
-    "fix this","improve this","polish this","type in","type this",
-    "please say","please write","please type","write reply",
-    "post saying","comment saying","tweet saying","and say","to say"
-]
-SCREEN_KEYWORDS = [
-    "look at my screen","look at the screen","what's on my screen",
-    "whats on my screen","read my screen","see my screen","screen",
-    "what am i looking at","what do you see","look at this"
-]
+# ── SKILLS (codec.py-specific: ranked matching) ──────────────────────────────
 
-def is_draft(t): return any(k in t.lower() for k in DRAFT_KEYWORDS)
-def needs_screen(t): return any(k in t.lower() for k in SCREEN_KEYWORDS)
-
-# ── MEMORY ────────────────────────────────────────────────────────────────────
-def init_db():
-    c = sqlite3.connect(DB_PATH)
-    c.execute("CREATE TABLE IF NOT EXISTS sessions (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, task TEXT, app TEXT, response TEXT)")
-    c.execute("CREATE TABLE IF NOT EXISTS conversations (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, timestamp TEXT, role TEXT, content TEXT)")
-    c.execute("CREATE TABLE IF NOT EXISTS corrections (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, original TEXT, corrected TEXT, context TEXT)")
-    c.commit(); c.close()
-
-def save_task(task, app):
-    c = sqlite3.connect(DB_PATH)
-    cur = c.execute("INSERT INTO sessions (timestamp,task,app,response) VALUES (?,?,?,?)", (datetime.now().isoformat(), task[:200], app, ""))
-    rid = cur.lastrowid; c.commit(); c.close(); return rid
-
-def get_memory(n=5):
-    try:
-        c = sqlite3.connect(DB_PATH)
-        rows = c.execute("SELECT timestamp,task,app,response FROM sessions ORDER BY id DESC LIMIT ?", (n,)).fetchall()
-        c.close()
-        if not rows: return ""
-        lines = ["RECENT Q SESSIONS:"]
-        for ts, task, app, resp in rows:
-            r = (resp[:100]+"...") if resp and len(resp)>100 else (resp or "no response")
-            lines.append(f"[{ts[:16].replace('T',' ')}] {app} | {task[:60]} | {r}")
-        return "\n".join(lines)
-    except: return ""
-
-def get_recent_conversations(n=10):
-    try:
-        c = sqlite3.connect(DB_PATH)
-        rows = c.execute("SELECT role, content FROM conversations ORDER BY id DESC LIMIT ?", (n,)).fetchall()
-        c.close()
-        if not rows: return []
-        rows.reverse()
-        return [{"role": r, "content": ct} for r, ct in rows]
-    except: return []
-
-# ── SKILLS ────────────────────────────────────────────────────────────────────
-loaded_skills = []
-
-def load_skills():
-    global loaded_skills
-    loaded_skills = []
-    if not os.path.isdir(SKILLS_DIR): return
-    for fname in os.listdir(SKILLS_DIR):
-        if fname.startswith('_') or not fname.endswith('.py'): continue
-        path = os.path.join(SKILLS_DIR, fname)
-        try:
-            import importlib.util
-            spec = importlib.util.spec_from_file_location(fname[:-3], path)
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            if hasattr(mod, 'SKILL_TRIGGERS') and hasattr(mod, 'run'):
-                loaded_skills.append({
-                    'name': getattr(mod, 'SKILL_NAME', fname[:-3]),
-                    'triggers': mod.SKILL_TRIGGERS,
-                    'run': mod.run,
-                })
-                print(f"[CODEC] Skill loaded: {fname[:-3]}")
-        except Exception as e:
-            print(f"[CODEC] Skill error ({fname}): {e}")
-
-def check_skill(task):
+def check_skills_ranked(task):
+    """Return all matching skills, sorted by trigger length (best match first)."""
     low = task.lower()
-    best_skill = None
-    best_len = 0
+    matches = []
+    seen = set()
     for skill in loaded_skills:
         for trigger in skill['triggers']:
-            if trigger in low and len(trigger) > best_len:
-                best_skill = skill
-                best_len = len(trigger)
-    return best_skill
+            if trigger in low and skill['name'] not in seen:
+                matches.append((len(trigger), skill))
+                seen.add(skill['name'])
+    matches.sort(key=lambda x: x[0], reverse=True)
+    return [s for _, s in matches]
 
-def run_skill(skill, task, app=""):
-    try:
-        result = skill['run'](task, app)
-        return result
-    except Exception as e:
-        return f"Skill error: {e}"
+def check_skill(task):
+    ranked = check_skills_ranked(task)
+    return ranked[0] if ranked else None
 
-# ── WHISPER VIA HTTP ──────────────────────────────────────────────────────────
-def transcribe(path):
-    try:
-        import requests
-        with open(path, "rb") as f:
-            r = requests.post(WHISPER_URL,
-                files={"file": ("audio.wav", f, "audio/wav")},
-                data={"model": "mlx-community/whisper-large-v3-turbo", "language": "en"},
-                timeout=60)
-        if r.status_code == 200:
-            return r.json().get("text", "").strip()
-    except Exception as e:
-        print(f"[CODEC] Whisper error: {e}")
-    finally:
-        try: os.unlink(path)
-        except: pass
+# ── VISION (Gemini Flash or local Qwen VL) ──────────────────────────────────
+def _gemini_vision(img_b64, prompt, max_tokens=800):
+    """Call Gemini Flash vision API. Fast, reliable, free tier."""
+    import requests
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
+    payload = {
+        "contents": [{"parts": [
+            {"inlineData": {"mimeType": "image/png", "data": img_b64}},
+            {"text": prompt}
+        ]}],
+        "generationConfig": {"maxOutputTokens": max_tokens}
+    }
+    r = requests.post(url, json=payload, timeout=30)
+    if r.status_code == 200:
+        candidates = r.json().get("candidates", [])
+        if candidates:
+            parts = candidates[0].get("content", {}).get("parts", [])
+            if parts:
+                return parts[0].get("text", "").strip()
+    else:
+        print(f"[CODEC] Gemini error {r.status_code}: {r.text[:200]}")
     return ""
 
-# ── SCREENSHOT VISION ────────────────────────────────────────────────────────
+def _local_vision(img_b64, prompt, max_tokens=800):
+    """Call local Qwen VL vision API (fallback)."""
+    import requests
+    r = requests.post(f"{QWEN_VISION_URL}/chat/completions",
+        json={"model": QWEN_VISION_MODEL,
+            "messages": [{"role": "user", "content": [
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_b64}"}},
+                {"type": "text", "text": prompt}
+            ]}], "max_tokens": max_tokens}, timeout=60)
+    if r.status_code == 200:
+        return r.json()["choices"][0]["message"].get("content", "").strip()
+    return ""
+
+def vision_describe(img_b64, prompt="Read all visible text on this screen. Include app name, window title, and all message/content text. Output raw text only.", max_tokens=800):
+    """Route vision to Gemini or local based on config."""
+    if VISION_PROVIDER == "gemini" and GEMINI_API_KEY:
+        result = _gemini_vision(img_b64, prompt, max_tokens)
+        if result:
+            return result
+        print("[CODEC] Gemini failed, falling back to local vision...")
+    return _local_vision(img_b64, prompt, max_tokens)
+
 def screenshot_ctx():
     try:
-        import requests
         tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
         tmp.close()
         subprocess.run(["screencapture", "-x", tmp.name], timeout=5)
@@ -208,80 +120,15 @@ def screenshot_ctx():
         with open(tmp.name, "rb") as f:
             img_b64 = base64.b64encode(f.read()).decode()
         os.unlink(tmp.name)
-        print("[CODEC] Reading screen via Vision...")
-        r = requests.post(f"{QWEN_VISION_URL}/chat/completions",
-            json={"model": QWEN_VISION_MODEL,
-                "messages": [{"role": "user", "content": [
-                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_b64}"}},
-                    {"type": "text", "text": "Read all visible text on this screen. Include app name, window title, and all message/content text. Output raw text only."}
-                ]}], "max_tokens": 800}, timeout=60)
-        if r.status_code == 200:
-            content = r.json()["choices"][0]["message"].get("content", "").strip()
-            if content:
-                print(f"[CODEC] Screen context: {len(content)} chars")
-                return content[:2000]
+        provider = "Gemini Flash" if (VISION_PROVIDER == "gemini" and GEMINI_API_KEY) else "Qwen VL"
+        print(f"[CODEC] Reading screen via {provider}...")
+        content = vision_describe(img_b64)
+        if content:
+            print(f"[CODEC] Screen context: {len(content)} chars")
+            return content[:2000]
     except Exception as e:
         print(f"[CODEC] Vision error: {e}")
     return ""
-
-def focused_app():
-    try:
-        r = subprocess.run(["osascript", "-e",
-            'tell application "System Events" to get name of first application process whose frontmost is true'],
-            capture_output=True, text=True, timeout=3)
-        return r.stdout.strip()
-    except: return "Unknown"
-
-def get_text_dialog():
-    try:
-        r = subprocess.run(["osascript", "-e",
-            'set t to text returned of (display dialog "Q - Enter task:" default answer "" with title "CODEC" buttons {"Cancel","Send"} default button "Send")'],
-            capture_output=True, text=True, timeout=120)
-        return r.stdout.strip()
-    except: return ""
-
-# ── SESSION CHECK ─────────────────────────────────────────────────────────────
-def terminal_session_exists():
-    if not os.path.exists(SESSION_ALIVE): return False
-    try:
-        with open(SESSION_ALIVE) as f:
-            pid = int(f.read().strip())
-        os.kill(pid, 0)
-        return True
-    except (ValueError, ProcessLookupError, PermissionError, FileNotFoundError, OSError):
-        pass
-    try: os.unlink(SESSION_ALIVE)
-    except: pass
-    print("[CODEC] Cleaned stale session_alive")
-    return False
-
-# ── TTS HELPER ────────────────────────────────────────────────────────────────
-def speak_text(text):
-    """Speak text via configured TTS engine"""
-    if TTS_ENGINE == "disabled": return
-    try:
-        clean = text[:300]
-        clean = re.sub(r'\*+', '', clean)
-        clean = re.sub(r'#+\s*', '', clean)
-        clean = re.sub(r'`[^`]*`', '', clean)
-        clean = clean.replace('"','').replace("'","").strip()
-        if not clean: return
-        if len(clean) < 50 and any(c in clean for c in '=+-*/'):
-            clean = "The answer is " + clean
-        print(f"[TTS] Speaking: {clean[:60]}")
-        if TTS_ENGINE == "macos_say":
-            subprocess.Popen(["say", "-v", TTS_VOICE, clean])
-        else:
-            import requests
-            r = requests.post(KOKORO_URL,
-                json={"model": KOKORO_MODEL, "input": clean, "voice": TTS_VOICE},
-                stream=True, timeout=20)
-            if r.status_code == 200:
-                tmp = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
-                [tmp.write(c) for c in r.iter_content(4096)]
-                tmp.close()
-                subprocess.Popen(["afplay", tmp.name])
-    except: pass
 
 # ── STATE ─────────────────────────────────────────────────────────────────────
 state = {
@@ -292,9 +139,79 @@ state = {
     "last_f13": 0.0,
     "last_star": 0.0,
     "screen_ctx": "",
+    "screen_ctx_ts": 0.0,   # when screen_ctx was captured; used for TTL expiry
     "last_plus": 0.0,
+    "last_minus": 0.0,
     "doc_ctx": "",
 }
+
+# ── SCREEN-CONTEXT RELEVANCE GATE ─────────────────────────────────────────────
+# Tasks that clearly have nothing to do with the screen — skip context injection
+# to prevent the LLM from being confused by stale/irrelevant captured text.
+_TRIVIAL_SCREEN_BYPASS = re.compile(
+    r"^\s*(?:"
+    r"\d+\s*[+\-*/x×÷]\s*\d+"               # arithmetic: "1+1", "5 * 3"
+    r"|what\s*time"                         # "what time is it"
+    r"|time\s*(?:is\s*it|now)?"             # "time now"
+    r"|what'?s?\s+the\s+date"               # "what's the date"
+    r"|bitcoin\s*(?:price)?"                # "bitcoin price"
+    r"|btc\s*price"
+    r"|weather"                             # weather queries
+    r"|calculate\s+"                        # "calculate 5 * 4"
+    r"|speed\s*test"                        # the user's actual failing query
+    r"|ping"
+    r"|hello|hi|hey"                        # greetings
+    r"|status|health|uptime"                # system checks
+    r")\b",
+    re.IGNORECASE,
+)
+_SCREEN_CTX_TTL = 120.0  # seconds — stale screen context expires
+
+def _maybe_screen_context(task: str) -> str:
+    """Return ' [SCREEN CONTEXT: ...]' to append, or '' if skipped.
+
+    Clears expired/used screen_ctx as a side-effect. Keeps existing behavior
+    when the task genuinely looks screen-related; skips for trivial lookups or
+    when the captured screenshot is older than TTL.
+    """
+    ctx = state.get("screen_ctx", "")
+    if not ctx:
+        return ""
+    # TTL: stale screenshots shouldn't follow the user around
+    ts = state.get("screen_ctx_ts", 0.0)
+    if ts and (time.time() - ts) > _SCREEN_CTX_TTL:
+        print(f"[CODEC] Screen context expired ({int(time.time()-ts)}s old) — discarding")
+        state["screen_ctx"] = ""
+        state["screen_ctx_ts"] = 0.0
+        return ""
+    # Relevance: trivial intents ignore screen context
+    if _TRIVIAL_SCREEN_BYPASS.match(task or ""):
+        print(f"[CODEC] Trivial task — skipping screen context injection")
+        return ""
+    # Use it, one-shot
+    out = " [SCREEN CONTEXT: " + ctx[:800] + "]"
+    state["screen_ctx"] = ""
+    state["screen_ctx_ts"] = 0.0
+    return out
+
+# ── DISPATCH LOCK — only one dispatch at a time, prevents feedback loops ──
+_dispatch_lock = threading.Lock()
+_dispatch_cooldown = 0.0  # timestamp: ignore wake words until this time
+_last_tts_text = ""  # last TTS output — used to strip echo from mic recordings
+
+# ── VOICE CONVERSATION SESSION (persistent across F18 presses) ──────────────
+voice_session = {
+    "messages": [],      # [{role, content}, ...] — full conversation history
+    "started": None,     # ISO timestamp of session start
+    "turn_count": 0,     # number of exchanges
+}
+
+def reset_voice_session():
+    """Clear voice conversation history (called on F13 toggle)."""
+    voice_session["messages"] = []
+    voice_session["started"] = None
+    voice_session["turn_count"] = 0
+    print("[CODEC] Voice session reset")
 
 # ── WORK QUEUE ────────────────────────────────────────────────────────────────
 work_queue = []
@@ -613,68 +530,225 @@ def close_session():
 
 # ── DISPATCH ──────────────────────────────────────────────────────────────────
 def dispatch(task):
+    global _dispatch_cooldown
+    if not _dispatch_lock.acquire(blocking=False):
+        print(f"[CODEC] Dispatch BLOCKED (already processing): {task[:60]}")
+        return
+    try:
+        _dispatch_inner(task)
+    finally:
+        # Post-dispatch cooldown — TTS is now blocking so audio is already done
+        # 1.5s buffer for echo/reverb decay (was 5s — too long, made CODEC feel unresponsive)
+        _dispatch_cooldown = time.time() + 1.5
+        _dispatch_lock.release()
+
+def _dispatch_inner(task):
     app = focused_app()
+    log_event("wake_dispatch", "open-codec",
+              f"Voice dispatch: {task[:80]}",
+              extra={"task_preview": task[:200]})
     print(f"[CODEC] Task: {task[:80]} | App: {app}")
-    subprocess.Popen(["osascript", "-e", f'display notification "Heard: {task[:50]}" with title "Q"'],
+    _safe_task = task[:50].replace('\\', '\\\\').replace('"', '\\"')
+    subprocess.Popen(["osascript", "-e", f'display notification "Heard: {_safe_task}" with title "CODEC"'],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    # Check skills — skip if task is very long (document content attached)
-    # Complex queries (>60 chars or multi-word search) always go to Terminal agent
-    _words = task.split()
-    _is_complex = len(task) > 60 or len(_words) > 8
-    if len(task) < 500 and not _is_complex:
-        skill = check_skill(task)
-        if skill:
+    # Check skills — try ranked matches, fall through if skill returns None
+    skill_result = None
+    if len(task) < 500:
+        for skill in check_skills_ranked(task):
             result = run_skill(skill, task, app)
             if result is not None:
                 push(lambda: show_overlay('Skill: ' + skill['name'], '#E8711A', 2000))
+                global _last_tts_text
+                _last_tts_text = str(result)[:200]
                 speak_text(result)
-                subprocess.Popen(["osascript", "-e", f'display notification "{str(result)[:80]}" with title "Q Skill"'],
+                subprocess.Popen(["osascript", "-e", f'display notification "{str(result)[:80]}" with title "CODEC Skill"'],
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 print(f"[CODEC] Skill response: {str(result)[:100]}")
+                skill_result = str(result)
+                # Add skill exchange to voice session for continuity
+                voice_session["messages"].append({"role": "user", "content": task})
+                voice_session["messages"].append({"role": "assistant", "content": f"[Skill: {skill['name']}] {skill_result}"})
+                voice_session["turn_count"] += 1
+                # Save to shared memory
+                try:
+                    from codec_memory import CodecMemory
+                    cm = CodecMemory()
+                    cm.save("voice", "user", task)
+                    cm.save("voice", "assistant", skill_result[:500])
+                except Exception as e:
+                    log.warning(f"[CODEC] Memory save failed after skill: {e}")
+                # After skill fires, grab screen context in background (don't block queue)
+                def _post_skill_screenshot():
+                    try:
+                        time.sleep(2)
+                        screen = screenshot_ctx()
+                        if screen and len(screen) > 50:
+                            voice_session["messages"].append({
+                                "role": "user",
+                                "content": f"[CONTEXT: My screen now shows: {screen[:1000]}]"
+                            })
+                            print(f"[CODEC] Post-skill screen captured: {len(screen)} chars")
+                    except Exception as e:
+                        print(f"[CODEC] Post-skill screenshot failed: {e}")
+                threading.Thread(target=_post_skill_screenshot, daemon=True).start()
                 return
+            print(f"[CODEC] Skill {skill['name']} returned None, trying next...")
 
     if is_draft(task):
         push(lambda: show_overlay('Reading screen...', '#E8711A', 2000))
         ctx = screenshot_ctx()
+        push(lambda: show_processing_overlay('Drafting your message...', 15000))
         with open(DRAFT_TASK_FILE, "w") as f:
             json.dump({"task": task, "ctx": ctx, "app": app}, f)
         print(f"[CODEC] Draft queued for watcher")
         return
 
     rid = save_task(task, app)
-    mem = get_memory(5)
-    sys_p = "You are CODEC, a JARVIS-class AI assistant on Mac Studio M1 Ultra. ALWAYS respond in English only. Never respond in Chinese or any other language unless explicitly asked to translate. Answer in 1-3 sentences. Be natural and conversational like a smart friend. Add useful details when relevant. Full computer access. Never say cannot."
-    if mem: sys_p += "\n\n" + mem
-    safe_sys = sys_p.replace("'","").replace('"','').replace('\n',' ')
 
+    # ── Build system prompt with memory ─────────────────────────────────
+    mem = get_memory(5)
+    mem_ctx = ""
+    boot_ctx = ""
+    facts_ctx = ""
+    try:
+        from codec_memory import CodecMemory
+        cm = CodecMemory()
+        targeted = cm.get_context(task, n=5)
+        if targeted:
+            mem_ctx += f"\n\n[MEMORY — RELEVANT PAST CONVERSATIONS]\n{targeted}\n[END MEMORY]"
+        recent = cm.search_recent(days=3, limit=5)
+        if recent:
+            lines = ["[RECENT MEMORY — LAST 3 DAYS]"]
+            for r in recent:
+                ts = r["timestamp"][:16].replace("T", " ")
+                snippet = r["content"][:200].replace("\n", " ")
+                lines.append(f"  [{ts}] {r['role'].upper()}: {snippet}")
+            lines.append("[END RECENT MEMORY]")
+            mem_ctx += "\n\n" + "\n".join(lines)
+    except Exception as e:
+        log.warning("Memory context retrieval failed: %s", e)
+
+    # ── Memory upgrade: L0/L1 identity + active temporal facts ──────────
+    try:
+        from codec_memory_upgrade import load_identity, query_valid_facts, compress_rule_based
+        identity = load_identity()
+        if identity:
+            boot_ctx = f"\n\n[IDENTITY — BOOT PAYLOAD]\n{identity}\n[END IDENTITY]"
+        facts = query_valid_facts(limit=20)
+        if facts:
+            lines = ["[ACTIVE FACTS]"]
+            for f in facts:
+                lines.append(f"  {f['key']} = {f['value']}")
+            lines.append("[END FACTS]")
+            facts_ctx = "\n\n" + "\n".join(lines)
+        # Compress the recalled memory block to save tokens (identity+facts stay verbatim)
+        if mem_ctx:
+            mem_ctx = compress_rule_based(mem_ctx)
+    except Exception as e:
+        log.warning("Memory upgrade injection failed: %s", e)
+
+    # 2026-04-29 prompt rewrite: CODEC_VOICE_PROMPT now contains a {date}
+    # placeholder. Format it before use so the LLM doesn't see literal '{date}'.
+    sys_p = CODEC_VOICE_PROMPT.format(date=datetime.now().strftime("%A, %B %d, %Y"))
+    if boot_ctx: sys_p += boot_ctx
+    if facts_ctx: sys_p += facts_ctx
+    if mem: sys_p += "\n\n" + mem
+    if mem_ctx: sys_p += mem_ctx
+    safe_sys = sys_p.replace('\n', ' ')
+
+    # ── Open terminal session (the real CODEC session window) ───────────
     with open(TASK_QUEUE_FILE, "w") as f:
-        f.write(json.dumps({"task": task, "app": app, "ts": datetime.now().isoformat()}))
+        json.dump({"task": task, "app": app, "ts": datetime.now().isoformat()}, f)
 
     if terminal_session_exists():
-        print("[CODEC] Queued to existing session")
-        subprocess.Popen(["osascript", "-e", 'tell application "Terminal" to activate'],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # Warm session: codec_session.py handles the LLM + TTS.
+        # Skip the inline quick-reply to avoid double-TTS (bug fix 2026-04-16).
+        print("[CODEC] Queued to existing session (inline quick-reply skipped)")
         return
+    else:
+        session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+        run_session_in_terminal(safe_sys, session_id, task)
 
-    session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-    script = build_session_script(safe_sys, session_id)
-    ts = tempfile.NamedTemporaryFile(suffix=".py", delete=False, mode="w")
-    ts.write(script); ts.close()
+    # ── Quick voice reply (immediate feedback while terminal loads) ─────
+    # Only runs on COLD START — a warm terminal session handles TTS itself.
+    if not voice_session["started"]:
+        voice_session["started"] = datetime.now().isoformat()
 
+    # Add current user message to session
+    voice_session["messages"].append({"role": "user", "content": task})
+
+    # Build LLM messages: system + conversation history (keep last 20 turns)
+    llm_messages = [{"role": "system", "content": sys_p}]
+    # Trim to last 10 messages to keep prompt fast on 35B model
+    # Filter out system messages from history — Qwen requires system only at start
+    history = [m for m in voice_session["messages"][-10:] if m["role"] != "system"]
+    llm_messages.extend(history)
+
+    push(lambda: show_processing_overlay('Thinking...', 15000))
     try:
-        subprocess.Popen(["osascript", "-e",
-            f'tell application "Terminal"\nactivate\nset w to do script "python3.13 {ts.name}"\nset custom title of selected tab of w to "{Q_TERMINAL_TITLE}"\nend tell'],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        import requests as _llm_req
+        headers = {}
+        if LLM_API_KEY:
+            headers["Authorization"] = f"Bearer {LLM_API_KEY}"
+        payload = {
+            "model": QWEN_MODEL,
+            "messages": llm_messages,
+            "max_tokens": 400,
+            "temperature": 0.7,
+            "chat_template_kwargs": {"enable_thinking": False},
+        }
+        payload.update(LLM_KWARGS)
+        r = _llm_req.post(f"{QWEN_BASE_URL}/chat/completions", json=payload, headers=headers, timeout=120)
+        if r.status_code == 200:
+            data = r.json()
+            answer = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            answer = strip_think(answer).strip()
+            if answer:
+                print(f"[CODEC] Voice reply (turn {voice_session['turn_count']+1}): {answer[:120]}")
+                log_event("tts_speak", "open-codec",
+                          f"TTS: {answer[:60]}",
+                          extra={"text_len": len(answer)})
+                # Add assistant response to session history
+                voice_session["messages"].append({"role": "assistant", "content": answer})
+                voice_session["turn_count"] += 1
+                # Save response to DB
+                try:
+                    c = sqlite3.connect(DB_PATH)
+                    c.execute("UPDATE sessions SET response=? WHERE id=?", (answer[:500], rid))
+                    c.commit(); c.close()
+                except Exception as e:
+                    log.warning(f"[CODEC] DB save failed: {e}")
+                # Save to shared memory (same store as Chat)
+                try:
+                    cm = CodecMemory()
+                    cm.save("voice", "user", task)
+                    cm.save("voice", "assistant", answer)
+                except Exception as e:
+                    log.warning(f"[CODEC] Memory save failed after LLM: {e}")
+                _last_tts_text = answer[:200]
+                speak_text(answer)
+                _safe_ans = answer[:80].replace('\\', '\\\\').replace('"', '\\"')
+                subprocess.Popen(["osascript", "-e",
+                    f'display notification "{_safe_ans}" with title "CODEC"'],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            else:
+                print("[CODEC] Voice LLM returned empty response")
+                speak_text("Sorry, I didn't get a response.")
+        else:
+            print(f"[CODEC] Voice LLM error: {r.status_code} {r.text[:200]}")
+            speak_text("Sorry, the language model is not responding.")
     except Exception as e:
-        print(f"[CODEC] Terminal error: {e}")
+        log.error("Voice LLM call failed: %s", e)
+        import traceback; traceback.print_exc()
+        speak_text("Sorry, something went wrong.")
 
 # ── DOCUMENT INPUT ────────────────────────────────────────────────────────────
 def do_document_input():
     push(lambda: show_overlay('Select document...', '#E8711A', 3000))
     try:
         r = subprocess.run(["osascript", "-e",
-            'set f to POSIX path of (choose file with prompt "Select a document for Q:" of type {"public.item"})'],
+            'set f to POSIX path of (choose file with prompt "Select a document for CODEC:" of type {"public.item"})'],
             capture_output=True, text=True, timeout=60)
         filepath = r.stdout.strip()
         if not filepath:
@@ -690,24 +764,20 @@ def do_document_input():
                 content_text = f.read()[:5000]
         elif ext in ['.png','.jpg','.jpeg','.gif','.webp']:
             try:
-                import requests as img_req
                 with open(filepath, "rb") as imgf:
                     img_b64 = base64.b64encode(imgf.read()).decode()
-                rv = img_req.post(f"{QWEN_VISION_URL}/chat/completions",
-                    json={"model": QWEN_VISION_MODEL, "messages": [{"role": "user", "content": [
-                        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_b64}"}},
-                        {"type": "text", "text": "Describe this image in detail. Read any text visible."}
-                    ]}], "max_tokens": 1000}, timeout=60)
-                if rv.status_code == 200:
-                    content_text = rv.json()["choices"][0]["message"].get("content", "")[:5000]
-            except: pass
+                content_text = vision_describe(img_b64, "Describe this image in detail. Read any text visible.", 1000)[:5000]
+            except Exception as e:
+                print(f"[CODEC] Image vision error: {e}")
         elif ext == '.pdf':
             try:
-                result = subprocess.run(["bash", "-c",
-                    f"python3.13 -c \"import fitz; doc=fitz.open('{filepath}'); print(chr(10).join(p.get_text() for p in doc[:5]))\""],
-                    capture_output=True, text=True, timeout=30)
-                content_text = result.stdout.strip()[:5000]
-            except: pass
+                import fitz
+                doc = fitz.open(filepath)
+                content_text = "\n".join(p.get_text() for p in doc[:5])[:5000]
+                doc.close()
+                print(f"[CODEC] PDF extracted: {len(content_text)} chars from {len(doc)} pages")
+            except Exception as e:
+                print(f"[CODEC] PDF extraction error: {e}")
 
         if content_text:
             # Dispatch directly to terminal for analysis
@@ -721,28 +791,52 @@ def do_document_input():
 
 # ── SCREENSHOT SHORTCUT ──────────────────────────────────────────────────────
 def do_screenshot_question():
-    push(lambda: show_overlay('Screenshot captured  F18=voice  F16=text', '#E8711A', 5000))
+    push(lambda: show_overlay('Analyzing screen...', '#E8711A', 3000))
     ctx = screenshot_ctx()
-    if ctx:
+    if not ctx:
+        push(lambda: show_overlay('Screenshot failed', '#ff3333', 2000))
+        return
+    print(f"[CODEC] Screenshot captured ({len(ctx)} chars)")
+    # Show brief summary of what was captured, then open question dialog
+    summary = ctx[:120].replace('"', '\\"').replace('\n', ' ')
+    try:
+        r = subprocess.run(["osascript", "-e",
+            f'tell application "System Events"\nset frontmost of first process whose frontmost is true to true\nend tell\n'
+            f'set t to text returned of (display dialog '
+            f'"I captured your screen:\\n\\n{summary}…\\n\\nWhat would you like to know about it?" '
+            f'default answer "" with title "CODEC Screenshot" '
+            f'buttons {{"Cancel","Ask"}} default button "Ask")'],
+            capture_output=True, text=True, timeout=120)
+        question = r.stdout.strip()
+        if question:
+            task = question + " [SCREEN CONTEXT: " + ctx[:800] + "]"
+            dispatch(task)
+        else:
+            # User cancelled — save for later F18/F16 AND inject into voice session
+            state["screen_ctx"] = ctx
+            voice_session["messages"].append({
+                "role": "system",
+                "content": f"[SCREEN CAPTURE: The user's screen currently shows: {ctx[:1000]}]"
+            })
+            state["screen_ctx_ts"] = time.time()
+            push(lambda: show_overlay('Screenshot saved — use voice or text to ask', '#E8711A', 3000))
+    except Exception as e:
+        print(f"[CODEC] Screenshot dialog error: {e}")
         state["screen_ctx"] = ctx
-        print(f"[CODEC] Screenshot captured ({len(ctx)} chars). Use F18/F16 to ask about it.")
-    else:
-        state["screen_ctx"] = ""
+        state["screen_ctx_ts"] = time.time()
 
 # ── TEXT/VOICE HANDLERS ───────────────────────────────────────────────────────
 def do_text():
     task = get_text_dialog()
     if task:
-        if state.get("screen_ctx"):
-            task = task + " [SCREEN CONTEXT: " + state["screen_ctx"][:800] + "]"
-            state["screen_ctx"] = ""
+        task = task + _maybe_screen_context(task)
         dispatch(task)
 
 def do_start_recording():
     tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
     state["audio_path"] = tmp.name; tmp.close()
     rec = subprocess.Popen(
-        ["sox", "-t", "coreaudio", "default", "-r", "16000", "-c", "1", "-b", "16", "-e", "signed-integer", state["audio_path"]],
+        [SOX, "-t", "coreaudio", "default", "-r", "16000", "-c", "1", "-b", "16", "-e", "signed-integer", state["audio_path"]],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     state["rec_proc"] = rec
     print("[CODEC] Recording...")
@@ -750,44 +844,117 @@ def do_start_recording():
 def do_stop_voice():
     audio = state.get("audio_path")
     rec = state.get("rec_proc")
+    rec_start = state.get("rec_start", 0)
     if rec:
         try: rec.terminate(); rec.wait(timeout=3)
-        except: pass
+        except Exception as e: log.debug("Recording process cleanup failed: %s", e)
     state["rec_proc"] = None; state["recording"] = False
+    ovl = state.get("overlay_proc")
+    if ovl:
+        try: ovl.terminate()
+        except Exception as e: log.debug("Overlay process cleanup failed: %s", e)
+        state["overlay_proc"] = None
     if not audio or not os.path.exists(audio): return
-    if os.path.getsize(audio) < 1000:
+    # Reject recordings shorter than 0.5s — just button taps, not speech
+    rec_duration = time.time() - rec_start if rec_start else 0
+    if rec_duration < 0.5:
+        print(f"[CODEC] Recording too short ({rec_duration:.1f}s) — ignored")
         try: os.unlink(audio)
         except: pass
         return
+    if os.path.getsize(audio) < 1000:
+        try: os.unlink(audio)
+        except Exception as e: log.debug("Audio file cleanup failed: %s", e)
+        return
     print("[CODEC] Transcribing...")
-    push(lambda: show_overlay('Transcribing...', '#E8711A', 2000))
+    push(lambda: show_processing_overlay('Transcribing...', 2000))
     task = transcribe(audio)
     if not task: print("[CODEC] No speech detected"); return
+    # Strip TTS echo — mic sometimes captures CODEC's own voice response
+    if _last_tts_text and len(_last_tts_text) > 10:
+        # Build fuzzy fragments from last TTS to match in transcription
+        tts_lower = _last_tts_text.lower()
+        task_lower = task.lower()
+        # Find the longest overlap between end of task and TTS text
+        for frag_len in range(min(len(tts_lower), len(task_lower)), 10, -1):
+            frag = tts_lower[:frag_len]
+            idx = task_lower.find(frag)
+            if idx >= 0:
+                # Everything from this match onward is likely TTS echo
+                cleaned = task[:idx].strip()
+                if len(cleaned) > 5:
+                    print(f"[CODEC] Stripped TTS echo: '{task[idx:idx+60]}...'")
+                    task = cleaned
+                break
     print(f"[CODEC] Heard: {task}")
-    if state.get("screen_ctx"):
-        task = task + " [SCREEN CONTEXT: " + state["screen_ctx"][:800] + "]"
-        state["screen_ctx"] = ""
+    task = task + _maybe_screen_context(task)
     dispatch(task)
 
 # ── WAKE WORD LISTENER ───────────────────────────────────────────────────────
 def wake_word_listener():
-    import sounddevice as sd
-    import numpy as np
-    import soundfile as sf
     import requests as req_wake
     sample_rate = 16000
-    chunk_samples = int(WAKE_CHUNK_SEC * sample_rate)
-    print("[CODEC] Wake word listener started. Say 'Hey CODEC' to activate.")
+    chunk_sec = WAKE_CHUNK_SEC
+    # Find the Anker webcam mic — always use it for wake word regardless of BT devices
+    wake_device = "default"
+    try:
+        import sounddevice as sd
+        for i, d in enumerate(sd.query_devices()):
+            if d['max_input_channels'] > 0 and 'anker' in d['name'].lower():
+                wake_device = d['name']
+                break
+    except Exception as e: log.debug("Wake mic device detection failed: %s", e)
+    print(f"[CODEC] Wake word listener started (mic: {wake_device}, threshold={WAKE_ENERGY}). Say 'Hey CODEC' to activate.")
+    if WAKE_ENERGY > 1000:
+        print(f"[CODEC] ⚠️  Wake energy threshold ({WAKE_ENERGY}) is very high — wake word may not trigger. Default is 200.")
+    _wake_diag_done = False
+    _wake_low_count = 0  # track consecutive below-threshold to warn user
     while True:
-        if not WAKE_WORD or state["recording"] or not state["active"]:
+        if not WAKE_WORD or state["recording"]:
+            time.sleep(0.3); continue
+        # Skip while TTS is actively playing (prevents mic hearing our own voice)
+        if _core.tts_playing:
+            time.sleep(0.3); continue
+        # Skip for 8s after TTS finishes (audio echo / reverb decay)
+        if _core.tts_finished_at and (time.time() - _core.tts_finished_at) < 8.0:
+            time.sleep(0.3); continue
+        # Skip wake processing during dispatch cooldown (prevents hearing our own TTS)
+        if time.time() < _dispatch_cooldown:
+            time.sleep(0.3); continue
+        # Skip if a dispatch is already in progress
+        if _dispatch_lock.locked():
             time.sleep(0.3); continue
         try:
-            audio = sd.rec(chunk_samples, samplerate=sample_rate, channels=1, dtype='int16')
-            sd.wait()
-            energy = np.abs(audio).mean()
-            if energy < WAKE_ENERGY: continue
             tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False); tmp.close()
-            sf.write(tmp.name, audio, sample_rate)
+            subprocess.run(
+                [SOX, "-t", "coreaudio", wake_device, "-r", str(sample_rate), "-c", "1",
+                 "-b", "16", "-e", "signed-integer", tmp.name, "trim", "0", str(chunk_sec)],
+                timeout=int(chunk_sec) + 3, capture_output=True)
+            if not os.path.exists(tmp.name) or os.path.getsize(tmp.name) < 500:
+                try: os.unlink(tmp.name)
+                except Exception as e: log.debug("Wake temp file cleanup failed: %s", e)
+                continue
+            # Check actual audio energy
+            try:
+                import wave, numpy as np
+                wf = wave.open(tmp.name, 'rb')
+                data = np.frombuffer(wf.readframes(wf.getnframes()), dtype=np.int16)
+                wf.close()
+                energy = np.abs(data).mean()
+            except Exception as e:
+                log.debug("Wake audio energy check failed: %s", e)
+                energy = 0
+            if not _wake_diag_done or energy > 80:
+                print(f"[CODEC] Wake mic: energy={energy:.0f} (threshold={WAKE_ENERGY})")
+                _wake_diag_done = True
+            if energy < WAKE_ENERGY:
+                if energy > WAKE_ENERGY * 0.3:
+                    _wake_low_count += 1
+                    if _wake_low_count == 20:
+                        print(f"[CODEC] ⚠️  Mic picks up speech (energy ~{energy:.0f}) but threshold is {WAKE_ENERGY}. Lower wake_energy in ~/.codec/config.json if wake word doesn't trigger.")
+                try: os.unlink(tmp.name)
+                except Exception as e: log.debug("Wake temp file cleanup failed: %s", e)
+                continue
             try:
                 with open(tmp.name, "rb") as f:
                     r = req_wake.post(WHISPER_URL,
@@ -796,9 +963,27 @@ def wake_word_listener():
                         timeout=10)
                 if r.status_code == 200:
                     text = r.json().get("text", "").lower().strip()
-                    if any(phrase in text for phrase in WAKE_PHRASES):
+                    if not text or len(text) < 2:
+                        continue
+                    # Filter Whisper hallucinations (repetitive gibberish)
+                    if len(text) > 120:
+                        continue
+                    print(f"[CODEC] Wake heard: '{text}'")
+                    # Simple keyword match — if "codec/codex/kodak/kodec" appears anywhere, it's a wake
+                    _WAKE_KEYWORDS = ["codec", "codex", "kodak", "kodec", "kodak", "co-dec", "caudec", "codag"]
+                    _matched = any(kw in text for kw in _WAKE_KEYWORDS)
+                    if _matched:
+                        log_event("wake_word_detected", "open-codec",
+                                  "Wake word detected")
+                        # Auto-activate if not already on
+                        if not state["active"]:
+                            state["active"] = True
+                            push(lambda: show_toggle_overlay(True, "F18=voice | **=screen | --=chat"))
                         command = text
-                        for phrase in WAKE_PHRASES: command = command.replace(phrase, "").strip()
+                        # Strip wake keywords and common prefixes (case-insensitive)
+                        for kw in _WAKE_KEYWORDS + ["hey", "and", "hay", "eh", "ay"]:
+                            command = re.sub(r'(?i)\b' + re.escape(kw) + r'\b', '', command).strip()
+                        command = re.sub(r'^[\s,.\-]+|[\s,.\-]+$', '', command)
                         if len(command) > 3:
                             print(f"[CODEC] Wake + command: {command}")
                             push(lambda: show_overlay('Heard you!', '#E8711A', 1500))
@@ -806,52 +991,75 @@ def wake_word_listener():
                         else:
                             print("[CODEC] Wake word detected! Listening...")
                             push(lambda: show_overlay('Listening...', '#E8711A', 5000))
-                            full_audio = sd.rec(int(8 * sample_rate), samplerate=sample_rate, channels=1, dtype='int16')
-                            sd.wait()
+                            # Record follow-up command (8 seconds)
                             tmp2 = tempfile.NamedTemporaryFile(suffix=".wav", delete=False); tmp2.close()
-                            sf.write(tmp2.name, full_audio, sample_rate)
+                            subprocess.run(
+                                [SOX, "-t", "coreaudio", wake_device, "-r", str(sample_rate), "-c", "1",
+                                 "-b", "16", "-e", "signed-integer", tmp2.name, "trim", "0", "8"],
+                                timeout=12, capture_output=True)
                             task = transcribe(tmp2.name)
                             if task:
                                 print(f"[CODEC] Heard: {task}")
                                 push(lambda t=task: dispatch(t))
-            except: pass
+            except Exception as e:
+                print(f"[CODEC] Wake whisper error: {e}")
             finally:
                 try: os.unlink(tmp.name)
-                except: pass
-        except: time.sleep(0.5)
+                except Exception as e: log.debug("Wake temp file cleanup failed: %s", e)
+        except Exception as e:
+            print(f"[CODEC] Wake listener error: {e}")
+            time.sleep(0.5)
         time.sleep(0.1)
 
 # ── KEYBOARD ──────────────────────────────────────────────────────────────────
 def on_press(key):
     now = time.time()
     if key == keyboard.Key.f13:
-        if now - state["last_f13"] < 0.8: return
+        if now - state["last_f13"] < 1.5: return
         state["last_f13"] = now
         if state["active"]:
             state["active"] = False
-            push(lambda: show_overlay('CODEC OFF', '#ff3333', 1500))
+            push(lambda: show_toggle_overlay(False))
             push(close_session)
+            reset_voice_session()
             print("[CODEC] OFF")
         else:
             state["active"] = True
-            push(lambda: show_overlay('CODEC ON  F18=voice  F16=text  **=screen  ++=doc', '#E8711A', 3000))
-            print("[CODEC] ON -- F18=voice | F16=text | *=screen | +=doc")
+            reset_voice_session()
+            push(lambda: show_toggle_overlay(True, "F18=voice  F16=text  **=screen  ++=doc  --=chat"))
+            print("[CODEC] ON -- F18=voice | F16=text | *=screen | +=doc | --=chat")
         return
     if not state["active"]: return
     if key == keyboard.Key.f16:
-        if not state["recording"]: push(do_text)
+        if not state["recording"]:
+            # Run text dialog in its own thread so it opens instantly
+            # (don't wait for work_queue which may be blocked by vision/LLM)
+            threading.Thread(target=do_text, daemon=True).start()
         return
     if key == keyboard.Key.f18:
         if not state["recording"]:
+            # Don't start recording while TTS is speaking — mic captures speaker output
+            if _core.tts_playing:
+                print("[CODEC] F18 ignored — TTS still playing")
+                return
+            # Don't start if dispatch is still processing (cooldown)
+            if time.time() < _dispatch_cooldown:
+                print("[CODEC] F18 ignored — still processing")
+                return
             state["recording"] = True
+            state["rec_start"] = time.time()
+            threading.Thread(target=lambda: subprocess.run(
+                ['afplay', '/System/Library/Sounds/Glass.aiff'],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL), daemon=True).start()
             push(do_start_recording)
-            push(lambda: show_overlay('REC  release F18 to send', '#E8711A', 30000))
+            state["overlay_proc"] = show_recording_overlay('F18')
         return
     if hasattr(key, 'char') and key.char == '*':
-        if now - state["last_star"] < 0.5:
+        if now - state["last_star"] < 0.25 and now - state.get("last_screenshot_time", 0) > 8:
             print("[CODEC] Star x2 -- screenshot mode")
             push(do_screenshot_question)
             state["last_star"] = 0.0
+            state["last_screenshot_time"] = now
             return
         state["last_star"] = now
         return
@@ -863,17 +1071,38 @@ def on_press(key):
             return
         state["last_plus"] = now
         return
+    if hasattr(key, 'char') and key.char == '-':
+        if now - state.get("last_minus", 0.0) < 0.5:
+            print("[CODEC] Minus x2 -- live chat mode")
+            voice_url = _cfg.get("voice_url", "http://localhost:8090/voice?auto=1")
+            push(lambda: show_overlay('Live Chat connecting...', '#E8711A', 3000))
+            subprocess.Popen(["open", "-a", "Google Chrome", voice_url])
+            state["last_minus"] = 0.0
+            return
+        state["last_minus"] = now
+        return
 
 def on_release(key):
     if key == keyboard.Key.f18 and state["recording"]:
+        # Kill overlay immediately on release (don't wait for work queue)
+        ovl = state.get("overlay_proc")
+        if ovl:
+            try: ovl.terminate()
+            except: pass
+            state["overlay_proc"] = None
+        threading.Thread(target=lambda: subprocess.run(
+            ['afplay', '/System/Library/Sounds/Pop.aiff'],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL), daemon=True).start()
         push(do_stop_voice)
 
 # ── MAIN ──────────────────────────────────────────────────────────────────────
 def main():
+    from codec_logging import setup_logging
+    setup_logging()
     init_db()
     for f in [SESSION_ALIVE, TASK_QUEUE_FILE, DRAFT_TASK_FILE]:
         try: os.unlink(f)
-        except: pass
+        except Exception as e: log.debug("Startup file cleanup failed (%s): %s", f, e)
 
     stream_label = "ON" if STREAMING else "OFF"
     wake_label = "ON" if WAKE_WORD else "OFF"
@@ -882,21 +1111,21 @@ def main():
     W = "\033[38;2;200;200;200m"
     R = "\033[0m"
     print(f"""
-{O}    ╔══════════════════════════════════════════════════╗
-    ║                                                  ║
-    ║    ██████  ██████  ██████  ███████  ██████        ║
-    ║   ██      ██    ██ ██   ██ ██      ██            ║
-    ║   ██      ██    ██ ██   ██ █████   ██            ║
-    ║   ██      ██    ██ ██   ██ ██      ██            ║
-    ║    ██████  ██████  ██████  ███████  ██████        ║
-    ║                                          v1.0    ║
-    ╠══════════════════════════════════════════════════╣
-    ║{W}  F13  toggle ON/OFF    **  screenshot + ask    {O}║
-    ║{W}  F18  voice command    ++  document analysis   {O}║
-    ║{W}  F16  text input       Hey CODEC  wake word        {O}║
-    ╠══════════════════════════════════════════════════╣
-    ║{D}  Stream={stream_label}  Wake={wake_label}  Memory=ON  Skills=ON       {O}║
-    ╚══════════════════════════════════════════════════╝{R}""")
+{O}    ╔═══════════════════════════════════════════╗
+    ║                                           ║
+    ║  ██████  ██████  ██████  ███████  ██████  ║
+    ║ ██      ██    ██ ██   ██ ██      ██       ║
+    ║ ██      ██    ██ ██   ██ █████   ██       ║
+    ║ ██      ██    ██ ██   ██ ██      ██       ║
+    ║  ██████  ██████  ██████  ███████  ██████  ║
+    ║                                   v2.1.0  ║
+    ╠═══════════════════════════════════════════╣
+    ║{W}  F13 toggle   F18 voice   ** screen       {O}║
+    ║{W}  F16 text     ++ doc     -- chat          {O}║
+    ║{W}  Hey CODEC = wake word (hands-free)           {O}║
+    ╠═══════════════════════════════════════════╣
+    ║{D}  Stream={stream_label}  Wake={wake_label}  Skills=ON            {O}║
+    ╚═══════════════════════════════════════════╝{R}""")
 
     load_skills()
     print("[CODEC] Whisper: HTTP (port 8084)")

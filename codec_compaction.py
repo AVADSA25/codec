@@ -1,7 +1,6 @@
 """Context compaction — summarize old conversations, keep recent raw"""
 import os
 import sys
-import json
 import logging
 
 log = logging.getLogger('codec')

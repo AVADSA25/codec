@@ -3,7 +3,7 @@
 CODEC Setup Wizard — Interactive Configuration
 Run: python3 setup_codec.py
 """
-import os, json, sys, subprocess, time, shutil
+import os, json, sys, subprocess, shutil
 
 # ── COLORS ────────────────────────────────────────────────────────────────────
 O = "\033[38;2;232;113;26m"   # Orange
@@ -30,11 +30,11 @@ def banner():
     ║ ██      ██    ██ ██   ██ █████   ██       ║
     ║ ██      ██    ██ ██   ██ ██      ██       ║
     ║  ██████  ██████  ██████  ███████  ██████  ║
-    ║                            Setup v1.5.0   ║
+    ║                            Setup v2.1.0   ║
     ╚═══════════════════════════════════════════╝{X}
 {W}  Your Open-Source Intelligent Command Layer
   7 products: Core · Dictate · Instant · Chat · Vibe · Voice · Overview
-  50+ skills · 8 text services · 12 AI agent crews{X}
+  50+ skills · 8 text services · 10+ AI agent crews{X}
 """)
 
 def ask(prompt, options=None, default=None):
@@ -352,7 +352,7 @@ def main():
     if config["wake_word_enabled"]:
         print(f"\n{W}  Choose wake phrases (what Whisper might hear):{X}")
         print(f"{D}  Default: 'hey c' — Whisper may transcribe as 'hey', 'aq', 'eq', etc.{X}")
-        default_phrases = "hey,aq,eq,iq,okay q,a q,hey c,hey cueue"
+        default_phrases = "hey codec,hey,okay codec,hey codex,hey coda,hey queue"
         phrases = ask_text("Wake phrases (comma-separated)", default_phrases)
         config["wake_phrases"] = [p.strip() for p in phrases.split(",")]
         config["wake_energy"] = 200
@@ -650,7 +650,6 @@ def main():
         ("sox (brew)", check_command("sox")),
     ]
 
-    all_ok = True
     missing = []
     for name, ok in deps:
         if ok:
@@ -658,7 +657,6 @@ def main():
         else:
             print(f"  {R}✗{X} {name}")
             missing.append(name)
-            all_ok = False
 
     if missing:
         print(f"\n{R}  Missing dependencies:{X}")

@@ -4,6 +4,7 @@ import urllib.parse
 
 SKILL_NAME = "chrome_search"
 SKILL_DESCRIPTION = "Search Google in Chrome for any query"
+SKILL_MCP_EXPOSE = True
 SKILL_TRIGGERS = [
     "search google", "google search", "search for", "look up", "google for",
     "search the web", "web search", "find online", "search online"

@@ -27,7 +27,8 @@ def call_qwen(text, mode):
     payload = {"model": model, "messages": [
         {"role": "system", "content": prompts.get(mode, prompts["proofread"])},
         {"role": "user", "content": text}
-    ], "max_tokens": 4000, "temperature": 0.3, "stream": False}
+    ], "max_tokens": 4000, "temperature": 0.3, "stream": False,
+    "chat_template_kwargs": {"enable_thinking": False}}
     payload.update(kwargs)
     r = requests.post(f"{base}/chat/completions", json=payload, timeout=60)
     result = r.json()["choices"][0]["message"]["content"].strip()
@@ -35,14 +36,20 @@ def call_qwen(text, mode):
     return re.sub(r'###\s*FINAL ANSWER:\s*', '', result).strip()
 
 def overlay(text, color, duration):
-    subprocess.Popen([sys.executable, "-c", f"""import tkinter as tk
+    env = os.environ.copy()
+    env["_OVERLAY_TEXT"] = text
+    env["_OVERLAY_COLOR"] = color
+    env["_OVERLAY_DURATION"] = str(duration)
+    return subprocess.Popen([sys.executable, "-c", """import tkinter as tk, os
+t=os.environ['_OVERLAY_TEXT'];c=os.environ['_OVERLAY_COLOR'];d=int(os.environ['_OVERLAY_DURATION'])
 r=tk.Tk();r.overrideredirect(True);r.attributes('-topmost',True);r.attributes('-alpha',0.95);r.configure(bg='#0a0a0a')
 sw=r.winfo_screenwidth();sh=r.winfo_screenheight()
-r.geometry(f'440x84+{{(sw-440)//2}}+{{sh-130}}')
-c=tk.Canvas(r,bg='#0a0a0a',highlightthickness=0,width=440,height=84);c.pack()
-c.create_rectangle(1,1,439,83,outline='{color}',width=1)
-c.create_text(220,42,text='{text}',fill='{color}',font=('Helvetica',16,'bold'))
-r.after({duration},r.destroy);r.mainloop()"""], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+w,h=520,90
+r.geometry(f'{w}x{h}+{(sw-w)//2}+{sh-130}')
+cv=tk.Canvas(r,bg='#0a0a0a',highlightthickness=0,width=w,height=h);cv.pack()
+cv.create_rectangle(1,1,w-1,h-1,outline=c,width=1)
+cv.create_text(w//2,h//2,text=t,fill=c,font=('Helvetica',16,'bold'))
+r.after(d,r.destroy);r.mainloop()"""], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
 
 text = subprocess.run(["pbpaste"], capture_output=True, text=True).stdout.strip()
 if not text: sys.exit(0)
@@ -73,59 +80,107 @@ if MODE == "read_aloud":
         print(f"TTS error: {e}")
     sys.exit(0)
 
-# ── Save: save to Google Keep or local fallback, no LLM needed ───────────────
+# ── Save: save to Apple Notes (primary) + local file backup ─────────────────
 if MODE == "save":
     save_text = text[:2000]
-    saved = False
-    # Try Google Keep skill
+    safe = save_text.replace('"', '\\"').replace("'", "")
+    # Save to Apple Notes
     try:
-        import importlib.util
-        keep_path = os.path.expanduser("~/.codec/skills/google_keep.py")
-        spec = importlib.util.spec_from_file_location("google_keep", keep_path)
-        keep_mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(keep_mod)
-        result = keep_mod.run(f"save note: {save_text[:500]}")
-        if result and any(kw in str(result).lower() for kw in
-                          ("saved", "added", "created", "done", "success", "note saved")):
-            saved = True
+        subprocess.run(["osascript", "-e",
+            f'tell application "Notes" to make new note at folder "Notes" with properties {{body:"{safe}"}}'],
+            capture_output=True, text=True, timeout=10)
     except Exception:
         pass
-    # Fallback: local file
-    if not saved:
-        notes_path = os.path.expanduser("~/.codec/saved_notes.txt")
-        # Ensure Desktop shortcut exists
-        desktop_link = os.path.expanduser("~/Desktop/CODEC_Notes.txt")
-        if not os.path.exists(desktop_link):
-            try: os.symlink(notes_path, desktop_link)
-            except: pass
-        from datetime import datetime
-        with open(notes_path, "a") as nf:
-            nf.write(f"\n--- {datetime.now().strftime('%Y-%m-%d %H:%M')} ---\n")
-            nf.write(save_text + "\n")
-        saved = True
-    if saved:
-        subprocess.run(["osascript", "-e",
-            'display notification "Text saved to notes" with title "CODEC Save"'],
-            capture_output=True)
-        overlay("\u2705 Saved!", "#44cc66", 2000)
+    # Also save local backup
+    notes_path = os.path.expanduser("~/.codec/saved_notes.txt")
+    from datetime import datetime
+    with open(notes_path, "a") as nf:
+        nf.write(f"\n--- {datetime.now().strftime('%Y-%m-%d %H:%M')} ---\n")
+        nf.write(save_text + "\n")
+    subprocess.run(["osascript", "-e",
+        'display notification "Saved to Apple Notes" with title "CODEC Save"'],
+        capture_output=True)
+    overlay("\u2705 Saved to Apple Notes!", "#44cc66", 2000)
     sys.exit(0)
 
-overlay("\\u26a1 Processing...", "#00aaff", 8000)
+_proc_overlay = overlay("⚡ Processing...", "#00aaff", 15000)
 try:
     result = call_qwen(text, MODE)
+    # Kill processing overlay now that we have the result
+    if _proc_overlay:
+        try: _proc_overlay.terminate()
+        except: pass
     if MODE in ("explain", "translate"):
-        # Write to temp file and open in Terminal
-        import tempfile
-        tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, prefix="codec_explain_")
-        tmp.write(result)
-        tmp.close()
-        subprocess.run(["osascript", "-e", 'tell application "Terminal" to activate'])
-        subprocess.run(["osascript", "-e", f'tell application "Terminal" to do script "clear && echo && echo CODEC_EXPLAIN && echo && cat {tmp.name} && echo && echo ━━━━━━━━━━━━━━━━━━━━━"'])
-        overlay("\u2705 Opened in Terminal", "#44cc66", 2000)
+        # Show result in a styled floating window (no Terminal)
+        title = "CODEC Explain" if MODE == "explain" else "CODEC Translate"
+        # Also copy to clipboard so user can paste if needed
+        subprocess.run(["pbcopy"], input=result.encode(), check=True)
+        # Speak the result via Kokoro TTS — spawn as subprocess so it survives parent exit
+        cfg = get_config()
+        _tts_env = {**os.environ,
+            "_TTS_URL": cfg.get("tts_url", "http://localhost:8085/v1/audio/speech"),
+            "_TTS_MODEL": cfg.get("tts_model", "mlx-community/Kokoro-82M-bf16"),
+            "_TTS_VOICE": cfg.get("tts_voice", "am_adam"),
+            "_TTS_TEXT": result[:1500]}
+        subprocess.Popen([sys.executable, "-c", """
+import requests, tempfile, subprocess, os
+try:
+    r = requests.post(os.environ['_TTS_URL'], json={
+        "model": os.environ['_TTS_MODEL'],
+        "input": os.environ['_TTS_TEXT'],
+        "voice": os.environ['_TTS_VOICE']
+    }, timeout=30)
+    if r.status_code == 200:
+        f = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
+        f.write(r.content); f.close()
+        subprocess.run(["afplay", f.name])
+        os.unlink(f.name)
+except Exception:
+    pass
+"""], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=_tts_env)
+        # Launch a clean floating result window
+        safe_result = result.replace("\\", "\\\\").replace("'", "\\'").replace('"', '\\"').replace("\n", "\\n")
+        subprocess.Popen([sys.executable, "-c", f"""import tkinter as tk
+from tkinter import font as tkfont
+r=tk.Tk()
+r.title('{title}')
+r.attributes('-topmost', True)
+r.configure(bg='#1a1a1a')
+sw=r.winfo_screenwidth();sh=r.winfo_screenheight()
+w,h=560,400
+r.geometry(f'{{w}}x{{h}}+{{(sw-w)//2}}+{{(sh-h)//2}}')
+r.minsize(400,250)
+# Title bar
+hdr=tk.Frame(r,bg='#E8711A',height=36);hdr.pack(fill='x')
+hdr.pack_propagate(False)
+tk.Label(hdr,text='{title}',fg='white',bg='#E8711A',font=('Helvetica',14,'bold')).pack(side='left',padx=12)
+tk.Button(hdr,text='📋 Copy',fg='#1a1a1a',bg='white',relief='flat',font=('Helvetica',11,'bold'),padx=8,
+    command=lambda:[r.clipboard_clear(),r.clipboard_append(txt.get('1.0','end-1c'))]).pack(side='right',padx=6,pady=4)
+# Text area
+txt=tk.Text(r,wrap='word',bg='#1a1a1a',fg='#e0e0e0',font=('Menlo',13),relief='flat',
+    padx=16,pady=12,insertbackground='#E8711A',selectbackground='#E8711A',borderwidth=0)
+txt.pack(fill='both',expand=True)
+txt.insert('1.0','{safe_result}')
+txt.config(state='normal')
+# Footer
+ft=tk.Frame(r,bg='#111',height=32);ft.pack(fill='x')
+ft.pack_propagate(False)
+tk.Label(ft,text='Copied to clipboard  \u00b7  \u2318V to paste',fg='#666',bg='#111',font=('Helvetica',10)).pack(side='left',padx=12)
+tk.Button(ft,text='Close',fg='#999',bg='#222',relief='flat',font=('Helvetica',11),padx=10,
+    command=r.destroy).pack(side='right',padx=8,pady=3)
+r.bind('<Escape>',lambda e:r.destroy())
+r.mainloop()
+"""], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        overlay("\u2705 {title}", "#44cc66", 2000)
     else:
         subprocess.run(["pbcopy"], input=result.encode(), check=True)
         time.sleep(0.3)
-        subprocess.run(["osascript", "-e", 'tell application "System Events" to keystroke "v" using command down'])
-        overlay("\\u2705 Text replaced!", "#44cc66", 2000)
-except Exception as e:
+        subprocess.run(["osascript", "-e",
+            'tell application "System Events" to keystroke "v" using command down'],
+            capture_output=True, timeout=5)
+        overlay("✅ Text replaced!", "#44cc66", 2000)
+except Exception:
+    if _proc_overlay:
+        try: _proc_overlay.terminate()
+        except: pass
     overlay("Error - check terminal", "#ff3333", 3000)

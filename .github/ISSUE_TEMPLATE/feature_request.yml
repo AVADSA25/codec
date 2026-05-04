@@ -1,0 +1,64 @@
+name: Feature request
+description: Suggest a new skill, capability, or improvement
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion. CODEC's design is opinionated — we keep things small, local-first, and reversible. The clearer your description, the easier it is to scope.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the user pain or workflow gap, not the solution.
+      placeholder: "Right now I have to manually X every time I Y. It takes 5 minutes and I do it 10x/day."
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What should CODEC do? If it's a new skill, describe the trigger phrase + output. If it's a UI change, describe where it goes.
+    validations:
+      required: true
+  - type: dropdown
+    id: category
+    attributes:
+      label: Which area?
+      options:
+        - New skill (drop-in `skills/*.py`)
+        - Existing skill enhancement
+        - PWA / dashboard UI
+        - Voice / wake-word path
+        - MCP integration (claude.ai, Cursor, etc.)
+        - Agent system (Phase 3 plan-and-build)
+        - Memory / search
+        - Notifications / alerts
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any workarounds you tried? Other tools that solve this differently?
+    validations:
+      required: false
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope guess
+      description: How big is this? 1-line config flag, new skill (~100 LOC), or new module?
+    validations:
+      required: false
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy alignment
+      options:
+        - label: This proposal works locally (no required cloud dependency for the core feature)
+          required: false
+        - label: This proposal respects the local-first principle (no automatic data exfiltration)
+          required: false

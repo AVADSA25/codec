@@ -30,9 +30,14 @@ from pathlib import Path
 import pytest
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
-REPO = os.path.expanduser("~/codec-repo")
+# Worktree-aware: when running from a git worktree (.claude/worktrees/<branch>),
+# the worktree's own codec_*.py files must win over ~/codec-repo's. Otherwise
+# Step 3 features added to the worktree (new constants, new methods) aren't
+# visible to subsequent tests that import codec_audit / codec_voice.
+_REPO_FROM_TESTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REPO = _REPO_FROM_TESTS
 SKILLS_DIR = os.path.join(REPO, "skills")  # Single source of truth — repo is runtime
-DB_PATH = os.path.expanduser("~/.q_memory.db")
+DB_PATH = os.path.expanduser("~/.codec/memory.db")
 CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
 AUDIT_LOG = os.path.expanduser("~/.codec/audit.log")
 

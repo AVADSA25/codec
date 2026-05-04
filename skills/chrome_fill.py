@@ -5,6 +5,7 @@ sys.path.insert(0, os.path.expanduser("~/codec-repo"))
 SKILL_NAME = "chrome_fill"
 SKILL_TRIGGERS = ["fill in", "fill form", "fill the field", "type into field", "enter in field", "put in field"]
 SKILL_DESCRIPTION = "Fill web form fields using Chrome DevTools Protocol for precise form automation"
+SKILL_MCP_EXPOSE = True
 
 def run(task: str, context: str = "") -> str:
     from codec_cdp import is_cdp_available, run_cdp, ChromeCDP

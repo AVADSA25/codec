@@ -72,7 +72,7 @@ def search_ddg(query: str, max_results: int = 10) -> list:
 
             if results:
                 return results
-    except Exception as e:
+    except Exception:
         pass
 
     # Fallback: HTML scrape

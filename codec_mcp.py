@@ -5,9 +5,26 @@ at startup so MCP tool listings work immediately, but the actual module
 import only happens when a tool is first invoked.
 """
 from fastmcp import FastMCP
-import os, sys, json, logging, time
+import os, sys, json, logging, secrets, time, asyncio, inspect
 
 log = logging.getLogger("codec_mcp")
+
+# Per-tool timeout (seconds). Prevents one hung skill from blocking the server.
+SKILL_TIMEOUT_SEC = int(os.environ.get("CODEC_SKILL_TIMEOUT", "30"))
+
+from codec_audit import audit as _audit
+from codec_hooks import HookVeto, run_with_hooks
+
+
+def _new_correlation_id() -> str:
+    """6-byte hex correlation_id, one per top-level tool_fn invocation."""
+    return secrets.token_hex(6)
+
+
+class _SkillLoadError(Exception):
+    """Sentinel raised inside the invoke closure when registry.load returns
+    None or the loaded module has no run(). Caught one level up so the
+    existing tool_result outcome=error path fires unchanged."""
 
 # --- Input validation constants ---
 MCP_MAX_TASK_LENGTH = 5_000
@@ -15,27 +32,11 @@ MCP_MAX_CONTEXT_LENGTH = 10_000
 
 
 def _validate_mcp_input(tool_name: str, task: str, context: str = "") -> str | None:
-    """Validate MCP tool call inputs and log the call.
-
-    Returns an error message string if validation fails, or None if inputs are valid.
-    Every call is audit-logged regardless of validation outcome.
-    """
-    # Audit log every call
-    log.info(
-        "MCP tool call: tool=%s task_len=%s context_len=%s ts=%s",
-        tool_name,
-        len(task) if isinstance(task, str) else "INVALID",
-        len(context) if isinstance(context, str) else "INVALID",
-        time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-    )
-
-    # Type checks
+    """Validate MCP tool call inputs. Returns error string or None."""
     if not isinstance(task, str):
         return f"[MCP] Validation error: 'task' must be a string, got {type(task).__name__}"
     if not isinstance(context, str):
         return f"[MCP] Validation error: 'context' must be a string, got {type(context).__name__}"
-
-    # Length checks
     if len(task) > MCP_MAX_TASK_LENGTH:
         return (
             f"[MCP] Validation error: 'task' exceeds max length "
@@ -46,7 +47,6 @@ def _validate_mcp_input(tool_name: str, task: str, context: str = "") -> str | N
             f"[MCP] Validation error: 'context' exceeds max length "
             f"({len(context)} > {MCP_MAX_CONTEXT_LENGTH})"
         )
-
     return None
 
 
@@ -55,12 +55,10 @@ _REPO_DIR = os.path.dirname(os.path.abspath(__file__))
 if _REPO_DIR not in sys.path:
     sys.path.insert(0, _REPO_DIR)
 
-from codec_config import MCP_DEFAULT_ALLOW, MCP_ALLOWED_TOOLS, SKILLS_DIR
+from codec_config import MCP_DEFAULT_ALLOW, MCP_ALLOWED_TOOLS, MCP_BLOCKED_TOOLS, SKILLS_DIR
 if SKILLS_DIR not in sys.path:
     sys.path.insert(0, SKILLS_DIR)
 from codec_skill_registry import SkillRegistry
-
-mcp = FastMCP("CODEC", instructions="Voice-controlled computer agent with 50+ skills")
 
 # Compatibility shim: expose _tools as a dict-like object for introspection
 class _ToolsProxy:
@@ -72,13 +70,63 @@ class _ToolsProxy:
     def __iter__(self):
         return iter([k for k in self._server._local_provider._components if k.startswith("tool:")])
 
-mcp._tools = _ToolsProxy(mcp)
 
 # Global registry for MCP skill tools
 _mcp_registry = SkillRegistry(SKILLS_DIR)
 
 
-def load_skill_tools():
+def build_mcp(auth=None):
+    """Build and fully configure a FastMCP server (skills + memory tools).
+
+    Args:
+        auth: optional FastMCP AuthProvider. When None, MCP runs unauthenticated
+              at the protocol layer (suitable for stdio with client-side trust).
+
+    Returns:
+        FastMCP instance with all allowed skill tools and memory tools registered.
+    """
+    m = FastMCP(
+        "CODEC",
+        instructions="Voice-controlled computer agent with 50+ skills",
+        auth=auth,
+    )
+    m._tools = _ToolsProxy(m)
+    _load_skill_tools_into(m)
+    _register_memory_tools(m)
+    return m
+
+
+def _register_blocked_stub(mcp, registry_name: str, skill_name: str):
+    """Register a stub for a blocked skill so HTTP call attempts are audited.
+
+    Without this stub, a remote client calling a blocked tool gets
+    "method not found" with no audit trail. The stub emits
+    `mcp_http_blocked` and returns an explicit denial.
+    """
+    blocked_label = skill_name
+
+    def blocked_fn(task: str = "", context: str = "") -> str:
+        cid = _new_correlation_id()
+        _audit(blocked_label, event="mcp_http_blocked",
+               outcome="denied", error_type="HTTPBlocked",
+               transport="http",
+               extra={"reason": "http_blocked", "registry_name": registry_name},
+               correlation_id=cid)
+        return (f"Skill '{blocked_label}' is not available over HTTP transport "
+                f"(in mcp_blocked_tools). Use the local Claude Desktop / Code "
+                f"client if you need this skill.")
+
+    blocked_fn.__name__ = blocked_label
+    blocked_fn.__doc__ = f"[BLOCKED on HTTP] {blocked_label} is not available over remote transport."
+    try:
+        mcp.tool()(blocked_fn)
+    except Exception as e:
+        # Tool registration failure shouldn't break startup. Just log.
+        print(f"[MCP] Could not register blocked-stub for {blocked_label}: {e}",
+              file=sys.stderr)
+
+
+def _load_skill_tools_into(mcp):
     """Register all allowed skills as MCP tools using lazy loading.
 
     Metadata is extracted via AST (no module import). The actual import
@@ -98,6 +146,26 @@ def load_skill_tools():
 
         skill_name = meta.get("SKILL_NAME", name)
 
+        # Hard blocklist — skills that arbitrary-execute code or could damage system
+        if skill_name in MCP_BLOCKED_TOOLS or name in MCP_BLOCKED_TOOLS:
+            print(f"[MCP] Block {name}: in mcp_blocked_tools", file=sys.stderr)
+            # On HTTP/remote transport, register a stub so call-time attempts
+            # are audited (not silently dropped as method-not-found). Stdio
+            # clients have their own approval dialog and don't need the stub.
+            if os.environ.get("CODEC_MCP_TRANSPORT", "stdio").lower() == "http":
+                _register_blocked_stub(mcp, name, skill_name)
+            continue
+
+        # Sanitize tool name to MCP spec (A-Z a-z 0-9 _ - .)
+        # `registry_key` preserves the ORIGINAL SKILL_NAME for registry.load()
+        # lookups; `skill_name` becomes the sanitized MCP-facing name.
+        import re as _re
+        registry_key = skill_name  # unsanitized — registry._paths is keyed by this
+        safe_name = _re.sub(r'[^A-Za-z0-9_.-]', '_', skill_name).strip('_')
+        if safe_name != skill_name:
+            print(f"[MCP] Sanitize tool name '{skill_name}' -> '{safe_name}'", file=sys.stderr)
+            skill_name = safe_name
+
         # Determine whether this skill is allowed via MCP
         if MCP_DEFAULT_ALLOW:
             # Opt-out mode: expose unless the skill explicitly sets SKILL_MCP_EXPOSE = False (handled above)
@@ -109,57 +177,162 @@ def load_skill_tools():
             elif skill_name in MCP_ALLOWED_TOOLS or name in MCP_ALLOWED_TOOLS:
                 pass  # listed in config allowlist
             else:
-                print(f"[MCP] Skip {name}: not in mcp_allowed_tools (opt-in mode)")
+                print(f"[MCP] Skip {name}: not in mcp_allowed_tools (opt-in mode)", file=sys.stderr)
                 continue
 
         skill_desc = meta.get("SKILL_DESCRIPTION", f"CODEC skill: {name}")
 
-        # Create a closure with lazy loading
-        def make_tool(registry, sname, sdesc):
+        # Create a closure with lazy loading, timeout, and audit
+        def make_tool(registry, sname, rkey, sdesc):
             def tool_fn(task: str, context: str = "") -> str:
                 """Execute this CODEC skill with the given task"""
+                t0 = time.time()
+                tlen = len(task) if isinstance(task, str) else 0
+                clen = len(context) if isinstance(context, str) else 0
+                cid = _new_correlation_id()
+
                 err = _validate_mcp_input(sname, task, context)
                 if err is not None:
+                    _audit(sname, event="validation",
+                           task_len=tlen, context_len=clen,
+                           duration_ms=(time.time()-t0)*1000,
+                           outcome="validation", error_type="ValidationError",
+                           correlation_id=cid)
                     return err
-                mod = registry.load(sname)
-                if mod is None or not hasattr(mod, "run"):
+
+                # Phase 1 Step 2: refactor per design §3.3 path 5. The
+                # threadpool/timeout/result block becomes the `invoke` closure
+                # passed to run_with_hooks. The invoke closure RAISES on skill
+                # error (instead of returning errmsg) so on_error hooks can
+                # observe the exception cleanly.
+                _transport = os.environ.get("CODEC_MCP_TRANSPORT", "stdio")
+
+                def _invoke(t: str, c: str) -> str:
+                    import concurrent.futures
+                    def _run_inner():
+                        mod = registry.load(rkey)
+                        if mod is None or not hasattr(mod, "run"):
+                            raise _SkillLoadError("load_failed")
+                        return mod.run(t, c)
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+                        fut = ex.submit(_run_inner)
+                        return fut.result(timeout=SKILL_TIMEOUT_SEC)
+
+                import concurrent.futures
+                try:
+                    result = run_with_hooks(
+                        tool_name=sname,
+                        task=task,
+                        context=context,
+                        transport=_transport,
+                        correlation_id=cid,
+                        invoke=_invoke,
+                    )
+                except concurrent.futures.TimeoutError:
+                    _audit(sname, event="timeout",
+                           task_len=tlen, context_len=clen,
+                           duration_ms=(time.time()-t0)*1000,
+                           outcome="timeout", error_type="Timeout",
+                           correlation_id=cid)
+                    return f"Skill '{sname}' timed out after {SKILL_TIMEOUT_SEC}s."
+                except _SkillLoadError:
+                    _audit(sname, event="tool_result",
+                           task_len=tlen, context_len=clen,
+                           duration_ms=(time.time()-t0)*1000, outcome="error",
+                           error_type="LoadFailed",
+                           correlation_id=cid)
                     return f"Skill '{sname}' could not be loaded."
-                return mod.run(task, context)
+                except Exception as e:
+                    _audit(sname, event="tool_result",
+                           task_len=tlen, context_len=clen,
+                           duration_ms=(time.time()-t0)*1000, outcome="error",
+                           error_type=type(e).__name__,
+                           correlation_id=cid)
+                    return f"Skill '{sname}' failed: {type(e).__name__}: {str(e)[:200]}"
+
+                dur_ms = (time.time()-t0)*1000
+
+                # HookVeto handling per §4 — replaces tool_result on vetoed
+                # calls. tool_vetoed audit was already emitted from inside
+                # run_with_hooks; we just translate the sentinel to the
+                # client-facing string the MCP client receives.
+                if isinstance(result, HookVeto):
+                    return (f"Skill '{sname}' was vetoed by plugin "
+                            f"'{result.plugin_name}': {result.reason}")
+
+                _audit(sname, event="tool_result",
+                       task_len=tlen, context_len=clen,
+                       duration_ms=dur_ms, outcome="ok",
+                       correlation_id=cid)
+                return result
             tool_fn.__name__ = sname
             tool_fn.__doc__ = sdesc
             return tool_fn
 
-        mcp.tool()(make_tool(_mcp_registry, skill_name, skill_desc))
+        mcp.tool()(make_tool(_mcp_registry, skill_name, registry_key, skill_desc))
+    # scan once at module load is fine; keep here for callers who pass fresh mcp
 
 
-# Also add memory search as a tool
-@mcp.tool()
-def search_memory(query: str, limit: int = 10) -> str:
-    """Search CODEC's conversation memory using FTS5 full-text search"""
-    err = _validate_mcp_input("search_memory", query)
-    if err is not None:
-        return err
-    from codec_memory import CodecMemory
-    mem = CodecMemory()
-    results = mem.search(query, limit)
-    return json.dumps(results, indent=2)
+def _register_memory_tools(mcp):
+    @mcp.tool()
+    def search_memory(query: str, limit: int = 10) -> str:
+        """Search CODEC's conversation memory using FTS5 full-text search"""
+        t0 = time.time()
+        cid = _new_correlation_id()
+        err = _validate_mcp_input("search_memory", query)
+        if err is not None:
+            _audit("search_memory", event="validation",
+                   task_len=len(query or ""),
+                   duration_ms=(time.time()-t0)*1000, outcome="validation",
+                   correlation_id=cid)
+            return err
+        try:
+            from codec_memory import CodecMemory
+            mem = CodecMemory()
+            results = mem.search(query, limit)
+            _audit("search_memory", event="tool_result",
+                   task_len=len(query),
+                   duration_ms=(time.time()-t0)*1000, outcome="ok",
+                   correlation_id=cid)
+            return json.dumps(results, indent=2)
+        except Exception as e:
+            _audit("search_memory", event="tool_result",
+                   task_len=len(query or ""),
+                   duration_ms=(time.time()-t0)*1000, outcome="error",
+                   error_type=type(e).__name__,
+                   correlation_id=cid)
+            return f"search_memory failed: {type(e).__name__}: {e}"
 
-@mcp.tool()
-def get_recent_memory(days: int = 7) -> str:
-    """Get recent conversations from CODEC memory"""
-    log.info(
-        "MCP tool call: tool=get_recent_memory days=%s ts=%s",
-        days,
-        time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-    )
-    from codec_memory import CodecMemory
-    mem = CodecMemory()
-    results = mem.search_recent(days=days, limit=20)
-    return json.dumps(results, indent=2)
+    @mcp.tool()
+    def get_recent_memory(days: int = 7) -> str:
+        """Get recent conversations from CODEC memory"""
+        t0 = time.time()
+        cid = _new_correlation_id()
+        try:
+            from codec_memory import CodecMemory
+            mem = CodecMemory()
+            results = mem.search_recent(days=days, limit=20)
+            _audit("get_recent_memory", event="tool_result",
+                   duration_ms=(time.time()-t0)*1000,
+                   outcome="ok", extra={"days": days},
+                   correlation_id=cid)
+            return json.dumps(results, indent=2)
+        except Exception as e:
+            _audit("get_recent_memory", event="tool_result",
+                   duration_ms=(time.time()-t0)*1000,
+                   outcome="error", error_type=type(e).__name__,
+                   correlation_id=cid)
+            return f"get_recent_memory failed: {type(e).__name__}: {e}"
 
-# Load all skills as tools (metadata only — modules loaded on demand)
-load_skill_tools()
+
+# Default instance for stdio transport (no auth — client-side trust via approval UI)
+mcp = build_mcp()
+
+# Back-compat alias
+def load_skill_tools():
+    _load_skill_tools_into(mcp)
+
 
 if __name__ == "__main__":
-    print(f"[MCP] CODEC MCP Server starting with {len(mcp._tools)} tools")
+    print(f"[MCP] CODEC MCP Server starting with {len(mcp._tools)} tools", file=sys.stderr)
     mcp.run(transport="stdio")

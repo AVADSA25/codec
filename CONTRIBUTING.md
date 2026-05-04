@@ -1,6 +1,11 @@
-# Contributing to CODEC
+# Contributing to Sovereign AI Workstation (CODEC engine)
 
-Thanks for your interest in contributing! CODEC is MIT licensed and welcomes contributions.
+Thanks for your interest in contributing! **Sovereign AI Workstation** is the
+product brand; **CODEC** is the open-source engine codename — that's what you
+see in code paths, file names, and the `~/.codec/` config directory. Both names
+appear in this codebase by design.
+
+The repo is MIT licensed and welcomes contributions.
 
 ## Quick Start for Contributors
 

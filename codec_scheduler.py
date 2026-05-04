@@ -8,6 +8,10 @@ from datetime import datetime
 
 import requests
 
+# Audit emits route through codec_audit.log_event (real adapter, not no-op)
+# per docs/PHASE1-STEP1-DESIGN.md.
+from codec_audit import log_event
+
 logging.basicConfig(
     level=logging.INFO,
     format="[%(asctime)s] [SCHEDULER] %(message)s",
@@ -84,12 +88,60 @@ def toggle_schedule(sched_id: str, enabled: bool) -> bool:
 
 # ── Execution ────────────────────────────────────────────────────────────────
 
+def _notify(title, body, status="success", schedule_id=None):
+    """Save notification to dashboard and send macOS notification."""
+    import uuid as _uuid, subprocess as _sp, re as _re
+    # Extract Google Doc URL if present (crew returns it as first line)
+    doc_url = None
+    doc_match = _re.search(r'(https://docs\.google\.com/document/d/[^\s]+)', body)
+    if doc_match:
+        doc_url = doc_match.group(1)
+        # Clean body: remove raw URL line, add markdown link
+        body = _re.sub(r'https://docs\.google\.com/document/d/[^\s]+\n*', '', body).strip()
+        body = f"📄 [View Full Report]({doc_url})\n\n{body}"
+    # 1. Save to notifications.json (same format as dashboard)
+    notif_path = os.path.expanduser("~/.codec/notifications.json")
+    try:
+        try:
+            with open(notif_path) as f:
+                notifications = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            notifications = []
+        notif = {
+            "id": f"notif_{_uuid.uuid4().hex[:10]}",
+            "type": "task_report",
+            "title": title,
+            "body": body[:2000],
+            "status": status,
+            "created": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+            "read": False,
+            "schedule_id": schedule_id,
+        }
+        if doc_url:
+            notif["doc_url"] = doc_url
+        notifications.insert(0, notif)
+        os.makedirs(os.path.dirname(notif_path), exist_ok=True)
+        with open(notif_path, "w") as f:
+            json.dump(notifications, f, indent=2)
+    except Exception as e:
+        log.warning(f"  Failed to save notification: {e}")
+    # 2. macOS notification
+    mac_body = f"Report ready — tap to view" if doc_url else body[:120]
+    try:
+        _sp.run(["osascript", "-e",
+            f'display notification "{mac_body}" with title "CODEC Task" subtitle "{title}"'],
+            capture_output=True, timeout=5)
+    except Exception:
+        pass
+
+
 def _run_crew(sched: dict):
     """Fire off a crew via the background job endpoint and optionally poll."""
     payload: dict = {"crew": sched["crew"]}
     if sched.get("topic"):
         payload["topic"] = sched["topic"]
 
+    title = sched.get("topic", sched["crew"])
     _headers = {"Content-Type": "application/json", "x-internal": "codec"}
     try:
         r = requests.post(
@@ -112,60 +164,150 @@ def _run_crew(sched: dict):
                         timeout=10,
                     )
                     if sr.status_code == 200:
-                        st = sr.json().get("status")
+                        job_data = sr.json()
+                        st = job_data.get("status")
                         if st not in ("running", "pending"):
+                            result_text = job_data.get("result", "")
+                            if isinstance(result_text, dict):
+                                result_text = result_text.get("result", str(result_text))
                             log.info(f"  ✅ {sched['crew']} finished: {st}")
+                            _notify(title, str(result_text)[:500] if result_text else "Task completed.",
+                                    status="success" if st == "complete" else "error",
+                                    schedule_id=sched.get("id", sched["crew"]))
                             return True
             else:
                 log.info(f"  ✅ {sched['crew']} completed synchronously")
+                _notify(title, "Task completed successfully.",
+                        schedule_id=sched.get("id", sched["crew"]))
                 return True
         else:
             log.warning(f"  ⚠️ /api/agents/run returned {r.status_code}")
+            _notify(title, f"Failed: server returned {r.status_code}", status="error",
+                    schedule_id=sched.get("id", sched["crew"]))
     except Exception as e:
         log.error(f"  ❌ Crew run failed: {e}")
+        _notify(title, f"Error: {e}", status="error",
+                schedule_id=sched.get("id", sched["crew"]))
     return False
 
 
 def check_and_run():
-    """Check every minute whether any schedules should fire right now."""
+    """Check every minute whether any schedules should fire.
+
+    Uses "past scheduled time" logic so tasks fire even if the scheduler
+    starts after the exact minute.  ``last_run`` is only set after a
+    successful execution; ``last_attempt`` prevents rapid re-firing within
+    the same minute.
+    """
     schedules = load_schedules()
     now = datetime.now()
-    changed = False
+    today_str = now.strftime("%Y-%m-%d")
+    now_minutes = now.hour * 60 + now.minute  # minutes since midnight
 
     for sched in schedules:
         if not sched.get("enabled"):
             continue
-        if now.hour != sched["hour"] or now.minute != sched["minute"]:
-            continue
         if now.weekday() not in sched.get("days", list(range(7))):
             continue
+
+        sched_minutes = sched["hour"] * 60 + sched["minute"]
+        if now_minutes < sched_minutes:
+            continue  # not yet reached scheduled time today
+
+        # Already successfully ran today — skip
         last_run = sched.get("last_run")
-        if last_run and last_run[:10] == now.strftime("%Y-%m-%d"):
+        if last_run and last_run[:10] == today_str:
             continue
 
-        log.info(f"🚀 Scheduled run: {sched['crew']} — {sched.get('topic', '')}")
-        success = _run_crew(sched)
-        if success:
-            sched["last_run"] = now.isoformat()
-            changed = True
+        # Prevent rapid re-firing within the same minute
+        last_attempt = sched.get("last_attempt")
+        if last_attempt and last_attempt[:16] == now.strftime("%Y-%m-%dT%H:%M"):
+            continue
 
-    if changed:
+        # Record attempt timestamp (prevents double-fire from race / same-minute loop)
+        sched["last_attempt"] = now.isoformat()
         save_schedules(schedules)
+
+        log.info(f"🚀 Scheduled run: {sched['crew']} — {sched.get('topic', '')}")
+        # One correlation_id per fired schedule — propagates to schedule_done.
+        import secrets as _secrets, time as _time
+        sched_cid = _secrets.token_hex(6)
+        sched_t0 = _time.monotonic()
+        log_event("schedule_fire", "codec-scheduler",
+                  f"Schedule fired: {sched.get('label', sched.get('crew', '?'))}",
+                  extra={"schedule_id": sched.get('id'),
+                         "label": sched.get('label'),
+                         "crew": sched.get('crew')},
+                  correlation_id=sched_cid)
+        success = _run_crew(sched)
+        title = sched.get("topic", sched.get("crew", "?"))
+        log_event("schedule_done", "codec-scheduler",
+                  f"Schedule done: {title}",
+                  outcome="ok" if success else "error",
+                  duration_ms=(_time.monotonic() - sched_t0) * 1000.0,
+                  extra={"schedule_id": sched.get('id'), "title": title},
+                  correlation_id=sched_cid)
+
+        # Only mark last_run on success so failed tasks are retried next minute
+        if success:
+            schedules = load_schedules()  # reload in case file changed during long run
+            for s in schedules:
+                if s["id"] == sched["id"]:
+                    s["last_run"] = datetime.now().isoformat()
+                    break
+            save_schedules(schedules)
+
+
+_PID_FILE = os.path.expanduser("~/.codec/scheduler.pid")
+
+
+def _acquire_pid_lock() -> bool:
+    """Ensure only one scheduler daemon runs. Returns True if lock acquired."""
+    # Check if existing PID is still alive
+    if os.path.exists(_PID_FILE):
+        try:
+            with open(_PID_FILE) as f:
+                old_pid = int(f.read().strip())
+            os.kill(old_pid, 0)  # signal 0 = check if alive
+            log.warning(f"Scheduler already running (PID {old_pid}). Exiting.")
+            return False
+        except (ProcessLookupError, ValueError):
+            pass  # stale PID file, we can take over
+        except PermissionError:
+            log.warning("Scheduler PID exists and is owned by another user. Exiting.")
+            return False
+    # Write our PID
+    os.makedirs(os.path.dirname(_PID_FILE), exist_ok=True)
+    with open(_PID_FILE, "w") as f:
+        f.write(str(os.getpid()))
+    return True
+
+
+def _release_pid_lock():
+    try:
+        os.remove(_PID_FILE)
+    except FileNotFoundError:
+        pass
 
 
 def run_daemon(check_interval: int = 60):
     """Run check_and_run every minute, aligned to the start of each minute."""
-    schedules = load_schedules()
-    log.info(f"Scheduler daemon starting — {len(schedules)} schedule(s) loaded")
-    while True:
-        try:
-            check_and_run()
-        except Exception as e:
-            log.error(f"Scheduler loop error: {e}")
-        # Sleep until the next minute boundary to avoid drift
-        now = time.time()
-        sleep_secs = check_interval - (now % check_interval)
-        time.sleep(max(1, sleep_secs))
+    if not _acquire_pid_lock():
+        sys.exit(0)
+    try:
+        schedules = load_schedules()
+        log.info(f"Scheduler daemon starting (PID {os.getpid()}) — {len(schedules)} schedule(s) loaded")
+        while True:
+            try:
+                check_and_run()
+            except Exception as e:
+                log.error(f"Scheduler loop error: {e}")
+            # Sleep until the next minute boundary to avoid drift
+            now = time.time()
+            sleep_secs = check_interval - (now % check_interval)
+            time.sleep(max(1, sleep_secs))
+    finally:
+        _release_pid_lock()
 
 
 # ── CODEC Skill (voice control) ──────────────────────────────────────────────

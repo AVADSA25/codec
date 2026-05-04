@@ -123,7 +123,8 @@ if {dur_sec} > 0:
 
 app.run()
 '''
-    env = {**os.environ, "OVERLAY_TEXT": text, "OVERLAY_COLOR": color, "OVERLAY_SUBTITLE": subtitle}
+    _safe = lambda v: v.replace('\n', ' ').replace('\r', ' ').replace('\x00', '') if v else ''
+    env = {**os.environ, "OVERLAY_TEXT": _safe(text), "OVERLAY_COLOR": _safe(color), "OVERLAY_SUBTITLE": _safe(subtitle)}
     return subprocess.Popen([sys.executable, "-c", s], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
 
 
@@ -140,7 +141,7 @@ root.attributes('-alpha',0.95)
 root.configure(bg='#0a0a0a')
 sw=root.winfo_screenwidth()
 sh=root.winfo_screenheight()
-w,h=440,84
+w,h=520,90
 x=(sw-w)//2
 y=sh-130
 root.geometry(f'{{w}}x{{h}}+{{x}}+{{y}}')
@@ -168,15 +169,15 @@ root.attributes('-alpha',0.95)
 root.configure(bg='#0a0a0a')
 sw=root.winfo_screenwidth()
 sh=root.winfo_screenheight()
-w,h=440,84
+w,h=520,90
 x=(sw-w)//2
 y=sh-130
 root.geometry(f'{w}x{h}+{x}+{y}')
 cv=tk.Canvas(root,bg='#0a0a0a',highlightthickness=0,width=w,height=h)
 cv.pack()
 cv.create_rectangle(1,1,w-1,h-1,outline='#E8711A',width=1)
-dot=cv.create_oval(14,29,27,42,fill='#ff3b3b',outline='')
-cv.create_text(w//2+8,42,text='\U0001f3a4  Recording — release ' + _key + ' to send',fill='#eeeeee',font=('Helvetica',13))
+dot=cv.create_oval(14,32,27,45,fill='#ff3b3b',outline='')
+cv.create_text(w//2+8,45,text='\U0001f3a4  Recording — release ' + _key + ' to send',fill='#eeeeee',font=('Helvetica',13))
 on=[True]
 def pulse():
     on[0]=not on[0]
@@ -191,8 +192,8 @@ root.mainloop()
 
 # ── Public API ──────────────────────────────────────────────────────────
 
-# AppKit NSPanel overlays unreliable on macOS 15+ (panels vanish behind fullscreen apps).
-# tkinter with overrideredirect + topmost is more reliable.
+# AppKit NSPanel overlays unreliable on macOS 15+ (timer fails, zombie processes).
+# Use tkinter for overlays; Swift CODECOverlay handles fullscreen-aware recording indicator.
 _USE_APPKIT = False
 
 
@@ -222,14 +223,14 @@ root.attributes('-alpha',0.95)
 root.configure(bg='#0a0a0a')
 sw=root.winfo_screenwidth()
 sh=root.winfo_screenheight()
-w,h=440,84
+w,h=520,90
 x=(sw-w)//2
 y=sh-130
 root.geometry(f'{{w}}x{{h}}+{{x}}+{{y}}')
 cv=tk.Canvas(root,bg='#0a0a0a',highlightthickness=0,width=w,height=h)
 cv.pack()
 cv.create_rectangle(1,1,w-1,h-1,outline='#00aaff',width=1)
-cv.create_text(w//2,h//2,text='\u26a1 '+_text,fill='#00aaff',font=('Helvetica',13))
+cv.create_text(w//2,h//2,text='⚡ '+_text,fill='#00aaff',font=('Helvetica',13))
 root.after({duration},root.destroy)
 root.mainloop()
 """
@@ -262,15 +263,15 @@ root.attributes('-alpha',0.95)
 root.configure(bg='#0a0a0a')
 sw=root.winfo_screenwidth()
 sh=root.winfo_screenheight()
-w,h=440,84
+w,h=520,90
 x=(sw-w)//2
 y=sh-130
 root.geometry(f'{{w}}x{{h}}+{{x}}+{{y}}')
 cv=tk.Canvas(root,bg='#0a0a0a',highlightthickness=0,width=w,height=h)
 cv.pack()
 cv.create_rectangle(1,1,w-1,h-1,outline=_color,width=1)
-cv.create_text(w//2,39 if not _shortcuts else 24,text=_label,fill=_color,font=('Helvetica',18,'bold'))
-if _shortcuts: cv.create_text(w//2,55,text=_shortcuts,fill='#aaaaaa',font=('Helvetica',13))
+cv.create_text(w//2,39 if not _shortcuts else 26,text=_label,fill=_color,font=('Helvetica',18,'bold'))
+if _shortcuts: cv.create_text(w//2,58,text=_shortcuts,fill='#aaaaaa',font=('Helvetica',13))
 root.after({dur},root.destroy)
 root.mainloop()
 """

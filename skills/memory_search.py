@@ -16,6 +16,7 @@ SKILL_TRIGGERS = [
     "do you remember", "have we talked about", "have we discussed",
 ]
 SKILL_DESCRIPTION = "Search ALL past CODEC conversations (voice, chat, vibe) using full-text search"
+SKILL_MCP_EXPOSE = True
 
 import os, sys, sqlite3, subprocess, tempfile
 
@@ -23,7 +24,7 @@ _CODEC_REPO = os.path.expanduser("~/codec-repo")
 if _CODEC_REPO not in sys.path:
     sys.path.insert(0, _CODEC_REPO)
 
-MEMORY_DB = os.path.expanduser("~/.q_memory.db")
+MEMORY_DB = os.path.expanduser("~/.codec/memory.db")
 QCHAT_DB = os.path.expanduser("~/.codec/qchat.db")
 VIBE_DB = os.path.expanduser("~/.codec/vibe.db")
 

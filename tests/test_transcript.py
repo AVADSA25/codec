@@ -1,7 +1,9 @@
 """Test transcription post-processing (clean_transcript)"""
 import sys
 import os
-sys.path.insert(0, os.path.expanduser("~/codec-repo"))
+# Worktree-aware: prefer the local repo dir (parent of tests/) over ~/codec-repo
+# so worktree-only changes are testable.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 def test_import():

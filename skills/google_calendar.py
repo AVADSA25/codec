@@ -10,15 +10,16 @@ SKILL_TRIGGERS = [
     "create event", "create a meeting", "schedule a meeting", "schedule meeting",
     "schedule an appointment", "book a meeting", "book appointment",
     "set a reminder", "set an appointment", "new event", "new appointment",
-    "remind me",
+    "remind me to", "remind me at", "remind me on", "remind me about",
     # read
     "what's on my calendar", "what is on my calendar", "my schedule", "my events",
     "meetings today", "what do i have today", "what do i have tomorrow", "am i free",
     "next meeting", "check my calendar", "show my calendar", "calendar",
 ]
 SKILL_DESCRIPTION = "Check and create Google Calendar events by voice"
+SKILL_MCP_EXPOSE = True
 
-import os, re, datetime, json
+import os, re, datetime
 
 TOKEN_PATH = os.path.expanduser("~/.codec/google_token.json")
 
@@ -51,16 +52,9 @@ def _is_create_intent(low: str) -> bool:
 CREATE_WORDS = _CREATE_VERBS + _CALENDAR_NOUNS
 
 def _get_service():
-    from google.oauth2.credentials import Credentials
-    from google.auth.transport.requests import Request
-    from googleapiclient.discovery import build
-    creds = Credentials.from_authorized_user_file(TOKEN_PATH)
-    if creds.expired and creds.refresh_token:
-        creds.refresh(Request())
-        with open(TOKEN_PATH, "w") as f:
-            f.write(creds.to_json())
-        os.chmod(TOKEN_PATH, 0o600)
-    return build("calendar", "v3", credentials=creds)
+    import sys; sys.path.insert(0, os.path.expanduser("~/codec-repo"))
+    from codec_google_auth import build_service
+    return build_service("calendar", "v3")
 
 # ── Date/time parsing ──────────────────────────────────────────────────────────
 
@@ -173,7 +167,7 @@ def _parse_title(text: str) -> str:
     _filler = [
         "can you please", "can you", "could you please", "could you",
         "i want you to", "i need you to", "i would like you to", "i would like",
-        "would you please", "would you", "hey q", "hi q", "ok q", "iq",
+        "would you please", "would you", "hey codec", "hi codec", "ok codec",
         "create an event", "create event", "create a",
         "add an event", "add event", "add a",
         "put to my calendar", "put in my calendar", "put on my calendar",

@@ -1,0 +1,1024 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CORTEX — CODEC Neural Map</title>
+<link rel="icon" href="/favicon.png">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#050508;--accent:#E8711A;--green:#00e676;--red:#ff3d3d;--yellow:#ffd740;--blue:#448aff;--purple:#b388ff;--text:#e8e8f0;--dim:#555}
+body{background:radial-gradient(ellipse at 50% 30%,#0c0a14 0%,#060610 40%,var(--bg) 70%);color:var(--text);font-family:'SF Pro Display',-apple-system,system-ui,sans-serif;overflow:hidden;height:100vh;width:100vw}
+#cortex{position:absolute;top:0;left:0;width:100%;height:100%;cursor:grab}
+#cortex:active{cursor:grabbing}
+#hud{position:fixed;top:0;left:0;right:0;z-index:100;background:linear-gradient(180deg,rgba(5,5,8,.95),rgba(5,5,8,.6),transparent);padding:16px 24px 44px;pointer-events:none}
+#hud *{pointer-events:auto}
+#hud h1{font-size:14px;letter-spacing:7px;color:var(--accent);text-transform:uppercase;font-weight:300}
+#hud .sub{font-size:10px;color:var(--dim);margin-top:3px;letter-spacing:2px}
+.back-link{color:var(--dim);text-decoration:none;font-size:11px;letter-spacing:1px;transition:color .2s;margin-bottom:4px;display:inline-block}
+.back-link:hover{color:var(--accent)}
+#stats{position:fixed;top:64px;right:24px;z-index:100;display:flex;gap:16px;font-size:12px}
+.stat{display:flex;align-items:center;gap:6px}.stat .dot{width:8px;height:8px;border-radius:50%}
+.dot.ok{background:var(--green);box-shadow:0 0 10px var(--green)}.dot.err{background:var(--red);box-shadow:0 0 10px var(--red)}.dot.warn{background:var(--yellow);box-shadow:0 0 8px var(--yellow)}
+#detail{position:fixed;bottom:0;left:0;right:0;z-index:150;background:linear-gradient(0deg,rgba(5,5,8,.98),rgba(5,5,8,.9),transparent);padding:36px 24px 20px;transform:translateY(100%);transition:transform .35s cubic-bezier(.22,1,.36,1);max-height:40vh;overflow-y:auto}
+#detail.open{transform:translateY(0)}
+#detail h2{font-size:12px;letter-spacing:4px;color:var(--accent);text-transform:uppercase;margin-bottom:8px}
+#detail .info{font-size:12px;color:var(--dim);line-height:1.9}
+#detail .info b{color:var(--text)}
+#detail .close{position:absolute;top:10px;right:20px;background:none;border:none;color:var(--dim);font-size:20px;cursor:pointer;transition:color .2s}
+#detail .close:hover{color:var(--accent)}
+.legend{position:fixed;bottom:16px;right:20px;z-index:90;font-size:9px;color:var(--dim);display:flex;flex-direction:column;gap:3px;opacity:.7}
+.legend-item{display:flex;align-items:center;gap:6px}
+.legend-dot{width:10px;height:10px;border-radius:50%;border:1.5px solid}
+.zone-label{font-size:10px;letter-spacing:3px;text-transform:uppercase;fill:currentColor;opacity:.15;font-weight:300}
+svg text{font-family:'SF Pro Display',-apple-system,system-ui,sans-serif}
+@keyframes flowDash{to{stroke-dashoffset:-20}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+#skills-panel{position:fixed;left:0;top:0;bottom:0;width:320px;z-index:100;background:linear-gradient(90deg,rgba(5,5,8,.98) 80%,transparent);padding:70px 20px 20px;transform:translateX(-100%);transition:transform .35s cubic-bezier(.22,1,.36,1);overflow-y:auto}
+#skills-panel.open{transform:translateX(0)}
+#skills-panel h2{font-size:11px;letter-spacing:4px;color:var(--accent);text-transform:uppercase;margin-bottom:12px}
+#skills-panel .close{position:absolute;top:16px;right:16px;background:none;border:none;color:var(--dim);font-size:18px;cursor:pointer}
+#skills-panel .close:hover{color:var(--accent)}
+.skill-item{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;font-size:11px;color:var(--dim);transition:background .15s;cursor:default}
+.skill-item:hover{background:rgba(232,113,26,.06);color:var(--text)}
+.skill-dot{width:6px;height:6px;border-radius:50%;background:var(--green);flex-shrink:0}
+.skill-name{color:var(--text);font-weight:500;flex:1}
+.skill-triggers{font-size:9px;color:var(--dim);opacity:.6;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.skill-count{font-size:10px;color:var(--dim);margin-bottom:10px;letter-spacing:1px}
+.skill-search{width:100%;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:6px 10px;color:var(--text);font-size:11px;margin-bottom:12px;outline:none}
+.skill-search:focus{border-color:var(--accent)}
+.skill-search::placeholder{color:var(--dim)}
+#settings-float{position:fixed;bottom:20px;left:20px;z-index:90;background:rgba(5,5,8,.85);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:12px 16px;font-size:10px;color:var(--dim);line-height:1.8;backdrop-filter:blur(10px);max-width:220px}
+#settings-float b{color:var(--text);font-weight:500}
+#settings-float .setting-row{display:flex;justify-content:space-between;gap:8px}
+#settings-float .setting-val{color:var(--accent);text-align:right;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#settings-float h3{font-size:9px;letter-spacing:3px;color:var(--accent);text-transform:uppercase;margin-bottom:6px;opacity:.7}
+#last-check{font-size:10px;color:var(--dim);opacity:.5}
+.detail-actions{display:flex;gap:8px;margin:12px 0}
+.detail-btn{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:5px 12px;color:var(--text);font-size:10px;cursor:pointer;transition:all .2s;letter-spacing:1px}
+.detail-btn:hover{background:rgba(232,113,26,.1);border-color:var(--accent);color:var(--accent)}
+.detail-btn.danger{border-color:rgba(255,61,61,.3)}
+.detail-btn.danger:hover{background:rgba(255,61,61,.1);border-color:var(--red);color:var(--red)}
+.detail-btn.success{border-color:rgba(0,230,118,.3)}
+.detail-btn.success:hover{background:rgba(0,230,118,.1);border-color:var(--green);color:var(--green)}
+.detail-btn:disabled{opacity:.3;cursor:not-allowed}
+#logViewer{background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.05);border-radius:6px;padding:10px;margin-top:10px;font-family:'SF Mono',monospace;font-size:9px;color:var(--dim);line-height:1.6;max-height:200px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;display:none}
+#logViewer.open{display:block}
+.detail-status-bar{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.detail-status-dot{width:10px;height:10px;border-radius:50%;animation:pulse 2s infinite}
+/* View switcher */
+#viewSwitch{position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:300;display:flex;gap:0;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;overflow:hidden}
+.vs-btn{padding:6px 16px;font-size:10px;letter-spacing:2px;color:var(--dim);cursor:pointer;transition:all .2s;border:none;background:none;text-transform:uppercase;font-family:inherit}
+.vs-btn.active{background:var(--accent);color:#000;font-weight:600}
+.vs-btn:hover:not(.active){background:rgba(255,255,255,.06);color:var(--text)}
+/* Products view */
+#productsView{position:fixed;top:0;left:0;right:0;bottom:0;z-index:150;background:var(--bg);overflow-y:auto;display:none;padding:100px 40px 80px}
+#productsView.open{display:block}
+.products-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;max-width:1200px;margin:0 auto}
+.product-card{background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:12px;padding:20px;transition:all .3s;cursor:default;position:relative;overflow:hidden}
+.product-card:hover{border-color:var(--accent);background:rgba(232,113,26,.03);transform:translateY(-2px)}
+.product-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--accent);opacity:0;transition:opacity .3s}
+.product-card:hover::before{opacity:1}
+.pc-header{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.pc-icon{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px}
+.pc-title{font-size:14px;font-weight:600;color:var(--text);letter-spacing:1px}
+.pc-subtitle{font-size:10px;color:var(--dim);letter-spacing:1px}
+.pc-desc{font-size:11px;color:var(--dim);line-height:1.7;margin-bottom:12px}
+.pc-features{display:flex;flex-wrap:wrap;gap:5px}
+.pc-feat{font-size:9px;padding:3px 8px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:4px;color:var(--dim);letter-spacing:.5px}
+.pc-feat:hover{border-color:var(--accent);color:var(--accent)}
+.pc-status{position:absolute;top:16px;right:16px;width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green)}
+.products-header{text-align:center;margin-bottom:30px}
+.products-header h2{font-size:12px;letter-spacing:6px;color:var(--accent);text-transform:uppercase;margin-bottom:4px}
+.products-header p{font-size:10px;color:var(--dim);letter-spacing:2px}
+/* Light theme overrides */
+[data-theme="light"]{--bg:#f5f3ef;--text:#1a1a2e;--dim:#888}
+[data-theme="light"] body{background:radial-gradient(ellipse at 50% 30%,#faf8f5 0%,#f0ede8 40%,#e8e5e0 70%);color:var(--text)}
+[data-theme="light"] #hud{background:linear-gradient(180deg,rgba(245,243,239,.95),rgba(245,243,239,.6),transparent)}
+[data-theme="light"] #detail{background:linear-gradient(0deg,rgba(245,243,239,.98),rgba(245,243,239,.9),transparent)}
+[data-theme="light"] #skills-panel{background:linear-gradient(90deg,rgba(245,243,239,.98) 80%,transparent)}
+[data-theme="light"] #settings-float{background:rgba(245,243,239,.9);border-color:rgba(0,0,0,.08)}
+[data-theme="light"] .product-card{background:rgba(0,0,0,.02);border-color:rgba(0,0,0,.08)}
+[data-theme="light"] .product-card:hover{background:rgba(232,113,26,.04)}
+[data-theme="light"] .pc-feat{background:rgba(0,0,0,.03);border-color:rgba(0,0,0,.08)}
+[data-theme="light"] .skill-item:hover{background:rgba(232,113,26,.06)}
+[data-theme="light"] .skill-search{background:rgba(0,0,0,.03);border-color:rgba(0,0,0,.1)}
+[data-theme="light"] #logViewer{background:rgba(0,0,0,.04);border-color:rgba(0,0,0,.06)}
+[data-theme="light"] .detail-btn{background:rgba(0,0,0,.03);border-color:rgba(0,0,0,.1);color:var(--text)}
+[data-theme="light"] .vs-btn{color:#555}
+[data-theme="light"] #detail{background:linear-gradient(0deg,rgba(245,243,239,.98),rgba(245,243,239,.95),transparent)}
+[data-theme="light"] #detail .info{color:#555}
+[data-theme="light"] #detail .info b{color:#1a1a2e}
+[data-theme="light"] .detail-btn{background:rgba(0,0,0,.04)!important;border-color:rgba(0,0,0,.12)!important;color:#333!important}
+[data-theme="light"] .legend{color:#666;opacity:.9}
+[data-theme="light"] .legend-dot{border-color:#888}
+[data-theme="light"] #viewSwitch{background:rgba(0,0,0,.05);border-color:rgba(0,0,0,.12)}
+[data-theme="light"] .pc-title{color:#1a1a2e}
+[data-theme="light"] .pc-desc{color:#555}
+[data-theme="light"] .pc-subtitle{color:#777}
+[data-theme="light"] .pc-details{color:#555}
+[data-theme="light"] .pc-details b{color:#1a1a2e}
+[data-theme="light"] .pc-expand-btn{color:#555;border-color:rgba(0,0,0,.15)}
+[data-theme="light"] .products-header h2{color:var(--accent)}
+[data-theme="light"] .products-header p{color:#666}
+[data-theme="light"] .zone-label{opacity:.35;fill:#666!important}
+[data-theme="light"] .node-c{fill:#ffffff!important;stroke-width:1.8}
+[data-theme="light"] .node-c+circle{fill:none!important}
+[data-theme="light"] svg text[font-size="7.5"]{fill:#555!important;opacity:.7!important}
+[data-theme="light"] svg text[font-size="9"]{fill:#333!important;opacity:.9!important}
+[data-theme="light"] #cortex path:not([d*="M"]){stroke-opacity:1}
+[data-theme="light"] svg g path{stroke-opacity:1}
+[data-theme="light"] #productsView{background:var(--bg)}
+[data-theme="light"] .grid-rect{opacity:0}
+.pc-expand-btn{background:none;border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:4px 10px;color:var(--dim);font-size:9px;cursor:pointer;transition:all .2s;margin-top:10px;letter-spacing:1px}
+.pc-expand-btn:hover{border-color:var(--accent);color:var(--accent)}
+.pc-details{display:none;margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.06);font-size:10px;color:var(--dim);line-height:1.8}
+.pc-details.open{display:block}
+.pc-details b{color:var(--text);font-weight:500}
+.pc-detail-section{margin-bottom:8px}
+.pc-detail-section h4{font-size:9px;letter-spacing:2px;color:var(--accent);text-transform:uppercase;margin-bottom:4px;opacity:.7}
+[data-theme="light"] .pc-expand-btn{border-color:rgba(0,0,0,.1)}
+[data-theme="light"] .pc-details{border-top-color:rgba(0,0,0,.08)}
+#activity-feed{position:fixed;bottom:20px;right:180px;z-index:90;width:260px;max-height:200px;overflow-y:auto;background:rgba(5,5,8,.85);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:10px;backdrop-filter:blur(10px);font-size:9px;font-family:'SF Mono',monospace}
+#activity-feed h3{font-size:8px;letter-spacing:3px;color:var(--accent);text-transform:uppercase;margin-bottom:6px;opacity:.7}
+.af-item{padding:3px 0;color:var(--dim);border-bottom:1px solid rgba(255,255,255,.03);display:flex;gap:6px;align-items:baseline}
+.af-time{color:var(--accent);opacity:.5;flex-shrink:0}
+.af-msg{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.af-new{animation:afFadeIn .3s ease}
+@keyframes afFadeIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+[data-theme="light"] #activity-feed{background:rgba(245,243,239,.9);border-color:rgba(0,0,0,.08)}
+
+/* ── Unified Header ── */
+.header{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid rgba(255,255,255,.06);background:rgba(5,5,8,.85);backdrop-filter:blur(8px);flex-shrink:0;position:fixed;top:0;left:0;right:0;z-index:200}
+[data-theme="light"] .header{background:rgba(245,243,239,.9);border-color:rgba(0,0,0,.08)}
+.header-left{display:flex;align-items:center;gap:10px}
+.logo-link{display:flex;align-items:center;text-decoration:none}
+.header img{width:34px;height:34px;border-radius:8px}
+.header h1{font-size:14px;letter-spacing:4px;color:var(--accent);text-transform:uppercase;font-weight:300;margin:0}
+.header-right{display:flex;align-items:center;gap:6px}
+.page-nav{display:flex;align-items:center;gap:1px;position:absolute;left:50%;transform:translateX(-50%);background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:2px}
+[data-theme="light"] .page-nav{background:rgba(0,0,0,.05);border-color:rgba(0,0,0,.12)}
+.nav-link{padding:5px 14px;color:var(--dim);text-decoration:none;font-size:12px;font-weight:500;border-radius:4px;transition:all .15s;white-space:nowrap;text-align:center}
+.nav-link:hover{color:var(--text)}
+.nav-link.active{color:var(--accent);background:rgba(232,113,26,.10)}
+.ico{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+.menu-btn{background:none;border:1px solid rgba(255,255,255,.1);color:var(--dim);width:30px;height:30px;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;font-size:16px;position:relative}
+.menu-btn:hover{border-color:var(--accent);color:var(--text);background:rgba(255,255,255,.04)}
+.menu-btn:active{transform:scale(.93)}
+.menu-notif-dot{position:absolute;top:-3px;right:-3px;width:10px;height:10px;background:var(--accent,#a78bfa);border-radius:50%;border:2px solid var(--surface,#1a1a2e);display:none;animation:notifPulse 2s infinite}
+.menu-notif-dot.active{display:block}
+@keyframes notifPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(1.2)}}
+.sp-item.notif-highlight{border-color:var(--accent,#a78bfa);background:rgba(167,139,250,0.1);box-shadow:0 0 0 1px var(--accent,#a78bfa)}
+[data-theme="light"] .menu-btn{border-color:rgba(0,0,0,.15);color:#555}
+[data-theme="light"] .menu-btn:hover{border-color:var(--accent);color:#1a1a2e;background:rgba(0,0,0,.04)}
+/* ── Side Panel ── */
+.side-panel-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9990}
+.side-panel-overlay.open{display:block}
+.side-panel{position:fixed;top:0;right:-300px;width:300px;height:100%;background:rgba(5,5,8,.98);border-left:1px solid rgba(255,255,255,.06);z-index:9991;transition:right .3s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;box-shadow:-4px 0 24px rgba(0,0,0,.3)}
+.side-panel.open{right:0}
+[data-theme="light"] .side-panel{background:rgba(245,243,239,.98);border-color:rgba(0,0,0,.08)}
+.side-panel-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid rgba(255,255,255,.06)}
+[data-theme="light"] .side-panel-header{border-color:rgba(0,0,0,.08)}
+.side-panel-header h2{font-size:12px;font-weight:700;color:var(--accent);letter-spacing:2px}
+.side-panel-close{background:none;border:none;color:var(--dim);font-size:20px;cursor:pointer;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:4px;transition:all .15s}
+.side-panel-close:hover{color:var(--text);background:rgba(255,255,255,.04)}
+.side-panel-body{padding:12px;display:flex;flex-direction:column;gap:6px;overflow-y:auto;flex:1}
+.sp-item{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid rgba(255,255,255,.06);border-radius:6px;background:rgba(255,255,255,.02);cursor:pointer;transition:all .15s;text-decoration:none;color:var(--text);font-size:13px;font-weight:500}
+.notif-bell{position:relative;font-weight:400}.notif-badge{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;background:#a78bfa;color:#fff;font-size:10px;font-weight:700;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 4px;line-height:1;pointer-events:none}.notif-badge.hidden{display:none}
+.sp-item:hover{border-color:var(--accent);background:rgba(232,113,26,.04);color:var(--text)}
+.sp-item svg{flex-shrink:0}
+.sp-item-label{flex:1;text-align:center}
+.sp-divider{height:1px;background:rgba(255,255,255,.06);margin:6px 0}
+[data-theme="light"] .sp-item{border-color:rgba(0,0,0,.08);background:rgba(0,0,0,.02)}
+[data-theme="light"] .sp-item:hover{background:rgba(232,113,26,.04);border-color:var(--accent)}
+[data-theme="light"] .sp-divider{background:rgba(0,0,0,.08)}
+@media (max-width:768px){
+  .page-nav{position:fixed;bottom:0;left:0;right:0;z-index:9998;transform:none;border-radius:0;padding:6px 0;justify-content:center;background:rgba(5,5,8,.95);border-top:1px solid rgba(255,255,255,.06);gap:0;overflow-x:auto}
+  [data-theme="light"] .page-nav{background:rgba(245,243,239,.95);border-color:rgba(0,0,0,.08)}
+  .nav-link{padding:8px 8px;font-size:10px}
+  .side-panel{width:280px;right:-280px}
+}
+</style>
+</head>
+<body>
+<!-- Unified Header -->
+<div class="header">
+  <div class="header-left">
+    <a href="/" class="logo-link"><img src="https://i.imgur.com/jD1X5W8.png" alt="CODEC"></a>
+    <h1>CORTEX</h1>
+  </div>
+  <nav class="page-nav">
+    <a href="/" class="nav-link">Home</a>
+    <a href="/chat" class="nav-link">Chat</a>
+    <a href="/voice" class="nav-link">Voice</a>
+    <a href="/vibe" class="nav-link">Vibe</a>
+    <a href="/tasks" class="nav-link">Tasks</a>
+  </nav>
+  <div class="header-right">
+    <button class="menu-btn" onclick="openSidePanel()" title="Home" id="menuBtn"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span class="menu-notif-dot" id="menuNotifDot"></span></button>
+  </div>
+</div>
+<!-- Side Panel -->
+<div class="side-panel-overlay" id="sidePanelOverlay" onclick="closeSidePanel()"></div>
+<div class="side-panel" id="sidePanel">
+  <div class="side-panel-header"><h2>MENU</h2><button class="side-panel-close" onclick="closeSidePanel()">&times;</button></div>
+  <div class="side-panel-body">
+    <a href="/" class="sp-item"><svg class="ico" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span class="sp-item-label">Home</span></a>
+    <div class="sp-divider"></div>
+    <button class="sp-item" id="voiceBtn" onclick="toggleVoiceReply();closeSidePanel()"><svg class="ico" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 010 14.14"/><path d="M15.54 8.46a5 5 0 010 7.07"/><line id="muteX1" x1="4" y1="4" x2="20" y2="20" stroke-width="2.5" style="display:none"/><line id="muteX2" x1="4" y1="20" x2="20" y2="4" stroke-width="2.5" style="display:none"/></svg><span class="sp-item-label" style="flex:none">Voice Replies</span><span id="voiceState" style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px"></span></button>
+    <button class="sp-item" id="screenBtn" onclick="window.location='/'"><svg class="ico" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg><span class="sp-item-label">Screenshot</span></button>
+    <button class="sp-item" id="photoBtn" onclick="window.location='/'"><svg class="ico" viewBox="0 0 24 24"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg><span class="sp-item-label">Photo (Webcam)</span></button>
+    <button class="sp-item" id="camBtn" onclick="window.location='/'"><svg class="ico" viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg><span class="sp-item-label">Live Video (PIP)</span></button>
+    <div class="sp-divider"></div>
+    <a href="/tasks#reports" class="sp-item notif-bell" id="notifBellBtn"><svg class="ico" viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg><span class="sp-item-label">Notifications</span><span class="notif-badge hidden" id="notifBadge">0</span></a>
+    <button class="sp-item" id="themeToggle" onclick="toggleCortexTheme()"><svg class="ico" viewBox="0 0 24 24" id="themeIco"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg><span class="sp-item-label">Toggle Theme</span></button>
+    <button class="sp-item" onclick="window.location.href='/#settings'"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg><span class="sp-item-label">Settings</span></button>
+    <div class="sp-divider"></div>
+    <button class="sp-item" onclick="fetch('/api/auth/logout',{method:'POST'}).then(function(){document.cookie='codec_session=;path=/;max-age=0;SameSite=Lax';window.location.href='/auth'})" style="color:#ef4444"><svg class="ico" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg><span class="sp-item-label">Lock Session</span></button>
+  </div>
+</div>
+<div id="stats"></div>
+<div id="viewSwitch">
+  <button class="vs-btn active" onclick="switchView('neural')">Neural Map</button>
+  <button class="vs-btn" onclick="switchView('products')">7 Products</button>
+</div>
+<svg id="cortex" xmlns="http://www.w3.org/2000/svg"></svg>
+<div id="productsView"></div>
+<div id="detail"><button class="close" onclick="closeDetail()">&times;</button><h2 id="detailTitle"></h2><div class="info" id="detailInfo"></div></div>
+<div id="skills-panel">
+  <button class="close" onclick="closeSkills()">&times;</button>
+  <h2>Skills Registry</h2>
+  <input class="skill-search" type="text" placeholder="Search skills..." oninput="filterSkills(this.value)">
+  <div class="skill-count" id="skillCount"></div>
+  <div id="skillList"></div>
+</div>
+<div id="settings-float">
+  <h3>Config</h3>
+  <div id="settingsContent">Loading...</div>
+</div>
+<div id="activity-feed">
+  <h3>Live Activity</h3>
+  <div id="activityList"><div class="af-item"><span class="af-time">--:--</span><span class="af-msg">Waiting for events...</span></div></div>
+</div>
+<div class="legend" id="legend"></div>
+
+<script>
+// Hide header/nav when embedded in dashboard iframe
+if(window.location.search.indexOf('embed=1')!==-1){
+  document.addEventListener('DOMContentLoaded',function(){
+    var h=document.querySelector('header')||document.querySelector('.header');
+    if(h)h.style.display='none';
+    var sp=document.getElementById('sidePanel');if(sp)sp.style.display='none';
+    var spo=document.getElementById('sidePanelOverlay');if(spo)spo.style.display='none';
+    document.body.style.paddingTop='0';
+  });
+}
+function openSidePanel(){document.getElementById('sidePanel').classList.add('open');document.getElementById('sidePanelOverlay').classList.add('open')}
+function closeSidePanel(){document.getElementById('sidePanel').classList.remove('open');document.getElementById('sidePanelOverlay').classList.remove('open')}
+var _voiceOn=localStorage.getItem('codec-voice')==='true';
+function toggleVoiceReply(){_voiceOn=!_voiceOn;localStorage.setItem('codec-voice',_voiceOn);updateVoiceIcon()}
+function updateVoiceIcon(){var m1=document.getElementById('muteX1'),m2=document.getElementById('muteX2'),st=document.getElementById('voiceState');if(_voiceOn){if(m1)m1.style.display='none';if(m2)m2.style.display='none';if(st){st.textContent='ON';st.style.color='#0a0a0a';st.style.background='#E8711A'}}else{if(m1)m1.style.display='';if(m2)m2.style.display='';if(st){st.textContent='OFF';st.style.color='#888';st.style.background='#2a2a2a'}}}
+updateVoiceIcon();
+// Theme
+function toggleCortexTheme(){
+  var current = document.documentElement.dataset.theme;
+  var next = current === 'light' ? 'dark' : 'light';
+  document.documentElement.dataset.theme = next === 'dark' ? '' : 'light';
+  localStorage.setItem('codec-theme', next);
+  document.getElementById('themeToggle').textContent = next === 'light' ? '\u{1F319}' : '\u2600';
+  document.getElementById('themeToggle').style.borderColor = next === 'light' ? 'rgba(0,0,0,.1)' : 'rgba(255,255,255,.1)';
+}
+(function(){
+  var saved = localStorage.getItem('codec-theme') || 'dark';
+  if(saved === 'light'){document.documentElement.dataset.theme='light';}
+  // When embedded as iframe, listen for theme changes from parent page
+  window.addEventListener('storage', function(e){
+    if(e.key === 'codec-theme'){
+      var t = e.newValue || 'dark';
+      document.documentElement.dataset.theme = t === 'light' ? 'light' : '';
+      var btn = document.getElementById('themeToggle');
+      if(btn){
+        btn.textContent = t === 'light' ? '\u{1F319}' : '\u2600';
+        btn.style.borderColor = t === 'light' ? 'rgba(0,0,0,.1)' : 'rgba(255,255,255,.1)';
+      }
+    }
+  });
+})();
+// ═══════════════════════════════════════════════════════════════════════
+// CORTEX v2 — Human Body Metaphor
+// Brain (LLM) · Eyes (Vision) · Ears (STT) · Mouth (TTS) · Hands (Skills)
+// Heart (Core) · Spine (Dashboard) · Nervous System (Connections)
+// ═══════════════════════════════════════════════════════════════════════
+
+// ── Node icons as SVG path data ──
+var ICONS = {
+  brain:     'M12 2C9 2 6.5 4 6 7c-2 .5-4 3-4 5.5C2 15 4 17 6.5 17H7v2a2 2 0 002 2h6a2 2 0 002-2v-2h.5C20 17 22 15 22 12.5 22 10 20 7.5 18 7c-.5-3-3-5-6-5zM9 10h1.5v3H9zm4.5 0H15v3h-1.5z',
+  eye:       'M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12zm11 4a4 4 0 100-8 4 4 0 000 8zm0-2a2 2 0 110-4 2 2 0 010 4z',
+  ear:       'M6 18l1-4c.5-2 0-4-1-5.5S4 5.5 4 4a8 8 0 0116 0c0 3-2 5-4 6s-3 3-3 5v3',
+  mouth:     'M12 2a10 10 0 100 20 10 10 0 000-20zm-4 12s1.5 2 4 2 4-2 4-2',
+  hand:      'M18 11V6a2 2 0 00-4 0v1a2 2 0 00-4 0v1a2 2 0 00-4 0v5l-2-2a2 2 0 00-3 3l5 5h10l2-8a2 2 0 00-2-2h-1',
+  heart:     'M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z',
+  spine:     'M12 2v20M8 6h8M8 10h8M8 14h8M8 18h8',
+  bolt:      'M13 2L3 14h9l-1 8 10-12h-9l1-8z',
+  key:       'M15 7h4v4M4 17L15 7',
+  shield:    'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z',
+  search:    'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z',
+  monitor:   'M2 3h20v14H2zm6 18h8m-4-4v4',
+  chat:      'M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z',
+  mic:       'M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3zM19 10v2a7 7 0 01-14 0v-2m7 9v4m-4 0h8',
+  toggle:    'M16 3H8a5 5 0 000 10h8a5 5 0 000-10zm0 0a3 3 0 110 6 3 3 0 010-6z',
+  wave:      'M2 12h2l3-9 4 18 4-18 3 9h2',
+  draft:     'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm-2 0v6h6',
+  database:  'M4 7v10c0 2 3.6 4 8 4s8-2 8-4V7M4 7c0 2 3.6 4 8 4s8-2 8-4M4 7c0-2 3.6-4 8-4s8 2 8 4',
+  cpu:       'M4 4h16v16H4zm4-2v2m4-2v2m4-2v2M4 8h-2m2 4h-2m2 4h-2m18-8h2m-2 4h2m-2 4h2M8 22v-2m4 2v-2m4 2v-2',
+  clock:     'M12 2a10 10 0 100 20 10 10 0 000-20zm0 4v6l4 2',
+  alarm:     'M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0',
+  chart:     'M18 20V10M12 20V4M6 20v-6',
+  lock:      'M5 11h14v11H5zm2 0V7a5 5 0 0110 0v4',
+  globe:     'M12 2a10 10 0 100 20 10 10 0 000-20zM2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10A15.3 15.3 0 0112 2z',
+  layers:    'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5',
+};
+
+// ═══════════════════════════════════════════════════════════════════════
+// NODE DEFINITIONS — Organized by Human Body Metaphor
+// ═══════════════════════════════════════════════════════════════════════
+
+var NODES = [
+  // ─── BRAIN (top center) — Intelligence & Reasoning ───
+  {id:'qwen',label:'Qwen LLM',x:550,y:130,r:40,color:'#E8711A',icon:'brain',category:'brain',zone:'brain',
+   info:'Qwen 3.5 35B (4-bit MLX). Main language model — all reasoning, conversation, skill routing.',file:'mlx_lm.server',port:8081,health:'/v1/models'},
+  {id:'llm_queue',label:'LLM Queue',x:450,y:100,r:18,color:'#666',icon:'layers',category:'brain',zone:'brain',
+   info:'Priority queue: CRITICAL(voice) > HIGH(chat) > MEDIUM(agents) > LOW(background).',file:'codec_llm_proxy.py'},
+  {id:'memory',label:'Memory',x:660,y:100,r:24,color:'#b388ff',icon:'database',category:'brain',zone:'brain',
+   info:'SQLite + FTS5 full-text search. BM25 ranking. Stores all conversations.',file:'codec_memory.py'},
+  {id:'search',label:'Web Search',x:680,y:180,r:20,color:'#ffd740',icon:'search',category:'brain',zone:'brain',
+   info:'DuckDuckGo + Serper API. 5-min TTL cache. Called by skills + chat enrichment.',file:'codec_search.py'},
+
+  // ─── EYES (upper-left) — Vision & Screen Reading ───
+  {id:'vision',label:'Vision VL',x:220,y:140,r:30,color:'#448aff',icon:'eye',category:'eyes',zone:'eyes',
+   info:'Qwen2.5-VL-7B for screen reading, image analysis. Gemini Flash as cloud fallback.',file:'mlx_lm.server',port:8082,health:'/v1/models'},
+  {id:'screenshot',label:'Screen **',x:140,y:100,r:18,color:'#448aff',icon:'monitor',category:'eyes',zone:'eyes',
+   info:'Double-asterisk captures screen, reads via Vision, opens question dialog.',file:'codec.py'},
+  {id:'document',label:'Doc ++',x:300,y:90,r:18,color:'#448aff',icon:'draft',category:'eyes',zone:'eyes',
+   info:'Double-plus opens file picker. Extracts text/image/PDF content for analysis.',file:'codec.py'},
+
+  // ─── EARS (upper-right) — Hearing & Speech Input ───
+  {id:'whisper',label:'Whisper STT',x:860,y:140,r:30,color:'#00e676',icon:'ear',category:'ears',zone:'ears',
+   info:'whisper-large-v3-turbo on MLX. Transcribes voice to text.',file:'whisper_server.py',port:8084,health:'/'},
+  {id:'f18',label:'F18 Voice',x:800,y:80,r:20,color:'#00e676',icon:'mic',category:'ears',zone:'ears',
+   info:'Hold F18 to record voice. Persistent conversation session across presses.',file:'codec.py'},
+  {id:'wake',label:'Wake Word',x:940,y:100,r:20,color:'#00e676',icon:'wave',category:'ears',zone:'ears',
+   info:'"Hey CODEC" — continuous mic listening via Anker webcam. Auto-activates.',file:'codec.py'},
+  {id:'f16',label:'F16 Text',x:940,y:180,r:18,color:'#00e676',icon:'key',category:'ears',zone:'ears',
+   info:'Press F16 for text input dialog (AppleScript). Dispatches to skill/LLM.',file:'codec.py'},
+
+  // ─── HEART (center) — Core Dispatch & Toggle ───
+  {id:'dispatch',label:'Dispatch',x:550,y:320,r:44,color:'#E8711A',icon:'heart',category:'heart',zone:'heart',
+   info:'Central hub. Routes all voice/text tasks to skills, drafts, or LLM. The heartbeat of CODEC.',file:'codec.py'},
+  {id:'f13',label:'F13 Toggle',x:430,y:300,r:20,color:'#ffd740',icon:'toggle',category:'heart',zone:'heart',
+   info:'Toggles CODEC on/off. Resets voice session. Master switch.',file:'codec.py'},
+  {id:'config',label:'Config',x:670,y:300,r:18,color:'#666',icon:'cpu',category:'heart',zone:'heart',
+   info:'Single source of truth. ~/.codec/config.json. All services read from here.',file:'codec_config.py'},
+  {id:'watcher',label:'Draft Watch',x:440,y:380,r:20,color:'#ffd740',icon:'draft',category:'heart',zone:'heart',
+   info:'Monitors draft_task.json. Screenshots screen, generates contextual replies.',file:'codec_watcher.py'},
+
+  // ─── MOUTH (left-center) — Voice Output ───
+  {id:'kokoro',label:'Kokoro TTS',x:170,y:310,r:30,color:'#ff9544',icon:'mouth',category:'mouth',zone:'mouth',
+   info:'Kokoro-82M TTS. Voice: am_adam. Generates speech audio, played via afplay.',file:'kokoro_server.py',port:8085,health:'/v1/models'},
+
+  // ─── HANDS (right side) — Skills & Actions ───
+  {id:'skills',label:'Skills x60',x:820,y:320,r:34,color:'#ffd740',icon:'hand',category:'hands',zone:'hands',
+   info:'57 skill plugins: Chrome, Google Suite, system control, media, utilities. Trigger-matched.',file:'skills/*.py'},
+  {id:'agents',label:'Agents',x:920,y:370,r:22,color:'#ffd740',icon:'bolt',category:'hands',zone:'hands',
+   info:'Deep research, daily briefing, trip planner + custom agents. Background job queue.',file:'routes/agents.py'},
+
+  // ─── SPINE (bottom-center) — Dashboard & UIs ───
+  {id:'dashboard',label:'Dashboard',x:550,y:500,r:34,color:'#448aff',icon:'spine',category:'spine',zone:'spine',
+   info:'FastAPI server. Serves all UIs, API endpoints, WebSocket. Auth + E2E encryption.',file:'codec_dashboard.py',port:8090,health:'/api/health'},
+  {id:'chat',label:'Chat UI',x:420,y:530,r:20,color:'#448aff',icon:'chat',category:'spine',zone:'spine',
+   info:'/chat — Conversational interface. 45 skills, streaming, vision, memory search.',file:'codec_chat.html'},
+  {id:'voice_ws',label:'Voice WS',x:680,y:530,r:20,color:'#448aff',icon:'mic',category:'spine',zone:'spine',
+   info:'/ws/voice — WebSocket voice pipeline. VAD, interruption, streaming TTS.',file:'codec_voice.py'},
+  {id:'vibe',label:'Vibe IDE',x:550,y:580,r:18,color:'#448aff',icon:'globe',category:'spine',zone:'spine',
+   info:'/vibe — Code generation preview. HTML/CSS/JS with live preview.',file:'codec_vibe.html'},
+
+  // ─── IMMUNE SYSTEM (bottom) — Monitoring & Safety ───
+  {id:'heartbeat',label:'Heartbeat',x:780,y:520,r:22,color:'#00e676',icon:'clock',category:'immune',zone:'immune',
+   info:'Every 5 min: checks all services, LLM liveness probe, auto-restart.',file:'codec_heartbeat.py'},
+  {id:'alerts',label:'Alerts',x:900,y:520,r:18,color:'#ff3d3d',icon:'alarm',category:'immune',zone:'immune',
+   info:'Multi-channel: Telegram, Email, Slack, macOS notifications.',file:'codec_alerts.py'},
+  {id:'metrics',label:'Metrics',x:900,y:460,r:16,color:'#666',icon:'chart',category:'immune',zone:'immune',
+   info:'Prometheus /metrics endpoint. Counters, histograms, uptime gauge.',file:'codec_metrics.py'},
+  {id:'approval',label:'Approval',x:340,y:560,r:20,color:'#ff3d3d',icon:'shield',category:'immune',zone:'immune',
+   info:'Command approval via dashboard/phone + tkinter. Remote allow/deny.',file:'codec_session.py'},
+
+  // ─── EXTERNAL (bottom-left) — Messaging Channels ───
+  {id:'imessage',label:'iMessage',x:170,y:530,r:24,color:'#34c759',icon:'chat',category:'external',zone:'external',
+   info:'Polls macOS Messages DB. Trigger: "Hey CODEC" or "Good morning". Replies via AppleScript. Daily Briefing, smart agents.',file:'codec_imessage.py'},
+  {id:'telegram',label:'Telegram',x:270,y:580,r:24,color:'#29b6f6',icon:'globe',category:'external',zone:'external',
+   info:'Bot API long polling. No trigger in DMs. Voice notes via Kokoro TTS. Daily Briefing + Deep Report.',file:'codec_telegram.py'},
+];
+
+var EDGES = [
+  // Ears -> Brain
+  {from:'f18',to:'whisper',color:'#00e676',label:'audio'},
+  {from:'wake',to:'whisper',color:'#00e676',label:'audio'},
+  {from:'whisper',to:'dispatch',color:'#00e676',label:'text'},
+  {from:'f16',to:'dispatch',color:'#00e676'},
+
+  // Eyes -> Brain
+  {from:'screenshot',to:'vision',color:'#448aff',label:'pixels'},
+  {from:'screenshot',to:'dispatch',color:'#448aff'},
+  {from:'document',to:'dispatch',color:'#448aff'},
+  {from:'vision',to:'dispatch',color:'#448aff',label:'desc'},
+
+  // Heart pumps to all
+  {from:'dispatch',to:'skills',color:'#E8711A',label:'match'},
+  {from:'dispatch',to:'watcher',color:'#E8711A',label:'draft'},
+  {from:'dispatch',to:'qwen',color:'#E8711A',label:'think'},
+  {from:'dispatch',to:'memory',color:'#b388ff',label:'recall'},
+  {from:'dispatch',to:'search',color:'#ffd740'},
+  {from:'f13',to:'dispatch',color:'#ffd740',style:'dashed'},
+  {from:'config',to:'dispatch',color:'#444',style:'dashed'},
+
+  // Brain processes
+  {from:'qwen',to:'kokoro',color:'#ff9544',label:'speak'},
+  {from:'qwen',to:'memory',color:'#b388ff',label:'save'},
+  {from:'llm_queue',to:'qwen',color:'#666',style:'dashed'},
+
+  // Hands execute
+  {from:'skills',to:'qwen',color:'#ffd740'},
+  {from:'skills',to:'vision',color:'#ffd740'},
+  {from:'skills',to:'search',color:'#ffd740'},
+  {from:'agents',to:'qwen',color:'#ffd740'},
+  {from:'agents',to:'search',color:'#ffd740'},
+  {from:'agents',to:'memory',color:'#b388ff'},
+  {from:'watcher',to:'qwen',color:'#ffd740'},
+  {from:'watcher',to:'vision',color:'#ffd740'},
+
+  // Spine connects UIs
+  {from:'dashboard',to:'qwen',color:'#448aff'},
+  {from:'dashboard',to:'memory',color:'#b388ff'},
+  {from:'dashboard',to:'skills',color:'#ffd740'},
+  {from:'chat',to:'dashboard',color:'#448aff'},
+  {from:'voice_ws',to:'dashboard',color:'#448aff'},
+  {from:'voice_ws',to:'whisper',color:'#00e676'},
+  {from:'voice_ws',to:'kokoro',color:'#ff9544'},
+  {from:'vibe',to:'dashboard',color:'#448aff'},
+
+  // Immune system monitors
+  {from:'heartbeat',to:'qwen',color:'#00e676',style:'dashed',label:'probe'},
+  {from:'heartbeat',to:'whisper',color:'#00e676',style:'dashed'},
+  {from:'heartbeat',to:'kokoro',color:'#00e676',style:'dashed'},
+  {from:'heartbeat',to:'vision',color:'#00e676',style:'dashed'},
+  {from:'heartbeat',to:'dashboard',color:'#00e676',style:'dashed'},
+  {from:'heartbeat',to:'alerts',color:'#ff3d3d'},
+  {from:'approval',to:'dashboard',color:'#ff3d3d'},
+
+  // External messaging
+  {from:'imessage',to:'qwen',color:'#34c759',label:'msg'},
+  {from:'imessage',to:'skills',color:'#34c759'},
+  {from:'imessage',to:'memory',color:'#b388ff'},
+  {from:'telegram',to:'qwen',color:'#29b6f6',label:'msg'},
+  {from:'telegram',to:'kokoro',color:'#ff9544',label:'voice'},
+  {from:'telegram',to:'skills',color:'#29b6f6'},
+  {from:'telegram',to:'memory',color:'#b388ff'},
+];
+
+// Zone labels
+var ZONES = [
+  {label:'Brain',x:550,y:52,color:'#E8711A'},
+  {label:'Eyes',x:220,y:55,color:'#448aff'},
+  {label:'Ears',x:870,y:45,color:'#00e676'},
+  {label:'Heart',x:550,y:240,color:'#E8711A'},
+  {label:'Mouth',x:170,y:255,color:'#ff9544'},
+  {label:'Hands',x:860,y:255,color:'#ffd740'},
+  {label:'Spine',x:550,y:445,color:'#448aff'},
+  {label:'Immune',x:780,y:580,color:'#ff3d3d'},
+  {label:'External',x:220,y:480,color:'#34c759'},
+];
+
+// ── State ──
+var svg = document.getElementById('cortex');
+var pan = {x:0,y:0,scale:1,dragging:false,startX:0,startY:0};
+var nodeMap = {};
+NODES.forEach(function(n){ nodeMap[n.id] = n; });
+var healthStatus = {};
+
+// ── SVG Icon renderer ──
+function renderIcon(cx, cy, iconName, size, color) {
+  var d = ICONS[iconName];
+  if (!d) return '';
+  var s = size / 24;
+  var tx = cx - size/2;
+  var ty = cy - size/2;
+  return '<g transform="translate('+tx+','+ty+') scale('+s+')">' +
+    '<path d="'+d+'" fill="none" stroke="'+color+'" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity=".85"/>' +
+    '</g>';
+}
+
+// ── Render ──
+function render() {
+  var w = window.innerWidth, h = window.innerHeight;
+  svg.setAttribute('viewBox', ((-pan.x/pan.scale))+' '+((-pan.y/pan.scale))+' '+(w/pan.scale)+' '+(h/pan.scale));
+
+  var html = '<defs>';
+  html += '<filter id="glow"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>';
+  html += '<filter id="glowHard"><feGaussianBlur stdDeviation="8" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>';
+  html += '<radialGradient id="nodeGrad" cx="35%" cy="35%"><stop offset="0%" stop-color="#fff" stop-opacity=".08"/><stop offset="100%" stop-color="#000" stop-opacity="0"/></radialGradient>';
+  html += '</defs>';
+
+  // Background grid (subtle)
+  html += '<pattern id="grid" width="50" height="50" patternUnits="userSpaceOnUse">';
+  html += '<path d="M50,0 L0,0 L0,50" fill="none" stroke="#0e0e18" stroke-width=".4"/>';
+  html += '</pattern>';
+  html += '<rect class="grid-rect" width="2400" height="1400" fill="url(#grid)" x="-400" y="-200"/>';
+
+  // Zone subtle bg blobs
+  ZONES.forEach(function(z) {
+    html += '<circle cx="'+z.x+'" cy="'+(parseInt(z.y)+60)+'" r="120" fill="'+z.color+'" opacity=".012"/>';
+  });
+
+  // Zone labels
+  ZONES.forEach(function(z) {
+    html += '<text x="'+z.x+'" y="'+z.y+'" text-anchor="middle" class="zone-label" fill="'+z.color+'">'+z.label.toUpperCase()+'</text>';
+  });
+
+  // Edges
+  EDGES.forEach(function(e, i) {
+    var from = nodeMap[e.from], to = nodeMap[e.to];
+    if (!from || !to) return;
+    var dx = to.x-from.x, dy = to.y-from.y;
+    var dist = Math.sqrt(dx*dx+dy*dy) || 1;
+    var nx = dx/dist, ny = dy/dist;
+    var x1 = from.x+nx*from.r, y1 = from.y+ny*from.r;
+    var x2 = to.x-nx*to.r, y2 = to.y-ny*to.r;
+    var mx = (x1+x2)/2+(y2-y1)*0.12, my = (y1+y2)/2-(x2-x1)*0.12;
+    var path = 'M'+x1+','+y1+' Q'+mx+','+my+' '+x2+','+y2;
+    var isDash = e.style === 'dashed';
+    var op = isDash ? '.1' : '.22';
+    html += '<path d="'+path+'" fill="none" stroke="'+(e.color||'#333')+'" stroke-width="1.2" opacity="'+op+'"'+(isDash?' stroke-dasharray="5,4"':'')+'/>';
+    // Flow particles (only on solid connections)
+    if (!isDash) {
+      html += '<circle r="1.8" fill="'+(e.color||'#E8711A')+'" opacity=".6"><animateMotion dur="'+(2.5+i%3)+'s" repeatCount="indefinite" path="'+path+'"/></circle>';
+    }
+    if (e.label) {
+      html += '<text x="'+mx+'" y="'+(my-5)+'" text-anchor="middle" fill="'+(e.color||'#444')+'" font-size="7.5" opacity=".35">'+e.label+'</text>';
+    }
+  });
+
+  // Nodes
+  NODES.forEach(function(n) {
+    var status = healthStatus[n.id] || 'unknown';
+    var ringColor = status==='ok'?'#00e676':status==='err'?'#ff3d3d':n.color;
+    var glow = status==='ok'?'filter="url(#glow)"':status==='err'?'filter="url(#glowHard)"':'';
+    var ringOp = status==='ok'?'.5':status==='err'?'.7':'.25';
+
+    // Health ring
+    html += '<circle cx="'+n.x+'" cy="'+n.y+'" r="'+(n.r+4)+'" fill="none" stroke="'+ringColor+'" stroke-width="1.5" opacity="'+ringOp+'" '+glow+'/>';
+    // Main body
+    html += '<circle cx="'+n.x+'" cy="'+n.y+'" r="'+n.r+'" fill="'+n.color+'0a" stroke="'+n.color+'" stroke-width="1.2" style="cursor:pointer" onclick="showDetail(\''+n.id+'\')" class="node-c"/>';
+    // Inner gradient
+    html += '<circle cx="'+n.x+'" cy="'+n.y+'" r="'+n.r+'" fill="url(#nodeGrad)" style="pointer-events:none"/>';
+    // Pulse for active services
+    if (n.port && status==='ok') {
+      html += '<circle cx="'+n.x+'" cy="'+n.y+'" r="'+(n.r-3)+'" fill="'+n.color+'" opacity=".04"><animate attributeName="r" values="'+(n.r-8)+';'+(n.r)+';'+(n.r-8)+'" dur="4s" repeatCount="indefinite"/><animate attributeName="opacity" values=".04;.1;.04" dur="4s" repeatCount="indefinite"/></circle>';
+    }
+    // Icon
+    var iconSize = Math.min(n.r * 0.8, 18);
+    html += renderIcon(n.x, n.y - 4, n.icon, iconSize, n.color);
+    // Label below
+    html += '<text x="'+n.x+'" y="'+(n.y+n.r+13)+'" text-anchor="middle" fill="'+n.color+'" font-size="9" font-weight="500" opacity=".75" style="pointer-events:none">'+n.label+'</text>';
+    // Port badge
+    if (n.port) {
+      html += '<rect x="'+(n.x-13)+'" y="'+(n.y+n.r+17)+'" width="26" height="12" rx="6" fill="'+n.color+'" opacity=".75"/>';
+      html += '<text x="'+n.x+'" y="'+(n.y+n.r+26)+'" text-anchor="middle" fill="#000" font-size="7.5" font-weight="700">'+n.port+'</text>';
+    }
+  });
+
+  svg.innerHTML = html;
+}
+
+// ── Detail Panel ──
+function showDetail(id) {
+  if (id === 'skills') { openSkills(); return; }
+  var n = nodeMap[id]; if (!n) return;
+  var d = document.getElementById('detail');
+  document.getElementById('detailTitle').textContent = n.label + (n.port ? ' [:'+n.port+']' : '');
+  var status = healthStatus[id] || 'checking...';
+  var statusColor = status==='ok'?'var(--green)':status==='err'?'var(--red)':'var(--dim)';
+  var statusDotClass = status==='ok'?'ok':status==='err'?'err':'warn';
+  var conns = [];
+  EDGES.forEach(function(e) {
+    if (e.from===id) conns.push('&rarr; '+(nodeMap[e.to]||{label:'?'}).label+(e.label?' <span style="color:var(--dim)">('+e.label+')</span>':''));
+    if (e.to===id) conns.push('&larr; '+(nodeMap[e.from]||{label:'?'}).label+(e.label?' <span style="color:var(--dim)">('+e.label+')</span>':''));
+  });
+
+  // Determine if this node can be restarted/has logs
+  var restartable = ['qwen','vision','whisper','kokoro','dashboard','dispatch','heartbeat','watcher'].indexOf(id) !== -1;
+  var hasLogs = restartable || ['f18','f16','f13','wake','screenshot','document'].indexOf(id) !== -1;
+
+  var actionsHtml = '<div class="detail-actions">';
+  if (hasLogs) actionsHtml += '<button class="detail-btn" onclick="viewLogs(\''+id+'\')">View Logs</button>';
+  if (restartable) actionsHtml += '<button class="detail-btn success" onclick="restartService(\''+id+'\')">Restart</button>';
+  if (n.port) actionsHtml += '<a class="detail-btn" href="http://localhost:'+n.port+'/" target="_blank">Open :'+n.port+'</a>';
+  actionsHtml += '</div>';
+
+  document.getElementById('detailInfo').innerHTML =
+    '<div class="detail-status-bar"><span class="detail-status-dot dot '+statusDotClass+'"></span><span style="color:'+statusColor+';font-weight:600">'+status.toUpperCase()+'</span></div>'+
+    '<b>Zone:</b> '+(n.zone||'-').charAt(0).toUpperCase()+(n.zone||'').slice(1)+'<br>'+
+    '<b>File:</b> '+n.file+'<br>'+
+    (n.port?'<b>Port:</b> '+n.port+'<br>':'')+
+    '<b>Info:</b> '+n.info+'<br>'+
+    '<b>Connections:</b> '+conns.length+'<br>'+
+    actionsHtml+
+    '<div id="logViewer"></div>';
+  d.classList.add('open');
+  document.getElementById('settings-float').style.display='none';
+  document.getElementById('activity-feed').style.display='none';
+  document.getElementById('legend').style.display='none';
+}
+function closeDetail(){
+  document.getElementById('detail').classList.remove('open');
+  document.getElementById('settings-float').style.display='';
+  document.getElementById('activity-feed').style.display='';
+  document.getElementById('legend').style.display='';
+}
+
+function viewLogs(id) {
+  var lv = document.getElementById('logViewer');
+  if (lv.classList.contains('open') && lv.dataset.service === id) {
+    lv.classList.remove('open'); return;
+  }
+  lv.dataset.service = id;
+  lv.classList.add('open');
+  lv.textContent = 'Loading logs...';
+  fetch('/api/cortex/logs/' + id).then(function(r){return r.json();}).then(function(data) {
+    lv.textContent = data.logs || 'No logs available';
+    lv.scrollTop = lv.scrollHeight;
+  }).catch(function() { lv.textContent = 'Failed to load logs'; });
+}
+
+function restartService(id) {
+  if (!confirm('Restart ' + (nodeMap[id]||{}).label + '?')) return;
+  var hdrs = {'Content-Type':'application/json'};
+  var cm = document.cookie.match(/codec_csrf=([^;]+)/);
+  if (cm) hdrs['x-csrf-token'] = cm[1];
+  fetch('/api/cortex/restart/' + id, {method:'POST', headers:hdrs}).then(function(r){return r.json();}).then(function(data) {
+    if (data.ok) {
+      healthStatus[id] = 'warn';
+      render(); updateStats();
+      alert('Restarted ' + data.pm2_name);
+      // Re-check health after 5s
+      setTimeout(checkHealth, 5000);
+    } else {
+      alert('Failed: ' + (data.error || 'unknown'));
+    }
+  }).catch(function() { alert('Request failed'); });
+}
+
+// ── Pan & Zoom ──
+svg.addEventListener('mousedown',function(e){ if(e.target.classList.contains('node-c'))return; pan.dragging=true;pan.startX=e.clientX-pan.x;pan.startY=e.clientY-pan.y;pan.moved=false; });
+window.addEventListener('mousemove',function(e){ if(!pan.dragging)return;pan.moved=true;pan.x=e.clientX-pan.startX;pan.y=e.clientY-pan.startY;render(); });
+window.addEventListener('mouseup',function(){
+  if(pan.dragging && !pan.moved && document.getElementById('detail').classList.contains('open')){closeDetail();}
+  pan.dragging=false;
+});
+svg.addEventListener('wheel',function(e){ e.preventDefault();var d=e.deltaY>0?.92:1.08;pan.scale=Math.max(.3,Math.min(3,pan.scale*d));render(); },{passive:false});
+// Touch
+var td=0;
+svg.addEventListener('touchstart',function(e){ if(e.touches.length===1){pan.dragging=true;pan.startX=e.touches[0].clientX-pan.x;pan.startY=e.touches[0].clientY-pan.y;} if(e.touches.length===2){td=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);} });
+svg.addEventListener('touchmove',function(e){ e.preventDefault(); if(e.touches.length===1&&pan.dragging){pan.x=e.touches[0].clientX-pan.startX;pan.y=e.touches[0].clientY-pan.startY;render();} if(e.touches.length===2){var d2=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);if(td>0){pan.scale=Math.max(.3,Math.min(3,pan.scale*(d2/td)));render();}td=d2;} },{passive:false});
+svg.addEventListener('touchend',function(){pan.dragging=false;td=0;});
+
+// ── Health Polling (via proxy — no CORS issues) ──
+function checkHealth() {
+  fetch('/api/cortex/health').then(function(r){return r.json();}).then(function(data) {
+    // Map proxy results
+    var serviceNodes = {qwen:1,vision:1,whisper:1,kokoro:1,dashboard:1};
+    Object.keys(data).forEach(function(k){ healthStatus[k] = data[k]; });
+    // Everything else: if dashboard is up, mark logical nodes as ok
+    NODES.forEach(function(n) {
+      if (!serviceNodes[n.id] && !healthStatus[n.id]) {
+        healthStatus[n.id] = data.dashboard === 'ok' ? 'ok' : 'warn';
+      }
+    });
+    render(); updateStats();
+    lastCheckTime = Date.now();
+  }).catch(function() {
+    // Fallback: just check dashboard directly
+    fetch('/api/health').then(function(r) {
+      healthStatus['dashboard'] = r.ok ? 'ok' : 'err';
+      NODES.forEach(function(n){ if(!healthStatus[n.id]) healthStatus[n.id] = r.ok?'ok':'warn'; });
+      render(); updateStats();
+      lastCheckTime = Date.now();
+    }).catch(function() {
+      healthStatus['dashboard'] = 'err'; render(); updateStats();
+      lastCheckTime = Date.now();
+    });
+  });
+}
+
+function updateStats() {
+  var ok=0, err=0;
+  NODES.forEach(function(n){ if(healthStatus[n.id]==='ok')ok++; else if(healthStatus[n.id]==='err')err++; });
+  var unk = NODES.length - ok - err;
+  var h = '<div class="stat"><span class="dot ok"></span>'+ok+' online</div>';
+  if (err) h += '<div class="stat"><span class="dot err"></span>'+err+' down</div>';
+  if (unk) h += '<div class="stat"><span class="dot warn"></span>'+unk+'</div>';
+  h += ' <span id="last-check"></span>';
+  document.getElementById('stats').innerHTML = h;
+}
+
+// ── Legend ──
+(function(){
+  var cats = [
+    {color:'#E8711A',label:'Brain (LLM)'},
+    {color:'#448aff',label:'Eyes (Vision)'},
+    {color:'#00e676',label:'Ears (STT)'},
+    {color:'#ff9544',label:'Mouth (TTS)'},
+    {color:'#ffd740',label:'Hands (Skills)'},
+    {color:'#448aff',label:'Spine (UI)'},
+    {color:'#ff3d3d',label:'Immune (Safety)'},
+  ];
+  var html='';
+  cats.forEach(function(c){
+    html+='<div class="legend-item"><div class="legend-dot" style="border-color:'+c.color+';background:'+c.color+'15"></div>'+c.label+'</div>';
+  });
+  document.getElementById('legend').innerHTML=html;
+})();
+
+// ── Skills Panel ──
+var allSkills = [];
+
+function loadSkills() {
+  fetch('/api/cortex/skills').then(function(r){return r.json();}).then(function(data) {
+    allSkills = data.skills || [];
+    // Update the Skills node label with real count
+    var skillNode = nodeMap['skills'];
+    if (skillNode) { skillNode.label = 'Skills x' + data.count; render(); }
+    renderSkillsList(allSkills);
+  }).catch(function(){});
+}
+
+function renderSkillsList(skills) {
+  var html = '';
+  skills.forEach(function(s) {
+    var triggers = (s.triggers || []).slice(0, 3).join(', ');
+    html += '<div class="skill-item"><span class="skill-dot"></span><span class="skill-name">' + s.name + '</span><span class="skill-triggers">' + triggers + '</span></div>';
+  });
+  document.getElementById('skillList').innerHTML = html;
+  document.getElementById('skillCount').textContent = skills.length + ' skills loaded';
+}
+
+function filterSkills(q) {
+  q = q.toLowerCase();
+  var filtered = allSkills.filter(function(s) {
+    return s.name.toLowerCase().indexOf(q) !== -1 || (s.triggers || []).some(function(t) { return t.toLowerCase().indexOf(q) !== -1; });
+  });
+  renderSkillsList(filtered);
+}
+
+function openSkills() {
+  document.getElementById('skills-panel').classList.add('open');
+  if (!allSkills.length) loadSkills();
+}
+function closeSkills() { document.getElementById('skills-panel').classList.remove('open'); }
+
+// ── Product Frames ──
+var PRODUCTS = [
+  {name:'CODEC Core',subtitle:'The Command Layer',icon:'🎙',color:'#E8711A',
+   desc:'Always-on voice assistant. Say "Hey CODEC" or press F13 to activate. F18 for voice commands. F16 for text input. 56 skills fire instantly — most bypass the LLM entirely. Direct action, zero latency.',
+   features:['F13 Toggle','F18 Voice','F16 Text','Hey CODEC Wake','56 Skills','Google Calendar','Gmail','Drive','Docs','Sheets','Tasks','Keep','Chrome','Web Search','Hue Lights','Timers','Spotify','Clipboard','Terminal','Memory FTS5'],
+   files:['codec.py','codec_core.py','codec_config.py'],status:'core',
+   details:{shortcuts:['F13 — Toggle on/off','F18 — Hold to record voice','F16 — Text input dialog','** — Screenshot + Vision','++ — Document analysis','-- — Quick chat'],skills:'56 built-in skills: Google Calendar, Gmail, Drive, Docs, Sheets, Tasks, Keep, Chrome automation, web search, Hue lights, clipboard, terminal commands, music, timers, calculator, weather, bitcoin, brightness, volume, app switch, mouse control, screenshot OCR. Most skills bypass the LLM entirely — direct action, zero latency.',memory:'FTS5-indexed SQLite. BM25 ranking. All conversations logged across all 7 products.',wake:'Always-on "Hey CODEC" via Anker webcam mic. Energy threshold: 200. Auto-activates and records follow-up.',files:['codec.py','codec_core.py','codec_config.py','codec_identity.py','skills/*.py']}},
+  {name:'CODEC Dictate',subtitle:'Hold, Speak, Paste',icon:'✍️',color:'#00e676',
+   desc:'Hold a key. Say what you mean. Release. Text appears wherever the cursor is. If CODEC detects a message draft, it refines through the LLM — grammar fixed, tone polished, meaning preserved. Works in every app on macOS. A free, open-source SuperWhisper replacement that runs entirely local.',
+   features:['Hold to Record','Whisper STT','LLM Refinement','Auto-Paste','Any macOS App','Grammar Fix','Tone Polish','Draft Detection'],
+   files:['codec_dictate.py'],status:'dictate',
+   details:{how:'Hold key → sox recording → Whisper STT → LLM grammar/tone refinement → auto-paste via pbcopy. Works in VS Code, Chrome, Notes, any app with a text cursor.',port:'8084 (Whisper)',files:['codec_dictate.py']}},
+  {name:'CODEC Instant',subtitle:'One Right-Click',icon:'⚡',color:'#ffd740',
+   desc:'Select any text, anywhere. Right-click. Eight AI services system-wide: Proofread, Elevate, Explain, Translate, Reply (with :tone syntax), Prompt, Read Aloud, Save. Powered by the local LLM.',
+   features:['Proofread','Elevate','Explain','Translate','Reply','Read Aloud','Save','Prompt','System-wide','Any App'],
+   files:['codec_instant.py'],status:'instant',
+   details:{services:['Proofread — Fix grammar and spelling','Elevate — Improve writing quality','Explain — Break down complex text','Translate — Multi-language translation','Reply — Generate contextual replies with :tone syntax','Read Aloud — Kokoro TTS on selected text','Save — Store to memory','Prompt — Custom AI prompt on selection'],how:'System-wide macOS Services menu. Select text → right-click → CODEC.',files:['codec_instant.py','codec_textassist.py']}},
+  {name:'CODEC Chat',subtitle:'250K Context + 12 Agent Crews',icon:'💬',color:'#b388ff',
+   desc:'Full conversational AI. Long context. File uploads. Image analysis via vision model. Web search. 12 autonomous agent crews — not single prompts, full multi-step workflows. Schedule any crew on a cron.',
+   features:['250K Context','File Upload','Image Analysis','Web Search','12 Agent Crews','Streaming','Skill Execution','Voice Reply','Memory Search','Code Blocks','Thinking Mode'],
+   files:['codec_chat.html','codec_dashboard.py'],status:'chat',
+   details:{agents:'Deep Research (10,000-word report → Google Docs), Daily Briefing (morning news + calendar), Competitor Analysis (SWOT + positioning), Trip Planner (full itinerary), Email Handler (triage inbox, draft replies), Social Media (posts for Twitter, LinkedIn, Instagram), Code Review (bugs + security), Data Analysis (trends + insights), Content Writer (blog posts, articles), Meeting Summarizer (action items), Invoice Generator (professional invoices), Custom Agent (define your own role, tools, task)',features:'250K context, file uploads (PDF/image/text), web search with Serper API, skill execution, streaming responses, voice reply toggle, thinking mode toggle, memory search. Multi-agent framework under 800 lines. Zero dependencies. No CrewAI. No LangChain.',scheduling:'Schedule any crew: "Run competitor analysis every Monday at 9am"',port:'8090 (/chat)',files:['codec_chat.html','codec_dashboard.py','routes/agents.py','codec_agents.py']}},
+  {name:'CODEC Vibe',subtitle:'AI Coding IDE + Skill Forge',icon:'🎨',color:'#ff9544',
+   desc:'Split-screen in the browser. Monaco editor on the left (same engine as VS Code). AI chat on the right. Describe what you need — CODEC writes it, click Apply, run it, live preview. Skill Forge: describe a new capability in plain English, CODEC converts it into a working plugin.',
+   features:['Monaco Editor','Live Preview','Skill Forge','Auto Deploy','Code Generation','Apply Code','HTML/CSS/JS','Template Library'],
+   files:['codec_vibe.html'],status:'vibe',
+   details:{how:'Natural language → LLM generates HTML/CSS/JS → Live preview in iframe → One-click deploy as skill. Skill Forge takes it further: describe a new capability in plain English, CODEC converts it into a working plugin. The framework writes its own extensions.',port:'8090 (/vibe)',files:['codec_vibe.html']}},
+  {name:'CODEC Voice',subtitle:'Live Voice Calls',icon:'📞',color:'#00e676',
+   desc:'Real-time voice-to-voice conversations with the AI. WebSocket pipeline — no Pipecat, no external dependencies. Mid-call say "check my screen" — it screenshots, analyzes, and speaks back. Full transcript saved to memory.',
+   features:['WebSocket','VAD','Interruption','Live Transcript','Screen Analysis','Streaming TTS','Low Latency','Memory Save','Searchable History'],
+   files:['codec_voice.py'],status:'voice',
+   details:{how:'WebSocket → VAD (voice activity detection) → Whisper STT → LLM → Kokoro TTS → streaming audio back. No Pipecat, no external dependencies.',features:'Interruption handling (speak while CODEC is talking → TTS cuts off → listens again), live transcription display, mid-call screen analysis, low-latency pipeline. Full transcript saved to memory — every conversation becomes searchable context for future sessions.',port:'8090 (/voice)',files:['codec_voice.py','codec_voice.html']}},
+  {name:'CODEC Overview',subtitle:'Dashboard + Cortex + Audit',icon:'🌐',color:'#668080',
+   desc:'Private dashboard accessible from any device, anywhere. Cloudflare Tunnel or Tailscale VPN — no port forwarding, no third-party relay. Cortex neural map, real-time activity feed, full audit trail across 16 categories.',
+   features:['Dashboard :8090','Cloudflare Tunnel','Tailscale VPN','MCP Server','Task Scheduler','Heartbeat Monitor','Cortex Visualizer','Audit Stream','Prometheus Metrics','Remote Approval','PM2 Process Manager','Skill Marketplace'],
+   files:['codec_dashboard.py','codec_cortex.html','codec_audit.html'],status:'overview',
+   details:{how:'75+ API endpoints. Send commands, view the screen, launch voice calls, manage agents — all from a browser. Installable as PWA on mobile and desktop.',features:'Cortex neural map, real-time activity feed, searchable skills panel, event log viewer. Audit: 16 categories, filterable, colored timeline, JSON-line storage with 50MB rotation.',port:'8090',files:['codec_dashboard.py','codec_dashboard.html','codec_cortex.html','codec_audit.html']}},
+];
+
+function switchView(view) {
+  var btns = document.querySelectorAll('.vs-btn');
+  btns.forEach(function(b){b.classList.remove('active');});
+  if (view === 'products') {
+    btns[1].classList.add('active');
+    document.getElementById('cortex').style.display = 'none';
+    document.getElementById('settings-float').style.display = 'none';
+    document.getElementById('activity-feed').style.display = 'none';
+    document.getElementById('legend').style.display = 'none';
+    document.getElementById('productsView').classList.add('open');
+    renderProducts();
+  } else {
+    btns[0].classList.add('active');
+    document.getElementById('cortex').style.display = '';
+    document.getElementById('settings-float').style.display = '';
+    document.getElementById('activity-feed').style.display = '';
+    document.getElementById('legend').style.display = '';
+    document.getElementById('productsView').classList.remove('open');
+  }
+}
+
+function renderProducts() {
+  var html = '<div class="products-header"><h2>7 Products &middot; One Framework</h2><p>Every capability of the CODEC ecosystem</p></div>';
+  html += '<div class="products-grid">';
+  PRODUCTS.forEach(function(p) {
+    html += '<div class="product-card">';
+    html += '<div class="pc-status"></div>';
+    html += '<div class="pc-header"><div class="pc-icon" style="background:'+p.color+'15;border:1px solid '+p.color+'30">'+p.icon+'</div><div><div class="pc-title">'+p.name+'</div><div class="pc-subtitle">'+(p.subtitle||p.files[0])+'</div></div></div>';
+    html += '<div class="pc-desc">'+p.desc+'</div>';
+    html += '<div class="pc-features">';
+    p.features.forEach(function(f) {
+      html += '<span class="pc-feat">'+f+'</span>';
+    });
+    html += '</div>';
+    if (p.details) {
+      var pid = p.name.replace(/\s+/g,'-').toLowerCase();
+      html += '<button class="pc-expand-btn" onclick="toggleProductDetails(\''+pid+'\')">Show Details</button>';
+      html += '<div class="pc-details" id="pd-'+pid+'">';
+      var d = p.details;
+      if (d.shortcuts) {
+        html += '<div class="pc-detail-section"><h4>Keyboard Shortcuts</h4>';
+        d.shortcuts.forEach(function(s){ html += s + '<br>'; });
+        html += '</div>';
+      }
+      if (d.skills) html += '<div class="pc-detail-section"><h4>Skills</h4>' + d.skills + '</div>';
+      if (d.memory) html += '<div class="pc-detail-section"><h4>Memory</h4>' + d.memory + '</div>';
+      if (d.wake) html += '<div class="pc-detail-section"><h4>Wake Word</h4>' + d.wake + '</div>';
+      if (d.how) html += '<div class="pc-detail-section"><h4>How It Works</h4>' + d.how + '</div>';
+      if (d.models) html += '<div class="pc-detail-section"><h4>Models</h4>' + d.models + '</div>';
+      if (d.services) {
+        html += '<div class="pc-detail-section"><h4>Services</h4>';
+        d.services.forEach(function(s){ html += s + '<br>'; });
+        html += '</div>';
+      }
+      if (d.example) html += '<div class="pc-detail-section"><h4>Example</h4><em>' + d.example + '</em></div>';
+      if (d.agents) html += '<div class="pc-detail-section"><h4>Agent Crews</h4>' + d.agents + '</div>';
+      if (d.scheduling) html += '<div class="pc-detail-section"><h4>Scheduling</h4>' + d.scheduling + '</div>';
+      if (d.features) html += '<div class="pc-detail-section"><h4>Features</h4>' + (typeof d.features === 'string' ? d.features : d.features.join(', ')) + '</div>';
+      if (d.port) html += '<div class="pc-detail-section"><h4>Port</h4>' + d.port + '</div>';
+      if (d.files) html += '<div class="pc-detail-section"><h4>Files</h4>' + d.files.join(', ') + '</div>';
+      html += '</div>';
+    }
+    html += '</div>';
+  });
+  // iMessage & Telegram — additional interfaces
+  html += '<div class="product-card" style="grid-column:1/-1">';
+  html += '<div class="pc-header"><div class="pc-icon" style="background:rgba(52,199,89,.15);border:1px solid rgba(52,199,89,.3)">💬</div><div><div class="pc-title">iMessage &amp; Telegram</div><div class="pc-subtitle">External Messaging Channels</div></div></div>';
+  html += '<div class="pc-desc">CODEC responds on iMessage and Telegram. Same LLM, same skills, same memory. Say "Good morning" for a Daily Briefing — calendar, weather, markets, Top 10 news, voice note. Say "full report" for a multi-agent deep research report delivered to Google Docs.</div>';
+  html += '<div class="pc-features">';
+  ['iMessage Agent','Telegram Bot','Daily Briefing','Voice Notes (TTS)','Deep Report → Docs','Restaurant Decider','Accountability Coach','Photo Vision','Whisper Transcription','PM2 Managed'].forEach(function(f) {
+    html += '<span class="pc-feat">'+f+'</span>';
+  });
+  html += '</div></div>';
+  html += '</div>';
+  document.getElementById('productsView').innerHTML = html;
+}
+
+// ── Settings Float ──
+function loadSettings() {
+  fetch('/api/config').then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json();}).then(function(cfg) {
+    var llm = cfg.llm || {};
+    var tts = cfg.tts || {};
+    var stt = cfg.stt || {};
+    var wake = cfg.wake || {};
+    var model = (llm.llm_model || 'unknown').split('/').pop();
+    var html = '';
+    html += '<div class="setting-row"><b>LLM</b><span class="setting-val">' + model + '</span></div>';
+    html += '<div class="setting-row"><b>Voice</b><span class="setting-val">' + (tts.tts_voice || '?') + '</span></div>';
+    html += '<div class="setting-row"><b>STT</b><span class="setting-val">' + (stt.stt_engine || '?') + '</span></div>';
+    html += '<div class="setting-row"><b>Wake</b><span class="setting-val">' + (wake.wake_word_enabled ? 'ON' : 'OFF') + '</span></div>';
+    html += '<div class="setting-row"><b>TTS</b><span class="setting-val">' + (tts.tts_engine || '?') + '</span></div>';
+    document.getElementById('settingsContent').innerHTML = html;
+  }).catch(function(){ document.getElementById('settingsContent').textContent = 'Offline'; });
+}
+
+function toggleProductDetails(id) {
+  var el = document.getElementById('pd-' + id);
+  if (!el) return;
+  var btn = el.previousElementSibling;
+  if (el.classList.contains('open')) {
+    el.classList.remove('open');
+    if (btn) btn.textContent = 'Show Details';
+  } else {
+    el.classList.add('open');
+    if (btn) btn.textContent = 'Hide Details';
+  }
+}
+
+// ── Live Activity Feed ──
+var lastActivityLine = '';
+function pollActivity() {
+  fetch('/api/cortex/logs/dispatch').then(function(r){return r.json();}).then(function(data) {
+    var lines = (data.logs || '').split('\n').filter(function(l) {
+      return l.indexOf('[CODEC]') !== -1 || l.indexOf('[TTS]') !== -1;
+    });
+    var recent = lines.slice(-8);
+    if (recent.length && recent[recent.length-1] !== lastActivityLine) {
+      lastActivityLine = recent[recent.length-1];
+      var html = '';
+      recent.forEach(function(line) {
+        var timeMatch = line.match(/(\d{2}:\d{2}:\d{2})/);
+        var time = timeMatch ? timeMatch[1].slice(0,5) : '--:--';
+        var msg = line.replace(/.*\[CODEC\]\s*/, '').replace(/.*\[TTS\]\s*/, 'TTS: ').replace(/^\d+\|open-co\s*\|\s*/, '').trim();
+        if (msg.length > 2) {
+          html += '<div class="af-item af-new"><span class="af-time">'+time+'</span><span class="af-msg">'+msg.substring(0,60)+'</span></div>';
+        }
+      });
+      if (html) document.getElementById('activityList').innerHTML = html;
+    }
+  }).catch(function(){});
+}
+
+// ── Health timestamp ──
+var lastCheckTime = 0;
+
+// ── Init ──
+render();
+checkHealth();
+setInterval(checkHealth, 15000);
+loadSkills();
+loadSettings();
+pollActivity();
+setInterval(pollActivity, 3000);
+// Update "last check" timer
+setInterval(function() {
+  var el = document.getElementById('last-check');
+  if (el && lastCheckTime) {
+    var ago = Math.round((Date.now() - lastCheckTime) / 1000);
+    el.textContent = ago + 's ago';
+  }
+}, 1000);
+// Auto-fit: compute bounding box of all nodes and scale to viewport
+function fitToScreen() {
+  var minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  NODES.forEach(function(n){
+    if(n.x-n.r-30<minX)minX=n.x-n.r-30;
+    if(n.y-n.r-50<minY)minY=n.y-n.r-50;
+    if(n.x+n.r+30>maxX)maxX=n.x+n.r+30;
+    if(n.y+n.r+50>maxY)maxY=n.y+n.r+50;
+  });
+  var w=window.innerWidth, h=window.innerHeight;
+  var bw=maxX-minX, bh=maxY-minY;
+  var scaleX=w/bw, scaleY=h/bh;
+  pan.scale=Math.min(scaleX,scaleY)*0.88;
+  pan.x=(w-bw*pan.scale)/2-minX*pan.scale;
+  pan.y=(h-bh*pan.scale)/2-minY*pan.scale;
+  render();
+}
+setTimeout(fitToScreen,100);
+window.addEventListener('resize',fitToScreen);
+// Restore theme button state
+var savedTheme = localStorage.getItem('codec-theme') || 'dark';
+document.getElementById('themeToggle').textContent = savedTheme === 'light' ? '\u{1F319}' : '\u2600';
+if(savedTheme==='light') document.getElementById('themeToggle').style.borderColor='rgba(0,0,0,.1)';
+(function(){
+  function pollNotifCount(){
+    fetch('/api/notifications/count').then(function(r){return r.json()}).then(function(d){
+      var c=d.unread||d.count||0;
+      var b=document.getElementById('notifBadge');
+      if(b){b.textContent=c;b.classList.toggle('hidden',c===0)}
+      var dot=document.getElementById('menuNotifDot');
+      if(dot)dot.classList.toggle('active',c>0);
+      var bell=document.getElementById('notifBellBtn');
+      if(bell)bell.classList.toggle('notif-highlight',c>0);
+    }).catch(function(){})
+  }
+  pollNotifCount();setInterval(pollNotifCount,30000);
+  var bell=document.getElementById('notifBellBtn');
+  if(bell)bell.addEventListener('click',function(){
+    fetch('/api/notifications/read-all',{method:'POST'}).catch(function(){});
+    var b=document.getElementById('notifBadge');if(b){b.textContent='0';b.classList.add('hidden')}
+    var dot=document.getElementById('menuNotifDot');if(dot)dot.classList.remove('active');
+    bell.classList.remove('notif-highlight');
+  });
+})();
+</script>
+</body>
+</html>

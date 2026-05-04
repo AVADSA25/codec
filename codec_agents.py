@@ -4,18 +4,24 @@ Replaces CrewAI with ~300 lines. Zero external dependencies.
 Uses CODEC skills as tools + Qwen 3.5 35B with thinking mode.
 """
 import asyncio
-import importlib.util
+import contextvars
 import json
 import os
 import re
+import secrets
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 import hashlib
 import logging
+import threading
 import httpx
+
+from codec_audit import audit as _audit_core
+from codec_hooks import HookVeto, run_with_hooks
+from codec_llm_proxy import llm_queue, Priority
 
 log = logging.getLogger("codec_agents")
 
@@ -30,13 +36,14 @@ try:
     from codec_config import SKILLS_DIR
 except ImportError:
     SKILLS_DIR = os.path.expanduser("~/.codec/skills")
-DB_PATH     = os.path.expanduser("~/.q_memory.db")
+DB_PATH     = os.path.expanduser("~/.codec/memory.db")
 
 def _cfg():
     try:
         with open(CONFIG_PATH) as f:
             return json.load(f)
-    except Exception:
+    except Exception as e:
+        log.warning("Config load failed: %s", e)
         return {}
 
 def _qwen_url():
@@ -57,26 +64,72 @@ _sync_http  = httpx.Client(timeout=30, follow_redirects=True, headers=_HTTP_HEAD
 _async_http = httpx.AsyncClient(timeout=180)
 
 # ── AUDIT LOGGER ──
-_AUDIT_LOG_PATH = os.path.expanduser("~/.codec/audit.log")
+# Crew/agent events route through codec_audit.audit() — writes to
+# ~/.codec/audit.log via the unified envelope (schema:1) per
+# docs/PHASE1-STEP1-DESIGN.md. The legacy duplicate audit.log writer
+# (formerly _AUDIT_LOG_PATH at this position) is gone: one writer, one
+# rotation, one threading.Lock. See codec_audit.py for the actual write.
+
+# Correlation-id propagation: a top-level operation (Crew.run, Agent.run when
+# called outside a crew) sets _correlation_id_var; nested emits inherit it
+# automatically. Using contextvars keeps the ID intact across asyncio task
+# boundaries and run_in_executor calls. See design §1.4.
+_correlation_id_var: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "codec_agents_correlation_id", default=None
+)
+
+
+def _new_correlation_id() -> str:
+    """Generate a 12-char lowercase-hex correlation_id (6 bytes)."""
+    return secrets.token_hex(6)
+
 
 def _audit(event_type: str, **kwargs):
-    """Append a structured audit entry for agent/crew/tool events."""
+    """Shim over codec_audit.audit() for crew/agent runtime events.
+
+    Translates the historic crew kwargs (`elapsed`, free-form keys) into the
+    unified envelope. Pulls correlation_id from the contextvar when not
+    passed explicitly. Never raises.
+    """
+    elapsed = kwargs.pop("elapsed", None)
+    duration_ms = kwargs.pop("duration_ms", None)
+    if duration_ms is None and isinstance(elapsed, (int, float)):
+        duration_ms = float(elapsed) * 1000.0
+
+    cid = kwargs.pop("correlation_id", None) or _correlation_id_var.get()
+    tool = kwargs.pop("tool", "") or ""
+    agent = kwargs.pop("agent", None)
+    outcome = kwargs.pop("outcome", "ok")
+    error_type = kwargs.pop("error_type", None)
+    error = kwargs.pop("error", None)
+
+    extra = {k: v for k, v in kwargs.items() if v is not None}
+    # `elapsed` survives as-is in extra (analyzer may want the integer-second form)
+    if elapsed is not None and "elapsed" not in extra:
+        extra["elapsed"] = elapsed
+
     try:
-        entry = json.dumps({
-            "ts": datetime.now().isoformat(),
-            "event": event_type,
-            **{k: v for k, v in kwargs.items() if v is not None},
-        })
-        os.makedirs(os.path.dirname(_AUDIT_LOG_PATH), exist_ok=True)
-        with open(_AUDIT_LOG_PATH, "a") as f:
-            f.write(entry + "\n")
-    except Exception:
-        pass
+        _audit_core(
+            tool=tool,
+            event=event_type,
+            source="codec-agents",
+            outcome=outcome,
+            duration_ms=duration_ms,
+            agent=agent,
+            transport="crew",
+            error_type=error_type,
+            error=error,
+            correlation_id=cid,
+            extra=extra or None,
+        )
+    except Exception as e:
+        log.debug("Audit emit failed (event=%s): %s", event_type, e)
 
 # Captures the last Google Docs URL created — fallback if Writer forgets to echo it
 _last_gdoc_url: Optional[str] = None
 
 # Google Docs rate-limit / dedup state
+_gdoc_lock = threading.Lock()
 _gdoc_created: Dict[str, float] = {}   # title_hash → timestamp
 _GDOC_COOLDOWN_SEC = 60                 # minimum seconds between docs with same title
 
@@ -202,27 +255,28 @@ def _google_docs_create(input_str: str) -> str:
 
     # Dedup: reject same title within cooldown period
     title_hash = hashlib.sha256(title.encode()).hexdigest()[:16]
-    now = time.time()
-    last_created = _gdoc_created.get(title_hash, 0)
-    if now - last_created < _GDOC_COOLDOWN_SEC:
-        remaining = int(_GDOC_COOLDOWN_SEC - (now - last_created))
-        return (f"Rate-limited: a Google Doc titled '{title}' was created {int(now - last_created)}s ago. "
-                f"Wait {remaining}s or use a different title. Last URL: {_last_gdoc_url or 'unknown'}")
+    with _gdoc_lock:
+        now = time.time()
+        last_created = _gdoc_created.get(title_hash, 0)
+        if now - last_created < _GDOC_COOLDOWN_SEC:
+            remaining = int(_GDOC_COOLDOWN_SEC - (now - last_created))
+            return (f"Rate-limited: a Google Doc titled '{title}' was created {int(now - last_created)}s ago. "
+                    f"Wait {remaining}s or use a different title. Last URL: {_last_gdoc_url or 'unknown'}")
 
-    try:
-        import sys as _sys
-        _dash = os.path.dirname(os.path.abspath(__file__))
-        if _dash not in _sys.path:
-            _sys.path.insert(0, _dash)
-        from codec_gdocs import create_google_doc
-        doc_url = create_google_doc(title, content)
-        if doc_url:
-            _last_gdoc_url = doc_url
-            _gdoc_created[title_hash] = now
-            return f"Google Doc created: {doc_url}"
-        return "Google Docs error: doc creation returned None"
-    except Exception as e:
-        return f"Google Docs error: {e}"
+        try:
+            import sys as _sys
+            _dash = os.path.dirname(os.path.abspath(__file__))
+            if _dash not in _sys.path:
+                _sys.path.insert(0, _dash)
+            from codec_gdocs import create_google_doc
+            doc_url = create_google_doc(title, content)
+            if doc_url:
+                _last_gdoc_url = doc_url
+                _gdoc_created[title_hash] = now
+                return f"Google Doc created: {doc_url}"
+            return "Google Docs error: doc creation returned None"
+        except Exception as e:
+            return f"Google Docs error: {e}"
 
 
 def _shell_execute(cmd: str) -> str:
@@ -317,7 +371,25 @@ class Agent:
     thinking: bool = False      # Keep off by default — adds latency; crews can override
     verbose: bool = True
 
+    # Phase 1 Step 3 §2.2 stuck-detection ring buffer.
+    # Per-agent: each Agent instance tracks its own (tool_name, args_hash)
+    # window of last M=5 calls. When the same key appears N=3 times,
+    # _handle_stuck() fires (warn first, escalate at N+2 = 5).
+    # Defaults loaded from ~/.codec/config.json: stuck.{repeat_threshold,
+    # window, escalation_action} on first Agent.run call. Cached as
+    # instance attrs to avoid re-reading config every loop iteration.
+    _recent_calls: List[tuple] = field(default_factory=list, repr=False)
+    _stuck_warned_keys: set = field(default_factory=set, repr=False)
+    _stuck_escalated_keys: set = field(default_factory=set, repr=False)
+
     async def run(self, task: str, context: str = "", callback: Optional[Callable] = None) -> str:
+        # Inherit correlation_id from the surrounding Crew if there is one;
+        # otherwise (e.g. run_custom_agent — solo agent path) generate our own.
+        # We don't reset the token: the asyncio.Task that owns this context goes
+        # away after the request, and any nested tool calls inside this same
+        # agent run should see the same cid (that's the whole point).
+        if _correlation_id_var.get() is None:
+            _correlation_id_var.set(_new_correlation_id())
         self._gdoc_url = None  # Capture real URL from google_docs_create tool
         tool_desc = "\n".join(f"  - {t.name}: {t.description}" for t in self.tools) or "  (no tools)"
 
@@ -356,6 +428,7 @@ Rules:
                 "temperature": 0.7,
                 "chat_template_kwargs": {"enable_thinking": self.thinking},
             }
+            await llm_queue.acquire(Priority.MEDIUM)
             try:
                 r = await _async_http.post(_qwen_url(), json=payload,
                                            headers={"Content-Type": "application/json"})
@@ -363,6 +436,8 @@ Rules:
                 response = data["choices"][0]["message"]["content"].strip()
             except Exception as e:
                 return f"LLM error: {e}"
+            finally:
+                await llm_queue.release(Priority.MEDIUM)
 
             # Strip thinking tags
             response = re.sub(r'<think>[\s\S]*?</think>', '', response).strip()
@@ -447,10 +522,61 @@ Rules:
                     _audit("tool_call", agent=self.name, tool=tool_name,
                            input=tool_input[:200])
                     loop = asyncio.get_event_loop()
-                    result = await loop.run_in_executor(None, tool.run, tool_input)
+                    # Propagate contextvars (incl. _correlation_id_var) into
+                    # the executor thread so any _audit fired from inside
+                    # the tool (e.g. _shell_execute → shell_blocked) inherits
+                    # the agent/crew correlation_id. asyncio doesn't do this
+                    # automatically — has to be an explicit copy_context().
+                    #
+                    # Phase 1 Step 2: tool execution flows through run_with_hooks
+                    # so every plugin's pre_tool/post_tool/on_error hooks fire
+                    # uniformly with the crew/voice/chat/MCP paths. Crew veto
+                    # behaviour per §4.4: SKIP — the veto string becomes the
+                    # tool's "result" and the agent's ReAct loop decides what
+                    # to do (try a different tool, or FINAL: with an
+                    # explanation). No retry, no fail-the-crew.
+                    _agent_cid = _correlation_id_var.get() or _new_correlation_id()
+                    _agent_name = self.name
+                    _tool_name_local = tool_name
+                    _tool_input_local = tool_input
+                    _real_tool = tool
+
+                    def _run_tool_with_hooks():
+                        def _inner(t, _c):
+                            return _real_tool.run(t)
+                        return run_with_hooks(
+                            tool_name=_tool_name_local,
+                            task=_tool_input_local,
+                            context="",
+                            transport="crew",
+                            agent=_agent_name,
+                            correlation_id=_agent_cid,
+                            invoke=_inner,
+                        )
+
+                    ctx = contextvars.copy_context()
+                    result = await loop.run_in_executor(
+                        None, ctx.run, _run_tool_with_hooks)
+                    if isinstance(result, HookVeto):
+                        result = (f"Tool '{tool_name}' was vetoed by plugin "
+                                  f"'{result.plugin_name}': {result.reason}")
                     tool_calls_made += 1
                     _audit("tool_result", agent=self.name, tool=tool_name,
                            result_len=len(result))
+
+                    # Phase 1 Step 3 §2.2 — stuck detection.
+                    # Run in the executor so the worker thread can call
+                    # ask_user.ask() synchronously without blocking the
+                    # event loop on escalation. The helper returns a
+                    # (possibly modified) result string with a warning
+                    # banner injected, OR an escalation answer string if
+                    # the user told the agent how to proceed.
+                    if _stuck_enabled():
+                        stuck_ctx = contextvars.copy_context()
+                        result = await loop.run_in_executor(
+                            None, stuck_ctx.run,
+                            self._handle_stuck_post_tool, tool_name,
+                            tool_input, result)
 
                     # Capture real Google Docs URL from tool result
                     if tool_name == "google_docs_create" and "docs.google.com" in result:
@@ -484,6 +610,142 @@ Rules:
                 return response
 
         return last_response
+
+    # ── Phase 1 Step 3 §2.2 — stuck detection ──────────────────────────
+    def _handle_stuck_post_tool(self, tool_name: str, tool_input: str,
+                                 result: str) -> str:
+        """Called from Agent.run after each tool result. Records the call
+        in the per-agent ring buffer, detects N=3 / N+2=5 repeats, emits
+        stuck_warning / stuck_escalated audit events, and either injects
+        a soft warning into the result OR invokes ask_user for explicit
+        user direction.
+
+        Runs in a worker thread (via run_in_executor wrapping in
+        Agent.run) so that ask_user.ask()'s threading.Event.wait()
+        doesn't block the asyncio event loop.
+
+        Returns the (possibly modified) result string the agent's ReAct
+        loop will see as the tool result.
+        """
+        try:
+            window, threshold, escalation_action = _load_stuck_config()
+            args_hash = hashlib.sha1(
+                (tool_input or "").encode("utf-8", errors="replace")
+            ).hexdigest()[:8]
+            key = (tool_name, args_hash)
+            self._recent_calls.append(key)
+            if len(self._recent_calls) > window:
+                self._recent_calls = self._recent_calls[-window:]
+            repeat_count = self._recent_calls.count(key)
+            cid = _correlation_id_var.get()
+
+            if repeat_count >= threshold + 2 and key not in self._stuck_escalated_keys:
+                # Escalation: invoke ask_user (synchronously — we're in
+                # a worker thread). Per §2.3.
+                self._stuck_escalated_keys.add(key)
+                action = escalation_action
+                from codec_audit import log_event as _le
+                try:
+                    _le(
+                        "stuck_escalated", "codec-agents",
+                        f"Agent {self.name} stuck calling {tool_name}",
+                        extra={"tool": tool_name,
+                               "repeat_count": repeat_count,
+                               "agent": self.name,
+                               "action": action},
+                        outcome="warning", level="warning",
+                        tool=tool_name,
+                        correlation_id=cid,
+                    )
+                except Exception as e:
+                    log.warning("[stuck] escalation audit failed: %s", e)
+
+                if action == "abort":
+                    raise RuntimeError(
+                        f"Stuck-abort: agent '{self.name}' called {tool_name} "
+                        f"{repeat_count} times with the same args.")
+                if action == "warn_only":
+                    return result + (
+                        f"\n\n[STUCK ESCALATED] Agent has called {tool_name} "
+                        f"{repeat_count} times with the same args; warn_only "
+                        f"mode — proceed with caution.")
+                # Default: ask_user
+                try:
+                    from codec_ask_user import ask
+                    user_directive = ask(
+                        question=(
+                            f"Agent '{self.name}' has called {tool_name} "
+                            f"{repeat_count} times with the same args and keeps "
+                            f"getting the same result. How should I proceed?"
+                        ),
+                        options=["Try a different approach", "Abandon the task",
+                                 "Continue anyway"],
+                        agent=self.name,
+                        asked_from="crew",
+                    )
+                except Exception as e:
+                    log.warning("[stuck] ask_user invoke failed: %s", e)
+                    user_directive = "(ask_user failed — agent should self-recover)"
+                return result + (
+                    f"\n\n[STUCK — user said]: {user_directive}\n"
+                    f"Adjust your strategy based on this directive.")
+
+            if repeat_count >= threshold and key not in self._stuck_warned_keys:
+                # Soft warning: inject a banner into the result. The LLM
+                # will see this and (hopefully) try a different tool.
+                self._stuck_warned_keys.add(key)
+                from codec_audit import log_event as _le
+                try:
+                    _le(
+                        "stuck_warning", "codec-agents",
+                        f"Agent {self.name} repeating {tool_name}",
+                        extra={"tool": tool_name,
+                               "repeat_count": repeat_count,
+                               "agent": self.name},
+                        outcome="warning", level="warning",
+                        tool=tool_name,
+                        correlation_id=cid,
+                    )
+                except Exception as e:
+                    log.warning("[stuck] warning audit failed: %s", e)
+                return result + (
+                    f"\n\n⚠ [STUCK WARNING] You've called {tool_name} "
+                    f"{repeat_count} times with the same args. Try a "
+                    f"different tool, different inputs, or wrap up with "
+                    f"FINAL: — repeating won't help.")
+            return result
+        except Exception as e:
+            log.warning("[stuck] handler failed (non-fatal): %s", e)
+            return result
+
+
+def _stuck_enabled() -> bool:
+    """Read STUCK_DETECTION_ENABLED env var. Default true."""
+    val = (os.environ.get("STUCK_DETECTION_ENABLED") or "true").strip().lower()
+    return val not in ("false", "0", "no", "off")
+
+
+def _load_stuck_config() -> tuple:
+    """Load (window, threshold, escalation_action) from
+    ~/.codec/config.json: stuck.{window, repeat_threshold,
+    escalation_action}. Defaults: window=5, threshold=3, action=ask_user.
+    Read each call so config edits take effect on PM2 restart."""
+    try:
+        import json as _json
+        with open(os.path.expanduser("~/.codec/config.json")) as f:
+            cfg = _json.load(f).get("stuck", {})
+    except Exception:
+        cfg = {}
+    window = cfg.get("window")
+    if not isinstance(window, int) or window < 2:
+        window = 5
+    threshold = cfg.get("repeat_threshold")
+    if not isinstance(threshold, int) or threshold < 2:
+        threshold = 3
+    action = cfg.get("escalation_action")
+    if action not in ("ask_user", "abort", "warn_only"):
+        action = "ask_user"
+    return window, threshold, action
 
 
 async def _safe_cb(callback, data):
@@ -521,42 +783,70 @@ class Crew:
                         print(f"[Crew] Scoped {agent.name}: removed {stripped} tool(s) outside allowlist")
 
     async def run(self, callback: Optional[Callable] = None) -> str:
+        # One correlation_id per crew run. All nested agent_start / agent_finish /
+        # tool_call / tool_result entries inherit this ID via the contextvar.
+        cid_token = _correlation_id_var.set(_new_correlation_id())
         start = time.time()
-        agent_names = [a.name for a in self.agents]
-        _audit("crew_start", agents=agent_names, mode=self.mode,
-               allowed_tools=self.allowed_tools)
-        if callback:
-            await _safe_cb(callback, {"status": "started", "agents": len(self.agents), "tasks": len(self.tasks)})
+        try:
+            agent_names = [a.name for a in self.agents]
+            _audit("crew_start", agents=agent_names, mode=self.mode,
+                   allowed_tools=self.allowed_tools)
+            if callback:
+                await _safe_cb(callback, {"status": "started", "agents": len(self.agents), "tasks": len(self.tasks)})
 
-        if self.mode == "sequential":
-            context = ""
-            results = []
-            pairs = list(zip(self.agents, self.tasks))[:self.max_steps]
-            for i, (agent, task) in enumerate(pairs):
-                if callback:
-                    await _safe_cb(callback, {
-                        "status": "agent_start", "agent": agent.name,
-                        "task_num": i + 1, "total": len(pairs)
-                    })
-                result = await agent.run(task, context=context, callback=callback)
-                results.append(result)
-                context = result
+            if self.mode == "sequential":
+                context = ""
+                results = []
+                pairs = list(zip(self.agents, self.tasks))[:self.max_steps]
+                for i, (agent, task) in enumerate(pairs):
+                    if callback:
+                        await _safe_cb(callback, {
+                            "status": "agent_start", "agent": agent.name,
+                            "task_num": i + 1, "total": len(pairs)
+                        })
+                    _audit("agent_start", agent=agent.name,
+                           task_num=i + 1, total=len(pairs))
+                    a_t0 = time.time()
+                    try:
+                        result = await agent.run(task, context=context, callback=callback)
+                    except Exception as a_err:
+                        _audit("agent_finish", agent=agent.name,
+                               duration_ms=(time.time() - a_t0) * 1000.0,
+                               outcome="error",
+                               error_type=type(a_err).__name__,
+                               error=str(a_err)[:500])
+                        raise
+                    _audit("agent_finish", agent=agent.name,
+                           duration_ms=(time.time() - a_t0) * 1000.0,
+                           result_len=len(result) if isinstance(result, str) else None)
+                    results.append(result)
+                    context = result
 
-            final = results[-1] if results else "No results."
+                final = results[-1] if results else "No results."
 
-        elif self.mode == "parallel":
-            coros = [a.run(t, callback=callback) for a, t in zip(self.agents, self.tasks)]
-            results = await asyncio.gather(*coros)
-            final = "\n\n---\n\n".join(results)
-        else:
-            final = f"Unknown crew mode: {self.mode}"
+            elif self.mode == "parallel":
+                coros = [a.run(t, callback=callback) for a, t in zip(self.agents, self.tasks)]
+                results = await asyncio.gather(*coros)
+                final = "\n\n---\n\n".join(results)
+            else:
+                final = f"Unknown crew mode: {self.mode}"
 
-        elapsed = int(time.time() - start)
-        _audit("crew_complete", mode=self.mode, elapsed=elapsed,
-               result_len=len(final))
-        if callback:
-            await _safe_cb(callback, {"status": "complete", "elapsed": elapsed})
-        return final
+            elapsed = int(time.time() - start)
+            _audit("crew_complete", mode=self.mode, elapsed=elapsed,
+                   duration_ms=(time.time() - start) * 1000.0,
+                   result_len=len(final))
+            if callback:
+                await _safe_cb(callback, {"status": "complete", "elapsed": elapsed})
+            return final
+        except Exception as crew_err:
+            _audit("crew_error", mode=self.mode,
+                   duration_ms=(time.time() - start) * 1000.0,
+                   outcome="error",
+                   error_type=type(crew_err).__name__,
+                   error=str(crew_err)[:500])
+            raise
+        finally:
+            _correlation_id_var.reset(cid_token)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -589,18 +879,115 @@ def save_to_memory(session_name: str, task: str, result: str):
 # PRE-BUILT CREWS
 # ═══════════════════════════════════════════════════════════════
 
+async def _elevate_query(raw_topic: str) -> dict:
+    """Refine a raw user query into an optimized research brief.
+
+    Returns dict with:
+      - refined_topic: clear one-line research question
+      - search_queries: list of 4-6 diverse search queries
+      - scope: what to include / exclude
+      - angles: different perspectives to cover
+    """
+    system = (
+        "You are a research query optimizer. The user will give you a rough, informal request. "
+        "Your job is to interpret their TRUE INTENT — not the literal words — and produce a "
+        "structured research brief.\n\n"
+        "RULES:\n"
+        "- Fix typos, grammar, and vague language\n"
+        "- Identify what they ACTUALLY want to learn (not literal keyword interpretation)\n"
+        "- Generate 4-6 diverse search queries that cover different angles\n"
+        "- If the user uses slang or ambiguous terms, interpret them in context\n"
+        "- Never interpret casual words (like 'handful', 'bunch', 'couple') as topic keywords\n"
+        "- Expand abbreviations and clarify jargon\n\n"
+        "Respond in EXACTLY this format (no extra text):\n"
+        "TOPIC: <one clear sentence describing the research goal>\n"
+        "SCOPE: <what to include and what to exclude, 1-2 sentences>\n"
+        "ANGLES: <3-4 different perspectives to investigate, comma-separated>\n"
+        "QUERIES:\n"
+        "1. <first search query>\n"
+        "2. <second search query>\n"
+        "3. <third search query>\n"
+        "4. <fourth search query>\n"
+        "5. <fifth search query (optional)>\n"
+        "6. <sixth search query (optional)>"
+    )
+    payload = {
+        "model": _qwen_model(),
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": f"Research request: {raw_topic}"},
+        ],
+        "max_tokens": 800,
+        "temperature": 0.3,
+        "stream": False,
+        "chat_template_kwargs": {"enable_thinking": False},
+    }
+    try:
+        r = await _async_http.post(
+            _qwen_url(), json=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        text = r.json()["choices"][0]["message"]["content"].strip()
+        # Strip thinking tags if present
+        text = re.sub(r'<think>[\s\S]*?</think>', '', text).strip()
+
+        # Parse structured response
+        result = {"refined_topic": raw_topic, "search_queries": [], "scope": "", "angles": ""}
+        for line in text.split("\n"):
+            line = line.strip()
+            if line.upper().startswith("TOPIC:"):
+                result["refined_topic"] = line.split(":", 1)[1].strip()
+            elif line.upper().startswith("SCOPE:"):
+                result["scope"] = line.split(":", 1)[1].strip()
+            elif line.upper().startswith("ANGLES:"):
+                result["angles"] = line.split(":", 1)[1].strip()
+            elif re.match(r'^\d+\.\s', line):
+                q = re.sub(r'^\d+\.\s*', '', line).strip()
+                if q:
+                    result["search_queries"].append(q)
+
+        log.info(f"[QueryElevation] '{raw_topic[:60]}' → '{result['refined_topic'][:60]}'")
+        if result["search_queries"]:
+            log.info(f"[QueryElevation] {len(result['search_queries'])} search queries generated")
+        return result
+    except Exception as e:
+        log.warning(f"[QueryElevation] Failed, using raw topic: {e}")
+        return {"refined_topic": raw_topic, "search_queries": [], "scope": "", "angles": ""}
+
+
 def deep_research_crew(**kwargs) -> Crew:
     all_tools = get_all_tools()
     search_tools = [t for t in all_tools if t.name in ("web_search", "web_fetch")]
     write_tools  = [t for t in all_tools if t.name in ("google_docs_create",)]
     topic = kwargs.get("topic", "the given topic")
+    # Query elevation results (injected by run_crew before building)
+    elevated = kwargs.get("_elevated", {})
+    refined_topic = elevated.get("refined_topic", topic)
+    search_queries = elevated.get("search_queries", [])
+    scope = elevated.get("scope", "")
+    angles = elevated.get("angles", "")
+
+    # Build enhanced research brief for the Researcher agent
+    research_brief = f"Research thoroughly: {refined_topic}\n"
+    if scope:
+        research_brief += f"Scope: {scope}\n"
+    if angles:
+        research_brief += f"Cover these angles: {angles}\n"
+    if search_queries:
+        research_brief += "Suggested search queries (use these as starting points, adapt as needed):\n"
+        for i, q in enumerate(search_queries, 1):
+            research_brief += f"  {i}. {q}\n"
+    research_brief += "Fetch the most relevant source pages and extract key details, stats, and examples."
 
     researcher = Agent(
         name="Researcher",
         role=(
             "You are an elite research analyst. Find comprehensive, accurate, up-to-date information. "
-            "Search broadly first (3-5 queries), then fetch the most relevant sources. "
-            "Extract key facts, statistics, expert opinions, and recent developments."
+            "You have been given a refined research brief with suggested search queries. "
+            "Use the suggested queries as starting points but adapt them based on what you find. "
+            "Search broadly (4-6 queries), then fetch the most relevant sources. "
+            "Extract key facts, statistics, expert opinions, and recent developments. "
+            "Focus on the INTENT of the research, not just literal keywords."
         ),
         tools=search_tools, max_tool_calls=8,
     )
@@ -623,11 +1010,10 @@ def deep_research_crew(**kwargs) -> Crew:
     return Crew(
         agents=[researcher, writer],
         tasks=[
-            f"Research thoroughly: {topic}\n"
-            f"Search at least 3 different angles. Fetch key source pages and extract details.",
-            f"Write a comprehensive report about: {topic}\n"
+            research_brief,
+            f"Write a comprehensive report about: {refined_topic}\n"
             f"Use research context provided. Save to Google Docs with title: "
-            f"'CODEC Research: {topic[:80]} — {datetime.now().strftime('%Y-%m-%d')}'\n"
+            f"'CODEC Research: {refined_topic[:80]} — {datetime.now().strftime('%Y-%m-%d')}'\n"
             f"After saving, your FINAL response MUST begin with the Google Docs URL on its own line."
         ],
         allowed_tools=["web_search", "web_fetch", "google_docs_create"],
@@ -639,27 +1025,63 @@ def daily_briefing_crew(**kwargs) -> Crew:
     scout_tools = [t for t in all_tools if t.name in (
         "google_calendar", "weather", "web_search", "google_tasks", "google_keep"
     )]
+    write_tools = [t for t in all_tools if t.name in ("google_docs_create",)]
     scout = Agent(
         name="Scout",
         role=(
-            "You are the user's daily briefing assistant. Check today's calendar, pending tasks, "
-            "saved notes, current weather, and top news. Compile a concise 2-minute spoken briefing. "
-            "Write as natural speech — no markdown, no bullet points."
+            "You are the user's daily briefing researcher. Your job is to gather comprehensive data. "
+            "Check ALL of these sources — do not skip any:\n"
+            "1. Google Calendar — get today's full schedule\n"
+            "2. Google Tasks — list all pending/overdue items\n"
+            "3. Google Keep — any recent notes or reminders\n"
+            "4. Weather — current conditions AND forecast\n"
+            "5. Web search — search 'top news today', 'stock market today', 'S&P 500', 'tech news today'\n"
+            "Be EXHAUSTIVE. Include exact event times, task names with details, temperatures, "
+            "specific stock prices, headline details with sources. The more data the better."
         ),
-        tools=scout_tools, max_tool_calls=6,
+        tools=scout_tools, max_tool_calls=8,
     )
+    writer = Agent(
+        name="Briefing Writer",
+        role=(
+            "You are a professional report writer at CODEC. Synthesize all gathered data into a "
+            "comprehensive, well-structured daily briefing report. Write 1500-3000 words in markdown.\n\n"
+            "Required sections with ## headings:\n"
+            "1. **Executive Summary** — 3-4 sentence overview of the day ahead\n"
+            "2. **Calendar & Schedule** — all events with times, prep notes, conflicts\n"
+            "3. **Pending Tasks** — categorized list with priorities and deadlines\n"
+            "4. **Weather Forecast** — current + outlook, activity recommendations\n"
+            "5. **Market Overview** — major indices, notable movers, key economic data\n"
+            "6. **Top News Headlines** — 5-8 headlines with brief analysis\n"
+            "7. **Key Takeaways & Priorities** — actionable items for today\n\n"
+            "Write professionally. Use bullet points, bold for emphasis. "
+            "Cite news sources inline. Make it comprehensive and insightful.\n\n"
+            "CRITICAL: You MUST use the google_docs_create tool to save your report. "
+            "Do NOT fabricate or invent a Google Docs URL. The tool will return the real URL. "
+            "NEVER output a FINAL response until you have called google_docs_create and received the actual URL back.\n"
+            "Your FINAL response format MUST be:\n"
+            "1. First line: the exact Google Docs URL returned by the tool\n"
+            "2. Then a blank line\n"
+            "3. Then a 3-5 sentence summary of today's key priorities and highlights"
+        ),
+        tools=write_tools, max_tool_calls=2,
+    )
+    today = datetime.now().strftime("%A, %B %d, %Y")
     return Crew(
-        agents=[scout],
+        agents=[scout, writer],
         tasks=[
-            "Compile today's daily briefing:\n"
-            "1. Calendar — what meetings/events today?\n"
-            "2. Tasks — any pending or overdue tasks?\n"
-            "3. Notes — any recent reminders in Google Keep?\n"
-            "4. Weather — what's it like right now?\n"
-            "5. News — any major headlines (search 'top news today')?\n"
-            "Keep it conversational and brief."
+            "Gather ALL daily briefing data — use every tool available:\n"
+            "1. Check Google Calendar for today's events\n"
+            "2. Check Google Tasks for pending items\n"
+            "3. Check Google Keep for recent notes\n"
+            "4. Get current weather and forecast\n"
+            "5. Search 'top news today' AND 'stock market today S&P 500 Dow Jones'\n"
+            "Be thorough — search at least 3 different queries for news/markets.",
+            f"Write a comprehensive Daily Briefing report (1500-3000 words) using ALL gathered data.\n"
+            f"Save to Google Docs with title: 'CODEC: Daily Briefing — {today}'\n"
+            f"After saving, your FINAL response MUST begin with the Google Docs URL on its own line."
         ],
-        allowed_tools=["google_calendar", "weather", "web_search", "google_tasks", "google_keep"],
+        allowed_tools=["google_calendar", "weather", "web_search", "google_tasks", "google_keep", "google_docs_create"],
     )
 
 
@@ -740,25 +1162,28 @@ def email_handler_crew(**kwargs) -> Crew:
     reader = Agent(
         name="Email Reader",
         role=(
-            "Read unread emails. Categorize each as URGENT, NORMAL, LOW, or SPAM. "
-            "For each: sender, subject, category, 1-line summary."
+            "Read unread emails from the inbox. Categorize each as URGENT, NORMAL, LOW, or SPAM. "
+            "For each: sender, subject, category, 1-line summary.\n"
+            "IMPORTANT: When using the google_gmail tool, your input MUST contain the word 'unread' "
+            "to fetch unread emails. Example input: 'check unread emails'"
         ),
         tools=gmail_tools, max_tool_calls=3,
     )
     responder = Agent(
         name="Email Responder",
         role=(
-            "Draft brief professional replies for urgent emails. "
-            "Suggest 1-line action for normal emails. "
-            "Tone: direct, confident, clear. Keep replies short — 2-4 sentences max."
+            "Draft brief professional replies for urgent and normal emails. "
+            "Tone: direct, confident, clear. Keep replies short — 2-4 sentences max.\n"
+            "If there are no emails to reply to, say so clearly."
         ),
         tools=gmail_tools, max_tool_calls=3,
     )
     return Crew(
         agents=[reader, responder],
         tasks=[
-            "Check unread emails. Categorize each by urgency. List them all.",
-            "Draft replies for urgent emails. Summarize actions for the rest.",
+            "Use the google_gmail tool with input 'check unread emails' to fetch all unread emails. "
+            "Categorize each by urgency. List them all with sender, subject, and summary.",
+            "Draft replies for urgent and normal emails. Summarize actions for the rest.",
         ],
         allowed_tools=["google_gmail"],
     )
@@ -770,12 +1195,22 @@ def social_media_crew(**kwargs) -> Crew:
     search_tools = [t for t in all_tools if t.name in ("web_search", "web_fetch")]
     write_tools  = [t for t in all_tools if t.name in ("google_docs_create",)]
 
+    # Inject CODEC product context when topic mentions CODEC
+    codec_ctx = ""
+    if "codec" in topic.lower():
+        codec_ctx = (
+            "\n\nIMPORTANT CONTEXT: CODEC is an open-source intelligent command layer for macOS "
+            "— a voice-controlled AI workstation with 50+ skills, 10+ multi-agent crews, local LLMs, "
+            "and Google Workspace integration. It is NOT a video codec. "
+            "Website: opencodec.org. Built by AVA Digital."
+        )
+
     trend_scout = Agent(
         name="Trend Scout",
         role=(
             "You are a social media trend analyst. Research trending topics, hashtags, "
             "and viral content. Find what's popular right now on Twitter, LinkedIn, and Instagram. "
-            "Identify key angles, hashtags, and audience interests."
+            "Identify key angles, hashtags, and audience interests." + codec_ctx
         ),
         tools=search_tools, max_tool_calls=8,
     )
@@ -785,19 +1220,24 @@ def social_media_crew(**kwargs) -> Crew:
             "You are an expert social media copywriter. Write platform-specific posts: "
             "Twitter (max 280 chars, punchy, with hashtags), "
             "LinkedIn (professional tone, 150-300 words, insight-driven), "
-            "Instagram (visual description + engaging caption + hashtags). "
-            "Save all 3 posts to a Google Doc."
+            "Instagram (visual description + engaging caption + hashtags).\n"
+            "CRITICAL: You MUST use the google_docs_create tool to save your posts. "
+            "Do NOT fabricate a Google Docs URL. The tool returns the real URL.\n"
+            "Your FINAL response format MUST be:\n"
+            "1. First line: the exact Google Docs URL returned by the tool\n"
+            "2. Then the 3 posts" + codec_ctx
         ),
         tools=write_tools, max_tool_calls=2,
     )
     return Crew(
         agents=[trend_scout, content_creator],
         tasks=[
-            f"Research trending content about: {topic}\n"
+            f"Research trending content about: {topic}{codec_ctx}\n"
             f"Find trending hashtags, popular angles, viral formats, and audience interests.",
             f"Write 3 platform-specific posts (Twitter, LinkedIn, Instagram) about: {topic}. "
             "Save all to a Google Doc with title: "
-            "'Social Media Posts: " + topic[:60] + " — " + datetime.now().strftime('%Y-%m-%d') + "'"
+            "'Social Media Posts: " + topic[:60] + " — " + datetime.now().strftime('%Y-%m-%d') + "'\n"
+            "After saving, your FINAL response MUST begin with the Google Docs URL on its own line."
         ],
         allowed_tools=["web_search", "web_fetch", "google_docs_create"],
     )
@@ -807,8 +1247,8 @@ def code_review_crew(**kwargs) -> Crew:
     all_tools = get_all_tools()
     code = kwargs.get("code", "")
     read_tools     = [t for t in all_tools if t.name in ("file_read",)]
-    audit_tools    = [t for t in all_tools if t.name in ("file_read", "web_search")]
-    improve_tools  = [t for t in all_tools if t.name in ("file_read", "file_write")]
+    [t for t in all_tools if t.name in ("file_read", "web_search")]
+    [t for t in all_tools if t.name in ("file_read", "file_write")]
 
     # Truncate code for prompt injection into all tasks
     code_snippet = code[:3000]
@@ -969,8 +1409,8 @@ def meeting_summarizer_crew(**kwargs) -> Crew:
                 )
                 if transcript:
                     meeting_input = f"[CODEC Voice Call Transcript]\n{transcript}"
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning("Voice transcript retrieval failed: %s", e)
 
     read_tools = [t for t in all_tools if t.name in ("file_read",)]
     write_tools = [t for t in all_tools if t.name in ("google_docs_create", "google_calendar")]
@@ -1063,32 +1503,52 @@ def invoice_generator_crew(**kwargs) -> Crew:
         ),
         tools=read_tools, max_tool_calls=3,
     )
+    today_str = datetime.now().strftime("%B %d, %Y")
+    today_inv = datetime.now().strftime("%Y%m%d")
     creator = Agent(
         name="Invoice Creator",
         role=(
             "You are a professional invoice document creator. Take the parsed invoice data "
-            "and create a clean, professional invoice document.\n\n"
-            "Format the invoice as:\n\n"
-            "INVOICE\n"
-            "Invoice #: [number]\n"
-            "Date: [date]\n"
-            "Due Date: [due date]\n\n"
-            "FROM:\n"
-            "[Sender details]\n\n"
-            "BILL TO:\n"
-            "[Client details]\n\n"
-            "ITEMS:\n"
-            "| Description | Qty | Unit Price | Total |\n"
-            "| ... | ... | ... | ... |\n\n"
-            "Subtotal: $[amount]\n"
-            "Tax: $[amount] ([rate]%)\n"
-            "TOTAL DUE: $[amount]\n\n"
-            "Payment:\n"
-            "[Payment details]\n\n"
-            "Notes:\n"
-            "[Any notes or terms]\n\n"
+            "and create a clean, professional invoice in Google Docs.\n\n"
+            f"IMPORTANT: Today's date is {today_str}. Use this for invoice date unless specified.\n"
+            f"Generate invoice number as INV-{today_inv}-001 unless already specified.\n\n"
+            "Format the invoice EXACTLY like this (use markdown headings and bold):\n\n"
+            "# INVOICE\n\n"
+            "**Invoice Number:** INV-XXXXXXXX-001\n"
+            "**Invoice Date:** [date]\n"
+            "**Due Date:** [due date]\n"
+            "**Currency:** [EUR/USD]\n\n"
+            "---\n\n"
+            "## From\n"
+            "**[Company Name]**\n"
+            "[Address if available]\n"
+            "[Email] | [Phone if available]\n\n"
+            "## Bill To\n"
+            "**[Client Name]**\n"
+            "[Company if applicable]\n"
+            "[Address/Country]\n"
+            "[Email if available]\n\n"
+            "---\n\n"
+            "## Services\n\n"
+            "| Description | Quantity | Unit Price | Total |\n"
+            "|---|---|---|---|\n"
+            "| [Service] | [Qty] | [Price] | [Line Total] |\n\n"
+            "---\n\n"
+            "**Subtotal:** [amount]\n"
+            "**Tax (0%):** 0.00\n"
+            "## Total Due: [AMOUNT IN BOLD]\n\n"
+            "---\n\n"
+            "## Payment Information\n"
+            "Payment is due by [due date].\n"
+            "Please transfer to: [payment details from parser, or 'Contact sender for payment details']\n\n"
+            "## Terms & Conditions\n"
+            "- Payment due within the specified period\n"
+            "- Late payments may incur a 1.5% monthly fee\n"
+            "- Questions? Contact [sender email]\n\n"
+            "---\n"
+            "*Generated by CODEC — AVA Digital*\n\n"
             "Save to Google Docs with title: "
-            "'Invoice [number] — [client name] — [date]'\n"
+            f"'CODEC: Invoice [number] — [client name] — {datetime.now().strftime('%Y-%m-%d')}'\n"
             "IMPORTANT: Your FINAL response MUST include the exact Google Docs URL returned by the tool."
         ),
         tools=write_tools, max_tool_calls=2,
@@ -1209,15 +1669,29 @@ async def run_crew(crew_name: str, callback=None, **kwargs) -> dict:
             "error": f"Unknown crew: {crew_name}. Available: {list(CREW_REGISTRY.keys())}"
         }
     reg = CREW_REGISTRY[crew_name]
+    # Reset global doc URL to prevent leaks between crew runs
+    global _last_gdoc_url
+    _last_gdoc_url = None
     start = time.time()
+
+    # ── Query Elevation: refine raw user input for research crews ──
+    if crew_name in ("deep_research", "competitor_analysis") and kwargs.get("topic"):
+        try:
+            if callback:
+                await _safe_cb(callback, {"agent": "QueryElevation", "type": "status",
+                                          "message": "Refining your research query..."})
+            elevated = await _elevate_query(kwargs["topic"])
+            kwargs["_elevated"] = elevated
+            if callback:
+                await _safe_cb(callback, {"agent": "QueryElevation", "type": "status",
+                                          "message": f"Research focus: {elevated.get('refined_topic', '')[:100]}"})
+        except Exception as e:
+            log.warning(f"Query elevation failed, proceeding with raw topic: {e}")
+
     try:
         crew   = reg["builder"](**kwargs)
         result = await crew.run(callback=callback)
         elapsed = int(time.time() - start)
-
-        # If Writer forgot to include the Google Docs URL, inject it from the captured variable
-        if "docs.google.com" not in result and _last_gdoc_url:
-            result = f"{_last_gdoc_url}\n\n{result}"
 
         save_to_memory(crew_name, f"{crew_name}: {json.dumps(kwargs)}", result[:2000])
         return {"status": "complete", "result": result, "elapsed_seconds": elapsed, "crew": crew_name}

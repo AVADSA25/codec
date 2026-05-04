@@ -5,9 +5,10 @@ review gate. Code is NEVER written to disk without approval.
 """
 SKILL_NAME = "create_skill"
 SKILL_DESCRIPTION = "Create new CODEC skills by describing what you want"
+SKILL_MCP_EXPOSE = True
 SKILL_TRIGGERS = ["create a skill", "make a skill", "new skill", "build a skill",
                    "create skill", "write a skill", "add a skill"]
-import os, requests, json, re, sys
+import os, requests, json, re
 
 SKILLS_DIR = os.path.expanduser("~/.codec/skills")
 CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
@@ -76,6 +77,7 @@ def run(task, app="", ctx=""):
 \"\"\"CODEC Skill: [Name]\"\"\"
 SKILL_NAME = "[lowercase_name]"
 SKILL_DESCRIPTION = "[one line description]"
+SKILL_MCP_EXPOSE = True
 SKILL_TRIGGERS = ["trigger phrase 1", "trigger phrase 2", "trigger phrase 3"]
 
 def run(task, app="", ctx=""):
@@ -94,7 +96,8 @@ RULES:
 The skill should: {description}"""
 
     try:
-        payload = {"model": model, "messages": [{"role": "user", "content": prompt}], "max_tokens": 1000, "temperature": 0.3}
+        payload = {"model": model, "messages": [{"role": "user", "content": prompt}], "max_tokens": 1000, "temperature": 0.3,
+                   "chat_template_kwargs": {"enable_thinking": False}}
         payload.update(kwargs)
         r = requests.post(base_url + "/chat/completions", json=payload, headers=headers, timeout=60)
         if r.status_code != 200:

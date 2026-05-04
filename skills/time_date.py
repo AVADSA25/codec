@@ -1,6 +1,7 @@
 """CODEC Skill: Time & Date"""
 SKILL_NAME = "time"
 SKILL_DESCRIPTION = "Get current time and date"
+SKILL_MCP_EXPOSE = True
 SKILL_TRIGGERS = ["what time", "current time", "what date", "today's date", "what day"]
 
 def run(task, app="", ctx=""):

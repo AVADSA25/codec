@@ -1,6 +1,7 @@
 """CODEC Skill: Brightness & Volume Control"""
 SKILL_NAME = "volume_brightness"
 SKILL_DESCRIPTION = "Control volume and brightness by voice"
+SKILL_MCP_EXPOSE = True
 SKILL_TRIGGERS = ["volume up", "volume down", "set volume", "mute", "unmute",
                    "louder", "quieter", "brightness up", "brightness down",
                    "turn up", "turn down", "volume to", "max volume", "silence"]
@@ -38,7 +39,7 @@ def run(task, app="", ctx=""):
     # Brightness
     if "brightness up" in low:
         subprocess.run(["bash", "-c", "brightness=$(osascript -e 'tell application \"System Events\" to tell appearance preferences to get dark mode'); echo $brightness"], timeout=5)
-        return "Brightness control requires System Preferences access. Try: Hey Q, open display settings."
+        return "Brightness control requires System Preferences access. Try: Hey CODEC, open display settings."
     if "brightness down" in low:
-        return "Brightness control requires System Preferences access. Try: Hey Q, open display settings."
+        return "Brightness control requires System Preferences access. Try: Hey CODEC, open display settings."
     return None

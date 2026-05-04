@@ -5,22 +5,174 @@ Two concurrent tasks: audio receiver + pipeline processor.
 Interruption: user speaking mid-response cancels TTS immediately.
 """
 import asyncio
+import contextvars
 import io
 import json
 import os
 import re
+import secrets
 import sys
 import time
 import wave
-from datetime import datetime
+from datetime import datetime, timezone
+import logging
 from typing import Optional
 
 import base64
 import subprocess
-import tempfile
 
 import httpx
 import numpy as np
+
+from codec_audit import log_event as _voice_log_event
+from codec_hooks import (
+    HookVeto,
+    emit_operation_end as _voice_emit_op_end,
+    emit_operation_start as _voice_emit_op_start,
+    run_with_hooks as _voice_run_with_hooks,
+)
+from codec_llm_proxy import llm_queue, Priority
+
+# Per-session correlation_id contextvar — set at VoicePipeline.run entry,
+# inherited by every audit emit during the session lifetime (incl. nested
+# tool calls fired from inside the pipeline). See design §1.4.
+_voice_correlation_id_var: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "codec_voice_correlation_id", default=None
+)
+
+# ── Phase 1 Step 3 §5.3.1 — fuzzy-option-match for AskUserQuestion ────────
+# When the question carries `options`, the voice ASR layer maps the spoken
+# transcript to the closest option label via:
+#   1. Exact substring match (transcript contains lowercased option label)
+#   2. Curated synonym dict below
+#   3. Levenshtein fallback (≤3 edits AND ≤30% of label length)
+# Strict-consent (§1.7) BYPASSES this layer — irreversible actions force
+# literal verb-match. The asymmetry is deliberate: fuzzy intent inference
+# is wrong for irreversible actions.
+_VOICE_OPTION_SYNONYMS = {
+    "approve":  ["yes", "yeah", "ok", "okay", "go ahead", "do it",
+                 "approve it", "go for it", "sounds good"],
+    "reject":   ["no", "nope", "skip", "skip it", "cancel", "don't",
+                 "abort", "forget it", "nevermind"],
+    "modify":   ["change", "edit", "different", "tweak", "adjust"],
+    "delete":   ["delete", "remove", "destroy", "wipe", "trash"],
+    "send":     ["send", "send it", "transmit", "deliver"],
+    "transfer": ["transfer", "move", "wire", "send money"],
+    "abandon":  ["abandon", "give up", "stop", "quit", "drop it"],
+    "continue": ["continue", "keep going", "carry on", "press on"],
+}
+
+
+def _levenshtein(a: str, b: str) -> int:
+    """Compute Levenshtein distance between two strings. Caps at 100 chars
+    of each input — any sane option label / transcript stays well under."""
+    a = (a or "")[:100]
+    b = (b or "")[:100]
+    if not a:
+        return len(b)
+    if not b:
+        return len(a)
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        curr = [i] + [0] * len(b)
+        for j, cb in enumerate(b, 1):
+            curr[j] = min(
+                prev[j] + 1,
+                curr[j - 1] + 1,
+                prev[j - 1] + (0 if ca == cb else 1),
+            )
+        prev = curr
+    return prev[-1]
+
+
+def _resolve_voice_option_choice(
+    transcript: str,
+    options: list,
+    *,
+    strict: bool = False,
+    destructive_verb: Optional[str] = None,
+) -> str:
+    """Map an ASR transcript to one of the structured option labels.
+
+    Returns the matched option label as-is, OR the raw transcript if no
+    match (treated as free-text by the answer-acceptance path).
+
+    When ``strict=True`` (§1.7 destructive consent), this resolver is
+    BYPASSED — the caller must check the destructive_verb literal-match
+    rule itself. Returns the raw transcript so the strict-consent gate
+    in codec_ask_user.submit_answer evaluates it.
+    """
+    if not isinstance(options, list) or not options:
+        return transcript or ""
+    raw = (transcript or "").strip()
+    if not raw:
+        return raw
+    if strict:
+        # §1.7 — fuzzy-match disabled for irreversible actions.
+        return raw
+    low = raw.lower()
+    # Strip simple punctuation for matching.
+    low = re.sub(r"[^a-z0-9\s]", " ", low).strip()
+    # 1. Exact substring of any option label (case-insensitive).
+    for opt in options:
+        if str(opt).lower() in low:
+            return opt
+    # 2. Synonym map: if any synonym word appears, match the option label
+    #    whose lowercase contains the synonym key.
+    low_words = set(low.split())
+    for opt in options:
+        opt_low = str(opt).lower()
+        for syn_key, syn_phrases in _VOICE_OPTION_SYNONYMS.items():
+            if syn_key in opt_low:
+                # Check if any of this option's synonyms appear in the transcript.
+                for phrase in syn_phrases:
+                    if phrase in low or any(w == phrase for w in low_words):
+                        return opt
+    # 3. Levenshtein fallback (≤3 edits, ≤30% of label length).
+    best_opt = None
+    best_dist = 10**9
+    for opt in options:
+        opt_low = str(opt).lower()
+        dist = _levenshtein(low[:len(opt_low) + 5], opt_low)
+        if dist < best_dist:
+            best_dist = dist
+            best_opt = opt
+    if best_opt is not None:
+        opt_low = str(best_opt).lower()
+        if best_dist <= 3 and best_dist <= max(1, int(0.3 * len(opt_low))):
+            return best_opt
+    # 4. No match — return raw transcript as free-text answer.
+    return raw
+
+
+# ── Phase 1 Step 3 §5.3 — voice-session marker file ───────────────────────
+# ~/.codec/voice_session.json is touched by VoicePipeline.run start and
+# removed in finally. codec_ask_user reads this to decide whether to
+# announce + listen for the answer (active session) vs defer to PWA only.
+_VOICE_SESSION_MARKER = os.path.expanduser("~/.codec/voice_session.json")
+
+
+def _touch_voice_session_marker(session_id: str) -> None:
+    """Write the active-session marker. Best-effort; failures log + continue."""
+    try:
+        with open(_VOICE_SESSION_MARKER, "w") as f:
+            json.dump({
+                "session_id": session_id,
+                "started_at": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
+            }, f)
+    except Exception as e:
+        log = logging.getLogger("codec_voice")
+        log.debug("voice_session marker write failed: %s", e)
+
+
+def _clear_voice_session_marker() -> None:
+    """Remove the active-session marker. Best-effort."""
+    try:
+        if os.path.exists(_VOICE_SESSION_MARKER):
+            os.remove(_VOICE_SESSION_MARKER)
+    except Exception as e:
+        log = logging.getLogger("codec_voice")
+        log.debug("voice_session marker clear failed: %s", e)
 
 # ── CONFIG — loaded from ~/.codec/config.json ─────────────────────────────
 WHISPER_URL   = "http://localhost:8084/v1/audio/transcriptions"
@@ -55,9 +207,13 @@ except Exception as _e:
 # ── Vision config ────────────────────────────────────────────────────────
 VISION_URL   = "http://localhost:8082/v1/chat/completions"
 VISION_MODEL = "mlx-community/Qwen2.5-VL-7B-Instruct-4bit"
+GEMINI_API_KEY = ""
+VISION_PROVIDER = "local"
 try:
     VISION_URL   = _cfg.get("vision_base_url", "http://localhost:8082/v1").rstrip("/") + "/chat/completions"
     VISION_MODEL = _cfg.get("vision_model", VISION_MODEL)
+    GEMINI_API_KEY = _cfg.get("gemini_api_key", os.environ.get("GEMINI_API_KEY", ""))
+    VISION_PROVIDER = _cfg.get("vision_provider", "gemini" if GEMINI_API_KEY else "local")
 except Exception:
     pass
 
@@ -70,11 +226,22 @@ _SCREEN_TRIGGERS = re.compile(
     re.IGNORECASE,
 )
 
-# ── VAD ───────────────────────────────────────────────────────────────────
-VAD_SILENCE_THRESHOLD  = 800    # RMS below this = silence
-VAD_SILENCE_DURATION   = 1.5   # seconds of silence before flushing (was 2.2 — main latency)
-VAD_MIN_SPEECH_SECONDS = 0.4   # minimum speech before considering a flush (was 0.6)
-VAD_ECHO_COOLDOWN      = 1.2   # ignore mic this long after Q finishes speaking
+# ── VAD (configurable via config.json → "vad" section) ───────────────────
+try:
+    _vad_cfg = _cfg.get("vad", {})
+except NameError:
+    _vad_cfg = {}
+VAD_SILENCE_THRESHOLD  = _vad_cfg.get("silence_threshold", 800)     # RMS below this = silence
+VAD_SILENCE_DURATION   = _vad_cfg.get("silence_duration",  1.5)     # seconds of silence before flushing
+VAD_MIN_SPEECH_SECONDS = _vad_cfg.get("min_speech_seconds", 0.4)    # minimum speech before considering flush
+VAD_ECHO_COOLDOWN      = _vad_cfg.get("echo_cooldown",     2.5)     # ignore mic this long after TTS playback FINISHES (was 1.2 — too short for room reverb)
+# Bytes-per-second estimate for Kokoro MP3 output (24 kHz mono ~64 kbps).
+# Used to schedule `last_tts_end` to AFTER browser actually finishes playing,
+# not the moment we send the bytes. Without this, the echo cooldown timer
+# starts while the browser is still playing CODEC's voice, the mic picks
+# it up, and CODEC interrupts itself.
+TTS_BYTES_PER_SEC      = _vad_cfg.get("tts_bytes_per_sec", 8000)
+TTS_BROWSER_DECODE_LAG = _vad_cfg.get("tts_browser_decode_lag", 0.3)  # seconds — extra padding for browser audio buffering
 SAMPLE_RATE            = 16000
 BYTES_PER_SAMPLE       = 2
 MIN_SPEECH_BYTES       = int(SAMPLE_RATE * BYTES_PER_SAMPLE * VAD_MIN_SPEECH_SECONDS)
@@ -91,6 +258,39 @@ NOISE_WORDS = {
     "so", "well", "um hmm", "uh huh", "ah", "er",
 }
 
+# Common Whisper hallucination phrases (YouTube outros, annotations, artifacts)
+WHISPER_HALLUCINATIONS = {
+    "thank you for watching",
+    "thanks for watching",
+    "please subscribe",
+    "like and subscribe",
+    "see you next time",
+    "see you in the next video",
+    "thanks for listening",
+    "thank you for listening",
+    "please like and subscribe",
+    "don't forget to subscribe",
+    "hit the bell icon",
+    "thank you very much",
+    "thanks for your support",
+    "subtitles by",
+    "transcribed by",
+    "translated by",
+    "copyright",
+    "all rights reserved",
+    "music playing",
+    "applause",
+    "laughter",
+    "silence",
+    "inaudible",
+    "foreign language",
+    "speaking foreign language",
+    "you",
+    "bye",
+    "okay bye",
+    "so",
+}
+
 # Max conversation turns to keep in context (prevents bloat → keeps LLM fast)
 MAX_CONTEXT_TURNS = 20
 
@@ -105,7 +305,23 @@ def _build_system_prompt() -> str:
     _aname = ASSISTANT_NAME or "CODEC"
     _uname = USER_NAME
     _user_ref = _uname if _uname else "the user"
-    return f"""You are {_aname} — CODEC Voice, a JARVIS-class local AI running on a Mac Studio M1 Ultra.
+
+    # Memory upgrade: boot identity + active temporal facts
+    _boot = ""
+    try:
+        from codec_memory_upgrade import load_identity, query_valid_facts
+        ident = load_identity()
+        if ident:
+            _boot += f"\n\n[IDENTITY]\n{ident}\n[/IDENTITY]"
+        facts = query_valid_facts(limit=20)
+        if facts:
+            _boot += "\n\n[ACTIVE FACTS]\n" + "\n".join(
+                f"  {f['key']} = {f['value']}" for f in facts
+            ) + "\n[/FACTS]"
+    except Exception:
+        pass
+
+    return f"""You are {_aname} — CODEC Voice, a JARVIS-class local AI running on a Mac Studio M1 Ultra.{_boot}
 {f'The user is {_uname}. ' if _uname else ''}Fully local. No cloud. No external logs.
 
 CURRENT DATE AND TIME: {date_str}, {time_str} (Madrid / Europe time)
@@ -123,7 +339,7 @@ Your responses go directly to speech via Kokoro TTS. Format for ears only:
 
 ━━ INPUT HANDLING ━━
 Input is live voice transcription (Whisper STT). Expect noise:
-- "iq", "hey q", "hey codec" at start = wake words — ignore them
+- "hey codec", "hey codex", "okay codec" at start = wake words — ignore them
 - "uh", "um", "er" = filler — ignore
 - Strange words = infer from context
 - Never mention transcription errors unless they cause real confusion
@@ -158,10 +374,24 @@ Your user's right hand — not a customer service bot."""
 class VoicePipeline:
     """One voice session per WebSocket connection. Two-task architecture."""
 
-    def __init__(self, websocket):
+    # Class-level cache for resumable sessions (session_id → messages list)
+    _resumable_sessions: dict[str, list] = {}
+    _RESUME_TTL = 600  # seconds — discard saved sessions older than this (10 min)
+
+    def __init__(self, websocket, resume_session_id: str | None = None):
         self.ws              = websocket
-        self.session_id      = "voice_" + datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.messages        = [{"role": "system", "content": _build_system_prompt()}]
+        self.session_id      = resume_session_id or "voice_" + datetime.now().strftime("%Y%m%d_%H%M%S")
+        self._disconnect_reason = "unexpected"  # "user" or "unexpected"
+
+        # Resume conversation context if available
+        self._is_resumed = False
+        if resume_session_id and resume_session_id in self._resumable_sessions:
+            saved = self._resumable_sessions.pop(resume_session_id)
+            self.messages = saved
+            self._is_resumed = True
+            print(f"[Voice] Resumed session {resume_session_id} with {len(saved)} messages")
+        else:
+            self.messages = [{"role": "system", "content": _build_system_prompt()}]
 
         # VAD state
         self.audio_buffer     = bytearray()
@@ -178,6 +408,21 @@ class VoicePipeline:
         self._http  = httpx.AsyncClient(timeout=120.0)
         self._warmed_up = False
         self._load_skills()
+
+    def _save_for_resume(self):
+        """Stash conversation state so a reconnecting client can resume."""
+        self._resumable_sessions[self.session_id] = list(self.messages)
+        # Prune stale sessions
+        now = time.monotonic()
+        if not hasattr(VoicePipeline, "_resume_timestamps"):
+            VoicePipeline._resume_timestamps = {}
+        VoicePipeline._resume_timestamps[self.session_id] = now
+        stale = [sid for sid, ts in VoicePipeline._resume_timestamps.items()
+                 if now - ts > self._RESUME_TTL]
+        for sid in stale:
+            self._resumable_sessions.pop(sid, None)
+            VoicePipeline._resume_timestamps.pop(sid, None)
+        print(f"[Voice] Session {self.session_id} saved for resume ({len(self.messages)} messages)")
 
     # ── Skill loader (lazy via SkillRegistry) ─────────────────────────────
 
@@ -294,6 +539,15 @@ class VoicePipeline:
                 if clean in NOISE_WORDS:
                     print(f"[Voice] Discarded noise: '{text}'")
                     return ""
+                # Whisper hallucination filter (YouTube outros, annotations, etc.)
+                text_lower = text.strip().lower()
+                if text_lower in WHISPER_HALLUCINATIONS:
+                    print(f"[Voice] Discarded hallucination: '{text}'")
+                    return ""
+                # Detect repetitive hallucinations like "thank you. thank you. thank you."
+                if re.search(r'(.{4,}?)\1{2,}', text_lower):
+                    print(f"[Voice] Discarded repetitive: '{text}'")
+                    return ""
                 words = [w for w in clean.split() if w not in {"uh","um","er","hmm","ah"}]
                 if len(words) < 2:
                     print(f"[Voice] Discarded too short: '{text}'")
@@ -322,7 +576,7 @@ class VoicePipeline:
         max_msgs = MAX_CONTEXT_TURNS * 2
         return system + convo[-max_msgs:]
 
-    async def _stream_qwen(self, messages: list, max_tokens: int = 300):
+    async def _stream_qwen(self, messages: list, max_tokens: int = 2000):
         payload = {
             "model": QWEN_MODEL,
             "messages": messages,
@@ -331,8 +585,10 @@ class VoicePipeline:
             "top_p": 0.9,
             "frequency_penalty": 0.8,
             "stream": True,
+            "chat_template_kwargs": {"enable_thinking": False},
             **LLM_KWARGS,
         }
+        await llm_queue.acquire(Priority.CRITICAL)
         try:
             async with self._http.stream(
                 "POST", QWEN_URL,
@@ -346,7 +602,10 @@ class VoicePipeline:
                     if data == "[DONE]":
                         break
                     try:
-                        token = json.loads(data)["choices"][0].get("delta", {}).get("content", "")
+                        delta = json.loads(data)["choices"][0].get("delta", {})
+                        token = delta.get("content", "") or ""
+                        # Qwen 3.5 puts thinking in reasoning field, answer in content
+                        # Only yield content tokens — reasoning is internal thinking
                         if token:
                             token = re.sub(r"<think>[\s\S]*?</think>", "", token)
                             if token:
@@ -356,6 +615,8 @@ class VoicePipeline:
         except Exception as e:
             print(f"[Voice] Qwen error: {e}")
             yield "Sorry, I had a processing error."
+        finally:
+            await llm_queue.release(Priority.CRITICAL)
 
     # ── Screenshot + Vision ─────────────────────────────────────────────
 
@@ -381,6 +642,8 @@ class VoicePipeline:
             def _downscale():
                 from PIL import Image
                 img = Image.open(path)
+                if img.mode == "RGBA":
+                    img = img.convert("RGB")
                 w, h = img.size
                 if w > 1280:
                     ratio = 1280 / w
@@ -394,13 +657,40 @@ class VoicePipeline:
         return None
 
     async def _analyze_screenshot(self, image_b64: str, user_text: str) -> str:
-        """Send screenshot to vision model and return description."""
+        """Send screenshot to vision model (Gemini Flash or local Qwen VL)."""
         prompt = (
             f"The user said: \"{user_text}\"\n\n"
             "Describe what you see on this screen in 2-4 concise sentences. "
             "Focus on the main content, app, or task visible. "
             "Be specific about text, UI elements, and what the user appears to be working on."
         )
+        # Try Gemini Flash first (fast, reliable)
+        if VISION_PROVIDER == "gemini" and GEMINI_API_KEY:
+            try:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
+                payload = {
+                    "contents": [{"parts": [
+                        {"inlineData": {"mimeType": "image/jpeg", "data": image_b64}},
+                        {"text": prompt}
+                    ]}],
+                    "generationConfig": {"maxOutputTokens": 500}
+                }
+                print("[Voice] Sending to Gemini Flash vision...")
+                r = await self._http.post(url, json=payload, timeout=30.0)
+                if r.status_code == 200:
+                    candidates = r.json().get("candidates", [])
+                    if candidates:
+                        parts = candidates[0].get("content", {}).get("parts", [])
+                        if parts:
+                            result = parts[0].get("text", "").strip()
+                            if result:
+                                print(f"[Voice] Gemini vision OK: {len(result)} chars")
+                                return result
+                print(f"[Voice] Gemini failed ({r.status_code}), falling back to local...")
+            except Exception as e:
+                print(f"[Voice] Gemini error: {e}, falling back to local...")
+
+        # Fallback: local Qwen VL
         payload = {
             "model": VISION_MODEL,
             "messages": [{"role": "user", "content": [
@@ -414,7 +704,7 @@ class VoicePipeline:
             r = await self._http.post(
                 VISION_URL, json=payload,
                 headers={"Content-Type": "application/json"},
-                timeout=60.0,
+                timeout=120.0,
             )
             if r.status_code == 200:
                 return r.json()["choices"][0]["message"]["content"].strip()
@@ -426,6 +716,37 @@ class VoicePipeline:
     async def generate_response(self, user_text: str):
         self.messages.append({"role": "user", "content": user_text})
         self._warmed_up = False  # reset so next speech start can warm up again
+        # Inject targeted memory context for this specific question
+        try:
+            from codec_memory import CodecMemory
+            cm = CodecMemory()
+            targeted = cm.get_context(user_text, n=3)
+            if targeted:
+                self.messages[0] = {
+                    "role": "system",
+                    "content": _build_system_prompt() + f"\n\n[MEMORY — RELEVANT CONTEXT]\n{targeted}\n[END MEMORY]"
+                }
+        except Exception:
+            pass
+        # Phase 2 Step 5 — Observer summary injection (gated per §X).
+        # Voice always uses local Qwen by default (transport="local"); if
+        # the user has cloud-routed voice configured (vision_provider=
+        # "gemini"), pass transport="voice" so the cloud-transport gate
+        # applies. Audit emit fires inside the helper.
+        try:
+            from codec_observer import maybe_inject_observation_summary
+            _voice_transport = "voice" if VISION_PROVIDER == "gemini" else "local"
+            _obs_summary, _obs_reason = maybe_inject_observation_summary(
+                user_prompt=user_text or "",
+                transport=_voice_transport,
+                skill_name=None,
+                skill_module=None,
+            )
+            if _obs_summary and self.messages and self.messages[0].get("role") == "system":
+                # Append after memory block, before next user turn
+                self.messages[0]["content"] += f"\n\n{_obs_summary}"
+        except Exception as _e:
+            print(f"[Voice] observer injection failed (non-fatal): {_e}")
         full = ""
         async for chunk in self._stream_qwen(self._trimmed_messages()):
             full += chunk
@@ -482,16 +803,156 @@ class VoicePipeline:
             return False
         if audio:
             await self.ws.send_bytes(audio)
-            self.last_tts_end = time.monotonic()
+            self.last_tts_end = self._tts_playback_end_time(audio)
         return True
 
+    def _tts_playback_end_time(self, audio_bytes: bytes) -> float:
+        """Return the monotonic timestamp at which the BROWSER finishes playing.
+
+        The browser plays the audio for roughly `len(audio) / TTS_BYTES_PER_SEC`
+        seconds after a small decode lag. Setting `last_tts_end` to this future
+        time prevents the VAD from re-engaging while CODEC is still audibly
+        speaking (which is what was creating the echo / self-interrupt loop).
+        """
+        if not audio_bytes:
+            return time.monotonic()
+        duration = len(audio_bytes) / float(TTS_BYTES_PER_SEC)
+        return time.monotonic() + TTS_BROWSER_DECODE_LAG + duration
+
     # ── Skill dispatch ────────────────────────────────────────────────────
+
+    # ── Phase 1 Step 3 §5.3 — voice AskUserQuestion handlers ─────────
+    async def _poll_pending_question_for_voice(self) -> Optional[dict]:
+        """Check pending_questions.json for a question this voice session
+        should answer. Returns the record dict if one is ready to be
+        announced, otherwise None.
+
+        Strategy: pick the OLDEST status="pending" record whose
+        operation_id matches this session's _cid OR whose asked_from is
+        "voice"/"crew" (background ops the user might want to answer
+        out-loud). Skip questions that have already been announced this
+        session (tracked in self._announced_question_ids)."""
+        if not hasattr(self, "_announced_question_ids"):
+            self._announced_question_ids = set()
+        try:
+            from codec_ask_user import _load_pending_questions
+            data = _load_pending_questions()
+        except Exception as e:
+            print(f"[Voice] ask_user poll failed: {e}")
+            return None
+        for rec in data.get("pending_questions", []):
+            if rec.get("status") != "pending":
+                continue
+            if rec.get("id") in self._announced_question_ids:
+                continue
+            asked_from = rec.get("asked_from", "")
+            # Match: same correlation_id OR a background ask from a crew /
+            # voice operation.
+            if (rec.get("correlation_id") == self._cid
+                    or asked_from in ("crew", "voice")):
+                self._announced_question_ids.add(rec["id"])
+                return rec
+        return None
+
+    async def _announce_pending_question(self, rec: dict) -> None:
+        """TTS-announce the question. If options present, list them."""
+        try:
+            agent = rec.get("agent") or "CODEC"
+            question = rec.get("question") or ""
+            options = rec.get("options")
+            if options:
+                opt_phrase = "Options: " + ", or ".join(str(o) for o in options) + "."
+                announcement = f"{agent} is asking: {question}. {opt_phrase}"
+            else:
+                announcement = f"{agent} is asking: {question}"
+            if rec.get("consent_strict"):
+                verb = rec.get("destructive_verb") or "confirm"
+                announcement += (
+                    f" This is a destructive action — please say the word "
+                    f"'{verb}' clearly to confirm, or say 'cancel' to abort."
+                )
+            await self._speak(announcement)
+        except Exception as e:
+            print(f"[Voice] ask_user announce failed: {e}")
+
+    async def _handle_voice_ask_user_answer(self, qid: str,
+                                             user_text: str) -> None:
+        """Route the user's spoken transcript to /api/agents/answer/{qid}
+        — same backend as the PWA path. Resolves fuzzy options for
+        non-strict-consent questions; passes strict ones through
+        verbatim so codec_ask_user.submit_answer evaluates the literal
+        verb-match rule.
+        """
+        try:
+            from codec_ask_user import _find_pending_record, submit_answer
+            rec = _find_pending_record(qid)
+            if rec is None:
+                await self._speak("Sorry, that question already expired.")
+                return
+            options = rec.get("options")
+            strict = bool(rec.get("consent_strict"))
+            destructive_verb = rec.get("destructive_verb")
+            # Apply fuzzy match (skipped when strict=True per §5.3.1).
+            if options and not strict:
+                resolved = _resolve_voice_option_choice(
+                    user_text, options, strict=False,
+                    destructive_verb=destructive_verb)
+                answer_to_send = resolved
+            else:
+                answer_to_send = user_text
+            result = submit_answer(qid, answer_to_send, answered_via="voice")
+            if result.get("ok"):
+                await self._speak("Got it. Thanks.")
+            elif result.get("rejected") and result.get("reason") == "ambiguous_consent":
+                remaining = result.get("remaining_attempts", 0)
+                if remaining > 0:
+                    await self._speak(
+                        f"That wasn't a clear confirmation. Please say "
+                        f"'{destructive_verb or 'confirm'}' to proceed, or "
+                        f"'cancel' to abort. {remaining} attempt left."
+                    )
+                    # Re-arm: same qid, next utterance is another attempt.
+                    self._awaiting_ask_user = qid
+                else:
+                    await self._speak("Question canceled — too many ambiguous answers.")
+            else:
+                err = result.get("error", "")
+                await self._speak(f"Couldn't record that answer: {err}")
+        except Exception as e:
+            print(f"[Voice] ask_user answer handler failed: {e}")
+            try:
+                await self._speak("Something went wrong recording your answer.")
+            except Exception:
+                pass
 
     async def dispatch_skill(self, skill: dict, user_text: str) -> Optional[str]:
         try:
             print(f"[Voice] → skill: {skill['name']}")
             loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(None, skill["run"], user_text)
+            # Phase 1 Step 2: route the voice skill call through the unified
+            # hook surface. self._cid is set at VoicePipeline.run entry per
+            # Step 1 (d); plugins inherit it automatically.
+            _skill_name = skill["name"]
+            _skill_run = skill["run"]
+            _voice_cid = getattr(self, "_cid", None) or _voice_correlation_id_var.get()
+
+            def _run_with_hooks_sync():
+                def _inner(t, _c):
+                    return _skill_run(t)
+                return _voice_run_with_hooks(
+                    tool_name=_skill_name,
+                    task=user_text,
+                    context="",
+                    transport="voice",
+                    correlation_id=_voice_cid or "",
+                    invoke=_inner,
+                )
+
+            ctx = contextvars.copy_context()
+            result = await loop.run_in_executor(None, ctx.run, _run_with_hooks_sync)
+            if isinstance(result, HookVeto):
+                return (f"Skill '{_skill_name}' was vetoed by plugin "
+                        f"'{result.plugin_name}': {result.reason}")
             result = str(result).strip() if result else ""
             if not result or result.lower() in ("none", "done, but no output.", ""):
                 print(f"[Voice] Skill {skill['name']} empty — falling through to Qwen")
@@ -509,7 +970,7 @@ class VoicePipeline:
             {"role": "user",   "content": result},
         ]
         summary = ""
-        async for chunk in self._stream_qwen(summary_msgs, max_tokens=150):
+        async for chunk in self._stream_qwen(summary_msgs, max_tokens=1000):
             summary += chunk
         return summary.strip() or result[:300]
 
@@ -570,7 +1031,7 @@ class VoicePipeline:
                 audio = await self.synthesize(notify)
                 if audio:
                     await self.ws.send_bytes(audio)
-                    self.last_tts_end = time.monotonic()
+                    self.last_tts_end = self._tts_playback_end_time(audio)
 
                 async def voice_cb(update):
                     status = update.get("status", "")
@@ -586,7 +1047,7 @@ class VoicePipeline:
                     a = await self.synthesize(msg)
                     if a:
                         await self.ws.send_bytes(a)
-                        self.last_tts_end = time.monotonic()
+                        self.last_tts_end = self._tts_playback_end_time(a)
 
                 _dash = os.path.dirname(os.path.abspath(__file__))
                 if _dash not in sys.path:
@@ -652,6 +1113,9 @@ class VoicePipeline:
                 if msg_type == "websocket.disconnect":
                     print("[Voice] WebSocket disconnected in receiver")
                     await self.utterance_queue.put(None)  # signal pipeline to stop
+                    # If unexpected, save state for possible resume
+                    if self._disconnect_reason != "user":
+                        self._save_for_resume()
                     break
 
                 # ── Text / JSON control message ──
@@ -692,6 +1156,13 @@ class VoicePipeline:
                         elif ctrl_type == "ping":
                             await self.ws.send_json({"type": "pong"})
 
+                        elif ctrl_type == "end_call":
+                            # User intentionally ending the call — no resume needed
+                            self._disconnect_reason = "user"
+                            print("[Voice] User ended call intentionally")
+                            await self.utterance_queue.put(None)
+                            return
+
                         elif ctrl_type == "hold_start":
                             # User started hold-to-talk — ensure we're in listening mode
                             print("[Voice] Hold-to-talk started")
@@ -729,6 +1200,16 @@ class VoicePipeline:
 
         except Exception as e:
             print(f"[Voice] Receiver error: {type(e).__name__}: {e}")
+            # Try to send reconnect advisory before dying
+            try:
+                await self.ws.send_json({
+                    "type": "reconnect",
+                    "session_id": self.session_id,
+                    "reason": str(e),
+                })
+            except Exception:
+                pass  # connection may already be dead
+            self._save_for_resume()
             await self.utterance_queue.put(None)
 
     # ── Pipeline processor task ───────────────────────────────────────────
@@ -763,56 +1244,82 @@ class VoicePipeline:
                 print(f"[Voice] User: {user_text}")
                 await self.ws.send_json({"type": "transcript", "role": "user", "text": user_text})
 
+                # Phase 1 Step 3 §5.3 — single-question listen mode.
+                # If an AskUserQuestion is awaiting an answer for THIS
+                # voice session, route this transcript as the answer
+                # (NOT as a new command). Resolve fuzzy options for
+                # non-strict-consent questions; let the strict-consent
+                # gate in codec_ask_user.submit_answer evaluate strict
+                # ones literally.
+                if self._awaiting_ask_user:
+                    qid = self._awaiting_ask_user
+                    self._awaiting_ask_user = None  # consume the slot
+                    await self._handle_voice_ask_user_answer(qid, user_text)
+                    self.processing = False
+                    await self.ws.send_json({"type": "status", "status": "listening"})
+                    continue
+
+                # Otherwise: poll pending_questions.json for a question
+                # this session should answer. If one exists, announce it
+                # via TTS and switch into single-question listen mode for
+                # the NEXT utterance (don't process this one as a command).
+                _q = await self._poll_pending_question_for_voice()
+                if _q is not None:
+                    self._awaiting_ask_user = _q.get("id")
+                    await self._announce_pending_question(_q)
+                    self.processing = False
+                    await self.ws.send_json({"type": "status", "status": "listening"})
+                    continue
+
                 # 1b. Screenshot + Vision — "look at my screen" etc.
                 if self._is_screen_request(user_text):
                     print("[Voice] Screen analysis requested")
                     await self.ws.send_json({"type": "status", "status": "analyzing_screen"})
-                    # Speak a quick acknowledgment so user knows it's working
-                    await self._speak("Let me take a look at your screen.")
+                    # Camera shutter sound + overlay for visual feedback
+                    asyncio.get_event_loop().run_in_executor(None, lambda: subprocess.Popen(
+                        ["afplay", "/System/Library/Sounds/Tink.aiff"],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+                    asyncio.get_event_loop().run_in_executor(None, lambda: subprocess.Popen(
+                        [sys.executable, "-c",
+                         "import tkinter as tk;r=tk.Tk();r.overrideredirect(1);r.attributes('-topmost',1);"
+                         "r.attributes('-alpha',0.95);r.configure(bg='#0a0a0a');"
+                         "sw=r.winfo_screenwidth();sh=r.winfo_screenheight();"
+                         "w,h=360,60;r.geometry(f'{w}x{h}+{(sw-w)//2}+{sh-130}');"
+                         "c=tk.Canvas(r,bg='#0a0a0a',highlightthickness=0,width=w,height=h);c.pack();"
+                         "c.create_rectangle(1,1,w-1,h-1,outline='#00aaff',width=1);"
+                         "c.create_text(w//2,h//2,text='\U0001f4f7  Analyzing your screen...',fill='#00aaff',font=('Helvetica',13));"
+                         "r.after(8000,r.destroy);r.mainloop()"],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
                     screenshot_b64 = await self._take_screenshot()
+                    print(f"[Voice] Screenshot taken: {'OK' if screenshot_b64 else 'FAILED'}")
                     if screenshot_b64:
-                        await self._speak("Got it. Analyzing what I see.")
+                        self.interrupted.clear()
+                        await self.ws.send_json({"type": "status", "status": "processing"})
+                        print("[Voice] Sending to vision model...")
                         vision_desc = await self._analyze_screenshot(screenshot_b64, user_text)
+                        print(f"[Voice] Vision result: {'OK (' + str(len(vision_desc)) + ' chars)' if vision_desc else 'EMPTY/FAILED'}")
+                        # Check for interrupt after vision inference (user may have spoken)
+                        if self.interrupted.is_set():
+                            print("[Voice] Interrupted during vision inference — discarding result")
+                            self.processing = False
+                            await self.ws.send_json({"type": "status", "status": "listening"})
+                            continue
                         if vision_desc:
-                            # Inject screen context into conversation so LLM can discuss it
-                            screen_context = (
-                                f"[SCREEN ANALYSIS] I just looked at the user's screen. "
-                                f"Here's what I see: {vision_desc}"
-                            )
+                            # Speak the vision description directly — no LLM needed
+                            # Clean up vision output for TTS
+                            clean_desc = re.sub(r'[*#`\[\]]', '', vision_desc).strip()
+                            print(f"[Voice] Speaking vision result directly: {clean_desc[:100]}...")
                             self.messages.append({"role": "user", "content": user_text})
-                            self.messages.append({"role": "system", "content": screen_context})
-                            # Now stream LLM response with screen awareness
-                            await self.ws.send_json({"type": "status", "status": "processing"})
-                            sentence_buf = ""
-                            full_text = ""
-                            interrupted_mid = False
-                            follow_up = (
-                                f"Based on what you see on my screen, respond to what I said: \"{user_text}\". "
-                                "Be helpful and specific about what's visible."
-                            )
-                            async for token in self._stream_qwen(self._trimmed_messages() + [
-                                {"role": "user", "content": follow_up}
-                            ]):
-                                if self.interrupted.is_set():
-                                    interrupted_mid = True
-                                    break
-                                sentence_buf += token
-                                full_text += token
-                                to_speak, sentence_buf = self._flush_on_boundary(sentence_buf)
-                                if to_speak:
-                                    await self.ws.send_json({"type": "transcript_chunk", "text": to_speak})
-                                    ok = await self._speak(to_speak)
-                                    if not ok:
-                                        interrupted_mid = True
-                                        break
-                            if not interrupted_mid and sentence_buf.strip():
-                                await self.ws.send_json({"type": "transcript_chunk", "text": sentence_buf})
-                                await self._speak(sentence_buf.strip())
+                            screen_context = f"I looked at your screen. Here's what I see: {clean_desc}"
+                            self.messages.append({"role": "assistant", "content": screen_context})
+                            self.interrupted.clear()
+                            # Send transcript and speak
+                            response_text = f"Here's what I see on your screen. {clean_desc}"
                             await self.ws.send_json({
                                 "type": "transcript", "role": "assistant",
-                                "text": full_text.strip() + (" [interrupted]" if interrupted_mid else "")
+                                "text": response_text
                             })
-                            self.messages.append({"role": "assistant", "content": full_text.strip()})
+                            await self._speak(response_text)
                             self.processing = False
                             await self.ws.send_json({"type": "status", "status": "listening"})
                             continue
@@ -894,38 +1401,125 @@ class VoicePipeline:
     # ── Main entry point ──────────────────────────────────────────────────
 
     async def run(self):
-        print(f"[Voice] Session started: {self.session_id}")
-
-        # Greeting — use user_name from config if available
-        _user_name = ""
+        is_resumed = self._is_resumed
+        # One correlation_id per voice session. Inherited by any nested
+        # tool_call / tool_result / voice_interrupt emits.
+        cid = secrets.token_hex(6)
+        cid_token = _voice_correlation_id_var.set(cid)
+        self._cid = cid
+        # Phase 1 Step 3 §5.3 — single-question listen mode state.
+        # When non-None, the next user utterance is treated as the answer
+        # to the pending question (NOT a new wake-word command). Cleared
+        # after the answer is routed to /api/agents/answer/{id}.
+        self._awaiting_ask_user = None
+        run_t0 = time.monotonic()
+        print(f"[Voice] Session {'resumed' if is_resumed else 'started'}: {self.session_id}")
+        # Phase 1 Step 3 §5.3 — touch the active-session marker so
+        # codec_ask_user knows whether to announce-and-listen vs defer
+        # to PWA-only.
+        _touch_voice_session_marker(self.session_id)
         try:
-            _user_name = _cfg.get("user_name", "")
-        except NameError:
+            _voice_log_event("voice_session_start", "codec-voice",
+                             f"Voice session {'resumed' if is_resumed else 'started'}",
+                             extra={"session_id": self.session_id,
+                                    "resume_id": self.session_id if is_resumed else None},
+                             correlation_id=cid)
+        except Exception:
             pass
-        if _user_name:
-            greeting = f"Greetings {_user_name}. Q is online. All systems local. What do you need?"
+        # Phase 1 Step 2: fire on_operation_start hooks (per-plugin, not the
+        # voice_session_start audit event above — that's Step 1 vocabulary
+        # and intentionally unchanged). Hook layer never raises.
+        try:
+            _voice_emit_op_start(operation_id=self.session_id,
+                                 transport="voice",
+                                 correlation_id=cid)
+        except Exception:
+            pass
+
+        # Send session ID so client can reconnect to this session
+        await self.ws.send_json({"type": "session", "session_id": self.session_id})
+
+        if is_resumed:
+            # Reconnected — short acknowledgement, no full greeting
+            greeting = "Reconnected. I'm still here. Go ahead."
+            self.messages.append({"role": "assistant", "content": greeting})
+            await self.ws.send_json({"type": "transcript", "role": "assistant", "text": greeting})
+            g_audio = await self.synthesize(greeting)
+            if g_audio:
+                await self.ws.send_bytes(g_audio)
+                self.last_tts_end = time.monotonic()
         else:
-            greeting = "Greetings. Q is online. All systems local. What do you need?"
-        self.messages.append({"role": "assistant", "content": greeting})
-        await self.ws.send_json({"type": "transcript", "role": "assistant", "text": greeting})
-        g_audio = await self.synthesize(greeting)
-        if g_audio:
-            await self.ws.send_bytes(g_audio)
-            self.last_tts_end = time.monotonic()
+            # Fresh session — full greeting
+            _user_name = ""
+            try:
+                _user_name = _cfg.get("user_name", "")
+            except NameError:
+                pass
+            if _user_name:
+                greeting = f"Greetings {_user_name}. CODEC is online. All systems local. What do you need?"
+            else:
+                greeting = "Greetings. CODEC is online. All systems local. What do you need?"
+            self.messages.append({"role": "assistant", "content": greeting})
+            await self.ws.send_json({"type": "transcript", "role": "assistant", "text": greeting})
+            g_audio = await self.synthesize(greeting)
+            if g_audio:
+                await self.ws.send_bytes(g_audio)
+                self.last_tts_end = time.monotonic()
 
         # Run both tasks concurrently — receiver feeds queue, pipeline processes
         receiver = asyncio.create_task(self._audio_receiver())
         pipeline = asyncio.create_task(self._pipeline())
 
+        run_outcome = "ok"
+        run_error_type = None
+        run_error = None
         try:
             await asyncio.gather(receiver, pipeline)
         except Exception as e:
+            run_outcome = "error"
+            run_error_type = type(e).__name__
+            run_error = str(e)[:500]
             print(f"[Voice] Session error: {type(e).__name__}: {e}")
         finally:
             receiver.cancel()
             pipeline.cancel()
             self.save_to_memory()
             print(f"[Voice] Session ended: {self.session_id}")
+            try:
+                duration_ms = (time.monotonic() - run_t0) * 1000.0
+                turns = sum(1 for m in self.messages if m.get("role") == "user")
+                _voice_log_event("voice_session_end", "codec-voice",
+                                 f"Voice session ended: {self.session_id}",
+                                 extra={"session_id": self.session_id,
+                                        "turns": turns,
+                                        "disconnect_reason": self._disconnect_reason},
+                                 outcome=run_outcome,
+                                 duration_ms=duration_ms,
+                                 error_type=run_error_type,
+                                 error=run_error,
+                                 correlation_id=cid)
+            except Exception:
+                pass
+            # Phase 1 Step 2: fire on_operation_end hooks. Same caveat as
+            # the start emit above — voice_session_end audit event is Step 1
+            # vocabulary and unchanged; on_operation_end is the hook-layer
+            # event with §11 Q6 vocabulary.
+            try:
+                _voice_emit_op_end(operation_id=self.session_id,
+                                   transport="voice",
+                                   correlation_id=cid,
+                                   duration_ms=duration_ms,
+                                   outcome=run_outcome)
+            except Exception:
+                pass
+            try:
+                _voice_correlation_id_var.reset(cid_token)
+            except Exception:
+                pass
+            # Phase 1 Step 3 §5.3 — clear the active-session marker so
+            # codec_ask_user falls back to PWA-only for any subsequent
+            # questions. Best-effort; failures don't break shutdown.
+            _clear_voice_session_marker()
 
     async def close(self):
         try:

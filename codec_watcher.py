@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""CODEC Q-Watcher v3.0 | Smart draft/reply with Screenshot Vision"""
+"""CODEC Q-Watcher v2.1 | Smart draft/reply with Screenshot Vision"""
 import os, time, requests, subprocess, tempfile, json, signal, re, base64
-signal.signal(signal.SIGINT, lambda *a: None)
-signal.signal(signal.SIGTERM, lambda *a: None)
+if __name__ == "__main__":
+    signal.signal(signal.SIGINT, lambda *a: None)
+    signal.signal(signal.SIGTERM, lambda *a: None)
 
-QWEN_BASE_URL  = "http://localhost:8081/v1"
-QWEN_MODEL     = "mlx-community/Qwen3.5-35B-A3B-4bit"
-QWEN_VISION_URL = "http://localhost:8082/v1"
-QWEN_VISION_MODEL = "mlx-community/Qwen2.5-VL-7B-Instruct-4bit"
+QWEN_BASE_URL  = "http://localhost:8083/v1"
+QWEN_MODEL     = "mlx-community/Qwen3.6-35B-A3B-4bit"
+QWEN_VISION_URL = "http://localhost:8083/v1"
+QWEN_VISION_MODEL = "mlx-community/Qwen3.6-35B-A3B-4bit"
 KOKORO_URL     = "http://localhost:8085/v1/audio/speech"
 KOKORO_MODEL   = "mlx-community/Kokoro-82M-bf16"
 TTS_VOICE      = "am_adam"
@@ -123,9 +124,8 @@ def speak(text):
 def paste_text(text):
     subprocess.run(["pbcopy"], input=text.encode(), timeout=5)
     time.sleep(0.3)
-    subprocess.run(["osascript", "-e",
-        'tell application "System Events" to keystroke "v" using command down'],
-        capture_output=True, timeout=5)
+    import pyautogui
+    pyautogui.hotkey('command', 'v')
 
 def handle_draft(task, ctx, app):
     print(f"[Watcher] Drafting: {task[:60]}")
@@ -212,15 +212,16 @@ def handle_draft(task, ctx, app):
         capture_output=True)
     speak("Draft pasted.")
 
-print("[CODEC Watcher v3.0] Running. Screenshot Vision for context.")
-while True:
-    if os.path.exists(TASK_FILE):
-        try:
-            with open(TASK_FILE) as f:
-                data = json.load(f)
-            os.unlink(TASK_FILE)
-            handle_draft(data["task"], data.get("ctx",""), data.get("app",""))
-        except Exception as e:
-            print(f"[Watcher] Error: {e}")
-            import traceback; traceback.print_exc()
-    time.sleep(0.2)
+if __name__ == "__main__":
+    print("[CODEC Watcher v2.1] Running. Screenshot Vision for context.")
+    while True:
+        if os.path.exists(TASK_FILE):
+            try:
+                with open(TASK_FILE) as f:
+                    data = json.load(f)
+                os.unlink(TASK_FILE)
+                handle_draft(data["task"], data.get("ctx",""), data.get("app",""))
+            except Exception as e:
+                print(f"[Watcher] Error: {e}")
+                import traceback; traceback.print_exc()
+        time.sleep(0.2)

@@ -6,6 +6,7 @@ SKILL_NAME = "chrome_scroll"
 SKILL_TRIGGERS = ["scroll down", "scroll up", "scroll to bottom", "scroll to top",
                   "page down", "page up", "go to bottom of page", "go to top of page"]
 SKILL_DESCRIPTION = "Scroll web pages up, down, or to specific positions via CDP"
+SKILL_MCP_EXPOSE = True
 
 def run(task: str, context: str = "") -> str:
     from codec_cdp import is_cdp_available, run_cdp, ChromeCDP
@@ -14,7 +15,6 @@ def run(task: str, context: str = "") -> str:
         # Fallback: AppleScript scroll
         import subprocess
         direction = "down" if "down" in task.lower() or "bottom" in task.lower() else "up"
-        key = "Page Down" if direction == "down" else "Page Up"
         subprocess.run(["osascript", "-e", f'tell application "Google Chrome" to activate'],
                       capture_output=True)
         subprocess.run(["osascript", "-e", f'tell application "System Events" to key code {121 if direction == "down" else 116}'],
