@@ -139,6 +139,11 @@ def run(task, app="", ctx=""):
         content = _extract_content(task)
         if not content:
             return "No content provided. Use: write file '/path' content: your text here"
+        # Convert literal \n escape sequences to real newlines.
+        # LLMs sometimes write the two-character sequence backslash-n instead of
+        # an actual newline character. Normalise both forms.
+        if '\\n' in content:
+            content = content.replace('\\n', '\n')
         if len(content) > _MAX_WRITE:
             return f"Content too large ({len(content):,} chars). Max {_MAX_WRITE:,}."
         # Ensure parent directory exists

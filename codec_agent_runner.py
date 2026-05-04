@@ -211,6 +211,12 @@ Rules:
     • Never put multiple file paths in a single "task" string — file_ops only handles one
       path at a time. If you have 30 files to read, make 30 sequential skill calls.
     • The "task" string must be short and specific: "Read file '/path/to/one/file.md'"
+- CRITICAL — writing multi-line file content:
+    • When writing markdown, tables, or any structured text with file_ops, you MUST include
+      actual newlines in the content. Use \\n inside the JSON string to produce a newline.
+    • WRONG:  "task": "write file '/p' content: # Title Row1 Row2 Row3"
+    • CORRECT: "task": "write file '/p' content: # Title\\n\\nRow1\\nRow2\\nRow3"
+    • A markdown table MUST have each row on its own line: | col | col |\\n| --- | --- |\\n| val |
 - Output ONLY the JSON. No prose.
 """
 
