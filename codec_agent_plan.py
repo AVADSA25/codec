@@ -70,7 +70,7 @@ _PROJECT_ROOT = Path(os.path.expanduser(
 # ── Schema constants ──────────────────────────────────────────────────────────
 PLAN_SCHEMA_VERSION = 1
 GLOBAL_GRANTS_SCHEMA_VERSION = 1
-DEFAULT_STEP_BUDGET_PER_CHECKPOINT = 30
+DEFAULT_STEP_BUDGET_PER_CHECKPOINT = 60
 MAX_CLARIFYING_ROUNDS = 3
 MAX_PROJECT_SLUG_LEN = 50
 
@@ -309,7 +309,7 @@ You return ONLY a JSON object matching this schema:
       "description":     <string>,
       "skills_needed":   [<skill_name>, ...],
       "expected_output": <string>,
-      "step_budget":     <int, default 30>
+      "step_budget":     <int, default 60 — use 40 for simple single-skill checkpoints, 60 for multi-fetch or multi-file work, 80+ for checkpoints with many retries expected>
     }
   ],
   "permission_manifest": {
