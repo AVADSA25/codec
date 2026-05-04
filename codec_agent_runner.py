@@ -242,7 +242,10 @@ def _qwen_next_action(plan_dict: Dict[str, Any], checkpoint: Dict[str, Any],
     response into an Action. Raises QwenUnavailableError or
     ValueError on bad JSON shape."""
     recent = history[-max_history:] if history else []
-    budget = int(checkpoint.get("step_budget", DEFAULT_STEP_BUDGET_PER_CHECKPOINT))
+    # Floor to DEFAULT so plans with tiny LLM-generated budgets (e.g. 5 or 10)
+    # don't exhaust before Qwen can finish real work.
+    budget = max(int(checkpoint.get("step_budget", DEFAULT_STEP_BUDGET_PER_CHECKPOINT)),
+                 DEFAULT_STEP_BUDGET_PER_CHECKPOINT)
     steps_used = len(history)
     steps_remaining = max(0, budget - steps_used)
 
@@ -438,7 +441,10 @@ def _execute_checkpoint(plan_dict: Dict[str, Any],
     """
     if history is None:
         history = []
-    budget = int(checkpoint.get("step_budget", DEFAULT_STEP_BUDGET_PER_CHECKPOINT))
+    # Floor to DEFAULT so plans with tiny LLM-generated budgets (e.g. 5 or 10)
+    # don't exhaust before Qwen can finish real work.
+    budget = max(int(checkpoint.get("step_budget", DEFAULT_STEP_BUDGET_PER_CHECKPOINT)),
+                 DEFAULT_STEP_BUDGET_PER_CHECKPOINT)
 
     for step in range(budget):
         action = _qwen_next_action(plan_dict, checkpoint, history)

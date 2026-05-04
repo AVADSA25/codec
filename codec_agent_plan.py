@@ -326,7 +326,13 @@ You return ONLY a JSON object matching this schema:
 Rules:
 - Output ONLY valid JSON. No prose before or after.
 - skills_needed MUST be skill names from the user-supplied registry list. Never invent skill names.
-  Common confusions to avoid: there is NO `file_read` skill (use `file_ops`, which reads, writes, appends, lists). There is NO `fetch_url` (use `web_fetch`). There is NO `read_file` (use `file_ops`). If you can't find an exact match in the registry list, pick the closest match — never invent.
+  Common confusions to avoid:
+  • NO `file_read` skill → use `file_ops` (reads, writes, appends, lists directories)
+  • NO `fetch_url` → use `web_fetch`
+  • NO `read_file` → use `file_ops`
+  • `file_search` is for finding a file BY NAME across the whole Mac (uses macOS Spotlight). It opens a Terminal window and returns at most 5 results. Do NOT use it to list all files in a directory — use `file_ops` for that (e.g. "list all .md files in ~/codec-repo/docs/").
+  • For reading or writing files in a known directory: use `file_ops`, not `file_search`.
+- step_budget MUST be at least 60 per checkpoint. The runtime will floor to 60 anyway, so values below 60 are useless. Use 60 for simple single-skill work, 80 for multi-step, 100+ for complex tasks.
 - write_paths default to ~/.codec/agents/{agent_id}/artifacts/** unless the project explicitly requires writing elsewhere.
 - destructive_ops list any irreversible operations (deletes, payments, sending emails on user's behalf). They will require additional consent at runtime.
 - estimated_duration_minutes is your best honest guess.
