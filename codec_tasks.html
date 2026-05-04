@@ -271,6 +271,7 @@ a { color: var(--accent); text-decoration: none; }
     <button class="tab" onclick="showTab('heartbeat')" id="tab-heartbeat"><svg class="ico ico-sm" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>Heartbeat</button>
     <button class="tab" onclick="showTab('history')" id="tab-history"><svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>History</button>
     <button class="tab" onclick="showTab('reports')" id="tab-reports"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>Reports</button>
+    <button class="tab" onclick="showTab('pilot')" id="tab-pilot"><svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>Pilot</button>
   </div>
 
   <!-- ── Schedules Tab ── -->
@@ -417,6 +418,106 @@ a { color: var(--accent); text-decoration: none; }
       <div class="loading">Loading reports...</div>
     </div>
   </div>
+
+  <!-- ── Pilot Tab ── -->
+  <div class="tab-panel" id="panel-pilot">
+
+    <!-- Status bar -->
+    <div id="pilotStatusBar" style="display:flex;align-items:center;gap:8px;margin-bottom:16px;padding:8px 12px;background:var(--surface-2);border-radius:var(--radius-sm);font-size:12px;font-family:var(--mono);">
+      <span id="pilotDot" style="width:8px;height:8px;border-radius:50%;background:#666;flex-shrink:0"></span>
+      <span id="pilotStatusText" style="color:var(--text-muted)">Checking pilot…</span>
+      <span style="flex:1"></span>
+      <a href="https://pilot.lucyvpa.com" target="_blank" style="color:var(--accent);text-decoration:none;font-size:11px;">pilot.lucyvpa.com ↗</a>
+    </div>
+
+    <!-- Two-column layout: left=controls, right=screenshot -->
+    <div style="display:grid;grid-template-columns:1fr 260px;gap:16px;align-items:start;">
+
+      <!-- Left: controls -->
+      <div style="display:flex;flex-direction:column;gap:14px;">
+
+        <!-- Navigate -->
+        <div>
+          <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.08em;">Navigate</div>
+          <div style="display:flex;gap:6px;">
+            <input id="pilotNavUrl" type="url" placeholder="https://…" style="flex:1;padding:7px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-family:var(--mono);" onkeydown="if(event.key==='Enter')pilotNavigate()">
+            <button class="btn btn-primary btn-sm" onclick="pilotNavigate()">Go</button>
+          </div>
+        </div>
+
+        <!-- Snapshot -->
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+            <div style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;">DOM Snapshot</div>
+            <button class="btn btn-sm" onclick="pilotSnapshot()" style="font-size:11px;padding:3px 8px;">Refresh</button>
+          </div>
+          <div id="pilotSnapshot" style="font-size:11px;font-family:var(--mono);background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;max-height:180px;overflow-y:auto;color:var(--text-muted);white-space:pre-wrap;line-height:1.5;">—</div>
+        </div>
+
+        <!-- Run agent -->
+        <div>
+          <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.08em;">Run Agent Task</div>
+          <textarea id="pilotTaskInput" rows="2" placeholder="Describe what the agent should do on the current page…" style="width:100%;padding:8px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;resize:vertical;box-sizing:border-box;font-family:var(--font);"></textarea>
+          <div style="display:flex;gap:6px;margin-top:6px;">
+            <button class="btn btn-primary btn-sm" onclick="pilotStartRun()" style="flex:1;">▶ Start Run</button>
+            <button class="btn btn-sm" onclick="pilotRefreshRuns()" style="padding:6px 10px;" title="Refresh runs">↻</button>
+          </div>
+        </div>
+
+        <!-- Click / Type quick actions -->
+        <div>
+          <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.08em;">Quick Actions</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <div style="display:flex;gap:4px;flex:1;min-width:160px;">
+              <input id="pilotClickIdx" type="number" placeholder="Index" min="1" style="width:64px;padding:6px 8px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;">
+              <button class="btn btn-sm" onclick="pilotClick()" style="flex:1;">Click [N]</button>
+            </div>
+            <div style="display:flex;gap:4px;flex:1;min-width:200px;">
+              <input id="pilotTypeIdx" type="number" placeholder="Idx" min="1" style="width:50px;padding:6px 8px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;">
+              <input id="pilotTypeText" type="text" placeholder="Text to type…" style="flex:1;padding:6px 8px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;" onkeydown="if(event.key==='Enter')pilotType()">
+              <button class="btn btn-sm" onclick="pilotType()">Type</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recent runs -->
+        <div>
+          <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.08em;">Recent Runs</div>
+          <div id="pilotRunsList" style="display:flex;flex-direction:column;gap:4px;max-height:220px;overflow-y:auto;">
+            <div style="color:var(--text-muted);font-size:12px;">No runs yet.</div>
+          </div>
+        </div>
+
+      </div><!-- /left -->
+
+      <!-- Right: live screenshot -->
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;">Screenshot</div>
+          <button class="btn btn-sm" onclick="pilotRefreshScreenshot()" style="font-size:11px;padding:3px 8px;">Refresh</button>
+        </div>
+        <img id="pilotScreenshot" src="" alt="Browser screenshot" style="width:100%;border-radius:var(--radius-sm);border:1px solid var(--border);cursor:pointer;background:var(--surface-2);min-height:120px;" onclick="pilotOpenScreenshot()" title="Click to open full size">
+        <div id="pilotCurrentUrl" style="font-size:10px;font-family:var(--mono);color:var(--text-muted);word-break:break-all;text-align:center;"></div>
+      </div><!-- /right -->
+
+    </div><!-- /grid -->
+
+    <!-- Selected run detail -->
+    <div id="pilotRunDetail" style="display:none;margin-top:16px;padding:12px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <div style="font-size:12px;font-weight:600;font-family:var(--mono);" id="pilotDetailRunId"></div>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-sm" id="pilotPauseBtn" onclick="pilotPauseRun()" style="display:none;">⏸ Pause</button>
+          <button class="btn btn-sm" id="pilotResumeBtn" onclick="pilotResumeRun()" style="display:none;">▶ Resume</button>
+          <button class="btn btn-sm" onclick="document.getElementById('pilotRunDetail').style.display='none'">✕</button>
+        </div>
+      </div>
+      <div id="pilotDetailStatus" style="font-size:12px;margin-bottom:6px;"></div>
+      <div id="pilotDetailSnapshot" style="font-size:11px;font-family:var(--mono);color:var(--text-muted);white-space:pre-wrap;max-height:160px;overflow-y:auto;"></div>
+    </div>
+
+  </div><!-- /panel-pilot -->
+
 </div>
 
 <div class="toast-container" id="toastContainer"></div>
@@ -1056,6 +1157,258 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 // Apply UI preferences from dashboard settings
 (function(){try{var p=JSON.parse(localStorage.getItem('codec-ui-prefs')||'{}'),m={'screenshot_btn':'#screenBtn','photo_btn':'#photoBtn','webcam_pip_btn':'#camBtn','voice_btn':'#voiceBtn','notif_bell':'#notifBellBtn','mic_btn':'#micBtn','tasks_heartbeat':'#tab-heartbeat','tasks_reports':'#tab-reports'};Object.keys(m).forEach(function(k){if(p[k]===false)m[k].split(',').forEach(function(s){document.querySelectorAll(s.trim()).forEach(function(el){el.style.display='none'})})})}catch(e){}})();
+
+/* ═══════════════════════════════════════════════════════════════
+   CODEC PILOT — tab JS
+   All calls go to localhost:8094 (pilot-runner FastAPI)
+═══════════════════════════════════════════════════════════════ */
+var _pilotBase = 'http://localhost:8094';
+var _pilotPollTimer = null;
+var _pilotSelectedRun = null;
+
+function _pilotFetch(path, opts) {
+  return fetch(_pilotBase + path, opts || {});
+}
+
+/* ── Status check ── */
+function pilotCheckStatus() {
+  _pilotFetch('/health')
+    .then(function(r){ return r.json(); })
+    .then(function(d) {
+      var dot  = document.getElementById('pilotDot');
+      var text = document.getElementById('pilotStatusText');
+      if (dot)  dot.style.background = '#22c55e';
+      if (text) text.textContent = 'Online  ·  ' + (d.url || 'about:blank') + '  ·  CDP :' + (d.cdp_port || 9223);
+      document.getElementById('pilotCurrentUrl').textContent = d.url || '';
+    })
+    .catch(function() {
+      var dot  = document.getElementById('pilotDot');
+      var text = document.getElementById('pilotStatusText');
+      if (dot)  dot.style.background = '#ef4444';
+      if (text) text.textContent = 'Pilot Runner offline  ·  pm2 restart pilot-runner';
+    });
+}
+
+/* ── Screenshot ── */
+function pilotRefreshScreenshot() {
+  var img = document.getElementById('pilotScreenshot');
+  if (!img) return;
+  img.src = _pilotBase + '/screenshot?' + Date.now();
+}
+
+function pilotOpenScreenshot() {
+  window.open(_pilotBase + '/screenshot', '_blank');
+}
+
+/* ── Navigate ── */
+function pilotNavigate() {
+  var url = (document.getElementById('pilotNavUrl').value || '').trim();
+  if (!url) return;
+  if (!url.startsWith('http')) url = 'https://' + url;
+  _pilotFetch('/navigate', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({url: url})
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(d) {
+    showToast('Navigated: ' + (d.title || url) + ' (' + (d.element_count||0) + ' elements)');
+    pilotRefreshScreenshot();
+    setTimeout(pilotSnapshot, 500);
+  })
+  .catch(function(e){ showToast('Navigate failed: ' + e, true); });
+}
+
+/* ── Snapshot ── */
+function pilotSnapshot() {
+  _pilotFetch('/snapshot')
+    .then(function(r){ return r.json(); })
+    .then(function(d) {
+      var el = document.getElementById('pilotSnapshot');
+      if (!el) return;
+      el.textContent = d.rendered || '(empty)';
+      document.getElementById('pilotCurrentUrl').textContent = d.url || '';
+    })
+    .catch(function(e) {
+      var el = document.getElementById('pilotSnapshot');
+      if (el) el.textContent = 'Error: ' + e;
+    });
+}
+
+/* ── Click ── */
+function pilotClick() {
+  var idx = parseInt(document.getElementById('pilotClickIdx').value);
+  if (!idx) return showToast('Enter an element index', true);
+  _pilotFetch('/click/' + idx, {method:'POST'})
+    .then(function(r){ return r.json(); })
+    .then(function(d) {
+      if (d.error) return showToast('Click failed: ' + d.error, true);
+      showToast('Clicked: ' + (d.clicked || '[' + idx + ']'));
+      setTimeout(function(){ pilotRefreshScreenshot(); pilotSnapshot(); }, 600);
+    })
+    .catch(function(e){ showToast('Click error: ' + e, true); });
+}
+
+/* ── Type ── */
+function pilotType() {
+  var idx  = parseInt(document.getElementById('pilotTypeIdx').value);
+  var text = document.getElementById('pilotTypeText').value;
+  if (!idx || !text) return showToast('Enter index and text', true);
+  _pilotFetch('/type/' + idx, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({text: text})
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(d) {
+    if (d.error) return showToast('Type failed: ' + d.error, true);
+    showToast('Typed into [' + idx + ']');
+  })
+  .catch(function(e){ showToast('Type error: ' + e, true); });
+}
+
+/* ── Start run ── */
+function pilotStartRun() {
+  var task = (document.getElementById('pilotTaskInput').value || '').trim();
+  if (!task) return showToast('Enter a task description', true);
+  _pilotFetch('/run', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({task: task, tag: 'dashboard'})
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(d) {
+    var runId = d.run_id;
+    if (!runId) return showToast('Failed to create run', true);
+    // Kick off agent execution (stub mode — set use_stub:false when Qwen is running)
+    return _pilotFetch('/run/' + runId + '/start', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({step_budget: 20, use_stub: true})
+    })
+    .then(function(r2){ return r2.json(); })
+    .then(function() {
+      showToast('Agent started: ' + runId.substring(0,8) + '…');
+      document.getElementById('pilotTaskInput').value = '';
+      setTimeout(pilotRefreshRuns, 500);
+      // Auto-select this run for monitoring
+      _pilotSelectedRun = runId;
+      setTimeout(function(){ pilotShowRunDetail(runId); }, 1000);
+    });
+  })
+  .catch(function(e){ showToast('Run error: ' + e, true); });
+}
+
+/* ── Runs list ── */
+function pilotRefreshRuns() {
+  _pilotFetch('/runs')
+    .then(function(r){ return r.json(); })
+    .then(function(d) {
+      var list = document.getElementById('pilotRunsList');
+      if (!list) return;
+      var runs = d.runs || [];
+      if (!runs.length) {
+        list.innerHTML = '<div style="color:var(--text-muted);font-size:12px;">No runs yet.</div>';
+        return;
+      }
+      var statusIcon = {done:'✅', error:'❌', running:'⏳', budget_exhausted:'⚠️'};
+      list.innerHTML = runs.slice(0,12).map(function(r) {
+        var icon = statusIcon[r.status] || '📊';
+        var ago  = r.started_at ? Math.round((Date.now()/1000 - r.started_at)) + 's ago' : '';
+        return '<div onclick="pilotShowRunDetail(\'' + r.run_id + '\')" style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;font-size:12px;" title="' + (r.task||'') + '">' +
+          '<span style="flex-shrink:0">' + icon + '</span>' +
+          '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)">' + escHtml(r.task||'').substring(0,50) + '</span>' +
+          '<span style="color:var(--text-muted);flex-shrink:0;font-family:var(--mono);font-size:10px">' + ago + '</span>' +
+        '</div>';
+      }).join('');
+    })
+    .catch(function(){});
+}
+
+/* ── Run detail ── */
+function pilotShowRunDetail(runId) {
+  _pilotSelectedRun = runId;
+  _pilotFetch('/run/' + runId + '/status')
+    .then(function(r){ return r.json(); })
+    .then(function(d) {
+      var detail = document.getElementById('pilotRunDetail');
+      if (!detail) return;
+      detail.style.display = 'block';
+      document.getElementById('pilotDetailRunId').textContent = runId;
+      var statusIcon = {done:'✅', error:'❌', running:'⏳', budget_exhausted:'⚠️'};
+      var icon = statusIcon[d.status] || '📊';
+      var resultLine = d.result ? '  Result: ' + d.result : (d.error ? '  Error: ' + d.error : '');
+      document.getElementById('pilotDetailStatus').innerHTML =
+        '<span>' + icon + ' ' + (d.status||'') + '</span>' +
+        (resultLine ? '<span style="margin-left:8px;color:var(--text-muted)">' + escHtml(resultLine) + '</span>' : '') +
+        '<span style="margin-left:8px;color:var(--text-muted);font-size:11px;">' + (d.steps||[]).length + ' steps</span>';
+      document.getElementById('pilotDetailSnapshot').textContent = d.latest_snapshot || '';
+      // HITL buttons
+      var pauseBtn  = document.getElementById('pilotPauseBtn');
+      var resumeBtn = document.getElementById('pilotResumeBtn');
+      if (pauseBtn)  pauseBtn.style.display  = d.status === 'running' ? '' : 'none';
+      if (resumeBtn) resumeBtn.style.display = 'none'; // shown after pause
+    })
+    .catch(function(){});
+}
+
+/* ── HITL ── */
+function pilotPauseRun() {
+  if (!_pilotSelectedRun) return;
+  _pilotFetch('/hitl/' + _pilotSelectedRun + '/pause', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({reason: 'user paused from dashboard'})
+  })
+  .then(function(){
+    showToast('Agent paused');
+    document.getElementById('pilotPauseBtn').style.display  = 'none';
+    document.getElementById('pilotResumeBtn').style.display = '';
+  })
+  .catch(function(e){ showToast('Pause failed: ' + e, true); });
+}
+
+function pilotResumeRun() {
+  if (!_pilotSelectedRun) return;
+  _pilotFetch('/hitl/' + _pilotSelectedRun + '/resume', {method:'POST'})
+  .then(function(){
+    showToast('Agent resumed');
+    document.getElementById('pilotPauseBtn').style.display  = '';
+    document.getElementById('pilotResumeBtn').style.display = 'none';
+  })
+  .catch(function(e){ showToast('Resume failed: ' + e, true); });
+}
+
+/* ── Auto-poll when Pilot tab is active ── */
+var _pilotTabActive = false;
+var _origShowTab = typeof showTab === 'function' ? showTab : null;
+function showTab(name) {
+  document.querySelectorAll('.tab').forEach(function(t){ t.classList.remove('active'); });
+  document.querySelectorAll('.tab-panel').forEach(function(p){ p.classList.remove('active'); });
+  document.getElementById('tab-' + name).classList.add('active');
+  document.getElementById('panel-' + name).classList.add('active');
+  _pilotTabActive = (name === 'pilot');
+  if (_pilotTabActive) {
+    pilotCheckStatus();
+    pilotRefreshScreenshot();
+    pilotSnapshot();
+    pilotRefreshRuns();
+    if (!_pilotPollTimer) {
+      _pilotPollTimer = setInterval(function() {
+        if (!_pilotTabActive) { clearInterval(_pilotPollTimer); _pilotPollTimer = null; return; }
+        pilotCheckStatus();
+        pilotRefreshScreenshot();
+        if (_pilotSelectedRun) pilotShowRunDetail(_pilotSelectedRun);
+      }, 4000);
+    }
+  } else {
+    if (_pilotPollTimer) { clearInterval(_pilotPollTimer); _pilotPollTimer = null; }
+  }
+}
+/* ── Init pilot if hash=pilot ── */
+document.addEventListener('DOMContentLoaded', function() {
+  if (window.location.hash === '#pilot') showTab('pilot');
+});
 </script>
 <!-- Preview Modal (screenshot + webcam photo) -->
 <div class="preview-modal" id="previewModal" onclick="closePreview(event)">
