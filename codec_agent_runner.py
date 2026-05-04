@@ -121,9 +121,13 @@ def permission_gate(action: Action, agent_grants: Dict[str, Any],
     if action.reads_path and action.read_path:
         read_paths = (set(agent_grants.get("read_paths", [])) |
                       set(global_grants.get("read_paths", [])))
+        # Write paths are implicitly readable — an agent that can write a file
+        # must be able to read it back (verify writes, read prior output, etc.).
+        write_paths_implicit = (set(agent_grants.get("write_paths", [])) |
+                                set(global_grants.get("write_paths", [])))
         action_read_abs = os.path.expanduser(action.read_path)
         ok = any(fnmatch.fnmatch(action_read_abs, os.path.expanduser(p))
-                 for p in read_paths)
+                 for p in read_paths | write_paths_implicit)
         if not ok:
             raise PermissionViolation("read_path_not_authorized", action.read_path)
 
