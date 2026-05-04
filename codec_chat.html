@@ -1448,6 +1448,26 @@ function showSchedulePanel(){
 <!-- Phase 3.5 Step 11 — Project mode agent action handlers + status pills -->
 <script>
 // ── Agent live-update poller ────────────────────────────────────────────────
+// Handle action buttons on agent done/blocked messages
+async function _agentAction(endpoint){
+  try{
+    var r=await fetch(endpoint,{method:'POST'});
+    var d=await r.json();
+    if(d.files){
+      // artifacts list — show inline
+      var list=d.files.map(function(f){
+        var kb=f.size<1024?f.size+' B':(f.size/1024).toFixed(1)+' KB';
+        return '  • '+f.name+' ('+kb+')';
+      }).join('\n');
+      addMessage('assistant','📁 '+d.project_dir+'\n'+list);
+    }else if(d.opened||d.ok){
+      // open-folder succeeded silently
+    }else if(d.error){
+      addMessage('assistant','Error: '+d.error);
+    }
+  }catch(e){addMessage('assistant','Action failed: '+e.message)}
+}
+
 // Inject agent messages that were missed (e.g. agent completed while user was away).
 // Checks chatHist to avoid duplicates — only injects titles not already present.
 async function _injectMissedAgentMessages(agentId){
@@ -1464,9 +1484,15 @@ async function _injectMissedAgentMessages(agentId){
       if(alreadySaved)continue;
       var icon=m.type==='agent_done'?'✅':m.type==='agent_aborted'?'❌':'⚙️';
       var bubble=document.createElement('div');bubble.className='msg assistant';
-      var titleHtml='<div style="font-weight:600;margin-bottom:4px">'+icon+' '+escHtml(title)+'</div>';
-      var bodyHtml=m.body?'<div style="font-size:13px;color:var(--text-dim)">'+escHtml(m.body)+'</div>':'';
-      bubble.innerHTML='<div class="msg-bubble" style="border-left:3px solid var(--accent,#a78bfa);padding-left:10px">'+titleHtml+bodyHtml+'</div>';
+      var titleHtml='<div style="font-weight:600;margin-bottom:6px">'+icon+' '+escHtml(title)+'</div>';
+      var bodyHtml=m.body?'<div style="font-size:13px;color:var(--text-dim);white-space:pre-wrap">'+escHtml(m.body)+'</div>':'';
+      var actionsHtml='';
+      if(m.actions&&m.actions.length){
+        actionsHtml='<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">';
+        m.actions.forEach(function(a){actionsHtml+='<button onclick="_agentAction(\''+escHtml(a.endpoint)+'\')" style="padding:5px 12px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:12px;color:var(--text)">'+escHtml(a.label)+'</button>';});
+        actionsHtml+='</div>';
+      }
+      bubble.innerHTML='<div class="msg-bubble" style="border-left:3px solid var(--accent,#a78bfa);padding-left:10px">'+titleHtml+bodyHtml+actionsHtml+'</div>';
       document.getElementById('messages').appendChild(bubble);
       var msgText=icon+' '+title+(m.body?'\n'+m.body:'');
       chatHist.push({role:'assistant',content:msgText});
@@ -1495,13 +1521,23 @@ function _startAgentPoller(agentId){
         seen.add(m.ts+m.type);
         var icon=m.type==='agent_done'?'✅':m.type==='agent_aborted'?'❌':'⚙️';
         var bubble=document.createElement('div');bubble.className='msg assistant';
-        var titleHtml='<div style="font-weight:600;margin-bottom:4px">'+icon+' '+escHtml(m.title||m.type)+'</div>';
-        var bodyHtml=m.body?'<div style="font-size:13px;color:var(--text-dim)">'+escHtml(m.body)+'</div>':'';
-        bubble.innerHTML='<div class="msg-bubble" style="border-left:3px solid var(--accent,#a78bfa);padding-left:10px">'+titleHtml+bodyHtml+'</div>';
+        var titleHtml='<div style="font-weight:600;margin-bottom:6px">'+icon+' '+escHtml(m.title||m.type)+'</div>';
+        // Body: preserve newlines
+        var bodyHtml=m.body?'<div style="font-size:13px;color:var(--text-dim);white-space:pre-wrap">'+escHtml(m.body)+'</div>':'';
+        // Action buttons (📂 Open folder, 📄 View files)
+        var actionsHtml='';
+        if(m.actions&&m.actions.length){
+          actionsHtml='<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">';
+          m.actions.forEach(function(a){
+            actionsHtml+='<button onclick="_agentAction(\''+escHtml(a.endpoint)+'\')" style="padding:5px 12px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:12px;color:var(--text)">'+escHtml(a.label)+'</button>';
+          });
+          actionsHtml+='</div>';
+        }
+        bubble.innerHTML='<div class="msg-bubble" style="border-left:3px solid var(--accent,#a78bfa);padding-left:10px">'+titleHtml+bodyHtml+actionsHtml+'</div>';
         document.getElementById('messages').appendChild(bubble);
         scrollBottom();
         // Persist to qchat so messages survive page reload
-        var msgText=icon+' '+( m.title||m.type)+(m.body?'\n'+m.body:'');
+        var msgText=icon+' '+(m.title||m.type)+(m.body?'\n'+m.body:'');
         chatHist.push({role:'assistant',content:msgText});
         saveMessages([{role:'assistant',content:msgText}]);
       }

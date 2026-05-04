@@ -849,16 +849,40 @@ def _run_agent(agent_id: str, cid: Optional[str] = None) -> None:
                          ],
                          correlation_id=cid)
 
-        # All checkpoints done
+        # All checkpoints done — collect artifacts from project_dir
+        project_dir = manifest.get("project_dir", "")
+        artifact_lines: list = []
+        if project_dir and os.path.isdir(project_dir):
+            try:
+                files = sorted(
+                    e for e in os.listdir(project_dir)
+                    if os.path.isfile(os.path.join(project_dir, e))
+                )
+                for fname in files:
+                    fpath = os.path.join(project_dir, fname)
+                    size = os.path.getsize(fpath)
+                    size_str = f"{size:,} bytes" if size < 1024 else f"{size//1024} KB"
+                    artifact_lines.append(f"  • {fname}  ({size_str})")
+            except Exception:
+                pass
+
+        done_body = (
+            f"Plan complete. {len(history)} total steps across {len(plan.checkpoints)} checkpoints.\n\n"
+            f"📁 {project_dir}\n"
+            + ("\n".join(artifact_lines) if artifact_lines else "  (no files created)")
+        )
+
         _atomic_set_status(agent_id, "completed")
         _audit(AGENT_COMPLETED, message=f"agent completed {agent_id}",
                correlation_id=cid,
                extra={"agent_id": agent_id, "total_steps": len(history)})
         post_message(agent_id=agent_id, type="agent_done",
                      title=f"Done: {manifest.get('title', agent_id)}",
-                     body=f"Plan complete. {len(history)} total steps across {len(plan.checkpoints)} checkpoints.",
+                     body=done_body,
                      actions=[
-                         {"label": "View artifacts",
+                         {"label": "📂 Open folder",
+                          "endpoint": f"/api/agents/{agent_id}/open-folder"},
+                         {"label": "📄 View files",
                           "endpoint": f"/api/agents/{agent_id}/artifacts"},
                      ],
                      correlation_id=cid)

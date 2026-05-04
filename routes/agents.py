@@ -560,6 +560,44 @@ def get_messages(agent_id: str):
     return {"messages": out}
 
 
+@router.get("/api/agents/{agent_id}/artifacts")
+def get_artifacts(agent_id: str):
+    """List files created in the agent's project_dir."""
+    manifest = _cap.load_manifest(agent_id)
+    if not manifest:
+        raise HTTPException(status_code=404, detail=f"agent {agent_id} not found")
+    project_dir = manifest.get("project_dir", "")
+    if not project_dir or not os.path.isdir(project_dir):
+        return {"project_dir": project_dir, "files": []}
+    files = []
+    try:
+        for fname in sorted(os.listdir(project_dir)):
+            fpath = os.path.join(project_dir, fname)
+            if os.path.isfile(fpath):
+                size = os.path.getsize(fpath)
+                files.append({"name": fname, "path": fpath, "size": size})
+    except Exception:
+        pass
+    return {"project_dir": project_dir, "files": files}
+
+
+@router.post("/api/agents/{agent_id}/open-folder")
+def open_folder(agent_id: str):
+    """Open the agent's project_dir in macOS Finder."""
+    import subprocess
+    manifest = _cap.load_manifest(agent_id)
+    if not manifest:
+        raise HTTPException(status_code=404, detail=f"agent {agent_id} not found")
+    project_dir = manifest.get("project_dir", "")
+    if not project_dir or not os.path.isdir(project_dir):
+        return JSONResponse({"error": "project_dir not found"}, status_code=404)
+    try:
+        subprocess.Popen(["open", project_dir])
+        return {"ok": True, "opened": project_dir}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 @router.post("/api/agents/{agent_id}/messages")
 def post_message_endpoint(agent_id: str, body: UserReplyBody):
     """User → agent reply. Writes type=user_reply to messages.jsonl.
