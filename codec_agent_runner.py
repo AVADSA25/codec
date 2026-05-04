@@ -372,9 +372,17 @@ def _run_skill(skill_name: str, task: str, agent_id: str) -> str:
     """Lazy-imported codec_dispatch.run_skill. Step 1+2 hooks fire
     automatically inside run_skill via run_with_hooks."""
     try:
-        from codec_dispatch import run_skill, registry
+        from codec_dispatch import run_skill, registry, load_skills
     except Exception as e:
         raise RuntimeError(f"codec_dispatch unavailable: {e}")
+    # Defensive scan: if the registry is empty (e.g. daemon just restarted and
+    # hasn't hit run_daemon's startup scan yet), scan now so skills resolve.
+    if not registry.names():
+        log.info("Skill registry empty in _run_skill — scanning now")
+        try:
+            load_skills()
+        except Exception as e:
+            log.warning("Defensive skill registry scan failed: %s", e)
     meta = (registry.get_meta(skill_name) if registry else None) or {}
     skill = {"name": skill_name, "_all_matches": [skill_name], **meta}
     return run_skill(skill, task, app=f"agent:{agent_id}")
@@ -857,6 +865,15 @@ def _daemon_one_tick() -> None:
 def run_daemon() -> None:
     """Production entry point. Blocks forever, ticking every DAEMON_TICK_SECONDS."""
     log.info("codec-agent-runner daemon starting (MAX_CONCURRENT=%d)", MAX_CONCURRENT)
+    # Scan skill registry at startup so skills are available to executing agents.
+    # The dashboard calls load_skills() on its own process; the agent runner is a
+    # separate PM2 process and must scan independently.
+    try:
+        from codec_dispatch import load_skills
+        load_skills()
+        log.info("Skill registry scanned at daemon startup")
+    except Exception as e:
+        log.warning("Skill registry scan failed at startup: %s", e)
     while True:
         try:
             _daemon_one_tick()
