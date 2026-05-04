@@ -877,6 +877,11 @@ async function rehydrateAgentPlanCards(){
         var ok=info&&info.manifest&&info.manifest.agent_id;
         if(ok){
           b.innerHTML=renderAgentPlanCard(id,info);
+          // Resume live polling if agent is still running
+          var st=(info.manifest||{}).status||'';
+          if(['running','approved','paused','blocked_on_permission','blocked_on_qwen'].indexOf(st)>=0){
+            _startAgentPoller(id);
+          }
         }else{
           // Agent missing (e.g. manifest deleted); show inline notice
           // but keep the agent_id visible so the user knows what's gone.
@@ -1425,6 +1430,46 @@ function showSchedulePanel(){
 
 <!-- Phase 3.5 Step 11 — Project mode agent action handlers + status pills -->
 <script>
+// ── Agent live-update poller ────────────────────────────────────────────────
+// After plan approval, poll /api/agents/<id>/messages every 5s and inject
+// any new agent_update / agent_done / agent_aborted messages into the chat.
+var _agentPollers={};  // agentId → intervalId
+function _startAgentPoller(agentId){
+  if(_agentPollers[agentId])return;  // already running
+  var seen=new Set();
+  var pollId=setInterval(async function(){
+    try{
+      // Fetch messages
+      var mr=await fetch('/api/agents/'+encodeURIComponent(agentId)+'/messages');
+      if(!mr.ok)return;
+      var md=await mr.json();
+      var msgs=md.messages||[];
+      var newMsgs=msgs.filter(function(m){return!seen.has(m.ts+m.type)});
+      newMsgs.forEach(function(m){
+        seen.add(m.ts+m.type);
+        var icon=m.type==='agent_done'?'✅':m.type==='agent_aborted'?'❌':'⚙️';
+        var bubble=document.createElement('div');bubble.className='msg assistant';
+        var titleHtml='<div style="font-weight:600;margin-bottom:4px">'+icon+' '+escHtml(m.title||m.type)+'</div>';
+        var bodyHtml=m.body?'<div style="font-size:13px;color:var(--text-dim)">'+escHtml(m.body)+'</div>':'';
+        bubble.innerHTML='<div class="msg-bubble" style="border-left:3px solid var(--accent,#a78bfa);padding-left:10px">'+titleHtml+bodyHtml+'</div>';
+        document.getElementById('messages').appendChild(bubble);
+        scrollBottom();
+        saveMessages();
+      });
+      // Check status — stop polling when terminal
+      var sr=await fetch('/api/agents/'+encodeURIComponent(agentId));
+      if(!sr.ok)return;
+      var sd=await sr.json();
+      var status=(sd.manifest||{}).status||'';
+      if(['completed','aborted','crashed'].indexOf(status)>=0){
+        clearInterval(pollId);delete _agentPollers[agentId];
+        refreshAgentStatusPills();
+      }
+    }catch(e){}
+  },5000);
+  _agentPollers[agentId]=pollId;
+}
+
 async function approveAgentInChat(agentId,e){
   if(e)e.preventDefault();
   if(!confirm('Approve plan for '+agentId+'?\n\nThe agent will run autonomously with the manifest permissions.'))return;
@@ -1432,8 +1477,10 @@ async function approveAgentInChat(agentId,e){
     var r=await fetch('/api/agents/'+encodeURIComponent(agentId)+'/approve',{method:'POST'});
     if(r.ok){
       var div=document.createElement('div');div.className='msg assistant';
-      div.innerHTML='<div class="msg-bubble"><span style="color:var(--success,#10b981)">Plan approved.</span> codec-agent-runner picks it up within 5s. Watch <code>~/.codec/audit.log</code> for <code>agent_started</code> + checkpoint events.</div>';
+      div.innerHTML='<div class="msg-bubble"><span style="color:var(--success,#10b981)">Plan approved.</span> codec-agent-runner picks it up within 5s. Updates will appear here as checkpoints complete.</div>';
       document.getElementById('messages').appendChild(div);scrollBottom();
+      saveMessages();
+      _startAgentPoller(agentId);  // begin live updates in this thread
     }else{
       var d=await r.json().catch(function(){return{}});
       showToast('Approval failed: '+(d.detail||r.status));
