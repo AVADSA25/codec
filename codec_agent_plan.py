@@ -326,6 +326,7 @@ You return ONLY a JSON object matching this schema:
 Rules:
 - Output ONLY valid JSON. No prose before or after.
 - skills_needed MUST be skill names from the user-supplied registry list. Never invent skill names.
+  Common confusions to avoid: there is NO `file_read` skill (use `file_ops`, which reads, writes, appends, lists). There is NO `fetch_url` (use `web_fetch`). There is NO `read_file` (use `file_ops`). If you can't find an exact match in the registry list, pick the closest match — never invent.
 - write_paths default to ~/.codec/agents/{agent_id}/artifacts/** unless the project explicitly requires writing elsewhere.
 - destructive_ops list any irreversible operations (deletes, payments, sending emails on user's behalf). They will require additional consent at runtime.
 - estimated_duration_minutes is your best honest guess.
@@ -406,12 +407,72 @@ def draft_plan(agent_id: str, description: str, registry=None,
         raise PlanValidationError(f"plan schema invalid: {e}")
 
     ok, missing = validate_plan_skills(plan, registry=registry)
-    if not ok:
-        raise PlanValidationError(
-            f"plan references unknown skills: {missing}"
-        )
+    if ok:
+        return plan
 
-    return plan
+    # PR #41: plan-time hallucination retry. Mirror of the execution-time
+    # retry shipped in PR #35 (codec_agent_runner._build_correction_nudge).
+    # Real-world Qwen drift hits both layers — at execution it picks
+    # `fetch_url` instead of `web_fetch`; at planning it picks `file_read`
+    # instead of `file_ops`. Same cure: re-prompt ONCE with an explicit
+    # closed-world correction, fail hard if the second draft still misses.
+    log.info("[%s] plan referenced unknown skills %s; retrying with correction nudge",
+             agent_id, missing)
+    correction = (
+        f"\n\nYour previous draft referenced these skills which DO NOT EXIST "
+        f"in the registry: {sorted(missing)}.\n"
+        f"You MUST pick from this exact list — do not invent names, do not "
+        f"add suffixes (no _v2, no _read, no _write versions of unrelated "
+        f"skills). The full allowed set is:\n"
+        f"  {', '.join(available_skills)}\n\n"
+        f"Common confusions:\n"
+        f"  - Need to read a file? Use `file_ops` (it reads, writes, "
+        f"appends, lists). There is NO `file_read` skill.\n"
+        f"  - Need to fetch a URL? Use `web_fetch`. There is NO `fetch_url`.\n"
+        f"  - Need to search files? Use `file_search`.\n\n"
+        f"Re-emit the entire JSON plan with valid skill names only."
+    )
+    retry_prompt = user_prompt + correction
+    try:
+        raw2 = _qwen_chat(retry_prompt, _PLAN_SYSTEM_PROMPT)
+    except (QwenUnavailableError, ConnectionError, OSError, RuntimeError) as e:
+        # If the retry call itself fails, surface the ORIGINAL validation
+        # error — that's more diagnostic than "qwen flaked on retry".
+        raise PlanValidationError(
+            f"plan references unknown skills: {missing} "
+            f"(retry failed: {e})"
+        )
+    raw2 = raw2.strip()
+    if raw2.startswith("```"):
+        raw2 = re.sub(r"^```(?:json)?\s*", "", raw2)
+        raw2 = re.sub(r"\s*```\s*$", "", raw2)
+    try:
+        d2 = json.loads(raw2)
+    except json.JSONDecodeError as e:
+        raise PlanValidationError(
+            f"plan references unknown skills: {missing} "
+            f"(retry returned non-JSON: {e})"
+        )
+    if d2.get("too_vague"):
+        raise PlanValidationError("too_vague: description needs clarification")
+    d2.setdefault("schema", PLAN_SCHEMA_VERSION)
+    d2.setdefault("agent_id", agent_id)
+    for cp in d2.get("checkpoints", []):
+        cp.setdefault("id", _stable_checkpoint_id(cp))
+    try:
+        plan2 = plan_from_dict(d2)
+    except (KeyError, ValueError, TypeError) as e:
+        raise PlanValidationError(f"retry plan schema invalid: {e}")
+    ok2, missing2 = validate_plan_skills(plan2, registry=registry)
+    if not ok2:
+        # Second miss — give up. Surface BOTH attempts so the user can see
+        # the model is consistently confused (e.g. truly unfixable phrasing).
+        raise PlanValidationError(
+            f"plan references unknown skills after retry: "
+            f"first={sorted(missing)}, second={sorted(missing2)}"
+        )
+    log.info("[%s] retry succeeded; using corrected plan", agent_id)
+    return plan2
 
 
 def _stable_checkpoint_id(cp_dict: Dict[str, Any]) -> str:

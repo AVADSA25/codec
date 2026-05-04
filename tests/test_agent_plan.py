@@ -288,6 +288,113 @@ def test_draft_plan_handles_qwen_unavailable(monkeypatch):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# PR #41 — Plan-time hallucination retry (3 tests)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _make_plan_response(skill_name):
+    """Build a minimal valid-shape plan JSON using one skill name. Used by
+    the retry tests below."""
+    return json.dumps({
+        "goals": ["read markdown files"],
+        "checkpoints": [
+            {"title": "scan", "description": "list and read",
+             "skills_needed": [skill_name],
+             "expected_output": "index.md written", "step_budget": 30},
+        ],
+        "permission_manifest": {
+            "read_paths": ["~/codec-repo/docs/**"],
+            "write_paths": ["~/codec-repo/docs/index.md"],
+            "network_domains": [],
+            "skills": [skill_name], "destructive_ops": [],
+        },
+        "estimated_duration_minutes": 5, "assumptions": [],
+    })
+
+
+def test_draft_plan_retries_on_hallucinated_skill_then_succeeds(monkeypatch):
+    """Real reproducer from 2026-05-04 09:58: user asked CODEC to read
+    markdown files; Qwen drafted a plan with skill `file_read` (does not
+    exist; correct skill is `file_ops`). PR #41 retries ONCE with a
+    correction nudge — second draft picks `file_ops` and succeeds."""
+    import codec_agent_plan as cap
+
+    calls = {"n": 0}
+    def fake_qwen(prompt, *a, **k):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return _make_plan_response("file_read")    # hallucinated
+        return _make_plan_response("file_ops")          # corrected
+    monkeypatch.setattr(cap, "_qwen_chat", fake_qwen)
+
+    fake_registry = MagicMock()
+    fake_registry.names.return_value = ["file_ops", "file_search"]
+
+    plan = cap.draft_plan(
+        agent_id="agent_test",
+        description="Read markdown files in docs and create an index",
+        registry=fake_registry,
+    )
+    # The corrected plan was used
+    assert calls["n"] == 2
+    assert plan.checkpoints[0].skills_needed == ["file_ops"]
+
+
+def test_draft_plan_retry_also_fails_raises_with_both_attempts(monkeypatch):
+    """If the second attempt ALSO hallucinates, raise with both attempts
+    in the error message so the user can see Qwen is consistently confused
+    (vs a one-off transient miss)."""
+    import codec_agent_plan as cap
+
+    responses = iter([
+        _make_plan_response("file_read"),    # first miss
+        _make_plan_response("read_file"),    # second miss (different bad name)
+    ])
+    monkeypatch.setattr(cap, "_qwen_chat", lambda *a, **k: next(responses))
+
+    fake_registry = MagicMock()
+    fake_registry.names.return_value = ["file_ops"]
+
+    with pytest.raises(cap.PlanValidationError) as exc_info:
+        cap.draft_plan(
+            agent_id="agent_test",
+            description="some project",
+            registry=fake_registry,
+        )
+    msg = str(exc_info.value)
+    assert "after retry" in msg
+    assert "file_read" in msg     # first attempt
+    assert "read_file" in msg     # second attempt
+
+
+def test_draft_plan_retry_qwen_unavailable_surfaces_original_error(monkeypatch):
+    """If the retry call itself fails (Qwen flakes between attempts), surface
+    the ORIGINAL validation error — that's more diagnostic than 'qwen flaked
+    on retry'."""
+    import codec_agent_plan as cap
+
+    calls = {"n": 0}
+    def flaky(*a, **k):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return _make_plan_response("file_read")
+        raise ConnectionError("qwen died between attempts")
+    monkeypatch.setattr(cap, "_qwen_chat", flaky)
+
+    fake_registry = MagicMock()
+    fake_registry.names.return_value = ["file_ops"]
+
+    with pytest.raises(cap.PlanValidationError) as exc_info:
+        cap.draft_plan(
+            agent_id="agent_test",
+            description="x",
+            registry=fake_registry,
+        )
+    msg = str(exc_info.value)
+    assert "file_read" in msg            # original missing skill present
+    assert "retry failed" in msg         # cause noted
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Task 7 — Vague-description clarifying loop (Q3) (2 tests)
 # ─────────────────────────────────────────────────────────────────────────────
 
