@@ -313,7 +313,7 @@ You return ONLY a JSON object matching this schema:
     }
   ],
   "permission_manifest": {
-    "read_paths":      [<glob>, ...],
+    "read_paths":      [<glob — use ~/path/to/dir/** or ~/path/to/dir/*.ext, NOT ~/path/**/*.ext because ** alone already covers all depths>, ...],
     "write_paths":     [<glob — MUST be under ~/.codec/agents/{agent_id}/artifacts/ unless user grants more>, ...],
     "network_domains": [<domain>, ...],
     "skills":          [<union of all checkpoints.skills_needed>, ...],
