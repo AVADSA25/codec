@@ -52,6 +52,10 @@ except ImportError:
 DAEMON_TICK_SECONDS = 5
 DEFAULT_MAX_CONCURRENT = 3
 DESTRUCTIVE_CONSENT_TIMEOUT_S = 600  # Step 3 §1.7 default — overnight = block, not abort
+# Default per-checkpoint step budget. Kept in sync with codec_agent_plan.py.
+# Real tasks (multi-fetch, multi-file) routinely need 30-50 steps; 60 gives
+# comfortable headroom without being unlimited.
+DEFAULT_STEP_BUDGET_PER_CHECKPOINT = 60
 
 
 # ── Action dataclass ──────────────────────────────────────────────────────────
@@ -173,7 +177,7 @@ next action to take. Return ONLY a JSON object with one of these shapes:
 For a skill call:
 {
   "kind": "skill_call",
-  "skill": "<skill_name from plan.permission_manifest.skills>",
+  "skill": "<skill_name — MUST be from the available_skills list in the prompt>",
   "task": "<the natural-language task to pass to that skill>",
   "is_destructive": <bool — true for irreversible ops: file delete, payments, send-on-behalf>,
   "network_call": <bool — true if the skill will make HTTP requests>,
@@ -188,9 +192,14 @@ For checkpoint completion:
 {"kind": "checkpoint_done"}
 
 Rules:
-- skill MUST be in plan.permission_manifest.skills.
-- If you need a skill that's NOT in the manifest, return is_destructive=false and pick the closest available; the runtime will block via permission_gate, escalate to user, and re-call you with the same context.
-- read_path is checked against permission_manifest.read_paths; write path against write_paths. They are independent — a single action can both read and write (e.g. read template.md, write output.md).
+- skill MUST come from the available_skills list shown in the prompt. Never invent skill names.
+- Return {"kind": "checkpoint_done"} AS SOON AS the checkpoint's expected_output is satisfied.
+  Do NOT call more skills after the goal is achieved — stop immediately with checkpoint_done.
+- If steps_remaining is 3 or fewer and the checkpoint is not yet done: call the single most
+  important remaining skill, then return checkpoint_done on the VERY NEXT step regardless.
+- If you have already called a skill and received a result that satisfies expected_output,
+  return checkpoint_done now — do not repeat the skill call.
+- read_path is checked against permission_manifest.read_paths; write path against write_paths.
 - Output ONLY the JSON. No prose.
 """
 
@@ -233,15 +242,30 @@ def _qwen_next_action(plan_dict: Dict[str, Any], checkpoint: Dict[str, Any],
     response into an Action. Raises QwenUnavailableError or
     ValueError on bad JSON shape."""
     recent = history[-max_history:] if history else []
+    budget = int(checkpoint.get("step_budget", DEFAULT_STEP_BUDGET_PER_CHECKPOINT))
+    steps_used = len(history)
+    steps_remaining = max(0, budget - steps_used)
+
+    # Available skills from permission_manifest (what the agent is allowed to use)
+    available_skills = (plan_dict.get("permission_manifest") or {}).get("skills", [])
+    if not available_skills:
+        # Fallback: union of all checkpoint skills_needed
+        for cp in plan_dict.get("checkpoints", []):
+            available_skills.extend(cp.get("skills_needed", []))
+        available_skills = sorted(set(available_skills))
+
     user_prompt = (
         f"Plan goals: {plan_dict.get('goals')}\n\n"
+        f"Available skills (use ONLY these): {available_skills}\n\n"
         f"Current checkpoint:\n"
         f"  title: {checkpoint['title']}\n"
         f"  description: {checkpoint['description']}\n"
         f"  expected_output: {checkpoint['expected_output']}\n\n"
+        f"Steps used: {steps_used} / {budget}  (steps_remaining: {steps_remaining})\n\n"
         f"Recent action history (last {len(recent)} steps):\n"
         f"{json.dumps(recent, indent=2)}\n\n"
-        f"What's the next action? Output JSON now."
+        f"What's the next action? If expected_output is already satisfied by the history above, "
+        f"return {{\"kind\": \"checkpoint_done\"}} now. Otherwise output the next skill call JSON."
     )
 
     raw = _qwen_chat(user_prompt, _NEXT_ACTION_SYSTEM_PROMPT).strip()
@@ -414,7 +438,7 @@ def _execute_checkpoint(plan_dict: Dict[str, Any],
     """
     if history is None:
         history = []
-    budget = int(checkpoint.get("step_budget", 30))
+    budget = int(checkpoint.get("step_budget", DEFAULT_STEP_BUDGET_PER_CHECKPOINT))
 
     for step in range(budget):
         action = _qwen_next_action(plan_dict, checkpoint, history)
