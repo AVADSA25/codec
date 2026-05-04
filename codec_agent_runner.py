@@ -277,17 +277,62 @@ def _qwen_next_action(plan_dict: Dict[str, Any], checkpoint: Dict[str, Any],
         f"return {{\"kind\": \"checkpoint_done\"}} now. Otherwise output the next skill call JSON."
     )
 
-    raw = _qwen_chat(user_prompt, _NEXT_ACTION_SYSTEM_PROMPT).strip()
-    if raw.startswith("```"):
-        # Strip ```json ... ``` fences
-        import re as _re
-        raw = _re.sub(r"^```(?:json)?\s*", "", raw)
-        raw = _re.sub(r"\s*```\s*$", "", raw)
+    import re as _re
 
-    try:
-        d = json.loads(raw)
-    except json.JSONDecodeError as e:
-        raise ValueError(f"qwen returned non-JSON next-action: {e}; raw={raw[:200]!r}")
+    def _parse_action_json(text: str):
+        """Try to extract a valid JSON object from Qwen output.
+
+        Handles:
+        - Bare JSON
+        - ```json ... ``` fences
+        - Truncated output — extract first complete {...} block
+        """
+        text = text.strip()
+        # Strip code fences
+        if text.startswith("```"):
+            text = _re.sub(r"^```(?:json)?\s*", "", text)
+            text = _re.sub(r"\s*```\s*$", "", text)
+            text = text.strip()
+        # Try direct parse first
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            pass
+        # Try to extract the first balanced {...} block
+        start = text.find("{")
+        if start >= 0:
+            depth = 0
+            for i in range(start, len(text)):
+                if text[i] == "{":
+                    depth += 1
+                elif text[i] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        try:
+                            return json.loads(text[start:i+1])
+                        except json.JSONDecodeError:
+                            break
+        return None
+
+    raw = _qwen_chat(user_prompt, _NEXT_ACTION_SYSTEM_PROMPT).strip()
+    d = _parse_action_json(raw)
+    if d is None:
+        # One retry with a shorter, sharper prompt
+        log.warning("_qwen_next_action: parse failed, retrying. raw=%r", raw[:120])
+        retry_prompt = (
+            "Output ONLY a single JSON object. No prose, no fences.\n\n"
+            f"Plan goals: {plan_dict.get('goals')}\n"
+            f"Checkpoint: {checkpoint['title']} — {checkpoint['description']}\n"
+            f"Expected output: {checkpoint['expected_output']}\n"
+            f"Steps used: {steps_used}/{budget}\n"
+            f"Last result: {recent[-1]['result'][:300] if recent else 'none'}\n\n"
+            "Return {\"kind\": \"checkpoint_done\"} if expected_output is satisfied, "
+            "else the next skill call JSON."
+        )
+        raw2 = _qwen_chat(retry_prompt, _NEXT_ACTION_SYSTEM_PROMPT).strip()
+        d = _parse_action_json(raw2)
+    if d is None:
+        raise ValueError(f"qwen returned non-JSON next-action: raw={raw[:200]!r}")
 
     kind = d.get("kind", "skill_call")
     if kind == "checkpoint_done":

@@ -891,10 +891,13 @@ async function rehydrateAgentPlanCards(){
         var ok=info&&info.manifest&&info.manifest.agent_id;
         if(ok){
           b.innerHTML=renderAgentPlanCard(id,info);
-          // Resume live polling if agent is still running
           var st=(info.manifest||{}).status||'';
           if(['running','approved','paused','blocked_on_permission','blocked_on_qwen'].indexOf(st)>=0){
+            // Resume live polling if agent is still running
             _startAgentPoller(id);
+          } else if(['completed','aborted','crashed'].indexOf(st)>=0){
+            // Agent finished — catch up on any messages the poller may have missed
+            _injectMissedAgentMessages(id);
           }
         }else{
           // Agent missing (e.g. manifest deleted); show inline notice
@@ -1445,6 +1448,34 @@ function showSchedulePanel(){
 <!-- Phase 3.5 Step 11 — Project mode agent action handlers + status pills -->
 <script>
 // ── Agent live-update poller ────────────────────────────────────────────────
+// Inject agent messages that were missed (e.g. agent completed while user was away).
+// Checks chatHist to avoid duplicates — only injects titles not already present.
+async function _injectMissedAgentMessages(agentId){
+  try{
+    var mr=await fetch('/api/agents/'+encodeURIComponent(agentId)+'/messages');
+    if(!mr.ok)return;
+    var md=await mr.json();
+    var msgs=md.messages||[];
+    for(var mi=0;mi<msgs.length;mi++){
+      var m=msgs[mi];
+      var title=m.title||m.type||'';
+      // Skip if this message is already in chatHist (survived from live poller or prior load)
+      var alreadySaved=chatHist.some(function(h){return h.content&&h.content.indexOf(title)>=0});
+      if(alreadySaved)continue;
+      var icon=m.type==='agent_done'?'✅':m.type==='agent_aborted'?'❌':'⚙️';
+      var bubble=document.createElement('div');bubble.className='msg assistant';
+      var titleHtml='<div style="font-weight:600;margin-bottom:4px">'+icon+' '+escHtml(title)+'</div>';
+      var bodyHtml=m.body?'<div style="font-size:13px;color:var(--text-dim)">'+escHtml(m.body)+'</div>':'';
+      bubble.innerHTML='<div class="msg-bubble" style="border-left:3px solid var(--accent,#a78bfa);padding-left:10px">'+titleHtml+bodyHtml+'</div>';
+      document.getElementById('messages').appendChild(bubble);
+      var msgText=icon+' '+title+(m.body?'\n'+m.body:'');
+      chatHist.push({role:'assistant',content:msgText});
+      saveMessages([{role:'assistant',content:msgText}]);
+    }
+    if(msgs.length)scrollBottom();
+  }catch(e){}
+}
+
 // After plan approval, poll /api/agents/<id>/messages every 5s and inject
 // any new agent_update / agent_done / agent_aborted messages into the chat.
 var _agentPollers={};  // agentId → intervalId
@@ -1459,7 +1490,8 @@ function _startAgentPoller(agentId){
       var md=await mr.json();
       var msgs=md.messages||[];
       var newMsgs=msgs.filter(function(m){return!seen.has(m.ts+m.type)});
-      newMsgs.forEach(function(m){
+      for(var mi=0;mi<newMsgs.length;mi++){
+        var m=newMsgs[mi];
         seen.add(m.ts+m.type);
         var icon=m.type==='agent_done'?'✅':m.type==='agent_aborted'?'❌':'⚙️';
         var bubble=document.createElement('div');bubble.className='msg assistant';
@@ -1468,8 +1500,11 @@ function _startAgentPoller(agentId){
         bubble.innerHTML='<div class="msg-bubble" style="border-left:3px solid var(--accent,#a78bfa);padding-left:10px">'+titleHtml+bodyHtml+'</div>';
         document.getElementById('messages').appendChild(bubble);
         scrollBottom();
-        saveMessages();
-      });
+        // Persist to qchat so messages survive page reload
+        var msgText=icon+' '+( m.title||m.type)+(m.body?'\n'+m.body:'');
+        chatHist.push({role:'assistant',content:msgText});
+        saveMessages([{role:'assistant',content:msgText}]);
+      }
       // Check status — stop polling when terminal
       var sr=await fetch('/api/agents/'+encodeURIComponent(agentId));
       if(!sr.ok)return;
