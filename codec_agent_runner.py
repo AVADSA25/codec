@@ -206,6 +206,11 @@ Rules:
       files in a directory. NEVER use file_search to enumerate files in a folder.
     • file_ops is the correct skill for: listing files in a directory, reading file contents,
       and writing files. Use "list files in ~/path/to/dir" to enumerate a directory.
+- CRITICAL — one file per step:
+    • When you need to process multiple files (read, parse, extract), do ONE file per step.
+    • Never put multiple file paths in a single "task" string — file_ops only handles one
+      path at a time. If you have 30 files to read, make 30 sequential skill calls.
+    • The "task" string must be short and specific: "Read file '/path/to/one/file.md'"
 - Output ONLY the JSON. No prose.
 """
 
@@ -263,21 +268,88 @@ def _qwen_next_action(plan_dict: Dict[str, Any], checkpoint: Dict[str, Any],
             available_skills.extend(cp.get("skills_needed", []))
         available_skills = sorted(set(available_skills))
 
+    # Trim history results to avoid bloating the Qwen prompt.
+    # Each history entry's "result" is capped at 600 chars — enough to
+    # see the key outcome (file paths, headings, status) without flooding
+    # the context window and causing response truncation.
+    def _trim_history(h_list):
+        out = []
+        for entry in h_list:
+            e = dict(entry)
+            if isinstance(e.get("result"), str) and len(e["result"]) > 600:
+                e["result"] = e["result"][:600] + "…[truncated]"
+            out.append(e)
+        return out
+
+    recent_trimmed = _trim_history(recent)
+
+    # ── File-iteration state injection ────────────────────────────────────────
+    # When history contains a file-list result (file_ops list call), extract all
+    # paths and figure out which have already been read in this checkpoint. Inject
+    # an explicit "next file to process" hint so Qwen doesn't need to track
+    # iteration state itself — dramatically reduces wasted steps.
+    import re as _re
+
+    def _extract_file_list(h_list) -> list:
+        """Scan history for a file_ops list result and return the path list."""
+        for entry in h_list:
+            result = entry.get("result", "")
+            if isinstance(result, str) and "Files (" in result:
+                # file_ops list output format: "Files (N):\n/path1\n/path2\n..."
+                paths = _re.findall(r"(/[\w./_-]+\.[\w]+)", result)
+                if paths:
+                    return paths
+        return []
+
+    def _already_read(h_list) -> set:
+        """Return set of absolute paths whose file content is in history."""
+        seen = set()
+        for entry in h_list:
+            result = entry.get("result", "")
+            if isinstance(result, str):
+                # file_ops read output: "File: /path ..."
+                m = _re.match(r"File: (/[^\s(]+)", result)
+                if m:
+                    seen.add(m.group(1))
+        return seen
+
+    file_list = _extract_file_list(history)  # full history, not just recent
+    file_iteration_hint = ""
+    if file_list:
+        already_done = _already_read(history)
+        remaining = [p for p in file_list if p not in already_done]
+        if remaining:
+            next_file = remaining[0]
+            file_iteration_hint = (
+                f"\nFile iteration state:\n"
+                f"  Total files to process: {len(file_list)}\n"
+                f"  Already processed: {len(already_done)} files\n"
+                f"  Remaining: {len(remaining)} files\n"
+                f"  NEXT FILE TO READ NOW: {next_file}\n"
+                f"  (Process exactly this one file in your next skill call. "
+                f"Do NOT pass multiple paths.)\n"
+            )
+        else:
+            file_iteration_hint = (
+                f"\nFile iteration state: ALL {len(file_list)} files have been "
+                f"read. Check if expected_output is satisfied; if yes return "
+                f"checkpoint_done.\n"
+            )
+
     user_prompt = (
         f"Plan goals: {plan_dict.get('goals')}\n\n"
         f"Available skills (use ONLY these): {available_skills}\n\n"
         f"Current checkpoint:\n"
         f"  title: {checkpoint['title']}\n"
         f"  description: {checkpoint['description']}\n"
-        f"  expected_output: {checkpoint['expected_output']}\n\n"
+        f"  expected_output: {checkpoint['expected_output']}\n"
+        f"{file_iteration_hint}\n"
         f"Steps used: {steps_used} / {budget}  (steps_remaining: {steps_remaining})\n\n"
-        f"Recent action history (last {len(recent)} steps):\n"
-        f"{json.dumps(recent, indent=2)}\n\n"
+        f"Recent action history (last {len(recent_trimmed)} steps):\n"
+        f"{json.dumps(recent_trimmed, indent=2)}\n\n"
         f"What's the next action? If expected_output is already satisfied by the history above, "
         f"return {{\"kind\": \"checkpoint_done\"}} now. Otherwise output the next skill call JSON."
     )
-
-    import re as _re
 
     def _parse_action_json(text: str):
         """Try to extract a valid JSON object from Qwen output.
@@ -314,7 +386,7 @@ def _qwen_next_action(plan_dict: Dict[str, Any], checkpoint: Dict[str, Any],
                             break
         return None
 
-    raw = _qwen_chat(user_prompt, _NEXT_ACTION_SYSTEM_PROMPT).strip()
+    raw = _qwen_chat(user_prompt, _NEXT_ACTION_SYSTEM_PROMPT, max_tokens=4000).strip()
     d = _parse_action_json(raw)
     if d is None:
         # One retry with a shorter, sharper prompt
