@@ -43,7 +43,13 @@ def _parse_action(task):
     """Parse the user's intent: read, write, append, list."""
     t = task.lower().strip()
     # Detect action
-    if any(w in t for w in ["list files", "list dir", "ls ", "list folder", "show folder"]):
+    if any(w in t for w in [
+        "list files", "list dir", "ls ", "list folder", "show folder",
+        # Extended list triggers so agents can use natural language:
+        "find all", "find files", "locate files", "enumerate files",
+        "get all files", "list all", "show all files", "all files in",
+        "all .md", "all md files",
+    ]):
         return "list", t
     if any(w in t for w in ["write file", "create file", "save to file", "write to"]):
         return "write", t
@@ -97,9 +103,11 @@ def run(task, app="", ctx=""):
             files = [e for e in entries if os.path.isfile(os.path.join(dirpath, e))]
             result = f"Directory: {dirpath}\n"
             if dirs:
-                result += f"Folders ({len(dirs)}): " + ", ".join(dirs[:20]) + "\n"
+                result += f"Subdirectories ({len(dirs)}): " + ", ".join(dirs[:20]) + "\n"
             if files:
-                result += f"Files ({len(files)}): " + ", ".join(files[:30])
+                # Include full absolute paths so callers can read each file directly
+                full_paths = [os.path.join(dirpath, f) for f in files[:30]]
+                result += f"Files ({len(files)}):\n" + "\n".join(full_paths)
             return result.strip() or "Empty directory"
         except PermissionError:
             return f"Permission denied: {dirpath}"
