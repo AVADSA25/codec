@@ -200,6 +200,12 @@ Rules:
 - If you have already called a skill and received a result that satisfies expected_output,
   return checkpoint_done now — do not repeat the skill call.
 - read_path is checked against permission_manifest.read_paths; write path against write_paths.
+- CRITICAL — file_search vs file_ops:
+    • file_search uses macOS Spotlight (mdfind). It opens a Terminal window, searches by
+      FILE NAME across the whole Mac, and returns AT MOST 5 results. It cannot list all
+      files in a directory. NEVER use file_search to enumerate files in a folder.
+    • file_ops is the correct skill for: listing files in a directory, reading file contents,
+      and writing files. Use "list files in ~/path/to/dir" to enumerate a directory.
 - Output ONLY the JSON. No prose.
 """
 

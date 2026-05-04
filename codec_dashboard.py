@@ -1459,6 +1459,14 @@ async def qchat_save(request: Request):
     return {"ok": True}
 
 
+@app.delete("/api/qchat/session/{sid}")
+async def qchat_delete(sid: str):
+    conn = qchat_db()
+    conn.execute("DELETE FROM qchat_messages WHERE session_id=?", (sid,))
+    conn.execute("DELETE FROM qchat_sessions WHERE id=?", (sid,))
+    conn.commit()
+    return {"ok": True}
+
 @app.get("/api/qchat/search")
 async def qchat_search(q: str = "", limit: int = 20):
     """Search chat history by keyword across all sessions."""
