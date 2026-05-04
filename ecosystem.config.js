@@ -191,6 +191,24 @@ module.exports = {
         OBSERVER_ENABLED: "true",
       },
     },
+    // ── Pilot Runner (browser automation HTTP API on :8094) ──
+    // Headless Chromium on CDP port 9223, indexed-DOM snapshots,
+    // screencast recording. Cloudflare: pilot.lucyvpa.com → :8094
+    {
+      name: "pilot-runner",
+      script: "/usr/local/bin/python3.13",
+      args: "-m pilot.pilot_runner",
+      cwd: "/Users/mickaelfarina/codec",
+      max_memory_restart: "512M",
+      restart_delay: 5000,
+      max_restarts: 10,
+      autorestart: true,
+      env: {
+        HEADLESS: "1",
+        PYTHONUNBUFFERED: "1",
+      },
+    },
+
     // ── Agent Runner (Phase 3 Step 9 — autonomous plan execution) ──
     // PM2 daemon picks up status=approved plans (from Step 8), executes
     // their checkpoints autonomously via Qwen-3.6 ↔ skill loops with
