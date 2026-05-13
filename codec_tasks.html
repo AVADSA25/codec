@@ -423,11 +423,22 @@ a { color: var(--accent); text-decoration: none; }
   <div class="tab-panel" id="panel-pilot">
 
     <!-- Status bar -->
-    <div id="pilotStatusBar" style="display:flex;align-items:center;gap:8px;margin-bottom:16px;padding:8px 12px;background:var(--surface-2);border-radius:var(--radius-sm);font-size:12px;font-family:var(--mono);">
+    <div id="pilotStatusBar" style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding:8px 12px;background:var(--surface-2);border-radius:var(--radius-sm);font-size:12px;font-family:var(--mono);">
       <span id="pilotDot" style="width:8px;height:8px;border-radius:50%;background:#666;flex-shrink:0"></span>
       <span id="pilotStatusText" style="color:var(--text-muted)">Checking pilot…</span>
       <span style="flex:1"></span>
       <a href="https://pilot.lucyvpa.com" target="_blank" style="color:var(--accent);text-decoration:none;font-size:11px;">pilot.lucyvpa.com ↗</a>
+    </div>
+
+    <!-- Teach / record bar -->
+    <div id="pilotRecordBar" style="display:flex;align-items:center;gap:8px;margin-bottom:16px;padding:8px 12px;background:var(--surface-2);border:1px dashed var(--border);border-radius:var(--radius-sm);font-size:12px;">
+      <span id="pilotRecDot" style="width:8px;height:8px;border-radius:50%;background:#666;flex-shrink:0"></span>
+      <span id="pilotRecText" style="color:var(--text-muted);flex:1;">
+        Teach mode — drive the browser yourself and CODEC will compile your clicks into a reusable skill.
+      </span>
+      <input id="pilotRecTask" type="text" placeholder="Name this skill (e.g. 'login to gmail')" style="flex:1;max-width:280px;padding:5px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;font-family:var(--mono);">
+      <button class="btn btn-sm" id="pilotRecStartBtn"  onclick="pilotRecordStart()" style="padding:5px 10px;">● Record</button>
+      <button class="btn btn-sm" id="pilotRecStopBtn"   onclick="pilotRecordStop()"  style="padding:5px 10px;display:none;">■ Stop &amp; Save</button>
     </div>
 
     <!-- Two-column layout: left=controls, right=screenshot -->
@@ -486,6 +497,30 @@ a { color: var(--accent); text-decoration: none; }
           <div id="pilotRunsList" style="display:flex;flex-direction:column;gap:4px;max-height:220px;overflow-y:auto;">
             <div style="color:var(--text-muted);font-size:12px;">No runs yet.</div>
           </div>
+        </div>
+
+        <!-- Pending skills (awaiting review) -->
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+            <div style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;">Pending Skills</div>
+            <button class="btn btn-sm" onclick="pilotRefreshPending()" style="font-size:11px;padding:3px 8px;">↻</button>
+          </div>
+          <div id="pilotPendingList" style="display:flex;flex-direction:column;gap:4px;max-height:200px;overflow-y:auto;">
+            <div style="color:var(--text-muted);font-size:12px;">None awaiting review.</div>
+          </div>
+        </div>
+
+        <!-- Skill source preview / approve gate -->
+        <div id="pilotSkillPreview" style="display:none;padding:12px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px;">
+            <div style="font-size:12px;font-weight:600;font-family:var(--mono);" id="pilotSkillTitle"></div>
+            <div style="display:flex;gap:6px;">
+              <button class="btn btn-sm btn-primary" onclick="pilotApproveSkill()" style="padding:4px 10px;">✓ Approve</button>
+              <button class="btn btn-sm" onclick="pilotRejectSkill()" style="padding:4px 10px;">✕ Reject</button>
+              <button class="btn btn-sm" onclick="document.getElementById('pilotSkillPreview').style.display='none'">✕</button>
+            </div>
+          </div>
+          <pre id="pilotSkillSource" style="font-size:10.5px;font-family:var(--mono);color:var(--text-muted);white-space:pre-wrap;max-height:300px;overflow-y:auto;margin:0;"></pre>
         </div>
 
       </div><!-- /left -->
@@ -1344,14 +1379,17 @@ function pilotRefreshRuns() {
         list.innerHTML = '<div style="color:var(--text-muted);font-size:12px;">No runs yet.</div>';
         return;
       }
-      var statusIcon = {done:'✅', error:'❌', running:'⏳', budget_exhausted:'⚠️'};
+      var statusIcon = {done:'✅', error:'❌', running:'⏳', budget_exhausted:'⚠️', recording:'⏺️'};
       list.innerHTML = runs.slice(0,12).map(function(r) {
         var icon = statusIcon[r.status] || '📊';
         var ago  = r.started_at ? Math.round((Date.now()/1000 - r.started_at)) + 's ago' : '';
-        return '<div onclick="pilotShowRunDetail(\'' + r.run_id + '\')" style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;font-size:12px;" title="' + (r.task||'') + '">' +
-          '<span style="flex-shrink:0">' + icon + '</span>' +
-          '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)">' + escHtml(r.task||'').substring(0,50) + '</span>' +
+        var rid  = r.run_id;
+        return '<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;" title="' + (r.task||'') + '">' +
+          '<span style="flex-shrink:0;cursor:pointer" onclick="pilotShowRunDetail(\'' + rid + '\')">' + icon + '</span>' +
+          '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);cursor:pointer" onclick="pilotShowRunDetail(\'' + rid + '\')">' + escHtml(r.task||'').substring(0,40) + '</span>' +
           '<span style="color:var(--text-muted);flex-shrink:0;font-family:var(--mono);font-size:10px">' + ago + '</span>' +
+          '<button class="btn btn-sm" style="font-size:10px;padding:2px 6px;" title="Replay this run" onclick="event.stopPropagation();pilotReplay(\'' + rid + '\')">▶</button>' +
+          '<button class="btn btn-sm" style="font-size:10px;padding:2px 6px;" title="Compile to skill" onclick="event.stopPropagation();pilotCompile(\'' + rid + '\')">💾</button>' +
         '</div>';
       }).join('');
     })
@@ -1411,6 +1449,169 @@ function pilotResumeRun() {
   .catch(function(e){ showToast('Resume failed: ' + e, true); });
 }
 
+/* ── Teach / manual record ── */
+var _pilotRecording = null;       // { run_id, task }
+
+function pilotRecordStart() {
+  var task = (document.getElementById('pilotRecTask').value || '').trim() || 'Manual recording';
+  _pilotFetch('/record/start', {
+    method:'POST',
+    body: JSON.stringify({task: task, tag: 'teach'})
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(d) {
+    if (d.detail) return showToast(d.detail, true);
+    _pilotRecording = {run_id: d.run_id, task: d.task};
+    document.getElementById('pilotRecDot').style.background = '#ef4444';
+    document.getElementById('pilotRecText').textContent = 'Recording ' + d.run_id.substring(0,8) + ' — every navigate/click/type is now being captured.';
+    document.getElementById('pilotRecStartBtn').style.display = 'none';
+    document.getElementById('pilotRecStopBtn').style.display  = '';
+    showToast('Recording started — drive the browser to teach CODEC.');
+    pilotRefreshRuns();
+  })
+  .catch(function(e){ showToast('Record start failed: ' + e, true); });
+}
+
+function pilotRecordStop() {
+  if (!_pilotRecording) return;
+  _pilotFetch('/record/stop', {
+    method:'POST',
+    body: JSON.stringify({compile_skill: true})
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(d) {
+    var stepCt = d.step_count || 0;
+    showToast('Recording stopped — ' + stepCt + ' steps captured' + (d.pending_skill ? ', skill pending review' : ''));
+    _pilotRecording = null;
+    document.getElementById('pilotRecDot').style.background = '#666';
+    document.getElementById('pilotRecText').textContent = 'Teach mode — drive the browser yourself and CODEC will compile your clicks into a reusable skill.';
+    document.getElementById('pilotRecStartBtn').style.display = '';
+    document.getElementById('pilotRecStopBtn').style.display  = 'none';
+    document.getElementById('pilotRecTask').value = '';
+    pilotRefreshRuns();
+    pilotRefreshPending();
+  })
+  .catch(function(e){ showToast('Record stop failed: ' + e, true); });
+}
+
+function pilotSyncRecordingState() {
+  /* Poll /record/status to keep the bar in sync (page reloads, etc). */
+  _pilotFetch('/record/status')
+    .then(function(r){ return r.json(); })
+    .then(function(d) {
+      if (d.recording) {
+        _pilotRecording = {run_id: d.run_id, task: d.task};
+        document.getElementById('pilotRecDot').style.background = '#ef4444';
+        document.getElementById('pilotRecText').textContent = 'Recording ' + d.run_id.substring(0,8) + ' — ' + (d.step_count||0) + ' steps captured so far.';
+        document.getElementById('pilotRecStartBtn').style.display = 'none';
+        document.getElementById('pilotRecStopBtn').style.display  = '';
+      } else if (_pilotRecording) {
+        _pilotRecording = null;
+        document.getElementById('pilotRecDot').style.background = '#666';
+        document.getElementById('pilotRecText').textContent = 'Teach mode — drive the browser yourself and CODEC will compile your clicks into a reusable skill.';
+        document.getElementById('pilotRecStartBtn').style.display = '';
+        document.getElementById('pilotRecStopBtn').style.display  = 'none';
+      }
+    })
+    .catch(function(){});
+}
+
+/* ── Replay + compile from a run row ── */
+function pilotReplay(runId) {
+  if (!runId) return;
+  showToast('Replaying ' + runId.substring(0,8) + '… (XPath → CSS → LLM rescue)');
+  _pilotFetch('/run/' + runId + '/replay', {
+    method:'POST',
+    body: JSON.stringify({allow_llm_rescue: true})
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(d) {
+    var msg = 'Replay ' + d.status + ' — ' + d.steps_succeeded + '/' + d.steps_total + ' steps';
+    if (d.rescues_used) msg += ' (' + d.rescues_used + ' LLM rescues)';
+    showToast(msg, d.status !== 'completed');
+  })
+  .catch(function(e){ showToast('Replay error: ' + e, true); });
+}
+
+function pilotCompile(runId) {
+  if (!runId) return;
+  _pilotFetch('/run/' + runId + '/compile', {method:'POST'})
+  .then(function(r){ return r.json(); })
+  .then(function(d) {
+    if (d.detail) return showToast(d.detail, true);
+    showToast('Compiled — skill pending: ' + d.filename);
+    pilotRefreshPending();
+  })
+  .catch(function(e){ showToast('Compile failed: ' + e, true); });
+}
+
+/* ── Pending skills list + approve / reject ── */
+var _pilotSelectedSkill = null;
+
+function pilotRefreshPending() {
+  _pilotFetch('/skills/pending')
+    .then(function(r){ return r.json(); })
+    .then(function(d) {
+      var list = document.getElementById('pilotPendingList');
+      if (!list) return;
+      var items = d.pending || [];
+      if (!items.length) {
+        list.innerHTML = '<div style="color:var(--text-muted);font-size:12px;">None awaiting review.</div>';
+        return;
+      }
+      list.innerHTML = items.map(function(s) {
+        var ago = s.mtime ? Math.round((Date.now()/1000 - s.mtime)) + 's ago' : '';
+        return '<div onclick="pilotPreviewSkill(\'' + s.slug + '\')" style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;font-size:12px;" title="' + escHtml(s.head_doc||'').substring(0,180) + '">' +
+          '<span style="flex-shrink:0">📝</span>' +
+          '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);font-family:var(--mono);">' + escHtml(s.filename) + '</span>' +
+          '<span style="color:var(--text-muted);flex-shrink:0;font-family:var(--mono);font-size:10px">' + ago + '</span>' +
+        '</div>';
+      }).join('');
+    })
+    .catch(function(){});
+}
+
+function pilotPreviewSkill(slug) {
+  _pilotSelectedSkill = slug;
+  _pilotFetch('/skills/pending/' + encodeURIComponent(slug))
+    .then(function(r){ return r.json(); })
+    .then(function(d) {
+      if (d.detail) return showToast(d.detail, true);
+      document.getElementById('pilotSkillTitle').textContent  = d.filename;
+      document.getElementById('pilotSkillSource').textContent = d.source;
+      document.getElementById('pilotSkillPreview').style.display = '';
+    })
+    .catch(function(e){ showToast('Preview failed: ' + e, true); });
+}
+
+function pilotApproveSkill() {
+  if (!_pilotSelectedSkill) return;
+  _pilotFetch('/skills/pending/' + encodeURIComponent(_pilotSelectedSkill) + '/approve', {method:'POST'})
+  .then(function(r){ return r.json(); })
+  .then(function(d) {
+    if (d.detail) return showToast(d.detail, true);
+    showToast('Approved → ' + d.filename + ' is now active.');
+    document.getElementById('pilotSkillPreview').style.display = 'none';
+    _pilotSelectedSkill = null;
+    pilotRefreshPending();
+  })
+  .catch(function(e){ showToast('Approve failed: ' + e, true); });
+}
+
+function pilotRejectSkill() {
+  if (!_pilotSelectedSkill) return;
+  if (!confirm('Reject and delete this pending skill?')) return;
+  _pilotFetch('/skills/pending/' + encodeURIComponent(_pilotSelectedSkill) + '/reject', {method:'POST'})
+  .then(function(r){ return r.json(); })
+  .then(function(d) {
+    showToast('Rejected.');
+    document.getElementById('pilotSkillPreview').style.display = 'none';
+    _pilotSelectedSkill = null;
+    pilotRefreshPending();
+  })
+  .catch(function(e){ showToast('Reject failed: ' + e, true); });
+}
+
 /* ── Override showTab to wire Pilot auto-poll ── */
 var _pilotTabActive = false;
 function showTab(name) {
@@ -1424,10 +1625,13 @@ function showTab(name) {
     pilotStartStream();   // live MJPEG feed (falls back to 2s polling on error)
     pilotSnapshot();
     pilotRefreshRuns();
+    pilotRefreshPending();
+    pilotSyncRecordingState();
     if (!_pilotPollTimer) {
       _pilotPollTimer = setInterval(function() {
         if (!_pilotTabActive) { clearInterval(_pilotPollTimer); _pilotPollTimer = null; return; }
         pilotCheckStatus();
+        pilotSyncRecordingState();
         if (_pilotSelectedRun) pilotShowRunDetail(_pilotSelectedRun);
         // Screenshot is handled by MJPEG stream; no extra poll needed
       }, 4000);
