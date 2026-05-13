@@ -733,6 +733,104 @@ def _new_agent_id() -> str:
     return f"agent_{secrets.token_hex(6)}"
 
 
+# ── User-typed path extraction (auto-grant) ───────────────────────────────────
+#
+# When the user explicitly types a path like ~/conscripted-2026/ in their project
+# description, they're effectively authorizing the agent to read/write there.
+# We extract those paths post-draft and inject them into the manifest so the
+# plan approval flow grants them in one click instead of blocking mid-run.
+
+import re as _re_path
+
+# Match ~/foo/bar, $HOME/foo/bar, /Users/<name>/foo/bar
+_PATH_TOKEN = _re_path.compile(
+    r"(?P<path>"
+      r"(?:~|\$HOME|/Users/[A-Za-z0-9_.-]+)"
+      r"/[A-Za-z0-9_.\-/]+"
+    r")"
+)
+
+# Never auto-grant these — keep approval friction
+_PATH_BLOCKLIST_SUBSTRINGS = (
+    "/.ssh", "/.aws", "/.gnupg", "/.config/gh", "/Library/Keychains",
+    "/Library/Application Support/com.apple",
+    "/.codec/secrets", "/.codec/auth",
+    "/etc/", "/var/", "/private/", "/System/", "/usr/local/etc",
+)
+
+
+def _normalize_path(p: str) -> str:
+    p = p.rstrip(".,;:!?\"')\n")
+    if p.endswith("/"):
+        p = p[:-1]
+    return p
+
+
+def extract_user_paths(description: str) -> tuple[list[str], list[str]]:
+    """
+    Pull paths the user typed in their description. Returns (read_globs, write_globs).
+    Each path is converted to a recursive glob ('foo/**') for the manifest.
+
+    Heuristic for read vs write — write verbs in the surrounding ±60 chars
+    of the path token bump it into write_globs (which also implies readable).
+    Paths matching _PATH_BLOCKLIST_SUBSTRINGS are dropped entirely.
+    """
+    if not description:
+        return [], []
+    seen: set[str] = set()
+    reads: list[str] = []
+    writes: list[str] = []
+    write_verbs = ("save", "write", "download", "output", "generate", "export",
+                   "store", "dump", "log to", "create at", "into")
+
+    desc_lower = description.lower()
+    for m in _PATH_TOKEN.finditer(description):
+        raw = _normalize_path(m.group("path"))
+        if not raw or raw in seen:
+            continue
+        if any(b in raw for b in _PATH_BLOCKLIST_SUBSTRINGS):
+            continue
+        seen.add(raw)
+
+        start = max(0, m.start() - 60)
+        end   = min(len(description), m.end() + 60)
+        window = desc_lower[start:end]
+        looks_writey = any(v in window for v in write_verbs)
+
+        glob = raw + "/**"
+        if looks_writey:
+            writes.append(glob)
+            reads.append(glob)  # writable implies readable
+        else:
+            reads.append(glob)
+    return reads, writes
+
+
+def merge_user_paths_into_manifest(plan, description: str) -> int:
+    """
+    Inject paths the user typed into the plan's permission_manifest.
+    Returns the number of paths added. Idempotent — won't re-add duplicates.
+    """
+    reads, writes = extract_user_paths(description)
+    if not reads and not writes:
+        return 0
+    pm = plan.permission_manifest
+    existing_reads  = set(pm.read_paths or [])
+    existing_writes = set(pm.write_paths or [])
+    added = 0
+    for r in reads:
+        if r not in existing_reads:
+            pm.read_paths.append(r)
+            existing_reads.add(r)
+            added += 1
+    for w in writes:
+        if w not in existing_writes:
+            pm.write_paths.append(w)
+            existing_writes.add(w)
+            added += 1
+    return added
+
+
 def create_agent(title: str, description: str,
                  registry=None,
                  notification_channels: Optional[List[str]] = None) -> str:
@@ -787,6 +885,17 @@ def create_agent(title: str, description: str,
                outcome="error", level="error",
                extra={"agent_id": agent_id, "reason": str(e)[:200]})
         raise
+
+    # Auto-grant: paths the user explicitly typed in their description go
+    # into the manifest before approval. Reduces "blocked_on_permission"
+    # mid-run when the user's own message already authorized them.
+    try:
+        injected = merge_user_paths_into_manifest(plan, description)
+        if injected:
+            log.info("[%s] auto-injected %d user-typed path(s) into manifest",
+                     agent_id, injected)
+    except Exception as e:
+        log.warning("[%s] user-path extraction failed: %s", agent_id, e)
 
     # Persist plan + transition status
     save_plan(plan)

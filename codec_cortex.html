@@ -7,7 +7,7 @@
 <link rel="icon" href="/favicon.png">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-:root{--bg:#050508;--accent:#E8711A;--green:#00e676;--red:#ff3d3d;--yellow:#ffd740;--blue:#448aff;--purple:#b388ff;--text:#e8e8f0;--dim:#555}
+:root{--bg:#0a0a0e;--accent:#d97757;--green:#34d399;--red:#f87171;--yellow:#fbbf24;--blue:#60a5fa;--purple:#a78bfa;--text:#e4e4e7;--dim:#52525b}
 body{background:radial-gradient(ellipse at 50% 30%,#0c0a14 0%,#060610 40%,var(--bg) 70%);color:var(--text);font-family:'SF Pro Display',-apple-system,system-ui,sans-serif;overflow:hidden;height:100vh;width:100vw}
 #cortex{position:absolute;top:0;left:0;width:100%;height:100%;cursor:grab}
 #cortex:active{cursor:grabbing}
@@ -277,7 +277,7 @@ function openSidePanel(){document.getElementById('sidePanel').classList.add('ope
 function closeSidePanel(){document.getElementById('sidePanel').classList.remove('open');document.getElementById('sidePanelOverlay').classList.remove('open')}
 var _voiceOn=localStorage.getItem('codec-voice')==='true';
 function toggleVoiceReply(){_voiceOn=!_voiceOn;localStorage.setItem('codec-voice',_voiceOn);updateVoiceIcon()}
-function updateVoiceIcon(){var m1=document.getElementById('muteX1'),m2=document.getElementById('muteX2'),st=document.getElementById('voiceState');if(_voiceOn){if(m1)m1.style.display='none';if(m2)m2.style.display='none';if(st){st.textContent='ON';st.style.color='#0a0a0a';st.style.background='#E8711A'}}else{if(m1)m1.style.display='';if(m2)m2.style.display='';if(st){st.textContent='OFF';st.style.color='#888';st.style.background='#2a2a2a'}}}
+function updateVoiceIcon(){var m1=document.getElementById('muteX1'),m2=document.getElementById('muteX2'),st=document.getElementById('voiceState');if(_voiceOn){if(m1)m1.style.display='none';if(m2)m2.style.display='none';if(st){st.textContent='ON';st.style.color='#0a0a0a';st.style.background='#d97757'}}else{if(m1)m1.style.display='';if(m2)m2.style.display='';if(st){st.textContent='OFF';st.style.color='#888';st.style.background='#2a2a2a'}}}
 updateVoiceIcon();
 // Theme
 function toggleCortexTheme(){
@@ -345,57 +345,57 @@ var ICONS = {
 
 var NODES = [
   // ─── BRAIN (top center) — Intelligence & Reasoning ───
-  {id:'qwen',label:'Qwen LLM',x:550,y:130,r:40,color:'#E8711A',icon:'brain',category:'brain',zone:'brain',
+  {id:'qwen',label:'Qwen LLM',x:550,y:130,r:40,color:'#d97757',icon:'brain',category:'brain',zone:'brain',
    info:'Qwen 3.5 35B (4-bit MLX). Main language model — all reasoning, conversation, skill routing.',file:'mlx_lm.server',port:8081,health:'/v1/models'},
   {id:'llm_queue',label:'LLM Queue',x:450,y:100,r:18,color:'#666',icon:'layers',category:'brain',zone:'brain',
    info:'Priority queue: CRITICAL(voice) > HIGH(chat) > MEDIUM(agents) > LOW(background).',file:'codec_llm_proxy.py'},
-  {id:'memory',label:'Memory',x:660,y:100,r:24,color:'#b388ff',icon:'database',category:'brain',zone:'brain',
+  {id:'memory',label:'Memory',x:660,y:100,r:24,color:'#a78bfa',icon:'database',category:'brain',zone:'brain',
    info:'SQLite + FTS5 full-text search. BM25 ranking. Stores all conversations.',file:'codec_memory.py'},
-  {id:'observer',label:'Observer',x:380,y:200,r:18,color:'#E8711A',icon:'eye',category:'brain',zone:'brain',
+  {id:'observer',label:'Observer',x:380,y:200,r:18,color:'#d97757',icon:'eye',category:'brain',zone:'brain',
    info:'Continuous observation loop (Phase 3 Step 5). Watches agent progress, detects stuck states, escalates blocks. Feeds the trigger system.',file:'codec_observer.py'},
-  {id:'search',label:'Web Search',x:680,y:180,r:20,color:'#ffd740',icon:'search',category:'brain',zone:'brain',
+  {id:'search',label:'Web Search',x:680,y:180,r:20,color:'#fbbf24',icon:'search',category:'brain',zone:'brain',
    info:'DuckDuckGo + Serper API. 5-min TTL cache. Called by skills + chat enrichment.',file:'codec_search.py'},
 
   // ─── EYES (upper-left) — Vision & Screen Reading ───
-  {id:'vision',label:'Vision VL',x:220,y:140,r:30,color:'#448aff',icon:'eye',category:'eyes',zone:'eyes',
+  {id:'vision',label:'Vision VL',x:220,y:140,r:30,color:'#60a5fa',icon:'eye',category:'eyes',zone:'eyes',
    info:'Qwen2.5-VL-7B for screen reading, image analysis. Gemini Flash as cloud fallback.',file:'mlx_lm.server',port:8082,health:'/v1/models'},
-  {id:'screenshot',label:'Screen **',x:140,y:100,r:18,color:'#448aff',icon:'monitor',category:'eyes',zone:'eyes',
+  {id:'screenshot',label:'Screen **',x:140,y:100,r:18,color:'#60a5fa',icon:'monitor',category:'eyes',zone:'eyes',
    info:'Double-asterisk captures screen, reads via Vision, opens question dialog.',file:'codec.py'},
-  {id:'document',label:'Doc ++',x:300,y:90,r:18,color:'#448aff',icon:'draft',category:'eyes',zone:'eyes',
+  {id:'document',label:'Doc ++',x:300,y:90,r:18,color:'#60a5fa',icon:'draft',category:'eyes',zone:'eyes',
    info:'Double-plus opens file picker. Extracts text/image/PDF content for analysis.',file:'codec.py'},
 
   // ─── EARS (upper-right) — Hearing & Speech Input ───
-  {id:'whisper',label:'Whisper STT',x:860,y:140,r:30,color:'#00e676',icon:'ear',category:'ears',zone:'ears',
+  {id:'whisper',label:'Whisper STT',x:860,y:140,r:30,color:'#34d399',icon:'ear',category:'ears',zone:'ears',
    info:'whisper-large-v3-turbo on MLX. Transcribes voice to text.',file:'whisper_server.py',port:8084,health:'/'},
-  {id:'f18',label:'F18 Voice',x:800,y:80,r:20,color:'#00e676',icon:'mic',category:'ears',zone:'ears',
+  {id:'f18',label:'F18 Voice',x:800,y:80,r:20,color:'#34d399',icon:'mic',category:'ears',zone:'ears',
    info:'Hold F18 to record voice. Persistent conversation session across presses.',file:'codec.py'},
-  {id:'wake',label:'Wake Word',x:940,y:100,r:20,color:'#00e676',icon:'wave',category:'ears',zone:'ears',
+  {id:'wake',label:'Wake Word',x:940,y:100,r:20,color:'#34d399',icon:'wave',category:'ears',zone:'ears',
    info:'"Hey CODEC" — continuous mic listening via Anker webcam. Auto-activates.',file:'codec.py'},
-  {id:'f16',label:'F16 Text',x:940,y:180,r:18,color:'#00e676',icon:'key',category:'ears',zone:'ears',
+  {id:'f16',label:'F16 Text',x:940,y:180,r:18,color:'#34d399',icon:'key',category:'ears',zone:'ears',
    info:'Press F16 for text input dialog (AppleScript). Dispatches to skill/LLM.',file:'codec.py'},
 
   // ─── HEART (center) — Core Dispatch & Toggle ───
-  {id:'dispatch',label:'Dispatch',x:550,y:320,r:44,color:'#E8711A',icon:'heart',category:'heart',zone:'heart',
+  {id:'dispatch',label:'Dispatch',x:550,y:320,r:44,color:'#d97757',icon:'heart',category:'heart',zone:'heart',
    info:'Central hub. Routes all voice/text tasks to skills, drafts, or LLM. The heartbeat of CODEC.',file:'codec.py'},
-  {id:'f13',label:'F13 Toggle',x:430,y:300,r:20,color:'#ffd740',icon:'toggle',category:'heart',zone:'heart',
+  {id:'f13',label:'F13 Toggle',x:430,y:300,r:20,color:'#fbbf24',icon:'toggle',category:'heart',zone:'heart',
    info:'Toggles CODEC on/off. Resets voice session. Master switch.',file:'codec.py'},
   {id:'config',label:'Config',x:670,y:300,r:18,color:'#666',icon:'cpu',category:'heart',zone:'heart',
    info:'Single source of truth. ~/.codec/config.json. All services read from here.',file:'codec_config.py'},
-  {id:'scheduler',label:'Scheduler',x:730,y:380,r:20,color:'#ffd740',icon:'clock',category:'heart',zone:'heart',
+  {id:'scheduler',label:'Scheduler',x:730,y:380,r:20,color:'#fbbf24',icon:'clock',category:'heart',zone:'heart',
    info:'Cron-like job scheduler. Fires skills, agents, and Project tasks on schedule. "Run competitor analysis every Monday 9am" — already solved.',file:'codec_scheduler.py'},
-  {id:'watcher',label:'Draft Watch',x:440,y:380,r:20,color:'#ffd740',icon:'draft',category:'heart',zone:'heart',
+  {id:'watcher',label:'Draft Watch',x:440,y:380,r:20,color:'#fbbf24',icon:'draft',category:'heart',zone:'heart',
    info:'Monitors draft_task.json. Screenshots screen, generates contextual replies.',file:'codec_watcher.py'},
 
   // ─── MOUTH (left-center) — Voice Output ───
-  {id:'kokoro',label:'Kokoro TTS',x:170,y:310,r:30,color:'#ff9544',icon:'mouth',category:'mouth',zone:'mouth',
+  {id:'kokoro',label:'Kokoro TTS',x:170,y:310,r:30,color:'#f59e0b',icon:'mouth',category:'mouth',zone:'mouth',
    info:'Kokoro-82M TTS. Voice: am_adam. Generates speech audio, played via afplay.',file:'kokoro_server.py',port:8085,health:'/v1/models'},
 
   // ─── HANDS (right side) — Skills & Actions ───
-  {id:'skills',label:'Skills x75',x:820,y:320,r:34,color:'#ffd740',icon:'hand',category:'hands',zone:'hands',
+  {id:'skills',label:'Skills x75',x:820,y:320,r:34,color:'#fbbf24',icon:'hand',category:'hands',zone:'hands',
    info:'75 skill plugins: Chrome, Google Suite, system control, media, utilities. Trigger-matched. Live count auto-updates from /api/cortex/skills.',file:'skills/*.py'},
-  {id:'agents',label:'Agents',x:920,y:370,r:22,color:'#ffd740',icon:'bolt',category:'hands',zone:'hands',
+  {id:'agents',label:'Agents',x:920,y:370,r:22,color:'#fbbf24',icon:'bolt',category:'hands',zone:'hands',
    info:'Deep research, daily briefing, trip planner + custom agents. Background job queue.',file:'routes/agents.py'},
-  {id:'marketplace',label:'Marketplace',x:820,y:240,r:18,color:'#ffd740',icon:'cpu',category:'hands',zone:'hands',
+  {id:'marketplace',label:'Marketplace',x:820,y:240,r:18,color:'#fbbf24',icon:'cpu',category:'hands',zone:'hands',
    info:'Skill marketplace — search, install, publish. Approved Pilot skills land here for sharing across CODEC installations.',file:'codec_marketplace.py'},
   {id:'pilot',label:'Pilot',x:1010,y:260,r:30,color:'#ff6e9c',icon:'globe',category:'hands',zone:'hands',
    info:'CODEC Pilot — browser automation pillar. ReAct agent loop drives a dedicated headless Chromium (CDP 9223). Records every run, compiles to pending skills, replays deterministically via XPath → CSS → LLM rescue ladder.',file:'pilot/pilot_runner.py',port:8094,health:'/health'},
@@ -407,74 +407,74 @@ var NODES = [
    info:'Qwen-driven plan drafter for Project mode. Emits structured JSON with goal, phases, and a permission manifest (skills, write paths, network domains, destructive ops).',file:'codec_agent_plan.py'},
 
   // ─── SPINE (bottom-center) — Dashboard & UIs ───
-  {id:'dashboard',label:'Dashboard',x:550,y:500,r:34,color:'#448aff',icon:'spine',category:'spine',zone:'spine',
+  {id:'dashboard',label:'Dashboard',x:550,y:500,r:34,color:'#60a5fa',icon:'spine',category:'spine',zone:'spine',
    info:'FastAPI server. Serves all UIs, API endpoints, WebSocket. Auth + E2E encryption.',file:'codec_dashboard.py',port:8090,health:'/api/health'},
-  {id:'chat',label:'Chat UI',x:420,y:530,r:20,color:'#448aff',icon:'chat',category:'spine',zone:'spine',
+  {id:'chat',label:'Chat UI',x:420,y:530,r:20,color:'#60a5fa',icon:'chat',category:'spine',zone:'spine',
    info:'/chat — Conversational interface. 45 skills, streaming, vision, memory search.',file:'codec_chat.html'},
-  {id:'voice_ws',label:'Voice WS',x:680,y:530,r:20,color:'#448aff',icon:'mic',category:'spine',zone:'spine',
+  {id:'voice_ws',label:'Voice WS',x:680,y:530,r:20,color:'#60a5fa',icon:'mic',category:'spine',zone:'spine',
    info:'/ws/voice — WebSocket voice pipeline. VAD, interruption, streaming TTS.',file:'codec_voice.py'},
-  {id:'vibe',label:'Vibe IDE',x:550,y:580,r:18,color:'#448aff',icon:'globe',category:'spine',zone:'spine',
+  {id:'vibe',label:'Vibe IDE',x:550,y:580,r:18,color:'#60a5fa',icon:'globe',category:'spine',zone:'spine',
    info:'/vibe — Code generation preview. HTML/CSS/JS with live preview.',file:'codec_vibe.html'},
 
   // ─── IMMUNE SYSTEM (bottom) — Monitoring & Safety ───
-  {id:'heartbeat',label:'Heartbeat',x:780,y:520,r:22,color:'#00e676',icon:'clock',category:'immune',zone:'immune',
+  {id:'heartbeat',label:'Heartbeat',x:780,y:520,r:22,color:'#34d399',icon:'clock',category:'immune',zone:'immune',
    info:'Every 5 min: checks all services, LLM liveness probe, auto-restart.',file:'codec_heartbeat.py'},
-  {id:'alerts',label:'Alerts',x:900,y:520,r:18,color:'#ff3d3d',icon:'alarm',category:'immune',zone:'immune',
+  {id:'alerts',label:'Alerts',x:900,y:520,r:18,color:'#f87171',icon:'alarm',category:'immune',zone:'immune',
    info:'Multi-channel: Telegram, Email, Slack, macOS notifications.',file:'codec_alerts.py'},
   {id:'metrics',label:'Metrics',x:900,y:460,r:16,color:'#666',icon:'chart',category:'immune',zone:'immune',
    info:'Prometheus /metrics endpoint. Counters, histograms, uptime gauge.',file:'codec_metrics.py'},
-  {id:'approval',label:'Approval',x:340,y:560,r:20,color:'#ff3d3d',icon:'shield',category:'immune',zone:'immune',
+  {id:'approval',label:'Approval',x:340,y:560,r:20,color:'#f87171',icon:'shield',category:'immune',zone:'immune',
    info:'Command approval via dashboard/phone + tkinter. Remote allow/deny.',file:'codec_session.py'},
-  {id:'audit',label:'Audit',x:430,y:620,r:22,color:'#ffd740',icon:'draft',category:'immune',zone:'immune',
+  {id:'audit',label:'Audit',x:430,y:620,r:22,color:'#fbbf24',icon:'draft',category:'immune',zone:'immune',
    info:'Unified event log across 16 categories: command, skill, llm, auth, error, scheduled, voice, vision, tts, stt, system, security, hotkey, screenshot, config, draft. JSON-line storage with 50MB rotation. 17 additional event types for Project autonomous agents.',file:'codec_audit.py'},
-  {id:'watchdog',label:'Watchdog',x:680,y:620,r:18,color:'#00e676',icon:'shield',category:'immune',zone:'immune',
+  {id:'watchdog',label:'Watchdog',x:680,y:620,r:18,color:'#34d399',icon:'shield',category:'immune',zone:'immune',
    info:'Process monitor — only kills procs using >500MB RAM with <0.5% CPU for 10+ consecutive minutes (truly stuck/zombie). Active procs never killed.',file:'codec_watchdog.py'},
 
   // ─── EXTERNAL (bottom-left) — Messaging & Outbound ───
   {id:'mcp',label:'MCP Server',x:90,y:460,r:22,color:'#a78bfa',icon:'globe',category:'external',zone:'external',
    info:'Model Context Protocol server — exposes CODEC skills as tools callable from Claude Code, Cursor, VS Code, and any MCP client. Approved Pilot skills auto-register here. Strict input validation, opt-in exposure per skill.',file:'codec_mcp.py'},
-  {id:'imessage',label:'iMessage',x:170,y:530,r:24,color:'#34c759',icon:'chat',category:'external',zone:'external',
+  {id:'imessage',label:'iMessage',x:170,y:530,r:24,color:'#22c55e',icon:'chat',category:'external',zone:'external',
    info:'Polls macOS Messages DB. Trigger: "Hey CODEC" or "Good morning". Replies via AppleScript. Daily Briefing, smart agents.',file:'codec_imessage.py'},
-  {id:'telegram',label:'Telegram',x:270,y:580,r:24,color:'#29b6f6',icon:'globe',category:'external',zone:'external',
+  {id:'telegram',label:'Telegram',x:270,y:580,r:24,color:'#38bdf8',icon:'globe',category:'external',zone:'external',
    info:'Bot API long polling. No trigger in DMs. Voice notes via Kokoro TTS. Daily Briefing + Deep Report.',file:'codec_telegram.py'},
 ];
 
 var EDGES = [
   // Ears -> Brain
-  {from:'f18',to:'whisper',color:'#00e676',label:'audio'},
-  {from:'wake',to:'whisper',color:'#00e676',label:'audio'},
-  {from:'whisper',to:'dispatch',color:'#00e676',label:'text'},
-  {from:'f16',to:'dispatch',color:'#00e676'},
+  {from:'f18',to:'whisper',color:'#34d399',label:'audio'},
+  {from:'wake',to:'whisper',color:'#34d399',label:'audio'},
+  {from:'whisper',to:'dispatch',color:'#34d399',label:'text'},
+  {from:'f16',to:'dispatch',color:'#34d399'},
 
   // Eyes -> Brain
-  {from:'screenshot',to:'vision',color:'#448aff',label:'pixels'},
-  {from:'screenshot',to:'dispatch',color:'#448aff'},
-  {from:'document',to:'dispatch',color:'#448aff'},
-  {from:'vision',to:'dispatch',color:'#448aff',label:'desc'},
+  {from:'screenshot',to:'vision',color:'#60a5fa',label:'pixels'},
+  {from:'screenshot',to:'dispatch',color:'#60a5fa'},
+  {from:'document',to:'dispatch',color:'#60a5fa'},
+  {from:'vision',to:'dispatch',color:'#60a5fa',label:'desc'},
 
   // Heart pumps to all
-  {from:'dispatch',to:'skills',color:'#E8711A',label:'match'},
-  {from:'dispatch',to:'watcher',color:'#E8711A',label:'draft'},
-  {from:'dispatch',to:'qwen',color:'#E8711A',label:'think'},
-  {from:'dispatch',to:'memory',color:'#b388ff',label:'recall'},
-  {from:'dispatch',to:'search',color:'#ffd740'},
-  {from:'f13',to:'dispatch',color:'#ffd740',style:'dashed'},
+  {from:'dispatch',to:'skills',color:'#d97757',label:'match'},
+  {from:'dispatch',to:'watcher',color:'#d97757',label:'draft'},
+  {from:'dispatch',to:'qwen',color:'#d97757',label:'think'},
+  {from:'dispatch',to:'memory',color:'#a78bfa',label:'recall'},
+  {from:'dispatch',to:'search',color:'#fbbf24'},
+  {from:'f13',to:'dispatch',color:'#fbbf24',style:'dashed'},
   {from:'config',to:'dispatch',color:'#444',style:'dashed'},
 
   // Brain processes
-  {from:'qwen',to:'kokoro',color:'#ff9544',label:'speak'},
-  {from:'qwen',to:'memory',color:'#b388ff',label:'save'},
+  {from:'qwen',to:'kokoro',color:'#f59e0b',label:'speak'},
+  {from:'qwen',to:'memory',color:'#a78bfa',label:'save'},
   {from:'llm_queue',to:'qwen',color:'#666',style:'dashed'},
 
   // Hands execute
-  {from:'skills',to:'qwen',color:'#ffd740'},
-  {from:'skills',to:'vision',color:'#ffd740'},
-  {from:'skills',to:'search',color:'#ffd740'},
-  {from:'agents',to:'qwen',color:'#ffd740'},
-  {from:'agents',to:'search',color:'#ffd740'},
-  {from:'agents',to:'memory',color:'#b388ff'},
-  {from:'watcher',to:'qwen',color:'#ffd740'},
-  {from:'watcher',to:'vision',color:'#ffd740'},
+  {from:'skills',to:'qwen',color:'#fbbf24'},
+  {from:'skills',to:'vision',color:'#fbbf24'},
+  {from:'skills',to:'search',color:'#fbbf24'},
+  {from:'agents',to:'qwen',color:'#fbbf24'},
+  {from:'agents',to:'search',color:'#fbbf24'},
+  {from:'agents',to:'memory',color:'#a78bfa'},
+  {from:'watcher',to:'qwen',color:'#fbbf24'},
+  {from:'watcher',to:'vision',color:'#fbbf24'},
 
   // Pilot — browser automation pillar
   {from:'pilot_chrome',to:'pilot',color:'#ff6e9c',label:'CDP'},
@@ -488,64 +488,64 @@ var EDGES = [
   {from:'plan',to:'project',color:'#a78bfa',label:'hash'},
   {from:'project',to:'qwen',color:'#a78bfa'},
   {from:'project',to:'skills',color:'#a78bfa',label:'invoke'},
-  {from:'project',to:'memory',color:'#b388ff'},
+  {from:'project',to:'memory',color:'#a78bfa'},
   {from:'project',to:'approval',color:'#a78bfa',label:'permission',style:'dashed'},
   {from:'project',to:'dashboard',color:'#a78bfa',style:'dashed'},
 
   // Infrastructure — Audit, Watchdog, Scheduler, MCP, Observer, Marketplace
-  {from:'dispatch',to:'audit',color:'#ffd740',label:'log',style:'dashed'},
-  {from:'project',to:'audit',color:'#ffd740',style:'dashed'},
-  {from:'pilot',to:'audit',color:'#ffd740',style:'dashed'},
-  {from:'watchdog',to:'heartbeat',color:'#00e676',style:'dashed'},
-  {from:'scheduler',to:'agents',color:'#ffd740',label:'fire'},
+  {from:'dispatch',to:'audit',color:'#fbbf24',label:'log',style:'dashed'},
+  {from:'project',to:'audit',color:'#fbbf24',style:'dashed'},
+  {from:'pilot',to:'audit',color:'#fbbf24',style:'dashed'},
+  {from:'watchdog',to:'heartbeat',color:'#34d399',style:'dashed'},
+  {from:'scheduler',to:'agents',color:'#fbbf24',label:'fire'},
   {from:'scheduler',to:'project',color:'#a78bfa',style:'dashed'},
   {from:'mcp',to:'skills',color:'#a78bfa',label:'expose'},
   {from:'mcp',to:'dashboard',color:'#a78bfa',style:'dashed'},
-  {from:'observer',to:'project',color:'#E8711A',label:'watch',style:'dashed'},
-  {from:'observer',to:'dispatch',color:'#E8711A',style:'dashed'},
-  {from:'marketplace',to:'skills',color:'#ffd740',style:'dashed'},
+  {from:'observer',to:'project',color:'#d97757',label:'watch',style:'dashed'},
+  {from:'observer',to:'dispatch',color:'#d97757',style:'dashed'},
+  {from:'marketplace',to:'skills',color:'#fbbf24',style:'dashed'},
   {from:'pilot',to:'marketplace',color:'#ff6e9c',label:'publish',style:'dashed'},
 
   // Spine connects UIs
-  {from:'dashboard',to:'qwen',color:'#448aff'},
-  {from:'dashboard',to:'memory',color:'#b388ff'},
-  {from:'dashboard',to:'skills',color:'#ffd740'},
-  {from:'chat',to:'dashboard',color:'#448aff'},
-  {from:'voice_ws',to:'dashboard',color:'#448aff'},
-  {from:'voice_ws',to:'whisper',color:'#00e676'},
-  {from:'voice_ws',to:'kokoro',color:'#ff9544'},
-  {from:'vibe',to:'dashboard',color:'#448aff'},
+  {from:'dashboard',to:'qwen',color:'#60a5fa'},
+  {from:'dashboard',to:'memory',color:'#a78bfa'},
+  {from:'dashboard',to:'skills',color:'#fbbf24'},
+  {from:'chat',to:'dashboard',color:'#60a5fa'},
+  {from:'voice_ws',to:'dashboard',color:'#60a5fa'},
+  {from:'voice_ws',to:'whisper',color:'#34d399'},
+  {from:'voice_ws',to:'kokoro',color:'#f59e0b'},
+  {from:'vibe',to:'dashboard',color:'#60a5fa'},
 
   // Immune system monitors
-  {from:'heartbeat',to:'qwen',color:'#00e676',style:'dashed',label:'probe'},
-  {from:'heartbeat',to:'whisper',color:'#00e676',style:'dashed'},
-  {from:'heartbeat',to:'kokoro',color:'#00e676',style:'dashed'},
-  {from:'heartbeat',to:'vision',color:'#00e676',style:'dashed'},
-  {from:'heartbeat',to:'dashboard',color:'#00e676',style:'dashed'},
-  {from:'heartbeat',to:'alerts',color:'#ff3d3d'},
-  {from:'approval',to:'dashboard',color:'#ff3d3d'},
+  {from:'heartbeat',to:'qwen',color:'#34d399',style:'dashed',label:'probe'},
+  {from:'heartbeat',to:'whisper',color:'#34d399',style:'dashed'},
+  {from:'heartbeat',to:'kokoro',color:'#34d399',style:'dashed'},
+  {from:'heartbeat',to:'vision',color:'#34d399',style:'dashed'},
+  {from:'heartbeat',to:'dashboard',color:'#34d399',style:'dashed'},
+  {from:'heartbeat',to:'alerts',color:'#f87171'},
+  {from:'approval',to:'dashboard',color:'#f87171'},
 
   // External messaging
-  {from:'imessage',to:'qwen',color:'#34c759',label:'msg'},
-  {from:'imessage',to:'skills',color:'#34c759'},
-  {from:'imessage',to:'memory',color:'#b388ff'},
-  {from:'telegram',to:'qwen',color:'#29b6f6',label:'msg'},
-  {from:'telegram',to:'kokoro',color:'#ff9544',label:'voice'},
-  {from:'telegram',to:'skills',color:'#29b6f6'},
-  {from:'telegram',to:'memory',color:'#b388ff'},
+  {from:'imessage',to:'qwen',color:'#22c55e',label:'msg'},
+  {from:'imessage',to:'skills',color:'#22c55e'},
+  {from:'imessage',to:'memory',color:'#a78bfa'},
+  {from:'telegram',to:'qwen',color:'#38bdf8',label:'msg'},
+  {from:'telegram',to:'kokoro',color:'#f59e0b',label:'voice'},
+  {from:'telegram',to:'skills',color:'#38bdf8'},
+  {from:'telegram',to:'memory',color:'#a78bfa'},
 ];
 
 // Zone labels
 var ZONES = [
-  {label:'Brain',x:550,y:52,color:'#E8711A'},
-  {label:'Eyes',x:220,y:55,color:'#448aff'},
-  {label:'Ears',x:870,y:45,color:'#00e676'},
-  {label:'Heart',x:550,y:240,color:'#E8711A'},
-  {label:'Mouth',x:170,y:255,color:'#ff9544'},
-  {label:'Hands',x:860,y:255,color:'#ffd740'},
-  {label:'Spine',x:550,y:445,color:'#448aff'},
-  {label:'Immune',x:780,y:580,color:'#ff3d3d'},
-  {label:'External',x:220,y:480,color:'#34c759'},
+  {label:'Brain',x:550,y:52,color:'#d97757'},
+  {label:'Eyes',x:220,y:55,color:'#60a5fa'},
+  {label:'Ears',x:870,y:45,color:'#34d399'},
+  {label:'Heart',x:550,y:240,color:'#d97757'},
+  {label:'Mouth',x:170,y:255,color:'#f59e0b'},
+  {label:'Hands',x:860,y:255,color:'#fbbf24'},
+  {label:'Spine',x:550,y:445,color:'#60a5fa'},
+  {label:'Immune',x:780,y:580,color:'#f87171'},
+  {label:'External',x:220,y:480,color:'#22c55e'},
 ];
 
 // ── State ──
@@ -610,7 +610,7 @@ function render() {
     html += '<path d="'+path+'" fill="none" stroke="'+(e.color||'#333')+'" stroke-width="1.2" opacity="'+op+'"'+(isDash?' stroke-dasharray="5,4"':'')+'/>';
     // Flow particles (only on solid connections)
     if (!isDash) {
-      html += '<circle r="1.8" fill="'+(e.color||'#E8711A')+'" opacity=".6"><animateMotion dur="'+(2.5+i%3)+'s" repeatCount="indefinite" path="'+path+'"/></circle>';
+      html += '<circle r="1.8" fill="'+(e.color||'#d97757')+'" opacity=".6"><animateMotion dur="'+(2.5+i%3)+'s" repeatCount="indefinite" path="'+path+'"/></circle>';
     }
     if (e.label) {
       html += '<text x="'+mx+'" y="'+(my-5)+'" text-anchor="middle" fill="'+(e.color||'#444')+'" font-size="7.5" opacity=".35">'+e.label+'</text>';
@@ -620,7 +620,7 @@ function render() {
   // Nodes
   NODES.forEach(function(n) {
     var status = healthStatus[n.id] || 'unknown';
-    var ringColor = status==='ok'?'#00e676':status==='err'?'#ff3d3d':n.color;
+    var ringColor = status==='ok'?'#34d399':status==='err'?'#f87171':n.color;
     var glow = status==='ok'?'filter="url(#glow)"':status==='err'?'filter="url(#glowHard)"':'';
     var ringOp = status==='ok'?'.5':status==='err'?'.7':'.25';
 
@@ -783,13 +783,13 @@ function updateStats() {
 // ── Legend ──
 (function(){
   var cats = [
-    {color:'#E8711A',label:'Brain (LLM)'},
-    {color:'#448aff',label:'Eyes (Vision)'},
-    {color:'#00e676',label:'Ears (STT)'},
-    {color:'#ff9544',label:'Mouth (TTS)'},
-    {color:'#ffd740',label:'Hands (Skills)'},
-    {color:'#448aff',label:'Spine (UI)'},
-    {color:'#ff3d3d',label:'Immune (Safety)'},
+    {color:'#d97757',label:'Brain (LLM)'},
+    {color:'#60a5fa',label:'Eyes (Vision)'},
+    {color:'#34d399',label:'Ears (STT)'},
+    {color:'#f59e0b',label:'Mouth (TTS)'},
+    {color:'#fbbf24',label:'Hands (Skills)'},
+    {color:'#60a5fa',label:'Spine (UI)'},
+    {color:'#f87171',label:'Immune (Safety)'},
   ];
   var html='';
   cats.forEach(function(c){
@@ -837,32 +837,32 @@ function closeSkills() { document.getElementById('skills-panel').classList.remov
 
 // ── Product Frames ──
 var PRODUCTS = [
-  {name:'CODEC Core',subtitle:'The Command Layer',icon:'🎙',color:'#E8711A',
+  {name:'CODEC Core',subtitle:'The Command Layer',icon:'🎙',color:'#d97757',
    desc:'Always-on voice assistant. Say "Hey CODEC" or press F13 to activate. F18 for voice commands. F16 for text input. 75 skills fire instantly — most bypass the LLM entirely. Direct action, zero latency.',
    features:['F13 Toggle','F18 Voice','F16 Text','Hey CODEC Wake','56 Skills','Google Calendar','Gmail','Drive','Docs','Sheets','Tasks','Keep','Chrome','Web Search','Hue Lights','Timers','Spotify','Clipboard','Terminal','Memory FTS5'],
    files:['codec.py','codec_core.py','codec_config.py'],status:'core',
    details:{shortcuts:['F13 — Toggle on/off','F18 — Hold to record voice','F16 — Text input dialog','** — Screenshot + Vision','++ — Document analysis','-- — Quick chat'],skills:'75 built-in skills: Google Calendar, Gmail, Drive, Docs, Sheets, Tasks, Keep, Chrome automation, web search, Hue lights, clipboard, terminal commands, music, timers, calculator, weather, bitcoin, brightness, volume, app switch, mouse control, screenshot OCR. Most skills bypass the LLM entirely — direct action, zero latency.',memory:'FTS5-indexed SQLite. BM25 ranking. All conversations logged across all 9 products.',wake:'Always-on "Hey CODEC" via Anker webcam mic. Energy threshold: 200. Auto-activates and records follow-up.',files:['codec.py','codec_core.py','codec_config.py','codec_identity.py','skills/*.py']}},
-  {name:'CODEC Dictate',subtitle:'Hold, Speak, Paste',icon:'✍️',color:'#00e676',
+  {name:'CODEC Dictate',subtitle:'Hold, Speak, Paste',icon:'✍️',color:'#34d399',
    desc:'Hold a key. Say what you mean. Release. Text appears wherever the cursor is. If CODEC detects a message draft, it refines through the LLM — grammar fixed, tone polished, meaning preserved. Works in every app on macOS. A free, open-source SuperWhisper replacement that runs entirely local.',
    features:['Hold to Record','Whisper STT','LLM Refinement','Auto-Paste','Any macOS App','Grammar Fix','Tone Polish','Draft Detection'],
    files:['codec_dictate.py'],status:'dictate',
    details:{how:'Hold key → sox recording → Whisper STT → LLM grammar/tone refinement → auto-paste via pbcopy. Works in VS Code, Chrome, Notes, any app with a text cursor.',port:'8084 (Whisper)',files:['codec_dictate.py']}},
-  {name:'CODEC Instant',subtitle:'One Right-Click',icon:'⚡',color:'#ffd740',
+  {name:'CODEC Instant',subtitle:'One Right-Click',icon:'⚡',color:'#fbbf24',
    desc:'Select any text, anywhere. Right-click. Eight AI services system-wide: Proofread, Elevate, Explain, Translate, Reply (with :tone syntax), Prompt, Read Aloud, Save. Powered by the local LLM.',
    features:['Proofread','Elevate','Explain','Translate','Reply','Read Aloud','Save','Prompt','System-wide','Any App'],
    files:['codec_instant.py'],status:'instant',
    details:{services:['Proofread — Fix grammar and spelling','Elevate — Improve writing quality','Explain — Break down complex text','Translate — Multi-language translation','Reply — Generate contextual replies with :tone syntax','Read Aloud — Kokoro TTS on selected text','Save — Store to memory','Prompt — Custom AI prompt on selection'],how:'System-wide macOS Services menu. Select text → right-click → CODEC.',files:['codec_instant.py','codec_textassist.py']}},
-  {name:'CODEC Chat',subtitle:'250K Context + 12 Agent Crews',icon:'💬',color:'#b388ff',
+  {name:'CODEC Chat',subtitle:'250K Context + 12 Agent Crews',icon:'💬',color:'#a78bfa',
    desc:'Full conversational AI. Long context. File uploads. Image analysis via vision model. Web search. 12 autonomous agent crews — not single prompts, full multi-step workflows. Schedule any crew on a cron.',
    features:['250K Context','File Upload','Image Analysis','Web Search','12 Agent Crews','Streaming','Skill Execution','Voice Reply','Memory Search','Code Blocks','Thinking Mode'],
    files:['codec_chat.html','codec_dashboard.py'],status:'chat',
    details:{agents:'Deep Research (10,000-word report → Google Docs), Daily Briefing (morning news + calendar), Competitor Analysis (SWOT + positioning), Trip Planner (full itinerary), Email Handler (triage inbox, draft replies), Social Media (posts for Twitter, LinkedIn, Instagram), Code Review (bugs + security), Data Analysis (trends + insights), Content Writer (blog posts, articles), Meeting Summarizer (action items), Invoice Generator (professional invoices), Custom Agent (define your own role, tools, task)',features:'250K context, file uploads (PDF/image/text), web search with Serper API, skill execution, streaming responses, voice reply toggle, thinking mode toggle, memory search. Multi-agent framework under 800 lines. Zero dependencies. No CrewAI. No LangChain.',scheduling:'Schedule any crew: "Run competitor analysis every Monday at 9am"',port:'8090 (/chat)',files:['codec_chat.html','codec_dashboard.py','routes/agents.py','codec_agents.py']}},
-  {name:'CODEC Vibe',subtitle:'AI Coding IDE + Skill Forge',icon:'🎨',color:'#ff9544',
+  {name:'CODEC Vibe',subtitle:'AI Coding IDE + Skill Forge',icon:'🎨',color:'#f59e0b',
    desc:'Split-screen in the browser. Monaco editor on the left (same engine as VS Code). AI chat on the right. Describe what you need — CODEC writes it, click Apply, run it, live preview. Skill Forge: describe a new capability in plain English, CODEC converts it into a working plugin.',
    features:['Monaco Editor','Live Preview','Skill Forge','Auto Deploy','Code Generation','Apply Code','HTML/CSS/JS','Template Library'],
    files:['codec_vibe.html'],status:'vibe',
    details:{how:'Natural language → LLM generates HTML/CSS/JS → Live preview in iframe → One-click deploy as skill. Skill Forge takes it further: describe a new capability in plain English, CODEC converts it into a working plugin. The framework writes its own extensions.',port:'8090 (/vibe)',files:['codec_vibe.html']}},
-  {name:'CODEC Voice',subtitle:'Live Voice Calls',icon:'📞',color:'#00e676',
+  {name:'CODEC Voice',subtitle:'Live Voice Calls',icon:'📞',color:'#34d399',
    desc:'Real-time voice-to-voice conversations with the AI. WebSocket pipeline — no Pipecat, no external dependencies. Mid-call say "check my screen" — it screenshots, analyzes, and speaks back. Full transcript saved to memory.',
    features:['WebSocket','VAD','Interruption','Live Transcript','Screen Analysis','Streaming TTS','Low Latency','Memory Save','Searchable History'],
    files:['codec_voice.py'],status:'voice',

@@ -11,10 +11,11 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg: #121215; --surface: #1a1a1d; --surface-2: #212125; --surface-3: #2a2a2e;
-  --border: #303035; --border-hover: #424248;
+  --bg: #121215; --surface: #18181b; --surface-2: #1f1f22; --surface-3: #27272a;
+  --border: #2a2a2f; --border-hover: #3a3a40;
   --text: #ececec; --text-muted: #9a9aa0; --text-dim: #6a6a70;
-  --accent: #E8711A; --accent-hover: #f07d2a; --accent-dim: rgba(232,113,26,0.10);
+  /* 2026 refresh: keep CODEC orange identity but warmer + calmer (was pure #E8711A) */
+  --accent: #d97757; --accent-hover: #e08766; --accent-dim: rgba(217,119,87,0.10);
   --danger: #ef4444; --success: #22c55e; --info: #3b82f6;
   --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   --mono: 'JetBrains Mono', 'SF Mono', monospace;
@@ -25,7 +26,7 @@
   --fg: #e8e8e8; --fg2: #7a7a7a; --fg3: #4a4a4a;
   --ac: #E8711A; --bd: #232323;
 }
-[data-theme=light]{--bg:#f7f5f2;--surface:#fff;--surface-2:#f0ece6;--surface-3:#e8e4de;--border:#d5d0ca;--border-hover:#bbb;--text:#1a1a1a;--text-muted:#555;--text-dim:#777;--bg2:#fff;--bg3:#f0ece6;--bg4:#e8e4de;--fg:#1a1a1a;--fg2:#555;--fg3:#777;--bd:#d5d0ca}
+[data-theme=light]{--bg:#faf8f5;--surface:#fff;--surface-2:#f2eee8;--surface-3:#ebe6df;--border:#e2ddd5;--border-hover:#c8c2b8;--text:#18181b;--text-muted:#52525b;--text-dim:#71717a;--bg2:#fff;--bg3:#f2eee8;--bg4:#ebe6df;--fg:#18181b;--fg2:#52525b;--fg3:#71717a;--bd:#e2ddd5;--accent:#b85a3a;--accent-hover:#a04d31;--accent-dim:rgba(184,90,58,0.08)}
 *{margin:0;padding:0;box-sizing:border-box}
 html{background:var(--bg)}
 html,body{font-family:var(--font);background:var(--bg);color:var(--text);height:100%;overflow:hidden;-webkit-tap-highlight-color:transparent}
@@ -343,6 +344,7 @@ input[type=file]{display:none}
 </button>
 <button class="mode-btn" onclick="setMode('research')" id="modeResearchBtn"><svg class="ico" viewBox="0 0 24 24" style="width:14px;height:14px"><rect x="4" y="4" width="16" height="16" rx="2"/><circle cx="9" cy="10" r="1.5" fill="currentColor" stroke="none"/><circle cx="15" cy="10" r="1.5" fill="currentColor" stroke="none"/><path d="M9 15h6"/></svg>Agents</button>
 <button class="mode-btn" onclick="setMode('project')" id="modeProjectBtn" title="Drop a project — autonomous plan-and-build mode"><svg class="ico" viewBox="0 0 24 24" style="width:14px;height:14px"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="5"/><line x1="12" y1="2" x2="12" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg>Project</button>
+<button class="mode-btn" id="speakToggle" onclick="toggleVoiceReply();updateSpeakToggle()" title="Voice replies — CODEC speaks responses back via Kokoro"><svg class="ico ico-sm" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 010 14.14"/><path d="M15.54 8.46a5 5 0 010 7.07"/><line id="speakMuteX1" x1="4" y1="4" x2="20" y2="20" stroke-width="2.5" style="display:none"/></svg>Speak</button>
 <select id="crewSelect">
 <option value="deep_research">🔍 Deep Research</option>
 <option value="daily_briefing">📰 Daily Briefing</option>
@@ -765,9 +767,32 @@ function addMessage(role,content,animate){
   var copyBtn='<button class="msg-copy" onclick="copyMsgText(decodeURIComponent(\''+enc+'\'),this)" title="Copy"><svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button>';
   var editBtn=role==='user'?'<button class="msg-edit" onclick="editMessage(decodeURIComponent(\''+enc+'\'),this)" title="Edit &amp; re-send"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>':'';
   var regenBtn=role==='assistant'?'<button class="msg-regen" onclick="regenerateResponse(this)" title="Regenerate"><svg class="ico ico-sm" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg></button>':'';
-  div.innerHTML=copyBtn+editBtn+regenBtn+'<div class="msg-bubble">'+formatMsg(content)+'</div><div class="msg-time">'+time+'</div>';
+  // ── Speak button per assistant message — manual TTS playback regardless of global toggle
+  var speakBtn=role==='assistant'?'<button class="msg-speak" onclick="speakMessage(decodeURIComponent(\''+enc+'\'),this)" title="Speak"><svg class="ico ico-sm" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 010 14.14"/><path d="M15.54 8.46a5 5 0 010 7.07"/></svg></button>':'';
+  div.innerHTML=copyBtn+editBtn+regenBtn+speakBtn+'<div class="msg-bubble">'+formatMsg(content)+'</div><div class="msg-time">'+time+'</div>';
   document.getElementById('messages').appendChild(div);
-  scrollBottom()
+  scrollBottom();
+  // ── Auto-speak via Kokoro when global "Voice Replies" toggle is ON
+  if (role === 'assistant' && voiceReplyEnabled) {
+    var plain = String(content).replace(/[`*_#>\[\]()]/g,'').replace(/\s+/g,' ').trim();
+    if (plain) speakMessage(plain);
+  }
+}
+
+// Play Kokoro TTS for any text — used by per-message Speak button + voice-reply autoplay
+var _ttsAudio = null;
+function speakMessage(text, btn){
+  if (!text) return;
+  // Stop any in-flight playback (prevents pile-up)
+  if (_ttsAudio) { try { _ttsAudio.pause(); } catch(e){} _ttsAudio = null; }
+  // Trim to ~500 chars (TTS endpoint caps internally too)
+  var snippet = String(text).slice(0, 500);
+  var url = '/api/tts?text=' + encodeURIComponent(snippet);
+  _ttsAudio = new Audio(url);
+  if (btn) btn.classList.add('speaking');
+  _ttsAudio.onended = function(){ if (btn) btn.classList.remove('speaking'); _ttsAudio = null; };
+  _ttsAudio.onerror = function(){ if (btn) btn.classList.remove('speaking'); _ttsAudio = null; };
+  _ttsAudio.play().catch(function(){ if (btn) btn.classList.remove('speaking'); });
 }
 
 function editMessage(text,btn){
@@ -941,18 +966,59 @@ async function sendMessage(){
   if(!text&&!pendingFiles.length)return;
   input.value='';input.style.height='auto';
 
-  // Phase 3.5 Step 11: Project mode → POST /api/agents (Step 8 plan dispatch)
+  // Project mode → POST /api/agents (Step 8 plan dispatch)
+  // OR if there's an active agent in this thread, route the message to that agent
+  // (status queries, mid-run instructions). User explicitly exits with × on chip.
   if(chatMode==='project'){
     if(!text)return;
     addMessage('user',text);
     chatHist.push({role:'user',content:text});
     saveMessages([{role:'user',content:text}]);
+    isProcessing=true;document.getElementById('sendBtn').disabled=true;
+
+    // ── Continuity branch: route to active agent if one is bound to this thread
+    if(_activeAgentId){
+      var replyDiv=document.createElement('div');
+      replyDiv.className='msg assistant';
+      replyDiv.innerHTML='<div class="msg-bubble" style="opacity:.7"><em>Sending to '+escHtml(_activeAgentId.slice(0,12))+'…</em></div>';
+      document.getElementById('messages').appendChild(replyDiv);
+      scrollBottom();
+      try{
+        var rr=await fetch('/api/agents/'+encodeURIComponent(_activeAgentId)+'/messages',{
+          method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({body:text})
+        });
+        if(rr.status===404){
+          // Agent vanished (deleted / not found) — clear binding, fall through
+          replyDiv.querySelector('.msg-bubble').innerHTML='<span style="color:var(--text-muted)">Agent no longer exists — exited conversation.</span>';
+          setActiveAgent(null);
+          isProcessing=false;document.getElementById('sendBtn').disabled=false;_showSend();
+          return;
+        }
+        var rd=await rr.json();
+        if(rd.ok){
+          replyDiv.querySelector('.msg-bubble').innerHTML=
+            '✉️ Sent to <code style="opacity:.7">'+escHtml(_activeAgentId.slice(0,12))+'</code> · agent will reply in-thread';
+          chatHist.push({role:'assistant',content:'(message routed to active agent)'});
+          // Start a brief poll for the agent's reply so the user sees response inline
+          schedulePollAgentTimeline(_activeAgentId, replyDiv);
+        }else{
+          replyDiv.querySelector('.msg-bubble').innerHTML='<span style="color:var(--danger,#f87171)">Send failed:</span> '+escHtml(rd.detail||'unknown');
+        }
+      }catch(e){
+        replyDiv.querySelector('.msg-bubble').innerHTML='<span style="color:var(--danger,#f87171)">Send failed:</span> '+escHtml(e.message);
+      }finally{
+        isProcessing=false;document.getElementById('sendBtn').disabled=false;_showSend();
+      }
+      return;
+    }
+
+    // ── No active agent: draft a new project
     var pendingDiv=document.createElement('div');
     pendingDiv.className='msg assistant';
     pendingDiv.innerHTML='<div class="msg-bubble">Drafting plan via Qwen-3.6...</div>';
     document.getElementById('messages').appendChild(pendingDiv);
     scrollBottom();
-    isProcessing=true;document.getElementById('sendBtn').disabled=true;
     try{
       var pr=await fetch('/api/agents',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({title:text.slice(0,80),description:text})});
@@ -974,6 +1040,8 @@ async function sendMessage(){
         var planText='Project drafted — agent_id '+pd.agent_id+'  '+planMarker;
         chatHist.push({role:'assistant',content:planText});
         saveMessages([{role:'assistant',content:planText}]);
+        // Bind this thread to the new agent — next messages route to it
+        setActiveAgent(pd.agent_id);
         refreshAgentStatusPills();
       }else{
         pendingDiv.querySelector('.msg-bubble').innerHTML='<span style="color:var(--danger,#f87171)">Unknown response</span>';
@@ -1289,8 +1357,16 @@ function lockSession(){fetch('/api/auth/logout',{method:'POST'}).then(function()
 
 // ── Header icons (matching dashboard) ──
 var voiceReplyEnabled=localStorage.getItem('codec-voice')==='true';
-function toggleVoiceReply(){voiceReplyEnabled=!voiceReplyEnabled;localStorage.setItem('codec-voice',voiceReplyEnabled);updateVoiceIcon()}
+function toggleVoiceReply(){voiceReplyEnabled=!voiceReplyEnabled;localStorage.setItem('codec-voice',voiceReplyEnabled);updateVoiceIcon();updateSpeakToggle()}
 function updateVoiceIcon(){var m1=document.getElementById('muteX1'),m2=document.getElementById('muteX2'),st=document.getElementById('voiceState');if(voiceReplyEnabled){if(m1)m1.style.display='none';if(m2)m2.style.display='none';if(st){st.textContent='ON';st.style.color='#0a0a0a';st.style.background='#E8711A'}}else{if(m1)m1.style.display='';if(m2)m2.style.display='';if(st){st.textContent='OFF';st.style.color='#888';st.style.background='#2a2a2a'}}}
+function updateSpeakToggle(){
+  var btn=document.getElementById('speakToggle');
+  if(!btn)return;
+  var mute=document.getElementById('speakMuteX1');
+  if(voiceReplyEnabled){btn.classList.add('active');if(mute)mute.style.display='none';btn.title='Voice replies ON — click to mute';}
+  else{btn.classList.remove('active');if(mute)mute.style.display='';btn.title='Voice replies OFF — click to enable Kokoro speech';}
+}
+setTimeout(updateSpeakToggle, 0);
 updateVoiceIcon();
 async function takeScreenshot(){try{window.open('/api/screenshot?'+Date.now(),'_blank')}catch(e){}}
 
@@ -1618,6 +1694,194 @@ async function viewAgentPlan(agentId,e){
 }
 
 // Status pills (above input) — polls /api/agents every 5s
+// ════════════════════════════════════════════════════════════════
+// Conversational continuity — bind a Project-mode thread to an agent
+// ════════════════════════════════════════════════════════════════
+// _activeAgentId: while set, sending in Project mode routes the message
+// to that agent (status query / mid-run instruction) instead of drafting
+// a brand-new project. Cleared automatically when the agent reaches a
+// terminal status (done / failed / aborted), or by user clicking ×
+// on the "Talking to …" chip above the composer.
+var _activeAgentId = null;
+try { _activeAgentId = localStorage.getItem('codec-active-agent') || null; } catch(e) {}
+
+function setActiveAgent(id){
+  _activeAgentId = id;
+  try {
+    if (id) localStorage.setItem('codec-active-agent', id);
+    else    localStorage.removeItem('codec-active-agent');
+  } catch(e) {}
+  renderActiveAgentChip();
+}
+
+function renderActiveAgentChip(){
+  var bar = document.getElementById('activeAgentChip');
+  if (!bar){
+    var inputArea = document.querySelector('.input-area');
+    if (!inputArea) return;
+    bar = document.createElement('div');
+    bar.id = 'activeAgentChip';
+    bar.style.cssText = 'display:none;align-items:center;gap:8px;margin:0 16px 6px;padding:6px 12px;background:var(--surface-2,#1f2937);border:1px solid var(--border,#374151);border-radius:18px;font-size:12px;color:var(--text,#e5e7eb);max-width:fit-content';
+    inputArea.parentNode.insertBefore(bar, inputArea);
+  }
+  if (!_activeAgentId){
+    bar.style.display='none';
+    var lp = document.getElementById('livePreviewPanel');
+    if (lp) lp.style.display = 'none';
+    return;
+  }
+  bar.style.display = 'inline-flex';
+  bar.innerHTML =
+    '<span style="width:6px;height:6px;border-radius:50%;background:#10b981;animation:pulse 2s infinite"></span>'+
+    '<span style="opacity:.85">Talking to <code style="opacity:1;font-family:var(--mono,ui-monospace)">'+escHtml(_activeAgentId.slice(0,12))+'</code></span>'+
+    '<span style="opacity:.5">·</span>'+
+    '<a href="#" onclick="toggleLivePreview(event)" id="livePreviewToggle" style="color:var(--text-muted,#9ca3af);text-decoration:none;font-size:13px" title="Show what the agent is producing">👁 preview</a>'+
+    '<span style="opacity:.5">·</span>'+
+    '<a href="#" onclick="exitConversation(event)" style="color:var(--text-muted,#9ca3af);text-decoration:none;font-size:13px" title="Exit conversation — next message will draft a new project">× exit</a>';
+  renderLivePreviewPanel();
+}
+
+// ── Live preview panel: shows recent files produced by the active agent ──────
+var _livePreviewOpen = (localStorage.getItem('codec-live-preview') === 'true');
+var _livePreviewTimer = null;
+function toggleLivePreview(e){
+  if (e) e.preventDefault();
+  _livePreviewOpen = !_livePreviewOpen;
+  try { localStorage.setItem('codec-live-preview', _livePreviewOpen ? 'true' : 'false'); } catch(err){}
+  renderLivePreviewPanel();
+}
+function renderLivePreviewPanel(){
+  var panel = document.getElementById('livePreviewPanel');
+  if (!panel){
+    var chip = document.getElementById('activeAgentChip');
+    if (!chip) return;
+    panel = document.createElement('div');
+    panel.id = 'livePreviewPanel';
+    panel.style.cssText = 'display:none;margin:0 16px 8px;padding:10px 12px;background:var(--surface-2,#1f2937);border:1px solid var(--border,#374151);border-radius:8px;font-size:12px;color:var(--text,#e5e7eb)';
+    chip.parentNode.insertBefore(panel, chip.nextSibling);
+  }
+  if (!_activeAgentId || !_livePreviewOpen){
+    panel.style.display = 'none';
+    if (_livePreviewTimer){ clearInterval(_livePreviewTimer); _livePreviewTimer = null; }
+    return;
+  }
+  panel.style.display = 'block';
+  pollLivePreview();   // immediate populate
+  if (!_livePreviewTimer){
+    _livePreviewTimer = setInterval(function(){
+      if (!_activeAgentId || !_livePreviewOpen){
+        clearInterval(_livePreviewTimer); _livePreviewTimer = null;
+        return;
+      }
+      pollLivePreview();
+    }, 5000);
+  }
+}
+async function pollLivePreview(){
+  if (!_activeAgentId) return;
+  var panel = document.getElementById('livePreviewPanel');
+  if (!panel) return;
+  try {
+    var r = await fetch('/api/agents/'+encodeURIComponent(_activeAgentId)+'/files?limit=10');
+    if (!r.ok) return;
+    var d = await r.json();
+    var files = d.files || [];
+    var projectDir = d.project_dir || '';
+    var header =
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">'+
+        '<div style="font-weight:600;letter-spacing:.04em;opacity:.7;text-transform:uppercase;font-size:10px">Live · agent workspace</div>'+
+        '<div style="display:flex;gap:8px">'+
+          (projectDir ? '<a href="#" onclick="openAgentFolder(\''+encodeURIComponent(_activeAgentId)+'\',event)" style="color:var(--text-muted,#9ca3af);text-decoration:none;font-size:11px">📂 open folder</a>' : '')+
+          '<a href="#" onclick="toggleLivePreview(event)" style="color:var(--text-muted,#9ca3af);text-decoration:none;font-size:11px">×</a>'+
+        '</div>'+
+      '</div>';
+    if (!files.length){
+      panel.innerHTML = header + '<div style="opacity:.5;font-style:italic">No files yet — agent hasn\'t produced output in this folder.</div>';
+      return;
+    }
+    var rows = files.map(function(f){
+      var ago = Math.max(0, Math.round(Date.now()/1000 - (f.mtime||0)));
+      var agoStr = ago < 60 ? ago + 's' : ago < 3600 ? Math.round(ago/60) + 'm' : Math.round(ago/3600) + 'h';
+      var sizeKB = f.size_bytes < 1024 ? f.size_bytes + 'B' : (f.size_bytes/1024).toFixed(1) + 'K';
+      return '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.05);font-family:var(--mono,ui-monospace);font-size:11px">'+
+        '<span style="opacity:.85">'+escHtml(f.rel_path)+'</span>'+
+        '<span style="opacity:.5">'+sizeKB+' · '+agoStr+' ago</span>'+
+      '</div>';
+    }).join('');
+    panel.innerHTML = header + rows;
+  } catch(e){ /* silent */ }
+}
+async function openAgentFolder(agentIdEnc, e){
+  if (e) e.preventDefault();
+  try {
+    var r = await fetch('/api/agents/'+agentIdEnc+'/open_folder', {method:'POST'});
+    if (r.ok) showToast && showToast('Opened in Finder');
+  } catch(err){}
+}
+
+function exitConversation(e){
+  if (e) e.preventDefault();
+  if (!_activeAgentId) return;
+  var prev = _activeAgentId;
+  setActiveAgent(null);
+  addMessage('assistant', 'Exited conversation with `'+prev.slice(0,12)+'`. Your next Project-mode message will draft a fresh plan.');
+}
+
+// Poll the agent's timeline briefly for any new assistant reply after we
+// post a user message, so the user sees a response in-thread rather than
+// having to look at status pills.
+async function schedulePollAgentTimeline(agentId, hostEl){
+  var since = Date.now()/1000;
+  var ticks = 0;
+  var maxTicks = 15;   // ~30s @ 2s interval
+  var poll = setInterval(async function(){
+    ticks++;
+    if (ticks > maxTicks){ clearInterval(poll); return; }
+    try {
+      var r = await fetch('/api/agents/'+encodeURIComponent(agentId)+'/messages');
+      if (!r.ok) return;
+      var data = await r.json();
+      var msgs = (data.messages || []).filter(function(m){
+        return (m.ts || 0) > since && (m.type === 'agent_reply' || m.type === 'agent_status' || m.type === 'plan_revision');
+      });
+      if (msgs.length){
+        clearInterval(poll);
+        var lines = msgs.map(function(m){
+          var body = m.body || m.text || JSON.stringify(m);
+          return body;
+        }).join('\n\n');
+        if (hostEl){
+          hostEl.querySelector('.msg-bubble').innerHTML =
+            '<span style="opacity:.6;font-size:11px">'+escHtml(agentId.slice(0,12))+' replied:</span><br>'+escHtml(lines);
+        } else {
+          addMessage('assistant', lines);
+        }
+      }
+    } catch(e){ /* silent */ }
+  }, 2000);
+}
+
+// Auto-clear binding when the bound agent reaches a terminal status.
+// Wired into the existing status-pill polling tick.
+async function checkActiveAgentLifecycle(){
+  if (!_activeAgentId) return;
+  try {
+    var r = await fetch('/api/agents/'+encodeURIComponent(_activeAgentId));
+    if (r.status === 404){ setActiveAgent(null); return; }
+    if (!r.ok) return;
+    var data = await r.json();
+    var status = (data.manifest && data.manifest.status) || data.status || '';
+    var terminal = ['done','complete','completed','failed','error','aborted','user_aborted'];
+    if (terminal.indexOf(status) >= 0){
+      addMessage('assistant', '`'+_activeAgentId.slice(0,12)+'` reached `'+status+'`. Conversation closed — next message starts a fresh project.');
+      setActiveAgent(null);
+    }
+  } catch(e){ /* silent */ }
+}
+
+// Show the chip on page load if a binding survived
+setTimeout(renderActiveAgentChip, 100);
+
 async function refreshAgentStatusPills(){
   var container=document.getElementById('agentStatusPills');
   if(!container){
@@ -1665,7 +1929,15 @@ async function refreshAgentStatusPills(){
 async function pauseAgentInChat(agentId,e){if(e)e.preventDefault();await fetch('/api/agents/'+encodeURIComponent(agentId)+'/pause',{method:'POST'});refreshAgentStatusPills()}
 async function resumeAgentInChat(agentId,e){if(e)e.preventDefault();await fetch('/api/agents/'+encodeURIComponent(agentId)+'/resume',{method:'POST'});refreshAgentStatusPills()}
 async function abortAgentInChat(agentId,e){if(e)e.preventDefault();if(!confirm('Abort agent '+agentId+'?'))return;await fetch('/api/agents/'+encodeURIComponent(agentId)+'/abort',{method:'POST'});refreshAgentStatusPills()}
-setTimeout(refreshAgentStatusPills,500);setInterval(refreshAgentStatusPills,5000);
+setTimeout(refreshAgentStatusPills,500);setInterval(function(){ refreshAgentStatusPills(); checkActiveAgentLifecycle(); },5000);
+// Pulse animation for the active-agent chip dot
+(function(){
+  if (document.getElementById('_codec_pulse_css')) return;
+  var s = document.createElement('style');
+  s.id = '_codec_pulse_css';
+  s.textContent = '@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .35 } }';
+  document.head.appendChild(s);
+})();
 </script>
 </body>
 </html>

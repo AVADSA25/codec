@@ -9,19 +9,22 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg: #121215; --surface: #1a1a1d; --surface-2: #212125; --surface-3: #2a2a2e;
-  --border: #303035; --border-hover: #424248;
+  --bg: #121215; --surface: #18181b; --surface-2: #1f1f22; --surface-3: #27272a;
+  --border: #2a2a2f; --border-hover: #3a3a40;
   --text: #ececec; --text-muted: #9a9aa0; --text-dim: #6a6a70;
-  --accent: #E8711A; --accent-hover: #f07d2a; --accent-dim: rgba(232,113,26,0.10);
+  /* 2026 refresh: calmer brand orange (was pure #E8711A) */
+  --accent: #d97757; --accent-hover: #e08766; --accent-dim: rgba(217,119,87,0.10);
   --danger: #ef4444; --success: #22c55e; --info: #3b82f6;
   --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   --mono: 'JetBrains Mono', 'SF Mono', monospace;
   --radius-sm: 6px; --radius: 10px;
 }
 [data-theme="light"] {
-  --bg: #f7f5f2; --surface: #fff; --surface-2: #f0ece6; --surface-3: #e8e4de;
-  --border: #d5d0ca; --border-hover: #bbb;
-  --text: #1a1a1a; --text-muted: #555; --text-dim: #777;
+  --bg: #faf8f5; --surface: #fff; --surface-2: #f2eee8; --surface-3: #ebe6df;
+  --border: #e2ddd5; --border-hover: #c8c2b8;
+  --text: #18181b; --text-muted: #52525b; --text-dim: #71717a;
+  /* Calmer accent for light bg — pure orange was jarring on cream */
+  --accent: #b85a3a; --accent-hover: #a04d31; --accent-dim: rgba(184,90,58,0.08);
 }
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100vh; min-height: 100dvh; padding-bottom: env(safe-area-inset-bottom, 0px); }
@@ -468,8 +471,10 @@ a { color: var(--accent); text-decoration: none; }
         <!-- Run agent -->
         <div>
           <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.08em;">Run Agent Task</div>
-          <textarea id="pilotTaskInput" rows="2" placeholder="Describe what the agent should do on the current page…" style="width:100%;padding:8px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;resize:vertical;box-sizing:border-box;font-family:var(--font);"></textarea>
-          <div style="display:flex;gap:6px;margin-top:6px;">
+          <textarea id="pilotTaskInput" rows="2" placeholder="Describe what the agent should do on the current page…  (or click 🎤 to dictate)" style="width:100%;padding:8px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;resize:vertical;box-sizing:border-box;font-family:var(--font);"></textarea>
+          <div style="display:flex;gap:6px;margin-top:6px;align-items:center;">
+            <button class="btn btn-sm" onclick="pilotMicToggle()" id="pilotMicBtn" title="Voice input — dictate the task" style="padding:6px 10px;">🎤</button>
+            <button class="btn btn-sm" onclick="pilotSpeakToggle()" id="pilotSpeakBtn" title="Voice replies — Kokoro speaks status updates" style="padding:6px 10px;">🔇</button>
             <button class="btn btn-primary btn-sm" onclick="pilotStartRun()" style="flex:1;">▶ Start Run</button>
             <button class="btn btn-sm" onclick="pilotRefreshRuns()" style="padding:6px 10px;" title="Refresh runs">↻</button>
           </div>
@@ -1338,6 +1343,51 @@ function pilotType() {
 }
 
 /* ── Start run ── */
+// ── Voice input (mic) + voice replies (TTS) for the Pilot tab ────────────────
+var _pilotMicRec = null;
+var _pilotMicOn  = false;
+function pilotMicToggle(){
+  var btn = document.getElementById('pilotMicBtn');
+  var input = document.getElementById('pilotTaskInput');
+  if (_pilotMicOn && _pilotMicRec){ try{ _pilotMicRec.stop(); }catch(e){} return; }
+  if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)){
+    return showToast('Speech recognition not supported in this browser', true);
+  }
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  _pilotMicRec = new SR();
+  _pilotMicRec.lang = 'en-US'; _pilotMicRec.interimResults = true; _pilotMicRec.continuous = false;
+  _pilotMicRec.onresult = function(e){
+    var transcript = '';
+    for (var i=0;i<e.results.length;i++) transcript += e.results[i][0].transcript;
+    input.value = transcript;
+  };
+  _pilotMicRec.onerror = function(){ _pilotMicOn = false; btn.textContent = '🎤'; };
+  _pilotMicRec.onend   = function(){ _pilotMicOn = false; btn.textContent = '🎤'; };
+  _pilotMicRec.start();
+  _pilotMicOn = true; btn.textContent = '🔴';
+  showToast('Listening… dictate the task');
+}
+
+var _pilotSpeakOn = (localStorage.getItem('codec-pilot-speak') === 'true');
+function pilotSpeakToggle(){
+  _pilotSpeakOn = !_pilotSpeakOn;
+  try { localStorage.setItem('codec-pilot-speak', _pilotSpeakOn ? 'true' : 'false'); } catch(e){}
+  document.getElementById('pilotSpeakBtn').textContent = _pilotSpeakOn ? '🔊' : '🔇';
+  showToast(_pilotSpeakOn ? 'Voice replies ON — CODEC will speak status' : 'Voice replies OFF');
+}
+function pilotSay(text){
+  if (!_pilotSpeakOn || !text) return;
+  try {
+    var snippet = String(text).slice(0, 500);
+    new Audio('/api/tts?text=' + encodeURIComponent(snippet)).play().catch(function(){});
+  } catch(e){}
+}
+// Reflect saved state on load
+setTimeout(function(){
+  var sp = document.getElementById('pilotSpeakBtn');
+  if (sp) sp.textContent = _pilotSpeakOn ? '🔊' : '🔇';
+}, 0);
+
 function pilotStartRun() {
   var task = (document.getElementById('pilotTaskInput').value || '').trim();
   if (!task) return showToast('Enter a task description', true);
@@ -1358,6 +1408,7 @@ function pilotStartRun() {
     .then(function(r2){ return r2.json(); })
     .then(function() {
       showToast('Agent started: ' + runId.substring(0,8) + '…');
+      pilotSay('Agent started.');
       document.getElementById('pilotTaskInput').value = '';
       setTimeout(pilotRefreshRuns, 500);
       _pilotSelectedRun = runId;
@@ -1397,6 +1448,7 @@ function pilotRefreshRuns() {
 }
 
 /* ── Run detail ── */
+var _pilotLastSpokenStatus = {};   // run_id → last status we announced via TTS
 function pilotShowRunDetail(runId) {
   _pilotSelectedRun = runId;
   _pilotFetch('/run/' + runId + '/status')
@@ -1418,6 +1470,20 @@ function pilotShowRunDetail(runId) {
       var resumeBtn = document.getElementById('pilotResumeBtn');
       if (pauseBtn)  pauseBtn.style.display  = d.status === 'running' ? '' : 'none';
       if (resumeBtn) resumeBtn.style.display = 'none';
+
+      // Speak terminal-state transitions once per run when Voice Replies are ON
+      if (_pilotLastSpokenStatus[runId] !== d.status) {
+        var prev = _pilotLastSpokenStatus[runId];
+        _pilotLastSpokenStatus[runId] = d.status;
+        if (prev && (d.status === 'done' || d.status === 'error' || d.status === 'budget_exhausted')) {
+          var line = d.status === 'done'
+            ? 'Run complete. ' + (d.result ? String(d.result).slice(0,160) : '')
+            : d.status === 'error'
+              ? 'Run failed. ' + (d.error || '')
+              : 'Step budget exhausted.';
+          pilotSay(line);
+        }
+      }
     })
     .catch(function(){});
 }
@@ -1529,6 +1595,9 @@ function pilotReplay(runId) {
     var msg = 'Replay ' + d.status + ' — ' + d.steps_succeeded + '/' + d.steps_total + ' steps';
     if (d.rescues_used) msg += ' (' + d.rescues_used + ' LLM rescues)';
     showToast(msg, d.status !== 'completed');
+    pilotSay(d.status === 'completed'
+      ? 'Replay complete. ' + d.steps_succeeded + ' of ' + d.steps_total + ' steps succeeded.'
+      : 'Replay failed at step ' + d.steps_succeeded + ' of ' + d.steps_total + '.');
   })
   .catch(function(e){ showToast('Replay error: ' + e, true); });
 }

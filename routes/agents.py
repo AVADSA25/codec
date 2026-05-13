@@ -598,6 +598,67 @@ def open_folder(agent_id: str):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+@router.get("/api/agents/{agent_id}/files")
+def list_agent_files(agent_id: str, limit: int = 12):
+    """Return recently-modified files inside the agent's project directory.
+    Used by the dashboard live-preview panel — shows what the autonomous
+    agent has actually produced without leaving the chat thread.
+
+    Returns: [{name, rel_path, abs_path, size_bytes, mtime, is_dir}, ...]
+    """
+    manifest = _cap.load_manifest(agent_id)
+    if not manifest:
+        raise HTTPException(status_code=404, detail=f"agent {agent_id} not found")
+    pdir = manifest.get("project_dir")
+    if not pdir:
+        return {"agent_id": agent_id, "project_dir": None, "files": []}
+    import os
+    from pathlib import Path as _P
+    proot = _P(pdir).expanduser()
+    if not proot.exists() or not proot.is_dir():
+        return {"agent_id": agent_id, "project_dir": str(proot), "files": []}
+
+    # Walk top 3 levels; cap total scanned to 2000 entries to keep this fast
+    entries = []
+    SCAN_CAP = 2000
+    seen = 0
+    SKIP_DIRS = {".git", "__pycache__", "node_modules", ".venv", "venv", ".DS_Store"}
+    for root, dirs, files in os.walk(proot):
+        # Prune
+        dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+        depth = _P(root).relative_to(proot).parts
+        if len(depth) > 3:
+            dirs[:] = []
+            continue
+        for name in files:
+            p = _P(root) / name
+            try:
+                st = p.stat()
+            except OSError:
+                continue
+            entries.append({
+                "name":       name,
+                "rel_path":   str(p.relative_to(proot)),
+                "abs_path":   str(p),
+                "size_bytes": st.st_size,
+                "mtime":      st.st_mtime,
+                "is_dir":     False,
+            })
+            seen += 1
+            if seen >= SCAN_CAP:
+                break
+        if seen >= SCAN_CAP:
+            break
+
+    entries.sort(key=lambda e: e["mtime"], reverse=True)
+    return {
+        "agent_id":    agent_id,
+        "project_dir": str(proot),
+        "files":       entries[:max(1, limit)],
+        "total_seen":  seen,
+    }
+
+
 @router.post("/api/agents/{agent_id}/messages")
 def post_message_endpoint(agent_id: str, body: UserReplyBody):
     """User → agent reply. Writes type=user_reply to messages.jsonl.
