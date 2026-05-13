@@ -42,7 +42,7 @@ No cloud dependency. No data leaving the machine unless you choose. No subscript
 
 ---
 
-## 8 Products. One System.
+## 9 Products. One System.
 
 | # | Product | What It Does |
 |:-:|---|---|
@@ -54,6 +54,7 @@ No cloud dependency. No data leaving the machine unless you choose. No subscript
 | 6 | **CODEC Voice** | Real-time voice calls with interrupt detection, screen analysis mid-call |
 | 7 | **CODEC Overview** | Dashboard + Cortex nerve center + full audit trail — accessible from any device |
 | 8 | **CODEC Pilot** | Browser automation you can *teach* — record once, replay forever with XPath→CSS→LLM rescue |
+| 9 | **CODEC Project** | Drop-a-project autonomy — describe what to build, approve the plan once, daemon executes for hours |
 
 ---
 
@@ -95,9 +96,7 @@ Full conversational AI. Long context. File uploads (drag-and-drop). Image analys
 
 Voice input via continuous microphone with stop button. Streaming responses with typing and thinking indicators.
 
-**Four modes** in the chat composer: **Chat / Think / Agents / Project**.
-
-**Project mode (Phase 3 — drop-a-project autonomy).** Type a project description, hit send. CODEC drafts a structured plan via local Qwen-3.6 with an explicit permission manifest (skills, write paths, network domains, destructive ops). You approve once. `codec-agent-runner` (PM2 daemon) picks up the approved plan and executes it autonomously — Qwen ↔ skill loops, permission-gated, plan-hash tamper detection, resume-after-restart, multi-agent concurrency capped at 3. Status pills above the input show running/paused/blocked agents with inline approve/pause/resume/abort actions. Updates post back into the chat thread. Try: *"Build me a Telegram bot that monitors Marbella property listings under €500k"* or *"Watch EUR/USD intraday vol and ping me when 30-min realized vol crosses 0.4%"*.
+**Four modes** in the chat composer: **Chat / Think / Agents / Project**. The first three live here — Project mode is documented as its own product in [§9 below](#9-codec-project--drop-a-project-autonomy) since it runs autonomously on a dedicated daemon for hours rather than turn-by-turn in the chat thread.
 
 Plus 12 autonomous agent crews — not single prompts, full multi-step workflows. Say *"research the latest AI agent frameworks and write a report."* Minutes later there's a formatted Google Doc in Drive with sources, images, and recommendations.
 
@@ -141,7 +140,7 @@ Full transcript saved to memory. Every conversation becomes searchable context f
 Private dashboard accessible from any device, anywhere. Cloudflare Tunnel or Tailscale VPN — no port forwarding, no third-party relay. 135+ API endpoints. Send commands, view the screen, launch voice calls, manage agents — all from a browser. Installable as a PWA on mobile and desktop.
 
 **Cortex — System Nerve Center**
-Visual command center showing all 8 CODEC products in an interactive grid. Neural network SVG map, real-time activity feed, searchable skills panel, and detailed event log viewer. The single-pane-of-glass view of the entire system.
+Visual command center showing all 9 CODEC products in an interactive grid. Neural network SVG map, real-time activity feed, searchable skills panel, and detailed event log viewer. The single-pane-of-glass view of the entire system.
 
 **Audit — Full Event Trail**
 Every action CODEC takes is logged across 16 categories: command, skill, llm, auth, error, scheduled, voice, vision, tts, stt, system, security, hotkey, screenshot, config, draft. Filterable by category pills, searchable, with colored timeline dots and expandable event details. JSON-line storage with 50MB rotation. Default 24h time range with 1h/6h/24h/7d quick filters.
@@ -171,6 +170,54 @@ Dedicated headless Chromium owned by Pilot (CDP port 9223, separate from your da
 **Infrastructure:** Playwright + FastAPI on PM2 (`pilot-runner` on port 8094), 30 endpoints, MJPEG live stream, JSON traces persisted under `~/.codec/pilot_traces/{run_id}/trace.json`, optional Cloudflare tunnel at `pilot.lucyvpa.com`.
 
 Try: *Record yourself logging into Gmail, approve the skill, schedule it to run every morning at 7am — Qwen never touches the hot path again.*
+
+### 9. CODEC Project — Drop-a-Project Autonomy
+
+Where Chat answers and Pilot replays, Project **builds**. Type a project description like *"Build me a Telegram bot that monitors Marbella property listings under €500k"* or *"Watch EUR/USD intraday vol and ping me when 30-min realized vol crosses 0.4%"*, hit send, and a dedicated PM2 daemon (`codec-agent-runner`) executes for hours without supervision — writing files, running commands, calling skills, hitting APIs, until the project is done or it asks you a question.
+
+This isn't "an LLM with bash access." It's the full Phase-3 autonomous-agent substrate: planning, permission gating, persistence, observation, multi-agent concurrency, and a structured intervention protocol. It went through 10 numbered steps and 5 numbered architectural reviews to ship.
+
+**How it works:**
+
+1. **Draft phase.** You type the project description in Chat → **Project** mode. Local Qwen-3.6 reads it and drafts a structured plan as JSON: `goal`, `success_criteria`, `phases`, plus an explicit **permission manifest** declaring which skills it will use, which file paths it will write to, which network domains it will hit, and which destructive operations (delete, force-push) it intends to perform. You see the full plan + manifest before anything runs.
+2. **Approval phase.** You approve once. The plan is hashed and pinned — any tampering after approval is detected and refuses to execute (`plan_hash` mismatch).
+3. **Execution phase.** `codec-agent-runner` (PM2 daemon, autorestart) picks up the approved plan and runs it autonomously: Qwen ↔ skill loops, permission-gated at every step, with `AskUserQuestion` available for the rare moments the agent genuinely needs you. Long-running agents resume cleanly after machine restart — state persists to `~/.codec/agents/<id>/`.
+4. **Intervention phase (optional).** Status pills above the chat input show every running agent live — `running / paused / blocked_on_permission / blocked_on_question / done / failed`. Inline **Approve / Pause / Resume / Abort** buttons. Updates post back into the chat thread as the agent reports progress. You can have **up to 3 agents** running concurrently.
+
+**Phase-3 substrate components** (all live, all wired together):
+
+| Component | What it does |
+|---|---|
+| **Unified audit envelope** (Step 1) | 17 new event types — every plan-draft, approval, action, permission grant, intervention is JSON-logged |
+| **Plugin lifecycle hooks** (Step 2) | Skills can register pre-action/post-action hooks; the runner respects them |
+| **AskUserQuestion + strict-consent + step budget** (Step 3) | Agents can pause to ask multiple-choice questions with strict consent gates on destructive ops |
+| **Plan persistence** (Step 4) | Every draft, approval, and revision saved — replay history, audit trail |
+| **Continuous observation loop** (Step 5) | Agent watches its own progress, detects stuck states, escalates |
+| **Trigger system** (Step 6) | External signals (file changes, schedule fires, etc.) can wake agents |
+| **End-of-day shift report** (Step 7) | Daily summary of what every agent did, surfaced in the dashboard |
+| **Agent planner** (Step 8, `codec_agent_plan.py`) | Qwen-driven plan drafting with permission manifest extraction |
+| **Agent runner** (Step 9, `codec_agent_runner.py`) | The PM2 daemon — execution loop, permission enforcement, plan-hash check, multi-agent concurrency |
+| **Agent messaging** (Step 9, `codec_agent_messaging.py`) | Reply-queue plumbing — feeds approvals/answers/aborts back into the agent's next turn |
+
+**Permission tiers — two levels of trust:**
+
+- **Per-agent grants.** Each agent has its own permission manifest — only the skills, paths, and domains it explicitly listed at draft time. Anything else triggers a `blocked_on_permission` pause for user approval.
+- **Global allowlist** at `~/.codec/agent_global_grants.json` — anything in here is auto-approved for *every* agent. Default ships with read-only access to `~/codec-repo/**` only; you opt in to more.
+
+**Where the state lives:**
+
+```
+~/.codec/agents/<agent_id>/
+├── plan.json              — the approved plan + manifest + plan_hash
+├── state.json             — current phase, step index, in-flight action
+├── messages.jsonl         — full conversation history
+├── audit.jsonl            — per-agent audit trail (subset of global audit)
+└── workspace/             — sandbox the agent writes into
+~/.codec/agent_global_grants.json   — global allowlist
+~/.codec/audit.log                  — global audit with agent_runner events
+```
+
+Try: *"Spec out a new sales tool for tracking Marbella forex prop firms, draft the schema, scaffold a FastAPI service, write 5 example records into a SQLite DB, expose `/leads` and `/leads/{id}` endpoints, then write a README."* CODEC drafts a 4-phase plan with file-write paths, you approve, and an hour later you have a working service.
 
 ### iMessage & Telegram
 
@@ -575,6 +622,9 @@ codec_watchdog.py     — Process monitor (kills stuck/zombie processes)
 codec_dispatch.py     — Skill matching and dispatch (with fallback)
 codec_agent.py        — LLM session builder
 codec_agents.py       — Multi-agent crew framework (12 crews, 7 tools)
+codec_agent_plan.py   — Project planner (Qwen draft + permission manifest, Step 8)
+codec_agent_runner.py — Project execution daemon (PM2, Step 9 — Phase 3 substrate)
+codec_agent_messaging.py — Project reply queue (approval/abort/answer plumbing)
 codec_voice.py        — WebSocket voice pipeline (reconnect, heartbeat)
 codec_voice.html      — Voice call UI
 codec_dashboard.py    — Web API + dashboard (135+ endpoints across routes/)
@@ -661,7 +711,8 @@ python3 setup_codec.py
 
 **Recently shipped:**
 
-- [x] **CODEC Pilot v1** — full browser-automation pillar with teach-by-doing recording, XPath→CSS→LLM-rescue replay ladder, skill approval gate, HITL takeover, MJPEG live stream. All 6 blueprint phases delivered, 44/44 functional tests passing.
+- [x] **CODEC Pilot v1** (May 2026) — full browser-automation pillar with teach-by-doing recording, XPath→CSS→LLM-rescue replay ladder, skill approval gate, HITL takeover, MJPEG live stream. All 6 blueprint phases delivered, 44/44 functional tests passing.
+- [x] **CODEC Project — Phase 3 substrate** (Apr–May 2026) — full drop-a-project autonomy. 10 numbered build steps + 5 architectural reviews. Planner (`codec_agent_plan.py`), runner daemon (`codec_agent_runner.py`), messaging (`codec_agent_messaging.py`), per-agent state at `~/.codec/agents/<id>/`, global allowlist tier, plan-hash tamper detection, resume-after-restart, multi-agent concurrency capped at 3, AskUser + strict-consent + step budgets, 17 new audit event types. Promoted to its own product slot.
 
 **Phase 3.5 (in progress)** — UX + polish on top of the autonomous-agent substrate:
 

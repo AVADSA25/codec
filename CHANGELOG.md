@@ -2,6 +2,7 @@
 
 ## v2.3.0 (2026-05-13)
 ### Added
+- **CODEC Project — promoted to 9th product.** Drop-a-project autonomy was already shipped as the Phase-3 substrate (Steps 1-10 + 5 architectural reviews, Apr-May 2026), wired into Chat → Project mode. This release elevates it to its own product slot in README + Cortex grid since it runs autonomously on its own PM2 daemon (`codec-agent-runner`) for hours rather than turn-by-turn. Implementation lives in `codec_agent_plan.py` (planner), `codec_agent_runner.py` (execution daemon), `codec_agent_messaging.py` (reply queue), with per-agent state at `~/.codec/agents/<id>/` and a two-tier permission system (per-agent manifest + global allowlist at `~/.codec/agent_global_grants.json`). Plan-hash tamper detection, resume-after-restart, multi-agent concurrency capped at 3, AskUserQuestion + strict-consent gates, step budgets, 17 new audit event types. See `docs/PHASE3-COMPLETE.md`.
 - **CODEC Pilot — 8th product, browser-automation pillar.** Dedicated headless Chromium on CDP port 9223 (separate from user's daily Chrome on 9222), driven live by Qwen and visible in the dashboard. Three modes: agent (natural-language tasks), teach (record-by-doing), replay (deterministic re-execution).
 - **`pilot/` module suite** (11 files) under `~/codec/pilot/`:
   - `pilot_chrome.py` — Playwright lifecycle wrapper, persistent profile at `~/.codec/pilot_chrome_profile/`
