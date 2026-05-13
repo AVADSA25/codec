@@ -1045,7 +1045,10 @@ def test_skills():
     except Exception as e:
         FAIL(A, 3, "Skill Marketplace", str(e))
 
-    # 57 skills — already stress-tested, just verify they're all present
+    # Baseline skills (snapshot at audit-script creation) — verify they're all
+    # still present. Newer skills (incl. ~75 total today) are reported as "extra"
+    # below but don't fail. Pilot-generated skills (pilot_*.py) land in
+    # ~/.codec/skills/ separately and aren't part of this baseline.
     expected_skills = [
         "active_window", "ai_news_digest", "app_switch", "audit_report", "auto_memorize",
         "ax_control", "bitcoin_price", "brightness", "calculator", "chrome_automate",
@@ -1071,7 +1074,7 @@ def test_skills():
     missing = [s for s in expected_skills if s not in present]
     extra = [s for s in present if s not in expected_skills and s != "__pycache__"]
 
-    # Report all 57 skills as a batch
+    # Report baseline skills as a batch
     for i, skill_name in enumerate(expected_skills, start=4):
         if skill_name in present:
             PASS(A, i, f"Skill: {skill_name}", "Present in skills/")

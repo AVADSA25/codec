@@ -13,7 +13,7 @@
 README.md                     Sovereign AI Workstation pitch + setup. Brand-front-door.
 CHANGELOG.md                  Reverse-chronological version notes.
 CONTRIBUTING.md               Contributor onboarding (mentions dual brand naming).
-FEATURES.md                   245 features · 60 skills · 378 tests · ~34K LOC.
+FEATURES.md                   400 features · 75 skills · 940+ tests · ~58K LOC · 9 products.
 PHOTON_DEMO.md                Marketing demo writeup.
 docs/API.md                   Dashboard HTTP API reference.
 docs/MCP_HTTP_SETUP.md        How the OAuth-protected MCP HTTP transport is wired.
