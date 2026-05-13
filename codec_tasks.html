@@ -1164,7 +1164,29 @@ var _pilotPollTimer = null;
 var _pilotSelectedRun = null;
 
 function _pilotFetch(path, opts) {
-  return fetch(_pilotBase + path, opts || {});
+  // Bypass CODEC's global fetch wrapper (which injects session tokens and
+  // mutates headers, causing FastAPI 422 on POST requests).
+  opts = opts || {};
+  return new Promise(function(resolve, reject) {
+    var xhr = new XMLHttpRequest();
+    xhr.open(opts.method || 'GET', _pilotBase + path, true);
+    if (opts.method && opts.method !== 'GET') {
+      xhr.setRequestHeader('Content-Type', 'application/json');
+    }
+    xhr.onload = function() {
+      var text = xhr.responseText;
+      resolve({
+        ok: xhr.status >= 200 && xhr.status < 300,
+        status: xhr.status,
+        json: function() {
+          try { return Promise.resolve(JSON.parse(text)); }
+          catch(e) { return Promise.reject(e); }
+        }
+      });
+    };
+    xhr.onerror = function() { reject(new Error('Network error')); };
+    xhr.send(opts.body || null);
+  });
 }
 
 /* ── Status check ── */
@@ -1406,256 +1428,6 @@ document.addEventListener('DOMContentLoaded', function() {
 // Apply UI preferences from dashboard settings
 (function(){try{var p=JSON.parse(localStorage.getItem('codec-ui-prefs')||'{}'),m={'screenshot_btn':'#screenBtn','photo_btn':'#photoBtn','webcam_pip_btn':'#camBtn','voice_btn':'#voiceBtn','notif_bell':'#notifBellBtn','mic_btn':'#micBtn','tasks_heartbeat':'#tab-heartbeat','tasks_reports':'#tab-reports'};Object.keys(m).forEach(function(k){if(p[k]===false)m[k].split(',').forEach(function(s){document.querySelectorAll(s.trim()).forEach(function(el){el.style.display='none'})})})}catch(e){}})();
 
-/* ═══════════════════════════════════════════════════════════════
-   CODEC PILOT — tab JS
-   All calls go to localhost:8094 (pilot-runner FastAPI)
-═══════════════════════════════════════════════════════════════ */
-var _pilotBase = 'http://localhost:8094';
-var _pilotPollTimer = null;
-var _pilotSelectedRun = null;
-
-function _pilotFetch(path, opts) {
-  return fetch(_pilotBase + path, opts || {});
-}
-
-/* ── Status check ── */
-function pilotCheckStatus() {
-  _pilotFetch('/health')
-    .then(function(r){ return r.json(); })
-    .then(function(d) {
-      var dot  = document.getElementById('pilotDot');
-      var text = document.getElementById('pilotStatusText');
-      if (dot)  dot.style.background = '#22c55e';
-      if (text) text.textContent = 'Online  ·  ' + (d.url || 'about:blank') + '  ·  CDP :' + (d.cdp_port || 9223);
-      document.getElementById('pilotCurrentUrl').textContent = d.url || '';
-    })
-    .catch(function() {
-      var dot  = document.getElementById('pilotDot');
-      var text = document.getElementById('pilotStatusText');
-      if (dot)  dot.style.background = '#ef4444';
-      if (text) text.textContent = 'Pilot Runner offline  ·  pm2 restart pilot-runner';
-    });
-}
-
-/* ── Screenshot ── */
-function pilotRefreshScreenshot() {
-  var img = document.getElementById('pilotScreenshot');
-  if (!img) return;
-  img.src = _pilotBase + '/screenshot?' + Date.now();
-}
-
-function pilotOpenScreenshot() {
-  window.open(_pilotBase + '/screenshot', '_blank');
-}
-
-/* ── Navigate ── */
-function pilotNavigate() {
-  var url = (document.getElementById('pilotNavUrl').value || '').trim();
-  if (!url) return;
-  if (!url.startsWith('http')) url = 'https://' + url;
-  _pilotFetch('/navigate', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({url: url})
-  })
-  .then(function(r){ return r.json(); })
-  .then(function(d) {
-    showToast('Navigated: ' + (d.title || url) + ' (' + (d.element_count||0) + ' elements)');
-    pilotRefreshScreenshot();
-    setTimeout(pilotSnapshot, 500);
-  })
-  .catch(function(e){ showToast('Navigate failed: ' + e, true); });
-}
-
-/* ── Snapshot ── */
-function pilotSnapshot() {
-  _pilotFetch('/snapshot')
-    .then(function(r){ return r.json(); })
-    .then(function(d) {
-      var el = document.getElementById('pilotSnapshot');
-      if (!el) return;
-      el.textContent = d.rendered || '(empty)';
-      document.getElementById('pilotCurrentUrl').textContent = d.url || '';
-    })
-    .catch(function(e) {
-      var el = document.getElementById('pilotSnapshot');
-      if (el) el.textContent = 'Error: ' + e;
-    });
-}
-
-/* ── Click ── */
-function pilotClick() {
-  var idx = parseInt(document.getElementById('pilotClickIdx').value);
-  if (!idx) return showToast('Enter an element index', true);
-  _pilotFetch('/click/' + idx, {method:'POST'})
-    .then(function(r){ return r.json(); })
-    .then(function(d) {
-      if (d.error) return showToast('Click failed: ' + d.error, true);
-      showToast('Clicked: ' + (d.clicked || '[' + idx + ']'));
-      setTimeout(function(){ pilotRefreshScreenshot(); pilotSnapshot(); }, 600);
-    })
-    .catch(function(e){ showToast('Click error: ' + e, true); });
-}
-
-/* ── Type ── */
-function pilotType() {
-  var idx  = parseInt(document.getElementById('pilotTypeIdx').value);
-  var text = document.getElementById('pilotTypeText').value;
-  if (!idx || !text) return showToast('Enter index and text', true);
-  _pilotFetch('/type/' + idx, {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({text: text})
-  })
-  .then(function(r){ return r.json(); })
-  .then(function(d) {
-    if (d.error) return showToast('Type failed: ' + d.error, true);
-    showToast('Typed into [' + idx + ']');
-  })
-  .catch(function(e){ showToast('Type error: ' + e, true); });
-}
-
-/* ── Start run ── */
-function pilotStartRun() {
-  var task = (document.getElementById('pilotTaskInput').value || '').trim();
-  if (!task) return showToast('Enter a task description', true);
-  _pilotFetch('/run', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({task: task, tag: 'dashboard'})
-  })
-  .then(function(r){ return r.json(); })
-  .then(function(d) {
-    var runId = d.run_id;
-    if (!runId) return showToast('Failed to create run', true);
-    // Kick off agent execution (stub mode — set use_stub:false when Qwen is running)
-    return _pilotFetch('/run/' + runId + '/start', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({step_budget: 20, use_stub: true})
-    })
-    .then(function(r2){ return r2.json(); })
-    .then(function() {
-      showToast('Agent started: ' + runId.substring(0,8) + '…');
-      document.getElementById('pilotTaskInput').value = '';
-      setTimeout(pilotRefreshRuns, 500);
-      // Auto-select this run for monitoring
-      _pilotSelectedRun = runId;
-      setTimeout(function(){ pilotShowRunDetail(runId); }, 1000);
-    });
-  })
-  .catch(function(e){ showToast('Run error: ' + e, true); });
-}
-
-/* ── Runs list ── */
-function pilotRefreshRuns() {
-  _pilotFetch('/runs')
-    .then(function(r){ return r.json(); })
-    .then(function(d) {
-      var list = document.getElementById('pilotRunsList');
-      if (!list) return;
-      var runs = d.runs || [];
-      if (!runs.length) {
-        list.innerHTML = '<div style="color:var(--text-muted);font-size:12px;">No runs yet.</div>';
-        return;
-      }
-      var statusIcon = {done:'✅', error:'❌', running:'⏳', budget_exhausted:'⚠️'};
-      list.innerHTML = runs.slice(0,12).map(function(r) {
-        var icon = statusIcon[r.status] || '📊';
-        var ago  = r.started_at ? Math.round((Date.now()/1000 - r.started_at)) + 's ago' : '';
-        return '<div onclick="pilotShowRunDetail(\'' + r.run_id + '\')" style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;font-size:12px;" title="' + (r.task||'') + '">' +
-          '<span style="flex-shrink:0">' + icon + '</span>' +
-          '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)">' + escHtml(r.task||'').substring(0,50) + '</span>' +
-          '<span style="color:var(--text-muted);flex-shrink:0;font-family:var(--mono);font-size:10px">' + ago + '</span>' +
-        '</div>';
-      }).join('');
-    })
-    .catch(function(){});
-}
-
-/* ── Run detail ── */
-function pilotShowRunDetail(runId) {
-  _pilotSelectedRun = runId;
-  _pilotFetch('/run/' + runId + '/status')
-    .then(function(r){ return r.json(); })
-    .then(function(d) {
-      var detail = document.getElementById('pilotRunDetail');
-      if (!detail) return;
-      detail.style.display = 'block';
-      document.getElementById('pilotDetailRunId').textContent = runId;
-      var statusIcon = {done:'✅', error:'❌', running:'⏳', budget_exhausted:'⚠️'};
-      var icon = statusIcon[d.status] || '📊';
-      var resultLine = d.result ? '  Result: ' + d.result : (d.error ? '  Error: ' + d.error : '');
-      document.getElementById('pilotDetailStatus').innerHTML =
-        '<span>' + icon + ' ' + (d.status||'') + '</span>' +
-        (resultLine ? '<span style="margin-left:8px;color:var(--text-muted)">' + escHtml(resultLine) + '</span>' : '') +
-        '<span style="margin-left:8px;color:var(--text-muted);font-size:11px;">' + (d.steps||[]).length + ' steps</span>';
-      document.getElementById('pilotDetailSnapshot').textContent = d.latest_snapshot || '';
-      // HITL buttons
-      var pauseBtn  = document.getElementById('pilotPauseBtn');
-      var resumeBtn = document.getElementById('pilotResumeBtn');
-      if (pauseBtn)  pauseBtn.style.display  = d.status === 'running' ? '' : 'none';
-      if (resumeBtn) resumeBtn.style.display = 'none'; // shown after pause
-    })
-    .catch(function(){});
-}
-
-/* ── HITL ── */
-function pilotPauseRun() {
-  if (!_pilotSelectedRun) return;
-  _pilotFetch('/hitl/' + _pilotSelectedRun + '/pause', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({reason: 'user paused from dashboard'})
-  })
-  .then(function(){
-    showToast('Agent paused');
-    document.getElementById('pilotPauseBtn').style.display  = 'none';
-    document.getElementById('pilotResumeBtn').style.display = '';
-  })
-  .catch(function(e){ showToast('Pause failed: ' + e, true); });
-}
-
-function pilotResumeRun() {
-  if (!_pilotSelectedRun) return;
-  _pilotFetch('/hitl/' + _pilotSelectedRun + '/resume', {method:'POST'})
-  .then(function(){
-    showToast('Agent resumed');
-    document.getElementById('pilotPauseBtn').style.display  = '';
-    document.getElementById('pilotResumeBtn').style.display = 'none';
-  })
-  .catch(function(e){ showToast('Resume failed: ' + e, true); });
-}
-
-/* ── Auto-poll when Pilot tab is active ── */
-var _pilotTabActive = false;
-var _origShowTab = typeof showTab === 'function' ? showTab : null;
-function showTab(name) {
-  document.querySelectorAll('.tab').forEach(function(t){ t.classList.remove('active'); });
-  document.querySelectorAll('.tab-panel').forEach(function(p){ p.classList.remove('active'); });
-  document.getElementById('tab-' + name).classList.add('active');
-  document.getElementById('panel-' + name).classList.add('active');
-  _pilotTabActive = (name === 'pilot');
-  if (_pilotTabActive) {
-    pilotCheckStatus();
-    pilotRefreshScreenshot();
-    pilotSnapshot();
-    pilotRefreshRuns();
-    if (!_pilotPollTimer) {
-      _pilotPollTimer = setInterval(function() {
-        if (!_pilotTabActive) { clearInterval(_pilotPollTimer); _pilotPollTimer = null; return; }
-        pilotCheckStatus();
-        pilotRefreshScreenshot();
-        if (_pilotSelectedRun) pilotShowRunDetail(_pilotSelectedRun);
-      }, 4000);
-    }
-  } else {
-    if (_pilotPollTimer) { clearInterval(_pilotPollTimer); _pilotPollTimer = null; }
-  }
-}
-/* ── Init pilot if hash=pilot ── */
-document.addEventListener('DOMContentLoaded', function() {
-  if (window.location.hash === '#pilot') showTab('pilot');
 });
 </script>
 <!-- Preview Modal (screenshot + webcam photo) -->
