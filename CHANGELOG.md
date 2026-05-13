@@ -1,5 +1,36 @@
 # Changelog
 
+## v2.3.0 (2026-05-13)
+### Added
+- **CODEC Pilot — 8th product, browser-automation pillar.** Dedicated headless Chromium on CDP port 9223 (separate from user's daily Chrome on 9222), driven live by Qwen and visible in the dashboard. Three modes: agent (natural-language tasks), teach (record-by-doing), replay (deterministic re-execution).
+- **`pilot/` module suite** (11 files) under `~/codec/pilot/`:
+  - `pilot_chrome.py` — Playwright lifecycle wrapper, persistent profile at `~/.codec/pilot_chrome_profile/`
+  - `snapshot.py` — Indexed-DOM accessibility-tree snapshot (`<500ms` typical, max 150 elements per page, ARIA-role filtered)
+  - `pilot_agent.py` — ReAct loop with 8-action vocabulary (`navigate/click/type/scroll/wait/extract/select_option/done`), 30-step budget, hallucinated-index validation, StubLLM offline fallback
+  - `pilot_runner.py` — FastAPI on PM2 port 8094, 30 endpoints, CORS-enabled, MJPEG live stream at `/screenshot/stream` (~3 fps, 350 KB/s)
+  - `trace.py` — Per-action JSON traces persisted to `~/.codec/pilot_traces/{run_id}/trace.json` with target_xpath/css/name/role per step
+  - `compiler.py` — Trace → Replayer-based Python skill template
+  - `replay.py` — **3-tier reliability ladder**: stored XPath (3× retries × 500ms backoff) → CSS selector (1× × 2s) → LLM rescue (Qwen re-snapshots and finds element by accessible name). Worst-case 12s per stuck step.
+  - `skill_review.py` — **Approval gate**: compiled skills land in `~/.codec/skills/.pending/`, require human approval via dashboard before activating in `~/.codec/skills/pilot_*.py`. Blocks prompt-injection-spawned auto-registration.
+  - `hitl.py` — Human-in-the-loop: `pause / resume / inject / takeover / handback` over HTTP
+  - `screencast.py` — Background JPEG frame capture for per-run trace replay
+  - `config.py` — Centralized constants (ports, paths, budgets, action vocabulary)
+- **Tasks → Pilot dashboard tab** in `codec_tasks.html`:
+  - Live MJPEG screenshot panel with smart polling fallback
+  - Navigate / Snapshot / Click [N] / Type [N] quick-action controls
+  - "Teach mode" record bar (● Record → drive → ■ Stop & Save)
+  - Recent Runs with inline ▶ Replay and 💾 Compile buttons per row
+  - Pending Skills panel with source preview, ✓ Approve / ✕ Reject gate
+  - HITL pause/resume controls on selected run detail
+- **Cloudflare tunnel exposure** — `pilot.lucyvpa.com` mapped to `localhost:8094` for off-LAN dashboard access
+- **PM2 service `pilot-runner`** added to `ecosystem.config.js` (autorestart, 2GB memory cap, isolated log files)
+- **Approved skills auto-expose as MCP tools** — generated `pilot_{slug}.py` files carry `SKILL_NAME`/`SKILL_DESCRIPTION`/`SKILL_TAGS` metadata, registered by CODEC's SkillRegistry, callable from voice / Chat / Scheduler / Claude Code / Cursor / VS Code
+
+### Fixed
+- **Pilot tab failed-to-fetch** — added CORS middleware to pilot-runner so the dashboard's HTTPS origin can call HTTP localhost:8094 across the preflight boundary
+- **Pilot tab failed-to-create-run** — CODEC's global `window.fetch` wrapper was mutating POST bodies, causing FastAPI 422; replaced `_pilotFetch` with XMLHttpRequest to bypass the wrapper entirely
+- **Duplicate Pilot JS block** — git merge of `680f33d` inserted a second `_pilotFetch` definition; removed lines 1409-1659 from `codec_tasks.html`
+
 ## v2.1.1 (2026-04-14)
 ### Added
 - **F5 hands-free live typing** — tap F5 (no modifier) and speak; words stream to the cursor in real-time in any text field. Tap F5 again to stop. Visible red `LIVE · press F5 to stop` pill top-center with pulsing dot

@@ -42,7 +42,7 @@ No cloud dependency. No data leaving the machine unless you choose. No subscript
 
 ---
 
-## 7 Products. One System.
+## 8 Products. One System.
 
 | # | Product | What It Does |
 |:-:|---|---|
@@ -53,6 +53,7 @@ No cloud dependency. No data leaving the machine unless you choose. No subscript
 | 5 | **CODEC Vibe** | Browser IDE with Monaco editor + Skill Forge — the framework writes its own plugins |
 | 6 | **CODEC Voice** | Real-time voice calls with interrupt detection, screen analysis mid-call |
 | 7 | **CODEC Overview** | Dashboard + Cortex nerve center + full audit trail — accessible from any device |
+| 8 | **CODEC Pilot** | Browser automation you can *teach* — record once, replay forever with XPath→CSS→LLM rescue |
 
 ---
 
@@ -140,10 +141,36 @@ Full transcript saved to memory. Every conversation becomes searchable context f
 Private dashboard accessible from any device, anywhere. Cloudflare Tunnel or Tailscale VPN — no port forwarding, no third-party relay. 135+ API endpoints. Send commands, view the screen, launch voice calls, manage agents — all from a browser. Installable as a PWA on mobile and desktop.
 
 **Cortex — System Nerve Center**
-Visual command center showing all 7 CODEC products in an interactive grid. Neural network SVG map, real-time activity feed, searchable skills panel, and detailed event log viewer. The single-pane-of-glass view of the entire system.
+Visual command center showing all 8 CODEC products in an interactive grid. Neural network SVG map, real-time activity feed, searchable skills panel, and detailed event log viewer. The single-pane-of-glass view of the entire system.
 
 **Audit — Full Event Trail**
 Every action CODEC takes is logged across 16 categories: command, skill, llm, auth, error, scheduled, voice, vision, tts, stt, system, security, hotkey, screenshot, config, draft. Filterable by category pills, searchable, with colored timeline dots and expandable event details. JSON-line storage with 50MB rotation. Default 24h time range with 1h/6h/24h/7d quick filters.
+
+### 8. CODEC Pilot — Browser Automation You Can Teach
+
+Dedicated headless Chromium owned by Pilot (CDP port 9223, separate from your daily Chrome on 9222), driven live by Qwen and visible in the dashboard. Goes well beyond "an LLM with a browser tool" — every successful run compiles into a reusable Python skill that replays deterministically with zero LLM cost on the hot path.
+
+**Three ways to drive it (all from Tasks → Pilot in the dashboard):**
+
+1. **Agent mode** — Type a natural-language task. Qwen takes a snapshot, picks an action, executes, re-snapshots, repeats until done. ReAct loop with 8-action vocabulary (`navigate / click / type / scroll / wait / extract / select_option / done`), 30-step budget, dangerous-URL blocklist, hallucinated-index validation. Watch it work via the live MJPEG feed (~3 fps).
+2. **Teach mode** — Hit **● Record**, drive the browser yourself (Navigate / Click [N] / Type into [N] from the UI), hit **■ Stop & Save**. CODEC captures every action with selectors (XPath + CSS + accessible name + ARIA role) and auto-compiles a Python skill awaiting your review.
+3. **Replay mode** — Hit ▶ on any past run. Goes through the **3-tier reliability ladder**: XPath (3 attempts × 500 ms backoff) → CSS (1 attempt × 2 s) → LLM rescue (re-snapshot, ask Qwen to find the element by name). Worst case: ~12 s before a stuck step surfaces. Skills self-heal when sites change their DOM.
+
+**Skill approval gate.** Compiled skills do NOT auto-register — they land in `~/.codec/skills/.pending/` and require human approval via the dashboard. Blocks prompt-injection-spawned malicious skills from auto-activating. Approve → moves to `~/.codec/skills/pilot_{slug}.py` with `SKILL_NAME` / `SKILL_DESCRIPTION` / `SKILL_TAGS` metadata; SkillRegistry hot-reloads and the skill is callable from voice, Chat, Scheduler, and any MCP client.
+
+**HITL (human-in-the-loop) takeover.** Pause an agent mid-run, inject manual actions, take full control, then hand back. The agent re-snapshots and continues from wherever you left it.
+
+**Three-tier replay ladder, by the numbers:**
+
+| Tier | Method | Attempts | Per-step latency | Triggers on |
+|---|---|---|---|---|
+| 1 | Stored XPath | 3 × 500 ms backoff | <100 ms (typical) | Always tried first |
+| 2 | Stored CSS selector | 1 × 2 s timeout | ~50 ms | XPath missed all 3 retries |
+| 3 | Qwen rescue by name | 1 × 10 s timeout | 1–10 s | XPath + CSS both failed |
+
+**Infrastructure:** Playwright + FastAPI on PM2 (`pilot-runner` on port 8094), 30 endpoints, MJPEG live stream, JSON traces persisted under `~/.codec/pilot_traces/{run_id}/trace.json`, optional Cloudflare tunnel at `pilot.lucyvpa.com`.
+
+Try: *Record yourself logging into Gmail, approve the skill, schedule it to run every morning at 7am — Qwen never touches the hot path again.*
 
 ### iMessage & Telegram
 
@@ -577,8 +604,30 @@ tests/                — 940+ pytest tests across 53 files
 request_mic.py        — macOS microphone permission helper (AVFoundation)
 install.sh            — One-line installer
 setup_codec.py        — Setup wizard (9 steps)
-ecosystem.config.js   — PM2 process management (15 services)
+ecosystem.config.js   — PM2 process management (16 services)
 ```
+
+**CODEC Pilot** lives in a sister directory (`~/codec/pilot/`) and runs as its own PM2 service:
+
+```
+pilot/
+├── pilot_chrome.py    — Dedicated Chromium lifecycle (Playwright, CDP :9223)
+├── snapshot.py        — Indexed-DOM accessibility-tree snapshot (<500 ms)
+├── screencast.py      — JPEG frame capture for live MJPEG stream
+├── pilot_runner.py    — FastAPI server :8094 (30 endpoints, CORS, MJPEG)
+├── pilot_agent.py     — ReAct loop (Qwen ↔ snapshot ↔ action ↔ trace)
+├── hitl.py            — Human-in-the-loop: pause/resume/inject/takeover
+├── trace.py           — Per-action trace recorder, JSON persisted to disk
+├── compiler.py        — Trace → Replayer-based Python skill
+├── replay.py          — XPath → CSS → LLM rescue ladder
+├── skill_review.py    — Approval gate (.pending/ → skills/)
+└── config.py          — Ports, paths, limits, action vocabulary
+```
+
+Generated traces and skills land in `~/.codec/`:
+- `~/.codec/pilot_traces/{run_id}/trace.json` — recorded action sequences with selectors
+- `~/.codec/skills/.pending/pilot_*.py` — awaiting human approval
+- `~/.codec/skills/pilot_*.py` — approved, hot-loaded by SkillRegistry
 
 ---
 
@@ -609,6 +658,10 @@ python3 setup_codec.py
 ---
 
 ## What's Coming
+
+**Recently shipped:**
+
+- [x] **CODEC Pilot v1** — full browser-automation pillar with teach-by-doing recording, XPath→CSS→LLM-rescue replay ladder, skill approval gate, HITL takeover, MJPEG live stream. All 6 blueprint phases delivered, 44/44 functional tests passing.
 
 **Phase 3.5 (in progress)** — UX + polish on top of the autonomous-agent substrate:
 
