@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="FEATURES.md"><img src="https://img.shields.io/badge/features-368+-blue?style=flat-square" alt="368+ Features"/></a>
+  <a href="FEATURES.md"><img src="https://img.shields.io/badge/features-400+-blue?style=flat-square" alt="400+ Features"/></a>
   <img src="https://img.shields.io/badge/skills-75-orange?style=flat-square" alt="75 Skills"/>
   <img src="https://img.shields.io/badge/tests-940+-green?style=flat-square" alt="940+ Tests"/>
   <img src="https://img.shields.io/badge/lines-58K+-purple?style=flat-square" alt="58K+ Lines"/>

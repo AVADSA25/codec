@@ -19,7 +19,7 @@ codec_core.py                Shared core: skill loader, DB init, build_session_s
 codec_dashboard.py           HTTP server (3,439 lines): /api/chat, /api/agents, notifications
 codec_dashboard.html         PWA frontend
 codec_voice.py               WebSocket voice loop, _CREW_TRIGGERS, voice-to-crew dispatch
-codec_dictate.py             CODEC Dictate: F5 live-typing + draft refinement (one of the 7 products)
+codec_dictate.py             CODEC Dictate: F5 live-typing + draft refinement (one of the 9 products)
 codec_agents.py              Agent + Crew runtime (1,468 lines, see §3)
 codec_skill_registry.py      Skill discovery + lazy loading via AST parse
 codec_dispatch.py            Skill trigger matching for voice/wake-word path

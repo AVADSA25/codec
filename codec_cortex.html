@@ -391,8 +391,8 @@ var NODES = [
    info:'Kokoro-82M TTS. Voice: am_adam. Generates speech audio, played via afplay.',file:'kokoro_server.py',port:8085,health:'/v1/models'},
 
   // ─── HANDS (right side) — Skills & Actions ───
-  {id:'skills',label:'Skills x60',x:820,y:320,r:34,color:'#ffd740',icon:'hand',category:'hands',zone:'hands',
-   info:'57 skill plugins: Chrome, Google Suite, system control, media, utilities. Trigger-matched.',file:'skills/*.py'},
+  {id:'skills',label:'Skills x75',x:820,y:320,r:34,color:'#ffd740',icon:'hand',category:'hands',zone:'hands',
+   info:'75 skill plugins: Chrome, Google Suite, system control, media, utilities. Trigger-matched. Live count auto-updates from /api/cortex/skills.',file:'skills/*.py'},
   {id:'agents',label:'Agents',x:920,y:370,r:22,color:'#ffd740',icon:'bolt',category:'hands',zone:'hands',
    info:'Deep research, daily briefing, trip planner + custom agents. Background job queue.',file:'routes/agents.py'},
   {id:'marketplace',label:'Marketplace',x:820,y:240,r:18,color:'#ffd740',icon:'cpu',category:'hands',zone:'hands',
@@ -838,10 +838,10 @@ function closeSkills() { document.getElementById('skills-panel').classList.remov
 // ── Product Frames ──
 var PRODUCTS = [
   {name:'CODEC Core',subtitle:'The Command Layer',icon:'🎙',color:'#E8711A',
-   desc:'Always-on voice assistant. Say "Hey CODEC" or press F13 to activate. F18 for voice commands. F16 for text input. 56 skills fire instantly — most bypass the LLM entirely. Direct action, zero latency.',
+   desc:'Always-on voice assistant. Say "Hey CODEC" or press F13 to activate. F18 for voice commands. F16 for text input. 75 skills fire instantly — most bypass the LLM entirely. Direct action, zero latency.',
    features:['F13 Toggle','F18 Voice','F16 Text','Hey CODEC Wake','56 Skills','Google Calendar','Gmail','Drive','Docs','Sheets','Tasks','Keep','Chrome','Web Search','Hue Lights','Timers','Spotify','Clipboard','Terminal','Memory FTS5'],
    files:['codec.py','codec_core.py','codec_config.py'],status:'core',
-   details:{shortcuts:['F13 — Toggle on/off','F18 — Hold to record voice','F16 — Text input dialog','** — Screenshot + Vision','++ — Document analysis','-- — Quick chat'],skills:'56 built-in skills: Google Calendar, Gmail, Drive, Docs, Sheets, Tasks, Keep, Chrome automation, web search, Hue lights, clipboard, terminal commands, music, timers, calculator, weather, bitcoin, brightness, volume, app switch, mouse control, screenshot OCR. Most skills bypass the LLM entirely — direct action, zero latency.',memory:'FTS5-indexed SQLite. BM25 ranking. All conversations logged across all 7 products.',wake:'Always-on "Hey CODEC" via Anker webcam mic. Energy threshold: 200. Auto-activates and records follow-up.',files:['codec.py','codec_core.py','codec_config.py','codec_identity.py','skills/*.py']}},
+   details:{shortcuts:['F13 — Toggle on/off','F18 — Hold to record voice','F16 — Text input dialog','** — Screenshot + Vision','++ — Document analysis','-- — Quick chat'],skills:'75 built-in skills: Google Calendar, Gmail, Drive, Docs, Sheets, Tasks, Keep, Chrome automation, web search, Hue lights, clipboard, terminal commands, music, timers, calculator, weather, bitcoin, brightness, volume, app switch, mouse control, screenshot OCR. Most skills bypass the LLM entirely — direct action, zero latency.',memory:'FTS5-indexed SQLite. BM25 ranking. All conversations logged across all 9 products.',wake:'Always-on "Hey CODEC" via Anker webcam mic. Energy threshold: 200. Auto-activates and records follow-up.',files:['codec.py','codec_core.py','codec_config.py','codec_identity.py','skills/*.py']}},
   {name:'CODEC Dictate',subtitle:'Hold, Speak, Paste',icon:'✍️',color:'#00e676',
    desc:'Hold a key. Say what you mean. Release. Text appears wherever the cursor is. If CODEC detects a message draft, it refines through the LLM — grammar fixed, tone polished, meaning preserved. Works in every app on macOS. A free, open-source SuperWhisper replacement that runs entirely local.',
    features:['Hold to Record','Whisper STT','LLM Refinement','Auto-Paste','Any macOS App','Grammar Fix','Tone Polish','Draft Detection'],

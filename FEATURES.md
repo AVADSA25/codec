@@ -1,6 +1,6 @@
 # Sovereign AI Workstation — Full Product Breakdown
 
-> Engine: **CODEC v2.3** — 368 features · 75 skills · 940+ tests · 58K+ lines of production code
+> Engine: **CODEC v2.3** — 400 features · 75 skills · 940+ tests · 58K+ lines of production code · 9 products
 
 The product name is **Sovereign AI Workstation**. Throughout this document
 and the codebase, **CODEC** refers to the underlying open-source engine /
@@ -11,11 +11,19 @@ those are concrete engine components rather than separate products.
 
 **v2.3 adds Phase 1 (audit + plugin substrate), Phase 2 (continuous
 observation + automation), Phase 3 (drop-a-project autonomous agents),
-and Phase 3.5 (UX polish + proactive overlay)** — sections 10–13 below.
+Phase 3.5 (UX polish + proactive overlay), and CODEC Pilot (the 8th product
+— browser automation you can teach)** — sections 10–14 below.
+
 Phase 3 ships `codec-agent-runner`, the autonomous-agent daemon that makes
 CODEC a "real AI employee" at the substrate level — drop a project, agent
 plans + builds + sends updates back proactively, with permission gates
 and resume-after-restart guarantees throughout.
+
+CODEC Pilot ships the 8th product slot: a dedicated headless Chromium driven
+by Qwen, record-by-doing teach mode, deterministic XPath → CSS → LLM-rescue
+replay, and an approval gate that protects the SkillRegistry from
+prompt-injection-spawned skills. With Project promoted to product #9 in this
+release, CODEC is now a **9-product system**.
 
 ---
 
@@ -485,6 +493,90 @@ notification dispatch.
 
 ---
 
+## 14. CODEC Pilot — Browser Automation You Can Teach (32 features) *(v2.3)*
+
+The 8th product — a complete browser-automation pillar with a dedicated headless Chromium, ReAct-style agent loop driven by Qwen, deterministic record-replay with selector fallback, a skill approval gate, and human-in-the-loop takeover. Lives in `~/codec/pilot/` (11 modules), runs as `pilot-runner` on PM2 port 8094.
+
+### Browser substrate (5 features)
+
+| # | Feature |
+|:-:|---|
+| 1 | **Dedicated headless Chromium** on CDP port **9223** (separate from user's daily Chrome on 9222) — never interferes with user's browsing |
+| 2 | **Persistent profile** at `~/.codec/pilot_chrome_profile/` — cookies, sessions, login state survive restarts |
+| 3 | **Playwright control wrapper** (`pilot/pilot_chrome.py`) — async lifecycle, navigation, XPath click/type primitives, screenshot, snapshot escape hatch |
+| 4 | **`--disable-blink-features=AutomationControlled`** — basic anti-fingerprint, hides `navigator.webdriver` |
+| 5 | **`pilot_session()` async context manager** — RAII-style start/stop for tests and one-shot replays |
+
+### Indexed-DOM snapshot (3 features)
+
+| # | Feature |
+|:-:|---|
+| 6 | **Single-pass JS extractor** walks the page in one `evaluate()` call — typically `<500ms` even on heavy pages |
+| 7 | **ARIA-role allowlist** — only interactive elements indexed (`button`, `link`, `textbox`, `combobox`, `checkbox`, `radio`, `tab`, `option`, …) capped at 150 per snapshot |
+| 8 | **Per-element selectors captured** — `[N]` index + XPath + CSS selector + accessible name + ARIA role + bounding box, sorted top-to-bottom left-to-right |
+
+### Agent ReAct loop (5 features)
+
+| # | Feature |
+|:-:|---|
+| 9 | **Qwen-driven agent** (`pilot/pilot_agent.py`) on local LLM (port 8083) — temperature 0.0, 256 max tokens |
+| 10 | **8-action vocabulary** — `navigate`, `click`, `type`, `scroll`, `wait`, `extract`, `select_option`, `done` (+ `error` for surrender) |
+| 11 | **Step budget** (default 40, configurable per run) — prevents runaway loops |
+| 12 | **Hallucinated-index validation** — every `click`/`type` re-resolves against fresh snapshot, refuses indices that don't exist |
+| 13 | **`StubLLM` offline fallback** — keeps the loop testable without Qwen |
+
+### Manual record / teach mode (4 features)
+
+| # | Feature |
+|:-:|---|
+| 14 | **`POST /record/start`** — opens an empty `AgentRun`, marks runner as recording. One concurrent session enforced (returns 409 on double-start) |
+| 15 | **Recording hook** on `/navigate`, `/click/{idx}`, `/type/{idx}` — every action lands in the active trace with full selector capture |
+| 16 | **`GET /record/status`** — survives page reloads; dashboard reattaches to in-flight recording |
+| 17 | **`POST /record/stop`** — saves trace JSON, auto-compiles to a pending skill, returns the file path |
+
+### Trace + compiler (4 features)
+
+| # | Feature |
+|:-:|---|
+| 18 | **Per-run JSON trace** at `~/.codec/pilot_traces/{run_id}/trace.json` — steps with action, selectors, snapshot text, error, timing |
+| 19 | **`compile_skill()` template** — emits a `Replayer`-based Python module with `SKILL_NAME`, `SKILL_DESCRIPTION`, `SKILL_TAGS`, and an async `run()` |
+| 20 | **`compile_to_pending()` one-shot** — used by `/record/stop` and `/run/{id}/compile`; appends numeric suffix on name collision |
+| 21 | **`from_dict` round-trip** — traces reload with all selectors intact, ready for replay |
+
+### Replay engine — 3-tier reliability ladder (5 features)
+
+| # | Feature |
+|:-:|---|
+| 22 | **Tier 1: XPath** — 3 attempts × 500ms backoff, 1.5s per-attempt timeout; typical step under 100 ms when DOM is stable |
+| 23 | **Tier 2: CSS selector** — 1 attempt × 2s timeout; catches XPath drift on dynamic classnames |
+| 24 | **Tier 3: LLM rescue** — re-snapshot, ask Qwen to find the original element by stored name + role, execute against new XPath. 10s timeout, 1 attempt |
+| 25 | **`allow_llm_rescue=False`** mode — fully offline replay for Scheduler / cron contexts |
+| 26 | **`ReplayResult.to_dict()`** — status, methods used per step, `rescues_used`, durations — full audit trail per replay |
+
+### Skill approval gate (3 features)
+
+| # | Feature |
+|:-:|---|
+| 27 | **`~/.codec/skills/.pending/`** directory — compiled skills do NOT auto-register; landing zone for human review. Blocks prompt-injection-spawned auto-registration |
+| 28 | **Dashboard preview** — `GET /skills/pending/{slug}` returns full Python source; one-click ✓ Approve moves to `~/.codec/skills/`, ✕ Reject deletes |
+| 29 | **`slugify()` + collision suffix** — filesystem-safe names from free-form task descriptions, `_2`/`_3`/… suffix appended on duplicate slugs |
+
+### HITL (human-in-the-loop) takeover (3 features)
+
+| # | Feature |
+|:-:|---|
+| 30 | **`HitlController.pause/resume/inject`** — agent loop checks an `asyncio.Event` every step; human can pause, push manual actions to a queue, resume |
+| 31 | **`takeover()/handback()`** — full human control mid-run; agent re-snapshots and continues from wherever it was left |
+| 32 | **HITL HTTP endpoints** — `/hitl/{run_id}/pause|resume|inject|takeover|handback|status` mirror the in-process API for the dashboard |
+
+### Live view + infrastructure (3 features bundled)
+
+- **MJPEG live stream** at `/screenshot/stream` — ~3 fps multipart feed, ~350 KB/s; falls back to 2-second polling on disconnect
+- **30 HTTP endpoints** on `pilot-runner` (FastAPI, port 8094) with CORS enabled for `codec.lucyvpa.com` cross-origin calls
+- **Cloudflare tunnel** at `pilot.lucyvpa.com` for off-LAN dashboard access; PM2 service `pilot-runner` with autorestart + isolated log files
+
+---
+
 ## Summary
 
 | Product / Phase | Features |
@@ -502,9 +594,10 @@ notification dispatch.
 | 11. Phase 2 — Continuous Observation + Automation *(v2.3)* | 24 |
 | 12. Phase 3 — Drop-a-Project Autonomous Agents *(v2.3)* | 32 |
 | 13. Phase 3.5 — UX Polish + Proactive Overlay *(v2.3)* | 24 |
-| **TOTAL** | **368** |
+| 14. CODEC Pilot — Browser Automation You Can Teach *(v2.3)* | 32 |
+| **TOTAL** | **400** |
 
-**368 features · 75 skills · 940+ tests · 58K+ lines of production code**
+**400 features · 75 skills · 940+ tests · 58K+ lines of production code · 9 products**
 
 ### What's new in v2.3 — Phase 1 + 2 + 3 + 3.5
 

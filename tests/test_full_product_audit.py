@@ -1,4 +1,4 @@
-"""CODEC Full Product Audit — Test every feature across all 7 products.
+"""CODEC Full Product Audit — Test every feature across all 9 products.
 
 Run: pytest tests/test_full_product_audit.py -v --tb=short 2>&1 | tee audit_results.txt
 
@@ -7,9 +7,11 @@ This test suite covers:
   Product 2: Chat (sessions, agents, LLM)
   Product 3: Voice Pipeline (WebSocket, TTS, STT)
   Product 4: Vibe Code (editor, execution, forge)
-  Product 5: Skills System (52 skills, registry, dispatch)
+  Product 5: Skills System (75 skills, registry, dispatch)
   Product 6: Agent/Crew Framework (13 crews, tools)
   Product 7: Tasks & Scheduling (schedules, heartbeat, alerts)
+  Product 8: Pilot (browser automation — record/replay, skill gate, HITL)
+  Product 9: Project (autonomous agent runner — plan/approve/execute)
   + Cross-cutting: Auth, Memory, MCP, Overlays, Config, Compaction
 """
 
