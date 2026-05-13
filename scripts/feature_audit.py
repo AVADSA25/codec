@@ -1,6 +1,8 @@
 #!/usr/bin/env python3.13
 """
-CODEC Feature Audit — comprehensive test of all 245 features from FEATURES.md.
+CODEC Feature Audit — comprehensive runtime test against the feature inventory
+in FEATURES.md (currently 400 features across 9 products + 4 phase substrates).
+
 Run: /usr/local/bin/python3.13 scripts/feature_audit.py
 """
 import sys, os, json, time, sqlite3, threading, importlib, asyncio, re
@@ -1755,7 +1757,7 @@ def generate_report():
 # ═══════════════════════════════════════════════════════════════
 def main():
     print("=" * 70)
-    print("CODEC Feature Audit — Testing 245 features")
+    print("CODEC Feature Audit — Testing 400 features across 9 products")
     print("=" * 70)
     print()
 
