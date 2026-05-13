@@ -1162,6 +1162,7 @@ document.addEventListener('DOMContentLoaded', function() {
 var _pilotBase = 'http://localhost:8094';
 var _pilotPollTimer = null;
 var _pilotSelectedRun = null;
+var _pilotStreamTimer = null;   // fallback poll when MJPEG stream unavailable
 
 function _pilotFetch(path, opts) {
   // Bypass CODEC's global fetch wrapper (which injects session tokens and
@@ -1208,10 +1209,25 @@ function pilotCheckStatus() {
     });
 }
 
-/* ── Screenshot ── */
+/* ── Screenshot / live stream ── */
+function pilotStartStream() {
+  var img = document.getElementById('pilotScreenshot');
+  if (!img) return;
+  // Point at MJPEG stream — browser keeps it alive as a live feed
+  img.src = _pilotBase + '/screenshot/stream?' + Date.now();
+  img.onerror = function() {
+    // Stream failed (pilot offline?) — fall back to 2-second polling
+    img.onerror = null;
+    if (!_pilotStreamTimer) {
+      _pilotStreamTimer = setInterval(pilotRefreshScreenshot, 2000);
+    }
+  };
+}
+
 function pilotRefreshScreenshot() {
   var img = document.getElementById('pilotScreenshot');
   if (!img) return;
+  // Only used as fallback when stream is unavailable
   img.src = _pilotBase + '/screenshot?' + Date.now();
 }
 
@@ -1302,7 +1318,7 @@ function pilotStartRun() {
     return _pilotFetch('/run/' + runId + '/start', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({step_budget: 20, use_stub: true})
+      body: JSON.stringify({step_budget: 20, use_stub: false})
     })
     .then(function(r2){ return r2.json(); })
     .then(function() {
@@ -1405,19 +1421,23 @@ function showTab(name) {
   _pilotTabActive = (name === 'pilot');
   if (_pilotTabActive) {
     pilotCheckStatus();
-    pilotRefreshScreenshot();
+    pilotStartStream();   // live MJPEG feed (falls back to 2s polling on error)
     pilotSnapshot();
     pilotRefreshRuns();
     if (!_pilotPollTimer) {
       _pilotPollTimer = setInterval(function() {
         if (!_pilotTabActive) { clearInterval(_pilotPollTimer); _pilotPollTimer = null; return; }
         pilotCheckStatus();
-        pilotRefreshScreenshot();
         if (_pilotSelectedRun) pilotShowRunDetail(_pilotSelectedRun);
+        // Screenshot is handled by MJPEG stream; no extra poll needed
       }, 4000);
     }
   } else {
-    if (_pilotPollTimer) { clearInterval(_pilotPollTimer); _pilotPollTimer = null; }
+    if (_pilotPollTimer)  { clearInterval(_pilotPollTimer);  _pilotPollTimer  = null; }
+    if (_pilotStreamTimer){ clearInterval(_pilotStreamTimer);_pilotStreamTimer = null; }
+    // Stop MJPEG stream by blanking src when leaving tab (saves bandwidth)
+    var img = document.getElementById('pilotScreenshot');
+    if (img) img.src = '';
   }
 }
 /* ── Init pilot if hash=pilot ── */
