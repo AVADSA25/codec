@@ -143,9 +143,9 @@ If you do all 8: you have layered defenses against D-1 / D-2 / D-3 / D-4 / D-7 u
 
 | ID | Audit | Title | Wave |
 |---|---|---|---|
-| **D-1** | Security | Skill registry lazy-load = RCE for anyone who can drop a `.py` file | **W1 — CLOSED (PR-1A)** |
-| **D-2** | Security | `/api/forge` fetches arbitrary URL → LLM → writes skill, no review gate | **W1** |
-| **D-3** | Security | `/api/save_skill` writes directly to skills/ with only substring check | **W1** |
+| **D-1** | Security | Skill registry lazy-load = RCE for anyone who can drop a `.py` file | **W1 — CLOSED ([#42](https://github.com/AVADSA25/codec/pull/42), `48ec5d5`)** |
+| **D-2** | Security | `/api/forge` fetches arbitrary URL → LLM → writes skill, no review gate | **W1 — CLOSED (PR-1B)** |
+| **D-3** | Security | `/api/save_skill` writes directly to skills/ with only substring check | **W1 — CLOSED (PR-1B)** |
 | **D-4** | Security | `file_write` skill (MCP-exposed) can write to `~/.codec/skills/` | **W1** |
 | **D-5** | Security | `permission_gate` accepts path-traversal via `fnmatch` (no realpath) | **W1** |
 | C-1 | Reliability | `codec.py` daemon ignores SIGINT/SIGTERM; leaks sox + tkinter on every restart | W4 |

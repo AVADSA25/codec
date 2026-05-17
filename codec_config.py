@@ -1,6 +1,14 @@
 """CODEC Configuration — loads ~/.codec/config.json and exposes all constants"""
 import os, json
-from pynput import keyboard
+
+# pynput requires a display (X11 / AppKit / win32). On headless CI runners
+# (Linux GitHub Actions, Docker) the import raises ImportError. Other modules
+# import codec_config for is_dangerous_skill_code, DANGEROUS_PATTERNS, etc.
+# without needing the keyboard subsystem — fail gracefully so those imports work.
+try:
+    from pynput import keyboard
+except ImportError:
+    keyboard = None
 
 CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
 DRY_RUN = False
@@ -258,6 +266,10 @@ def needs_screen(t):
 # Key resolution
 def _resolve_key(name):
     name = name.lower().strip()
+    if keyboard is None:
+        # Headless: codec_config is being imported for its constants only,
+        # not for live keyboard listening. Skip key resolution.
+        return None
     if name.startswith('f') and name[1:].isdigit():
         return getattr(keyboard.Key, name, None)
     if len(name) == 1:

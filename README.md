@@ -50,7 +50,7 @@ No cloud dependency. No data leaving the machine unless you choose. No subscript
 | 2 | **CODEC Dictate** | Hold, speak, paste — hands-free F5 live typing at cursor, draft refinement, floating overlays |
 | 3 | **CODEC Instant** | Right-click → 8 AI services system-wide — proofread, translate, reply, explain |
 | 4 | **CODEC Chat** | 250K-context conversational AI + 12 autonomous agent crews |
-| 5 | **CODEC Vibe** | Browser IDE with Monaco editor + Skill Forge — the framework writes its own plugins |
+| 5 | **CODEC Vibe** | Browser IDE with Monaco editor + live preview — new skills land through a human-review approval flow |
 | 6 | **CODEC Voice** | Real-time voice calls with interrupt detection, screen analysis mid-call |
 | 7 | **CODEC Overview** | Dashboard + Cortex nerve center + full audit trail — accessible from any device |
 | 8 | **CODEC Pilot** | Browser automation you can *teach* — record once, replay forever with XPath→CSS→LLM rescue |
@@ -121,11 +121,11 @@ The multi-agent framework is under 800 lines. Zero dependencies. No CrewAI. No L
 
 **Phase 3 substrate** (autonomous agents) reuses Phase 1+2 components: unified audit envelope (Step 1), plugin lifecycle hooks (Step 2), AskUser + strict-consent + step budget (Step 3), continuous observation loop (Step 5), trigger system (Step 6), end-of-day shift report (Step 7). Per-agent state at `~/.codec/agents/<id>/`. Global allowlist tier at `~/.codec/agent_global_grants.json`. 17 new audit events. See `docs/PHASE3-COMPLETE.md` for the full sign-off.
 
-### 5. CODEC Vibe — AI Coding IDE + Skill Forge
+### 5. CODEC Vibe — AI Coding IDE
 
 Split-screen in the browser. Monaco editor on the left (same engine as VS Code, v0.45.0). AI chat on the right. Describe what's needed — CODEC writes it, click Apply, run it, live preview in browser.
 
-Skill Forge takes it further: three modes — paste code, import from GitHub URL, or describe a capability in plain English. CODEC converts it into a working plugin. The framework writes its own extensions. DOMPurify sanitization on all rendered content.
+New skills land through the human-review approval flow (`/api/skill/review` → `/api/skill/approve`) — staged, previewed, then written to disk only after explicit operator approval. Defense in depth pairs with the load-time AST gate in `SkillRegistry.load`. DOMPurify sanitization on all rendered content.
 
 ### 6. CODEC Voice — Live Voice Calls
 
@@ -311,7 +311,7 @@ Three smart agents ship built-in: Daily Briefing, Restaurant Decider (location-a
 | Voice-to-voice calls | WebSocket, real-time | Yes but cloud | Yes but cloud |
 | Multi-agent workflows | 12 crews, local LLM | No | Limited |
 | Right-click AI services | 8 system-wide services | No | No |
-| Writes its own plugins | Skill Forge | No | No |
+| Writes its own plugins | Yes, via review-and-approve flow | No | No |
 | Hands-free live typing at cursor | Dictate F5 | No | No |
 | Process watchdog | Auto-kills stuck processes | No | No |
 | Full audit trail | 16 event categories | No | No |
@@ -325,7 +325,7 @@ Three smart agents ship built-in: Daily Briefing, Restaurant Decider (location-a
 | Pipecat | **Voice** — own WebSocket pipeline |
 | CrewAI + LangChain | **Chat** — 795-line agent framework, zero dependencies |
 | SuperWhisper / Apple Dictation | **Dictate** — free, open source, F5 hands-free live typing, 100% local |
-| Cursor / Windsurf | **Vibe** — Monaco + AI + Skill Forge |
+| Cursor / Windsurf | **Vibe** — Monaco + AI + review-gated skill creation |
 | Google Assistant / Siri | **Core** — actually controls the computer |
 | Grammarly | **Instant** — right-click services via local LLM |
 | ChatGPT | **Chat** — 250K context, fully local |
@@ -630,7 +630,7 @@ codec_voice.html      — Voice call UI
 codec_dashboard.py    — Web API + dashboard (135+ endpoints across routes/)
 codec_dashboard.html  — Dashboard UI (Flash Chat, History, Audit, Settings, Stats, Skills)
 codec_chat.html       — Chat UI (agents, file upload, voice input)
-codec_vibe.html       — Vibe Code IDE (Monaco + Skill Forge)
+codec_vibe.html       — Vibe Code IDE (Monaco editor + live preview)
 codec_cortex.html     — Cortex system overview (neural map, product grid)
 codec_audit.html      — Audit log viewer (16 categories, filterable)
 codec_audit.py        — Audit logger (JSON-line, 50MB rotation, thread-safe)

@@ -454,7 +454,7 @@ def main():
     print(f"  {O}CODEC Instant{X} — 8 right-click text services (Proofread, Elevate, Explain, Prompt, Translate, Reply, Read Aloud, Save)")
     print(f"  {O}CODEC Dictate{X} — Hold right CMD to dictate text anywhere")
     print(f"  {O}CODEC Chat{X}    — Deep Chat with 250K context + AI Agents")
-    print(f"  {O}CODEC Vibe{X}    — AI-powered IDE with Skill Forge")
+    print(f"  {O}CODEC Vibe{X}    — AI-powered IDE (Monaco + live preview)")
     print(f"  {O}CODEC Voice{X}   — Live voice calls with skill dispatch")
     print(f"  {O}CODEC Overview{X} — Your AI dashboard — every tool, every agent, one screen")
     print()

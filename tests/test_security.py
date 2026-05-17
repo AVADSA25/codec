@@ -197,15 +197,12 @@ def test_memory_has_cleanup():
     assert "VACUUM" in content, "cleanup should VACUUM the database"
 
 
-# ── save_skill validation ──────────────────────────────────────────────────
-
-def test_save_skill_validates_content():
-    """save_skill must validate skill structure and block dangerous patterns"""
-    REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    content = open(os.path.join(REPO, "codec_dashboard.py")).read()
-    skill_fn = content.split("async def save_skill")[1].split("\nasync def ")[0] if "async def save_skill" in content else ""
-    assert "SKILL_DESCRIPTION" in skill_fn, "save_skill must validate SKILL_DESCRIPTION presence"
-    assert "os.system" in skill_fn or "BLOCKED_IN_SKILLS" in skill_fn, "save_skill must block dangerous patterns"
+# ── save_skill validation (REMOVED) ────────────────────────────────────────
+# test_save_skill_validates_content was deleted in PR-1B. The /api/save_skill
+# endpoint and its weak substring blocker are gone — see routes/skills.py and
+# docs/audits/PHASE-1-SECURITY.md D-3. Skill validation now happens at write
+# time via /api/skill/approve (AST check) and at load time via
+# SkillRegistry.load (manifest + AST gate, see tests/test_skill_registry.py).
 
 
 # ── Preview frame CSP ──────────────────────────────────────────────────────

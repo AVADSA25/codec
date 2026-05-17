@@ -583,6 +583,19 @@ Canonical state file for AskUserQuestion. Atomic write via tmp+rename. Schema:
 ### MCP HTTP transport blocklist
 `codec_config._HTTP_BLOCKED`: `python_exec`, `terminal`, `process_manager`, `pm2_control`, `ax_control`. These skills are NEVER exposed over HTTP MCP. They remain available locally (voice, chat) and over stdio MCP only.
 
+### Skill creation flow — review-and-approve only (Phase 1 Wave 1, PR-1B — closes D-2 + D-3)
+
+Skill creation is exclusively via the review-and-approve flow:
+
+  `POST /api/skill/review`   →  stages code for human review (no disk write)
+  `POST /api/skill/approve`  →  writes to disk after explicit operator approval; runs `is_dangerous_skill_code` as the write-time gate
+
+The legacy direct-write endpoints `/api/save_skill` and `/api/forge` were **removed in PR-1B**. Both were CRITICAL RCE-enabling paths per `docs/audits/PHASE-1-SECURITY.md`:
+- `/api/save_skill` (**D-3**) wrote user/LLM-supplied code straight to `<skills_dir>/<name>.py` after only a substring blocker.
+- `/api/forge` (**D-2**) fetched arbitrary URLs (SSRF), passed the response to the LLM, and wrote the LLM's output directly to disk.
+
+The Skill Forge UI in `codec_vibe.html` (modal, toolbar buttons, JS handlers) was removed alongside. The URL-fetch capability is intentionally dropped — anyone wanting to import code from a URL now pastes the source into the editor and goes through the review-and-approve flow like any other skill.
+
 ### Skill load-time safety gate (Phase 1 Wave 1, PR-1A — closes D-1)
 
 `SkillRegistry.load` (`codec_skill_registry.py`) runs a two-stage check on every skill load — BEFORE `spec.loader.exec_module(mod)` — so a malicious `.py` file dropped in `~/.codec/skills/` cannot execute regardless of how it reached disk:
