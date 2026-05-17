@@ -3785,82 +3785,22 @@ async def services_status():
     return result
 
 
-# ── Safe Terminal Access for CODEC Chat ───────────────────────────────
-
-_DANGEROUS_PATTERNS = [
-    r'\brm\s+-rf\b',
-    r'\bmkfs\b',
-    r'\bdd\b\s+',
-    r'\bshutdown\b',
-    r'\breboot\b',
-    r'\bhalt\b',
-    r'\bpoweroff\b',
-    r'\bkill\s+-9\b',
-    r'\bpkill\b',
-    r'\bformat\b',
-    r'\bfdisk\b',
-    r'\bsudo\b',
-    r'\.\./\.\.',
-    r'\|\s*rm\b',
-]
-_DANGEROUS_RE = [re.compile(p, re.IGNORECASE) for p in _DANGEROUS_PATTERNS]
-_EXEC_MAX_TIMEOUT = 30
-
-
-class TerminalRequest(BaseModel):
-    command: str = Field(description="Shell command to execute")
-
-
-def _is_command_safe(command: str) -> Optional[str]:
-    """Return a rejection reason if the command is dangerous, else None."""
-    for pattern in _DANGEROUS_RE:
-        if pattern.search(command):
-            return f"matches blocked pattern: {pattern.pattern}"
-    return None
-
-
-@app.post("/api/execute")
-async def execute_terminal(req: TerminalRequest):
-    """Execute a shell command with safety guardrails.
-
-    Blocked patterns: rm -rf, mkfs, dd, shutdown, reboot, halt, poweroff,
-    kill -9, pkill, format, fdisk, sudo, path traversal (../../), pipe to rm.
-    Timeout: 30 seconds.
-    """
-    command = req.command.strip()
-    if not command:
-        return JSONResponse({"error": "Empty command"}, status_code=400)
-
-    # Safety check
-    reason = _is_command_safe(command)
-    if reason is not None:
-        log.warning("[Terminal] BLOCKED command: %s — %s", command, reason)
-        return JSONResponse({"error": f"Command blocked: {reason}", "blocked": True}, status_code=403)
-
-    log.info("[Terminal] Executing: %s", command)
-    try:
-        result = subprocess.run(
-            command,
-            shell=True,
-            capture_output=True,
-            text=True,
-            timeout=_EXEC_MAX_TIMEOUT,
-            cwd=os.path.expanduser("~"),
-        )
-        output = result.stdout
-        if result.stderr:
-            output += ("\n" if output else "") + result.stderr
-        log.info("[Terminal] Exit %d for: %s", result.returncode, command)
-        return {"output": output, "exit_code": result.returncode, "command": command}
-    except subprocess.TimeoutExpired:
-        log.warning("[Terminal] TIMEOUT after %ds: %s", _EXEC_MAX_TIMEOUT, command)
-        return JSONResponse(
-            {"error": f"Command timed out after {_EXEC_MAX_TIMEOUT}s", "command": command},
-            status_code=408,
-        )
-    except Exception as e:
-        log.error("[Terminal] Error executing '%s': %s", command, e)
-        return JSONResponse({"error": str(e), "command": command}, status_code=500)
+# ── /api/execute and _DANGEROUS_PATTERNS — REMOVED in PR-2C (closes D-10) ──
+#
+# The dashboard's local `/api/execute` endpoint + `_DANGEROUS_PATTERNS`
+# regex blocklist + `_is_command_safe` helper + `execute_terminal` handler
+# were all deleted. They duplicated the `terminal` skill's capability
+# (shell command execution) while bypassing the skill system's safety
+# gates. The blocker was bypassable by ≥45% of red-team variants per
+# audit D-6, and `shell=True` made standard metachar tricks all work.
+#
+# Command execution now routes exclusively through the `terminal` skill,
+# which is in BOTH `codec_config._HTTP_BLOCKED` (claude.ai over MCP HTTP
+# can't reach it) AND `codec_config._STDIO_BLOCKED` (Claude desktop /
+# stdio MCP also blocked). Local chat / voice consumers go through the
+# strict-consent gate (Step 3 §1.7) for destructive ops.
+#
+# See docs/audits/PHASE-1-SECURITY.md finding D-10.
 
 
 def _check_dashboard_start_safety(host: str, dashboard_token: str,
@@ -3880,8 +3820,8 @@ def _check_dashboard_start_safety(host: str, dashboard_token: str,
     return False, (
         f"Refusing to start: dashboard_host={host!r} would bind on all "
         "interfaces without any auth gate (no dashboard_token, no "
-        "auth_enabled). LAN devices could reach /api/execute, "
-        "/api/save_skill, /api/forge, etc. unauthenticated.\n\n"
+        "auth_enabled). LAN devices could reach /api/skill/review, "
+        "/api/command, /api/agents/*, etc. unauthenticated.\n\n"
         "Fix one of:\n"
         "  - Set dashboard_host=\"127.0.0.1\" in ~/.codec/config.json (the safe default)\n"
         "  - Set dashboard_token=\"<random-hex>\" in ~/.codec/config.json (bearer auth)\n"

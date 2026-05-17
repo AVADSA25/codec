@@ -203,6 +203,9 @@ The refresh-token TTL is 90 days.
 ### D-9 — `python_exec` skill blocklist trivially bypassable; no sandbox-exec [HIGH]
 **Location:** `skills/python_exec.py:13-29, 60-73`
 **CWE / OWASP:** CWE-94 Code Injection / OWASP A03 Injection
+
+> **Closed by PR-2C** (branch `fix/pr2c-python-exec-sandbox-and-execute-removal`). Three layers replace the bypassable substring blocker: (1) **AST gate** — `codec_config.is_dangerous_skill_code` (the same validator PR-1A uses at `SkillRegistry.load`) catches `__import__('os').system`, `eval(...)`, `getattr(__builtins__, ...)`, etc. Refusals emit `python_exec_blocked` audit. (2) **`sandbox-exec` runtime** — `/usr/bin/sandbox-exec -f <profile>` using `codec_sandbox._write_sandbox_profile(allow_network=False)`. No network, no process spawning, writes only to `~/.codec/skill_output/` + `/tmp/`. (3) **`preexec_fn` rlimits** — RLIMIT_CPU(5s), RLIMIT_AS(256MB), RLIMIT_NOFILE(32). (4) **Minimal env** — PATH=`/usr/bin:/bin`, no PYTHONPATH/LD_LIBRARY_PATH/SHELL/HOME. 16 tests in `tests/test_python_exec.py`.
+
 **Description:** `_BLOCKED` is a list of 21 substrings (`import os`, `import sys`, `subprocess.`, `eval(`, `exec(`, `__import__`, `os.system`, `os.popen`, `os.exec`, etc.). The skill writes code to a tempfile and runs `subprocess.run(["python3", tmp_path], ..., env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})` with **no `sandbox-exec`, no `chroot`, no `nice`, no resource limits** (the comment says `tmp_path` and 10s timeout). The Python subprocess has the SAME privileges as the calling CODEC process — i.e., it can read every file under `$HOME`, hit every network endpoint, spawn its own subprocesses.
 Bypasses of the substring blocker:
 - `getattr(__builtins__, chr(95)*2 + 'import' + chr(95)*2)('os')` — string `__import__` not present, `import os` not present.
@@ -219,6 +222,9 @@ Combine with `python_exec` being in `CHAT_SKILL_ALLOWLIST` — accessible from l
 ### D-10 — `/api/execute` is shell=True with bypassable blocklist [HIGH]
 **Location:** `codec_dashboard.py:3779-3852` (`_DANGEROUS_PATTERNS`, `_is_command_safe`, `execute_terminal`)
 **CWE / OWASP:** CWE-78 OS Command Injection / OWASP A03 Injection
+
+> **Closed by PR-2C** (branch `fix/pr2c-python-exec-sandbox-and-execute-removal`). The `/api/execute` endpoint and the entire "Safe Terminal Access for CODEC Chat" block (`_DANGEROUS_PATTERNS`, `_DANGEROUS_RE`, `_EXEC_MAX_TIMEOUT`, `TerminalRequest`, `_is_command_safe`, `execute_terminal`) were deleted from `codec_dashboard.py` — ~75 LOC gone. Command execution routes exclusively through the `terminal` skill, which is in BOTH `_HTTP_BLOCKED` and `_STDIO_BLOCKED`. Local chat / voice consumers go through the strict-consent gate (Step 3 §1.7) for destructive ops. Tests verify no `execute_terminal` / `_is_command_safe` / `_DANGEROUS_PATTERNS` symbols + no `/api/execute` route in the FastAPI app.
+
 **Description:** `/api/execute` runs `subprocess.run(command, shell=True, ...)` after a 14-regex check. The 14-regex list is even narrower than the main `DANGEROUS_PATTERNS` (only `rm -rf`, `mkfs`, `dd`, `shutdown`, `reboot`, `halt`, `poweroff`, `kill -9`, `pkill`, `format`, `fdisk`, `sudo`, `../..`, `| rm`).
 Misses: every D-6 bypass plus: `dd if=/dev/random of=/dev/sda` not matched (`\bdd\b\s+` requires the literal `dd` token followed by whitespace; `if=` is whitespace-separated so it matches — but other dd forms slip past). Plus all the D-6 information-disclosure / privesc / audit-tamper variants.
 Plus: `shell=True` with the raw command line means standard shell metachar tricks all work — `command1; command2`, backticks, $().
