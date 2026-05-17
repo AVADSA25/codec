@@ -7,6 +7,7 @@
     "app_switch.py": "aaba996619786edee552fd35b3a90bcacc5e30dfc3b6a4a3b479ff1ed97ffe58",
     "ask_user.py": "5bb8009a2dc133dafafc2847b7d0ad7c5b31db91b5d687b1c0d90ecd9a7830bc",
     "audit_report.py": "1ed0be5e6f49bb5f05826f69a81343a76f42d067e308de459191006b585dfa93",
+    "audit_verify.py": "887c68f340adc2d93b3ec307dbf149f1bb231478f31db817c5032bc04798eb0e",
     "auto_memorize.py": "a755e79b073155d6857559cb89a6a6e0bbf031b2aade97d9683c5eb8a26fca86",
     "ax_control.py": "5765ac9936ca881490e339e0300d5b5efc1f7d15cc65ab0fb6416fe0c021a0c9",
     "backup_status.py": "79caed39a5d64e7a8f9606a4b8a6c683908ff763394e18b035727716904eacbc",

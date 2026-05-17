@@ -250,6 +250,9 @@ Plus: `shell=True` with the raw command line means standard shell metachar trick
 ### D-12 — Audit log has no integrity protection (no HMAC, no chain, plaintext) [HIGH]
 **Location:** `codec_audit.py:362-374` (`_write`)
 **CWE / OWASP:** CWE-117 Improper Output Neutralization for Logs / CWE-778 Insufficient Logging / OWASP A09 Security Logging Failures
+
+> **Closed by PR-2E** (branch `fix/pr2e-audit-log-hmac-redaction`). HMAC-SHA256 per audit line. 32-byte secret stored hex-encoded in macOS Keychain (`ai.avadigital.codec.audit_hmac_secret`), bootstrapped automatically on first write via `codec_keychain.get_audit_hmac_secret()` — a silent path that bypasses `_kc_log_event` to avoid recursive audit emission. Cache TTL 5min (audit writes are hot). HMAC computed over `_canonical_json(record_minus_hmac_field)` with `sort_keys=True, separators=(",", ":"), ensure_ascii=True` for byte stability. Verification via `codec_audit.verify_audit_log()` utility and the `audit_verify` skill (operator-only, `SKILL_MCP_EXPOSE=False`). Modifications to existing lines and forged appended lines are both detected. Whole-line deletion is documented as a known limitation of per-line signing (per Q5=a decision — hash-chain is fragile on log rotation; HMAC-per-line is simpler). 27 tests in `tests/test_audit_integrity.py`.
+
 **Description:** `_write` opens `~/.codec/audit.log` in append mode and writes one JSON line. There is:
 - No HMAC over each line.
 - No hash chain (prev_hash + content → new_hash).
@@ -266,6 +269,8 @@ In addition, **no secret redaction patterns** are applied before writing. `task_
 - chmod 0600 on file open if not yet set.
 - Add a secrets-redaction regex pass (`AKIA\w{16}`, `sk-[A-Za-z0-9-]+`, `xoxp-`, `xoxb-`, `ghp_`, etc.) before writing `task_preview` fields.
 **Effort:** medium.
+
+> **PR-2E also closes D-19 (secret redaction) and D-22 (chmod 0600).** Per-line HMAC, secret redaction, and chmod 0600 share the same `_write` path; they were addressed together in one PR. See D-19 and D-22 entries below for their closure footnotes.
 
 ---
 
@@ -375,6 +380,9 @@ The audit emit path `_emit_hook_fired` / `_emit_hook_error` is robust against ho
 ### D-19 — Audit log captures `task_preview` without secret redaction [MEDIUM]
 **Location:** `codec_audit.py:317-322` (`_truncate`), call sites in `codec.py:549, codec_dashboard.py:911-912, codec_keyboard.py:245`
 **CWE / OWASP:** CWE-532 Insertion of Sensitive Info into Log File
+
+> **Closed by PR-2E** (branch `fix/pr2e-audit-log-hmac-redaction`). `_redact_secrets` walks the audit record recursively (top-level + nested in `extra`, lists, etc.) and applies 15 compiled-once regex patterns: Anthropic `sk-ant-`, OpenAI/generic `sk-`, AWS `AKIA...` + `aws_secret_access_key`, GitHub `ghp_` + `ghs_`, Slack `xox[bpsa]-`, Google `AIza...`, JWT 3-part base64url, generic `Bearer`, CODEC `codec_at_` + `codec_rt_`, basic-auth URLs (`scheme://user:pass@`), `-----BEGIN PRIVATE KEY-----` markers, and credit-card candidates (13-19 digit sequences). Redaction runs **before** truncation, so a secret near the 500-char `message` cap is fully redacted rather than chopped mid-pattern. Replacements use semantic tags (`<REDACTED:openai_or_anthropic_key>`, etc.) so an operator reading audit lines can see what type of secret was scrubbed. The credit-card pattern accepts false positives (any 13-19 digit sequence) as a deliberate trade-off — false-positive redaction is preferable to a real card leak. 9 redaction-specific tests in `tests/test_audit_integrity.py`.
+
 **Description:** Multiple paths log `task[:200]` into the audit log under `extra.task_preview` or directly into the audit-log line (e.g. `_audit_write(f"... CMD[{source}]: {task[:200]}\n")` at `codec_dashboard.py:907`). If the user pastes a credential into the chat or speaks a credit-card number, it lands in `~/.codec/audit.log` plaintext (D-12) with no redaction. Combined with D-12 (no chmod), this is potentially world-readable on a default-umask system.
 **Impact:** Credential leak via audit log to anyone with file-read access (other local users, backups, exfil via D-1 RCE).
 **Recommended fix:** Add a redaction pass before writing `task_preview` / `message` / `error`: regex-match common credential formats (`AKIA[0-9A-Z]{16}`, `sk-[A-Za-z0-9]{20,}`, `ghp_[A-Za-z0-9]{36}`, `xox[bpsa]-[A-Za-z0-9-]+`, credit-card Luhn, etc.) and replace with `<REDACTED:type>`. See `_PREVIEW_MAX` constant location for the insertion point.
@@ -401,6 +409,9 @@ The audit emit path `_emit_hook_fired` / `_emit_hook_error` is robust against ho
 ### D-22 — `os.umask` not enforced — initial audit log creation is umask-dependent [LOW]
 **Location:** `codec_audit.py:362-374` (no chmod), `codec_oauth_provider.py:114-119` (chmod ok), `routes/_shared.py:35-43` (chmod ok)
 **CWE / OWASP:** CWE-732 Incorrect Permission Assignment
+
+> **Closed by PR-2E** (branch `fix/pr2e-audit-log-hmac-redaction`). `_open_audit_log_append` uses `os.fdopen(os.open(path, O_WRONLY|O_APPEND|O_CREAT, 0o600), "a", encoding="utf-8")` on first creation — the filesystem creates the file with rw------- before the umask is applied, so the umask-dependent default is bypassed entirely. For existing files (legacy / external tool creation), the helper defensively calls `os.chmod(0o600)` before every append, best-effort wrapped in try/except so FUSE / read-only mounts don't break writes. Two chmod tests in `tests/test_audit_integrity.py` pin the behavior.
+
 **Description:** When `~/.codec/audit.log` does not exist, `codec_audit._write` creates it via `open(_AUDIT_LOG, "a", encoding="utf-8")`. Initial permissions follow the user's umask — default macOS umask is 022, so the file is created 0644 (world-readable). Subsequent rotation rename preserves perms. On a multi-user Mac, another user could read the audit log.
 **Impact:** Information disclosure on multi-user Mac. Sub-finding of D-12.
 **Recommended fix:** Call `os.chmod(_AUDIT_LOG, 0o600)` right after first open, OR wrap the open in `os.fdopen(os.open(path, O_WRONLY|O_APPEND|O_CREAT, 0o600), ...)`.

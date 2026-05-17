@@ -416,6 +416,44 @@ File: `~/.codec/audit.log`, newline-delimited JSON, daily rotation, 30-day reten
 
 Pre-Phase-1 entries stay readable: `codec_audit_analyzer.py` already used `.get()` for every field, so legacy records (no `schema`, no `event`, naïve `ts`) bucket cleanly alongside unified ones. Migration plan: leave-as-is, age-out via the 30-day rotation. See `docs/PHASE1-STEP1-DESIGN.md` for the full contract.
 
+### Integrity + redaction + perms (Phase 1 Wave 2, PR-2E — closes D-12 + D-19 + D-22)
+
+**HMAC-SHA256 per line.** Every audit line emitted post-PR-2E carries an `hmac` field — a 64-hex SHA-256 HMAC computed over the canonical-JSON form of the record (minus the `hmac` field itself). Canonical JSON = `sort_keys=True, separators=(",", ":"), ensure_ascii=True` so the byte representation is stable across Python implementations. Secret: 32 raw bytes stored hex-encoded in macOS Keychain as `ai.avadigital.codec.audit_hmac_secret`. Bootstrapped automatically on first write via `codec_keychain.get_audit_hmac_secret()` (silent path — bypasses `_kc_log_event` to avoid recursive audit emit; uses stdlib `logging` for visibility). Cache TTL 5min — audit writes are hot.
+
+**Verification.** `codec_audit.verify_audit_log()` walks every line and returns `{total_lines, signed_lines, unsigned_lines, broken_lines, first_broken_line_no, integrity_ok}`. Operator-facing skill `audit_verify` (chat / voice triggers: "verify audit log", "check audit integrity") wraps it. `SKILL_MCP_EXPOSE=False` — forensic operations don't traverse the MCP boundary.
+
+**Tamper detection contract:**
+- Modify an existing line (any field) → HMAC mismatch → `broken_lines` increments → `integrity_ok=False`.
+- Append a forged line with bogus HMAC → mismatch → detected.
+- Truncate the log → undetectable by HMAC; obvious by file mtime/size.
+- **Delete a whole line in the middle → NOT detected by per-line HMAC.** Documented limitation of Q5=a (HMAC-per-line over hash-chain). Hash-chain is fragile on log rotation; HMAC-per-line trades order-of-events tamper detection for simplicity + rotation safety. A future enhancement may add an external anchor (periodic Merkle root).
+
+**Pre-PR-2E lines.** Old audit lines (no `hmac` field) are classified as `unsigned`, not `broken`. After the 30-day rotation window all log files have HMACs.
+
+**Keychain unavailable.** If `get_audit_hmac_secret()` returns None (Keychain locked + fallback failed), the line is written with `hmac=""` and `hmac_status="unsigned_keychain_unavailable"`. The verify utility counts these as `unsigned`, not `broken`. The operator sees a stdlib `WARNING` log line at the time of write.
+
+**Secret redaction (D-19).** Before HMAC + write, `_redact_secrets` walks the entire record (top-level + nested in `extra`, lists, etc.) and applies 15 compiled regex patterns. Order is specific-first so the placeholder tag preserves the most-specific match:
+
+- `<REDACTED:anthropic_key>` — `sk-ant-\w{30,}`
+- `<REDACTED:openai_or_anthropic_key>` — `sk-\w{20,}`
+- `<REDACTED:aws_access_key>` — `AKIA[0-9A-Z]{16}`
+- `<REDACTED:aws_secret>` — `aws_secret_access_key=...{40}`
+- `<REDACTED:github_pat>` / `<REDACTED:github_oauth>` — `ghp_\w{36}` / `ghs_\w{36}`
+- `<REDACTED:slack_token>` — `xox[bpsa]-\w{10,}`
+- `<REDACTED:google_api_key>` — `AIza\w{35}`
+- `<REDACTED:jwt>` — 3-part base64url JWT
+- `<REDACTED:bearer_token>` — `Bearer \w{20,}` (case-insensitive)
+- `<REDACTED:codec_oauth_access>` / `<REDACTED:codec_oauth_refresh>` — `codec_at_<64hex>` / `codec_rt_<64hex>`
+- `<REDACTED:user>:<REDACTED:pass>@` — basic-auth URLs
+- `<REDACTED:private_key_header>` — `-----BEGIN ... PRIVATE KEY-----` marker
+- `<REDACTED:cc_candidate>` — 13-19 digit sequences (accepted false-positive rate; safer than leaking real CCs)
+
+Redaction runs **BEFORE** truncation: a secret near the 500-char `message` cap is fully redacted, not chopped mid-pattern. `_write` does another whole-record redact pass as defense-in-depth for `extra`, `error_type`, etc.
+
+**chmod 0600 (D-22).** `_open_audit_log_append` uses `os.fdopen(os.open(path, O_WRONLY|O_APPEND|O_CREAT, 0o600))` on first creation — bypasses the umask. Existing files defensively `os.chmod(0o600)` before every append (try/except wrapped for FUSE / RO mounts).
+
+**Performance.** 1000 audit writes on M1 Ultra take ~102 ms (102 µs/call). Cache amortizes the Keychain shellout; the per-write hot path is regex sweep + canonical JSON + SHA-256 + file open/write/close.
+
 ### log_event (`codec_audit.log_event`)
 Real adapter over `audit()` for lifecycle events (session start/end, scheduler tick, dispatch decision, heartbeat alert). Defined in `codec_audit.py`. Call sites in `codec_session.py`, `codec_scheduler.py`, `codec_dispatch.py`, `codec_heartbeat.py`, `codec_dashboard.py`, `codec.py`, `routes/auth.py`.
 
@@ -779,6 +817,8 @@ These zones break running infrastructure if changed without coordination. NEVER 
 - `codec_oauth_provider.py` `ACCESS_TOKEN_TTL` / `REFRESH_TOKEN_TTL` — currently 30d / 90d. Shortening these breaks live claude.ai MCP connections mid-week
 - `~/.codec/oauth_state.json` — clearing this invalidates ALL claude.ai connections; touch only after explicit user OK + `pm2 restart codec-mcp-http`
 - Keychain entry `ai.avadigital.codec.internal_token` (Phase 1 Wave 2, PR-2D) — deleting forces a full token regen across every CODEC daemon. Heartbeat / scheduler / skills miss for ≤30s while their cache misses; `internal_token_autogenerated` audits emit. Use only for rotation. The legacy `X-Internal: codec` literal header is no longer recognized anywhere in `AuthMiddleware` — restoring it would re-open D-11.
+- Keychain entry `ai.avadigital.codec.audit_hmac_secret` (Phase 1 Wave 2, PR-2E) — backs HMAC-SHA256 signing of `~/.codec/audit.log`. Deleting it forces a fresh bootstrap on next write; subsequent `verify_audit_log()` will count lines signed by the OLD secret as `broken` (stdlib WARNING at bootstrap time tells the operator). Rotate only as part of a planned forensic cycle (export the old log first via the verify utility). NEVER call `codec_audit.log_event` from inside `codec_keychain.get_audit_hmac_secret()` — circular write path → deadlock on the non-reentrant `_LOCK`. The silent bootstrap path in PR-2E exists exactly to avoid this.
+- `~/.codec/audit.log` (Phase 1 Wave 2, PR-2E) — tampering with existing lines or appending forged lines is detected by HMAC verification (`verify_audit_log()` / `audit_verify` skill). Whole-line deletion is **NOT** detected by per-line HMAC (documented limitation of Q5=a — hash-chain considered too fragile on rotation). File perms enforced at 0600. Direct edits via shell are technically possible but observable post-hoc; do not edit by hand.
 - `~/.codec/pending_questions.json` (Phase 1 Step 3) — direct edits race in-flight `threading.Event` waiters; agents will hang or skip answers. Use `POST /api/agents/answer/{qid}` or `codec_ask_user.submit_answer()` instead.
 - `~/.codec/voice_session.json` (Phase 1 Step 3) — voice-session active-marker; `VoicePipeline.run` owns its lifecycle.
 - Phase 1 Step 3 feature-flag env vars — `ASKUSER_ENABLED`, `STUCK_DETECTION_ENABLED`, `STEP_BUDGET_ENABLED` (default true). Set to `false` to disable a feature in production; tests use these to bypass during isolated unit testing. Don't toggle them globally without coordinating — they alter agent behavior across all paths (chat / voice / crew / MCP).
