@@ -73,12 +73,27 @@ class PersistentOAuthProvider(InMemoryOAuthProvider):
         }
 
     def _load(self):
-        if not self._state_path.exists():
-            return
+        # PR-2B (D-8 closure): prefer encrypted state from Keychain. Fall back
+        # to the legacy `~/.codec/oauth_state.json` plaintext file ONLY for
+        # one-shot migration on first post-PR-2B startup. After migration
+        # the plaintext file is deleted (see _save).
+        data = None
         try:
-            data = json.loads(self._state_path.read_text())
+            from codec_keychain import get_oauth_state
+            kc_blob = get_oauth_state()
+            if kc_blob:
+                data = json.loads(kc_blob)
         except Exception:
-            return
+            data = None
+
+        if data is None:
+            # Legacy path: read plaintext file (will be migrated on first save).
+            if not self._state_path.exists():
+                return
+            try:
+                data = json.loads(self._state_path.read_text())
+            except Exception:
+                return
         try:
             self.clients = {
                 k: OAuthClientInformationFull.model_validate(v)
@@ -112,9 +127,34 @@ class PersistentOAuthProvider(InMemoryOAuthProvider):
             self._refresh_to_access_map = {}
 
     def _save(self):
+        # PR-2B (D-8 closure): write serialized state to Keychain. If the
+        # legacy plaintext file exists from a pre-migration install, delete
+        # it after the Keychain write succeeds. If Keychain is unavailable
+        # (locked / not on macOS / fallback failed), fall back to the
+        # legacy plaintext path so OAuth keeps working — operational
+        # continuity > strict secret isolation.
         with self._lock:
+            blob = json.dumps(self._serialize())
+            kc_ok = False
+            try:
+                from codec_keychain import set_oauth_state
+                kc_ok = set_oauth_state(blob)
+            except Exception:
+                kc_ok = False
+
+            if kc_ok:
+                # Successful Keychain write — remove legacy plaintext on disk.
+                try:
+                    if self._state_path.exists():
+                        self._state_path.unlink()
+                except Exception:
+                    pass
+                return
+
+            # Fallback: legacy plaintext file (0600). Logged as a warning
+            # at the keychain layer; OAuth continues to function.
             tmp = self._state_path.with_suffix(".tmp")
-            tmp.write_text(json.dumps(self._serialize()))
+            tmp.write_text(blob)
             os.chmod(tmp, stat.S_IRUSR | stat.S_IWUSR)  # 0600
             os.replace(tmp, self._state_path)
 

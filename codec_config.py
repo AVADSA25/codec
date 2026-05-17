@@ -26,6 +26,29 @@ def load_config():
     return cfg
 
 
+def _blank_config_field(key: str) -> None:
+    """Atomically blank a single field in ~/.codec/config.json.
+
+    Used by PR-2B Keychain migration: after a secret (llm_api_key,
+    dashboard_token) is copied to Keychain, the on-disk config field is
+    set to "" (kept as a key so the schema stays stable). Atomic
+    tmp+rename so a crash mid-write doesn't leave a half-baked config.
+    """
+    try:
+        current = load_config()
+        current[key] = ""
+        tmp = CONFIG_PATH + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(current, f, indent=2)
+        os.replace(tmp, CONFIG_PATH)
+        try:
+            os.chmod(CONFIG_PATH, 0o600)
+        except Exception:
+            pass
+    except Exception as e:
+        print(f"[CODEC] Warning: _blank_config_field({key!r}) failed: {e}")
+
+
 # Load on import
 cfg = load_config()
 
@@ -37,7 +60,96 @@ USER_NAME         = cfg.get('user_name', '')
 # LLM
 QWEN_BASE_URL     = cfg.get("llm_base_url", "http://localhost:8081/v1")
 QWEN_MODEL        = cfg.get("llm_model", "mlx-community/Qwen3.5-35B-A3B-4bit")
-LLM_API_KEY       = cfg.get("llm_api_key", "")
+
+
+# In-memory cache for the Keychain-backed secret helpers. PR-2B failure-mode
+# handling: each `security find-generic-password` shellout is 50-100ms; that
+# latency on every AuthMiddleware.dispatch is unacceptable. A 30s TTL is
+# short enough that secret rotations propagate quickly but long enough that
+# request-path overhead disappears. OAuth state is loaded once at provider
+# init and doesn't go through this cache.
+_SECRET_CACHE: dict[str, tuple[float, str]] = {}
+_SECRET_CACHE_TTL = 30.0  # seconds
+
+
+def _cached_secret(name: str, fetcher) -> str:
+    """Return a fresh-enough secret, fetching via `fetcher` only when the
+    cache entry is missing or older than _SECRET_CACHE_TTL."""
+    import time as _time
+    now = _time.time()
+    entry = _SECRET_CACHE.get(name)
+    if entry and (now - entry[0]) < _SECRET_CACHE_TTL:
+        return entry[1]
+    value = fetcher() or ""
+    _SECRET_CACHE[name] = (now, value)
+    return value
+
+
+def _invalidate_secret_cache(name: str | None = None) -> None:
+    """Wipe one cache entry, or the whole cache when name is None.
+    Called by tests and by migration paths to force a re-read."""
+    if name is None:
+        _SECRET_CACHE.clear()
+    else:
+        _SECRET_CACHE.pop(name, None)
+
+
+def _migrate_and_get(kc_key: str, cfg_key: str) -> str:
+    """Read a secret, migrating plaintext → Keychain on first call.
+
+    1. Read Keychain.
+    2. If empty AND cfg has a plaintext value, migrate it (write Keychain,
+       blank cfg on disk, invalidate the in-process cfg dict's field).
+    3. Return the now-current value (Keychain or cfg fallback).
+
+    Idempotent: the migrate_from_plaintext helper returns False
+    quickly when there's nothing to migrate.
+    """
+    try:
+        from codec_keychain import keychain_get, migrate_from_plaintext
+    except Exception:
+        return cfg.get(cfg_key, "")
+    k = keychain_get(kc_key)
+    if k:
+        return k
+    plaintext = cfg.get(cfg_key, "")
+    if not plaintext:
+        return ""
+    # First-call migration.
+    def _blank():
+        _blank_config_field(cfg_key)
+        cfg[cfg_key] = ""  # in-process dict; matches the on-disk write
+    if migrate_from_plaintext(kc_key, plaintext, _blank):
+        return keychain_get(kc_key) or plaintext
+    # Migration failed (Keychain unavailable / locked) — return the
+    # plaintext so the daemon keeps working. The audit event from
+    # keychain_set already logged the failure.
+    return plaintext
+
+
+def get_llm_api_key() -> str:
+    """Return the LLM provider API key. Prefers Keychain over plaintext
+    config (closes audit D-15 partial — PR-2B).
+
+    On first startup, the legacy `~/.codec/config.json:llm_api_key`
+    plaintext is migrated to Keychain via `codec_keychain.migrate_from_plaintext`
+    and the on-disk field is blanked. Subsequent reads come from Keychain.
+    30s in-memory cache to avoid repeated `security` shellouts on hot paths.
+    """
+    return _cached_secret("llm_api_key", lambda: _migrate_and_get("llm_api_key", "llm_api_key"))
+
+
+def get_dashboard_token() -> str:
+    """Return the dashboard bearer token. Same migration story as
+    `get_llm_api_key()`. Returns "" when no token is set."""
+    return _cached_secret("dashboard_token", lambda: _migrate_and_get("dashboard_token", "dashboard_token"))
+
+
+# Module-level constants kept for back-compat with callers that import them
+# as `from codec_config import LLM_API_KEY`. Eager-evaluated at import time;
+# the getter functions above are the canonical accessors for runtime
+# Keychain-aware reads.
+LLM_API_KEY       = get_llm_api_key()
 LLM_KWARGS        = cfg.get("llm_kwargs", {})
 LLM_PROVIDER      = cfg.get("llm_provider", "mlx")
 
@@ -95,8 +207,13 @@ REQUIRE_CONFIRM   = cfg.get("require_confirmation", True)
 # unauthenticated, public-binding dashboard).
 DASHBOARD_HOST    = cfg.get("dashboard_host", "127.0.0.1")
 # Dashboard auth — set in ~/.codec/config.json as "dashboard_token": "your-secret-token"
-# When empty/missing, dashboard runs without auth (local use)
-DASHBOARD_TOKEN   = cfg.get("dashboard_token", "")
+# When empty/missing, dashboard runs without auth (local use).
+# PR-2B closure D-15 partial: post-migration, the canonical source is
+# macOS Keychain via codec_config.get_dashboard_token(). The module-level
+# constant below is eager-evaluated at import for back-compat with
+# `from codec_config import DASHBOARD_TOKEN` callers. Runtime auth
+# checks should call get_dashboard_token() for the live value.
+DASHBOARD_TOKEN   = get_dashboard_token()
 
 # Biometric (Touch ID) auth — requires compiled Swift binary in codec_auth/
 # Set "auth_enabled": true in config.json to activate

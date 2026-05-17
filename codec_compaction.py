@@ -11,9 +11,12 @@ try:
     if _repo_dir not in sys.path:
         sys.path.insert(0, _repo_dir)
     from codec_config import cfg as _cfg
+    from codec_config import get_llm_api_key as _kc_get_llm
     _LLM_BASE_URL = _cfg.get("llm_base_url", "http://localhost:8081/v1")
     _LLM_MODEL = _cfg.get("llm_model", "")
-    _LLM_API_KEY = _cfg.get("llm_api_key", "")
+    # PR-2B (D-15 partial): keychain-aware. Evaluated at import; post-
+    # migration daemon restarts will pick up the Keychain value.
+    _LLM_API_KEY = _kc_get_llm()
     _LLM_KWARGS = _cfg.get("llm_kwargs", {})
 except ImportError:
     _LLM_BASE_URL = "http://localhost:8081/v1"

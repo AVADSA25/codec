@@ -65,7 +65,12 @@ def run(task, app="", ctx=""):
 
     base_url = cfg.get("llm_base_url", "http://localhost:8081/v1")
     model = cfg.get("llm_model", "")
-    api_key = cfg.get("llm_api_key", "")
+    # PR-2B (D-15 partial): llm_api_key from Keychain.
+    try:
+        from codec_config import get_llm_api_key as _kc_get_llm
+        api_key = _kc_get_llm()
+    except Exception:
+        api_key = cfg.get("llm_api_key", "")
     kwargs = cfg.get("llm_kwargs", {})
 
     headers = {"Content-Type": "application/json"}
