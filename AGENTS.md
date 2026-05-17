@@ -583,6 +583,20 @@ Canonical state file for AskUserQuestion. Atomic write via tmp+rename. Schema:
 ### MCP HTTP transport blocklist
 `codec_config._HTTP_BLOCKED`: `python_exec`, `terminal`, `process_manager`, `pm2_control`, `ax_control`. These skills are NEVER exposed over HTTP MCP. They remain available locally (voice, chat) and over stdio MCP only.
 
+### `python_exec` sandbox + `/api/execute` removal (Phase 1 Wave 2, PR-2C — closes D-9 + D-10)
+
+**`/api/execute` removed entirely.** The dashboard's local `/api/execute` endpoint, `_DANGEROUS_PATTERNS` regex blocklist, `_is_command_safe` helper, and `execute_terminal` handler were all deleted in PR-2C. Shell command execution now routes exclusively through the `terminal` skill — which is in BOTH `codec_config._HTTP_BLOCKED` (claude.ai over MCP HTTP can't reach it) and `codec_config._STDIO_BLOCKED` (Claude desktop / stdio MCP blocked), and goes through the strict-consent gate (Step 3 §1.7) for destructive ops on the local chat / voice path.
+
+**`python_exec` hardened.** Two-layer defense for the local-only Python execution skill (`SKILL_MCP_EXPOSE=False`, unchanged):
+
+1. **AST gate.** The substring blocker (`"import os"`, `"eval("`, etc. — trivially bypassable via `getattr(__builtins__, chr(95)*2+'import'+chr(95)*2)`, `vars(__builtins__)`, unicode-escape, etc.) was replaced with `codec_config.is_dangerous_skill_code` — the same AST validator that PR-1A uses at `SkillRegistry.load`. Refusals emit `python_exec_blocked` audit (`source=codec-skill-python-exec`, level=`warning`, extra={`reason`, `code_preview`}).
+
+2. **`sandbox-exec` at runtime.** Python interpreter runs inside `/usr/bin/sandbox-exec -f <profile>` using `codec_sandbox`'s deny-default profile: no network, no process spawning, file writes restricted to `~/.codec/skill_output/` and `/tmp/`. Even if AST-validated code somehow reaches a novel reflection pattern the validator missed, the kernel blocks the syscall.
+
+3. **Resource limits via `preexec_fn`.** `RLIMIT_CPU` (5s wall-clock), `RLIMIT_AS` (256 MB address space), `RLIMIT_NOFILE` (32 file descriptors) — caps `while True: pass`, memory bombs, and FD leaks. `subprocess.run` outer `timeout=10` is the belt-and-suspenders backstop.
+
+4. **Minimal env.** PATH=`/usr/bin:/bin`. PYTHONPATH, LD_LIBRARY_PATH, SHELL, HOME stripped — an attacker can't redirect the interpreter at a writable site-packages.
+
 ### Secret storage via macOS Keychain (Phase 1 Wave 2, PR-2B — closes D-8 + D-15 partial)
 
 Three secrets live in macOS Keychain instead of `~/.codec/config.json` / `~/.codec/oauth_state.json` plaintext:
@@ -614,7 +628,7 @@ The dashboard's network surface is gated at startup. Two changes per audit D-7 c
 
 2. **Refuse unsafe start.** `codec_dashboard._check_dashboard_start_safety(host, dashboard_token, auth_enabled)` is called in the `__main__` block before `uvicorn.run`. If the host is public (`0.0.0.0` / `::` / `*`) AND neither `dashboard_token` nor `auth_enabled` is set, the dashboard logs a `CRITICAL` and exits non-zero. The error message lists three concrete fixes (revert to loopback, set token, enable Touch ID/PIN). Loopback hosts (`127.0.0.1`, `::1`, `localhost`) always start regardless of auth — LAN can't reach them.
 
-Combined, the out-of-box state for a fresh CODEC install is *secure-by-default*: PWA over Cloudflare tunnel keeps working (Cloudflare → `127.0.0.1`), but a misconfiguration that would expose unauthenticated `/api/execute` / `/api/skill/review` etc. to the LAN now fails closed at startup instead of silently opening the surface.
+Combined, the out-of-box state for a fresh CODEC install is *secure-by-default*: PWA over Cloudflare tunnel keeps working (Cloudflare → `127.0.0.1`), but a misconfiguration that would expose unauthenticated `/api/skill/review` / `/api/command` / `/api/agents/*` etc. to the LAN now fails closed at startup instead of silently opening the surface.
 
 ### Agent permission gate + path blocklist (Phase 1 Wave 1, PR-1D — closes D-5 + D-14 + D-16)
 
