@@ -289,6 +289,32 @@ def run(task: str, context: str = "") -> str:
 
     safe, reason = _is_safe_target(path)
     if not safe:
+        # Forensic emit: an MCP client (or local caller) just tried to write
+        # to a sensitive path. Per audit D-4 closure, refusals are audited
+        # so the operator can grep for `event=file_write_blocked` in
+        # ~/.codec/audit.log and see what was attempted.
+        try:
+            from codec_audit import log_event
+            expanded = os.path.expanduser(path)
+            try:
+                real_path = os.path.realpath(expanded)
+            except Exception:
+                real_path = expanded
+            log_event(
+                "file_write_blocked",
+                source="codec-skill-file-write",
+                message=f"file_write refused {path}: {reason}",
+                level="warning",
+                outcome="error",
+                extra={
+                    "target_path": real_path,
+                    "requested_path": path,
+                    "reason": reason,
+                },
+            )
+        except Exception:
+            # Audit failure must not mask the refusal.
+            pass
         return f"file_write: refused — {reason}"
 
     mode_label = _extract_mode(task)

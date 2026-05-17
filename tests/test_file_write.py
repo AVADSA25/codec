@@ -218,3 +218,42 @@ def test_refuses_env_file():
     """Pre-existing .env filename pattern block must still work."""
     safe, _ = file_write._is_safe_target(os.path.join(HOME, "project", ".env"))
     assert not safe
+
+
+# ── Audit emission on blocked write (D-4 closure §3) ──────────────────────────
+
+
+def test_blocked_write_emits_file_write_blocked_audit_event(monkeypatch):
+    """When file_write refuses a target, it must emit an audit event so the
+    operator can grep ~/.codec/audit.log for attempted writes to sensitive
+    paths."""
+    captured = []
+
+    def fake_log_event(event_type, *args, **kwargs):
+        captured.append({
+            "event_type": event_type,
+            "args": args,
+            "kwargs": kwargs,
+        })
+
+    monkeypatch.setattr("codec_audit.log_event", fake_log_event)
+
+    result = file_write.run(
+        task=f"path: {os.path.join(CODEC_DIR, 'skills', 'attempt.py')}\n"
+             "content: print('payload')"
+    )
+
+    assert result.startswith("file_write: refused"), (
+        f"Expected refusal message, got: {result!r}"
+    )
+    matching = [c for c in captured if c["event_type"] == "file_write_blocked"]
+    assert len(matching) == 1, (
+        f"Expected exactly one file_write_blocked audit event, "
+        f"got {len(matching)}: {captured}"
+    )
+    extra = matching[0]["kwargs"].get("extra", {})
+    assert "target_path" in extra
+    assert "reason" in extra
+    assert "skills" in extra["target_path"], (
+        f"target_path should reference the attempted sensitive path: {extra}"
+    )
