@@ -44,6 +44,7 @@ from __future__ import annotations
 import getpass
 import hashlib
 import json
+import logging
 import os
 import platform
 import secrets
@@ -71,6 +72,7 @@ KEY_DASHBOARD_TOKEN = "dashboard_token"
 KEY_LLM_API_KEY = "llm_api_key"
 KEY_OAUTH_STATE = "oauth_state"
 KEY_INTERNAL_TOKEN = "internal_token"  # PR-2D — localhost-only IPC auth
+KEY_AUDIT_HMAC_SECRET = "audit_hmac_secret"  # PR-2E — audit log integrity
 
 
 # ── Backend selection ────────────────────────────────────────────────────────
@@ -437,3 +439,140 @@ def get_internal_token() -> Optional[str]:
     cached["value"] = token
     cached["ts"] = now
     return token
+
+
+# ── Audit log HMAC secret (PR-2E — closes D-12) ──────────────────────────────
+#
+# Backs the per-line HMAC-SHA256 signature in `codec_audit._write`. The
+# secret is 32 raw bytes stored hex-encoded in Keychain (binary in the
+# Keychain `-w` argv would be brittle). Tampering with `~/.codec/audit.log`
+# is detectable post-hoc via `codec_audit.verify_audit_log()` — an attacker
+# would have to extract this secret from Keychain (D-8/D-15-grade compromise)
+# before they could forge HMACs that pass verification.
+#
+# ## CRITICAL: silent path
+# This function is called from inside `codec_audit._write` while the audit
+# `_LOCK` is held. Calling `_kc_log_event` (the normal audit-emitting
+# wrapper) would re-enter `_write` → deadlock on the non-reentrant lock,
+# OR trigger infinite recursion as the new event needs an HMAC secret too.
+# So this path uses *raw subprocess* calls and `stdlib logging` for
+# visibility — NEVER `_kc_log_event`.
+#
+# ## Cache
+# 5-minute TTL. Audit writes are hot (every tool call, every observation,
+# every approval) so we amortize the `/usr/bin/security` shellout. Cache
+# stores raw bytes; first call after process start pays one Keychain
+# read; subsequent calls return cached bytes directly. Invalidated by
+# `_invalidate_audit_hmac_cache` (used by tests).
+
+_AUDIT_HMAC_CACHE: dict = {"value": None, "ts": 0.0}
+_AUDIT_HMAC_TTL = 300.0  # 5 minutes — audit writes are hot
+
+_audit_kc_log = logging.getLogger("codec.keychain.audit_hmac")
+
+
+def _invalidate_audit_hmac_cache() -> None:
+    """Drop the cached audit HMAC secret. Tests use this; operators force
+    re-read by calling it after rotating the Keychain entry."""
+    _AUDIT_HMAC_CACHE["value"] = None
+    _AUDIT_HMAC_CACHE["ts"] = 0.0
+
+
+def _keychain_get_silent(key: str) -> Optional[str]:
+    """Read from Keychain without emitting any audit event. For the audit
+    HMAC bootstrap path only. Falls through to the fallback store on
+    headless systems."""
+    if is_keychain_available():
+        try:
+            r = subprocess.run(
+                [_SECURITY_BIN, "find-generic-password",
+                 "-s", _service(key), "-a", _account(), "-w"],
+                check=False, capture_output=True, text=True,
+                timeout=_SECURITY_TIMEOUT,
+            )
+            if r.returncode == 0:
+                return r.stdout.rstrip("\n")
+            return None
+        except (subprocess.TimeoutExpired, OSError):
+            return None
+    # Fallback path — _fallback_get is already silent (no _kc_log_event calls)
+    return _fallback_get(key)
+
+
+def _keychain_set_silent(key: str, value: str) -> bool:
+    """Write to Keychain without emitting any audit event."""
+    if is_keychain_available():
+        try:
+            r = subprocess.run(
+                [_SECURITY_BIN, "add-generic-password",
+                 "-s", _service(key), "-a", _account(),
+                 "-w", value, "-U"],
+                check=False, capture_output=True, text=True,
+                timeout=_SECURITY_TIMEOUT,
+            )
+            return r.returncode == 0
+        except (subprocess.TimeoutExpired, OSError):
+            return False
+    return _fallback_set(key, value)
+
+
+def get_audit_hmac_secret() -> Optional[bytes]:
+    """Return the audit log HMAC secret as 32 raw bytes (suitable for
+    direct use with `hmac.new(secret, msg, sha256)`).
+
+    First call autogenerates a fresh 32-byte secret and persists it as a
+    hex string to Keychain. Subsequent calls within the 5-minute cache
+    window return the cached value.
+
+    Returns None ONLY if Keychain is unavailable AND fallback persistence
+    fails. In that case `codec_audit._write` writes the audit line WITHOUT
+    an HMAC field and adds `hmac_status="unsigned_keychain_unavailable"`
+    so `verify_audit_log()` correctly classifies it as unsigned (rather
+    than tampered).
+
+    ## Silent path
+    Bypasses `_kc_log_event` to avoid recursive audit emits (see module
+    docstring for the rationale). Uses stdlib logging for bootstrap
+    visibility instead — operators tail `~/.codec/codec.log` if curious.
+    """
+    import time as _time
+    now = _time.time()
+    cached = _AUDIT_HMAC_CACHE
+    if cached["value"] is not None and (now - cached["ts"]) < _AUDIT_HMAC_TTL:
+        return cached["value"]
+
+    hex_value = _keychain_get_silent(KEY_AUDIT_HMAC_SECRET)
+    if hex_value is None:
+        # Bootstrap: generate fresh 32-byte secret, hex-encode, persist.
+        raw = secrets.token_bytes(32)
+        hex_value = raw.hex()
+        if _keychain_set_silent(KEY_AUDIT_HMAC_SECRET, hex_value):
+            _audit_kc_log.info(
+                "audit_hmac_secret bootstrapped (last8=%s, method=%s)",
+                hex_value[-8:],
+                "keychain" if is_keychain_available() else "fallback",
+            )
+        else:
+            # Persistence failed — return None so `_write` writes lines
+            # unsigned. The operator sees the WARNING in stdlib logs +
+            # the `unsigned_keychain_unavailable` markers in audit.log.
+            _audit_kc_log.warning(
+                "Failed to persist audit_hmac_secret to %s — audit log "
+                "integrity reduced until next successful Keychain write",
+                "keychain" if is_keychain_available() else "fallback",
+            )
+            return None
+
+    try:
+        secret_bytes = bytes.fromhex(hex_value)
+    except ValueError:
+        # Corrupted entry — log and treat as unavailable
+        _audit_kc_log.error(
+            "audit_hmac_secret in Keychain is not valid hex (corrupted?) — "
+            "audit log integrity reduced. Delete the Keychain entry to bootstrap fresh."
+        )
+        return None
+
+    cached["value"] = secret_bytes
+    cached["ts"] = now
+    return secret_bytes

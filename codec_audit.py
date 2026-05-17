@@ -49,8 +49,10 @@ names without typos.
 from __future__ import annotations
 
 import hashlib
+import hmac as _hmac
 import json
 import os
+import re
 import threading
 import time
 from datetime import datetime, timezone
@@ -359,17 +361,160 @@ def _rotate_if_needed():
             pass
 
 
-def _write(record: dict) -> None:
-    """Serialize one record to the audit log. Never raises."""
+# ── PR-2E: secret redaction patterns (closes D-19) ────────────────────────────
+#
+# Applied to every string field (top-level + nested) before HMAC computation
+# and disk write. False positives on the credit-card pattern are accepted —
+# 13-19 consecutive digits is unusual outside of cards. Better to redact a
+# legitimate order ID than to leak a real card number.
+#
+# Order matters: more-specific patterns first (e.g. sk-ant- before sk-) so
+# the redacted placeholder preserves the most-specific tag possible.
+_REDACTION_PATTERNS = [
+    # Anthropic / OpenAI (specific first)
+    (re.compile(r"\bsk-ant-[A-Za-z0-9_\-]{30,}\b"), "<REDACTED:anthropic_key>"),
+    (re.compile(r"\bsk-[A-Za-z0-9_\-]{20,}\b"), "<REDACTED:openai_or_anthropic_key>"),
+    # AWS
+    (re.compile(r"\bAKIA[0-9A-Z]{16}\b"), "<REDACTED:aws_access_key>"),
+    (re.compile(r"aws_secret_access_key\s*[:=]\s*['\"]?([A-Za-z0-9/+=]{40})['\"]?", re.IGNORECASE),
+     "aws_secret_access_key=<REDACTED:aws_secret>"),
+    # GitHub
+    (re.compile(r"\bghp_[A-Za-z0-9]{36}\b"), "<REDACTED:github_pat>"),
+    (re.compile(r"\bghs_[A-Za-z0-9]{36}\b"), "<REDACTED:github_oauth>"),
+    # Slack
+    (re.compile(r"\bxox[bpsa]-[A-Za-z0-9\-]{10,}\b"), "<REDACTED:slack_token>"),
+    # Google API key
+    (re.compile(r"\bAIza[0-9A-Za-z_\-]{35}\b"), "<REDACTED:google_api_key>"),
+    # JWT (header.payload.signature, base64url) — must come before Bearer to keep
+    # the JWT tag intact when the JWT is inside an Authorization header.
+    (re.compile(r"\beyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}"),
+     "<REDACTED:jwt>"),
+    # Generic Bearer tokens
+    (re.compile(r"Bearer\s+[A-Za-z0-9_.\-]{20,}", re.IGNORECASE), "Bearer <REDACTED:bearer_token>"),
+    # CODEC's own tokens
+    (re.compile(r"\bcodec_at_[a-f0-9]{64}\b"), "<REDACTED:codec_oauth_access>"),
+    (re.compile(r"\bcodec_rt_[a-f0-9]{64}\b"), "<REDACTED:codec_oauth_refresh>"),
+    # Basic-auth URLs (https://user:pass@host)
+    (re.compile(r"(?P<scheme>[a-z][a-z0-9+.\-]*)://([^:@/\s]+):([^@/\s]+)@", re.IGNORECASE),
+     r"\g<scheme>://<REDACTED:user>:<REDACTED:pass>@"),
+    # Private key headers (just the marker; full key body is usually multi-line)
+    (re.compile(r"-----BEGIN [A-Z ]+PRIVATE KEY-----"), "<REDACTED:private_key_header>"),
+    # Credit card candidate (13-19 digits with optional spaces / hyphens) — last
+    # so other specific tokens are matched first.
+    (re.compile(r"\b(?:\d[ \-]?){13,19}\b"), "<REDACTED:cc_candidate>"),
+]
+
+
+def _redact_string(s: str) -> str:
+    """Apply all redaction patterns to one string. Returns redacted string."""
+    if not isinstance(s, str) or not s:
+        return s
+    for pattern, replacement in _REDACTION_PATTERNS:
+        s = pattern.sub(replacement, s)
+    return s
+
+
+def _redact_secrets(obj):
+    """Recursively redact secret-shaped substrings in a JSON-serializable
+    object. Walks dict / list / scalar; only strings get rewritten —
+    int / float / bool / None pass through unchanged."""
+    if isinstance(obj, str):
+        return _redact_string(obj)
+    if isinstance(obj, dict):
+        return {k: _redact_secrets(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_redact_secrets(item) for item in obj]
+    return obj
+
+
+# ── PR-2E: canonical JSON + HMAC (closes D-12) ────────────────────────────────
+
+
+def _canonical_json(obj: dict) -> str:
+    """Deterministic JSON serialization for HMAC stability.
+    `sort_keys=True` + `separators=(",", ":")` + `ensure_ascii=True`
+    gives a byte-stable representation across Python implementations.
+    `default=str` is a safety net for any non-JSON-serializable values
+    (datetime, set, Decimal, etc.) the upstream emitters might pass."""
+    return json.dumps(obj, sort_keys=True, separators=(",", ":"),
+                       ensure_ascii=True, default=str)
+
+
+def _hmac_for_record(record_without_hmac: dict) -> str:
+    """Compute HMAC-SHA256 over the canonical-JSON form of `record_without_hmac`.
+    Returns the hex digest (64 chars). Returns '' if the audit HMAC secret is
+    unavailable (Keychain locked, fallback persistence failed) — the caller
+    writes the line with `hmac_status='unsigned_keychain_unavailable'`."""
+    # Deferred import to break the codec_audit ↔ codec_keychain cycle at module
+    # load time. codec_keychain imports log_event from this module; importing
+    # get_audit_hmac_secret eagerly would deadlock.
     try:
-        line = json.dumps(record, ensure_ascii=False, default=str) + "\n"
+        from codec_keychain import get_audit_hmac_secret
+    except Exception:
+        return ""
+    secret = get_audit_hmac_secret()
+    if secret is None:
+        return ""
+    canonical = _canonical_json(record_without_hmac)
+    return _hmac.new(secret, canonical.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def _open_audit_log_append() -> "object":
+    """Open `_AUDIT_LOG` for append, enforcing 0600 perms on creation.
+    On macOS the umask is typically 022 (→ 0644 on create), so without
+    `os.open(..., mode=0o600)` the audit log would be world-readable on
+    multi-user Macs. This closes D-22.
+
+    Also defensive: chmods existing files to 0600 if previously created
+    with default umask. Best-effort — file-system might not support chmod
+    (FUSE mounts, etc.) — in which case we proceed without modifying perms.
+    """
+    if not _AUDIT_LOG.exists():
+        # O_CREAT + 0o600 mode: filesystem creates the file with rw------- before
+        # the umask is applied. Subsequent opens reuse the existing perms.
+        fd = os.open(str(_AUDIT_LOG), os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+        return os.fdopen(fd, "a", encoding="utf-8")
+    # Defensive chmod for files created before PR-2E or by an external tool.
+    try:
+        os.chmod(_AUDIT_LOG, 0o600)
+    except OSError:
+        pass  # FUSE / read-only mount / EPERM — best-effort
+    return open(_AUDIT_LOG, "a", encoding="utf-8")
+
+
+def _write(record: dict) -> None:
+    """Serialize one record to the audit log with secret redaction + HMAC
+    signature + 0600 perm enforcement. Never raises.
+
+    Order of operations (matters for D-19 + D-12 correctness):
+      1. Recursively redact secrets in every string field. Pre-redacted
+         text is what gets hashed and what lands on disk.
+      2. Compute HMAC-SHA256 over the canonical-JSON form of the redacted
+         record (excluding the `hmac` field itself).
+      3. Add `hmac` field (or `hmac_status` if Keychain unavailable).
+      4. Append canonical-JSON line to `_AUDIT_LOG`, chmod 0600 on create.
+    """
+    try:
+        redacted = _redact_secrets(record)
+        # Compute HMAC over the redacted record (excluding the hmac field
+        # itself, which we're about to add).
+        signature = _hmac_for_record(redacted)
+        if signature:
+            redacted["hmac"] = signature
+        else:
+            redacted["hmac"] = ""
+            redacted["hmac_status"] = "unsigned_keychain_unavailable"
+        line = _canonical_json(redacted) + "\n"
     except Exception:
         return
     try:
         with _LOCK:
             _rotate_if_needed()
-            with open(_AUDIT_LOG, "a", encoding="utf-8") as f:
+            f = _open_audit_log_append()
+            try:
                 f.write(line)
+            finally:
+                f.close()
     except Exception:
         pass
 
@@ -424,10 +569,14 @@ def audit(
         record["agent"] = agent
     if level is not None:
         record["level"] = level
+    # PR-2E: redact BEFORE truncate so a secret can't be truncated mid-pattern.
+    # `_write` does another redact pass on the full record (defense-in-depth
+    # for extra/error_type/etc.) — that pass is idempotent on already-redacted
+    # strings since the placeholders don't match any redaction pattern.
     if message:
-        record["message"] = _truncate(message, _MESSAGE_MAX)
+        record["message"] = _truncate(_redact_string(message), _MESSAGE_MAX)
     if error:
-        record["error"] = _truncate(error, _ERROR_MAX)
+        record["error"] = _truncate(_redact_string(error), _ERROR_MAX)
 
     # Build extra namespace. Strip any reserved-field keys that callers may
     # have stashed in extra so they can't masquerade as top-level.
@@ -486,3 +635,117 @@ def log_event(
         correlation_id=correlation_id,
         extra=extra,
     )
+
+
+# ── PR-2E: forensic integrity verification (closes D-12) ──────────────────────
+
+
+def verify_audit_log(path: "Path | str | None" = None) -> dict:
+    """Walk every line of the audit log and verify its HMAC-SHA256 signature.
+
+    Returns a summary dict:
+        {
+          "path":                str,
+          "total_lines":         int,
+          "signed_lines":        int,   # HMAC matches re-computation
+          "unsigned_lines":      int,   # pre-PR-2E lines OR Keychain unavailable
+          "broken_lines":        int,   # HMAC mismatch OR JSON parse error
+          "first_broken_line_no": int | None,
+          "integrity_ok":        bool,  # broken_lines == 0
+          "error":               str | None,  # only set if secret unavailable
+        }
+
+    ## Known limitations of HMAC-per-line
+    Per Q5=a (HMAC-per-line, not hash-chain): an attacker who removes a
+    whole line cannot be detected by HMAC verification alone. The line
+    count won't match an external expectation, but per-line HMAC sees
+    only "fewer lines than I last saw" — there's no order-of-events
+    tamper detection. Documented; deferred to a future enhancement.
+
+    Modifying an existing line: detected. The recomputed HMAC won't match.
+    Appending a forged line: detected (attacker doesn't have the secret).
+    Truncating the log: undetectable by HMAC; obvious by mtime/size.
+    """
+    p = Path(path) if path else _AUDIT_LOG
+    summary = {
+        "path": str(p),
+        "total_lines": 0,
+        "signed_lines": 0,
+        "unsigned_lines": 0,
+        "broken_lines": 0,
+        "first_broken_line_no": None,
+        "integrity_ok": True,
+        "error": None,
+    }
+    if not p.exists():
+        summary["error"] = f"Audit log not found: {p}"
+        summary["integrity_ok"] = False
+        return summary
+
+    try:
+        from codec_keychain import get_audit_hmac_secret
+    except Exception as e:
+        summary["error"] = f"codec_keychain import failed: {e}"
+        summary["integrity_ok"] = False
+        return summary
+    secret = get_audit_hmac_secret()
+    if secret is None:
+        summary["error"] = (
+            "Keychain unavailable — cannot verify. Unlock Keychain or "
+            "ensure ai.avadigital.codec.audit_hmac_secret entry exists."
+        )
+        summary["integrity_ok"] = False
+        return summary
+
+    try:
+        with open(p, "r", encoding="utf-8") as f:
+            for line_no, raw_line in enumerate(f, start=1):
+                summary["total_lines"] += 1
+                raw_stripped = raw_line.rstrip("\n")
+                if not raw_stripped:
+                    # Empty line — count it broken so the operator notices
+                    summary["broken_lines"] += 1
+                    if summary["first_broken_line_no"] is None:
+                        summary["first_broken_line_no"] = line_no
+                    continue
+                try:
+                    obj = json.loads(raw_stripped)
+                except json.JSONDecodeError:
+                    summary["broken_lines"] += 1
+                    if summary["first_broken_line_no"] is None:
+                        summary["first_broken_line_no"] = line_no
+                    continue
+                if not isinstance(obj, dict):
+                    summary["broken_lines"] += 1
+                    if summary["first_broken_line_no"] is None:
+                        summary["first_broken_line_no"] = line_no
+                    continue
+                claimed_hmac = obj.get("hmac")
+                # Pre-PR-2E lines: no hmac field at all → classify unsigned.
+                # Post-PR-2E w/ Keychain unavailable: hmac="" + hmac_status set.
+                if claimed_hmac is None or (
+                    claimed_hmac == ""
+                    and obj.get("hmac_status") == "unsigned_keychain_unavailable"
+                ):
+                    summary["unsigned_lines"] += 1
+                    continue
+                # Recompute HMAC over the record minus the hmac field
+                obj_for_hmac = {k: v for k, v in obj.items() if k != "hmac"}
+                expected = _hmac.new(
+                    secret,
+                    _canonical_json(obj_for_hmac).encode("utf-8"),
+                    hashlib.sha256,
+                ).hexdigest()
+                if _hmac.compare_digest(claimed_hmac, expected):
+                    summary["signed_lines"] += 1
+                else:
+                    summary["broken_lines"] += 1
+                    if summary["first_broken_line_no"] is None:
+                        summary["first_broken_line_no"] = line_no
+    except OSError as e:
+        summary["error"] = f"Read failed: {e}"
+        summary["integrity_ok"] = False
+        return summary
+
+    summary["integrity_ok"] = summary["broken_lines"] == 0
+    return summary
