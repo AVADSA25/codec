@@ -226,7 +226,7 @@ Mirror the Intake Phase 3 wave pattern. 7 waves planned; sizes are PR-counts, NO
 - PR-2C: D-9 + D-10 — `python_exec` sandbox + `/api/execute` removal-or-strict-consent
 - PR-2D: D-11 — replace `x-internal: codec` header trust with per-process HMAC token in macOS Keychain ✅ (branch `fix/pr2d-internal-token-replacement`; token never lands on disk in plaintext — `codec_keychain.get_internal_token()` bootstraps to Keychain or 0600 envelope-encrypted fallback)
 - PR-2E: D-12 + D-19 + D-22 — audit log HMAC-SHA256-per-line + secret redaction + chmod 0600 ✅ (branch `fix/pr2e-audit-log-hmac-redaction`; secret in macOS Keychain `ai.avadigital.codec.audit_hmac_secret`; 15-pattern redaction sweep applied before truncation; `verify_audit_log()` utility + operator-only `audit_verify` skill)
-- PR-2F: D-13 — AppleScript injection fix in `imessage_send`; D-21 — same for `do_screenshot_question`; D-18 — plugin AST validation + thread-timeout
+- PR-2F: D-13 — AppleScript injection fix in `imessage_send`; D-21 — same for `do_screenshot_question`; D-18 — plugin AST validation + thread-timeout ✅ (branch `fix/pr2f-applescript-and-plugin-hardening`; strict phone/email regex gate for recipient; argv-binding for screenshot dialog so adversarial OCR text can't escape the string context; SHA-256 allowlist at `~/.codec/plugins.allowlist` + 500ms daemon-thread hook timeout + new operator-only `plugin_approve` skill; existing plugins grandfathered via one-time migration)
 - PR-2G: D-14 + D-16 + D-20 — path-blocklist hardening across `codec_agent_plan`, `extract_user_paths`, `file_ops`
 
 **Rationale:** these 17 don't share a single chokepoint, so they break into 4-6 themed PRs. Wave 2 closes the rest of the security debt.

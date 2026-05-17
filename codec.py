@@ -797,16 +797,30 @@ def do_screenshot_question():
         push(lambda: show_overlay('Screenshot failed', '#ff3333', 2000))
         return
     print(f"[CODEC] Screenshot captured ({len(ctx)} chars)")
-    # Show brief summary of what was captured, then open question dialog
-    summary = ctx[:120].replace('"', '\\"').replace('\n', ' ')
+    # PR-2F (closes D-21): pass the OCR summary as an osascript ARGV argument
+    # rather than interpolating it into the script source. AppleScript reads
+    # `summary` from `item 1 of argv` — NO string interpolation means an
+    # adversarial OCR result (`"\n display dialog "PWNED"`) is treated as
+    # literal text by AppleScript and cannot break out of the string context.
+    summary = ctx[:120]
+    body = f"I captured your screen:\n\n{summary}…\n\nWhat would you like to know about it?"
+    script = (
+        'on run argv\n'
+        '  set bodyText to item 1 of argv\n'
+        '  tell application "System Events"\n'
+        '    set frontmost of first process whose frontmost is true to true\n'
+        '  end tell\n'
+        '  set t to text returned of (display dialog bodyText '
+        'default answer "" with title "CODEC Screenshot" '
+        'buttons {"Cancel","Ask"} default button "Ask")\n'
+        '  return t\n'
+        'end run'
+    )
     try:
-        r = subprocess.run(["osascript", "-e",
-            f'tell application "System Events"\nset frontmost of first process whose frontmost is true to true\nend tell\n'
-            f'set t to text returned of (display dialog '
-            f'"I captured your screen:\\n\\n{summary}…\\n\\nWhat would you like to know about it?" '
-            f'default answer "" with title "CODEC Screenshot" '
-            f'buttons {{"Cancel","Ask"}} default button "Ask")'],
-            capture_output=True, text=True, timeout=120)
+        r = subprocess.run(
+            ["osascript", "-e", script, body],
+            capture_output=True, text=True, timeout=120,
+        )
         question = r.stdout.strip()
         if question:
             task = question + " [SCREEN CONTEXT: " + ctx[:800] + "]"
