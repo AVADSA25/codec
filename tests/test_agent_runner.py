@@ -15,6 +15,7 @@ All tests:
 from __future__ import annotations
 
 import json
+import os
 import sys
 import threading
 import time
@@ -149,6 +150,148 @@ def test_permission_gate_blocks_domain_not_in_grants(basic_grants, empty_global_
         permission_gate(action, basic_grants, empty_global_grants)
     assert exc.value.reason == "domain_not_authorized"
     assert exc.value.needed == "evil.com"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Task 3.5 — D-5 closure: permission_gate realpath + dotdot rejection
+# (See docs/audits/PHASE-1-SECURITY.md finding D-5)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_permission_gate_rejects_path_traversal_dotdot(empty_global_grants):
+    """An action path containing `..` must be rejected even if the resulting
+    realpath happens to land inside a grant. fnmatch was glob-matching the
+    raw string, so `~/Documents/../../etc/passwd` was accepted against grant
+    `~/Documents/**` — that's the D-5 bypass."""
+    from codec_agent_runner import permission_gate, Action, PermissionViolation
+    grants = {
+        "skills": ["file_write"],
+        "write_paths": ["~/Documents/**"],
+        "read_paths": [],
+        "network_domains": [],
+    }
+    action = Action(skill="file_write", task="x",
+                    is_destructive=False, network_call=False,
+                    touches_path=True,
+                    path="~/Documents/../../etc/passwd")
+    with pytest.raises(PermissionViolation) as exc:
+        permission_gate(action, grants, empty_global_grants)
+    assert exc.value.reason == "path_not_authorized"
+
+
+def test_permission_gate_rejects_read_path_traversal(empty_global_grants):
+    """Same dotdot rejection on read_path."""
+    from codec_agent_runner import permission_gate, Action, PermissionViolation
+    grants = {
+        "skills": ["file_read"],
+        "read_paths": ["~/Documents/**"],
+        "write_paths": [],
+        "network_domains": [],
+    }
+    action = Action(skill="file_read", task="x",
+                    is_destructive=False, network_call=False,
+                    touches_path=False,
+                    reads_path=True,
+                    read_path="~/Documents/../../etc/passwd")
+    with pytest.raises(PermissionViolation) as exc:
+        permission_gate(action, grants, empty_global_grants)
+    assert exc.value.reason == "read_path_not_authorized"
+
+
+def test_permission_gate_rejects_symlink_outside_grant(tmp_path, empty_global_grants):
+    """A symlink inside a granted dir pointing OUTSIDE the grant must be
+    rejected after realpath resolution. Closes the symlink-bypass variant
+    of D-5."""
+    from codec_agent_runner import permission_gate, Action, PermissionViolation
+    inside = tmp_path / "inside"
+    inside.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    secret = outside / "secret.txt"
+    secret.write_text("top secret")
+
+    sneaky = inside / "sneaky"
+    try:
+        os.symlink(secret, sneaky)
+    except OSError:
+        pytest.skip("filesystem does not support symlinks")
+
+    grants = {
+        "skills": ["file_write"],
+        "write_paths": [f"{inside}/**"],
+        "read_paths": [],
+        "network_domains": [],
+    }
+    action = Action(skill="file_write", task="x",
+                    is_destructive=False, network_call=False,
+                    touches_path=True,
+                    path=str(sneaky))
+    with pytest.raises(PermissionViolation) as exc:
+        permission_gate(action, grants, empty_global_grants)
+    assert exc.value.reason == "path_not_authorized"
+
+
+def test_permission_gate_accepts_realpath_within_grant(tmp_path, empty_global_grants):
+    """A symlink inside a granted dir pointing INSIDE the same grant must be
+    accepted after realpath resolution — symlinks are fine as long as the
+    target is within the granted root."""
+    from codec_agent_runner import permission_gate, Action
+    granted = tmp_path / "granted"
+    granted.mkdir()
+    target = granted / "real.txt"
+    target.write_text("ok")
+    alias = granted / "alias"
+    try:
+        os.symlink(target, alias)
+    except OSError:
+        pytest.skip("filesystem does not support symlinks")
+
+    grants = {
+        "skills": ["file_write"],
+        "write_paths": [f"{granted}/**"],
+        "read_paths": [],
+        "network_domains": [],
+    }
+    action = Action(skill="file_write", task="x",
+                    is_destructive=False, network_call=False,
+                    touches_path=True,
+                    path=str(alias))
+    # Must NOT raise — symlink resolves to a file under the granted root
+    permission_gate(action, grants, empty_global_grants)
+
+
+def test_permission_gate_emits_blocked_audit_event(empty_global_grants, monkeypatch):
+    """Rejections emit a `permission_gate_blocked` audit event so the
+    operator can grep ~/.codec/audit.log for blocked action attempts."""
+    from codec_agent_runner import permission_gate, Action, PermissionViolation
+    captured = []
+
+    def fake_log_event(event_type, *args, **kwargs):
+        captured.append({"event_type": event_type, "args": args, "kwargs": kwargs})
+
+    monkeypatch.setattr("codec_audit.log_event", fake_log_event)
+
+    grants = {
+        "skills": ["file_write"],
+        "write_paths": ["~/Documents/**"],
+        "read_paths": [],
+        "network_domains": [],
+    }
+    action = Action(skill="file_write", task="x",
+                    is_destructive=False, network_call=False,
+                    touches_path=True,
+                    path="~/Documents/../../etc/passwd")
+    with pytest.raises(PermissionViolation):
+        permission_gate(action, grants, empty_global_grants)
+
+    matching = [c for c in captured
+                if c["event_type"] == "permission_gate_blocked"]
+    assert len(matching) >= 1, (
+        f"Expected permission_gate_blocked audit event, got: {captured}"
+    )
+    extra = matching[0]["kwargs"].get("extra", {})
+    assert "reason" in extra
+    assert extra["reason"] == "path_traversal"
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -1017,3 +1017,83 @@ def test_project_root_config_override(temp_codec_dir, monkeypatch):
     # _project_root() reads ~/.codec/config.json; _CODEC_DIR is patched to tmp_path
     folder = cap.create_project_folder("Custom test", "agent_x")
     assert custom in folder.parents or folder.parent == custom.resolve()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# D-14 + D-16 closure: extract_user_paths blocklist
+# (See docs/audits/PHASE-1-SECURITY.md findings D-14 + D-16)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "sensitive_path",
+    [
+        "~/.codec/skills/util/",
+        "~/.codec/plugins/my_plugin.py",
+        "~/.codec/auth/touchid",
+        "~/.codec/oauth_state.json",
+        "~/.codec/audit.log",
+        "~/.codec/agents/agent_x/state.json",
+        "~/.codec/agent_global_grants.json",
+    ],
+)
+def test_extract_user_paths_blocks_sensitive_codec_dirs(sensitive_path):
+    """User description mentioning these sensitive paths must NOT auto-grant
+    them — the LLM-drafted plan would otherwise put them in write_paths and
+    chain to D-1 RCE per the audit's D-14 exploit chain."""
+    import codec_agent_plan as cap
+    desc = f"Please save the helper into {sensitive_path} so it's available."
+    reads, writes = cap.extract_user_paths(desc)
+    for path_list, name in ((reads, "reads"), (writes, "writes")):
+        for p in path_list:
+            assert "/.codec/skills" not in p, f"sensitive path in {name}: {p}"
+            assert "/.codec/plugins" not in p, f"sensitive path in {name}: {p}"
+            assert "/.codec/auth" not in p, f"sensitive path in {name}: {p}"
+            assert "/.codec/oauth_state.json" not in p, f"sensitive path in {name}: {p}"
+            assert "/.codec/audit.log" not in p, f"sensitive path in {name}: {p}"
+            assert "/.codec/agents" not in p, f"sensitive path in {name}: {p}"
+            assert "/.codec/agent_global_grants" not in p, (
+                f"sensitive path in {name}: {p}"
+            )
+
+
+def test_extract_user_paths_segment_aware_not_false_positive():
+    """D-16: the substring check is anchorless and would match a path that
+    happens to contain the substring without the right segment structure.
+    A user-typed path `~/Documents/notes_ssh/foo.md` must NOT be blocked
+    (the segment `.ssh` doesn't appear as a path part — only as a
+    substring of `notes_ssh`). Goes through after the refactor."""
+    import codec_agent_plan as cap
+    desc = "Please save the meeting log to ~/Documents/notes_ssh/foo.md"
+    reads, writes = cap.extract_user_paths(desc)
+    found = any("notes_ssh" in p for p in (reads + writes))
+    assert found, (
+        f"Legitimate ~/Documents/notes_ssh path was wrongly blocked. "
+        f"reads={reads}, writes={writes}"
+    )
+
+
+def test_extract_user_paths_still_blocks_real_ssh_path():
+    """Counter-test: the real `~/.ssh/` directory must still be blocked
+    after the segment-aware refactor."""
+    import codec_agent_plan as cap
+    desc = "Read configs from ~/.ssh/config and parse"
+    reads, writes = cap.extract_user_paths(desc)
+    for p in reads + writes:
+        assert "/.ssh" not in p, f"~/.ssh leaked into grants: {p}"
+
+
+def test_extract_user_paths_allows_legitimate_user_paths():
+    """Regression: ordinary user-typed paths under ~/Documents, ~/Desktop,
+    ~/Projects continue to extract correctly."""
+    import codec_agent_plan as cap
+    desc = (
+        "Save summaries into ~/Documents/notes/ and code into "
+        "~/Projects/myapp/src/, read fixtures from ~/Desktop/data/"
+    )
+    reads, writes = cap.extract_user_paths(desc)
+    all_paths = reads + writes
+    assert any("~/Documents/notes" in p for p in all_paths), all_paths
+    assert any("~/Projects/myapp" in p for p in all_paths) or \
+        any("/Projects/myapp" in p for p in all_paths), all_paths
+    assert any("~/Desktop/data" in p for p in all_paths), all_paths
