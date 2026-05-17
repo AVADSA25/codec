@@ -583,6 +583,16 @@ Canonical state file for AskUserQuestion. Atomic write via tmp+rename. Schema:
 ### MCP HTTP transport blocklist
 `codec_config._HTTP_BLOCKED`: `python_exec`, `terminal`, `process_manager`, `pm2_control`, `ax_control`. These skills are NEVER exposed over HTTP MCP. They remain available locally (voice, chat) and over stdio MCP only.
 
+### Dashboard binding + startup safety (Phase 1 Wave 2, PR-2A — closes D-7)
+
+The dashboard's network surface is gated at startup. Two changes per audit D-7 closure:
+
+1. **Default loopback.** `codec_config.DASHBOARD_HOST` defaults to `"127.0.0.1"`. Out-of-box, the dashboard is unreachable from LAN. Users who want LAN/Cloudflare-tunneled access set `dashboard_host: "0.0.0.0"` in `~/.codec/config.json` — explicit opt-in.
+
+2. **Refuse unsafe start.** `codec_dashboard._check_dashboard_start_safety(host, dashboard_token, auth_enabled)` is called in the `__main__` block before `uvicorn.run`. If the host is public (`0.0.0.0` / `::` / `*`) AND neither `dashboard_token` nor `auth_enabled` is set, the dashboard logs a `CRITICAL` and exits non-zero. The error message lists three concrete fixes (revert to loopback, set token, enable Touch ID/PIN). Loopback hosts (`127.0.0.1`, `::1`, `localhost`) always start regardless of auth — LAN can't reach them.
+
+Combined, the out-of-box state for a fresh CODEC install is *secure-by-default*: PWA over Cloudflare tunnel keeps working (Cloudflare → `127.0.0.1`), but a misconfiguration that would expose unauthenticated `/api/execute` / `/api/skill/review` etc. to the LAN now fails closed at startup instead of silently opening the surface.
+
 ### Agent permission gate + path blocklist (Phase 1 Wave 1, PR-1D — closes D-5 + D-14 + D-16)
 
 `permission_gate` in `codec_agent_runner.py` enforces the Step 9 manifest on every Action. As of PR-1D:

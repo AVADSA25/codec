@@ -87,6 +87,13 @@ WAKE_ENERGY       = max(50, min(int(_raw_wake_energy), 1500))  # clamp 50-1500; 
 WAKE_CHUNK_SEC    = cfg.get("wake_chunk_sec", 3.0)
 REQUIRE_CONFIRM   = cfg.get("require_confirmation", True)
 
+# Dashboard binding — Closes audit finding D-7. Default is loopback-only
+# (127.0.0.1) so LAN devices can't reach the dashboard with no auth. Set
+# "dashboard_host" in ~/.codec/config.json to "0.0.0.0" to bind on all
+# interfaces — but only when paired with dashboard_token OR auth_enabled
+# (codec_dashboard._check_dashboard_start_safety refuses to start an
+# unauthenticated, public-binding dashboard).
+DASHBOARD_HOST    = cfg.get("dashboard_host", "127.0.0.1")
 # Dashboard auth — set in ~/.codec/config.json as "dashboard_token": "your-secret-token"
 # When empty/missing, dashboard runs without auth (local use)
 DASHBOARD_TOKEN   = cfg.get("dashboard_token", "")

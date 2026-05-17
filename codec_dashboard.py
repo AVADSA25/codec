@@ -3852,8 +3852,44 @@ async def execute_terminal(req: TerminalRequest):
         return JSONResponse({"error": str(e), "command": command}, status_code=500)
 
 
+def _check_dashboard_start_safety(host: str, dashboard_token: str,
+                                   auth_enabled: bool) -> tuple[bool, str]:
+    """D-7 closure: refuse to start the dashboard when it would bind on all
+    interfaces (`0.0.0.0` / `::`) without any auth gate. Returns
+    (ok, error_message). When ok is True the message is empty.
+
+    Loopback (`127.0.0.1`, `::1`, `localhost`) is always allowed regardless
+    of auth — LAN can't reach it. Public binding requires either a
+    dashboard_token or AUTH_ENABLED."""
+    public_hosts = {"0.0.0.0", "::", "*"}
+    if host not in public_hosts:
+        return True, ""
+    if dashboard_token or auth_enabled:
+        return True, ""
+    return False, (
+        f"Refusing to start: dashboard_host={host!r} would bind on all "
+        "interfaces without any auth gate (no dashboard_token, no "
+        "auth_enabled). LAN devices could reach /api/execute, "
+        "/api/save_skill, /api/forge, etc. unauthenticated.\n\n"
+        "Fix one of:\n"
+        "  - Set dashboard_host=\"127.0.0.1\" in ~/.codec/config.json (the safe default)\n"
+        "  - Set dashboard_token=\"<random-hex>\" in ~/.codec/config.json (bearer auth)\n"
+        "  - Set auth_enabled=true in ~/.codec/config.json (Touch ID / PIN)\n"
+        "See docs/audits/PHASE-1-SECURITY.md finding D-7."
+    )
+
+
 if __name__ == "__main__":
     from codec_logging import setup_logging
+    from codec_config import DASHBOARD_HOST, DASHBOARD_TOKEN
     setup_logging()
-    uvicorn.run(app, host="0.0.0.0", port=8090,
+    ok, msg = _check_dashboard_start_safety(
+        DASHBOARD_HOST, DASHBOARD_TOKEN, AUTH_ENABLED,
+    )
+    if not ok:
+        import sys
+        log.critical(msg)
+        sys.exit(2)
+    log.info("Dashboard binding host=%s port=8090 (D-7 safe).", DASHBOARD_HOST)
+    uvicorn.run(app, host=DASHBOARD_HOST, port=8090,
                 h11_max_incomplete_event_size=50 * 1024 * 1024)  # 50MB for large doc uploads
