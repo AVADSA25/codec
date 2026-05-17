@@ -583,6 +583,23 @@ Canonical state file for AskUserQuestion. Atomic write via tmp+rename. Schema:
 ### MCP HTTP transport blocklist
 `codec_config._HTTP_BLOCKED`: `python_exec`, `terminal`, `process_manager`, `pm2_control`, `ax_control`. These skills are NEVER exposed over HTTP MCP. They remain available locally (voice, chat) and over stdio MCP only.
 
+### Agent permission gate + path blocklist (Phase 1 Wave 1, PR-1D — closes D-5 + D-14 + D-16)
+
+`permission_gate` in `codec_agent_runner.py` enforces the Step 9 manifest on every Action. As of PR-1D:
+
+1. **`..` segments rejected outright.** `~/Documents/../../etc/passwd` is refused even if the resulting realpath happens to match a different grant (or none). Previously `fnmatch.fnmatch` glob-matched the raw string and missed the traversal.
+2. **Realpath both sides.** Action paths and grant roots are resolved via `os.path.realpath` before comparison — symlinks pointing outside a granted root are caught.
+3. **Prefix-on-realpath comparison.** `fnmatch` was replaced with `action_real.startswith(grant_real + os.sep)`. Trade-off: a grant like `~/Documents/*.md` now accepts any file under `~/Documents/`, not just `*.md`. Safety > granularity per the audit recommendation.
+4. **Audit emission on rejection.** Every refused action emits `permission_gate_blocked` (`source=codec-agent-runner`, `outcome=error`, `level=warning`, `extra={requested_path, resolved_path, reason}`) before raising `PermissionViolation`. The wrapping `_run_agent` continues to emit `agent_blocked_on_permission` — gate-level + agent-level audit are complementary.
+
+`_PATH_BLOCKLIST_SUBSTRINGS` in `codec_agent_plan.py` is the auto-extract blocklist for paths the user types in a plan description. Extended in PR-1D to cover the full security-sensitive `~/.codec/` set:
+
+  `/.ssh`, `/.aws`, `/.gnupg`, `/.config/gh`, `/Library/Keychains`, `/Library/Application Support/com.apple`, `/.codec/secrets`, `/.codec/auth`, `/etc/`, `/var/`, `/private/`, `/System/`, `/usr/local/etc`, **`/.codec/skills`, `/.codec/plugins`, `/.codec/oauth_state.json`, `/.codec/audit.log`, `/.codec/agents`, `/.codec/agent_global_grants.json`, `/.codec/config.json`, `/.codec/memory.db`**.
+
+**Segment-aware matching (D-16 closure).** Each entry is matched as a sequence of consecutive `/`-separated path SEGMENTS — not raw substring. So `~/Documents/notes_ssh/foo.md` no longer false-positive-matches `/.ssh` (the segment is `notes_ssh`, not `.ssh`), but `~/.ssh/config` does. Sequence matching also covers multi-segment entries like `/Library/Application Support/com.apple/<x>`.
+
+**Defense in depth.** Even if an attacker convinces the LLM to draft a plan grant for `~/.codec/skills/**`, the blocklist prevents auto-extraction during plan drafting; the realpath gate catches it at runtime; PR-1A's load-time AST gate catches it at skill load; PR-1C's `file_write` block-roots catches it at the file_write call. Four independent layers — each closes the D-1 chain on its own.
+
 ### `file_write` skill path-blocking (Phase 1 Wave 1, PR-1C — closes D-4)
 
 The MCP-exposed `file_write` skill (`skills/file_write.py`) refuses writes to security-sensitive paths. This is a defense-in-depth layer paired with PR-1A's load-time AST gate: even if `file_write` reached a skill directory, the file wouldn't execute on load — but PR-1C closes the write at the source.

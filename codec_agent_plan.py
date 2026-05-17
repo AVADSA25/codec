@@ -750,13 +750,64 @@ _PATH_TOKEN = _re_path.compile(
     r")"
 )
 
-# Never auto-grant these — keep approval friction
+# Never auto-grant these — keep approval friction.
+#
+# Closes audit findings D-14 (missing skill/plugin/auth/oauth paths) and
+# D-16 (anchorless substring match). Each entry is `/`-separated and matched
+# as a sequence of consecutive path SEGMENTS — not raw substring. So
+# `~/Documents/notes_ssh/` does NOT match `/.ssh` (the segment is
+# `notes_ssh`, not `.ssh`), but `~/.ssh/config` does (segment `.ssh`).
 _PATH_BLOCKLIST_SUBSTRINGS = (
+    # Pre-D-14 entries:
     "/.ssh", "/.aws", "/.gnupg", "/.config/gh", "/Library/Keychains",
     "/Library/Application Support/com.apple",
     "/.codec/secrets", "/.codec/auth",
     "/etc/", "/var/", "/private/", "/System/", "/usr/local/etc",
+    # D-14 closure: every security-sensitive ~/.codec/* path. Auto-grant
+    # to any of these chains to D-1 RCE (skill drop → restart → exec).
+    "/.codec/skills",
+    "/.codec/plugins",
+    "/.codec/oauth_state.json",
+    "/.codec/audit.log",
+    "/.codec/agents",
+    "/.codec/agent_global_grants.json",
+    "/.codec/config.json",
+    "/.codec/memory.db",
 )
+
+
+def _path_segments_match(path: str, blocked_pattern: str) -> bool:
+    """Segment-aware match (D-16 closure). Returns True iff
+    `blocked_pattern`'s `/`-separated segments appear consecutively in
+    `path`'s segments. `path` is expanduser'd + normalized (collapses
+    `..` and `.`) before comparison.
+
+    Examples:
+        _path_segments_match("~/.ssh/config", "/.ssh") → True
+        _path_segments_match("~/Documents/notes_ssh/", "/.ssh") → False
+        _path_segments_match("~/.codec/skills/x.py", "/.codec/skills") → True
+        _path_segments_match("/etc/passwd", "/etc/") → True
+    """
+    try:
+        expanded = os.path.expanduser(path)
+        normalized = os.path.normpath(expanded)
+        path_parts = normalized.split(os.sep)
+    except Exception:
+        return True  # fail-safe: treat unparseable paths as blocked
+    blocked_parts = [s for s in blocked_pattern.split("/") if s]
+    if not blocked_parts:
+        return False
+    n = len(blocked_parts)
+    for i in range(len(path_parts) - n + 1):
+        if path_parts[i:i + n] == blocked_parts:
+            return True
+    return False
+
+
+def _is_path_blocklisted(path: str) -> bool:
+    """True iff the path traverses any segment-sequence in
+    `_PATH_BLOCKLIST_SUBSTRINGS`. D-14 + D-16 closure."""
+    return any(_path_segments_match(path, b) for b in _PATH_BLOCKLIST_SUBSTRINGS)
 
 
 def _normalize_path(p: str) -> str:
@@ -788,7 +839,7 @@ def extract_user_paths(description: str) -> tuple[list[str], list[str]]:
         raw = _normalize_path(m.group("path"))
         if not raw or raw in seen:
             continue
-        if any(b in raw for b in _PATH_BLOCKLIST_SUBSTRINGS):
+        if _is_path_blocklisted(raw):
             continue
         seen.add(raw)
 

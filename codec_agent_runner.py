@@ -17,7 +17,6 @@ See docs/PHASE3-BLUEPRINT.md §3 for design rationale.
 """
 from __future__ import annotations
 
-import fnmatch
 import json
 import logging
 import os
@@ -92,11 +91,94 @@ class PermissionViolation(Exception):
 
 
 # ── Permission gate ───────────────────────────────────────────────────────────
+
+def _emit_gate_blocked(action_path: str, reason: str, agent_id: str = "") -> None:
+    """Emit a `permission_gate_blocked` audit event on rejection. Forensic
+    visibility per audit D-5 closure — operators can grep ~/.codec/audit.log
+    for blocked-action attempts. Never raises (audit failure must not mask
+    the underlying refusal)."""
+    try:
+        from codec_audit import log_event
+        try:
+            real = os.path.realpath(os.path.expanduser(action_path)) if action_path else ""
+        except Exception:
+            real = action_path or ""
+        log_event(
+            "permission_gate_blocked",
+            source="codec-agent-runner",
+            message=f"permission_gate refused {action_path!r}: {reason}",
+            level="warning",
+            outcome="error",
+            extra={
+                "requested_path": action_path,
+                "resolved_path": real,
+                "reason": reason,
+                "agent_id": agent_id,
+            },
+        )
+    except Exception:
+        pass
+
+
+def _path_allowed(action_path: str, grants: Any) -> tuple[bool, str]:
+    """Return (allowed, reason) for an action path against a set of grant
+    patterns (originally fnmatch-style, e.g. `~/Documents/**`).
+
+    Closes audit D-5 — three layered checks:
+      1. Reject `..` segments outright (no path-traversal bypass).
+      2. Realpath the action so symlinks are resolved.
+      3. Match against realpath'd grant roots (the substring before the
+         first glob char). Acceptance = action's realpath is at or under
+         the grant's realpath root.
+
+    Trade-off vs. raw fnmatch: a grant pattern like `~/Documents/*.md`
+    now accepts any file under realpath(~/Documents/), not just `*.md`.
+    The audit explicitly recommends this (prefix-on-realpath over
+    fnmatch) — safety > granularity.
+    """
+    if not action_path:
+        return False, "empty_path"
+
+    # Reject .. anywhere in the path. expanduser is enough here — we don't
+    # need realpath to detect the segment "..".
+    if ".." in Path(os.path.expanduser(action_path)).parts:
+        return False, "path_traversal"
+
+    try:
+        action_real = os.path.realpath(os.path.expanduser(action_path))
+    except (OSError, RuntimeError, ValueError):
+        return False, "realpath_failed"
+
+    for grant in grants:
+        if not grant:
+            continue
+        grant_expanded = os.path.expanduser(grant)
+        # Strip glob suffix to find the directory root. Examples:
+        #   "~/Documents/**"   → "~/Documents"
+        #   "~/Documents/*.md" → "~/Documents"
+        #   "~/Documents"      → "~/Documents"
+        glob_idx = grant_expanded.find("*")
+        grant_root = (grant_expanded[:glob_idx] if glob_idx >= 0
+                      else grant_expanded).rstrip(os.sep) or os.sep
+        try:
+            grant_real = os.path.realpath(grant_root)
+        except (OSError, RuntimeError, ValueError):
+            continue
+        if action_real == grant_real or action_real.startswith(grant_real + os.sep):
+            return True, ""
+
+    return False, "not_under_grant"
+
+
 def permission_gate(action: Action, agent_grants: Dict[str, Any],
                     global_grants: Dict[str, Any]) -> None:
     """The core Step 9 enforcement. Walks the action's resource use,
     checks the union of per-agent grants and global allowlist. Raises
     PermissionViolation on any gap.
+
+    Path checks use `_path_allowed` (realpath + dotdot rejection) — closes
+    audit finding D-5. Rejections emit a `permission_gate_blocked` audit
+    event before the exception so the operator gets forensic visibility.
 
     Note: destructive ops fall through to strict_consent_gate (Step 3
     §1.7) — even if pre-approved by the user. That's the universal
@@ -114,12 +196,9 @@ def permission_gate(action: Action, agent_grants: Dict[str, Any],
     if action.touches_path:
         write_paths = (set(agent_grants.get("write_paths", [])) |
                        set(global_grants.get("write_paths", [])))
-        # fnmatch supports glob patterns the LLM puts in manifest.
-        # Expand ~ on both sides so "~/Documents/x" matches "~/Documents/**".
-        action_path_abs = os.path.expanduser(action.path)
-        ok = any(fnmatch.fnmatch(action_path_abs, os.path.expanduser(p))
-                 for p in write_paths)
+        ok, reason = _path_allowed(action.path, write_paths)
         if not ok:
+            _emit_gate_blocked(action.path, reason)
             raise PermissionViolation("path_not_authorized", action.path)
 
     if action.reads_path and action.read_path:
@@ -129,10 +208,9 @@ def permission_gate(action: Action, agent_grants: Dict[str, Any],
         # must be able to read it back (verify writes, read prior output, etc.).
         write_paths_implicit = (set(agent_grants.get("write_paths", [])) |
                                 set(global_grants.get("write_paths", [])))
-        action_read_abs = os.path.expanduser(action.read_path)
-        ok = any(fnmatch.fnmatch(action_read_abs, os.path.expanduser(p))
-                 for p in read_paths | write_paths_implicit)
+        ok, reason = _path_allowed(action.read_path, read_paths | write_paths_implicit)
         if not ok:
+            _emit_gate_blocked(action.read_path, reason)
             raise PermissionViolation("read_path_not_authorized", action.read_path)
 
     if action.network_call:
