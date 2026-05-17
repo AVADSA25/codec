@@ -51,11 +51,59 @@ _MAX_WRITE_BYTES = 500_000   # 500 KB per call — plenty for notes, code, docs
 _AUDIT_LOG = os.path.expanduser("~/.codec/file_write.log")
 
 # ── Path safety ──
-# These directory roots are ALWAYS blocked, regardless of who's calling.
-_BLOCKED_ROOTS = [
+# System directory roots that are ALWAYS blocked. These are compared after
+# the candidate path has been realpath-resolved, so symlinks can't slip
+# through. The blocklist itself is also realpath-resolved at module load,
+# which on macOS turns `/etc` into `/private/etc`, `/bin` into `/usr/bin`,
+# etc. — so the comparison works regardless of which alias the caller uses.
+# `/private` is deliberately NOT in this list: macOS realpaths /tmp into
+# /private/tmp, and /tmp is a legitimate write target. The specific
+# /private/etc and /private/var subdirs are still blocked via the
+# realpath-resolved entries below.
+_BLOCKED_SYSTEM_ROOTS = [
     "/System", "/Library", "/usr", "/bin", "/sbin", "/etc",
-    "/var", "/private", "/dev", "/Volumes",
+    "/var", "/dev", "/Volumes",
 ]
+
+# Security-sensitive CODEC directories. Per audit finding D-4, the
+# file_write skill must NEVER write into these — they govern skill loading,
+# plugin lifecycle hooks, agent permission grants, audit-log integrity,
+# OAuth tokens, and the API-key-bearing config file. Compare with realpath
+# in case ~/.codec is a symlink to a non-default location.
+def _codec_blocked_roots() -> list[str]:
+    """Compute the CODEC-internal paths file_write must never touch.
+    Resolved at module load — if ~/.codec moves, restart the dashboard."""
+    codec_home = os.path.realpath(os.path.expanduser("~/.codec"))
+    # The whole ~/.codec tree is off-limits to file_write. CODEC's own
+    # state (skills, plugins, oauth_state.json, config.json, audit.log,
+    # memory.db, agents/, notifications.json, ...) all live here. Users
+    # who legitimately need to edit a config file have other tools.
+    out = [codec_home]
+    # Built-in skills directory inside the repo — hash-pinned in
+    # .manifest.json (PR-1A) but defense in depth.
+    skills_repo = os.path.realpath(os.path.dirname(os.path.abspath(__file__)))
+    out.append(skills_repo)
+    return out
+
+
+# Realpath-resolved blocklist. Built once at module load.
+def _build_blocked_roots() -> list[str]:
+    roots: list[str] = []
+    for p in _BLOCKED_SYSTEM_ROOTS:
+        try:
+            roots.append(os.path.realpath(p))
+        except Exception:
+            roots.append(p)
+    roots.extend(_codec_blocked_roots())
+    return roots
+
+
+_BLOCKED_ROOTS_REAL = _build_blocked_roots()
+
+# Public alias kept for any external introspection or test that references
+# the old name. Same values as _BLOCKED_ROOTS_REAL.
+_BLOCKED_ROOTS = _BLOCKED_ROOTS_REAL
+
 # Any filename (case-insensitive substring) in this list is blocked.
 _BLOCKED_FILENAME_PATTERNS = [
     ".ssh", ".gnupg", ".env", "credentials", "secrets", "secret",
@@ -66,11 +114,19 @@ _BLOCKED_FILENAME_PATTERNS = [
 # Block extensions that could be executable shells / trust-sensitive.
 _BLOCKED_EXTS = [".pem", ".key", ".p12", ".pfx", ".keystore"]
 
+# Realpath-resolved allowable scope. `/tmp` realpaths to `/private/tmp` on
+# macOS — the home/tmp sanity check must compare against the resolved form
+# or every /tmp write trips the /private/var-style realpath.
+_TMP_REAL = os.path.realpath("/tmp")
+_HOME_REAL = os.path.realpath(os.path.expanduser("~"))
+
 
 def _is_safe_target(path: str):
     """Return (True, "") if safe to write; (False, reason) otherwise.
 
-    Resolves symlinks via realpath so a symlink into /etc can't slip through.
+    Resolves symlinks via realpath so a symlink into a blocked root can't
+    slip through. Blocked roots include the macOS system tree plus all of
+    `~/.codec/` and `<repo>/skills/` (closes audit finding D-4).
     """
     if not path:
         return False, "Empty path."
@@ -84,26 +140,31 @@ def _is_safe_target(path: str):
         real_parent = parent
     real_path = os.path.join(real_parent, os.path.basename(expanded))
 
-    for blocked in _BLOCKED_ROOTS:
-        if real_path == blocked or real_path.startswith(blocked + os.sep):
-            return False, f"Blocked system path: {blocked}"
-
+    # Filename + extension checks apply globally, regardless of directory.
     base_lower = os.path.basename(real_path).lower()
     for pat in _BLOCKED_FILENAME_PATTERNS:
         if pat in base_lower:
             return False, f"Blocked filename pattern: {pat!r}"
-
     for ext in _BLOCKED_EXTS:
         if base_lower.endswith(ext):
             return False, f"Blocked extension: {ext}"
 
-    # Sanity: must be under $HOME or /tmp (broad but not everything).
-    home = os.path.realpath(os.path.expanduser("~"))
-    tmp = "/tmp"
-    if not (real_path.startswith(home + os.sep) or real_path.startswith(tmp + os.sep)):
+    # Blocked root check (system tree + ~/.codec/ + <repo>/skills/).
+    for blocked in _BLOCKED_ROOTS_REAL:
+        if real_path == blocked or real_path.startswith(blocked + os.sep):
+            return False, f"Blocked path: {blocked}"
+
+    # Final sanity: must be under realpath($HOME) or realpath(/tmp).
+    under_home = (
+        real_path == _HOME_REAL or real_path.startswith(_HOME_REAL + os.sep)
+    )
+    under_tmp = (
+        real_path == _TMP_REAL or real_path.startswith(_TMP_REAL + os.sep)
+    )
+    if not (under_home or under_tmp):
         return False, (
             f"Target must live under $HOME or /tmp (got: {real_path}). "
-            "Adjust file_write._BLOCKED_ROOTS if you need wider scope."
+            "Adjust file_write._BLOCKED_SYSTEM_ROOTS if you need wider scope."
         )
 
     return True, ""
