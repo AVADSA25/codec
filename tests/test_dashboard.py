@@ -66,7 +66,20 @@ def test_memory_sessions_api():
     assert r.status_code in (200, 401)  # 401 valid when auth enabled
 
 
-def test_forge_requires_input():
+def test_forge_endpoint_removed():
+    """PR-1B removed /api/forge (closes D-2). Endpoint must return 404 now.
+    Replacement: /api/skill/review → /api/skill/approve."""
     r = requests.post(f"{BASE}/api/forge", json={}, timeout=5)
     _skip_if_auth(r)
-    assert r.status_code in [400, 401, 422]  # 401 valid when auth enabled
+    assert r.status_code == 404, f"/api/forge must be removed, got {r.status_code}"
+
+
+def test_save_skill_endpoint_removed():
+    """PR-1B removed /api/save_skill (closes D-3). Endpoint must return 404 now."""
+    r = requests.post(
+        f"{BASE}/api/save_skill",
+        json={"filename": "x.py", "content": "..."},
+        timeout=5,
+    )
+    _skip_if_auth(r)
+    assert r.status_code == 404, f"/api/save_skill must be removed, got {r.status_code}"

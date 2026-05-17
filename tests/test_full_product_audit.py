@@ -267,14 +267,14 @@ class TestDashboardSkillsAPI:
             # If it staged it, that's OK — it goes through human review
             assert "review_id" in data or "staged" in str(data).lower()
 
-    def test_forge_endpoint(self):
-        """Forge endpoint should accept valid requests."""
+    def test_forge_endpoint_removed(self):
+        """PR-1B removed /api/forge (closes D-2 in PHASE-1-SECURITY.md). The
+        replacement flow is /api/skill/review → /api/skill/approve."""
         r = api_post("/api/forge", json={
             "code": "print('hello')",
-            "description": "test skill"
+            "description": "test skill",
         })
-        # 200 = success, 422 = missing fields (valid rejection)
-        assert r.status_code in [200, 422], f"Forge returned unexpected {r.status_code}"
+        assert r.status_code == 404, f"/api/forge must return 404, got {r.status_code}"
 
 
 @requires_dashboard

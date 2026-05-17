@@ -768,25 +768,28 @@ def test_vibe():
 
     SKIP(A, 9, "Copy code to clipboard", "UI-only")
 
-    # 10-11: Skill save/test
+    # 10-11: Skill creation goes through review-and-approve flow only.
+    # /api/save_skill and /api/forge were removed in PR-1B (closes D-2 + D-3,
+    # see docs/audits/PHASE-1-SECURITY.md). The audit confirms the removal
+    # by asserting both endpoints now return 404.
     ok, detail = check_endpoint("/api/save_skill", method="POST")
-    if "400" in detail or "422" in detail or ok or "skill" in detail.lower():
-        PASS(A, 10, "Save as CODEC Skill", "Save skill endpoint responsive")
+    if "404" in detail:
+        PASS(A, 10, "Save as CODEC Skill", "Endpoint removed (PR-1B, D-3) — review-and-approve only")
     else:
-        FAIL(A, 10, "Save as CODEC Skill", detail)
+        FAIL(A, 10, "Save as CODEC Skill", f"Expected 404 (PR-1B removal), got: {detail}")
 
     ok, detail = check_endpoint("/api/skill/review", method="POST")
     if "400" in detail or "422" in detail or ok:
-        PASS(A, 11, "Test Skill", "Skill review endpoint responsive")
+        PASS(A, 11, "Test Skill (review gate)", "Skill review endpoint responsive")
     else:
-        FAIL(A, 11, "Test Skill", detail)
+        FAIL(A, 11, "Test Skill (review gate)", detail)
 
-    # 12: Skill Forge
+    # 12: /api/forge — removed in PR-1B alongside the Skill Forge UI.
     ok, detail = check_endpoint("/api/forge", method="POST")
-    if "400" in detail or "422" in detail or ok or "mode" in detail.lower():
-        PASS(A, 12, "Skill Forge modal", "Forge endpoint responsive")
+    if "404" in detail:
+        PASS(A, 12, "Skill Forge endpoint", "Endpoint removed (PR-1B, D-2) — SSRF + RCE-write path closed")
     else:
-        FAIL(A, 12, "Skill Forge modal", detail)
+        FAIL(A, 12, "Skill Forge endpoint", f"Expected 404 (PR-1B removal), got: {detail}")
 
     # 13: Project management
     ok, detail = check_endpoint("/api/vibe/sessions")

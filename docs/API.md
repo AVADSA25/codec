@@ -89,20 +89,20 @@ List all installed skills with metadata.
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8090/api/skills
 ```
 
-### POST /api/forge
-Convert code to a CODEC skill via Skill Forge.
+### POST /api/skill/review
+Stage a skill for review before saving. The only sanctioned write path for new skills — defense in depth with the load-time AST gate (`SkillRegistry.load`) added in PR-1A. Direct-write endpoints (`/api/save_skill`, `/api/forge`) were removed in PR-1B (see `docs/audits/PHASE-1-SECURITY.md` D-2 + D-3).
+
 ```bash
 curl -X POST -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"code": "def run(task): return str(2+2)", "name": "calculator"}' \
-  http://localhost:8090/api/forge
+  -d '{"code": "SKILL_NAME=\"x\"\nSKILL_DESCRIPTION=\"...\"\nSKILL_TRIGGERS=[\"x\"]\ndef run(t,a=\"\",c=\"\"):return \"ok\"", "filename": "x.py"}' \
+  http://localhost:8090/api/skill/review
 ```
 
-### POST /api/skill/review
-Stage a skill for review before saving.
+Returns `{"review_id": "...", "code": "...", "filename": "..."}`.
 
 ### POST /api/skill/approve
-Approve and save a reviewed skill.
+Approve a pending review by `review_id` and write the file to `<skills_dir>/<filename>`. Runs `is_dangerous_skill_code` as the write-time gate.
 
 ---
 

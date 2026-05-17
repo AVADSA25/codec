@@ -149,17 +149,14 @@ release, CODEC is now a **9-product system**.
 | 7 | Inspect mode for element inspection |
 | 8 | Save file to disk |
 | 9 | Copy code to clipboard |
-| 10 | Save as CODEC Skill |
-| 11 | Test Skill (invoke run() function) |
-| 12 | Skill Forge modal (3 modes: Paste Code, GitHub URL, Describe) |
-| 13 | Project management sidebar (sessions) |
-| 14 | Resizable panels (drag handle) |
-| 15 | Output console panel |
-| 16 | DOMPurify sanitization on all rendered content |
-| 17 | Server webcam photo + live PIP |
-| 18 | Light/dark theme toggle (syncs Monaco theme) |
-| 19 | Skill review + approval workflow (human-in-the-loop) |
-| 20 | URL import in Skill Forge (fetch code from GitHub raw URLs) |
+| 10 | Test Skill (invoke run() function) |
+| 11 | Project management sidebar (sessions) |
+| 12 | Resizable panels (drag handle) |
+| 13 | Output console panel |
+| 14 | DOMPurify sanitization on all rendered content |
+| 15 | Server webcam photo + live PIP |
+| 16 | Light/dark theme toggle (syncs Monaco theme) |
+| 17 | Skill review + approval workflow (human-in-the-loop, exclusive path) |
 
 ---
 

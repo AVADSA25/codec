@@ -94,67 +94,16 @@ class TestPinBruteForce:
         assert ip not in codec_dashboard._pin_attempts
 
 
-# ── Fix 4: Skill Forge semantic validation ──
-
-class TestSkillForgeBlocklist:
-    """Skill code must be scanned for dangerous imports/calls."""
-
-    DANGEROUS_SKILL_PATTERNS = [
-        "os.system('rm -rf /')",
-        "subprocess.Popen(['ls'])",
-        "subprocess.run(['ls'])",
-        "eval(user_input)",
-        "exec(code_string)",
-        "__import__('os').system('id')",
-        "import importlib; importlib.import_module('os')",
-        "shutil.rmtree('/important')",
-        "open('/etc/passwd')",
-        "open('/dev/sda', 'w')",
-        "import ctypes; ctypes.CDLL('libc.so.6')",
-    ]
-
-    SAFE_SKILL_CODE = '''
-SKILL_NAME = "test_skill"
-SKILL_DESCRIPTION = "A safe test skill"
-SKILL_TRIGGERS = ["test"]
-
-def run(task, app=None, ctx=None):
-    return "Hello from test skill"
-'''
-
-    @pytest.mark.parametrize("dangerous_code", DANGEROUS_SKILL_PATTERNS)
-    def test_blocked_patterns_detected(self, dangerous_code):
-        """Each dangerous pattern must be caught by the blocklist."""
-        BLOCKED_IN_SKILLS = [
-            "os.system(", "subprocess.", "eval(", "exec(", "__import__",
-            "importlib", "shutil.rmtree", "open('/etc", "open('/dev", "ctypes",
-        ]
-        skill_code = f'SKILL_DESCRIPTION = "test"\ndef run(task):\n    {dangerous_code}'
-        found = any(b in skill_code for b in BLOCKED_IN_SKILLS)
-        assert found, f"Dangerous pattern not caught: {dangerous_code}"
-
-    def test_safe_skill_passes(self):
-        """Normal skill code should not be flagged."""
-        BLOCKED_IN_SKILLS = [
-            "os.system(", "subprocess.", "eval(", "exec(", "__import__",
-            "importlib", "shutil.rmtree", "open('/etc", "open('/dev", "ctypes",
-        ]
-        found = any(b in self.SAFE_SKILL_CODE for b in BLOCKED_IN_SKILLS)
-        assert not found, "Safe skill code was incorrectly flagged"
-
-    def test_blocklist_has_minimum_patterns(self):
-        """Blocklist should have at least 10 patterns (expanded from original 5)."""
-        # Read the actual source to verify
-        import inspect
-        import codec_dashboard
-        source = inspect.getsource(codec_dashboard.save_skill)
-        # Count blocked patterns by finding the list
-        assert "subprocess." in source, "subprocess. pattern missing (was subprocess.Popen only)"
-        assert "importlib" in source, "importlib pattern missing"
-        assert "shutil.rmtree" in source, "shutil.rmtree pattern missing"
-        assert "ctypes" in source, "ctypes pattern missing"
-        assert "open('/etc" in source, "open('/etc pattern missing"
-        assert "open('/dev" in source, "open('/dev pattern missing"
+# ── Fix 4 (former): Skill Forge substring blocker (removed in PR-1B) ──
+#
+# The TestSkillForgeBlocklist class was deleted in PR-1B alongside the
+# /api/save_skill and /api/forge endpoints. The substring blocker it tested
+# was the weak validation those endpoints used before writing to disk.
+# Coverage of dangerous-pattern detection now lives in
+# tests/test_skill_registry.py (AST-based, runs at load time on every skill,
+# closes D-1) and in routes/skills.py:skill_approve (AST check at write time
+# via the review-and-approve flow). See docs/audits/PHASE-1-SECURITY.md
+# findings D-1, D-2, D-3 for the full closure trail.
 
 
 # ── Fix 5: Thread-safe _auth_sessions ──
