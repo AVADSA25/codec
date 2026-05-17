@@ -61,6 +61,8 @@ No exploits were executed. All bypasses were analyzed against source as text-onl
 **Recommended fix:** Run `is_dangerous_skill_code` at load-time in `SkillRegistry.load`, BEFORE `exec_module`. Better: route every load through a stable signature check (manifest of approved hash → set of approved files), maintained in a separate file written only by the approve gate. Best: run skills in a sandboxed subprocess by default (the wrapper exists in `codec_sandbox.py` but most paths don't use it — only `SkillRegistry.run(..., sandboxed=True)`).
 **Effort:** medium (single function change to add AST check; sandbox-by-default is larger surgery).
 
+> **Closed by PR-1A** (branch `fix/pr1a-skill-load-ast-check`). `SkillRegistry.load` now runs a two-stage gate before `spec.loader.exec_module`: (1) sha256 match against `<skills_dir>/.manifest.json` for built-ins (hash-pinned at PR-review time via `tools/generate_skill_manifest.py`); (2) `is_dangerous_skill_code` AST check for everything else. Refusals emit `skill_load_blocked` to `~/.codec/audit.log`. The chokepoint also fails closed against D-2, D-3, D-4, D-5 — even if an attacker successfully writes via any of those paths, the file's hash won't match the manifest and the AST check refuses it. 13 tests in `tests/test_skill_registry.py` cover both stages. AGENTS.md §7 documents the contributor workflow for regenerating the manifest after legitimate skill edits.
+
 ### D-2 — `/api/forge` endpoint fetches arbitrary URL → LLM → writes skill, no review gate [CRITICAL]
 **Location:** `routes/skills.py:71-201` (`forge_skill`)
 **CWE / OWASP:** CWE-94 Code Injection / CWE-918 SSRF / OWASP A10 SSRF / Agentic A01 Memory Poisoning, A02 Tool Misuse

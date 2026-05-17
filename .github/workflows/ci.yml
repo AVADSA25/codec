@@ -21,6 +21,10 @@ jobs:
         run: python tests/test_skill_imports.py
       - name: Skill contract tests
         run: python -m pytest tests/test_skill_contracts.py -v
+      - name: Trusted-skill manifest is current (D-1 gate)
+        run: python tools/generate_skill_manifest.py --check
+      - name: Skill registry load-time AST gate tests (D-1)
+        run: python -m pytest tests/test_skill_registry.py -v
       - name: OAuth provider unit test
         run: python -m pytest tests/test_oauth_provider.py -v
       - name: Retry helper unit test
