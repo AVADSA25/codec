@@ -583,6 +583,29 @@ Canonical state file for AskUserQuestion. Atomic write via tmp+rename. Schema:
 ### MCP HTTP transport blocklist
 `codec_config._HTTP_BLOCKED`: `python_exec`, `terminal`, `process_manager`, `pm2_control`, `ax_control`. These skills are NEVER exposed over HTTP MCP. They remain available locally (voice, chat) and over stdio MCP only.
 
+### Secret storage via macOS Keychain (Phase 1 Wave 2, PR-2B — closes D-8 + D-15 partial)
+
+Three secrets live in macOS Keychain instead of `~/.codec/config.json` / `~/.codec/oauth_state.json` plaintext:
+
+| Secret | Keychain key | Was |
+|---|---|---|
+| OAuth access + refresh tokens (whole state JSON) | `ai.avadigital.codec.oauth_state` | `~/.codec/oauth_state.json` (0600 plaintext) |
+| Dashboard bearer token | `ai.avadigital.codec.dashboard_token` | `config.json:dashboard_token` |
+| LLM provider API key | `ai.avadigital.codec.llm_api_key` | `config.json:llm_api_key` |
+
+**Migration is idempotent + automatic.** On first daemon startup post-PR-2B, `codec_config.get_llm_api_key()` / `get_dashboard_token()` migrate the cfg plaintext to Keychain, then blank the on-disk field. The OAuth provider migrates its state on first `_save()`. Subsequent startups read directly from Keychain.
+
+**Runtime accessors** (use these, not `cfg.get("llm_api_key", "")`):
+- `codec_config.get_llm_api_key()` — 30s in-memory cache, falls back to cfg on Keychain miss
+- `codec_config.get_dashboard_token()` — same
+- `codec_keychain.get_oauth_state()` — no cache (called only at provider init)
+
+**Deferred to PR-2B-2** (still plaintext in `config.json`): `gemini_api_key`, `pexels_api_key`, `serper_api_key`, `telegram.bot_token`, `auth_pin_hash`. The Keychain helper module built here is reused.
+
+**Headless / CI fallback** (`codec_keychain.is_keychain_available() → False` on Linux): envelope-encrypted store at `~/.codec/secrets.enc.json` keyed by `~/.codec/secret.key` (0600, stdlib XOR keystream). **Fallback-grade, NOT Keychain-grade** — defends against casual file-read disclosure on a CI runner; does NOT defend against a determined attacker with shell access. Production threat model assumes real Keychain on macOS.
+
+**`security` CLI behavior:** exit 51 = "user interaction not allowed" (Keychain locked). Background daemons cannot prompt — `keychain_get` returns None and emits `keychain_locked` audit event. Caller falls back to cfg until next operator login + Keychain unlock.
+
 ### Dashboard binding + startup safety (Phase 1 Wave 2, PR-2A — closes D-7)
 
 The dashboard's network surface is gated at startup. Two changes per audit D-7 closure:

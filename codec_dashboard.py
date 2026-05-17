@@ -116,7 +116,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     "/api/auth/totp/enable", "/api/auth/keyexchange"}
 
     async def dispatch(self, request, call_next):
-        from codec_config import DASHBOARD_TOKEN
+        # PR-2B (D-15 partial): always read the live Keychain-aware value
+        # rather than the import-time constant. Migration may have promoted
+        # the secret from cfg → Keychain between import and request, so
+        # the constant could be stale.
+        from codec_config import get_dashboard_token
+        DASHBOARD_TOKEN = get_dashboard_token()
         from codec_metrics import metrics
         path = request.url.path
         metrics.inc("codec_http_requests_total", {"method": request.method, "path": path})
@@ -880,7 +885,9 @@ async def send_command(request: Request):
             pass
         base_url = config.get("llm_base_url", "http://localhost:8081/v1")
         model = config.get("llm_model", "mlx-community/Qwen3.5-35B-A3B-4bit")
-        api_key = config.get("llm_api_key", "")
+        # PR-2B (D-15 partial): keychain-aware live read.
+        from codec_config import get_llm_api_key as _kc_get_llm
+        api_key = _kc_get_llm()
         kwargs = config.get("llm_kwargs", {})
         headers_llm = {"Content-Type": "application/json"}
         if api_key: headers_llm["Authorization"] = f"Bearer {api_key}"
@@ -2686,7 +2693,9 @@ async def chat_completion(request: Request):
             log.warning(f"Non-critical error: {e}")
         base_url = config.get("llm_base_url", "http://localhost:8081/v1")
         model = config.get("llm_model", "mlx-community/Qwen3.5-35B-A3B-4bit")
-        api_key = config.get("llm_api_key", "")
+        # PR-2B (D-15 partial): keychain-aware live read.
+        from codec_config import get_llm_api_key as _kc_get_llm
+        api_key = _kc_get_llm()
         kwargs = config.get("llm_kwargs", {})
         headers = {"Content-Type": "application/json"}
         if api_key: headers["Authorization"] = f"Bearer {api_key}"
@@ -3107,7 +3116,9 @@ async def run_schedule_now(sched_id: str):
                 pass
             base_url = config.get("llm_base_url", "http://localhost:8081/v1")
             model = config.get("llm_model", "mlx-community/Qwen3.5-35B-A3B-4bit")
-            api_key = config.get("llm_api_key", "")
+            # PR-2B (D-15 partial): keychain-aware live read.
+            from codec_config import get_llm_api_key as _kc_get_llm
+            api_key = _kc_get_llm()
             kwargs = config.get("llm_kwargs", {})
 
             # ── Step 1: If it's a skill-based task, run the skill directly ──

@@ -25,6 +25,8 @@ jobs:
         run: python tools/generate_skill_manifest.py --check
       - name: Skill registry load-time AST gate tests (D-1)
         run: python -m pytest tests/test_skill_registry.py -v
+      - name: Keychain helper + secret-migration tests (D-8, D-15)
+        run: python -m pytest tests/test_keychain.py -v
       - name: OAuth provider unit test
         run: python -m pytest tests/test_oauth_provider.py -v
       - name: Retry helper unit test
