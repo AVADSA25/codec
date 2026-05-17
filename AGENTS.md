@@ -583,6 +583,21 @@ Canonical state file for AskUserQuestion. Atomic write via tmp+rename. Schema:
 ### MCP HTTP transport blocklist
 `codec_config._HTTP_BLOCKED`: `python_exec`, `terminal`, `process_manager`, `pm2_control`, `ax_control`. These skills are NEVER exposed over HTTP MCP. They remain available locally (voice, chat) and over stdio MCP only.
 
+### `file_write` skill path-blocking (Phase 1 Wave 1, PR-1C — closes D-4)
+
+The MCP-exposed `file_write` skill (`skills/file_write.py`) refuses writes to security-sensitive paths. This is a defense-in-depth layer paired with PR-1A's load-time AST gate: even if `file_write` reached a skill directory, the file wouldn't execute on load — but PR-1C closes the write at the source.
+
+**Blocked paths (case-insensitive, realpath-resolved):**
+- The entire **`~/.codec/`** tree — covers `skills/`, `plugins/`, `auth/`, `oauth_state.json`, `audit.log`, `config.json`, `memory.db`, `agents/<id>/*`, `notifications.json`, `pending_questions.json`, `agent_global_grants.json`, `triggers_killed.json`, plus any future state file added by later phases.
+- The repo's built-in `<repo>/skills/` directory — protects the hash-pinned trusted manifest from PR-1A.
+- The macOS system tree — `/System`, `/Library`, `/usr`, `/bin`, `/sbin`, `/etc`, `/var`, `/dev`, `/Volumes` (realpath-resolved so `/etc → /private/etc` aliases work).
+
+**Audit emission:** every refused write emits a `file_write_blocked` audit event (`source=codec-skill-file-write`, `outcome=error`, `level=warning`, `extra={target_path, requested_path, reason}`) to `~/.codec/audit.log`. Forensic visibility for any MCP-client attempt at a sensitive path.
+
+**Path resolution:** the parent directory is realpath-resolved before the blocklist comparison so symlink-into-blocked-root traversal attempts can't slip through. `/tmp` and `$HOME` are also realpath-resolved in the final sanity check (this fixed a pre-existing bug where macOS's `/tmp → /private/tmp` alias was tripping the `/private` block).
+
+**Contributor note:** users edit `~/.codec/triggers.json` or `~/.codec/config.json` through the dashboard PWA or a direct editor, NOT through `file_write`. Legitimate `file_write` targets are `~/Documents`, `~/Desktop`, `/tmp`, `~/Projects`, `~/codec-workspace`, etc. — the user-facing parts of `$HOME`.
+
 ### Skill creation flow — review-and-approve only (Phase 1 Wave 1, PR-1B — closes D-2 + D-3)
 
 Skill creation is exclusively via the review-and-approve flow:
