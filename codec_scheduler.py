@@ -142,7 +142,13 @@ def _run_crew(sched: dict):
         payload["topic"] = sched["topic"]
 
     title = sched.get("topic", sched["crew"])
-    _headers = {"Content-Type": "application/json", "x-internal": "codec"}
+    # PR-2D (D-11 closure): replace `x-internal: codec` literal with HMAC token.
+    try:
+        from codec_keychain import get_internal_token
+        _ipc_token = get_internal_token() or ""
+    except Exception:
+        _ipc_token = ""
+    _headers = {"Content-Type": "application/json", "x-internal-token": _ipc_token}
     try:
         r = requests.post(
             f"{DASHBOARD_URL}/api/agents/run",
@@ -160,7 +166,7 @@ def _run_crew(sched: dict):
                     time.sleep(5)
                     sr = requests.get(
                         f"{DASHBOARD_URL}/api/agents/status/{job_id}",
-                        headers={"x-internal": "codec"},
+                        headers={"x-internal-token": _ipc_token},
                         timeout=10,
                     )
                     if sr.status_code == 200:

@@ -224,7 +224,7 @@ Mirror the Intake Phase 3 wave pattern. 7 waves planned; sizes are PR-counts, NO
 - PR-2A: D-7 — dashboard default `127.0.0.1` + auto-generated `dashboard_token` + unconditional CSRF
 - PR-2B: D-8 + D-15 — secret storage via macOS Keychain (OAuth tokens + config secrets)
 - PR-2C: D-9 + D-10 — `python_exec` sandbox + `/api/execute` removal-or-strict-consent
-- PR-2D: D-11 — replace `x-internal: codec` header trust with per-process token in `~/.codec/internal_token`
+- PR-2D: D-11 — replace `x-internal: codec` header trust with per-process HMAC token in macOS Keychain ✅ (branch `fix/pr2d-internal-token-replacement`; token never lands on disk in plaintext — `codec_keychain.get_internal_token()` bootstraps to Keychain or 0600 envelope-encrypted fallback)
 - PR-2E: D-12 + D-19 + D-22 — audit log HMAC-chain + secret redaction + chmod 0600
 - PR-2F: D-13 — AppleScript injection fix in `imessage_send`; D-21 — same for `do_screenshot_question`; D-18 — plugin AST validation + thread-timeout
 - PR-2G: D-14 + D-16 + D-20 — path-blocklist hardening across `codec_agent_plan`, `extract_user_paths`, `file_ops`

@@ -17,7 +17,13 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
 
 DASHBOARD = "http://localhost:8090"
-INTERNAL = {"x-internal": "codec"}
+# PR-2D (D-11 closure): replace `x-internal: codec` literal with HMAC token.
+try:
+    from codec_keychain import get_internal_token
+    _IPC_TOKEN = get_internal_token() or ""
+except Exception:
+    _IPC_TOKEN = ""
+INTERNAL = {"x-internal-token": _IPC_TOKEN}
 DB_PATH = os.path.expanduser("~/.codec/memory.db")
 CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
 AUDIT_LOG = os.path.expanduser("~/.codec/audit.log")
@@ -125,7 +131,7 @@ def test_core():
             "Connection: Upgrade\r\n"
             "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
             "Sec-WebSocket-Version: 13\r\n"
-            "x-internal: codec\r\n"
+            f"x-internal-token: {_IPC_TOKEN}\r\n"
             "\r\n"
         )
         s.sendall(ws_req.encode())
