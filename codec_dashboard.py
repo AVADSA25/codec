@@ -131,10 +131,40 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         if any(path.startswith(p) for p in self.PUBLIC_PREFIXES):
             return await call_next(request)
-        # Allow internal localhost requests (scheduler, heartbeat, MCP)
+        # ── Internal IPC short-circuit (PR-2D — closes D-11) ──
+        # Per-process HMAC token replaces the unauthenticated `X-Internal: codec`
+        # literal. Token is generated on first miss + stored in macOS Keychain
+        # (or 0600 fallback file headless), validated constant-time. Any caller
+        # sending the OLD `X-Internal: codec` header alone falls through to
+        # normal auth — the legacy literal is no longer recognized.
         client_ip = request.client.host if request.client else ""
-        if client_ip in ("127.0.0.1", "::1", "localhost") and request.headers.get("x-internal") == "codec":
-            return await call_next(request)
+        if client_ip in ("127.0.0.1", "::1", "localhost"):
+            presented_token = request.headers.get("x-internal-token", "")
+            if presented_token:
+                try:
+                    from codec_keychain import get_internal_token
+                    expected_token = get_internal_token()
+                except Exception:
+                    expected_token = None
+                if expected_token and hmac.compare_digest(presented_token, expected_token):
+                    return await call_next(request)
+                # Token presented but didn't match — audit + fall through to normal auth
+                try:
+                    log_event(
+                        "internal_token_mismatch",
+                        source="codec-dashboard",
+                        message="internal IPC token mismatch",
+                        level="warning",
+                        outcome="denied",
+                        extra={
+                            "path": path,
+                            "method": request.method,
+                            "client_ip": client_ip,
+                            "presented_len": len(presented_token),
+                        },
+                    )
+                except Exception:
+                    pass
         # Allow static assets
         if path.endswith(('.css', '.js', '.png', '.ico', '.svg', '.woff2', '.woff', '.ttf')):
             return await call_next(request)

@@ -78,9 +78,15 @@ def run(task: str = "", context: str = "") -> str:
         results["memory_db"] = f"ERROR ({type(e).__name__})"
 
     # 7. Cortex health (aggregated)
+    # PR-2D (D-11 closure): replace `x-internal: codec` literal with HMAC token.
+    try:
+        from codec_keychain import get_internal_token
+        _ipc_token = get_internal_token() or ""
+    except Exception:
+        _ipc_token = ""
     try:
         req = Request("http://localhost:8090/api/cortex/health",
-                       headers={"x-internal": "codec"})
+                       headers={"x-internal-token": _ipc_token})
         resp = urlopen(req, timeout=5)
         data = json.loads(resp.read().decode())
         results["cortex"] = data

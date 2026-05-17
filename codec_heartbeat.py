@@ -97,9 +97,11 @@ def check_memory_stats():
 
         if db_size_mb > 100:
             try:
+                from codec_keychain import get_internal_token
+                _token = get_internal_token() or ""
                 requests.post("http://localhost:8090/api/notifications",
                               json={"message": f"💾 Memory DB is {db_size_mb:.0f} MB — consider running cleanup", "type": "warning", "source": "heartbeat"},
-                              headers={"x-internal": "codec"},
+                              headers={"x-internal-token": _token},
                               timeout=5)
             except Exception:
                 pass

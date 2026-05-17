@@ -18,7 +18,13 @@ def run(task: str = "", context: str = "") -> str:
     from urllib.error import URLError
 
     base = "http://localhost:8090"
-    headers = {"x-internal": "codec", "Content-Type": "application/json"}
+    # PR-2D (D-11 closure): replace `x-internal: codec` literal with HMAC token.
+    try:
+        from codec_keychain import get_internal_token
+        _ipc_token = get_internal_token() or ""
+    except Exception:
+        _ipc_token = ""
+    headers = {"x-internal-token": _ipc_token, "Content-Type": "application/json"}
 
     task_lower = task.lower().strip()
 
