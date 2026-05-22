@@ -53,7 +53,15 @@ def _qwen_url():
 def _qwen_model():
     return _cfg().get("llm_model", "mlx-community/Qwen3.5-35B-A3B-4bit")
 
-SERPER_API_KEY = _cfg().get("serper_api_key", os.environ.get("SERPER_API_KEY", ""))
+# PR-2B-2 (D-15): Keychain-aware getter (cfg→Keychain migration + env fallback).
+def _serper_api_key() -> str:
+    try:
+        from codec_config import get_serper_api_key
+        return get_serper_api_key()
+    except Exception:
+        return os.environ.get("SERPER_API_KEY", "")
+
+SERPER_API_KEY = _serper_api_key()
 
 # ── HTTP connection pools (reuse TCP connections across calls) ──
 _HTTP_HEADERS = {

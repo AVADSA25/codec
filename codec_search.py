@@ -1,11 +1,12 @@
 """CODEC Search — DuckDuckGo (free, no API key) or Serper (better results, needs key)"""
 import httpx
-import json
 import os
 import re
 import time
 import threading
 
+# Kept for back-compat with any external importer; the serper key is now read
+# via codec_config.get_serper_api_key() (PR-2B-2, Keychain-aware).
 CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
 
 # --- TTL cache for search results ---
@@ -140,9 +141,9 @@ def search(query: str, max_results: int = 10) -> list:
         return cached
 
     try:
-        with open(CONFIG_PATH) as f:
-            cfg = json.load(f)
-        serper_key = cfg.get("serper_api_key", "").strip()
+        # PR-2B-2 (D-15): Keychain-aware getter (cfg→Keychain migration + env).
+        from codec_config import get_serper_api_key
+        serper_key = (get_serper_api_key() or "").strip()
         if serper_key:
             results = search_serper(query, serper_key, max_results)
             _cache_put(cache_key, results)

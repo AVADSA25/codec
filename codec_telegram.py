@@ -57,8 +57,17 @@ def load_config():
 
 def get_telegram_config(cfg):
     tg = cfg.get("telegram", {})
+    # PR-2B-2 (D-15): bot_token sourced via the Keychain-aware getter
+    # (cfg telegram.bot_token → Keychain migration on first call, then
+    # TELEGRAM_BOT_TOKEN env fallback). Falls back to the raw nested cfg
+    # value if codec_config can't be imported (defensive).
+    try:
+        from codec_config import get_telegram_bot_token
+        bot_token = get_telegram_bot_token()
+    except Exception:
+        bot_token = tg.get("bot_token", "")
     return {
-        "bot_token": tg.get("bot_token", ""),
+        "bot_token": bot_token,
         "allowed_chat_ids": tg.get("allowed_chat_ids", []),  # empty = allow all
         "require_trigger": tg.get("require_trigger", False),  # DMs don't need trigger by default
         "max_response_length": tg.get("max_response_length", 4000),
