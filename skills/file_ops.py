@@ -11,10 +11,20 @@ SKILL_TRIGGERS = [
 
 import os, re
 
-# ── Safety: restricted paths ──
-_BLOCKED_PATHS = [
+# ── Safety: restricted paths (D-20 closure, PR-2H) ──
+# Mirrors PR-1C's file_write blocking. The pre-PR-2H blocklist used
+# `path.startswith(bp)` on a realpath but OMITTED the ~/.codec/ tree, so a
+# write to ~/.codec/skills/x.py succeeded → D-1 RCE on restart. PR-2H blocks
+# the WHOLE ~/.codec/ tree + the repo's built-in skills/ dir, realpath-resolved
+# at module load so symlink-into-blocked-root traversal can't slip through.
+#
+# `/private` is deliberately handled via realpath: macOS realpaths /tmp →
+# /private/tmp, so we must NOT blanket-block /private (that would break the
+# legitimate /tmp scratch space). Instead /tmp and $HOME are realpath-resolved
+# and treated as the allowable scope sanity-check.
+_BLOCKED_SYSTEM_ROOTS = [
     "/System", "/Library", "/usr", "/bin", "/sbin", "/etc",
-    "/var", "/private", "/dev", "/Volumes",
+    "/var", "/dev", "/Volumes",
 ]
 _BLOCKED_NAMES = [
     ".ssh", ".gnupg", ".env", "credentials", "secrets",
@@ -25,17 +35,81 @@ _MAX_READ = 10000    # chars
 _MAX_WRITE = 50000   # chars
 
 
+def _build_blocked_roots():
+    """Realpath-resolved blocklist built once at module load. Covers the
+    macOS system tree + the entire ~/.codec/ state dir + the repo skills/
+    dir (hash-pinned in PR-1A; defense in depth here)."""
+    roots = []
+    for p in _BLOCKED_SYSTEM_ROOTS:
+        try:
+            roots.append(os.path.realpath(p))
+        except Exception:
+            roots.append(p)
+    # The whole ~/.codec/ tree — skills, plugins, oauth_state.json, config.json,
+    # audit.log, memory.db, plugins.allowlist, agents/, agent_global_grants.json.
+    try:
+        roots.append(os.path.realpath(os.path.expanduser("~/.codec")))
+    except Exception:
+        pass
+    # The repo's built-in skills/ dir (this file lives in it).
+    try:
+        roots.append(os.path.realpath(os.path.dirname(os.path.abspath(__file__))))
+    except Exception:
+        pass
+    return roots
+
+
+_BLOCKED_ROOTS_REAL = _build_blocked_roots()
+# Public alias for back-compat / introspection.
+_BLOCKED_PATHS = _BLOCKED_ROOTS_REAL
+
+
+def _emit_blocked(target_path, requested_path, reason):
+    """Audit emit for D-20 refusals — forensic visibility for any MCP-client
+    attempt at a sensitive path. Fire-and-forget."""
+    try:
+        from codec_audit import log_event
+        log_event(
+            "file_ops_blocked",
+            source="codec-skill-file-ops",
+            message=f"file_ops refused: {reason}",
+            level="warning",
+            outcome="error",
+            extra={"target_path": str(target_path)[:300],
+                   "requested_path": str(requested_path)[:300],
+                   "reason": reason},
+        )
+    except Exception:
+        pass
+
+
 def _is_safe_path(path):
-    """Reject system paths, hidden credential files, etc."""
-    path = os.path.expanduser(path)
-    path = os.path.realpath(path)
-    for bp in _BLOCKED_PATHS:
-        if path.startswith(bp):
-            return False, f"Blocked: system path ({bp})"
-    base = os.path.basename(path)
+    """Reject system paths, the ~/.codec/ tree, repo skills/, and sensitive
+    credential filenames. Realpath-resolves the candidate (and its parent,
+    for not-yet-existing files) so symlink redirection is caught.
+    Emits `file_ops_blocked` on refusal."""
+    requested = path
+    expanded = os.path.expanduser(path)
+    # The file may not exist yet (write/append) — realpath the parent and
+    # re-join the basename so we still resolve symlinked parents.
+    parent = os.path.dirname(expanded) or "."
+    try:
+        real_parent = os.path.realpath(parent)
+    except Exception:
+        real_parent = parent
+    real = os.path.join(real_parent, os.path.basename(expanded))
+
+    for bp in _BLOCKED_ROOTS_REAL:
+        if real == bp or real.startswith(bp + os.sep):
+            reason = f"system/CODEC path ({bp})"
+            _emit_blocked(real, requested, reason)
+            return False, f"Blocked: {reason}"
+    base = os.path.basename(real)
     for bn in _BLOCKED_NAMES:
         if bn in base.lower():
-            return False, f"Blocked: sensitive file ({bn})"
+            reason = f"sensitive file ({bn})"
+            _emit_blocked(real, requested, reason)
+            return False, f"Blocked: {reason}"
     return True, ""
 
 

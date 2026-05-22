@@ -75,18 +75,15 @@ def test_python_exec_blocks_getattr_reflection():
 
 
 def test_python_exec_blocks_vars_builtins():
-    """`vars(__builtins__)` reflection — `vars` is not in DANGEROUS_CALLS
-    but `__import__` is, and the attempted call resolves to it.
+    """`vars(__builtins__)['__import__']('os')` reflection bypass.
 
-    NOTE: this exact form `vars(__builtins__)['__import__']` only trips
-    the AST if `vars` is in DANGEROUS_CALLS. It currently isn't — the
-    audit D-17 plans to add `vars`. Skip until D-17 lands; verify
-    sandbox-exec still blocks the runtime.
-    """
-    # Not asserting AST refusal here — D-17 closure (later wave) will add
-    # `vars` and `dir` to DANGEROUS_CALLS. For now the sandbox is the
-    # backstop. Document the gap.
-    pass
+    D-17 (PR-2H) added `vars`/`dir` to DANGEROUS_CALLS and a bare
+    `__builtins__` Name check — both now trip the AST gate. This was a
+    placeholder (skipped) until D-17 landed; now it asserts the refusal."""
+    result = python_exec.run(
+        "run python ```\nvars(__builtins__)['__import__']('os')\n```"
+    )
+    assert "Blocked for safety" in result, result
 
 
 def test_python_exec_emits_blocked_audit_event(monkeypatch):
