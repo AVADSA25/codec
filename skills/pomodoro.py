@@ -74,7 +74,7 @@ def run(task, app="", ctx=""):
             if 1 <= n <= 120:
                 minutes = n
                 break
-        except:
+        except Exception:
             pass
 
     started = time.time()

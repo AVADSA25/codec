@@ -280,11 +280,11 @@ def close_session():
             with open(SESSION_ALIVE) as f: pid = int(f.read().strip())
             os.kill(pid, 15)
             print(f"[CODEC] Session process {pid} terminated")
-        except: pass
+        except Exception: pass
         try: os.unlink(SESSION_ALIVE)
-        except: pass
+        except Exception: pass
     try: os.unlink(TASK_QUEUE_FILE)
-    except: pass
+    except Exception: pass
     subprocess.Popen(["osascript", "-e",
         'tell application "Terminal" to close (every window whose name contains "python3.13 /var/folders")'],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -633,7 +633,7 @@ def do_stop_voice():
     if rec_duration < 0.5:
         print(f"[CODEC] Recording too short ({rec_duration:.1f}s) — ignored")
         try: os.unlink(audio)
-        except: pass
+        except Exception: pass
         return
     if os.path.getsize(audio) < 1000:
         try: os.unlink(audio)
@@ -861,7 +861,7 @@ def on_release(key):
         ovl = state.get("overlay_proc")
         if ovl:
             try: ovl.terminate()
-            except: pass
+            except Exception: pass
             state["overlay_proc"] = None
         threading.Thread(target=lambda: subprocess.run(
             ['afplay', '/System/Library/Sounds/Pop.aiff'],

@@ -80,5 +80,5 @@ def run(task, app="", ctx=""):
             # Try open -a as fallback
             subprocess.run(["open", "-a", app_name], capture_output=True, timeout=5)
             return f"Opening {app_name}."
-    except:
+    except Exception:
         return f"Couldn't find {app_name}."

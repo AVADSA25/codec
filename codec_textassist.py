@@ -7,7 +7,7 @@ MODE = sys.argv[1] if len(sys.argv) > 1 else "proofread"
 def get_config():
     try:
         with open(os.path.expanduser("~/.codec/config.json")) as f: return json.load(f)
-    except: return {}
+    except Exception: return {}
 
 def call_qwen(text, mode):
     cfg = get_config()
@@ -109,7 +109,7 @@ try:
     # Kill processing overlay now that we have the result
     if _proc_overlay:
         try: _proc_overlay.terminate()
-        except: pass
+        except Exception: pass
     if MODE in ("explain", "translate"):
         # Show result in a styled floating window (no Terminal)
         title = "CODEC Explain" if MODE == "explain" else "CODEC Translate"
@@ -182,5 +182,5 @@ r.mainloop()
 except Exception:
     if _proc_overlay:
         try: _proc_overlay.terminate()
-        except: pass
+        except Exception: pass
     overlay("Error - check terminal", "#ff3333", 3000)

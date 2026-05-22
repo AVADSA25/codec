@@ -109,7 +109,7 @@ def check_port(port):
         s.connect(("localhost", port))
         s.close()
         return True
-    except:
+    except Exception:
         return False
 
 # ══════════════════════════════════════════════════════════════════════════════

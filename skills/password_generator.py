@@ -14,7 +14,7 @@ def run(task, app="", ctx=""):
             if 4 <= n <= 128:
                 length = n
                 break
-        except:
+        except Exception:
             pass
     chars = string.ascii_letters + string.digits + "!@#$%&*"
     password = ''.join(secrets.choice(chars) for _ in range(length))

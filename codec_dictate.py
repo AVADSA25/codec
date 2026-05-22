@@ -118,7 +118,7 @@ def hide_overlay():
         try:
             overlay_proc.terminate()
             overlay_proc = None
-        except:
+        except Exception:
             pass
 
 # ── SHOW PROCESSING OVERLAY ───────────────────────────────────────────────────
@@ -151,7 +151,7 @@ root.mainloop()
             stderr=subprocess.DEVNULL
         )
         return p
-    except:
+    except Exception:
         return None
 
 # ── LIVE DICTATION (hands-free, double-tap Option) ──────────────────────────
@@ -213,21 +213,21 @@ def _live_record_loop():
                 )
                 if live_stop_event.is_set():
                     try: os.unlink(tmp.name)
-                    except: pass
+                    except Exception: pass
                     break
                 if os.path.exists(tmp.name) and os.path.getsize(tmp.name) >= 1000:
                     try:
                         q.put(tmp.name, timeout=1)
                     except queue.Full:
                         try: os.unlink(tmp.name)
-                        except: pass
+                        except Exception: pass
                 else:
                     try: os.unlink(tmp.name)
-                    except: pass
+                    except Exception: pass
             except Exception as e:
                 print(f"[DICTATE] Producer error: {e}")
                 try: os.unlink(tmp.name)
-                except: pass
+                except Exception: pass
 
     prod = threading.Thread(target=_producer, daemon=True)
     prod.start()
@@ -247,7 +247,7 @@ def _live_record_loop():
                 wf.close()
                 if _np.abs(data).mean() < 150:
                     continue
-            except:
+            except Exception:
                 pass
             with open(path, "rb") as f:
                 r = requests.post(WHISPER_SERVER,
@@ -271,7 +271,7 @@ def _live_record_loop():
             print(f"[DICTATE] Live chunk error: {e}")
         finally:
             try: os.unlink(path)
-            except: pass
+            except Exception: pass
 
     prod.join(timeout=3)
     return full_text.strip()
@@ -312,11 +312,11 @@ def stop_live_dictation():
     # Kill overlay — tkinter mainloop sometimes ignores SIGTERM, so SIGKILL it
     if live_overlay:
         try: live_overlay.terminate()
-        except: pass
+        except Exception: pass
         try: live_overlay.wait(timeout=0.5)
         except Exception:
             try: live_overlay.kill()
-            except: pass
+            except Exception: pass
         live_overlay = None
     # Wait for thread
     if live_thread:
@@ -380,7 +380,7 @@ def transcribe_and_type(audio_path):
         if proc_overlay:
             try:
                 proc_overlay.terminate()
-            except:
+            except Exception:
                 pass
 
         if not text or is_hallucination(text):
@@ -441,12 +441,12 @@ def transcribe_and_type(audio_path):
         if proc_overlay:
             try:
                 proc_overlay.terminate()
-            except:
+            except Exception:
                 pass
     finally:
         try:
             os.unlink(audio_path)
-        except:
+        except Exception:
             pass
 
 # ── KEYBOARD LISTENER ─────────────────────────────────────────────────────────
@@ -469,7 +469,7 @@ def on_press(key):
                 try:
                     recording_proc.terminate()
                     recording_proc.wait(timeout=2)
-                except: pass
+                except Exception: pass
                 recording_proc = None
                 recording_path = None
             hide_overlay()
@@ -549,14 +549,14 @@ def main():
         global recording_proc
         if recording_proc:
             try: recording_proc.terminate(); recording_proc.wait(timeout=2)
-            except: pass
+            except Exception: pass
             recording_proc = None
         hide_overlay()
         if live_active:
             stop_live_dictation()
         for f in _glob.glob(os.path.join(tempfile.gettempdir(), "dictate_*.wav")):
             try: os.unlink(f)
-            except: pass
+            except Exception: pass
     atexit.register(_cleanup)
     import signal
     signal.signal(signal.SIGTERM, lambda *a: (print("[DICTATE] SIGTERM received"), _cleanup(), sys.exit(0)))
