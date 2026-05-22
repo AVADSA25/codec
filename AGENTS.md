@@ -54,7 +54,7 @@ skills/                      71 built-in skill modules
 docs/                        API.md, MCP_HTTP_SETUP.md, CONTEXT_REPORT.md, design docs
 ```
 
-Other engine modules (`codec_overlays`, `codec_metrics`, `codec_logging`, `codec_gdocs`, `codec_google_auth`, `codec_cdp`, `codec_llm_proxy`, `codec_retry`, `codec_alerts`, `codec_search`, `codec_textassist`, `codec_keyboard`, `codec_watcher`, `codec_watchdog`) are internal helpers — read them when you need them, but they're not part of the navigation surface for an agent making structural changes.
+Other engine modules (`codec_overlays`, `codec_metrics`, `codec_logging`, `codec_gdocs`, `codec_google_auth`, `codec_cdp`, `codec_llm_proxy`, `codec_retry`, `codec_alerts`, `codec_search`, `codec_textassist`, `codec_watcher`, `codec_watchdog`) are internal helpers — read them when you need them, but they're not part of the navigation surface for an agent making structural changes. (Keyboard handling — wake word, F13 toggle, F18 voice, double-tap — lives **inline in `codec.py`** in the `codec` PM2 process; the old standalone `codec_keyboard.py` was deleted as a dead duplicate per A-8.)
 
 ## 3. Agent + Crew runtime
 

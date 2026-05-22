@@ -7,10 +7,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 def test_import():
-    try:
-        from codec_keyboard import clean_transcript
-    except ImportError:
-        from codec_config import clean_transcript
+    # A-8 (PR-3): clean_transcript is defined in codec_config; the old
+    # codec_keyboard re-export was deleted along with that dead module.
+    from codec_config import clean_transcript
     assert clean_transcript is not None
 
 

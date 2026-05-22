@@ -55,9 +55,8 @@ Drop it in `~/.codec/skills/` — CODEC loads it on restart.
 ## Project Structure
 
 ```
-codec.py              — Entry point (imports modules)
+codec.py              — Entry point + inline keyboard listener (wake word, F13/F18, double-tap)
 codec_config.py       — Configuration and constants
-codec_keyboard.py     — Keyboard listener and input handling
 codec_dispatch.py     — Skill matching and dispatch
 codec_agent.py        — LLM agent session builder
 codec_overlays.py     — Tkinter overlay popups
