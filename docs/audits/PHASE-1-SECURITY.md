@@ -277,6 +277,9 @@ In addition, **no secret redaction patterns** are applied before writing. `task_
 ### D-13 — AppleScript injection in `imessage_send` recipient field [MEDIUM]
 **Location:** `skills/imessage_send.py:53-73` (`_send`)
 **CWE / OWASP:** CWE-78 OS Command Injection (via AppleScript) / OWASP A03 Injection
+
+> **Closed by PR-2F** (branch `fix/pr2f-applescript-and-plugin-hardening`). `imessage_send._validate_recipient` enforces strict phone/email format before any AppleScript interpolation. Phone regex: `^\+?[1-9]\d{9,14}$` (E.164-ish, 10-15 digits with optional `+`). Email regex: `^[\w.+\-]+@[\w\-]+(?:\.[\w\-]+)+$`. Both anchored — no prefix matches. Length cap 254 (RFC 5321 SMTP). All AppleScript metachars (quotes, newlines, carriage returns, tabs, backslashes, control chars) and the audit's documented breakout (`xx@x.com" of targetService\nactivate application "Calculator"\n...`) are rejected before `osascript` runs; audit emit `imessage_send_blocked` fires on every refusal with reason=`invalid_recipient_format` and `recipient_preview` truncated to 32 chars. Text body escape extended to cover `\\`, `\"`, `\r`, `\n`, `\t` (backslash first so subsequent escapes don't re-escape its own backslash). 32 tests in `tests/test_imessage_send.py`.
+
 **Description:** `recipient` is interpolated into AppleScript WITHOUT escaping (only `text` is escaped at line 54). An attacker who controls the recipient string (e.g., LLM-controlled, or user-typed with adversarial intent) can craft:
 `recipient = 'xx@x.com" of targetService\nactivate application "Calculator"\nset targetBuddy to buddy "yy@y.com'`
 The AppleScript breaks out of the string literal and executes arbitrary AppleScript. The blocker for `osascript -e 'tell application "System Events"` in DANGEROUS_PATTERNS doesn't cover this because the embedded AppleScript can use any app name.
@@ -356,6 +359,16 @@ Plus: `socket` is in DANGEROUS_MODULES, but `urllib.request` is not. `from urlli
 ### D-18 — Plugin lifecycle hooks have no privilege isolation and can suppress audit [MEDIUM]
 **Location:** `codec_hooks.py:265-300` (PluginRegistry.get_fn → exec_module), `codec_hooks.py:302-358` (audit emit helpers)
 **CWE / OWASP:** CWE-269 Improper Privilege Management / OWASP A04 Insecure Design / Agentic A09 Overreliance
+
+> **Closed by PR-2F** (branch `fix/pr2f-applescript-and-plugin-hardening`). Three layers:
+> 1. **SHA-256 allowlist gate.** `~/.codec/plugins.allowlist` (0600, atomic-write) keys plugins by basename → `{sha256, approved_at, approved_by}`. `PluginRegistry.get_fn` computes the file's current SHA-256 and refuses to load (`exec_module` never runs) if the hash isn't in the allowlist OR doesn't match. Refusal emits `plugin_load_blocked` with reason=`not_in_allowlist`, `hash_mismatch`, or `file_unreadable`. Defense-in-depth — `is_dangerous_skill_code` runs additionally for not-allowlisted plugins and its result rides under `extra.detail` so the operator sees both signals when reviewing refusals.
+> 2. **Daemon-thread timeout.** Every hook fire (`pre_tool`, `post_tool`, `on_error`, `on_operation_start`, `on_operation_end`) runs inside a `threading.Thread(daemon=True)` with a hard timeout (default 500ms, configurable via `~/.codec/config.json:plugin_hook_timeout_ms`). On timeout: emit `plugin_hook_timeout` audit, return `None`, calling thread continues (never blocks). Daemon=True so process shutdown isn't held up by a runaway hook.
+> 3. **Grandfather migration.** First scan after PR-2F lands seeds the allowlist with the current hashes of every plugin in `~/.codec/plugins/*.py` (`approved_by: "initial_migration"`, emit `plugin_allowlist_migrated`). Idempotent — once the allowlist file exists, migration is a no-op. Avoids surprising the operator at upgrade time.
+>
+> New skill `plugin_approve` (`SKILL_MCP_EXPOSE=False` — never reachable from claude.ai) is the operator's tool for approving subsequently-added plugins: it computes the file's SHA-256, writes the allowlist entry with `approved_by: "operator"`, clears any prior refusal cache, and emits `plugin_approved`. 17 tests in `tests/test_plugin_registry.py` (gate, mismatch, migration, approve helper, timeout, source-level invariants).
+>
+> **Allowlist is the trust decision, not the AST check.** PR-1A's manifest-pinned skills can use dangerous imports because the operator hash-pinned them; same here — `self_improve.py` plugin imports `os`, `threading` etc., which would fail the AST check, but its hash is in the allowlist so it loads. AST is only consulted to enrich the audit emit for refused plugins.
+
 **Description:** Per CLAUDE.md §3, plugins in `~/.codec/plugins/*.py` are "local Python files curated by the user. No marketplace, no auto-install, no inter-plugin sandbox. Same trust model as skills." They wrap EVERY tool call (`pre_tool`, `post_tool`, `on_error`, `on_operation_start`, `on_operation_end`).
 A malicious plugin can:
 - Mutate `task` / `context` arbitrarily in `pre_tool`. The runner accepts the mutation (codec_hooks.py:478-509) — only "identity fields" (tool_name, correlation_id, etc.) are immutable. So a plugin could rewrite "schedule a meeting" → "rm -rf /" before it reaches `terminal` skill — `is_dangerous` runs on the original task at the dashboard level, but if the plugin mutates between that check and skill execution, the check is bypassed.
@@ -401,6 +414,9 @@ The audit emit path `_emit_hook_fired` / `_emit_hook_error` is robust against ho
 ### D-21 — `do_screenshot_question` interpolates OCR text into AppleScript with minimal escaping [LOW]
 **Location:** `codec.py:799-809`
 **CWE / OWASP:** CWE-78 / Agentic A01 Memory Poisoning
+
+> **Closed by PR-2F** (branch `fix/pr2f-applescript-and-plugin-hardening`). `do_screenshot_question` no longer interpolates the OCR summary into the AppleScript source. The new pattern uses `on run argv` + `item 1 of argv`: Python passes the body as `osascript -e <script> <body>`, AppleScript reads it from `argv[1]` inside the script handler, and the string literally cannot escape its variable context — `"\n display dialog "PWNED"` arrives as a literal AppleScript string, not as additional script source. Tkinter was considered (audit's suggested alternative) but the argv-binding approach kept the existing focus-stealing-friendly dialog behavior intact (matters for the PM2 daemon context). 4 tests in `tests/test_screenshot_question.py` — including a runtime test with an adversarial OCR payload that asserts the script body contains no interpolation of the adversarial text.
+
 **Description:** `summary = ctx[:120].replace('"', '\\"').replace('\n', ' ')` then interpolated into `display dialog "..."` AppleScript. If the screen contains adversarial text (a malicious webpage shows text designed to break out), `\\` and other escape sequences are not handled. AppleScript supports `\r`, `\t`, `\"`, `\\`, and hex escapes — only `"` and `\n` are filtered.
 **Impact:** AppleScript dialog tampering. Low severity because it requires attacker-controlled screen content AND user pressing the screenshot hotkey.
 **Recommended fix:** Use the heredoc / variable-binding AppleScript pattern instead of string interpolation: `set summaryVar to "..." \n display dialog summaryVar`. Or use Python's `tkinter.simpledialog.askstring` instead.

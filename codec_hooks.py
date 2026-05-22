@@ -22,13 +22,18 @@ See docs/PHASE1-STEP2-DESIGN.md for the full contract.
 from __future__ import annotations
 
 import ast
+import hashlib
 import importlib.util
+import json
 import logging
 import os
+import queue
+import stat
 import threading
 import time
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
 from codec_audit import log_event as _log_event, _PREVIEW_MAX, _truncate
@@ -37,6 +42,27 @@ log = logging.getLogger("codec_hooks")
 
 # ── Storage ────────────────────────────────────────────────────────────────────
 _PLUGINS_DIR_DEFAULT = os.path.expanduser("~/.codec/plugins")
+_PLUGINS_ALLOWLIST_DEFAULT = os.path.expanduser("~/.codec/plugins.allowlist")
+
+# PR-2F (D-18): hook timeout default. Set high enough not to false-positive on
+# legitimate hooks (self_improve.py's on_operation_end does a buffer snapshot +
+# spawns a daemon thread for the slow Qwen call — synchronous body is <10ms).
+# Operator can override via ~/.codec/config.json:plugin_hook_timeout_ms.
+_HOOK_TIMEOUT_DEFAULT_S = 0.5
+
+
+def _hook_timeout_seconds() -> float:
+    """Read the hook timeout from config. Falls through to default on any
+    error. Read lazily so config changes take effect on next hook fire
+    (no restart needed for tuning)."""
+    try:
+        from codec_config import cfg
+        ms = cfg.get("plugin_hook_timeout_ms", _HOOK_TIMEOUT_DEFAULT_S * 1000)
+        if isinstance(ms, (int, float)) and ms > 0:
+            return float(ms) / 1000.0
+    except Exception:
+        pass
+    return _HOOK_TIMEOUT_DEFAULT_S
 
 # Lifecycle hook names. AST discovery looks for top-level def's matching
 # any of these. Plugins implement any subset.
@@ -67,6 +93,285 @@ _DEFAULT_PRIORITY = 100
 
 # Default identifier used when a plugin omits PLUGIN_NAME — the file stem.
 _PLUGIN_FILE_SUFFIX = ".py"
+
+
+# ── PR-2F (D-18): SHA-256 allowlist + AST gate ────────────────────────────────
+#
+# Plugins are local Python with full process privileges. Before PR-2F, any
+# file dropped into ~/.codec/plugins/*.py would auto-load on next restart.
+# Now a plugin's SHA-256 must be in `~/.codec/plugins.allowlist` (operator-
+# managed) before `spec.loader.exec_module` runs. Mirrors PR-1A's hash-pinned
+# `skills/.manifest.json` chokepoint: hash-pinned trust IS the security
+# decision, not the AST check.
+#
+# AST check (via `codec_config.is_dangerous_skill_code`) is still run when
+# the file is NOT in the allowlist — but only to enrich the `plugin_load_blocked`
+# audit event with a specific reason ("ast_dangerous: subprocess.run" vs
+# "not_in_allowlist"). Either reason → refuse. Both checks must pass for a
+# plugin to load — hash match OR (well, the hash match alone is sufficient;
+# AST is only run when hash misses, for forensic clarity).
+#
+# Migration: existing plugins at `~/.codec/plugins/*.py` on first run after
+# PR-2F are grandfathered — their current hashes are written to the
+# allowlist with `approved_by: "initial_migration"` and an `info`-level
+# audit event. This avoids surprising the operator on upgrade.
+
+_ALLOWLIST_LOCK = threading.Lock()
+
+
+def _default_allowlist_path_for(plugins_dir: str) -> str:
+    """Derive the allowlist path from the plugins dir. Production:
+    `~/.codec/plugins/` → `~/.codec/plugins.allowlist`. Tests pointing
+    at a tmp plugins dir get a sibling allowlist in the same tmp tree,
+    so they don't touch the operator's real allowlist file."""
+    parent = os.path.dirname(os.path.abspath(plugins_dir.rstrip(os.sep)))
+    return os.path.join(parent, "plugins.allowlist")
+
+
+def _allowlist_path_for(plugins_dir: str) -> Path:
+    """Resolved allowlist path for a given plugins dir."""
+    return Path(_default_allowlist_path_for(plugins_dir))
+
+
+def _read_allowlist(path: Optional[Path] = None) -> Dict[str, Dict[str, Any]]:
+    """Load the allowlist as a dict keyed by plugin filename. Returns {} on
+    any error (missing file, parse error, wrong shape) — fail-closed: no
+    file = no allowed plugins."""
+    p = path if path is not None else Path(_PLUGINS_ALLOWLIST_DEFAULT)
+    if not p.exists():
+        return {}
+    try:
+        raw = p.read_text(encoding="utf-8")
+        obj = json.loads(raw)
+        if not isinstance(obj, dict):
+            log.warning("[plugins] allowlist root is not a dict; treating as empty")
+            return {}
+        # Validate shape — each entry must have a sha256 hex string.
+        clean: Dict[str, Dict[str, Any]] = {}
+        for fname, entry in obj.items():
+            if not isinstance(entry, dict):
+                continue
+            h = entry.get("sha256")
+            if isinstance(h, str) and len(h) == 64 and all(c in "0123456789abcdef" for c in h.lower()):
+                clean[fname] = entry
+        return clean
+    except (OSError, json.JSONDecodeError) as e:
+        log.warning("[plugins] allowlist read failed: %s", e)
+        return {}
+
+
+def _write_allowlist(allowlist: Dict[str, Dict[str, Any]],
+                     path: Optional[Path] = None) -> bool:
+    """Atomic-write the allowlist with 0600 perms. Returns True on success."""
+    p = path if path is not None else Path(_PLUGINS_ALLOWLIST_DEFAULT)
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        tmp = p.with_suffix(p.suffix + ".tmp")
+        tmp.write_text(json.dumps(allowlist, indent=2, sort_keys=True),
+                       encoding="utf-8")
+        os.chmod(tmp, stat.S_IRUSR | stat.S_IWUSR)
+        os.replace(tmp, p)
+        try:
+            os.chmod(p, stat.S_IRUSR | stat.S_IWUSR)
+        except OSError:
+            pass
+        return True
+    except OSError as e:
+        log.warning("[plugins] allowlist write failed: %s", e)
+        return False
+
+
+def _file_sha256(path: str) -> Optional[str]:
+    """SHA-256 hex digest of file contents. None on read error."""
+    try:
+        with open(path, "rb") as f:
+            return hashlib.sha256(f.read()).hexdigest()
+    except OSError:
+        return None
+
+
+def _maybe_grandfather_existing_plugins(plugins_dir: str,
+                                          allowlist_path: Optional[Path] = None) -> None:
+    """One-shot migration: if no allowlist file exists yet AND the plugins
+    dir has .py files, write their current hashes to the allowlist with
+    `approved_by: "initial_migration"`. Idempotent — runs once at the
+    upgrade boundary, then becomes a no-op.
+
+    `allowlist_path` defaults to the sibling of `plugins_dir` (i.e.
+    `<dirname(plugins_dir)>/plugins.allowlist`) so tests pointing at a
+    tmp plugins dir get a tmp allowlist, not the real one."""
+    if allowlist_path is None:
+        allowlist_path = _allowlist_path_for(plugins_dir)
+    if allowlist_path.exists():
+        return
+    if not os.path.isdir(plugins_dir):
+        return
+    pys = [f for f in os.listdir(plugins_dir)
+           if f.endswith(_PLUGIN_FILE_SUFFIX) and not f.startswith("_")]
+    if not pys:
+        # No plugins to grandfather — still create an empty allowlist so
+        # subsequent loads don't re-attempt migration on every restart.
+        _write_allowlist({}, allowlist_path)
+        return
+    seed: Dict[str, Dict[str, Any]] = {}
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    for fname in pys:
+        fpath = os.path.join(plugins_dir, fname)
+        h = _file_sha256(fpath)
+        if h is None:
+            continue
+        seed[fname] = {
+            "sha256": h,
+            "approved_at": now,
+            "approved_by": "initial_migration",
+        }
+    if _write_allowlist(seed, allowlist_path):
+        log.info("[plugins] grandfathered %d existing plugin(s) into allowlist", len(seed))
+        try:
+            _log_event(
+                "plugin_allowlist_migrated", "codec-hooks",
+                f"grandfathered {len(seed)} plugin(s)",
+                extra={"plugin_count": len(seed), "filenames": sorted(seed.keys())},
+                level="info", outcome="ok",
+            )
+        except Exception:
+            pass
+
+
+def _is_plugin_allowed(filepath: str,
+                       allowlist_path: Optional[Path] = None) -> tuple[bool, str]:
+    """Return (allowed, reason). `allowed` True only if the file's current
+    SHA-256 matches an entry in the allowlist keyed by basename. Tamper
+    detection: a previously-approved plugin whose content changed will
+    have a hash mismatch and be refused until re-approved."""
+    if allowlist_path is None:
+        allowlist_path = _allowlist_path_for(os.path.dirname(filepath))
+    fname = os.path.basename(filepath)
+    h = _file_sha256(filepath)
+    if h is None:
+        return False, "file_unreadable"
+    allowlist = _read_allowlist(allowlist_path)
+    entry = allowlist.get(fname)
+    if entry is None:
+        return False, "not_in_allowlist"
+    if entry.get("sha256") != h:
+        return False, "hash_mismatch"
+    return True, ""
+
+
+def _emit_plugin_load_blocked(plugin_name: str, filepath: str,
+                              reason: str, extra_detail: str = "") -> None:
+    """Audit emit for plugin load refusal. Fire-and-forget."""
+    extra: Dict[str, Any] = {
+        "plugin_name": plugin_name,
+        "plugin_path": filepath,
+        "reason": reason,
+    }
+    if extra_detail:
+        extra["detail"] = extra_detail[:200]
+    try:
+        _log_event(
+            "plugin_load_blocked", "codec-hooks",
+            f"Plugin {plugin_name!r} refused: {reason}",
+            extra=extra,
+            level="warning", outcome="error",
+        )
+    except Exception:
+        pass
+
+
+# ── PR-2F (D-18): thread-with-timeout for hook execution ───────────────────────
+#
+# Before PR-2F, hook functions ran in the calling thread. A slow / malicious
+# `pre_tool` could block the entire chat / voice / crew turn. Now every hook
+# fires inside a daemon thread with a hard timeout (default 500ms, configurable
+# via `~/.codec/config.json:plugin_hook_timeout_ms`). On timeout, the calling
+# thread receives a sentinel and the audit log records `plugin_hook_timeout`.
+# The daemon thread keeps running in the background; daemon=True means it
+# doesn't block process shutdown.
+
+
+class _HookTimedOut:
+    """Sentinel returned by `_run_hook_with_timeout` when the timeout
+    elapsed. Distinct from None (which means "no return"); callers check
+    `isinstance(result, _HookTimedOut)` to decide whether to log timeout."""
+    __slots__ = ("hook_name", "plugin_name", "timeout_s")
+
+    def __init__(self, *, hook_name: str, plugin_name: str, timeout_s: float):
+        self.hook_name = hook_name
+        self.plugin_name = plugin_name
+        self.timeout_s = timeout_s
+
+
+def _run_hook_with_timeout(
+    fn: Callable,
+    args: tuple,
+    *,
+    hook_name: str,
+    plugin_name: str,
+    timeout_s: Optional[float] = None,
+) -> tuple[Any, Optional[BaseException]]:
+    """Run `fn(*args)` in a daemon thread with a hard timeout. Returns
+    `(result, exception)`:
+      - on success → `(retval, None)`
+      - on hook exception → `(None, exception)` (caller emits hook_error)
+      - on timeout → `(_HookTimedOut(...), None)` (caller emits plugin_hook_timeout)
+    Never raises. The daemon thread keeps running on timeout; daemon=True
+    so process shutdown isn't blocked.
+    """
+    if timeout_s is None:
+        timeout_s = _hook_timeout_seconds()
+    result_q: "queue.Queue" = queue.Queue(maxsize=1)
+    exc_q: "queue.Queue" = queue.Queue(maxsize=1)
+
+    def _runner():
+        try:
+            result_q.put(fn(*args))
+        except BaseException as e:
+            try:
+                exc_q.put(e)
+            except Exception:
+                pass
+
+    t = threading.Thread(target=_runner, daemon=True,
+                          name=f"codec-hook:{plugin_name}.{hook_name}")
+    t.start()
+    t.join(timeout=timeout_s)
+
+    if t.is_alive():
+        # Abandon — thread keeps running but caller doesn't wait.
+        return _HookTimedOut(
+            hook_name=hook_name, plugin_name=plugin_name,
+            timeout_s=timeout_s,
+        ), None
+    if not exc_q.empty():
+        return None, exc_q.get_nowait()
+    if not result_q.empty():
+        return result_q.get_nowait(), None
+    return None, None
+
+
+def _emit_plugin_hook_timeout(plugin_name: str, hook_name: str,
+                              tool_name: Optional[str], transport: str,
+                              correlation_id: str, timeout_s: float) -> None:
+    """Audit emit for hook timeout. level=warning per Step 2 §7.5 contract
+    (operational signal, not operation failure)."""
+    try:
+        _log_event(
+            "plugin_hook_timeout", "codec-hooks",
+            f"plugin {plugin_name}.{hook_name} exceeded {timeout_s * 1000:.0f}ms",
+            extra={
+                "plugin_name": plugin_name,
+                "hook_name": hook_name,
+                "tool_name": tool_name,
+                "timeout_ms": int(timeout_s * 1000),
+            },
+            level="warning", outcome="error",
+            transport=transport, tool=tool_name or "",
+            correlation_id=correlation_id,
+        )
+    except Exception as e:
+        log.debug("plugin_hook_timeout emit failed: %s", e)
 
 
 # ── HookCtx + HookVeto ─────────────────────────────────────────────────────────
@@ -212,8 +517,14 @@ class PluginRegistry:
     Exposed for tests; production uses the module-level _registry instance.
     """
 
-    def __init__(self, plugins_dir: str):
+    def __init__(self, plugins_dir: str,
+                 allowlist_path: Optional[str] = None):
         self.plugins_dir = plugins_dir
+        # PR-2F: each registry owns its allowlist path. Default derives from
+        # plugins_dir's parent, so tests with tmp plugins dirs get a tmp
+        # allowlist (no pollution of the operator's real ~/.codec/plugins.allowlist).
+        self.allowlist_path = Path(allowlist_path or
+                                     _default_allowlist_path_for(plugins_dir))
         # Sort key: (priority asc, filename asc) per §5.1
         self._plugins: List[_PluginMeta] = []
         # name → loaded module (populated on first fire)
@@ -223,7 +534,13 @@ class PluginRegistry:
         self._lock = threading.Lock()
 
     def scan(self) -> int:
-        """AST-parse every plugin file; cache metadata. Cheap — no imports."""
+        """AST-parse every plugin file; cache metadata. Cheap — no imports.
+
+        PR-2F (D-18): runs the one-shot grandfather migration on first
+        encounter (no allowlist file + plugins dir has .py files →
+        seed allowlist with current hashes). Idempotent — once the
+        allowlist file exists, migration is a no-op."""
+        _maybe_grandfather_existing_plugins(self.plugins_dir, self.allowlist_path)
         plugins: List[_PluginMeta] = []
         if os.path.isdir(self.plugins_dir):
             for fname in sorted(os.listdir(self.plugins_dir)):
@@ -257,13 +574,46 @@ class PluginRegistry:
     def get_fn(self, plugin: _PluginMeta, hook_name: str) -> Optional[Callable]:
         """Lazy-load the plugin module and return the named hook function.
 
-        Returns None on import failure (plugin marked broken) or if the
-        function turns out to not be defined at runtime.
+        PR-2F (D-18): a two-stage gate runs BEFORE `exec_module`:
+          1. SHA-256 hash of the file must match an entry in
+             `~/.codec/plugins.allowlist` keyed by basename.
+          2. If the hash doesn't match (not in allowlist OR content changed),
+             also run `is_dangerous_skill_code` for forensic clarity in the
+             refusal audit event. Either way, refuse the load.
+
+        On refusal the plugin is marked broken and `plugin_load_blocked`
+        is emitted with the specific reason. Returns None.
+
+        On success the module is cached for the process lifetime.
         """
         if plugin.name in self._broken:
             return None
         mod = self._modules.get(plugin.name)
         if mod is None:
+            # ── Two-stage trust gate ──
+            allowed, reason = _is_plugin_allowed(
+                plugin.file_path, self.allowlist_path)
+            if not allowed:
+                # Run AST check too, so the audit event captures the SPECIFIC
+                # dangerous pattern if there is one — helps the operator
+                # decide whether to approve the file.
+                detail = ""
+                try:
+                    with open(plugin.file_path, "r", encoding="utf-8",
+                              errors="ignore") as f:
+                        src = f.read()
+                    from codec_config import is_dangerous_skill_code
+                    dangerous, ast_reason = is_dangerous_skill_code(src)
+                    if dangerous:
+                        detail = f"ast_dangerous: {ast_reason}"
+                except Exception:
+                    pass
+                _emit_plugin_load_blocked(
+                    plugin.name, plugin.file_path, reason, detail,
+                )
+                self._broken.add(plugin.name)
+                return None
+
             try:
                 import sys
                 module_name = f"codec_plugin_{plugin.name}"
@@ -282,7 +632,8 @@ class PluginRegistry:
                     sys.modules.pop(module_name, None)  # roll back on failure
                     raise
                 self._modules[plugin.name] = mod
-                log.info("Lazy-loaded plugin: %s", plugin.name)
+                log.info("Lazy-loaded plugin: %s (sha256 allowlist-approved)",
+                         plugin.name)
             except Exception as e:
                 log.warning("Plugin import error (%s): %s", plugin.name, e)
                 self._broken.add(plugin.name)
@@ -387,25 +738,34 @@ def _emit_tool_vetoed(*, tool_name: str, transport: str, correlation_id: str,
 def _fire_one_pre_tool(plugin: _PluginMeta, ctx: HookCtx) -> Any:
     """Run one plugin's pre_tool. Returns None / dict / HookVeto / sentinel-skip.
 
-    Internal contract: on plugin exception, logs + emits hook_error and
-    returns None (skip — operation continues with unmutated state).
+    PR-2F (D-18): wrapped in daemon-thread timeout. On timeout, emits
+    `plugin_hook_timeout` audit and returns None (operation continues
+    with unmutated state — never block the calling thread on a slow plugin).
     """
     fn = _registry.get_fn(plugin, "pre_tool")
     if fn is None:
         return None
     plugin_ctx = replace(ctx, plugin_name=plugin.name)
     t0 = time.monotonic()
-    try:
-        ret = fn(plugin_ctx)
-    except BaseException as e:
-        elapsed = (time.monotonic() - t0) * 1000.0
+    ret, exc = _run_hook_with_timeout(
+        fn, (plugin_ctx,),
+        hook_name="pre_tool", plugin_name=plugin.name,
+    )
+    elapsed = (time.monotonic() - t0) * 1000.0
+    if isinstance(ret, _HookTimedOut):
+        _emit_plugin_hook_timeout(
+            plugin_name=plugin.name, hook_name="pre_tool",
+            tool_name=ctx.tool_name, transport=ctx.transport,
+            correlation_id=ctx.correlation_id, timeout_s=ret.timeout_s,
+        )
+        return None
+    if exc is not None:
         _emit_hook_error(
             plugin_name=plugin.name, hook_name="pre_tool",
             tool_name=ctx.tool_name, transport=ctx.transport,
-            correlation_id=ctx.correlation_id, duration_ms=elapsed, exc=e,
+            correlation_id=ctx.correlation_id, duration_ms=elapsed, exc=exc,
         )
         return None
-    elapsed = (time.monotonic() - t0) * 1000.0
     mutated = isinstance(ret, dict) and bool(ret)
     vetoed = isinstance(ret, HookVeto)
     if vetoed and ret.plugin_name is None:
@@ -421,22 +781,31 @@ def _fire_one_pre_tool(plugin: _PluginMeta, ctx: HookCtx) -> Any:
 
 
 def _fire_one_post_tool(plugin: _PluginMeta, ctx: HookCtx, result: str) -> Any:
+    """Run one plugin's post_tool. Wrapped in daemon-thread timeout (PR-2F)."""
     fn = _registry.get_fn(plugin, "post_tool")
     if fn is None:
         return None
     plugin_ctx = replace(ctx, plugin_name=plugin.name)
     t0 = time.monotonic()
-    try:
-        ret = fn(plugin_ctx, result)
-    except BaseException as e:
-        elapsed = (time.monotonic() - t0) * 1000.0
+    ret, exc = _run_hook_with_timeout(
+        fn, (plugin_ctx, result),
+        hook_name="post_tool", plugin_name=plugin.name,
+    )
+    elapsed = (time.monotonic() - t0) * 1000.0
+    if isinstance(ret, _HookTimedOut):
+        _emit_plugin_hook_timeout(
+            plugin_name=plugin.name, hook_name="post_tool",
+            tool_name=ctx.tool_name, transport=ctx.transport,
+            correlation_id=ctx.correlation_id, timeout_s=ret.timeout_s,
+        )
+        return None
+    if exc is not None:
         _emit_hook_error(
             plugin_name=plugin.name, hook_name="post_tool",
             tool_name=ctx.tool_name, transport=ctx.transport,
-            correlation_id=ctx.correlation_id, duration_ms=elapsed, exc=e,
+            correlation_id=ctx.correlation_id, duration_ms=elapsed, exc=exc,
         )
         return None
-    elapsed = (time.monotonic() - t0) * 1000.0
     mutated = isinstance(ret, str)
     _emit_hook_fired(
         plugin_name=plugin.name, hook_name="post_tool",
@@ -449,23 +818,32 @@ def _fire_one_post_tool(plugin: _PluginMeta, ctx: HookCtx, result: str) -> Any:
 
 def _fire_one_observe(plugin: _PluginMeta, hook_name: str, ctx: HookCtx,
                       *extra_args: Any) -> None:
-    """Run one observe-only hook (on_error / on_operation_*). Return ignored."""
+    """Run one observe-only hook (on_error / on_operation_*). Return ignored.
+    Wrapped in daemon-thread timeout (PR-2F)."""
     fn = _registry.get_fn(plugin, hook_name)
     if fn is None:
         return
     plugin_ctx = replace(ctx, plugin_name=plugin.name)
     t0 = time.monotonic()
-    try:
-        fn(plugin_ctx, *extra_args)
-    except BaseException as e:
-        elapsed = (time.monotonic() - t0) * 1000.0
+    ret, exc = _run_hook_with_timeout(
+        fn, (plugin_ctx, *extra_args),
+        hook_name=hook_name, plugin_name=plugin.name,
+    )
+    elapsed = (time.monotonic() - t0) * 1000.0
+    if isinstance(ret, _HookTimedOut):
+        _emit_plugin_hook_timeout(
+            plugin_name=plugin.name, hook_name=hook_name,
+            tool_name=ctx.tool_name, transport=ctx.transport,
+            correlation_id=ctx.correlation_id, timeout_s=ret.timeout_s,
+        )
+        return
+    if exc is not None:
         _emit_hook_error(
             plugin_name=plugin.name, hook_name=hook_name,
             tool_name=ctx.tool_name, transport=ctx.transport,
-            correlation_id=ctx.correlation_id, duration_ms=elapsed, exc=e,
+            correlation_id=ctx.correlation_id, duration_ms=elapsed, exc=exc,
         )
         return
-    elapsed = (time.monotonic() - t0) * 1000.0
     _emit_hook_fired(
         plugin_name=plugin.name, hook_name=hook_name,
         tool_name=ctx.tool_name, transport=ctx.transport,
@@ -646,6 +1024,68 @@ def emit_operation_end(
         _fire_one_observe(p, "on_operation_end", ctx)
 
 
+def approve_plugin(filename: str, *, approved_by: str = "operator") -> dict:
+    """Public API for the `plugin_approve` skill (PR-2F, D-18).
+
+    Resolves `filename` to `<plugins_dir>/<filename>`, computes its SHA-256,
+    writes/updates the entry in `~/.codec/plugins.allowlist`, and returns
+    a summary dict: `{ok, sha256, last8, filename, reason}`.
+
+    Caller MUST be the operator (the skill is `SKILL_MCP_EXPOSE=False`).
+    """
+    # Reject path traversal — only accept a basename
+    if "/" in filename or ".." in filename or filename.startswith("."):
+        return {"ok": False, "reason": "invalid_filename: must be a basename"}
+    if not filename.endswith(_PLUGIN_FILE_SUFFIX):
+        return {"ok": False, "reason": f"must end with {_PLUGIN_FILE_SUFFIX}"}
+
+    # Use the singleton registry's plugins_dir + allowlist_path so the
+    # operator can wire in a custom registry (tests do).
+    plugins_dir = _registry.plugins_dir
+    allowlist_path = _registry.allowlist_path
+
+    fpath = os.path.join(plugins_dir, filename)
+    if not os.path.exists(fpath):
+        return {"ok": False, "reason": f"plugin file not found: {filename}"}
+
+    h = _file_sha256(fpath)
+    if h is None:
+        return {"ok": False, "reason": "could not read plugin file"}
+
+    with _ALLOWLIST_LOCK:
+        allowlist = _read_allowlist(allowlist_path)
+        allowlist[filename] = {
+            "sha256": h,
+            "approved_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "approved_by": approved_by,
+        }
+        if not _write_allowlist(allowlist, allowlist_path):
+            return {"ok": False, "reason": "allowlist write failed"}
+
+    # Invalidate the broken-plugin cache so the plugin is re-attempted on
+    # next fire (the operator just approved it; clear the prior refusal).
+    plugin_name = filename[:-len(_PLUGIN_FILE_SUFFIX)]
+    with _registry._lock:
+        _registry._broken.discard(plugin_name)
+        _registry._modules.pop(plugin_name, None)
+
+    try:
+        _log_event(
+            "plugin_approved", "codec-hooks",
+            f"Plugin {filename} approved",
+            extra={"filename": filename, "sha256_last8": h[-8:],
+                   "approved_by": approved_by},
+            level="info", outcome="ok",
+        )
+    except Exception:
+        pass
+
+    return {
+        "ok": True, "sha256": h, "last8": h[-8:],
+        "filename": filename, "approved_by": approved_by,
+    }
+
+
 __all__ = [
     "HookCtx",
     "HookVeto",
@@ -653,4 +1093,5 @@ __all__ = [
     "run_with_hooks",
     "emit_operation_start",
     "emit_operation_end",
+    "approve_plugin",
 ]
