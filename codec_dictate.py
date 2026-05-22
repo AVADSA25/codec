@@ -397,28 +397,27 @@ def transcribe_and_type(audio_path):
             body = text[_draft_match.end():].strip()
             if body:
                 try:
-                    import requests as _req
+                    # A-12 (PR-3E-2): canonical codec_llm.call. Never raises ->
+                    # "" on any failure (non-200, conn error, empty), which maps
+                    # exactly onto the old "use raw body" fallback for every
+                    # non-success branch.
+                    import codec_llm
                     print("[DICTATE] Draft mode — refining with Qwen...")
-                    r = _req.post("http://localhost:8083/v1/chat/completions",
-                        json={"model": "mlx-community/Qwen3.6-35B-A3B-4bit",
-                              "messages": [
-                                  {"role": "system", "content": "Rewrite the user message as a polished, professional message. Output ONLY the final text. No preamble, no explanation."},
-                                  {"role": "user", "content": body}
-                              ],
-                              "max_tokens": 300, "temperature": 0.3,
-                              "chat_template_kwargs": {"enable_thinking": False}},
-                        timeout=15)
-                    if r.status_code == 200:
-                        refined = r.json()["choices"][0]["message"]["content"].strip()
-                        if refined:
-                            text = refined
-                            print(f"[DICTATE] Refined: {text}")
-                        else:
-                            text = body
-                            print("[DICTATE] Qwen returned empty, using raw body")
+                    refined = codec_llm.call(
+                        [
+                            {"role": "system", "content": "Rewrite the user message as a polished, professional message. Output ONLY the final text. No preamble, no explanation."},
+                            {"role": "user", "content": body},
+                        ],
+                        base_url="http://localhost:8083/v1",
+                        model="mlx-community/Qwen3.6-35B-A3B-4bit",
+                        max_tokens=300, temperature=0.3, timeout=15,
+                    )
+                    if refined:
+                        text = refined
+                        print(f"[DICTATE] Refined: {text}")
                     else:
                         text = body
-                        print(f"[DICTATE] Qwen HTTP {r.status_code}, using raw body")
+                        print("[DICTATE] Qwen unavailable or empty, using raw body")
                 except Exception as qe:
                     text = body
                     print(f"[DICTATE] Qwen error: {qe}, using raw body")

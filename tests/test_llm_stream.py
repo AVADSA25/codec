@@ -1,0 +1,250 @@
+"""Tests for PR-3E-2 — A-12 tranche 2: codec_llm.stream() + first migrations.
+
+- codec_llm.stream: canonical SSE streaming caller. Yields RAW content deltas
+  (think-stripping is the caller's job), stops on `data: [DONE]`, tolerates
+  blank/garbage lines, never raises (HTTP/conn error -> empty stream).
+- codec_llm._build_request: shared header/payload builder for call() + stream().
+- Migrations: codec_session.Session.qwen_stream (streaming proof), and the
+  non-streaming trivials codec_compaction.compact_context + codec_dictate.
+
+Reference: docs/PR3E2-LLM-STREAM-TRANCHE2-DESIGN.md (Option 1).
+"""
+from __future__ import annotations
+
+import json
+import sys
+import types
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO))
+
+import codec_llm  # noqa: E402
+
+
+# ── helpers ──────────────────────────────────────────────────────────────────
+
+
+class _StreamResp:
+    """Fake `requests` streaming response usable as a context manager."""
+
+    def __init__(self, status, lines=None, text=""):
+        self.status_code = status
+        self._lines = lines or []
+        self.text = text
+
+    def iter_lines(self):
+        for ln in self._lines:
+            yield ln if isinstance(ln, (bytes, bytearray)) else ln.encode("utf-8")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+def _sse(content):
+    return "data: " + json.dumps({"choices": [{"delta": {"content": content}}]})
+
+
+# ── codec_llm.stream ──────────────────────────────────────────────────────────
+
+
+def test_stream_yields_raw_deltas_and_stops_at_done(monkeypatch):
+    captured = {}
+
+    def fake_post(url, json=None, headers=None, timeout=None, stream=None):
+        captured["url"] = url
+        captured["json"] = json
+        captured["stream_kw"] = stream
+        return _StreamResp(200, lines=[
+            _sse("Hello"),
+            "",                       # blank keepalive — skipped
+            _sse(" <think>plan</think>"),  # raw, NOT stripped by stream()
+            _sse(" world"),
+            "data: [DONE]",
+            _sse(" AFTER-DONE"),      # never reached
+        ])
+
+    import requests
+    monkeypatch.setattr(requests, "post", fake_post)
+    toks = list(codec_llm.stream([{"role": "user", "content": "q"}],
+                                 base_url="http://x/v1", model="m"))
+    assert toks == ["Hello", " <think>plan</think>", " world"]
+    assert captured["url"] == "http://x/v1/chat/completions"
+    assert captured["stream_kw"] is True            # requests stream= kwarg
+    assert captured["json"]["stream"] is True        # payload stream flag
+
+
+def test_stream_skips_blank_and_garbage_lines(monkeypatch):
+    def fake_post(url, json=None, headers=None, timeout=None, stream=None):
+        return _StreamResp(200, lines=[
+            "",                          # blank
+            ": keepalive comment",       # non-data line
+            "data: {not valid json",     # bad JSON -> skipped, no raise
+            _sse(""),                     # empty content delta -> not yielded
+            _sse("ok"),
+            "data: [DONE]",
+        ])
+
+    import requests
+    monkeypatch.setattr(requests, "post", fake_post)
+    assert list(codec_llm.stream([{"role": "user", "content": "q"}],
+                                 base_url="http://x/v1", model="m")) == ["ok"]
+
+
+def test_stream_non_200_returns_empty(monkeypatch):
+    import requests
+    monkeypatch.setattr(requests, "post",
+                        lambda *a, **k: _StreamResp(500, text="boom"))
+    assert list(codec_llm.stream([{"role": "user", "content": "q"}],
+                                 base_url="http://x/v1", model="m")) == []
+
+
+def test_stream_exception_returns_empty(monkeypatch):
+    def boom(*a, **k):
+        raise ConnectionError("down")
+
+    import requests
+    monkeypatch.setattr(requests, "post", boom)
+    assert list(codec_llm.stream([{"role": "user", "content": "q"}],
+                                 base_url="http://x/v1", model="m")) == []
+
+
+def test_stream_auth_header_and_extra_kwargs(monkeypatch):
+    captured = {}
+
+    def fake_post(url, json=None, headers=None, timeout=None, stream=None):
+        captured["headers"] = headers
+        captured["json"] = json
+        return _StreamResp(200, lines=["data: [DONE]"])
+
+    import requests
+    monkeypatch.setattr(requests, "post", fake_post)
+    list(codec_llm.stream([{"role": "user", "content": "q"}],
+                          base_url="http://x/v1", model="m", api_key="k",
+                          extra_kwargs={"top_p": 0.8}))
+    assert captured["headers"]["Authorization"] == "Bearer k"
+    assert captured["json"]["top_p"] == 0.8
+    assert captured["json"]["chat_template_kwargs"] == {"enable_thinking": False}
+
+
+def test_stream_no_auth_without_key(monkeypatch):
+    captured = {}
+
+    def fake_post(url, json=None, headers=None, timeout=None, stream=None):
+        captured["headers"] = headers
+        return _StreamResp(200, lines=["data: [DONE]"])
+
+    import requests
+    monkeypatch.setattr(requests, "post", fake_post)
+    list(codec_llm.stream([{"role": "user", "content": "q"}],
+                          base_url="http://x/v1", model="m"))
+    assert "Authorization" not in captured["headers"]
+
+
+def test_call_and_stream_share_payload_shape(monkeypatch):
+    """call() must NOT carry a stream flag; stream() must. Both share the rest."""
+    seen = {}
+
+    def fake_call_post(url, json=None, headers=None, timeout=None):
+        seen["call"] = json
+        from test_llm_vision_dedup import _Resp  # reuse non-stream fake
+        return _Resp(200, {"choices": [{"message": {"content": "x"}}]})
+
+    def fake_stream_post(url, json=None, headers=None, timeout=None, stream=None):
+        seen["stream"] = json
+        return _StreamResp(200, lines=["data: [DONE]"])
+
+    import requests
+    monkeypatch.setattr(requests, "post", fake_call_post)
+    codec_llm.call([{"role": "user", "content": "q"}], base_url="http://x/v1",
+                   model="m", max_tokens=123, temperature=0.4)
+    monkeypatch.setattr(requests, "post", fake_stream_post)
+    list(codec_llm.stream([{"role": "user", "content": "q"}], base_url="http://x/v1",
+                          model="m", max_tokens=123, temperature=0.4))
+
+    for shape in (seen["call"], seen["stream"]):
+        assert shape["model"] == "m"
+        assert shape["max_tokens"] == 123 and shape["temperature"] == 0.4
+        assert shape["chat_template_kwargs"] == {"enable_thinking": False}
+    assert "stream" not in seen["call"]      # parity with PR-3E call()
+    assert seen["stream"]["stream"] is True
+
+
+# ── codec_session.Session.qwen_stream migration ───────────────────────────────
+
+
+def _session_stub(qwen_call_ret="FALLBACK", fb_flag=None):
+    def _qc(messages):
+        if fb_flag is not None:
+            fb_flag["hit"] = True
+        return qwen_call_ret
+    return types.SimpleNamespace(
+        qwen_base_url="http://x/v1", qwen_model="m", llm_api_key="",
+        llm_kwargs={}, qwen_call=_qc,
+    )
+
+
+def test_qwen_stream_consumes_codec_llm_and_strips_think(monkeypatch, capsys):
+    import codec_session
+    monkeypatch.setattr(codec_llm, "stream",
+                        lambda *a, **k: iter(["Hel", "lo", " <think>x</think>"]))
+    stub = _session_stub()
+    out = codec_session.Session.qwen_stream(stub, [{"role": "user", "content": "q"}])
+    assert out == "Hello"                     # strip_think on accumulated full
+    assert "Hello" in capsys.readouterr().out  # deltas written live to stdout
+
+
+def test_qwen_stream_falls_back_on_empty_stream(monkeypatch):
+    import codec_session
+    monkeypatch.setattr(codec_llm, "stream", lambda *a, **k: iter([]))
+    fb = {}
+    stub = _session_stub(qwen_call_ret="NONSTREAM", fb_flag=fb)
+    out = codec_session.Session.qwen_stream(stub, [{"role": "user", "content": "q"}])
+    assert out == "NONSTREAM" and fb["hit"] is True
+
+
+# ── codec_compaction.compact_context migration ────────────────────────────────
+
+
+def _msgs(n):
+    return [{"role": "user" if i % 2 == 0 else "assistant",
+             "content": f"message number {i}"} for i in range(n)]
+
+
+def test_compaction_uses_codec_llm(monkeypatch):
+    import codec_compaction
+    monkeypatch.setattr(codec_llm, "call", lambda *a, **k: "A crisp summary.")
+    out = codec_compaction.compact_context(_msgs(8), max_recent=3)
+    assert "A crisp summary." in out
+    assert "[SUMMARY OF EARLIER CONVERSATION]" in out
+
+
+def test_compaction_fallback_on_empty(monkeypatch):
+    import codec_compaction
+    monkeypatch.setattr(codec_llm, "call", lambda *a, **k: "")
+    out = codec_compaction.compact_context(_msgs(8), max_recent=3)
+    assert "Previous context:" in out          # rule-based fallback summary
+
+
+# ── source-level migration invariants ─────────────────────────────────────────
+
+
+def test_session_qwen_stream_uses_codec_llm_stream():
+    src = (REPO / "codec_session.py").read_text()
+    assert "codec_llm.stream(" in src
+    assert ".iter_lines(" not in src           # inline SSE loop gone (call, not prose)
+
+
+def test_compaction_uses_codec_llm_call():
+    src = (REPO / "codec_compaction.py").read_text()
+    assert "codec_llm.call(" in src
+    assert "httpx.post(" not in src            # inline POST gone
+
+
+def test_dictate_uses_codec_llm_call():
+    src = (REPO / "codec_dictate.py").read_text()
+    assert "codec_llm.call(" in src
+    assert "localhost:8083/v1/chat/completions" not in src  # inline URL gone

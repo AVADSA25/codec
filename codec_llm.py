@@ -23,7 +23,7 @@ from __future__ import annotations
 import logging
 import re
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 
 log = logging.getLogger("codec.llm")
 
@@ -55,6 +55,37 @@ def extract_content(response_json: Dict[str, Any]) -> str:
     return ""
 
 
+def _build_request(
+    messages: List[Dict[str, Any]],
+    *,
+    model: str,
+    api_key: str,
+    max_tokens: int,
+    temperature: float,
+    enable_thinking: bool,
+    extra_kwargs: Optional[Dict[str, Any]],
+    stream: bool = False,
+) -> tuple[Dict[str, str], Dict[str, Any]]:
+    """Build the (headers, payload) for an OpenAI-style chat/completions request.
+    Shared by call() and stream() so headers/auth/payload shape never drift.
+    The `stream` flag is applied LAST so extra_kwargs can't clobber it."""
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = "Bearer " + api_key
+    payload: Dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "chat_template_kwargs": {"enable_thinking": enable_thinking},
+    }
+    if extra_kwargs:
+        payload.update(extra_kwargs)
+    if stream:
+        payload["stream"] = True
+    return headers, payload
+
+
 def call(
     messages: List[Dict[str, Any]],
     *,
@@ -76,18 +107,11 @@ def call(
     Never raises — network/parse errors are logged and yield "".
     """
     import requests
-    headers = {"Content-Type": "application/json"}
-    if api_key:
-        headers["Authorization"] = "Bearer " + api_key
-    payload: Dict[str, Any] = {
-        "model": model,
-        "messages": messages,
-        "max_tokens": max_tokens,
-        "temperature": temperature,
-        "chat_template_kwargs": {"enable_thinking": enable_thinking},
-    }
-    if extra_kwargs:
-        payload.update(extra_kwargs)
+    headers, payload = _build_request(
+        messages, model=model, api_key=api_key, max_tokens=max_tokens,
+        temperature=temperature, enable_thinking=enable_thinking,
+        extra_kwargs=extra_kwargs,
+    )
 
     attempts = max(1, retries)
     url = base_url.rstrip("/") + "/chat/completions"
@@ -106,3 +130,64 @@ def call(
             if attempt < attempts - 1:
                 time.sleep(2 ** attempt)
     return ""
+
+
+def stream(
+    messages: List[Dict[str, Any]],
+    *,
+    base_url: str,
+    model: str,
+    api_key: str = "",
+    max_tokens: int = 500,
+    temperature: float = 0.7,
+    timeout: float = 120.0,
+    enable_thinking: bool = False,
+    extra_kwargs: Optional[Dict[str, Any]] = None,
+) -> Iterator[str]:
+    """POST with `stream=True` and yield the RAW assistant content deltas in
+    order. Centralizes the SSE plumbing: header/payload build (shared with
+    call()), `data: ` framing, the `[DONE]` sentinel, `choices[0].delta.content`
+    extraction, and per-chunk parse tolerance.
+
+    Think-stripping is intentionally NOT done here — callers that show tokens
+    live (e.g. codec_session.qwen_stream) strip `<think>` on the accumulated
+    result, and the dashboard owns its own cross-chunk tag machine. Never
+    raises: on connect/HTTP/parse error it logs and stops yielding, so the
+    caller sees a short/empty stream and applies its own fallback.
+    """
+    import json as _json
+    import requests
+    headers, payload = _build_request(
+        messages, model=model, api_key=api_key, max_tokens=max_tokens,
+        temperature=temperature, enable_thinking=enable_thinking,
+        extra_kwargs=extra_kwargs, stream=True,
+    )
+    url = base_url.rstrip("/") + "/chat/completions"
+    try:
+        with requests.post(url, json=payload, headers=headers,
+                           timeout=timeout, stream=True) as r:
+            if r.status_code != 200:
+                log.warning("LLM stream %s returned %s: %s",
+                            url, r.status_code, getattr(r, "text", "")[:200])
+                return
+            for line in r.iter_lines():
+                if not line:
+                    continue
+                if isinstance(line, (bytes, bytearray)):
+                    line = line.decode("utf-8", "replace")
+                if not line.startswith("data: "):
+                    continue
+                data = line[6:]
+                if data.strip() == "[DONE]":
+                    return
+                try:
+                    delta = (_json.loads(data).get("choices", [{}])[0]
+                             .get("delta", {}).get("content", ""))
+                except Exception as e:
+                    log.warning("LLM stream chunk parse failed: %s", e)
+                    continue
+                if delta:
+                    yield delta
+    except Exception as e:
+        log.warning("LLM stream call failed: %s", e)
+        return
