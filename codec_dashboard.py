@@ -29,7 +29,8 @@ from routes._shared import (
 from codec_audit import log_event, STEP_BUDGET_EXHAUSTED
 
 from pydantic import BaseModel, Field
-from typing import Optional, List
+# (A-18, PR-3G: `from typing import Optional, List` removed — Optional is already
+# imported above; List was only used by the 9 deleted unused response models.)
 
 
 # ── Pydantic Response Models ───────────────────────────────────────────
@@ -38,51 +39,6 @@ class HealthResponse(BaseModel):
     status: str = Field(description="Service status", example="ok")
     service: str = Field(description="Service name", example="CODEC Dashboard")
     timestamp: str = Field(description="ISO 8601 timestamp")
-
-class StatusResponse(BaseModel):
-    running: bool = Field(description="Whether CODEC main process is running")
-    pm2_status: Optional[str] = Field(None, description="PM2 process status")
-
-class SkillItem(BaseModel):
-    name: str = Field(description="Skill identifier")
-    description: str = Field(description="Human-readable description")
-    triggers: List[str] = Field(description="Trigger phrases")
-
-class ConversationItem(BaseModel):
-    id: int
-    session_id: str
-    timestamp: str
-    role: str = Field(description="'user' or 'assistant'")
-    content: str
-
-class ScheduleItem(BaseModel):
-    id: str = Field(description="Unique schedule ID")
-    name: str = Field(description="Schedule name")
-    cron: str = Field(description="Cron expression")
-    command: str = Field(description="Command to execute")
-    enabled: bool = Field(default=True)
-
-class ServiceStatus(BaseModel):
-    running: bool
-    last_tick: Optional[str] = None
-    errors: int = 0
-
-class CommandRequest(BaseModel):
-    command: str = Field(description="Command text to execute")
-    source: str = Field(default="api", description="Request source identifier")
-
-class ChatRequest(BaseModel):
-    message: str = Field(default="", description="User message text")
-    messages: Optional[list] = Field(None, description="Full conversation history")
-    session_id: Optional[str] = Field(None, description="Session ID for context")
-
-class AgentRunRequest(BaseModel):
-    crew: str = Field(description="Crew name from registry")
-    task: str = Field(default="", description="Task description")
-    context: Optional[str] = Field(None, description="Additional context")
-
-class ErrorResponse(BaseModel):
-    error: str = Field(description="Error message")
 
 
 app = FastAPI(

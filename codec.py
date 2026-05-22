@@ -74,7 +74,9 @@ from codec_core import (
     strip_think, is_draft, init_db, save_task, get_memory, get_recent_conversations,
     loaded_skills, load_skills, run_skill,
     transcribe, speak_text, focused_app, get_text_dialog,
-    terminal_session_exists, close_session,
+    terminal_session_exists,
+    # A-14 (PR-3G): `close_session` import dropped — codec.py defines its own
+    # local close_session() (below) that shadowed this import, making it dead.
 )
 from codec_agent import run_session_in_terminal
 

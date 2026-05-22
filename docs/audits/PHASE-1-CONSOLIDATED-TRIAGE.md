@@ -242,7 +242,7 @@ Mirror the Intake Phase 3 wave pattern. 7 waves planned; sizes are PR-counts, NO
 - PR-3D: A-5 + A-6 + A-7 — extract helpers from the 3 monolithic functions (`_dispatch_inner`, `chat_completion`, `Agent.run`)
 - PR-3E: A-11 + A-12 — unify vision + 51-site `chat/completions` through `codec_llm_proxy`
 - PR-3F (optional, large): A-19 — bridge unification (iMessage + Telegram → `BridgeRouter`)
-- PR-3G: small misc — A-8 (codec_keyboard), A-9 (DISABLED overlay), A-10 (run_session_module), A-13 (dashboard pattern blocker), A-14 (close_session shadow), A-15 (config_version), A-18 (unused Pydantic models), A-20 (inline sqlite)
+- PR-3G: small misc ✅ (branch `fix/pr3g-small-misc-cleanup`) — closed A-9 (DISABLED overlay, ~90 LOC), A-10 (run_session_module, 33 LOC + orphan `import sys`), A-14 (close_session shadow import), A-18 (9 unused Pydantic models + dead typing import). A-13 (dashboard pattern blocker) verified **already closed by PR-2C**. 6 regression tests; zero net-new ruff (net −); full suite 1344 passing. **Deferred from this batch (each needs its own focused PR):** A-8 (codec_keyboard.py 398 LOC — verify-first delete-or-migrate decision), A-15 (config_version — additive migration feature touching `load_config`), A-20 (inline sqlite in the live dispatch path — reliability fix needing a CodecMemory method).
 
 **Rationale:** Audit A is the broadest in scope — clean up patterns and dead code. PR-3A alone deletes ~730 LOC and improves the first-impression of the most-read file.
 
