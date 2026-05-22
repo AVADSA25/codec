@@ -239,6 +239,15 @@ def _qwen_model() -> str:
         return "mlx-community/Qwen3.6-35B-A3B-4bit"
 
 
+def _qwen_base() -> str:
+    """Base URL (no /chat/completions) for codec_llm.call — call-time resolved."""
+    try:
+        from codec_config import QWEN_BASE_URL
+        return QWEN_BASE_URL
+    except Exception:
+        return "http://localhost:8083/v1"
+
+
 QWEN_URL = _qwen_url()
 QWEN_MODEL = _qwen_model()
 QWEN_TIMEOUT = 60
@@ -306,28 +315,23 @@ def _qwen_chat(user_prompt: str, system_prompt: str = "",
 
     URL + model resolved at call time so config.json changes are picked
     up without a process restart."""
-    import requests
-    payload = {
-        "model": _qwen_model(),
-        "messages": [
-            {"role": "system", "content": system_prompt or ""},
-            {"role": "user",   "content": user_prompt},
-        ],
-        "max_tokens": max_tokens,
-        "temperature": 0.2,
-    }
+    # A-12 (PR-3E-2c): canonical codec_llm.call(raise_on_error=True). Adapter
+    # maps codec_llm.LLMError -> the public QwenUnavailableError so the daemon's
+    # retry/abort logic (except QwenUnavailableError) is unchanged. Kept parallel
+    # with codec_agent_plan._qwen_chat.
+    import codec_llm
     try:
-        r = requests.post(_qwen_url(), json=payload, timeout=QWEN_TIMEOUT)
-    except requests.exceptions.ConnectionError as e:
-        raise QwenUnavailableError(f"qwen3.6 unreachable: {e}")
-    except requests.exceptions.Timeout:
-        raise QwenUnavailableError("qwen3.6 request timed out")
-    if r.status_code != 200:
-        raise QwenUnavailableError(f"qwen3.6 returned {r.status_code}")
-    try:
-        return r.json()["choices"][0]["message"]["content"]
-    except (KeyError, json.JSONDecodeError) as e:
-        raise QwenUnavailableError(f"qwen3.6 returned malformed response: {e}")
+        return codec_llm.call(
+            [
+                {"role": "system", "content": system_prompt or ""},
+                {"role": "user",   "content": user_prompt},
+            ],
+            base_url=_qwen_base(), model=_qwen_model(),
+            max_tokens=max_tokens, temperature=0.2,
+            timeout=QWEN_TIMEOUT, raise_on_error=True,
+        )
+    except codec_llm.LLMError as e:
+        raise QwenUnavailableError(f"qwen3.6 unavailable: {e}") from e
 
 
 def _qwen_next_action(plan_dict: Dict[str, Any], checkpoint: Dict[str, Any],

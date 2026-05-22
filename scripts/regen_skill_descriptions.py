@@ -53,19 +53,15 @@ Return ONLY the new description sentence, nothing else."""
 
 
 def _llm(prompt: str) -> str:
-    import requests
-    r = requests.post(
-        f"{QWEN_BASE_URL}/chat/completions",
-        json={
-            "model": QWEN_MODEL,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.2,
-            "max_tokens": 80,
-        },
-        timeout=60,
-    )
-    r.raise_for_status()
-    return r.json()["choices"][0]["message"]["content"].strip().strip('"').strip()
+    # A-12 (PR-3E-2c): canonical codec_llm.call(raise_on_error=True). Fail-loud
+    # preserved (LLMError propagates like the old raise_for_status, and an empty
+    # 200 now raises instead of writing an empty description). Gains <think> strip.
+    import codec_llm
+    return codec_llm.call(
+        [{"role": "user", "content": prompt}],
+        base_url=QWEN_BASE_URL, model=QWEN_MODEL,
+        max_tokens=80, temperature=0.2, timeout=60, raise_on_error=True,
+    ).strip('"').strip()
 
 
 def _extract_meta(text: str) -> dict:

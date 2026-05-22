@@ -249,6 +249,15 @@ def _qwen_model() -> str:
         return "mlx-community/Qwen3.6-35B-A3B-4bit"
 
 
+def _qwen_base() -> str:
+    """Base URL (no /chat/completions) for codec_llm.call — call-time resolved."""
+    try:
+        from codec_config import QWEN_BASE_URL
+        return QWEN_BASE_URL
+    except Exception:
+        return "http://localhost:8083/v1"
+
+
 QWEN_URL = _qwen_url()       # back-compat — module-level constant for tests
 QWEN_MODEL = _qwen_model()   # back-compat
 QWEN_TIMEOUT = 60  # seconds
@@ -268,33 +277,27 @@ def _qwen_chat(user_prompt: str, system_prompt: str = "",
     assistant's content string. Raises QwenUnavailableError on
     network failure or non-2xx response.
 
-    URL + model resolved at call time via _qwen_url() / _qwen_model()
+    URL + model resolved at call time via _qwen_base() / _qwen_model()
     so they pick up ~/.codec/config.json:llm_base_url + :llm_model
     rather than the deploy-time hardcoded values."""
-    import requests  # lazy import — avoid forcing requests on test machines without it
-
-    payload = {
-        "model": _qwen_model(),
-        "messages": [
-            {"role": "system", "content": system_prompt or ""},
-            {"role": "user",   "content": user_prompt},
-        ],
-        "max_tokens": max_tokens,
-        "temperature": 0.2,
-    }
+    # A-12 (PR-3E-2c): canonical codec_llm.call(raise_on_error=True) replaces the
+    # inline POST + per-failure raises. The adapter maps codec_llm.LLMError onto
+    # the public QwenUnavailableError, so callers' `except QwenUnavailableError`
+    # is unchanged. (Now also strips <think> + enable_thinking=False — the
+    # downstream JSON parse is more robust for it.)
+    import codec_llm
     try:
-        r = requests.post(_qwen_url(), json=payload, timeout=QWEN_TIMEOUT)
-    except requests.exceptions.ConnectionError as e:
-        raise QwenUnavailableError(f"qwen3.6 unreachable: {e}")
-    except requests.exceptions.Timeout:
-        raise QwenUnavailableError("qwen3.6 request timed out")
-    if r.status_code != 200:
-        raise QwenUnavailableError(f"qwen3.6 returned {r.status_code}: {r.text[:200]}")
-    try:
-        data = r.json()
-        return data["choices"][0]["message"]["content"]
-    except (KeyError, json.JSONDecodeError) as e:
-        raise QwenUnavailableError(f"qwen3.6 returned malformed response: {e}")
+        return codec_llm.call(
+            [
+                {"role": "system", "content": system_prompt or ""},
+                {"role": "user",   "content": user_prompt},
+            ],
+            base_url=_qwen_base(), model=_qwen_model(),
+            max_tokens=max_tokens, temperature=0.2,
+            timeout=QWEN_TIMEOUT, raise_on_error=True,
+        )
+    except codec_llm.LLMError as e:
+        raise QwenUnavailableError(f"qwen3.6 unavailable: {e}") from e
 
 
 # ── Plan drafting ─────────────────────────────────────────────────────────────
