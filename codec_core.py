@@ -55,8 +55,26 @@ def is_draft(t):
 def needs_screen(t): return any(k in t.lower() for k in SCREEN_KEYWORDS)
 
 # ── MEMORY ────────────────────────────────────────────────────────────────────
-def init_db():
+def _db_connect():
+    """Open a connection to the CODEC DB with WAL + busy_timeout (A-20).
+
+    Before this, codec_core's session helpers used a bare
+    `sqlite3.connect(DB_PATH)` with no pragmas — under concurrent writes
+    (Phase 3 agent runner + voice handler) that risks `database is locked`.
+    WAL lets readers and a writer coexist; busy_timeout=5000 makes a
+    contended writer wait up to 5s instead of erroring immediately. Matches
+    `codec_memory.CodecMemory` and `routes/_shared.get_db()`."""
     c = sqlite3.connect(DB_PATH)
+    try:
+        c.execute("PRAGMA journal_mode=WAL")
+        c.execute("PRAGMA busy_timeout=5000")
+    except sqlite3.Error:
+        pass  # pragma failures shouldn't break the connection
+    return c
+
+
+def init_db():
+    c = _db_connect()
     c.execute("CREATE TABLE IF NOT EXISTS sessions (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, task TEXT, app TEXT, response TEXT, user_id TEXT DEFAULT 'default')")
     c.execute("CREATE TABLE IF NOT EXISTS conversations (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, timestamp TEXT, role TEXT, content TEXT, user_id TEXT DEFAULT 'default')")
     c.execute("CREATE TABLE IF NOT EXISTS corrections (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, original TEXT, corrected TEXT, context TEXT, user_id TEXT DEFAULT 'default')")
@@ -72,13 +90,35 @@ def init_db():
     c.commit(); c.close()
 
 def save_task(task, app, user_id="default"):
-    c = sqlite3.connect(DB_PATH)
+    c = _db_connect()
     cur = c.execute("INSERT INTO sessions (timestamp,task,app,response,user_id) VALUES (?,?,?,?,?)", (datetime.now().isoformat(), task[:200], app, "", user_id))
     rid = cur.lastrowid; c.commit(); c.close(); return rid
 
+
+def update_session_response(rid, response, user_id="default"):
+    """Set the `response` column for a session row (A-20).
+
+    Replaces the inline `sqlite3.connect(DB_PATH); UPDATE sessions ...` block
+    that codec.py's voice handler used — that bypassed the WAL/busy_timeout
+    setup and risked `database is locked` under concurrent writes. `response`
+    is truncated to 500 chars to match the prior inline behavior. Never
+    raises — DB write failures are logged, not propagated (the caller already
+    spoke the answer; a failed log-write must not crash the turn)."""
+    if rid is None:
+        return False
+    try:
+        c = _db_connect()
+        c.execute("UPDATE sessions SET response=? WHERE id=?", (str(response)[:500], rid))
+        c.commit()
+        c.close()
+        return True
+    except sqlite3.Error as e:
+        log.warning("update_session_response failed for id=%s: %s", rid, e)
+        return False
+
 def get_memory(n=5, user_id=None):
     try:
-        c = sqlite3.connect(DB_PATH)
+        c = _db_connect()
         if user_id is not None:
             rows = c.execute("SELECT timestamp,task,app,response FROM sessions WHERE user_id=? ORDER BY id DESC LIMIT ?", (user_id, n)).fetchall()
         else:
@@ -96,7 +136,7 @@ def get_memory(n=5, user_id=None):
 
 def get_recent_conversations(n=10, user_id=None):
     try:
-        c = sqlite3.connect(DB_PATH)
+        c = _db_connect()
         if user_id is not None:
             rows = c.execute("SELECT role, content FROM conversations WHERE user_id=? ORDER BY id DESC LIMIT ?", (user_id, n)).fetchall()
         else:
