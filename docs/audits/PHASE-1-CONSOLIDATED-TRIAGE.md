@@ -236,7 +236,7 @@ Mirror the Intake Phase 3 wave pattern. 7 waves planned; sizes are PR-counts, NO
 ### Wave 3 — Code quality + dead code (target: 1 week)
 **Findings:** all 22 in Audit A
 **PR count estimate:** 4-5
-- PR-3A: A-1 + A-2 — delete the ~733 LOC of dead `build_session_script` + `skills/codec.py` fork. **High-leverage**: investors and contributors will read these files first.
+- PR-3A: A-1 + A-2 — delete the ~733 LOC of dead `build_session_script` + `skills/codec.py` fork. **High-leverage**: investors and contributors will read these files first. ✅ (branch `fix/pr3a-delete-dead-build-session-script`; verify-first dead-code trace confirmed both unreachable before deletion; codec.py orphan removed 1170→894 LOC + skills/codec.py fork deleted = ~734 LOC; `codec_core.build_session_script` deprecated copy KEPT per A-1; 1325 passing, fixed a pre-existing test, zero new failures)
 - PR-3B: A-3 + A-22 — rewrite the 21 + 50 silent-except sites with proper narrow-except + `log_event` audit
 - PR-3C: A-4 + A-16 + A-17 + A-21 — skill-loader unification (delete `codec_core.loaded_skills` path) + wire `WAKE_PHRASES` and `DRAFT_KEYWORDS_CFG` + remove dead `AGENT_NAME` constant
 - PR-3D: A-5 + A-6 + A-7 — extract helpers from the 3 monolithic functions (`_dispatch_inner`, `chat_completion`, `Agent.run`)
