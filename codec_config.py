@@ -289,24 +289,226 @@ DANGEROUS_PATTERNS = [
 ]
 
 
-def is_dangerous(cmd):
-    """Check if a command matches any dangerous pattern.
-    Uses word-boundary regex for alphanumeric patterns and substring
-    matching for patterns with special characters.
+# ── D-6 closure (PR-2G): hardened dangerous-command detection ─────────────────
+#
+# `is_dangerous` is a CONFIRMATION-TRIGGER heuristic / typo-catcher — it is NOT
+# a complete security boundary. The audit (D-6) found the old fixed-pattern
+# blocker had a 45% bypass rate (19/42 red-team variants). This rewrite closes
+# all 19 by (1) normalizing the command first and (2) running layered category
+# checks instead of exact-string matching.
+#
+# The REAL security boundaries remain:
+#   - `_HTTP_BLOCKED` / `_STDIO_BLOCKED` (terminal never reachable over MCP)
+#   - the Step 3 strict-consent gate (literal-verb confirmation for destructive)
+#   - `terminal` skill `SKILL_MCP_EXPOSE=False`
+# A pattern matcher is at best a typo-catcher; do NOT rely on it as the only gate.
+
+# Sensitive path fragments — reading, writing, moving, or exfiltrating any of
+# these warrants confirmation regardless of which binary is used. Closes the
+# info-disclosure / exfil / audit-tamper bypasses (variants 14, 33, 34, 36,
+# 37, 38, 41).
+_SENSITIVE_PATH_FRAGMENTS = (
+    "/etc/passwd", "/etc/shadow", "/etc/sudoers", "/etc/master.passwd",
+    "/.ssh", "id_rsa", "id_ed25519", "id_dsa", "id_ecdsa",
+    "/.aws/credentials", "/.aws/config", "/.gnupg", "/.config/gh",
+    "/library/keychains", "/.codec/", "oauth_state", "audit.log",
+    "secrets.enc", "secret.key", "plugins.allowlist", "memory.db",
+    "/.bash_history", "/.zsh_history",
+)
+
+# Binaries that should always require confirmation when they LEAD the command.
+# Closes binary-level bypasses (diskutil variants, chflags, ln -s, etc.).
+_DANGEROUS_LEAD_BINARIES = frozenset({
+    "rm", "rmdir", "unlink", "shred", "srm", "trash",
+    "dd", "mkfs", "newfs", "diskutil", "fdisk", "format", "hdiutil",
+    "kill", "killall", "pkill", "shutdown", "reboot", "halt", "init",
+    "sudo", "su", "doas",
+    "chmod", "chown", "chgrp", "chflags", "xattr",
+    "launchctl", "csrutil", "nvram", "bless", "scutil", "pmset", "spctl",
+    "defaults", "networksetup", "systemsetup", "dscl", "diskutil",
+    "ln",  # symlink redirection (variant 14)
+})
+
+# Leading wrappers stripped before identifying the "real" lead binary, so
+# `sudo rm`, `env rm`, `nohup rm`, `time rm`, `nice rm` all resolve to `rm`.
+_LEAD_WRAPPERS = frozenset({
+    "sudo", "doas", "env", "command", "builtin", "exec", "nohup",
+    "time", "nice", "ionice", "stdbuf", "setsid", "caffeinate",
+})
+
+# Network-fetch binaries — flagged only when combined with a pipe-to-shell,
+# a sensitive path, or an upload/POST flag (plain GETs stay allowed for UX).
+_NETWORK_BINARIES = ("curl", "wget", "nc", "ncat", "telnet", "ftp", "scp",
+                     "rsync", "tftp")
+_UPLOAD_FLAGS = ("-d @", "--data @", "-d@", "--data-binary @", "-t ",
+                 "--upload-file", "-f @", "--form")
+
+# Inline interpreter exec strings — running code from a string, not a file.
+_INLINE_EXEC = ("python -c", "python3 -c", "python2 -c",
+                "perl -e", "perl -n", "ruby -e", "node -e", "node --eval",
+                "bash -c", "sh -c", "zsh -c", "ruby -ropen-uri")
+
+# Encoding / eval evasion — decode-then-run chains (variants 13, 20).
+_ENCODING_EVAL = ("base64 -d", "base64 --decode", "base64 -di", "eval ",
+                  "$(", "`", "| base64", "|base64", "xxd -r")
+
+# Pipe-to-interpreter (checked AFTER pipe-spacing normalization → `|bash`).
+_PIPE_TO_INTERP = ("|bash", "|sh", "|zsh", "|python", "|python3", "|perl",
+                   "|ruby", "|node", "|php", "|osascript")
+
+# Destructive flags that are dangerous regardless of the (possibly hidden)
+# binary — `-rf /`, `-rf ~`, `-rf *` (variant 11, shell-expansion-hidden rm),
+# `-delete` (find primary, variant 4), `--remove-files` (tar, variant 6).
+_DESTRUCTIVE_FLAGS = ("-rf /", "-rf ~", "-rf *", "-rf .", "-fr /", "-fr ~",
+                      "-fr *", "-rf --no-preserve-root", "--no-preserve-root",
+                      "--remove-files", "-delete")
+
+# osascript driving a destructive app action — broadened beyond the legacy
+# hardcoded "System Events" pattern (variant 24: Finder delete).
+_OSASCRIPT_DESTRUCTIVE_VERBS = ("delete", "to delete", "remove", "erase",
+                                "move to trash", "empty trash", "quit app",
+                                "rm ", "do shell script")
+
+# Env-var secret disclosure — `echo $SECRET_KEY` and friends (variant 35).
+_SECRET_ENV_HINTS = ("secret", "token", "password", "passwd", "api_key",
+                     "apikey", "private_key", "access_key", "credential")
+
+
+def _normalize_command(cmd: str) -> str:
+    """Normalize a command for matching. Closes whitespace / backslash /
+    pipe-spacing bypasses (variants 4, 11, 18, 27, 42):
+      - lowercase
+      - strip backslash-escapes (`\\ ` → ` `, `\\t` → ` `, stray `\\`)
+      - collapse all whitespace runs (incl. tabs/newlines) to single spaces
+      - remove spaces immediately around pipes so `x | bash` == `x|bash`
     """
     import re
-    cmd_lower = cmd.lower()
-    for p in DANGEROUS_PATTERNS:
-        p_lower = p.lower()
-        # Patterns that start/end with word characters can use word boundaries
-        if p_lower[0].isalnum() and p_lower[-1].isalnum():
-            if re.search(r'\b' + re.escape(p_lower) + r'\b', cmd_lower):
+    s = cmd.lower()
+    # Drop backslash-escapes: `\<char>` → `<char>` (so `rm\ -rf` → `rm -rf`),
+    # and bare trailing backslashes vanish.
+    s = re.sub(r"\\(.)", r"\1", s)
+    s = s.replace("\\", "")
+    # Collapse all whitespace (tabs, newlines, multiple spaces) to one space.
+    s = re.sub(r"\s+", " ", s)
+    # Remove spaces around pipes so `curl x | bash` and `curl x|bash` match alike.
+    s = re.sub(r"\s*\|\s*", "|", s)
+    return s.strip()
+
+
+def _lead_binary(normalized: str) -> str:
+    """Return the effective leading binary, stripping wrappers (sudo/env/...),
+    leading `VAR=value` assignments, and a leading backslash (alias bypass)."""
+    # Split on common command separators; take the first segment.
+    import re
+    first = re.split(r"[;&|]", normalized, maxsplit=1)[0].strip()
+    tokens = first.split()
+    while tokens:
+        tok = tokens[0].lstrip("\\")  # `\rm` → `rm`
+        # Skip leading VAR=value env assignments (e.g. `rm=rm` after lowercase)
+        if "=" in tok and not tok.startswith("-") and "/" not in tok.split("=", 1)[0]:
+            tokens = tokens[1:]
+            continue
+        if tok in _LEAD_WRAPPERS:
+            tokens = tokens[1:]
+            continue
+        # Strip a leading path so `/bin/rm` → `rm`
+        return tok.rsplit("/", 1)[-1]
+    return ""
+
+
+def is_dangerous(cmd):
+    """Heuristic check: should this command require user confirmation (or be
+    blocked, in terminal.py)? Returns True for anything that destroys data,
+    tampers with the system, touches a sensitive path, exfiltrates over the
+    network, or runs code from an encoded/inline string.
+
+    Hardened in PR-2G (D-6 closure) — see the module comment above. NOT a
+    complete security boundary; it's a confirmation-trigger heuristic.
+
+    Never raises — malformed input returns False rather than erroring.
+    """
+    import re
+    try:
+        if not cmd or not isinstance(cmd, str) or not cmd.strip():
+            return False
+        norm = _normalize_command(cmd)
+        if not norm:
+            return False
+
+        # ── Layer A: legacy exact patterns (kept; now run on normalized text) ──
+        for p in DANGEROUS_PATTERNS:
+            p_lower = _normalize_command(p) if (" " in p or "|" in p) else p.lower()
+            if not p_lower:
+                continue
+            if p_lower[0].isalnum() and p_lower[-1].isalnum():
+                if re.search(r"\b" + re.escape(p_lower) + r"\b", norm):
+                    return True
+            else:
+                if p_lower in norm:
+                    return True
+
+        # ── Layer B: dangerous leading binary (after wrapper/alias stripping) ──
+        lead = _lead_binary(norm)
+        if lead in _DANGEROUS_LEAD_BINARIES:
+            return True
+
+        # ── Layer C: sensitive path access (read / write / move / exfil) ──
+        for frag in _SENSITIVE_PATH_FRAGMENTS:
+            if frag in norm:
                 return True
-        else:
-            # Special-char patterns (fork bombs, pipes, etc.) use substring match
-            if p_lower in cmd_lower:
+
+        # ── Layer D: pipe-to-interpreter (pipe spacing already normalized) ──
+        for p in _PIPE_TO_INTERP:
+            if p in norm:
                 return True
-    return False
+
+        # ── Layer E: encoding / eval evasion ──
+        for p in _ENCODING_EVAL:
+            if p in norm:
+                return True
+
+        # ── Layer F: inline interpreter exec strings ──
+        for p in _INLINE_EXEC:
+            if p in norm:
+                return True
+
+        # ── Layer G: destructive flags regardless of (hidden) binary ──
+        for p in _DESTRUCTIVE_FLAGS:
+            if p in norm:
+                return True
+
+        # ── Layer H: network exfil (curl/wget + sensitive path | pipe | upload) ──
+        # (plain GETs without those signals stay allowed — UX guard)
+        first_tok = norm.split(" ", 1)[0].lstrip("\\").rsplit("/", 1)[-1]
+        if first_tok in _NETWORK_BINARIES:
+            if any(uf in norm for uf in _UPLOAD_FLAGS):
+                return True
+            # sensitive path / pipe already covered by Layers C/D, but a
+            # network binary writing to a redirect or fetching a script is
+            # still worth confirming when piped — covered by D. Plain GET → ok.
+
+        # ── Layer I: env-var secret disclosure (echo $SECRET_KEY) ──
+        if first_tok in ("echo", "printenv", "env"):
+            # Look for $VAR or ${VAR} references whose name hints at a secret.
+            for m in re.findall(r"\$\{?([a-z_][a-z0-9_]*)", norm):
+                if any(h in m for h in _SECRET_ENV_HINTS):
+                    return True
+
+        # ── Layer J: kill with a negative pid (kill -9 -1 = whole process grp) ──
+        if lead in ("kill",) or first_tok == "kill":
+            if re.search(r"kill\b.*\s-\d", norm):
+                return True
+
+        # ── Layer K: osascript driving a destructive app action ──
+        if "osascript" in norm:
+            for verb in _OSASCRIPT_DESTRUCTIVE_VERBS:
+                if verb in norm:
+                    return True
+
+        return False
+    except Exception:
+        # Fail-safe: never let the blocker itself crash the caller.
+        return False
 
 
 def is_dangerous_skill_code(code: str) -> tuple[bool, str]:
