@@ -139,6 +139,8 @@ Both scan `SKILLS_DIR` independently, so a skill file is loaded twice in differe
 
 ### A-16 — `codec.py` ignores `WAKE_PHRASES` config and hardcodes `_WAKE_KEYWORDS` with a duplicate entry [MEDIUM]
 **Location:** `codec.py:973`
+
+> **Closed by PR-3C** (branch `fix/pr3c-wire-config-knobs`). The inline `_WAKE_KEYWORDS` list (with the duplicate `"kodak"`) was replaced by a module-level deduped `_WAKE_KEYWORD_DEFAULTS` tuple + a testable `_is_wake_utterance(text)` helper. **Semantic correction over the audit's literal suggestion:** `WAKE_PHRASES` are multi-word phrases (`"hey codec"`, and the generic `"hey"`) while `_WAKE_KEYWORDS` are single fuzzy ASR tokens substring-matched against Whisper output — a naive swap would either miss homophone variants or false-wake on a bare `"hey"`. So `_is_wake_utterance` matches (1) homophone keyword substrings (legacy behavior, deduped) OR (2) configured `WAKE_PHRASES` substrings **guarded to ≥5 chars** so generic short entries can't false-trigger on ordinary speech. A user who customizes `wake_phrases` now actually gets picked up (e.g. `"jarvis online"`). `WAKE_PHRASES` is now imported into codec.py + used. 7 tests in `tests/test_config_wiring.py` (dedup, homophone match, custom-phrase match, no-false-wake on ordinary speech + bare "hey", empty-input safety, source invariant).
 **Description:** `_WAKE_KEYWORDS = ["codec", "codex", "kodak", "kodec", "kodak", "co-dec", "caudec", "codag"]` — note `"kodak"` appears twice. `codec_config.WAKE_PHRASES` (defaults to `['hey codec', 'hey', 'okay codec', 'hey codex', 'hey coda', 'hey queue']`) is never read inside the wake-word listener in codec.py. The legacy `skills/codec.py:335` (A-2 dead module) is the only file that actually uses `WAKE_PHRASES`. Tests reference `WAKE_PHRASES` (`tests/test_state_machine.py:135`) as if it were the active list.
 **Impact:** A user who customizes `wake_phrases` in `~/.codec/config.json` finds it has zero effect because codec.py uses a hard-coded list. The "kodak" duplicate is harmless but signals copy-paste origin.
 **Recommended fix:** Replace the hardcoded list with `from codec_config import WAKE_PHRASES`. Strip duplicates with `set()`. Add a unit test that customizes WAKE_PHRASES and verifies the wake-word matcher picks it up.
@@ -146,6 +148,8 @@ Both scan `SKILLS_DIR` independently, so a skill file is loaded twice in differe
 
 ### A-17 — `DRAFT_KEYWORDS_CFG` declared in codec.py:34 but never used [LOW]
 **Location:** `codec.py:34`
+
+> **Closed by PR-3C** (branch `fix/pr3c-wire-config-knobs`) via option (a), the user-respecting fix. `codec_core.is_draft` now checks the built-in `DRAFT_KEYWORDS` AND a lazily-read `_user_draft_keywords()` (from `cfg.get("draft_keywords", [])`, lowercased, malformed entries tolerated) — so a user's `draft_keywords` override in `~/.codec/config.json` now actually takes effect. The dead `DRAFT_KEYWORDS_CFG = _cfg.get("draft_keywords", [])` line in codec.py was removed (the wiring lives in codec_core now, reaching all is_draft callers, not just codec.py). 4 tests in `tests/test_config_wiring.py` (built-in match, user-configured match, malformed-config tolerance, dead-line removed).
 **Description:** `DRAFT_KEYWORDS_CFG = _cfg.get("draft_keywords", [])` — declared at module load, never referenced again. The `is_draft()` function (imported from `codec_core`) uses its own internal `codec_core.DRAFT_KEYWORDS` list. So user-supplied `draft_keywords` overrides don't reach the production code path.
 **Impact:** Documented config knob (per `setup_codec.py` and config example) has no effect.
 **Recommended fix:** Either (a) wire `DRAFT_KEYWORDS_CFG` into `is_draft()` by having `codec_core` accept user overrides, or (b) delete line 34 and remove `draft_keywords` from `config.json.example`. Option (a) is the user-respecting fix.
@@ -178,6 +182,8 @@ Both scan `SKILLS_DIR` independently, so a skill file is loaded twice in differe
 
 ### A-21 — `AGENT_NAME` in codec_config.py is declared but never read [LOW]
 **Location:** `codec_config.py:25` (`AGENT_NAME = cfg.get('agent_name', 'C')`)
+
+> **Closed by PR-3C** (branch `fix/pr3c-wire-config-knobs`). Deleted the dead `AGENT_NAME = cfg.get('agent_name', 'C')` constant (verified no importer — only its own declaration appeared in a repo-wide grep; the `agent_name` config key is still read inline where needed via `cfg.get('agent_name', ...)`). `ASSISTANT_NAME` + `USER_NAME` (both genuinely used) are kept. 2 tests in `tests/test_config_wiring.py` (AGENT_NAME removed, the other two kept).
 **Description:** Greps for `AGENT_NAME` show only the declaration; no consumer. The config key `agent_name` IS read elsewhere via `cfg.get("agent_name", ...)` directly (e.g. `codec_agent.py:40`, `codec_slash_commands.py:345`, `codec_dashboard.py:555`) — so the module-level constant is genuinely dead.
 **Impact:** Minor — only 1 line. But it triggers the "dead config key" investigation. Note `ASSISTANT_NAME` (line 26) IS used (`codec_voice.py:300`, `codec_watcher.py:26`), `USER_NAME` (line 27) IS used. Only `AGENT_NAME` is dead at module level.
 **Recommended fix:** Either delete `AGENT_NAME = cfg.get('agent_name', 'C')` or replace the inline `cfg.get('agent_name', ...)` usages with `from codec_config import AGENT_NAME`.
