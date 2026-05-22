@@ -24,15 +24,19 @@ def call_qwen(text, mode):
         "translate": "You are a translator. Translate the following text into English. No matter what language the input is — Ukrainian, Spanish, French, Russian, Chinese, Arabic, anything — always translate to English. Output ONLY the translated English text, nothing else.",
         "prompt": "You are a prompt engineer. Rewrite the following text to be a clear, optimized prompt for an AI language model. Make it specific, structured, and effective. Remove ambiguity, add context where helpful, and ensure the intent is crystal clear. Output ONLY the optimized prompt, nothing else."
     }
-    payload = {"model": model, "messages": [
-        {"role": "system", "content": prompts.get(mode, prompts["proofread"])},
-        {"role": "user", "content": text}
-    ], "max_tokens": 4000, "temperature": 0.3, "stream": False,
-    "chat_template_kwargs": {"enable_thinking": False}}
-    payload.update(kwargs)
-    r = requests.post(f"{base}/chat/completions", json=payload, timeout=60)
-    result = r.json()["choices"][0]["message"]["content"].strip()
-    result = re.sub(r'<think>[\s\S]*?</think>', '', result).strip()
+    # A-12 (PR-3E-2c): canonical codec_llm.call(raise_on_error=True). Fail-loud
+    # is required here — the caller's except shows an Error overlay; never-raise
+    # would paste an empty result over the user's selection. codec_llm strips
+    # <think>; the `### FINAL ANSWER:` marker is textassist-specific so it stays.
+    import codec_llm
+    result = codec_llm.call(
+        [
+            {"role": "system", "content": prompts.get(mode, prompts["proofread"])},
+            {"role": "user", "content": text},
+        ],
+        base_url=base, model=model, max_tokens=4000, temperature=0.3,
+        extra_kwargs=kwargs, timeout=60, raise_on_error=True,
+    )
     return re.sub(r'###\s*FINAL ANSWER:\s*', '', result).strip()
 
 def overlay(text, color, duration):

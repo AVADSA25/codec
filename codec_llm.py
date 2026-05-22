@@ -27,6 +27,16 @@ from typing import Any, Dict, Iterator, List, Optional
 
 log = logging.getLogger("codec.llm")
 
+
+class LLMError(Exception):
+    """Raised by ``call(raise_on_error=True)`` on any non-success outcome —
+    non-200 (after retries), a request exception (after retries), or a 200 with
+    empty/unparseable content. The default ``raise_on_error=False`` keeps the
+    never-raise → "" contract that the streaming/best-effort callers rely on.
+    Fail-loud callers (agent_plan/runner, textassist, the regen script) opt in
+    and map this onto their own error handling."""
+
+
 _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
 
 
@@ -98,13 +108,21 @@ def call(
     retries: int = 1,
     enable_thinking: bool = False,
     extra_kwargs: Optional[Dict[str, Any]] = None,
+    raise_on_error: bool = False,
 ) -> str:
     """POST `messages` to `<base_url>/chat/completions` and return the parsed,
-    `<think>`-stripped assistant text (or "" on failure).
+    `<think>`-stripped assistant text.
 
     `retries` includes the first attempt (retries=3 → up to 3 tries with
     exponential 2**n backoff between them, matching codec_session.qwen_call).
-    Never raises — network/parse errors are logged and yield "".
+
+    Error contract:
+    - `raise_on_error=False` (default): never raises — network/parse errors and
+      empty/unparseable 200s are logged and yield "".
+    - `raise_on_error=True`: raises `LLMError` on EVERY non-success outcome
+      (non-200 after retries, request exception after retries, or a 200 with
+      empty/unparseable content). For fail-loud callers that must not silently
+      proceed on an empty answer.
     """
     import requests
     headers, payload = _build_request(
@@ -115,6 +133,7 @@ def call(
 
     attempts = max(1, retries)
     url = base_url.rstrip("/") + "/chat/completions"
+    last_error: Optional[Exception] = None
     for attempt in range(attempts):
         try:
             r = requests.post(url, json=payload, headers=headers, timeout=timeout)
@@ -122,13 +141,21 @@ def call(
                 resp = extract_content(r.json())
                 if resp:
                     return resp
-                # 200 but empty/odd shape — don't retry, nothing more to get.
+                # 200 but empty/odd shape — nothing more to get; don't retry.
+                if raise_on_error:
+                    raise LLMError("LLM returned empty or unparseable content")
                 return ""
+            last_error = LLMError(f"LLM call returned {r.status_code}: {r.text[:200]}")
             log.warning("LLM call %s returned %s: %s", url, r.status_code, r.text[:200])
+        except LLMError:
+            raise  # empty-200 in raise mode — propagate, don't swallow as a retry
         except Exception as e:
+            last_error = e
             log.warning("LLM call attempt %d/%d failed: %s", attempt + 1, attempts, e)
             if attempt < attempts - 1:
                 time.sleep(2 ** attempt)
+    if raise_on_error:
+        raise LLMError(f"LLM call failed after {attempts} attempt(s): {last_error}")
     return ""
 
 
