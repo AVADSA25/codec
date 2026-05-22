@@ -256,47 +256,29 @@ SAFETY RULES:
         )
 
     def qwen_stream(self, messages):
-        import requests
+        # A-12 (PR-3E-2): canonical codec_llm.stream replaces the inline SSE
+        # POST + iter_lines + delta parse. stream() yields RAW deltas (it never
+        # raises), so we keep the live stdout write here and strip_think() the
+        # accumulated result — exact parity. An empty stream (non-200, conn
+        # error, or no content) falls back to the migrated non-streaming
+        # qwen_call (slightly broader than the old non-200-only fallback).
+        import codec_llm
         try:
-            headers = {"Content-Type": "application/json"}
-            if self.llm_api_key:
-                headers["Authorization"] = "Bearer " + self.llm_api_key
-            payload = {
-                "model": self.qwen_model,
-                "messages": messages,
-                "max_tokens": 500,
-                "temperature": 0.5,
-                "stream": True,
-            }
-            payload.update(self.llm_kwargs)
-            r = requests.post(
-                self.qwen_base_url + "/chat/completions",
-                json=payload,
-                headers=headers,
-                timeout=90,
-                stream=True,
-            )
-            if r.status_code != 200:
-                return self.qwen_call(messages)
             full = ""
-            for line in r.iter_lines():
-                if not line:
-                    continue
-                line = line.decode("utf-8")
-                if line.startswith("data: "):
-                    d = line[6:]
-                    if d.strip() == "[DONE]":
-                        break
-                    try:
-                        delta = json.loads(d).get("choices", [{}])[0].get("delta", {}).get("content", "")
-                        if delta:
-                            sys.stdout.write(delta)
-                            sys.stdout.flush()
-                            full += delta
-                    except Exception as e:
-                        log.warning(f"Stream chunk parse failed: {e}")
+            got = False
+            for delta in codec_llm.stream(
+                messages, base_url=self.qwen_base_url, model=self.qwen_model,
+                api_key=self.llm_api_key, max_tokens=500, temperature=0.5,
+                timeout=90, extra_kwargs=self.llm_kwargs,
+            ):
+                got = True
+                sys.stdout.write(delta)
+                sys.stdout.flush()
+                full += delta
             print()
-            return strip_think(full).strip()
+            if got:
+                return strip_think(full).strip()
+            return self.qwen_call(messages)
         except Exception as e:
             log.warning(f"Streaming LLM call failed, falling back to non-streaming: {e}")
             return self.qwen_call(messages)

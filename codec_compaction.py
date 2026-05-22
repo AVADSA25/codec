@@ -49,19 +49,13 @@ def compact_context(recent_messages: list, max_recent: int = 5, max_summary_toke
 
     summary = None
     try:
-        import httpx
-        base_url = _LLM_BASE_URL
-        model = _LLM_MODEL
-        api_key = _LLM_API_KEY
-        llm_kwargs = _LLM_KWARGS
-
-        headers = {"Content-Type": "application/json"}
-        if api_key:
-            headers["Authorization"] = f"Bearer {api_key}"
-
-        payload = {
-            "model": model,
-            "messages": [
+        # A-12 (PR-3E-2): canonical codec_llm.call replaces the inline httpx
+        # POST + parse. Never raises -> "" on failure, which the fallback below
+        # already handles. (Also now sends enable_thinking=False + strips any
+        # <think> leak, so summaries are slightly cleaner than the old path.)
+        import codec_llm
+        summary = codec_llm.call(
+            [
                 {
                     "role": "system",
                     "content": (
@@ -72,19 +66,11 @@ def compact_context(recent_messages: list, max_recent: int = 5, max_summary_toke
                 },
                 {"role": "user", "content": old_text},
             ],
-            "max_tokens": max_summary_tokens,
-            "temperature": 0.1,
-        }
-        payload.update(llm_kwargs)
-
-        r = httpx.post(
-            f"{base_url}/chat/completions",
-            json=payload,
-            headers=headers,
-            timeout=15,
+            base_url=_LLM_BASE_URL, model=_LLM_MODEL, api_key=_LLM_API_KEY,
+            max_tokens=max_summary_tokens, temperature=0.1, timeout=15,
+            extra_kwargs=_LLM_KWARGS,
         )
-        if r.status_code == 200:
-            summary = r.json()["choices"][0]["message"]["content"].strip()
+        if summary:
             log.info(f"Context compacted: {len(old_messages)} old msgs → {len(summary)} char summary")
     except Exception as e:
         log.warning(f"Compaction LLM failed, using fallback: {e}")

@@ -1,6 +1,6 @@
 # PR-3E-2 — A-12 tranche 2: `codec_llm.stream()` + migrate remaining `chat/completions` sites (DESIGN)
 
-**Status:** APPROVED — **Option 1** chosen (keystone `stream()` + `codec_session.qwen_stream` proof + non-streaming core trivials: compaction, textassist, dictate, regen script). Implementing (TDD). See §4.
+**Status:** IMPLEMENTED — **Option 1**. Shipped: `codec_llm.stream()` (sync generator, raw deltas, never-raises) + `_build_request` shared by `call()`/`stream()`; migrated `codec_session.qwen_stream` (streaming proof), `codec_compaction.compact_context`, `codec_dictate` draft-refine. **textassist + regen deferred to 2c** (raise-on-error contract — see refinement note in §4). 14 new tests (`tests/test_llm_stream.py`), full suite zero new failures.
 **Finding:** A-12 (continuation). PR-3E shipped `codec_llm.call()` (non-streaming) + migrated 2 sites. This designs the **streaming** keystone `codec_llm.stream()` and the phased migration of the **22 remaining text-chat sites**.
 **Wave:** 3. Hottest path in the repo → design-first + small reviewable tranches, never a big-bang.
 
