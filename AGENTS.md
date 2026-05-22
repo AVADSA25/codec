@@ -761,8 +761,14 @@ This is the chokepoint defense against the four enabling-path findings (D-2 `/ap
 ### Skill self-improvement
 `codec_self_improve.py` drafts skill proposals into `~/.codec/skill_proposals/YYYY-MM-DD/<name>.md`. **Never auto-deploys.** Human review required before promoting to `~/.codec/skills/`.
 
-### Dangerous command guard (voice/chat)
-`codec.py` maintains a hardcoded blocklist (`rm -rf`, `sudo`, `shutdown`, `killall`, `dd`, `diskutil erase`, `curl|bash`, etc.). Flagged commands prompt for explicit confirmation. Every flagged command is logged.
+### Dangerous command guard (voice/chat) — hardened in PR-2G (closes D-6)
+`codec_config.is_dangerous(cmd)` flags commands that warrant confirmation (dashboard/session paths) or a hard block (`terminal` skill). PR-2G rewrote it from exact-string matching (which the audit found 45% bypassable) to **normalize-then-layered-categories**:
+
+- **`_normalize_command`** lowercases, strips backslash-escapes (`rm\ -rf` → `rm -rf`), collapses all whitespace, and removes pipe spacing (`x | bash` ≡ `x|bash`).
+- **Layers:** legacy `DANGEROUS_PATTERNS` (kept) · dangerous lead-binary after `sudo`/`env`/`\`/`VAR=`/path stripping · sensitive-path access (`/etc/passwd`, `~/.ssh`, `id_rsa`, `~/.codec/`, `oauth_state`, `audit.log`, ...) · pipe-to-interpreter · encoding/eval evasion (`base64 -d`, `eval`, `$(`) · inline `-c`/`-e` exec strings · destructive flags (`-rf /`, `-delete`, `--remove-files`) · network exfil (curl/wget + upload flag) · `echo $SECRET_KEY` env disclosure · `kill` negative-pid · osascript destructive verbs.
+- **Bypass rate 45% → 0%** across the 42 red-team variants in `docs/audits/PHASE-1-SECURITY.md`. Pinned by `tests/test_dangerous_command.py` (77 tests, incl. a 25-command safe-list UX guard so the blocker doesn't over-trigger on `ls`/`git status`/`cat README.md`/plain GETs).
+
+**This is a confirmation-trigger heuristic / typo-catcher, NOT a complete security boundary.** The real boundaries are `codec_config._HTTP_BLOCKED` / `_STDIO_BLOCKED` (terminal never reachable over MCP), the Step 3 strict-consent gate (literal-verb confirmation for destructive ops), and `terminal` `SKILL_MCP_EXPOSE=False`. Do not rely on `is_dangerous` as the only gate. `is_dangerous` never raises — malformed input returns `False`.
 
 ### 8-step execution cap
 No agent task chains more than 8 steps without breaking. Hardcoded in `Crew.max_steps`.
