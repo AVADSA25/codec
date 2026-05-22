@@ -55,6 +55,6 @@ def run(task, app="", ctx=""):
             r2.encoding = "utf-8"
             if r2.status_code == 200:
                 return f"Weather in {home}: {r2.text.strip()}"
-    except:
+    except Exception:
         pass
     return f"Couldn't fetch weather for {location}. Network may be unavailable."

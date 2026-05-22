@@ -25,5 +25,5 @@ def run(task, app="", ctx=""):
         if isinstance(result, float) and result == int(result):
             result = int(result)
         return f"{safe} = {result}"
-    except:
+    except Exception:
         return None

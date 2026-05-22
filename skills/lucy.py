@@ -28,7 +28,7 @@ def run(task, app="", ctx=""):
                 if isinstance(data, dict) and data.get("output"):
                     return data["output"]
                 return "CODEC workflow responded but no output parsed"
-            except:
+            except Exception:
                 return r.text[:500] if r.text else "CODEC workflow processed but no response"
         else:
             return f"CODEC workflow error (status {r.status_code})"

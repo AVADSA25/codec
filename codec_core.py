@@ -292,7 +292,7 @@ def speak_text(text):
                         tmp.close()
                         subprocess.run(["afplay", tmp.name], timeout=30)
                         try: os.unlink(tmp.name)
-                        except: pass
+                        except Exception: pass
             finally:
                 tts_playing = False
                 tts_finished_at = time.time()
