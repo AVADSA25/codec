@@ -263,6 +263,81 @@ def dispatch(task):
         _dispatch_cooldown = time.time() + 1.5
         _dispatch_lock.release()
 
+def _build_voice_system_prompt(task):
+    """A-5 (PR-3D-b): assemble the voice system prompt — CODEC_VOICE_PROMPT +
+    boot identity + active temporal facts + recent memory + targeted/recent
+    conversation context. Reads the memory stores (each guarded); returns the
+    assembled system-prompt string. Extracted verbatim from _dispatch_inner."""
+    mem = get_memory(5)
+    mem_ctx = ""
+    boot_ctx = ""
+    facts_ctx = ""
+    try:
+        from codec_memory import CodecMemory
+        cm = CodecMemory()
+        targeted = cm.get_context(task, n=5)
+        if targeted:
+            mem_ctx += f"\n\n[MEMORY — RELEVANT PAST CONVERSATIONS]\n{targeted}\n[END MEMORY]"
+        recent = cm.search_recent(days=3, limit=5)
+        if recent:
+            lines = ["[RECENT MEMORY — LAST 3 DAYS]"]
+            for r in recent:
+                ts = r["timestamp"][:16].replace("T", " ")
+                snippet = r["content"][:200].replace("\n", " ")
+                lines.append(f"  [{ts}] {r['role'].upper()}: {snippet}")
+            lines.append("[END RECENT MEMORY]")
+            mem_ctx += "\n\n" + "\n".join(lines)
+    except Exception as e:
+        log.warning("Memory context retrieval failed: %s", e)
+
+    # ── Memory upgrade: L0/L1 identity + active temporal facts ──────────
+    try:
+        from codec_memory_upgrade import load_identity, query_valid_facts, compress_rule_based
+        identity = load_identity()
+        if identity:
+            boot_ctx = f"\n\n[IDENTITY — BOOT PAYLOAD]\n{identity}\n[END IDENTITY]"
+        facts = query_valid_facts(limit=20)
+        if facts:
+            lines = ["[ACTIVE FACTS]"]
+            for f in facts:
+                lines.append(f"  {f['key']} = {f['value']}")
+            lines.append("[END FACTS]")
+            facts_ctx = "\n\n" + "\n".join(lines)
+        # Compress the recalled memory block to save tokens (identity+facts stay verbatim)
+        if mem_ctx:
+            mem_ctx = compress_rule_based(mem_ctx)
+    except Exception as e:
+        log.warning("Memory upgrade injection failed: %s", e)
+
+    # 2026-04-29 prompt rewrite: CODEC_VOICE_PROMPT now contains a {date}
+    # placeholder. Format it before use so the LLM doesn't see literal '{date}'.
+    sys_p = CODEC_VOICE_PROMPT.format(date=datetime.now().strftime("%A, %B %d, %Y"))
+    if boot_ctx: sys_p += boot_ctx
+    if facts_ctx: sys_p += facts_ctx
+    if mem: sys_p += "\n\n" + mem
+    if mem_ctx: sys_p += mem_ctx
+    return sys_p
+
+
+def _persist_voice_turn(task, answer, rid):
+    """A-5 (PR-3D-b): persist a completed voice turn — append the assistant
+    message to the in-memory session, bump turn_count, write the response to the
+    session DB (WAL helper), and save the exchange to shared CodecMemory.
+    Extracted verbatim from _dispatch_inner's quick-reply block."""
+    voice_session["messages"].append({"role": "assistant", "content": answer})
+    voice_session["turn_count"] += 1
+    # Save response to DB (A-20: codec_core helper, WAL + busy_timeout).
+    update_session_response(rid, answer[:500])
+    # Save to shared memory (same store as Chat)
+    try:
+        from codec_memory import CodecMemory
+        cm = CodecMemory()
+        cm.save("voice", "user", task)
+        cm.save("voice", "assistant", answer)
+    except Exception as e:
+        log.warning(f"[CODEC] Memory save failed after LLM: {e}")
+
+
 def _dispatch_inner(task):
     app = focused_app()
     log_event("wake_dispatch", "open-codec",
@@ -329,55 +404,8 @@ def _dispatch_inner(task):
 
     rid = save_task(task, app)
 
-    # ── Build system prompt with memory ─────────────────────────────────
-    mem = get_memory(5)
-    mem_ctx = ""
-    boot_ctx = ""
-    facts_ctx = ""
-    try:
-        from codec_memory import CodecMemory
-        cm = CodecMemory()
-        targeted = cm.get_context(task, n=5)
-        if targeted:
-            mem_ctx += f"\n\n[MEMORY — RELEVANT PAST CONVERSATIONS]\n{targeted}\n[END MEMORY]"
-        recent = cm.search_recent(days=3, limit=5)
-        if recent:
-            lines = ["[RECENT MEMORY — LAST 3 DAYS]"]
-            for r in recent:
-                ts = r["timestamp"][:16].replace("T", " ")
-                snippet = r["content"][:200].replace("\n", " ")
-                lines.append(f"  [{ts}] {r['role'].upper()}: {snippet}")
-            lines.append("[END RECENT MEMORY]")
-            mem_ctx += "\n\n" + "\n".join(lines)
-    except Exception as e:
-        log.warning("Memory context retrieval failed: %s", e)
-
-    # ── Memory upgrade: L0/L1 identity + active temporal facts ──────────
-    try:
-        from codec_memory_upgrade import load_identity, query_valid_facts, compress_rule_based
-        identity = load_identity()
-        if identity:
-            boot_ctx = f"\n\n[IDENTITY — BOOT PAYLOAD]\n{identity}\n[END IDENTITY]"
-        facts = query_valid_facts(limit=20)
-        if facts:
-            lines = ["[ACTIVE FACTS]"]
-            for f in facts:
-                lines.append(f"  {f['key']} = {f['value']}")
-            lines.append("[END FACTS]")
-            facts_ctx = "\n\n" + "\n".join(lines)
-        # Compress the recalled memory block to save tokens (identity+facts stay verbatim)
-        if mem_ctx:
-            mem_ctx = compress_rule_based(mem_ctx)
-    except Exception as e:
-        log.warning("Memory upgrade injection failed: %s", e)
-
-    # 2026-04-29 prompt rewrite: CODEC_VOICE_PROMPT now contains a {date}
-    # placeholder. Format it before use so the LLM doesn't see literal '{date}'.
-    sys_p = CODEC_VOICE_PROMPT.format(date=datetime.now().strftime("%A, %B %d, %Y"))
-    if boot_ctx: sys_p += boot_ctx
-    if facts_ctx: sys_p += facts_ctx
-    if mem: sys_p += "\n\n" + mem
-    if mem_ctx: sys_p += mem_ctx
+    # ── Build system prompt with memory (A-5: extracted helper) ─────────
+    sys_p = _build_voice_system_prompt(task)
     safe_sys = sys_p.replace('\n', ' ')
 
     # ── Open terminal session (the real CODEC session window) ───────────
@@ -424,18 +452,8 @@ def _dispatch_inner(task):
             log_event("tts_speak", "open-codec",
                       f"TTS: {answer[:60]}",
                       extra={"text_len": len(answer)})
-            # Add assistant response to session history
-            voice_session["messages"].append({"role": "assistant", "content": answer})
-            voice_session["turn_count"] += 1
-            # Save response to DB (A-20: codec_core helper, WAL + busy_timeout).
-            update_session_response(rid, answer[:500])
-            # Save to shared memory (same store as Chat)
-            try:
-                cm = CodecMemory()
-                cm.save("voice", "user", task)
-                cm.save("voice", "assistant", answer)
-            except Exception as e:
-                log.warning(f"[CODEC] Memory save failed after LLM: {e}")
+            # Persist the turn (A-5: extracted to _persist_voice_turn)
+            _persist_voice_turn(task, answer, rid)
             _last_tts_text = answer[:200]
             speak_text(answer)
             _safe_ans = answer[:80].replace('\\', '\\\\').replace('"', '\\"')
