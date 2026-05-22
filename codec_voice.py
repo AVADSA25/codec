@@ -666,54 +666,12 @@ class VoicePipeline:
             "Focus on the main content, app, or task visible. "
             "Be specific about text, UI elements, and what the user appears to be working on."
         )
-        # Try Gemini Flash first (fast, reliable)
-        if VISION_PROVIDER == "gemini" and GEMINI_API_KEY:
-            try:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
-                payload = {
-                    "contents": [{"parts": [
-                        {"inlineData": {"mimeType": "image/jpeg", "data": image_b64}},
-                        {"text": prompt}
-                    ]}],
-                    "generationConfig": {"maxOutputTokens": 500}
-                }
-                print("[Voice] Sending to Gemini Flash vision...")
-                r = await self._http.post(url, json=payload, timeout=30.0)
-                if r.status_code == 200:
-                    candidates = r.json().get("candidates", [])
-                    if candidates:
-                        parts = candidates[0].get("content", {}).get("parts", [])
-                        if parts:
-                            result = parts[0].get("text", "").strip()
-                            if result:
-                                print(f"[Voice] Gemini vision OK: {len(result)} chars")
-                                return result
-                print(f"[Voice] Gemini failed ({r.status_code}), falling back to local...")
-            except Exception as e:
-                print(f"[Voice] Gemini error: {e}, falling back to local...")
-
-        # Fallback: local Qwen VL
-        payload = {
-            "model": VISION_MODEL,
-            "messages": [{"role": "user", "content": [
-                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}},
-                {"type": "text", "text": prompt},
-            ]}],
-            "max_tokens": 500,
-            "temperature": 0.7,
-        }
-        try:
-            r = await self._http.post(
-                VISION_URL, json=payload,
-                headers={"Content-Type": "application/json"},
-                timeout=120.0,
-            )
-            if r.status_code == 200:
-                return r.json()["choices"][0]["message"]["content"].strip()
-            print(f"[Voice] Vision model returned {r.status_code}: {r.text[:200]}")
-        except Exception as e:
-            print(f"[Voice] Vision analysis error: {e}")
-        return ""
+        # A-11 (PR-3E): canonical vision helper (Gemini Flash → local Qwen-VL).
+        # Reuses this pipeline's httpx client. Was an inline duplicate of the
+        # same fallback logic in codec.py + codec_session.
+        import codec_vision
+        return await codec_vision.describe_async(
+            image_b64, prompt, mime="image/jpeg", max_tokens=500, http=self._http)
 
     async def generate_response(self, user_text: str):
         self.messages.append({"role": "user", "content": user_text})
