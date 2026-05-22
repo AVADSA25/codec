@@ -72,35 +72,29 @@ VISION_PROVIDER   = _cfg.get("vision_provider", "gemini" if GEMINI_API_KEY else 
 import codec_core as _core
 from codec_core import (
     strip_think, is_draft, init_db, save_task, update_session_response, get_memory, get_recent_conversations,
-    loaded_skills, load_skills, run_skill,
     transcribe, speak_text, focused_app, get_text_dialog,
     terminal_session_exists,
     # A-14 (PR-3G): `close_session` import dropped — codec.py defines its own
     # local close_session() (below) that shadowed this import, making it dead.
+    # A-4 (PR-3): `loaded_skills`/`load_skills`/`run_skill` dropped — the voice/
+    # wake path now uses the canonical codec_dispatch registry (below), which
+    # applies the PR-1A AST safety gate + plugin hooks the legacy path skipped.
 )
 from codec_agent import run_session_in_terminal
+# A-4: canonical skill dispatch (lazy SkillRegistry + safety gate + run_with_hooks).
+from codec_dispatch import check_skill, run_skill, load_skills
 
 from codec_overlays import show_overlay, show_recording_overlay, show_processing_overlay, show_toggle_overlay
 from codec_identity import CODEC_VOICE_PROMPT
 
-# ── SKILLS (codec.py-specific: ranked matching) ──────────────────────────────
-
-def check_skills_ranked(task):
-    """Return all matching skills, sorted by trigger length (best match first)."""
-    low = task.lower()
-    matches = []
-    seen = set()
-    for skill in loaded_skills:
-        for trigger in skill['triggers']:
-            if trigger in low and skill['name'] not in seen:
-                matches.append((len(trigger), skill))
-                seen.add(skill['name'])
-    matches.sort(key=lambda x: x[0], reverse=True)
-    return [s for _, s in matches]
-
-def check_skill(task):
-    ranked = check_skills_ranked(task)
-    return ranked[0] if ranked else None
+# ── SKILLS ───────────────────────────────────────────────────────────────────
+# A-4 (PR-3): codec.py's local `check_skills_ranked` / `check_skill` (which
+# iterated the legacy `codec_core.loaded_skills`) were removed. Skill matching +
+# execution now go through the canonical `codec_dispatch.check_skill` /
+# `run_skill` (imported above) — the same path chat / MCP / session / telegram /
+# imessage already use. That routes voice/wake skill calls through the PR-1A AST
+# safety gate AND plugin lifecycle hooks (run_with_hooks), both of which the
+# legacy path bypassed.
 
 # ── VISION (Gemini Flash or local Qwen VL) ──────────────────────────────────
 def _gemini_vision(img_b64, prompt, max_tokens=800):
@@ -313,10 +307,13 @@ def _dispatch_inner(task):
     subprocess.Popen(["osascript", "-e", f'display notification "Heard: {_safe_task}" with title "CODEC"'],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    # Check skills — try ranked matches, fall through if skill returns None
+    # Check skills — canonical dispatch (A-4). check_skill returns the best
+    # match with all fall-through candidates; run_skill tries them in order
+    # (wrapped in run_with_hooks) and returns the first non-None result.
     skill_result = None
     if len(task) < 500:
-        for skill in check_skills_ranked(task):
+        skill = check_skill(task)
+        if skill:
             result = run_skill(skill, task, app)
             if result is not None:
                 push(lambda: show_overlay('Skill: ' + skill['name'], '#E8711A', 2000))
@@ -354,7 +351,6 @@ def _dispatch_inner(task):
                         print(f"[CODEC] Post-skill screenshot failed: {e}")
                 threading.Thread(target=_post_skill_screenshot, daemon=True).start()
                 return
-            print(f"[CODEC] Skill {skill['name']} returned None, trying next...")
 
     if is_draft(task):
         push(lambda: show_overlay('Reading screen...', '#E8711A', 2000))

@@ -41,6 +41,11 @@ log = logging.getLogger("codec")
 # Name of the trusted-manifest file inside each skills directory.
 TRUSTED_MANIFEST_FILENAME = ".manifest.json"
 
+# A-4: user trigger overrides. Module-level so tests can monkeypatch it; the
+# canonical registry now honors this everywhere (the legacy codec_core loader
+# read the same file but only affected the voice path).
+CUSTOM_TRIGGERS_PATH = os.path.expanduser("~/.codec/custom_triggers.json")
+
 
 def _extract_metadata(filepath: str) -> Optional[Dict[str, Any]]:
     """Parse a skill .py file with ast to extract module-level metadata
@@ -109,6 +114,12 @@ class SkillRegistry:
         # `<skills_dir>/.manifest.json` at scan() time; empty when the file
         # is missing — e.g. user-installed skills dir at ~/.codec/skills/).
         self._trusted_hashes: Set[str] = set()
+        # name -> user-overridden trigger list (A-4: loaded from
+        # ~/.codec/custom_triggers.json at scan() time). Before A-4, only the
+        # legacy codec_core.load_skills honored these — so custom triggers
+        # worked on the voice path but NOT chat/MCP. Wiring them into the
+        # canonical registry makes them consistent everywhere.
+        self._custom_triggers: Dict[str, List[str]] = {}
 
     def scan(self) -> int:
         """Scan skills directory and extract metadata via AST.
@@ -123,6 +134,8 @@ class SkillRegistry:
         # Reload the trusted-skill manifest on every scan so manifest edits
         # take effect without restarting the registry.
         self._trusted_hashes = self._load_trusted_manifest()
+        # Reload user trigger overrides too (A-4) — same refresh-on-scan policy.
+        self._custom_triggers = self._load_custom_triggers()
 
         for fname in sorted(os.listdir(self.skills_dir)):
             if not fname.endswith(".py") or fname.startswith("_"):
@@ -179,9 +192,36 @@ class SkillRegistry:
     def all_metadata(self) -> Dict[str, Dict[str, Any]]:
         return dict(self._meta)
 
+    def _load_custom_triggers(self) -> Dict[str, List[str]]:
+        """Load user trigger overrides from custom_triggers.json (A-4).
+        Format: {"<skill_name>": {"triggers": [...]}}. Returns {name: triggers}
+        for entries with a non-empty list. Tolerates a missing/malformed file.
+        Path is the module-level CUSTOM_TRIGGERS_PATH (patchable in tests)."""
+        path = CUSTOM_TRIGGERS_PATH
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+        except (FileNotFoundError, OSError, json.JSONDecodeError):
+            return {}
+        if not isinstance(raw, dict):
+            return {}
+        out: Dict[str, List[str]] = {}
+        for name, entry in raw.items():
+            if isinstance(entry, dict):
+                trigs = entry.get("triggers")
+                if isinstance(trigs, list) and trigs:
+                    out[name] = [str(t) for t in trigs]
+        return out
+
+    def _effective_triggers(self, name: str) -> List[str]:
+        """A skill's triggers: the user override from custom_triggers.json if
+        present, else the AST-extracted SKILL_TRIGGERS (A-4)."""
+        if name in self._custom_triggers:
+            return self._custom_triggers[name]
+        return self._meta.get(name, {}).get("SKILL_TRIGGERS", [])
+
     def get_triggers(self, name: str) -> List[str]:
-        meta = self._meta.get(name, {})
-        return meta.get("SKILL_TRIGGERS", [])
+        return self._effective_triggers(name)
 
     def get_description(self, name: str) -> str:
         meta = self._meta.get(name, {})
@@ -342,8 +382,8 @@ class SkillRegistry:
         """Return all skill names whose triggers match, sorted by specificity (longest trigger first)."""
         low = task.lower()
         scored = []
-        for name, meta in self._meta.items():
-            triggers = meta.get("SKILL_TRIGGERS", [])
+        for name in self._meta:
+            triggers = self._effective_triggers(name)  # A-4: honors custom_triggers
             matched = [t for t in triggers if re.search(r'\b' + re.escape(t) + r'\b', low)]
             if matched:
                 best = max(len(t) for t in matched)
