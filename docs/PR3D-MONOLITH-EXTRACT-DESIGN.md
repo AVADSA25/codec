@@ -3,7 +3,9 @@
 **Status:** IN PROGRESS — split into 3 sub-PRs.
 - **3D-a (A-7 `Agent.run`) IMPLEMENTED** — extracted `_parse_action`, `_validate_tool_call`, `_execute_tool_with_hooks`; `run()` 230 → 177 LOC; 13 unit + 112 regression tests green.
 - **3D-b (A-5 `_dispatch_inner`) IMPLEMENTED** — extracted `_build_voice_system_prompt(task)` + `_persist_voice_turn(task, answer, rid)`; `_dispatch_inner` 188 → 131 LOC; 7 unit tests; zero new suite failures; zero net-new ruff. (Faithfulness note: `_persist_voice_turn` does its own `from codec_memory import CodecMemory` — the original relied on the build block's local import being in `_dispatch_inner`'s scope, which the extraction removed.)
-- **3D-c (A-6 `chat_completion` / `SkillTagBuffer`) pending.**
+- **3D-c (A-6 `chat_completion`) IMPLEMENTED** — extracted the `<think>` + `[SKILL:...]` token machine into new **`codec_chat_stream.py`** (`SkillTagBuffer` + shared `SKILL_TAG_RE`); `_stream_gen` keeps the SSE/HTTP plumbing + the injected `_resolve_skill_tag`. `chat_completion` 466 → 379 LOC. 13 unit tests for the buffer; zero new suite failures; zero net-new ruff. Faithfulness preserved exactly: same-chunk `</think>` dropped, think-adjacent text emitted-but-uncounted, dropped-tag empty frames still emitted, 5000-char cap, cross-chunk tag assembly. **Bonus:** `SkillTagBuffer` is now the tested unit the deferred A-12 dashboard-stream migration needs (it can consume `codec_llm.stream()`'s raw tokens).
+
+**PR-3D COMPLETE** — all three monoliths decomposed (A-7 #72, A-5 #73, A-6 this PR), each behavior-preserving with its own unit tests + the full regression suite green.
 **Findings:** A-5 (`_dispatch_inner`, 188 LOC), A-6 (`chat_completion`, 466 LOC), A-7 (`Agent.run`, 230 LOC) — all MEDIUM.
 **Wave:** 3 (complexity reduction). These are the **three hottest functions in the repo** (voice dispatch · chat handler · agent loop), so: split into one-PR-per-function + behavior-preserving extractions with tests. **No big-bang.**
 

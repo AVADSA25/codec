@@ -346,7 +346,7 @@ Required: `SKILL_NAME`, `SKILL_TRIGGERS`, `SKILL_DESCRIPTION`. Optional: `SKILL_
 **B. Dashboard chat:**
 - Slash commands: `parse_slash` at `codec_slash_commands.py:55-90` runs first
 - Pre-LLM hijack: `_try_skill(user_text)` at `codec_dashboard.py:2081-2110` — if a skill in `CHAT_SKILL_ALLOWLIST` matches and the message isn't conversational and has no file attachments, fire the skill and skip the LLM
-- Post-LLM tag: LLM emits `[SKILL:name:query]`, regex at `codec_dashboard.py:2412-2419` parses, runs the skill, replaces the tag
+- Post-LLM tag: LLM emits `[SKILL:name:query]`, parsed + the skill run + the tag replaced. Non-streaming path: regex in `chat_completion`. Streaming path: `codec_chat_stream.SkillTagBuffer` (PR-3D-c/A-6) buffers tokens char-by-char so a raw tag never leaks, strips `<think>` across chunks, and resolves complete tags via an injected callback; `_stream_gen` keeps only the SSE plumbing. `SKILL_TAG_RE` is the shared pattern.
 
 **C. MCP (stdio + HTTP):** `codec_mcp.py:87-191` registers every skill with `SKILL_MCP_EXPOSE=True` as an MCP tool. 30s timeout, validated via `_validate_mcp_input` (task ≤ 5,000 chars, context ≤ 10,000), audited via `codec_audit.audit()`. HTTP transport adds OAuth 2.1 + a stricter `_HTTP_BLOCKED` list (`codec_config.py`): currently blocks `python_exec`, `terminal`, `process_manager`, `pm2_control`, `ax_control`.
 
