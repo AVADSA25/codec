@@ -1,6 +1,5 @@
 """CODEC Agent — session launcher and subprocess runner"""
 import os
-import sys
 import json
 import tempfile
 import subprocess
@@ -43,39 +42,6 @@ def build_session_params(safe_sys, session_id):
     }
 
 
-def run_session_module(safe_sys, session_id, task, timeout=120):
-    """Run session using the new codec_session module in a subprocess."""
-    params = build_session_params(safe_sys, session_id)
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-        json.dump(params, f)
-        params_path = f.name
-    try:
-        repo = os.path.dirname(os.path.abspath(__file__))
-        result = subprocess.run(
-            [sys.executable, "-c", f"""
-import sys, json
-sys.path.insert(0, {repr(repo)})
-from codec_session import Session
-with open({repr(params_path)}) as _pf: params = json.load(_pf)
-s = Session(**params)
-s.run()
-"""],
-            text=True,
-            timeout=timeout,
-            env={**os.environ, "CODEC_TASK": task},
-        )
-        return result.returncode == 0
-    except subprocess.TimeoutExpired:
-        log.warning(f"Session module timed out after {timeout}s for task: {task[:60]}")
-        return False
-    except Exception as e:
-        log.error(f"Session module error: {e}")
-        return False
-    finally:
-        try:
-            os.unlink(params_path)
-        except Exception:
-            pass
 
 
 def run_session_in_terminal(safe_sys, session_id, task):
