@@ -335,6 +335,8 @@ Required: `SKILL_NAME`, `SKILL_TRIGGERS`, `SKILL_DESCRIPTION`. Optional: `SKILL_
 ### Discovery
 `codec_skill_registry.SkillRegistry` (`codec_skill_registry.py:57-195`) AST-parses every `.py` file at startup to extract metadata — **no skill code runs unless the skill is actually called**. Broken skills don't break startup.
 
+**Single loader (A-4).** There is now exactly ONE skill loader: the lazy, AST-gated `SkillRegistry` behind `codec_dispatch.{load_skills, check_skill, run_skill}`. The old eager `codec_core.load_skills` / `loaded_skills` / `run_skill` path was deleted in Wave 3 (A-4) — it bypassed the PR-1A safety gate and the Step-2 plugin hooks. Every entry path (voice/wake via `codec.py:_dispatch_inner`, chat, MCP, session, telegram, imessage, agent-runner) goes through `codec_dispatch` now. **User trigger overrides** in `~/.codec/custom_triggers.json` are honored by the registry (`get_triggers`/`match_all_triggers` overlay them) across ALL paths — not just voice as before.
+
 ### Three execution paths
 
 **A. Voice / wake-word:** `codec.py:wake_word_listener()` → `dispatch(text)` → `_dispatch_inner(task)` → `check_skill(task)` → `run_skill(skill, task, app)`.

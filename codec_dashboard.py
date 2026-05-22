@@ -3487,16 +3487,17 @@ async def cortex_health():
 
 @app.get("/api/cortex/skills")
 async def cortex_skills():
-    """Return all loaded skills for CORTEX visualization."""
-    from codec_core import loaded_skills, load_skills
-    if not loaded_skills:
-        load_skills()
-    result = []
-    for s in loaded_skills:
-        result.append({
-            "name": s.get("name", "unknown"),
-            "triggers": s.get("triggers", []),
-        })
+    """Return all loaded skills for CORTEX visualization.
+
+    A-4: reads from the canonical codec_dispatch registry (lazy AST scan +
+    custom_triggers overlay) instead of the legacy codec_core.loaded_skills."""
+    from codec_dispatch import registry
+    if not registry.names():
+        registry.scan()
+    result = [
+        {"name": name, "triggers": registry.get_triggers(name)}
+        for name in registry.names()
+    ]
     result.sort(key=lambda x: x["name"])
     return {"skills": result, "count": len(result)}
 

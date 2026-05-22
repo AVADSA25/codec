@@ -150,52 +150,14 @@ def get_recent_conversations(n=10, user_id=None):
         return []
 
 # ── SKILLS ────────────────────────────────────────────────────────────────────
-loaded_skills = []
-
-def _load_custom_triggers():
-    """Load user-customized triggers from ~/.codec/custom_triggers.json."""
-    try:
-        import json as _json
-        with open(os.path.expanduser("~/.codec/custom_triggers.json")) as f:
-            return _json.load(f)
-    except Exception:
-        return {}
-
-def load_skills():
-    global loaded_skills
-    loaded_skills.clear()
-    if not os.path.isdir(SKILLS_DIR): return
-    custom = _load_custom_triggers()
-    for fname in os.listdir(SKILLS_DIR):
-        if fname.startswith('_') or not fname.endswith('.py'): continue
-        path = os.path.join(SKILLS_DIR, fname)
-        try:
-            import importlib.util
-            spec = importlib.util.spec_from_file_location(fname[:-3], path)
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            if hasattr(mod, 'SKILL_TRIGGERS') and hasattr(mod, 'run'):
-                skill_name = getattr(mod, 'SKILL_NAME', fname[:-3])
-                # Use custom triggers if user has overridden them
-                triggers = custom.get(skill_name, {}).get("triggers", mod.SKILL_TRIGGERS)
-                loaded_skills.append({
-                    'name': skill_name,
-                    'triggers': triggers,
-                    'run': mod.run,
-                })
-                if skill_name in custom:
-                    print(f"[CODEC] Skill loaded: {fname[:-3]} (custom triggers)")
-                else:
-                    print(f"[CODEC] Skill loaded: {fname[:-3]}")
-        except Exception as e:
-            print(f"[CODEC] Skill error ({fname}): {e}")
-
-def run_skill(skill, task, app=""):
-    try:
-        result = skill['run'](task, app)
-        return result
-    except Exception as e:
-        return f"Skill error: {e}"
+# A-4 (PR-3): the legacy eager skill loader (`loaded_skills`, `load_skills`,
+# `run_skill`, `_load_custom_triggers`) was REMOVED. It `exec_module`d every
+# skill at startup WITHOUT the PR-1A AST safety gate, and `run_skill` bypassed
+# the Phase-1-Step-2 plugin hooks. The single source of truth is now the lazy,
+# gated `codec_dispatch` registry (`codec_dispatch.{load_skills, check_skill,
+# run_skill}` over `codec_skill_registry.SkillRegistry`) — which also honors
+# ~/.codec/custom_triggers.json everywhere (voice + chat + MCP), not just the
+# old voice path. See docs/A4-SKILL-LOADER-UNIFICATION-DESIGN.md.
 
 # ── WHISPER VIA HTTP ──────────────────────────────────────────────────────────
 def transcribe(path):

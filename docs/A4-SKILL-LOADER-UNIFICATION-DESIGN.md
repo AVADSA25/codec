@@ -1,6 +1,7 @@
 # A-4 — Skill-loader unification (DESIGN)
 
-**Status:** DRAFT — awaiting approval. No code changed yet (per AGENTS.md §11).
+**Status:** ✅ IMPLEMENTED (Option A approved by Mickael). Shipped in branch
+`fix/pr3-a4-skill-loader-unification`. This doc ships alongside the code.
 **Finding:** A-4 (MEDIUM) in `docs/audits/PHASE-1-CODE-QUALITY.md`.
 **Wave:** 3 (code quality). This is the first Wave-3 *refactor of live code* — hence the design-first gate.
 
