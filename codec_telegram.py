@@ -463,41 +463,18 @@ def call_llm(text, llm_cfg, conversation_history=None, system_prompt_override=No
         messages.extend(conversation_history[-8:])
     messages.append({"role": "user", "content": text})
 
-    headers = {"Content-Type": "application/json"}
-    if llm_cfg["api_key"]:
-        headers["Authorization"] = f"Bearer {llm_cfg['api_key']}"
-
-    payload = {
-        "model": llm_cfg["model"],
-        "messages": messages,
-        "max_tokens": 1500,
-        "temperature": 0.7,
-        "stream": False,
-        "chat_template_kwargs": {"enable_thinking": False},
-    }
-    payload.update({k: v for k, v in llm_cfg["kwargs"].items() if k != "chat_template_kwargs"})
-
-    try:
-        r = requests.post(
-            f"{llm_cfg['base_url']}/chat/completions",
-            json=payload, headers=headers, timeout=120,
-        )
-        data = r.json()
-        if "error" in data:
-            log.error(f"LLM error: {data['error']}")
-            return None
-        if "choices" not in data or not data["choices"]:
-            log.error(f"LLM no choices: {str(data)[:200]}")
-            return None
-        content = (data["choices"][0]["message"].get("content") or "").strip()
-        content = re.sub(r'<think>[\s\S]*?</think>', '', content).strip()
-        return content if content else None
-    except requests.exceptions.Timeout:
-        log.error("LLM timeout")
-        return None
-    except Exception as e:
-        log.error(f"LLM call failed: {e}")
-        return None
+    # A-12 (PR-3E-bridges): canonical codec_llm.call. Never-raise -> "" on any
+    # failure (error/no-choices/timeout/empty); mapped back to the bridge's None
+    # contract for graceful degradation. codec_llm strips <think>; kwargs are
+    # passed minus chat_template_kwargs so enable_thinking=False is preserved.
+    import codec_llm
+    extra = {k: v for k, v in llm_cfg["kwargs"].items() if k != "chat_template_kwargs"}
+    content = codec_llm.call(
+        messages, base_url=llm_cfg["base_url"], model=llm_cfg["model"],
+        api_key=llm_cfg["api_key"], max_tokens=1500, temperature=0.7,
+        timeout=120, extra_kwargs=extra,
+    )
+    return content if content else None
 
 
 # ── Vision (photo messages) ─────────────────────────────────────────────────
