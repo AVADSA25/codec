@@ -68,8 +68,8 @@ def start_keyboard_listener(state, ctx):
             try:
                 rec.terminate()
                 rec.wait(timeout=3)
-            except Exception as e:
-                log.warning(f"Non-critical error: {e}")
+            except (OSError, subprocess.SubprocessError) as e:
+                log.debug(f"Recording process cleanup failed: {e}")
         state["rec_proc"] = None
         with _state_lock:
             state["recording"] = False
@@ -78,15 +78,15 @@ def start_keyboard_listener(state, ctx):
         if os.path.getsize(audio) < 1000:
             try:
                 os.unlink(audio)
-            except Exception as e:
-                log.warning(f"Non-critical error: {e}")
+            except OSError as e:
+                log.debug(f"Failed to remove short audio file: {e}")
             return
         log.info("Transcribing...")
         if state.get('rec_overlay'):
             try:
                 state['rec_overlay'].terminate()
-            except Exception as e:
-                log.warning(f"Non-critical error: {e}")
+            except OSError as e:
+                log.debug(f"Recording overlay cleanup failed: {e}")
             state['rec_overlay'] = None
         push(lambda: show_processing_overlay('Transcribing...', 4000))
         task = transcribe(audio)
@@ -248,12 +248,12 @@ def start_keyboard_listener(state, ctx):
                                     log.info(f"Post-wake noise rejected: {task}")
                                     audit("WAKE_NOISE", task[:200])
                 except Exception as e:
-                    log.warning(f"Non-critical error: {e}")
+                    log.warning(f"Wake word transcription/dispatch failed (utterance skipped): {e}")
                 finally:
                     try:
                         os.unlink(tmp.name)
-                    except Exception as e:
-                        log.warning(f"Non-critical error: {e}")
+                    except OSError as e:
+                        log.debug(f"Failed to remove temp wake audio: {e}")
             except Exception as e:
                 log.warning(f"Wake word listener error: {e}")
                 time.sleep(0.5)
@@ -315,8 +315,8 @@ def start_keyboard_listener(state, ctx):
                 try:
                     subprocess.run(["pkill", "-f", "C O D E C"],
                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                except Exception as e:
-                    log.warning(f"Non-critical error: {e}")
+                except (OSError, subprocess.SubprocessError) as e:
+                    log.debug(f"Failed to kill stale TTS process: {e}")
                 push(do_start_recording)
                 state['rec_overlay'] = show_recording_overlay(_kv_label)
             elif not state.get("ptt_locked"):
@@ -329,8 +329,8 @@ def start_keyboard_listener(state, ctx):
                     if state.get('rec_overlay'):
                         try:
                             state['rec_overlay'].terminate()
-                        except Exception as e:
-                            log.warning(f"Non-critical error: {e}")
+                        except OSError as e:
+                            log.debug(f"Recording overlay cleanup failed (PTT lock): {e}")
                     state['rec_overlay'] = show_overlay(
                         '\U0001f534 REC LOCKED \u2014 tap ' + _kv_label + ' to stop', '#ff3b3b', 0)
                     log.info("PTT locked")
@@ -341,8 +341,8 @@ def start_keyboard_listener(state, ctx):
                 if state.get('rec_overlay'):
                     try:
                         state['rec_overlay'].terminate()
-                    except Exception as e:
-                        log.warning(f"Non-critical error: {e}")
+                    except OSError as e:
+                        log.debug(f"Recording overlay cleanup failed (PTT stop): {e}")
                     state['rec_overlay'] = None
                 push(do_stop_voice)
             return
@@ -379,8 +379,8 @@ def start_keyboard_listener(state, ctx):
             if state.get('rec_overlay'):
                 try:
                     state['rec_overlay'].terminate()
-                except Exception as e:
-                    log.warning(f"Non-critical error: {e}")
+                except OSError as e:
+                    log.debug(f"Recording overlay cleanup failed (key release): {e}")
                 state['rec_overlay'] = None
             push(do_stop_voice)
 
