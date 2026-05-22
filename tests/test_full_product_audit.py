@@ -1057,26 +1057,33 @@ class TestSessionRunner:
 # ============================================================================
 
 class TestKeyboard:
-    """Test keyboard module."""
+    """Test the LIVE keyboard path.
 
-    def test_keyboard_imports(self):
-        from codec_keyboard import start_keyboard_listener
-        assert callable(start_keyboard_listener)
+    A-8 (PR-3): the unused `codec_keyboard.py` module (398 LOC, only ever
+    imported by tests) was deleted. Production keyboard handling is inline
+    in codec.py (the `codec` PM2 process). These tests now pin codec.py's
+    real handlers + the F13 debounce invariant."""
+
+    def test_live_keyboard_handlers_in_codec(self):
+        """codec.py owns the live on_press/on_release + keyboard.Listener."""
+        code = Path(REPO, "codec.py").read_text()
+        assert "def on_press" in code
+        assert "def on_release" in code
+        assert "keyboard.Listener" in code
 
     def test_f13_debounce(self):
-        """F13 debounce should be >= 1.0 seconds."""
-        code = Path(REPO, "codec_keyboard.py").read_text()
-        # Find the debounce check
+        """F13 debounce should be >= 1.0 seconds (codec.py live handler)."""
+        code = Path(REPO, "codec.py").read_text()
         match = re.search(r'last_f13.*?<\s*([\d.]+)', code)
-        assert match, "F13 debounce not found"
+        assert match, "F13 debounce not found in codec.py"
         debounce = float(match.group(1))
         assert debounce >= 1.0, f"F13 debounce too short: {debounce}s"
 
-    def test_overlay_events_path(self):
-        """Should use ~/.codec/ not /tmp/."""
-        code = Path(REPO, "codec_keyboard.py").read_text()
-        assert "/tmp/" not in code, "Still using /tmp/ path"
-        assert "~/.codec/" in code or "overlay_events" in code
+    def test_codec_keyboard_module_removed(self):
+        """The dead duplicate module must stay gone (A-8)."""
+        assert not Path(REPO, "codec_keyboard.py").exists(), (
+            "codec_keyboard.py was deleted as dead code (A-8) — must not return"
+        )
 
 
 # ============================================================================
