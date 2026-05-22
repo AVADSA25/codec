@@ -79,6 +79,8 @@ Both scan `SKILLS_DIR` independently, so a skill file is loaded twice in differe
 **Effort:** medium-large
 
 ### A-7 — `Agent.run` (codec_agents.py) is a 225-LOC ReAct loop with extensive inline logic [MEDIUM]
+
+> **Closed by PR-3D-a.** Behavior-preserving extraction of the three recommended helpers: `Agent._parse_action(text)` (pure — the `TOOL:`/`INPUT:`/`FINAL:` protocol parse), `Agent._validate_tool_call(name, input)` (pure — the 4 malformed-call guards → one rejection message), and `Agent._execute_tool_with_hooks(tool, name, input)` (the `copy_context` + `run_with_hooks` + veto executor). `run()` is now a flow of named calls (230 → 177 LOC); stuck detection stays inline AFTER the `tool_result` audit so its `result_len` stays pre-stuck (exact parity). Pinned by `tests/test_agent_run_helpers.py` (13) + the 112 agent/crew regression tests stay green. See `docs/PR3D-MONOLITH-EXTRACT-DESIGN.md`. **A-5 (`_dispatch_inner`) + A-6 (`chat_completion`/`SkillTagBuffer`) follow as PR-3D-b / PR-3D-c.**
 **Location:** `codec_agents.py:385-612`
 **Description:** Core agent loop: builds system prompt, parses `TOOL:`/`FINAL:` text protocol, validates tool name + input, computes hook-wrapped tool execution under `copy_context`, runs Phase 1 Step 3 stuck detection in an executor, has special-case post-processing for `google_docs_create` URL fabrication. Many concerns interleaved. ~225 LOC.
 **Impact:** Each Phase adds another wedge of behavior to this loop. The veto/stuck/destructive paths are interleaved with the LLM-call path. Hard to add new agent behaviors without risking regressions in the others.

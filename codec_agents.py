@@ -390,6 +390,70 @@ class Agent:
     _stuck_warned_keys: set = field(default_factory=set, repr=False)
     _stuck_escalated_keys: set = field(default_factory=set, repr=False)
 
+    # ── A-7 (PR-3D-a): ReAct-loop helpers extracted from run() ──────────────
+    @staticmethod
+    def _parse_action(text: str) -> tuple:
+        """Pure parse of the ReAct text protocol. Returns (tool, final_text):
+          tool       = (name, input) if a well-formed TOOL:/INPUT: block exists, else None
+          final_text = text after the LAST 'FINAL:' (stripped) if present, else None
+        Both may be set; run() applies TOOL-before-FINAL precedence with its own
+        tool-budget state (unchanged)."""
+        m = re.search(r'TOOL:\s*(\S+)\s*\nINPUT:\s*([\s\S]*?)(?=\nTOOL:|\nFINAL:|$)', text)
+        tool = (m.group(1).strip(), m.group(2).strip()) if m else None
+        final_text = text.rsplit("FINAL:", 1)[1].strip() if "FINAL:" in text else None
+        return tool, final_text
+
+    @staticmethod
+    def _validate_tool_call(tool_name: str, tool_input: str):
+        """Return a rejection message to feed back to the LLM if the tool call is
+        malformed, else None. Pure — the caller does the logging + message append."""
+        if not tool_name:
+            return "Empty tool name rejected. Try again or use FINAL:."
+        if len(tool_name) > _MAX_TOOL_NAME_LEN:
+            return "Tool name too long (max 100 chars). Try again or use FINAL:."
+        if not _VALID_TOOL_NAME_RE.match(tool_name):
+            return (f"Tool name '{tool_name[:60]}' contains invalid characters. "
+                    f"Only alphanumeric, underscore, hyphen, and dot are allowed. "
+                    f"Try again or use FINAL:.")
+        if len(tool_input) > _MAX_TOOL_INPUT_LEN:
+            return (f"Tool input too long ({len(tool_input)} chars, max "
+                    f"{_MAX_TOOL_INPUT_LEN}). Try again or use FINAL:.")
+        return None
+
+    async def _execute_tool_with_hooks(self, tool, tool_name: str, tool_input: str) -> str:
+        """Run `tool` through run_with_hooks in a worker thread, propagating
+        contextvars (incl. _correlation_id_var) so audits fired inside the tool
+        inherit the agent/crew cid (asyncio doesn't copy them automatically).
+        Applies the Step-2 veto contract. Returns the tool result string. Stuck
+        detection is applied by the caller AFTER the tool_result audit, to keep
+        that audit's result_len reporting the pre-stuck length."""
+        loop = asyncio.get_event_loop()
+        _agent_cid = _correlation_id_var.get() or _new_correlation_id()
+        _agent_name = self.name
+        _tool_name_local = tool_name
+        _tool_input_local = tool_input
+        _real_tool = tool
+
+        def _run_tool_with_hooks():
+            def _inner(t, _c):
+                return _real_tool.run(t)
+            return run_with_hooks(
+                tool_name=_tool_name_local,
+                task=_tool_input_local,
+                context="",
+                transport="crew",
+                agent=_agent_name,
+                correlation_id=_agent_cid,
+                invoke=_inner,
+            )
+
+        ctx = contextvars.copy_context()
+        result = await loop.run_in_executor(None, ctx.run, _run_tool_with_hooks)
+        if isinstance(result, HookVeto):
+            result = (f"Tool '{tool_name}' was vetoed by plugin "
+                      f"'{result.plugin_name}': {result.reason}")
+        return result
+
     async def run(self, task: str, context: str = "", callback: Optional[Callable] = None) -> str:
         # Inherit correlation_id from the surrounding Crew if there is one;
         # otherwise (e.g. run_custom_agent — solo agent path) generate our own.
@@ -454,14 +518,12 @@ Rules:
             if self.verbose:
                 print(f"[{self.name}] {response[:200]}…")
 
-            # ── Check for TOOL call first (before FINAL) ──
-            # This prevents the model from writing both TOOL: and FINAL: in one response
-            # and getting stuck in a rejection loop
-            m = re.search(r'TOOL:\s*(\S+)\s*\nINPUT:\s*([\s\S]*?)(?=\nTOOL:|\nFINAL:|$)', response)
+            # ── Parse the ReAct protocol (A-7: extracted to _parse_action) ──
+            # TOOL is checked before FINAL so a response with both doesn't loop.
+            parsed_tool, final = self._parse_action(response)
 
-            # FINAL answer — rsplit gets the LAST occurrence (skips quoted prompt text)
-            if "FINAL:" in response and not (m and tool_calls_made < self.max_tool_calls):
-                final = response.rsplit("FINAL:", 1)[1].strip()
+            # FINAL answer (final = text after the LAST 'FINAL:'; skips quoted prompt).
+            if final is not None and not (parsed_tool and tool_calls_made < self.max_tool_calls):
                 # Guard: if agent has google_docs_create but never called it, reject the FINAL
                 has_docs_tool = any(t.name == "google_docs_create" for t in self.tools)
                 called_docs = any("google_docs_create" in str(m_msg.get("content", "")) for m_msg in messages if m_msg["role"] == "user" and "Tool result from" in str(m_msg.get("content", "")))
@@ -488,33 +550,17 @@ Rules:
                     await _safe_cb(callback, {"agent": self.name, "status": "complete", "preview": final[:200]})
                 return final
 
-            # TOOL call (m already computed above)
-            if m and tool_calls_made < self.max_tool_calls:
-                tool_name  = m.group(1).strip()
-                tool_input = m.group(2).strip()
+            # TOOL call (parsed_tool from _parse_action above)
+            if parsed_tool and tool_calls_made < self.max_tool_calls:
+                tool_name, tool_input = parsed_tool
 
-                # ── Input validation guards ──────────────────────────
-                if not tool_name:
-                    log.warning("Rejected malformed tool call: %s", tool_name)
-                    messages.append({"role": "assistant", "content": response})
-                    messages.append({"role": "user", "content": "Empty tool name rejected. Try again or use FINAL:."})
-                    continue
-                if len(tool_name) > _MAX_TOOL_NAME_LEN:
+                # ── Input validation (A-7: extracted to _validate_tool_call) ──
+                rejection = self._validate_tool_call(tool_name, tool_input)
+                if rejection:
                     log.warning("Rejected malformed tool call: %s", tool_name[:120])
                     messages.append({"role": "assistant", "content": response})
-                    messages.append({"role": "user", "content": "Tool name too long (max 100 chars). Try again or use FINAL:."})
+                    messages.append({"role": "user", "content": rejection})
                     continue
-                if not _VALID_TOOL_NAME_RE.match(tool_name):
-                    log.warning("Rejected malformed tool call: %s", tool_name[:120])
-                    messages.append({"role": "assistant", "content": response})
-                    messages.append({"role": "user", "content": f"Tool name '{tool_name[:60]}' contains invalid characters. Only alphanumeric, underscore, hyphen, and dot are allowed. Try again or use FINAL:."})
-                    continue
-                if len(tool_input) > _MAX_TOOL_INPUT_LEN:
-                    log.warning("Rejected malformed tool call: %s", tool_name)
-                    messages.append({"role": "assistant", "content": response})
-                    messages.append({"role": "user", "content": f"Tool input too long ({len(tool_input)} chars, max {_MAX_TOOL_INPUT_LEN}). Try again or use FINAL:."})
-                    continue
-                # ── End validation guards ─────────────────────────────
 
                 tool = next((t for t in self.tools if t.name == tool_name), None)
 
@@ -529,45 +575,10 @@ Rules:
 
                     _audit("tool_call", agent=self.name, tool=tool_name,
                            input=tool_input[:200])
-                    loop = asyncio.get_event_loop()
-                    # Propagate contextvars (incl. _correlation_id_var) into
-                    # the executor thread so any _audit fired from inside
-                    # the tool (e.g. _shell_execute → shell_blocked) inherits
-                    # the agent/crew correlation_id. asyncio doesn't do this
-                    # automatically — has to be an explicit copy_context().
-                    #
-                    # Phase 1 Step 2: tool execution flows through run_with_hooks
-                    # so every plugin's pre_tool/post_tool/on_error hooks fire
-                    # uniformly with the crew/voice/chat/MCP paths. Crew veto
-                    # behaviour per §4.4: SKIP — the veto string becomes the
-                    # tool's "result" and the agent's ReAct loop decides what
-                    # to do (try a different tool, or FINAL: with an
-                    # explanation). No retry, no fail-the-crew.
-                    _agent_cid = _correlation_id_var.get() or _new_correlation_id()
-                    _agent_name = self.name
-                    _tool_name_local = tool_name
-                    _tool_input_local = tool_input
-                    _real_tool = tool
-
-                    def _run_tool_with_hooks():
-                        def _inner(t, _c):
-                            return _real_tool.run(t)
-                        return run_with_hooks(
-                            tool_name=_tool_name_local,
-                            task=_tool_input_local,
-                            context="",
-                            transport="crew",
-                            agent=_agent_name,
-                            correlation_id=_agent_cid,
-                            invoke=_inner,
-                        )
-
-                    ctx = contextvars.copy_context()
-                    result = await loop.run_in_executor(
-                        None, ctx.run, _run_tool_with_hooks)
-                    if isinstance(result, HookVeto):
-                        result = (f"Tool '{tool_name}' was vetoed by plugin "
-                                  f"'{result.plugin_name}': {result.reason}")
+                    # A-7: executor + run_with_hooks + Step-2 veto extracted to
+                    # _execute_tool_with_hooks (propagates contextvars/cid into the
+                    # worker thread; veto string becomes the tool result per §4.4).
+                    result = await self._execute_tool_with_hooks(tool, tool_name, tool_input)
                     tool_calls_made += 1
                     _audit("tool_result", agent=self.name, tool=tool_name,
                            result_len=len(result))
@@ -581,7 +592,7 @@ Rules:
                     # the user told the agent how to proceed.
                     if _stuck_enabled():
                         stuck_ctx = contextvars.copy_context()
-                        result = await loop.run_in_executor(
+                        result = await asyncio.get_event_loop().run_in_executor(
                             None, stuck_ctx.run,
                             self._handle_stuck_post_tool, tool_name,
                             tool_input, result)

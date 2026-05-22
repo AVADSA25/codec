@@ -64,7 +64,7 @@ CODEC has its own minimalist multi-agent runtime in `codec_agents.py`. **Zero de
 
 ### Core types
 - `Tool` (`codec_agents.py:93-110`): `name`, `description`, `fn: Callable[[str], str]` — string in, string out, blocking
-- `Agent` (`codec_agents.py:317-358`): `name`, `role` (system-prompt persona), `tools`, `max_tool_calls=5`, `thinking`, `verbose`. The agent loop is ReAct-lite at `codec_agents.py:325-495`, using a text protocol: `TOOL: <name>\nINPUT: <text>` to call a tool, `FINAL: <answer>` to terminate
+- `Agent` (`codec_agents.py:317-358`): `name`, `role` (system-prompt persona), `tools`, `max_tool_calls=5`, `thinking`, `verbose`. The agent loop is ReAct-lite at `codec_agents.py:325-495`, using a text protocol: `TOOL: <name>\nINPUT: <text>` to call a tool, `FINAL: <answer>` to terminate. (PR-3D-a / A-7: the loop body delegates to extracted helpers — `Agent._parse_action` (pure protocol parse), `Agent._validate_tool_call` (pure tool-name/input guards), `Agent._execute_tool_with_hooks` (the `copy_context`+`run_with_hooks`+veto executor). Stuck detection runs inline after the `tool_result` audit.)
 - `Crew` (`codec_agents.py:512-573`): `agents`, `tasks`, `mode` (`sequential` | `parallel`), `max_steps=8`, `allowed_tools` (hard tool allowlist enforced at construction)
 
 ### Single source of truth: CREW_REGISTRY
