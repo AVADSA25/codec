@@ -53,7 +53,9 @@ def _blank_config_field(key: str) -> None:
 cfg = load_config()
 
 # Identity
-AGENT_NAME        = cfg.get('agent_name', 'C')
+# A-21 (PR-3C): AGENT_NAME removed — it was declared but never read anywhere.
+# Consumers read `cfg.get('agent_name', ...)` inline (codec_agent.py,
+# codec_slash_commands.py, codec_dashboard.py). ASSISTANT_NAME + USER_NAME ARE used.
 ASSISTANT_NAME    = cfg.get('assistant_name', 'CODEC')
 USER_NAME         = cfg.get('user_name', '')
 

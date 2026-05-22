@@ -25,8 +25,39 @@ from codec_config import (
     QWEN_BASE_URL, QWEN_MODEL, LLM_API_KEY, LLM_KWARGS, QWEN_VISION_URL, QWEN_VISION_MODEL,
     WHISPER_URL,
     DB_PATH, TASK_QUEUE_FILE, DRAFT_TASK_FILE, SESSION_ALIVE, STREAMING, WAKE_WORD, WAKE_ENERGY, WAKE_CHUNK_SEC,
+    WAKE_PHRASES,
     get_gemini_api_key,
 )
+
+
+# ── Wake-word matching (A-16, PR-3C) ─────────────────────────────────────────
+# Curated homophone variants Whisper produces for "codec" (deduped — the old
+# inline list had "kodak" twice). Matched as case-insensitive substrings of the
+# ASR text.
+_WAKE_KEYWORD_DEFAULTS = ("codec", "codex", "kodak", "kodec", "co-dec", "caudec", "codag")
+# Generic tokens that must NOT become wake triggers on their own (avoid false
+# wakes from a bare "hey"/"okay" in normal speech).
+_WAKE_STRIP_PREFIXES = ("hey", "and", "hay", "eh", "ay", "okay", "ok")
+
+
+def _is_wake_utterance(text: str) -> bool:
+    """True if `text` (lowercased ASR output) is a wake utterance.
+
+    A-16 fix: honors user-customized `WAKE_PHRASES` from config — previously
+    codec.py hardcoded the keyword list and ignored `wake_phrases` entirely, so
+    the documented config knob had no effect. Two matchers:
+      1. Homophone keyword substring (codec/codex/kodak/...) — the legacy behavior.
+      2. Configured wake PHRASE substring, but only phrases ≥5 chars so generic
+         short entries ("hey") can't false-trigger on ordinary speech.
+    """
+    t = (text or "").lower()
+    if any(kw in t for kw in _WAKE_KEYWORD_DEFAULTS):
+        return True
+    for phrase in WAKE_PHRASES:
+        p = (phrase or "").lower().strip()
+        if len(p) >= 5 and p in t:
+            return True
+    return False
 
 # Vision — prefer Gemini Flash (fast cloud), fall back to local Qwen VL
 # These are codec.py-specific (not in codec_config)
@@ -34,7 +65,8 @@ from codec_config import (
 # migration on first call), with GEMINI_API_KEY env fallback inside the getter.
 GEMINI_API_KEY    = get_gemini_api_key()
 VISION_PROVIDER   = _cfg.get("vision_provider", "gemini" if GEMINI_API_KEY else "local")
-DRAFT_KEYWORDS_CFG = _cfg.get("draft_keywords", [])
+# A-17 (PR-3C): the dead `DRAFT_KEYWORDS_CFG` knob was removed here — user
+# `draft_keywords` overrides are now honored inside codec_core.is_draft().
 
 # ─��� SHARED (from codec_core.py — single source of truth) ─────────────────────
 import codec_core as _core
@@ -710,9 +742,9 @@ def wake_word_listener():
                     if len(text) > 120:
                         continue
                     print(f"[CODEC] Wake heard: '{text}'")
-                    # Simple keyword match — if "codec/codex/kodak/kodec" appears anywhere, it's a wake
-                    _WAKE_KEYWORDS = ["codec", "codex", "kodak", "kodec", "kodak", "co-dec", "caudec", "codag"]
-                    _matched = any(kw in text for kw in _WAKE_KEYWORDS)
+                    # Wake match — homophone keyword OR a configured wake phrase
+                    # (A-16: honors user WAKE_PHRASES; see _is_wake_utterance).
+                    _matched = _is_wake_utterance(text)
                     if _matched:
                         log_event("wake_word_detected", "open-codec",
                                   "Wake word detected")
@@ -722,7 +754,7 @@ def wake_word_listener():
                             push(lambda: show_toggle_overlay(True, "F18=voice | **=screen | --=chat"))
                         command = text
                         # Strip wake keywords and common prefixes (case-insensitive)
-                        for kw in _WAKE_KEYWORDS + ["hey", "and", "hay", "eh", "ay"]:
+                        for kw in list(_WAKE_KEYWORD_DEFAULTS) + list(_WAKE_STRIP_PREFIXES):
                             command = re.sub(r'(?i)\b' + re.escape(kw) + r'\b', '', command).strip()
                         command = re.sub(r'^[\s,.\-]+|[\s,.\-]+$', '', command)
                         if len(command) > 3:

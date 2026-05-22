@@ -35,7 +35,23 @@ SCREEN_KEYWORDS = [
 def strip_think(text):
     return re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()
 
-def is_draft(t): return any(k in t.lower() for k in DRAFT_KEYWORDS)
+def _user_draft_keywords():
+    """A-17 (PR-3C): user-configured draft_keywords from ~/.codec/config.json.
+    Previously codec.py declared DRAFT_KEYWORDS_CFG but never used it, so the
+    documented `draft_keywords` config knob had zero effect. Read lazily so
+    config edits take effect without a codec_core reimport. Returns lowercased
+    string keywords; tolerates a missing/malformed config."""
+    try:
+        from codec_config import cfg
+        return [k.lower() for k in cfg.get("draft_keywords", []) if isinstance(k, str) and k.strip()]
+    except Exception:
+        return []
+
+def is_draft(t):
+    tl = t.lower()
+    if any(k in tl for k in DRAFT_KEYWORDS):
+        return True
+    return any(k in tl for k in _user_draft_keywords())
 def needs_screen(t): return any(k in t.lower() for k in SCREEN_KEYWORDS)
 
 # ── MEMORY ────────────────────────────────────────────────────────────────────
