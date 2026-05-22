@@ -386,7 +386,7 @@ Rule-based compressor for memory writes that need shrinking. Entity abbreviation
 ### Injection points
 | File:line | What gets injected |
 |---|---|
-| `codec.py:358-362` | Voice-mode prompt suffix (boot ctx + facts + memory) |
+| `codec._build_voice_system_prompt(task)` | Voice-mode prompt suffix (boot ctx + facts + memory) — extracted from `_dispatch_inner` in PR-3D-b/A-5 |
 | `codec_dashboard.py:1827-1862` | Chat handler before LLM call |
 | `codec_dashboard.py:1851-1886` | Same handler, separate channel |
 | `codec_voice.py:288-320` | VAD speech-start preload |
