@@ -28,7 +28,7 @@
     "clipboard_url_fetch.py": "c2733a92d6e99a0346b91c67bb70698e491be9570305377a82096a0ceb153488",
     "create_skill.py": "33a8c3a515142003395c996d8384e321f5d91f58ca2f7d886b24fd59e571bff6",
     "fact_extract.py": "200a3529dd4c83556efea4ad04240716a3a8aec2fc50a9ad08b3bc4b9968df5c",
-    "file_ops.py": "fc70495aae3cbd1c8f3de821bb77e4c22d6fff9cc73c413d9ad7066ef14d78bb",
+    "file_ops.py": "f3a50e9979d3e19aeff31d3d9b3c0618f5c37a8d7ffc5c90b9177db9472db9d5",
     "file_search.py": "4d8798965a7c4ecde76273f0bff25b1d65fd449f5b845cff1de9cb7e1311dfe4",
     "file_write.py": "ea00ade127ffd43ac33192f334d7be6b9b210fe75ba875df6d89005dfe782ea9",
     "google_calendar.py": "4a1d9edd26fc0162a0a62bb85f1538d7380aba14d4f8b50cc75792e37ecee8be",

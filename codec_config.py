@@ -511,26 +511,74 @@ def is_dangerous(cmd):
         return False
 
 
+# ── D-17 closure (PR-2H): reflection-aware AST module/call/attr sets ──────────
+#
+# The pre-PR-2H validator caught direct imports + named dangerous calls + a few
+# attribute calls, but missed RUNTIME REFLECTION sandbox-escapes that build the
+# dangerous call dynamically (no matching Name/Attribute-with-Name-base at the
+# top level). PR-2H adds:
+#   - `_DANGEROUS_REFLECTION_ATTRS`: dunder attributes used in escape chains
+#     (`__class__`, `__bases__`, `__subclasses__`, `__mro__`, `__globals__`,
+#     `__dict__`, `__code__`, ...). Any ast.Attribute with these `.attr` →
+#     refused, regardless of the base object.
+#   - bare `__builtins__` Name reference → refused (no legit skill touches it).
+#   - `vars`, `dir` added to DANGEROUS_CALLS (audit D-17 + the python_exec
+#     placeholder test explicitly call for these).
+#   - network modules in DANGEROUS_MODULES (exfil vector — urllib.request,
+#     http, ftplib, smtplib, requests, ...). `urllib.parse` stays SAFE.
+#
+# `open` is intentionally NOT blocked here — legitimate file skills need it and
+# runtime file access is constrained elsewhere (python_exec sandbox-exec
+# profile, file_ops/file_write path blocklists). Documented residual.
+
+# NOTE: network modules (urllib.request, requests, httpx, http.client, ...)
+# are deliberately NOT blocked here. The audit's `urllib.request` exfil example
+# is a real concern, but (1) blocking only urllib while allowing `requests`
+# would be security theater, (2) blocking ALL network breaks the existing
+# contract that skills may legitimately make HTTP calls (weather, web_search,
+# self_improve-drafted API skills), and (3) network for UNTRUSTED python_exec
+# snippets is already blocked at runtime by PR-2C's sandbox-exec profile.
+# Comprehensive network gating belongs in the audit's "Eventually: positive
+# allowlist of permitted modules" rewrite, not this reflection-focused PR.
+_SKILL_DANGEROUS_MODULES = {
+    "os", "subprocess", "ctypes", "shutil", "importlib", "signal", "pty",
+    "socket",
+}
+_SKILL_SAFE_MODULES = {
+    "json", "re", "math", "datetime", "collections", "itertools", "functools",
+    "hashlib", "base64", "urllib.parse", "time", "random", "string", "textwrap",
+    "difflib",
+}
+_SKILL_DANGEROUS_CALLS = {
+    "eval", "exec", "compile", "__import__", "globals", "locals", "getattr",
+    "setattr", "delattr", "vars", "dir",  # vars/dir added per D-17
+}
+_SKILL_DANGEROUS_ATTRS = {
+    "os.system", "os.popen", "os.execl", "os.execle", "os.execlp", "os.execlpe",
+    "os.execv", "os.execve", "os.execvp", "os.execvpe",
+    "subprocess.run", "subprocess.Popen", "subprocess.call",
+    "shutil.rmtree",
+}
+# Reflection dunder attributes — dangerous regardless of the base object.
+# These are the building blocks of every CPython sandbox-escape chain.
+_DANGEROUS_REFLECTION_ATTRS = {
+    "__class__", "__bases__", "__base__", "__subclasses__", "__mro__",
+    "__globals__", "__dict__", "__builtins__", "__code__", "__closure__",
+    "__func__", "__self__", "__getattribute__", "__subclasshook__",
+    "__init_subclass__", "__reduce__", "__reduce_ex__", "__getattr__",
+    "__import__", "__loader__", "__spec__",
+}
+# Names that should never appear in a normal skill (reflection roots).
+_DANGEROUS_REFLECTION_NAMES = {"__builtins__", "__loader__", "__spec__"}
+
+
 def is_dangerous_skill_code(code: str) -> tuple[bool, str]:
     import ast
 
-    DANGEROUS_MODULES = {
-        "os", "subprocess", "ctypes", "shutil", "importlib", "signal", "pty", "socket",
-    }
-    SAFE_MODULES = {
-        "json", "re", "math", "datetime", "collections", "itertools", "functools",
-        "hashlib", "base64", "urllib.parse", "time", "random", "string", "textwrap",
-        "difflib",
-    }
-    DANGEROUS_CALLS = {
-        "eval", "exec", "compile", "__import__", "globals", "locals", "getattr",
-    }
-    DANGEROUS_ATTRS = {
-        "os.system", "os.popen", "os.execl", "os.execle", "os.execlp", "os.execlpe",
-        "os.execv", "os.execve", "os.execvp", "os.execvpe",
-        "subprocess.run", "subprocess.Popen", "subprocess.call",
-        "shutil.rmtree",
-    }
+    DANGEROUS_MODULES = _SKILL_DANGEROUS_MODULES
+    SAFE_MODULES = _SKILL_SAFE_MODULES
+    DANGEROUS_CALLS = _SKILL_DANGEROUS_CALLS
+    DANGEROUS_ATTRS = _SKILL_DANGEROUS_ATTRS
 
     try:
         tree = ast.parse(code)
@@ -541,7 +589,9 @@ def is_dangerous_skill_code(code: str) -> tuple[bool, str]:
         if isinstance(node, ast.Import):
             for alias in node.names:
                 top = alias.name.split(".")[0]
-                if top in DANGEROUS_MODULES:
+                # Mirror ImportFrom: a dangerous top-level module is allowed
+                # only if the FULL dotted name is explicitly safe (urllib.parse).
+                if top in DANGEROUS_MODULES and alias.name not in SAFE_MODULES:
                     return (True, f"Dangerous import: {alias.name}")
 
         elif isinstance(node, ast.ImportFrom):
@@ -561,6 +611,16 @@ def is_dangerous_skill_code(code: str) -> tuple[bool, str]:
                         return (True, f"Dangerous call: {full}()")
                     if full.rsplit(".", 1)[0] in DANGEROUS_MODULES:
                         return (True, f"Dangerous call: {full}()")
+
+        # ── D-17: reflection attribute access (any base object) ──
+        elif isinstance(node, ast.Attribute):
+            if node.attr in _DANGEROUS_REFLECTION_ATTRS:
+                return (True, f"Dangerous reflection attribute: .{node.attr}")
+
+        # ── D-17: bare reflection-root Name (e.g. `__builtins__`) ──
+        elif isinstance(node, ast.Name):
+            if node.id in _DANGEROUS_REFLECTION_NAMES:
+                return (True, f"Dangerous reflection name: {node.id}")
 
     return (False, "")
 
