@@ -805,6 +805,11 @@ No agent task chains more than 8 steps without breaking. Hardcoded in `Crew.max_
 - Prefer stdlib (`sqlite3`, `json`, `pathlib`, `subprocess`) over third-party
 - Module names: `codec_<area>.py` for engine modules, `routes/<area>.py` for HTTP routes
 
+### Config schema versioning (A-15)
+- `~/.codec/config.json` carries a `config_version` stamp; `codec_config.CONFIG_SCHEMA_VERSION` is the current generation (currently **1**).
+- `codec_config.load_config()` runs an ordered migration ladder (`_CONFIG_MIGRATIONS`) on first load after an upgrade, writing back **only** when the file exists AND a migration changed something (idempotent, atomic 0600). It never creates a config file just to stamp a version, and never overwrites an unparseable one.
+- **When you add/rename/restructure a config key in a way old configs can't satisfy via `.get(k, default)`**: bump `CONFIG_SCHEMA_VERSION`, append a `_migrate_vN_to_vN+1(cfg) -> cfg` step to `_CONFIG_MIGRATIONS`, and add a round-trip test. Purely additive keys with safe defaults need **no** migration (that's why v0→v1 only stamps the version).
+
 ### Commits
 - One concern per commit
 - Audit-log schema changes go in their own commit and update this file's §6

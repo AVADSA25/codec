@@ -13,16 +13,93 @@ except ImportError:
 CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
 DRY_RUN = False
 
+# ── Config schema versioning + migration (A-15, PR-3) ────────────────────────
+# Before this, ~/.codec/config.json was a flat untracked dict — upgrading CODEC
+# (which added step_budget / stuck / observer / shift_report / ask_user / … over
+# Phase 1-3) had no version stamp or migration story. Now load_config() stamps a
+# `config_version` and runs an ordered migration ladder on first load after an
+# upgrade. All Phase 1-3 keys were ADDITIVE with safe `.get(k, default)`
+# fallbacks, so v0→v1 just stamps the version; future schema changes append a
+# `_migrate_vN_to_vN+1` step to the ladder.
+CONFIG_SCHEMA_VERSION = 1
+
+
+def _migrate_v0_to_v1(cfg: dict) -> dict:
+    """v0 (no `config_version`) → v1. No field rewrites needed (all historical
+    additions used safe defaults); this just stamps the version so future
+    migrations have a known baseline."""
+    cfg["config_version"] = 1
+    return cfg
+
+
+# Ordered ladder: _CONFIG_MIGRATIONS[i] migrates v(i) → v(i+1).
+_CONFIG_MIGRATIONS = [
+    _migrate_v0_to_v1,
+]
+
+
+def _migrate_config(cfg: dict) -> tuple:
+    """Run the migration ladder from the config's current version up to
+    CONFIG_SCHEMA_VERSION. Returns (cfg, changed: bool). Never raises."""
+    try:
+        current = cfg.get("config_version", 0)
+        if not isinstance(current, int) or current < 0:
+            current = 0
+    except AttributeError:
+        return cfg, False  # cfg isn't a dict — leave it alone
+    changed = False
+    while current < CONFIG_SCHEMA_VERSION and current < len(_CONFIG_MIGRATIONS):
+        cfg = _CONFIG_MIGRATIONS[current](cfg)
+        nxt = cfg.get("config_version", current + 1)
+        # Guard against a migration that forgets to bump the version (avoid
+        # an infinite loop): force monotonic progress.
+        current = nxt if nxt > current else current + 1
+        changed = True
+    return cfg, changed
+
+
+def _write_config_atomic(cfg: dict) -> bool:
+    """Atomic tmp+rename write of the full config at 0600. Returns success.
+    Mirrors `_blank_config_field`'s write discipline."""
+    try:
+        tmp = CONFIG_PATH + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(cfg, f, indent=2)
+        os.replace(tmp, CONFIG_PATH)
+        try:
+            os.chmod(CONFIG_PATH, 0o600)
+        except Exception:
+            pass
+        return True
+    except Exception as e:
+        print(f"[CODEC] Warning: failed to write migrated config: {e}")
+        return False
+
 
 def load_config():
-    """Load config from ~/.codec/config.json, return dict"""
+    """Load config from ~/.codec/config.json, return dict.
+
+    A-15: stamps `config_version` and runs the migration ladder. Writes back
+    ONLY when the file already exists AND a migration changed something —
+    idempotent (subsequent loads see the current version and skip), atomic,
+    and never:
+      - creates a config file just to stamp a version (fresh installs / CI
+        get the version in-memory only), nor
+      - overwrites an unparseable config (leaves it for the user to fix).
+    """
     cfg = {}
-    if os.path.exists(CONFIG_PATH):
+    existed = os.path.exists(CONFIG_PATH)
+    if existed:
         try:
             with open(CONFIG_PATH) as f:
                 cfg = json.load(f)
         except Exception as e:
+            # Don't migrate/overwrite a corrupt file — preserve it for repair.
             print(f"[CODEC] Warning: failed to parse {CONFIG_PATH}: {e}")
+            return cfg
+    cfg, changed = _migrate_config(cfg)
+    if existed and changed:
+        _write_config_atomic(cfg)
     return cfg
 
 
