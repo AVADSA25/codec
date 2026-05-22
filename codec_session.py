@@ -72,15 +72,9 @@ def strip_think(t):
     return re.sub(r"<think>.*?</think>", "", t, flags=re.DOTALL).strip()
 
 
-def extract_content(rj):
-    msg = rj["choices"][0]["message"]
-    c = msg.get("content", "").strip()
-    if c:
-        return strip_think(c)
-    r = msg.get("reasoning", "").strip()
-    if r:
-        return strip_think(r)
-    return ""
+# A-12 (PR-3E): local `extract_content` removed — its only caller was `qwen_call`,
+# now migrated to codec_llm.call (which owns the canonical content→reasoning
+# extraction). `strip_think` above is kept; qwen_stream still uses it.
 
 
 def clean_resp(text):
@@ -210,26 +204,12 @@ SAFETY RULES:
                 ib = base64.b64encode(f.read()).decode()
             os.unlink(tmp.name)
             print("[C] Reading screen...")
-            import requests
-            r = requests.post(
-                self.qwen_vision_url + "/chat/completions",
-                json={
-                    "model": self.qwen_vision_model,
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "image_url", "image_url": {"url": "data:image/png;base64," + ib}},
-                                {"type": "text", "text": "Read all visible text. Include app name and content. Raw text only."},
-                            ],
-                        }
-                    ],
-                    "max_tokens": 800,
-                },
-                timeout=120,
-            )
-            if r.status_code == 200:
-                return r.json()["choices"][0]["message"].get("content", "")[:2000]
+            # A-11 (PR-3E): canonical vision helper. Was local-Qwen-VL only here;
+            # now gains the Gemini-Flash fallback for free (config-gated).
+            import codec_vision
+            return codec_vision.describe_sync(
+                ib, "Read all visible text. Include app name and content. Raw text only.",
+                mime="image/png", max_tokens=800)[:2000]
         except Exception as e:
             log.warning(f"Screenshot capture or vision analysis failed: {e}")
         return ""
@@ -266,28 +246,14 @@ SAFETY RULES:
     # ── LLM Calls ────────────────────────────────────────────────────────
 
     def qwen_call(self, messages):
-        import requests
-        headers = {"Content-Type": "application/json"}
-        if self.llm_api_key:
-            headers["Authorization"] = "Bearer " + self.llm_api_key
-        payload = {"model": self.qwen_model, "messages": messages, "max_tokens": 500, "temperature": 0.5}
-        payload.update(self.llm_kwargs)
-        for attempt in range(3):
-            try:
-                r = requests.post(
-                    self.qwen_base_url + "/chat/completions",
-                    json=payload,
-                    headers=headers,
-                    timeout=90,
-                )
-                if r.status_code == 200:
-                    resp = extract_content(r.json())
-                    if resp:
-                        return resp
-            except Exception as e:
-                log.warning(f"LLM API call attempt {attempt+1} failed: {e}")
-                time.sleep(2 ** attempt)
-        return ""
+        # A-12 (PR-3E): canonical codec_llm.call (3 retries + backoff, content→
+        # reasoning extraction, <think> strip) — was an inline chat/completions POST.
+        import codec_llm
+        return codec_llm.call(
+            messages, base_url=self.qwen_base_url, model=self.qwen_model,
+            api_key=self.llm_api_key, max_tokens=500, temperature=0.5,
+            timeout=90, retries=3, extra_kwargs=self.llm_kwargs,
+        )
 
     def qwen_stream(self, messages):
         import requests

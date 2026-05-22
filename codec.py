@@ -22,7 +22,7 @@ SOX = shutil.which("sox") or "sox"
 # ── CONFIG (single source of truth: codec_config.py) ─────────────────────────
 from codec_config import (
     cfg as _cfg,
-    QWEN_BASE_URL, QWEN_MODEL, LLM_API_KEY, LLM_KWARGS, QWEN_VISION_URL, QWEN_VISION_MODEL,
+    QWEN_BASE_URL, QWEN_MODEL, LLM_API_KEY, LLM_KWARGS,
     WHISPER_URL,
     TASK_QUEUE_FILE, DRAFT_TASK_FILE, SESSION_ALIVE, STREAMING, WAKE_WORD, WAKE_ENERGY, WAKE_CHUNK_SEC,
     WAKE_PHRASES,
@@ -71,7 +71,7 @@ VISION_PROVIDER   = _cfg.get("vision_provider", "gemini" if GEMINI_API_KEY else 
 # ─��� SHARED (from codec_core.py — single source of truth) ─────────────────────
 import codec_core as _core
 from codec_core import (
-    strip_think, is_draft, init_db, save_task, update_session_response, get_memory, get_recent_conversations,
+    is_draft, init_db, save_task, update_session_response, get_memory, get_recent_conversations,
     transcribe, speak_text, focused_app, get_text_dialog,
     terminal_session_exists,
     # A-14 (PR-3G): `close_session` import dropped — codec.py defines its own
@@ -96,50 +96,16 @@ from codec_identity import CODEC_VOICE_PROMPT
 # safety gate AND plugin lifecycle hooks (run_with_hooks), both of which the
 # legacy path bypassed.
 
-# ── VISION (Gemini Flash or local Qwen VL) ──────────────────────────────────
-def _gemini_vision(img_b64, prompt, max_tokens=800):
-    """Call Gemini Flash vision API. Fast, reliable, free tier."""
-    import requests
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
-    payload = {
-        "contents": [{"parts": [
-            {"inlineData": {"mimeType": "image/png", "data": img_b64}},
-            {"text": prompt}
-        ]}],
-        "generationConfig": {"maxOutputTokens": max_tokens}
-    }
-    r = requests.post(url, json=payload, timeout=30)
-    if r.status_code == 200:
-        candidates = r.json().get("candidates", [])
-        if candidates:
-            parts = candidates[0].get("content", {}).get("parts", [])
-            if parts:
-                return parts[0].get("text", "").strip()
-    else:
-        print(f"[CODEC] Gemini error {r.status_code}: {r.text[:200]}")
-    return ""
-
-def _local_vision(img_b64, prompt, max_tokens=800):
-    """Call local Qwen VL vision API (fallback)."""
-    import requests
-    r = requests.post(f"{QWEN_VISION_URL}/chat/completions",
-        json={"model": QWEN_VISION_MODEL,
-            "messages": [{"role": "user", "content": [
-                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_b64}"}},
-                {"type": "text", "text": prompt}
-            ]}], "max_tokens": max_tokens}, timeout=60)
-    if r.status_code == 200:
-        return r.json()["choices"][0]["message"].get("content", "").strip()
-    return ""
+# ── VISION (A-11, PR-3E: canonical helper in codec_vision) ──────────────────
+# The Gemini-Flash → local-Qwen-VL fallback used to be hand-rolled here (and in
+# codec_voice + codec_session). It now lives in codec_vision; this is a thin
+# delegate kept for any caller of codec.vision_describe.
+import codec_vision
+import codec_llm  # A-12: canonical chat/completions caller
 
 def vision_describe(img_b64, prompt="Read all visible text on this screen. Include app name, window title, and all message/content text. Output raw text only.", max_tokens=800):
-    """Route vision to Gemini or local based on config."""
-    if VISION_PROVIDER == "gemini" and GEMINI_API_KEY:
-        result = _gemini_vision(img_b64, prompt, max_tokens)
-        if result:
-            return result
-        print("[CODEC] Gemini failed, falling back to local vision...")
-    return _local_vision(img_b64, prompt, max_tokens)
+    """Route vision to Gemini or local based on config (codec_vision)."""
+    return codec_vision.describe_sync(img_b64, prompt, mime="image/png", max_tokens=max_tokens)
 
 def screenshot_ctx():
     try:
@@ -444,55 +410,41 @@ def _dispatch_inner(task):
 
     push(lambda: show_processing_overlay('Thinking...', 15000))
     try:
-        import requests as _llm_req
-        headers = {}
-        if LLM_API_KEY:
-            headers["Authorization"] = f"Bearer {LLM_API_KEY}"
-        payload = {
-            "model": QWEN_MODEL,
-            "messages": llm_messages,
-            "max_tokens": 400,
-            "temperature": 0.7,
-            "chat_template_kwargs": {"enable_thinking": False},
-        }
-        payload.update(LLM_KWARGS)
-        r = _llm_req.post(f"{QWEN_BASE_URL}/chat/completions", json=payload, headers=headers, timeout=120)
-        if r.status_code == 200:
-            data = r.json()
-            answer = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-            answer = strip_think(answer).strip()
-            if answer:
-                print(f"[CODEC] Voice reply (turn {voice_session['turn_count']+1}): {answer[:120]}")
-                log_event("tts_speak", "open-codec",
-                          f"TTS: {answer[:60]}",
-                          extra={"text_len": len(answer)})
-                # Add assistant response to session history
-                voice_session["messages"].append({"role": "assistant", "content": answer})
-                voice_session["turn_count"] += 1
-                # Save response to DB (A-20: via codec_core helper with
-                # WAL + busy_timeout — replaces the inline lock-prone
-                # sqlite3.connect that risked "database is locked" under
-                # concurrent agent-runner + voice writes). Never raises.
-                update_session_response(rid, answer[:500])
-                # Save to shared memory (same store as Chat)
-                try:
-                    cm = CodecMemory()
-                    cm.save("voice", "user", task)
-                    cm.save("voice", "assistant", answer)
-                except Exception as e:
-                    log.warning(f"[CODEC] Memory save failed after LLM: {e}")
-                _last_tts_text = answer[:200]
-                speak_text(answer)
-                _safe_ans = answer[:80].replace('\\', '\\\\').replace('"', '\\"')
-                subprocess.Popen(["osascript", "-e",
-                    f'display notification "{_safe_ans}" with title "CODEC"'],
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            else:
-                print("[CODEC] Voice LLM returned empty response")
-                speak_text("Sorry, I didn't get a response.")
+        # A-12 (PR-3E): canonical codec_llm.call replaces the inline
+        # chat/completions POST + headers + enable_thinking + <think> strip +
+        # choices parse. Returns the stripped answer, or "" on any failure
+        # (non-200 and empty now collapse to the same apology).
+        answer = codec_llm.call(
+            llm_messages, base_url=QWEN_BASE_URL, model=QWEN_MODEL,
+            api_key=LLM_API_KEY, max_tokens=400, temperature=0.7,
+            timeout=120, retries=1, extra_kwargs=LLM_KWARGS,
+        )
+        if answer:
+            print(f"[CODEC] Voice reply (turn {voice_session['turn_count']+1}): {answer[:120]}")
+            log_event("tts_speak", "open-codec",
+                      f"TTS: {answer[:60]}",
+                      extra={"text_len": len(answer)})
+            # Add assistant response to session history
+            voice_session["messages"].append({"role": "assistant", "content": answer})
+            voice_session["turn_count"] += 1
+            # Save response to DB (A-20: codec_core helper, WAL + busy_timeout).
+            update_session_response(rid, answer[:500])
+            # Save to shared memory (same store as Chat)
+            try:
+                cm = CodecMemory()
+                cm.save("voice", "user", task)
+                cm.save("voice", "assistant", answer)
+            except Exception as e:
+                log.warning(f"[CODEC] Memory save failed after LLM: {e}")
+            _last_tts_text = answer[:200]
+            speak_text(answer)
+            _safe_ans = answer[:80].replace('\\', '\\\\').replace('"', '\\"')
+            subprocess.Popen(["osascript", "-e",
+                f'display notification "{_safe_ans}" with title "CODEC"'],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         else:
-            print(f"[CODEC] Voice LLM error: {r.status_code} {r.text[:200]}")
-            speak_text("Sorry, the language model is not responding.")
+            print("[CODEC] Voice LLM returned no response")
+            speak_text("Sorry, I didn't get a response.")
     except Exception as e:
         log.error("Voice LLM call failed: %s", e)
         import traceback; traceback.print_exc()
