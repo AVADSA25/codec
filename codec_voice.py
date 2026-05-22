@@ -212,7 +212,9 @@ VISION_PROVIDER = "local"
 try:
     VISION_URL   = _cfg.get("vision_base_url", "http://localhost:8082/v1").rstrip("/") + "/chat/completions"
     VISION_MODEL = _cfg.get("vision_model", VISION_MODEL)
-    GEMINI_API_KEY = _cfg.get("gemini_api_key", os.environ.get("GEMINI_API_KEY", ""))
+    # PR-2B-2 (D-15): Keychain-aware getter (cfg→Keychain migration + env fallback).
+    from codec_config import get_gemini_api_key
+    GEMINI_API_KEY = get_gemini_api_key()
     VISION_PROVIDER = _cfg.get("vision_provider", "gemini" if GEMINI_API_KEY else "local")
 except Exception:
     pass

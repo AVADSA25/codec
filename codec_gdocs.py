@@ -12,12 +12,12 @@ import re
 import requests as rq
 
 def _get_pexels_key() -> str:
-    """Lazy-load Pexels API key at call time (not import time)."""
+    """Lazy-load Pexels API key at call time (not import time).
+    PR-2B-2 (D-15): sourced via Keychain-aware getter (cfg→Keychain migration
+    on first call) with PEXELS_API_KEY env fallback inside the getter."""
     try:
-        import json as _json
-        with open(os.path.expanduser("~/.codec/config.json")) as _f:
-            cfg = _json.load(_f)
-        return cfg.get("pexels_api_key", os.environ.get("PEXELS_API_KEY", ""))
+        from codec_config import get_pexels_api_key
+        return get_pexels_api_key()
     except Exception:
         return os.environ.get("PEXELS_API_KEY", "")
 

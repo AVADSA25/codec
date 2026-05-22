@@ -145,6 +145,97 @@ def get_dashboard_token() -> str:
     return _cached_secret("dashboard_token", lambda: _migrate_and_get("dashboard_token", "dashboard_token"))
 
 
+# ── PR-2B-2: remaining provider secrets (closes D-15 fully) ───────────────────
+#
+# Four more secrets move cfg-plaintext → Keychain, reusing the PR-2B
+# `_migrate_and_get` / `_cached_secret` machinery. Three are top-level config
+# keys; `telegram.bot_token` is NESTED under the `telegram` dict, so it gets
+# the `_migrate_and_get_nested` variant. All four keep an env-var fallback
+# (read AFTER Keychain/cfg) to preserve the pre-PR-2B-2 call-site behavior
+# (`cfg.get("X", os.environ.get("X_ENV", ""))`).
+
+def _blank_nested_config_field(parent_key: str, child_key: str) -> None:
+    """Atomically blank a NESTED field in ~/.codec/config.json
+    (e.g. telegram.bot_token). Mirrors `_blank_config_field` but descends
+    one level. Keeps the key (set to "") so the schema stays stable."""
+    try:
+        current = load_config()
+        parent = current.get(parent_key)
+        if not isinstance(parent, dict) or child_key not in parent:
+            return
+        parent[child_key] = ""
+        current[parent_key] = parent
+        tmp = CONFIG_PATH + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(current, f, indent=2)
+        os.replace(tmp, CONFIG_PATH)
+        try:
+            os.chmod(CONFIG_PATH, 0o600)
+        except Exception:
+            pass
+    except Exception as e:
+        print(f"[CODEC] Warning: _blank_nested_config_field("
+              f"{parent_key!r}, {child_key!r}) failed: {e}")
+
+
+def _migrate_and_get_nested(kc_key: str, parent_key: str, child_key: str) -> str:
+    """Like `_migrate_and_get` but for a nested cfg key. Reads Keychain first;
+    on miss migrates `cfg[parent_key][child_key]` plaintext → Keychain and
+    blanks the nested field on disk."""
+    try:
+        from codec_keychain import keychain_get, migrate_from_plaintext
+    except Exception:
+        parent = cfg.get(parent_key, {})
+        return parent.get(child_key, "") if isinstance(parent, dict) else ""
+    k = keychain_get(kc_key)
+    if k:
+        return k
+    parent = cfg.get(parent_key, {})
+    plaintext = parent.get(child_key, "") if isinstance(parent, dict) else ""
+    if not plaintext:
+        return ""
+
+    def _blank():
+        _blank_nested_config_field(parent_key, child_key)
+        if isinstance(cfg.get(parent_key), dict):
+            cfg[parent_key][child_key] = ""  # in-process dict mirror
+
+    if migrate_from_plaintext(kc_key, plaintext, _blank):
+        return keychain_get(kc_key) or plaintext
+    return plaintext
+
+
+def get_gemini_api_key() -> str:
+    """Gemini API key. Keychain → cfg (migrate on first call) → GEMINI_API_KEY
+    env fallback. Closes D-15 (PR-2B-2)."""
+    v = _cached_secret("gemini_api_key",
+                       lambda: _migrate_and_get("gemini_api_key", "gemini_api_key"))
+    return v or os.environ.get("GEMINI_API_KEY", "")
+
+
+def get_pexels_api_key() -> str:
+    """Pexels API key. Keychain → cfg (migrate) → PEXELS_API_KEY env."""
+    v = _cached_secret("pexels_api_key",
+                       lambda: _migrate_and_get("pexels_api_key", "pexels_api_key"))
+    return v or os.environ.get("PEXELS_API_KEY", "")
+
+
+def get_serper_api_key() -> str:
+    """Serper API key. Keychain → cfg (migrate) → SERPER_API_KEY env."""
+    v = _cached_secret("serper_api_key",
+                       lambda: _migrate_and_get("serper_api_key", "serper_api_key"))
+    return v or os.environ.get("SERPER_API_KEY", "")
+
+
+def get_telegram_bot_token() -> str:
+    """Telegram bot token (nested cfg key telegram.bot_token).
+    Keychain → cfg (migrate) → TELEGRAM_BOT_TOKEN env."""
+    v = _cached_secret("telegram_bot_token",
+                       lambda: _migrate_and_get_nested(
+                           "telegram_bot_token", "telegram", "bot_token"))
+    return v or os.environ.get("TELEGRAM_BOT_TOKEN", "")
+
+
 # Module-level constants kept for back-compat with callers that import them
 # as `from codec_config import LLM_API_KEY`. Eager-evaluated at import time;
 # the getter functions above are the canonical accessors for runtime

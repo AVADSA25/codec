@@ -73,6 +73,11 @@ KEY_LLM_API_KEY = "llm_api_key"
 KEY_OAUTH_STATE = "oauth_state"
 KEY_INTERNAL_TOKEN = "internal_token"  # PR-2D — localhost-only IPC auth
 KEY_AUDIT_HMAC_SECRET = "audit_hmac_secret"  # PR-2E — audit log integrity
+# PR-2B-2 — remaining provider secrets (closes D-15 fully)
+KEY_GEMINI_API_KEY = "gemini_api_key"
+KEY_PEXELS_API_KEY = "pexels_api_key"
+KEY_SERPER_API_KEY = "serper_api_key"
+KEY_TELEGRAM_BOT_TOKEN = "telegram_bot_token"
 
 
 # ── Backend selection ────────────────────────────────────────────────────────

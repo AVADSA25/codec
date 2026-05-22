@@ -25,11 +25,14 @@ from codec_config import (
     QWEN_BASE_URL, QWEN_MODEL, LLM_API_KEY, LLM_KWARGS, QWEN_VISION_URL, QWEN_VISION_MODEL,
     WHISPER_URL,
     DB_PATH, TASK_QUEUE_FILE, DRAFT_TASK_FILE, SESSION_ALIVE, STREAMING, WAKE_WORD, WAKE_ENERGY, WAKE_CHUNK_SEC,
+    get_gemini_api_key,
 )
 
 # Vision — prefer Gemini Flash (fast cloud), fall back to local Qwen VL
 # These are codec.py-specific (not in codec_config)
-GEMINI_API_KEY    = _cfg.get("gemini_api_key", os.environ.get("GEMINI_API_KEY", ""))
+# PR-2B-2 (D-15): key now sourced via Keychain-aware getter (cfg→Keychain
+# migration on first call), with GEMINI_API_KEY env fallback inside the getter.
+GEMINI_API_KEY    = get_gemini_api_key()
 VISION_PROVIDER   = _cfg.get("vision_provider", "gemini" if GEMINI_API_KEY else "local")
 DRAFT_KEYWORDS_CFG = _cfg.get("draft_keywords", [])
 
