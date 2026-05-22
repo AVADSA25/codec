@@ -84,11 +84,25 @@ async def skills():
                                 import ast
                                 triggers = ast.literal_eval(line.split("=", 1)[1].strip())
                                 break
-                except Exception as e:
-                    log.warning(f"Non-critical error: {e}")
+                except (ValueError, SyntaxError, OSError) as e:
+                    log.warning(
+                        f"Failed to parse SKILL_TRIGGERS for {name}; "
+                        f"listing with no triggers: {e}")
                 result.append({"name": name, "triggers": triggers})
-    except Exception as e:
-        log.warning(f"Non-critical error: {e}")
+    except OSError as e:
+        # Listing the skills dir itself failed — the endpoint returns an empty
+        # list and the user sees no skills. That's a real failure, not "non-critical".
+        log.error(f"Failed to list skills dir {skills_dir}: {e}")
+        try:
+            from codec_audit import log_event
+            log_event(
+                "skills_list_failed", source="codec-routes-skills",
+                message=f"Skills listing failed: {e}",
+                level="error", outcome="error",
+                extra={"skills_dir": str(skills_dir), "error": str(e)[:200]},
+            )
+        except Exception:
+            pass
     return result
 
 

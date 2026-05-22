@@ -405,16 +405,16 @@ async def status():
     try:
         with open(CONFIG_PATH) as f:
             config = json.load(f)
-    except Exception as e:
-        log.warning(f"Non-critical error: {e}")
+    except (OSError, json.JSONDecodeError) as e:
+        log.warning(f"Config read failed; returning partial status: {e}")
 
     # Check if CODEC process is alive
     import subprocess
     try:
         r = subprocess.run(["pgrep", "-f", "codec.py"], capture_output=True, text=True, timeout=3)
         alive = bool(r.stdout.strip())
-    except Exception as e:
-        log.warning(f"Non-critical error: {e}")
+    except (OSError, subprocess.SubprocessError) as e:
+        log.warning(f"pgrep failed; assuming process not alive: {e}")
         alive = False
 
     return {
@@ -1093,8 +1093,8 @@ async def vision_analyze(request: Request):
         config = {}
         try:
             with open(CONFIG_PATH) as f: config = json.load(f)
-        except Exception as e:
-            log.warning(f"Non-critical error: {e}")
+        except (OSError, json.JSONDecodeError) as e:
+            log.warning(f"Config read failed; proceeding without overrides: {e}")
         vision_url = config.get("vision_base_url", "http://localhost:8082/v1")
         vision_model = config.get("vision_model", "mlx-community/Qwen2.5-VL-7B-Instruct-4bit")
         payload = {
@@ -1196,8 +1196,8 @@ async def tts(text: str = ""):
         config = {}
         try:
             with open(CONFIG_PATH) as f: config = json.load(f)
-        except Exception as e:
-            log.warning(f"Non-critical error: {e}")
+        except (OSError, json.JSONDecodeError) as e:
+            log.warning(f"Config read failed; proceeding without overrides: {e}")
         tts_url = config.get("tts_url", "http://localhost:8085/v1/audio/speech")
         tts_model = config.get("tts_model", "mlx-community/Kokoro-82M-bf16")
         tts_voice = config.get("tts_voice", "am_adam")
@@ -1707,8 +1707,8 @@ async def upload_image(request: Request):
         config = {}
         try:
             with open(CONFIG_PATH) as f: config = json.load(f)
-        except Exception as e:
-            log.warning(f"Non-critical error: {e}")
+        except (OSError, json.JSONDecodeError) as e:
+            log.warning(f"Config read failed; proceeding without overrides: {e}")
         vision_url = config.get("vision_base_url", "http://localhost:8083/v1")
         vision_model = config.get("vision_model", "mlx-community/Qwen3.6-35B-A3B-4bit")
         payload = {
@@ -1846,8 +1846,8 @@ async def preview_frame():
             "Content-Security-Policy": "default-src 'self' 'unsafe-inline' data: blob:; connect-src 'none'; form-action 'none'",
             "X-Frame-Options": "SAMEORIGIN",
         })
-    except Exception as e:
-        log.warning(f"Non-critical error: {e}")
+    except OSError as e:
+        log.warning(f"Preview file read failed; showing placeholder: {e}")
         return HTMLResponse("<html><body style='background:#0a0a0a;color:#888;padding:40px;font-family:sans-serif'><h2>No preview available</h2><p>Write some HTML and click Preview.</p></body></html>")
 
 @app.post("/api/run_code")
@@ -1892,8 +1892,8 @@ async def run_code(request: Request):
         return JSONResponse({"error": str(e)}, status_code=500)
     finally:
         try: os.unlink(tmp.name)
-        except Exception as e:
-            log.warning(f"Non-critical error: {e}")
+        except OSError as e:
+            log.debug(f"Temp file cleanup failed: {e}")
 
 @app.post("/api/save_file")
 async def save_file(request: Request):
@@ -2685,8 +2685,8 @@ async def chat_completion(request: Request):
         config2 = {}
         try:
             with open(CONFIG_PATH) as f: config2 = json.load(f)
-        except Exception as e:
-            log.warning(f"Non-critical error: {e}")
+        except (OSError, json.JSONDecodeError) as e:
+            log.warning(f"Config read failed; proceeding without overrides: {e}")
         vision_url = config2.get("vision_base_url", "http://localhost:8082/v1")
         vision_model = config2.get("vision_model", "mlx-community/Qwen2.5-VL-7B-Instruct-4bit")
         # Build multimodal message: last user text + all images
@@ -2719,8 +2719,8 @@ async def chat_completion(request: Request):
         config = {}
         try:
             with open(CONFIG_PATH) as f: config = json.load(f)
-        except Exception as e:
-            log.warning(f"Non-critical error: {e}")
+        except (OSError, json.JSONDecodeError) as e:
+            log.warning(f"Config read failed; proceeding without overrides: {e}")
         base_url = config.get("llm_base_url", "http://localhost:8081/v1")
         model = config.get("llm_model", "mlx-community/Qwen3.5-35B-A3B-4bit")
         # PR-2B (D-15 partial): keychain-aware live read.
@@ -3034,8 +3034,22 @@ async def chat_completion(request: Request):
                     _, s_result = await asyncio.to_thread(_try_skill_by_name, s_name, s_query)
                     if s_result:
                         answer = answer.replace(skill_tag.group(0), f"**{s_result}**")
-                except Exception:
-                    pass
+                except Exception as e:
+                    # A-22 fix: was a silent `pass` — if skill resolution blows
+                    # up, the raw [SKILL:...] tag leaks into the user's chat with
+                    # no footprint. Surface it (log + audit); behavior unchanged
+                    # (tag stays, chat still returns).
+                    log.warning(
+                        f"Post-LLM skill tag resolution failed for {s_name!r}: {e}")
+                    try:
+                        log_event(
+                            "post_llm_skill_tag_failed", source="codec-dashboard",
+                            message=f"Skill tag resolution failed: {s_name}",
+                            level="warning", outcome="error",
+                            extra={"skill": s_name, "error": str(e)[:200]},
+                        )
+                    except Exception:
+                        pass
 
         return {"response": answer, "model": model}
     except Exception as e:
