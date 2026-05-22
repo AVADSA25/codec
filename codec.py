@@ -3,7 +3,7 @@ import signal
 signal.signal(signal.SIGINT, lambda *a: None)
 signal.signal(signal.SIGTERM, lambda *a: None)
 """CODEC v2.1 | F13=on/off | F18=voice | F16=text | *=screenshot | +=doc | Wake word"""
-import logging, threading, tempfile, subprocess, os, time, sqlite3, json, re, base64, shutil
+import logging, threading, tempfile, subprocess, os, time, json, re, base64, shutil
 from datetime import datetime
 from pynput import keyboard
 
@@ -24,7 +24,7 @@ from codec_config import (
     cfg as _cfg,
     QWEN_BASE_URL, QWEN_MODEL, LLM_API_KEY, LLM_KWARGS, QWEN_VISION_URL, QWEN_VISION_MODEL,
     WHISPER_URL,
-    DB_PATH, TASK_QUEUE_FILE, DRAFT_TASK_FILE, SESSION_ALIVE, STREAMING, WAKE_WORD, WAKE_ENERGY, WAKE_CHUNK_SEC,
+    TASK_QUEUE_FILE, DRAFT_TASK_FILE, SESSION_ALIVE, STREAMING, WAKE_WORD, WAKE_ENERGY, WAKE_CHUNK_SEC,
     WAKE_PHRASES,
     get_gemini_api_key,
 )
@@ -71,7 +71,7 @@ VISION_PROVIDER   = _cfg.get("vision_provider", "gemini" if GEMINI_API_KEY else 
 # ─��� SHARED (from codec_core.py — single source of truth) ─────────────────────
 import codec_core as _core
 from codec_core import (
-    strip_think, is_draft, init_db, save_task, get_memory, get_recent_conversations,
+    strip_think, is_draft, init_db, save_task, update_session_response, get_memory, get_recent_conversations,
     loaded_skills, load_skills, run_skill,
     transcribe, speak_text, focused_app, get_text_dialog,
     terminal_session_exists,
@@ -473,13 +473,11 @@ def _dispatch_inner(task):
                 # Add assistant response to session history
                 voice_session["messages"].append({"role": "assistant", "content": answer})
                 voice_session["turn_count"] += 1
-                # Save response to DB
-                try:
-                    c = sqlite3.connect(DB_PATH)
-                    c.execute("UPDATE sessions SET response=? WHERE id=?", (answer[:500], rid))
-                    c.commit(); c.close()
-                except Exception as e:
-                    log.warning(f"[CODEC] DB save failed: {e}")
+                # Save response to DB (A-20: via codec_core helper with
+                # WAL + busy_timeout — replaces the inline lock-prone
+                # sqlite3.connect that risked "database is locked" under
+                # concurrent agent-runner + voice writes). Never raises.
+                update_session_response(rid, answer[:500])
                 # Save to shared memory (same store as Chat)
                 try:
                     cm = CodecMemory()
