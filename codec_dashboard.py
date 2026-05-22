@@ -27,6 +27,7 @@ from routes._shared import (
 # Audit emits route through the unified log_event adapter (real, not no-op)
 # per docs/PHASE1-STEP1-DESIGN.md.
 from codec_audit import log_event, STEP_BUDGET_EXHAUSTED
+from codec_chat_stream import SkillTagBuffer, SKILL_TAG_RE  # A-6 (PR-3D-c)
 
 from pydantic import BaseModel, Field
 # (A-18, PR-3G: `from typing import Optional, List` removed — Optional is already
@@ -2794,26 +2795,12 @@ async def chat_completion(request: Request):
         if stream_mode:
             # SSE streaming — keeps Cloudflare tunnel alive, sends tokens as they arrive
             def _stream_gen():
-                in_think = False  # Track whether we're inside <think>...</think>
                 _empty_count = 0  # Track empty content chunks for keepalive
-                # Bugfix 2026-04-16: buffer potential [SKILL:...] tags so the raw
-                # tag never leaks through the stream. When we see "[" we start
-                # buffering; if it resolves to a [SKILL:...] tag we execute the
-                # skill and emit the result; otherwise we flush the buffer.
-                import re as _re
-                skill_buf = ""
-                buffering = False
-                SKILL_RE = _re.compile(r'\[SKILL:(\w+):([^\]]+)\]')
+                # A-6 (PR-3D-c): the <think> + [SKILL:...] token machine now lives
+                # in codec_chat_stream.SkillTagBuffer; _resolve_skill_tag (below) is
+                # injected (it runs the skill: budget + allowlist + dispatch).
 
-                # Track visible characters emitted to user so we can detect
-                # the "LLM emitted only skill tags + we dropped them all" case
-                # → blank bubble. We append to a list (closure-mutable) instead
-                # of using a nonlocal int because nested defs make rebinding ugly.
-                _visible = [0]
-
-                def _flush_emit(tok):
-                    if tok:
-                        _visible[0] += len(tok)
+                def _frame(tok):
                     return f"data: {json.dumps({'token': tok})}\n\n"
 
                 def _resolve_skill_tag(raw_tag):
@@ -2831,7 +2818,7 @@ async def chat_completion(request: Request):
                     step_budget_exhausted audit was already emitted by
                     _budget.consume.
                     """
-                    m = SKILL_RE.search(raw_tag)
+                    m = SKILL_TAG_RE.search(raw_tag)
                     if not m:
                         return raw_tag  # not a skill tag at all — emit as-is
                     if not _budget.consume("post_llm_skill_tag"):
@@ -2850,6 +2837,7 @@ async def chat_completion(request: Request):
                         log.warning(f"[Chat] Skill {s_name!r} crashed: {e}")
                     # Drop the tag silently — never leak raw [SKILL:...] to UI
                     return raw_tag.replace(m.group(0), "")
+                buf = SkillTagBuffer(_resolve_skill_tag)
                 try:
                     with rq.post(f"{base_url}/chat/completions", json=payload,
                                  headers=headers, timeout=300, stream=True) as resp:
@@ -2859,19 +2847,18 @@ async def chat_completion(request: Request):
                             data_str = line[6:]
                             if data_str == "[DONE]":
                                 # Flush any pending buffer before closing
-                                if skill_buf:
-                                    yield _flush_emit(_resolve_skill_tag(skill_buf))
-                                    skill_buf = ""
+                                for s in buf.finish():
+                                    yield _frame(s)
                                 # Safety net: if the LLM emitted ONLY [SKILL:...] tags
                                 # and we dropped them all, the user gets a blank bubble.
                                 # Send a graceful fallback so they know to retry.
                                 # 2026-04-27 bugfix.
-                                if _visible[0] == 0:
+                                if buf.visible_chars == 0:
                                     fallback = (
                                         "I tried to use a tool that didn't apply here. "
                                         "Could you rephrase, or just ask me to write it directly?"
                                     )
-                                    yield _flush_emit(fallback)
+                                    yield _frame(fallback)
                                 yield "data: [DONE]\n\n"
                                 break
                             try:
@@ -2885,86 +2872,14 @@ async def chat_completion(request: Request):
                                     if _empty_count % 10 == 1:
                                         yield ": keepalive\n\n"
                                     continue
-                                # Handle thinking tags that span across chunks
-                                if "<think>" in token:
-                                    in_think = True
-                                    # Keep any text before <think>
-                                    before = token.split("<think>")[0]
-                                    if before:
-                                        yield f"data: {json.dumps({'token': before})}\n\n"
-                                    token = ""
-                                if in_think:
-                                    if "</think>" in token:
-                                        in_think = False
-                                        # Keep any text after </think>
-                                        after = token.split("</think>", 1)[-1]
-                                        if after:
-                                            yield f"data: {json.dumps({'token': after})}\n\n"
-                                    # Skip all thinking content
-                                    continue
-                                if not token:
-                                    continue
-                                # ── [SKILL:...] buffering ──
-                                # Process token char by char looking for tag boundaries
-                                i = 0
-                                while i < len(token):
-                                    if buffering:
-                                        skill_buf += token[i]
-                                        i += 1
-                                        # Validate prefix: must still be a prefix of "[SKILL:"
-                                        # (when short) or must start with "[SKILL:" (when long).
-                                        # As soon as it diverges, it's not a tag — emit raw.
-                                        _SKP = "[SKILL:"
-                                        if len(skill_buf) <= len(_SKP):
-                                            if not _SKP.startswith(skill_buf):
-                                                yield _flush_emit(skill_buf)
-                                                skill_buf = ""
-                                                buffering = False
-                                                continue
-                                        elif not skill_buf.startswith(_SKP):
-                                            yield _flush_emit(skill_buf)
-                                            skill_buf = ""
-                                            buffering = False
-                                            continue
-                                        # Tag complete?
-                                        if skill_buf.endswith("]"):
-                                            # Is it a valid skill tag?
-                                            if SKILL_RE.search(skill_buf):
-                                                yield _flush_emit(_resolve_skill_tag(skill_buf))
-                                            else:
-                                                # Not a skill tag — emit raw
-                                                yield _flush_emit(skill_buf)
-                                            skill_buf = ""
-                                            buffering = False
-                                        # Buffer too long → safety cap.
-                                        # NOTE: newlines are allowed inside a tag because
-                                        # python_exec/terminal queries can be multi-line scripts.
-                                        elif len(skill_buf) > 5000:
-                                            yield _flush_emit(skill_buf)
-                                            skill_buf = ""
-                                            buffering = False
-                                    else:
-                                        # Look for start of potential skill tag
-                                        idx = token.find("[", i)
-                                        if idx == -1:
-                                            # No "[" in rest of token → emit rest
-                                            rest = token[i:]
-                                            if rest:
-                                                yield _flush_emit(rest)
-                                            break
-                                        else:
-                                            # Emit up to "[", start buffering
-                                            before = token[i:idx]
-                                            if before:
-                                                yield _flush_emit(before)
-                                            skill_buf = "["
-                                            buffering = True
-                                            i = idx + 1
+                                # <think> stripping + [SKILL:...] buffering (SkillTagBuffer)
+                                for s in buf.feed(token):
+                                    yield _frame(s)
                             except (json.JSONDecodeError, KeyError, IndexError):
                                 continue
                     # Final flush if stream closed without [DONE]
-                    if skill_buf:
-                        yield _flush_emit(_resolve_skill_tag(skill_buf))
+                    for s in buf.finish():
+                        yield _frame(s)
                 except Exception as e:
                     yield f"data: {json.dumps({'error': str(e)})}\n\n"
             from starlette.responses import StreamingResponse as _SR
