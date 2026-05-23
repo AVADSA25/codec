@@ -43,8 +43,9 @@ codec_session.py             Session lifecycle
 codec_sandbox.py             Sandboxed file/shell wrappers
 codec_config.py              Config + dangerous-pattern detection + _HTTP_BLOCKED
 codec_ava_client.py          AVA cloud proxy client (Gemini/Claude/GPT routing for paid users)
-codec_imessage.py            iMessage outbound bridge
-codec_telegram.py            Telegram outbound bridge
+codec_imessage.py            iMessage outbound bridge (thin adapter over codec_bridges)
+codec_telegram.py            Telegram outbound bridge (thin adapter over codec_bridges)
+codec_bridges.py             Shared outbound-bridge core (A-19): load_dispatch/try_skill, call_llm(channel,…), save_to_memory(channel,…). The "add a channel" surface; process_message stays per-bridge
 whisper_server.py            Local STT server
 routes/agents.py             /api/agents/* endpoints (custom agents, crew launcher)
 routes/_shared.py            notifications.json read/write helpers
