@@ -61,9 +61,19 @@ def test_dashboard_uses_codec_llm_call():
     assert "QWEN_BASE_URL.rstrip('/')}/chat/completions" not in src
 
 
-def test_dashboard_chat_pair_and_vision_posts_remain():
-    # This tranche migrates 3 of 10 chat/completions sites. The 5 vision sites
-    # (A-11) and the 2 chat-handler-pair sites (stream + fallback, deferred to
-    # the keepalive PR) stay → 7 inline /chat/completions occurrences remain.
+def test_dashboard_only_vision_posts_remain():
+    # After PR-3E-chat-stream migrated the chat stream + non-stream fallback,
+    # the ONLY inline /chat/completions occurrences left are the 5 vision sites
+    # (A-11 / codec_vision territory, not A-12).
     src = (REPO / "codec_dashboard.py").read_text()
-    assert src.count("/chat/completions") == 7
+    assert src.count("/chat/completions") == 5
+
+
+def test_chat_handler_uses_codec_llm_stream():
+    src = (REPO / "codec_dashboard.py").read_text()
+    assert "codec_llm.stream(" in src
+    assert "codec_llm.KEEPALIVE" in src          # keepalive sentinel handled
+    # both chat-handler POSTs gone: the streaming `with rq.post(...stream=True)`
+    # and the non-stream `rq.post(f"{base_url}/chat/completions"...)`
+    assert "stream=True) as resp" not in src
+    assert 'rq.post(f"{base_url}/chat/completions", json=payload' not in src
