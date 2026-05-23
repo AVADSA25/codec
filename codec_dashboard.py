@@ -843,6 +843,51 @@ async def audit_stats():
     from codec_audit import get_stats
     return get_stats(hours=24)
 
+
+def _latest_response_for_session(db, session_id, after_id="", after_ts=""):
+    """Newest assistant reply for the caller's turn, or None. (C-2 / PR-4B.)
+
+    Correlation is server-authoritative via conversations.id (`after_id` = the
+    user row's autoincrement id, returned to the client as request_id). The
+    turn's assistant row always has id > after_id, so `id > after_id ORDER BY id
+    ASC LIMIT 1` selects the immediate-next assistant reply — no client-clock dep,
+    exactly correct for the dominant single-tab + sequential flows. This
+    replaces the racy ~/.codec/pwa_response.json file (non-atomic write, no
+    writer mutex, no correlation, racy mtime/unlink) AND the latent
+    clock/RTT-skew miss of the old `timestamp > after` query.
+
+    `after_ts` (a wall-clock string) is a backward-compat fallback for an
+    un-refreshed PWA tab that predates after_id. Never raises."""
+    if not session_id:
+        return None
+    try:
+        aid = int(after_id or 0)
+    except (TypeError, ValueError):
+        aid = 0
+    try:
+        if aid > 0:
+            row = db.execute(
+                "SELECT content FROM conversations "
+                "WHERE session_id=? AND role='assistant' AND id>? "
+                "ORDER BY id ASC LIMIT 1",
+                (session_id, aid),
+            ).fetchone()
+        elif after_ts:
+            row = db.execute(
+                "SELECT content FROM conversations "
+                "WHERE session_id=? AND role='assistant' AND timestamp>? "
+                "ORDER BY timestamp DESC LIMIT 1",
+                (session_id, after_ts),
+            ).fetchone()
+        else:
+            return None
+        if row and row[0]:
+            return row[0]
+        return None
+    except Exception:
+        return None
+
+
 @app.post("/api/command")
 async def send_command(request: Request):
     """Queue a command for CODEC to execute (used by heartbeat, scheduler, and PWA)."""
@@ -883,13 +928,17 @@ async def send_command(request: Request):
         session_id = body.get("session_id") or f"quickchat-{__import__('uuid').uuid4().hex[:8]}"
         now = datetime.now().isoformat()
 
-        # Save user message to conversations table (so it appears in chat list)
+        # Save user message to conversations table (so it appears in chat list).
+        # Capture its autoincrement id as the server-authoritative correlation
+        # token (request_id): /api/response matches the assistant reply by
+        # `id > request_id` (C-2 / PR-4B — replaces the racy pwa_response.json).
         c = get_db()
-        c.execute(
+        _user_cur = c.execute(
             "INSERT INTO conversations (session_id, timestamp, role, content) VALUES (?,?,?,?)",
             (session_id, now, "user", task[:2000])
         )
         c.commit()
+        request_id = _user_cur.lastrowid
 
         # Load recent conversation history for context (last 20 messages in this session)
         _history_rows = c.execute(
@@ -905,15 +954,10 @@ async def send_command(request: Request):
                   f"Command from {source}: {task[:80]}",
                   extra={"source": source, "task_preview": task[:200]})
 
-        # Call LLM in background so response returns fast
+        # Call LLM in background so response returns fast. The reply is
+        # persisted to the conversations table (below) and picked up by
+        # /api/response via the request_id correlation — no response file.
         import asyncio
-        resp_file = os.path.expanduser("~/.codec/pwa_response.json")
-        # Clear stale response from previous command
-        try:
-            if os.path.exists(resp_file):
-                os.unlink(resp_file)
-        except Exception:
-            pass
 
         async def _process_command():
             try:
@@ -977,11 +1021,8 @@ async def send_command(request: Request):
                         log.error("[Command] LLM returned no answer")
                         answer = "Sorry, the AI model didn't respond. Please try again."
 
-                # Write response for /api/response polling
-                with open(resp_file, "w") as f:
-                    json.dump({"response": answer, "task": task, "ts": datetime.now().isoformat()}, f)
-
-                # Save assistant response to conversations table
+                # Save assistant response to conversations table — this row IS
+                # the response bridge now (/api/response reads it by request_id).
                 c2 = get_db()
                 c2.execute(
                     "INSERT INTO conversations (session_id, timestamp, role, content) VALUES (?,?,?,?)",
@@ -1005,11 +1046,21 @@ async def send_command(request: Request):
                           error_type=type(e).__name__,
                           error=str(e)[:500],
                           extra=_err_extra or None)
-                with open(resp_file, "w") as f:
-                    json.dump({"response": f"Error: {e}", "task": task}, f)
+                # Persist the error as an assistant row so /api/response surfaces
+                # it (no response file). Defensive — never re-raise out of the task.
+                try:
+                    c_err = get_db()
+                    c_err.execute(
+                        "INSERT INTO conversations (session_id, timestamp, role, content) VALUES (?,?,?,?)",
+                        (session_id, datetime.now().isoformat(), "assistant", f"Error: {e}"[:2000])
+                    )
+                    c_err.commit()
+                except Exception as _persist_err:
+                    log.warning(f"[Command] error-row persist failed: {_persist_err}")
 
         asyncio.create_task(_process_command())
-        return {"status": "processing", "command": task, "source": source}
+        return {"status": "processing", "command": task, "source": source,
+                "request_id": request_id, "session_id": session_id}
     except Exception as e:
         log.error(f"[Command] Failed: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
@@ -1102,30 +1153,19 @@ async def vision_analyze(request: Request):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 @app.get("/api/response")
-async def get_response(session_id: str = "", after: str = ""):
-    """Get latest PWA command response — file-based + DB fallback for reliability."""
+async def get_response(session_id: str = "", after: str = "", after_id: str = ""):
+    """Get the PWA command response from the conversations DB (C-2 / PR-4B).
+
+    Correlation is server-authoritative via `after_id` (= the request_id the
+    /api/command response carried = the user row's conversations.id). `after`
+    (legacy wall-clock timestamp) is kept only as a fallback for an un-refreshed
+    PWA tab. The old ~/.codec/pwa_response.json file path is gone."""
     headers = {"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache"}
     try:
-        # Primary: check response file (fast path)
-        resp_file = os.path.expanduser("~/.codec/pwa_response.json")
-        if os.path.exists(resp_file):
-            with open(resp_file) as f:
-                data = json.load(f)
-            file_age = time.time() - os.path.getmtime(resp_file)
-            if file_age > 10:
-                os.unlink(resp_file)
-            log.info(f"[Response] Delivered (file): {str(data.get('response',''))[:80]}")
-            return JSONResponse(content=data, headers=headers)
-        # Fallback: check DB for assistant response newer than 'after' timestamp
-        if session_id and after:
-            c = get_db()
-            row = c.execute(
-                "SELECT content FROM conversations WHERE session_id=? AND role='assistant' AND timestamp>? ORDER BY timestamp DESC LIMIT 1",
-                (session_id, after)
-            ).fetchone()
-            if row and row[0]:
-                log.info(f"[Response] Delivered (db fallback): {str(row[0])[:80]}")
-                return JSONResponse(content={"response": row[0]}, headers=headers)
+        ans = _latest_response_for_session(get_db(), session_id, after_id=after_id, after_ts=after)
+        if ans:
+            log.info(f"[Response] Delivered (db): {str(ans)[:80]}")
+            return JSONResponse(content={"response": ans}, headers=headers)
         return JSONResponse(content={"response": None}, headers=headers)
     except Exception as e:
         log.warning(f"[Response] Error reading response: {e}")
