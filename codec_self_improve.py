@@ -80,7 +80,6 @@ _REPO = Path(__file__).resolve().parent
 sys.path.insert(0, str(_REPO))
 
 from codec_config import QWEN_BASE_URL, QWEN_MODEL, SKILLS_DIR, is_dangerous_skill_code
-from codec_retry import retry_post
 
 try:
     from codec_audit import log_event as _si_log_event
@@ -234,24 +233,17 @@ def _draft_skill(gap: dict) -> tuple[str, str, str] | None:
         kind=gap["kind"], tool=gap["tool"], evidence=evidence
     )
     try:
-        r = retry_post(
-            f"{QWEN_BASE_URL}/chat/completions",
-            json={
-                "model": QWEN_MODEL,
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.3,
-                "max_tokens": 4000,
-                "chat_template_kwargs": {"enable_thinking": False},
-            },
-            timeout=120,
-            max_attempts=2,
+        # A-12 (PR-3E-skills-misc): codec_llm.call (retries=2 ~ the old retry_post
+        # max_attempts=2; content→reasoning fallback + <think> strip built in;
+        # never-raises → "" on failure → return None below, as before).
+        import codec_llm
+        raw = codec_llm.call(
+            [{"role": "user", "content": prompt}],
+            base_url=QWEN_BASE_URL, model=QWEN_MODEL,
+            max_tokens=4000, temperature=0.3, timeout=120, retries=2,
         )
-        r.raise_for_status()
-        msg = r.json()["choices"][0]["message"]
-        raw = (msg.get("content") or "").strip()
         if not raw:
-            # Reasoning/thinking models may put output in "reasoning"
-            raw = (msg.get("reasoning") or "").strip()
+            return None
     except Exception:
         return None
 

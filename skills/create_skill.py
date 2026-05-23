@@ -101,14 +101,16 @@ RULES:
 The skill should: {description}"""
 
     try:
-        payload = {"model": model, "messages": [{"role": "user", "content": prompt}], "max_tokens": 1000, "temperature": 0.3,
-                   "chat_template_kwargs": {"enable_thinking": False}}
-        payload.update(kwargs)
-        r = requests.post(base_url + "/chat/completions", json=payload, headers=headers, timeout=60)
-        if r.status_code != 200:
+        # A-12 (PR-3E-skills-misc): codec_llm.call (never-raise → "" → fallback;
+        # <think> strip built in). kwargs passed through (matches payload.update).
+        import codec_llm
+        code = codec_llm.call(
+            [{"role": "user", "content": prompt}],
+            base_url=base_url, model=model, api_key=api_key,
+            max_tokens=1000, temperature=0.3, extra_kwargs=kwargs, timeout=60,
+        )
+        if not code:
             return "Failed to generate skill. LLM returned error."
-
-        code = r.json()["choices"][0]["message"].get("content", "").strip()
         # Clean up any markdown
         code = code.replace("```python", "").replace("```", "").strip()
 

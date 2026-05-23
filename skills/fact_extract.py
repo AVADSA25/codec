@@ -54,21 +54,17 @@ Return ONLY the JSON array, nothing else."""
 
 
 def _call_llm(prompt: str) -> str:
-    from codec_retry import retry_post
+    # A-12 (PR-3E-skills-misc): codec_llm.call (retries=3 ~ the old retry_post
+    # max_attempts=3; raise_on_error=True so the except still builds the __ERR__
+    # sentinel the caller checks for; content→reasoning + <think> strip built in).
+    import codec_llm
     try:
-        r = retry_post(
-            f"{QWEN_BASE_URL}/chat/completions",
-            json={
-                "model": QWEN_MODEL,
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.1,
-                "max_tokens": 800,
-            },
-            timeout=60,
-            max_attempts=3,
+        return codec_llm.call(
+            [{"role": "user", "content": prompt}],
+            base_url=QWEN_BASE_URL, model=QWEN_MODEL,
+            max_tokens=800, temperature=0.1, timeout=60, retries=3,
+            raise_on_error=True,
         )
-        r.raise_for_status()
-        return r.json()["choices"][0]["message"]["content"]
     except Exception as e:
         return f"__ERR__:{type(e).__name__}:{e}"
 
