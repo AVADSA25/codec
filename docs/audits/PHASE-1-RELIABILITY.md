@@ -106,6 +106,8 @@ with _FILE_LOCK:
 ---
 
 ### C-5 — `_atomic_set_status` swallows `InvalidStatusTransition` exceptions, agent state machine can desync [CRITICAL]
+
+> **Closed by PR-4D** (audit option b — return a bool, check at call sites). `codec_agent_runner._atomic_set_status` now returns `bool` (True = applied, False = illegal/externally-superseded transition **or** write failure; never raises). The **run-start** `running` transition is guarded — if it doesn't apply (the agent was aborted/paused via the PWA between approval and the runner reaching it), `_run_agent` returns **without executing checkpoints** (the dangerous "execute a superseded agent" bug). The six in-loop terminal-for-this-run emits (`blocked_on_permission`, `aborted`/destructive, `blocked_on_destructive`, `paused`/step-budget, `completed`, `blocked_on_qwen`) only fire their audit + notification **when the transition applied** — so an external pause no longer produces a misleading "Blocked: grant permission" card while the PWA shows `paused`. **Option (c) "just propagate" was rejected** — it converts a user pause into an abort (the unsuppressed `paused → blocked_on_permission` propagates to the outer handler, which does `→ aborted`, which `paused` allows); **option (a) "narrow the except" was rejected** as incomplete (still swallows the bad transition). State machine (`_VALID_TRANSITIONS`) unchanged; no external caller of `_atomic_set_status`. 7 tests (`tests/test_atomic_set_status.py`). See `docs/PR4D-ATOMIC-SET-STATUS-DESIGN.md`.
 **Location:** `codec_agent_runner.py:659-668`
 **Description:**
 ```python
