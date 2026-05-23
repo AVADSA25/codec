@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
+# C-1 (PR-4A): real SIGTERM/SIGINT handlers are registered in main() via
+# _graceful_shutdown (after `state` is defined). The old no-op handlers that
+# lived here ignored shutdown signals, orphaning the sox recording subprocess +
+# tkinter overlays and leaking temp .wav/.png files on every PM2 restart.
 import signal
-signal.signal(signal.SIGINT, lambda *a: None)
-signal.signal(signal.SIGTERM, lambda *a: None)
 """CODEC v2.1 | F13=on/off | F18=voice | F16=text | *=screenshot | +=doc | Wake word"""
-import logging, threading, tempfile, subprocess, os, time, json, re, base64, shutil
+import logging, threading, tempfile, subprocess, os, sys, time, json, re, base64, shutil
+import atexit
 from datetime import datetime
 from pynput import keyboard
 
@@ -835,9 +838,46 @@ def on_release(key):
         push(do_stop_voice)
 
 # ── MAIN ──────────────────────────────────────────────────────────────────────
+def _graceful_shutdown(signum=None, frame=None):
+    """C-1 (PR-4A): terminate the recording + overlay subprocesses and unlink the
+    temp audio file so PM2 SIGTERM (restart / reboot / max-memory) doesn't orphan
+    `sox`/tkinter children or leak temp files. Registered as the SIGTERM/SIGINT
+    handler AND via atexit. Idempotent (state nulled) and never raises. On the
+    signal path (signum set) it exits 0; on the atexit path it just cleans up."""
+    rec = state.get("rec_proc")
+    if rec:
+        try:
+            rec.terminate(); rec.wait(timeout=2)
+        except Exception as e:
+            log.debug("Shutdown: rec_proc cleanup failed: %s", e)
+        state["rec_proc"] = None
+    ovl = state.get("overlay_proc")
+    if ovl:
+        try:
+            ovl.terminate()
+        except Exception as e:
+            log.debug("Shutdown: overlay_proc cleanup failed: %s", e)
+        state["overlay_proc"] = None
+    audio = state.get("audio_path")
+    if audio:
+        try:
+            if os.path.exists(audio):
+                os.unlink(audio)
+        except Exception as e:
+            log.debug("Shutdown: audio_path unlink failed: %s", e)
+        state["audio_path"] = None
+    if signum is not None:   # real signal (not atexit) → exit within PM2's 10s window
+        sys.exit(0)
+
+
 def main():
     from codec_logging import setup_logging
     setup_logging()
+    # C-1 (PR-4A): graceful shutdown — registered here (not at module top) so the
+    # handler sees the `state` dict. Replaces the old no-op SIGINT/SIGTERM handlers.
+    signal.signal(signal.SIGTERM, _graceful_shutdown)
+    signal.signal(signal.SIGINT, _graceful_shutdown)
+    atexit.register(_graceful_shutdown)
     init_db()
     for f in [SESSION_ALIVE, TASK_QUEUE_FILE, DRAFT_TASK_FILE]:
         try: os.unlink(f)

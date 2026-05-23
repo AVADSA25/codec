@@ -31,6 +31,8 @@ Findings cross-reference each other to avoid double-counting the same root cause
 ## Findings
 
 ### C-1 — Main `codec.py` daemon ignores SIGINT and SIGTERM, leaks subprocesses on PM2 restart [CRITICAL]
+
+> **Closed by PR-4A** (Wave 4 opener). The two no-op handlers (`signal.signal(SIG*, lambda *a: None)`) are gone; `codec._graceful_shutdown(signum, frame)` now terminates `state["rec_proc"]` (sox) + `state["overlay_proc"]` (tkinter), unlinks `state["audio_path"]`, and exits 0 on the signal path — registered via `signal.signal(SIGTERM/SIGINT, …)` + `atexit.register(…)` in `main()` (after `state` is in scope). Idempotent + never-raises (mirrors `codec_dictate`'s `atexit._cleanup`). So `pm2 restart open-codec` / reboot / max-memory restart no longer orphans the recording subprocess or leaks temp `.wav`/`.png`. Pinned by `tests/test_graceful_shutdown.py` (5). See `docs/PR4A-CODEC-GRACEFUL-SHUTDOWN-DESIGN.md`. **H-1** (the `codec_lifecycle.py` helper for the other 10 PM2 daemons) is the follow-on.
 **Location:** `codec.py:1-4`
 **Description:**
 ```python
