@@ -23,7 +23,6 @@ import json
 import time
 import logging
 import requests
-import sqlite3
 from datetime import datetime
 
 # ── Logging ──────────────────────────────────────────────────────────────────
@@ -207,43 +206,10 @@ class TelegramBot:
 
 
 # ── CODEC Skill dispatch ────────────────────────────────────────────────────
-_dispatch_loaded = False
-_check_skill = None
-_run_skill = None
-
-
-def _load_dispatch():
-    global _dispatch_loaded, _check_skill, _run_skill
-    if _dispatch_loaded:
-        return _check_skill is not None
-    _dispatch_loaded = True
-    try:
-        from codec_dispatch import check_skill, run_skill
-        _check_skill = check_skill
-        _run_skill = run_skill
-        log.info("Skill dispatch loaded")
-        return True
-    except Exception as e:
-        log.warning(f"Skill dispatch unavailable ({e}) — LLM-only mode")
-        return False
-
-
-def try_skill(text):
-    if not _load_dispatch():
-        return (None, None)
-    try:
-        skill = _check_skill(text)
-        if skill:
-            _SKIP = {"open_terminal", "run_command", "vibe_code", "deep_chat",
-                      "memory_search", "ask_mike_to_build"}
-            if skill["name"] in _SKIP:
-                return (None, None)
-            result = _run_skill(skill, text)
-            if result:
-                return (skill["name"], str(result))
-    except Exception as e:
-        log.warning(f"Skill error: {e}")
-    return (None, None)
+# A-19 (PR-3F): skill dispatch, the LLM call, and memory persistence are shared
+# with codec_imessage via codec_bridges. process_message stays local (the two
+# bridges' flows have intentionally drifted — audio/Gemini here, goals there).
+from codec_bridges import try_skill
 
 
 # ── Daily Briefing: premium data gathering ───────────────────────────────
@@ -447,34 +413,14 @@ def _run_deep_report(chat_id):
 
 # ── LLM call ────────────────────────────────────────────────────────────────
 def call_llm(text, llm_cfg, conversation_history=None, system_prompt_override=None):
-    if system_prompt_override:
-        sys_prompt = system_prompt_override
-    else:
-        now_str = datetime.now().strftime("%A %B %d, %Y at %H:%M")
-        sys_prompt = (
-            f"You are CODEC, a personal AI assistant replying via Telegram. "
-            f"Today is {now_str}. Be concise and direct. "
-            f"Keep replies under 3 sentences unless more detail is needed. "
-            f"You can use Markdown formatting. Be natural and helpful."
-        )
-
-    messages = [{"role": "system", "content": sys_prompt}]
-    if conversation_history:
-        messages.extend(conversation_history[-8:])
-    messages.append({"role": "user", "content": text})
-
-    # A-12 (PR-3E-bridges): canonical codec_llm.call. Never-raise -> "" on any
-    # failure (error/no-choices/timeout/empty); mapped back to the bridge's None
-    # contract for graceful degradation. codec_llm strips <think>; kwargs are
-    # passed minus chat_template_kwargs so enable_thinking=False is preserved.
-    import codec_llm
-    extra = {k: v for k, v in llm_cfg["kwargs"].items() if k != "chat_template_kwargs"}
-    content = codec_llm.call(
-        messages, base_url=llm_cfg["base_url"], model=llm_cfg["model"],
-        api_key=llm_cfg["api_key"], max_tokens=1500, temperature=0.7,
-        timeout=120, extra_kwargs=extra,
+    # A-19 (PR-3F): shared bridge LLM call lives in codec_bridges (channel persona
+    # + codec_llm.call + None-contract). Thin wrapper keeps this call signature.
+    import codec_bridges
+    return codec_bridges.call_llm(
+        "telegram", text, llm_cfg,
+        conversation_history=conversation_history,
+        system_prompt_override=system_prompt_override,
     )
-    return content if content else None
 
 
 # ── Vision (photo messages) ─────────────────────────────────────────────────
@@ -541,26 +487,9 @@ def add_history(chat_id, role, content):
 
 # ── Save to CODEC memory DB ─────────────────────────────────────────────────
 def save_to_memory(chat_id, user_text, assistant_text):
-    try:
-        os.makedirs(os.path.dirname(MEMORY_DB), exist_ok=True)
-        conn = sqlite3.connect(MEMORY_DB)
-        c = conn.cursor()
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS conversations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id TEXT, timestamp TEXT, role TEXT, content TEXT
-            )
-        """)
-        session_id = f"telegram-{chat_id}"
-        ts = datetime.now().isoformat()
-        c.execute("INSERT INTO conversations (session_id, timestamp, role, content) VALUES (?,?,?,?)",
-                  (session_id, ts, "user", user_text[:2000]))
-        c.execute("INSERT INTO conversations (session_id, timestamp, role, content) VALUES (?,?,?,?)",
-                  (session_id, ts, "assistant", assistant_text[:2000]))
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        log.debug(f"Memory save error: {e}")
+    # A-19 (PR-3F): shared in codec_bridges (session_id = "telegram-<chat_id>").
+    import codec_bridges
+    return codec_bridges.save_to_memory("telegram", chat_id, user_text, assistant_text)
 
 
 # ── Process message ─────────────────────────────────────────────────────────

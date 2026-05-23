@@ -203,6 +203,8 @@ Both scan `SKILLS_DIR` independently, so a skill file is loaded twice in differe
 **Effort:** medium (wiring all 9 to their routes is a couple hours; documenting body shapes for POST endpoints is the bigger win)
 
 ### A-19 — codec_telegram + codec_imessage duplicate try_skill, _load_dispatch, call_llm, save_to_memory [MEDIUM]
+
+> **Closed by PR-3F (Option 1, scoped).** New **`codec_bridges.py`** holds the 4 genuinely-shared helpers — `load_dispatch`, `try_skill` (+ the `_SKIP_SKILLS` set), `call_llm(channel, …)` (channel-selected persona → `codec_llm.call`, `None`-contract preserved), `save_to_memory(channel, conv_id, …)` (session_id `<channel>-<conv_id>`). Both bridges `from codec_bridges import try_skill` and keep thin channel-injecting wrappers for `call_llm`/`save_to_memory` (call sites unchanged). **`process_message` deliberately NOT unified** — the two flows have intentionally drifted (telegram audio/Gemini/briefing; imessage goals/intent) and the audit's headline pain (the `call_llm` dup) was already fixed in PR-3E-bridges (#71); forcing the drifted flows into one `BridgeRouter` was high-risk/low-value. `codec_bridges.py` is now the documented "add a channel" seed (CLAUDE.md §1). Pinned by `tests/test_bridges.py` (10). See `docs/PR3F-BRIDGE-UNIFICATION-DESIGN.md`.
 **Location:**
 - `try_skill`: `codec_telegram.py:220` vs `codec_imessage.py:282` — character-identical logic and skip list (`open_terminal`, `run_command`, `vibe_code`, `deep_chat`, `memory_search`, `ask_mike_to_build`).
 - `_load_dispatch`: `codec_telegram.py:204-217` vs `codec_imessage.py:266-279` — near-identical lazy-load with try/except shim.

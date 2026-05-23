@@ -260,80 +260,22 @@ def is_sender_allowed(sender, im_cfg):
 
 
 # ── CODEC Skill dispatch ────────────────────────────────────────────────────
-_dispatch_available = True
-_check_skill = None
-_run_skill = None
-
-def _load_dispatch():
-    """Lazy-load codec_dispatch, handling pynput/GUI dependency issues."""
-    global _dispatch_available, _check_skill, _run_skill
-    if _check_skill is not None:
-        return _dispatch_available
-    try:
-        from codec_dispatch import check_skill, run_skill
-        _check_skill = check_skill
-        _run_skill = run_skill
-        return True
-    except Exception as e:
-        log.warning(f"Skill dispatch unavailable ({e}) — LLM-only mode")
-        _dispatch_available = False
-        return False
-
-
-def try_skill(text):
-    """Try matching a CODEC skill. Returns (skill_name, result) or (None, None)."""
-    if not _load_dispatch():
-        return (None, None)
-    try:
-        skill = _check_skill(text)
-        if skill:
-            # Skip skills that need a terminal/GUI
-            _SKIP_SKILLS = {"open_terminal", "run_command", "vibe_code", "deep_chat",
-                            "memory_search", "ask_mike_to_build"}
-            if skill["name"] in _SKIP_SKILLS:
-                return (None, None)
-            result = _run_skill(skill, text)
-            if result:
-                return (skill["name"], str(result))
-    except Exception as e:
-        log.warning(f"Skill error: {e}")
-    return (None, None)
+# A-19 (PR-3F): skill dispatch, the LLM call, and memory persistence are shared
+# with codec_telegram via codec_bridges. process_message stays local (the two
+# bridges' flows have intentionally drifted — goals/intent here, audio there).
+from codec_bridges import try_skill
 
 
 # ── LLM call ────────────────────────────────────────────────────────────────
 def call_llm(text, sender, llm_cfg, conversation_history=None, system_prompt_override=None):
-    """Send text to CODEC's LLM and return response."""
-    if system_prompt_override:
-        sys_prompt = system_prompt_override
-    else:
-        now_str = datetime.now().strftime("%A %B %d, %Y at %H:%M")
-        sys_prompt = (
-            f"You are CODEC, a personal AI assistant replying via iMessage. "
-            f"Today is {now_str}. Be concise — this is a text message conversation. "
-            f"Keep replies under 3 sentences unless more detail is needed. "
-            f"Be natural and conversational, like texting a smart friend."
-        )
-
-    messages = [{"role": "system", "content": sys_prompt}]
-
-    # Add conversation history for context
-    if conversation_history:
-        messages.extend(conversation_history[-8:])  # last 8 exchanges
-
-    messages.append({"role": "user", "content": text})
-
-    # A-12 (PR-3E-bridges): canonical codec_llm.call. Never-raise -> "" on any
-    # failure (error/no-choices/timeout/empty); mapped back to the bridge's None
-    # contract for graceful degradation. codec_llm strips <think>; kwargs are
-    # passed minus chat_template_kwargs so enable_thinking=False is preserved.
-    import codec_llm
-    extra = {k: v for k, v in llm_cfg["kwargs"].items() if k != "chat_template_kwargs"}
-    content = codec_llm.call(
-        messages, base_url=llm_cfg["base_url"], model=llm_cfg["model"],
-        api_key=llm_cfg["api_key"], max_tokens=1500, temperature=0.7,
-        timeout=120, extra_kwargs=extra,
+    """Send text to CODEC's LLM and return response (A-19 PR-3F: shared core in
+    codec_bridges; `sender` is unused by the LLM call, kept for call-site compat)."""
+    import codec_bridges
+    return codec_bridges.call_llm(
+        "imessage", text, llm_cfg,
+        conversation_history=conversation_history,
+        system_prompt_override=system_prompt_override,
     )
-    return content if content else None
 
 
 # ── Vision (image attachments) ──────────────────────────────────────────────
@@ -872,35 +814,10 @@ def _extract_goals_from_reply(text, sender):
 
 # ── Save to CODEC memory DB ─────────────────────────────────────────────────
 def save_to_memory(sender, user_text, assistant_text):
-    """Store the exchange in CODEC's memory.db for cross-channel recall."""
-    try:
-        os.makedirs(os.path.dirname(MEMORY_DB), exist_ok=True)
-        conn = sqlite3.connect(MEMORY_DB)
-        c = conn.cursor()
-        # Ensure conversations table exists
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS conversations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id TEXT,
-                timestamp TEXT,
-                role TEXT,
-                content TEXT
-            )
-        """)
-        session_id = f"imessage-{sender}"
-        ts = datetime.now().isoformat()
-        c.execute(
-            "INSERT INTO conversations (session_id, timestamp, role, content) VALUES (?,?,?,?)",
-            (session_id, ts, "user", user_text[:2000]),
-        )
-        c.execute(
-            "INSERT INTO conversations (session_id, timestamp, role, content) VALUES (?,?,?,?)",
-            (session_id, ts, "assistant", assistant_text[:2000]),
-        )
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        log.debug(f"Memory save error: {e}")
+    """Store the exchange in memory.db (A-19 PR-3F: shared in codec_bridges;
+    session_id = "imessage-<sender>")."""
+    import codec_bridges
+    return codec_bridges.save_to_memory("imessage", sender, user_text, assistant_text)
 
 
 # ── Main processing loop ────────────────────────────────────────────────────

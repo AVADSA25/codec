@@ -89,12 +89,15 @@ def test_imessage_call_llm_filters_kwargs(monkeypatch):
 
 
 def test_telegram_uses_codec_llm():
+    # PR-3F (A-19): the LLM call moved into codec_bridges (which calls codec_llm).
+    # The bridge now delegates via codec_bridges.call_llm; only the vision POST
+    # (llm_cfg["vision_url"]) remains inline.
     src = (REPO / "codec_telegram.py").read_text()
-    assert "codec_llm.call(" in src
+    assert "codec_bridges" in src
     assert src.count("/chat/completions") == 1   # only the vision site remains
 
 
 def test_imessage_uses_codec_llm():
     src = (REPO / "codec_imessage.py").read_text()
-    assert "codec_llm.call(" in src
+    assert "codec_bridges" in src
     assert src.count("/chat/completions") == 1
