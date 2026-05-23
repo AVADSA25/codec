@@ -28,7 +28,7 @@ end tell'''
 
 
 def run(task, app="", ctx=""):
-    import requests, re
+    import re
     low = task.lower()
     # Detect target language from "to <language>" or "in <language>"
     lang_match = re.search(r'(?:to|in)\s+(french|english|spanish|japanese|german|italian|portuguese|chinese|arabic|russian|korean|dutch|hindi|turkish|polish|swedish|norwegian|danish|finnish|greek|czech|thai|vietnamese|indonesian|malay|hebrew|persian|ukrainian|romanian|hungarian|catalan)', low)
@@ -71,19 +71,19 @@ def run(task, app="", ctx=""):
         prompt = f"Translate to {target}. Reply ONLY with the translation in {target}. Nothing else."
 
     try:
-        r = requests.post("http://localhost:8081/v1/chat/completions",
-            json={"model": "mlx-community/Qwen3.5-35B-A3B-4bit",
-                "messages": [
-                    {"role": "system", "content": "You are a translator. You ONLY output what is asked. NEVER explain. NEVER add notes."},
-                    {"role": "user", "content": prompt + "\n\nText: " + text}
-                ], "max_tokens": 300, "temperature": 0.3,
-                "chat_template_kwargs": {"enable_thinking": False}}, timeout=30)
-        if r.status_code == 200:
-            result = r.json()["choices"][0]["message"].get("content", "").strip()
-            result = re.sub(r'<think>[\s\S]*?</think>', '', result).strip()
-            if not result:
-                return "Translation failed."
-
+        # A-12 (PR-3E-skills-misc): codec_llm.call (never-raise → "" → the final
+        # "Translation failed." fallback below). codec_llm strips <think>.
+        import codec_llm
+        result = codec_llm.call(
+            [
+                {"role": "system", "content": "You are a translator. You ONLY output what is asked. NEVER explain. NEVER add notes."},
+                {"role": "user", "content": prompt + "\n\nText: " + text},
+            ],
+            base_url="http://localhost:8081/v1",
+            model="mlx-community/Qwen3.5-35B-A3B-4bit",
+            max_tokens=300, temperature=0.3, timeout=30,
+        )
+        if result:
             if is_non_latin:
                 # Parse the 3-line response
                 lines = [l.strip() for l in result.split('\n') if l.strip()]

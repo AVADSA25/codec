@@ -8,7 +8,7 @@ SKILL_TRIGGERS = [
     "wrap this as a skill", "make a skill from this"
 ]
 
-import os, requests, json, re
+import os, json, re
 
 try:
     from codec_config import SKILLS_DIR, is_dangerous_skill_code
@@ -101,23 +101,18 @@ CODE TO CONVERT:
 {code_to_forge}"""
 
     try:
-        payload = {
-            "model": model,
-            "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": 1200,
-            "temperature": 0.2,
-            "chat_template_kwargs": {"enable_thinking": False},
-        }
-        payload.update(safe_kwargs)
+        # A-12 (PR-3E-skills-misc): codec_llm.call (never-raise → "" → fallback;
+        # <think> strip built in). safe_kwargs = kwargs minus enable_thinking.
+        import codec_llm
+        raw = codec_llm.call(
+            [{"role": "user", "content": prompt}],
+            base_url=base_url, model=model, api_key=api_key,
+            max_tokens=1200, temperature=0.2, extra_kwargs=safe_kwargs, timeout=180,
+        )
+        if not raw:
+            return "Forge failed: no response from the model server. Is it running?"
 
-        r = requests.post(base_url + "/chat/completions", json=payload, headers=headers, timeout=180)
-        if r.status_code != 200:
-            return f"Forge failed: LLM returned {r.status_code}. Is the model server running?"
-
-        raw = r.json()["choices"][0]["message"].get("content", "").strip()
-
-        # Strip think tags and markdown fences
-        raw = re.sub(r'<think>[\s\S]*?</think>', '', raw).strip()
+        # Strip markdown fences (codec_llm already stripped <think>)
         raw = re.sub(r'^```[\w]*\n?', '', raw).strip()
         raw = re.sub(r'\n?```$', '', raw).strip()
 

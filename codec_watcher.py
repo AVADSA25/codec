@@ -179,22 +179,17 @@ def handle_draft(task, ctx, app):
                     f'display notification "Retrying {attempt+1}/3..." with title "CODEC"'],
                     capture_output=True)
                 time.sleep(2 ** attempt)
-            r = requests.post(f"{QWEN_BASE_URL}/chat/completions",
-                json={
-                    "model": QWEN_MODEL,
-                    "messages": messages,
-                    "max_tokens": 500,
-                    "temperature": 0.6,
-                    "chat_template_kwargs": {"enable_thinking": False}
-                },
-                timeout=90)
-            if r.status_code == 200:
-                raw = extract_content(r.json())
-                draft = clean_draft(raw)
-                if draft:
-                    break
-                else:
-                    print(f"[Watcher] Attempt {attempt+1}: empty after cleaning")
+            # A-12 (PR-3E-skills-misc): codec_llm.call replaces the inline POST +
+            # extract_content (never-raises → "" → clean_draft "" → retry). The
+            # 3× retry loop with notifications stays here at the call site.
+            import codec_llm
+            raw = codec_llm.call(messages, base_url=QWEN_BASE_URL, model=QWEN_MODEL,
+                                 max_tokens=500, temperature=0.6, timeout=90)
+            draft = clean_draft(raw)
+            if draft:
+                break
+            else:
+                print(f"[Watcher] Attempt {attempt+1}: empty after cleaning")
         except Exception as e:
             print(f"[Watcher] Attempt {attempt+1}: {e}")
 
