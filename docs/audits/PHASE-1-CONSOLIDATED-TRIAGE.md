@@ -264,7 +264,9 @@ Mirror the Intake Phase 3 wave pattern. 7 waves planned; sizes are PR-counts, NO
 ### Wave 4 — Reliability (target: 1 week)
 **Findings:** all 22 in Audit C
 **PR count estimate:** 5-6
-- PR-4A: C-1 + H-1 — unified SIGTERM/SIGINT/atexit lifecycle helper (`codec_lifecycle.py`) wired into all 11 PM2 daemons
+- PR-4A: C-1 + H-1 — unified SIGTERM/SIGINT/atexit lifecycle helper (`codec_lifecycle.py`) wired into all 11 PM2 daemons. **Split: C-1 first (the CRITICAL main-daemon fix), H-1 (the other 10 daemons) follows.**
+  - PR-4A (C-1) ✅ (branch `fix/pr4a-codec-graceful-shutdown`, design-first → `docs/PR4A-CODEC-GRACEFUL-SHUTDOWN-DESIGN.md`). Removed codec.py's no-op SIGINT/SIGTERM handlers; added `_graceful_shutdown` (terminate rec_proc/overlay_proc + unlink audio_path + exit 0 on signal path; idempotent, never-raises) registered via signal + atexit in `main()`. No more orphaned sox/tkinter + leaked temp files on PM2 restart. 5 tests (`tests/test_graceful_shutdown.py`); zero net-new ruff; full suite 1507 passing, zero new.
+  - PR-4A-2: H-1 — `codec_lifecycle.py` helper + wire the other 10 PM2 daemons (heartbeat, autopilot, scheduler-in-dashboard, telegram, imessage, mcp-http, overlay, watchdog, agent-runner, dictate). Pending.
 - PR-4B: C-2 — replace `~/.codec/pwa_response.json` with per-request files (or migrate to SQLite); add `request_id` correlation
 - PR-4C: C-3 + C-4 + M-1 + M-2 — unify all `~/.codec/*.json` writers on `_atomic_write_json`; add `fcntl.flock` for cross-process; add eviction
 - PR-4D: C-5 — narrow `_atomic_set_status` to `InvalidStatusTransition`-only; return bool; check at call sites
