@@ -39,6 +39,12 @@ class LLMError(Exception):
 
 _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
 
+# Sentinel yielded by stream(keepalive=True) on empty "thinking" chunks so an SSE
+# caller (e.g. the dashboard) can emit a transport keepalive to hold its tunnel
+# open. Never yielded when keepalive=False (the default) — content-only callers
+# (codec_session.qwen_stream) are unaffected.
+KEEPALIVE = object()
+
 
 def strip_think(text: str) -> str:
     """Remove <think>…</think> reasoning blocks and surrounding whitespace."""
@@ -170,7 +176,8 @@ def stream(
     timeout: float = 120.0,
     enable_thinking: bool = False,
     extra_kwargs: Optional[Dict[str, Any]] = None,
-) -> Iterator[str]:
+    keepalive: bool = False,
+) -> Iterator[Any]:
     """POST with `stream=True` and yield the RAW assistant content deltas in
     order. Centralizes the SSE plumbing: header/payload build (shared with
     call()), `data: ` framing, the `[DONE]` sentinel, `choices[0].delta.content`
@@ -181,6 +188,11 @@ def stream(
     result, and the dashboard owns its own cross-chunk tag machine. Never
     raises: on connect/HTTP/parse error it logs and stops yielding, so the
     caller sees a short/empty stream and applies its own fallback.
+
+    `keepalive=True` (default off): on an empty "thinking" chunk, yield the
+    `KEEPALIVE` sentinel every 10th empty (1st, 11th, …) so an SSE caller can
+    emit a transport keepalive. Content-only callers leave it off and only ever
+    see `str` deltas.
     """
     import json as _json
     import requests
@@ -190,6 +202,7 @@ def stream(
         extra_kwargs=extra_kwargs, stream=True,
     )
     url = base_url.rstrip("/") + "/chat/completions"
+    _empty = 0  # empty "thinking" chunks seen (drives keepalive)
     try:
         with requests.post(url, json=payload, headers=headers,
                            timeout=timeout, stream=True) as r:
@@ -215,6 +228,10 @@ def stream(
                     continue
                 if delta:
                     yield delta
+                elif keepalive:
+                    _empty += 1
+                    if _empty % 10 == 1:   # 1st, 11th, 21st … (matches dashboard)
+                        yield KEEPALIVE
     except Exception as e:
         log.warning("LLM stream call failed: %s", e)
         return

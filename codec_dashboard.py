@@ -2656,7 +2656,6 @@ async def chat_completion(request: Request):
         return {"response": vanswer, "model": vision_model}
 
     try:
-        import requests as rq
         config = {}
         try:
             with open(CONFIG_PATH) as f: config = json.load(f)
@@ -2668,8 +2667,8 @@ async def chat_completion(request: Request):
         from codec_config import get_llm_api_key as _kc_get_llm
         api_key = _kc_get_llm()
         kwargs = config.get("llm_kwargs", {})
-        headers = {"Content-Type": "application/json"}
-        if api_key: headers["Authorization"] = f"Bearer {api_key}"
+        # (A-12 PR-3E-chat-stream: the `import requests as rq` + `headers` here are
+        # gone — both chat POSTs now go through codec_llm, which builds its own.)
         force_search = body.get("force_search", False)
         messages = _enrich_messages(messages, config, force_search=bool(force_search))
 
@@ -2763,26 +2762,26 @@ async def chat_completion(request: Request):
         # Frontend can send thinking=false to override for speed.
         thinking = body.get("thinking", True)
 
-        payload = {
-            "model": model,
-            "messages": messages,
-            "max_tokens": 28000,
-            "temperature": 0.7,
-            "top_p": 0.9,
-            "frequency_penalty": 1.1,
-            "stream": stream_mode,
-        }
-        payload.update(kwargs)
-        # Override thinking AFTER config merge — frontend toggle wins
-        payload["chat_template_kwargs"] = {"enable_thinking": thinking}
+        # A-12 (PR-3E-chat-stream): build the shared codec_llm args ONCE so the
+        # stream + non-stream branches can't drift. top_p/frequency_penalty are
+        # explicit but kwargs may override them (matches the old payload.update);
+        # enable_thinking is the codec_llm param applied last → frontend toggle
+        # wins (matches the old chat_template_kwargs assignment after the update).
+        _extra = {"top_p": 0.9, "frequency_penalty": 1.1,
+                  **{k: v for k, v in kwargs.items() if k != "chat_template_kwargs"}}
+        _common = dict(base_url=base_url, model=model, api_key=api_key,
+                       max_tokens=28000, temperature=0.7, enable_thinking=thinking,
+                       extra_kwargs=_extra, timeout=300)
 
         if stream_mode:
             # SSE streaming — keeps Cloudflare tunnel alive, sends tokens as they arrive
             def _stream_gen():
-                _empty_count = 0  # Track empty content chunks for keepalive
-                # A-6 (PR-3D-c): the <think> + [SKILL:...] token machine now lives
-                # in codec_chat_stream.SkillTagBuffer; _resolve_skill_tag (below) is
+                # A-6 (PR-3D-c): the <think> + [SKILL:...] token machine lives in
+                # codec_chat_stream.SkillTagBuffer; _resolve_skill_tag (below) is
                 # injected (it runs the skill: budget + allowlist + dispatch).
+                # A-12 (PR-3E-chat-stream): the SSE POST + keepalive are now
+                # codec_llm.stream(keepalive=True); this generator just wires the
+                # raw tokens through the buffer and frames them.
 
                 def _frame(tok):
                     return f"data: {json.dumps({'token': tok})}\n\n"
@@ -2823,60 +2822,38 @@ async def chat_completion(request: Request):
                     return raw_tag.replace(m.group(0), "")
                 buf = SkillTagBuffer(_resolve_skill_tag)
                 try:
-                    with rq.post(f"{base_url}/chat/completions", json=payload,
-                                 headers=headers, timeout=300, stream=True) as resp:
-                        for line in resp.iter_lines(decode_unicode=True):
-                            if not line or not line.startswith("data: "):
-                                continue
-                            data_str = line[6:]
-                            if data_str == "[DONE]":
-                                # Flush any pending buffer before closing
-                                for s in buf.finish():
-                                    yield _frame(s)
-                                # Safety net: if the LLM emitted ONLY [SKILL:...] tags
-                                # and we dropped them all, the user gets a blank bubble.
-                                # Send a graceful fallback so they know to retry.
-                                # 2026-04-27 bugfix.
-                                if buf.visible_chars == 0:
-                                    fallback = (
-                                        "I tried to use a tool that didn't apply here. "
-                                        "Could you rephrase, or just ask me to write it directly?"
-                                    )
-                                    yield _frame(fallback)
-                                yield "data: [DONE]\n\n"
-                                break
-                            try:
-                                chunk = json.loads(data_str)
-                                delta = chunk["choices"][0].get("delta", {})
-                                token = delta.get("content", "")
-                                if not token:
-                                    # During thinking phase, send periodic keepalive
-                                    # so the connection stays alive and frontend knows we're working
-                                    _empty_count += 1
-                                    if _empty_count % 10 == 1:
-                                        yield ": keepalive\n\n"
-                                    continue
-                                # <think> stripping + [SKILL:...] buffering (SkillTagBuffer)
-                                for s in buf.feed(token):
-                                    yield _frame(s)
-                            except (json.JSONDecodeError, KeyError, IndexError):
-                                continue
-                    # Final flush if stream closed without [DONE]
+                    # codec_llm.stream yields raw content deltas (it owns the SSE
+                    # POST + data:/[DONE] parsing) and the KEEPALIVE sentinel on
+                    # empty thinking-chunks (keepalive=True) to hold the tunnel.
+                    for item in codec_llm.stream(messages, **_common, keepalive=True):
+                        if item is codec_llm.KEEPALIVE:
+                            yield ": keepalive\n\n"
+                            continue
+                        for s in buf.feed(item):
+                            yield _frame(s)
+                    # Stream ended ([DONE] or close): flush, then blank-bubble net.
                     for s in buf.finish():
                         yield _frame(s)
+                    # Safety net: LLM emitted ONLY [SKILL:...] tags and we dropped
+                    # them all → blank bubble; send a graceful fallback (2026-04-27).
+                    if buf.visible_chars == 0:
+                        yield _frame(
+                            "I tried to use a tool that didn't apply here. "
+                            "Could you rephrase, or just ask me to write it directly?"
+                        )
+                    yield "data: [DONE]\n\n"
                 except Exception as e:
                     yield f"data: {json.dumps({'error': str(e)})}\n\n"
             from starlette.responses import StreamingResponse as _SR
             return _SR(_stream_gen(), media_type="text/event-stream",
                        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
-        # Non-streaming fallback
-        r = rq.post(f"{base_url}/chat/completions", json=payload, headers=headers, timeout=300)
-        data = r.json()
-        answer = data["choices"][0]["message"]["content"].strip()
-        # Strip thinking tags
+        # Non-streaming fallback (A-12 PR-3E-chat-stream): canonical codec_llm.call.
+        # raise_on_error=True preserves the original raise-on-failure (was an
+        # r.json() KeyError) → outer except → 500. codec_llm strips <think>; the
+        # `### FINAL ANSWER:` marker is dashboard-specific so it stays.
         import re
-        answer = re.sub(r'<think>[\s\S]*?</think>', '', answer).strip()
+        answer = codec_llm.call(messages, **_common, raise_on_error=True)
         answer = re.sub(r'###\s*FINAL ANSWER:\s*', '', answer).strip()
 
         # ── Post-LLM skill routing ──

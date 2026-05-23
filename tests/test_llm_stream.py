@@ -48,6 +48,11 @@ def _sse(content):
     return "data: " + json.dumps({"choices": [{"delta": {"content": content}}]})
 
 
+def _empty_chunk():
+    """An SSE chunk with no content (the LLM 'thinking' phase)."""
+    return "data: " + json.dumps({"choices": [{"delta": {}}]})
+
+
 # ── codec_llm.stream ──────────────────────────────────────────────────────────
 
 
@@ -248,3 +253,48 @@ def test_dictate_uses_codec_llm_call():
     src = (REPO / "codec_dictate.py").read_text()
     assert "codec_llm.call(" in src
     assert "localhost:8083/v1/chat/completions" not in src  # inline URL gone
+
+
+# ── codec_llm.stream(keepalive=) — PR-3E-chat-stream ──────────────────────────
+
+
+def test_stream_keepalive_yields_sentinel(monkeypatch):
+    # 1st empty -> KEEPALIVE (count 1, 1%10==1); 2nd empty -> nothing; then content.
+    def fake_post(url, json=None, headers=None, timeout=None, stream=None):
+        return _StreamResp(200, lines=[
+            _empty_chunk(), _empty_chunk(), _sse("hi"), "data: [DONE]",
+        ])
+
+    import requests
+    monkeypatch.setattr(requests, "post", fake_post)
+    out = list(codec_llm.stream([{"role": "user", "content": "q"}],
+                                base_url="http://x/v1", model="m", keepalive=True))
+    assert out == [codec_llm.KEEPALIVE, "hi"]
+
+
+def test_stream_keepalive_off_by_default(monkeypatch):
+    # Same empties, but keepalive defaults False -> no sentinel (qwen_stream contract).
+    def fake_post(url, json=None, headers=None, timeout=None, stream=None):
+        return _StreamResp(200, lines=[
+            _empty_chunk(), _empty_chunk(), _sse("hi"), "data: [DONE]",
+        ])
+
+    import requests
+    monkeypatch.setattr(requests, "post", fake_post)
+    out = list(codec_llm.stream([{"role": "user", "content": "q"}],
+                                base_url="http://x/v1", model="m"))
+    assert out == ["hi"]
+
+
+def test_stream_keepalive_cadence_every_tenth(monkeypatch):
+    # 11 empty chunks -> KEEPALIVE on the 1st and 11th only.
+    lines = [_empty_chunk() for _ in range(11)] + ["data: [DONE]"]
+
+    def fake_post(url, json=None, headers=None, timeout=None, stream=None):
+        return _StreamResp(200, lines=lines)
+
+    import requests
+    monkeypatch.setattr(requests, "post", fake_post)
+    out = list(codec_llm.stream([{"role": "user", "content": "q"}],
+                                base_url="http://x/v1", model="m", keepalive=True))
+    assert out == [codec_llm.KEEPALIVE, codec_llm.KEEPALIVE]
