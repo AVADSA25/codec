@@ -38,10 +38,11 @@ import re
 import secrets
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+import codec_jsonstore  # PR-4C (C-4/M-2): cross-process file_lock + eviction
 from codec_audit import (
     ASKUSER_EVENT_ANSWER,
     ASKUSER_EVENT_EMIT,
@@ -138,8 +139,34 @@ def _load_pending_questions() -> dict:
         return {"pending_questions": [], "schema": PENDING_QUESTIONS_SCHEMA}
 
 
+_RESOLVED_TTL_HOURS = 24   # M-2: evict answered/timed_out records older than this
+
+
+def _prune_resolved(data: dict) -> None:
+    """M-2: drop answered/timed_out records older than _RESOLVED_TTL_HOURS
+    (in-place). Pending records are kept regardless of age; records with an
+    unparseable timestamp are kept (never lose data on a bad field)."""
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=_RESOLVED_TTL_HOURS)
+    kept = []
+    for rec in data.get("pending_questions", []):
+        if rec.get("status") in ("answered", "timed_out"):
+            ts = rec.get("answered_at") or rec.get("asked_at") or ""
+            try:
+                when = datetime.fromisoformat(ts)
+                if when.tzinfo is None:
+                    when = when.replace(tzinfo=timezone.utc)
+                if when < cutoff:
+                    continue   # prune this resolved-and-old record
+            except (ValueError, TypeError):
+                pass           # keep records with unparseable timestamps
+        kept.append(rec)
+    data["pending_questions"] = kept
+
+
 def _save_pending_questions(data: dict) -> None:
-    """Atomic write via tmp+rename. Caller must hold _FILE_LOCK."""
+    """Atomic write via tmp+rename. Caller must hold _FILE_LOCK (+ codec_jsonstore
+    .file_lock for cross-process safety). M-2: prunes resolved records >24h first."""
+    _prune_resolved(data)
     PENDING_QUESTIONS_PATH.parent.mkdir(parents=True, exist_ok=True)
     tmp = PENDING_QUESTIONS_PATH.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2, default=str))
@@ -382,8 +409,10 @@ def ask(
         "destructive_verb": verb_for_audit,
     }
 
-    # Write canonical state.
-    with _FILE_LOCK:
+    # Write canonical state. C-4: file_lock serializes the read-modify-write
+    # across processes (codec-dashboard + codec-agent-runner) so two near-
+    # simultaneous ask()s can't clobber each other and lose a question.
+    with _FILE_LOCK, codec_jsonstore.file_lock(PENDING_QUESTIONS_PATH):
         data = _load_pending_questions()
         data.setdefault("pending_questions", []).append(record)
         data["schema"] = PENDING_QUESTIONS_SCHEMA
@@ -499,7 +528,7 @@ def _finalize_timeout(qid: str, *, reason: str,
     elapsed = _elapsed_seconds(asked_at, _now_iso())
     # Mark record terminal.
     try:
-        with _FILE_LOCK:
+        with _FILE_LOCK, codec_jsonstore.file_lock(PENDING_QUESTIONS_PATH):
             data = _load_pending_questions()
             for r in data.get("pending_questions", []):
                 if r.get("id") == qid:
@@ -595,8 +624,8 @@ def submit_answer(qid: str, answer: str, *, answered_via: str = "pwa") -> dict:
             }
         answer = normalized
 
-    # Apply the answer atomically.
-    with _FILE_LOCK:
+    # Apply the answer atomically (C-4: cross-process file_lock on the RMW).
+    with _FILE_LOCK, codec_jsonstore.file_lock(PENDING_QUESTIONS_PATH):
         data = _load_pending_questions()
         for r in data.get("pending_questions", []):
             if r.get("id") == qid:

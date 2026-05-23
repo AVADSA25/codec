@@ -100,11 +100,15 @@ def _load_notifications():
         return samples
 
 
+_NOTIF_CAP = 500   # M-1: keep the most recent N (list is newest-first)
+
+
 def _write_notifications(notifications):
-    """Persist notifications list to disk."""
-    os.makedirs(os.path.dirname(NOTIFICATIONS_PATH), exist_ok=True)
-    with open(NOTIFICATIONS_PATH, "w") as f:
-        json.dump(notifications, f, indent=2)
+    """Persist notifications list to disk. C-3: atomic write (no half-written file
+    for a concurrent reader → no fake-sample reseed). M-1: cap to the most-recent
+    _NOTIF_CAP entries so the file can't grow unbounded."""
+    import codec_jsonstore
+    codec_jsonstore.atomic_write_json(NOTIFICATIONS_PATH, notifications[:_NOTIF_CAP])
 
 
 def _save_notification(title, body, status="success", schedule_id=None):
