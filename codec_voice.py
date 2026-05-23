@@ -177,6 +177,7 @@ def _clear_voice_session_marker() -> None:
 # ── CONFIG — loaded from ~/.codec/config.json ─────────────────────────────
 WHISPER_URL   = "http://localhost:8084/v1/audio/transcriptions"
 WHISPER_MODEL = "mlx-community/whisper-large-v3-turbo"
+QWEN_BASE_URL = "http://localhost:8081/v1"   # A-12 (PR-3E-async): base for codec_llm.astream
 QWEN_URL      = "http://localhost:8081/v1/chat/completions"
 QWEN_MODEL    = "mlx-community/Qwen3.5-35B-A3B-4bit"
 LLM_KWARGS    = {}
@@ -193,6 +194,7 @@ try:
     with open(_CONFIG_PATH) as _f:
         _cfg = json.load(_f)
     _llm_base     = _cfg.get("llm_base_url", "http://localhost:8081/v1").rstrip("/")
+    QWEN_BASE_URL = _llm_base
     QWEN_URL      = _llm_base + "/chat/completions"
     QWEN_MODEL    = _cfg.get("llm_model", QWEN_MODEL)
     LLM_KWARGS    = {k: v for k, v in _cfg.get("llm_kwargs", {}).items() if k != "enable_thinking"}
@@ -579,41 +581,22 @@ class VoicePipeline:
         return system + convo[-max_msgs:]
 
     async def _stream_qwen(self, messages: list, max_tokens: int = 2000):
-        payload = {
-            "model": QWEN_MODEL,
-            "messages": messages,
-            "max_tokens": max_tokens,
-            "temperature": 0.7,
-            "top_p": 0.9,
-            "frequency_penalty": 0.8,
-            "stream": True,
-            "chat_template_kwargs": {"enable_thinking": False},
-            **LLM_KWARGS,
-        }
+        # A-12 (PR-3E-async): codec_llm.astream owns the SSE POST + parsing and
+        # PROPAGATES errors, so the except below still speaks the failure. The
+        # queue (CRITICAL) stays here; the per-token <think> strip stays here too
+        # (Qwen 3.5 may put thinking in content — strip it before yielding).
+        import codec_llm
         await llm_queue.acquire(Priority.CRITICAL)
         try:
-            async with self._http.stream(
-                "POST", QWEN_URL,
-                json=payload,
-                headers={"Content-Type": "application/json"},
-            ) as resp:
-                async for line in resp.aiter_lines():
-                    if not line.startswith("data: "):
-                        continue
-                    data = line[6:]
-                    if data == "[DONE]":
-                        break
-                    try:
-                        delta = json.loads(data)["choices"][0].get("delta", {})
-                        token = delta.get("content", "") or ""
-                        # Qwen 3.5 puts thinking in reasoning field, answer in content
-                        # Only yield content tokens — reasoning is internal thinking
-                        if token:
-                            token = re.sub(r"<think>[\s\S]*?</think>", "", token)
-                            if token:
-                                yield token
-                    except (json.JSONDecodeError, KeyError, IndexError):
-                        continue
+            async for token in codec_llm.astream(
+                messages, base_url=QWEN_BASE_URL, model=QWEN_MODEL,
+                max_tokens=max_tokens, temperature=0.7, enable_thinking=False,
+                extra_kwargs={"top_p": 0.9, "frequency_penalty": 0.8, **LLM_KWARGS},
+                http=self._http,
+            ):
+                token = re.sub(r"<think>[\s\S]*?</think>", "", token)
+                if token:
+                    yield token
         except Exception as e:
             print(f"[Voice] Qwen error: {e}")
             yield "Sorry, I had a processing error."
