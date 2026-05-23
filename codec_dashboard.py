@@ -28,6 +28,7 @@ from routes._shared import (
 # per docs/PHASE1-STEP1-DESIGN.md.
 from codec_audit import log_event, STEP_BUDGET_EXHAUSTED
 from codec_chat_stream import SkillTagBuffer, SKILL_TAG_RE  # A-6 (PR-3D-c)
+import codec_llm  # A-12 (PR-3E-dashboard)
 
 from pydantic import BaseModel, Field
 # (A-18, PR-3G: `from typing import Optional, List` removed — Optional is already
@@ -864,7 +865,6 @@ async def send_command(request: Request):
 
     # Process command directly via LLM
     try:
-        import requests as rq
         config = {}
         try:
             with open(CONFIG_PATH) as f: config = json.load(f)
@@ -876,8 +876,8 @@ async def send_command(request: Request):
         from codec_config import get_llm_api_key as _kc_get_llm
         api_key = _kc_get_llm()
         kwargs = config.get("llm_kwargs", {})
-        headers_llm = {"Content-Type": "application/json"}
-        if api_key: headers_llm["Authorization"] = f"Bearer {api_key}"
+        # (A-12 PR-3E-dashboard: headers_llm removed — codec_llm.call builds its
+        # own headers from api_key; the inline Flash POST that used it is gone.)
 
         # Use persistent session_id from frontend (keeps conversation context)
         session_id = body.get("session_id") or f"quickchat-{__import__('uuid').uuid4().hex[:8]}"
@@ -961,33 +961,21 @@ async def send_command(request: Request):
                     # Cap history to last 10 messages to avoid context overflow
                     llm_messages = [sys_msg] + _history_msgs[-10:]
                     log.info(f"[Command] Final: {len(llm_messages)} messages to LLM")
-                    payload = {
-                        "model": model,
-                        "messages": llm_messages,
-                        "max_tokens": 300,
-                        "temperature": 0.7,
-                        "stream": False,
-                        "chat_template_kwargs": {"enable_thinking": False},
-                    }
-                    payload.update({k: v for k, v in kwargs.items() if k != "chat_template_kwargs"})
-                    r = await asyncio.to_thread(
-                        lambda: rq.post(f"{base_url}/chat/completions", json=payload,
-                                        headers=headers_llm, timeout=120)
+                    # A-12 (PR-3E-dashboard): canonical codec_llm.call (content->
+                    # reasoning fallback + <think> strip built in; never-raises).
+                    # The two distinct error strings collapse to one fallback
+                    # (same precedent as the voice-reply collapse in tranche 1).
+                    _extra = {k: v for k, v in kwargs.items() if k != "chat_template_kwargs"}
+                    answer = await asyncio.to_thread(
+                        lambda: codec_llm.call(
+                            llm_messages, base_url=base_url, model=model,
+                            api_key=api_key, max_tokens=300, temperature=0.7,
+                            extra_kwargs=_extra, timeout=120,
+                        )
                     )
-                    data = r.json()
-                    if "error" in data:
-                        log.error(f"[Command] LLM error: {data['error']}")
-                        answer = f"Sorry, the AI model returned an error. Please try again."
-                    elif "choices" not in data or not data["choices"]:
-                        log.error(f"[Command] LLM returned no choices: {str(data)[:200]}")
-                        answer = "Sorry, the AI model returned an empty response. Please try again."
-                    else:
-                        msg = data["choices"][0]["message"]
-                        answer = (msg.get("content") or "").strip()
-                        if not answer and msg.get("reasoning"):
-                            answer = msg["reasoning"].strip()
-                        import re as _re
-                        answer = _re.sub(r'<think>[\s\S]*?</think>', '', answer).strip()
+                    if not answer:
+                        log.error("[Command] LLM returned no answer")
+                        answer = "Sorry, the AI model didn't respond. Please try again."
 
                 # Write response for /api/response polling
                 with open(resp_file, "w") as f:
@@ -2451,22 +2439,18 @@ def _qwen_chat_classify(user_text: str, max_tokens: int = 300) -> str:
     Hotfix: URL + model resolved from codec_config (was hardcoded to the
     wrong dashboard port 8090; LLM lives at 8083 per ~/.codec/config.json)."""
     try:
-        import requests
         from codec_config import QWEN_BASE_URL, QWEN_MODEL as _qmodel
-        payload = {
-            "model": _qmodel,
-            "messages": [
+        # A-12 (PR-3E-dashboard): canonical codec_llm.call (never-raises -> "").
+        # Now strips <think> + enable_thinking=False -> cleaner JSON for the
+        # downstream _classify_chat_message parse.
+        return codec_llm.call(
+            [
                 {"role": "system", "content": _AUTO_ESCALATE_SYSTEM_PROMPT},
                 {"role": "user", "content": user_text[:2000]},
             ],
-            "max_tokens": max_tokens,
-            "temperature": 0.1,
-        }
-        r = requests.post(f"{QWEN_BASE_URL.rstrip('/')}/chat/completions",
-                          json=payload, timeout=15)
-        if r.status_code != 200:
-            return ""
-        return r.json()["choices"][0]["message"]["content"]
+            base_url=QWEN_BASE_URL, model=_qmodel,
+            max_tokens=max_tokens, temperature=0.1, timeout=15,
+        )
     except Exception as e:
         log.debug(f"_qwen_chat_classify failed: {e}")
         return ""
@@ -3022,7 +3006,7 @@ async def run_schedule_now(sched_id: str):
     def _execute_task():
         """Background thread: run the task, generate report, save to Google Doc."""
         try:
-            import requests as rq, re
+            import re
             config = {}
             try:
                 with open(CONFIG_PATH) as f:
@@ -3064,24 +3048,20 @@ async def run_schedule_now(sched_id: str):
             else:
                 prompt = f"Task: {topic}\n\nProduce a detailed, structured report."
 
-            headers = {"Content-Type": "application/json"}
-            if api_key:
-                headers["Authorization"] = f"Bearer {api_key}"
-            payload = {
-                "model": model,
-                "messages": [
+            # A-12 (PR-3E-dashboard): canonical codec_llm.call. raise_on_error=True
+            # preserves the original raise-on-failure (was r.json() KeyError) so the
+            # outer handler still sees a failure instead of writing an empty report.
+            # kwargs passed unfiltered (matches the original payload.update(kwargs),
+            # which lets kwargs override enable_thinking).
+            answer = codec_llm.call(
+                [
                     {"role": "system", "content": system_msg},
-                    {"role": "user", "content": prompt}
+                    {"role": "user", "content": prompt},
                 ],
-                "max_tokens": 6000,
-                "temperature": 0.7,
-                "stream": False,
-                "chat_template_kwargs": {"enable_thinking": True},
-            }
-            payload.update(kwargs)
-            r = rq.post(f"{base_url}/chat/completions", json=payload, headers=headers, timeout=300)
-            data = r.json()
-            answer = data["choices"][0]["message"]["content"].strip()
+                base_url=base_url, model=model, api_key=api_key,
+                max_tokens=6000, temperature=0.7, enable_thinking=True,
+                extra_kwargs=kwargs, timeout=300, raise_on_error=True,
+            )
             answer = re.sub(r'<think>[\s\S]*?</think>', '', answer).strip()
 
             # ── Step 3: Save to Google Doc ──
