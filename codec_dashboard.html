@@ -931,6 +931,9 @@ async function sendCmd() {
   try {
     var r = await fetch('/api/command', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({task: task, session_id: window._flashSessionId}) });
     var data = await r.json();
+    // Server-authoritative correlation token (conversations.id of the user row).
+    // /api/response matches the assistant reply by id > request_id (C-2/PR-4B).
+    var afterId = data.request_id || 0;
     if (data.status === 'queued' || data.status === 'processing') {
       text.innerHTML = '<span style="color:var(--accent)">Processing...</span> ' + escHtml(task);
     } else if (data.error) {
@@ -954,7 +957,7 @@ async function sendCmd() {
     if (pollCount % 4 === 0) text.innerHTML = '<span style="color:var(--accent)">Processing...</span> ' + escHtml(task) + ' <span style="opacity:.5;font-size:11px">(' + elapsed + 's)</span>';
     if (pollCount > 200) { clearInterval(pollResp); window._flashPollTimer = null; text.innerHTML = '<span style="color:var(--danger)">Timeout:</span> No response after 5 min. Try again.'; return; }
     try {
-      var pr = await fetch('/api/response?_t=' + Date.now() + '&session_id=' + sid + '&after=' + encodeURIComponent(afterTs), {cache: 'no-store'});
+      var pr = await fetch('/api/response?_t=' + Date.now() + '&session_id=' + sid + '&after_id=' + encodeURIComponent(afterId) + '&after=' + encodeURIComponent(afterTs), {cache: 'no-store'});
       if (pr.status === 401 || pr.status === 403) {
         clearInterval(pollResp); window._flashPollTimer = null;
         text.innerHTML = '<span style="color:var(--danger)">Session expired</span> — refreshing...';
