@@ -69,6 +69,8 @@ These two lines install no-op handlers BEFORE any cleanup logic runs. There is n
 ---
 
 ### C-3 — `notifications.json` has three writers with three different write semantics (atomic vs. in-place) [CRITICAL]
+
+> **Closed by PR-4C** (audit option a — atomicity). New `codec_jsonstore.atomic_write_json` (tmp+fsync+`os.replace`+0600); `routes/_shared._write_notifications` (the only non-atomic writer) now uses it, so a reader never observes a half-written file → no more corrupt-parse → fake-sample reseed. The other two writers (codec_ask_user, codec_agent_messaging) were already atomic. The cross-process *lost-write* race is accepted per the audit (a missed notification is non-blocking; `flock` is reserved for pending_questions, C-4 — partial flock across only some writers would be false protection). See `docs/PR4C-JSON-WRITE-SAFETY-DESIGN.md`.
 **Location:**
 - `routes/_shared.py:103-107` — `_write_notifications()` uses `open(NOTIFICATIONS_PATH, "w")` — **NOT atomic**
 - `codec_ask_user.py:191-193`, `:621-623` — writes via tmp+`os.replace` — atomic
@@ -83,6 +85,8 @@ The three writers also use three different locks: `_notif_lock` (in `routes/_sha
 ---
 
 ### C-4 — `pending_questions.json` has cross-process race window between read and atomic-write [CRITICAL]
+
+> **Closed by PR-4C.** codec_ask_user's 3 read-modify-write blocks (ask-append, timeout-mark, submit-answer-mark) are now wrapped in `codec_jsonstore.file_lock(PENDING_QUESTIONS_PATH)` (`fcntl.flock(LOCK_EX)` on a `.lock` sidecar) inside the existing `_FILE_LOCK`, so the read→write is serialized **across processes** (codec-dashboard + codec-agent-runner) — two near-simultaneous `ask()`s can no longer clobber each other and strand a `threading.Event` waiter for 600s. The other writers the finding lists (`codec_voice`, `routes/agents`) funnel through `codec_ask_user.submit_answer`, so all writes are flock-guarded. The `threading.Event` mechanism is unchanged. Pinned by `tests/test_json_write_safety.py`.
 **Location:** `codec_ask_user.py:124-146` + `codec_voice.py:838-839` + `routes/agents.py:218-219`
 **Description:** `_save_pending_questions(data)` is atomic via `os.replace`. But the read-modify-write pattern at `codec_ask_user.py:386-390` is NOT inter-process atomic:
 ```python
@@ -258,6 +262,8 @@ subprocess.Popen(["afplay", tmp.name])   # fire-and-forget
 ---
 
 ### M-1 — `notifications.json` grows unbounded; no rotation, no eviction [MEDIUM]
+
+> **Closed by PR-4C.** `routes/_shared._write_notifications` caps to the most-recent `_NOTIF_CAP = 500` entries (`notifications[:500]`, list is newest-first) on every write — trims the shared list regardless of which daemon appended, so growth is bounded.
 **Location:** all notification writers (see C-3 for the list)
 **Description:** Notifications are appended via `notifs.insert(0, entry)` and `notifs.append(notif)`. No size cap, no age-based eviction. The PWA reads the full file on every poll (every ~30s for the badge count).
 **Trigger:** Daily use over weeks. Autopilot fires ~10/day, agents post ~20/day, scheduler ~5/day, ask_user ~2/day. After 3 months, ~3000-5000 entries.
@@ -268,6 +274,8 @@ subprocess.Popen(["afplay", tmp.name])   # fire-and-forget
 ---
 
 ### M-2 — `pending_questions.json` has no eviction for `status="answered"` and `"timed_out"` records [MEDIUM]
+
+> **Closed by PR-4C.** `codec_ask_user._save_pending_questions` calls `_prune_resolved` first: records with `status in {answered, timed_out}` whose `answered_at`/`asked_at` is older than `_RESOLVED_TTL_HOURS = 24` are dropped. `pending` records are kept regardless of age; records with an unparseable timestamp are kept (never lose data on a bad field).
 **Location:** `codec_ask_user.py:124-146`
 **Description:** Records are appended on `ask()` and updated to status=`answered` or `timed_out` on resolution, but never removed. The file grows indefinitely.
 **Trigger:** Daily use.
