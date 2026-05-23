@@ -46,9 +46,11 @@ def _cfg():
         log.warning("Config load failed: %s", e)
         return {}
 
-def _qwen_url():
-    c = _cfg()
-    return c.get("llm_base_url", "http://localhost:8081/v1").rstrip("/") + "/chat/completions"
+def _qwen_base():
+    # A-12 (PR-3E-async): base URL (no /chat/completions) for codec_llm.acall.
+    # (Replaced the old _qwen_url() — both its callers now use codec_llm, which
+    # appends /chat/completions itself.)
+    return _cfg().get("llm_base_url", "http://localhost:8081/v1")
 
 def _qwen_model():
     return _cfg().get("llm_model", "mlx-community/Qwen3.5-35B-A3B-4bit")
@@ -492,26 +494,24 @@ Rules:
         tool_calls_made = 0
         last_response = ""
 
+        import codec_llm
         for _ in range(self.max_tool_calls + 3):
-            payload = {
-                "model": _qwen_model(),
-                "messages": messages,
-                "max_tokens": 4000,
-                "temperature": 0.7,
-                "chat_template_kwargs": {"enable_thinking": self.thinking},
-            }
+            # A-12 (PR-3E-async): codec_llm.acall (async, raise_on_error) replaces
+            # the inline _async_http.post + parse. Queue (MEDIUM) + the reused
+            # client stay here; the except keeps the "LLM error" early-exit.
             await llm_queue.acquire(Priority.MEDIUM)
             try:
-                r = await _async_http.post(_qwen_url(), json=payload,
-                                           headers={"Content-Type": "application/json"})
-                data = r.json()
-                response = data["choices"][0]["message"]["content"].strip()
+                response = await codec_llm.acall(
+                    messages, base_url=_qwen_base(), model=_qwen_model(),
+                    max_tokens=4000, temperature=0.7, enable_thinking=self.thinking,
+                    http=_async_http, raise_on_error=True,
+                )
             except Exception as e:
                 return f"LLM error: {e}"
             finally:
                 await llm_queue.release(Priority.MEDIUM)
 
-            # Strip thinking tags
+            # Strip thinking tags (codec_llm already strips; kept harmless).
             response = re.sub(r'<think>[\s\S]*?</think>', '', response).strip()
             last_response = response
 
@@ -930,25 +930,19 @@ async def _elevate_query(raw_topic: str) -> dict:
         "5. <fifth search query (optional)>\n"
         "6. <sixth search query (optional)>"
     )
-    payload = {
-        "model": _qwen_model(),
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": f"Research request: {raw_topic}"},
-        ],
-        "max_tokens": 800,
-        "temperature": 0.3,
-        "stream": False,
-        "chat_template_kwargs": {"enable_thinking": False},
-    }
     try:
-        r = await _async_http.post(
-            _qwen_url(), json=payload,
-            headers={"Content-Type": "application/json"},
+        # A-12 (PR-3E-async): codec_llm.acall (async non-stream; never-raise → ""
+        # on failure → the parse below falls back to defaults, matching the
+        # original except). Not queue-wrapped (the original wasn't either).
+        import codec_llm
+        text = await codec_llm.acall(
+            [
+                {"role": "system", "content": system},
+                {"role": "user", "content": f"Research request: {raw_topic}"},
+            ],
+            base_url=_qwen_base(), model=_qwen_model(),
+            max_tokens=800, temperature=0.3, http=_async_http,
         )
-        text = r.json()["choices"][0]["message"]["content"].strip()
-        # Strip thinking tags if present
-        text = re.sub(r'<think>[\s\S]*?</think>', '', text).strip()
 
         # Parse structured response
         result = {"refined_topic": raw_topic, "search_queries": [], "scope": "", "angles": ""}

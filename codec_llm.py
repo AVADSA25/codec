@@ -23,7 +23,7 @@ from __future__ import annotations
 import logging
 import re
 import time
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any, AsyncIterator, Dict, Iterator, List, Optional
 
 log = logging.getLogger("codec.llm")
 
@@ -235,3 +235,120 @@ def stream(
     except Exception as e:
         log.warning("LLM stream call failed: %s", e)
         return
+
+
+async def acall(
+    messages: List[Dict[str, Any]],
+    *,
+    base_url: str,
+    model: str,
+    api_key: str = "",
+    max_tokens: int = 500,
+    temperature: float = 0.7,
+    timeout: float = 120.0,
+    enable_thinking: bool = False,
+    extra_kwargs: Optional[Dict[str, Any]] = None,
+    http: Optional[Any] = None,
+    raise_on_error: bool = False,
+) -> str:
+    """Async sibling of call() — a single non-streaming POST via an httpx
+    AsyncClient. Reuses the caller's client when `http` is given (e.g. agents'
+    module `_async_http`), else makes + closes its own. When a client is
+    injected we do NOT pass a per-request timeout — the client's configured
+    timeout applies (exact parity with the inline sites). `raise_on_error`
+    mirrors call(): raise `LLMError` on non-200 / exception / empty, else "".
+    The queue (codec_llm_proxy) stays at the call site — never owned here.
+    """
+    import httpx
+    headers, payload = _build_request(
+        messages, model=model, api_key=api_key, max_tokens=max_tokens,
+        temperature=temperature, enable_thinking=enable_thinking,
+        extra_kwargs=extra_kwargs,
+    )
+    url = base_url.rstrip("/") + "/chat/completions"
+    own_client = http is None
+    client = http or httpx.AsyncClient(timeout=timeout)
+    try:
+        try:
+            r = await client.post(url, json=payload, headers=headers)
+            if r.status_code == 200:
+                resp = extract_content(r.json())
+                if resp:
+                    return resp
+                if raise_on_error:
+                    raise LLMError("LLM returned empty or unparseable content")
+                return ""
+            if raise_on_error:
+                raise LLMError(f"async LLM call returned {r.status_code}")
+            log.warning("async LLM call %s returned %s", url, r.status_code)
+            return ""
+        except LLMError:
+            raise
+        except Exception as e:
+            if raise_on_error:
+                raise LLMError(f"async LLM call failed: {e}") from e
+            log.warning("async LLM call failed: %s", e)
+            return ""
+    finally:
+        if own_client:
+            await client.aclose()
+
+
+async def astream(
+    messages: List[Dict[str, Any]],
+    *,
+    base_url: str,
+    model: str,
+    api_key: str = "",
+    max_tokens: int = 500,
+    temperature: float = 0.7,
+    timeout: float = 120.0,
+    enable_thinking: bool = False,
+    extra_kwargs: Optional[Dict[str, Any]] = None,
+    http: Optional[Any] = None,
+    keepalive: bool = False,
+) -> AsyncIterator[Any]:
+    """Async sibling of stream() — yields the RAW assistant content deltas (and
+    the `KEEPALIVE` sentinel on empty chunks when `keepalive=True`) over httpx
+    streaming. Reuses the caller's client when `http` is given (e.g. voice's
+    `self._http`), else makes + closes its own.
+
+    Contract difference vs sync stream(): astream **propagates** exceptions —
+    it does NOT swallow connect/stream errors — because its consumer
+    (codec_voice._stream_qwen) wraps the loop in try/except to speak a failure
+    and a silent stream would be a UX regression. The queue stays at the call
+    site. `<think>` stripping is the caller's job (voice strips per-token).
+    """
+    import json as _json
+    import httpx
+    headers, payload = _build_request(
+        messages, model=model, api_key=api_key, max_tokens=max_tokens,
+        temperature=temperature, enable_thinking=enable_thinking,
+        extra_kwargs=extra_kwargs, stream=True,
+    )
+    url = base_url.rstrip("/") + "/chat/completions"
+    own_client = http is None
+    client = http or httpx.AsyncClient(timeout=timeout)
+    _empty = 0
+    try:
+        async with client.stream("POST", url, json=payload, headers=headers) as resp:
+            async for line in resp.aiter_lines():
+                if not line or not line.startswith("data: "):
+                    continue
+                data = line[6:]
+                if data.strip() == "[DONE]":
+                    return
+                try:
+                    delta = (_json.loads(data).get("choices", [{}])[0]
+                             .get("delta", {}).get("content", ""))
+                except (ValueError, KeyError, IndexError, TypeError):
+                    continue
+                if delta:
+                    yield delta
+                elif keepalive:
+                    _empty += 1
+                    if _empty % 10 == 1:
+                        yield KEEPALIVE
+    finally:
+        if own_client:
+            await client.aclose()
