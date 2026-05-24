@@ -1,0 +1,48 @@
+#!/bin/sh
+# CODEC / Sovereign AI Workstation — bundle launcher (CFBundleExecutable, W5-2).
+#
+# This is the executable macOS runs when the user opens the .app. It resolves the
+# interpreter, then execs the stdlib-only Python entry point in Resources/.
+#
+# W5-2: prefers a bundled Python.framework (lands in W5-4) and falls back to a
+# discovered python3, logging a warning. W5-7 may replace this shell launcher
+# with the bundled python3 Mach-O so `codesign --options runtime` has a Mach-O
+# main image. See docs/W5-2-APP-BUNDLE-DESIGN.md.
+set -eu
+
+# Resolve <App>.app/Contents from this script's location (Contents/MacOS/codec).
+MACOS_DIR=$(cd "$(dirname "$0")" && pwd)
+CONTENTS=$(cd "$MACOS_DIR/.." && pwd)
+RES="$CONTENTS/Resources"
+ENTRY="$RES/codec_app_main.py"
+
+LOG_DIR="$HOME/Library/Logs/CODEC"
+mkdir -p "$LOG_DIR" 2>/dev/null || true
+log() { printf '%s  %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" >>"$LOG_DIR/launch.log" 2>/dev/null || true; }
+
+# 1) Prefer the bundled framework Python (populated in W5-4).
+BUNDLED_PY="$CONTENTS/Frameworks/Python.framework/Versions/Current/bin/python3"
+PY=""
+if [ -x "$BUNDLED_PY" ]; then
+    PY="$BUNDLED_PY"
+else
+    # 2) Fall back to a discovered python3 (developer/skeleton path).
+    if command -v python3 >/dev/null 2>&1; then
+        PY=$(command -v python3)
+        log "WARN: bundled Python.framework not found; falling back to $PY (W5-4 will bundle it)"
+    fi
+fi
+
+if [ -z "$PY" ]; then
+    log "FATAL: no Python interpreter found (no bundled framework, no python3 on PATH)"
+    osascript -e 'display alert "CODEC" message "No Python runtime found. Please reinstall."' >/dev/null 2>&1 || true
+    exit 1
+fi
+
+if [ ! -f "$ENTRY" ]; then
+    log "FATAL: entry point missing at $ENTRY"
+    exit 1
+fi
+
+log "launching: $PY $ENTRY"
+exec "$PY" "$ENTRY" "$@"

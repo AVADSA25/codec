@@ -27,3 +27,6 @@ qwen_server.py
 codec_quickchat.html
 patch_vision_and_skills.py
 codec_smoke_test.py
+
+# macOS .app build output (W5-2)
+dist/
