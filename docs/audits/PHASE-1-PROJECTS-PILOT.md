@@ -99,10 +99,14 @@ Four read-only specialist passes over the four modules + their six test files (`
 **Why it matters:** plan descriptions, user replies, and skill results (file contents, fetched data) sit in `~/.codec/agents/<id>/` readable by any local user/process — inconsistent with the repo's hardened secret-storage posture.
 **Fix:** `os.open(..., 0o600)` + `0o700` dirs, matching the audit-log pattern.
 
+> **✅ FIXED by PR-7J (2026-05-24).** The two module-local `_atomic_write_json` helpers (`plan.py` + `messaging.py`) and `messaging.py:_append_jsonl` now create files via `os.open(..., O_CREAT, 0o600)` (bypasses umask → never a world-readable window), defensively `chmod 0o600` (covers stale tmp / pre-existing logs), and `chmod 0o700` the parent dir. Covers `plan.json` / `state.json` / `manifest.json` / `grants.json` / `agent_global_grants.json` / `agent_silence.json` / `messages.jsonl`, plus `notifications.json` (now written via `codec_jsonstore.atomic_write_json`, which also chmods 0600 — see B-11). Try/except-wrapped for RO/FUSE mounts (same pattern as PR-2E). 4 perms tests (`tests/test_state_hardening.py`). Design: `docs/PR7J-STATE-HARDENING-DESIGN.md`.
+
 ### B-11 — `notifications.json` write bypasses the cross-process flock contract [MEDIUM]
 **What:** `post_message` does an un-locked read-modify-write of `notifications.json` via its own `_atomic_write_json` (`messaging.py:~215`), while every other writer (scheduler, heartbeat, ask_user, dashboard) goes through `codec_jsonstore` + `file_lock` (PR-4C). **Verified** (different helper, no shared lock).
 **Why it matters:** the runner is a separate process; a concurrent agent banner + scheduler notification = lost update (atomic-rename preserves file integrity but not the read-modify-write window).
 **Fix:** route through `codec_jsonstore.atomic_write_json` + `file_lock`.
+
+> **✅ FIXED by PR-7J (2026-05-24).** `post_message` now wraps the **whole** `notifications.json` read → batch-merge → write in `_notifications_lock()` (= `codec_jsonstore.file_lock(_NOTIFICATIONS_PATH)`, nullcontext fallback for headless/CI — same shape as `_status_lock`), and writes via `codec_jsonstore.atomic_write_json`. So the runner's banner write now shares the one cross-process critical section every other notifications writer (scheduler/heartbeat/ask_user/dashboard) already uses — no more lost-update window. 1 flock test (`tests/test_state_hardening.py`) spying on `codec_jsonstore.file_lock`. Design: `docs/PR7J-STATE-HARDENING-DESIGN.md`.
 
 ### B-12 — `_qwen_next_action` conflates four concerns + reverse-engineers state from skill strings [MEDIUM]
 **What:** one function does prompt composition, history trim, **regex reconstruction of multi-file iteration state out of `file_ops` result *strings*** (`runner:379-425`), brace-balanced JSON extraction, and Action construction.
