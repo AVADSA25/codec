@@ -45,7 +45,7 @@ MANUAL_ONLY = {
     'skill_forge':    'generative, heavy LLM call (not exposed)',
     'ai_news_digest': 'heavy LLM call, long runtime',
     'auto_memorize':  'forced run triggers LLM memory write',
-    'lucy':           'heavy LLM agent loop',
+    'delegate':       'heavy LLM agent loop',
     'codec':          'main dispatcher, heavy',
     'self_improve':   'writes to skills, heavy LLM',
     'chrome_automate':'launches & drives browser',

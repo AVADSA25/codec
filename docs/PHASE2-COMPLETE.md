@@ -138,7 +138,7 @@ The 20 baseline failures are the same pre-existing failures from Phase 1 — all
 | **`codec-observer`** | **online** | **NEW — 5 s polling loop + trigger evaluator + `_maybe_fire_shift_report` time/idle scheduler** |
 | `codec-autopilot` | **stopped** | intentional, per user request |
 
-Other PM2 processes (cloudflared, kokoro-82m, qwen3.6, whisper-stt, lucy-*, ava-*, sentora-*, etc.) are pre-existing and unrelated to Phase 2.
+Other PM2 processes (cloudflared, kokoro-82m, qwen3.6, whisper-stt, ava-*, sentora-*, etc.) are pre-existing and unrelated to Phase 2.
 
 ---
 
