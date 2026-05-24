@@ -84,24 +84,46 @@ class AgentMessage:
 
 # ── Atomic file I/O ───────────────────────────────────────────────────────────
 def _atomic_write_json(path: Path, data: Any) -> None:
-    """Write JSON atomically: write to .tmp, fsync, rename. Mirrors Step 8."""
+    """Write JSON atomically: write to .tmp (0600), fsync, rename. Mirrors Step 8.
+    (B-10: 0600 file + 0700 dir — covers agent_silence.json + the notifications
+    fallback path; agent state must not be world-readable.)"""
     path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(path.parent, 0o700)
+    except OSError:
+        pass
     tmp_path = path.with_suffix(path.suffix + ".tmp")
-    with open(tmp_path, "w", encoding="utf-8") as f:
+    fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, sort_keys=False)
         f.flush()
         os.fsync(f.fileno())
+    try:
+        os.chmod(tmp_path, 0o600)
+    except OSError:
+        pass
     os.replace(tmp_path, path)
 
 
 def _append_jsonl(path: Path, record: Dict[str, Any]) -> None:
-    """Append a single JSON-encoded line. fsync after each write."""
+    """Append a single JSON-encoded line. fsync after each write. (B-10: 0600
+    file + 0700 dir — messages.jsonl holds user replies + skill results.)"""
     path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(path.parent, 0o700)
+    except OSError:
+        pass
     line = json.dumps(record, separators=(",", ":")) + "\n"
-    with open(path, "a", encoding="utf-8") as f:
+    # O_APPEND|O_CREAT with 0o600 so a freshly-created log isn't world-readable.
+    fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+    with os.fdopen(fd, "a", encoding="utf-8") as f:
         f.write(line)
         f.flush()
         os.fsync(f.fileno())
+    try:
+        os.chmod(path, 0o600)  # defensive: a pre-existing log may predate this change
+    except OSError:
+        pass
 
 
 def _read_notifications() -> List[Dict[str, Any]]:
@@ -114,6 +136,31 @@ def _read_notifications() -> List[Dict[str, Any]]:
     except (json.JSONDecodeError, OSError) as e:
         log.warning("read notifications failed: %s", e)
         return []
+
+
+def _notifications_lock():
+    """B-11: cross-process flock for the notifications.json read-modify-write so a
+    runner banner + a scheduler/heartbeat/ask_user notification can't clobber each
+    other (every other writer already goes through codec_jsonstore.file_lock per
+    PR-4C). Nullcontext fallback if codec_jsonstore is unavailable (headless/CI) —
+    same shape as codec_agent_plan._status_lock (PR-7D)."""
+    try:
+        import codec_jsonstore
+        return codec_jsonstore.file_lock(_NOTIFICATIONS_PATH)
+    except Exception:
+        import contextlib
+        return contextlib.nullcontext()
+
+
+def _write_notifications(notifs: List[Dict[str, Any]]) -> None:
+    """B-10/B-11: persist notifications.json 0600 via the shared cross-process
+    store when available (also chmods 0600), else the local atomic writer (also
+    0600). Caller MUST hold _notifications_lock() around the read+write."""
+    try:
+        import codec_jsonstore
+        codec_jsonstore.atomic_write_json(_NOTIFICATIONS_PATH, notifs)
+    except Exception:
+        _atomic_write_json(_NOTIFICATIONS_PATH, notifs)
 
 
 # ── Audit emit helper ─────────────────────────────────────────────────────────
@@ -188,31 +235,35 @@ def post_message(agent_id: str, type: str, title: str, body: str,
     # Silence kill-switch (Step 10): skip notification, keep messages.jsonl write.
     batched = False
     if not is_silenced(agent_id):
-        # Update notifications.json (with batching for agent_update)
-        notifs = _read_notifications()
-        now_ts = time.time()
-        if type == "agent_update":
-            # Look for recent banner from same agent
-            for n in notifs:
-                if (n.get("agent_id") == agent_id and
-                    n.get("type") == "agent_update"):
-                    n_ts = n.get("_post_ts", 0)
-                    if now_ts - n_ts <= BATCH_WINDOW_SECONDS:
-                        n["batch_count"] = int(n.get("batch_count", 1)) + 1
-                        n["title"] = f"{n['batch_count']} updates from {agent_id}: {title[:60]}"
-                        n["body"] = body  # latest body wins
-                        n["_post_ts"] = now_ts
-                        n["correlation_id"] = correlation_id
-                        batched = True
-                        break
+        # B-11: the whole read → batch-merge → write is ONE cross-process critical
+        # section, shared with every other notifications writer (scheduler,
+        # heartbeat, ask_user, dashboard) via the same flock — otherwise a racing
+        # write drops this banner (the user's only "agent needs you" surface).
+        with _notifications_lock():
+            notifs = _read_notifications()
+            now_ts = time.time()
+            if type == "agent_update":
+                # Look for recent banner from same agent
+                for n in notifs:
+                    if (n.get("agent_id") == agent_id and
+                        n.get("type") == "agent_update"):
+                        n_ts = n.get("_post_ts", 0)
+                        if now_ts - n_ts <= BATCH_WINDOW_SECONDS:
+                            n["batch_count"] = int(n.get("batch_count", 1)) + 1
+                            n["title"] = f"{n['batch_count']} updates from {agent_id}: {title[:60]}"
+                            n["body"] = body  # latest body wins
+                            n["_post_ts"] = now_ts
+                            n["correlation_id"] = correlation_id
+                            batched = True
+                            break
 
-        if not batched:
-            notif = dict(record)
-            notif["_post_ts"] = now_ts
-            notif["batch_count"] = 1
-            notifs.append(notif)
+            if not batched:
+                notif = dict(record)
+                notif["_post_ts"] = now_ts
+                notif["batch_count"] = 1
+                notifs.append(notif)
 
-        _atomic_write_json(_NOTIFICATIONS_PATH, notifs)
+            _write_notifications(notifs)
 
     # Phase 3.5 — multi-channel notification dispatch.
     # Reads agent's notification_channels from manifest. Each non-`pwa`

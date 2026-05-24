@@ -144,13 +144,26 @@ def compute_plan_hash(plan: Plan) -> str:
 
 # ── Atomic file I/O (tmp+rename pattern from Phase 2) ─────────────────────────
 def _atomic_write_json(path: Path, data: Any) -> None:
-    """Write JSON atomically: write to .tmp, fsync, rename."""
+    """Write JSON atomically: write to .tmp (0600), fsync, rename. (B-10: 0600
+    file + 0700 dir so agent state — plan/grants/state/manifest/global-grants —
+    isn't world-readable, matching the audit-log (PR-2E) + codec_jsonstore
+    (PR-4C) posture.)"""
     path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(path.parent, 0o700)
+    except OSError:
+        pass
     tmp_path = path.with_suffix(path.suffix + ".tmp")
-    with open(tmp_path, "w", encoding="utf-8") as f:
+    # os.open with 0o600 bypasses umask so the file is never briefly world-readable.
+    fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, sort_keys=False)
         f.flush()
         os.fsync(f.fileno())
+    try:
+        os.chmod(tmp_path, 0o600)  # defensive: a stale tmp may predate this change
+    except OSError:
+        pass
     os.replace(tmp_path, path)
 
 
