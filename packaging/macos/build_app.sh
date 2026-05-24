@@ -15,14 +15,19 @@ APP_NAME="Sovereign AI Workstation"
 OUT_DIR="dist"
 CLEAN=0
 VALIDATE=0
+WITH_PYTHON=0
+PY_ARCH=""
 
 usage() {
     cat <<'USAGE'
 Usage: build_app.sh [--out DIR] [--app-name NAME] [--clean] [--validate]
+                    [--with-python] [--arch aarch64|x86_64]
   --out DIR        output directory for the .app (default: dist)
   --app-name NAME  bundle display name (default: "Sovereign AI Workstation")
   --clean          remove any existing <out>/<name>.app first
   --validate       run plutil on the copied Info.plist (macOS only)
+  --with-python    bundle the relocatable Python runtime (W5-4) via bundle_python.sh
+  --arch ARCH      target arch for --with-python (default: host arch)
 USAGE
 }
 
@@ -32,6 +37,8 @@ while [ $# -gt 0 ]; do
         --app-name) APP_NAME="$2"; shift 2 ;;
         --clean) CLEAN=1; shift ;;
         --validate) VALIDATE=1; shift ;;
+        --with-python) WITH_PYTHON=1; shift ;;
+        --arch) PY_ARCH="$2"; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         *) echo "build_app.sh: unknown arg: $1" >&2; usage; exit 2 ;;
     esac
@@ -94,5 +101,17 @@ if [ "$VALIDATE" -eq 1 ]; then
     fi
 fi
 
+# --- bundle the relocatable Python runtime (W5-4) --------------------------
+if [ "$WITH_PYTHON" -eq 1 ]; then
+    echo "==> bundling Python runtime (W5-4)"
+    BP_ARGS=(--app "$APP")
+    [ -n "$PY_ARCH" ] && BP_ARGS+=(--arch "$PY_ARCH")
+    bash "$PKG_DIR/bundle_python.sh" "${BP_ARGS[@]}"
+fi
+
 echo "==> done: $APP"
-echo "    NOTE: unsigned skeleton. Python.framework=W5-4, codesign=W5-7, notarize=W5-8."
+if [ "$WITH_PYTHON" -eq 1 ]; then
+    echo "    NOTE: Python bundled. codesign=W5-7, notarize=W5-8."
+else
+    echo "    NOTE: unsigned skeleton, no Python (use --with-python for W5-4). codesign=W5-7, notarize=W5-8."
+fi
