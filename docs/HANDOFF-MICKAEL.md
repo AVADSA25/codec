@@ -23,7 +23,7 @@ I work on isolated branches and never self-merge; each new branch builds on the 
 
 **Enrollment: ✅ done** (you confirmed Team ID + Developer ID Application cert in hand).
 
-**Progress:** W5-1 (metadata) ✅ · W5-2 (`.app` wrapper) ✅ · W5-3 (launchd) ✅ · W5-4 (bundled Python) ✅ · W5-12 (uninstaller) ✅ · W5-7/8 (sign + notarize scripts, `packaging/macos/{sign_app,notarize_app}.sh`) ⏳ in flight. Next: W5-5 (model downloader — needs your model-strategy decision), W5-6 (first-run permissions wizard — wires launchd install + Python remap + in-app "Uninstall"), W5-11 (GUI onboarding), then DMG packaging.
+**Progress:** W5-1 (metadata) ✅ · W5-2 (`.app`) ✅ · W5-3 (launchd) ✅ · W5-4 (bundled Python) ✅ · W5-7/8 (sign + notarize) ✅ · W5-12 (uninstaller) ✅ · W5-5 (model downloader, `packaging/macos/fetch_models.py` + `models.json`) ⏳ in flight. Next: W5-6 (first-run permissions wizard — wires launchd install + Python remap + bundled-model fetch + in-app "Uninstall"), W5-11 (GUI onboarding), then DMG packaging. **All Audit-E CRITICALs are now closed.**
 
 **The full release sequence is now scriptable** (run on your build Mac with the cert):
 ```
@@ -55,7 +55,7 @@ When the Wave-5 build PRs land, these need you on a real macOS build machine —
 
 These don't block the Wave-5 bundle/launchd/Python work, but gate later steps. Pick when ready:
 
-- 🟡 **Model strategy (E-8 / W5-5):** which models bundle in the installer vs download-on-demand. *Recommendation:* bundle the minimum set (Whisper-turbo + Kokoro + a 7B-class 4-bit ≈ 8 GB), download the big Qwen/Llama on first use with a progress UI + consent.
+- 🟡 **Model strategy (E-8 / W5-5):** the **downloader + tiered manifest now exist** (`packaging/macos/{fetch_models.py,models.json}`; try `python3 packaging/macos/fetch_models.py --tier all --dry-run`). It ships my *recommended* default — **bundled** (≈6 GB): Whisper-turbo + Kokoro + Qwen-7B-4bit; **on_demand**: Qwen-35B + Qwen2.5-VL-7B. **Two things from you:** (1) confirm/adjust the list + tiers; (2) **pin each `revision` to a commit SHA** (currently `main`) for supply-chain integrity before launch.
 - 🟡 **License gating (E-11 / W5-9):** offline grace-window length (typical 7-30 days), hard-cutoff UX, tier→feature map. (Backend exists at `ava-license.lucyvpa.com`; nothing currently *refuses to run* on an invalid license.)
 - 🟡 **Cloudflare for buyers (E-10 / W5-10):** paid v1 LAN-only vs AVA-vended per-customer tunnels (recurring cost on AVA). *Recommendation:* LAN-only v1, revisit.
 - 🟡 **Pricing + launch date (F-11):** gates the paid-tier README subsection + license work.
@@ -96,6 +96,6 @@ I'm writing the docs; a few items need your accounts/assets:
 | D — Security | 1-2 | ✅ closed (PRs #56-#71 era) |
 | A — Code quality | 3 | ✅ closed |
 | C — Reliability | 4 | ✅ **fully closed** (all 5 CRITICAL + 9 HIGH + 6 MEDIUM + 2 LOW) |
-| E — Apple app | 5 | 🟠 in progress — W5-1/2/3/4/7/8/12 done (metadata, .app, launchd, Python, **sign+notarize scripts**, uninstaller); next W5-5 models, W5-6 first-run, W5-11 GUI, DMG. Cert-gated execution (sign/notarize) → your Mac |
+| E — Apple app | 5 | 🟠 **all CRITICALs closed.** W5-1/2/3/4/5/7/8/12 done (metadata, .app, launchd, Python, models, sign+notarize, uninstaller); next W5-6 first-run, W5-11 GUI, DMG. Cert-gated execution + model-list/license/pricing decisions → you |
 | F — Investor readiness | 6 | 🟢 ~90% closed — F-1,2,3,6,7,9,10,13,14,16,17 done; F-18 partial. Remaining gated on you: F-4 (ruff-cleanup decision), F-5 (versioning), F-8 (GIF), F-11 (pricing), F-12 (Discord), F-15 (pyproject, deferred). |
 | B — Projects + Pilot | 7 | ⏳ not started (needs your scope description) |

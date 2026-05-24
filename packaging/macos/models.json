@@ -1,0 +1,46 @@
+{
+  "_comment": "RECOMMENDED EXAMPLE model manifest for the paid app (W5-5, E-8). The exact list + revision pins are the open model-strategy decision (docs/HANDOFF-MICKAEL.md §2). 'bundled' = ship in installer / fetch on first run (works offline). 'on_demand' = download with consent on first use. TODO before launch: confirm repos + pin every 'revision' to a commit SHA for supply-chain integrity. Models install to ~/.codec/models/<name>/ (never inside the .app).",
+  "dest_default": "~/.codec/models",
+  "models": [
+    {
+      "name": "whisper-turbo",
+      "kind": "stt",
+      "repo": "mlx-community/whisper-large-v3-turbo",
+      "revision": "main",
+      "tier": "bundled",
+      "approx_gb": 1.6
+    },
+    {
+      "name": "kokoro-82m",
+      "kind": "tts",
+      "repo": "hexgrad/Kokoro-82M",
+      "revision": "main",
+      "tier": "bundled",
+      "approx_gb": 0.4
+    },
+    {
+      "name": "qwen-7b-4bit",
+      "kind": "llm",
+      "repo": "mlx-community/Qwen2.5-7B-Instruct-4bit",
+      "revision": "main",
+      "tier": "bundled",
+      "approx_gb": 4.3
+    },
+    {
+      "name": "qwen-35b-4bit",
+      "kind": "llm",
+      "repo": "mlx-community/Qwen3.5-35B-A3B-4bit",
+      "revision": "main",
+      "tier": "on_demand",
+      "approx_gb": 20.0
+    },
+    {
+      "name": "qwen-vl-7b",
+      "kind": "vision",
+      "repo": "mlx-community/Qwen2.5-VL-7B-Instruct-4bit",
+      "revision": "main",
+      "tier": "on_demand",
+      "approx_gb": 6.0
+    }
+  ]
+}
