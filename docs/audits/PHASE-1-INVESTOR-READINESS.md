@@ -39,6 +39,7 @@ Reviewed in this order:
 
 ### F-1 — No SECURITY.md / vulnerability disclosure policy [CRITICAL]
 
+> **Closed by PR-6A.** `SECURITY.md` at repo root: supported versions, private disclosure via GitHub Private Vulnerability Reporting (primary) + `security@avadigital.ai`, a 72h-ack / 7d-triage / 30d-fix SLA, and an explicit in/out-of-scope split. **Handoff:** enable Private Vulnerability Reporting in repo settings + confirm the security email (`docs/HANDOFF-MICKAEL.md §3`).
 **What's missing:** `SECURITY.md` does not exist at repo root. No file referenced in `.github/` either. GitHub does not display the "Security policy" tab.
 
 **Why investors / enterprise customers expect it:**
@@ -142,6 +143,7 @@ The engine badge says `engine: CODEC v2.3` while the only versioned tag is `v3.0
 
 ### F-6 — No CODE_OF_CONDUCT.md [HIGH]
 
+> **Closed by PR-6A.** `CODE_OF_CONDUCT.md` adopts the Contributor Covenant 2.1 by reference (the pledge + standards + enforcement-ladder + `conduct@avadigital.ai` contact; written adopt-by-reference rather than reproducing the full enumeration). GitHub's Community-Standards check now passes.
 **What's missing:** Standard OSS health file absent. GitHub's "Community Standards" check (visible at `github.com/AVADSA25/codec/community`) shows this as a missing checkmark.
 
 **Why investors / enterprise customers expect it:**
@@ -155,6 +157,7 @@ The engine badge says `engine: CODEC v2.3` while the only versioned tag is `v3.0
 
 ### F-7 — No FUNDING.yml / GitHub Sponsors surface [HIGH]
 
+> **Closed by PR-6A.** `.github/FUNDING.yml` declares `github: [AVADSA25]` + custom PayPal/site URLs (custom links work immediately; the Sponsor button lights up once the org enrolls in GitHub Sponsors — handoff item).
 **What's missing:** `.github/FUNDING.yml` does not exist. README §"Support the Project" has a PayPal link only. GitHub's Sponsors button is therefore not visible on the repo page.
 
 **Why investors / enterprise customers expect it:**
@@ -346,6 +349,7 @@ For enterprise installs and reproducible builds, this is a yellow flag:
 
 ### F-16 — Stray garbage file at repo root [LOW]
 
+> **Closed by PR-6A.** `git rm`'d the stray `authlib google-auth-httplib2 --break-system-packages` file (captured pip-error output as a filename). Root is clean; a `tests/test_repo_health.py` guard fails if it's ever re-introduced.
 **What's missing / wrong:** There is a file at repo root named literally:
 ```
 authlib google-auth-httplib2 --break-system-packages
