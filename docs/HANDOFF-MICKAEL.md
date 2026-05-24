@@ -6,6 +6,27 @@
 
 ---
 
+## 🔴🔴 URGENT — Pilot was a LIVE internet-exposed RCE (stopped 2026-05-24)
+
+The **Pilot audit** ran (full report: `docs/audits/PHASE-1-PILOT-AUDIT.md`) and found that
+`pilot-runner` was **online + internet-exposed + unauthenticated** — `pilot.lucyvpa.com →
+localhost:8094`, bound `0.0.0.0`, no auth — letting anyone drive your logged-in Chrome and
+compile+approve a skill → **code execution on your Mac**. I stopped it with your approval
+(`pm2 stop pilot-runner`; verified `:8094` no longer listening).
+
+**Your action items:**
+1. 🔴 **Do NOT `pm2 start pilot-runner`** until the fix wave (PP-1…) lands — the Cloudflare
+   route still points at :8094, so restarting re-exposes it. Consider also removing the
+   `pilot.lucyvpa.com` lines (21-22) from `~/.cloudflared/config.yml` now as defense-in-depth.
+2. 🟡 **Pilot fixes are in a SEPARATE repo** (`~/codec/pilot/`) — they can't go through the
+   codec-repo PR flow. Tell me to proceed and I'll do the fix wave (design-first → TDD)
+   directly in the pilot repo. Priority order in the audit doc (PP-1 = loopback+auth first).
+3. ⚪ Parent-repo follow-up: PR-1A's AST gate (`is_dangerous_skill_code`) is allow-by-omission
+   for `urllib`/`httpx`/`requests`/`smtplib`/`pickle`/`open` — fine for hand-written user
+   skills, but auto-generated Pilot skills need a stricter allowlist (see audit §cross-cutting).
+
+---
+
 ## 0. PR queue status ✅ (clear)
 
 All PRs through **#112 are merged**. Queue clear.
