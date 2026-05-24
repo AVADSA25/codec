@@ -6,26 +6,16 @@
 
 ---
 
-## 0. Right now — merge the open PR queue 🔴
+## 0. PR queue status ✅ (clear)
 
-I work on isolated branches and never self-merge. **Review + merge these in order** (each is design-first → TDD → CI-green; squash-merge is fine):
+All Wave-4/5/6 PRs through **#96 are merged**. Nothing blocking right now.
 
-| PR | Title | Wave |
-|---|---|---|
-| #82 | C-2 PWA response bridge | 4 |
-| #83 | C-5 `_atomic_set_status` | 4 |
-| #84 | H-1 lifecycle helper | 4 |
-| #85 | H-3 audit flock | 4 |
-| #86 | H-4/H-6/M-6 bounded dicts | 4 |
-| #87 | H-7/H-8/H-9 tempfile leaks | 4 |
-| #88 | M-3/M-4/L-1/L-2 small fixes | 4 |
-| #89 | H-5 rate-window eviction | 4 |
-| #90 | H-2 codec.py state lock | 4 |
-| #91 | M-5 per-thread DB | 4 ✅ (merged) |
-| #92 | W5-1 Apple distribution foundation | 5 |
-| #93+ | Wave-6 readiness PRs | 6 |
+- **Wave 4 (Reliability):** #82–#91 ✅ merged (all 5 CRITICAL + 9 HIGH + 6 MEDIUM + 2 LOW).
+- **Wave 5:** #92 (W5-1 Apple distribution foundation) ✅ merged.
+- **Wave 6:** #93 (SECURITY/COC/FUNDING + this tracker), #94 (PRIVACY.md), #95 (README investor overhaul), #96 (ONE-PAGER) ✅ merged.
+- **In flight:** **PR-6I** — expand CI test coverage + add Dependabot (F-4). Review + merge when its CI is green.
 
-*(Once merged, my later branches that built on origin/main pick them up automatically.)*
+I work on isolated branches and never self-merge; each new branch builds on the latest `main`.
 
 ---
 
@@ -64,7 +54,11 @@ I'm writing the docs; a few items need your accounts/assets:
 - 🟠 **Record a ~20-second demo GIF** (F-8) for the top of the README — a real screen-capture of voice→action is something only you can shoot on your machine. I'll wire it into the README once you drop the file in `docs/assets/`.
 - 🟠 **Create a Discord server + enable GitHub Discussions** (F-12). Give me the invite link and I'll add the badge/links to the README.
 - ⚪ **GitHub Sponsors** (F-7) — `.github/FUNDING.yml` is in place pointing at your PayPal + site; optionally enroll the org in GitHub Sponsors to light up the "Sponsor" button.
-- 🟡 **Lucy / agent-to-agent positioning (F-18)** — your brand call on how prominently to feature it in the README.
+- 🟡 **Lucy / agent-to-agent positioning (F-18)** — your brand call on how prominently to feature it in the README. (The generic bidirectional-MCP / agent-to-agent story is already in the README; this is only about whether to *name* "Lucy".)
+- 🟡 **Release-versioning decision (F-5)** — the product is **v2.3** but the only git tag is **v3.0.0**. Pick the source of truth, then I'll prepare a `scripts/tag_releases.sh` that maps each CHANGELOG entry → its commit; you run it to push the tags + enable GitHub Releases. (Nothing is tagged today, so the Releases page is empty.)
+- 🟡 **F-4 CI depth — your call on the trade-off.** PR-6I expands CI to gate the deterministic readiness/doc tests + adds Dependabot (no working-code edits). Gating the *full* test suite would mean cleaning **639 repo-wide `ruff` findings** in working modules — which I won't touch without your explicit OK (your standing "never touch working code" rule). Options: leave as-is (CI already gates 6 test files + the D-1 manifest gate + the readiness tests), **or** greenlight a dedicated ruff-cleanup pass.
+- 🟠 **Fill the ONE-PAGER private fields** — `docs/ONE-PAGER.md` ships with explicit placeholders for the **founder bio**, the **raise/ask sentence**, and the **pricing band** (left blank because the repo is public). Fill a private copy before any investor send. Optionally I can draft `docs/VISION.md` (3-page narrative) on the same public-safe-placeholder basis.
+- ⚪ **Tiny follow-up:** link `docs/PRIVACY.md` from the README "Privacy & Security" section (one line; I'll fold it into the next README-polish PR).
 
 ---
 
@@ -74,6 +68,7 @@ I'm writing the docs; a few items need your accounts/assets:
 - **Keychain rotation:** procedures for the secrets migrated in Wave 2 (audit HMAC, internal token, provider keys) are documented in `AGENTS.md §10` — only needed if you rotate.
 - **Feature-flag env vars:** `ASKUSER_ENABLED`, `STUCK_DETECTION_ENABLED`, `OBSERVER_ENABLED`, `TRIGGERS_ENABLED`, `AGENT_RUNNER_ENABLED`, etc. (defaults true) — documented in `AGENTS.md §10`.
 - **Branch protection:** `main` is protected (you enabled it earlier).
+- **Cold "repo-readiness audit" email (2026-05-24):** `PressureDesk <pressuredesk@agentmail.to>` → `ava.dsa25@proton.me`, offering a "fixed-scope full audit" for **49 USDC**, teaser "75/100, missing_claude_project_settings." Assessment: **automated cold outreach — don't pay, don't reply.** We already run four internal audits far deeper than a public-signals scorecard. Its one concrete hook (`.claude/` project settings) is moot — `.claude/` is intentionally git-ignored, and the repo's `CLAUDE.md`/`AGENTS.md` front door already covers agent-onboarding far beyond a settings file. Logged here for the record only.
 
 ---
 
@@ -85,5 +80,5 @@ I'm writing the docs; a few items need your accounts/assets:
 | A — Code quality | 3 | ✅ closed |
 | C — Reliability | 4 | ✅ **fully closed** (all 5 CRITICAL + 9 HIGH + 6 MEDIUM + 2 LOW) |
 | E — Apple app | 5 | 🟠 in progress (W5-1 done; build pieces are XL + need your Mac/cert) |
-| F — Investor readiness | 6 | 🟢 in progress (doc-heavy, mostly doable now) |
+| F — Investor readiness | 6 | 🟢 ~90% closed — F-1,2,3,6,7,9,10,13,14,16,17 done; F-18 partial. Remaining gated on you: F-4 (ruff-cleanup decision), F-5 (versioning), F-8 (GIF), F-11 (pricing), F-12 (Discord), F-15 (pyproject, deferred). |
 | B — Projects + Pilot | 7 | ⏳ not started (needs your scope description) |

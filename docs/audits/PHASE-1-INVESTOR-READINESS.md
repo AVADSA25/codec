@@ -90,6 +90,8 @@ CLAUDE.md §9 *Testing* claims "600+ tests collected" — actual count 873 (more
 
 ### F-4 — CI runs <10% of the test suite [HIGH]
 
+> **🟡 PARTIALLY CLOSED by PR-6I (2026-05-24).** CI already grew past the audit's 4-file snapshot (now also runs the D-1 manifest gate, `test_skill_registry`, `test_keychain`). PR-6I adds a **Dependabot config** (`.github/dependabot.yml`: weekly pip + github-actions, grouped, capped) **and** gates the deterministic readiness doc-guards (`test_repo_health`, `test_privacy_doc`, `test_readme_investor`, `test_one_pager`, `test_apple_packaging`, `test_dependabot`) — all stdlib-pure so they stay green on the ubuntu runner. **Still open (Mickael's call, `docs/HANDOFF-MICKAEL.md §3`):** gating the *full* suite would require cleaning ~639 repo-wide `ruff` findings + resolving platform/optional-dep test failures on the runner — deliberately NOT done unilaterally (touches working code). No coverage gate / Python-version matrix yet.
+
 **What's missing:** `.github/workflows/ci.yml` runs exactly 4 test scripts on push/PR to main:
 ```yaml
 - run: python tests/test_skill_imports.py
