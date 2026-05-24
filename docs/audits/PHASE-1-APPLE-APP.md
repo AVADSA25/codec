@@ -92,12 +92,16 @@ The conclusion is unambiguous: there is no Apple-app distribution scaffolding in
 **Dependencies:** E-2.
 
 ### E-4 — Sandbox incompatibility blocks Mac App Store distribution [CRITICAL]
+
+> **Closed by PR-5A (W5-1).** Recorded in `docs/APPLE-DISTRIBUTION.md` §2 — the forced decision (Developer ID signed+notarized direct download; App Store ruled out) with the full capability→sandbox table. No implementation; it's the foundational architecture record the rest of Wave 5 references.
 **What's missing:** A decision/documentation acknowledging that CODEC cannot ship via the Mac App Store and the implications.
 **Why it matters:** Five core capabilities (screen recording / OCR, blanket AppleScript control, hotkey/CGEvent tap, arbitrary subprocess spawning including PM2, full filesystem access to `~/.codec/**`) are non-sandboxable. See §"CODEC system access → Apple sandbox mapping" for the entitlement-by-entitlement breakdown. Trying to ship a sandboxed build would strip CODEC of Core, Dictate, Pilot, Observer, the PM2 fleet, and iMessage — i.e. ~80% of the value prop. App Store is out.
 **Effort:** **S** (write the decision doc into `docs/`; no implementation).
 **Dependencies:** none.
 
 ### E-5 — No PrivacyInfo.xcprivacy manifest [HIGH]
+
+> **Closed by PR-5A (W5-1).** `packaging/macos/PrivacyInfo.xcprivacy` declares `NSPrivacyTracking=false`, empty tracking-domains + collected-data-types (local-first), and the two Required-Reasons APIs actually hit: `FileTimestamp` (C617.1 — observer/scheduler/heartbeat mtime) + `DiskSpace` (E174.1 — heartbeat/df). `plutil`-validated + key-asserted by `tests/test_apple_packaging.py`. (Re-audit the embedded C-extensions' API use once Python.framework is bundled in W5-4.)
 **What's missing:** No `PrivacyInfo.xcprivacy` declaring the Required Reasons APIs CODEC uses: `NSPrivacyAccessedAPICategoryFileTimestamp` (mtime checks for observer recent_files, scheduler), `NSPrivacyAccessedAPICategoryDiskSpace` (heartbeat health check, install.sh's `df -g /`), `NSPrivacyAccessedAPICategoryUserDefaults` (likely zero — Python doesn't touch NSUserDefaults directly, but embedded PyObjC frameworks might), `NSPrivacyAccessedAPICategorySystemBootTime` (uptime — none observed), `NSPrivacyAccessedAPICategoryActiveKeyboard` (likely none — `pynput` uses CGEvent tap, not the keyboard layout API). No declaration of data collection types or third-party SDKs.
 **Why it matters:** Required for any app submitted to the App Store *or* notarized through current `notarytool` versions (Apple has been tightening enforcement since 2024). Missing manifests trigger notarization warnings; in some cases, future Gatekeeper revisions can hard-block on missing manifests. Also affects the Reason codes the user sees in Privacy & Security settings.
 **Effort:** **M** (audit which APIs each embedded Python C-extension actually calls — `numpy`, `mlx`, `PyObjC`, `pynput`, `sounddevice`, `pyautogui`, `Pillow`, `requests` — write the manifest; document reason strings; test against current notarytool).
@@ -146,6 +150,8 @@ The conclusion is unambiguous: there is no Apple-app distribution scaffolding in
 **Dependencies:** E-1, E-2, E-3.
 
 ### E-13 — No Apple Developer Program enrollment evidence [CRITICAL]
+
+> **Resolved (W5-Pre, 2026-05-24).** Mickael confirmed AVA Digital LLC is **enrolled with a Team ID + Developer ID Application certificate in hand** — the 2-4 week critical path is already cleared, so the signing (E-2) + notarization (E-3) pipelines are unblocked. Provisioning the App Store Connect API key for `notarytool` + the Sparkle EdDSA key (E-12) happens in those PRs.
 **What's missing:** Any reference to a Team ID, Developer ID Application certificate, or Apple Developer Program membership in the repo or documented setup.
 **Why it matters:** Code signing, notarization, and App Store distribution all require Apple Developer Program enrollment ($99/year for individual; $299/year for organization — for AVA Digital LLC, organization enrollment likely required, which adds D-U-N-S Number verification, can take 2-4 weeks). Once enrolled: generate Developer ID Application certificate via Xcode, generate App Store Connect API key for `notarytool`, generate Sparkle EdDSA key for auto-updates. None of this exists today.
 **Effort:** **M** (enrollment paperwork + waiting period, then ~2h to provision certs).
@@ -164,6 +170,8 @@ The conclusion is unambiguous: there is no Apple-app distribution scaffolding in
 **Dependencies:** E-1, E-6, E-7, E-8, E-9.
 
 ### E-16 — OSS distribution is unsigned [MEDIUM]
+
+> **Closed by PR-5A (W5-1).** Decision recorded in `docs/APPLE-DISTRIBUTION.md` (D5): the OSS build **stays unsigned** (`git clone && ./install.sh`, developers build + trust their own toolchain) — only the **paid** app is signed + notarized. The `packaging/macos/` metadata applies to the paid build only.
 **What's missing:** A decision on whether the public GitHub `git clone` flow should produce a signed Touch-ID helper / Swift overlay / Python launcher, so users don't have to disable Gatekeeper.
 **Why it matters:** Today, `setup_codec.py:563-571` compiles `codec_auth` via `swiftc` inline (unsigned); the Swift overlay (`swift-overlay/`) has no build step in `install.sh` and isn't shipped. Users who clone the repo and run the installer end up with an unsigned helper they trust because they built it locally — that's fine. But if the OSS distribution ever ships a precompiled binary (e.g. via Homebrew tap or GitHub Releases), it needs to be signed (Developer ID), or users will hit Gatekeeper. Hybrid: keep OSS as "build from source" forever (user trusts their own `swiftc`); paid app gets signed binaries. **Recommended path: keep OSS as build-from-source; document the Gatekeeper workaround for any precompiled artifact.**
 **Effort:** **S** (write the decision doc).
