@@ -207,18 +207,34 @@ engine reaches it only over the `:8094` HTTP contract via `skills/pilot.py`. So 
 audit doc lives in `codec-repo/docs/audits/` for consistency with the other Phase-1 audits.
 The two-repo boundary + port contract should be documented in a `pilot/README.md`.
 
-## Suggested fix wave (Pilot repo) — by priority
+## Fix wave (Pilot repo `~/codec/`) — status
 
-1. **PP-1 (CRITICAL, do first):** P-1 loopback + auth + CORS + refuse-unsafe-start; gate/drop
-   the Cloudflare tunnel. *Re-enables Pilot safely.* Until then, keep `pilot-runner` stopped.
-2. **PP-2 (CRITICAL):** P-2 escape/`repr` all trace-derived source + `int()` numerics +
-   `compile()`-validate; P-3 run `is_dangerous_skill_code` at approve + audit.
-3. **PP-3 (CRITICAL/HIGH):** P-4 URL allowlist; P-8 CDP port hardening.
-4. **PP-4 (HIGH):** P-6 untrusted-delimit page content; P-7 real HITL/strict-consent + auth;
-   P-9 run concurrency + use `_lock`.
-5. **PP-5 (MEDIUM):** P-10…P-14 + the audit adapter + secret redaction.
-6. **Parent repo:** the cross-cutting AST-gate hardening for auto-generated skills.
-7. Wire the test suite into pytest; add a safety test per fix.
+> **✅ All exploitable findings remediated 2026-05-24** — PP-1…PP-5 committed to the Pilot
+> repo's local `main` (no remote/CI there → review/push the commits). 32 pilot security
+> tests pass (`pilot/tests/test_phase7…11`); native `test_phase5` (real chromium) stays
+> green → behavior-preserving. Each PP has a design doc under `pilot/docs/`.
+
+1. **PP-1 ✅ (CRITICAL)** — P-1: `x-pilot-token` auth on every route (shared via
+   `~/.codec/pilot_token`), loopback bind, CORS localhost-only. The parent half (send the
+   token) shipped in codec-repo **#132**. *(Cloudflare-tunnel removal is still your manual
+   step; until done, keep `pilot-runner` stopped or rely on the token gate.)*
+2. **PP-2 ✅ (CRITICAL)** — P-2: `_safe()`/`_int()` escape all trace-derived source +
+   `compile()`-validate; P-11: `slugify()` the review slug. *(P-3 approve-time
+   `is_dangerous_skill_code` gate left as defense-in-depth — Pilot can't cleanly import the
+   parent `codec_config`; the injection is closed at the source instead.)*
+3. **PP-3 ✅ (CRITICAL/HIGH)** — P-4: `validate_navigation_url()` (http/https only; blocks
+   file:/internal/loopback/link-local/metadata).
+4. **PP-4 ✅ (HIGH)** — P-6: `wrap_untrusted()` fences page content into the agent/replay LLM
+   + system-prompt warning. *(P-7's unauth HITL inject is closed by PP-1's auth; the HITL
+   default-deny structural change remains a follow-up.)*
+5. **PP-5 ✅ (HIGH)** — P-8: randomized CDP debug port (was fixed 9223).
+
+**Remaining (MEDIUM/robustness, not exploitable — follow-up batch):** P-7 HITL default-deny
+for destructive actions, P-9 run-concurrency lock (`_lock` is declared but unused), P-12
+audit-trail adapter, P-13 secret redaction in traces (typed-into-password-field text), P-14
+robustness (LLM-parse retry, HITL pause timeout, MJPEG failure bound, `_runs` eviction),
+P-10 irreversible-replay gating. Plus: **parent repo** cross-cutting AST-gate hardening for
+auto-generated skills; wire the Pilot suite into pytest.
 
 **Verdict:** Pilot is the highest-risk component in CODEC and it architecturally opted out of
 the entire Phase-1 hardening (separate repo, HTTP-only coupling). Internal code quality is
