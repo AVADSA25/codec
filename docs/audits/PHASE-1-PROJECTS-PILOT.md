@@ -62,6 +62,9 @@ Four read-only specialist passes over the four modules + their six test files (`
 **Fix:** persist `history` (or a compacted form) per step/checkpoint + an idempotency marker for executed destructive/network actions; reload on resume.
 
 ### B-6 — User replies to a running agent are silently ignored [HIGH]
+
+> **✅ FIXED by PR-7F (2026-05-24).** `_run_agent` now calls `_drain_user_replies(agent_id, since_ts)` at each checkpoint start, injecting any `user_reply` posted since the last check into the `history` the next `_qwen_next_action` sees (rendered as a `[USER REPLY] …` entry), and advances/persists `state.last_reply_ts` so replies aren't re-read after a restart. So answering a running agent now actually steers it. 3 tests (`tests/test_user_replies.py`) incl. an integration test asserting the reply reaches the model; 64 runner tests stay green. (The same-millisecond cursor edge is the separate LOW **B-20**.)
+
 **What:** `get_unread_user_replies` is defined (`messaging.py:358`) and `POST /api/agents/{id}/messages` writes `user_reply` lines, but the runner **never calls it** (zero call sites). **Verified.**
 **Why it matters:** a documented Step-10 feature (feed user replies into the next action) is entirely unwired — answering a running agent does nothing, which is both a UX dead-end and a safety gap (you can't course-correct a misbehaving agent mid-run).
 **Fix:** call `get_unread_user_replies(agent_id, since_ts)` in the checkpoint loop, inject into history, advance `since_ts` (track a consumed-offset, not a float ts — see B-20).
