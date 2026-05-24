@@ -8,12 +8,12 @@
 
 ## 0. PR queue status ✅ (clear)
 
-All Wave-4/5/6 PRs through **#96 are merged**. Nothing blocking right now.
+All PRs through **#98 are merged**. Nothing blocking right now.
 
-- **Wave 4 (Reliability):** #82–#91 ✅ merged (all 5 CRITICAL + 9 HIGH + 6 MEDIUM + 2 LOW).
-- **Wave 5:** #92 (W5-1 Apple distribution foundation) ✅ merged.
-- **Wave 6:** #93 (SECURITY/COC/FUNDING + this tracker), #94 (PRIVACY.md), #95 (README investor overhaul), #96 (ONE-PAGER) ✅ merged.
-- **In flight:** **PR-6I** — expand CI test coverage + add Dependabot (F-4). Review + merge when its CI is green.
+- **Wave 4 (Reliability):** #82–#91 ✅ (all 5 CRITICAL + 9 HIGH + 6 MEDIUM + 2 LOW).
+- **Wave 5 (Apple):** #92 (W5-1 foundation), #98 (W5-2 `.app` bundle + launcher) ✅.
+- **Wave 6 (Investor):** #93 (SECURITY/COC/FUNDING + this tracker), #94 (PRIVACY), #95 (README overhaul), #96 (ONE-PAGER), #97 (F-4 CI coverage + Dependabot) ✅.
+- **In flight:** **PR-5C** — W5-3 launchd migration (PM2→LaunchAgents toolkit). Merge when CI is green.
 
 I work on isolated branches and never self-merge; each new branch builds on the latest `main`.
 
@@ -22,6 +22,10 @@ I work on isolated branches and never self-merge; each new branch builds on the 
 ## 1. Apple paid app (Wave 5) 🟠
 
 **Enrollment: ✅ done** (you confirmed Team ID + Developer ID Application cert in hand).
+
+**Progress:** W5-1 (bundle metadata) ✅ · W5-2 (`.app` wrapper + launcher, `packaging/macos/build_app.sh`) ✅ · W5-3 (launchd toolkit, `packaging/macos/launchd/`) ⏳ in flight. Next: W5-4 (bundle `Python.framework` — XL), W5-5 (model downloader), W5-6 (first-run permissions wizard, also wires the launchd install), W5-7/8 (sign + notarize).
+
+**Validate on your Mac when you have a sec:** `bash packaging/macos/launchd/install_launchagents.sh --dry-run` (it'll refuse since PM2 is live — that's the safety guard working). The real cutover (stop PM2 → install LaunchAgents) is a deliberate, later step.
 
 When the Wave-5 build PRs land, these need you on a real macOS build machine — I author the scripts/plists; you run + validate them:
 
@@ -79,6 +83,6 @@ I'm writing the docs; a few items need your accounts/assets:
 | D — Security | 1-2 | ✅ closed (PRs #56-#71 era) |
 | A — Code quality | 3 | ✅ closed |
 | C — Reliability | 4 | ✅ **fully closed** (all 5 CRITICAL + 9 HIGH + 6 MEDIUM + 2 LOW) |
-| E — Apple app | 5 | 🟠 in progress (W5-1 done; build pieces are XL + need your Mac/cert) |
+| E — Apple app | 5 | 🟠 in progress — W5-1 (metadata) + W5-2 (.app wrapper) + W5-3 (launchd toolkit) done; next W5-4 Python.framework (XL), W5-5 models, W5-6 first-run, W5-7/8 sign+notarize (need your Mac/cert) |
 | F — Investor readiness | 6 | 🟢 ~90% closed — F-1,2,3,6,7,9,10,13,14,16,17 done; F-18 partial. Remaining gated on you: F-4 (ruff-cleanup decision), F-5 (versioning), F-8 (GIF), F-11 (pricing), F-12 (Discord), F-15 (pyproject, deferred). |
 | B — Projects + Pilot | 7 | ⏳ not started (needs your scope description) |
