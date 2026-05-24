@@ -339,6 +339,8 @@ Bare OSError suppression. If rotation fails (target exists, perms problem, disk 
 ---
 
 ### M-5 — `_db_conn` is a single global SQLite connection shared across all FastAPI request threads [MEDIUM]
+
+> **Closed by PR-4J.** `get_db()` now returns a **per-thread** connection via `threading.local()` (each sets WAL + `busy_timeout=5000` + `Row`), with a `_db_conns` registry + `_close_all_db_conns()` so the dashboard shutdown still closes them all (WAL checkpoint). Concurrent readers no longer queue behind each other (WAL: N readers + 1 writer), and one thread's uncommitted writes no longer leak into another via shared transaction state. No caller change (`get_db()` signature unchanged); single-threaded callers (incl. the whole test suite) see identical behavior. 6 tests (`tests/test_perthread_db.py`). See `docs/PR4J-PERTHREAD-DB-DESIGN.md`. **This closes the last open finding in Audit C.**
 **Location:** `routes/_shared.py:281-290`
 **Description:**
 ```python
