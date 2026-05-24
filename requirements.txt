@@ -3,7 +3,7 @@ sounddevice>=0.4.6
 soundfile>=0.12.1
 numpy>=1.24.0
 requests>=2.31.0
-simple-term-menu>=1.6.0
+simple-term-menu>=1.6.6
 httpx>=0.24.0
 fastmcp>=0.1.0
 
