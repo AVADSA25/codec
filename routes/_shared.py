@@ -282,16 +282,44 @@ def _verify_biometric_session(request):
 
 # ── Database helpers ──
 
-_db_conn = None
+# M-5 (PR-4J): one SQLite connection PER THREAD instead of a single global shared
+# across all FastAPI/worker threads. SQLite serializes per-connection, so a shared
+# connection queued every read behind every other (and let one thread's uncommitted
+# writes leak into another via the shared transaction state). Per-thread + WAL lets
+# readers run concurrently (single writer, guarded by busy_timeout). `_db_conns`
+# tracks all of them so the dashboard shutdown can close them (checkpoint WAL).
+_db_local = threading.local()
+_db_conns: list = []
+_db_conns_lock = threading.Lock()
+
 
 def get_db():
-    global _db_conn
-    if _db_conn is None:
-        _db_conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-        _db_conn.execute("PRAGMA journal_mode=WAL")
-        _db_conn.execute("PRAGMA busy_timeout=5000")
-        _db_conn.row_factory = sqlite3.Row
-    return _db_conn
+    conn = getattr(_db_local, "conn", None)
+    if conn is None:
+        conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+        conn.execute("PRAGMA journal_mode=WAL")    # WAL is per-DB (idempotent)
+        conn.execute("PRAGMA busy_timeout=5000")   # busy_timeout is PER-CONNECTION
+        conn.row_factory = sqlite3.Row
+        _db_local.conn = conn
+        with _db_conns_lock:
+            _db_conns.append(conn)
+    return conn
+
+
+def _close_all_db_conns():
+    """Close every per-thread connection (shutdown). WAL is checkpointed on close;
+    any remaining handles are reclaimed on process exit. Never raises."""
+    with _db_conns_lock:
+        for c in _db_conns:
+            try:
+                c.close()
+            except Exception:
+                pass
+        _db_conns.clear()
+    try:
+        _db_local.conn = None
+    except Exception:
+        pass
 
 
 # ── In-memory job stores ──

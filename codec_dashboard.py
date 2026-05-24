@@ -3672,13 +3672,14 @@ async def _shutdown_services():
     log.info("[SHUTDOWN] All background services stopped")
     import routes._shared as _shared
     global _qchat_conn, _vibe_conn
-    for conn in (_shared._db_conn, _qchat_conn, _vibe_conn):
+    # M-5 (PR-4J): get_db() is now per-thread; close all of them via the registry.
+    _shared._close_all_db_conns()
+    for conn in (_qchat_conn, _vibe_conn):   # dashboard-local singletons
         if conn is not None:
             try:
                 conn.close()
             except Exception:
                 pass
-    _shared._db_conn = None
     _qchat_conn = _vibe_conn = None
 
 
