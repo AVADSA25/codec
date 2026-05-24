@@ -13,9 +13,9 @@ All PRs through **#112 are merged**. Queue clear.
 - **Wave 4 (Reliability):** #82–#91 ✅.
 - **Wave 5 (Apple):** #92, #98, #106–#112 ✅ — full build→sign→notarize→staple→DMG pipeline + launchd + Python bundle + models + first-run + uninstaller. All Audit-E CRITICALs closed.
 - **Wave 6 (Investor):** #93–#97 ✅ + the 7 Dependabot bumps you merged.
-- **In flight:** **Audit-B findings PR** (`docs/audits/PHASE-1-PROJECTS-PILOT.md`) — docs-only, the last audit.
+- **In flight:** **Wave 7 has started** — **PR-7A fixes B-1** (the phantom destructive-consent gate → now wired to the real `codec_ask_user.ask`).
 
-> 🔴 **Heads-up — Audit B found 3 CRITICALs in the autonomous-agent permission gate** (`PHASE-1-PROJECTS-PILOT.md` B-1/B-2/B-3): the destructive-consent function is a phantom import, `permission_gate` trusts LLM-self-declared flags, and `/api/agents/grant` skips the path blocklist. These are the **live security boundary of an agent that runs on your Mac** — they're the top-priority fix work (Wave 7). They are *findings*, not yet fixed; tell me to start Wave 7 and I'll burn them down (design-first → TDD → PR) like the other waves.
+> 🔴 **Audit B found 3 CRITICALs in the autonomous-agent permission gate** (`PHASE-1-PROJECTS-PILOT.md`). Status: **B-1 ✅ fixed (PR-7A)**; **B-2** (`permission_gate` trusts LLM-self-declared flags — the manifest is advisory) and **B-3** (`/api/agents/grant` skips the path blocklist + no per-agent authz) are **next** (PR-7B, PR-7C). These are the live security boundary of an agent that runs on your Mac — keep going to close them.
 
 I work on isolated branches and never self-merge; each new branch builds on the latest `main`.
 
@@ -103,4 +103,4 @@ I'm writing the docs; a few items need your accounts/assets:
 | C — Reliability | 4 | ✅ **fully closed** (all 5 CRITICAL + 9 HIGH + 6 MEDIUM + 2 LOW) |
 | E — Apple app | 5 | 🟠 **all CRITICALs closed; full build→DMG pipeline + first-run logic done.** W5-1/2/3/4/5/6/7/8/12 + capstone shipped. Remaining: W5-11 Swift wizard, W5-9 license, W5-10 Cloudflare, W5-13 Sparkle — all GUI/decision/key-gated → you |
 | F — Investor readiness | 6 | 🟢 ~90% closed — F-1,2,3,6,7,9,10,13,14,16,17 done; F-18 partial. Remaining gated on you: F-4 (ruff-cleanup decision), F-5 (versioning), F-8 (GIF), F-11 (pricing), F-12 (Discord), F-15 (pyproject, deferred). |
-| B — Projects (+ Pilot) | 7 | ✅ **Audit done** (`docs/audits/PHASE-1-PROJECTS-PILOT.md`, 20 findings: 3 CRITICAL/6 HIGH/7 MEDIUM/4 LOW). Fix-PRs (Wave 7) not started. **Pilot half deferred** — needs the `~/codec/pilot/` checkout. |
+| B — Projects (+ Pilot) | 7 | ✅ Audit done (20 findings). **Wave 7 fixes in progress: B-1 ✅ (PR-7A); B-2/B-3 next.** **Pilot half deferred** — needs the `~/codec/pilot/` checkout. |

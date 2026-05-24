@@ -521,29 +521,44 @@ class ConsentResult:
 
 
 def _strict_consent(action: Action, deadline: int = DESTRUCTIVE_CONSENT_TIMEOUT_S) -> ConsentResult:
-    """Lazy-imported codec_ask_user.strict_consent_gate wrapper.
-    Returns ConsentResult. Reuses Phase 1 Step 3 §1.7 verb-match
-    enforcement — generic 'yes' is rejected, two-strike timeout
-    in <2s emits ambiguous_consent."""
-    try:
-        from codec_ask_user import strict_consent_gate
-    except Exception as e:
-        log.warning("codec_ask_user.strict_consent_gate unavailable: %s", e)
-        return ConsentResult(approved=False, timed_out=True,
-                              user_response="ask_user_unavailable")
+    """Strict-consent gate for a destructive agent op (Audit B / B-1).
 
+    Routes through the REAL ``codec_ask_user.ask(destructive=True, ...)`` — which
+    implements Phase 1 Step 3 §1.7 on the reply path (literal verb-match;
+    generic 'yes'/'ok' rejected; two-strike → ambiguous_consent timeout). Maps
+    ``ask()``'s string return to a ConsentResult.
+
+    Fail-safe: anything that is NOT a verb-matched answer (timeout, ask-user
+    disabled, or any error) returns ``approved=False`` — a destructive op is
+    never auto-approved. (Prior to B-1 this imported a consent helper that did
+    not exist, so the prompt never actually ran.)
+    """
+    verb = "confirm"
     question = (
-        f"⚠️ Destructive op requested by agent: {action.skill}: {action.task[:80]}\n\n"
-        f"To approve, type the literal verb: 'delete' / 'send' / 'pay' / 'authorize' "
-        f"(matching the operation). Generic 'yes' will be rejected."
+        f"⚠️ Agent requests a DESTRUCTIVE operation\n"
+        f"skill: {action.skill}\n"
+        f"task: {action.task[:160]}\n\n"
+        f"To approve, type '{verb}'. A generic 'yes'/'ok' will be rejected."
     )
-    result = strict_consent_gate(question, deadline_seconds=deadline,
-                                  source=f"agent_runner")
-    return ConsentResult(
-        approved=getattr(result, "approved", False),
-        timed_out=getattr(result, "timed_out", False),
-        user_response=getattr(result, "user_response", ""),
-    )
+    try:
+        import codec_ask_user
+        answer = codec_ask_user.ask(
+            question,
+            destructive=True,
+            destructive_verb=verb,
+            timeout=deadline,
+            asked_from="crew",
+            tool_name=action.skill,
+        )
+    except Exception as e:  # never let a consent-path error become an auto-approve
+        log.warning("strict-consent ask() failed: %s", e)
+        return ConsentResult(approved=False, timed_out=True, user_response=f"ask_error:{e}")
+
+    if answer in (codec_ask_user.TIMEOUT_SENTINEL, codec_ask_user.DISABLED_SENTINEL):
+        return ConsentResult(approved=False, timed_out=True, user_response=answer)
+    # In destructive mode ask() reaches an 'answered' status (and returns the
+    # answer) only once the reply contained the verb — so this is real consent.
+    return ConsentResult(approved=True, timed_out=False, user_response=answer)
 
 
 def _enforce_destructive_gate(action: Action,
