@@ -90,6 +90,8 @@ Four read-only specialist passes over the four modules + their six test files (`
 **Why it matters:** a half-completed approval silently bricks the agent with no retry path.
 **Fix:** write `plan_hash` into the same manifest object `set_status` persists (one write); add a daemon reconciliation pass (status `approved` but hash missing → recompute).
 
+> **✅ FIXED by PR-7H (2026-05-24).** `set_status` gained an `extra=` dict merged into the manifest **inside the same `_status_lock` flock block** as the status transition (one `save_manifest`). `approve_plan` now stamps `plan_hash` + `grants_hash` + `approved_at` AND flips status to `approved` in that **single atomic write** — collapsing the prior two manifest writes. The invariant is now structural: `status == "approved"` cannot coexist with a missing hash, so there is no crash window that bricks run-start tamper detection. The illegal recovery path is also closed: `_VALID_TRANSITIONS` now allows `aborted` out of all three pre-approval states (`draft_pending`, `awaiting_approval`, `revised`) — a draft the LLM mangled or an approval the user no longer wants can be cleanly terminated instead of orphaned. Additive transitions only (no edge removed, per AGENTS.md §10). 4 tests (`tests/test_atomic_approval.py`); 109 agent-plan/runner/destructive/atomic tests stay green; full suite zero new failures. Design: `docs/PR7H-ATOMIC-APPROVAL-DESIGN.md`. (The daemon reconciliation pass suggested above is now unnecessary — atomicity makes the inconsistent state unreachable.)
+
 ### B-10 — Agent state files are world-readable [MEDIUM]
 **What:** `plan.json` / `grants.json` / `messages.jsonl` / `agent_silence.json` are written with the default umask (no `0o600`), unlike `audit.log` / plugins which the repo explicitly chmods 600 (`plan.py:146-154`, `messaging.py:86-104`).
 **Why it matters:** plan descriptions, user replies, and skill results (file contents, fetched data) sit in `~/.codec/agents/<id>/` readable by any local user/process — inconsistent with the repo's hardened secret-storage posture.
@@ -171,3 +173,6 @@ CODEC Pilot (`pilot/`: `pilot_runner.py` FastAPI :8094, `pilot_agent.py` ReAct l
 8. **Pilot audit** once the `pilot/` tree is provided.
 
 Each fix lands design-first → TDD → CI-green, same as Waves 4–6. **B-1/B-2/B-3 should be treated as the highest-priority remaining work in all of Phase 1** — they're the live security boundary of an agent that executes autonomously on the user's machine.
+
+> **Actually landed (the real PR sequence diverged from the suggestion above):**
+> PR-7A = B-1 · PR-7B + PR-7G = B-2 (server-side derivation, then loop enforcement) · PR-7C = B-3 · PR-7E = B-4 · PR-7D = B-7 (flock CAS only — it did **not** also fix B-9 as originally suggested) · PR-7F = B-6 (user-reply pickup) · PR-7G = B-8 · **PR-7H = B-9** (atomic approval write + pre-approval abort). **CRITICAL/HIGH all closed: B-1, B-2, B-3, B-4, B-6, B-7, B-8, B-9.** Remaining: B-5 (resume-history persistence, HIGH) + the MEDIUM/LOW cluster (B-10–B-20) + the Pilot audit.

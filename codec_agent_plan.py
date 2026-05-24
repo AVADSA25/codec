@@ -635,9 +635,14 @@ class InvalidStatusTransition(ValueError):
 # Step 8 manages: draft_pending → awaiting_approval → approved/rejected/revised.
 # Step 9 adds: approved → running → checkpoint_completed/blocked_*/aborted/completed.
 _VALID_TRANSITIONS: Dict[str, frozenset] = {
-    "draft_pending":         frozenset({"awaiting_approval", "plan_failed"}),
-    "awaiting_approval":     frozenset({"approved", "rejected", "revised"}),
-    "revised":               frozenset({"awaiting_approval"}),
+    # B-9: pre-approval states gain `aborted` so an agent stuck mid-draft or
+    # sitting in the approval queue can be cleanly terminated (the recovery
+    # affordance B-8/PR-7G gave running/blocked agents, extended to the
+    # never-ran states). `rejected` is a decision about the PLAN; `aborted` is
+    # killing the AGENT — distinct affordances, both reachable pre-run.
+    "draft_pending":         frozenset({"awaiting_approval", "plan_failed", "aborted"}),
+    "awaiting_approval":     frozenset({"approved", "rejected", "revised", "aborted"}),
+    "revised":               frozenset({"awaiting_approval", "aborted"}),
     # `approved → aborted` (review fix C1): a plan-hash mismatch or
     # missing-hash check at run-start fires while the agent is still in
     # `approved` status (before transitioning to `running`). We must allow
@@ -680,14 +685,22 @@ def _status_lock(manifest_path: Path):
         return contextlib.nullcontext()
 
 
-def set_status(agent_id: str, new_status: str, reason: Optional[str] = None) -> None:
+def set_status(agent_id: str, new_status: str, reason: Optional[str] = None,
+               extra: Optional[Dict[str, Any]] = None) -> None:
     """Atomically + cross-process-safely transition manifest.json's status (B-7).
 
     The load → validate-transition → write CAS runs under a flock on the
     manifest, so a daemon write and a concurrent PWA write can't clobber each
     other or skip a transition (the daemon's _atomic_set_status wraps this, so
     both processes share the one lock). Raises InvalidStatusTransition if the
-    move violates the state machine."""
+    move violates the state machine.
+
+    `extra` (B-9): a dict of fields merged into the manifest INSIDE the same
+    flock block as the status transition, before the single save_manifest. This
+    is the atomicity guarantee that lets approve_plan stamp status=approved and
+    its plan_hash/grants_hash in one write — there is no crash window where
+    status=approved coexists with a missing hash (which would brick run-start
+    tamper detection)."""
     agent_dir = _agent_dir(agent_id)
     agent_dir.mkdir(parents=True, exist_ok=True)  # so the .lock sidecar can be created
     manifest_path = agent_dir / "manifest.json"
@@ -704,6 +717,8 @@ def set_status(agent_id: str, new_status: str, reason: Optional[str] = None) -> 
         manifest["updated_at"] = _now_iso()
         if reason:
             manifest["status_reason"] = reason
+        if extra:
+            manifest.update(extra)
         save_manifest(agent_id, manifest)
 
 
@@ -1045,14 +1060,16 @@ def approve_plan(agent_id: str) -> Dict[str, Any]:
     }
     save_grants(agent_id, grants)
 
-    # Update manifest with hashes + transition status. grants_hash (B-4) covers
-    # grants.json — the file that actually gates execution — alongside plan_hash.
-    manifest = load_manifest(agent_id)
-    manifest["plan_hash"] = plan_hash
-    manifest["grants_hash"] = compute_grants_hash(agent_id)
-    manifest["approved_at"] = _now_iso()
-    save_manifest(agent_id, manifest)
-    set_status(agent_id, "approved")
+    # B-9: stamp the hashes AND flip status to approved in ONE atomic, flock-
+    # protected write. grants_hash (B-4) covers grants.json — the file that
+    # actually gates execution — alongside plan_hash. Folding both into the
+    # set_status `extra=` payload removes the crash window where status=approved
+    # could persist without a hash (which bricks run-start tamper detection).
+    set_status(agent_id, "approved", extra={
+        "plan_hash": plan_hash,
+        "grants_hash": compute_grants_hash(agent_id),
+        "approved_at": _now_iso(),
+    })
 
     cid = secrets.token_hex(6)
     _audit(AGENT_PLAN_APPROVED, "codec-agent-plan",
