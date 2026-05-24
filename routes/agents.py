@@ -487,6 +487,7 @@ def grant_permission(agent_id: str, body: GrantBody):
 
     grants[body.kind] = sorted(set(grants.get(body.kind, []) + [body.value]))
     _cap.save_grants(agent_id, grants)
+    _cap.set_grants_hash(agent_id)  # B-4: keep the tamper hash in sync with the legit grant
 
     # If blocked, unblock
     if manifest.get("status") == "blocked_on_permission":

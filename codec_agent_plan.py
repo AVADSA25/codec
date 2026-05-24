@@ -206,6 +206,26 @@ def load_grants(agent_id: str) -> Dict[str, Any]:
     return _read_json(_agent_dir(agent_id) / "grants.json") or {}
 
 
+def compute_grants_hash(agent_id: str) -> str:
+    """SHA-256 of the canonical grants.json (B-4). grants.json is the file that
+    actually gates execution; this is stored in the manifest at approval and
+    re-synced on every legitimate /grant, so the daemon can detect a
+    post-approval out-of-band edit at run start. Mirrors compute_plan_hash."""
+    canonical = json.dumps(load_grants(agent_id), sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def set_grants_hash(agent_id: str) -> str:
+    """Recompute + store manifest.grants_hash after a legitimate grants write
+    (approval, /grant). The single sync point so legit changes don't trip the
+    run-start tamper check."""
+    h = compute_grants_hash(agent_id)
+    manifest = load_manifest(agent_id) or {}
+    manifest["grants_hash"] = h
+    save_manifest(agent_id, manifest)
+    return h
+
+
 # ── Skill-registry validation ─────────────────────────────────────────────────
 def validate_plan_skills(plan: Plan, registry=None) -> Tuple[bool, List[str]]:
     """Walk every checkpoint's skills_needed; return (ok, missing_skills).
@@ -1025,9 +1045,11 @@ def approve_plan(agent_id: str) -> Dict[str, Any]:
     }
     save_grants(agent_id, grants)
 
-    # Update manifest with hash + transition status
+    # Update manifest with hashes + transition status. grants_hash (B-4) covers
+    # grants.json — the file that actually gates execution — alongside plan_hash.
     manifest = load_manifest(agent_id)
     manifest["plan_hash"] = plan_hash
+    manifest["grants_hash"] = compute_grants_hash(agent_id)
     manifest["approved_at"] = _now_iso()
     save_manifest(agent_id, manifest)
     set_status(agent_id, "approved")
