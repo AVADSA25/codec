@@ -228,13 +228,32 @@ The two-repo boundary + port contract should be documented in a `pilot/README.md
    + system-prompt warning. *(P-7's unauth HITL inject is closed by PP-1's auth; the HITL
    default-deny structural change remains a follow-up.)*
 5. **PP-5 ✅ (HIGH)** — P-8: randomized CDP debug port (was fixed 9223).
+6. **PP-6 ✅** — P-13: redact secrets typed into password/secret fields from the persisted
+   trace + compiled skill (`redact_typed_secret`). 4 tests.
+7. **PP-7 ✅** — P-9: single-active-run guard on the shared browser (`_assert_run_slot_free`)
+   + P-14 `_runs` eviction (`_evict_old_runs`). 4 tests.
+8. **PP-8 ✅** — P-12: forensic audit trail (`pilot/audit.py` → `~/.codec/pilot_audit.log`;
+   emits on skill approve/reject, run start, navigate). 3 tests.
+9. **PP-9 ✅** — P-15: corrupt/partial trace tolerated on load (`_from_dict` → `.get`). 2 tests.
 
-**Remaining (MEDIUM/robustness, not exploitable — follow-up batch):** P-7 HITL default-deny
-for destructive actions, P-9 run-concurrency lock (`_lock` is declared but unused), P-12
-audit-trail adapter, P-13 secret redaction in traces (typed-into-password-field text), P-14
-robustness (LLM-parse retry, HITL pause timeout, MJPEG failure bound, `_runs` eviction),
-P-10 irreversible-replay gating. Plus: **parent repo** cross-cutting AST-gate hardening for
-auto-generated skills; wire the Pilot suite into pytest.
+**45 pilot security tests pass** (`test_phase7…15`); native `test_phase5` (real chromium)
+stays green throughout → every fix is behavior-preserving.
+
+**Genuinely remaining (structural / needs an async test harness — documented, not
+exploitable):**
+- **P-7 HITL default-deny for destructive browser actions** (form submits / payments) — a
+  real feature needing an action-classification + consent design; risky to bolt onto the
+  live automation path without it. (Its *unauthenticated-inject* half is already closed by
+  PP-1's auth.)
+- **P-10 irreversible-replay gating** — same class (needs destructive-action classification).
+- **P-14 async-loop robustness** — HITL pause-timeout + MJPEG consecutive-failure bound
+  (LLM-parse junk already degrades gracefully: the loop records a step error and continues).
+  These live in the async run/stream loops; defer until the suite is pytest-async-wired.
+- **P-15 `getXPath` duplicate-id** edge (snapshot accuracy) + **P-3 approve-time AST gate**
+  (Pilot can't cleanly import the parent `codec_config`; the injection is already closed at
+  the compiler source by PP-2).
+- **Parent repo:** cross-cutting AST-gate hardening for *auto-generated* skills; wire the
+  legacy `test_phaseN` async suite into pytest (the new `test_phase7…15` already are).
 
 **Verdict:** Pilot is the highest-risk component in CODEC and it architecturally opted out of
 the entire Phase-1 hardening (separate repo, HTTP-only coupling). Internal code quality is
