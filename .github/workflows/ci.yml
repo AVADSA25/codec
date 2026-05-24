@@ -40,3 +40,8 @@ jobs:
           tests/test_one_pager.py
           tests/test_apple_packaging.py
           tests/test_dependabot.py
+      - name: Apple packaging tests (W5-2 bundle + W5-3 launchd)
+        run: >
+          python -m pytest -v
+          tests/test_app_bundle.py
+          tests/test_launchd.py
