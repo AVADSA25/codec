@@ -23,7 +23,9 @@ I work on isolated branches and never self-merge; each new branch builds on the 
 
 **Enrollment: ✅ done** (you confirmed Team ID + Developer ID Application cert in hand).
 
-**Progress:** W5-1 (metadata) ✅ · W5-2 (`.app`) ✅ · W5-3 (launchd) ✅ · W5-4 (bundled Python) ✅ · W5-5 (model downloader) ✅ · W5-7/8 (sign + notarize) ✅ · W5-12 (uninstaller) ✅ · **W5 capstone (one-command `release_macos.sh` → build/sign/notarize/staple/DMG)** ⏳ in flight. Next (GUI/decision-gated): W5-6 (first-run wizard), W5-11 (GUI onboarding), W5-9 (license), W5-10 (Cloudflare), W5-13 (Sparkle). **All Audit-E CRITICALs closed; the full build→DMG pipeline is authored + tested.**
+**Progress:** W5-1 (metadata) ✅ · W5-2 (`.app`) ✅ · W5-3 (launchd) ✅ · W5-4 (Python) ✅ · W5-5 (models) ✅ · W5-6 (first-run orchestration, `packaging/macos/first_run.py`) ✅ · W5-7/8 (sign + notarize) ✅ · W5-12 (uninstaller) ✅ · W5 capstone (`release_macos.sh` → build/sign/notarize/staple/DMG) ✅. **All Audit-E CRITICALs closed; build→DMG pipeline + first-run logic authored + tested.** Remaining (all GUI/decision/key-gated, need you): **W5-11** native Swift wizard (drives `first_run.py`'s deep-links), **W5-9** license gating, **W5-10** Cloudflare-for-buyers, **W5-13** Sparkle auto-update.
+
+- ⚪ **See your live permission status now:** `python3 packaging/macos/first_run.py --permissions-only` prints which TCC grants CODEC has + deep links to fix the rest. (`--dry-run` previews the whole first-run sequence; `--yes` does the real install + ~6 GB model fetch.)
 
 **The full release is now ONE command** (run on your build Mac with the cert):
 ```
@@ -97,6 +99,6 @@ I'm writing the docs; a few items need your accounts/assets:
 | D — Security | 1-2 | ✅ closed (PRs #56-#71 era) |
 | A — Code quality | 3 | ✅ closed |
 | C — Reliability | 4 | ✅ **fully closed** (all 5 CRITICAL + 9 HIGH + 6 MEDIUM + 2 LOW) |
-| E — Apple app | 5 | 🟠 **all CRITICALs closed.** W5-1/2/3/4/5/7/8/12 done (metadata, .app, launchd, Python, models, sign+notarize, uninstaller); next W5-6 first-run, W5-11 GUI, DMG. Cert-gated execution + model-list/license/pricing decisions → you |
+| E — Apple app | 5 | 🟠 **all CRITICALs closed; full build→DMG pipeline + first-run logic done.** W5-1/2/3/4/5/6/7/8/12 + capstone shipped. Remaining: W5-11 Swift wizard, W5-9 license, W5-10 Cloudflare, W5-13 Sparkle — all GUI/decision/key-gated → you |
 | F — Investor readiness | 6 | 🟢 ~90% closed — F-1,2,3,6,7,9,10,13,14,16,17 done; F-18 partial. Remaining gated on you: F-4 (ruff-cleanup decision), F-5 (versioning), F-8 (GIF), F-11 (pricing), F-12 (Discord), F-15 (pyproject, deferred). |
 | B — Projects + Pilot | 7 | ⏳ not started (needs your scope description) |
