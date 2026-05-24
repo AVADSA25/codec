@@ -15,7 +15,7 @@ All PRs through **#112 are merged**. Queue clear.
 - **Wave 6 (Investor):** #93–#97 ✅ + the 7 Dependabot bumps you merged.
 - **In flight:** **Wave 7 has started** — **PR-7A fixes B-1** (the phantom destructive-consent gate → now wired to the real `codec_ask_user.ask`).
 
-> 🔴 **Audit B found 3 CRITICALs in the autonomous-agent permission gate** (`PHASE-1-PROJECTS-PILOT.md`). Status: **B-1 ✅ fixed (PR-7A)**; **B-2** (`permission_gate` trusts LLM-self-declared flags — the manifest is advisory) and **B-3** (`/api/agents/grant` skips the path blocklist + no per-agent authz) are **next** (PR-7B, PR-7C). These are the live security boundary of an agent that runs on your Mac — keep going to close them.
+> 🔴 **Audit B found 3 CRITICALs in the autonomous-agent permission gate** (`PHASE-1-PROJECTS-PILOT.md`). Status: **B-1 ✅ (PR-7A)** · **B-2 🟡 partially fixed (PR-7B)** — destructiveness is now server-derived (the agent can't unflag a dangerous op to skip consent); the *remaining* B-2 (server-deriving path/network category + values) needs a 🟡 **decision from you: per-skill capability model — a curated capability table vs adding `SKILL_CAPABILITIES` metadata across ~76 skills** (XL, design-first). · **B-3** (`/api/agents/grant` blocklist + authz) is **next** (PR-7C). The live security boundary of an agent that runs on your Mac.
 
 I work on isolated branches and never self-merge; each new branch builds on the latest `main`.
 

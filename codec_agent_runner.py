@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import secrets
 import threading
 import time
@@ -561,12 +562,43 @@ def _strict_consent(action: Action, deadline: int = DESTRUCTIVE_CONSENT_TIMEOUT_
     return ConsentResult(approved=True, timed_out=False, user_response=answer)
 
 
+# Audit B / B-2: server-derived destructiveness. The agent can only UPGRADE an
+# action's risk, never downgrade it — so the LLM cannot skip the consent gate by
+# emitting is_destructive=false on a dangerous skill or an irreversible task.
+_DESTRUCTIVE_VERB_RE = re.compile(
+    r"\b(delete|delet\w*|remove|destroy|wipe|trash|eras\w*|purge|drop|format|"
+    r"overwrit\w*|send|transfer|transmit|deliver|pay|charge|wire|kill|"
+    r"shut\s?down|uninstall)\b",
+    re.IGNORECASE,
+)
+
+
+def _server_destructive_signal(action: Action) -> bool:
+    """True when the SERVER (not the LLM) judges an action destructive:
+    a dangerous code/shell/process skill, or an irreversible-intent verb in the
+    task. Read _HTTP_BLOCKED live so config edits take effect on restart."""
+    try:
+        from codec_config import _HTTP_BLOCKED
+        if action.skill in _HTTP_BLOCKED:
+            return True
+    except Exception:
+        pass
+    return bool(_DESTRUCTIVE_VERB_RE.search(action.task or ""))
+
+
+def _effective_destructive(action: Action) -> bool:
+    """OR-only: the LLM-declared flag OR the server signal. Never downgrades —
+    closes B-2's "LLM unflags to skip consent" hole for destructive ops."""
+    return bool(action.is_destructive) or _server_destructive_signal(action)
+
+
 def _enforce_destructive_gate(action: Action,
                               deadline: int = DESTRUCTIVE_CONSENT_TIMEOUT_S) -> ConsentResult:
-    """Called by checkpoint executor for any action where
-    is_destructive=True. Returns ConsentResult; caller decides
-    aborted vs blocked based on `timed_out` flag (Q7)."""
-    if not action.is_destructive:
+    """Called by checkpoint executor. Routes through strict-consent for any
+    action that is destructive — by the LLM's own flag OR by the server's
+    independent assessment (B-2). Caller decides aborted vs blocked based on
+    `timed_out` (Q7)."""
+    if not _effective_destructive(action):
         return ConsentResult(approved=True, timed_out=False)
     return _strict_consent(action, deadline)
 
