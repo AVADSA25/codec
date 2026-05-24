@@ -439,6 +439,27 @@ def resume_agent(agent_id: str):
     return {"agent_id": agent_id, "status": "running"}
 
 
+# B-3: refuse a /grant path value that is a traversal, a blocklisted sensitive
+# path, or an over-broad root. Uses the expanded (NOT realpath'd) path for the
+# root check so /tmp → /private/tmp aliasing doesn't false-positive.
+_GRANT_UNSAFE_ROOTS = ("/etc", "/var", "/usr", "/bin", "/sbin", "/System",
+                       "/Library", "/private", "/dev", "/opt", "/Network", "/cores")
+
+
+def _grant_path_unsafe(value: str) -> bool:
+    if not value or not value.strip():
+        return True
+    norm = value.replace("\\", "/")
+    if ".." in norm.split("/"):
+        return True
+    if _cap._is_path_blocklisted(value):
+        return True
+    exp = os.path.expanduser(norm.split("*", 1)[0].rstrip("/") or "/")
+    if exp in ("/", os.path.expanduser("~")):
+        return True
+    return any(exp == r or exp.startswith(r + "/") for r in _GRANT_UNSAFE_ROOTS)
+
+
 @router.post("/api/agents/{agent_id}/grant")
 def grant_permission(agent_id: str, body: GrantBody):
     """Grant a missing permission to a blocked agent. Adds the
@@ -452,6 +473,13 @@ def grant_permission(agent_id: str, body: GrantBody):
     if body.kind not in valid_kinds:
         raise HTTPException(status_code=400,
                              detail=f"invalid kind: {body.kind}; expected one of {sorted(valid_kinds)}")
+
+    # B-3: never let /grant widen access to a blocklisted / over-broad path.
+    if body.kind in ("read_paths", "write_paths") and _grant_path_unsafe(body.value):
+        raise HTTPException(
+            status_code=400,
+            detail=f"refused: '{body.value}' is a blocked, traversal, or over-broad path grant",
+        )
 
     grants = _cap.load_grants(agent_id)
     if not grants:
