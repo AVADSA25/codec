@@ -306,6 +306,8 @@ subprocess.Popen(["afplay", tmp.name])   # fire-and-forget
 ---
 
 ### M-3 — `codec_audit._rotate_if_needed` retains failed rotations silently [MEDIUM]
+
+> **Closed by PR-4I.** The `except OSError` in `_rotate_if_needed` now `log.warning(...)`s the failure (was silently swallowed → the daemon kept appending to an ever-growing un-rotated log until the disk filled, with no warning). Added a module logger (`codec_audit` had none) — **stdlib `logging`, never `audit()`** (an audit emit from inside the rotation path would re-enter `_write` → deadlock on the non-reentrant `_LOCK`). 1 test (`tests/test_small_reliability.py`). See `docs/PR4I-SMALL-RELIABILITY-DESIGN.md`.
 **Location:** `codec_audit.py:349-352`
 **Description:**
 ```python
@@ -323,6 +325,8 @@ Bare OSError suppression. If rotation fails (target exists, perms problem, disk 
 ---
 
 ### M-4 — Observer's main loop exception-handler scope is narrow; an exception in `_idle_seconds` or `_load_config` kills the daemon [MEDIUM]
+
+> **Closed by PR-4I.** `run_daemon`'s whole iteration body (`_load_config` + `poll` + `_idle_seconds` + cadence + long-idle reset + shift-report) is now inside one `try` (with `poll()`'s existing inner try kept for isolation), `cadence` defaults to 60 before it, and only `time.sleep(cadence)` sits outside. An exception in `_idle_seconds`/`_load_config` (macOS API throttle during Spotlight reindex, etc.) is now logged and the loop survives instead of dying + clearing the ring buffer until PM2 restarts. 1 source-invariant test (`tests/test_small_reliability.py`). See `docs/PR4I-SMALL-RELIABILITY-DESIGN.md`.
 **Location:** `codec_observer.py:822-854`
 **Description:** The `try/except` at line 828-831 wraps only `poll()`. Lines 832-835 (`idle = _idle_seconds(); cadence = ...`) are outside any try. If `_idle_seconds` raises (e.g., on macOS API throttle), the `while True` loop exits and the daemon dies. PM2 restarts (autorestart=true), but during the restart window observation halts and the ring buffer is cleared.
 **Trigger:** macOS API momentary failure during system pressure (e.g., during Spotlight reindex).
@@ -367,6 +371,8 @@ def get_db():
 ---
 
 ### L-1 — `tmp.write_text()` in `codec_ask_user` skips `fsync` before `os.replace` [LOW]
+
+> **Closed by PR-4I.** New `codec_ask_user._atomic_write_text(path, text)` does `open + write + flush + os.fsync + os.replace`; the 3 sites (`_save_pending_questions` + two notification writes) now call it, so a hard crash between write and replace can't land a replaced-but-stale file. Kept the per-site `json.dumps(..., indent=2, default=str)` (so non-JSON values still coerce — `codec_jsonstore.atomic_write_json` lacks `default=str`). 2 tests (`tests/test_small_reliability.py`). See `docs/PR4I-SMALL-RELIABILITY-DESIGN.md`.
 **Location:** `codec_ask_user.py:144-146`, `:191-193`, `:621-623`
 **Description:** `Path.write_text(...)` calls `open + write + close` but does NOT call `os.fsync`. On a hard system crash between the write and the os.replace, the tmp file may be replaced-into-place but contain stale (cached) bytes that hadn't been flushed to disk.
 **Trigger:** Hard power loss or kernel panic during a write.
@@ -377,6 +383,8 @@ def get_db():
 ---
 
 ### L-2 — `codec_autopilot._save_state` writes atomically but `_load_state` doesn't reject corrupt files [LOW]
+
+> **Closed by PR-4I.** `_load_state` now narrows the except: on `json.JSONDecodeError` it logs a loud **ERROR** and returns the sentinel `{"__corrupt__": True}` (on transient `OSError` it logs a warning + returns `{}`). `_tick` early-returns on `state.get("__corrupt__")` — so a corrupt state file **refuses to fire any trigger** instead of re-firing all of them (a double outbound message is a real consequence). `_tick` bails before `_save_state`, leaving the corrupt file for the user to fix. 4 tests (`tests/test_small_reliability.py`). See `docs/PR4I-SMALL-RELIABILITY-DESIGN.md`.
 **Location:** `codec_autopilot.py:78-92`
 **Description:** If `~/.codec/autopilot_state.json` is corrupted (mid-write crash, hand edit), `_load_state` returns `{}` (line 83 — bare `except Exception: pass`). The empty state means every trigger thinks "I haven't fired today" and re-fires. For morning_briefing, the user just gets one extra notification. For something that sends a real outbound message (Twilio), the user is double-charged or the recipient gets two messages.
 **Trigger:** Disk full mid-write, or accidental hand edit.

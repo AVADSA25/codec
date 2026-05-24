@@ -163,14 +163,26 @@ def _prune_resolved(data: dict) -> None:
     data["pending_questions"] = kept
 
 
+def _atomic_write_text(path, text: str) -> None:
+    """L-1 (PR-4I): atomic write WITH fsync. `Path.write_text` skips fsync, so a
+    hard crash between the write and os.replace can land a replaced-but-stale
+    file. Caller passes pre-serialized text so each site keeps its
+    `json.dumps(..., default=str)` (codec_jsonstore.atomic_write_json omits
+    default=str, which would raise on a stray non-JSON value)."""
+    tmp = path.with_suffix(".tmp")
+    with open(tmp, "w") as f:
+        f.write(text)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+
+
 def _save_pending_questions(data: dict) -> None:
     """Atomic write via tmp+rename. Caller must hold _FILE_LOCK (+ codec_jsonstore
     .file_lock for cross-process safety). M-2: prunes resolved records >24h first."""
     _prune_resolved(data)
     PENDING_QUESTIONS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    tmp = PENDING_QUESTIONS_PATH.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, indent=2, default=str))
-    os.replace(tmp, PENDING_QUESTIONS_PATH)
+    _atomic_write_text(PENDING_QUESTIONS_PATH, json.dumps(data, indent=2, default=str))
 
 
 def _find_pending_record(qid: str) -> Optional[dict]:
@@ -215,9 +227,7 @@ def _write_question_notification(record: dict) -> None:
                 "consent_strict": bool(record.get("consent_strict")),
             }
             notifs.insert(0, entry)
-            tmp = NOTIFICATIONS_PATH.with_suffix(".tmp")
-            tmp.write_text(json.dumps(notifs, indent=2, default=str))
-            os.replace(tmp, NOTIFICATIONS_PATH)
+            _atomic_write_text(NOTIFICATIONS_PATH, json.dumps(notifs, indent=2, default=str))
     except Exception as e:
         log.warning("[ask_user] notification write failed: %s", e)
 
@@ -647,9 +657,7 @@ def submit_answer(qid: str, answer: str, *, answered_via: str = "pwa") -> dict:
             for n in notifs:
                 if n.get("pending_question_id") == qid:
                     n["read"] = True
-            tmp = NOTIFICATIONS_PATH.with_suffix(".tmp")
-            tmp.write_text(json.dumps(notifs, indent=2, default=str))
-            os.replace(tmp, NOTIFICATIONS_PATH)
+            _atomic_write_text(NOTIFICATIONS_PATH, json.dumps(notifs, indent=2, default=str))
     except Exception as e:
         log.warning("[ask_user] notification-mark-read failed: %s", e)
 

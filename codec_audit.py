@@ -51,6 +51,7 @@ from __future__ import annotations
 import hashlib
 import hmac as _hmac
 import json
+import logging
 import os
 import re
 import threading
@@ -69,6 +70,11 @@ _AUDIT_DIR.mkdir(parents=True, exist_ok=True)
 _AUDIT_LOG = _AUDIT_DIR / "audit.log"
 _LOCK = threading.Lock()
 _RETAIN_DAYS = 30
+
+# M-3 (PR-4I): stdlib logger for write/rotation diagnostics. MUST NOT route
+# through audit() — emitting an audit line from inside the rotation/write path
+# would re-enter _write and deadlock on the non-reentrant _LOCK.
+log = logging.getLogger("codec.audit")
 
 # ── Schema constants ───────────────────────────────────────────────────────────
 _SCHEMA_VERSION = 1
@@ -355,7 +361,12 @@ def _rotate_if_needed():
     rotated = _AUDIT_DIR / f"audit.log.{mtime_day.isoformat()}"
     try:
         _AUDIT_LOG.rename(rotated)
-    except OSError:
+    except OSError as e:
+        # M-3 (PR-4I): was silently swallowed — a persistent rotation failure
+        # (disk full, perms, cross-daemon rename collision) leaves the daemon
+        # appending to an ever-growing audit.log with no warning until the disk
+        # fills. Log it (stdlib logging — never audit(), to avoid _LOCK re-entry).
+        log.warning("audit log rotation failed (%s → %s): %s", _AUDIT_LOG, rotated, e)
         return
     cutoff = time.time() - _RETAIN_DAYS * 86400
     for p in _AUDIT_DIR.glob("audit.log.*"):

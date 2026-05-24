@@ -851,32 +851,42 @@ def run_daemon() -> None:
             # Sleep 30s and re-check — cheap; enables runtime kill via env.
             time.sleep(30)
             continue
-        cfg = _load_config()
+        # M-4 (PR-4I): the WHOLE iteration body is inside this try. Previously
+        # only poll() was guarded, so an exception in _idle_seconds() /
+        # _load_config() (e.g. a macOS API throttle during Spotlight reindex)
+        # broke the while-loop and killed the daemon — observation halts and the
+        # ring buffer clears until PM2 restarts. Default cadence so a failure
+        # before it's computed still sleeps sanely.
+        cadence = 60
         try:
-            poll(cfg=cfg)
-        except Exception as e:
-            log.warning("[observer] poll iteration failed: %s", e)
-        idle = _idle_seconds()
-        cadence = (int(cfg["cadence_active_s"])
-                   if idle < float(cfg["idle_threshold_s"])
-                   else int(cfg["cadence_idle_s"]))
-        # Long-idle reset (config-flagged).
-        if (cfg.get("reset_on_long_idle") and
-                idle > float(cfg["reset_idle_threshold_s"])):
-            buf = _get_or_init_buffer(cfg)
-            if len(buf) > 0:
-                buf.clear()
-                log.info("[observer] buffer cleared after long idle")
+            cfg = _load_config()
+            try:
+                poll(cfg=cfg)
+            except Exception as e:
+                log.warning("[observer] poll iteration failed: %s", e)
+            idle = _idle_seconds()
+            cadence = (int(cfg["cadence_active_s"])
+                       if idle < float(cfg["idle_threshold_s"])
+                       else int(cfg["cadence_idle_s"]))
+            # Long-idle reset (config-flagged).
+            if (cfg.get("reset_on_long_idle") and
+                    idle > float(cfg["reset_idle_threshold_s"])):
+                buf = _get_or_init_buffer(cfg)
+                if len(buf) > 0:
+                    buf.clear()
+                    log.info("[observer] buffer cleared after long idle")
 
-        # Phase 2 Step 7 — fire shift report at 18:00 local OR after 30 min
-        # idle. Per-day dedup via skills/shift_report._STATE_PATH so the
-        # idle path doesn't repeat. Time path uses a 1-min window
-        # (daily_at_hour, daily_at_minute) — observer runs at >=60s cadence
-        # so a single fire window is sufficient.
-        try:
-            _maybe_fire_shift_report(idle)
+            # Phase 2 Step 7 — fire shift report at 18:00 local OR after 30 min
+            # idle. Per-day dedup via skills/shift_report._STATE_PATH so the
+            # idle path doesn't repeat. Time path uses a 1-min window
+            # (daily_at_hour, daily_at_minute) — observer runs at >=60s cadence
+            # so a single fire window is sufficient.
+            try:
+                _maybe_fire_shift_report(idle)
+            except Exception as e:
+                log.debug("[observer] shift report check failed: %s", e)
         except Exception as e:
-            log.debug("[observer] shift report check failed: %s", e)
+            log.warning("[observer] iteration failed: %s", e)
 
         time.sleep(cadence)
 
