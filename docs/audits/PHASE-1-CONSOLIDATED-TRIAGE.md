@@ -1,7 +1,7 @@
 # PHASE 1 — CONSOLIDATED TRIAGE
 
 **Date:** 2026-05-17
-**Status:** 5 of 6 audits complete (A, C, D, E, F). Audit B (Projects + Pilot) is a placeholder pending Mickael's description.
+**Status:** **6 of 6 audits complete** (A, C, D, E, F, **B**). Audit B (Projects subsystem) landed 2026-05-24 — `docs/audits/PHASE-1-PROJECTS-PILOT.md` (20 findings: 3 CRITICAL / 6 HIGH / 7 MEDIUM / 4 LOW). Pilot half deferred (sister `~/codec/pilot/` checkout, not in this repo).
 **Mode:** Audit-only. No source files were modified by this triage. No fix PRs have been started.
 **Predecessors:** mirrors the Intake Phase 3 consolidated-triage structure.
 
@@ -136,7 +136,7 @@ If you do all 8: you have layered defenses against D-1 / D-2 / D-3 / D-4 / D-7 u
 | **D — Security** | 22 | 5 | 7 | 7 | 3 | **Skill-load = RCE**; 4 enabling paths; 45% red-team bypass rate |
 | **E — Apple App** | 18 | 7 | 6 | 3 | 2 | Zero Apple distribution scaffolding; sandbox-incompatible; 6-10 weeks of work |
 | **F — Investor** | 19 | 3 | 7 | 6 | 3 | Substance 8/10, shop-window 4/10; 2-day burn-down possible |
-| **B — Projects + Pilot** | TBD | TBD | TBD | TBD | TBD | Placeholder — pending Mickael's description |
+| **B — Projects (+ Pilot)** | 20 | 3 | 6 | 7 | 4 | ✅ Projects done (`PHASE-1-PROJECTS-PILOT.md`). **Headline: the autonomous-agent permission gate is bypassable (LLM-self-declared flags) + the strict-consent function is a phantom import.** Pilot deferred (not in-repo). |
 | **Total (5 of 6)** | **103** | **20** | **35** | **34** | **14** | |
 
 ### CRITICAL findings — 20 total (lead the doc)
@@ -427,9 +427,13 @@ These are blocking decisions for wave PRs — answer before the wave-author prom
 
 ---
 
-## 6. Audit B placeholder
+## 6. Audit B — COMPLETE (Projects; Pilot deferred)
 
-**Status:** dispatched after Mickael provides the Projects + Pilot description.
+> **✅ Done 2026-05-24** — `docs/audits/PHASE-1-PROJECTS-PILOT.md`. 20 findings (3 CRITICAL / 6 HIGH / 7 MEDIUM / 4 LOW) from a 4-pass parallel review (security · architecture · correctness · test-coverage), every CRITICAL/HIGH code-verified. The "needs Mickael's description" caveat was overcautious — the **code is the scope**; the Projects subsystem (`codec_agent_*` + `routes/agents.py`) was reviewed directly. **Pilot** (`~/codec/pilot/`) is a separate checkout not in this repo → its audit is deferred (HANDOFF).
+>
+> **Wave 7 burn-down** is sized in `PHASE-1-PROJECTS-PILOT.md` (PR-7A…7F). **B-1/B-2/B-3 are the highest-priority remaining work in all of Phase 1** — the live permission boundary of an autonomously-executing agent.
+
+**Original placeholder (kept for history):** dispatched after Mickael provides the Projects + Pilot description.
 
 **Scope as defined by the plan (re-stated here for completeness):**
 - **Projects:** what does this feature do, which files/modules contain its code, what tests/smoke checks have been done so far, and what's known-fragile?
