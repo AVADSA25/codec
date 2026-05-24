@@ -836,7 +836,7 @@ def _run_agent(agent_id: str, cid: Optional[str] = None) -> None:
     from codec_agent_plan import (
         load_plan, load_state, load_manifest, load_grants,
         load_global_grants, save_state, save_manifest,
-        compute_plan_hash,
+        compute_plan_hash, compute_grants_hash, set_grants_hash,
     )
     try:
         from codec_agent_messaging import post_message
@@ -879,6 +879,25 @@ def _run_agent(agent_id: str, cid: Optional[str] = None) -> None:
                    correlation_id=cid, outcome="error", level="error",
                    extra={"agent_id": agent_id, "reason": "plan_tampered",
                           "stored_hash": stored_hash[:8], "actual_hash": actual_hash[:8]})
+            return
+
+        # B-4: grants.json is the file that actually gates execution — verify it,
+        # not just plan.json. Mismatch → tamper → abort. Absent → heal-forward
+        # (agents approved before grants_hash existed); never abort on absence,
+        # so an upgrade doesn't break in-flight legacy agents.
+        stored_grants_hash = manifest.get("grants_hash", "")
+        actual_grants_hash = compute_grants_hash(agent_id)
+        if not stored_grants_hash:
+            log.warning("[%s] grants_hash absent — healing forward (legacy agent)", agent_id)
+            set_grants_hash(agent_id)
+        elif stored_grants_hash != actual_grants_hash:
+            log.warning("[%s] grants_hash tamper: stored=%s actual=%s",
+                        agent_id, stored_grants_hash[:8], actual_grants_hash[:8])
+            _atomic_set_status(agent_id, "aborted", reason="grants_tampered")
+            _audit(AGENT_ABORTED, message="grants tampered",
+                   correlation_id=cid, outcome="error", level="error",
+                   extra={"agent_id": agent_id, "reason": "grants_tampered",
+                          "stored_hash": stored_grants_hash[:8], "actual_hash": actual_grants_hash[:8]})
             return
 
         grants = load_grants(agent_id)

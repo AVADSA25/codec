@@ -49,6 +49,9 @@ Four read-only specialist passes over the four modules + their six test files (`
 **Fix:** validate grant `value` through the blocklist + realpath; treat grant-widening as a destructive action requiring consent; consider per-agent ownership if the dashboard ever goes multi-user.
 
 ### B-4 — `grants.json` is not covered by the plan-hash tamper check [HIGH]
+
+> **✅ FIXED by PR-7E (2026-05-24).** New `compute_grants_hash` / `set_grants_hash` (mirroring `compute_plan_hash`): `approve_plan` stores `manifest.grants_hash`, the `/api/agents/grant` endpoint re-syncs it after every legit grant, and `_run_agent` verifies it at run start — **mismatch → abort (`grants_tampered`)**. Absence heals-forward (recompute + store + warn) rather than aborts, so agents approved before this field existed aren't broken on upgrade (trade-off documented in the design doc). 4 tests (`tests/test_grants_tamper.py`); 135 agent tests stay green; ruff delta zero.
+
 **What:** run-start verifies `manifest.plan_hash == sha256(plan.json)` (`runner:~819`) but `grants.json` — the file actually loaded to enforce permissions — is never hashed/verified. **Verified.**
 **Why it matters:** post-approval edits to `grants.json` (add write_paths/skills/domains) survive every restart and run unchallenged; the documented "tamper → abort" covers the plan but not the enforcement input.
 **Fix:** fold a hash of `grants.json` into the approval manifest; re-verify both at run start.
