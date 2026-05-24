@@ -21,7 +21,7 @@ from routes._shared import (
     _auth_available, _verify_biometric_session,
     _save_sessions, _save_e2e_keys,
     get_db,
-    _pending_approvals, _approval_lock,
+    _pending_approvals, _approval_lock, _evict_expired_approvals,
 )
 
 # Audit emits route through the unified log_event adapter (real, not no-op)
@@ -3202,23 +3202,24 @@ async def mark_all_notifications_read():
 async def list_pending_approvals():
     """List all pending command approvals."""
     with _approval_lock:
-        pending = []
-        now = time.time()
-        for aid, a in list(_pending_approvals.items()):
-            # Auto-expire after 120 seconds
-            if now - a.get("timestamp", 0) > 120:
-                a["status"] = "expired"
-            if a["status"] == "pending":
-                pending.append({**a, "id": aid})
+        # H-6: delete entries older than 120s (any status) so the dict can't grow
+        # unbounded — replaces the old mark-expired-but-never-delete behavior.
+        # After eviction every remaining entry is ≤120s, so a "pending" entry is
+        # genuinely actionable (no per-entry time check needed).
+        _evict_expired_approvals()
+        pending = [{**a, "id": aid} for aid, a in _pending_approvals.items()
+                   if a.get("status") == "pending"]
         return {"approvals": pending}
 
 @app.get("/api/approvals/count")
 async def pending_approval_count():
     """Badge count of pending approvals."""
     with _approval_lock:
-        now = time.time()
+        # H-6: sweep here too (this is the frequently-polled badge endpoint) so
+        # the dict stays bounded regardless of which endpoint the PWA hits.
+        _evict_expired_approvals()
         count = sum(1 for a in _pending_approvals.values()
-                    if a["status"] == "pending" and now - a.get("timestamp", 0) <= 120)
+                    if a.get("status") == "pending")
         return {"count": count}
 
 @app.post("/api/approvals/{approval_id}/allow")

@@ -380,6 +380,7 @@ class VoicePipeline:
 
     # Class-level cache for resumable sessions (session_id → messages list)
     _resumable_sessions: dict[str, list] = {}
+    _resume_timestamps: dict[str, float] = {}  # session_id → time.monotonic() at save (M-6)
     _RESUME_TTL = 600  # seconds — discard saved sessions older than this (10 min)
 
     def __init__(self, websocket, resume_session_id: str | None = None):
@@ -387,10 +388,16 @@ class VoicePipeline:
         self.session_id      = resume_session_id or "voice_" + datetime.now().strftime("%Y%m%d_%H%M%S")
         self._disconnect_reason = "unexpected"  # "user" or "unexpected"
 
+        # M-6: prune stale resumable sessions on every new connection — so a
+        # dropped-and-never-reconnected session is evicted the moment ANY new
+        # voice activity happens, not only on the next _save_for_resume.
+        self._prune_resumable()
+
         # Resume conversation context if available
         self._is_resumed = False
         if resume_session_id and resume_session_id in self._resumable_sessions:
             saved = self._resumable_sessions.pop(resume_session_id)
+            VoicePipeline._resume_timestamps.pop(resume_session_id, None)  # keep the two dicts in sync
             self.messages = saved
             self._is_resumed = True
             print(f"[Voice] Resumed session {resume_session_id} with {len(saved)} messages")
@@ -413,19 +420,28 @@ class VoicePipeline:
         self._warmed_up = False
         self._load_skills()
 
+    @classmethod
+    def _prune_resumable(cls, now=None):
+        """M-6: evict resumable sessions (and their timestamps) older than
+        _RESUME_TTL. Called on every save AND on __init__, so stale entries are
+        swept on any voice activity — no background timer needed (the leak the
+        audit flags is minor + usage-bounded; a timer's lifecycle isn't worth
+        it). Never raises."""
+        now = now if now is not None else time.monotonic()
+        try:
+            stale = [sid for sid, ts in cls._resume_timestamps.items()
+                     if now - ts > cls._RESUME_TTL]
+            for sid in stale:
+                cls._resumable_sessions.pop(sid, None)
+                cls._resume_timestamps.pop(sid, None)
+        except Exception:
+            pass
+
     def _save_for_resume(self):
         """Stash conversation state so a reconnecting client can resume."""
         self._resumable_sessions[self.session_id] = list(self.messages)
-        # Prune stale sessions
-        now = time.monotonic()
-        if not hasattr(VoicePipeline, "_resume_timestamps"):
-            VoicePipeline._resume_timestamps = {}
-        VoicePipeline._resume_timestamps[self.session_id] = now
-        stale = [sid for sid, ts in VoicePipeline._resume_timestamps.items()
-                 if now - ts > self._RESUME_TTL]
-        for sid in stale:
-            self._resumable_sessions.pop(sid, None)
-            VoicePipeline._resume_timestamps.pop(sid, None)
+        VoicePipeline._resume_timestamps[self.session_id] = time.monotonic()
+        self._prune_resumable()
         print(f"[Voice] Session {self.session_id} saved for resume ({len(self.messages)} messages)")
 
     # ── Skill loader (lazy via SkillRegistry) ─────────────────────────────
