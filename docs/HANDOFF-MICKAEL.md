@@ -14,14 +14,23 @@ localhost:8094`, bound `0.0.0.0`, no auth — letting anyone drive your logged-i
 compile+approve a skill → **code execution on your Mac**. I stopped it with your approval
 (`pm2 stop pilot-runner`; verified `:8094` no longer listening).
 
+**Update 2026-05-24 — fix wave PP-1…PP-5 done** (all exploitable findings remediated, in
+the Pilot repo `~/codec/`; 32 security tests pass). Full status: `docs/audits/PHASE-1-PILOT-AUDIT.md`.
+
 **Your action items:**
-1. 🔴 **Do NOT `pm2 start pilot-runner`** until the fix wave (PP-1…) lands — the Cloudflare
-   route still points at :8094, so restarting re-exposes it. Consider also removing the
-   `pilot.lucyvpa.com` lines (21-22) from `~/.cloudflared/config.yml` now as defense-in-depth.
-2. 🟡 **Pilot fixes are in a SEPARATE repo** (`~/codec/pilot/`) — they can't go through the
-   codec-repo PR flow. Tell me to proceed and I'll do the fix wave (design-first → TDD)
-   directly in the pilot repo. Priority order in the audit doc (PP-1 = loopback+auth first).
-3. ⚪ Parent-repo follow-up: PR-1A's AST gate (`is_dangerous_skill_code`) is allow-by-omission
+1. 🔴 **Review + push the Pilot-repo commits** — `~/codec/` has **no git remote**, so PP-1…PP-5
+   are on its **local `main`** (`39e6146`, `51ac0a4`, `a1dd9ad`, `884381b`, `1f3e733`). Review
+   and push them (set up a remote if you want CI). The codec-repo token-handshake half is
+   merged (#132).
+2. 🟡 **Cloudflare tunnel:** the API now requires the `x-pilot-token`, so the tunnel is no
+   longer an open door — but for defense-in-depth still remove the `pilot.lucyvpa.com` lines
+   (21-22) from `~/.cloudflared/config.yml` (or put it behind Cloudflare Access). Safe to
+   `pm2 start pilot-runner` again **after** you've pushed the fixes (it now binds loopback +
+   requires the token).
+3. ⚪ **Remaining Pilot cleanup (MEDIUM, not exploitable):** P-7 HITL default-deny, P-9
+   concurrency lock, P-12 audit adapter, P-13 secret redaction, P-14 robustness — a follow-up
+   batch whenever you want it.
+4. ⚪ Parent-repo follow-up: PR-1A's AST gate (`is_dangerous_skill_code`) is allow-by-omission
    for `urllib`/`httpx`/`requests`/`smtplib`/`pickle`/`open` — fine for hand-written user
    skills, but auto-generated Pilot skills need a stricter allowlist (see audit §cross-cutting).
 
