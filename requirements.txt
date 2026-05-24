@@ -4,7 +4,7 @@ soundfile>=0.12.1
 numpy>=2.4.6
 requests>=2.31.0
 simple-term-menu>=1.6.6
-httpx>=0.24.0
+httpx>=0.28.1
 fastmcp>=0.1.0
 
 # Optional: TTS (Kokoro 82M — Apple Silicon)
