@@ -616,6 +616,23 @@ def get_artifacts(agent_id: str):
     return {"project_dir": project_dir, "files": files}
 
 
+def _project_dir_confined(project_dir: str) -> bool:
+    """B-15: realpath-confine project_dir under the configured project root
+    (_cap._PROJECT_ROOT) and reject symlinks, so `open` can't be aimed at an
+    arbitrary path / app bundle via a tampered manifest or a slug collision."""
+    if not project_dir:
+        return False
+    try:
+        root_real = os.path.realpath(os.path.expanduser(str(_cap._PROJECT_ROOT)))
+        pd = os.path.expanduser(project_dir)
+        if os.path.islink(pd):
+            return False  # explicit: never `open` a symlinked project dir
+        pd_real = os.path.realpath(pd)
+    except (OSError, ValueError):
+        return False
+    return pd_real == root_real or pd_real.startswith(root_real + os.sep)
+
+
 @router.post("/api/agents/{agent_id}/open-folder")
 def open_folder(agent_id: str):
     """Open the agent's project_dir in macOS Finder."""
@@ -626,6 +643,19 @@ def open_folder(agent_id: str):
     project_dir = manifest.get("project_dir", "")
     if not project_dir or not os.path.isdir(project_dir):
         return JSONResponse({"error": "project_dir not found"}, status_code=404)
+    # B-15: only `open` a dir confined under the project root (realpath, no symlink).
+    if not _project_dir_confined(project_dir):
+        try:
+            import codec_audit
+            codec_audit.audit(
+                event="open_folder_blocked", source="codec-dashboard",
+                outcome="error", level="warning",
+                message=f"refused to open project_dir outside project root for {agent_id}",
+                extra={"agent_id": agent_id, "project_dir": project_dir},
+            )
+        except Exception:
+            pass
+        return JSONResponse({"error": "project_dir outside project root"}, status_code=400)
     try:
         subprocess.Popen(["open", project_dir])
         return {"ok": True, "opened": project_dir}

@@ -17,6 +17,7 @@ See docs/PHASE3-BLUEPRINT.md §3 for design rationale.
 """
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import json
 import logging
@@ -133,10 +134,13 @@ def _path_allowed(action_path: str, grants: Any) -> tuple[bool, str]:
          first glob char). Acceptance = action's realpath is at or under
          the grant's realpath root.
 
-    Trade-off vs. raw fnmatch: a grant pattern like `~/Documents/*.md`
-    now accepts any file under realpath(~/Documents/), not just `*.md`.
-    The audit explicitly recommends this (prefix-on-realpath over
-    fnmatch) — safety > granularity.
+    B-18: a glob grant is now enforced (fnmatch on the realpath-anchored
+    pattern) IN ADDITION to the realpath-containment check — so `~/Documents/*.md`
+    authorizes `.md` files under realpath(~/Documents/), not `secrets.key`. This
+    only ever *tightens*: the fnmatch test is layered on top of PR-1D's containment,
+    so nothing previously rejected for safety can now be accepted. Plain directory
+    grants (no glob) still authorize their whole subtree; `**` grants (incl. the
+    default `{project_dir}/**`) still match recursively (fnmatch `*`→`.*` crosses `/`).
     """
     if not action_path:
         return False, "empty_path"
@@ -155,10 +159,11 @@ def _path_allowed(action_path: str, grants: Any) -> tuple[bool, str]:
         if not grant:
             continue
         grant_expanded = os.path.expanduser(grant)
-        # Strip glob suffix to find the directory root. Examples:
-        #   "~/Documents/**"   → "~/Documents"
-        #   "~/Documents/*.md" → "~/Documents"
-        #   "~/Documents"      → "~/Documents"
+        # Directory root = substring before the first glob char (or the whole
+        # path if none). Examples:
+        #   "~/Documents/**"   → root "~/Documents", glob "**"
+        #   "~/Documents/*.md" → root "~/Documents", glob "*.md"
+        #   "~/Documents"      → root "~/Documents", no glob
         glob_idx = grant_expanded.find("*")
         grant_root = (grant_expanded[:glob_idx] if glob_idx >= 0
                       else grant_expanded).rstrip(os.sep) or os.sep
@@ -166,8 +171,21 @@ def _path_allowed(action_path: str, grants: Any) -> tuple[bool, str]:
             grant_real = os.path.realpath(grant_root)
         except (OSError, RuntimeError, ValueError):
             continue
-        if action_real == grant_real or action_real.startswith(grant_real + os.sep):
+        # PR-1D containment: the action's realpath must be at/under the realpath'd
+        # root (prevents symlink/`..` escape regardless of the glob).
+        under_root = (action_real == grant_real or
+                      action_real.startswith(grant_real + os.sep))
+        if not under_root:
+            continue
+        if glob_idx < 0:
+            # Plain directory/file grant authorizes its subtree (unchanged).
             return True, ""
+        # B-18: the action must ALSO match the realpath-anchored glob pattern, so a
+        # specific glob (`*.md`) is enforced rather than collapsed to its directory.
+        pattern = grant_real + os.sep + grant_expanded[glob_idx:]
+        if fnmatch.fnmatch(action_real, pattern):
+            return True, ""
+        # Under the root but doesn't match this glob — keep checking other grants.
 
     return False, "not_under_grant"
 
