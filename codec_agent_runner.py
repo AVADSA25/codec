@@ -17,6 +17,7 @@ See docs/PHASE3-BLUEPRINT.md §3 for design rationale.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -697,12 +698,42 @@ def _drain_user_replies(agent_id: str, since_ts: float):
     return entries, time.time()
 
 
+def _fingerprint(checkpoint_id: str, skill: str, task: str) -> str:
+    """B-5: stable 16-hex id for a (checkpoint, skill, task) destructive action.
+    Used as the at-most-once ledger key so a crash can't re-fire an irreversible
+    op on resume. Checkpoint-scoped so the same skill+task in two checkpoints
+    are distinct entries."""
+    raw = f"{checkpoint_id}|{skill}|{task}".encode("utf-8", "replace")
+    return hashlib.sha256(raw).hexdigest()[:16]
+
+
+def _persist_checkpoint_progress(agent_id: str, checkpoint_id: str,
+                                 history: List[Dict[str, Any]],
+                                 executed_destructive: List[str]) -> None:
+    """B-5: load-modify-save the in-progress checkpoint history + destructive
+    ledger into state.json so a mid-checkpoint crash resumes from here instead
+    of replaying from step 0. Load-modify-save (not overwrite) preserves
+    concurrently-written keys (current_checkpoint, last_reply_ts,
+    step_budget_overrides). Runs in the agent's own thread — no intra-process
+    race. Never raises: a persistence hiccup must not break the run loop."""
+    try:
+        from codec_agent_plan import load_state, save_state
+        state = load_state(agent_id)
+        state["cp_in_progress"] = checkpoint_id
+        state["cp_history"] = history
+        state["executed_destructive"] = list(executed_destructive)
+        save_state(agent_id, state)
+    except Exception as e:  # pragma: no cover - defensive
+        log.warning("[%s] persist checkpoint progress failed: %s", agent_id, e)
+
+
 def _execute_checkpoint(plan_dict: Dict[str, Any],
                         checkpoint: Dict[str, Any],
                         agent_grants: Dict[str, Any],
                         global_grants: Dict[str, Any],
                         agent_id: str,
-                        history: Optional[List[Dict[str, Any]]] = None
+                        history: Optional[List[Dict[str, Any]]] = None,
+                        executed_destructive: Optional[List[str]] = None
                         ) -> List[Dict[str, Any]]:
     """Inner loop: ask Qwen for next action, gate it, execute, append
     to history, repeat until checkpoint_done OR step_budget hit OR
@@ -719,6 +750,11 @@ def _execute_checkpoint(plan_dict: Dict[str, Any],
     """
     if history is None:
         history = []
+    # B-5: the at-most-once ledger of destructive fingerprints already attempted
+    # (seeded from state.json on resume by _run_agent). Mutated in place + persisted.
+    if executed_destructive is None:
+        executed_destructive = []
+    cp_id = str(checkpoint.get("id", ""))
     # Floor to DEFAULT so plans with tiny LLM-generated budgets (e.g. 5 or 10)
     # don't exhaust before Qwen can finish real work.
     budget = max(int(checkpoint.get("step_budget", DEFAULT_STEP_BUDGET_PER_CHECKPOINT)),
@@ -751,6 +787,7 @@ def _execute_checkpoint(plan_dict: Dict[str, Any],
                 "is_destructive": False,
                 "_skill_correction_nudge": True,
             })
+            _persist_checkpoint_progress(agent_id, cp_id, history, executed_destructive)
             # Re-call Qwen — if it still picks something invalid, fall through
             # and the SECOND permission_gate call will raise normally.
             action2 = _qwen_next_action(plan_dict, checkpoint, history)
@@ -763,7 +800,26 @@ def _execute_checkpoint(plan_dict: Dict[str, Any],
         # B-2: gate on the SERVER-derived assessment, not the LLM's self-declared
         # flag — otherwise an action that emits is_destructive=false on a
         # dangerous skill / irreversible task would skip consent entirely.
+        # B-5: guard with an at-most-once fingerprint ledger so a crash can't
+        # re-fire an irreversible op on resume.
         if _effective_destructive(action):
+            fp = _fingerprint(cp_id, action.skill, action.task)
+            if fp in executed_destructive:
+                # Already attempted in a prior life (pre-crash). At-most-once: do
+                # NOT re-execute and do NOT re-prompt consent. Tell the model it's
+                # done so it advances past it.
+                history.append({
+                    "step": len(history),
+                    "skill": action.skill,
+                    "task": action.task[:200],
+                    "result": "[SKIPPED ON RESUME — this destructive action was already "
+                              "attempted before a crash/restart; not re-executed to avoid "
+                              "duplication]",
+                    "is_destructive": True,
+                    "_resume_skipped": True,
+                })
+                _persist_checkpoint_progress(agent_id, cp_id, history, executed_destructive)
+                continue
             consent = _enforce_destructive_gate(action)
             if consent.timed_out:
                 # Q7: timeout overnight — caller transitions to blocked_on_destructive
@@ -774,6 +830,11 @@ def _execute_checkpoint(plan_dict: Dict[str, Any],
                 raise DestructiveOpRejected(
                     f"user rejected: {action.skill} {action.task[:80]}"
                 )
+            # Record the marker BEFORE executing: if the crash lands between here
+            # and the skill returning, resume sees the marker → skips → the op
+            # fires at most once.
+            executed_destructive.append(fp)
+            _persist_checkpoint_progress(agent_id, cp_id, history, executed_destructive)
 
         # Execute via codec_dispatch.run_skill (Step 1+2 hooks fire)
         try:
@@ -789,6 +850,7 @@ def _execute_checkpoint(plan_dict: Dict[str, Any],
             "result": (result or "")[:500],
             "is_destructive": action.is_destructive,
         })
+        _persist_checkpoint_progress(agent_id, cp_id, history, executed_destructive)
 
     raise StepBudgetExhausted(f"step_budget {budget} exhausted in checkpoint {checkpoint.get('id')}")
 
@@ -966,6 +1028,16 @@ def _run_agent(agent_id: str, cid: Optional[str] = None) -> None:
                 "step_budget": effective_budget,
             }
 
+            # B-5: on resume, restore THIS checkpoint's persisted in-progress history
+            # and at-most-once destructive ledger so we continue mid-checkpoint
+            # instead of replaying from step 0 (which duplicates non-idempotent work
+            # and re-fires irreversible ops). Guarded on cp_in_progress matching this
+            # checkpoint so a stale entry from another checkpoint is never seeded.
+            cp_executed: List[str] = []
+            if idx == current_idx and state.get("cp_in_progress") == cp.id:
+                history = list(state.get("cp_history", []) or [])
+                cp_executed = list(state.get("executed_destructive", []) or [])
+
             _audit(AGENT_CHECKPOINT_STARTED,
                    message=f"checkpoint {cp.id} started",
                    correlation_id=cid,
@@ -986,6 +1058,7 @@ def _run_agent(agent_id: str, cid: Optional[str] = None) -> None:
                     plan_dict=plan.to_dict(), checkpoint=cp_dict,
                     agent_grants=grants, global_grants=global_grants,
                     agent_id=agent_id, history=history,
+                    executed_destructive=cp_executed,
                 )
             except PermissionViolation as pv:
                 # C-5: only announce the block if the transition actually applied
@@ -1070,12 +1143,19 @@ def _run_agent(agent_id: str, cid: Optional[str] = None) -> None:
                         log.info("[%s] pause not announced — status superseded externally", agent_id)
                 return
 
-            # Checkpoint complete: atomic state save (resume guarantee)
-            save_state(agent_id, {
-                "current_checkpoint": idx + 1,
-                "history_len": len(history),
-                "last_checkpoint_completed_at": _now_iso_local(),
-            })
+            # Checkpoint complete: atomic state save (resume guarantee).
+            # B-5: load-modify-save (not overwrite) — advance the cursor and CLEAR the
+            # per-checkpoint progress (cp_history / cp_in_progress / executed_destructive
+            # are scoped to a single checkpoint), while PRESERVING cross-checkpoint keys
+            # (last_reply_ts, step_budget_overrides) that the old full-overwrite dropped.
+            state = load_state(agent_id)
+            state["current_checkpoint"] = idx + 1
+            state["history_len"] = len(history)
+            state["last_checkpoint_completed_at"] = _now_iso_local()
+            state.pop("cp_in_progress", None)
+            state.pop("cp_history", None)
+            state.pop("executed_destructive", None)
+            save_state(agent_id, state)
             _audit(AGENT_CHECKPOINT_COMPLETED,
                    message=f"checkpoint {cp.id} completed",
                    correlation_id=cid,
