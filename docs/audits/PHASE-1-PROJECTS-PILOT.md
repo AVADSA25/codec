@@ -25,6 +25,9 @@ Four read-only specialist passes over the four modules + their six test files (`
 ## Findings
 
 ### B-1 — Destructive-consent gate imports a non-existent function [CRITICAL]
+
+> **✅ FIXED by PR-7A (2026-05-24).** `_strict_consent` now routes through the real `codec_ask_user.ask(destructive=True, destructive_verb="confirm", …)` and maps its return (`TIMEOUT_SENTINEL`/`DISABLED_SENTINEL` → blocked, never approved; verb-matched answer → approved). Fail-safe: any error/timeout/disabled → not approved. 4 regression tests (`tests/test_strict_consent_fix.py`) exercise the **real** body (the gap B-1 left) + assert the phantom symbol can't return; the 51 existing runner tests stay green. *(B-2 — the gate trusting LLM-self-declared flags — is the separate PR-7B and is what makes this consent prompt actually fire for currently-unflagged ops.)*
+
 **What:** `codec_agent_runner.py:529` does `from codec_ask_user import strict_consent_gate`, but `codec_ask_user` exposes no such symbol (only `ask()` / `submit_answer()`); it exists solely as a mock in `tests/test_agent_runner.py`. **Verified.**
 **Why it matters:** in production the import raises, `_strict_consent` returns not-approved, and any destructive op the LLM *does* flag gets stuck on `blocked_on_destructive` — while the literal-verb consent prompt the design promises **never actually runs**. The gate is dead code kept green by a test mock.
 **Fix:** call the real `codec_ask_user.ask(..., destructive=True, destructive_verb=<server-chosen>)`; add an import-time smoke test so a missing symbol fails CI instead of being mocked away.
