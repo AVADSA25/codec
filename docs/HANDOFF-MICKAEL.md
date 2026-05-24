@@ -23,15 +23,16 @@ I work on isolated branches and never self-merge; each new branch builds on the 
 
 **Enrollment: ✅ done** (you confirmed Team ID + Developer ID Application cert in hand).
 
-**Progress:** W5-1 (metadata) ✅ · W5-2 (`.app`) ✅ · W5-3 (launchd) ✅ · W5-4 (bundled Python) ✅ · W5-7/8 (sign + notarize) ✅ · W5-12 (uninstaller) ✅ · W5-5 (model downloader, `packaging/macos/fetch_models.py` + `models.json`) ⏳ in flight. Next: W5-6 (first-run permissions wizard — wires launchd install + Python remap + bundled-model fetch + in-app "Uninstall"), W5-11 (GUI onboarding), then DMG packaging. **All Audit-E CRITICALs are now closed.**
+**Progress:** W5-1 (metadata) ✅ · W5-2 (`.app`) ✅ · W5-3 (launchd) ✅ · W5-4 (bundled Python) ✅ · W5-5 (model downloader) ✅ · W5-7/8 (sign + notarize) ✅ · W5-12 (uninstaller) ✅ · **W5 capstone (one-command `release_macos.sh` → build/sign/notarize/staple/DMG)** ⏳ in flight. Next (GUI/decision-gated): W5-6 (first-run wizard), W5-11 (GUI onboarding), W5-9 (license), W5-10 (Cloudflare), W5-13 (Sparkle). **All Audit-E CRITICALs closed; the full build→DMG pipeline is authored + tested.**
 
-**The full release sequence is now scriptable** (run on your build Mac with the cert):
+**The full release is now ONE command** (run on your build Mac with the cert):
 ```
-bash packaging/macos/build_app.sh --with-python --clean
-bash packaging/macos/sign_app.sh   --app "dist/Sovereign AI Workstation.app" --identity "Developer ID Application: … (TEAMID)"
-bash packaging/macos/notarize_app.sh --app "dist/Sovereign AI Workstation.app" --keychain-profile codec-notary
+bash packaging/macos/release_macos.sh \
+  --identity "Developer ID Application: … (TEAMID)" \
+  --keychain-profile codec-notary --version 2.3.0
+# → build → sign → notarize → staple → dist/Sovereign-AI-Workstation-2.3.0.dmg
 ```
-Each accepts `--dry-run` to preview. I've validated build + Python bundle + the sign/notarize *plans*; only the cert-gated execution is left to you.
+Add `--dry-run` to preview every step; `--skip-notarize` / `--skip-dmg` to do partial runs. I've validated build + Python bundle + DMG creation + the sign/notarize *plans*; only the cert-gated execution is left to you.
 
 - ⚪ **Try the uninstaller (safe):** `bash packaging/macos/uninstall_codec.sh --dry-run` lists exactly what a real uninstall would remove and deletes nothing. (Real removal needs `--yes`; user data needs `--yes --purge-data`.) Note: macOS won't let the app revoke its own TCC grants — the script prints the System Settings path to clear them by hand.
 
