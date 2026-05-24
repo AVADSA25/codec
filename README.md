@@ -10,10 +10,17 @@
 </p>
 
 <p align="center">
+  <strong>CODEC turns a Mac into a voice-controlled AI workstation that runs 100% on your machine.</strong><br/>
+  Speak. See the screen. Click anywhere by voice. Run agent crews. Plug into Claude, Cursor, or VS&nbsp;Code as an MCP server — and let them drive your Mac back.<br/>
+  <em>Open source · MIT · no cloud required.</em>
+</p>
+
+<p align="center">
+  <a href="https://github.com/AVADSA25/codec/actions/workflows/ci.yml"><img src="https://github.com/AVADSA25/codec/actions/workflows/ci.yml/badge.svg" alt="CI"/></a>
   <a href="FEATURES.md"><img src="https://img.shields.io/badge/features-400+-blue?style=flat-square" alt="400+ Features"/></a>
-  <img src="https://img.shields.io/badge/skills-75-orange?style=flat-square" alt="75 Skills"/>
-  <img src="https://img.shields.io/badge/tests-940+-green?style=flat-square" alt="940+ Tests"/>
-  <img src="https://img.shields.io/badge/lines-58K+-purple?style=flat-square" alt="58K+ Lines"/>
+  <img src="https://img.shields.io/badge/skills-76-orange?style=flat-square" alt="76 Skills"/>
+  <img src="https://img.shields.io/badge/tests-1300+-green?style=flat-square" alt="1,300+ Tests"/>
+  <img src="https://img.shields.io/badge/lines-67K+-purple?style=flat-square" alt="67K+ Lines"/>
   <img src="https://img.shields.io/badge/license-MIT-brightgreen?style=flat-square" alt="MIT License"/>
   <img src="https://img.shields.io/badge/engine-CODEC%20v2.3-E8711A?style=flat-square" alt="Engine: CODEC v2.3"/>
 </p>
@@ -39,6 +46,18 @@ It listens, sees the screen, speaks back, controls apps, writes code, drafts mes
 No cloud dependency. No data leaving the machine unless you choose. No subscription on the open-source build. MIT licensed.
 
 > **Sovereign AI Workstation** is the product brand. **CODEC** (v2.3) is the open-source engine that powers it — the codename you'll see in code paths, skill registries, the `codec_*` PM2 services, and the `~/.codec/` config directory. *Sovereign AI Workstation* is what you ship; *CODEC* is what you ship with. Same way iPhone runs on Darwin, or Tesla Model S runs on Roadster components — one is the product, the other is the engine.
+
+---
+
+## Why CODEC, not the alternatives
+
+CODEC's moat is the *combination* — local-first **and** voice **and** MCP-as-a-server **and** self-writing skills **and** a zero-dependency agent runtime. No single competitor has all five.
+
+- **Open Interpreter / Aider write code in a terminal. CODEC controls the whole Mac by voice** — including your IDE, your browser, your apps. The terminal is one surface; CODEC drives all of them.
+- **Cursor and Claude Desktop talk to LLMs. CODEC turns your Mac into a tool the LLM can use** — over MCP. Claude (or Cursor, or VS Code) gets your screen, your apps, your 76 skills, and your memory. CODEC is both an MCP *client* and an MCP *server*, so two CODECs can even peer — agent-to-agent — on the open protocol Anthropic standardized.
+- **CrewAI / LangChain orchestrate. CODEC orchestrates _and_ executes on your hardware** — with a ~795-line multi-agent runtime that has zero dependency on either framework.
+
+And all of it runs on *your* machine: no data leaves unless you explicitly route a request through a cloud model.
 
 ---
 
@@ -337,6 +356,30 @@ Three smart agents ship built-in: Daily Briefing, Restaurant Decider (location-a
 
 ---
 
+## Architecture
+
+CODEC is **not a monolith.** It runs as a swarm of small Python processes supervised by PM2 — each with one responsibility, each killable without breaking the others. Services coordinate through atomic JSON writes (`~/.codec/*.json`) and localhost HTTP, never a shared in-memory bus.
+
+```mermaid
+graph LR
+    U["You<br/>voice · hotkeys · PWA · iMessage/Telegram"] --> V["open-codec<br/>wake-word · vision · dispatch"]
+    U --> D["codec-dashboard<br/>FastAPI :8090 · chat/audit/UI"]
+    C["Claude · Cursor · VS Code"] -->|MCP + OAuth 2.1| M["codec-mcp-http<br/>:8091"]
+    V --> CORE["Engine<br/>skills · agents · memory · hooks · audit"]
+    D --> CORE
+    M --> CORE
+    OBS["codec-observer · autopilot<br/>agent-runner · heartbeat"] --> CORE
+    CORE --> S[("~/.codec/<br/>SQLite · audit.log · agent state")]
+```
+
+- **Inbound stays private** — the only inbound surface is the PWA over a Cloudflare Zero Trust tunnel (or Tailscale). Outbound bridges (Gmail, iMessage, Telegram) are user-owned.
+- **Every privileged action is gated and audited** — file/process/network access goes through a sandbox + consent gate and lands in an HMAC-signed `~/.codec/audit.log`.
+- **The LLM is swappable** — local Qwen by default; any OpenAI-compatible endpoint (or the paid cloud tier) drops in without touching the skill catalog.
+
+Full runtime topology, process table, and data-flow diagrams: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
+
+---
+
 ## Quick Start
 
 ```bash
@@ -440,11 +483,15 @@ Claude Desktop/Code/Cursor gain — through this one MCP bridge — everything C
 
 - **Your Mac, your apps** — native macOS control: mouse/keyboard via vision model, screenshot text extraction, app switching, clipboard, brightness/volume, Philips Hue, Spotify, Apple Notes, Reminders, Clock timers, music. No browser sandbox.
 - **Your memory** — FTS5-searchable history of every CODEC conversation. Claude can recall what *you* said weeks ago, not just this chat.
-- **Your skills, not Anthropic's** — 75 pluggable CODEC skills instantly callable as tools. Write one locally in Python, it shows up in Claude without a deploy.
+- **Your skills, not Anthropic's** — 76 pluggable CODEC skills instantly callable as tools. Write one locally in Python, it shows up in Claude without a deploy.
 - **Your LLM, your choice** — same skill catalog works whether the brain is local Qwen (offline, private) or cloud Claude. The toolkit outlives the model.
 - **Your voice pipeline** — Whisper STT, Kokoro TTS, wake-word — all reachable from the chat loop if you want voice output of a Claude answer.
 
 One install. Claude stops being a chat window and becomes a driver for the machine it's running on.
+
+### Bidirectional MCP — agent-to-agent on the open protocol
+
+CODEC is **both an MCP client and an MCP server.** As a *client* it consumes tools from any MCP host; as an MCP server it exposes its 76 skills, searchable memory, and voice pipeline to any MCP client — Claude, Cursor, VS&nbsp;Code, or **another CODEC.** Point two Macs at each other and they peer directly: **agent-to-agent** collaboration over the same protocol Anthropic standardized — no middleman cloud, each side keeping its own data local.
 
 ---
 
@@ -649,8 +696,8 @@ codec_marketplace.py  — Skill marketplace CLI
 codec_overlays.py     — AppKit overlay notifications (fullscreen compatible)
 ax_bridge/            — Swift AX accessibility bridge
 swift-overlay/        — Native macOS status bar app (NSPanel, event JSONL poller)
-skills/               — 75 built-in skills (incl. vision mouse control)
-tests/                — 940+ pytest tests across 53 files
+skills/               — 76 built-in skills (incl. vision mouse control)
+tests/                — 1,386 test functions across 99 files (1,685 collected via pytest --collect-only)
 request_mic.py        — macOS microphone permission helper (AVFoundation)
 install.sh            — One-line installer
 setup_codec.py        — Setup wizard (9 steps)
@@ -737,7 +784,7 @@ python3 setup_codec.py
 
 ## Contributing
 
-All skill contributions welcome. 75 built-in skills, 940+ tests, marketplace growing.
+All skill contributions welcome. 76 built-in skills, 1,300+ tests, marketplace growing.
 
 ```bash
 git clone https://github.com/AVADSA25/codec.git
@@ -756,6 +803,8 @@ If CODEC saves you time:
 - **Star** this repo
 - **[Donate via PayPal](https://paypal.me/avadsa25)** — ava.dsa25@proton.me
 - **Enterprise setup:** [avadigital.ai](https://avadigital.ai)
+
+**Paid Mac app — coming soon.** A signed, notarized, one-click install with managed setup and an optional cloud-LLM tier, for people who'd rather not assemble the local stack by hand. The open-source build stays free and MIT, forever. [Join the waitlist → avadigital.ai](https://avadigital.ai)
 
 ---
 

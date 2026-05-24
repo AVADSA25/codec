@@ -67,6 +67,8 @@ Reviewed in this order:
 
 ### F-3 — README badges overstate verified state ("940+ tests", "400+ features") [CRITICAL for investor trust]
 
+> **✅ CLOSED by PR-6G (2026-05-24).** Static `tests-940+` pill replaced with a **live GitHub Actions CI badge** + a conservative `tests-1300+` count — rounds *down* from the 1,386 `def test_` floor (1,685 collected via `pytest --collect-only`), so it can't be called an overstatement by either measure. Counts reconciled across README + CONTRIBUTING + AGENTS; `skills` 75→76, `lines` 58K→67K. Guarded by `tests/test_readme_investor.py`. (Expanding CI to run the full suite = F-4, separate. The `features-400+` badge links to FEATURES.md and was left as-is.)
+
 **What's missing:** Truthful representation of automated test coverage. README line 15 displays `tests-940+` badge. Verified count: **873 `def test_` functions in 54 test files** (`grep -rE "^def test_|^    def test_" tests/test_*.py | wc -l`). The CI workflow at `.github/workflows/ci.yml` only runs **four** of those files: `test_skill_imports.py`, `test_skill_contracts.py`, `test_oauth_provider.py`, `test_retry.py`. The remaining 50 test files are NOT run in CI.
 
 CLAUDE.md §9 *Testing* claims "600+ tests collected" — actual count 873 (more, not fewer). CONTRIBUTING.md line 75 says "168+ pytest tests" (stale from an earlier release). Three different numbers (168, 600, 940) exist in-repo describing the same artifact.
@@ -189,6 +191,8 @@ The "9 Products" section is dense walls of text. A 30-second-attention-span YC p
 
 ### F-9 — Top-of-README value prop is not stranger-readable in 30 seconds [HIGH]
 
+> **✅ CLOSED by PR-6G (2026-05-24).** README now leads with a one-sentence value prop ("CODEC turns a Mac into a voice-controlled AI workstation that runs 100% on your machine…") above the badges, before "What This Is". (Demo GIF in the first viewport = F-8, handoff to Mickael.)
+
 **What's missing:** Top of README is identity-and-credentials heavy:
 - 2 logos / titles / taglines (lines 1-9)
 - 6 badges (line 12-19)
@@ -213,6 +217,8 @@ Then GIF. Then 3 bullet points (the unique angles). Then the rest.
 ---
 
 ### F-10 — Unique angles per Mickael's brief are present but underweighted [HIGH]
+
+> **✅ CLOSED by PR-6G (2026-05-24).** New "## Why CODEC, not the alternatives" section near the top with the three moat bullets (vs Open Interpreter/Aider, vs Cursor/Claude Desktop via MCP-as-server, vs CrewAI/LangChain via the zero-dep runtime) + the five-way combination framing.
 
 **What's missing:** The four positioning angles from the brief are *in* the README but not prominent:
 
@@ -299,6 +305,8 @@ Also add `docs/VISION.md` (3 pages) for the longer narrative.
 
 ### F-14 — Architecture diagram exists but is buried [MEDIUM]
 
+> **✅ CLOSED by PR-6G (2026-05-24).** New top-level "## Architecture" section (right before Quick Start): condensed mermaid topology + 3 topology bullets (inbound-private, gated+audited, swappable LLM) + a direct link to `docs/ARCHITECTURE.md`.
+
 **What's missing:** `docs/ARCHITECTURE.md` *exists* (and is well-written, mermaid diagram, ~40 lines reviewed). README does NOT link to it from the body — only an indirect path through the "Project Structure" block at line 614+.
 
 **Why investors / enterprise customers expect it:**
@@ -352,6 +360,8 @@ authlib google-auth-httplib2 --break-system-packages
 
 ### F-17 — README + CONTRIBUTING.md test counts disagree (3 different numbers in repo) [LOW]
 
+> **✅ CLOSED by PR-6G (2026-05-24).** One number (`1,300+`) across the README badge+body, CONTRIBUTING.md and AGENTS.md; the exact `1,386` functions / `1,685` collected appear in the bodies for transparency. Skills reconciled to 76 in the same files. (Same PR as F-3.)
+
 **What's missing:** Three test-count claims live in the repo:
 - README badge: `tests-940+`
 - README line 653: `940+ pytest tests across 53 files`
@@ -369,6 +379,8 @@ Verified count: 873 test functions across 54 files (`grep` of `def test_` in `te
 ---
 
 ### F-18 — No README mention of "agent-to-agent like Lucy" (Mickael's headline angle) [LOW]
+
+> **🟡 PARTIALLY CLOSED by PR-6G (2026-05-24).** MCP section now has a "Bidirectional MCP — agent-to-agent" subsection: CODEC is **both an MCP client AND server**, two CODECs peer directly = agent-to-agent on the open protocol. The generic angle is stated. **Open for Mickael:** whether "Lucy" is a separate brand to *name* in the README (tracked in `docs/HANDOFF-MICKAEL.md`).
 
 **What's missing:** Per the audit brief, one of Mickael's headline unique angles is *"Talk to other agents like Lucy"* — i.e. multi-agent agent-to-agent collaboration via MCP. README's MCP section frames the bridge as CODEC → Claude (Claude consumes CODEC tools), not CODEC → other-agent (CODEC peers with Lucy or another MCP-speaking agent).
 
