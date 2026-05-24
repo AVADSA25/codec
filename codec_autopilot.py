@@ -195,6 +195,12 @@ def _tick(cfg: dict, state: dict, registry: SkillRegistry):
 def main():
     log.info("CODEC Autopilot starting. config=%s state=%s poll=%ss",
              CONFIG, STATE, POLL_SEC)
+    # H-1 (PR-4A-2): graceful shutdown on PM2 SIGTERM. State.json is written
+    # per-fire so there's nothing to flush — a clean exit log is enough.
+    import codec_lifecycle
+    codec_lifecycle.install_handlers(
+        lambda: log.info("CODEC Autopilot graceful shutdown"),
+        name="codec-autopilot")
     registry = SkillRegistry(SKILLS_DIR)
     registry.scan()
     while True:

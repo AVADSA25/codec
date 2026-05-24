@@ -300,7 +300,10 @@ def _screencapture_and_ocr_blocking() -> str:
     Separated so it can be monkeypatched in tests."""
     import tempfile
     try:
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+        # H-1 (PR-4A-2): distinctive prefix so a SIGTERM that interrupts this
+        # function (before the os.unlink below) leaves a file the shutdown
+        # cleanup can safely glob-purge without touching other apps' temp pngs.
+        with tempfile.NamedTemporaryFile(prefix="codec_obs_", suffix=".png", delete=False) as f:
             tmp_png = f.name
         # silent screen capture, primary display only, no sound
         subprocess.run(
@@ -819,6 +822,23 @@ def run_daemon() -> None:
     at start AND each iteration so flipping the env var disables the
     loop without requiring a process restart."""
     log.info("[observer] daemon starting")
+
+    # H-1 (PR-4A-2): graceful shutdown on PM2 SIGTERM. The RAM ring buffer is
+    # ephemeral by design; the concrete leak is a screencapture tempfile left
+    # behind if SIGTERM interrupts _screencapture_and_ocr_blocking before its
+    # os.unlink. Best-effort purge any namespaced captures on the way out.
+    def _observer_cleanup():
+        import glob as _glob
+        import tempfile as _tf
+        for _f in _glob.glob(os.path.join(_tf.gettempdir(), "codec_obs_*.png")):
+            try:
+                os.unlink(_f)
+            except OSError:
+                pass
+        log.info("[observer] graceful shutdown")
+    import codec_lifecycle
+    codec_lifecycle.install_handlers(_observer_cleanup, name="codec-observer")
+
     while True:
         if not _enabled():
             # Sleep 30s and re-check — cheap; enables runtime kill via env.
