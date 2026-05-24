@@ -58,6 +58,11 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+# H-3 (PR-4E): the cross-process flock primitive (stdlib-only; does NOT import
+# codec_audit, so no cycle with this foundation module). Used in _write to
+# serialize rotation + append across all PM2 daemons.
+import codec_jsonstore
+
 # ── Storage ────────────────────────────────────────────────────────────────────
 _AUDIT_DIR = Path(os.path.expanduser("~/.codec"))
 _AUDIT_DIR.mkdir(parents=True, exist_ok=True)
@@ -509,12 +514,20 @@ def _write(record: dict) -> None:
         return
     try:
         with _LOCK:
-            _rotate_if_needed()
-            f = _open_audit_log_append()
-            try:
-                f.write(line)
-            finally:
-                f.close()
+            # H-3 (PR-4E): wrap rotation + append in a cross-process flock on the
+            # stable `audit.log.lock` sidecar. The in-process _LOCK only serializes
+            # threads within ONE daemon; all 11 PM2 daemons share this log. The
+            # sidecar inode is never renamed (unlike audit.log on rotation), so it
+            # serializes the whole rotate-or-write critical section across
+            # processes — closing Race A (concurrent rotation), Race B (write
+            # during rotation), and Race C (>PIPE_BUF line interleaving).
+            with codec_jsonstore.file_lock(_AUDIT_LOG):
+                _rotate_if_needed()
+                f = _open_audit_log_append()
+                try:
+                    f.write(line)
+                finally:
+                    f.close()
     except Exception:
         pass
 

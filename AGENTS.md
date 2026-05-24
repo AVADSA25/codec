@@ -397,7 +397,7 @@ Rule-based compressor for memory writes that need shrinking. Entity abbreviation
 ## 6. Audit + notification contract
 
 ### Audit log (`codec_audit.audit()`)
-File: `~/.codec/audit.log`, newline-delimited JSON, daily rotation, 30-day retention. Append is thread-safe via `threading.Lock`.
+File: `~/.codec/audit.log`, newline-delimited JSON, daily rotation, 30-day retention. Append is thread-safe via `threading.Lock` AND cross-process-safe via `fcntl.flock(LOCK_EX)` on the `audit.log.lock` sidecar (PR-4E/H-3) — the whole rotate-or-write critical section is serialized across all 11 PM2 daemons, so concurrent writes/rotation can't corrupt, split, or interleave entries.
 
 **Schema status: UNIFIED (schema:1) — Phase 1 Step 1 implemented on the `phase1-step1-audit-unification` branch (HEAD 05f9b80).** The unified envelope is:
 
