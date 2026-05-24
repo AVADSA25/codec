@@ -648,22 +648,43 @@ _VALID_TRANSITIONS: Dict[str, frozenset] = {
 }
 
 
+def _status_lock(manifest_path: Path):
+    """B-7: cross-process flock for the status CAS (same primitive PR-4E uses
+    for audit.log). Falls back to a no-op context if codec_jsonstore is
+    unavailable (headless/CI) — never breaks set_status."""
+    try:
+        import codec_jsonstore
+        return codec_jsonstore.file_lock(manifest_path)
+    except Exception:
+        import contextlib
+        return contextlib.nullcontext()
+
+
 def set_status(agent_id: str, new_status: str, reason: Optional[str] = None) -> None:
-    """Atomically transition manifest.json's status. Raises
-    InvalidStatusTransition if the move violates the state machine."""
-    manifest = load_manifest(agent_id)
-    current = manifest.get("status", "draft_pending")
-    allowed = _VALID_TRANSITIONS.get(current, frozenset())
-    if new_status not in allowed:
-        raise InvalidStatusTransition(
-            f"cannot transition {current!r} → {new_status!r} "
-            f"(allowed: {sorted(allowed)})"
-        )
-    manifest["status"] = new_status
-    manifest["updated_at"] = _now_iso()
-    if reason:
-        manifest["status_reason"] = reason
-    save_manifest(agent_id, manifest)
+    """Atomically + cross-process-safely transition manifest.json's status (B-7).
+
+    The load → validate-transition → write CAS runs under a flock on the
+    manifest, so a daemon write and a concurrent PWA write can't clobber each
+    other or skip a transition (the daemon's _atomic_set_status wraps this, so
+    both processes share the one lock). Raises InvalidStatusTransition if the
+    move violates the state machine."""
+    agent_dir = _agent_dir(agent_id)
+    agent_dir.mkdir(parents=True, exist_ok=True)  # so the .lock sidecar can be created
+    manifest_path = agent_dir / "manifest.json"
+    with _status_lock(manifest_path):
+        manifest = load_manifest(agent_id)
+        current = manifest.get("status", "draft_pending")
+        allowed = _VALID_TRANSITIONS.get(current, frozenset())
+        if new_status not in allowed:
+            raise InvalidStatusTransition(
+                f"cannot transition {current!r} → {new_status!r} "
+                f"(allowed: {sorted(allowed)})"
+            )
+        manifest["status"] = new_status
+        manifest["updated_at"] = _now_iso()
+        if reason:
+            manifest["status_reason"] = reason
+        save_manifest(agent_id, manifest)
 
 
 # ── Audit helper ──────────────────────────────────────────────────────────────

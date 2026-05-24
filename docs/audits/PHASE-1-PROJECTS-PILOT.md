@@ -64,6 +64,9 @@ Four read-only specialist passes over the four modules + their six test files (`
 **Fix:** call `get_unread_user_replies(agent_id, since_ts)` in the checkpoint loop, inject into history, advance `since_ts` (track a consumed-offset, not a float ts — see B-20).
 
 ### B-7 — No single state-machine authority (cross-process status races) [HIGH]
+
+> **✅ FIXED by PR-7D (2026-05-24).** `set_status` was already the single writer (the daemon's `_atomic_set_status` wraps it); PR-7D makes its load→validate→write CAS **cross-process atomic** by wrapping it in `codec_jsonstore.file_lock(manifest.json)` — the same flock primitive PR-4E uses for `audit.log`. So a daemon write and a concurrent dashboard write can no longer clobber each other or skip a transition; the `_VALID_TRANSITIONS` check is now atomic with the write. Graceful nullcontext fallback if `codec_jsonstore` is unavailable. 3 tests (`tests/test_status_cas.py`); 110 agent-plan/runner/atomic-status tests stay green. **B-9** (approve_plan's non-transactional 3-file write + the illegal `awaiting_approval→aborted` recovery) is a separate follow-up.
+
 **What:** the daemon (`_atomic_set_status`) and the PWA (`set_status`, `plan.py:654-666`) both write the same `manifest.json` status cross-process with only per-write atomicity and **no flock**; the `current in _VALID_TRANSITIONS` CAS check is not atomic with the write.
 **Why it matters:** a daemon `running→blocked` and a concurrent PWA `running→paused` race on the read → last-writer-wins drops a transition. Unlike `audit.log` (flock'd in PR-4E), agent state has no cross-process serialization, so the transition-validity guarantee is illusory under concurrency.
 **Fix:** one `flock`-guarded compare-and-swap status helper in `codec_agent_plan`, used identically by daemon and routes.
