@@ -310,7 +310,7 @@ After decisions, the ordered checklist from Audit E:
 **PR count estimate:** 5-6 (clustered by Audit F's 2-day burn-down plan)
 
 Day 1 morning (~3h total):
-- PR-6A: F-1 SECURITY.md + F-6 CODE_OF_CONDUCT.md + F-7 FUNDING.yml + F-16 garbage file delete
+- PR-6A: F-1 + F-6 + F-7 + F-16 ✅ (branch `fix/pr6a-oss-health`). `SECURITY.md` (GitHub Private Vuln Reporting primary + `security@avadigital.ai`; supported versions; in/out-of-scope), `CODE_OF_CONDUCT.md` (adopts Contributor Covenant 2.1 by reference + `conduct@avadigital.ai` — written adopt-by-reference to avoid reproducing the graphic enumeration), `.github/FUNDING.yml` (github [AVADSA25] + custom paypal/site), and `git rm` the stray `authlib google-auth-httplib2 --break-system-packages` root file. **Plus `docs/HANDOFF-MICKAEL.md`** — the living action-items doc (merge queue, Apple cert/keys, open decisions, Wave-6 assets). 5 tests (`tests/test_repo_health.py`); full suite zero new; ruff clean.
 - PR-6B: F-3 + F-17 — reconcile test counts; swap static badge for workflow-status badge
 - PR-6C: F-12 — Discord + GitHub Discussions + add to README header
 

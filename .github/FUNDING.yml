@@ -1,0 +1,5 @@
+# Funding / sponsorship surfaces for the repo's "Sponsor" button.
+# `github:` lights up once the AVADSA25 org is enrolled in GitHub Sponsors
+# (see docs/HANDOFF-MICKAEL.md §3); the custom URLs work immediately.
+github: [AVADSA25]
+custom: ["https://paypal.me/avadsa25", "https://avadigital.ai"]
