@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "codec"
+dynamic = ["version"]                       # ← VERSION file (F-5 single source of truth)
+description = "CODEC — the engine behind the Sovereign AI Workstation: a voice-controlled, local-first AI agent for macOS."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [{ name = "AVA Digital LLC", email = "ava.dsa25@proton.me" }]
+keywords = ["ai-agent", "voice-assistant", "local-first", "mcp", "macos", "automation"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: MacOS X",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Office/Business",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
+# Core runtime deps (mirrors requirements.txt). Optional stacks are extras below.
+dependencies = [
+    "pynput>=1.8.2",
+    "sounddevice>=0.4.6",
+    "soundfile>=0.12.1",
+    "numpy>=2.4.6",
+    "requests>=2.34.2",
+    "simple-term-menu>=1.6.6",
+    "httpx>=0.28.1",
+    "fastmcp>=0.1.0",
+]
+
+[project.optional-dependencies]
+tts = ["mlx-audio", "misaki", "num2words", "phonemizer-fork", "spacy"]
+stt = ["mlx-whisper", "fastapi", "uvicorn"]
+google = ["google-auth", "google-auth-oauthlib", "google-api-python-client"]
+
+[project.urls]
+Homepage = "https://avadigital.ai"
+Repository = "https://github.com/AVADSA25/codec"
+Changelog = "https://github.com/AVADSA25/codec/blob/main/CHANGELOG.md"
+
+[tool.setuptools.dynamic]
+version = { file = "VERSION" }
+
+[tool.setuptools]
+# CODEC is an APPLICATION run via PM2 from a checkout — NOT a pip-installable library.
+# The 57 flat `codec_*.py` modules import each other as top-level names, and `skills/` is a
+# runtime-loaded directory (no __init__.py), not a package. This file therefore declares
+# project metadata + the dependency set (introspectable, modern-packaging signal) and
+# deliberately does not vendor the flat modules into a wheel. Run CODEC from the repo per
+# README → "Professional Setup". (py-modules = [] keeps the metadata build valid without
+# triggering flat-layout auto-discovery errors.)
+py-modules = []
