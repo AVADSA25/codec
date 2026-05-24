@@ -90,7 +90,7 @@ CLAUDE.md §9 *Testing* claims "600+ tests collected" — actual count 873 (more
 
 ### F-4 — CI runs <10% of the test suite [HIGH]
 
-> **🟡 PARTIALLY CLOSED by PR-6I (2026-05-24).** CI already grew past the audit's 4-file snapshot (now also runs the D-1 manifest gate, `test_skill_registry`, `test_keychain`). PR-6I adds a **Dependabot config** (`.github/dependabot.yml`: weekly pip + github-actions, grouped, capped) **and** gates the deterministic readiness doc-guards (`test_repo_health`, `test_privacy_doc`, `test_readme_investor`, `test_one_pager`, `test_apple_packaging`, `test_dependabot`) — all stdlib-pure so they stay green on the ubuntu runner. **Still open (Mickael's call, `docs/HANDOFF-MICKAEL.md §3`):** gating the *full* suite would require cleaning ~639 repo-wide `ruff` findings + resolving platform/optional-dep test failures on the runner — deliberately NOT done unilaterally (touches working code). No coverage gate / Python-version matrix yet.
+> **🟢 MOSTLY CLOSED (PR-6I 2026-05-24 + PR #138 2026-05-25).** PR-6I added a **Dependabot config** + gated the deterministic readiness doc-guards (now also `test_versioning`, `test_pyproject`). **PR #138 added a real `ruff` lint gate** to CI (`ruff check .` via `ruff.toml`) — the ~640 findings were resolved (229 safe auto-fixes + house-style rules config-ignored), so lint now blocks regressions on every PR; it also caught + fixed a latent `subprocess`-unimported bug in `codec_heartbeat.py`. **Still open (deferred, Mickael's call):** gating the *full* pytest suite needs the optional-dep matrix (`pynput`/`fastmcp` …) sorted on the runner; no coverage gate / Python-version matrix yet. Lint + doc-guards + skill/manifest/keychain/oauth gates all run today.
 
 **What's missing:** `.github/workflows/ci.yml` runs exactly 4 test scripts on push/PR to main:
 ```yaml
@@ -282,6 +282,8 @@ The README sells *features* well. It does not sell *positioning* — the *why-th
 
 ### F-12 — No CONTRIBUTORS / community-surface signals [MEDIUM]
 
+> **✅ CLOSED (2026-05-25, PR #140).** GitHub **Discussions enabled** (repo setting) + a Discussions badge added to the README badge row — a real community surface beyond Issues. (Discord deferred per Mickael — Discussions is the zero-maintenance native channel.) Contributor count is a stars-and-time problem, not a doc fix.
+
 **What's missing:** README mentions no Discord, no Twitter/X handle, no GitHub Discussions, no Reddit subreddit, no community surface beyond GitHub Issues. The repo currently has 2 contributors per the brief.
 
 **Why investors / enterprise customers expect it:**
@@ -343,6 +345,8 @@ Also add `docs/VISION.md` (3 pages) for the longer narrative.
 ---
 
 ### F-15 — `requirements.txt` is minimal; no `pyproject.toml` / no lock file [MEDIUM]
+
+> **✅ CLOSED (2026-05-25, PR #139).** `pyproject.toml` added with full `[project]` metadata (name, description, MIT license, `requires-python>=3.10`, authors, keywords, classifiers, URLs), **dynamic version from the `VERSION` file** (F-5 single source of truth), core deps mirrored from `requirements.txt`, and TTS/STT/Google extras. Builds a valid wheel (`codec-2.3.0-py3-none-any.whl`); pinned by `tests/test_pyproject.py` (CI-gated). Honest scope: CODEC is an app run from a checkout (not a pip library), so the flat modules aren't vendored. Lock file still deferred (low value for an app run via PM2). See `docs/F15-PYPROJECT-DESIGN.md`.
 
 **What's missing:** `requirements.txt` lists 8 dependencies with `>=` floors and no upper bounds. No `pyproject.toml`. No `poetry.lock` / `uv.lock` / `requirements-lock.txt`. No `setup.cfg`.
 
