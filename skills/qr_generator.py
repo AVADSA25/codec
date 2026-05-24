@@ -4,7 +4,10 @@ SKILL_TRIGGERS = ["generate qr", "make qr code", "qr code for", "create qr"]
 SKILL_DESCRIPTION = "Generate QR codes from text or URLs"
 SKILL_MCP_EXPOSE = True
 
-import subprocess, os, tempfile, re
+import subprocess
+import os
+import tempfile
+import re
 
 def run(task, app="", ctx=""):
     text = task

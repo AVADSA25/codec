@@ -18,7 +18,11 @@ Env:   CODEC_MCP_HTTP_PORT       (default 8091)
        CODEC_MCP_PUBLIC_BASE_URL (default https://codec-mcp.lucyvpa.com)
        CODEC_MCP_RATE_PER_MIN    (default 60)
 """
-import os, sys, logging, time, json, threading
+import os
+import sys
+import logging
+import time
+import threading
 from collections import defaultdict, deque
 
 _REPO_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -103,7 +107,7 @@ def main():
 
     # ---------- Middleware: rate limit + metrics ----------
     from starlette.middleware.base import BaseHTTPMiddleware
-    from starlette.responses import JSONResponse, PlainTextResponse
+    from starlette.responses import JSONResponse
     from starlette.routing import Route
 
     class RateAndMetricsMiddleware(BaseHTTPMiddleware):

@@ -4,8 +4,6 @@ Covers: parser, registry, dispatch, individual command handlers.
 Uses pytest. Run with: pytest -xvs tests/test_slash_commands.py
 """
 from __future__ import annotations
-import json
-import os
 import sys
 from pathlib import Path
 

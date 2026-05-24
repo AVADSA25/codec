@@ -8,7 +8,12 @@ SKILL_TRIGGERS = [
 ]
 SKILL_MCP_EXPOSE = True
 
-import os, re, json, tempfile, subprocess, requests
+import os
+import re
+import json
+import tempfile
+import subprocess
+import requests
 
 _CFG_PATH = os.path.expanduser("~/.codec/config.json")
 try:

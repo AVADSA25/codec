@@ -8,7 +8,8 @@ SKILL_TRIGGERS = [
 ]
 SKILL_MCP_EXPOSE = True
 
-import subprocess, json
+import subprocess
+import json
 
 _SCRIPT = '''
 tell application "System Events"

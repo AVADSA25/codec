@@ -17,7 +17,6 @@ import os
 import base64
 import subprocess
 import struct
-import math
 from datetime import datetime
 
 # ─── Configuration ───────────────────────────────────────────────────────────
@@ -116,7 +115,7 @@ def authenticate():
                 token = data.get("token", "")
                 if token:
                     SESSION.cookies.set("codec_session", token)
-                record("PASS", "auth", "PIN authentication", f"Session established", elapsed)
+                record("PASS", "auth", "PIN authentication", "Session established", elapsed)
                 AUTHED = True
                 return
             else:
@@ -692,13 +691,13 @@ def test_pm2_processes():
 def print_summary():
     total = PASS_COUNT + FAIL_COUNT + SKIP_COUNT
     print(f"\n{'='*80}")
-    print(f"  CODEC FULL TEST SUMMARY")
+    print("  CODEC FULL TEST SUMMARY")
     print(f"{'='*80}")
     print(f"  Total: {total}   \033[92mPassed: {PASS_COUNT}\033[0m   \033[91mFailed: {FAIL_COUNT}\033[0m   \033[93mSkipped: {SKIP_COUNT}\033[0m")
     if FAIL_COUNT == 0:
-        print(f"  \033[92mALL TESTS PASSED\033[0m")
+        print("  \033[92mALL TESTS PASSED\033[0m")
     else:
-        print(f"\n  Failed tests:")
+        print("\n  Failed tests:")
         for r in RESULTS:
             if r["status"] == "FAIL":
                 print(f"    - {r['name']}: {r['detail'][:70]}")
@@ -727,7 +726,7 @@ def save_results():
 # ─── Main ────────────────────────────────────────────────────────────────────
 def main():
     print(f"\n{'#'*80}")
-    print(f"  CODEC FULL PRODUCTION TEST SUITE")
+    print("  CODEC FULL PRODUCTION TEST SUITE")
     print(f"  Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"  Base URL: {BASE_URL}")
     print(f"{'#'*80}")

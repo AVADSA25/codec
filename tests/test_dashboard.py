@@ -1,5 +1,8 @@
 """Test dashboard endpoints — requires codec_dashboard.py running on :8090"""
-import json, os, pytest, requests
+import json
+import os
+import pytest
+import requests
 
 BASE = "http://localhost:8090"
 

@@ -5,7 +5,17 @@
 # tkinter overlays and leaking temp .wav/.png files on every PM2 restart.
 import signal
 """CODEC v2.1 | F13=on/off | F18=voice | F16=text | *=screenshot | +=doc | Wake word"""
-import logging, threading, tempfile, subprocess, os, sys, time, json, re, base64, shutil
+import logging
+import threading
+import tempfile
+import subprocess
+import os
+import sys
+import time
+import json
+import re
+import base64
+import shutil
 import atexit
 from datetime import datetime
 from pynput import keyboard
@@ -223,7 +233,7 @@ def _maybe_screen_context(task: str) -> str:
         return ""
     # Relevance: trivial intents ignore screen context
     if _TRIVIAL_SCREEN_BYPASS.match(task or ""):
-        print(f"[CODEC] Trivial task — skipping screen context injection")
+        print("[CODEC] Trivial task — skipping screen context injection")
         return ""
     # Use it, one-shot
     out = " [SCREEN CONTEXT: " + ctx[:800] + "]"
@@ -439,7 +449,7 @@ def _dispatch_inner(task):
         push(lambda: show_processing_overlay('Drafting your message...', 15000))
         with open(DRAFT_TASK_FILE, "w") as f:
             json.dump({"task": task, "ctx": ctx, "app": app}, f)
-        print(f"[CODEC] Draft queued for watcher")
+        print("[CODEC] Draft queued for watcher")
         return
 
     rid = save_task(task, app)
@@ -715,7 +725,8 @@ def wake_word_listener():
                 continue
             # Check actual audio energy
             try:
-                import wave, numpy as np
+                import wave
+                import numpy as np
                 wf = wave.open(tmp.name, 'rb')
                 data = np.frombuffer(wf.readframes(wf.getnframes()), dtype=np.int16)
                 wf.close()

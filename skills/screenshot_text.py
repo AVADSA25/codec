@@ -4,7 +4,10 @@ SKILL_TRIGGERS = ["read my screen", "read screen", "ocr", "text on screen", "wha
 SKILL_DESCRIPTION = "Screenshot the screen and extract text using vision"
 SKILL_MCP_EXPOSE = True
 
-import subprocess, tempfile, base64, requests
+import subprocess
+import tempfile
+import base64
+import requests
 
 def run(task, app="", ctx=""):
     try:

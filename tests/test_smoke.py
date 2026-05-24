@@ -6,7 +6,8 @@ Run after ANY change to codec.py, codec_overlays.py, codec_watcher.py, or codec_
 
 Every test here exists because a real bug shipped without it.
 """
-import sys, os, importlib, types
+import sys
+import os
 
 # Ensure repo root is on path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

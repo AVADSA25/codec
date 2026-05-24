@@ -25,7 +25,6 @@ sqlite and exercises the same INSERT/SELECT shape the production handler
 uses (codec_dashboard.py:1453-1457 and 1440)."""
 import re
 import sqlite3
-import tempfile
 from pathlib import Path
 from datetime import datetime
 

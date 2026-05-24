@@ -6,7 +6,8 @@ SKILL_TRIGGERS = ["find file", "search file", "locate file", "where is file",
 SKILL_DESCRIPTION = "Search for files by name or content"
 SKILL_MCP_EXPOSE = True
 
-import subprocess, re
+import subprocess
+import re
 
 
 def _extract_query(task: str) -> str:

@@ -8,9 +8,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock
 
-import pytest
 
 _REPO = Path(__file__).resolve().parents[1]
 if str(_REPO) not in sys.path:

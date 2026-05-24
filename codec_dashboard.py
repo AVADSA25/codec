@@ -1,5 +1,14 @@
 """CODEC v2.1 — Phone Dashboard & PWA"""
-import os, json, sqlite3, time, subprocess, hmac, threading, uuid, asyncio, re, secrets
+import os
+import json
+import sqlite3
+import time
+import subprocess
+import hmac
+import threading
+import uuid
+import asyncio
+import secrets
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -233,7 +242,7 @@ class E2EMiddleware(BaseHTTPMiddleware):
         if not aes_key:
             # E2E header present but server lost key (e.g. after restart) — tell client to re-negotiate
             if request.method in ("POST", "PUT", "DELETE"):
-                log.warning(f"[E2E] Key missing for session, requesting re-negotiation")
+                log.warning("[E2E] Key missing for session, requesting re-negotiation")
                 return StarletteJSONResponse(
                     {"error": "E2E key expired. Refreshing encryption.", "e2e_renew": True},
                     status_code=428,  # Precondition Required
@@ -414,7 +423,7 @@ async def observer_buffer(request: Request, debug: int = 0):
         try:
             _le(
                 OBSERVER_BUFFER_INSPECTED, "codec-dashboard",
-                f"observer buffer inspected via /api/observer/buffer",
+                "observer buffer inspected via /api/observer/buffer",
                 extra={
                     "client_ip": client_ip,
                     "buffer_entries_returned": len(snap),
@@ -1281,7 +1290,8 @@ async def webcam_stream():
 @app.get("/api/webcam/snapshot")
 async def webcam_snapshot():
     """Capture a single frame from the Mac's webcam and return as JPEG."""
-    import cv2, base64
+    import cv2
+    import base64
     from concurrent.futures import ThreadPoolExecutor
     def _capture():
         cap = cv2.VideoCapture(0)
@@ -1347,7 +1357,8 @@ async def set_clipboard(request: Request):
 @app.post("/api/upload")
 async def upload_document(request: Request):
     """Extract text from uploaded PDF, DOCX, CSV, or text files (up to 50MB)"""
-    import base64, subprocess
+    import base64
+    import subprocess
     try:
         body = await request.json()
     except Exception:
@@ -1374,7 +1385,9 @@ async def upload_document(request: Request):
         # ── DOCX ──
         if ext == ".docx":
             try:
-                import zipfile, io, xml.etree.ElementTree as ET
+                import zipfile
+                import io
+                import xml.etree.ElementTree as ET
                 zf = zipfile.ZipFile(io.BytesIO(raw))
                 xml_content = zf.read("word/document.xml")
                 tree = ET.fromstring(xml_content)
@@ -1837,7 +1850,8 @@ async def preview_frame():
 
 @app.post("/api/run_code")
 async def run_code(request: Request):
-    import asyncio, time as _time
+    import asyncio
+    import time as _time
     body = await request.json()
     code = body.get("code", "")
     language = body.get("language", "python")
@@ -2090,7 +2104,8 @@ def _enrich_messages(messages: list, config: dict, force_search: bool = False) -
     should_search = (any(t in lower for t in search_triggers) or force_search) and not urls
     if should_search:
         try:
-            import sys, os as _os
+            import sys
+            import os as _os
             repo_dir = _os.path.dirname(_os.path.abspath(__file__))
             if repo_dir not in sys.path:
                 sys.path.insert(0, repo_dir)
@@ -2127,7 +2142,8 @@ async def web_search_endpoint(request: Request):
     if not query:
         return JSONResponse({"error": "query required"}, status_code=400)
     try:
-        import sys, os as _os
+        import sys
+        import os as _os
         repo_dir = _os.path.dirname(_os.path.abspath(__file__))
         if repo_dir not in sys.path:
             sys.path.insert(0, repo_dir)
@@ -2849,7 +2865,7 @@ async def chat_completion(request: Request):
                     if not m:
                         return raw_tag  # not a skill tag at all — emit as-is
                     if not _budget.consume("post_llm_skill_tag"):
-                        log.info(f"[Chat] step_budget exhausted — dropping [SKILL:...] tag")
+                        log.info("[Chat] step_budget exhausted — dropping [SKILL:...] tag")
                         return raw_tag.replace(m.group(0), "")
                     s_name, s_query = m.group(1), m.group(2)
                     if s_name not in CHAT_SKILL_ALLOWLIST:

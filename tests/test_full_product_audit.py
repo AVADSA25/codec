@@ -17,16 +17,11 @@ This test suite covers:
 
 import os
 import sys
-import json
 import time
 import sqlite3
 import importlib
-import tempfile
 import subprocess
 import re
-import hashlib
-import threading
-from unittest.mock import patch, MagicMock
 from pathlib import Path
 
 import pytest
@@ -541,7 +536,7 @@ class TestSkillRegistry:
         match = reg.match_trigger("display the results")
         # Should NOT match 'play' skill if it exists
         if match:
-            assert match != "music", f"'display' incorrectly matched music skill"
+            assert match != "music", "'display' incorrectly matched music skill"
 
 
 class TestSkillFiles:
@@ -557,7 +552,7 @@ class TestSkillFiles:
                 py_compile.compile(str(sf), doraise=True)
             except py_compile.PyCompileError as e:
                 errors.append(f"{sf.name}: {e}")
-        assert not errors, f"Compilation errors:\n" + "\n".join(errors)
+        assert not errors, "Compilation errors:\n" + "\n".join(errors)
 
     def test_all_skills_have_run(self):
         """Every skill should have a run() function."""
@@ -927,7 +922,7 @@ class TestConfigAndSafety:
     """Test configuration and safety systems."""
 
     def test_config_loads(self):
-        from codec_config import cfg, load_config
+        from codec_config import cfg
         assert isinstance(cfg, dict)
 
     def test_dangerous_patterns(self):
@@ -1298,7 +1293,7 @@ class TestAllFilesCompile:
                 py_compile.compile(str(f), doraise=True)
             except py_compile.PyCompileError as e:
                 errors.append(f"{f.name}: {e}")
-        assert not errors, f"Compilation errors:\n" + "\n".join(errors)
+        assert not errors, "Compilation errors:\n" + "\n".join(errors)
 
     def test_all_skill_files_compile(self):
         import py_compile
@@ -1309,4 +1304,4 @@ class TestAllFilesCompile:
                 py_compile.compile(str(f), doraise=True)
             except py_compile.PyCompileError as e:
                 errors.append(f"{f.name}: {e}")
-        assert not errors, f"Skill compilation errors:\n" + "\n".join(errors)
+        assert not errors, "Skill compilation errors:\n" + "\n".join(errors)

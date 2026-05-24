@@ -1,7 +1,6 @@
 """Voice pipeline E2E tests -- mock STT/LLM/TTS services, test the full chain."""
 import asyncio
 import json
-import struct
 import sys
 import os
 import time

@@ -985,7 +985,7 @@ def main():
         log.info("All senders allowed (configure imessage.allowed_senders to restrict)")
 
     audit("SERVICE_START")
-    log.info(f"Triggers: 'Hey CODEC' or '/codec' — all other messages ignored")
+    log.info("Triggers: 'Hey CODEC' or '/codec' — all other messages ignored")
     log.info(f"Polling every {poll_interval}s | LLM: {llm_cfg['model']}")
 
     # H-1 (PR-4A-2): graceful shutdown on PM2 SIGTERM. Without this the existing

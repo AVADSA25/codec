@@ -1,5 +1,9 @@
 """CODEC Dashboard — Auth routes (biometric, PIN, TOTP, E2E key exchange)."""
-import os, json, secrets, time, subprocess
+import os
+import json
+import secrets
+import time
+import subprocess
 from datetime import datetime
 
 # Audit emits route through the unified log_event adapter (real, not no-op)
@@ -171,7 +175,10 @@ async def auth_pin(request: Request):
 @router.post("/api/auth/totp/setup")
 async def totp_setup(request: Request):
     """Generate TOTP secret + QR code for authenticator app setup."""
-    import pyotp, qrcode, io, base64
+    import pyotp
+    import qrcode
+    import io
+    import base64
     if not AUTH_ENABLED:
         return JSONResponse({"error": "Auth not enabled"}, status_code=400)
     secret = pyotp.random_base32()

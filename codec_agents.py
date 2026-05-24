@@ -1341,7 +1341,7 @@ def data_analyst_crew(**kwargs) -> Crew:
         tasks=[
             f"Gather data and statistics about: {topic}\n"
             f"Find key metrics, benchmarks, historical trends, and comparative data from credible sources.",
-            f"Analyze the data and write an insights report. Save to Google Docs with title: "
+            "Analyze the data and write an insights report. Save to Google Docs with title: "
             "'Data Analysis: " + topic[:60] + " — " + datetime.now().strftime('%Y-%m-%d') + "'"
         ],
         allowed_tools=["web_search", "web_fetch", "google_sheets", "google_docs_create"],

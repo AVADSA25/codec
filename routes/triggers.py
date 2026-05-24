@@ -19,7 +19,6 @@ The dashboard frontend renders a "Triggers" tab consuming these.
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -65,7 +64,7 @@ def _list_triggers() -> list:
 async def list_triggers(request: Request):
     """Return all registered triggers + global enable state."""
     try:
-        from codec_triggers import _enabled, _load_killed
+        from codec_triggers import _enabled
     except Exception:
         return {"triggers": [], "global_enabled": False, "error": "module not loaded"}
     triggers = _list_triggers()

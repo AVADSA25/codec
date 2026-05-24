@@ -69,7 +69,6 @@ disables polling AND injection. No separate injection kill switch.
 """
 from __future__ import annotations
 
-import importlib.util
 import json
 import logging
 import os
@@ -83,7 +82,7 @@ from collections import deque
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 # ── Audit emit ────────────────────────────────────────────────────────────────
 # Lazy-import so module import doesn't pull in codec_audit at startup time.
@@ -93,7 +92,6 @@ from codec_audit import (
     OBSERVATION_TICK,
     OBSERVATION_TICK_SLOW,
     OBSERVATION_SUMMARY_INJECTED,
-    OBSERVER_BUFFER_INSPECTED,
     log_event as _log_event,
 )
 

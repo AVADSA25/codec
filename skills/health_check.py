@@ -1,5 +1,7 @@
 """health_check skill — check CODEC service health across all subsystems."""
-import sys, os, json
+import sys
+import os
+import json
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 SKILL_NAME = "health_check"
@@ -15,7 +17,6 @@ SKILL_MCP_EXPOSE = True
 def run(task: str = "", context: str = "") -> str:
     """Check health of all CODEC subsystems."""
     from urllib.request import urlopen, Request
-    from urllib.error import URLError
     import sqlite3
 
     results = {}

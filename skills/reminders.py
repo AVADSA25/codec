@@ -11,7 +11,8 @@ SKILL_TRIGGERS = [
     "what reminders", "current reminders", "list current reminders",
     "outstanding reminders", "pending reminders",
 ]
-import subprocess, re
+import subprocess
+import re
 
 
 def _is_read_intent(low: str) -> bool:

@@ -5,7 +5,8 @@ SKILL_MCP_EXPOSE = True
 SKILL_TRIGGERS = ["set a timer", "timer for", "remind me in", "alarm in",
                    "set timer", "minute timer", "minutes timer", "second timer", "countdown",
                    "timer", "start a timer", "wake me", "alert me in"]
-import subprocess, re
+import subprocess
+import re
 
 def run(task, app="", ctx=""):
     low = task.lower()
@@ -56,7 +57,8 @@ def run(task, app="", ctx=""):
         pass
 
     # Fallback: also set a local timer with sound alert
-    import threading, tempfile
+    import threading
+    import tempfile
     def fire():
         subprocess.run(["afplay", "/System/Library/Sounds/Glass.aiff"], timeout=5)
         import time; time.sleep(0.5)

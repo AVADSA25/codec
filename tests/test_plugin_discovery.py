@@ -9,7 +9,6 @@ the developer's machine is NEVER touched by these tests.
 """
 from __future__ import annotations
 
-import os
 import sys
 import textwrap
 from pathlib import Path

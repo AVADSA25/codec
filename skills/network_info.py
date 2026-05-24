@@ -5,7 +5,8 @@ SKILL_TRIGGERS = ["my ip", "ip address", "wifi", "network info", "internet speed
 SKILL_DESCRIPTION = "Show network info, IP address, wifi status"
 SKILL_MCP_EXPOSE = True
 
-import subprocess, requests
+import subprocess
+import requests
 
 
 def _first_ipv4() -> str:

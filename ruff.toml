@@ -1,0 +1,37 @@
+# CODEC ruff config (F-4 — investor-readiness audit).
+#
+# The codebase has an established house style: lazy/conditional imports (sys.path
+# setup before imports), compact one-line conditionals, short loop variables. Rather
+# than rewrite hundreds of lines of working, tested code, we ignore those *stylistic*
+# rules and keep ruff focused on the meaningful *correctness* checks — pyflakes (F*):
+# unused imports, undefined names, f-string bugs, redefinitions.
+#
+# Run:  ruff check .        (gated in CI)
+#       ruff check . --fix  (apply safe auto-fixes)
+
+target-version = "py311"
+line-length = 120
+extend-exclude = ["pilot", "swift-overlay"]  # pilot is a separate repo; swift is not Python
+
+[lint]
+# Ruff's default selection is E4/E7/E9 + F. Keep it; drop the house-style stylistic rules.
+ignore = [
+    "E402",  # module-import-not-at-top — lazy/conditional imports + sys.path setup (intentional)
+    "E701",  # multiple-statements-on-one-line (colon) — compact `if x: return`
+    "E702",  # multiple-statements-on-one-line (semicolon)
+    "E741",  # ambiguous-variable-name (l/I/O) — pervasive; renaming is risky churn
+    "E731",  # lambda-assignment
+    "E712",  # comparison-to-True/False — intentional in some boolean-column filters
+]
+
+[lint.per-file-ignores]
+# Tests legitimately keep unused locals (fixtures, captured-but-unasserted) and redefine helpers.
+"tests/*" = ["F811", "F841"]
+# Smoke test + feature-audit script import symbols purely to probe availability (F401 is the point).
+"tests/test_smoke.py" = ["F811", "F841", "F401"]
+"scripts/feature_audit.py" = ["F401", "F841"]
+# A handful of benign unused locals in working skills — left as-is rather than risk-edit live code.
+"skills/memory_entities.py" = ["F841"]
+"skills/mouse_control.py" = ["F841"]
+"skills/pilot.py" = ["F841"]
+"skills/shift_report.py" = ["F841"]

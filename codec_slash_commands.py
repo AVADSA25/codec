@@ -24,7 +24,6 @@ from __future__ import annotations
 import json
 import os
 import platform
-import shutil
 import sqlite3
 import subprocess
 import time

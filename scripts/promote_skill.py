@@ -54,7 +54,7 @@ def _list_pending():
     for date, name, status in found:
         print(f"{date:<12} {status:<14} {name}")
     print(f"\nReview:  open {PROPOSALS}/<date>/<name>.py")
-    print(f"Promote: python3 scripts/promote_skill.py <name>")
+    print("Promote: python3 scripts/promote_skill.py <name>")
 
 
 def _promote(name: str) -> int:

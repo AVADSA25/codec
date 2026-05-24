@@ -4,7 +4,6 @@ Verifies tokens and clients survive a simulated restart via disk persistence
 AND the PR-2B Keychain-encrypted state path.
 """
 import asyncio
-import os
 import sys
 import tempfile
 from pathlib import Path
@@ -14,7 +13,6 @@ import pytest
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-from mcp.server.auth.provider import AuthorizationCode
 from mcp.shared.auth import OAuthClientInformationFull
 from mcp.server.auth.settings import ClientRegistrationOptions
 from pydantic import AnyUrl

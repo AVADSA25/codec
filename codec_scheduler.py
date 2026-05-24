@@ -90,7 +90,9 @@ def toggle_schedule(sched_id: str, enabled: bool) -> bool:
 
 def _notify(title, body, status="success", schedule_id=None):
     """Save notification to dashboard and send macOS notification."""
-    import uuid as _uuid, subprocess as _sp, re as _re
+    import uuid as _uuid
+    import subprocess as _sp
+    import re as _re
     # Extract Google Doc URL if present (crew returns it as first line)
     doc_url = None
     doc_match = _re.search(r'(https://docs\.google\.com/document/d/[^\s]+)', body)
@@ -126,7 +128,7 @@ def _notify(title, body, status="success", schedule_id=None):
     except Exception as e:
         log.warning(f"  Failed to save notification: {e}")
     # 2. macOS notification
-    mac_body = f"Report ready — tap to view" if doc_url else body[:120]
+    mac_body = "Report ready — tap to view" if doc_url else body[:120]
     try:
         _sp.run(["osascript", "-e",
             f'display notification "{mac_body}" with title "CODEC Task" subtitle "{title}"'],
@@ -236,7 +238,8 @@ def check_and_run():
 
         log.info(f"🚀 Scheduled run: {sched['crew']} — {sched.get('topic', '')}")
         # One correlation_id per fired schedule — propagates to schedule_done.
-        import secrets as _secrets, time as _time
+        import secrets as _secrets
+        import time as _time
         sched_cid = _secrets.token_hex(6)
         sched_t0 = _time.monotonic()
         log_event("schedule_fire", "codec-scheduler",

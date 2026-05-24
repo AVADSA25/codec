@@ -1,5 +1,6 @@
 """Scroll web pages via CDP"""
-import sys, os
+import sys
+import os
 sys.path.insert(0, os.path.expanduser("~/codec-repo"))
 
 SKILL_NAME = "chrome_scroll"
@@ -15,7 +16,7 @@ def run(task: str, context: str = "") -> str:
         # Fallback: AppleScript scroll
         import subprocess
         direction = "down" if "down" in task.lower() or "bottom" in task.lower() else "up"
-        subprocess.run(["osascript", "-e", f'tell application "Google Chrome" to activate'],
+        subprocess.run(["osascript", "-e", 'tell application "Google Chrome" to activate'],
                       capture_output=True)
         subprocess.run(["osascript", "-e", f'tell application "System Events" to key code {121 if direction == "down" else 116}'],
                       capture_output=True)

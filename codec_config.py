@@ -1,5 +1,6 @@
 """CODEC Configuration — loads ~/.codec/config.json and exposes all constants"""
-import os, json
+import os
+import json
 
 # pynput requires a display (X11 / AppKit / win32). On headless CI runners
 # (Linux GitHub Actions, Docker) the import raises ImportError. Other modules

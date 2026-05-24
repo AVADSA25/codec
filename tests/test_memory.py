@@ -6,8 +6,6 @@ import pytest
 import sys
 import os
 import sqlite3
-import tempfile
-import time
 from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))

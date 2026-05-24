@@ -197,7 +197,8 @@ def _live_record_loop():
 
     Gemini-style: each chunk is pasted at the current cursor position. No reflow.
     """
-    import requests, queue
+    import requests
+    import queue
     chunk_sec = 2
     q = queue.Queue(maxsize=8)
 
@@ -241,7 +242,8 @@ def _live_record_loop():
         try:
             # Energy check
             try:
-                import wave as _wave, numpy as _np
+                import wave as _wave
+                import numpy as _np
                 wf = _wave.open(path, 'rb')
                 data = _np.frombuffer(wf.readframes(wf.getnframes()), dtype=_np.int16)
                 wf.close()
@@ -543,7 +545,8 @@ def main():
     print("[DICTATE] \U0001f7e2 Ready. Hold right CMD to record. F5 to toggle live dictation.")
 
     # Cleanup on exit — kill sox, overlays, temp files
-    import atexit, glob as _glob
+    import atexit
+    import glob as _glob
     def _cleanup():
         global recording_proc
         if recording_proc:

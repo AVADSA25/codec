@@ -218,7 +218,6 @@ def test_run_agent_posts_started_message_on_spawn(monkeypatch, temp_codec_dir):
     agent_update message announcing the start."""
     import codec_agent_runner as car
     import codec_agent_plan as cap
-    import codec_agent_messaging as cam
 
     # Set up an approved agent (mirror Step 9 test fixture pattern)
     plan_dict = {
@@ -333,7 +332,6 @@ def test_post_api_agents_messages_writes_user_reply(temp_codec_dir):
     """POST /api/agents/{id}/messages writes type=user_reply."""
     from fastapi.testclient import TestClient
     from fastapi import FastAPI
-    import codec_agent_messaging as cam
     import codec_agent_plan as cap
 
     cap.save_manifest("a1", {"agent_id": "a1", "status": "running", "title": "x"})

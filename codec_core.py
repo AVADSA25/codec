@@ -2,7 +2,14 @@
 
 Single source of truth. Edit HERE, not in the consumer files.
 """
-import logging, os, re, sqlite3, subprocess, tempfile, threading, time
+import logging
+import os
+import re
+import sqlite3
+import subprocess
+import tempfile
+import threading
+import time
 from datetime import datetime
 
 log = logging.getLogger(__name__)
@@ -13,8 +20,7 @@ from codec_config import (
     QWEN_VISION_URL, QWEN_VISION_MODEL,
     TTS_ENGINE, KOKORO_URL, KOKORO_MODEL, TTS_VOICE,
     WHISPER_URL,
-    DB_PATH, TASK_QUEUE_FILE, SESSION_ALIVE, SKILLS_DIR,
-    STREAMING,
+    DB_PATH, TASK_QUEUE_FILE, SESSION_ALIVE, STREAMING,
 )
 
 # ── DETECTION ────────────────────────────────────────────────────────────────

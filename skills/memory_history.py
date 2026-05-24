@@ -8,7 +8,10 @@ SKILL_TRIGGERS = [
 ]
 SKILL_MCP_EXPOSE = True
 
-import sys, os, re, json
+import sys
+import os
+import re
+import json
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from codec_memory_upgrade import (
     store_fact, query_valid_facts, get_fact_history, find_contradictions,

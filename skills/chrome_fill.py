@@ -1,5 +1,6 @@
 """Fill web forms via Chrome DevTools Protocol"""
-import sys, os
+import sys
+import os
 sys.path.insert(0, os.path.expanduser("~/codec-repo"))
 
 SKILL_NAME = "chrome_fill"
@@ -38,7 +39,7 @@ def run(task: str, context: str = "") -> str:
             title = await cdp.get_title()
             # Try common selectors if selector is a description
             selectors = [f"#{selector}", f"[name='{selector}']", f"[placeholder*='{selector}']",
-                         f"input[type='text']", "input:not([type='hidden'])", "textarea"]
+                         "input[type='text']", "input:not([type='hidden'])", "textarea"]
             for sel in selectors:
                 els = await cdp.get_elements(sel)
                 if els:

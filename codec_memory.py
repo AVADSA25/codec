@@ -1,5 +1,8 @@
 """CODEC Memory — SQLite FTS5 full-text search over all conversations."""
-import logging, os, re, sqlite3
+import logging
+import os
+import re
+import sqlite3
 from datetime import datetime, timedelta
 
 log = logging.getLogger(__name__)

@@ -18,7 +18,11 @@ SKILL_TRIGGERS = [
 SKILL_DESCRIPTION = "Search ALL past CODEC conversations (voice, chat, vibe) using full-text search"
 SKILL_MCP_EXPOSE = True
 
-import os, sys, sqlite3, subprocess, tempfile
+import os
+import sys
+import sqlite3
+import subprocess
+import tempfile
 
 _CODEC_REPO = os.path.expanduser("~/codec-repo")
 if _CODEC_REPO not in sys.path:

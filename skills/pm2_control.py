@@ -7,7 +7,8 @@ SKILL_TRIGGERS = ["pm2 status", "pm2 restart", "pm2 list", "pm2 logs",
                    "pm2 info", "running services"]
 SKILL_MCP_EXPOSE = False  # Local management only
 
-import subprocess, re
+import subprocess
+import re
 
 # Safety: only allow these PM2 subcommands
 ALLOWED_COMMANDS = {"list", "jlist", "restart", "logs", "info", "status", "describe"}

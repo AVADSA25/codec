@@ -56,7 +56,7 @@ import logging
 import os
 import secrets
 import time
-from collections import Counter, defaultdict
+from collections import Counter
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional

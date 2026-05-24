@@ -4,7 +4,8 @@ SKILL_TRIGGERS = ["generate password", "new password", "random password", "secur
 SKILL_DESCRIPTION = "Generate secure random passwords"
 SKILL_MCP_EXPOSE = True
 
-import string, secrets
+import string
+import secrets
 
 def run(task, app="", ctx=""):
     length = 16

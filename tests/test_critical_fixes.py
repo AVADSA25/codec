@@ -2,13 +2,9 @@
 Tests for Critical Security Fixes (Audit Items 1-5).
 Run: pytest tests/test_critical_fixes.py -v
 """
-import importlib
-import hashlib
 import os
-import sys
 import time
 import threading
-import pytest
 
 # ── Fix 1: fastmcp in requirements.txt ──
 

@@ -8,7 +8,9 @@ SKILL_TRIGGERS = [
 ]
 SKILL_MCP_EXPOSE = True
 
-import os, sys, re
+import os
+import sys
+import re
 from datetime import datetime
 
 _REPO = os.path.expanduser("~/codec-repo")

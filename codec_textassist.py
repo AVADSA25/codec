@@ -1,6 +1,12 @@
 #!/usr/bin/env python3.13
 """CODEC Text Assistant — mode passed as argument, no popup"""
-import sys, os, json, requests, subprocess, re, time
+import sys
+import os
+import json
+import requests
+import subprocess
+import re
+import time
 
 MODE = sys.argv[1] if len(sys.argv) > 1 else "proofread"
 

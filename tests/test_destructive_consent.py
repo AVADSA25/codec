@@ -19,7 +19,6 @@ the caller's polling loop can re-check the rejection count.
 from __future__ import annotations
 
 import json
-import os
 import sys
 import threading
 import time
