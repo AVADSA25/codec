@@ -1183,6 +1183,15 @@ def _daemon_one_tick() -> None:
 def run_daemon() -> None:
     """Production entry point. Blocks forever, ticking every DAEMON_TICK_SECONDS."""
     log.info("codec-agent-runner daemon starting (MAX_CONCURRENT=%d)", MAX_CONCURRENT)
+    # H-1 (PR-4A-2): graceful shutdown on PM2 SIGTERM. Agent worker threads are
+    # daemon=True (die with the process) and state.json is saved atomically per
+    # checkpoint (resume-on-restart is correct per Step 9 Q5), so a clean exit
+    # log is enough — nothing to flush.
+    import codec_lifecycle
+    codec_lifecycle.install_handlers(
+        lambda: log.info("codec-agent-runner graceful shutdown (%d active)",
+                         len(_active_threads)),
+        name="codec-agent-runner")
     # Scan skill registry at startup so skills are available to executing agents.
     # The dashboard calls load_skills() on its own process; the agent runner is a
     # separate PM2 process and must scan independently.

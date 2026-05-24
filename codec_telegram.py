@@ -734,6 +734,15 @@ def main():
     else:
         log.info("All DMs processed (no trigger required)")
 
+    # H-1 (PR-4A-2): graceful shutdown on PM2 SIGTERM. The long-poll offset is
+    # in-memory (Telegram re-delivers un-acked updates), so there's no position
+    # to persist — emit the SERVICE_STOP audit the Ctrl-C path already emits.
+    def _tg_cleanup():
+        audit("SERVICE_STOP")
+        log.info("codec-telegram graceful shutdown")
+    import codec_lifecycle
+    codec_lifecycle.install_handlers(_tg_cleanup, name="codec-telegram")
+
     try:
         while True:
             updates = bot.get_updates(timeout=30)

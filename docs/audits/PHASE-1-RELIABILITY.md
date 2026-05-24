@@ -127,6 +127,8 @@ The wrapper catches ALL exceptions (not just `InvalidStatusTransition`), logs a 
 ---
 
 ### H-1 — Mixed signal handling across daemons: 10 of 11 PM2 services have no SIGTERM handler [HIGH]
+
+> **Closed by PR-4A-2** (the `codec_lifecycle.py` helper flagged as PR-4A's follow-on). New `codec_lifecycle.install_handlers(cleanup_fn, name)` — registers SIGTERM + SIGINT handlers that run a cleanup **once** (idempotent, never-raises) then `sys.exit(0)`, plus an `atexit` hook. This converts PM2's SIGTERM from a force-kill (which skips `atexit`/`finally`) into a clean exit. Wired into the **5 daemons that had no handler at all**: `codec_autopilot`, `codec_agent_runner` (clean-exit log — state already atomic per-tick/checkpoint), `codec_observer` (now namespaces its screencapture tempfile `codec_obs_*.png` and glob-purges leaked ones on shutdown — closes the "tempfile leak" impact), `codec_imessage` (saves the live `last_rowid` + `SERVICE_STOP` audit on SIGTERM — previously only the Ctrl-C path did), `codec_telegram` (`SERVICE_STOP` audit on SIGTERM). `codec.py` (C-1) + `codec_dictate` were already correct. **Deferred (PR-4A-3 if it bites):** the 2 uvicorn services (`codec_dashboard`, `codec_mcp_http`) already receive SIGTERM via uvicorn; their *app-level* flush (in-flight WebSocket sessions / OAuth-state + rate-window) is a separate uvicorn-lifespan change. 13 tests (`tests/test_lifecycle.py`). See `docs/PR4A2-LIFECYCLE-HELPER-DESIGN.md`.
 **Location:**
 - `codec.py:1-4` — installs no-op handlers (see C-1)
 - `codec_autopilot.py` — no signal handler, no atexit

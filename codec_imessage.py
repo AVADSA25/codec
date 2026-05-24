@@ -988,6 +988,23 @@ def main():
     log.info(f"Triggers: 'Hey CODEC' or '/codec' — all other messages ignored")
     log.info(f"Polling every {poll_interval}s | LLM: {llm_cfg['model']}")
 
+    # H-1 (PR-4A-2): graceful shutdown on PM2 SIGTERM. Without this the existing
+    # `except KeyboardInterrupt` save only runs on Ctrl-C — a `pm2 restart`
+    # (SIGTERM) would skip it and lose the poll position. `_live` holds the
+    # freshest ROWID so the cleanup persists exactly where polling stopped.
+    _live = {"rowid": last_rowid}
+
+    def _imsg_cleanup():
+        try:
+            state["last_rowid"] = _live["rowid"]
+            save_state(state)
+        except Exception as e:
+            log.warning(f"shutdown state save failed: {e}")
+        audit("SERVICE_STOP")
+        log.info("codec-imessage graceful shutdown")
+    import codec_lifecycle
+    codec_lifecycle.install_handlers(_imsg_cleanup, name="codec-imessage")
+
     try:
         while True:
             try:
@@ -997,6 +1014,7 @@ def main():
                     # Update ROWID tracker regardless of processing
                     if msg["rowid"] > last_rowid:
                         last_rowid = msg["rowid"]
+                        _live["rowid"] = last_rowid  # H-1: keep shutdown save current
 
                     # Sender filter
                     if not is_sender_allowed(msg["sender"], im_cfg):
