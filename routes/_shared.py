@@ -3,7 +3,7 @@
 Extracted from codec_dashboard.py to avoid circular imports.
 Both codec_dashboard.py and routes/*.py import from here.
 """
-import os, json, threading, logging, uuid, sqlite3
+import os, json, threading, logging, uuid, sqlite3, time
 from datetime import datetime, timedelta
 
 log = logging.getLogger("codec_dashboard")
@@ -299,10 +299,63 @@ def get_db():
 _pending_skills: dict = {}
 _research_jobs: dict = {}
 _agent_jobs: dict = {}
+_agent_jobs_lock = threading.Lock()  # guards structural add/del of _agent_jobs (H-4)
+_AGENT_JOB_TTL_SECONDS = 86400       # evict terminal jobs older than 24h (H-4)
+
+
+def _evict_stale_agent_jobs(now=None, ttl_seconds: int = _AGENT_JOB_TTL_SECONDS) -> int:
+    """H-4: drop terminal (non-running) crew jobs older than `ttl_seconds`.
+
+    `_agent_jobs` is otherwise never purged → unbounded growth → the dashboard
+    hits max_memory_restart and loses all in-flight crew state. Snapshot-iterates
+    under `_agent_jobs_lock` so a concurrent add/del can't raise 'dictionary
+    changed size during iteration'. A `running` job is never evicted; an entry
+    with a missing/unparseable `started` is kept (never lose data on a bad field).
+    Returns the number evicted. Never raises.
+    """
+    now = now if now is not None else datetime.now()
+    removed = 0
+    try:
+        with _agent_jobs_lock:
+            for jid, job in list(_agent_jobs.items()):
+                if not isinstance(job, dict) or job.get("status") == "running":
+                    continue
+                started = job.get("started", "")
+                try:
+                    age = (now - datetime.fromisoformat(started)).total_seconds()
+                except (ValueError, TypeError):
+                    continue  # unparseable timestamp → keep
+                if age > ttl_seconds:
+                    _agent_jobs.pop(jid, None)
+                    removed += 1
+    except Exception as e:
+        log.warning("agent-job eviction failed: %s", e)
+    return removed
+
 
 # ── Remote command approval (dashboard/phone) ──
 _pending_approvals: dict = {}  # {approval_id: {command, action, is_dangerous, explanation, timestamp, status}}
 _approval_lock = threading.Lock()
+_APPROVAL_TTL_SECONDS = 120          # delete approvals older than 120s, any status (H-6)
+
+
+def _evict_expired_approvals(now=None, ttl_seconds: int = _APPROVAL_TTL_SECONDS) -> int:
+    """H-6: delete `_pending_approvals` entries older than `ttl_seconds`, any
+    status. The auto-expire path only marked status='expired' and never deleted,
+    so the dict grew unbounded. CALLER MUST HOLD `_approval_lock` (the dashboard
+    endpoints call this inside their existing `with _approval_lock:`). Snapshot-
+    iterates the keys to delete. Returns the number evicted. Never raises."""
+    now = now if now is not None else time.time()
+    removed = 0
+    try:
+        stale = [aid for aid, a in _pending_approvals.items()
+                 if now - (a.get("timestamp", 0) or 0) > ttl_seconds]
+        for aid in stale:
+            _pending_approvals.pop(aid, None)
+            removed += 1
+    except Exception as e:
+        log.warning("approval eviction failed: %s", e)
+    return removed
 
 # PIN brute-force rate limiting
 _pin_attempts: dict = {}

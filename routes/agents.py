@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 
 from routes._shared import (
     _research_jobs, _agent_jobs, _AGENTS_DIR,
+    _agent_jobs_lock, _evict_stale_agent_jobs,
 )
 
 router = APIRouter()
@@ -61,13 +62,18 @@ async def run_agent_crew(request: Request):
     if not crew_name:
         return JSONResponse({"error": "Missing 'crew' field"}, status_code=400)
 
+    # H-4: sweep terminal jobs older than 24h before adding a new one, and add
+    # the new key under the lock (structural mutation) so the eviction sweep
+    # can't race it into a 'dict changed size during iteration'.
+    _evict_stale_agent_jobs()
     job_id = str(uuid.uuid4())[:8]
-    _agent_jobs[job_id] = {
-        "status": "running",
-        "crew": crew_name,
-        "progress": [],
-        "started": datetime.now().isoformat(),
-    }
+    with _agent_jobs_lock:
+        _agent_jobs[job_id] = {
+            "status": "running",
+            "crew": crew_name,
+            "progress": [],
+            "started": datetime.now().isoformat(),
+        }
 
     def _run():
         import asyncio
