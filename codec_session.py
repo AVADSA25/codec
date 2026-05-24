@@ -12,6 +12,7 @@ import re
 import sqlite3
 import tempfile
 import subprocess
+import threading
 import base64
 import resource
 import atexit
@@ -194,15 +195,19 @@ SAFETY RULES:
     # ── Screenshot ───────────────────────────────────────────────────────
 
     def screenshot_ctx(self):
+        # H-7-class (PR-4H): unlink in finally so a screencapture timeout / vision
+        # error doesn't leak the PNG (the old success-path-only unlink skipped
+        # cleanup on every failure).
+        tmp_png = None
         try:
             tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+            tmp_png = tmp.name
             tmp.close()
-            subprocess.run(["screencapture", "-x", tmp.name], timeout=5)
-            if not os.path.exists(tmp.name) or os.path.getsize(tmp.name) < 1000:
+            subprocess.run(["screencapture", "-x", tmp_png], timeout=5)
+            if not os.path.exists(tmp_png) or os.path.getsize(tmp_png) < 1000:
                 return ""
-            with open(tmp.name, "rb") as f:
+            with open(tmp_png, "rb") as f:
                 ib = base64.b64encode(f.read()).decode()
-            os.unlink(tmp.name)
             print("[C] Reading screen...")
             # A-11 (PR-3E): canonical vision helper. Was local-Qwen-VL only here;
             # now gains the Gemini-Flash fallback for free (config-gated).
@@ -212,6 +217,12 @@ SAFETY RULES:
                 mime="image/png", max_tokens=800)[:2000]
         except Exception as e:
             log.warning(f"Screenshot capture or vision analysis failed: {e}")
+        finally:
+            if tmp_png:
+                try:
+                    os.unlink(tmp_png)
+                except OSError:
+                    pass
         return ""
 
     # ── TTS ──────────────────────────────────────────────────────────────
@@ -239,7 +250,21 @@ SAFETY RULES:
                 for chunk in r.iter_content(4096):
                     tmp.write(chunk)
                 tmp.close()
-                subprocess.Popen(["afplay", tmp.name])
+                # H-9: afplay is fire-and-forget; without this each TTS utterance
+                # leaked one mp3 to /tmp. Spawn a one-shot daemon thread that waits
+                # for playback to finish, then unlinks the file.
+                proc = subprocess.Popen(["afplay", tmp.name])
+
+                def _cleanup_after_play(p=proc, path=tmp.name):
+                    try:
+                        p.wait()
+                    except Exception:
+                        pass
+                    try:
+                        os.unlink(path)
+                    except OSError:
+                        pass
+                threading.Thread(target=_cleanup_after_play, daemon=True).start()
         except Exception as e:
             log.warning(f"TTS playback failed: {e}")
 

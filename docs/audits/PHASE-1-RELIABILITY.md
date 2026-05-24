@@ -226,6 +226,8 @@ Race C — line interleaving: POSIX guarantees atomic appends only for writes �
 ---
 
 ### H-7 — `codec_observer._screencapture_and_ocr_blocking` leaks tempfile on subprocess failure [HIGH]
+
+> **Closed by PR-4H.** The capture is now unlinked in a `finally` (with a `tmp_png = None` guard for the case where `NamedTemporaryFile` itself raises) — the old inline unlink ran only on the success path, so a routine `screencapture`/`osascript` `TimeoutExpired` leaked a 2-5 MB PNG every poll. The PR-4A-2 `codec_obs_` prefix + shutdown glob-purge remain as a backstop. 1 test (`tests/test_tempfile_leaks.py`). See `docs/PR4H-TEMPFILE-LEAKS-DESIGN.md`.
 **Location:** `codec_observer.py:297-334`
 **Description:**
 ```python
@@ -248,6 +250,8 @@ The unlink is reached only on the successful path. If `subprocess.run` raises `T
 ---
 
 ### H-8 — `codec_dashboard._exec_code` leaks tempfiles on every code-execution request [HIGH]
+
+> **Closed by PR-4H.** Verify-first: the endpoint is now `POST /api/run_code` and its source tempfile was **already** cleaned (a `finally: os.unlink(tmp.name)` had been added since the audit) — the only remaining leak was the **Rust-compiled `<tmp>.out` binary**. The `finally` now unlinks both `tmp.name` and `tmp.name + ".out"` (the latter only exists for rust; `FileNotFoundError` is caught for every other language). 1 source-invariant test (`tests/test_tempfile_leaks.py`). See `docs/PR4H-TEMPFILE-LEAKS-DESIGN.md`.
 **Location:** `codec_dashboard.py:1828-1857`
 **Description:** `tmp = tempfile.NamedTemporaryFile(suffix=ext, delete=False, mode="w")` is created at line 1831 and never unlinked. For Rust code, a `.out` binary file is also created (line 1839, 1846) and never unlinked. The function returns inside try/except blocks that don't reach cleanup code.
 **Trigger:** Every `POST /api/exec` call.
@@ -258,6 +262,8 @@ The unlink is reached only on the successful path. If `subprocess.run` raises `T
 ---
 
 ### H-9 — `codec_session.speak()` leaks one .mp3 tempfile per TTS call [HIGH]
+
+> **Closed by PR-4H.** `speak()` spawned `afplay` fire-and-forget and never unlinked the mp3 → one leak per TTS utterance (hundreds/day for daily users). Now a one-shot daemon thread `p.wait()`s for playback then unlinks the file (added `import threading` to `codec_session`). **Bonus (same H-7 class, same file):** `codec_session.Session.screenshot_ctx()` had the identical success-path-only unlink bug (its `.png` leaked on a `screencapture` timeout / vision error) — also moved to a `finally`. 2 tests (`tests/test_tempfile_leaks.py`). See `docs/PR4H-TEMPFILE-LEAKS-DESIGN.md`.
 **Location:** `codec_session.py:257-262`
 **Description:**
 ```python

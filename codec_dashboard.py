@@ -1876,9 +1876,13 @@ async def run_code(request: Request):
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
     finally:
-        try: os.unlink(tmp.name)
-        except OSError as e:
-            log.debug(f"Temp file cleanup failed: {e}")
+        # H-8: also unlink the Rust-compiled `<tmp>.out` binary (only created for
+        # rust; for other langs the path doesn't exist → FileNotFoundError is
+        # caught). The source tmp was already cleaned here; the .out leaked.
+        for _p in (tmp.name, tmp.name + ".out"):
+            try: os.unlink(_p)
+            except OSError as e:
+                log.debug(f"Temp file cleanup failed for {_p}: {e}")
 
 @app.post("/api/save_file")
 async def save_file(request: Request):
