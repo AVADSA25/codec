@@ -35,12 +35,25 @@ _BASE = "http://localhost:8094"
 _TIMEOUT = 15
 
 
+def _pilot_token() -> str:
+    """Pilot PP-1: the shared secret the pilot-runner requires on every request
+    (header `x-pilot-token`). Both sides read ~/.codec/pilot_token; pilot-runner
+    bootstraps it on startup. Empty if Pilot has never run → request 401s."""
+    import os
+    try:
+        with open(os.path.expanduser("~/.codec/pilot_token")) as f:
+            return f.read().strip()
+    except Exception:
+        return ""
+
+
 # ── HTTP helpers ──────────────────────────────────────────────────────────────
 
 def _get(path: str) -> dict:
     url = _BASE + path
+    req = urllib.request.Request(url, headers={"x-pilot-token": _pilot_token()})
     try:
-        with urllib.request.urlopen(url, timeout=_TIMEOUT) as r:
+        with urllib.request.urlopen(req, timeout=_TIMEOUT) as r:
             return json.loads(r.read())
     except urllib.error.HTTPError as e:
         body = e.read().decode(errors="replace")
@@ -54,7 +67,7 @@ def _post(path: str, body: dict | None = None) -> dict:
     data = json.dumps(body or {}).encode()
     req = urllib.request.Request(
         url, data=data,
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", "x-pilot-token": _pilot_token()},
         method="POST",
     )
     try:
