@@ -284,12 +284,12 @@ Mirror the Intake Phase 3 wave pattern. 7 waves planned; sizes are PR-counts, NO
 **Findings:** all 18 in Audit E
 **PR count estimate:** 8-12
 
-Mickael decision required first (see §5): launch date, pricing model, Apple Dev account status, bundle Python or probe, PM2 vs launchd, model distribution strategy.
+**Decisions locked 2026-05-24** (Mickael; recorded in `docs/APPLE-DISTRIBUTION.md`): Developer-ID signed+notarized direct download (App Store ruled out), **bundle Python.framework**, **launchd** (not PM2/Node), OSS stays unsigned, bundle ID `ai.avadigital.codec`, **Apple Developer enrollment DONE** (Team ID + cert in hand). Still open (downstream, non-blocking): model strategy (E-8), license gating (E-11), Cloudflare-for-buyers (E-10), pricing/launch.
 
-After decisions, the ordered checklist from Audit E:
-- W5-Pre: E-13 — start Apple Developer Program enrollment (D-U-N-S Number lookup for AVA Digital LLC, 2-4 weeks lag time) **DAY ZERO**
-- W5-1: E-4 + E-16 — decision docs (App Store is out, OSS stays unsigned)
-- W5-2: E-1 + E-17 + E-5 — `.app` bundle wrapper + Info.plist + entitlements + PrivacyInfo
+Ordered checklist from Audit E:
+- W5-Pre: E-13 — Apple Developer Program enrollment ✅ **done** (Team ID + Developer ID cert ready)
+- W5-1: E-4 + E-16 ✅ (branch `fix/pr5a-apple-foundation`) — `docs/APPLE-DISTRIBUTION.md` decision record (App Store out [forced], OSS unsigned, all 4 decisions) + the decision-complete signed-bundle metadata `packaging/macos/{Info.plist,codec.entitlements,PrivacyInfo.xcprivacy}` (E-5) with `plutil`-validated + key-asserting tests (`tests/test_apple_packaging.py`, 6).
+- W5-2: E-1 + E-17 — `.app` bundle wrapper + Python launcher (metadata already landed in W5-1)
 - W5-3: E-7 — pick PM2-vs-launchd, migrate 17 services
 - W5-4: E-6 — pick bundled-Python-vs-probe, implement (XL)
 - W5-5: E-8 — model-pack downloader + bundled minimum set (XL)

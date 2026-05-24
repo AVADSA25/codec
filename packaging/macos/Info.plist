@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  CODEC / Sovereign AI Workstation — Info.plist for the paid Developer ID app.
+  Bundle identity + every TCC usage string the non-sandbox capabilities imply.
+  Decisions: docs/APPLE-DISTRIBUTION.md (D1, D3, D4, D6). NOT for the OSS build (D5).
+-->
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>ai.avadigital.codec</string>
+    <key>CFBundleName</key>
+    <string>CODEC</string>
+    <key>CFBundleDisplayName</key>
+    <string>Sovereign AI Workstation</string>
+    <key>CFBundleExecutable</key>
+    <string>codec</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>2.1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>13.0</string>
+    <key>NSHumanReadableCopyright</key>
+    <string>Copyright © 2026 AVA Digital LLC. All rights reserved.</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+
+    <!-- TCC usage strings — shown to the user when CODEC requests each permission.
+         See the sandbox table in docs/APPLE-DISTRIBUTION.md §2. -->
+    <key>NSMicrophoneUsageDescription</key>
+    <string>CODEC uses the microphone for voice commands, dictation, and the "Hey CODEC" wake word. Audio is transcribed locally and never leaves your Mac.</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>CODEC controls apps like Messages, Notes, Reminders, and Music on your behalf when you ask it to. You approve each app individually.</string>
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>CODEC reads what's on your screen only when you ask it to (e.g. "check my screen"). Screenshots are processed locally for text recognition and never uploaded.</string>
+    <key>NSDesktopFolderUsageDescription</key>
+    <string>CODEC reads and writes files on your Desktop when a task or skill you run needs to.</string>
+    <key>NSDocumentsFolderUsageDescription</key>
+    <string>CODEC reads and writes files in your Documents folder when a task or skill you run needs to.</string>
+    <key>NSDownloadsFolderUsageDescription</key>
+    <string>CODEC reads and writes files in your Downloads folder when a task or skill you run needs to.</string>
+</dict>
+</plist>
