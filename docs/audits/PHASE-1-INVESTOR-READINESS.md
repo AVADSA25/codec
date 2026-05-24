@@ -273,6 +273,8 @@ The README sells *features* well. It does not sell *positioning* — the *why-th
 
 ### F-13 — No investor one-pager or pitch deck in docs/ [MEDIUM]
 
+> **✅ CLOSED (one-pager) by PR-6H (2026-05-24).** `docs/ONE-PAGER.md` added — problem → solution → why-now → market → traction → business model → team → ask, grounded in live repo metrics (95★, 543 commits, ~10 releases, 76 skills, 1,300+ tests) with the MCP-as-server moat front and centre. Personal/confidential bits (founder bio, raise amount, pricing) are explicit placeholders because the repo is public. Guarded by `tests/test_one_pager.py`. **Still open (deferred):** `docs/VISION.md` (3-page narrative) and an actual deck → Mickael.
+
 **What's missing:** `docs/` has 32+ files heavy on engineering (PHASE*-DESIGN.md, MCP_HTTP_SETUP.md, API.md) and zero investor-facing artifacts:
 - No `docs/PITCH.md` or `docs/ONE-PAGER.md`
 - No `docs/VISION.md` or `docs/WHY-NOW.md`
