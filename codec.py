@@ -145,6 +145,43 @@ state = {
     "doc_ctx": "",
 }
 
+# H-2 (PR-4F): `state` is mutated by the keyboard listener, wake-word, and worker
+# threads. Single-field reads/writes are GIL-atomic, but COMPOUND check-then-set
+# (e.g. `if not state["recording"]: state["recording"]=True`) is not — two
+# threads could both pass the guard and start two sox recordings. These helpers
+# do ONLY the atomic decision under _state_lock; all expensive work (sox,
+# overlays, sounds, dispatch) stays OUTSIDE the lock at the call sites.
+_state_lock = threading.Lock()
+
+
+def _try_begin_recording() -> bool:
+    """Atomically claim the recording slot. Returns True if THIS caller acquired
+    it (and set recording=True + rec_start), False if a recording was already in
+    progress (the caller must NOT start a second sox)."""
+    with _state_lock:
+        if state["recording"]:
+            return False
+        state["recording"] = True
+        state["rec_start"] = time.time()
+        return True
+
+
+def _activate_if_off() -> bool:
+    """Atomically set active=True if it was off. Returns True if this caller
+    changed it (so it alone shows the 'on' overlay)."""
+    with _state_lock:
+        if state["active"]:
+            return False
+        state["active"] = True
+        return True
+
+
+def _toggle_active() -> bool:
+    """Atomically flip state['active']; return the NEW value (True == now on)."""
+    with _state_lock:
+        state["active"] = not state["active"]
+        return state["active"]
+
 # ── SCREEN-CONTEXT RELEVANCE GATE ─────────────────────────────────────────────
 # Tasks that clearly have nothing to do with the screen — skip context injection
 # to prevent the LLM from being confused by stale/irrelevant captured text.
@@ -717,9 +754,8 @@ def wake_word_listener():
                     if _matched:
                         log_event("wake_word_detected", "open-codec",
                                   "Wake word detected")
-                        # Auto-activate if not already on
-                        if not state["active"]:
-                            state["active"] = True
+                        # Auto-activate if not already on (H-2: atomic vs the F13 toggle)
+                        if _activate_if_off():
                             push(lambda: show_toggle_overlay(True, "F18=voice | **=screen | --=chat"))
                         command = text
                         # Strip wake keywords and common prefixes (case-insensitive)
@@ -759,17 +795,16 @@ def on_press(key):
     if key == keyboard.Key.f13:
         if now - state["last_f13"] < 1.5: return
         state["last_f13"] = now
-        if state["active"]:
-            state["active"] = False
+        # H-2: atomic flip (the wake-word thread also writes state["active"]).
+        if _toggle_active():          # now ON
+            reset_voice_session()
+            push(lambda: show_toggle_overlay(True, "F18=voice  F16=text  **=screen  ++=doc  --=chat"))
+            print("[CODEC] ON -- F18=voice | F16=text | *=screen | +=doc | --=chat")
+        else:                         # now OFF
             push(lambda: show_toggle_overlay(False))
             push(close_session)
             reset_voice_session()
             print("[CODEC] OFF")
-        else:
-            state["active"] = True
-            reset_voice_session()
-            push(lambda: show_toggle_overlay(True, "F18=voice  F16=text  **=screen  ++=doc  --=chat"))
-            print("[CODEC] ON -- F18=voice | F16=text | *=screen | +=doc | --=chat")
         return
     if not state["active"]: return
     if key == keyboard.Key.f16:
@@ -788,8 +823,11 @@ def on_press(key):
             if time.time() < _dispatch_cooldown:
                 print("[CODEC] F18 ignored — still processing")
                 return
-            state["recording"] = True
-            state["rec_start"] = time.time()
+            # H-2: atomically claim the recording slot. If another thread (a
+            # double-F18 or the wake-word path) already claimed it, bail instead
+            # of starting a second sox into the same audio_path.
+            if not _try_begin_recording():
+                return
             threading.Thread(target=lambda: subprocess.run(
                 ['afplay', '/System/Library/Sounds/Glass.aiff'],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL), daemon=True).start()
