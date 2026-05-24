@@ -319,7 +319,7 @@ Day 1 afternoon (~4h):
 - PR-6E: F-9 — rewrite top of README to lead with value prop
 
 Day 2 morning (~4h):
-- PR-6F: F-2 — PRIVACY.md with EU/AI Act statement
+- PR-6F: F-2 ✅ (branch `fix/pr6f-privacy`). `docs/PRIVACY.md` — local-first default + "what leaves your Mac" data-flow table (cloud LLM / MCP-HTTP / search / Google / iMessage / Telegram / Twilio / Cloudflare / license) + third-party processors + GDPR Art. 13 + AI Act Art. 50 + `privacy@avadigital.ai`. 2 tests (`tests/test_privacy_doc.py`); full suite zero new; ruff clean. Handoff: lawyer review + README link (README-overhaul PR). **Both Audit-F CRITICALs (F-1, F-2) closed.**
 - PR-6G: F-10 — add "Why CODEC, not X" comparison block
 
 Day 2 afternoon (~3h):

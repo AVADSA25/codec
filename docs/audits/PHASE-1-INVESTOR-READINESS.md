@@ -53,6 +53,7 @@ Reviewed in this order:
 
 ### F-2 — No public-facing privacy / data-handling statement [CRITICAL]
 
+> **Closed by PR-6F.** `docs/PRIVACY.md` covers: the local-first default (what stays on the Mac + retention), an explicit "what leaves your Mac — only when you enable it" data-flow table (cloud LLM via AVA proxy, MCP HTTP/claude.ai, DuckDuckGo/Serper, Google OAuth, iMessage/Telegram/Twilio, Cloudflare tunnel, license check), a third-party-processor list, GDPR Art. 13 disclosures for the paid tier (controller, legal basis, recipients, transfers, retention, rights), and an EU AI Act Art. 50 transparency statement. 2 tests (`tests/test_privacy_doc.py`). **Handoff:** privacy-lawyer review + confirm `privacy@avadigital.ai` before paid launch (`docs/HANDOFF-MICKAEL.md`); link from README in the README-overhaul PR.
 **What's missing:** No `PRIVACY.md`, no privacy page at opencodec.org referenced in README, no AI Act / GDPR alignment note. README §"Privacy & Security" lists 6 technical layers but does not answer the EU enterprise question: *"what categories of personal data are processed, on what legal basis, with what retention?"*.
 
 **Why investors / enterprise customers expect it:**
