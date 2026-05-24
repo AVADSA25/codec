@@ -20,9 +20,14 @@ could drive the user's logged-in headless Chrome **and** compile+approve a skill
 arbitrary code execution on the Mac.
 
 **Mitigation taken (with operator approval, 2026-05-24):** `pm2 stop pilot-runner` —
-verified nothing now listens on `:8094`. The Cloudflare route still exists, so it must NOT
-be restarted until the P-1/P-2/P-3 fixes land. ⚠️ **Do not `pm2 start pilot-runner` before
-the fix wave.**
+verified nothing now listens on `:8094`. The Cloudflare route still exists.
+
+**Status (2026-05-24):** the full fix wave (PP-1…PP-12) is committed to the Pilot repo's
+local `main`, but those commits have **not been pushed/deployed** and the running daemon is
+still the pre-fix code. ⚠️ **Before `pm2 start pilot-runner`:** (1) review + deploy the PP-1…
+PP-12 commits, (2) remove the `pilot.lucyvpa.com` lines from `~/.cloudflared/config.yml`
+(the token gate makes the public tunnel unnecessary — keep Pilot loopback-only). Until both
+are done, leave `pilot-runner` stopped.
 
 ---
 
@@ -209,24 +214,24 @@ The two-repo boundary + port contract should be documented in a `pilot/README.md
 
 ## Fix wave (Pilot repo `~/codec/`) — status
 
-> **✅ All exploitable findings remediated 2026-05-24** — PP-1…PP-5 committed to the Pilot
-> repo's local `main` (no remote/CI there → review/push the commits). 32 pilot security
-> tests pass (`pilot/tests/test_phase7…11`); native `test_phase5` (real chromium) stays
-> green → behavior-preserving. Each PP has a design doc under `pilot/docs/`.
+> **✅ All findings remediated 2026-05-24** — PP-1…PP-12 (+ two follow-ups) committed to the
+> Pilot repo's local `main` (no remote/CI there → review/push the commits). **67 pilot
+> security tests pass** (`pilot/tests/test_phase7…18`); all native real-chromium suites
+> (`test_phase2…6`) stay green → behavior-preserving. Each PP has a design doc under
+> `pilot/docs/`.
 
 1. **PP-1 ✅ (CRITICAL)** — P-1: `x-pilot-token` auth on every route (shared via
    `~/.codec/pilot_token`), loopback bind, CORS localhost-only. The parent half (send the
    token) shipped in codec-repo **#132**. *(Cloudflare-tunnel removal is still your manual
    step; until done, keep `pilot-runner` stopped or rely on the token gate.)*
 2. **PP-2 ✅ (CRITICAL)** — P-2: `_safe()`/`_int()` escape all trace-derived source +
-   `compile()`-validate; P-11: `slugify()` the review slug. *(P-3 approve-time
-   `is_dangerous_skill_code` gate left as defense-in-depth — Pilot can't cleanly import the
-   parent `codec_config`; the injection is closed at the source instead.)*
+   `compile()`-validate; P-11: `slugify()` the review slug.
 3. **PP-3 ✅ (CRITICAL/HIGH)** — P-4: `validate_navigation_url()` (http/https only; blocks
-   file:/internal/loopback/link-local/metadata).
+   file:/internal/loopback/link-local/metadata). *(Follow-up: `about:blank` allowed as an
+   exact match — the canonical empty page has no host/network/file, so blocking it was
+   over-gating; broad `about:` URLs stay blocked.)*
 4. **PP-4 ✅ (HIGH)** — P-6: `wrap_untrusted()` fences page content into the agent/replay LLM
-   + system-prompt warning. *(P-7's unauth HITL inject is closed by PP-1's auth; the HITL
-   default-deny structural change remains a follow-up.)*
+   + system-prompt warning. *(P-7's unauth HITL inject is closed by PP-1's auth.)*
 5. **PP-5 ✅ (HIGH)** — P-8: randomized CDP debug port (was fixed 9223).
 6. **PP-6 ✅** — P-13: redact secrets typed into password/secret fields from the persisted
    trace + compiled skill (`redact_typed_secret`). 4 tests.
@@ -235,25 +240,37 @@ The two-repo boundary + port contract should be documented in a `pilot/README.md
 8. **PP-8 ✅** — P-12: forensic audit trail (`pilot/audit.py` → `~/.codec/pilot_audit.log`;
    emits on skill approve/reject, run start, navigate). 3 tests.
 9. **PP-9 ✅** — P-15: corrupt/partial trace tolerated on load (`_from_dict` → `.get`). 2 tests.
+10. **PP-10 ✅** — P-7 + P-10 (default-deny core): `classify_destructive()` + `guard_action()`
+    block irreversible/financial clicks (pay/place-order/delete/transfer/…) in the **agent
+    loop** and **replay** unless `PILOT_ALLOW_DESTRUCTIVE=1`. Targeted verb list (not generic
+    submit/search) to avoid over-blocking. 5 tests.
+11. **PP-11 ✅ (CRITICAL)** — P-3: AST safety gate at skill **approve**. `pilot/safety.py`
+    vendors a minimal `is_dangerous_skill_code` (Pilot can't import the parent `codec_config`);
+    `approve_pending` refuses + `audit("skill_blocked")` on dangerous imports/calls or
+    unparseable code, before the file reaches `~/.codec/skills/`. Defense-in-depth atop PP-2 +
+    the parent registry's load-time gate. 6 tests.
+12. **PP-12 ✅** — P-14 async robustness: HITL pause gate bounded by `asyncio.wait_for`
+    (`HITL_PAUSE_TIMEOUT_S`, default 600s → `paused_timeout`, frees the browser + run slot);
+    `/screenshot/stream` MJPEG extracted to `_mjpeg_frames` with a consecutive-failure bound
+    (`MJPEG_MAX_CONSECUTIVE_FAILURES`, default 20) so a dead browser closes the stream instead
+    of spinning forever. 8 tests.
 
-**45 pilot security tests pass** (`test_phase7…15`); native `test_phase5` (real chromium)
-stays green throughout → every fix is behavior-preserving.
+**67 pilot security tests pass** (`test_phase7…18`); all native real-chromium suites
+(`test_phase2…6`) stay green → every fix is behavior-preserving. *(Two follow-ups landed
+during verification: `about:blank` allowed in the PP-3 nav guard; the legacy `test_phase3`
+endpoint test now sends `x-pilot-token` per PP-1.)*
 
-**Genuinely remaining (structural / needs an async test harness — documented, not
-exploitable):**
-- **P-7 HITL default-deny for destructive browser actions** (form submits / payments) — a
-  real feature needing an action-classification + consent design; risky to bolt onto the
-  live automation path without it. (Its *unauthenticated-inject* half is already closed by
-  PP-1's auth.)
-- **P-10 irreversible-replay gating** — same class (needs destructive-action classification).
-- **P-14 async-loop robustness** — HITL pause-timeout + MJPEG consecutive-failure bound
-  (LLM-parse junk already degrades gracefully: the loop records a step error and continues).
-  These live in the async run/stream loops; defer until the suite is pytest-async-wired.
-- **P-15 `getXPath` duplicate-id** edge (snapshot accuracy) + **P-3 approve-time AST gate**
-  (Pilot can't cleanly import the parent `codec_config`; the injection is already closed at
-  the compiler source by PP-2).
-- **Parent repo:** cross-cutting AST-gate hardening for *auto-generated* skills; wire the
-  legacy `test_phaseN` async suite into pytest (the new `test_phase7…15` already are).
+**Genuinely remaining (low-value / cross-repo — documented, not exploitable):**
+- **P-15 `getXPath` duplicate-id** edge — a snapshot-accuracy nicety in injected browser-JS
+  (duplicate `id=` attributes yield a non-unique XPath). Low value; the selector-rescue path
+  already recovers from stale selectors at replay time.
+- **Legacy async suite under pytest** — `test_phase2…6` pass natively (their `__main__`
+  harness drives a real-chromium `pilot` fixture) but ERROR under bare `pytest` (no async
+  fixture wiring). The new `test_phase7…18` security suite is fully pytest-native; wiring the
+  legacy phases is test-infra polish, not a security gap.
+- **Parent repo:** cross-cutting AST-gate hardening for *auto-generated* skills (the
+  `is_dangerous_skill_code` allow-by-omission for `urllib`/`httpx`/`open`/`pickle`) — a
+  codec-repo finding tracked separately, not a Pilot fix.
 
 **Verdict:** Pilot is the highest-risk component in CODEC and it architecturally opted out of
 the entire Phase-1 hardening (separate repo, HTTP-only coupling). Internal code quality is
