@@ -50,3 +50,4 @@ jobs:
           tests/test_uninstaller.py
           tests/test_signing.py
           tests/test_release.py
+          tests/test_first_run.py
