@@ -43,16 +43,31 @@ logging.basicConfig(level=logging.INFO, format="[codec-mcp-http] %(message)s")
 _RATE_LOCK = threading.Lock()
 _RATE_WINDOW: dict[str, deque] = defaultdict(deque)
 _RATE_LIMIT = int(os.environ.get("CODEC_MCP_RATE_PER_MIN", "60"))
+# H-5 (PR-4G-2): periodic idle-IP eviction bookkeeping.
+_RATE_LAST_EVICT = 0.0
+_RATE_EVICT_INTERVAL = 60  # at most one O(N) sweep per minute
 
 
 def _rate_check(ip: str) -> bool:
     """Return True if under limit, False if rate-limited."""
+    global _RATE_LAST_EVICT
     now = time.time()
     cutoff = now - 60
     with _RATE_LOCK:
         q = _RATE_WINDOW[ip]
         while q and q[0] < cutoff:
             q.popleft()
+        # H-5: evict IPs idle for >60s so _RATE_WINDOW can't grow unbounded as
+        # claude.ai rotates source IPs. A silent IP is never re-checked (its
+        # deque never drains to empty), so we evict on "newest entry stale"
+        # (dq[-1] < cutoff) OR empty. Gated to once/_RATE_EVICT_INTERVAL so the
+        # O(N) sweep isn't paid per request; the current ip is skipped (it's
+        # about to append below).
+        if now - _RATE_LAST_EVICT > _RATE_EVICT_INTERVAL:
+            for stale_ip in [k for k, dq in _RATE_WINDOW.items()
+                             if k != ip and (not dq or dq[-1] < cutoff)]:
+                del _RATE_WINDOW[stale_ip]
+            _RATE_LAST_EVICT = now
         if len(q) >= _RATE_LIMIT:
             return False
         q.append(now)
