@@ -27,9 +27,9 @@ import os
 import re
 import secrets
 import time
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field, asdict, fields as _dc_fields
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 log = logging.getLogger("codec_agent_plan")
 
@@ -70,6 +70,11 @@ _PROJECT_ROOT = Path(os.path.expanduser(
 # ── Schema constants ──────────────────────────────────────────────────────────
 PLAN_SCHEMA_VERSION = 1
 GLOBAL_GRANTS_SCHEMA_VERSION = 1
+# B-13: per-agent grants.json carries a real version constant (was a bare literal
+# "schema": 1). Gives future grants migrations a home. NOTE: compute_grants_hash
+# (B-4 tamper detection) hashes the loaded grants — whoever adds the first grants
+# migration MUST re-sync the manifest grants_hash in the same change.
+GRANTS_SCHEMA_VERSION = 1
 DEFAULT_STEP_BUDGET_PER_CHECKPOINT = 60
 MAX_CLARIFYING_ROUNDS = 3
 MAX_PROJECT_SLUG_LEN = 50
@@ -117,21 +122,68 @@ class Plan:
         }
 
 
+# B-13: ordered plan-schema migration ladder (analogue of codec_config._CONFIG_MIGRATIONS).
+# Keyed by SOURCE version N → migrates a plan dict from vN to vN+1, setting d["schema"]=N+1.
+# EMPTY at v1 (the first/only version). Without this ladder, plan_from_dict hard-rejected
+# schema != current, so the first PLAN_SCHEMA_VERSION bump would brick every on-disk plan.
+# To add v1→v2: write `def _migrate_plan_v1_to_v2(d): d["schema"]=2; ...; return d`,
+# register `_PLAN_MIGRATIONS[1] = _migrate_plan_v1_to_v2`, then bump PLAN_SCHEMA_VERSION.
+_PLAN_MIGRATIONS: Dict[int, Callable[[Dict[str, Any]], Dict[str, Any]]] = {}
+
+
+def _migrate_plan_dict(d: Dict[str, Any]) -> Dict[str, Any]:
+    """Walk the migration ladder so an older-schema plan dict is upgraded to
+    PLAN_SCHEMA_VERSION before the strict check in plan_from_dict. A schema newer
+    than we understand, or a gap in the ladder, leaves d unchanged → the caller's
+    strict check then rejects it with a clear error (we never silently load a plan
+    we couldn't actually migrate)."""
+    ver = d.get("schema")
+    if not isinstance(ver, int):
+        return d
+    while ver < PLAN_SCHEMA_VERSION and ver in _PLAN_MIGRATIONS:
+        d = _PLAN_MIGRATIONS[ver](d)
+        ver = int(d.get("schema", ver + 1))
+    return d
+
+
+# B-19: known dataclass fields, used to filter raw user/LLM JSON before splatting so an
+# extra key (LLM emits e.g. "priority"; a malformed PWA payload) doesn't raise TypeError.
+_CHECKPOINT_FIELDS = frozenset(f.name for f in _dc_fields(Checkpoint))
+_MANIFEST_FIELDS = frozenset(f.name for f in _dc_fields(PermissionManifest))
+
+
+def _checkpoint_from_dict(cp: Dict[str, Any]) -> Checkpoint:
+    return Checkpoint(**{k: v for k, v in cp.items() if k in _CHECKPOINT_FIELDS})
+
+
+def _manifest_from_dict(m: Dict[str, Any]) -> PermissionManifest:
+    return PermissionManifest(**{k: v for k, v in m.items() if k in _MANIFEST_FIELDS})
+
+
 def plan_from_dict(d: Dict[str, Any]) -> Plan:
-    """Inverse of Plan.to_dict; raises ValueError on bad schema."""
+    """Inverse of Plan.to_dict. Runs the B-13 migration ladder first, then the strict
+    schema check, then field-filtered (B-19) dataclass construction. Raises ValueError
+    on an unsupported schema OR a malformed structure (never a bare TypeError)."""
+    d = _migrate_plan_dict(d)
     if d.get("schema") != PLAN_SCHEMA_VERSION:
         raise ValueError(f"unsupported plan schema: {d.get('schema')!r}")
-    cps = [Checkpoint(**cp) for cp in d.get("checkpoints", [])]
-    pm = PermissionManifest(**d["permission_manifest"])
-    return Plan(
-        schema=int(d["schema"]),
-        agent_id=str(d["agent_id"]),
-        goals=list(d.get("goals", [])),
-        checkpoints=cps,
-        permission_manifest=pm,
-        estimated_duration_minutes=int(d.get("estimated_duration_minutes", 0)),
-        assumptions=list(d.get("assumptions", [])),
-    )
+    try:
+        cps = [_checkpoint_from_dict(cp) for cp in d.get("checkpoints", [])]
+        pm = _manifest_from_dict(d["permission_manifest"])
+        return Plan(
+            schema=int(d["schema"]),
+            agent_id=str(d["agent_id"]),
+            goals=list(d.get("goals", [])),
+            checkpoints=cps,
+            permission_manifest=pm,
+            estimated_duration_minutes=int(d.get("estimated_duration_minutes", 0)),
+            assumptions=list(d.get("assumptions", [])),
+        )
+    except (TypeError, KeyError) as e:
+        # B-19: missing required key / wrong shape → a clean ValueError that every
+        # caller's `except (KeyError, ValueError, TypeError)` already handles, instead
+        # of a raw TypeError escaping load_plan → a 500.
+        raise ValueError(f"malformed plan: {e}") from e
 
 
 def compute_plan_hash(plan: Plan) -> str:
@@ -1065,7 +1117,7 @@ def approve_plan(agent_id: str) -> Dict[str, Any]:
             auto_approved[kind] = approved_via_global
 
     grants = {
-        "schema": 1,
+        "schema": GRANTS_SCHEMA_VERSION,  # B-13: real version constant (was a bare literal)
         "agent_id": agent_id,
         "approved_at": _now_iso(),
         "auto_approved": auto_approved,
