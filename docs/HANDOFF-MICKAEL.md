@@ -23,7 +23,15 @@ I work on isolated branches and never self-merge; each new branch builds on the 
 
 **Enrollment: ✅ done** (you confirmed Team ID + Developer ID Application cert in hand).
 
-**Progress:** W5-1 (metadata) ✅ · W5-2 (`.app` wrapper + launcher) ✅ · W5-3 (launchd toolkit) ✅ · W5-4 (bundled relocatable Python) ✅ · W5-12 (uninstaller, `packaging/macos/uninstall_codec.sh`) ⏳ in flight. Next: W5-5 (model downloader — needs your model-strategy decision), W5-6 (first-run permissions wizard — wires launchd install + Python remap + the in-app "Uninstall" item), W5-7/8 (sign + notarize).
+**Progress:** W5-1 (metadata) ✅ · W5-2 (`.app` wrapper) ✅ · W5-3 (launchd) ✅ · W5-4 (bundled Python) ✅ · W5-12 (uninstaller) ✅ · W5-7/8 (sign + notarize scripts, `packaging/macos/{sign_app,notarize_app}.sh`) ⏳ in flight. Next: W5-5 (model downloader — needs your model-strategy decision), W5-6 (first-run permissions wizard — wires launchd install + Python remap + in-app "Uninstall"), W5-11 (GUI onboarding), then DMG packaging.
+
+**The full release sequence is now scriptable** (run on your build Mac with the cert):
+```
+bash packaging/macos/build_app.sh --with-python --clean
+bash packaging/macos/sign_app.sh   --app "dist/Sovereign AI Workstation.app" --identity "Developer ID Application: … (TEAMID)"
+bash packaging/macos/notarize_app.sh --app "dist/Sovereign AI Workstation.app" --keychain-profile codec-notary
+```
+Each accepts `--dry-run` to preview. I've validated build + Python bundle + the sign/notarize *plans*; only the cert-gated execution is left to you.
 
 - ⚪ **Try the uninstaller (safe):** `bash packaging/macos/uninstall_codec.sh --dry-run` lists exactly what a real uninstall would remove and deletes nothing. (Real removal needs `--yes`; user data needs `--yes --purge-data`.) Note: macOS won't let the app revoke its own TCC grants — the script prints the System Settings path to clear them by hand.
 
@@ -88,6 +96,6 @@ I'm writing the docs; a few items need your accounts/assets:
 | D — Security | 1-2 | ✅ closed (PRs #56-#71 era) |
 | A — Code quality | 3 | ✅ closed |
 | C — Reliability | 4 | ✅ **fully closed** (all 5 CRITICAL + 9 HIGH + 6 MEDIUM + 2 LOW) |
-| E — Apple app | 5 | 🟠 in progress — W5-1 (metadata) + W5-2 (.app) + W5-3 (launchd) + W5-4 (Python) + W5-12 (uninstaller) done; next W5-5 models, W5-6 first-run, W5-7/8 sign+notarize (need your Mac/cert) |
+| E — Apple app | 5 | 🟠 in progress — W5-1/2/3/4/7/8/12 done (metadata, .app, launchd, Python, **sign+notarize scripts**, uninstaller); next W5-5 models, W5-6 first-run, W5-11 GUI, DMG. Cert-gated execution (sign/notarize) → your Mac |
 | F — Investor readiness | 6 | 🟢 ~90% closed — F-1,2,3,6,7,9,10,13,14,16,17 done; F-18 partial. Remaining gated on you: F-4 (ruff-cleanup decision), F-5 (versioning), F-8 (GIF), F-11 (pricing), F-12 (Discord), F-15 (pyproject, deferred). |
 | B — Projects + Pilot | 7 | ⏳ not started (needs your scope description) |
