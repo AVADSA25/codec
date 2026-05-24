@@ -24,9 +24,10 @@ the same commit when cutting a release.
 
 ## Retroactively tagging history
 
-The CHANGELOG documents 10 releases (v1.0.0 … v2.3.0) that were never git-tagged.
-[`scripts/tag_releases.py`](../scripts/tag_releases.py) creates them, mapping each version to
-the last commit on/before its CHANGELOG date. It is **dry-run by default**:
+The CHANGELOG's 10 releases (v1.0.0 … v2.3.0) were tagged + published on **2026-05-24** using
+[`scripts/tag_releases.py`](../scripts/tag_releases.py), which maps each version to the last
+commit on/before its CHANGELOG date. GitHub Releases now render all 10, with **v2.3.0 marked
+Latest**. The script remains the tool for future backfills and is **dry-run by default**:
 
 ```bash
 python3 scripts/tag_releases.py            # preview the version → commit mapping
@@ -36,19 +37,13 @@ python3 scripts/tag_releases.py --execute --push   # push them to origin
 
 Review the dry-run mapping before executing — the date→commit mapping is best-effort.
 
-## The `v3.0.0` tag — reconciliation needed (operator decision)
+## The `v3.0.0` tag — resolved (2026-05-24)
 
-The repo carries a `v3.0.0` git tag that is **ahead of the documented history** (the latest
-CHANGELOG release is v2.3.0). This is the only real version-drift item left. Pick one:
-
-- **(A, recommended) Treat v3.0.0 as erroneous** — delete it (`git tag -d v3.0.0 && git push
-  origin :refs/tags/v3.0.0`) and let `tag_releases.py` lay down v1.0.0…v2.3.0. The next major
-  becomes v3.0.0 when it's actually cut.
-- **(B) Treat v3.0.0 as the intended next major** — keep the tag, and bump `VERSION` +
-  CHANGELOG to `3.0.0` on the next release so the chain reconnects.
-
-This script and `VERSION` deliberately do **not** make that call — deleting/moving a pushed
-tag is a published-history change that's the operator's to make.
+The repo previously carried a `v3.0.0` tag + release **ahead of the documented history** (the
+latest CHANGELOG release is v2.3.0) with no CHANGELOG notes. It was the version-drift culprit.
+**Resolution: deleted as erroneous** (operator-approved) — the tag, the GitHub release, and its
+stale "Latest" badge are gone; `v2.3.0` is now the Latest release. The next real major becomes
+`v3.0.0` when it's actually cut (bump `VERSION` + add a CHANGELOG entry + tag per the steps above).
 
 ## Optional follow-up
 

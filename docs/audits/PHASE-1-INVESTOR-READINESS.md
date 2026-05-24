@@ -120,6 +120,15 @@ No lint (ruff, flake8, black). No type check (mypy, pyright). No coverage report
 
 ### F-5 — No release tagging discipline; only 2 git tags exist [HIGH]
 
+> **✅ CLOSED (2026-05-24, PR #136).** Single source of version truth: `VERSION` (=2.3.0) ←
+> `CHANGELOG`, exposed at runtime via `codec_version.__version__`, pinned by
+> `tests/test_versioning.py` (CI-gated). All 10 documented releases (v1.0.0…v2.3.0) tagged +
+> published via `scripts/tag_releases.py` (dry-run-default); GitHub Releases render the full
+> history with **v2.3.0 marked Latest**. The drift culprit — the `v3.0.0` tag+release ahead of
+> the documented history — was **deleted as erroneous** (operator-approved). Scheme + process in
+> `docs/VERSIONING.md`. Residual (optional): `codec_dashboard.py` FastAPI `version="2.1.0"` left
+> untouched (hot working-runtime string). See `docs/F5-VERSIONING-DESIGN.md`.
+
 **What's missing:** `git tag -l` returns:
 ```
 pre-dashboard-redesign
@@ -251,6 +260,11 @@ The README sells *features* well. It does not sell *positioning* — the *why-th
 ---
 
 ### F-11 — No pricing / paid tier mention in README [MEDIUM]
+
+> **✅ CLOSED (2026-05-25).** Mickael set the tier: the paid Mac app is **€10/month or €99/year**
+> (annual = two months free). README's "Paid Mac app" line now states the price directly, keeps
+> the OSS build free/MIT forever, and frames the paid app as convenience + managed setup +
+> optional cloud-LLM (never an engine paywall).
 
 **What's missing:** Per Mickael's brief, CODEC is positioning for "paid Mac app launch." README says (line 39): "No subscription on the open-source build." That implies a paid build exists or is coming, but README does not say:
 - What's in the paid tier (managed install? hosted LLM? team features? priority support?)
@@ -389,7 +403,10 @@ Verified count: 873 test functions across 54 files (`grep` of `def test_` in `te
 
 ### F-18 — No README mention of "agent-to-agent like Lucy" (Mickael's headline angle) [LOW]
 
-> **🟡 PARTIALLY CLOSED by PR-6G (2026-05-24).** MCP section now has a "Bidirectional MCP — agent-to-agent" subsection: CODEC is **both an MCP client AND server**, two CODECs peer directly = agent-to-agent on the open protocol. The generic angle is stated. **Open for Mickael:** whether "Lucy" is a separate brand to *name* in the README (tracked in `docs/HANDOFF-MICKAEL.md`).
+> **✅ CLOSED (2026-05-25).** Decision from Mickael: **no "Lucy" in CODEC** — the product is
+> CODEC, full stop. The generic bidirectional-MCP / agent-to-agent angle (PR-6G) stays as the
+> README framing; no brand name is added. The stray "Lucy-quality" descriptor in the CHANGELOG
+> was scrubbed to "executive-grade". F-18 needs nothing further.
 
 **What's missing:** Per the audit brief, one of Mickael's headline unique angles is *"Talk to other agents like Lucy"* — i.e. multi-agent agent-to-agent collaboration via MCP. README's MCP section frames the bridge as CODEC → Claude (Claude consumes CODEC tools), not CODEC → other-agent (CODEC peers with Lucy or another MCP-speaking agent).
 
