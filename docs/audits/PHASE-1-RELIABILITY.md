@@ -170,6 +170,8 @@ Two threads can both pass the `if not state["recording"]` check; both think they
 ---
 
 ### H-3 — `audit.log` writers don't use inter-process file locking; rotation race can corrupt or lose entries [HIGH]
+
+> **Closed by PR-4E.** `codec_audit._write` now wraps its whole critical section (`_rotate_if_needed()` → open-append → write → close) in `codec_jsonstore.file_lock(_AUDIT_LOG)` — `fcntl.flock(LOCK_EX)` on the **stable `audit.log.lock` sidecar** — inside the existing in-process `_LOCK`. The sidecar inode is never renamed (unlike `audit.log` on rotation), so it serializes the rotate-or-write section across **all 11 PM2 daemons**, not just threads in one process. Closes Race A (concurrent rotation — the loser re-checks and appends to the current file), Race B (write-during-rotation — the rename now happens under the same lock as every append, so no fd follows the inode into the rotated file), and Race C (>PIPE_BUF line interleaving — only one process appends at a time). Reuses the PR-4C flock primitive (stdlib-only, no import cycle with the foundation module). The envelope/schema, HMAC signing, redaction, 0600 perms, rotation cadence + retention are all unchanged; never-raises preserved. 6 tests (`tests/test_audit_flock.py`); 70 audit-subsystem regression tests green (incl. the perf budgets — flock adds ~tens of µs). See `docs/PR4E-AUDIT-FLOCK-DESIGN.md`.
 **Location:** `codec_audit.py:63 _LOCK`, `:340 _rotate_if_needed`, `:362 _write`
 **Description:** All 11 PM2 daemons write to `~/.codec/audit.log` via `codec_audit._write()`. The `_LOCK` is `threading.Lock()` — per-process. Rotation is `_AUDIT_LOG.rename(rotated)` at line 350.
 
