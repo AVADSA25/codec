@@ -79,8 +79,17 @@ def _load_state() -> dict:
     if STATE.exists():
         try:
             return json.loads(STATE.read_text())
-        except Exception:
-            pass
+        except json.JSONDecodeError as e:
+            # L-2 (PR-4I): a corrupt state file used to fall through to {}, which
+            # makes every trigger think "not fired today" and RE-FIRE (a double
+            # morning-briefing is harmless; a double outbound message is not).
+            # Surface a loud ERROR + a sentinel that _tick checks before firing,
+            # and leave the file untouched so the user notices + fixes it.
+            log.error("autopilot state file is CORRUPT (%s): %s — refusing to "
+                      "fire any trigger until it is fixed or deleted", STATE, e)
+            return {"__corrupt__": True}
+        except OSError as e:
+            log.warning("autopilot state read failed (%s): %s", STATE, e)
     return {}
 
 
@@ -165,6 +174,11 @@ def _fire(trigger: dict, registry: SkillRegistry):
 
 def _tick(cfg: dict, state: dict, registry: SkillRegistry):
     if not cfg.get("enabled"):
+        return
+    if state.get("__corrupt__"):
+        # L-2 (PR-4I): the state file couldn't be parsed — do NOT fire (firing
+        # against an empty state would re-fire every trigger). No _save_state
+        # happens, so the corrupt file stays for the user to fix.
         return
     tzname = cfg.get("timezone", "Europe/Madrid")
     try:
