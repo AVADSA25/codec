@@ -540,7 +540,20 @@ def extend_budget(agent_id: str, body: ExtendBudgetBody):
     cp = plan.checkpoints[current_idx]
     overrides = state.get("step_budget_overrides", {}) or {}
     base = int(overrides.get(cp.id, cp.step_budget))
-    new_budget = base + int(body.additional_steps)
+    # B-14: cap the CUMULATIVE override — extend_budget could otherwise be called
+    # repeatedly to push a checkpoint's budget (the only runaway backstop) without
+    # limit. (Per-agent authz on this endpoint is deferred — depends on B-3.)
+    try:
+        from codec_agent_runner import MAX_CHECKPOINT_STEP_BUDGET as _MAX_BUDGET
+    except Exception:
+        _MAX_BUDGET = 500
+    if base >= _MAX_BUDGET:
+        raise HTTPException(
+            status_code=409,
+            detail=f"checkpoint step_budget already at the ceiling "
+                   f"({_MAX_BUDGET}); cannot extend further",
+        )
+    new_budget = min(base + int(body.additional_steps), _MAX_BUDGET)
     overrides[cp.id] = new_budget
     state["step_budget_overrides"] = overrides
     _cap.save_state(agent_id, state)
