@@ -40,10 +40,11 @@ jobs:
           tests/test_one_pager.py
           tests/test_apple_packaging.py
           tests/test_dependabot.py
-      - name: Apple packaging tests (W5-2 bundle + W5-3 launchd + W5-4 python + W5-12 uninstall)
+      - name: Apple packaging tests (W5-2/3/4/7/8/12 — bundle, launchd, python, sign, notarize, uninstall)
         run: >
           python -m pytest -v
           tests/test_app_bundle.py
           tests/test_launchd.py
           tests/test_python_bundle.py
           tests/test_uninstaller.py
+          tests/test_signing.py

@@ -83,12 +83,18 @@ The conclusion is unambiguous: there is no Apple-app distribution scaffolding in
 **Dependencies:** none (foundational).
 
 ### E-2 — No code signing pipeline [CRITICAL]
+
+> **🟡 SUBSTANTIALLY CLOSED — W5-7/PR-5F.** `packaging/macos/sign_app.sh` signs the bundle **inside-out** with **hardened runtime** + the W5-1 entitlements: every nested `*.dylib`/`*.so` (the embedded Python's extension modules + numpy/mlx/PyObjC) and Mach-O executable first, then the `.app` last (`codesign --force --options runtime --timestamp --entitlements codec.entitlements --sign <id>`), then `codesign --verify --deep --strict` + `spctl`. `--dry-run` validated on macOS (correct inside-out enumeration + command plan); 4 tests (`tests/test_signing.py`). **Handoff:** Mickael runs it once with the **Developer ID Application** cert (`--identity` / `$CODEC_SIGN_IDENTITY`) — the only thing that can't live in the repo/CI.
+
 **What's missing:** Zero references to `codesign`, `--sign`, Developer ID Application certificates, or hardened runtime in the repo. Both the Touch ID helper (`codec_auth/codec_auth`, compiled inline by `setup_codec.py:563-571` via `swiftc`) and the Swift overlay (`swift-overlay/`) ship unsigned.
 **Why it matters:** Unsigned binaries trip Gatekeeper on download; the user has to right-click → Open → Open or run `xattr -d com.apple.quarantine`. A paid app cannot ship like this. Hardened runtime (required for notarization) is also un-configured — affects subprocess injection (need `com.apple.security.cs.allow-jit`, `com.apple.security.cs.disable-library-validation`, or `com.apple.security.cs.allow-unsigned-executable-memory` to keep CPython + PyObjC working).
 **Effort:** **L** (acquire Developer ID Application cert, set up keychain for CI, write a `scripts/sign_app.sh` that signs the bundle including embedded Python, all `.dylib`, the cloudflared binary, and the Touch ID helper; test hardened-runtime entitlements against the actual launch path).
 **Dependencies:** E-1 (need a bundle to sign), E-13 (Apple Developer enrollment).
 
 ### E-3 — No notarization workflow [CRITICAL]
+
+> **🟡 SUBSTANTIALLY CLOSED — W5-8/PR-5F.** `packaging/macos/notarize_app.sh`: `ditto` zips the signed bundle → `xcrun notarytool submit --wait` (keychain-profile or apple-id trio) → `xcrun stapler staple` + `validate` + `spctl --assess`. Includes the documented **triage** for the common failure (Apple flags an unsigned embedded `mlx`/`numpy`/`PyObjC` `.dylib`: `notarytool log` → re-run `sign_app.sh` → resubmit). `--dry-run` validated on macOS. **Handoff:** Mickael runs it once with an **App Store Connect API key** stored via `notarytool store-credentials`. DMG/pkg packaging is the later installer step.
+
 **What's missing:** Zero references to `notarytool`, `xcrun stapler`, `altool`, or any CI hook that uploads the bundle to Apple. No `.dmg` or `.pkg` build target exists.
 **Why it matters:** As of macOS 10.15+, downloaded apps that aren't notarized refuse to launch on first run (Gatekeeper blocks them with the dreaded "cannot be opened because Apple cannot check it for malicious software" dialog). A paid app **must** be notarized. The notarization process scans all embedded binaries — Python interpreter, every `.dylib` from `mlx`, `numpy`, `pyobjc`, etc. — for signing/hardened-runtime compliance.
 **Effort:** **M** (script using `notarytool submit` + `stapler staple`; configure App Store Connect API key; test with a stub bundle; document the failure-mode triage when Apple flags an unsigned embedded `.dylib` — common with `mlx`/`numpy`/`PyObjC` builds).
