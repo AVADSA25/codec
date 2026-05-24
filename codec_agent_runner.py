@@ -58,6 +58,11 @@ DESTRUCTIVE_CONSENT_TIMEOUT_S = 600  # Step 3 §1.7 default — overnight = bloc
 # Real tasks (multi-fetch, multi-file) routinely need 30-50 steps; 60 gives
 # comfortable headroom without being unlimited.
 DEFAULT_STEP_BUDGET_PER_CHECKPOINT = 60
+# B-14: hard cumulative ceiling on a single checkpoint's step_budget. The
+# /extend_budget endpoint can bump a paused checkpoint's budget, but never above
+# this — otherwise the only backstop against a runaway/looping agent (the step
+# budget) can be extended without limit. ~8x the default; tune via this constant.
+MAX_CHECKPOINT_STEP_BUDGET = 500
 
 
 # ── Action dataclass ──────────────────────────────────────────────────────────
@@ -354,97 +359,99 @@ def _qwen_chat(user_prompt: str, system_prompt: str = "",
         raise QwenUnavailableError(f"qwen3.6 unavailable: {e}") from e
 
 
-def _qwen_next_action(plan_dict: Dict[str, Any], checkpoint: Dict[str, Any],
-                     history: List[Dict[str, Any]],
-                     max_history: int = 10) -> Action:
-    """Compose the next-action prompt, call Qwen, parse the JSON
-    response into an Action. Raises QwenUnavailableError or
-    ValueError on bad JSON shape."""
+# ── B-12: _qwen_next_action decomposed into pure, testable units ──────────────
+def _trim_history(h_list: List[Dict[str, Any]], cap: int = 600) -> List[Dict[str, Any]]:
+    """Cap each history entry's `result` string so the Qwen prompt doesn't bloat
+    the context window (and cause response truncation)."""
+    out = []
+    for entry in h_list:
+        e = dict(entry)
+        if isinstance(e.get("result"), str) and len(e["result"]) > cap:
+            e["result"] = e["result"][:cap] + "…[truncated]"
+        out.append(e)
+    return out
+
+
+def _extract_file_list(h_list: List[Dict[str, Any]]) -> list:
+    """Scan history for a file_ops list result and return the path list.
+
+    B-12 note: this reverse-engineers iteration state from skill OUTPUT STRINGS,
+    which is fragile — a skill that changes its result format silently breaks
+    multi-file iteration. Isolated + unit-tested here; replacing it with a typed
+    iteration tracker (have _run_skill record structured results) is the deeper
+    follow-up flagged by the audit."""
+    for entry in h_list:
+        result = entry.get("result", "")
+        if isinstance(result, str) and "Files (" in result:
+            # file_ops list output format: "Files (N):\n/path1\n/path2\n..."
+            paths = re.findall(r"(/[\w./_-]+\.[\w]+)", result)
+            if paths:
+                return paths
+    return []
+
+
+def _already_read(h_list: List[Dict[str, Any]]) -> set:
+    """Return the set of absolute paths whose file content is already in history."""
+    seen = set()
+    for entry in h_list:
+        result = entry.get("result", "")
+        if isinstance(result, str):
+            # file_ops read output: "File: /path ..."
+            m = re.match(r"File: (/[^\s(]+)", result)
+            if m:
+                seen.add(m.group(1))
+    return seen
+
+
+def _build_file_iteration_hint(history: List[Dict[str, Any]]) -> str:
+    """Compose the 'next file to process' hint from the (string-derived) file list,
+    so Qwen doesn't have to track iteration state itself."""
+    file_list = _extract_file_list(history)
+    if not file_list:
+        return ""
+    already_done = _already_read(history)
+    remaining = [p for p in file_list if p not in already_done]
+    if remaining:
+        return (
+            f"\nFile iteration state:\n"
+            f"  Total files to process: {len(file_list)}\n"
+            f"  Already processed: {len(already_done)} files\n"
+            f"  Remaining: {len(remaining)} files\n"
+            f"  NEXT FILE TO READ NOW: {remaining[0]}\n"
+            f"  (Process exactly this one file in your next skill call. "
+            f"Do NOT pass multiple paths.)\n"
+        )
+    return (
+        f"\nFile iteration state: ALL {len(file_list)} files have been "
+        f"read. Check if expected_output is satisfied; if yes return "
+        f"checkpoint_done.\n"
+    )
+
+
+def _available_skills_for(plan_dict: Dict[str, Any]) -> list:
+    """Skills the agent may use: the permission_manifest list, else the union of
+    every checkpoint's skills_needed."""
+    available_skills = (plan_dict.get("permission_manifest") or {}).get("skills", [])
+    if not available_skills:
+        for cp in plan_dict.get("checkpoints", []):
+            available_skills.extend(cp.get("skills_needed", []))
+        available_skills = sorted(set(available_skills))
+    return available_skills
+
+
+def _build_action_prompt(plan_dict: Dict[str, Any], checkpoint: Dict[str, Any],
+                         history: List[Dict[str, Any]], max_history: int = 10) -> str:
+    """Pure next-action prompt composition (B-12). No I/O, no LLM call."""
     recent = history[-max_history:] if history else []
-    # Floor to DEFAULT so plans with tiny LLM-generated budgets (e.g. 5 or 10)
-    # don't exhaust before Qwen can finish real work.
+    # Floor to DEFAULT so plans with tiny LLM-generated budgets don't exhaust early.
     budget = max(int(checkpoint.get("step_budget", DEFAULT_STEP_BUDGET_PER_CHECKPOINT)),
                  DEFAULT_STEP_BUDGET_PER_CHECKPOINT)
     steps_used = len(history)
     steps_remaining = max(0, budget - steps_used)
-
-    # Available skills from permission_manifest (what the agent is allowed to use)
-    available_skills = (plan_dict.get("permission_manifest") or {}).get("skills", [])
-    if not available_skills:
-        # Fallback: union of all checkpoint skills_needed
-        for cp in plan_dict.get("checkpoints", []):
-            available_skills.extend(cp.get("skills_needed", []))
-        available_skills = sorted(set(available_skills))
-
-    # Trim history results to avoid bloating the Qwen prompt.
-    # Each history entry's "result" is capped at 600 chars — enough to
-    # see the key outcome (file paths, headings, status) without flooding
-    # the context window and causing response truncation.
-    def _trim_history(h_list):
-        out = []
-        for entry in h_list:
-            e = dict(entry)
-            if isinstance(e.get("result"), str) and len(e["result"]) > 600:
-                e["result"] = e["result"][:600] + "…[truncated]"
-            out.append(e)
-        return out
-
+    available_skills = _available_skills_for(plan_dict)
     recent_trimmed = _trim_history(recent)
-
-    # ── File-iteration state injection ────────────────────────────────────────
-    # When history contains a file-list result (file_ops list call), extract all
-    # paths and figure out which have already been read in this checkpoint. Inject
-    # an explicit "next file to process" hint so Qwen doesn't need to track
-    # iteration state itself — dramatically reduces wasted steps.
-    import re as _re
-
-    def _extract_file_list(h_list) -> list:
-        """Scan history for a file_ops list result and return the path list."""
-        for entry in h_list:
-            result = entry.get("result", "")
-            if isinstance(result, str) and "Files (" in result:
-                # file_ops list output format: "Files (N):\n/path1\n/path2\n..."
-                paths = _re.findall(r"(/[\w./_-]+\.[\w]+)", result)
-                if paths:
-                    return paths
-        return []
-
-    def _already_read(h_list) -> set:
-        """Return set of absolute paths whose file content is in history."""
-        seen = set()
-        for entry in h_list:
-            result = entry.get("result", "")
-            if isinstance(result, str):
-                # file_ops read output: "File: /path ..."
-                m = _re.match(r"File: (/[^\s(]+)", result)
-                if m:
-                    seen.add(m.group(1))
-        return seen
-
-    file_list = _extract_file_list(history)  # full history, not just recent
-    file_iteration_hint = ""
-    if file_list:
-        already_done = _already_read(history)
-        remaining = [p for p in file_list if p not in already_done]
-        if remaining:
-            next_file = remaining[0]
-            file_iteration_hint = (
-                f"\nFile iteration state:\n"
-                f"  Total files to process: {len(file_list)}\n"
-                f"  Already processed: {len(already_done)} files\n"
-                f"  Remaining: {len(remaining)} files\n"
-                f"  NEXT FILE TO READ NOW: {next_file}\n"
-                f"  (Process exactly this one file in your next skill call. "
-                f"Do NOT pass multiple paths.)\n"
-            )
-        else:
-            file_iteration_hint = (
-                f"\nFile iteration state: ALL {len(file_list)} files have been "
-                f"read. Check if expected_output is satisfied; if yes return "
-                f"checkpoint_done.\n"
-            )
-
-    user_prompt = (
+    file_iteration_hint = _build_file_iteration_hint(history)
+    return (
         f"Plan goals: {plan_dict.get('goals')}\n\n"
         f"Available skills (use ONLY these): {available_skills}\n\n"
         f"Current checkpoint:\n"
@@ -459,65 +466,39 @@ def _qwen_next_action(plan_dict: Dict[str, Any], checkpoint: Dict[str, Any],
         f"return {{\"kind\": \"checkpoint_done\"}} now. Otherwise output the next skill call JSON."
     )
 
-    def _parse_action_json(text: str):
-        """Try to extract a valid JSON object from Qwen output.
 
-        Handles:
-        - Bare JSON
-        - ```json ... ``` fences
-        - Truncated output — extract first complete {...} block
-        """
+def _parse_action_json(text: str):
+    """Extract a JSON object from Qwen output: bare, ```json fences, or the first
+    balanced {...} block out of surrounding prose/truncation. Returns dict or None."""
+    text = text.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text)
+        text = re.sub(r"\s*```\s*$", "", text)
         text = text.strip()
-        # Strip code fences
-        if text.startswith("```"):
-            text = _re.sub(r"^```(?:json)?\s*", "", text)
-            text = _re.sub(r"\s*```\s*$", "", text)
-            text = text.strip()
-        # Try direct parse first
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError:
-            pass
-        # Try to extract the first balanced {...} block
-        start = text.find("{")
-        if start >= 0:
-            depth = 0
-            for i in range(start, len(text)):
-                if text[i] == "{":
-                    depth += 1
-                elif text[i] == "}":
-                    depth -= 1
-                    if depth == 0:
-                        try:
-                            return json.loads(text[start:i+1])
-                        except json.JSONDecodeError:
-                            break
-        return None
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    start = text.find("{")
+    if start >= 0:
+        depth = 0
+        for i in range(start, len(text)):
+            if text[i] == "{":
+                depth += 1
+            elif text[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    try:
+                        return json.loads(text[start:i+1])
+                    except json.JSONDecodeError:
+                        break
+    return None
 
-    raw = _qwen_chat(user_prompt, _NEXT_ACTION_SYSTEM_PROMPT, max_tokens=4000).strip()
-    d = _parse_action_json(raw)
-    if d is None:
-        # One retry with a shorter, sharper prompt
-        log.warning("_qwen_next_action: parse failed, retrying. raw=%r", raw[:120])
-        retry_prompt = (
-            "Output ONLY a single JSON object. No prose, no fences.\n\n"
-            f"Plan goals: {plan_dict.get('goals')}\n"
-            f"Checkpoint: {checkpoint['title']} — {checkpoint['description']}\n"
-            f"Expected output: {checkpoint['expected_output']}\n"
-            f"Steps used: {steps_used}/{budget}\n"
-            f"Last result: {recent[-1]['result'][:300] if recent else 'none'}\n\n"
-            "Return {\"kind\": \"checkpoint_done\"} if expected_output is satisfied, "
-            "else the next skill call JSON."
-        )
-        raw2 = _qwen_chat(retry_prompt, _NEXT_ACTION_SYSTEM_PROMPT).strip()
-        d = _parse_action_json(raw2)
-    if d is None:
-        raise ValueError(f"qwen returned non-JSON next-action: raw={raw[:200]!r}")
 
-    kind = d.get("kind", "skill_call")
-    if kind == "checkpoint_done":
+def _action_from_json(d: Dict[str, Any]) -> Action:
+    """Build an Action from parsed Qwen JSON (B-12). Unknown keys are ignored."""
+    if d.get("kind", "skill_call") == "checkpoint_done":
         return Action(skill="", task="", kind="checkpoint_done")
-
     return Action(
         skill=str(d.get("skill", "")),
         task=str(d.get("task", "")),
@@ -530,6 +511,38 @@ def _qwen_next_action(plan_dict: Dict[str, Any], checkpoint: Dict[str, Any],
         read_path=str(d.get("read_path", "")),          # Phase 3.5 review M4
         kind="skill_call",
     )
+
+
+def _qwen_next_action(plan_dict: Dict[str, Any], checkpoint: Dict[str, Any],
+                     history: List[Dict[str, Any]],
+                     max_history: int = 10) -> Action:
+    """Thin orchestrator (B-12): build prompt → call Qwen (one retry on parse
+    failure) → parse → build Action. Raises QwenUnavailableError or ValueError on
+    bad JSON shape."""
+    user_prompt = _build_action_prompt(plan_dict, checkpoint, history, max_history)
+    raw = _qwen_chat(user_prompt, _NEXT_ACTION_SYSTEM_PROMPT, max_tokens=4000).strip()
+    d = _parse_action_json(raw)
+    if d is None:
+        # One retry with a shorter, sharper prompt.
+        log.warning("_qwen_next_action: parse failed, retrying. raw=%r", raw[:120])
+        recent = history[-max_history:] if history else []
+        budget = max(int(checkpoint.get("step_budget", DEFAULT_STEP_BUDGET_PER_CHECKPOINT)),
+                     DEFAULT_STEP_BUDGET_PER_CHECKPOINT)
+        retry_prompt = (
+            "Output ONLY a single JSON object. No prose, no fences.\n\n"
+            f"Plan goals: {plan_dict.get('goals')}\n"
+            f"Checkpoint: {checkpoint['title']} — {checkpoint['description']}\n"
+            f"Expected output: {checkpoint['expected_output']}\n"
+            f"Steps used: {len(history)}/{budget}\n"
+            f"Last result: {recent[-1]['result'][:300] if recent else 'none'}\n\n"
+            "Return {\"kind\": \"checkpoint_done\"} if expected_output is satisfied, "
+            "else the next skill call JSON."
+        )
+        raw2 = _qwen_chat(retry_prompt, _NEXT_ACTION_SYSTEM_PROMPT).strip()
+        d = _parse_action_json(raw2)
+    if d is None:
+        raise ValueError(f"qwen returned non-JSON next-action: raw={raw[:200]!r}")
+    return _action_from_json(d)
 
 
 @dataclass
@@ -781,8 +794,22 @@ def _execute_checkpoint(plan_dict: Dict[str, Any],
     budget = max(int(checkpoint.get("step_budget", DEFAULT_STEP_BUDGET_PER_CHECKPOINT)),
                  DEFAULT_STEP_BUDGET_PER_CHECKPOINT)
 
+    # B-14: count EVERY _qwen_next_action call (incl. the correction-nudge retry)
+    # against `budget`, so a correction-heavy loop can't quietly burn ~2x the
+    # intended LLM calls. `budget` now bounds LLM calls, not loop iterations; the
+    # `for step in range(budget)` below is the secondary bound.
+    _qwen_calls = 0
+
+    def _next_action():
+        nonlocal _qwen_calls
+        _qwen_calls += 1
+        if _qwen_calls > budget:
+            raise StepBudgetExhausted(
+                f"qwen_call_budget {budget} exhausted in checkpoint {cp_id}")
+        return _qwen_next_action(plan_dict, checkpoint, history)
+
     for step in range(budget):
-        action = _qwen_next_action(plan_dict, checkpoint, history)
+        action = _next_action()
 
         if action.kind == "checkpoint_done":
             return history
@@ -810,8 +837,9 @@ def _execute_checkpoint(plan_dict: Dict[str, Any],
             })
             _persist_checkpoint_progress(agent_id, cp_id, history, executed_destructive)
             # Re-call Qwen — if it still picks something invalid, fall through
-            # and the SECOND permission_gate call will raise normally.
-            action2 = _qwen_next_action(plan_dict, checkpoint, history)
+            # and the SECOND permission_gate call will raise normally. (B-14: this
+            # retry counts against the qwen-call budget via _next_action.)
+            action2 = _next_action()
             if action2.kind == "checkpoint_done":
                 return history
             permission_gate(action2, agent_grants, global_grants)
