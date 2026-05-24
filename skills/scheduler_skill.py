@@ -1,5 +1,6 @@
 """CODEC Scheduler Skill — voice control for scheduled agent runs"""
-import sys, os
+import sys
+import os
 sys.path.insert(0, os.path.expanduser("~/codec-repo"))
 
 SKILL_NAME = "scheduler"

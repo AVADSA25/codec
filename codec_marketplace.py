@@ -124,7 +124,9 @@ def _download_skill(skill_entry: dict, registry: dict) -> str | None:
 
 
 def _install_deps(deps: list) -> None:
-    import re, subprocess, sys
+    import re
+    import subprocess
+    import sys
     for dep in deps:
         if not re.match(r'^[a-zA-Z0-9_.\-]+$', dep):
             print(f"  ⚠️  Skipping suspicious dependency name: {dep}")
@@ -217,7 +219,7 @@ def cmd_install(name: str, interactive: bool = True) -> bool:
     _save_marketplace_meta(meta)
 
     print(f"\n✅ '{match.get('display_name', match.get('name', 'unknown'))}' installed → {dest}")
-    print(f"   Restart CODEC to activate: pm2 restart ava-autopilot")
+    print("   Restart CODEC to activate: pm2 restart ava-autopilot")
     return True
 
 
@@ -243,7 +245,7 @@ def cmd_search(query: str) -> None:
         print(f"  {'':<26} {s.get('description','')}")
         print(f"  {'':<26} triggers: {', '.join(s.get('triggers',[])[:3])}")
         print()
-    print(f"  Install: codec install <skill-name>")
+    print("  Install: codec install <skill-name>")
 
 
 def cmd_list() -> None:
@@ -266,7 +268,7 @@ def cmd_list() -> None:
     built_in    = sum(1 for _, s in rows if s == "built-in")
     marketplace = sum(1 for _, s in rows if s == "marketplace")
     print(f"\n  📦 Built-in: {built_in}   🌐 Marketplace: {marketplace}")
-    print(f"  Browse: codec search <query>  |  Install: codec install <name>")
+    print("  Browse: codec search <query>  |  Install: codec install <name>")
 
 
 def cmd_update() -> None:
@@ -377,7 +379,7 @@ def cmd_publish(filepath: str) -> None:
     triggers_match = re.search(r"SKILL_TRIGGERS\s*=\s*\[([^\]]+)\]", code)
     trigger_count  = len(triggers_match.group(1).split(",")) if triggers_match else 0
 
-    print(f"\n🚀  CODEC Skill Publish Guide")
+    print("\n🚀  CODEC Skill Publish Guide")
     print("=" * 42)
 
     if issues:
@@ -411,7 +413,7 @@ skill.json template:""")
         "file": f"{basename.replace('_','-')}/{basename}.py",
         "verified": False
     }, indent=2))
-    print(f"\n  Guidelines: https://github.com/AVADSA25/codec-skills/blob/main/CONTRIBUTING.md")
+    print("\n  Guidelines: https://github.com/AVADSA25/codec-skills/blob/main/CONTRIBUTING.md")
 
 
 # ── CODEC Skill (voice-accessible) ──────────────────────────────────────────

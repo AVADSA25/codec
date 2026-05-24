@@ -4,7 +4,8 @@ SKILL_TRIGGERS = ["brightness", "screen bright", "dim screen", "brighten", "dark
 SKILL_DESCRIPTION = "Adjust screen brightness"
 SKILL_MCP_EXPOSE = True
 
-import re, ctypes
+import re
+import ctypes
 
 def run(task, app="", ctx=""):
     t = task.lower()

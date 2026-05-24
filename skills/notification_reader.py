@@ -1,5 +1,7 @@
 """notification_reader skill — read and manage CODEC dashboard notifications."""
-import sys, os, json
+import sys
+import os
+import json
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 SKILL_NAME = "notification_reader"
@@ -15,7 +17,6 @@ SKILL_MCP_EXPOSE = True
 def run(task: str = "", context: str = "") -> str:
     """Read or manage CODEC notifications."""
     from urllib.request import urlopen, Request
-    from urllib.error import URLError
 
     base = "http://localhost:8090"
     # PR-2D (D-11 closure): replace `x-internal: codec` literal with HMAC token.

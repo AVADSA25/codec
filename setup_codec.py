@@ -3,7 +3,11 @@
 CODEC Setup Wizard — Interactive Configuration
 Run: python3 setup_codec.py
 """
-import os, json, sys, subprocess, shutil
+import os
+import json
+import sys
+import subprocess
+import shutil
 
 # ── COLORS ────────────────────────────────────────────────────────────────────
 O = "\033[38;2;232;113;26m"   # Orange

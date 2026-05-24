@@ -5,12 +5,13 @@ in FEATURES.md (currently 400 features across 9 products + 4 phase substrates).
 
 Run: /usr/local/bin/python3.13 scripts/feature_audit.py
 """
-import sys, os, json, time, sqlite3, threading, importlib, asyncio, re
-from datetime import datetime, timedelta
-from pathlib import Path
+import sys
+import os
+import json
+import sqlite3
+from datetime import datetime
 from urllib.request import urlopen, Request
 from urllib.error import URLError
-from urllib.parse import urlencode
 
 # Ensure repo root on path
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -858,7 +859,6 @@ def test_agents():
     # 3: Async agent execution
     try:
         from codec_agents import Agent
-        import inspect
         # Check for async run method
         with open(os.path.join(REPO, "codec_agents.py")) as f:
             src = f.read()
@@ -1101,7 +1101,7 @@ def test_infrastructure():
 
     # 1: Centralized config
     try:
-        from codec_config import load_config, CONFIG_PATH
+        from codec_config import load_config
         cfg = load_config()
         if isinstance(cfg, dict) and len(cfg) > 20:
             PASS(A, 1, "Centralized config system", f"{len(cfg)} keys in config.json")
@@ -1345,7 +1345,7 @@ def test_infrastructure():
 
     # 24: Search result TTL caching (was #18 in duplicated numbering)
     try:
-        from codec_search import _cache, _CACHE_TTL
+        from codec_search import _CACHE_TTL
         assert _CACHE_TTL == 300
         PASS(A, 24, "Search result TTL caching", f"TTL={_CACHE_TTL}s, cache exists")
     except Exception as e:

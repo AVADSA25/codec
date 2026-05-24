@@ -4,7 +4,6 @@ Run: pytest tests/test_high_fixes.py -v
 """
 import os
 import re
-import sys
 import inspect
 import sqlite3
 import tempfile
@@ -24,7 +23,6 @@ class TestSQLiteIndexes:
 
     def test_indexes_created_in_db(self):
         """Actually create a temp DB and verify indexes exist."""
-        import codec_memory
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
             db_path = f.name
         try:
@@ -131,7 +129,6 @@ class TestTriggerWordBoundary:
 
     def test_play_does_not_match_display(self):
         """'play' trigger must NOT match 'display my files'."""
-        from codec_skill_registry import SkillRegistry
         # Test the matching logic directly
         low = "display my files"
         trigger = "play"

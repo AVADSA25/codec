@@ -6,11 +6,10 @@ PWA endpoints, and end-to-end integration.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 

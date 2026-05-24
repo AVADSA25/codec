@@ -5,7 +5,8 @@ SKILL_MCP_EXPOSE = True
 SKILL_TRIGGERS = ["volume up", "volume down", "set volume", "mute", "unmute",
                    "louder", "quieter", "brightness up", "brightness down",
                    "turn up", "turn down", "volume to", "max volume", "silence"]
-import subprocess, re
+import subprocess
+import re
 
 def run(task, app="", ctx=""):
     low = task.lower()

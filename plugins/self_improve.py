@@ -299,7 +299,7 @@ def on_operation_end(ctx):
         target=_draft_and_write,
         args=(eligible, ctx.correlation_id),
         daemon=True,
-        name=f"self_improve_drafter",
+        name="self_improve_drafter",
     )
     t.start()
 

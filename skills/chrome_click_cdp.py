@@ -1,5 +1,6 @@
 """Click specific web elements via CDP"""
-import sys, os
+import sys
+import os
 sys.path.insert(0, os.path.expanduser("~/codec-repo"))
 
 SKILL_NAME = "chrome_click_cdp"

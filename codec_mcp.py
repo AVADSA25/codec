@@ -5,7 +5,12 @@ at startup so MCP tool listings work immediately, but the actual module
 import only happens when a tool is first invoked.
 """
 from fastmcp import FastMCP
-import os, sys, json, logging, secrets, time, asyncio, inspect
+import os
+import sys
+import json
+import logging
+import secrets
+import time
 
 log = logging.getLogger("codec_mcp")
 

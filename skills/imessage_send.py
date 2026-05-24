@@ -18,7 +18,8 @@ SKILL_TRIGGERS = [
 ]
 SKILL_MCP_EXPOSE = True
 
-import re, subprocess
+import re
+import subprocess
 
 _VERBS = (
     "send imessage to", "send message to", "send text to",

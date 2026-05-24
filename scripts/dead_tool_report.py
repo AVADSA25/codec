@@ -12,8 +12,6 @@ Usage:
 import argparse
 import fnmatch
 import json
-import os
-import sys
 from collections import Counter
 from datetime import datetime, timezone, timedelta
 from pathlib import Path

@@ -15,9 +15,7 @@ NO Terminal popups. Per the 2026-05-01 incident contract.
 from __future__ import annotations
 
 import json
-import os
 import sys
-import time
 from pathlib import Path
 from unittest.mock import MagicMock
 

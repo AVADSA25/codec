@@ -1,5 +1,6 @@
 """backup_status skill — check CODEC memory backup status and trigger manual backup."""
-import sys, os, json
+import sys
+import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 SKILL_NAME = "backup_status"

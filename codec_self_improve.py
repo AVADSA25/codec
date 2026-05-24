@@ -366,7 +366,7 @@ def run_once(target_date: str | None = None) -> str:
     for name, ok in written:
         lines.append(f"  {'✓' if ok else '✗'} {name}")
     lines.append(f"\nReview: ls {out_dir}")
-    lines.append(f"Promote: python3 scripts/promote_skill.py <name>")
+    lines.append("Promote: python3 scripts/promote_skill.py <name>")
     return "\n".join(lines)
 
 

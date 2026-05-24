@@ -4,7 +4,9 @@ SKILL_TRIGGERS = ["run command", "terminal", "execute", "shell", "bash command"]
 SKILL_DESCRIPTION = "Run a terminal command and return the output"
 SKILL_MCP_EXPOSE = False  # Too dangerous for remote MCP access
 
-import subprocess, os, sys
+import subprocess
+import os
+import sys
 
 # Use centralized dangerous pattern check from codec_config (single source of truth)
 try:

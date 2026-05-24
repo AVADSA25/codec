@@ -1,5 +1,6 @@
 """Google Tasks skill for CODEC — list, add, and complete tasks"""
-import os, re
+import os
+import re
 
 SKILL_NAME = "google_tasks"
 

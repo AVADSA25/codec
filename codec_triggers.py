@@ -673,7 +673,7 @@ def _await_destructive_consent(trigger: Trigger, snapshot: dict,
                                 correlation_id: str) -> Tuple[bool, str]:
     """destructive=True path: route through Step 3 §1.7 strict-consent."""
     try:
-        from codec_ask_user import ask, TIMEOUT_SENTINEL, _is_consenting_answer
+        from codec_ask_user import ask, TIMEOUT_SENTINEL
     except Exception:
         return (False, "ambiguous_consent")
     answer = ask(

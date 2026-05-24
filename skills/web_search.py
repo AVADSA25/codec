@@ -6,7 +6,8 @@ SKILL_TRIGGERS = ["search for", "search the web", "google search", "look up", "w
 
 
 def run(task, app="", ctx=""):
-    import sys, os
+    import sys
+    import os
     sys.path.insert(0, os.path.expanduser("~/codec-repo"))
 
     query = task.lower()

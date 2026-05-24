@@ -16,7 +16,9 @@ jobs:
       - name: Install deps
         run: |
           python -m pip install --upgrade pip
-          pip install pytest fastmcp httpx requests pynput pydantic
+          pip install pytest fastmcp httpx requests pynput pydantic ruff
+      - name: Lint (ruff) — F-4 gate, config in ruff.toml
+        run: ruff check .
       - name: Skill import smoke test
         run: python tests/test_skill_imports.py
       - name: Skill contract tests

@@ -4,8 +4,6 @@ Run: pytest tests/test_medium_fixes.py -v
 """
 import inspect
 import os
-import re
-import pytest
 
 
 # ── Fix 12: Parallelize heartbeat checks ──

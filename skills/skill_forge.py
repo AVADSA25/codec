@@ -8,7 +8,9 @@ SKILL_TRIGGERS = [
     "wrap this as a skill", "make a skill from this"
 ]
 
-import os, json, re
+import os
+import json
+import re
 
 try:
     from codec_config import SKILLS_DIR, is_dangerous_skill_code

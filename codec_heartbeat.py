@@ -1,5 +1,11 @@
 """CODEC Heartbeat — periodic check of logs, memory, and pending tasks"""
-import time, sqlite3, os, json, logging, requests
+import time
+import sqlite3
+import os
+import json
+import logging
+import requests
+import subprocess  # F-4: used in the alert path (osascript display notification) — was unimported
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 
@@ -238,10 +244,10 @@ def execute_pending_tasks():
                     timeout=60,
                 )
                 if r.status_code == 200:
-                    log.info(f"  ✅ Task queued successfully")
+                    log.info("  ✅ Task queued successfully")
                     executed.append(row_id)
                 elif r.status_code == 403:
-                    log.warning(f"  🛑 Task blocked by /api/command safety check")
+                    log.warning("  🛑 Task blocked by /api/command safety check")
                     executed.append(row_id)
                 else:
                     log.warning(f"  ⚠️ /api/command returned {r.status_code}")

@@ -1,15 +1,12 @@
 """Tests for codec_scheduler"""
-import pytest
 import os
-import json
-import time
 
 # Use a temp path so tests don't pollute real schedules
 os.environ.setdefault("HOME", os.path.expanduser("~"))
 
 
 def test_scheduler_import():
-    from codec_scheduler import load_schedules, save_schedules, add_schedule, remove_schedule
+    from codec_scheduler import load_schedules
     assert callable(load_schedules)
 
 
@@ -58,7 +55,7 @@ def test_skill_add(tmp_path, monkeypatch):
 
 
 def test_heartbeat_has_execute():
-    from codec_heartbeat import execute_pending_tasks, extract_task_from_message
+    from codec_heartbeat import execute_pending_tasks
     assert callable(execute_pending_tasks)
 
 

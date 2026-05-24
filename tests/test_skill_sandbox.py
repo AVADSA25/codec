@@ -1,8 +1,6 @@
 """Skill sandbox tests — verify dangerous code is blocked at execution time."""
 import os
 import sys
-import tempfile
-import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -162,7 +160,7 @@ class TestSandboxProfile:
     """Verify sandbox profile generation."""
 
     def test_profile_generated(self):
-        from codec_sandbox import _write_sandbox_profile, SANDBOX_PROFILE_PATH
+        from codec_sandbox import _write_sandbox_profile
         path = _write_sandbox_profile(allow_network=False)
         assert os.path.exists(path)
         with open(path) as f:
@@ -171,7 +169,7 @@ class TestSandboxProfile:
         assert "(deny network-outbound)" in content
 
     def test_network_allowed_profile(self):
-        from codec_sandbox import _write_sandbox_profile, SANDBOX_PROFILE_PATH
+        from codec_sandbox import _write_sandbox_profile
         path = _write_sandbox_profile(allow_network=True)
         with open(path) as f:
             content = f.read()

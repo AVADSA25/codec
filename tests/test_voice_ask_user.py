@@ -17,7 +17,6 @@ tests/test_voice_pipeline.py (existing).
 from __future__ import annotations
 
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -29,7 +28,6 @@ if str(_REPO) not in sys.path:
 
 import codec_voice
 import codec_ask_user
-import codec_audit
 
 
 # ── Levenshtein helper ────────────────────────────────────────────────────────

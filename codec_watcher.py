@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 """CODEC Q-Watcher v2.1 | Smart draft/reply with Screenshot Vision"""
-import os, time, requests, subprocess, tempfile, json, signal, re, base64
+import os
+import time
+import requests
+import subprocess
+import tempfile
+import json
+import signal
+import re
+import base64
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, lambda *a: None)
     signal.signal(signal.SIGTERM, lambda *a: None)
@@ -82,7 +90,7 @@ def screenshot_ctx():
             img_b64 = base64.b64encode(f.read()).decode()
         os.unlink(tmp.name)
 
-        print(f"[Watcher] Reading screen via Vision...")
+        print("[Watcher] Reading screen via Vision...")
         r = requests.post(f"{QWEN_VISION_URL}/chat/completions",
             json={
                 "model": QWEN_VISION_MODEL,

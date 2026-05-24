@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import json
 import os
-import statistics
 import sys
 from collections import defaultdict, Counter
 from datetime import datetime, timezone, timedelta

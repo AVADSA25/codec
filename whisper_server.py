@@ -4,7 +4,9 @@ Usage: python3 whisper_server.py
 """
 import mlx_whisper
 from fastapi import FastAPI, UploadFile, File
-import tempfile, os, uvicorn
+import tempfile
+import os
+import uvicorn
 
 app = FastAPI()
 MODEL = os.environ.get("WHISPER_MODEL", "mlx-community/whisper-large-v3-turbo")
@@ -27,5 +29,5 @@ def health():
 
 if __name__ == "__main__":
     print(f"[Whisper] Starting server with model: {MODEL}")
-    print(f"[Whisper] Listening on http://localhost:8084")
+    print("[Whisper] Listening on http://localhost:8084")
     uvicorn.run(app, host="0.0.0.0", port=8084)

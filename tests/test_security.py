@@ -1,11 +1,12 @@
 """Security tests — dangerous commands, injection, path traversal, blocklists"""
 import pytest
-import sys, os
+import sys
+import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 # ── Dangerous Command Detection ──────────────────────────────────────────────
 
-from codec_config import DANGEROUS_PATTERNS, is_dangerous
+from codec_config import is_dangerous
 
 MUST_BLOCK = [
     "rm -rf /",
@@ -128,7 +129,6 @@ def test_save_file_directory_allowlist():
 
 def test_marketplace_dep_names_sanitized():
     """Marketplace _install_deps must reject suspicious dependency names"""
-    import re
     REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     content = open(os.path.join(REPO, "codec_marketplace.py")).read()
     assert "re.match" in content, "Marketplace _install_deps should validate dep names with regex"

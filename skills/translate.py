@@ -93,7 +93,7 @@ def run(task, app="", ctx=""):
 
                 # Show full result in terminal window (with proper characters)
                 body_parts = [f"  {text}  →  {target}"]
-                body_parts.append(f"")
+                body_parts.append("")
                 body_parts.append(f"  {native_script}")
                 if romanized:
                     body_parts.append(f"  Pronunciation: {romanized}")

@@ -248,7 +248,7 @@ def run(task: str, app: str = "", ctx: str = "") -> str:  # noqa: A001
         direction = "up" if "up" in t else "down"
         m = re.search(r'\b(\d+)\b', t)
         amount = int(m.group(1)) if m else 500
-        d = _post(f"/navigate", {"url": ""})  # we don't have a /scroll endpoint
+        d = _post("/navigate", {"url": ""})  # we don't have a /scroll endpoint
         # Use snapshot to get current page, then inject JS via navigate trick
         # Actually: just use the /snapshot then JS eval approach
         # For now call /navigate with current URL to stay put, then use JS

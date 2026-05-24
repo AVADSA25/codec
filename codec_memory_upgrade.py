@@ -13,7 +13,11 @@ Three layers shipped together:
                              for memory writes that need shrinking
 """
 from __future__ import annotations
-import json, os, re, sqlite3, logging
+import json
+import os
+import re
+import sqlite3
+import logging
 from datetime import datetime, timedelta
 from typing import Optional
 

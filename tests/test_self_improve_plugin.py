@@ -20,11 +20,8 @@ NO network calls, NO Apple state, NO Terminal popups.
 from __future__ import annotations
 
 import importlib.util
-import json
-import os
 import sys
 import threading
-import time
 from pathlib import Path
 from unittest.mock import MagicMock
 

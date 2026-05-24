@@ -20,7 +20,8 @@ import sys
 import threading
 import time
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from typing import List  # F-4: List used in local annotations below
+from unittest.mock import MagicMock
 
 import pytest
 

@@ -15,7 +15,6 @@ helper thread that calls submit_answer asynchronously.
 from __future__ import annotations
 
 import json
-import os
 import sys
 import threading
 import time

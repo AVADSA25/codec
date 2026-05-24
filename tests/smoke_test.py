@@ -12,7 +12,6 @@ import time
 import sys
 import json
 import os
-import hashlib
 
 BASE = os.environ.get("CODEC_URL", "http://localhost:8090")
 PIN = os.environ.get("CODEC_PIN", "")
@@ -36,7 +35,7 @@ def authenticate():
     try:
         r = SESSION.post(f"{BASE}/api/auth/pin", json={"pin": PIN}, timeout=TIMEOUT)
         if r.status_code == 200 and r.json().get("authenticated"):
-            log("PASS", "Authentication (PIN)", f"Session established")
+            log("PASS", "Authentication (PIN)", "Session established")
             return True
         else:
             log("FAIL", "Authentication (PIN)", f"{r.status_code}: {r.text[:100]}")

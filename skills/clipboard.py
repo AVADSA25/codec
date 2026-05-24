@@ -4,7 +4,9 @@ SKILL_DESCRIPTION = "Track and show clipboard history"
 SKILL_MCP_EXPOSE = True
 SKILL_TRIGGERS = ["clipboard history", "show clipboard", "what did i copy", "last copied",
                    "my clipboard", "paste history", "copied items"]
-import subprocess, sqlite3, os
+import subprocess
+import sqlite3
+import os
 from datetime import datetime
 
 DB = os.path.expanduser("~/.codec/clipboard.db")

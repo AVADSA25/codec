@@ -8,7 +8,11 @@ SKILL_TRIGGERS = [
 SKILL_DESCRIPTION = "Pomodoro timer with work/break cycles (start/stop/status)"
 SKILL_MCP_EXPOSE = True
 
-import subprocess, threading, time, os, json
+import subprocess
+import threading
+import time
+import os
+import json
 
 _STATE_FILE = os.path.expanduser("~/.codec/pomodoro_state.json")
 _active_thread = None

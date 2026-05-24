@@ -1,5 +1,6 @@
 """audit_report skill — wraps codec_audit_analyzer for MCP/autopilot exposure."""
-import sys, os
+import sys
+import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from codec_audit_analyzer import run as _run

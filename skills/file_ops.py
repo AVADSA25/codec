@@ -9,7 +9,8 @@ SKILL_TRIGGERS = [
     "file contents", "show me the file",
 ]
 
-import os, re
+import os
+import re
 
 # ── Safety: restricted paths (D-20 closure, PR-2H) ──
 # Mirrors PR-1C's file_write blocking. The pre-PR-2H blocklist used

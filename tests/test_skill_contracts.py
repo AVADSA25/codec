@@ -13,7 +13,6 @@ This test runs at CI without importing skill modules (AST-only), so it's
 fast and dependency-free.
 """
 import ast
-import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent

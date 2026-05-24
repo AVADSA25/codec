@@ -6,7 +6,8 @@ SKILL_TRIGGERS = ["weather", "temperature", "forecast", "how hot", "how cold", "
 
 def run(task, app="", ctx=""):
     """Fetch weather using wttr.in"""
-    import requests, re
+    import requests
+    import re
     # Extract location from task
     text = task.lower().strip()
 
@@ -34,7 +35,8 @@ def run(task, app="", ctx=""):
     # Default home city — config-driven, falls back to a neutral generic city
     def _home_city() -> str:
         try:
-            import json, os
+            import json
+            import os
             with open(os.path.expanduser("~/.codec/config.json")) as f:
                 return (json.load(f).get("weather_default_city") or "").strip() or "London"
         except Exception:

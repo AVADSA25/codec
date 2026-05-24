@@ -26,7 +26,7 @@ import re
 import secrets
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -1040,8 +1040,7 @@ def _run_agent(agent_id: str, cid: Optional[str] = None) -> None:
     """
     from codec_agent_plan import (
         load_plan, load_state, load_manifest, load_grants,
-        load_global_grants, save_state, save_manifest,
-        compute_plan_hash, compute_grants_hash, set_grants_hash,
+        load_global_grants, save_state, compute_plan_hash, compute_grants_hash, set_grants_hash,
     )
     try:
         from codec_agent_messaging import post_message
@@ -1227,7 +1226,7 @@ def _run_agent(agent_id: str, cid: Optional[str] = None) -> None:
                                   "reason": "destructive_rejected"})
                     post_message(agent_id=agent_id, type="agent_aborted",
                                  title="Aborted: destructive op rejected",
-                                 body=f"User rejected a destructive operation. Plan halted.",
+                                 body="User rejected a destructive operation. Plan halted.",
                                  actions=[],
                                  correlation_id=cid)
                 else:
