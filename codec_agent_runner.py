@@ -677,6 +677,26 @@ def _run_skill(skill_name: str, task: str, agent_id: str) -> str:
     return run_skill(skill, task, app=f"agent:{agent_id}")
 
 
+def _drain_user_replies(agent_id: str, since_ts: float):
+    """B-6: pull user replies posted since `since_ts` into history entries for the
+    next Qwen call (get_unread_user_replies was previously never called, so
+    replying to a running agent did nothing). Returns (entries, new_cursor).
+    Never raises — a messaging hiccup must not break the run loop."""
+    try:
+        from codec_agent_messaging import get_unread_user_replies
+        replies = get_unread_user_replies(agent_id, since_ts)
+    except Exception as e:
+        log.warning("[%s] get_unread_user_replies failed: %s", agent_id, e)
+        return [], since_ts
+    entries: List[Dict[str, Any]] = []
+    for r in replies:
+        body = (r.get("body") or "").strip()
+        if body:
+            entries.append({"step": -1, "skill": "user_reply", "task": "",
+                            "result": f"[USER REPLY] {body[:1000]}"})
+    return entries, time.time()
+
+
 def _execute_checkpoint(plan_dict: Dict[str, Any],
                         checkpoint: Dict[str, Any],
                         agent_grants: Dict[str, Any],
@@ -948,6 +968,15 @@ def _run_agent(agent_id: str, cid: Optional[str] = None) -> None:
                    correlation_id=cid,
                    extra={"agent_id": agent_id, "checkpoint_id": cp.id,
                           "checkpoint_idx": idx})
+
+            # B-6: feed any user replies posted since the last check into the
+            # next Qwen call's context (previously get_unread_user_replies was
+            # never called — a reply to a running agent was silently dropped).
+            _replies, state["last_reply_ts"] = _drain_user_replies(
+                agent_id, float(state.get("last_reply_ts", 0.0)))
+            if _replies:
+                history = list(history) + _replies
+                save_state(agent_id, state)
 
             try:
                 history = _execute_checkpoint(
