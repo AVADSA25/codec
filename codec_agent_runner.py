@@ -759,8 +759,11 @@ def _execute_checkpoint(plan_dict: Dict[str, Any],
             permission_gate(action2, agent_grants, global_grants)
             action = action2  # use the corrected action going forward
 
-        # Destructive gate (raises DestructiveOpRejected on user reject)
-        if action.is_destructive:
+        # Destructive gate (raises DestructiveOpRejected on user reject).
+        # B-2: gate on the SERVER-derived assessment, not the LLM's self-declared
+        # flag — otherwise an action that emits is_destructive=false on a
+        # dangerous skill / irreversible task would skip consent entirely.
+        if _effective_destructive(action):
             consent = _enforce_destructive_gate(action)
             if consent.timed_out:
                 # Q7: timeout overnight — caller transitions to blocked_on_destructive
@@ -1034,6 +1037,19 @@ def _run_agent(agent_id: str, cid: Optional[str] = None) -> None:
                                correlation_id=cid, outcome="warning", level="warning",
                                extra={"agent_id": agent_id, "checkpoint_id": cp.id,
                                       "reason": "destructive_consent_timeout"})
+                        # B-8: surface a recovery affordance — without this the
+                        # state was a silent dead-end. Resume re-runs from this
+                        # checkpoint and re-issues the consent prompt (B-1).
+                        post_message(agent_id=agent_id, type="agent_blocked",
+                                     title="Paused: destructive op needs your confirmation",
+                                     body=("The agent reached a destructive operation and the "
+                                           "confirmation timed out. Resume to be re-prompted for "
+                                           "consent, or abort the plan."),
+                                     actions=[
+                                         {"label": "Resume", "endpoint": f"/api/agents/{agent_id}/resume"},
+                                         {"label": "Abort", "endpoint": f"/api/agents/{agent_id}/abort"},
+                                     ],
+                                     correlation_id=cid)
                     else:
                         log.info("[%s] block not announced — status superseded externally", agent_id)
                 else:

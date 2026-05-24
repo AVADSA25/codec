@@ -78,6 +78,9 @@ Four read-only specialist passes over the four modules + their six test files (`
 **Fix:** one `flock`-guarded compare-and-swap status helper in `codec_agent_plan`, used identically by daemon and routes.
 
 ### B-8 — `blocked_on_destructive` is an unrecoverable dead-end [HIGH]
+
+> **✅ FIXED by PR-7G (2026-05-24).** The `blocked_on_destructive` branch set the status but posted **no notification** (unlike `blocked_on_permission`), so the user had no banner + no recovery affordance. PR-7G posts an `agent_blocked` notification with **Resume** (→ `/api/agents/{id}/resume`) + **Abort** actions: Resume re-runs from the checkpoint and re-issues the consent prompt (B-1), which is now a working path (legal transition + daemon re-run). Auto-re-running is deliberately not done (would spam consent). 1 test in `tests/test_destructive_recovery.py`. **Same PR also completed B-2 in the loop** — `_execute_checkpoint` now gates on `_effective_destructive(action)` (line 763), not the raw `action.is_destructive`, so an unflagged-but-server-destructive action actually reaches the gate (a gap left by PR-7B, which had only put the derivation *inside* `_enforce_destructive_gate`).
+
 **What:** a destructive-consent timeout → `blocked_on_destructive`, but the daemon tick only auto-resumes `approved`/`running`/`blocked_on_qwen`, and `/grant` only unblocks `blocked_on_permission` (`runner:1119-1156`, `routes:~460`).
 **Why it matters:** an agent that hits the (broken, B-1) destructive gate is stuck with no re-prompt and no documented recovery action — it silently dies overnight.
 **Fix:** add a `blocked_on_destructive` resume branch that re-issues consent, and surface a PWA action for it.
