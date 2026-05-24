@@ -338,6 +338,11 @@ Deferred:
 
 **Rationale:** Audit F's own findings have a clean burn-down plan. Day 1 hits 7/10; Day 2 hits 8.5/10.
 
+**Actually shipped (clustered for fewer PRs / fewer doc conflicts):**
+- **PR-6A** (#93) — F-1 SECURITY.md + F-6 CODE_OF_CONDUCT.md + F-7 FUNDING.yml + F-16 garbage delete.
+- **PR-6F** (#94) — F-2 PRIVACY.md.
+- **PR-6G** — F-3 + F-17 (count reconciliation + live CI badge) **+** F-9 (value prop) + F-10 (Why-CODEC) + F-14 (Architecture section) + F-18 (bidirectional MCP). Bundled because all six touch README; doing it once means README is edited a single time. F-11 partially addressed (soft waitlist line; tier/price → Mickael). F-8 (demo GIF), F-12 (Discord/Discussions), F-18-Lucy-naming → HANDOFF-MICKAEL.md. Remaining Wave-6: F-13 ONE-PAGER, F-5 release tags, F-4 CI expansion, F-15 pyproject (deferred).
+
 ### Wave 7 — Projects + Pilot (Audit B) (target: TBD)
 **Findings:** TBD pending Mickael's description.
 **Placeholder:** see §6 below.

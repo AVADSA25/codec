@@ -821,7 +821,7 @@ No agent task chains more than 8 steps without breaking. Hardcoded in `Crew.max_
 - New crews go in their own commit and update `CREW_REGISTRY` and §3
 
 ### Testing
-- `pytest` from repo root. **600+ tests collected** (live count via `pytest --collect-only`); all must pass before merge except known pre-existing failures documented in `docs/known-issues.md`
+- `pytest` from repo root. **1,300+ tests collected** (live count via `pytest --collect-only` — currently 1,685 collected / 1,386 `def test_` functions across 99 files); all must pass before merge except known pre-existing failures documented in `docs/known-issues.md`
 - Skill changes: add a smoke test that imports and calls `run("test")` with empty args
 - Audit-log changes: add a parser round-trip test
 
