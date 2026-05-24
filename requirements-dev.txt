@@ -1,0 +1,15 @@
+# CODEC — development & test dependencies.
+#
+# Install (on macOS, alongside a working CODEC checkout) with:
+#   pip install -r requirements-dev.txt
+#
+# This pulls the runtime deps (so the modules under test import cleanly) plus the
+# test runner and linter. CODEC is a macOS-first app, so the audio deps in
+# requirements.txt (sounddevice/soundfile) expect the platform's PortAudio/libsndfile.
+# CI (.github/workflows/ci.yml) installs a curated subset that runs on Linux instead.
+
+-r requirements.txt
+
+# Test + lint toolchain (matches CI)
+pytest>=8.0
+ruff>=0.10
