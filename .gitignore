@@ -30,3 +30,9 @@ codec_smoke_test.py
 
 # macOS .app build output (W5-2)
 dist/
+
+# Python build artifacts (F-15 pyproject — `pip wheel` / `python -m build`)
+build/
+*.egg-info/
+*.egg
+*.whl
