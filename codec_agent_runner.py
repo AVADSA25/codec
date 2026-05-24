@@ -195,6 +195,65 @@ def _path_allowed(action_path: str, grants: Any) -> tuple[bool, str]:
     return False, "not_under_grant"
 
 
+# ── B-2: server-side skill capability table ───────────────────────────────────
+# Maps a skill name → the resource categories it can use. permission_gate
+# OR-upgrades the LLM's self-declared touches_path/reads_path/network_call flags
+# with these server-known capabilities (same "LLM can only RAISE risk" pattern as
+# _effective_destructive), so a write/network-capable skill can't skip its gate by
+# emitting a False flag on a DECLARED sensitive value. Classification is by EXFIL
+# SURFACE: local-FS skills get path caps; genuinely exfil-capable skills get
+# `network`; benign read-only public-data skills (weather, bitcoin_price) are
+# deliberately NOT network-gated (they send only a non-sensitive query → no
+# user-data exfil surface). A skill absent from the table has no caps → unchanged
+# (LLM-flag-only) behavior. NOTE: extracting the EXACT path/URL a skill acts on
+# from its free-text task (vs the LLM-declared value) still needs structured skill
+# invocation — the documented B-2 residual.
+SKILL_CAPABILITIES: Dict[str, set] = {
+    # Local filesystem
+    "file_write":   {"writes_path"},
+    "file_ops":     {"writes_path", "reads_path"},
+    "file_search":  {"reads_path"},
+    "create_skill": {"writes_path"},
+    "skill_forge":  {"writes_path"},
+    "self_improve": {"writes_path"},
+    "qr_generator": {"writes_path"},
+    "screenshot_text": {"writes_path"},
+    # Do-anything (shell / code / system control) — full surface
+    "terminal":        {"writes_path", "reads_path", "network"},
+    "python_exec":     {"writes_path", "reads_path", "network"},
+    "pilot":           {"writes_path", "reads_path", "network"},
+    "process_manager": {"writes_path", "reads_path"},
+    "pm2_control":     {"writes_path", "reads_path"},
+    "ax_control":      {"writes_path", "reads_path"},
+    # Network / external (exfil-capable)
+    "web_fetch":       {"network"},
+    "web_search":      {"network"},
+    "ai_news_digest":  {"network"},
+    "clipboard_url_fetch": {"network"},
+    "translate":       {"network"},
+    "health_check":    {"network"},
+    "philips_hue":     {"network"},
+    "imessage_send":   {"network"},
+    "chrome_automate": {"network"}, "chrome_click_cdp": {"network"},
+    "chrome_close":    {"network"}, "chrome_extract":   {"network"},
+    "chrome_fill":     {"network"}, "chrome_open":      {"network"},
+    "chrome_read":     {"network"}, "chrome_scroll":    {"network"},
+    "chrome_search":   {"network"}, "chrome_tabs":      {"network"},
+    "google_calendar": {"network"}, "google_docs":      {"network"},
+    "google_drive":    {"network"}, "google_gmail":     {"network"},
+    "google_keep":     {"network"}, "google_sheets":    {"network"},
+    "google_slides":   {"network"}, "google_tasks":     {"network"},
+    # Intentionally NOT network-gated (benign read-only public data):
+    #   weather, bitcoin_price → no entry (documented exclusion).
+}
+
+
+def _skill_capabilities(skill: str) -> set:
+    """B-2: server-known resource capabilities for a skill (empty set if
+    unclassified → unchanged LLM-flag-only gating)."""
+    return set(SKILL_CAPABILITIES.get(skill, set()))
+
+
 def permission_gate(action: Action, agent_grants: Dict[str, Any],
                     global_grants: Dict[str, Any]) -> None:
     """The core Step 9 enforcement. Walks the action's resource use,
@@ -218,7 +277,19 @@ def permission_gate(action: Action, agent_grants: Dict[str, Any],
     # respective manifest entries. Note: skill-internal reads (where the
     # skill itself opens files without going through Action) still bypass
     # the runner — that's a fundamental limitation of the dispatch model.
-    if action.touches_path:
+    # B-2: OR-upgrade the LLM's self-declared flags with the skill's server-known
+    # capabilities — the model can RAISE risk (declare a flag), never LOWER it to
+    # skip the gate. We gate a DECLARED value (non-empty path/domain) so a False
+    # flag on a sensitive declared value can't bypass; an undeclared value is the
+    # documented residual (needs task-arg parsing). This also avoids over-gating
+    # no-arg calls of multi-function skills (e.g. a file_ops "list", a chrome tab
+    # close) which carry no path/domain.
+    caps = _skill_capabilities(action.skill)
+    wants_write = bool(action.touches_path) or ("writes_path" in caps)
+    wants_read = bool(action.reads_path) or ("reads_path" in caps)
+    wants_net = bool(action.network_call) or ("network" in caps)
+
+    if wants_write and action.path:
         write_paths = (set(agent_grants.get("write_paths", [])) |
                        set(global_grants.get("write_paths", [])))
         ok, reason = _path_allowed(action.path, write_paths)
@@ -226,7 +297,7 @@ def permission_gate(action: Action, agent_grants: Dict[str, Any],
             _emit_gate_blocked(action.path, reason)
             raise PermissionViolation("path_not_authorized", action.path)
 
-    if action.reads_path and action.read_path:
+    if wants_read and action.read_path:
         read_paths = (set(agent_grants.get("read_paths", [])) |
                       set(global_grants.get("read_paths", [])))
         # Write paths are implicitly readable — an agent that can write a file
@@ -238,7 +309,7 @@ def permission_gate(action: Action, agent_grants: Dict[str, Any],
             _emit_gate_blocked(action.read_path, reason)
             raise PermissionViolation("read_path_not_authorized", action.read_path)
 
-    if action.network_call:
+    if wants_net and action.network_domain:
         domains = (set(agent_grants.get("network_domains", [])) |
                    set(global_grants.get("network_domains", [])))
         if action.network_domain not in domains:

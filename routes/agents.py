@@ -340,8 +340,29 @@ def get_agent(agent_id: str):
     }
 
 
+def _audit_mutation(request, agent_id: str, mutation: str) -> None:
+    """B-3: forensic audit of a state-changing /api/agents/* mutation with the caller
+    IP. Per-agent OWNERSHIP authz stays deferred (single-user threat model: loopback +
+    global AuthMiddleware + PR-7C grant-value blocklist); this gives after-the-fact
+    visibility so a localhost-foothold abuse is detectable. Never raises."""
+    try:
+        client_ip = getattr(getattr(request, "client", None), "host", "") or ""
+    except Exception:
+        client_ip = ""
+    try:
+        import codec_audit
+        codec_audit.audit(
+            event="agent_mutation", source="codec-dashboard", level="info",
+            message=f"{mutation} {agent_id} from {client_ip}",
+            extra={"agent_id": agent_id, "mutation": mutation, "client_ip": client_ip},
+        )
+    except Exception:
+        pass
+
+
 @router.post("/api/agents/{agent_id}/approve")
-def approve_agent(agent_id: str):
+def approve_agent(agent_id: str, request: Request = None):
+    _audit_mutation(request, agent_id, "approve")  # B-3: forensic visibility
     manifest = _cap.load_manifest(agent_id)
     if not manifest:
         raise HTTPException(status_code=404, detail=f"agent {agent_id} not found")
@@ -422,7 +443,8 @@ class GrantBody(BaseModel):
 
 
 @router.post("/api/agents/{agent_id}/abort")
-def abort_agent(agent_id: str):
+def abort_agent(agent_id: str, request: Request = None):
+    _audit_mutation(request, agent_id, "abort")  # B-3: forensic visibility
     manifest = _cap.load_manifest(agent_id)
     if not manifest:
         raise HTTPException(status_code=404, detail=f"agent {agent_id} not found")
@@ -479,10 +501,11 @@ def _grant_path_unsafe(value: str) -> bool:
 
 
 @router.post("/api/agents/{agent_id}/grant")
-def grant_permission(agent_id: str, body: GrantBody):
+def grant_permission(agent_id: str, body: GrantBody, request: Request = None):
     """Grant a missing permission to a blocked agent. Adds the
     item to per-agent grants.json (NOT global). If status is
     blocked_on_permission, transitions back to running."""
+    _audit_mutation(request, agent_id, "grant")  # B-3: forensic visibility
     manifest = _cap.load_manifest(agent_id)
     if not manifest:
         raise HTTPException(status_code=404, detail=f"agent {agent_id} not found")
