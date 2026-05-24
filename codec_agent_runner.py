@@ -739,15 +739,38 @@ def _audit(event: str, source: str = "codec-agent-runner",
 
 
 def _atomic_set_status(agent_id: str, new_status: str,
-                       reason: Optional[str] = None) -> None:
-    """Wrapper that catches InvalidStatusTransition and logs.
-    Step 9 sometimes needs to bypass strict transitions on crash recovery
-    paths — but always within the documented state graph."""
+                       reason: Optional[str] = None) -> bool:
+    """Apply a manifest status transition. Returns True if it was applied,
+    False if it was NOT — an illegal/externally-superseded transition
+    (`InvalidStatusTransition`) or a write failure. Never raises (C-5).
+
+    Callers branch on the bool so they don't ACT on, or ANNOUNCE, a
+    transition that didn't happen: the run-start guard refuses to execute a
+    superseded agent, and the in-loop block/abort/complete emits skip their
+    audit + notification when the manifest was changed under them (e.g. the
+    user paused/aborted via the PWA). On `False`, the external state WINS — we
+    never force our intended status over it. (We deliberately do NOT re-raise:
+    propagating would let the outer `except Exception` abort the agent, which
+    would turn a user pause into an abort.)"""
     try:
-        from codec_agent_plan import set_status
-        set_status(agent_id, new_status, reason=reason)
+        from codec_agent_plan import set_status, InvalidStatusTransition
     except Exception as e:
-        log.warning("[%s] set_status %s failed: %s", agent_id, new_status, e)
+        log.error("[%s] codec_agent_plan import failed for set_status: %s",
+                  agent_id, e)
+        return False
+    try:
+        set_status(agent_id, new_status, reason=reason)
+        return True
+    except InvalidStatusTransition as e:
+        # Usually a benign race: status changed under us by an external actor
+        # (PWA pause/abort/grant). The external change wins.
+        log.warning("[%s] transition → %s rejected (superseded?): %s",
+                    agent_id, new_status, e)
+        return False
+    except Exception as e:
+        log.error("[%s] set_status %s failed unexpectedly: %s",
+                  agent_id, new_status, e)
+        return False
 
 
 def _run_agent(agent_id: str, cid: Optional[str] = None) -> None:
@@ -816,8 +839,14 @@ def _run_agent(agent_id: str, cid: Optional[str] = None) -> None:
         state = load_state(agent_id)
         current_idx = int(state.get("current_checkpoint", 0))
 
-        # Transition approved → running (or any prior state → running for resume)
-        _atomic_set_status(agent_id, "running")
+        # Transition approved → running (or any prior state → running for resume).
+        # C-5 guard: if the transition doesn't apply (e.g. the agent was aborted
+        # or paused via the PWA between approval and now), STOP — never execute
+        # checkpoints on a superseded agent. The daemon reconciles next tick.
+        if not _atomic_set_status(agent_id, "running"):
+            log.warning("[%s] run-start aborted: status not transitionable to "
+                        "running (superseded by external abort/pause?)", agent_id)
+            return
         _audit(AGENT_STARTED, message=f"agent started {agent_id}",
                correlation_id=cid,
                extra={"agent_id": agent_id,
@@ -861,46 +890,57 @@ def _run_agent(agent_id: str, cid: Optional[str] = None) -> None:
                     agent_id=agent_id, history=history,
                 )
             except PermissionViolation as pv:
-                _atomic_set_status(agent_id, "blocked_on_permission",
-                                   reason=f"{pv.reason}:{pv.needed}")
-                _audit(AGENT_BLOCKED_ON_PERMISSION,
-                       message=f"blocked: {pv.reason}",
-                       correlation_id=cid, outcome="warning", level="warning",
-                       extra={"agent_id": agent_id, "checkpoint_id": cp.id,
-                              "reason": pv.reason, "needed": pv.needed[:200]})
-                post_message(agent_id=agent_id, type="agent_blocked",
-                             title=f"Blocked: {pv.reason}",
-                             body=f"Agent needs additional permission: `{pv.needed}`. Grant or skip?",
-                             actions=[
-                                 {"label": "Grant", "endpoint": f"/api/agents/{agent_id}/grant",
-                                  "body_hint": {"kind": "<infer from reason>", "value": pv.needed}},
-                                 {"label": "Abort", "endpoint": f"/api/agents/{agent_id}/abort"},
-                             ],
-                             correlation_id=cid)
-                return
-            except DestructiveOpRejected as e:
-                _atomic_set_status(agent_id, "aborted",
-                                   reason=f"destructive_rejected:{e}")
-                _audit(AGENT_ABORTED, message="destructive op rejected",
-                       correlation_id=cid, outcome="warning", level="warning",
-                       extra={"agent_id": agent_id, "checkpoint_id": cp.id,
-                              "reason": "destructive_rejected"})
-                post_message(agent_id=agent_id, type="agent_aborted",
-                             title="Aborted: destructive op rejected",
-                             body=f"User rejected a destructive operation. Plan halted.",
-                             actions=[],
-                             correlation_id=cid)
-                return
-            except StepBudgetExhausted as e:
-                # Q7: distinguish "destructive_consent_timeout" from real budget hits
-                if "destructive_consent_timeout" in str(e):
-                    _atomic_set_status(agent_id, "blocked_on_destructive",
-                                       reason="destructive_consent_timeout")
-                    _audit(AGENT_PAUSED,
-                           message="paused on destructive consent timeout",
+                # C-5: only announce the block if the transition actually applied
+                # (skip the misleading audit/notification if an external pause/
+                # abort already won the race).
+                if _atomic_set_status(agent_id, "blocked_on_permission",
+                                      reason=f"{pv.reason}:{pv.needed}"):
+                    _audit(AGENT_BLOCKED_ON_PERMISSION,
+                           message=f"blocked: {pv.reason}",
                            correlation_id=cid, outcome="warning", level="warning",
                            extra={"agent_id": agent_id, "checkpoint_id": cp.id,
-                                  "reason": "destructive_consent_timeout"})
+                                  "reason": pv.reason, "needed": pv.needed[:200]})
+                    post_message(agent_id=agent_id, type="agent_blocked",
+                                 title=f"Blocked: {pv.reason}",
+                                 body=f"Agent needs additional permission: `{pv.needed}`. Grant or skip?",
+                                 actions=[
+                                     {"label": "Grant", "endpoint": f"/api/agents/{agent_id}/grant",
+                                      "body_hint": {"kind": "<infer from reason>", "value": pv.needed}},
+                                     {"label": "Abort", "endpoint": f"/api/agents/{agent_id}/abort"},
+                                 ],
+                                 correlation_id=cid)
+                else:
+                    log.info("[%s] block not announced — status superseded externally", agent_id)
+                return
+            except DestructiveOpRejected as e:
+                # C-5: only announce the abort if the transition applied.
+                if _atomic_set_status(agent_id, "aborted",
+                                      reason=f"destructive_rejected:{e}"):
+                    _audit(AGENT_ABORTED, message="destructive op rejected",
+                           correlation_id=cid, outcome="warning", level="warning",
+                           extra={"agent_id": agent_id, "checkpoint_id": cp.id,
+                                  "reason": "destructive_rejected"})
+                    post_message(agent_id=agent_id, type="agent_aborted",
+                                 title="Aborted: destructive op rejected",
+                                 body=f"User rejected a destructive operation. Plan halted.",
+                                 actions=[],
+                                 correlation_id=cid)
+                else:
+                    log.info("[%s] abort not announced — status superseded externally", agent_id)
+                return
+            except StepBudgetExhausted as e:
+                # Q7: distinguish "destructive_consent_timeout" from real budget hits.
+                # C-5: only announce if the transition applied (external state wins).
+                if "destructive_consent_timeout" in str(e):
+                    if _atomic_set_status(agent_id, "blocked_on_destructive",
+                                          reason="destructive_consent_timeout"):
+                        _audit(AGENT_PAUSED,
+                               message="paused on destructive consent timeout",
+                               correlation_id=cid, outcome="warning", level="warning",
+                               extra={"agent_id": agent_id, "checkpoint_id": cp.id,
+                                      "reason": "destructive_consent_timeout"})
+                    else:
+                        log.info("[%s] block not announced — status superseded externally", agent_id)
                 else:
                     # Review fix I2: real budget hit → paused (not blocked_on_permission).
                     # User can resolve via POST /api/agents/{id}/extend_budget which
@@ -908,13 +948,15 @@ def _run_agent(agent_id: str, cid: Optional[str] = None) -> None:
                     # transitions status=paused → running. The plan stays immutable
                     # (plan_hash tamper check remains intact); the override lives in
                     # mutable state.json.
-                    _atomic_set_status(agent_id, "paused",
-                                       reason="step_budget_exhausted")
-                    _audit(AGENT_PAUSED,
-                           message="paused on step budget exhaustion",
-                           correlation_id=cid, outcome="warning", level="warning",
-                           extra={"agent_id": agent_id, "checkpoint_id": cp.id,
-                                  "reason": "step_budget_exhausted"})
+                    if _atomic_set_status(agent_id, "paused",
+                                          reason="step_budget_exhausted"):
+                        _audit(AGENT_PAUSED,
+                               message="paused on step budget exhaustion",
+                               correlation_id=cid, outcome="warning", level="warning",
+                               extra={"agent_id": agent_id, "checkpoint_id": cp.id,
+                                      "reason": "step_budget_exhausted"})
+                    else:
+                        log.info("[%s] pause not announced — status superseded externally", agent_id)
                 return
 
             # Checkpoint complete: atomic state save (resume guarantee)
@@ -960,20 +1002,24 @@ def _run_agent(agent_id: str, cid: Optional[str] = None) -> None:
             + ("\n".join(artifact_lines) if artifact_lines else "  (no files created)")
         )
 
-        _atomic_set_status(agent_id, "completed")
-        _audit(AGENT_COMPLETED, message=f"agent completed {agent_id}",
-               correlation_id=cid,
-               extra={"agent_id": agent_id, "total_steps": len(history)})
-        post_message(agent_id=agent_id, type="agent_done",
-                     title=f"Done: {manifest.get('title', agent_id)}",
-                     body=done_body,
-                     actions=[
-                         {"label": "📂 Open folder",
-                          "endpoint": f"/api/agents/{agent_id}/open-folder"},
-                         {"label": "📄 View files",
-                          "endpoint": f"/api/agents/{agent_id}/artifacts"},
-                     ],
-                     correlation_id=cid)
+        # C-5: only announce completion if the transition applied (e.g. don't
+        # post "Done" over a user abort that landed on the final checkpoint).
+        if _atomic_set_status(agent_id, "completed"):
+            _audit(AGENT_COMPLETED, message=f"agent completed {agent_id}",
+                   correlation_id=cid,
+                   extra={"agent_id": agent_id, "total_steps": len(history)})
+            post_message(agent_id=agent_id, type="agent_done",
+                         title=f"Done: {manifest.get('title', agent_id)}",
+                         body=done_body,
+                         actions=[
+                             {"label": "📂 Open folder",
+                              "endpoint": f"/api/agents/{agent_id}/open-folder"},
+                             {"label": "📄 View files",
+                              "endpoint": f"/api/agents/{agent_id}/artifacts"},
+                         ],
+                         correlation_id=cid)
+        else:
+            log.info("[%s] completion not announced — status superseded externally", agent_id)
 
     except QwenUnavailableError as e:
         # Phase 3.5 review fix C2: dedicated `blocked_on_qwen` status.
@@ -984,13 +1030,16 @@ def _run_agent(agent_id: str, cid: Optional[str] = None) -> None:
         # reason="qwen_unavailable" since we don't add a new audit constant
         # for this — the status is enough to disambiguate.
         log.warning("[%s] qwen unavailable: %s", agent_id, e)
-        _atomic_set_status(agent_id, "blocked_on_qwen",
-                           reason=f"qwen_unavailable:{e}")
-        _audit(AGENT_BLOCKED_ON_PERMISSION,
-               message=f"qwen unavailable: {e}",
-               correlation_id=cid, outcome="warning", level="warning",
-               extra={"agent_id": agent_id, "reason": "qwen_unavailable",
-                      "status": "blocked_on_qwen"})
+        # C-5: only announce the qwen-block if the transition applied.
+        if _atomic_set_status(agent_id, "blocked_on_qwen",
+                              reason=f"qwen_unavailable:{e}"):
+            _audit(AGENT_BLOCKED_ON_PERMISSION,
+                   message=f"qwen unavailable: {e}",
+                   correlation_id=cid, outcome="warning", level="warning",
+                   extra={"agent_id": agent_id, "reason": "qwen_unavailable",
+                          "status": "blocked_on_qwen"})
+        else:
+            log.info("[%s] qwen-block not announced — status superseded externally", agent_id)
     except Exception as e:
         log.exception("[%s] unhandled exception in _run_agent", agent_id)
         _atomic_set_status(agent_id, "aborted",
