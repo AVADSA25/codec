@@ -31,3 +31,12 @@ jobs:
         run: python -m pytest tests/test_oauth_provider.py -v
       - name: Retry helper unit test
         run: python -m pytest tests/test_retry.py -v
+      - name: Readiness doc-guard tests (F-4 coverage expansion)
+        run: >
+          python -m pytest -v
+          tests/test_repo_health.py
+          tests/test_privacy_doc.py
+          tests/test_readme_investor.py
+          tests/test_one_pager.py
+          tests/test_apple_packaging.py
+          tests/test_dependabot.py

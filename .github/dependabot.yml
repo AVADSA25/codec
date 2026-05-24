@@ -1,0 +1,25 @@
+# Dependabot — automated dependency + GitHub Actions updates (Audit F / F-4).
+# Conservative cadence so it stays signal, not noise: weekly, grouped minor/patch,
+# capped open PRs. Enterprise security DD checks for this file's presence.
+version: 2
+updates:
+  # Python dependencies (requirements.txt at repo root)
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "python"]
+    groups:
+      python-minor-patch:
+        update-types: ["minor", "patch"]
+
+  # GitHub Actions used by the CI workflow(s)
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    labels: ["dependencies", "ci"]
