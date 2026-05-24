@@ -482,7 +482,7 @@ def _fetch_rss_headlines():
 
 
 def _gather_briefing_data():
-    """Gather ALL data for a premium daily briefing — Lucy-quality output."""
+    """Gather ALL data for a premium daily briefing — executive-grade output."""
     data = {}
 
     # ── CODEC Skills (weather, calendar, tasks, email) ──

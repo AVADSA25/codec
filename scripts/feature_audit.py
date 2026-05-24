@@ -1068,7 +1068,7 @@ def test_skills():
         "codec", "create_skill", "fact_extract", "file_ops", "file_search",
         "google_calendar", "google_docs", "google_drive", "google_gmail", "google_keep",
         "google_sheets", "google_slides", "google_tasks", "imessage_send", "json_formatter",
-        "lucy", "memory_entities", "memory_history", "memory_save", "memory_search",
+        "delegate", "memory_entities", "memory_history", "memory_save", "memory_search",
         "mouse_control", "music", "network_info", "notes", "password_generator",
         "philips_hue", "pm2_control", "pomodoro", "process_manager", "python_exec",
         "qr_generator", "reminders", "scheduler_skill", "screenshot_text", "self_improve",

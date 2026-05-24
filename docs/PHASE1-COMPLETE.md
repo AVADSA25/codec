@@ -148,7 +148,7 @@ In every audit, **0 failures classified as caused by the step's changes**. They 
 | `codec-heartbeat` | online | 20-min daemon loop; all 5 service health checks ✅ |
 | `codec-autopilot` | **stopped** | intentional, per user request |
 
-Other PM2 processes (cloudflared, kokoro-82m, qwen3.6, whisper-stt, lucy-*, ava-*, sentora-*, etc.) are pre-existing and unrelated to Phase 1.
+Other PM2 processes (cloudflared, kokoro-82m, qwen3.6, whisper-stt, ava-*, sentora-*, etc.) are pre-existing and unrelated to Phase 1.
 
 ---
 

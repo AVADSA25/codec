@@ -214,7 +214,7 @@ MCP tool name shown where it differs from the file name.
 | **Communication** (2) | imessage_send, tts_say |
 | **Smart Home** (1) | philips_hue |
 | **Media** (1) | music (Spotify + Apple Music) |
-| **Delegation** (1) | `delegate` (lucy — AI persona + task orchestrator) |
+| **Delegation** (1) | `delegate` (n8n workflow task orchestrator) |
 | **Dev Tools** (5) | ax_control, pm2_control, python_exec, `scheduler` (scheduler_skill), codec (meta-dispatcher) |
 | **Observability** (4) | audit_report, backup_status, health_check, notification_reader |
 | **Phase 1+ — agent-facing shims** (4) | ask_user (blocking pause + strict-consent), stuck (loop detection), self_improve (audit-driven proposal), shift_report (end-of-day summary) |

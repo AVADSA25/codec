@@ -17,6 +17,7 @@
 
 <p align="center">
   <a href="https://github.com/AVADSA25/codec/actions/workflows/ci.yml"><img src="https://github.com/AVADSA25/codec/actions/workflows/ci.yml/badge.svg" alt="CI"/></a>
+  <a href="https://github.com/AVADSA25/codec/discussions"><img src="https://img.shields.io/badge/community-Discussions-7057ff?style=flat-square&logo=github" alt="GitHub Discussions"/></a>
   <a href="FEATURES.md"><img src="https://img.shields.io/badge/features-400+-blue?style=flat-square" alt="400+ Features"/></a>
   <img src="https://img.shields.io/badge/skills-76-orange?style=flat-square" alt="76 Skills"/>
   <img src="https://img.shields.io/badge/tests-1300+-green?style=flat-square" alt="1,300+ Tests"/>
