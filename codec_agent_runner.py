@@ -696,24 +696,27 @@ def _run_skill(skill_name: str, task: str, agent_id: str) -> str:
     return run_skill(skill, task, app=f"agent:{agent_id}")
 
 
-def _drain_user_replies(agent_id: str, since_ts: float):
-    """B-6: pull user replies posted since `since_ts` into history entries for the
-    next Qwen call (get_unread_user_replies was previously never called, so
-    replying to a running agent did nothing). Returns (entries, new_cursor).
-    Never raises — a messaging hiccup must not break the run loop."""
+def _drain_user_replies(agent_id: str, since_index: int):
+    """B-6/B-20: pull user replies AFTER the consumed-offset `since_index` into
+    history entries for the next Qwen call. Returns (entries, new_index).
+
+    The cursor is a monotonic reply COUNT (not a float ts — B-20), and advances by
+    the number of replies CONSUMED (`len(replies)`), not the number of non-empty
+    history entries produced — so an empty-body reply still advances the cursor and
+    isn't re-read forever. Never raises — a messaging hiccup must not break the loop."""
     try:
         from codec_agent_messaging import get_unread_user_replies
-        replies = get_unread_user_replies(agent_id, since_ts)
+        replies = get_unread_user_replies(agent_id, since_index)
     except Exception as e:
         log.warning("[%s] get_unread_user_replies failed: %s", agent_id, e)
-        return [], since_ts
+        return [], since_index
     entries: List[Dict[str, Any]] = []
     for r in replies:
         body = (r.get("body") or "").strip()
         if body:
             entries.append({"step": -1, "skill": "user_reply", "task": "",
                             "result": f"[USER REPLY] {body[:1000]}"})
-    return entries, time.time()
+    return entries, since_index + len(replies)
 
 
 def _fingerprint(checkpoint_id: str, skill: str, task: str) -> str:
@@ -731,7 +734,7 @@ def _persist_checkpoint_progress(agent_id: str, checkpoint_id: str,
     """B-5: load-modify-save the in-progress checkpoint history + destructive
     ledger into state.json so a mid-checkpoint crash resumes from here instead
     of replaying from step 0. Load-modify-save (not overwrite) preserves
-    concurrently-written keys (current_checkpoint, last_reply_ts,
+    concurrently-written keys (current_checkpoint, replies_consumed,
     step_budget_overrides). Runs in the agent's own thread — no intra-process
     race. Never raises: a persistence hiccup must not break the run loop."""
     try:
@@ -1065,8 +1068,22 @@ def _run_agent(agent_id: str, cid: Optional[str] = None) -> None:
             # B-6: feed any user replies posted since the last check into the
             # next Qwen call's context (previously get_unread_user_replies was
             # never called — a reply to a running agent was silently dropped).
-            _replies, state["last_reply_ts"] = _drain_user_replies(
-                agent_id, float(state.get("last_reply_ts", 0.0)))
+            # B-20: the cursor is a monotonic consumed-offset (count), not a ms
+            # timestamp. Heal a legacy `last_reply_ts` forward: treat every reply
+            # posted before the upgrade as already-consumed (mirrors the old
+            # time.time() cursor) so none is re-injected.
+            if "replies_consumed" in state:
+                _reply_cursor = int(state.get("replies_consumed", 0))
+            elif state.get("last_reply_ts"):
+                try:
+                    from codec_agent_messaging import count_user_replies
+                    _reply_cursor = count_user_replies(agent_id)
+                except Exception:
+                    _reply_cursor = 0
+            else:
+                _reply_cursor = 0
+            _replies, state["replies_consumed"] = _drain_user_replies(
+                agent_id, _reply_cursor)
             if _replies:
                 history = list(history) + _replies
                 save_state(agent_id, state)
@@ -1165,7 +1182,7 @@ def _run_agent(agent_id: str, cid: Optional[str] = None) -> None:
             # B-5: load-modify-save (not overwrite) — advance the cursor and CLEAR the
             # per-checkpoint progress (cp_history / cp_in_progress / executed_destructive
             # are scoped to a single checkpoint), while PRESERVING cross-checkpoint keys
-            # (last_reply_ts, step_budget_overrides) that the old full-overwrite dropped.
+            # (replies_consumed, step_budget_overrides) that the old full-overwrite dropped.
             state = load_state(agent_id)
             state["current_checkpoint"] = idx + 1
             state["history_len"] = len(history)

@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import json
 import sys
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -45,16 +44,17 @@ def _write_reply(agent_id, body, ts=None):
 
 def test_drain_returns_reply_and_advances_cursor(temp_codec_dir):
     _write_reply("a1", "please use the other file")
-    entries, cursor = car._drain_user_replies("a1", 0.0)
+    # B-20: cursor is a monotonic consumed-offset (count), not a float ts.
+    entries, cursor = car._drain_user_replies("a1", 0)
     assert len(entries) == 1
     assert "please use the other file" in entries[0]["result"]
-    assert cursor > 0.0
+    assert cursor == 1
 
 
 def test_drain_excludes_replies_before_cursor(temp_codec_dir):
     _write_reply("a1", "old reply")
-    future = time.time() + 1000
-    entries, _ = car._drain_user_replies("a1", future)
+    # B-20: an offset already past the only reply yields nothing.
+    entries, _ = car._drain_user_replies("a1", 1)
     assert entries == []
 
 
