@@ -120,6 +120,15 @@ No lint (ruff, flake8, black). No type check (mypy, pyright). No coverage report
 
 ### F-5 — No release tagging discipline; only 2 git tags exist [HIGH]
 
+> **✅ CLOSED (2026-05-24).** Single source of version truth shipped: `VERSION` (=2.3.0) ←
+> `CHANGELOG`, exposed at runtime via `codec_version.__version__`, pinned by
+> `tests/test_versioning.py` (CI-gated). All 10 documented releases (v1.0.0…v2.3.0) tagged +
+> published via `scripts/tag_releases.py` (dry-run-default); GitHub Releases render the full
+> history with **v2.3.0 marked Latest**. The drift culprit — the `v3.0.0` tag+release ahead of
+> the documented history — was **deleted as erroneous** (operator-approved). Scheme + future
+> process in `docs/VERSIONING.md`. Residual (optional): `codec_dashboard.py` FastAPI
+> `version="2.1.0"` left untouched (hot working-runtime string). See `docs/F5-VERSIONING-DESIGN.md`.
+
 **What's missing:** `git tag -l` returns:
 ```
 pre-dashboard-redesign
