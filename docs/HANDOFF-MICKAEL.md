@@ -14,22 +14,23 @@ localhost:8094`, bound `0.0.0.0`, no auth — letting anyone drive your logged-i
 compile+approve a skill → **code execution on your Mac**. I stopped it with your approval
 (`pm2 stop pilot-runner`; verified `:8094` no longer listening).
 
-**Update 2026-05-24 — fix wave PP-1…PP-5 done** (all exploitable findings remediated, in
-the Pilot repo `~/codec/`; 32 security tests pass). Full status: `docs/audits/PHASE-1-PILOT-AUDIT.md`.
+**Update 2026-05-24 — fix wave PP-1…PP-9 done** (every exploitable AND every cleanly-fixable
+finding remediated, in the Pilot repo `~/codec/`; **45 security tests pass**, native
+`test_phase5` stays green). Full status: `docs/audits/PHASE-1-PILOT-AUDIT.md`.
 
 **Your action items:**
-1. 🔴 **Review + push the Pilot-repo commits** — `~/codec/` has **no git remote**, so PP-1…PP-5
-   are on its **local `main`** (`39e6146`, `51ac0a4`, `a1dd9ad`, `884381b`, `1f3e733`). Review
-   and push them (set up a remote if you want CI). The codec-repo token-handshake half is
-   merged (#132).
-2. 🟡 **Cloudflare tunnel:** the API now requires the `x-pilot-token`, so the tunnel is no
-   longer an open door — but for defense-in-depth still remove the `pilot.lucyvpa.com` lines
-   (21-22) from `~/.cloudflared/config.yml` (or put it behind Cloudflare Access). Safe to
-   `pm2 start pilot-runner` again **after** you've pushed the fixes (it now binds loopback +
-   requires the token).
-3. ⚪ **Remaining Pilot cleanup (MEDIUM, not exploitable):** P-7 HITL default-deny, P-9
-   concurrency lock, P-12 audit adapter, P-13 secret redaction, P-14 robustness — a follow-up
-   batch whenever you want it.
+1. 🔴 **Review + push the 9 Pilot-repo commits** — `~/codec/` has **no git remote**, so
+   PP-1…PP-9 are on its **local `main`** (`39e6146`→`f999981`). Review and push them (set up a
+   remote if you want CI). The codec-repo token-handshake half is merged (#132).
+2. 🟡 **Cloudflare tunnel:** the API now requires `x-pilot-token`, so the tunnel is no longer
+   an open door — but for defense-in-depth still remove the `pilot.lucyvpa.com` lines (21-22)
+   from `~/.cloudflared/config.yml` (or put it behind Cloudflare Access). Safe to
+   `pm2 start pilot-runner` again **after** you've pushed the fixes (loopback + token-gated).
+3. ⚪ **Genuinely remaining (structural / needs async test harness — NOT exploitable):** P-7
+   HITL default-deny for destructive browser actions + P-10 irreversible-replay gating (both
+   need a destructive-action classification design); P-14 async-loop robustness (HITL
+   pause-timeout, MJPEG failure-bound); P-15 getXPath dup-id; P-3 approve-time AST gate
+   (injection already closed at the compiler source). A follow-up batch whenever you want it.
 4. ⚪ Parent-repo follow-up: PR-1A's AST gate (`is_dangerous_skill_code`) is allow-by-omission
    for `urllib`/`httpx`/`requests`/`smtplib`/`pickle`/`open` — fine for hand-written user
    skills, but auto-generated Pilot skills need a stricter allowlist (see audit §cross-cutting).
