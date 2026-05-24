@@ -299,6 +299,7 @@ def _screencapture_and_ocr_blocking() -> str:
     via osascript. Returns the recognized text or "" on failure.
     Separated so it can be monkeypatched in tests."""
     import tempfile
+    tmp_png = None
     try:
         # H-1 (PR-4A-2): distinctive prefix so a SIGTERM that interrupts this
         # function (before the os.unlink below) leaves a file the shutdown
@@ -328,13 +329,19 @@ end run
             ["osascript", "-e", ocr_script],
             capture_output=True, text=True, timeout=3,
         )
-        try:
-            os.unlink(tmp_png)
-        except OSError:
-            pass
         return (result.stdout or "")[:500]
     except Exception:
         return ""
+    finally:
+        # H-7: always remove the capture — the old inline unlink ran only on the
+        # success path, so a routine screencapture/osascript TimeoutExpired leaked
+        # a 2-5 MB PNG every poll. (The codec_obs_ prefix + shutdown glob-purge
+        # from PR-4A-2 remain as a backstop.)
+        if tmp_png:
+            try:
+                os.unlink(tmp_png)
+            except OSError:
+                pass
 
 
 def _get_recent_files(window_seconds: int = 300) -> List[Dict[str, Any]]:
