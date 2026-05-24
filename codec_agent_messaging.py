@@ -302,6 +302,22 @@ def _agent_notification_channels(agent_id: str) -> List[str]:
         return ["pwa"]
 
 
+# B-17: channels whose messages LEAVE the device. macOS banners are local and not
+# gated; telegram/imessage carry agent content off-machine.
+_REMOTE_CHANNELS = frozenset({"telegram", "imessage"})
+
+
+def _outbound_content_allowed(agent_id: str) -> bool:
+    """B-17: agent CONTENT (title/body — may contain read file contents / fetched
+    data) only leaves the device for an agent that has explicitly opted in via its
+    manifest `allow_outbound_content: true`. Default False (local-first)."""
+    manifest_path = _AGENTS_DIR / agent_id / "manifest.json"
+    try:
+        return bool(json.loads(manifest_path.read_text()).get("allow_outbound_content", False))
+    except Exception:
+        return False
+
+
 def _dispatch_to_channel(channel: str, agent_id: str,
                          title: str, body: str, msg_type: str) -> None:
     """Best-effort dispatch to a single channel. Raises on hard failures.
@@ -316,6 +332,12 @@ def _dispatch_to_channel(channel: str, agent_id: str,
     """
     short_body = (body or "")[:200]
     short_title = (title or f"CODEC agent {agent_id}")[:80]
+
+    # B-17: for off-device channels, do NOT exfiltrate agent content unless this
+    # agent has explicitly opted in — send a content-free ping pointing at the PWA.
+    if channel in _REMOTE_CHANNELS and not _outbound_content_allowed(agent_id):
+        short_title = f"CODEC agent {agent_id}"
+        short_body = "You have a new agent update. Open the CODEC dashboard to view it."
 
     if channel == "macos":
         # macOS notification banner via osascript. No external dependencies.
@@ -354,9 +376,16 @@ def _dispatch_to_channel(channel: str, agent_id: str,
 
     if channel == "telegram":
         # Send via Telegram Bot API directly (avoids tight coupling to
-        # codec_telegram.py's daemon internals). Reads token + chat_id
-        # from ~/.codec/config.json:notifications.{telegram_token,telegram_chat_id}.
-        token = _channel_config("telegram_token")
+        # codec_telegram.py's daemon internals). chat_id from config; the token
+        # (B-17) prefers the Keychain-backed getter (PR-2B-2) over the plaintext
+        # notifications.telegram_token config key.
+        token = ""
+        try:
+            from codec_config import get_telegram_bot_token
+            token = get_telegram_bot_token() or ""
+        except Exception:
+            token = ""
+        token = token or _channel_config("telegram_token")
         chat_id = _channel_config("telegram_chat_id")
         if not token or not chat_id:
             log.debug("notifications.telegram_{token,chat_id} not configured; skipping telegram")
