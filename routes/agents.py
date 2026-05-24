@@ -130,6 +130,18 @@ async def list_agent_tools():
     return {"tools": [{"name": t.name, "description": t.description} for t in tools]}
 
 
+def _custom_id_shadows_project(safe_id: str) -> bool:
+    """B-16: a custom-agent id must not shadow a Phase-3 Project, which lives at
+    ~/.codec/agents/<id>/manifest.json. The two runtimes (in-memory crews/custom
+    agents vs on-disk Projects) share ~/.codec/agents/; without this guard a
+    custom-agent slug could collide with a Project in the same namespace.
+    (Full /api/crews vs /api/projects URL namespacing is a deferred larger refactor.)"""
+    try:
+        return os.path.isfile(os.path.join(_AGENTS_DIR, safe_id, "manifest.json"))
+    except Exception:
+        return False
+
+
 @router.post("/api/agents/custom/save")
 async def save_custom_agent(request: Request):
     """Save a custom agent definition to ~/.codec/agents/"""
@@ -139,6 +151,12 @@ async def save_custom_agent(request: Request):
         if not name:
             return JSONResponse({"error": "Name required"}, status_code=400)
         safe_id = re.sub(r"[^\w\-]", "_", name.lower())
+        # B-16: refuse to shadow an existing Project's storage namespace.
+        if _custom_id_shadows_project(safe_id):
+            return JSONResponse(
+                {"error": f"id {safe_id!r} is already a Project; choose another name"},
+                status_code=409,
+            )
         path = os.path.join(_AGENTS_DIR, safe_id + ".json")
         with open(path, "w") as f:
             json.dump({**body, "id": safe_id}, f, indent=2)
