@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import json
 import sys
-import time
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -170,16 +169,14 @@ def test_post_user_reply_writes_to_messages_jsonl(temp_codec_dir):
 
 
 def test_get_unread_user_replies_returns_unread(temp_codec_dir):
-    """get_unread_user_replies returns user_reply entries since `since_ts`."""
+    """get_unread_user_replies returns user_reply records at/after since_index (B-20:
+    a monotonic consumed-offset, not a millisecond-timestamp compare)."""
     import codec_agent_messaging as cam
     cam.post_user_reply(agent_id="agent_test", body="r1")
-    time.sleep(0.05)
-    t1 = time.time()
-    time.sleep(0.05)  # ensure r2/r3 ts > t1
     cam.post_user_reply(agent_id="agent_test", body="r2")
     cam.post_user_reply(agent_id="agent_test", body="r3")
 
-    unread = cam.get_unread_user_replies(agent_id="agent_test", since_ts=t1)
+    unread = cam.get_unread_user_replies(agent_id="agent_test", since_index=1)
     assert len(unread) == 2
     assert unread[-1]["body"] == "r3"
 

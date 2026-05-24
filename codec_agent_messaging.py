@@ -406,14 +406,21 @@ def post_user_reply(agent_id: str, body: str) -> Dict[str, Any]:
     return record
 
 
-def get_unread_user_replies(agent_id: str, since_ts: float) -> List[Dict[str, Any]]:
-    """Return user_reply entries with ts > since_ts (epoch seconds).
-    Used by codec_agent_runner._run_agent to feed replies to the next
-    qwen call as additional context."""
+def get_unread_user_replies(agent_id: str, since_index: int = 0) -> List[Dict[str, Any]]:
+    """Return user_reply records at or after the `since_index`-th user reply.
+
+    B-20: dedup by a monotonic consumed-offset, NOT a strict-`>` millisecond
+    timestamp compare — two replies in the same millisecond (or a cursor taken
+    from the last reply's ts) could otherwise be dropped or double-read. Iterating
+    messages.jsonl in file order, the i-th user_reply has 0-based index i; records
+    with index >= since_index are returned (no timestamp parsing at all).
+
+    Used by codec_agent_runner._run_agent to feed replies to the next qwen call."""
     msg_path = _AGENTS_DIR / agent_id / "messages.jsonl"
     if not msg_path.exists():
         return []
     out: List[Dict[str, Any]] = []
+    idx = 0
     with open(msg_path, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
@@ -425,11 +432,13 @@ def get_unread_user_replies(agent_id: str, since_ts: float) -> List[Dict[str, An
                 continue
             if rec.get("type") != "user_reply":
                 continue
-            ts_str = rec.get("ts", "")
-            try:
-                rec_ts = datetime.fromisoformat(ts_str).timestamp()
-            except (ValueError, TypeError):
-                continue
-            if rec_ts > since_ts:
+            if idx >= since_index:
                 out.append(rec)
+            idx += 1
     return out
+
+
+def count_user_replies(agent_id: str) -> int:
+    """Total number of user_reply records in messages.jsonl. Used by the B-20
+    heal-forward to migrate a legacy `last_reply_ts` cursor to a consumed-offset."""
+    return len(get_unread_user_replies(agent_id, 0))
