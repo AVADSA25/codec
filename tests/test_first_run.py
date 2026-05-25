@@ -29,6 +29,18 @@ def test_script_present_executable():
     assert os.access(FIRST_RUN, os.X_OK), "must be executable"
 
 
+def test_launchagents_installer_path_is_correct():
+    """Regression: first_run invokes install_launchagents.sh, which lives in the launchd/
+    subdir — a dry-run masks a wrong path, but a real --yes run would fail. Pin both the
+    file's location and that first_run references the launchd/ subdir."""
+    script = REPO / "packaging" / "macos" / "launchd" / "install_launchagents.sh"
+    assert script.exists(), f"installer script missing: {script}"
+    src = FIRST_RUN.read_text(encoding="utf-8")
+    assert ('"launchd", "install_launchagents.sh"' in src
+            or "launchd/install_launchagents.sh" in src), \
+        "first_run.py must reference install_launchagents.sh in the launchd/ subdir"
+
+
 def test_sentinel_idempotency(tmp_path):
     f = _load()
     home = tmp_path / "home"

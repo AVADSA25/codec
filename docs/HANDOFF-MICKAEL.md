@@ -57,7 +57,15 @@ I work on isolated branches and never self-merge; each new branch builds on the 
 
 **Enrollment: ✅ done** (you confirmed Team ID + Developer ID Application cert in hand).
 
-**Progress:** W5-1 (metadata) ✅ · W5-2 (`.app`) ✅ · W5-3 (launchd) ✅ · W5-4 (Python) ✅ · W5-5 (models) ✅ · W5-6 (first-run orchestration, `packaging/macos/first_run.py`) ✅ · W5-7/8 (sign + notarize) ✅ · W5-12 (uninstaller) ✅ · W5 capstone (`release_macos.sh` → build/sign/notarize/staple/DMG) ✅. **All Audit-E CRITICALs closed; build→DMG pipeline + first-run logic authored + tested.** Remaining (all GUI/decision/key-gated, need you): **W5-11** native Swift wizard (drives `first_run.py`'s deep-links), **W5-9** license gating, **W5-10** Cloudflare-for-buyers, **W5-13** Sparkle auto-update.
+**Progress:** W5-1…W5-8 + W5-12 + the `release_macos.sh` capstone are **authored + tested** (15/15). All Audit-E CRITICALs closed *as code*.
+
+> **⚠️ GROUND TRUTH (reconciled from the on-Mac report, 2026-05-25 — see `docs/PHASE-1-AUDIT-REMEDIATION-BRIEF.md` §4):** there are **two disconnected efforts**. The **codec-repo `packaging/macos/` bundled-app pipeline is complete + tested but has NEVER produced an artifact** (no `dist/`/`.app`/`.dmg`) and defaults to a notary profile `codec-notary` that **doesn't exist**. What ships **today** is the separate **`~/ava-stack/installer-gui/` Swift bootstrapper** → `dist/CODEC-Installer.dmg` (signed + notarized + stapled + Apple-Accepted via the working `ava-codec` profile + valid Developer ID cert).
+>
+> Real remaining work (account/keys/decision-gated, **need you**):
+> - **W5-9 License gating — NOT enforced.** Server live but in `env=dev`; the client only *displays* the JWT — never validates/expires/gates tiers/refuses to run. A buyer's copy runs unlicensed. **Biggest gap.**
+> - **Canonical-pipeline decision** — converge on the ava-stack installer vs the codec-repo bundled-app (the latter is currently dead scaffolding pointing at a missing notary profile).
+> - **W5-10** per-customer Cloudflare (today: one shared tunnel) · **W5-11** Swift setup wizard (none exists) · **W5-13** Sparkle auto-update (not started).
+> - *(Fixed this session: the real `first_run.py:154` `install_launchagents.sh` path bug that would crash a non-dry-run `--yes` install.)*
 
 - ⚪ **See your live permission status now:** `python3 packaging/macos/first_run.py --permissions-only` prints which TCC grants CODEC has + deep links to fix the rest. (`--dry-run` previews the whole first-run sequence; `--yes` does the real install + ~6 GB model fetch.)
 
@@ -133,6 +141,6 @@ I'm writing the docs; a few items need your accounts/assets:
 | D — Security | 1-2 | ✅ closed (PRs #56-#71 era) |
 | A — Code quality | 3 | ✅ closed |
 | C — Reliability | 4 | ✅ **fully closed** (all 5 CRITICAL + 9 HIGH + 6 MEDIUM + 2 LOW) |
-| E — Apple app | 5 | 🟠 **all CRITICALs closed; full build→DMG pipeline + first-run logic done.** W5-1/2/3/4/5/6/7/8/12 + capstone shipped. Remaining: W5-11 Swift wizard, W5-9 license, W5-10 Cloudflare, W5-13 Sparkle — all GUI/decision/key-gated → you |
+| E — Apple app | 5 | 🟠 CRITICALs closed *as code*; pipeline authored + tested (15/15). **Ground truth (§1):** codec-repo bundled-app pipeline **never produced an artifact** + points at a missing notary profile; the **ava-stack installer DMG ships today** (signed/notarized/Apple-Accepted). Real remaining → you: **W5-9 licensing NOT enforced (biggest gap)**, canonical-pipeline convergence, W5-10 per-buyer tunnel, W5-11 wizard, W5-13 Sparkle. (Fixed: `first_run.py:154` path bug.) |
 | F — Investor readiness | 6 | 🟢 **~98% closed** — F-1,2,3,4,5,6,7,9,10,11,12,13,14,15,16,17,18 done (PRs #136–#140). Only open: **F-8** screenshots (your captures, pending) + the F-4 *full-suite* CI sliver (deferred — needs the optional-dep matrix). |
 | B — Projects (+ Pilot) | 7 | ✅ **FULLY closed.** Audit-B: all 20 findings fixed (PR-7A…7P, incl. B-2 capability table + B-3 forensic audit). **Pilot: COMPLETE** — PP-1…PP-12 + 2 follow-ups close every finding P-1…P-15 (`~/codec/` local `main`, 67 security tests pass, native `test_phase2…6` green). Open items are operational only: review/push the 14 pilot commits + drop the Cloudflare tunnel before restart. |
