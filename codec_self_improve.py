@@ -265,12 +265,17 @@ def _draft_skill(gap: dict) -> tuple[str, str, str] | None:
 
 
 def _validate(code: str) -> tuple[bool, str]:
-    """Layered check: must compile, must not match dangerous patterns."""
+    """Layered check: must compile, must not match dangerous patterns.
+
+    Uses strict=True: these proposals are autonomously LLM-generated (no explicit user
+    intent), so the stricter denylist (raw network / serialization / open) applies. Users
+    who genuinely want an HTTP/file skill create it deliberately via create_skill → review.
+    """
     try:
         compile(code, "<proposal>", "exec")
     except SyntaxError as e:
         return False, f"SyntaxError: {e}"
-    dangerous, reason = is_dangerous_skill_code(code)
+    dangerous, reason = is_dangerous_skill_code(code, strict=True)
     if dangerous:
         return False, reason
     if "def run(" not in code or "SKILL_NAME" not in code or "SKILL_DESCRIPTION" not in code:
