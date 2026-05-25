@@ -105,7 +105,6 @@ def test_check_returns_none_when_not_newer(upd, monkeypatch):
     xml = _appcast("3.2.0", "https://x/a.dmg", "sig", 1)
     monkeypatch.setattr(upd, "parse_appcast", upd.parse_appcast)  # keep real parser
     # feed a fake appcast via a stubbed urlopen
-    import io
     class _R:
         def __enter__(self): return self
         def __exit__(self, *a): return False

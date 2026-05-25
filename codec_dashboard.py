@@ -388,7 +388,8 @@ async def update_download():
     Returns {ok, path, version} or {ok:false, error}. The verify step refuses
     any download whose signature doesn't match SUPublicEDKey."""
     try:
-        import codec_update, subprocess
+        import codec_update
+        import subprocess
         info = codec_update.check_for_update()
         if info is None:
             return {"ok": False, "error": "no update available"}

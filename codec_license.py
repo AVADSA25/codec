@@ -28,12 +28,11 @@ from __future__ import annotations
 
 import base64
 import json
-import os
 import time
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
