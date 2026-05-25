@@ -80,6 +80,29 @@ codesign_one() {
     fi
 }
 
+# Pre-sign cleanup: the bundled Python's bin/ contains pip console-script shims
+# (jsonschema, httpx, fastmcp, mcp, normalizer, …) — text executables CODEC never
+# invokes (it imports the libraries; `python3 -m pip` still works without bin/pip).
+# As unsigned text executables in a non-standard bundle location they break the
+# final seal with "code object is not signed at all". Strip everything in bin/
+# except the interpreter + Mach-O binaries (the standard py2app/briefcase fix).
+PYBIN="$APP/Contents/Frameworks/python/bin"
+if [ "$DRY_RUN" -eq 0 ] && [ -d "$PYBIN" ]; then
+    _stripped=0
+    for f in "$PYBIN"/* "$PYBIN"/.[!.]*; do
+        [ -e "$f" ] || continue
+        base="$(basename "$f")"
+        case "$base" in
+            python*) continue ;;                       # keep the interpreter (+ symlinks)
+        esac
+        if file "$f" 2>/dev/null | grep -q "Mach-O"; then
+            continue                                   # keep Mach-O (signed below)
+        fi
+        rm -f "$f" && _stripped=$((_stripped+1))
+    done
+    echo "-- stripped $_stripped non-interpreter console-script shim(s) from bundled python/bin --"
+fi
+
 echo "==> signing $APP inside-out (identity: ${IDENTITY:-<dry-run>})"
 
 echo "-- nested libraries (*.dylib, *.so) --"
