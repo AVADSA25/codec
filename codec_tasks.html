@@ -710,15 +710,8 @@ function pollStatus(){fetch('/api/health').then(function(r){return r.json()}).th
 pollStatus();setInterval(pollStatus,15000);
 (function(){var s=localStorage.getItem('codec-theme');if(s==='light'){document.documentElement.setAttribute('data-theme','light');updateThemeIcon('light')}})();
 
-/* ── Tabs ── */
-function showTab(name) {
-  document.querySelectorAll('.tab').forEach(function(t){ t.classList.remove('active'); });
-  document.querySelectorAll('.tab-panel').forEach(function(p){ p.classList.remove('active'); });
-  document.getElementById('tab-' + name).classList.add('active');
-  document.getElementById('panel-' + name).classList.add('active');
-  window.location.hash = name;
-  if (name === 'reports') loadReports();
-}
+/* ── Tabs: showTab is defined once, canonically, lower in this file
+      (tab switch + reports load + Pilot auto-poll). ── */
 
 /* ── Toast ── */
 function showToast(msg) {
@@ -1681,13 +1674,15 @@ function pilotRejectSkill() {
   .catch(function(e){ showToast('Reject failed: ' + e, true); });
 }
 
-/* ── Override showTab to wire Pilot auto-poll ── */
+/* ── Canonical showTab — tab switching + reports load + Pilot auto-poll ── */
 var _pilotTabActive = false;
 function showTab(name) {
   document.querySelectorAll('.tab').forEach(function(t){ t.classList.remove('active'); });
   document.querySelectorAll('.tab-panel').forEach(function(p){ p.classList.remove('active'); });
   document.getElementById('tab-' + name).classList.add('active');
   document.getElementById('panel-' + name).classList.add('active');
+  window.location.hash = name;
+  if (name === 'reports' && typeof loadReports === 'function') loadReports();
   _pilotTabActive = (name === 'pilot');
   if (_pilotTabActive) {
     pilotCheckStatus();
@@ -1720,8 +1715,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Apply UI preferences from dashboard settings
 (function(){try{var p=JSON.parse(localStorage.getItem('codec-ui-prefs')||'{}'),m={'screenshot_btn':'#screenBtn','photo_btn':'#photoBtn','webcam_pip_btn':'#camBtn','voice_btn':'#voiceBtn','notif_bell':'#notifBellBtn','mic_btn':'#micBtn','tasks_heartbeat':'#tab-heartbeat','tasks_reports':'#tab-reports'};Object.keys(m).forEach(function(k){if(p[k]===false)m[k].split(',').forEach(function(s){document.querySelectorAll(s.trim()).forEach(function(el){el.style.display='none'})})})}catch(e){}})();
-
-});
 </script>
 <!-- Preview Modal (screenshot + webcam photo) -->
 <div class="preview-modal" id="previewModal" onclick="closePreview(event)">
