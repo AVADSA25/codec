@@ -131,6 +131,8 @@ def test_from_ecosystem_emits_all_services():
             capture_output=True, text=True, timeout=90,
         )
         assert r.returncode == 0, f"--from-ecosystem failed: {r.stderr}\n{r.stdout}"
-        # 16 services defined in ecosystem.config.js → 16 labels in dry-run output.
+        # 15 services in ecosystem.config.js → 15 labels. (Was 16 before the
+        # :8083 port reconciliation merged the split qwen :8081 + qwen-vision
+        # :8082 servers into one unified qwen3.6 service.)
         labels = [ln for ln in r.stdout.splitlines() if "ai.avadigital.codec." in ln]
-        assert len(labels) >= 16, f"expected >=16 services, saw {len(labels)}:\n{r.stdout}"
+        assert len(labels) >= 15, f"expected >=15 services, saw {len(labels)}:\n{r.stdout}"

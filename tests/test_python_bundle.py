@@ -42,7 +42,11 @@ def test_bundler_script_contract():
     t = BUNDLE.read_text()
     assert t.splitlines()[0].startswith("#!"), "needs a shebang"
     assert "shasum" in t or "sha256" in t.lower(), "must verify the download's sha256"
-    assert "Frameworks/python" in t, "must install into Contents/Frameworks/python"
+    # Python lives in Contents/Resources/python, NOT Frameworks/ — a bare python
+    # tree under Frameworks/ is treated as a nested bundle and breaks the
+    # code-signing seal (Gatekeeper rejects). Resources/ is the py2app/briefcase
+    # convention. Do not revert to Frameworks/.
+    assert "Resources/python" in t, "must install into Contents/Resources/python"
     assert "--dry-run" in t, "must support --dry-run"
 
 
@@ -64,7 +68,8 @@ def test_build_app_has_with_python_flag():
 
 
 def test_launcher_prefers_bundled_pbs_python():
-    assert "Frameworks/python/bin/python3" in LAUNCHER.read_text(), (
+    # Matches the Resources/ relocation above (Gatekeeper signing fix).
+    assert "Resources/python/bin/python3" in LAUNCHER.read_text(), (
         "launcher must prefer the bundled python-build-standalone interpreter"
     )
 
