@@ -34,7 +34,7 @@
          menu-bar overlay) are wired in a follow-up; these keys make the app
          update-ready. -->
     <key>SUFeedURL</key>
-    <string>https://lucyvpa.com/appcast.xml</string>
+    <string>https://avadigital.ai/codec/appcast.xml</string>
     <key>SUPublicEDKey</key>
     <string>Az+iqcmusmWvyLEB7lW4j2J2kxGy6uLobNaH7ZIahys=</string>
     <key>SUEnableAutomaticChecks</key>

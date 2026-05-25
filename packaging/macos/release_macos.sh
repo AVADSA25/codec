@@ -110,7 +110,7 @@ fi
 # Sparkle tools are present; the private key is read from the Keychain. Host the
 # resulting appcast.xml + the .dmg at $APPCAST_PREFIX (= the SUFeedURL location).
 SPARKLE_BIN="${SPARKLE_BIN:-$HOME/sparkle/bin}"
-APPCAST_PREFIX="${CODEC_APPCAST_PREFIX:-https://lucyvpa.com/}"
+APPCAST_PREFIX="${CODEC_APPCAST_PREFIX:-https://avadigital.ai/codec/}"
 if [ "$SKIP_DMG" -eq 0 ] && [ -x "$SPARKLE_BIN/generate_appcast" ]; then
     echo "-- appcast (Sparkle Ed25519) --"
     run "$SPARKLE_BIN/generate_appcast" --download-url-prefix "$APPCAST_PREFIX" "$OUT"
