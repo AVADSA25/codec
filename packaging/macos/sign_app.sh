@@ -53,6 +53,23 @@ if [ "$DRY_RUN" -eq 0 ] && [ -z "$IDENTITY" ]; then
     exit 1
 fi
 
+# Ambiguity guard: codesign fails cryptically ("ambiguous … matches A and B") when
+# the keychain has >1 identity with the same Common Name. If --identity was given
+# as a CN (not a 40-hex SHA-1) and matches multiple identities, fail clearly and
+# tell the operator to pass the specific SHA-1 instead.
+if [ "$DRY_RUN" -eq 0 ] && ! printf '%s' "$IDENTITY" | grep -Eq '^[0-9A-Fa-f]{40}$'; then
+    _matches="$(security find-identity -v -p codesigning 2>/dev/null \
+                | grep -F "$IDENTITY" || true)"
+    _n="$(printf '%s\n' "$_matches" | grep -c . || true)"
+    if [ "${_n:-0}" -gt 1 ]; then
+        echo "sign_app.sh: signing identity '$IDENTITY' is AMBIGUOUS — $_n certs share that name:" >&2
+        printf '%s\n' "$_matches" | sed 's/^/    /' >&2
+        echo "  Re-run with the specific SHA-1, e.g.:" >&2
+        echo "    --identity $(printf '%s\n' "$_matches" | head -1 | awk '{print $2}')" >&2
+        exit 1
+    fi
+fi
+
 codesign_one() {
     local target="$1"
     if [ "$DRY_RUN" -eq 1 ]; then
