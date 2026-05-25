@@ -50,7 +50,7 @@ def _qwen_base():
     # A-12 (PR-3E-async): base URL (no /chat/completions) for codec_llm.acall.
     # (Replaced the old _qwen_url() — both its callers now use codec_llm, which
     # appends /chat/completions itself.)
-    return _cfg().get("llm_base_url", "http://localhost:8081/v1")
+    return _cfg().get("llm_base_url", "http://localhost:8083/v1")
 
 def _qwen_model():
     return _cfg().get("llm_model", "mlx-community/Qwen3.6-35B-A3B-4bit")

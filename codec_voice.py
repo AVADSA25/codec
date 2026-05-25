@@ -177,8 +177,8 @@ def _clear_voice_session_marker() -> None:
 # ── CONFIG — loaded from ~/.codec/config.json ─────────────────────────────
 WHISPER_URL   = "http://localhost:8084/v1/audio/transcriptions"
 WHISPER_MODEL = "mlx-community/whisper-large-v3-turbo"
-QWEN_BASE_URL = "http://localhost:8081/v1"   # A-12 (PR-3E-async): base for codec_llm.astream
-QWEN_URL      = "http://localhost:8081/v1/chat/completions"
+QWEN_BASE_URL = "http://localhost:8083/v1"   # A-12 (PR-3E-async): base for codec_llm.astream
+QWEN_URL      = "http://localhost:8083/v1/chat/completions"
 QWEN_MODEL    = "mlx-community/Qwen3.6-35B-A3B-4bit"
 LLM_KWARGS    = {}
 KOKORO_URL    = "http://localhost:8085/v1/audio/speech"
@@ -193,7 +193,7 @@ _CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
 try:
     with open(_CONFIG_PATH) as _f:
         _cfg = json.load(_f)
-    _llm_base     = _cfg.get("llm_base_url", "http://localhost:8081/v1").rstrip("/")
+    _llm_base     = _cfg.get("llm_base_url", "http://localhost:8083/v1").rstrip("/")
     QWEN_BASE_URL = _llm_base
     QWEN_URL      = _llm_base + "/chat/completions"
     QWEN_MODEL    = _cfg.get("llm_model", QWEN_MODEL)
@@ -207,12 +207,12 @@ except Exception as _e:
     print(f"[Voice] Config load warning: {_e} — using defaults")
 
 # ── Vision config ────────────────────────────────────────────────────────
-VISION_URL   = "http://localhost:8082/v1/chat/completions"
+VISION_URL   = "http://localhost:8083/v1/chat/completions"
 VISION_MODEL = "mlx-community/Qwen2.5-VL-7B-Instruct-4bit"
 GEMINI_API_KEY = ""
 VISION_PROVIDER = "local"
 try:
-    VISION_URL   = _cfg.get("vision_base_url", "http://localhost:8082/v1").rstrip("/") + "/chat/completions"
+    VISION_URL   = _cfg.get("vision_base_url", "http://localhost:8083/v1").rstrip("/") + "/chat/completions"
     VISION_MODEL = _cfg.get("vision_model", VISION_MODEL)
     # PR-2B-2 (D-15): Keychain-aware getter (cfg→Keychain migration + env fallback).
     from codec_config import get_gemini_api_key

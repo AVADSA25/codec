@@ -34,7 +34,7 @@ def _vision_config() -> Tuple[str, str, str, str]:
         return provider, gem, QWEN_VISION_URL, QWEN_VISION_MODEL
     except Exception as e:  # pragma: no cover — defensive
         log.warning("vision config unavailable: %s", e)
-        return "local", "", "http://localhost:8082/v1", "qwen-vl"
+        return "local", "", "http://localhost:8083/v1", "qwen-vl"
 
 
 def _gemini_payload(image_b64: str, prompt: str, mime: str, max_tokens: int) -> dict:

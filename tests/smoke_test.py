@@ -68,25 +68,25 @@ def test_health():
 
 
 def test_llm_direct():
-    """Test Qwen LLM directly on port 8081."""
+    """Test Qwen LLM directly on port 8083."""
     try:
-        r = requests.get("http://localhost:8081/v1/models", timeout=5)
+        r = requests.get("http://localhost:8083/v1/models", timeout=5)
         models = [m["id"] for m in r.json()["data"]]
         has_qwen = any("Qwen" in m for m in models)
-        log("PASS" if has_qwen else "WARN", "LLM Models (8081)", f"{len(models)} models, Qwen={'yes' if has_qwen else 'no'}")
+        log("PASS" if has_qwen else "WARN", "LLM Models (8083)", f"{len(models)} models, Qwen={'yes' if has_qwen else 'no'}")
     except Exception as e:
-        log("FAIL", "LLM Models (8081)", str(e))
+        log("FAIL", "LLM Models (8083)", str(e))
 
 
 def test_vision_direct():
-    """Test Vision model on port 8082."""
+    """Test Vision model on port 8083."""
     try:
-        r = requests.get("http://localhost:8082/v1/models", timeout=5)
+        r = requests.get("http://localhost:8083/v1/models", timeout=5)
         models = [m["id"] for m in r.json()["data"]]
         has_vl = any("VL" in m for m in models)
-        log("PASS" if has_vl else "WARN", "Vision Models (8082)", f"{len(models)} models, VL={'yes' if has_vl else 'no'}")
+        log("PASS" if has_vl else "WARN", "Vision Models (8083)", f"{len(models)} models, VL={'yes' if has_vl else 'no'}")
     except Exception as e:
-        log("FAIL", "Vision Models (8082)", str(e))
+        log("FAIL", "Vision Models (8083)", str(e))
 
 
 def test_whisper():

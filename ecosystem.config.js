@@ -76,25 +76,17 @@ module.exports = {
       autorestart: true,
     },
 
-    // ── LLM Server (Qwen via mlx_lm) ──
+    // ── LLM + Vision Server (Qwen 3.6 via mlx_vlm) ──
+    // Single unified server on :8083 — the Qwen 3.6 35B model handles both
+    // text reasoning and vision, so one mlx_vlm.server replaces the old
+    // split mlx_lm(:8081) + VL(:8082) layout. config.json's llm_base_url
+    // and vision_base_url both point here.
     {
-      name: "qwen35b",
+      name: "qwen3.6",
       script: "bash",
-      args: "-c 'python3 -m mlx_lm.server --model mlx-community/Qwen3.6-35B-A3B-4bit --port 8081'",
+      args: "-c 'python3 -m mlx_vlm.server --model mlx-community/Qwen3.6-35B-A3B-4bit --port 8083'",
       cwd: __dirname,
       max_memory_restart: "8G",
-      restart_delay: 10000,
-      max_restarts: 5,
-      autorestart: true,
-    },
-
-    // ── Vision Model Server ──
-    {
-      name: "qwen-vision",
-      script: "bash",
-      args: "-c 'python3 -m mlx_lm.server --model mlx-community/Qwen2.5-VL-7B-Instruct-4bit --port 8082'",
-      cwd: __dirname,
-      max_memory_restart: "4G",
       restart_delay: 10000,
       max_restarts: 5,
       autorestart: true,

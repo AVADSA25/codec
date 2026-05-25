@@ -957,7 +957,7 @@ def main():
 
     load_skills()
     print("[CODEC] Whisper: HTTP (port 8084)")
-    print("[CODEC] Vision: Qwen VL (port 8082)")
+    print("[CODEC] Vision: Qwen 3.6 (port 8083)")
     mem = get_memory(3)
     if mem: print(f"[CODEC] Memory: {mem.count(chr(10))+1} sessions loaded")
     convs = get_recent_conversations(10)

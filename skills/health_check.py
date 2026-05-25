@@ -32,7 +32,7 @@ def run(task: str = "", context: str = "") -> str:
 
     # 2. Qwen LLM
     try:
-        req = Request("http://localhost:8081/v1/models")
+        req = Request("http://localhost:8083/v1/models")
         resp = urlopen(req, timeout=5)
         results["qwen_llm"] = "OK"
     except Exception as e:
@@ -40,7 +40,7 @@ def run(task: str = "", context: str = "") -> str:
 
     # 3. Qwen Vision
     try:
-        req = Request("http://localhost:8082/v1/models")
+        req = Request("http://localhost:8083/v1/models")
         resp = urlopen(req, timeout=5)
         results["qwen_vision"] = "OK"
     except Exception as e:

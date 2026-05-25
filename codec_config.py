@@ -138,7 +138,7 @@ ASSISTANT_NAME    = cfg.get('assistant_name', 'CODEC')
 USER_NAME         = cfg.get('user_name', '')
 
 # LLM
-QWEN_BASE_URL     = cfg.get("llm_base_url", "http://localhost:8081/v1")
+QWEN_BASE_URL     = cfg.get("llm_base_url", "http://localhost:8083/v1")
 QWEN_MODEL        = cfg.get("llm_model", "mlx-community/Qwen3.6-35B-A3B-4bit")
 
 
@@ -325,8 +325,8 @@ LLM_KWARGS        = cfg.get("llm_kwargs", {})
 LLM_PROVIDER      = cfg.get("llm_provider", "mlx")
 
 # Vision (general — images, documents, screen reading)
-QWEN_VISION_URL   = cfg.get("vision_base_url", "http://localhost:8082/v1")
-QWEN_VISION_MODEL = cfg.get("vision_model", "mlx-community/Qwen2.5-VL-7B-Instruct-4bit")
+QWEN_VISION_URL   = cfg.get("vision_base_url", "http://localhost:8083/v1")
+QWEN_VISION_MODEL = cfg.get("vision_model", "mlx-community/Qwen3.6-35B-A3B-4bit")
 
 # UI-TARS (UI-specialist — mouse control coordinate extraction)
 UI_TARS_URL       = cfg.get("ui_tars_base_url", "http://localhost:8083/v1")

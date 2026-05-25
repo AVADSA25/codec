@@ -74,11 +74,11 @@ def get_llm_config(cfg):
     # PR-2B (D-15 partial): llm_api_key now lives in Keychain.
     from codec_config import get_llm_api_key as _kc_get_llm
     return {
-        "base_url": cfg.get("llm_base_url", "http://localhost:8081/v1"),
+        "base_url": cfg.get("llm_base_url", "http://localhost:8083/v1"),
         "model": cfg.get("llm_model", "mlx-community/Qwen3.6-35B-A3B-4bit"),
         "api_key": _kc_get_llm(),
         "kwargs": cfg.get("llm_kwargs", {}),
-        "vision_url": cfg.get("vision_base_url", "http://localhost:8082/v1"),
+        "vision_url": cfg.get("vision_base_url", "http://localhost:8083/v1"),
         "vision_model": cfg.get("vision_model", "mlx-community/Qwen2.5-VL-7B-Instruct-4bit"),
         "whisper_url": cfg.get("stt_url", "http://localhost:8084/v1/audio/transcriptions"),
     }

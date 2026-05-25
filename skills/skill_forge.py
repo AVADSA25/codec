@@ -55,7 +55,7 @@ def run(task, app="", ctx=""):
         with open(CONFIG_PATH) as f:
             cfg = json.load(f)
 
-    base_url = cfg.get("llm_base_url", "http://localhost:8081/v1")
+    base_url = cfg.get("llm_base_url", "http://localhost:8083/v1")
     model = cfg.get("llm_model", "")
     # PR-2B (D-15 partial): llm_api_key from Keychain.
     try:

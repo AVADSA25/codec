@@ -15,7 +15,7 @@ def run(task, app="", ctx=""):
         subprocess.run(["screencapture", "-x", tmp.name], timeout=5)
         with open(tmp.name, "rb") as f:
             b64 = base64.b64encode(f.read()).decode()
-        r = requests.post("http://localhost:8082/v1/chat/completions", json={
+        r = requests.post("http://localhost:8083/v1/chat/completions", json={
             "model": "mlx-community/Qwen2.5-VL-7B-Instruct-4bit",
             "messages": [{"role": "user", "content": [
                 {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},

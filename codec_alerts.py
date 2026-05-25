@@ -189,11 +189,11 @@ def check_services_and_alert():
 
     # Resolve ports from config
     ports = {
-        "llm_port": cfg.get("llm_base_url", "http://localhost:8081").split(":")[-1].split("/")[0],
+        "llm_port": cfg.get("llm_base_url", "http://localhost:8083").split(":")[-1].split("/")[0],
         "stt_port": cfg.get("stt_url", "http://localhost:8084").split(":")[-1].split("/")[0],
         "tts_port": cfg.get("tts_url", "http://localhost:8085").split(":")[-1].split("/")[0],
         "dashboard_port": cfg.get("dashboard_port", 8090),
-        "vision_port": cfg.get("vision_base_url", "http://localhost:8082").split(":")[-1].split("/")[0],
+        "vision_port": cfg.get("vision_base_url", "http://localhost:8083").split(":")[-1].split("/")[0],
     }
 
     failures = state.get("consecutive_failures", {})

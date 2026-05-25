@@ -346,7 +346,7 @@ var ICONS = {
 var NODES = [
   // ─── BRAIN (top center) — Intelligence & Reasoning ───
   {id:'qwen',label:'Qwen LLM',x:550,y:130,r:40,color:'#d97757',icon:'brain',category:'brain',zone:'brain',
-   info:'Qwen 3.6 35B (4-bit MLX). Main language model — all reasoning, conversation, skill routing.',file:'mlx_lm.server',port:8081,health:'/v1/models'},
+   info:'Qwen 3.6 35B (4-bit MLX). Main language model — all reasoning, conversation, skill routing.',file:'mlx_vlm.server',port:8083,health:'/v1/models'},
   {id:'llm_queue',label:'LLM Queue',x:450,y:100,r:18,color:'#666',icon:'layers',category:'brain',zone:'brain',
    info:'Priority queue: CRITICAL(voice) > HIGH(chat) > MEDIUM(agents) > LOW(background).',file:'codec_llm_proxy.py'},
   {id:'memory',label:'Memory',x:660,y:100,r:24,color:'#a78bfa',icon:'database',category:'brain',zone:'brain',
@@ -358,7 +358,7 @@ var NODES = [
 
   // ─── EYES (upper-left) — Vision & Screen Reading ───
   {id:'vision',label:'Vision VL',x:220,y:140,r:30,color:'#60a5fa',icon:'eye',category:'eyes',zone:'eyes',
-   info:'Qwen2.5-VL-7B for screen reading, image analysis. Gemini Flash as cloud fallback.',file:'mlx_lm.server',port:8082,health:'/v1/models'},
+   info:'Qwen2.5-VL-7B for screen reading, image analysis. Gemini Flash as cloud fallback.',file:'mlx_vlm.server',port:8083,health:'/v1/models'},
   {id:'screenshot',label:'Screen **',x:140,y:100,r:18,color:'#60a5fa',icon:'monitor',category:'eyes',zone:'eyes',
    info:'Double-asterisk captures screen, reads via Vision, opens question dialog.',file:'codec.py'},
   {id:'document',label:'Doc ++',x:300,y:90,r:18,color:'#60a5fa',icon:'draft',category:'eyes',zone:'eyes',

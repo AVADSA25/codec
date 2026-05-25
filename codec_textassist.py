@@ -17,7 +17,7 @@ def get_config():
 
 def call_qwen(text, mode):
     cfg = get_config()
-    base = cfg.get("llm_base_url", "http://localhost:8081/v1")
+    base = cfg.get("llm_base_url", "http://localhost:8083/v1")
     model = cfg.get("llm_model", "mlx-community/Qwen3.6-35B-A3B-4bit")
     kwargs = cfg.get("llm_kwargs", {})
     prompts = {

@@ -21,8 +21,8 @@ from datetime import datetime
 
 # ─── Configuration ───────────────────────────────────────────────────────────
 BASE_URL = "http://localhost:8090"
-QWEN_URL = "http://localhost:8081"
-VISION_URL = "http://localhost:8082"
+QWEN_URL = "http://localhost:8083"
+VISION_URL = "http://localhost:8083"
 WHISPER_URL = "http://localhost:8084"
 KOKORO_URL = "http://localhost:8085"
 PIN = os.environ.get("CODEC_PIN", "")
@@ -152,27 +152,27 @@ def test_infrastructure():
     except Exception as e:
         record("FAIL", sec, "GET /api/health -> 200", str(e))
 
-    # Qwen LLM on 8081
+    # Qwen LLM on 8083
     try:
         r, t = timed_get(f"{QWEN_URL}/v1/models", timeout=10)
         models = [m.get("id", "") for m in r.json().get("data", [])]
         has_qwen = any("qwen" in m.lower() or "Qwen" in m for m in models)
         record("PASS" if has_qwen else "FAIL", sec,
-               "GET :8081/v1/models -> has Qwen",
+               "GET :8083/v1/models -> has Qwen",
                f"Models: {', '.join(models[:3])}", t)
     except Exception as e:
-        record("FAIL", sec, "GET :8081/v1/models -> has Qwen", str(e))
+        record("FAIL", sec, "GET :8083/v1/models -> has Qwen", str(e))
 
-    # Vision model on 8082
+    # Vision model on 8083
     try:
         r, t = timed_get(f"{VISION_URL}/v1/models", timeout=10)
         models = [m.get("id", "") for m in r.json().get("data", [])]
         has_vl = any("vl" in m.lower() or "VL" in m or "vision" in m.lower() for m in models)
         record("PASS" if has_vl else "FAIL", sec,
-               "GET :8082/v1/models -> has VL model",
+               "GET :8083/v1/models -> has VL model",
                f"Models: {', '.join(models[:3])}", t)
     except Exception as e:
-        record("FAIL", sec, "GET :8082/v1/models -> has VL model", str(e))
+        record("FAIL", sec, "GET :8083/v1/models -> has VL model", str(e))
 
     # Whisper on 8084 (expects 404 on root = server is running)
     try:

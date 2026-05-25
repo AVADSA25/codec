@@ -520,12 +520,12 @@ async def get_config():
         "llm": {
             "llm_provider": config.get("llm_provider", "mlx"),
             "llm_model": config.get("llm_model", ""),
-            "llm_base_url": config.get("llm_base_url", "http://localhost:8081/v1"),
+            "llm_base_url": config.get("llm_base_url", "http://localhost:8083/v1"),
             "llm_api_key": config.get("llm_api_key", ""),
             "streaming": config.get("streaming", True),
         },
         "vision": {
-            "vision_base_url": config.get("vision_base_url", "http://localhost:8082/v1"),
+            "vision_base_url": config.get("vision_base_url", "http://localhost:8083/v1"),
             "vision_model": config.get("vision_model", ""),
         },
         "tts": {
@@ -924,7 +924,7 @@ async def send_command(request: Request):
             with open(CONFIG_PATH) as f: config = json.load(f)
         except Exception:
             pass
-        base_url = config.get("llm_base_url", "http://localhost:8081/v1")
+        base_url = config.get("llm_base_url", "http://localhost:8083/v1")
         model = config.get("llm_model", "mlx-community/Qwen3.6-35B-A3B-4bit")
         # PR-2B (D-15 partial): keychain-aware live read.
         from codec_config import get_llm_api_key as _kc_get_llm
@@ -1100,7 +1100,7 @@ async def vision_analyze(request: Request):
             with open(CONFIG_PATH) as f: config = json.load(f)
         except (OSError, json.JSONDecodeError) as e:
             log.warning(f"Config read failed; proceeding without overrides: {e}")
-        vision_url = config.get("vision_base_url", "http://localhost:8082/v1")
+        vision_url = config.get("vision_base_url", "http://localhost:8083/v1")
         vision_model = config.get("vision_model", "mlx-community/Qwen2.5-VL-7B-Instruct-4bit")
         payload = {
             "model": vision_model,
@@ -1233,7 +1233,7 @@ async def webcam_capture(request: Request):
                     with open(CONFIG_PATH) as f: config = json.load(f)
                 except Exception:
                     pass
-                vision_url = config.get("vision_base_url", "http://localhost:8082/v1")
+                vision_url = config.get("vision_base_url", "http://localhost:8083/v1")
                 vision_model = config.get("vision_model", "mlx-community/Qwen2.5-VL-7B-Instruct-4bit")
                 payload = {
                     "model": vision_model,
@@ -2688,7 +2688,7 @@ async def chat_completion(request: Request):
             with open(CONFIG_PATH) as f: config2 = json.load(f)
         except (OSError, json.JSONDecodeError) as e:
             log.warning(f"Config read failed; proceeding without overrides: {e}")
-        vision_url = config2.get("vision_base_url", "http://localhost:8082/v1")
+        vision_url = config2.get("vision_base_url", "http://localhost:8083/v1")
         vision_model = config2.get("vision_model", "mlx-community/Qwen2.5-VL-7B-Instruct-4bit")
         # Build multimodal message: last user text + all images
         last_text = ""
@@ -2721,7 +2721,7 @@ async def chat_completion(request: Request):
             with open(CONFIG_PATH) as f: config = json.load(f)
         except (OSError, json.JSONDecodeError) as e:
             log.warning(f"Config read failed; proceeding without overrides: {e}")
-        base_url = config.get("llm_base_url", "http://localhost:8081/v1")
+        base_url = config.get("llm_base_url", "http://localhost:8083/v1")
         model = config.get("llm_model", "mlx-community/Qwen3.6-35B-A3B-4bit")
         # PR-2B (D-15 partial): keychain-aware live read.
         from codec_config import get_llm_api_key as _kc_get_llm
@@ -3050,7 +3050,7 @@ async def run_schedule_now(sched_id: str):
                     config = json.load(f)
             except Exception:
                 pass
-            base_url = config.get("llm_base_url", "http://localhost:8081/v1")
+            base_url = config.get("llm_base_url", "http://localhost:8083/v1")
             model = config.get("llm_model", "mlx-community/Qwen3.6-35B-A3B-4bit")
             # PR-2B (D-15 partial): keychain-aware live read.
             from codec_config import get_llm_api_key as _kc_get_llm
@@ -3598,7 +3598,7 @@ async def _warmup_vision():
             with open(CONFIG_PATH) as f: config = json.load(f)
         except Exception:
             pass
-        vision_url = config.get("vision_base_url", "http://localhost:8082/v1")
+        vision_url = config.get("vision_base_url", "http://localhost:8083/v1")
         import requests as rq
         # Tiny request just to load model weights into GPU memory
         payload = {
@@ -3626,7 +3626,7 @@ async def _vision_keepalive():
                 with open(CONFIG_PATH) as f: config = json.load(f)
             except Exception:
                 pass
-            vision_url = config.get("vision_base_url", "http://localhost:8082/v1")
+            vision_url = config.get("vision_base_url", "http://localhost:8083/v1")
             import requests as rq
             r = rq.get(f"{vision_url}/models", timeout=10)
             if r.status_code == 200:
