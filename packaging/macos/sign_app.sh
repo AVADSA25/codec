@@ -86,7 +86,7 @@ codesign_one() {
 # As unsigned text executables in a non-standard bundle location they break the
 # final seal with "code object is not signed at all". Strip everything in bin/
 # except the interpreter + Mach-O binaries (the standard py2app/briefcase fix).
-PYBIN="$APP/Contents/Frameworks/python/bin"
+PYBIN="$APP/Contents/Resources/python/bin"
 if [ "$DRY_RUN" -eq 0 ] && [ -d "$PYBIN" ]; then
     _stripped=0
     for f in "$PYBIN"/* "$PYBIN"/.[!.]*; do

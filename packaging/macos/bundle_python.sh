@@ -6,7 +6,7 @@
 # packaging/macos/python-runtime.json (single source of truth).
 #
 # Steps: resolve arch -> download the pinned tarball -> VERIFY sha256 (refuse on
-# mismatch) -> extract to <App>/Contents/Frameworks/python -> pip install the
+# mismatch) -> extract to <App>/Contents/Resources/python -> pip install the
 # project requirements into it.
 #
 # Usage:
@@ -62,7 +62,12 @@ PY
 }
 { read -r URL; read -r SHA; read -r PYVER; } < <(read_url_sha)
 
-DEST="$APP/Contents/Frameworks/python"
+# Resources/, NOT Frameworks/. codesign treats every Frameworks/ entry as a
+# nested *bundle* and chokes on a bare interpreter tree ("bundle format
+# unrecognized … In subcomponent: …/lib/python3.x"), leaving the outer app
+# unsigned → Gatekeeper rejects. Resources/ is sealed as data; nested Mach-O
+# are still signed inside-out by sign_app.sh. (Same layout py2app/briefcase use.)
+DEST="$APP/Contents/Resources/python"
 
 if [ "$DRY_RUN" -eq 1 ]; then
     echo "[dry-run] Python ${PYVER} (${ARCH})"

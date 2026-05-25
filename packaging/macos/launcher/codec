@@ -21,7 +21,9 @@ mkdir -p "$LOG_DIR" 2>/dev/null || true
 log() { printf '%s  %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" >>"$LOG_DIR/launch.log" 2>/dev/null || true; }
 
 # 1) Prefer the bundled relocatable Python (python-build-standalone, W5-4).
-BUNDLED_PY="$CONTENTS/Frameworks/python/bin/python3"
+#    In Resources/ (not Frameworks/) so codesign seals it as data — a bare
+#    interpreter tree in Frameworks/ breaks the outer bundle signature.
+BUNDLED_PY="$CONTENTS/Resources/python/bin/python3"
 PY=""
 if [ -x "$BUNDLED_PY" ]; then
     PY="$BUNDLED_PY"
