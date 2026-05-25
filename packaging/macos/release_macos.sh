@@ -71,29 +71,40 @@ notary_creds() {
 
 echo "==> CODEC macOS release pipeline (out=$OUT, version=$VERSION$([ "$DRY_RUN" -eq 1 ] && echo ', DRY RUN'))"
 
-echo "-- 1/4 build --"
+echo "-- 1/5 build --"
 BUILD=(bash "$HERE/build_app.sh" --with-python --clean --out "$OUT" --app-name "$APP_NAME")
 [ -n "$ARCH" ] && BUILD+=(--arch "$ARCH")
 run "${BUILD[@]}"
 
-echo "-- 2/4 sign --"
+echo "-- 2/5 sign --"
 run bash "$HERE/sign_app.sh" --app "$APP" --identity "$IDENTITY"
 
 if [ "$SKIP_NOTARIZE" -eq 0 ]; then
-    echo "-- 3/4 notarize + staple --"
+    echo "-- 3/5 notarize + staple app --"
     # shellcheck disable=SC2046
     run bash "$HERE/notarize_app.sh" --app "$APP" $(notary_creds)
 else
-    echo "-- 3/4 notarize -- (skipped)"
+    echo "-- 3/5 notarize -- (skipped)"
 fi
 
 if [ "$SKIP_DMG" -eq 0 ]; then
-    echo "-- 4/4 dmg --"
+    echo "-- 4/5 dmg --"
     run bash "$HERE/make_dmg.sh" --app "$APP" --out "$DMG" --volname "$APP_NAME"
 else
-    echo "-- 4/4 dmg -- (skipped)"
+    echo "-- 4/5 dmg -- (skipped)"
 fi
 
-echo "==> release pipeline complete${DRY_RUN:+ (dry run)}"
+# Staple the DMG itself too. The .app is already stapled (enough once it's copied
+# to /Applications), but a stapled .dmg also opens cleanly on a never-online Mac.
+if [ "$SKIP_DMG" -eq 0 ] && [ "$SKIP_NOTARIZE" -eq 0 ]; then
+    echo "-- 5/5 notarize + staple dmg --"
+    # shellcheck disable=SC2046
+    run xcrun notarytool submit "$DMG" $(notary_creds) --wait
+    run xcrun stapler staple "$DMG"
+else
+    echo "-- 5/5 staple dmg -- (skipped)"
+fi
+
+echo "==> release pipeline complete$([ "$DRY_RUN" -eq 1 ] && echo ' (dry run)')"
 [ "$DRY_RUN" -eq 0 ] && [ "$SKIP_DMG" -eq 0 ] && echo "    artifact: $DMG"
 exit 0
