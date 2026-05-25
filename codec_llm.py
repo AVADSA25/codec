@@ -102,6 +102,30 @@ def _build_request(
     return headers, payload
 
 
+def _cloud_blocked_msg(base_url: str) -> Optional[str]:
+    """License gate for the 'cloud_proxy' feature (paid edition only).
+
+    Returns a user-facing message if this is a CLOUD call (non-localhost
+    base_url) that the current license doesn't permit; otherwise None.
+
+    Local calls (localhost / 127.0.0.1 / 0.0.0.0) are NEVER gated. OSS/dev
+    builds always return None (feature_allowed → True). Fail-open: any
+    licensing fault returns None so transport is never broken by licensing.
+    """
+    try:
+        bl = (base_url or "").lower()
+        if "localhost" in bl or "127.0.0.1" in bl or "0.0.0.0" in bl:
+            return None  # local model — always allowed
+        import codec_license
+        if codec_license.feature_allowed("cloud_proxy"):
+            return None
+        st = codec_license.license_state()
+        return (f"\U0001F512 Cloud models require an active CODEC license — "
+                f"{st.reason}. Activate in Settings, or switch to the local model.")
+    except Exception:
+        return None  # fail-open — licensing must never break the LLM transport
+
+
 def call(
     messages: List[Dict[str, Any]],
     *,
@@ -131,6 +155,11 @@ def call(
       proceed on an empty answer.
     """
     import requests
+    _blocked = _cloud_blocked_msg(base_url)
+    if _blocked is not None:
+        if raise_on_error:
+            raise LLMError(_blocked)
+        return _blocked
     headers, payload = _build_request(
         messages, model=model, api_key=api_key, max_tokens=max_tokens,
         temperature=temperature, enable_thinking=enable_thinking,
@@ -196,6 +225,10 @@ def stream(
     """
     import json as _json
     import requests
+    _blocked = _cloud_blocked_msg(base_url)
+    if _blocked is not None:
+        yield _blocked
+        return
     headers, payload = _build_request(
         messages, model=model, api_key=api_key, max_tokens=max_tokens,
         temperature=temperature, enable_thinking=enable_thinking,
@@ -260,6 +293,11 @@ async def acall(
     The queue (codec_llm_proxy) stays at the call site — never owned here.
     """
     import httpx
+    _blocked = _cloud_blocked_msg(base_url)
+    if _blocked is not None:
+        if raise_on_error:
+            raise LLMError(_blocked)
+        return _blocked
     headers, payload = _build_request(
         messages, model=model, api_key=api_key, max_tokens=max_tokens,
         temperature=temperature, enable_thinking=enable_thinking,
@@ -321,6 +359,10 @@ async def astream(
     """
     import json as _json
     import httpx
+    _blocked = _cloud_blocked_msg(base_url)
+    if _blocked is not None:
+        yield _blocked
+        return
     headers, payload = _build_request(
         messages, model=model, api_key=api_key, max_tokens=max_tokens,
         temperature=temperature, enable_thinking=enable_thinking,

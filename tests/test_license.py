@@ -123,3 +123,33 @@ def test_grace_expired_falls_to_readonly(lic, tmp_path, monkeypatch):
     lic._write_grace(now - 10 * 86400, "pro", "")     # 10 days > 7-day window
     st = lic._grace_or_readonly(now, "server down")
     assert st.mode == "readonly" and st.enforced
+
+
+# ── cloud_proxy transport gate (codec_llm) ──────────────────────────────────────
+
+def test_cloud_gate_local_never_blocked(monkeypatch):
+    import codec_llm, codec_license
+    # even a paid readonly build must NEVER block a local call
+    monkeypatch.setattr(codec_license, "feature_allowed",
+                        lambda f, cfg=None: False)
+    assert codec_llm._cloud_blocked_msg("http://localhost:8083/v1") is None
+    assert codec_llm._cloud_blocked_msg("http://127.0.0.1:8083/v1") is None
+
+def test_cloud_gate_oss_allows_cloud(monkeypatch):
+    import codec_llm, codec_license
+    monkeypatch.setattr(codec_license, "feature_allowed", lambda f, cfg=None: True)
+    assert codec_llm._cloud_blocked_msg("https://ava-proxy.lucyvpa.com") is None
+
+def test_cloud_gate_paid_readonly_blocks_cloud(monkeypatch):
+    import codec_llm, codec_license
+    monkeypatch.setattr(codec_license, "feature_allowed",
+                        lambda f, cfg=None: f != "cloud_proxy")
+    msg = codec_llm._cloud_blocked_msg("https://ava-proxy.lucyvpa.com")
+    assert msg and "license" in msg.lower()
+
+def test_cloud_gate_fails_open_on_error(monkeypatch):
+    import codec_llm, codec_license
+    def _boom(*a, **k): raise RuntimeError("license module broken")
+    monkeypatch.setattr(codec_license, "feature_allowed", _boom)
+    # must NOT raise — transport stays up even if licensing throws
+    assert codec_llm._cloud_blocked_msg("https://ava-proxy.lucyvpa.com") is None
