@@ -151,7 +151,7 @@ def run(home: str, *, dry_run: bool = False, yes: bool = False,
     os.makedirs(home, exist_ok=True)
     os.makedirs(os.path.expanduser("~/Library/Logs/CODEC"), exist_ok=True)
 
-    install = ["bash", os.path.join(HERE, "install_launchagents.sh")]
+    install = ["bash", os.path.join(HERE, "launchd", "install_launchagents.sh")]
     _run(install + (["--dry-run"] if dry_run else []), dry_run)
 
     fetch = [sys.executable, os.path.join(HERE, "fetch_models.py"), "--tier", "bundled"]
