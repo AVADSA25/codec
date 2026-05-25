@@ -41,7 +41,7 @@ def test_manifest_valid_and_tiered():
     tiers = {m["tier"] for m in models}
     assert "bundled" in tiers and "on_demand" in tiers, "need both tiers"
     repos = {m["repo"] for m in models}
-    assert "mlx-community/Qwen3.5-35B-A3B-4bit" in repos, "should reference the real LLM repo"
+    assert "mlx-community/Qwen3.6-35B-A3B-4bit" in repos, "should reference the real LLM repo"
 
 
 def test_select_and_total():

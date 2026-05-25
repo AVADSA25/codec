@@ -925,7 +925,7 @@ async def send_command(request: Request):
         except Exception:
             pass
         base_url = config.get("llm_base_url", "http://localhost:8081/v1")
-        model = config.get("llm_model", "mlx-community/Qwen3.5-35B-A3B-4bit")
+        model = config.get("llm_model", "mlx-community/Qwen3.6-35B-A3B-4bit")
         # PR-2B (D-15 partial): keychain-aware live read.
         from codec_config import get_llm_api_key as _kc_get_llm
         api_key = _kc_get_llm()
@@ -2722,7 +2722,7 @@ async def chat_completion(request: Request):
         except (OSError, json.JSONDecodeError) as e:
             log.warning(f"Config read failed; proceeding without overrides: {e}")
         base_url = config.get("llm_base_url", "http://localhost:8081/v1")
-        model = config.get("llm_model", "mlx-community/Qwen3.5-35B-A3B-4bit")
+        model = config.get("llm_model", "mlx-community/Qwen3.6-35B-A3B-4bit")
         # PR-2B (D-15 partial): keychain-aware live read.
         from codec_config import get_llm_api_key as _kc_get_llm
         api_key = _kc_get_llm()
@@ -3051,7 +3051,7 @@ async def run_schedule_now(sched_id: str):
             except Exception:
                 pass
             base_url = config.get("llm_base_url", "http://localhost:8081/v1")
-            model = config.get("llm_model", "mlx-community/Qwen3.5-35B-A3B-4bit")
+            model = config.get("llm_model", "mlx-community/Qwen3.6-35B-A3B-4bit")
             # PR-2B (D-15 partial): keychain-aware live read.
             from codec_config import get_llm_api_key as _kc_get_llm
             api_key = _kc_get_llm()

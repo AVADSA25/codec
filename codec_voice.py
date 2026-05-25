@@ -179,7 +179,7 @@ WHISPER_URL   = "http://localhost:8084/v1/audio/transcriptions"
 WHISPER_MODEL = "mlx-community/whisper-large-v3-turbo"
 QWEN_BASE_URL = "http://localhost:8081/v1"   # A-12 (PR-3E-async): base for codec_llm.astream
 QWEN_URL      = "http://localhost:8081/v1/chat/completions"
-QWEN_MODEL    = "mlx-community/Qwen3.5-35B-A3B-4bit"
+QWEN_MODEL    = "mlx-community/Qwen3.6-35B-A3B-4bit"
 LLM_KWARGS    = {}
 KOKORO_URL    = "http://localhost:8085/v1/audio/speech"
 KOKORO_MODEL  = "mlx-community/Kokoro-82M-bf16"
@@ -600,7 +600,7 @@ class VoicePipeline:
         # A-12 (PR-3E-async): codec_llm.astream owns the SSE POST + parsing and
         # PROPAGATES errors, so the except below still speaks the failure. The
         # queue (CRITICAL) stays here; the per-token <think> strip stays here too
-        # (Qwen 3.5 may put thinking in content — strip it before yielding).
+        # (Qwen 3.6 may put thinking in content — strip it before yielding).
         import codec_llm
         await llm_queue.acquire(Priority.CRITICAL)
         try:

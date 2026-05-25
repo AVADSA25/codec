@@ -80,7 +80,7 @@ module.exports = {
     {
       name: "qwen35b",
       script: "bash",
-      args: "-c 'python3 -m mlx_lm.server --model mlx-community/Qwen3.5-35B-A3B-4bit --port 8081'",
+      args: "-c 'python3 -m mlx_lm.server --model mlx-community/Qwen3.6-35B-A3B-4bit --port 8081'",
       cwd: __dirname,
       max_memory_restart: "8G",
       restart_delay: 10000,

@@ -29,7 +29,7 @@
     {
       "name": "qwen-35b-4bit",
       "kind": "llm",
-      "repo": "mlx-community/Qwen3.5-35B-A3B-4bit",
+      "repo": "mlx-community/Qwen3.6-35B-A3B-4bit",
       "revision": "main",
       "tier": "on_demand",
       "approx_gb": 20.0

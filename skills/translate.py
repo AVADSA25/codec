@@ -80,7 +80,7 @@ def run(task, app="", ctx=""):
                 {"role": "user", "content": prompt + "\n\nText: " + text},
             ],
             base_url="http://localhost:8081/v1",
-            model="mlx-community/Qwen3.5-35B-A3B-4bit",
+            model="mlx-community/Qwen3.6-35B-A3B-4bit",
             max_tokens=300, temperature=0.3, timeout=30,
         )
         if result:

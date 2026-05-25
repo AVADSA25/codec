@@ -78,7 +78,7 @@ def get_llm_config(cfg):
     from codec_config import get_llm_api_key as _kc_get_llm
     return {
         "base_url": cfg.get("llm_base_url", "http://localhost:8081/v1"),
-        "model": cfg.get("llm_model", "mlx-community/Qwen3.5-35B-A3B-4bit"),
+        "model": cfg.get("llm_model", "mlx-community/Qwen3.6-35B-A3B-4bit"),
         "api_key": _kc_get_llm(),
         "kwargs": cfg.get("llm_kwargs", {}),
         "vision_url": cfg.get("vision_base_url", "http://localhost:8082/v1"),

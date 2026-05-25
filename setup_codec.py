@@ -166,7 +166,7 @@ def main():
         config["llm_provider"] = "mlx"
         port = ask_text("MLX server port", "8081")
         config["llm_base_url"] = f"http://localhost:{port}/v1"
-        config["llm_model"] = ask_text("Model name", "mlx-community/Qwen3.5-35B-A3B-4bit")
+        config["llm_model"] = ask_text("Model name", "mlx-community/Qwen3.6-35B-A3B-4bit")
         config["llm_kwargs"] = {"chat_template_kwargs": {"enable_thinking": False}}
         if check_port(int(port)):
             print(f"\n{G}  ✓ MLX server detected on port {port}{X}")

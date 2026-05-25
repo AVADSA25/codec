@@ -139,7 +139,7 @@ USER_NAME         = cfg.get('user_name', '')
 
 # LLM
 QWEN_BASE_URL     = cfg.get("llm_base_url", "http://localhost:8081/v1")
-QWEN_MODEL        = cfg.get("llm_model", "mlx-community/Qwen3.5-35B-A3B-4bit")
+QWEN_MODEL        = cfg.get("llm_model", "mlx-community/Qwen3.6-35B-A3B-4bit")
 
 
 # In-memory cache for the Keychain-backed secret helpers. PR-2B failure-mode

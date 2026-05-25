@@ -97,7 +97,7 @@ The architecture is intentionally simple: pure Python, no frameworks, no Docker,
 
 | Component | What |
 |---|---|
-| LLM | Qwen 3.5 35B (MLX, 4-bit) |
+| LLM | Qwen 3.6 35B (MLX, 4-bit) |
 | Vision | Qwen 2.5 VL 7B (MLX) |
 | STT | Whisper Large V3 Turbo (MLX) |
 | TTS | Kokoro 82M (MLX) |

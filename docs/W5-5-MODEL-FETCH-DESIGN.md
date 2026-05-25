@@ -20,7 +20,7 @@
 
 - **`packaging/macos/models.json`** — the manifest. Each entry:
   `{name, kind (stt|tts|llm|vision), repo (HF), revision, tier (bundled|on_demand), approx_gb}`.
-  Ships as a **recommended example** (uses the real `mlx-community/Qwen3.5-35B-A3B-4bit`
+  Ships as a **recommended example** (uses the real `mlx-community/Qwen3.6-35B-A3B-4bit`
   + `Qwen2.5-VL-7B-Instruct-4bit` from `ecosystem.config.js`; the rest flagged).
   **TODO before launch:** confirm exact repos + pin `revision` to commit SHAs
   (supply-chain), once Mickael fixes the model strategy.

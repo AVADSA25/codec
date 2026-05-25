@@ -1,7 +1,7 @@
 """
 CODEC Agents — Local multi-agent framework
 Replaces CrewAI with ~300 lines. Zero external dependencies.
-Uses CODEC skills as tools + Qwen 3.5 35B with thinking mode.
+Uses CODEC skills as tools + Qwen 3.6 35B with thinking mode.
 """
 import asyncio
 import contextvars
@@ -53,7 +53,7 @@ def _qwen_base():
     return _cfg().get("llm_base_url", "http://localhost:8081/v1")
 
 def _qwen_model():
-    return _cfg().get("llm_model", "mlx-community/Qwen3.5-35B-A3B-4bit")
+    return _cfg().get("llm_model", "mlx-community/Qwen3.6-35B-A3B-4bit")
 
 # PR-2B-2 (D-15): Keychain-aware getter (cfg→Keychain migration + env fallback).
 def _serper_api_key() -> str:

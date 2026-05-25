@@ -403,7 +403,7 @@ The setup wizard handles everything in 9 steps: LLM, voice, vision, hotkeys, Goo
 
 | Model | How to run |
 |---|---|
-| **Qwen 3.5 35B** (recommended) | `mlx-lm.server --model mlx-community/Qwen3.5-35B-A3B-4bit` |
+| **Qwen 3.6 35B** (recommended) | `mlx-lm.server --model mlx-community/Qwen3.6-35B-A3B-4bit` |
 | **Llama 3.3 70B** | `mlx-lm.server --model mlx-community/Llama-3.3-70B-Instruct-4bit` |
 | **Mistral 24B** | `mlx-lm.server --model mlx-community/Mistral-Small-3.1-24B-Instruct-2503-4bit` |
 | **Gemma 3 27B** | `mlx-lm.server --model mlx-community/gemma-3-27b-it-4bit` |
@@ -415,7 +415,7 @@ Configure in `~/.codec/config.json`:
 ```json
 {
   "llm_url": "http://localhost:8081/v1",
-  "model": "mlx-community/Qwen3.5-35B-A3B-4bit"
+  "model": "mlx-community/Qwen3.6-35B-A3B-4bit"
 }
 ```
 
@@ -567,7 +567,7 @@ python3 -c "from codec_config import *; print('Config OK')"
 - Disable: `"tts_engine": "none"`
 - **Voice toggle:** Check the burger menu on any page — Voice Replies ON/OFF persists via localStorage across all pages
 - **Double TTS playback?** A dedup guard prevents the same text playing twice. If you hear duplicates, restart: `pm2 restart codec-dashboard`
-- **Qwen 3.5 reasoning/content split**: MLX server puts thinking in `reasoning` field, actual answer in `content`. With low `max_tokens`, model burns all tokens on thinking → empty `content`. Fix: set `max_tokens: 2000+` and only read `content` field, filter `<think>` tags
+- **Qwen 3.6 reasoning/content split**: MLX server puts thinking in `reasoning` field, actual answer in `content`. With low `max_tokens`, model burns all tokens on thinking → empty `content`. Fix: set `max_tokens: 2000+` and only read `content` field, filter `<think>` tags
 - **Voice screenshot silent after "analyzing"**: If mic noise sets `self.interrupted` flag during long operations (screenshot/vision), it kills subsequent responses. Fix: clear `self.interrupted` before speaking response
 - **RGBA→JPEG crash**: macOS screenshots are PNG with alpha (RGBA). Must `img.convert("RGB")` before saving as JPEG
 </details>

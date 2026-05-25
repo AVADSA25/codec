@@ -18,7 +18,7 @@ def get_config():
 def call_qwen(text, mode):
     cfg = get_config()
     base = cfg.get("llm_base_url", "http://localhost:8081/v1")
-    model = cfg.get("llm_model", "mlx-community/Qwen3.5-35B-A3B-4bit")
+    model = cfg.get("llm_model", "mlx-community/Qwen3.6-35B-A3B-4bit")
     kwargs = cfg.get("llm_kwargs", {})
     prompts = {
         "proofread": "Fix all spelling, grammar, and punctuation errors. Keep same tone. Output ONLY corrected text.",
