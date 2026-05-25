@@ -757,10 +757,7 @@ python3 setup_codec.py
 
 ## What's Coming
 
-**Recently shipped:**
-
-- [x] **CODEC Pilot v1** (May 2026) — full browser-automation pillar with teach-by-doing recording, XPath→CSS→LLM-rescue replay ladder, skill approval gate, HITL takeover, MJPEG live stream. All 6 blueprint phases delivered, 44/44 functional tests passing.
-- [x] **CODEC Project — Phase 3 substrate** (Apr–May 2026) — full drop-a-project autonomy. 10 numbered build steps + 5 architectural reviews. Planner (`codec_agent_plan.py`), runner daemon (`codec_agent_runner.py`), messaging (`codec_agent_messaging.py`), per-agent state at `~/.codec/agents/<id>/`, global allowlist tier, plan-hash tamper detection, resume-after-restart, multi-agent concurrency capped at 3, AskUser + strict-consent + step budgets, 17 new audit event types. Promoted to its own product slot.
+> **CODEC Pilot** (browser automation) and **CODEC Project** (drop-a-project autonomy) are **live, shipping products** — see [§8](#8-codec-pilot--browser-automation-you-can-teach) and [§9](#9-codec-project--drop-a-project-autonomy) above. They are no longer roadmap items.
 
 **Phase 3.5 (in progress)** — UX + polish on top of the autonomous-agent substrate:
 

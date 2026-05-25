@@ -117,14 +117,15 @@ def _native_click(x, y, button="left", double=False):
         return False
 
 # ── Config ───────────────────────────────────────────────────────────────────
-# Mouse control uses UI-TARS (UI-specialist model) on its own port.
-# Qwen Vision (8082) stays for general image/document analysis.
+# Mouse control uses the UI-TARS model, served by the unified mlx_vlm server
+# on :8083 (same endpoint as Qwen 3.6 — one multi-model server hosts Qwen,
+# Qwen-VL, and UI-TARS-1.5-7B together).
 try:
     from codec_config import cfg
-    VISION_URL = cfg.get("ui_tars_base_url", "http://localhost:8082/v1").rstrip("/") + "/chat/completions"
+    VISION_URL = cfg.get("ui_tars_base_url", "http://localhost:8083/v1").rstrip("/") + "/chat/completions"
     VISION_MODEL = cfg.get("ui_tars_model", "mlx-community/UI-TARS-1.5-7B-4bit")
 except ImportError:
-    VISION_URL = "http://localhost:8082/v1/chat/completions"
+    VISION_URL = "http://localhost:8083/v1/chat/completions"
     VISION_MODEL = "mlx-community/UI-TARS-1.5-7B-4bit"
 
 _SCREENSHOT_PATH = os.path.expanduser("~/.codec/mouse_screen.png")
@@ -325,7 +326,7 @@ def _find_element(description, retries=2):
 
         response, scale = _ask_vision(image_b64, prompt)
         if not response:
-            return None, "Vision model did not respond. Is it running at localhost:8082?"
+            return None, "Vision model did not respond. Is it running at localhost:8083?"
 
         log.info(f"Vision response for '{description}' (attempt {attempt+1}): {response[:200]} (scale={scale:.2f})")
 
