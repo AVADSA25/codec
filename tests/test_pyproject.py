@@ -7,6 +7,7 @@ to the F-5 single source of truth (VERSION). Stdlib-only (tomllib) → green on 
 
 Reference: docs/F15-PYPROJECT-DESIGN.md.
 """
+import re
 import sys
 import tomllib
 from pathlib import Path
@@ -41,8 +42,11 @@ def test_pyproject_version_is_dynamic_from_VERSION_file():
     d = _load()
     assert "version" in d["project"]["dynamic"], "version must be dynamic"
     assert d["tool"]["setuptools"]["dynamic"]["version"]["file"] == "VERSION"
-    # VERSION must exist and match the F-5 single source of truth
-    assert (_REPO / "VERSION").read_text(encoding="utf-8").strip() == "3.1.0"
+    # VERSION must exist and be valid SemVer (the F-5 single source of truth).
+    # Don't pin a specific number here — that's test_versioning.py's job, and a
+    # hardcoded value would force a test edit on every release.
+    v = (_REPO / "VERSION").read_text(encoding="utf-8").strip()
+    assert re.fullmatch(r"\d+\.\d+\.\d+", v), f"VERSION not valid SemVer: {v!r}"
 
 
 def test_pyproject_declares_core_runtime_dependencies():
