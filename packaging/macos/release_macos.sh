@@ -8,20 +8,30 @@
 #
 # Usage:
 #   release_macos.sh --identity "Developer ID Application: NAME (TEAMID)" \
-#                    --keychain-profile codec-notary [--version 2.3.0] [--arch aarch64]
+#                    --keychain-profile ava-codec [--version 3.1.0] [--arch aarch64]
 #   release_macos.sh --identity "…" --skip-notarize --skip-dmg --dry-run
+#
+# Version defaults to the repo-root VERSION file (single source of truth), so a
+# real release produces "Sovereign-AI-Workstation-<VERSION>.dmg" built from THIS
+# checkout — i.e. the paid app == codec-repo at the same version as the OSS engine.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 IDENTITY="${CODEC_SIGN_IDENTITY:-}"
-PROFILE="${CODEC_NOTARY_PROFILE:-}"
+# Default notary profile: the real, Apple-Accepted profile this repo's signer
+# uses (set up via `xcrun notarytool store-credentials ava-codec …`). Override
+# with --keychain-profile or $CODEC_NOTARY_PROFILE for other signers.
+PROFILE="${CODEC_NOTARY_PROFILE:-ava-codec}"
 APPLE_ID=""
 TEAM_ID=""
 PASSWORD=""
 OUT="dist"
 APP_NAME="Sovereign AI Workstation"
 ARCH=""
-VERSION="dev"
+# Version is the F-5 single source of truth: repo-root VERSION file. The paid
+# build is therefore always codec-repo@<VERSION> — same code, same number as the
+# OSS engine. Override with --version only for one-off test builds.
+VERSION="$(cat "$HERE/../../VERSION" 2>/dev/null || echo dev)"
 SKIP_NOTARIZE=0
 SKIP_DMG=0
 DRY_RUN=0

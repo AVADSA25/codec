@@ -457,6 +457,10 @@ Custom shortcuts in `~/.codec/config.json`. Restart after changes: `pm2 restart 
 
 Every conversation is stored locally in SQLite with FTS5 full-text search. No cloud sync. No analytics. No telemetry.
 
+**Pilot subsystem hardening (v3.1).** The browser-automation pillar went through a dedicated adversarial security audit (15 findings, remediated PP-1…PP-12): per-request token auth + loopback-only bind, an AST safety gate at skill-approval time, prompt-injection fencing of untrusted page content, SSRF/scheme guards on navigation, destructive-action default-deny on replay, secret redaction in traces, randomized CDP debug port, and a forensic audit trail. 67 security tests cover it.
+
+**Enterprise quality bar.** Single-source-of-truth versioning (the `VERSION` file ← CHANGELOG, CI-pinned), a `ruff` lint gate in CI, 1,300+ tests including dedicated security suites, and reproducible packaging via `pyproject.toml`. Every release is git-tagged.
+
 ---
 
 ## MCP Server — CODEC Inside Claude, Cursor, VS Code

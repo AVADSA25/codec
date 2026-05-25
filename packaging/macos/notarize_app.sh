@@ -7,23 +7,23 @@
 # ticket so the app validates offline.
 #
 # Needs App Store Connect credentials (NOT in this repo). Easiest: store them
-# once with `xcrun notarytool store-credentials codec-notary --apple-id … \
-#   --team-id … --password <app-specific-pw>` then pass --keychain-profile codec-notary.
+# once with `xcrun notarytool store-credentials ava-codec --apple-id … \
+#   --team-id … --password <app-specific-pw>` then pass --keychain-profile ava-codec.
 # Or pass --apple-id/--team-id/--password directly. --dry-run prints the plan.
 #
 # Usage:
-#   notarize_app.sh --app "dist/Sovereign AI Workstation.app" --keychain-profile codec-notary
+#   notarize_app.sh --app "dist/Sovereign AI Workstation.app" --keychain-profile ava-codec
 #   notarize_app.sh --app "…" --staple-only         # re-staple an already-accepted app
 #
 # TRIAGE: if Apple rejects, almost always an embedded .dylib (mlx/numpy/PyObjC)
 # is unsigned or lacks hardened runtime. Get the path with
-#   xcrun notarytool log <submission-id> --keychain-profile codec-notary
+#   xcrun notarytool log <submission-id> --keychain-profile ava-codec
 # then re-run sign_app.sh (signs ALL .dylib) and resubmit.
 # See docs/W5-7-8-SIGN-NOTARIZE-DESIGN.md.
 set -euo pipefail
 
 APP=""
-PROFILE="${CODEC_NOTARY_PROFILE:-}"
+PROFILE="${CODEC_NOTARY_PROFILE:-ava-codec}"
 APPLE_ID=""
 TEAM_ID=""
 PASSWORD=""
