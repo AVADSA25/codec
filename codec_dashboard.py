@@ -382,6 +382,31 @@ async def update_check():
         return {"update_available": False, "error": str(e)}
 
 
+@app.post("/api/update/download")
+async def update_download():
+    """Download the latest update, Ed25519-verify it, and reveal it in Finder.
+    Returns {ok, path, version} or {ok:false, error}. The verify step refuses
+    any download whose signature doesn't match SUPublicEDKey."""
+    try:
+        import codec_update, subprocess
+        info = codec_update.check_for_update()
+        if info is None:
+            return {"ok": False, "error": "no update available"}
+        dmg = codec_update.download_and_verify(info)   # raises if signature bad
+        try:
+            subprocess.Popen(["open", "-R", str(dmg)])  # reveal in Finder
+        except Exception:
+            pass
+        return {"ok": True, "path": str(dmg), "version": info.version}
+    except ValueError as e:
+        # Signature/length verification failed — untrusted download
+        log.warning(f"update download refused: {e}")
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+    except Exception as e:
+        log.warning(f"update download failed: {e}")
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
 @app.get("/api/status")
 async def status():
     """Check if CODEC is running and return config"""
