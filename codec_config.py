@@ -730,6 +730,17 @@ _SKILL_DANGEROUS_ATTRS = {
     "subprocess.run", "subprocess.Popen", "subprocess.call",
     "shutil.rmtree",
 }
+# Cross-cutting audit follow-up: EXTRA denylist applied only in strict mode (opt-in),
+# for AUTONOMOUSLY LLM-generated skills (codec_self_improve nightly drafter). These are the
+# rarely-legit-in-a-utility-skill primitives the base gate misses: deserialization-RCE /
+# persistence (pickle/marshal/shelve) and legacy exfil protocols (smtplib/ftplib/telnetlib).
+# Deliberately NOT included: HTTP (requests/urllib/httpx) and open() — those are common +
+# legitimate, and self_improve proposals are human-reviewed before promotion, so the review
+# gate (not a blanket block) is the right control for them. User-invoked generation
+# (skill_forge / create_skill→approve) stays on the default gate entirely.
+_SKILL_STRICT_EXTRA_MODULES = {
+    "pickle", "marshal", "shelve", "smtplib", "ftplib", "telnetlib",
+}
 # Reflection dunder attributes — dangerous regardless of the base object.
 # These are the building blocks of every CPython sandbox-escape chain.
 _DANGEROUS_REFLECTION_ATTRS = {
@@ -743,10 +754,19 @@ _DANGEROUS_REFLECTION_ATTRS = {
 _DANGEROUS_REFLECTION_NAMES = {"__builtins__", "__loader__", "__spec__"}
 
 
-def is_dangerous_skill_code(code: str) -> tuple[bool, str]:
+def is_dangerous_skill_code(code: str, strict: bool = False) -> tuple[bool, str]:
+    """Return (dangerous, reason) for a skill source string.
+
+    strict=False (default): the established gate — UNCHANGED. Used for user-curated skill
+    load, python_exec, and user-invoked generation (skill_forge / create_skill→approve).
+    strict=True: additionally blocks the rarely-legit serialization / legacy-exfil modules
+    in _SKILL_STRICT_EXTRA_MODULES — for AUTONOMOUSLY LLM-generated skills (codec_self_improve).
+    HTTP (requests/urllib/httpx) and open() are deliberately NOT blocked (common + legitimate,
+    and those proposals are human-reviewed). SAFE_MODULES stay allowed in both modes.
+    """
     import ast
 
-    DANGEROUS_MODULES = _SKILL_DANGEROUS_MODULES
+    DANGEROUS_MODULES = (_SKILL_DANGEROUS_MODULES | _SKILL_STRICT_EXTRA_MODULES) if strict else _SKILL_DANGEROUS_MODULES
     SAFE_MODULES = _SKILL_SAFE_MODULES
     DANGEROUS_CALLS = _SKILL_DANGEROUS_CALLS
     DANGEROUS_ATTRS = _SKILL_DANGEROUS_ATTRS

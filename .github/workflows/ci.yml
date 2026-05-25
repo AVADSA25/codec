@@ -44,6 +44,7 @@ jobs:
           tests/test_dependabot.py
           tests/test_versioning.py
           tests/test_pyproject.py
+          tests/test_strict_ast_gate.py
       - name: Apple packaging tests (W5 — bundle, launchd, python, models, sign, notarize, uninstall, release)
         run: >
           python -m pytest -v
