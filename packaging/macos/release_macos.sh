@@ -105,6 +105,20 @@ else
     echo "-- 5/5 staple dmg -- (skipped)"
 fi
 
+# Sparkle appcast (W5-13): regenerate the Ed25519-signed update feed from $OUT so
+# CODEC's updater (codec_update.py) can offer this release. Runs only when the
+# Sparkle tools are present; the private key is read from the Keychain. Host the
+# resulting appcast.xml + the .dmg at $APPCAST_PREFIX (= the SUFeedURL location).
+SPARKLE_BIN="${SPARKLE_BIN:-$HOME/sparkle/bin}"
+APPCAST_PREFIX="${CODEC_APPCAST_PREFIX:-https://lucyvpa.com/}"
+if [ "$SKIP_DMG" -eq 0 ] && [ -x "$SPARKLE_BIN/generate_appcast" ]; then
+    echo "-- appcast (Sparkle Ed25519) --"
+    run "$SPARKLE_BIN/generate_appcast" --download-url-prefix "$APPCAST_PREFIX" "$OUT"
+    [ "$DRY_RUN" -eq 0 ] && echo "    feed: $OUT/appcast.xml  → host it (+ the .dmg) at $APPCAST_PREFIX"
+elif [ "$SKIP_DMG" -eq 0 ]; then
+    echo "-- appcast -- (skipped: $SPARKLE_BIN/generate_appcast not found)"
+fi
+
 echo "==> release pipeline complete$([ "$DRY_RUN" -eq 1 ] && echo ' (dry run)')"
 [ "$DRY_RUN" -eq 0 ] && [ "$SKIP_DMG" -eq 0 ] && echo "    artifact: $DMG"
 exit 0
