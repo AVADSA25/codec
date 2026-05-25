@@ -18,7 +18,7 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>2.1.0</string>
+    <string>3.1.0</string>
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>LSMinimumSystemVersion</key>
@@ -26,6 +26,18 @@
     <key>NSHumanReadableCopyright</key>
     <string>Copyright © 2026 AVA Digital LLC. All rights reserved.</string>
     <key>NSHighResolutionCapable</key>
+    <true/>
+
+    <!-- Sparkle auto-update (W5-13). EdDSA public key generated via
+         `./bin/generate_keys` (private key in the signer's Keychain). The
+         feed + the in-app updater (Sparkle.framework hosted by the CODEC
+         menu-bar overlay) are wired in a follow-up; these keys make the app
+         update-ready. -->
+    <key>SUFeedURL</key>
+    <string>https://lucyvpa.com/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>Az+iqcmusmWvyLEB7lW4j2J2kxGy6uLobNaH7ZIahys=</string>
+    <key>SUEnableAutomaticChecks</key>
     <true/>
 
     <!-- TCC usage strings — shown to the user when CODEC requests each permission.
