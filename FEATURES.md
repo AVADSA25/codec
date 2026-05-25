@@ -1,6 +1,6 @@
 # Sovereign AI Workstation — Full Product Breakdown
 
-> Engine: **CODEC v2.3** — 400 features · 75 skills · 940+ tests · 58K+ lines of production code · 9 products
+> Engine: **CODEC v3.1** — 400 features · 75 skills · 940+ tests · 58K+ lines of production code · 9 products
 
 The product name is **Sovereign AI Workstation**. Throughout this document
 and the codebase, **CODEC** refers to the underlying open-source engine /

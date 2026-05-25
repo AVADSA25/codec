@@ -42,7 +42,7 @@ def test_pyproject_version_is_dynamic_from_VERSION_file():
     assert "version" in d["project"]["dynamic"], "version must be dynamic"
     assert d["tool"]["setuptools"]["dynamic"]["version"]["file"] == "VERSION"
     # VERSION must exist and match the F-5 single source of truth
-    assert (_REPO / "VERSION").read_text(encoding="utf-8").strip() == "2.3.0"
+    assert (_REPO / "VERSION").read_text(encoding="utf-8").strip() == "3.1.0"
 
 
 def test_pyproject_declares_core_runtime_dependencies():

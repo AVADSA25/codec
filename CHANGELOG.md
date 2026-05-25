@@ -1,5 +1,25 @@
 # Changelog
 
+## v3.1.0 (2026-05-25)
+### Security
+- **Pilot security-hardening wave (PP-1…PP-12)** — full adversarial audit remediation of the browser-automation pillar. AST safety gate at skill-approval time (`skill_review.py` refuses to activate dangerous compiled skills), untrusted-input fencing on the LLM selector-rescue prompt (`replay.py` `build_rescue_prompt` / `wrap_untrusted` so page text can't redirect element selection), irreversible-click blocking on replay unless `PILOT_ALLOW_DESTRUCTIVE=1`, path/glob-traversal neutralization in `slugify()` lookups, and a forensic audit trail (`audit()`) on every skill write/approve/reject/block.
+- **`pilot.lucyvpa.com` tunnel removed** from the Cloudflare ingress after an RCE finding — Pilot is local-only again pending re-hardening.
+
+### Added
+- **Conversational continuity in Project mode** — a Project-mode chat thread now binds to the agent it drafts (`_activeAgentId`). Follow-up messages route to that running agent (status queries, mid-run instructions) instead of spawning a duplicate project. Pulsing "Talking to …" chip with one-click exit; auto-clears on terminal status.
+- **Auto-grant of user-typed paths** — `codec_agent_plan.merge_user_paths_into_manifest()` extracts `~/…`, `$HOME/…`, `/Users/<n>/…` paths from the project description and injects them into the plan's permission manifest (write-verb heuristic for read vs write), so a path the user typed themselves doesn't trigger a mid-run `blocked_on_permission`. Sensitive paths (`~/.ssh`, `~/.aws`, `/etc`, …) stay blocklisted.
+- **Voice in / voice out** — Kokoro TTS now actually speaks assistant replies when "Voice Replies" is on (the toggle was previously inert); per-message Speak button; Speak toggle promoted into the composer mode-bar. Pilot tab gets its own 🎤 dictate + 🔊 speak controls and announces run/replay status aloud.
+- **Live preview panel** — `GET /api/agents/{id}/files` plus a slide-out that shows the most-recently-modified files in a running agent's project folder (5s poll), so you can watch output appear without leaving the chat.
+- **Cortex neural map → 9 products** — added Pilot, Pilot Chrome, Project, Plan Draft, Marketplace, Observer, Scheduler, Audit, Watchdog, MCP Server nodes (28 → 38) with 31 new edges; product cards for CODEC Pilot (#8) and CODEC Project (#9).
+
+### Changed
+- **2026 palette refresh** — calmer brand accent (`#d97757` dark / `#b85a3a` light, was pure `#E8711A`) and a muted Tailwind-500 node palette across the Cortex map. Same identity, far less "Windows-XP-bright."
+- **F-wave engineering hygiene** — ruff baseline + CI lint gate (F-4), versioning discipline with `VERSION` single source of truth + CHANGELOG-driven tag helper (F-5), `pyproject.toml` packaging metadata (F-15), pricing docs (F-11), GitHub Discussions (F-12), `lucy`→`delegate` skill rename (F-6), orphan-screenshot cleanup (F-8).
+- **Docs** — README/FEATURES/Cortex updated to the 9-product offering; refreshed `cortex.png` (9-product map, calmer palette).
+
+### Fixed
+- **Tasks page completely dead in the browser** — a stray `});` left after the UX overhaul was a hard SyntaxError that halted *all* inline JS, so the theme preference was ignored (Tasks flipped to dark) and Scheduled Tasks froze on "Scheduled Tasks…". Removed it and consolidated a duplicate `showTab()` that had dropped the reports-load behavior.
+
 ## v2.3.0 (2026-05-13)
 ### Added
 - **CODEC Project — promoted to 9th product.** Drop-a-project autonomy was already shipped as the Phase-3 substrate (Steps 1-10 + 5 architectural reviews, Apr-May 2026), wired into Chat → Project mode. This release elevates it to its own product slot in README + Cortex grid since it runs autonomously on its own PM2 daemon (`codec-agent-runner`) for hours rather than turn-by-turn. Implementation lives in `codec_agent_plan.py` (planner), `codec_agent_runner.py` (execution daemon), `codec_agent_messaging.py` (reply queue), with per-agent state at `~/.codec/agents/<id>/` and a two-tier permission system (per-agent manifest + global allowlist at `~/.codec/agent_global_grants.json`). Plan-hash tamper detection, resume-after-restart, multi-agent concurrency capped at 3, AskUserQuestion + strict-consent gates, step budgets, 17 new audit event types. See `docs/PHASE3-COMPLETE.md`.

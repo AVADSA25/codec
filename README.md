@@ -23,7 +23,7 @@
   <img src="https://img.shields.io/badge/tests-1300+-green?style=flat-square" alt="1,300+ Tests"/>
   <img src="https://img.shields.io/badge/lines-67K+-purple?style=flat-square" alt="67K+ Lines"/>
   <img src="https://img.shields.io/badge/license-MIT-brightgreen?style=flat-square" alt="MIT License"/>
-  <img src="https://img.shields.io/badge/engine-CODEC%20v2.3-E8711A?style=flat-square" alt="Engine: CODEC v2.3"/>
+  <img src="https://img.shields.io/badge/engine-CODEC%20v3.1-d97757?style=flat-square" alt="Engine: CODEC v3.1"/>
 </p>
 
 ---
@@ -46,7 +46,7 @@ It listens, sees the screen, speaks back, controls apps, writes code, drafts mes
 
 No cloud dependency. No data leaving the machine unless you choose. No subscription on the open-source build. MIT licensed.
 
-> **Sovereign AI Workstation** is the product brand. **CODEC** (v2.3) is the open-source engine that powers it — the codename you'll see in code paths, skill registries, the `codec_*` PM2 services, and the `~/.codec/` config directory. *Sovereign AI Workstation* is what you ship; *CODEC* is what you ship with. Same way iPhone runs on Darwin, or Tesla Model S runs on Roadster components — one is the product, the other is the engine.
+> **Sovereign AI Workstation** is the product brand. **CODEC** (v3.1) is the open-source engine that powers it — the codename you'll see in code paths, skill registries, the `codec_*` PM2 services, and the `~/.codec/` config directory. *Sovereign AI Workstation* is what you ship; *CODEC* is what you ship with. Same way iPhone runs on Darwin, or Tesla Model S runs on Roadster components — one is the product, the other is the engine.
 
 ---
 
