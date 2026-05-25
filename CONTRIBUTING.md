@@ -75,8 +75,17 @@ tests/                — 1,300+ pytest tests (1,386 functions across 99 files)
 
 ## Running Tests
 
+First install the dev/test dependencies (macOS):
+
+```bash
+pip install -r requirements-dev.txt   # runtime deps + pytest + ruff
+```
+
+Then:
+
 ```bash
 python3 -m pytest           # All tests
 python3 -m pytest -v        # Verbose
 python3 -m pytest -k "test_skills"  # Specific file
+ruff check .                # Lint (same gate as CI)
 ```
