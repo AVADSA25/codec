@@ -67,6 +67,17 @@ def test_build_app_has_with_python_flag():
     assert "--with-python" in BUILD.read_text(), "build_app.sh must expose --with-python"
 
 
+def test_build_app_injects_bundle_version_from_VERSION_file():
+    # build_app.sh must stamp CFBundleShortVersionString from the F-5 VERSION
+    # file. Otherwise generate_appcast reads a stale plist version and publishes
+    # the update under the wrong number (caught + fixed during the 3.2.0 release).
+    t = BUILD.read_text()
+    assert "plutil -replace CFBundleShortVersionString" in t, (
+        "build_app.sh must inject CFBundleShortVersionString from VERSION"
+    )
+    assert '"$REPO/VERSION"' in t, "the injected version must come from the repo-root VERSION file"
+
+
 def test_launcher_prefers_bundled_pbs_python():
     # Matches the Resources/ relocation above (Gatekeeper signing fix).
     assert "Resources/python/bin/python3" in LAUNCHER.read_text(), (

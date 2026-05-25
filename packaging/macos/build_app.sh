@@ -68,6 +68,17 @@ mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources/app" "$CONTENTS/Frameworks"
 
 # --- bundle identity (from W5-1) ------------------------------------------
 cp "$INFO_PLIST" "$CONTENTS/Info.plist"
+# Inject the F-5 single source of truth (repo-root VERSION) into the bundle's
+# CFBundleShortVersionString so it never drifts from VERSION. Sparkle's
+# generate_appcast reads THIS value for the appcast's shortVersionString — a
+# stale plist would publish an update under the wrong version number and users
+# would never be offered it. macOS-only (plutil); on non-macOS the static plist
+# value stands (real release builds run on macOS).
+APP_VERSION="$(tr -d '[:space:]' < "$REPO/VERSION" 2>/dev/null || true)"
+if [ -n "$APP_VERSION" ] && command -v plutil >/dev/null 2>&1; then
+    plutil -replace CFBundleShortVersionString -string "$APP_VERSION" "$CONTENTS/Info.plist"
+    echo "==> bundle CFBundleShortVersionString = $APP_VERSION (from VERSION)"
+fi
 printf 'APPL????' > "$CONTENTS/PkgInfo"
 
 # --- launcher + entry point -----------------------------------------------
@@ -86,7 +97,7 @@ for d in routes skills; do
     [ -d "$REPO/$d" ] && cp -R "$REPO/$d" "$CONTENTS/Resources/app/$d"
 done
 # runtime assets the app needs
-for f in requirements.txt ecosystem.config.js codec_dashboard.html; do
+for f in requirements.txt ecosystem.config.js codec_dashboard.html VERSION; do
     [ -f "$REPO/$f" ] && cp "$REPO/$f" "$CONTENTS/Resources/app/$f"
 done
 # any other top-level dashboard/PWA html
