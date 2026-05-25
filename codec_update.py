@@ -36,7 +36,7 @@ from cryptography.exceptions import InvalidSignature
 
 # Shipped defaults (overridable via ~/.codec/config.json). The public key is the
 # operator's Sparkle EdDSA public key — safe to embed.
-DEFAULT_FEED_URL   = "https://avadigital.ai/codec/appcast.xml"
+DEFAULT_FEED_URL   = "https://github.com/AVADSA25/codec-updates/releases/latest/download/appcast.xml"
 DEFAULT_PUBLIC_KEY = "Az+iqcmusmWvyLEB7lW4j2J2kxGy6uLobNaH7ZIahys="
 
 _SPARKLE_NS = "http://www.andymatuschak.org/xml-namespaces/sparkle"
