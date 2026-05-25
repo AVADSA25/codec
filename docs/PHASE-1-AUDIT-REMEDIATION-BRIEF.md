@@ -82,12 +82,15 @@ handshake) shipped in codec-repo **#132**.
 - **pyenv stale-lock:** the terminal hung on a stale `~/.pyenv/shims/.pyenv-shim` lock (an
   interrupted `pyenv rehash`). Cleared the lock + killed the spinning processes → terminal
   restored. (Not caused by this work — timestamp predated the session's background shells.)
-- **Task-tab UI bug (reported):** investigated rigorously — `codec_chat.html` and
-  `codec_tasks.html` have *byte-identical* theme logic (both default dark, both honor
-  `localStorage['codec-theme']`, both full-page nav), and `loadSchedules()` has a `.catch` over a
-  trivial-can't-hang backend. **`main` does not reproduce the symptom** → almost certainly a
-  stale browser cache / un-restarted dashboard. Action: hard-refresh + `pm2 restart
-  codec-dashboard` (done); send the browser console if it persists.
+- **Task-tab UI bug (reported) — RESOLVED.** Investigated rigorously from the repo (chat/tasks
+  theme logic was byte-identical; the symptom didn't reproduce on the then-`main`, pointing to a
+  newer/uncommitted state). The actual cause was found + fixed in **`8b5d665`** — a stray `});`
+  that broke all Tasks-page JS (which is why the page froze + the theme appeared wrong).
+- **Skill-manifest drift (D-1 gate) — FIXED ×2.** Two commits edited skills without regenerating
+  the trusted-skill manifest, reddening CI on `main` + all PRs: `487d4f8` (Qwen 3.6 model string,
+  →PR #145) and `b5e35fd` (port reconciliation across 5 skills, →this PR). **Lesson:** editing any
+  built-in skill REQUIRES `python3 tools/generate_skill_manifest.py --write` + committing the
+  manifest (AGENTS.md §7) — or the D-1 gate fails CI.
 
 ---
 
@@ -129,19 +132,25 @@ profile); (3) the W5-11 wizard; (4) W5-13 Sparkle. All need your Apple account/k
 | **A** Code quality · **C** Reliability · **D** Security | ✅ 100% |
 | **B** Projects (Audit-B, all 20) · **Pilot** (P-1…P-15) | ✅ 100% |
 | **E** Apple | ✅ all CRITICALs + distribution proven (ava-stack). Pipeline convergence + licensing + wizard + Sparkle = product work, account/keys-gated (§4) |
-| **F** Investor | ✅ ~99% — only the cortex screenshot (operator capture) remains |
+| **F** Investor | ✅ 100% — cortex screenshot shipped (`961bdc5`); engine now **v3.1** |
 
 ---
 
-## 6. Remaining — operator-gated only
+## 6. Remaining — operator-gated only (product/business, no code left)
 
-1. **Cortex screenshot** → drop `cortex.png` in `docs/screenshots/`; the README `<img>` then refreshes.
-2. **Apple "to-ship"** (§4) → product decisions + Apple account/keys: licensing enforcement,
-   pipeline convergence, wizard, Sparkle. The ava-stack DMG ships *today* for early buyers.
-3. **Task-tab bug** → confirm gone after hard-refresh + dashboard restart; else send the console.
-4. **Deferred, low-ROI:** full pytest suite in CI (needs the Linux optional-dep matrix). CI
+1. **Apple "to-ship"** (§4) → product decisions + Apple account/keys: **enforce licensing
+   client-side** (biggest gap) + flip the server out of dev, **converge the canonical pipeline**
+   (ava-stack installer vs codec-repo bundled-app), the W5-11 wizard, W5-13 Sparkle. The ava-stack
+   DMG ships *today* for early buyers.
+2. **Skill-manifest discipline (process, not a bug):** whenever you or the other Claude edit a
+   built-in skill, run `python3 tools/generate_skill_manifest.py --write` + commit — else the D-1
+   CI gate fails (it happened twice this session: the Qwen update + the port reconciliation).
+3. **Deferred, low-ROI:** full pytest suite in CI (needs the Linux optional-dep matrix). CI
    already gates lint + doc-guards + skill/manifest/keychain/oauth + the security tests.
-5. **Pilot:** running hardened; push the 14 local-`main` commits to a remote only if you want
+4. **Pilot:** running hardened; push the 14 local-`main` commits to a remote only if you want
    backup/CI.
+
+*(Done this session that earlier drafts listed as pending: cortex screenshot ✅, Task-tab bug ✅
+fixed in `8b5d665`, version bump to v3.1 ✅.)*
 
 **Nothing else is pending in code.**
