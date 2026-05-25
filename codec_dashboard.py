@@ -365,6 +365,23 @@ async def prometheus_metrics():
     from codec_metrics import metrics
     return PlainTextResponse(metrics.render(), media_type="text/plain; version=0.0.4")
 
+@app.get("/api/update/check")
+async def update_check():
+    """Sparkle-compatible update check. Returns {update_available, current, latest?}.
+    Best-effort: any failure (offline, no feed yet) reports up-to-date."""
+    try:
+        import codec_update
+        info = codec_update.check_for_update()
+        if info is None:
+            return {"update_available": False, "current": codec_update._current_version()}
+        return {"update_available": True,
+                "current": codec_update._current_version(),
+                "latest": info.version, "url": info.url, "title": info.title}
+    except Exception as e:
+        log.warning(f"update check failed: {e}")
+        return {"update_available": False, "error": str(e)}
+
+
 @app.get("/api/status")
 async def status():
     """Check if CODEC is running and return config"""
