@@ -1,5 +1,19 @@
 # Changelog
 
+## v3.2.0 (2026-05-25)
+### Added
+- **In-app auto-update (Sparkle-compatible).** CODEC now checks for new releases and can update itself. A pure-Python client (`codec_update.py`) reads a signed Sparkle appcast and verifies every download's **Ed25519 signature** against the embedded `SUPublicEDKey` before installing — a tampered build is refused. New dashboard endpoints `GET /api/update/check` + `POST /api/update/download`, plus an in-app update banner ("Download & open") that polls on load and every 6h.
+- **GitHub-hosted update feed.** Each release (signed `.dmg` + appcast) is published to `AVADSA25/codec-updates`; the app polls a permanent `releases/latest/download/appcast.xml` URL that always resolves to the newest version. Host is a one-line switch (`sparkle_feed_url` config / `CODEC_APPCAST_PREFIX`) for a later move to a custom domain or Cloudflare R2.
+- **Appcast generation in the release pipeline.** `release_macos.sh` regenerates the Ed25519-signed feed automatically after building the DMG.
+
+### Fixed
+- **Gatekeeper signing.** Bundled Python now lives under `Contents/Resources/python` instead of `Frameworks/` — a bare Python tree under `Frameworks/` is treated as a nested bundle and broke the code-signing seal (Gatekeeper rejected the app). Launcher, signing, and bundler scripts updated to match.
+- **Release pipeline.** Corrected a false "(dry run)" status line; the DMG is now notarized + stapled so it opens cleanly on a never-online Mac.
+- **CI green + clean.** Resolved stacked CI gate failures (ruff lint, trusted-skill manifest regen after the UI-TARS port fix, stale packaging-test assertions) and removed a phantom `codec` submodule gitlink that tripped `actions/checkout` on every run.
+
+### Changed
+- **Unified model port.** All Qwen MLX endpoints reconciled to `:8083` (was split `:8081`/`:8082`); the UI-TARS vision model is served from the same unified server.
+
 ## v3.1.0 (2026-05-25)
 ### Security
 - **Pilot security-hardening wave (PP-1…PP-12)** — full adversarial audit remediation of the browser-automation pillar. AST safety gate at skill-approval time (`skill_review.py` refuses to activate dangerous compiled skills), untrusted-input fencing on the LLM selector-rescue prompt (`replay.py` `build_rescue_prompt` / `wrap_untrusted` so page text can't redirect element selection), irreversible-click blocking on replay unless `PILOT_ALLOW_DESTRUCTIVE=1`, path/glob-traversal neutralization in `slugify()` lookups, and a forensic audit trail (`audit()`) on every skill write/approve/reject/block.
