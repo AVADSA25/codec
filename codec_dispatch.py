@@ -51,6 +51,17 @@ def run_skill(skill, task, app=""):
     If the skill returns None (indicating it can't handle the task),
     falls through to the next matching skill.
     """
+    # License gate (paid edition only — fully inert for OSS/dev builds).
+    # Wrapped so a licensing fault can NEVER break the core dispatch path.
+    try:
+        import codec_license
+        if not codec_license.feature_allowed("skill_exec"):
+            _st = codec_license.license_state()
+            return (f"\U0001F512 Skill execution requires an active CODEC license — "
+                    f"{_st.reason}. Activate in Settings to unlock.")
+    except Exception:
+        pass  # fail-open: licensing must never break dispatch
+
     all_matches = skill.get('_all_matches', [skill.get('name')])
     # One correlation_id for the whole dispatch attempt (covers any
     # fall-through retries across matched skills).

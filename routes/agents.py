@@ -62,6 +62,19 @@ async def list_agent_crews():
 @router.post("/api/agents/run")
 async def run_agent_crew(request: Request):
     """Start an agent crew in background -- returns job_id immediately to avoid proxy timeouts."""
+    # License gate (paid edition only — inert for OSS/dev). Fail-open on fault.
+    try:
+        import codec_license
+        if not codec_license.feature_allowed("agents"):
+            _st = codec_license.license_state()
+            return JSONResponse(
+                {"error": "license_required",
+                 "detail": f"Agent crews require an active CODEC license — {_st.reason}. "
+                           f"Activate in Settings to unlock."},
+                status_code=402)
+    except Exception:
+        pass
+
     body = await request.json()
     crew_name = body.pop("crew", "")
     if not crew_name:
@@ -287,6 +300,20 @@ class GlobalGrantBody(BaseModel):
 
 @router.post("/api/agents")
 def create_agent(body: CreateAgentBody):
+    # License gate for Project mode (paid edition only — inert for OSS/dev).
+    try:
+        import codec_license
+        if not codec_license.feature_allowed("project"):
+            _st = codec_license.license_state()
+            raise HTTPException(
+                status_code=402,
+                detail=f"Project mode requires an active CODEC license — {_st.reason}. "
+                       f"Activate in Settings to unlock.")
+    except HTTPException:
+        raise
+    except Exception:
+        pass
+
     try:
         agent_id = _cap.create_agent(
             title=body.title,
