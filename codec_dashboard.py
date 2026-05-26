@@ -14,7 +14,7 @@ from typing import Optional
 
 from pathlib import Path
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse as StarletteJSONResponse
@@ -3425,6 +3425,35 @@ async def tasks_page():
         with open(html_path) as f:
             return HTMLResponse(f.read(), headers=_NO_CACHE)
     return HTMLResponse("<h1>Tasks page not found</h1>", status_code=500)
+
+@app.api_route("/api/pilot/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def pilot_proxy(path: str, request: Request):
+    """Proxy /api/pilot/* → localhost:8094/* so the HTTPS dashboard can reach the local runner."""
+    import httpx
+    target = f"http://localhost:8094/{path}"
+    params = dict(request.query_params)
+    body = await request.body()
+    headers = {}
+    if request.headers.get("content-type"):
+        headers["content-type"] = request.headers["content-type"]
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            r = await client.request(
+                method=request.method,
+                url=target,
+                params=params,
+                content=body,
+                headers=headers,
+            )
+        return Response(
+            content=r.content,
+            status_code=r.status_code,
+            media_type=r.headers.get("content-type", "application/json"),
+        )
+    except httpx.ConnectError:
+        return JSONResponse({"error": "Pilot Runner offline — pm2 restart pilot-runner"}, status_code=503)
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=502)
 
 @app.get("/api/cortex/health")
 async def cortex_health():
