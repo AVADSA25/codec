@@ -27,8 +27,10 @@ ignore = [
 [lint.per-file-ignores]
 # Tests legitimately keep unused locals (fixtures, captured-but-unasserted) and redefine helpers.
 "tests/*" = ["F811", "F841"]
-# Smoke test + feature-audit script import symbols purely to probe availability (F401 is the point).
-"tests/test_smoke.py" = ["F811", "F841", "F401"]
+# Smoke + feature-audit scripts import symbols purely to probe availability (F401 is the point).
+# Note: smoke.py moved tests/ → scripts/ when CI flipped to full-suite pytest
+# (it was always a hand-rolled sys.exit(1) script, never a pytest module).
+"scripts/smoke.py" = ["F811", "F841", "F401"]
 "scripts/feature_audit.py" = ["F401", "F841"]
 # A handful of benign unused locals in working skills — left as-is rather than risk-edit live code.
 "skills/memory_entities.py" = ["F841"]
