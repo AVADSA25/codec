@@ -24,6 +24,8 @@ import subprocess
 import httpx
 import numpy as np
 
+log = logging.getLogger("codec_voice")
+
 from codec_audit import log_event as _voice_log_event
 from codec_hooks import (
     HookVeto,
@@ -219,7 +221,7 @@ try:
     GEMINI_API_KEY = get_gemini_api_key()
     VISION_PROVIDER = _cfg.get("vision_provider", "gemini" if GEMINI_API_KEY else "local")
 except Exception:
-    pass
+    log.debug("voice: vision provider/Keychain bootstrap failed", exc_info=True)
 
 # Screen-related trigger phrases
 _SCREEN_TRIGGERS = re.compile(
@@ -323,7 +325,7 @@ def _build_system_prompt() -> str:
                 f"  {f['key']} = {f['value']}" for f in facts
             ) + "\n[/FACTS]"
     except Exception:
-        pass
+        log.debug("voice: facts injection into system prompt skipped", exc_info=True)
 
     return f"""You are {_aname} — CODEC Voice, a JARVIS-class local AI running on a Mac Studio M1 Ultra.{_boot}
 {f'The user is {_uname}. ' if _uname else ''}Fully local. No cloud. No external logs.
@@ -435,7 +437,7 @@ class VoicePipeline:
                 cls._resumable_sessions.pop(sid, None)
                 cls._resume_timestamps.pop(sid, None)
         except Exception:
-            pass
+            log.debug("voice: stale-resume-session cleanup pass swallowed", exc_info=True)
 
     def _save_for_resume(self):
         """Stash conversation state so a reconnecting client can resume."""
@@ -686,7 +688,7 @@ class VoicePipeline:
                     "content": _build_system_prompt() + f"\n\n[MEMORY — RELEVANT CONTEXT]\n{targeted}\n[END MEMORY]"
                 }
         except Exception:
-            pass
+            log.debug("voice: targeted-memory injection skipped", exc_info=True)
         # Phase 2 Step 5 — Observer summary injection (gated per §X).
         # Voice always uses local Qwen by default (transport="local"); if
         # the user has cloud-routed voice configured (vision_provider=
@@ -882,7 +884,7 @@ class VoicePipeline:
             try:
                 await self._speak("Something went wrong recording your answer.")
             except Exception:
-                pass
+                log.debug("voice: fallback TTS for ask_user error path failed", exc_info=True)
 
     async def dispatch_skill(self, skill: dict, user_text: str) -> Optional[str]:
         try:
@@ -1384,7 +1386,7 @@ class VoicePipeline:
                                     "resume_id": self.session_id if is_resumed else None},
                              correlation_id=cid)
         except Exception:
-            pass
+            log.debug("voice: voice_session_start audit emit failed", exc_info=True)
         # Phase 1 Step 2: fire on_operation_start hooks (per-plugin, not the
         # voice_session_start audit event above — that's Step 1 vocabulary
         # and intentionally unchanged). Hook layer never raises.
@@ -1393,7 +1395,7 @@ class VoicePipeline:
                                  transport="voice",
                                  correlation_id=cid)
         except Exception:
-            pass
+            log.debug("voice: on_operation_start hook emit failed", exc_info=True)
 
         # Send session ID so client can reconnect to this session
         await self.ws.send_json({"type": "session", "session_id": self.session_id})
@@ -1458,7 +1460,7 @@ class VoicePipeline:
                                  error=run_error,
                                  correlation_id=cid)
             except Exception:
-                pass
+                log.debug("voice: voice_session_end audit emit failed", exc_info=True)
             # Phase 1 Step 2: fire on_operation_end hooks. Same caveat as
             # the start emit above — voice_session_end audit event is Step 1
             # vocabulary and unchanged; on_operation_end is the hook-layer
@@ -1470,11 +1472,11 @@ class VoicePipeline:
                                    duration_ms=duration_ms,
                                    outcome=run_outcome)
             except Exception:
-                pass
+                log.debug("voice: on_operation_end hook emit failed", exc_info=True)
             try:
                 _voice_correlation_id_var.reset(cid_token)
             except Exception:
-                pass
+                log.debug("voice: correlation_id contextvar reset failed", exc_info=True)
             # Phase 1 Step 3 §5.3 — clear the active-session marker so
             # codec_ask_user falls back to PWA-only for any subsequent
             # questions. Best-effort; failures don't break shutdown.

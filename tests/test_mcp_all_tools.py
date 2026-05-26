@@ -11,6 +11,17 @@ import time
 import traceback
 from pathlib import Path
 
+import pytest
+
+# Many skills this test exercises shell out to macOS-only tools (osascript,
+# pbpaste, Notes, Reminders, Calendar, AX). On a headless Linux CI runner
+# those calls fail per-skill and add noise without signal. The per-skill
+# contract tests in test_skill_contracts.py cover the universal invariants.
+pytestmark = pytest.mark.skipif(
+    sys.platform != "darwin",
+    reason="exercises macOS-specific skill backends (osascript, pbpaste, AX, etc.)",
+)
+
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 sys.path.insert(0, str(_REPO / "skills"))

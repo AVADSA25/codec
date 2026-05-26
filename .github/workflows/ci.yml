@@ -16,43 +16,29 @@ jobs:
       - name: Install deps
         run: |
           python -m pip install --upgrade pip
-          pip install pytest fastmcp httpx requests pynput pydantic ruff
+          # Runtime deps the full suite needs to import codec_dashboard /
+          # routes/* / codec_voice without ModuleNotFoundError on the Ubuntu
+          # runner. pynput stays in the list, but the conftest installs a
+          # stub when its real import fails (headless Linux has no X11).
+          pip install pytest fastmcp httpx requests pynput pydantic ruff \
+                      fastapi numpy
       - name: Lint (ruff) — F-4 gate, config in ruff.toml
         run: ruff check .
-      - name: Skill import smoke test
+      - name: Skill import smoke (standalone script, not a pytest module)
         run: python tests/test_skill_imports.py
-      - name: Skill contract tests
-        run: python -m pytest tests/test_skill_contracts.py -v
       - name: Trusted-skill manifest is current (D-1 gate)
         run: python tools/generate_skill_manifest.py --check
-      - name: Skill registry load-time AST gate tests (D-1)
-        run: python -m pytest tests/test_skill_registry.py -v
-      - name: Keychain helper + secret-migration tests (D-8, D-15)
-        run: python -m pytest tests/test_keychain.py -v
-      - name: OAuth provider unit test
-        run: python -m pytest tests/test_oauth_provider.py -v
-      - name: Retry helper unit test
-        run: python -m pytest tests/test_retry.py -v
-      - name: Readiness doc-guard tests (F-4 coverage expansion)
-        run: >
-          python -m pytest -v
-          tests/test_repo_health.py
-          tests/test_privacy_doc.py
-          tests/test_readme_investor.py
-          tests/test_one_pager.py
-          tests/test_apple_packaging.py
-          tests/test_dependabot.py
-          tests/test_versioning.py
-          tests/test_pyproject.py
-          tests/test_strict_ast_gate.py
-      - name: Apple packaging tests (W5 — bundle, launchd, python, models, sign, notarize, uninstall, release)
-        run: >
-          python -m pytest -v
-          tests/test_app_bundle.py
-          tests/test_launchd.py
-          tests/test_python_bundle.py
-          tests/test_model_fetch.py
-          tests/test_uninstaller.py
-          tests/test_signing.py
-          tests/test_release.py
-          tests/test_first_run.py
+      - name: Run full pytest suite
+        # Closes audit F-3: CI used to run 23 of 134 test files, leaving
+        # the Wave-1+2 hardening tests (D-7/D-9/D-12/D-13/D-18/D-19/D-21/D-22)
+        # unprotected on PRs. `pytest tests/` runs every test file at once.
+        # tests/test_ci_coverage_invariant.py guards this configuration
+        # against future drift.
+        run: |
+          python -m pytest tests/ \
+            --tb=short \
+            --strict-markers \
+            --strict-config \
+            -ra
+        env:
+          CI: "true"

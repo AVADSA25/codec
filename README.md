@@ -482,6 +482,28 @@ Then in Claude Desktop: *"Use CODEC to check my calendar for tomorrow."*
 
 Skills opt-in to MCP exposure with `SKILL_MCP_EXPOSE = True`. Input validation enforces 5KB task / 10KB context limits with type checking on every call.
 
+### Configuring which skills CODEC exposes over MCP
+
+CODEC defaults to **opt-in** — only skills you explicitly allow reach the MCP surface. Three keys in `~/.codec/config.json` control the policy:
+
+| Option | Default | Effect |
+|---|---|---|
+| `mcp_default_allow` | `false` | When `true`, every skill with `SKILL_MCP_EXPOSE = True` is exposed (opt-out via `mcp_blocked_tools`). When `false` (recommended), nothing is exposed unless listed in `mcp_allowed_tools`. |
+| `mcp_allowed_tools` | `[]` | Explicit allowlist of skill names exposed over MCP when `mcp_default_allow` is `false`. Example: `["calculator", "weather", "memory_search"]`. |
+| `mcp_blocked_tools` | `["terminal", "process_manager", "pm2_control"]` | Hard blocklist applied on every MCP transport regardless of the above. The HTTP transport adds a stricter built-in blocklist (`python_exec`, `ax_control`) that cannot be overridden. |
+
+Example config snippet:
+
+```jsonc
+{
+  "mcp_default_allow": false,
+  "mcp_allowed_tools": ["calculator", "weather", "memory_search", "google_calendar"],
+  "mcp_blocked_tools": ["terminal", "process_manager", "pm2_control"]
+}
+```
+
+Restart `codec-mcp-http` (HTTP transport) or the host MCP client (stdio transport) after changes.
+
 ### What this unlocks (that Claude alone can't do)
 
 Claude Desktop/Code/Cursor gain — through this one MCP bridge — everything CODEC already owns on *your* machine:

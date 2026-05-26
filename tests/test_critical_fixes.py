@@ -53,41 +53,44 @@ def test_is_dangerous_safe_code_allowed():
 # ── Fix 3: PIN brute-force rate limiting ──
 
 class TestPinBruteForce:
-    """Test PIN lockout after 5 failed attempts."""
+    """Test PIN lockout after 5 failed attempts.
+
+    The `_pin_attempts` dict and the lockout policy live in `routes/_shared.py`
+    + `routes/auth.py` (the dashboard imports them from there). Tests target
+    the actual home of the symbol.
+    """
 
     def test_pin_attempts_dict_exists(self):
-        """Dashboard must have _pin_attempts tracking dict."""
-        import codec_dashboard
-        assert hasattr(codec_dashboard, "_pin_attempts")
-        assert isinstance(codec_dashboard._pin_attempts, dict)
+        """Shared state must have _pin_attempts tracking dict."""
+        from routes._shared import _pin_attempts
+        assert isinstance(_pin_attempts, dict)
 
     def test_pin_lockout_logic(self):
         """After 5 failures, client should be locked for 300 seconds."""
-        import codec_dashboard
-        # Simulate 5 failed attempts
+        from routes._shared import _pin_attempts
         ip = "test_brute_force_127.0.0.1"
-        codec_dashboard._pin_attempts[ip] = {"count": 4, "locked_until": 0.0}
+        _pin_attempts[ip] = {"count": 4, "locked_until": 0.0}
         # 5th failure should trigger lockout
-        attempt = codec_dashboard._pin_attempts[ip]
+        attempt = _pin_attempts[ip]
         attempt["count"] = attempt.get("count", 0) + 1
         if attempt["count"] >= 5:
             attempt["locked_until"] = time.time() + 300
             attempt["count"] = 0
-        codec_dashboard._pin_attempts[ip] = attempt
+        _pin_attempts[ip] = attempt
         # Verify lockout is active
-        assert codec_dashboard._pin_attempts[ip]["locked_until"] > time.time()
-        assert codec_dashboard._pin_attempts[ip]["locked_until"] <= time.time() + 301
+        assert _pin_attempts[ip]["locked_until"] > time.time()
+        assert _pin_attempts[ip]["locked_until"] <= time.time() + 301
         # Cleanup
-        codec_dashboard._pin_attempts.pop(ip, None)
+        _pin_attempts.pop(ip, None)
 
     def test_pin_success_resets_counter(self):
         """Successful PIN auth should clear the failed attempts counter."""
-        import codec_dashboard
+        from routes._shared import _pin_attempts
         ip = "test_reset_127.0.0.1"
-        codec_dashboard._pin_attempts[ip] = {"count": 3, "locked_until": 0.0}
+        _pin_attempts[ip] = {"count": 3, "locked_until": 0.0}
         # Simulate success: pop the entry
-        codec_dashboard._pin_attempts.pop(ip, None)
-        assert ip not in codec_dashboard._pin_attempts
+        _pin_attempts.pop(ip, None)
+        assert ip not in _pin_attempts
 
 
 # ── Fix 4 (former): Skill Forge substring blocker (removed in PR-1B) ──
@@ -114,13 +117,23 @@ class TestAuthSessionThreadSafety:
         assert isinstance(codec_dashboard._auth_lock, type(threading.Lock()))
 
     def test_auth_lock_is_used_in_source(self):
-        """_auth_lock must wrap all _auth_sessions access."""
+        """_auth_lock must wrap _auth_sessions access wherever the dict is
+        mutated. Dict + lock live in routes/_shared.py; auth flow callers
+        are in routes/auth.py and codec_dashboard.py. Count across all
+        three so refactors that move call sites between modules don't
+        regress the invariant."""
         import inspect
         import codec_dashboard
-        source = inspect.getsource(codec_dashboard)
-        # Count occurrences of _auth_lock usage
-        lock_uses = source.count("with _auth_lock")
-        assert lock_uses >= 4, f"Expected at least 4 lock acquisitions, found {lock_uses}"
+        from routes import _shared as routes_shared
+        from routes import auth as routes_auth
+        modules = [codec_dashboard, routes_shared, routes_auth]
+        lock_uses = sum(
+            inspect.getsource(m).count("with _auth_lock") for m in modules
+        )
+        assert lock_uses >= 4, (
+            f"Expected at least 4 'with _auth_lock' acquisitions across "
+            f"{[m.__name__ for m in modules]}, found {lock_uses}"
+        )
 
     def test_concurrent_session_writes(self):
         """Concurrent writes to _auth_sessions must not corrupt data."""

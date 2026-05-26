@@ -161,11 +161,18 @@ class TestTriggerWordBoundary:
         assert not re.search(r'\b' + re.escape(trigger) + r'\b', low)
 
     def test_registry_uses_word_boundary(self):
-        """SkillRegistry.match_trigger source must use re.search with \\b."""
+        """The skill-registry trigger matcher must use a word-boundary regex.
+
+        Post-A-4 refactor, `match_trigger` is a 3-line wrapper that delegates
+        to `match_all_triggers`, where the actual `re.search(r'\\b' + ...)`
+        lives. Inspect the implementation, not the wrapper.
+        """
         from codec_skill_registry import SkillRegistry
-        source = inspect.getsource(SkillRegistry.match_trigger)
-        assert r"\b" in source or "\\b" in source, (
-            "match_trigger must use word boundary regex"
+        wrapper = inspect.getsource(SkillRegistry.match_trigger)
+        impl = inspect.getsource(SkillRegistry.match_all_triggers)
+        combined = wrapper + impl
+        assert r"\b" in combined or "\\b" in combined, (
+            "match_trigger / match_all_triggers must use word boundary regex"
         )
 
 
