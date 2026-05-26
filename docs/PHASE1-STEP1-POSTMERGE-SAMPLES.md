@@ -41,10 +41,25 @@
 
 ---
 
-## Sample T+4h — pending
+## Sample T+4h — 2026-05-01T11:08:38+02:00
 
-Capture at: 2026-04-30 13:23 GMT+2.
-Action: re-run the same trailing-30-min query. Append the row above with the new numbers and a status flag.
+| field | value |
+|---|---|
+| sample_at_local | 2026-05-01T11:08:38+02:00 |
+| sample_at_utc | 2026-05-01T09:08:38+00:00 |
+| window_cutoff_utc | 2026-05-01T08:38:38+00:00 |
+| total_records | 2 |
+| schema1_records | 2 |
+| legacy_records | 0 |
+| with_duration | 0 |
+| avg_ms | N/A |
+| p95_ms | N/A |
+| delta_vs_baseline_avg | N/A |
+| delta_vs_baseline_p95 | N/A |
+| errors_count | 0 |
+| top_events | `heartbeat_tick: 2` |
+| sources | `codec-heartbeat: 2` |
+| **status** | **ok** — no `duration_ms` entries in window — latency comparison N/A; service health green |
 
 ## Sample T+8h — 2026-04-30T17:42:22+02:00
 
