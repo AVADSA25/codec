@@ -1089,29 +1089,44 @@ class TestMainCodec:
     """Test main codec.py module."""
 
     def test_codec_imports(self):
+        """codec.py must expose its dispatcher + DB + capture surface.
+        Audit emission moved to codec_audit (callers do
+        `from codec_audit import audit/log_event`); codec.py itself just
+        imports log_event to wire lifecycle events."""
         import codec
+        import codec_audit
         assert hasattr(codec, 'dispatch')
         assert hasattr(codec, 'init_db')
         assert hasattr(codec, 'save_task')
         assert hasattr(codec, 'transcribe')
-        assert hasattr(codec, 'audit')
         assert hasattr(codec, 'speak_text')
-
-    def test_dry_run_enforcement(self):
-        """DRY_RUN should be checked in dispatch."""
+        # audit lives in codec_audit, not re-exported from codec
+        assert hasattr(codec_audit, 'audit')
         code = Path(REPO, "codec.py").read_text()
-        assert "DRY_RUN" in code
-        assert "if DRY_RUN:" in code
+        assert "from codec_audit import" in code, (
+            "codec.py must wire audit emission via codec_audit"
+        )
 
-    def test_sqlite_context_managers(self):
-        """All SQLite usage should use context managers."""
-        code = Path(REPO, "codec.py").read_text()
-        # Count manual close() vs context managers
-        manual_close = code.count(".close()")
-        context_managers = code.count("with sqlite3.connect")
-        # We should have more context managers than manual closes
-        # (some .close() may be for other things like files)
-        assert context_managers >= 3, f"Only {context_managers} context managers found"
+    # DRY_RUN enforcement: the historical `if DRY_RUN:` gate in dispatch was
+    # superseded by the layered safety stack (permission_gate, strict-consent,
+    # is_dangerous_command, HTTP/STDIO blocklists, file_write block-roots).
+    # DRY_RUN survives as a dead default in codec_config (kept so a future
+    # `--dry-run` reintroduction is a one-line flip), but is no longer
+    # consulted in any execution path. Test removed rather than weakened —
+    # asserting on dead config would not protect against regressions in the
+    # real safety surface, which has its own dedicated test files
+    # (test_dangerous_command, test_capability_gate, test_file_write,
+    # test_agent_runner, etc.).
+
+    # test_sqlite_context_managers removed: codec.py no longer touches
+    # sqlite directly. The current DB layer (codec_core._db_connect, plus
+    # codec_memory.CodecMemory and routes/_shared.get_db) uses an explicit
+    # connection-helper pattern with WAL + busy_timeout pragmas applied per
+    # connection — incompatible with Python's `with sqlite3.connect()` form
+    # (the context manager commits/rolls back but does not enforce the
+    # pragmas). Asserting `with sqlite3.connect` would now FORBID the
+    # correct pattern. The real safety property (WAL on every connection)
+    # is enforced inside _db_connect and exercised by codec_memory tests.
 
     def test_no_import_datetime_hack(self):
         """Should not use __import__('datetime')."""

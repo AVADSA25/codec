@@ -11,6 +11,10 @@ def test_scheduler_import():
 
 
 def test_add_and_remove_schedule(tmp_path, monkeypatch):
+    """add_schedule() now creates schedules with enabled=False by default —
+    operator must explicitly toggle_schedule(id, True) to activate. This is
+    a deliberate hardening: a misconfigured cron arg can't silently start
+    firing a crew until the operator opts in."""
     import codec_scheduler
     test_path = str(tmp_path / "schedules.json")
     monkeypatch.setattr(codec_scheduler, "SCHEDULE_PATH", test_path)
@@ -18,11 +22,15 @@ def test_add_and_remove_schedule(tmp_path, monkeypatch):
     s = codec_scheduler.add_schedule("daily_briefing", cron_hour=8)
     assert s["crew"] == "daily_briefing"
     assert s["hour"] == 8
-    assert s["enabled"] is True
+    assert s["enabled"] is False
     assert s["id"].startswith("sched_")
 
     schedules = codec_scheduler.load_schedules()
     assert len(schedules) == 1
+
+    # toggle_schedule activates it; round-trip survives reload.
+    assert codec_scheduler.toggle_schedule(s["id"], True) is True
+    assert codec_scheduler.load_schedules()[0]["enabled"] is True
 
     removed = codec_scheduler.remove_schedule(s["id"])
     assert removed is True

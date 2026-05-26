@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """CODEC Smoke Test — catches import errors, NameErrors, and path mismatches.
 
-Run after ANY change to codec.py, codec_overlays.py, codec_watcher.py, or codec_dashboard.py:
-    python3.13 tests/test_smoke.py
+Manual sanity-check script, not a pytest module. Run by hand after ANY change
+to codec.py, codec_overlays.py, codec_watcher.py, or codec_dashboard.py:
+    python3.13 scripts/smoke.py
 
-Every test here exists because a real bug shipped without it.
+Lives in scripts/ rather than tests/ because it uses sys.exit(1) on failure
+and prints to stdout — incompatible with pytest collection. Full pytest
+coverage handles regression protection.
 """
 import sys
 import os
