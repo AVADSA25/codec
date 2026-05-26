@@ -16,7 +16,12 @@ jobs:
       - name: Install deps
         run: |
           python -m pip install --upgrade pip
-          pip install pytest fastmcp httpx requests pynput pydantic ruff
+          # Runtime deps the full suite needs to import codec_dashboard /
+          # routes/* / codec_voice without ModuleNotFoundError on the Ubuntu
+          # runner. pynput stays in the list, but the conftest installs a
+          # stub when its real import fails (headless Linux has no X11).
+          pip install pytest fastmcp httpx requests pynput pydantic ruff \
+                      fastapi numpy
       - name: Lint (ruff) — F-4 gate, config in ruff.toml
         run: ruff check .
       - name: Skill import smoke (standalone script, not a pytest module)
