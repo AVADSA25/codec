@@ -28,7 +28,7 @@ classifiers = [
 # Core runtime deps (mirrors requirements.txt). Optional stacks are extras below.
 dependencies = [
     "pynput>=1.8.2",
-    "sounddevice>=0.4.6",
+    "sounddevice>=0.5.5",
     "soundfile>=0.13.1",
     "numpy>=2.4.6",
     "requests>=2.34.2",
