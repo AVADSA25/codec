@@ -596,6 +596,29 @@ The 8th product — a complete browser-automation pillar with a dedicated headle
 
 **400 features · 75 skills · 940+ tests · 58K+ lines of production code · 9 products**
 
+### What's new in v3.2
+
+**The self-updating release.** CODEC now updates itself — and a long-standing bundle-version-drift bug in the build pipeline is fixed at the source.
+
+- **In-app auto-update (Sparkle-compatible)** — pure-Python client (`codec_update.py`) reads a signed Sparkle appcast and verifies every download's **Ed25519 signature** against the embedded `SUPublicEDKey` before installing. Tampered builds are refused. Dashboard endpoints `GET /api/update/check` + `POST /api/update/download`; in-app update banner ("Download & open") polls on load and every 6h.
+- **GitHub-hosted update feed** — each release (signed `.dmg` + appcast) lives at `AVADSA25/codec-updates`; the app polls a permanent `releases/latest/download/appcast.xml` URL that always resolves to the newest version. Host is a one-line switch (`sparkle_feed_url` / `CODEC_APPCAST_PREFIX`) for a future move to a custom domain or Cloudflare R2.
+- **Bundle version stamped from `VERSION` at build time** — `build_app.sh` injects the F-5 single source of truth into `CFBundleShortVersionString` so the bundle version can never drift from the source again. Guarded by a regression test.
+- **Gatekeeper signing fix** — bundled Python now lives under `Contents/Resources/python` instead of `Frameworks/` (a bare Python tree under `Frameworks/` was treated as a nested bundle and broke the code-signing seal). The DMG is notarized + stapled so it opens cleanly on a never-online Mac.
+- **Unified `:8083` model port** — all Qwen MLX endpoints reconciled (was split `:8081` / `:8082`); UI-TARS vision served from the same unified server.
+
+### What's new in v3.1
+
+**The 9th product + adversarial-hardening release.** CODEC Project promoted to a live product, Pilot security-hardened end-to-end, calmer 2026 palette across the dashboard.
+
+- **9 products. One system.** Cortex neural map expanded from 28 → 38 nodes (+31 edges); CODEC Pilot and CODEC Project added as live product cards.
+- **Pilot security-hardening wave (PP-1…PP-12)** — full adversarial-audit remediation: AST safety gate at skill-approval time (refuses to activate dangerous compiled skills), untrusted-input fencing on the LLM selector-rescue prompt (page text can't redirect element selection), irreversible-click blocking on replay unless `PILOT_ALLOW_DESTRUCTIVE=1`, path/glob-traversal neutralization in `slugify()` lookups, forensic audit trail on every skill write/approve/reject/block. The `pilot.lucyvpa.com` Cloudflare tunnel was removed after the RCE finding — Pilot is local-only.
+- **Conversational continuity in Project mode** — a Project-mode chat thread now binds to the agent it drafts; follow-ups route to the running agent instead of spawning duplicates. Pulsing *"Talking to …"* chip with one-click exit.
+- **Voice in / voice out** — Kokoro TTS now actually speaks assistant replies when *"Voice Replies"* is on (the toggle was previously inert); per-message Speak button; Pilot tab gets its own 🎤 dictate + 🔊 speak controls.
+- **Live preview panel** — slide-out shows the most-recently-modified files in a running agent's project folder (5s poll), so you can watch output appear without leaving the chat.
+- **Auto-grant of user-typed paths** — paths the user typed themselves (`~/…`, `$HOME/…`, `/Users/<n>/…`) no longer trigger mid-run `blocked_on_permission`; sensitive paths (`~/.ssh`, `~/.aws`, `/etc`, …) stay blocklisted.
+- **2026 palette refresh** — calmer brand accent (`#d97757` dark / `#b85a3a` light) and a muted Tailwind-500 node palette across the Cortex map. Same identity, far less "Windows-XP-bright."
+- **F-wave engineering hygiene** — ruff baseline + CI lint gate (F-4), `VERSION` single source of truth + CHANGELOG-driven tag helper (F-5), `pyproject.toml` packaging metadata (F-15), pricing docs (F-11), GitHub Discussions (F-12), `lucy`→`delegate` skill rename (F-6).
+
 ### What's new in v2.3 — Phase 1 + 2 + 3 + 3.5
 
 **The drop-a-project release.** CODEC becomes a "real AI employee" at the substrate level — drop a project description, agent plans + builds + sends updates back proactively, with permission gates and resume-after-restart guarantees.

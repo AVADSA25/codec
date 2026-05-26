@@ -735,13 +735,19 @@ Generated traces and skills land in `~/.codec/`:
 
 ## Updating CODEC
 
-CODEC updates via `git pull`. No auto-update mechanism — you control when to upgrade.
+CODEC has two update paths, both under your control:
+
+**1. In-app auto-update (Sparkle-compatible, since v3.2)** — the dashboard polls a signed appcast every 6h and shows a banner when a newer version is available. Every download is verified against an embedded Ed25519 public key before installing, so a tampered build is refused.
+
+**2. Manual / development:** `git pull` the source checkout and restart PM2 — preferred when you're developing against the codebase.
 
 ```bash
 cd ~/codec-repo
 git pull origin main
 pm2 restart all
 ```
+
+The auto-update feed lives at `releases/latest/download/appcast.xml` in the dedicated [`AVADSA25/codec-updates`](https://github.com/AVADSA25/codec-updates) repo. The host is a one-line config switch (`sparkle_feed_url` / `CODEC_APPCAST_PREFIX`) for moving to a custom domain or Cloudflare R2 later.
 
 **If you customized `config.json`** — your config lives in `~/.codec/config.json`, not in the repo. Updates never overwrite it.
 
