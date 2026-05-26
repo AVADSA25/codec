@@ -2,10 +2,22 @@
 import os
 import subprocess
 import sys
+from pathlib import Path
 
-REPO = os.path.expanduser("~/codec-repo")
+# Resolve to the repo containing THIS test, not a hardcoded ~/codec-repo —
+# tests must work from any checkout (CI runner, worktree, tarball).
+REPO = str(Path(__file__).resolve().parent.parent)
 TEXTASSIST = os.path.join(REPO, "codec_textassist.py")
 SERVICES_DIR = os.path.expanduser("~/Library/Services")
+
+# The macOS Quick Action workflows live on the host's ~/Library/Services
+# (installed by setup_codec.py). They don't ship in the repo, so any
+# workflow-presence test only makes sense on a configured macOS machine.
+import pytest
+_workflows_require_macos = pytest.mark.skipif(
+    sys.platform != "darwin" or not os.path.isdir(SERVICES_DIR),
+    reason="macOS Quick Action workflows live in ~/Library/Services (Mac-only)",
+)
 
 EXPECTED_WORKFLOWS = [
     "CODEC Proofread.workflow",
@@ -77,6 +89,7 @@ def test_save_shows_notification():
 
 # ── Workflow file checks ──────────────────────────────────────────────────────
 
+@_workflows_require_macos
 def test_all_8_workflows_exist():
     """All 8 CODEC Quick Action workflow directories exist"""
     missing = [w for w in EXPECTED_WORKFLOWS
@@ -84,6 +97,7 @@ def test_all_8_workflows_exist():
     assert not missing, f"Missing workflows: {missing}"
 
 
+@_workflows_require_macos
 def test_workflow_documents_valid():
     """Each workflow contains a parseable document.wflow plist"""
     import plistlib
@@ -95,6 +109,7 @@ def test_workflow_documents_valid():
         assert "actions" in data, f"No actions key in {wf}/document.wflow"
 
 
+@_workflows_require_macos
 def test_read_aloud_workflow_script():
     """CODEC Read Aloud workflow calls codec_textassist.py read_aloud"""
     import plistlib
@@ -106,6 +121,7 @@ def test_read_aloud_workflow_script():
     assert "read_aloud" in cmd
 
 
+@_workflows_require_macos
 def test_save_workflow_script():
     """CODEC Save workflow calls codec_textassist.py save"""
     import plistlib

@@ -56,18 +56,14 @@ def _install_pynput_stub_if_needed() -> None:
         def stop(self): pass
         def join(self, *a, **kw): pass
 
-    class _Key:
-        f5 = _Stub()
-        f13 = _Stub()
-        f18 = _Stub()
-        cmd = _Stub()
-        ctrl = _Stub()
-        alt = _Stub()
-        shift = _Stub()
-
+    # `_Key` is accessed as `Key.f5`, `Key.f13`, `Key.cmd`, etc. — the set
+    # of attribute names is open-ended (callers also use `f16`, `f17`).
+    # Use a _Stub() instance so __getattr__ returns a fresh non-None _Stub
+    # for ANY attribute, matching pynput's real keyboard.Key namespace
+    # closely enough for codec_config._resolve_key() to return non-None.
     keyboard_mod.Listener = _Stub
     keyboard_mod.KeyCode = _Stub
-    keyboard_mod.Key = _Key
+    keyboard_mod.Key = _Stub()
     keyboard_mod.Controller = _Stub
     keyboard_mod.HotKey = _Stub
     pynput_mod.keyboard = keyboard_mod

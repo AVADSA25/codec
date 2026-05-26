@@ -1,8 +1,20 @@
 """Skill sandbox tests — verify dangerous code is blocked at execution time."""
 import os
+import shutil
 import sys
 
+import pytest
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# The runtime layer of the sandbox uses macOS `sandbox-exec`. The AST gate
+# (TestASTBlocking) is platform-independent; the execution tests aren't.
+# Skip both at the module level on non-darwin runners — there's nothing
+# to validate without the syscall enforcement.
+pytestmark = pytest.mark.skipif(
+    sys.platform != "darwin" or not shutil.which("sandbox-exec"),
+    reason="codec_sandbox uses macOS sandbox-exec; Linux CI runner has no equivalent",
+)
 
 
 def _write_skill(tmp_path, name, code):
