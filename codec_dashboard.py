@@ -203,7 +203,13 @@ class CSPMiddleware(BaseHTTPMiddleware):
         "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; "
         "img-src 'self' data: https:; "
         "connect-src 'self' ws: wss: http://localhost:* http://127.0.0.1:*; "
-        "worker-src 'self' blob:"
+        "worker-src 'self' blob:; "
+        # Phase 0 (2026-05-27): allow embedding only from same origin or the AVA
+        # Digital portal. Adding `https://avadigital.ai` lets /console/codec
+        # iframe the dashboard. Without this directive, no browser-side iframe
+        # restriction exists for the main dashboard (only /preview_frame had
+        # X-Frame-Options:SAMEORIGIN). This is an additive hardening step.
+        "frame-ancestors 'self' https://avadigital.ai"
     )
 
     async def dispatch(self, request, call_next):
