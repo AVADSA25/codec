@@ -11,9 +11,12 @@ same durability property (survive restart) without the JWT machinery, and keeps
 revocation trivially synchronous.
 
 Storage:   ~/.codec/oauth_state.json   (0600)
-TTLs:      access token  24h
-           refresh token 30d
-           auth code     5m (in-memory only — short enough that restart loss is fine)
+TTLs:      access token  365d   (bumped 2026-05-28 from 30d to remove
+                                 monthly re-auth prompts in claude.ai)
+           refresh token 365d   (bumped 2026-05-28 from 90d for the same
+                                 reason — annual re-auth at most)
+           auth code     5m     (in-memory only — short enough that
+                                 restart loss is fine)
 """
 from __future__ import annotations
 
@@ -43,10 +46,15 @@ def _token_id(token_value: str) -> str:
     return (token_value or "")[-8:]
 
 # 2026-04-25: bumped access-token TTL from 24h → 30d so claude.ai connections
-# don't go stale mid-week if the refresh flow doesn't fire. Tokens are still
-# revocable at any moment by clearing ~/.codec/oauth_state.json.
-ACCESS_TOKEN_TTL = 30 * 24 * 60 * 60     # 30d (was 24h)
-REFRESH_TOKEN_TTL = 90 * 24 * 60 * 60    # 90d (was 30d)
+# don't go stale mid-week if the refresh flow doesn't fire.
+# 2026-05-28: bumped again to 365d / 365d. The previous 30d access kept
+# triggering monthly re-auth prompts in claude.ai. Threat model: anyone
+# with read access to ~/.codec/oauth_state.json already has the user's
+# machine, so TTL length is not the primary security control here —
+# revocation is (clear the file, restart codec-mcp-http). The opaque
+# server-side token can be invalidated at any moment.
+ACCESS_TOKEN_TTL = 365 * 24 * 60 * 60    # 1 year (was 30d, originally 24h)
+REFRESH_TOKEN_TTL = 365 * 24 * 60 * 60   # 1 year (was 90d, originally 30d)
 
 _STATE_PATH = Path(os.path.expanduser("~/.codec/oauth_state.json"))
 _STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
