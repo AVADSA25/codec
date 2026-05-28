@@ -6,8 +6,17 @@ SKILL_TRIGGERS = ["find file", "search file", "locate file", "where is file",
 SKILL_DESCRIPTION = "Search for files by name or content"
 SKILL_MCP_EXPOSE = True
 
+import os
 import subprocess
 import re
+
+
+def _is_remote_transport() -> bool:
+    """True when invoked from remote MCP (claude.ai); False for local
+    dashboard/voice. Local users get the Terminal popup + voice-sized
+    return; remote callers get the FULL list inline so the LLM has the
+    actual file paths as context."""
+    return os.environ.get("CODEC_MCP_TRANSPORT", "stdio").lower() == "http"
 
 
 def _extract_query(task: str) -> str:
@@ -53,7 +62,11 @@ def run(task, app="", ctx=""):
         header = f"Found {len(files)} files matching '{query}':"
         body = "\n".join(files)
         result = f"{header}\n{body}"
-        # Open in Terminal for copy-paste
+        if _is_remote_transport():
+            # claude.ai / MCP: return ALL file paths inline as context.
+            # No Terminal popup (the human user isn't here).
+            return result
+        # Local path: open in Terminal for copy-paste, return short summary.
         safe = result.replace("'", "'\\''")
         subprocess.Popen([
             "osascript", "-e",

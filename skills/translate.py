@@ -1,5 +1,16 @@
 """CODEC Skill: Translate (any language via Qwen)"""
+import os
 import subprocess
+
+
+def _is_remote_transport() -> bool:
+    """True for claude.ai / MCP HTTP path. Local voice path returns the
+    TTS-friendly pronunciation; MCP returns the full translation body
+    (native script + pronunciation + literal) so the calling LLM has
+    everything."""
+    return os.environ.get("CODEC_MCP_TRANSPORT", "stdio").lower() == "http"
+
+
 SKILL_NAME = "translate"
 SKILL_DESCRIPTION = "Translate text between any languages"
 SKILL_MCP_EXPOSE = True
@@ -99,10 +110,19 @@ def run(task, app="", ctx=""):
                     body_parts.append(f"  Pronunciation: {romanized}")
                 if literal:
                     body_parts.append(f"  Literal: {literal}")
-                body = "\\n".join(body_parts)
-                _show_in_terminal(f"{target} Translation", body)
 
-                # Return speakable version for TTS (romanized pronunciation)
+                if _is_remote_transport():
+                    # claude.ai / MCP: return the full translation body
+                    # joined with REAL newlines so the LLM sees it as
+                    # actual multiline text. No Terminal popup.
+                    return "\n".join(body_parts)
+
+                # Local path: show full body in Terminal (osascript needs
+                # the literal "\n" escape sequence embedded in the do-script
+                # string, NOT a real newline character — that would break the
+                # osascript syntax), return TTS-friendly pronunciation so
+                # voice mode can speak it.
+                _show_in_terminal(f"{target} Translation", "\\n".join(body_parts))
                 if romanized:
                     return f"In {target}, {text} is pronounced: {romanized}"
                 else:

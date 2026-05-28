@@ -24,6 +24,14 @@ import sqlite3
 import subprocess
 import tempfile
 
+
+def _is_remote_transport() -> bool:
+    """True for claude.ai / MCP HTTP path; False for local dashboard / voice.
+    Local users get the Terminal popup + a short voice-friendly return so
+    TTS doesn't read out 20 results. Remote callers get the FULL formatted
+    list as context."""
+    return os.environ.get("CODEC_MCP_TRANSPORT", "stdio").lower() == "http"
+
 _CODEC_REPO = os.path.expanduser("~/codec-repo")
 if _CODEC_REPO not in sys.path:
     sys.path.insert(0, _CODEC_REPO)
@@ -194,10 +202,16 @@ def run(task: str, app: str = "", ctx: str = "") -> str:
 
         full_text = "\n".join(lines)
 
-        # Show in terminal window
-        _show_in_terminal(full_text)
+        if _is_remote_transport():
+            # claude.ai / MCP: return ALL formatted results inline so the
+            # LLM has the full search hits as context. No Terminal popup
+            # (no human user looking at this Mac when claude.ai called us).
+            return full_text
 
-        # Return voice-friendly summary + first 2 results
+        # Local path: show full results in a terminal window for the
+        # human user, return a short voice-friendly summary so TTS
+        # doesn't read out 20 results.
+        _show_in_terminal(full_text)
         top = results[:2]
         detail_lines = [voice_summary, "Opening full results in a terminal window.", ""]
         for r in top:

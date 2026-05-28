@@ -6,7 +6,50 @@ SKILL_TRIGGERS = ["take a note", "save a note", "note that", "remember that",
                    "my notes", "show notes", "read notes", "what did i note", "list notes",
                    "new note", "add a note", "make a note", "write a note", "jot down",
                    "note this", "make note"]
+import os
 import subprocess
+
+
+def _is_remote_transport() -> bool:
+    """True for claude.ai / MCP HTTP path; False for local dashboard / voice."""
+    return os.environ.get("CODEC_MCP_TRANSPORT", "stdio").lower() == "http"
+
+
+def _list_recent_notes_inline(limit: int = 20) -> str:
+    """For the MCP path: return the last N notes' titles + body previews
+    as a string so claude.ai has them as context. Uses AppleScript to
+    enumerate the Notes app — no DB poking, works without Full Disk Access."""
+    script = f'''
+tell application "Notes"
+    set out to ""
+    set noteList to notes
+    set lim to {limit}
+    set i to 1
+    repeat with n in noteList
+        if i > lim then exit repeat
+        set t to name of n
+        set b to body of n
+        -- strip HTML tags from body (cheap pass)
+        set out to out & "[" & (i as string) & "] " & t & linefeed & (b as text) & linefeed & linefeed
+        set i to i + 1
+    end repeat
+    return out
+end tell
+'''
+    try:
+        r = subprocess.run(["osascript", "-e", script],
+                           capture_output=True, text=True, timeout=15)
+        out = (r.stdout or "").strip()
+        if not out:
+            return "Apple Notes is empty or unreachable."
+        # Quick HTML strip — Notes returns body as HTML
+        import re as _re
+        out = _re.sub(r'<[^>]+>', '', out)
+        out = _re.sub(r'\n{3,}', '\n\n', out)
+        return f"CODEC NOTES — last {limit} items\n{'=' * 40}\n\n{out}"
+    except Exception as e:
+        return f"Could not read notes: {e}"
+
 
 def run(task, app="", ctx=""):
     low = task.lower()
@@ -20,6 +63,10 @@ def run(task, app="", ctx=""):
     is_write = any(w in low for w in WRITE_VERBS)
     is_read = "notes" in low and any(v in low for v in READ_VERBS)
     if is_read and not is_write:
+        if _is_remote_transport():
+            # claude.ai / MCP: read the notes inline (no UI on the user's Mac).
+            return _list_recent_notes_inline(limit=20)
+        # Local path: open Apple Notes app for the human user.
         subprocess.run(["open", "-a", "Notes"], timeout=5)
         return "Opening Apple Notes."
     # Extract content — prefer explicit markers, fall back to prefix stripping
