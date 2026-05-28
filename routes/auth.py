@@ -175,6 +175,8 @@ async def auth_pin(request: Request):
 @router.post("/api/auth/totp/setup")
 async def totp_setup(request: Request):
     """Generate TOTP secret + QR code for authenticator app setup."""
+    if not _verify_biometric_session(request):
+        return JSONResponse({"error": "Authentication required"}, status_code=401)
     import pyotp
     import qrcode
     import io
@@ -182,6 +184,15 @@ async def totp_setup(request: Request):
     if not AUTH_ENABLED:
         return JSONResponse({"error": "Auth not enabled"}, status_code=400)
     secret = pyotp.random_base32()
+    # C1 layer 2: the server OWNS the enrollment secret. Stash it on the
+    # caller's session so /confirm verifies against THIS value — never a
+    # client-supplied body `secret`. In-memory only: _save_sessions() whitelists
+    # created/ip/method, so the pending secret is never written to disk.
+    token = request.cookies.get(AUTH_COOKIE_NAME)
+    if token:
+        with _auth_lock:
+            if token in _auth_sessions:
+                _auth_sessions[token]["pending_totp_secret"] = secret
     totp = pyotp.TOTP(secret)
     uri = totp.provisioning_uri(name="CODEC", issuer_name="CODEC")
     img = qrcode.make(uri)
@@ -194,12 +205,27 @@ async def totp_setup(request: Request):
 @router.post("/api/auth/totp/confirm")
 async def totp_confirm(request: Request):
     """Verify TOTP code and save secret to config if valid (first-time setup)."""
+    if not _verify_biometric_session(request):
+        return JSONResponse({"error": "Authentication required"}, status_code=401)
     import pyotp
     body = await request.json()
     code = str(body.get("code", ""))
-    secret = body.get("secret", "")
-    if not code or not secret:
-        return JSONResponse({"error": "Missing code or secret"}, status_code=400)
+    # C1 layer 2: ignore any client-supplied `secret`. Verify against the
+    # server-stashed pending secret created by /setup, keyed to this session.
+    token = request.cookies.get(AUTH_COOKIE_NAME)
+    secret = ""
+    if token:
+        with _auth_lock:
+            sess = _auth_sessions.get(token)
+            if sess:
+                secret = sess.get("pending_totp_secret", "")
+    if not code:
+        return JSONResponse({"error": "Missing code"}, status_code=400)
+    if not secret:
+        return JSONResponse(
+            {"error": "No pending TOTP enrollment — run setup first"},
+            status_code=400,
+        )
     totp = pyotp.TOTP(secret)
     if totp.verify(code, valid_window=1):
         try:
@@ -213,6 +239,12 @@ async def totp_confirm(request: Request):
                 json.dump(cfg_data, f, indent=2)
         except Exception as e:
             return JSONResponse({"error": f"Failed to save config: {e}"}, status_code=500)
+        # Enrollment complete — clear the one-time pending secret.
+        if token:
+            with _auth_lock:
+                sess = _auth_sessions.get(token)
+                if sess:
+                    sess.pop("pending_totp_secret", None)
         _audit_write(f"[{datetime.now().isoformat()}] TOTP_SETUP: 2FA enabled\n")
         return {"verified": True, "enabled": True, "message": "2FA enabled successfully"}
     return {"verified": False, "error": "Invalid code. Try again."}
