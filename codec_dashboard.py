@@ -2215,8 +2215,11 @@ CHAT_SKILL_ALLOWLIST = {
     "terminal",
     # File operations (read, write, append, list — path-restricted)
     "file_ops",
-    # Python execution (sandboxed, blocked dangerous imports)
-    "python_exec",
+    # NOTE: python_exec is intentionally NOT on this allowlist (audit C3).
+    # It stays a local skill but is no longer auto-firable from a chat message
+    # (pre-LLM hijack / post-LLM [SKILL:...] tag both gate on this set), so an
+    # injection-style chat message can't drive arbitrary code execution.
+    # SKILL_MCP_EXPOSE=False already keeps it off MCP.
     # Google services
     "google_calendar", "google_gmail", "google_docs",
     "google_drive", "google_sheets", "google_keep",
@@ -2265,7 +2268,6 @@ _DASHBOARD_ADDON = """
 [SKILL:weather:weather in Paris]
 [SKILL:terminal:ls -la ~/Documents]
 [SKILL:file_ops:read file ~/notes.txt]
-[SKILL:python_exec:run python print(2**100)]
 [SKILL:pm2_control:pm2 list]
 [SKILL:google_calendar:what's on my calendar today]
 The skill's real output replaces the tag automatically — emit the tag and stop, never fabricate the result.

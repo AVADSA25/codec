@@ -27,6 +27,7 @@ _SANDBOX_PROFILE_TEMPLATE = """\
 ;; Allow reading most files (skills need imports)
 (allow file-read*)
 
+{read_deny_rules}
 ;; Allow writing ONLY to skill output dir and temp
 (allow file-write*
     (subpath "{skill_output}")
@@ -65,6 +66,30 @@ _NETWORK_DENY = """\
 (deny network-inbound)
 """
 
+# C3 (Fix #3): targeted read-denies layered AFTER the broad (allow file-read*).
+# SBPL is last-match-wins, so these win over the broad allow for these specific
+# paths while leaving stdlib / site-packages / interpreter reads working (the
+# "don't break legitimate imports" constraint). Closes the python_exec /
+# sandboxed-skill secret-exfil vector: ~/.ssh, ~/.aws, ~/.gnupg, ~/.config/gh,
+# the macOS Keychain dirs, and the ~/.codec OAuth-token + fallback-secret files.
+# NOTE: config.json is deliberately NOT denied — a sandboxed skill may
+# `import codec_config`, which reads it at import time (its secrets are
+# Keychain-backed since PR-2B, so config.json is no longer a secret store).
+_READ_DENY_TEMPLATE = """\
+;; C3: deny reads of credential / secret paths (last-match-wins over the
+;; broad allow above). Leaves stdlib imports intact.
+(deny file-read*
+    (subpath "{home}/.ssh")
+    (subpath "{home}/.aws")
+    (subpath "{home}/.gnupg")
+    (subpath "{home}/.config/gh")
+    (subpath "{home}/Library/Keychains")
+    (subpath "/Library/Keychains")
+    (literal "{codec_dir}/oauth_state.json")
+    (literal "{codec_dir}/secret.key")
+    (literal "{codec_dir}/secrets.enc.json"))
+"""
+
 
 def _ensure_dirs():
     os.makedirs(SKILL_OUTPUT_DIR, exist_ok=True)
@@ -75,9 +100,14 @@ def _write_sandbox_profile(allow_network: bool = False) -> str:
     """Write a sandbox.sb profile and return its path."""
     _ensure_dirs()
     network_rules = _NETWORK_ALLOW if allow_network else _NETWORK_DENY
+    read_deny_rules = _READ_DENY_TEMPLATE.format(
+        home=os.path.expanduser("~"),
+        codec_dir=_CODEC_DIR,
+    )
     profile = _SANDBOX_PROFILE_TEMPLATE.format(
         skill_output=SKILL_OUTPUT_DIR,
         network_rules=network_rules,
+        read_deny_rules=read_deny_rules,
     )
     with open(SANDBOX_PROFILE_PATH, "w") as f:
         f.write(profile)

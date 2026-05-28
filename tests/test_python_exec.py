@@ -211,3 +211,134 @@ def test_no_api_execute_route_registered_in_app():
         f"/api/execute must NOT be registered; routes: "
         f"{[p for p in paths if 'execute' in p or 'api' in p][:10]}"
     )
+
+
+# ── Fix #3 (C3): python_exec off chat-allowlist + tightened sandbox reads ─────
+# Closes audit finding C3. Two layers:
+#   1. python_exec is removed from CHAT_SKILL_ALLOWLIST so an injection-style
+#      chat message can no longer auto-fire it via the pre-LLM hijack / post-LLM
+#      tag path. It stays a skill (still reachable on the local voice/chat tag
+#      path only through an explicit user [SKILL:...] is now impossible too —
+#      the allowlist gates BOTH hijack and tag). SKILL_MCP_EXPOSE=False already
+#      keeps it off MCP.
+#   2. The sandbox read scope keeps the broad `(allow file-read*)` (so legitimate
+#      stdlib imports never break — the "don't break working code" constraint)
+#      but layers explicit `(deny file-read* ...)` rules AFTER it (SBPL is
+#      last-match-wins) over the named credential paths: ~/.ssh, ~/.aws,
+#      ~/.gnupg, the ~/.codec secret/oauth/config files, and the Keychain dirs.
+
+
+def test_python_exec_not_in_chat_allowlist():
+    """C3.1: python_exec must NOT be auto-firable from chat. Removing it from
+    CHAT_SKILL_ALLOWLIST closes both the pre-LLM hijack and the post-LLM tag
+    path (both gate on this set)."""
+    import codec_dashboard
+    assert "python_exec" not in codec_dashboard.CHAT_SKILL_ALLOWLIST, (
+        "python_exec must be removed from CHAT_SKILL_ALLOWLIST (C3) — it stays "
+        "a skill but is no longer auto-firable from a chat message"
+    )
+
+
+def test_dashboard_prompt_drops_python_exec_example():
+    """C3.1: the chat system-prompt addon must not advertise a
+    [SKILL:python_exec:...] example — the tag would be parsed but the skill is
+    no longer on the allowlist, so showing it as an example is misleading."""
+    src = (REPO / "codec_dashboard.py").read_text()
+    assert "[SKILL:python_exec:" not in src, (
+        "the python_exec skill-tag example must be removed from the chat prompt "
+        "addon now that python_exec is off CHAT_SKILL_ALLOWLIST"
+    )
+
+
+def test_sandbox_profile_denies_secret_paths():
+    """C3.2: the generated sandbox profile must explicitly deny reads of the
+    named credential paths so a sandboxed python_exec (or any sandboxed skill)
+    cannot exfiltrate private keys / OAuth tokens / Keychain material."""
+    from codec_sandbox import _write_sandbox_profile
+    path = _write_sandbox_profile(allow_network=False)
+    with open(path) as f:
+        content = f.read()
+    assert "(deny file-read*" in content, "no file-read deny rule present"
+    for needle in ("/.ssh", "oauth_state.json", "Keychains"):
+        assert needle in content, f"sandbox profile must deny reads of {needle}"
+
+
+def test_sandbox_profile_retains_broad_read():
+    """C3.2 constraint: the broad `(allow file-read*)` MUST remain so legitimate
+    stdlib / site-packages imports keep working — the deny rules are layered
+    AFTER it (last-match-wins), not a replacement. Guards the 'don't break
+    working code' rule against a future switch to a read-allowlist."""
+    from codec_sandbox import _write_sandbox_profile
+    path = _write_sandbox_profile(allow_network=False)
+    with open(path) as f:
+        content = f.read()
+    assert "(allow file-read*)" in content, (
+        "broad file-read allow must stay — removing it risks breaking imports"
+    )
+
+
+def test_sandbox_deny_is_after_allow():
+    """C3.2 mechanism: SBPL is last-match-wins, so the targeted deny rules must
+    appear AFTER the broad `(allow file-read*)` for the deny to take effect."""
+    from codec_sandbox import _write_sandbox_profile
+    path = _write_sandbox_profile(allow_network=False)
+    with open(path) as f:
+        content = f.read()
+    allow_idx = content.index("(allow file-read*)")
+    deny_idx = content.index("(deny file-read*")
+    assert deny_idx > allow_idx, (
+        "targeted file-read denies must come AFTER the broad allow "
+        "(SBPL last-match-wins) or they have no effect"
+    )
+
+
+@pytest.mark.skipif(
+    platform.system() != "Darwin",
+    reason="sandbox-exec is macOS-only",
+)
+def test_sandbox_denies_ssh_read_live():
+    """C3.2 behavioral: a python_exec snippet that opens a file under ~/.ssh is
+    DENIED by the sandbox, even though `open()` passes the AST gate. Proves the
+    deny rule actually enforces — not just that a string is in the profile.
+
+    Routed through the REAL python_exec.run() path so it uses the same
+    interpreter selection (_python_bin → homebrew python, which process-exec
+    allows). `open()` is deliberately allowed by the AST gate
+    (codec_config.py:737), so the ONLY thing that can stop the read is the
+    sandbox deny. Reads 1 byte and prints a sentinel — never the secret bytes."""
+    ssh_dir = Path.home() / ".ssh"
+    if not ssh_dir.exists():
+        pytest.skip("no ~/.ssh on this machine to probe")
+    target = next((p for p in sorted(ssh_dir.iterdir()) if p.is_file()), None)
+    if target is None:
+        pytest.skip("~/.ssh has no regular file to probe")
+    code = (
+        f"f = open({str(target)!r}, 'rb')\n"
+        "_b = f.read(1)\n"
+        "f.close()\n"
+        "print('READ_OK' if _b else 'READ_EMPTY')\n"
+    )
+    result = python_exec.run(f"run python ```\n{code}```")
+    assert "READ_OK" not in result, (
+        f"sandbox must DENY reading under ~/.ssh; got: {result!r}"
+    )
+    low = result.lower()
+    assert result.startswith("Error") or "not permitted" in low or "denied" in low, (
+        f"expected a sandbox permission denial; got: {result!r}"
+    )
+
+
+@pytest.mark.skipif(
+    platform.system() != "Darwin",
+    reason="sandbox-exec is macOS-only",
+)
+def test_python_exec_benign_import_still_runs_after_tightening():
+    """C3.2 constraint (behavioral): a benign `import json` skill still runs
+    end-to-end through the tightened sandbox — the deny rules must not break
+    legitimate stdlib reads."""
+    result = python_exec.run(
+        "run python ```\nimport json\nprint(json.dumps({'a': 1}))\n```"
+    )
+    assert '"a": 1' in result or '"a":1' in result, (
+        f"benign import json must still run after sandbox tightening; got: {result!r}"
+    )
