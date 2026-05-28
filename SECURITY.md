@@ -6,11 +6,11 @@ CODEC is a local-first AI agent that executes code, controls the keyboard/mouse,
 
 | Version | Supported |
 |---|---|
-| Engine `codec` v3.x (current) | ✅ |
-| App v2.3.x (current) | ✅ |
-| Older / pre-v2.3 | ❌ |
+| Engine `codec` v3.2+ (current) | ✅ |
+| Engine `codec` v3.0–v3.1 (recent past) | ✅ |
+| Anything pre-v3.0 | ❌ |
 
-Security fixes land on the current release line. There is no long-term-support branch yet.
+The engine and the macOS app bundle now share a single version line — both read from the [`VERSION`](VERSION) file at build time (see commit `b41844f`). Security fixes land on the current release line. There is no long-term-support branch yet.
 
 ## Reporting a vulnerability
 
@@ -45,3 +45,9 @@ Please include: affected component/version, reproduction steps or PoC, impact, a
 ## Hardening already in place
 
 For context, CODEC ships with: a load-time AST safety gate on skill loading, a SHA-256 manifest/allowlist for built-in skills + plugins, `sandbox-exec` + `rlimit`-confined `python_exec`, a normalize-then-layered dangerous-command blocker, HMAC-SHA256-signed + secret-redacted audit logs (0600), macOS-Keychain secret storage, per-process HMAC internal-IPC tokens, Touch ID / PIN dashboard auth, and an OAuth 2.1 MCP HTTP transport. See `docs/audits/` and `AGENTS.md §6-§10`.
+
+## Related documents
+
+- **[`PRIVACY.md`](PRIVACY.md)** — what data CODEC stores locally, what it sends off the Mac when, and the controls you have.
+- **`AGENTS.md`** — engine architecture, plugin trust model, agent permission gates (§6–§10).
+- **`docs/audits/`** — Wave 1 + Wave 2 hardening evidence, Pilot adversarial audit (PP-1…PP-12).
