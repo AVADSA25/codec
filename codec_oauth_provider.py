@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import json
 import os
-import stat
 import time
 import secrets
 import threading
@@ -33,6 +32,8 @@ from mcp.server.auth.provider import AccessToken, AuthorizationCode, RefreshToke
 from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 
 from fastmcp.server.auth.providers.in_memory import InMemoryOAuthProvider
+
+from codec_jsonstore import atomic_write_json
 
 try:
     from codec_audit import log_event as _oauth_log_event
@@ -142,7 +143,8 @@ class PersistentOAuthProvider(InMemoryOAuthProvider):
         # legacy plaintext path so OAuth keeps working — operational
         # continuity > strict secret isolation.
         with self._lock:
-            blob = json.dumps(self._serialize())
+            state = self._serialize()
+            blob = json.dumps(state)
             kc_ok = False
             try:
                 from codec_keychain import set_oauth_state
@@ -159,12 +161,15 @@ class PersistentOAuthProvider(InMemoryOAuthProvider):
                     pass
                 return
 
-            # Fallback: legacy plaintext file (0600). Logged as a warning
-            # at the keychain layer; OAuth continues to function.
-            tmp = self._state_path.with_suffix(".tmp")
-            tmp.write_text(blob)
-            os.chmod(tmp, stat.S_IRUSR | stat.S_IWUSR)  # 0600
-            os.replace(tmp, self._state_path)
+            # Fallback: legacy plaintext file. Crash-durable write via the
+            # canonical jsonstore helper — unique tmp + flush + os.fsync +
+            # atomic os.replace + chmod 0600. C6 (Fix #1b): the previous
+            # `tmp.write_text(blob); os.replace(...)` skipped fsync, so a
+            # crash between write() and the page-cache flush could land a
+            # truncated/empty oauth_state.json and lose every token
+            # (claude.ai forced re-auth on next restart). atomic_write_json
+            # closes that durability window.
+            atomic_write_json(self._state_path, state)
 
     # ---------- overrides: persist after every mutation ----------
 
