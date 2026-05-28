@@ -321,24 +321,11 @@ def test_fts_trigger_on_update(mem):
 # Tests for the Session.cleanup() method that saves conversation history
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "REGRESSION: Session.cleanup() in codec_session.py:188 only unlinks "
-        "the alive-file — it lost the conversation-persistence behavior that "
-        "the legacy `codec_core.build_session_script` path provided "
-        "(codec_core.py:327-337 still shows the INSERT INTO conversations "
-        "block in the generated-script form, which is now deprecated). "
-        "Result: Session.run() LOADS the last 10 conversation rows on start "
-        "(codec_session.py:881-893) but nothing writes to them anymore, so "
-        "the load is reading stale rows from before the regression. "
-        "Deferred to a separate PR — fix is a focused codec_session.cleanup() "
-        "patch + a CodecMemory.save() call after every self.h.append, NOT "
-        "appropriate to bundle into the CI-coverage PR. When the production "
-        "code is fixed, this xfail flips to PASS and CI fails (strict=True). "
-        "Surfaced by enabling the full pytest suite in CI."
-    ),
-)
+# (Fixed 2026-05-28: Session.cleanup() in codec_session.py:188 now persists
+# self.h to the conversations table — system messages filtered, content
+# truncated to 500 chars per legacy schema. Mirrors the dropped
+# codec_core.build_session_script pattern. The xfail marker was removed
+# when the production fix landed.)
 def test_session_cleanup_saves_conversations(tmp_db):
     """Session.cleanup() should persist self.h to the conversations table."""
     from codec_session import Session
@@ -400,17 +387,9 @@ def test_session_cleanup_saves_conversations(tmp_db):
     assert roles.count("assistant") == 2
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "REGRESSION: same root cause as test_session_cleanup_saves_"
-        "conversations — Session.cleanup() no longer writes to the "
-        "conversations table, so the SELECT after cleanup returns None and "
-        "the test hits TypeError on row[0] subscript. Deferred to the "
-        "same focused codec_session.cleanup() patch PR. When fixed, this "
-        "xfail flips to PASS and CI fails (strict=True)."
-    ),
-)
+# (Fixed 2026-05-28: same patch as test_session_cleanup_saves_conversations —
+# Session.cleanup() now writes the conversations row, so SELECT returns a
+# real tuple and the 500-char truncation assertion holds.)
 def test_session_cleanup_truncates_long_content(tmp_db):
     """Session.cleanup() truncates content to 500 chars."""
     from codec_session import Session

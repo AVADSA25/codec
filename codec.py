@@ -411,7 +411,12 @@ def _dispatch_inner(task):
                 global _last_tts_text
                 _last_tts_text = str(result)[:200]
                 speak_text(result)
-                subprocess.Popen(["osascript", "-e", f'display notification "{str(result)[:80]}" with title "CODEC Skill"'],
+                # D-13/D-21: escape backslash + double-quote before osascript
+                # interpolation. Skill output is AST-gated at load time (D-1)
+                # so the blast radius is limited, but this is the canonical
+                # defense-in-depth pattern (matches lines 397, 509).
+                _safe_result = str(result)[:80].replace('\\', '\\\\').replace('"', '\\"')
+                subprocess.Popen(["osascript", "-e", f'display notification "{_safe_result}" with title "CODEC Skill"'],
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 print(f"[CODEC] Skill response: {str(result)[:100]}")
                 skill_result = str(result)

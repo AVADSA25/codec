@@ -190,6 +190,33 @@ SAFETY RULES:
             os.unlink(self.session_alive)
         except Exception as e:
             log.warning(f"Session alive file cleanup failed: {e}")
+        # Regression fix: persist conversation history to DB so the
+        # Session.run() next-start path that loads the last 10 rows
+        # (line 881-893) actually has fresh data to load. Mirrors the
+        # legacy codec_core.build_session_script pattern that the
+        # codec_session refactor accidentally dropped. System messages
+        # are filtered (callers don't want the sys prompt rehydrated),
+        # and content is truncated to 500 chars to match the legacy
+        # schema constraint.
+        try:
+            c = sqlite3.connect(self.db_path)
+            for msg in self.h:
+                if msg.get("role") == "system":
+                    continue
+                c.execute(
+                    "INSERT INTO conversations "
+                    "(session_id, timestamp, role, content) VALUES (?,?,?,?)",
+                    (
+                        self.session_id,
+                        datetime.now().isoformat(),
+                        msg["role"],
+                        msg["content"][:500],
+                    ),
+                )
+            c.commit()
+            c.close()
+        except Exception as e:
+            log.warning(f"Session conversation persist failed: {e}")
         print("[C] Session closed.")
 
     # ── Screenshot ───────────────────────────────────────────────────────

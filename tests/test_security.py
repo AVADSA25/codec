@@ -148,24 +148,10 @@ def test_dashboard_has_auth_middleware():
 
 # ── AppleScript Sanitization ───────────────────────────────────────────────
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "codec.py:414 interpolates `str(result)[:80]` (skill return value) "
-        "into an osascript `display notification` without escaping `\"` or "
-        "`\\`. This is a defense-in-depth gap: skill output is already "
-        "AST-gated at load time (D-1) so the blast radius is limited, but "
-        "the Wave-1 D-13/D-21 hardening explicitly closed the same pattern "
-        "at other osascript sites and this one was missed. Surfaced when "
-        "the CI-coverage PR broadened the prefix regex from `safe_` to "
-        "`_?safe_` (renaming convention change) — the broader regex now "
-        "walks past the first sanitized var and reaches the unsanitized "
-        "site. Fix is deliberately deferred to its own PR to avoid "
-        "bundling production-code changes into the CI-enablement PR. "
-        "When fixed, this xfail will flip to PASS and CI will fail "
-        "(strict=True) — that's the cue to remove the marker."
-    ),
-)
+# (Fixed 2026-05-28: codec.py:414 now uses `_safe_result` with the canonical
+# backslash + double-quote escape — matches the D-13/D-21 pattern used at
+# lines 397 and 509. The xfail marker was removed when the production fix
+# landed.)
 def test_osascript_inputs_sanitized():
     """osascript calls must not embed raw user input.
 
