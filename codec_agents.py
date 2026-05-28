@@ -907,14 +907,19 @@ async def _elevate_query(raw_topic: str) -> dict:
       - scope: what to include / exclude
       - angles: different perspectives to cover
     """
+    today_str = datetime.now().strftime("%A, %B %d, %Y")
+    current_year = datetime.now().year
     system = (
-        "You are a research query optimizer. The user will give you a rough, informal request. "
-        "Your job is to interpret their TRUE INTENT — not the literal words — and produce a "
-        "structured research brief.\n\n"
+        f"You are a research query optimizer. Today's date is {today_str}. "
+        f"Current year is {current_year}. The user will give you a rough, "
+        "informal request. Your job is to interpret their TRUE INTENT — not "
+        "the literal words — and produce a structured research brief.\n\n"
         "RULES:\n"
         "- Fix typos, grammar, and vague language\n"
         "- Identify what they ACTUALLY want to learn (not literal keyword interpretation)\n"
         "- Generate 4-6 diverse search queries that cover different angles\n"
+        f"- Search queries MUST target the current year ({current_year}) or near-term content. "
+        "Never generate queries about past years unless the user explicitly asks for historical analysis\n"
         "- If the user uses slang or ambiguous terms, interpret them in context\n"
         "- Never interpret casual words (like 'handful', 'bunch', 'couple') as topic keywords\n"
         "- Expand abbreviations and clarify jargon\n\n"
@@ -980,8 +985,17 @@ def deep_research_crew(**kwargs) -> Crew:
     scope = elevated.get("scope", "")
     angles = elevated.get("angles", "")
 
+    # Date grounding: the local LLM (Qwen 3.6) has a 2024 knowledge cutoff
+    # and defaults to that period when asked about "current" content. The
+    # weekly AI report was returning "March 2024 AI landscape" because of
+    # this. Inject today's date into every agent role so the LLM is
+    # anchored to the real present.
+    today_str = datetime.now().strftime("%A, %B %d, %Y")
+    current_year = datetime.now().year
+
     # Build enhanced research brief for the Researcher agent
     research_brief = f"Research thoroughly: {refined_topic}\n"
+    research_brief += f"Today is {today_str}. Current year is {current_year}. All findings MUST cover the current week / month / year — NOT historical content from previous years unless explicitly part of the topic.\n"
     if scope:
         research_brief += f"Scope: {scope}\n"
     if angles:
@@ -995,11 +1009,14 @@ def deep_research_crew(**kwargs) -> Crew:
     researcher = Agent(
         name="Researcher",
         role=(
-            "You are an elite research analyst. Find comprehensive, accurate, up-to-date information. "
+            f"You are an elite research analyst. Today is {today_str}. The current year is {current_year}. "
+            "Find comprehensive, accurate, up-to-date information from the CURRENT period — not from previous years. "
             "You have been given a refined research brief with suggested search queries. "
             "Use the suggested queries as starting points but adapt them based on what you find. "
             "Search broadly (4-6 queries), then fetch the most relevant sources. "
+            f"When constructing search queries, include '{current_year}' or recent date markers to bias results toward current content. "
             "Extract key facts, statistics, expert opinions, and recent developments. "
+            "If a source is older than 6 months, note its date explicitly so the Writer can flag it. "
             "Focus on the INTENT of the research, not just literal keywords."
         ),
         tools=search_tools, max_tool_calls=8,
@@ -1007,9 +1024,13 @@ def deep_research_crew(**kwargs) -> Crew:
     writer = Agent(
         name="Writer",
         role=(
-            "You are a professional report writer. Synthesize research into a comprehensive "
-            "well-structured report: Executive Summary, Key Findings, Analysis, Conclusion, Sources. "
-            "Write 2000-5000 words in markdown. Cite sources inline.\n"
+            f"You are a professional report writer. Today is {today_str}. The current year is {current_year}. "
+            "Synthesize research into a comprehensive well-structured report: "
+            "Executive Summary, Key Findings, Analysis, Conclusion, Sources. "
+            f"Frame the report as a snapshot of the CURRENT ({current_year}) AI/industry landscape. "
+            "Do NOT describe past years as if they were current. If your training data perceives a different "
+            f"'current' year, override that — today's actual date is {today_str}. "
+            "Write 2000-5000 words in markdown. Cite sources inline with their publication dates.\n"
             "CRITICAL: You MUST use the google_docs_create tool to save your report. "
             "Do NOT fabricate or invent a Google Docs URL. The tool will return the real URL. "
             "NEVER output a FINAL response until you have called google_docs_create and received the actual URL back.\n"
