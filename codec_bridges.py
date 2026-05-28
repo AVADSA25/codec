@@ -23,9 +23,19 @@ log = logging.getLogger("codec.bridges")
 
 MEMORY_DB = os.path.expanduser("~/.codec/memory.db")
 
-# Skills that need a terminal / GUI and must not run from a headless bridge.
-_SKIP_SKILLS = {"open_terminal", "run_command", "vibe_code", "deep_chat",
-                "memory_search", "ask_mike_to_build"}
+# C2 (Fix #2): inbound bridge messages may ONLY dispatch skills on this explicit
+# safe list — read / info / pure-compute skills with no system side effects, no
+# private-data disclosure, and no device/GUI control. Default-deny: anything not
+# listed is NOT dispatched from a bridge (try_skill returns (None, None) and the
+# caller degrades to an LLM answer — never a hard fail). This is the security
+# boundary that keeps high-power skills (terminal, python_exec, file_write,
+# pilot, process_manager, pm2_control, ax_control) unreachable from a (remote)
+# bridge, replacing the old allow-by-default `_SKIP_SKILLS` denylist which did
+# NOT exclude them. Skills are added here deliberately, one at a time.
+BRIDGE_SAFE_SKILLS = frozenset({
+    "weather", "time", "calculator", "translate", "bitcoin_price",
+    "web_search", "json_formatter", "password_generator", "qr_generator",
+})
 
 # Per-channel assistant persona (the only thing that differed between the two
 # bridges' call_llm). `{now}` is the formatted current date/time.
@@ -69,14 +79,23 @@ def load_dispatch() -> bool:
 
 
 def try_skill(text):
-    """Match a CODEC skill for `text`. Returns (skill_name, result) or
-    (None, None) — skipping terminal/GUI skills that a bridge can't run."""
+    """Match a CODEC skill for `text` and run it IF it is on BRIDGE_SAFE_SKILLS.
+
+    Returns (skill_name, result) for a dispatched safe skill, or (None, None)
+    when nothing safe matched — in which case the caller falls back to an LLM
+    answer (graceful degradation, never a hard fail). C2 fail-closed: any skill
+    not on the allowlist (every high-power skill included) is never dispatched
+    from a bridge.
+    """
     if not load_dispatch():
         return (None, None)
     try:
         skill = _check_skill(text)
         if skill:
-            if skill["name"] in _SKIP_SKILLS:
+            if skill["name"] not in BRIDGE_SAFE_SKILLS:
+                log.info(
+                    "Skill '%s' not on BRIDGE_SAFE_SKILLS — not dispatched from "
+                    "bridge (falling back to LLM)", skill["name"])
                 return (None, None)
             result = _run_skill(skill, text)
             if result:

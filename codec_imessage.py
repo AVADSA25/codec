@@ -60,7 +60,7 @@ def get_imessage_config(cfg):
     im = cfg.get("imessage", {})
     return {
         "enabled": im.get("enabled", True),
-        "allowed_senders": im.get("allowed_senders", []),   # empty = allow all
+        "allowed_senders": im.get("allowed_senders", []),   # empty = DENY all (fail-closed, C2)
         "blocked_senders": im.get("blocked_senders", []),
         "poll_interval": im.get("poll_interval", 3),        # seconds
         "max_response_length": im.get("max_response_length", 4000),
@@ -241,8 +241,19 @@ def _convert_apple_date(apple_date):
 
 
 # ── Sender filtering ────────────────────────────────────────────────────────
+# C2 (Fix #2): one-time "no allowlist configured" warning flag. Module-level so
+# the fail-closed deny logs ONCE per process instead of once per inbound message.
+_warned_no_allowlist = False
+
+
 def is_sender_allowed(sender, im_cfg):
-    """Check if sender is allowed based on allowlist/blocklist."""
+    """Check if sender is allowed based on allowlist/blocklist.
+
+    FAIL-CLOSED (C2): an EMPTY (or missing) ``allowed_senders`` denies ALL
+    inbound. A bridge with no configured allowlist must not respond to arbitrary
+    senders just because someone learned the handle. The operator enables replies
+    by adding their own handle to ``config.imessage.allowed_senders``.
+    """
     if not sender:
         return False
 
@@ -252,7 +263,16 @@ def is_sender_allowed(sender, im_cfg):
         return False
 
     allowed = im_cfg.get("allowed_senders", [])
-    if allowed and sender not in allowed:
+    if not allowed:
+        global _warned_no_allowlist
+        if not _warned_no_allowlist:
+            log.warning(
+                "bridge_no_allowlist: imessage allowed_senders is empty — "
+                "denying ALL inbound (fail-closed, C2). Add your handle to "
+                "config.imessage.allowed_senders to enable replies.")
+            _warned_no_allowlist = True
+        return False
+    if sender not in allowed:
         log.info(f"Sender not in allowlist: {sender}")
         return False
 
