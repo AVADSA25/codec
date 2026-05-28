@@ -15,7 +15,11 @@ Adds:
 Run:   pm2 start ecosystem.config.js --only codec-mcp-http
 Env:   CODEC_MCP_HTTP_PORT       (default 8091)
        CODEC_MCP_HTTP_HOST       (default 127.0.0.1)
-       CODEC_MCP_PUBLIC_BASE_URL (default https://codec-mcp.lucyvpa.com)
+       CODEC_MCP_PUBLIC_BASE_URL (default https://codec-mcp.avadigital.ai;
+                                 codec-mcp.lucyvpa.com still serves the same
+                                 backend as a fallback but the OAuth metadata
+                                 the well-known endpoints advertise comes from
+                                 this var)
        CODEC_MCP_RATE_PER_MIN    (default 60)
 """
 import os
@@ -93,7 +97,7 @@ def main():
     port = int(os.environ.get("CODEC_MCP_HTTP_PORT", "8091"))
     host = os.environ.get("CODEC_MCP_HTTP_HOST", "127.0.0.1")
     public_base = os.environ.get(
-        "CODEC_MCP_PUBLIC_BASE_URL", "https://codec-mcp.lucyvpa.com"
+        "CODEC_MCP_PUBLIC_BASE_URL", "https://codec-mcp.avadigital.ai"
     )
 
     auth = PersistentOAuthProvider(
