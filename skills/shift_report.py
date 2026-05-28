@@ -44,9 +44,15 @@ SKILL_DESCRIPTION = (
     "Generate end-of-day shift report from CODEC's observations and "
     "post a single notification."
 )
+# Triggers deliberately kept narrow: previously included phrases like
+# "what did i do today" / "summarize my day" / "today's summary" that
+# matched casually in chat/voice, causing the skill to fire 18+ times
+# in a single afternoon (5/24 record). Manual trigger has no dedup
+# (see line 519), so each phrase match minted a new notification. Now
+# only explicit "shift report" / "eod report" phrases trigger — natural
+# curiosity questions about the day no longer fire it.
 SKILL_TRIGGERS = [
     "shift report", "shift-report", "daily shift report",
-    "what did i do today", "summarize my day", "today's summary",
     "end of day report", "eod report",
 ]
 SKILL_MCP_EXPOSE = True
