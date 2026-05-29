@@ -180,6 +180,14 @@ def _web_search(query: str) -> str:
 
 def _web_fetch(url: str) -> str:
     try:
+        # Fix #7 (H1): SSRF guard BEFORE the request. The fetched text is
+        # returned to the agent/LLM, so a read of an internal/metadata host is
+        # an exfil path even though the crew tool has no explicit egress allow.
+        import codec_ssrf
+        try:
+            codec_ssrf.validate_url(url.strip())
+        except codec_ssrf.SSRFError as e:
+            return f"Fetch error: blocked URL ({e})"
         r = _sync_http.get(url.strip())
         if r.status_code in (401, 403):
             return f"Blocked by site (HTTP {r.status_code}). Site requires JavaScript or blocks automated access."
