@@ -43,9 +43,10 @@ def _load_state() -> dict:
 
 
 def _save_state(state: dict):
-    os.makedirs(os.path.dirname(ALERT_STATE_PATH), exist_ok=True)
-    with open(ALERT_STATE_PATH, "w") as f:
-        json.dump(state, f, indent=2)
+    # Fix #9 Phase 1: atomic write (tmp+fsync+replace) so a crash mid-write
+    # can't truncate the alert state.
+    import codec_jsonstore
+    codec_jsonstore.atomic_write_json(ALERT_STATE_PATH, state)
 
 
 # ── Alert Channels ──────────────────────────────────────────────────────

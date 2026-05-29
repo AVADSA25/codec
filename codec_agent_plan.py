@@ -230,6 +230,13 @@ def _read_json(path: Path) -> Optional[Dict[str, Any]]:
 
 
 def _agent_dir(agent_id: str) -> Path:
+    # re-audit: reject path-traversal. The path-param endpoints pass agent_id
+    # raw; create_agent slugs are always [\w-]. A '/', '\\', '..', or a leading
+    # '.'/'~' could escape _AGENTS_DIR (read/shape JSON outside it). Readers
+    # below catch this and degrade to empty so the endpoints return 404, not 500.
+    if (not agent_id or "/" in agent_id or "\\" in agent_id or ".." in agent_id
+            or agent_id.startswith(".") or agent_id.startswith("~")):
+        raise ValueError(f"unsafe agent_id: {agent_id!r}")
     return _AGENTS_DIR / agent_id
 
 
@@ -239,7 +246,10 @@ def save_plan(plan: Plan) -> None:
 
 
 def load_plan(agent_id: str) -> Optional[Plan]:
-    d = _read_json(_agent_dir(agent_id) / "plan.json")
+    try:
+        d = _read_json(_agent_dir(agent_id) / "plan.json")
+    except ValueError:
+        return None  # unsafe agent_id → treat as not found
     return plan_from_dict(d) if d else None
 
 
@@ -249,7 +259,10 @@ def save_state(agent_id: str, state: Dict[str, Any]) -> None:
 
 
 def load_state(agent_id: str) -> Dict[str, Any]:
-    return _read_json(_agent_dir(agent_id) / "state.json") or {}
+    try:
+        return _read_json(_agent_dir(agent_id) / "state.json") or {}
+    except ValueError:
+        return {}
 
 
 # ── Manifest R/W ──────────────────────────────────────────────────────────────
@@ -258,7 +271,10 @@ def save_manifest(agent_id: str, manifest: Dict[str, Any]) -> None:
 
 
 def load_manifest(agent_id: str) -> Dict[str, Any]:
-    return _read_json(_agent_dir(agent_id) / "manifest.json") or {}
+    try:
+        return _read_json(_agent_dir(agent_id) / "manifest.json") or {}
+    except ValueError:
+        return {}
 
 
 # ── Grants R/W ────────────────────────────────────────────────────────────────
@@ -267,7 +283,10 @@ def save_grants(agent_id: str, grants: Dict[str, Any]) -> None:
 
 
 def load_grants(agent_id: str) -> Dict[str, Any]:
-    return _read_json(_agent_dir(agent_id) / "grants.json") or {}
+    try:
+        return _read_json(_agent_dir(agent_id) / "grants.json") or {}
+    except ValueError:
+        return {}
 
 
 def compute_grants_hash(agent_id: str) -> str:

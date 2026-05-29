@@ -27,9 +27,9 @@ def _read_state():
 
 
 def _write_state(state):
-    os.makedirs(os.path.dirname(_STATE_FILE), exist_ok=True)
-    with open(_STATE_FILE, "w") as f:
-        json.dump(state, f)
+    # Fix #9 Phase 1: atomic write.
+    import codec_jsonstore
+    codec_jsonstore.atomic_write_json(_STATE_FILE, state)
 
 
 def _clear_state():

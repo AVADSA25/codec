@@ -96,9 +96,9 @@ def load_state():
 
 
 def save_state(state):
-    os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f)
+    # Fix #9 Phase 1: atomic write.
+    import codec_jsonstore
+    codec_jsonstore.atomic_write_json(STATE_FILE, state)
 
 
 # ── Audit logging ────────────────────────────────────────────────────────────
