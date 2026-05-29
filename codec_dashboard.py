@@ -2452,6 +2452,14 @@ def _try_skill(user_text: str):
         from codec_dispatch import check_skill, run_skill
         skill = check_skill(user_text)
         if skill and skill.get("name") in CHAT_SKILL_ALLOWLIST:
+            # re-audit A2: destructive skills need explicit consent (reuses the
+            # AskUserQuestion PWA panel; blocks this worker thread until answered).
+            import codec_consent
+            if not codec_consent.chat_consent_ok(skill["name"], user_text):
+                return skill["name"], (
+                    f"⚠ '{skill['name']}' is a destructive operation and wasn't "
+                    "confirmed — skipped."
+                )
             result = run_skill(skill, user_text, app="CODEC Chat")
             if result is not None:
                 return skill["name"], str(result)
@@ -2472,6 +2480,14 @@ def _try_skill_by_name(name: str, query: str):
     try:
         from codec_dispatch import run_skill
         skill = {"name": name}
+        # re-audit A2: a destructive skill emitted via a post-LLM [SKILL:...] tag
+        # (the prompt-injection vector) needs explicit consent before it runs —
+        # reuses the AskUserQuestion PWA panel. Blocks until answered.
+        import codec_consent
+        if not codec_consent.chat_consent_ok(name, query):
+            return name, (
+                f"⚠ '{name}' is a destructive operation and wasn't confirmed — skipped."
+            )
         result = run_skill(skill, query, app="CODEC Chat (LLM-routed)")
         if result is not None:
             return name, str(result)

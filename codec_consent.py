@@ -22,7 +22,7 @@ Kill switch: `CONSENT_GATE_ENABLED=false`.
 """
 import os
 
-__all__ = ["gate_enabled", "is_destructive_skill", "mcp_refuse_message"]
+__all__ = ["gate_enabled", "is_destructive_skill", "chat_consent_ok", "mcp_refuse_message"]
 
 # Known high-power built-ins that are destructive but NOT in _HTTP_BLOCKED.
 # (terminal / python_exec / process_manager / pm2_control / ax_control are
@@ -64,6 +64,34 @@ def is_destructive_skill(tool_name, registry=None) -> bool:
         pass
     # 3) known high-power built-ins
     return tool_name in _DESTRUCTIVE_BUILTINS
+
+
+def chat_consent_ok(tool_name, query, *, registry=None) -> bool:
+    """Chat path (A2): a destructive skill requires explicit consent via the
+    existing AskUserQuestion PWA panel (Phase 1 Step 3 §1.7 — literal verb-match;
+    generic yes/ok rejected). Returns True if the skill may run (non-destructive,
+    gate disabled, or consent granted); False if blocked (declined / timeout /
+    ask_user unavailable). BLOCKS the worker thread on ask_user until answered —
+    the chat handler invokes this via asyncio.to_thread, so the event loop isn't
+    blocked. Fail-closed: any error → False (a destructive skill never
+    auto-runs)."""
+    if not gate_enabled() or not is_destructive_skill(tool_name, registry=registry):
+        return True
+    try:
+        import codec_ask_user
+        answer = codec_ask_user.ask(
+            f"CODEC wants to run the '{tool_name}' skill — a destructive / "
+            f"high-power operation — for: {(query or '')[:200]}",
+            destructive=True,
+            asked_from="chat",
+            tool_name=tool_name,
+        )
+        return answer not in (
+            codec_ask_user.TIMEOUT_SENTINEL,
+            codec_ask_user.DISABLED_SENTINEL,
+        )
+    except Exception:
+        return False
 
 
 def mcp_refuse_message(tool_name) -> str:

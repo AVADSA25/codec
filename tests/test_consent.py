@@ -50,3 +50,42 @@ def test_gate_kill_switch(monkeypatch):
     assert codec_consent.gate_enabled() is True
     monkeypatch.setenv("CONSENT_GATE_ENABLED", "false")
     assert codec_consent.gate_enabled() is False
+
+
+# ── chat_consent_ok (A2: reuse the AskUserQuestion PWA panel) ────────────────
+def test_chat_consent_nondestructive_runs_without_prompt(monkeypatch):
+    import codec_ask_user
+
+    called = {"n": 0}
+    monkeypatch.setattr(codec_ask_user, "ask", lambda *a, **k: called.__setitem__("n", called["n"] + 1))
+    assert codec_consent.chat_consent_ok("weather", "x", registry=_FakeReg(set())) is True
+    assert called["n"] == 0, "non-destructive skills must not prompt for consent"
+
+
+def test_chat_consent_destructive_granted(monkeypatch):
+    import codec_ask_user
+
+    monkeypatch.setattr(codec_ask_user, "ask", lambda *a, **k: "delete")  # verb-matched approval
+    assert codec_consent.chat_consent_ok("file_ops", "delete x", registry=_FakeReg(set())) is True
+
+
+def test_chat_consent_destructive_timeout_blocks(monkeypatch):
+    import codec_ask_user
+
+    monkeypatch.setattr(codec_ask_user, "ask", lambda *a, **k: codec_ask_user.TIMEOUT_SENTINEL)
+    assert codec_consent.chat_consent_ok("file_ops", "x", registry=_FakeReg(set())) is False
+
+
+def test_chat_consent_gate_off_runs(monkeypatch):
+    monkeypatch.setenv("CONSENT_GATE_ENABLED", "false")
+    assert codec_consent.chat_consent_ok("file_ops", "x", registry=_FakeReg(set())) is True
+
+
+def test_chat_consent_fails_closed_on_error(monkeypatch):
+    import codec_ask_user
+
+    def _boom(*a, **k):
+        raise RuntimeError("ask broke")
+
+    monkeypatch.setattr(codec_ask_user, "ask", _boom)
+    assert codec_consent.chat_consent_ok("file_ops", "x", registry=_FakeReg(set())) is False
