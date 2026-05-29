@@ -273,15 +273,19 @@ def _is_totp_enabled():
         return False
 
 
-def _verify_biometric_session(request):
-    """Check if the request has a valid auth session cookie."""
-    if not AUTH_ENABLED or not _auth_available():
-        return True
-    token = request.cookies.get(AUTH_COOKIE_NAME)
+def _session_token_valid(token) -> bool:
+    """Core session validity: the token exists, is unexpired, and is
+    TOTP-verified when TOTP is enabled. Shared by the cookie path
+    (_verify_biometric_session) AND the ?s= query-param fallback in
+    AuthMiddleware — re-audit N5: the ?s= path previously checked only
+    existence + age, skipping the TOTP-verified gate, so a pre-TOTP token could
+    bypass 2FA via ?s=<token> on any GET /api endpoint."""
+    if not token:
+        return False
     with _auth_lock:
-        if not token or token not in _auth_sessions:
+        session = _auth_sessions.get(token)
+        if not session:
             return False
-        session = _auth_sessions[token]
         if datetime.now() - session["created"] > timedelta(hours=AUTH_SESSION_HOURS):
             del _auth_sessions[token]
             _save_sessions()
@@ -289,6 +293,13 @@ def _verify_biometric_session(request):
         if _is_totp_enabled() and not session.get("totp_verified"):
             return False
     return True
+
+
+def _verify_biometric_session(request):
+    """Check if the request has a valid auth session cookie."""
+    if not AUTH_ENABLED or not _auth_available():
+        return True
+    return _session_token_valid(request.cookies.get(AUTH_COOKIE_NAME))
 
 
 # ── Database helpers ──

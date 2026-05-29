@@ -27,7 +27,7 @@ from routes._shared import (
     _append_schedule_run_log,
     AUTH_ENABLED, AUTH_SESSION_HOURS, AUTH_COOKIE_NAME,
     _auth_sessions, _auth_lock, _e2e_keys,
-    _auth_available, _verify_biometric_session,
+    _auth_available, _verify_biometric_session, _session_token_valid,
     _save_sessions, _save_e2e_keys,
     get_db,
     _pending_approvals, _approval_lock, _evict_expired_approvals,
@@ -164,14 +164,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if AUTH_ENABLED and _auth_available():
             if _verify_biometric_session(request):
                 return await call_next(request)
-            # Fallback: accept session token as ?s= query param (for img/stream URLs on mobile)
+            # Fallback: accept session token as ?s= query param (for img/stream
+            # URLs on mobile). re-audit N5: route through _session_token_valid so
+            # the TOTP-verified gate is enforced here too — previously this path
+            # checked only token existence + age, letting a pre-TOTP token skip
+            # 2FA via ?s=<token> on any GET /api endpoint.
             qs_token = request.query_params.get("s", "")
-            if qs_token and request.method == "GET":
-                with _auth_lock:
-                    if qs_token in _auth_sessions:
-                        session = _auth_sessions[qs_token]
-                        if datetime.now() - session["created"] <= timedelta(hours=AUTH_SESSION_HOURS):
-                            return await call_next(request)
+            if qs_token and request.method == "GET" and _session_token_valid(qs_token):
+                return await call_next(request)
             # Biometric failed — reject
             cookie_val = request.cookies.get(AUTH_COOKIE_NAME, "<missing>")
             log.warning("AUTH REJECTED: path=%s method=%s ip=%s cookie=%s...",
