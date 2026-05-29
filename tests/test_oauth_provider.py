@@ -154,6 +154,60 @@ def test_fallback_write_is_fsync_durable(tmp_path, monkeypatch):
     assert mode == 0o600, f"fallback file must be 0600; got {oct(mode)}"
 
 
+# ── Fix #10: OAuth scope-escalation regression coverage ──────────────────────
+def test_refresh_rejects_scope_escalation(tmp_path):
+    """A refresh token issued for ['read'] must NOT be exchangeable for
+    ['read','write'] — exchange_refresh_token enforces requested ⊆ original.
+    Pins the scope-escalation defense (codec_oauth_provider.py:244-249) so a
+    future refactor that drops the subset check fails CI."""
+    import time
+
+    from mcp.server.auth.provider import RefreshToken, TokenError
+
+    p = PersistentOAuthProvider(
+        base_url="https://test.example.com",
+        client_registration_options=ClientRegistrationOptions(enabled=True),
+        state_path=tmp_path / "state.json",
+    )
+    client = _make_client("escal")
+    asyncio.run(p.register_client(client))
+    rt = RefreshToken(
+        token="codec_rt_orig",
+        client_id="escal",
+        scopes=["read"],
+        expires_at=int(time.time() + 3600),
+    )
+    with pytest.raises(TokenError) as exc:
+        asyncio.run(p.exchange_refresh_token(client, rt, ["read", "write"]))
+    assert "scope" in str(exc.value).lower()
+
+
+def test_refresh_allows_subset_scopes(tmp_path):
+    """A refresh for a SUBSET of the original scopes succeeds, and the new
+    access token carries only the narrowed scopes (no silent widening)."""
+    import time
+
+    from mcp.server.auth.provider import RefreshToken
+
+    p = PersistentOAuthProvider(
+        base_url="https://test.example.com",
+        client_registration_options=ClientRegistrationOptions(enabled=True),
+        state_path=tmp_path / "state.json",
+    )
+    client = _make_client("narrow")
+    asyncio.run(p.register_client(client))
+    rt = RefreshToken(
+        token="codec_rt_orig2",
+        client_id="narrow",
+        scopes=["read", "write"],
+        expires_at=int(time.time() + 3600),
+    )
+    p.refresh_tokens[rt.token] = rt  # register so the internal revoke is clean
+    token = asyncio.run(p.exchange_refresh_token(client, rt, ["read"]))
+    assert "read" in (token.scope or ""), "narrowed scope must include the requested scope"
+    assert "write" not in (token.scope or ""), "new token must not carry the dropped scope"
+
+
 if __name__ == "__main__":
     import tempfile
     with tempfile.TemporaryDirectory() as d:
