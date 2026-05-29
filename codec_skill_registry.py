@@ -76,6 +76,9 @@ def _extract_metadata(filepath: str) -> Optional[Dict[str, Any]]:
                     "SKILL_OBSERVATION_TRIGGER",
                     # Phase 2 Step 5 §X — skill-flag injection override.
                     "SKILL_NEEDS_OBSERVATION",
+                    # re-audit — marks a high-power skill that requires consent
+                    # before firing from chat / refusal over MCP (codec_consent).
+                    "SKILL_DESTRUCTIVE",
                 ):
                     try:
                         meta[target.id] = ast.literal_eval(node.value)
@@ -230,6 +233,12 @@ class SkillRegistry:
     def get_mcp_expose(self, name: str) -> Optional[bool]:
         meta = self._meta.get(name, {})
         return meta.get("SKILL_MCP_EXPOSE", None)
+
+    def get_destructive(self, name: str) -> bool:
+        """re-audit — True if the skill declares SKILL_DESTRUCTIVE=True (a
+        high-power op that needs consent on chat / refusal over MCP). Defaults
+        False when undeclared. Read by codec_consent.is_destructive_skill."""
+        return bool(self._meta.get(name, {}).get("SKILL_DESTRUCTIVE", False))
 
     def get_observation_trigger(self, name: str) -> Optional[Dict[str, Any]]:
         """Phase 2 Step 6 — return the SKILL_OBSERVATION_TRIGGER dict

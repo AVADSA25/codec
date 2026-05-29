@@ -206,6 +206,23 @@ def _load_skill_tools_into(mcp):
                            correlation_id=cid)
                     return err
 
+                # re-audit B1: hard-refuse destructive / high-power skills over
+                # MCP — claude.ai (the caller) can't consent at the operator
+                # tier. Most are already in _HTTP_BLOCKED (refused earlier); this
+                # covers the full destructive set (file_ops, file_write,
+                # imessage_send, pilot, …) + any skill declaring SKILL_DESTRUCTIVE.
+                try:
+                    import codec_consent
+                    if codec_consent.gate_enabled() and codec_consent.is_destructive_skill(rkey, registry=registry):
+                        _audit(sname, event="denied",
+                               task_len=tlen, context_len=clen,
+                               duration_ms=(time.time()-t0)*1000,
+                               outcome="denied", error_type="DestructiveBlockedMCP",
+                               correlation_id=cid)
+                        return codec_consent.mcp_refuse_message(rkey)
+                except ImportError:
+                    pass  # consent module unavailable — fall through (other guards remain)
+
                 # Phase 1 Step 2: refactor per design §3.3 path 5. The
                 # threadpool/timeout/result block becomes the `invoke` closure
                 # passed to run_with_hooks. The invoke closure RAISES on skill
