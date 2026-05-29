@@ -26,6 +26,25 @@ from routes._shared import (
 router = APIRouter()
 
 
+def _pinned_builtin_names() -> set:
+    """Basenames (e.g. 'calculator.py') of hash-pinned built-in skills, read
+    from the committed <repo>/skills/.manifest.json. An approved user skill must
+    never take one of these names: doing so shadows the trusted built-in (or,
+    if the write dir is the repo skills dir, overwrites the hash-pinned file).
+    Fix #7b / H2·H6. Returns lowercased names so the guard also holds on
+    case-insensitive filesystems (macOS). Empty set on any read failure —
+    callers must treat empty as "couldn't verify", not "nothing pinned"."""
+    try:
+        repo_skills = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "skills"
+        )
+        with open(os.path.join(repo_skills, ".manifest.json"), encoding="utf-8") as f:
+            data = json.load(f)
+        return {str(n).lower() for n in (data.get("skills") or {}).keys()}
+    except Exception:
+        return set()
+
+
 @router.post("/api/skill/review")
 async def skill_review(request: Request):
     """Stage LLM-generated skill code for human review -- does NOT write to disk."""
@@ -54,6 +73,25 @@ async def skill_approve(request: Request):
     filename = pending["filename"]
     if "SKILL_DESCRIPTION" not in code or "def run(" not in code:
         return JSONResponse({"error": "Invalid skill: must contain SKILL_DESCRIPTION and def run()"}, status_code=400)
+    # Fix #7b (H2/H6): never let an approved skill take a hash-pinned built-in's
+    # name — that would shadow (or overwrite) the trusted built-in. The PR-1A
+    # load-time hash/AST gate is the last line of defense; this refuses at the
+    # write point so the trusted file is never displaced in the first place.
+    if filename.lower() in _pinned_builtin_names():
+        try:
+            from codec_audit import log_event
+            log_event(
+                "skill_approve_blocked", source="codec-routes-skills",
+                message=f"refused approve of pinned built-in name {filename}",
+                level="warning", outcome="denied",
+                extra={"filename": filename, "reason": "pinned_builtin_overwrite"},
+            )
+        except Exception:
+            pass
+        return JSONResponse(
+            {"error": f"Refused: '{filename}' is a protected built-in skill name and cannot be overwritten"},
+            status_code=400,
+        )
     from codec_config import is_dangerous_skill_code
     dangerous, reason = is_dangerous_skill_code(code)
     if dangerous:
