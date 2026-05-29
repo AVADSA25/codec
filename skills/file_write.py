@@ -130,14 +130,16 @@ def _is_safe_target(path: str):
     if not path:
         return False, "Empty path."
     expanded = os.path.expanduser(path)
-    # If parent exists, realpath the parent and append basename — the file
-    # itself may not exist yet, so we can't realpath(path) directly.
-    parent = os.path.dirname(expanded) or "."
+    # re-audit N4: realpath the FULL path so a symlinked FINAL component is
+    # resolved too. The old parent-only realpath (realpath(parent) + raw
+    # basename) let ~/Documents/x.md -> a symlink into ~/.codec / ~/.zshrc slip
+    # past the blocklist, and open() then followed it (write-through). realpath
+    # handles a not-yet-existing file: it resolves the existing path prefix and
+    # appends the remaining (new) components literally.
     try:
-        real_parent = os.path.realpath(parent)
+        real_path = os.path.realpath(expanded)
     except Exception:
-        real_parent = parent
-    real_path = os.path.join(real_parent, os.path.basename(expanded))
+        real_path = expanded
 
     # Filename + extension checks apply globally, regardless of directory.
     base_lower = os.path.basename(real_path).lower()
@@ -319,8 +321,14 @@ def run(task: str, context: str = "") -> str:
     mode_label = _extract_mode(task)
     fmode = "a" if mode_label == "append" else "w"
 
+    # re-audit N4: write to the realpath-resolved target (the same path
+    # _is_safe_target validated) so a symlinked final component can't redirect
+    # the write between check and open, and the write lands on the validated
+    # file rather than following the symlink.
+    target = os.path.realpath(os.path.expanduser(path))
+
     # Ensure parent dir exists.
-    parent = os.path.dirname(path)
+    parent = os.path.dirname(target)
     if parent and not os.path.exists(parent):
         try:
             os.makedirs(parent, exist_ok=True)
@@ -328,7 +336,7 @@ def run(task: str, context: str = "") -> str:
             return f"file_write: cannot create directory {parent}: {e}"
 
     try:
-        with open(path, fmode, encoding="utf-8") as f:
+        with open(target, fmode, encoding="utf-8") as f:
             f.write(content)
     except PermissionError as e:
         return f"file_write: permission denied for {path}: {e}"
