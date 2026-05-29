@@ -105,10 +105,13 @@ module.exports = {
     },
 
     // ── Kokoro TTS Server ──
+    // LS-2 / SR-4: served by the installed `mlx_audio.server` module.
+    // Previously referenced `kokoro_server.py` which was never committed,
+    // so the service permanently errored on fresh clones.
     {
       name: "kokoro-82m",
       script: "python3",
-      args: "kokoro_server.py",
+      args: "-m mlx_audio.server --host 0.0.0.0 --port 8085",
       cwd: __dirname,
       max_memory_restart: "512M",
       restart_delay: 5000,
@@ -185,12 +188,16 @@ module.exports = {
     },
     // ── Pilot Runner (browser automation HTTP API on :8094) ──
     // Headless Chromium on CDP port 9223, indexed-DOM snapshots,
-    // screencast recording. Cloudflare: pilot.lucyvpa.com → :8094
+    // screencast recording. Local-only after the 2026-05-24 RCE
+    // remediation (no Cloudflare ingress — pilot.lucyvpa.com removed).
+    // LS-6 / SR-5: pilot module is vendored at <repo>/pilot/. Was: cwd
+    // hardcoded to /Users/mickaelfarina/codec (non-portable across
+    // machines). Now: __dirname so the module resolves on any clone.
     {
       name: "pilot-runner",
-      script: "/usr/local/bin/python3.13",
+      script: "python3",
       args: "-m pilot.pilot_runner",
-      cwd: "/Users/mickaelfarina/codec",
+      cwd: __dirname,
       max_memory_restart: "512M",
       restart_delay: 5000,
       max_restarts: 10,

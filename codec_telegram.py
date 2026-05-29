@@ -33,6 +33,24 @@ logging.basicConfig(
 )
 log = logging.getLogger("codec-telegram")
 
+# ── LS-7 / SR-7: Bot-token redaction for log lines ──────────────────────────
+# Telegram bot URLs embed the token as `bot<bot_id>:<35-char-secret>`. Error
+# response dicts and HTTP-exception strings can include these URLs verbatim.
+# Sanitize every log emit so PM2 stdout never carries the secret.
+_TG_TOKEN_RE = re.compile(r"bot\d+:[A-Za-z0-9_-]{10,}")
+
+
+def _sanitize_log(s):
+    """Redact Telegram bot tokens (bot<id>:<secret>) from log messages.
+
+    Used by every log.error / log.warning that prints a Telegram API
+    response or exception string. Pure-function, never raises.
+    """
+    if not isinstance(s, str):
+        s = str(s)
+    return _TG_TOKEN_RE.sub("bot<REDACTED>", s)
+
+
 # ── Version ──────────────────────────────────────────────────────────────────
 VERSION = "2.1.0"
 
@@ -122,13 +140,13 @@ class TelegramBot:
             )
             data = r.json()
             if not data.get("ok"):
-                log.error(f"getUpdates error: {data}")
+                log.error(_sanitize_log(f"getUpdates error: {data}"))
                 return []
             return data.get("result", [])
         except requests.exceptions.Timeout:
             return []  # Normal for long polling
         except Exception as e:
-            log.error(f"getUpdates failed: {e}")
+            log.error(_sanitize_log(f"getUpdates failed: {e}"))
             time.sleep(3)
             return []
 
@@ -151,11 +169,11 @@ class TelegramBot:
                     r = requests.post(f"{self.api}/sendMessage", json=payload, timeout=15)
                     data = r.json()
                 if not data.get("ok"):
-                    log.error(f"sendMessage error: {data}")
+                    log.error(_sanitize_log(f"sendMessage error: {data}"))
                     return False
             return True
         except Exception as e:
-            log.error(f"sendMessage failed: {e}")
+            log.error(_sanitize_log(f"sendMessage failed: {e}"))
             return False
 
     def send_typing(self, chat_id):
@@ -177,7 +195,7 @@ class TelegramBot:
                 r = requests.post(f"{self.api}/sendVoice", data=data, files=files, timeout=30)
                 return r.json().get("ok", False)
         except Exception as e:
-            log.warning(f"sendVoice failed: {e}")
+            log.warning(_sanitize_log(f"sendVoice failed: {e}"))
             return False
 
     def get_file(self, file_id):
@@ -189,7 +207,7 @@ class TelegramBot:
                 path = data["result"]["file_path"]
                 return f"https://api.telegram.org/file/bot{self.token}/{path}"
         except Exception as e:
-            log.warning(f"getFile failed: {e}")
+            log.warning(_sanitize_log(f"getFile failed: {e}"))
         return None
 
     def download_file(self, file_url, dest_path):
@@ -201,7 +219,7 @@ class TelegramBot:
                 f.write(r.content)
             return True
         except Exception as e:
-            log.warning(f"File download failed: {e}")
+            log.warning(_sanitize_log(f"File download failed: {e}"))
             return False
 
 

@@ -1,6 +1,6 @@
 # Sovereign AI Workstation — Full Product Breakdown
 
-> Engine: **CODEC v3.1** — 400 features · 75 skills · 940+ tests · 58K+ lines of production code · 9 products
+> Engine: **CODEC v3.2** — 400 features · 76 skills · 2000+ tests · 52K+ lines of production code · 9 products
 
 The product name is **Sovereign AI Workstation**. Throughout this document
 and the codebase, **CODEC** refers to the underlying open-source engine /
@@ -256,7 +256,7 @@ MCP tool name shown where it differs from the file name.
 | 22 | Heartbeat system (5 parallel service health checks) |
 | 23 | Daily database backup with 7-day rotation |
 | 24 | Scheduler (cron-like crew scheduling with dedup) |
-| 25 | Audit logging across 16 categories (50MB rotation, JSON-line) |
+| 25 | Audit logging across 16 categories (daily rotation, 30-day retention, JSON-line) |
 | 26 | Process watchdog (auto-kills stuck processes >500MB RAM, <0.5% CPU) |
 | 27 | iMessage agent (wake word trigger, vision, voice notes, 3 smart agents) |
 | 28 | Telegram bot (DM support, conversation memory, markdown, voice notes) |
@@ -594,7 +594,7 @@ The 8th product — a complete browser-automation pillar with a dedicated headle
 | 14. CODEC Pilot — Browser Automation You Can Teach *(v2.3)* | 32 |
 | **TOTAL** | **400** |
 
-**400 features · 75 skills · 940+ tests · 58K+ lines of production code · 9 products**
+**400 features · 76 skills · 2000+ tests · 52K+ lines of production code · 9 products**
 
 ### What's new in v3.2
 

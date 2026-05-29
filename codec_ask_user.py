@@ -280,11 +280,16 @@ def _is_consenting_answer(answer: str, *, destructive_verb: str,
                           options: Optional[List[str]]) -> Tuple[bool, str]:
     """§1.7 acceptance rules. Returns (accepted, normalized_answer).
 
-    - Empty / whitespace → reject ("")
-    - Generic affirmative ("yes"/"ok"/"yeah" alone) → reject ("")
-    - Answer text contains destructive_verb (case-insensitive) → accept
+    Strict-consent mode (destructive_verb non-empty):
+    - Empty / whitespace → reject
+    - Generic affirmative ("yes"/"ok"/"yeah" alone) → reject
     - Answer matches an option label exactly (case-insensitive) → accept
-    - Anything else → accept (free-text, treated as a non-confirming answer)
+    - Answer text contains destructive_verb (case-insensitive) → accept
+    - Anything else (incl. free-text refusals like "no" / "cancel") → reject
+
+    Non-strict mode (destructive_verb empty — general question):
+    - Empty / whitespace → reject
+    - Anything else → accept the answer as-is
     """
     if not answer:
         return (False, "")
@@ -297,16 +302,17 @@ def _is_consenting_answer(answer: str, *, destructive_verb: str,
         for opt in options:
             if opt.lower() == low:
                 return (True, stripped)
-    # Generic-yes alone → reject.
-    if low in _GENERIC_YES:
+    if destructive_verb:
+        # Strict-consent gate (LS-1 / SR-1): require literal verb-match.
+        # Free-text without verb is treated as a refusal — paired with
+        # submit_answer's rejection counter, two refusals → ambiguous_consent
+        # timeout → ask() returns TIMEOUT_SENTINEL → caller blocks the action.
+        if low in _GENERIC_YES:
+            return (False, "")
+        if re.search(rf"\b{re.escape(destructive_verb.lower())}\b", low):
+            return (True, stripped)
         return (False, "")
-    # Verb literally present in answer → accept.
-    if destructive_verb and re.search(
-            rf"\b{re.escape(destructive_verb.lower())}\b", low):
-        return (True, stripped)
-    # Anything else (free-text non-confirming response) → accept the answer
-    # as-is. The agent's downstream logic decides what to do; we only
-    # GATE the consent path, we don't gate non-confirmation.
+    # Non-strict (general question): accept any non-empty answer.
     return (True, stripped)
 
 

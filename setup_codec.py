@@ -34,11 +34,11 @@ def banner():
     ║ ██      ██    ██ ██   ██ █████   ██       ║
     ║ ██      ██    ██ ██   ██ ██      ██       ║
     ║  ██████  ██████  ██████  ███████  ██████  ║
-    ║                            Setup v2.1.0   ║
+    ║                            Setup v3.2.0   ║
     ╚═══════════════════════════════════════════╝{X}
 {W}  Your Open-Source Intelligent Command Layer
-  7 products: Core · Dictate · Instant · Chat · Vibe · Voice · Overview
-  50+ skills · 8 text services · 10+ AI agent crews{X}
+  9 products: Core · Chat · Dashboard · Vibe · Agents · Dictate · Instant · Pilot · Project
+  76 skills · 12 pre-built agent crews{X}
 """)
 
 def ask(prompt, options=None, default=None):
@@ -479,8 +479,10 @@ def main():
 
     if ask_yn("Enable CODEC Agents (multi-agent crews)?", True):
         config["agents_enabled"] = True
-        print(f"  {G}✓{X} CODEC Agents enabled — 5 crews available in /chat")
-        print(f"  {W}  Crews: Deep Research, Daily Briefing, Trip Planner, Competitor Analysis, Email Handler{X}")
+        print(f"  {G}✓{X} CODEC Agents enabled — 12 crews available in /chat")
+        print(f"  {W}  Crews: Deep Research, Daily Briefing, Trip Planner, Competitor Analysis,{X}")
+        print(f"  {W}         Email Handler, Social Media, Code Review, Data Analysis,{X}")
+        print(f"  {W}         Content Writer, Meeting Summarizer, Invoice Generator, Project Manager{X}")
     else:
         config["agents_enabled"] = False
 

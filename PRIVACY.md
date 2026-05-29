@@ -34,7 +34,7 @@ CODEC has to make outbound HTTPS calls to do useful work. These are the categori
 | Category | When | Where | What's in the payload |
 |---|---|---|---|
 | **LLM provider you chose** | Every Chat/Voice turn, every agent step | Whatever you set in `config.json` — by default `http://localhost:1234` (LM Studio on this Mac, so *also local*) | Your prompt + relevant conversation context. **If you configure a cloud provider** (OpenAI, Anthropic, Gemini, AVA cloud proxy), prompts go there subject to their privacy policy. |
-| **Voice TTS (Kokoro)** | When `tts_engine` is on | Default: `http://localhost:8080` (local). Optional: ElevenLabs, etc. | The text CODEC will speak. Local-only by default. |
+| **Voice TTS (Kokoro)** | When `tts_engine` is on | Default: `http://localhost:8085` (local). Optional: ElevenLabs, etc. | The text CODEC will speak. Local-only by default. |
 | **Whisper STT** | Wake-word mode, dictation, voice calls | Default: `http://localhost:8084` (local) | The audio buffer to transcribe. Local-only by default. |
 | **Vision (Qwen-VL / Gemini Flash)** | "Read my screen", `screenshot_text` skill | Default: `http://localhost:8083` (local Qwen). Optional fallback: Gemini Flash via your Google API key | The screenshot (base64). Local-only by default; cloud fallback is config-gated. |
 | **Google APIs (Calendar, Gmail, Drive, Keep, Sheets, Slides, Tasks)** | Only when you trigger a skill that uses them | Google | OAuth-scoped per-product calls. Tokens stored in Keychain, never on disk. |

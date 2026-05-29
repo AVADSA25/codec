@@ -27,6 +27,7 @@ _ALLOWLIST = {
     "codec_telegram.py",         # bridge vision POST (A-11 pending)
     "skills/screenshot_text.py",  # OCR vision POST (A-11 pending)
     "codec_core.py",             # generated session-script string, not a live POST
+    "pilot/pilot_agent.py",      # vendored CODEC Pilot module — uses its own LLM client
 }
 
 _INLINE_POST_RE = re.compile(r"\.post\s*\([^)]*chat/completions")
