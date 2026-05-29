@@ -21,7 +21,7 @@ jobs:
           # runner. pynput stays in the list, but the conftest installs a
           # stub when its real import fails (headless Linux has no X11).
           pip install pytest fastmcp httpx requests pynput pydantic ruff \
-                      fastapi numpy
+                      fastapi numpy pyotp 'qrcode[pil]'
       - name: Lint (ruff) — F-4 gate, config in ruff.toml
         run: ruff check .
       - name: Skill import smoke (standalone script, not a pytest module)

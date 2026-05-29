@@ -67,7 +67,7 @@ def get_telegram_config(cfg):
         bot_token = tg.get("bot_token", "")
     return {
         "bot_token": bot_token,
-        "allowed_chat_ids": tg.get("allowed_chat_ids", []),  # empty = allow all
+        "allowed_chat_ids": tg.get("allowed_chat_ids", []),  # empty = DENY all (fail-closed, C2)
         "require_trigger": tg.get("require_trigger", False),  # DMs don't need trigger by default
         "max_response_length": tg.get("max_response_length", 4000),
     }
@@ -492,6 +492,33 @@ def save_to_memory(chat_id, user_text, assistant_text):
     return codec_bridges.save_to_memory("telegram", chat_id, user_text, assistant_text)
 
 
+# ── Chat filtering ──────────────────────────────────────────────────────────
+# C2 (Fix #2): one-time "no allowlist configured" warning flag (mirrors
+# codec_imessage). Module-level so the fail-closed deny logs ONCE per process.
+_warned_no_allowlist = False
+
+
+def is_chat_allowed(chat_id, tg_cfg):
+    """Whether `chat_id` may drive CODEC over the Telegram bridge.
+
+    FAIL-CLOSED (C2): an EMPTY (or missing) ``allowed_chat_ids`` denies ALL
+    inbound — anyone who learns the bot token must NOT be able to drive CODEC.
+    The operator enables replies by adding their own chat id to
+    ``config.telegram.allowed_chat_ids``.
+    """
+    allowed = tg_cfg.get("allowed_chat_ids", [])
+    if not allowed:
+        global _warned_no_allowlist
+        if not _warned_no_allowlist:
+            log.warning(
+                "bridge_no_allowlist: telegram allowed_chat_ids is empty — "
+                "denying ALL inbound (fail-closed, C2). Add your chat id to "
+                "config.telegram.allowed_chat_ids to enable replies.")
+            _warned_no_allowlist = True
+        return False
+    return chat_id in allowed
+
+
 # ── Process message ─────────────────────────────────────────────────────────
 def process_message(bot, update, tg_cfg, llm_cfg):
     msg = update.get("message", {})
@@ -504,10 +531,9 @@ def process_message(bot, update, tg_cfg, llm_cfg):
     if not chat_id:
         return
 
-    # Chat ID filter
-    allowed = tg_cfg.get("allowed_chat_ids", [])
-    if allowed and chat_id not in allowed:
-        log.info(f"Chat {chat_id} not in allowlist — ignored")
+    # Chat ID filter — FAIL-CLOSED (C2): empty allowed_chat_ids denies all.
+    if not is_chat_allowed(chat_id, tg_cfg):
+        log.info(f"Chat {chat_id} not allowed — ignored")
         return
 
     # ── Extract text ─────────────────────────────────────────────────────
