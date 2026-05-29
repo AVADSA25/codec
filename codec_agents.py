@@ -180,15 +180,26 @@ def _web_search(query: str) -> str:
 
 def _web_fetch(url: str) -> str:
     try:
-        # Fix #7 (H1): SSRF guard BEFORE the request. The fetched text is
-        # returned to the agent/LLM, so a read of an internal/metadata host is
-        # an exfil path even though the crew tool has no explicit egress allow.
+        # Fix #7 (H1) + re-audit N3: SSRF guard BEFORE the request AND on every
+        # redirect hop. The fetched text is returned to the agent/LLM, so a read
+        # of an internal/metadata host is an exfil path; _sync_http defaults to
+        # follow_redirects=True, which would reach an internal target via a 302
+        # the guard never saw — so we follow redirects manually here.
         import codec_ssrf
+        from urllib.parse import urljoin
+        cur = url.strip()
         try:
-            codec_ssrf.validate_url(url.strip())
+            for _ in range(6):  # initial request + up to 5 redirects
+                codec_ssrf.validate_url(cur)
+                r = _sync_http.get(cur, follow_redirects=False)
+                if r.is_redirect and r.headers.get("location"):
+                    cur = urljoin(cur, r.headers["location"])
+                    continue
+                break
+            else:
+                return "Fetch error: blocked URL (too many redirects)"
         except codec_ssrf.SSRFError as e:
             return f"Fetch error: blocked URL ({e})"
-        r = _sync_http.get(url.strip())
         if r.status_code in (401, 403):
             return f"Blocked by site (HTTP {r.status_code}). Site requires JavaScript or blocks automated access."
         if r.status_code >= 400:
