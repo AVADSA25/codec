@@ -13,6 +13,18 @@ fastmcp>=3.3.1
 pyotp>=2.9.0
 qrcode[pil]>=8.0
 
+# Security floors for transitive / runtime deps (Fix #6, re-audit dependency
+# pass). These pin the advisory-safe minor so a fresh `pip install -r` is
+# patched. NONE is actively exploitable in CODEC's usage (fastmcp's SSRF is in
+# the OpenAPIProvider, which CODEC doesn't use; pillow's CVEs are in image
+# PARSING and CODEC only generates QR codes; urllib3's need the low-level
+# ProxyManager / a malicious server vs the SSRF-guarded web_fetch) — this is
+# hygiene, keeping the dep tree current. The deployed interpreters were found
+# STALE vs these floors; refresh them (see docs note) at a maintenance window.
+urllib3>=2.7.0          # CVE-2026-44431 / -44432 (transitive via requests)
+pillow>=12.2.0          # CVE-2026-42311 + others (transitive via qrcode[pil])
+cryptography>=46.0.7    # CVE-2026-39892 / -34073 (routes/auth + codec_license)
+
 # Optional: TTS (Kokoro 82M — Apple Silicon)
 # mlx-audio misaki num2words phonemizer-fork spacy
 

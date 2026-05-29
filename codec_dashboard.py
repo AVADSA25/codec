@@ -27,7 +27,7 @@ from routes._shared import (
     _append_schedule_run_log,
     AUTH_ENABLED, AUTH_SESSION_HOURS, AUTH_COOKIE_NAME,
     _auth_sessions, _auth_lock, _e2e_keys,
-    _auth_available, _verify_biometric_session,
+    _auth_available, _verify_biometric_session, _session_token_valid,
     _save_sessions, _save_e2e_keys,
     get_db,
     _pending_approvals, _approval_lock, _evict_expired_approvals,
@@ -164,14 +164,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if AUTH_ENABLED and _auth_available():
             if _verify_biometric_session(request):
                 return await call_next(request)
-            # Fallback: accept session token as ?s= query param (for img/stream URLs on mobile)
+            # Fallback: accept session token as ?s= query param (for img/stream
+            # URLs on mobile). re-audit N5: route through _session_token_valid so
+            # the TOTP-verified gate is enforced here too — previously this path
+            # checked only token existence + age, letting a pre-TOTP token skip
+            # 2FA via ?s=<token> on any GET /api endpoint.
             qs_token = request.query_params.get("s", "")
-            if qs_token and request.method == "GET":
-                with _auth_lock:
-                    if qs_token in _auth_sessions:
-                        session = _auth_sessions[qs_token]
-                        if datetime.now() - session["created"] <= timedelta(hours=AUTH_SESSION_HOURS):
-                            return await call_next(request)
+            if qs_token and request.method == "GET" and _session_token_valid(qs_token):
+                return await call_next(request)
             # Biometric failed — reject
             cookie_val = request.cookies.get(AUTH_COOKIE_NAME, "<missing>")
             log.warning("AUTH REJECTED: path=%s method=%s ip=%s cookie=%s...",
@@ -2239,7 +2239,11 @@ CHAT_SKILL_ALLOWLIST = {
     # Self-improvement & meta
     "ai_news_digest", "scheduler",
     # Skill creation & delegation
-    "create_skill", "skill_forge", "ask_codec_to_build", "delegate",
+    # re-audit (CHAIN-002): skill_forge writes forged code to disk WITHOUT the
+    # review gate, so it must not be auto-firable from a chat [SKILL:...] tag —
+    # skill creation goes through create_skill's review-and-approve flow only
+    # (PR-1B). ask_codec_to_build had no backing skill file (stale entry).
+    "create_skill", "delegate",
     # Phase 2 Step 7 — end-of-day shift report (read-only, no destructive side effects)
     "shift_report",
     # Phase 2 Step 6 — first declarative trigger (clipboard URL → web_fetch).
@@ -2448,6 +2452,14 @@ def _try_skill(user_text: str):
         from codec_dispatch import check_skill, run_skill
         skill = check_skill(user_text)
         if skill and skill.get("name") in CHAT_SKILL_ALLOWLIST:
+            # re-audit A2: destructive skills need explicit consent (reuses the
+            # AskUserQuestion PWA panel; blocks this worker thread until answered).
+            import codec_consent
+            if not codec_consent.chat_consent_ok(skill["name"], user_text):
+                return skill["name"], (
+                    f"⚠ '{skill['name']}' is a destructive operation and wasn't "
+                    "confirmed — skipped."
+                )
             result = run_skill(skill, user_text, app="CODEC Chat")
             if result is not None:
                 return skill["name"], str(result)
@@ -2468,6 +2480,14 @@ def _try_skill_by_name(name: str, query: str):
     try:
         from codec_dispatch import run_skill
         skill = {"name": name}
+        # re-audit A2: a destructive skill emitted via a post-LLM [SKILL:...] tag
+        # (the prompt-injection vector) needs explicit consent before it runs —
+        # reuses the AskUserQuestion PWA panel. Blocks until answered.
+        import codec_consent
+        if not codec_consent.chat_consent_ok(name, query):
+            return name, (
+                f"⚠ '{name}' is a destructive operation and wasn't confirmed — skipped."
+            )
         result = run_skill(skill, query, app="CODEC Chat (LLM-routed)")
         if result is not None:
             return name, str(result)
@@ -2646,6 +2666,131 @@ def _should_escalate_to_project(user_text: str, session_id: str) -> dict:
     }
 
 
+def _chat_vision_response(body: dict, messages: list):
+    """If the request carries images, route to the vision model and return the
+    response dict; else return None. Fix #8 (intra-file CC reduction):
+    extracted verbatim from chat_completion, behavior-preserving. The inline
+    vision POST is an A-11-pending site and stays in codec_dashboard."""
+    images = body.get("images", [])
+    if not images:
+        return None
+    import requests as rq2
+    config2 = {}
+    try:
+        with open(CONFIG_PATH) as f:
+            config2 = json.load(f)
+    except (OSError, json.JSONDecodeError) as e:
+        log.warning(f"Config read failed; proceeding without overrides: {e}")
+    vision_url = config2.get("vision_base_url", "http://localhost:8083/v1")
+    vision_model = config2.get("vision_model", "mlx-community/Qwen2.5-VL-7B-Instruct-4bit")
+    # Build multimodal message: last user text + all images
+    last_text = ""
+    for m in reversed(messages):
+        if m.get("role") == "user" and isinstance(m.get("content"), str):
+            last_text = m["content"]
+            break
+    if not last_text:
+        last_text = "Describe and analyze this image in detail."
+    mm_content = []
+    for img_b64 in images:
+        mm_content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}})
+    mm_content.append({"type": "text", "text": last_text})
+    v_payload = {
+        "model": vision_model,
+        "messages": [{"role": "user", "content": mm_content}],
+        "max_tokens": 4000,
+        "temperature": 0.7
+    }
+    # re-audit N7: guard the vision-backend call + parse. This helper runs
+    # OUTSIDE chat_completion's try/except, so a non-200 / malformed response
+    # (model not loaded, OOM, timeout) previously surfaced as a raw 500 with no
+    # JSON body. Return a graceful 502 instead.
+    try:
+        vr = rq2.post(f"{vision_url}/chat/completions", json=v_payload,
+                      headers={"Content-Type": "application/json"}, timeout=120)
+        vr.raise_for_status()
+        vdata = vr.json()
+        vanswer = vdata["choices"][0]["message"]["content"].strip()
+    except Exception as e:
+        log.warning(f"[chat] vision backend call failed: {e}")
+        return JSONResponse(
+            {"error": f"Vision model unavailable: {type(e).__name__}"},
+            status_code=502,
+        )
+    import re as re2
+    vanswer = re2.sub(r'<think>[\s\S]*?</think>', '', vanswer).strip()
+    return {"response": vanswer, "model": vision_model}
+
+
+def _build_chat_system_prompt(config: dict, budget, has_attachment: bool,
+                              last_user_text: str) -> str:
+    """Build the chat system prompt: override-aware base + per-turn step-budget
+    warnings + attachment / content-rewrite / observer-injection suffixes.
+
+    Fix #8 (intra-file CC reduction): extracted verbatim from chat_completion;
+    behavior-preserving. `budget` is mutated exactly as before — warn_now() and
+    consume('llm_call') happen here, once, where they ran inline.
+    """
+    from datetime import datetime as _dt
+    _overrides = _load_prompt_overrides()
+    _chat_prompt = _overrides.get("chat", CHAT_SYSTEM_PROMPT)
+    sys_prompt = _chat_prompt.format(date=_dt.now().strftime("%A, %B %d, %Y"))
+    if budget.warn_now():
+        sys_prompt += (
+            "\n\n⚠ 1 step remaining in this turn. Wrap up — do NOT "
+            "emit additional [SKILL:...] tags."
+        )
+    budget.consume("llm_call")
+    if budget.at_limit():
+        sys_prompt += (
+            "\n\n## Step Budget Exhausted\n"
+            "You've hit the per-turn step budget. Summarize what you "
+            "accomplished and any blockers in one short paragraph. "
+            "DO NOT emit [SKILL:...] tags or call additional tools."
+        )
+    if has_attachment:
+        sys_prompt += (
+            "\n\n## This Turn\n"
+            "The user has attached a file or image and its content is already "
+            "embedded in their message between [IMAGE ANALYSIS]/[DOCUMENT] markers. "
+            "Respond conversationally about the attached content. "
+            "DO NOT emit [SKILL:...] tool-calling tags in this response."
+        )
+    _u_text_lower = (last_user_text or "").lower()
+    _content_rewrite_intent = any(
+        kw in _u_text_lower for kw in (
+            "format my email", "format this email", "format my message",
+            "reformat", "rewrite", "reword", "redraft", "polish",
+            "proofread", "edit my email", "fix my email", "fix the grammar",
+            "make this sound", "translate this", "translate the following",
+            "draft a reply", "draft an email", "draft this",
+        )
+    )
+    if _content_rewrite_intent:
+        sys_prompt += (
+            "\n\n## This Turn\n"
+            "The user is asking you to generate or rewrite text directly "
+            "(format/edit/draft/translate/polish their email or message). "
+            "Respond with the rewritten content as plain prose. "
+            "DO NOT emit [SKILL:...] tool-calling tags in this response — "
+            "the answer IS the rewritten text, no tools needed."
+        )
+    try:
+        from codec_observer import maybe_inject_observation_summary
+        _obs_transport = "local" if "localhost" in (config.get("llm_base_url") or "") else "chat"
+        _obs_summary, _obs_reason = maybe_inject_observation_summary(
+            user_prompt=last_user_text or "",
+            transport=_obs_transport,
+            skill_name=None,           # post-LLM tag path, no skill resolved yet
+            skill_module=None,
+        )
+        if _obs_summary:
+            sys_prompt += f"\n\n{_obs_summary}"
+    except Exception as _e:
+        log.debug(f"[observer] injection failed (non-fatal): {_e}")
+    return sys_prompt
+
+
 @app.post("/api/chat")
 async def chat_completion(request: Request):
     """Direct LLM chat with full context window + tool calling"""
@@ -2730,41 +2875,10 @@ async def chat_completion(request: Request):
                 else:
                     return {"response": f"**⚡ {skill_name}**: {skill_result}", "skill": skill_name}
 
-    # Check for images — route to vision model
-    images = body.get("images", [])
-    if images:
-        import requests as rq2
-        config2 = {}
-        try:
-            with open(CONFIG_PATH) as f: config2 = json.load(f)
-        except (OSError, json.JSONDecodeError) as e:
-            log.warning(f"Config read failed; proceeding without overrides: {e}")
-        vision_url = config2.get("vision_base_url", "http://localhost:8083/v1")
-        vision_model = config2.get("vision_model", "mlx-community/Qwen2.5-VL-7B-Instruct-4bit")
-        # Build multimodal message: last user text + all images
-        last_text = ""
-        for m in reversed(messages):
-            if m.get("role") == "user" and isinstance(m.get("content"), str):
-                last_text = m["content"]
-                break
-        if not last_text:
-            last_text = "Describe and analyze this image in detail."
-        mm_content = []
-        for img_b64 in images:
-            mm_content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}})
-        mm_content.append({"type": "text", "text": last_text})
-        v_payload = {
-            "model": vision_model,
-            "messages": [{"role": "user", "content": mm_content}],
-            "max_tokens": 4000,
-            "temperature": 0.7
-        }
-        vr = rq2.post(f"{vision_url}/chat/completions", json=v_payload, headers={"Content-Type": "application/json"}, timeout=120)
-        vdata = vr.json()
-        vanswer = vdata["choices"][0]["message"]["content"].strip()
-        import re as re2
-        vanswer = re2.sub(r'<think>[\s\S]*?</think>', '', vanswer).strip()
-        return {"response": vanswer, "model": vision_model}
+    # Check for images — route to vision model (extracted, Fix #8)
+    vision_resp = _chat_vision_response(body, messages)
+    if vision_resp is not None:
+        return vision_resp
 
     try:
         config = {}
@@ -2783,84 +2897,12 @@ async def chat_completion(request: Request):
         force_search = body.get("force_search", False)
         messages = _enrich_messages(messages, config, force_search=bool(force_search))
 
-        # Inject CODEC system prompt (use override if user edited it)
-        from datetime import datetime as _dt
-        _overrides = _load_prompt_overrides()
-        _chat_prompt = _overrides.get("chat", CHAT_SYSTEM_PROMPT)
-        sys_prompt = _chat_prompt.format(date=_dt.now().strftime("%A, %B %d, %Y"))
-        # Phase 1 Step 3 §3 — consume one step for the LLM call itself.
-        # If we're now at limit-1, append the "1 step remaining" warning
-        # to the system prompt so the LLM wraps up. If we're already
-        # exhausted, switch to forced-summary mode.
-        if _budget.warn_now():
-            sys_prompt += (
-                "\n\n⚠ 1 step remaining in this turn. Wrap up — do NOT "
-                "emit additional [SKILL:...] tags."
-            )
-        _budget.consume("llm_call")
-        if _budget.at_limit():
-            sys_prompt += (
-                "\n\n## Step Budget Exhausted\n"
-                "You've hit the per-turn step budget. Summarize what you "
-                "accomplished and any blockers in one short paragraph. "
-                "DO NOT emit [SKILL:...] tags or call additional tools."
-            )
-        # Bugfix 2026-04-16: when the user attaches a file/image, the default
-        # system prompt still teaches the LLM to emit [SKILL:...] tags, which
-        # then leak through the streaming path. Force conversational mode for
-        # this turn so the LLM analyses the attached content directly.
-        if has_attachment:
-            sys_prompt += (
-                "\n\n## This Turn\n"
-                "The user has attached a file or image and its content is already "
-                "embedded in their message between [IMAGE ANALYSIS]/[DOCUMENT] markers. "
-                "Respond conversationally about the attached content. "
-                "DO NOT emit [SKILL:...] tool-calling tags in this response."
-            )
-
-        # Bugfix 2026-04-27: detect content-rewriting intents (format/draft/
-        # rewrite/reword/proofread an email/message/text) — these are pure-text
-        # generation tasks, NOT skill calls. Past failure: LLM emitted
-        # [SKILL:translate:<email body>] for "format my email", which ran the
-        # translate skill on the email and returned "Translation failed."
-        _u_text_lower = (last_user_text or "").lower()
-        _content_rewrite_intent = any(
-            kw in _u_text_lower for kw in (
-                "format my email", "format this email", "format my message",
-                "reformat", "rewrite", "reword", "redraft", "polish",
-                "proofread", "edit my email", "fix my email", "fix the grammar",
-                "make this sound", "translate this", "translate the following",
-                "draft a reply", "draft an email", "draft this",
-            )
+        # Build the system prompt (override + step-budget + attachment /
+        # content-rewrite / observer suffixes) — extracted to a helper for
+        # readability (Fix #8). Consumes the llm_call step budget internally.
+        sys_prompt = _build_chat_system_prompt(
+            config, _budget, has_attachment, last_user_text
         )
-        if _content_rewrite_intent:
-            sys_prompt += (
-                "\n\n## This Turn\n"
-                "The user is asking you to generate or rewrite text directly "
-                "(format/edit/draft/translate/polish their email or message). "
-                "Respond with the rewritten content as plain prose. "
-                "DO NOT emit [SKILL:...] tool-calling tags in this response — "
-                "the answer IS the rewritten text, no tools needed."
-            )
-        # Phase 2 Step 5 — Observer summary injection (gated per §X).
-        # Local Qwen always injects; cloud transports (this chat path uses
-        # local-by-default but may be cloud-routed by the user — pass the
-        # detected transport tag) gate on possessive / continuation /
-        # skill-flag patterns. Returns (summary_or_None, reason); audit
-        # emit fires inside the helper ONLY when summary non-None.
-        try:
-            from codec_observer import maybe_inject_observation_summary
-            _obs_transport = "local" if "localhost" in (config.get("llm_base_url") or "") else "chat"
-            _obs_summary, _obs_reason = maybe_inject_observation_summary(
-                user_prompt=last_user_text or "",
-                transport=_obs_transport,
-                skill_name=None,           # post-LLM tag path, no skill resolved yet
-                skill_module=None,
-            )
-            if _obs_summary:
-                sys_prompt += f"\n\n{_obs_summary}"
-        except Exception as _e:
-            log.debug(f"[observer] injection failed (non-fatal): {_e}")
 
         # Prepend system message (or replace existing one)
         if messages and messages[0].get("role") == "system":
@@ -3060,8 +3102,10 @@ async def update_schedule(sched_id: str, request: Request):
     for s in schedules:
         if s.get("id") == sched_id:
             s.update({k: v for k, v in body.items() if k != "id"})
-            with open(sched_path, "w") as f:
-                json.dump(schedules, f, indent=2)
+            # re-audit medium: atomic write (was truncate-then-write, racing
+            # the scheduler's concurrent read of schedules.json).
+            import codec_jsonstore
+            codec_jsonstore.atomic_write_json(sched_path, schedules)
             return {"schedule": s}
     return JSONResponse({"error": "Not found"}, status_code=404)
 

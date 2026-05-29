@@ -26,6 +26,26 @@ from routes._shared import (
 router = APIRouter()
 
 
+def _pinned_builtin_names():
+    """Basenames (e.g. 'calculator.py') of hash-pinned built-in skills, read
+    from the committed <repo>/skills/.manifest.json. An approved user skill must
+    never take one of these names: doing so shadows the trusted built-in (or,
+    if the write dir is the repo skills dir, overwrites the hash-pinned file).
+    Fix #7b / H2·H6. Returns a lowercased set on success, or **None on any read
+    failure** so the caller can FAIL CLOSED (re-audit N20: returning an empty
+    set let the approve guard block nothing during a transient manifest read
+    failure). Lowercased so the guard holds on case-insensitive filesystems."""
+    try:
+        repo_skills = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "skills"
+        )
+        with open(os.path.join(repo_skills, ".manifest.json"), encoding="utf-8") as f:
+            data = json.load(f)
+        return {str(n).lower() for n in (data.get("skills") or {}).keys()}
+    except Exception:
+        return None
+
+
 @router.post("/api/skill/review")
 async def skill_review(request: Request):
     """Stage LLM-generated skill code for human review -- does NOT write to disk."""
@@ -54,6 +74,33 @@ async def skill_approve(request: Request):
     filename = pending["filename"]
     if "SKILL_DESCRIPTION" not in code or "def run(" not in code:
         return JSONResponse({"error": "Invalid skill: must contain SKILL_DESCRIPTION and def run()"}, status_code=400)
+    # Fix #7b (H2/H6): never let an approved skill take a hash-pinned built-in's
+    # name — that would shadow (or overwrite) the trusted built-in. The PR-1A
+    # load-time hash/AST gate is the last line of defense; this refuses at the
+    # write point so the trusted file is never displaced in the first place.
+    # re-audit N20: FAIL CLOSED — _pinned_builtin_names() returns None if the
+    # manifest can't be read, in which case we refuse rather than allow (the old
+    # empty-set return blocked nothing during a transient read failure).
+    _pinned = _pinned_builtin_names()
+    if _pinned is None or filename.lower() in _pinned:
+        _reason = ("manifest_unreadable" if _pinned is None
+                   else "pinned_builtin_overwrite")
+        try:
+            from codec_audit import log_event
+            log_event(
+                "skill_approve_blocked", source="codec-routes-skills",
+                message=f"refused approve of {filename}: {_reason}",
+                level="warning", outcome="denied",
+                extra={"filename": filename, "reason": _reason},
+            )
+        except Exception:
+            pass
+        _msg = (
+            "Refused: cannot verify the protected built-in manifest."
+            if _pinned is None
+            else f"Refused: '{filename}' is a protected built-in skill name and cannot be overwritten"
+        )
+        return JSONResponse({"error": _msg}, status_code=400)
     from codec_config import is_dangerous_skill_code
     dangerous, reason = is_dangerous_skill_code(code)
     if dangerous:
@@ -192,7 +239,9 @@ async def save_triggers(request: Request):
         elif triggers is None:
             # Reset to default
             custom.pop(skill_name, None)
-    os.makedirs(os.path.dirname(CUSTOM_TRIGGERS_PATH), exist_ok=True)
-    with open(CUSTOM_TRIGGERS_PATH, "w") as f:
-        json.dump(custom, f, indent=2)
+    # re-audit medium: atomic write so a concurrent reader (SkillRegistry /
+    # _load_custom_triggers) can't catch a truncated file mid-write and silently
+    # fall back to {} (wiping all custom triggers for that read).
+    import codec_jsonstore
+    codec_jsonstore.atomic_write_json(CUSTOM_TRIGGERS_PATH, custom)
     return {"status": "saved", "custom_count": len(custom)}

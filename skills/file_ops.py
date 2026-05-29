@@ -91,14 +91,15 @@ def _is_safe_path(path):
     Emits `file_ops_blocked` on refusal."""
     requested = path
     expanded = os.path.expanduser(path)
-    # The file may not exist yet (write/append) — realpath the parent and
-    # re-join the basename so we still resolve symlinked parents.
-    parent = os.path.dirname(expanded) or "."
+    # re-audit N10: realpath the FULL path so a symlinked FINAL component
+    # resolves to its (blocked) target. The old parent-only realpath let a
+    # symlinked basename (x.json -> ~/.codec/oauth_state.json) slip past the
+    # blocklist and open() then read/wrote through it. realpath handles a
+    # not-yet-existing file (resolves the existing prefix, appends the rest).
     try:
-        real_parent = os.path.realpath(parent)
+        real = os.path.realpath(expanded)
     except Exception:
-        real_parent = parent
-    real = os.path.join(real_parent, os.path.basename(expanded))
+        real = expanded
 
     for bp in _BLOCKED_ROOTS_REAL:
         if real == bp or real.startswith(bp + os.sep):
@@ -194,16 +195,21 @@ def run(task, app="", ctx=""):
     if not safe:
         return reason
 
+    # re-audit N4/N10: operate on the realpath-resolved target (the same path
+    # _is_safe_path validated) so a symlinked final component can't redirect the
+    # read/write between check and open.
+    target = os.path.realpath(os.path.expanduser(path))
+
     if action == "read":
-        if not os.path.exists(path):
+        if not os.path.exists(target):
             return f"File not found: {path}"
-        if not os.path.isfile(path):
+        if not os.path.isfile(target):
             return f"Not a file: {path}"
         try:
-            size = os.path.getsize(path)
+            size = os.path.getsize(target)
             if size > 1_000_000:
                 return f"File too large ({size:,} bytes). Max 1 MB for safety."
-            with open(path, "r", encoding="utf-8", errors="replace") as f:
+            with open(target, "r", encoding="utf-8", errors="replace") as f:
                 content = f.read(_MAX_READ)
             truncated = " (truncated)" if len(content) >= _MAX_READ else ""
             return f"File: {path} ({size:,} bytes){truncated}\n\n{content}"
@@ -222,7 +228,7 @@ def run(task, app="", ctx=""):
         if len(content) > _MAX_WRITE:
             return f"Content too large ({len(content):,} chars). Max {_MAX_WRITE:,}."
         # Ensure parent directory exists
-        parent = os.path.dirname(path)
+        parent = os.path.dirname(target)
         if parent and not os.path.exists(parent):
             try:
                 os.makedirs(parent, exist_ok=True)
@@ -230,7 +236,7 @@ def run(task, app="", ctx=""):
                 return f"Cannot create directory {parent}: {e}"
         try:
             mode = "a" if action == "append" else "w"
-            with open(path, mode, encoding="utf-8") as f:
+            with open(target, mode, encoding="utf-8") as f:
                 f.write(content)
             verb = "Appended to" if action == "append" else "Written to"
             return f"{verb} {path} ({len(content)} chars)"

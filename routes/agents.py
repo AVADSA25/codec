@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 from routes._shared import (
     _research_jobs, _agent_jobs, _AGENTS_DIR,
     _agent_jobs_lock, _evict_stale_agent_jobs,
+    _research_jobs_lock, _evict_stale_research_jobs,
 )
 
 router = APIRouter()
@@ -27,17 +28,25 @@ async def deep_research_start(request: Request):
         return JSONResponse({"error": "Topic too short"}, status_code=400)
 
     job_id = str(uuid.uuid4())[:8]
-    _research_jobs[job_id] = {"status": "running", "topic": topic, "started": datetime.now().isoformat()}
+    # re-audit N9: evict stale jobs + guard the add/update under the lock so the
+    # dict can't grow unbounded and the worker write can't race the insert.
+    _evict_stale_research_jobs()
+    with _research_jobs_lock:
+        _research_jobs[job_id] = {"status": "running", "topic": topic, "started": datetime.now().isoformat()}
 
     async def _run_async():
         try:
             from codec_agents import run_crew
             result = await run_crew("deep_research", topic=topic)
-            _research_jobs[job_id].update(result)
+            with _research_jobs_lock:
+                if job_id in _research_jobs:
+                    _research_jobs[job_id].update(result)
         except Exception as e:
             import traceback; traceback.print_exc()
-            _research_jobs[job_id]["status"] = "error"
-            _research_jobs[job_id]["error"] = str(e)
+            with _research_jobs_lock:
+                if job_id in _research_jobs:
+                    _research_jobs[job_id]["status"] = "error"
+                    _research_jobs[job_id]["error"] = str(e)
 
     asyncio.create_task(_run_async())
     return {"job_id": job_id, "status": "running", "topic": topic}
@@ -176,8 +185,9 @@ async def save_custom_agent(request: Request):
                 status_code=409,
             )
         path = os.path.join(_AGENTS_DIR, safe_id + ".json")
-        with open(path, "w") as f:
-            json.dump({**body, "id": safe_id}, f, indent=2)
+        # re-audit medium: atomic write (was truncate-then-write, racing readers).
+        import codec_jsonstore
+        codec_jsonstore.atomic_write_json(path, {**body, "id": safe_id})
         return {"saved": True, "id": safe_id, "path": path}
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
@@ -554,13 +564,17 @@ def grant_permission(agent_id: str, body: GrantBody, request: Request = None):
             detail=f"refused: '{body.value}' is a blocked, traversal, or over-broad path grant",
         )
 
-    grants = _cap.load_grants(agent_id)
-    if not grants:
-        raise HTTPException(status_code=409, detail="agent has no grants yet (not approved?)")
+    # C5 (Fix #5): hold the cross-process flock across the whole
+    # load -> modify -> save -> hash-sync so two concurrent /grant calls can't
+    # read the same grants, each add one value, and clobber each other's write.
+    with _cap.grants_lock(agent_id):
+        grants = _cap.load_grants(agent_id)
+        if not grants:
+            raise HTTPException(status_code=409, detail="agent has no grants yet (not approved?)")
 
-    grants[body.kind] = sorted(set(grants.get(body.kind, []) + [body.value]))
-    _cap.save_grants(agent_id, grants)
-    _cap.set_grants_hash(agent_id)  # B-4: keep the tamper hash in sync with the legit grant
+        grants[body.kind] = sorted(set(grants.get(body.kind, []) + [body.value]))
+        _cap.save_grants(agent_id, grants)
+        _cap.set_grants_hash(agent_id)  # B-4: keep the tamper hash in sync with the legit grant
 
     # If blocked, unblock
     if manifest.get("status") == "blocked_on_permission":

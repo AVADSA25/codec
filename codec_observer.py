@@ -79,10 +79,12 @@ import sys
 import threading
 import time
 from collections import deque
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+from codec_concurrency import run_with_timeout
 
 # ── Audit emit ────────────────────────────────────────────────────────────────
 # Lazy-import so module import doesn't pull in codec_audit at startup time.
@@ -265,17 +267,16 @@ def _get_screenshot_ocr(timeout_ms: int, retry_timeout_ms: int) -> Tuple[str, bo
     On non-mac or vision-unavailable env: returns ("", True)."""
     def _ocr_call(timeout_s: float) -> Optional[str]:
         try:
-            # Lazy-import skills.screenshot_text — it pulls in vision libs.
-            # Fail soft if unavailable.
-            sys.path.insert(0, os.path.expanduser("~/.codec/skills"))
-            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)) + "/skills")
-            # Note: we don't actually use a Python import here because the
-            # skill triggers heavy imports. Instead, use the same primitive
-            # the skill uses (screencapture + Vision via osascript), but
-            # subject to a hard timeout.
-            with ThreadPoolExecutor(max_workers=1) as ex:
-                future = ex.submit(_screencapture_and_ocr_blocking)
-                return future.result(timeout=timeout_s)
+            # re-audit N8: we do NOT import the screenshot_text skill here (it
+            # triggers heavy vision libs). We use the same primitive it uses
+            # (screencapture + Vision via osascript), subject to a hard timeout.
+            # The old `sys.path.insert(...)` lines were dead AND leaked: they ran
+            # on every poll (up to 2x), growing sys.path unboundedly for the life
+            # of the codec-observer process. Removed.
+            # C4 fix: run_with_timeout actually bounds wall-clock time. The old
+            # `with ThreadPoolExecutor() as ex` exit blocked on shutdown(wait=True),
+            # so a stuck screencapture popup hung each poll for ~5s.
+            return run_with_timeout(_screencapture_and_ocr_blocking, timeout_s)
         except (FuturesTimeoutError, TimeoutError):
             return None
         except Exception as e:

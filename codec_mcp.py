@@ -18,6 +18,7 @@ log = logging.getLogger("codec_mcp")
 SKILL_TIMEOUT_SEC = int(os.environ.get("CODEC_SKILL_TIMEOUT", "30"))
 
 from codec_audit import audit as _audit
+from codec_concurrency import run_with_timeout
 from codec_hooks import HookVeto, run_with_hooks
 
 
@@ -205,6 +206,23 @@ def _load_skill_tools_into(mcp):
                            correlation_id=cid)
                     return err
 
+                # re-audit B1: hard-refuse destructive / high-power skills over
+                # MCP — claude.ai (the caller) can't consent at the operator
+                # tier. Most are already in _HTTP_BLOCKED (refused earlier); this
+                # covers the full destructive set (file_ops, file_write,
+                # imessage_send, pilot, …) + any skill declaring SKILL_DESTRUCTIVE.
+                try:
+                    import codec_consent
+                    if codec_consent.gate_enabled() and codec_consent.is_destructive_skill(rkey, registry=registry):
+                        _audit(sname, event="denied",
+                               task_len=tlen, context_len=clen,
+                               duration_ms=(time.time()-t0)*1000,
+                               outcome="denied", error_type="DestructiveBlockedMCP",
+                               correlation_id=cid)
+                        return codec_consent.mcp_refuse_message(rkey)
+                except ImportError:
+                    pass  # consent module unavailable — fall through (other guards remain)
+
                 # Phase 1 Step 2: refactor per design §3.3 path 5. The
                 # threadpool/timeout/result block becomes the `invoke` closure
                 # passed to run_with_hooks. The invoke closure RAISES on skill
@@ -213,15 +231,17 @@ def _load_skill_tools_into(mcp):
                 _transport = os.environ.get("CODEC_MCP_TRANSPORT", "stdio")
 
                 def _invoke(t: str, c: str) -> str:
-                    import concurrent.futures
                     def _run_inner():
                         mod = registry.load(rkey)
                         if mod is None or not hasattr(mod, "run"):
                             raise _SkillLoadError("load_failed")
                         return mod.run(t, c)
-                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-                        fut = ex.submit(_run_inner)
-                        return fut.result(timeout=SKILL_TIMEOUT_SEC)
+                    # C4 fix: run_with_timeout actually bounds wall-clock time.
+                    # The old `with ThreadPoolExecutor() as ex` exit blocked on
+                    # shutdown(wait=True), so a hung skill defeated the timeout.
+                    # It raises TimeoutError (== concurrent.futures.TimeoutError
+                    # on py3.11+), caught by the except clause below.
+                    return run_with_timeout(_run_inner, SKILL_TIMEOUT_SEC)
 
                 import concurrent.futures
                 try:

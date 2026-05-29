@@ -129,7 +129,12 @@ def _save_notification(title, body, status="success", schedule_id=None):
         "read": False,
         "schedule_id": schedule_id
     }
-    with _notif_lock:
+    # Fix #9: the notification writers run in separate PM2 daemons (dashboard,
+    # scheduler, heartbeat, autopilot) that don't share _notif_lock. Hold the
+    # cross-process file_lock across the load->insert->write so they can't
+    # clobber each other (matches the codec_ask_user notification pairing).
+    import codec_jsonstore
+    with _notif_lock, codec_jsonstore.file_lock(NOTIFICATIONS_PATH):
         notifications = _load_notifications()
         notifications.insert(0, notif)
         _write_notifications(notifications)
@@ -268,15 +273,19 @@ def _is_totp_enabled():
         return False
 
 
-def _verify_biometric_session(request):
-    """Check if the request has a valid auth session cookie."""
-    if not AUTH_ENABLED or not _auth_available():
-        return True
-    token = request.cookies.get(AUTH_COOKIE_NAME)
+def _session_token_valid(token) -> bool:
+    """Core session validity: the token exists, is unexpired, and is
+    TOTP-verified when TOTP is enabled. Shared by the cookie path
+    (_verify_biometric_session) AND the ?s= query-param fallback in
+    AuthMiddleware — re-audit N5: the ?s= path previously checked only
+    existence + age, skipping the TOTP-verified gate, so a pre-TOTP token could
+    bypass 2FA via ?s=<token> on any GET /api endpoint."""
+    if not token:
+        return False
     with _auth_lock:
-        if not token or token not in _auth_sessions:
+        session = _auth_sessions.get(token)
+        if not session:
             return False
-        session = _auth_sessions[token]
         if datetime.now() - session["created"] > timedelta(hours=AUTH_SESSION_HOURS):
             del _auth_sessions[token]
             _save_sessions()
@@ -284,6 +293,13 @@ def _verify_biometric_session(request):
         if _is_totp_enabled() and not session.get("totp_verified"):
             return False
     return True
+
+
+def _verify_biometric_session(request):
+    """Check if the request has a valid auth session cookie."""
+    if not AUTH_ENABLED or not _auth_available():
+        return True
+    return _session_token_valid(request.cookies.get(AUTH_COOKIE_NAME))
 
 
 # ── Database helpers ──
@@ -332,6 +348,7 @@ def _close_all_db_conns():
 
 _pending_skills: dict = {}
 _research_jobs: dict = {}
+_research_jobs_lock = threading.Lock()  # re-audit N9: guards add/del of _research_jobs
 _agent_jobs: dict = {}
 _agent_jobs_lock = threading.Lock()  # guards structural add/del of _agent_jobs (H-4)
 _AGENT_JOB_TTL_SECONDS = 86400       # evict terminal jobs older than 24h (H-4)
@@ -364,6 +381,33 @@ def _evict_stale_agent_jobs(now=None, ttl_seconds: int = _AGENT_JOB_TTL_SECONDS)
                     removed += 1
     except Exception as e:
         log.warning("agent-job eviction failed: %s", e)
+    return removed
+
+
+def _evict_stale_research_jobs(now=None, ttl_seconds: int = _AGENT_JOB_TTL_SECONDS) -> int:
+    """re-audit N9: mirror _evict_stale_agent_jobs for _research_jobs, which
+    previously had NO lock and NO eviction → unbounded growth (memory leak →
+    max_memory_restart) plus a 'dict changed size during iteration' race
+    against the deep_research worker. Snapshot-iterates under
+    `_research_jobs_lock`; never evicts a `running` job; keeps entries with a
+    missing/unparseable `started`. Returns the number evicted. Never raises."""
+    now = now if now is not None else datetime.now()
+    removed = 0
+    try:
+        with _research_jobs_lock:
+            for jid, job in list(_research_jobs.items()):
+                if not isinstance(job, dict) or job.get("status") == "running":
+                    continue
+                started = job.get("started", "")
+                try:
+                    age = (now - datetime.fromisoformat(started)).total_seconds()
+                except (ValueError, TypeError):
+                    continue  # unparseable timestamp → keep
+                if age > ttl_seconds:
+                    _research_jobs.pop(jid, None)
+                    removed += 1
+    except Exception as e:
+        log.warning("research-job eviction failed: %s", e)
     return removed
 
 
