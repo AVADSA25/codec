@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import sqlite3
+import threading
 from datetime import datetime, timedelta
 
 log = logging.getLogger(__name__)
@@ -34,6 +35,13 @@ class CodecMemory:
     def __init__(self, db_path: str = DB_PATH):
         self.db_path = db_path
         self._conn = None
+        # C5 (Fix #5): serialize all runtime use of the shared sqlite3
+        # connection (check_same_thread=False) across threads — concurrent
+        # access to one connection can corrupt cursor state or segfault.
+        # RLock so a locked method calling another (get_context->search,
+        # cleanup->close) doesn't self-deadlock. WAL + busy_timeout remain the
+        # cross-PROCESS layer; this lock is the in-process one.
+        self._lock = threading.RLock()
         self._init_fts()
 
     # ── Connection ────────────────────────────────────────────────────────────
@@ -48,12 +56,13 @@ class CodecMemory:
 
     def close(self):
         """Close the persistent connection. Safe to call multiple times."""
-        if self._conn is not None:
-            try:
-                self._conn.close()
-            except Exception as e:
-                log.debug("Memory DB connection close failed: %s", e)
-            self._conn = None
+        with self._lock:
+            if self._conn is not None:
+                try:
+                    self._conn.close()
+                except Exception as e:
+                    log.debug("Memory DB connection close failed: %s", e)
+                self._conn = None
 
     # ── Init ─────────────────────────────────────────────────────────────────
 
@@ -181,13 +190,14 @@ class CodecMemory:
 
     def save(self, session_id: str, role: str, content: str, user_id: str = "default") -> int:
         """Insert one message. Triggers keep FTS in sync automatically."""
-        conn = self._get_conn()
-        cur = conn.execute(
-            "INSERT INTO conversations (session_id, timestamp, role, content, user_id) VALUES (?,?,?,?,?)",
-            (session_id, datetime.now().isoformat(), role, content[:4000], user_id),
-        )
-        conn.commit()
-        return cur.lastrowid
+        with self._lock:
+            conn = self._get_conn()
+            cur = conn.execute(
+                "INSERT INTO conversations (session_id, timestamp, role, content, user_id) VALUES (?,?,?,?,?)",
+                (session_id, datetime.now().isoformat(), role, content[:4000], user_id),
+            )
+            conn.commit()
+            return cur.lastrowid
 
     # ── Search ───────────────────────────────────────────────────────────────
 
@@ -197,11 +207,12 @@ class CodecMemory:
         sanitized = _sanitize_fts_query(query)
         if not sanitized:
             return []
-        conn = self._get_conn()
-        try:
-            return self._fts_query(conn, sanitized, limit, user_id=user_id)
-        except sqlite3.OperationalError:
-            return []
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                return self._fts_query(conn, sanitized, limit, user_id=user_id)
+            except sqlite3.OperationalError:
+                return []
 
     def _fts_query(self, conn, query: str, limit: int, user_id: str = None) -> list[dict]:
         if user_id is not None:
@@ -232,28 +243,29 @@ class CodecMemory:
         """Return recent conversations from the past N days.
         If user_id is provided, only return results for that user."""
         since = (datetime.now() - timedelta(days=days)).isoformat()
-        conn = self._get_conn()
-        if user_id is not None:
-            rows = conn.execute("""
-                SELECT id, session_id, timestamp, role, content
-                FROM conversations
-                WHERE timestamp >= ? AND user_id = ?
-                ORDER BY id DESC
-                LIMIT ?
-            """, (since, user_id, limit)).fetchall()
-        else:
-            rows = conn.execute("""
-                SELECT id, session_id, timestamp, role, content
-                FROM conversations
-                WHERE timestamp >= ?
-                ORDER BY id DESC
-                LIMIT ?
-            """, (since, limit)).fetchall()
-        return [
-            {"id": r[0], "session_id": r[1], "timestamp": r[2],
-             "role": r[3], "content": r[4]}
-            for r in rows
-        ]
+        with self._lock:
+            conn = self._get_conn()
+            if user_id is not None:
+                rows = conn.execute("""
+                    SELECT id, session_id, timestamp, role, content
+                    FROM conversations
+                    WHERE timestamp >= ? AND user_id = ?
+                    ORDER BY id DESC
+                    LIMIT ?
+                """, (since, user_id, limit)).fetchall()
+            else:
+                rows = conn.execute("""
+                    SELECT id, session_id, timestamp, role, content
+                    FROM conversations
+                    WHERE timestamp >= ?
+                    ORDER BY id DESC
+                    LIMIT ?
+                """, (since, limit)).fetchall()
+            return [
+                {"id": r[0], "session_id": r[1], "timestamp": r[2],
+                 "role": r[3], "content": r[4]}
+                for r in rows
+            ]
 
     def get_context(self, query: str, n: int = 5, user_id: str = None) -> str:
         """Return a formatted string of top-N matching snippets for LLM injection."""
@@ -270,68 +282,71 @@ class CodecMemory:
     def get_sessions(self, limit: int = 20, user_id: str = None) -> list[dict]:
         """Return distinct sessions with message count and last timestamp.
         If user_id is provided, only return sessions for that user."""
-        conn = self._get_conn()
-        if user_id is not None:
-            rows = conn.execute("""
-                SELECT session_id,
-                       COUNT(*) AS msg_count,
-                       MIN(timestamp) AS started,
-                       MAX(timestamp) AS last_msg,
-                       MAX(CASE WHEN role='user' THEN content ELSE '' END) AS last_user_msg
-                FROM conversations
-                WHERE user_id = ?
-                GROUP BY session_id
-                ORDER BY last_msg DESC
-                LIMIT ?
-            """, (user_id, limit)).fetchall()
-        else:
-            rows = conn.execute("""
-                SELECT session_id,
-                       COUNT(*) AS msg_count,
-                       MIN(timestamp) AS started,
-                       MAX(timestamp) AS last_msg,
-                       MAX(CASE WHEN role='user' THEN content ELSE '' END) AS last_user_msg
-                FROM conversations
-                GROUP BY session_id
-                ORDER BY last_msg DESC
-                LIMIT ?
-            """, (limit,)).fetchall()
-        return [
-            {"session_id": r[0], "msg_count": r[1],
-             "started": r[2], "last_msg": r[3],
-             "preview": (r[4] or "")[:100]}
-            for r in rows
-        ]
+        with self._lock:
+            conn = self._get_conn()
+            if user_id is not None:
+                rows = conn.execute("""
+                    SELECT session_id,
+                           COUNT(*) AS msg_count,
+                           MIN(timestamp) AS started,
+                           MAX(timestamp) AS last_msg,
+                           MAX(CASE WHEN role='user' THEN content ELSE '' END) AS last_user_msg
+                    FROM conversations
+                    WHERE user_id = ?
+                    GROUP BY session_id
+                    ORDER BY last_msg DESC
+                    LIMIT ?
+                """, (user_id, limit)).fetchall()
+            else:
+                rows = conn.execute("""
+                    SELECT session_id,
+                           COUNT(*) AS msg_count,
+                           MIN(timestamp) AS started,
+                           MAX(timestamp) AS last_msg,
+                           MAX(CASE WHEN role='user' THEN content ELSE '' END) AS last_user_msg
+                    FROM conversations
+                    GROUP BY session_id
+                    ORDER BY last_msg DESC
+                    LIMIT ?
+                """, (limit,)).fetchall()
+            return [
+                {"session_id": r[0], "msg_count": r[1],
+                 "started": r[2], "last_msg": r[3],
+                 "preview": (r[4] or "")[:100]}
+                for r in rows
+            ]
 
     def cleanup(self, retention_days: int = 90) -> dict:
         """Delete conversations older than retention_days and VACUUM the database.
         Returns dict with deleted count and final size."""
         cutoff = (datetime.now() - timedelta(days=retention_days)).isoformat()
-        conn = self._get_conn()
-        before = conn.execute("SELECT COUNT(*) FROM conversations").fetchone()[0]
-        conn.execute("DELETE FROM conversations WHERE timestamp < ?", (cutoff,))
-        conn.commit()
-        after = conn.execute("SELECT COUNT(*) FROM conversations").fetchone()[0]
-        deleted = before - after
-        # Rebuild FTS after bulk delete
-        if deleted > 0:
-            conn.execute("INSERT INTO conversations_fts(conversations_fts) VALUES('rebuild')")
+        with self._lock:
+            conn = self._get_conn()
+            before = conn.execute("SELECT COUNT(*) FROM conversations").fetchone()[0]
+            conn.execute("DELETE FROM conversations WHERE timestamp < ?", (cutoff,))
             conn.commit()
-        # VACUUM requires closing and reopening (cannot run inside a transaction on reused conn)
-        self.close()
-        tmp = sqlite3.connect(self.db_path)
-        tmp.execute("VACUUM")
-        tmp.close()
-        size = os.path.getsize(self.db_path)
-        return {"deleted": deleted, "remaining": after, "size_bytes": size}
+            after = conn.execute("SELECT COUNT(*) FROM conversations").fetchone()[0]
+            deleted = before - after
+            # Rebuild FTS after bulk delete
+            if deleted > 0:
+                conn.execute("INSERT INTO conversations_fts(conversations_fts) VALUES('rebuild')")
+                conn.commit()
+            # VACUUM requires closing and reopening (cannot run inside a transaction on reused conn)
+            self.close()  # RLock is reentrant, so this nested acquire is safe
+            tmp = sqlite3.connect(self.db_path)
+            tmp.execute("VACUUM")
+            tmp.close()
+            size = os.path.getsize(self.db_path)
+            return {"deleted": deleted, "remaining": after, "size_bytes": size}
 
     def rebuild_fts(self) -> int:
         """Full FTS rebuild — use after bulk imports. Returns row count."""
-        conn = self._get_conn()
-        conn.execute("INSERT INTO conversations_fts(conversations_fts) VALUES('rebuild')")
-        conn.commit()
-        count = conn.execute("SELECT COUNT(*) FROM conversations_fts").fetchone()[0]
-        return count
+        with self._lock:
+            conn = self._get_conn()
+            conn.execute("INSERT INTO conversations_fts(conversations_fts) VALUES('rebuild')")
+            conn.commit()
+            count = conn.execute("SELECT COUNT(*) FROM conversations_fts").fetchone()[0]
+            return count
 
 
 # ── CLI ──────────────────────────────────────────────────────────────────────

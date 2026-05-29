@@ -201,7 +201,12 @@ def _write_question_notification(record: dict) -> None:
     surface; failures here log + continue.
     """
     try:
-        with _FILE_LOCK:
+        # C5 (Fix #5): hold the cross-process file_lock across the whole
+        # read-modify-write so concurrent daemons (dashboard / voice /
+        # agent-runner) can't clobber each other's append. _FILE_LOCK is the
+        # in-process guard; codec_jsonstore.file_lock is the cross-process one —
+        # same pairing the PENDING_QUESTIONS read-modify-write already uses.
+        with _FILE_LOCK, codec_jsonstore.file_lock(NOTIFICATIONS_PATH):
             try:
                 with open(NOTIFICATIONS_PATH) as f:
                     notifs = json.load(f)
@@ -648,7 +653,10 @@ def submit_answer(qid: str, answer: str, *, answered_via: str = "pwa") -> dict:
 
     # Mark the matching notification as read.
     try:
-        with _FILE_LOCK:
+        # C5 (Fix #5): same cross-process file_lock as the question-write path
+        # above, so a concurrent _write_question_notification and this
+        # mark-read can't clobber each other on notifications.json.
+        with _FILE_LOCK, codec_jsonstore.file_lock(NOTIFICATIONS_PATH):
             try:
                 with open(NOTIFICATIONS_PATH) as f:
                     notifs = json.load(f)
