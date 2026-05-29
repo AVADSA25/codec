@@ -10,7 +10,6 @@ broken. If any of these fail in the future, CODEC is dangerous as shipped.
 """
 
 import asyncio
-import re
 import pytest
 
 
@@ -91,7 +90,7 @@ class TestLS3CrewParallelMaxSteps:
     """
 
     def test_parallel_mode_caps_at_max_steps(self):
-        from codec_agents import Crew, Agent
+        from codec_agents import Crew
 
         captured = []
 
