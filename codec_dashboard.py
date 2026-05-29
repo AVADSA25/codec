@@ -2239,7 +2239,11 @@ CHAT_SKILL_ALLOWLIST = {
     # Self-improvement & meta
     "ai_news_digest", "scheduler",
     # Skill creation & delegation
-    "create_skill", "skill_forge", "ask_codec_to_build", "delegate",
+    # re-audit (CHAIN-002): skill_forge writes forged code to disk WITHOUT the
+    # review gate, so it must not be auto-firable from a chat [SKILL:...] tag —
+    # skill creation goes through create_skill's review-and-approve flow only
+    # (PR-1B). ask_codec_to_build had no backing skill file (stale entry).
+    "create_skill", "delegate",
     # Phase 2 Step 7 — end-of-day shift report (read-only, no destructive side effects)
     "shift_report",
     # Phase 2 Step 6 — first declarative trigger (clipboard URL → web_fetch).
@@ -3082,8 +3086,10 @@ async def update_schedule(sched_id: str, request: Request):
     for s in schedules:
         if s.get("id") == sched_id:
             s.update({k: v for k, v in body.items() if k != "id"})
-            with open(sched_path, "w") as f:
-                json.dump(schedules, f, indent=2)
+            # re-audit medium: atomic write (was truncate-then-write, racing
+            # the scheduler's concurrent read of schedules.json).
+            import codec_jsonstore
+            codec_jsonstore.atomic_write_json(sched_path, schedules)
             return {"schedule": s}
     return JSONResponse({"error": "Not found"}, status_code=404)
 

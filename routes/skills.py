@@ -239,7 +239,9 @@ async def save_triggers(request: Request):
         elif triggers is None:
             # Reset to default
             custom.pop(skill_name, None)
-    os.makedirs(os.path.dirname(CUSTOM_TRIGGERS_PATH), exist_ok=True)
-    with open(CUSTOM_TRIGGERS_PATH, "w") as f:
-        json.dump(custom, f, indent=2)
+    # re-audit medium: atomic write so a concurrent reader (SkillRegistry /
+    # _load_custom_triggers) can't catch a truncated file mid-write and silently
+    # fall back to {} (wiping all custom triggers for that read).
+    import codec_jsonstore
+    codec_jsonstore.atomic_write_json(CUSTOM_TRIGGERS_PATH, custom)
     return {"status": "saved", "custom_count": len(custom)}

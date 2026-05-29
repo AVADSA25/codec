@@ -185,8 +185,9 @@ async def save_custom_agent(request: Request):
                 status_code=409,
             )
         path = os.path.join(_AGENTS_DIR, safe_id + ".json")
-        with open(path, "w") as f:
-            json.dump({**body, "id": safe_id}, f, indent=2)
+        # re-audit medium: atomic write (was truncate-then-write, racing readers).
+        import codec_jsonstore
+        codec_jsonstore.atomic_write_json(path, {**body, "id": safe_id})
         return {"saved": True, "id": safe_id, "path": path}
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
