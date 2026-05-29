@@ -79,10 +79,12 @@ import sys
 import threading
 import time
 from collections import deque
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+from codec_concurrency import run_with_timeout
 
 # ── Audit emit ────────────────────────────────────────────────────────────────
 # Lazy-import so module import doesn't pull in codec_audit at startup time.
@@ -273,9 +275,10 @@ def _get_screenshot_ocr(timeout_ms: int, retry_timeout_ms: int) -> Tuple[str, bo
             # skill triggers heavy imports. Instead, use the same primitive
             # the skill uses (screencapture + Vision via osascript), but
             # subject to a hard timeout.
-            with ThreadPoolExecutor(max_workers=1) as ex:
-                future = ex.submit(_screencapture_and_ocr_blocking)
-                return future.result(timeout=timeout_s)
+            # C4 fix: run_with_timeout actually bounds wall-clock time. The old
+            # `with ThreadPoolExecutor() as ex` exit blocked on shutdown(wait=True),
+            # so a stuck screencapture popup hung each poll for ~5s.
+            return run_with_timeout(_screencapture_and_ocr_blocking, timeout_s)
         except (FuturesTimeoutError, TimeoutError):
             return None
         except Exception as e:

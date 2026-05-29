@@ -18,6 +18,7 @@ log = logging.getLogger("codec_mcp")
 SKILL_TIMEOUT_SEC = int(os.environ.get("CODEC_SKILL_TIMEOUT", "30"))
 
 from codec_audit import audit as _audit
+from codec_concurrency import run_with_timeout
 from codec_hooks import HookVeto, run_with_hooks
 
 
@@ -213,15 +214,17 @@ def _load_skill_tools_into(mcp):
                 _transport = os.environ.get("CODEC_MCP_TRANSPORT", "stdio")
 
                 def _invoke(t: str, c: str) -> str:
-                    import concurrent.futures
                     def _run_inner():
                         mod = registry.load(rkey)
                         if mod is None or not hasattr(mod, "run"):
                             raise _SkillLoadError("load_failed")
                         return mod.run(t, c)
-                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-                        fut = ex.submit(_run_inner)
-                        return fut.result(timeout=SKILL_TIMEOUT_SEC)
+                    # C4 fix: run_with_timeout actually bounds wall-clock time.
+                    # The old `with ThreadPoolExecutor() as ex` exit blocked on
+                    # shutdown(wait=True), so a hung skill defeated the timeout.
+                    # It raises TimeoutError (== concurrent.futures.TimeoutError
+                    # on py3.11+), caught by the except clause below.
+                    return run_with_timeout(_run_inner, SKILL_TIMEOUT_SEC)
 
                 import concurrent.futures
                 try:
