@@ -105,27 +105,30 @@ def _notify(title, body, status="success", schedule_id=None):
     # 1. Save to notifications.json (same format as dashboard)
     notif_path = os.path.expanduser("~/.codec/notifications.json")
     try:
-        try:
-            with open(notif_path) as f:
-                notifications = json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError):
-            notifications = []
-        notif = {
-            "id": f"notif_{_uuid.uuid4().hex[:10]}",
-            "type": "task_report",
-            "title": title,
-            "body": body[:2000],
-            "status": status,
-            "created": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
-            "read": False,
-            "schedule_id": schedule_id,
-        }
-        if doc_url:
-            notif["doc_url"] = doc_url
-        notifications.insert(0, notif)
-        os.makedirs(os.path.dirname(notif_path), exist_ok=True)
-        with open(notif_path, "w") as f:
-            json.dump(notifications, f, indent=2)
+        # Fix #9 Phase 2: hold the cross-process file_lock across the whole
+        # load→insert→write so this daemon can't clobber a concurrent
+        # dashboard / ask_user / heartbeat write of notifications.json.
+        import codec_jsonstore
+        with codec_jsonstore.file_lock(notif_path):
+            try:
+                with open(notif_path) as f:
+                    notifications = json.load(f)
+            except (FileNotFoundError, json.JSONDecodeError):
+                notifications = []
+            notif = {
+                "id": f"notif_{_uuid.uuid4().hex[:10]}",
+                "type": "task_report",
+                "title": title,
+                "body": body[:2000],
+                "status": status,
+                "created": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+                "read": False,
+                "schedule_id": schedule_id,
+            }
+            if doc_url:
+                notif["doc_url"] = doc_url
+            notifications.insert(0, notif)
+            codec_jsonstore.atomic_write_json(notif_path, notifications)
     except Exception as e:
         log.warning(f"  Failed to save notification: {e}")
     # 2. macOS notification

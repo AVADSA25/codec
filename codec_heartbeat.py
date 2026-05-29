@@ -383,25 +383,28 @@ def check_alerts():
                     capture_output=True, timeout=5)
             except Exception:
                 pass
-            # Save to notifications.json for dashboard bell icon
+            # Save to notifications.json for dashboard bell icon. Fix #9 Phase 2:
+            # hold the cross-process file_lock across the load→insert→write so
+            # this daemon can't clobber a concurrent dashboard / scheduler write.
             try:
-                try:
-                    with open(notif_path) as f:
-                        notifs = json.load(f)
-                except (FileNotFoundError, json.JSONDecodeError):
-                    notifs = []
-                notifs.insert(0, {
-                    "id": f"notif_{_uuid.uuid4().hex[:10]}",
-                    "type": "task_report",
-                    "title": "Heartbeat Alert",
-                    "body": msg,
-                    "status": "warning",
-                    "created": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
-                    "read": False,
-                    "schedule_id": "heartbeat",
-                })
-                with open(notif_path, "w") as f:
-                    json.dump(notifs, f, indent=2)
+                import codec_jsonstore
+                with codec_jsonstore.file_lock(notif_path):
+                    try:
+                        with open(notif_path) as f:
+                            notifs = json.load(f)
+                    except (FileNotFoundError, json.JSONDecodeError):
+                        notifs = []
+                    notifs.insert(0, {
+                        "id": f"notif_{_uuid.uuid4().hex[:10]}",
+                        "type": "task_report",
+                        "title": "Heartbeat Alert",
+                        "body": msg,
+                        "status": "warning",
+                        "created": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+                        "read": False,
+                        "schedule_id": "heartbeat",
+                    })
+                    codec_jsonstore.atomic_write_json(notif_path, notifs)
             except Exception:
                 pass
     return triggered
