@@ -554,13 +554,17 @@ def grant_permission(agent_id: str, body: GrantBody, request: Request = None):
             detail=f"refused: '{body.value}' is a blocked, traversal, or over-broad path grant",
         )
 
-    grants = _cap.load_grants(agent_id)
-    if not grants:
-        raise HTTPException(status_code=409, detail="agent has no grants yet (not approved?)")
+    # C5 (Fix #5): hold the cross-process flock across the whole
+    # load -> modify -> save -> hash-sync so two concurrent /grant calls can't
+    # read the same grants, each add one value, and clobber each other's write.
+    with _cap.grants_lock(agent_id):
+        grants = _cap.load_grants(agent_id)
+        if not grants:
+            raise HTTPException(status_code=409, detail="agent has no grants yet (not approved?)")
 
-    grants[body.kind] = sorted(set(grants.get(body.kind, []) + [body.value]))
-    _cap.save_grants(agent_id, grants)
-    _cap.set_grants_hash(agent_id)  # B-4: keep the tamper hash in sync with the legit grant
+        grants[body.kind] = sorted(set(grants.get(body.kind, []) + [body.value]))
+        _cap.save_grants(agent_id, grants)
+        _cap.set_grants_hash(agent_id)  # B-4: keep the tamper hash in sync with the legit grant
 
     # If blocked, unblock
     if manifest.get("status") == "blocked_on_permission":

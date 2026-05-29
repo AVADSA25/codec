@@ -290,6 +290,21 @@ def set_grants_hash(agent_id: str) -> str:
     return h
 
 
+def grants_lock(agent_id: str):
+    """C5 (Fix #5): cross-process flock around the per-agent grants.json
+    read-modify-write (mirrors _status_lock for the manifest CAS). The /grant
+    endpoint holds this across load_grants -> modify -> save_grants ->
+    set_grants_hash so two concurrent grants can't clobber each other. Falls
+    back to a no-op context if codec_jsonstore is unavailable (headless/CI) —
+    never breaks grant_permission."""
+    try:
+        import codec_jsonstore
+        return codec_jsonstore.file_lock(_agent_dir(agent_id) / "grants.json")
+    except Exception:
+        import contextlib
+        return contextlib.nullcontext()
+
+
 # ── Skill-registry validation ─────────────────────────────────────────────────
 def validate_plan_skills(plan: Plan, registry=None) -> Tuple[bool, List[str]]:
     """Walk every checkpoint's skills_needed; return (ok, missing_skills).
