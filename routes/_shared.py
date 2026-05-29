@@ -129,7 +129,12 @@ def _save_notification(title, body, status="success", schedule_id=None):
         "read": False,
         "schedule_id": schedule_id
     }
-    with _notif_lock:
+    # Fix #9: the notification writers run in separate PM2 daemons (dashboard,
+    # scheduler, heartbeat, autopilot) that don't share _notif_lock. Hold the
+    # cross-process file_lock across the load->insert->write so they can't
+    # clobber each other (matches the codec_ask_user notification pairing).
+    import codec_jsonstore
+    with _notif_lock, codec_jsonstore.file_lock(NOTIFICATIONS_PATH):
         notifications = _load_notifications()
         notifications.insert(0, notif)
         _write_notifications(notifications)
