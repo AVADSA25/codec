@@ -2681,9 +2681,22 @@ def _chat_vision_response(body: dict, messages: list):
         "max_tokens": 4000,
         "temperature": 0.7
     }
-    vr = rq2.post(f"{vision_url}/chat/completions", json=v_payload, headers={"Content-Type": "application/json"}, timeout=120)
-    vdata = vr.json()
-    vanswer = vdata["choices"][0]["message"]["content"].strip()
+    # re-audit N7: guard the vision-backend call + parse. This helper runs
+    # OUTSIDE chat_completion's try/except, so a non-200 / malformed response
+    # (model not loaded, OOM, timeout) previously surfaced as a raw 500 with no
+    # JSON body. Return a graceful 502 instead.
+    try:
+        vr = rq2.post(f"{vision_url}/chat/completions", json=v_payload,
+                      headers={"Content-Type": "application/json"}, timeout=120)
+        vr.raise_for_status()
+        vdata = vr.json()
+        vanswer = vdata["choices"][0]["message"]["content"].strip()
+    except Exception as e:
+        log.warning(f"[chat] vision backend call failed: {e}")
+        return JSONResponse(
+            {"error": f"Vision model unavailable: {type(e).__name__}"},
+            status_code=502,
+        )
     import re as re2
     vanswer = re2.sub(r'<think>[\s\S]*?</think>', '', vanswer).strip()
     return {"response": vanswer, "model": vision_model}

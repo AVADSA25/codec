@@ -348,6 +348,7 @@ def _close_all_db_conns():
 
 _pending_skills: dict = {}
 _research_jobs: dict = {}
+_research_jobs_lock = threading.Lock()  # re-audit N9: guards add/del of _research_jobs
 _agent_jobs: dict = {}
 _agent_jobs_lock = threading.Lock()  # guards structural add/del of _agent_jobs (H-4)
 _AGENT_JOB_TTL_SECONDS = 86400       # evict terminal jobs older than 24h (H-4)
@@ -380,6 +381,33 @@ def _evict_stale_agent_jobs(now=None, ttl_seconds: int = _AGENT_JOB_TTL_SECONDS)
                     removed += 1
     except Exception as e:
         log.warning("agent-job eviction failed: %s", e)
+    return removed
+
+
+def _evict_stale_research_jobs(now=None, ttl_seconds: int = _AGENT_JOB_TTL_SECONDS) -> int:
+    """re-audit N9: mirror _evict_stale_agent_jobs for _research_jobs, which
+    previously had NO lock and NO eviction → unbounded growth (memory leak →
+    max_memory_restart) plus a 'dict changed size during iteration' race
+    against the deep_research worker. Snapshot-iterates under
+    `_research_jobs_lock`; never evicts a `running` job; keeps entries with a
+    missing/unparseable `started`. Returns the number evicted. Never raises."""
+    now = now if now is not None else datetime.now()
+    removed = 0
+    try:
+        with _research_jobs_lock:
+            for jid, job in list(_research_jobs.items()):
+                if not isinstance(job, dict) or job.get("status") == "running":
+                    continue
+                started = job.get("started", "")
+                try:
+                    age = (now - datetime.fromisoformat(started)).total_seconds()
+                except (ValueError, TypeError):
+                    continue  # unparseable timestamp → keep
+                if age > ttl_seconds:
+                    _research_jobs.pop(jid, None)
+                    removed += 1
+    except Exception as e:
+        log.warning("research-job eviction failed: %s", e)
     return removed
 
 

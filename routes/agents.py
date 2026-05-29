@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 from routes._shared import (
     _research_jobs, _agent_jobs, _AGENTS_DIR,
     _agent_jobs_lock, _evict_stale_agent_jobs,
+    _research_jobs_lock, _evict_stale_research_jobs,
 )
 
 router = APIRouter()
@@ -27,17 +28,25 @@ async def deep_research_start(request: Request):
         return JSONResponse({"error": "Topic too short"}, status_code=400)
 
     job_id = str(uuid.uuid4())[:8]
-    _research_jobs[job_id] = {"status": "running", "topic": topic, "started": datetime.now().isoformat()}
+    # re-audit N9: evict stale jobs + guard the add/update under the lock so the
+    # dict can't grow unbounded and the worker write can't race the insert.
+    _evict_stale_research_jobs()
+    with _research_jobs_lock:
+        _research_jobs[job_id] = {"status": "running", "topic": topic, "started": datetime.now().isoformat()}
 
     async def _run_async():
         try:
             from codec_agents import run_crew
             result = await run_crew("deep_research", topic=topic)
-            _research_jobs[job_id].update(result)
+            with _research_jobs_lock:
+                if job_id in _research_jobs:
+                    _research_jobs[job_id].update(result)
         except Exception as e:
             import traceback; traceback.print_exc()
-            _research_jobs[job_id]["status"] = "error"
-            _research_jobs[job_id]["error"] = str(e)
+            with _research_jobs_lock:
+                if job_id in _research_jobs:
+                    _research_jobs[job_id]["status"] = "error"
+                    _research_jobs[job_id]["error"] = str(e)
 
     asyncio.create_task(_run_async())
     return {"job_id": job_id, "status": "running", "topic": topic}
