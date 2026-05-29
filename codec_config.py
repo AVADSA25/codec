@@ -714,6 +714,10 @@ def is_dangerous(cmd):
 _SKILL_DANGEROUS_MODULES = {
     "os", "subprocess", "ctypes", "shutil", "importlib", "signal", "pty",
     "socket",
+    # re-audit N19: `import builtins; builtins.exec(src)` bypassed the gate —
+    # builtins.exec/eval are ast.Attribute calls, not the bare-name Calls the
+    # _SKILL_DANGEROUS_CALLS check catches. Blocking the import closes it.
+    "builtins",
 }
 _SKILL_SAFE_MODULES = {
     "json", "re", "math", "datetime", "collections", "itertools", "functools",

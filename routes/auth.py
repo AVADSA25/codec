@@ -1,6 +1,7 @@
 """CODEC Dashboard — Auth routes (biometric, PIN, TOTP, E2E key exchange)."""
 import os
 import json
+import hmac
 import secrets
 import time
 import subprocess
@@ -131,14 +132,14 @@ async def auth_pin(request: Request):
         return JSONResponse({"error": f"Too many failed attempts. Locked out for {remaining}s."}, status_code=429)
 
     try:
-        if pin_hash == AUTH_PIN_HASH:
+        if hmac.compare_digest(pin_hash, AUTH_PIN_HASH):
             _audit_write(f"[{datetime.now().isoformat()}] AUTH_SUCCESS: method=pin ip={client_ip}\n")
         else:
             _audit_write(f"[{datetime.now().isoformat()}] AUTH_FAILED: method=pin error=wrong_pin ip={client_ip}\n")
     except Exception:
         pass
 
-    if pin_hash == AUTH_PIN_HASH:
+    if hmac.compare_digest(pin_hash, AUTH_PIN_HASH):
         method = "pin"
         log_event("auth_success", "codec-auth", f"Auth success: {method}", extra={"method": method})
         _pin_attempts.pop(client_ip, None)

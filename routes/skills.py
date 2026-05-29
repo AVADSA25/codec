@@ -26,14 +26,15 @@ from routes._shared import (
 router = APIRouter()
 
 
-def _pinned_builtin_names() -> set:
+def _pinned_builtin_names():
     """Basenames (e.g. 'calculator.py') of hash-pinned built-in skills, read
     from the committed <repo>/skills/.manifest.json. An approved user skill must
     never take one of these names: doing so shadows the trusted built-in (or,
     if the write dir is the repo skills dir, overwrites the hash-pinned file).
-    Fix #7b / H2·H6. Returns lowercased names so the guard also holds on
-    case-insensitive filesystems (macOS). Empty set on any read failure —
-    callers must treat empty as "couldn't verify", not "nothing pinned"."""
+    Fix #7b / H2·H6. Returns a lowercased set on success, or **None on any read
+    failure** so the caller can FAIL CLOSED (re-audit N20: returning an empty
+    set let the approve guard block nothing during a transient manifest read
+    failure). Lowercased so the guard holds on case-insensitive filesystems."""
     try:
         repo_skills = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "skills"
@@ -42,7 +43,7 @@ def _pinned_builtin_names() -> set:
             data = json.load(f)
         return {str(n).lower() for n in (data.get("skills") or {}).keys()}
     except Exception:
-        return set()
+        return None
 
 
 @router.post("/api/skill/review")
@@ -77,21 +78,29 @@ async def skill_approve(request: Request):
     # name — that would shadow (or overwrite) the trusted built-in. The PR-1A
     # load-time hash/AST gate is the last line of defense; this refuses at the
     # write point so the trusted file is never displaced in the first place.
-    if filename.lower() in _pinned_builtin_names():
+    # re-audit N20: FAIL CLOSED — _pinned_builtin_names() returns None if the
+    # manifest can't be read, in which case we refuse rather than allow (the old
+    # empty-set return blocked nothing during a transient read failure).
+    _pinned = _pinned_builtin_names()
+    if _pinned is None or filename.lower() in _pinned:
+        _reason = ("manifest_unreadable" if _pinned is None
+                   else "pinned_builtin_overwrite")
         try:
             from codec_audit import log_event
             log_event(
                 "skill_approve_blocked", source="codec-routes-skills",
-                message=f"refused approve of pinned built-in name {filename}",
+                message=f"refused approve of {filename}: {_reason}",
                 level="warning", outcome="denied",
-                extra={"filename": filename, "reason": "pinned_builtin_overwrite"},
+                extra={"filename": filename, "reason": _reason},
             )
         except Exception:
             pass
-        return JSONResponse(
-            {"error": f"Refused: '{filename}' is a protected built-in skill name and cannot be overwritten"},
-            status_code=400,
+        _msg = (
+            "Refused: cannot verify the protected built-in manifest."
+            if _pinned is None
+            else f"Refused: '{filename}' is a protected built-in skill name and cannot be overwritten"
         )
+        return JSONResponse({"error": _msg}, status_code=400)
     from codec_config import is_dangerous_skill_code
     dangerous, reason = is_dangerous_skill_code(code)
     if dangerous:
