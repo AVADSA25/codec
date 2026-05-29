@@ -36,8 +36,9 @@ def load_schedules() -> list:
 
 
 def save_schedules(schedules: list):
-    with open(SCHEDULE_PATH, "w") as f:
-        json.dump(schedules, f, indent=2)
+    # Fix #9 Phase 1: atomic write (was truncate-then-write, racing readers).
+    import codec_jsonstore
+    codec_jsonstore.atomic_write_json(SCHEDULE_PATH, schedules)
 
 
 # ── Management ──────────────────────────────────────────────────────────────

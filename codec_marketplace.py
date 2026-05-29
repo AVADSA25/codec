@@ -47,8 +47,9 @@ def _load_marketplace_meta() -> dict:
 
 
 def _save_marketplace_meta(meta: dict) -> None:
-    with open(MARKETPLACE_META, "w") as f:
-        json.dump(meta, f, indent=2)
+    # Fix #9 Phase 1: atomic write.
+    import codec_jsonstore
+    codec_jsonstore.atomic_write_json(MARKETPLACE_META, meta)
 
 
 def _load_cached_registry() -> dict:
@@ -70,8 +71,8 @@ def _fetch_registry(silent: bool = False) -> dict:
         r = requests.get(REGISTRY_URL, timeout=15)
         if r.status_code == 200:
             data = r.json()
-            with open(os.path.join(CACHE_DIR, "registry.json"), "w") as f:
-                json.dump(data, f, indent=2)
+            import codec_jsonstore
+            codec_jsonstore.atomic_write_json(os.path.join(CACHE_DIR, "registry.json"), data)
             return data
         if not silent:
             print(f"Registry fetch failed: HTTP {r.status_code} — using cached registry")

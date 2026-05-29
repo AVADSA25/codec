@@ -231,8 +231,9 @@ def _load_entity_map() -> dict:
 
 
 def _save_entity_map(m: dict) -> None:
-    with open(ENTITY_MAP_PATH, "w") as f:
-        json.dump(m, f, indent=2, sort_keys=True)
+    # Fix #9 Phase 1: atomic write (sort_keys preserved for stable diffs).
+    import codec_jsonstore
+    codec_jsonstore.atomic_write_json(ENTITY_MAP_PATH, m, sort_keys=True)
 
 
 def compress_rule_based(text: str, entity_map: Optional[dict] = None) -> str:
