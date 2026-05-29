@@ -24,15 +24,27 @@ from contextlib import contextmanager
 from typing import Any, Iterator
 
 
-def atomic_write_json(path: Any, data: Any) -> None:
-    """Atomically write `data` as JSON to `path` (tmp + fsync + replace, 0600)."""
+def atomic_write_json(
+    path: Any,
+    data: Any,
+    *,
+    default: Any = None,
+    sort_keys: bool = False,
+) -> None:
+    """Atomically write `data` as JSON to `path` (tmp + fsync + replace, 0600).
+
+    `default` is the json.dump fallback serializer (pass `str` for datetime/Path
+    values — Fix #9 Phase 0, so this primitive subsumes the hand-rolled
+    `default=str` helpers). `sort_keys` forces deterministic key ordering for
+    callers that need stable diffs/hashes. Both default to the prior behavior.
+    """
     path = str(path)
     directory = os.path.dirname(path) or "."
     os.makedirs(directory, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=directory, suffix=".tmp")
     try:
         with os.fdopen(fd, "w") as f:
-            json.dump(data, f, indent=2)
+            json.dump(data, f, indent=2, default=default, sort_keys=sort_keys)
             f.flush()
             os.fsync(f.fileno())
         os.replace(tmp, path)
@@ -66,3 +78,32 @@ def file_lock(path: Any) -> Iterator[None]:
         except Exception:
             pass
         lock_file.close()
+
+
+def read_modify_write(
+    path: Any,
+    mutate_fn,
+    *,
+    default_factory=dict,
+    default: Any = None,
+    sort_keys: bool = False,
+) -> Any:
+    """Lock + read + mutate + atomic-write `path` as one cross-process-safe unit.
+
+    Holds `file_lock(path)` across the whole read-modify-write so concurrent
+    daemons can't lose each other's update (Fix #9 — standardizes the pattern so
+    a future RMW site can't forget the lock). `mutate_fn(data)` receives the
+    current parsed JSON (or `default_factory()` if the file is missing/corrupt)
+    and returns the new value to persist. Returns the persisted value.
+    `default`/`sort_keys` are forwarded to `atomic_write_json`.
+    """
+    path = str(path)
+    with file_lock(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            data = default_factory()
+        new_data = mutate_fn(data)
+        atomic_write_json(path, new_data, default=default, sort_keys=sort_keys)
+        return new_data
