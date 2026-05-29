@@ -3014,7 +3014,14 @@ async def chat_completion(request: Request):
         skill_tag = re.search(r'\[SKILL:(\w+):([^\]]+)\]', answer)
         if skill_tag:
             s_name, s_query = skill_tag.group(1), skill_tag.group(2)
-            if s_name in CHAT_SKILL_ALLOWLIST:
+            if s_name in CHAT_SKILL_ALLOWLIST and not _budget.consume("post_llm_skill_tag"):
+                # re-audit medium: the non-streaming path previously skipped the
+                # step budget that the streaming _resolve_skill_tag enforces, so
+                # stream:false could run skills past the per-turn cap. Mirror the
+                # stream path: budget exhausted → drop the tag.
+                log.info("[Chat] step_budget exhausted — dropping [SKILL:...] tag (non-stream)")
+                answer = answer.replace(skill_tag.group(0), "")
+            elif s_name in CHAT_SKILL_ALLOWLIST:
                 try:
                     _, s_result = await asyncio.to_thread(_try_skill_by_name, s_name, s_query)
                     if s_result:
