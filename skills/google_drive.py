@@ -2,13 +2,18 @@
 SKILL_NAME = "google_drive"
 SKILL_TRIGGERS = [
     "search my drive", "search drive", "search in drive", "find in drive", "find on drive",
-    "find file", "find document", "find in my drive",
-    "my files", "drive files", "my documents",
-    "search for file", "search for document",
+    "find in my drive",
+    "my drive files", "drive files",
+    "search for file in drive", "search for document in drive",
     "google drive", "my drive",
-    "recent files", "recent documents",
+    "recent drive files", "recent google docs",
     "look in drive", "check drive", "check my drive",
     "in my drive", "on my drive", "from my drive", "from drive",
+    # B4 / SR-26: removed bare "find file" / "find document" / "my files" /
+    # "my documents" / "search for file" / "search for document" /
+    # "recent files" / "recent documents" — collided with file_search
+    # (local FS). Drive-specific synonyms above keep the explicit-intent
+    # path open.
 ]
 SKILL_DESCRIPTION = "Search and list files in your Google Drive"
 SKILL_MCP_EXPOSE = True

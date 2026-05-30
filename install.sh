@@ -83,6 +83,27 @@ if [[ "$(uname)" != "Darwin" ]]; then
 fi
 echo "  ✅ macOS $(sw_vers -productVersion)"
 
+# B5 / SR-27: macOS version floor — README says "Ventura or later" but
+# install.sh previously accepted any Darwin. Soft-warn below Sequoia for
+# now; many features (Touch ID via LocalAuthentication, MLX MoE
+# inference, screencapture changes) lean on macOS 14+.
+MAC_VERSION=$(sw_vers -productVersion | cut -d. -f1)
+if [ -n "$MAC_VERSION" ] && [ "$MAC_VERSION" -lt 13 ]; then
+    echo "  ⚠️  macOS $MAC_VERSION detected — CODEC targets Ventura (13) or later."
+    echo "      Some features (Touch ID, MLX inference) may not work."
+fi
+
+# B5 / SR-27: Apple Silicon check — MLX server only runs on Apple Silicon.
+# Intel Macs install fine but get warned about MLX limitations.
+ARCH=$(uname -m)
+if [ "$ARCH" != "arm64" ]; then
+    echo "  ⚠️  Architecture $ARCH detected — MLX Server requires Apple Silicon."
+    echo "      You can still use cloud LLMs (OpenAI/Claude/Gemini) and Ollama,"
+    echo "      but local Qwen 3.6 35B inference won't be available."
+else
+    echo "  ✅ Apple Silicon ($ARCH)"
+fi
+
 # Disk space check
 FREE_GB=$(df -g / | tail -1 | awk '{print $4}')
 if [ "$FREE_GB" -lt "$MIN_DISK_GB" ]; then

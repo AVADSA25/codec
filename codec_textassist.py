@@ -119,7 +119,7 @@ try:
     # Kill processing overlay now that we have the result
     if _proc_overlay:
         try: _proc_overlay.terminate()
-        except Exception: pass
+        except OSError: pass  # B2/SR-17 — ProcessLookupError ⊂ OSError
     if MODE in ("explain", "translate"):
         # Show result in a styled floating window (no Terminal)
         title = "CODEC Explain" if MODE == "explain" else "CODEC Translate"
@@ -192,5 +192,5 @@ r.mainloop()
 except Exception:
     if _proc_overlay:
         try: _proc_overlay.terminate()
-        except Exception: pass
+        except OSError: pass  # B2/SR-17 — ProcessLookupError ⊂ OSError
     overlay("Error - check terminal", "#ff3333", 3000)

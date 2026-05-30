@@ -106,6 +106,45 @@ class AvaProxyError(Exception):
     pass
 
 
+def _tag_messages_for_anthropic_cache(messages: list[dict]) -> list[dict]:
+    """B7 / SR-30: rewrite each message that should be cached by Anthropic.
+
+    Anthropic accepts `cache_control` on individual `content` blocks. For
+    a system message that's a plain string, lift it into the rich-content
+    format so the cache_control marker can attach. Same for the FIRST
+    user message (memory injection / [MEMORY] block lives there). Later
+    user messages are uncached because they're the actual turn content.
+
+    Idempotent: if `cache_control` is already present, leave the message
+    untouched.
+    """
+    out = []
+    cached_user = False
+    for m in messages:
+        role = m.get("role")
+        content = m.get("content")
+        if role == "system" and isinstance(content, str):
+            out.append({
+                "role": "system",
+                "content": [
+                    {"type": "text", "text": content,
+                     "cache_control": {"type": "ephemeral"}},
+                ],
+            })
+        elif role == "user" and isinstance(content, str) and not cached_user:
+            cached_user = True
+            out.append({
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": content,
+                     "cache_control": {"type": "ephemeral"}},
+                ],
+            })
+        else:
+            out.append(m)
+    return out
+
+
 def ava_chat(
     messages: list[dict],
     model: str | None = None,
@@ -133,9 +172,23 @@ def ava_chat(
 
     model = model or cfg.default_cloud_model
 
+    # B7 / SR-30: Anthropic prompt-caching for Claude models. When the
+    # caller routes a chat to Claude, mark the system message + (optional)
+    # injected memory block as ephemeral cache breakpoints. The cache
+    # block lifetimes Anthropic enforces are 5 minutes (default) — well
+    # within a single chat session — and yield 50-75% input-token cost
+    # savings on repeat turns of the same session (identity + memory
+    # prelude is the largest reusable chunk).
+    #
+    # The proxy forwards `cache_control` as-is per the OpenAI-compatible
+    # passthrough contract; non-Claude models that don't honor the field
+    # simply ignore it.
+    cache_messages = messages
+    if model and "claude" in model.lower():
+        cache_messages = _tag_messages_for_anthropic_cache(messages)
     payload: dict[str, Any] = {
         "model": model,
-        "messages": messages,
+        "messages": cache_messages,
         "stream": stream,
         "temperature": temperature,
         **extra,

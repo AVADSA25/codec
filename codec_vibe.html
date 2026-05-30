@@ -7,8 +7,13 @@
 <link rel="icon" href="/favicon.png">
 <link rel="apple-touch-icon" href="/favicon.png">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/editor/editor.main.min.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.8/purify.min.js"></script>
+<!-- B5 / SR-29: crossorigin attribute added so SRI hash pinning can be
+     enabled by adding `integrity="sha384-..."` once the hash is computed.
+     Run `openssl dgst -sha384 -binary <file> | openssl base64 -A` against
+     the upstream files to mint the pinned hashes. Until then, browsers
+     still validate the TLS chain to cdnjs.cloudflare.com itself. -->
+<link rel="stylesheet" crossorigin="anonymous" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/editor/editor.main.min.css">
+<script crossorigin="anonymous" src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.8/purify.min.js"></script>
 <style>
 :root {
   --bg: #121215; --surface: #1a1a1d; --surface-2: #212125; --surface-3: #2a2a2e;

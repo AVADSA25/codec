@@ -198,23 +198,30 @@ SAFETY RULES:
         # are filtered (callers don't want the sys prompt rehydrated),
         # and content is truncated to 500 chars to match the legacy
         # schema constraint.
+        # B2 / SR-20: `with sqlite3.connect()` context manager so the
+        # connection commits or rolls back automatically and closes even
+        # on exception. Was: raw `connect()` + manual `close()` in the
+        # try body — if execute() raised between connect and close, the
+        # connection leaked. Same fix applied at the 3 other connect
+        # sites in this file.
         try:
-            c = sqlite3.connect(self.db_path)
-            for msg in self.h:
-                if msg.get("role") == "system":
-                    continue
-                c.execute(
-                    "INSERT INTO conversations "
-                    "(session_id, timestamp, role, content) VALUES (?,?,?,?)",
-                    (
-                        self.session_id,
-                        datetime.now().isoformat(),
-                        msg["role"],
-                        msg["content"][:500],
-                    ),
-                )
-            c.commit()
-            c.close()
+            with sqlite3.connect(self.db_path, timeout=5.0) as c:
+                c.execute("PRAGMA busy_timeout=5000")
+                for msg in self.h:
+                    if msg.get("role") == "system":
+                        continue
+                    c.execute(
+                        "INSERT INTO conversations "
+                        "(session_id, timestamp, role, content) VALUES (?,?,?,?)",
+                        (
+                            self.session_id,
+                            datetime.now().isoformat(),
+                            msg["role"],
+                            msg["content"][:500],
+                        ),
+                    )
+                # `with sqlite3.connect(...)` auto-commits on clean exit and
+                # auto-rolls-back on exception. No explicit close() needed.
         except Exception as e:
             log.warning(f"Session conversation persist failed: {e}")
         print("[C] Session closed.")
@@ -785,30 +792,29 @@ SAFETY RULES:
                     break
             if lu:
                 try:
-                    c = sqlite3.connect(self.db_path)
-                    c.execute(
-                        "CREATE TABLE IF NOT EXISTS corrections "
-                        "(id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, original TEXT, corrected TEXT, context TEXT)"
-                    )
-                    c.execute(
-                        "INSERT INTO corrections (timestamp,original,corrected,context) VALUES (?,?,?,?)",
-                        (datetime.now().isoformat(), lu[:200], u[:200], la[:200]),
-                    )
-                    c.commit()
-                    c.close()
+                    with sqlite3.connect(self.db_path, timeout=5.0) as c:
+                        c.execute("PRAGMA busy_timeout=5000")
+                        c.execute(
+                            "CREATE TABLE IF NOT EXISTS corrections "
+                            "(id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, original TEXT, corrected TEXT, context TEXT)"
+                        )
+                        c.execute(
+                            "INSERT INTO corrections (timestamp,original,corrected,context) VALUES (?,?,?,?)",
+                            (datetime.now().isoformat(), lu[:200], u[:200], la[:200]),
+                        )
                     print("[C] Correction saved.")
                 except Exception as e:
                     log.warning(f"Correction save to database failed: {e}")
 
     def get_corrections(self):
         try:
-            c = sqlite3.connect(self.db_path)
-            c.execute(
-                "CREATE TABLE IF NOT EXISTS corrections "
-                "(id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, original TEXT, corrected TEXT, context TEXT)"
-            )
-            rows = c.execute("SELECT original,corrected FROM corrections ORDER BY id DESC LIMIT 5").fetchall()
-            c.close()
+            with sqlite3.connect(self.db_path, timeout=5.0) as c:
+                c.execute("PRAGMA busy_timeout=5000")
+                c.execute(
+                    "CREATE TABLE IF NOT EXISTS corrections "
+                    "(id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, original TEXT, corrected TEXT, context TEXT)"
+                )
+                rows = c.execute("SELECT original,corrected FROM corrections ORDER BY id DESC LIMIT 5").fetchall()
             if rows:
                 return "\n".join(
                     ["USER CORRECTIONS:"] + [f"M said: {o[:60]} -> corrected: {co[:60]}" for o, co in rows]
@@ -908,13 +914,13 @@ SAFETY RULES:
 
         # Load persistent memory
         try:
-            c = sqlite3.connect(self.db_path)
-            c.execute(
-                "CREATE TABLE IF NOT EXISTS conversations "
-                "(id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, timestamp TEXT, role TEXT, content TEXT)"
-            )
-            rows = c.execute("SELECT role,content FROM conversations ORDER BY id DESC LIMIT 10").fetchall()
-            c.close()
+            with sqlite3.connect(self.db_path, timeout=5.0) as c:
+                c.execute("PRAGMA busy_timeout=5000")
+                c.execute(
+                    "CREATE TABLE IF NOT EXISTS conversations "
+                    "(id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, timestamp TEXT, role TEXT, content TEXT)"
+                )
+                rows = c.execute("SELECT role,content FROM conversations ORDER BY id DESC LIMIT 10").fetchall()
             if rows:
                 rows.reverse()
                 prev = [{"role": r, "content": ct} for r, ct in rows]

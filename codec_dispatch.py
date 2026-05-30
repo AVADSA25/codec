@@ -59,7 +59,12 @@ def run_skill(skill, task, app=""):
             _st = codec_license.license_state()
             return (f"\U0001F512 Skill execution requires an active CODEC license — "
                     f"{_st.reason}. Activate in Settings to unlock.")
-    except Exception:
+    except (ImportError, AttributeError):
+        # B2 / SR-17: narrowed from `except Exception`. The actual failure
+        # mode this guards is the import (license is an optional module on
+        # OSS builds) or AttributeError on a transitional codec_license API.
+        # Any other exception type from inside license_state() should
+        # surface to the caller, not be swallowed here.
         pass  # fail-open: licensing must never break dispatch
 
     all_matches = skill.get('_all_matches', [skill.get('name')])
