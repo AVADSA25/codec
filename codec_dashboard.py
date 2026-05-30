@@ -3,7 +3,6 @@ import os
 import json
 import sqlite3
 import time
-import subprocess
 import hmac
 import threading
 import uuid
@@ -21,7 +20,7 @@ import uvicorn
 
 # ── Shared state (canonical source: routes/_shared.py) ──
 from routes._shared import (
-    log, DASHBOARD_DIR, CONFIG_PATH, AUDIT_LOG, _NO_CACHE, _audit_write,
+    log, DASHBOARD_DIR, CONFIG_PATH, _NO_CACHE, _audit_write,
     _notif_lock, _load_notifications, _write_notifications,
     _append_schedule_run_log,
     AUTH_ENABLED, AUTH_SESSION_HOURS, AUTH_COOKIE_NAME,
@@ -29,8 +28,10 @@ from routes._shared import (
     _auth_available, _verify_biometric_session, _session_token_valid,
     _save_sessions, _save_e2e_keys,
     get_db,
-    _pending_approvals, _approval_lock, _evict_expired_approvals,
 )
+# C1, C4: AUDIT_LOG / approval state used by routes/audit.py and
+# routes/approvals.py respectively — codec_dashboard.py doesn't need
+# them at module level anymore.
 
 # Audit emits route through the unified log_event adapter (real, not no-op)
 # per docs/PHASE1-STEP1-DESIGN.md.
