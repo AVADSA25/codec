@@ -15,11 +15,13 @@ self-contained.
 """
 from __future__ import annotations
 
+import logging
 from datetime import datetime
-from typing import List, Optional
 
 # Runtime types and the tool registry come from codec_agents.
 from codec_agents import Agent, Crew, Tool, get_all_tools  # noqa: F401
+
+log = logging.getLogger("codec_crews")
 
 # Some crews need direct access to specific tool functions — they all
 # resolve via get_all_tools() filter-by-name, so no further imports
