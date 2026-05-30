@@ -340,6 +340,16 @@ from routes.cortex import router as cortex_router
 from routes.audit import router as audit_router
 # C5 / SR-40: observer endpoint extracted.
 from routes.observer import router as observer_router
+# D1 / SR-42: qchat endpoints extracted.
+from routes.qchat import router as qchat_router
+# D2 / SR-43: vibe endpoints extracted.
+from routes.vibe import router as vibe_router
+# D3 / SR-44: schedules endpoints extracted.
+from routes.schedules import router as schedules_router
+# D4 / SR-45: prompt overrides endpoints extracted.
+from routes.prompts import router as prompts_router
+# D5 / SR-46: webcam + screenshot + clipboard endpoints extracted.
+from routes.media import router as media_router
 # Phase 2 Step 6 — Trigger System PWA endpoints (auth-gated by /api/* middleware).
 try:
     from routes.triggers import router as triggers_router
@@ -359,6 +369,11 @@ app.include_router(heartbeat_router)
 app.include_router(cortex_router)
 app.include_router(audit_router)
 app.include_router(observer_router)
+app.include_router(qchat_router)
+app.include_router(vibe_router)
+app.include_router(schedules_router)
+app.include_router(prompts_router)
+app.include_router(media_router)
 if _has_triggers:
     app.include_router(triggers_router)
 
@@ -676,171 +691,7 @@ async def history(limit: int = 50):
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
-# ---------------------------------------------------------------------------
-# System Prompts API — view and edit all CODEC personality prompts
-# ---------------------------------------------------------------------------
-PROMPTS_FILE = os.path.join(str(Path.home()), ".codec", "prompt_overrides.json")
-
-def _load_prompt_overrides():
-    try:
-        with open(PROMPTS_FILE) as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
-
-def _save_prompt_overrides(data):
-    os.makedirs(os.path.dirname(PROMPTS_FILE), exist_ok=True)
-    with open(PROMPTS_FILE, "w") as f:
-        json.dump(data, f, indent=2)
-
-def _get_all_prompts():
-    """Collect all system prompts from source files + any user overrides."""
-    overrides = _load_prompt_overrides()
-    prompts = {}
-
-    # 1. CODEC Identity (base)
-    try:
-        from codec_identity import CODEC_IDENTITY
-        prompts["identity_base"] = {
-            "label": "CODEC Identity (Base)",
-            "description": "Core identity shared by all interfaces — who CODEC is, personality, memory rules",
-            "file": "codec_identity.py",
-            "default": CODEC_IDENTITY.strip(),
-        }
-    except Exception:
-        pass
-
-    # 2. Voice prompt
-    try:
-        from codec_identity import CODEC_VOICE_PROMPT
-        prompts["voice"] = {
-            "label": "Voice Mode",
-            "description": "Real-time voice calls — spoken output rules, concise answers, TTS formatting",
-            "file": "codec_voice.py",
-            "default": CODEC_VOICE_PROMPT.strip(),
-        }
-    except Exception:
-        pass
-
-    # 3. Chat prompt
-    prompts["chat"] = {
-        "label": "Chat Mode",
-        "description": "Web chat interface — skill awareness, tool calling, personality",
-        "file": "codec_dashboard.py",
-        "default": CHAT_SYSTEM_PROMPT.strip(),
-    }
-
-    # 4. Vibe IDE prompt (multi-line JS string concatenation)
-    try:
-        vibe_path = os.path.join(DASHBOARD_DIR, "codec_vibe.html")
-        import re as _re
-        with open(vibe_path, "r") as f:
-            content = f.read()
-        # Match: var SYSP = "..." + \n"..." + ... "...";
-        m = _re.search(r'var SYSP\s*=\s*((?:"[^"]*"\s*\+?\s*\n?\s*)+);', content)
-        if m:
-            raw_block = m.group(1)
-            # Extract all quoted strings and join them
-            parts = _re.findall(r'"([^"]*)"', raw_block)
-            joined = "".join(parts)
-            # Unescape \n
-            joined = joined.replace('\\n', '\n')
-            prompts["vibe"] = {
-                "label": "Vibe IDE",
-                "description": "AI coding assistant — code output rules, operational modes, Canvas requirements",
-                "file": "codec_vibe.html",
-                "default": joined.strip(),
-            }
-    except Exception:
-        pass
-
-    # 5. Text Assist modes
-    ta_prompts = {
-        "textassist_proofread": ("Proofread", "Fix spelling, grammar, punctuation — keep same tone"),
-        "textassist_elevate": ("Elevate", "Polish text to professional quality"),
-        "textassist_explain": ("Explain", "Simplify and summarize text"),
-        "textassist_reply": ("Reply", "Craft a natural reply matching tone"),
-        "textassist_translate": ("Translate", "Translate any language to English"),
-        "textassist_prompt": ("Prompt Engineer", "Optimize text as an AI prompt"),
-    }
-    try:
-        # Read the prompts dict from the file directly
-        ta_path = os.path.join(DASHBOARD_DIR, "codec_textassist.py")
-        with open(ta_path, "r") as f:
-            ta_content = f.read()
-        import ast
-        tree = ast.parse(ta_content)
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Dict):
-                keys = [k.value for k in node.keys if isinstance(k, ast.Constant)]
-                if "proofread" in keys and "elevate" in keys:
-                    for k, v in zip(node.keys, node.values):
-                        if isinstance(k, ast.Constant) and isinstance(v, ast.Constant):
-                            key = f"textassist_{k.value}"
-                            if key in ta_prompts:
-                                label, desc = ta_prompts[key]
-                                prompts[key] = {
-                                    "label": f"Text Assist: {label}",
-                                    "description": desc,
-                                    "file": "codec_textassist.py",
-                                    "default": v.value.strip(),
-                                }
-                    break
-    except Exception:
-        pass
-
-    # Apply overrides
-    for key, prompt_data in prompts.items():
-        prompt_data["value"] = overrides.get(key, prompt_data["default"])
-        prompt_data["modified"] = key in overrides
-
-    return prompts
-
-
-@app.get("/api/prompts")
-async def get_prompts():
-    """Return all system prompts with defaults and any user overrides."""
-    try:
-        return _get_all_prompts()
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-
-@app.put("/api/prompts")
-async def update_prompts(request: Request):
-    """Save user prompt overrides. Send {key: new_value} pairs."""
-    try:
-        updates = await request.json()
-        overrides = _load_prompt_overrides()
-        all_prompts = _get_all_prompts()
-        for key, value in updates.items():
-            if key not in all_prompts:
-                continue
-            # If value matches default, remove override
-            if value.strip() == all_prompts[key]["default"]:
-                overrides.pop(key, None)
-            else:
-                overrides[key] = value.strip()
-        _save_prompt_overrides(overrides)
-        return {"ok": True, "overrides_count": len(overrides)}
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-
-@app.post("/api/prompts/reset")
-async def reset_prompt(request: Request):
-    """Reset a prompt to its default. Send {key: "prompt_key"}."""
-    try:
-        body = await request.json()
-        key = body.get("key")
-        overrides = _load_prompt_overrides()
-        overrides.pop(key, None)
-        _save_prompt_overrides(overrides)
-        return {"ok": True, "reset": key}
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-
+# D4 / SR-45: prompt endpoints + helpers moved to routes/prompts.py.
 @app.get("/api/conversations")
 async def conversations(limit: int = 100, source: str = ""):
     """Get recent conversations. source=flash filters to Flash Chat only."""
@@ -1216,155 +1067,7 @@ async def tts(text: str = ""):
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
-@app.post("/api/webcam")
-async def webcam_capture(request: Request):
-    """Save webcam photo and optionally analyze with vision model"""
-    import base64
-    body = await request.json()
-    image_b64 = body.get("image", "")
-    analyze = body.get("analyze", False)
-    prompt = body.get("prompt", "Describe what you see in this webcam photo.")
-    if not image_b64:
-        return JSONResponse({"error": "No image data"}, status_code=400)
-    try:
-        # Save photo
-        photo_dir = os.path.expanduser("~/.codec/photos")
-        os.makedirs(photo_dir, exist_ok=True)
-        filename = f"webcam_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
-        filepath = os.path.join(photo_dir, filename)
-        with open(filepath, "wb") as f:
-            f.write(base64.b64decode(image_b64))
-        result = {"saved": filepath, "filename": filename}
-        # Optional vision analysis
-        if analyze:
-            try:
-                import requests as rq
-                config = {}
-                try:
-                    with open(CONFIG_PATH) as f: config = json.load(f)
-                except Exception:
-                    pass
-                vision_url = config.get("vision_base_url", "http://localhost:8083/v1")
-                vision_model = config.get("vision_model", "mlx-community/Qwen2.5-VL-7B-Instruct-4bit")
-                payload = {
-                    "model": vision_model,
-                    "messages": [{"role": "user", "content": [
-                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}},
-                        {"type": "text", "text": prompt}
-                    ]}],
-                    "max_tokens": 4000, "temperature": 0.7
-                }
-                r = rq.post(f"{vision_url}/chat/completions", json=payload,
-                            headers={"Content-Type": "application/json"}, timeout=120)
-                result["analysis"] = r.json()["choices"][0]["message"]["content"].strip()
-                result["model"] = vision_model
-            except Exception as e:
-                result["analysis_error"] = str(e)
-        _audit_write(f"[{datetime.now().isoformat()}] WEBCAM: {filename} analyze={analyze}\n")
-        return result
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-
-@app.get("/api/webcam/stream")
-async def webcam_stream():
-    """MJPEG stream from the Mac's webcam — for remote viewing from phone/tablet."""
-    import cv2
-    from concurrent.futures import ThreadPoolExecutor
-    cap = cv2.VideoCapture(0)
-    if not cap.isOpened():
-        return JSONResponse({"error": "Cannot open webcam"}, status_code=500)
-    _executor = ThreadPoolExecutor(max_workers=1)
-    def _read_frame():
-        ret, frame = cap.read()
-        if not ret:
-            return None
-        _, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
-        return jpeg.tobytes()
-    async def generate():
-        loop = asyncio.get_event_loop()
-        try:
-            while True:
-                data = await loop.run_in_executor(_executor, _read_frame)
-                if data is None:
-                    break
-                yield (b"--frame\r\n"
-                       b"Content-Type: image/jpeg\r\n\r\n" + data + b"\r\n")
-                await asyncio.sleep(0.066)  # ~15 fps
-        finally:
-            cap.release()
-            _executor.shutdown(wait=False)
-    from starlette.responses import StreamingResponse
-    return StreamingResponse(generate(), media_type="multipart/x-mixed-replace; boundary=frame")
-
-
-@app.get("/api/webcam/snapshot")
-async def webcam_snapshot():
-    """Capture a single frame from the Mac's webcam and return as JPEG."""
-    import cv2
-    import base64
-    from concurrent.futures import ThreadPoolExecutor
-    def _capture():
-        cap = cv2.VideoCapture(0)
-        if not cap.isOpened():
-            return None, None
-        ret, frame = cap.read()
-        cap.release()
-        if not ret:
-            return None, None
-        _, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
-        return jpeg.tobytes(), True
-    loop = asyncio.get_event_loop()
-    data, ok = await loop.run_in_executor(ThreadPoolExecutor(1), _capture)
-    if not ok:
-        return JSONResponse({"error": "Cannot capture from webcam"}, status_code=500)
-    b64 = base64.b64encode(data).decode()
-    # Save
-    photo_dir = os.path.expanduser("~/.codec/photos")
-    os.makedirs(photo_dir, exist_ok=True)
-    filename = f"webcam_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
-    filepath = os.path.join(photo_dir, filename)
-    with open(filepath, "wb") as f:
-        f.write(data)
-    return {"image": b64, "saved": filepath, "filename": filename}
-
-
-@app.get("/api/screenshot")
-async def screenshot():
-    """Take screenshot of Mac Studio and return image"""
-    import subprocess
-    try:
-        path = os.path.expanduser("~/.codec/pwa_screenshot.png")
-        subprocess.run(["screencapture", "-x", path], timeout=5)
-        if os.path.exists(path):
-            return FileResponse(path, media_type="image/png")
-        return JSONResponse({"error": "Screenshot failed"}, status_code=500)
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-@app.get("/api/clipboard")
-async def get_clipboard():
-    """Get Mac Studio clipboard content"""
-    import subprocess
-    try:
-        r = subprocess.run(["pbpaste"], capture_output=True, text=True, timeout=3)
-        return {"content": r.stdout[:2000]}
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-@app.post("/api/clipboard")
-async def set_clipboard(request: Request):
-    """Set Mac Studio clipboard content"""
-    import subprocess
-    body = await request.json()
-    text = body.get("text", "")
-    try:
-        p = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
-        p.communicate(text.encode())
-        return {"status": "copied"}
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
-
+# D5 / SR-46: webcam + screenshot + clipboard endpoints moved to routes/media.py.
 _UPLOAD_MAX_BYTES = 50 * 1024 * 1024  # 50 MB hard cap
 
 
@@ -1502,110 +1205,7 @@ async def chat_page():
         return HTMLResponse(f.read(), headers=_NO_CACHE)
 
 
-# C Chat conversation storage
-QCHAT_DB = os.path.expanduser("~/.codec/qchat.db")
-
-_qchat_conn = None
-
-def qchat_db():
-    global _qchat_conn
-    if _qchat_conn is None:
-        _qchat_conn = sqlite3.connect(QCHAT_DB, check_same_thread=False)
-        _qchat_conn.execute("PRAGMA journal_mode=WAL")
-        _qchat_conn.execute("PRAGMA busy_timeout=5000")
-        _qchat_conn.execute('''CREATE TABLE IF NOT EXISTS qchat_sessions (
-            id TEXT PRIMARY KEY, title TEXT, created_at TEXT, updated_at TEXT,
-            user_id TEXT DEFAULT 'default')''')
-        _qchat_conn.execute('''CREATE TABLE IF NOT EXISTS qchat_messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, role TEXT,
-            content TEXT, timestamp TEXT, user_id TEXT DEFAULT 'default')''')
-        # Migrate existing tables: add user_id if missing
-        for table in ("qchat_sessions", "qchat_messages"):
-            try:
-                _qchat_conn.execute(f"ALTER TABLE {table} ADD COLUMN user_id TEXT DEFAULT 'default'")
-            except sqlite3.OperationalError:
-                pass
-        _qchat_conn.execute("CREATE INDEX IF NOT EXISTS idx_qchat_sessions_user ON qchat_sessions(user_id)")
-        _qchat_conn.execute("CREATE INDEX IF NOT EXISTS idx_qchat_messages_user ON qchat_messages(user_id)")
-        _qchat_conn.commit()
-    return _qchat_conn
-
-@app.get("/api/qchat/sessions")
-async def qchat_sessions(user_id: str = None):
-    conn = qchat_db()
-    if user_id is not None:
-        rows = conn.execute("SELECT id, title, updated_at FROM qchat_sessions WHERE user_id=? ORDER BY updated_at DESC LIMIT 30", (user_id,)).fetchall()
-    else:
-        rows = conn.execute("SELECT id, title, updated_at FROM qchat_sessions ORDER BY updated_at DESC LIMIT 30").fetchall()
-    return [{"id": r[0], "title": r[1], "updated_at": r[2]} for r in rows]
-
-@app.get("/api/qchat/session/{sid}")
-async def qchat_session(sid: str):
-    conn = qchat_db()
-    rows = conn.execute("SELECT role, content, timestamp FROM qchat_messages WHERE session_id=? ORDER BY id ASC", (sid,)).fetchall()
-    return [{"role": r[0], "content": r[1], "timestamp": r[2]} for r in rows]
-
-@app.post("/api/qchat/save")
-async def qchat_save(request: Request):
-    body = await request.json()
-    sid = body.get("session_id", "")
-    title = body.get("title", "New Chat")
-    messages = body.get("messages", [])
-    user_id = body.get("user_id", "default")
-    from datetime import datetime
-    now = datetime.now().isoformat()
-    conn = qchat_db()
-    conn.execute("INSERT OR REPLACE INTO qchat_sessions (id, title, created_at, updated_at, user_id) VALUES (?, ?, COALESCE((SELECT created_at FROM qchat_sessions WHERE id=?), ?), ?, ?)",
-        (sid, title[:60], sid, now, now, user_id))
-    for m in messages:
-        conn.execute("INSERT INTO qchat_messages (session_id, role, content, timestamp, user_id) VALUES (?, ?, ?, ?, ?)",
-            (sid, m.get("role","user"), m.get("content",""), now, user_id))
-    conn.commit()
-    return {"ok": True}
-
-
-@app.delete("/api/qchat/session/{sid}")
-async def qchat_delete(sid: str):
-    conn = qchat_db()
-    conn.execute("DELETE FROM qchat_messages WHERE session_id=?", (sid,))
-    conn.execute("DELETE FROM qchat_sessions WHERE id=?", (sid,))
-    conn.commit()
-    return {"ok": True}
-
-@app.get("/api/qchat/search")
-async def qchat_search(q: str = "", limit: int = 20):
-    """Search chat history by keyword across all sessions."""
-    if not q or len(q.strip()) < 2:
-        return []
-    conn = qchat_db()
-    keyword = f"%{q.strip()}%"
-    rows = conn.execute(
-        """SELECT m.session_id, s.title, m.content, m.role, m.timestamp
-           FROM qchat_messages m
-           LEFT JOIN qchat_sessions s ON m.session_id = s.id
-           WHERE m.content LIKE ?
-           ORDER BY m.timestamp DESC LIMIT ?""",
-        (keyword, min(limit, 50))
-    ).fetchall()
-    results = []
-    seen_sessions = set()
-    for r in rows:
-        sid = r[0]
-        if sid not in seen_sessions:
-            seen_sessions.add(sid)
-            # Snippet: find keyword position and extract surrounding text
-            content = r[2] or ""
-            idx = content.lower().find(q.strip().lower())
-            start = max(0, idx - 40)
-            snippet = ("..." if start > 0 else "") + content[start:start+120] + ("..." if len(content) > start+120 else "")
-            results.append({
-                "session_id": sid,
-                "title": r[1] or "Untitled",
-                "snippet": snippet,
-                "role": r[3],
-                "timestamp": r[4]
-            })
-    return results
+# D1 / SR-42: qchat endpoints + db helper moved to routes/qchat.py.
 
 
 # ── Cross-source memory search endpoint ──────────────────────────────────────
@@ -1811,83 +1411,8 @@ async def upload_image(request: Request):
         log.error(f"[upload_image] failed: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
 
-# Vibe Code session storage
-VIBE_DB = os.path.expanduser("~/.codec/vibe.db")
-
-_vibe_conn = None
-
-def vibe_db():
-    global _vibe_conn
-    if _vibe_conn is None:
-        _vibe_conn = sqlite3.connect(VIBE_DB, check_same_thread=False)
-        _vibe_conn.execute("PRAGMA journal_mode=WAL")
-        _vibe_conn.execute("PRAGMA busy_timeout=5000")
-        _vibe_conn.execute('''CREATE TABLE IF NOT EXISTS vibe_sessions (
-            id TEXT PRIMARY KEY, title TEXT, language TEXT, code TEXT, created_at TEXT, updated_at TEXT,
-            user_id TEXT DEFAULT 'default')''')
-        _vibe_conn.execute('''CREATE TABLE IF NOT EXISTS vibe_messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, role TEXT,
-            content TEXT, timestamp TEXT, user_id TEXT DEFAULT 'default')''')
-        # Migrate existing tables: add user_id if missing
-        for table in ("vibe_sessions", "vibe_messages"):
-            try:
-                _vibe_conn.execute(f"ALTER TABLE {table} ADD COLUMN user_id TEXT DEFAULT 'default'")
-            except sqlite3.OperationalError:
-                pass
-        _vibe_conn.execute("CREATE INDEX IF NOT EXISTS idx_vibe_sessions_user ON vibe_sessions(user_id)")
-        _vibe_conn.execute("CREATE INDEX IF NOT EXISTS idx_vibe_messages_user ON vibe_messages(user_id)")
-        _vibe_conn.commit()
-    return _vibe_conn
-
-@app.get("/api/vibe/sessions")
-async def vibe_sessions(user_id: str = None):
-    conn = vibe_db()
-    if user_id is not None:
-        rows = conn.execute("SELECT id, title, language, updated_at FROM vibe_sessions WHERE user_id=? ORDER BY updated_at DESC LIMIT 30", (user_id,)).fetchall()
-    else:
-        rows = conn.execute("SELECT id, title, language, updated_at FROM vibe_sessions ORDER BY updated_at DESC LIMIT 30").fetchall()
-    return [{"id": r[0], "title": r[1], "language": r[2], "updated_at": r[3]} for r in rows]
-
-@app.get("/api/vibe/session/{sid}")
-async def vibe_session(sid: str):
-    conn = vibe_db()
-    session = conn.execute("SELECT id, title, language, code FROM vibe_sessions WHERE id=?", (sid,)).fetchone()
-    msgs = conn.execute("SELECT role, content, timestamp FROM vibe_messages WHERE session_id=? ORDER BY id ASC", (sid,)).fetchall()
-    return {
-        "session": {"id": session[0], "title": session[1], "language": session[2], "code": session[3]} if session else None,
-        "messages": [{"role": r[0], "content": r[1], "timestamp": r[2]} for r in msgs]
-    }
-
-@app.post("/api/vibe/save")
-async def vibe_save(request: Request):
-    body = await request.json()
-    sid = body.get("session_id", "")
-    title = body.get("title", "Untitled")
-    language = body.get("language", "python")
-    code = body.get("code", "")
-    messages = body.get("messages", [])
-    user_id = body.get("user_id", "default")
-    from datetime import datetime
-    now = datetime.now().isoformat()
-    full_sync = body.get("full_sync", False)
-    conn = vibe_db()
-    conn.execute("INSERT OR REPLACE INTO vibe_sessions (id, title, language, code, created_at, updated_at, user_id) VALUES (?, ?, ?, ?, COALESCE((SELECT created_at FROM vibe_sessions WHERE id=?), ?), ?, ?)",
-        (sid, title[:60], language, code, sid, now, now, user_id))
-    if full_sync and messages:
-        conn.execute("DELETE FROM vibe_messages WHERE session_id=?", (sid,))
-    for m in messages:
-        conn.execute("INSERT INTO vibe_messages (session_id, role, content, timestamp, user_id) VALUES (?, ?, ?, ?, ?)",
-            (sid, m.get("role","user"), m.get("content",""), now, user_id))
-    conn.commit()
-    return {"ok": True}
-
-@app.delete("/api/vibe/session/{sid}")
-async def vibe_delete(sid: str):
-    conn = vibe_db()
-    conn.execute("DELETE FROM vibe_messages WHERE session_id=?", (sid,))
-    conn.execute("DELETE FROM vibe_sessions WHERE id=?", (sid,))
-    conn.commit()
-    return {"ok": True}
+# D2 / SR-43: vibe endpoints + db helper moved to routes/vibe.py.
+# (/vibe page route stays here — it serves the HTML template.)
 
 @app.get("/vibe", response_class=HTMLResponse)
 async def vibe_page():
@@ -2711,6 +2236,8 @@ def _build_chat_system_prompt(config: dict, budget, has_attachment: bool,
     consume('llm_call') happen here, once, where they ran inline.
     """
     from datetime import datetime as _dt
+    # D4 / SR-45: helper moved to routes.prompts; lazy-import at call time.
+    from routes.prompts import _load_prompt_overrides
     _overrides = _load_prompt_overrides()
     _chat_prompt = _overrides.get("chat", CHAT_SYSTEM_PROMPT)
     sys_prompt = _chat_prompt.format(date=_dt.now().strftime("%A, %B %d, %Y"))
@@ -3031,218 +2558,7 @@ async def chat_completion(request: Request):
 # (Agent endpoints moved to routes/agents.py)
 
 
-@app.get("/api/schedules")
-async def list_schedules_api():
-    """List all scheduled agent runs."""
-    try:
-        from codec_scheduler import load_schedules
-        return {"schedules": load_schedules()}
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-
-@app.post("/api/schedules")
-async def add_schedule_api(request: Request):
-    """Add a new scheduled agent run."""
-    body = await request.json()
-    required = ["crew"]
-    for field in required:
-        if field not in body:
-            return JSONResponse({"error": f"Missing field: {field}"}, status_code=400)
-    try:
-        from codec_scheduler import add_schedule
-        s = add_schedule(
-            body["crew"],
-            topic=body.get("topic", ""),
-            cron_hour=body.get("hour", 8),
-            cron_minute=body.get("minute", 0),
-            days=body.get("days"),
-        )
-        return {"schedule": s}
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-
-@app.delete("/api/schedules/{sched_id}")
-async def delete_schedule_api(sched_id: str):
-    """Remove a schedule by ID."""
-    try:
-        from codec_scheduler import remove_schedule
-        removed = remove_schedule(sched_id)
-        return {"removed": removed, "id": sched_id}
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-
-@app.put("/api/schedules/{sched_id}")
-async def update_schedule(sched_id: str, request: Request):
-    """Update an existing schedule by ID."""
-    body = await request.json()
-    sched_path = os.path.join(os.path.expanduser("~"), ".codec", "schedules.json")
-    schedules = []
-    try:
-        with open(sched_path) as f:
-            schedules = json.load(f)
-    except Exception:
-        pass
-    for s in schedules:
-        if s.get("id") == sched_id:
-            s.update({k: v for k, v in body.items() if k != "id"})
-            # re-audit medium: atomic write (was truncate-then-write, racing
-            # the scheduler's concurrent read of schedules.json).
-            import codec_jsonstore
-            codec_jsonstore.atomic_write_json(sched_path, schedules)
-            return {"schedule": s}
-    return JSONResponse({"error": "Not found"}, status_code=404)
-
-
-@app.post("/api/schedules/{sched_id}/run")
-async def run_schedule_now(sched_id: str):
-    """Manually trigger a scheduled task — actually executes it in a background thread."""
-    sched_path = os.path.join(os.path.expanduser("~"), ".codec", "schedules.json")
-    schedules = []
-    try:
-        with open(sched_path) as f:
-            schedules = json.load(f)
-    except Exception:
-        return JSONResponse({"error": "No schedules found"}, status_code=404)
-
-    schedule = None
-    for s in schedules:
-        if s.get("id") == sched_id:
-            schedule = s
-            break
-    if not schedule:
-        return JSONResponse({"error": "Not found"}, status_code=404)
-
-    # Pre-create a notification id so we can return it immediately
-    notif_id = f"notif_{uuid.uuid4().hex[:10]}"
-    crew = schedule.get("crew", "general")
-    topic = schedule.get("topic", "")
-    title = schedule.get("label", topic[:60] or "Scheduled Task")
-
-    def _execute_task():
-        """Background thread: run the task, generate report, save to Google Doc."""
-        try:
-            import re
-            config = {}
-            try:
-                with open(CONFIG_PATH) as f:
-                    config = json.load(f)
-            except Exception:
-                pass
-            base_url = config.get("llm_base_url", "http://localhost:8083/v1")
-            model = config.get("llm_model", "mlx-community/Qwen3.6-35B-A3B-4bit")
-            # PR-2B (D-15 partial): keychain-aware live read.
-            from codec_config import get_llm_api_key as _kc_get_llm
-            api_key = _kc_get_llm()
-            kwargs = config.get("llm_kwargs", {})
-
-            # ── Step 1: If it's a skill-based task, run the skill directly ──
-            skill_output = None
-            if "ai news digest" in topic.lower() or "news digest" in topic.lower():
-                try:
-                    import importlib.util
-                    spec = importlib.util.spec_from_file_location("ai_news", os.path.join(DASHBOARD_DIR, "skills", "ai_news_digest.py"))
-                    mod = importlib.util.module_from_spec(spec)
-                    spec.loader.exec_module(mod)
-                    skill_output = mod.run()
-                except Exception as e:
-                    log.warning(f"Skill execution failed, falling back to LLM: {e}")
-
-            # ── Step 2: Build prompt for LLM report ──
-            crew_instructions = {
-                "research": "You are a senior research analyst at CODEC. Produce a structured, professional report with markdown formatting: use ## headings, bullet points, and a summary section.",
-                "security": "You are a CODEC security analyst. Produce a structured security assessment report with markdown formatting: use ## headings for each area, risk levels, and recommendations.",
-                "writer": "You are a professional content writer at CODEC. Write a well-structured article with markdown formatting: ## headings, clear sections, and a conclusion.",
-                "analyst": "You are a CODEC data analyst. Produce a structured analysis report with markdown formatting: ## headings, key metrics, insights, and action items.",
-            }
-            system_msg = crew_instructions.get(crew, "You are CODEC, an AI assistant. Produce a structured, professional report with markdown formatting: ## headings, bullet points, key findings, and a summary.")
-
-            if skill_output:
-                prompt = f"Here is raw data collected for the task '{title}':\n\n{skill_output}\n\nProduce a well-structured, professional report based on this data. Use ## headings, highlight the most important items, add brief analysis, and end with key takeaways."
-            elif crew == "custom" and topic:
-                prompt = f"Execute this task and produce a detailed, structured report:\n\n{topic}"
-            else:
-                prompt = f"Task: {topic}\n\nProduce a detailed, structured report."
-
-            # A-12 (PR-3E-dashboard): canonical codec_llm.call. raise_on_error=True
-            # preserves the original raise-on-failure (was r.json() KeyError) so the
-            # outer handler still sees a failure instead of writing an empty report.
-            # kwargs passed unfiltered (matches the original payload.update(kwargs),
-            # which lets kwargs override enable_thinking).
-            answer = codec_llm.call(
-                [
-                    {"role": "system", "content": system_msg},
-                    {"role": "user", "content": prompt},
-                ],
-                base_url=base_url, model=model, api_key=api_key,
-                max_tokens=6000, temperature=0.7, enable_thinking=True,
-                extra_kwargs=kwargs, timeout=300, raise_on_error=True,
-            )
-            answer = re.sub(r'<think>[\s\S]*?</think>', '', answer).strip()
-
-            # ── Step 3: Save to Google Doc ──
-            doc_url = None
-            try:
-                from codec_gdocs import create_google_doc
-                doc_title = f"CODEC Report — {title} — {datetime.now().strftime('%b %d, %Y')}"
-                doc_url = create_google_doc(doc_title, answer)
-                log.info(f"Report saved to Google Doc: {doc_url}")
-            except Exception as e:
-                log.warning(f"Google Doc creation failed (report still saved locally): {e}")
-
-            # ── Step 4: Save success notification with doc link ──
-            body_text = answer[:2000]
-            if doc_url:
-                body_text = f"📄 [View Full Report]({doc_url})\n\n{body_text}"
-            with _notif_lock:
-                notifications = _load_notifications()
-                for n in notifications:
-                    if n["id"] == notif_id:
-                        n["body"] = body_text
-                        n["status"] = "success"
-                        if doc_url:
-                            n["doc_url"] = doc_url
-                        break
-                _write_notifications(notifications)
-            _append_schedule_run_log(sched_id, title, "success", (doc_url or answer[:200]))
-            log.info(f"Schedule {sched_id} executed successfully")
-
-        except Exception as e:
-            error_msg = f"Task execution failed: {str(e)}"
-            log.error(f"Schedule {sched_id} failed: {e}")
-            with _notif_lock:
-                notifications = _load_notifications()
-                for n in notifications:
-                    if n["id"] == notif_id:
-                        n["body"] = error_msg
-                        n["status"] = "error"
-                        break
-                _write_notifications(notifications)
-            _append_schedule_run_log(sched_id, title, "error", error_msg)
-
-    # Save a pending notification immediately
-    pending_notif = {
-        "id": notif_id,
-        "type": "task_report",
-        "title": title,
-        "body": "Task is running...",
-        "status": "running",
-        "created": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
-        "read": False,
-        "schedule_id": sched_id
-    }
-    with _notif_lock:
-        notifications = _load_notifications()
-        notifications.insert(0, pending_notif)
-        _write_notifications(notifications)
-
-    # Launch background execution
-    thread = threading.Thread(target=_execute_task, daemon=True)
-    thread.start()
-
-    return {"status": "running", "notification_id": notif_id, "id": sched_id, "crew": crew}
+# D3 / SR-44: schedules endpoints + _execute_task moved to routes/schedules.py.
 
 
 # B6-P3 / SR-34: notification endpoints moved to routes/notifications.py.
@@ -3255,20 +2571,6 @@ async def run_schedule_now(sched_id: str):
 
 
 # C2 / SR-37: heartbeat endpoints moved to routes/heartbeat.py.
-
-
-@app.get("/api/schedules/history")
-async def schedule_history():
-    """Return last 50 schedule run log entries."""
-    log_path = os.path.join(os.path.expanduser("~"), ".codec", "schedule_runs.log")
-    entries = []
-    try:
-        with open(log_path) as f:
-            for line in f.readlines()[-50:]:
-                entries.append({"line": line.strip()})
-    except Exception:
-        pass
-    return entries
 
 
 @app.get("/tasks", response_class=HTMLResponse)
