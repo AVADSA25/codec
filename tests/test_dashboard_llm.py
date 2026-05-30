@@ -63,13 +63,15 @@ def test_dashboard_uses_codec_llm_call():
 
 def test_dashboard_only_vision_posts_remain():
     # After PR-3E-chat-stream migrated the chat stream + non-stream fallback,
-    # the ONLY inline /chat/completions occurrences left are the vision sites
-    # (A-11 / codec_vision territory, not A-12). D5/E4 extractions moved
-    # the webcam + upload_image vision POSTs to routes/media.py + routes/
-    # upload.py — pinning the count at 3 here; the route-side sites are
+    # the ONLY inline /chat/completions occurrences left are vision sites
+    # (A-11 / codec_vision territory, not A-12). D5/E4/F4 extractions moved
+    # the webcam + upload_image + /api/vision vision POSTs to
+    # routes/media.py + routes/upload.py + routes/vision.py — pinning the
+    # count at 2 here (only /api/command's classifier sys-prompt body
+    # mentions /chat/completions in a comment); the route-side sites are
     # covered by the A-12 allowlist in test_a12_invariant.
     src = (REPO / "codec_dashboard.py").read_text()
-    assert src.count("/chat/completions") == 3
+    assert src.count("/chat/completions") == 2
 
 
 def test_chat_handler_uses_codec_llm_stream():

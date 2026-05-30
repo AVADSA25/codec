@@ -116,9 +116,9 @@ def test_speak_unlinks_mp3_after_playback(monkeypatch):
 
 
 def test_run_code_unlinks_rust_out():
-    src = (REPO / "codec_dashboard.py").read_text()
+    # F5 / SR-54: run_code moved from codec_dashboard.py to routes/vibe_exec.py.
+    src = (REPO / "routes" / "vibe_exec.py").read_text()
     body = src[src.index("async def run_code("):]
-    body = body[:body.index("\n@app.", 1)]
     # Slice the cleanup block specifically — `tmp.name + ".out"` also appears in
     # the rust cmd_map, so a whole-body check would false-pass.
     fin = body[body.rindex("finally:"):]
