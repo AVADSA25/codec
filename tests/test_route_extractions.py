@@ -33,7 +33,7 @@ class TestC1Approvals:
 
     def test_module_imports_from_shared(self):
         from pathlib import Path
-        text = Path("/Users/mickaelfarina/codec-repo/routes/approvals.py").read_text()
+        text = (Path(__file__).resolve().parent.parent / "routes" / "approvals.py").read_text()
         assert "from routes._shared import" in text
         assert "_pending_approvals" in text
         assert "_evict_expired_approvals" in text
@@ -50,7 +50,7 @@ class TestC2Heartbeat:
 
     def test_module_uses_config_path(self):
         from pathlib import Path
-        text = Path("/Users/mickaelfarina/codec-repo/routes/heartbeat.py").read_text()
+        text = (Path(__file__).resolve().parent.parent / "routes" / "heartbeat.py").read_text()
         assert "CONFIG_PATH" in text
 
 
@@ -69,7 +69,7 @@ class TestC3Cortex:
         """A-4 invariant: cortex_skills reads from codec_dispatch.registry,
         not the legacy codec_core.loaded_skills."""
         from pathlib import Path
-        text = Path("/Users/mickaelfarina/codec-repo/routes/cortex.py").read_text()
+        text = (Path(__file__).resolve().parent.parent / "routes" / "cortex.py").read_text()
         assert "from codec_dispatch import registry" in text
         assert "from codec_core import loaded_skills" not in text
 
@@ -86,7 +86,7 @@ class TestC4Audit:
 
     def test_module_reads_audit_log(self):
         from pathlib import Path
-        text = Path("/Users/mickaelfarina/codec-repo/routes/audit.py").read_text()
+        text = (Path(__file__).resolve().parent.parent / "routes" / "audit.py").read_text()
         assert "AUDIT_LOG" in text
 
 
@@ -98,7 +98,7 @@ class TestC5Observer:
     def test_observer_emits_audit_event(self):
         """The privileged read must emit OBSERVER_BUFFER_INSPECTED."""
         from pathlib import Path
-        text = Path("/Users/mickaelfarina/codec-repo/routes/observer.py").read_text()
+        text = (Path(__file__).resolve().parent.parent / "routes" / "observer.py").read_text()
         assert "OBSERVER_BUFFER_INSPECTED" in text
 
 
@@ -110,5 +110,5 @@ def test_dashboard_loc_below_3700():
     Future route extractions (qchat, vibe, schedules, prompts) will
     keep dropping this number — tighten the floor as those land."""
     from pathlib import Path
-    lines = Path("/Users/mickaelfarina/codec-repo/codec_dashboard.py").read_text().count("\n")
+    lines = (Path(__file__).resolve().parent.parent / "codec_dashboard.py").read_text().count("\n")
     assert lines < 3700, f"codec_dashboard.py still has {lines} lines"
