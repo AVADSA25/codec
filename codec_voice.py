@@ -257,46 +257,10 @@ MIN_SPEECH_BYTES       = int(SAMPLE_RATE * BYTES_PER_SAMPLE * VAD_MIN_SPEECH_SEC
 INTERRUPT_THRESHOLD = 1500  # raised from 600 — too sensitive to background noise
 
 # ── Whisper noise filter ──────────────────────────────────────────────────
-NOISE_WORDS = {
-    "you", "thank you", "thanks", "thanks for watching", "bye", "goodbye",
-    "see you", "see you next time", "please subscribe", "like and subscribe",
-    "", "hmm", "uh", "oh", "hm", "um", "yeah", "yep", "mm", "mhm",
-    "okay", "ok", "right", "sure", "yes", "no", "hey", "hi", "hello",
-    "so", "well", "um hmm", "uh huh", "ah", "er",
-}
-
-# Common Whisper hallucination phrases (YouTube outros, annotations, artifacts)
-WHISPER_HALLUCINATIONS = {
-    "thank you for watching",
-    "thanks for watching",
-    "please subscribe",
-    "like and subscribe",
-    "see you next time",
-    "see you in the next video",
-    "thanks for listening",
-    "thank you for listening",
-    "please like and subscribe",
-    "don't forget to subscribe",
-    "hit the bell icon",
-    "thank you very much",
-    "thanks for your support",
-    "subtitles by",
-    "transcribed by",
-    "translated by",
-    "copyright",
-    "all rights reserved",
-    "music playing",
-    "applause",
-    "laughter",
-    "silence",
-    "inaudible",
-    "foreign language",
-    "speaking foreign language",
-    "you",
-    "bye",
-    "okay bye",
-    "so",
-}
+# B6-P4 / SR-35: NOISE_WORDS + WHISPER_HALLUCINATIONS moved to
+# codec_voice_filters. Re-exported here for back-compat with any
+# external import that grabbed them from codec_voice.
+from codec_voice_filters import NOISE_WORDS, WHISPER_HALLUCINATIONS  # noqa: F401,E402
 
 # Max conversation turns to keep in context (prevents bloat → keeps LLM fast)
 MAX_CONTEXT_TURNS = 20
@@ -505,12 +469,12 @@ class VoicePipeline:
 
     # ── VAD ───────────────────────────────────────────────────────────────
 
+    # B6-P4 / SR-35: _rms delegates to codec_voice_filters.rms_int16 so
+    # the function is testable without instantiating VoicePipeline.
     @staticmethod
     def _rms(chunk: bytes) -> float:
-        if len(chunk) < 2:
-            return 0.0
-        samples = np.frombuffer(chunk, dtype=np.int16).astype(np.float32)
-        return float(np.sqrt(np.mean(samples ** 2)))
+        from codec_voice_filters import rms_int16
+        return rms_int16(chunk)
 
     def feed_audio(self, chunk: bytes) -> Optional[bytes]:
         rms = self._rms(chunk)
