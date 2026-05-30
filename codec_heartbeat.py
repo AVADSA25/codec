@@ -29,7 +29,7 @@ except ImportError:
 def check_pending_tasks():
     """Check memory for tasks that were saved for later"""
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = sqlite3.connect(DB_PATH, timeout=5.0); conn.execute("PRAGMA busy_timeout=5000")
         # Find messages containing "task" or "later" or "remind" from last 24h
         cutoff = (datetime.now() - timedelta(hours=24)).isoformat()
         rows = conn.execute("""
@@ -90,7 +90,7 @@ def check_system_health():
 def check_memory_stats():
     """Report memory database stats + size monitoring"""
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = sqlite3.connect(DB_PATH, timeout=5.0); conn.execute("PRAGMA busy_timeout=5000")
         total = conn.execute("SELECT COUNT(*) FROM conversations").fetchone()[0]
         sessions = conn.execute("SELECT COUNT(DISTINCT session_id) FROM conversations").fetchone()[0]
         latest = conn.execute("SELECT timestamp FROM conversations ORDER BY id DESC LIMIT 1").fetchone()
@@ -132,8 +132,10 @@ def backup_memory_db():
 
     try:
         # Use SQLite backup API for safe copy (handles WAL mode)
-        src = sqlite3.connect(DB_PATH)
-        dst = sqlite3.connect(backup_path)
+        src = sqlite3.connect(DB_PATH, timeout=5.0)
+        src.execute("PRAGMA busy_timeout=5000")
+        dst = sqlite3.connect(backup_path, timeout=5.0)
+        dst.execute("PRAGMA busy_timeout=5000")
         src.backup(dst)
         dst.close()
         src.close()
@@ -195,7 +197,7 @@ def execute_pending_tasks():
     against DANGEROUS_PATTERNS before execution.
     """
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = sqlite3.connect(DB_PATH, timeout=5.0); conn.execute("PRAGMA busy_timeout=5000")
         cutoff = (datetime.now() - timedelta(hours=24)).isoformat()
 
         # Tightened patterns: require explicit prefix or very specific phrasing

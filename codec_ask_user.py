@@ -333,20 +333,17 @@ def _deadline_iso(timeout_seconds: int) -> str:
 # ── Correlation_id discovery from contextvars (Step 1 §1.4) ───────────────────
 def _current_correlation_id() -> Optional[str]:
     """Read the wrapping operation's correlation_id from whichever module's
-    contextvar happens to be set. ``codec_agents._correlation_id_var`` is
-    set by Crew.run / Agent.run; ``codec_voice._voice_correlation_id_var``
-    is set by VoicePipeline.run. Try both — first non-None wins.
+    contextvar happens to be set. The general one (Crew/Agent) and the
+    voice-session one both live in codec_audit (A5 / SR-5) — we import
+    one-way down to the foundation layer instead of reaching back into
+    codec_agents / codec_voice (which would create import cycles).
     """
     try:
-        from codec_agents import _correlation_id_var as _cv1
-        v = _cv1.get()
+        from codec_audit import _correlation_id_var, _voice_correlation_id_var
+        v = _correlation_id_var.get()
         if v:
             return v
-    except Exception:
-        pass
-    try:
-        from codec_voice import _voice_correlation_id_var as _cv2
-        v = _cv2.get()
+        v = _voice_correlation_id_var.get()
         if v:
             return v
     except Exception:

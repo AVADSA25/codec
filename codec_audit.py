@@ -48,21 +48,54 @@ names without typos.
 """
 from __future__ import annotations
 
+import contextvars
 import hashlib
 import hmac as _hmac
 import json
 import logging
 import os
 import re
+import secrets
 import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 # H-3 (PR-4E): the cross-process flock primitive (stdlib-only; does NOT import
 # codec_audit, so no cycle with this foundation module). Used in _write to
 # serialize rotation + append across all PM2 daemons.
 import codec_jsonstore
+
+# ── Correlation ID contextvars (A5 / SR-5) ─────────────────────────────────────
+# Canonical home for the cross-module correlation_id state. Previously these
+# lived in codec_agents (general) and codec_voice (voice-scoped), forcing
+# codec_ask_user / codec_observer / codec_triggers to import from those
+# modules to read the contextvar — creating 3 of the 4 documented import
+# cycles. With both vars hosted here in the foundation layer, every reader
+# imports one-way down (toward codec_audit) and the cycles vanish.
+#
+# `_correlation_id_var` is the general 12-hex contextvar set by Crew.run /
+# Agent.run / agent_runner. tool_call / tool_result / hook_fired / audit
+# emit nested inside a wrapping operation inherit it.
+#
+# `_voice_correlation_id_var` is a parallel var set by VoicePipeline.run for
+# voice-session-scoped operations. Voice sessions can long outlive any one
+# crew or agent run; the separate var prevents cross-contamination.
+_correlation_id_var: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "codec_correlation_id", default=None
+)
+_voice_correlation_id_var: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "codec_voice_correlation_id", default=None
+)
+
+
+def _new_correlation_id() -> str:
+    """12-character lowercase-hex correlation_id from secrets.token_hex(6).
+    Mirrors the Step 1 §1.4 contract: short enough for inline logging,
+    enough entropy that collisions inside the rotation window are negligible.
+    """
+    return secrets.token_hex(6)
 
 # ── Storage ────────────────────────────────────────────────────────────────────
 _AUDIT_DIR = Path(os.path.expanduser("~/.codec"))

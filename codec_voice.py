@@ -38,9 +38,11 @@ from codec_llm_proxy import llm_queue, Priority
 # Per-session correlation_id contextvar — set at VoicePipeline.run entry,
 # inherited by every audit emit during the session lifetime (incl. nested
 # tool calls fired from inside the pipeline). See design §1.4.
-_voice_correlation_id_var: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
-    "codec_voice_correlation_id", default=None
-)
+#
+# A5 / SR-5: canonical home moved to codec_audit. Re-exported here for
+# back-compat with any external importer (codec_ask_user previously pulled
+# from here; now reads from codec_audit directly).
+from codec_audit import _voice_correlation_id_var as _voice_correlation_id_var  # noqa: F401 — re-export
 
 # ── Phase 1 Step 3 §5.3.1 — fuzzy-option-match for AskUserQuestion ────────
 # When the question carries `options`, the voice ASR layer maps the spoken
@@ -206,8 +208,7 @@ try:
     WHISPER_URL   = _cfg.get("stt_url",   WHISPER_URL)
     WHISPER_MODEL = _cfg.get("stt_model", WHISPER_MODEL)
 except Exception as _e:
-    print(f"[Voice] Config load warning: {_e} — using defaults")
-
+    log.warning(f"Config load warning: {_e} — using defaults")
 # ── Vision config ────────────────────────────────────────────────────────
 VISION_URL   = "http://localhost:8083/v1/chat/completions"
 VISION_MODEL = "mlx-community/Qwen2.5-VL-7B-Instruct-4bit"
@@ -402,7 +403,7 @@ class VoicePipeline:
             VoicePipeline._resume_timestamps.pop(resume_session_id, None)  # keep the two dicts in sync
             self.messages = saved
             self._is_resumed = True
-            print(f"[Voice] Resumed session {resume_session_id} with {len(saved)} messages")
+            log.info(f"Resumed session {resume_session_id} with {len(saved)} messages")
         else:
             self.messages = [{"role": "system", "content": _build_system_prompt()}]
 
@@ -444,8 +445,7 @@ class VoicePipeline:
         self._resumable_sessions[self.session_id] = list(self.messages)
         VoicePipeline._resume_timestamps[self.session_id] = time.monotonic()
         self._prune_resumable()
-        print(f"[Voice] Session {self.session_id} saved for resume ({len(self.messages)} messages)")
-
+        log.info(f"Session {self.session_id} saved for resume ({len(self.messages)} messages)")
     # ── Skill loader (lazy via SkillRegistry) ─────────────────────────────
 
     def _load_skills(self):
@@ -460,8 +460,7 @@ class VoicePipeline:
                     "triggers": [t.lower() for t in triggers],
                     "desc":     self._skill_registry.get_description(name),
                 }
-        print(f"[Voice] {len(self.skills)} skills registered (lazy)")
-
+        log.info(f"{len(self.skills)} skills registered (lazy)")
     # ── LLM Warmup ────────────────────────────────────────────────────────
 
     async def warmup_llm(self):
@@ -482,10 +481,9 @@ class VoicePipeline:
                     "role": "system",
                     "content": base + "\n\nRecent memory:\n" + context
                 }
-                print("[Voice] Warmup: memory context injected into system prompt")
+                log.debug("Warmup: memory context injected into system prompt")
         except Exception as e:
-            print(f"[Voice] Warmup error: {e}")
-
+            log.error(f"Warmup error: {e}")
     _VOICE_SKIP_SKILLS = {"calculator", "app_switch", "brightness", "clipboard"}
 
     def _match_skill(self, text: str) -> Optional[dict]:
@@ -559,20 +557,20 @@ class VoicePipeline:
                 text  = r.json().get("text", "").strip()
                 clean = text.lower().rstrip(".!?, ")
                 if clean in NOISE_WORDS:
-                    print(f"[Voice] Discarded noise: '{text}'")
+                    log.debug(f"Discarded noise: '{text}'")
                     return ""
                 # Whisper hallucination filter (YouTube outros, annotations, etc.)
                 text_lower = text.strip().lower()
                 if text_lower in WHISPER_HALLUCINATIONS:
-                    print(f"[Voice] Discarded hallucination: '{text}'")
+                    log.debug(f"Discarded hallucination: '{text}'")
                     return ""
                 # Detect repetitive hallucinations like "thank you. thank you. thank you."
                 if re.search(r'(.{4,}?)\1{2,}', text_lower):
-                    print(f"[Voice] Discarded repetitive: '{text}'")
+                    log.debug(f"Discarded repetitive: '{text}'")
                     return ""
                 words = [w for w in clean.split() if w not in {"uh","um","er","hmm","ah"}]
                 if len(words) < 2:
-                    print(f"[Voice] Discarded too short: '{text}'")
+                    log.debug(f"Discarded too short: '{text}'")
                     return ""
                 try:
                     _dash = os.path.dirname(os.path.abspath(__file__))
@@ -581,11 +579,11 @@ class VoicePipeline:
                     from codec_config import clean_transcript as _clean
                     text = _clean(text) or text
                 except Exception as e:
-                    print(f"[Voice] Transcript clean warning: {e}")
+                    log.warning(f"Transcript clean warning: {e}")
                 return text
-            print(f"[Voice] Whisper {r.status_code}: {r.text[:200]}")
+            log.error(f"Whisper {r.status_code}: {r.text[:200]}")
         except Exception as e:
-            print(f"[Voice] Whisper error: {e}")
+            log.error(f"Whisper error: {e}")
         return ""
 
     # ── LLM ───────────────────────────────────────────────────────────────
@@ -616,7 +614,7 @@ class VoicePipeline:
                 if token:
                     yield token
         except Exception as e:
-            print(f"[Voice] Qwen error: {e}")
+            log.error(f"Qwen error: {e}")
             yield "Sorry, I had a processing error."
         finally:
             await llm_queue.release(Priority.CRITICAL)
@@ -656,7 +654,7 @@ class VoicePipeline:
                 return base64.b64encode(buf.getvalue()).decode()
             return await loop.run_in_executor(None, _downscale)
         except Exception as e:
-            print(f"[Voice] Screenshot failed: {e}")
+            log.error(f"Screenshot failed: {e}")
         return None
 
     async def _analyze_screenshot(self, image_b64: str, user_text: str) -> str:
@@ -707,7 +705,7 @@ class VoicePipeline:
                 # Append after memory block, before next user turn
                 self.messages[0]["content"] += f"\n\n{_obs_summary}"
         except Exception as _e:
-            print(f"[Voice] observer injection failed (non-fatal): {_e}")
+            log.debug(f"observer injection failed (non-fatal): {_e}")
         full = ""
         async for chunk in self._stream_qwen(self._trimmed_messages()):
             full += chunk
@@ -728,9 +726,9 @@ class VoicePipeline:
             )
             if r.status_code == 200:
                 return r.content
-            print(f"[Voice] Kokoro {r.status_code}: {r.text[:200]}")
+            log.error(f"Kokoro {r.status_code}: {r.text[:200]}")
         except Exception as e:
-            print(f"[Voice] TTS error: {e}")
+            log.error(f"TTS error: {e}")
         return None
 
     # ── Sentence boundary ─────────────────────────────────────────────────
@@ -799,7 +797,7 @@ class VoicePipeline:
             from codec_ask_user import _load_pending_questions
             data = _load_pending_questions()
         except Exception as e:
-            print(f"[Voice] ask_user poll failed: {e}")
+            log.error(f"ask_user poll failed: {e}")
             return None
         for rec in data.get("pending_questions", []):
             if rec.get("status") != "pending":
@@ -834,8 +832,7 @@ class VoicePipeline:
                 )
             await self._speak(announcement)
         except Exception as e:
-            print(f"[Voice] ask_user announce failed: {e}")
-
+            log.error(f"ask_user announce failed: {e}")
     async def _handle_voice_ask_user_answer(self, qid: str,
                                              user_text: str) -> None:
         """Route the user's spoken transcript to /api/agents/answer/{qid}
@@ -880,7 +877,7 @@ class VoicePipeline:
                 err = result.get("error", "")
                 await self._speak(f"Couldn't record that answer: {err}")
         except Exception as e:
-            print(f"[Voice] ask_user answer handler failed: {e}")
+            log.error(f"ask_user answer handler failed: {e}")
             try:
                 await self._speak("Something went wrong recording your answer.")
             except Exception:
@@ -888,7 +885,7 @@ class VoicePipeline:
 
     async def dispatch_skill(self, skill: dict, user_text: str) -> Optional[str]:
         try:
-            print(f"[Voice] → skill: {skill['name']}")
+            log.info(f"→ skill: {skill['name']}")
             loop = asyncio.get_event_loop()
             # Phase 1 Step 2: route the voice skill call through the unified
             # hook surface. self._cid is set at VoicePipeline.run entry per
@@ -916,11 +913,11 @@ class VoicePipeline:
                         f"'{result.plugin_name}': {result.reason}")
             result = str(result).strip() if result else ""
             if not result or result.lower() in ("none", "done, but no output.", ""):
-                print(f"[Voice] Skill {skill['name']} empty — falling through to Qwen")
+                log.debug(f"Skill {skill['name']} empty — falling through to Qwen")
                 return None
             return result
         except Exception as e:
-            print(f"[Voice] Skill error: {e}")
+            log.error(f"Skill error: {e}")
             return f"There was an error running that: {e}"
 
     async def _skill_to_speech(self, result: str) -> str:
@@ -1053,10 +1050,9 @@ class VoicePipeline:
                     continue
                 mem.save(self.session_id, role, str(content)[:2000])
                 saved += 1
-            print(f"[Voice] Saved {saved} messages → {self.session_id}")
+            log.info(f"Saved {saved} messages → {self.session_id}")
         except Exception as e:
-            print(f"[Voice] Memory save error: {e}")
-
+            log.error(f"Memory save error: {e}")
     # ── Audio receiver task ────────────────────────────────────────────────
 
     async def _audio_receiver(self):
@@ -1072,7 +1068,7 @@ class VoicePipeline:
                 msg_type = msg.get("type", "")
 
                 if msg_type == "websocket.disconnect":
-                    print("[Voice] WebSocket disconnected in receiver")
+                    log.info("WebSocket disconnected in receiver")
                     await self.utterance_queue.put(None)  # signal pipeline to stop
                     # If unexpected, save state for possible resume
                     if self._disconnect_reason != "user":
@@ -1088,7 +1084,7 @@ class VoicePipeline:
 
                         if ctrl_type == "interrupt":
                             if self.processing:
-                                print("[Voice] Interrupt received")
+                                log.info("Interrupt received")
                                 self.interrupted.set()
 
                         elif ctrl_type == "your_turn":
@@ -1097,39 +1093,36 @@ class VoicePipeline:
                                 utterance = bytes(self.audio_buffer)
                                 self.audio_buffer = bytearray()
                                 self.is_speaking = False
-                                print(f"[Voice] Your-turn: flushing {len(utterance)} bytes")
+                                log.info(f"Your-turn: flushing {len(utterance)} bytes")
                                 await self.utterance_queue.put(utterance)
                             elif self.audio_buffer:
                                 # Buffer too short — discard and notify
                                 self.audio_buffer = bytearray()
                                 self.is_speaking = False
                                 await self.ws.send_json({"type": "status", "status": "listening"})
-                                print("[Voice] Your-turn: buffer too short, discarded")
+                                log.debug("Your-turn: buffer too short, discarded")
                             else:
-                                print("[Voice] Your-turn: no audio buffered")
-
+                                log.info("Your-turn: no audio buffered")
                         elif ctrl_type == "nudge":
                             # User tapped "still there?" — send reassurance
                             if self.processing:
                                 await self.ws.send_json({"type": "transcript", "role": "system", "text": "Still processing — hang on…"})
-                                print("[Voice] Nudge acknowledged — still processing")
-
+                                log.info("Nudge acknowledged — still processing")
                         elif ctrl_type == "ping":
                             await self.ws.send_json({"type": "pong"})
 
                         elif ctrl_type == "end_call":
                             # User intentionally ending the call — no resume needed
                             self._disconnect_reason = "user"
-                            print("[Voice] User ended call intentionally")
+                            log.info("User ended call intentionally")
                             await self.utterance_queue.put(None)
                             return
 
                         elif ctrl_type == "hold_start":
                             # User started hold-to-talk — ensure we're in listening mode
-                            print("[Voice] Hold-to-talk started")
-
+                            log.info("Hold-to-talk started")
                     except Exception as e:
-                        print(f"[Voice] WS text parse warning: {e}")
+                        log.warning(f"WS text parse warning: {e}")
                     continue
 
                 # ── Audio bytes ──
@@ -1143,7 +1136,7 @@ class VoicePipeline:
                     rms = self._rms(raw_bytes)
                     if (rms > INTERRUPT_THRESHOLD and
                             time.monotonic() - self.last_tts_end > VAD_ECHO_COOLDOWN):
-                        print(f"[Voice] Interrupt by audio energy (RMS {rms:.0f})")
+                        log.info(f"Interrupt by audio energy (RMS {rms:.0f})")
                         self.interrupted.set()
                     # Feed VAD so utterance is buffered (queued once processing ends)
                     utterance = self.feed_audio(raw_bytes)
@@ -1160,7 +1153,7 @@ class VoicePipeline:
                     await self.utterance_queue.put(utterance)
 
         except Exception as e:
-            print(f"[Voice] Receiver error: {type(e).__name__}: {e}")
+            log.error(f"Receiver error: {type(e).__name__}: {e}")
             # Try to send reconnect advisory before dying
             try:
                 await self.ws.send_json({
@@ -1202,7 +1195,7 @@ class VoicePipeline:
                     await self.ws.send_json({"type": "status", "status": "listening"})
                     continue
 
-                print(f"[Voice] User: {user_text}")
+                log.info(f"User: {user_text}")
                 await self.ws.send_json({"type": "transcript", "role": "user", "text": user_text})
 
                 # Phase 1 Step 3 §5.3 — single-question listen mode.
@@ -1234,7 +1227,7 @@ class VoicePipeline:
 
                 # 1b. Screenshot + Vision — "look at my screen" etc.
                 if self._is_screen_request(user_text):
-                    print("[Voice] Screen analysis requested")
+                    log.info("Screen analysis requested")
                     await self.ws.send_json({"type": "status", "status": "analyzing_screen"})
                     # Camera shutter sound + overlay for visual feedback
                     asyncio.get_event_loop().run_in_executor(None, lambda: subprocess.Popen(
@@ -1252,16 +1245,16 @@ class VoicePipeline:
                          "r.after(8000,r.destroy);r.mainloop()"],
                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
                     screenshot_b64 = await self._take_screenshot()
-                    print(f"[Voice] Screenshot taken: {'OK' if screenshot_b64 else 'FAILED'}")
+                    log.info(f"Screenshot taken: {'OK' if screenshot_b64 else 'FAILED'}")
                     if screenshot_b64:
                         self.interrupted.clear()
                         await self.ws.send_json({"type": "status", "status": "processing"})
-                        print("[Voice] Sending to vision model...")
+                        log.info("Sending to vision model...")
                         vision_desc = await self._analyze_screenshot(screenshot_b64, user_text)
-                        print(f"[Voice] Vision result: {'OK (' + str(len(vision_desc)) + ' chars)' if vision_desc else 'EMPTY/FAILED'}")
+                        log.info(f"Vision result: {'OK (' + str(len(vision_desc)) + ' chars)' if vision_desc else 'EMPTY/FAILED'}")
                         # Check for interrupt after vision inference (user may have spoken)
                         if self.interrupted.is_set():
-                            print("[Voice] Interrupted during vision inference — discarding result")
+                            log.info("Interrupted during vision inference — discarding result")
                             self.processing = False
                             await self.ws.send_json({"type": "status", "status": "listening"})
                             continue
@@ -1269,7 +1262,7 @@ class VoicePipeline:
                             # Speak the vision description directly — no LLM needed
                             # Clean up vision output for TTS
                             clean_desc = re.sub(r'[*#`\[\]]', '', vision_desc).strip()
-                            print(f"[Voice] Speaking vision result directly: {clean_desc[:100]}...")
+                            log.info(f"Speaking vision result directly: {clean_desc[:100]}...")
                             self.messages.append({"role": "user", "content": user_text})
                             screen_context = f"I looked at your screen. Here's what I see: {clean_desc}"
                             self.messages.append({"role": "assistant", "content": screen_context})
@@ -1349,11 +1342,9 @@ class VoicePipeline:
                 })
 
                 if interrupted_mid:
-                    print("[Voice] Response interrupted by user")
-
+                    log.info("Response interrupted by user")
             except Exception as e:
-                print(f"[Voice] Pipeline error: {type(e).__name__}: {e}")
-
+                log.error(f"Pipeline error: {type(e).__name__}: {e}")
             finally:
                 self.interrupted.clear()
                 self.processing = False
@@ -1374,7 +1365,7 @@ class VoicePipeline:
         # after the answer is routed to /api/agents/answer/{id}.
         self._awaiting_ask_user = None
         run_t0 = time.monotonic()
-        print(f"[Voice] Session {'resumed' if is_resumed else 'started'}: {self.session_id}")
+        log.info(f"Session {'resumed' if is_resumed else 'started'}: {self.session_id}")
         # Phase 1 Step 3 §5.3 — touch the active-session marker so
         # codec_ask_user knows whether to announce-and-listen vs defer
         # to PWA-only.
@@ -1440,12 +1431,12 @@ class VoicePipeline:
             run_outcome = "error"
             run_error_type = type(e).__name__
             run_error = str(e)[:500]
-            print(f"[Voice] Session error: {type(e).__name__}: {e}")
+            log.error(f"Session error: {type(e).__name__}: {e}")
         finally:
             receiver.cancel()
             pipeline.cancel()
             self.save_to_memory()
-            print(f"[Voice] Session ended: {self.session_id}")
+            log.info(f"Session ended: {self.session_id}")
             try:
                 duration_ms = (time.monotonic() - run_t0) * 1000.0
                 turns = sum(1 for m in self.messages if m.get("role") == "user")
@@ -1486,4 +1477,4 @@ class VoicePipeline:
         try:
             await self._http.aclose()
         except Exception as e:
-            print(f"[Voice] HTTP client close warning: {e}")
+            log.warning(f"HTTP client close warning: {e}")

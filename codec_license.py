@@ -115,8 +115,52 @@ def _b64url(data: str) -> bytes:
     return base64.urlsafe_b64decode(data + "=" * (-len(data) % 4))
 
 
+# A3 / SR-10: in-memory pubkey + license-state caches.
+#
+# Before this, `_fetch_pubkey` ran an HTTPS round-trip on EVERY skill
+# dispatch via `feature_allowed → license_state → _fetch_pubkey`. At 100
+# paying customers × ~200 skill calls/day each = 20k req/day to the license
+# endpoint; peak ~5 req/sec sustained. Worse: the urllib call is sync with
+# timeout=4.0, so a flaky network or AVA outage adds ~4s latency to every
+# skill call until the disk fallback kicks in.
+#
+# Public keys are publishable, low-churn (rotation lead time measured in
+# weeks). A 1h in-memory TTL drops license-server load by ~99% and removes
+# the latency tail. Cache is per-process; module reload (PM2 restart) and
+# `_invalidate_caches()` (settings save) flush it.
+_PUBKEY_CACHE_VALUE: Optional[bytes] = None
+_PUBKEY_CACHE_TS: float = 0.0
+_PUBKEY_CACHE_TTL: float = 3600.0  # 1 hour
+
+_LICENSE_STATE_CACHE_VALUE: Optional["LicenseState"] = None
+_LICENSE_STATE_CACHE_TS: float = 0.0
+_LICENSE_STATE_CACHE_TTL: float = 60.0  # 60 seconds
+
+
+def _invalidate_caches() -> None:
+    """Drop the in-memory pubkey + license-state caches. Call after the
+    operator changes their license token, config URL, or to force a
+    re-fetch on next call. Safe to call from any thread."""
+    global _PUBKEY_CACHE_VALUE, _PUBKEY_CACHE_TS
+    global _LICENSE_STATE_CACHE_VALUE, _LICENSE_STATE_CACHE_TS
+    _PUBKEY_CACHE_VALUE = None
+    _PUBKEY_CACHE_TS = 0.0
+    _LICENSE_STATE_CACHE_VALUE = None
+    _LICENSE_STATE_CACHE_TS = 0.0
+
+
 def _fetch_pubkey(cfg: dict, timeout: float = 4.0) -> Optional[bytes]:
-    """Fetch the server's PEM public key; cache to disk. Falls back to cache offline."""
+    """Fetch the server's PEM public key; cache in memory (TTL 1h) + on disk.
+
+    Cache miss path: HTTPS GET → on-success writes both caches. Cache hit
+    path: returns in-memory bytes (sub-microsecond). On network failure,
+    falls back to the disk cache (offline-survives-PM2-restart). On total
+    failure (no memory cache, no disk cache, no network) returns None.
+    """
+    global _PUBKEY_CACHE_VALUE, _PUBKEY_CACHE_TS
+    now = time.time()
+    if _PUBKEY_CACHE_VALUE is not None and (now - _PUBKEY_CACHE_TS) < _PUBKEY_CACHE_TTL:
+        return _PUBKEY_CACHE_VALUE
     try:
         with urllib.request.urlopen(_pubkey_url(cfg), timeout=timeout) as r:
             pem = r.read()
@@ -125,10 +169,14 @@ def _fetch_pubkey(cfg: dict, timeout: float = 4.0) -> Optional[bytes]:
                 PUBKEY_CACHE.write_bytes(pem)
             except Exception:
                 pass
+            _PUBKEY_CACHE_VALUE = pem
+            _PUBKEY_CACHE_TS = now
             return pem
     except Exception:
         pass
-    # Offline: use cached key
+    # Network failed — try disk fallback. Don't pollute the in-memory cache
+    # on this path so the next call retries the network instead of holding
+    # a stale value for an hour.
     try:
         return PUBKEY_CACHE.read_bytes()
     except Exception:
@@ -217,35 +265,57 @@ def license_state(cfg: Optional[dict] = None, *, _now: Optional[float] = None) -
            valid                     → "ok"   (refresh grace timestamp)
            can't verify (offline)    → "grace" if within window, else "readonly"
            invalid/expired           → "readonly"
+
+    A3 / SR-10: result is memoized for 60s (process-level cache) to keep
+    `feature_allowed` cheap on the hot path. Tests bypass the cache by
+    passing `_now=` (skips the cache entirely so the test controls time).
     """
     cfg = cfg if cfg is not None else _load_config()
     now = _now if _now is not None else time.time()
 
+    # In-memory state cache (60s TTL). Only honored when the caller didn't
+    # inject a custom `_now` (tests inject _now to control time, so they
+    # always see fresh evaluation). Gated solely on time-injection — a
+    # custom cfg is allowed to reuse the cache because cfg flips are rare
+    # and the test-injection escape hatch is the simpler invariant.
+    global _LICENSE_STATE_CACHE_VALUE, _LICENSE_STATE_CACHE_TS
+    use_cache = (_now is None)
+    if use_cache and _LICENSE_STATE_CACHE_VALUE is not None and \
+            (now - _LICENSE_STATE_CACHE_TS) < _LICENSE_STATE_CACHE_TTL:
+        return _LICENSE_STATE_CACHE_VALUE
+
+    def _store(result):
+        global _LICENSE_STATE_CACHE_VALUE, _LICENSE_STATE_CACHE_TS
+        if use_cache:
+            _LICENSE_STATE_CACHE_VALUE = result
+            _LICENSE_STATE_CACHE_TS = now
+        return result
+
     if not _is_paid_edition(cfg):
-        return LicenseState(mode="oss", reason="open-source build — no license required")
+        return _store(LicenseState(mode="oss", reason="open-source build — no license required"))
 
     token = _license_token(cfg)
     if not token:
-        return LicenseState(mode="readonly", reason="paid build not activated — enter a license key")
+        return _store(LicenseState(mode="readonly", reason="paid build not activated — enter a license key"))
 
     pubkey = _fetch_pubkey(cfg)
     if pubkey is None:
         # Can't get the key at all → fall back to grace window
-        return _grace_or_readonly(now, "license server unreachable and no cached key")
+        return _store(_grace_or_readonly(now, "license server unreachable and no cached key"))
 
     valid, claims, reason = verify_license_token(token, pubkey)
     tier = str(claims.get("tier", "pro"))
     expires_at = str(claims.get("expires_at", ""))
     if valid:
         _write_grace(now, tier, expires_at)
-        return LicenseState(mode="ok", reason="licensed", tier=tier, expires_at=expires_at)
+        return _store(LicenseState(mode="ok", reason="licensed", tier=tier, expires_at=expires_at))
 
     if reason in ("verify error: ", "license server unreachable") or "unreachable" in reason:
-        return _grace_or_readonly(now, reason)
+        return _store(_grace_or_readonly(now, reason))
 
     # Hard invalid (bad signature / expired / malformed) → read-only immediately
-    return LicenseState(mode="readonly", reason=f"license invalid: {reason}",
-                        tier=tier, expires_at=expires_at)
+    return _store(LicenseState(mode="readonly", reason=f"license invalid: {reason}",
+                               tier=tier, expires_at=expires_at))
 
 
 def _grace_or_readonly(now: float, reason: str) -> LicenseState:

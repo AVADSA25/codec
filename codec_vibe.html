@@ -499,7 +499,20 @@ function addMsg(role, text, raw) {
   var el = document.getElementById('cm');
   var d = document.createElement('div');
   d.className = 'mg ' + (role === 'user' ? 'mu' : 'ma');
-  if (raw) { d.innerHTML = typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(text) : text; } else { d.innerHTML = esc(text).replace(/\n/g, '<br>'); }
+  // A2 / SR-9: DOMPurify must FAIL-CLOSED. If the CDN fails to load, a
+  // sub-resource hijack blocks it, or an extension strips the script tag,
+  // we previously wrote raw `text` (LLM output) directly into innerHTML —
+  // an XSS sink for any attacker-influenceable model output. Escape instead.
+  if (raw) {
+    if (typeof DOMPurify !== 'undefined') {
+      d.innerHTML = DOMPurify.sanitize(text);
+    } else {
+      console.warn('DOMPurify unavailable — falling back to plain-text escape');
+      d.innerHTML = esc(text).replace(/\n/g, '<br>');
+    }
+  } else {
+    d.innerHTML = esc(text).replace(/\n/g, '<br>');
+  }
   el.appendChild(d);
   el.scrollTop = el.scrollHeight;
 }

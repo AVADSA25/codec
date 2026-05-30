@@ -1947,24 +1947,108 @@ async def run_code(request: Request):
             except OSError as e:
                 log.debug(f"Temp file cleanup failed for {_p}: {e}")
 
+# /api/save_file safety check — mirrors PR-1C's `file_write` skill blocklist.
+# A1 / SR-8: previously `~/.codec` was in the allowlist, which let any
+# authenticated POST drop a malicious plugin into ~/.codec/plugins/ + add its
+# hash to plugins.allowlist → RCE on next dispatch tick. The skill-side
+# blocklist (skills/file_write.py:62-104) refuses all of:
+#   - the macOS system tree (/System, /Library, /usr, /bin, /sbin, /etc, …)
+#   - the entire ~/.codec/ tree (skills, plugins, oauth_state.json, audit.log,
+#     config.json, memory.db, agents/, plugins.allowlist, …)
+#   - the repo's built-in skills/ directory
+#   - sensitive filename patterns (.ssh, .env, credentials, id_rsa, token, …)
+#   - sensitive extensions (.pem, .key, .p12, .pfx, .keystore)
+# This HTTP endpoint must apply the same set. Replicated inline (rather than
+# importing from the skill module) so the dashboard's safety surface doesn't
+# depend on skill-loader timing. Keep in sync with skills/file_write.py.
+_SAVE_FILE_BLOCKED_SYSTEM_ROOTS = [
+    "/System", "/Library", "/usr", "/bin", "/sbin", "/etc",
+    "/var", "/dev", "/Volumes",
+]
+_SAVE_FILE_BLOCKED_FILENAME_PATTERNS = [
+    ".ssh", ".gnupg", ".env", "credentials", "secrets", "secret",
+    ".aws", ".gcloud", ".kube", "id_rsa", "id_ed25519", "id_dsa",
+    ".netrc", ".npmrc", ".pypirc", "keychain", "password", "token",
+    "api_key", "apikey", "private_key",
+]
+_SAVE_FILE_BLOCKED_EXTS = [".pem", ".key", ".p12", ".pfx", ".keystore"]
+
+def _save_file_blocked_roots():
+    """Realpath-resolved blocklist. Built once on first call (module-load
+    avoidance — keeps dashboard import side-effect-free)."""
+    roots = []
+    for p in _SAVE_FILE_BLOCKED_SYSTEM_ROOTS:
+        try:
+            roots.append(os.path.realpath(p))
+        except Exception:
+            roots.append(p)
+    # CODEC's own state directory + repo's built-in skills/ tree.
+    roots.append(os.path.realpath(os.path.expanduser("~/.codec")))
+    roots.append(os.path.realpath(os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "skills")))
+    return roots
+
+
+_SAVE_FILE_BLOCKED_ROOTS_CACHE = None
+_SAVE_FILE_TMP_REAL = os.path.realpath("/tmp")
+_SAVE_FILE_HOME_REAL = os.path.realpath(os.path.expanduser("~"))
+
+
+def _save_file_is_safe(path):
+    """Return (ok, reason). Mirrors skills/file_write._is_safe_target."""
+    global _SAVE_FILE_BLOCKED_ROOTS_CACHE
+    if _SAVE_FILE_BLOCKED_ROOTS_CACHE is None:
+        _SAVE_FILE_BLOCKED_ROOTS_CACHE = _save_file_blocked_roots()
+    if not path:
+        return False, "Empty path"
+    expanded = os.path.expanduser(path)
+    try:
+        real_path = os.path.realpath(expanded)
+    except Exception:
+        real_path = expanded
+    base_lower = os.path.basename(real_path).lower()
+    for pat in _SAVE_FILE_BLOCKED_FILENAME_PATTERNS:
+        if pat in base_lower:
+            return False, f"Blocked filename pattern: {pat!r}"
+    for ext in _SAVE_FILE_BLOCKED_EXTS:
+        if base_lower.endswith(ext):
+            return False, f"Blocked extension: {ext}"
+    for blocked in _SAVE_FILE_BLOCKED_ROOTS_CACHE:
+        if real_path == blocked or real_path.startswith(blocked + os.sep):
+            return False, f"Blocked path: {blocked}"
+    under_home = (real_path == _SAVE_FILE_HOME_REAL or
+                  real_path.startswith(_SAVE_FILE_HOME_REAL + os.sep))
+    under_tmp = (real_path == _SAVE_FILE_TMP_REAL or
+                 real_path.startswith(_SAVE_FILE_TMP_REAL + os.sep))
+    if not (under_home or under_tmp):
+        return False, f"Target must live under $HOME or /tmp (got: {real_path})"
+    return True, ""
+
+
 @app.post("/api/save_file")
 async def save_file(request: Request):
     body = await request.json()
     filename = os.path.basename(body.get("filename", "untitled.py"))
     content = body.get("content", "")
-    ALLOWED_SAVE_DIRS = [
-        os.path.expanduser("~/codec-workspace"),
-        os.path.expanduser("~/.codec"),
-        os.path.expanduser("~/Desktop"),
-        os.path.expanduser("~/Documents"),
-    ]
-    directory = os.path.realpath(os.path.expanduser(body.get("directory", "~/codec-workspace")))
-    if not any(directory.startswith(allowed) for allowed in ALLOWED_SAVE_DIRS):
-        return JSONResponse({"error": "Directory not allowed"}, status_code=403)
+    directory = os.path.realpath(os.path.expanduser(
+        body.get("directory", "~/codec-workspace")))
+    target_path = os.path.join(directory, filename)
+    ok, reason = _save_file_is_safe(target_path)
+    if not ok:
+        try:
+            log_event("save_file_blocked", "codec-dashboard",
+                      f"/api/save_file refused: {reason}",
+                      extra={"requested_path": target_path, "reason": reason},
+                      outcome="denied", level="warning")
+        except Exception:
+            pass
+        return JSONResponse(
+            {"error": "Directory not allowed", "reason": reason},
+            status_code=403)
     os.makedirs(directory, exist_ok=True)
-    path = os.path.join(directory, filename)
-    with open(path, "w") as f: f.write(content)
-    return {"path": path, "size": len(content)}
+    with open(target_path, "w") as f:
+        f.write(content)
+    return {"path": target_path, "size": len(content)}
 
 
 # (Skills endpoints moved to routes/skills.py)
@@ -3697,7 +3781,14 @@ async def _bg_heartbeat():
 
 
 async def _bg_watcher():
-    """Poll for draft tasks every 200ms."""
+    """Poll for draft tasks every 1s.
+
+    A10 / SR-13: was 200ms — that's 432k stat()+exists() calls/day per
+    customer for a file that changes <100×/day. 1s drops it 5× to ~86k
+    while keeping draft-task pickup latency within UX comfort (a draft
+    overlay closing 0.5-1s after a paste is indistinguishable from instant
+    to the operator).
+    """
     from codec_watcher import TASK_FILE, handle_draft
     _bg_status["watcher"]["running"] = True
     log.info("[WATCHER] Background service started")
@@ -3716,7 +3807,7 @@ async def _bg_watcher():
         except Exception as e:
             _bg_status["watcher"]["errors"] += 1
             log.error(f"[WATCHER] Error: {e}")
-        await asyncio.sleep(0.2)
+        await asyncio.sleep(1.0)
     _bg_status["watcher"]["running"] = False
 
 

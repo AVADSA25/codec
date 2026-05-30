@@ -500,7 +500,7 @@ function renderTimeline(evts) {
     html += `<div class="event-row ${levelClass(ev)} ${isExpanded ? 'expanded' : ''}" onclick="expandEvent(${i})">
       <span class="ev-time">${formatTimestamp(ev.ts)}</span>
       <span class="ev-dot dot-${cat}"></span>
-      <span class="ev-source">${ev.src || cat}</span>
+      <span class="ev-source">${escapeHtml(ev.src || cat)}</span>
       <span class="ev-summary"><span class="ev-msg">${escapeHtml(ev.sum || ev.message || '--')}</span></span>
       <span class="ev-chevron">&#9656;</span>
     </div>
