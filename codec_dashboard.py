@@ -1,16 +1,13 @@
 """CODEC v2.1 — Phone Dashboard & PWA"""
 import os
 import json
-import sqlite3
 import time
 import hmac
 import threading
-import uuid
 import asyncio
 import secrets
 from datetime import datetime, timedelta
 
-from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,17 +18,17 @@ import uvicorn
 # ── Shared state (canonical source: routes/_shared.py) ──
 from routes._shared import (
     log, DASHBOARD_DIR, CONFIG_PATH, _NO_CACHE, _audit_write,
-    _notif_lock, _load_notifications, _write_notifications,
-    _append_schedule_run_log,
     AUTH_ENABLED, AUTH_SESSION_HOURS, AUTH_COOKIE_NAME,
     _auth_sessions, _auth_lock, _e2e_keys,
     _auth_available, _verify_biometric_session, _session_token_valid,
     _save_sessions, _save_e2e_keys,
     get_db,
 )
-# C1, C4: AUDIT_LOG / approval state used by routes/audit.py and
-# routes/approvals.py respectively — codec_dashboard.py doesn't need
-# them at module level anymore.
+# C1/C4/D3: AUDIT_LOG, approval state, notification helpers, and the
+# schedule-run log are imported by the extracted route modules — codec_
+# dashboard.py doesn't reference them at module level anymore.
+# D1/D2: sqlite3, uuid, pathlib.Path moved with the qchat/vibe/schedules
+# extractions (the only callers left used them).
 
 # Audit emits route through the unified log_event adapter (real, not no-op)
 # per docs/PHASE1-STEP1-DESIGN.md.
@@ -1270,7 +1267,7 @@ async def memory_search_endpoint(request: Request):
     # 2. Dashboard chat (qchat.db)
     if search_all or "chat" in sources:
         try:
-            conn = qchat_db()
+            from routes.qchat import qchat_db; conn = qchat_db()
             rows = conn.execute(
                 """SELECT m.session_id, m.timestamp, m.role, m.content, s.title
                    FROM qchat_messages m
@@ -1293,7 +1290,7 @@ async def memory_search_endpoint(request: Request):
     # 3. Vibe IDE (vibe.db)
     if search_all or "vibe" in sources:
         try:
-            conn = vibe_db()
+            from routes.vibe import vibe_db; conn = vibe_db()
             rows = conn.execute(
                 """SELECT m.session_id, m.timestamp, m.role, m.content
                    FROM vibe_messages m
@@ -1710,7 +1707,7 @@ def _enrich_messages(messages: list, config: dict, force_search: bool = False) -
 
     # 2. Dashboard chat history (qchat.db) — targeted search on trigger, recent always
     try:
-        _qc = qchat_db()
+        from routes.qchat import qchat_db as _qchat_db; _qc = _qchat_db()
         if has_memory_trigger:
             keyword = f"%{last_text[:80]}%"
             qrows = _qc.execute(
@@ -1746,7 +1743,7 @@ def _enrich_messages(messages: list, config: dict, force_search: bool = False) -
     # 3. Vibe IDE history (vibe.db) — targeted search on trigger only (less relevant day-to-day)
     if has_memory_trigger:
         try:
-            _vc = vibe_db()
+            from routes.vibe import vibe_db as _vibe_db; _vc = _vibe_db()
             keyword = f"%{last_text[:80]}%"
             vrows = _vc.execute(
                 "SELECT role, content, timestamp FROM vibe_messages "
