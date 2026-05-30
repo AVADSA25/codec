@@ -1,7 +1,8 @@
 """CODEC Dashboard — Auth routes (biometric, PIN, TOTP, E2E key exchange)."""
 import os
 import json
-import hmac
+# hmac was used by the legacy SHA-256 pin verify path; codec_pinhash.verify_pin
+# now owns the constant-time compare. Kept the import removal to avoid F401.
 import secrets
 import time
 import subprocess

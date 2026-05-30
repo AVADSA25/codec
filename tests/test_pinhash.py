@@ -6,8 +6,6 @@ installed.
 """
 import hashlib
 
-import pytest
-
 
 def test_argon2_available():
     """The dashboard host must have argon2-cffi installed (declared in
