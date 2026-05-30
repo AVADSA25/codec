@@ -1,8 +1,15 @@
 """Find files on your Mac by name or content"""
 SKILL_NAME = "file_search"
-SKILL_TRIGGERS = ["find file", "search file", "locate file", "where is file",
-                  "find document", "search for file", "find files named",
-                  "search for files"]
+SKILL_TRIGGERS = [
+    "find file", "search file", "locate file", "where is file",
+    "find document", "search for file", "find files named",
+    "search for files",
+    # B4 / SR-26: added local-filesystem variants that previously routed
+    # to google_drive's "my files" trigger.
+    "my files", "list my files", "show my files",
+    "my documents", "list my documents",
+    "recent files", "recent documents",
+]
 SKILL_DESCRIPTION = "Search for files by name or content"
 SKILL_MCP_EXPOSE = True
 

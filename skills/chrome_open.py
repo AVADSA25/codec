@@ -6,8 +6,11 @@ SKILL_DESCRIPTION = "Open URLs and websites in Google Chrome"
 SKILL_MCP_EXPOSE = True
 SKILL_TRIGGERS = [
     "open chrome", "open url", "open website", "open page", "go to", "browse to",
-    "navigate to", "open tab", "new tab", "open google", "open youtube",
+    "navigate to", "open tab", "new tab", "open youtube",
     "open gmail", "open github"
+    # B4 / SR-26: "open google" removed — was hijacking "open google docs"
+    # away from the google_docs skill (chrome_open intercepted on the
+    # shorter substring before google_docs's specific trigger could win).
 ]
 
 # Common shortcuts

@@ -249,19 +249,19 @@ MCP tool name shown where it differs from the file name.
 | 21 | **Temporal Fact Store** — `facts` table with valid_from/valid_until/superseded_by; auto-supersession on key conflict |
 | 22 | **CCF Compression** — rule-based entity abbreviation + filler stripping for recalled memory blocks (~65% token reduction) |
 | 23 | **Active facts injection** — currently-valid temporal facts auto-added to system prompt on every session build |
-| 18 | Search result TTL caching (5-min TTL, 100 entries, thread-safe) |
-| 19 | Dual search backends (DuckDuckGo + Serper.dev) |
-| 20 | FTS5 full-text search memory (BM25 ranking, injection prevention) |
-| 21 | SQLite WAL mode with busy timeout |
-| 22 | Heartbeat system (5 parallel service health checks) |
-| 23 | Daily database backup with 7-day rotation |
-| 24 | Scheduler (cron-like crew scheduling with dedup) |
-| 25 | Audit logging across 16 categories (daily rotation, 30-day retention, JSON-line) |
-| 26 | Process watchdog (auto-kills stuck processes >500MB RAM, <0.5% CPU) |
-| 27 | iMessage agent (wake word trigger, vision, voice notes, 3 smart agents) |
-| 28 | Telegram bot (DM support, conversation memory, markdown, voice notes) |
-| 29 | AppKit overlay notifications (float above fullscreen, tkinter fallback) |
-| 30 | AppleScript paste integration (reliable cross-app clipboard paste) |
+| 24 | Search result TTL caching (5-min TTL, 100 entries, thread-safe) |
+| 25 | Dual search backends (DuckDuckGo + Serper.dev) |
+| 26 | FTS5 full-text search memory (BM25 ranking, injection prevention) |
+| 27 | SQLite WAL mode with busy timeout |
+| 28 | Heartbeat system (5 parallel service health checks) |
+| 29 | Daily database backup with 7-day rotation |
+| 30 | Scheduler (cron-like crew scheduling with dedup) |
+| 31 | Audit logging across 16 categories (daily rotation, 30-day retention, JSON-line) |
+| 32 | Process watchdog (auto-kills stuck processes >500MB RAM, <0.5% CPU) |
+| 33 | iMessage agent (wake word trigger, vision, voice notes, 3 smart agents) |
+| 34 | Telegram bot (DM support, conversation memory, markdown, voice notes) |
+| 35 | AppKit overlay notifications (float above fullscreen, tkinter fallback) |
+| 36 | AppleScript paste integration (reliable cross-app clipboard paste) |
 
 ---
 

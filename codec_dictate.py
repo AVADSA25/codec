@@ -155,7 +155,16 @@ root.mainloop()
         return None
 
 # ── LIVE DICTATION (hands-free, double-tap Option) ──────────────────────────
-WHISPER_SERVER = "http://localhost:8084/v1/audio/transcriptions"
+# B2 / SR-18: read STT + LLM URLs from codec_config so operators who change
+# the port get a consistent experience across dashboard, voice, and dictate.
+try:
+    from codec_config import WHISPER_URL as WHISPER_SERVER
+    from codec_config import QWEN_BASE_URL as _QWEN_BASE_URL
+    from codec_config import QWEN_MODEL as _QWEN_MODEL
+except ImportError:
+    WHISPER_SERVER = "http://localhost:8084/v1/audio/transcriptions"
+    _QWEN_BASE_URL = "http://localhost:8083/v1"
+    _QWEN_MODEL = "mlx-community/Qwen3.6-35B-A3B-4bit"
 SOX_PATH = "/opt/homebrew/bin/sox"
 
 
@@ -214,21 +223,21 @@ def _live_record_loop():
                 )
                 if live_stop_event.is_set():
                     try: os.unlink(tmp.name)
-                    except Exception: pass
+                    except OSError: pass
                     break
                 if os.path.exists(tmp.name) and os.path.getsize(tmp.name) >= 1000:
                     try:
                         q.put(tmp.name, timeout=1)
                     except queue.Full:
                         try: os.unlink(tmp.name)
-                        except Exception: pass
+                        except OSError: pass
                 else:
                     try: os.unlink(tmp.name)
-                    except Exception: pass
+                    except OSError: pass
             except Exception as e:
                 print(f"[DICTATE] Producer error: {e}")
                 try: os.unlink(tmp.name)
-                except Exception: pass
+                except OSError: pass
 
     prod = threading.Thread(target=_producer, daemon=True)
     prod.start()
@@ -273,7 +282,7 @@ def _live_record_loop():
             print(f"[DICTATE] Live chunk error: {e}")
         finally:
             try: os.unlink(path)
-            except Exception: pass
+            except OSError: pass
 
     prod.join(timeout=3)
     return full_text.strip()
@@ -314,11 +323,11 @@ def stop_live_dictation():
     # Kill overlay — tkinter mainloop sometimes ignores SIGTERM, so SIGKILL it
     if live_overlay:
         try: live_overlay.terminate()
-        except Exception: pass
+        except OSError: pass  # ProcessLookupError covered (subclass of OSError)
         try: live_overlay.wait(timeout=0.5)
         except Exception:
             try: live_overlay.kill()
-            except Exception: pass
+            except OSError: pass  # ProcessLookupError covered (subclass of OSError)
         live_overlay = None
     # Wait for thread
     if live_thread:
@@ -410,8 +419,8 @@ def transcribe_and_type(audio_path):
                             {"role": "system", "content": "Rewrite the user message as a polished, professional message. Output ONLY the final text. No preamble, no explanation."},
                             {"role": "user", "content": body},
                         ],
-                        base_url="http://localhost:8083/v1",
-                        model="mlx-community/Qwen3.6-35B-A3B-4bit",
+                        base_url=_QWEN_BASE_URL,
+                        model=_QWEN_MODEL,
                         max_tokens=300, temperature=0.3, timeout=15,
                     )
                     if refined:
@@ -470,7 +479,7 @@ def on_press(key):
                 try:
                     recording_proc.terminate()
                     recording_proc.wait(timeout=2)
-                except Exception: pass
+                except (OSError, subprocess.TimeoutExpired): pass
                 recording_proc = None
                 recording_path = None
             hide_overlay()
@@ -551,14 +560,14 @@ def main():
         global recording_proc
         if recording_proc:
             try: recording_proc.terminate(); recording_proc.wait(timeout=2)
-            except Exception: pass
+            except (OSError, subprocess.TimeoutExpired): pass
             recording_proc = None
         hide_overlay()
         if live_active:
             stop_live_dictation()
         for f in _glob.glob(os.path.join(tempfile.gettempdir(), "dictate_*.wav")):
             try: os.unlink(f)
-            except Exception: pass
+            except OSError: pass
     atexit.register(_cleanup)
     import signal
     signal.signal(signal.SIGTERM, lambda *a: (print("[DICTATE] SIGTERM received"), _cleanup(), sys.exit(0)))

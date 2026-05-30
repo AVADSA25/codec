@@ -110,8 +110,14 @@ async def auth_verify(request: Request):
 
 @router.post("/api/auth/pin")
 async def auth_pin(request: Request):
-    """Verify a PIN code."""
-    import hashlib
+    """Verify a PIN code.
+
+    B8 / SR-31: hash verification routes through codec_pinhash, which
+    accepts both argon2id (new) and SHA-256 (legacy) `auth_pin_hash`
+    values. New PINs set via `/api/auth/pin/set` (or by hand) should use
+    argon2id whenever argon2-cffi is installed.
+    """
+    from codec_pinhash import verify_pin
     if not AUTH_PIN_HASH:
         return JSONResponse({"error": "PIN authentication not configured"}, status_code=400)
     try:
@@ -120,7 +126,6 @@ async def auth_pin(request: Request):
     except Exception:
         return JSONResponse({"error": "Missing pin field"}, status_code=400)
 
-    pin_hash = hashlib.sha256(pin.encode()).hexdigest()
     client_ip = request.client.host if request.client else "unknown"
 
     # Brute-force protection — escalating lockout (OWASP standard)
@@ -131,15 +136,16 @@ async def auth_pin(request: Request):
         remaining = int(attempt["locked_until"] - time.time())
         return JSONResponse({"error": f"Too many failed attempts. Locked out for {remaining}s."}, status_code=429)
 
+    pin_ok = verify_pin(pin, AUTH_PIN_HASH)
     try:
-        if hmac.compare_digest(pin_hash, AUTH_PIN_HASH):
+        if pin_ok:
             _audit_write(f"[{datetime.now().isoformat()}] AUTH_SUCCESS: method=pin ip={client_ip}\n")
         else:
             _audit_write(f"[{datetime.now().isoformat()}] AUTH_FAILED: method=pin error=wrong_pin ip={client_ip}\n")
     except Exception:
         pass
 
-    if hmac.compare_digest(pin_hash, AUTH_PIN_HASH):
+    if pin_ok:
         method = "pin"
         log_event("auth_success", "codec-auth", f"Auth success: {method}", extra={"method": method})
         _pin_attempts.pop(client_ip, None)

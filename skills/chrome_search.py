@@ -6,8 +6,12 @@ SKILL_NAME = "chrome_search"
 SKILL_DESCRIPTION = "Search Google in Chrome for any query"
 SKILL_MCP_EXPOSE = True
 SKILL_TRIGGERS = [
-    "search google", "google search", "search for", "look up", "google for",
-    "search the web", "web search", "find online", "search online"
+    "search google", "google search", "look up", "google for",
+    "find online", "search online"
+    # B4 / SR-26: "search the web" + "web search" + "search for" removed —
+    # these collided with `web_search` (which returns text results, not a
+    # browser tab). Users saying "search the web" now route to web_search
+    # by default; explicit Chrome-tab searches use "search google".
 ]
 
 def run(task, app="", ctx=""):

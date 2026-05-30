@@ -174,7 +174,15 @@ def extract_task_from_message(content: str) -> str:
 
 
 def _is_dangerous(cmd):
-    """Check command against centralized dangerous patterns."""
+    """Check command against centralized dangerous patterns.
+
+    B2 / SR-19: hard-fails to "block" (returns True) if codec_config is
+    unavailable. The previous stale fallback list covered only 11 patterns
+    vs. PR-2G's hardened ~50-layer detector — a misconfigured Python path
+    would silently use the weaker gate and let bypasses through. Modern
+    heartbeat task auto-execution is rare; failing closed is the right
+    safety default.
+    """
     try:
         import sys as _sys
         _repo = os.path.dirname(os.path.abspath(__file__))
@@ -183,10 +191,11 @@ def _is_dangerous(cmd):
         from codec_config import is_dangerous
         return is_dangerous(cmd)
     except ImportError:
-        # Conservative fallback
-        BLOCKED = ["rm -rf", "sudo", "shutdown", "reboot", "killall", "mkfs", "dd if=",
-                    "chmod 777", "| bash", "| sh"]
-        return any(b in cmd.lower() for b in BLOCKED)
+        import logging as _logging
+        _logging.getLogger("codec.heartbeat").critical(
+            "codec_config unavailable in heartbeat — refusing all auto-tasks "
+            "(fail-safe). Restore codec_config import to re-enable.")
+        return True  # fail-CLOSED: refuse to auto-execute anything
 
 
 def execute_pending_tasks():
