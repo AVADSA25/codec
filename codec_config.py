@@ -638,6 +638,19 @@ def is_dangerous(cmd):
             if p in norm:
                 return True
 
+        # ── Layer E-bis (SR-6): env-aliased dangerous binary ──
+        # Catches  `B=base64; echo cm0gLXJmIC8= | $B -d`  patterns where the
+        # binary name is hidden behind a shell-var assignment so first-token
+        # extraction doesn't match _NETWORK_BINARIES / _ENCODING_EVAL.
+        # Any var assignment to a sensitive binary is suspicious even before
+        # we see the dereference.
+        if re.search(
+            r"\b[a-z_][a-z0-9_]*\s*=\s*(base64|eval|sh|bash|zsh|curl|wget|"
+            r"nc|ncat|python|python3|perl|ruby|node|osascript|xxd)\b",
+            norm,
+        ):
+            return True
+
         # ── Layer F: inline interpreter exec strings ──
         for p in _INLINE_EXEC:
             if p in norm:

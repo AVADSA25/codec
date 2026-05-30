@@ -20,8 +20,8 @@
   <a href="https://github.com/AVADSA25/codec/discussions"><img src="https://img.shields.io/badge/community-Discussions-7057ff?style=flat-square&logo=github" alt="GitHub Discussions"/></a>
   <a href="FEATURES.md"><img src="https://img.shields.io/badge/features-400+-blue?style=flat-square" alt="400+ Features"/></a>
   <img src="https://img.shields.io/badge/skills-76-orange?style=flat-square" alt="76 Skills"/>
-  <img src="https://img.shields.io/badge/tests-1300+-green?style=flat-square" alt="1,300+ Tests"/>
-  <img src="https://img.shields.io/badge/lines-67K+-purple?style=flat-square" alt="67K+ Lines"/>
+  <img src="https://img.shields.io/badge/tests-2000+-green?style=flat-square" alt="2,000+ Tests"/>
+  <img src="https://img.shields.io/badge/lines-52K+-purple?style=flat-square" alt="52K+ Lines"/>
   <img src="https://img.shields.io/badge/license-MIT-brightgreen?style=flat-square" alt="MIT License"/>
   <img src="https://img.shields.io/badge/engine-CODEC%20v3.2-d97757?style=flat-square" alt="Engine: CODEC v3.2"/>
 </p>
@@ -414,7 +414,7 @@ The setup wizard handles everything in 9 steps: LLM, voice, vision, hotkeys, Goo
 Configure in `~/.codec/config.json`:
 ```json
 {
-  "llm_url": "http://localhost:8081/v1",
+  "llm_url": "http://localhost:8083/v1",
   "model": "mlx-community/Qwen3.6-35B-A3B-4bit"
 }
 ```
@@ -550,7 +550,7 @@ pm2 logs codec-imessage --lines 10 --nostream     # iMessage agent
 pm2 logs codec-telegram --lines 10 --nostream     # Telegram bot
 
 # Verify LLM is responding
-curl -s http://localhost:8081/v1/models | python3 -m json.tool
+curl -s http://localhost:8083/v1/models | python3 -m json.tool
 
 # Verify dashboard is up
 curl -s http://localhost:8090/health

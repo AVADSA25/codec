@@ -695,8 +695,13 @@ SAFETY RULES:
                               outcome="denied", level="warning")
                     return "Command blocked by user. Dangerous command was denied."
 
-            # Safe commands skip preview
+            # Safe commands skip preview — UNLESS shell metacharacters are
+            # present (LS-4 / SR-3). A "safe" prefix like `cat`/`echo`/`ls`
+            # followed by `;`/`&&`/`||`/`|`/redirection/cmd-sub means the
+            # actual side effect may not match the prefix at all.
             is_safe = any(code.strip().lower().startswith(s) for s in self.SAFE_CMDS)
+            if is_safe and any(c in code for c in ";&|<>$`"):
+                is_safe = False
             if not is_safe and not self._cmd_preview(action, code):
                 print("[PREVIEW] Command denied by user.")
                 with open(os.path.expanduser("~/.codec/audit.log"), "a") as _af:

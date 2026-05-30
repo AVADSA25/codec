@@ -863,7 +863,11 @@ class Crew:
                 final = results[-1] if results else "No results."
 
             elif self.mode == "parallel":
-                coros = [a.run(t, callback=callback) for a, t in zip(self.agents, self.tasks)]
+                # LS-3 / SR-2: enforce max_steps cap in parallel mode to match
+                # sequential. Without this, Crew(mode="parallel", agents=[N])
+                # spawned N concurrent agent.run coroutines unbounded.
+                pairs = list(zip(self.agents, self.tasks))[:self.max_steps]
+                coros = [a.run(t, callback=callback) for a, t in pairs]
                 results = await asyncio.gather(*coros)
                 final = "\n\n---\n\n".join(results)
             else:

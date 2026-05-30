@@ -117,13 +117,29 @@ def test_consent_option_label_exact_match_accepted():
     assert normalized == "Delete it"
 
 
-def test_consent_freetext_accepted_as_non_confirming():
-    """Free-text that's NOT generic-yes and DOESN'T contain the verb is
-    accepted as the user's actual answer (e.g. "no don't delete it")."""
+def test_consent_freetext_rejected_in_strict_mode():
+    """LS-1 / SR-1 fix: in strict-consent mode (destructive_verb non-empty),
+    free-text that's NOT generic-yes, NOT an option-match, and DOESN'T
+    contain the verb is REJECTED. This pairs with submit_answer's rejection
+    counter — two rejections raise ambiguous_consent and ask() returns
+    TIMEOUT_SENTINEL, so the destructive action is blocked.
+
+    Previously this returned (True, normalized), which let chat_consent_ok
+    silently approve a user typing "no" to a destructive prompt.
+    """
     accepted, normalized = codec_ask_user._is_consenting_answer(
         "no don't do that", destructive_verb="delete", options=None)
+    assert accepted is False
+    assert normalized == ""
+
+
+def test_consent_freetext_accepted_in_general_mode():
+    """Non-strict mode (destructive_verb empty — general question like
+    'What color shirt?') still accepts any non-empty free-text answer."""
+    accepted, normalized = codec_ask_user._is_consenting_answer(
+        "blue", destructive_verb="", options=None)
     assert accepted is True
-    assert normalized == "no don't do that"
+    assert normalized == "blue"
 
 
 # ── _default_destructive_verb auto-extraction ────────────────────────────────
