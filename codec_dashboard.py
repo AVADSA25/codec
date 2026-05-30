@@ -36,7 +36,8 @@ from codec_audit import log_event  # STEP_BUDGET_EXHAUSTED moved with _StepBudge
 from codec_chat_stream import SkillTagBuffer, SKILL_TAG_RE  # A-6 (PR-3D-c)
 import codec_llm  # A-12 (PR-3E-dashboard)
 
-from pydantic import BaseModel, Field
+# E2 / SR-48: pydantic.BaseModel + Field moved with HealthResponse to
+# routes/health.py — the model was the only consumer.
 # (A-18, PR-3G: `from typing import Optional, List` removed — Optional is already
 # imported above; List was only used by the 9 deleted unused response models.)
 
