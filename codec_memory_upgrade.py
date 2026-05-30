@@ -94,8 +94,13 @@ CREATE INDEX IF NOT EXISTS idx_facts_user ON facts(user_id);
 
 
 def _conn() -> sqlite3.Connection:
-    c = sqlite3.connect(DB_PATH)
+    # A9 / SR-12: 5s busy_timeout so concurrent chat + observer + facts
+    # writes wait instead of raising SQLITE_BUSY immediately. WAL is per-DB
+    # (already enabled by codec_memory's first writer); applying it here is
+    # idempotent.
+    c = sqlite3.connect(DB_PATH, timeout=5.0)
     c.execute("PRAGMA journal_mode=WAL")
+    c.execute("PRAGMA busy_timeout=5000")
     c.executescript(_FACTS_SCHEMA)
     return c
 

@@ -64,20 +64,31 @@ def atomic_write_json(
 def file_lock(path: Any) -> Iterator[None]:
     """Exclusive cross-process lock on `<path>.lock` for the duration of the
     block. Use around a read-modify-write of `path` so concurrent daemons
-    serialize instead of clobbering each other."""
+    serialize instead of clobbering each other.
+
+    A7 / SR-11: the `open()` is now inside the try-block, paired with a
+    finally close. Previously, if a path issue caused open() to succeed but
+    something raised between open() and the body's try-block, the lock-
+    sidecar file handle leaked in LOCK_EX state until GC.
+    """
     path = str(path)
     directory = os.path.dirname(path) or "."
     os.makedirs(directory, exist_ok=True)
-    lock_file = open(path + ".lock", "w")
+    lock_file = None
     try:
+        lock_file = open(path + ".lock", "w")
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
         yield
     finally:
-        try:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
-        except Exception:
-            pass
-        lock_file.close()
+        if lock_file is not None:
+            try:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+            except Exception:
+                pass
+            try:
+                lock_file.close()
+            except Exception:
+                pass
 
 
 def read_modify_write(

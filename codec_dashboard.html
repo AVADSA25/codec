@@ -1699,7 +1699,7 @@ async function loadPrompts() {
     if (Object.keys(_promptsData).length === 0) throw new Error('No prompts found');
     renderPrompts();
   } catch(e) {
-    container.innerHTML = '<div style="color:var(--text-dim);font-size:12px;padding:8px">Failed to load prompts: ' + e.message + '. Try restarting the dashboard.</div>';
+    container.innerHTML = '<div style="color:var(--text-dim);font-size:12px;padding:8px">Failed to load prompts: ' + _escHtml(e.message) + '. Try restarting the dashboard.</div>';
   }
 }
 function renderPrompts() {
@@ -1712,12 +1712,18 @@ function renderPrompts() {
     var modClass = p.modified ? ' modified' : '';
     var modBadge = p.modified ? '<span class="prompt-modified-badge">edited</span>' : '';
     var charCount = (p.value || '').length;
-    html += '<div class="prompt-card' + modClass + '" id="prompt-' + key + '">' +
-      '<div class="prompt-header" onclick="togglePrompt(\'' + key + '\')">' +
+    // A4 / XSS hardening: prompt metadata (label/description/file) is sourced
+    // from ~/.codec/prompt_overrides.json. If an attacker ever lands a write to
+    // that file (via a /api/save_file bypass — see A1 — or a future plugin
+    // misstep), unescaped metadata becomes stored XSS on this settings panel.
+    // Escape every interpolated field; the textarea content already routes
+    // through _escHtml.
+    html += '<div class="prompt-card' + modClass + '" id="prompt-' + _escHtml(key) + '">' +
+      '<div class="prompt-header" onclick="togglePrompt(\'' + _escHtml(key) + '\')">' +
         '<div style="flex:1;min-width:0">' +
-          '<div class="prompt-label">' + p.label + ' ' + modBadge + '</div>' +
-          '<div class="prompt-desc">' + p.description + '</div>' +
-          '<div class="prompt-file">' + p.file + ' — ' + charCount + ' chars</div>' +
+          '<div class="prompt-label">' + _escHtml(p.label || '') + ' ' + modBadge + '</div>' +
+          '<div class="prompt-desc">' + _escHtml(p.description || '') + '</div>' +
+          '<div class="prompt-file">' + _escHtml(p.file || '') + ' — ' + charCount + ' chars</div>' +
         '</div>' +
         '<svg class="prompt-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>' +
       '</div>' +

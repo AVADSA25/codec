@@ -8,7 +8,6 @@ import contextvars
 import json
 import os
 import re
-import secrets
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -84,14 +83,16 @@ _async_http = httpx.AsyncClient(timeout=180)
 # called outside a crew) sets _correlation_id_var; nested emits inherit it
 # automatically. Using contextvars keeps the ID intact across asyncio task
 # boundaries and run_in_executor calls. See design §1.4.
-_correlation_id_var: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
-    "codec_agents_correlation_id", default=None
+#
+# A5 / SR-5: the canonical home for this contextvar moved to codec_audit so
+# downstream readers (codec_ask_user, codec_observer, codec_triggers) can
+# import it without dragging codec_agents into a cycle. Re-exported here for
+# back-compat with any external importer that grabbed
+# `codec_agents._correlation_id_var` directly.
+from codec_audit import (
+    _correlation_id_var as _correlation_id_var,  # noqa: F401 — re-export
+    _new_correlation_id as _new_correlation_id,  # noqa: F401 — re-export
 )
-
-
-def _new_correlation_id() -> str:
-    """Generate a 12-char lowercase-hex correlation_id (6 bytes)."""
-    return secrets.token_hex(6)
 
 
 def _audit(event_type: str, **kwargs):
