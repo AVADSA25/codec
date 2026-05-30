@@ -113,7 +113,9 @@ def test_agents_run_endpoint_evicts():
 
 
 def test_dashboard_approval_endpoints_evict():
-    src = (REPO / "codec_dashboard.py").read_text()
+    # C1 / SR-36: approval endpoints moved to routes/approvals.py — the
+    # sweep call now lives there. Scan that file for the call.
+    src = (REPO / "routes" / "approvals.py").read_text()
     assert "_evict_expired_approvals(" in src, "approval endpoints must sweep expired approvals"
 
 
