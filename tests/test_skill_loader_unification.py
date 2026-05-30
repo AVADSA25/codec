@@ -118,7 +118,8 @@ def test_malformed_custom_triggers_tolerated(registry_with_custom):
 
 
 def test_cortex_skills_endpoint_uses_registry():
-    src = (REPO / "codec_dashboard.py").read_text()
+    # C3 / SR-38: cortex_skills moved to routes/cortex.py. Scan there.
+    src = (REPO / "routes" / "cortex.py").read_text()
     # Endpoint must no longer import the legacy codec_core list
     idx = src.find("async def cortex_skills")
     assert idx >= 0

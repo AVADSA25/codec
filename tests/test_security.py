@@ -246,16 +246,17 @@ def test_crew_has_allowed_tools_field():
 
 
 def test_all_crews_define_allowed_tools():
-    """Every pre-built crew builder must define an allowed_tools list"""
+    """Every pre-built crew builder must define an allowed_tools list.
+
+    C6 / SR-41: 12 crew builders moved to codec_crews.py. Scan there
+    instead of codec_agents.py (which now imports + re-exports them)."""
     REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    content = open(os.path.join(REPO, "codec_agents.py")).read()
+    content = open(os.path.join(REPO, "codec_crews.py")).read()
     import re
     # Match only the crew builder functions (end with _crew, take **kwargs)
     crew_defs = re.findall(r'def (\w+_crew)\(\*\*kwargs\)', content)
-    # B3 / SR-21: bumped from >= 8 to >= 12 — the 8 floor was stale from
-    # when CREW_REGISTRY had fewer crews. Today there are 12 crews; a
-    # higher floor catches future removals as regressions instead of
-    # silently absorbing them.
+    # Floor: ≥12 crews — catches future removals as regressions instead
+    # of silently absorbing them.
     assert len(crew_defs) >= 12, f"Expected at least 12 crew builders, found {len(crew_defs)}"
     for crew_fn in crew_defs:
         fn_body = content.split(f"def {crew_fn}(")[1].split("\ndef ")[0]

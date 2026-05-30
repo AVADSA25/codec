@@ -3,7 +3,6 @@ import os
 import json
 import sqlite3
 import time
-import subprocess
 import hmac
 import threading
 import uuid
@@ -21,7 +20,7 @@ import uvicorn
 
 # ── Shared state (canonical source: routes/_shared.py) ──
 from routes._shared import (
-    log, DASHBOARD_DIR, CONFIG_PATH, AUDIT_LOG, _NO_CACHE, _audit_write,
+    log, DASHBOARD_DIR, CONFIG_PATH, _NO_CACHE, _audit_write,
     _notif_lock, _load_notifications, _write_notifications,
     _append_schedule_run_log,
     AUTH_ENABLED, AUTH_SESSION_HOURS, AUTH_COOKIE_NAME,
@@ -29,8 +28,10 @@ from routes._shared import (
     _auth_available, _verify_biometric_session, _session_token_valid,
     _save_sessions, _save_e2e_keys,
     get_db,
-    _pending_approvals, _approval_lock, _evict_expired_approvals,
 )
+# C1, C4: AUDIT_LOG / approval state used by routes/audit.py and
+# routes/approvals.py respectively — codec_dashboard.py doesn't need
+# them at module level anymore.
 
 # Audit emits route through the unified log_event adapter (real, not no-op)
 # per docs/PHASE1-STEP1-DESIGN.md.
@@ -329,6 +330,16 @@ from routes.memory import router as memory_router
 from routes.websocket import router as websocket_router
 # B6-P3 / SR-34: notification endpoints extracted from codec_dashboard.
 from routes.notifications import router as notifications_router
+# C1 / SR-36: approval endpoints extracted.
+from routes.approvals import router as approvals_router
+# C2 / SR-37: heartbeat endpoints extracted.
+from routes.heartbeat import router as heartbeat_router
+# C3 / SR-38: cortex endpoints extracted.
+from routes.cortex import router as cortex_router
+# C4 / SR-39: audit endpoints extracted.
+from routes.audit import router as audit_router
+# C5 / SR-40: observer endpoint extracted.
+from routes.observer import router as observer_router
 # Phase 2 Step 6 — Trigger System PWA endpoints (auth-gated by /api/* middleware).
 try:
     from routes.triggers import router as triggers_router
@@ -343,6 +354,11 @@ app.include_router(agents_router)
 app.include_router(memory_router)
 app.include_router(websocket_router)
 app.include_router(notifications_router)
+app.include_router(approvals_router)
+app.include_router(heartbeat_router)
+app.include_router(cortex_router)
+app.include_router(audit_router)
+app.include_router(observer_router)
 if _has_triggers:
     app.include_router(triggers_router)
 
@@ -475,44 +491,7 @@ async def status():
 # Anyone with PWA auth can call this with `?debug=1`. Every call emits
 # an `observer_buffer_inspected` audit event so privileged reads are
 # observable in the audit log. NOT linked from the main UI.
-@app.get("/api/observer/buffer")
-async def observer_buffer(request: Request, debug: int = 0):
-    """Return the current ring buffer state. Q5.6 design: debug-only,
-    auth-gated (covered by the dashboard's existing /api/* auth
-    middleware), audit-emitting."""
-    if int(debug) != 1:
-        return {"error": "set ?debug=1 to read live observer buffer"}
-    try:
-        from codec_observer import get_global_buffer
-        from codec_audit import OBSERVER_BUFFER_INSPECTED, log_event as _le
-        buf = get_global_buffer()
-        snap = buf.snapshot()
-        try:
-            client_ip = request.client.host if request.client else "unknown"
-        except Exception:
-            client_ip = "unknown"
-        try:
-            _le(
-                OBSERVER_BUFFER_INSPECTED, "codec-dashboard",
-                "observer buffer inspected via /api/observer/buffer",
-                extra={
-                    "client_ip": client_ip,
-                    "buffer_entries_returned": len(snap),
-                },
-                outcome="ok", level="info",
-            )
-        except Exception:
-            pass
-        # Return only the metadata + a redacted summary, NOT the raw entries
-        # (raw entries contain titles + OCR text + clipboard content).
-        return {
-            "buffer_depth": len(snap),
-            "summary": buf.render_summary(),
-            "oldest_ts": snap[0].get("ts") if snap else None,
-            "newest_ts": snap[-1].get("ts") if snap else None,
-        }
-    except Exception as e:
-        return {"error": f"observer not available: {e}"}
+# C5 / SR-40: moved to routes/observer.py.
 
 
 def _mask_sensitive(value: str) -> str:
@@ -882,46 +861,7 @@ async def conversations(limit: int = 100, source: str = ""):
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
-@app.get("/api/audit")
-async def audit(limit: int = 50):
-    """Get recent audit log entries"""
-    limit = min(limit, 500)
-    try:
-        if not os.path.exists(AUDIT_LOG):
-            return []
-        with open(AUDIT_LOG) as f:
-            lines = f.readlines()
-        return [{"line": l.strip()} for l in lines[-limit:]][::-1]
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-@app.get("/api/audit/stream")
-async def audit_stream(
-    categories: str = "",
-    level: str = "",
-    search: str = "",
-    since: str = "",
-    until: str = "",
-    limit: int = 200
-):
-    """Query audit events with filters."""
-    from codec_audit import read_events
-    cats = [c.strip() for c in categories.split(",") if c.strip()] or None
-    events = read_events(
-        categories=cats,
-        level=level or None,
-        search=search or None,
-        since=since or None,
-        until=until or None,
-        limit=min(limit, 1000)
-    )
-    return {"events": events}
-
-@app.get("/api/audit/stats")
-async def audit_stats():
-    """Get audit event statistics for the last 24 hours."""
-    from codec_audit import get_stats
-    return get_stats(hours=24)
+# C4 / SR-39: audit endpoints moved to routes/audit.py.
 
 
 def _latest_response_for_session(db, session_id, after_id="", after_ts=""):
@@ -3310,148 +3250,11 @@ async def run_schedule_now(sched_id: str):
 # for where they get re-attached to the FastAPI app.
 
 
-# ── Remote Command Approval (dashboard / phone) ──────────────────────────────
-
-@app.get("/api/approvals")
-async def list_pending_approvals():
-    """List all pending command approvals."""
-    with _approval_lock:
-        # H-6: delete entries older than 120s (any status) so the dict can't grow
-        # unbounded — replaces the old mark-expired-but-never-delete behavior.
-        # After eviction every remaining entry is ≤120s, so a "pending" entry is
-        # genuinely actionable (no per-entry time check needed).
-        _evict_expired_approvals()
-        pending = [{**a, "id": aid} for aid, a in _pending_approvals.items()
-                   if a.get("status") == "pending"]
-        return {"approvals": pending}
-
-@app.get("/api/approvals/count")
-async def pending_approval_count():
-    """Badge count of pending approvals."""
-    with _approval_lock:
-        # H-6: sweep here too (this is the frequently-polled badge endpoint) so
-        # the dict stays bounded regardless of which endpoint the PWA hits.
-        _evict_expired_approvals()
-        count = sum(1 for a in _pending_approvals.values()
-                    if a.get("status") == "pending")
-        return {"count": count}
-
-@app.post("/api/approvals/{approval_id}/allow")
-async def allow_approval(approval_id: str):
-    """Approve a pending command from dashboard/phone."""
-    with _approval_lock:
-        a = _pending_approvals.get(approval_id)
-        if not a:
-            return JSONResponse({"error": "Approval not found"}, status_code=404)
-        if a["status"] != "pending":
-            return JSONResponse({"error": f"Approval already {a['status']}"}, status_code=409)
-        a["status"] = "allowed"
-        log.info(f"[APPROVAL] Remote ALLOW: {a['command'][:80]}")
-        return {"status": "allowed", "command": a["command"][:120]}
-
-@app.post("/api/approvals/{approval_id}/deny")
-async def deny_approval(approval_id: str):
-    """Deny a pending command from dashboard/phone."""
-    with _approval_lock:
-        a = _pending_approvals.get(approval_id)
-        if not a:
-            return JSONResponse({"error": "Approval not found"}, status_code=404)
-        if a["status"] != "pending":
-            return JSONResponse({"error": f"Approval already {a['status']}"}, status_code=409)
-        a["status"] = "denied"
-        log.info(f"[APPROVAL] Remote DENY: {a['command'][:80]}")
-        return {"status": "denied"}
+# C1 / SR-36: approval endpoints moved to routes/approvals.py.
+# See router-include block above for app attachment.
 
 
-@app.get("/api/heartbeat/config")
-async def get_heartbeat_config():
-    """Get heartbeat configuration."""
-    config = {}
-    try:
-        with open(CONFIG_PATH) as f:
-            config = json.load(f)
-    except Exception:
-        pass
-    return {
-        "enabled": config.get("heartbeat_enabled", True),
-        "interval_minutes": config.get("heartbeat_interval", 5),
-        "tasks": config.get("heartbeat_tasks", ["status_check"])
-    }
-
-
-@app.put("/api/heartbeat/config")
-async def update_heartbeat_config(request: Request):
-    """Update heartbeat configuration with validation."""
-    body = await request.json()
-    # Validate
-    errors = []
-    if "enabled" in body and not isinstance(body["enabled"], bool):
-        errors.append("enabled must be a boolean")
-    if "interval_minutes" in body:
-        iv = body["interval_minutes"]
-        if not isinstance(iv, (int, float)):
-            errors.append("interval_minutes must be a number")
-        elif iv <= 0:
-            errors.append("interval_minutes must be positive")
-    if "tasks" in body and not isinstance(body["tasks"], list):
-        errors.append("tasks must be a list")
-    if errors:
-        return JSONResponse({"error": "Validation failed", "details": errors}, status_code=422)
-
-    config = {}
-    try:
-        with open(CONFIG_PATH) as f:
-            config = json.load(f)
-    except Exception:
-        pass
-    changed = []
-    if "enabled" in body:
-        config["heartbeat_enabled"] = body["enabled"]
-        changed.append("heartbeat_enabled")
-    if "interval_minutes" in body:
-        config["heartbeat_interval"] = body["interval_minutes"]
-        changed.append("heartbeat_interval")
-    if "tasks" in body:
-        config["heartbeat_tasks"] = body["tasks"]
-        changed.append("heartbeat_tasks")
-    with open(CONFIG_PATH, "w") as f:
-        json.dump(config, f, indent=2)
-    return {
-        "saved": True,
-        "message": f"Heartbeat config saved ({len(changed)} field(s) updated).",
-        "updated_fields": changed,
-    }
-
-
-@app.get("/api/heartbeat/alerts")
-async def get_heartbeat_alerts():
-    """Get heartbeat alerts configuration."""
-    config = {}
-    try:
-        with open(CONFIG_PATH) as f:
-            config = json.load(f)
-    except Exception:
-        pass
-    return {"alerts": config.get("heartbeat_alerts", [])}
-
-
-@app.put("/api/heartbeat/alerts")
-async def update_heartbeat_alerts(request: Request):
-    """Update heartbeat alerts configuration."""
-    body = await request.json()
-    alerts = body.get("alerts", [])
-    if not isinstance(alerts, list):
-        return JSONResponse({"error": "alerts must be a list"}, status_code=422)
-    config = {}
-    try:
-        with open(CONFIG_PATH) as f:
-            config = json.load(f)
-    except Exception:
-        pass
-    config["heartbeat_alerts"] = alerts
-    with open(CONFIG_PATH, "w") as f:
-        json.dump(config, f, indent=2)
-    return {"saved": True, "message": f"{len(alerts)} alert(s) saved."}
+# C2 / SR-37: heartbeat endpoints moved to routes/heartbeat.py.
 
 
 @app.get("/api/schedules/history")
@@ -3506,102 +3309,7 @@ async def pilot_proxy(path: str, request: Request):
     except Exception as exc:
         return JSONResponse({"error": str(exc)}, status_code=502)
 
-@app.get("/api/cortex/health")
-async def cortex_health():
-    """Proxy health checks for CORTEX visualization."""
-    import httpx
-    checks = [
-        {"id": "qwen", "port": 8083, "path": "/v1/models"},
-        {"id": "vision", "port": 8083, "path": "/v1/models"},
-        {"id": "whisper", "port": 8084, "path": "/"},
-        {"id": "kokoro", "port": 8085, "path": "/v1/models"},
-    ]
-    results = {}
-    async with httpx.AsyncClient(timeout=3.0) as client:
-        for c in checks:
-            try:
-                r = await client.get(f"http://localhost:{c['port']}{c['path']}")
-                results[c["id"]] = "ok" if r.status_code in (200, 404) else "err"
-            except Exception:
-                results[c["id"]] = "err"
-    # Also check PM2 processes
-    try:
-        out = subprocess.check_output(
-            ["/opt/homebrew/bin/pm2", "jlist"], timeout=5, stderr=subprocess.DEVNULL
-        )
-        procs = json.loads(out)
-        pm2_map = {p["name"]: p["pm2_env"]["status"] for p in procs}
-        for name, status in pm2_map.items():
-            if "codec" in name.lower() or name in ("qwen35b", "qwen-vision", "whisper-stt", "kokoro-82m"):
-                nid = name.replace("codec-", "").replace("-", "_")
-                if nid not in results:
-                    results[nid] = "ok" if status == "online" else "err"
-    except Exception:
-        pass
-    results["dashboard"] = "ok"
-    return results
-
-@app.get("/api/cortex/skills")
-async def cortex_skills():
-    """Return all loaded skills for CORTEX visualization.
-
-    A-4: reads from the canonical codec_dispatch registry (lazy AST scan +
-    custom_triggers overlay) instead of the legacy codec_core.loaded_skills."""
-    from codec_dispatch import registry
-    if not registry.names():
-        registry.scan()
-    result = [
-        {"name": name, "triggers": registry.get_triggers(name)}
-        for name in registry.names()
-    ]
-    result.sort(key=lambda x: x["name"])
-    return {"skills": result, "count": len(result)}
-
-
-@app.get("/api/cortex/logs/{service}")
-async def cortex_logs(service: str):
-    """Return last 30 lines of PM2 logs for a service."""
-    # Map CORTEX node IDs to PM2 process names
-    PM2_MAP = {
-        "qwen": "qwen35b", "vision": "qwen-vision", "whisper": "whisper-stt",
-        "kokoro": "kokoro-82m", "dashboard": "codec-dashboard", "dispatch": "open-codec",
-        "heartbeat": "codec-heartbeat", "watcher": "codec-hotkey",
-        "f18": "open-codec", "f16": "open-codec", "f13": "open-codec",
-        "wake": "open-codec", "screenshot": "open-codec", "document": "open-codec",
-    }
-    pm2_name = PM2_MAP.get(service, f"codec-{service}")
-    try:
-        result = subprocess.check_output(
-            ["/opt/homebrew/bin/pm2", "logs", pm2_name, "--lines", "30", "--nostream"],
-            timeout=5, stderr=subprocess.STDOUT
-        ).decode("utf-8", errors="replace")
-        return {"service": service, "pm2_name": pm2_name, "logs": result}
-    except Exception as e:
-        return {"service": service, "pm2_name": pm2_name, "logs": f"Error: {e}"}
-
-
-@app.post("/api/cortex/restart/{service}")
-async def cortex_restart(service: str):
-    """Restart a PM2 service from CORTEX."""
-    PM2_MAP = {
-        "qwen": "qwen35b", "vision": "qwen-vision", "whisper": "whisper-stt",
-        "kokoro": "kokoro-82m", "dashboard": "codec-dashboard", "dispatch": "open-codec",
-        "heartbeat": "codec-heartbeat", "watcher": "codec-hotkey",
-    }
-    pm2_name = PM2_MAP.get(service)
-    if not pm2_name:
-        return {"ok": False, "error": f"Unknown service: {service}"}
-    try:
-        subprocess.check_output(
-            ["/opt/homebrew/bin/pm2", "restart", pm2_name],
-            timeout=10, stderr=subprocess.STDOUT
-        )
-        log_event("service_restart", "codec-dashboard",
-                  f"Service restart: {service}",
-                  extra={"service": service})
-        return {"ok": True, "service": service, "pm2_name": pm2_name, "action": "restarted"}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+# C3 / SR-38: cortex endpoints moved to routes/cortex.py.
 
 
 @app.get("/cortex", response_class=HTMLResponse)
