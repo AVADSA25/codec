@@ -20,7 +20,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-from pathlib import Path
 from typing import Optional
 
 from codec_audit import STEP_BUDGET_EXHAUSTED, log_event

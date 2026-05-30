@@ -22,7 +22,9 @@ import base64
 import subprocess
 
 import httpx
-import numpy as np
+# B6-P4: numpy use moved with rms_int16 to codec_voice_filters. Kept as
+# noqa here in case downstream code references numpy via `codec_voice.np`.
+import numpy as np  # noqa: F401 — re-exported indirectly via filters helpers
 
 log = logging.getLogger("codec_voice")
 

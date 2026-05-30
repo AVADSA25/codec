@@ -10,7 +10,6 @@ import uuid
 import asyncio
 import secrets
 from datetime import datetime, timedelta
-from typing import Optional
 
 from pathlib import Path
 from fastapi import FastAPI, Request
@@ -35,7 +34,7 @@ from routes._shared import (
 
 # Audit emits route through the unified log_event adapter (real, not no-op)
 # per docs/PHASE1-STEP1-DESIGN.md.
-from codec_audit import log_event, STEP_BUDGET_EXHAUSTED
+from codec_audit import log_event  # STEP_BUDGET_EXHAUSTED moved with _StepBudget to codec_chat_pipeline (B6-P2)
 from codec_chat_stream import SkillTagBuffer, SKILL_TAG_RE  # A-6 (PR-3D-c)
 import codec_llm  # A-12 (PR-3E-dashboard)
 

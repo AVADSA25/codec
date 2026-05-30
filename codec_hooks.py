@@ -37,7 +37,7 @@ from codec_audit import log_event as _log_event, _PREVIEW_MAX, _truncate
 # B6-P1 / SR-32: trust-store primitives moved to codec_plugin_trust. Re-
 # exported here so external callers (tests, skills/plugin_approve) that
 # imported from codec_hooks before the split keep working.
-from codec_plugin_trust import (
+from codec_plugin_trust import (  # noqa: F401 — back-compat re-exports for tests / external callers
     _PLUGINS_DIR_DEFAULT,
     _PLUGINS_ALLOWLIST_DEFAULT,
     _PLUGIN_FILE_SUFFIX,
