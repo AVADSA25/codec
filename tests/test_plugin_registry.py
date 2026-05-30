@@ -92,7 +92,8 @@ def test_plugin_load_blocked_not_in_allowlist(plugin_env, monkeypatch):
     allowlist_path.write_text("{}")
 
     captured = []
-    monkeypatch.setattr(codec_hooks, "_log_event",
+    import codec_plugin_trust
+    monkeypatch.setattr(codec_plugin_trust, "_log_event",
                          lambda *args, **kw: captured.append({"args": args, "kw": kw}))
 
     reg.scan()
@@ -140,7 +141,8 @@ def test_plugin_load_refused_when_hash_mismatches(plugin_env, monkeypatch):
     allowlist_path.write_text(json.dumps(allowlist))
 
     captured = []
-    monkeypatch.setattr(codec_hooks, "_log_event",
+    import codec_plugin_trust
+    monkeypatch.setattr(codec_plugin_trust, "_log_event",
                          lambda *args, **kw: captured.append({"args": args, "kw": kw}))
 
     reg.scan()
@@ -164,7 +166,8 @@ def test_plugin_load_blocked_emits_ast_detail_when_dangerous(plugin_env, monkeyp
     allowlist_path.write_text("{}")
 
     captured = []
-    monkeypatch.setattr(codec_hooks, "_log_event",
+    import codec_plugin_trust
+    monkeypatch.setattr(codec_plugin_trust, "_log_event",
                          lambda *args, **kw: captured.append({"args": args, "kw": kw}))
 
     reg.scan()
@@ -373,6 +376,8 @@ def test_fire_one_pre_tool_emits_plugin_hook_timeout(plugin_env, monkeypatch):
     monkeypatch.setitem(cfg, "plugin_hook_timeout_ms", 50)
 
     captured = []
+    # plugin_hook_timeout emit still lives in codec_hooks (it's part of the
+    # runtime dispatcher, not the trust store) — B6-P1 split kept it.
     monkeypatch.setattr(codec_hooks, "_log_event",
                          lambda *args, **kw: captured.append({"args": args, "kw": kw}))
 

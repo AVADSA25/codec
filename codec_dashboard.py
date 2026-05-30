@@ -10,7 +10,6 @@ import uuid
 import asyncio
 import secrets
 from datetime import datetime, timedelta
-from typing import Optional
 
 from pathlib import Path
 from fastapi import FastAPI, Request
@@ -35,7 +34,7 @@ from routes._shared import (
 
 # Audit emits route through the unified log_event adapter (real, not no-op)
 # per docs/PHASE1-STEP1-DESIGN.md.
-from codec_audit import log_event, STEP_BUDGET_EXHAUSTED
+from codec_audit import log_event  # STEP_BUDGET_EXHAUSTED moved with _StepBudget to codec_chat_pipeline (B6-P2)
 from codec_chat_stream import SkillTagBuffer, SKILL_TAG_RE  # A-6 (PR-3D-c)
 import codec_llm  # A-12 (PR-3E-dashboard)
 
@@ -328,6 +327,8 @@ from routes.skills import router as skills_router
 from routes.agents import router as agents_router
 from routes.memory import router as memory_router
 from routes.websocket import router as websocket_router
+# B6-P3 / SR-34: notification endpoints extracted from codec_dashboard.
+from routes.notifications import router as notifications_router
 # Phase 2 Step 6 — Trigger System PWA endpoints (auth-gated by /api/* middleware).
 try:
     from routes.triggers import router as triggers_router
@@ -341,6 +342,7 @@ app.include_router(skills_router)
 app.include_router(agents_router)
 app.include_router(memory_router)
 app.include_router(websocket_router)
+app.include_router(notifications_router)
 if _has_triggers:
     app.include_router(triggers_router)
 
@@ -2459,40 +2461,10 @@ provided."""
 
 CHAT_SYSTEM_PROMPT = _BASE_CHAT_PROMPT + _DASHBOARD_ADDON
 
-def _is_conversational(text: str) -> bool:
-    """Detect if a message is conversational rather than a direct command.
-    Conversational messages should go to the LLM, not trigger skills."""
-    low = text.lower().strip()
-    words = low.split()
-    # Very short messages (1-3 words) are likely commands
-    if len(words) <= 3:
-        return False
-    # Long messages (>15 words) are almost always conversational
-    if len(words) > 15:
-        return True
-    # Messages with question-like patterns about CODEC/features/capabilities
-    _CONV_PATTERNS = [
-        "what do you think", "what's your", "whats your", "are we",
-        "can you check", "can u check", "please check", "take a look",
-        "what happened", "what is happening", "why did you", "why you",
-        "do you have", "do u have", "have you", "did you",
-        "here is", "here's", "check this", "check it",
-        "read this", "read the", "now read", "please read",
-        "save to", "save this", "your thought", "your thoughts",
-        "what say you", "agreed", "let's", "lets", "revise",
-        "should we", "how about", "im testing", "i'm testing",
-        "i just tested", "i was testing", "something off",
-        "something wrong", "not working", "doesn't work",
-    ]
-    if any(p in low for p in _CONV_PATTERNS):
-        return True
-    # URLs in messages are usually sharing links, not commands
-    if "http://" in low or "https://" in low or ".com" in low or ".org" in low:
-        return True
-    # Multi-sentence messages are conversational
-    if text.count('.') >= 2 or text.count('?') >= 1 or text.count('!') >= 2:
-        return True
-    return False
+# B6-P2 / SR-33: _is_conversational, _step_budget_enabled,
+# _step_budget_for_route, _StepBudget moved to codec_chat_pipeline.
+# Re-exported via the import below for back-compat with any test or
+# external caller that imported them from codec_dashboard.
 
 
 # ── Phase 1 Step 3 §3 — chat-handler step budget ──────────────────────────
@@ -2501,109 +2473,13 @@ def _is_conversational(text: str) -> bool:
 # 8-step budget is independent. Defaults: chat=5, voice=5, MCP exempt.
 # Bumping to 8 or 10 is a single ~/.codec/config.json edit ("tune up
 # before tuning out" per Q3 reviewer guidance).
-def _step_budget_enabled() -> bool:
-    """Read STEP_BUDGET_ENABLED env var. Default true. Read each call so
-    tests can monkeypatch."""
-    val = (os.environ.get("STEP_BUDGET_ENABLED") or "true").strip().lower()
-    return val not in ("false", "0", "no", "off")
-
-
-def _step_budget_for_route(route: str) -> Optional[int]:
-    """Return the budget cap for the given route, or None for "no cap"
-    (MCP). Read each call so config edits take effect on PM2 restart.
-
-    Defaults per design §3.2:
-        chat:  5
-        voice: 5
-        mcp:   None  (no turn budget — each MCP call is its own turn)
-    """
-    try:
-        with open(CONFIG_PATH) as f:
-            cfg = json.load(f).get("step_budget", {})
-    except Exception:
-        cfg = {}
-    if route == "mcp":
-        return None  # MCP path has no turn concept; SKILL_TIMEOUT_SEC governs.
-    default = 5
-    v = cfg.get(route, default)
-    if v is None:
-        return None
-    if isinstance(v, int) and v > 0:
-        return v
-    return default
-
-
-class _StepBudget:
-    """Per-request counter + warn / exhaustion logic. Construct at request
-    entry; call ``consume(kind)`` before each step; check ``warn_now()``
-    to decide whether to append the "1 step remaining" prompt suffix.
-
-    Threadsafe-friendly: each request has its own instance (no shared
-    state). Audit emits go through log_event so concurrent requests
-    serialise via codec_audit's existing _LOCK.
-    """
-    __slots__ = ("route", "limit", "count", "enabled", "exhausted_emitted",
-                 "correlation_id")
-
-    def __init__(self, route: str = "chat", correlation_id: Optional[str] = None):
-        self.route = route
-        self.limit = _step_budget_for_route(route) if _step_budget_enabled() else None
-        self.count = 0
-        self.enabled = self.limit is not None
-        self.exhausted_emitted = False
-        self.correlation_id = correlation_id
-
-    def consume(self, kind: str = "step") -> bool:
-        """Try to consume one budget step. Returns True if OK to proceed,
-        False if budget would be exhausted by this consumption.
-
-        ``kind`` is a free-form label for telemetry (e.g. "skill_hijack",
-        "llm_call", "post_llm_skill_tag", "crew_spawn"). Logged on the
-        ``step_budget_exhausted`` audit event when the cap is hit.
-        """
-        if not self.enabled:
-            return True
-        self.count += 1
-        if self.count > self.limit:
-            self._emit_exhausted(kind)
-            return False
-        return True
-
-    def warn_now(self) -> bool:
-        """True when we're at limit-1 and the next step would cap. Used
-        by the LLM-call path to inject "⚠ 1 step remaining" into the
-        prompt suffix."""
-        if not self.enabled:
-            return False
-        return self.count == max(0, self.limit - 1)
-
-    def at_limit(self) -> bool:
-        """True if we've already hit the cap (consume returned False)."""
-        if not self.enabled:
-            return False
-        return self.count >= self.limit
-
-    def _emit_exhausted(self, kind: str):
-        if self.exhausted_emitted:
-            return
-        self.exhausted_emitted = True
-        try:
-            log_event(
-                STEP_BUDGET_EXHAUSTED,
-                "codec-dashboard",
-                f"chat step budget exhausted at {self.count} (kind={kind})",
-                extra={
-                    "budget_type": "chat_turn",
-                    "limit": self.limit,
-                    "actual": self.count,
-                    "kind": kind,
-                },
-                outcome="warning",
-                level="warning",
-                correlation_id=self.correlation_id,
-            )
-        except Exception as e:
-            log.warning("[step_budget] emit failed: %s", e)
+# B6-P2 / SR-33: re-export _StepBudget + helpers from codec_chat_pipeline.
+from codec_chat_pipeline import (  # noqa: E402,F401  (back-compat re-exports)
+    _is_conversational,
+    _step_budget_enabled,
+    _step_budget_for_route,
+    _StepBudget,
+)
 
 
 def _try_skill(user_text: str):
@@ -3429,56 +3305,9 @@ async def run_schedule_now(sched_id: str):
     return {"status": "running", "notification_id": notif_id, "id": sched_id, "crew": crew}
 
 
-# ── Notification endpoints ──
-
-@app.get("/api/notifications")
-async def get_notifications(request: Request):
-    """Return all notifications, newest first. Use ?unread=true to filter."""
-    notifications = _load_notifications()
-    unread_filter = request.query_params.get("unread", "").lower()
-    if unread_filter == "true":
-        notifications = [n for n in notifications if not n.get("read", False)]
-    # Sort newest first by created timestamp
-    notifications.sort(key=lambda n: n.get("created", ""), reverse=True)
-    return {"notifications": notifications}
-
-
-@app.get("/api/notifications/count")
-async def get_notification_count():
-    """Return unread notification count for badge display.
-    Only counts completed notifications (success/error), not 'running' ones."""
-    notifications = _load_notifications()
-    unread = sum(1 for n in notifications
-                 if not n.get("read", False)
-                 and n.get("status", "success") != "running")
-    return {"unread": unread}
-
-
-@app.post("/api/notifications/{notif_id}/read")
-async def mark_notification_read(notif_id: str):
-    """Mark a single notification as read."""
-    with _notif_lock:
-        notifications = _load_notifications()
-        for n in notifications:
-            if n["id"] == notif_id:
-                n["read"] = True
-                _write_notifications(notifications)
-                return {"status": "ok", "id": notif_id}
-    return JSONResponse({"error": "Notification not found"}, status_code=404)
-
-
-@app.post("/api/notifications/read-all")
-async def mark_all_notifications_read():
-    """Mark all notifications as read."""
-    with _notif_lock:
-        notifications = _load_notifications()
-        count = 0
-        for n in notifications:
-            if not n.get("read", False):
-                n["read"] = True
-                count += 1
-        _write_notifications(notifications)
-    return {"status": "ok", "marked": count}
+# B6-P3 / SR-34: notification endpoints moved to routes/notifications.py.
+# See codec_dashboard's router-include block at the bottom of the file
+# for where they get re-attached to the FastAPI app.
 
 
 # ── Remote Command Approval (dashboard / phone) ──────────────────────────────
