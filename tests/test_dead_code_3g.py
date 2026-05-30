@@ -72,9 +72,11 @@ def test_a14_close_session_import_dropped_local_kept():
 
 def test_a18_unused_pydantic_models_removed():
     import codec_dashboard
-    # HealthResponse IS used (response_model=) — must stay
-    assert hasattr(codec_dashboard, "HealthResponse")
-    # The 9 unused models must be gone
+    # E2 / SR-48: HealthResponse moved to routes/health.py along with the
+    # /api/health + /health endpoints. Verify it's accessible there.
+    import routes.health
+    assert hasattr(routes.health, "HealthResponse")
+    # The 9 unused models must be gone from codec_dashboard
     for dead in ("StatusResponse", "SkillItem", "ConversationItem", "ScheduleItem",
                  "ServiceStatus", "CommandRequest", "ChatRequest", "AgentRunRequest",
                  "ErrorResponse"):

@@ -29,6 +29,7 @@ _ALLOWLIST = {
     "codec_core.py",             # generated session-script string, not a live POST
     "pilot/pilot_agent.py",      # vendored CODEC Pilot module — uses its own LLM client
     "routes/media.py",           # webcam vision POST (A-11 pending) — D5 extraction
+    "routes/upload.py",          # /api/upload_image vision POST (A-11 pending) — E4 extraction
 }
 
 _INLINE_POST_RE = re.compile(r"\.post\s*\([^)]*chat/completions")

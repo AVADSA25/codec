@@ -30,43 +30,43 @@ class TestA1SaveFileBlocklist:
     """
 
     def test_codec_home_refused(self):
-        from codec_dashboard import _save_file_is_safe
+        from routes.upload import _save_file_is_safe
         ok, reason = _save_file_is_safe(
             os.path.expanduser("~/.codec/plugins/evil.py"))
         assert ok is False
         assert ".codec" in reason
 
     def test_codec_skills_refused(self):
-        from codec_dashboard import _save_file_is_safe
+        from routes.upload import _save_file_is_safe
         ok, reason = _save_file_is_safe(
             os.path.expanduser("~/.codec/skills/evil.py"))
         assert ok is False
 
     def test_codec_audit_refused(self):
-        from codec_dashboard import _save_file_is_safe
+        from routes.upload import _save_file_is_safe
         ok, reason = _save_file_is_safe(
             os.path.expanduser("~/.codec/audit.log"))
         assert ok is False
 
     def test_codec_config_refused(self):
-        from codec_dashboard import _save_file_is_safe
+        from routes.upload import _save_file_is_safe
         ok, reason = _save_file_is_safe(
             os.path.expanduser("~/.codec/config.json"))
         assert ok is False
 
     def test_plugins_allowlist_refused(self):
-        from codec_dashboard import _save_file_is_safe
+        from routes.upload import _save_file_is_safe
         ok, reason = _save_file_is_safe(
             os.path.expanduser("~/.codec/plugins.allowlist"))
         assert ok is False
 
     def test_system_root_refused(self):
-        from codec_dashboard import _save_file_is_safe
+        from routes.upload import _save_file_is_safe
         ok, reason = _save_file_is_safe("/etc/passwd")
         assert ok is False
 
     def test_repo_skills_refused(self):
-        from codec_dashboard import _save_file_is_safe
+        from routes.upload import _save_file_is_safe
         # codec_dashboard.py lives in the repo root; its sibling skills/ dir
         # is in the blocklist.
         import codec_dashboard
@@ -83,12 +83,12 @@ class TestA1SaveFileBlocklist:
         "/tmp/scratch.py",
     ])
     def test_legitimate_paths_allowed(self, path):
-        from codec_dashboard import _save_file_is_safe
+        from routes.upload import _save_file_is_safe
         ok, reason = _save_file_is_safe(os.path.expanduser(path))
         assert ok is True, f"{path} should be allowed (reason: {reason})"
 
     def test_sensitive_filename_refused(self):
-        from codec_dashboard import _save_file_is_safe
+        from routes.upload import _save_file_is_safe
         # Filename pattern blocklist applies globally regardless of dir.
         ok, reason = _save_file_is_safe(
             os.path.expanduser("~/Documents/id_rsa"))
