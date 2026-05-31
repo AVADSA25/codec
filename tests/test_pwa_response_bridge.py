@@ -176,7 +176,9 @@ def test_command_returns_request_id():
 
 
 def test_response_uses_correlation_helper():
-    src = (REPO / "codec_dashboard.py").read_text()
+    # F3 / SR-52: /api/response + the helper moved to routes/tts.py.
+    # J2: the duplicate copy in codec_dashboard.py was removed (re-exported there).
+    src = (REPO / "routes" / "tts.py").read_text()
     assert "_latest_response_for_session(" in src, (
         "/api/response must resolve via the _latest_response_for_session helper"
     )
