@@ -158,8 +158,61 @@ class TestFSeriesRouteExtractions:
 
 
 def test_dashboard_loc_below_2300():
-    """After F-series, codec_dashboard.py should be under 2,300 lines.
-    Tighten when more endpoints move (e.g. chat_completion)."""
+    """After F-series, codec_dashboard.py should be under 2,300 lines."""
     from pathlib import Path
     lines = (Path(__file__).resolve().parent.parent / "codec_dashboard.py").read_text().count("\n")
     assert lines < 2300, f"codec_dashboard.py still has {lines} lines"
+
+
+# ── G-series (SR-57..58): memory_search + pilot_proxy ─────────────────────
+class TestGSeriesRouteExtractions:
+    @pytest.mark.parametrize("path", [
+        "/api/memory/search",
+        "/api/pilot/{path:path}",
+    ])
+    def test_endpoint_registered(self, path):
+        assert path in _registered_paths()
+
+    def test_modules_exist_and_export_router(self):
+        from pathlib import Path
+        root = Path(__file__).resolve().parent.parent / "routes"
+        for name in ("memory_search", "pilot_proxy"):
+            text = (root / f"{name}.py").read_text()
+            assert "router = APIRouter()" in text, f"{name}.py must export router"
+
+    def test_memory_search_covers_all_four_sources(self):
+        """G1: the extracted endpoint must still query voice + chat + vibe + flash."""
+        from pathlib import Path
+        text = (Path(__file__).resolve().parent.parent / "routes" / "memory_search.py").read_text()
+        assert "from codec_memory import CodecMemory" in text          # voice FTS
+        assert "from routes.qchat import qchat_db" in text             # chat
+        assert "from routes.vibe import vibe_db" in text               # vibe
+        assert "FROM sessions" in text                                  # flash
+
+    def test_pilot_proxy_forwards_to_8094(self):
+        """G2: the proxy must still hit localhost:8094 — that's the runner port."""
+        from pathlib import Path
+        text = (Path(__file__).resolve().parent.parent / "routes" / "pilot_proxy.py").read_text()
+        assert "localhost:8094" in text
+        assert "@router.api_route(" in text
+        assert "GET" in text and "POST" in text and "PUT" in text and "DELETE" in text
+
+    def test_dashboard_does_not_redefine_endpoints(self):
+        from pathlib import Path
+        src = (Path(__file__).resolve().parent.parent / "codec_dashboard.py").read_text()
+        assert '@app.post("/api/memory/search")' not in src
+        assert '@app.api_route("/api/pilot/' not in src
+
+
+def test_dashboard_loc_below_2100():
+    """After G-series, codec_dashboard.py should be under 2,100 lines.
+
+    The big remaining occupants are:
+      - `/api/chat` chat_completion (~608 LOC streaming + post-LLM tag)
+      - `/api/command` (~180 LOC safety-critical)
+      - page renderers + startup/shutdown hooks
+      - background daemons (_bg_scheduler / _bg_heartbeat / _bg_watcher)
+    """
+    from pathlib import Path
+    lines = (Path(__file__).resolve().parent.parent / "codec_dashboard.py").read_text().count("\n")
+    assert lines < 2100, f"codec_dashboard.py still has {lines} lines"

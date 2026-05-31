@@ -9,7 +9,7 @@ import secrets
 from datetime import datetime, timedelta
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse, FileResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse as StarletteJSONResponse
@@ -357,6 +357,9 @@ from routes.vision import router as vision_router
 from routes.vibe_exec import router as vibe_exec_router
 from routes.web_search import router as web_search_router
 from routes.cdp import router as cdp_router
+# G-series (SR-57..58): cross-source memory search + Pilot proxy.
+from routes.memory_search import router as memory_search_router
+from routes.pilot_proxy import router as pilot_proxy_router
 # Phase 2 Step 6 — Trigger System PWA endpoints (auth-gated by /api/* middleware).
 try:
     from routes.triggers import router as triggers_router
@@ -391,6 +394,8 @@ app.include_router(vision_router)
 app.include_router(vibe_exec_router)
 app.include_router(web_search_router)
 app.include_router(cdp_router)
+app.include_router(memory_search_router)
+app.include_router(pilot_proxy_router)
 if _has_triggers:
     app.include_router(triggers_router)
 
@@ -736,149 +741,7 @@ async def chat_page():
 
 # ── Cross-source memory search endpoint ──────────────────────────────────────
 
-@app.post("/api/memory/search")
-async def memory_search_endpoint(request: Request):
-    """Search ALL conversation history across voice, chat, vibe, and flash sources.
-
-    JSON body: {"query": "search term", "limit": 20, "sources": ["chat", "voice", "flash", "all"]}
-    Returns list of: {timestamp, source, role, content, session_id}
-    """
-    body = await request.json()
-    query = (body.get("query") or "").strip()
-    if not query or len(query) < 2:
-        return JSONResponse({"error": "query must be at least 2 characters"}, status_code=400)
-
-    limit = min(int(body.get("limit", 20)), 100)
-    sources = body.get("sources", ["all"])
-    if isinstance(sources, str):
-        sources = [sources]
-    search_all = "all" in sources
-    keyword = f"%{query}%"
-    results = []
-
-    # 1. Voice memory (FTS5 via CodecMemory + conversations table in memory.db)
-    if search_all or "voice" in sources:
-        # FTS5 search (ranked by relevance)
-        try:
-            from codec_memory import CodecMemory
-            mem = CodecMemory()
-            fts_results = mem.search(query, limit=limit)
-            for r in fts_results:
-                results.append({
-                    "timestamp": r.get("timestamp", ""),
-                    "source": "voice",
-                    "role": r.get("role", ""),
-                    "content": (r.get("content", "") or "")[:500],
-                    "session_id": r.get("session_id", ""),
-                })
-        except Exception as e:
-            log.warning(f"Memory search (voice FTS): {e}")
-
-        # Also search conversations table (LIKE fallback for non-FTS matches)
-        try:
-            c = get_db()
-            rows = c.execute(
-                "SELECT session_id, timestamp, role, content FROM conversations "
-                "WHERE content LIKE ? COLLATE NOCASE ORDER BY id DESC LIMIT ?",
-                (keyword, limit)
-            ).fetchall()
-            for r in rows:
-                results.append({
-                    "timestamp": r[1] or "",
-                    "source": "voice",
-                    "role": r[2] or "",
-                    "content": (r[3] or "")[:500],
-                    "session_id": r[0] or "",
-                })
-        except Exception as e:
-            log.warning(f"Memory search (conversations table): {e}")
-
-    # 2. Dashboard chat (qchat.db)
-    if search_all or "chat" in sources:
-        try:
-            from routes.qchat import qchat_db; conn = qchat_db()
-            rows = conn.execute(
-                """SELECT m.session_id, m.timestamp, m.role, m.content, s.title
-                   FROM qchat_messages m
-                   LEFT JOIN qchat_sessions s ON m.session_id = s.id
-                   WHERE m.content LIKE ? COLLATE NOCASE
-                   ORDER BY m.id DESC LIMIT ?""",
-                (keyword, limit)
-            ).fetchall()
-            for r in rows:
-                results.append({
-                    "timestamp": r[1] or "",
-                    "source": "chat",
-                    "role": r[2] or "",
-                    "content": (r[3] or "")[:500],
-                    "session_id": r[0] or "",
-                })
-        except Exception as e:
-            log.warning(f"Memory search (qchat): {e}")
-
-    # 3. Vibe IDE (vibe.db)
-    if search_all or "vibe" in sources:
-        try:
-            from routes.vibe import vibe_db; conn = vibe_db()
-            rows = conn.execute(
-                """SELECT m.session_id, m.timestamp, m.role, m.content
-                   FROM vibe_messages m
-                   WHERE m.content LIKE ? COLLATE NOCASE
-                   ORDER BY m.id DESC LIMIT ?""",
-                (keyword, limit)
-            ).fetchall()
-            for r in rows:
-                results.append({
-                    "timestamp": r[1] or "",
-                    "source": "vibe",
-                    "role": r[2] or "",
-                    "content": (r[3] or "")[:500],
-                    "session_id": r[0] or "",
-                })
-        except Exception as e:
-            log.warning(f"Memory search (vibe): {e}")
-
-    # 4. Flash / task sessions (sessions table in memory.db)
-    if search_all or "flash" in sources:
-        try:
-            c = get_db()
-            rows = c.execute(
-                "SELECT id, timestamp, task, app, response FROM sessions "
-                "WHERE task LIKE ? COLLATE NOCASE OR response LIKE ? COLLATE NOCASE "
-                "ORDER BY id DESC LIMIT ?",
-                (keyword, keyword, limit)
-            ).fetchall()
-            for r in rows:
-                # Combine task + response for content
-                task_text = r[2] or ""
-                resp_text = r[4] or ""
-                content = f"[TASK] {task_text}"
-                if resp_text:
-                    content += f"\n[RESPONSE] {resp_text[:300]}"
-                results.append({
-                    "timestamp": r[1] or "",
-                    "source": "flash",
-                    "role": "system",
-                    "content": content[:500],
-                    "session_id": str(r[0]) if r[0] else "",
-                })
-        except Exception as e:
-            log.warning(f"Memory search (sessions/flash): {e}")
-
-    # Deduplicate by content prefix and sort by timestamp descending
-    seen = set()
-    unique = []
-    for r in sorted(results, key=lambda x: x.get("timestamp", ""), reverse=True):
-        key = r["content"][:80]
-        if key not in seen:
-            seen.add(key)
-            unique.append(r)
-    unique = unique[:limit]
-
-    log.info(f"Memory search '{query}': {len(unique)} results from {len(results)} raw hits")
-    return {"query": query, "count": len(unique), "results": unique}
-
-
+# G1 memory_search → moved to routes/*.py
 # E4 upload_image → moved to routes/*.py
 # D2 / SR-43: vibe endpoints + db helper moved to routes/vibe.py.
 # (/vibe page route stays here — it serves the HTML template.)
@@ -1871,35 +1734,7 @@ async def tasks_page():
             return HTMLResponse(f.read(), headers=_NO_CACHE)
     return HTMLResponse("<h1>Tasks page not found</h1>", status_code=500)
 
-@app.api_route("/api/pilot/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
-async def pilot_proxy(path: str, request: Request):
-    """Proxy /api/pilot/* → localhost:8094/* so the HTTPS dashboard can reach the local runner."""
-    import httpx
-    target = f"http://localhost:8094/{path}"
-    params = dict(request.query_params)
-    body = await request.body()
-    headers = {}
-    if request.headers.get("content-type"):
-        headers["content-type"] = request.headers["content-type"]
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            r = await client.request(
-                method=request.method,
-                url=target,
-                params=params,
-                content=body,
-                headers=headers,
-            )
-        return Response(
-            content=r.content,
-            status_code=r.status_code,
-            media_type=r.headers.get("content-type", "application/json"),
-        )
-    except httpx.ConnectError:
-        return JSONResponse({"error": "Pilot Runner offline — pm2 restart pilot-runner"}, status_code=503)
-    except Exception as exc:
-        return JSONResponse({"error": str(exc)}, status_code=502)
-
+# G2 pilot_proxy → moved to routes/*.py
 # C3 / SR-38: cortex endpoints moved to routes/cortex.py.
 
 
