@@ -56,26 +56,29 @@ def test_qwen_chat_classify_passes_local_config(monkeypatch):
 def test_dashboard_uses_codec_llm_call():
     src = (REPO / "codec_dashboard.py").read_text()
     assert "import codec_llm" in src
-    assert src.count("codec_llm.call(") >= 3        # classifier + Flash + crew report
+    # H1 / SR-59: chat_completion's non-stream codec_llm.call moved to
+    # routes/chat.py. The two that STAY are /api/command's Flash fallback
+    # and the auto-escalate classifier (_qwen_chat_classify).
+    assert src.count("codec_llm.call(") >= 2        # Flash + classifier
     # the classifier's inline POST (the only QWEN_BASE_URL.rstrip POST) is gone
     assert "QWEN_BASE_URL.rstrip('/')}/chat/completions" not in src
 
 
 def test_dashboard_only_vision_posts_remain():
-    # After PR-3E-chat-stream migrated the chat stream + non-stream fallback,
-    # the ONLY inline /chat/completions occurrences left are vision sites
-    # (A-11 / codec_vision territory, not A-12). D5/E4/F4 extractions moved
-    # the webcam + upload_image + /api/vision vision POSTs to
-    # routes/media.py + routes/upload.py + routes/vision.py — pinning the
-    # count at 2 here (only /api/command's classifier sys-prompt body
-    # mentions /chat/completions in a comment); the route-side sites are
-    # covered by the A-12 allowlist in test_a12_invariant.
+    # After PR-3E-chat-stream + D5/E4/F4/H1 extractions, the ONLY inline
+    # /chat/completions occurrence left in codec_dashboard.py is the
+    # _warmup_vision() startup ping (A-11 / codec_vision territory). The
+    # chat-handler vision branch (_chat_vision_response) moved to
+    # routes/chat.py in H1; the route-side vision POSTs are covered by the
+    # A-12 allowlist in test_a12_invariant.
     src = (REPO / "codec_dashboard.py").read_text()
-    assert src.count("/chat/completions") == 2
+    assert src.count("/chat/completions") == 1
 
 
 def test_chat_handler_uses_codec_llm_stream():
-    src = (REPO / "codec_dashboard.py").read_text()
+    # H1 / SR-59: the chat handler (chat_completion) moved to routes/chat.py,
+    # so the stream machinery is scanned there now (not codec_dashboard.py).
+    src = (REPO / "routes" / "chat.py").read_text()
     assert "codec_llm.stream(" in src
     assert "codec_llm.KEEPALIVE" in src          # keepalive sentinel handled
     # both chat-handler POSTs gone: the streaming `with rq.post(...stream=True)`

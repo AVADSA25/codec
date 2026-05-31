@@ -205,14 +205,59 @@ class TestGSeriesRouteExtractions:
 
 
 def test_dashboard_loc_below_2100():
-    """After G-series, codec_dashboard.py should be under 2,100 lines.
-
-    The big remaining occupants are:
-      - `/api/chat` chat_completion (~608 LOC streaming + post-LLM tag)
-      - `/api/command` (~180 LOC safety-critical)
-      - page renderers + startup/shutdown hooks
-      - background daemons (_bg_scheduler / _bg_heartbeat / _bg_watcher)
-    """
+    """After G-series, codec_dashboard.py should be under 2,100 lines."""
     from pathlib import Path
     lines = (Path(__file__).resolve().parent.parent / "codec_dashboard.py").read_text().count("\n")
     assert lines < 2100, f"codec_dashboard.py still has {lines} lines"
+
+
+# ── H1 (SR-59): chat_completion + helper cluster → routes/chat.py ──────────
+class TestH1ChatExtraction:
+    def test_chat_endpoint_registered(self):
+        assert "/api/chat" in _registered_paths()
+
+    def test_module_exports_router(self):
+        from pathlib import Path
+        text = (Path(__file__).resolve().parent.parent / "routes" / "chat.py").read_text()
+        assert "router = APIRouter()" in text
+        assert '@router.post("/api/chat")' in text
+
+    def test_helpers_reexported_identity_equal(self):
+        """codec_dashboard must re-export the moved helpers (identity-equal to
+        routes.chat) so /api/command + the existing test surface keep working."""
+        import codec_dashboard as cd
+        import routes.chat as rc
+        for name in (
+            "CHAT_SKILL_ALLOWLIST", "_try_skill", "_try_skill_by_name",
+            "_enrich_messages", "_chat_vision_response",
+            "_build_chat_system_prompt", "_fetch_url_content",
+        ):
+            assert getattr(cd, name) is getattr(rc, name), f"{name} not re-exported identity-equal"
+
+    def test_safety_surfaces_preserved(self):
+        """The post-LLM [SKILL:...] path stays allowlist + budget gated, and the
+        pre-LLM hijack stays consent-gated — verbatim from the in-dashboard original."""
+        from pathlib import Path
+        text = (Path(__file__).resolve().parent.parent / "routes" / "chat.py").read_text()
+        assert "CHAT_SKILL_ALLOWLIST" in text                     # allowlist gate
+        assert "codec_consent.chat_consent_ok" in text            # destructive consent
+        assert "_budget.consume(\"post_llm_skill_tag\")" in text   # budget gate
+        assert "SkillTagBuffer" in text                           # stream token machine
+
+    def test_dashboard_does_not_redefine_chat(self):
+        from pathlib import Path
+        src = (Path(__file__).resolve().parent.parent / "codec_dashboard.py").read_text()
+        assert '@app.post("/api/chat")' not in src
+        assert "def _build_chat_system_prompt(" not in src
+        assert "def chat_completion(" not in src
+
+
+def test_dashboard_loc_below_1400():
+    """After H1 (chat_completion + helper cluster extracted), codec_dashboard.py
+    should be well under 1,400 lines (down from 3,912 pre-B6 — a ~65% cut).
+
+    What's left is genuinely dashboard-resident: /api/command, /api/services/status,
+    the page renderers, startup/shutdown hooks, and the _bg_* background daemons."""
+    from pathlib import Path
+    lines = (Path(__file__).resolve().parent.parent / "codec_dashboard.py").read_text().count("\n")
+    assert lines < 1400, f"codec_dashboard.py still has {lines} lines"
