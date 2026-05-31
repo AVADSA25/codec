@@ -351,6 +351,10 @@ from routes.upload import router as upload_router
 from routes.config import router as config_router
 from routes.history import router as history_router
 from routes.tts import router as tts_router
+# J2: /api/response + this helper live in routes/tts.py now (F3). Re-exported
+# so codec_dashboard._latest_response_for_session keeps resolving for the
+# behavioral tests in tests/test_pwa_response_bridge.py.
+from routes.tts import _latest_response_for_session  # noqa: F401  (back-compat re-export)
 from routes.vision import router as vision_router
 from routes.vibe_exec import router as vibe_exec_router
 from routes.web_search import router as web_search_router
@@ -442,66 +446,7 @@ async def favicon():
 # C5 / SR-40: moved to routes/observer.py.
 
 
-def _mask_sensitive(value: str) -> str:
-    """Mask sensitive field values, showing only last 4 characters."""
-    if not value or not isinstance(value, str):
-        return ""
-    if len(value) <= 4:
-        return "****"
-    return "*" * (len(value) - 4) + value[-4:]
-
-
-# Fields that contain secrets and must be masked in GET responses
-_SENSITIVE_FIELDS = {"llm_api_key", "dashboard_token", "auth_pin_hash"}
-
-# Validation rules: field -> (type, required, extra_checks)
-# extra_checks is a callable returning (ok, error_msg)
-_VALIDATION_RULES = {
-    "agent_name":          (str,  True,  lambda v: (len(v.strip()) > 0, "agent_name cannot be empty")),
-    "llm_provider":        (str,  True,  lambda v: (len(v.strip()) > 0, "llm_provider cannot be empty")),
-    "llm_model":           (str,  False, None),
-    "llm_base_url":        (str,  False, lambda v: (v == "" or v.startswith("http"), "llm_base_url must be a valid URL")),
-    "llm_api_key":         (str,  False, None),
-    "streaming":           (bool, False, None),
-    "vision_base_url":     (str,  False, lambda v: (v == "" or v.startswith("http"), "vision_base_url must be a valid URL")),
-    "vision_model":        (str,  False, None),
-    "tts_engine":          (str,  False, None),
-    "tts_url":             (str,  False, lambda v: (v == "" or v.startswith("http"), "tts_url must be a valid URL")),
-    "tts_model":           (str,  False, None),
-    "tts_voice":           (str,  False, None),
-    "stt_engine":          (str,  False, None),
-    "stt_url":             (str,  False, lambda v: (v == "" or v.startswith("http"), "stt_url must be a valid URL")),
-    "key_toggle":          (str,  True,  lambda v: (len(v.strip()) > 0, "key_toggle cannot be empty")),
-    "key_voice":           (str,  True,  lambda v: (len(v.strip()) > 0, "key_voice cannot be empty")),
-    "key_text":            (str,  True,  lambda v: (len(v.strip()) > 0, "key_text cannot be empty")),
-    "wake_word_enabled":   (bool, False, None),
-    "wake_phrases":        (list, False, None),
-    "wake_energy":         ((int, float), False, lambda v: (v >= 0, "wake_energy cannot be negative")),
-    "auth_enabled":        (bool, False, None),
-    "auth_session_hours":  ((int, float), False, lambda v: (v > 0, "auth_session_hours must be positive")),
-    "dashboard_token":     (str,  False, None),
-}
-
-
-def _validate_config_updates(flat: dict) -> list:
-    """Validate flattened config values. Returns list of error strings."""
-    errors = []
-    for key, value in flat.items():
-        rule = _VALIDATION_RULES.get(key)
-        if not rule:
-            continue  # allow unknown keys through (forward compat)
-        expected_type, required, check_fn = rule
-        # Skip masked sensitive values (client didn't change them)
-        if key in _SENSITIVE_FIELDS and isinstance(value, str) and value.startswith("*"):
-            continue
-        if not isinstance(value, expected_type):
-            errors.append(f"{key}: expected {expected_type.__name__ if isinstance(expected_type, type) else 'number'}, got {type(value).__name__}")
-            continue
-        if check_fn:
-            ok, msg = check_fn(value)
-            if not ok:
-                errors.append(msg)
-    return errors
+# E3/F1 / SR-50: _mask_sensitive + _SENSITIVE_FIELDS + _VALIDATION_RULES + _validate_config_updates → live in routes/config.py (dead copies removed, J2)
 
 
 # F1 config GET → moved to routes/*.py
@@ -512,48 +457,7 @@ def _validate_config_updates(flat: dict) -> list:
 # C4 / SR-39: audit endpoints moved to routes/audit.py.
 
 
-def _latest_response_for_session(db, session_id, after_id="", after_ts=""):
-    """Newest assistant reply for the caller's turn, or None. (C-2 / PR-4B.)
-
-    Correlation is server-authoritative via conversations.id (`after_id` = the
-    user row's autoincrement id, returned to the client as request_id). The
-    turn's assistant row always has id > after_id, so `id > after_id ORDER BY id
-    ASC LIMIT 1` selects the immediate-next assistant reply — no client-clock dep,
-    exactly correct for the dominant single-tab + sequential flows. This
-    replaces the racy ~/.codec/pwa_response.json file (non-atomic write, no
-    writer mutex, no correlation, racy mtime/unlink) AND the latent
-    clock/RTT-skew miss of the old `timestamp > after` query.
-
-    `after_ts` (a wall-clock string) is a backward-compat fallback for an
-    un-refreshed PWA tab that predates after_id. Never raises."""
-    if not session_id:
-        return None
-    try:
-        aid = int(after_id or 0)
-    except (TypeError, ValueError):
-        aid = 0
-    try:
-        if aid > 0:
-            row = db.execute(
-                "SELECT content FROM conversations "
-                "WHERE session_id=? AND role='assistant' AND id>? "
-                "ORDER BY id ASC LIMIT 1",
-                (session_id, aid),
-            ).fetchone()
-        elif after_ts:
-            row = db.execute(
-                "SELECT content FROM conversations "
-                "WHERE session_id=? AND role='assistant' AND timestamp>? "
-                "ORDER BY timestamp DESC LIMIT 1",
-                (session_id, after_ts),
-            ).fetchone()
-        else:
-            return None
-        if row and row[0]:
-            return row[0]
-        return None
-    except Exception:
-        return None
+# F3 / SR-52: _latest_response_for_session → lives in routes/tts.py with /api/response (re-exported below for back-compat; dead copy removed, J2)
 
 
 @app.post("/api/command")
@@ -625,7 +529,6 @@ async def send_command(request: Request):
         # Call LLM in background so response returns fast. The reply is
         # persisted to the conversations table (below) and picked up by
         # /api/response via the request_id correlation — no response file.
-        import asyncio
 
         async def _process_command():
             try:
