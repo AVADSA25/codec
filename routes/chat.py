@@ -47,8 +47,51 @@ log = logging.getLogger("codec_dashboard")
 
 
 
+def _url_host_is_public(url: str) -> bool:
+    """SSRF guard: True only if `url` is http(s) AND every IP its host resolves
+    to is a public, routable address. Rejects loopback / private / link-local
+    (incl. 169.254.169.254 cloud-metadata) / reserved / multicast / unspecified.
+
+    J1 (re-audit, CWE-918): `_enrich_messages` auto-fetches URLs found in chat
+    content — the prompt-injection vector. Without this an injected link could
+    drive server-side GETs against `http://127.0.0.1:8083/...` or other local
+    `~/.codec` services. CODEC is loopback-only by default, but this keeps the
+    `dashboard_host: 0.0.0.0` opt-in safe. (Residual: DNS-rebinding TOCTOU
+    between this check and httpx's own resolve is accepted for a local app.)
+    """
+    import ipaddress
+    import socket
+    from urllib.parse import urlparse
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            return False
+        host = parsed.hostname
+        if not host:
+            return False
+        infos = socket.getaddrinfo(host, parsed.port or (443 if parsed.scheme == "https" else 80),
+                                   proto=socket.IPPROTO_TCP)
+        if not infos:
+            return False
+        for info in infos:
+            ip = ipaddress.ip_address(info[4][0])
+            if (ip.is_private or ip.is_loopback or ip.is_link_local
+                    or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
+                return False
+        return True
+    except Exception as e:
+        log.warning(f"URL host validation failed ({url}): {e}")
+        return False
+
+
 def _fetch_url_content(url: str, max_chars: int = 8000) -> str:
-    """Fetch a URL and return stripped text content."""
+    """Fetch a URL and return stripped text content.
+
+    SSRF-hardened (J1): the host is validated as public BEFORE the fetch, and
+    redirects are followed manually (≤5 hops) so each Location is re-validated
+    — `follow_redirects=True` would let a public URL 30x-redirect to an
+    internal one, defeating the pre-check.
+    """
     try:
         import httpx
         from html.parser import HTMLParser
@@ -70,9 +113,25 @@ def _fetch_url_content(url: str, max_chars: int = 8000) -> str:
                     if stripped:
                         self.chunks.append(stripped)
 
-        r = httpx.get(url, timeout=15, follow_redirects=True,
-                       headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-                                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"})
+        headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                   "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"}
+        cur = url
+        r = None
+        with httpx.Client(timeout=15, follow_redirects=False) as client:
+            for _hop in range(5):
+                if not _url_host_is_public(cur):
+                    log.warning(f"URL fetch blocked (non-public host): {cur}")
+                    return ""
+                r = client.get(cur, headers=headers)
+                if r.is_redirect and "location" in r.headers:
+                    cur = str(r.url.join(r.headers["location"]))
+                    continue
+                break
+            else:
+                log.warning(f"URL fetch aborted (too many redirects): {url}")
+                return ""
+        if r is None:
+            return ""
         if 'text/html' in r.headers.get('content-type', ''):
             parser = _Stripper()
             parser.feed(r.text)
@@ -226,7 +285,10 @@ def _enrich_messages(messages: list, config: dict, force_search: bool = False) -
         try:
             import sys
             import os as _os
-            repo_dir = _os.path.dirname(_os.path.abspath(__file__))
+            # J1 fix: this module lives in routes/ now, so the repo root (where
+            # codec_search.py is) is TWO levels up, not one. The pre-extraction
+            # original was at repo root → single dirname. Match web_search.py.
+            repo_dir = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
             if repo_dir not in sys.path:
                 sys.path.insert(0, repo_dir)
             from codec_search import search, format_results
@@ -561,10 +623,16 @@ async def chat_completion(request: Request):
         correlation_id=secrets.token_hex(6),
     )
 
+    # Bind before the use_tools gate so the non-stream / system-prompt paths
+    # below never hit an UnboundLocalError when a client sends {"tools": false}
+    # (re-audit J1: was a silent opaque 500 — _build_chat_system_prompt is
+    # called with both names regardless of the tools flag).
+    last_user_text = ""
+    has_attachment = False
+
     # ── Tool Calling: check if last user message matches a skill ──
     use_tools = body.get("tools", True)  # frontend can disable with tools:false
     if use_tools:
-        last_user_text = ""
         for m in reversed(messages):
             if m.get("role") == "user" and isinstance(m.get("content"), str):
                 last_user_text = m["content"]
@@ -792,6 +860,14 @@ async def chat_completion(request: Request):
                         )
                     except Exception:
                         pass
+            else:
+                # J1 parity: a non-allowlisted skill name is never executed
+                # (the invariant holds via the two branches above) AND its raw
+                # tag is stripped — the streaming path's _resolve_skill_tag
+                # already drops disallowed tags; the non-stream path used to
+                # leave "[SKILL:foo:...]" visible in the chat bubble.
+                log.info(f"[Chat] LLM tried disallowed skill {s_name!r} (non-stream) — dropping tag")
+                answer = answer.replace(skill_tag.group(0), "")
 
         return {"response": answer, "model": model}
     except Exception as e:

@@ -55,13 +55,26 @@ async def run_code(request: Request):
     body = await request.json()
     code = body.get("code", "")
     language = body.get("language", "python")
-    body.get("filename", "script.py")
     if not code.strip():
         return JSONResponse({"error": "No code"}, status_code=400)
     from codec_config import is_dangerous
     if is_dangerous(code):
         return JSONResponse({"error": "Blocked: code contains dangerous pattern"}, status_code=403)
-    ext_map = {"python": ".py", "javascript": ".js", "typescript": ".ts", "bash": ".sh", "go": ".go", "rust": ".rs", "java": ".java", "cpp": ".cpp", "swift": ".swift", "ruby": ".rb", "sql": ".sql"}
+    # J1: reject languages we can't actually run instead of silently feeding a
+    # .java/.cpp/.sql file to python3.13 (ext_map had more langs than cmd_map).
+    cmd_template = {
+        "python": ["python3.13"],
+        "javascript": ["node"],
+        "typescript": ["npx", "ts-node"],
+        "bash": ["bash"],
+        "go": ["go", "run"],
+        "rust": ["rustc"],          # special-cased below
+        "swift": ["swift"],
+        "ruby": ["ruby"],
+    }
+    if language not in cmd_template:
+        return JSONResponse({"error": f"Unsupported language: {language}"}, status_code=400)
+    ext_map = {"python": ".py", "javascript": ".js", "typescript": ".ts", "bash": ".sh", "go": ".go", "rust": ".rs", "swift": ".swift", "ruby": ".rb"}
     ext = ext_map.get(language, ".txt")
     tmp = tempfile.NamedTemporaryFile(suffix=ext, delete=False, mode="w")
     tmp.write(code)

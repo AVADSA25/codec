@@ -1113,16 +1113,23 @@ async def _shutdown_services():
     _bg_tasks.clear()
     log.info("[SHUTDOWN] All background services stopped")
     import routes._shared as _shared
-    global _qchat_conn, _vibe_conn
     # M-5 (PR-4J): get_db() is now per-thread; close all of them via the registry.
     _shared._close_all_db_conns()
-    for conn in (_qchat_conn, _vibe_conn):   # dashboard-local singletons
-        if conn is not None:
+    # J1 fix: the qchat / vibe DB singletons moved to their route modules in
+    # D1/D2. The old code declared them `global` and read them here, but they
+    # were never module-level names in codec_dashboard anymore → the shutdown
+    # handler raised NameError before closing anything. Close them where they
+    # actually live now.
+    import routes.qchat as _qchat_mod
+    import routes.vibe as _vibe_mod
+    for _mod, _attr in ((_qchat_mod, "_qchat_conn"), (_vibe_mod, "_vibe_conn")):
+        _conn = getattr(_mod, _attr, None)
+        if _conn is not None:
             try:
-                conn.close()
+                _conn.close()
             except Exception:
                 pass
-    _qchat_conn = _vibe_conn = None
+            setattr(_mod, _attr, None)
 
 
 # E2 health → moved to routes/*.py
