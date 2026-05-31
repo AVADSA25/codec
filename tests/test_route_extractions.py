@@ -104,11 +104,62 @@ class TestC5Observer:
 
 # ── Smoke: codec_dashboard.py is shrinking ────────────────────────────────
 def test_dashboard_loc_below_3700():
-    """B6 + C1..C5 shaved codec_dashboard.py from 3,912 → 3,618 LOC
-    (~300 LOC moved to route groups). Floor: < 3,700.
-
-    Future route extractions (qchat, vibe, schedules, prompts) will
-    keep dropping this number — tighten the floor as those land."""
+    """B6 + C1..F7 shaved codec_dashboard.py from 3,912 → ~2,187 LOC.
+    Floor stays loose here; the tighter floor lives in
+    test_dashboard_loc_below_2300 below."""
     from pathlib import Path
     lines = (Path(__file__).resolve().parent.parent / "codec_dashboard.py").read_text().count("\n")
     assert lines < 3700, f"codec_dashboard.py still has {lines} lines"
+
+
+# ── F-series (SR-51..56): config/history/tts/vision/vibe_exec/web_search/cdp
+class TestFSeriesRouteExtractions:
+    @pytest.mark.parametrize("path", [
+        "/api/config",
+        "/api/history",
+        "/api/conversations",
+        "/api/tts",
+        "/api/response",
+        "/api/vision",
+        "/api/preview",
+        "/preview_frame",
+        "/api/run_code",
+        "/api/web_search",
+        "/api/cdp/status",
+    ])
+    def test_endpoint_registered(self, path):
+        assert path in _registered_paths()
+
+    def test_modules_exist_and_export_router(self):
+        from pathlib import Path
+        root = Path(__file__).resolve().parent.parent / "routes"
+        for name in ("config", "history", "tts", "vision", "vibe_exec",
+                     "web_search", "cdp"):
+            text = (root / f"{name}.py").read_text()
+            assert "router = APIRouter()" in text, f"{name}.py must export router"
+
+    def test_dashboard_does_not_redefine_endpoints(self):
+        from pathlib import Path
+        src = (Path(__file__).resolve().parent.parent / "codec_dashboard.py").read_text()
+        # All 11 endpoints below must NOT have an `@app.<method>("<path>")`
+        # decorator inside codec_dashboard.py — they live in routes/*.py only.
+        moved = [
+            '/api/config")', '/api/history")', '/api/conversations")',
+            '/api/tts")', '/api/response")', '/api/vision")',
+            '/api/preview")', '/preview_frame"', '/api/run_code")',
+            '/api/web_search")', '/api/cdp/status")',
+        ]
+        for snippet in moved:
+            for verb in ("@app.get(", "@app.post(", "@app.put(", "@app.delete("):
+                assert (verb + '"' + snippet) not in src, (
+                    f"codec_dashboard.py must not redefine {verb}\"{snippet}; "
+                    "it now lives in routes/*.py"
+                )
+
+
+def test_dashboard_loc_below_2300():
+    """After F-series, codec_dashboard.py should be under 2,300 lines.
+    Tighten when more endpoints move (e.g. chat_completion)."""
+    from pathlib import Path
+    lines = (Path(__file__).resolve().parent.parent / "codec_dashboard.py").read_text().count("\n")
+    assert lines < 2300, f"codec_dashboard.py still has {lines} lines"

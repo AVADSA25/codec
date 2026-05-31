@@ -348,6 +348,15 @@ from routes.update import router as update_router
 from routes.health import router as health_router
 # E4 / SR-49: upload + upload_image + save_file extracted (with B1 helpers).
 from routes.upload import router as upload_router
+# F-series (SR-51..56): config, history+conversations, tts+response, vision,
+# vibe IDE preview+run_code, web_search, cdp status.
+from routes.config import router as config_router
+from routes.history import router as history_router
+from routes.tts import router as tts_router
+from routes.vision import router as vision_router
+from routes.vibe_exec import router as vibe_exec_router
+from routes.web_search import router as web_search_router
+from routes.cdp import router as cdp_router
 # Phase 2 Step 6 — Trigger System PWA endpoints (auth-gated by /api/* middleware).
 try:
     from routes.triggers import router as triggers_router
@@ -375,6 +384,13 @@ app.include_router(media_router)
 app.include_router(update_router)
 app.include_router(health_router)
 app.include_router(upload_router)
+app.include_router(config_router)
+app.include_router(history_router)
+app.include_router(tts_router)
+app.include_router(vision_router)
+app.include_router(vibe_exec_router)
+app.include_router(web_search_router)
+app.include_router(cdp_router)
 if _has_triggers:
     app.include_router(triggers_router)
 
@@ -471,147 +487,11 @@ def _validate_config_updates(flat: dict) -> list:
     return errors
 
 
-@app.get("/api/config")
-async def get_config():
-    """Return full editable config for Settings UI (sensitive fields masked)."""
-    config = {}
-    try:
-        with open(CONFIG_PATH) as f:
-            config = json.load(f)
-    except Exception:
-        pass
-    # Group into sections for the UI
-    result = {
-        "llm": {
-            "llm_provider": config.get("llm_provider", "mlx"),
-            "llm_model": config.get("llm_model", ""),
-            "llm_base_url": config.get("llm_base_url", "http://localhost:8083/v1"),
-            "llm_api_key": config.get("llm_api_key", ""),
-            "streaming": config.get("streaming", True),
-        },
-        "vision": {
-            "vision_base_url": config.get("vision_base_url", "http://localhost:8083/v1"),
-            "vision_model": config.get("vision_model", ""),
-        },
-        "tts": {
-            "tts_engine": config.get("tts_engine", "kokoro"),
-            "tts_url": config.get("tts_url", "http://localhost:8085/v1/audio/speech"),
-            "tts_model": config.get("tts_model", ""),
-            "tts_voice": config.get("tts_voice", "am_adam"),
-        },
-        "stt": {
-            "stt_engine": config.get("stt_engine", "whisper_http"),
-            "stt_url": config.get("stt_url", "http://localhost:8084/v1/audio/transcriptions"),
-        },
-        "keys": {
-            "key_toggle": config.get("key_toggle", "f13"),
-            "key_voice": config.get("key_voice", "f18"),
-            "key_text": config.get("key_text", "f16"),
-        },
-        "wake": {
-            "wake_word_enabled": config.get("wake_word_enabled", True),
-            "wake_phrases": config.get("wake_phrases", []),
-            "wake_energy": config.get("wake_energy", 200),
-        },
-        "auth": {
-            "auth_enabled": config.get("auth_enabled", False),
-            "auth_session_hours": config.get("auth_session_hours", 24),
-            "dashboard_token": config.get("dashboard_token", ""),
-        },
-        "identity": {
-            "agent_name": config.get("agent_name", "C"),
-        },
-    }
-    # Mask sensitive fields before sending to the client
-    for section in result.values():
-        if isinstance(section, dict):
-            for key in section:
-                if key in _SENSITIVE_FIELDS:
-                    section[key] = _mask_sensitive(section[key])
-    return result
-
-
-@app.put("/api/config")
-async def update_config(request: Request):
-    """Update config.json from Settings UI with input validation."""
-    try:
-        updates = await request.json()
-        config = {}
-        try:
-            with open(CONFIG_PATH) as f:
-                config = json.load(f)
-        except Exception:
-            pass
-
-        # Flatten sections for validation and merge
-        flat = {}
-        for section_vals in updates.values():
-            if isinstance(section_vals, dict):
-                for k, v in section_vals.items():
-                    flat[k] = v
-
-        # Validate all incoming values
-        errors = _validate_config_updates(flat)
-        if errors:
-            return JSONResponse({"error": "Validation failed", "details": errors}, status_code=422)
-
-        # Merge validated values, skipping masked sensitive fields
-        changed_keys = []
-        for k, v in flat.items():
-            # If a sensitive field is still masked, the user did not change it — skip
-            if k in _SENSITIVE_FIELDS and isinstance(v, str) and v.startswith("*"):
-                continue
-            config[k] = v
-            changed_keys.append(k)
-
-        with open(CONFIG_PATH, "w") as f:
-            json.dump(config, f, indent=2)
-        return {
-            "saved": True,
-            "message": f"Configuration saved successfully ({len(changed_keys)} field(s) updated).",
-            "updated_fields": changed_keys,
-        }
-    except json.JSONDecodeError:
-        return JSONResponse({"error": "Invalid JSON in request body"}, status_code=400)
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-
-@app.get("/api/history")
-async def history(limit: int = 50):
-    """Get recent task history"""
-    limit = min(limit, 500)
-    try:
-        c = get_db()
-        rows = c.execute(
-            "SELECT id, timestamp, task, app, response FROM sessions ORDER BY id DESC LIMIT ?",
-            (limit,)
-        ).fetchall()
-        return [{"id": r[0], "timestamp": r[1], "task": r[2], "app": r[3], "response": r[4]} for r in rows]
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
-
+# F1 config GET → moved to routes/*.py
+# F1 config PUT → moved to routes/*.py
+# F2 history → moved to routes/*.py
 # D4 / SR-45: prompt endpoints + helpers moved to routes/prompts.py.
-@app.get("/api/conversations")
-async def conversations(limit: int = 100, source: str = ""):
-    """Get recent conversations. source=flash filters to Flash Chat only."""
-    limit = min(limit, 500)
-    try:
-        c = get_db()
-        if source == "flash":
-            rows = c.execute(
-                "SELECT id, session_id, timestamp, role, content FROM conversations WHERE session_id LIKE 'flash-%' ORDER BY id DESC LIMIT ?",
-                (limit,)
-            ).fetchall()
-        else:
-            rows = c.execute(
-                "SELECT id, session_id, timestamp, role, content FROM conversations ORDER BY id DESC LIMIT ?",
-                (limit,)
-            ).fetchall()
-        return [{"id": r[0], "session_id": r[1], "timestamp": r[2], "role": r[3], "content": r[4]} for r in rows]
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
-
+# F2 conversations → moved to routes/*.py
 # C4 / SR-39: audit endpoints moved to routes/audit.py.
 
 
@@ -837,136 +717,9 @@ async def send_command(request: Request):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
-@app.post("/api/vision")
-async def vision_analyze(request: Request):
-    """Send image to Qwen Vision model for analysis.
-
-    If `session_id` is provided, the user prompt + assistant response are
-    persisted to the conversations table so the chat panel renders them.
-    A small `thumb` (base64 jpeg, max ~256px on the client side) can be
-    embedded inline in the user message via a `[CODEC_IMG_THUMB:...]`
-    sentinel — loadChat() in codec_dashboard.html parses the sentinel
-    and renders the thumbnail. Storage cost: ~10–20 KB per image message.
-    """
-    body = await request.json()
-    image_b64 = body.get("image", "")
-    prompt = body.get("prompt", "Describe and analyze this image in detail.")
-    session_id = (body.get("session_id") or "").strip()
-    thumb_b64 = body.get("thumb", "")
-    if not image_b64:
-        return JSONResponse({"error": "No image data"}, status_code=400)
-    try:
-        import requests as rq
-        config = {}
-        try:
-            with open(CONFIG_PATH) as f: config = json.load(f)
-        except (OSError, json.JSONDecodeError) as e:
-            log.warning(f"Config read failed; proceeding without overrides: {e}")
-        vision_url = config.get("vision_base_url", "http://localhost:8083/v1")
-        vision_model = config.get("vision_model", "mlx-community/Qwen2.5-VL-7B-Instruct-4bit")
-        payload = {
-            "model": vision_model,
-            "messages": [{
-                "role": "user",
-                "content": [
-                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}},
-                    {"type": "text", "text": prompt}
-                ]
-            }],
-            "max_tokens": 4000,
-            "temperature": 0.7
-        }
-        headers = {"Content-Type": "application/json"}
-        r = rq.post(f"{vision_url}/chat/completions", json=payload, headers=headers, timeout=120)
-        data = r.json()
-        answer = data["choices"][0]["message"]["content"].strip()
-        _audit_write(f"[{datetime.now().isoformat()}] VISION: {prompt[:100]}\n")
-        log_event("chat_vision", "codec-dashboard",
-                  f"Vision analysis: {prompt[:60]}",
-                  extra={"prompt_preview": prompt[:200]})
-
-        # Persist user msg (with thumbnail sentinel) + assistant msg so the
-        # image appears in the chat panel. Defensive: never let a save error
-        # break the vision response — log + return the answer regardless.
-        if session_id:
-            try:
-                now_iso = datetime.now().isoformat()
-                # Cap thumbnail size to ~60KB of base64 (about a 256x256 jpeg
-                # @ q=0.4); silently drop if larger to keep DB rows lean.
-                # Validate the whole string is base64 so any injection attempt
-                # (e.g. ']<script>') falls through to the no-thumb branch.
-                import re as _re_b64
-                _is_b64 = bool(thumb_b64) and len(thumb_b64) <= 60_000 \
-                    and _re_b64.fullmatch(r'[A-Za-z0-9+/]+={0,2}', thumb_b64) is not None
-                if _is_b64:
-                    user_content = (
-                        (prompt or "Analyze this image")[:2000]
-                        + f"\n[CODEC_IMG_THUMB:data:image/jpeg;base64,{thumb_b64}]"
-                    )
-                else:
-                    user_content = (prompt or "Analyze this image")[:2000]
-                c = get_db()
-                c.execute(
-                    "INSERT INTO conversations (session_id, timestamp, role, content) VALUES (?,?,?,?)",
-                    (session_id, now_iso, "user", user_content),
-                )
-                c.execute(
-                    "INSERT INTO conversations (session_id, timestamp, role, content) VALUES (?,?,?,?)",
-                    (session_id, now_iso, "assistant", answer[:5000]),
-                )
-                c.commit()
-            except Exception as save_err:
-                log.warning(f"[Vision] save to conversations failed: {save_err}")
-
-        return {"response": answer, "model": vision_model}
-    except Exception as e:
-        import traceback; traceback.print_exc()
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-@app.get("/api/response")
-async def get_response(session_id: str = "", after: str = "", after_id: str = ""):
-    """Get the PWA command response from the conversations DB (C-2 / PR-4B).
-
-    Correlation is server-authoritative via `after_id` (= the request_id the
-    /api/command response carried = the user row's conversations.id). `after`
-    (legacy wall-clock timestamp) is kept only as a fallback for an un-refreshed
-    PWA tab. The old ~/.codec/pwa_response.json file path is gone."""
-    headers = {"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache"}
-    try:
-        ans = _latest_response_for_session(get_db(), session_id, after_id=after_id, after_ts=after)
-        if ans:
-            log.info(f"[Response] Delivered (db): {str(ans)[:80]}")
-            return JSONResponse(content={"response": ans}, headers=headers)
-        return JSONResponse(content={"response": None}, headers=headers)
-    except Exception as e:
-        log.warning(f"[Response] Error reading response: {e}")
-        return JSONResponse(content={"response": None}, headers=headers)
-
-@app.get("/api/tts")
-async def tts(text: str = ""):
-    """Generate speech and return audio file"""
-    if not text:
-        return JSONResponse({"error": "No text"}, status_code=400)
-    try:
-        import requests as rq
-        config = {}
-        try:
-            with open(CONFIG_PATH) as f: config = json.load(f)
-        except (OSError, json.JSONDecodeError) as e:
-            log.warning(f"Config read failed; proceeding without overrides: {e}")
-        tts_url = config.get("tts_url", "http://localhost:8085/v1/audio/speech")
-        tts_model = config.get("tts_model", "mlx-community/Kokoro-82M-bf16")
-        tts_voice = config.get("tts_voice", "am_adam")
-        r = rq.post(tts_url, json={"model": tts_model, "input": text[:500], "voice": tts_voice, "speed": 1.1}, timeout=30)
-        if r.status_code == 200:
-            audio_path = os.path.expanduser("~/.codec/pwa_audio.mp3")
-            with open(audio_path, "wb") as f:
-                f.write(r.content)
-            return FileResponse(audio_path, media_type="audio/mpeg")
-        return JSONResponse({"error": "TTS failed"}, status_code=500)
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
-
+# F4 vision → moved to routes/*.py
+# F3 response → moved to routes/*.py
+# F3 tts → moved to routes/*.py
 # D5 / SR-46: webcam + screenshot + clipboard endpoints moved to routes/media.py.
 
 
@@ -1136,79 +889,9 @@ async def vibe_page():
     with open(vibe_path) as f:
         return HTMLResponse(f.read(), headers=_NO_CACHE)
 
-@app.post("/api/preview")
-async def preview_code(request: Request):
-    body = await request.json()
-    code = body.get("code", "")
-    preview_path = os.path.expanduser("~/.codec/preview.html")
-    with open(preview_path, "w") as f:
-        f.write(code)
-    return {"url": "/preview_frame", "path": preview_path}
-
-@app.get("/preview_frame", response_class=HTMLResponse)
-async def preview_frame():
-    try:
-        with open(os.path.expanduser("~/.codec/preview.html")) as f:
-            content = f.read()
-        # Restrict preview with CSP — no access to dashboard APIs or external resources
-        return HTMLResponse(content, headers={
-            "Content-Security-Policy": "default-src 'self' 'unsafe-inline' data: blob:; connect-src 'none'; form-action 'none'",
-            "X-Frame-Options": "SAMEORIGIN",
-        })
-    except OSError as e:
-        log.warning(f"Preview file read failed; showing placeholder: {e}")
-        return HTMLResponse("<html><body style='background:#0a0a0a;color:#888;padding:40px;font-family:sans-serif'><h2>No preview available</h2><p>Write some HTML and click Preview.</p></body></html>")
-
-@app.post("/api/run_code")
-async def run_code(request: Request):
-    import asyncio
-    import time as _time
-    body = await request.json()
-    code = body.get("code", "")
-    language = body.get("language", "python")
-    body.get("filename", "script.py")
-    if not code.strip():
-        return JSONResponse({"error": "No code"}, status_code=400)
-    from codec_config import is_dangerous
-    if is_dangerous(code):
-        return JSONResponse({"error": "Blocked: code contains dangerous pattern"}, status_code=403)
-    import tempfile
-    ext_map = {"python": ".py", "javascript": ".js", "typescript": ".ts", "bash": ".sh", "go": ".go", "rust": ".rs", "java": ".java", "cpp": ".cpp", "swift": ".swift", "ruby": ".rb", "sql": ".sql"}
-    ext = ext_map.get(language, ".txt")
-    tmp = tempfile.NamedTemporaryFile(suffix=ext, delete=False, mode="w")
-    tmp.write(code); tmp.close()
-    cmd_map = {
-        "python": ["python3.13", tmp.name],
-        "javascript": ["node", tmp.name],
-        "typescript": ["npx", "ts-node", tmp.name],
-        "bash": ["bash", tmp.name],
-        "go": ["go", "run", tmp.name],
-        "rust": ["rustc", tmp.name, "-o", tmp.name + ".out", "&&", tmp.name + ".out"],
-        "swift": ["swift", tmp.name],
-        "ruby": ["ruby", tmp.name],
-    }
-    cmd = cmd_map.get(language, ["python3.13", tmp.name])
-    # For rust, compile+run in one shell command
-    if language == "rust":
-        cmd = ["bash", "-c", f"rustc {tmp.name} -o {tmp.name}.out 2>&1 && {tmp.name}.out"]
-    start = _time.time()
-    try:
-        proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, cwd=os.path.expanduser("~"))
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
-        return {"stdout": stdout.decode(errors="replace")[:10000], "stderr": stderr.decode(errors="replace")[:5000], "exit_code": proc.returncode, "elapsed": round(_time.time()-start,1)}
-    except asyncio.TimeoutError:
-        return {"stdout":"","stderr":"Timed out (30s)","exit_code":-1,"elapsed":30}
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
-    finally:
-        # H-8: also unlink the Rust-compiled `<tmp>.out` binary (only created for
-        # rust; for other langs the path doesn't exist → FileNotFoundError is
-        # caught). The source tmp was already cleaned here; the .out leaked.
-        for _p in (tmp.name, tmp.name + ".out"):
-            try: os.unlink(_p)
-            except OSError as e:
-                log.debug(f"Temp file cleanup failed for {_p}: {e}")
-
+# F5 preview → moved to routes/*.py
+# F5 preview_frame → moved to routes/*.py
+# F5 run_code → moved to routes/*.py
 # /api/save_file safety check — mirrors PR-1C's `file_write` skill blocklist.
 # A1 / SR-8: previously `~/.codec` was in the allowlist, which let any
 # authenticated POST drop a malicious plugin into ~/.codec/plugins/ + add its
@@ -1438,26 +1121,7 @@ def _enrich_messages(messages: list, config: dict, force_search: bool = False) -
     return enriched
 
 
-@app.post("/api/web_search")
-async def web_search_endpoint(request: Request):
-    """Standalone web search endpoint for the chat UI."""
-    body = await request.json()
-    query = body.get("query", "").strip()
-    if not query:
-        return JSONResponse({"error": "query required"}, status_code=400)
-    try:
-        import sys
-        import os as _os
-        repo_dir = _os.path.dirname(_os.path.abspath(__file__))
-        if repo_dir not in sys.path:
-            sys.path.insert(0, repo_dir)
-        from codec_search import search, format_results
-        results = search(query, max_results=8)
-        return {"results": results, "formatted": format_results(results, max_snippets=8)}
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-
+# F6 web_search → moved to routes/*.py
 # ── Chat Tool Calling: safe skills available from Chat ──
 CHAT_SKILL_ALLOWLIST = {
     # Core utilities
@@ -2264,24 +1928,7 @@ async def audit_page():
 # (Memory endpoints moved to routes/memory.py)
 # (Skills list endpoint moved to routes/skills.py)
 
-@app.get("/api/cdp/status")
-async def cdp_status():
-    """Check if Chrome is running with CDP enabled."""
-    try:
-        import httpx as _httpx
-        r = _httpx.get("http://localhost:9222/json", timeout=2)
-        tabs = r.json()
-        page_tabs = [t for t in tabs if t.get("type") == "page"]
-        return {
-            "connected": True,
-            "total_tabs": len(tabs),
-            "page_tabs": len(page_tabs),
-            "tabs": [{"title": t.get("title", "")[:60], "url": t.get("url", "")[:80]}
-                     for t in page_tabs[:5]]
-        }
-    except Exception:
-        return {"connected": False, "total_tabs": 0, "page_tabs": 0, "tabs": []}
-
+# F7 cdp_status → moved to routes/*.py
 # ═══════════════════════════════════════════════════════════════
 # BACKGROUND SERVICES (scheduler, heartbeat, watcher)
 # ═══════════════════════════════════════════════════════════════
