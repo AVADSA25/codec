@@ -57,9 +57,10 @@ def test_dashboard_uses_codec_llm_call():
     src = (REPO / "codec_dashboard.py").read_text()
     assert "import codec_llm" in src
     # H1 / SR-59: chat_completion's non-stream codec_llm.call moved to
-    # routes/chat.py. The two that STAY are /api/command's Flash fallback
-    # and the auto-escalate classifier (_qwen_chat_classify).
-    assert src.count("codec_llm.call(") >= 2        # Flash + classifier
+    # routes/chat.py. I1 / SR-60: the auto-escalate classifier
+    # (_qwen_chat_classify) moved to codec_chat_pipeline.py. The ONE that
+    # STAYS in codec_dashboard is /api/command's Flash fallback.
+    assert src.count("codec_llm.call(") >= 1        # Flash fallback
     # the classifier's inline POST (the only QWEN_BASE_URL.rstrip POST) is gone
     assert "QWEN_BASE_URL.rstrip('/')}/chat/completions" not in src
 
