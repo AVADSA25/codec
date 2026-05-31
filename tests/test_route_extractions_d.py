@@ -92,10 +92,10 @@ class TestD4Prompts:
         assert "def _get_all_prompts" in text
 
     def test_chat_completion_lazy_imports_helper(self):
-        """codec_dashboard.chat_completion's _build_system_prompt helper
-        must lazy-import _load_prompt_overrides from routes.prompts
-        (avoids module-load-time cycle)."""
-        text = (REPO / "codec_dashboard.py").read_text()
+        """The _build_chat_system_prompt helper must lazy-import
+        _load_prompt_overrides from routes.prompts (avoids module-load-time
+        cycle). H1 / SR-59: chat_completion + this helper moved to routes/chat.py."""
+        text = (REPO / "routes" / "chat.py").read_text()
         assert "from routes.prompts import _load_prompt_overrides" in text
 
 

@@ -31,6 +31,7 @@ _ALLOWLIST = {
     "routes/media.py",           # webcam vision POST (A-11 pending) — D5 extraction
     "routes/upload.py",          # /api/upload_image vision POST (A-11 pending) — E4 extraction
     "routes/vision.py",          # /api/vision Qwen-VL POST (A-11 pending) — F4 extraction
+    "routes/chat.py",            # chat vision branch _chat_vision_response POST (A-11 pending) — H1 extraction
 }
 
 _INLINE_POST_RE = re.compile(r"\.post\s*\([^)]*chat/completions")
