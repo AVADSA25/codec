@@ -28,6 +28,13 @@ log = logging.getLogger("codec_agents")
 _VALID_TOOL_NAME_RE = re.compile(r'^[A-Za-z0-9_.\-]+$')
 _MAX_TOOL_NAME_LEN = 100
 _MAX_TOOL_INPUT_LEN = 50000
+# L1 / SR-61: per-tool wall-clock budget. A skill tool with no internal timeout
+# (input(), a no-timeout network call, a deadlock) would otherwise hang the
+# agent — and its default-thread-pool worker — forever. wait_for returns control
+# to the agent as a recoverable error string. (Residual: the abandoned worker
+# thread can't be killed and stays parked until the blocking call returns — a
+# generous budget keeps that rare; tools doing real work finish well inside it.)
+_TOOL_CALL_TIMEOUT_SECONDS = 120
 
 # ── CONFIG ──
 CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
@@ -62,7 +69,10 @@ def _serper_api_key() -> str:
     except Exception:
         return os.environ.get("SERPER_API_KEY", "")
 
-SERPER_API_KEY = _serper_api_key()
+# L1 / SR-61: dropped the eager module global `SERPER_API_KEY = _serper_api_key()`
+# — it was never read (web_search routes through codec_search.search, which
+# fetches the key itself) yet did a Keychain shellout at every import. The
+# getter above stays for callers that want a live read.
 
 # ── HTTP connection pools (reuse TCP connections across calls) ──
 _HTTP_HEADERS = {
@@ -470,7 +480,19 @@ class Agent:
             )
 
         ctx = contextvars.copy_context()
-        result = await loop.run_in_executor(None, ctx.run, _run_tool_with_hooks)
+        try:
+            result = await asyncio.wait_for(
+                loop.run_in_executor(None, ctx.run, _run_tool_with_hooks),
+                timeout=_TOOL_CALL_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            # L1 / SR-61: surface as a tool-error string so the agent's ReAct
+            # loop can recover (try a different tool / FINAL) instead of hanging.
+            _audit("tool_result", tool=tool_name, agent=self.name, outcome="timeout",
+                   error=f"tool exceeded {_TOOL_CALL_TIMEOUT_SECONDS}s budget")
+            return (f"Tool '{tool_name}' timed out after "
+                    f"{_TOOL_CALL_TIMEOUT_SECONDS}s. Try a different approach or "
+                    f"give your FINAL answer.")
         if isinstance(result, HookVeto):
             result = (f"Tool '{tool_name}' was vetoed by plugin "
                       f"'{result.plugin_name}': {result.reason}")
@@ -816,10 +838,12 @@ class Crew:
             for agent in self.agents:
                 before = len(agent.tools)
                 agent.tools = [t for t in agent.tools if t.name in allowed]
-                if agent.tools != agent.tools or before != len(agent.tools):
-                    stripped = before - len(agent.tools)
-                    if stripped:
-                        print(f"[Crew] Scoped {agent.name}: removed {stripped} tool(s) outside allowlist")
+                # L1 / SR-61: was `if agent.tools != agent.tools or ...` — the
+                # first operand is always False (list compared to itself); the
+                # condition reduced to the `if stripped:` below. Simplified.
+                stripped = before - len(agent.tools)
+                if stripped:
+                    print(f"[Crew] Scoped {agent.name}: removed {stripped} tool(s) outside allowlist")
 
     async def run(self, callback: Optional[Callable] = None) -> str:
         # One correlation_id per crew run. All nested agent_start / agent_finish /
@@ -869,7 +893,20 @@ class Crew:
                 # spawned N concurrent agent.run coroutines unbounded.
                 pairs = list(zip(self.agents, self.tasks))[:self.max_steps]
                 coros = [a.run(t, callback=callback) for a, t in pairs]
-                results = await asyncio.gather(*coros)
+                # L1 / SR-61: return_exceptions=True so ONE agent's failure
+                # (e.g. a stuck-detection abort raising) doesn't discard every
+                # other agent's result. Sequential mode isolates per-agent
+                # (try/raise above); parallel now degrades gracefully too — a
+                # failed agent contributes an error marker, the rest still return.
+                raw = await asyncio.gather(*coros, return_exceptions=True)
+                results = []
+                for (agent, _task), r in zip(pairs, raw):
+                    if isinstance(r, Exception):
+                        _audit("agent_finish", agent=agent.name, outcome="error",
+                               error_type=type(r).__name__, error=str(r)[:500])
+                        results.append(f"[{agent.name} failed: {type(r).__name__}: {r}]")
+                    else:
+                        results.append(r)
                 final = "\n\n---\n\n".join(results)
             else:
                 final = f"Unknown crew mode: {self.mode}"
