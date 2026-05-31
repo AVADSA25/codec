@@ -2,6 +2,12 @@
 
 11 tests covering: classifier (3), 2-signal gate (3), session silence (2),
 integration with chat handler (2), kill switch (1).
+
+I1 / SR-60: the classifier cluster moved from codec_dashboard to
+codec_chat_pipeline. These tests monkeypatch the in-module call chain
+(`_qwen_chat_classify` → `_classify_chat_message` → `_should_escalate_to_project`),
+so they must patch where the functions are DEFINED (codec_chat_pipeline),
+not the codec_dashboard re-export. Hence `import codec_chat_pipeline as cd`.
 """
 from __future__ import annotations
 
@@ -17,7 +23,7 @@ if str(_REPO) not in sys.path:
 
 def test_classify_chat_message_returns_project_when_multi_step(monkeypatch):
     """LLM verdict says multi-step → returns is_project=True with checkpoints estimate."""
-    import codec_dashboard as cd
+    import codec_chat_pipeline as cd
 
     fake_response = json.dumps({
         "is_project": True,
@@ -35,7 +41,7 @@ def test_classify_chat_message_returns_project_when_multi_step(monkeypatch):
 
 
 def test_classify_chat_message_returns_not_project_for_quick_question(monkeypatch):
-    import codec_dashboard as cd
+    import codec_chat_pipeline as cd
 
     fake_response = json.dumps({
         "is_project": False, "estimated_checkpoints": 0,
@@ -50,7 +56,7 @@ def test_classify_chat_message_returns_not_project_for_quick_question(monkeypatc
 
 def test_classify_chat_message_handles_qwen_failure(monkeypatch):
     """If Qwen call fails or returns garbage, classifier returns (False, 0, reason)."""
-    import codec_dashboard as cd
+    import codec_chat_pipeline as cd
 
     monkeypatch.setattr(cd, "_qwen_chat_classify",
                         lambda text: "garbage non-json")
@@ -62,7 +68,7 @@ def test_classify_chat_message_handles_qwen_failure(monkeypatch):
 
 def test_should_escalate_when_both_signals_pass(monkeypatch):
     """LLM says project + checkpoints >= 3 → escalate."""
-    import codec_dashboard as cd
+    import codec_chat_pipeline as cd
 
     monkeypatch.setattr(cd, "_classify_chat_message",
                         lambda text: (True, 5, "multi-step"))
@@ -74,7 +80,7 @@ def test_should_escalate_when_both_signals_pass(monkeypatch):
 
 def test_should_not_escalate_when_checkpoints_below_3(monkeypatch):
     """LLM says project but estimate=2 → don't escalate."""
-    import codec_dashboard as cd
+    import codec_chat_pipeline as cd
 
     monkeypatch.setattr(cd, "_classify_chat_message",
                         lambda text: (True, 2, "small"))
@@ -85,7 +91,7 @@ def test_should_not_escalate_when_checkpoints_below_3(monkeypatch):
 
 def test_should_not_escalate_when_classifier_says_no(monkeypatch):
     """LLM says not-a-project → don't escalate even if checkpoints>=3."""
-    import codec_dashboard as cd
+    import codec_chat_pipeline as cd
 
     monkeypatch.setattr(cd, "_classify_chat_message",
                         lambda text: (False, 5, "actually quick"))
@@ -96,7 +102,7 @@ def test_should_not_escalate_when_classifier_says_no(monkeypatch):
 
 def test_session_silence_persists_across_calls(monkeypatch):
     """Q11: After silence_session(s1), subsequent _should_escalate calls return escalate=False."""
-    import codec_dashboard as cd
+    import codec_chat_pipeline as cd
 
     monkeypatch.setattr(cd, "_classify_chat_message",
                         lambda text: (True, 5, "always-project"))
@@ -117,7 +123,7 @@ def test_session_silence_persists_across_calls(monkeypatch):
 
 def test_kill_switch_disables_all_escalation(monkeypatch):
     """AGENT_AUTO_ESCALATE_ENABLED=false → never escalate."""
-    import codec_dashboard as cd
+    import codec_chat_pipeline as cd
 
     monkeypatch.setenv("AGENT_AUTO_ESCALATE_ENABLED", "false")
     monkeypatch.setattr(cd, "_classify_chat_message",

@@ -261,3 +261,34 @@ def test_dashboard_loc_below_1400():
     from pathlib import Path
     lines = (Path(__file__).resolve().parent.parent / "codec_dashboard.py").read_text().count("\n")
     assert lines < 1400, f"codec_dashboard.py still has {lines} lines"
+
+
+# ── I1 (SR-60): auto-escalate classifier cluster → codec_chat_pipeline ─────
+class TestI1EscalationExtraction:
+    _NAMES = (
+        "_AUTO_ESCALATE_SYSTEM_PROMPT", "_qwen_chat_classify",
+        "_classify_chat_message", "_AUTOESCALATE_SILENCE_LOCK",
+        "_autoescalate_silence_set", "ESCALATE_CHECKPOINTS_THRESHOLD",
+        "silence_session_autoescalate", "_reset_autoescalate_silence_for_test",
+        "_should_escalate_to_project",
+    )
+
+    def test_cluster_lives_in_chat_pipeline(self):
+        import codec_chat_pipeline as p
+        for n in self._NAMES:
+            assert hasattr(p, n), f"{n} must live in codec_chat_pipeline"
+
+    def test_dashboard_reexports_identity_equal(self):
+        """codec_dashboard must re-export every escalation name identity-equal
+        (back-compat for any caller / test that imported them from there)."""
+        import codec_dashboard as cd
+        import codec_chat_pipeline as p
+        for n in self._NAMES:
+            assert getattr(cd, n) is getattr(p, n), f"{n} not re-exported identity-equal"
+
+    def test_dashboard_no_longer_defines_cluster(self):
+        from pathlib import Path
+        src = (Path(__file__).resolve().parent.parent / "codec_dashboard.py").read_text()
+        assert "def _should_escalate_to_project(" not in src
+        assert "def _qwen_chat_classify(" not in src
+        assert "_AUTO_ESCALATE_SYSTEM_PROMPT = " not in src
