@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import tempfile
 import time as _time
 
@@ -23,6 +24,66 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 router = APIRouter()
 log = logging.getLogger("codec_dashboard")
+
+
+# ── /api/run_code execution hardening (K1) ────────────────────────────────
+# Proportionate sandboxing for the Vibe IDE's "run my code" feature. Unlike
+# the python_exec skill (single-language, utility) this endpoint must run 8
+# languages incl. compilers (go/rust) and bash, so a full codec_sandbox
+# deny-default `sandbox-exec` profile is INTENTIONALLY NOT applied — its
+# no-process-spawn + no-network rules break compilation and the IDE's
+# legitimate use (a user testing an API call wants network). Instead we apply
+# the two hardenings that are safe across every language:
+#   1. resource limits (CPU / address space / FDs / output-file size) so a
+#      runaway loop, memory bomb, FD leak, or disk-filling write is bounded;
+#   2. a secret-stripped env so executed code can't read the operator's API
+#      keys / tokens out of the inherited environment (PATH/HOME/tool config
+#      are preserved so every interpreter + compiler still resolves).
+# The existing is_dangerous() gate, dashboard auth, and 30s wall timeout
+# remain the other layers.
+_RUNCODE_RLIMIT_CPU_SECONDS = 25            # CPU time (< 30s wall) — kills infinite loops
+_RUNCODE_RLIMIT_AS_BYTES = 2 * 1024 ** 3    # 2 GB address space — stops bombs, allows rustc/go
+_RUNCODE_RLIMIT_NOFILE = 256                # compilers open many files
+_RUNCODE_RLIMIT_FSIZE_BYTES = 64 * 1024 ** 2  # 64 MB max single output file — stops disk-fill
+
+# Env var NAMES that look secret-bearing get dropped before the child runs.
+_SENSITIVE_ENV_RE = re.compile(
+    r"(?i)(secret|password|passwd|token|credential|api[_-]?key|access[_-]?key|"
+    r"private[_-]?key|bearer|session[_-]?token|auth[_-]?token|_key$|^key$)"
+)
+# Matches the pattern but is functionally needed → keep.
+_ENV_KEEP = {"SSH_AUTH_SOCK"}
+
+
+def _preexec_set_rlimits():  # pragma: no cover - runs in forked child, before exec
+    """Cap CPU / memory / FDs / output-file size in the child after fork.
+
+    Each limit is best-effort (RLIMIT_AS is not enforced on all macOS
+    versions) — wrapped so a soft failure never blocks the run. Limits are
+    inherited across the bash→rustc→binary chain for the rust path, so the
+    whole process tree is bounded."""
+    import resource
+    for _res, _val in (
+        (resource.RLIMIT_CPU, _RUNCODE_RLIMIT_CPU_SECONDS),
+        (resource.RLIMIT_AS, _RUNCODE_RLIMIT_AS_BYTES),
+        (resource.RLIMIT_NOFILE, _RUNCODE_RLIMIT_NOFILE),
+        (resource.RLIMIT_FSIZE, _RUNCODE_RLIMIT_FSIZE_BYTES),
+    ):
+        try:
+            resource.setrlimit(_res, (_val, _val))
+        except (ValueError, OSError):
+            pass
+
+
+def _hardened_run_env() -> dict:
+    """Inherited environment minus secret-bearing vars. PATH / HOME / locale /
+    tool config (GOPATH, GOCACHE, npm_config_*, …) are preserved so every
+    interpreter + compiler still resolves — only API keys / tokens / secrets
+    are dropped so executed code can't exfiltrate them via os.environ."""
+    env = {k: v for k, v in os.environ.items()
+           if k in _ENV_KEEP or not _SENSITIVE_ENV_RE.search(k)}
+    env.setdefault("LC_ALL", "C.UTF-8")
+    return env
 
 
 @router.post("/api/preview")
@@ -95,7 +156,17 @@ async def run_code(request: Request):
         cmd = ["bash", "-c", f"rustc {tmp.name} -o {tmp.name}.out 2>&1 && {tmp.name}.out"]
     start = _time.time()
     try:
-        proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, cwd=os.path.expanduser("~"))
+        # K1: env-stripped + resource-limited child (see module header). The
+        # rlimits bound runaway compute / memory / FDs / output size; the env
+        # withholds operator secrets. cwd stays $HOME so tool config resolves.
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=os.path.expanduser("~"),
+            env=_hardened_run_env(),
+            preexec_fn=_preexec_set_rlimits,
+        )
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
         return {"stdout": stdout.decode(errors="replace")[:10000], "stderr": stderr.decode(errors="replace")[:5000], "exit_code": proc.returncode, "elapsed": round(_time.time() - start, 1)}
     except asyncio.TimeoutError:
