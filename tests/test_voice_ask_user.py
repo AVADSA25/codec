@@ -296,7 +296,12 @@ def test_poll_skips_chat_asked_from_with_different_cid(temp_askuser_paths):
 
 def test_poll_skips_already_announced_question(temp_askuser_paths):
     """Once announced this session, the same qid is skipped on the next poll
-    (avoids re-announcing the same question forever)."""
+    (avoids re-announcing the same question forever).
+
+    L2 / SR-62: the poll no longer self-marks announced — the caller marks it
+    only AFTER a successful announce (so a failed announce retries). The dedup
+    contract is unchanged; here we mark it ourselves to simulate the caller's
+    post-announce step, then confirm the next poll skips it."""
     pq_path, _, _ = temp_askuser_paths
     _write_pending(pq_path, [{
         "id": "q_xxx", "status": "pending", "correlation_id": "session-cid",
@@ -305,9 +310,12 @@ def test_poll_skips_already_announced_question(temp_askuser_paths):
     p = _FakeVoicePipeline("session-cid")
     rec1 = _await(p._poll_pending_question_for_voice())
     assert rec1 is not None
-    # Second poll — already announced.
-    rec2 = _await(p._poll_pending_question_for_voice())
-    assert rec2 is None
+    # Poll again BEFORE marking → still returned (the fix: a failed announce
+    # must be able to retry).
+    assert _await(p._poll_pending_question_for_voice()) is not None
+    # Caller marks it announced after speaking it → now skipped.
+    p._announced_question_ids.add("q_xxx")
+    assert _await(p._poll_pending_question_for_voice()) is None
 
 
 def test_poll_skips_answered_questions(temp_askuser_paths):
