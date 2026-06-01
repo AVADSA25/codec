@@ -22,7 +22,20 @@ from typing import Optional
 log = logging.getLogger("codec_cookbook.probe")
 
 # Protected ports Cookbook must never bind to or stop. Mirrored by serve.py.
-PROTECTED_PORTS = frozenset({8083, 8090, 8094, 9223, 5678})
+# Verified by lsof against the live box (2026-06-01), not assumed:
+#   8083  mlx_vlm.server   — Qwen3.6 LLM + UI-TARS/VLM vision
+#   8084  whisper_server   — STT (Whisper)
+#   8085  mlx_audio.server — TTS
+#   8090  codec-dashboard
+#   8094  pilot-runner
+#   9222  Chrome DevTools CDP (routes/cdp.py + chrome skills; on-demand)
+#   9223  pilot CDP (on-demand)
+#   5678  n8n
+# 8081/8082 probed FREE — Qwen+vision were consolidated onto 8083, so those
+# slots are vacated; not protected (nothing to fat-finger there). This static
+# denylist is belt-and-suspenders: allocate_port() also skips ANY live-bound
+# port at call time, and stop() refuses anything outside the cookbook- namespace.
+PROTECTED_PORTS = frozenset({8083, 8084, 8085, 8090, 8094, 9222, 9223, 5678})
 # Cookbook's own serve range.
 SERVE_RANGE = range(8110, 8120)  # 8110-8119 inclusive
 OS_RESERVE_GB = 24

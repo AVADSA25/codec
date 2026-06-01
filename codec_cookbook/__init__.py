@@ -10,9 +10,11 @@ forbids `os`/`subprocess`/`socket`/... in skill files).
 HARD SAFETY CONTRACT (enforced in serve.py):
   * Cookbook only ever stops a PM2 process it started, in the `cookbook-`
     namespace, after explicit confirm=True.
-  * It never binds to or stops the protected ports (8083/8090/8094/9223/5678)
-    or any port currently bound by a non-cookbook process (live `pm2 jlist`
-    + socket probe at call time).
+  * It never binds to or stops the protected ports (the live core stack —
+    8083 LLM+vision / 8084 STT / 8085 TTS / 8090 dashboard / 8094 pilot-runner
+    / 9222+9223 CDP / 5678 n8n; see probe.PROTECTED_PORTS) or any port
+    currently bound by a non-cookbook process (live `pm2 jlist` + socket probe
+    at call time).
   * Its own serve range is 8110-8119.
   * It never issues docker stop/rm, never changes an existing service's port,
     never restarts a running service.
