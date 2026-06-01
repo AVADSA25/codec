@@ -3,7 +3,8 @@
 Structural guarantees (the whole point of Cookbook):
   * launch() only ever allocates a port in 8110-8119 that a live socket probe
     + pm2 jlist + our own served.json all agree is free. Protected ports
-    (8083/8090/8094/9223/5678) are never in range and are skipped anyway.
+    (8083/8084/8085/8090/8094/9222/9223/5678 — see probe.PROTECTED_PORTS) are
+    never in range and are skipped anyway.
   * Every process we start is named `cookbook-<id>-<port>`.
   * stop() will ONLY delete a process that (a) we recorded in served.json,
     (b) is named `cookbook-…`, and (c) is NOT on a protected port — and only

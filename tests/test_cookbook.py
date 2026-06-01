@@ -174,10 +174,15 @@ class TestStopGuard:
         ])
         return serve
 
-    @pytest.mark.parametrize("port", [8083, 8090, 8094, 9223, 5678])
+    @pytest.mark.parametrize("port", [8083, 8084, 8085, 8090, 8094, 9222, 9223, 5678])
     def test_refuses_protected_ports(self, served, port):
         r = served.stop(port, confirm=True)
         assert r["status"] == "refused"
+
+    def test_protected_set_covers_live_core_stack(self):
+        # the live core services verified by lsof on the box must all be protected
+        for port in (8083, 8084, 8085, 8090, 8094, 5678):
+            assert port in probe.PROTECTED_PORTS, f"{port} (live core service) not protected"
 
     def test_refuses_protected_port_even_if_in_served(self, served):
         # defense-in-depth: a (hypothetical) cookbook record on a protected port
