@@ -1,0 +1,7 @@
+[
+  {"id":"qwen3-30b-a3b","hf_repo":"mlx-community/Qwen3-30B-A3B-Instruct-2507-4bit","backend":"mlx","roles":["chat","reason"],"anchor_gb":17.2},
+  {"id":"qwen3-coder-30b","hf_repo":"mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit","backend":"mlx","roles":["code"],"anchor_gb":17.2},
+  {"id":"qwen3-next-80b","hf_repo":"mlx-community/Qwen3-Next-80B-A3B-Instruct-4bit","backend":"mlx","roles":["max"],"anchor_gb":42.0},
+  {"id":"qwen3-4b","hf_repo":"mlx-community/Qwen3-4B-Instruct-2507-4bit","backend":"mlx","roles":["fast"]},
+  {"id":"llama32-3b","hf_repo":"mlx-community/Llama-3.2-3B-Instruct-4bit","backend":"mlx","roles":["tiny"]}
+]
