@@ -22,7 +22,7 @@ _REPO = Path(__file__).resolve().parents[1]
 if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
 
-from codec_cookbook import args, catalog, fit, probe, serve  # noqa: E402
+from codec_cookbook import args, catalog, download, fit, probe, serve  # noqa: E402
 
 # A representative Qwen3-MoE-ish config for offline KV math.
 _CFG = {"num_hidden_layers": 48, "num_attention_heads": 32,
@@ -174,10 +174,15 @@ class TestStopGuard:
         ])
         return serve
 
-    @pytest.mark.parametrize("port", [8083, 8090, 8094, 9223, 5678])
+    @pytest.mark.parametrize("port", [8083, 8084, 8085, 8090, 8094, 9222, 9223, 5678])
     def test_refuses_protected_ports(self, served, port):
         r = served.stop(port, confirm=True)
         assert r["status"] == "refused"
+
+    def test_protected_set_covers_live_core_stack(self):
+        # the live core services verified by lsof on the box must all be protected
+        for port in (8083, 8084, 8085, 8090, 8094, 5678):
+            assert port in probe.PROTECTED_PORTS, f"{port} (live core service) not protected"
 
     def test_refuses_protected_port_even_if_in_served(self, served):
         # defense-in-depth: a (hypothetical) cookbook record on a protected port
@@ -262,6 +267,54 @@ class TestIntegration:
         assert "mlx_lm.server" not in argv
         assert "--max-tokens" in argv
         assert "--port" in argv and "8112" in argv
+
+
+# ── downloads (HF spawn mocked — no network in CI) ──────────────────────────
+class TestDownload:
+    def test_start_writes_status_and_does_not_hit_network(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(download, "DL_DIR", str(tmp_path / "downloads"))
+        popened = {}
+
+        class FakeProc:
+            pid = 4242
+
+        def fake_popen(argv, **kw):
+            popened["argv"] = argv
+            popened["detached"] = kw.get("start_new_session")
+            return FakeProc()
+
+        monkeypatch.setattr(download.subprocess, "Popen", fake_popen)
+        res = download.start("mlx-community/Llama-3.2-3B-Instruct-4bit")
+        assert res["state"] == "starting" and res["pid"] == 4242
+        # spawned detached, and the child is python -c (the snapshot_download runner)
+        assert popened["detached"] is True
+        assert popened["argv"][1] == "-c" and "snapshot_download" in popened["argv"][2]
+
+    def test_status_reconciles_dead_pid_to_interrupted(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(download, "DL_DIR", str(tmp_path / "downloads"))
+        monkeypatch.setattr(download.subprocess, "Popen",
+                            lambda *a, **k: type("P", (), {"pid": 999999})())
+        monkeypatch.setattr(download, "_pid_alive", lambda pid: False)
+        download.start("r/x")
+        assert download.status("r/x")["state"] == "interrupted"
+
+    def test_status_not_started(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(download, "DL_DIR", str(tmp_path / "downloads"))
+        assert download.status("never/seen")["state"] == "not_started"
+
+    def test_idempotent_start_when_running(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(download, "DL_DIR", str(tmp_path / "downloads"))
+        calls = {"n": 0}
+
+        def fake_popen(*a, **k):
+            calls["n"] += 1
+            return type("P", (), {"pid": 4242})()
+
+        monkeypatch.setattr(download.subprocess, "Popen", fake_popen)
+        monkeypatch.setattr(download, "_pid_alive", lambda pid: True)
+        download.start("r/x")
+        download.start("r/x")  # already running → must NOT spawn again
+        assert calls["n"] == 1
 
 
 # ── skills smoke ─────────────────────────────────────────────────────────────
