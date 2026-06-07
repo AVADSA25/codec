@@ -23,7 +23,7 @@ qrcode[pil]>=8.0
 # STALE vs these floors; refresh them (see docs note) at a maintenance window.
 urllib3>=2.7.0          # CVE-2026-44431 / -44432 (transitive via requests)
 pillow>=12.2.0          # CVE-2026-42311 + others (transitive via qrcode[pil])
-cryptography>=46.0.7    # CVE-2026-39892 / -34073 (routes/auth + codec_license)
+cryptography>=48.0.0    # CVE-2026-39892 / -34073 (routes/auth + codec_license)
 
 # B8 / SR-31: argon2id for PIN hashing (replaces SHA-256). Memory-hard,
 # GPU-resistant. Optional dep — codec_pinhash falls back to SHA-256 when
