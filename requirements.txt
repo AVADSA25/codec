@@ -29,7 +29,7 @@ cryptography>=48.0.0    # CVE-2026-39892 / -34073 (routes/auth + codec_license)
 # GPU-resistant. Optional dep — codec_pinhash falls back to SHA-256 when
 # absent, but argon2id is strongly recommended for any operator using
 # PIN-only auth (no Touch ID).
-argon2-cffi>=23.1.0
+argon2-cffi>=25.1.0
 
 # Optional: TTS (Kokoro 82M — Apple Silicon)
 # mlx-audio misaki num2words phonemizer-fork spacy
