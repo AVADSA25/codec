@@ -11,7 +11,7 @@ fastmcp>=3.3.1
 # Previously undeclared runtime deps — the TOTP setup/confirm/verify endpoints
 # import these lazily; without them the 2FA flow 500s in production.
 pyotp>=2.9.0
-qrcode[pil]>=8.0
+qrcode[pil]>=8.2
 
 # Security floors for transitive / runtime deps (Fix #6, re-audit dependency
 # pass). These pin the advisory-safe minor so a fresh `pip install -r` is
