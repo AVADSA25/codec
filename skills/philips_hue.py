@@ -210,7 +210,16 @@ def _parse_action(task_lower):
     """
     # --- Scenes ---
     for scene_name, scene_state in SCENE_PRESETS.items():
-        if scene_name in task_lower:
+        # The "codec" scene name collides with the assistant's own wake word,
+        # which leaks into commands on the F18 / text / chat paths (only the
+        # hands-free wake listener strips it — see codec.py:778). Require an
+        # explicit "codec mode" / "codec scene" qualifier so a bare "codec"
+        # can never hijack an on/off/brightness command.
+        if scene_name == "codec":
+            matched = "codec scene" in task_lower or "codec mode" in task_lower
+        else:
+            matched = scene_name in task_lower
+        if matched:
             # Regenerate random hue for party each time
             if scene_name == "party":
                 scene_state = dict(scene_state)
