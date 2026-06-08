@@ -276,16 +276,16 @@ def _run_once(task, ip, user):
     return f"Set {target_name} to {description}."
 
 
-def _try_rediscover(old_ip):
-    """The bridge IP may have changed (DHCP). Re-find it by id via the standard discovery
-    ladder (mDNS -> cloud -> scan) and persist the new IP. Returns a new IP different from
-    old_ip, or None. Never raises."""
+def _try_rediscover():
+    """Re-find the bridge via the standard ladder (mDNS -> cloud -> scan) and persist its
+    current IP. Returns the verified-reachable IP — whether or not it changed — or None.
+    A confirmed-reachable bridge is worth a retry even at the SAME IP: that absorbs a
+    transient blip, not just a DHCP move. Never raises."""
     try:
         import codec_hue_discovery
-        new_ip = codec_hue_discovery.rediscover_and_update_config()
+        return codec_hue_discovery.rediscover_and_update_config()
     except Exception:
         return None
-    return new_ip if new_ip and new_ip != old_ip else None
 
 
 def run(task, app="", ctx=""):
@@ -302,7 +302,14 @@ def run(task, app="", ctx=""):
     try:
         return _run_once(task, ip, user)
     except requests.ConnectionError:
-        new_ip = _try_rediscover(ip)
+        # 1) quick retry at the same IP — absorbs a brief network/bridge blip.
+        try:
+            return _run_once(task, ip, user)
+        except requests.ConnectionError:
+            pass
+        # 2) still failing — the IP may have changed. Re-discover (which verifies the bridge
+        #    is actually reachable) and retry at its current address, new or unchanged.
+        new_ip = _try_rediscover()
         if new_ip:
             try:
                 return _run_once(task, new_ip, user)
