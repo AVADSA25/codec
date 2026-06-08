@@ -259,36 +259,55 @@ def _parse_action(task_lower):
 # Main entry point
 # ---------------------------------------------------------------------------
 
+def _run_once(task, ip, user):
+    """Resolve target, parse the action, apply it. Raises requests.* on bridge connectivity
+    problems so run() can self-heal."""
+    task_lower = task.lower()
+    target_type, target_id, target_name = _resolve_target(task_lower, ip, user)
+    state, description = _parse_action(task_lower)
+    result = _apply_state(ip, user, target_type, target_id, state)
+    errors = [
+        item.get("error", {}).get("description", "")
+        for item in (result if isinstance(result, list) else [result])
+        if isinstance(item, dict) and "error" in item
+    ]
+    if errors:
+        return f"Hue Bridge error: {'; '.join(errors)}"
+    return f"Set {target_name} to {description}."
+
+
+def _try_rediscover(old_ip):
+    """The bridge IP may have changed (DHCP). Re-find it by id via the standard discovery
+    ladder (mDNS -> cloud -> scan) and persist the new IP. Returns a new IP different from
+    old_ip, or None. Never raises."""
+    try:
+        import codec_hue_discovery
+        new_ip = codec_hue_discovery.rediscover_and_update_config()
+    except Exception:
+        return None
+    return new_ip if new_ip and new_ip != old_ip else None
+
+
 def run(task, app="", ctx=""):
-    """Process a Philips Hue command and return a status string."""
+    """Process a Philips Hue command and return a status string.
+
+    Self-healing: if the saved bridge IP refuses the connection (DHCP moved the bridge),
+    re-discover it via codec_hue_discovery and retry once at the new address — so a changed
+    IP never surfaces as a user-facing error while the bridge is on the LAN.
+    """
     ip, user = _load_config()
     if not ip or not user:
         return _setup_message()
 
-    task_lower = task.lower()
-
     try:
-        # Determine target (all, specific light, or group/room)
-        target_type, target_id, target_name = _resolve_target(task_lower, ip, user)
-
-        # Determine desired state
-        state, description = _parse_action(task_lower)
-
-        # Apply
-        result = _apply_state(ip, user, target_type, target_id, state)
-
-        # Check for errors in the bridge response
-        errors = [
-            item.get("error", {}).get("description", "")
-            for item in (result if isinstance(result, list) else [result])
-            if isinstance(item, dict) and "error" in item
-        ]
-        if errors:
-            return f"Hue Bridge error: {'; '.join(errors)}"
-
-        return f"Set {target_name} to {description}."
-
+        return _run_once(task, ip, user)
     except requests.ConnectionError:
+        new_ip = _try_rediscover(ip)
+        if new_ip:
+            try:
+                return _run_once(task, new_ip, user)
+            except (requests.ConnectionError, requests.Timeout):
+                pass
         return (
             f"Could not reach Hue Bridge at {ip}. "
             "Check that the bridge is on and your device is on the same network."

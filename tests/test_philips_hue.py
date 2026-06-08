@@ -15,7 +15,11 @@ import os
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "skills"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+import requests  # noqa: E402
+
+import codec_hue_discovery  # noqa: E402
 import philips_hue  # noqa: E402
 
 
@@ -48,3 +52,34 @@ def test_plain_commands_unaffected():
     assert philips_hue._parse_action("lights off")[0] == {"on": False}
     assert philips_hue._parse_action("lights on")[0] == {"on": True}
     assert philips_hue._parse_action("lights 50%")[0]["bri"] == 127
+
+
+# ── self-heal when the bridge IP changes (DHCP) ─────────────────────────────
+def test_run_self_heals_when_bridge_ip_changed(monkeypatch):
+    OLD, NEW = "192.168.1.81", "192.168.1.99"
+    monkeypatch.setattr(philips_hue, "_load_config", lambda: (OLD, "user"))
+    monkeypatch.setattr(philips_hue, "_resolve_target", lambda tl, ip, u: ("all", "0", "all lights"))
+
+    def fake_apply(ip, user, ttype, tid, state):
+        if ip == OLD:
+            raise requests.ConnectionError("host down")  # stale IP unreachable
+        return [{"success": {"/groups/0/action/on": False}}]  # new IP works
+
+    monkeypatch.setattr(philips_hue, "_apply_state", fake_apply)
+    monkeypatch.setattr(codec_hue_discovery, "rediscover_and_update_config", lambda *a, **k: NEW)
+
+    assert philips_hue.run("lights off") == "Set all lights to off."
+
+
+def test_run_friendly_error_when_rediscovery_fails(monkeypatch):
+    monkeypatch.setattr(philips_hue, "_load_config", lambda: ("192.168.1.81", "user"))
+    monkeypatch.setattr(philips_hue, "_resolve_target", lambda tl, ip, u: ("all", "0", "all lights"))
+
+    def dead(ip, user, ttype, tid, state):
+        raise requests.ConnectionError("down")
+
+    monkeypatch.setattr(philips_hue, "_apply_state", dead)
+    monkeypatch.setattr(codec_hue_discovery, "rediscover_and_update_config", lambda *a, **k: None)
+
+    out = philips_hue.run("lights off")
+    assert "Could not reach Hue Bridge" in out
