@@ -71,6 +71,26 @@ def test_run_self_heals_when_bridge_ip_changed(monkeypatch):
     assert philips_hue.run("lights off") == "Set all lights to off."
 
 
+def test_run_absorbs_transient_connection_error_same_ip(monkeypatch):
+    # A brief blip at the SAME ip must NOT surface as an error — retry absorbs it.
+    IP = "192.168.1.81"
+    monkeypatch.setattr(philips_hue, "_load_config", lambda: (IP, "user"))
+    monkeypatch.setattr(philips_hue, "_resolve_target", lambda tl, ip, u: ("all", "0", "all lights"))
+    calls = {"n": 0}
+
+    def flaky_apply(ip, user, ttype, tid, state):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise requests.ConnectionError("transient blip")
+        return [{"success": {}}]
+
+    monkeypatch.setattr(philips_hue, "_apply_state", flaky_apply)
+    monkeypatch.setattr(codec_hue_discovery, "rediscover_and_update_config", lambda *a, **k: IP)
+
+    assert philips_hue.run("lights off") == "Set all lights to off."
+    assert calls["n"] >= 2  # retried rather than giving up
+
+
 def test_run_friendly_error_when_rediscovery_fails(monkeypatch):
     monkeypatch.setattr(philips_hue, "_load_config", lambda: ("192.168.1.81", "user"))
     monkeypatch.setattr(philips_hue, "_resolve_target", lambda tl, ip, u: ("all", "0", "all lights"))
