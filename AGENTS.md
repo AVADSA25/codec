@@ -562,6 +562,14 @@ Three event names, all info-level. `agent_message_sent` and `agent_message_recei
 
 `PHASE3_STEP10_EVENTS` frozenset exposed.
 
+#### Voice modes event (flash / default / think — docs/VOICE-MODES-DESIGN.md)
+
+| Event | Source | level | extra fields |
+|---|---|---|---|
+| `voice_mode_changed` | `codec-voice` | info | `mode` (`flash` \| `default` \| `think`), `via` (`voice` \| `ui`) |
+
+Single-emit, fresh or session cid. Think-mode tool calls need no new events — they route through the skill `Tool` wrappers → `run_with_hooks` → existing `tool_call`/`tool_result` envelope.
+
 ### Notifications (`~/.codec/notifications.json`)
 Four sources can produce notifications: scheduler (crew completion), heartbeat (threshold alert), autopilot (ambient trigger), and Phase 1 Step 3's AskUserQuestion (`type="question"`). All write through `routes/_shared.py:51-127` except AskUserQuestion which writes via `codec_ask_user._write_question_notification`.
 

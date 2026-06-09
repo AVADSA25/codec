@@ -455,6 +455,20 @@
         .modal-overlay.show { display:flex; }
         .modal-overlay img { max-width:100%; max-height:90vh; border-radius:var(--radius); border:1px solid var(--border); }
         .modal-close { position:fixed; top:16px; right:16px; background:var(--surface); color:var(--text); border:1px solid var(--border); width:32px; height:32px; border-radius:50%; font-size:18px; cursor:pointer; z-index:101; display:flex; align-items:center; justify-content:center; }
+        /* ── Voice mode pills (flash / default / think) ── */
+        .mode-row { display:flex; gap:8px; justify-content:center; margin:10px 0 2px; }
+        .mode-pill {
+            background:var(--surface-2,#1f1f22); border:1px solid var(--border,#2a2a2f);
+            color:var(--text-dim,#6a6a70); font-size:11px; font-weight:700;
+            letter-spacing:1px; padding:5px 14px; border-radius:999px; cursor:pointer;
+            transition:all .15s; text-transform:uppercase;
+        }
+        .mode-pill:hover { color:var(--text,#ececec); border-color:var(--border-hover,#3a3a40); }
+        .mode-pill.active {
+            color:#fff; background:var(--accent,#E8711A); border-color:var(--accent,#E8711A);
+            box-shadow:0 0 12px rgba(232,113,26,.35);
+        }
+        .mode-pill.think.active { box-shadow:0 0 12px rgba(232,113,26,.5); }
     </style>
 </head>
 <body id="body">
@@ -513,6 +527,13 @@
         <div class="timer" id="timer"></div>
         <div class="status" id="statusLabel">Tap to start voice call</div>
         <div class="interrupt-hint" id="interruptHint"></div>
+
+        <!-- Voice mode: flash / default / think (docs/VOICE-MODES-DESIGN.md) -->
+        <div class="mode-row" id="modeRow">
+            <button class="mode-pill" id="modeFlash" onclick="setVoiceMode('flash')" title="Fastest replies — trimmed context, one-sentence answers">⚡ Flash</button>
+            <button class="mode-pill active" id="modeDefault" onclick="setVoiceMode('default')" title="Standard voice chat">Normal</button>
+            <button class="mode-pill think" id="modeThink" onclick="setVoiceMode('think')" title="Live tool calling — lights, music, web, calendar, email — with spoken progress">🧠 Think</button>
+        </div>
 
         <!-- Action row: your turn + nudge -->
         <div class="action-row" id="actionRow">
@@ -859,9 +880,16 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
                     } else if (msg.type === 'hint') {
                         var hint = document.getElementById('interruptHint');
                         if (hint) hint.textContent = msg.text || '';
+                    } else if (msg.type === 'mode') {
+                        updateModePills(msg.mode);
                     } else if (msg.type === 'status') {
                         if (msg.status === 'processing') setState('processing');
                         else if (msg.status === 'analyzing_screen') setState('analyzing_screen');
+                        else if (msg.status === 'tool_running') {
+                            setState('processing');
+                            var sl = document.getElementById('statusLabel');
+                            if (sl) sl.textContent = '🛠 Running tools…';
+                        }
                         else if (msg.status === 'listening') {
                             if (!isPlaying) setState('listening');
                             var hint = document.getElementById('interruptHint');
@@ -1026,6 +1054,23 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
     }
 
     /* ── "Your Turn" — force-send current audio buffer as utterance ── */
+    /* ── Voice modes (flash / default / think) ── */
+    var voiceMode = 'default';
+    function updateModePills(m) {
+        voiceMode = m || 'default';
+        var ids = { flash: 'modeFlash', 'default': 'modeDefault', think: 'modeThink' };
+        Object.keys(ids).forEach(function(k) {
+            var el = document.getElementById(ids[k]);
+            if (el) el.classList.toggle('active', k === voiceMode);
+        });
+    }
+    function setVoiceMode(m) {
+        updateModePills(m);  /* optimistic — server ack confirms */
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            try { ws.send(JSON.stringify({ type: 'mode', mode: m })); } catch (e) {}
+        }
+    }
+
     function sendYourTurn() {
         if (!ws || ws.readyState !== WebSocket.OPEN || !isInCall) return;
         ws.send(JSON.stringify({ type: 'your_turn' }));
