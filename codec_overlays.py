@@ -1,8 +1,76 @@
-"""CODEC Overlays — AppKit-based overlays that float above fullscreen apps.
-Falls back to tkinter if PyObjC is not available."""
+"""CODEC Overlays — render through the always-running Swift CODECOverlay
+NSPanel (floats above fullscreen, glass-blurred, branded) by appending JSON
+event lines to ~/.codec/overlay_events.jsonl. Falls back to tkinter when the
+Swift renderer isn't running."""
+import json
 import os
+import shutil
 import subprocess
 import sys
+import time
+
+# ── Swift CODECOverlay IPC channel ──────────────────────────────────────────
+# Primary render path. Flip _USE_SWIFT=False to force the legacy tkinter path.
+_USE_SWIFT = True
+_EVENTS = os.path.expanduser("~/.codec/overlay_events.jsonl")
+_MARK_DEST = os.path.expanduser("~/.codec/overlay_mark.png")
+_alive_cache = {"ts": 0.0, "alive": None}
+
+
+def _ensure_mark():
+    """Stage the CODEC hexagon mark where the Swift app loads it (idempotent)."""
+    try:
+        if not os.path.exists(_MARK_DEST):
+            src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "favicon.png")
+            if os.path.exists(src):
+                os.makedirs(os.path.dirname(_MARK_DEST), exist_ok=True)
+                shutil.copyfile(src, _MARK_DEST)
+    except Exception:
+        pass
+
+
+def _emit(event):
+    """Append one overlay event for the Swift renderer. Never raises."""
+    try:
+        os.makedirs(os.path.dirname(_EVENTS), exist_ok=True)
+        with open(_EVENTS, "a") as f:
+            f.write(json.dumps(event) + "\n")
+        return True
+    except Exception:
+        return False
+
+
+def _swift_alive():
+    """True if the Swift CODECOverlay process is running (result cached 5s)."""
+    now = time.time()
+    if _alive_cache["alive"] is not None and now - _alive_cache["ts"] < 5:
+        return _alive_cache["alive"]
+    alive = False
+    try:
+        r = subprocess.run(["pgrep", "-f", "CODECOverlay"],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1)
+        alive = (r.returncode == 0)
+    except Exception:
+        alive = False
+    _alive_cache["ts"] = now
+    _alive_cache["alive"] = alive
+    return alive
+
+
+def _play_sound(path):
+    """Play a system sound off-thread (never blocks the overlay)."""
+    import threading
+    threading.Thread(
+        target=lambda: subprocess.run(["afplay", path],
+                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL),
+        daemon=True,
+    ).start()
+
+
+try:
+    _ensure_mark()
+except Exception:
+    pass
 
 
 def _has_appkit():
@@ -198,18 +266,59 @@ _USE_APPKIT = False
 
 
 def show_overlay(text, color="#E8711A", duration=2500):
+    if _USE_SWIFT and _swift_alive():
+        _emit({"type": "notify", "text": text, "color": color,
+               "duration": (duration / 1000.0) if duration else 2.5})
+        return None
     if _USE_APPKIT:
         return _appkit_overlay(text, color, duration)
     return _tk_overlay(text, color, duration)
 
 
 def show_recording_overlay(key_label="F18"):
+    if _USE_SWIFT and _swift_alive():
+        _emit({"type": "recording_start", "title": "Listening",
+               "subtitle": f"release {key_label} to send"})
+        return None
     if _USE_APPKIT:
         return _appkit_overlay(f"\U0001f3a4  Recording — release {key_label} to send", "#E8711A", duration=0)
     return _tk_recording(key_label)
 
 
+def show_recording_stop():
+    """Hide a persistent recording/live overlay. Swift only — the tkinter
+    fallback is a child process the caller terminates directly."""
+    if _USE_SWIFT and _swift_alive():
+        _emit({"type": "recording_stop"})
+
+
+def hide_overlay():
+    """Hide whatever overlay is currently showing (Swift)."""
+    if _USE_SWIFT and _swift_alive():
+        _emit({"type": "hide"})
+
+
+def show_live_overlay():
+    """CODEC Dictate F5 hands-free live-typing indicator (red, persistent)."""
+    if _USE_SWIFT and _swift_alive():
+        _emit({"type": "live"})
+        return None
+    return _tk_overlay("LIVE  ·  press F5 to stop", "#ff3b3b", 0)
+
+
+def show_refining_overlay():
+    """CODEC Dictate draft-refinement indicator (blue, persistent)."""
+    if _USE_SWIFT and _swift_alive():
+        _emit({"type": "refining"})
+        return None
+    return _tk_overlay("Refining…", "#00aaff", 0)
+
+
 def show_processing_overlay(text="Transcribing...", duration=4000):
+    if _USE_SWIFT and _swift_alive():
+        _emit({"type": "transcribing", "text": text,
+               "duration": (duration / 1000.0) if duration else 0})
+        return None
     if _USE_APPKIT:
         return _appkit_overlay(f"\u26a1 {text}", "#00aaff", duration)
     # tkinter fallback
@@ -239,15 +348,14 @@ root.mainloop()
 
 
 def show_toggle_overlay(is_on, shortcuts=""):
+    snd = '/System/Library/Sounds/Blow.aiff' if is_on else '/System/Library/Sounds/Funk.aiff'
+    _play_sound(snd)
+    if _USE_SWIFT and _swift_alive():
+        _emit({"type": "toggle_on", "shortcuts": shortcuts} if is_on else {"type": "toggle_off"})
+        return None
     color = '#E8711A' if is_on else '#ff3333'
     label = 'C O D E C' if is_on else 'S I G N I N G   O U T'
     dur = 3000 if is_on else 1500
-    import threading
-    snd = '/System/Library/Sounds/Blow.aiff' if is_on else '/System/Library/Sounds/Funk.aiff'
-    threading.Thread(
-        target=lambda: subprocess.run(['afplay', snd], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL),
-        daemon=True
-    ).start()
     if _USE_APPKIT:
         return _appkit_overlay(label, color, dur, font_size=18, bold=True, subtitle=shortcuts)
     # tkinter fallback

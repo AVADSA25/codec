@@ -97,7 +97,7 @@ from codec_agent import run_session_in_terminal
 # A-4: canonical skill dispatch (lazy SkillRegistry + safety gate + run_with_hooks).
 from codec_dispatch import check_skill, run_skill, load_skills
 
-from codec_overlays import show_overlay, show_recording_overlay, show_processing_overlay, show_toggle_overlay
+from codec_overlays import show_overlay, show_recording_overlay, show_recording_stop, show_processing_overlay, show_toggle_overlay
 from codec_identity import CODEC_VOICE_PROMPT
 
 # ── SKILLS ───────────────────────────────────────────────────────────────────
@@ -648,6 +648,7 @@ def do_stop_voice():
         try: ovl.terminate()
         except Exception as e: log.debug("Overlay process cleanup failed: %s", e)
         state["overlay_proc"] = None
+    show_recording_stop()  # hide the Swift recording HUD
     if not audio or not os.path.exists(audio): return
     # Reject recordings shorter than 0.5s — just button taps, not speech
     rec_duration = time.time() - rec_start if rec_start else 0
@@ -886,6 +887,7 @@ def on_release(key):
             try: ovl.terminate()
             except Exception: pass
             state["overlay_proc"] = None
+        show_recording_stop()  # hide the Swift recording HUD on release
         threading.Thread(target=lambda: subprocess.run(
             ['afplay', '/System/Library/Sounds/Pop.aiff'],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL), daemon=True).start()

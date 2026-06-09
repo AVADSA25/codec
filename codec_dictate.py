@@ -27,6 +27,10 @@ SAMPLE_RATE        = 16000
 CHANNELS           = 1
 CHUNK_DURATION_MS  = 30             # ms per audio chunk
 
+# Shared overlay renderer (Swift HUD + tkinter fallback) — unifies dictate's
+# Listening / Transcribing / LIVE pills with the rest of CODEC.
+import codec_overlays
+
 # ── STATE ────────────────────────────────────────────────────────────────────
 recording        = False
 audio_frames     = []
@@ -78,37 +82,8 @@ def load_model():
 def show_overlay():
     global overlay_proc
     try:
-        script = """
-import tkinter as tk
-root = tk.Tk()
-root.overrideredirect(True)
-root.attributes('-topmost', True)
-root.attributes('-alpha', 0.95)
-root.configure(bg='#111111')
-sw = root.winfo_screenwidth()
-sh = root.winfo_screenheight()
-w, h = 680, 88
-x = (sw - w) // 2
-y = sh - 120
-root.geometry(f'{w}x{h}+{x}+{y}')
-c = tk.Canvas(root, bg='#111111', highlightthickness=0, width=w, height=h)
-c.pack()
-c.create_rectangle(2, 2, w-2, h-2, outline='#E8711A', width=2)
-dot = c.create_oval(24, 30, 40, 46, fill='#ff3b3b', outline='')
-c.create_text(w//2+10, 28, text='Listening  \\u2014  release \\u2318 to transcribe', fill='#ffffff', font=('SF Pro Display', 16, 'bold'))
-c.create_text(w//2+10, 58, text='Press F5 for hands-free live typing', fill='#777777', font=('SF Pro Display', 12))
-def pulse():
-    cur = c.itemcget(dot,'fill')
-    c.itemconfig(dot, fill='#ff3b3b' if cur=='#440000' else '#440000')
-    root.after(500, pulse)
-pulse()
-root.mainloop()
-"""
-        overlay_proc = subprocess.Popen(
-            [sys.executable, "-c", script],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
-        )
+        # Shared Swift HUD: orange mark + "Listening / release ⌘ to send".
+        overlay_proc = codec_overlays.show_recording_overlay("⌘")
     except Exception as e:
         print(f"[DICTATE] Overlay error: {e}")
 
@@ -117,40 +92,16 @@ def hide_overlay():
     if overlay_proc:
         try:
             overlay_proc.terminate()
-            overlay_proc = None
         except Exception:
             pass
+        overlay_proc = None
+    codec_overlays.show_recording_stop()
 
 # ── SHOW PROCESSING OVERLAY ───────────────────────────────────────────────────
 def show_processing():
     try:
-        script = """
-import tkinter as tk
-import sys
-root = tk.Tk()
-root.overrideredirect(True)
-root.attributes('-topmost', True)
-root.attributes('-alpha', 0.93)
-root.configure(bg='#0a0a0a')
-sw = root.winfo_screenwidth()
-sh = root.winfo_screenheight()
-w, h = 520, 90
-x = (sw - w) // 2
-y = sh - 130
-root.geometry(f'{w}x{h}+{x}+{y}')
-c = tk.Canvas(root, bg='#0a0a0a', highlightthickness=0, width=w, height=h)
-c.pack()
-c.create_rectangle(1,1,w-1,h-1, outline='#00aaff', width=1)
-c.create_text(w//2, h//2, text='\u26a1  Transcribing...', fill='#00aaff', font=('Helvetica', 13))
-root.after(20000, root.destroy)
-root.mainloop()
-"""
-        p = subprocess.Popen(
-            [sys.executable, "-c", script],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
-        )
-        return p
+        # Shared Swift HUD: blue "Transcribing\u2026" (auto-hides; or hide_overlay()).
+        return codec_overlays.show_processing_overlay("Transcribing...", duration=20000)
     except Exception:
         return None
 
@@ -298,13 +249,8 @@ def start_live_dictation():
     threading.Thread(target=lambda: subprocess.run(
         ['afplay', '/System/Library/Sounds/Blow.aiff'],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL), daemon=True).start()
-    # Show overlay — log stderr to /tmp so we can diagnose if it fails to render
-    _ov_err = open("/tmp/codec_dictate_overlay.log", "w")
-    live_overlay = subprocess.Popen(
-        [sys.executable, "-c", _live_overlay_script()],
-        stdout=subprocess.DEVNULL, stderr=_ov_err
-    )
-    print(f"[DICTATE] Overlay subprocess pid={live_overlay.pid}")
+    # Show the LIVE indicator via the shared Swift HUD (tkinter fallback if down)
+    live_overlay = codec_overlays.show_live_overlay()
     # Start recording loop in thread
     live_thread = threading.Thread(target=_live_record_loop, daemon=True)
     live_thread.start()
@@ -320,7 +266,8 @@ def stop_live_dictation():
     threading.Thread(target=lambda: subprocess.run(
         ['afplay', '/System/Library/Sounds/Funk.aiff'],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL), daemon=True).start()
-    # Kill overlay — tkinter mainloop sometimes ignores SIGTERM, so SIGKILL it
+    # Hide the LIVE indicator (Swift) + terminate any tkinter fallback process
+    codec_overlays.show_recording_stop()
     if live_overlay:
         try: live_overlay.terminate()
         except OSError: pass  # ProcessLookupError covered (subclass of OSError)
@@ -393,6 +340,7 @@ def transcribe_and_type(audio_path):
                 proc_overlay.terminate()
             except Exception:
                 pass
+        codec_overlays.hide_overlay()  # hide the Swift "Transcribing…" HUD
 
         if not text or is_hallucination(text):
             print(f"[DICTATE] No speech or hallucination: {text!r}")
@@ -453,6 +401,7 @@ def transcribe_and_type(audio_path):
                 proc_overlay.terminate()
             except Exception:
                 pass
+        codec_overlays.hide_overlay()  # hide the Swift "Transcribing…" HUD
     finally:
         try:
             os.unlink(audio_path)
