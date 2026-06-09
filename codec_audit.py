@@ -348,6 +348,18 @@ PHASE35_PROACTIVE_EVENTS = frozenset({
     PROACTIVE_SUGGESTION_DISMISSED,
 })
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Daybreak — morning kickoff + working-threads live memory
+# (docs/DAYBREAK-DESIGN.md). All single-emit, info level, fresh cid.
+# ─────────────────────────────────────────────────────────────────────────────
+DAYBREAK_COMPLETED     = "daybreak_completed"
+DAYBREAK_THREAD_SAVED  = "daybreak_thread_saved"
+DAYBREAK_THREAD_CLOSED = "daybreak_thread_closed"
+
+DAYBREAK_EVENTS = frozenset({
+    DAYBREAK_COMPLETED, DAYBREAK_THREAD_SAVED, DAYBREAK_THREAD_CLOSED,
+})
+
 SHIFT_REPORT_EXTRA_FIELDS = (
     "trigger_kind",            # "time" | "idle" | "manual"
     "sections_included",       # int — how many of the 5 sections rendered

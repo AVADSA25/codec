@@ -163,3 +163,10 @@ Notification posted to `~/.codec/notifications.json` with `type="shift_report"`,
 ---
 
 *Last updated: 2026-05-02 (Step 7 sign-off; Phase 2 complete).*
+
+## 2026-06-09 — fact_extract silently no-ops on fact storage
+`skills/fact_extract.py:93-95` calls `mem.store_fact(...)` inside a swallowed
+try/except AttributeError — but `CodecMemory` has no `store_fact` method (it lives in
+`codec_memory_upgrade`). Extracted facts are therefore never written to the facts table.
+Found during the Daybreak audit (2026-06-09); out of Daybreak scope. Fix: route to
+`codec_memory_upgrade.store_fact` and add a round-trip test.
