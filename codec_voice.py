@@ -275,6 +275,49 @@ from codec_voice_filters import NOISE_WORDS, WHISPER_HALLUCINATIONS  # noqa: F40
 # Max conversation turns to keep in context (prevents bloat → keeps LLM fast)
 MAX_CONTEXT_TURNS = 20
 
+# ── Voice modes (flash / default / think) — docs/VOICE-MODES-DESIGN.md ──────
+try:
+    _voice_mode_cfg = _cfg.get("voice", {}) if isinstance(_cfg, dict) else {}
+except NameError:
+    _voice_mode_cfg = {}
+VOICE_MODES_ENABLED = os.environ.get("VOICE_MODES_ENABLED", "true").lower() != "false"
+VOICE_DEFAULT_MODE = _voice_mode_cfg.get("default_mode", "default")
+if VOICE_DEFAULT_MODE not in ("flash", "default", "think"):
+    VOICE_DEFAULT_MODE = "default"
+FLASH_CFG = {"max_tokens": 400, "context_turns": 8, "tts_speed": 1.25,
+             **_voice_mode_cfg.get("flash", {})}
+THINK_CFG = {"max_tool_calls": 6, "max_seconds": 120,
+             **_voice_mode_cfg.get("think", {})}
+
+# Curated think-mode skill allowlist. config.json:voice.think.skills may
+# override the LIST, but the hard exclusions below always win.
+VOICE_THINK_SKILLS = [
+    "philips_hue", "music", "chrome_open", "web_search", "web_fetch",
+    "weather", "time", "timer", "reminders", "notes",
+    "google_calendar", "google_gmail", "imessage_send",
+]
+# NEVER tool-callable from live voice, regardless of config:
+_THINK_HARD_EXCLUDE = {
+    "terminal", "shell", "python_exec", "file_write", "file_ops", "system",
+    "process_manager", "pm2_control", "ax_control", "pilot", "create_skill",
+    "skill_forge", "delegate", "file_read", "google_docs_create",
+}
+
+_MODE_WORDS = {"flash": "flash", "think": "think", "thinking": "think",
+               "normal": "default", "default": "default", "regular": "default"}
+_MODE_SWITCH_RE = re.compile(
+    r"\b(flash|thinking|think|normal|default|regular)\s+mode\b", re.IGNORECASE)
+
+
+def parse_mode_switch(text: str):
+    """Return 'flash'|'think'|'default' when the utterance is a terse
+    mode-switch command, else None. Utterances over 6 words never switch —
+    keeps 'i think mode collapse is interesting' from hijacking the session."""
+    if not text or len(text.split()) > 6:
+        return None
+    m = _MODE_SWITCH_RE.search(text)
+    return _MODE_WORDS[m.group(1).lower()] if m else None
+
 # ── System Prompt ─────────────────────────────────────────────────────────
 def _build_system_prompt() -> str:
     import datetime as _dt
@@ -399,6 +442,9 @@ class VoicePipeline:
         self.skills = {}
         self._http  = httpx.AsyncClient(timeout=120.0)
         self._warmed_up = False
+        # Voice mode (flash / default / think) — per-session, switchable by
+        # voice command or WS control message. docs/VOICE-MODES-DESIGN.md.
+        self.mode = VOICE_DEFAULT_MODE if VOICE_MODES_ENABLED else "default"
         self._load_skills()
 
     @classmethod
@@ -579,12 +625,14 @@ class VoicePipeline:
     # ── LLM ───────────────────────────────────────────────────────────────
 
     def _trimmed_messages(self) -> list:
-        """Keep system prompt + last MAX_CONTEXT_TURNS message pairs."""
+        """Keep system prompt + last N message pairs (flash trims harder —
+        smaller prefill is the main latency lever on the local 35B)."""
         system = [m for m in self.messages if m["role"] == "system"]
         convo  = [m for m in self.messages if m["role"] != "system"]
+        turns = (FLASH_CFG["context_turns"]
+                 if getattr(self, "mode", "default") == "flash" else MAX_CONTEXT_TURNS)
         # Each turn = 2 messages (user + assistant)
-        max_msgs = MAX_CONTEXT_TURNS * 2
-        return system + convo[-max_msgs:]
+        return system + convo[-turns * 2:]
 
     async def _stream_qwen(self, messages: list, max_tokens: int = 2000):
         # A-12 (PR-3E-async): codec_llm.astream owns the SSE POST + parsing and
@@ -669,39 +717,51 @@ class VoicePipeline:
     async def generate_response(self, user_text: str):
         self.messages.append({"role": "user", "content": user_text})
         self._warmed_up = False  # reset so next speech start can warm up again
-        # Inject targeted memory context for this specific question
-        try:
-            from codec_memory import CodecMemory
-            cm = CodecMemory()
-            targeted = cm.get_context(user_text, n=3)
-            if targeted:
-                self.messages[0] = {
-                    "role": "system",
-                    "content": _build_system_prompt() + f"\n\n[MEMORY — RELEVANT CONTEXT]\n{targeted}\n[END MEMORY]"
-                }
-        except Exception:
-            log.debug("voice: targeted-memory injection skipped", exc_info=True)
-        # Phase 2 Step 5 — Observer summary injection (gated per §X).
-        # Voice always uses local Qwen by default (transport="local"); if
-        # the user has cloud-routed voice configured (vision_provider=
-        # "gemini"), pass transport="voice" so the cloud-transport gate
-        # applies. Audit emit fires inside the helper.
-        try:
-            from codec_observer import maybe_inject_observation_summary
-            _voice_transport = "voice" if VISION_PROVIDER == "gemini" else "local"
-            _obs_summary, _obs_reason = maybe_inject_observation_summary(
-                user_prompt=user_text or "",
-                transport=_voice_transport,
-                skill_name=None,
-                skill_module=None,
-            )
-            if _obs_summary and self.messages and self.messages[0].get("role") == "system":
-                # Append after memory block, before next user turn
-                self.messages[0]["content"] += f"\n\n{_obs_summary}"
-        except Exception as _e:
-            log.debug(f"observer injection failed (non-fatal): {_e}")
+        _flash = getattr(self, "mode", "default") == "flash"
+        # FLASH: skip per-turn memory + observer injections entirely — both add
+        # prefill tokens and a SQLite/FTS query on every turn. Warmup memory
+        # (warmup_llm) still applies once per session.
+        if not _flash:
+            # Inject targeted memory context for this specific question
+            try:
+                from codec_memory import CodecMemory
+                cm = CodecMemory()
+                targeted = cm.get_context(user_text, n=3)
+                if targeted:
+                    self.messages[0] = {
+                        "role": "system",
+                        "content": _build_system_prompt() + f"\n\n[MEMORY — RELEVANT CONTEXT]\n{targeted}\n[END MEMORY]"
+                    }
+            except Exception:
+                log.debug("voice: targeted-memory injection skipped", exc_info=True)
+            # Phase 2 Step 5 — Observer summary injection (gated per §X).
+            # Voice always uses local Qwen by default (transport="local"); if
+            # the user has cloud-routed voice configured (vision_provider=
+            # "gemini"), pass transport="voice" so the cloud-transport gate
+            # applies. Audit emit fires inside the helper.
+            try:
+                from codec_observer import maybe_inject_observation_summary
+                _voice_transport = "voice" if VISION_PROVIDER == "gemini" else "local"
+                _obs_summary, _obs_reason = maybe_inject_observation_summary(
+                    user_prompt=user_text or "",
+                    transport=_voice_transport,
+                    skill_name=None,
+                    skill_module=None,
+                )
+                if _obs_summary and self.messages and self.messages[0].get("role") == "system":
+                    # Append after memory block, before next user turn
+                    self.messages[0]["content"] += f"\n\n{_obs_summary}"
+            except Exception as _e:
+                log.debug(f"observer injection failed (non-fatal): {_e}")
+        msgs = self._trimmed_messages()
+        if _flash and msgs and msgs[0].get("role") == "system":
+            msgs = ([{"role": "system",
+                      "content": msgs[0]["content"] +
+                      "\n\nFLASH MODE: reply in ONE short conversational sentence."}]
+                    + msgs[1:])
+        max_tok = FLASH_CFG["max_tokens"] if _flash else 2000
         full = ""
-        async for chunk in self._stream_qwen(self._trimmed_messages()):
+        async for chunk in self._stream_qwen(msgs, max_tokens=max_tok):
             full += chunk
             yield chunk
         # L2 / SR-62: don't persist the spoken error sentinel as a real
@@ -718,10 +778,12 @@ class VoicePipeline:
         if not text:
             return None
         try:
+            _speed = (FLASH_CFG["tts_speed"]
+                      if getattr(self, "mode", "default") == "flash" else 1.15)
             r = await self._http.post(
                 KOKORO_URL,
                 json={"model": KOKORO_MODEL, "input": text,
-                      "voice": KOKORO_VOICE, "speed": 1.15},
+                      "voice": KOKORO_VOICE, "speed": _speed},
             )
             if r.status_code == 200:
                 return r.content
@@ -1065,6 +1127,96 @@ class VoicePipeline:
 
         return None
 
+    # ── THINK mode: live tool-calling agent loop ─────────────────────────
+    # docs/VOICE-MODES-DESIGN.md §3.3 — multi-step actions by voice ("kill the
+    # lights and put on some jazz") with narrated progress while the user
+    # waits. Tools are the curated allowlist only; destructive skills hit the
+    # Step-3 strict-consent voice flow inside their own implementations.
+
+    _THINK_ROLE = (
+        "You are CODEC running in live voice THINK mode on the user's Mac. "
+        "You can call tools to act in the real world: lights, music, web, "
+        "calendar, email, messages, timers, reminders. Use tools one at a "
+        "time as needed, then answer. Your FINAL answer is SPOKEN aloud: "
+        "1-3 plain conversational sentences, no markdown, no lists. "
+        "If no tool is needed, just answer directly."
+    )
+
+    def _think_tools(self):
+        """Curated tool set for the voice agent. Config may swap the list
+        (voice.think.skills) but _THINK_HARD_EXCLUDE always wins."""
+        from codec_agents import load_skill_tools
+        allowed = set(THINK_CFG.get("skills") or VOICE_THINK_SKILLS)
+        allowed -= _THINK_HARD_EXCLUDE
+        return [t for t in load_skill_tools() if t.name in allowed]
+
+    def _emit_mode_change(self, mode: str, via: str):
+        try:
+            from codec_audit import log_event
+            log_event("voice_mode_changed", "codec-voice",
+                      f"voice mode -> {mode}",
+                      extra={"mode": mode, "via": via},
+                      transport="voice",
+                      correlation_id=getattr(self, "_cid", None))
+        except Exception:
+            log.debug("voice_mode_changed emit failed", exc_info=True)
+
+    async def dispatch_think_agent(self, user_text: str) -> Optional[str]:
+        """Run the think-mode agent loop. Returns the spoken result, a stop
+        message on interrupt/timeout, or None to fall through to plain LLM."""
+        try:
+            from codec_agents import Agent
+
+            async def think_cb(update):
+                # Narrate each tool call — this IS the extended-wait keepalive.
+                if not isinstance(update, dict):
+                    return
+                if update.get("status") == "tool_call" and update.get("tool"):
+                    msg = f"Using {str(update['tool']).replace('_', ' ')}…"
+                    if not await self._safe_send_json(
+                            {"type": "transcript", "role": "system", "text": msg}):
+                        return
+                    a = await self.synthesize(msg)
+                    if a and await self._safe_send_bytes(a):
+                        self.last_tts_end = self._tts_playback_end_time(a)
+
+            agent = Agent(name="CODEC", role=self._THINK_ROLE,
+                          tools=self._think_tools(),
+                          max_tool_calls=int(THINK_CFG.get("max_tool_calls", 6)),
+                          verbose=False)
+            # Recent turns as context so "turn them off" resolves pronouns.
+            recent = "\n".join(
+                f"{m['role']}: {m['content'][:200]}"
+                for m in self.messages[-6:] if m.get("role") != "system")
+
+            run_task = asyncio.ensure_future(
+                agent.run(user_text, context=recent, callback=think_cb))
+            started = time.monotonic()
+            max_s = float(THINK_CFG.get("max_seconds", 120))
+            try:
+                while not run_task.done():
+                    if self.interrupted.is_set():
+                        run_task.cancel()
+                        return "Stopped."
+                    if time.monotonic() - started > max_s:
+                        run_task.cancel()
+                        return ("That was taking too long, so I stopped it. "
+                                "Want me to try a simpler version?")
+                    await asyncio.sleep(0.2)
+                result = (run_task.result() or "").strip()
+            finally:
+                if run_task.cancelled() or not run_task.done():
+                    try:
+                        await run_task
+                    except (asyncio.CancelledError, Exception):
+                        pass
+            return result or None
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            log.error(f"Think-agent error: {e}")
+            return None
+
     # ── Memory ────────────────────────────────────────────────────────────
 
     def save_to_memory(self):
@@ -1212,6 +1364,15 @@ class VoicePipeline:
                         elif ctrl_type == "hold_start":
                             # User started hold-to-talk — ensure we're in listening mode
                             log.info("Hold-to-talk started")
+
+                        elif ctrl_type == "mode":
+                            # UI mode pill — docs/VOICE-MODES-DESIGN.md
+                            _m = str(ctrl.get("mode", "")).lower()
+                            if VOICE_MODES_ENABLED and _m in ("flash", "default", "think"):
+                                self.mode = _m
+                                self._emit_mode_change(_m, via="ui")
+                                await self.ws.send_json({"type": "mode", "mode": _m})
+                                log.info(f"Voice mode → {_m} (via UI)")
                     except Exception as e:
                         log.warning(f"WS text parse warning: {e}")
                     continue
@@ -1381,6 +1542,24 @@ class VoicePipeline:
                     await self.ws.send_json({"type": "status", "status": "listening"})
                     continue
 
+                # 2a0. Mode switch by voice command ("flash mode" / "think
+                # mode" / "normal mode") — terse commands only, see
+                # parse_mode_switch. docs/VOICE-MODES-DESIGN.md.
+                if VOICE_MODES_ENABLED:
+                    _new_mode = parse_mode_switch(user_text)
+                    if _new_mode:
+                        self.mode = _new_mode
+                        self._emit_mode_change(_new_mode, via="voice")
+                        ack = {"flash": "Flash mode.",
+                               "think": "Think mode. I can run tools while we talk.",
+                               "default": "Normal mode."}[_new_mode]
+                        await self._safe_send_json({"type": "mode", "mode": _new_mode})
+                        await self.ws.send_json({"type": "transcript", "role": "assistant", "text": ack})
+                        await self._speak(ack)
+                        self.processing = False
+                        await self.ws.send_json({"type": "status", "status": "listening"})
+                        continue
+
                 # 2a. Crew dispatch
                 crew_result = await self.dispatch_crew_from_voice(user_text)
                 if crew_result:
@@ -1406,6 +1585,21 @@ class VoicePipeline:
                         await self.ws.send_json({"type": "status", "status": "listening"})
                         continue
                     # skill returned nothing → fall through to LLM
+
+                # 2c. THINK mode — live tool-calling agent loop (after the
+                # single-skill fast path, before plain chat). Falls through to
+                # the LLM if the agent declines or errors.
+                if VOICE_MODES_ENABLED and self.mode == "think":
+                    await self.ws.send_json({"type": "status", "status": "tool_running"})
+                    think_result = await self.dispatch_think_agent(user_text)
+                    if think_result:
+                        self.messages.append({"role": "user",      "content": user_text})
+                        self.messages.append({"role": "assistant", "content": think_result})
+                        await self.ws.send_json({"type": "transcript", "role": "assistant", "text": think_result})
+                        await self._speak(think_result)
+                        self.processing = False
+                        await self.ws.send_json({"type": "status", "status": "listening"})
+                        continue
 
                 # 3. LLM streaming path
                 sentence_buf = ""
@@ -1486,6 +1680,8 @@ class VoicePipeline:
 
         # Send session ID so client can reconnect to this session
         await self.ws.send_json({"type": "session", "session_id": self.session_id})
+        if VOICE_MODES_ENABLED:
+            await self.ws.send_json({"type": "mode", "mode": self.mode})
 
         if is_resumed:
             # Reconnected — short acknowledgement, no full greeting
