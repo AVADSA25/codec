@@ -17,6 +17,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "skills"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+import pytest  # noqa: E402
 import requests  # noqa: E402
 
 import codec_hue_discovery  # noqa: E402
@@ -103,3 +104,98 @@ def test_run_friendly_error_when_rediscovery_fails(monkeypatch):
 
     out = philips_hue.run("lights off")
     assert "Could not reach Hue Bridge" in out
+
+
+# ── launchctl relay: escape the macOS Local-Network block on the pm2 tree ────
+# Regression (2026-06-09): macOS Sequoia's Local Network privacy denies the
+# pm2/node process tree a LAN route to the Hue bridge ('[Errno 65] No route to
+# host') while the internet still works, and there is no grantable entry for
+# the python-under-node identity. The fix routes the bridge call OUTSIDE the
+# pm2 tree via `launchctl asuser`, which runs in the GUI login session (which
+# HAS Local-Network access) — using a python whose *launch path* is granted
+# (e.g. /usr/local/bin/python3.13), NOT the dashboard's raw Cellar
+# sys.executable (a separate, ungranted identity — the final-mile bug).
+def test_get_falls_back_to_launchctl_relay_on_connection_error(monkeypatch):
+    def boom(*a, **k):
+        raise requests.ConnectionError("[Errno 65] No route to host")
+
+    monkeypatch.setattr(requests, "get", boom)
+    sentinel = [{"state": {"on": True}}]
+    captured = {}
+
+    def fake_relay(method, url, body=None):
+        captured.update(method=method, url=url, body=body)
+        return sentinel
+
+    monkeypatch.setattr(philips_hue, "_launchctl_request", fake_relay)
+    out = philips_hue._get("192.168.1.81", "user", "/lights")
+    assert out is sentinel  # did NOT propagate the ConnectionError
+    assert captured["method"] == "GET"
+    assert "192.168.1.81" in captured["url"]
+
+
+def test_put_falls_back_to_launchctl_relay_on_connection_error(monkeypatch):
+    def boom(*a, **k):
+        raise requests.ConnectionError("[Errno 65] No route to host")
+
+    monkeypatch.setattr(requests, "put", boom)
+    captured = {}
+
+    def fake_relay(method, url, body=None):
+        captured.update(method=method, url=url, body=body)
+        return [{"success": {}}]
+
+    monkeypatch.setattr(philips_hue, "_launchctl_request", fake_relay)
+    body = {"on": False}
+    out = philips_hue._put("192.168.1.81", "user", "/groups/0/action", body)
+    assert out == [{"success": {}}]
+    assert captured["method"] == "PUT"
+    assert captured["body"] == body  # the PUT body is relayed through
+
+
+def test_relay_prefers_granted_python_over_sys_executable(monkeypatch):
+    """The final-mile fix: the relay must launch via a Local-Network-granted
+    python path, not the raw Cellar sys.executable."""
+    import subprocess
+
+    real_exists = os.path.exists
+    granted = "/usr/local/bin/python3.13"
+    others = ("/opt/homebrew/bin/python3.13", "/usr/local/bin/python3",
+              "/opt/homebrew/bin/python3")
+
+    def fake_exists(p):
+        if p == granted:
+            return True
+        if p in others:
+            return False
+        return real_exists(p)  # don't disturb pytest internals
+
+    monkeypatch.setattr(os.path, "exists", fake_exists)
+    captured = {}
+
+    def fake_run(argv, **kw):
+        captured["argv"] = argv
+        with open(argv[-1], "w") as fh:  # emulate the relay child writing its result file
+            fh.write("[]")
+        return subprocess.CompletedProcess(argv, 0, b"", b"")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    philips_hue._launchctl_request("GET", "http://192.168.1.81/api/u/lights")
+
+    argv = captured["argv"]
+    # argv = [launchctl, asuser, <uid>, <python>, -c, code, method, url, payload, out]
+    assert argv[:3] == ["launchctl", "asuser", str(os.getuid())]
+    assert argv[3] == granted, f"relay launched ungranted python: {argv[3]}"
+
+
+def test_relay_propagates_bridge_error_as_connection_error(monkeypatch):
+    import subprocess
+
+    def fake_run(argv, **kw):
+        with open(argv[-1], "w") as fh:
+            fh.write("HUE_ERR:bridge unreachable")
+        return subprocess.CompletedProcess(argv, 0, b"", b"")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    with pytest.raises(requests.ConnectionError):
+        philips_hue._launchctl_request("GET", "http://192.168.1.81/api/u/lights")
