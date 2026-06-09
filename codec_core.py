@@ -194,7 +194,67 @@ def focused_app():
         log.debug("Focused app detection failed: %s", e)
         return "Unknown"
 
+def _swift_text_input(timeout=120):
+    """F16 branded glass input via the Swift overlay. Emits an input_request and
+    waits for the reply file. Returns the typed text, "" on cancel, or None if
+    the panel never appeared / errored (→ caller falls back to osascript).
+    Fast-fallback: if no .ack within 2s, the panel didn't show — bail immediately."""
+    import json as _json
+    import secrets as _secrets
+    import time as _time
+    rid = _secrets.token_hex(4)
+    base = os.path.expanduser(f"~/.codec/overlay_input_{rid}")
+    reply, ack = base + ".json", base + ".ack"
+    events = os.path.expanduser("~/.codec/overlay_events.jsonl")
+    for p in (reply, ack):
+        try:
+            os.remove(p)
+        except OSError:
+            pass
+    try:
+        with open(events, "a") as f:
+            f.write(_json.dumps({"type": "input_request", "id": rid,
+                                 "prompt": "What can I do for you?"}) + "\n")
+    except Exception:
+        return None
+    # 1) wait up to 2s for the panel to acknowledge it appeared
+    ack_deadline = _time.time() + 2.0
+    while _time.time() < ack_deadline:
+        if os.path.exists(ack):
+            try:
+                os.remove(ack)
+            except OSError:
+                pass
+            break
+        _time.sleep(0.05)
+    else:
+        return None  # panel never showed → osascript fallback
+    # 2) panel is up — wait for the user's reply
+    deadline = _time.time() + timeout
+    while _time.time() < deadline:
+        if os.path.exists(reply):
+            try:
+                with open(reply) as f:
+                    data = _json.load(f)
+                os.remove(reply)
+                return str(data.get("text", "")).strip()
+            except Exception:
+                return None
+        _time.sleep(0.15)
+    return ""  # timed out waiting for input — treat as cancel
+
+
 def get_text_dialog():
+    # Branded Swift glass panel (floats over fullscreen, matches the HUD) with an
+    # automatic fall-through to the native osascript dialog if it isn't available.
+    try:
+        import codec_overlays
+        if getattr(codec_overlays, "_USE_SWIFT", False) and codec_overlays._swift_alive():
+            result = _swift_text_input()
+            if result is not None:
+                return result
+    except Exception as e:
+        log.debug("Swift input panel unavailable, using osascript: %s", e)
     try:
         r = subprocess.run(["osascript", "-e",
             'set t to text returned of (display dialog "CODEC - Enter task:" default answer "" with title "CODEC" buttons {"Cancel","Send"} default button "Send")'],
