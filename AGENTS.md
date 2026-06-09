@@ -26,6 +26,7 @@ codec_dispatch.py            Skill trigger matching for voice/wake-word path
 codec_memory.py              SQLite + FTS5 + public API
 codec_memory_upgrade.py      Facts table, CCF compression, tiered retrieval
 codec_compaction.py          Context compaction — summarize old turns when window fills
+codec_daybreak.py            Daybreak: morning kickoff briefing + working-threads live memory (threads = temporal facts; docs/DAYBREAK-DESIGN.md)
 codec_audit.py               Structured audit log (see §6)
 codec_audit_analyzer.py      Audit summary skill (audit_report)
 codec_hooks.py               Plugin lifecycle hooks (Phase 1 Step 2 — see §3)
@@ -379,7 +380,7 @@ close() -> None
 ```
 
 ### Facts table
-Temporal KV with `valid_from`, `valid_until`, `superseded_by`. Supports `valid_at(timestamp)` queries — time-travel over user state.
+Temporal KV with `valid_from`, `valid_until`, `superseded_by`. NOTE (2026-06-09 correction): a `valid_at(timestamp)` time-travel query does NOT exist in code — currently-active facts are `valid_until IS NULL` (`query_valid_facts`); full timelines via `get_fact_history`; close-without-replace via `expire_fact` (added for Daybreak). Daybreak working threads live here as `key="thread:{kind}:{slug}"`, `fact_type="thread"` (docs/DAYBREAK-DESIGN.md).
 
 ### CCF (Conversational Context Fragmentation)
 Rule-based compressor for memory writes that need shrinking. Entity abbreviation + filler stripping. Personal entity entries belong in `~/.codec/entity_map.json` (private), not in source.
@@ -569,6 +570,16 @@ Three event names, all info-level. `agent_message_sent` and `agent_message_recei
 | `voice_mode_changed` | `codec-voice` | info | `mode` (`flash` \| `default` \| `think`), `via` (`voice` \| `ui`) |
 
 Single-emit, fresh or session cid. Think-mode tool calls need no new events — they route through the skill `Tool` wrappers → `run_with_hooks` → existing `tool_call`/`tool_result` envelope.
+
+#### Daybreak events (morning kickoff + working threads — docs/DAYBREAK-DESIGN.md)
+
+Three event names, all info-level, single-emit with fresh cid. `DAYBREAK_EVENTS` frozenset exposed. Thread text never enters audit lines (keys/lengths only).
+
+| Event | Source | level | extra fields |
+|---|---|---|---|
+| `daybreak_completed` | `codec-daybreak` | info | `sections_included` (0-4), `skipped_sources` (list), `open_threads_count`, `word_count`; `duration_ms` top-level |
+| `daybreak_thread_saved` | `codec-daybreak` | info | `kind` (`working_on` \| `waiting_on` \| `priority` \| `follow_up`), `key`, `superseded` (bool), `text_len` |
+| `daybreak_thread_closed` | `codec-daybreak` | info | `key`, `rows_expired` |
 
 ### Notifications (`~/.codec/notifications.json`)
 Four sources can produce notifications: scheduler (crew completion), heartbeat (threshold alert), autopilot (ambient trigger), and Phase 1 Step 3's AskUserQuestion (`type="question"`). All write through `routes/_shared.py:51-127` except AskUserQuestion which writes via `codec_ask_user._write_question_notification`.

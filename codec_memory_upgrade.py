@@ -155,6 +155,24 @@ def query_valid_facts(key: Optional[str] = None, user_id: str = "default",
         c.close()
 
 
+def expire_fact(key: str, user_id: str = "default") -> int:
+    """Close an active fact without replacing it (Daybreak thread close).
+    Sets valid_until=now; superseded_by stays NULL (closed, not superseded).
+    Returns the number of rows expired."""
+    now = datetime.now().isoformat()
+    c = _conn()
+    try:
+        cur = c.execute(
+            "UPDATE facts SET valid_until=? "
+            "WHERE key=? AND user_id=? AND valid_until IS NULL",
+            (now, key, user_id),
+        )
+        c.commit()
+        return cur.rowcount
+    finally:
+        c.close()
+
+
 def get_fact_history(key: str, user_id: str = "default") -> list[dict]:
     """Full timeline for a key — all versions, newest first."""
     c = _conn()

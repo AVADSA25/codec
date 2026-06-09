@@ -723,6 +723,7 @@ _DASHBOARD_ADDON = """
 [SKILL:file_ops:read file ~/notes.txt]
 [SKILL:pm2_control:pm2 list]
 [SKILL:google_calendar:what's on my calendar today]
+"good morning" / "where did we leave off?" / "start my day" → [SKILL:daily_kickoff:morning kickoff]
 The skill's real output replaces the tag automatically — emit the tag and stop, never fabricate the result.
 
 ## Slash commands

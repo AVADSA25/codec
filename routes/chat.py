@@ -363,6 +363,9 @@ CHAT_SKILL_ALLOWLIST = {
     # Phase 2 Step 6 — first declarative trigger (clipboard URL → web_fetch).
     # Read-only network fetch, gated by codec_ask_user.ask consent on auto-fire.
     "clipboard_url_fetch",
+    # Daybreak — morning kickoff (read-only aggregation) + working-thread
+    # capture (facts-table writes only). docs/DAYBREAK-DESIGN.md.
+    "daily_kickoff", "thread_note",
 }
 
 
@@ -545,6 +548,16 @@ def _build_chat_system_prompt(config: dict, budget, has_attachment: bool,
     _overrides = _load_prompt_overrides()
     _chat_prompt = _overrides.get("chat", CHAT_SYSTEM_PROMPT)
     sys_prompt = _chat_prompt.format(date=_dt.now().strftime("%A, %B %d, %Y"))
+    # Daybreak working-threads context (docs/DAYBREAK-DESIGN.md): compact
+    # ≤150-token block of the user's open threads, so chat shares the same
+    # live memory voice already gets via [ACTIVE FACTS]. "" when disabled.
+    try:
+        from codec_daybreak import get_working_context
+        _wc = get_working_context()
+        if _wc:
+            sys_prompt += "\n\n" + _wc
+    except Exception:
+        pass
     if budget.warn_now():
         sys_prompt += (
             "\n\n⚠ 1 step remaining in this turn. Wrap up — do NOT "
