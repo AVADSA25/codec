@@ -109,37 +109,24 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);height:
 .msg-time{font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-top:3px;padding:0 4px}
 .msg.user .msg-time{text-align:right}
 
-/* ── Copy button on messages ── */
-.msg-copy{
-  position:absolute;top:4px;right:-32px;
-  background:var(--surface);border:1px solid var(--border);color:var(--text-dim);
-  width:24px;height:24px;border-radius:5px;cursor:pointer;
-  display:flex;align-items:center;justify-content:center;
-  opacity:0;transition:all .15s;
+/* ── Message action row: timestamp + regenerate / edit / copy / speak ──
+   One inline row beneath each bubble (replaces the old corner-floating
+   absolute buttons that clipped off-screen and left .msg-speak unstyled). */
+.msg-meta{display:flex;align-items:center;gap:1px;margin-top:4px;
+  opacity:.5;transition:opacity .15s}
+.msg:hover .msg-meta{opacity:1}
+.msg.user .msg-meta{justify-content:flex-end}
+.msg-meta .msg-time{margin-top:0}
+.msg-act{
+  background:none;border:none;color:var(--text-dim);cursor:pointer;
+  width:28px;height:28px;border-radius:6px;padding:0;
+  display:inline-flex;align-items:center;justify-content:center;
+  transition:color .12s,background .12s;
 }
-.msg.assistant:hover .msg-copy{opacity:1}
-.msg.user .msg-copy{right:auto;left:-32px}
-.msg.user:hover .msg-copy{opacity:1}
-.msg-copy:hover{color:var(--accent);border-color:var(--accent)}
-.msg-copy.copied{color:var(--success);border-color:var(--success)}
-.msg-regen{
-  position:absolute;bottom:4px;right:-32px;
-  background:var(--surface);border:1px solid var(--border);color:var(--text-dim);
-  width:24px;height:24px;border-radius:5px;cursor:pointer;
-  display:flex;align-items:center;justify-content:center;
-  opacity:0;transition:all .15s;
-}
-.msg.assistant:hover .msg-regen{opacity:1}
-.msg-regen:hover{color:var(--accent);border-color:var(--accent)}
-.msg-edit{
-  position:absolute;bottom:4px;left:-32px;
-  background:var(--surface);border:1px solid var(--border);color:var(--text-dim);
-  width:24px;height:24px;border-radius:5px;cursor:pointer;
-  display:flex;align-items:center;justify-content:center;
-  opacity:0;transition:all .15s;
-}
-.msg.user:hover .msg-edit{opacity:1}
-.msg-edit:hover{color:var(--accent);border-color:var(--accent)}
+.msg-act:hover{color:var(--text);background:var(--surface-2)}
+.msg-act:active{transform:scale(.9)}
+.msg-act.copied{color:var(--success)}
+.msg-act.speaking{color:var(--accent)}
 
 .typing{color:var(--accent);font-size:13px;padding:8px 16px}
 .typing span{animation:blink 1.4s infinite}
@@ -248,10 +235,8 @@ input[type=file]{display:none}
   #crewSelect{width:100%}
   #agentBuilder .ab-row{flex-direction:column}
   #agentBuilder .ab-field{min-width:100%;max-width:100%!important}
-  .msg-copy{right:-4px;top:-4px;opacity:0.7}
-  .msg.user .msg-copy{left:-4px;right:auto}
-  .msg-regen{right:-4px;bottom:-4px;opacity:0.7}
-  .msg-edit{left:-4px;bottom:-4px;opacity:0.7}
+  .msg-meta{opacity:.7}
+  .msg-act{width:32px;height:32px}
   .ibtn{width:36px;height:36px}
 }
 @media (max-width:480px){
@@ -763,12 +748,14 @@ function addMessage(role,content,animate){
   if(animate===false)div.style.animation='none';
   var time=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
   var enc=encodeURIComponent(content);
-  var copyBtn='<button class="msg-copy" onclick="copyMsgText(decodeURIComponent(\''+enc+'\'),this)" title="Copy"><svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button>';
-  var editBtn=role==='user'?'<button class="msg-edit" onclick="editMessage(decodeURIComponent(\''+enc+'\'),this)" title="Edit &amp; re-send"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>':'';
-  var regenBtn=role==='assistant'?'<button class="msg-regen" onclick="regenerateResponse(this)" title="Regenerate"><svg class="ico ico-sm" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg></button>':'';
+  var copyBtn='<button class="msg-act msg-copy" onclick="copyMsgText(decodeURIComponent(\''+enc+'\'),this)" title="Copy"><svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button>';
+  var editBtn=role==='user'?'<button class="msg-act msg-edit" onclick="editMessage(decodeURIComponent(\''+enc+'\'),this)" title="Edit &amp; re-send"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>':'';
+  var regenBtn=role==='assistant'?'<button class="msg-act msg-regen" onclick="regenerateResponse(this)" title="Regenerate"><svg class="ico ico-sm" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg></button>':'';
   // ── Speak button per assistant message — manual TTS playback regardless of global toggle
-  var speakBtn=role==='assistant'?'<button class="msg-speak" onclick="speakMessage(decodeURIComponent(\''+enc+'\'),this)" title="Speak"><svg class="ico ico-sm" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 010 14.14"/><path d="M15.54 8.46a5 5 0 010 7.07"/></svg></button>':'';
-  div.innerHTML=copyBtn+editBtn+regenBtn+speakBtn+'<div class="msg-bubble">'+formatMsg(content)+'</div><div class="msg-time">'+time+'</div>';
+  var speakBtn=role==='assistant'?'<button class="msg-act msg-speak" onclick="speakMessage(decodeURIComponent(\''+enc+'\'),this)" title="Speak"><svg class="ico ico-sm" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 010 14.14"/><path d="M15.54 8.46a5 5 0 010 7.07"/></svg></button>':'';
+  // One inline action row beneath the bubble: timestamp + regenerate / edit / copy / speak (role-gated)
+  var actions=regenBtn+editBtn+copyBtn+speakBtn;
+  div.innerHTML='<div class="msg-bubble">'+formatMsg(content)+'</div><div class="msg-meta"><span class="msg-time">'+time+'</span>'+actions+'</div>';
   document.getElementById('messages').appendChild(div);
   scrollBottom();
   // ── Auto-speak via Kokoro when global "Voice Replies" toggle is ON
