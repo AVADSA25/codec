@@ -114,22 +114,86 @@ def _api_url(ip, user, path=""):
     return f"http://{ip}/api/{user}{path}"
 
 
+def _launchctl_request(method, url, body=None):
+    """Run a bridge request OUTSIDE the pm2/node process tree via
+    `launchctl asuser`, so it executes in the GUI login session (which has
+    Local-Network access) instead of the pm2 tree (which macOS denies a LAN
+    route → '[Errno 65] No route to host'). Proven: pm2-tree processes can't
+    reach the bridge; launchctl-asuser ones can. Used only as a fallback after
+    the in-process request fails with ConnectionError."""
+    import os as _os
+    import subprocess as _sp
+    import sys as _sys
+    import time as _t
+    out = "/tmp/.codec_hue_%d_%d.json" % (_os.getpid(), int(_t.time() * 1000) % 1000000)
+    code = (
+        "import requests,sys,json\n"
+        "m,u,b,o=sys.argv[1],sys.argv[2],sys.argv[3],sys.argv[4]\n"
+        "bd=json.loads(b) if b else None\n"
+        "try:\n"
+        " r=requests.put(u,json=bd,timeout=5) if m=='PUT' else requests.get(u,timeout=5)\n"
+        " r.raise_for_status(); open(o,'w').write(r.text or '[]')\n"
+        "except Exception as e: open(o,'w').write('HUE_ERR:'+str(e))\n"
+    )
+    payload = json.dumps(body) if body is not None else ""
+    # Use a python whose *launch path* has Local-Network access. The dashboard's
+    # sys.executable is the raw Cellar binary, which macOS treats as a separate
+    # (ungranted) identity; the symlinked paths below are the granted "Python".
+    py = _sys.executable
+    for _cand in ("/usr/local/bin/python3.13", "/opt/homebrew/bin/python3.13",
+                  "/usr/local/bin/python3", "/opt/homebrew/bin/python3"):
+        if _os.path.exists(_cand):
+            py = _cand
+            break
+    try:
+        _os.remove(out)
+    except OSError:
+        pass
+    try:
+        _sp.run(["launchctl", "asuser", str(_os.getuid()), py, "-c",
+                 code, method, url, payload, out],
+                timeout=15, capture_output=True)
+    except Exception as exc:
+        raise requests.ConnectionError("hue launchctl relay failed: %s" % exc)
+    data = None
+    for _ in range(40):  # launchctl asuser is async — poll for the result file
+        try:
+            with open(out) as fh:
+                data = fh.read()
+            break
+        except OSError:
+            _t.sleep(0.2)
+    try:
+        _os.remove(out)
+    except OSError:
+        pass
+    if data is None:
+        raise requests.ConnectionError("hue relay timed out")
+    if data.startswith("HUE_ERR:"):
+        raise requests.ConnectionError(data[8:][:160])
+    return json.loads(data) if data.strip() else []
+
+
 def _get(ip, user, path=""):
     """GET from the bridge. Returns parsed JSON or raises."""
-    resp = requests.get(_api_url(ip, user, path), timeout=REQUEST_TIMEOUT)
-    resp.raise_for_status()
-    return resp.json()
+    url = _api_url(ip, user, path)
+    try:
+        resp = requests.get(url, timeout=REQUEST_TIMEOUT)
+        resp.raise_for_status()
+        return resp.json()
+    except requests.ConnectionError:
+        return _launchctl_request("GET", url)
 
 
 def _put(ip, user, path, body):
     """PUT to the bridge. Returns parsed JSON or raises."""
-    resp = requests.put(
-        _api_url(ip, user, path),
-        json=body,
-        timeout=REQUEST_TIMEOUT,
-    )
-    resp.raise_for_status()
-    return resp.json()
+    url = _api_url(ip, user, path)
+    try:
+        resp = requests.put(url, json=body, timeout=REQUEST_TIMEOUT)
+        resp.raise_for_status()
+        return resp.json()
+    except requests.ConnectionError:
+        return _launchctl_request("PUT", url, body)
 
 
 def _find_light_by_name(lights, name):
