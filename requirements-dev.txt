@@ -11,5 +11,5 @@
 -r requirements.txt
 
 # Test + lint toolchain (matches CI)
-pytest>=9.0.3
+pytest>=9.1.0
 ruff>=0.15.16
