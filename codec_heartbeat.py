@@ -71,12 +71,15 @@ def check_system_health():
     (codec-observer, codec-agent-runner) rely on PM2's autorestart for
     crash recovery — see AGENTS.md §3 "Background Execution".
     """
+    # NOTE: LLM and Vision are served by the same qwen process on :8083 —
+    # probe it ONCE. The former duplicate "Vision" entry double-counted
+    # every 8083 blip as two service_down audit events (2026-07 log
+    # review: 30 of 35 service_down events were LLM+Vision pairs).
     services = {
-        "LLM": "http://localhost:8083/v1/models",
+        "LLM/Vision": "http://localhost:8083/v1/models",
         "Whisper": "http://localhost:8084/health",
         "Kokoro": "http://localhost:8085/v1/models",
         "Dashboard": "http://localhost:8090/",
-        "Vision": "http://localhost:8083/v1/models",
     }
     with ThreadPoolExecutor(max_workers=len(services)) as pool:
         futures = {
@@ -115,24 +118,13 @@ def check_memory_stats():
         log.error(f"Memory stats failed: {e}")
 
 
-def backup_memory_db():
-    """Create daily backup of memory database to ~/.codec/backups/"""
-    backup_dir = os.path.expanduser("~/.codec/backups")
-    os.makedirs(backup_dir, exist_ok=True)
-
-    today = datetime.now().strftime("%Y-%m-%d")
-    backup_path = os.path.join(backup_dir, f"memory_{today}.db")
-
-    # Skip if today's backup already exists
-    if os.path.exists(backup_path):
+def _backup_one_db(prefix: str, db_path: str, backup_dir: str, today: str):
+    """Daily SQLite backup (safe under WAL via the backup API), keep last 7."""
+    backup_path = os.path.join(backup_dir, f"{prefix}_{today}.db")
+    if os.path.exists(backup_path) or not os.path.exists(db_path):
         return
-
-    if not os.path.exists(DB_PATH):
-        return
-
     try:
-        # Use SQLite backup API for safe copy (handles WAL mode)
-        src = sqlite3.connect(DB_PATH, timeout=5.0)
+        src = sqlite3.connect(db_path, timeout=5.0)
         src.execute("PRAGMA busy_timeout=5000")
         dst = sqlite3.connect(backup_path, timeout=5.0)
         dst.execute("PRAGMA busy_timeout=5000")
@@ -140,8 +132,9 @@ def backup_memory_db():
         dst.close()
         src.close()
 
-        # Keep only last 7 backups
-        backups = sorted([f for f in os.listdir(backup_dir) if f.startswith("memory_") and f.endswith(".db")])
+        # Keep only last 7 backups per prefix
+        backups = sorted([f for f in os.listdir(backup_dir)
+                          if f.startswith(f"{prefix}_") and f.endswith(".db")])
         for old in backups[:-7]:
             try:
                 os.unlink(os.path.join(backup_dir, old))
@@ -149,9 +142,135 @@ def backup_memory_db():
                 pass
 
         size_mb = os.path.getsize(backup_path) / (1024 * 1024)
-        log.info(f"Memory backup: {backup_path} ({size_mb:.1f} MB)")
+        log.info(f"{prefix} backup: {backup_path} ({size_mb:.1f} MB)")
     except Exception as e:
-        log.warning(f"Memory backup failed: {e}")
+        log.warning(f"{prefix} backup failed: {e}")
+
+
+def _backup_agents_state(backup_dir: str, today: str):
+    """Daily tar.gz of ~/.codec/agents/ (plans, grants, state, messages),
+    keep last 7. Small (KBs) but irreplaceable after an agent run."""
+    agents_dir = os.path.expanduser("~/.codec/agents")
+    tar_path = os.path.join(backup_dir, f"agents_{today}.tar.gz")
+    if os.path.exists(tar_path) or not os.path.isdir(agents_dir):
+        return
+    try:
+        import tarfile
+        with tarfile.open(tar_path, "w:gz") as tf:
+            tf.add(agents_dir, arcname="agents")
+        tars = sorted([f for f in os.listdir(backup_dir)
+                       if f.startswith("agents_") and f.endswith(".tar.gz")])
+        for old in tars[:-7]:
+            try:
+                os.unlink(os.path.join(backup_dir, old))
+            except Exception:
+                pass
+        log.info(f"agents backup: {tar_path}")
+    except Exception as e:
+        log.warning(f"agents backup failed: {e}")
+
+
+def backup_memory_db():
+    """Daily backups to ~/.codec/backups/.
+
+    2026-07 log review: only memory.db was covered, but day-to-day chat
+    history actually lives in qchat.db (and Vibe IDE history in vibe.db) —
+    neither was backed up. Now all three SQLite stores + the agents/
+    runtime state get a dated backup, 7-day retention each.
+    """
+    backup_dir = os.path.expanduser("~/.codec/backups")
+    os.makedirs(backup_dir, exist_ok=True)
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    _backup_one_db("memory", DB_PATH, backup_dir, today)
+    _backup_one_db("qchat", os.path.expanduser("~/.codec/qchat.db"), backup_dir, today)
+    _backup_one_db("vibe", os.path.expanduser("~/.codec/vibe.db"), backup_dir, today)
+    _backup_agents_state(backup_dir, today)
+
+# ── PM2 restart-storm detection (2026-07 log review) ─────────────────────────
+#
+# ava-litellm crash-looped 34,207 times over ~3 weeks with zero alerts —
+# PM2's autorestart hides a permanently-failing service behind status
+# "online". Every heartbeat we snapshot per-process restart counters and
+# alert when an autorestart-enabled process burned >= _RESTART_STORM_DELTA
+# restarts since the previous heartbeat (~20 min). Cron-style jobs
+# (autorestart=false, e.g. intake-*, sentora-backup) are excluded — their
+# counters increment by design on every scheduled run.
+
+_PM2_BIN = "/opt/homebrew/bin/pm2"
+_RESTART_STATE_PATH = os.path.expanduser("~/.codec/pm2_restart_state.json")
+_RESTART_STORM_DELTA = 5           # restarts per heartbeat interval
+_RESTART_STORM_REALERT_S = 6 * 3600  # re-alert a persisting storm every 6h
+
+
+def _pm2_jlist() -> list:
+    try:
+        env = os.environ.copy()
+        env["PATH"] = "/opt/homebrew/opt/node@22/bin:/opt/homebrew/bin:" + env.get("PATH", "")
+        out = subprocess.check_output([_PM2_BIN, "jlist"], timeout=15, env=env)
+        return json.loads(out)
+    except Exception as e:
+        log.warning(f"pm2 jlist failed: {e}")
+        return []
+
+
+def check_pm2_restart_storms(procs=None) -> list:
+    """Detect crash-looping PM2 processes. Returns [(name, delta), ...].
+    `procs` is injectable for tests (defaults to live `pm2 jlist`)."""
+    if procs is None:
+        procs = _pm2_jlist()
+    if not procs:
+        return []
+    try:
+        with open(_RESTART_STATE_PATH) as f:
+            state = json.load(f)
+    except Exception:
+        state = {}
+    counts = state.get("counts", {})
+    last_alert = state.get("last_alert", {})
+    now = datetime.now()
+    storms = []
+
+    for p in procs:
+        env = p.get("pm2_env", {}) or {}
+        if not env.get("autorestart"):
+            continue  # cron jobs restart by design
+        name = p.get("name", "")
+        n = int(env.get("restart_time", 0) or 0)
+        prev = counts.get(name)
+        if prev is not None and (n - prev) >= _RESTART_STORM_DELTA:
+            delta = n - prev
+            storms.append((name, delta))
+            realert_ok = True
+            if name in last_alert:
+                try:
+                    elapsed = (now - datetime.fromisoformat(last_alert[name])).total_seconds()
+                    realert_ok = elapsed >= _RESTART_STORM_REALERT_S
+                except Exception:
+                    pass
+            if realert_ok:
+                last_alert[name] = now.isoformat()
+                msg = (f"🔁 PM2 restart storm: '{name}' restarted {delta}× since "
+                       f"the last heartbeat ({n} total) — likely crash-looping.")
+                log.warning(f"  {msg}")
+                log_event("pm2_restart_storm", "codec-heartbeat", msg,
+                          outcome="warning", level="warning",
+                          extra={"process": name, "delta": delta, "total_restarts": n})
+                try:
+                    from codec_alerts import send_alert
+                    send_alert("warning", msg)
+                except Exception:
+                    pass
+        counts[name] = n
+
+    try:
+        os.makedirs(os.path.dirname(_RESTART_STATE_PATH), exist_ok=True)
+        with open(_RESTART_STATE_PATH, "w") as f:
+            json.dump({"counts": counts, "last_alert": last_alert}, f)
+    except Exception:
+        pass
+    return storms
+
 
 def extract_task_from_message(content: str) -> str:
     """Extract actionable task from assistant's confirmation message."""
@@ -426,6 +545,7 @@ def heartbeat():
     global _last_cleanup
     log.info("═══ CODEC Heartbeat ═══")
     check_system_health()
+    check_pm2_restart_storms()
     # Run alert-based service monitoring (Telegram/Email/Slack)
     try:
         from codec_alerts import check_services_and_alert

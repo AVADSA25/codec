@@ -548,3 +548,45 @@ def test_ocr_enabled_true_calls_screenshot(fresh_buffer, temp_audit_log,
     monkeypatch.setattr(codec_observer, "_get_screenshot_ocr", _track_call)
     codec_observer.poll(buffer=fresh_buffer, cfg=cfg, emit_audit=False)
     assert call_count[0] == 1
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 2026-07 log review — per-collector timings + bounded recent-files scan
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_poll_tick_includes_collector_timings(fresh_buffer, cfg_default,
+                                              mocked_primitives, temp_audit_log):
+    """observation_tick extra carries collector_ms (durations only — still
+    metadata) so slow polls are attributable to a specific collector."""
+    codec_observer.poll(buffer=fresh_buffer, cfg=cfg_default, emit_audit=True)
+    recs = _records(temp_audit_log)
+    ticks = _events_of(recs, codec_audit.OBSERVATION_TICK)
+    assert len(ticks) == 1
+    cms = ticks[0]["extra"]["collector_ms"]
+    for key in ("idle", "window", "clipboard", "ocr", "files"):
+        assert key in cms, f"collector_ms missing {key!r}: {cms}"
+        assert isinstance(cms[key], (int, float))
+
+
+def test_recent_files_bounded_times_out(monkeypatch):
+    """A hung recent-files scan is dropped after the bound, not propagated."""
+    import time as _t
+
+    def hang(window_seconds=300):
+        _t.sleep(5)
+        return [{"path": "/never"}]
+
+    monkeypatch.setattr(codec_observer, "_get_recent_files", hang)
+    t0 = _t.monotonic()
+    out = codec_observer._get_recent_files_bounded(window_seconds=300,
+                                                   timeout_s=0.2)
+    assert out == []
+    assert _t.monotonic() - t0 < 2.0, "must return promptly on timeout"
+
+
+def test_recent_files_bounded_passthrough(monkeypatch):
+    """Fast scans pass through unchanged."""
+    monkeypatch.setattr(codec_observer, "_get_recent_files",
+                        lambda window_seconds=300: [{"path": "/x", "mtime": "t"}])
+    out = codec_observer._get_recent_files_bounded()
+    assert out == [{"path": "/x", "mtime": "t"}]

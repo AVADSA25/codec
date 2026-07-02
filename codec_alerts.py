@@ -5,13 +5,25 @@ Configure in ~/.codec/config.json:
     "telegram": {"enabled": true, "bot_token": "...", "chat_id": "..."},
     "email": {"enabled": false, "smtp_host": "smtp.gmail.com", "smtp_port": 587,
               "from": "codec@you.com", "to": "you@you.com", "password": "app-password"},
-    "slack": {"enabled": false, "webhook_url": "https://hooks.slack.com/..."}
+    "slack": {"enabled": false, "webhook_url": "https://hooks.slack.com/..."},
+    "extra_services": {
+      "AVA Gateway": "http://127.0.0.1:4000/health/liveliness",
+      "Postgres": "tcp://127.0.0.1:5433"
+    }
   }
+
+`extra_services` (2026-07 log review) extends the built-in CODEC probe set
+with user infrastructure. Values are `http(s)://` URLs (any HTTP response
+counts as up) or `tcp://host:port` (a successful connect counts as up).
+Extra services get the same consecutive-failure alerting + recovery
+notifications as built-ins but are NEVER auto-restarted — monitoring is
+strictly read-only for them.
 """
 import json
 import logging
 import os
 import smtplib
+import socket
 import subprocess
 import time
 import urllib.error
@@ -144,6 +156,17 @@ _SERVICES = {
 
 
 def _check_service(url: str, timeout: int = 5) -> bool:
+    """Probe one service. `http(s)://` → GET (any HTTP response = up);
+    `tcp://host:port` → bare connect (for non-HTTP services like Postgres)."""
+    if url.startswith("tcp://"):
+        try:
+            hostport = url[len("tcp://"):].rstrip("/")
+            host, _, port = hostport.rpartition(":")
+            with socket.create_connection((host or "127.0.0.1", int(port)),
+                                          timeout=timeout):
+                return True
+        except Exception:
+            return False
     try:
         req = urllib.request.Request(url, method="GET")
         urllib.request.urlopen(req, timeout=timeout)
@@ -169,13 +192,17 @@ def _try_restart(service_pm2_name: str) -> bool:
         return False
 
 
-# PM2 name mapping for auto-restart
+# PM2 name mapping for auto-restart. Only built-in CODEC services appear
+# here — extra_services entries are intentionally absent (never restarted).
+# 2026-07 log review: the old names "qwen35b" / "qwen-vision" didn't match
+# any live PM2 process (the real one is "qwen3.6"), so LLM/Vision
+# auto-restart had been silently no-op'ing.
 _PM2_NAMES = {
-    "LLM (Qwen)": "qwen35b",
+    "LLM (Qwen)": "qwen3.6",
     "Whisper STT": "whisper-stt",
     "Kokoro TTS": "kokoro-82m",
     "Dashboard": "codec-dashboard",
-    "Vision": "qwen-vision",
+    "Vision": "qwen3.6",
 }
 
 
@@ -200,9 +227,21 @@ def check_services_and_alert():
     failures = state.get("consecutive_failures", {})
     state.get("last_alert", {})
 
-    for name, url_tpl in _SERVICES.items():
-        url = url_tpl.format(**ports)
-        up = _check_service(url)
+    # Built-ins (port-templated) + user extras (literal URLs, read-only).
+    all_services = {name: url_tpl.format(**ports)
+                    for name, url_tpl in _SERVICES.items()}
+    extras = cfg.get("alerts", {}).get("extra_services", {}) or {}
+    for name, url in extras.items():
+        all_services.setdefault(str(name), str(url))
+
+    # Dedupe probes by resolved URL — LLM and Vision usually share one
+    # qwen process on :8083; probing it twice double-counted every blip.
+    _probe_cache: dict = {}
+
+    for name, url in all_services.items():
+        if url not in _probe_cache:
+            _probe_cache[url] = _check_service(url)
+        up = _probe_cache[url]
 
         if up:
             prev_fails = failures.get(name, 0)
@@ -223,9 +262,14 @@ def check_services_and_alert():
                 state[f"down_since_{name}"] = now
 
             if failures[name] == 1:
-                # First failure — try auto-restart (with cooldown to prevent restart loops)
+                # First failure — try auto-restart (with cooldown to prevent
+                # restart loops). extra_services never appear in _PM2_NAMES,
+                # so they can never be restarted from here. Cooldown is keyed
+                # by PM2 process name (not display name) so two entries
+                # sharing one process (LLM + Vision → qwen3.6) can't
+                # double-restart it in a single pass.
                 pm2_name = _PM2_NAMES.get(name)
-                last_restart_key = f"last_restart_{name}"
+                last_restart_key = f"last_restart_{pm2_name}"
                 last_restart = state.get(last_restart_key, "")
                 cooldown_ok = True
                 if last_restart:
@@ -244,6 +288,7 @@ def check_services_and_alert():
                     # Re-check after restart
                     if _check_service(url):
                         failures[name] = 0
+                        _probe_cache[url] = True  # later names on this URL see the recovery
                         send_alert("recovery", f"CODEC RECOVERED: {name} auto-restarted successfully.")
                         continue
 

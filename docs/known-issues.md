@@ -170,3 +170,12 @@ try/except AttributeError — but `CodecMemory` has no `store_fact` method (it l
 `codec_memory_upgrade`). Extracted facts are therefore never written to the facts table.
 Found during the Daybreak audit (2026-06-09); out of Daybreak scope. Fix: route to
 `codec_memory_upgrade.store_fact` and add a round-trip test.
+
+## Pilot e2e skill files fail skill-contract tests (2026-07-02)
+
+`skills/pilot_full_test_e2e.py` and `skills/pilot_e2e_test_fetch_example_title.py`
+lack the required `SKILL_NAME` / `SKILL_TRIGGERS` module attrs, so 4
+`tests/test_skills.py` contract tests fail on every run (pre-existing on main,
+confirmed 2026-07-02 during the log-review PRs). They look like leftover Pilot
+e2e scratch files, not real skills. Fix: either add the required metadata +
+regenerate `skills/.manifest.json`, or delete both files.
