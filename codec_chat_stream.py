@@ -48,6 +48,10 @@ class SkillTagBuffer:
         self.skill_buf = ""
         self.buffering = False
         self.visible_chars = 0
+        # Count of complete [SKILL:...] tags handed to the resolver — lets the
+        # caller's blank-bubble fallback distinguish "all output was dropped
+        # tool tags" from "the model produced nothing at all" (2026-07 fix).
+        self.tags_resolved = 0
 
     def _count(self, text: str) -> str:
         """Account visible chars (only non-empty), return the text unchanged.
@@ -97,6 +101,7 @@ class SkillTagBuffer:
                 # Tag complete?
                 if self.skill_buf.endswith("]"):
                     if SKILL_TAG_RE.search(self.skill_buf):
+                        self.tags_resolved += 1
                         yield self._count(self._resolve(self.skill_buf))
                     else:
                         yield self._count(self.skill_buf)
@@ -126,6 +131,8 @@ class SkillTagBuffer:
         """Flush any pending buffer at end-of-stream (resolve if it's a tag).
         Idempotent — a no-op once the buffer has been flushed."""
         if self.skill_buf:
+            if SKILL_TAG_RE.search(self.skill_buf):
+                self.tags_resolved += 1
             yield self._count(self._resolve(self.skill_buf))
             self.skill_buf = ""
             self.buffering = False

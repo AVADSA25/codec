@@ -753,9 +753,16 @@ async def chat_completion(request: Request):
         # wins (matches the old chat_template_kwargs assignment after the update).
         _extra = {"top_p": 0.9, "frequency_penalty": 1.1,
                   **{k: v for k, v in kwargs.items() if k != "chat_template_kwargs"}}
+        # 2026-07 chat-visibility fix: max_tokens + timeout are operator-tunable
+        # via ~/.codec/config.json:chat.{max_tokens, llm_timeout_s}. Note the
+        # cap includes <think> tokens when thinking mode is on — deep answers
+        # that burn a lot of reasoning eat into the visible-reply budget.
+        _chat_cfg = config.get("chat", {}) if isinstance(config.get("chat"), dict) else {}
         _common = dict(base_url=base_url, model=model, api_key=api_key,
-                       max_tokens=28000, temperature=0.7, enable_thinking=thinking,
-                       extra_kwargs=_extra, timeout=300)
+                       max_tokens=int(_chat_cfg.get("max_tokens", 28000)),
+                       temperature=0.7, enable_thinking=thinking,
+                       extra_kwargs=_extra,
+                       timeout=float(_chat_cfg.get("llm_timeout_s", 300)))
 
         if stream_mode:
             # SSE streaming — keeps Cloudflare tunnel alive, sends tokens as they arrive
@@ -807,24 +814,60 @@ async def chat_completion(request: Request):
                 buf = SkillTagBuffer(_resolve_skill_tag)
                 try:
                     # codec_llm.stream yields raw content deltas (it owns the SSE
-                    # POST + data:/[DONE] parsing) and the KEEPALIVE sentinel on
-                    # empty thinking-chunks (keepalive=True) to hold the tunnel.
-                    for item in codec_llm.stream(messages, **_common, keepalive=True):
+                    # POST + data:/[DONE] parsing), the KEEPALIVE sentinel on
+                    # empty thinking-chunks (keepalive=True) to hold the tunnel,
+                    # and — 2026-07 chat-visibility fix — STREAM_ERROR /
+                    # FINISH_LENGTH sentinels so an interrupted or truncated
+                    # reply is SAID to the user instead of silently rendering
+                    # as an empty / mid-sentence bubble.
+                    stream_died = False
+                    hit_token_cap = False
+                    for item in codec_llm.stream(messages, **_common,
+                                                 keepalive=True,
+                                                 error_sentinel=True):
                         if item is codec_llm.KEEPALIVE:
                             yield ": keepalive\n\n"
+                            continue
+                        if item is codec_llm.STREAM_ERROR:
+                            stream_died = True
+                            continue
+                        if item is codec_llm.FINISH_LENGTH:
+                            hit_token_cap = True
                             continue
                         for s in buf.feed(item):
                             yield _frame(s)
                     # Stream ended ([DONE] or close): flush, then blank-bubble net.
                     for s in buf.finish():
                         yield _frame(s)
-                    # Safety net: LLM emitted ONLY [SKILL:...] tags and we dropped
-                    # them all → blank bubble; send a graceful fallback (2026-04-27).
-                    if buf.visible_chars == 0:
+                    if hit_token_cap:
                         yield _frame(
-                            "I tried to use a tool that didn't apply here. "
-                            "Could you rephrase, or just ask me to write it directly?"
+                            "\n\n⚠️ *Reply truncated — the model hit the "
+                            "`chat.max_tokens` cap. Raise it in "
+                            "`~/.codec/config.json` (chat → max_tokens) for "
+                            "longer replies.*"
                         )
+                    if stream_died:
+                        yield _frame(
+                            "\n\n⚠️ *Reply interrupted — the connection to the "
+                            "local model dropped mid-answer. Ask me to continue, "
+                            "or retry. (If this repeats: `pm2 logs qwen3.6`.)*"
+                        )
+                    # Blank-bubble net. Distinguish the two empty cases
+                    # (2026-07): dropped tool tags vs. the model producing
+                    # nothing at all — the old single message blamed a "tool"
+                    # even when the LLM was just down/overloaded.
+                    if buf.visible_chars == 0 and not stream_died:
+                        if buf.tags_resolved:
+                            yield _frame(
+                                "I tried to use a tool that didn't apply here. "
+                                "Could you rephrase, or just ask me to write it directly?"
+                            )
+                        else:
+                            yield _frame(
+                                "⚠️ The model returned an empty reply — it may be "
+                                "busy, restarting, or out of context. Please try "
+                                "again in a moment."
+                            )
                     yield "data: [DONE]\n\n"
                 except Exception as e:
                     yield f"data: {json.dumps({'error': str(e)})}\n\n"

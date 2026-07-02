@@ -140,3 +140,27 @@ def test_finish_flushes_pending_incomplete_tag():
 def test_skill_tag_re_matches():
     m = SKILL_TAG_RE.search("prefix [SKILL:translate:hola] suffix")
     assert m and m.group(1) == "translate" and m.group(2) == "hola"
+
+
+# ── tags_resolved counter (2026-07 chat-visibility fix) ──────────────────────
+
+
+def test_tags_resolved_counts_complete_tags():
+    buf = SkillTagBuffer(lambda tag: "RESULT")
+    out = list(buf.feed("before [SKILL:weather:paris] after"))
+    assert buf.tags_resolved == 1
+    assert "RESULT" in "".join(out)
+
+
+def test_tags_resolved_zero_for_plain_text():
+    buf = SkillTagBuffer(lambda tag: "RESULT")
+    list(buf.feed("no tags here at all"))
+    list(buf.finish())
+    assert buf.tags_resolved == 0
+
+
+def test_tags_resolved_counts_finish_flush():
+    buf = SkillTagBuffer(lambda tag: "RESULT")
+    list(buf.feed("[SKILL:weather:paris]"))  # complete in feed
+    list(buf.finish())
+    assert buf.tags_resolved == 1
