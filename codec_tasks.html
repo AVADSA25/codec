@@ -78,6 +78,8 @@ a { color: var(--accent); text-decoration: none; }
 
 /* ── Container ── */
 .container { max-width: 900px; margin: 0 auto; padding: 24px 16px; }
+/* Pilot tab gets the full runway — the live viewport deserves the space */
+.container:has(#panel-pilot.active) { max-width: 1560px; }
 
 /* ── Tabs ── */
 .tabs { display: flex; gap: 4px; margin-bottom: 24px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 4px; }
@@ -430,11 +432,11 @@ a { color: var(--accent); text-decoration: none; }
       <span id="pilotDot" style="width:8px;height:8px;border-radius:50%;background:#666;flex-shrink:0"></span>
       <span id="pilotStatusText" style="color:var(--text-muted)">Checking pilot…</span>
       <span style="flex:1"></span>
-      <a href="https://pilot.lucyvpa.com" target="_blank" style="color:var(--accent);text-decoration:none;font-size:11px;">pilot.lucyvpa.com ↗</a>
+      <span style="color:var(--text-dim);font-size:10px;" title="Pilot's browser runs loopback-only on this Mac — never exposed to the internet">🔒 local-only</span>
     </div>
 
     <!-- Teach / record bar -->
-    <div id="pilotRecordBar" style="display:flex;align-items:center;gap:8px;margin-bottom:16px;padding:8px 12px;background:var(--surface-2);border:1px dashed var(--border);border-radius:var(--radius-sm);font-size:12px;">
+    <div id="pilotRecordBar" style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:8px 12px;background:var(--surface-2);border:1px dashed var(--border);border-radius:var(--radius-sm);font-size:12px;">
       <span id="pilotRecDot" style="width:8px;height:8px;border-radius:50%;background:#666;flex-shrink:0"></span>
       <span id="pilotRecText" style="color:var(--text-muted);flex:1;">
         Teach mode — drive the browser yourself and CODEC will compile your clicks into a reusable skill.
@@ -444,20 +446,74 @@ a { color: var(--accent); text-decoration: none; }
       <button class="btn btn-sm" id="pilotRecStopBtn"   onclick="pilotRecordStop()"  style="padding:5px 10px;display:none;">■ Stop &amp; Save</button>
     </div>
 
-    <!-- Two-column layout: left=controls, right=screenshot -->
-    <div style="display:grid;grid-template-columns:1fr 260px;gap:16px;align-items:start;">
+    <!-- ═══ OPERATOR LAYOUT: live viewport hero + task/log rail ═══ -->
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:20px;align-items:start;">
 
-      <!-- Left: controls -->
-      <div style="display:flex;flex-direction:column;gap:14px;">
+      <!-- LEFT: the live browser viewport (the star of the show) -->
+      <div style="display:flex;flex-direction:column;gap:8px;min-width:0;">
+        <div style="position:relative;border-radius:10px;overflow:hidden;border:1px solid var(--border);background:#0d0d10;">
+          <img id="pilotScreenshot" src="" alt="Live browser" style="display:block;width:100%;aspect-ratio:1280/800;object-fit:contain;background:#0d0d10;cursor:pointer;" onclick="pilotOpenScreenshot()" title="Click to open full size">
+          <div id="pilotLiveBadge" style="position:absolute;top:12px;left:12px;display:flex;align-items:center;gap:7px;padding:5px 14px;border-radius:999px;background:rgba(0,0,0,.55);backdrop-filter:blur(6px);font-size:12px;font-weight:700;letter-spacing:2px;color:#fff;font-family:var(--mono);">
+            <span id="pilotLivePulse" style="width:9px;height:9px;border-radius:50%;background:#666;"></span>LIVE
+          </div>
+          <div id="pilotAgentBadge" style="display:none;position:absolute;top:12px;right:12px;padding:5px 14px;border-radius:999px;background:rgba(232,113,26,.85);font-size:12px;font-weight:700;letter-spacing:1px;color:#fff;font-family:var(--mono);">🤖 CODEC DRIVING</div>
+          <div id="pilotCurrentUrl" style="position:absolute;bottom:0;left:0;right:0;padding:9px 14px;background:linear-gradient(transparent,rgba(0,0,0,.7));font-size:12.5px;font-family:var(--mono);color:#eee;word-break:break-all;"></div>
+        </div>
+        <!-- navigate strip under the viewport, browser-style -->
+        <div style="display:flex;gap:8px;">
+          <input id="pilotNavUrl" type="url" placeholder="https://…  (navigate the pilot browser)" style="flex:1;padding:11px 18px;background:var(--surface-2);border:1px solid var(--border);border-radius:999px;color:var(--text);font-size:14.5px;font-family:var(--mono);" onkeydown="if(event.key==='Enter')pilotNavigate()">
+          <button class="btn btn-primary" onclick="pilotNavigate()" style="border-radius:999px;padding:10px 22px;font-size:14px;">Go</button>
+          <button class="btn" onclick="pilotRefreshScreenshot()" title="Reconnect live view" style="border-radius:999px;padding:10px 16px;font-size:14px;">↻</button>
+        </div>
+      </div>
 
-        <!-- Navigate -->
+      <!-- RIGHT rail: task → live action log → HITL → recent runs -->
+      <div style="display:flex;flex-direction:column;gap:12px;min-width:0;">
+
+        <!-- Task -->
         <div>
-          <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.08em;">Navigate</div>
-          <div style="display:flex;gap:6px;">
-            <input id="pilotNavUrl" type="url" placeholder="https://…" style="flex:1;padding:7px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-family:var(--mono);" onkeydown="if(event.key==='Enter')pilotNavigate()">
-            <button class="btn btn-primary btn-sm" onclick="pilotNavigate()">Go</button>
+          <div style="font-size:13px;font-weight:700;color:var(--text-muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.08em;">Give CODEC a mission</div>
+          <textarea id="pilotTaskInput" rows="4" placeholder="e.g. Find the cheapest direct flight Malaga → Paris next Friday…  (🎤 to dictate)" style="width:100%;padding:12px 14px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:14.5px;resize:vertical;box-sizing:border-box;font-family:var(--font);line-height:1.5;"></textarea>
+          <div style="display:flex;gap:8px;margin-top:8px;align-items:center;">
+            <button class="btn" onclick="pilotMicToggle()" id="pilotMicBtn" title="Voice input — dictate the task" style="padding:9px 14px;font-size:15px;">🎤</button>
+            <button class="btn" onclick="pilotSpeakToggle()" id="pilotSpeakBtn" title="Voice replies — Kokoro speaks status updates" style="padding:9px 14px;font-size:15px;">🔇</button>
+            <button class="btn btn-primary" onclick="pilotStartRun()" style="flex:1;padding:10px;font-size:15px;font-weight:700;">▶ Start Run</button>
           </div>
         </div>
+
+        <!-- Live run panel: status chip + HITL + action log -->
+        <div id="pilotRunPanel" style="display:none;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-2);padding:10px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+            <span id="pilotRunChip" style="font-size:11px;font-family:var(--mono);font-weight:700;padding:2px 10px;border-radius:999px;background:var(--accent-dim,rgba(232,113,26,.1));color:var(--accent);">⏳ running</span>
+            <span id="pilotRunTask" style="flex:1;font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+          </div>
+          <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;">
+            <button class="btn btn-sm" id="pilotPauseBtn"    onclick="pilotPauseRun()"  style="flex:1;font-size:11px;">⏸ Pause</button>
+            <button class="btn btn-sm" id="pilotResumeBtn"   onclick="pilotResumeRun()" style="flex:1;font-size:11px;display:none;">▶ Resume</button>
+            <button class="btn btn-sm" id="pilotTakeoverBtn" onclick="pilotTakeover()"  style="flex:1;font-size:11px;" title="Pause the agent and drive yourself">🖐 Take over</button>
+            <button class="btn btn-sm" id="pilotHandbackBtn" onclick="pilotHandback()"  style="flex:1;font-size:11px;display:none;" title="Give control back to the agent">🤝 Hand back</button>
+          </div>
+          <div id="pilotActionLog" style="font-size:12.5px;font-family:var(--mono);max-height:380px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;line-height:1.6;"></div>
+        </div>
+
+        <!-- Recent runs -->
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+            <div style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;">Recent Runs</div>
+            <button class="btn btn-sm" onclick="pilotRefreshRuns()" style="font-size:11px;padding:3px 8px;">↻</button>
+          </div>
+          <div id="pilotRunsList" style="display:flex;flex-direction:column;gap:4px;max-height:180px;overflow-y:auto;">
+            <div style="color:var(--text-muted);font-size:12px;">No runs yet.</div>
+          </div>
+        </div>
+
+      </div><!-- /right rail -->
+    </div><!-- /operator grid -->
+
+    <!-- ═══ ADVANCED drawer: DOM cockpit + manual actions + skills review ═══ -->
+    <details style="margin-top:14px;">
+      <summary style="cursor:pointer;font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;padding:6px 0;">⚙ Advanced — DOM snapshot · manual actions · skill review</summary>
+      <div style="display:flex;flex-direction:column;gap:14px;padding-top:10px;">
 
         <!-- Snapshot -->
         <div>
@@ -466,18 +522,6 @@ a { color: var(--accent); text-decoration: none; }
             <button class="btn btn-sm" onclick="pilotSnapshot()" style="font-size:11px;padding:3px 8px;">Refresh</button>
           </div>
           <div id="pilotSnapshot" style="font-size:11px;font-family:var(--mono);background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;max-height:180px;overflow-y:auto;color:var(--text-muted);white-space:pre-wrap;line-height:1.5;">—</div>
-        </div>
-
-        <!-- Run agent -->
-        <div>
-          <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.08em;">Run Agent Task</div>
-          <textarea id="pilotTaskInput" rows="2" placeholder="Describe what the agent should do on the current page…  (or click 🎤 to dictate)" style="width:100%;padding:8px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;resize:vertical;box-sizing:border-box;font-family:var(--font);"></textarea>
-          <div style="display:flex;gap:6px;margin-top:6px;align-items:center;">
-            <button class="btn btn-sm" onclick="pilotMicToggle()" id="pilotMicBtn" title="Voice input — dictate the task" style="padding:6px 10px;">🎤</button>
-            <button class="btn btn-sm" onclick="pilotSpeakToggle()" id="pilotSpeakBtn" title="Voice replies — Kokoro speaks status updates" style="padding:6px 10px;">🔇</button>
-            <button class="btn btn-primary btn-sm" onclick="pilotStartRun()" style="flex:1;">▶ Start Run</button>
-            <button class="btn btn-sm" onclick="pilotRefreshRuns()" style="padding:6px 10px;" title="Refresh runs">↻</button>
-          </div>
         </div>
 
         <!-- Click / Type quick actions -->
@@ -493,14 +537,6 @@ a { color: var(--accent); text-decoration: none; }
               <input id="pilotTypeText" type="text" placeholder="Text to type…" style="flex:1;padding:6px 8px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;" onkeydown="if(event.key==='Enter')pilotType()">
               <button class="btn btn-sm" onclick="pilotType()">Type</button>
             </div>
-          </div>
-        </div>
-
-        <!-- Recent runs -->
-        <div>
-          <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.08em;">Recent Runs</div>
-          <div id="pilotRunsList" style="display:flex;flex-direction:column;gap:4px;max-height:220px;overflow-y:auto;">
-            <div style="color:var(--text-muted);font-size:12px;">No runs yet.</div>
           </div>
         </div>
 
@@ -528,33 +564,18 @@ a { color: var(--accent); text-decoration: none; }
           <pre id="pilotSkillSource" style="font-size:10.5px;font-family:var(--mono);color:var(--text-muted);white-space:pre-wrap;max-height:300px;overflow-y:auto;margin:0;"></pre>
         </div>
 
-      </div><!-- /left -->
-
-      <!-- Right: live screenshot -->
-      <div style="display:flex;flex-direction:column;gap:8px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;">
-          <div style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;">Screenshot</div>
-          <button class="btn btn-sm" onclick="pilotRefreshScreenshot()" style="font-size:11px;padding:3px 8px;">Refresh</button>
+        <!-- Selected run detail (historical inspection) -->
+        <div id="pilotRunDetail" style="display:none;padding:12px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+            <div style="font-size:12px;font-weight:600;font-family:var(--mono);" id="pilotDetailRunId"></div>
+            <button class="btn btn-sm" onclick="document.getElementById('pilotRunDetail').style.display='none'">✕</button>
+          </div>
+          <div id="pilotDetailStatus" style="font-size:12px;margin-bottom:6px;"></div>
+          <div id="pilotDetailSnapshot" style="font-size:11px;font-family:var(--mono);color:var(--text-muted);white-space:pre-wrap;max-height:160px;overflow-y:auto;"></div>
         </div>
-        <img id="pilotScreenshot" src="" alt="Browser screenshot" style="width:100%;border-radius:var(--radius-sm);border:1px solid var(--border);cursor:pointer;background:var(--surface-2);min-height:120px;" onclick="pilotOpenScreenshot()" title="Click to open full size">
-        <div id="pilotCurrentUrl" style="font-size:10px;font-family:var(--mono);color:var(--text-muted);word-break:break-all;text-align:center;"></div>
-      </div><!-- /right -->
 
-    </div><!-- /grid -->
-
-    <!-- Selected run detail -->
-    <div id="pilotRunDetail" style="display:none;margin-top:16px;padding:12px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-        <div style="font-size:12px;font-weight:600;font-family:var(--mono);" id="pilotDetailRunId"></div>
-        <div style="display:flex;gap:6px;">
-          <button class="btn btn-sm" id="pilotPauseBtn" onclick="pilotPauseRun()" style="display:none;">⏸ Pause</button>
-          <button class="btn btn-sm" id="pilotResumeBtn" onclick="pilotResumeRun()" style="display:none;">▶ Resume</button>
-          <button class="btn btn-sm" onclick="document.getElementById('pilotRunDetail').style.display='none'">✕</button>
-        </div>
       </div>
-      <div id="pilotDetailStatus" style="font-size:12px;margin-bottom:6px;"></div>
-      <div id="pilotDetailSnapshot" style="font-size:11px;font-family:var(--mono);color:var(--text-muted);white-space:pre-wrap;max-height:160px;overflow-y:auto;"></div>
-    </div>
+    </details>
 
   </div><!-- /panel-pilot -->
 
@@ -1190,9 +1211,11 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 /* ═══════════════════════════════════════════════════════════════
    CODEC PILOT — tab JS
-   All calls go to localhost:8094 (pilot-runner FastAPI)
+   All calls go through the same-origin dashboard proxy /api/pilot/*
+   (routes/pilot_proxy.py injects x-pilot-token server-side; pilot-runner
+   itself stays loopback-only on :8094). Works locally AND over the tunnel.
 ═══════════════════════════════════════════════════════════════ */
-var _pilotBase = 'http://localhost:8094';
+var _pilotBase = '/api/pilot';
 var _pilotPollTimer = null;
 var _pilotSelectedRun = null;
 var _pilotStreamTimer = null;   // fallback poll when MJPEG stream unavailable
@@ -1233,36 +1256,58 @@ function pilotCheckStatus() {
       if (dot)  dot.style.background = '#22c55e';
       if (text) text.textContent = 'Online  ·  ' + (d.url || 'about:blank') + '  ·  CDP :' + (d.cdp_port || 9223);
       document.getElementById('pilotCurrentUrl').textContent = d.url || '';
+      var pulse = document.getElementById('pilotLivePulse');
+      if (pulse) { pulse.style.background = '#22c55e'; pulse.style.boxShadow = '0 0 8px rgba(34,197,94,.8)'; }
     })
     .catch(function() {
       var dot  = document.getElementById('pilotDot');
       var text = document.getElementById('pilotStatusText');
       if (dot)  dot.style.background = '#ef4444';
       if (text) text.textContent = 'Pilot Runner offline  ·  pm2 restart pilot-runner';
+      var pulse = document.getElementById('pilotLivePulse');
+      if (pulse) { pulse.style.background = '#666'; pulse.style.boxShadow = 'none'; }
     });
 }
 
-/* ── Screenshot / live stream ── */
+/* ── Screenshot / live stream ──
+   The MJPEG <img> stream dies silently (sleep, dashboard restart, network
+   blip) and freezes on its last frame. Contract:
+   - pilotStartStream(): (re)connect the LIVE stream; on error, poll frames.
+   - pilotRefreshScreenshot(): "refresh" = RECONNECT the live stream — it
+     must never replace the stream with a static frame (the old freeze bug).
+   - _pilotPollFrame(): static-frame fallback used only while the stream is down. */
 function pilotStartStream() {
   var img = document.getElementById('pilotScreenshot');
   if (!img) return;
-  // Point at MJPEG stream — browser keeps it alive as a live feed
-  img.src = _pilotBase + '/screenshot/stream?' + Date.now();
+  if (_pilotStreamTimer) { clearInterval(_pilotStreamTimer); _pilotStreamTimer = null; }
   img.onerror = function() {
-    // Stream failed (pilot offline?) — fall back to 2-second polling
+    // Stream failed (pilot offline?) — fall back to 2-second frame polling
     img.onerror = null;
     if (!_pilotStreamTimer) {
-      _pilotStreamTimer = setInterval(pilotRefreshScreenshot, 2000);
+      _pilotStreamTimer = setInterval(_pilotPollFrame, 2000);
     }
   };
+  img.src = _pilotBase + '/screenshot/stream?' + Date.now();
+}
+
+function _pilotPollFrame() {
+  var img = document.getElementById('pilotScreenshot');
+  if (!img) return;
+  img.src = _pilotBase + '/screenshot?' + Date.now();
 }
 
 function pilotRefreshScreenshot() {
-  var img = document.getElementById('pilotScreenshot');
-  if (!img) return;
-  // Only used as fallback when stream is unavailable
-  img.src = _pilotBase + '/screenshot?' + Date.now();
+  pilotStartStream();   // refresh = revive the live feed
 }
+
+/* Reconnect the stream whenever the tab regains focus — img streams don't
+   survive sleep/navigation-away and there's no JS event when they die. */
+document.addEventListener('visibilitychange', function() {
+  if (!document.hidden) {
+    var panel = document.getElementById('panel-pilot');
+    if (panel && panel.classList.contains('active')) pilotStartStream();
+  }
+});
 
 function pilotOpenScreenshot() {
   window.open(_pilotBase + '/screenshot', '_blank');
@@ -1405,10 +1450,131 @@ function pilotStartRun() {
       document.getElementById('pilotTaskInput').value = '';
       setTimeout(pilotRefreshRuns, 500);
       _pilotSelectedRun = runId;
-      setTimeout(function(){ pilotShowRunDetail(runId); }, 1000);
+      _pilotWatchRun(runId, task);   // Operator view: live action log + HITL
     });
   })
   .catch(function(e){ showToast('Run error: ' + e, true); });
+}
+
+/* ── Operator live-run watcher: status chip + streaming action log + HITL ── */
+var _pilotWatchTimer = null;
+var _pilotLogCount = 0;
+
+function _agoFmt(epochSecs) {
+  if (!epochSecs) return '';
+  var s = Math.max(0, Math.round(Date.now() / 1000 - epochSecs));
+  if (s < 60)    return s + 's ago';
+  if (s < 3600)  return Math.round(s / 60) + 'm ago';
+  if (s < 86400) return Math.round(s / 3600) + 'h ago';
+  return Math.round(s / 86400) + 'd ago';
+}
+
+function _pilotStepLine(s, i) {
+  var icons = {navigate:'🌐', click:'🖱', type:'⌨️', scroll:'↕️', wait:'⏲', done:'✅', error:'❌'};
+  var a = (s && (s.action || s.act || s.type)) || '';
+  var icon = icons[a] || '•';
+  var det = '';
+  if (s) {
+    if (s.url) det = s.url;
+    else if (s.text) det = '"' + String(s.text).substring(0, 40) + '"';
+    else if (s.index !== undefined && s.index !== null) det = '[' + s.index + ']';
+    else if (s.result) det = String(s.result).substring(0, 60);
+    else if (s.reason) det = String(s.reason).substring(0, 60);
+  }
+  var thought = s && (s.summary || s.thought)
+    ? ' <span style="color:var(--text-dim)">— ' + escHtml(String(s.summary || s.thought).substring(0, 70)) + '</span>' : '';
+  return '<div><span style="color:var(--text-dim)">' + (i + 1) + '.</span> ' + icon +
+         ' <span style="color:var(--text)">' + escHtml(a) + '</span> ' +
+         '<span style="color:var(--text-muted)">' + escHtml(det) + '</span>' + thought + '</div>';
+}
+
+function _pilotSetHitl(state) {
+  var p = document.getElementById('pilotPauseBtn'),
+      r = document.getElementById('pilotResumeBtn'),
+      t = document.getElementById('pilotTakeoverBtn'),
+      h = document.getElementById('pilotHandbackBtn');
+  if (!p) return;
+  if (state === 'running')       { p.style.display='';     r.style.display='none'; t.style.display='';     h.style.display='none'; }
+  else if (state === 'paused')   { p.style.display='none'; r.style.display='';     t.style.display='';     h.style.display='none'; }
+  else if (state === 'takeover') { p.style.display='none'; r.style.display='none'; t.style.display='none'; h.style.display='';     }
+  else                           { p.style.display='none'; r.style.display='none'; t.style.display='none'; h.style.display='none'; }
+}
+
+function _pilotWatchRun(runId, taskText) {
+  if (_pilotWatchTimer) clearInterval(_pilotWatchTimer);
+  _pilotSelectedRun = runId;
+  _pilotLogCount = 0;
+  document.getElementById('pilotRunPanel').style.display = '';
+  document.getElementById('pilotRunTask').textContent = taskText || '';
+  document.getElementById('pilotActionLog').innerHTML = '<div style="color:var(--text-dim)">starting…</div>';
+  document.getElementById('pilotAgentBadge').style.display = '';
+  _pilotSetHitl('running');
+  _pilotWatchTimer = setInterval(function(){ _pilotPollRun(runId); }, 1200);
+  _pilotPollRun(runId);
+}
+
+function _pilotPollRun(runId) {
+  _pilotFetch('/run/' + runId + '/status')
+    .then(function(r){ return r.json(); })
+    .then(function(d) {
+      var steps = d.steps || [];
+      var log = document.getElementById('pilotActionLog');
+      if (_pilotLogCount === 0 && steps.length) log.innerHTML = '';
+      if (steps.length > _pilotLogCount) {
+        for (var i = _pilotLogCount; i < steps.length; i++) {
+          log.insertAdjacentHTML('beforeend', _pilotStepLine(steps[i], i));
+        }
+        _pilotLogCount = steps.length;
+        log.scrollTop = log.scrollHeight;
+      }
+      var chipMap = {running:'⏳ running', done:'✅ done', error:'❌ error',
+                     budget_exhausted:'⚠️ budget', paused:'⏸ paused', paused_timeout:'⏸ pause timeout'};
+      document.getElementById('pilotRunChip').textContent = chipMap[d.status] || ('📊 ' + (d.status || ''));
+      // Speak terminal transitions once (shares the guard map with pilotShowRunDetail)
+      if (_pilotLastSpokenStatus[runId] !== d.status) {
+        var prev = _pilotLastSpokenStatus[runId];
+        _pilotLastSpokenStatus[runId] = d.status;
+        if (prev && (d.status === 'done' || d.status === 'error' || d.status === 'budget_exhausted')) {
+          pilotSay(d.status === 'done'
+            ? 'Run complete. ' + (d.result ? String(d.result).slice(0,160) : '')
+            : d.status === 'error' ? 'Run failed. ' + (d.error || '')
+            : 'Step budget exhausted.');
+        }
+      }
+      if (d.status !== 'running' && d.status !== 'paused') {
+        clearInterval(_pilotWatchTimer); _pilotWatchTimer = null;
+        document.getElementById('pilotAgentBadge').style.display = 'none';
+        _pilotSetHitl('terminal');
+        if (d.result) log.insertAdjacentHTML('beforeend',
+          '<div style="margin-top:6px;color:var(--text)">🏁 ' + escHtml(String(d.result).substring(0, 200)) + '</div>');
+        pilotRefreshRuns();
+      }
+    })
+    .catch(function(){});
+}
+
+function pilotTakeover() {
+  if (!_pilotSelectedRun) return;
+  _pilotFetch('/hitl/' + _pilotSelectedRun + '/takeover',
+              {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'})
+    .then(function(){
+      showToast('You have the wheel — drive with the URL bar / Advanced tools, then Hand back');
+      document.getElementById('pilotAgentBadge').style.display = 'none';
+      _pilotSetHitl('takeover');
+    })
+    .catch(function(e){ showToast('Takeover failed: ' + e, true); });
+}
+
+function pilotHandback() {
+  if (!_pilotSelectedRun) return;
+  _pilotFetch('/hitl/' + _pilotSelectedRun + '/handback',
+              {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'})
+    .then(function(){
+      showToast('CODEC has the wheel again');
+      document.getElementById('pilotAgentBadge').style.display = '';
+      _pilotSetHitl('running');
+    })
+    .catch(function(e){ showToast('Handback failed: ' + e, true); });
 }
 
 /* ── Runs list ── */
@@ -1426,7 +1592,7 @@ function pilotRefreshRuns() {
       var statusIcon = {done:'✅', error:'❌', running:'⏳', budget_exhausted:'⚠️', recording:'⏺️'};
       list.innerHTML = runs.slice(0,12).map(function(r) {
         var icon = statusIcon[r.status] || '📊';
-        var ago  = r.started_at ? Math.round((Date.now()/1000 - r.started_at)) + 's ago' : '';
+        var ago  = _agoFmt(r.started_at);
         var rid  = r.run_id;
         return '<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;" title="' + (r.task||'') + '">' +
           '<span style="flex-shrink:0;cursor:pointer" onclick="pilotShowRunDetail(\'' + rid + '\')">' + icon + '</span>' +
@@ -1622,7 +1788,7 @@ function pilotRefreshPending() {
         return;
       }
       list.innerHTML = items.map(function(s) {
-        var ago = s.mtime ? Math.round((Date.now()/1000 - s.mtime)) + 's ago' : '';
+        var ago = _agoFmt(s.mtime);
         return '<div onclick="pilotPreviewSkill(\'' + s.slug + '\')" style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;font-size:12px;" title="' + escHtml(s.head_doc||'').substring(0,180) + '">' +
           '<span style="flex-shrink:0">📝</span>' +
           '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);font-family:var(--mono);">' + escHtml(s.filename) + '</span>' +
