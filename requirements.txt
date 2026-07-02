@@ -10,7 +10,7 @@ fastmcp>=3.4.2
 # TOTP 2FA auth (routes/auth.py: /api/auth/totp/* + skills/qr_generator.py).
 # Previously undeclared runtime deps — the TOTP setup/confirm/verify endpoints
 # import these lazily; without them the 2FA flow 500s in production.
-pyotp>=2.9.0
+pyotp>=2.10.0
 qrcode[pil]>=8.2
 
 # Security floors for transitive / runtime deps (Fix #6, re-audit dependency
