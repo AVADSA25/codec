@@ -35,7 +35,8 @@ skips. CODEC's threat model assumes Keychain on the production Mac.
 ## Audit events
 
   keychain_set            on every set, ok/error
-  keychain_get_missing    on read-miss (info, no secret in extras)
+  keychain_get_missing    on FIRST read-miss per process per key (info);
+                          repeat misses are negative-cached + stdlib DEBUG
   keychain_locked         on exit 51 from /usr/bin/security (warning)
   keychain_migration      on first migration from plaintext
 """
@@ -66,6 +67,32 @@ _SECURITY_BIN = "/usr/bin/security"
 _FALLBACK_KEY_PATH = Path(os.path.expanduser("~/.codec/secret.key"))
 _FALLBACK_STORE_PATH = Path(os.path.expanduser("~/.codec/secrets.enc.json"))
 _SECURITY_TIMEOUT = 5  # seconds
+
+# Negative-result cache (2026-07 log review). Known-missing keys are cached
+# for _NEGATIVE_TTL so hot callers (codec_config's 30s getter cache × N
+# daemons) don't shell out to /usr/bin/security — and don't emit an audit
+# line — on every poll. `keychain_get_missing` was 68% of the audit log
+# (23k lines / 3 weeks) for the intentionally-absent `dashboard_token`.
+# keychain_set / keychain_delete invalidate, so a freshly-stored secret is
+# visible immediately within this process; a secret added by ANOTHER
+# process (e.g. the operator via `security add-generic-password`) is picked
+# up after at most _NEGATIVE_TTL seconds.
+_NEGATIVE_CACHE: dict = {}   # key -> time.monotonic() of last confirmed miss
+_NEGATIVE_TTL = 300.0        # seconds
+_MISS_AUDITED: set = set()   # keys whose miss was already audited this process
+
+_kc_std_log = logging.getLogger("codec.keychain")
+
+
+def _invalidate_negative_cache(key: Optional[str] = None) -> None:
+    """Drop negative-cache state (all keys, or one). set/delete call this;
+    tests use it for isolation."""
+    if key is None:
+        _NEGATIVE_CACHE.clear()
+        _MISS_AUDITED.clear()
+    else:
+        _NEGATIVE_CACHE.pop(key, None)
+        _MISS_AUDITED.discard(key)
 
 # Public key names (canonical). Keep this list in sync with documentation.
 KEY_DASHBOARD_TOKEN = "dashboard_token"
@@ -265,6 +292,8 @@ def keychain_set(key: str, value: str) -> bool:
     """Store a secret. Returns True on success. Uses real Keychain on
     macOS, envelope-encrypted fallback elsewhere."""
     ok = _keychain_set(key, value) if is_keychain_available() else _fallback_set(key, value)
+    if ok:
+        _invalidate_negative_cache(key)
     _kc_log_event(
         "keychain_set", source="codec-keychain",
         message=f"Stored secret {key!r}" if ok else f"Failed to store secret {key!r}",
@@ -279,21 +308,38 @@ def keychain_set(key: str, value: str) -> bool:
 
 
 def keychain_get(key: str) -> Optional[str]:
-    """Read a secret. None if missing, locked, or unavailable."""
+    """Read a secret. None if missing, locked, or unavailable.
+
+    Misses are negative-cached for _NEGATIVE_TTL seconds (no re-probe, no
+    re-emit) and audited as `keychain_get_missing` ONCE per process per
+    key; later misses log at stdlib DEBUG only. See the cache block near
+    the top of the module for the rationale + staleness bound."""
+    import time as _time
+    miss_ts = _NEGATIVE_CACHE.get(key)
+    if miss_ts is not None and (_time.monotonic() - miss_ts) < _NEGATIVE_TTL:
+        return None
     val = _keychain_get(key) if is_keychain_available() else _fallback_get(key)
     if val is None:
-        _kc_log_event(
-            "keychain_get_missing", source="codec-keychain",
-            message=f"Secret {key!r} not found",
-            level="info", outcome="ok",
-            extra={"key": key,
-                   "method": "keychain" if is_keychain_available() else "fallback"},
-        )
+        _NEGATIVE_CACHE[key] = _time.monotonic()
+        if key not in _MISS_AUDITED:
+            _MISS_AUDITED.add(key)
+            _kc_log_event(
+                "keychain_get_missing", source="codec-keychain",
+                message=f"Secret {key!r} not found",
+                level="info", outcome="ok",
+                extra={"key": key,
+                       "method": "keychain" if is_keychain_available() else "fallback"},
+            )
+        else:
+            _kc_std_log.debug("Secret %r still missing (already audited)", key)
+    else:
+        _NEGATIVE_CACHE.pop(key, None)
     return val
 
 
 def keychain_delete(key: str) -> bool:
     """Delete a secret. Idempotent (returns True if not present)."""
+    _invalidate_negative_cache(key)
     return _keychain_delete(key) if is_keychain_available() else _fallback_delete(key)
 
 
