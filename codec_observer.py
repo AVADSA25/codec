@@ -377,6 +377,23 @@ def _get_recent_files(window_seconds: int = 300) -> List[Dict[str, Any]]:
     return out
 
 
+def _get_recent_files_bounded(window_seconds: int = 300,
+                              timeout_s: float = 2.0) -> List[Dict[str, Any]]:
+    """_get_recent_files under a hard wall-clock bound. os.listdir /
+    getmtime can block on slow or just-woken volumes — the 2026-07 log
+    review saw poll spikes up to 21s with OCR disabled. On timeout the
+    scan is skipped for this tick (empty list) and polling continues."""
+    try:
+        return run_with_timeout(_get_recent_files, timeout_s, window_seconds)
+    except TimeoutError:
+        log.debug("[observer] recent-files scan exceeded %.1fs — skipped this tick",
+                  timeout_s)
+        return []
+    except Exception as e:
+        log.debug("[observer] recent-files scan failed (non-fatal): %s", e)
+        return []
+
+
 # ── Ring buffer ───────────────────────────────────────────────────────────────
 class RingBuffer:
     """Bounded snapshot buffer. Threadsafe-friendly: appends and snapshots
@@ -515,16 +532,30 @@ def poll(buffer: Optional[RingBuffer] = None,
         buffer = _get_or_init_buffer(cfg)
 
     t0 = time.monotonic()
-    idle = _idle_seconds()
+
+    # Per-collector wall-clock timings (2026-07 log review): 759
+    # observation_tick_slow warnings (median 352ms, max 21s) with OCR
+    # already disabled — without per-collector attribution the offender
+    # is unidentifiable. Durations ride in the tick extra (metadata-only).
+    collector_ms: Dict[str, float] = {}
+
+    def _timed(label: str, fn):
+        t = time.monotonic()
+        try:
+            return fn()
+        finally:
+            collector_ms[label] = round((time.monotonic() - t) * 1000.0, 1)
+
+    idle = _timed("idle", _idle_seconds)
     cadence = (int(cfg["cadence_active_s"])
                if idle < float(cfg["idle_threshold_s"])
                else int(cfg["cadence_idle_s"]))
 
     # 1. Active window
-    active_window = _get_active_window()
+    active_window = _timed("window", _get_active_window)
 
     # 2. Clipboard delta
-    cb_now = _get_clipboard_now()
+    cb_now = _timed("clipboard", _get_clipboard_now)
     import hashlib
     cb_hash = hashlib.sha1(cb_now.encode("utf-8", errors="replace")).hexdigest()
     cb_changed = cb_hash != buffer._last_clipboard_hash
@@ -542,13 +573,15 @@ def poll(buffer: Optional[RingBuffer] = None,
     # permission granted to the PM2 child process. Buffer still gets
     # active_window + clipboard + recent_files signals.
     if cfg.get("ocr_enabled", True):
-        ocr_text, ocr_skipped = _get_screenshot_ocr(
-            int(cfg["ocr_timeout_ms"]), int(cfg["ocr_retry_timeout_ms"]))
+        ocr_text, ocr_skipped = _timed("ocr", lambda: _get_screenshot_ocr(
+            int(cfg["ocr_timeout_ms"]), int(cfg["ocr_retry_timeout_ms"])))
     else:
         ocr_text, ocr_skipped = ("", True)
+        collector_ms["ocr"] = 0.0
 
     # 4. Recent files
-    recent_files = _get_recent_files(window_seconds=300)
+    recent_files = _timed("files",
+                          lambda: _get_recent_files_bounded(window_seconds=300))
 
     snapshot = {
         "ts": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
@@ -565,7 +598,8 @@ def poll(buffer: Optional[RingBuffer] = None,
 
     if emit_audit:
         _emit_observation_tick(snapshot, cadence, poll_duration_ms,
-                               len(buffer), float(cfg["poll_slow_threshold_ms"]))
+                               len(buffer), float(cfg["poll_slow_threshold_ms"]),
+                               collector_ms=collector_ms)
 
     # Phase 2 Step 6 — evaluate registered triggers against this snapshot.
     # Inline (not a separate PM2 service) — observer poll is the only event
@@ -612,12 +646,16 @@ def poll(buffer: Optional[RingBuffer] = None,
 
 def _emit_observation_tick(snapshot: Dict[str, Any], cadence_used_s: int,
                            poll_duration_ms: float, buffer_depth: int,
-                           slow_threshold_ms: float) -> None:
+                           slow_threshold_ms: float,
+                           collector_ms: Optional[Dict[str, float]] = None) -> None:
     """Emit observation_tick (or observation_tick_slow). METADATA-ONLY —
-    no titles, no OCR text, no clipboard content, no file paths."""
+    no titles, no OCR text, no clipboard content, no file paths.
+    `collector_ms` is per-collector wall-clock durations (idle / window /
+    clipboard / ocr / files) — durations only, still metadata."""
     win = snapshot.get("active_window") or {}
     cb = snapshot.get("clipboard") or {}
     extra = {
+        "collector_ms": collector_ms or {},
         "active_app": win.get("app", ""),
         "active_title_len": len(win.get("title", "")),
         "ocr_chars": len(snapshot.get("screenshot_ocr") or ""),

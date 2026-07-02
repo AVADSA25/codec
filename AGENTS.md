@@ -490,12 +490,19 @@ Four new event names exported from `codec_audit.py` for the Continuous Observati
 
 | Event | Source | level | extra fields |
 |---|---|---|---|
-| `observation_tick` | `codec-observer` | info | METADATA-ONLY: `active_app`, `active_title_len`, `ocr_chars`, `ocr_skipped`, `clipboard_changed`, `clipboard_kind`, `recent_files_count`, `idle_seconds`, `cadence_used_s`, `buffer_depth`, `poll_duration_ms` |
+| `observation_tick` | `codec-observer` | info | METADATA-ONLY: `active_app`, `active_title_len`, `ocr_chars`, `ocr_skipped`, `clipboard_changed`, `clipboard_kind`, `recent_files_count`, `idle_seconds`, `cadence_used_s`, `buffer_depth`, `poll_duration_ms`, `collector_ms` (2026-07: per-collector durations `{idle, window, clipboard, ocr, files}` — attributes slow polls to a specific collector; durations only, still metadata) |
 | `observation_tick_slow` | `codec-observer` | warning | Same as `observation_tick` — emitted instead when `poll_duration_ms > poll_slow_threshold_ms` (default 150ms). Q5.5 flag for visibility, no behavior change. |
 | `observation_summary_injected` | `codec-observer` | info | `tokens_used`, `injection_reason` (`always_local`\|`possessive_match`\|`continuation_match`\|`skill_flag`), `buffer_entries_summarized`. `transport` is top-level (reserved). |
 | `observer_buffer_inspected` | `codec-dashboard` | info | `client_ip`, `buffer_entries_returned`. Q5.6 PWA `?debug=1` audit. |
 
 `PHASE2_STEP5_EVENTS` frozenset exposed for analyzer breakdown. `observation_tick` is METADATA-ONLY by design — no titles, no OCR text, no clipboard content, no file paths leak to `~/.codec/audit.log`.
+
+### Watchdog events (2026-07 log review)
+One event name, emitted by the heartbeat's PM2 restart-storm detector (`codec_heartbeat.check_pm2_restart_storms`). Fires when an `autorestart:true` PM2 process burned ≥5 restarts since the previous heartbeat (~20 min) — the signature of a crash loop hiding behind PM2 status "online" (incident: `ava-litellm` restarted 34,207× over 3 weeks unnoticed). Cron-style jobs (`autorestart:false`) are excluded; a persisting storm re-alerts at most every 6h. State: `~/.codec/pm2_restart_state.json`. Related (no new event): `codec_alerts` supports read-only `alerts.extra_services` probes in `~/.codec/config.json` (`http(s)://` or `tcp://host:port`) with the same consecutive-failure alerting as built-ins but NEVER auto-restart.
+
+| Event | Source | level | extra fields |
+|---|---|---|---|
+| `pm2_restart_storm` | `codec-heartbeat` | warning | `process`, `delta` (restarts since last heartbeat), `total_restarts` |
 
 ### Phase 2 Step 6 audit events (Trigger System)
 Four event names. `trigger_evaluated` fires only when a pattern matches (pre-cooldown, pre-consent — silent on no-match to avoid audit spam). `trigger_fired` is the actual dispatch. `trigger_blocked` fires for any non-firing reason except `killed` (silent). `trigger_muted` fires when an otherwise-eligible match is suppressed by the runtime mute config (`~/.codec/triggers.json` — see `docs/PHASE2-STEP6-TRIGGER-MUTE.md`). All inherit the wrapping observer poll's `correlation_id`.
