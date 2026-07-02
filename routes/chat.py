@@ -40,6 +40,10 @@ from codec_audit import log_event
 import codec_llm  # A-12 canonical LLM caller
 from codec_chat_stream import SkillTagBuffer, SKILL_TAG_RE  # A-6 token machine
 from codec_chat_pipeline import _StepBudget, _is_conversational  # B6-P2
+from codec_chat_pipeline import (  # Step 10 Q11 wiring (2026-07)
+    _should_escalate_to_project,
+    silence_session_autoescalate,
+)
 from routes._shared import CONFIG_PATH
 
 router = APIRouter()
@@ -616,12 +620,59 @@ def _build_chat_system_prompt(config: dict, budget, has_attachment: bool,
 
 
 
+import re as _re_esc
+
+_ESCALATE_HINT_RE = _re_esc.compile(
+    r"\b(build|create|research|plan|organi[sz]e|automate|migrate|design|"
+    r"set\s?up|write me|make me|prepare|launch|develop)\b", _re_esc.IGNORECASE)
+
+
+def _maybe_escalate_suggestion(user_text: str, session_id: str):
+    """Step 10 auto-escalation, finally wired (2026-07). Runs AFTER the reply
+    so it never adds latency to the answer itself. The regex prefilter keeps
+    the Qwen classifier call off casual messages — only task-shaped text
+    (>= 60 chars + an action verb) pays for classification. Returns the
+    suggestion dict for the UI chip, or None."""
+    try:
+        if len(user_text or "") < 60 or not _ESCALATE_HINT_RE.search(user_text):
+            return None
+        verdict = _should_escalate_to_project(user_text, session_id)
+        if not verdict.get("escalate"):
+            return None
+        log_event("agent_auto_escalated_from_chat", "codec-dashboard",
+                  f"Suggested Project promotion ({verdict.get('estimated_checkpoints')} checkpoints)",
+                  extra={"session_id": session_id,
+                         "estimated_checkpoints": verdict.get("estimated_checkpoints"),
+                         "verdict": verdict.get("reason", "")[:200],
+                         "silenced": False})
+        return {"estimated_checkpoints": verdict.get("estimated_checkpoints"),
+                "reason": (verdict.get("reason") or "")[:200]}
+    except Exception as e:
+        log.debug(f"escalation check failed (non-fatal): {e}")
+        return None
+
+
+@router.post("/api/chat/escalate_silence")
+async def escalate_silence(request: Request):
+    """Q11: user said "No thanks" to a Project suggestion — silence the
+    prompt for the rest of this chat session (in-memory, resets on restart)."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    sid = str(body.get("session_id") or "")
+    if sid:
+        silence_session_autoescalate(sid)
+    return {"ok": True, "silenced": bool(sid)}
+
+
 @router.post("/api/chat")
 async def chat_completion(request: Request):
     """Direct LLM chat with full context window + tool calling"""
     from codec_metrics import metrics
     metrics.inc("codec_chat_requests_total")
     body = await request.json()
+    _session_id = request.query_params.get("s") or ""
     messages = body.get("messages", [])
     if not messages:
         return JSONResponse({"error": "No messages"}, status_code=400)
@@ -868,6 +919,10 @@ async def chat_completion(request: Request):
                                 "busy, restarting, or out of context. Please try "
                                 "again in a moment."
                             )
+                    # Step 10 Q11 (2026-07): post-reply Project suggestion.
+                    _sugg = _maybe_escalate_suggestion(last_user_text, _session_id)
+                    if _sugg:
+                        yield f"data: {json.dumps({'escalate_project': _sugg})}\n\n"
                     yield "data: [DONE]\n\n"
                 except Exception as e:
                     yield f"data: {json.dumps({'error': str(e)})}\n\n"

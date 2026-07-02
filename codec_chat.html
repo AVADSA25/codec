@@ -499,6 +499,37 @@ function _copyFallback(text){
     return ok;
   }catch(e){return false}
 }
+// ── Step 10 Q11: Project-promotion suggestion chip (2026-07) ──
+// Backend emits {escalate_project:{estimated_checkpoints,reason}} after a
+// task-shaped chat reply. "Start as Project" pre-fills the input in Project
+// mode (user still hits send — no surprise dispatch); "No thanks" silences
+// the suggestion for this session.
+var _lastEscalateText='';
+function renderEscalateChip(sugg,userText){
+  _lastEscalateText=userText||'';
+  var n=sugg&&sugg.estimated_checkpoints?sugg.estimated_checkpoints:'several';
+  var div=document.createElement('div');div.className='msg assistant';
+  div.innerHTML='<div class="msg-bubble" style="border:1px dashed var(--accent,#a78bfa);background:rgba(167,139,250,0.06)">'+
+    '<div style="font-weight:600;margin-bottom:6px">\uD83D\uDCA1 This looks like a multi-step project (~'+escHtml(String(n))+' checkpoints)</div>'+
+    '<div style="font-size:12px;color:var(--text-dim);margin-bottom:8px">CODEC can draft a plan, ask for your approval once, then run it autonomously in the background.</div>'+
+    '<div style="display:flex;gap:8px">'+
+    '<button onclick="escalateStartProject(this)" style="padding:6px 14px;background:var(--accent,#a78bfa);color:#000;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">Start as Project</button>'+
+    '<button onclick="escalateDismiss(this)" style="padding:6px 14px;background:transparent;color:var(--text);border:1px solid var(--border,#2a2a30);border-radius:6px;cursor:pointer;font-size:12px">No thanks</button>'+
+    '</div></div>';
+  document.getElementById('messages').appendChild(div);scrollBottom();
+}
+function escalateStartProject(btn){
+  setMode('project');
+  var input=document.getElementById('chatInput');
+  input.value=_lastEscalateText;input.focus();
+  var card=btn.closest('.msg');if(card)card.remove();
+  showToast('Project mode — hit send to draft the plan');
+}
+function escalateDismiss(btn){
+  try{fetch('/api/chat/escalate_silence',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({session_id:(typeof sessionId!=='undefined'&&sessionId)||''})})}catch(e){}
+  var card=btn.closest('.msg');if(card)card.remove();
+}
 function copyCodeBlock(btn){
   // Per-code-block copy (2026-07): grabs the rendered code text (already
   // HTML-unescaped by innerText) and reuses copyMsgText's clipboard path.
@@ -1135,7 +1166,7 @@ async function sendMessage(){
           if(!line.startsWith('data: '))continue;
           var payload=line.substring(6);
           if(payload==='[DONE]')break;
-          try{var j=JSON.parse(payload);if(j.token){if(firstToken){bubble.innerHTML='';firstToken=false}fullText+=j.token;bubble.innerHTML=formatMsg(fullText);scrollBottom()}if(j.error){fullText+='\n\nError: '+j.error}}catch(pe){}
+          try{var j=JSON.parse(payload);if(j.token){if(firstToken){bubble.innerHTML='';firstToken=false}fullText+=j.token;bubble.innerHTML=formatMsg(fullText);scrollBottom()}if(j.escalate_project){renderEscalateChip(j.escalate_project,text)}if(j.error){fullText+='\n\nError: '+j.error}}catch(pe){}
         }
       }
       if(fullText){div.remove();addMessage('assistant',fullText);chatHist.push({role:'assistant',content:fullText});saveMessages([{role:'assistant',content:fullText}])}
@@ -1839,7 +1870,7 @@ async function schedulePollAgentTimeline(agentId, hostEl){
       if (!r.ok) return;
       var data = await r.json();
       var msgs = (data.messages || []).filter(function(m){
-        return (m.ts || 0) > since && (m.type === 'agent_reply' || m.type === 'agent_status' || m.type === 'plan_revision');
+        return (m.ts || 0) > since && ['agent_reply','agent_status','plan_revision','agent_update','agent_blocked','agent_question','agent_done','agent_aborted'].indexOf(m.type) >= 0;
       });
       if (msgs.length){
         clearInterval(poll);
@@ -1868,6 +1899,12 @@ async function checkActiveAgentLifecycle(){
     if (!r.ok) return;
     var data = await r.json();
     var status = (data.manifest && data.manifest.status) || data.status || '';
+    // Resume live updates after a page reload while the agent is active
+    // (2026-07 demo fix — poller previously only started from the approve click).
+    var activeStates = ['approved','running','paused'];
+    if (activeStates.indexOf(status) >= 0 || status.indexOf('blocked_') === 0){
+      _startAgentPoller(_activeAgentId);
+    }
     var terminal = ['done','complete','completed','failed','error','aborted','user_aborted'];
     if (terminal.indexOf(status) >= 0){
       addMessage('assistant', '`'+_activeAgentId.slice(0,12)+'` reached `'+status+'`. Conversation closed — next message starts a fresh project.');
