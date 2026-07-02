@@ -41,6 +41,9 @@ def _isolate_keychain(tmp_path, monkeypatch):
     test_id = f"_test_{os.getpid()}_{tmp_path.name}"
     monkeypatch.setattr(kc, "_SERVICE_PREFIX",
                          f"ai.avadigital.codec.{test_id}")
+    # Negative-cache state is keyed by bare key name (not service prefix) —
+    # clear it so a miss cached in a previous test can't leak into this one.
+    kc._invalidate_negative_cache()
     yield kc
     # Teardown: clear any real-Keychain entries we created (best-effort).
     if kc.is_keychain_available():
@@ -366,3 +369,66 @@ def test_secret_cache_invalidate(force_fallback, monkeypatch):
     # After invalidate: fresh
     cc._invalidate_secret_cache("llm_api_key")
     assert cc.get_llm_api_key() == "v2"
+
+
+# ── Negative-result cache + emit-once (2026-07 log review) ───────────────────
+
+
+def test_negative_cache_skips_reprobe(force_fallback, monkeypatch):
+    """A confirmed miss must not re-probe the backend within the TTL."""
+    kc = force_fallback
+    kc._invalidate_negative_cache()
+    calls = {"n": 0}
+    original = kc._fallback_get
+
+    def counting_get(key):
+        calls["n"] += 1
+        return original(key)
+
+    monkeypatch.setattr(kc, "_fallback_get", counting_get)
+    assert kc.keychain_get("neg_cache_key") is None
+    assert kc.keychain_get("neg_cache_key") is None
+    assert kc.keychain_get("neg_cache_key") is None
+    assert calls["n"] == 1, f"Expected 1 backend probe, got {calls['n']}"
+
+
+def test_negative_cache_invalidated_by_set(force_fallback):
+    """keychain_set must make the value visible immediately, even after a
+    cached miss."""
+    kc = force_fallback
+    kc._invalidate_negative_cache()
+    assert kc.keychain_get("neg_set_key") is None       # miss → cached
+    assert kc.keychain_set("neg_set_key", "now_present")
+    assert kc.keychain_get("neg_set_key") == "now_present"
+
+
+def test_negative_cache_expires_by_ttl(force_fallback, monkeypatch):
+    """After the TTL the backend is re-probed (external writers get seen)."""
+    kc = force_fallback
+    kc._invalidate_negative_cache()
+    assert kc.keychain_get("neg_ttl_key") is None
+    # Backdate the cached miss beyond the TTL
+    import time as _t
+    kc._NEGATIVE_CACHE["neg_ttl_key"] = _t.monotonic() - kc._NEGATIVE_TTL - 1
+    # Write via the raw backend (simulating another process — no invalidate)
+    kc._fallback_set("neg_ttl_key", "external_write")
+    assert kc.keychain_get("neg_ttl_key") == "external_write"
+
+
+def test_keychain_get_missing_audited_once_per_process(force_fallback, monkeypatch):
+    """The keychain_get_missing audit event fires on the FIRST miss only;
+    later misses (even after the negative cache is cleared) stay silent."""
+    kc = force_fallback
+    kc._invalidate_negative_cache()
+    events = []
+
+    def capture_event(event, *a, **kw):
+        events.append(event)
+
+    monkeypatch.setattr(kc, "_kc_log_event", capture_event)
+    assert kc.keychain_get("audit_once_key") is None
+    # Expire the negative cache but keep the audited-set intact — the
+    # re-probe must NOT re-emit.
+    kc._NEGATIVE_CACHE.clear()
+    assert kc.keychain_get("audit_once_key") is None
+    assert events.count("keychain_get_missing") == 1, events

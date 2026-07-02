@@ -1,6 +1,7 @@
 """CODEC structured logging — JSON format for log aggregation."""
 import logging
 import json
+import sys
 import time
 import os
 
@@ -23,18 +24,33 @@ def setup_logging(level=logging.INFO, json_output=True):
     """Configure root logger with JSON or plain formatting.
 
     Call once at process startup. Set CODEC_LOG_JSON=0 for plain format.
+
+    Level-split handlers (2026-07 log review): DEBUG/INFO → stdout,
+    WARNING+ → stderr. PM2 maps stderr to `<name>-error.log`, so with a
+    single stderr StreamHandler the error logs were ~95% INFO chatter —
+    real errors were invisible. After the split, `*-error.log` only
+    contains WARNING and above.
     """
     root = logging.getLogger()
     if root.handlers:
         return  # already configured
 
-    handler = logging.StreamHandler()
     if json_output and os.environ.get("CODEC_LOG_JSON", "1") != "0":
-        handler.setFormatter(JSONFormatter())
+        formatter = JSONFormatter()
     else:
-        handler.setFormatter(logging.Formatter(
+        formatter = logging.Formatter(
             "%(asctime)s [%(name)s] %(levelname)s: %(message)s",
             datefmt="%H:%M:%S"
-        ))
-    root.addHandler(handler)
+        )
+
+    out_handler = logging.StreamHandler(sys.stdout)
+    out_handler.setFormatter(formatter)
+    out_handler.addFilter(lambda record: record.levelno < logging.WARNING)
+
+    err_handler = logging.StreamHandler(sys.stderr)
+    err_handler.setFormatter(formatter)
+    err_handler.setLevel(logging.WARNING)
+
+    root.addHandler(out_handler)
+    root.addHandler(err_handler)
     root.setLevel(level)
