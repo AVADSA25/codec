@@ -170,3 +170,4 @@ try/except AttributeError — but `CodecMemory` has no `store_fact` method (it l
 `codec_memory_upgrade`). Extracted facts are therefore never written to the facts table.
 Found during the Daybreak audit (2026-06-09); out of Daybreak scope. Fix: route to
 `codec_memory_upgrade.store_fact` and add a round-trip test.
+
