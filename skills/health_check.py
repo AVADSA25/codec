@@ -54,18 +54,23 @@ def run(task: str = "", context: str = "") -> str:
     except Exception as e:
         results["whisper_stt"] = f"DOWN ({type(e).__name__})"
 
-    # 5. Kokoro TTS
+    # 5. Kokoro TTS — port from config (tts_url), default :8085. The old
+    # hardcoded :8880 was stale (kokoro has served on 8085 for months), so
+    # health_check falsely reported TTS DOWN — caught 2026-07-02 when a
+    # Project-mode dry run wrote "kokoro_tts is DOWN" into its status brief
+    # while the service was healthy.
     try:
-        req = Request("http://localhost:8880/health")
+        tts_base = "http://localhost:8085"
+        try:
+            with open(os.path.expanduser("~/.codec/config.json")) as f:
+                tts_base = json.load(f).get("tts_url", tts_base).rstrip("/")
+        except Exception:
+            pass
+        req = Request(f"{tts_base}/v1/models")
         resp = urlopen(req, timeout=5)
         results["kokoro_tts"] = "OK"
-    except Exception:
-        try:
-            req = Request("http://localhost:8880/v1/models")
-            resp = urlopen(req, timeout=5)
-            results["kokoro_tts"] = "OK"
-        except Exception as e:
-            results["kokoro_tts"] = f"DOWN ({type(e).__name__})"
+    except Exception as e:
+        results["kokoro_tts"] = f"DOWN ({type(e).__name__})"
 
     # 6. Memory DB
     try:
