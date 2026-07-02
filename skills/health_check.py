@@ -60,10 +60,16 @@ def run(task: str = "", context: str = "") -> str:
     # Project-mode dry run wrote "kokoro_tts is DOWN" into its status brief
     # while the service was healthy.
     try:
+        from urllib.parse import urlparse
         tts_base = "http://localhost:8085"
         try:
             with open(os.path.expanduser("~/.codec/config.json")) as f:
-                tts_base = json.load(f).get("tts_url", tts_base).rstrip("/")
+                # tts_url is the FULL speech endpoint
+                # (e.g. http://localhost:8085/v1/audio/speech) — keep only
+                # scheme://host:port for the models probe.
+                _u = urlparse(json.load(f).get("tts_url", ""))
+                if _u.scheme and _u.netloc:
+                    tts_base = f"{_u.scheme}://{_u.netloc}"
         except Exception:
             pass
         req = Request(f"{tts_base}/v1/models")
