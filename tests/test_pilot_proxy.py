@@ -39,3 +39,24 @@ def test_headers_always_include_token(tmp_path, monkeypatch):
 
 def test_stream_paths_cover_mjpeg():
     assert "screenshot/stream" in pilot_proxy._STREAM_PATHS
+
+
+# ── F8 (2026-07): runner-side bare-domain normalization ─────────────────────
+
+
+def test_normalize_url_bare_domain():
+    import pytest
+    pytest.importorskip("playwright")  # pilot deps absent on the CI runner
+    from pilot.pilot_runner import _normalize_url
+    assert _normalize_url("example.com") == "https://example.com"
+    assert _normalize_url("  avadigital.ai ") == "https://avadigital.ai"
+
+
+def test_normalize_url_leaves_schemes_alone():
+    import pytest
+    pytest.importorskip("playwright")  # pilot deps absent on the CI runner
+    from pilot.pilot_runner import _normalize_url
+    for u in ("https://example.com", "http://x.dev", "about:blank",
+              "data:text/html,hi", "//cdn.example.com/x"):
+        assert _normalize_url(u) == u
+    assert _normalize_url("") == ""

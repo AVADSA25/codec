@@ -296,9 +296,25 @@ def _record_step(action: dict, snap_text: str, el=None, result: str = "") -> Non
     _recording.steps.append(step)
 
 
+def _normalize_url(url: str) -> str:
+    """Prepend https:// when the caller sends a bare domain (F8, 2026-07-03).
+
+    The Pilot UI normalizes before sending, but API callers (pilot skill,
+    MCP, curl) hitting /navigate with "example.com" got a 500 from the
+    browser driver. Scheme-relative (//host) and explicit schemes pass
+    through untouched; about:/data: etc. are left alone."""
+    u = (url or "").strip()
+    if not u:
+        return u
+    if "://" in u or u.startswith(("about:", "data:", "chrome:", "//")):
+        return u
+    return "https://" + u
+
+
 @app.post("/navigate")
 async def navigate(req: NavigateRequest):
     pilot = _require_pilot()
+    req.url = _normalize_url(req.url)
     await pilot.navigate(req.url, wait_until=req.wait_until)
     snap = await take_snapshot(pilot.page)
     _record_step(
