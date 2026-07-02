@@ -20,8 +20,14 @@ jobs:
           # routes/* / codec_voice without ModuleNotFoundError on the Ubuntu
           # runner. pynput stays in the list, but the conftest installs a
           # stub when its real import fails (headless Linux has no X11).
-          pip install pytest fastmcp httpx requests pynput pydantic ruff \
-                      fastapi numpy pyotp 'qrcode[pil]'
+          # fastapi/pydantic/starlette are PINNED to the versions running in
+          # production on the Mac (2026-07-02). Unpinned, the runner pulled
+          # fastapi 0.139 / pydantic 2.13 which broke route-registration
+          # tests on main-as-is (verified via a no-op canary PR) — CI was
+          # testing a dependency set production never runs. Bump these pins
+          # together with a production upgrade, not before.
+          pip install pytest fastmcp httpx requests pynput 'pydantic==2.11.10' ruff \
+                      'fastapi==0.129.0' 'starlette==0.52.1' numpy pyotp 'qrcode[pil]'
       - name: Lint (ruff) — F-4 gate, config in ruff.toml
         run: ruff check .
       - name: Skill import smoke (standalone script, not a pytest module)
