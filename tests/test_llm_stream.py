@@ -298,3 +298,61 @@ def test_stream_keepalive_cadence_every_tenth(monkeypatch):
     out = list(codec_llm.stream([{"role": "user", "content": "q"}],
                                 base_url="http://x/v1", model="m", keepalive=True))
     assert out == [codec_llm.KEEPALIVE, codec_llm.KEEPALIVE]
+
+
+# ── error_sentinel (2026-07 chat-visibility fix) ─────────────────────────────
+
+
+def _sse_finish(reason):
+    return "data: " + json.dumps(
+        {"choices": [{"delta": {}, "finish_reason": reason}]})
+
+
+def test_stream_error_sentinel_on_non_200(monkeypatch):
+    monkeypatch.setattr("requests.post",
+                        lambda *a, **kw: _StreamResp(503, text="busy"))
+    out = list(codec_llm.stream(
+        [{"role": "user", "content": "x"}],
+        base_url="http://x", model="m", error_sentinel=True))
+    assert out == [codec_llm.STREAM_ERROR]
+
+
+def test_stream_error_sentinel_on_exception(monkeypatch):
+    def _boom(*a, **kw):
+        raise ConnectionError("dropped")
+    monkeypatch.setattr("requests.post", _boom)
+    out = list(codec_llm.stream(
+        [{"role": "user", "content": "x"}],
+        base_url="http://x", model="m", error_sentinel=True))
+    assert out == [codec_llm.STREAM_ERROR]
+
+
+def test_stream_finish_length_sentinel(monkeypatch):
+    lines = [_sse("partial answer"), _sse_finish("length")]
+    monkeypatch.setattr("requests.post",
+                        lambda *a, **kw: _StreamResp(200, lines))
+    out = list(codec_llm.stream(
+        [{"role": "user", "content": "x"}],
+        base_url="http://x", model="m", error_sentinel=True))
+    assert out == ["partial answer", codec_llm.FINISH_LENGTH]
+
+
+def test_stream_clean_stop_no_sentinels(monkeypatch):
+    lines = [_sse("full answer"), _sse_finish("stop"), "data: [DONE]"]
+    monkeypatch.setattr("requests.post",
+                        lambda *a, **kw: _StreamResp(200, lines))
+    out = list(codec_llm.stream(
+        [{"role": "user", "content": "x"}],
+        base_url="http://x", model="m", error_sentinel=True))
+    assert out == ["full answer"]
+
+
+def test_stream_sentinels_off_by_default(monkeypatch):
+    """Existing callers (no error_sentinel) keep the old contract: errors and
+    length-stops just end the stream with no sentinel objects."""
+    monkeypatch.setattr("requests.post",
+                        lambda *a, **kw: _StreamResp(500, text="err"))
+    out = list(codec_llm.stream(
+        [{"role": "user", "content": "x"}],
+        base_url="http://x", model="m"))
+    assert out == []

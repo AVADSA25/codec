@@ -168,6 +168,11 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);height:
 .empty-state img{width:140px;opacity:.25;margin-bottom:20px;filter:drop-shadow(0 0 30px rgba(232,113,26,0.4))}
 .empty-state p{color:var(--text-muted);font-size:16px;line-height:1.6}
 pre{background:var(--bg4);padding:10px;border-radius:8px;overflow-x:auto;font-family:var(--mono);font-size:12px;margin:8px 0}
+.code-wrap{position:relative;margin:8px 0}
+.code-wrap pre{margin:0;padding-right:38px}
+.code-copy{position:absolute;top:6px;right:6px;background:var(--bg2,rgba(0,0,0,.35));border:1px solid var(--bg4,#444);border-radius:6px;color:var(--text-dim,#9aa);padding:3px 6px;cursor:pointer;opacity:.65;transition:opacity .15s,color .15s,border-color .15s;line-height:0}
+.code-copy:hover{opacity:1;color:var(--accent);border-color:var(--accent)}
+.code-copy.copied{opacity:1;color:var(--success,#4caf50);border-color:var(--success,#4caf50)}
 code{font-family:var(--mono);font-size:12px;background:var(--bg4);padding:2px 6px;border-radius:4px}
 input[type=file]{display:none}
 
@@ -494,6 +499,12 @@ function _copyFallback(text){
     return ok;
   }catch(e){return false}
 }
+function copyCodeBlock(btn){
+  // Per-code-block copy (2026-07): grabs the rendered code text (already
+  // HTML-unescaped by innerText) and reuses copyMsgText's clipboard path.
+  var code=btn.parentNode.querySelector('code');
+  if(code)copyMsgText(code.innerText.replace(/\n$/,''),btn);
+}
 function copyMsgText(text,btn){
   function ok(){btn.classList.add('copied');showToast('Copied');setTimeout(function(){btn.classList.remove('copied')},1500)}
   function fail(){if(_copyFallback(text)){ok()}else{showToast('Copy failed')}}
@@ -733,7 +744,7 @@ async function deleteSession(evt, sid){
 function escHtml(s){var d=document.createElement('div');d.textContent=s||'';return d.innerHTML}
 function formatMsg(c){
   var f=escHtml(c);
-  f=f.replace(/```(\w*)\n([\s\S]*?)```/g,'<pre><code>$2</code></pre>');
+  f=f.replace(/```(\w*)\n([\s\S]*?)```/g,'<div class="code-wrap"><button class="code-copy" onclick="copyCodeBlock(this)" title="Copy code"><svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button><pre><code>$2</code></pre></div>');
   f=f.replace(/`([^`]+)`/g,'<code>$1</code>');
   f=f.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
   f=f.replace(/\*(.+?)\*/g,'<em>$1</em>');

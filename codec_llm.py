@@ -45,6 +45,17 @@ _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
 # (codec_session.qwen_stream) are unaffected.
 KEEPALIVE = object()
 
+# Sentinels yielded by stream(error_sentinel=True) — 2026-07 chat-visibility
+# fix. stream() never raises by contract, so before these existed a mid-reply
+# connection drop / non-200 / read timeout was indistinguishable from a clean
+# finish: the dashboard rendered an empty or silently-truncated bubble.
+#   STREAM_ERROR   — the stream died abnormally (connect/HTTP/read error).
+#   FINISH_LENGTH  — the model stopped at the max_tokens cap
+#                    (finish_reason == "length"), i.e. the reply is truncated.
+# Only yielded when error_sentinel=True; all existing callers are unaffected.
+STREAM_ERROR = object()
+FINISH_LENGTH = object()
+
 
 def strip_think(text: str) -> str:
     """Remove <think>…</think> reasoning blocks and surrounding whitespace."""
@@ -206,6 +217,7 @@ def stream(
     enable_thinking: bool = False,
     extra_kwargs: Optional[Dict[str, Any]] = None,
     keepalive: bool = False,
+    error_sentinel: bool = False,
 ) -> Iterator[Any]:
     """POST with `stream=True` and yield the RAW assistant content deltas in
     order. Centralizes the SSE plumbing: header/payload build (shared with
@@ -222,6 +234,13 @@ def stream(
     `KEEPALIVE` sentinel every 10th empty (1st, 11th, …) so an SSE caller can
     emit a transport keepalive. Content-only callers leave it off and only ever
     see `str` deltas.
+
+    `error_sentinel=True` (default off): yield `STREAM_ERROR` when the stream
+    dies abnormally (non-200, connect/read exception) and `FINISH_LENGTH` when
+    the model stops at the max_tokens cap — so a UI caller can tell the user
+    the reply was interrupted / truncated instead of rendering an empty or
+    silently-cut bubble. Callers that leave it off see the old behavior
+    (stream just ends).
     """
     import json as _json
     import requests
@@ -242,6 +261,8 @@ def stream(
             if r.status_code != 200:
                 log.warning("LLM stream %s returned %s: %s",
                             url, r.status_code, getattr(r, "text", "")[:200])
+                if error_sentinel:
+                    yield STREAM_ERROR
                 return
             for line in r.iter_lines():
                 if not line:
@@ -254,8 +275,8 @@ def stream(
                 if data.strip() == "[DONE]":
                     return
                 try:
-                    delta = (_json.loads(data).get("choices", [{}])[0]
-                             .get("delta", {}).get("content", ""))
+                    choice = _json.loads(data).get("choices", [{}])[0]
+                    delta = choice.get("delta", {}).get("content", "")
                 except Exception as e:
                     log.warning("LLM stream chunk parse failed: %s", e)
                     continue
@@ -265,8 +286,13 @@ def stream(
                     _empty += 1
                     if _empty % 10 == 1:   # 1st, 11th, 21st … (matches dashboard)
                         yield KEEPALIVE
+                if error_sentinel and choice.get("finish_reason") == "length":
+                    # Model hit the max_tokens cap — reply is truncated.
+                    yield FINISH_LENGTH
     except Exception as e:
         log.warning("LLM stream call failed: %s", e)
+        if error_sentinel:
+            yield STREAM_ERROR
         return
 
 
