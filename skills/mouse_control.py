@@ -147,19 +147,29 @@ def _get_screen_size():
         return (1920, 1080)
 
 
-def _take_screenshot():
-    """Capture screen and return base64-encoded PNG."""
+def _take_screenshot(timeout_s=10, attempts=2):
+    """Capture screen and return base64-encoded PNG.
+
+    2026-07 hardening: under load screencapture intermittently exceeds the
+    old 5s cap (stress test: 2 of 6 vision-locate runs failed on screenshot
+    timeout while the model itself was stable). One retry + a 10s cap turn
+    a hard "Could not take screenshot" into a rare slow path."""
     try:
         os.makedirs(os.path.dirname(_SCREENSHOT_PATH), exist_ok=True)
-        subprocess.run(
-            ["screencapture", "-x", "-C", _SCREENSHOT_PATH],
-            capture_output=True, timeout=5
-        )
-        if os.path.exists(_SCREENSHOT_PATH) and os.path.getsize(_SCREENSHOT_PATH) > 1000:
-            with open(_SCREENSHOT_PATH, "rb") as f:
-                return base64.b64encode(f.read()).decode()
     except Exception as e:
-        log.warning(f"Screenshot error: {e}")
+        log.warning(f"Screenshot dir error: {e}")
+        return None
+    for attempt in range(attempts):
+        try:
+            subprocess.run(
+                ["screencapture", "-x", "-C", _SCREENSHOT_PATH],
+                capture_output=True, timeout=timeout_s
+            )
+            if os.path.exists(_SCREENSHOT_PATH) and os.path.getsize(_SCREENSHOT_PATH) > 1000:
+                with open(_SCREENSHOT_PATH, "rb") as f:
+                    return base64.b64encode(f.read()).decode()
+        except Exception as e:
+            log.warning(f"Screenshot error (attempt {attempt + 1}/{attempts}): {e}")
     return None
 
 
