@@ -179,3 +179,8 @@ lack the required `SKILL_NAME` / `SKILL_TRIGGERS` module attrs, so 4
 confirmed 2026-07-02 during the log-review PRs). They look like leftover Pilot
 e2e scratch files, not real skills. Fix: either add the required metadata +
 regenerate `skills/.manifest.json`, or delete both files.
+
+**RESOLVED 2026-07-03:** they were auto-generated Pilot trace recordings
+(May 13) living in `~/.codec/skills/`, not repo files. Moved to
+`~/.codec/pilot_archive/` — recordings preserved, skills dir clean,
+`tests/test_skills.py` fully green (160/160).
