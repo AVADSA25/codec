@@ -45,21 +45,21 @@ def call_qwen(text, mode):
     )
     return re.sub(r'###\s*FINAL ANSWER:\s*', '', result).strip()
 
+import codec_overlays
+
+
 def overlay(text, color, duration):
-    env = os.environ.copy()
-    env["_OVERLAY_TEXT"] = text
-    env["_OVERLAY_COLOR"] = color
-    env["_OVERLAY_DURATION"] = str(duration)
-    return subprocess.Popen([sys.executable, "-c", """import tkinter as tk, os
-t=os.environ['_OVERLAY_TEXT'];c=os.environ['_OVERLAY_COLOR'];d=int(os.environ['_OVERLAY_DURATION'])
-r=tk.Tk();r.overrideredirect(True);r.attributes('-topmost',True);r.attributes('-alpha',0.95);r.configure(bg='#0a0a0a')
-sw=r.winfo_screenwidth();sh=r.winfo_screenheight()
-w,h=520,90
-r.geometry(f'{w}x{h}+{(sw-w)//2}+{sh-130}')
-cv=tk.Canvas(r,bg='#0a0a0a',highlightthickness=0,width=w,height=h);cv.pack()
-cv.create_rectangle(1,1,w-1,h-1,outline=c,width=1)
-cv.create_text(w//2,h//2,text=t,fill=c,font=('Helvetica',16,'bold'))
-r.after(d,r.destroy);r.mainloop()"""], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
+    """CODEC Instant status overlay — routed through the shared
+    codec_overlays module (the same Swift glass-blurred NSPanel that
+    F13/F18 use), instead of the bare hand-rolled tkinter box this used
+    to spawn (flat black rectangle, no blur, no CODEC branding — visibly
+    inconsistent with the rest of the product).
+
+    Returns None: the Swift render path has no killable process handle.
+    Call codec_overlays.hide_overlay() to dismiss early (replaces the
+    old `_proc_overlay.terminate()` pattern below).
+    """
+    return codec_overlays.show_overlay(text, color=color, duration=duration)
 
 text = subprocess.run(["pbpaste"], capture_output=True, text=True).stdout.strip()
 if not text: sys.exit(0)
@@ -113,13 +113,11 @@ if MODE == "save":
     overlay("\u2705 Saved to Apple Notes!", "#44cc66", 2000)
     sys.exit(0)
 
-_proc_overlay = overlay("⚡ Processing...", "#00aaff", 15000)
+overlay("⚡ Processing...", "#00aaff", 15000)
 try:
     result = call_qwen(text, MODE)
-    # Kill processing overlay now that we have the result
-    if _proc_overlay:
-        try: _proc_overlay.terminate()
-        except OSError: pass  # B2/SR-17 — ProcessLookupError ⊂ OSError
+    # Dismiss the processing overlay now that we have the result
+    codec_overlays.hide_overlay()
     if MODE in ("explain", "translate"):
         # Show result in a styled floating window (no Terminal)
         title = "CODEC Explain" if MODE == "explain" else "CODEC Translate"
@@ -190,7 +188,5 @@ r.mainloop()
             capture_output=True, timeout=5)
         overlay("✅ Text replaced!", "#44cc66", 2000)
 except Exception:
-    if _proc_overlay:
-        try: _proc_overlay.terminate()
-        except OSError: pass  # B2/SR-17 — ProcessLookupError ⊂ OSError
+    codec_overlays.hide_overlay()
     overlay("Error - check terminal", "#ff3333", 3000)
