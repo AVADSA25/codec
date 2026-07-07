@@ -12,7 +12,28 @@ SKILL_TRIGGERS = ["switch to", "go to app", "focus on", "bring up", "activate ap
                    # user actually named. This skill already handles browser
                    # targeting correctly (explicit `open -a <Browser>`); it
                    # just needed a trigger to be reached.
-                   "in safari", "in chrome", "in firefox", "in brave", "in the browser"]
+                   "in safari", "in chrome", "in firefox", "in brave", "in the browser",
+                   # First attempt only covered "in <browser>". Wake-word
+                   # transcription is non-deterministic — the SAME spoken
+                   # command came back as "on Safari" on a retry (Whisper
+                   # picks whatever preposition it hears, or drops it), so a
+                   # fixed preposition list is inherently a losing game.
+                   # Preposition matrix for defense-in-depth:
+                   "on safari", "on chrome", "on firefox", "on brave",
+                   "using safari", "using chrome", "using firefox", "using brave",
+                   "via safari", "via chrome", "via firefox", "via brave",
+                   "with safari", "with chrome", "with firefox", "with brave",
+                   "into safari", "into chrome", "into firefox", "into brave",
+                   # Bare browser name as the real fix: whatever preposition
+                   # (or none) Whisper produces, if "safari"/"firefox"/"brave"
+                   # is anywhere in the utterance it's virtually always about
+                   # that browser. run() already fails safely (returns None)
+                   # when there's nothing sensible to do, so a slightly eager
+                   # match here is low-risk. "chrome" deliberately excluded —
+                   # chrome_open.py / chrome_close.py / chrome_tabs.py already
+                   # own Chrome with longer, more specific triggers that win
+                   # the specificity sort anyway; no need to add another path.
+                   "safari", "firefox", "brave"]
 import subprocess
 import re
 
