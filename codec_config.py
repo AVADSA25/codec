@@ -368,6 +368,10 @@ WAKE_PHRASES      = cfg.get("wake_phrases", ['hey codec', 'hey', 'okay codec', '
 _raw_wake_energy   = cfg.get("wake_energy", 200)
 WAKE_ENERGY       = max(50, min(int(_raw_wake_energy), 1500))  # clamp 50-1500; >1500 silences mic
 WAKE_CHUNK_SEC    = cfg.get("wake_chunk_sec", 3.0)
+# Max seconds to keep capturing a spoken command after the wake word when the
+# wake chunk ended mid-sentence (see the trailing-energy check in codec.py).
+# Silence-terminated, so short commands still finish fast; this is only the cap.
+WAKE_FOLLOWUP_SEC = float(cfg.get("wake_followup_sec", 9.0))
 REQUIRE_CONFIRM   = cfg.get("require_confirmation", True)
 
 # Dashboard binding — Closes audit finding D-7. Default is loopback-only

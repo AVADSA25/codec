@@ -38,7 +38,7 @@ from codec_config import (
     QWEN_BASE_URL, QWEN_MODEL, LLM_API_KEY, LLM_KWARGS,
     WHISPER_URL,
     TASK_QUEUE_FILE, DRAFT_TASK_FILE, SESSION_ALIVE, STREAMING, WAKE_WORD, WAKE_ENERGY, WAKE_CHUNK_SEC,
-    WAKE_PHRASES,
+    WAKE_FOLLOWUP_SEC, WAKE_PHRASES,
     get_gemini_api_key,
 )
 
@@ -779,23 +779,52 @@ def wake_word_listener():
                         for kw in list(_WAKE_KEYWORD_DEFAULTS) + list(_WAKE_STRIP_PREFIXES):
                             command = re.sub(r'(?i)\b' + re.escape(kw) + r'\b', '', command).strip()
                         command = re.sub(r'^[\s,.\-]+|[\s,.\-]+$', '', command)
-                        if len(command) > 3:
+
+                        # Was the command truncated by the fixed wake-chunk window?
+                        # If the chunk ended while the user was STILL speaking
+                        # (trailing energy high), "Hey CODEC, add to my to-do list,
+                        # edit and upload the demo video by tomorrow" gets cut to
+                        # "add to my" and dispatched as a fragment — then the user's
+                        # repeat fires a SECOND session (the demo double-trigger
+                        # bug, 2026-07-07). Detect that and capture the rest instead.
+                        try:
+                            _tail_n = max(1, int(sample_rate * 0.5))  # last ~0.5s
+                            _still_talking = float(np.abs(data[-_tail_n:]).mean()) > WAKE_ENERGY
+                        except Exception:
+                            _still_talking = False
+
+                        if len(command) > 3 and not _still_talking:
+                            # Complete short command that ended in silence — snappy path.
                             print(f"[CODEC] Wake + command: {command}")
                             push(lambda: show_overlay('Heard you!', '#E8711A', 1500))
                             push(lambda cmd=command: dispatch(cmd))
                         else:
-                            print("[CODEC] Wake word detected! Listening...")
-                            push(lambda: show_overlay('Listening...', '#E8711A', 5000))
-                            # Record follow-up command (8 seconds)
+                            # Wake-word alone OR a command cut off mid-sentence.
+                            # Capture a follow-up (silence-terminated, hard-capped)
+                            # and prepend any same-chunk remainder so the FULL
+                            # command dispatches exactly once.
+                            if command:
+                                print(f"[CODEC] Wake + partial ('{command}') — capturing the rest...")
+                            else:
+                                print("[CODEC] Wake word detected! Listening...")
+                            push(lambda: show_overlay('Listening...', '#E8711A', int(WAKE_FOLLOWUP_SEC * 1000)))
                             tmp2 = tempfile.NamedTemporaryFile(suffix=".wav", delete=False); tmp2.close()
+                            # trim caps total length; silence stops ~1.5s after the
+                            # user finishes (starts on first speech, so an ongoing
+                            # sentence is captured immediately).
                             subprocess.run(
                                 [SOX, "-t", "coreaudio", wake_device, "-r", str(sample_rate), "-c", "1",
-                                 "-b", "16", "-e", "signed-integer", tmp2.name, "trim", "0", "8"],
-                                timeout=12, capture_output=True)
-                            task = transcribe(tmp2.name)
-                            if task:
-                                print(f"[CODEC] Heard: {task}")
-                                push(lambda t=task: dispatch(t))
+                                 "-b", "16", "-e", "signed-integer", tmp2.name,
+                                 "trim", "0", str(WAKE_FOLLOWUP_SEC),
+                                 "silence", "1", "0.1", "2%", "1", "1.5", "2%"],
+                                timeout=int(WAKE_FOLLOWUP_SEC) + 4, capture_output=True)
+                            followup = transcribe(tmp2.name) or ""
+                            full = (command + " " + followup).strip() if command else followup.strip()
+                            if full and len(full) > 2:
+                                print(f"[CODEC] Heard: {full}")
+                                push(lambda t=full: dispatch(t))
+                            else:
+                                print("[CODEC] No command captured after wake")
             except Exception as e:
                 print(f"[CODEC] Wake whisper error: {e}")
             finally:
