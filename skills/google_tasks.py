@@ -39,18 +39,33 @@ def _extract_title(task: str) -> str:
     """Pull the task title out of phrases like:
        'add to my to-do list: edit and upload demo video by tomorrow'
        'create new task called review email'
-       'add a task titled "x"'"""
+       'add a task titled "x"'
+       'Hey Codec, can you add to my to-do list edit and upload demo video'
+       (voice preamble before the write-verb — see below)"""
     t = task.strip()
     low = t.lower()
 
-    # Strip leading write-verb phrase (longest match first, word-boundary)
+    # Strip the write-verb phrase WHEREVER it appears (longest match first,
+    # word-boundary), not just when anchored at the very start. Voice input
+    # can carry a wake-word/filler preamble ahead of it ("Hey Codec, can you
+    # add to my to-do list...") — anchoring to ^ only worked when the phrase
+    # was already the first thing in the string, so any un-stripped preamble
+    # from upstream silently became part of the task title (2026-07-07: a
+    # real task got titled "Hey Codec, can you add to my to-do list edit and
+    # upload demo video" instead of just "edit and upload demo video").
+    # Searching for the LAST occurrence and keeping everything after it
+    # handles both "<preamble> <verb> <title>" and "<verb> <title>".
     verbs_sorted = sorted(_WRITE_VERBS, key=len, reverse=True)
+    best_end = None
     for v in verbs_sorted:
-        m = re.match(r'^\s*' + re.escape(v) + r'\b', low)
-        if m:
-            t = t[m.end():].strip()
-            low = t.lower()
-            break
+        for m in re.finditer(r'\b' + re.escape(v) + r'\b', low):
+            if best_end is None or m.end() > best_end:
+                best_end = m.end()
+        if best_end is not None:
+            break  # matched the longest verb phrase available; don't also try shorter ones
+    if best_end is not None:
+        t = t[best_end:].strip()
+        low = t.lower()
 
     # Strip leading punctuation connectors (:, ,, -) — not word-chars, no \b
     t = re.sub(r'^\s*[:,\-]+\s*', '', t).strip()

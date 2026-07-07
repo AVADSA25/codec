@@ -774,11 +774,49 @@ def wake_word_listener():
                         # Auto-activate if not already on (H-2: atomic vs the F13 toggle)
                         if _activate_if_off():
                             push(lambda: show_toggle_overlay(True, "F18=voice | **=screen | --=chat"))
-                        command = text
-                        # Strip wake keywords and common prefixes (case-insensitive)
-                        for kw in list(_WAKE_KEYWORD_DEFAULTS) + list(_WAKE_STRIP_PREFIXES):
-                            command = re.sub(r'(?i)\b' + re.escape(kw) + r'\b', '', command).strip()
-                        command = re.sub(r'^[\s,.\-]+|[\s,.\-]+$', '', command)
+                        def _strip_wake_fluff(s):
+                            """Peel wake keywords ('codec', 'kodak', ...), lead-in
+                            prefixes ('hey', 'okay', ...), and polite filler ('can
+                            you', 'please') off the FRONT of the utterance only —
+                            repeatedly, until nothing more matches at position 0.
+
+                            Anchored to the start on purpose: the original version
+                            of this loop (and my first pass at this fix) used a
+                            global re.sub, which strips the word wherever it occurs
+                            — so a command containing the ordinary word "and" (e.g.
+                            "edit AND upload demo video") got mangled into "edit
+                            upload demo video" because "and" is also a wake-prefix
+                            candidate. Anchoring to ^ keeps stripping "Hey Codec,
+                            can you..." lead-ins while never touching the same
+                            words later in legitimate content.
+
+                            Used on BOTH the wake-chunk fragment and the follow-up
+                            recording (2026-07-07: the follow-up used to skip this
+                            entirely, so a continuous utterance that re-said "Hey
+                            Codec, can you..." into the follow-up window leaked the
+                            whole preamble into whatever got dispatched — e.g. a
+                            Google Tasks title like 'Hey Codec, can you add to my
+                            to-do list edit and upload demo video' instead of just
+                            'edit and upload demo video')."""
+                            fillers = sorted(
+                                list(_WAKE_KEYWORD_DEFAULTS) + list(_WAKE_STRIP_PREFIXES)
+                                + ["can you", "could you", "would you", "please"],
+                                key=len, reverse=True,
+                            )
+                            s = s.strip()
+                            changed = True
+                            while changed and s:
+                                changed = False
+                                low = s.lower()
+                                for kw in fillers:
+                                    m = re.match(r'^' + re.escape(kw) + r'\b', low)
+                                    if m:
+                                        s = re.sub(r'^[\s,.\-]+', '', s[m.end():]).strip()
+                                        changed = True
+                                        break
+                            return s
+
+                        command = _strip_wake_fluff(text)
 
                         # Was the command truncated by the fixed wake-chunk window?
                         # If the chunk ended while the user was STILL speaking
@@ -818,7 +856,7 @@ def wake_word_listener():
                                  "trim", "0", str(WAKE_FOLLOWUP_SEC),
                                  "silence", "1", "0.1", "2%", "1", "1.5", "2%"],
                                 timeout=int(WAKE_FOLLOWUP_SEC) + 4, capture_output=True)
-                            followup = transcribe(tmp2.name) or ""
+                            followup = _strip_wake_fluff(transcribe(tmp2.name) or "")
                             full = (command + " " + followup).strip() if command else followup.strip()
                             if full and len(full) > 2:
                                 print(f"[CODEC] Heard: {full}")
