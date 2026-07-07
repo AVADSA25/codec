@@ -22,7 +22,7 @@ qrcode[pil]>=8.2
 # hygiene, keeping the dep tree current. The deployed interpreters were found
 # STALE vs these floors; refresh them (see docs note) at a maintenance window.
 urllib3>=2.7.0          # CVE-2026-44431 / -44432 (transitive via requests)
-pillow>=12.2.0          # CVE-2026-42311 + others (transitive via qrcode[pil])
+pillow>=12.3.0          # CVE-2026-42311 + others (transitive via qrcode[pil])
 cryptography>=49.0.0    # CVE-2026-39892 / -34073 (routes/auth + codec_license)
 
 # B8 / SR-31: argon2id for PIN hashing (replaces SHA-256). Memory-hard,
