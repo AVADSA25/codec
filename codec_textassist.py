@@ -146,36 +146,78 @@ try:
 except Exception:
     pass
 """], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=_tts_env)
-        # Launch a clean floating result window
+        # Launch a floating result window matching CODEC's actual design
+        # tokens (dashboard CSS custom properties, 2026-07-07 restyle):
+        #   --surface #1a1a1d --surface-2 #212125 --border #303035
+        #   --accent #E8711A --text #ececec --text-muted #9a9aa0
+        # Was: a solid loud orange header block, plain Helvetica, no
+        # border, flat #111 footer — nothing else in CODEC uses a filled
+        # accent block like that; the rest of the product treats orange
+        # as a sparing accent (text/underline), not a fill color.
+        #
+        # Three tkinter gotchas fixed after visual verification (screenshot
+        # + direct winfo_* geometry introspection — pixel colors alone were
+        # not enough to catch these):
+        # - tk.Button ignores custom bg on Aqua (renders as a blank white
+        #   box regardless of the bg= argument) — Copy/Close are styled
+        #   tk.Label widgets with a click binding instead, which DOES
+        #   respect custom colors reliably on macOS.
+        # - The native window chrome already shows the title ("CODEC
+        #   Translate") in its own title bar; repeating it in the custom
+        #   header row produced a redundant double-title look. Dropped
+        #   the header's title text, kept just the accent dot + Copy.
+        # - tk.Text defaults to a NATURAL size of 80×24 character cells
+        #   (computed from the font's metrics), independent of the pack()
+        #   fill/expand constraints on its parent. At 13pt that 24-row
+        #   request exceeds the whole window's height, and pack() silently
+        #   squeezed the footer down to 0px to satisfy it — even though
+        #   the footer frame itself was correctly built, mapped, and
+        #   should have expanded to fill available space. Explicit
+        #   height=1 makes the widget's natural request tiny; fill='both'
+        #   + expand=True on its wrapper still lets it grow to fill the
+        #   actual available space at runtime. Also: 'SF Mono' silently
+        #   fails to resolve on this Tk install (falls back to a
+        #   proportional font, confirmed via tkinter.font.families()) —
+        #   switched to 'Menlo', which the prior version of this window
+        #   used successfully and is confirmed present.
         safe_result = result.replace("\\", "\\\\").replace("'", "\\'").replace('"', '\\"').replace("\n", "\\n")
         subprocess.Popen([sys.executable, "-c", f"""import tkinter as tk
-from tkinter import font as tkfont
 r=tk.Tk()
 r.title('{title}')
 r.attributes('-topmost', True)
-r.configure(bg='#1a1a1a')
+BORDER='#303035'
+r.configure(bg=BORDER)
 sw=r.winfo_screenwidth();sh=r.winfo_screenheight()
 w,h=560,400
 r.geometry(f'{{w}}x{{h}}+{{(sw-w)//2}}+{{(sh-h)//2}}')
 r.minsize(400,250)
-# Title bar
-hdr=tk.Frame(r,bg='#E8711A',height=36);hdr.pack(fill='x')
+def _mk_pill(parent, text, cmd, fg='#ececec', bg='#2a2a2e', active='#333338'):
+    lbl=tk.Label(parent,text=text,fg=fg,bg=bg,font=('Helvetica Neue',10),padx=10,pady=3,
+        borderwidth=1,relief='solid',highlightbackground=BORDER)
+    lbl.bind('<Button-1>', lambda e: cmd())
+    lbl.bind('<Enter>', lambda e: lbl.config(bg=active))
+    lbl.bind('<Leave>', lambda e: lbl.config(bg=bg))
+    return lbl
+body=tk.Frame(r,bg='#1a1a1d')
+body.pack(fill='both',expand=True,padx=1,pady=1)
+hdr=tk.Frame(body,bg='#212125',height=40);hdr.pack(fill='x')
 hdr.pack_propagate(False)
-tk.Label(hdr,text='{title}',fg='white',bg='#E8711A',font=('Helvetica',14,'bold')).pack(side='left',padx=12)
-tk.Button(hdr,text='📋 Copy',fg='#1a1a1a',bg='white',relief='flat',font=('Helvetica',11,'bold'),padx=8,
-    command=lambda:[r.clipboard_clear(),r.clipboard_append(txt.get('1.0','end-1c'))]).pack(side='right',padx=6,pady=4)
-# Text area
-txt=tk.Text(r,wrap='word',bg='#1a1a1a',fg='#e0e0e0',font=('Menlo',13),relief='flat',
-    padx=16,pady=12,insertbackground='#E8711A',selectbackground='#E8711A',borderwidth=0)
+hdr_inner=tk.Frame(hdr,bg='#212125');hdr_inner.pack(fill='both',expand=True,padx=14)
+tk.Label(hdr_inner,text='⬤',fg='#E8711A',bg='#212125',font=('Helvetica Neue',7)).pack(side='left',pady=(12,0))
+_mk_pill(hdr_inner,'Copy',lambda:[r.clipboard_clear(),r.clipboard_append(txt.get('1.0','end-1c'))]).pack(side='right',pady=(8,0))
+underline=tk.Frame(body,bg='#E8711A',height=2);underline.pack(fill='x')
+txt_wrap=tk.Frame(body,bg='#1a1a1d');txt_wrap.pack(fill='both',expand=True)
+txt=tk.Text(txt_wrap,height=1,wrap='word',bg='#1a1a1d',fg='#ececec',font=('Menlo',13),relief='flat',
+    padx=16,pady=14,insertbackground='#E8711A',selectbackground='#E8711A',selectforeground='#ececec',
+    borderwidth=0,highlightthickness=0)
 txt.pack(fill='both',expand=True)
 txt.insert('1.0','{safe_result}')
 txt.config(state='normal')
-# Footer
-ft=tk.Frame(r,bg='#111',height=32);ft.pack(fill='x')
+sep=tk.Frame(body,bg=BORDER,height=1);sep.pack(fill='x')
+ft=tk.Frame(body,bg='#212125',height=36);ft.pack(fill='x')
 ft.pack_propagate(False)
-tk.Label(ft,text='Copied to clipboard  \u00b7  \u2318V to paste',fg='#666',bg='#111',font=('Helvetica',10)).pack(side='left',padx=12)
-tk.Button(ft,text='Close',fg='#999',bg='#222',relief='flat',font=('Helvetica',11),padx=10,
-    command=r.destroy).pack(side='right',padx=8,pady=3)
+tk.Label(ft,text='Copied to clipboard  ·  ⌘V to paste',fg='#9a9aa0',bg='#212125',font=('Helvetica Neue',10)).pack(side='left',padx=14)
+_mk_pill(ft,'Close',r.destroy,fg='#9a9aa0').pack(side='right',padx=10,pady=6)
 r.bind('<Escape>',lambda e:r.destroy())
 r.mainloop()
 """], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
