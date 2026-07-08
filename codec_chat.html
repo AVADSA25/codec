@@ -648,13 +648,13 @@ function regenerateResponse(btn){
       for(var li=0;li<lines.length;li++){
         var line=lines[li].trim();if(!line.startsWith('data: '))continue;var payload=line.substring(6);
         if(payload==='[DONE]')break;
-        try{var j=JSON.parse(payload);if(j.skill){showToast('⚡ Skill: '+j.skill)}if(j.think){thinkText+=j.think;if(thoughtsEnabled){var tp=ensureThinkPanel(div,'🧠 Thinking…',true);setThinkText(tp,thinkText);scrollBottom()}}if(j.token){if(firstToken){bubble.innerHTML='';firstToken=false}fullText+=j.token;bubble.innerHTML=formatMsg(fullText);scrollBottom()}if(j.error){fullText+='\nError: '+j.error}}catch(pe){}
+        try{var j=JSON.parse(payload);if(j.skill){showToast('⚡ Skill: '+j.skill)}if(j.think){thinkText+=j.think;if(thoughtsEnabled){var tp=ensureThinkPanel(div,'Thinking…',true);setThinkText(tp,thinkText);scrollBottom()}}if(j.token){if(firstToken){bubble.innerHTML='';firstToken=false}fullText+=j.token;bubble.innerHTML=formatMsg(fullText);scrollBottom()}if(j.error){fullText+='\nError: '+j.error}}catch(pe){}
       }
     }
     if(fullText){
       // Replace the streaming div with a proper message (with copy+regen buttons)
       div.remove();var md=addMessage('assistant',fullText);
-      if(thoughtsEnabled&&thinkText.trim()&&md){var fp=ensureThinkPanel(md,'🧠 Train of thought',false);setThinkText(fp,thinkText.trim())}
+      if(thoughtsEnabled&&thinkText.trim()&&md){var fp=ensureThinkPanel(md,'Train of thought',false);setThinkText(fp,thinkText.trim())}
       chatHist.push({role:'assistant',content:fullText});saveMessages([{role:'assistant',content:fullText}])
     }else{bubble.innerHTML='<em style="color:var(--text-dim)">No response</em>'}
     _currentAbort=null;isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false
@@ -689,7 +689,7 @@ function toggleThoughts(){
   var btn=document.getElementById('thoughtsToggle');
   btn.classList.toggle('active',thoughtsEnabled);
   btn.title=thoughtsEnabled?'Train of thought ON — showing reasoning & steps':"Show CODEC's train of thought (off by default)";
-  showToast(thoughtsEnabled?'🧠 Train of thought ON':'Train of thought OFF');
+  showToast(thoughtsEnabled?'Train of thought ON':'Train of thought OFF');
 }
 
 // Build (once) and return a collapsible thoughts panel inside `container`,
@@ -698,7 +698,7 @@ function ensureThinkPanel(container,label,open){
   var p=container.querySelector('.think-panel');
   if(p)return p;
   p=document.createElement('details');p.className='think-panel';if(open)p.open=true;
-  var s=document.createElement('summary');s.textContent=label||'🧠 Train of thought';
+  var s=document.createElement('summary');s.textContent=label||'Train of thought';
   var body=document.createElement('div');body.className='think-body';
   p.appendChild(s);p.appendChild(body);
   var bubble=container.querySelector('.msg-bubble');
@@ -797,7 +797,7 @@ async function loadSidebarHistory(){
     el.innerHTML=data.map(function(s){
       var ts=s.updated_at?new Date(s.updated_at).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
       var active=s.id===sessionId?' style="background:var(--surface-2)"':'';
-      return'<div class="sidebar-item"'+active+'><div class="si-main" onclick="loadSession(\''+s.id+'\')"><div class="si-title">'+escHtml(s.title)+'</div><div class="si-time">'+ts+'</div></div><button class="si-del" onclick="deleteSession(event,\''+s.id+'\')" title="Delete">🗑</button></div>'
+      return'<div class="sidebar-item"'+active+'><div class="si-main" onclick="loadSession(\''+s.id+'\')"><div class="si-title">'+escHtml(s.title)+'</div><div class="si-time">'+ts+'</div></div><button class="si-del" onclick="deleteSession(event,\''+s.id+'\')" title="Delete"><svg class="ico ico-sm" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></button></div>'
     }).join('')
   }catch(e){el.innerHTML='<div style="padding:16px;color:var(--text-dim);font-size:12px">Error loading.</div>'}
 }
@@ -875,7 +875,7 @@ function appendDiscussButton(docUrl){
   wrap.className='msg assistant';wrap.style.animation='none';
   var b=document.createElement('button');
   b.className='discuss-report-btn';
-  b.innerHTML='💬 Discuss this report in Chat';
+  b.innerHTML='<svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>Discuss this report in Chat';
   b.onclick=function(){discussReportInChat(docUrl,b)};
   var bubble=document.createElement('div');bubble.className='msg-bubble';
   bubble.style.background='transparent';bubble.style.padding='0';bubble.style.boxShadow='none';
@@ -886,7 +886,7 @@ function appendDiscussButton(docUrl){
 }
 
 async function discussReportInChat(docUrl, btn){
-  if(btn){btn.disabled=true;btn.innerHTML='⏳ Loading report&hellip;';}
+  if(btn){btn.disabled=true;btn.innerHTML='Loading report&hellip;';}
   setMode('chat');
   try{
     var r=await fetch('/api/gdoc/read?url='+encodeURIComponent(docUrl));
@@ -897,11 +897,11 @@ async function discussReportInChat(docUrl, btn){
     var ctx='Here is the full text of the report we just generated'+(d.title?(' ("'+d.title+'")'):'')+'. Use it to answer my follow-up questions about it:\n\n'+d.text+(d.truncated?'\n\n[report truncated for length]':'');
     chatHist.push({role:'user',content:ctx});
     chatHist.push({role:'assistant',content:'I\'ve loaded the full report and I\'m ready to discuss it.'});
-    addMessage('assistant','📄 **Loaded the full report** — ask me anything about it (key findings, a specific section, or say "summarize the main risks").');
-    if(btn){btn.innerHTML='✓ Report loaded into chat';}
+    addMessage('assistant','**Loaded the full report** — ask me anything about it (key findings, a specific section, or say "summarize the main risks").');
+    if(btn){btn.innerHTML='Report loaded into chat';}
   }catch(e){
-    addMessage('assistant','⚠️ I couldn\'t load the full report ('+e.message+'). You can still ask about the summary above, or open it in Google Docs.');
-    if(btn){btn.disabled=false;btn.innerHTML='💬 Discuss this report in Chat';}
+    addMessage('assistant','**Couldn\'t load the full report** ('+e.message+'). You can still ask about the summary above, or open it in Google Docs.');
+    if(btn){btn.disabled=false;btn.innerHTML='<svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>Discuss this report in Chat';}
   }
   var ci=document.getElementById('chatInput');if(ci)ci.focus();
 }
@@ -1093,7 +1093,7 @@ function stopGeneration(){
     var jid=_agentJobId;_agentJobId=null;
     if(jid){fetch('/api/agents/cancel/'+jid,{method:'POST'}).catch(function(){})}
     var st=document.getElementById('agentStatus');if(st&&st.parentElement)st.parentElement.remove();
-    addMessage('assistant','⏹ **Task stopped.** The agent run was cancelled. Any work already finished on the server may still be saved.');
+    addMessage('assistant','**Task stopped.** The agent run was cancelled. Any work already finished on the server may still be saved.');
     hideTyping();_showSend();isProcessing=false;document.getElementById('sendBtn').disabled=false;return
   }
   if(_currentAbort){_currentAbort.abort();_currentAbort=null}
@@ -1219,18 +1219,18 @@ async function sendMessage(){
 
     isProcessing=true;document.getElementById('sendBtn').disabled=true;_showStop();
     var crewHints={'deep_research':'Searching the web \u2192 analyzing sources \u2192 writing report...','daily_briefing':'Checking calendar, weather, news...','trip_planner':'Researching destination \u2192 building itinerary...','competitor_analysis':'Scouting competitors \u2192 writing analysis...','email_handler':'Reading inbox \u2192 drafting replies...','custom':'Running custom agent...'};
-    updateStatus('\u23F3 Starting '+(crewLabels[crew]||crew)+'&hellip;\n\n'+(crewHints[crew]||'Running agent...'));
+    updateStatus('Starting '+(crewLabels[crew]||crew)+'&hellip;\n\n'+(crewHints[crew]||'Running agent...'));
 
     var payload={crew:crew};
     if(crew==='custom'){payload.agent_name=document.getElementById('agentName').value||'Custom Agent';payload.role=document.getElementById('agentRole').value||'';payload.tools=getSelectedTools();payload.max_iterations=parseInt(document.getElementById('agentMaxIter').value||'8');payload.task=researchText}else{if(['deep_research','competitor_analysis'].includes(crew))payload.topic=researchText;if(crew==='trip_planner')payload.destination=researchText}
 
     var elapsed=0;
-    _agentTicker=setInterval(function(){elapsed+=5;updateStatus('\u23F3 '+crewLabels[crew]+' running&hellip; ('+elapsed+'s)  \u2014 tap \u23F9 to stop\n\n'+(crewHints[crew]||''))},5000);
+    _agentTicker=setInterval(function(){elapsed+=5;updateStatus(crewLabels[crew]+' running&hellip; ('+elapsed+'s)  \u2014 press Stop to cancel\n\n'+(crewHints[crew]||''))},5000);
 
     try{
       var r=await fetch('/api/agents/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
       var startData=await r.json();
-      if(!r.ok||!startData.job_id){clearInterval(_agentTicker);_agentTicker=null;updateStatus('\u274C Agent error: '+(startData.error||'Failed to start'));isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false;return}
+      if(!r.ok||!startData.job_id){clearInterval(_agentTicker);_agentTicker=null;updateStatus('Agent error: '+(startData.error||'Failed to start'));isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false;return}
       var jobId=startData.job_id;_agentJobId=jobId;
       var data=await new Promise(function(resolve,reject){_agentPoll=setInterval(async function(){try{var sr=await fetch('/api/agents/status/'+jobId);var sd=await sr.json();
         // Train-of-thought: stream the crew's live step log into a panel above the status.
@@ -1240,7 +1240,7 @@ async function sendMessage(){
       // User pressed Stop after the crew already reported terminal \u2014 honor it.
       if(data.status==='cancelled'){isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false;return}
       var resultMsg;var reportDocUrl=null;
-      if(data.status==='complete'){var result=data.result||'';var docMatch=result.match(/https:\/\/docs\.google\.com\/\S+/);if(docMatch){reportDocUrl=docMatch[0].replace(/[)\].,]+$/,'');var summary=result.replace(docMatch[0],'').trim();if(!summary)summary='Your report has been generated and saved to Google Docs.';resultMsg='\u2705 **'+crewLabels[crew]+' Complete!** ('+data.elapsed_seconds+'s)\n\n'+summary+'\n\n[Open in Google Docs]('+reportDocUrl+')'}else{resultMsg='\u2705 **'+crewLabels[crew]+' Complete!** ('+data.elapsed_seconds+'s)\n\n'+result}}else{resultMsg='\u274C Agent error: '+(data.error||'Unknown error')}
+      if(data.status==='complete'){var result=data.result||'';var docMatch=result.match(/https:\/\/docs\.google\.com\/\S+/);if(docMatch){reportDocUrl=docMatch[0].replace(/[)\].,]+$/,'');var summary=result.replace(docMatch[0],'').trim();if(!summary)summary='Your report has been generated and saved to Google Docs.';resultMsg='**'+crewLabels[crew]+' Complete!** ('+data.elapsed_seconds+'s)\n\n'+summary+'\n\n[Open in Google Docs]('+reportDocUrl+')'}else{resultMsg='**'+crewLabels[crew]+' Complete!** ('+data.elapsed_seconds+'s)\n\n'+result}}else{resultMsg='Agent error: '+(data.error||'Unknown error')}
       var amd=addMessage('assistant',resultMsg);chatHist.push({role:'assistant',content:resultMsg});saveMessages([{role:'assistant',content:resultMsg}]);
       // Persist the crew's step log on the final message when Thoughts is on.
       if(thoughtsEnabled&&data.progress&&data.progress.length&&amd){var pp=ensureThinkPanel(amd,'\uD83E\uDDE0 Train of thought ('+data.progress.length+' steps)',false);renderThinkSteps(pp,data.progress)}
@@ -1287,10 +1287,10 @@ async function sendMessage(){
           if(!line.startsWith('data: '))continue;
           var payload=line.substring(6);
           if(payload==='[DONE]')break;
-          try{var j=JSON.parse(payload);if(j.think){thinkText+=j.think;if(thoughtsEnabled){var tp2=ensureThinkPanel(div,'🧠 Thinking…',true);setThinkText(tp2,thinkText);scrollBottom()}}if(j.token){if(firstToken){bubble.innerHTML='';firstToken=false}fullText+=j.token;bubble.innerHTML=formatMsg(fullText);scrollBottom()}if(j.escalate_project){renderEscalateChip(j.escalate_project,text)}if(j.error){fullText+='\n\nError: '+j.error}}catch(pe){}
+          try{var j=JSON.parse(payload);if(j.think){thinkText+=j.think;if(thoughtsEnabled){var tp2=ensureThinkPanel(div,'Thinking…',true);setThinkText(tp2,thinkText);scrollBottom()}}if(j.token){if(firstToken){bubble.innerHTML='';firstToken=false}fullText+=j.token;bubble.innerHTML=formatMsg(fullText);scrollBottom()}if(j.escalate_project){renderEscalateChip(j.escalate_project,text)}if(j.error){fullText+='\n\nError: '+j.error}}catch(pe){}
         }
       }
-      if(fullText){div.remove();var md2=addMessage('assistant',fullText);if(thoughtsEnabled&&thinkText.trim()&&md2){var fp2=ensureThinkPanel(md2,'🧠 Train of thought',false);setThinkText(fp2,thinkText.trim())}chatHist.push({role:'assistant',content:fullText});saveMessages([{role:'assistant',content:fullText}])}
+      if(fullText){div.remove();var md2=addMessage('assistant',fullText);if(thoughtsEnabled&&thinkText.trim()&&md2){var fp2=ensureThinkPanel(md2,'Train of thought',false);setThinkText(fp2,thinkText.trim())}chatHist.push({role:'assistant',content:fullText});saveMessages([{role:'assistant',content:fullText}])}
       else{bubble.innerHTML='<em style="color:var(--text-dim)">No response</em>'}
     }
   }catch(e){
