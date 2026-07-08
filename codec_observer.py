@@ -135,7 +135,11 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
     "ocr_enabled": True,
     "ocr_timeout_ms": 100,
     "ocr_retry_timeout_ms": 200,         # Q5.1
-    "reset_on_long_idle": True,
+    # Default OFF: as a background PM2 daemon the observer can't read the user's
+    # real HID idle time (CGEventSourceSecondsSinceLastEventType returns an
+    # ever-increasing value from a non-session process), so it always looked
+    # "long idle" and wiped the buffer every cycle — leaving nothing to recall.
+    "reset_on_long_idle": False,
     "reset_idle_threshold_s": 1800,
     "summary_max_tokens": 200,
     "poll_slow_threshold_ms": 150,        # Q5.5
