@@ -113,42 +113,50 @@ def _clean_topic_base(raw: str) -> str:
 
 
 def _smart_query(topic_base: str, positions: list, insert_idx: int) -> str:
+    """Build a Pexels query anchored to the REPORT topic and the SECTION heading.
+
+    Relevance fix (2026-07): the old version matched category buzzwords against
+    the section BODY text, which misfired constantly — a stray word like
+    "clinical" or "energy" in a sentence pulled a medical/energy stock photo into
+    an unrelated report. Now every query leads with the report topic, adds the
+    section's heading keywords, and only appends a category descriptor when the
+    signal is in the HEADING (a far more reliable cue)."""
     heading = ""
     for p in positions:
         if p["type"] in ("h2", "h3") and p["start"] <= insert_idx:
             heading = p["text"]
-    body = _section_body_text(positions, insert_idx)
-    ctx  = (heading + " " + body).lower()
-    kw   = _heading_keywords(heading)
+    tb = _clean_topic_base(topic_base)          # report topic (from title)
+    hk = _heading_keywords(heading)             # up to 2 salient heading words
+    hl = heading.lower()
 
-    # Clean noise from topic_base so queries don't contain dates/generic words
-    tb = _clean_topic_base(topic_base)
+    # Category descriptor keyed on the HEADING only (reliable), never replacing topic.
+    _CATS = [
+        (["privacy", "security", "encryption", "breach", "cyber"], "cybersecurity data protection"),
+        (["hardware", "chip", "processor", "npu", "gpu", "silicon", "semiconductor"], "computer hardware technology"),
+        (["market", "adoption", "growth", "forecast", "revenue", "statistic", "trend"], "business data analytics chart"),
+        (["energy", "power", "carbon", "sustainable", "climate", "green"], "sustainable energy"),
+        (["medical", "health", "clinical", "pharma", "drug"], "medical health technology"),
+        (["legal", "regulation", "regulatory", "compliance", "policy", "law"], "law regulation compliance"),
+        (["forex", "currency", "trading", "exchange"], "forex currency trading"),
+        (["ai", "artificial", "intelligence", "machine", "learning", "llm", "model", "neural"], "artificial intelligence technology"),
+    ]
+    descriptor = ""
+    for kws, desc in _CATS:
+        if any(k in hl for k in kws):
+            descriptor = desc
+            break
 
-    if any(w in ctx for w in ["statistic", "percent", "%", "billion", "million",
-                               "market", "adoption", "growth", "forecast"]):
-        return f"{tb} data analytics business" if tb else "financial data analytics business"
-    if any(w in ctx for w in ["hardware", "chip", "processor", "npu", "gpu", "silicon"]):
-        return f"{tb} computer hardware chip" if tb else "computer hardware technology chip"
-    if any(w in ctx for w in ["privacy", "security", "encryption", "gdpr", "breach"]):
-        return f"{tb} cybersecurity data protection" if tb else "cybersecurity data protection"
-    if any(w in ctx for w in ["global", "enterprise", "fortune", "deployment"]):
-        return f"{tb} global enterprise technology" if tb else "global enterprise technology"
-    if any(w in ctx for w in ["energy", "power", "carbon", "sustainable", "green"]):
-        return f"{tb} sustainable energy environment" if tb else "sustainable energy environment"
-    if any(w in ctx for w in ["medical", "health", "drug", "clinical", "pharma"]):
-        return f"{tb} medical health technology" if tb else "medical health technology"
-    if any(w in ctx for w in ["legal", "regulatory", "law", "regulation", "executive order"]):
-        return f"{tb} law regulation compliance" if tb else "law regulation compliance"
-    if any(w in ctx for w in ["future", "forecast", "trend", "next", "emerging"]):
-        return f"{tb} future innovation technology" if tb else "future innovation technology"
-    if any(w in ctx for w in ["forex", "currency", "trading", "exchange rate"]):
-        return f"{tb} forex currency trading" if tb else "forex currency trading markets"
-    if any(w in ctx for w in ["ai", "artificial intelligence", "machine learning", "llm", "gpt"]):
-        return f"{tb} artificial intelligence technology" if tb else "artificial intelligence technology"
-    if kw:
-        return f"{tb} {kw}" if tb else f"professional business {kw}"
-    # Fallback: use cleaned base or a professional default
-    return f"{tb} technology business" if tb else "global business technology professional"
+    parts = []
+    if tb:
+        parts.append(tb)
+    if hk and hk.lower() not in (tb or "").lower():
+        parts.append(hk)
+    if descriptor:
+        parts.append(descriptor)
+    q = " ".join(parts).strip()
+    if q:
+        return q
+    return f"{tb} professional business" if tb else "global business technology professional"
 
 
 def _find_image_positions(positions: list) -> tuple:
@@ -235,12 +243,8 @@ def _parse_markdown(content: str) -> list:
                 table_lines.append(cells)
                 i += 1
             if table_lines:
-                header = table_lines[0]
-                header_text = "   ".join(_strip_inline_md(c) for c in header)
-                blocks.append({"text": header_text, "type": "table_header"})
-                for row in table_lines[1:]:
-                    row_text = "   ".join(_strip_inline_md(c) for c in row)
-                    blocks.append({"text": row_text, "type": "table_row"})
+                rows = [[_strip_inline_md(c) for c in row] for row in table_lines]
+                blocks.append({"type": "table", "rows": rows, "text": ""})
             continue
 
         # ── Bullet points ──
@@ -264,6 +268,153 @@ def _parse_markdown(content: str) -> list:
         i += 1
 
     return blocks
+
+
+# ── Real Google Docs tables ─────────────────────────────────────────────────
+# Markdown tables are inserted into the text as a one-line sentinel paragraph
+# (⟦TABLE_n⟧). After the main text + images are laid down, we upgrade each
+# sentinel into a native Docs table. Sentinels are located by text search (so
+# they survive every prior index shift) and processed bottom-to-top. Each
+# upgrade is independently guarded: on any failure the sentinel is replaced with
+# readable flattened text, so a report never ships with a raw ⟦TABLE_n⟧ marker.
+def _table_marker(n: int) -> str:
+    return f"⟦TABLE_{n}⟧"
+
+
+def _find_marker(svc, doc_id: str, marker: str):
+    """Return (start, end) index range of `marker`'s text, or None."""
+    doc = svc.documents().get(documentId=doc_id).execute()
+    for el in doc.get("body", {}).get("content", []):
+        para = el.get("paragraph")
+        if not para:
+            continue
+        for pe in para.get("elements", []):
+            tr = pe.get("textRun")
+            if not tr:
+                continue
+            content = tr.get("content", "")
+            off = content.find(marker)
+            if off != -1:
+                s = pe["startIndex"] + off
+                return (s, s + len(marker))
+    return None
+
+
+def _replace_marker_with_text(svc, doc_id: str, marker: str, text: str):
+    """Fallback: swap the sentinel for plain text (never leave a raw marker)."""
+    loc = _find_marker(svc, doc_id, marker)
+    if not loc:
+        return
+    s, e = loc
+    reqs = [{"deleteContentRange": {"range": {"startIndex": s, "endIndex": e}}}]
+    if text:
+        reqs.append({"insertText": {"location": {"index": s}, "text": text}})
+    svc.documents().batchUpdate(documentId=doc_id, body={"requests": reqs}).execute()
+
+
+def _populate_table(svc, doc_id: str, near_idx: int, rows: list, orange, dark):
+    """Fill the freshly-inserted table's cells (bottom-to-top) + style header."""
+    doc = svc.documents().get(documentId=doc_id).execute()
+    table_el = None
+    for el in doc.get("body", {}).get("content", []):
+        if el.get("table") and el.get("startIndex", 0) >= near_idx - 1:
+            table_el = el
+            break
+    if not table_el:
+        return
+    trows = table_el["table"].get("tableRows", [])
+    inserts = []  # (cell_start_index, text)
+    for r, trow in enumerate(trows):
+        for c, cell in enumerate(trow.get("tableCells", [])):
+            cont = cell.get("content", [])
+            if not cont:
+                continue
+            cell_start = cont[0].get("startIndex")
+            if cell_start is None:
+                continue
+            text = rows[r][c] if (r < len(rows) and c < len(rows[r])) else ""
+            if text:
+                inserts.append((cell_start, text))
+    # Bottom-to-top so earlier inserts don't shift later cell indices.
+    inserts.sort(key=lambda x: x[0], reverse=True)
+    reqs = [{"insertText": {"location": {"index": idx}, "text": txt}}
+            for idx, txt in inserts]
+    if reqs:
+        svc.documents().batchUpdate(documentId=doc_id, body={"requests": reqs}).execute()
+
+    # Header styling pass (best-effort; re-fetch for post-insert indices).
+    try:
+        doc2 = svc.documents().get(documentId=doc_id).execute()
+        tbl2 = None
+        for el in doc2.get("body", {}).get("content", []):
+            if el.get("table") and el.get("startIndex", 0) >= near_idx - 1:
+                tbl2 = el
+                break
+        if not tbl2:
+            return
+        style_reqs = []
+        header_cells = tbl2["table"]["tableRows"][0].get("tableCells", [])
+        for cell in header_cells:
+            # Shade header cell background.
+            style_reqs.append({"updateTableCellStyle": {
+                "tableCellStyle": {"backgroundColor": {"color": {"rgbColor": orange}}},
+                "fields": "backgroundColor",
+                "tableCellLocation": {
+                    "tableStartLocation": {"index": tbl2["startIndex"]},
+                    "rowIndex": 0,
+                    "columnIndex": header_cells.index(cell),
+                },
+            }})
+            # Bold + white header text.
+            for ce in cell.get("content", []):
+                pel = ce.get("paragraph", {}).get("elements", [])
+                for x in pel:
+                    tr = x.get("textRun")
+                    if tr and tr.get("content", "").strip():
+                        style_reqs.append({"updateTextStyle": {
+                            "range": {"startIndex": x["startIndex"], "endIndex": x["endIndex"] - 1},
+                            "textStyle": {"bold": True,
+                                          "foregroundColor": {"color": {"rgbColor": {"red": 1, "green": 1, "blue": 1}}}},
+                            "fields": "bold,foregroundColor",
+                        }})
+        if style_reqs:
+            svc.documents().batchUpdate(documentId=doc_id, body={"requests": style_reqs}).execute()
+    except Exception as e:
+        print(f"[GDocs] table header styling skipped: {e}")
+
+
+def _insert_real_tables(svc, doc_id: str, tables: list, orange, dark):
+    """Upgrade every ⟦TABLE_n⟧ sentinel into a native Docs table."""
+    for t in range(len(tables) - 1, -1, -1):
+        rows = tables[t]
+        marker = _table_marker(t)
+        if not rows:
+            try:
+                _replace_marker_with_text(svc, doc_id, marker, "")
+            except Exception:
+                pass
+            continue
+        n_rows = len(rows)
+        n_cols = max(len(r) for r in rows)
+        try:
+            loc = _find_marker(svc, doc_id, marker)
+            if not loc:
+                continue
+            s, e = loc
+            # Delete the sentinel text, then insert an empty table in its place.
+            svc.documents().batchUpdate(documentId=doc_id, body={"requests": [
+                {"deleteContentRange": {"range": {"startIndex": s, "endIndex": e}}},
+                {"insertTable": {"location": {"index": s}, "rows": n_rows, "columns": n_cols}},
+            ]}).execute()
+            _populate_table(svc, doc_id, s, rows, orange, dark)
+            print(f"[GDocs] table {t}: rendered {n_rows}x{n_cols} native table")
+        except Exception as ex:
+            print(f"[GDocs] table {t} upgrade failed ({ex}); using text fallback")
+            try:
+                flat = "\n".join("   ".join(r) for r in rows)
+                _replace_marker_with_text(svc, doc_id, marker, flat)
+            except Exception:
+                pass
 
 
 def create_google_doc(title: str, content: str) -> str | None:
@@ -317,7 +468,12 @@ def create_google_doc(title: str, content: str) -> str | None:
         full_text = ""
         positions = []
         idx       = 1
+        tables    = []   # rows per markdown table, upgraded to native tables last
         for block in blocks:
+            if block.get("type") == "table":
+                # Reserve a one-line sentinel paragraph; real table swapped in later.
+                tables.append(block.get("rows") or [])
+                block = {"type": "body", "text": _table_marker(len(tables) - 1)}
             line = block["text"] + "\n"
             positions.append({
                 "start": idx, "end": idx + len(line),
@@ -539,8 +695,10 @@ def create_google_doc(title: str, content: str) -> str | None:
             "social media posts", "code review", "email",
         ])
         if _skip_images:
+            if tables:
+                _insert_real_tables(svc, doc_id, tables, ORANGE, DARK)
             print(f"[GDocs] Skipping images for: {title}")
-            print(f"[GDocs] Created: {doc_url} (0 images)")
+            print(f"[GDocs] Created: {doc_url} (0 images, {len(tables)} tables)")
             return doc_url
 
         hero_idx, additional_idxs = _find_image_positions(positions)
@@ -607,7 +765,11 @@ def create_google_doc(title: str, content: str) -> str | None:
         if img_reqs:
             svc.documents().batchUpdate(documentId=doc_id, body={"requests": img_reqs}).execute()
 
-        print(f"[GDocs] Created: {doc_url} ({len(insert_points)} images)")
+        # ── Batch 3: upgrade markdown-table sentinels into native tables ──
+        if tables:
+            _insert_real_tables(svc, doc_id, tables, ORANGE, DARK)
+
+        print(f"[GDocs] Created: {doc_url} ({len(insert_points)} images, {len(tables)} tables)")
         return doc_url
 
     except Exception as e:
