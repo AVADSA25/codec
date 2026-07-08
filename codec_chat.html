@@ -494,12 +494,14 @@ var SYS="You are *CODEC Deep Chat* \u2014 a J.A.R.V.I.S.-class AI running locall
 // dependency check so it stops giving glib surface answers (the "car wash" class
 // of trick). Model reasons in <thinking>, then emits "### FINAL ANSWER:"; the UI
 // hides the thinking (shown only in the reveal window) and displays the answer.
-var REASON_SCAFFOLD="\n\n### REASONING PROTOCOL\n" +
-"Your goal is accurate answers without getting stuck in loops.\n" +
-"1. PROCESS: Before your final response, analyze the request inside <thinking> tags. First identify what the user is actually trying to ACCOMPLISH, and check for any hidden physical or logical dependencies — things that must be true or present for the goal to work. Never give a glib surface answer that ignores them.\n" +
-"2. ADAPTIVE LOGIC:\n   - COMPLEX tasks (logic, math, coding): plan your approach in NO MORE than 3 steps inside the tags.\n   - CHALLENGES: if the user doubts you or says 'check online', DO NOT LOOP — do one quick internal check, then state your answer.\n   - SIMPLE tasks: keep <thinking> to 1 sentence.\n" +
-"3. OUTPUT: close the tag with </thinking>, then a new line with exactly \"### FINAL ANSWER:\" followed by your response.\n" +
-"Never reveal your thinking outside the tags.";
+var REASON_SCAFFOLD="\n\n### RESPONSE FORMAT (MANDATORY)\n" +
+"Structure EVERY reply in exactly two parts:\n" +
+"<thinking>\n" +
+"Do ALL of your reasoning here — every step, every case. First identify what the user is actually trying to ACCOMPLISH, and check for any hidden physical or logical dependencies (things that must be true or present for the goal to work). Never give a glib surface answer that ignores them. For CHALLENGES (the user doubts you / says 'check online'): do ONE quick internal check, do NOT loop. For SIMPLE questions: keep this to 1-2 sentences.\n" +
+"</thinking>\n" +
+"### FINAL ANSWER:\n" +
+"(your clean, concise answer for the user)\n" +
+"RULES: ALWAYS open with <thinking> as the very first characters of your reply. Put 100% of your deliberation inside the tags — never reason outside them. After </thinking>, write exactly \"### FINAL ANSWER:\" then the answer.";
 var CONCISE_MODE="\n\n### RESPONSE STYLE\nAnswer directly and concisely. Do not use <thinking> tags or show reasoning — get straight to the point.";
 // System prompt varies by Think toggle: scaffolded reasoning vs fast/direct.
 function buildSystem(){return SYS+(thinkingEnabled?REASON_SCAFFOLD:CONCISE_MODE);}
