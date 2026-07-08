@@ -312,7 +312,9 @@ def permission_gate(action: Action, agent_grants: Dict[str, Any],
     if wants_net and action.network_domain:
         domains = (set(agent_grants.get("network_domains", [])) |
                    set(global_grants.get("network_domains", [])))
-        if action.network_domain not in domains:
+        # "*" is a broad-web grant (issued at approval for plans that browse), so
+        # the agent doesn't block on every new domain it visits. Explicit opt-in.
+        if "*" not in domains and action.network_domain not in domains:
             raise PermissionViolation("domain_not_authorized", action.network_domain)
 
 

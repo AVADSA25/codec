@@ -1156,6 +1156,19 @@ def approve_plan(agent_id: str) -> Dict[str, Any]:
         "auto_approved": auto_approved,
         **asdict(plan.permission_manifest),
     }
+    # Single-approval web access: if the plan needs the open web (it declares any
+    # network domains, or uses a web/browse skill), grant "*" so the agent runs
+    # start-to-finish without blocking on every new domain it visits. One approval
+    # = full web for this run. Path grants stay scoped (least privilege) — only
+    # network breadth is widened, and only when the plan actually browses.
+    _pm = plan.permission_manifest
+    _WEB_SKILLS = {"web_search", "web_fetch", "chrome_search", "chrome_open",
+                   "chrome_read", "chrome_automate", "chrome_extract",
+                   "clipboard_url_fetch"}
+    _needs_web = bool(getattr(_pm, "network_domains", None)) or bool(
+        set(getattr(_pm, "skills", []) or []) & _WEB_SKILLS)
+    if _needs_web:
+        grants["network_domains"] = ["*"]
     save_grants(agent_id, grants)
 
     # B-9: stamp the hashes AND flip status to approved in ONE atomic, flock-
