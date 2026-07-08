@@ -1785,10 +1785,28 @@ function showSchedulePanel(){
 <script>
 // ── Agent live-update poller ────────────────────────────────────────────────
 // Handle action buttons on agent done/blocked messages
-async function _agentAction(endpoint){
+// Infer the grant "kind" from a block reason/title (backend leaves it as a placeholder).
+function _grantKind(reason){
+  reason=(reason||'').toLowerCase();
+  if(reason.indexOf('domain')>=0)return 'network_domains';
+  if(reason.indexOf('skill')>=0)return 'skills';
+  if(reason.indexOf('write')>=0)return 'write_paths';
+  if(reason.indexOf('read')>=0)return 'read_paths';
+  return 'network_domains';
+}
+async function _agentAction(endpoint,bodyEnc){
   try{
-    var r=await fetch(endpoint,{method:'POST'});
+    var opts={method:'POST'};
+    var bodyObj=null;
+    if(bodyEnc){bodyObj=JSON.parse(decodeURIComponent(bodyEnc));opts.headers={'Content-Type':'application/json'};opts.body=JSON.stringify(bodyObj);}
+    var r=await fetch(endpoint,opts);
     var d=await r.json();
+    // Grant flow: report success/failure and let the agent resume (backend flips it to running).
+    if(endpoint.indexOf('/grant')>=0){
+      if(r.ok){showToast('Permission granted — agent resuming');addMessage('assistant','Granted `'+((bodyObj&&bodyObj.value)||'')+'` — the agent will continue from where it stopped.');}
+      else{addMessage('assistant','Grant failed: '+(d.detail||d.error||('HTTP '+r.status)));}
+      return;
+    }
     if(d.files){
       // artifacts list — show inline
       var list=d.files.map(function(f){
@@ -1865,7 +1883,15 @@ function _startAgentPoller(agentId){
         if(m.actions&&m.actions.length){
           actionsHtml='<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">';
           m.actions.forEach(function(a){
-            actionsHtml+='<button onclick="_agentAction(\''+escHtml(a.endpoint)+'\')" style="padding:5px 12px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:12px;color:var(--text)">'+escHtml(a.label)+'</button>';
+            var bodyEnc='';
+            if(a.body_hint){
+              var kind=a.body_hint.kind;
+              if(!kind||kind.indexOf('<')>=0)kind=_grantKind(m.title||m.body);
+              bodyEnc=encodeURIComponent(JSON.stringify({kind:kind,value:a.body_hint.value}));
+            }
+            var isGrant=(a.endpoint||'').indexOf('/grant')>=0;
+            var bg=isGrant?'var(--accent)':'var(--surface-2)';var fg=isGrant?'#fff':'var(--text)';
+            actionsHtml+='<button onclick="_agentAction(\''+escHtml(a.endpoint)+'\',\''+bodyEnc+'\')" style="padding:5px 12px;background:'+bg+';border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:12px;color:'+fg+'">'+escHtml(a.label)+'</button>';
           });
           actionsHtml+='</div>';
         }
