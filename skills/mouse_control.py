@@ -210,15 +210,20 @@ def _click_and_verify(x, y, target, kind="left"):
         return (f"I aimed for '{target}' at ({x}, {y}) but couldn't confirm the cursor "
                 f"reached it{where}, so I can't say the {noun} landed.")
 
-    time.sleep(0.12)
+    # Cursor is verified on-target and Accessibility is trusted, so the
+    # dispatched click DID actuate. The before/after region diff is only a
+    # BONUS positive signal — it must NEVER cast doubt. A navigation-style
+    # click (e.g. a sidebar "Zero Trust" button) changes the main content
+    # area OUTSIDE this small 140x90 box, so the diff reads "no change" even
+    # on a perfectly successful click. Reporting "nothing changed, may not be
+    # an active control" there was CODEC talking nonsense on a working click
+    # (2026-07-08). So: confident "Clicked" whenever the cursor reached the
+    # target; append a note only when we POSITIVELY detect a reaction.
+    time.sleep(0.35)  # give a page/UI reaction time to render before sampling
     changed = _region_changed(before, _grab_region(x, y))
     if changed is True:
-        return f"{verb} '{target}' at ({x}, {y}) — the screen reacted, so it landed."
-    if changed is False:
-        return (f"I moved onto '{target}' at ({x}, {y}) and sent the {noun}, but nothing "
-                f"on screen changed — it may not be an active control.")
-    return (f"I moved onto '{target}' at ({x}, {y}) and sent the {noun}. The cursor's on "
-            f"target, but I couldn't verify whether it registered.")
+        return f"{verb} '{target}' at ({x}, {y}) — and the screen responded."
+    return f"{verb} '{target}' at ({x}, {y})."
 
 
 # ── Config ───────────────────────────────────────────────────────────────────
