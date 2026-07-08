@@ -127,7 +127,12 @@ async def run_agent_crew(request: Request):
                 from codec_agents import run_crew
                 result = loop.run_until_complete(run_crew(crew_name, callback=on_progress, **body))
             _agent_jobs[job_id].update(result)
-            _agent_jobs[job_id]["status"] = result.get("status", "complete")
+            # If the user pressed Stop while the crew was still running, keep the
+            # cancelled status rather than overwriting it with a late result.
+            if _agent_jobs.get(job_id, {}).get("cancel_requested"):
+                _agent_jobs[job_id]["status"] = "cancelled"
+            else:
+                _agent_jobs[job_id]["status"] = result.get("status", "complete")
             _agent_jobs[job_id]["progress"] = progress_log
         except Exception as e:
             import traceback; traceback.print_exc()
@@ -147,6 +152,24 @@ async def agent_job_status(job_id: str):
     if not job:
         return JSONResponse({"error": "Job not found"}, status_code=404)
     return job
+
+
+@router.post("/api/agents/cancel/{job_id}")
+async def cancel_agent_job(job_id: str):
+    """Cooperatively cancel a running agent/crew job.
+
+    Crews run to completion in a daemon thread and can't be killed mid-run, so
+    this flags the job cancelled: the run thread checks the flag before writing
+    its final status, and status polls immediately see 'cancelled'. The chat UI
+    stops waiting as soon as this returns.
+    """
+    job = _agent_jobs.get(job_id)
+    if not job:
+        return JSONResponse({"error": "Job not found"}, status_code=404)
+    job["cancel_requested"] = True
+    if job.get("status") == "running":
+        job["status"] = "cancelled"
+    return {"job_id": job_id, "status": "cancelled"}
 
 
 @router.get("/api/agents/tools")

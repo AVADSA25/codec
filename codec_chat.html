@@ -1024,9 +1024,23 @@ function removeChip(id){pendingFiles=pendingFiles.filter(function(f){return f.id
 function clearChips(){pendingFiles=[];document.getElementById('fileChips').innerHTML=''}
 
 var _currentAbort=null;
+// Agent/crew run handles — set while a Deep Research/crew job is polling so the
+// Stop button can cancel it (crews can't be killed mid-run, so this stops the
+// UI waiting AND flags the job cancelled server-side to ignore a late result).
+var _agentJobId=null,_agentPoll=null,_agentTicker=null;
 function _showStop(){document.getElementById('sendBtn').style.display='none';document.getElementById('stopBtn').style.display='flex'}
 function _showSend(){document.getElementById('stopBtn').style.display='none';document.getElementById('sendBtn').style.display='flex'}
 function stopGeneration(){
+  // An agent/crew run in progress takes priority over chat streaming.
+  if(_agentJobId||_agentPoll||_agentTicker){
+    if(_agentPoll){clearInterval(_agentPoll);_agentPoll=null}
+    if(_agentTicker){clearInterval(_agentTicker);_agentTicker=null}
+    var jid=_agentJobId;_agentJobId=null;
+    if(jid){fetch('/api/agents/cancel/'+jid,{method:'POST'}).catch(function(){})}
+    var st=document.getElementById('agentStatus');if(st&&st.parentElement)st.parentElement.remove();
+    addMessage('assistant','⏹ **Task stopped.** The agent run was cancelled. Any work already finished on the server may still be saved.');
+    hideTyping();_showSend();isProcessing=false;document.getElementById('sendBtn').disabled=false;return
+  }
   if(_currentAbort){_currentAbort.abort();_currentAbort=null}
   hideTyping();_showSend();isProcessing=false;document.getElementById('sendBtn').disabled=false
 }
@@ -1156,20 +1170,22 @@ async function sendMessage(){
     if(crew==='custom'){payload.agent_name=document.getElementById('agentName').value||'Custom Agent';payload.role=document.getElementById('agentRole').value||'';payload.tools=getSelectedTools();payload.max_iterations=parseInt(document.getElementById('agentMaxIter').value||'8');payload.task=researchText}else{if(['deep_research','competitor_analysis'].includes(crew))payload.topic=researchText;if(crew==='trip_planner')payload.destination=researchText}
 
     var elapsed=0;
-    var ticker=setInterval(function(){elapsed+=5;updateStatus('\u23F3 '+crewLabels[crew]+' running&hellip; ('+elapsed+'s)\n\n'+(crewHints[crew]||''))},5000);
+    _agentTicker=setInterval(function(){elapsed+=5;updateStatus('\u23F3 '+crewLabels[crew]+' running&hellip; ('+elapsed+'s)  \u2014 tap \u23F9 to stop\n\n'+(crewHints[crew]||''))},5000);
 
     try{
       var r=await fetch('/api/agents/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
       var startData=await r.json();
-      if(!r.ok||!startData.job_id){clearInterval(ticker);updateStatus('\u274C Agent error: '+(startData.error||'Failed to start'));isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false;return}
-      var jobId=startData.job_id;
-      var data=await new Promise(function(resolve,reject){var poll=setInterval(async function(){try{var sr=await fetch('/api/agents/status/'+jobId);var sd=await sr.json();if(sd.status!=='running'){clearInterval(poll);resolve(sd)}}catch(pe){clearInterval(poll);reject(pe)}},4000)});
-      clearInterval(ticker);if(statusEl)statusEl.parentElement.remove();
+      if(!r.ok||!startData.job_id){clearInterval(_agentTicker);_agentTicker=null;updateStatus('\u274C Agent error: '+(startData.error||'Failed to start'));isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false;return}
+      var jobId=startData.job_id;_agentJobId=jobId;
+      var data=await new Promise(function(resolve,reject){_agentPoll=setInterval(async function(){try{var sr=await fetch('/api/agents/status/'+jobId);var sd=await sr.json();if(sd.status!=='running'){clearInterval(_agentPoll);_agentPoll=null;resolve(sd)}}catch(pe){clearInterval(_agentPoll);_agentPoll=null;reject(pe)}},4000)});
+      clearInterval(_agentTicker);_agentTicker=null;_agentJobId=null;if(statusEl)statusEl.parentElement.remove();
+      // User pressed Stop after the crew already reported terminal \u2014 honor it.
+      if(data.status==='cancelled'){isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false;return}
       var resultMsg;var reportDocUrl=null;
       if(data.status==='complete'){var result=data.result||'';var docMatch=result.match(/https:\/\/docs\.google\.com\/\S+/);if(docMatch){reportDocUrl=docMatch[0].replace(/[)\].,]+$/,'');var summary=result.replace(docMatch[0],'').trim();if(!summary)summary='Your report has been generated and saved to Google Docs.';resultMsg='\u2705 **'+crewLabels[crew]+' Complete!** ('+data.elapsed_seconds+'s)\n\n'+summary+'\n\n[Open in Google Docs]('+reportDocUrl+')'}else{resultMsg='\u2705 **'+crewLabels[crew]+' Complete!** ('+data.elapsed_seconds+'s)\n\n'+result}}else{resultMsg='\u274C Agent error: '+(data.error||'Unknown error')}
       addMessage('assistant',resultMsg);chatHist.push({role:'assistant',content:resultMsg});saveMessages([{role:'assistant',content:resultMsg}]);
       if(reportDocUrl)appendDiscussButton(reportDocUrl)
-    }catch(e){clearInterval(ticker);updateStatus('Agent error: '+e.message)}
+    }catch(e){if(_agentTicker){clearInterval(_agentTicker);_agentTicker=null}_agentJobId=null;updateStatus('Agent error: '+e.message)}
     isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false;return
   }
 
