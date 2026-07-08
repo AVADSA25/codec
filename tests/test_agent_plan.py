@@ -893,7 +893,12 @@ def test_e2e_full_lifecycle(monkeypatch, temp_codec_dir):
     m = cap.load_manifest(agent_id)
     assert m["status"] == "approved"
     assert "plan_hash" in m
-    assert grants["network_domains"] == ["idealista.com", "fotocasa.es"]
+    # Single-approval web access: a plan that declares network domains is granted
+    # a broad-web "*" at approval (so it doesn't block on every new domain), while
+    # the declared domains remain listed too.
+    assert "*" in grants["network_domains"]
+    assert "idealista.com" in grants["network_domains"]
+    assert "fotocasa.es" in grants["network_domains"]
 
     # Verify both audit events were emitted (paired correlation_ids will differ — independent ops)
     events = [e for e, _ in audit_emits]

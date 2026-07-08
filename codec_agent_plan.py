@@ -1168,7 +1168,8 @@ def approve_plan(agent_id: str) -> Dict[str, Any]:
     _needs_web = bool(getattr(_pm, "network_domains", None)) or bool(
         set(getattr(_pm, "skills", []) or []) & _WEB_SKILLS)
     if _needs_web:
-        grants["network_domains"] = ["*"]
+        grants["network_domains"] = sorted(set(
+            (grants.get("network_domains") or []) + ["*"]))
     save_grants(agent_id, grants)
 
     # B-9: stamp the hashes AND flip status to approved in ONE atomic, flock-
