@@ -225,6 +225,30 @@ async def delete_custom_agent(request: Request):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+@router.get("/api/gdoc/read")
+async def read_gdoc(url: str = ""):
+    """Read the plain-text body of a Google Doc by URL or ID.
+
+    Powers the chat "Discuss this report" handoff: after Deep Research saves a
+    report to Google Docs, chat-mode CODEC fetches the full doc text here and
+    injects it as context so the user can talk about the report (the chat
+    summary alone omits the full body). Uses CODEC's existing Google OAuth.
+    """
+    if not url or not url.strip():
+        return JSONResponse({"error": "url required"}, status_code=400)
+    try:
+        from codec_gdocs import read_google_doc_text
+        doc = read_google_doc_text(url.strip())
+        if not doc:
+            return JSONResponse(
+                {"error": "Could not read that Google Doc (not found or no access)."},
+                status_code=404,
+            )
+        return doc
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 # ── Phase 1 Step 3: AskUserQuestion reply path ──────────────────────────────
 # Per docs/PHASE1-STEP3-DESIGN.md §1.5. PWA + voice both POST here.
 # §1.7 strict-consent gate enforced inside codec_ask_user.submit_answer —

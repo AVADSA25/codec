@@ -614,3 +614,61 @@ def create_google_doc(title: str, content: str) -> str | None:
         print(f"[GDocs] Error: {e}")
         import traceback; traceback.print_exc()
         return None
+
+
+def _doc_id_from(url_or_id: str) -> str | None:
+    """Extract a Google Doc ID from a full docs URL or accept a bare ID."""
+    if not url_or_id:
+        return None
+    s = url_or_id.strip()
+    m = re.search(r"/document/d/([a-zA-Z0-9_-]+)", s)
+    if m:
+        return m.group(1)
+    # Bare ID (Google Doc IDs are long alphanumeric strings with - and _)
+    if re.fullmatch(r"[a-zA-Z0-9_-]{20,}", s):
+        return s
+    return None
+
+
+def read_google_doc_text(url_or_id: str, max_chars: int = 60000) -> dict | None:
+    """
+    Read the plain-text body of a Google Doc the CODEC user owns/can access.
+    Accepts a full docs URL or a bare doc ID. Uses the same Google OAuth as
+    create_google_doc. Returns {"title", "text", "truncated"} or None on failure.
+    Used by the chat "Discuss this report" handoff so chat-mode CODEC can talk
+    about a report it generated in agent mode (the full report lives in the Doc,
+    not in the short chat summary).
+    """
+    from googleapiclient.discovery import build
+    from codec_google_auth import get_credentials
+
+    doc_id = _doc_id_from(url_or_id)
+    if not doc_id:
+        print(f"[GDocs] read: could not parse doc id from {url_or_id!r}")
+        return None
+    try:
+        creds = get_credentials()
+        svc = build("docs", "v1", credentials=creds)
+        doc = svc.documents().get(documentId=doc_id).execute()
+        title = doc.get("title", "Untitled")
+        text = ""
+        for element in doc.get("body", {}).get("content", []):
+            # Paragraph text
+            for para in element.get("paragraph", {}).get("elements", []):
+                text += para.get("textRun", {}).get("content", "")
+            # Table text (reports render comparison tables)
+            for row in element.get("table", {}).get("tableRows", []):
+                cells = []
+                for cell in row.get("tableCells", []):
+                    cell_txt = ""
+                    for ce in cell.get("content", []):
+                        for pe in ce.get("paragraph", {}).get("elements", []):
+                            cell_txt += pe.get("textRun", {}).get("content", "")
+                    cells.append(cell_txt.strip())
+                if any(cells):
+                    text += " | ".join(cells) + "\n"
+        truncated = len(text) > max_chars
+        return {"title": title, "text": text[:max_chars], "truncated": truncated}
+    except Exception as e:
+        print(f"[GDocs] read error: {e}")
+        return None

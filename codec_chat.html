@@ -181,6 +181,9 @@ input[type=file]{display:none}
 .mode-btn{padding:4px 8px;border:none;border-radius:4px;cursor:pointer;font-size:11px;background:transparent;color:var(--text-dim);font-family:var(--font);font-weight:500;transition:all .15s;display:flex;align-items:center;gap:4px;white-space:nowrap}
 .mode-btn:hover{color:var(--text-muted)}
 .mode-btn.active{background:var(--surface);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.discuss-report-btn{margin-top:2px;padding:9px 16px;border:1px solid var(--accent);border-radius:8px;cursor:pointer;font-size:13px;font-family:var(--font);font-weight:600;background:var(--accent);color:#fff;transition:all .15s;display:inline-flex;align-items:center;gap:6px}
+.discuss-report-btn:hover:not(:disabled){background:var(--accent-hover);border-color:var(--accent-hover)}
+.discuss-report-btn:disabled{cursor:default;opacity:.7;background:transparent;color:var(--accent)}
 
 /* ── Agent Builder ── */
 #agentBuilder{display:none;flex-shrink:0;background:var(--surface);border-bottom:1px solid var(--border);padding:12px 14px;gap:10px;flex-direction:column}
@@ -807,6 +810,47 @@ function addMessage(role,content,animate){
   }
 }
 
+// ── Agent → Chat handoff ────────────────────────────────────────────────────
+// After a Deep Research report completes with a Google Doc, offer a button to
+// switch to chat mode AND load the FULL report so chat-mode CODEC can discuss
+// it. (Without this, only the short summary is in chatHist and asking
+// "read the report you just made" while still in Agents mode re-ran the crew.)
+function appendDiscussButton(docUrl){
+  var wrap=document.createElement('div');
+  wrap.className='msg assistant';wrap.style.animation='none';
+  var b=document.createElement('button');
+  b.className='discuss-report-btn';
+  b.innerHTML='💬 Discuss this report in Chat';
+  b.onclick=function(){discussReportInChat(docUrl,b)};
+  var bubble=document.createElement('div');bubble.className='msg-bubble';
+  bubble.style.background='transparent';bubble.style.padding='0';bubble.style.boxShadow='none';
+  bubble.appendChild(b);
+  wrap.appendChild(bubble);
+  document.getElementById('messages').appendChild(wrap);
+  scrollBottom();
+}
+
+async function discussReportInChat(docUrl, btn){
+  if(btn){btn.disabled=true;btn.innerHTML='⏳ Loading report&hellip;';}
+  setMode('chat');
+  try{
+    var r=await fetch('/api/gdoc/read?url='+encodeURIComponent(docUrl));
+    var d=await r.json();
+    if(!r.ok||!d.text){throw new Error(d.error||'Could not read the report');}
+    // Inject the full report as hidden context so every follow-up /api/chat
+    // call carries it. Not rendered as a bubble — only the confirmation below.
+    var ctx='Here is the full text of the report we just generated'+(d.title?(' ("'+d.title+'")'):'')+'. Use it to answer my follow-up questions about it:\n\n'+d.text+(d.truncated?'\n\n[report truncated for length]':'');
+    chatHist.push({role:'user',content:ctx});
+    chatHist.push({role:'assistant',content:'I\'ve loaded the full report and I\'m ready to discuss it.'});
+    addMessage('assistant','📄 **Loaded the full report** — ask me anything about it (key findings, a specific section, or say "summarize the main risks").');
+    if(btn){btn.innerHTML='✓ Report loaded into chat';}
+  }catch(e){
+    addMessage('assistant','⚠️ I couldn\'t load the full report ('+e.message+'). You can still ask about the summary above, or open it in Google Docs.');
+    if(btn){btn.disabled=false;btn.innerHTML='💬 Discuss this report in Chat';}
+  }
+  var ci=document.getElementById('chatInput');if(ci)ci.focus();
+}
+
 // Play Kokoro TTS for any text — used by per-message Speak button + voice-reply autoplay
 var _ttsAudio = null;
 function speakMessage(text, btn){
@@ -1121,9 +1165,10 @@ async function sendMessage(){
       var jobId=startData.job_id;
       var data=await new Promise(function(resolve,reject){var poll=setInterval(async function(){try{var sr=await fetch('/api/agents/status/'+jobId);var sd=await sr.json();if(sd.status!=='running'){clearInterval(poll);resolve(sd)}}catch(pe){clearInterval(poll);reject(pe)}},4000)});
       clearInterval(ticker);if(statusEl)statusEl.parentElement.remove();
-      var resultMsg;
-      if(data.status==='complete'){var result=data.result||'';var docMatch=result.match(/https:\/\/docs\.google\.com\/\S+/);if(docMatch){var summary=result.replace(docMatch[0],'').trim();if(!summary)summary='Your report has been generated and saved to Google Docs.';resultMsg='\u2705 **'+crewLabels[crew]+' Complete!** ('+data.elapsed_seconds+'s)\n\n'+summary+'\n\n[Open in Google Docs]('+docMatch[0]+')'}else{resultMsg='\u2705 **'+crewLabels[crew]+' Complete!** ('+data.elapsed_seconds+'s)\n\n'+result}}else{resultMsg='\u274C Agent error: '+(data.error||'Unknown error')}
-      addMessage('assistant',resultMsg);chatHist.push({role:'assistant',content:resultMsg});saveMessages([{role:'assistant',content:resultMsg}])
+      var resultMsg;var reportDocUrl=null;
+      if(data.status==='complete'){var result=data.result||'';var docMatch=result.match(/https:\/\/docs\.google\.com\/\S+/);if(docMatch){reportDocUrl=docMatch[0].replace(/[)\].,]+$/,'');var summary=result.replace(docMatch[0],'').trim();if(!summary)summary='Your report has been generated and saved to Google Docs.';resultMsg='\u2705 **'+crewLabels[crew]+' Complete!** ('+data.elapsed_seconds+'s)\n\n'+summary+'\n\n[Open in Google Docs]('+reportDocUrl+')'}else{resultMsg='\u2705 **'+crewLabels[crew]+' Complete!** ('+data.elapsed_seconds+'s)\n\n'+result}}else{resultMsg='\u274C Agent error: '+(data.error||'Unknown error')}
+      addMessage('assistant',resultMsg);chatHist.push({role:'assistant',content:resultMsg});saveMessages([{role:'assistant',content:resultMsg}]);
+      if(reportDocUrl)appendDiscussButton(reportDocUrl)
     }catch(e){clearInterval(ticker);updateStatus('Agent error: '+e.message)}
     isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false;return
   }
