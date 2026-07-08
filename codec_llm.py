@@ -218,6 +218,7 @@ def stream(
     extra_kwargs: Optional[Dict[str, Any]] = None,
     keepalive: bool = False,
     error_sentinel: bool = False,
+    inline_reasoning: bool = False,
 ) -> Iterator[Any]:
     """POST with `stream=True` and yield the RAW assistant content deltas in
     order. Centralizes the SSE plumbing: header/payload build (shared with
@@ -264,6 +265,7 @@ def stream(
                 if error_sentinel:
                     yield STREAM_ERROR
                 return
+            reasoning_open = False  # inline_reasoning: are we inside a synth <think>?
             for line in r.iter_lines():
                 if not line:
                     continue
@@ -273,22 +275,40 @@ def stream(
                     continue
                 data = line[6:]
                 if data.strip() == "[DONE]":
-                    return
+                    break
                 try:
                     choice = _json.loads(data).get("choices", [{}])[0]
-                    delta = choice.get("delta", {}).get("content", "")
+                    _d = choice.get("delta", {})
+                    delta = _d.get("content", "")
                 except Exception as e:
                     log.warning("LLM stream chunk parse failed: %s", e)
                     continue
+                # inline_reasoning: some models (Qwen3 etc.) stream their thinking
+                # in a separate `reasoning_content`/`reasoning` delta rather than
+                # inline <think>…</think>. Wrap it back into synthetic <think> tags
+                # so the caller's existing <think> machine can surface it as
+                # train-of-thought. Off by default → callers see content only.
+                if inline_reasoning:
+                    rdelta = _d.get("reasoning_content") or _d.get("reasoning") or ""
+                    if rdelta:
+                        if not reasoning_open:
+                            yield "<think>"
+                            reasoning_open = True
+                        yield rdelta
+                    if delta and reasoning_open:
+                        yield "</think>"
+                        reasoning_open = False
                 if delta:
                     yield delta
-                elif keepalive:
+                elif keepalive and not (inline_reasoning and reasoning_open):
                     _empty += 1
                     if _empty % 10 == 1:   # 1st, 11th, 21st … (matches dashboard)
                         yield KEEPALIVE
                 if error_sentinel and choice.get("finish_reason") == "length":
                     # Model hit the max_tokens cap — reply is truncated.
                     yield FINISH_LENGTH
+            if reasoning_open:
+                yield "</think>"   # close a think block if content never arrived
     except Exception as e:
         log.warning("LLM stream call failed: %s", e)
         if error_sentinel:

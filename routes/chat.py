@@ -879,7 +879,8 @@ async def chat_completion(request: Request):
                     hit_token_cap = False
                     for item in codec_llm.stream(messages, **_common,
                                                  keepalive=True,
-                                                 error_sentinel=True):
+                                                 error_sentinel=True,
+                                                 inline_reasoning=show_thoughts):
                         if item is codec_llm.KEEPALIVE:
                             yield ": keepalive\n\n"
                             continue

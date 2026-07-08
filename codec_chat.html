@@ -185,14 +185,19 @@ input[type=file]{display:none}
 .discuss-report-btn:hover:not(:disabled){background:var(--accent-hover);border-color:var(--accent-hover)}
 .discuss-report-btn:disabled{cursor:default;opacity:.7;background:transparent;color:var(--accent)}
 /* Train-of-thought panel — reveals reasoning (chat) / agent steps, collapsed by default */
-.think-panel{margin:0 0 8px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2);overflow:hidden}
-.think-panel>summary{cursor:pointer;padding:7px 12px;font-size:12px;font-weight:600;color:var(--text-muted);list-style:none;display:flex;align-items:center;gap:6px;user-select:none}
-.think-panel>summary::-webkit-details-marker{display:none}
-.think-panel>summary::before{content:'\25B8';font-size:10px;transition:transform .15s;color:var(--accent)}
-.think-panel[open]>summary::before{transform:rotate(90deg)}
-.think-panel .think-body{padding:4px 14px 12px;font-size:12px;line-height:1.55;color:var(--text-dim);white-space:pre-wrap;word-break:break-word;font-family:var(--font);max-height:340px;overflow:auto}
-.think-panel .think-step{padding:3px 0;border-bottom:1px dashed var(--border)}
-.think-panel .think-step:last-child{border-bottom:none}
+/* Train-of-thought: a reveal control + a fixed-size continuously-scrolling window (like public LLM "thinking") */
+.tot{margin:2px 0 6px}
+.tot-toggle{display:inline-flex;align-items:center;gap:6px;cursor:pointer;color:var(--text-dim);font-size:12px;user-select:none;padding:2px 0}
+.tot-toggle:hover{color:var(--text-muted)}
+.tot-toggle .chev{font-size:9px;transition:transform .15s;color:var(--accent)}
+.tot.open .tot-toggle .chev{transform:rotate(90deg)}
+.tot-window{display:none;margin-top:6px;height:150px;overflow-y:auto;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;line-height:1.6;color:var(--text-dim);white-space:pre-wrap;word-break:break-word;font-family:var(--font)}
+.tot.open .tot-window{display:block}
+.tot-live .tot-toggle .chev{animation:totPulse 1.2s ease-in-out infinite}
+@keyframes totPulse{0%,100%{opacity:.4}50%{opacity:1}}
+/* small inline stop button under the agent status message */
+.status-stop{margin-top:8px;display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border:1px solid var(--border);border-radius:14px;background:transparent;color:var(--text-muted);font-size:12px;font-family:var(--font);cursor:pointer;transition:all .15s}
+.status-stop:hover{border-color:#e55;color:#e55}
 
 /* ── Agent Builder ── */
 #agentBuilder{display:none;flex-shrink:0;background:var(--surface);border-bottom:1px solid var(--border);padding:12px 14px;gap:10px;flex-direction:column}
@@ -344,9 +349,6 @@ input[type=file]{display:none}
 <button class="mode-btn active" id="thinkToggle" onclick="toggleThinking()" title="Deep thinking ON — better answers, slower (~15s)">
   <svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>Think
 </button>
-<button class="mode-btn" id="thoughtsToggle" onclick="toggleThoughts()" title="Show CODEC's train of thought — live reasoning &amp; agent steps (off by default)">
-  <svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>Thoughts
-</button>
 <button class="mode-btn" onclick="setMode('research')" id="modeResearchBtn"><svg class="ico" viewBox="0 0 24 24" style="width:14px;height:14px"><rect x="4" y="4" width="16" height="16" rx="2"/><circle cx="9" cy="10" r="1.5" fill="currentColor" stroke="none"/><circle cx="15" cy="10" r="1.5" fill="currentColor" stroke="none"/><path d="M9 15h6"/></svg>Agents</button>
 <button class="mode-btn" onclick="setMode('project')" id="modeProjectBtn" title="Drop a project — autonomous plan-and-build mode"><svg class="ico" viewBox="0 0 24 24" style="width:14px;height:14px"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="5"/><line x1="12" y1="2" x2="12" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg>Project</button>
 <select id="crewSelect">
@@ -497,7 +499,6 @@ var sessionId=null;
 var chatMode='chat';
 var webSearchEnabled=false;
 var thinkingEnabled=true;
-var thoughtsEnabled=false; // Train-of-thought reveal (chat reasoning + agent steps), off by default
 
 function showToast(msg){var t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(function(){t.classList.remove('show')},1800)}
 function _copyFallback(text){
@@ -526,7 +527,7 @@ function renderEscalateChip(sugg,userText){
   var n=sugg&&sugg.estimated_checkpoints?sugg.estimated_checkpoints:'several';
   var div=document.createElement('div');div.className='msg assistant';
   div.innerHTML='<div class="msg-bubble" style="border:1px dashed var(--accent,#a78bfa);background:rgba(167,139,250,0.06)">'+
-    '<div style="font-weight:600;margin-bottom:6px">\uD83D\uDCA1 This looks like a multi-step project (~'+escHtml(String(n))+' checkpoints)</div>'+
+    '<div style="font-weight:600;margin-bottom:6px">This looks like a multi-step project (~'+escHtml(String(n))+' checkpoints)</div>'+
     '<div style="font-size:12px;color:var(--text-dim);margin-bottom:8px">CODEC can draft a plan, ask for your approval once, then run it autonomously in the background.</div>'+
     '<div style="display:flex;gap:8px">'+
     '<button onclick="escalateStartProject(this)" style="padding:6px 14px;background:var(--accent,#a78bfa);color:#000;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">Start as Project</button>'+
@@ -634,7 +635,7 @@ function regenerateResponse(btn){
   isProcessing=true;document.getElementById('sendBtn').disabled=true;_showStop();showTyping();
   _currentAbort=new AbortController();
   var msgs=[{role:'system',content:SYS}].concat(chatHist);
-  fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs,force_search:webSearchEnabled,thinking:thinkingEnabled,show_thoughts:thoughtsEnabled,stream:true}),signal:_currentAbort.signal}).then(async function(r){
+  fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs,force_search:webSearchEnabled,thinking:thinkingEnabled,show_thoughts:thinkingEnabled,stream:true}),signal:_currentAbort.signal}).then(async function(r){
     if(r.status===401||r.status===403){hideTyping();addMessage('assistant','Session expired — redirecting to login...');setTimeout(function(){window.location.href='/auth'},1500);isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false;return}
     hideTyping();
     var reader=r.body.getReader();var decoder=new TextDecoder();var fullText='';var thinkText='';var bubbleId='stream_'+genId();
@@ -648,13 +649,13 @@ function regenerateResponse(btn){
       for(var li=0;li<lines.length;li++){
         var line=lines[li].trim();if(!line.startsWith('data: '))continue;var payload=line.substring(6);
         if(payload==='[DONE]')break;
-        try{var j=JSON.parse(payload);if(j.skill){showToast('⚡ Skill: '+j.skill)}if(j.think){thinkText+=j.think;if(thoughtsEnabled){var tp=ensureThinkPanel(div,'Thinking…',true);setThinkText(tp,thinkText);scrollBottom()}}if(j.token){if(firstToken){bubble.innerHTML='';firstToken=false}fullText+=j.token;bubble.innerHTML=formatMsg(fullText);scrollBottom()}if(j.error){fullText+='\nError: '+j.error}}catch(pe){}
+        try{var j=JSON.parse(payload);if(j.skill){showToast('Skill: '+j.skill)}if(j.think){thinkText+=j.think;var tp=makeToT(div,'Reveal train of thought',true);totPush(tp,j.think);scrollBottom()}if(j.token){if(firstToken){bubble.innerHTML='';firstToken=false}fullText+=j.token;bubble.innerHTML=formatMsg(fullText);scrollBottom()}if(j.error){fullText+='\nError: '+j.error}}catch(pe){}
       }
     }
     if(fullText){
       // Replace the streaming div with a proper message (with copy+regen buttons)
       div.remove();var md=addMessage('assistant',fullText);
-      if(thoughtsEnabled&&thinkText.trim()&&md){var fp=ensureThinkPanel(md,'Train of thought',false);setThinkText(fp,thinkText.trim())}
+      if(thinkText.trim()&&md){var fp=makeToT(md,'Train of thought',false);totSet(fp,thinkText.trim())}
       chatHist.push({role:'assistant',content:fullText});saveMessages([{role:'assistant',content:fullText}])
     }else{bubble.innerHTML='<em style="color:var(--text-dim)">No response</em>'}
     _currentAbort=null;isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false
@@ -681,44 +682,47 @@ function toggleThinking(){
   showToast(thinkingEnabled?'Thinking ON — deeper answers':'Thinking OFF — fast mode');
 }
 
-// ── Train-of-thought toggle ────────────────────────────────────────────────
-// Off by default. When ON, chat reveals the model's <think> reasoning and
-// Agent/Project runs reveal their live step log — each in a collapsible panel.
-function toggleThoughts(){
-  thoughtsEnabled=!thoughtsEnabled;
-  var btn=document.getElementById('thoughtsToggle');
-  btn.classList.toggle('active',thoughtsEnabled);
-  btn.title=thoughtsEnabled?'Train of thought ON — showing reasoning & steps':"Show CODEC's train of thought (off by default)";
-  showToast(thoughtsEnabled?'Train of thought ON':'Train of thought OFF');
+// ── Train of thought ───────────────────────────────────────────────────────
+// A reveal control ("click to reveal train of thought") + a fixed-size window
+// that streams the reasoning continuously (like public LLMs). Available in
+// Think mode (chat reasoning) and Agent/Project mode (live crew steps). No
+// top-bar toggle — it lives right under each message / status, collapsed until
+// clicked.
+// Build (once) and return a ToT block inside `container`. `label` names the
+// reveal link; `live` marks it as an in-progress (pulsing) stream.
+function makeToT(container,label,live){
+  var tot=container.querySelector('.tot');
+  if(tot)return tot;
+  tot=document.createElement('div');tot.className='tot'+(live?' tot-live':'');
+  tot.innerHTML='<div class="tot-toggle"><span class="chev">▸</span><span class="tot-label"></span></div><div class="tot-window"></div>';
+  tot.querySelector('.tot-label').textContent=label||'Reveal train of thought';
+  tot.querySelector('.tot-toggle').onclick=function(){tot.classList.toggle('open');var w=tot.querySelector('.tot-window');if(tot.classList.contains('open'))w.scrollTop=w.scrollHeight};
+  var meta=container.querySelector('.msg-meta');
+  if(meta)container.insertBefore(tot,meta);else container.appendChild(tot);
+  return tot;
 }
-
-// Build (once) and return a collapsible thoughts panel inside `container`,
-// inserted before the first .msg-bubble. `label` names it; `open` expands it.
-function ensureThinkPanel(container,label,open){
-  var p=container.querySelector('.think-panel');
-  if(p)return p;
-  p=document.createElement('details');p.className='think-panel';if(open)p.open=true;
-  var s=document.createElement('summary');s.textContent=label||'Train of thought';
-  var body=document.createElement('div');body.className='think-body';
-  p.appendChild(s);p.appendChild(body);
-  var bubble=container.querySelector('.msg-bubble');
-  if(bubble)container.insertBefore(p,bubble);else container.appendChild(p);
-  return p;
+// Append reasoning text to a ToT window (auto-scroll if open).
+function totPush(tot,text){
+  var w=tot.querySelector('.tot-window');if(!w)return;
+  w.textContent+=text;if(tot.classList.contains('open'))w.scrollTop=w.scrollHeight;
 }
-// Render an array of step strings/objects into a panel body as discrete rows.
-function renderThinkSteps(panel,steps){
-  var body=panel.querySelector('.think-body');if(!body)return;
-  body.innerHTML='';
+// Set the full reasoning text of a ToT window at once.
+function totSet(tot,text){
+  var w=tot.querySelector('.tot-window');if(!w)return;
+  w.textContent=text;w.scrollTop=w.scrollHeight;
+}
+// Flatten crew progress items into one continuous reasoning stream.
+function stepsToText(steps){
+  var out=[];
   for(var i=0;i<steps.length;i++){
-    var st=steps[i];var txt=(typeof st==='string')?st:(st&&(st.text||st.message||st.step))||JSON.stringify(st);
-    var row=document.createElement('div');row.className='think-step';row.textContent=txt;body.appendChild(row);
+    var st=steps[i];out.push((typeof st==='string')?st:(st&&(st.text||st.message||st.step))||JSON.stringify(st));
   }
-  body.scrollTop=body.scrollHeight;
+  return out.join('\n');
 }
-// Set raw reasoning text (chat <think>) into a panel body.
-function setThinkText(panel,text){
-  var body=panel.querySelector('.think-body');if(!body)return;
-  body.textContent=text;body.scrollTop=body.scrollHeight;
+// Mark a live ToT as finished (stop the pulse, relabel).
+function totFinalize(tot,label){
+  if(!tot)return;tot.classList.remove('tot-live');
+  var l=tot.querySelector('.tot-label');if(l&&label)l.textContent=label;
 }
 
 function genId(){return Date.now().toString(36)+Math.random().toString(36).substr(2,5)}
@@ -1072,7 +1076,8 @@ function addFileChip(name,content,type){
   pendingFiles.push({id:id,name:name,content:content,type:type});
   var chips=document.getElementById('fileChips');
   var chip=document.createElement('div');chip.className='file-chip';chip.id=id;
-  chip.innerHTML='<span class="fc-icon">'+(type==='image'?'\u{1F4F7}':type==='pdf'?'\u{1F4C4}':'\u{1F4CE}')+'</span><span class="fc-name">'+escHtml(name)+'</span><span class="fc-close" onclick="removeChip(\''+id+'\')">\u2715</span>';
+  var _fcIco=(type==='image')?'<svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>':'<svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>';
+  chip.innerHTML='<span class="fc-icon">'+_fcIco+'</span><span class="fc-name">'+escHtml(name)+'</span><span class="fc-close" onclick="removeChip(\''+id+'\')">\u2715</span>';
   chips.appendChild(chip)
 }
 function removeChip(id){pendingFiles=pendingFiles.filter(function(f){return f.id!==id});var el=document.getElementById(id);if(el)el.remove()}
@@ -1139,7 +1144,7 @@ async function sendMessage(){
         var rd=await rr.json();
         if(rd.ok){
           replyDiv.querySelector('.msg-bubble').innerHTML=
-            '✉️ Sent to <code style="opacity:.7">'+escHtml(_activeAgentId.slice(0,12))+'</code> · agent will reply in-thread';
+            'Sent to <code style="opacity:.7">'+escHtml(_activeAgentId.slice(0,12))+'</code> · agent will reply in-thread';
           chatHist.push({role:'assistant',content:'(message routed to active agent)'});
           // Start a brief poll for the agent's reply so the user sees response inline
           schedulePollAgentTimeline(_activeAgentId, replyDiv);
@@ -1208,12 +1213,14 @@ async function sendMessage(){
       'content_writer':'Content Writer','meeting_summarizer':'Meeting Summarizer',
       'invoice_generator':'Invoice Generator','project_manager':'Project Manager',
       'custom':document.getElementById('agentName').value||'Custom Agent'};
-    var userMsg='\uD83E\uDD16 '+(crewLabels[crew]||crew)+': '+(researchText||'(running)');
+    var userMsg=(crewLabels[crew]||crew)+': '+(researchText||'(running)');
     addMessage('user',userMsg);chatHist.push({role:'user',content:userMsg});saveMessages([{role:'user',content:userMsg}]);
 
     var statusEl=null;
     function updateStatus(msg){
-      if(!statusEl){var es=document.getElementById('emptyState');if(es)es.remove();var div=document.createElement('div');div.className='msg assistant';div.innerHTML='<div class="msg-bubble" id="agentStatus"></div>';document.getElementById('messages').appendChild(div);statusEl=document.getElementById('agentStatus')}
+      if(!statusEl){var es=document.getElementById('emptyState');if(es)es.remove();var div=document.createElement('div');div.className='msg assistant';div.innerHTML='<div class="msg-bubble" id="agentStatus"></div>';document.getElementById('messages').appendChild(div);statusEl=document.getElementById('agentStatus');
+        // Small inline Stop button right under the running status (in addition to the composer Stop).
+        var sb=document.createElement('button');sb.className='status-stop';sb.type='button';sb.innerHTML='<svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>Stop';sb.onclick=stopGeneration;div.appendChild(sb)}
       statusEl.innerHTML=msg;scrollBottom()
     }
 
@@ -1233,8 +1240,8 @@ async function sendMessage(){
       if(!r.ok||!startData.job_id){clearInterval(_agentTicker);_agentTicker=null;updateStatus('Agent error: '+(startData.error||'Failed to start'));isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false;return}
       var jobId=startData.job_id;_agentJobId=jobId;
       var data=await new Promise(function(resolve,reject){_agentPoll=setInterval(async function(){try{var sr=await fetch('/api/agents/status/'+jobId);var sd=await sr.json();
-        // Train-of-thought: stream the crew's live step log into a panel above the status.
-        if(thoughtsEnabled&&sd.progress&&sd.progress.length&&statusEl){var lp=ensureThinkPanel(statusEl.parentElement,'\uD83E\uDDE0 Live steps ('+sd.progress.length+')',true);renderThinkSteps(lp,sd.progress)}
+        // Train-of-thought: stream the crew's live step log as one continuous feed under the status.
+        if(sd.progress&&sd.progress.length&&statusEl){var lp=makeToT(statusEl.parentElement,'Reveal train of thought',true);totSet(lp,stepsToText(sd.progress))}
         if(sd.status!=='running'){clearInterval(_agentPoll);_agentPoll=null;resolve(sd)}}catch(pe){clearInterval(_agentPoll);_agentPoll=null;reject(pe)}},4000)});
       clearInterval(_agentTicker);_agentTicker=null;_agentJobId=null;if(statusEl)statusEl.parentElement.remove();
       // User pressed Stop after the crew already reported terminal \u2014 honor it.
@@ -1242,8 +1249,8 @@ async function sendMessage(){
       var resultMsg;var reportDocUrl=null;
       if(data.status==='complete'){var result=data.result||'';var docMatch=result.match(/https:\/\/docs\.google\.com\/\S+/);if(docMatch){reportDocUrl=docMatch[0].replace(/[)\].,]+$/,'');var summary=result.replace(docMatch[0],'').trim();if(!summary)summary='Your report has been generated and saved to Google Docs.';resultMsg='**'+crewLabels[crew]+' Complete!** ('+data.elapsed_seconds+'s)\n\n'+summary+'\n\n[Open in Google Docs]('+reportDocUrl+')'}else{resultMsg='**'+crewLabels[crew]+' Complete!** ('+data.elapsed_seconds+'s)\n\n'+result}}else{resultMsg='Agent error: '+(data.error||'Unknown error')}
       var amd=addMessage('assistant',resultMsg);chatHist.push({role:'assistant',content:resultMsg});saveMessages([{role:'assistant',content:resultMsg}]);
-      // Persist the crew's step log on the final message when Thoughts is on.
-      if(thoughtsEnabled&&data.progress&&data.progress.length&&amd){var pp=ensureThinkPanel(amd,'\uD83E\uDDE0 Train of thought ('+data.progress.length+' steps)',false);renderThinkSteps(pp,data.progress)}
+      // Persist the crew's step log on the final message as a continuous feed.
+      if(data.progress&&data.progress.length&&amd){var pp=makeToT(amd,'Train of thought ('+data.progress.length+' steps)',false);totSet(pp,stepsToText(data.progress))}
       if(reportDocUrl)appendDiscussButton(reportDocUrl)
     }catch(e){if(_agentTicker){clearInterval(_agentTicker);_agentTicker=null}_agentJobId=null;updateStatus('Agent error: '+e.message)}
     isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false;return
@@ -1252,7 +1259,7 @@ async function sendMessage(){
   var fileContext='';var fileNames=[];
   for(var i=0;i<pendingFiles.length;i++){var f=pendingFiles[i];fileNames.push(f.name);if(f.type==='text'||f.type==='pdf'){fileContext+='\n\n[DOCUMENT: '+f.name+']\n'+f.content.substring(0,80000)+'\n[END DOCUMENT]'}else if(f.type==='image'){fileContext+='\n\n[IMAGE ANALYSIS of '+f.name+']\n'+f.content.substring(0,80000)+'\n[END IMAGE]'}}
   var displayText=text;
-  if(fileNames.length){displayText=(fileNames.map(function(n){return'\u{1F4CE} '+n}).join('\n'))+'\n\n'+(text||'Please analyze the attached file(s).')}
+  if(fileNames.length){displayText=(fileNames.map(function(n){return n}).join('\n'))+'\n\n'+(text||'Please analyze the attached file(s).')}
   addMessage('user',displayText);
   var imageData=[];
   var llmText=(text||'Please analyze the attached file(s).')+fileContext;
@@ -1269,7 +1276,7 @@ async function sendMessage(){
       if(data.response){addMessage('assistant',data.response);chatHist.push({role:'assistant',content:data.response});saveMessages([{role:'assistant',content:data.response}])}
       else{addMessage('assistant','Error: '+(data.error||'No response'))}
     } else {
-      r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs,force_search:webSearchEnabled,thinking:thinkingEnabled,show_thoughts:thoughtsEnabled,stream:true}),signal:_currentAbort.signal});
+      r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs,force_search:webSearchEnabled,thinking:thinkingEnabled,show_thoughts:thinkingEnabled,stream:true}),signal:_currentAbort.signal});
       if(r.status===401||r.status===403){hideTyping();addMessage('assistant','Session expired — redirecting to login...');setTimeout(function(){window.location.href='/auth'},1500);isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false;return}
       hideTyping();
       // SSE streaming — render tokens as they arrive
@@ -1287,10 +1294,10 @@ async function sendMessage(){
           if(!line.startsWith('data: '))continue;
           var payload=line.substring(6);
           if(payload==='[DONE]')break;
-          try{var j=JSON.parse(payload);if(j.think){thinkText+=j.think;if(thoughtsEnabled){var tp2=ensureThinkPanel(div,'Thinking…',true);setThinkText(tp2,thinkText);scrollBottom()}}if(j.token){if(firstToken){bubble.innerHTML='';firstToken=false}fullText+=j.token;bubble.innerHTML=formatMsg(fullText);scrollBottom()}if(j.escalate_project){renderEscalateChip(j.escalate_project,text)}if(j.error){fullText+='\n\nError: '+j.error}}catch(pe){}
+          try{var j=JSON.parse(payload);if(j.think){thinkText+=j.think;var tp2=makeToT(div,'Reveal train of thought',true);totPush(tp2,j.think);scrollBottom()}if(j.token){if(firstToken){bubble.innerHTML='';firstToken=false}fullText+=j.token;bubble.innerHTML=formatMsg(fullText);scrollBottom()}if(j.escalate_project){renderEscalateChip(j.escalate_project,text)}if(j.error){fullText+='\n\nError: '+j.error}}catch(pe){}
         }
       }
-      if(fullText){div.remove();var md2=addMessage('assistant',fullText);if(thoughtsEnabled&&thinkText.trim()&&md2){var fp2=ensureThinkPanel(md2,'Train of thought',false);setThinkText(fp2,thinkText.trim())}chatHist.push({role:'assistant',content:fullText});saveMessages([{role:'assistant',content:fullText}])}
+      if(fullText){div.remove();var md2=addMessage('assistant',fullText);if(thinkText.trim()&&md2){var fp2=makeToT(md2,'Train of thought',false);totSet(fp2,thinkText.trim())}chatHist.push({role:'assistant',content:fullText});saveMessages([{role:'assistant',content:fullText}])}
       else{bubble.innerHTML='<em style="color:var(--text-dim)">No response</em>'}
     }
   }catch(e){
@@ -1329,6 +1336,28 @@ function toggleMic(){
   recognition.addEventListener('end',clearPlaceholder,{once:true})
 }
 
+// Downscale big photos client-side before upload so the vision model isn't
+// choked by a full-res phone image (a 4 MB shot -> ~200 KB -> far faster analysis).
+function _downscaleImage(file,maxDim){
+  return new Promise(function(resolve){
+    var reader=new FileReader();
+    reader.onload=function(){
+      var img=new Image();
+      img.onload=function(){
+        var w=img.width,h=img.height;
+        if(w<=maxDim&&h<=maxDim){resolve(reader.result.split(',')[1]);return}
+        var scale=Math.min(maxDim/w,maxDim/h);
+        var cv=document.createElement('canvas');cv.width=Math.round(w*scale);cv.height=Math.round(h*scale);
+        try{cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);resolve(cv.toDataURL('image/jpeg',0.85).split(',')[1])}
+        catch(e){resolve(reader.result.split(',')[1])}
+      };
+      img.onerror=function(){resolve(reader.result.split(',')[1])};
+      img.src=reader.result;
+    };
+    reader.onerror=function(){resolve('')};
+    reader.readAsDataURL(file);
+  });
+}
 async function handleUpload(e){
   var files=e.target.files;
   for(var i=0;i<files.length;i++){
@@ -1336,13 +1365,13 @@ async function handleUpload(e){
     if(file.type.startsWith('image/')){
       var tid='loading_'+genId();var chips=document.getElementById('fileChips');
       var chip=document.createElement('div');chip.className='file-chip loading';chip.id=tid;
-      chip.innerHTML='<span class="fc-icon">\u{1F4F7}</span><span class="fc-name">'+escHtml(file.name)+' (analyzing...)</span>';chips.appendChild(chip);
-      (function(theFile,loadId){var reader=new FileReader();reader.onload=async function(){var b64=reader.result.split(',')[1];try{var r=await fetch('/api/upload_image',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:theFile.name,data:b64})});var data=await r.json();var el=document.getElementById(loadId);if(el)el.remove();if(data.text){addFileChip(theFile.name,'[IMAGE ANALYSIS: '+data.text+']','image')}else{addFileChip(theFile.name,'[Image upload failed]','image')}}catch(err){var el=document.getElementById(loadId);if(el)el.remove();addFileChip(theFile.name,'[Image error]','image')}};reader.readAsDataURL(theFile)})(file,tid);continue
+      chip.innerHTML='<span class="fc-icon"><svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></span><span class="fc-name">'+escHtml(file.name)+' (analyzing...)</span>';chips.appendChild(chip);
+      (function(theFile,loadId){_downscaleImage(theFile,1280).then(async function(b64){try{var r=await fetch('/api/upload_image',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:theFile.name,data:b64})});var data=await r.json();var el=document.getElementById(loadId);if(el)el.remove();if(data.text){addFileChip(theFile.name,'[IMAGE ANALYSIS: '+data.text+']','image')}else{addFileChip(theFile.name,'[Image upload failed]','image')}}catch(err){var el=document.getElementById(loadId);if(el)el.remove();addFileChip(theFile.name,'[Image error]','image')}})})(file,tid);continue
     }else if(/\.(pdf|docx|csv|tsv)$/i.test(file.name)){
       (function(theFile){
         var tempId='loading_'+genId();var chips=document.getElementById('fileChips');
         var chip=document.createElement('div');chip.className='file-chip loading';chip.id=tempId;
-        var fIcon=/\.pdf$/i.test(theFile.name)?'\u{1F4C4}':'\u{1F4CE}';
+        var fIcon=/\.pdf$/i.test(theFile.name)?'<svg class=\"ico ico-sm\" viewBox=\"0 0 24 24\"><path d=\"M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z\"/><path d=\"M14 2v6h6\"/></svg>':'<svg class=\"ico ico-sm\" viewBox=\"0 0 24 24\"><path d=\"M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z\"/><path d=\"M14 2v6h6\"/></svg>';
         var fType=/\.pdf$/i.test(theFile.name)?'pdf':'text';
         chip.innerHTML='<span class="fc-icon">'+fIcon+'</span><span class="fc-name">'+escHtml(theFile.name)+' (extracting...)</span>';chips.appendChild(chip);
         var rd=new FileReader();
@@ -1684,7 +1713,7 @@ async function _agentAction(endpoint){
         var kb=f.size<1024?f.size+' B':(f.size/1024).toFixed(1)+' KB';
         return '  • '+f.name+' ('+kb+')';
       }).join('\n');
-      addMessage('assistant','📁 '+d.project_dir+'\n'+list);
+      addMessage('assistant',''+d.project_dir+'\n'+list);
     }else if(d.opened||d.ok){
       // open-folder succeeded silently
     }else if(d.error){
@@ -1707,7 +1736,7 @@ async function _injectMissedAgentMessages(agentId){
       // Skip if this message is already in chatHist (survived from live poller or prior load)
       var alreadySaved=chatHist.some(function(h){return h.content&&h.content.indexOf(title)>=0});
       if(alreadySaved)continue;
-      var icon=m.type==='agent_done'?'✅':m.type==='agent_aborted'?'❌':'⚙️';
+      var icon=m.type==='agent_done'?'done':m.type==='agent_aborted'?'stopped':'running';
       var bubble=document.createElement('div');bubble.className='msg assistant';
       var titleHtml='<div style="font-weight:600;margin-bottom:6px">'+icon+' '+escHtml(title)+'</div>';
       var bodyHtml=m.body?'<div style="font-size:13px;color:var(--text-dim);white-space:pre-wrap">'+escHtml(m.body)+'</div>':'';
@@ -1744,12 +1773,12 @@ function _startAgentPoller(agentId){
       for(var mi=0;mi<newMsgs.length;mi++){
         var m=newMsgs[mi];
         seen.add(m.ts+m.type);
-        var icon=m.type==='agent_done'?'✅':m.type==='agent_aborted'?'❌':'⚙️';
+        var icon=m.type==='agent_done'?'done':m.type==='agent_aborted'?'stopped':'running';
         var bubble=document.createElement('div');bubble.className='msg assistant';
         var titleHtml='<div style="font-weight:600;margin-bottom:6px">'+icon+' '+escHtml(m.title||m.type)+'</div>';
         // Body: preserve newlines
         var bodyHtml=m.body?'<div style="font-size:13px;color:var(--text-dim);white-space:pre-wrap">'+escHtml(m.body)+'</div>':'';
-        // Action buttons (📂 Open folder, 📄 View files)
+        // Action buttons (Open folder, View files)
         var actionsHtml='';
         if(m.actions&&m.actions.length){
           actionsHtml='<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">';
@@ -1884,7 +1913,7 @@ function renderActiveAgentChip(){
     '<span style="width:6px;height:6px;border-radius:50%;background:#10b981;animation:pulse 2s infinite"></span>'+
     '<span style="opacity:.85">Talking to <code style="opacity:1;font-family:var(--mono,ui-monospace)">'+escHtml(_activeAgentId.slice(0,12))+'</code></span>'+
     '<span style="opacity:.5">·</span>'+
-    '<a href="#" onclick="toggleLivePreview(event)" id="livePreviewToggle" style="color:var(--text-muted,#9ca3af);text-decoration:none;font-size:13px" title="Show what the agent is producing">👁 preview</a>'+
+    '<a href="#" onclick="toggleLivePreview(event)" id="livePreviewToggle" style="color:var(--text-muted,#9ca3af);text-decoration:none;font-size:13px" title="Show what the agent is producing">preview</a>'+
     '<span style="opacity:.5">·</span>'+
     '<a href="#" onclick="exitConversation(event)" style="color:var(--text-muted,#9ca3af);text-decoration:none;font-size:13px" title="Exit conversation — next message will draft a new project">× exit</a>';
   renderLivePreviewPanel();
@@ -1940,7 +1969,7 @@ async function pollLivePreview(){
       '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">'+
         '<div style="font-weight:600;letter-spacing:.04em;opacity:.7;text-transform:uppercase;font-size:10px">Live · agent workspace</div>'+
         '<div style="display:flex;gap:8px">'+
-          (projectDir ? '<a href="#" onclick="openAgentFolder(\''+encodeURIComponent(_activeAgentId)+'\',event)" style="color:var(--text-muted,#9ca3af);text-decoration:none;font-size:11px">📂 open folder</a>' : '')+
+          (projectDir ? '<a href="#" onclick="openAgentFolder(\''+encodeURIComponent(_activeAgentId)+'\',event)" style="color:var(--text-muted,#9ca3af);text-decoration:none;font-size:11px">open folder</a>' : '')+
           '<a href="#" onclick="toggleLivePreview(event)" style="color:var(--text-muted,#9ca3af);text-decoration:none;font-size:11px">×</a>'+
         '</div>'+
       '</div>';
