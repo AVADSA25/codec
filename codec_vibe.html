@@ -268,8 +268,8 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx);height:100vh;hei
 <div class="sp">
 <div class="cp"><div class="hd" style="font-size:13px;color:var(--tx2);font-weight:500">Vibe Coding</div><div class="ms" id="cm"><div class="mg ma">Tell me what to build!</div></div><div class="ia"><button class="vibe-mic" id="vibeMic" onclick="toggleVibeMic()" title="Voice input"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button><textarea id="vi" class="ii" rows="1" placeholder="Describe what to build..."></textarea><button class="sb" id="sndb" title="Send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></button><button class="sb" id="stopb" onclick="doStop()" style="display:none;background:#c0392b" title="Stop"><svg width="14" height="14" viewBox="0 0 24 24" fill="#fff" stroke="none"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></button></div></div>
 <div style="width:4px;cursor:col-resize;background:var(--bd)" id="rh"></div>
-<div class="ep"><div id="eb"></div><div class="tb"><button class="bt primary" onclick="doRun()" title="Execute code"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5 3 19 12 5 21 5 3"/></svg>Run</button><button class="bt" onclick="doPrev()" title="Live preview"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>Preview</button><button class="bt" id="inspectBtn" onclick="toggleInspect()" title="Inspect elements"><svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Inspect</button><div class="tb-sep"></div><button class="bt" onclick="doSave()" title="Save file"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save</button><button class="bt" onclick="doCopy()" title="Copy code"><svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>Copy</button><div class="tb-sep"></div><button class="bt" onclick="doTestSkill()" title="Test skill run()"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>Test</button><span class="rs" id="rs"></span></div></div>
-<div class="pp" id="pp"><div class="ph"><span>&#128065; Live Preview</span><button onclick="document.getElementById('pp').classList.remove('sh')" style="background:0;border:0;color:var(--tx2);cursor:pointer;font-size:16px">&#10005;</button></div><iframe id="pf" sandbox="allow-scripts allow-same-origin"></iframe></div>
+<div class="ep"><div id="eb"></div><div class="tb"><button class="bt primary" onclick="doRun()" title="Execute code"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5 3 19 12 5 21 5 3"/></svg>Run</button><button class="bt" onclick="doPrev()" title="Live preview"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>Preview</button><button class="bt" id="inspectBtn" onclick="toggleInspect()" title="Inspect elements"><svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Inspect</button><div class="tb-sep"></div><button class="bt" onclick="doSave()" title="Save file"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save</button><button class="bt" onclick="doCopy()" title="Copy code"><svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>Copy</button><span class="rs" id="rs"></span></div></div>
+<div class="pp" id="pp"><div class="ph"><span>Live Preview</span><button onclick="document.getElementById('pp').classList.remove('sh')" style="background:0;border:0;color:var(--tx2);cursor:pointer;font-size:16px">&#10005;</button></div><iframe id="pf" sandbox="allow-scripts allow-same-origin"></iframe></div>
 </div>
 <div class="op" id="op"><span style="color:var(--ac)">Vibe Coding</span></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
@@ -588,96 +588,82 @@ function doSend() {
 
   _vibeAbort = new AbortController();
   var msgs = [{role: 'system', content: SYSP}].concat(hist);
-  fetch('/api/chat', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    credentials: 'same-origin',
-    body: JSON.stringify({messages: msgs}),
-    signal: _vibeAbort.signal
-  })
-  .then(function(r) {
-    if (r.status === 401 || r.redirected) {
-      return {error: 'Session expired — please refresh and re-authenticate', _authFail: true};
-    }
-    var ct = r.headers.get('content-type') || '';
-    if (ct.indexOf('application/json') === -1) {
-      return r.text().then(function(txt) {
-        console.error('[Vibe] Non-JSON response:', r.status, txt.substring(0, 200));
-        if (r.status >= 500) return {error: 'LLM server error (status ' + r.status + '). It may have crashed or timed out — try again.'};
-        return {error: 'Server returned non-JSON response (status ' + r.status + '). The LLM may need restarting.'};
+  var _fenceMap = {python:'python',py:'python',javascript:'javascript',js:'javascript',typescript:'typescript',ts:'typescript',html:'html',css:'css',json:'json',bash:'bash',sh:'bash',go:'go',rust:'rust',rs:'rust',java:'java',cpp:'cpp','c++':'cpp',swift:'swift',ruby:'ruby',rb:'ruby',sql:'sql',yaml:'yaml',yml:'yaml',markdown:'markdown',md:'markdown'};
+  var _resetSend = function(){document.getElementById('sndb').style.display='';document.getElementById('stopb').style.display='none';clearInterval(thinkTmr);var tm=document.getElementById('tkmsg');if(tm)tm.remove();};
+  (async function() {
+    try {
+      var r = await fetch('/api/chat', {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, credentials: 'same-origin',
+        body: JSON.stringify({messages: msgs, thinking: false, stream: true}), signal: _vibeAbort.signal
       });
-    }
-    return r.json();
-  })
-  .then(function(data) {
-    if (data._authFail) { window.location.href = '/auth'; return; }
-    _vibeAbort = null;
-    document.getElementById('sndb').style.display = '';
-    document.getElementById('stopb').style.display = 'none';
-    clearInterval(thinkTmr);
-    var tm = document.getElementById('tkmsg');
-    if (tm) tm.remove();
-
-    if (data.response) {
-      var rp = data.response.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/###\s*FINAL ANSWER:\s*/g, '').trim();
+      if (r.status === 401 || r.redirected) { window.location.href = '/auth'; return; }
+      if (!r.body) throw new Error('No stream body (status ' + r.status + ')');
+      var reader = r.body.getReader(), dec = new TextDecoder(), raw = '', buf = '';
+      var started = false, lastCode = '', det = 'python';
+      while (true) {
+        var chunk = await reader.read();
+        if (chunk.done) break;
+        buf += dec.decode(chunk.value, {stream: true});
+        var lns = buf.split('\n'); buf = lns.pop();
+        for (var i = 0; i < lns.length; i++) {
+          var ln = lns[i].trim();
+          if (!ln.indexOf || ln.indexOf('data: ') !== 0) continue;
+          var pl = ln.substring(6);
+          if (pl === '[DONE]') continue;
+          try {
+            var j = JSON.parse(pl);
+            if (j.token) {
+              raw += j.token;
+              var clean = raw.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/###\s*FINAL ANSWER:\s*/g, '');
+              var f = _vibeFence(clean);
+              if (f) {
+                if (!started) { started = true; var tk0 = document.getElementById('tkmsg'); if (tk0) tk0.remove(); clearInterval(thinkTmr); det = _fenceMap[(f.lang || '').toLowerCase()] || detectLang(f.code) || 'python'; setDetectedLang(det); addOut('sy', 'Writing code live...'); }
+                if (f.code !== lastCode) { lastCode = f.code; ed.setValue(f.code); ed.revealLine(f.code.split('\n').length); }
+              }
+            }
+          } catch (pe) {}
+        }
+      }
+      _vibeAbort = null; _resetSend();
+      var rp = raw.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/###\s*FINAL ANSWER:\s*/g, '').trim();
       hist.push({role: 'assistant', content: rp});
-
       var m = rp.match(/```([\w+#]*)\n([\s\S]*?)```/);
       if (m) {
-        var fenceLang = m[1] || '';
         var code = m[2];
         var before = rp.substring(0, rp.indexOf('```')).trim();
         var after = rp.substring(rp.lastIndexOf('```') + 3).trim();
-
         var h = '';
         if (before) h += esc(before).replace(/\n/g, '<br>') + '<br><br>';
         h += '<pre><code>' + esc(code) + '</code></pre>';
         h += '<button class="ab" onclick="doApply(this)" data-c="' + btoa(unescape(encodeURIComponent(code))) + '">Apply to Editor</button>';
         if (after) h += '<br><br>' + esc(after).replace(/\n/g, '<br>');
-
         addMsg('assistant', h, true);
-
-        // Typing animation — stream code into editor
-        var fenceMap = {python:'python',py:'python',javascript:'javascript',js:'javascript',typescript:'typescript',ts:'typescript',html:'html',css:'css',json:'json',bash:'bash',sh:'bash',go:'go',rust:'rust',rs:'rust',java:'java',cpp:'cpp','c++':'cpp',swift:'swift',ruby:'ruby',rb:'ruby',sql:'sql',yaml:'yaml',yml:'yaml',markdown:'markdown',md:'markdown'};
-        var detected = fenceMap[fenceLang.toLowerCase()] || detectLang(code);
-        setDetectedLang(detected);
-        var lines = code.split('\n');
-        var li = 0, codeStr = '';
-        ed.setValue('');
-        addOut('sy', 'Writing code...');
-        var typeTimer = setInterval(function() {
-          if (li < lines.length) {
-            codeStr += (li > 0 ? '\n' : '') + lines[li];
-            ed.setValue(codeStr);
-            ed.revealLine(li + 1);
-            li++;
-          } else {
-            clearInterval(typeTimer);
-            addOut('sy', 'Code ready (' + detected + ')');
-            doSaveSes();
-          }
-        }, Math.max(15, Math.min(60, 2000 / lines.length)));
-
-        if (code.trim().startsWith('<!DOCTYPE') || code.includes('<canvas')) {
-          setTimeout(doPrev, 300);
-        }
+        det = _fenceMap[(m[1] || '').toLowerCase()] || detectLang(code); setDetectedLang(det);
+        if (ed.getValue().trim() !== code.trim()) ed.setValue(code);   // final sync (in case stream missed the close)
+        addOut('sy', 'Code ready (' + det + ')'); doSaveSes();
+        if (code.trim().startsWith('<!DOCTYPE') || code.includes('<canvas')) setTimeout(doPrev, 300);
       } else {
-        addMsg('assistant', rp);
-        doSaveSes();
+        addMsg('assistant', rp || 'Error: No response'); doSaveSes();
       }
-    } else {
-      addMsg('assistant', 'Error: ' + (data.error || 'No response'));
+    } catch (e) {
+      _vibeAbort = null; _resetSend();
+      if (e.name !== 'AbortError') addMsg('assistant', 'Error: ' + e.message);
     }
-  })
-  .catch(function(e) {
-    _vibeAbort = null;
-    document.getElementById('sndb').style.display = '';
-    document.getElementById('stopb').style.display = 'none';
-    clearInterval(thinkTmr);
-    var tm = document.getElementById('tkmsg');
-    if (tm) tm.remove();
-    if (e.name !== 'AbortError') addMsg('assistant', 'Error: ' + e.message);
-  });
+  })();
+}
+
+// Extract the current (possibly still-streaming) code fence from partial text.
+function _vibeFence(txt) {
+  var i = txt.indexOf('```');
+  if (i === -1) return null;
+  var rest = txt.slice(i + 3);
+  var nl = rest.indexOf('\n');
+  if (nl === -1) return {lang: rest, code: '', closed: false};
+  var lang = rest.slice(0, nl).trim();
+  var body = rest.slice(nl + 1);
+  var close = body.indexOf('```');
+  if (close === -1) return {lang: lang, code: body, closed: false};
+  return {lang: lang, code: body.slice(0, close), closed: true};
 }
 
 function doApply(btn) {
