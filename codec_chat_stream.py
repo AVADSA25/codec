@@ -52,6 +52,16 @@ class SkillTagBuffer:
         # caller's blank-bubble fallback distinguish "all output was dropped
         # tool tags" from "the model produced nothing at all" (2026-07 fix).
         self.tags_resolved = 0
+        # Train-of-thought side channel: <think> fragments captured for the
+        # caller to (optionally) surface. Draining is opt-in — the clean-text
+        # yields from feed() are identical whether or not anyone reads this.
+        self._think_out: list = []
+
+    def drain_think(self) -> list:
+        """Return + clear <think> fragments captured since the last drain."""
+        out = self._think_out
+        self._think_out = []
+        return out
 
     def _count(self, text: str) -> str:
         """Account visible chars (only non-empty), return the text unchanged.
@@ -65,17 +75,25 @@ class SkillTagBuffer:
         # ── <think>…</think> handling (cross-chunk) ──
         if "<think>" in token:
             self.in_think = True
-            before = token.split("<think>")[0]
+            parts = token.split("<think>", 1)
+            before = parts[0]
             if before:
                 yield before          # emitted but NOT counted (faithful)
+            # Capture reasoning that shares this chunk (after the open tag).
+            if len(parts) > 1 and parts[1]:
+                self._think_out.append(parts[1])
             token = ""
         if self.in_think:
             if "</think>" in token:
                 self.in_think = False
-                after = token.split("</think>", 1)[-1]
+                head, after = token.split("</think>", 1)
+                if head:
+                    self._think_out.append(head)   # reasoning before the close
                 if after:
                     yield after       # emitted but NOT counted (faithful)
-            return                    # skip thinking content
+            elif token:
+                self._think_out.append(token)      # a pure reasoning chunk
+            return                    # skip thinking content from clean text
         if not token:
             return
 

@@ -796,6 +796,10 @@ async def chat_completion(request: Request):
         # Dashboard chat & Vibe benefit from thinking mode (deeper answers).
         # Frontend can send thinking=false to override for speed.
         thinking = body.get("thinking", True)
+        # Train-of-thought reveal: when the frontend's Thoughts toggle is ON,
+        # also stream the model's <think> reasoning as separate SSE `think`
+        # events. Off by default → no think frames → identical to before.
+        show_thoughts = bool(body.get("show_thoughts", False))
 
         # A-12 (PR-3E-chat-stream): build the shared codec_llm args ONCE so the
         # stream + non-stream branches can't drift. top_p/frequency_penalty are
@@ -887,9 +891,15 @@ async def chat_completion(request: Request):
                             continue
                         for s in buf.feed(item):
                             yield _frame(s)
+                        if show_thoughts:
+                            for t in buf.drain_think():
+                                yield f"data: {json.dumps({'think': t})}\n\n"
                     # Stream ended ([DONE] or close): flush, then blank-bubble net.
                     for s in buf.finish():
                         yield _frame(s)
+                    if show_thoughts:
+                        for t in buf.drain_think():
+                            yield f"data: {json.dumps({'think': t})}\n\n"
                     if hit_token_cap:
                         yield _frame(
                             "\n\n⚠️ *Reply truncated — the model hit the "

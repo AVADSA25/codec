@@ -127,7 +127,12 @@ async def run_agent_crew(request: Request):
                 from codec_agents import run_crew
                 result = loop.run_until_complete(run_crew(crew_name, callback=on_progress, **body))
             _agent_jobs[job_id].update(result)
-            _agent_jobs[job_id]["status"] = result.get("status", "complete")
+            # If the user pressed Stop while the crew was still running, keep the
+            # cancelled status rather than overwriting it with a late result.
+            if _agent_jobs.get(job_id, {}).get("cancel_requested"):
+                _agent_jobs[job_id]["status"] = "cancelled"
+            else:
+                _agent_jobs[job_id]["status"] = result.get("status", "complete")
             _agent_jobs[job_id]["progress"] = progress_log
         except Exception as e:
             import traceback; traceback.print_exc()
@@ -147,6 +152,24 @@ async def agent_job_status(job_id: str):
     if not job:
         return JSONResponse({"error": "Job not found"}, status_code=404)
     return job
+
+
+@router.post("/api/agents/cancel/{job_id}")
+async def cancel_agent_job(job_id: str):
+    """Cooperatively cancel a running agent/crew job.
+
+    Crews run to completion in a daemon thread and can't be killed mid-run, so
+    this flags the job cancelled: the run thread checks the flag before writing
+    its final status, and status polls immediately see 'cancelled'. The chat UI
+    stops waiting as soon as this returns.
+    """
+    job = _agent_jobs.get(job_id)
+    if not job:
+        return JSONResponse({"error": "Job not found"}, status_code=404)
+    job["cancel_requested"] = True
+    if job.get("status") == "running":
+        job["status"] = "cancelled"
+    return {"job_id": job_id, "status": "cancelled"}
 
 
 @router.get("/api/agents/tools")
@@ -221,6 +244,30 @@ async def delete_custom_agent(request: Request):
             os.remove(path)
             return {"deleted": True, "id": safe_id}
         return JSONResponse({"error": "Agent not found"}, status_code=404)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@router.get("/api/gdoc/read")
+async def read_gdoc(url: str = ""):
+    """Read the plain-text body of a Google Doc by URL or ID.
+
+    Powers the chat "Discuss this report" handoff: after Deep Research saves a
+    report to Google Docs, chat-mode CODEC fetches the full doc text here and
+    injects it as context so the user can talk about the report (the chat
+    summary alone omits the full body). Uses CODEC's existing Google OAuth.
+    """
+    if not url or not url.strip():
+        return JSONResponse({"error": "url required"}, status_code=400)
+    try:
+        from codec_gdocs import read_google_doc_text
+        doc = read_google_doc_text(url.strip())
+        if not doc:
+            return JSONResponse(
+                {"error": "Could not read that Google Doc (not found or no access)."},
+                status_code=404,
+            )
+        return doc
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
