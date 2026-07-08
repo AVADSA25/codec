@@ -1114,9 +1114,17 @@ def _run_agent(agent_id: str, cid: Optional[str] = None) -> None:
         # or paused via the PWA between approval and now), STOP — never execute
         # checkpoints on a superseded agent. The daemon reconciles next tick.
         if not _atomic_set_status(agent_id, "running"):
-            log.warning("[%s] run-start aborted: status not transitionable to "
-                        "running (superseded by external abort/pause?)", agent_id)
-            return
+            # The transition can fail BENIGNLY when the daemon already flipped us
+            # to running (a crash-recovery / qwen-resume branch pre-set it) — that
+            # is not supersession, it's a redundant set. Only bail if we were
+            # genuinely superseded (aborted / paused / blocked externally); a
+            # running -> running "failure" means we're already running, so proceed.
+            _cur = load_manifest(agent_id).get("status")
+            if _cur != "running":
+                log.warning("[%s] run-start aborted: status %r not transitionable "
+                            "to running (superseded by external abort/pause?)",
+                            agent_id, _cur)
+                return
         _audit(AGENT_STARTED, message=f"agent started {agent_id}",
                correlation_id=cid,
                extra={"agent_id": agent_id,
@@ -1467,8 +1475,11 @@ def _daemon_one_tick() -> None:
                        message=f"resumed {agent_id} after crash/restart",
                        correlation_id=recovery_cid,
                        extra={"agent_id": agent_id, "recovery": True})
-                # Transition to running and re-spawn
-                _atomic_set_status(agent_id, "running")
+                # Re-spawn and let _run_agent do the crashed_resumed -> running
+                # transition itself (line ~1116). We must NOT pre-set running here:
+                # doing so made _run_agent's run-start guard hit an illegal
+                # running -> running transition, abort instantly, and loop forever
+                # (the deadlock that stranded granted/resumed Project agents).
                 t = threading.Thread(target=_run_agent, args=(agent_id,),
                                       kwargs={"cid": recovery_cid}, daemon=True,
                                       name=f"agent-{agent_id}")
