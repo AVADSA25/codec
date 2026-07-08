@@ -326,12 +326,28 @@ def transcribe_and_type(audio_path):
 
     try:
         print(f"[DICTATE] Transcribing {audio_path}...")
+        # PIN language + task. Without these, faster-whisper auto-detects the
+        # language first, and accented English (e.g. a French speaker) is
+        # frequently misdetected as French — Whisper then transcribes the
+        # English audio AS French text ("I speak English, it pastes French",
+        # 2026-07-08). task="transcribe" (never "translate") keeps it in the
+        # spoken language. This matches the already-fixed HTTP path (~line 215);
+        # the classic local path had been missed. `en` is intentional — Dictate
+        # is used for English here; change DICTATE_LANGUAGE below if that shifts.
+        _DICTATE_LANGUAGE = "en"
         segments, info = model.transcribe(
             audio_path,
+            language=_DICTATE_LANGUAGE,
+            task="transcribe",
             beam_size=5,
             vad_filter=True,
             vad_parameters=dict(min_silence_duration_ms=300)
         )
+        try:
+            print(f"[DICTATE] whisper lang={getattr(info, 'language', '?')} "
+                  f"prob={getattr(info, 'language_probability', 0):.2f} (pinned={_DICTATE_LANGUAGE})")
+        except Exception:
+            pass
 
         text = " ".join([s.text.strip() for s in segments]).strip()
 
