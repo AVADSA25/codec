@@ -531,6 +531,26 @@ def _chat_vision_response(body: dict, messages: list):
     return {"response": vanswer, "model": vision_model}
 
 
+# Think-mode reasoning scaffold. Appended as the ABSOLUTE LAST instruction of the
+# system prompt (recency beats the base prompt's "answer directly" / emoji rules,
+# which otherwise suppress it — verified against the live 4-bit Qwen3.6). Forces
+# the model to reason inside <thinking> then emit "### FINAL ANSWER:", which the
+# chat UI splits into the train-of-thought reveal + the clean answer.
+_REASON_SCAFFOLD = (
+    "\n\n### OUTPUT FORMAT — THIS OVERRIDES ALL EARLIER STYLE INSTRUCTIONS\n"
+    "You MUST structure EVERY reply in exactly two parts and use NO emoji:\n"
+    "<thinking>\n"
+    "Do ALL of your reasoning here. First identify what the user is really trying to "
+    "ACCOMPLISH and check for any hidden physical or logical dependencies (things that "
+    "must be true or present for the goal to work); never give a glib surface answer. "
+    "Keep it to a few lines for simple questions and do not loop.\n"
+    "</thinking>\n"
+    "### FINAL ANSWER:\n"
+    "(your clean answer for the user, no emoji)\n"
+    "The very first characters of your reply MUST be \"<thinking>\". Never reason outside "
+    "the tags. This format is mandatory and overrides any earlier instruction to "
+    "\"answer directly\" or to use emoji."
+)
 
 
 def _build_chat_system_prompt(config: dict, budget, has_attachment: bool,
@@ -791,6 +811,12 @@ async def chat_completion(request: Request):
             messages[0]["content"] = sys_prompt + "\n\n" + messages[0]["content"]
         else:
             messages.insert(0, {"role": "system", "content": sys_prompt})
+
+        # Think mode: append the reasoning scaffold LAST so it wins over the base
+        # prompt's "answer directly"/emoji rules. Frontend sends reason_scaffold
+        # = Think-toggle state; it parses the resulting <thinking>/### FINAL ANSWER.
+        if body.get("reason_scaffold") and messages and messages[0].get("role") == "system":
+            messages[0]["content"] += _REASON_SCAFFOLD
 
         stream_mode = body.get("stream", False)
         # Dashboard chat & Vibe benefit from thinking mode (deeper answers).
