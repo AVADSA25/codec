@@ -575,6 +575,7 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
       <a href="/" class="sp-item"><svg class="ico" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span class="sp-item-label">Home</span></a>
       <div class="sp-divider"></div>
       <button class="sp-item" id="voiceBtn" onclick="toggleVoice();closeSidePanel()"><svg class="ico" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 010 14.14"/><path d="M15.54 8.46a5 5 0 010 7.07"/><line id="muteX1" x1="4" y1="4" x2="20" y2="20" stroke-width="2.5" style="display:none"/><line id="muteX2" x1="4" y1="20" x2="20" y2="4" stroke-width="2.5" style="display:none"/></svg><span class="sp-item-label" style="flex:none">Voice Replies</span><span id="voiceState" style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px"></span></button>
+      <button class="sp-item" id="wakeBtn" onclick="toggleWakeWord()" title="Always-on 'Hey CODEC' wake word"><svg class="ico" viewBox="0 0 24 24"><path d="M12 2a3 3 0 00-3 3v6a3 3 0 006 0V5a3 3 0 00-3-3z"/><path d="M19 10v1a7 7 0 01-14 0v-1"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg><span class="sp-item-label" style="flex:none">Wake Word</span><span id="wakeState" style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px"></span></button>
       <button class="sp-item" id="screenBtn" onclick="takeScreenshot();closeSidePanel()"><svg class="ico" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg><span class="sp-item-label">Screenshot</span></button>
       <button class="sp-item" id="photoBtn" onclick="takeServerPhoto();closeSidePanel()"><svg class="ico" viewBox="0 0 24 24"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg><span class="sp-item-label">Photo (Webcam)</span></button>
       <button class="sp-item" id="camBtn" onclick="toggleWebcamPip();closeSidePanel()"><svg class="ico" viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg><span class="sp-item-label">Live Video (PIP)</span></button>
@@ -739,7 +740,7 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
 
 <script>
 // Side panel open/close
-function openSidePanel(){document.getElementById('sidePanel').classList.add('open');document.getElementById('sidePanelOverlay').classList.add('open')}
+function openSidePanel(){document.getElementById('sidePanel').classList.add('open');document.getElementById('sidePanelOverlay').classList.add('open');if(typeof refreshWakeState==='function')refreshWakeState()}
 function closeSidePanel(){document.getElementById('sidePanel').classList.remove('open');document.getElementById('sidePanelOverlay').classList.remove('open')}
 // Auth + CSRF: inject session token and CSRF header on all requests
 // On mobile (Android Chrome), cookies may not persist — fallback to sessionStorage
@@ -1865,6 +1866,49 @@ function updateVoiceIcon() {
     if (x1) x1.style.display = '';
     if (x2) x2.style.display = '';
     if (st) { st.textContent = 'OFF'; st.style.color = '#888'; st.style.background = '#2a2a2a'; }
+  }
+}
+
+// ── Always-on Wake Word — instant toggle, visible on every page ──
+// Bulletproof replacement for the buried Settings toggle that kept not
+// persisting (users flip it and walk away; it never saved). This reads the
+// LIVE server value each time the menu opens and writes instantly on click.
+var _wakeEnabled = null;
+function _setWakeBadge(on) {
+  var st = document.getElementById('wakeState');
+  if (!st) return;
+  if (on) { st.textContent = 'ON'; st.style.color = '#0a0a0a'; st.style.background = '#E8711A'; }
+  else    { st.textContent = 'OFF'; st.style.color = '#888'; st.style.background = '#2a2a2a'; }
+}
+async function refreshWakeState() {
+  try {
+    var r = await fetch('/api/config');
+    var d = await r.json();
+    _wakeEnabled = !!(d && d.wake && d.wake.wake_word_enabled);
+    _setWakeBadge(_wakeEnabled);
+  } catch (e) { /* leave badge as-is */ }
+}
+async function toggleWakeWord() {
+  var target = !_wakeEnabled;
+  _setWakeBadge(target);  // optimistic
+  var btn = document.getElementById('wakeBtn');
+  if (btn) btn.style.opacity = '0.5';
+  try {
+    var r = await fetch('/api/config', { method: 'PUT', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ 'Wake Word': { wake_word_enabled: target } }) });
+    var d = await r.json();
+    if (d && d.saved) {
+      _wakeEnabled = target;
+      showToast(target ? '🎙️ Wake word ON — say “Hey CODEC”' : '🔇 Wake word OFF — CODEC won’t wake on its name (use F13)');
+    } else {
+      _setWakeBadge(_wakeEnabled);  // revert
+      showToast('Could not save: ' + ((d && d.error) || 'unknown'));
+    }
+  } catch (e) {
+    _setWakeBadge(_wakeEnabled);    // revert
+    showToast('Could not save wake setting (network).');
+  } finally {
+    if (btn) btn.style.opacity = '';
   }
 }
 updateVoiceIcon();
