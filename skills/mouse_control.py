@@ -78,7 +78,9 @@ except Exception:
 
 
 def _native_click(x, y, button="left", double=False):
-    """Click using CoreGraphics events — more reliable than pyautogui on macOS."""
+    """Post a CoreGraphics click at (x,y). Returns True if the events were
+    DISPATCHED without a Python exception — NOT proof the click actuated.
+    CGEventPost is void; the caller (run) must verify via post-conditions."""
     if not _cg:
         return False
     try:
@@ -110,11 +112,114 @@ def _native_click(x, y, button="left", double=False):
                 _cf.CFRelease(up_evt)
             if i < clicks - 1:
                 time.sleep(0.05)
-        log.info(f"Native CG click at ({x}, {y}) button={button} double={double}")
+        log.info(f"Native CG click DISPATCHED at ({x}, {y}) button={button} double={double} (actuation unverified)")
         return True
     except Exception as e:
         log.warning(f"Native click failed: {e}")
         return False
+
+
+def _cursor_pos():
+    try:
+        import pyautogui
+        return tuple(pyautogui.position())
+    except Exception as e:
+        log.warning(f"Cursor readback failed: {e}")
+        return None
+
+
+def _on_target(x, y, tol=3):
+    pos = _cursor_pos()
+    if pos is None:
+        return False, None
+    return (abs(pos[0] - x) <= tol and abs(pos[1] - y) <= tol), pos
+
+
+def _grab_region(x, y, w=140, h=90):
+    """Small PNG around (x,y) for a before/after actuation diff. Uses
+    `screencapture -R` (cheap) and OMITS `-C` so the cursor is NOT rendered —
+    otherwise moving the arrow in would register as a change every time."""
+    left = max(0, int(x) - w // 2)
+    top = max(0, int(y) - h // 2)
+    path = os.path.join(os.path.dirname(_SCREENSHOT_PATH), "mouse_region.png")
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        subprocess.run(
+            ["screencapture", "-x", "-R", f"{left},{top},{w},{h}", path],
+            capture_output=True, timeout=3,
+        )
+        if os.path.exists(path) and os.path.getsize(path) > 200:
+            with open(path, "rb") as f:
+                return f.read()
+    except Exception as e:
+        log.warning(f"Region capture failed: {e}")
+    return None
+
+
+def _region_changed(before, after, threshold=2.0):
+    """True if the region visibly changed, False if effectively identical,
+    None if undecidable. Mean per-pixel L-diff. CAVEAT: animated content in the
+    region (spinner/video/clock/notification) also flips this True — a hover
+    highlight likewise counts, so True means 'reacted', not strictly 'click
+    registered'. Acceptable here (AX is trusted, so clicks actuate)."""
+    if not before or not after:
+        return None
+    try:
+        from PIL import Image, ImageChops
+        import io
+        a = Image.open(io.BytesIO(before)).convert("RGB")
+        b = Image.open(io.BytesIO(after)).convert("RGB")
+        if a.size != b.size:
+            return True
+        diff = ImageChops.difference(a, b).convert("L")
+        hist = diff.histogram()
+        pixels = sum(hist) or 1
+        mean = sum(i * hist[i] for i in range(256)) / pixels
+        log.info(f"Region diff mean={mean:.2f} (threshold={threshold})")
+        return mean > threshold
+    except Exception as e:
+        log.warning(f"Region diff failed: {e}")
+        return None
+
+
+def _click_and_verify(x, y, target, kind="left"):
+    """Move -> click -> verify. Returns an honest, TTS-friendly result string.
+    kind in {'left','right','double'}. Never claims a definitive click unless a
+    post-condition backs it up. (x,y) here is the REFINED coordinate."""
+    import pyautogui
+    noun = {"left": "click", "right": "right click", "double": "double click"}[kind]
+    verb = {"left": "Clicked", "right": "Right-clicked", "double": "Double-clicked"}[kind]
+
+    before = _grab_region(x, y)          # BEFORE the cursor arrives (no -C)
+    pyautogui.moveTo(x, y, duration=0.3)
+    time.sleep(0.1)
+
+    if kind == "right":
+        if not _native_click(x, y, button="right"):
+            pyautogui.rightClick()
+    elif kind == "double":
+        if not _native_click(x, y, double=True):
+            pyautogui.doubleClick()
+    else:
+        if not _native_click(x, y):
+            pyautogui.click()
+
+    reached, pos = _on_target(x, y)
+    if not reached:
+        where = f", it's at {pos}" if pos else ""
+        return (f"I aimed for '{target}' at ({x}, {y}) but couldn't confirm the cursor "
+                f"reached it{where}, so I can't say the {noun} landed.")
+
+    time.sleep(0.12)
+    changed = _region_changed(before, _grab_region(x, y))
+    if changed is True:
+        return f"{verb} '{target}' at ({x}, {y}) — the screen reacted, so it landed."
+    if changed is False:
+        return (f"I moved onto '{target}' at ({x}, {y}) and sent the {noun}, but nothing "
+                f"on screen changed — it may not be an active control.")
+    return (f"I moved onto '{target}' at ({x}, {y}) and sent the {noun}. The cursor's on "
+            f"target, but I couldn't verify whether it registered.")
+
 
 # ── Config ───────────────────────────────────────────────────────────────────
 # Mouse control uses the UI-TARS model, served by the unified mlx_vlm server
@@ -130,6 +235,12 @@ except ImportError:
 
 _SCREENSHOT_PATH = os.path.expanduser("~/.codec/mouse_screen.png")
 _screen_size = None
+
+# Fine-localization crop (full-res, 1:1) for coarse->fine refinement.
+# 700x500 tolerates a coarse miss up to ~350px x / ~250px y while staying
+# well under max_width=1920 so _ask_vision sends it at scale==1.0.
+_FINE_CROP_W = 700
+_FINE_CROP_H = 500
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -310,6 +421,59 @@ def _validate_coordinates(x, y):
     return 0 <= x <= sw and 0 <= y <= sh
 
 
+def _crop_region(image_b64, cx, cy, crop_w=_FINE_CROP_W, crop_h=_FINE_CROP_H):
+    """Crop a full-res 1:1 region centered on screen point (cx,cy).
+    Logical:physical scale is 1.0, so screen coords index the PNG directly.
+    Returns (crop_b64, ox, oy, cw, ch) or (None,0,0,0,0). Origin is clamped so
+    the crop stays fully on-screen at constant size."""
+    try:
+        from PIL import Image
+        import io
+        img = Image.open(io.BytesIO(base64.b64decode(image_b64)))
+        W, H = img.size
+        cw = min(crop_w, W)
+        ch = min(crop_h, H)
+        ox = max(0, min(int(cx) - cw // 2, W - cw))
+        oy = max(0, min(int(cy) - ch // 2, H - ch))
+        crop = img.crop((ox, oy, ox + cw, oy + ch))
+        if crop.mode in ("RGBA", "P"):
+            crop = crop.convert("RGB")
+        buf = io.BytesIO()
+        crop.save(buf, format="PNG")  # 1:1, no resample — precision preserved
+        return base64.b64encode(buf.getvalue()).decode(), ox, oy, cw, ch
+    except ImportError:
+        return None, 0, 0, 0, 0
+    except Exception as e:
+        log.warning(f"Crop error: {e}")
+        return None, 0, 0, 0, 0
+
+
+def _refine_coordinate(full_res_b64, description, cx, cy):
+    """Second pass: crop a 1:1 patch around coarse (cx,cy), re-ask the model,
+    map in-crop coords back to absolute. Returns refined (x,y) or None."""
+    crop_b64, ox, oy, cw, ch = _crop_region(full_res_b64, cx, cy)
+    if not crop_b64:
+        return None
+    response, scale = _ask_vision(crop_b64, f"Click on {description}")
+    if not response:
+        return None
+    local = _parse_coordinates(response, scale)  # scale==1.0 on a <max_width crop
+    if not local:
+        return None
+    lx, ly = local
+    # A valid in-crop hit must fall inside the crop. Rejects loose-parse garbage
+    # (e.g. a y beyond the 500px crop height) that would map to an off-region
+    # absolute point and wrongly override a good coarse coord.
+    if not (0 <= lx <= cw and 0 <= ly <= ch):
+        log.info(f"Refine '{description}': local ({lx},{ly}) outside crop {cw}x{ch} — keeping coarse")
+        return None
+    rx, ry = ox + lx, oy + ly
+    log.info(f"Refine '{description}': origin=({ox},{oy}) local=({lx},{ly}) -> ({rx},{ry})")
+    if _validate_coordinates(rx, ry):
+        return (rx, ry)
+    return None
+
+
 def _find_element(description, retries=2):
     """Screenshot screen, ask vision to locate element, return (x, y) or (None, error).
 
@@ -362,6 +526,14 @@ def _find_element(description, retries=2):
                 continue
             return None, f"Coordinates ({x}, {y}) are outside screen ({sw}x{sh}). Vision may have miscalculated."
 
+        # Coarse hit is valid. Only when the coarse image was downscaled
+        # (scale>1.0) does the final coord carry back-projection error — refine
+        # it with a 1:1 full-res crop. Best-effort: any failure keeps coarse.
+        if scale > 1.0:
+            refined = _refine_coordinate(image_b64, description, x, y)
+            if refined:
+                log.info(f"Refined '{description}': coarse ({x},{y}) -> fine {refined}")
+                return refined, None
         return (x, y), None
 
     return None, f"Couldn't locate '{description}' after {retries} attempts."
@@ -634,33 +806,26 @@ def run(task, app="", ctx=""):
 
     x, y = coords
 
-    # ── Execute action with error handling ──
+    # ── Execute action with honest post-condition verification ──
     try:
         if any(w in task_lower for w in ["right click", "right-click"]):
-            pyautogui.moveTo(x, y, duration=0.3)
-            time.sleep(0.1)
-            if not _native_click(x, y, button="right"):
-                pyautogui.rightClick()
-            action_msg = f"Right-clicked '{target}' at ({x}, {y})."
+            action_msg = _click_and_verify(x, y, target, kind="right")
 
         elif any(w in task_lower for w in ["double click", "double-click"]):
-            pyautogui.moveTo(x, y, duration=0.3)
-            time.sleep(0.1)
-            if not _native_click(x, y, double=True):
-                pyautogui.doubleClick()
-            action_msg = f"Double-clicked '{target}' at ({x}, {y})."
+            action_msg = _click_and_verify(x, y, target, kind="double")
 
         elif any(w in task_lower for w in ["hover", "move mouse", "move cursor", "point to", "point at"]):
             pyautogui.moveTo(x, y, duration=0.3)
-            action_msg = f"Moved cursor to '{target}' at ({x}, {y})."
+            reached, pos = _on_target(x, y)
+            if reached:
+                action_msg = f"Moved the cursor to '{target}' at ({x}, {y})."
+            else:
+                where = f", it's at {pos}" if pos else ""
+                action_msg = (f"I tried to move to '{target}' at ({x}, {y}) but couldn't "
+                              f"confirm the cursor got there{where}.")
 
         else:
-            # Default: single click — use native CG click with pyautogui fallback
-            pyautogui.moveTo(x, y, duration=0.3)
-            time.sleep(0.1)
-            if not _native_click(x, y):
-                pyautogui.click()
-            action_msg = f"Clicked '{target}' at ({x}, {y})."
+            action_msg = _click_and_verify(x, y, target, kind="left")
 
         log.info(f"Mouse action completed: {action_msg}")
         return action_msg
