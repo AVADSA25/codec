@@ -164,6 +164,9 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);height:
 .ibtn.recording{background:var(--danger);color:#fff;border-color:var(--danger);animation:pulse 1s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
 .dragover .messages{border:2px dashed var(--accent)!important}
+#dropOverlay{position:fixed;inset:0;z-index:9999;display:none;align-items:center;justify-content:center;background:rgba(217,119,87,0.10);backdrop-filter:blur(2px)}
+#dropOverlay.show{display:flex}
+#dropOverlay .drop-inner{display:flex;flex-direction:column;align-items:center;gap:14px;color:var(--accent);font-size:16px;font-weight:600;padding:40px 60px;border:2px dashed var(--accent);border-radius:18px;background:var(--surface);box-shadow:0 10px 40px rgba(0,0,0,.25);pointer-events:none}
 .empty-state{text-align:center;padding:50px 20px}
 .empty-state img{width:140px;opacity:.25;margin-bottom:20px;filter:drop-shadow(0 0 30px rgba(232,113,26,0.4))}
 .empty-state p{color:var(--text-muted);font-size:16px;line-height:1.6}
@@ -503,8 +506,10 @@ var REASON_SCAFFOLD="\n\n### RESPONSE FORMAT (MANDATORY)\n" +
 "(your clean, concise answer for the user)\n" +
 "RULES: ALWAYS open with <thinking> as the very first characters of your reply. Put 100% of your deliberation inside the tags — never reason outside them. After </thinking>, write exactly \"### FINAL ANSWER:\" then the answer.";
 var CONCISE_MODE="\n\n### RESPONSE STYLE\nAnswer directly and concisely. Do not use <thinking> tags or show reasoning — get straight to the point.";
-// System prompt varies by Think toggle: scaffolded reasoning vs fast/direct.
-function buildSystem(){return SYS+(thinkingEnabled?REASON_SCAFFOLD:CONCISE_MODE);}
+// System prompt: identity + concise directive when Think is off. The reasoning
+// scaffold is appended server-side (reason_scaffold flag) so it lands as the
+// LAST instruction and isn't buried under the backend's base prompt.
+function buildSystem(){return SYS+(thinkingEnabled?'':CONCISE_MODE);}
 var chatHist=[],isProcessing=false,isRecording=false,recognition=null;
 var pendingFiles=[];
 var sessionId=null;
@@ -647,7 +652,7 @@ function regenerateResponse(btn){
   isProcessing=true;document.getElementById('sendBtn').disabled=true;_showStop();showTyping();
   _currentAbort=new AbortController();
   var msgs=[{role:'system',content:buildSystem()}].concat(chatHist);
-  fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs,force_search:webSearchEnabled,thinking:false,show_thoughts:false,stream:true}),signal:_currentAbort.signal}).then(async function(r){
+  fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs,force_search:webSearchEnabled,thinking:false,show_thoughts:false,reason_scaffold:thinkingEnabled,stream:true}),signal:_currentAbort.signal}).then(async function(r){
     if(r.status===401||r.status===403){hideTyping();addMessage('assistant','Session expired — redirecting to login...');setTimeout(function(){window.location.href='/auth'},1500);isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false;return}
     hideTyping();
     var reader=r.body.getReader();var decoder=new TextDecoder();var raw='';var bubbleId='stream_'+genId();
@@ -1309,7 +1314,7 @@ async function sendMessage(){
       if(data.response){addMessage('assistant',data.response);chatHist.push({role:'assistant',content:data.response});saveMessages([{role:'assistant',content:data.response}])}
       else{addMessage('assistant','Error: '+(data.error||'No response'))}
     } else {
-      r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs,force_search:webSearchEnabled,thinking:false,show_thoughts:false,stream:true}),signal:_currentAbort.signal});
+      r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs,force_search:webSearchEnabled,thinking:false,show_thoughts:false,reason_scaffold:thinkingEnabled,stream:true}),signal:_currentAbort.signal});
       if(r.status===401||r.status===403){hideTyping();addMessage('assistant','Session expired — redirecting to login...');setTimeout(function(){window.location.href='/auth'},1500);isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false;return}
       hideTyping();
       // SSE streaming — parse the Think-mode scaffold as tokens arrive
@@ -1430,9 +1435,32 @@ async function handleUpload(e){
 }
 
 var appEl=document.getElementById('appContainer');
-['dragenter','dragover'].forEach(function(ev){appEl.addEventListener(ev,function(e){e.preventDefault();appEl.classList.add('dragover')})});
-['dragleave','drop'].forEach(function(ev){appEl.addEventListener(ev,function(e){e.preventDefault();appEl.classList.remove('dragover')})});
-appEl.addEventListener('drop',function(e){if(e.dataTransfer.files.length){var dt=new DataTransfer();for(var i=0;i<e.dataTransfer.files.length;i++)dt.items.add(e.dataTransfer.files[i]);document.getElementById('fileUp').files=dt.files;handleUpload({target:document.getElementById('fileUp')})}});
+// Whole-page drop zone with a clear full-screen overlay (not just the composer).
+var _dropOverlay=document.createElement('div');
+_dropOverlay.id='dropOverlay';
+_dropOverlay.innerHTML='<div class="drop-inner"><svg viewBox="0 0 24 24" width="46" height="46" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg><div>Drop image or document anywhere</div></div>';
+document.body.appendChild(_dropOverlay);
+var _dragDepth=0;
+document.addEventListener('dragenter',function(e){if(e.dataTransfer&&Array.prototype.indexOf.call(e.dataTransfer.types||[],'Files')!==-1){e.preventDefault();_dragDepth++;_dropOverlay.classList.add('show')}});
+document.addEventListener('dragover',function(e){if(_dropOverlay.classList.contains('show'))e.preventDefault()});
+document.addEventListener('dragleave',function(e){if(--_dragDepth<=0){_dragDepth=0;_dropOverlay.classList.remove('show')}});
+document.addEventListener('drop',function(e){
+  _dragDepth=0;_dropOverlay.classList.remove('show');
+  if(e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files.length){
+    e.preventDefault();
+    var dt=new DataTransfer();for(var i=0;i<e.dataTransfer.files.length;i++)dt.items.add(e.dataTransfer.files[i]);
+    document.getElementById('fileUp').files=dt.files;handleUpload({target:document.getElementById('fileUp')})
+  }
+});
+// Type anywhere to focus the composer (no need to click into it first).
+document.addEventListener('keydown',function(e){
+  if(e.metaKey||e.ctrlKey||e.altKey)return;
+  if(!e.key||e.key.length!==1)return;           // only printable single chars
+  var t=e.target,tag=(t&&t.tagName)||'';
+  if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT'||(t&&t.isContentEditable))return;
+  var ci=document.getElementById('chatInput');
+  if(ci&&chatMode!=='project'){ci.focus();}
+});
 
 // ── Paste image into chat (Cmd+V on a screenshot) ──
 // Document-level so paste anywhere on the chat page is caught — without
