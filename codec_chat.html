@@ -184,6 +184,15 @@ input[type=file]{display:none}
 .discuss-report-btn{margin-top:2px;padding:9px 16px;border:1px solid var(--accent);border-radius:8px;cursor:pointer;font-size:13px;font-family:var(--font);font-weight:600;background:var(--accent);color:#fff;transition:all .15s;display:inline-flex;align-items:center;gap:6px}
 .discuss-report-btn:hover:not(:disabled){background:var(--accent-hover);border-color:var(--accent-hover)}
 .discuss-report-btn:disabled{cursor:default;opacity:.7;background:transparent;color:var(--accent)}
+/* Train-of-thought panel — reveals reasoning (chat) / agent steps, collapsed by default */
+.think-panel{margin:0 0 8px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2);overflow:hidden}
+.think-panel>summary{cursor:pointer;padding:7px 12px;font-size:12px;font-weight:600;color:var(--text-muted);list-style:none;display:flex;align-items:center;gap:6px;user-select:none}
+.think-panel>summary::-webkit-details-marker{display:none}
+.think-panel>summary::before{content:'\25B8';font-size:10px;transition:transform .15s;color:var(--accent)}
+.think-panel[open]>summary::before{transform:rotate(90deg)}
+.think-panel .think-body{padding:4px 14px 12px;font-size:12px;line-height:1.55;color:var(--text-dim);white-space:pre-wrap;word-break:break-word;font-family:var(--font);max-height:340px;overflow:auto}
+.think-panel .think-step{padding:3px 0;border-bottom:1px dashed var(--border)}
+.think-panel .think-step:last-child{border-bottom:none}
 
 /* ── Agent Builder ── */
 #agentBuilder{display:none;flex-shrink:0;background:var(--surface);border-bottom:1px solid var(--border);padding:12px 14px;gap:10px;flex-direction:column}
@@ -335,6 +344,9 @@ input[type=file]{display:none}
 <button class="mode-btn active" id="thinkToggle" onclick="toggleThinking()" title="Deep thinking ON — better answers, slower (~15s)">
   <svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>Think
 </button>
+<button class="mode-btn" id="thoughtsToggle" onclick="toggleThoughts()" title="Show CODEC's train of thought — live reasoning &amp; agent steps (off by default)">
+  <svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>Thoughts
+</button>
 <button class="mode-btn" onclick="setMode('research')" id="modeResearchBtn"><svg class="ico" viewBox="0 0 24 24" style="width:14px;height:14px"><rect x="4" y="4" width="16" height="16" rx="2"/><circle cx="9" cy="10" r="1.5" fill="currentColor" stroke="none"/><circle cx="15" cy="10" r="1.5" fill="currentColor" stroke="none"/><path d="M9 15h6"/></svg>Agents</button>
 <button class="mode-btn" onclick="setMode('project')" id="modeProjectBtn" title="Drop a project — autonomous plan-and-build mode"><svg class="ico" viewBox="0 0 24 24" style="width:14px;height:14px"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="5"/><line x1="12" y1="2" x2="12" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg>Project</button>
 <select id="crewSelect">
@@ -485,6 +497,7 @@ var sessionId=null;
 var chatMode='chat';
 var webSearchEnabled=false;
 var thinkingEnabled=true;
+var thoughtsEnabled=false; // Train-of-thought reveal (chat reasoning + agent steps), off by default
 
 function showToast(msg){var t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(function(){t.classList.remove('show')},1800)}
 function _copyFallback(text){
@@ -621,10 +634,10 @@ function regenerateResponse(btn){
   isProcessing=true;document.getElementById('sendBtn').disabled=true;_showStop();showTyping();
   _currentAbort=new AbortController();
   var msgs=[{role:'system',content:SYS}].concat(chatHist);
-  fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs,force_search:webSearchEnabled,thinking:thinkingEnabled,stream:true}),signal:_currentAbort.signal}).then(async function(r){
+  fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs,force_search:webSearchEnabled,thinking:thinkingEnabled,show_thoughts:thoughtsEnabled,stream:true}),signal:_currentAbort.signal}).then(async function(r){
     if(r.status===401||r.status===403){hideTyping();addMessage('assistant','Session expired — redirecting to login...');setTimeout(function(){window.location.href='/auth'},1500);isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false;return}
     hideTyping();
-    var reader=r.body.getReader();var decoder=new TextDecoder();var fullText='';var bubbleId='stream_'+genId();
+    var reader=r.body.getReader();var decoder=new TextDecoder();var fullText='';var thinkText='';var bubbleId='stream_'+genId();
     var div=document.createElement('div');div.className='msg assistant';div.innerHTML='<div class="msg-bubble" id="'+bubbleId+'"><div class="thinking-indicator"><div class="thinking-dots"><span></span><span></span><span></span></div>CODEC is thinking...</div></div>';document.getElementById('messages').appendChild(div);
     var bubble=document.getElementById(bubbleId);var buf='';var firstToken=true;
     while(true){
@@ -635,12 +648,13 @@ function regenerateResponse(btn){
       for(var li=0;li<lines.length;li++){
         var line=lines[li].trim();if(!line.startsWith('data: '))continue;var payload=line.substring(6);
         if(payload==='[DONE]')break;
-        try{var j=JSON.parse(payload);if(j.skill){showToast('⚡ Skill: '+j.skill)}if(j.token){if(firstToken){bubble.innerHTML='';firstToken=false}fullText+=j.token;bubble.innerHTML=formatMsg(fullText);scrollBottom()}if(j.error){fullText+='\nError: '+j.error}}catch(pe){}
+        try{var j=JSON.parse(payload);if(j.skill){showToast('⚡ Skill: '+j.skill)}if(j.think){thinkText+=j.think;if(thoughtsEnabled){var tp=ensureThinkPanel(div,'🧠 Thinking…',true);setThinkText(tp,thinkText);scrollBottom()}}if(j.token){if(firstToken){bubble.innerHTML='';firstToken=false}fullText+=j.token;bubble.innerHTML=formatMsg(fullText);scrollBottom()}if(j.error){fullText+='\nError: '+j.error}}catch(pe){}
       }
     }
     if(fullText){
       // Replace the streaming div with a proper message (with copy+regen buttons)
-      div.remove();addMessage('assistant',fullText);
+      div.remove();var md=addMessage('assistant',fullText);
+      if(thoughtsEnabled&&thinkText.trim()&&md){var fp=ensureThinkPanel(md,'🧠 Train of thought',false);setThinkText(fp,thinkText.trim())}
       chatHist.push({role:'assistant',content:fullText});saveMessages([{role:'assistant',content:fullText}])
     }else{bubble.innerHTML='<em style="color:var(--text-dim)">No response</em>'}
     _currentAbort=null;isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false
@@ -665,6 +679,46 @@ function toggleThinking(){
   btn.classList.toggle('active',thinkingEnabled);
   btn.title=thinkingEnabled?'Deep thinking ON — better answers, slower (~15s)':'Quick mode — fast answers';
   showToast(thinkingEnabled?'Thinking ON — deeper answers':'Thinking OFF — fast mode');
+}
+
+// ── Train-of-thought toggle ────────────────────────────────────────────────
+// Off by default. When ON, chat reveals the model's <think> reasoning and
+// Agent/Project runs reveal their live step log — each in a collapsible panel.
+function toggleThoughts(){
+  thoughtsEnabled=!thoughtsEnabled;
+  var btn=document.getElementById('thoughtsToggle');
+  btn.classList.toggle('active',thoughtsEnabled);
+  btn.title=thoughtsEnabled?'Train of thought ON — showing reasoning & steps':"Show CODEC's train of thought (off by default)";
+  showToast(thoughtsEnabled?'🧠 Train of thought ON':'Train of thought OFF');
+}
+
+// Build (once) and return a collapsible thoughts panel inside `container`,
+// inserted before the first .msg-bubble. `label` names it; `open` expands it.
+function ensureThinkPanel(container,label,open){
+  var p=container.querySelector('.think-panel');
+  if(p)return p;
+  p=document.createElement('details');p.className='think-panel';if(open)p.open=true;
+  var s=document.createElement('summary');s.textContent=label||'🧠 Train of thought';
+  var body=document.createElement('div');body.className='think-body';
+  p.appendChild(s);p.appendChild(body);
+  var bubble=container.querySelector('.msg-bubble');
+  if(bubble)container.insertBefore(p,bubble);else container.appendChild(p);
+  return p;
+}
+// Render an array of step strings/objects into a panel body as discrete rows.
+function renderThinkSteps(panel,steps){
+  var body=panel.querySelector('.think-body');if(!body)return;
+  body.innerHTML='';
+  for(var i=0;i<steps.length;i++){
+    var st=steps[i];var txt=(typeof st==='string')?st:(st&&(st.text||st.message||st.step))||JSON.stringify(st);
+    var row=document.createElement('div');row.className='think-step';row.textContent=txt;body.appendChild(row);
+  }
+  body.scrollTop=body.scrollHeight;
+}
+// Set raw reasoning text (chat <think>) into a panel body.
+function setThinkText(panel,text){
+  var body=panel.querySelector('.think-body');if(!body)return;
+  body.textContent=text;body.scrollTop=body.scrollHeight;
 }
 
 function genId(){return Date.now().toString(36)+Math.random().toString(36).substr(2,5)}
@@ -808,6 +862,7 @@ function addMessage(role,content,animate){
     var plain = String(content).replace(/[`*_#>\[\]()]/g,'').replace(/\s+/g,' ').trim();
     if (plain) speakMessage(plain);
   }
+  return div;
 }
 
 // ── Agent → Chat handoff ────────────────────────────────────────────────────
@@ -1177,13 +1232,18 @@ async function sendMessage(){
       var startData=await r.json();
       if(!r.ok||!startData.job_id){clearInterval(_agentTicker);_agentTicker=null;updateStatus('\u274C Agent error: '+(startData.error||'Failed to start'));isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false;return}
       var jobId=startData.job_id;_agentJobId=jobId;
-      var data=await new Promise(function(resolve,reject){_agentPoll=setInterval(async function(){try{var sr=await fetch('/api/agents/status/'+jobId);var sd=await sr.json();if(sd.status!=='running'){clearInterval(_agentPoll);_agentPoll=null;resolve(sd)}}catch(pe){clearInterval(_agentPoll);_agentPoll=null;reject(pe)}},4000)});
+      var data=await new Promise(function(resolve,reject){_agentPoll=setInterval(async function(){try{var sr=await fetch('/api/agents/status/'+jobId);var sd=await sr.json();
+        // Train-of-thought: stream the crew's live step log into a panel above the status.
+        if(thoughtsEnabled&&sd.progress&&sd.progress.length&&statusEl){var lp=ensureThinkPanel(statusEl.parentElement,'\uD83E\uDDE0 Live steps ('+sd.progress.length+')',true);renderThinkSteps(lp,sd.progress)}
+        if(sd.status!=='running'){clearInterval(_agentPoll);_agentPoll=null;resolve(sd)}}catch(pe){clearInterval(_agentPoll);_agentPoll=null;reject(pe)}},4000)});
       clearInterval(_agentTicker);_agentTicker=null;_agentJobId=null;if(statusEl)statusEl.parentElement.remove();
       // User pressed Stop after the crew already reported terminal \u2014 honor it.
       if(data.status==='cancelled'){isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false;return}
       var resultMsg;var reportDocUrl=null;
       if(data.status==='complete'){var result=data.result||'';var docMatch=result.match(/https:\/\/docs\.google\.com\/\S+/);if(docMatch){reportDocUrl=docMatch[0].replace(/[)\].,]+$/,'');var summary=result.replace(docMatch[0],'').trim();if(!summary)summary='Your report has been generated and saved to Google Docs.';resultMsg='\u2705 **'+crewLabels[crew]+' Complete!** ('+data.elapsed_seconds+'s)\n\n'+summary+'\n\n[Open in Google Docs]('+reportDocUrl+')'}else{resultMsg='\u2705 **'+crewLabels[crew]+' Complete!** ('+data.elapsed_seconds+'s)\n\n'+result}}else{resultMsg='\u274C Agent error: '+(data.error||'Unknown error')}
-      addMessage('assistant',resultMsg);chatHist.push({role:'assistant',content:resultMsg});saveMessages([{role:'assistant',content:resultMsg}]);
+      var amd=addMessage('assistant',resultMsg);chatHist.push({role:'assistant',content:resultMsg});saveMessages([{role:'assistant',content:resultMsg}]);
+      // Persist the crew's step log on the final message when Thoughts is on.
+      if(thoughtsEnabled&&data.progress&&data.progress.length&&amd){var pp=ensureThinkPanel(amd,'\uD83E\uDDE0 Train of thought ('+data.progress.length+' steps)',false);renderThinkSteps(pp,data.progress)}
       if(reportDocUrl)appendDiscussButton(reportDocUrl)
     }catch(e){if(_agentTicker){clearInterval(_agentTicker);_agentTicker=null}_agentJobId=null;updateStatus('Agent error: '+e.message)}
     isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false;return
@@ -1209,11 +1269,11 @@ async function sendMessage(){
       if(data.response){addMessage('assistant',data.response);chatHist.push({role:'assistant',content:data.response});saveMessages([{role:'assistant',content:data.response}])}
       else{addMessage('assistant','Error: '+(data.error||'No response'))}
     } else {
-      r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs,force_search:webSearchEnabled,thinking:thinkingEnabled,stream:true}),signal:_currentAbort.signal});
+      r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs,force_search:webSearchEnabled,thinking:thinkingEnabled,show_thoughts:thoughtsEnabled,stream:true}),signal:_currentAbort.signal});
       if(r.status===401||r.status===403){hideTyping();addMessage('assistant','Session expired — redirecting to login...');setTimeout(function(){window.location.href='/auth'},1500);isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false;return}
       hideTyping();
       // SSE streaming — render tokens as they arrive
-      var reader=r.body.getReader();var decoder=new TextDecoder();var fullText='';var bubbleId='stream_'+genId();
+      var reader=r.body.getReader();var decoder=new TextDecoder();var fullText='';var thinkText='';var bubbleId='stream_'+genId();
       var es=document.getElementById('emptyState');if(es)es.remove();
       var div=document.createElement('div');div.className='msg assistant';div.innerHTML='<div class="msg-bubble" id="'+bubbleId+'"><div class="thinking-indicator"><div class="thinking-dots"><span></span><span></span><span></span></div>CODEC is thinking...</div></div>';document.getElementById('messages').appendChild(div);
       var bubble=document.getElementById(bubbleId);var buf='';var firstToken=true;
@@ -1227,10 +1287,10 @@ async function sendMessage(){
           if(!line.startsWith('data: '))continue;
           var payload=line.substring(6);
           if(payload==='[DONE]')break;
-          try{var j=JSON.parse(payload);if(j.token){if(firstToken){bubble.innerHTML='';firstToken=false}fullText+=j.token;bubble.innerHTML=formatMsg(fullText);scrollBottom()}if(j.escalate_project){renderEscalateChip(j.escalate_project,text)}if(j.error){fullText+='\n\nError: '+j.error}}catch(pe){}
+          try{var j=JSON.parse(payload);if(j.think){thinkText+=j.think;if(thoughtsEnabled){var tp2=ensureThinkPanel(div,'🧠 Thinking…',true);setThinkText(tp2,thinkText);scrollBottom()}}if(j.token){if(firstToken){bubble.innerHTML='';firstToken=false}fullText+=j.token;bubble.innerHTML=formatMsg(fullText);scrollBottom()}if(j.escalate_project){renderEscalateChip(j.escalate_project,text)}if(j.error){fullText+='\n\nError: '+j.error}}catch(pe){}
         }
       }
-      if(fullText){div.remove();addMessage('assistant',fullText);chatHist.push({role:'assistant',content:fullText});saveMessages([{role:'assistant',content:fullText}])}
+      if(fullText){div.remove();var md2=addMessage('assistant',fullText);if(thoughtsEnabled&&thinkText.trim()&&md2){var fp2=ensureThinkPanel(md2,'🧠 Train of thought',false);setThinkText(fp2,thinkText.trim())}chatHist.push({role:'assistant',content:fullText});saveMessages([{role:'assistant',content:fullText}])}
       else{bubble.innerHTML='<em style="color:var(--text-dim)">No response</em>'}
     }
   }catch(e){
