@@ -17,6 +17,8 @@
   /* 2026 refresh: keep CODEC orange identity but warmer + calmer (was pure #E8711A) */
   --accent: #d97757; --accent-hover: #e08766; --accent-dim: rgba(217,119,87,0.10);
   --danger: #ef4444; --success: #22c55e; --info: #3b82f6;
+  /* Muted sage green for agent "running" states — pairs with the warm orange theme instead of the harsh bright green */
+  --running: #4f9a7d; --blocked: #d98a5a;
   --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   --mono: 'JetBrains Mono', 'SF Mono', monospace;
   --radius-sm: 6px; --radius: 10px; --radius-lg: 14px;
@@ -1049,7 +1051,7 @@ function renderAgentPlanCard(agentId,agentInfo){
   }
   var statusLine='';
   if(status){
-    var color=isTerminal?'var(--text-dim)':(isBlocked?'#f87171':'#10b981');
+    var color=isTerminal?'var(--text-dim)':(isBlocked?'var(--blocked)':'var(--running)');
     var label=status.replace(/_/g,' ');
     statusLine='<div style="margin-bottom:6px;font-size:11px;color:'+color+'">status: <strong>'+escHtml(label)+'</strong>'+(reason?' ('+escHtml(reason)+')':'')+'</div>';
   }
@@ -1459,7 +1461,7 @@ document.addEventListener('keydown',function(e){
   var t=e.target,tag=(t&&t.tagName)||'';
   if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT'||(t&&t.isContentEditable))return;
   var ci=document.getElementById('chatInput');
-  if(ci&&chatMode!=='project'){ci.focus();}
+  if(ci){ci.focus();}
 });
 
 // ── Paste image into chat (Cmd+V on a screenshot) ──
@@ -1493,21 +1495,38 @@ function _chatExtractPastedImage(e){
 
 document.addEventListener('paste',function(e){
   var img=_chatExtractPastedImage(e);
-  if(!img) return;
-  e.preventDefault();
-  try{
-    var ext=(img.type.split('/')[1]||'png').split('+')[0];
-    var renamed=new File([img],'pasted-'+Date.now()+'.'+ext,{type:img.type});
-    var dt=new DataTransfer();
-    dt.items.add(renamed);
-    var fi=document.getElementById('fileUp');
-    fi.files=dt.files;
-    handleUpload({target:fi});
-    try{showToast('Screenshot pasted')}catch(_e){}
-    var ci=document.getElementById('chatInput');
-    if(ci) ci.focus();
-  }catch(err){
-    console.warn('Paste image into chat failed:',err);
+  if(img){
+    e.preventDefault();
+    try{
+      var ext=(img.type.split('/')[1]||'png').split('+')[0];
+      var renamed=new File([img],'pasted-'+Date.now()+'.'+ext,{type:img.type});
+      var dt=new DataTransfer();
+      dt.items.add(renamed);
+      var fi=document.getElementById('fileUp');
+      fi.files=dt.files;
+      handleUpload({target:fi});
+      try{showToast('Screenshot pasted')}catch(_e){}
+      var ci=document.getElementById('chatInput');
+      if(ci) ci.focus();
+    }catch(err){
+      console.warn('Paste image into chat failed:',err);
+    }
+    return;
+  }
+  // Text paste anywhere → drop it into the composer (no need to click in first).
+  var t=e.target,tag=(t&&t.tagName)||'';
+  if(tag==='INPUT'||tag==='TEXTAREA'||(t&&t.isContentEditable))return;
+  var txt=e.clipboardData&&e.clipboardData.getData('text');
+  if(txt){
+    var cin=document.getElementById('chatInput');
+    if(cin){
+      e.preventDefault();cin.focus();
+      var a=cin.selectionStart!=null?cin.selectionStart:cin.value.length;
+      var b=cin.selectionEnd!=null?cin.selectionEnd:cin.value.length;
+      cin.value=cin.value.slice(0,a)+txt+cin.value.slice(b);
+      cin.selectionStart=cin.selectionEnd=a+txt.length;
+      cin.dispatchEvent(new Event('input'));
+    }
   }
 },true);
 
@@ -1879,7 +1898,7 @@ async function approveAgentInChat(agentId,e){
     var r=await fetch('/api/agents/'+encodeURIComponent(agentId)+'/approve',{method:'POST'});
     if(r.ok){
       var div=document.createElement('div');div.className='msg assistant';
-      div.innerHTML='<div class="msg-bubble"><span style="color:var(--success,#10b981)">Plan approved.</span> codec-agent-runner picks it up within 5s. Updates will appear here as checkpoints complete.</div>';
+      div.innerHTML='<div class="msg-bubble"><span style="color:var(--running)">Plan approved.</span> codec-agent-runner picks it up within 5s. Updates will appear here as checkpoints complete.</div>';
       document.getElementById('messages').appendChild(div);scrollBottom();
       saveMessages();
       _startAgentPoller(agentId);  // begin live updates in this thread
@@ -1973,7 +1992,7 @@ function renderActiveAgentChip(){
   }
   bar.style.display = 'inline-flex';
   bar.innerHTML =
-    '<span style="width:6px;height:6px;border-radius:50%;background:#10b981;animation:pulse 2s infinite"></span>'+
+    '<span style="width:6px;height:6px;border-radius:50%;background:var(--running);animation:pulse 2s infinite"></span>'+
     '<span style="opacity:.85">Talking to <code style="opacity:1;font-family:var(--mono,ui-monospace)">'+escHtml(_activeAgentId.slice(0,12))+'</code></span>'+
     '<span style="opacity:.5">·</span>'+
     '<a href="#" onclick="toggleLivePreview(event)" id="livePreviewToggle" style="color:var(--text-muted,#9ca3af);text-decoration:none;font-size:13px" title="Show what the agent is producing">preview</a>'+
@@ -2153,11 +2172,11 @@ async function refreshAgentStatusPills(){
     container.style.display='flex';
     container.innerHTML=pills.map(function(p){
       var color='#888';
-      if(p.status==='running')color='#10b981';
+      if(p.status==='running')color='var(--running)';
       else if(p.status==='paused')color='#f59e0b';
       else if(p.status==='awaiting_approval')color='#eab308';
       else if(p.status==='draft_pending')color='#6b7280';
-      else if(p.status==='blocked_on_permission'||p.status==='blocked_on_destructive')color='#ef4444';
+      else if(p.status==='blocked_on_permission'||p.status==='blocked_on_destructive')color='var(--blocked)';
       else if(p.status==='crashed_resumed')color='#f59e0b';
       var actions='';
       if(p.status==='awaiting_approval'){
