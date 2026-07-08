@@ -1549,7 +1549,11 @@ function renderSettings(cfg) {
       var val = sec.keys[key];
       var inputHtml;
       if (typeof val === 'boolean') {
-        inputHtml = '<button class="setting-toggle ' + (val ? 'on' : '') + '" data-key="' + key + '" data-section="' + title + '" onclick="toggleSetting(this)"></button>';
+        // wake_word_enabled applies INSTANTLY on flip (no Save Changes needed) —
+        // users expect a toggle to just work; requiring a separate save button
+        // meant flipping "always-on off" silently did nothing (2026-07-08).
+        var _click = (key === 'wake_word_enabled') ? 'toggleWakeInstant(this)' : 'toggleSetting(this)';
+        inputHtml = '<button class="setting-toggle ' + (val ? 'on' : '') + '" data-key="' + key + '" data-section="' + title + '" onclick="' + _click + '"></button>';
       } else if (Array.isArray(val)) {
         inputHtml = '<input class="setting-input" data-key="' + key + '" data-section="' + title + '" data-type="array" value="' + escAttr(val.join(', ')) + '" style="width:60%">';
       } else {
@@ -1573,6 +1577,31 @@ function renderSettings(cfg) {
 
 function toggleSetting(btn) {
   btn.classList.toggle('on');
+}
+
+// Instant-apply toggle for the always-on wake word — saves immediately on
+// flip (no "Save Changes" step). codec.py re-reads wake_word_enabled live
+// (~2s), so flipping it off here silences "Hey CODEC" within a couple seconds.
+async function toggleWakeInstant(btn) {
+  btn.classList.toggle('on');
+  var on = btn.classList.contains('on');
+  btn.style.opacity = '0.5';
+  try {
+    var r = await fetch('/api/config', { method: 'PUT', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ 'Wake Word': { wake_word_enabled: on } }) });
+    var d = await r.json();
+    if (d && d.saved) {
+      showToast(on ? '🎙️ Always-on wake word: ON' : '🔇 Always-on OFF — CODEC won’t wake on its name (use F13)');
+    } else {
+      btn.classList.toggle('on');  // revert on failure
+      showToast('Could not save: ' + ((d && d.error) || 'unknown error'));
+    }
+  } catch (e) {
+    btn.classList.toggle('on');    // revert on network error
+    showToast('Could not save wake setting (network).');
+  } finally {
+    btn.style.opacity = '';
+  }
 }
 
 async function saveConfig() {
