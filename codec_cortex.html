@@ -391,8 +391,8 @@ var NODES = [
    info:'Kokoro-82M TTS. Voice: am_adam. Generates speech audio, played via afplay.',file:'kokoro_server.py',port:8085,health:'/v1/models'},
 
   // ─── HANDS (right side) — Skills & Actions ───
-  {id:'skills',label:'Skills x75',x:820,y:320,r:34,color:'#fbbf24',icon:'hand',category:'hands',zone:'hands',
-   info:'75 skill plugins: Chrome, Google Suite, system control, media, utilities. Trigger-matched. Live count auto-updates from /api/cortex/skills.',file:'skills/*.py'},
+  {id:'skills',label:'Skills',x:820,y:320,r:34,color:'#fbbf24',icon:'hand',category:'hands',zone:'hands',
+   info:'Skill plugins: Chrome, Google Suite, system control, media, utilities. Trigger-matched. Live count shown on this node and auto-updates from /api/cortex/skills — no hardcoded number so it never goes stale.',file:'skills/*.py'},
   {id:'agents',label:'Agents',x:920,y:370,r:22,color:'#fbbf24',icon:'bolt',category:'hands',zone:'hands',
    info:'Deep research, daily briefing, trip planner + custom agents. Background job queue.',file:'routes/agents.py'},
   {id:'marketplace',label:'Marketplace',x:820,y:240,r:18,color:'#fbbf24',icon:'cpu',category:'hands',zone:'hands',
