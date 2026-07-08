@@ -43,6 +43,32 @@ from codec_config import (
 )
 
 
+# ── Live wake-word enable flag ───────────────────────────────────────────────
+# WAKE_WORD (from codec_config) is read ONCE at import, so toggling
+# `wake_word_enabled` in the dashboard Settings had no effect until a restart.
+# This reader re-reads the flag from ~/.codec/config.json live (cached 2s to
+# avoid hammering the file in the tight wake loop) so the dashboard toggle
+# turns always-on mode on/off instantly. Falls back to the import-time
+# WAKE_WORD value on any read error.
+_CONFIG_JSON = os.path.expanduser("~/.codec/config.json")
+_wake_flag_cache = {"ts": 0.0, "val": None}
+
+
+def _wake_enabled_live():
+    now = time.time()
+    if _wake_flag_cache["val"] is not None and now - _wake_flag_cache["ts"] < 2.0:
+        return _wake_flag_cache["val"]
+    val = WAKE_WORD
+    try:
+        with open(_CONFIG_JSON) as f:
+            val = bool(json.load(f).get("wake_word_enabled", WAKE_WORD))
+    except Exception:
+        pass  # keep the import-time default on any read/parse error
+    _wake_flag_cache["ts"] = now
+    _wake_flag_cache["val"] = val
+    return val
+
+
 # ── Wake-word matching (A-16, PR-3C) ─────────────────────────────────────────
 # Curated homophone variants Whisper produces for "codec" (deduped — the old
 # inline list had "kodak" twice). Matched as case-insensitive substrings of the
@@ -705,7 +731,8 @@ def wake_word_listener():
     _wake_diag_done = False
     _wake_low_count = 0  # track consecutive below-threshold to warn user
     while True:
-        if not WAKE_WORD or state["recording"]:
+        # Live flag (dashboard Settings toggle) — no restart needed to disable.
+        if not _wake_enabled_live() or state["recording"]:
             time.sleep(0.3); continue
         # Skip while TTS is actively playing (prevents mic hearing our own voice)
         if _core.tts_playing:
@@ -1036,12 +1063,14 @@ def main():
     if mem: print(f"[CODEC] Memory: {mem.count(chr(10))+1} sessions loaded")
     convs = get_recent_conversations(10)
     if convs: print(f"[CODEC] Persistent memory: {len(convs)} messages from past sessions")
-    if WAKE_WORD: print("[CODEC] Wake word: ON")
+    print(f"[CODEC] Wake word: {'ON' if _wake_enabled_live() else 'OFF'} (toggle live in dashboard Settings)")
     print("[CODEC] Online. Press F13 to activate.")
 
     threading.Thread(target=worker, daemon=True).start()
-    if WAKE_WORD:
-        threading.Thread(target=wake_word_listener, daemon=True).start()
+    # Always start the listener; it self-gates on the LIVE wake_word_enabled
+    # flag (_wake_enabled_live), so the dashboard toggle works in BOTH
+    # directions without a restart. When disabled it just idles (0.3s sleeps).
+    threading.Thread(target=wake_word_listener, daemon=True).start()
 
     while True:
         try:

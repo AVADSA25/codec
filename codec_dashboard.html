@@ -1558,7 +1558,13 @@ function renderSettings(cfg) {
         var placeholder = (key.includes('api_key') || key.includes('token')) && !displayVal ? 'Not configured — using local LLM' : '';
         inputHtml = '<input class="setting-input" data-key="' + key + '" data-section="' + title + '" type="' + inputType + '" value="' + escAttr(displayVal) + '"' + (placeholder ? ' placeholder="' + placeholder + '"' : '') + '>';
       }
-      html += '<div class="setting-row"><span class="setting-label">' + key + '</span>' + inputHtml + '</div>';
+      var _labels = {
+        'wake_word_enabled': "Always-on mode — wake on “Hey CODEC”",
+        'wake_phrases': 'Wake phrases',
+        'wake_energy': 'Mic sensitivity threshold',
+      };
+      var _label = _labels[key] || key;
+      html += '<div class="setting-row"><span class="setting-label">' + escHtml(_label) + '</span>' + inputHtml + '</div>';
     }
     html += '</div></div>';
   }
