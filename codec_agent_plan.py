@@ -616,14 +616,25 @@ class DescriptionTooVagueError(ValueError):
 def _ask_user(question: str, *, agent_id: str,
               deadline_seconds: int = 600) -> Tuple[str, Any]:
     """Lazy-loaded codec_ask_user.ask wrapper. Returns (status, answer).
-    status ∈ {"answered", "ambiguous_consent", "timeout"}."""
+    status ∈ {"answered", "timeout"}.
+
+    Bugfix: this previously called ask(question, source=..., deadline_seconds=...)
+    and expected a (status, answer) tuple back — but the real ask() signature has
+    no `source`/`deadline_seconds` kwargs (it's `timeout`/`asked_from`) and returns
+    a plain answer STRING (with TIMEOUT_SENTINEL/DISABLED_SENTINEL on failure), not
+    a tuple. The clarifying-question loop would TypeError the instant it fired —
+    this feature has never actually worked. Fixed to call the real API and map its
+    sentinel-string return back into the (status, answer) shape callers expect."""
     try:
-        from codec_ask_user import ask
+        from codec_ask_user import ask, TIMEOUT_SENTINEL, DISABLED_SENTINEL
     except Exception as e:
         log.warning("codec_ask_user unavailable: %s", e)
         return ("timeout", None)
-    return ask(question, source=f"agent_plan:{agent_id}",
-               deadline_seconds=deadline_seconds)
+    answer = ask(question, timeout=deadline_seconds,
+                 asked_from="agent_plan", agent=f"agent_plan:{agent_id}")
+    if answer in (TIMEOUT_SENTINEL, DISABLED_SENTINEL):
+        return ("timeout", None)
+    return ("answered", answer)
 
 
 def draft_plan_with_clarification(agent_id: str, description: str,
@@ -1039,30 +1050,25 @@ def merge_user_paths_into_manifest(plan, description: str) -> int:
     return added
 
 
-def create_agent(title: str, description: str,
-                 registry=None,
-                 notification_channels: Optional[List[str]] = None) -> str:
-    """Top-level entry point. Drafts a plan, persists to disk, emits audit.
-    Returns the new agent_id. Status after this call: awaiting_approval
-    (or plan_failed on validation error).
+def _reserve_agent(title: str,
+                   notification_channels: Optional[List[str]] = None) -> Tuple[str, Optional[Path]]:
+    """Fast synchronous half of agent creation: mint an agent_id, create the
+    human-browseable project folder, write the initial draft_pending manifest
+    + empty state. No LLM calls — safe to run inline in an HTTP handler.
 
-    Phase 3.5: ALSO creates a human-browseable project folder under
-    ~/codec-projects/<slug>/ (or the configured project_root_dir). The
-    plan's permission_manifest.write_paths defaults to this folder, so
-    files the agent creates land where the user can open them in an IDE.
-    """
+    Split out of create_agent() (2026-07) so a caller (the /api/agents route)
+    can return agent_id to the UI immediately and run the slow half
+    (_finish_draft — Qwen + possible clarifying-question wait) in a
+    background thread, instead of blocking the HTTP request. Previously the
+    whole thing ran inline: if Qwen ever asked a clarifying question the
+    request would hang for up to 10 minutes with the UI just spinning."""
     agent_id = _new_agent_id()
-    cid = secrets.token_hex(6)
-
-    # Phase 3.5: create the human-browseable project folder up-front so
-    # the plan-drafter can reference it as the default write_paths root.
     try:
         project_dir = create_project_folder(title, agent_id)
     except Exception as e:
         log.warning("[%s] project folder creation failed: %s", agent_id, e)
         project_dir = None
 
-    # Initial manifest
     manifest = {
         "agent_id": agent_id,
         "title": title[:120],
@@ -1074,8 +1080,19 @@ def create_agent(title: str, description: str,
     }
     save_manifest(agent_id, manifest)
     save_state(agent_id, {"current_checkpoint": 0})
+    return agent_id, project_dir
 
-    # Draft plan (with clarification loop)
+
+def _finish_draft(agent_id: str, description: str, project_dir: Optional[Path],
+                  registry=None, _reraise: bool = False) -> None:
+    """Slow half of agent creation: draft the plan (with the clarification
+    loop — may block on codec_ask_user for up to its deadline), persist on
+    success, or mark plan_failed on any failure. Never raises unless
+    `_reraise=True` (set by the synchronous create_agent() wrapper below, for
+    direct/script callers that want the old blocking + exception contract) —
+    the background-thread caller relies on this to leave the agent in a
+    terminal-for-drafting status instead of dying silently."""
+    cid = secrets.token_hex(6)
     try:
         plan = draft_plan_with_clarification(agent_id, description, registry=registry,
                                               project_dir=project_dir)
@@ -1085,14 +1102,31 @@ def create_agent(title: str, description: str,
                f"plan failed (vague): {e}", correlation_id=cid,
                outcome="warning", level="warning",
                extra={"agent_id": agent_id, "reason": "too_vague"})
-        raise
+        if _reraise:
+            raise
+        return
     except (PlanValidationError, QwenUnavailableError) as e:
         set_status(agent_id, "plan_failed", reason=str(e))
         _audit(AGENT_PLAN_REJECTED, "codec-agent-plan",
                f"plan failed: {e}", correlation_id=cid,
                outcome="error", level="error",
                extra={"agent_id": agent_id, "reason": str(e)[:200]})
-        raise
+        if _reraise:
+            raise
+        return
+    except Exception as e:
+        # Defense in depth: an unhandled exception in a background thread
+        # would otherwise die silently, leaving the agent stuck in
+        # draft_pending forever with no explanation.
+        log.exception("[%s] unhandled exception drafting plan", agent_id)
+        set_status(agent_id, "plan_failed", reason=f"unhandled:{type(e).__name__}:{str(e)[:150]}")
+        _audit(AGENT_PLAN_REJECTED, "codec-agent-plan",
+               f"plan failed (unhandled): {e}", correlation_id=cid,
+               outcome="error", level="error",
+               extra={"agent_id": agent_id, "reason": "unhandled_exception"})
+        if _reraise:
+            raise
+        return
 
     # Auto-grant: paths the user explicitly typed in their description go
     # into the manifest before approval. Reduces "blocked_on_permission"
@@ -1110,7 +1144,7 @@ def create_agent(title: str, description: str,
     set_status(agent_id, "awaiting_approval")
 
     _audit(AGENT_PLAN_DRAFTED, "codec-agent-plan",
-           f"plan drafted for {title[:60]}", correlation_id=cid,
+           f"plan drafted for {agent_id}", correlation_id=cid,
            extra={
                "agent_id": agent_id,
                "checkpoint_count": len(plan.checkpoints),
@@ -1119,6 +1153,27 @@ def create_agent(title: str, description: str,
                "domains_count": len(plan.permission_manifest.network_domains),
            })
 
+
+def create_agent(title: str, description: str,
+                 registry=None,
+                 notification_channels: Optional[List[str]] = None) -> str:
+    """Top-level SYNCHRONOUS entry point (direct/script callers — tests, the
+    REPL, etc.). Drafts a plan, persists to disk, emits audit. Returns the
+    new agent_id. Status after this call: awaiting_approval (or plan_failed
+    on validation error, which also re-raises).
+
+    HTTP callers should use _reserve_agent() + a background thread running
+    _finish_draft() instead (see routes/agents.py) — this blocking form is
+    NOT used by the /api/agents route because a clarifying-question round
+    can take up to 10 minutes and must not hang the HTTP request.
+
+    Phase 3.5: ALSO creates a human-browseable project folder under
+    ~/codec-projects/<slug>/ (or the configured project_root_dir). The
+    plan's permission_manifest.write_paths defaults to this folder, so
+    files the agent creates land where the user can open them in an IDE.
+    """
+    agent_id, project_dir = _reserve_agent(title, notification_channels)
+    _finish_draft(agent_id, description, project_dir, registry=registry, _reraise=True)
     return agent_id
 
 
