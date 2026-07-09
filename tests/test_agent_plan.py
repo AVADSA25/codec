@@ -716,6 +716,13 @@ def test_post_api_agents_approve_full_flow(monkeypatch, temp_codec_dir):
         "title": "X", "description": "build x"})
     agent_id = r1.json()["agent_id"]
 
+    # Background-thread drafting (async-draft fix): wait for awaiting_approval
+    # before approving (approving a draft_pending agent is a 409).
+    for _ in range(50):
+        if cap.load_manifest(agent_id).get("status") == "awaiting_approval":
+            break
+        time.sleep(0.05)
+
     r2 = client.post(f"/api/agents/{agent_id}/approve")
     assert r2.status_code == 200
     assert r2.json()["status"] == "approved"
@@ -748,6 +755,14 @@ def test_post_api_agents_reject_sets_reason(monkeypatch, temp_codec_dir):
 
     r1 = client.post("/api/agents", json={"title": "X", "description": "build x"})
     agent_id = r1.json()["agent_id"]
+
+    # Drafting runs in a background thread (2026-07 async-draft fix), so the agent
+    # starts as draft_pending — wait for it to reach awaiting_approval before
+    # rejecting (rejecting a draft_pending agent is a 409). Mocked qwen is instant.
+    for _ in range(50):
+        if cap.load_manifest(agent_id).get("status") == "awaiting_approval":
+            break
+        time.sleep(0.05)
 
     r2 = client.post(f"/api/agents/{agent_id}/reject", json={"reason": "not now"})
     assert r2.status_code == 200
