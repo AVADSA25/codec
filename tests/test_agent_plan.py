@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -649,7 +650,18 @@ def test_post_api_agents_creates_drafts(monkeypatch, temp_codec_dir, tmp_path):
     assert r.status_code == 200
     body = r.json()
     assert body["agent_id"].startswith("agent_")
-    assert body["status"] == "awaiting_approval"
+    # Drafting runs in a background thread (2026-07 fix — a clarifying-question
+    # round can take up to 10 minutes and must not hang this HTTP request), so
+    # the immediate response reflects the fast synchronous "reserve" half only.
+    assert body["status"] == "draft_pending"
+
+    # The slow half (draft_plan_with_clarification, monkeypatched above to be
+    # instant) finishes asynchronously — poll briefly for it to land.
+    for _ in range(50):
+        if cap.load_manifest(body["agent_id"]).get("status") == "awaiting_approval":
+            break
+        time.sleep(0.05)
+    assert cap.load_manifest(body["agent_id"])["status"] == "awaiting_approval"
 
 
 def test_get_api_agents_lists_all(temp_codec_dir):

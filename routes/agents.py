@@ -371,23 +371,27 @@ def create_agent(body: CreateAgentBody):
     except Exception:
         pass
 
-    try:
-        agent_id = _cap.create_agent(
-            title=body.title,
-            description=body.description,
-            notification_channels=body.notification_channels,
-        )
-    except _cap.DescriptionTooVagueError as e:
-        raise HTTPException(status_code=400, detail=f"description too vague: {e}")
-    except _cap.PlanValidationError as e:
-        raise HTTPException(status_code=400, detail=f"plan invalid: {e}")
-    except _cap.QwenUnavailableError as e:
-        raise HTTPException(status_code=503, detail=f"Qwen-3.6 unavailable: {e}")
+    # Drafting runs in the background: the fast "reserve" half (mint agent_id
+    # + project folder + draft_pending manifest) happens inline so the caller
+    # gets an agent_id back immediately; the slow half (Qwen + a possible
+    # clarifying-question round, which can take up to its 10-minute deadline)
+    # runs in a thread. Previously the whole thing ran inline and a
+    # clarifying question would hang this HTTP request with the UI just
+    # spinning — the frontend now polls GET /api/agents/{id} for status
+    # (draft_pending -> awaiting_approval/plan_failed) and, while pending,
+    # GET /api/agents/pending_questions to render any question conversationally.
+    agent_id, project_dir = _cap._reserve_agent(body.title, body.notification_channels)
+    threading.Thread(
+        target=_cap._finish_draft,
+        args=(agent_id, body.description, project_dir),
+        kwargs={},
+        daemon=True, name=f"draft-{agent_id}",
+    ).start()
 
     manifest = _cap.load_manifest(agent_id)
     return {
         "agent_id": agent_id,
-        "status": manifest.get("status", "unknown"),
+        "status": manifest.get("status", "draft_pending"),
         "project_dir": manifest.get("project_dir"),  # Phase 3.5: human-browseable folder
     }
 

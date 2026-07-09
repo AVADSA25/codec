@@ -185,9 +185,20 @@ def _path_allowed(action_path: str, grants: Any) -> tuple[bool, str]:
         if glob_idx < 0:
             # Plain directory/file grant authorizes its subtree (unchanged).
             return True, ""
+        # A recursive grant (`root/**`) also authorizes the bare root directory
+        # itself — listing/reading `root` is a natural subset of "everything
+        # under root", but fnmatch(`root`, `root/**`) is False (no literal `/`
+        # after `root` to match the pattern's trailing separator). Without this,
+        # a plan that declares `X/**` still blocks the very first `list X`
+        # action and forces a redundant manual grant of the bare path. Narrower
+        # globs (`*.md`) intentionally do NOT get this — they authorize a file
+        # pattern, not "everything", so the bare directory stays ungranted.
+        glob_suffix = grant_expanded[glob_idx:]
+        if glob_suffix in ("**", "*/**") and action_real == grant_real:
+            return True, ""
         # B-18: the action must ALSO match the realpath-anchored glob pattern, so a
         # specific glob (`*.md`) is enforced rather than collapsed to its directory.
-        pattern = grant_real + os.sep + grant_expanded[glob_idx:]
+        pattern = grant_real + os.sep + glob_suffix
         if fnmatch.fnmatch(action_real, pattern):
             return True, ""
         # Under the root but doesn't match this glob — keep checking other grants.
