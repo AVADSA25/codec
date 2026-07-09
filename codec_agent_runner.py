@@ -727,6 +727,36 @@ class StepBudgetExhausted(Exception):
     """Per-checkpoint step budget cap reached without checkpoint_done."""
 
 
+class NoProgressDetected(Exception):
+    """The last several actions returned near-identical results — the agent is
+    stuck in a repeat loop, not making progress. Raised well before the step
+    budget exhausts so the human sees an early, honest pause instead of the
+    agent silently grinding through its whole budget on the same dead end.
+
+    2026-07: a live Project run (research 5 AI startups) re-fetched the same
+    URL 15+ times and re-issued the same search 10+ times, burning all 80
+    steps of checkpoint 1 without ever finishing it — Qwen's own
+    "return checkpoint_done" self-check never caught it. This is a
+    deterministic backstop that doesn't depend on the model noticing its own
+    loop."""
+
+
+_REPEAT_THRESHOLD = 3  # this many near-identical results anywhere in the
+                       # checkpoint so far => treat as a stuck loop, not luck
+
+
+def _result_signature(skill: str, result: str) -> str:
+    """Cheap normalized signature for repeat-detection: same skill + a
+    whitespace-collapsed prefix of the result. Two fetches of the same URL (or
+    two searches surfacing the same top result) collapse to the same
+    signature even when the LLM phrases the task text slightly differently
+    each time — task-text similarity is NOT a reliable signal (the model
+    reliably varies its phrasing while making the exact same call), but
+    getting back the same information twice is unambiguous."""
+    norm = re.sub(r"\s+", " ", (result or "")).strip()[:300]
+    return f"{skill}::{norm}"
+
+
 def _build_correction_nudge(pv: "PermissionViolation",
                             action: Action,
                             agent_grants: Dict[str, Any],
@@ -872,6 +902,15 @@ def _execute_checkpoint(plan_dict: Dict[str, Any],
     # (seeded from state.json on resume by _run_agent). Mutated in place + persisted.
     if executed_destructive is None:
         executed_destructive = []
+    # Loop-breaker: seed the repeat-signature counter from any PRE-EXISTING
+    # history (resume-after-crash case) so a checkpoint that was ALREADY
+    # looping before a restart doesn't get a fresh 3-strike allowance.
+    _sig_counts: Dict[str, int] = {}
+    for h in history:
+        if h.get("_skill_correction_nudge") or h.get("_resume_skipped"):
+            continue
+        sig = _result_signature(h.get("skill", ""), h.get("result", ""))
+        _sig_counts[sig] = _sig_counts.get(sig, 0) + 1
     cp_id = str(checkpoint.get("id", ""))
     # Floor to DEFAULT so plans with tiny LLM-generated budgets (e.g. 5 or 10)
     # don't exhaust before Qwen can finish real work.
@@ -984,6 +1023,19 @@ def _execute_checkpoint(plan_dict: Dict[str, Any],
             "is_destructive": action.is_destructive,
         })
         _persist_checkpoint_progress(agent_id, cp_id, history, executed_destructive)
+
+        # Loop-breaker: this exact (skill, result) pair has now come back
+        # _REPEAT_THRESHOLD times in this checkpoint — repeating it isn't
+        # teaching the agent anything new. Stop here instead of grinding
+        # through the rest of the step budget on the same dead end.
+        sig = _result_signature(action.skill, result)
+        _sig_counts[sig] = _sig_counts.get(sig, 0) + 1
+        if _sig_counts[sig] >= _REPEAT_THRESHOLD:
+            raise NoProgressDetected(
+                f"'{action.skill}' returned the same result {_sig_counts[sig]}x in "
+                f"checkpoint {cp_id!r} without new information (last task: "
+                f"{action.task[:120]!r})"
+            )
 
     raise StepBudgetExhausted(f"step_budget {budget} exhausted in checkpoint {checkpoint.get('id')}")
 
@@ -1295,6 +1347,29 @@ def _run_agent(agent_id: str, cid: Optional[str] = None) -> None:
                                       "reason": "step_budget_exhausted"})
                     else:
                         log.info("[%s] pause not announced — status superseded externally", agent_id)
+                return
+            except NoProgressDetected as e:
+                # Deterministic loop-breaker fired before the step budget was
+                # anywhere near exhausted — the agent is stuck, not still
+                # working. Pause early with an honest, specific reason instead
+                # of grinding through the rest of the budget for nothing.
+                if _atomic_set_status(agent_id, "paused", reason=f"no_progress_detected:{e}"):
+                    _audit(AGENT_PAUSED,
+                           message=f"paused: no progress ({e})",
+                           correlation_id=cid, outcome="warning", level="warning",
+                           extra={"agent_id": agent_id, "checkpoint_id": cp.id,
+                                  "reason": "no_progress_detected"})
+                    post_message(agent_id=agent_id, type="agent_blocked",
+                                 title="Paused: not making progress",
+                                 body=f"{e}. Resume to let me try a different approach, "
+                                      f"or abort if this isn't worth pursuing further.",
+                                 actions=[
+                                     {"label": "Resume", "endpoint": f"/api/agents/{agent_id}/resume"},
+                                     {"label": "Abort", "endpoint": f"/api/agents/{agent_id}/abort"},
+                                 ],
+                                 correlation_id=cid)
+                else:
+                    log.info("[%s] no-progress pause not announced — status superseded externally", agent_id)
                 return
 
             # Checkpoint complete: atomic state save (resume guarantee).
