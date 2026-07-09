@@ -708,6 +708,12 @@ def _server_destructive_signal(action: Action) -> bool:
             return True
     except Exception:
         pass
+    # A Gmail DRAFT is never sent (the gmail skill routes any "draft" task to
+    # draft-creation before the send path), so it is safe/reversible even when
+    # the email BODY happens to contain the word "send" ("I'd love to send my
+    # resume…"). Don't let that false-positive gate autonomous draft creation.
+    if action.skill == "google_gmail" and re.search(r"\bdraft\b", action.task or "", re.IGNORECASE):
+        return False
     return bool(_DESTRUCTIVE_VERB_RE.search(action.task or ""))
 
 

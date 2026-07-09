@@ -1,7 +1,7 @@
-"""Google Gmail — Check emails, search inbox, send (consent-gated)"""
+"""Google Gmail — Check emails, search inbox, draft, and send (consent-gated)"""
 SKILL_NAME = "google_gmail"
-SKILL_TRIGGERS = ["check email", "check my email", "my emails", "inbox", "unread emails", "new emails", "any emails", "latest emails", "email from", "search email", "send email", "send an email"]
-SKILL_DESCRIPTION = "Check your Gmail inbox, search emails, and send emails (sending always requires an explicit spoken/PWA confirmation)"
+SKILL_TRIGGERS = ["check email", "check my email", "my emails", "inbox", "unread emails", "new emails", "any emails", "latest emails", "email from", "search email", "send email", "send an email", "draft email", "draft an email", "save as draft", "create a draft", "gmail draft"]
+SKILL_DESCRIPTION = "Check your Gmail inbox, search emails, save DRAFTS (never sent — safe, no confirmation needed), and send emails (sending always requires an explicit spoken/PWA confirmation). To save a draft: 'draft email to: someone@example.com subject: <subject> body: <message>'."
 SKILL_MCP_EXPOSE = True
 
 import os
@@ -9,12 +9,18 @@ import re
 
 TOKEN_PATH = os.path.expanduser("~/.codec/google_token.json")
 
+# Draft intent is checked BEFORE send so "draft an email …" never sends. A Gmail
+# draft is only saved to the Drafts folder — never delivered — so it needs no
+# consent gate (unlike send). \b keeps "drafts" (inbox search) sane.
+_DRAFT_RE = re.compile(r"\bdraft\b", re.IGNORECASE)
 # Matches an explicit send intent ("send email…", "send an email…", or a task
 # starting with send). \b keeps "sender"/"unsend" out of the send path.
 _SEND_RE = re.compile(r"^\s*send\b|\bsend\b[^.]*\bemail\b|\bemail\b[^.]*\bsend\b", re.IGNORECASE)
 
 _USAGE = ("To send, repeat with explicit fields: "
           "send email to: someone@example.com subject: <subject> body: <message>")
+_DRAFT_USAGE = ("To save a draft, include the body: "
+                "draft email to: someone@example.com subject: <subject> body: <message>")
 
 
 def _get_service():
@@ -33,6 +39,72 @@ def _parse_send(task):
     return (to.group(1).strip() if to else None,
             subject.group(1).strip() if subject else "",
             body.group(1).strip() if body else None)
+
+
+def _parse_draft(task):
+    """Robust free-form parse for a draft request. LLMs do NOT reliably use the
+    strict `to:/subject:/body:` markers — they write the whole email (often with
+    an inline 'Subject:' line) after a phrase like 'save as a Gmail draft:'. So:
+      to      = first email address after a 'to' cue (optional — a draft needs no recipient)
+      subject = a 'Subject:' line pulled out of the content (first occurrence)
+      body    = everything else (the email itself)
+    Returns (to, subject, body)."""
+    t = task or ""
+    to_m = (re.search(r"\bto:\s*([^\s,;<>]+@[^\s,;<>]+)", t, re.IGNORECASE)
+            or re.search(r"\bto\s+([^\s,;<>]+@[^\s,;<>]+)", t, re.IGNORECASE))
+    to = to_m.group(1).strip() if to_m else None
+
+    # Content = everything after an explicit 'body:' marker if the caller used
+    # one; otherwise the whole task minus the leading draft command phrase.
+    body_m = re.search(r"\bbody:\s*(.+)$", t, re.IGNORECASE | re.DOTALL)
+    if body_m:
+        content = body_m.group(1)
+    else:
+        content = re.sub(
+            r"^\s*(please\s+)?(save\s+(it\s+)?as\s+a?\s*|create\s+a?\s*|write\s+a?\s*|compose\s+a?\s*|draft\s+a?\s*)*"
+            r"(gmail\s+|an?\s+)?(email\s+|draft\s+)*(draft|email)?[^:\n]*:?\s*",
+            "", t, count=1, flags=re.IGNORECASE)
+    # Strip a leading explicit "to:/subject:" field left inside the content.
+    content = re.sub(r"^\s*to:\s*[^\s,;<>]+@[^\s,;<>]+\s*", "", content, flags=re.IGNORECASE)
+
+    # Subject: from the FULL task (catches both a structured 'subject: X body: …'
+    # field AND an inline 'Subject: X' line in the email). Non-greedy, stops at
+    # a 'body:' marker or newline so it's a single clean line.
+    subject = None
+    subj_m = re.search(r"\bsubject:\s*(.+?)(?=\s+body:|\r?\n|$)", t, re.IGNORECASE)
+    if subj_m:
+        subject = subj_m.group(1).strip()
+    # Remove a leading/inline "Subject: …" line from the body so it isn't
+    # duplicated inside the email text.
+    content = re.sub(r"(?:^|\n)[ \t]*subject:[^\n]*\r?\n?", "\n", content,
+                     count=1, flags=re.IGNORECASE).strip()
+    return to, subject, content.strip()
+
+
+def _create_draft(task):
+    """Save a Gmail DRAFT. Never sends — the draft lands in the Drafts folder for
+    the user to review/edit/send themselves. Because nothing leaves the mailbox,
+    this is a safe, fully-reversible action and needs NO consent gate (a Project
+    agent can create drafts autonomously; the human reviews before any send)."""
+    to, subject, body = _parse_draft(task)
+    if not body:
+        return _DRAFT_USAGE
+    try:
+        import base64
+        from email.mime.text import MIMEText
+        service = _get_service()
+        msg = MIMEText(body)
+        if to:
+            msg["to"] = to
+        msg["subject"] = subject or "(no subject)"
+        raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+        d = service.users().drafts().create(
+            userId="me", body={"message": {"raw": raw}}).execute()
+        where = f" to {to}" if to else ""
+        return (f"Draft saved{where}: \"{subject or '(no subject)'}\" "
+                f"(draft id {d.get('id', '?')}). Review it in Gmail → Drafts.")
+    except Exception as e:
+        return f"Gmail draft error: {e}"
 
 
 def _send_email(task):
@@ -70,8 +142,12 @@ def _send_email(task):
 
 
 def run(task, app="", ctx=""):
-    if _SEND_RE.search(task or ""):
-        return _send_email(task)
+    t = task or ""
+    # Draft BEFORE send: "draft an email …" must never trigger the send path.
+    if _DRAFT_RE.search(t):
+        return _create_draft(t)
+    if _SEND_RE.search(t):
+        return _send_email(t)
     try:
         service = _get_service()
         low = task.lower()
