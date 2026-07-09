@@ -86,7 +86,7 @@
     "tts_say.py": "bbc8828d73f0fa4ebb935919ffd0e64f706362bf715fe86851046e4527f62c92",
     "volume.py": "cbd20b36ee7d4010a4a4d13829b2d7e96e5123bd112ccd5a17fe18ab85c18429",
     "weather.py": "d33a479119a23a26a485df230440a7e4e1beb04bb0bb68bd2a7444e3504a6b2e",
-    "web_fetch.py": "cd6e2b7565bc3f486faeabdf6d338f5fd052d6cde0e5c8d7625b3b630f987859",
+    "web_fetch.py": "3a07aed6b21ddfae096ae9e94c4a27048b653167cad3102781ea2cc44954ae38",
     "web_search.py": "49023eef091cbedb7e099ad7a545e02eed68676f5c0de0e168625d51914d6462"
   }
 }
