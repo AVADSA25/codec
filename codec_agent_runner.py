@@ -391,6 +391,15 @@ Rules:
 - skill MUST come from the available_skills list shown in the prompt. Never invent skill names.
 - Return {"kind": "checkpoint_done"} AS SOON AS the checkpoint's expected_output is satisfied.
   Do NOT call more skills after the goal is achieved — stop immediately with checkpoint_done.
+- SATISFICE — do NOT chase perfect results. Real web data is messy and incomplete. If you
+  have gathered a REASONABLE amount toward expected_output (e.g. you found 3-4 items when
+  asked for 5, or you have names but not every single detail), USE what you have and move
+  on — proceed to the next part of the task or return checkpoint_done. It is far better to
+  finish with imperfect/partial data than to loop forever seeking complete data.
+- NEVER repeat a skill call that already returned a result — searching again with a slightly
+  reworded query, or re-fetching the same URL, almost always returns the SAME thing. If a
+  search or fetch didn't give you what you hoped, do NOT retry it; either work with what you
+  got, or try a genuinely DIFFERENT source/skill you have not used yet.
 - If steps_remaining is 3 or fewer and the checkpoint is not yet done: call the single most
   important remaining skill, then return checkpoint_done on the VERY NEXT step regardless.
 - If you have already called a skill and received a result that satisfies expected_output,
@@ -741,8 +750,35 @@ class NoProgressDetected(Exception):
     loop."""
 
 
-_REPEAT_THRESHOLD = 3  # this many near-identical results anywhere in the
-                       # checkpoint so far => treat as a stuck loop, not luck
+_REPEAT_THRESHOLD = 3   # this many near-identical results for one call =>
+                        # first NUDGE the model to change approach; only pause
+                        # if that exact call repeats AGAIN after the nudge.
+_MAX_LOOP_NUDGES = 3    # global cap per checkpoint: after this many distinct
+                        # loops have each been nudged and the agent still isn't
+                        # converging, pause — it's genuinely stuck, not just
+                        # briefly confused.
+
+
+def _dedup_target(skill: str, task: str) -> Optional[str]:
+    """A normalized 'target' key for idempotent research skills, so we can
+    refuse to run the EXACT same fetch/search twice within a checkpoint (it
+    returns the same thing and wastes a step). Returns None for skills where
+    re-running is legitimately different (file_write, etc.) — those are never
+    deduped.
+
+    web_fetch  -> the URL (re-fetching a URL is pointless — pre-execution
+                  refusal is far more forceful than reacting to the repeat
+                  after the fact, and it stops the JS-rendered-shell loop the
+                  4-bit model gets stuck in).
+    web_search -> the normalized query text."""
+    s = (skill or "").lower()
+    t = (task or "").strip()
+    if s in ("web_fetch", "clipboard_url_fetch"):
+        m = re.search(r"https?://\S+", t)
+        return "fetch::" + m.group(0).rstrip(").,;'\"") if m else None
+    if s in ("web_search", "chrome_search"):
+        return "search::" + re.sub(r"\s+", " ", t.lower())[:160]
+    return None
 
 
 def _result_signature(skill: str, result: str) -> str:
@@ -903,12 +939,27 @@ def _execute_checkpoint(plan_dict: Dict[str, Any],
     if executed_destructive is None:
         executed_destructive = []
     # Loop-breaker: seed the repeat-signature counter from any PRE-EXISTING
-    # history (resume-after-crash case) so a checkpoint that was ALREADY
-    # looping before a restart doesn't get a fresh 3-strike allowance.
+    # history (resume-after-crash / resume-after-pause case) so a checkpoint
+    # that was ALREADY looping before a restart doesn't get a fresh allowance.
+    # _nudged_sigs / _nudges_given are seeded the same way so a resume can't
+    # re-earn fresh nudges for a loop it was already nudged about.
     _sig_counts: Dict[str, int] = {}
+    _nudged_sigs: set = set()
+    _nudges_given = 0
+    _executed_targets: set = set()   # dedup keys for fetch/search already run
     for h in history:
         if h.get("_skill_correction_nudge") or h.get("_resume_skipped"):
             continue
+        if h.get("_loop_correction_nudge"):
+            _nudges_given += 1
+            _nsig = h.get("_loop_sig")
+            if _nsig:
+                _nudged_sigs.add(_nsig)
+            continue
+        if not h.get("_dedup_skip"):
+            _tgt = _dedup_target(h.get("skill", ""), h.get("task", ""))
+            if _tgt:
+                _executed_targets.add(_tgt)
         sig = _result_signature(h.get("skill", ""), h.get("result", ""))
         _sig_counts[sig] = _sig_counts.get(sig, 0) + 1
     cp_id = str(checkpoint.get("id", ""))
@@ -1008,6 +1059,42 @@ def _execute_checkpoint(plan_dict: Dict[str, Any],
             executed_destructive.append(fp)
             _persist_checkpoint_progress(agent_id, cp_id, history, executed_destructive)
 
+        # Pre-execution dedup: refuse to re-run the EXACT same fetch/search this
+        # checkpoint. Re-fetching a URL (or re-issuing an identical query) returns
+        # the same thing — often a JS-rendered page shell with no real content —
+        # and the 4-bit model otherwise gets stuck re-trying it. Returning a
+        # directive instead is far more forceful than reacting after the repeat.
+        _tgt = _dedup_target(action.skill, action.task)
+        if _tgt and _tgt in _executed_targets:
+            result = (
+                f"[ALREADY TRIED] You already ran this exact {action.skill} and it "
+                f"did not give usable new information — the page is likely "
+                f"JavaScript-rendered and its content is NOT available via fetch. "
+                f"Do NOT repeat it. Extract what you need from your earlier "
+                f"web_search RESULTS (their snippets contain real information), use "
+                f"what you have to satisfice and move on, or return checkpoint_done. "
+                f"Only if truly necessary, try a DIFFERENT url you have not fetched."
+            )
+            history.append({
+                "step": len(history),
+                "skill": action.skill,
+                "task": action.task[:200],
+                "result": result,
+                "is_destructive": False,
+                "_dedup_skip": True,
+            })
+            _persist_checkpoint_progress(agent_id, cp_id, history, executed_destructive)
+            # Count toward the loop-breaker so endless dedup-skips still pause.
+            sig = _result_signature(action.skill, result)
+            _sig_counts[sig] = _sig_counts.get(sig, 0) + 1
+            if _sig_counts[sig] >= _REPEAT_THRESHOLD and _nudges_given >= _MAX_LOOP_NUDGES:
+                raise NoProgressDetected(
+                    f"agent kept retrying already-tried {action.skill} calls in "
+                    f"checkpoint {cp_id!r} without moving on")
+            continue
+        if _tgt:
+            _executed_targets.add(_tgt)
+
         # Execute via codec_dispatch.run_skill (Step 1+2 hooks fire)
         try:
             result = _run_skill(action.skill, action.task, agent_id)
@@ -1024,17 +1111,46 @@ def _execute_checkpoint(plan_dict: Dict[str, Any],
         })
         _persist_checkpoint_progress(agent_id, cp_id, history, executed_destructive)
 
-        # Loop-breaker: this exact (skill, result) pair has now come back
-        # _REPEAT_THRESHOLD times in this checkpoint — repeating it isn't
-        # teaching the agent anything new. Stop here instead of grinding
-        # through the rest of the step budget on the same dead end.
+        # Loop-breaker with recovery: this exact (skill, result) pair has now
+        # come back _REPEAT_THRESHOLD times. Rather than pause immediately, first
+        # inject a strong corrective NUDGE (mirrors the permission-correction
+        # nudge above) telling the model to stop repeating and change approach —
+        # give it a chance to break out on its own. Only PAUSE if the SAME call
+        # repeats yet again after being nudged, or if too many distinct loops
+        # have each been nudged (agent genuinely stuck).
         sig = _result_signature(action.skill, result)
         _sig_counts[sig] = _sig_counts.get(sig, 0) + 1
         if _sig_counts[sig] >= _REPEAT_THRESHOLD:
+            if sig not in _nudged_sigs and _nudges_given < _MAX_LOOP_NUDGES:
+                _nudged_sigs.add(sig)
+                _nudges_given += 1
+                history.append({
+                    "step": len(history),
+                    "skill": action.skill,
+                    "task": action.task[:200],
+                    "result": (
+                        f"[LOOP DETECTED — CHANGE APPROACH] You have called "
+                        f"'{action.skill}' and gotten the SAME result "
+                        f"{_sig_counts[sig]} times. Repeating it will NOT give you "
+                        f"anything new. STOP making this call. Do ONE of these now: "
+                        f"(1) PROCEED with what you have ALREADY gathered above — "
+                        f"partial or imperfect data is fine; extract what you can and "
+                        f"move to the next part of the task, or return checkpoint_done "
+                        f"if expected_output is reasonably met; OR (2) use a "
+                        f"genuinely DIFFERENT skill or a clearly different source/URL "
+                        f"you have not tried. Do NOT reword the same search or re-fetch "
+                        f"the same page."
+                    ),
+                    "is_destructive": False,
+                    "_loop_correction_nudge": True,
+                    "_loop_sig": sig,
+                })
+                _persist_checkpoint_progress(agent_id, cp_id, history, executed_destructive)
+                continue
             raise NoProgressDetected(
                 f"'{action.skill}' returned the same result {_sig_counts[sig]}x in "
-                f"checkpoint {cp_id!r} without new information (last task: "
-                f"{action.task[:120]!r})"
+                f"checkpoint {cp_id!r} even after a nudge to change approach "
+                f"(last task: {action.task[:120]!r})"
             )
 
     raise StepBudgetExhausted(f"step_budget {budget} exhausted in checkpoint {checkpoint.get('id')}")
