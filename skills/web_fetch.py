@@ -4,10 +4,38 @@ SKILL_DESCRIPTION = "fetches and returns the content of a specified URL"
 SKILL_TRIGGERS = ["fetch", "get url"]
 SKILL_MCP_EXPOSE = True
 
+import html as _html
 import re
 from urllib.parse import urljoin
 
 import requests
+
+_MAX_CHARS = 12_000  # keep a fetch from blowing an agent step's context budget
+
+
+def _html_to_text(raw: str) -> str:
+    """Strip an HTML document down to its readable text. Stdlib-only (no bs4
+    dependency risk) — good enough to make a page's actual content legible to
+    the LLM instead of raw markup, which is unusable for extracting facts.
+
+    2026-07: web_fetch previously returned response.text verbatim for ANY
+    HTML page — a Project agent researching AI startup launches re-fetched
+    the same page 15+ times because it kept receiving
+    '<!DOCTYPE html><html lang="en">...' and could never extract a founder
+    name from it, burning its entire step budget (80 steps) in the loop
+    before ever finishing checkpoint 1."""
+    # Drop non-content blocks entirely — their text isn't page content.
+    text = re.sub(r"(?is)<(script|style|noscript|svg|head)\b.*?</\1>", " ", raw)
+    text = re.sub(r"(?is)<!--.*?-->", " ", text)
+    # Block-level tags become newlines so paragraphs/list items stay separable.
+    text = re.sub(r"(?i)<(br|/p|/div|/li|/h[1-6]|/tr)\s*/?>", "\n", text)
+    text = re.sub(r"(?s)<[^>]+>", " ", text)          # strip remaining tags
+    text = _html.unescape(text)
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n\s*\n+", "\n", text).strip()
+    if len(text) > _MAX_CHARS:
+        text = text[:_MAX_CHARS] + f"\n...[truncated, {len(raw)} raw chars]"
+    return text
 
 
 def _get_validating_redirects(url: str, max_redirects: int = 5):
@@ -46,8 +74,11 @@ def run(task: str, context: str = "") -> str:
         response.raise_for_status()
         
         content_type = response.headers.get("content-type", "")
+        if "html" in content_type:
+            return _html_to_text(response.text)
         if "text" in content_type or "json" in content_type:
-            return response.text
+            body = response.text
+            return body[:_MAX_CHARS] + (f"\n...[truncated, {len(body)} raw chars]" if len(body) > _MAX_CHARS else "")
         else:
             return f"web_fetch failed: unsupported content type {content_type}"
             

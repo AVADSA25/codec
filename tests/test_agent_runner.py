@@ -492,14 +492,23 @@ def test_execute_checkpoint_destructive_rejection_raises(monkeypatch, temp_codec
 
 
 def test_execute_checkpoint_step_budget_exhausted(monkeypatch, temp_codec_dir):
-    """Step budget cap reached → StepBudgetExhausted."""
+    """Step budget cap reached → StepBudgetExhausted.
+
+    Each step must return GENUINELY DISTINCT results (a counter, not a fixed
+    "r") — otherwise this exercises the 2026-07 loop-breaker (NoProgressDetected,
+    tested separately in test_runner_loop.py) instead of real budget exhaustion,
+    since identical results repeated 3x now correctly pause early."""
     import codec_agent_runner as car
 
     # Always return a skill call (never checkpoint_done)
     monkeypatch.setattr(car, "_qwen_next_action", lambda *a, **k:
         car.Action(skill="weather", task="loop",
                    is_destructive=False, network_call=False, touches_path=False))
-    monkeypatch.setattr(car, "_run_skill", MagicMock(return_value="r"))
+    _n = {"i": 0}
+    def _distinct_result(*a, **k):
+        _n["i"] += 1
+        return f"result #{_n['i']}"
+    monkeypatch.setattr(car, "_run_skill", _distinct_result)
 
     grants = {"skills": ["weather"], "read_paths": [], "write_paths": [],
               "network_domains": []}
@@ -941,7 +950,10 @@ def test_post_api_agents_404_for_unknown_id(temp_codec_dir):
 
 def test_run_agent_step_budget_exhausted_pauses_not_blocks(monkeypatch, temp_codec_dir):
     """Real budget hit (not destructive_consent_timeout) → status=paused
-    with reason=step_budget_exhausted (was: blocked_on_permission)."""
+    with reason=step_budget_exhausted (was: blocked_on_permission).
+
+    Distinct per-step results (see test_execute_checkpoint_step_budget_exhausted
+    above) so this tests real exhaustion, not the loop-breaker."""
     import codec_agent_runner as car
     import codec_agent_plan as cap
     _setup_approved_agent(temp_codec_dir, monkeypatch, num_checkpoints=1)
@@ -950,7 +962,11 @@ def test_run_agent_step_budget_exhausted_pauses_not_blocks(monkeypatch, temp_cod
     monkeypatch.setattr(car, "_qwen_next_action", lambda *a, **k:
         car.Action(skill="weather", task="loop", kind="skill_call",
                    is_destructive=False, network_call=False, touches_path=False))
-    monkeypatch.setattr(car, "_run_skill", MagicMock(return_value="r"))
+    _n = {"i": 0}
+    def _distinct_result(*a, **k):
+        _n["i"] += 1
+        return f"result #{_n['i']}"
+    monkeypatch.setattr(car, "_run_skill", _distinct_result)
 
     car._run_agent("test_agent")
 

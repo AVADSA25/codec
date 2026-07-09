@@ -109,6 +109,70 @@ def test_qwen_calls_capped_counting_corrections(monkeypatch, temp_codec_dir):
         f"qwen calls must be capped at ~budget (4)+1, counting corrections; got {calls['n']} (B-14)"
 
 
+# ── Loop-breaker (2026-07): detect a stuck repeat-loop well before budget ──────
+def test_no_progress_detected_on_repeated_identical_results(monkeypatch, temp_codec_dir):
+    """Reproduces the live failure: a research checkpoint kept re-fetching the
+    same URL and re-issuing the same search, getting back identical results,
+    and burned its ENTIRE 80-step budget without ever finishing. The
+    loop-breaker must raise NoProgressDetected after _REPEAT_THRESHOLD
+    identical results — long before a large budget would exhaust — so the
+    agent pauses early with an honest reason instead of grinding pointlessly."""
+    grants = {"skills": ["web_fetch"], "read_paths": [], "write_paths": [],
+              "network_domains": ["*"]}
+    gg = {"schema": 1, "version": 0, "skills": [], "read_paths": [],
+          "write_paths": [], "network_domains": []}
+    # A large budget — if the loop-breaker didn't exist, this would grind for
+    # 60 steps before StepBudgetExhausted, exactly like the real incident.
+    cp = {"id": "cp0", "title": "research", "description": "d",
+          "expected_output": "o", "step_budget": 60}
+
+    call_n = {"n": 0}
+    def fake_next(plan_dict, checkpoint, history, *a, **k):
+        call_n["n"] += 1
+        # The model keeps varying its phrasing (as it did live) but keeps
+        # calling the same skill against the same effective target.
+        return car.Action(skill="web_fetch", task=f"Fetch attempt #{call_n['n']} of the page",
+                          kind="skill_call")
+    monkeypatch.setattr(car, "_qwen_next_action", fake_next)
+    # Every fetch returns the EXACT same raw content — no new information.
+    monkeypatch.setattr(car, "_run_skill",
+                        MagicMock(return_value="<!DOCTYPE html>...same page every time..."))
+
+    with pytest.raises(car.NoProgressDetected):
+        car._execute_checkpoint(plan_dict={"goals": ["g"]}, checkpoint=cp,
+                                agent_grants=grants, global_grants=gg, agent_id="test_agent")
+    assert call_n["n"] <= car._REPEAT_THRESHOLD + 1, (
+        f"loop-breaker must fire within ~{car._REPEAT_THRESHOLD} repeats, not grind "
+        f"toward the 60-step budget; got {call_n['n']} calls"
+    )
+
+
+def test_no_progress_not_triggered_by_genuinely_different_results(monkeypatch, temp_codec_dir):
+    """Sanity check: normal progress (each step yields new information) must
+    NOT trip the loop-breaker — only true repeats should."""
+    grants = {"skills": ["web_fetch"], "read_paths": [], "write_paths": [],
+              "network_domains": ["*"]}
+    gg = {"schema": 1, "version": 0, "skills": [], "read_paths": [],
+          "write_paths": [], "network_domains": []}
+    cp = {"id": "cp0", "title": "research", "description": "d",
+          "expected_output": "o", "step_budget": 5}
+
+    step = {"n": 0}
+    def fake_next(plan_dict, checkpoint, history, *a, **k):
+        step["n"] += 1
+        if step["n"] > 4:
+            return car.Action(skill="", task="", kind="checkpoint_done")
+        return car.Action(skill="web_fetch", task=f"Fetch source #{step['n']}", kind="skill_call")
+    monkeypatch.setattr(car, "_qwen_next_action", fake_next)
+    # Each call returns DIFFERENT content — genuine progress, not a loop.
+    monkeypatch.setattr(car, "_run_skill",
+                        lambda skill, task, agent_id: f"unique content for step {step['n']}")
+
+    history = car._execute_checkpoint(plan_dict={"goals": ["g"]}, checkpoint=cp,
+                                      agent_grants=grants, global_grants=gg, agent_id="test_agent")
+    assert len(history) == 4  # all 4 distinct fetches ran, then checkpoint_done
+
+
 def test_extend_budget_caps_cumulative(monkeypatch, temp_codec_dir):
     """extend_budget cannot push a checkpoint's override above MAX_CHECKPOINT_STEP_BUDGET."""
     import routes.agents as ra
