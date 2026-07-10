@@ -1,6 +1,6 @@
 # Sovereign AI Workstation — Full Product Breakdown
 
-> Engine: **CODEC v3.2** — 400 features · 76 skills · 2000+ tests · 52K+ lines of production code · 9 products
+> Engine: **CODEC v3.2** — 400 features · 86 skills · 2000+ tests · 52K+ lines of production code · 9 products
 
 The product name is **Sovereign AI Workstation**. Throughout this document
 and the codebase, **CODEC** refers to the underlying open-source engine /
@@ -594,7 +594,7 @@ The 8th product — a complete browser-automation pillar with a dedicated headle
 | 14. CODEC Pilot — Browser Automation You Can Teach *(v2.3)* | 32 |
 | **TOTAL** | **400** |
 
-**400 features · 76 skills · 2000+ tests · 52K+ lines of production code · 9 products**
+**400 features · 86 skills · 2000+ tests · 52K+ lines of production code · 9 products**
 
 ### What's new in v3.2
 

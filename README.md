@@ -834,7 +834,7 @@ If CODEC saves you time:
 - **[Donate via PayPal](https://paypal.me/avadsa25)** — ava.dsa25@proton.me
 - **Enterprise setup:** [avadigital.ai](https://avadigital.ai)
 
-**Paid Mac app — €10/month or €99/year.** A signed, notarized, one-click install with managed setup and an optional cloud-LLM tier, for people who'd rather not assemble the local stack by hand. The annual plan is two months free. The open-source build stays **free and MIT, forever** — the paid app is convenience + managed setup + cloud-LLM, never a paywall on the engine. [Get it → avadigital.ai](https://avadigital.ai)
+**Paid Mac app — $99/year.** A signed, notarized, one-click install with managed setup and an optional cloud-LLM tier, for people who'd rather not assemble the local stack by hand. The open-source build stays **free and MIT, forever** — the paid app is convenience + managed setup + cloud-LLM, never a paywall on the engine. [Details → avadigital.ai/codec](https://avadigital.ai/codec)
 
 ---
 
