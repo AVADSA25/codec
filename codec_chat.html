@@ -672,7 +672,12 @@ function regenerateResponse(btn){
       }
     }
     var pf=parseScaffold(raw);
-    var answer=(pf.answer&&pf.answer.trim())||raw.replace(/<thinking>[\s\S]*?<\/thinking>/i,'').replace(/###\s*FINAL ANSWER:?/i,'').trim()||raw;
+    // Fallback order: real FINAL ANSWER > text outside the thinking block
+    // (also stripping an UNCLOSED <thinking> tail — a cut/degenerate stream
+    // must never dump raw reasoning into the bubble) > honest glitch notice
+    // with the reasoning kept in the reveal panel.
+    var answer=(pf.answer&&pf.answer.trim())||raw.replace(/<thinking>[\s\S]*?<\/thinking>/i,'').replace(/<thinking>[\s\S]*$/i,'').replace(/###\s*FINAL ANSWER:?/i,'').trim();
+    if(!answer&&pf.think&&pf.think.trim()){answer='*My reasoning ran on without reaching a final answer — a local-model glitch, not a real reply. The train of thought is below; please ask again.*'}
     if(answer){
       div.remove();var md=addMessage('assistant',answer);
       if(thinkingEnabled&&pf.think&&pf.think.trim()&&md){var fp=makeToT(md,'Train of thought',false);totSet(fp,pf.think.trim())}
@@ -1433,7 +1438,10 @@ async function sendMessage(){
         }
       }
       var pf2=parseScaffold(raw);
-      var answer2=(pf2.answer&&pf2.answer.trim())||raw.replace(/<thinking>[\s\S]*?<\/thinking>/i,'').replace(/###\s*FINAL ANSWER:?/i,'').trim()||raw;
+      // Same fallback order as the primary handler: never dump an unclosed
+      // <thinking> tail into the bubble; keep reasoning in the reveal panel.
+      var answer2=(pf2.answer&&pf2.answer.trim())||raw.replace(/<thinking>[\s\S]*?<\/thinking>/i,'').replace(/<thinking>[\s\S]*$/i,'').replace(/###\s*FINAL ANSWER:?/i,'').trim();
+      if(!answer2&&pf2.think&&pf2.think.trim()){answer2='*My reasoning ran on without reaching a final answer — a local-model glitch, not a real reply. The train of thought is below; please ask again.*'}
       if(answer2){div.remove();var md2=addMessage('assistant',answer2);if(thinkingEnabled&&pf2.think&&pf2.think.trim()&&md2){var fp2=makeToT(md2,'Train of thought',false);totSet(fp2,pf2.think.trim())}chatHist.push({role:'assistant',content:answer2});saveMessages([{role:'assistant',content:answer2}])}
       else{bubble.innerHTML='<em style="color:var(--text-dim)">No response</em>'}
     }

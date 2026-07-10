@@ -31,6 +31,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import secrets
 
 from fastapi import APIRouter, Request
@@ -150,6 +151,49 @@ def _fetch_url_content(url: str, max_chars: int = 8000) -> str:
 
 
 
+# Memory-injection hygiene (2026-07-10 trailer incident). Two pollution classes
+# were being injected as "memory" and derailing replies:
+#   1. SELF-ECHO — the FTS/LIKE lookups matched the user's OWN current message
+#      (and its re-sends), so the model saw its question repeated 3-4x wrapped
+#      in [MEMORY] tags, a hall-of-mirrors that reads as "this matters a lot".
+#   2. AGENT-STATUS NOISE — Project/crew status lines ("running Agent started…",
+#      "Plan approved…") saved to chat history got replayed as conversational
+#      memory, contexts that have nothing to do with the user's question.
+_AGENT_NOISE_PREFIXES = (
+    "running ", "done ", "granted ", "plan approved", "project drafted",
+    "here's my plan", "here’s my plan", "[codec_agent_plan", "paused:",
+    "task stopped", "agent error", "blocked:",
+)
+
+
+def _mem_noise(content: str, last_text: str) -> bool:
+    """True when a candidate memory row should NOT be injected: empty,
+    a near-duplicate of the current message (self-echo), or agent-status
+    chrome rather than real conversation."""
+    c = (content or "").strip()
+    if not c:
+        return True
+    if c.lower()[:60] == (last_text or "").strip().lower()[:60]:
+        return True
+    return c.lower().startswith(_AGENT_NOISE_PREFIXES)
+
+
+def _degenerate_tail(text: str) -> bool:
+    """True when the tail of `text` is stuck repeating itself — the signature
+    of a 4-bit sampling collapse (the same phrase/list item emitted over and
+    over, e.g. an endless list of movie titles). Cheap deterministic check:
+    probe = the last 64 chars; degenerate when that exact probe already occurs
+    5+ times within the trailing window. Used by the chat SSE stream to cut a
+    runaway generation with an honest message instead of letting it grind out
+    28k tokens of garbage in front of the user (2026-07-10 trailer incident)."""
+    if len(text) < 900:
+        return False
+    probe = text[-64:]
+    if len(probe.strip()) < 12:
+        return False
+    return text[-2400:].count(probe) >= 5
+
+
 def _enrich_messages(messages: list, config: dict, force_search: bool = False) -> list:
     """
     Auto-detect URLs, search intent, and memory recall in the last user message.
@@ -188,7 +232,17 @@ def _enrich_messages(messages: list, config: dict, force_search: bool = False) -
         'past conversation', 'history', 'do you know my',
         'what was', 'what did', 'when did',
     ]
-    has_memory_trigger = any(t in lower for t in memory_triggers)
+    # Word-boundary match, and only scan the FIRST 300 chars — the user's own
+    # intent lives at the front of the message, not inside pasted content.
+    # (2026-07-10 trailer incident: a pasted movie-trailer transcript contained
+    # "I remembered something" + "human history", substring-fired 'remember' +
+    # 'history', and the resulting memory dump of old film chats derailed the
+    # model into rambling about other movies instead of the pasted script.)
+    _trigger_zone = lower[:300]
+    has_memory_trigger = any(
+        re.search(r"\b" + re.escape(t) + r"\b", _trigger_zone)
+        for t in memory_triggers
+    )
 
     # 1. Voice memory (FTS5 via CodecMemory) — always inject recent, targeted on trigger
     try:
@@ -203,12 +257,15 @@ def _enrich_messages(messages: list, config: dict, force_search: bool = False) -
         if recent:
             lines = ["[RECENT MEMORY — VOICE (LAST 3 DAYS)]"]
             for r in recent:
+                if _mem_noise(r["content"], last_text):
+                    continue
                 ts = r["timestamp"][:16].replace("T", " ")
                 snippet = r["content"][:200].replace("\n", " ")
                 lines.append(f"  [{ts}] {r['role'].upper()}: {snippet}")
-            lines.append("[END RECENT MEMORY]")
-            memory_parts.append("\n".join(lines))
-            log.info(f"Recent memory injected: {len(recent)} messages")
+            if len(lines) > 1:
+                lines.append("[END RECENT MEMORY]")
+                memory_parts.append("\n".join(lines))
+                log.info(f"Recent memory injected: {len(lines) - 2} messages")
     except Exception as e:
         log.warning(f"Memory enrichment (voice) failed: {e}")
 
@@ -225,12 +282,15 @@ def _enrich_messages(messages: list, config: dict, force_search: bool = False) -
             if qrows:
                 lines = ["[MEMORY — RELEVANT PAST CHATS]"]
                 for r in qrows:
+                    if _mem_noise(r[1], last_text):
+                        continue
                     ts = (r[2] or "")[:16].replace("T", " ")
                     snippet = (r[1] or "")[:200].replace("\n", " ")
                     lines.append(f"  [{ts}] {(r[0] or '').upper()}: {snippet}")
-                lines.append("[END MEMORY]")
-                memory_parts.append("\n".join(lines))
-                log.info(f"Memory recall injected (chat targeted): {len(qrows)} msgs")
+                if len(lines) > 1:
+                    lines.append("[END MEMORY]")
+                    memory_parts.append("\n".join(lines))
+                    log.info(f"Memory recall injected (chat targeted): {len(lines) - 2} msgs")
         # Recent chat messages for continuity
         qrecent = _qc.execute(
             "SELECT role, content, timestamp FROM qchat_messages ORDER BY id DESC LIMIT 5"
@@ -238,12 +298,15 @@ def _enrich_messages(messages: list, config: dict, force_search: bool = False) -
         if qrecent:
             lines = ["[RECENT MEMORY — CHAT]"]
             for r in qrecent:
+                if _mem_noise(r[1], last_text):
+                    continue
                 ts = (r[2] or "")[:16].replace("T", " ")
                 snippet = (r[1] or "")[:200].replace("\n", " ")
                 lines.append(f"  [{ts}] {(r[0] or '').upper()}: {snippet}")
-            lines.append("[END RECENT MEMORY]")
-            memory_parts.append("\n".join(lines))
-            log.info(f"Recent chat memory injected: {len(qrecent)} messages")
+            if len(lines) > 1:
+                lines.append("[END RECENT MEMORY]")
+                memory_parts.append("\n".join(lines))
+                log.info(f"Recent chat memory injected: {len(lines) - 2} messages")
     except Exception as e:
         log.warning(f"Memory enrichment (chat) failed: {e}")
 
@@ -903,6 +966,11 @@ async def chat_completion(request: Request):
                     # as an empty / mid-sentence bubble.
                     stream_died = False
                     hit_token_cap = False
+                    degenerate = False
+                    # Degeneracy circuit-breaker state: raw deltas accumulated
+                    # (tail only) and re-checked every ~40 deltas.
+                    _acc = ""
+                    _since_check = 0
                     for item in codec_llm.stream(messages, **_common,
                                                  keepalive=True,
                                                  error_sentinel=True,
@@ -921,12 +989,29 @@ async def chat_completion(request: Request):
                         if show_thoughts:
                             for t in buf.drain_think():
                                 yield f"data: {json.dumps({'think': t})}\n\n"
+                        _acc += item
+                        _since_check += 1
+                        if _since_check >= 40:
+                            _since_check = 0
+                            if len(_acc) > 6000:
+                                _acc = _acc[-4000:]   # tail is all the check needs
+                            if _degenerate_tail(_acc):
+                                degenerate = True
+                                log.warning("[Chat] degenerate repetition loop detected — cutting stream")
+                                break
                     # Stream ended ([DONE] or close): flush, then blank-bubble net.
                     for s in buf.finish():
                         yield _frame(s)
                     if show_thoughts:
                         for t in buf.drain_think():
                             yield f"data: {json.dumps({'think': t})}\n\n"
+                    if degenerate:
+                        yield _frame(
+                            "\n\n*I caught myself repeating the same text in a "
+                            "loop and stopped — that was a local-model glitch, not "
+                            "a real answer. Please ask again (rephrasing slightly "
+                            "usually fixes it).*"
+                        )
                     if hit_token_cap:
                         yield _frame(
                             "\n\n⚠️ *Reply truncated — the model hit the "
