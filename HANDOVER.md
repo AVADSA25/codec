@@ -1,6 +1,6 @@
 # HANDOVER — CODEC buyer journey
 
-**Last updated:** 2026-07-10 · session: buyer-journey audit + R1 "stop the lies"
+**Last updated:** 2026-07-10 · session: buyer-journey audit + R1 "stop the lies" + R2 "open the store"
 
 ## State
 
@@ -29,25 +29,47 @@ without a decision from Mickael (see BLOCKERS).
 (`README.md:103`), and the install one-liner already contains `cd codec`. Both were
 unverified low findings. Don't "fix" them.
 
+## What R2 shipped (2026-07-10)
+
+The store has a door. **All four money defects were fixed BEFORE the button went in.**
+
+| Fix | Evidence |
+|-----|----------|
+| Unpaid checkouts minted licenses (`payment_status` never checked) | fails closed now; mutation-tested |
+| A failed delivery email was swallowed with a 200 — no retry, no alert, and any Stripe retry returned early **without re-sending** | retries 3x, logs `email_failed` + ALERT, raises so Stripe's 3-day backoff retries; the retry re-sends. Paid-but-undelivered self-heals |
+| Refunds never revoked — `refunded` was a status no code could set | `charge.refunded` handled; **the live endpoint wasn't even subscribed to it** — subscribed |
+| Year-2 renewal lockout: subscription bills forever, JWT died at 365 days | `invoice.payment_succeeded` + `billing_reason=subscription_cycle` re-mints, extends, emails new key. First invoice explicitly excluded |
+
+- 24 tests pass (13 new, in `test_money_paths.py`). Each guard mutation-tested.
+- Stripe Payment Link **`plink_1TrcDiAnpzAGXuyI2wymB1pR`** → https://buy.stripe.com/8x200i4M58xBfwrbMX6Vq0n
+  Verified: live mode, recurring yearly, $99 USD, and the price **exactly matches** the one
+  `_session_is_codec_purchase()` filters on. A purchase through it will mint.
+- Buy button + honest terms (one Mac / one year / renews / key emailed immediately) on
+  `site/codec.html`, replacing "Launching Q3 2026 · Notify me".
+- `ava-license` restarted; `/health` ok; all guards confirmed present in the running process.
+
+## THE ONE TEST STILL OWED
+
+Nobody has ever completed a real CODEC purchase. I cannot — it needs a card. **Buy it once
+with your own card** through the link above. Expected: key email arrives within a minute,
+download button works. Then say the word and I will refund it via Stripe and verify the
+licence flips to `refunded` — which also proves the refund-revocation path end to end.
+
 ## BLOCKERS (need Mickael)
 
 1. **The site changes are committed but NOT LIVE.** `AVA-site-v2` has no git remote and
    deploys by hand (static upload). Until it is re-published, avadigital.ai/codec still
    shows the fictional SDK **and the client's email address**. This is the single most
    urgent open item.
-2. **R2 needs a money decision** — creating the Stripe Payment Link and putting a Buy
-   button live is outward-facing; not done autonomously.
+2. ~~R2 needs a money decision~~ — **done** (approved 2026-07-10). Payment Link created and
+   wired. Still not visible to buyers until the site is republished (blocker 1).
 3. **Concurrent session warning:** another Claude session is committing in `AVA-site-v2`
    (`fe39df2 "HANDOVER: final InTake SPA deployed"` landed between my two commits).
    Coordinate before working there.
 
 ## Next (R2 → R6, from the audit roadmap)
 
-- **R2 Open the store** (2–3d): one Buy button wired to a Stripe Payment Link matching the
-  price the license server filters on; state terms (1 Mac / 1 year / renews); check
-  `payment_status` before minting; revoke on refund; alert+retry on email failure; fix the
-  year-2 renewal lockout (subscription renews forever, JWT dies at 365 days). Then buy it
-  yourself end-to-end and refund it.
+- ~~**R2 Open the store**~~ — SHIPPED, pending deploy + the one real test purchase.
 - **R3 Deliver what's paid for** (3–5d): publish the installer where the email points; fix
   the app build that logs "no services started" and exits; fix the installer's permission
   target; unfreeze the update feed (frozen since May 25, 141 commits behind); self-serve
