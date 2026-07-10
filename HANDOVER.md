@@ -55,12 +55,62 @@ with your own card** through the link above. Expected: key email arrives within 
 download button works. Then say the word and I will refund it via Stripe and verify the
 licence flips to `refunded` — which also proves the refund-revocation path end to end.
 
+## What R3 shipped (2026-07-10)
+
+**The paid Mac app now actually starts the fleet — and the email points at the installer.**
+
+- **Fleet start** (codec PR #235, merged). The app launched, logged "no services started",
+  and exited — a stub. The engineering all existed (launchd generator, install script,
+  first_run.py, all tested); three wires were unconnected: nothing called first_run;
+  build_app.sh never bundled first_run.py/launchd; and the installer read the service list
+  via `node` (a buyer has none). All fixed. Found by testing: every service's `cwd` was the
+  build machine's repo path — would fail on a buyer's Mac; build now strips it and fails if
+  any dev path survives. 23 new tests, each mutation-tested; full suite 2497 passed.
+  Verified by building a real bundle and generating 15 valid LaunchAgents **with node removed
+  from PATH**, all pointing at the bundled interpreter + Resources/app.
+- **Email → installer** (ava-stack `fix/r1-license-email-dead-link`, `831fce0`). `CODEC_DMG_URL`
+  pointed at `Sovereign-AI-Workstation-<v>.dmg` — the app-only *Sparkle update* DMG (and the
+  May-25 stub). Now points at the INSTALLER via stable `/releases/latest/download/CODEC-Installer.dmg`.
+  Live service restarted; config verified. Test asserts it's the installer, never the update DMG.
+- **Stub guard** (same commit). `installer-gui/build-app.sh` now REFUSES to bundle a CODEC app
+  that lacks `start_fleet` / `first_run.py` / `services.json` / `launchd`. Verified it passes a
+  fresh app and rejects the May-25 stub. Last backstop before a broken app reaches a buyer.
+
+## THE APPLE BLOCKER (only Mickael can clear it)
+
+A signed **and notarized** installer cannot be produced until your Apple agreement is renewed.
+`xcrun notarytool` (profile `ava-codec`) returns **HTTP 403 — "A required agreement is missing
+or has expired."** The Account Holder must sign in to **developer.apple.com → Account → Review
+Agreement** and accept the updated Apple Developer Program License Agreement. Everything else is
+ready: Developer ID cert in keychain ✓, Swift 6.3 toolchain ✓, notary creds stored ✓.
+
+### Release runbook (once the agreement is accepted)
+Run on your Mac (Apple Silicon). ~15–40 min incl. Python bundling + two notarization round-trips.
+```
+# 1. Build + sign + notarize + staple the CODEC app (also emits the app-only update DMG + appcast)
+~/codec-repo/packaging/macos/release_macos.sh \
+    --identity 1A32571CF3EE6724531EC4C25AD7C7026626F28F --with-python
+
+# 2. Build + sign + notarize + staple the INSTALLER, bundling that app (guard blocks a stub)
+CODEC_APP="$HOME/dist/Sovereign AI Workstation.app" \
+    ~/ava-stack/installer-gui/build-app.sh --sign
+#   -> ~/ava-stack/installer-gui/dist/CODEC-Installer.dmg
+
+# 3. Publish BOTH assets to a codec-updates release so the URLs resolve:
+gh release upload v3.2.0 \
+    "$HOME/ava-stack/installer-gui/dist/CODEC-Installer.dmg" \
+    "$HOME/dist/Sovereign-AI-Workstation-3.2.0.dmg" --repo AVADSA25/codec-updates --clobber
+```
+Then the license email's download link (already live) resolves. Tell this session and I'll
+verify the URL serves 200 and do the $99 end-to-end purchase test.
+
 ## BLOCKERS (need Mickael)
 
 1. **The site changes are committed but NOT LIVE.** `AVA-site-v2` has no git remote and
-   deploys by hand (static upload). Until it is re-published, avadigital.ai/codec still
-   shows the fictional SDK **and the client's email address**. This is the single most
-   urgent open item.
+   deploys by hand (static upload). Since we last looked the truthful /codec rewrite DID go
+   live (fiction + client email gone — re-verified); what's still unpublished is the **Buy
+   button** commit `52b31dd`. Hold it until R3 is buyer-testable (per the InTake session's
+   advice, which I agreed with).
 2. ~~R2 needs a money decision~~ — **done** (approved 2026-07-10). Payment Link created and
    wired. Still not visible to buyers until the site is republished (blocker 1).
 3. **Concurrent session warning:** another Claude session is committing in `AVA-site-v2`
