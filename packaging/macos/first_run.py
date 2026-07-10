@@ -23,6 +23,44 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 SENTINEL = ".first_run_complete"
 
+
+def bundle_contents() -> str | None:
+    """The .app's Contents dir when running from inside the bundle, else None.
+
+    In the bundle build_app.sh copies this file to Contents/Resources/first_run.py,
+    so HERE == .../Contents/Resources and Contents is one parent up. In the repo
+    HERE == packaging/macos and this returns None.
+    """
+    contents = os.path.dirname(HERE)
+    if os.path.basename(contents) == "Contents" and os.path.exists(
+        os.path.join(contents, "Info.plist")
+    ):
+        return contents
+    return None
+
+
+def launchagent_args(contents: str | None) -> list[str]:
+    """Extra args for install_launchagents.sh when running inside the .app.
+
+    A buyer's Mac has no node and no PM2, and no `python3` on PATH that has our
+    dependencies — so point the installer at the bundled interpreter, the bundled
+    source tree, and the services.json that build_app.sh generated at build time.
+    """
+    if not contents:
+        return []
+    resources = os.path.join(contents, "Resources")
+    args: list[str] = []
+    interp = os.path.join(resources, "python", "bin", "python3")
+    if os.path.exists(interp):
+        args += ["--interpreter", interp]
+    workdir = os.path.join(resources, "app")
+    if os.path.isdir(workdir):
+        args += ["--workdir", workdir]
+    services = os.path.join(resources, "services.json")
+    if os.path.exists(services):
+        args += ["--services-json", services]
+    return args
+
 _BASE = "x-apple.systempreferences:com.apple.preference.security?Privacy_"
 PERMISSIONS = [
     {"key": "accessibility", "label": "Accessibility", "deep_link": _BASE + "Accessibility",
@@ -152,6 +190,7 @@ def run(home: str, *, dry_run: bool = False, yes: bool = False,
     os.makedirs(os.path.expanduser("~/Library/Logs/CODEC"), exist_ok=True)
 
     install = ["bash", os.path.join(HERE, "launchd", "install_launchagents.sh")]
+    install += launchagent_args(bundle_contents())
     _run(install + (["--dry-run"] if dry_run else []), dry_run)
 
     fetch = [sys.executable, os.path.join(HERE, "fetch_models.py"), "--tier", "bundled"]

@@ -103,6 +103,52 @@ done
 # any other top-level dashboard/PWA html
 find "$REPO" -maxdepth 1 -name '*.html' -exec cp {} "$CONTENTS/Resources/app/" \; 2>/dev/null || true
 
+# --- first-run + launchd fleet (W5-3 / W5-6) --------------------------------
+# Without these the shipped app has nothing to start: codec_app_main.py calls
+# Resources/first_run.py, which calls Resources/launchd/install_launchagents.sh.
+# Both were designed, built and tested — and then never copied into the bundle,
+# which is why a buyer's app opened and immediately exited.
+echo "==> copying first-run + launchd fleet installer"
+cp "$PKG_DIR/first_run.py"    "$CONTENTS/Resources/first_run.py"
+cp "$PKG_DIR/fetch_models.py" "$CONTENTS/Resources/fetch_models.py"
+cp "$PKG_DIR/models.json"     "$CONTENTS/Resources/models.json"
+cp -R "$PKG_DIR/launchd"      "$CONTENTS/Resources/launchd"
+rm -rf "$CONTENTS/Resources/launchd/__pycache__"
+chmod +x "$CONTENTS/Resources/launchd/"*.sh
+
+# --- services.json: the fleet definition, resolved at BUILD time ------------
+# ecosystem.config.js is a JS module, so reading it requires node. The build
+# machine has node; a BUYER'S MAC DOES NOT (no node, no PM2). Dump the service
+# list to plain JSON now, so install_launchagents.sh can read it on the buyer's
+# machine with stdlib Python alone.
+if command -v node >/dev/null 2>&1; then
+    # Every service in ecosystem.config.js has cwd = the DEVELOPER'S repo path.
+    # Baking that into a buyer's LaunchAgents makes all 15 services fail to start
+    # (the directory doesn't exist on their Mac). Drop the repo-root cwd so the
+    # generator substitutes the bundle's own Resources/app via --workdir.
+    node -e '
+      const [eco, repo] = process.argv.slice(1);
+      const apps = require(eco).apps.map(a => {
+        if (a.cwd === repo) delete a.cwd;   // -> --workdir applies
+        return a;
+      });
+      console.log(JSON.stringify(apps, null, 2));
+    ' "$REPO/ecosystem.config.js" "$REPO" > "$CONTENTS/Resources/services.json"
+
+    # Guard: no developer path may ever reach a buyer.
+    if grep -q "$REPO" "$CONTENTS/Resources/services.json"; then
+        echo "FATAL: services.json still contains the build machine's path ($REPO)." >&2
+        echo "       Those services would not start on a buyer's Mac." >&2
+        exit 1
+    fi
+    SVC_COUNT="$(python3 -c 'import json,sys;print(len(json.load(open(sys.argv[1]))))' "$CONTENTS/Resources/services.json" 2>/dev/null || echo '?')"
+    echo "==> services.json written ($SVC_COUNT services, no build-machine paths)"
+else
+    echo "FATAL: node not found — cannot generate Resources/services.json." >&2
+    echo "       The shipped app would have no fleet to start on a buyer's Mac." >&2
+    exit 1
+fi
+
 # --- optional validation ---------------------------------------------------
 if [ "$VALIDATE" -eq 1 ]; then
     if command -v plutil >/dev/null 2>&1; then
