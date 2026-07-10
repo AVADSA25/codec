@@ -5,22 +5,34 @@ Thin, **stdlib-only** bootstrap that the bundle launcher (``Contents/MacOS/codec
 execs. It must run before any virtualenv / dependency wiring, so it imports
 nothing from the CODEC engine and nothing third-party.
 
-W5-2 scope: establish the bundle's runtime identity, logging, and a SAFE
-``--selftest``. It deliberately does **not** start the 16-service fleet — under
-the current architecture those run via PM2, and the launchd migration is W5-3.
-Running this normally just records a launch line and exits 0; it never touches a
-running fleet.
+Establishes the bundle's runtime identity, logging, a SAFE ``--selftest``, and —
+when launched from inside the .app — starts the CODEC service fleet.
 
-See docs/W5-2-APP-BUNDLE-DESIGN.md.
+2026-07: W5-3 (the PM2 -> launchd migration) shipped `launchd/` and `first_run.py`
+and wired them to each other, but nothing ever called first_run, and build_app.sh
+never copied it into the bundle. So this entry point kept logging "fleet start
+deferred to W5-3; no services started" and exiting 0 — a buyer's app opened and
+immediately quit. main() now runs first-run (idempotent, sentinel-guarded) and
+thereafter re-bootstraps the fleet if launchd has dropped it.
+
+SOURCE-TREE SAFETY IS PRESERVED: outside an .app bundle this still starts nothing,
+because on a developer's machine the fleet runs under PM2 and double-running it
+would be destructive. That was the right instinct in W5-2; it just also needs to
+do something when it IS the shipped app.
+
+See docs/W5-2-APP-BUNDLE-DESIGN.md, docs/W5-3-LAUNCHD-DESIGN.md.
 """
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 MIN_PY = (3, 11)
+FLEET_LABEL_PREFIX = "ai.avadigital.codec"
+SENTINEL = ".first_run_complete"
 
 
 def _home() -> Path:
@@ -100,6 +112,77 @@ def selftest() -> int:
     return 0
 
 
+def _fleet_loaded() -> int:
+    """How many CODEC LaunchAgents launchd currently knows about."""
+    try:
+        out = subprocess.run(["launchctl", "list"], capture_output=True, text=True,
+                             timeout=15).stdout
+    except (OSError, subprocess.SubprocessError):
+        return 0
+    return sum(1 for line in out.splitlines() if FLEET_LABEL_PREFIX in line)
+
+
+def _run_first_run(resources: Path) -> int:
+    """Install the launchd fleet, fetch models, report permissions. Idempotent:
+    first_run.py no-ops once ~/.codec/.first_run_complete exists."""
+    script = resources / "first_run.py"
+    if not script.exists():
+        _log(f"FLEET ERROR: first_run.py missing from bundle ({script})")
+        return 1
+    proc = subprocess.run([sys.executable, str(script), "--home", str(_codec_dir())],
+                          capture_output=True, text=True)
+    for line in (proc.stdout or "").splitlines():
+        _log(f"  first-run: {line}")
+    if proc.returncode != 0:
+        _log(f"FLEET ERROR: first-run exited {proc.returncode}: {(proc.stderr or '').strip()[:300]}")
+    return proc.returncode
+
+
+def _bootstrap_fleet(resources: Path) -> int:
+    """Re-install the LaunchAgents when launchd has forgotten them (e.g. the user
+    ran the uninstaller's launchctl bootout, or agents were pruned)."""
+    script = resources / "launchd" / "install_launchagents.sh"
+    if not script.exists():
+        _log(f"FLEET ERROR: install_launchagents.sh missing from bundle ({script})")
+        return 1
+    interp = resources / "python" / "bin" / "python3"
+    cmd = ["bash", str(script)]
+    if interp.exists():
+        cmd += ["--interpreter", str(interp)]
+    if (resources / "app").is_dir():
+        cmd += ["--workdir", str(resources / "app")]
+    if (resources / "services.json").exists():
+        cmd += ["--services-json", str(resources / "services.json")]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        _log(f"FLEET ERROR: bootstrap exited {proc.returncode}: {(proc.stderr or '').strip()[:300]}")
+    return proc.returncode
+
+
+def start_fleet(contents: Path) -> int:
+    """Ensure the CODEC fleet is installed and running under launchd."""
+    resources = contents / "Resources"
+    home = _codec_dir()
+
+    if not (home / SENTINEL).exists():
+        _log("first launch — installing the CODEC fleet")
+        rc = _run_first_run(resources)
+        if rc != 0:
+            return rc
+    elif _fleet_loaded() == 0:
+        _log("fleet not loaded in launchd — re-bootstrapping")
+        rc = _bootstrap_fleet(resources)
+        if rc != 0:
+            return rc
+
+    n = _fleet_loaded()
+    if n == 0:
+        _log("FLEET ERROR: no CODEC LaunchAgents are loaded after setup")
+        return 1
+    _log(f"fleet running: {n} launchd service(s)")
+    return 0
+
+
 def main(argv: list[str]) -> int:
     if "--selftest" in argv:
         return selftest()
@@ -107,11 +190,14 @@ def main(argv: list[str]) -> int:
     contents = _bundle_contents()
     where = str(contents) if contents else "source tree"
     _log(f"CODEC launched from {where}")
-    # W5-2: fleet orchestration (the 16 PM2 services) is deferred to W5-3
-    # (launchd migration). We intentionally do NOT start or touch a running
-    # fleet here — that would interfere with a developer machine.
-    _log("fleet start deferred to W5-3 (launchd); no services started")
-    return 0
+
+    if contents is None:
+        # Developer machine: the fleet runs under PM2 (ecosystem.config.js).
+        # Starting launchd agents here would double-run every service.
+        _log("source tree — fleet is managed by PM2; not starting anything")
+        return 0
+
+    return start_fleet(contents)
 
 
 if __name__ == "__main__":
