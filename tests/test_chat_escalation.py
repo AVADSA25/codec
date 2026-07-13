@@ -11,6 +11,8 @@ not the codec_dashboard re-export. Hence `import codec_chat_pipeline as cd`.
 """
 from __future__ import annotations
 
+import pytest
+
 import json
 import sys
 from pathlib import Path
@@ -131,3 +133,35 @@ def test_kill_switch_disables_all_escalation(monkeypatch):
 
     decision = cd._should_escalate_to_project(user_text="x", session_id="s5")
     assert decision["escalate"] is False
+
+
+# ── 2026-07: the length floor dropped legit 56-char asks; lowered 60 -> 24 ─────
+
+def test_maybe_escalate_fires_for_short_but_complex_ask(monkeypatch):
+    """'plan and build me a 5-page competitor report with charts' is 56 chars —
+    it used to be silently dropped by the len<60 gate and just degenerated in
+    chat. It must now reach the classifier and produce an offer."""
+    import routes.chat as rc
+    monkeypatch.setattr(rc, "_should_escalate_to_project",
+                        lambda text, sid: {"escalate": True, "estimated_checkpoints": 5,
+                                           "reason": "multi-step report", "is_project": True})
+    out = rc._maybe_escalate_suggestion(
+        "plan and build me a 5-page competitor report with charts", "sess-1")
+    assert out is not None, "offer must fire for a complex 56-char ask"
+    assert out["estimated_checkpoints"] == 5
+
+
+def test_maybe_escalate_skips_trivial_messages(monkeypatch):
+    import routes.chat as rc
+    monkeypatch.setattr(rc, "_should_escalate_to_project",
+                        lambda text, sid: pytest.fail("classifier must not run on trivial text"))
+    assert rc._maybe_escalate_suggestion("build", "s") is None            # too short
+    assert rc._maybe_escalate_suggestion("what's the weather today?", "s") is None  # no action verb
+
+
+def test_maybe_escalate_respects_classifier_no(monkeypatch):
+    import routes.chat as rc
+    monkeypatch.setattr(rc, "_should_escalate_to_project",
+                        lambda text, sid: {"escalate": False, "estimated_checkpoints": 1})
+    assert rc._maybe_escalate_suggestion(
+        "research the best pizza place near me right now", "s") is None

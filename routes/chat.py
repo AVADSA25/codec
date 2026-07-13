@@ -717,7 +717,12 @@ def _maybe_escalate_suggestion(user_text: str, session_id: str):
     (>= 60 chars + an action verb) pays for classification. Returns the
     suggestion dict for the UI chip, or None."""
     try:
-        if len(user_text or "") < 60 or not _ESCALATE_HINT_RE.search(user_text):
+        # 2026-07 fix: the floor was 60, which silently dropped legitimate complex
+        # asks like "plan and build me a 5-page competitor report with charts"
+        # (56 chars) — the offer never fired, the prompt just degenerated in chat.
+        # 24 still filters trivial single-verb messages; the action-verb regex +
+        # the Qwen classifier are the real gate.
+        if len(user_text or "") < 24 or not _ESCALATE_HINT_RE.search(user_text):
             return None
         verdict = _should_escalate_to_project(user_text, session_id)
         if not verdict.get("escalate"):
@@ -1087,9 +1092,9 @@ async def chat_completion(request: Request):
                             )
                         else:
                             yield _frame(
-                                "⚠️ The model returned an empty reply — it may be "
+                                "*The model returned an empty reply — it may be "
                                 "busy, restarting, or out of context. Please try "
-                                "again in a moment."
+                                "again in a moment.*"
                             )
                     # Step 10 Q11 (2026-07): post-reply Project suggestion.
                     _sugg = _maybe_escalate_suggestion(last_user_text, _session_id)
