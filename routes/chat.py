@@ -749,6 +749,44 @@ async def escalate_silence(request: Request):
     return {"ok": True, "silenced": bool(sid)}
 
 
+@router.post("/api/pick-folder")
+async def pick_folder():
+    """Open the native macOS folder chooser and return the selected POSIX path.
+
+    Powers the "+" button in Chat and Vibe: the user allocates a working folder
+    to the conversation (like a working directory), which the frontend then sends
+    with each message so file operations can be scoped to it. Returns
+    {ok:false, cancelled:true} if the user dismisses the dialog."""
+    import asyncio
+
+    script = (
+        'POSIX path of (choose folder with prompt '
+        '"Allocate a working folder to this CODEC chat")'
+    )
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "osascript", "-e", script,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        out, err = await asyncio.wait_for(proc.communicate(), timeout=120)
+    except asyncio.TimeoutError:
+        return JSONResponse({"ok": False, "error": "folder chooser timed out"}, status_code=504)
+    except FileNotFoundError:
+        return JSONResponse({"ok": False, "error": "folder chooser unavailable (macOS only)"},
+                            status_code=501)
+    if proc.returncode != 0:
+        # User cancelled → osascript exits non-zero with "User canceled".
+        msg = (err or b"").decode(errors="replace")
+        if "cancel" in msg.lower():
+            return {"ok": False, "cancelled": True}
+        return JSONResponse({"ok": False, "error": msg.strip()[:200] or "no folder chosen"},
+                            status_code=400)
+    path = (out or b"").decode(errors="replace").strip().rstrip("/")
+    if not path:
+        return {"ok": False, "cancelled": True}
+    return {"ok": True, "path": path}
+
+
 @router.post("/api/chat")
 async def chat_completion(request: Request):
     """Direct LLM chat with full context window + tool calling"""
@@ -868,6 +906,18 @@ async def chat_completion(request: Request):
         sys_prompt = _build_chat_system_prompt(
             config, _budget, has_attachment, last_user_text
         )
+
+        # Working folder allocated to this chat via the "+" button. Tell the model
+        # so file operations (save/read with relative names) resolve there — the
+        # chat's working directory, like Claude Code.
+        _workdir = str(body.get("workdir") or "").strip()
+        if _workdir:
+            sys_prompt += (
+                f"\n\nWORKING FOLDER: {_workdir}\n"
+                f"When the user asks to save, create, read, or edit a file without an "
+                f"absolute path, use this folder — e.g. save to '{_workdir}/<name>'. "
+                f"Treat it as the current working directory for this conversation."
+            )
 
         # Prepend system message (or replace existing one)
         if messages and messages[0].get("role") == "system":
