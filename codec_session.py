@@ -923,7 +923,13 @@ SAFETY RULES:
                 rows = c.execute("SELECT role,content FROM conversations ORDER BY id DESC LIMIT 10").fetchall()
             if rows:
                 rows.reverse()
-                prev = [{"role": r, "content": ct} for r, ct in rows]
+                # Only replay real conversation turns. The `conversations` table
+                # also holds role="fact" rows (from fact_extract / memory_save);
+                # sending those to the LLM as messages is a hard 422 —
+                # "role 'fact' invalid" — which then reads as "Qwen busy". Facts
+                # stay in the DB for the memory system; they just aren't chat turns.
+                prev = [{"role": r, "content": ct} for r, ct in rows
+                        if r in ("user", "assistant", "system")]
                 print(f"[C] Loaded {len(prev)} messages from previous sessions.")
             else:
                 prev = []

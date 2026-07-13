@@ -82,6 +82,29 @@ def extract_content(response_json: Dict[str, Any]) -> str:
     return ""
 
 
+# The OpenAI-style chat API accepts only these roles. CODEC's memory stores
+# other roles internally (notably "fact" from fact_extract / memory_save), and
+# more than one caller has replayed those straight into the messages array — a
+# hard 422 that surfaces to the user as "Qwen busy". This is the last line of
+# defence: coerce anything non-standard to a safe role rather than 422.
+_VALID_LLM_ROLES = {"user", "assistant", "system", "developer", "tool"}
+
+
+def _sanitize_roles(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Return messages with only API-valid roles. A message whose role isn't
+    recognised (e.g. 'fact') is relabelled 'user' — valid at ANY position, so it
+    can't trigger a 422 (bad role) or a 500 ('system message must be first' when a
+    stray fact lands mid-conversation). Its content is preserved so it still
+    informs the model."""
+    out: List[Dict[str, Any]] = []
+    for m in messages:
+        if m.get("role") in _VALID_LLM_ROLES:
+            out.append(m)
+        else:
+            out.append({**m, "role": "user"})
+    return out
+
+
 def _build_request(
     messages: List[Dict[str, Any]],
     *,
@@ -101,7 +124,7 @@ def _build_request(
         headers["Authorization"] = "Bearer " + api_key
     payload: Dict[str, Any] = {
         "model": model,
-        "messages": messages,
+        "messages": _sanitize_roles(messages),
         "max_tokens": max_tokens,
         "temperature": temperature,
         "chat_template_kwargs": {"enable_thinking": enable_thinking},
