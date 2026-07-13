@@ -843,6 +843,31 @@ def get_global_buffer() -> RingBuffer:
     return _get_or_init_buffer(_load_config())
 
 
+# Cross-process recall (2026-07). The ring buffer is RAM-only and lives in the
+# codec-observer daemon, so a skill running in chat / voice / terminal (a
+# different process) can't read it — "what was I doing?" returned nothing. The
+# daemon now mirrors the buffer to this file every poll; skills/observer_recall.py
+# reads it. Local, user-private (~/.codec, 0700), same trust boundary as the rest
+# of CODEC's state.
+_BUFFER_DISK_PATH = Path(os.path.expanduser("~/.codec/observer_buffer.json"))
+
+
+def _persist_buffer_to_disk(buffer: RingBuffer) -> None:
+    """Atomically mirror the RAM ring buffer to disk. Best-effort; never raises
+    (a persistence failure must not break the observer poll loop)."""
+    try:
+        payload = {
+            "updated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "entries": buffer.snapshot(),
+        }
+        _BUFFER_DISK_PATH.parent.mkdir(parents=True, exist_ok=True)
+        tmp = _BUFFER_DISK_PATH.with_name(_BUFFER_DISK_PATH.name + ".tmp")
+        tmp.write_text(json.dumps(payload, default=str))
+        tmp.replace(_BUFFER_DISK_PATH)
+    except Exception:
+        pass
+
+
 def persist_for_shift_report() -> Optional[Path]:
     """Step 7 calls this at shift-report assembly time. Renders the live
     buffer summary to ~/.codec/observation_summaries/YYYY-MM-DDThh-mm.md
@@ -903,6 +928,8 @@ def run_daemon() -> None:
             cfg = _load_config()
             try:
                 poll(cfg=cfg)
+                # Mirror to disk so cross-process skills can recall (observer_recall).
+                _persist_buffer_to_disk(_get_or_init_buffer(cfg))
             except Exception as e:
                 log.warning("[observer] poll iteration failed: %s", e)
             idle = _idle_seconds()
