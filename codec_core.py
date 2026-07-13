@@ -660,7 +660,7 @@ def build_session_script(safe_sys, session_id, wake_word_label="CODEC"):
     L.append("    c = sqlite3.connect(DB_PATH)")
     L.append("    c.execute('CREATE TABLE IF NOT EXISTS conversations (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, timestamp TEXT, role TEXT, content TEXT)')")
     L.append("    rows = c.execute('SELECT role,content FROM conversations ORDER BY id DESC LIMIT 10').fetchall(); c.close()")
-    L.append("    if rows: rows.reverse(); prev = [{'role':r,'content':ct} for r,ct in rows]; print('[CODEC] Loaded '+str(len(prev))+' messages from previous sessions.')")
+    L.append("    if rows: rows.reverse(); prev = [{'role':r,'content':ct} for r,ct in rows if r in ('user','assistant','system')]; print('[CODEC] Loaded '+str(len(prev))+' messages from previous sessions.')")
     L.append("except: pass")
     L.append("")
     L.append("h = [{'role':'system','content':SYS_MSG}] + prev")
