@@ -47,7 +47,10 @@ PUBKEY_CACHE     = CODEC_HOME / "license_pubkey.pem"
 GRACE_STATE_PATH = CODEC_HOME / ".license_state.json"
 
 GRACE_SECONDS    = 7 * 24 * 3600            # 7-day offline grace (operator choice)
-PUBKEY_URL_DEFAULT = "https://ava-license.lucyvpa.com/public-key"
+# License host migrated off the client domain lucyvpa.com (2026-07-13).
+# ava-license.lucyvpa.com remains a permanent alias on the same backend, and
+# ~/.codec/config.json:license_base_url overrides this default per-install.
+PUBKEY_URL_DEFAULT = "https://codec-license.avadigital.ai/public-key"
 
 # Features that require a valid paid license. Everything not listed is always
 # allowed (the app shell, settings, viewing, etc. — read-only never locks out).
@@ -105,7 +108,7 @@ def _license_token(cfg: dict) -> str:
 
 
 def _pubkey_url(cfg: dict) -> str:
-    base = cfg.get("license_base_url") or "https://ava-license.lucyvpa.com"
+    base = cfg.get("license_base_url") or "https://codec-license.avadigital.ai"
     return base.rstrip("/") + "/public-key"
 
 

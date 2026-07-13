@@ -322,7 +322,7 @@ def _cmd_status(args: list[str]) -> str:
         ("Whisper STT", "http://localhost:8084/v1/models"),
         ("Kokoro TTS", "http://localhost:8085/v1/models"),
         ("AVA proxy", "https://ava-proxy.lucyvpa.com/health"),
-        ("AVA license", "https://ava-license.lucyvpa.com/health"),
+        ("AVA license", "https://codec-license.avadigital.ai/health"),
     ]
     rows = []
     for name, url in services:
