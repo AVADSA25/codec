@@ -952,9 +952,13 @@ def _execute_checkpoint(plan_dict: Dict[str, Any],
     _sig_counts: Dict[str, int] = {}
     _nudged_sigs: set = set()
     _nudges_given = 0
+    _gdoc_verify_nudged = False       # gdoc completion-verifier nudge fired?
     _executed_targets: set = set()   # dedup keys for fetch/search already run
     for h in history:
         if h.get("_skill_correction_nudge") or h.get("_resume_skipped"):
+            continue
+        if h.get("_gdoc_verify_nudge"):
+            _gdoc_verify_nudged = True
             continue
         if h.get("_loop_correction_nudge"):
             _nudges_given += 1
@@ -992,6 +996,28 @@ def _execute_checkpoint(plan_dict: Dict[str, Any],
         action = _next_action()
 
         if action.kind == "checkpoint_done":
+            # Completion verifier (#17): don't accept a "saved to Google Drive /
+            # Google Doc" claim unless a real doc was actually produced. A research
+            # Project once wrote a local .md and called it "saved to Drive" — a
+            # false completion. Nudge ONCE, then let it finish (so an unreachable
+            # Google OAuth can't wedge the checkpoint forever).
+            if not _gdoc_verify_nudged:
+                try:
+                    import codec_gdoc_verify
+                    ok, reason = codec_gdoc_verify.verify_deliverable(checkpoint, history)
+                except Exception:
+                    ok, reason = True, ""
+                if not ok:
+                    _gdoc_verify_nudged = True
+                    history.append({
+                        "step": len(history),
+                        "skill": "", "task": "verify_deliverable",
+                        "result": f"[DELIVERABLE NOT DONE] {reason}",
+                        "is_destructive": False,
+                        "_gdoc_verify_nudge": True,
+                    })
+                    _persist_checkpoint_progress(agent_id, cp_id, history, executed_destructive)
+                    continue
             return history
 
         # Permission gate (raises PermissionViolation if outside manifest).

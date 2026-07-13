@@ -197,3 +197,65 @@ def test_extend_budget_caps_cumulative(monkeypatch, temp_codec_dir):
     with pytest.raises(ra.HTTPException) as exc:
         ra.extend_budget("test_agent", ra.ExtendBudgetBody(additional_steps=100))
     assert exc.value.status_code == 409, "extend_budget must 409 once at the cumulative ceiling (B-14)"
+
+
+# ── #17 gdoc completion verifier: a "save to Drive" checkpoint can't finish on a
+# local .md; the agent is nudged once to make the real doc. ──
+def test_gdoc_deliverable_nudges_before_completion(monkeypatch, temp_codec_dir):
+    grants = {"skills": ["web_search"], "read_paths": [], "write_paths": [],
+              "network_domains": ["*"]}
+    gg = {"schema": 1, "version": 0, "skills": [], "read_paths": [],
+          "write_paths": [], "network_domains": []}
+    cp = {"id": "cp0", "title": "report", "description": "d",
+          "expected_output": "save the competitor report to Google Drive",
+          "step_budget": 8}
+
+    calls = {"n": 0}
+
+    def fake_next(plan_dict, checkpoint, history, *a, **k):
+        calls["n"] += 1
+        # 1st: a web_search (produces only local text). 2nd onward: try to finish.
+        if calls["n"] == 1:
+            return car.Action(skill="web_search", task="competitors", kind="skill_call")
+        return car.Action(skill="", task="", kind="checkpoint_done")
+
+    monkeypatch.setattr(car, "_qwen_next_action", fake_next)
+    monkeypatch.setattr(car, "_run_skill",
+                        lambda skill, task, agent_id: "Found 3 competitors: A, B, C")
+
+    history = car._execute_checkpoint(
+        plan_dict={"goals": ["g"]}, checkpoint=cp,
+        agent_grants=grants, global_grants=gg, agent_id="test_agent")
+
+    # The verifier must have injected exactly one nudge (no real doc URL present).
+    nudges = [h for h in history if h.get("_gdoc_verify_nudge")]
+    assert len(nudges) == 1, "must nudge once when a Drive deliverable has no real doc"
+    assert "google doc" in nudges[0]["result"].lower()
+
+
+def test_gdoc_deliverable_accepts_real_doc_url(monkeypatch, temp_codec_dir):
+    grants = {"skills": ["google_docs"], "read_paths": [], "write_paths": [],
+              "network_domains": ["*"]}
+    gg = {"schema": 1, "version": 0, "skills": [], "read_paths": [],
+          "write_paths": [], "network_domains": []}
+    cp = {"id": "cp0", "title": "report", "description": "d",
+          "expected_output": "save the report to a Google Doc", "step_budget": 6}
+
+    step = {"n": 0}
+
+    def fake_next(plan_dict, checkpoint, history, *a, **k):
+        step["n"] += 1
+        if step["n"] == 1:
+            return car.Action(skill="google_docs", task="create doc", kind="skill_call")
+        return car.Action(skill="", task="", kind="checkpoint_done")
+
+    monkeypatch.setattr(car, "_qwen_next_action", fake_next)
+    monkeypatch.setattr(car, "_run_skill",
+                        lambda skill, task, agent_id: "Created https://docs.google.com/document/d/REAL123/edit")
+
+    history = car._execute_checkpoint(
+        plan_dict={"goals": ["g"]}, checkpoint=cp,
+        agent_grants=grants, global_grants=gg, agent_id="test_agent")
+
+    # A real doc URL is present → no verifier nudge, checkpoint completes.
+    assert not [h for h in history if h.get("_gdoc_verify_nudge")], "must not nudge when a real doc exists"
