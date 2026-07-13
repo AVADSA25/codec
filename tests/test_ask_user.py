@@ -97,7 +97,13 @@ def test_round_trip_pwa_answer_unblocks_caller(temp_audit_log, temp_askuser_path
         time.sleep(0.05)
     assert qid is not None, "ask() never wrote a pending record"
 
-    # Verify notifications.json has a type="question" entry.
+    # Verify notifications.json has a type="question" entry. ask() writes the
+    # pending record and the notification as two separate writes, so under load
+    # the notification can lag the record we polled for above — poll for it too
+    # rather than assume it landed simultaneously (CI flake, 2026-07).
+    _nd = time.monotonic() + 2.0
+    while time.monotonic() < _nd and not notif_path.exists():
+        time.sleep(0.05)
     assert notif_path.exists(), "notification not written"
     notifs = json.loads(notif_path.read_text())
     assert any(n.get("type") == "question" and n.get("pending_question_id") == qid
@@ -173,10 +179,18 @@ def test_deadline_timeout_returns_sentinel(temp_audit_log, temp_askuser_paths):
     # Should be roughly 2s (polling loop checks every 1s); allow up to 4s.
     assert 1.5 <= elapsed <= 4.5, f"deadline elapsed={elapsed:.2f}s"
 
-    # Audit: emit + timeout.
+    # Audit: emit + timeout. Scope to THIS question's id: a background-threaded
+    # ask() in a neighbouring test can finalize a late timeout into this test's
+    # audit log (the log path is read live at write-time), so a global count is
+    # flaky under CI load. Count only events for our own qid.
+    my_qid = json.loads(pq_path.read_text())["pending_questions"][0]["id"]
+
+    def _for_me(events):
+        return [e for e in events if e.get("extra", {}).get("pending_question_id") == my_qid]
+
     recs = _records(temp_audit_log)
-    emits = _events_of(recs, codec_ask_user.ASKUSER_EVENT_EMIT)
-    timeouts = _events_of(recs, codec_ask_user.ASKUSER_EVENT_TIMEOUT)
+    emits = _for_me(_events_of(recs, codec_ask_user.ASKUSER_EVENT_EMIT))
+    timeouts = _for_me(_events_of(recs, codec_ask_user.ASKUSER_EVENT_TIMEOUT))
     assert len(emits) == 1
     assert len(timeouts) == 1
     assert timeouts[0]["extra"]["reason"] == "deadline"
