@@ -81,8 +81,15 @@ def _post(path: str, body: dict | None = None) -> dict:
 
 
 def _pilot_up() -> bool:
+    # Must send the token: the pilot-runner requires x-pilot-token on EVERY
+    # endpoint, /health included. Without it /health 401s and this returned
+    # False even when the runner was online + healthy — so every teach/replay
+    # command hit the "Pilot Runner is not running" branch. That was the whole
+    # "Pilot is half-broken" symptom.
     try:
-        with urllib.request.urlopen(_BASE + "/health", timeout=3):
+        req = urllib.request.Request(
+            _BASE + "/health", headers={"x-pilot-token": _pilot_token()})
+        with urllib.request.urlopen(req, timeout=3):
             return True
     except Exception:
         return False
@@ -116,7 +123,7 @@ def _extract_run_id(text: str) -> str | None:
 def _fmt(d: dict) -> str:
     """Turn a result dict into a readable string."""
     if "error" in d:
-        return f"❌ Pilot error: {d['error']}"
+        return f"Pilot error: {d['error']}"
     return json.dumps(d, indent=2)
 
 
@@ -127,7 +134,7 @@ def run(task: str, app: str = "", ctx: str = "") -> str:  # noqa: A001
 
     if not _pilot_up():
         return (
-            "❌ Pilot Runner is not running. Start it with:\n"
+            "Pilot Runner is not running. Start it with:\n"
             "  pm2 start ecosystem.config.js --only pilot-runner\n"
             "or check: pm2 status pilot-runner"
         )
@@ -141,8 +148,8 @@ def run(task: str, app: str = "", ctx: str = "") -> str:  # noqa: A001
             return _fmt(d)
         snap = d.get("latest_snapshot", "")
         snap_preview = snap[:300] + "…" if len(snap) > 300 else snap
-        status_icon = {"done": "✅", "error": "❌", "running": "⏳",
-                       "budget_exhausted": "⚠️"}.get(d.get("status", ""), "📊")
+        status_icon = {"done": "", "error": "", "running": "",
+                       "budget_exhausted": ""}.get(d.get("status", ""), "")
         error_line = f"\n   Error : {d.get('error', '')}" if d.get("error") else ""
         result_line = f"\n   Result: {d.get('result', '')}" if d.get("result") else ""
         return (
@@ -160,7 +167,7 @@ def run(task: str, app: str = "", ctx: str = "") -> str:  # noqa: A001
         if "error" in d:
             return _fmt(d)
         return (
-            f"✅ Pilot Runner online\n"
+            f"Pilot Runner online\n"
             f"   URL   : {d.get('url', 'n/a')}\n"
             f"   CDP   : :{d.get('cdp_port', 9223)}\n"
             f"   Tunnel: https://pilot.lucyvpa.com"
@@ -175,7 +182,7 @@ def run(task: str, app: str = "", ctx: str = "") -> str:  # noqa: A001
         if "error" in d:
             return _fmt(d)
         return (
-            f"✅ Navigated to {url}\n"
+            f"Navigated to {url}\n"
             f"   Title   : {d.get('title', '')}\n"
             f"   Elements: {d.get('element_count', 0)} interactive"
         )
@@ -186,7 +193,7 @@ def run(task: str, app: str = "", ctx: str = "") -> str:  # noqa: A001
         if "error" in d:
             return _fmt(d)
         header = (
-            f"📄 Snapshot ({d.get('element_count', 0)} elements, {d.get('took_ms', 0):.0f}ms)\n"
+            f"Snapshot ({d.get('element_count', 0)} elements, {d.get('took_ms', 0):.0f}ms)\n"
             f"URL: {d.get('url', '')}\n"
             f"Title: {d.get('title', '')}\n\n"
         )
@@ -204,7 +211,7 @@ def run(task: str, app: str = "", ctx: str = "") -> str:  # noqa: A001
             if "error" in d:
                 return _fmt(d)
             b64 = d.get("image", "")
-            return f"📸 Screenshot (base64, {len(b64)} chars)\n{b64[:100]}…"
+            return f"Screenshot (base64, {len(b64)} chars)\n{b64[:100]}…"
         # Save to /tmp
         import urllib.request
         out = "/tmp/pilot_screenshot.jpg"
@@ -212,9 +219,9 @@ def run(task: str, app: str = "", ctx: str = "") -> str:  # noqa: A001
             urllib.request.urlretrieve(_BASE + "/screenshot", out)
             import os
             size = os.path.getsize(out)
-            return f"📸 Screenshot saved to {out} ({size/1024:.1f} KB)"
+            return f"Screenshot saved to {out} ({size/1024:.1f} KB)"
         except Exception as e:
-            return f"❌ Screenshot failed: {e}"
+            return f"Screenshot failed: {e}"
 
     # ── click ─────────────────────────────────────────────────────────────────
     if "click" in t:
@@ -224,7 +231,7 @@ def run(task: str, app: str = "", ctx: str = "") -> str:  # noqa: A001
         d = _post(f"/click/{idx}")
         if "error" in d:
             return _fmt(d)
-        return f"✅ Clicked [{idx}]: {d.get('clicked', '')}"
+        return f"Clicked [{idx}]: {d.get('clicked', '')}"
 
     # ── type ──────────────────────────────────────────────────────────────────
     if any(w in t for w in ["type ", "fill ", "enter ", "input "]):
@@ -241,7 +248,7 @@ def run(task: str, app: str = "", ctx: str = "") -> str:  # noqa: A001
         d = _post(f"/type/{idx}", {"text": text})
         if "error" in d:
             return _fmt(d)
-        return f"✅ Typed into [{idx}]: \"{text}\""
+        return f"Typed into [{idx}]: \"{text}\""
 
     # ── scroll ────────────────────────────────────────────────────────────────
     if "scroll" in t:
@@ -268,7 +275,7 @@ def run(task: str, app: str = "", ctx: str = "") -> str:  # noqa: A001
                 "action": "scroll", "direction": direction, "amount": amount
             })
             _post(f"/run/{run_id}/complete", {"status": "done"})
-        return f"✅ Scrolled {direction} {amount}px"
+        return f"Scrolled {direction} {amount}px"
 
     # ── run (autonomous task) ─────────────────────────────────────────────────
     if any(w in t for w in ["run ", "task ", "automate", "agent ", "do "]):
@@ -294,13 +301,13 @@ def run(task: str, app: str = "", ctx: str = "") -> str:  # noqa: A001
         start = _post(f"/run/{run_id}/start", {"step_budget": 20, "use_stub": True})
         if "error" in start:
             return (
-                f"🤖 Run registered (run_id={run_id}) but agent start failed:\n"
+                f"Run registered (run_id={run_id}) but agent start failed:\n"
                 f"   {start['error']}\n"
                 f"Check: pm2 logs pilot-runner"
             )
 
         return (
-            f"🤖 Pilot agent started\n"
+            f"Pilot agent started\n"
             f"   Run ID  : {run_id}\n"
             f"   Task    : {task_desc}\n"
             f"   Budget  : 20 steps\n"
@@ -317,7 +324,7 @@ def run(task: str, app: str = "", ctx: str = "") -> str:  # noqa: A001
         runs = d.get("runs", [])
         if not runs:
             return "No pilot runs recorded yet."
-        lines = [f"📋 Pilot Runs ({len(runs)}):"]
+        lines = [f"Pilot Runs ({len(runs)}):"]
         for r in runs[:15]:
             lines.append(
                 f"  {r['run_id']} │ {r['status']:16} │ {r['task'][:60]}"
@@ -358,7 +365,7 @@ def run(task: str, app: str = "", ctx: str = "") -> str:  # noqa: A001
 
     # ── fallback: show help ───────────────────────────────────────────────────
     return (
-        "🤖 CODEC Pilot — headless browser agent\n\n"
+        "CODEC Pilot — headless browser agent\n\n"
         "Commands:\n"
         "  pilot navigate https://example.com\n"
         "  pilot snapshot              — indexed DOM elements\n"
