@@ -1,83 +1,89 @@
-# CODEC Live Demo — Full Flow
+# CODEC Live Demo — Full Flow (25 beats)
 
-> Recovered from the April 12–14, 2026 planning session and expanded with the
-> features validated since. This is the locked recording scenario. Steps are
-> tested one-by-one before recording. Can't show all ~400 features — this picks
-> the highest-impact, most-jaw-dropping beats.
+> The locked recording scenario. Originally 15 steps (April 2026), expanded to 22,
+> now 25. Each beat has an exact **TRY** line to run live and an **EXPECT** so you
+> can confirm or flag it. Status legend:
+> ✅ done/works · ⚠️ half-built (fix before filming) · 🟡 seen once, re-confirm ·
+> 🔴 never run · ❌ not real yet (build before filming) · 🆕 new beat.
 
 ## Act 1 — It hears you and keeps its word (trust loop)
 
-| # | Page | Feature | Key Moment |
-|---|------|---------|------------|
-| 1 | `opencodec.org` | Wake Word + Calendar + Google Tasks | "Add to my to-do list: edit and upload demo video by tomorrow." |
-| 2 | GitHub → Safari | Voice App Control | "Open Time Magazine in Safari" |
-| 3 | Safari — Time Magazine | Instant — Read Aloud (Kokoro TTS) | Select paragraph → voice reads it aloud |
-| 4 | Gmail — client email | Vision + Draft reply | "Look at my screen and reply" → polished draft |
-| 5 | Calendar + Tasks | Trust moment — receipts from Step 1 | Show the task added in Step 1 is real |
-| 6 | WhatsApp Web — Ukrainian msg | Instant — Translate (UA → EN) | Right-click → instant translation |
+| # | Feature | TRY (live) | EXPECT | Status |
+|---|---|---|---|---|
+| 1 | Wake word + Calendar + Tasks | "Hey CODEC — add 'edit and upload demo video' to my calendar tomorrow 3pm, and to my to-do list." | Event on Google Calendar tomorrow 15:00 + a Google Task, both created | 🟡 |
+| 2 | Voice app control | "Open Time Magazine in Safari." | Safari opens time.com | 🟡 |
+| 3 | Instant Read Aloud (Kokoro TTS) | Select a paragraph → trigger Read Aloud | CODEC reads the selection in a natural voice | 🟡 |
+| 4 | Vision + draft reply | Open a client email in Gmail → "Look at my screen and draft a reply." | A polished, context-aware draft appears | 🟡 |
+| 5 | Trust receipt | Open Calendar + Tasks | The event + task from beat 1 are really there | 🟡 |
+| 6 | Instant Translate (UA→EN) | Select a Ukrainian WhatsApp message → Translate | Instant English translation in place | 🟡 |
 
 ## Act 2 — It sees and controls the machine
 
-| # | Page | Feature | Key Moment |
-|---|------|---------|------------|
-| 7 | Cloudflare DNS | **Vision Mouse Control (showstopper)** | "Click the DNS button" → cursor moves + clicks |
-| 8 | Menu → Live Video (PIP) | **Live webcam access** | Show CODEC can see through the webcam live |
-| 9 | CODEC Chat — Think mode | Reasoning + reveal | Ask a logic prompt (rate trap / car wash) → click "Reveal train of thought" |
+| # | Feature | TRY (live) | EXPECT | Status |
+|---|---|---|---|---|
+| 7 | **Vision Mouse Control** (showstopper) | On Cloudflare DNS: "Click the DNS button." | Cursor moves to the button and clicks it | ✅ done, worked |
+| 8 | Live webcam access (PIP) | "CODEC, look through my webcam — what do you see?" | CODEC describes the live webcam view | 🔴 |
+| 9 | Think mode + reveal | Ask a logic prompt (rate-trap / car-wash) with Think on → click "Reveal train of thought" | Correct answer + a readable reasoning panel | ✅ |
 
-## Act 3 — Autonomous & agentic (the "it works while you watch" act)
+## Act 3 — Autonomous & agentic (works while you watch)
 
-| # | Page | Feature | Key Moment |
-|---|------|---------|------------|
-| 10 | CODEC Chat — Agent Mode | Deep Research crew launched | "Runs for a few minutes — I'll show the rest while it works" |
-| 11 | CODEC Chat — **Project mode** | Drop-a-project autonomous agent | "Research top 5 Notion competitors, build a table, save to Drive" → approve plan once → it runs autonomously, messages you progress. Grant a domain live. |
-| 12 | Chat (auto-escalation) | CODEC offers to promote | Type a complex ask in chat → "Promote to Project mode?" |
-| 13 | CODEC Vibe | AI coding IDE (Monaco + live preview) | "Build me a snake game" → watch code write itself live |
-| 14 | CODEC Pilot | Browser automation you can teach | Record a task once (e.g. check a flight price) → CODEC compiles it into a reusable skill → replay it |
+| # | Feature | TRY (live) | EXPECT | Status |
+|---|---|---|---|---|
+| 10 | Deep Research crew | Agent mode: "Research the top 5 Notion competitors and summarize." | "Runs a few minutes" — crew launches, streams progress | 🟡 |
+| 11 | **Project mode** | Project: "Research Notion, Figma and Linear; draft a personalized Head-of-Growth outreach email to each; save them as Gmail drafts." Approve the plan once. | Approve once → runs autonomously → 3 Gmail drafts appear | ✅ verified |
+| 12 | Chat auto-escalation | In chat, type a big multi-step ask (e.g. "plan and build me a 5-page competitor report with charts"). | CODEC offers "Promote to Project mode?" | 🔴 |
+| 13 | **Vibe** live coding | Vibe: "Build me a snake game." | Code writes itself live in Monaco; preview plays | ✅ |
+| 14 | **Pilot** — teach & replay | Pilot: record "check the price of a MacBook on Amazon" once → replay | Records the run, compiles a reusable skill, replays it | ⚠️ half-broken — FIX FIRST |
 
 ## Act 4 — The nerve center & the payoff
 
-| # | Page | Feature | Key Moment |
-|---|------|---------|------------|
-| 15 | CODEC Cortex | Neural map | Pulsing zones, explain each |
-| 16 | CODEC Audit | Event log (16 categories) | Filter → show everything was logged |
-| 17 | Deep Research report (Google Doc) | Agent payoff | Open the doc from Step 10 — full report, real citations, native tables, relevant images |
+| # | Feature | TRY (live) | EXPECT | Status |
+|---|---|---|---|---|
+| 15 | Cortex neural map | Open Cortex | Pulsing zones; narrate each subsystem | 🟡 |
+| 16 | Audit log (16 categories) | Open Audit → filter by category | Every action from the demo is logged | 🟡 |
+| 17 | Deep Research → **Google Doc** | Open the doc from beat 10 | A real Google Doc: report, citations, native tables | ❌ only writes local .md — BUILD FIRST |
 
-## Act 5 — Claude gets superpowers, and the memory reveal
+## Act 5 — Claude gets superpowers + bidirectional MCP
 
-| # | Page | Feature | Key Moment |
-|---|------|---------|------------|
-| 18 | Claude Desktop (CODEC MCP) | **CODEC as MCP server** | To Claude: "Research the 3 best noise-cancelling headphones, then use CODEC to save your summary to my Mac Desktop, add a calendar reminder, and dim my office lights." Claude's brain + CODEC's local hands. |
-| 19 | CODEC voice / terminal | **Observer recall** | "Hey CODEC, what was I doing 20 minutes ago?" → it recalls (Safari on Time Magazine, etc.) from its continuous observation buffer |
+| # | Feature | TRY (live) | EXPECT | Status |
+|---|---|---|---|---|
+| 18 | **CODEC as MCP server** (for Claude) | In Claude Desktop (CODEC connector on): "Research the 3 best noise-cancelling headphones, then use CODEC to save the summary to my Desktop, add a calendar reminder, and dim my office lights." | Claude thinks, CODEC acts locally: file saved, reminder set, lights dim | 🔴 |
+| 23 | **CODEC as MCP client** 🆕 (bidirectional punch — right after 18) | "CODEC, connect to my [Notion] MCP and create a page titled 'Demo notes'." | CODEC calls out to the external MCP server and does it | 🆕 BUILD |
+| 19 | Observer recall | "Hey CODEC, what was I doing 20 minutes ago?" | Recalls Safari/Time, the Gmail draft, etc. from its buffer | 🟡 |
 
-## Act 6 — Voice + the finale
+## Act 6 — Voice, self-improvement, and the finale
 
-| # | Page | Feature | Key Moment |
-|---|------|---------|------------|
-| 20 | CODEC Voice Call | Live voice + mid-call interrupt | Interrupt CODEC mid-sentence → cuts instantly (proves real-time control) |
-| 21 | Phone → `codec.avadigital.ai` (Touch ID) | Remote access | Touch ID on phone → Mac Studio at home executes the command |
-| 22 | **FINALE** | Hue + Spotify | "CODEC, turn off the lights." (Philips Hue) → "CODEC, play music on Spotify." Lights dim, music starts. Cut. |
+| # | Feature | TRY (live) | EXPECT | Status |
+|---|---|---|---|---|
+| 24 | **Self-improve live** 🆕 | "CODEC, create a new skill that tells me the current moon phase." | CODEC writes itself a new skill on camera, then uses it | 🆕 |
+| 25 | **Compare** 🆕 | "Compare across models: what's the best programming language for a beginner?" | Side-by-side answers from multiple models | 🆕 |
+| 20 | Voice call + interrupt | Start a voice call → interrupt CODEC mid-sentence | It cuts instantly (proves real-time control) | 🔴 |
+| 21 | Phone Touch ID remote | On phone at `codec.avadigital.ai` → Touch ID → issue a command | Mac Studio at home executes it | 🔴 |
+| 22 | **FINALE** — Hue + Spotify | "CODEC, turn off the lights." then "CODEC, play music on Spotify." | Lights dim, music starts. Cut. | 🔴 |
+
+## Build-before-filming (not test items — make them real)
+- **#14 Pilot** — half-broken; fix the teach/replay.
+- **#17 Google Doc** — currently writes a local `.md`; build the real Drive-doc deliverable + a completion verifier.
+- **#23 MCP client** — new capability (CODEC → other MCP servers).
+- **#24 / #25** — wire the demo phrasing (skills exist: `create_skill`, `self_improve`, `compare`).
+
+## Test order (resume here)
+Software beats I can help verify headlessly: **11 ✅, 13 ✅**, then **10, 12, 23, 24, 25, 17**.
+Hardware/voice beats only Mickael can run: **1–6, 7 ✅, 8, 9 ✅, 18, 19, 20, 21, 22.**
 
 ## Pre-Record Checklist
-
-- Chrome tabs left-to-right: `opencodec.org` → GitHub → Gmail → WhatsApp Web → Cloudflare → CODEC Chat
-- Safari (separate window): Time Magazine article open
-- Claude Desktop open with the CODEC MCP connector active (Act 5)
-- Phone on desk: `codec.avadigital.ai` loaded, Touch ID ready
-- Philips Hue reachable; Spotify open and authorized (finale)
-- Vision Mouse Control tested 10× on the Cloudflare DNS button (must work twice clean in a row)
-- Observer running with a buffer (test "what was I doing" beforehand)
-- Fresh Deep Research + Project chat windows open
+- Chrome tabs L→R: `opencodec.org` → GitHub → Gmail → WhatsApp Web → Cloudflare → CODEC Chat
+- Safari: Time Magazine article open
+- Claude Desktop: CODEC MCP connector active (Act 5)
+- Phone: `codec.avadigital.ai` loaded, Touch ID ready
+- Philips Hue reachable; Spotify authorized (finale)
+- Vision Mouse tested 10× on the Cloudflare DNS button
+- Observer running with a buffer
+- Fresh Deep-Research + Project chat windows open
 
 ## Director's Notes
-
-- **Trust loop:** Steps 1 → 5 are the emotional hook — promise, then deliver.
-- **Showstopper risk:** Step 7 (Vision Mouse) — if it fails live, skip to Step 9.
-- **The "works while you watch" trio** (11 Project, 13 Vibe, 14 Pilot) is the core wow.
-- **Act 5 is the differentiator:** no other assistant lets Claude reach into your actual Mac.
-- **Save Hue + Spotify for the very last frame** — clean, human, memorable close.
-
-## Separate: 10-point technical validation (QA, not the demo)
-
-Run before recording: 1 Voice pipeline · 2 Dictate · 3 Dashboard security ·
-4 Chat & Flash · 5 Agents · 6 Skills · 7 Memory/FTS5 · 8 MCP server ·
-9 Infra/resilience · 10 Cortex & Audit.
+- Trust loop (1→5) is the emotional hook — promise, then deliver.
+- Showstopper risk: 7 (Vision Mouse) — if it fails live, skip to 9.
+- Core wow: the "works while you watch" trio (11 Project, 13 Vibe, 14 Pilot).
+- Act 5 is the differentiator: 18 (server) + 23 (client) back-to-back = bidirectional MCP.
+- Save Hue + Spotify (22) for the very last frame.
