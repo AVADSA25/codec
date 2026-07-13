@@ -64,6 +64,17 @@ _BLOCKED_SYSTEM_ROOTS = [
     "/var", "/dev", "/Volumes",
 ]
 
+# Sensitive directories UNDER $HOME. The filename-pattern check below only sees
+# the basename, so it misses a write INTO these dirs (e.g. ~/.ssh/authorized_keys
+# — an SSH-key injection — has basename "authorized_keys", which matches nothing).
+# Block the whole subtree of each. Especially important now file_write is exposed
+# to remote (claude.ai) callers over MCP. (~/.config is intentionally NOT here —
+# too broad; legit apps write there.)
+_BLOCKED_HOME_SUBDIRS = [
+    ".ssh", ".aws", ".gnupg", ".kube", ".gcloud", ".docker", ".azure",
+    ".config/gcloud", ".config/gh", ".password-store",
+]
+
 # Security-sensitive CODEC directories. Per audit finding D-4, the
 # file_write skill must NEVER write into these — they govern skill loading,
 # plugin lifecycle hooks, agent permission grants, audit-log integrity,
@@ -94,6 +105,13 @@ def _build_blocked_roots() -> list[str]:
         except Exception:
             roots.append(p)
     roots.extend(_codec_blocked_roots())
+    # Sensitive dirs under $HOME (block the whole subtree).
+    home = os.path.expanduser("~")
+    for sub in _BLOCKED_HOME_SUBDIRS:
+        try:
+            roots.append(os.path.realpath(os.path.join(home, sub)))
+        except Exception:
+            roots.append(os.path.join(home, sub))
     return roots
 
 
@@ -108,7 +126,10 @@ _BLOCKED_FILENAME_PATTERNS = [
     ".ssh", ".gnupg", ".env", "credentials", "secrets", "secret",
     ".aws", ".gcloud", ".kube", "id_rsa", "id_ed25519", "id_dsa",
     ".netrc", ".npmrc", ".pypirc", "keychain", "password", "token",
-    "api_key", "apikey", "private_key",
+    "api_key", "apikey", "private_key", "authorized_keys",
+    # Shell-init files: writing one = arbitrary code execution on next shell.
+    ".zshrc", ".zshenv", ".zprofile", ".zlogin", ".bashrc", ".bash_profile",
+    ".bash_login", ".profile", "crontab",
 ]
 # Block extensions that could be executable shells / trust-sensitive.
 _BLOCKED_EXTS = [".pem", ".key", ".p12", ".pfx", ".keystore"]

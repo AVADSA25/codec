@@ -18,6 +18,8 @@ import os
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "skills"))
@@ -257,3 +259,46 @@ def test_blocked_write_emits_file_write_blocked_audit_event(monkeypatch):
     assert "skills" in extra["target_path"], (
         f"target_path should reference the attempted sensitive path: {extra}"
     )
+
+
+# ── sensitive-dir hardening (2026-07): file_write is now exposed to remote MCP
+# callers, so a write INTO ~/.ssh (basename doesn't match the .ssh pattern) must
+# be blocked at the directory level, not just by filename. ──
+import importlib as _il
+import file_write as _fw
+_il.reload(_fw)
+
+
+@pytest.mark.parametrize("path", [
+    "~/.ssh/authorized_keys",   # SSH key injection
+    "~/.ssh/config",
+    "~/.ssh/random",
+    "~/.aws/credentials",
+    "~/.gnupg/anything",
+    "~/.kube/config",
+    "~/.gcloud/creds",
+    "~/.config/gcloud/token",
+    "~/.zshrc",                 # code exec on next shell
+    "~/.bashrc",
+    "~/.bash_profile",
+    "~/.zshenv",
+])
+def test_sensitive_targets_refused(path):
+    out = _fw.run(f"save to {path} content: pwned")
+    assert "refused" in out.lower(), f"{path} was NOT blocked: {out}"
+
+
+@pytest.mark.parametrize("path", [
+    "~/Downloads/note.txt",
+    "~/Desktop/scratch.md",
+    "~/Documents/plan.md",
+])
+def test_safe_targets_still_allowed(tmp_path, path):
+    import os
+    out = _fw.run(f"save to {path} content: ok-{os.getpid()}")
+    p = os.path.expanduser(path)
+    try:
+        assert "saved" in out.lower() and os.path.exists(p), out
+    finally:
+        if os.path.exists(p):
+            os.remove(p)

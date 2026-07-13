@@ -22,7 +22,8 @@ Kill switch: `CONSENT_GATE_ENABLED=false`.
 """
 import os
 
-__all__ = ["gate_enabled", "is_destructive_skill", "chat_consent_ok", "mcp_refuse_message"]
+__all__ = ["gate_enabled", "is_destructive_skill", "chat_consent_ok",
+           "mcp_refuse_message", "mcp_allowed"]
 
 # Known high-power built-ins that are destructive but NOT in _HTTP_BLOCKED.
 # (terminal / python_exec / process_manager / pm2_control / ax_control are
@@ -34,6 +35,17 @@ _DESTRUCTIVE_BUILTINS = frozenset({
     "pilot",          # drives a real browser session
     "skill_forge",    # writes a skill to disk (no review gate)
 })
+
+# Destructive skills that are nonetheless SAFE to expose over MCP because they
+# self-guard. `file_write` is write-only (no read/delete/list), blocks the
+# system tree + credential files + all of ~/.codec, restricts writes to $HOME
+# or /tmp, caps size at 500 KB, and audits every write to ~/.codec/file_write.log.
+# It was purpose-built for remote (claude.ai) callers — the blanket MCP refusal
+# contradicted its own design and broke the Claude→CODEC→save-a-file flow.
+# Allowing it here is the "scoped-safe write" the operator wants, WITHOUT opening
+# delete/move (file_ops), shells (terminal/python_exec), messaging
+# (imessage_send) or browser control (pilot), which all remain refused over MCP.
+_MCP_SELF_GUARDED = frozenset({"file_write"})
 
 
 def gate_enabled() -> bool:
@@ -90,6 +102,21 @@ def chat_consent_ok(tool_name, query, *, registry=None) -> bool:
             codec_ask_user.TIMEOUT_SENTINEL,
             codec_ask_user.DISABLED_SENTINEL,
         )
+    except Exception:
+        return False
+
+
+def mcp_allowed(tool_name, registry=None) -> bool:
+    """May this skill run over MCP (remote claude.ai caller)?
+
+    Non-destructive skills always may. A destructive skill may ONLY if it
+    self-guards (see _MCP_SELF_GUARDED) — currently just file_write, which
+    enforces its own path safety + audit. Everything else destructive is refused.
+    Never raises; fail-closed (any error → not allowed)."""
+    try:
+        if not is_destructive_skill(tool_name, registry=registry):
+            return True
+        return tool_name in _MCP_SELF_GUARDED
     except Exception:
         return False
 
