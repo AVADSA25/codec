@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 import sys
-import types
 from pathlib import Path
 
 import pytest
@@ -119,7 +118,6 @@ def test_call_with_bad_json_is_reported(cfg, fake_client):
 # ── guards ──────────────────────────────────────────────────────────────────
 
 def test_disabled_server_is_not_contacted(cfg, monkeypatch):
-    called = {"n": 0}
     monkeypatch.setattr(mcp_connect, "_client_for",
                         lambda s: (_ for _ in ()).throw(AssertionError("must not connect")))
     out = mcp_connect.run("list tools on notion")
