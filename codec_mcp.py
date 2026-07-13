@@ -213,7 +213,7 @@ def _load_skill_tools_into(mcp):
                 # imessage_send, pilot, …) + any skill declaring SKILL_DESTRUCTIVE.
                 try:
                     import codec_consent
-                    if codec_consent.gate_enabled() and codec_consent.is_destructive_skill(rkey, registry=registry):
+                    if codec_consent.gate_enabled() and not codec_consent.mcp_allowed(rkey, registry=registry):
                         _audit(sname, event="denied",
                                task_len=tlen, context_len=clen,
                                duration_ms=(time.time()-t0)*1000,

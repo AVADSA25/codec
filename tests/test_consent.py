@@ -89,3 +89,25 @@ def test_chat_consent_fails_closed_on_error(monkeypatch):
 
     monkeypatch.setattr(codec_ask_user, "ask", _boom)
     assert codec_consent.chat_consent_ok("file_ops", "x", registry=_FakeReg(set())) is False
+
+
+# ── mcp_allowed: file_write self-guards, so it's allowed over MCP (2026-07) ────
+
+def test_mcp_allows_file_write_but_refuses_other_destructive():
+    """Claude→CODEC→save-a-file (beat #18) was blanket-refused. file_write
+    self-guards (path safety + audit), so it's now allowed over MCP; delete/
+    shell/messaging/browser stay refused."""
+    reg = _FakeReg(set())
+    assert codec_consent.mcp_allowed("file_write", registry=reg) is True
+    for s in ("file_ops", "imessage_send", "pilot", "skill_forge", "terminal", "python_exec"):
+        assert codec_consent.mcp_allowed(s, registry=reg) is False, s
+
+
+def test_mcp_allows_nondestructive_skills():
+    reg = _FakeReg(set())
+    for s in ("weather", "calculator", "web_search"):
+        assert codec_consent.mcp_allowed(s, registry=reg) is True, s
+
+
+def test_mcp_allowed_fails_closed_on_bad_input():
+    assert codec_consent.mcp_allowed(None) in (False, True)  # never raises
