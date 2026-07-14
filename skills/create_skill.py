@@ -9,9 +9,22 @@ SKILL_MCP_EXPOSE = True
 SKILL_TRIGGERS = ["create a skill", "make a skill", "new skill", "build a skill",
                    "create skill", "write a skill", "add a skill"]
 import os
+import sys
 import requests
 import json
+import logging
 import re
+
+# Ensure the repo root is importable regardless of the caller's sys.path state
+# (mirrors the proven pattern in health_check.py / notification_reader.py). The
+# MCP daemon already puts the repo on sys.path, but a sandboxed subprocess or a
+# future caller may not — and this module's `from codec_keychain import ...`
+# below MUST resolve or the review POST silently loses its auth token.
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
+log = logging.getLogger("codec")
 
 SKILLS_DIR = os.path.expanduser("~/.codec/skills")
 CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
@@ -139,11 +152,20 @@ The skill should: {description}"""
         # must present the per-process HMAC token or the request 401s. Without this
         # header, create_skill over MCP/voice got "Not authenticated".
         try:
+            _ipc_token = ""
             try:
                 from codec_keychain import get_internal_token
                 _ipc_token = get_internal_token() or ""
-            except Exception:
-                _ipc_token = ""
+            except Exception as _tok_err:
+                # NEVER swallow this silently: an empty token makes the review
+                # POST 401 with a misleading "review gate returned error", which
+                # is exactly what turned beat-24's one-line auth miss into a
+                # multi-hour debug. Make the failure visible in the logs.
+                log.warning(
+                    "create_skill: internal IPC token fetch failed (%s: %s) — "
+                    "review POST will 401",
+                    type(_tok_err).__name__, _tok_err,
+                )
             review_resp = requests.post(
                 "http://localhost:8090/api/skill/review",
                 json={"code": code, "filename": f"{skill_name}.py"},
@@ -157,7 +179,16 @@ The skill should: {description}"""
                     f"Open the Dashboard → Skills to review and approve it before it becomes active."
                 )
             else:
-                return f"Skill generated but review gate returned error: {review_resp.text[:100]}"
+                # Surface the empty-token case explicitly so the next operator
+                # isn't misled by a bare "Not authenticated" from the gate.
+                _hint = (
+                    " (internal auth token was empty — check codec_keychain / "
+                    "repo on sys.path)" if not _ipc_token else ""
+                )
+                return (
+                    f"Skill generated but review gate returned error: "
+                    f"{review_resp.text[:100]}{_hint}"
+                )
         except requests.ConnectionError:
             return (
                 f"Skill '{skill_name}' generated but dashboard is unreachable for review. "
