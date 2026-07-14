@@ -1229,6 +1229,12 @@ function _pilotFetch(path, opts) {
     xhr.open(opts.method || 'GET', _pilotBase + path, true);
     if (opts.method && opts.method !== 'GET') {
       xhr.setRequestHeader('Content-Type', 'application/json');
+      // The dashboard AuthMiddleware requires x-csrf-token on every POST/PUT/
+      // DELETE. We deliberately bypass the global fetch wrapper (it E2E-encrypts
+      // bodies → runner 422), so we must add JUST this header ourselves — without
+      // it every Pilot action (navigate/click/type/run/record) 403s silently.
+      var _csrf = document.cookie.match(/codec_csrf=([^;]+)/);
+      if (_csrf) xhr.setRequestHeader('x-csrf-token', _csrf[1]);
     }
     xhr.onload = function() {
       var text = xhr.responseText;
@@ -1323,8 +1329,10 @@ function pilotNavigate() {
     headers: {'Content-Type':'application/json'},
     body: JSON.stringify({url: url})
   })
-  .then(function(r){ return r.json(); })
-  .then(function(d) {
+  .then(function(r){ return r.json().then(function(d){ return {ok:r.ok, status:r.status, d:d}; }); })
+  .then(function(res) {
+    if (!res.ok) { showToast('Navigate failed (' + res.status + '): ' + ((res.d && res.d.error) || 'refresh the page'), true); return; }
+    var d = res.d;
     showToast('Navigated: ' + (d.title || url) + ' (' + (d.element_count||0) + ' elements)');
     pilotRefreshScreenshot();
     setTimeout(pilotSnapshot, 500);
