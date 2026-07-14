@@ -134,11 +134,20 @@ The skill should: {description}"""
             return f"Skill {skill_name} already exists. Delete it first or choose a different name."
 
         # ── ROUTE THROUGH REVIEW GATE ──
-        # Stage for human review via dashboard API — NEVER write directly to disk
+        # Stage for human review via dashboard API — NEVER write directly to disk.
+        # The review endpoint sits behind AuthMiddleware (PR-2D): internal callers
+        # must present the per-process HMAC token or the request 401s. Without this
+        # header, create_skill over MCP/voice got "Not authenticated".
         try:
+            try:
+                from codec_keychain import get_internal_token
+                _ipc_token = get_internal_token() or ""
+            except Exception:
+                _ipc_token = ""
             review_resp = requests.post(
                 "http://localhost:8090/api/skill/review",
                 json={"code": code, "filename": f"{skill_name}.py"},
+                headers={"x-internal-token": _ipc_token},
                 timeout=10,
             )
             if review_resp.status_code == 200:
