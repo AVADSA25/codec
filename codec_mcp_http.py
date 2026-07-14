@@ -209,6 +209,14 @@ def main():
     log.info("CODEC MCP HTTP (OAuth 2.1) starting on %s:%s", host, port)
     log.info("Public base: %s", public_base)
     log.info("Tools exposed: %d", tool_count)
+    # Observability (beat-24 follow-up): log the skills dir the registry
+    # ACTUALLY scanned, plus repo + cwd. A daemon accidentally running from a
+    # worktree, an .app bundle, or a stale cwd loads a different create_skill.py
+    # than the maintained repo copy — this line makes that mismatch obvious at
+    # a glance instead of via a multi-session "which file loads?" hunt.
+    from codec_mcp import _mcp_registry as _reg
+    log.info("Skills dir (scanned): %s  |  repo: %s  |  cwd: %s",
+             getattr(_reg, "skills_dir", "?"), _REPO_DIR, os.getcwd())
     log.info("Rate limit: %d req/min per IP", _RATE_LIMIT)
     log.info("OAuth metadata: %s/.well-known/oauth-authorization-server", public_base)
     log.info("MCP endpoint:   %s/mcp", public_base)
