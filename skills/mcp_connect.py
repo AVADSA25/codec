@@ -61,6 +61,18 @@ _SEED = {
          "headers": {"Authorization": "Bearer <STRIPE_KEY>"}, "note": "Stripe — payments (read)"},
         {"name": "hugging-face", "transport": "http", "url": "https://huggingface.co/mcp",
          "enabled": False, "auth": "none", "note": "Hugging Face — models, datasets, papers"},
+        {"name": "sentry", "transport": "http", "url": "https://mcp.sentry.dev/mcp",
+         "enabled": False, "auth": "oauth", "note": "Sentry — errors, issues, traces"},
+        {"name": "asana", "transport": "http", "url": "https://mcp.asana.com/v2/mcp",
+         "enabled": False, "auth": "oauth", "note": "Asana — tasks, projects"},
+        {"name": "atlassian", "transport": "http", "url": "https://mcp.atlassian.com/v1/mcp/authv2",
+         "enabled": False, "auth": "oauth", "note": "Atlassian — Jira & Confluence"},
+        {"name": "cloudflare", "transport": "http", "url": "https://mcp.cloudflare.com/mcp",
+         "enabled": False, "auth": "oauth", "note": "Cloudflare — DNS, Workers, deployments"},
+        {"name": "vercel", "transport": "http", "url": "https://mcp.vercel.com",
+         "enabled": False, "auth": "oauth", "note": "Vercel — projects, deployments"},
+        {"name": "intercom", "transport": "http", "url": "https://mcp.intercom.com/mcp",
+         "enabled": False, "auth": "oauth", "note": "Intercom — conversations, contacts"},
     ]
 }
 
