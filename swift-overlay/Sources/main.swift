@@ -369,6 +369,33 @@ final class InputPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
 
+    // ⌘V / ⌘C / ⌘X / ⌘A in the F16 field. This is a borderless panel inside an
+    // accessory (LSUIElement) app that builds only a status-bar menu — there is
+    // no Edit menu, so AppKit never translates the standard editing shortcuts
+    // into paste:/copy:/cut:/selectAll: (the field editor only got them from the
+    // right-click context menu, which is why the mouse worked but ⌘V didn't).
+    // Intercept the plain command-key equivalents here and send the matching
+    // action down the responder chain to the field editor.
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if event.type == .keyDown {
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            let key = event.charactersIgnoringModifiers?.lowercased()
+            if flags == .command {
+                switch key {
+                case "v": if NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: self) { return true }
+                case "c": if NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: self) { return true }
+                case "x": if NSApp.sendAction(#selector(NSText.cut(_:)), to: nil, from: self) { return true }
+                case "a": if NSApp.sendAction(#selector(NSResponder.selectAll(_:)), to: nil, from: self) { return true }
+                case "z": if NSApp.sendAction(Selector(("undo:")), to: nil, from: self) { return true }
+                default: break
+                }
+            } else if flags == [.command, .shift], key == "z" {
+                if NSApp.sendAction(Selector(("redo:")), to: nil, from: self) { return true }
+            }
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+
     private func setupUI() {
         vfx.material = .hudWindow
         vfx.blendingMode = .behindWindow
