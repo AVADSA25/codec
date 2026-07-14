@@ -427,6 +427,10 @@ CHAT_SKILL_ALLOWLIST = {
     "create_skill", "delegate",
     # Phase 2 Step 7 — end-of-day shift report (read-only, no destructive side effects)
     "shift_report",
+    # Observer recall — "what was I doing 20 min ago?" (read-only, reads the
+    # observer buffer). Without this the phrase fell through to the LLM, which
+    # fabricated an answer from chat memory instead of the real buffer.
+    "observer_recall",
     # Phase 2 Step 6 — first declarative trigger (clipboard URL → web_fetch).
     # Read-only network fetch, gated by codec_ask_user.ask consent on auto-fire.
     "clipboard_url_fetch",

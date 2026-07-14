@@ -114,6 +114,19 @@ def _summarise(entries: list) -> str:
         out.append("Files touched: " + ", ".join(sorted(files_seen)[:8]) + ".")
     if ocr_bits:
         out.append('On screen (excerpt): "' + ocr_bits[-1] + '"')
+    if not out:
+        # Entries exist but carry no window/title/OCR/file content — the observer
+        # is polling but capturing nothing. This is almost always a macOS
+        # permission gap (Screen Recording / Automation / Accessibility not
+        # granted to the codec-observer process). Say so honestly rather than
+        # returning an empty string that lets a caller fabricate an answer.
+        return (
+            f"The observer captured {len(entries)} snapshot(s) in that window but "
+            "no window titles, on-screen text, or files — it's polling but seeing "
+            "nothing. Grant the codec-observer process Screen Recording + "
+            "Automation + Accessibility in System Settings → Privacy & Security, "
+            "then restart it (pm2 restart codec-observer)."
+        )
     return "\n".join(out)
 
 
