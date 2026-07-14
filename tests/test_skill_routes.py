@@ -120,6 +120,10 @@ def test_skill_approve_writes_only_after_review(tmp_path, monkeypatch):
     skills_dir = tmp_path / "skills"
     skills_dir.mkdir()
     monkeypatch.setattr(skills_routes, "_get_skills_dir", lambda: str(skills_dir))
+    # Isolate the staged-review store to a tmp dir so the review→approve round
+    # trip doesn't touch the real ~/.codec/skill_reviews/.
+    reviews_dir = tmp_path / "skill_reviews"
+    monkeypatch.setattr(skills_routes, "_reviews_dir", lambda: str(reviews_dir))
 
     client = _make_client()
     valid_skill = (

@@ -142,6 +142,13 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
 .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 .tab .ico { opacity: 0.5; }
 .tab.active .ico { opacity: 1; color: var(--accent); }
+.tab-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 16px; height: 16px; padding: 0 5px; margin-left: 1px;
+  background: var(--accent); color: #fff; font-size: 10px; font-weight: 700;
+  border-radius: 8px; line-height: 1;
+}
+.tab-badge.hidden { display: none; }
 
 /* ── Content ── */
 .content { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
@@ -282,6 +289,26 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
 .save-config-btn:hover { background: var(--accent-hover); }
 .save-config-btn:active { transform: scale(0.98); }
 .save-config-btn.saved { background: var(--success); }
+
+/* ── Skill Reviews ── */
+.skills-review-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
+.skills-review-sub { font-size: 12px; color: var(--text-dim); max-width: 560px; line-height: 1.45; margin-top: 3px; }
+.skills-refresh-btn { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 7px; color: var(--text-dim); cursor: pointer; flex-shrink: 0; display: flex; }
+.skills-refresh-btn:hover { color: var(--accent); border-color: var(--accent); }
+.skill-review-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 14px; overflow: hidden; }
+.skill-review-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.skill-review-name { font-family: var(--mono); font-size: 14px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px; word-break: break-all; }
+.skill-review-meta { font-size: 11px; color: var(--text-dim); font-family: var(--mono); }
+.skill-review-actions { display: flex; gap: 8px; }
+.skill-btn { border: none; border-radius: 6px; padding: 7px 16px; font-weight: 600; font-size: 12px; cursor: pointer; font-family: var(--font); transition: opacity .15s, background .15s, border-color .15s, color .15s; }
+.skill-btn:hover { opacity: .88; }
+.skill-btn.approve { background: var(--success); color: #fff; }
+.skill-btn.reject { background: var(--surface-2); color: var(--text-muted); border: 1px solid var(--border); }
+.skill-btn.reject:hover { color: var(--danger); border-color: var(--danger); opacity: 1; }
+.skill-btn:disabled { opacity: .5; cursor: default; }
+.skill-review-code { margin: 0; padding: 12px 14px; font-family: var(--mono); font-size: 12px; line-height: 1.5; color: var(--text-muted); white-space: pre; overflow: auto; max-height: 340px; background: var(--bg); }
+.skills-empty { text-align: center; color: var(--text-dim); font-size: 13px; padding: 44px 20px; }
+.skills-empty svg { width: 38px; height: 38px; opacity: .3; margin-bottom: 10px; }
 
 /* ── Prompt Editor ── */
 .prompt-card { background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:10px;overflow:hidden;transition:all .2s }
@@ -601,6 +628,9 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
     <button class="tab" onclick="showTab('cortex')" id="tab-cortex">
       <svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M12 2C9 2 6.5 3.8 5.5 6.5c-1.5.5-2.7 1.5-3.3 3-.6 1.4-.4 3.1.5 4.3-.3 1.5 0 3.1 1 4.3s2.6 1.9 4.2 1.9h.1c1 1.2 2.5 2 4 2s3-.8 4-2h.1c1.6 0 3.2-.7 4.2-1.9s1.3-2.8 1-4.3c.9-1.2 1.1-2.9.5-4.3-.6-1.5-1.8-2.5-3.3-3C17.5 3.8 15 2 12 2z"/></svg>Cortex
     </button>
+    <button class="tab" onclick="showTab('skills')" id="tab-skills">
+      <svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>Skills<span class="tab-badge hidden" id="skillsBadge">0</span>
+    </button>
     <button class="tab" onclick="showTab('settings')" id="tab-settings">
       <svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>Settings
     </button>
@@ -666,6 +696,22 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
     <!-- Cortex Panel -->
     <div class="panel" id="panel-cortex">
       <iframe id="cortexFrame" src="" style="width:100%;height:calc(100vh - 160px);border:none;border-radius:8px" allowfullscreen></iframe>
+    </div>
+
+    <!-- Skills Review Panel -->
+    <div class="panel" id="panel-skills">
+      <div class="skills-review-head">
+        <div>
+          <div class="settings-title" style="margin-bottom:0">Skill Reviews</div>
+          <div class="skills-review-sub">Skills generated by voice or chat are staged here. Review the code, then Approve to activate it or Reject to discard. Nothing runs until you approve.</div>
+        </div>
+        <button class="skills-refresh-btn" onclick="loadSkillReviews()" title="Refresh">
+          <svg class="ico ico-sm" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+        </button>
+      </div>
+      <div id="skillReviewsList">
+        <div class="refreshing">Loading staged skills...</div>
+      </div>
     </div>
 
     <!-- Settings Panel -->
@@ -868,7 +914,112 @@ function showTab(id) {
     var cf = document.getElementById('cortexFrame');
     if (cf && !cf.src.includes('/cortex')) cf.src = '/cortex?embed=1';
   }
+  if (id === 'skills') loadSkillReviews();
   if (id === 'settings') { loadSettings(); renderUIToggles(); loadPrompts(); }
+}
+
+// ── Skill Reviews (staged create_skill output → review → approve/reject) ──
+var _skillReviewsBusy = false;
+function _skillEmptyState() {
+  return '<div class="skills-empty">' +
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>' +
+    '<div>No skills waiting for review.</div>' +
+    '<div style="font-size:12px;margin-top:4px;color:var(--text-dim)">Ask CODEC to "create a skill that..." by voice or chat, and it will appear here.</div>' +
+    '</div>';
+}
+async function loadSkillReviews() {
+  var box = document.getElementById('skillReviewsList');
+  if (!box) return;
+  box.innerHTML = '<div class="refreshing">Loading staged skills...</div>';
+  try {
+    var r = await fetch('/api/skill/reviews');
+    var d = await r.json();
+    var reviews = (d && d.reviews) || [];
+    _setSkillsBadge(reviews.length);
+    if (!reviews.length) { box.innerHTML = _skillEmptyState(); return; }
+    box.innerHTML = reviews.map(function(rev) {
+      var name = _escHtml(rev.filename || rev.id || 'skill.py');
+      var staged = rev.staged_at ? _escHtml(_fmtStaged(rev.staged_at)) : '';
+      var meta = staged ? '<span class="skill-review-meta">staged ' + staged + '</span>' : '';
+      var rid = _escHtml(rev.id || '');
+      return '<div class="skill-review-card" data-rid="' + rid + '">' +
+        '<div class="skill-review-top">' +
+          '<span class="skill-review-name">' + name + ' ' + meta + '</span>' +
+          '<span class="skill-review-actions">' +
+            '<button class="skill-btn approve" onclick="approveSkill(this,\'' + rid + '\')">Approve</button>' +
+            '<button class="skill-btn reject" onclick="rejectSkill(this,\'' + rid + '\')">Reject</button>' +
+          '</span>' +
+        '</div>' +
+        '<pre class="skill-review-code">' + _escHtml(rev.code || '') + '</pre>' +
+      '</div>';
+    }).join('');
+  } catch (e) {
+    box.innerHTML = '<div class="skills-empty">Could not load staged skills: ' + _escHtml(String(e)) + '</div>';
+  }
+}
+function _fmtStaged(iso) {
+  try {
+    var dt = new Date(iso);
+    if (isNaN(dt.getTime())) return iso;
+    return dt.toLocaleString([], {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'});
+  } catch (e) { return iso; }
+}
+function _setSkillsBadge(n) {
+  var b = document.getElementById('skillsBadge');
+  if (!b) return;
+  b.textContent = n;
+  b.classList.toggle('hidden', !n);
+}
+async function refreshSkillsBadge() {
+  try {
+    var r = await fetch('/api/skill/reviews');
+    var d = await r.json();
+    _setSkillsBadge(((d && d.reviews) || []).length);
+  } catch (e) { /* leave badge as-is */ }
+}
+async function approveSkill(btn, rid) {
+  if (_skillReviewsBusy) return;
+  _skillReviewsBusy = true;
+  var card = btn.closest('.skill-review-card');
+  if (card) card.querySelectorAll('.skill-btn').forEach(function(b){ b.disabled = true; });
+  try {
+    var r = await fetch('/api/skill/approve', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({review_id: rid})
+    });
+    var d = await r.json().catch(function(){ return {}; });
+    if (r.ok) {
+      showToast('Approved: ' + (d.skill || 'skill') + ' is now active');
+    } else {
+      showToast('Approve failed: ' + (d.error || ('HTTP ' + r.status)));
+    }
+  } catch (e) {
+    showToast('Approve failed: ' + String(e));
+  } finally {
+    _skillReviewsBusy = false;
+    loadSkillReviews();
+  }
+}
+async function rejectSkill(btn, rid) {
+  if (_skillReviewsBusy) return;
+  _skillReviewsBusy = true;
+  var card = btn.closest('.skill-review-card');
+  if (card) card.querySelectorAll('.skill-btn').forEach(function(b){ b.disabled = true; });
+  try {
+    var r = await fetch('/api/skill/reject/' + encodeURIComponent(rid), {method: 'POST'});
+    var d = await r.json().catch(function(){ return {}; });
+    if (r.ok) {
+      showToast('Rejected: ' + (d.filename || 'skill') + ' discarded');
+    } else {
+      showToast('Reject failed: ' + (d.error || ('HTTP ' + r.status)));
+    }
+  } catch (e) {
+    showToast('Reject failed: ' + String(e));
+  } finally {
+    _skillReviewsBusy = false;
+    loadSkillReviews();
+  }
 }
 
 var _pendingImage = null; // {base64, name}
@@ -2215,6 +2366,8 @@ window.addEventListener('beforeinstallprompt', function(e) { deferredPrompt = e;
     }).catch(function(){})
   }
   pollNotifCount();setInterval(pollNotifCount,30000);
+  // Skill-review pending count → tab badge (same cadence as notifications)
+  if(typeof refreshSkillsBadge==='function'){refreshSkillsBadge();setInterval(refreshSkillsBadge,30000);}
   var bell=document.getElementById('notifBellBtn');
   if(bell)bell.addEventListener('click',function(){
     fetch('/api/notifications/read-all',{method:'POST'}).catch(function(){});

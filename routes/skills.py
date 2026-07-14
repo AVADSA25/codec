@@ -15,6 +15,8 @@ hash + AST check refuses it.
 """
 import json
 import os
+import re
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -24,6 +26,125 @@ from routes._shared import (
 )
 
 router = APIRouter()
+
+
+# ── Staged-review persistence ─────────────────────────────────────────────────
+# Reviews were previously kept ONLY in the in-memory `_pending_skills` dict, so
+# every `codec-dashboard` restart wiped them and there was no way to list/approve
+# a skill staged in an earlier process. They now also live on disk at
+# ~/.codec/skill_reviews/<review_id>.json (atomic via codec_jsonstore) so they
+# survive a restart, and the list/approve/reject endpoints read from there. The
+# in-memory dict is kept as a write-through cache for backward compatibility with
+# callers/tests that populate it directly.
+
+_REVIEWS_DIR = os.path.expanduser("~/.codec/skill_reviews")
+# review_id is `uuid4()[:12]` (hex + one hyphen); this also guards the reject
+# endpoint's path param against traversal — only these chars are ever a filename.
+_REVIEW_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+
+def _reviews_dir() -> str:
+    """Directory holding staged skill reviews. A function (not a constant) so
+    tests can monkeypatch it to a tmp dir for isolation."""
+    return _REVIEWS_DIR
+
+
+def _safe_review_id(review_id) -> str | None:
+    """Return `review_id` iff it is a safe single-path-segment filename stem,
+    else None. Defends the on-disk review path against traversal / absolute
+    paths coming from the reject endpoint's URL parameter."""
+    rid = str(review_id or "")
+    if not _REVIEW_ID_RE.match(rid):
+        return None
+    if os.path.basename(rid) != rid:
+        return None
+    return rid
+
+
+def _review_path(review_id) -> str | None:
+    sid = _safe_review_id(review_id)
+    if sid is None:
+        return None
+    return os.path.join(_reviews_dir(), f"{sid}.json")
+
+
+def _persist_review(review_id: str, filename: str, code: str) -> dict:
+    """Write a staged review to disk (atomic). Returns the record. Never raises —
+    a persistence failure degrades to the in-memory dict, not a 500."""
+    rec = {
+        "id": review_id,
+        "filename": filename,
+        "code": code,
+        "staged_at": datetime.now(timezone.utc).isoformat(),
+    }
+    path = _review_path(review_id)
+    if path:
+        try:
+            import codec_jsonstore
+            codec_jsonstore.atomic_write_json(path, rec)
+        except Exception as e:
+            log.warning("Failed to persist skill review %s: %s", review_id, e)
+    return rec
+
+
+def _load_review(review_id):
+    """Return the staged review record (disk first, then the in-memory dict), or
+    None if it isn't staged anywhere."""
+    path = _review_path(review_id)
+    if path:
+        try:
+            with open(path, encoding="utf-8") as f:
+                return json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            pass
+    mem = _pending_skills.get(review_id)
+    if mem:
+        return {
+            "id": review_id,
+            "filename": mem.get("filename", ""),
+            "code": mem.get("code", ""),
+            "staged_at": mem.get("staged_at", ""),
+        }
+    return None
+
+
+def _delete_review(review_id) -> None:
+    """Remove a staged review from both disk and the in-memory cache. Idempotent."""
+    _pending_skills.pop(review_id, None)
+    path = _review_path(review_id)
+    if path:
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass
+        except OSError as e:
+            log.warning("Failed to delete skill review %s: %s", review_id, e)
+
+
+def _list_reviews() -> list:
+    """All staged reviews on disk, newest first. A half-written file is never
+    observed (atomic write); an unreadable/corrupt one is skipped, not fatal."""
+    out = []
+    try:
+        names = os.listdir(_reviews_dir())
+    except OSError:
+        return out
+    for fn in names:
+        if not fn.endswith(".json"):
+            continue
+        try:
+            with open(os.path.join(_reviews_dir(), fn), encoding="utf-8") as f:
+                rec = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            continue
+        out.append({
+            "id": rec.get("id") or fn[:-5],
+            "filename": rec.get("filename", ""),
+            "code": rec.get("code", ""),
+            "staged_at": rec.get("staged_at", ""),
+        })
+    out.sort(key=lambda r: r.get("staged_at", ""), reverse=True)
+    return out
 
 
 def _pinned_builtin_names():
@@ -59,7 +180,11 @@ async def skill_review(request: Request):
         return JSONResponse({"error": "No code provided"}, status_code=400)
     review_id = str(uuid.uuid4())[:12]
     _pending_skills[review_id] = {"code": code, "filename": filename}
-    return {"review_id": review_id, "code": code, "filename": filename}
+    rec = _persist_review(review_id, filename, code)
+    return {
+        "review_id": review_id, "code": code, "filename": filename,
+        "staged_at": rec.get("staged_at", ""),
+    }
 
 
 @router.post("/api/skill/approve")
@@ -67,9 +192,12 @@ async def skill_approve(request: Request):
     """Approve a pending skill review -- writes to disk and removes from pending."""
     body = await request.json()
     review_id = body.get("review_id", "")
-    if review_id not in _pending_skills:
+    # Read disk-first (survives restart), fall back to the in-memory cache. The
+    # review is NOT removed here — only after a successful write below — so a
+    # blocked/invalid approve leaves the staged review in place to retry/reject.
+    pending = _load_review(review_id)
+    if not pending:
         return JSONResponse({"error": "Review not found or already approved"}, status_code=404)
-    pending = _pending_skills.pop(review_id)
     code = pending["code"]
     filename = pending["filename"]
     if "SKILL_DESCRIPTION" not in code or "def run(" not in code:
@@ -110,7 +238,48 @@ async def skill_approve(request: Request):
     path = os.path.join(skill_dir, filename)
     with open(path, "w") as f:
         f.write(code)
+    # Only now that the skill is on disk do we clear the staged review (from both
+    # disk and the in-memory cache) so a crash mid-write leaves it re-approvable.
+    _delete_review(review_id)
+    try:
+        from codec_audit import log_event
+        log_event(
+            "skill_approved", source="codec-routes-skills",
+            message=f"approved skill {filename} ({len(code)} bytes) → {path}",
+            level="info", outcome="ok",
+            extra={"filename": filename, "review_id": review_id, "size": len(code)},
+        )
+    except Exception:
+        pass
     return {"path": path, "skill": filename, "size": len(code)}
+
+
+@router.get("/api/skill/reviews")
+async def skill_reviews():
+    """List every skill staged for review (survives dashboard restart). The PWA
+    Skills panel renders these with Approve / Reject buttons."""
+    reviews = _list_reviews()
+    return {"reviews": reviews, "count": len(reviews)}
+
+
+@router.post("/api/skill/reject/{review_id}")
+async def skill_reject(review_id: str):
+    """Discard a staged skill review without writing it to disk."""
+    pending = _load_review(review_id)
+    if not pending:
+        return JSONResponse({"error": "Review not found"}, status_code=404)
+    _delete_review(review_id)
+    try:
+        from codec_audit import log_event
+        log_event(
+            "skill_review_rejected", source="codec-routes-skills",
+            message=f"rejected staged skill {pending.get('filename', '?')}",
+            level="info", outcome="ok",
+            extra={"review_id": review_id, "filename": pending.get("filename", "")},
+        )
+    except Exception:
+        pass
+    return {"status": "rejected", "id": review_id, "filename": pending.get("filename", "")}
 
 
 @router.get("/api/skills")
