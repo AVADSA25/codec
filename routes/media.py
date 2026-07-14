@@ -16,6 +16,7 @@ import base64
 import json
 import os
 import subprocess
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
@@ -119,12 +120,34 @@ async def webcam_snapshot():
         cap = cv2.VideoCapture(0)
         if not cap.isOpened():
             return None, None
-        ret, frame = cap.read()
-        cap.release()
-        if not ret:
-            return None, None
-        _, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
-        return jpeg.tobytes(), True
+        try:
+            # Request a high-res frame. The cv2 default is often 640x480, which
+            # reads soft/blurry once scaled up for vision analysis.
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
+            try:
+                cap.set(cv2.CAP_PROP_AUTOFOCUS, 1)  # keep AF on (AVFoundation may ignore)
+            except Exception:
+                pass
+            # Warm up before grabbing the keeper frame: the first frames after
+            # opening the device are dark and out of focus while auto-exposure,
+            # white-balance and autofocus converge. Reading and discarding ~1.2s
+            # of frames lets the sensor settle so the still is sharp and correctly
+            # exposed — this is the root fix for the blurry webcam capture.
+            frame = None
+            for _ in range(25):
+                ret, f = cap.read()
+                if ret and f is not None:
+                    frame = f
+                time.sleep(0.05)
+            if frame is None:
+                return None, None
+            # High JPEG quality — this is a single still for vision, not a stream,
+            # so don't over-compress and throw away the detail we just waited for.
+            _, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 92])
+            return jpeg.tobytes(), True
+        finally:
+            cap.release()
 
     loop = asyncio.get_event_loop()
     data, ok = await loop.run_in_executor(ThreadPoolExecutor(1), _capture)
