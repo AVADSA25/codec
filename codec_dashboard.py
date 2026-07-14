@@ -362,6 +362,7 @@ from routes.cdp import router as cdp_router
 # G-series (SR-57..58): cross-source memory search + Pilot proxy.
 from routes.memory_search import router as memory_search_router
 from routes.pilot_proxy import router as pilot_proxy_router
+from routes.mcp import router as mcp_router
 # H1 / SR-59: chat handler (POST /api/chat) + its helper cluster. The helpers
 # are re-exported back here (below) for the command-handler caller + the
 # existing test surface (codec_dashboard.CHAT_SKILL_ALLOWLIST etc.) — identity-equal.
@@ -411,6 +412,7 @@ app.include_router(web_search_router)
 app.include_router(cdp_router)
 app.include_router(memory_search_router)
 app.include_router(pilot_proxy_router)
+app.include_router(mcp_router)
 app.include_router(chat_router)
 if _has_triggers:
     app.include_router(triggers_router)
