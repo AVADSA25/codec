@@ -595,6 +595,34 @@ function escalateDismiss(btn){
     body:JSON.stringify({session_id:(typeof sessionId!=='undefined'&&sessionId)||''})})}catch(e){}
   var card=btn.closest('.msg');if(card)card.remove();
 }
+// ── Conversational create_skill (beat 21) ──
+// Backend emits {skill_confirm:{description}} after briefing the user. "Build it"
+// runs the real create_skill review-gate flow via /api/chat/build_skill; the
+// outcome is dropped back into the chat. Nothing is built until the user clicks.
+var _lastSkillDesc='';
+function renderSkillConfirmChip(info,userText){
+  _lastSkillDesc=(info&&info.description)||'';
+  var div=document.createElement('div');div.className='msg assistant';
+  div.innerHTML='<div class="msg-bubble" style="border:1px dashed var(--accent,#a78bfa);background:rgba(167,139,250,0.06)">'+
+    '<div style="font-weight:600;margin-bottom:6px">Build this skill?</div>'+
+    '<div style="font-size:12px;color:var(--text-dim);margin-bottom:8px">'+escHtml(_lastSkillDesc)+' — I\'ll generate it and stage it in your Skills tab for review. Nothing runs until you approve it there.</div>'+
+    '<div style="display:flex;gap:8px">'+
+    '<button onclick="skillConfirmBuild(this)" style="padding:6px 14px;background:var(--accent,#a78bfa);color:#000;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">Build it</button>'+
+    '<button onclick="skillConfirmCancel(this)" style="padding:6px 14px;background:transparent;color:var(--text);border:1px solid var(--border,#2a2a30);border-radius:6px;cursor:pointer;font-size:12px">Cancel</button>'+
+    '</div></div>';
+  document.getElementById('messages').appendChild(div);scrollBottom();
+}
+function skillConfirmBuild(btn){
+  var desc=_lastSkillDesc;var card=btn.closest('.msg');
+  if(card){var b=card.querySelector('.msg-bubble');if(b)b.innerHTML='<span style="color:var(--text-dim)">Building the skill…</span>';}
+  fetch('/api/chat/build_skill',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({description:desc})})
+    .then(function(r){return r.json()})
+    .then(function(d){if(card)card.remove();var div=document.createElement('div');div.className='msg assistant';
+      div.innerHTML='<div class="msg-bubble">'+formatMsg(d.response||'Done.')+'</div>';
+      document.getElementById('messages').appendChild(div);scrollBottom();})
+    .catch(function(e){if(card)card.remove();showToast('Build failed: '+e,true);});
+}
+function skillConfirmCancel(btn){var card=btn.closest('.msg');if(card)card.remove();}
 function copyCodeBlock(btn){
   // Per-code-block copy (2026-07): grabs the rendered code text (already
   // HTML-unescaped by innerText) and reuses copyMsgText's clipboard path.
@@ -1463,7 +1491,7 @@ async function sendMessage(){
           if(!line.startsWith('data: '))continue;
           var payload=line.substring(6);
           if(payload==='[DONE]')break;
-          try{var j=JSON.parse(payload);if(j.token){raw+=j.token;var ps=parseScaffold(raw);if(thinkingEnabled&&ps.think){var tp2=makeToT(div,'Reveal train of thought',true);totSet(tp2,ps.think)}if(ps.answer){if(!answerStarted){bubble.innerHTML='';answerStarted=true}bubble.innerHTML=formatMsg(ps.answer)}scrollBottom()}if(j.escalate_project){renderEscalateChip(j.escalate_project,text)}if(j.error){raw+='\n\nError: '+j.error}}catch(pe){}
+          try{var j=JSON.parse(payload);if(j.token){raw+=j.token;var ps=parseScaffold(raw);if(thinkingEnabled&&ps.think){var tp2=makeToT(div,'Reveal train of thought',true);totSet(tp2,ps.think)}if(ps.answer){if(!answerStarted){bubble.innerHTML='';answerStarted=true}bubble.innerHTML=formatMsg(ps.answer)}scrollBottom()}if(j.escalate_project){renderEscalateChip(j.escalate_project,text)}if(j.skill_confirm){renderSkillConfirmChip(j.skill_confirm,text)}if(j.error){raw+='\n\nError: '+j.error}}catch(pe){}
         }
       }
       var pf2=parseScaffold(raw);
