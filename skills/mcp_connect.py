@@ -115,6 +115,20 @@ def _client_for(server: dict):
         url = server.get("url")
         if not url:
             raise ValueError(f"server '{server.get('name')}' has no url")
+        # OAuth servers (Notion, GitHub, Linear, Atlassian, …): use fastmcp's
+        # built-in OAuth — it discovers the auth server from the MCP endpoint,
+        # opens the browser for the user to authorize, runs a localhost callback,
+        # and caches the token so later connects are silent. Without this, hitting
+        # https://mcp.notion.com/mcp just returns {"error":"invalid_token"}.
+        if server.get("auth") == "oauth":
+            try:
+                from fastmcp.client.auth import OAuth
+                return Client(url, auth=OAuth(mcp_url=url))
+            except Exception as e:  # OAuth unavailable → fall through to plain
+                import logging
+                logging.getLogger("codec").warning(
+                    "mcp_connect: OAuth unavailable for '%s' (%s) — trying plain",
+                    server.get("name"), e)
         # fastmcp infers HTTP vs SSE from the URL; headers carry API-key auth.
         try:
             return Client(url, headers=headers)
@@ -151,6 +165,30 @@ async def _alist_tools(server: dict) -> list:
 async def _acall_tool(server: dict, tool: str, args: dict):
     async with _client_for(server) as client:
         return await client.call_tool(tool, args or {})
+
+
+def signin_server(name: str) -> str:
+    """Trigger the OAuth sign-in for one server: open a client (fastmcp runs the
+    OAuth browser flow + localhost callback + token cache) and list its tools.
+    Uses a longer timeout than the normal 60s so the user has time to authorize
+    in the browser. Public — called by the Connector tab's "Sign in" button."""
+    target = str(name or "").strip().lower()
+    server = next((s for s in _servers()
+                   if str(s.get("name", "")).strip().lower() == target), None)
+    if not server:
+        return f"No MCP server named '{name}'."
+
+    def _target():
+        import asyncio
+        loop = asyncio.new_event_loop()
+        try:
+            return loop.run_until_complete(_alist_tools(server))
+        finally:
+            loop.close()
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+        tools = ex.submit(_target).result(timeout=180)
+    return f"Signed in to {name} — {len(tools)} tool(s) available. Drive it by voice/chat: \"list tools on {name}\"."
 
 
 def _fmt_tools(tools) -> str:

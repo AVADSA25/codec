@@ -134,3 +134,28 @@ async def mcp_toggle(name: str, request: Request):
         pass
 
     return {"ok": True, "name": target, "enabled": enabled}
+
+
+@router.post("/api/mcp/servers/{name}/signin")
+async def mcp_signin(name: str):
+    """Trigger the OAuth sign-in for one connector. fastmcp opens the user's
+    browser to the server's authorize page, runs a localhost callback, and caches
+    the token — so this can block for a while (the user has to authorize). Loads
+    skills/mcp_connect.py by path (skills/ isn't an importable package)."""
+    import asyncio
+
+    def _do():
+        import importlib.util
+        from codec_config import SKILLS_DIR
+        path = os.path.join(SKILLS_DIR, "mcp_connect.py")
+        spec = importlib.util.spec_from_file_location("mcp_connect_signin", path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod.signin_server(name)
+
+    try:
+        msg = await asyncio.to_thread(_do)
+        ok = not msg.lower().startswith(("no mcp server", "signed in to  "))
+        return {"ok": ok, "message": msg}
+    except Exception as e:
+        return {"ok": False, "message": f"Sign-in failed: {e}"}
