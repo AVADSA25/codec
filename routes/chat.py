@@ -440,6 +440,51 @@ CHAT_SKILL_ALLOWLIST = {
 }
 
 
+# ── Conversational create_skill (beat 21) ────────────────────────────────────
+# "create a skill for X" used to fire create_skill silently and stage the result
+# with no explanation. Mickael's ask: brief the user + confirm BEFORE building,
+# then explain the outcome — mirroring the auto-escalation "Start as Project?"
+# offer. _detect_create_skill_request intercepts the chat surface so the handler
+# can send a confirm chip instead of building; the actual build runs on confirm
+# via POST /api/chat/build_skill.
+_CREATE_SKILL_TRIGGERS = (
+    "create a skill", "make a skill", "new skill", "build a skill",
+    "create skill", "write a skill", "add a skill",
+)
+_CREATE_SKILL_STRIP = _CREATE_SKILL_TRIGGERS + ("that", "to", "for", "please", "can you", "which")
+
+
+def _detect_create_skill_request(user_text: str):
+    """If the chat message asks to create a skill, return ("build", <description>)
+    when there's a usable description, or ("ask", "") when it's too vague to build
+    yet. Returns None when it isn't a create-skill request at all."""
+    low = (user_text or "").lower()
+    if not any(re.search(r"\b" + re.escape(t) + r"\b", low) for t in _CREATE_SKILL_TRIGGERS):
+        return None
+    desc = low
+    for token in _CREATE_SKILL_STRIP:
+        desc = desc.replace(token, " ")
+    desc = re.sub(r"\s+", " ", desc).strip(" .,:;!?")
+    if len(desc) < 5:
+        return ("ask", "")
+    return ("build", desc)
+
+
+def _skill_outcome_message(result: str) -> str:
+    """Rephrase create_skill's terse output into a conversational, explanatory
+    line that tells the user what happened and where to approve it."""
+    r = result or ""
+    m = re.search(r"Skill ['\"]?([\w]+)['\"]? generated and staged", r)
+    if m:
+        name = m.group(1)
+        return (
+            f"Done — I generated **{name}** and staged it in your **Skills** tab. "
+            f"Open Skills to see exactly what it does, then click Approve to make it "
+            f"live. Nothing runs until you approve it."
+        )
+    return r  # error / vague / dashboard-unreachable — pass through as-is
+
+
 def _try_skill(user_text: str):
     """Check if user_text matches a skill. Returns (skill_name, result) or (None, None).
 
@@ -766,6 +811,30 @@ async def escalate_silence(request: Request):
     return {"ok": True, "silenced": bool(sid)}
 
 
+@router.post("/api/chat/build_skill")
+async def build_skill(request: Request):
+    """Confirmed create_skill build (beat 21). The chat handler offers a
+    "Build it?" chip for "create a skill …"; the chip's Build button POSTs here.
+    Runs the real create_skill review-gate flow, then returns a conversational
+    outcome the UI drops into the chat where it happened."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    desc = str(body.get("description") or "").strip()
+    if not desc:
+        return {"response": "No skill description was provided — tell me what the skill should do."}
+    try:
+        from codec_dispatch import registry, load_skills
+        load_skills()
+        result = await asyncio.to_thread(registry.run, "create_skill",
+                                         f"create a skill that {desc}", "CODEC Chat")
+        return {"response": _skill_outcome_message(result or "")}
+    except Exception as e:
+        log.warning(f"[Chat] build_skill failed: {e}")
+        return {"response": f"Couldn't build the skill: {e}"}
+
+
 @router.post("/api/pick-folder")
 async def pick_folder():
     """Open the native macOS folder chooser and return the selected POSIX path.
@@ -876,6 +945,33 @@ async def chat_completion(request: Request):
             or "[END DOCUMENT]" in last_user_text
         )
         if last_user_text and not has_attachment:
+            # Conversational create_skill (beat 21): brief + confirm BEFORE
+            # building, instead of firing create_skill silently. The build runs
+            # on confirm via POST /api/chat/build_skill.
+            _cs = _detect_create_skill_request(last_user_text)
+            if _cs:
+                _cs_kind, _cs_desc = _cs
+                _budget.consume("skill_hijack")
+                if _cs_kind == "ask":
+                    _cs_brief = ('What should the skill do? For example: '
+                                 '"create a skill that checks the bitcoin price".')
+                else:
+                    _cs_brief = (f"I'll build a skill for: **{_cs_desc}**. I'll generate it, "
+                                 f"then stage it in your **Skills** tab for review — nothing "
+                                 f"runs until you approve it there. Build it?")
+                if body.get("stream", False):
+                    from starlette.responses import StreamingResponse as _CsSR
+                    async def _cs_stream(_brief=_cs_brief, _kind=_cs_kind, _desc=_cs_desc):
+                        yield f"data: {json.dumps({'skill': 'create_skill'})}\n\n"
+                        yield f"data: {json.dumps({'token': _brief})}\n\n"
+                        if _kind == "build":
+                            yield f"data: {json.dumps({'skill_confirm': {'description': _desc}})}\n\n"
+                        yield "data: [DONE]\n\n"
+                    return _CsSR(_cs_stream(), media_type="text/event-stream")
+                out = {"response": _cs_brief}
+                if _cs_kind == "build":
+                    out["skill_confirm"] = {"description": _cs_desc}
+                return out
             skill_name, skill_result = await asyncio.to_thread(_try_skill, last_user_text)
             if skill_result:
                 _budget.consume("skill_hijack")   # pre-LLM hijack consumes 1
