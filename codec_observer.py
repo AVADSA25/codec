@@ -197,8 +197,52 @@ def _idle_seconds() -> float:
 # run_with_hooks so observer's own polls don't trigger plugin cascades
 # (especially the Step 4 self_improve plugin's post_tool capture).
 
+def _get_window_title(pid: int) -> str:
+    """Best-effort focused-window title via Quartz CGWindowList. Uses the same
+    Screen Recording permission the observer already has for OCR (so it works
+    from the PM2 daemon). Returns "" on failure — the app name is the primary
+    signal; title is a bonus."""
+    if not pid:
+        return ""
+    try:
+        import Quartz
+        wins = Quartz.CGWindowListCopyWindowInfo(
+            Quartz.kCGWindowListOptionOnScreenOnly, Quartz.kCGNullWindowID) or []
+        for w in wins:
+            if w.get("kCGWindowOwnerPID") == pid and w.get("kCGWindowLayer", 1) == 0:
+                t = w.get("kCGWindowName", "") or ""
+                if t:
+                    return str(t)
+    except Exception as e:
+        log.debug("Quartz title probe failed: %s", e)
+    return ""
+
+
 def _get_active_window() -> Dict[str, Any]:
-    """Returns {app, title, pid} or {} on failure."""
+    """Returns {app, title, pid} or {} on failure.
+
+    Primary path: NSWorkspace (app + pid) + Quartz (title). NSWorkspace needs NO
+    TCC permission, so it works from the background PM2 daemon — unlike the old
+    osascript/System-Events path, which macOS TCC blocked via subprocess
+    attribution (the daemon's python couldn't drive System Events even after the
+    operator granted it Automation, so the buffer captured nothing). Falls back to
+    the osascript path if AppKit/Quartz are unavailable (headless/CI)."""
+    try:
+        from AppKit import NSWorkspace
+        app = NSWorkspace.sharedWorkspace().frontmostApplication()
+        if app is not None:
+            name = str(app.localizedName() or "")
+            if name:
+                pid = int(app.processIdentifier() or 0)
+                return {"app": name, "pid": pid, "title": _get_window_title(pid)}
+    except Exception as e:
+        log.debug("NSWorkspace active-window probe failed, falling back: %s", e)
+    return _get_active_window_osascript()
+
+
+def _get_active_window_osascript() -> Dict[str, Any]:
+    """Fallback: {app, title, pid} via osascript/System Events. Blocked by TCC in
+    a background daemon (kept only for headless/CI where AppKit is absent)."""
     try:
         # AppleScript via osascript — same primitive skills/active_window.py
         # uses, but we call directly to avoid wrapping in run_with_hooks.
