@@ -52,7 +52,7 @@
     "health_check.py": "01ac95da13770e2419460b4aaf1bd79c6628b6bc5413a5608153b81feee81568",
     "imessage_send.py": "862f7031a525faed4cec7cb703ef32f5d8bdc1045326f880d50455baf4cfcf86",
     "json_formatter.py": "42a770a1455a574d33e2f96f34c63ae7a83845f70789862e5e5198d0b429fde2",
-    "mcp_connect.py": "673c2b19b8c5de631b2d1f29637af4cb00824896e1f05e8a370150d9993806d8",
+    "mcp_connect.py": "5ec24a905eb125fd0db3a1a69b29b1a87413a9ebcbf06e590e989cba1d912d4a",
     "memory_entities.py": "252ad5861d614b916504b8af6300c4a8c62622c9f6c15238b11d6c6a052bada7",
     "memory_history.py": "a2762c03c325517d10907f8aa9511103a5716a29f9e956d48473b817105fb65c",
     "memory_save.py": "3d801338bfd0818aaf1e65e692e404af0a0fba6886d26150f0fb66e4b4fde424",
