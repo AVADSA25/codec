@@ -442,13 +442,21 @@ CHAT_SKILL_ALLOWLIST = {
 
 def _try_skill(user_text: str):
     """Check if user_text matches a skill. Returns (skill_name, result) or (None, None).
-    Skips skill matching for conversational messages to prevent false triggers."""
-    if _is_conversational(user_text):
-        return None, None
+
+    An explicit allowlisted-trigger match (e.g. "what was I doing 1h ago?" →
+    observer_recall) is honored even for question-phrased ("conversational")
+    messages: a word-boundary trigger match is a stronger intent signal than the
+    chatty-phrasing heuristic. Only when NO allowlisted skill matches do
+    conversational messages fall through to the LLM (the original behaviour).
+    Before this, questions like "what was I doing?" were skipped entirely and the
+    LLM answered from memory (and fabricated)."""
     try:
         from codec_dispatch import check_skill, run_skill
         skill = check_skill(user_text)
-        if skill and skill.get("name") in CHAT_SKILL_ALLOWLIST:
+        matched = bool(skill and skill.get("name") in CHAT_SKILL_ALLOWLIST)
+        if not matched and _is_conversational(user_text):
+            return None, None
+        if matched:
             # re-audit A2: destructive skills need explicit consent (reuses the
             # AskUserQuestion PWA panel; blocks this worker thread until answered).
             import codec_consent
