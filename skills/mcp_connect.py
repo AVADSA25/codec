@@ -262,9 +262,44 @@ def signin_server(name: str) -> str:
         finally:
             loop.close()
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-        tools = ex.submit(_target).result(timeout=180)
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+            tools = ex.submit(_target).result(timeout=180)
+    except concurrent.futures.TimeoutError:
+        return (f"Sign-in to {name} timed out after 3 minutes — the browser "
+                f"authorization was never completed. Click Sign in and approve "
+                f"the request in the window that opens.")
+    except Exception as e:
+        return _signin_error_message(name, server, e)
     return f"Signed in to {name} — {len(tools)} tool(s) available. Drive it by voice/chat: \"list tools on {name}\"."
+
+
+def _signin_error_message(name: str, server: dict, exc: Exception) -> str:
+    """Turn a raw OAuth stack trace into something the operator can act on.
+
+    The failure that motivated this: GitHub's MCP server publishes no OAuth
+    metadata at all, so fastmcp's Dynamic Client Registration call 404s and the
+    flow dies BEFORE a browser ever opens. The user saw a Sign in button do
+    literally nothing. Name the cause and the fix instead."""
+    detail = f"{type(exc).__name__}: {exc}"
+    log.warning("mcp_connect: sign-in to %s failed — %s", name, detail)
+    low = detail.lower()
+    label = server.get("name", name)
+
+    if "registration" in low and "404" in low:
+        return (f"{label} doesn't support automatic app registration, so CODEC "
+                f"can't sign in through the browser — the sign-in fails before a "
+                f"window can open. This server needs a personal access token "
+                f"instead: add it under \"headers\" for \"{name}\" in "
+                f"{CONFIG_PATH} (e.g. {{\"Authorization\": \"Bearer <token>\"}}) "
+                f"and set \"auth\": \"api_key\".")
+    if "registration" in low:
+        return (f"{label} rejected CODEC's app registration, so the browser "
+                f"sign-in can't start. Details: {detail[:180]}")
+    if "timeout" in low or "timed out" in low:
+        return (f"{label} didn't respond in time. Check the URL in {CONFIG_PATH} "
+                f"and that you're online.")
+    return f"Sign-in to {label} failed — {detail[:220]}"
 
 
 def _fmt_tools(tools) -> str:
