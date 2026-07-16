@@ -39,8 +39,11 @@ SKILL_MCP_EXPOSE = False
 
 import concurrent.futures
 import json
+import logging
 import os
 import re
+
+log = logging.getLogger("codec")
 
 CONFIG_PATH = os.path.expanduser("~/.codec/mcp_servers.json")
 
@@ -106,6 +109,77 @@ def _find_server(name: str) -> dict | None:
     return None
 
 
+# ── OAuth token persistence ──────────────────────────────────────────────────
+# fastmcp's OAuth defaults to IN-MEMORY token storage, so every dashboard restart
+# lost the sign-in and nothing could tell whether a connector was connected. We
+# hand it a Keychain-backed store instead (same secret tier as CODEC's other
+# secrets), which makes sign-in durable AND makes `connected` observable.
+_TOKEN_SERVICE = "ai.avadigital.codec.mcp_tokens"
+
+
+def _token_store():
+    """Persistent AsyncKeyValue for OAuth tokens. macOS Keychain first; a 0600
+    on-disk store is the fallback (headless/CI, or Keychain unavailable)."""
+    try:
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")  # store is flagged 'unstable' upstream
+            from key_value.aio.stores.keyring import KeyringStore
+            return KeyringStore(service_name=_TOKEN_SERVICE)
+    except Exception as e:
+        log.warning("mcp_connect: Keychain token store unavailable (%s) — using disk", e)
+        from key_value.aio.stores.disk import DiskStore
+        d = os.path.expanduser("~/.codec/mcp_tokens")
+        os.makedirs(d, mode=0o700, exist_ok=True)
+        return DiskStore(directory=d)
+
+
+def _token_adapter(url: str):
+    """fastmcp's own token adapter over our persistent store — gives us
+    get_tokens() (→ connected?) and clear() (→ disconnect) without guessing at
+    its key scheme."""
+    from fastmcp.client.auth.oauth import TokenStorageAdapter
+    return TokenStorageAdapter(async_key_value=_token_store(), server_url=url)
+
+
+def is_connected(name: str) -> bool:
+    """True if this server has a stored OAuth token. Servers that need no auth
+    are 'connected' as soon as they're enabled; api_key servers count as
+    connected once their header is configured."""
+    server = _find_server(name)
+    if not server:
+        return False
+    auth = str(server.get("auth") or "").strip().lower()
+    if auth in ("", "none"):
+        return True
+    if auth == "api_key":
+        return bool(server.get("headers"))
+    url = server.get("url")
+    if not url:
+        return False
+    try:
+        return _run_async(_token_adapter(url).get_tokens()) is not None
+    except Exception as e:
+        log.debug("mcp_connect: connected-check failed for %s: %s", name, e)
+        return False
+
+
+def disconnect_server(name: str) -> str:
+    """Forget the stored OAuth token for one server (clears tokens + client info
+    + expiry via fastmcp's own adapter). The card returns to 'Sign in'."""
+    server = _find_server(name)
+    if not server:
+        return f"No MCP server named '{name}'."
+    url = server.get("url")
+    if not url:
+        return f"server '{name}' has no url"
+    try:
+        _run_async(_token_adapter(url).clear())
+        return f"Disconnected from {server.get('name', name)}."
+    except Exception as e:
+        return f"Couldn't disconnect {name}: {e}"
+
+
 def _client_for(server: dict):
     """Build a fastmcp.Client for a server entry (no connection yet)."""
     from fastmcp import Client  # local import: keeps skill scan cheap
@@ -123,7 +197,9 @@ def _client_for(server: dict):
         if server.get("auth") == "oauth":
             try:
                 from fastmcp.client.auth import OAuth
-                return Client(url, auth=OAuth(mcp_url=url))
+                # token_storage → Keychain-backed, so the sign-in survives a
+                # dashboard restart instead of dying with the process.
+                return Client(url, auth=OAuth(mcp_url=url, token_storage=_token_store()))
             except Exception as e:  # OAuth unavailable → fall through to plain
                 import logging
                 logging.getLogger("codec").warning(
