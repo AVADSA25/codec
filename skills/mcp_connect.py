@@ -225,10 +225,24 @@ def _token_adapter(url: str):
     return TokenStorageAdapter(async_key_value=_token_store(), server_url=url)
 
 
+def _headers_configured(server: dict) -> bool:
+    """True only if the api-key headers hold a REAL value.
+
+    The seeded entries ship placeholders — {"Authorization": "Bearer
+    <STRIPE_KEY>"} — and `bool(headers)` counted those as configured, so a
+    connector with no key at all reported "Connected via API key". That is the
+    same lie as the old Hugging Face "Connected", just with an extra step.
+    """
+    headers = server.get("headers") or {}
+    if not headers:
+        return False
+    return not any("<" in str(v) and ">" in str(v) for v in headers.values())
+
+
 def is_connected(name: str) -> bool:
     """True if this server has a stored OAuth token. Servers that need no auth
     are 'connected' as soon as they're enabled; api_key servers count as
-    connected once their header is configured."""
+    connected once a real key is configured (a placeholder does not count)."""
     server = _find_server(name)
     if not server:
         return False
@@ -236,7 +250,7 @@ def is_connected(name: str) -> bool:
     if auth in ("", "none"):
         return True
     if auth == "api_key":
-        return bool(server.get("headers"))
+        return _headers_configured(server)
     url = server.get("url")
     if not url:
         return False
