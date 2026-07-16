@@ -43,6 +43,37 @@ def _load_entries() -> tuple[list, str]:
         return [], ""
 
 
+# Absolute / clock-time asks the buffer can NEVER answer: it's a RAM ring of the
+# last N snapshots (~10 min at the active cadence), not a day log. Without this
+# check, "between 11am and 1pm" parsed as no-window → summarised the last few
+# minutes and looked like a confident, wrong answer.
+_ABSOLUTE_TIME_RE = re.compile(
+    r"\b\d{1,2}\s*(?:am|pm)\b"
+    r"|\b\d{1,2}:\d{2}\b"
+    r"|\b(?:today|yesterday|this morning|this afternoon|this evening|"
+    r"last night|earlier today|tonight)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_absolute_time_request(task: str) -> bool:
+    """True for clock-time / calendar-day asks ("between 11am and 1pm", "today",
+    "this morning") — windows the ring buffer structurally cannot cover."""
+    return bool(_ABSOLUTE_TIME_RE.search(task or ""))
+
+
+def _coverage(entries: list) -> str:
+    """Human span the buffer actually covers, e.g. "06:59–07:32 (33 min)"."""
+    if not entries:
+        return "nothing"
+    first, last = _parse_ts(entries[0]), _parse_ts(entries[-1])
+    if not first or not last:
+        return f"{len(entries)} snapshots"
+    mins = max(0, int((last - first).total_seconds() // 60))
+    return (f"{first.astimezone().strftime('%H:%M')}–"
+            f"{last.astimezone().strftime('%H:%M')}, about {mins} min")
+
+
 def _window_seconds(task: str) -> int | None:
     """Parse a lookback window from the task. Returns seconds, or None for 'all'.
 
@@ -138,6 +169,20 @@ def run(task: str, context: str = "") -> str:
             "service is running (pm2 status) and that Observer is enabled in "
             "~/.codec/config.json — it captures the active window, screen text, "
             "clipboard, and recent files each minute."
+        )
+
+    # Clock-time / calendar asks ("between 11am and 1pm", "today", "this
+    # morning") are structurally unanswerable: the observer is a RAM ring of the
+    # last N snapshots, not a day log. Say so plainly — the old code fell through
+    # to "summarise everything" and returned the last few minutes as if it had
+    # answered the question.
+    if _is_absolute_time_request(task):
+        return (
+            f"I can't recall that window. The observer is a rolling in-memory "
+            f"buffer of the last {len(entries)} snapshots — right now it only "
+            f"covers {_coverage(entries)} — not a full-day log, and it's wiped "
+            f"whenever the service restarts. Here's everything it currently "
+            f"holds:\n\n{_summarise(entries)}"
         )
 
     win = _window_seconds(task)
