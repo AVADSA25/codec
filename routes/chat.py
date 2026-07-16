@@ -437,6 +437,12 @@ CHAT_SKILL_ALLOWLIST = {
     # Daybreak — morning kickoff (read-only aggregation) + working-thread
     # capture (facts-table writes only). docs/DAYBREAK-DESIGN.md.
     "daily_kickoff", "thread_note",
+    # Prompt feeder — "feed these prompts into Google Flow: 1… 2… 3…". Drives
+    # the Pilot browser only (typing into a page the user is watching live); it
+    # touches no filesystem and runs no code. Without this the phrase falls
+    # through to the LLM, which answers the prompts ITSELF instead of feeding
+    # them to the tool the user actually asked for.
+    "prompt_feeder",
 }
 
 
