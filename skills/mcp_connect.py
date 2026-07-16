@@ -55,8 +55,14 @@ _SEED = {
     "servers": [
         {"name": "notion", "transport": "http", "url": "https://mcp.notion.com/mcp",
          "enabled": False, "auth": "oauth", "note": "Notion — pages, databases"},
+        # api_key, NOT oauth: GitHub's MCP server publishes no OAuth metadata
+        # (/.well-known/oauth-authorization-server → 404), so registration 404s
+        # and the browser never opens. Advertising a Sign in button that cannot
+        # possibly work is worse than no button — this shows "needs an API key".
         {"name": "github", "transport": "http", "url": "https://api.githubcopilot.com/mcp/",
-         "enabled": False, "auth": "oauth", "note": "GitHub — repos, issues, PRs"},
+         "enabled": False, "auth": "api_key",
+         "headers": {"Authorization": "Bearer <GITHUB_TOKEN>"},
+         "note": "GitHub — repos, issues, PRs (needs a personal access token)"},
         {"name": "linear", "transport": "sse", "url": "https://mcp.linear.app/sse",
          "enabled": False, "auth": "oauth", "note": "Linear — issues, projects"},
         {"name": "stripe", "transport": "http", "url": "https://mcp.stripe.com",
@@ -64,6 +70,17 @@ _SEED = {
          "headers": {"Authorization": "Bearer <STRIPE_KEY>"}, "note": "Stripe — payments (read)"},
         {"name": "hugging-face", "transport": "http", "url": "https://huggingface.co/mcp",
          "enabled": False, "auth": "none", "note": "Hugging Face — models, datasets, papers"},
+        # Open endpoints — no account, no sign-in, useful on day one. Each was
+        # probed live and returned its tool list unauthenticated.
+        {"name": "deepwiki", "transport": "http", "url": "https://mcp.deepwiki.com/mcp",
+         "enabled": False, "auth": "none",
+         "note": "DeepWiki — ask questions about any public GitHub repo"},
+        {"name": "context7", "transport": "http", "url": "https://mcp.context7.com/mcp",
+         "enabled": False, "auth": "none",
+         "note": "Context7 — up-to-date docs for any library"},
+        {"name": "microsoft-learn", "transport": "http", "url": "https://learn.microsoft.com/api/mcp",
+         "enabled": False, "auth": "none",
+         "note": "Microsoft Learn — official Microsoft & Azure docs"},
         {"name": "sentry", "transport": "http", "url": "https://mcp.sentry.dev/mcp",
          "enabled": False, "auth": "oauth", "note": "Sentry — errors, issues, traces"},
         {"name": "asana", "transport": "http", "url": "https://mcp.asana.com/v2/mcp",
@@ -80,6 +97,59 @@ _SEED = {
 }
 
 
+def _merge_seed(cfg: dict) -> tuple[dict, bool]:
+    """Add servers introduced since this config was written.
+
+    The seed was only ever applied when the file did NOT exist, so anyone with
+    an existing ~/.codec/mcp_servers.json could never receive a newly shipped
+    connector — the list silently froze on the day it was created.
+
+    Merge is additive and by name: the user's own entries, their enabled flags,
+    and their headers are never touched. Only genuinely new names are appended,
+    always disabled.
+    """
+    servers = cfg.get("servers")
+    if not isinstance(servers, list):
+        return cfg, False
+    have = {str(s.get("name", "")).strip().lower() for s in servers if isinstance(s, dict)}
+    added = [dict(s) for s in _SEED["servers"]
+             if str(s.get("name", "")).strip().lower() not in have]
+    if not added:
+        return cfg, False
+    cfg["servers"] = servers + added
+    log.info("mcp_connect: added %d new connector(s): %s",
+             len(added), ", ".join(s["name"] for s in added))
+    return cfg, True
+
+
+def _repair_bad_defaults(cfg: dict) -> tuple[dict, bool]:
+    """Correct a default WE shipped wrong, without touching the user's choices.
+
+    We seeded github as auth:"oauth", but its MCP server publishes no OAuth
+    metadata — sign-in can never succeed. _merge_seed is additive by name, so
+    existing configs keep the broken entry forever and keep offering a Sign in
+    button that cannot work.
+
+    Narrow on purpose: only github, only while it still looks like our untouched
+    default (auth == "oauth" and no headers of their own). If the user has
+    edited it, theirs wins and we leave it alone.
+    """
+    changed = False
+    for s in cfg.get("servers", []):
+        if not isinstance(s, dict):
+            continue
+        if (str(s.get("name", "")).strip().lower() == "github"
+                and s.get("auth") == "oauth"
+                and not s.get("headers")):
+            s["auth"] = "api_key"
+            s["headers"] = {"Authorization": "Bearer <GITHUB_TOKEN>"}
+            s["note"] = "GitHub — repos, issues, PRs (needs a personal access token)"
+            changed = True
+            log.info("mcp_connect: github repaired oauth→api_key "
+                     "(its MCP server has no OAuth metadata)")
+    return cfg, changed
+
+
 def _load_config() -> dict:
     if not os.path.exists(CONFIG_PATH):
         os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
@@ -88,9 +158,22 @@ def _load_config() -> dict:
         return dict(_SEED)
     try:
         with open(CONFIG_PATH, encoding="utf-8") as fh:
-            return json.load(fh)
+            cfg = json.load(fh)
     except (OSError, ValueError):
         return dict(_SEED)
+
+    cfg, added = _merge_seed(cfg)
+    cfg, repaired = _repair_bad_defaults(cfg)
+    changed = added or repaired
+    if changed:
+        try:
+            tmp = CONFIG_PATH + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as fh:
+                json.dump(cfg, fh, indent=2)
+            os.replace(tmp, CONFIG_PATH)   # atomic: never leave a torn config
+        except OSError as e:
+            log.warning("mcp_connect: couldn't persist new connectors: %s", e)
+    return cfg
 
 
 def _servers() -> list[dict]:
@@ -199,7 +282,22 @@ def _client_for(server: dict):
                 from fastmcp.client.auth import OAuth
                 # token_storage → Keychain-backed, so the sign-in survives a
                 # dashboard restart instead of dying with the process.
-                return Client(url, auth=OAuth(mcp_url=url, token_storage=_token_store()))
+                #
+                # token_endpoint_auth_method="none" registers CODEC as a PUBLIC
+                # client (PKCE only, no client_secret). Without it Notion issues
+                # a client_secret_basic client, and the mcp library then sends
+                # BOTH an Authorization: Basic header AND client_id in the body —
+                # which Notion rejects outright:
+                #   400 {"error":"invalid_request","error_description":
+                #        "Client must not use multiple authentication methods"}
+                # so the browser approval succeeded and the token exchange died.
+                # A public client is also simply correct here: a local desktop
+                # app cannot keep a secret, and PKCE (S256) is what secures it.
+                return Client(url, auth=OAuth(
+                    mcp_url=url,
+                    token_storage=_token_store(),
+                    additional_client_metadata={"token_endpoint_auth_method": "none"},
+                ))
             except Exception as e:  # OAuth unavailable → fall through to plain
                 import logging
                 logging.getLogger("codec").warning(
@@ -253,6 +351,19 @@ def signin_server(name: str) -> str:
                    if str(s.get("name", "")).strip().lower() == target), None)
     if not server:
         return f"No MCP server named '{name}'."
+
+    # Start every sign-in from a clean slate. A previous attempt can leave a
+    # registered-client record behind WITHOUT a usable token (Notion's DCR
+    # returns 201, then the token exchange fails) — and that stale record is
+    # reused forever after, so the same failure repeats no matter how many times
+    # the user clicks Sign in. Only safe because we already know we have no
+    # token: is_connected() gates this.
+    url = server.get("url")
+    if url and not is_connected(name):
+        try:
+            _run_async(_token_adapter(url).clear())
+        except Exception as e:
+            log.debug("mcp_connect: pre-signin clear failed for %s: %s", name, e)
 
     def _target():
         import asyncio
