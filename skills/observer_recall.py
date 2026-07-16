@@ -105,6 +105,22 @@ def _parse_ts(entry: dict) -> datetime | None:
         return None
 
 
+def _fmt_span(entries: list) -> str:
+    """Natural opener for how long the snapshots span, e.g. "Over the last
+    25 minutes" / "In the last couple of minutes". "" if it can't be derived."""
+    if len(entries) < 2:
+        return ""
+    first, last = _parse_ts(entries[0]), _parse_ts(entries[-1])
+    if not first or not last:
+        return ""
+    mins = int((last - first).total_seconds() // 60)
+    if mins <= 1:
+        return "In the last minute or so"
+    if mins < 5:
+        return "Over the last couple of minutes"
+    return f"Over the last {mins} minutes"
+
+
 def _summarise(entries: list) -> str:
     """A compact, human timeline of the entries (oldest→newest)."""
     if not entries:
@@ -112,6 +128,7 @@ def _summarise(entries: list) -> str:
 
     lines: list[str] = []
     last_app = None
+    last_title_seen = ""
     apps_seen: list[str] = []
     files_seen: set[str] = set()
     ocr_bits: list[str] = []
@@ -122,6 +139,8 @@ def _summarise(entries: list) -> str:
         win = e.get("active_window") or {}
         app = win.get("app")
         title = (win.get("title") or "").strip()
+        if title:
+            last_title_seen = title
         if app and app != last_app:
             label = app + (f" — {title[:60]}" if title else "")
             lines.append(f"  {stamp}  {label}")
@@ -136,15 +155,35 @@ def _summarise(entries: list) -> str:
         if ocr and len(ocr) > 20:
             ocr_bits.append(ocr[:120])
 
+    # Conversational prose, not a machine dump. The old format printed
+    # "You were in: X. / Timeline: / 12:20 X / Files touched: y" — accurate but
+    # robotic. CODEC should answer like a person who was watching over your
+    # shoulder. Deterministic templating (no second LLM call) keeps it instant
+    # and, crucially, keeps it from inventing anything.
     out = []
     if apps_seen:
-        out.append("You were in: " + ", ".join(apps_seen[:6]) + ".")
-    if lines:
-        out.append("Timeline:\n" + "\n".join(lines[:12]))
+        span = _fmt_span(entries)
+        if len(apps_seen) == 1:
+            body = f"you were in {apps_seen[0]} the whole time"
+        elif len(apps_seen) == 2:
+            body = f"you went back and forth between {apps_seen[0]} and {apps_seen[1]}"
+        else:
+            shown = apps_seen[:4]
+            body = ("you moved around a fair bit — "
+                    + ", ".join(shown[:-1]) + f" and {shown[-1]}")
+        opener = f"{span}, {body}" if span else body[0].upper() + body[1:]
+        if last_title_seen:
+            opener += f". Last thing on screen was \"{last_title_seen[:70]}\""
+        out.append(opener + ".")
     if files_seen:
-        out.append("Files touched: " + ", ".join(sorted(files_seen)[:8]) + ".")
+        fl = sorted(files_seen)
+        if len(fl) == 1:
+            out.append(f"You touched one file: {fl[0]}.")
+        else:
+            out.append(f"You touched {len(fl)} files: " + ", ".join(fl[:6])
+                       + ("…" if len(fl) > 6 else "") + ".")
     if ocr_bits:
-        out.append('On screen (excerpt): "' + ocr_bits[-1] + '"')
+        out.append(f"Text on screen included: \"{ocr_bits[-1].strip()}\"")
     if not out:
         # Entries exist but carry no window/title/OCR/file content — the observer
         # is polling but capturing nothing. This is almost always a macOS
@@ -204,4 +243,6 @@ def run(task: str, context: str = "") -> str:
         return (f"Nothing in {span} — the observer keeps roughly the last 10 "
                 f"minutes, so I can't see that far back.{depth}")
 
-    return f"Here's {span} (from CODEC's observer):\n{_summarise(kept)}"
+    # _summarise already opens conversationally ("Over the last 25 minutes, you
+    # were in Claude…"), so no robotic "Here's X (from CODEC's observer):" header.
+    return _summarise(kept)
