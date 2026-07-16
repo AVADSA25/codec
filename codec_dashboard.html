@@ -756,6 +756,12 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
     .mcp-btn-primary:hover:not(:disabled){filter:brightness(1.08)}
     .mcp-connected{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;color:#3fa45b}
     .mcp-connected .dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
+    .mcp-hint{font-size:11.5px;color:var(--text-muted)}
+    /* Sign-in failures stay ON the card. A toast disappears before the user has
+       read it, which is how "GitHub sign-in does nothing" went unexplained. */
+    .mcp-err{margin-top:8px;padding:8px 11px;border-radius:6px;font-size:11.5px;line-height:1.55;
+      background:rgba(212,76,53,.09);border:1px solid rgba(212,76,53,.35);color:#c2452f}
+    .mcp-err[hidden]{display:none}
     .mcp-switch{position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0}
     .mcp-switch input{opacity:0;width:0;height:0}
     .mcp-slider{position:absolute;cursor:pointer;inset:0;background:var(--surface-3);border:1px solid var(--border);border-radius:24px;transition:.2s}
@@ -1094,27 +1100,38 @@ async function renderConnectors() {
       var lock = '<svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>';
       var nm = escHtml(s.name);
       // State machine, in the order a user actually experiences it:
-      //   off                      → nothing (just the toggle)
-      //   on + needs auth + !conn  → why + how to fix it (Sign in)
-      //   on + connected           → Connected + a way back out (Disconnect)
-      //   on + no auth needed      → Connected (nothing to sign into)
+      //   off                       → nothing (just the toggle)
+      //   on + oauth + !signed in   → why + how to fix it (Sign in)
+      //   on + oauth + signed in    → Signed in + the way back out (Sign out)
+      //   on + api key              → Connected via API key (no session to end)
+      //   on + open endpoint        → "No sign-in needed" — NOT "Connected".
+      //     Saying "Connected" for an anonymous endpoint reads as "someone
+      //     signed in here", which is a lie: there is no session, which is also
+      //     why there's no Sign out to offer.
       var state = '';
-      if (s.enabled && s.needs_auth && !s.connected) {
-        var kind = s.auth === 'api_key' ? 'API key' : 'OAuth sign-in';
+      if (s.enabled && s.auth === 'oauth' && s.connected) {
         state = '<div class="mcp-state">' +
-          '<span class="mcp-auth">' + lock + 'Needs ' + kind + '</span>' +
-          (s.auth === 'oauth'
-            ? '<button class="mcp-btn mcp-btn-primary" data-signin="' + nm + '">Sign in</button>'
-            : '') +
+          '<span class="mcp-connected"><span class="dot"></span>Signed in</span>' +
+          '<button class="mcp-btn" data-disconnect="' + nm + '">Sign out</button>' +
           '</div>';
-      } else if (s.enabled && s.connected) {
+      } else if (s.enabled && s.auth === 'oauth') {
         state = '<div class="mcp-state">' +
-          '<span class="mcp-connected"><span class="dot"></span>Connected</span>' +
-          (s.auth === 'oauth'
-            ? '<button class="mcp-btn" data-disconnect="' + nm + '">Disconnect</button>'
-            : '') +
+          '<span class="mcp-auth">' + lock + 'Needs OAuth sign-in</span>' +
+          '<button class="mcp-btn mcp-btn-primary" data-signin="' + nm + '">Sign in</button>' +
+          '</div>';
+      } else if (s.enabled && s.auth === 'api_key') {
+        state = s.connected
+          ? '<div class="mcp-state"><span class="mcp-connected"><span class="dot"></span>' +
+            'Connected via API key</span></div>'
+          : '<div class="mcp-state"><span class="mcp-auth">' + lock +
+            'Needs an API key in mcp_servers.json</span></div>';
+      } else if (s.enabled) {
+        state = '<div class="mcp-state">' +
+          '<span class="mcp-connected"><span class="dot"></span>Ready</span>' +
+          '<span class="mcp-hint">Open endpoint — no sign-in needed</span>' +
           '</div>';
       }
+      state += '<div class="mcp-err" data-err="' + nm + '" hidden></div>';
       return '<div class="mcp-card">' +
         '<div class="mcp-card-main">' +
           '<div class="mcp-card-top"><span class="mcp-name">' + nm + '</span>' +
@@ -1175,8 +1192,20 @@ async function toggleConnector(name, el) {
 
 // OAuth sign-in: opens the server's authorize page in the browser (fastmcp runs
 // the flow + caches the token). Can take a while — the user has to authorize.
+// Show a sign-in failure ON the card and keep it there. Toasts vanish in a few
+// seconds, so a failure the user needs to act on (add a token, retry the browser
+// approval) was effectively invisible.
+function mcpShowError(name, msg) {
+  var el = document.querySelector('.mcp-err[data-err="' + (window.CSS && CSS.escape ? CSS.escape(name) : name) + '"]');
+  if (!el) { showToast(msg, true); return; }
+  el.textContent = msg;
+  el.hidden = false;
+}
+
 async function mcpSignin(name, btn) {
   btn.disabled = true; var orig = btn.textContent; btn.textContent = 'Opening browser…';
+  var errBox = document.querySelector('.mcp-err[data-err="' + (window.CSS && CSS.escape ? CSS.escape(name) : name) + '"]');
+  if (errBox) errBox.hidden = true;
   try {
     var csrf = (document.cookie.match(/codec_csrf=([^;]+)/) || [])[1] || '';
     var r = await fetch('/api/mcp/servers/' + encodeURIComponent(name) + '/signin', {
@@ -1184,10 +1213,14 @@ async function mcpSignin(name, btn) {
     });
     var d = await r.json().catch(function() { return {}; });
     var okay = r.ok && d.ok !== false;
-    showToast(d.message || (okay ? 'Signed in.' : 'Sign-in failed.'), !okay);
-    if (okay) renderConnectors();
+    if (okay) {
+      showToast(d.message || 'Signed in.');
+      renderConnectors();
+    } else {
+      mcpShowError(name, d.message || 'Sign-in failed.');
+    }
   } catch (e) {
-    showToast('Sign-in failed: ' + e, true);
+    mcpShowError(name, 'Sign-in failed: ' + e);
   } finally {
     btn.disabled = false; btn.textContent = orig;
   }

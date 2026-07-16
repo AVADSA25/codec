@@ -175,7 +175,10 @@ async def mcp_signin(name: str):
     import asyncio
     try:
         msg = await asyncio.to_thread(lambda: _mcp_connect().signin_server(name))
-        ok = not msg.lower().startswith("no mcp server")
+        # signin_server never raises — it returns an operator-readable message
+        # for every failure mode (no such server, DCR unsupported, timeout).
+        # Only the success path starts with "Signed in to".
+        ok = msg.lower().startswith("signed in to")
         return {"ok": ok, "message": msg}
     except Exception as e:
         return {"ok": False, "message": f"Sign-in failed: {e}"}
