@@ -72,14 +72,44 @@ def _public_view(s: dict) -> dict:
         "needs_auth": needs_auth,
         "auth": auth or "none",
         "note": s.get("note", ""),
+        "connected": False,  # filled in below for enabled servers
     }
+
+
+def _mcp_connect():
+    """Load skills/mcp_connect.py by path (skills/ isn't an importable package)."""
+    import importlib.util
+    from codec_config import SKILLS_DIR
+    path = os.path.join(SKILLS_DIR, "mcp_connect.py")
+    spec = importlib.util.spec_from_file_location("mcp_connect_rt", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 
 
 @router.get("/api/mcp/servers")
 async def mcp_servers():
-    """List configured external MCP servers for the Connector tab."""
+    """List configured external MCP servers for the Connector tab, including
+    whether each ENABLED one is actually signed in (`connected`). Disabled
+    servers are never connected, so we skip the token lookup for them."""
+    import asyncio
     servers = [_public_view(s) for s in _read_servers()
                if isinstance(s, dict) and s.get("name")]
+
+    def _fill_connected():
+        mc = _mcp_connect()
+        for v in servers:
+            if v["enabled"]:
+                try:
+                    v["connected"] = bool(mc.is_connected(v["name"]))
+                except Exception:
+                    v["connected"] = False
+
+    try:
+        await asyncio.to_thread(_fill_connected)
+    except Exception:
+        pass  # never fail the listing over a token probe
+
     return {"servers": servers, "count": len(servers)}
 
 
@@ -143,19 +173,30 @@ async def mcp_signin(name: str):
     the token — so this can block for a while (the user has to authorize). Loads
     skills/mcp_connect.py by path (skills/ isn't an importable package)."""
     import asyncio
-
-    def _do():
-        import importlib.util
-        from codec_config import SKILLS_DIR
-        path = os.path.join(SKILLS_DIR, "mcp_connect.py")
-        spec = importlib.util.spec_from_file_location("mcp_connect_signin", path)
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        return mod.signin_server(name)
-
     try:
-        msg = await asyncio.to_thread(_do)
-        ok = not msg.lower().startswith(("no mcp server", "signed in to  "))
+        msg = await asyncio.to_thread(lambda: _mcp_connect().signin_server(name))
+        ok = not msg.lower().startswith("no mcp server")
         return {"ok": ok, "message": msg}
     except Exception as e:
         return {"ok": False, "message": f"Sign-in failed: {e}"}
+
+
+@router.post("/api/mcp/servers/{name}/disconnect")
+async def mcp_disconnect(name: str):
+    """Forget the stored OAuth token for one connector — the card returns to
+    'Sign in'. Clears tokens + client info + expiry via fastmcp's own adapter."""
+    import asyncio
+    try:
+        msg = await asyncio.to_thread(lambda: _mcp_connect().disconnect_server(name))
+        ok = msg.lower().startswith("disconnected")
+        if ok:
+            try:
+                from codec_audit import log_event
+                log_event("mcp_server_disconnected", "codec-dashboard",
+                          f"MCP connector '{name}' token cleared via Connector tab",
+                          extra={"server": name}, outcome="ok", level="info")
+            except Exception:
+                pass
+        return {"ok": ok, "message": msg}
+    except Exception as e:
+        return {"ok": False, "message": f"Disconnect failed: {e}"}
