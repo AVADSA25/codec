@@ -202,6 +202,20 @@ class PilotChrome:
         """Type text into an element by XPath."""
         await self._require_page().locator(f"xpath={xpath}").fill(text, timeout=timeout)
 
+    async def click_xy(self, x: float, y: float) -> None:
+        """Click raw viewport coordinates. Used by the dashboard's click-through
+        live view when the click doesn't land on an indexed element (the indexed
+        path is preferred — it records a replayable xpath)."""
+        await self._require_page().mouse.click(x, y)
+
+    async def type_text(self, text: str) -> None:
+        """Type into whatever currently has focus (after a click-through)."""
+        await self._require_page().keyboard.type(text)
+
+    async def press_key(self, key: str) -> None:
+        """Press a single key (Enter, Tab, Backspace, …) on the focused element."""
+        await self._require_page().keyboard.press(key)
+
     async def wait(self, ms: int) -> None:
         """Sleep without blocking the event loop."""
         await asyncio.sleep(ms / 1000)

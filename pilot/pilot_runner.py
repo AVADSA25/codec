@@ -176,6 +176,18 @@ class TypeRequest(BaseModel):
     text: str
 
 
+class ClickXYRequest(BaseModel):
+    """A click-through from the dashboard's live view, in viewport coordinates."""
+    x: float
+    y: float
+
+
+class KeyRequest(BaseModel):
+    """Typed text and/or a single key press, sent to whatever has focus."""
+    text: str = ""
+    key: str = ""
+
+
 class RunRequest(BaseModel):
     task: str           # natural-language task description (used in Phase 4)
     fps: float = 2.0    # screencast frame rate
@@ -346,6 +358,59 @@ async def click_element(index: int):
         result=f"clicked [{index}] {el.role} '{el.name}'",
     )
     return {"clicked": str(el), "xpath": el.xpath,
+            "recording": _recording.run_id if _recording else None}
+
+
+@app.post("/click_xy")
+async def click_xy(req: ClickXYRequest):
+    """Click at viewport coordinates — the dashboard's live view click-through.
+
+    Prefers resolving the point to an indexed element and clicking it by XPath:
+    that makes the action RECORDABLE as a durable, replayable step (raw pixel
+    coords would compile into a brittle skill that breaks the moment the page
+    reflows). Falls back to a raw mouse click when the point isn't on any
+    indexed element (blank space, canvas, custom widget).
+    """
+    pilot = _require_pilot()
+    snap = await take_snapshot(pilot.page)
+
+    # Smallest element whose bbox contains the point wins — inner controls sit on
+    # top of their containers, and the smallest hit is the one a human aimed at.
+    hit = None
+    for el in snap.elements:
+        b = el.bbox or {}
+        left, top = b.get("left", 0), b.get("top", 0)
+        w, h = b.get("width", 0), b.get("height", 0)
+        if w <= 0 or h <= 0:
+            continue
+        if left <= req.x <= left + w and top <= req.y <= top + h:
+            if hit is None or (w * h) < (hit.bbox.get("width", 0) * hit.bbox.get("height", 0)):
+                hit = el
+
+    if hit is not None:
+        await pilot.click_xpath(hit.xpath)
+        _record_step(
+            {"action": "click", "index": hit.index},
+            render_for_llm(snap), el=hit,
+            result=f"clicked [{hit.index}] {hit.role} '{hit.name}' (via live view)",
+        )
+        return {"clicked": str(hit), "xpath": hit.xpath, "matched": True,
+                "recording": _recording.run_id if _recording else None}
+
+    await pilot.click_xy(req.x, req.y)
+    return {"clicked": f"({req.x:.0f}, {req.y:.0f})", "matched": False,
+            "recording": _recording.run_id if _recording else None}
+
+
+@app.post("/key")
+async def key_input(req: KeyRequest):
+    """Type text and/or press a key on whatever has focus (after a click-through)."""
+    pilot = _require_pilot()
+    if req.text:
+        await pilot.type_text(req.text)
+    if req.key:
+        await pilot.press_key(req.key)
+    return {"typed": req.text, "key": req.key,
             "recording": _recording.run_id if _recording else None}
 
 

@@ -452,10 +452,17 @@ a { color: var(--accent); text-decoration: none; }
       <!-- LEFT: the live browser viewport (the star of the show) -->
       <div style="display:flex;flex-direction:column;gap:8px;min-width:0;">
         <div style="position:relative;border-radius:10px;overflow:hidden;border:1px solid var(--border);background:#0d0d10;">
-          <img id="pilotScreenshot" src="" alt="Live browser" style="display:block;width:100%;aspect-ratio:1280/800;object-fit:contain;background:#0d0d10;cursor:pointer;" onclick="pilotOpenScreenshot()" title="Click to open full size">
+          <img id="pilotScreenshot" src="" alt="Live browser" style="display:block;width:100%;aspect-ratio:1280/800;object-fit:contain;background:#0d0d10;cursor:crosshair;" onclick="pilotViewClick(event)" title="Click to control the browser — click any element, then type">
           <div id="pilotLiveBadge" style="position:absolute;top:12px;left:12px;display:flex;align-items:center;gap:7px;padding:5px 14px;border-radius:999px;background:rgba(0,0,0,.55);backdrop-filter:blur(6px);font-size:12px;font-weight:700;letter-spacing:2px;color:#fff;font-family:var(--mono);">
-            <span id="pilotLivePulse" style="width:9px;height:9px;border-radius:50%;background:#666;"></span>LIVE
+            <span id="pilotLivePulse" style="width:9px;height:9px;border-radius:50%;background:#666;"></span>LIVE · CLICK TO CONTROL
           </div>
+          <!-- Expand kept as its own control so the primary click can DRIVE the
+               browser (opening a static screenshot was the old default and made
+               the live view useless for teach mode). -->
+          <button onclick="pilotOpenScreenshot()" title="Open full size"
+            style="position:absolute;top:12px;right:12px;width:30px;height:30px;display:flex;align-items:center;justify-content:center;border-radius:8px;border:none;background:rgba(0,0,0,.55);backdrop-filter:blur(6px);color:#fff;cursor:pointer;">
+            <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+          </button>
           <div id="pilotAgentBadge" style="display:none;position:absolute;top:12px;right:12px;padding:5px 14px;border-radius:999px;background:rgba(232,113,26,.85);font-size:12px;font-weight:700;letter-spacing:1px;color:#fff;font-family:var(--mono);">🤖 CODEC DRIVING</div>
           <div id="pilotCurrentUrl" style="position:absolute;bottom:0;left:0;right:0;padding:9px 14px;background:linear-gradient(transparent,rgba(0,0,0,.7));font-size:12.5px;font-family:var(--mono);color:#eee;word-break:break-all;"></div>
         </div>
@@ -1318,6 +1325,58 @@ document.addEventListener('visibilitychange', function() {
 function pilotOpenScreenshot() {
   window.open(_pilotBase + '/screenshot', '_blank');
 }
+
+/* ── Click-through: drive the real browser from the live view ──
+   The stream is a 1280x800 viewport rendered into a responsive <img>, so map the
+   click from displayed pixels back to viewport coords. The runner resolves the
+   point to an indexed element where it can, so Record/Teach still compiles a
+   durable xpath step rather than brittle coordinates. */
+var PILOT_VIEWPORT_W = 1280, PILOT_VIEWPORT_H = 800;
+
+function pilotViewClick(ev) {
+  var img = document.getElementById('pilotScreenshot');
+  if (!img) return;
+  var r = img.getBoundingClientRect();
+  if (!r.width || !r.height) return;
+  var x = ((ev.clientX - r.left) / r.width) * PILOT_VIEWPORT_W;
+  var y = ((ev.clientY - r.top) / r.height) * PILOT_VIEWPORT_H;
+  x = Math.max(0, Math.min(PILOT_VIEWPORT_W, x));
+  y = Math.max(0, Math.min(PILOT_VIEWPORT_H, y));
+  _pilotClickFocused = true;   // subsequent typing goes to the page
+  _pilotFetch('/click_xy', {
+    method: 'POST',
+    body: JSON.stringify({x: x, y: y})
+  })
+  .then(function(r2){ return r2.json().then(function(d){ return {ok:r2.ok, status:r2.status, d:d}; }); })
+  .then(function(res){
+    if (!res.ok) { showToast('Click failed (' + res.status + ')', true); return; }
+    // Give the page a beat to react, then refresh the view + DOM snapshot.
+    setTimeout(pilotRefreshScreenshot, 250);
+    setTimeout(pilotSnapshot, 600);
+  })
+  .catch(function(e){ showToast('Click failed: ' + e, true); });
+}
+
+// After a click-through, typing goes into the page (like a real browser).
+var _pilotClickFocused = false;
+document.addEventListener('keydown', function(ev) {
+  if (!_pilotClickFocused) return;
+  var t = ev.target;
+  // Never steal keys from a real input in the dashboard (url bar, mission box…)
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+  var pilotPanel = document.getElementById('pilotScreenshot');
+  if (!pilotPanel || pilotPanel.offsetParent === null) return;  // Pilot not visible
+  if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+
+  var body = null;
+  if (ev.key.length === 1) body = {text: ev.key};
+  else if (['Enter','Backspace','Tab','Escape','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].indexOf(ev.key) >= 0) body = {key: ev.key};
+  if (!body) return;
+  ev.preventDefault();
+  _pilotFetch('/key', {method: 'POST', body: JSON.stringify(body)})
+    .then(function(){ setTimeout(pilotRefreshScreenshot, 200); })
+    .catch(function(){});
+});
 
 /* ── Navigate ── */
 function pilotNavigate() {
