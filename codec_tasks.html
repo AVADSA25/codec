@@ -1359,6 +1359,31 @@ function pilotViewClick(ev) {
 
 // After a click-through, typing goes into the page (like a real browser).
 var _pilotClickFocused = false;
+
+// Send text to the Pilot browser, then refresh the frame.
+function _pilotSendKey(body) {
+  _pilotFetch('/key', {method: 'POST', body: JSON.stringify(body)})
+    .then(function(){ setTimeout(pilotRefreshScreenshot, 200); })
+    .catch(function(){});
+}
+
+// Paste: read THIS Mac's clipboard and TYPE it into the Pilot browser. Sending
+// Cmd+V straight through would paste from the Pilot Chromium's own clipboard,
+// which is empty — so a copied email/password never arrives. The dashboard page
+// is the one holding the real clipboard; navigator.clipboard.readText() reads it
+// on this genuine user gesture. Works on https:// (Cloudflare) and localhost.
+function _pilotPasteFromClipboard() {
+  if (!navigator.clipboard || !navigator.clipboard.readText) {
+    showToast('This browser blocks clipboard read — type it in instead', true);
+    return;
+  }
+  navigator.clipboard.readText().then(function(text) {
+    if (text) _pilotSendKey({text: text});
+  }).catch(function() {
+    showToast('Clipboard blocked — click the dashboard once, then paste again', true);
+  });
+}
+
 document.addEventListener('keydown', function(ev) {
   if (!_pilotClickFocused) return;
   var t = ev.target;
@@ -1366,16 +1391,35 @@ document.addEventListener('keydown', function(ev) {
   if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
   var pilotPanel = document.getElementById('pilotScreenshot');
   if (!pilotPanel || pilotPanel.offsetParent === null) return;  // Pilot not visible
-  if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
 
+  var shortcut = ev.metaKey || ev.ctrlKey;   // a real Cmd/Ctrl chord
+
+  // ── Cmd/Ctrl shortcuts ─────────────────────────────────────────────────
+  if (shortcut) {
+    var k = ev.key.toLowerCase();
+    if (k === 'v') { ev.preventDefault(); _pilotPasteFromClipboard(); return; }
+    // Forward the useful editing chords to the Pilot browser (Chromium on the
+    // same Mac, so Meta+A selects all there). Anything else we let the OS keep.
+    if (['a','c','x','z'].indexOf(k) >= 0) {
+      ev.preventDefault();
+      _pilotSendKey({key: 'Meta+' + k});
+    }
+    return;  // never TYPE the bare letter of a shortcut
+  }
+
+  // ── Ordinary keys ──────────────────────────────────────────────────────
+  // A single-character key is the already-RESOLVED character, including
+  // AltGr/Option combinations: @ on a French/Spanish Mac is an Option key and
+  // arrives here as ev.key === '@' with ev.altKey true. The old handler
+  // returned early on altKey, so every Option-produced character (@ # € ~ …)
+  // was silently dropped. Length-1 ⇒ printable ⇒ send as text regardless of Alt.
   var body = null;
   if (ev.key.length === 1) body = {text: ev.key};
-  else if (['Enter','Backspace','Tab','Escape','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].indexOf(ev.key) >= 0) body = {key: ev.key};
+  else if (['Enter','Backspace','Tab','Escape','Delete','Home','End',
+            'ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].indexOf(ev.key) >= 0) body = {key: ev.key};
   if (!body) return;
   ev.preventDefault();
-  _pilotFetch('/key', {method: 'POST', body: JSON.stringify(body)})
-    .then(function(){ setTimeout(pilotRefreshScreenshot, 200); })
-    .catch(function(){});
+  _pilotSendKey(body);
 });
 
 /* ── Navigate ── */
