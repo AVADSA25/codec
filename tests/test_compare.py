@@ -155,11 +155,17 @@ class TestSkill:
         assert reg.get_mcp_expose("compare") is True
 
     def test_parses_prompt_and_formats_labeled(self, monkeypatch):
+        # Two tiers so this exercises the LABELED multi-model format (its point).
+        # A single local result now takes the graceful-degrade path — covered by
+        # test_single_local_degrades_gracefully below.
         import skills.compare as sc
         monkeypatch.setattr(sc, "compare", lambda prompt, blind=False: {
             "prompt": prompt, "blind": blind,
-            "results": [{"label": "local", "display": "local", "tier": "local",
-                         "ok": True, "response": "42", "elapsed_ms": 10}]})
+            "results": [
+                {"label": "local", "display": "local", "tier": "local",
+                 "ok": True, "response": "42", "elapsed_ms": 10},
+                {"label": "cloud-pro", "display": "cloud-pro", "tier": "cloud",
+                 "ok": True, "response": "forty-two", "elapsed_ms": 20}]})
         out = sc.run("compare models: meaning of life")
         assert "meaning of life" in out and "local" in out and "42" in out
 
@@ -185,3 +191,45 @@ class TestSkill:
                          "ok": False, "error": "license expired", "elapsed_ms": 3}]})
         out = sc.run("compare models hello")
         assert "✗" in out and "license expired" in out
+
+    def test_single_local_degrades_gracefully(self, monkeypatch):
+        """No license → only local answers. Must explain, not say 'Compared 1
+        model' (which reads like the feature is broken)."""
+        import skills.compare as sc
+        monkeypatch.setattr(sc, "compare", lambda prompt, blind=False: {
+            "prompt": prompt, "blind": False,
+            "results": [{"label": "local", "display": "local", "tier": "local",
+                         "ok": True, "response": "Blue", "elapsed_ms": 42}]})
+        out = sc.run("compare models name a color")
+        assert "Compared 1 model" not in out
+        assert "Only the local model" in out
+        assert "AVA license" in out
+        assert "Blue" in out               # the answer is still shown
+
+    def test_two_models_still_uses_normal_header(self, monkeypatch):
+        """The multi-model path is untouched: the degrade branch is single-local
+        ONLY."""
+        import skills.compare as sc
+        monkeypatch.setattr(sc, "compare", lambda prompt, blind=False: {
+            "prompt": prompt, "blind": False,
+            "results": [
+                {"label": "local", "display": "local", "tier": "local",
+                 "ok": True, "response": "A", "elapsed_ms": 5},
+                {"label": "cloud-pro", "display": "cloud-pro", "tier": "cloud",
+                 "ok": True, "response": "B", "elapsed_ms": 9}]})
+        out = sc.run("compare models hi")
+        assert "Compared 2 models" in out
+        assert "Only the local model" not in out
+
+    def test_single_cloud_is_not_degraded(self, monkeypatch):
+        """A single NON-local result (e.g. cookbook-only) is a real comparison
+        surface, not the no-license state — keep the normal header."""
+        import skills.compare as sc
+        monkeypatch.setattr(sc, "compare", lambda prompt, blind=False: {
+            "prompt": prompt, "blind": False,
+            "results": [{"label": "cookbook-1", "display": "cookbook-1",
+                         "tier": "cookbook", "ok": True, "response": "X",
+                         "elapsed_ms": 7}]})
+        out = sc.run("compare models hi")
+        assert "Only the local model" not in out
+        assert "Compared 1 model" in out

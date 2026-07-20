@@ -48,6 +48,21 @@ def run(task, app="", ctx=""):
     if not results:
         return f"No model endpoints available to compare ({res.get('note', 'none configured')})."
 
+    # Graceful degrade: with no cloud license only the local tier answers, and
+    # "Compared 1 model" reads like the feature is broken. Say what's actually
+    # happening — there's nothing to compare against yet — and how to unlock it.
+    # Never in blind mode: blind deliberately hides identities, and a
+    # "you need a license" line would defeat the point.
+    if not blind and len(results) == 1 and results[0].get("tier") == "local":
+        r = results[0]
+        body = r.get("response", "") if r.get("ok") else f"✗ {r.get('error', 'failed')}"
+        return (
+            "Only the local model is available on this machine, so there's "
+            "nothing to compare it against yet. Connect an AVA license and the "
+            "same prompt lines up side by side against Claude, GPT and Gemini.\n\n"
+            f"### local  ({r.get('elapsed_ms')}ms)\n{body}"
+        )
+
     head = (f"Compared {len(results)} model{'s' if len(results) != 1 else ''}"
             + (" — blind" if blind else "") + f" on: {res['prompt']}")
     lines = [head]
