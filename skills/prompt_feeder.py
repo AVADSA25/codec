@@ -145,6 +145,11 @@ def _parse_prompts(task: str) -> list[str]:
     m = re.search(r":\s*(.+)", task, re.S)
     if m:
         body = m.group(1)
+    elif ":" in task:
+        # "feed these prompts into gemini:" with nothing after the colon — the
+        # preamble is a command, not a prompt. Without this the whole command
+        # sentence gets typed into the tool as prompt #1.
+        return []
 
     # Line-anchored list first (keeps "3.5 stars" inside a line intact).
     numbered = re.findall(r"(?:^|\n)\s*(?:\d+[.)]|[-•*])\s*(.+)", body)
