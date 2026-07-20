@@ -1,6 +1,107 @@
 # HANDOVER — CODEC buyer journey
 
-**Last updated:** 2026-07-10 · session: buyer-journey audit + R1 "stop the lies" + R2 "open the store"
+**Last updated:** 2026-07-21 · session: Pilot + Connector hardening for the live demo
+
+## 2026-07-21 — demo-readiness sweep (Pilot, Connector, prompt_feeder, compare)
+
+Big session hardening the demo. All shipped the standard way: worktree → tests → PR → CI green →
+squash-merge → FF production tree → pm2 restart → **live-verified**. Two repos in play:
+`AVADSA25/codec` (dashboard/skills) and **`AVADSA25/codec-pilot`** (the pilot-runner code, which
+executes from `~/codec`, NOT `~/codec-repo/pilot/` — that folder is a stale copy).
+
+**Pilot (codec-pilot repo):**
+- #2 click_xy always lands (short XPath timeout → raw-mouse fallback) + JSON error handler (killed
+  the `Unexpected token 'I', "Internal S"` toast) + bare-word omnibox → search.
+- #3 **unique XPaths** — `getXPath` omitted the index on first-of-list siblings, so `/nav/div/a`
+  matched all 9 links and Playwright refused. Broke teach-mode replay silently. Regression test.
+- #4 **SPA settle** — `/navigate` snapshotted at domcontentloaded, before Gemini/Flow render → 0
+  elements → agent gave up. Now polls for first interactive element (6s budget). gemini: 0→19.
+- #5 **live run progress** — `_runs` only got steps when the run FINISHED, so the UI showed
+  `steps:[]` for minutes and looked dead (why Mickael paused a working run). `HitlController.execute`
+  now publishes the in-flight `AgentRun` as `.live_run`; `/run/{id}/status` overlays it while running.
+- codec #272 **live-view keyboard** — one line dropped Cmd+V AND `@`: `if (metaKey||ctrlKey||altKey)
+  return`. Cmd/Ctrl+V now reads the Mac clipboard (`navigator.clipboard.readText`) and TYPES it
+  (Pilot's own clipboard is empty). Option chars (`@ # € ~` on FR/ES keyboards) now type. Cmd+A/C/X/Z
+  forwarded.
+- **Teach-mode loop VERIFIED end to end**: record → click → compile pending skill → replay re-drove
+  example.com→iana.org, 1/1 steps, method=xpath. Compiled skill is well-formed in the Skills tab.
+
+**Connector (codec repo):**
+- #266 honest state — GitHub sign-in silently failed (its MCP server has NO OAuth metadata, 404);
+  HF said "Connected" with no session. Now: real states + on-card error messages.
+- #270 **Notion sign-in root cause** — Notion issued a `client_secret_basic` client; the mcp lib
+  then sent Basic header + client_id in body = "multiple auth methods" → 400 after browser approval.
+  Fixed by registering as a **public client** (`token_endpoint_auth_method:none`, PKCE only). Also:
+  clear stale client_info before a token-less sign-in; github oauth→api_key (with `_repair_bad_defaults`
+  that only touches OUR untouched default); `_merge_seed` so existing configs receive newly-shipped
+  connectors; +3 open endpoints (deepwiki, context7, microsoft-learn), each probed live. **Mickael
+  confirmed Notion sign-in now works.**
+- #271 placeholder headers (`Bearer <GITHUB_TOKEN>`) no longer count as "connected".
+
+**Skills:**
+- #267 **new `prompt_feeder` skill** + #268 chat allowlist + #276 tests (16, caught a real
+  empty-list-types-the-command bug). "feed these prompts into Gemini: 1… 2…" drives Pilot to type
+  each prompt one at a time. Verified live on Gemini (3 sent, 3 answered). **Must be said in Chat/voice,
+  NOT the Pilot mission box** (the mission box runs the local-model agent loop, which wanders on chat UIs).
+- #275 **compare** graceful-degrades on an unlicensed Mac ("only local available → license AVA")
+  instead of "Compared 1 model".
+
+**Demo:** now 24 beats (#265 webcam cut), #269 + #277 beat 13/18/21 rewrites. Run-sheet artifact
+refreshed: https://claude.ai/code/artifact/3daad6f6-52f4-4144-8ac5-bd2552b9d35b
+
+**⚠ Google login is blocked in Pilot and it's NOT fixable** — Google refuses account sign-in from any
+CDP-controlled browser (the debug port is load-bearing for Pilot). Not a fingerprint issue; switching
+to real Chrome doesn't help. Demo Pilot on public/anonymous pages only. Also a real risk: repeatedly
+automating login to a personal gmail can get the account flagged.
+
+**Open for Mickael (back full-time 2026-07-22):**
+- Beat 21 (Compare): cut it, OR film on a licensed machine (AVA cloud) so it shows 3+ columns.
+- Beat 22 (voice interrupt): re-confirm on the day.
+- qwen3.6 was OOM-restarting earlier in the week — watch for mid-reply drops during filming.
+
+## 2026-07-14 — Connector tab for external MCP servers (#254, merged + LIVE)
+
+## 2026-07-14 — Connector tab for external MCP servers (#254, merged + LIVE)
+
+New **Connector** tab in the dashboard (between Cortex and Settings) — a UI over the
+MCP-*client* menu CODEC previously only drove by voice/chat ("list mcp", "connect to notion").
+Shipped: branch → 6 tests → PR #254 → CI green → squash-merge → FF this dir to main → restart
+`codec-dashboard` → live-verified (11 connectors render, real-click toggle round-trips the JSON).
+
+- `routes/mcp.py`: `GET /api/mcp/servers` (safe projection — never returns secret `headers`) +
+  `POST /api/mcp/servers/{name}/toggle` (writes ONLY `enabled`; cross-process-safe via
+  `codec_jsonstore.read_modify_write`; unknown name → no write).
+- `codec_dashboard.html`: tab + card list (transport badge, url, line-SVG lock for auth, toggle,
+  voice/chat helper line). **No emoji.** Toggle binds via `data-mcp` attr + change listener, NOT
+  an inline `onchange` — caught pre-merge that `JSON.stringify(name)` inside a `"..."` attr
+  truncated the handler and broke the toggle for real users too.
+- `skills/mcp_connect.py`: widened the seed 5→11 with verified official hosted MCP endpoints
+  (Sentry, Asana `/v2/mcp`, Atlassian, Cloudflare, Vercel, Intercom — all OAuth Streamable-HTTP;
+  Slack excluded — no shared hosted URL, per-user token only). Manifest regenerated.
+- Live `~/.codec/mcp_servers.json` widened to 11 (existing 5 states preserved, hugging-face still on).
+- ⚠ Deploy note: `codec-dashboard` serves from THIS repo dir; I FF'd it to `origin/main` (media.py +
+  main.swift were already byte-identical to main = #253's changes; only DEMO/HANDOVER kept local).
+  Only `codec-dashboard` was restarted — other daemons still run pre-#253/#254/#255 code until each
+  owning session restarts them.
+
+## 2026-07-14 — 7-item loop + license domain move (R5, mostly done)
+
+Shipped & merged 7 items (each: branch → tests → PR → CI → squash-merge → restart → live-verified):
+1. Folder `+` button in Chat + Vibe (codec #241) 2. MCP `file_write` works + SSH-key hole closed (#242)
+3. `observer_recall` skill — "what was I doing?" everywhere (#243) 4. Auto-escalation fires for terse complex asks (#244)
+5. Pilot health check now sends its token — the whole "half-broken" symptom (#245)
+6. Google-Doc completion verifier — no false "saved to Drive" (#246)
+7. **License host off lucyvpa.com → `codec-license.avadigital.ai`** — this is roadmap **R5**.
+
+**R5 machine-side is DONE (all verified):**
+- ava-stack #1: env-overridable `LICENSE_HOST`/`LICENSE_BASE_URL` in `config.py` (default = working host, so restart is zero-risk). Runbook: `ava-stack/license-server/DOMAIN_MIGRATION.md`.
+- Cloudflare **tunnel ingress** `codec-license.avadigital.ai → :8095` live in `~/.cloudflared/config.yml` (validated rule #17; tunnel restarted; all other hosts re-verified healthy).
+- **`.env` flipped** `LICENSE_HOST=codec-license.avadigital.ai`; `ava-license` restarted; health OK loopback + old alias; signed synthetic webhook → 200 (sig-verify + price-guard proven).
+- **CODEC client cut over** (codec #247, merged + deployed): `codec_license.py` + `codec_slash_commands.py` default to the new host. `ava-license.lucyvpa.com` kept as permanent alias (same backend) so issued licenses keep validating — **item c satisfied**.
+- **Stripe endpoint flipped** (2026-07-14): `we_1TOJTaAnpzAGXuyIwfHaDCio` URL → `https://codec-license.avadigital.ai/webhooks/stripe` in place, secret NOT rotated, 6 events intact. Proven end-to-end: signed synthetic webhook through the new host → `200 {"skipped":"not a CODEC purchase"}` (sig-verify + price-guard + no-mint all confirmed).
+- Bonus: pushed AVA-site-v2 main (was 12 commits ahead of origin incl. the URGENT fail-closed webhook fix); bumped site skill count 86→88 in the AVA session's WIP (accurate: manifest = 88).
+
+**R5 COMPLETE (2026-07-14).** Mickael added the `codec-license.avadigital.ai` proxied CNAME in the avadigital.ai zone; I added the tunnel ingress, flipped `.env` + the Stripe URL, and verified. `ava-license.lucyvpa.com` stays a permanent alias on the same :8095 backend. Leftover to delete when convenient: a junk `codec-license.avadigital.ai.lucyvpa.com` record was auto-created in the lucyvpa.com zone by `cloudflared tunnel route dns` (Mickael already deleted it once; confirm it's gone).
 
 ## State
 
@@ -91,3 +192,23 @@ licence flips to `refunded` — which also proves the refund-revocation path end
   site's source is stale relative to its Replit deploy (see R6).
 - Decision taken 2026-07-10: **keep the Dr. Jansen Trustpilot testimonial and "Trusted by"
   card as-is**; only the code-sample email leak was removed.
+
+## Beat 24 (create_skill 401) — DEFINITIVELY CLOSED 2026-07-14
+
+- **Not a code bug, and not a "third file".** #248 + #249 were correct. The committed
+  `skills/create_skill.py` (sends the internal token) + `skills/.manifest.json` (trusts sha
+  `c94f75d0…`) are consistent at HEAD. Proven: fresh HTTP-config build loads
+  `~/codec-repo/skills/create_skill.py` and returns "staged for review" — 4 live runs, **0×
+  "Not authenticated"**. Stdio + voice/chat paths also verified working.
+- **Root cause was daemon staleness** during that day's create_skill.py editing churn: an
+  earlier `codec-mcp-http` served an old self-consistent copy (pre-#248, no token). The
+  dual-marker test looked like a 3rd file because editing a copy breaks its manifest hash →
+  PR-1A AST gate refuses it (`skill_load_blocked: "Dangerous import: os"` in audit.log) →
+  daemon kept its cached old module. Restarting `codec-mcp-http` + `codec-dashboard` fixed it.
+- **PR #252 (merged to main)**: added a `codec-mcp-http` startup line
+  `Skills dir (scanned): <path> | repo | cwd` so a worktree/.app/stale-cwd daemon is obvious
+  at a glance. Live daemon (pid 7989) confirmed scanning `~/codec-repo/skills`. Observability
+  only; no behavior change; skills/ untouched.
+- **Action for Mickael:** re-run beat 21 over the connector — it now hits the fresh daemon
+  and returns "staged for review" (occasional `Blocked dangerous pattern: __import__` is the
+  LLM's generated code varying, NOT auth).
