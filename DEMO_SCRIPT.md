@@ -36,7 +36,7 @@
 | 10 | **Project mode** | Project: "Research Notion, Figma and Linear; draft a personalized Head-of-Growth outreach email to each; save as Gmail drafts." Approve the plan once. | Approve once → runs autonomously → 3 Gmail drafts appear | ✅ |
 | 11 | Chat auto-escalation | Chat: "plan and build me a 5-page competitor report with charts." | CODEC offers "Start as Project?" + asks the clarifying questions | ✅ |
 | 12 | **Vibe** live coding | Vibe: "Build me a snake game." | Code writes itself live in Monaco; preview plays | ✅ |
-| 13 | **Pilot** — teach by doing + self-healing replay | Pilot tab → **click directly on the live view** to drive the browser. Then hand it a real chore: *"feed these prompts into Google Flow: 1. a drone shot over Marbella at golden hour 2. the same shot at night 3. a close up of the marina"* | You click what you see; CODEC compiles those clicks into a reusable skill. Then it types each prompt in for you, one at a time, waiting for each result — you watch it happen | ✅ click-through verified (a click at (297,207) navigated example.com → iana.org) · ✅ prompt-feeder verified live on Gemini (3 sent, 3 answered) |
+| 13 | **Pilot** — teach by doing + self-healing replay | Pilot tab → **Record** → **click directly on the live view** to do a task (e.g. open a page, run a search) → **Stop** → it appears in the Skills tab → **Replay**. Optional second act, in **Chat**: *"feed these prompts into Gemini: 1. name a beach in Marbella 2. now one in Ibiza"* | Your clicks compile into a named, reusable skill that replays itself — self-healing if the page moved. The chat line then feeds prompts in one at a time while you watch | ✅ full loop verified: record → compile → replay re-drove the browser (1/1 steps, method=xpath) · ✅ prompt-feeder verified live on Gemini (3 sent, 3 answered). **No Google login** — drive public/anonymous pages; Google blocks account sign-in from any automated browser (that's Google, not Pilot) |
 
 ## Act 4 — The nerve center & oversight
 
@@ -59,7 +59,7 @@
 | # | Feature | TRY (live) | EXPECT | Status |
 |---|---|---|---|---|
 | 20 | **Self-improve live** | "CODEC, create a new skill that tells me the current moon phase." | CODEC briefs what it'll build and asks "Build it?" → generates → stages it in the **Skills** tab → explains the outcome. Approve it there to activate | ✅ conversational |
-| 21 | **Compare across models** | "Compare across models: what's the best programming language for a beginner?" | Side-by-side answers from several models | ⚠️ **DECIDE** — on the dev Mac only the local model answered, so it just reads like a normal chat reply. Only keep this beat if the demo machine actually shows 3+ models side by side; otherwise cut it — it makes no point with one column |
+| 21 | **Compare across models** | “Compare across models: what's the best programming language for a beginner?” | Side-by-side answers from several models | ⚠️ **DECIDE** — needs a licensed machine (AVA cloud) to show 3+ columns. On an unlicensed Mac only local answers; it now says so honestly and points to the license rather than looking broken, but it still makes no *comparison*. Keep only if the demo machine is licensed; otherwise cut |
 | 22 | Voice call + interrupt (RMS duplex) | Start a voice call → interrupt CODEC mid-sentence | It cuts instantly — true duplex, not turn-based | 🧑 worked once — re-confirm on the day |
 | 23 | Phone Touch ID remote | On phone at `codec.avadigital.ai` → Touch ID → issue a command | Mac Studio at home executes it | 🧑 |
 | 24 | **FINALE** — Hue + Spotify | "CODEC, turn off the lights." then "CODEC, play music on Spotify." | Lights dim, music starts. Cut. | 🧑 |
@@ -96,7 +96,7 @@
 - Notion signed in (Connector tab, beat 18); Philips Hue reachable; Spotify authorized (finale)
 - Vision Mouse tested 10× on the Cloudflare DNS button
 - Observer running with a populated buffer
-- **Pilot browser signed in to Google** (Pilot tab → open Flow/Gemini → sign in once) — otherwise Flow/Gemini refuse to generate for beat 13
+- **Pilot: do NOT rely on Google login** — Google blocks account sign-in from automated browsers. Beat 13 runs fully on public/anonymous pages (teach-mode + anonymous Gemini text). Skip Flow video-generation, which needs an account.
 - Cortex map open on a 2nd screen (persistent visual anchor)
 - Fresh Deep-Research + Project chat windows open
 
