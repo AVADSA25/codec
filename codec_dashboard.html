@@ -914,6 +914,25 @@ function _copyFallback(text) {
   }
 }
 
+// Copy buttons never carry the text inside an inline onclick. Embedding user
+// prose in a JS string literal breaks on the FIRST apostrophe — "don't" ends the
+// string and the handler dies with a SyntaxError, so the click silently does
+// nothing. escAttr() does not save it either: `&#39;` is decoded back to `'`
+// before the handler is parsed. (Both variants verified broken in a browser.)
+// Instead the text lives in this buffer and the button carries only an index —
+// no escaping, and no way for message content to become executable.
+// Markup emits a bare <button class="copy-btn" data-copy>; the text is attached
+// to the element afterwards, in render order. Nothing is stored globally (no
+// leak across re-renders) and newlines survive intact, unlike an attribute.
+function bindCopyButtons(root, texts) {
+  var btns = (root || document).querySelectorAll('button[data-copy]');
+  for (var i = 0; i < btns.length; i++) {
+    (function(b, text) {
+      b.addEventListener('click', function() { copyText(text, b); });
+    })(btns[i], texts[i] == null ? '' : String(texts[i]));
+  }
+}
+
 function copyText(text, btn) {
   function onOk() {
     btn.classList.add('copied');
@@ -1472,10 +1491,13 @@ async function loadHistory() {
     var r = await fetch('/api/history?limit=50');
     var data = await r.json();
     if (!data.length) { el.innerHTML = '<div class="empty"><div class="empty-icon"><svg class="ico ico-lg" viewBox="0 0 24 24" style="width:40px;height:40px"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div><div class="empty-text">No task history yet.</div></div>'; return; }
+    var copyTexts = [];
     el.innerHTML = data.map(function(d) {
       var content = escHtml(d.task || '');
-      return '<div class="card"><button class="copy-btn" onclick="copyText(\'' + escAttr(d.task || '') + '\',this)" title="Copy"><svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button><div class="card-time">' + fmtTime(d.timestamp) + '</div><div class="card-task">' + content + '</div><div class="card-app">' + escHtml(d.app || '') + '</div>' + (d.response ? '<div class="card-response">' + escHtml(d.response) + '</div>' : '') + '</div>';
+      copyTexts.push(d.task || '');
+      return '<div class="card"><button class="copy-btn" data-copy title="Copy"><svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button><div class="card-time">' + fmtTime(d.timestamp) + '</div><div class="card-task">' + content + '</div><div class="card-app">' + escHtml(d.app || '') + '</div>' + (d.response ? '<div class="card-response">' + escHtml(d.response) + '</div>' : '') + '</div>';
     }).join('');
+    bindCopyButtons(el, copyTexts);
   } catch(e) { el.innerHTML = '<div class="empty"><div class="empty-text">Error loading history</div></div>'; }
 }
 
@@ -1490,6 +1512,7 @@ async function loadChat() {
     _chatLoaded = true;
     if (!data.length) { el.innerHTML = '<div class="empty"><div class="empty-icon"><svg class="ico" viewBox="0 0 24 24" style="width:40px;height:40px"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg></div><div class="empty-text">No conversations yet.</div></div>'; return; }
     data.reverse();
+    var copyTexts = [];
     el.innerHTML = data.map(function(d) {
       var roleClass = d.role === 'user' ? 'user' : 'assistant';
       var label = d.role === 'user' ? 'YOU' : 'CODEC';
@@ -1500,7 +1523,10 @@ async function loadChat() {
       var raw = d.content || '';
       var IMG_RE = /\[CODEC_IMG_THUMB:(data:image\/[a-zA-Z0-9+.\-]+;base64,[A-Za-z0-9+/=]+)\]/g;
       // Plain text version for the copy button: strip every marker.
-      var copyText = raw.replace(IMG_RE, '').trim();
+      // NB: named plainText, not copyText — a local `copyText` here shadowed the
+      // global copy function of the same name.
+      var plainText = raw.replace(IMG_RE, '').trim();
+      copyTexts.push(plainText);
       // Render: walk the regex, alternating escaped text + img tags.
       // Avoids placeholder-collision risk with arbitrary user prose.
       var rendered = '';
@@ -1513,8 +1539,9 @@ async function loadChat() {
         lastIdx = mm.index + mm[0].length;
       }
       rendered += escHtml(raw.substring(lastIdx));
-      return '<div class="card"><button class="copy-btn" onclick="copyText(decodeURIComponent(\'' + encodeURIComponent(copyText) + '\'),this)" title="Copy"><svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button><div class="card-role ' + roleClass + '">' + label + '</div><div class="card-time">' + fmtTime(d.timestamp) + '</div><div class="card-task">' + rendered + '</div></div>';
+      return '<div class="card"><button class="copy-btn" data-copy title="Copy"><svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button><div class="card-role ' + roleClass + '">' + label + '</div><div class="card-time">' + fmtTime(d.timestamp) + '</div><div class="card-task">' + rendered + '</div></div>';
     }).join('');
+    bindCopyButtons(el, copyTexts);
     var scroller = el.closest('.content') || el.parentElement;
     setTimeout(function(){ scroller.scrollTop = scroller.scrollHeight; }, 50);
   } catch(e) { if (!_chatLoaded) el.innerHTML = '<div class="empty"><div class="empty-text">Error loading chat</div></div>'; }
