@@ -385,6 +385,12 @@ def _enrich_messages(messages: list, config: dict, force_search: bool = False) -
 
 
 
+# Longest message that may auto-fire a skill. Above this it's a paste (a doc, a
+# spec, an article) and belongs to the LLM, not the dispatcher. Generous: the
+# longest real command in the demo — a prompt_feeder list with 3 prompts — is
+# ~150 chars.
+MAX_SKILL_HIJACK_CHARS = 2000
+
 CHAT_SKILL_ALLOWLIST = {
     # Core utilities
     "calculator", "weather", "web_search", "bitcoin_price",
@@ -503,6 +509,15 @@ def _try_skill(user_text: str):
     LLM answered from memory (and fabricated)."""
     try:
         from codec_dispatch import check_skill, run_skill
+        # A long paste is a document, not a command. Pasting a spec, an article,
+        # or a set of instructions would otherwise hijack the turn: a 6.3k-char
+        # paste of standing rules mentioning "write ... to <path>" matched
+        # file_ops, which is destructive, so the consent gate called ask_user and
+        # BLOCKED the request thread for its full 600s timeout. The user saw the
+        # chat simply never answer, and nothing was ever saved.
+        # Real skill commands are short imperatives, well under this cap.
+        if len(user_text) > MAX_SKILL_HIJACK_CHARS:
+            return None, None
         skill = check_skill(user_text)
         matched = bool(skill and skill.get("name") in CHAT_SKILL_ALLOWLIST)
         if not matched and _is_conversational(user_text):
