@@ -33,7 +33,7 @@
     "cookbook_scan.py": "9bc1fe32073267c45c20d6dca67e293ed07f5c04dfff0109b480f778ffeaa3bb",
     "cookbook_serve.py": "8a08bb5deecd988431da421b1b4825cd411c7e9c7658bc547aa16ce74c0e1ddd",
     "cookbook_stop.py": "8b51e04ef08e08899df24d032af7a609bef7bf02ad72be5badf95eb0a2b1ce64",
-    "create_skill.py": "865cee32d124f57cbbfef34ad6d568415d88a83fa2f706319f920d84a019b9ad",
+    "create_skill.py": "6d5131d789347519a4c4cb60ac4dc50406ba163af0823e79de5192ba3ec34737",
     "daily_kickoff.py": "c649a0597265f284a876512c5689c2b210eb894ffddbd8da6b95f5e36a8cedab",
     "delegate.py": "7c595d5605cd9913a8afa331ae0013861d6996f378f8a59aca0249f1b2f3a474",
     "email_triage.py": "d7b9032b81179f58c5aff660c34f9b8edf212a8ce7651d307306e4757a8daaf2",
