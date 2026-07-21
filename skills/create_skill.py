@@ -38,6 +38,50 @@ BLOCKED_IN_SKILLS = [
 ]
 
 
+_URL_IN_CODE_RE = re.compile(r"https?://([A-Za-z0-9.\-]+)")
+
+# Hosts that are obviously placeholders rather than a claim about the world.
+_PLACEHOLDER_HOSTS = ("example.com", "example.org", "localhost", "127.0.0.1",
+                      "your-api.com", "api.example.com")
+
+
+def _unresolvable_hosts(code):
+    """Hostnames the generated code calls that DO NOT EXIST.
+
+    The model can invent an endpoint that reads perfectly: asked for a
+    moon-phase skill it wrote `https://api.moon.ph/v1/moon`, which resolves to
+    nothing. The code compiled, passed every safety check, looked plausible in
+    review — and failed 100% of the time it ran.
+
+    A prompt rule alone can't catch this; the only honest check is to ask the
+    world. DNS resolution is the cheapest one that exists and it is decisive:
+    if the hostname doesn't resolve, the model made it up.
+
+    Deliberately narrow — DNS failure only. A host that resolves but 404s, rate
+    limits, or blocks us is a live-service question, not a fabrication, and is
+    not this gate's business. Returns [] when offline (no DNS at all) so a
+    flight-mode laptop can't fail every skill.
+    """
+    import socket
+    hosts = {h.lower() for h in _URL_IN_CODE_RE.findall(code or "")}
+    hosts = {h for h in hosts if h not in _PLACEHOLDER_HOSTS}
+    if not hosts:
+        return []
+    # Are we online at all? If not, this check can't mean anything.
+    try:
+        socket.getaddrinfo("one.one.one.one", 443)
+    except OSError:
+        log.info("create_skill: skipping URL check — no DNS (offline)")
+        return []
+    bad = []
+    for h in sorted(hosts):
+        try:
+            socket.getaddrinfo(h, 443)
+        except OSError:
+            bad.append(h)
+    return bad
+
+
 def _validate_skill_code(code):
     """Validate generated skill code for safety and correctness.
     Returns (ok: bool, error_message: str)."""
@@ -60,6 +104,23 @@ def _validate_skill_code(code):
         compile(code, "<generated_skill>", "exec")
     except SyntaxError as e:
         return False, f"Generated code has a syntax error: {e}. Try describing the skill differently."
+
+    # Artifact over confidence: refuse code that calls a host which doesn't
+    # exist. This is the only check here that asks the world instead of reading
+    # the text, and it's the one that catches an invented endpoint.
+    try:
+        bad = _unresolvable_hosts(code)
+    except Exception as e:                      # never fail a skill on a checker bug
+        log.warning("create_skill: URL check errored, skipping: %s", e)
+        bad = []
+    if bad:
+        hosts = ", ".join(bad)
+        return False, (
+            f"The generated skill calls a host that does not exist: {hosts}. "
+            f"That endpoint was invented, so the skill would fail every time it "
+            f"ran. Ask again and say the skill must compute the answer locally "
+            f"with the standard library, or name the real API to use."
+        )
 
     return True, ""
 
