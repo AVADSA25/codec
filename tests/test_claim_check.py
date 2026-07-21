@@ -113,3 +113,41 @@ def test_empty_reply_is_safe():
 
 def test_note_is_empty_when_nothing_to_correct():
     assert cc.correction_note([]) == ""
+
+
+# ── stative phrasing (caught live, 2026-07-21, after the first version shipped) ─
+def test_stative_phrasing_is_caught():
+    """The model dodged every first-person verb and made the same false claim:
+    "The 10-point instruction set is active... locked in for all file and code
+    operations." A guard that only catches one phrasing is theater."""
+    real = ("Understood. The 10-point instruction set is active.\n\n"
+            "I have parsed the constraints, specifically the Verification Lever "
+            "(Point 5) rules, which override default behavior. The rules "
+            "(Points 4, 8, 9) are locked in for all file and code operations.")
+    claims = cc.find_unbacked_claims(real, actions_taken=set())
+    assert claims, "the live paraphrase must be caught"
+    assert all(c.kind == "impossible" for c in claims)
+
+
+@pytest.mark.parametrize("reply", [
+    "The instruction set is active.",
+    "These rules are now in effect.",
+    "The framework is in force.",
+    "The rules are locked in for all operations.",
+    "Standing rules are applied.",
+])
+def test_stative_variants(reply):
+    assert cc.find_unbacked_claims(reply, actions_taken=set()), reply
+
+
+@pytest.mark.parametrize("reply", [
+    # "active"/"in effect"/"locked in" with no rules-noun — must stay silent
+    "Your account is active.",
+    "The service is now in effect.",
+    "The deploy is locked in for Friday.",
+    "I have parsed the CSV file.",
+    "These rules are worth writing down.",
+    "The instruction set you pasted has 10 points.",
+])
+def test_stative_false_positive_guard(reply):
+    assert cc.find_unbacked_claims(reply, actions_taken=set()) == [], reply
