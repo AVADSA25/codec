@@ -443,6 +443,10 @@ CHAT_SKILL_ALLOWLIST = {
     # Daybreak — morning kickoff (read-only aggregation) + working-thread
     # capture (facts-table writes only). docs/DAYBREAK-DESIGN.md.
     "daily_kickoff", "thread_note",
+    # Standing rules — "add a standing rule: X". Writes ~/.codec/standing_rules.json
+    # (its own file, no code execution). Allowlisted so "saved" is honest:
+    # the skill really persists, and codec_claim_check sees the action.
+    "standing_rules",
     # Prompt feeder — "feed these prompts into Google Flow: 1… 2… 3…". Drives
     # the Pilot browser only (typing into a page the user is watching live); it
     # touches no filesystem and runs no code. Without this the phrase falls
@@ -713,6 +717,17 @@ def _build_chat_system_prompt(config: dict, budget, has_attachment: bool,
     _overrides = _load_prompt_overrides()
     _chat_prompt = _overrides.get("chat", CHAT_SYSTEM_PROMPT)
     sys_prompt = _chat_prompt.format(date=_dt.now().strftime("%A, %B %d, %Y"))
+    # Standing rules the user actually saved (codec_standing_rules). Appended,
+    # never replacing — a user rule must not silently discard CODEC's identity
+    # or safety framing. This is what makes "saved" an honest answer.
+    try:
+        import codec_standing_rules
+        _sr = codec_standing_rules.prompt_block()
+        if _sr:
+            sys_prompt += "\n\n" + _sr
+    except Exception as e:
+        log.debug("standing rules unavailable: %s", e)
+
     # Daybreak working-threads context (docs/DAYBREAK-DESIGN.md): compact
     # ≤150-token block of the user's open threads, so chat shares the same
     # live memory voice already gets via [ACTIVE FACTS]. "" when disabled.
@@ -1241,6 +1256,9 @@ async def chat_completion(request: Request):
         # r.json() KeyError) → outer except → 500. codec_llm strips <think>; the
         # `### FINAL ANSWER:` marker is dashboard-specific so it stays.
         import re
+        # Skills that actually executed this turn. A claim of action with an
+        # empty set is unbacked — see codec_claim_check.
+        _turn_actions: set[str] = set()
         answer = codec_llm.call(messages, **_common, raise_on_error=True)
         answer = re.sub(r'###\s*FINAL ANSWER:\s*', '', answer).strip()
 
@@ -1259,6 +1277,7 @@ async def chat_completion(request: Request):
             elif s_name in CHAT_SKILL_ALLOWLIST:
                 try:
                     _, s_result = await asyncio.to_thread(_try_skill_by_name, s_name, s_query)
+                    _turn_actions.add(s_name)   # backs any claim about this action
                     if s_result:
                         answer = answer.replace(skill_tag.group(0), f"**{s_result}**")
                 except Exception as e:
@@ -1285,6 +1304,27 @@ async def chat_completion(request: Request):
                 # leave "[SKILL:foo:...]" visible in the chat bubble.
                 log.info(f"[Chat] LLM tried disallowed skill {s_name!r} (non-stream) — dropping tag")
                 answer = answer.replace(skill_tag.group(0), "")
+
+        # Claim-to-artifact check: CODEC may not claim what it did not do.
+        # A reply saying "I've ingested your rules" or "saved to your Desktop"
+        # is false unless something in this turn actually did it. Appends a
+        # correction rather than editing the model's words — the user sees both
+        # what was claimed and that it didn't happen. Never fails the response.
+        try:
+            import codec_claim_check
+            _unbacked = codec_claim_check.find_unbacked_claims(
+                answer, actions_taken=_turn_actions)
+            if _unbacked:
+                answer += codec_claim_check.correction_note(_unbacked)
+                log_event(
+                    "unbacked_claim_corrected", source="codec-dashboard",
+                    message=f"{len(_unbacked)} unbacked claim(s) corrected",
+                    level="warning", outcome="warning",
+                    extra={"kinds": [c.kind for c in _unbacked],
+                           "needs": [c.needs for c in _unbacked]},
+                )
+        except Exception as e:
+            log.warning(f"[Chat] claim check skipped: {e}")
 
         return {"response": answer, "model": model}
     except Exception as e:
