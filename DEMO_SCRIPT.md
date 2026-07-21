@@ -1,6 +1,6 @@
-# CODEC Live Demo — SEALED FINAL (24 beats)
+# CODEC Live Demo — SEALED FINAL (23 beats)
 
-> The locked recording scenario. 15 (Apr) → 22 → 25 → **24** (webcam cut). Sealed
+> The locked recording scenario. 15 (Apr) → 22 → 25 → 24 → **23** (webcam + Compare cut). Sealed
 > and renumbered in **performance order** (run top to bottom). Each beat: exact
 > **TRY** line + **EXPECT** + status. The "hidden moats" that aren't separate
 > beats live in **§ Name-drop moats** — say them *during* the beat noted.
@@ -59,10 +59,9 @@
 | # | Feature | TRY (live) | EXPECT | Status |
 |---|---|---|---|---|
 | 20 | **Self-improve live** | "CODEC, create a new skill that tells me the current moon phase." | CODEC briefs what it'll build and asks "Build it?" → generates → stages it in the **Skills** tab → explains the outcome. Approve it there to activate | ✅ conversational |
-| 21 | **Compare across models** | “Compare across models: what's the best programming language for a beginner?” | Side-by-side answers from several models | ⚠️ **DECIDE** — needs a licensed machine (AVA cloud) to show 3+ columns. On an unlicensed Mac only local answers; it now says so honestly and points to the license rather than looking broken, but it still makes no *comparison*. Keep only if the demo machine is licensed; otherwise cut |
-| 22 | Voice call + interrupt (RMS duplex) | Start a voice call → interrupt CODEC mid-sentence | It cuts instantly — true duplex, not turn-based | 🧑 worked once — re-confirm on the day |
-| 23 | Phone Touch ID remote | On phone at `codec.avadigital.ai` → Touch ID → issue a command | Mac Studio at home executes it | 🧑 |
-| 24 | **FINALE** — Hue + Spotify | "CODEC, turn off the lights." then "CODEC, play music on Spotify." | Lights dim, music starts. Cut. | 🧑 |
+| 21 | Voice call + interrupt (RMS duplex) | Start a voice call → interrupt CODEC mid-sentence | It cuts instantly — true duplex, not turn-based | 🧑 worked once — re-confirm on the day |
+| 22 | Phone Touch ID remote | On phone at `codec.avadigital.ai` → Touch ID → issue a command | Mac Studio at home executes it | 🧑 |
+| 23 | **FINALE** — Hue + Spotify | "CODEC, turn off the lights." then "CODEC, play music on Spotify." | Lights dim, music starts. Cut. | 🧑 |
 
 ## § Name-drop moats — say these *during* the beat (the hidden gems, no extra action)
 
@@ -80,12 +79,12 @@
 | Ed25519 signed self-updates | settings | "Updates verify an Ed25519-signed Sparkle appcast against an embedded key — hardened from execution all the way to updates." |
 
 ## Cut from the demo
+- **Compare across models** (ex-beat 21) — removed 2026-07-21: needs a licensed machine (AVA cloud) to show 3+ columns; on an unlicensed Mac it shows one and makes no comparison.
 - **Live webcam vision** (ex-beat 8) — removed 2026-07-16. The capture was soft (the Anker C200's lens, not code) and it landed as a gadget rather than a capability. Nothing else depends on it.
 
 ## Decide before filming
 - **Beat 18** — sign in to Notion once in the Connector tab (it persists now). Toggle **GitHub off** — it can't OAuth (needs a PAT).
-- **Beat 21 (Compare)** — does the demo machine show 3+ models side by side? If not, cut it.
-- **Beat 22** — re-confirm voice interrupt.
+- Voice interrupt (now beat 21) — **confirmed working**.
 
 ## Pre-record checklist
 - Chrome tabs L→R: `opencodec.org` → GitHub → Gmail → WhatsApp Web → Cloudflare → CODEC Chat
@@ -105,4 +104,4 @@
 - Showstopper risk: 7 (Vision Mouse) — if it fails live, skip to 8.
 - Core "works while you watch" trio: 10 Project, 12 Vibe, 13 Pilot.
 - Act 5 is THE differentiator: 17 (server) + 18 (client) back-to-back = bidirectional MCP.
-- Save Hue + Spotify (24) for the very last frame.
+- Save Hue + Spotify (23) for the very last frame.
