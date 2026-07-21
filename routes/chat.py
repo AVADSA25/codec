@@ -1117,7 +1117,17 @@ async def chat_completion(request: Request):
                 # codec_llm.stream(keepalive=True); this generator just wires the
                 # raw tokens through the buffer and frames them.
 
+                # Claim-to-artifact state for this stream: the visible text the
+                # user actually sees, and the skills that really ran. Same guard
+                # as the non-stream path — without it the check was installed on
+                # half the product, and Deep Chat (where the incident happened)
+                # is the streaming half.
+                _visible: list[str] = []
+                _stream_actions: set[str] = set()
+
                 def _frame(tok):
+                    if tok:
+                        _visible.append(tok)
                     return f"data: {json.dumps({'token': tok})}\n\n"
 
                 def _resolve_skill_tag(raw_tag):
@@ -1147,6 +1157,7 @@ async def chat_completion(request: Request):
                         return raw_tag.replace(m.group(0), "")
                     try:
                         _, s_result = _try_skill_by_name(s_name, s_query)
+                        _stream_actions.add(s_name)   # backs any claim about it
                         if s_result:
                             return raw_tag.replace(m.group(0), f"**{s_result}**")
                         log.info(f"[Chat] Skill {s_name!r} returned None for {s_query[:60]!r} — dropping tag")
@@ -1244,6 +1255,24 @@ async def chat_completion(request: Request):
                     _sugg = _maybe_escalate_suggestion(last_user_text, _session_id)
                     if _sugg:
                         yield f"data: {json.dumps({'escalate_project': _sugg})}\n\n"
+                    # Claim-to-artifact check on the assembled reply.
+                    try:
+                        import codec_claim_check
+                        _unbacked = codec_claim_check.find_unbacked_claims(
+                            "".join(_visible), actions_taken=_stream_actions)
+                        if _unbacked:
+                            _note = codec_claim_check.correction_note(_unbacked)
+                            yield f"data: {json.dumps({'token': _note})}\n\n"
+                            log_event(
+                                "unbacked_claim_corrected", source="codec-dashboard",
+                                message=f"{len(_unbacked)} unbacked claim(s) corrected (stream)",
+                                level="warning", outcome="warning",
+                                extra={"kinds": [c.kind for c in _unbacked],
+                                       "needs": [c.needs for c in _unbacked],
+                                       "transport": "stream"},
+                            )
+                    except Exception as e:
+                        log.warning(f"[Chat] claim check skipped (stream): {e}")
                     yield "data: [DONE]\n\n"
                 except Exception as e:
                     yield f"data: {json.dumps({'error': str(e)})}\n\n"
