@@ -109,10 +109,21 @@ RULES:
 - ONLY output the Python code, nothing else
 - No markdown, no backticks, no explanation
 - The run() function must return a string
-- Use requests for HTTP calls (NOT subprocess, os.system, eval, or exec)
 - Keep it simple and functional
 - SKILL_NAME must be lowercase with underscores only
 - Do NOT use subprocess, os.system, eval, exec, or __import__
+
+NETWORK — this is the most important rule:
+- PREFER computing the answer locally with the Python standard library
+  (math, datetime, statistics, json, re, ...). Most things people ask for —
+  dates, moon phases, conversions, formatting, sums, timers — are pure
+  computation and need no network at all.
+- NEVER invent an API URL. Do not guess a hostname or an endpoint path. If you
+  are not CERTAIN a public endpoint exists at exactly that URL, do not call it.
+  A skill that calls a made-up endpoint fails every single time it runs, and
+  looks like the skill is broken.
+- Only use `requests` when the data genuinely cannot be computed locally (live
+  weather, prices, news) AND you are certain of the real endpoint.
 
 The skill should: {description}"""
 
