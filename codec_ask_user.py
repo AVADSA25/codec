@@ -77,6 +77,18 @@ _GENERIC_YES = frozenset({
     "fine", "alright", "go", "go ahead", "proceed", "do it",
 })
 
+# An explicit refusal is NOT ambiguous — it is the clearest possible answer, and
+# it can only ever block an action, never authorise one. Treating it as "not the
+# consent verb" meant a user who said "no" burned a rejection attempt instead of
+# declining, and because the rejection counter lives in memory, a question could
+# never be closed from a fresh process: it stayed `pending` forever. One had
+# been stuck since 2026-07-08.
+_EXPLICIT_NO = frozenset({
+    "n", "no", "nope", "nah", "cancel", "stop", "abort", "decline",
+    "don't", "dont", "do not", "never mind", "nevermind", "skip",
+    "no thanks", "no thank you",
+})
+
 # ── Lock + waiter registry ─────────────────────────────────────────────────────
 # Lock guards atomic file writes. Waiters dict maps pending_question_id →
 # threading.Event (caller signals via set() to unblock the agent thread).
@@ -149,7 +161,7 @@ def _prune_resolved(data: dict) -> None:
     cutoff = datetime.now(timezone.utc) - timedelta(hours=_RESOLVED_TTL_HOURS)
     kept = []
     for rec in data.get("pending_questions", []):
-        if rec.get("status") in ("answered", "timed_out"):
+        if rec.get("status") in ("answered", "timed_out", "declined"):
             ts = rec.get("answered_at") or rec.get("asked_at") or ""
             try:
                 when = datetime.fromisoformat(ts)
@@ -489,8 +501,9 @@ def ask(
             return _finalize_timeout(qid, reason="deadline")
         if rec.get("status") == "answered":
             return _finalize_answered(qid, rec)
-        if rec.get("status") == "timed_out":
-            # Some other path (admin clear, etc.) flipped it.
+        if rec.get("status") in ("timed_out", "declined"):
+            # Some other path (admin clear, explicit refusal) flipped it.
+            # "declined" is a deliberate NO — the caller must not proceed.
             return TIMEOUT_SENTINEL
         # Two-strike consent rejection check: if rejected_count >= max,
         # finalize as ambiguous_consent without waiting for the deadline.
@@ -615,6 +628,30 @@ def submit_answer(qid: str, answer: str, *, answered_via: str = "pwa") -> dict:
                 "answered_at": rec.get("answered_at")}
     if status == "timed_out":
         return {"ok": False, "error": "already_timed_out"}
+    if status == "declined":
+        return {"ok": False, "error": "already_declined",
+                "answered_at": rec.get("answered_at")}
+
+    # An explicit refusal closes the question immediately, in any mode. This is
+    # strictly safe: it can only withhold consent, never grant it. The caller
+    # sees the same TIMEOUT_SENTINEL it already treats as "do not proceed".
+    if answer and answer.strip().lower() in _EXPLICIT_NO:
+        with _FILE_LOCK, codec_jsonstore.file_lock(PENDING_QUESTIONS_PATH):
+            data = _load_pending_questions()
+            for r in data.get("pending_questions", []):
+                if r.get("id") == qid:
+                    r["status"] = "declined"
+                    r["answered_at"] = _now_iso()
+                    r["answered_via"] = answered_via
+                    r["answer"] = answer.strip()
+                    break
+            _save_pending_questions(data)
+        with _WAITERS_LOCK:
+            _REJECTION_COUNT.pop(qid, None)
+            ev = _WAITERS.get(qid)
+        if ev is not None:
+            ev.set()
+        return {"ok": True, "declined": True, "agent_unblocked": True}
 
     # §1.7 strict-consent acceptance check.
     if rec.get("consent_strict"):
