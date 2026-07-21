@@ -66,6 +66,21 @@ _IMPOSSIBLE = [
         r"\b(?:committed|saved|stored)\s+(?:this\s+)?to\s+(?:my\s+)?"
         r"(?:long[- ]term\s+)?memory\b", re.I),
      "cross-session memory"),
+    # Passive/stative phrasing of the same lie. Caught live: asked to adopt a
+    # rules document, the model avoided every first-person verb above and said
+    # "The 10-point instruction set is active… locked in for all file and code
+    # operations." Same false claim of persistence, different grammar. Anchored
+    # to a rules-noun so ordinary uses of "active" can't trip it.
+    (re.compile(
+        r"\b(?:instruction set|rule ?set|standing rules|the \d+[- ]point"
+        r"[^.]{0,20}|these rules|those rules|the rules|the framework|"
+        r"the guidelines|the protocol)\b[^.]{0,40}?\b(?:is|are)\s+"
+        r"(?:now\s+)?(?:active|in effect|in force|locked in|applied|"
+        r"loaded|ingested|internali[sz]ed)\b", re.I),
+     "standing instructions"),
+    (re.compile(
+        r"\block(?:ed)? in\b[^.]{0,40}\bfor all\b", re.I),
+     "standing instructions"),
 ]
 
 # ── 2. Real capabilities that require a real action ───────────────────────────
