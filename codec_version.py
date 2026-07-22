@@ -13,7 +13,7 @@ from pathlib import Path
 
 # Keep in sync with the VERSION file + the CHANGELOG's latest entry (pinned by
 # tests/test_versioning.py). This constant is only a fallback when VERSION can't be read.
-_FALLBACK = "3.2.0"
+_FALLBACK = "3.5.0"
 
 
 def _read_version() -> str:

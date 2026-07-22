@@ -1,6 +1,6 @@
-# CODEC Live Demo — SEALED FINAL (23 beats)
+# CODEC Live Demo — SEALED FINAL (22 beats)
 
-> The locked recording scenario. 15 (Apr) → 22 → 25 → 24 → **23** (webcam + Compare cut). Sealed
+> The locked recording scenario. 15 (Apr) → 22 → 25 → 24 → 23 → **22** (webcam, Compare, Pilot cut). Sealed
 > and renumbered in **performance order** (run top to bottom). Each beat: exact
 > **TRY** line + **EXPECT** + status. The "hidden moats" that aren't separate
 > beats live in **§ Name-drop moats** — say them *during* the beat noted.
@@ -36,32 +36,31 @@
 | 10 | **Project mode** | Project: "Research Notion, Figma and Linear; draft a personalized Head-of-Growth outreach email to each; save as Gmail drafts." Approve the plan once. | Approve once → runs autonomously → 3 Gmail drafts appear | ✅ |
 | 11 | Chat auto-escalation | Chat: "plan and build me a 5-page competitor report with charts." | CODEC offers "Start as Project?" + asks the clarifying questions | ✅ |
 | 12 | **Vibe** live coding | Vibe: "Build me a snake game." | Code writes itself live in Monaco; preview plays | ✅ |
-| 13 | **Pilot** — teach by doing + self-healing replay | Pilot tab → **Record** → **click directly on the live view** to do a task (e.g. open a page, run a search) → **Stop** → it appears in the Skills tab → **Replay**. Optional second act, in **Chat**: *"feed these prompts into Gemini: 1. name a beach in Marbella 2. now one in Ibiza"* | Your clicks compile into a named, reusable skill that replays itself — self-healing if the page moved. The chat line then feeds prompts in one at a time while you watch | ✅ full loop verified: record → compile → replay re-drove the browser (1/1 steps, method=xpath) · ✅ prompt-feeder verified live on Gemini (3 sent, 3 answered). **No Google login** — drive public/anonymous pages; Google blocks account sign-in from any automated browser (that's Google, not Pilot) |
 
 ## Act 4 — The nerve center & oversight
 
 | # | Feature | TRY (live) | EXPECT | Status |
 |---|---|---|---|---|
-| 14 | Cortex neural map | Open Cortex *(leave it on a 2nd screen all demo)* | Pulsing zones update live as tools fire | 🧑 |
-| 15 | Forensic audit log (16 categories) | Open Audit → filter by category | Every vision click / clipboard hit / LLM call logged locally — zero hidden telemetry | 🧑 |
-| 16 | Deep Research → real **Google Doc** | Open the doc from beat 9 | A real docs.google.com doc: report, citations, native tables | ✅ confirmed working |
+| 13 | Cortex neural map | Open Cortex *(leave it on a 2nd screen all demo)* | Pulsing zones update live as tools fire | 🧑 |
+| 14 | Forensic audit log (16 categories) | Open Audit → filter by category | Every vision click / clipboard hit / LLM call logged locally — zero hidden telemetry | 🧑 |
+| 15 | Deep Research → real **Google Doc** | Open the doc from beat 9 | A real docs.google.com doc: report, citations, native tables | ✅ confirmed working |
 
 ## Act 5 — Bidirectional MCP (the differentiator)
 
 | # | Feature | TRY (live) | EXPECT | Status |
 |---|---|---|---|---|
-| 17 | **CODEC as MCP server** (Claude drives your Mac) | Claude Desktop (CODEC connector on): "Research the 3 best noise-cancelling headphones, then use CODEC to save the summary to my Desktop, add a calendar reminder, and dim my office lights." | Claude thinks; CODEC acts locally: file saved, reminder set, lights dim | ✅ confirmed working (connector set to **Always Allow**) |
-| 18 | **Connector tab** (CODEC drives other MCP servers) | Connector tab → toggle Notion on → **Sign in** → say "list tools on notion" | Card flips to **● Signed in** with a **Sign out** option; CODEC lists Notion's tools | ✅ state machine + Keychain-persistent tokens. **Sign in to Notion once before filming.** Toggle **GitHub OFF** — its MCP server publishes no OAuth metadata, so sign-in is impossible without a personal access token |
-| 19 | Observer recall | "Hey CODEC, what was I doing 20 minutes ago?" | "Over the last 9 minutes, you were in Claude the whole time. You touched 4 files: …" — conversational, and honest if you ask outside its ~10-min window | ✅ |
+| 16 | **CODEC as MCP server** (Claude drives your Mac) | Claude Desktop (CODEC connector on): "Research the 3 best noise-cancelling headphones, then use CODEC to save the summary to my Desktop, add a calendar reminder, and dim my office lights." | Claude thinks; CODEC acts locally: file saved, reminder set, lights dim | ✅ confirmed working (connector set to **Always Allow**) |
+| 17 | **Connector tab** (CODEC drives other MCP servers) | Connector tab → toggle Notion on → **Sign in** → say "list tools on notion" | Card flips to **● Signed in** with a **Sign out** option; CODEC lists Notion's tools | ✅ state machine + Keychain-persistent tokens. **Sign in to Notion once before filming.** Toggle **GitHub OFF** — its MCP server publishes no OAuth metadata, so sign-in is impossible without a personal access token |
+| 18 | Observer recall | "Hey CODEC, what was I doing 20 minutes ago?" | "Over the last 9 minutes, you were in Claude the whole time. You touched 4 files: …" — conversational, and honest if you ask outside its ~10-min window | ✅ |
 
 ## Act 6 — Self-improvement, voice duplex, finale
 
 | # | Feature | TRY (live) | EXPECT | Status |
 |---|---|---|---|---|
-| 20 | **Self-improve live** | "CODEC, create a new skill that tells me the current moon phase." | CODEC briefs what it'll build and asks "Build it?" → generates → stages it in the **Skills** tab → explains the outcome. Approve it there to activate | ✅ conversational |
-| 21 | Voice call + interrupt (RMS duplex) | Start a voice call → interrupt CODEC mid-sentence | It cuts instantly — true duplex, not turn-based | 🧑 worked once — re-confirm on the day |
-| 22 | Phone Touch ID remote | On phone at `codec.avadigital.ai` → Touch ID → issue a command | Mac Studio at home executes it | 🧑 |
-| 23 | **FINALE** — Hue + Spotify | "CODEC, turn off the lights." then "CODEC, play music on Spotify." | Lights dim, music starts. Cut. | 🧑 |
+| 19 | **Self-improve live** | "CODEC, create a new skill that tells me the current moon phase." | CODEC briefs what it'll build and asks "Build it?" → generates → stages it in the **Skills** tab → explains the outcome. Approve it there to activate | ✅ conversational |
+| 20 | Voice call + interrupt (RMS duplex) | Start a voice call → interrupt CODEC mid-sentence | It cuts instantly — true duplex, not turn-based | 🧑 worked once — re-confirm on the day |
+| 21 | Phone Touch ID remote | On phone at `codec.avadigital.ai` → Touch ID → issue a command | Mac Studio at home executes it | 🧑 |
+| 22 | **FINALE** — Hue + Spotify | "CODEC, turn off the lights." then "CODEC, play music on Spotify." | Lights dim, music starts. Cut. | 🧑 |
 
 ## § Name-drop moats — say these *during* the beat (the hidden gems, no extra action)
 
@@ -71,7 +70,7 @@
 | Pure-vision (UI-TARS) | 7 | "No accessibility APIs — it screenshots, a vision model finds pixel coords, it clicks like a human eye. Works on any legacy app or Flash frame." |
 | 3-agent zero-dep concurrency | 9 | "Up to 3 background agents on a custom sub-800-line thread pool — no LangChain, no CrewAI." |
 | Plan-hash tamper + R/W grants | 10 | "The plan is sha256-hashed on approval — if the agent alters its own goals mid-run it auto-aborts. Reads and writes are glob-sandboxed to `~/codec-projects/`." |
-| Self-healing replay + HITL takeover | 13 | "Your click is recorded as an element, not a pixel — so replay survives the page moving. It falls back XPath → CSS → local-LLM rescue; hit a captcha and you take the wheel, then hand back." |
+| ~~Self-healing replay + HITL takeover~~ (parked with Pilot) | — | "Your click is recorded as an element, not a pixel — so replay survives the page moving. It falls back XPath → CSS → local-LLM rescue; hit a captcha and you take the wheel, then hand back." |
 | CCF compression + temporal memory | 14 / 19 | "~65% token reduction; an FTS5 SQLite fact store with valid_from/valid_until — tell it your plans changed and it supersedes the old fact." |
 | Watchdog + blocked_on_qwen recovery | 14 / 15 | "A watchdog kills zombie >500MB/<0.5%-CPU processes; if the local model drops mid-project, the agent auto-resumes the moment the port recovers." |
 | AppKit overlay over fullscreen | any notification | "A native NSPanel floats status over *any* fullscreen app — watch it appear while I'm full-screen." |
@@ -80,6 +79,7 @@
 
 ## Cut from the demo
 - **Compare across models** (ex-beat 21) — removed 2026-07-21: needs a licensed machine (AVA cloud) to show 3+ columns; on an unlicensed Mac it shows one and makes no comparison.
+- **CODEC Pilot** (ex-beat 13) — parked 2026-07-22. Google blocks account sign-in from any CDP-controlled browser, and cookie walls / bot challenges make a large share of real sites unusable. It needs a far deeper build to be trustworthy; the code is parked in the `codec-pilot` repo, not deleted.
 - **Live webcam vision** (ex-beat 8) — removed 2026-07-16. The capture was soft (the Anker C200's lens, not code) and it landed as a gadget rather than a capability. Nothing else depends on it.
 
 ## Decide before filming
@@ -102,6 +102,6 @@
 ## Director's notes
 - Act 1 is the emotional hook — promise (1), deliver, and F5 (3) is an unexpected early "wow".
 - Showstopper risk: 7 (Vision Mouse) — if it fails live, skip to 8.
-- Core "works while you watch" trio: 10 Project, 12 Vibe, 13 Pilot.
+- Core "works while you watch" pair: 10 Project, 12 Vibe.
 - Act 5 is THE differentiator: 17 (server) + 18 (client) back-to-back = bidirectional MCP.
 - Save Hue + Spotify (23) for the very last frame.

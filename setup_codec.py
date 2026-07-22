@@ -37,7 +37,7 @@ def banner():
     ║                            Setup v3.2.0   ║
     ╚═══════════════════════════════════════════╝{X}
 {W}  Your Open-Source Intelligent Command Layer
-  9 products: Core · Chat · Dashboard · Vibe · Agents · Dictate · Instant · Pilot · Project
+  7 products: Core · Dictate · Instant · Chat · Vibe · Voice · Overview
   76 skills · 12 pre-built agent crews{X}
 """)
 
