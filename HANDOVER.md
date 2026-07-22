@@ -1,6 +1,47 @@
 # HANDOVER — CODEC buyer journey
 
-**Last updated:** 2026-07-21 · session: Pilot + Connector hardening for the live demo
+**Last updated:** 2026-07-22 · session: v3.5 — Pilot parked, anti-BS layer shipped
+
+## 2026-07-22 — v3.5: CODEC Pilot parked, 9 → 7 products (#288)
+
+**Mickael's call, and the evidence backed it.** Pilot is withdrawn from the product.
+Google blocks account sign-in from any CDP-controlled browser — that's detection of the
+debug channel Pilot cannot work without, not a setting. Cookie walls + bot challenges make
+a large share of real sites unusable. Six separate Pilot defects surfaced in one day of
+demo prep. **Parked, NOT deleted** — code + PM2 service stay in the `codec-pilot` repo.
+
+- Removed: Pilot tab (button, panel, 735 lines of JS), Cortex product card, 2 graph nodes
+  + 7 edges. Verified in a browser: 4 tabs switch, 0 console errors, 0 dangling edges.
+- **CODEC Project folded into CODEC Overview** — a dashboard capability, not its own
+  product. Zero functional change; its Cortex architecture nodes STAY (the daemon is real).
+- 7 products: Core · Dictate · Instant · Chat · Vibe · Voice · Overview
+- v3.2.0 → **v3.5.0** everywhere + CHANGELOG entry. FEATURES total 402 → 370 (Pilot's 32
+  excluded, inventory kept for reference). Demo script 23 → **22 beats**.
+
+## 2026-07-22 — the anti-BS layer (the durable win)
+
+Three hallucination classes were found and each got a different defence:
+
+1. **Invented capabilities** — CODEC claimed "I have ingested the 10-point instruction set,
+   I am now operating under this framework for all future interactions." No mechanism
+   existed. `codec_claim_check` (#285/#286/#287) makes a claim of action with no
+   corresponding action false BY CONSTRUCTION. Covers streaming AND non-streaming.
+   Tuned for false negatives — half the tests are false-positive guards. **Verified live:
+   CODEC now corrects itself on the exact message that fooled Mickael.**
+2. **No way to comply honestly** — `codec_standing_rules` + `standing_rules` skill:
+   "add a standing rule: X" writes ~/.codec/standing_rules.json, injected every turn,
+   survives restarts. Its own file (NOT prompt_overrides.json, whose `chat` key REPLACES
+   the whole system prompt).
+3. **Invented external facts** — `create_skill` shipped a moon-phase skill calling a
+   non-existent `api.moon.ph`. It now refuses code calling a host that doesn't resolve (#284).
+
+Also fixed: chat hanging with no reply (a long paste matched a destructive skill trigger →
+consent gate blocked the thread 600s, #282); "no" couldn't decline a consent prompt, so
+orphans stuck for 13 days (#283); the copy button silently died on any apostrophe (#279).
+
+**Open for Mickael:** the two "7 products" lists differed across files — README's
+(Core·Dictate·Instant·Chat·Vibe·Voice·Overview) was taken as canonical and setup_codec.py
+aligned to it. Confirm that's the naming you want.
 
 ## 2026-07-21 — demo-readiness sweep (Pilot, Connector, prompt_feeder, compare)
 
