@@ -102,8 +102,6 @@ automating login to a personal gmail can get the account flagged.
 
 ## 2026-07-14 — Connector tab for external MCP servers (#254, merged + LIVE)
 
-## 2026-07-14 — Connector tab for external MCP servers (#254, merged + LIVE)
-
 New **Connector** tab in the dashboard (between Cortex and Settings) — a UI over the
 MCP-*client* menu CODEC previously only drove by voice/chat ("list mcp", "connect to notion").
 Shipped: branch → 6 tests → PR #254 → CI green → squash-merge → FF this dir to main → restart
