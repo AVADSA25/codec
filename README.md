@@ -23,7 +23,7 @@
   <img src="https://img.shields.io/badge/tests-2000+-green?style=flat-square" alt="2,000+ Tests"/>
   <img src="https://img.shields.io/badge/lines-52K+-purple?style=flat-square" alt="52K+ Lines"/>
   <img src="https://img.shields.io/badge/license-MIT-brightgreen?style=flat-square" alt="MIT License"/>
-  <img src="https://img.shields.io/badge/engine-CODEC%20v3.2-d97757?style=flat-square" alt="Engine: CODEC v3.2"/>
+  <img src="https://img.shields.io/badge/engine-CODEC%20v3.5-d97757?style=flat-square" alt="Engine: CODEC v3.5"/>
 </p>
 
 ---
@@ -73,8 +73,6 @@ And all of it runs on *your* machine: no data leaves unless you explicitly route
 | 5 | **CODEC Vibe** | Browser IDE with Monaco editor + live preview — new skills land through a human-review approval flow |
 | 6 | **CODEC Voice** | Real-time voice calls with interrupt detection, screen analysis mid-call |
 | 7 | **CODEC Overview** | Dashboard + Cortex nerve center + full audit trail — accessible from any device |
-| 8 | **CODEC Pilot** | Browser automation you can *teach* — record once, replay forever with XPath→CSS→LLM rescue |
-| 9 | **CODEC Project** | Drop-a-project autonomy — describe what to build, approve the plan once, daemon executes for hours |
 
 ---
 
@@ -165,35 +163,9 @@ Visual command center showing all 9 CODEC products in an interactive grid. Neura
 **Audit — Full Event Trail**
 Every action CODEC takes is logged across 16 categories: command, skill, llm, auth, error, scheduled, voice, vision, tts, stt, system, security, hotkey, screenshot, config, draft. Filterable by category pills, searchable, with colored timeline dots and expandable event details. JSON-line storage with 50MB rotation. Default 24h time range with 1h/6h/24h/7d quick filters.
 
-### 8. CODEC Pilot — Browser Automation You Can Teach
+### Project mode (part of CODEC Overview) — Drop-a-Project Autonomy
 
-Dedicated headless Chromium owned by Pilot (CDP port 9223, separate from your daily Chrome on 9222), driven live by Qwen and visible in the dashboard. Goes well beyond "an LLM with a browser tool" — every successful run compiles into a reusable Python skill that replays deterministically with zero LLM cost on the hot path.
-
-**Three ways to drive it (all from Tasks → Pilot in the dashboard):**
-
-1. **Agent mode** — Type a natural-language task. Qwen takes a snapshot, picks an action, executes, re-snapshots, repeats until done. ReAct loop with 8-action vocabulary (`navigate / click / type / scroll / wait / extract / select_option / done`), 30-step budget, dangerous-URL blocklist, hallucinated-index validation. Watch it work via the live MJPEG feed (~3 fps).
-2. **Teach mode** — Hit **● Record**, drive the browser yourself (Navigate / Click [N] / Type into [N] from the UI), hit **■ Stop & Save**. CODEC captures every action with selectors (XPath + CSS + accessible name + ARIA role) and auto-compiles a Python skill awaiting your review.
-3. **Replay mode** — Hit ▶ on any past run. Goes through the **3-tier reliability ladder**: XPath (3 attempts × 500 ms backoff) → CSS (1 attempt × 2 s) → LLM rescue (re-snapshot, ask Qwen to find the element by name). Worst case: ~12 s before a stuck step surfaces. Skills self-heal when sites change their DOM.
-
-**Skill approval gate.** Compiled skills do NOT auto-register — they land in `~/.codec/skills/.pending/` and require human approval via the dashboard. Blocks prompt-injection-spawned malicious skills from auto-activating. Approve → moves to `~/.codec/skills/pilot_{slug}.py` with `SKILL_NAME` / `SKILL_DESCRIPTION` / `SKILL_TAGS` metadata; SkillRegistry hot-reloads and the skill is callable from voice, Chat, Scheduler, and any MCP client.
-
-**HITL (human-in-the-loop) takeover.** Pause an agent mid-run, inject manual actions, take full control, then hand back. The agent re-snapshots and continues from wherever you left it.
-
-**Three-tier replay ladder, by the numbers:**
-
-| Tier | Method | Attempts | Per-step latency | Triggers on |
-|---|---|---|---|---|
-| 1 | Stored XPath | 3 × 500 ms backoff | <100 ms (typical) | Always tried first |
-| 2 | Stored CSS selector | 1 × 2 s timeout | ~50 ms | XPath missed all 3 retries |
-| 3 | Qwen rescue by name | 1 × 10 s timeout | 1–10 s | XPath + CSS both failed |
-
-**Infrastructure:** Playwright + FastAPI on PM2 (`pilot-runner` on port 8094), 30 endpoints, MJPEG live stream, JSON traces persisted under `~/.codec/pilot_traces/{run_id}/trace.json`, optional Cloudflare tunnel at `pilot.lucyvpa.com`.
-
-Try: *Record yourself logging into Gmail, approve the skill, schedule it to run every morning at 7am — Qwen never touches the hot path again.*
-
-### 9. CODEC Project — Drop-a-Project Autonomy
-
-Where Chat answers and Pilot replays, Project **builds**. Type a project description like *"Build me a Telegram bot that monitors Marbella property listings under €500k"* or *"Watch EUR/USD intraday vol and ping me when 30-min realized vol crosses 0.4%"*, hit send, and a dedicated PM2 daemon (`codec-agent-runner`) executes for hours without supervision — writing files, running commands, calling skills, hitting APIs, until the project is done or it asks you a question.
+Where Chat answers, Project **builds**. Type a project description like *"Build me a Telegram bot that monitors Marbella property listings under €500k"* or *"Watch EUR/USD intraday vol and ping me when 30-min realized vol crosses 0.4%"*, hit send, and a dedicated PM2 daemon (`codec-agent-runner`) executes for hours without supervision — writing files, running commands, calling skills, hitting APIs, until the project is done or it asks you a question.
 
 This isn't "an LLM with bash access." It's the full Phase-3 autonomous-agent substrate: planning, permission gating, persistence, observation, multi-agent concurrency, and a structured intervention protocol. It went through 10 numbered steps and 5 numbered architectural reviews to ship.
 
@@ -457,7 +429,7 @@ Custom shortcuts in `~/.codec/config.json`. Restart after changes: `pm2 restart 
 
 Every conversation is stored locally in SQLite with FTS5 full-text search. No cloud sync. No analytics. No telemetry. **See [`PRIVACY.md`](PRIVACY.md)** for the plain-English breakdown — what stays local, what goes outbound when, and the controls you have over both.
 
-**Pilot subsystem hardening (v3.1).** The browser-automation pillar went through a dedicated adversarial security audit (15 findings, remediated PP-1…PP-12): per-request token auth + loopback-only bind, an AST safety gate at skill-approval time, prompt-injection fencing of untrusted page content, SSRF/scheme guards on navigation, destructive-action default-deny on replay, secret redaction in traces, randomized CDP debug port, and a forensic audit trail. 67 security tests cover it.
+**Pilot subsystem hardening (v3.1, now parked).** The browser-automation pillar went through a dedicated adversarial security audit (15 findings, remediated PP-1…PP-12): per-request token auth + loopback-only bind, an AST safety gate at skill-approval time, prompt-injection fencing of untrusted page content, SSRF/scheme guards on navigation, destructive-action default-deny on replay, secret redaction in traces, randomized CDP debug port, and a forensic audit trail. 67 security tests cover it.
 
 **Enterprise quality bar.** Single-source-of-truth versioning (the `VERSION` file ← CHANGELOG, CI-pinned), a `ruff` lint gate in CI, 1,300+ tests including dedicated security suites, and reproducible packaging via `pyproject.toml`. Every release is git-tagged.
 
@@ -731,27 +703,7 @@ setup_codec.py        — Setup wizard (9 steps)
 ecosystem.config.js   — PM2 process management (16 services)
 ```
 
-**CODEC Pilot** lives in a sister directory (`~/codec/pilot/`) and runs as its own PM2 service:
-
-```
-pilot/
-├── pilot_chrome.py    — Dedicated Chromium lifecycle (Playwright, CDP :9223)
-├── snapshot.py        — Indexed-DOM accessibility-tree snapshot (<500 ms)
-├── screencast.py      — JPEG frame capture for live MJPEG stream
-├── pilot_runner.py    — FastAPI server :8094 (30 endpoints, CORS, MJPEG)
-├── pilot_agent.py     — ReAct loop (Qwen ↔ snapshot ↔ action ↔ trace)
-├── hitl.py            — Human-in-the-loop: pause/resume/inject/takeover
-├── trace.py           — Per-action trace recorder, JSON persisted to disk
-├── compiler.py        — Trace → Replayer-based Python skill
-├── replay.py          — XPath → CSS → LLM rescue ladder
-├── skill_review.py    — Approval gate (.pending/ → skills/)
-└── config.py          — Ports, paths, limits, action vocabulary
-```
-
-Generated traces and skills land in `~/.codec/`:
-- `~/.codec/pilot_traces/{run_id}/trace.json` — recorded action sequences with selectors
-- `~/.codec/skills/.pending/pilot_*.py` — awaiting human approval
-- `~/.codec/skills/pilot_*.py` — approved, hot-loaded by SkillRegistry
+**CODEC Pilot** is parked (v3.5) and no longer part of the product. Its code and PM2 service live on in the `codec-pilot` repo.
 
 ---
 
@@ -789,7 +741,9 @@ python3 setup_codec.py
 
 ## What's Coming
 
-> **CODEC Pilot** (browser automation) and **CODEC Project** (drop-a-project autonomy) are **live, shipping products** — see [§8](#8-codec-pilot--browser-automation-you-can-teach) and [§9](#9-codec-project--drop-a-project-autonomy) above. They are no longer roadmap items.
+> **Project mode** (drop-a-project autonomy) is live and ships as part of **CODEC Overview**.
+>
+> **CODEC Pilot** (browser automation) is **parked as of v3.5.** Google blocks account sign-in from any CDP-controlled browser, and cookie walls plus bot challenges make a large share of real sites unusable — it needs a considerably deeper build before it can be trusted as a product. The code is preserved in the `codec-pilot` repo rather than deleted.
 
 **Phase 3.5 (in progress)** — UX + polish on top of the autonomous-agent substrate:
 

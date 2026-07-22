@@ -1,6 +1,6 @@
 # Sovereign AI Workstation — Full Product Breakdown
 
-> Engine: **CODEC v3.2** — 402 features · 90 skills · 2000+ tests · 52K+ lines of production code · 9 products
+> Engine: **CODEC v3.5** — 370 features · 90 skills · 2000+ tests · 52K+ lines of production code · 7 products
 
 The product name is **Sovereign AI Workstation**. Throughout this document
 and the codebase, **CODEC** refers to the underlying open-source engine /
@@ -490,7 +490,11 @@ notification dispatch.
 
 ---
 
-## 14. CODEC Pilot — Browser Automation You Can Teach (32 features) *(v2.3)*
+## 14. CODEC Pilot — PARKED as of v3.5 (not part of the product) *(32 features, excluded from the totals)*
+
+> Parked 2026-07-22. Google blocks account sign-in from any CDP-controlled browser, and cookie walls plus bot
+> challenges make a large share of real sites unusable. The code is preserved in the `codec-pilot` repo.
+> The inventory below is kept for reference and is **not** counted in CODEC's feature total.
 
 The 8th product — a complete browser-automation pillar with a dedicated headless Chromium, ReAct-style agent loop driven by Qwen, deterministic record-replay with selector fallback, a skill approval gate, and human-in-the-loop takeover. Lives in `~/codec/pilot/` (11 modules), runs as `pilot-runner` on PM2 port 8094.
 
@@ -594,7 +598,7 @@ The 8th product — a complete browser-automation pillar with a dedicated headle
 | 14. CODEC Pilot — Browser Automation You Can Teach *(v2.3)* | 32 |
 | **TOTAL** | **400** |
 
-**400 features · 88 skills · 2000+ tests · 52K+ lines of production code · 9 products**
+**400 features · 88 skills · 2000+ tests · 52K+ lines of production code · 9 products** *(v3.2 snapshot — Pilot and Project were counted then; parked/folded in v3.5)*
 
 ### What's new in v3.2
 

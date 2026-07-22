@@ -1,5 +1,21 @@
 # Changelog
 
+## v3.5.0 (2026-07-22)
+### Changed
+- **CODEC Pilot parked.** The browser-automation pillar is withdrawn from the product: the Pilot tab is removed from the dashboard and its product card from the Cortex map. Pilot needs a far deeper build than the rest of CODEC to be trustworthy — Google blocks account sign-in from any CDP-controlled browser (not a setting we can change), and cookie walls plus bot challenges make a large share of real sites unusable. The code is parked, not deleted: it lives in its own `codec-pilot` repo and the runner is untouched, so it can return when it earns its place.
+- **CODEC Project folded into CODEC Overview.** Project mode is a capability of the dashboard rather than a product in its own right. No functionality changes — plan → approve → autonomous run all work exactly as before.
+- **9 products → 7.** Core · Chat · Dashboard · Vibe · Agents · Dictate · Instant.
+
+### Added
+- **Claim-to-artifact matching (`codec_claim_check`).** CODEC may not claim what it did not do. Every real action is already recorded, so a claim of action with no corresponding action is false by construction — not by opinion. Catches both impossible capabilities ("I'll remember this for future sessions") and unbacked actions ("saved to your Desktop" with no file skill run). Covers the streaming and non-streaming chat paths. Tuned for false negatives over false positives: half the tests are false-positive guards.
+- **Standing rules that persist (`codec_standing_rules` + `standing_rules` skill).** "add a standing rule: …" writes `~/.codec/standing_rules.json` and appends to the chat system prompt every turn, surviving restarts. Additive by design — deliberately not `prompt_overrides.json`, whose `chat` key replaces the entire system prompt.
+- **Generated skills are checked against the world.** `create_skill` now refuses code that calls a hostname which does not resolve, after it shipped a moon-phase skill calling an invented `api.moon.ph` that failed every run.
+
+### Fixed
+- **Chat could hang with no reply.** A long paste whose text matched a destructive skill trigger fired the consent gate, which blocked the request thread for its full 600s timeout. Skills no longer auto-fire above 2000 characters — a paste is a document, not a command.
+- **"no" now declines a consent prompt.** Refusals were treated as ambiguous and burned an in-memory attempt counter, so from a fresh process a prompt could never be closed; one had been stuck for 13 days.
+- **Copy button did nothing on any message containing an apostrophe** — the text was embedded in an inline `onclick`, so `don't` ended the JS string. Also closed the injection vector that came with it.
+
 ## v3.2.0 (2026-05-25)
 ### Added
 - **In-app auto-update (Sparkle-compatible).** CODEC now checks for new releases and can update itself. A pure-Python client (`codec_update.py`) reads a signed Sparkle appcast and verifies every download's **Ed25519 signature** against the embedded `SUPublicEDKey` before installing — a tampered build is refused. New dashboard endpoints `GET /api/update/check` + `POST /api/update/download`, plus an in-app update banner ("Download & open") that polls on load and every 6h.

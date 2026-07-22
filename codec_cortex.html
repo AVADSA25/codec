@@ -396,11 +396,7 @@ var NODES = [
   {id:'agents',label:'Agents',x:920,y:370,r:22,color:'#fbbf24',icon:'bolt',category:'hands',zone:'hands',
    info:'Deep research, daily briefing, trip planner + custom agents. Background job queue.',file:'routes/agents.py'},
   {id:'marketplace',label:'Marketplace',x:820,y:240,r:18,color:'#fbbf24',icon:'cpu',category:'hands',zone:'hands',
-   info:'Skill marketplace — search, install, publish. Approved Pilot skills land here for sharing across CODEC installations.',file:'codec_marketplace.py'},
-  {id:'pilot',label:'Pilot',x:1010,y:260,r:30,color:'#ff6e9c',icon:'globe',category:'hands',zone:'hands',
-   info:'CODEC Pilot — browser automation pillar. ReAct agent loop drives a dedicated headless Chromium (CDP 9223). Records every run, compiles to pending skills, replays deterministically via XPath → CSS → LLM rescue ladder.',file:'pilot/pilot_runner.py',port:8094,health:'/health'},
-  {id:'pilot_chrome',label:'Pilot Chrome',x:1010,y:170,r:22,color:'#ff6e9c',icon:'eye',category:'hands',zone:'hands',
-   info:'Dedicated Chromium owned by Pilot, isolated from user’s daily Chrome (on 9222). Persistent profile at ~/.codec/pilot_chrome_profile/. MJPEG live stream feeds the dashboard at ~3 fps.',file:'pilot/pilot_chrome.py',port:9223},
+   info:'Skill marketplace — search, install, publish. Approved skills land here for sharing across CODEC installations.',file:'codec_marketplace.py'},
   {id:'project',label:'Project',x:1010,y:360,r:30,color:'#a78bfa',icon:'bolt',category:'hands',zone:'hands',
    info:'CODEC Project — drop-a-project autonomous daemon (PM2: codec-agent-runner). Qwen drafts a plan + permission manifest, you approve once, daemon executes for hours. Plan-hash tamper detection, multi-agent concurrency capped at 3, resume-after-restart.',file:'codec_agent_runner.py'},
   {id:'plan',label:'Plan Draft',x:1010,y:450,r:18,color:'#a78bfa',icon:'draft',category:'hands',zone:'hands',
@@ -432,7 +428,7 @@ var NODES = [
 
   // ─── EXTERNAL (bottom-left) — Messaging & Outbound ───
   {id:'mcp',label:'MCP Server',x:90,y:460,r:22,color:'#a78bfa',icon:'globe',category:'external',zone:'external',
-   info:'Model Context Protocol server — exposes CODEC skills as tools callable from Claude Code, Cursor, VS Code, and any MCP client. Approved Pilot skills auto-register here. Strict input validation, opt-in exposure per skill.',file:'codec_mcp.py'},
+   info:'Model Context Protocol server — exposes CODEC skills as tools callable from Claude Code, Cursor, VS Code, and any MCP client. Approved skills auto-register here. Strict input validation, opt-in exposure per skill.',file:'codec_mcp.py'},
   {id:'imessage',label:'iMessage',x:170,y:530,r:24,color:'#22c55e',icon:'chat',category:'external',zone:'external',
    info:'Polls macOS Messages DB. Trigger: "Hey CODEC" or "Good morning". Replies via AppleScript. Daily Briefing, smart agents.',file:'codec_imessage.py'},
   {id:'telegram',label:'Telegram',x:270,y:580,r:24,color:'#38bdf8',icon:'globe',category:'external',zone:'external',
@@ -476,12 +472,6 @@ var EDGES = [
   {from:'watcher',to:'qwen',color:'#fbbf24'},
   {from:'watcher',to:'vision',color:'#fbbf24'},
 
-  // Pilot — browser automation pillar
-  {from:'pilot_chrome',to:'pilot',color:'#ff6e9c',label:'CDP'},
-  {from:'pilot',to:'qwen',color:'#ff6e9c',label:'ReAct'},
-  {from:'pilot',to:'skills',color:'#ff6e9c',label:'compile'},
-  {from:'pilot',to:'approval',color:'#ff6e9c',label:'review',style:'dashed'},
-  {from:'pilot',to:'dashboard',color:'#ff6e9c',style:'dashed'},
 
   // Project — autonomous agent runner
   {from:'plan',to:'qwen',color:'#a78bfa',label:'draft'},
@@ -495,7 +485,6 @@ var EDGES = [
   // Infrastructure — Audit, Watchdog, Scheduler, MCP, Observer, Marketplace
   {from:'dispatch',to:'audit',color:'#fbbf24',label:'log',style:'dashed'},
   {from:'project',to:'audit',color:'#fbbf24',style:'dashed'},
-  {from:'pilot',to:'audit',color:'#fbbf24',style:'dashed'},
   {from:'watchdog',to:'heartbeat',color:'#34d399',style:'dashed'},
   {from:'scheduler',to:'agents',color:'#fbbf24',label:'fire'},
   {from:'scheduler',to:'project',color:'#a78bfa',style:'dashed'},
@@ -504,7 +493,6 @@ var EDGES = [
   {from:'observer',to:'project',color:'#d97757',label:'watch',style:'dashed'},
   {from:'observer',to:'dispatch',color:'#d97757',style:'dashed'},
   {from:'marketplace',to:'skills',color:'#fbbf24',style:'dashed'},
-  {from:'pilot',to:'marketplace',color:'#ff6e9c',label:'publish',style:'dashed'},
 
   // Spine connects UIs
   {from:'dashboard',to:'qwen',color:'#60a5fa'},
@@ -871,17 +859,7 @@ var PRODUCTS = [
    desc:'Private dashboard accessible from any device, anywhere. Cloudflare Tunnel or Tailscale VPN — no port forwarding, no third-party relay. Cortex neural map, real-time activity feed, full audit trail across 16 categories.',
    features:['Dashboard :8090','Cloudflare Tunnel','Tailscale VPN','MCP Server','Task Scheduler','Heartbeat Monitor','Cortex Visualizer','Audit Stream','Prometheus Metrics','Remote Approval','PM2 Process Manager','Skill Marketplace'],
    files:['codec_dashboard.py','codec_cortex.html','codec_audit.html'],status:'overview',
-   details:{how:'75+ API endpoints. Send commands, view the screen, launch voice calls, manage agents — all from a browser. Installable as PWA on mobile and desktop.',features:'Cortex neural map, real-time activity feed, searchable skills panel, event log viewer. Audit: 16 categories, filterable, colored timeline, JSON-line storage with 50MB rotation.',port:'8090',files:['codec_dashboard.py','codec_dashboard.html','codec_cortex.html','codec_audit.html']}},
-  {name:'CODEC Pilot',subtitle:'Browser Automation You Can Teach',icon:'🎯',color:'#ff6e9c',
-   desc:'Dedicated headless Chromium owned by Pilot (CDP 9223, separate from your daily Chrome on 9222), driven live by Qwen and visible in the dashboard. Every successful run compiles into a reusable Python skill that replays deterministically with zero LLM cost on the hot path.',
-   features:['Headless Chrome :9223','MJPEG Live Feed','ReAct Agent Loop','Teach Mode (Record)','XPath Replay','CSS Fallback','LLM Rescue','Skill Approval Gate','HITL Takeover','30 HTTP Endpoints','Cloudflare Tunnel','MCP Auto-Expose'],
-   files:['pilot/pilot_runner.py','pilot/replay.py','pilot/compiler.py','pilot/skill_review.py','pilot/hitl.py'],status:'pilot',
-   details:{modes:'Three ways to drive it from Tasks → Pilot in the dashboard: (1) Agent mode — type a natural-language task, Qwen takes a snapshot, picks an action, executes, re-snapshots, repeats. ReAct loop, 8-action vocabulary (navigate/click/type/scroll/wait/extract/select_option/done), 30-step budget, dangerous-URL blocklist. (2) Teach mode — hit ● Record, drive the browser yourself, hit ■ Stop & Save. CODEC captures every action with XPath + CSS + accessible name + ARIA role per step. (3) Replay mode — hit ▶ on any past run. Goes through the 3-tier reliability ladder: XPath (3 × 500ms backoff) → CSS (1 × 2s) → LLM rescue (Qwen re-snapshots, finds element by name). Worst case ~12s per stuck step.',gate:'Compiled skills do NOT auto-register — they land in ~/.codec/skills/.pending/ and require human approval via the dashboard. Blocks prompt-injection-spawned malicious skills from auto-activating. Approve → moves to ~/.codec/skills/pilot_{slug}.py with SKILL_NAME / SKILL_DESCRIPTION / SKILL_TAGS metadata, SkillRegistry hot-reloads, callable from voice / Chat / Scheduler / MCP clients.',hitl:'Pause an agent mid-run, inject manual actions, take full control via the browser, then hand back. The agent re-snapshots and continues from wherever you left it.',infrastructure:'Playwright + FastAPI on PM2 (pilot-runner :8094). 30 endpoints. MJPEG live stream ~3 fps. JSON traces persisted under ~/.codec/pilot_traces/{run_id}/trace.json. Optional Cloudflare tunnel at pilot.lucyvpa.com.',port:'8094',files:['pilot/pilot_chrome.py','pilot/snapshot.py','pilot/screencast.py','pilot/pilot_runner.py','pilot/pilot_agent.py','pilot/hitl.py','pilot/trace.py','pilot/compiler.py','pilot/replay.py','pilot/skill_review.py','pilot/config.py']}},
-  {name:'CODEC Project',subtitle:'Drop-a-Project Autonomy',icon:'📌',color:'#a78bfa',
-   desc:'Where Chat answers and Pilot replays, Project builds. Type a project description, approve the plan once, and a dedicated PM2 daemon (codec-agent-runner) executes for hours without supervision — writing files, running commands, calling skills, hitting APIs, until the project is done or it asks you a question.',
-   features:['Autonomous Daemon','Qwen Plan Drafter','Permission Manifest','Plan-Hash Tamper Check','Resume After Restart','Multi-Agent (cap 3)','AskUserQuestion','Strict-Consent Gates','Step Budgets','17 New Audit Events','Per-Agent Workspace','Global Allowlist Tier'],
-   files:['codec_agent_plan.py','codec_agent_runner.py','codec_agent_messaging.py'],status:'project',
-   details:{lifecycle:'Four phases — (1) Draft: Qwen reads your description, drafts a JSON plan with goal, success_criteria, phases, and a permission manifest (skills, write paths, network domains, destructive ops). (2) Approval: you approve once. Plan is hashed and pinned — any tampering after approval is detected and refuses to execute. (3) Execution: codec-agent-runner picks up the approved plan and runs it autonomously. Qwen ↔ skill loops, permission-gated, AskUserQuestion available for the rare moments the agent genuinely needs you. (4) Intervention: status pills above the chat input show every running agent live. Inline Approve / Pause / Resume / Abort buttons.',substrate:'Built on the full Phase-3 substrate: unified audit envelope (Step 1, 17 new event types), plugin lifecycle hooks (Step 2), AskUser + strict-consent + step budget (Step 3), plan persistence (Step 4), continuous observation loop (Step 5), trigger system (Step 6), end-of-day shift report (Step 7), agent planner (Step 8), agent runner (Step 9), messaging (Step 9). 10 numbered build steps + 5 architectural reviews.',permissions:'Two tiers — per-agent manifest (only what the agent declared at draft time) + global allowlist at ~/.codec/agent_global_grants.json (auto-approved across all agents, defaults to read-only ~/codec-repo/**).',state:'~/.codec/agents/<agent_id>/ — plan.json, state.json, messages.jsonl, audit.jsonl, workspace/. Long-running agents resume cleanly after machine restart.',examples:'Try: "Build me a Telegram bot that monitors Marbella property listings under €500k" or "Watch EUR/USD intraday vol and ping me when 30-min realized vol crosses 0.4%" or "Scaffold a FastAPI service with 5 example records in SQLite and a README."',files:['codec_agent_plan.py','codec_agent_runner.py','codec_agent_messaging.py','docs/PHASE3-COMPLETE.md']}},
+   details:{how:'75+ API endpoints. Send commands, view the screen, launch voice calls, manage agents — all from a browser. Installable as PWA on mobile and desktop.',features:'Project mode (drop a project, approve the plan once, the codec-agent-runner daemon executes autonomously for hours), Cortex neural map, real-time activity feed, searchable skills panel, event log viewer. Audit: 16 categories, filterable, colored timeline, JSON-line storage with 50MB rotation.',port:'8090',files:['codec_dashboard.py','codec_dashboard.html','codec_cortex.html','codec_audit.html']}},
 ];
 
 function switchView(view) {
