@@ -10,6 +10,7 @@ import inspect
 import sys
 from pathlib import Path
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -54,6 +55,22 @@ def test_replacement_handlers_present():
 
 
 # ── Live TestClient checks (verify the FastAPI app behavior) ──────────────────
+
+
+@pytest.fixture(autouse=True)
+def _isolate_reviews(tmp_path, monkeypatch):
+    """Stage reviews into a tmp dir, never the user's real ~/.codec.
+
+    routes/skills.py deliberately exposes _reviews_dir() as a FUNCTION "so tests
+    can monkeypatch it to a tmp dir for isolation" — but nothing did, so every
+    run of this file wrote a live `test_review.py` into the operator's Skills
+    review queue. Six had piled up before anyone noticed; three of them landed
+    in a single afternoon of test runs.
+    """
+    d = tmp_path / "skill_reviews"
+    d.mkdir()
+    monkeypatch.setattr(skills_routes, "_reviews_dir", lambda: str(d))
+    return d
 
 
 def _make_client() -> TestClient:
