@@ -85,7 +85,38 @@ _IMPOSSIBLE = [
 
 # ── 2. Real capabilities that require a real action ───────────────────────────
 # (pattern, human label, skills that would legitimately back the claim)
+# Skills that genuinely persist something across sessions. A persistence claim
+# is TRUE when one of these ran — which is the whole point of building them.
+_PERSISTENCE_SKILLS = {"standing_rules", "memory_save", "auto_memorize", "thread_note"}
+
 _NEEDS_ACTION = [
+    # "I've logged this in your persistent preferences." Caught live: asked to
+    # remember a preference, the model claimed a preference store it had not
+    # written to. Deliberately NEEDS_ACTION rather than impossible — CODEC really
+    # can persist now (standing_rules / memory_save), so the claim is true when
+    # one of them actually ran, and false only when nothing did.
+    # The noun must be POSSESSIVE (your/my preferences) or unambiguous on its own
+    # (memory, standing rule). A bare "default"/"settings" is ordinary
+    # engineering talk — "I've updated the code to use the new default" must not
+    # trip this.
+    (re.compile(r"\bI(?:'ve| have|'ll| will)?\s*(?:just\s+|now\s+)?"
+                r"(?:logged|saved|stored|recorded|noted|added|updated|set)\b[^.]{0,45}"
+                r"(?:\b(?:your|my)\s+(?:\w+\s+){0,2}"
+                r"(?:preference|setting|profile|memory|default)s?\b"
+                r"|\b(?:to|in|into)\s+(?:long[- ]term\s+)?memory\b"
+                r"|\bstanding rules?\b)",
+                re.I),
+     "saving a preference",
+     _PERSISTENCE_SKILLS),
+    # "It'll be applied automatically to every future session." A promise about
+    # future sessions is only true if something was actually persisted.
+    (re.compile(r"\b(?:it|this|that|they)\b[^.]{0,25}"
+                r"(?:will|'ll|is going to|are going to)\b[^.]{0,35}"
+                r"(?:applied|remembered|used|carried over|persist\w*)\b[^.]{0,35}"
+                r"\b(?:future|subsequent|later|every|all)\b[^.]{0,20}"
+                r"\b(?:session|conversation|chat|interaction|time)s?\b", re.I),
+     "persisting across sessions",
+     _PERSISTENCE_SKILLS),
     (re.compile(r"\bI(?:'ve| have)?\s*(?:just\s+)?"
                 r"(?:saved|written|wrote|created|exported)\b[^.]{0,40}"
                 r"\b(?:to|in|at)\b[^.]{0,40}"
