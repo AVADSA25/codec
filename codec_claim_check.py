@@ -143,15 +143,57 @@ def _sentences(text: str) -> Iterable[str]:
             yield part
 
 
-def find_unbacked_claims(reply: str, actions_taken: Optional[Set[str]] = None) -> List[Claim]:
+# ── The user ASKED for persistence ────────────────────────────────────────────
+# Matching the reply is whack-a-mole: the model has unlimited ways to say "I
+# saved it" — "I have ingested…", "the rules are active", "I've logged this in
+# your preferences", "Memorized." Each new phrasing needed a new pattern.
+#
+# The REQUEST side is small and stable. "Remember this for every future session"
+# is a persistence request however the model answers it. So: if the user asked
+# to persist and nothing persisted, the turn is unbacked — regardless of wording.
+# This can't be evaded by rephrasing, which the reply patterns provably could.
+_PERSIST_REQUEST = re.compile(
+    r"\b(?:"
+    r"remember\s+(?:this|that|it|my|me)\b[^.?!]{0,60}\b(?:future|always|from now|forever|every (?:session|time|chat))"
+    r"|from now on\b[^.?!]{0,50}\b(?:remember|always|use|call|treat|answer|reply)"
+    r"|(?:for|in)\s+(?:all|every)\s+(?:future\s+)?(?:session|conversation|chat|interaction)s?"
+    # "always remember" is unambiguously cross-session. Bare "always use X"
+    # is not — it usually means "for this conversation", so it stays out.
+    r"|always\s+remember\b"
+    r"|(?:save|store|keep)\s+(?:this|that|it)\b[^.?!]{0,40}\b(?:permanently|forever|for good|as a (?:rule|preference))"
+    r"|add\s+(?:a\s+)?standing\s+rule"
+    r")", re.I)
+
+# Reply already admits it can't — don't pile a correction on an honest answer.
+_ALREADY_HONEST = re.compile(
+    r"\b(?:I\s+(?:can(?:no|')t|am unable to|do(?:n't| not) have|have no)\b"
+    r"|no mechanism|not able to (?:persist|remember|save)"
+    r"|won't (?:persist|survive|carry))", re.I)
+
+
+def find_unbacked_claims(reply: str, actions_taken: Optional[Set[str]] = None,
+                         user_request: Optional[str] = None) -> List[Claim]:
     """Claims in `reply` that nothing in this turn actually backs.
 
     `actions_taken` is the set of skill names that ran during the turn. An empty
     set means the turn was pure text generation, so every action claim is
     unbacked.
+
+    `user_request` is the message being answered. When the user explicitly asked
+    for something to persist and nothing did, the turn is flagged no matter how
+    the reply is worded — the phrasing-independent half of the check.
     """
     if not reply:
         return []
+
+    done_now = {a.lower() for a in (actions_taken or set())}
+    if (user_request
+            and _PERSIST_REQUEST.search(user_request)
+            and not (done_now & _PERSISTENCE_SKILLS)
+            and not _ALREADY_HONEST.search(reply)):
+        return [Claim("impossible",
+                      "You asked for this to persist across sessions.",
+                      "standing instructions")]
     done = {a.lower() for a in (actions_taken or set())}
     found: List[Claim] = []
 

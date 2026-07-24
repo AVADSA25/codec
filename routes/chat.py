@@ -1259,7 +1259,8 @@ async def chat_completion(request: Request):
                     try:
                         import codec_claim_check
                         _unbacked = codec_claim_check.find_unbacked_claims(
-                            "".join(_visible), actions_taken=_stream_actions)
+                            "".join(_visible), actions_taken=_stream_actions,
+                            user_request=last_user_text)
                         if _unbacked:
                             _note = codec_claim_check.correction_note(_unbacked)
                             yield f"data: {json.dumps({'token': _note})}\n\n"
@@ -1342,7 +1343,8 @@ async def chat_completion(request: Request):
         try:
             import codec_claim_check
             _unbacked = codec_claim_check.find_unbacked_claims(
-                answer, actions_taken=_turn_actions)
+                answer, actions_taken=_turn_actions,
+                user_request=last_user_text)
             if _unbacked:
                 answer += codec_claim_check.correction_note(_unbacked)
                 log_event(
