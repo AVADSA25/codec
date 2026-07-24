@@ -14,7 +14,19 @@ line-length = 120
 extend-exclude = ["pilot", "swift-overlay"]  # pilot is a separate repo; swift is not Python
 
 [lint]
-# Ruff's default selection is E4/E7/E9 + F. Keep it; drop the house-style stylistic rules.
+# Selection is EXPLICIT, not inherited. Relying on ruff's default `select` broke
+# the repo on 2026-07-24: ruff 0.16.0 widened its defaults and `ruff check .`
+# went from clean to 3117 errors with no code change — BLE001 x1029, I001 x402,
+# UP006 x309, S110, DTZ005, ASYNC230 … none of which this project ever chose.
+# Naming the set here means a future ruff release can add whatever defaults it
+# likes without silently changing this repo's gate. Widen it deliberately.
+select = [
+    "E4",   # pycodestyle — imports
+    "E7",   # pycodestyle — statements
+    "E9",   # pycodestyle — runtime/syntax errors
+    "F",    # pyflakes — unused imports, undefined names, f-string bugs, redefinitions
+]
+# Drop the house-style stylistic rules from the selection above.
 ignore = [
     "E402",  # module-import-not-at-top — lazy/conditional imports + sys.path setup (intentional)
     "E701",  # multiple-statements-on-one-line (colon) — compact `if x: return`

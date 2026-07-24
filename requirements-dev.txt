@@ -12,8 +12,7 @@
 
 # Test + lint toolchain (matches CI)
 pytest>=9.1.1
-# Upper bound is deliberate: ruff 0.16 changed the default rule selection AND
-# stopped honouring this repo's ruff.toml in CI — `ruff check .` went from clean
-# to 3117 errors (E402 fired 535 times despite being in our ignore list), with
-# no code change. Unpinning again needs a real 0.16 migration, not a drift.
-ruff>=0.15.22,<0.16
+# No upper bound needed: ruff.toml now pins `select` explicitly, so a release
+# that widens ruff's defaults can't silently change this repo's gate.
+# Verified clean on both 0.15.22 and 0.16.0.
+ruff>=0.15.22
