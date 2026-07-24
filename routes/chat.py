@@ -1280,6 +1280,21 @@ async def chat_completion(request: Request):
                             )
                     except Exception as e:
                         log.warning(f"[Chat] claim check skipped (stream): {e}")
+                    try:
+                        import codec_premise_check
+                        _pf = codec_premise_check.find_misattributions(
+                            [m.get("content", "") for m in messages
+                             if m.get("role") == "user" and isinstance(m.get("content"), str)])
+                        if _pf:
+                            yield f"data: {json.dumps({'token': codec_premise_check.premise_note(_pf)})}\n\n"
+                            log_event(
+                                "premise_misattribution_flagged", source="codec-dashboard",
+                                message="user attribution contradicts a pasted source",
+                                level="warning", outcome="warning",
+                                extra={"credited_to": _pf[0].credited_to, "transport": "stream"},
+                            )
+                    except Exception as e:
+                        log.warning(f"[Chat] premise check skipped (stream): {e}")
                     yield "data: [DONE]\n\n"
                 except Exception as e:
                     yield f"data: {json.dumps({'error': str(e)})}\n\n"
@@ -1362,6 +1377,25 @@ async def chat_completion(request: Request):
                 )
         except Exception as e:
             log.warning(f"[Chat] claim check skipped: {e}")
+
+        # Premise check: an attribution the USER supplied that a source they
+        # pasted contradicts. The other direction from claim-check — scope is
+        # deliberately tiny, see codec_premise_check.
+        try:
+            import codec_premise_check
+            _pf = codec_premise_check.find_misattributions(
+                [m.get("content", "") for m in messages
+                 if m.get("role") == "user" and isinstance(m.get("content"), str)])
+            if _pf:
+                answer += codec_premise_check.premise_note(_pf)
+                log_event(
+                    "premise_misattribution_flagged", source="codec-dashboard",
+                    message="user attribution contradicts a pasted source",
+                    level="warning", outcome="warning",
+                    extra={"credited_to": _pf[0].credited_to},
+                )
+        except Exception as e:
+            log.warning(f"[Chat] premise check skipped: {e}")
 
         return {"response": answer, "model": model}
     except Exception as e:
