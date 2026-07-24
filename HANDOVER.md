@@ -1,6 +1,50 @@
 # HANDOVER — CODEC buyer journey
 
-**Last updated:** 2026-07-22 · session: v3.5 — Pilot parked, anti-BS layer shipped
+**Last updated:** 2026-07-24 · session: premise-check + inject_count + ruff migration
+
+## 2026-07-24 — the guard now checks BOTH directions
+
+**codec_premise_check (#298)** — the anti-BS work was directional: it validated
+assistant → user only. A real miss exposed the gap. Mickael's LinkedIn post credited a
+practice to a commenter ("the most useful reply I got was from SOMEONE WHO ends each
+session by listing…"); a correspondent then attributed it to Mickael ("YOU MENTIONED YOU
+end each session by…"). Both texts were in context. Neither CODEC nor the assistant
+flagged it — the answer engaged with the premise and reinforced it. **Worse than
+invention: nobody made anything up, a false premise propagated as fact.**
+
+Scope is deliberately tiny — ONLY attributions with an artifact in context are checkable.
+Premises about the world have nothing to check against; a general premise-checker would
+relocate the fabrication one level up, with CODEC "correcting" the user from nothing.
+Tone asks, never corrects: all that's provable is that two passages disagree. Four
+conditions must all hold. Kill switch `PREMISE_CHECK_ENABLED=false`. **Verified live
+end-to-end on the real incident text.**
+
+**inject_count, NOT fired_count (#296)** — asked for `fired_count`; shipped `inject_count`
+because "fired" is not measurable. A rule's whole lifecycle is `prompt_block() → sys_prompt
+→ LLM`; nothing observes whether the model used it. `fired_count` would be a fabricated
+metric wearing an authoritative name, in the module built to refuse exactly that.
+`inject_count == 0` PROVES dead weight; a high count proves nothing but cost. The listing
+says so in those words. Verified: survived restart at 4 → 5 → 6 on real turns.
+
+**standing_rules over-triggered (#299)** — found while verifying the premise check.
+"standing rule(s)" and "my rules" were bare TRIGGERS and the remove/list/clear regexes
+were unanchored, so quoting *"was there ever a rule you had to delete?"* fired the skill,
+which tried to remove a rule named "you". The turn never reached the LLM, so BOTH checks
+were bypassed. Same class as the file_ops chat-hang (#282): **a mention is not a command.**
+
+**claim-check scope bug (#295)** — `last_user_text` was populated only inside the
+`use_tools` gate, so with tools off the request-intent half got nothing and silently
+degraded to reply-patterns alone. A safety check must not depend on an unrelated flag.
+
+**ruff (#293 → #297)** — CI went red on EVERY PR with no code change: ruff 0.16.0 released,
+the workflow installed it unpinned, lint went 0 → 3117 errors. Root cause was that
+`ruff.toml` set only `ignore` and INHERITED ruff's default selection. Now `select` is
+explicit, so a release can't change the gate — and because of that the version pin came
+back OFF. Verified clean on both 0.15.22 and 0.16.0.
+
+**Standing lesson from all of it:** checking what the model SAYS is whack-a-mole (four
+rounds of pattern widening, each beaten by a rephrase). Checking what was ASKED against
+what actually HAPPENED is not.
 
 ## 2026-07-22 — v3.5: CODEC Pilot parked, 9 → 7 products (#288)
 
