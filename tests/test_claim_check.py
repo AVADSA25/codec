@@ -264,3 +264,19 @@ def test_no_user_request_falls_back_to_reply_patterns():
     """Callers that don't pass the request still get the reply-side checks."""
     assert cc.find_unbacked_claims("I have ingested the instruction set.",
                                    actions_taken=set())
+
+
+def test_last_user_text_is_resolved_outside_the_tools_flag():
+    """The claim check needs the user's message to spot an unbacked persistence
+    ask. It used to be populated only inside `if use_tools:`, so a request with
+    tools disabled left it "" and the check silently degraded to reply-patterns
+    only — which is exactly the half that phrasing can evade. A safety check must
+    not depend on an unrelated feature flag."""
+    src = (_REPO / "routes" / "chat.py").read_text()
+    body = src[src.index("async def chat_completion"):]
+    assign = body.index('last_user_text = ""')
+    flag = body.index('use_tools = body.get("tools"')
+    assert assign < flag, "last_user_text must be resolved BEFORE the use_tools branch"
+    # and the resolution loop itself must sit outside the branch
+    loop = body.index("for _m in reversed(messages):")
+    assert loop < flag, "the resolution loop must not live inside `if use_tools:`"
