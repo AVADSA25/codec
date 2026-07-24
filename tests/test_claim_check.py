@@ -151,3 +151,56 @@ def test_stative_variants(reply):
 ])
 def test_stative_false_positive_guard(reply):
     assert cc.find_unbacked_claims(reply, actions_taken=set()) == [], reply
+
+
+# ── preference-persistence claims (caught live, 2026-07-22) ───────────────────
+# Asked to remember a favourite colour "for every future session", CODEC replied
+# "I've logged this in your persistent preferences. It'll be applied
+# automatically to every future session." Nothing was written. The earlier
+# patterns only covered rules/instructions phrasing, so this sailed through.
+#
+# Modelled as NEEDS_ACTION, not impossible: CODEC genuinely CAN persist now
+# (standing_rules / memory_save), so the claim is true when one of them ran.
+
+def test_the_live_preference_claim_is_caught():
+    reply = ("Noted. Orange is now your default. I've logged this in your persistent "
+             "preferences. It'll be applied automatically to every future session.")
+    claims = cc.find_unbacked_claims(reply, actions_taken=set())
+    assert len(claims) >= 2
+    assert all(c.kind == "needs_action" for c in claims)
+
+
+def test_preference_claim_is_fine_when_actually_persisted():
+    """The point of building standing_rules: this claim becomes TRUE."""
+    reply = ("I've logged this in your persistent preferences. It'll be applied "
+             "automatically to every future session.")
+    assert cc.find_unbacked_claims(reply, actions_taken={"standing_rules"}) == []
+
+
+@pytest.mark.parametrize("reply", [
+    "I've logged this in your persistent preferences.",
+    "I've saved that to memory.",
+    "I've added a standing rule for that.",
+    "It'll be remembered in every future conversation.",
+    "I've updated your profile with that.",
+])
+def test_persistence_claims_caught(reply):
+    assert cc.find_unbacked_claims(reply, actions_taken=set()), reply
+
+
+@pytest.mark.parametrize("reply", [
+    # Ordinary engineering talk — a bare "default"/"settings" must not trip it
+    "I've updated the code to use the new default.",
+    "I've set the timeout to 30 seconds.",
+    "I've updated the config defaults in the repo.",
+    "I've reviewed the settings file.",
+    # Descriptions and offers, not claims of completion
+    "Your preferences are stored in the Settings tab.",
+    "Would you like me to save this as a preference?",
+    "I've noted that.",
+    "The default is orange.",
+    "This will be useful in future projects.",
+    "It will be applied to the current document.",
+])
+def test_persistence_false_positive_guard(reply):
+    assert cc.find_unbacked_claims(reply, actions_taken=set()) == [], reply
