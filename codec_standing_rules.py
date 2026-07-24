@@ -62,7 +62,11 @@ def _save(data: Dict) -> None:
 
 
 def list_rules() -> List[Dict]:
-    return load().get("rules", [])
+    """Rules with telemetry fields guaranteed present (older stores are
+    backfilled in-memory; the on-disk backfill happens on the next write)."""
+    data = load()
+    _migrate(data)
+    return data.get("rules", [])
 
 
 def add_rule(text: str) -> Dict:
@@ -85,7 +89,10 @@ def add_rule(text: str) -> Dict:
                 f"you never invoke are noise you pay for on every message."}
     rule = {"id": f"r{len(rules) + 1}_{int(datetime.now(timezone.utc).timestamp())}",
             "text": text,
-            "added": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+            "added": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            # Telemetry — see prompt_block() for exactly what this counts.
+            "inject_count": 0,
+            "last_injected": None}
     rules.append(rule)
     _save(data)
     return {"ok": True, "rule": rule,
@@ -121,9 +128,68 @@ def clear_rules() -> Dict:
     return {"ok": True, "message": f"Cleared {n} standing rule(s)."}
 
 
-def prompt_block() -> str:
-    """The block appended to the chat system prompt. "" when there are none."""
-    rules = list_rules()
+def _migrate(data: Dict) -> bool:
+    """Backfill telemetry fields on rules written before they existed.
+
+    Additive only — an existing rule keeps its id, text and added date, and
+    starts at inject_count 0 / last_injected None. Never resets the store.
+    Returns True when something changed (so the caller can persist).
+    """
+    changed = False
+    for r in data.get("rules", []):
+        if "inject_count" not in r:
+            r["inject_count"] = 0
+            changed = True
+        if "last_injected" not in r:
+            r["last_injected"] = None
+            changed = True
+    return changed
+
+
+def prompt_block(record: bool = False) -> str:
+    """The block appended to the chat system prompt. "" when there are none.
+
+    `record=True` counts this as an INJECTION — see the honesty note below.
+    Only the live chat path passes it; listing, tests and previews must not,
+    or the count would measure itself.
+
+    WHAT inject_count MEANS, AND DOES NOT
+    -------------------------------------
+    It counts how many times a rule was placed into the system prompt. That is
+    the ONLY thing this pipeline can observe. A standing rule's entire lifecycle
+    is: prompt_block() -> string -> appended to sys_prompt -> sent to the LLM.
+    Nothing downstream reports whether the model consulted the rule, obeyed it,
+    or ignored it.
+
+    So this is deliberately NOT called fired_count. Measuring influence would
+    need ablation (run the turn with and without the rule and diff — doubles
+    cost, and non-determinism makes a single diff weak evidence) or asking the
+    model which rules it used — which is exactly the unverifiable self-report
+    this codebase exists to refuse. A field named fired_count would be a
+    fabricated metric wearing an authoritative name.
+
+    Practical consequence: inject_count == 0 proves a rule is dead weight
+    (it never even reached the model). A high inject_count proves nothing about
+    usefulness — only that the rule is being paid for on every message.
+    """
+    if not record:
+        rules = list_rules()
+    else:
+        # Read-modify-write under the same lock the writers use, so a concurrent
+        # add/remove can't lose the increment.
+        data = load()
+        _migrate(data)
+        rules = data.get("rules", [])
+        if rules:
+            now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+            for r in rules:
+                r["inject_count"] = int(r.get("inject_count") or 0) + 1
+                r["last_injected"] = now
+            try:
+                _save(data)
+            except Exception as e:      # never break a reply over telemetry
+                log.warning("standing rules: inject-count write failed: %s", e)
+
     if not rules:
         return ""
     lines = ["STANDING RULES — the user set these; they apply to every reply:"]

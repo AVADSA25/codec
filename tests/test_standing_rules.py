@@ -119,3 +119,71 @@ def test_skill_remove(monkeypatch, tmp_path):
     s.run("add a standing rule: be brief")
     assert "Removed" in s.run("remove standing rule 1")
     assert "no standing rules" in s.run("list standing rules").lower()
+
+
+# ── inject_count telemetry ────────────────────────────────────────────────────
+# Named inject_count, NOT fired_count, deliberately. A standing rule's whole
+# lifecycle is prompt_block() -> string -> sys_prompt -> LLM. Nothing downstream
+# reports whether the model used the rule, so "fired" would be a fabricated
+# metric wearing an authoritative name — in the module that exists to refuse
+# exactly that.
+
+def test_new_rule_starts_at_zero(sr):
+    rule = sr.add_rule("be brief")["rule"]
+    assert rule["inject_count"] == 0
+    assert rule["last_injected"] is None
+
+
+def test_injection_increments_and_stamps(sr):
+    sr.add_rule("be brief")
+    sr.prompt_block(record=True)
+    r = sr.list_rules()[0]
+    assert r["inject_count"] == 1
+    assert r["last_injected"] is not None
+
+
+def test_preview_does_not_count_itself(sr):
+    """Listing/preview must never inflate the metric it reports."""
+    sr.add_rule("be brief")
+    for _ in range(5):
+        sr.prompt_block()          # record defaults to False
+        sr.list_rules()
+    assert sr.list_rules()[0]["inject_count"] == 0
+
+
+def test_count_survives_a_reload(sr):
+    """The counter is on disk, not in memory — a restart must not reset it."""
+    sr.add_rule("be brief")
+    sr.prompt_block(record=True)
+    sr.prompt_block(record=True)
+    fresh = sr.load()              # re-read from disk, no cached state
+    assert fresh["rules"][0]["inject_count"] == 2
+
+
+def test_migration_backfills_without_resetting(sr):
+    """An old store keeps its data and gains the fields at zero."""
+    import json
+    sr.RULES_PATH.write_text(json.dumps({"schema": 1, "rules": [
+        {"id": "old1", "text": "keep me", "added": "2026-07-01T10:00:00+00:00"}]}))
+    r = sr.list_rules()[0]
+    assert r["text"] == "keep me", "existing rule text must survive migration"
+    assert r["added"] == "2026-07-01T10:00:00+00:00", "added date must survive"
+    assert r["inject_count"] == 0 and r["last_injected"] is None
+
+
+def test_no_rules_means_no_write_churn(sr):
+    """An empty store must not be rewritten on every turn."""
+    sr.prompt_block(record=True)
+    assert not sr.RULES_PATH.exists() or sr.load()["rules"] == []
+
+
+def test_listing_labels_injection_honestly(monkeypatch, tmp_path):
+    """The user-facing text must not imply the model 'used' the rule."""
+    s = _skill(monkeypatch, tmp_path)
+    s.run("add a standing rule: be brief")
+    import codec_standing_rules as mod
+    mod.prompt_block(record=True)
+    out = s.run("show my standing rules")
+    assert "sent to the model" in out
+    assert "counts INJECTION" in out
+    assert "fired" not in out.lower(), "must not claim the rule 'fired'"

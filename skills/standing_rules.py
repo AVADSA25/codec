@@ -43,10 +43,25 @@ def _render(rules):
     if not rules:
         return ("You have no standing rules yet. Add one with: "
                 "\"add a standing rule: <instruction>\".")
-    lines = [f"You have {len(rules)} standing rule(s), applied to every reply:"]
+    lines = [f"You have {len(rules)} standing rule(s), added to every reply:"]
+    never = []
     for i, r in enumerate(rules, 1):
+        n = int(r.get("inject_count") or 0)
+        last = r.get("last_injected")
+        when = f", last {str(last)[:10]}" if last else ""
         lines.append(f"  {i}. {r.get('text', '')}")
-    lines.append("\nRemove one with: \"remove standing rule 2\".")
+        lines.append(f"     sent to the model {n}x{when}" if n else
+                     "     never sent to the model yet")
+        if not n:
+            never.append(i)
+    lines.append("")
+    lines.append("\"sent to the model\" counts INJECTION into the prompt — not whether "
+                 "the model actually used the rule. Nothing in the pipeline can see that, "
+                 "so it isn't claimed.")
+    if never:
+        lines.append(f"Rules {', '.join(f'#{i}' for i in never)} have never even reached "
+                     f"the model — those are safe to delete.")
+    lines.append("Remove one with: \"remove standing rule 2\".")
     return "\n".join(lines)
 
 
