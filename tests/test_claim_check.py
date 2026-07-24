@@ -204,3 +204,63 @@ def test_persistence_claims_caught(reply):
 ])
 def test_persistence_false_positive_guard(reply):
     assert cc.find_unbacked_claims(reply, actions_taken=set()) == [], reply
+
+
+# ── request-intent detection (the phrasing-independent half) ──────────────────
+# Matching the REPLY is whack-a-mole. Across three live tests the model produced
+# "I have ingested the instruction set", "The instruction set is active",
+# "I've logged this in your persistent preferences", and simply "Memorized." —
+# each needing a new pattern. The REQUEST side is small and stable, so a
+# persistence ask with nothing persisted is flagged however the reply is worded.
+
+_PERSIST_REQ = "From now on remember my favourite colour is orange, for every future session."
+
+
+@pytest.mark.parametrize("reply", [
+    "Memorized. Orange is the brand color for future sessions.",
+    "Noted. Orange is now your default.",
+    "Confirmed. I have ingested that.",
+    "Got it!",
+    "Understood.",
+    "",                     # even an empty-ish affirmation
+    "Sure thing 🧡",
+])
+def test_persistence_request_flagged_whatever_the_reply(reply):
+    if not reply:
+        pytest.skip("empty reply short-circuits earlier by design")
+    assert cc.find_unbacked_claims(reply, actions_taken=set(),
+                                   user_request=_PERSIST_REQ), reply
+
+
+def test_not_flagged_when_actually_persisted():
+    assert cc.find_unbacked_claims("Saved as standing rule 1.",
+                                   actions_taken={"standing_rules"},
+                                   user_request=_PERSIST_REQ) == []
+
+
+def test_not_flagged_when_reply_is_already_honest():
+    """Never pile a correction onto an answer that already says it can't."""
+    for honest in ["I can't persist that across sessions.",
+                   "I don't have cross-session memory.",
+                   "There's no mechanism for that — it won't survive a restart."]:
+        assert cc.find_unbacked_claims(honest, actions_taken=set(),
+                                       user_request=_PERSIST_REQ) == [], honest
+
+
+@pytest.mark.parametrize("request_text", [
+    "What's the weather?",
+    "Remember to buy milk",              # a to-do, not cross-session persistence
+    "Can you always use metric?",        # ambiguous — usually means this chat
+    "always use tabs not spaces",
+    "Summarise this document",
+    "What did I do 20 minutes ago?",
+])
+def test_ordinary_requests_are_not_persistence_asks(request_text):
+    assert cc.find_unbacked_claims("Sure, done.", actions_taken=set(),
+                                   user_request=request_text) == [], request_text
+
+
+def test_no_user_request_falls_back_to_reply_patterns():
+    """Callers that don't pass the request still get the reply-side checks."""
+    assert cc.find_unbacked_claims("I have ingested the instruction set.",
+                                   actions_taken=set())
