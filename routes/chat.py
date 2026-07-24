@@ -722,7 +722,8 @@ def _build_chat_system_prompt(config: dict, budget, has_attachment: bool,
     # or safety framing. This is what makes "saved" an honest answer.
     try:
         import codec_standing_rules
-        _sr = codec_standing_rules.prompt_block()
+        # record=True: this is the live turn, so it counts as an injection.
+        _sr = codec_standing_rules.prompt_block(record=True)
         if _sr:
             sys_prompt += "\n\n" + _sr
     except Exception as e:
