@@ -187,3 +187,48 @@ def test_listing_labels_injection_honestly(monkeypatch, tmp_path):
     assert "sent to the model" in out
     assert "counts INJECTION" in out
     assert "fired" not in out.lower(), "must not claim the rule 'fired'"
+
+
+# ── mentions must not hijack the turn ─────────────────────────────────────────
+# "standing rule(s)" and "my rules" were bare triggers, so merely DISCUSSING
+# standing rules fired the skill. Quoting "…was there ever a rule you had to
+# delete?" matched the unanchored remove-regex, the skill tried to remove a rule
+# named "you", and the turn never reached the LLM — so the reply was a skill
+# error and the claim/premise checks never ran. Same class as the file_ops
+# chat-hang (#282): a mention is not an instruction.
+
+@pytest.mark.parametrize("text", [
+    "was there ever a rule you had to delete?",
+    "In that cleanup process, was there ever a standing rule you thought was important?",
+    "I like the idea of standing rules for agents.",
+    "You mentioned you delete the rules that never fire.",
+    "Rules you never invoke are just noise you pay for on every message.",
+    "he ends each session by listing which standing rules actually fired",
+])
+def test_mentions_do_not_dispatch(text):
+    import codec_dispatch as cd
+    cd.load_skills()
+    hit = cd.check_skill(text)
+    assert (hit or {}).get("name") != "standing_rules", f"hijacked by: {text!r}"
+
+
+@pytest.mark.parametrize("text", [
+    "add a standing rule: be brief",
+    "show my standing rules",
+    "list standing rules",
+    "remove standing rule 2",
+])
+def test_real_commands_still_dispatch(text):
+    import codec_dispatch as cd
+    cd.load_skills()
+    hit = cd.check_skill(text)
+    assert (hit or {}).get("name") == "standing_rules", f"command missed: {text!r}"
+
+
+def test_remove_regex_requires_a_leading_command(monkeypatch, tmp_path):
+    s = _skill(monkeypatch, tmp_path)
+    s.run("add a standing rule: keep me")
+    # a question that merely mentions deleting must not remove anything
+    s.run("was there ever a rule you had to delete?")
+    import codec_standing_rules as mod
+    assert len(mod.list_rules()) == 1, "a mention must never delete a rule"

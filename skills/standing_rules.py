@@ -19,24 +19,36 @@ SKILL_DESCRIPTION = (
     "reply, in every session. Persisted to disk, not just remembered in chat."
 )
 SKILL_MCP_EXPOSE = True
+# Commands only — never bare mentions. "standing rule(s)" and "my rules" used to
+# be triggers, so merely DISCUSSING standing rules hijacked the turn: a message
+# quoting "…was there ever a rule you had to delete?" fired this skill, which
+# then tried to remove a rule named "you" and the reply never reached the LLM.
+# Same class as the file_ops chat-hang (#282): a mention is not an instruction.
 SKILL_TRIGGERS = [
     "add a standing rule",
     "add standing rule",
-    "standing rule",
-    "standing rules",
-    "my rules",
-    "always remember to",
-    "from now on always",
+    "remove standing rule",
+    "delete standing rule",
+    "list standing rules",
+    "show standing rules",
+    "show my standing rules",
+    "what are my standing rules",
+    "clear standing rules",
 ]
 
 _ADD = re.compile(
     r"^(?:add\s+(?:a\s+)?standing\s+rule|standing\s+rule|from\s+now\s+on\s+always|"
     r"always\s+remember\s+to)\b[:\s]*(.+)$", re.I | re.S)
+# All anchored to the START of the message. Unanchored, any sentence CONTAINING
+# these words matched — "was there ever a rule you had to delete?" read as a
+# delete command. A command is what the message opens with, not what it mentions.
 _REMOVE = re.compile(
-    r"\b(?:remove|delete|drop|forget)\b.*\b(?:standing\s+)?rule\b\s*#?\s*(\w+)?", re.I)
+    r"^\s*(?:remove|delete|drop|forget)\s+(?:the\s+)?(?:standing\s+)?rule\s*#?\s*(\w+)",
+    re.I)
 _LIST = re.compile(
-    r"\b(?:list|show|what(?:'s| are)|see)\b.*\b(?:standing\s+)?rules?\b", re.I)
-_CLEAR = re.compile(r"\b(?:clear|wipe|reset)\b.*\b(?:standing\s+)?rules\b", re.I)
+    r"^\s*(?:list|show|what(?:'s| are)|see)\b[^.?!]{0,20}\b(?:standing\s+)?rules?\b", re.I)
+_CLEAR = re.compile(
+    r"^\s*(?:clear|wipe|reset)\s+(?:all\s+)?(?:my\s+)?(?:standing\s+)?rules\b", re.I)
 
 
 def _render(rules):
