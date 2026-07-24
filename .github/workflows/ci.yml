@@ -26,7 +26,7 @@ jobs:
           # tests on main-as-is (verified via a no-op canary PR) — CI was
           # testing a dependency set production never runs. Bump these pins
           # together with a production upgrade, not before.
-          pip install pytest fastmcp httpx requests pynput 'pydantic==2.11.10' 'ruff>=0.15.22,<0.16' \
+          pip install pytest fastmcp httpx requests pynput 'pydantic==2.11.10' ruff \
                       'fastapi==0.129.0' 'starlette==0.52.1' numpy pyotp 'qrcode[pil]'
       - name: Lint (ruff) — F-4 gate, config in ruff.toml
         run: ruff check .
