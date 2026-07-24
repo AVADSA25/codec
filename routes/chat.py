@@ -934,16 +934,21 @@ async def chat_completion(request: Request):
     # below never hit an UnboundLocalError when a client sends {"tools": false}
     # (re-audit J1: was a silent opaque 500 — _build_chat_system_prompt is
     # called with both names regardless of the tools flag).
+    # Resolve the user's message UNCONDITIONALLY. It used to be populated only
+    # inside the use_tools gate, so with tools disabled it stayed empty — and the
+    # claim-check, which needs the request to spot an unbacked persistence ask,
+    # silently degraded to reply-pattern-only. A safety check must not depend on
+    # an unrelated feature flag.
     last_user_text = ""
+    for _m in reversed(messages):
+        if _m.get("role") == "user" and isinstance(_m.get("content"), str):
+            last_user_text = _m["content"]
+            break
     has_attachment = False
 
     # ── Tool Calling: check if last user message matches a skill ──
     use_tools = body.get("tools", True)  # frontend can disable with tools:false
     if use_tools:
-        for m in reversed(messages):
-            if m.get("role") == "user" and isinstance(m.get("content"), str):
-                last_user_text = m["content"]
-                break
         # ── Slash commands (BEFORE skill check / attachment check) ──
         # Type /help, /skills, /cost, /version, /status, /who, /clear in chat
         # to invoke meta-controls without an LLM round-trip. Slash dispatch
