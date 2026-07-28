@@ -8,7 +8,7 @@
 > Status: ✅ verified · ⚠️ needs a decision/check before filming ·
 > 🔑 needs Google auth · 🧑 you run (voice/hardware).
 >
-> **Last sealed:** 2026-07-16.
+> **Last sealed:** 2026-07-28.
 
 ## Act 1 — It hears you, acts, and types for you
 
@@ -26,7 +26,7 @@
 | # | Feature | TRY (live) | EXPECT | Status |
 |---|---|---|---|---|
 | 7 | **Vision Mouse Control (UI-TARS)** — showstopper | On Cloudflare DNS: "Click the DNS button." | Cursor moves to the button and clicks — pixel coords, no accessibility API | ✅ |
-| 8 | Think mode + reveal reasoning | Ask a logic trap (rate / car-wash) with Think on → "Reveal train of thought" | Correct answer + readable reasoning panel | ✅ |
+| 8 | Think mode + reveal reasoning | Think on → "If 5 machines take 5 minutes to make 5 widgets, how long would 100 machines take to make 100 widgets?" → "Reveal train of thought" | Answers **"5 minutes"** (not 100) + a readable reasoning panel | ✅ |
 
 ## Act 3 — Autonomous agents (work while you watch)
 
@@ -71,31 +71,30 @@
 | 3-agent zero-dep concurrency | 9 | "Up to 3 background agents on a custom sub-800-line thread pool — no LangChain, no CrewAI." |
 | Plan-hash tamper + R/W grants | 10 | "The plan is sha256-hashed on approval — if the agent alters its own goals mid-run it auto-aborts. Reads and writes are glob-sandboxed to `~/codec-projects/`." |
 | ~~Self-healing replay + HITL takeover~~ (parked with Pilot) | — | "Your click is recorded as an element, not a pixel — so replay survives the page moving. It falls back XPath → CSS → local-LLM rescue; hit a captcha and you take the wheel, then hand back." |
-| CCF compression + temporal memory | 14 / 19 | "~65% token reduction; an FTS5 SQLite fact store with valid_from/valid_until — tell it your plans changed and it supersedes the old fact." |
-| Watchdog + blocked_on_qwen recovery | 14 / 15 | "A watchdog kills zombie >500MB/<0.5%-CPU processes; if the local model drops mid-project, the agent auto-resumes the moment the port recovers." |
+| CCF compression + temporal memory | 13 / 18 | "~65% token reduction; an FTS5 SQLite fact store with valid_from/valid_until — tell it your plans changed and it supersedes the old fact." |
+| Watchdog + blocked_on_qwen recovery | 13 / 14 | "A watchdog kills zombie >500MB/<0.5%-CPU processes; if the local model drops mid-project, the agent auto-resumes the moment the port recovers." |
 | AppKit overlay over fullscreen | any notification | "A native NSPanel floats status over *any* fullscreen app — watch it appear while I'm full-screen." |
-| Proactive nudges → iMessage/Telegram | 19 | "The observer can nudge you — a doc you've dwelled on — to a macOS banner, iMessage, or Telegram. The desktop agent reaches your pocket." |
+| Proactive nudges → iMessage/Telegram | 18 | "The observer can nudge you — a doc you've dwelled on — to a macOS banner, iMessage, or Telegram. The desktop agent reaches your pocket." |
 | Ed25519 signed self-updates | settings | "Updates verify an Ed25519-signed Sparkle appcast against an embedded key — hardened from execution all the way to updates." |
 
 ## Cut from the demo
 - **Compare across models** (ex-beat 21) — removed 2026-07-21: needs a licensed machine (AVA cloud) to show 3+ columns; on an unlicensed Mac it shows one and makes no comparison.
-- **CODEC Pilot** (ex-beat 13) — parked 2026-07-22. Google blocks account sign-in from any CDP-controlled browser, and cookie walls / bot challenges make a large share of real sites unusable. It needs a far deeper build to be trustworthy; the code is parked in the `codec-pilot` repo, not deleted.
+- **CODEC Pilot** (ex-beat 13) — parked 2026-07-22, unhooked from production in v3.5. Google blocks account sign-in from any CDP-controlled browser, and cookie walls / bot challenges make a large share of real sites unusable. It needs a far deeper build to be trustworthy; the code is preserved in git history (see `docs/PILOT-PARKED.md`), not deleted.
 - **Live webcam vision** (ex-beat 8) — removed 2026-07-16. The capture was soft (the Anker C200's lens, not code) and it landed as a gadget rather than a capability. Nothing else depends on it.
 
 ## Decide before filming
-- **Beat 18** — sign in to Notion once in the Connector tab (it persists now). Toggle **GitHub off** — it can't OAuth (needs a PAT).
-- Voice interrupt (now beat 21) — **confirmed working**.
+- **Beat 17** — sign in to Notion once in the Connector tab (it persists now). Toggle **GitHub off** — it can't OAuth (needs a PAT).
+- Voice interrupt (now beat 20) — **confirmed working**.
 
 ## Pre-record checklist
 - Chrome tabs L→R: `opencodec.org` → GitHub → Gmail → WhatsApp Web → Cloudflare → CODEC Chat
 - An empty text field / Notes open for the **F5 live-typing** beat (3)
 - Safari: Time Magazine article open
-- Claude Desktop: CODEC connector active **and set to Always Allow** (Act 5) — otherwise beat 17 stalls on a per-call approval prompt
+- Claude Desktop: CODEC connector active **and set to Always Allow** (Act 5) — otherwise beat 16 stalls on a per-call approval prompt
 - Phone: `codec.avadigital.ai` loaded, Touch ID ready
-- Notion signed in (Connector tab, beat 18); Philips Hue reachable; Spotify authorized (finale)
+- Notion signed in (Connector tab, beat 17); Philips Hue reachable; Spotify authorized (finale)
 - Vision Mouse tested 10× on the Cloudflare DNS button
 - Observer running with a populated buffer
-- **Pilot: do NOT rely on Google login** — Google blocks account sign-in from automated browsers. Beat 13 runs fully on public/anonymous pages (teach-mode + anonymous Gemini text). Skip Flow video-generation, which needs an account.
 - Cortex map open on a 2nd screen (persistent visual anchor)
 - Fresh Deep-Research + Project chat windows open
 
@@ -103,5 +102,5 @@
 - Act 1 is the emotional hook — promise (1), deliver, and F5 (3) is an unexpected early "wow".
 - Showstopper risk: 7 (Vision Mouse) — if it fails live, skip to 8.
 - Core "works while you watch" pair: 10 Project, 12 Vibe.
-- Act 5 is THE differentiator: 17 (server) + 18 (client) back-to-back = bidirectional MCP.
-- Save Hue + Spotify (23) for the very last frame.
+- Act 5 is THE differentiator: 16 (server) + 17 (client) back-to-back = bidirectional MCP.
+- Save Hue + Spotify (22) for the very last frame.

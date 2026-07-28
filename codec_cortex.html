@@ -240,7 +240,7 @@ svg text{font-family:'SF Pro Display',-apple-system,system-ui,sans-serif}
 <div id="stats"></div>
 <div id="viewSwitch">
   <button class="vs-btn active" onclick="switchView('neural')">Neural Map</button>
-  <button class="vs-btn" onclick="switchView('products')">9 Products</button>
+  <button class="vs-btn" onclick="switchView('products')">7 Products</button>
 </div>
 <svg id="cortex" xmlns="http://www.w3.org/2000/svg"></svg>
 <div id="productsView"></div>
@@ -352,7 +352,7 @@ var NODES = [
   {id:'memory',label:'Memory',x:660,y:100,r:24,color:'#a78bfa',icon:'database',category:'brain',zone:'brain',
    info:'SQLite + FTS5 full-text search. BM25 ranking. Stores all conversations.',file:'codec_memory.py'},
   {id:'observer',label:'Observer',x:380,y:200,r:18,color:'#d97757',icon:'eye',category:'brain',zone:'brain',
-   info:'Continuous observation loop (Phase 3 Step 5). Watches agent progress, detects stuck states, escalates blocks. Feeds the trigger system.',file:'codec_observer.py'},
+   info:'Continuous observation loop (Phase 2 Step 5). Watches agent progress, detects stuck states, escalates blocks. Feeds the trigger system.',file:'codec_observer.py'},
   {id:'search',label:'Web Search',x:680,y:180,r:20,color:'#fbbf24',icon:'search',category:'brain',zone:'brain',
    info:'DuckDuckGo + Serper API. 5-min TTL cache. Called by skills + chat enrichment.',file:'codec_search.py'},
 
@@ -370,7 +370,7 @@ var NODES = [
   {id:'f18',label:'F18 Voice',x:800,y:80,r:20,color:'#34d399',icon:'mic',category:'ears',zone:'ears',
    info:'Hold F18 to record voice. Persistent conversation session across presses.',file:'codec.py'},
   {id:'wake',label:'Wake Word',x:940,y:100,r:20,color:'#34d399',icon:'wave',category:'ears',zone:'ears',
-   info:'"Hey CODEC" — continuous mic listening via Anker webcam. Auto-activates.',file:'codec.py'},
+   info:'"Hey CODEC" — continuous mic listening via the desktop mic. Auto-activates.',file:'codec.py'},
   {id:'f16',label:'F16 Text',x:940,y:180,r:18,color:'#34d399',icon:'key',category:'ears',zone:'ears',
    info:'Press F16 for text input dialog (AppleScript). Dispatches to skill/LLM.',file:'codec.py'},
 
@@ -388,7 +388,7 @@ var NODES = [
 
   // ─── MOUTH (left-center) — Voice Output ───
   {id:'kokoro',label:'Kokoro TTS',x:170,y:310,r:30,color:'#f59e0b',icon:'mouth',category:'mouth',zone:'mouth',
-   info:'Kokoro-82M TTS. Voice: am_adam. Generates speech audio, played via afplay.',file:'kokoro_server.py',port:8085,health:'/v1/models'},
+   info:'Kokoro-82M TTS. Voice: am_adam. Generates speech audio, played via afplay.',file:'mlx_audio.server (module)',port:8085,health:'/v1/models'},
 
   // ─── HANDS (right side) — Skills & Actions ───
   {id:'skills',label:'Skills',x:820,y:320,r:34,color:'#fbbf24',icon:'hand',category:'hands',zone:'hands',
@@ -406,7 +406,7 @@ var NODES = [
   {id:'dashboard',label:'Dashboard',x:550,y:500,r:34,color:'#60a5fa',icon:'spine',category:'spine',zone:'spine',
    info:'FastAPI server. Serves all UIs, API endpoints, WebSocket. Auth + E2E encryption.',file:'codec_dashboard.py',port:8090,health:'/api/health'},
   {id:'chat',label:'Chat UI',x:420,y:530,r:20,color:'#60a5fa',icon:'chat',category:'spine',zone:'spine',
-   info:'/chat — Conversational interface. 45 skills, streaming, vision, memory search.',file:'codec_chat.html'},
+   info:'/chat — Conversational interface. 89 skills, streaming, vision, memory search.',file:'codec_chat.html'},
   {id:'voice_ws',label:'Voice WS',x:680,y:530,r:20,color:'#60a5fa',icon:'mic',category:'spine',zone:'spine',
    info:'/ws/voice — WebSocket voice pipeline. VAD, interruption, streaming TTS.',file:'codec_voice.py'},
   {id:'vibe',label:'Vibe IDE',x:550,y:580,r:18,color:'#60a5fa',icon:'globe',category:'spine',zone:'spine',
@@ -414,7 +414,7 @@ var NODES = [
 
   // ─── IMMUNE SYSTEM (bottom) — Monitoring & Safety ───
   {id:'heartbeat',label:'Heartbeat',x:780,y:520,r:22,color:'#34d399',icon:'clock',category:'immune',zone:'immune',
-   info:'Every 5 min: checks all services, LLM liveness probe, auto-restart.',file:'codec_heartbeat.py'},
+   info:'Every 20 min: checks all services, LLM liveness probe, auto-restart.',file:'codec_heartbeat.py'},
   {id:'alerts',label:'Alerts',x:900,y:520,r:18,color:'#f87171',icon:'alarm',category:'immune',zone:'immune',
    info:'Multi-channel: Telegram, Email, Slack, macOS notifications.',file:'codec_alerts.py'},
   {id:'metrics',label:'Metrics',x:900,y:460,r:16,color:'#666',icon:'chart',category:'immune',zone:'immune',
@@ -422,7 +422,7 @@ var NODES = [
   {id:'approval',label:'Approval',x:340,y:560,r:20,color:'#f87171',icon:'shield',category:'immune',zone:'immune',
    info:'Command approval via dashboard/phone + tkinter. Remote allow/deny.',file:'codec_session.py'},
   {id:'audit',label:'Audit',x:430,y:620,r:22,color:'#fbbf24',icon:'draft',category:'immune',zone:'immune',
-   info:'Unified event log across 16 categories: command, skill, llm, auth, error, scheduled, voice, vision, tts, stt, system, security, hotkey, screenshot, config, draft. JSON-line storage with 50MB rotation. 17 additional event types for Project autonomous agents.',file:'codec_audit.py'},
+   info:'Unified event log across 16 categories: command, skill, llm, auth, error, scheduled, voice, vision, tts, stt, system, security, hotkey, screenshot, config, draft. JSON-line storage with daily rotation, 30-day retention. 17 additional event types for Project autonomous agents.',file:'codec_audit.py'},
   {id:'watchdog',label:'Watchdog',x:680,y:620,r:18,color:'#34d399',icon:'shield',category:'immune',zone:'immune',
    info:'Process monitor — only kills procs using >500MB RAM with <0.5% CPU for 10+ consecutive minutes (truly stuck/zombie). Active procs never killed.',file:'codec_watchdog.py'},
 
@@ -825,41 +825,41 @@ function closeSkills() { document.getElementById('skills-panel').classList.remov
 
 // ── Product Frames ──
 var PRODUCTS = [
-  {name:'CODEC Core',subtitle:'The Command Layer',icon:'🎙',color:'#d97757',
-   desc:'Always-on voice assistant. Say "Hey CODEC" or press F13 to activate. F18 for voice commands. F16 for text input. 75 skills fire instantly — most bypass the LLM entirely. Direct action, zero latency.',
-   features:['F13 Toggle','F18 Voice','F16 Text','Hey CODEC Wake','56 Skills','Google Calendar','Gmail','Drive','Docs','Sheets','Tasks','Keep','Chrome','Web Search','Hue Lights','Timers','Spotify','Clipboard','Terminal','Memory FTS5'],
+  {name:'CODEC Core',subtitle:'The Command Layer',icon:'mic',color:'#d97757',
+   desc:'Always-on voice assistant. Say "Hey CODEC" or press F13 to activate. F18 for voice commands. F16 for text input. 89 skills fire instantly — most bypass the LLM entirely. Direct action, zero latency.',
+   features:['F13 Toggle','F18 Voice','F16 Text','Hey CODEC Wake','89 Skills','Google Calendar','Gmail','Drive','Docs','Sheets','Tasks','Keep','Chrome','Web Search','Hue Lights','Timers','Spotify','Clipboard','Terminal','Memory FTS5'],
    files:['codec.py','codec_core.py','codec_config.py'],status:'core',
-   details:{shortcuts:['F13 — Toggle on/off','F18 — Hold to record voice','F16 — Text input dialog','** — Screenshot + Vision','++ — Document analysis','-- — Quick chat'],skills:'75 built-in skills: Google Calendar, Gmail, Drive, Docs, Sheets, Tasks, Keep, Chrome automation, web search, Hue lights, clipboard, terminal commands, music, timers, calculator, weather, bitcoin, brightness, volume, app switch, mouse control, screenshot OCR. Most skills bypass the LLM entirely — direct action, zero latency.',memory:'FTS5-indexed SQLite. BM25 ranking. All conversations logged across all 9 products.',wake:'Always-on "Hey CODEC" via Anker webcam mic. Energy threshold: 200. Auto-activates and records follow-up.',files:['codec.py','codec_core.py','codec_config.py','codec_identity.py','skills/*.py']}},
-  {name:'CODEC Dictate',subtitle:'Hold, Speak, Paste',icon:'✍️',color:'#34d399',
+   details:{shortcuts:['F13 — Toggle on/off','F18 — Hold to record voice','F16 — Text input dialog','** — Screenshot + Vision','++ — Document analysis','-- — Quick chat'],skills:'89 built-in skills: Google Calendar, Gmail, Drive, Docs, Sheets, Tasks, Keep, Chrome automation, web search, Hue lights, clipboard, terminal commands, music, timers, calculator, weather, bitcoin, brightness, volume, app switch, mouse control, screenshot OCR. Most skills bypass the LLM entirely — direct action, zero latency.',memory:'FTS5-indexed SQLite. BM25 ranking. All conversations logged across all 7 products.',wake:'Always-on "Hey CODEC" via the desktop mic. Energy threshold: 200. Auto-activates and records follow-up.',files:['codec.py','codec_core.py','codec_config.py','codec_identity.py','skills/*.py']}},
+  {name:'CODEC Dictate',subtitle:'Hold, Speak, Paste',icon:'draft',color:'#34d399',
    desc:'Hold a key. Say what you mean. Release. Text appears wherever the cursor is. If CODEC detects a message draft, it refines through the LLM — grammar fixed, tone polished, meaning preserved. Works in every app on macOS. A free, open-source SuperWhisper replacement that runs entirely local.',
    features:['Hold to Record','Whisper STT','LLM Refinement','Auto-Paste','Any macOS App','Grammar Fix','Tone Polish','Draft Detection'],
    files:['codec_dictate.py'],status:'dictate',
    details:{how:'Hold key → sox recording → Whisper STT → LLM grammar/tone refinement → auto-paste via pbcopy. Works in VS Code, Chrome, Notes, any app with a text cursor.',port:'8084 (Whisper)',files:['codec_dictate.py']}},
-  {name:'CODEC Instant',subtitle:'One Right-Click',icon:'⚡',color:'#fbbf24',
+  {name:'CODEC Instant',subtitle:'One Right-Click',icon:'bolt',color:'#fbbf24',
    desc:'Select any text, anywhere. Right-click. Eight AI services system-wide: Proofread, Elevate, Explain, Translate, Reply (with :tone syntax), Prompt, Read Aloud, Save. Powered by the local LLM.',
    features:['Proofread','Elevate','Explain','Translate','Reply','Read Aloud','Save','Prompt','System-wide','Any App'],
-   files:['codec_instant.py'],status:'instant',
-   details:{services:['Proofread — Fix grammar and spelling','Elevate — Improve writing quality','Explain — Break down complex text','Translate — Multi-language translation','Reply — Generate contextual replies with :tone syntax','Read Aloud — Kokoro TTS on selected text','Save — Store to memory','Prompt — Custom AI prompt on selection'],how:'System-wide macOS Services menu. Select text → right-click → CODEC.',files:['codec_instant.py','codec_textassist.py']}},
-  {name:'CODEC Chat',subtitle:'250K Context + 12 Agent Crews',icon:'💬',color:'#a78bfa',
+   files:['codec_textassist.py'],status:'instant',
+   details:{services:['Proofread — Fix grammar and spelling','Elevate — Improve writing quality','Explain — Break down complex text','Translate — Multi-language translation','Reply — Generate contextual replies with :tone syntax','Read Aloud — Kokoro TTS on selected text','Save — Store to memory','Prompt — Custom AI prompt on selection'],how:'System-wide macOS Services menu. Select text → right-click → CODEC.',files:['codec_textassist.py']}},
+  {name:'CODEC Chat',subtitle:'250K Context + 12 Agent Crews',icon:'chat',color:'#a78bfa',
    desc:'Full conversational AI. Long context. File uploads. Image analysis via vision model. Web search. 12 autonomous agent crews — not single prompts, full multi-step workflows. Schedule any crew on a cron.',
    features:['250K Context','File Upload','Image Analysis','Web Search','12 Agent Crews','Streaming','Skill Execution','Voice Reply','Memory Search','Code Blocks','Thinking Mode'],
    files:['codec_chat.html','codec_dashboard.py'],status:'chat',
-   details:{agents:'Deep Research (10,000-word report → Google Docs), Daily Briefing (morning news + calendar), Competitor Analysis (SWOT + positioning), Trip Planner (full itinerary), Email Handler (triage inbox, draft replies), Social Media (posts for Twitter, LinkedIn, Instagram), Code Review (bugs + security), Data Analysis (trends + insights), Content Writer (blog posts, articles), Meeting Summarizer (action items), Invoice Generator (professional invoices), Custom Agent (define your own role, tools, task)',features:'250K context, file uploads (PDF/image/text), web search with Serper API, skill execution, streaming responses, voice reply toggle, thinking mode toggle, memory search. Multi-agent framework under 800 lines. Zero dependencies. No CrewAI. No LangChain.',scheduling:'Schedule any crew: "Run competitor analysis every Monday at 9am"',port:'8090 (/chat)',files:['codec_chat.html','codec_dashboard.py','routes/agents.py','codec_agents.py']}},
-  {name:'CODEC Vibe',subtitle:'AI Coding IDE',icon:'🎨',color:'#f59e0b',
+   details:{agents:'Deep Research (10,000-word report → Google Docs), Daily Briefing (morning news + calendar), Competitor Analysis (SWOT + positioning), Trip Planner (full itinerary), Email Handler (triage inbox, draft replies), Social Media (posts for Twitter, LinkedIn, Instagram), Code Review (bugs + security), Data Analysis (trends + insights), Content Writer (blog posts, articles), Meeting Summarizer (action items), Invoice Generator (professional invoices), Project Manager (status report from Calendar, Gmail, Drive, Tasks → Google Docs)',features:'250K context, file uploads (PDF/image/text), web search with Serper API, skill execution, streaming responses, voice reply toggle, thinking mode toggle, memory search. Multi-agent framework under 800 lines. Zero dependencies. No CrewAI. No LangChain.',scheduling:'Schedule any crew: "Run competitor analysis every Monday at 9am"',port:'8090 (/chat)',files:['codec_chat.html','codec_dashboard.py','routes/agents.py','codec_agents.py']}},
+  {name:'CODEC Vibe',subtitle:'AI Coding IDE',icon:'cpu',color:'#f59e0b',
    desc:'Split-screen in the browser. Monaco editor on the left (same engine as VS Code). AI chat on the right. Describe what you need — CODEC writes it, click Apply, run it, live preview. New skills land through the review-and-approve flow (/api/skill/review → /api/skill/approve) — human-in-the-loop, audit-gated.',
    features:['Monaco Editor','Live Preview','Code Generation','Apply Code','HTML/CSS/JS','Template Library','Human Review Gate','Test skill run()'],
    files:['codec_vibe.html'],status:'vibe',
    details:{how:'Natural language → LLM generates HTML/CSS/JS → Live preview in iframe → Skill staging via /api/skill/review → user approves → /api/skill/approve writes to ~/.codec/skills/. Defense in depth with the load-time AST gate added in PR-1A.',port:'8090 (/vibe)',files:['codec_vibe.html']}},
-  {name:'CODEC Voice',subtitle:'Live Voice Calls',icon:'📞',color:'#34d399',
+  {name:'CODEC Voice',subtitle:'Live Voice Calls',icon:'wave',color:'#34d399',
    desc:'Real-time voice-to-voice conversations with the AI. WebSocket pipeline — no Pipecat, no external dependencies. Mid-call say "check my screen" — it screenshots, analyzes, and speaks back. Full transcript saved to memory.',
    features:['WebSocket','VAD','Interruption','Live Transcript','Screen Analysis','Streaming TTS','Low Latency','Memory Save','Searchable History'],
    files:['codec_voice.py'],status:'voice',
    details:{how:'WebSocket → VAD (voice activity detection) → Whisper STT → LLM → Kokoro TTS → streaming audio back. No Pipecat, no external dependencies.',features:'Interruption handling (speak while CODEC is talking → TTS cuts off → listens again), live transcription display, mid-call screen analysis, low-latency pipeline. Full transcript saved to memory — every conversation becomes searchable context for future sessions.',port:'8090 (/voice)',files:['codec_voice.py','codec_voice.html']}},
-  {name:'CODEC Overview',subtitle:'Dashboard + Cortex + Audit',icon:'🌐',color:'#668080',
+  {name:'CODEC Overview',subtitle:'Dashboard + Cortex + Audit',icon:'monitor',color:'#668080',
    desc:'Private dashboard accessible from any device, anywhere. Cloudflare Tunnel or Tailscale VPN — no port forwarding, no third-party relay. Cortex neural map, real-time activity feed, full audit trail across 16 categories.',
    features:['Dashboard :8090','Cloudflare Tunnel','Tailscale VPN','MCP Server','Task Scheduler','Heartbeat Monitor','Cortex Visualizer','Audit Stream','Prometheus Metrics','Remote Approval','PM2 Process Manager','Skill Marketplace'],
    files:['codec_dashboard.py','codec_cortex.html','codec_audit.html'],status:'overview',
-   details:{how:'75+ API endpoints. Send commands, view the screen, launch voice calls, manage agents — all from a browser. Installable as PWA on mobile and desktop.',features:'Project mode (drop a project, approve the plan once, the codec-agent-runner daemon executes autonomously for hours), Cortex neural map, real-time activity feed, searchable skills panel, event log viewer. Audit: 16 categories, filterable, colored timeline, JSON-line storage with 50MB rotation.',port:'8090',files:['codec_dashboard.py','codec_dashboard.html','codec_cortex.html','codec_audit.html']}},
+   details:{how:'75+ API endpoints. Send commands, view the screen, launch voice calls, manage agents — all from a browser. Installable as PWA on mobile and desktop.',features:'Project mode (drop a project, approve the plan once, the codec-agent-runner daemon executes autonomously for hours), Cortex neural map, real-time activity feed, searchable skills panel, event log viewer. Audit: 16 categories, filterable, colored timeline, JSON-line storage with daily rotation, 30-day retention.',port:'8090',files:['codec_dashboard.py','codec_dashboard.html','codec_cortex.html','codec_audit.html']}},
 ];
 
 function switchView(view) {
@@ -883,13 +883,19 @@ function switchView(view) {
   }
 }
 
+// Inline line-SVG for product cards (matches the neural-map icon style; no emoji per brand rule)
+function pcIconSvg(name, color) {
+  var d = ICONS[name];
+  if (!d) return '';
+  return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="'+color+'" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="'+d+'"/></svg>';
+}
 function renderProducts() {
-  var html = '<div class="products-header"><h2>9 Products &middot; One Framework</h2><p>Every capability of the CODEC ecosystem</p></div>';
+  var html = '<div class="products-header"><h2>7 Products &middot; One Framework</h2><p>Every capability of the CODEC ecosystem</p></div>';
   html += '<div class="products-grid">';
   PRODUCTS.forEach(function(p) {
     html += '<div class="product-card">';
     html += '<div class="pc-status"></div>';
-    html += '<div class="pc-header"><div class="pc-icon" style="background:'+p.color+'15;border:1px solid '+p.color+'30">'+p.icon+'</div><div><div class="pc-title">'+p.name+'</div><div class="pc-subtitle">'+(p.subtitle||p.files[0])+'</div></div></div>';
+    html += '<div class="pc-header"><div class="pc-icon" style="background:'+p.color+'15;border:1px solid '+p.color+'30">'+pcIconSvg(p.icon,p.color)+'</div><div><div class="pc-title">'+p.name+'</div><div class="pc-subtitle">'+(p.subtitle||p.files[0])+'</div></div></div>';
     html += '<div class="pc-desc">'+p.desc+'</div>';
     html += '<div class="pc-features">';
     p.features.forEach(function(f) {
@@ -937,7 +943,7 @@ function renderProducts() {
   });
   // iMessage & Telegram — additional interfaces
   html += '<div class="product-card" style="grid-column:1/-1">';
-  html += '<div class="pc-header"><div class="pc-icon" style="background:rgba(52,199,89,.15);border:1px solid rgba(52,199,89,.3)">💬</div><div><div class="pc-title">iMessage &amp; Telegram</div><div class="pc-subtitle">External Messaging Channels</div></div></div>';
+  html += '<div class="pc-header"><div class="pc-icon" style="background:rgba(52,199,89,.15);border:1px solid rgba(52,199,89,.3)">'+pcIconSvg('chat','#34d399')+'</div><div><div class="pc-title">iMessage &amp; Telegram</div><div class="pc-subtitle">External Messaging Channels</div></div></div>';
   html += '<div class="pc-desc">CODEC responds on iMessage and Telegram. Same LLM, same skills, same memory. Say "Good morning" for a Daily Briefing — calendar, weather, markets, Top 10 news, voice note. Say "full report" for a multi-agent deep research report delivered to Google Docs.</div>';
   html += '<div class="pc-features">';
   ['iMessage Agent','Telegram Bot','Daily Briefing','Voice Notes (TTS)','Deep Report → Docs','Restaurant Decider','Accountability Coach','Photo Vision','Whisper Transcription','PM2 Managed'].forEach(function(f) {

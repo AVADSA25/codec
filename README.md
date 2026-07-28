@@ -18,7 +18,7 @@
 <p align="center">
   <a href="https://github.com/AVADSA25/codec/actions/workflows/ci.yml"><img src="https://github.com/AVADSA25/codec/actions/workflows/ci.yml/badge.svg" alt="CI"/></a>
   <a href="https://github.com/AVADSA25/codec/discussions"><img src="https://img.shields.io/badge/community-Discussions-7057ff?style=flat-square&logo=github" alt="GitHub Discussions"/></a>
-  <a href="FEATURES.md"><img src="https://img.shields.io/badge/features-400+-blue?style=flat-square" alt="400+ Features"/></a>
+  <a href="FEATURES.md"><img src="https://img.shields.io/badge/features-370-blue?style=flat-square" alt="370 Features"/></a>
   <img src="https://img.shields.io/badge/skills-76-orange?style=flat-square" alt="76 Skills"/>
   <img src="https://img.shields.io/badge/tests-2000+-green?style=flat-square" alt="2,000+ Tests"/>
   <img src="https://img.shields.io/badge/lines-52K+-purple?style=flat-square" alt="52K+ Lines"/>
@@ -46,7 +46,7 @@ It listens, sees the screen, speaks back, controls apps, writes code, drafts mes
 
 No cloud dependency. No data leaving the machine unless you choose. No subscription on the open-source build. MIT licensed.
 
-> **Sovereign AI Workstation** is the product brand. **CODEC** (v3.2) is the open-source engine that powers it — the codename you'll see in code paths, skill registries, the `codec_*` PM2 services, and the `~/.codec/` config directory. *Sovereign AI Workstation* is what you ship; *CODEC* is what you ship with. Same way iPhone runs on Darwin, or Tesla Model S runs on Roadster components — one is the product, the other is the engine.
+> **Sovereign AI Workstation** is the product brand. **CODEC** (v3.5) is the open-source engine that powers it — the codename you'll see in code paths, skill registries, the `codec_*` PM2 services, and the `~/.codec/` config directory. *Sovereign AI Workstation* is what you ship; *CODEC* is what you ship with. Same way iPhone runs on Darwin, or Tesla Model S runs on Roadster components — one is the product, the other is the engine.
 
 ---
 
@@ -62,11 +62,11 @@ And all of it runs on *your* machine: no data leaves unless you explicitly route
 
 ---
 
-## 9 Products. One System.
+## 7 Products. One System.
 
 | # | Product | What It Does |
 |:-:|---|---|
-| 1 | **CODEC Core** | Voice command layer + vision mouse control — 75 skills, screen clicks by voice |
+| 1 | **CODEC Core** | Voice command layer + vision mouse control — 89 skills, screen clicks by voice |
 | 2 | **CODEC Dictate** | Hold, speak, paste — hands-free F5 live typing at cursor, draft refinement, floating overlays |
 | 3 | **CODEC Instant** | Right-click → 8 AI services system-wide — proofread, translate, reply, explain |
 | 4 | **CODEC Chat** | 250K-context conversational AI + 12 autonomous agent crews |
@@ -80,7 +80,7 @@ And all of it runs on *your* machine: no data leaves unless you explicitly route
 
 Always-on voice assistant. Say *"Hey CODEC"* or press F13 to activate. F18 for voice commands. F16 for text input.
 
-75 skills fire instantly: Google Calendar, Gmail, Drive, Docs, Sheets, Tasks, Keep, Chrome automation, web search, Hue lights, timers, Spotify, clipboard, terminal commands, PM2 control, and more. Most skills bypass the LLM entirely — direct action, zero latency. Skills are matched by trigger specificity — longer, more specific triggers always win over generic ones.
+89 skills fire instantly: Google Calendar, Gmail, Drive, Docs, Sheets, Tasks, Keep, Chrome automation, web search, Hue lights, timers, Spotify, clipboard, terminal commands, PM2 control, and more. Most skills bypass the LLM entirely — direct action, zero latency. Skills are matched by trigger specificity — longer, more specific triggers always win over generic ones.
 
 **Vision Mouse Control — See & Click**
 
@@ -114,7 +114,7 @@ Full conversational AI. Long context. File uploads (drag-and-drop). Image analys
 
 Voice input via continuous microphone with stop button. Streaming responses with typing and thinking indicators.
 
-**Four modes** in the chat composer: **Chat / Think / Agents / Project**. The first three live here — Project mode is documented as its own product in [§9 below](#9-codec-project--drop-a-project-autonomy) since it runs autonomously on a dedicated daemon for hours rather than turn-by-turn in the chat thread.
+**Four modes** in the chat composer: **Chat / Think / Agents / Project**. The first three live here — Project mode is documented within [§4 CODEC Chat](#4-codec-chat--250k-context--12-agent-crews--drop-a-project-autonomy) since it runs autonomously on a dedicated daemon for hours rather than turn-by-turn in the chat thread.
 
 Plus 12 autonomous agent crews — not single prompts, full multi-step workflows. Say *"research the latest AI agent frameworks and write a report."* Minutes later there's a formatted Google Doc in Drive with sources, images, and recommendations.
 
@@ -158,7 +158,7 @@ Full transcript saved to memory. Every conversation becomes searchable context f
 Private dashboard accessible from any device, anywhere. Cloudflare Tunnel or Tailscale VPN — no port forwarding, no third-party relay. 135+ API endpoints. Send commands, view the screen, launch voice calls, manage agents — all from a browser. Installable as a PWA on mobile and desktop.
 
 **Cortex — System Nerve Center**
-Visual command center showing all 9 CODEC products in an interactive grid. Neural network SVG map, real-time activity feed, searchable skills panel, and detailed event log viewer. The single-pane-of-glass view of the entire system.
+Visual command center showing all 7 CODEC products in an interactive grid. Neural network SVG map, real-time activity feed, searchable skills panel, and detailed event log viewer. The single-pane-of-glass view of the entire system.
 
 **Audit — Full Event Trail**
 Every action CODEC takes is logged across 16 categories: command, skill, llm, auth, error, scheduled, voice, vision, tts, stt, system, security, hotkey, screenshot, config, draft. Filterable by category pills, searchable, with colored timeline dots and expandable event details. JSON-line storage with 50MB rotation. Default 24h time range with 1h/6h/24h/7d quick filters.
@@ -282,7 +282,7 @@ Three smart agents ship built-in: Daily Briefing, Restaurant Decider (location-a
 </p>
 <p align="center">
   <img src="docs/screenshots/terminal.png" alt="Terminal" width="400"/><br/>
-  <em>75 skills loaded at startup</em>
+  <em>89 skills loaded at startup</em>
 </p>
 <p align="center">
   <img src="docs/screenshots/cortex.png" alt="Cortex Neural Map" width="720"/><br/>
@@ -703,7 +703,7 @@ setup_codec.py        — Setup wizard (9 steps)
 ecosystem.config.js   — PM2 process management (16 services)
 ```
 
-**CODEC Pilot** is parked (v3.5) and no longer part of the product. Its code and PM2 service live on in the `codec-pilot` repo.
+**CODEC Pilot** is parked (v3.5) and no longer part of the product. Its code, skill, route proxy, and PM2 service were unhooked from this repo in v3.5 and preserved in git history (see [docs/PILOT-PARKED.md](docs/PILOT-PARKED.md)).
 
 ---
 
@@ -743,7 +743,7 @@ python3 setup_codec.py
 
 > **Project mode** (drop-a-project autonomy) is live and ships as part of **CODEC Overview**.
 >
-> **CODEC Pilot** (browser automation) is **parked as of v3.5.** Google blocks account sign-in from any CDP-controlled browser, and cookie walls plus bot challenges make a large share of real sites unusable — it needs a considerably deeper build before it can be trusted as a product. The code is preserved in the `codec-pilot` repo rather than deleted.
+> **CODEC Pilot** (browser automation) is **parked as of v3.5.** Google blocks account sign-in from any CDP-controlled browser, and cookie walls plus bot challenges make a large share of real sites unusable — it needs a considerably deeper build before it can be trusted as a product. The code is preserved in git history (see [docs/PILOT-PARKED.md](docs/PILOT-PARKED.md)) rather than deleted.
 
 **Phase 3.5 (in progress)** — UX + polish on top of the autonomous-agent substrate:
 

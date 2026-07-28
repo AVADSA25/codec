@@ -641,8 +641,7 @@ def test_pm2_processes():
 
     expected_processes = [
         "codec-dashboard",
-        "qwen35b",
-        "qwen-vision",
+        "qwen3.6",  # single model server on :8083 serves LLM + UI-TARS + vision
         "whisper-stt",
         "kokoro-82m",
         "open-codec",

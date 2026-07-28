@@ -42,7 +42,7 @@ async def cortex_health():
         procs = json.loads(out)
         pm2_map = {p["name"]: p["pm2_env"]["status"] for p in procs}
         for name, status in pm2_map.items():
-            if "codec" in name.lower() or name in ("qwen35b", "qwen-vision", "whisper-stt", "kokoro-82m"):
+            if "codec" in name.lower() or name in ("qwen3.6", "whisper-stt", "kokoro-82m"):
                 nid = name.replace("codec-", "").replace("-", "_")
                 if nid not in results:
                     results[nid] = "ok" if status == "online" else "err"
@@ -74,7 +74,7 @@ async def cortex_logs(service: str):
     """Return last 30 lines of PM2 logs for a service."""
     # Map CORTEX node IDs to PM2 process names
     PM2_MAP = {
-        "qwen": "qwen35b", "vision": "qwen-vision", "whisper": "whisper-stt",
+        "qwen": "qwen3.6", "vision": "qwen3.6", "whisper": "whisper-stt",
         "kokoro": "kokoro-82m", "dashboard": "codec-dashboard", "dispatch": "open-codec",
         "heartbeat": "codec-heartbeat", "watcher": "codec-hotkey",
         "f18": "open-codec", "f16": "open-codec", "f13": "open-codec",
@@ -95,7 +95,7 @@ async def cortex_logs(service: str):
 async def cortex_restart(service: str):
     """Restart a PM2 service from CORTEX."""
     PM2_MAP = {
-        "qwen": "qwen35b", "vision": "qwen-vision", "whisper": "whisper-stt",
+        "qwen": "qwen3.6", "vision": "qwen3.6", "whisper": "whisper-stt",
         "kokoro": "kokoro-82m", "dashboard": "codec-dashboard", "dispatch": "open-codec",
         "heartbeat": "codec-heartbeat", "watcher": "codec-hotkey",
     }
