@@ -186,28 +186,6 @@ module.exports = {
         OBSERVER_ENABLED: "true",
       },
     },
-    // ── Pilot Runner (browser automation HTTP API on :8094) ──
-    // Headless Chromium on CDP port 9223, indexed-DOM snapshots,
-    // screencast recording. Local-only after the 2026-05-24 RCE
-    // remediation (no Cloudflare ingress — pilot.lucyvpa.com removed).
-    // LS-6 / SR-5: pilot module is vendored at <repo>/pilot/. Was: cwd
-    // hardcoded to /Users/mickaelfarina/codec (non-portable across
-    // machines). Now: __dirname so the module resolves on any clone.
-    {
-      name: "pilot-runner",
-      script: "python3",
-      args: "-m pilot.pilot_runner",
-      cwd: __dirname,
-      max_memory_restart: "512M",
-      restart_delay: 5000,
-      max_restarts: 10,
-      autorestart: true,
-      env: {
-        HEADLESS: "1",
-        PYTHONUNBUFFERED: "1",
-      },
-    },
-
     // ── Agent Runner (Phase 3 Step 9 — autonomous plan execution) ──
     // PM2 daemon picks up status=approved plans (from Step 8), executes
     // their checkpoints autonomously via Qwen-3.6 ↔ skill loops with

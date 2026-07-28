@@ -2,9 +2,9 @@
 
 ## v3.5.0 (2026-07-22)
 ### Changed
-- **CODEC Pilot parked.** The browser-automation pillar is withdrawn from the product: the Pilot tab is removed from the dashboard and its product card from the Cortex map. Pilot needs a far deeper build than the rest of CODEC to be trustworthy — Google blocks account sign-in from any CDP-controlled browser (not a setting we can change), and cookie walls plus bot challenges make a large share of real sites unusable. The code is parked, not deleted: it lives in its own `codec-pilot` repo and the runner is untouched, so it can return when it earns its place.
+- **CODEC Pilot parked.** The browser-automation pillar is withdrawn from the product: the Pilot tab is removed from the dashboard and its product card from the Cortex map. Pilot needs a far deeper build than the rest of CODEC to be trustworthy — Google blocks account sign-in from any CDP-controlled browser (not a setting we can change), and cookie walls plus bot challenges make a large share of real sites unusable. The code is parked, not deleted: the skill, route proxy, and PM2 runner were unhooked from the repo and preserved in git history (see `docs/PILOT-PARKED.md`), so it can return when it earns its place.
 - **CODEC Project folded into CODEC Overview.** Project mode is a capability of the dashboard rather than a product in its own right. No functionality changes — plan → approve → autonomous run all work exactly as before.
-- **9 products → 7.** Core · Chat · Dashboard · Vibe · Agents · Dictate · Instant.
+- **9 products → 7.** Core · Dictate · Instant · Chat · Vibe · Voice · Overview.
 
 ### Added
 - **Claim-to-artifact matching (`codec_claim_check`).** CODEC may not claim what it did not do. Every real action is already recorded, so a claim of action with no corresponding action is false by construction — not by opinion. Catches both impossible capabilities ("I'll remember this for future sessions") and unbacked actions ("saved to your Desktop" with no file skill run). Covers the streaming and non-streaming chat paths. Tuned for false negatives over false positives: half the tests are false-positive guards.

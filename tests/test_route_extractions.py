@@ -164,11 +164,10 @@ def test_dashboard_loc_below_2300():
     assert lines < 2300, f"codec_dashboard.py still has {lines} lines"
 
 
-# ── G-series (SR-57..58): memory_search + pilot_proxy ─────────────────────
+# ── G-series (SR-57..58): memory_search (pilot_proxy removed in the v3.5 Pilot unhook) ──
 class TestGSeriesRouteExtractions:
     @pytest.mark.parametrize("path", [
         "/api/memory/search",
-        "/api/pilot/{path:path}",
     ])
     def test_endpoint_registered(self, path):
         assert path in _registered_paths()
@@ -176,7 +175,7 @@ class TestGSeriesRouteExtractions:
     def test_modules_exist_and_export_router(self):
         from pathlib import Path
         root = Path(__file__).resolve().parent.parent / "routes"
-        for name in ("memory_search", "pilot_proxy"):
+        for name in ("memory_search",):
             text = (root / f"{name}.py").read_text()
             assert "router = APIRouter()" in text, f"{name}.py must export router"
 
@@ -189,13 +188,9 @@ class TestGSeriesRouteExtractions:
         assert "from routes.vibe import vibe_db" in text               # vibe
         assert "FROM sessions" in text                                  # flash
 
-    def test_pilot_proxy_forwards_to_8094(self):
-        """G2: the proxy must still hit localhost:8094 — that's the runner port."""
-        from pathlib import Path
-        text = (Path(__file__).resolve().parent.parent / "routes" / "pilot_proxy.py").read_text()
-        assert "localhost:8094" in text
-        assert "@router.api_route(" in text
-        assert "GET" in text and "POST" in text and "PUT" in text and "DELETE" in text
+    def test_pilot_route_is_gone(self):
+        """The Pilot proxy was removed when the product was parked in v3.5."""
+        assert "/api/pilot/{path:path}" not in _registered_paths()
 
     def test_dashboard_does_not_redefine_endpoints(self):
         from pathlib import Path

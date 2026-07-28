@@ -135,4 +135,4 @@ def test_from_ecosystem_emits_all_services():
         # :8083 port reconciliation merged the split qwen :8081 + qwen-vision
         # :8082 servers into one unified qwen3.6 service.)
         labels = [ln for ln in r.stdout.splitlines() if "ai.avadigital.codec." in ln]
-        assert len(labels) >= 15, f"expected >=15 services, saw {len(labels)}:\n{r.stdout}"
+        assert len(labels) >= 14, f"expected >=14 services, saw {len(labels)}:\n{r.stdout}"  # 15->14: pilot-runner removed (v3.5 Pilot unhook)
