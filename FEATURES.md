@@ -11,19 +11,22 @@ those are concrete engine components rather than separate products.
 
 **v2.3 adds Phase 1 (audit + plugin substrate), Phase 2 (continuous
 observation + automation), Phase 3 (drop-a-project autonomous agents),
-Phase 3.5 (UX polish + proactive overlay), and CODEC Pilot (the 8th product
-— browser automation you can teach)** — sections 10–14 below.
+Phase 3.5 (UX polish + proactive overlay), and CODEC Pilot (then an 8th
+product — browser automation you can teach; **parked in v3.5**)** — sections
+10–14 below.
 
 Phase 3 ships `codec-agent-runner`, the autonomous-agent daemon that makes
 CODEC a "real AI employee" at the substrate level — drop a project, agent
 plans + builds + sends updates back proactively, with permission gates
 and resume-after-restart guarantees throughout.
 
-CODEC Pilot ships the 8th product slot: a dedicated headless Chromium driven
-by Qwen, record-by-doing teach mode, deterministic XPath → CSS → LLM-rescue
-replay, and an approval gate that protects the SkillRegistry from
-prompt-injection-spawned skills. With Project promoted to product #9 in this
-release, CODEC is now a **9-product system**.
+CODEC Pilot shipped the 8th product slot in v2.3: a dedicated headless Chromium
+driven by Qwen, record-by-doing teach mode, deterministic XPath → CSS →
+LLM-rescue replay, and an approval gate that protects the SkillRegistry from
+prompt-injection-spawned skills. Project was promoted to product #9 in the same
+release, making CODEC a 9-product system at the time. **As of v3.5 that is no
+longer the shape:** Pilot is parked (§14) and Project folded into CODEC
+Overview, so CODEC ships as a **7-product system**.
 
 ---
 
@@ -496,7 +499,7 @@ notification dispatch.
 > challenges make a large share of real sites unusable. The code is preserved in the `codec-pilot` repo.
 > The inventory below is kept for reference and is **not** counted in CODEC's feature total.
 
-The 8th product — a complete browser-automation pillar with a dedicated headless Chromium, ReAct-style agent loop driven by Qwen, deterministic record-replay with selector fallback, a skill approval gate, and human-in-the-loop takeover. Lives in `~/codec/pilot/` (11 modules), runs as `pilot-runner` on PM2 port 8094.
+Formerly the 8th product — a complete browser-automation pillar with a dedicated headless Chromium, ReAct-style agent loop driven by Qwen, deterministic record-replay with selector fallback, a skill approval gate, and human-in-the-loop takeover. The engine now lives in the separate `AVADSA25/codec-pilot` repo (11 modules); its `pilot-runner` PM2 service and `:8094` port were retired from this stack in v3.5.
 
 ### Browser substrate (5 features)
 
@@ -573,8 +576,8 @@ The 8th product — a complete browser-automation pillar with a dedicated headle
 ### Live view + infrastructure (3 features bundled)
 
 - **MJPEG live stream** at `/screenshot/stream` — ~3 fps multipart feed, ~350 KB/s; falls back to 2-second polling on disconnect
-- **30 HTTP endpoints** on `pilot-runner` (FastAPI, port 8094) with CORS enabled for `codec.lucyvpa.com` cross-origin calls
-- **Cloudflare tunnel** at `pilot.lucyvpa.com` for off-LAN dashboard access; PM2 service `pilot-runner` with autorestart + isolated log files
+- **30 HTTP endpoints** on `pilot-runner` (FastAPI, port 8094) with CORS enabled for the dashboard origin — *retired in v3.5*
+- **Cloudflare tunnel** for off-LAN dashboard access — removed in v3.1 after an RCE finding; the `pilot-runner` PM2 service was retired in v3.5
 
 ---
 
@@ -615,7 +618,7 @@ The 8th product — a complete browser-automation pillar with a dedicated headle
 **The 9th product + adversarial-hardening release.** CODEC Project promoted to a live product, Pilot security-hardened end-to-end, calmer 2026 palette across the dashboard.
 
 - **9 products. One system.** Cortex neural map expanded from 28 → 38 nodes (+31 edges); CODEC Pilot and CODEC Project added as live product cards.
-- **Pilot security-hardening wave (PP-1…PP-12)** — full adversarial-audit remediation: AST safety gate at skill-approval time (refuses to activate dangerous compiled skills), untrusted-input fencing on the LLM selector-rescue prompt (page text can't redirect element selection), irreversible-click blocking on replay unless `PILOT_ALLOW_DESTRUCTIVE=1`, path/glob-traversal neutralization in `slugify()` lookups, forensic audit trail on every skill write/approve/reject/block. The `pilot.lucyvpa.com` Cloudflare tunnel was removed after the RCE finding — Pilot is local-only.
+- **Pilot security-hardening wave (PP-1…PP-12)** — full adversarial-audit remediation: AST safety gate at skill-approval time (refuses to activate dangerous compiled skills), untrusted-input fencing on the LLM selector-rescue prompt (page text can't redirect element selection), irreversible-click blocking on replay unless `PILOT_ALLOW_DESTRUCTIVE=1`, path/glob-traversal neutralization in `slugify()` lookups, forensic audit trail on every skill write/approve/reject/block. The Pilot Cloudflare tunnel was removed after the RCE finding — Pilot is local-only.
 - **Conversational continuity in Project mode** — a Project-mode chat thread now binds to the agent it drafts; follow-ups route to the running agent instead of spawning duplicates. Pulsing *"Talking to …"* chip with one-click exit.
 - **Voice in / voice out** — Kokoro TTS now actually speaks assistant replies when *"Voice Replies"* is on (the toggle was previously inert); per-message Speak button; Pilot tab gets its own 🎤 dictate + 🔊 speak controls.
 - **Live preview panel** — slide-out shows the most-recently-modified files in a running agent's project folder (5s poll), so you can watch output appear without leaving the chat.

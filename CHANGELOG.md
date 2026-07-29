@@ -2,7 +2,7 @@
 
 ## v3.5.0 (2026-07-22)
 ### Changed
-- **CODEC Pilot parked.** The browser-automation pillar is withdrawn from the product: the Pilot tab is removed from the dashboard and its product card from the Cortex map. Pilot needs a far deeper build than the rest of CODEC to be trustworthy — Google blocks account sign-in from any CDP-controlled browser (not a setting we can change), and cookie walls plus bot challenges make a large share of real sites unusable. The code is parked, not deleted: the skill, route proxy, and PM2 runner were unhooked from the repo and preserved in git history (see `docs/PILOT-PARKED.md`), so it can return when it earns its place.
+- **CODEC Pilot parked.** The browser-automation pillar is withdrawn from the product: the Pilot tab is removed from the dashboard and its product card from the Cortex map. Pilot needs a far deeper build than the rest of CODEC to be trustworthy — Google blocks account sign-in from any CDP-controlled browser (not a setting we can change), and cookie walls plus bot challenges make a large share of real sites unusable. The code is parked, not deleted: the skill, route proxy, vendored copy, and PM2 entry were unhooked from this repo, and the engine lives on in the separate `AVADSA25/codec-pilot` repo (see `docs/PILOT-PARKED.md`), so it can return when it earns its place.
 - **CODEC Project folded into CODEC Overview.** Project mode is a capability of the dashboard rather than a product in its own right. No functionality changes — plan → approve → autonomous run all work exactly as before.
 - **9 products → 7.** Core · Dictate · Instant · Chat · Vibe · Voice · Overview.
 
@@ -33,7 +33,7 @@
 ## v3.1.0 (2026-05-25)
 ### Security
 - **Pilot security-hardening wave (PP-1…PP-12)** — full adversarial audit remediation of the browser-automation pillar. AST safety gate at skill-approval time (`skill_review.py` refuses to activate dangerous compiled skills), untrusted-input fencing on the LLM selector-rescue prompt (`replay.py` `build_rescue_prompt` / `wrap_untrusted` so page text can't redirect element selection), irreversible-click blocking on replay unless `PILOT_ALLOW_DESTRUCTIVE=1`, path/glob-traversal neutralization in `slugify()` lookups, and a forensic audit trail (`audit()`) on every skill write/approve/reject/block.
-- **`pilot.lucyvpa.com` tunnel removed** from the Cloudflare ingress after an RCE finding — Pilot is local-only again pending re-hardening.
+- **Pilot tunnel removed** from the Cloudflare ingress after an RCE finding — Pilot is local-only again pending re-hardening.
 
 ### Added
 - **Conversational continuity in Project mode** — a Project-mode chat thread now binds to the agent it drafts (`_activeAgentId`). Follow-up messages route to that running agent (status queries, mid-run instructions) instead of spawning a duplicate project. Pulsing "Talking to …" chip with one-click exit; auto-clears on terminal status.
@@ -73,7 +73,7 @@
   - Recent Runs with inline ▶ Replay and 💾 Compile buttons per row
   - Pending Skills panel with source preview, ✓ Approve / ✕ Reject gate
   - HITL pause/resume controls on selected run detail
-- **Cloudflare tunnel exposure** — `pilot.lucyvpa.com` mapped to `localhost:8094` for off-LAN dashboard access
+- **Cloudflare tunnel exposure** — a Pilot hostname mapped to `localhost:8094` for off-LAN dashboard access
 - **PM2 service `pilot-runner`** added to `ecosystem.config.js` (autorestart, 2GB memory cap, isolated log files)
 - **Approved skills auto-expose as MCP tools** — generated `pilot_{slug}.py` files carry `SKILL_NAME`/`SKILL_DESCRIPTION`/`SKILL_TAGS` metadata, registered by CODEC's SkillRegistry, callable from voice / Chat / Scheduler / Claude Code / Cursor / VS Code
 

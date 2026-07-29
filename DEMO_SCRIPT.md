@@ -79,7 +79,7 @@
 
 ## Cut from the demo
 - **Compare across models** (ex-beat 21) — removed 2026-07-21: needs a licensed machine (AVA cloud) to show 3+ columns; on an unlicensed Mac it shows one and makes no comparison.
-- **CODEC Pilot** (ex-beat 13) — parked 2026-07-22, unhooked from production in v3.5. Google blocks account sign-in from any CDP-controlled browser, and cookie walls / bot challenges make a large share of real sites unusable. It needs a far deeper build to be trustworthy; the code is preserved in git history (see `docs/PILOT-PARKED.md`), not deleted.
+- **CODEC Pilot** (ex-beat 13) — parked 2026-07-22, unhooked from production in v3.5. Google blocks account sign-in from any CDP-controlled browser, and cookie walls / bot challenges make a large share of real sites unusable. It needs a far deeper build to be trustworthy; the engine is preserved in the separate `codec-pilot` repo (see `docs/PILOT-PARKED.md`), not deleted.
 - **Live webcam vision** (ex-beat 8) — removed 2026-07-16. The capture was soft (the Anker C200's lens, not code) and it landed as a gadget rather than a capability. Nothing else depends on it.
 
 ## Decide before filming

@@ -359,7 +359,7 @@ from routes.vision import router as vision_router
 from routes.vibe_exec import router as vibe_exec_router
 from routes.web_search import router as web_search_router
 from routes.cdp import router as cdp_router
-# G-series (SR-57..58): cross-source memory search + Pilot proxy.
+# G-series (SR-57..58): cross-source memory search.
 from routes.memory_search import router as memory_search_router
 from routes.mcp import router as mcp_router
 # H1 / SR-59: chat handler (POST /api/chat) + its helper cluster. The helpers
@@ -817,7 +817,6 @@ async def tasks_page():
             return HTMLResponse(f.read(), headers=_NO_CACHE)
     return HTMLResponse("<h1>Tasks page not found</h1>", status_code=500)
 
-# G2 pilot_proxy → moved to routes/*.py
 # C3 / SR-38: cortex endpoints moved to routes/cortex.py.
 
 
