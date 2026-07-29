@@ -19,7 +19,7 @@
   <a href="https://github.com/AVADSA25/codec/actions/workflows/ci.yml"><img src="https://github.com/AVADSA25/codec/actions/workflows/ci.yml/badge.svg" alt="CI"/></a>
   <a href="https://github.com/AVADSA25/codec/discussions"><img src="https://img.shields.io/badge/community-Discussions-7057ff?style=flat-square&logo=github" alt="GitHub Discussions"/></a>
   <a href="FEATURES.md"><img src="https://img.shields.io/badge/features-370-blue?style=flat-square" alt="370 Features"/></a>
-  <img src="https://img.shields.io/badge/skills-76-orange?style=flat-square" alt="76 Skills"/>
+  <img src="https://img.shields.io/badge/skills-89-orange?style=flat-square" alt="89 Skills"/>
   <img src="https://img.shields.io/badge/tests-2000+-green?style=flat-square" alt="2,000+ Tests"/>
   <img src="https://img.shields.io/badge/lines-52K+-purple?style=flat-square" alt="52K+ Lines"/>
   <img src="https://img.shields.io/badge/license-MIT-brightgreen?style=flat-square" alt="MIT License"/>
@@ -703,7 +703,7 @@ setup_codec.py        — Setup wizard (9 steps)
 ecosystem.config.js   — PM2 process management (16 services)
 ```
 
-**CODEC Pilot** is parked (v3.5) and no longer part of the product. Its code, skill, route proxy, and PM2 service were unhooked from this repo in v3.5 and preserved in git history (see [docs/PILOT-PARKED.md](docs/PILOT-PARKED.md)).
+**CODEC Pilot** is parked (v3.5) and no longer part of the product. Its skill, route proxy, vendored copy, and PM2 entry were unhooked from this repo in v3.5; the engine itself lives on in the separate `AVADSA25/codec-pilot` repo (see [docs/PILOT-PARKED.md](docs/PILOT-PARKED.md)).
 
 ---
 
@@ -743,7 +743,7 @@ python3 setup_codec.py
 
 > **Project mode** (drop-a-project autonomy) is live and ships as part of **CODEC Overview**.
 >
-> **CODEC Pilot** (browser automation) is **parked as of v3.5.** Google blocks account sign-in from any CDP-controlled browser, and cookie walls plus bot challenges make a large share of real sites unusable — it needs a considerably deeper build before it can be trusted as a product. The code is preserved in git history (see [docs/PILOT-PARKED.md](docs/PILOT-PARKED.md)) rather than deleted.
+> **CODEC Pilot** (browser automation) is **parked as of v3.5.** Google blocks account sign-in from any CDP-controlled browser, and cookie walls plus bot challenges make a large share of real sites unusable — it needs a considerably deeper build before it can be trusted as a product. The engine is preserved in the separate `AVADSA25/codec-pilot` repo (see [docs/PILOT-PARKED.md](docs/PILOT-PARKED.md)) rather than deleted.
 
 **Phase 3.5 (in progress)** — UX + polish on top of the autonomous-agent substrate:
 
