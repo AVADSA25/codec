@@ -41,7 +41,7 @@
 
 | # | Feature | TRY (live) | EXPECT | Status |
 |---|---|---|---|---|
-| 13 | Cortex neural map | Open Cortex *(leave it on a 2nd screen all demo)* | Pulsing zones update live as tools fire | 🧑 |
+| 13 | Cortex neural map | Open Cortex *(pinned as an OBS corner overlay all demo — see § Recording setup)* | Pulsing zones update live as tools fire | 🧑 |
 | 14 | Forensic audit log (16 categories) | Open Audit → filter by category | Every vision click / clipboard hit / LLM call logged locally — zero hidden telemetry | 🧑 |
 | 15 | Deep Research → real **Google Doc** | Open the doc from beat 9 | A real docs.google.com doc: report, citations, native tables | ✅ confirmed working |
 
@@ -95,10 +95,33 @@
 - Notion signed in (Connector tab, beat 17); Philips Hue reachable; Spotify authorized (finale)
 - Vision Mouse tested 10× on the Cloudflare DNS button
 - Observer running with a populated buffer
-- Cortex map open on a 2nd screen (persistent visual anchor)
+- Cortex window open and **not minimised** — OBS composites it as the corner overlay (persistent visual anchor)
 - Fresh Deep-Research + Project chat windows open
 
-## Director's notes
+## § Recording setup (OBS Studio — free, local, unlimited)
+
+Loom is not usable here: its free tier caps a video at 5 minutes and this run is 15–25.
+OBS also keeps the footage **on the machine**, which matters for a local-first product.
+
+**One-time setup**
+1. Launch OBS → macOS prompts for **Screen Recording**, **Camera**, **Microphone**. Grant all three, then relaunch OBS (Screen Recording only takes effect after a restart).
+2. Settings → Video → Base **3840×2160**, Output (Scaled) **1920×1080**, 30 fps. The UI already renders at a 1080p-equivalent scale, so this is a clean 2:1 downscale and text stays crisp.
+3. Settings → Output → Recording: format **MP4**, encoder **Apple VT H264 Hardware**, quality High — the Mac Studio encodes this without stealing CPU from the demo.
+4. One scene, four sources, ordered top→bottom:
+   - **Display Capture** — the main display
+   - **Window Capture** → the **Cortex** window, scaled into a corner (~25% width). This is the persistent visual anchor; there is only one physical display.
+   - **Video Capture Device** → *Anker PowerConf C200*, small PiP in the opposite corner
+   - **Audio Input Capture** → *Anker PowerConf C200* (your voice) **plus Desktop Audio Capture** (CODEC's TTS, Spotify)
+5. **Do not change the system audio input device.** The C200 is the wake-word mic — swapping it risks beat 1.
+
+**Why not the iPhone as webcam:** beat 21 needs the phone in your hand for Touch ID. A Continuity Camera feed would cut out at exactly that beat.
+
+**Before you hit record**
+- Focus / Do Not Disturb **on** — kills Slack + iMessage banners. CODEC's own NSPanel overlay is an app-drawn window, so the overlay moat still shows.
+- Desktop Audio level-check: play one second of Spotify, confirm the OBS meter moves. If it doesn't, the finale records **silent**.
+- Shoot a 30-second throwaway and play it back: face visible, Cortex legible, both audio tracks present.
+
+
 - Act 1 is the emotional hook — promise (1), deliver, and F5 (3) is an unexpected early "wow".
 - Showstopper risk: 7 (Vision Mouse) — if it fails live, skip to 8.
 - Core "works while you watch" pair: 10 Project, 12 Vibe.
