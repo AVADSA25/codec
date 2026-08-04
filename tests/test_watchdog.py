@@ -105,15 +105,74 @@ def test_extra_services_monitored_but_never_restarted(alert_harness, monkeypatch
 
 
 def test_builtin_down_triggers_single_restart(alert_harness, monkeypatch):
-    """LLM+Vision share qwen3.6 — one down pass must restart it at most once."""
+    """LLM+Vision share qwen3.6 — one down pass must restart it at most once.
+
+    `_is_listening` is forced False so this exercises a genuinely DEAD service.
+    Without the override the real probe would reach a live :8083 on a dev box and
+    the busy-guard would skip the restart, passing for the wrong reason.
+    """
     cfg, state_holder, calls = alert_harness
 
     def probe(url, timeout=5):
         return "8083" not in url  # qwen URL down, everything else up
 
     monkeypatch.setattr(codec_alerts, "_check_service", probe)
+    monkeypatch.setattr(codec_alerts, "_is_listening", lambda url, timeout=2: False)
     codec_alerts.check_services_and_alert()
-    assert calls["restarts"].count("qwen3.6") <= 1, calls["restarts"]
+    assert calls["restarts"].count("qwen3.6") == 1, calls["restarts"]
+
+
+# ── busy-is-not-down guard ───────────────────────────────────────────────────
+# A model server mid-prefill on a long prompt cannot answer the 5s HTTP probe,
+# but its socket is still bound. Restarting it there killed the user's in-flight
+# chat request and returned an empty answer ("reasoning ran on without reaching
+# a final answer"). Long prompts were self-destructing.
+
+
+def test_slow_but_listening_service_is_not_restarted(alert_harness, monkeypatch):
+    """HTTP probe times out while the port still accepts → BUSY, never restart."""
+    cfg, state_holder, calls = alert_harness
+
+    monkeypatch.setattr(codec_alerts, "_check_service",
+                        lambda url, timeout=5: "8083" not in url)
+    monkeypatch.setattr(codec_alerts, "_is_listening", lambda url, timeout=2: True)
+
+    codec_alerts.check_services_and_alert()
+
+    assert "qwen3.6" not in calls["restarts"], (
+        "a busy-but-listening model must never be restarted mid-generation: "
+        f"{calls['restarts']}"
+    )
+    assert not [a for a in calls["alerts"] if a[0] == "critical"], calls["alerts"]
+
+
+def test_busy_service_does_not_accumulate_failures(alert_harness, monkeypatch):
+    """Repeated slow-but-listening passes must not escalate to a critical alert."""
+    cfg, state_holder, calls = alert_harness
+
+    monkeypatch.setattr(codec_alerts, "_check_service",
+                        lambda url, timeout=5: "8083" not in url)
+    monkeypatch.setattr(codec_alerts, "_is_listening", lambda url, timeout=2: True)
+
+    for _ in range(4):
+        codec_alerts.check_services_and_alert()
+
+    assert not calls["restarts"], calls["restarts"]
+    assert not [a for a in calls["alerts"] if a[0] == "critical"], calls["alerts"]
+
+
+def test_is_listening_distinguishes_busy_from_dead():
+    """The guard's whole job: a bound socket is 'busy', a closed port is 'dead'."""
+    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(1)
+    port = srv.getsockname()[1]
+    try:
+        # bound but never answers HTTP — exactly a model mid-prefill
+        assert codec_alerts._is_listening(f"http://127.0.0.1:{port}/v1/models") is True
+    finally:
+        srv.close()
+    assert codec_alerts._is_listening(f"http://127.0.0.1:{port}/v1/models") is False
 
 
 # ── check_pm2_restart_storms ─────────────────────────────────────────────────
