@@ -892,21 +892,38 @@ function showToast(msg) {
 // modern API is unavailable (HTTP non-localhost) or the promise rejects
 // (permissions, focus loss, etc.). Always surfaces a toast — success or
 // failure — so the click is never silent.
+// iOS Safari needs contentEditable + a Range selection (plain .select() is
+// ignored), and must NOT have pointer-events:none — that silently blocks the
+// selection, so the fallback returned false on every phone. 16px font-size stops
+// iOS zooming the viewport while the node is focused. Mirrors codec_chat.html.
 function _copyFallback(text) {
   try {
     var ta = document.createElement('textarea');
     ta.value = text;
-    ta.setAttribute('readonly', '');
+    ta.contentEditable = 'true';
+    ta.readOnly = false;
     ta.style.position = 'fixed';
     ta.style.top = '0';
     ta.style.left = '0';
+    ta.style.width = '1px';
+    ta.style.height = '1px';
+    ta.style.padding = '0';
+    ta.style.border = 'none';
+    ta.style.outline = 'none';
+    ta.style.boxShadow = 'none';
+    ta.style.background = 'transparent';
+    ta.style.fontSize = '16px';
     ta.style.opacity = '0';
-    ta.style.pointerEvents = 'none';
     document.body.appendChild(ta);
-    ta.focus();
-    ta.select();
+    var sel = window.getSelection();
+    var range = document.createRange();
+    range.selectNodeContents(ta);
+    sel.removeAllRanges();
+    sel.addRange(range);
     ta.setSelectionRange(0, ta.value.length);
+    ta.focus();
     var ok = document.execCommand('copy');
+    sel.removeAllRanges();
     document.body.removeChild(ta);
     return ok;
   } catch (e) {
