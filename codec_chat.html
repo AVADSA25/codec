@@ -549,17 +549,35 @@ var webSearchEnabled=false;
 var thinkingEnabled=true;
 
 function showToast(msg){var t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(function(){t.classList.remove('show')},1800)}
+// execCommand fallback for when navigator.clipboard is unavailable — it is
+// undefined on any non-secure origin, so plain-http LAN access (http://<ip>:8090)
+// lands here even though the Cloudflare HTTPS host does not.
+// iOS Safari needs all three of: contentEditable, a Range selection (plain
+// .select() is ignored), and NO pointer-events:none — that last one silently
+// blocks the selection, which is why the old fallback never worked on the phone.
+// 16px font-size stops iOS from zooming the viewport while the node is focused.
 function _copyFallback(text){
   try{
     var ta=document.createElement('textarea');
     ta.value=text;
-    ta.setAttribute('readonly','');
+    ta.contentEditable='true';
+    ta.readOnly=false;
     ta.style.position='fixed';
     ta.style.top='0';ta.style.left='0';
-    ta.style.opacity='0';ta.style.pointerEvents='none';
+    ta.style.width='1px';ta.style.height='1px';
+    ta.style.padding='0';ta.style.border='none';ta.style.outline='none';
+    ta.style.boxShadow='none';ta.style.background='transparent';
+    ta.style.fontSize='16px';
+    ta.style.opacity='0';
     document.body.appendChild(ta);
-    ta.focus();ta.select();ta.setSelectionRange(0,ta.value.length);
+    var sel=window.getSelection();
+    var range=document.createRange();
+    range.selectNodeContents(ta);
+    sel.removeAllRanges();sel.addRange(range);
+    ta.setSelectionRange(0,ta.value.length);
+    ta.focus();
     var ok=document.execCommand('copy');
+    sel.removeAllRanges();
     document.body.removeChild(ta);
     return ok;
   }catch(e){return false}
@@ -952,15 +970,29 @@ function addMessage(role,content,animate){
   div.className='msg '+role;
   if(animate===false)div.style.animation='none';
   var time=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
-  var enc=encodeURIComponent(content);
-  var copyBtn='<button class="msg-act msg-copy" onclick="copyMsgText(decodeURIComponent(\''+enc+'\'),this)" title="Copy"><svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button>';
-  var editBtn=role==='user'?'<button class="msg-act msg-edit" onclick="editMessage(decodeURIComponent(\''+enc+'\'),this)" title="Edit &amp; re-send"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>':'';
+  // Message text is NEVER embedded in an inline onclick. encodeURIComponent does
+  // NOT escape apostrophes — "'" is an unreserved mark, so it survives untouched
+  // and "don't" still terminated the JS string literal, killing the handler with a
+  // SyntaxError. The click then silently did nothing, on every message containing
+  // an apostrophe (i.e. most of them), on desktop AND phone — the PWA's Chat link
+  // serves this same file. Buttons are emitted bare and bound below via closures,
+  // which needs no escaping and makes message content non-executable by design.
+  // Same contract as bindCopyButtons() in codec_dashboard.html.
+  var copyBtn='<button class="msg-act msg-copy" data-act="copy" title="Copy"><svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button>';
+  var editBtn=role==='user'?'<button class="msg-act msg-edit" data-act="edit" title="Edit &amp; re-send"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>':'';
   var regenBtn=role==='assistant'?'<button class="msg-act msg-regen" onclick="regenerateResponse(this)" title="Regenerate"><svg class="ico ico-sm" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg></button>':'';
   // ── Speak button per assistant message — manual TTS playback regardless of global toggle
-  var speakBtn=role==='assistant'?'<button class="msg-act msg-speak" onclick="speakMessage(decodeURIComponent(\''+enc+'\'),this)" title="Speak"><svg class="ico ico-sm" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 010 14.14"/><path d="M15.54 8.46a5 5 0 010 7.07"/></svg></button>':'';
+  var speakBtn=role==='assistant'?'<button class="msg-act msg-speak" data-act="speak" title="Speak"><svg class="ico ico-sm" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 010 14.14"/><path d="M15.54 8.46a5 5 0 010 7.07"/></svg></button>':'';
   // One inline action row beneath the bubble: timestamp + regenerate / edit / copy / speak (role-gated)
   var actions=regenBtn+editBtn+copyBtn+speakBtn;
   div.innerHTML='<div class="msg-bubble">'+formatMsg(content)+'</div><div class="msg-meta"><span class="msg-time">'+time+'</span>'+actions+'</div>';
+  // Bind the action buttons to the raw text via a closure — see the note above.
+  (function(host,txt){
+    var b;
+    if((b=host.querySelector('[data-act="copy"]')))b.addEventListener('click',function(){copyMsgText(txt,b)});
+    if((b=host.querySelector('[data-act="edit"]')))b.addEventListener('click',function(){editMessage(txt,b)});
+    if((b=host.querySelector('[data-act="speak"]')))b.addEventListener('click',function(){speakMessage(txt,b)});
+  })(div,String(content));
   document.getElementById('messages').appendChild(div);
   scrollBottom();
   // ── Auto-speak via Kokoro when global "Voice Replies" toggle is ON
