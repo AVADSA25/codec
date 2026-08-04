@@ -27,6 +27,7 @@ import socket
 import subprocess
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime
 from email.mime.text import MIMEText
@@ -177,6 +178,28 @@ def _check_service(url: str, timeout: int = 5) -> bool:
         return False
 
 
+def _is_listening(url: str, timeout: int = 2) -> bool:
+    """Is something still accepting TCP connections on this URL's port?
+
+    Distinguishes BUSY from DEAD. A single-threaded model server doing a large
+    prefill (an 11k-token prompt at ~800 tok/s blocks for ~14s) cannot answer an
+    HTTP probe inside `_check_service`'s 5s timeout — but its socket is still
+    bound and accepting. A crashed process is not.
+
+    Without this, one slow probe made the heartbeat auto-restart the model
+    MID-GENERATION, which killed the user's in-flight chat request: the reply
+    came back as reasoning-with-no-answer. Long prompts were self-destructing.
+    """
+    try:
+        parsed = urllib.parse.urlparse(url if "//" in url else "//" + url)
+        host = parsed.hostname or "127.0.0.1"
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        with socket.create_connection((host, int(port)), timeout=timeout):
+            return True
+    except Exception:
+        return False
+
+
 def _try_restart(service_pm2_name: str) -> bool:
     """Attempt to restart a service via PM2. Returns True if restart command succeeded."""
     try:
@@ -260,6 +283,22 @@ def check_services_and_alert():
 
             if failures[name] == 1:
                 state[f"down_since_{name}"] = now
+
+            # BUSY IS NOT DOWN. If the port still accepts connections, the
+            # process is alive and merely too busy to answer inside the probe
+            # timeout — the normal state for a model server mid-prefill on a
+            # long prompt. Restarting it there killed the user's in-flight
+            # request and returned an empty answer. Never restart on that;
+            # a genuinely crashed process stops listening and still recovers.
+            if _is_listening(url):
+                failures[name] = 0
+                if f"down_since_{name}" in state:
+                    del state[f"down_since_{name}"]
+                log.info(
+                    "%s slow to answer but still listening — treating as busy, "
+                    "not restarting", name,
+                )
+                continue
 
             if failures[name] == 1:
                 # First failure — try auto-restart (with cooldown to prevent
