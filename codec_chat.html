@@ -356,6 +356,9 @@ input[type=file]{display:none}
 </button>
 <button class="mode-btn" onclick="setMode('research')" id="modeResearchBtn"><svg class="ico" viewBox="0 0 24 24" style="width:14px;height:14px"><rect x="4" y="4" width="16" height="16" rx="2"/><circle cx="9" cy="10" r="1.5" fill="currentColor" stroke="none"/><circle cx="15" cy="10" r="1.5" fill="currentColor" stroke="none"/><path d="M9 15h6"/></svg>Agents</button>
 <button class="mode-btn" onclick="setMode('project')" id="modeProjectBtn" title="Drop a project — autonomous plan-and-build mode"><svg class="ico" viewBox="0 0 24 24" style="width:14px;height:14px"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="5"/><line x1="12" y1="2" x2="12" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg>Project</button>
+<select id="modelSelect" onchange="switchModel()" title="Local model — switching unloads the current one and loads the new one" style="display:inline-block">
+<option value="">model…</option>
+</select>
 <select id="crewSelect">
 <option value="deep_research">🔍 Deep Research</option>
 <option value="daily_briefing">📰 Daily Briefing</option>
@@ -556,6 +559,49 @@ function showToast(msg){var t=document.getElementById('toast');t.textContent=msg
 // .select() is ignored), and NO pointer-events:none — that last one silently
 // blocks the selection, which is why the old fallback never worked on the phone.
 // 16px font-size stops iOS from zooming the viewport while the node is focused.
+
+// ── Model picker ──────────────────────────────────────────────────────────
+// All local models are served by ONE mlx_vlm.server holding a single model at a
+// time, so switching unloads the current model and loads the new one. That is a
+// real pause (~6-25s here), hence the explicit "loading" state — and why the
+// select is disabled while it runs. If the target fails to load the backend
+// restores the previous model before replying, so CODEC is never left mute.
+var _modelBusy = false;
+function loadModels(){
+  fetch('/api/models').then(function(r){return r.json()}).then(function(d){
+    var sel=document.getElementById('modelSelect'); if(!sel)return;
+    sel.innerHTML='';
+    (d.models||[]).forEach(function(m){
+      var o=document.createElement('option');
+      o.value=m.id;
+      o.textContent=m.label+(m.role?' — '+m.role:'');
+      if(m.active)o.selected=true;
+      sel.appendChild(o);
+    });
+    sel.dataset.current=d.active||'';
+  }).catch(function(){});
+}
+function switchModel(){
+  var sel=document.getElementById('modelSelect');
+  if(!sel||_modelBusy)return;
+  var target=sel.value, prev=sel.dataset.current||'';
+  if(!target||target===prev)return;
+  _modelBusy=true; sel.disabled=true;
+  var label=sel.options[sel.selectedIndex].textContent;
+  showToast('Loading '+label+'…');
+  var hdrs={'Content-Type':'application/json'};
+  var cm=document.cookie.match(/codec_csrf=([^;]+)/); if(cm)hdrs['x-csrf-token']=cm[1];
+  fetch('/api/model',{method:'POST',headers:hdrs,body:JSON.stringify({model:target})})
+    .then(function(r){return r.json()})
+    .then(function(d){
+      if(d.ok){ sel.dataset.current=d.active; showToast('Now using '+label+' ('+(d.detail||'')+')'); }
+      else { sel.value=d.active||prev; sel.dataset.current=d.active||prev;
+             showToast(d.error||'Switch failed — kept the previous model', true); }
+    })
+    .catch(function(){ sel.value=prev; showToast('Switch failed',true); })
+    .finally(function(){ _modelBusy=false; sel.disabled=false; });
+}
+
 function _copyFallback(text){
   try{
     var ta=document.createElement('textarea');
@@ -1820,6 +1866,8 @@ function updateSpeakToggle(){
 }
 setTimeout(updateSpeakToggle, 0);
 updateVoiceIcon();
+// Populate the model picker with what is on disk + which one is active.
+try{loadModels()}catch(e){}
 async function takeScreenshot(){try{window.open('/api/screenshot?'+Date.now(),'_blank')}catch(e){}}
 
 // ── Server Photo (Mac webcam) ──

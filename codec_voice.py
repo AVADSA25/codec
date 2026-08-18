@@ -645,8 +645,17 @@ class VoicePipeline:
         self._stream_error = False
         await llm_queue.acquire(Priority.CRITICAL)
         try:
+            # Resolve the model per call so a switch made in chat / by voice
+            # applies here too. codec_voice reads config at IMPORT, so without
+            # this the voice path would keep using the model that was active
+            # when the process started.
+            try:
+                from codec_models import get_active as _active_model
+                _model = _active_model()
+            except Exception:
+                _model = QWEN_MODEL
             async for token in codec_llm.astream(
-                messages, base_url=QWEN_BASE_URL, model=QWEN_MODEL,
+                messages, base_url=QWEN_BASE_URL, model=_model,
                 max_tokens=max_tokens, temperature=0.7, enable_thinking=False,
                 extra_kwargs={"top_p": 0.9, "frequency_penalty": 0.8, **LLM_KWARGS},
                 http=self._http,
