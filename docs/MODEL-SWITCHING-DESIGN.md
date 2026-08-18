@@ -20,8 +20,9 @@ stayed at 19.8 / 19.9 / 19.5 GB rather than accumulating.
 Trying to keep two models resident (two servers) was measured and rejected: the
 everyday model dropped from 59 to 23 tok/s and swap hit 18.5 of 19.4 GB.
 
-Switching costs a load pause. Measured on this box: **6-9s** between models
-already in the page cache, ~22s cold.
+Switching costs a load pause. Measured on this box: **6-9s** between models of
+the same family already in the page cache, **18-21s** switching across families
+(3.6 <-> 3.8). Plan for ~20s of dead air if switching on camera.
 
 ## Design
 
@@ -56,13 +57,40 @@ unloaded the previous model by the time a load fails, `set_active()`:
    model is loaded again,
 4. returns `ok: False` with the reason.
 
-Verified live against a genuinely broken target: `Qwen3.8-27B` fails on the
-current serving venv (`Unrecognized image processor` — it needs newer
-`transformers`/`mlx_vlm`). The switch failed, reverted, and the model still
-answered.
+Verified live against a genuinely broken target: `Qwen3.8-27B` used to fail with
+`Unrecognized image processor` on the old serving venv. The switch failed,
+reverted, and the model still answered — including once in the operator's own
+hands (audit `model_switched` at 15:12, outcome=error, auto-reverted to 3.6).
+
+That failure mode is now fixed rather than merely survivable (see *Serving venv*
+below), but the revert path stays: any future model whose architecture the
+serving stack does not know will fail the same way.
 
 Only locally discovered models may be selected; an arbitrary string would trade
 a working model for a 404.
+
+## Serving venv
+
+`~/codec-qwen36-test/start.sh` activates the venv that runs the model server.
+It was moved from `~/codec-qwen36-venv` (transformers 5.5.4 / mlx_vlm 0.4.4) to
+`~/codec-qwen38-venv` (transformers 5.15.0 / mlx_vlm 0.6.13), because the older
+stack could not load `qwen3_5`-architecture models at all.
+
+Verified on a separate port BEFORE the swap, then again after:
+
+| | old stack | new stack |
+|---|---|---|
+| Qwen3.6-35B-A3B | ~50-59 tok/s | **61.7 tok/s** |
+| Qwen3.8-27B | fails to load | **loads, 24.2 tok/s** |
+| beat-8 riddle | correct | correct |
+
+Rollback is one line in `start.sh` plus `pm2 restart qwen3.6`; a timestamped
+`start.sh.bak-*` sits beside it.
+
+**These venvs are invisible to Homebrew.** `brew` once autoremoved `python@3.13`
+as an unused formula and broke the venv's interpreter symlink, taking the model
+server down with `ModuleNotFoundError: mlx_vlm`. `python@3.13` is now installed
+on-request so autoremove leaves it alone — do not uninstall it.
 
 ## Scope
 
