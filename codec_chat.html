@@ -108,6 +108,7 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);height:
 .msg-bubble{padding:10px 14px;border-radius:14px;line-height:1.6;font-size:15px;word-wrap:break-word;white-space:pre-wrap}
 .msg.user .msg-bubble{background:rgba(232,113,26,0.15);color:var(--text);border:1px solid rgba(232,113,26,0.25);border-bottom-right-radius:4px}
 .msg.assistant .msg-bubble{background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-bottom-left-radius:4px}
+.msg-stats{font-size:10px;color:var(--text-dim);letter-spacing:.3px;margin-left:8px;opacity:.75;cursor:default}
 .msg-time{font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-top:3px;padding:0 4px}
 .msg.user .msg-time{text-align:right}
 
@@ -560,6 +561,33 @@ function showToast(msg){var t=document.getElementById('toast');t.textContent=msg
 // blocks the selection, which is why the old fallback never worked on the phone.
 // 16px font-size stops iOS from zooming the viewport while the node is focused.
 
+
+// ── Reply stats ───────────────────────────────────────────────────────────
+// The backend emits one {stats:{…}} SSE frame after the stream finishes.
+// elapsed_s is wall time as the user experienced it (a cold model load is
+// included on purpose — that IS the wait). tok/s comes from the server's own
+// completion_tokens, so it is measured, not estimated.
+var _lastStats = null;
+function _fmtModel(id){ return String(id||'').split('/').pop().replace('-4bit',''); }
+function renderStats(msgEl, st){
+  try{
+    var meta = msgEl.querySelector('.msg-meta'); if(!meta) return;
+    var bits = [];
+    bits.push((st.elapsed_s != null ? st.elapsed_s : '?') + 's');
+    if(st.completion_tokens != null) bits.push(st.completion_tokens + ' tok');
+    if(st.tok_per_s != null) bits.push(st.tok_per_s + ' tok/s');
+    if(st.model) bits.push(_fmtModel(st.model));
+    var span = document.createElement('span');
+    span.className = 'msg-stats';
+    span.textContent = bits.join(' · ');
+    if(st.prompt_tokens != null && st.total_tokens != null){
+      span.title = st.prompt_tokens + ' prompt + ' + (st.completion_tokens||0) +
+                   ' completion = ' + st.total_tokens + ' tokens';
+    }
+    meta.appendChild(span);
+  }catch(e){}
+}
+
 // ── Model picker ──────────────────────────────────────────────────────────
 // All local models are served by ONE mlx_vlm.server holding a single model at a
 // time, so switching unloads the current model and loads the new one. That is a
@@ -789,7 +817,7 @@ function regenerateResponse(btn){
       for(var li=0;li<lines.length;li++){
         var line=lines[li].trim();if(!line.startsWith('data: '))continue;var payload=line.substring(6);
         if(payload==='[DONE]')break;
-        try{var j=JSON.parse(payload);if(j.skill){showToast('Skill: '+j.skill)}if(j.token){raw+=j.token;var ps=parseScaffold(raw);if(thinkingEnabled&&ps.think){var tp=makeToT(div,'Reveal train of thought',true);totSet(tp,ps.think)}if(ps.answer){if(!answerStarted){bubble.innerHTML='';answerStarted=true}bubble.innerHTML=formatMsg(ps.answer)}scrollBottom()}if(j.error){raw+='\nError: '+j.error}}catch(pe){}
+        try{var j=JSON.parse(payload);if(j.stats){_lastStats=j.stats}if(j.skill){showToast('Skill: '+j.skill)}if(j.token){raw+=j.token;var ps=parseScaffold(raw);if(thinkingEnabled&&ps.think){var tp=makeToT(div,'Reveal train of thought',true);totSet(tp,ps.think)}if(ps.answer){if(!answerStarted){bubble.innerHTML='';answerStarted=true}bubble.innerHTML=formatMsg(ps.answer)}scrollBottom()}if(j.error){raw+='\nError: '+j.error}}catch(pe){}
       }
     }
     var pf=parseScaffold(raw);
@@ -802,6 +830,7 @@ function regenerateResponse(btn){
     if(answer){
       div.remove();var md=addMessage('assistant',answer);
       if(thinkingEnabled&&pf.think&&pf.think.trim()&&md){var fp=makeToT(md,'Train of thought',false);totSet(fp,pf.think.trim())}
+      if(md&&_lastStats)renderStats(md,_lastStats);_lastStats=null;
       chatHist.push({role:'assistant',content:answer});saveMessages([{role:'assistant',content:answer}])
     }else{bubble.innerHTML='<em style="color:var(--text-dim)">No response</em>'}
     _currentAbort=null;isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false
@@ -1391,13 +1420,24 @@ async function sendMessage(){
   if(!text&&!pendingFiles.length)return;
   input.value='';input.style.height='auto';
 
+  // Attachments are read HERE, before the mode branches. They used to be built
+  // only in the chat path further down, which the project and research branches
+  // return past — so a PDF attached in Agents or Project mode was silently
+  // dropped: chips cleared, crew ran on the prompt alone, no error shown.
+  var fileContext='';var fileNames=[];
+  for(var i=0;i<pendingFiles.length;i++){var f=pendingFiles[i];fileNames.push(f.name);
+    if(f.type==='text'||f.type==='pdf'){fileContext+='\n\n[DOCUMENT: '+f.name+']\n'+f.content.substring(0,80000)+'\n[END DOCUMENT]'}
+    else if(f.type==='image'){fileContext+='\n\n[IMAGE ANALYSIS of '+f.name+']\n'+f.content.substring(0,80000)+'\n[END IMAGE]'}}
+
   // Project mode → POST /api/agents (Step 8 plan dispatch)
   // OR if there's an active agent in this thread, route the message to that agent
   // (status queries, mid-run instructions). User explicitly exits with × on chip.
   if(chatMode==='project'){
-    if(!text)return;
-    addMessage('user',text);
-    chatHist.push({role:'user',content:text});
+    if(!text&&!fileNames.length)return;
+    var projText=(text||'Please use the attached file(s).')+fileContext;
+    if(fileNames.length)clearChips();
+    addMessage('user',fileNames.length?(fileNames.join('\n')+'\n\n'+(text||'Please use the attached file(s).')):text);
+    chatHist.push({role:'user',content:projText});
     saveMessages([{role:'user',content:text}]);
     isProcessing=true;document.getElementById('sendBtn').disabled=true;
 
@@ -1450,7 +1490,7 @@ async function sendMessage(){
     scrollBottom();
     try{
       var pr=await fetch('/api/agents',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({title:text.slice(0,80),description:text})});
+        body:JSON.stringify({title:(text||fileNames.join(', ')).slice(0,80),description:projText})});
       if(pr.status===401||pr.status===403){
         pendingDiv.querySelector('.msg-bubble').innerHTML='<span style="color:var(--danger,#f87171)">Session expired</span> — refreshing...';
         setTimeout(function(){window.location.href='/auth'},1500);
@@ -1477,10 +1517,11 @@ async function sendMessage(){
   }
 
   if(chatMode==='research'){
-    var researchText=text||'';
+    var researchText=(text||'')+fileContext;
     var crew=document.getElementById('crewSelect').value||'deep_research';
     var noTextCrews=['daily_briefing','email_handler'];
-    if(!researchText&&!noTextCrews.includes(crew))return;
+    if(!text&&!fileNames.length&&!noTextCrews.includes(crew))return;
+    if(fileNames.length)clearChips();
 
     var crewLabels={'deep_research':'Deep Research','daily_briefing':'Daily Briefing',
       'trip_planner':'Trip Planner','competitor_analysis':'Competitor Analysis','email_handler':'Email Handler',
@@ -1488,7 +1529,8 @@ async function sendMessage(){
       'content_writer':'Content Writer','meeting_summarizer':'Meeting Summarizer',
       'invoice_generator':'Invoice Generator','project_manager':'Project Manager',
       'custom':document.getElementById('agentName').value||'Custom Agent'};
-    var userMsg=(crewLabels[crew]||crew)+': '+(researchText||'(running)');
+    var userMsg=(crewLabels[crew]||crew)+': '+((text||'')||(fileNames.length?fileNames.join(', '):'(running)'));
+    if(fileNames.length&&text)userMsg+=' ['+fileNames.join(', ')+']';
     addMessage('user',userMsg);chatHist.push({role:'user',content:userMsg});saveMessages([{role:'user',content:userMsg}]);
 
     var statusEl=null;
@@ -1531,8 +1573,6 @@ async function sendMessage(){
     isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false;return
   }
 
-  var fileContext='';var fileNames=[];
-  for(var i=0;i<pendingFiles.length;i++){var f=pendingFiles[i];fileNames.push(f.name);if(f.type==='text'||f.type==='pdf'){fileContext+='\n\n[DOCUMENT: '+f.name+']\n'+f.content.substring(0,80000)+'\n[END DOCUMENT]'}else if(f.type==='image'){fileContext+='\n\n[IMAGE ANALYSIS of '+f.name+']\n'+f.content.substring(0,80000)+'\n[END IMAGE]'}}
   var displayText=text;
   if(fileNames.length){displayText=(fileNames.map(function(n){return n}).join('\n'))+'\n\n'+(text||'Please analyze the attached file(s).')}
   addMessage('user',displayText);

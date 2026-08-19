@@ -33,6 +33,7 @@ import json
 import logging
 import re
 import secrets
+import time
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -1187,10 +1188,19 @@ async def chat_completion(request: Request):
                     # (tail only) and re-checked every ~40 deltas.
                     _acc = ""
                     _since_check = 0
+                    # Reply stats: wall time + token counts, surfaced to the UI
+                    # so the operator can see how long a local model actually
+                    # took. usage arrives in the server's final chunk.
+                    _t0 = time.time()
+                    _usage = None
                     for item in codec_llm.stream(messages, **_common,
                                                  keepalive=True,
                                                  error_sentinel=True,
-                                                 inline_reasoning=show_thoughts):
+                                                 inline_reasoning=show_thoughts,
+                                                 usage_sentinel=True):
+                        if isinstance(item, codec_llm.StreamUsage):
+                            _usage = dict(item)
+                            continue
                         if item is codec_llm.KEEPALIVE:
                             yield ": keepalive\n\n"
                             continue
@@ -1218,6 +1228,22 @@ async def chat_completion(request: Request):
                     # Stream ended ([DONE] or close): flush, then blank-bubble net.
                     for s in buf.finish():
                         yield _frame(s)
+                    # Reply stats — elapsed is measured here (not from the usage
+                    # chunk) so it reflects what the user actually waited for,
+                    # including any model load. tok/s is derived from the
+                    # server's completion_tokens when it reported them.
+                    _elapsed = round(time.time() - _t0, 1)
+                    _stats = {"elapsed_s": _elapsed, "model": model}
+                    if _usage:
+                        _ct = _usage.get("completion_tokens") or 0
+                        _stats.update(
+                            prompt_tokens=_usage.get("prompt_tokens"),
+                            completion_tokens=_ct,
+                            total_tokens=_usage.get("total_tokens"),
+                        )
+                        if _ct and _elapsed > 0:
+                            _stats["tok_per_s"] = round(_ct / _elapsed, 1)
+                    yield f"data: {json.dumps({'stats': _stats})}\n\n"
                     if show_thoughts:
                         for t in buf.drain_think():
                             yield f"data: {json.dumps({'think': t})}\n\n"

@@ -124,3 +124,51 @@ def test_skill_resolves_aliases_and_prefers_active():
     # 'fast' matches every A3B model — the active one must win over the older 3.5
     assert ms._resolve("fast", models, active) == active
     assert ms._resolve("banana", models, active) is None
+
+
+# ── operator allowlist (models_visible) ──────────────────────────────────────
+# Discovery finds every loadable model on disk, including ones the operator does
+# not want offered. Hiding must not require deleting weights — screenshot_text.py
+# hardcodes the VL checkpoint, so deleting it would break screenshot OCR.
+
+
+def _cfg_with(tmp_path, monkeypatch, **extra):
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({"llm_model": "mlx-community/A", **extra}))
+    monkeypatch.setattr(codec_models, "CONFIG_PATH", str(path))
+    monkeypatch.setattr(codec_models, "discover_local",
+                        lambda: [{"id": "mlx-community/A", "label": "A", "size_gb": 1.0},
+                                 {"id": "mlx-community/B", "label": "B", "size_gb": 2.0},
+                                 {"id": "mlx-community/HIDE", "label": "H", "size_gb": 3.0}])
+    return path
+
+
+def test_allowlist_hides_models_from_picker(tmp_path, monkeypatch):
+    _cfg_with(tmp_path, monkeypatch,
+              models_visible=["mlx-community/A", "mlx-community/B"])
+    ids = [m["id"] for m in codec_models.list_models()["models"]]
+    assert ids == ["mlx-community/A", "mlx-community/B"]
+
+
+def test_hidden_model_cannot_be_switched_to(tmp_path, monkeypatch):
+    cfg = _cfg_with(tmp_path, monkeypatch,
+                    models_visible=["mlx-community/A", "mlx-community/B"])
+    monkeypatch.setattr(codec_models, "probe",
+                        lambda m, **kw: pytest.fail("hidden model must not be probed"))
+    r = codec_models.set_active("mlx-community/HIDE")
+    assert r["ok"] is False
+    assert json.loads(cfg.read_text())["llm_model"] == "mlx-community/A"
+
+
+def test_active_model_is_shown_even_if_not_in_allowlist(tmp_path, monkeypatch):
+    """Hiding what CODEC is currently running would be a lie."""
+    _cfg_with(tmp_path, monkeypatch, models_visible=["mlx-community/B"])
+    d = codec_models.list_models()
+    ids = [m["id"] for m in d["models"]]
+    assert d["active"] == "mlx-community/A"
+    assert "mlx-community/A" in ids
+
+
+def test_no_allowlist_shows_everything(tmp_path, monkeypatch):
+    _cfg_with(tmp_path, monkeypatch)
+    assert len(codec_models.list_models()["models"]) == 3

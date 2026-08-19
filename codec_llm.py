@@ -45,6 +45,13 @@ _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
 # (codec_session.qwen_stream) are unaffected.
 KEEPALIVE = object()
 
+# Yielded by stream(usage_sentinel=True) when the server reports token counts in
+# its final chunk. Carries data, so unlike the bare object() sentinels it is a
+# dict subclass — callers check isinstance(item, StreamUsage) BEFORE treating an
+# item as text, otherwise it would be rendered into the reply.
+class StreamUsage(dict):
+    """Token accounting for one streamed reply (prompt/completion/total)."""
+
 # Sentinels yielded by stream(error_sentinel=True) — 2026-07 chat-visibility
 # fix. stream() never raises by contract, so before these existed a mid-reply
 # connection drop / non-200 / read timeout was indistinguishable from a clean
@@ -242,6 +249,7 @@ def stream(
     keepalive: bool = False,
     error_sentinel: bool = False,
     inline_reasoning: bool = False,
+    usage_sentinel: bool = False,
 ) -> Iterator[Any]:
     """POST with `stream=True` and yield the RAW assistant content deltas in
     order. Centralizes the SSE plumbing: header/payload build (shared with
@@ -277,6 +285,11 @@ def stream(
         temperature=temperature, enable_thinking=enable_thinking,
         extra_kwargs=extra_kwargs, stream=True,
     )
+    if usage_sentinel:
+        # OpenAI-style: usage is omitted from streamed responses unless asked
+        # for. mlx_vlm.server honours this and emits a final choices-empty chunk
+        # carrying prompt/completion tokens.
+        payload["stream_options"] = {"include_usage": True}
     url = base_url.rstrip("/") + "/chat/completions"
     _empty = 0  # empty "thinking" chunks seen (drives keepalive)
     try:
@@ -300,7 +313,21 @@ def stream(
                 if data.strip() == "[DONE]":
                     break
                 try:
-                    choice = _json.loads(data).get("choices", [{}])[0]
+                    _obj = _json.loads(data)
+                except Exception as e:
+                    log.warning("LLM stream chunk parse failed: %s", e)
+                    continue
+                # The usage chunk carries an EMPTY choices list, so it must be
+                # handled before the choices[0] access below — that access used
+                # to raise IndexError and the counts were swallowed as a parse
+                # failure.
+                if _obj.get("usage"):
+                    if usage_sentinel:
+                        yield StreamUsage(_obj["usage"])
+                    if not _obj.get("choices"):
+                        continue
+                try:
+                    choice = _obj.get("choices", [{}])[0]
                     _d = choice.get("delta", {})
                     delta = _d.get("content", "")
                 except Exception as e:
