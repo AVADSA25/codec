@@ -116,6 +116,21 @@ def discover_local() -> List[Dict[str, Any]]:
     return out
 
 
+def _visible_ids(cfg: Dict[str, Any]) -> Optional[set]:
+    """Optional operator allowlist: `models_visible` in config.json.
+
+    Discovery finds every loadable chat model on disk, which includes ones the
+    operator does not want offered (an older generation, a vision checkpoint kept
+    only because skills/screenshot_text.py hardcodes it). Listing it here hides
+    it from the picker WITHOUT deleting weights that other code paths still use.
+    Absent or empty -> show everything discovered.
+    """
+    raw = cfg.get("models_visible")
+    if isinstance(raw, list) and raw:
+        return {str(x) for x in raw}
+    return None
+
+
 def get_active(config: Optional[Dict[str, Any]] = None) -> str:
     cfg = config if config is not None else _load_config()
     return cfg.get("llm_model") or DEFAULT_MODEL
@@ -132,6 +147,11 @@ def list_models() -> Dict[str, Any]:
     roles = cfg.get("model_roles", {}) if isinstance(cfg.get("model_roles"), dict) else {}
     active = get_active(cfg)
     models = discover_local()
+    allow = _visible_ids(cfg)
+    if allow:
+        # The active model is always shown, even if it was removed from the
+        # allowlist — hiding what CODEC is currently running would be a lie.
+        models = [m for m in models if m["id"] in allow or m["id"] == active]
     for m in models:
         m["role"] = roles.get(m["id"], "")
         m["active"] = (m["id"] == active)
@@ -187,7 +207,12 @@ def set_active(model_id: str, verify: bool = True) -> Dict[str, Any]:
     unload the working model in exchange for a 404.
     """
     previous = get_active()
-    known = {m["id"] for m in discover_local()} | {previous}
+    cfg = _load_config()
+    allow = _visible_ids(cfg)
+    known = {m["id"] for m in discover_local()}
+    if allow:
+        known &= allow            # hidden models are not switchable either
+    known |= {previous}
     if model_id not in known:
         return {"ok": False, "error": f"unknown model: {model_id}",
                 "active": previous}
