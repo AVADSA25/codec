@@ -82,3 +82,34 @@ def test_usage_chunk_does_not_break_the_default_path(monkeypatch):
                                 "data: [DONE]"])
     assert "".join(x for x in out if isinstance(x, str)) == "ab"
     assert not [x for x in out if isinstance(x, codec_llm.StreamUsage)]
+
+
+USAGE_WITH_TIMINGS = "data: " + json.dumps(
+    {"choices": [],
+     "usage": {"prompt_tokens": 2073, "completion_tokens": 43, "total_tokens": 2116},
+     "timings": {"predicted_per_second": 26.0, "predicted_ms": 1650.0,
+                 "prompt_ms": 15700.0}})
+
+
+def test_timings_are_carried_with_usage(monkeypatch):
+    """predicted_per_second is the TRUE generation rate.
+
+    completion_tokens / wall-time charges prompt processing to the reply: 43
+    tokens after a 2k-token prompt reads as 2.5 tok/s while the model is really
+    doing 26. The UI must be able to show the honest number.
+    """
+    out, _ = _run(monkeypatch, [_chunk("x"), USAGE_WITH_TIMINGS, "data: [DONE]"],
+                  usage_sentinel=True)
+    usage = [x for x in out if isinstance(x, codec_llm.StreamUsage)][0]
+    assert usage["completion_tokens"] == 43
+    assert usage["timings"]["predicted_per_second"] == 26.0
+    naive = usage["completion_tokens"] / ((15700.0 + 1650.0) / 1000)
+    assert naive < 3 and usage["timings"]["predicted_per_second"] > 20, \
+        "the naive rate must differ sharply from the real one — that is the bug"
+
+
+def test_usage_without_timings_still_works(monkeypatch):
+    out, _ = _run(monkeypatch, [_chunk("x"), USAGE_CHUNK, "data: [DONE]"],
+                  usage_sentinel=True)
+    usage = [x for x in out if isinstance(x, codec_llm.StreamUsage)][0]
+    assert "timings" not in usage

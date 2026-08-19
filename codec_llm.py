@@ -323,7 +323,15 @@ def stream(
                 # failure.
                 if _obj.get("usage"):
                     if usage_sentinel:
-                        yield StreamUsage(_obj["usage"])
+                        # Carry `timings` alongside the token counts when the
+                        # server provides it. predicted_per_second is the TRUE
+                        # generation rate; completion_tokens/wall-time is not —
+                        # it charges prompt processing to the reply and reads an
+                        # order of magnitude too slow after a long prompt.
+                        _u = dict(_obj["usage"])
+                        if isinstance(_obj.get("timings"), dict):
+                            _u["timings"] = _obj["timings"]
+                        yield StreamUsage(_u)
                     if not _obj.get("choices"):
                         continue
                 try:
