@@ -1241,7 +1241,17 @@ async def chat_completion(request: Request):
                             completion_tokens=_ct,
                             total_tokens=_usage.get("total_tokens"),
                         )
-                        if _ct and _elapsed > 0:
+                        # Prefer the server's own generation rate. Falling back
+                        # to completion/elapsed would blame prompt-processing
+                        # time on the reply (43 tokens after a 2k prompt read as
+                        # 2.5 tok/s while the model was actually doing 26).
+                        _tm = _usage.get("timings") or {}
+                        _gen = _tm.get("predicted_per_second")
+                        if _gen:
+                            _stats["tok_per_s"] = round(float(_gen), 1)
+                            _stats["gen_s"] = round(float(_tm.get("predicted_ms", 0)) / 1000, 1)
+                            _stats["prompt_s"] = round(float(_tm.get("prompt_ms", 0)) / 1000, 1)
+                        elif _ct and _elapsed > 0:
                             _stats["tok_per_s"] = round(_ct / _elapsed, 1)
                     yield f"data: {json.dumps({'stats': _stats})}\n\n"
                     if show_thoughts:

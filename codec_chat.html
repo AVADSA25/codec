@@ -576,13 +576,16 @@ function renderStats(msgEl, st){
     bits.push((st.elapsed_s != null ? st.elapsed_s : '?') + 's');
     if(st.completion_tokens != null) bits.push(st.completion_tokens + ' tok');
     if(st.tok_per_s != null) bits.push(st.tok_per_s + ' tok/s');
+    if(st.prompt_s != null && st.gen_s != null) bits.push(st.prompt_s + 's prompt');
     if(st.model) bits.push(_fmtModel(st.model));
     var span = document.createElement('span');
     span.className = 'msg-stats';
     span.textContent = bits.join(' · ');
     if(st.prompt_tokens != null && st.total_tokens != null){
       span.title = st.prompt_tokens + ' prompt + ' + (st.completion_tokens||0) +
-                   ' completion = ' + st.total_tokens + ' tokens';
+                   ' completion = ' + st.total_tokens + ' tokens' +
+                   (st.gen_s != null ? '\n' + st.gen_s + 's generating, ' +
+                    (st.prompt_s||0) + 's processing your prompt' : '');
     }
     meta.appendChild(span);
   }catch(e){}
