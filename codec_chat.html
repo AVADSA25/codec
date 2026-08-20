@@ -8,7 +8,7 @@
 <title>CODEC Deep Chat</title>
 <link rel="icon" href="/favicon.png">
 <link rel="apple-touch-icon" href="/favicon.png">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
   --bg: #121215; --surface: #18181b; --surface-2: #1f1f22; --surface-3: #27272a;
@@ -19,8 +19,8 @@
   --danger: #ef4444; --success: #22c55e; --info: #3b82f6;
   /* Muted sage green for agent "running" states — pairs with the warm orange theme instead of the harsh bright green */
   --running: #4f9a7d; --blocked: #d98a5a;
-  --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  --mono: 'JetBrains Mono', 'SF Mono', monospace;
+  --font: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --mono: 'IBM Plex Mono', 'SF Mono', monospace;
   --radius-sm: 6px; --radius: 10px; --radius-lg: 14px;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -106,7 +106,7 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);height:
 .msg.user{margin-left:auto}
 .msg.assistant{margin-right:auto}
 .msg-bubble{padding:10px 14px;border-radius:14px;line-height:1.6;font-size:15px;word-wrap:break-word;white-space:pre-wrap}
-.msg.user .msg-bubble{background:rgba(232,113,26,0.15);color:var(--text);border:1px solid rgba(232,113,26,0.25);border-bottom-right-radius:4px}
+.msg.user .msg-bubble{background:rgba(217,119,87,0.12);color:var(--text);border:1px solid rgba(217,119,87,0.28);border-bottom-right-radius:4px}
 .msg.assistant .msg-bubble{background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-bottom-left-radius:4px}
 .msg-stats{font-size:10px;color:var(--text-dim);letter-spacing:.3px;margin-left:8px;opacity:.75;cursor:default}
 .msg-time{font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-top:3px;padding:0 4px}
@@ -171,7 +171,7 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);height:
 #dropOverlay.show{display:flex}
 #dropOverlay .drop-inner{display:flex;flex-direction:column;align-items:center;gap:14px;color:var(--accent);font-size:16px;font-weight:600;padding:40px 60px;border:2px dashed var(--accent);border-radius:18px;background:var(--surface);box-shadow:0 10px 40px rgba(0,0,0,.25);pointer-events:none}
 .empty-state{text-align:center;padding:50px 20px}
-.empty-state img{width:140px;opacity:.25;margin-bottom:20px;filter:drop-shadow(0 0 30px rgba(232,113,26,0.4))}
+.empty-state img{width:140px;opacity:.25;margin-bottom:20px;filter:drop-shadow(0 0 30px rgba(217,119,87,0.4))}
 .empty-state p{color:var(--text-muted);font-size:16px;line-height:1.6}
 pre{background:var(--bg4);padding:10px;border-radius:8px;overflow-x:auto;font-family:var(--mono);font-size:12px;margin:8px 0}
 .code-wrap{position:relative;margin:8px 0}
@@ -184,6 +184,14 @@ input[type=file]{display:none}
 
 /* ── Mode Toggle ── */
 .mode-toggle{display:flex;gap:2px;padding:2px;background:var(--surface-2);border-radius:var(--radius-sm)}
+/* Model picker — reads as instrumentation next to the mode bar, not a form
+   control. Accent border while a non-default model is active so the state is
+   visible without opening it. */
+#modelSelect{background:var(--surface-2);border:1px solid var(--border);color:var(--text-muted);font-family:var(--mono);font-size:11px;border-radius:var(--radius-sm);padding:5px 9px;outline:none;cursor:pointer;max-width:230px;transition:border-color .15s,color .15s}
+#modelSelect:hover{border-color:var(--border-hover);color:var(--text)}
+#modelSelect:focus{border-color:var(--accent)}
+#modelSelect.alt{border-color:rgba(217,119,87,.45);color:var(--accent)}
+#modelSelect:disabled{opacity:.5;cursor:progress}
 .mode-btn{padding:4px 8px;border:none;border-radius:4px;cursor:pointer;font-size:11px;background:transparent;color:var(--text-dim);font-family:var(--font);font-weight:500;transition:all .15s;display:flex;align-items:center;gap:4px;white-space:nowrap}
 .mode-btn:hover{color:var(--text-muted)}
 .mode-btn.active{background:var(--surface);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.2)}
@@ -247,7 +255,7 @@ input[type=file]{display:none}
 [data-theme=light] .icon-btn:hover{border-color:#999;color:#1a1a1a;background:#e8e4de}
 [data-theme=light] .nav-link.active{color:var(--accent);background:var(--accent-dim)}
 [data-theme=light] .mode-btn.active{box-shadow:0 1px 3px rgba(0,0,0,.08)}
-[data-theme=light] .msg.user .msg-bubble{background:rgba(232,113,26,0.10);color:var(--text);border:1px solid rgba(232,113,26,0.20)}
+[data-theme=light] .msg.user .msg-bubble{background:rgba(217,119,87,0.10);color:var(--text);border:1px solid rgba(217,119,87,0.22)}
 
 /* ── Mobile Responsive ── */
 @media (max-width:768px){
@@ -610,7 +618,17 @@ function loadModels(){
       sel.appendChild(o);
     });
     sel.dataset.current=d.active||'';
+    _markPicker(sel,d);
   }).catch(function(){});
+}
+// The picker shows accent when CODEC is running something other than the
+// everyday model — a glance tells you which brain answered, without opening it.
+function _markPicker(sel,d){
+  try{
+    var act=(d.models||[]).filter(function(m){return m.active})[0];
+    var everyday=!act||/everyday/i.test(act.role||'');
+    sel.classList.toggle('alt',!everyday);
+  }catch(e){}
 }
 function switchModel(){
   var sel=document.getElementById('modelSelect');
@@ -625,7 +643,7 @@ function switchModel(){
   fetch('/api/model',{method:'POST',headers:hdrs,body:JSON.stringify({model:target})})
     .then(function(r){return r.json()})
     .then(function(d){
-      if(d.ok){ sel.dataset.current=d.active; showToast('Now using '+label+' ('+(d.detail||'')+')'); }
+      if(d.ok){ sel.dataset.current=d.active; showToast('Now using '+label+' ('+(d.detail||'')+')'); loadModels(); }
       else { sel.value=d.active||prev; sel.dataset.current=d.active||prev;
              showToast(d.error||'Switch failed — kept the previous model', true); }
     })
