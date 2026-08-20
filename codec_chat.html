@@ -987,7 +987,7 @@ async function saveMessages(msgs){
 // value is always stamped on data-theme, so every existing [data-theme="light"]
 // rule keeps working untouched. An explicit light/dark choice pins it and stops
 // following the OS until the user cycles back to system.
-function _themePref(){var v=localStorage.getItem('codec-theme');return (v==='light'||v==='dark'||v==='system')?v:'system'}
+function _themePref(){var v=null;try{v=localStorage.getItem('codec-theme')}catch(e){}return (v==='light'||v==='dark'||v==='system')?v:'system'}
 function _themeResolved(pref){
   if(pref==='light'||pref==='dark')return pref;
   try{return (window.matchMedia&&matchMedia('(prefers-color-scheme: light)').matches)?'light':'dark'}catch(e){return 'dark'}
@@ -999,7 +999,7 @@ function applyTheme(){
 }
 function toggleTheme(){
   var order=['system','light','dark'],next=order[(order.indexOf(_themePref())+1)%3];
-  localStorage.setItem('codec-theme',next);
+  try{localStorage.setItem('codec-theme',next)}catch(e){}
   applyTheme();
   if(typeof showToast==='function')showToast(next==='system'?'Theme follows your system':'Theme: '+next);
 }

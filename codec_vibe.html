@@ -6,7 +6,7 @@
 <title>CODEC Vibe Code</title>
 <link rel="icon" href="/favicon.png">
 <link rel="apple-touch-icon" href="/favicon.png">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <!-- B5 / SR-29: crossorigin attribute added so SRI hash pinning can be
      enabled by adding `integrity="sha384-..."` once the hash is computed.
      Run `openssl dgst -sha384 -binary <file> | openssl base64 -A` against
@@ -19,19 +19,19 @@
   --bg: #121215; --surface: #1a1a1d; --surface-2: #212125; --surface-3: #2a2a2e;
   --border: #303035; --border-hover: #424248;
   --text: #ececec; --text-muted: #9a9aa0; --text-dim: #6a6a70;
-  --accent: #E8711A; --accent-hover: #f07d2a; --accent-dim: rgba(232,113,26,0.10);
+  --accent: #d97757; --accent-hover: #e08766; --accent-dim: rgba(217,119,87,0.10);
   --danger: #ef4444; --success: #22c55e; --info: #3b82f6;
-  --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  --mono: 'JetBrains Mono', 'SF Mono', monospace;
+  --font: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --mono: 'IBM Plex Mono', 'SF Mono', monospace;
   --radius: 8px; --radius-sm: 6px;
   --bg2: #1a1a1d; --bg3: #212125; --bg4: #2a2a2e;
   --fg: #ececec; --fg2: #9a9aa0; --fg3: #6a6a70;
-  --ac: #E8711A; --bd: #303035;
+  --ac: #d97757; --bd: #303035;
   --tx: #ececec; --tx2: #9a9aa0;
   --ft: 'Inter', -apple-system, sans-serif;
   --mn: 'JetBrains Mono', monospace;
   --dn: #ef4444;
-  --accent2: #ff9a4d; --accent-bg: rgba(232,113,26,0.10);
+  --accent2: #ff9a4d; --accent-bg: rgba(217,119,87,0.10);
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
@@ -70,7 +70,7 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx);height:100vh;hei
 .ms::before{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:120px;height:120px;background:url('https://i.imgur.com/jD1X5W8.png') center/contain no-repeat;opacity:0.07;pointer-events:none;z-index:0}
 .ia{display:flex;gap:6px;padding:8px 12px;background:var(--bg2);border-top:1px solid var(--bd);align-items:flex-end;min-height:54px}
 .ii{flex:1;background:var(--bg3);border:1px solid var(--bd);border-radius:18px;padding:8px 14px;color:var(--tx);font-size:14px;resize:none;outline:none;min-height:38px;max-height:100px;line-height:1.4;font-family:var(--ft)}
-.ii:focus{border-color:var(--ac);box-shadow:0 0 0 2px rgba(232,113,26,0.15)}
+.ii:focus{border-color:var(--ac);box-shadow:0 0 0 2px rgba(217,119,87,0.15)}
 .sb{padding:0;width:36px;height:36px;background:var(--ac);color:#fff;border:none;border-radius:50%;cursor:pointer;font-weight:600;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s}
 .sb:hover{background:var(--accent-hover)}
 .vibe-mic{width:36px;height:36px;border-radius:50%;border:1px solid var(--bd);background:none;color:var(--tx2);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s}
@@ -78,7 +78,7 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx);height:100vh;hei
 .vibe-mic.recording{background:var(--danger);color:#fff;border-color:var(--danger);animation:vibePulse 1s infinite}
 @keyframes vibePulse{0%,100%{opacity:1}50%{opacity:.6}}
 .mg{margin-bottom:12px;padding:10px 12px;border-radius:10px;font-size:14px;line-height:1.6;word-wrap:break-word}
-.mu{background:rgba(232,113,26,0.15);color:var(--tx);border:1px solid rgba(232,113,26,0.25);margin-left:20%;border-bottom-right-radius:3px}
+.mu{background:rgba(217,119,87,0.15);color:var(--tx);border:1px solid rgba(217,119,87,0.25);margin-left:20%;border-bottom-right-radius:3px}
 .ma{background:var(--bg2);border:1px solid var(--bd);margin-right:10%;border-bottom-left-radius:3px}
 .ma pre{background:var(--bg);padding:8px;border-radius:6px;margin:8px 0;overflow-x:auto;font-family:var(--mn);font-size:12px;border:1px solid var(--bd)}
 .ab{display:inline-block;margin-top:6px;padding:5px 12px;background:var(--ac);color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:11px;font-weight:600}
@@ -129,16 +129,16 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx);height:100vh;hei
 ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 /* ── Inspect Mode ── */
 #inspectBtn.active {
-  background: #E8711A !important;
+  background: #d97757 !important;
   color: #000 !important;
-  box-shadow: 0 0 8px rgba(232,113,26,0.4);
+  box-shadow: 0 0 8px rgba(217,119,87,0.4);
 }
 
 /* ── Light mode extra overrides ── */
 [data-theme=light] .icon-btn{border-color:#bbb;color:#444}
 [data-theme=light] .icon-btn:hover{border-color:#999;color:#1a1a1a;background:#e8e4de}
 [data-theme=light] .nav-link.active{color:var(--accent);background:var(--accent-dim)}
-[data-theme=light] .mu{background:rgba(232,113,26,0.10);color:var(--tx);border:1px solid rgba(232,113,26,0.20)}
+[data-theme=light] .mu{background:rgba(217,119,87,0.10);color:var(--tx);border:1px solid rgba(217,119,87,0.20)}
 [data-theme=light] .op{background:#f0ece6;color:#555}
 
 /* ── Mobile Responsive ── */
@@ -301,7 +301,7 @@ if(sessionStorage.getItem('_e2eReady'))window._e2eNegotiate();
 // 'system' is the DEFAULT and follows the OS day-night setting live. The
 // resolved value is stamped on data-theme (so existing [data-theme="light"]
 // rules work untouched) AND pushed into Monaco, which has its own theme.
-function _themePref(){var v=localStorage.getItem('codec-theme');return (v==='light'||v==='dark'||v==='system')?v:'system'}
+function _themePref(){var v=null;try{v=localStorage.getItem('codec-theme')}catch(e){}return (v==='light'||v==='dark'||v==='system')?v:'system'}
 function _themeResolved(pref){
   if(pref==='light'||pref==='dark')return pref;
   try{return (window.matchMedia&&matchMedia('(prefers-color-scheme: light)').matches)?'light':'dark'}catch(e){return 'dark'}
@@ -314,7 +314,7 @@ function applyTheme(){
 }
 function toggleTheme(){
   var order=['system','light','dark'],next=order[(order.indexOf(_themePref())+1)%3];
-  localStorage.setItem('codec-theme',next);applyTheme();
+  try{localStorage.setItem('codec-theme',next)}catch(e){}applyTheme();
 }
 try{if(window.matchMedia){matchMedia('(prefers-color-scheme: light)').addEventListener('change',function(){if(_themePref()==='system')applyTheme()})}}catch(e){}
 window.addEventListener('storage',function(e){if(e.key==='codec-theme')applyTheme()});
@@ -322,7 +322,7 @@ function updateThemeIcon(t){var ico=document.getElementById('themeIco');if(t==='
 function lockSession(){fetch('/api/auth/logout',{method:'POST'}).then(function(){document.cookie='codec_session=;path=/;max-age=0;SameSite=Lax'+(location.protocol==='https:'?';Secure':'');window.location.href='/auth'})}
 var _voiceOn=localStorage.getItem('codec-voice')==='true';
 function toggleVoiceReply(){_voiceOn=!_voiceOn;localStorage.setItem('codec-voice',_voiceOn);updateVoiceIcon()}
-function updateVoiceIcon(){var m1=document.getElementById('muteX1'),m2=document.getElementById('muteX2'),st=document.getElementById('voiceState');if(_voiceOn){if(m1)m1.style.display='none';if(m2)m2.style.display='none';if(st){st.textContent='ON';st.style.color='#0a0a0a';st.style.background='#E8711A'}}else{if(m1)m1.style.display='';if(m2)m2.style.display='';if(st){st.textContent='OFF';st.style.color='#888';st.style.background='#2a2a2a'}}}
+function updateVoiceIcon(){var m1=document.getElementById('muteX1'),m2=document.getElementById('muteX2'),st=document.getElementById('voiceState');if(_voiceOn){if(m1)m1.style.display='none';if(m2)m2.style.display='none';if(st){st.textContent='ON';st.style.color='#0a0a0a';st.style.background='#d97757'}}else{if(m1)m1.style.display='';if(m2)m2.style.display='';if(st){st.textContent='OFF';st.style.color='#888';st.style.background='#2a2a2a'}}}
 updateVoiceIcon();
 function takeScreenshot(){fetch('/api/screenshot',{method:'POST'}).then(function(r){return r.json()}).then(function(d){if(d.path)alert('Screenshot saved: '+d.path)}).catch(function(){})}
 // ── Server Photo (Mac webcam) ──
@@ -761,7 +761,7 @@ function doPrev() {
           iframeWin.onerror = function(msg, src, line) {
             var errText = 'Preview error (line ' + line + '): ' + msg;
             addOut('er', errText);
-            addMsg('assistant', '⚠️ Error found in preview — send to fix:\n' + errText);
+            addMsg('assistant', 'Error found in preview — send to fix:\n' + errText);
             var inp = document.getElementById('vi');
             inp.value = 'Fix this error: ' + msg + ' at line ' + line;
             inp.style.height = 'auto';
@@ -945,7 +945,7 @@ function toggleInspect() {
     doc.addEventListener('mouseover', handleInspectHover, true);
     doc.addEventListener('mouseout',  handleInspectOut,   true);
     doc.body.style.cursor = 'crosshair';
-    addOut('sy', '🔍 Inspect ON — click any element in preview');
+    addOut('sy', 'Inspect ON — click any element in preview');
   } else {
     doc.removeEventListener('click',     handleInspectClick, true);
     doc.removeEventListener('mouseover', handleInspectHover, true);
@@ -959,7 +959,7 @@ function toggleInspect() {
     if (ep) ep.style.display = 'none';
     var tip = document.getElementById('inspect-tooltip');
     if (tip) tip.style.display = 'none';
-    addOut('sy', '🔍 Inspect OFF');
+    addOut('sy', 'Inspect OFF');
   }
 }
 
@@ -971,7 +971,7 @@ function handleInspectHover(e) {
   iframe.contentDocument.querySelectorAll('.codec-hl').forEach(function(el) {
     el.style.outline = ''; el.classList.remove('codec-hl');
   });
-  e.target.style.outline = '2px solid #E8711A';
+  e.target.style.outline = '2px solid #d97757';
   e.target.classList.add('codec-hl');
 }
 
@@ -1030,10 +1030,10 @@ function showInspectTooltip(x, y, selector, preview) {
   if (!tip) {
     tip = document.createElement('div');
     tip.id = 'inspect-tooltip';
-    tip.style.cssText = 'position:fixed;z-index:10000;background:#1a1a1a;border:1px solid #E8711A;color:#e0e0e0;padding:8px 12px;border-radius:6px;font-family:SF Mono,monospace;font-size:12px;max-width:300px;pointer-events:none;transition:opacity .2s;';
+    tip.style.cssText = 'position:fixed;z-index:10000;background:#1a1a1a;border:1px solid #d97757;color:#e0e0e0;padding:8px 12px;border-radius:6px;font-family:SF Mono,monospace;font-size:12px;max-width:300px;pointer-events:none;transition:opacity .2s;';
     document.body.appendChild(tip);
   }
-  tip.innerHTML = '<strong style="color:#E8711A">' + selector + '</strong><br>' + (preview || '').substring(0, 80);
+  tip.innerHTML = '<strong style="color:#d97757">' + selector + '</strong><br>' + (preview || '').substring(0, 80);
   tip.style.left = (x + 12) + 'px';
   tip.style.top  = (y + 12) + 'px';
   tip.style.display = 'block';
@@ -1066,7 +1066,7 @@ function showEditPanel(element) {
 
   panel.innerHTML =
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">' +
-      '<strong style="color:#E8711A;font-family:monospace">&lt;' + tag + '&gt;</strong>' +
+      '<strong style="color:#d97757;font-family:monospace">&lt;' + tag + '&gt;</strong>' +
       '<button onclick="document.getElementById(\'edit-panel\').style.display=\'none\'" ' +
               'style="background:none;border:none;color:#888;cursor:pointer;font-size:18px;line-height:1">&#10005;</button>' +
     '</div>' +
@@ -1082,7 +1082,7 @@ function showEditPanel(element) {
       '<div><label style="color:#888;font-size:10px;text-transform:uppercase;letter-spacing:.05em">Padding</label>' +
            '<input type="number" id="ep-pad" value="' + (parseInt(cs.padding) || 0) + '" style="width:100%;background:#0a0a0a;border:1px solid #2a2a2a;color:#e0e0e0;padding:4px 6px;border-radius:5px;font-size:12px"></div>' +
     '</div>' +
-    '<button onclick="applyEdits()" style="width:100%;padding:8px;background:#E8711A;color:#000;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-size:13px">&#9654; Apply + Sync to Editor</button>' +
+    '<button onclick="applyEdits()" style="width:100%;padding:8px;background:#d97757;color:#000;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-size:13px">&#9654; Apply + Sync to Editor</button>' +
     '<p style="color:#4a9;font-size:10px;margin-top:8px;text-align:center">&#10003; Changes update both preview AND source code</p>';
 
   panel._el = element;
@@ -1167,11 +1167,11 @@ function applyEdits() {
         ed.setValue(newContent);
         var linePos = ed.getModel().getPositionAt(tagStart);
         ed.revealLineInCenter(linePos.lineNumber);
-        addOut('sy', '✏️ Synced to editor — line ' + linePos.lineNumber);
+        addOut('sy', 'Synced to editor — line ' + linePos.lineNumber);
         panel._origText = newText; // update stored text for next apply
       }
     } else {
-      addOut('sy', '⚠️ Applied to preview — element not found in source (generated markup?)');
+      addOut('sy', 'Applied to preview — element not found in source (generated markup?)');
     }
   }
 
