@@ -280,29 +280,39 @@ function toggleVoiceReply(){_voiceOn=!_voiceOn;localStorage.setItem('codec-voice
 function updateVoiceIcon(){var m1=document.getElementById('muteX1'),m2=document.getElementById('muteX2'),st=document.getElementById('voiceState');if(_voiceOn){if(m1)m1.style.display='none';if(m2)m2.style.display='none';if(st){st.textContent='ON';st.style.color='#0a0a0a';st.style.background='#d97757'}}else{if(m1)m1.style.display='';if(m2)m2.style.display='';if(st){st.textContent='OFF';st.style.color='#888';st.style.background='#2a2a2a'}}}
 updateVoiceIcon();
 // Theme
+// Theme: system / light / dark. 'system' is the DEFAULT and follows the OS
+// day-night setting live. Cortex keeps its dataset convention (dark = empty
+// attribute) and still mirrors the preference across tabs via storage events,
+// which is how it stays in step when embedded as an iframe.
+// Icons are line-SVG, never emoji (the old crescent/sun glyphs were emoji).
+var _SUN_SVG='<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></svg>';
+var _MOON_SVG='<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>';
+var _AUTO_SVG='<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 000 18z" fill="currentColor" stroke="none"/></svg>';
+function _themePref(){var v=localStorage.getItem('codec-theme');return (v==='light'||v==='dark'||v==='system')?v:'system'}
+function _themeResolved(pref){
+  if(pref==='light'||pref==='dark')return pref;
+  try{return (window.matchMedia&&matchMedia('(prefers-color-scheme: light)').matches)?'light':'dark'}catch(e){return 'dark'}
+}
+function applyCortexTheme(){
+  var pref=_themePref(),eff=_themeResolved(pref);
+  document.documentElement.dataset.theme = eff==='light' ? 'light' : '';
+  var btn=document.getElementById('themeToggle');
+  if(btn){
+    btn.innerHTML = pref==='system' ? _AUTO_SVG : (eff==='light' ? _MOON_SVG : _SUN_SVG);
+    btn.style.borderColor = eff==='light' ? 'rgba(0,0,0,.1)' : 'rgba(255,255,255,.1)';
+    btn.title = pref==='system' ? 'Theme: follows your system' : 'Theme: '+pref;
+  }
+}
 function toggleCortexTheme(){
-  var current = document.documentElement.dataset.theme;
-  var next = current === 'light' ? 'dark' : 'light';
-  document.documentElement.dataset.theme = next === 'dark' ? '' : 'light';
+  var order=['system','light','dark'],next=order[(order.indexOf(_themePref())+1)%3];
   localStorage.setItem('codec-theme', next);
-  document.getElementById('themeToggle').textContent = next === 'light' ? '\u{1F319}' : '\u2600';
-  document.getElementById('themeToggle').style.borderColor = next === 'light' ? 'rgba(0,0,0,.1)' : 'rgba(255,255,255,.1)';
+  applyCortexTheme();
 }
 (function(){
-  var saved = localStorage.getItem('codec-theme') || 'dark';
-  if(saved === 'light'){document.documentElement.dataset.theme='light';}
-  // When embedded as iframe, listen for theme changes from parent page
-  window.addEventListener('storage', function(e){
-    if(e.key === 'codec-theme'){
-      var t = e.newValue || 'dark';
-      document.documentElement.dataset.theme = t === 'light' ? 'light' : '';
-      var btn = document.getElementById('themeToggle');
-      if(btn){
-        btn.textContent = t === 'light' ? '\u{1F319}' : '\u2600';
-        btn.style.borderColor = t === 'light' ? 'rgba(0,0,0,.1)' : 'rgba(255,255,255,.1)';
-      }
-    }
-  });
+  applyCortexTheme();
+  try{if(window.matchMedia){matchMedia('(prefers-color-scheme: light)').addEventListener('change',function(){if(_themePref()==='system')applyCortexTheme()})}}catch(e){}
+  // Embedded as an iframe: follow the parent page's preference change.
+  window.addEventListener('storage', function(e){ if(e.key === 'codec-theme') applyCortexTheme(); });
 })();
 // ═══════════════════════════════════════════════════════════════════════
 // CORTEX v2 — Human Body Metaphor
@@ -1048,7 +1058,7 @@ function fitToScreen() {
 setTimeout(fitToScreen,100);
 window.addEventListener('resize',fitToScreen);
 // Restore theme button state
-var savedTheme = localStorage.getItem('codec-theme') || 'dark';
+var savedTheme = _themeResolved(_themePref());
 document.getElementById('themeToggle').textContent = savedTheme === 'light' ? '\u{1F319}' : '\u2600';
 if(savedTheme==='light') document.getElementById('themeToggle').style.borderColor='rgba(0,0,0,.1)';
 (function(){
