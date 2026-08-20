@@ -10,30 +10,30 @@
 <link rel="icon" href="/favicon.png">
 <link rel="apple-touch-icon" href="/favicon.png">
 <title>CODEC</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg: #121215; --surface: #1a1a1d; --surface-2: #212125; --surface-3: #2a2a2e;
+  --bg: #121215; --surface: #18181b; --surface-2: #1f1f22; --surface-3: #2a2a2f;
   --border: #303035; --border-hover: #424248;
   --text: #ececec; --text-muted: #9a9aa0; --text-dim: #6a6a70;
-  --accent: #E8711A; --accent-hover: #f07d2a; --accent-dim: rgba(232,113,26,0.10);
-  --accent-glow: rgba(232,113,26,0.06);
+  --accent: #d97757; --accent-hover: #e08766; --accent-dim: rgba(217,119,87,0.10);
+  --accent-glow: rgba(217,119,87,0.06);
   --danger: #ef4444; --success: #22c55e; --info: #3b82f6;
-  --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  --mono: 'JetBrains Mono', 'SF Mono', monospace;
+  --font: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --mono: 'IBM Plex Mono', 'SF Mono', monospace;
   --radius-sm: 6px; --radius: 10px; --radius-lg: 14px;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   /* Backward-compat aliases */
   --bg2: #111111; --bg3: #1a1a1a; --bg4: #222222;
   --fg: #e8e8e8; --fg2: #7a7a7a; --fg3: #4a4a4a;
-  --ac: #E8711A; --bd: #232323;
+  --ac: #d97757; --bd: #232323;
 }
 [data-theme="light"] {
   --bg: #f7f5f2; --surface: #ffffff; --surface-2: #f0ece6; --surface-3: #e8e4de;
   --border: #d5d0ca; --border-hover: #bbb;
   --text: #1a1a1a; --text-muted: #555; --text-dim: #777;
-  --accent-dim: rgba(232,113,26,0.08); --accent-glow: rgba(232,113,26,0.04);
+  --accent-dim: rgba(217,119,87,0.08); --accent-glow: rgba(217,119,87,0.04);
   --bg2: #fff; --bg3: #f0ece6; --bg4: #e8e4de;
   --fg: #1a1a1a; --fg2: #555; --fg3: #777; --bd: #d5d0ca;
 }
@@ -206,7 +206,7 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
 }
 .card-role.user { background: var(--accent-dim); color: var(--accent); }
 .card-role.assistant { background: rgba(34,197,94,0.08); color: var(--success); }
-[data-theme="light"] .card-role.user { background: rgba(232,113,26,0.12); color: #c45a00; }
+[data-theme="light"] .card-role.user { background: rgba(217,119,87,0.12); color: #c45a00; }
 [data-theme="light"] .card-role.assistant { background: rgba(34,197,94,0.12); color: #15803d; }
 
 /* ── Copy button on cards ── */
@@ -350,7 +350,7 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
   text-transform: uppercase; letter-spacing: 0.3px; white-space: nowrap; flex-shrink: 0;
 }
 .audit-cat-auth     { color: #b388ff; border: 1px solid #b388ff; background: rgba(179,136,255,0.12); }
-.audit-cat-cmd, .audit-cat-command { color: #E8711A; border: 1px solid #E8711A; background: rgba(232,113,26,0.12); }
+.audit-cat-cmd, .audit-cat-command { color: #d97757; border: 1px solid #d97757; background: rgba(217,119,87,0.12); }
 .audit-cat-skill    { color: #22c55e; border: 1px solid #22c55e; background: rgba(34,197,94,0.12); }
 .audit-cat-error    { color: #ef4444; border: 1px solid #ef4444; background: rgba(239,68,68,0.12); }
 .audit-cat-llm      { color: #448aff; border: 1px solid #448aff; background: rgba(68,138,255,0.12); }
@@ -367,7 +367,7 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
   padding: 12px; text-align: center; border-top: 1px solid var(--border);
 }
 .audit-footer a {
-  color: var(--accent, #E8711A); text-decoration: none; font-size: 12px; font-weight: 500;
+  color: var(--accent, #d97757); text-decoration: none; font-size: 12px; font-weight: 500;
   font-family: var(--mono); letter-spacing: 0.5px;
 }
 .audit-footer a:hover { text-decoration: underline; }
@@ -387,7 +387,7 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
 .audit-stat-label { color: var(--dim, #6a6a70); font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
 .audit-stat-value { font-family: var(--mono); font-weight: 600; font-size: 16px; }
 .audit-stat-value.a-errors { color: #ef4444; }
-.audit-stat-value.a-commands { color: var(--accent, #E8711A); }
+.audit-stat-value.a-commands { color: var(--accent, #d97757); }
 .audit-stat-value.a-skills { color: #22c55e; }
 .audit-stat-value.a-llm { color: #448aff; }
 .audit-filter-bar {
@@ -402,8 +402,8 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
   transition: all 0.15s; opacity: 0.45; user-select: none; text-transform: uppercase;
 }
 .audit-pill.active { opacity: 1; }
-.audit-pill[data-cat="command"]  { color: #E8711A; border-color: #E8711A; }
-.audit-pill[data-cat="command"].active  { background: rgba(232,113,26,0.15); }
+.audit-pill[data-cat="command"]  { color: #d97757; border-color: #d97757; }
+.audit-pill[data-cat="command"].active  { background: rgba(217,119,87,0.15); }
 .audit-pill[data-cat="skill"]    { color: #22c55e; border-color: #22c55e; }
 .audit-pill[data-cat="skill"].active    { background: rgba(34,197,94,0.15); }
 .audit-pill[data-cat="llm"]      { color: #448aff; border-color: #448aff; }
@@ -439,7 +439,7 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
   background: none; color: var(--dim, #6a6a70); cursor: pointer; border-radius: 4px;
   font-family: var(--mono); transition: all 0.15s;
 }
-.audit-time-btn.active { background: var(--accent, #E8711A); color: #000; font-weight: 600; }
+.audit-time-btn.active { background: var(--accent, #d97757); color: #000; font-weight: 600; }
 .audit-time-btn:hover:not(.active) { color: var(--text); }
 .audit-search-input {
   background: var(--surface, #1a1a1d); border: 1px solid var(--border); border-radius: 6px;
@@ -447,7 +447,7 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
   font-family: var(--font); outline: none; transition: border-color 0.15s;
 }
 .audit-search-input::placeholder { color: var(--dim, #6a6a70); }
-.audit-search-input:focus { border-color: var(--accent, #E8711A); }
+.audit-search-input:focus { border-color: var(--accent, #d97757); }
 .audit-live-btn {
   padding: 5px 12px; border-radius: 6px; font-size: 10px;
   font-weight: 600; letter-spacing: 1px; cursor: pointer; border: 1px solid var(--border);
@@ -586,7 +586,7 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
   </div>
   <!-- Sparkle-compatible update banner (shown only when /api/update/check reports one) -->
   <div id="updateBanner" style="display:none;align-items:center;gap:12px;margin:10px 16px 0;padding:10px 14px;background:var(--accent-dim);border:1px solid var(--accent);border-radius:var(--radius-sm);font-size:13px;color:var(--text)">
-    <span style="font-size:16px">⬆️</span>
+    <svg class="ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
     <span id="updateBannerText" style="flex:1"></span>
     <button id="updateBannerBtn" class="btn btn-primary" onclick="downloadUpdate()" style="padding:6px 14px;font-size:12px;white-space:nowrap">Download &amp; open</button>
     <a href="#" onclick="dismissUpdate(event)" style="color:var(--text-muted);text-decoration:none;font-size:13px" title="Dismiss until next launch">✕</a>
@@ -640,17 +640,17 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
   </div>
 
   <!-- Approval Banner (floats above content) -->
-  <div id="approvalBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(135deg,#1a0a00,#2a1500);border-bottom:2px solid #E8711A;padding:12px 16px;animation:slideDown .3s ease">
+  <div id="approvalBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(135deg,#1a0a00,#2a1500);border-bottom:2px solid #d97757;padding:12px 16px;animation:slideDown .3s ease">
     <div id="approvalList" style="max-width:800px;margin:0 auto"></div>
   </div>
   <style>
   @keyframes slideDown{from{transform:translateY(-100%)}to{transform:translateY(0)}}
-  .approval-card{background:#111;border:1px solid #E8711A;border-radius:8px;padding:12px 16px;margin-bottom:8px;display:flex;align-items:center;gap:12px}
+  .approval-card{background:#111;border:1px solid #d97757;border-radius:8px;padding:12px 16px;margin-bottom:8px;display:flex;align-items:center;gap:12px}
   .approval-card.danger{border-color:#ff3333}
   .approval-card .cmd{flex:1;font-family:'SF Mono',monospace;font-size:12px;color:#e0e0e0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .approval-card .explain{font-size:11px;color:#aaddff;margin-top:2px}
   .approval-card.danger .explain{color:#ffaaaa}
-  .approval-card .label{font-size:11px;font-weight:700;color:#E8711A;text-transform:uppercase;white-space:nowrap}
+  .approval-card .label{font-size:11px;font-weight:700;color:#d97757;text-transform:uppercase;white-space:nowrap}
   .approval-card.danger .label{color:#ff3333}
   .approval-btn{border:none;border-radius:6px;padding:8px 18px;font-weight:700;font-size:13px;cursor:pointer;transition:opacity .2s}
   .approval-btn:hover{opacity:.85}
@@ -662,7 +662,7 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
   <div class="content">
     <!-- Chat Panel (main) -->
     <div class="panel active" id="panel-chat">
-      <div class="drag-hint">📎 Drop files or images here</div>
+      <div class="drag-hint"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>Drop files or images here</div>
       <div id="cmdResult" style="display:none" class="card">
         <div class="card-task" id="cmdResultText"></div>
       </div>
@@ -2009,7 +2009,7 @@ async function toggleWakeInstant(btn) {
       body: JSON.stringify({ 'Wake Word': { wake_word_enabled: on } }) });
     var d = await r.json();
     if (d && d.saved) {
-      showToast(on ? '🎙️ Always-on wake word: ON' : '🔇 Always-on OFF — CODEC won’t wake on its name (use F13)');
+      showToast(on ? 'Always-on wake word: ON' : 'Always-on OFF — CODEC won’t wake on its name (use F13)');
     } else {
       btn.classList.toggle('on');  // revert on failure
       showToast('Could not save: ' + ((d && d.error) || 'unknown error'));
@@ -2278,7 +2278,7 @@ function updateVoiceIcon() {
   if (voiceEnabled) {
     if (x1) x1.style.display = 'none';
     if (x2) x2.style.display = 'none';
-    if (st) { st.textContent = 'ON'; st.style.color = '#0a0a0a'; st.style.background = '#E8711A'; }
+    if (st) { st.textContent = 'ON'; st.style.color = '#0a0a0a'; st.style.background = '#d97757'; }
   } else {
     if (x1) x1.style.display = '';
     if (x2) x2.style.display = '';
@@ -2294,7 +2294,7 @@ var _wakeEnabled = null;
 function _setWakeBadge(on) {
   var st = document.getElementById('wakeState');
   if (!st) return;
-  if (on) { st.textContent = 'ON'; st.style.color = '#0a0a0a'; st.style.background = '#E8711A'; }
+  if (on) { st.textContent = 'ON'; st.style.color = '#0a0a0a'; st.style.background = '#d97757'; }
   else    { st.textContent = 'OFF'; st.style.color = '#888'; st.style.background = '#2a2a2a'; }
 }
 async function refreshWakeState() {
@@ -2316,7 +2316,7 @@ async function toggleWakeWord() {
     var d = await r.json();
     if (d && d.saved) {
       _wakeEnabled = target;
-      showToast(target ? '🎙️ Wake word ON — say “Hey CODEC”' : '🔇 Wake word OFF — CODEC won’t wake on its name (use F13)');
+      showToast(target ? 'Wake word ON — say “Hey CODEC”' : 'Wake word OFF — CODEC won’t wake on its name (use F13)');
     } else {
       _setWakeBadge(_wakeEnabled);  // revert
       showToast('Could not save: ' + ((d && d.error) || 'unknown'));
