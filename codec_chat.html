@@ -26,7 +26,7 @@
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --bg2: #111111; --bg3: #1a1a1a; --bg4: #222222;
   --fg: #e8e8e8; --fg2: #7a7a7a; --fg3: #4a4a4a;
-  --ac: #E8711A; --bd: #232323;
+  --ac: #d97757; --bd: #232323;
 }
 [data-theme=light]{--bg:#faf8f5;--surface:#fff;--surface-2:#f2eee8;--surface-3:#ebe6df;--border:#e2ddd5;--border-hover:#c8c2b8;--text:#18181b;--text-muted:#52525b;--text-dim:#71717a;--bg2:#fff;--bg3:#f2eee8;--bg4:#ebe6df;--fg:#18181b;--fg2:#52525b;--fg3:#71717a;--bd:#e2ddd5;--accent:#b85a3a;--accent-hover:#a04d31;--accent-dim:rgba(184,90,58,0.08)}
 *{margin:0;padding:0;box-sizing:border-box}
@@ -1942,7 +1942,7 @@ function lockSession(){fetch('/api/auth/logout',{method:'POST'}).then(function()
 // ── Header icons (matching dashboard) ──
 var voiceReplyEnabled=localStorage.getItem('codec-voice')==='true';
 function toggleVoiceReply(){voiceReplyEnabled=!voiceReplyEnabled;localStorage.setItem('codec-voice',voiceReplyEnabled);updateVoiceIcon();updateSpeakToggle()}
-function updateVoiceIcon(){var m1=document.getElementById('muteX1'),m2=document.getElementById('muteX2'),st=document.getElementById('voiceState');if(voiceReplyEnabled){if(m1)m1.style.display='none';if(m2)m2.style.display='none';if(st){st.textContent='ON';st.style.color='#0a0a0a';st.style.background='#E8711A'}}else{if(m1)m1.style.display='';if(m2)m2.style.display='';if(st){st.textContent='OFF';st.style.color='#888';st.style.background='#2a2a2a'}}}
+function updateVoiceIcon(){var m1=document.getElementById('muteX1'),m2=document.getElementById('muteX2'),st=document.getElementById('voiceState');if(voiceReplyEnabled){if(m1)m1.style.display='none';if(m2)m2.style.display='none';if(st){st.textContent='ON';st.style.color='#0a0a0a';st.style.background='#d97757'}}else{if(m1)m1.style.display='';if(m2)m2.style.display='';if(st){st.textContent='OFF';st.style.color='#888';st.style.background='#2a2a2a'}}}
 function updateSpeakToggle(){
   var btn=document.getElementById('speakToggle');
   if(!btn)return;
@@ -2078,17 +2078,17 @@ function showSchedulePanel(){
 </div>
 
 <!-- Approval Banner (floats above content) -->
-<div id="approvalBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(135deg,#1a0a00,#2a1500);border-bottom:2px solid #E8711A;padding:12px 16px;animation:slideDown .3s ease">
+<div id="approvalBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(135deg,#1a0a00,#2a1500);border-bottom:2px solid #d97757;padding:12px 16px;animation:slideDown .3s ease">
   <div id="approvalList" style="max-width:800px;margin:0 auto"></div>
 </div>
 <style>
 @keyframes slideDown{from{transform:translateY(-100%)}to{transform:translateY(0)}}
-.approval-card{background:#111;border:1px solid #E8711A;border-radius:8px;padding:12px 16px;margin-bottom:8px;display:flex;align-items:center;gap:12px}
+.approval-card{background:#111;border:1px solid #d97757;border-radius:8px;padding:12px 16px;margin-bottom:8px;display:flex;align-items:center;gap:12px}
 .approval-card.danger{border-color:#ff3333}
 .approval-card .cmd{flex:1;font-family:'SF Mono',monospace;font-size:12px;color:#e0e0e0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .approval-card .explain{font-size:11px;color:#aaddff;margin-top:2px}
 .approval-card.danger .explain{color:#ffaaaa}
-.approval-card .label{font-size:11px;font-weight:700;color:#E8711A;text-transform:uppercase;white-space:nowrap}
+.approval-card .label{font-size:11px;font-weight:700;color:#d97757;text-transform:uppercase;white-space:nowrap}
 .approval-card.danger .label{color:#ff3333}
 .approval-btn{border:none;border-radius:6px;padding:8px 18px;font-weight:700;font-size:13px;cursor:pointer;transition:opacity .2s}
 .approval-btn:hover{opacity:.85}
