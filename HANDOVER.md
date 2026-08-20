@@ -1,6 +1,87 @@
 # HANDOVER — CODEC buyer journey
 
-**Last updated:** 2026-07-24 · session: premise-check + inject_count + ruff migration
+**Last updated:** 2026-08-20 · session: design system, model switching, reply stats, CLAUDE.md split
+
+## 2026-08-20 — five surfaces on one design system; model switching shipped
+
+**State: main @ 39f2f5c, clean, zero open PRs. All 10 demo services online,
+dashboard 200, active model Qwen3.6-35B-A3B (the fast one — correct default for
+recording). Demo NOT yet shot.**
+
+### Shipped (PRs #307-#325)
+
+- **Copy button (#307)** — never worked, on phone or desktop, for anyone. Root cause:
+  `encodeURIComponent` does NOT escape an apostrophe, so `don't` still terminated the
+  single-quoted JS string inside the inline `onclick` and the handler died with a
+  SyntaxError. Silently. It also killed the edit and speak buttons. Both devices failed
+  because the PWA's Chat link serves the same codec_chat.html. Fixed by binding with
+  addEventListener over a closure — no escaping, and message text can never be executable.
+- **Heartbeat was killing the model mid-answer (#308)** — the "no reply" bug. A 5s health
+  probe timed out during an 11k-token prefill, the heartbeat declared the model down and
+  restarted it ON THE FIRST failed probe, killing the in-flight request. Longer prompts
+  self-destructed more reliably. Fixed with `_is_listening()`: a bare TCP connect tells
+  BUSY from DEAD, because a process mid-prefill still has its socket bound.
+- **Model switching (#314, #315)** — picker in chat, voice ("switch to the coding model"),
+  and `/api/models`. One model resident at a time, enforced by the server's single-slot
+  cache; a failed load auto-reverts AND re-probes the previous model so CODEC is never
+  left mute. Serving venv moved to `~/codec-qwen38-venv` (transformers 5.15 / mlx_vlm
+  0.6.13) so Qwen3.8 loads; Qwen3.6 got FASTER on it (61.7 tok/s).
+- **Reply stats (#316, #317)** — every reply shows elapsed, tokens and tok/s. Needed a fix
+  in codec_llm.stream: usage arrives in a final chunk whose `choices` list is EMPTY and the
+  parser did `choices[0]` unconditionally, so it was swallowed as a parse failure. First
+  version divided tokens by wall time and read 2.5 tok/s while the model did 26 — now uses
+  the server's `timings.predicted_per_second`.
+- **Attachments were silently dropped in Agents and Project mode (#316)** — `pendingFiles`
+  was only read in the chat path, which both other branches return past. Project mode
+  discarded attachment-only messages entirely.
+- **Design system (#318-#324)** — all five surfaces on one token set. The dashboard, vibe
+  and voice had never received the 2026 palette refresh and still ran `#E8711A`; chat
+  declared `#d97757` and then painted the USER'S OWN BUBBLE with hardcoded old orange.
+  Type moved to IBM Plex Sans/Mono. Zero emoji across all five. Auto day-night theme
+  (system / light / dark, default system) with a VISIBLE Auto/Light/Dark control in the
+  menu — it shipped as a blind cycling toggle first and Mickael could not see the option.
+- **CLAUDE.md split (#325)** — 11,909 -> 8,979 words. Reference moved to
+  docs/codec-architecture.md, gaps to docs/codec-status.md. NOTE: CLAUDE.md is a SYMLINK
+  to AGENTS.md; diffs show under AGENTS.md.
+
+### Two bugs worth remembering
+
+1. **An unguarded top-level `localStorage.getItem` kills a whole script.** Storage access
+   THROWS when blocked, and cortex is embedded as an iframe in the dashboard. Everything
+   after that line — including theme init — silently never ran. The page looked fine and
+   was half-dead. Guarded in cortex; chat, dashboard and vibe still have the same pattern.
+2. **Verify the SERVED page, not the working tree.** Source greps reported chat clean while
+   the live page still served five `#E8711A` values — the first pass had only replaced the
+   `rgba()` spelling, not the hex.
+
+### Open — Mickael
+
+- **Record the demo.** DEMO_SCRIPT.md is sealed at 22 beats; § Recording setup has the OBS
+  config. Before rolling: sign into Notion, toggle GitHub OFF (beat 17), reboot (uptime is
+  7 days, swap 11.1/12.3 GB).
+- `avadigital.ai` GitHub repo is **archived and read-only** — that work has no off-machine
+  backup. Flagged by the InTake session; unresolved.
+
+### Open — next session
+
+1. **Make a model switch restart the PM2 process** instead of swapping in-place. Repeated
+   in-place switching grew the server to 52 GB (measured). Highest value: it protects a
+   recording.
+2. Guard the remaining unguarded `localStorage` reads in chat, dashboard, vibe.
+3. Demo narration script — still unwritten, the one unprepared piece of the shoot.
+4. `Qwen3-Coder-30B-A3B` — A3B MoE, so ~60 tok/s for coding vs the dense 27B's 26. What is
+   on disk is a **16 KB stub**, not the weights; it needs a real download.
+5. Overview/Cortex artboard LAYOUT (only the tokens landed).
+
+### Do not repeat
+
+- `pm2 start qwen3.6` FAILS — pm2 reads the name as a filename. Use `pm2 restart qwen3.6`
+  or the numeric id. This briefly took the brain offline.
+- `brew` autoremoved `python@3.13` and broke the model server's venv interpreter
+  (`ModuleNotFoundError: mlx_vlm`). It is now installed on-request so autoremove leaves it.
+- Never `pm2 restart all` — it bounces intake-api (live customers), lucy-* and cloudflared.
+
+---
 
 ## 2026-07-24 — the guard now checks BOTH directions
 
