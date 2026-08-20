@@ -111,6 +111,20 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
 .sp-item:hover { border-color: var(--border-hover); background: var(--surface-3); color: var(--text); }
 .sp-item svg { flex-shrink: 0; }
 .sp-item-label { flex: 1; text-align: center; }
+/* Theme row: a VISIBLE three-way choice. It replaced a single "Toggle Theme"
+   button that cycled blindly — you could not see that a system option existed,
+   let alone which mode was active. */
+.sp-theme { cursor: default; }
+.sp-theme:hover { border-color: var(--border); background: var(--surface-2); }
+.sp-theme .sp-item-label { flex: 0 0 auto; text-align: left; }
+.theme-seg { display: flex; gap: 2px; margin-left: auto; padding: 2px;
+  background: var(--bg); border-radius: var(--radius-sm); }
+.theme-seg button { border: none; background: transparent; color: var(--text-dim);
+  font-family: var(--font); font-size: 11px; font-weight: 500; padding: 5px 10px;
+  border-radius: 4px; cursor: pointer; transition: all .15s; }
+.theme-seg button:hover { color: var(--text); }
+.theme-seg button[aria-pressed="true"] { background: var(--surface-3); color: var(--accent); }
+
 .sp-divider { height: 1px; background: var(--border); margin: 6px 0; }
 .menu-btn {
   background: none; border: 1px solid var(--border); color: var(--text-muted);
@@ -608,7 +622,7 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
       <button class="sp-item" id="camBtn" onclick="toggleWebcamPip();closeSidePanel()"><svg class="ico" viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg><span class="sp-item-label">Live Video (PIP)</span></button>
       <div class="sp-divider"></div>
       <a href="/tasks#reports" class="sp-item notif-bell" id="notifBellBtn"><svg class="ico" viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg><span class="sp-item-label">Notifications</span><span class="notif-badge hidden" id="notifBadge">0</span></a>
-      <button class="sp-item" id="themeBtn" onclick="toggleTheme()"><svg class="ico" viewBox="0 0 24 24" id="themeIco"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg><span class="sp-item-label">Toggle Theme</span></button>
+      <div class="sp-item sp-theme" id="themeBtn" role="group" aria-label="Theme"><svg class="ico" viewBox="0 0 24 24" id="themeIco"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 000 18z" fill="currentColor" stroke="none"/></svg><span class="sp-item-label">Theme</span><span class="theme-seg"><button type="button" data-theme-opt="system" onclick="setThemePref('system')" title="Follow your system day-night setting">Auto</button><button type="button" data-theme-opt="light" onclick="setThemePref('light')">Light</button><button type="button" data-theme-opt="dark" onclick="setThemePref('dark')">Dark</button></span></div>
       <button class="sp-item" onclick="showTab('settings');closeSidePanel()"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg><span class="sp-item-label">Settings</span></button>
       <div class="sp-divider"></div>
       <button class="sp-item" onclick="lockSession()" style="color:var(--danger)"><svg class="ico" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg><span class="sp-item-label">Lock Session</span></button>
@@ -990,6 +1004,20 @@ function applyTheme() {
   var meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.content = eff === 'light' ? '#f7f5f2' : '#0a0a0a';
   if (typeof updateThemeIcon === 'function') updateThemeIcon(pref, eff);
+  var seg = document.querySelectorAll('.theme-seg button[data-theme-opt]');
+  for (var i = 0; i < seg.length; i++) {
+    seg[i].setAttribute('aria-pressed', String(seg[i].getAttribute('data-theme-opt') === pref));
+  }
+}
+// Explicit choice from the menu. toggleTheme() (the cycling entry point) is kept
+// for any other caller and for keyboard users.
+function setThemePref(v) {
+  if (v !== 'system' && v !== 'light' && v !== 'dark') return;
+  try { localStorage.setItem('codec-theme', v); } catch (e) {}
+  applyTheme();
+  if (typeof showToast === 'function') {
+    showToast(v === 'system' ? 'Theme follows your system' : 'Theme: ' + v);
+  }
 }
 function toggleTheme() {
   var order = ['system', 'light', 'dark'];
