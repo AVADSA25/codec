@@ -6,7 +6,7 @@
     <title>CODEC — Voice Call</title>
     <link rel="icon" href="/favicon.png">
     <link rel="apple-touch-icon" href="/favicon.png">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
         * { margin:0; padding:0; box-sizing:border-box; }
 
@@ -14,19 +14,19 @@
           --bg: #121215; --surface: #1a1a1d; --surface-2: #212125; --surface-3: #2a2a2e;
           --border: #303035; --border-hover: #424248;
           --text: #ececec; --text-muted: #9a9aa0; --text-dim: #6a6a70;
-          --accent: #E8711A; --accent-hover: #f07d2a; --accent-dim: rgba(232,113,26,0.10);
+          --accent: #d97757; --accent-hover: #e08766; --accent-dim: rgba(217,119,87,0.10);
           --danger: #ef4444; --success: #22c55e; --info: #3b82f6;
-          --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-          --mono: 'JetBrains Mono', 'SF Mono', monospace;
+          --font: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+          --mono: 'IBM Plex Mono', 'SF Mono', monospace;
           --radius: 10px; --radius-sm: 6px;
           --bg2: #1a1a1d; --bg3: #212125; --bg4: #2a2a2e;
           --fg: #ececec; --fg2: #9a9aa0; --fg3: #6a6a70;
-          --ac: #E8711A; --bd: #303035;
+          --ac: #d97757; --bd: #303035;
           --tx: #ececec; --tx2: #9a9aa0;
           --ft: 'Inter', -apple-system, sans-serif;
           --mn: 'JetBrains Mono', monospace;
           --dn: #ef4444;
-          --accent2: #ff9a4d; --accent-bg: rgba(232,113,26,0.10);
+          --accent2: #ff9a4d; --accent-bg: rgba(217,119,87,0.10);
           --safe-top: env(safe-area-inset-top, 0px);
           --safe-bottom: env(safe-area-inset-bottom, 0px);
           /* Voice-specific */
@@ -49,7 +49,7 @@
         [data-theme="light"] .nav-link.active { color: var(--accent); background: var(--accent-dim); }
         [data-theme="light"] .icon-btn { border-color: #bbb; color: #444; }
         [data-theme="light"] .icon-btn:hover { border-color: #999; color: #1a1a1a; background: #e8e4de; }
-        [data-theme="light"] body::before { background: radial-gradient(ellipse 60% 60% at 50% 50%, rgba(232,113,26,0.06) 0%, transparent 70%); }
+        [data-theme="light"] body::before { background: radial-gradient(ellipse 60% 60% at 50% 50%, rgba(217,119,87,0.06) 0%, transparent 70%); }
         [data-theme="light"] .avatar-core { background: #f0ece6; border-color: #d5d0ca; }
         [data-theme="light"] .transcript { background: #fff; border-color: #d5d0ca; }
         [data-theme="light"] .transcript-header { border-color: #d5d0ca; }
@@ -71,12 +71,12 @@
             content: '';
             position: fixed;
             inset: 0;
-            background: radial-gradient(ellipse 60% 60% at 50% 50%, rgba(232,113,26,0.04) 0%, transparent 70%);
+            background: radial-gradient(ellipse 60% 60% at 50% 50%, rgba(217,119,87,0.04) 0%, transparent 70%);
             transition: all 1s ease;
             pointer-events: none;
         }
         body.state-listening::before { background: radial-gradient(ellipse 60% 60% at 50% 50%, rgba(0,230,118,0.05) 0%, transparent 70%); }
-        body.state-speaking::before  { background: radial-gradient(ellipse 70% 70% at 50% 50%, rgba(232,113,26,0.08) 0%, transparent 70%); }
+        body.state-speaking::before  { background: radial-gradient(ellipse 70% 70% at 50% 50%, rgba(217,119,87,0.08) 0%, transparent 70%); }
         body.state-processing::before { background: radial-gradient(ellipse 60% 60% at 50% 50%, rgba(64,196,255,0.06) 0%, transparent 70%); }
         body.state-analyzing_screen::before { background: radial-gradient(ellipse 65% 65% at 50% 50%, rgba(168,85,247,0.08) 0%, transparent 70%); }
 
@@ -158,7 +158,7 @@
         .ring-outer {
             position: absolute; inset: 0;
             border-radius: 50%;
-            border: 1.5px solid rgba(232,113,26,0.25);
+            border: 1.5px solid rgba(217,119,87,0.25);
             animation: spin-slow 8s linear infinite;
         }
         .ring-outer::after {
@@ -185,8 +185,8 @@
             animation: pulse-green 1.5s ease-in-out infinite;
         }
         .state-speaking .ring-inner {
-            border-color: rgba(232,113,26,0.7);
-            box-shadow: 0 0 24px rgba(232,113,26,0.25);
+            border-color: rgba(217,119,87,0.7);
+            box-shadow: 0 0 24px rgba(217,119,87,0.25);
             animation: pulse-orange 0.6s ease-in-out infinite;
         }
         .state-processing .ring-inner {
@@ -235,11 +235,11 @@
         }
         .avatar-core img {
             width: 60%; height: 60%; object-fit: contain;
-            filter: drop-shadow(0 0 12px rgba(232,113,26,0.4));
+            filter: drop-shadow(0 0 12px rgba(217,119,87,0.4));
             transition: filter 0.4s;
         }
         .state-listening .avatar-core img { filter: drop-shadow(0 0 16px rgba(0,230,118,0.5)); }
-        .state-speaking .avatar-core img { filter: drop-shadow(0 0 20px rgba(232,113,26,0.6)); }
+        .state-speaking .avatar-core img { filter: drop-shadow(0 0 20px rgba(217,119,87,0.6)); }
         .state-processing .avatar-core img { filter: drop-shadow(0 0 16px rgba(64,196,255,0.5)); }
         .state-analyzing_screen .avatar-core img { filter: drop-shadow(0 0 20px rgba(168,85,247,0.6)); }
 
@@ -465,10 +465,10 @@
         }
         .mode-pill:hover { color:var(--text,#ececec); border-color:var(--border-hover,#3a3a40); }
         .mode-pill.active {
-            color:#fff; background:var(--accent,#E8711A); border-color:var(--accent,#E8711A);
-            box-shadow:0 0 12px rgba(232,113,26,.35);
+            color:#fff; background:var(--accent,#d97757); border-color:var(--accent,#d97757);
+            box-shadow:0 0 12px rgba(217,119,87,.35);
         }
-        .mode-pill.think.active { box-shadow:0 0 12px rgba(232,113,26,.5); }
+        .mode-pill.think.active { box-shadow:0 0 12px rgba(217,119,87,.5); }
     </style>
 </head>
 <body id="body">
@@ -530,9 +530,9 @@
 
         <!-- Voice mode: flash / default / think (docs/VOICE-MODES-DESIGN.md) -->
         <div class="mode-row" id="modeRow">
-            <button class="mode-pill" id="modeFlash" onclick="setVoiceMode('flash')" title="Fastest replies — trimmed context, one-sentence answers">⚡ Flash</button>
+            <button class="mode-pill" id="modeFlash" onclick="setVoiceMode('flash')" title="Fastest replies — trimmed context, one-sentence answers"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>Flash</button>
             <button class="mode-pill active" id="modeDefault" onclick="setVoiceMode('default')" title="Standard voice chat">Normal</button>
-            <button class="mode-pill think" id="modeThink" onclick="setVoiceMode('think')" title="Live tool calling — lights, music, web, calendar, email — with spoken progress">🧠 Think</button>
+            <button class="mode-pill think" id="modeThink" onclick="setVoiceMode('think')" title="Live tool calling — lights, music, web, calendar, email — with spoken progress"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><path d="M12 2C9 2 6.5 4 6 7c-2 .5-4 3-4 5.5C2 15 4 17 6.5 17H7v2a2 2 0 002 2h6a2 2 0 002-2v-2h.5C20 17 22 15 22 12.5 22 10 20 7.5 18 7c-.5-3-3-5-6-5z"/></svg>Think</button>
         </div>
 
         <!-- Action row: your turn + nudge -->
@@ -598,7 +598,7 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
 // darkens with macOS at sunset without anyone touching a toggle. The resolved
 // value is always stamped on data-theme, so every existing [data-theme="light"]
 // rule keeps working untouched. An explicit light/dark choice pins it.
-function _themePref(){var v=localStorage.getItem('codec-theme');return (v==='light'||v==='dark'||v==='system')?v:'system'}
+function _themePref(){var v=null;try{v=localStorage.getItem('codec-theme')}catch(e){}return (v==='light'||v==='dark'||v==='system')?v:'system'}
 function _themeResolved(pref){
   if(pref==='light'||pref==='dark')return pref;
   try{return (window.matchMedia&&matchMedia('(prefers-color-scheme: light)').matches)?'light':'dark'}catch(e){return 'dark'}
@@ -610,7 +610,7 @@ function applyTheme(){
 }
 function toggleTheme(){
   var order=['system','light','dark'],next=order[(order.indexOf(_themePref())+1)%3];
-  localStorage.setItem('codec-theme',next);applyTheme();
+  try{localStorage.setItem('codec-theme',next)}catch(e){}applyTheme();
   if(typeof showToast==='function')showToast(next==='system'?'Theme follows your system':'Theme: '+next);
 }
 try{if(window.matchMedia){matchMedia('(prefers-color-scheme: light)').addEventListener('change',function(){if(_themePref()==='system')applyTheme()})}}catch(e){}
@@ -619,7 +619,7 @@ window.addEventListener('storage',function(e){if(e.key==='codec-theme')applyThem
     function lockSession(){fetch('/api/auth/logout',{method:'POST'}).then(function(){document.cookie='codec_session=;path=/;max-age=0;SameSite=Lax'+(location.protocol==='https:'?';Secure':'');window.location.href='/auth'})}
     var _voiceOn=localStorage.getItem('codec-voice')==='true';
     function toggleVoiceReply(){_voiceOn=!_voiceOn;localStorage.setItem('codec-voice',_voiceOn);updateVoiceIcon()}
-    function updateVoiceIcon(){var m1=document.getElementById('muteX1'),m2=document.getElementById('muteX2'),st=document.getElementById('voiceState');if(_voiceOn){if(m1)m1.style.display='none';if(m2)m2.style.display='none';if(st){st.textContent='ON';st.style.color='#0a0a0a';st.style.background='#E8711A'}}else{if(m1)m1.style.display='';if(m2)m2.style.display='';if(st){st.textContent='OFF';st.style.color='#888';st.style.background='#2a2a2a'}}}
+    function updateVoiceIcon(){var m1=document.getElementById('muteX1'),m2=document.getElementById('muteX2'),st=document.getElementById('voiceState');if(_voiceOn){if(m1)m1.style.display='none';if(m2)m2.style.display='none';if(st){st.textContent='ON';st.style.color='#0a0a0a';st.style.background='#d97757'}}else{if(m1)m1.style.display='';if(m2)m2.style.display='';if(st){st.textContent='OFF';st.style.color='#888';st.style.background='#2a2a2a'}}}
     updateVoiceIcon();
     function takeScreenshot(){fetch('/api/screenshot',{method:'POST'}).then(function(r){return r.json()}).then(function(d){if(d.path)alert('Screenshot saved: '+d.path)}).catch(function(){})}
 
@@ -742,7 +742,7 @@ window.addEventListener('storage',function(e){if(e.key==='codec-theme')applyThem
         if (s === 'idle')       el.textContent = '';
         else if (s === 'listening')  el.textContent = 'Listening — tap "Your Turn" when done';
         else if (s === 'speaking')   el.textContent = 'Speaking…';
-        else if (s === 'analyzing_screen') el.textContent = '🔍 Analyzing your screen…';
+        else if (s === 'analyzing_screen') el.textContent = 'Analyzing your screen…';
         else if (s === 'processing') {
             processingStart = Date.now();
             el.textContent = 'Transcribing…';
@@ -909,7 +909,7 @@ window.addEventListener('storage',function(e){if(e.key==='codec-theme')applyThem
                         else if (msg.status === 'tool_running') {
                             setState('processing');
                             var sl = document.getElementById('statusLabel');
-                            if (sl) sl.textContent = '🛠 Running tools…';
+                            if (sl) sl.textContent = 'Running tools…';
                         }
                         else if (msg.status === 'listening') {
                             if (!isPlaying) setState('listening');
