@@ -17,6 +17,7 @@ so it applies session-wide instead of per-test.
 """
 import sys
 import os
+import tempfile
 import types
 from pathlib import Path
 
@@ -28,6 +29,37 @@ _WORKTREE_REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, os.path.expanduser("~/codec-repo"))
 sys.path.insert(0, os.path.expanduser("~/.codec/skills"))
 sys.path.insert(0, str(_WORKTREE_REPO))
+
+
+def _isolate_audit_log() -> None:
+    """Point the audit log at a throwaway file for the whole test session.
+
+    `codec_audit._AUDIT_DIR` is a module constant of `~/.codec`, so an unmocked
+    `audit()` anywhere in the suite appends to the OPERATOR'S real, HMAC-signed
+    audit log. Measured: 315 lines per full run, from 12 sources — including
+    `file_write_blocked`, `python_exec_blocked` and `plugin_allowlist_migrated`.
+    Those are indistinguishable from genuine security events after the fact, so
+    the log a forensic review depends on is seeded with fiction by `pytest`.
+
+    Done at conftest IMPORT time rather than in an autouse fixture: a fixture
+    runs after test modules are imported, and module-scope audit emits during
+    collection would already have landed in the real log.
+
+    Tests that assert on audit output monkeypatch `_AUDIT_LOG` per-test as
+    before; this only changes where the unmocked writes go. Existing polluted
+    lines are deliberately left alone — hand-editing an HMAC-signed log is
+    exactly what §6 of AGENTS.md forbids.
+    """
+    try:
+        import codec_audit
+    except Exception:
+        return  # audit unavailable in this environment; nothing to isolate
+    tmp = Path(tempfile.mkdtemp(prefix="codec-test-audit-"))
+    codec_audit._AUDIT_DIR = tmp
+    codec_audit._AUDIT_LOG = tmp / "audit.log"
+
+
+_isolate_audit_log()
 
 
 def _install_pynput_stub_if_needed() -> None:

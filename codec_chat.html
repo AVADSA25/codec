@@ -466,13 +466,31 @@ input[type=file]{display:none}
 <div class="toast" id="toast"></div>
 
 <script>
+/* Safe storage accessors — use these, never localStorage/sessionStorage directly.
+
+   Storage access THROWS when blocked; it does not return null. Safari private
+   mode, a hardened profile, and an iframe whose third-party storage is blocked
+   all raise on the FIRST touch. An unguarded read at the top level of a script
+   therefore kills that entire script: every statement after it, theme init
+   included, silently never runs, and the page looks fine while being half-dead.
+   That is exactly what happened to cortex, which the dashboard embeds in an
+   iframe. Reads degrade to null, writes to no-ops — a page with no persisted
+   preferences beats a page with no JavaScript. */
+function _lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
+function _lsSet(k,v){try{localStorage.setItem(k,v)}catch(e){}}
+function _lsDel(k){try{localStorage.removeItem(k)}catch(e){}}
+function _ssGet(k){try{return sessionStorage.getItem(k)}catch(e){return null}}
+function _ssSet(k,v){try{sessionStorage.setItem(k,v)}catch(e){}}
+function _ssDel(k){try{sessionStorage.removeItem(k)}catch(e){}}
+</script>
+<script>
 function openSidePanel(){document.getElementById('sidePanel').classList.add('open');document.getElementById('sidePanelOverlay').classList.add('open')}
 function closeSidePanel(){document.getElementById('sidePanel').classList.remove('open');document.getElementById('sidePanelOverlay').classList.remove('open')}
 // Auth + CSRF: inject session token and CSRF header on all requests
 // On mobile (Android Chrome), cookies may not persist — fallback to sessionStorage
 (function(){
 var _f=window.fetch;
-function _getSession(){return document.cookie.match(/codec_session=([^;]+)/)?.[1]||sessionStorage.getItem('codec_session')||''}
+function _getSession(){return document.cookie.match(/codec_session=([^;]+)/)?.[1]||_ssGet('codec_session')||''}
 function _injectSession(url){var s=_getSession();if(!s)return url;var sep=url.indexOf('?')>=0?'&':'?';return url+sep+'s='+s}
 var _authRedirecting=false;
 window.fetch=function(u,o){
@@ -490,11 +508,11 @@ window.fetch=function(u,o){
 // E2E encryption layer — AES-256-GCM via ECDH key exchange
 var _e2eKey=null;
 (function(){var _f2=window.fetch;function _b64(buf){var bytes=new Uint8Array(buf),CHUNK=8192,str='';for(var i=0;i<bytes.length;i+=CHUNK){str+=String.fromCharCode.apply(null,bytes.subarray(i,i+CHUNK))}return btoa(str)}function _unb64(s){var b=atob(s),a=new Uint8Array(b.length);for(var i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a}
-window._e2eNegotiate=function(){return crypto.subtle.generateKey({name:'ECDH',namedCurve:'P-256'},true,['deriveBits']).then(function(kp){return crypto.subtle.exportKey('raw',kp.publicKey).then(function(pub){return _f2('/api/auth/keyexchange',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pub:_b64(pub)})}).then(function(r){return r.json()}).then(function(d){var srvPub=_unb64(d.pub);return crypto.subtle.importKey('raw',srvPub,{name:'ECDH',namedCurve:'P-256'},false,[]).then(function(srvKey){return crypto.subtle.deriveBits({name:'ECDH',public:srvKey},kp.privateKey,256)}).then(function(bits){return crypto.subtle.importKey('raw',bits,{name:'HKDF'},false,['deriveKey'])}).then(function(hkdfKey){return crypto.subtle.deriveKey({name:'HKDF',hash:'SHA-256',salt:new Uint8Array(0),info:new TextEncoder().encode('codec-e2e')},hkdfKey,{name:'AES-GCM',length:256},false,['encrypt','decrypt'])}).then(function(k){_e2eKey=k;sessionStorage.setItem('_e2eReady','1')})})})}).catch(function(e){console.warn('E2E negotiation failed:',e)})};
+window._e2eNegotiate=function(){return crypto.subtle.generateKey({name:'ECDH',namedCurve:'P-256'},true,['deriveBits']).then(function(kp){return crypto.subtle.exportKey('raw',kp.publicKey).then(function(pub){return _f2('/api/auth/keyexchange',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pub:_b64(pub)})}).then(function(r){return r.json()}).then(function(d){var srvPub=_unb64(d.pub);return crypto.subtle.importKey('raw',srvPub,{name:'ECDH',namedCurve:'P-256'},false,[]).then(function(srvKey){return crypto.subtle.deriveBits({name:'ECDH',public:srvKey},kp.privateKey,256)}).then(function(bits){return crypto.subtle.importKey('raw',bits,{name:'HKDF'},false,['deriveKey'])}).then(function(hkdfKey){return crypto.subtle.deriveKey({name:'HKDF',hash:'SHA-256',salt:new Uint8Array(0),info:new TextEncoder().encode('codec-e2e')},hkdfKey,{name:'AES-GCM',length:256},false,['encrypt','decrypt'])}).then(function(k){_e2eKey=k;_ssSet('_e2eReady','1')})})})}).catch(function(e){console.warn('E2E negotiation failed:',e)})};
 var _e2eRetrying=false;
 window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.call(this,u,o);var method=(o.method||'GET').toUpperCase();if(method!=='GET'&&o.body){var iv=crypto.getRandomValues(new Uint8Array(12));return crypto.subtle.encrypt({name:'AES-GCM',iv:iv},_e2eKey,new TextEncoder().encode(o.body)).then(function(ct){o.body=JSON.stringify({iv:_b64(iv),ct:_b64(ct)});o.headers=o.headers||{};if(o.headers instanceof Headers){o.headers.set('x-e2e','1');o.headers.set('Content-Type','application/json')}else{o.headers['x-e2e']='1';o.headers['Content-Type']='application/json'}return _f2.call(this,u,o)}.bind(this)).then(function(r){if(r.status===428&&!_e2eRetrying){_e2eRetrying=true;_e2eKey=null;return window._e2eNegotiate().then(function(){_e2eRetrying=false;o.body=_origBody;delete o.headers['x-e2e'];return window.fetch(u,o)}).catch(function(){_e2eRetrying=false;return r})}return _decResp(r)})}return _f2.call(this,u,o).then(_decResp)};
 function _decResp(r){if(!_e2eKey||r.headers.get('x-e2e')!=='1')return r;return r.clone().json().then(function(d){if(!d.iv||!d.ct)return r;var iv=_unb64(d.iv),ct=_unb64(d.ct);return crypto.subtle.decrypt({name:'AES-GCM',iv:iv},_e2eKey,ct).then(function(pt){var txt=new TextDecoder().decode(pt);return new Response(txt,{status:r.status,headers:r.headers})})}).catch(function(){return r})}
-if(sessionStorage.getItem('_e2eReady'))window._e2eNegotiate();
+if(_ssGet('_e2eReady'))window._e2eNegotiate();
 })();
 var SYS="You are *CODEC Deep Chat* \u2014 a J.A.R.V.I.S.-class AI running locally on a Mac Studio M1 Ultra (64GB unified RAM). Fully self-hosted via MLX. No cloud dependency.\n\n" +
 "### THE 7 CODEC PRODUCTS\n" +
@@ -537,7 +555,7 @@ function buildSystem(){return SYS+(thinkingEnabled?'':CONCISE_MODE);}
 
 // Working folder allocated to this chat (like a working directory). Sent with
 // every message so file operations can be scoped to it. Persists per-browser.
-var _workdir=localStorage.getItem('codec_workdir')||'';
+var _workdir=_lsGet('codec_workdir')||'';
 function _renderWorkdir(){
   var chip=document.getElementById('workdirChip');
   if(_workdir){document.getElementById('workdirPath').textContent=_workdir;chip.style.display='flex'}
@@ -545,13 +563,13 @@ function _renderWorkdir(){
 }
 function pickWorkingFolder(){
   fetch('/api/pick-folder',{method:'POST'}).then(function(r){return r.json()}).then(function(j){
-    if(j&&j.ok&&j.path){_workdir=j.path;localStorage.setItem('codec_workdir',_workdir);_renderWorkdir();
+    if(j&&j.ok&&j.path){_workdir=j.path;_lsSet('codec_workdir',_workdir);_renderWorkdir();
       showToast('Working folder: '+_workdir)}
     else if(j&&j.cancelled){/* user dismissed — no-op */}
     else{showToast((j&&j.error)||'Could not open folder picker')}
   }).catch(function(){showToast('Folder picker unavailable')});
 }
-function clearWorkingFolder(){_workdir='';localStorage.removeItem('codec_workdir');_renderWorkdir();}
+function clearWorkingFolder(){_workdir='';_lsDel('codec_workdir');_renderWorkdir();}
 _renderWorkdir();
 var chatHist=[],isProcessing=false,isRecording=false,recognition=null;
 var pendingFiles=[];
@@ -943,14 +961,14 @@ function parseScaffold(raw){
 
 function genId(){return Date.now().toString(36)+Math.random().toString(36).substr(2,5)}
 
-function startNewSession(){sessionId=genId();localStorage.setItem('codec-chat-session',sessionId);chatHist=[];pendingFiles=[];document.getElementById('fileChips').innerHTML='';document.getElementById('messages').innerHTML='<div class="empty-state" id="emptyState"><img src="https://i.imgur.com/jD1X5W8.png"><p>Deep Chat \u2014 250K context window<br>Drop files, images, or just talk.</p></div>'}
+function startNewSession(){sessionId=genId();_lsSet('codec-chat-session',sessionId);chatHist=[];pendingFiles=[];document.getElementById('fileChips').innerHTML='';document.getElementById('messages').innerHTML='<div class="empty-state" id="emptyState"><img src="https://i.imgur.com/jD1X5W8.png"><p>Deep Chat \u2014 250K context window<br>Drop files, images, or just talk.</p></div>'}
 
 // PR #39: persist sessionId across page reloads. If a previous session
 // exists, load it on boot so the user lands back on the same chat (with
 // any project plan cards rehydrated). Falls back to a fresh session if
 // the previous one's GET returns empty.
 (function bootSession(){
-  var saved=localStorage.getItem('codec-chat-session');
+  var saved=_lsGet('codec-chat-session');
   if(!saved){startNewSession();return}
   // Optimistically load \u2014 if the session is empty/missing, we'll start fresh
   fetch('/api/qchat/session/'+saved).then(function(r){
@@ -987,7 +1005,7 @@ async function saveMessages(msgs){
 // value is always stamped on data-theme, so every existing [data-theme="light"]
 // rule keeps working untouched. An explicit light/dark choice pins it and stops
 // following the OS until the user cycles back to system.
-function _themePref(){var v=null;try{v=localStorage.getItem('codec-theme')}catch(e){}return (v==='light'||v==='dark'||v==='system')?v:'system'}
+function _themePref(){var v=null;try{v=_lsGet('codec-theme')}catch(e){}return (v==='light'||v==='dark'||v==='system')?v:'system'}
 function _themeResolved(pref){
   if(pref==='light'||pref==='dark')return pref;
   try{return (window.matchMedia&&matchMedia('(prefers-color-scheme: light)').matches)?'light':'dark'}catch(e){return 'dark'}
@@ -999,7 +1017,7 @@ function applyTheme(){
 }
 function toggleTheme(){
   var order=['system','light','dark'],next=order[(order.indexOf(_themePref())+1)%3];
-  try{localStorage.setItem('codec-theme',next)}catch(e){}
+  try{_lsSet('codec-theme',next)}catch(e){}
   applyTheme();
   if(typeof showToast==='function')showToast(next==='system'?'Theme follows your system':'Theme: '+next);
 }
@@ -1048,7 +1066,7 @@ async function loadSidebarHistory(){
 }
 
 async function loadSession(sid){
-  closeSidebar();sessionId=sid;localStorage.setItem('codec-chat-session',sid);chatHist=[];pendingFiles=[];
+  closeSidebar();sessionId=sid;_lsSet('codec-chat-session',sid);chatHist=[];pendingFiles=[];
   document.getElementById('fileChips').innerHTML='';
   var es=document.getElementById('emptyState');if(es)es.remove();
   document.getElementById('messages').innerHTML='';
@@ -1940,8 +1958,8 @@ async function deleteSelectedAgent(){
 function lockSession(){fetch('/api/auth/logout',{method:'POST'}).then(function(){document.cookie='codec_session=;path=/;max-age=0;SameSite=Lax'+(location.protocol==='https:'?';Secure':'');window.location.href='/auth'})}
 
 // ── Header icons (matching dashboard) ──
-var voiceReplyEnabled=localStorage.getItem('codec-voice')==='true';
-function toggleVoiceReply(){voiceReplyEnabled=!voiceReplyEnabled;localStorage.setItem('codec-voice',voiceReplyEnabled);updateVoiceIcon();updateSpeakToggle()}
+var voiceReplyEnabled=_lsGet('codec-voice')==='true';
+function toggleVoiceReply(){voiceReplyEnabled=!voiceReplyEnabled;_lsSet('codec-voice',voiceReplyEnabled);updateVoiceIcon();updateSpeakToggle()}
 function updateVoiceIcon(){var m1=document.getElementById('muteX1'),m2=document.getElementById('muteX2'),st=document.getElementById('voiceState');if(voiceReplyEnabled){if(m1)m1.style.display='none';if(m2)m2.style.display='none';if(st){st.textContent='ON';st.style.color='#0a0a0a';st.style.background='#d97757'}}else{if(m1)m1.style.display='';if(m2)m2.style.display='';if(st){st.textContent='OFF';st.style.color='#888';st.style.background='#2a2a2a'}}}
 function updateSpeakToggle(){
   var btn=document.getElementById('speakToggle');
@@ -2065,7 +2083,7 @@ function showSchedulePanel(){
   });
 })();
 // Apply UI preferences from dashboard settings
-(function(){try{var p=JSON.parse(localStorage.getItem('codec-ui-prefs')||'{}'),m={'screenshot_btn':'#screenBtn','photo_btn':'#photoBtn','webcam_pip_btn':'#camBtn','voice_btn':'#voiceBtn','notif_bell':'#notifBellBtn','mic_btn':'#micBtn','chat_sidebar':'#sidebar,#sidebarOverlay,.sidebar-toggle','chat_agents':'#modeResearchBtn','chat_agent_builder':'#agentBuilder'};Object.keys(m).forEach(function(k){if(p[k]===false)m[k].split(',').forEach(function(s){document.querySelectorAll(s.trim()).forEach(function(el){el.style.display='none'})})})}catch(e){}})();
+(function(){try{var p=JSON.parse(_lsGet('codec-ui-prefs')||'{}'),m={'screenshot_btn':'#screenBtn','photo_btn':'#photoBtn','webcam_pip_btn':'#camBtn','voice_btn':'#voiceBtn','notif_bell':'#notifBellBtn','mic_btn':'#micBtn','chat_sidebar':'#sidebar,#sidebarOverlay,.sidebar-toggle','chat_agents':'#modeResearchBtn','chat_agent_builder':'#agentBuilder'};Object.keys(m).forEach(function(k){if(p[k]===false)m[k].split(',').forEach(function(s){document.querySelectorAll(s.trim()).forEach(function(el){el.style.display='none'})})})}catch(e){}})();
 </script>
 <div class="webcam-pip" id="webcamPip">
   <img id="pipVideo" alt="Mac Webcam" onclick="expandPip()" style="cursor:pointer" />
@@ -2315,13 +2333,13 @@ async function viewAgentPlan(agentId,e){
 // terminal status (done / failed / aborted), or by user clicking ×
 // on the "Talking to …" chip above the composer.
 var _activeAgentId = null;
-try { _activeAgentId = localStorage.getItem('codec-active-agent') || null; } catch(e) {}
+try { _activeAgentId = _lsGet('codec-active-agent') || null; } catch(e) {}
 
 function setActiveAgent(id){
   _activeAgentId = id;
   try {
-    if (id) localStorage.setItem('codec-active-agent', id);
-    else    localStorage.removeItem('codec-active-agent');
+    if (id) _lsSet('codec-active-agent', id);
+    else    _lsDel('codec-active-agent');
   } catch(e) {}
   renderActiveAgentChip();
 }
@@ -2354,12 +2372,12 @@ function renderActiveAgentChip(){
 }
 
 // ── Live preview panel: shows recent files produced by the active agent ──────
-var _livePreviewOpen = (localStorage.getItem('codec-live-preview') === 'true');
+var _livePreviewOpen = (_lsGet('codec-live-preview') === 'true');
 var _livePreviewTimer = null;
 function toggleLivePreview(e){
   if (e) e.preventDefault();
   _livePreviewOpen = !_livePreviewOpen;
-  try { localStorage.setItem('codec-live-preview', _livePreviewOpen ? 'true' : 'false'); } catch(err){}
+  try { _lsSet('codec-live-preview', _livePreviewOpen ? 'true' : 'false'); } catch(err){}
   renderLivePreviewPanel();
 }
 function renderLivePreviewPanel(){

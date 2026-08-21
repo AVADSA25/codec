@@ -184,3 +184,32 @@ regenerate `skills/.manifest.json`, or delete both files.
 (May 13) living in `~/.codec/skills/`, not repo files. Moved to
 `~/.codec/pilot_archive/` — recordings preserved, skills dir clean,
 `tests/test_skills.py` fully green (160/160).
+
+## Auth routes write unsigned plaintext into the HMAC-signed audit log (2026-08-21)
+
+`routes/_shared._audit_write` appends raw strings straight to `~/.codec/audit.log`,
+bypassing `codec_audit.audit()` and therefore the whole PR-2E envelope — no HMAC,
+no secret redaction, no JSON. Nine call sites in `routes/auth.py`, all
+security-relevant, several carrying client IPs:
+
+    [2026-08-21T12:15:12.532832] TOTP_SETUP: 2FA enabled
+
+Three consequences, in order of severity:
+
+1. **`audit_verify` reports the operator's log as tampered, permanently.**
+   Measured on the live log: `total_lines 599, signed 597, broken 2,
+   integrity_ok False` — and both broken lines are these auth writes. The
+   tamper-detection feature built in PR-2E currently cries wolf at CODEC's own
+   auth route, which trains the operator to ignore it.
+2. **The events most worth signing are the only unsigned ones.** AUTH_SUCCESS /
+   AUTH_FAILED / TOTP_* are exactly what an intruder would want to edit, and
+   they are the lines with no HMAC over them.
+3. **No redaction pass**, so anything that ends up interpolated into these
+   f-strings lands in the log verbatim.
+
+Found 2026-08-21 while measuring test pollution of the audit log; out of that
+PR's scope. Fix: replace `_audit_write` with `codec_audit.audit()` calls using
+proper event names (`auth_success`, `auth_failed`, `totp_enabled`, ...), then
+re-run `verify_audit_log()` to confirm `integrity_ok` goes true. The two
+existing broken lines stay — §6 forbids hand-editing the log, and per-line HMAC
+cannot detect a deletion anyway.
