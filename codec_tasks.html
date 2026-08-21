@@ -6,7 +6,7 @@
 <title>CODEC — Tasks</title>
 <link rel="icon" href="/favicon.png">
 <link rel="apple-touch-icon" href="/favicon.png">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
   --bg: #121215; --surface: #18181b; --surface-2: #1f1f22; --surface-3: #27272a;
@@ -15,8 +15,8 @@
   /* 2026 refresh: calmer brand orange (was pure #E8711A) */
   --accent: #d97757; --accent-hover: #e08766; --accent-dim: rgba(217,119,87,0.10);
   --danger: #ef4444; --success: #22c55e; --info: #3b82f6;
-  --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  --mono: 'JetBrains Mono', 'SF Mono', monospace;
+  --font: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --mono: 'IBM Plex Mono', 'SF Mono', monospace;
   --radius-sm: 6px; --radius: 10px;
 }
 [data-theme="light"] {
@@ -474,7 +474,7 @@ function updateThemeIcon(t){var ico=document.getElementById('themeIco');if(t==='
 function lockSession(){fetch('/api/auth/logout',{method:'POST'}).then(function(){document.cookie='codec_session=;path=/;max-age=0;SameSite=Lax'+(location.protocol==='https:'?';Secure':'');window.location.href='/auth'})}
 var _voiceOn=_lsGet('codec-voice')==='true';
 function toggleVoiceReply(){_voiceOn=!_voiceOn;_lsSet('codec-voice',_voiceOn);updateVoiceIcon()}
-function updateVoiceIcon(){var m1=document.getElementById('muteX1'),m2=document.getElementById('muteX2'),st=document.getElementById('voiceState');if(_voiceOn){if(m1)m1.style.display='none';if(m2)m2.style.display='none';if(st){st.textContent='ON';st.style.color='#0a0a0a';st.style.background='#E8711A'}}else{if(m1)m1.style.display='';if(m2)m2.style.display='';if(st){st.textContent='OFF';st.style.color='#888';st.style.background='#2a2a2a'}}}
+function updateVoiceIcon(){var m1=document.getElementById('muteX1'),m2=document.getElementById('muteX2'),st=document.getElementById('voiceState');if(_voiceOn){if(m1)m1.style.display='none';if(m2)m2.style.display='none';if(st){st.textContent='ON';st.style.color='#0a0a0a';st.style.background='#d97757'}}else{if(m1)m1.style.display='';if(m2)m2.style.display='';if(st){st.textContent='OFF';st.style.color='#888';st.style.background='#2a2a2a'}}}
 updateVoiceIcon();
 // ── Screenshot (shows preview) ──
 function takeScreenshot(){
@@ -854,10 +854,15 @@ function renderAlerts() {
     el.innerHTML = '<div style="font-size:13px;color:var(--text-dim);padding:8px 0;">No alerts configured. Add them in <code>~/.codec/config.json</code> under <code>heartbeat_alerts</code>.</div>';
     return;
   }
-  var icons = { price: '💰', email_check: '📧', disk_usage: '💾' };
+  // Line SVG, never emoji — see AGENTS.md §9.
+  var icons = {
+    price:       '<svg viewBox="0 0 24 24" class="ico"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
+    email_check: '<svg viewBox="0 0 24 24" class="ico"><path d="M4 4h16v12H4z"/><polyline points="4 6 12 12 20 6"/></svg>',
+    disk_usage:  '<svg viewBox="0 0 24 24" class="ico"><rect x="2" y="7" width="20" height="10" rx="2"/><line x1="6" y1="12" x2="6" y2="12"/><line x1="10" y1="12" x2="18" y2="12"/></svg>'
+  };
   var html = '';
   hbAlerts.forEach(function(alert, i) {
-    var icon = icons[alert.type] || '🔔';
+    var icon = icons[alert.type] || '<svg viewBox="0 0 24 24" class="ico"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>';
     var enabled = alert.enabled !== false;
     var meta = alert.type;
     if (alert.type === 'price') meta += ' | ' + (alert.asset || 'bitcoin') + ' | ' + (alert.threshold_pct || 5) + '% ' + (alert.direction || 'any');
@@ -985,6 +990,9 @@ function renderReports() {
     }
     if (r.body || r.message) {
       var bodyText = escHtml(r.body || r.message);
+      // The emoji here is CONTENT, not UI: shift_report emits this marker in the
+      // report body and this strips it. Replacing it would break the strip and
+      // the marker would render — the no-emoji rule is why it must stay.
       bodyText = bodyText.replace(/📄\s*\[View Full Report\]\([^)]+\)\n*/g, '');
       if (bodyText.trim()) {
         html += '<div class="report-body">' + bodyText.substring(0, 500) + (bodyText.length > 500 ? '...' : '') + '</div>';

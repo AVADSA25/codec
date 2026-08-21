@@ -5,21 +5,29 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>CODEC — Authenticate</title>
     <link rel="icon" href="/favicon.png">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg: #121215; --surface: #1a1a1d; --surface-2: #212125; --border: #303035; --border-hover: #424248;
+            --bg: #121215; --surface: #18181b; --surface-2: #1f1f22; --surface-3: #27272a;
+            --border: #2a2a2f; --border-hover: #3a3a40;
             --text: #ececec; --text-muted: #9a9aa0; --text-dim: #6a6a70;
-            --accent: #E8711A; --accent-hover: #f07d2a;
-            --danger: #ef4444; --success: #22c55e;
-            --font: 'Inter', -apple-system, sans-serif;
-            --mono: 'JetBrains Mono', monospace;
-            --radius-sm: 6px; --radius: 10px;
+            /* 2026 refresh: keep CODEC orange identity but warmer + calmer (was pure #E8711A) */
+            --accent: #d97757; --accent-hover: #e08766; --accent-dim: rgba(217,119,87,0.10);
+            --danger: #ef4444; --success: #22c55e; --info: #3b82f6;
+            --font: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            --mono: 'IBM Plex Mono', 'SF Mono', monospace;
+            --radius-sm: 6px; --radius: 10px; --radius-lg: 14px;
         }
         [data-theme="light"] {
-            --bg: #f7f5f2; --surface: #fff; --surface-2: #f0ece6; --border: #d5d0ca; --border-hover: #bbb;
-            --text: #1a1a1a; --text-muted: #555; --text-dim: #777;
+            --bg: #faf8f5; --surface: #fff; --surface-2: #f2eee8; --surface-3: #ebe6df;
+            --border: #e2ddd5; --border-hover: #c8c2b8;
+            --text: #18181b; --text-muted: #52525b; --text-dim: #71717a;
+            --accent: #b85a3a; --accent-hover: #a04d31; --accent-dim: rgba(184,90,58,0.08);
         }
+        /* Line-SVG icon base — no emoji anywhere in CODEC UI. */
+        .ico { width: 18px; height: 18px; stroke: currentColor; fill: none;
+               stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+               flex-shrink: 0; vertical-align: -3px; }
         * { margin:0; padding:0; box-sizing:border-box; }
         body {
             font-family: var(--font);
@@ -30,7 +38,7 @@
         .auth-container {
             text-align: center; max-width: 360px; width: 100%; padding: 32px;
         }
-        .logo { width: 68px; height: 68px; margin: 0 auto 16px; filter: drop-shadow(0 0 18px rgba(232,113,26,0.35)); }
+        .logo { width: 68px; height: 68px; margin: 0 auto 16px; filter: drop-shadow(0 0 18px rgba(217,119,87,0.35)); }
         .title { font-family: var(--mono); font-size: 24px; font-weight: 700; color: var(--text); letter-spacing: 2px; margin-bottom: 6px; }
         .subtitle { font-size: 13px; color: var(--text-dim); margin-bottom: 32px; }
 
@@ -48,11 +56,12 @@
         [data-theme="light"] .fingerprint-ring.success { background: #eaf7ee; }
         [data-theme="light"] .fingerprint-ring.error { background: #fdeaea; }
         [data-theme="light"] .fingerprint-ring.waiting { background: var(--surface); }
-        .fingerprint-icon { font-size: 40px; }
+        .fingerprint-icon { display:flex; }
+        .fingerprint-icon .ico { width: 40px; height: 40px; stroke-width: 1.5; }
 
         @keyframes pulse {
-            0%, 100% { box-shadow: 0 0 0 0 rgba(232,113,26,0.3); }
-            50% { box-shadow: 0 0 0 16px rgba(232,113,26,0); }
+            0%, 100% { box-shadow: 0 0 0 0 rgba(217,119,87,0.3); }
+            50% { box-shadow: 0 0 0 16px rgba(217,119,87,0); }
         }
 
         .auth-btn {
@@ -84,7 +93,7 @@
             border-radius: 8px; outline: none;
             transition: border-color 0.15s; font-family: var(--mono);
         }
-        .pin-digit:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(232,113,26,0.1); }
+        .pin-digit:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(217,119,87,0.1); }
         .pin-digit.filled { border-color: var(--accent); }
 
         .status { font-size: 13px; color: var(--text-dim); min-height: 20px; margin-top: 16px; }
@@ -109,7 +118,7 @@
           .pin-input-row { gap: 6px; }
           .pin-digit { width: 44px; height: 50px; font-size: 20px; }
           .fingerprint-ring { width: 100px; height: 100px; }
-          .fingerprint-icon { font-size: 34px; }
+          .fingerprint-icon .ico { width: 34px; height: 34px; }
         }
     </style>
 </head>
@@ -126,7 +135,7 @@
         <!-- Touch ID section -->
         <div id="touchidSection">
             <div class="fingerprint-ring" id="fpRing" onclick="authenticate()">
-                <span class="fingerprint-icon" id="fpIcon">&#128274;</span>
+                <span class="fingerprint-icon" id="fpIcon"><svg viewBox="0 0 24 24" class="ico"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
             </div>
             <button class="auth-btn" id="authBtn" onclick="authenticate()">Authenticate with Touch ID</button>
         </div>
@@ -185,11 +194,11 @@
 
         <!-- Setup 2FA link (shown when TOTP not yet configured) -->
         <div id="setup2faLink" style="display:none;margin-top:12px">
-            <a href="#" onclick="startTotpSetup();return false" style="font-size:12px;color:var(--accent);text-decoration:none;opacity:0.7">&#128272; Setup 2FA (Authenticator App)</a>
+            <a href="#" onclick="startTotpSetup();return false" style="font-size:12px;color:var(--accent);text-decoration:none;opacity:0.7"><svg viewBox="0 0 24 24" class="ico"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg> Setup 2FA (Authenticator App)</a>
         </div>
 
         <div class="remote-note" id="remoteNote" style="display:none;">
-            &#128241; Remote access detected. Touch ID will prompt on your Mac.
+            <svg viewBox="0 0 24 24" class="ico"><rect x="6" y="2" width="12" height="20" rx="2"/><line x1="12" y1="18" x2="12" y2="18"/></svg> Remote access detected. Touch ID will prompt on your Mac.
             Keep the Mac awake and nearby.
         </div>
     </div>
@@ -327,6 +336,11 @@ function clearPin() {
 }
 
 // ── Touch ID auth ──
+// Icon states for the auth ring. Line SVG, never emoji — see AGENTS.md §9.
+var ICO_LOCK  = '<svg viewBox="0 0 24 24" class="ico"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+var ICO_PRINT = '<svg viewBox="0 0 24 24" class="ico"><path d="M12 10a2 2 0 0 1 2 2c0 2.5-.4 4.6-1 6.5"/><path d="M8.5 12a3.5 3.5 0 0 1 7 0c0 3-.6 5.6-1.6 7.8"/><path d="M5 12a7 7 0 0 1 14 0c0 1.6-.2 3.2-.6 4.7"/><path d="M12 5a7 7 0 0 0-5 2"/></svg>';
+var ICO_CHECK = '<svg viewBox="0 0 24 24" class="ico"><polyline points="20 6 9 17 4 12"/></svg>';
+
 async function authenticate() {
     var ring = document.getElementById('fpRing');
     var icon = document.getElementById('fpIcon');
@@ -334,7 +348,7 @@ async function authenticate() {
     var status = document.getElementById('status');
 
     ring.className = 'fingerprint-ring waiting';
-    icon.innerHTML = '&#128070;';
+    icon.innerHTML = ICO_PRINT;
     btn.disabled = true;
     btn.textContent = isRemote ? 'Waiting for Touch ID on Mac...' : 'Touch the sensor...';
     status.textContent = 'Authenticating...';
@@ -346,10 +360,10 @@ async function authenticate() {
         if (data.authenticated) {
             onSuccess(data);
             ring.className = 'fingerprint-ring success';
-            icon.innerHTML = '&#9989;';
+            icon.innerHTML = ICO_CHECK;
         } else {
             ring.className = 'fingerprint-ring error';
-            icon.innerHTML = '&#128274;';
+            icon.innerHTML = ICO_LOCK;
             status.textContent = data.error || 'Authentication failed';
             status.className = 'status error';
             btn.disabled = false;
@@ -357,7 +371,7 @@ async function authenticate() {
         }
     } catch(e) {
         ring.className = 'fingerprint-ring error';
-        icon.innerHTML = '&#128274;';
+        icon.innerHTML = ICO_LOCK;
         status.textContent = 'Connection error: ' + e.message;
         status.className = 'status error';
         btn.disabled = false;
