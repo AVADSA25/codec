@@ -76,17 +76,26 @@ module.exports = {
       autorestart: true,
     },
 
-    // ── LLM + Vision Server (Qwen 3.6 via mlx_vlm) ──
+    // ── LLM + Vision Server (via mlx_vlm) ──
     // Single unified server on :8083 — the Qwen 3.6 35B model handles both
     // text reasoning and vision, so one mlx_vlm.server replaces the old
     // split mlx_lm(:8081) + VL(:8082) layout. config.json's llm_base_url
     // and vision_base_url both point here.
+    //
+    // WHICH model it serves comes from ~/.codec/config.json:llm_model, read by
+    // the launcher at startup — NOT from this file. That is what lets a model
+    // switch restart this process instead of swapping in-place, which is how
+    // the server's memory gets reclaimed (see codec_models.restart_server).
+    //
+    // No max_memory_restart: PM2 measures RSS, and MLX allocates GPU-backed
+    // memory that never lands in RSS. This process reads ~60 MB of RSS while
+    // holding 20 GB, so the old "8G" guard could never fire — it read as
+    // protection that did not exist. `footprint -p <pid>` is the real measure.
     {
       name: "qwen3.6",
-      script: "bash",
-      args: "-c 'python3 -m mlx_vlm.server --model mlx-community/Qwen3.6-35B-A3B-4bit --port 8083'",
+      script: "scripts/start_model_server.sh",
+      interpreter: "bash",
       cwd: __dirname,
-      max_memory_restart: "8G",
       restart_delay: 10000,
       max_restarts: 5,
       autorestart: true,

@@ -563,6 +563,8 @@ These zones break running infrastructure if changed without coordination. NEVER 
 - `~/.codec/memory.db` schema — migrations require backup + rollback plan
 - `codec_audit.py` audit envelope schema — affects 30 days of logs
 - `_HTTP_BLOCKED` list in `codec_config.py` — security boundary
+- `scripts/start_model_server.sh` + `~/.codec/config.json:llm_model` — the launcher for PM2 `qwen3.6` reads the ACTIVE model from config at startup, so a model switch works by writing config and restarting the process (`codec_models.restart_server`). Two invariants: preload by the **hub id** the clients send, never a snapshot path (mlx_vlm caches by exact identifier, so a mismatch double-loads the whole checkpoint); and do NOT re-add `max_memory_restart` — PM2 measures RSS and MLX memory is GPU-backed, so the process reads ~60 MB of RSS while holding 20 GB. `footprint -p <pid>` is the only honest measure.
+- `~/.codec/config.json:model_pm2_process` — which PM2 process a model switch restarts (default `qwen3.6`). Pointing it at the wrong service means switches restart something else and never reclaim memory.
 - PM2 process names (real list: `open-codec`, `codec-dashboard`, `codec-autopilot`, `codec-heartbeat`, `codec-dictate`, `codec-hotkey`, `codec-imessage`, `codec-mcp-http`, `codec-overlay`, `codec-telegram`, `codec-watchdog`, plus support: `kokoro-82m`, `qwen3.6`, `whisper-stt`, `cloudflared`, `ava-license`, `ava-proxy`) — break supervision if renamed
 - Port assignments in `setup_codec.py` and `~/.codec/config.json` — break multi-machine LAN setup
 - Cloudflare tunnel hostnames (configured in `~/.cloudflared/config.yml` as `codec.<your-domain>`) — break PWA access from phone

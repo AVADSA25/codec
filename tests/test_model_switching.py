@@ -19,6 +19,18 @@ if str(REPO) not in sys.path:
 import codec_models
 
 
+@pytest.fixture(autouse=True)
+def no_real_pm2(monkeypatch):
+    """Never let the suite restart the operator's actual model server.
+
+    `restart_server()` shells out to a real `pm2`, which exists on any machine
+    that runs CODEC — so an unmocked test would take the brain offline mid-run.
+    Hiding pm2 makes restart_server return its clean "switching in place"
+    failure. Tests that exercise the restart override this themselves.
+    """
+    monkeypatch.setattr(codec_models.shutil, "which", lambda _name: None)
+
+
 @pytest.fixture
 def cfg(tmp_path, monkeypatch):
     path = tmp_path / "config.json"
@@ -172,3 +184,142 @@ def test_active_model_is_shown_even_if_not_in_allowlist(tmp_path, monkeypatch):
 def test_no_allowlist_shows_everything(tmp_path, monkeypatch):
     _cfg_with(tmp_path, monkeypatch)
     assert len(codec_models.list_models()["models"]) == 3
+
+
+# ── Restart-on-switch (memory reclaim) ────────────────────────────────────────
+# A switch restarts the PM2 model process rather than swapping in-place, because
+# in-place swapping does not give the memory back (52 GB measured against a
+# 19 GB model). The restart must never be load-bearing: where PM2 is missing the
+# switch still has to happen, just without the reclaim.
+
+def test_switch_restarts_the_server_after_writing_config(cfg, monkeypatch):
+    """Order matters: the launcher reads llm_model at startup, so the config
+    must already name the NEW model when the process comes back."""
+    events = []
+
+    def fake_restart(*a, **kw):
+        events.append(("restart", json.loads(cfg.read_text())["llm_model"]))
+        return True, "restarted"
+
+    monkeypatch.setattr(codec_models, "restart_server", fake_restart)
+    monkeypatch.setattr(codec_models, "probe",
+                        lambda m, **kw: (events.append(("probe", m)), (True, "loaded"))[1])
+
+    r = codec_models.set_active("mlx-community/B")
+
+    assert r["ok"] and r["restarted"] is True
+    assert events == [("restart", "mlx-community/B"), ("probe", "mlx-community/B")], \
+        "config must be written before the restart, and probed after it"
+
+
+def test_switch_survives_a_failed_restart(cfg, monkeypatch):
+    """No pm2 (tests, CI, a hand-started server) must degrade to the old
+    in-place swap, not fail the switch."""
+    monkeypatch.setattr(codec_models, "restart_server",
+                        lambda *a, **kw: (False, "pm2 not on PATH — switching in place"))
+    monkeypatch.setattr(codec_models, "probe", lambda m, **kw: (True, "loaded in 30s"))
+
+    r = codec_models.set_active("mlx-community/B")
+
+    assert r["ok"] and r["active"] == "mlx-community/B"
+    assert r["restarted"] is False
+    assert "pm2" in r["restart_detail"]
+    assert json.loads(cfg.read_text())["llm_model"] == "mlx-community/B"
+
+
+def test_failed_switch_restarts_again_before_reverting(cfg, monkeypatch):
+    """The process that just failed to load a model is not the one to keep
+    serving from — the revert restarts too, with the old model back in config."""
+    seen = []
+    monkeypatch.setattr(codec_models, "restart_server",
+                        lambda *a, **kw: (seen.append(("restart", json.loads(cfg.read_text())["llm_model"])),
+                                          (True, "restarted"))[1])
+    monkeypatch.setattr(
+        codec_models, "probe",
+        lambda m, **kw: (seen.append(("probe", m)),
+                         (False, "HTTP 500") if m == "mlx-community/B" else (True, "reloaded"))[1])
+
+    r = codec_models.set_active("mlx-community/B")
+
+    assert r["ok"] is False and r["active"] == "mlx-community/A"
+    assert seen == [("restart", "mlx-community/B"), ("probe", "mlx-community/B"),
+                    ("restart", "mlx-community/A"), ("probe", "mlx-community/A")]
+    assert json.loads(cfg.read_text())["llm_model"] == "mlx-community/A"
+
+
+def test_unverified_switch_does_not_restart(cfg, monkeypatch):
+    """verify=False is the caller asking not to wait, and the restart is the
+    longest part of the wait."""
+    monkeypatch.setattr(codec_models, "restart_server",
+                        lambda *a, **kw: pytest.fail("must not restart when unverified"))
+    monkeypatch.setattr(codec_models, "probe",
+                        lambda m, **kw: pytest.fail("must not probe when unverified"))
+    r = codec_models.set_active("mlx-community/B", verify=False)
+    assert r["ok"] and json.loads(cfg.read_text())["llm_model"] == "mlx-community/B"
+
+
+def test_restart_server_without_pm2_is_a_clean_failure(cfg, monkeypatch):
+    monkeypatch.setattr(codec_models.shutil, "which", lambda _: None)
+    ok, detail = codec_models.restart_server()
+    assert ok is False and "pm2" in detail
+
+
+def test_restart_server_waits_for_a_new_pid_then_the_port(cfg, monkeypatch):
+    """The port lies for a moment after `pm2 restart` — the OLD process still
+    holds it. Returning on that first connect would report ready before the new
+    process exists."""
+    monkeypatch.setattr(codec_models.shutil, "which", lambda _: "/usr/bin/pm2")
+    monkeypatch.setattr(codec_models.subprocess, "run",
+                        lambda *a, **kw: __import__("types").SimpleNamespace(
+                            returncode=0, stdout="", stderr=""))
+    monkeypatch.setattr(codec_models.time, "sleep", lambda _s: None)
+
+    pids = iter([111, 111, 222, 222, 222])
+    monkeypatch.setattr(codec_models, "_pm2_pid", lambda name: next(pids, 222))
+    listens = iter([False, False, True])
+    monkeypatch.setattr(codec_models, "_is_listening",
+                        lambda h, p, **kw: next(listens, True))
+
+    ok, detail = codec_models.restart_server()
+    assert ok is True and "serving in" in detail
+
+
+def test_restart_server_reports_a_port_that_never_opens(cfg, monkeypatch):
+    monkeypatch.setattr(codec_models.shutil, "which", lambda _: "/usr/bin/pm2")
+    monkeypatch.setattr(codec_models.subprocess, "run",
+                        lambda *a, **kw: __import__("types").SimpleNamespace(
+                            returncode=0, stdout="", stderr=""))
+    monkeypatch.setattr(codec_models.time, "sleep", lambda _s: None)
+    pids = iter([111, 222])
+    monkeypatch.setattr(codec_models, "_pm2_pid", lambda name: next(pids, 222))
+    monkeypatch.setattr(codec_models, "_is_listening", lambda h, p, **kw: False)
+
+    ok, detail = codec_models.restart_server(ready_timeout=0.01)
+    assert ok is False and "never opened" in detail
+
+
+def test_restart_server_reports_a_nonzero_pm2_exit(cfg, monkeypatch):
+    monkeypatch.setattr(codec_models.shutil, "which", lambda _: "/usr/bin/pm2")
+    monkeypatch.setattr(codec_models.subprocess, "run",
+                        lambda *a, **kw: __import__("types").SimpleNamespace(
+                            returncode=1, stdout="", stderr="Process not found"))
+    ok, detail = codec_models.restart_server()
+    assert ok is False and "Process not found" in detail
+
+
+def test_restart_targets_the_configured_process_and_port(tmp_path, monkeypatch):
+    """A second machine renames the service in config.json, not in code."""
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({"model_pm2_process": "qwen-other",
+                                "llm_base_url": "http://127.0.0.1:9999/v1"}))
+    monkeypatch.setattr(codec_models, "CONFIG_PATH", str(path))
+    assert codec_models._pm2_process_name() == "qwen-other"
+    assert codec_models._host_port(codec_models._load_config()) == ("127.0.0.1", 9999)
+
+
+def test_restart_process_name_defaults(tmp_path, monkeypatch):
+    path = tmp_path / "config.json"
+    path.write_text("{}")
+    monkeypatch.setattr(codec_models, "CONFIG_PATH", str(path))
+    assert codec_models._pm2_process_name() == codec_models.DEFAULT_PM2_PROCESS
+    assert codec_models._host_port({}) == ("localhost", 8083)
