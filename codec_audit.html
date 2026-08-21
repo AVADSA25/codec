@@ -5,25 +5,26 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AUDIT STREAM — CODEC</title>
 <link rel="icon" href="/favicon.png">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg: #121215; --surface: #1a1a1d; --surface-2: #212125; --surface-3: #2a2a2e;
-  --border: #303035; --border-hover: #424248;
+  --bg: #121215; --surface: #18181b; --surface-2: #1f1f22; --surface-3: #27272a;
+  --border: #2a2a2f; --border-hover: #3a3a40;
   --text: #ececec; --text-muted: #9a9aa0; --dim: #6a6a70;
-  --accent: #E8711A; --accent-hover: #f07d2a; --accent-dim: rgba(232,113,26,0.10);
+  /* 2026 refresh: keep CODEC orange identity but warmer + calmer (was pure #E8711A) */
+  --accent: #d97757; --accent-hover: #e08766; --accent-dim: rgba(217,119,87,0.10);
   --green: #22c55e; --red: #ef4444; --yellow: #ffd740; --blue: #448aff;
   --purple: #b388ff; --cyan: #26c6da; --pink: #f06292; --teal: #26a69a;
   --amber: #ffab00; --slate: #78909c; --red-orange: #ff6e40;
-  --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  --mono: 'JetBrains Mono', 'SF Mono', monospace;
+  --font: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --mono: 'IBM Plex Mono', 'SF Mono', monospace;
   --radius-sm: 6px; --radius: 10px; --radius-lg: 14px;
 }
 [data-theme="light"] {
-  --bg: #f7f5f2; --surface: #ffffff; --surface-2: #f0ece6; --surface-3: #e8e4de;
-  --border: #d5d0ca; --border-hover: #bbb;
-  --text: #1a1a1a; --text-muted: #555; --dim: #777;
-  --accent-dim: rgba(232,113,26,0.08);
+  --bg: #faf8f5; --surface: #ffffff; --surface-2: #f2eee8; --surface-3: #ebe6df;
+  --border: #e2ddd5; --border-hover: #c8c2b8;
+  --text: #18181b; --text-muted: #52525b; --dim: #71717a;
+  --accent: #b85a3a; --accent-hover: #a04d31; --accent-dim: rgba(184,90,58,0.08);
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { font-family: var(--font); background: var(--bg); color: var(--text); height: 100%; }
@@ -124,7 +125,7 @@ body { display: flex; flex-direction: column; overflow: hidden; }
 }
 .pill.active { opacity: 1; }
 .pill[data-cat="command"]  { color: var(--accent); border-color: var(--accent); }
-.pill[data-cat="command"].active  { background: rgba(232,113,26,0.15); }
+.pill[data-cat="command"].active  { background: rgba(217,119,87,0.15); }
 .pill[data-cat="skill"]    { color: var(--green); border-color: var(--green); }
 .pill[data-cat="skill"].active    { background: rgba(34,197,94,0.15); }
 .pill[data-cat="llm"]      { color: var(--blue); border-color: var(--blue); }
@@ -238,7 +239,8 @@ body { display: flex; flex-direction: column; overflow: hidden; }
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 80px 20px; color: var(--dim);
 }
-.empty-state .empty-icon { font-size: 36px; margin-bottom: 12px; opacity: 0.3; }
+.empty-state .empty-icon { margin-bottom: 12px; opacity: 0.3; }
+.empty-state .empty-icon svg { width: 36px; height: 36px; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .empty-state h3 { font-size: 14px; font-weight: 500; margin-bottom: 6px; color: var(--text-muted); }
 .empty-state p { font-size: 12px; }
 
@@ -336,7 +338,7 @@ function openSidePanel(){document.getElementById('sidePanel').classList.add('ope
 function closeSidePanel(){document.getElementById('sidePanel').classList.remove('open');document.getElementById('sidePanelOverlay').classList.remove('open')}
 var _voiceOn=_lsGet('codec-voice')==='true';
 function toggleVoiceReply(){_voiceOn=!_voiceOn;_lsSet('codec-voice',_voiceOn);updateVoiceIcon()}
-function updateVoiceIcon(){var m1=document.getElementById('muteX1'),m2=document.getElementById('muteX2'),st=document.getElementById('voiceState');if(_voiceOn){if(m1)m1.style.display='none';if(m2)m2.style.display='none';if(st){st.textContent='ON';st.style.color='#0a0a0a';st.style.background='#E8711A'}}else{if(m1)m1.style.display='';if(m2)m2.style.display='';if(st){st.textContent='OFF';st.style.color='#888';st.style.background='#2a2a2a'}}}
+function updateVoiceIcon(){var m1=document.getElementById('muteX1'),m2=document.getElementById('muteX2'),st=document.getElementById('voiceState');if(_voiceOn){if(m1)m1.style.display='none';if(m2)m2.style.display='none';if(st){st.textContent='ON';st.style.color='#0a0a0a';st.style.background='#d97757'}}else{if(m1)m1.style.display='';if(m2)m2.style.display='';if(st){st.textContent='OFF';st.style.color='#888';st.style.background='#2a2a2a'}}}
 updateVoiceIcon();
 const CATEGORIES = [
   'command','skill','llm','auth','error','scheduled',
@@ -505,7 +507,7 @@ function renderTimeline(evts) {
   if (!evts.length) {
     container.innerHTML = `
       <div class="empty-state">
-        <div class="empty-icon">&#128269;</div>
+        <div class="empty-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
         <h3>No events found</h3>
         <p>Try adjusting your filters, time range, or search query.</p>
       </div>`;
