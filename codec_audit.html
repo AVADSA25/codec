@@ -314,10 +314,28 @@ body { display: flex; flex-direction: column; overflow: hidden; }
 </div>
 
 <script>
+/* Safe storage accessors — use these, never localStorage/sessionStorage directly.
+
+   Storage access THROWS when blocked; it does not return null. Safari private
+   mode, a hardened profile, and an iframe whose third-party storage is blocked
+   all raise on the FIRST touch. An unguarded read at the top level of a script
+   therefore kills that entire script: every statement after it, theme init
+   included, silently never runs, and the page looks fine while being half-dead.
+   That is exactly what happened to cortex, which the dashboard embeds in an
+   iframe. Reads degrade to null, writes to no-ops — a page with no persisted
+   preferences beats a page with no JavaScript. */
+function _lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
+function _lsSet(k,v){try{localStorage.setItem(k,v)}catch(e){}}
+function _lsDel(k){try{localStorage.removeItem(k)}catch(e){}}
+function _ssGet(k){try{return sessionStorage.getItem(k)}catch(e){return null}}
+function _ssSet(k,v){try{sessionStorage.setItem(k,v)}catch(e){}}
+function _ssDel(k){try{sessionStorage.removeItem(k)}catch(e){}}
+</script>
+<script>
 function openSidePanel(){document.getElementById('sidePanel').classList.add('open');document.getElementById('sidePanelOverlay').classList.add('open')}
 function closeSidePanel(){document.getElementById('sidePanel').classList.remove('open');document.getElementById('sidePanelOverlay').classList.remove('open')}
-var _voiceOn=localStorage.getItem('codec-voice')==='true';
-function toggleVoiceReply(){_voiceOn=!_voiceOn;localStorage.setItem('codec-voice',_voiceOn);updateVoiceIcon()}
+var _voiceOn=_lsGet('codec-voice')==='true';
+function toggleVoiceReply(){_voiceOn=!_voiceOn;_lsSet('codec-voice',_voiceOn);updateVoiceIcon()}
 function updateVoiceIcon(){var m1=document.getElementById('muteX1'),m2=document.getElementById('muteX2'),st=document.getElementById('voiceState');if(_voiceOn){if(m1)m1.style.display='none';if(m2)m2.style.display='none';if(st){st.textContent='ON';st.style.color='#0a0a0a';st.style.background='#E8711A'}}else{if(m1)m1.style.display='';if(m2)m2.style.display='';if(st){st.textContent='OFF';st.style.color='#888';st.style.background='#2a2a2a'}}}
 updateVoiceIcon();
 const CATEGORIES = [
@@ -348,17 +366,17 @@ function init() {
 
 // --- Theme ---
 function loadTheme() {
-  const saved = localStorage.getItem('codec-theme');
+  const saved = _lsGet('codec-theme');
   if (saved === 'light') document.documentElement.setAttribute('data-theme', 'light');
 }
 document.getElementById('themeToggle').onclick = function() {
   const isLight = document.documentElement.getAttribute('data-theme') === 'light';
   if (isLight) {
     document.documentElement.removeAttribute('data-theme');
-    localStorage.setItem('codec-theme', 'dark');
+    _lsSet('codec-theme', 'dark');
   } else {
     document.documentElement.setAttribute('data-theme', 'light');
-    localStorage.setItem('codec-theme', 'light');
+    _lsSet('codec-theme', 'light');
   }
 };
 

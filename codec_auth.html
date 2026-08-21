@@ -195,9 +195,27 @@
     </div>
 
     <script>
-function toggleTheme(){var t=document.documentElement.getAttribute('data-theme')==='light'?'dark':'light';document.documentElement.setAttribute('data-theme',t);localStorage.setItem('codec-theme',t);updateThemeIcon(t)}
+/* Safe storage accessors — use these, never localStorage/sessionStorage directly.
+
+   Storage access THROWS when blocked; it does not return null. Safari private
+   mode, a hardened profile, and an iframe whose third-party storage is blocked
+   all raise on the FIRST touch. An unguarded read at the top level of a script
+   therefore kills that entire script: every statement after it, theme init
+   included, silently never runs, and the page looks fine while being half-dead.
+   That is exactly what happened to cortex, which the dashboard embeds in an
+   iframe. Reads degrade to null, writes to no-ops — a page with no persisted
+   preferences beats a page with no JavaScript. */
+function _lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
+function _lsSet(k,v){try{localStorage.setItem(k,v)}catch(e){}}
+function _lsDel(k){try{localStorage.removeItem(k)}catch(e){}}
+function _ssGet(k){try{return sessionStorage.getItem(k)}catch(e){return null}}
+function _ssSet(k,v){try{sessionStorage.setItem(k,v)}catch(e){}}
+function _ssDel(k){try{sessionStorage.removeItem(k)}catch(e){}}
+</script>
+<script>
+function toggleTheme(){var t=document.documentElement.getAttribute('data-theme')==='light'?'dark':'light';document.documentElement.setAttribute('data-theme',t);_lsSet('codec-theme',t);updateThemeIcon(t)}
 function updateThemeIcon(t){document.getElementById('themeIco').innerHTML=t==='light'?'<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>':'<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>'}
-(function(){var s=localStorage.getItem('codec-theme');if(s==='light'){document.documentElement.setAttribute('data-theme','light');updateThemeIcon('light')}})();
+(function(){var s=_lsGet('codec-theme');if(s==='light'){document.documentElement.setAttribute('data-theme','light');updateThemeIcon('light')}})();
 
 var isRemote = location.hostname !== 'localhost' && location.hostname !== '127.0.0.1';
 if (isRemote) {
@@ -425,7 +443,7 @@ function completeLogin() {
     if (location.protocol === 'https:') _ck += '; Secure';
     document.cookie = _ck;
     // Also store in sessionStorage as fallback (Android Chrome may not persist cookies)
-    try { sessionStorage.setItem('codec_session', _pendingToken); } catch(e) {}
+    try { _ssSet('codec_session', _pendingToken); } catch(e) {}
     // CSRF double-submit token (readable by JS, paired with x-csrf-token header)
     var _csrf = _pendingToken.substring(0, 16);
     document.cookie = 'codec_csrf=' + _csrf + '; path=/; max-age=' + _exp + '; SameSite=Lax';
@@ -447,7 +465,7 @@ function _e2eNegotiateAuth() {
     return crypto.subtle.generateKey({name:'ECDH',namedCurve:'P-256'},true,['deriveBits']).then(function(kp){
         return crypto.subtle.exportKey('raw',kp.publicKey).then(function(pub){
             return fetch('/api/auth/keyexchange',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pub:_b64(pub)})}).then(function(r){return r.json()}).then(function(d){
-                if(d.pub){sessionStorage.setItem('_e2eReady','1')}
+                if(d.pub){_ssSet('_e2eReady','1')}
             });
         });
     }).catch(function(e){console.warn('E2E key exchange skipped:',e)});
