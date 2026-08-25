@@ -153,6 +153,39 @@ def discover_local() -> List[Dict[str, Any]]:
     return out
 
 
+def _extra_models(cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Operator-declared models that discovery cannot find on its own.
+
+    `discover_local()` only surfaces `mlx-community/` checkpoints sitting in the
+    HF cache. A locally fine-tuned/fused model lives at an arbitrary path and has
+    no such namespace, so it would never appear in the picker. `extra_models` in
+    config.json lets the operator register one explicitly:
+
+        "extra_models": [
+          {"id": "/abs/path/to/model", "label": "Fred (Gutenberg 4B)", "size_gb": 2.1}
+        ]
+
+    The `id` is passed verbatim as the OpenAI `model` field, so the mlx server
+    loads it by path exactly as it loads a hub id. `label`/`size_gb` are optional.
+    Malformed entries are skipped rather than breaking the whole picker.
+    """
+    raw = cfg.get("extra_models")
+    out: List[Dict[str, Any]] = []
+    if not isinstance(raw, list):
+        return out
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        mid = item.get("id")
+        if not isinstance(mid, str) or not mid:
+            continue
+        entry: Dict[str, Any] = {"id": mid, "label": item.get("label") or _friendly(mid)}
+        size = item.get("size_gb")
+        entry["size_gb"] = size if isinstance(size, (int, float)) else None
+        out.append(entry)
+    return out
+
+
 def _visible_ids(cfg: Dict[str, Any]) -> Optional[set]:
     """Optional operator allowlist: `models_visible` in config.json.
 
@@ -189,6 +222,12 @@ def list_models() -> Dict[str, Any]:
         # The active model is always shown, even if it was removed from the
         # allowlist — hiding what CODEC is currently running would be a lie.
         models = [m for m in models if m["id"] in allow or m["id"] == active]
+    for em in _extra_models(cfg):
+        # Operator-declared: bypass the discovery allowlist, exactly as the
+        # active model does — hiding a model the operator explicitly registered
+        # would be a lie.
+        if not any(m["id"] == em["id"] for m in models):
+            models.append(em)
     for m in models:
         m["role"] = roles.get(m["id"], "")
         m["active"] = (m["id"] == active)

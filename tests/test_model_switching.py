@@ -323,3 +323,33 @@ def test_restart_process_name_defaults(tmp_path, monkeypatch):
     monkeypatch.setattr(codec_models, "CONFIG_PATH", str(path))
     assert codec_models._pm2_process_name() == codec_models.DEFAULT_PM2_PROCESS
     assert codec_models._host_port({}) == ("localhost", 8083)
+
+
+def test_extra_models_appear_in_picker(cfg):
+    """An operator-declared model at a custom path is offered even though
+    discover_local() (HF-cache/mlx-community only) can never find it."""
+    import json as _json
+    data = _json.loads(cfg.read_text())
+    data["extra_models"] = [
+        {"id": "/abs/model-current", "label": "Fred (Gutenberg 4B)", "size_gb": 2.1}
+    ]
+    cfg.write_text(_json.dumps(data))
+    listed = codec_models.list_models()
+    fred = [m for m in listed["models"] if m["id"] == "/abs/model-current"]
+    assert fred, "extra model missing from picker"
+    assert fred[0]["label"] == "Fred (Gutenberg 4B)"
+    assert fred[0]["active"] is False
+    # switching to it must be permitted (id is known to the registry)
+    assert any(m["id"] == "/abs/model-current" for m in listed["models"])
+
+
+def test_extra_model_can_be_active(cfg):
+    import json as _json
+    data = _json.loads(cfg.read_text())
+    data["llm_model"] = "/abs/model-current"
+    data["extra_models"] = [{"id": "/abs/model-current", "label": "Fred"}]
+    cfg.write_text(_json.dumps(data))
+    listed = codec_models.list_models()
+    assert listed["active"] == "/abs/model-current"
+    fred = [m for m in listed["models"] if m["id"] == "/abs/model-current"]
+    assert fred and fred[0]["active"] is True
