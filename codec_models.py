@@ -382,6 +382,9 @@ def set_active(model_id: str, verify: bool = True) -> Dict[str, Any]:
     known = {m["id"] for m in discover_local()}
     if allow:
         known &= allow            # hidden models are not switchable either
+    # Operator-declared models are switchable by definition — they exist only
+    # because the operator registered them (see _extra_models / list_models).
+    known |= {em["id"] for em in _extra_models(cfg)}
     known |= {previous}
     if model_id not in known:
         return {"ok": False, "error": f"unknown model: {model_id}",

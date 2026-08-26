@@ -340,7 +340,14 @@ def test_extra_models_appear_in_picker(cfg):
     assert fred[0]["label"] == "Fred (Gutenberg 4B)"
     assert fred[0]["active"] is False
     # switching to it must be permitted (id is known to the registry)
-    assert any(m["id"] == "/abs/model-current" for m in listed["models"])
+    import codec_models as cm
+    cm.probe_orig = cm.probe
+    cm.probe = lambda m, **kw: (True, "loaded")
+    try:
+        r = cm.set_active("/abs/model-current")
+    finally:
+        cm.probe = cm.probe_orig
+    assert r["ok"], r
 
 
 def test_extra_model_can_be_active(cfg):
