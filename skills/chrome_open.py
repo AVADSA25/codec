@@ -56,8 +56,15 @@ def run(task, app="", ctx=""):
                     url = shortcut_url
                     break
 
-        # Just open new tab if no URL found
+        # No URL/shortcut resolved. Only open a blank tab when the user
+        # explicitly asked for one — a trigger substring inside a longer
+        # sentence ("...you go to paradise or hell...") is not a request to
+        # open Chrome. Returning None lets dispatch fall through to the LLM
+        # (run_skill treats None as "can't handle").
         if not url:
+            explicit = ("new tab", "open tab", "open chrome", "open a tab")
+            if not any(t in task_lower for t in explicit):
+                return None
             script = 'tell application "Google Chrome" to activate'
             subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=5)
             script2 = 'tell application "Google Chrome" to make new tab at end of tabs of front window'
