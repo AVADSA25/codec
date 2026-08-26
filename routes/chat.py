@@ -1035,7 +1035,22 @@ async def chat_completion(request: Request):
                 if _cs_kind == "build":
                     out["skill_confirm"] = {"description": _cs_desc}
                 return out
-            skill_name, skill_result = await asyncio.to_thread(_try_skill, last_user_text)
+            # Persona models (config extra_models[].system_prompt*) own the
+            # whole turn: the user is talking TO the persona, and a keyword
+            # hijack silently replaces its answer with a skill result. Measured
+            # cost: "…you go to paradise or hell…" opened Chrome tabs, and
+            # "take a look at the attached…" fired web_search into DuckDuckGo
+            # rate-limit pages — the user saw no reply at all. Skills remain
+            # fully available on the operator persona (the everyday model).
+            try:
+                import codec_models as _cm_persona
+                _has_persona = bool(_cm_persona.model_extras().get("system_prompt"))
+            except Exception:
+                _has_persona = False
+            if _has_persona:
+                skill_name, skill_result = None, None
+            else:
+                skill_name, skill_result = await asyncio.to_thread(_try_skill, last_user_text)
             if skill_result:
                 _budget.consume("skill_hijack")   # pre-LLM hijack consumes 1
                 log.info(f"[Chat] Skill '{skill_name}' handled: {skill_result[:80]}")
