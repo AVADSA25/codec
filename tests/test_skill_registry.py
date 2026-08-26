@@ -369,3 +369,50 @@ def test_load_no_manifest_treats_dir_as_untrusted(tmp_path):
 
     assert result is None
     assert _was_block_event_emitted(mock_log_event)
+
+
+# ── D-1 gate: every built-in skill must actually LOAD ─────────────────────────
+
+def test_every_builtin_skill_loads_under_the_manifest_gate():
+    """A stale manifest does not just fail CI — it kills the skill at runtime.
+
+    On 2026-08-26 `skills/chrome_open.py` was edited and pushed to main without
+    regenerating `skills/.manifest.json`. Its hash no longer matched, so
+    `SkillRegistry.load` fell through to the AST gate, which refused it for
+    `import subprocess`. chrome_open was dead on the live machine while the only
+    signal was a red CI step named "Trusted-skill manifest is current".
+
+    `generate_skill_manifest.py --check` catches the drift. This catches the
+    CONSEQUENCE, in the normal suite, so it also fires for anyone who runs
+    pytest without the bespoke CI step — including on a branch that never
+    opened a PR, which is exactly how that break reached main.
+    """
+    import codec_skill_registry
+
+    skills_dir = REPO / "skills"
+    registry = codec_skill_registry.SkillRegistry(str(skills_dir))
+    try:
+        registry.scan()
+    except Exception:
+        pass
+
+    # Iterate the REGISTRY, not the filenames: a skill's registered name comes
+    # from its SKILL_NAME, which is not always the file stem (time_date.py
+    # registers as "time"). Keying on the stem would report healthy skills as
+    # missing and make this test lie in both directions.
+    names = registry.names()
+    assert names, "registry scanned no skills — the test would pass vacuously"
+
+    refused = []
+    for name in sorted(names):
+        try:
+            if registry.load(name) is None:
+                refused.append(name)
+        except Exception as exc:  # a raising skill is also a broken skill
+            refused.append(f"{name} ({type(exc).__name__})")
+
+    assert not refused, (
+        "these built-in skills are refused at load time and are DEAD at runtime: "
+        f"{refused}. If you edited a skill, run "
+        "`python3 tools/generate_skill_manifest.py --write` and commit the diff."
+    )
