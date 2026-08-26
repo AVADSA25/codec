@@ -730,8 +730,14 @@ def _build_chat_system_prompt(config: dict, budget, has_attachment: bool,
         log.debug("model persona lookup failed: %s", e)
     if _persona:
         # Persona text is user-authored and may contain braces — never .format it.
-        return _persona.replace("{date}", _dt.now().strftime("%A, %B %d, %Y"))
-    sys_prompt = _chat_prompt.format(date=_dt.now().strftime("%A, %B %d, %Y"))
+        # Swap only the BASE: everything downstream (budget accounting, the
+        # attachment "content is embedded in the message" instruction, observer
+        # injection) must still run. Returning early here cost a real bug —
+        # with a PDF attached, the model was never told the document text was in
+        # the turn, so it answered about the request instead of the paper.
+        sys_prompt = _persona.replace("{date}", _dt.now().strftime("%A, %B %d, %Y"))
+    else:
+        sys_prompt = _chat_prompt.format(date=_dt.now().strftime("%A, %B %d, %Y"))
     # Standing rules the user actually saved (codec_standing_rules). Appended,
     # never replacing — a user rule must not silently discard CODEC's identity
     # or safety framing. This is what makes "saved" an honest answer.
