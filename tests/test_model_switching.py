@@ -360,3 +360,35 @@ def test_extra_model_can_be_active(cfg):
     assert listed["active"] == "/abs/model-current"
     fred = [m for m in listed["models"] if m["id"] == "/abs/model-current"]
     assert fred and fred[0]["active"] is True
+
+
+def test_model_extras_reads_persona_and_sampling(cfg, tmp_path):
+    """A persona model carries its own prompt + sampling; the everyday model
+    gets neither (empty override), so CODEC's operator prompt still applies."""
+    import json as _json
+    persona = tmp_path / "persona.txt"
+    persona.write_text("You are Fred. Braces {like this} must not break formatting.")
+    data = _json.loads(cfg.read_text())
+    data["llm_model"] = "/abs/model-current"
+    data["extra_models"] = [{
+        "id": "/abs/model-current", "label": "Fred",
+        "system_prompt_file": str(persona),
+        "sampling": {"repetition_penalty": 1.2, "repetition_context_size": 512},
+    }]
+    cfg.write_text(_json.dumps(data))
+    x = codec_models.model_extras()
+    assert x["system_prompt"].startswith("You are Fred.")
+    assert x["sampling"] == {"repetition_penalty": 1.2, "repetition_context_size": 512}
+    # a model with no entry gets no override
+    assert codec_models.model_extras("mlx-community/A") == {"system_prompt": None, "sampling": {}}
+
+
+def test_model_extras_survives_missing_prompt_file(cfg):
+    """A bad path degrades to 'no persona' instead of breaking the chat turn."""
+    import json as _json
+    data = _json.loads(cfg.read_text())
+    data["llm_model"] = "/abs/model-current"
+    data["extra_models"] = [{"id": "/abs/model-current",
+                             "system_prompt_file": "/nope/missing.txt"}]
+    cfg.write_text(_json.dumps(data))
+    assert codec_models.model_extras()["system_prompt"] is None

@@ -186,6 +186,48 @@ def _extra_models(cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
     return out
 
 
+def model_extras(model_id: Optional[str] = None,
+                 config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Per-model overrides declared alongside an `extra_models` entry.
+
+    A locally fine-tuned model is not a drop-in for the everyday one: CODEC's
+    operator prompt turns a 4B persona model into a skill-dispatcher (measured:
+    it answered a philosophy question with two [SKILL:web_search] tags and
+    nothing else), and MLX sampling knobs that a 35B does not need — notably
+    repetition_penalty — are what keep a small model from collapsing into a
+    refrain. So an entry may carry:
+
+        {"id": "...", "label": "...",
+         "system_prompt_file": "~/path/persona.txt",   # or "system_prompt": "..."
+         "sampling": {"repetition_penalty": 1.2, "repetition_context_size": 512}}
+
+    Returns {"system_prompt": str|None, "sampling": dict}. Never raises: a bad
+    path or malformed entry degrades to "no override" rather than breaking chat.
+    """
+    cfg = config if config is not None else _load_config()
+    mid = model_id or get_active(cfg)
+    out: Dict[str, Any] = {"system_prompt": None, "sampling": {}}
+    for em in (cfg.get("extra_models") or []):
+        if not isinstance(em, dict) or em.get("id") != mid:
+            continue
+        sp = em.get("system_prompt")
+        path = em.get("system_prompt_file")
+        if not sp and isinstance(path, str) and path:
+            try:
+                with open(os.path.expanduser(path)) as f:
+                    sp = f.read().strip()
+            except OSError:
+                sp = None
+        if isinstance(sp, str) and sp.strip():
+            out["system_prompt"] = sp.strip()
+        sampling = em.get("sampling")
+        if isinstance(sampling, dict):
+            out["sampling"] = {k: v for k, v in sampling.items()
+                               if isinstance(k, str) and isinstance(v, (int, float, str, bool))}
+        break
+    return out
+
+
 def _visible_ids(cfg: Dict[str, Any]) -> Optional[set]:
     """Optional operator allowlist: `models_visible` in config.json.
 

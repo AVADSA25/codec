@@ -717,6 +717,20 @@ def _build_chat_system_prompt(config: dict, budget, has_attachment: bool,
     from codec_dashboard import CHAT_SYSTEM_PROMPT
     _overrides = _load_prompt_overrides()
     _chat_prompt = _overrides.get("chat", CHAT_SYSTEM_PROMPT)
+    # A persona model (config extra_models[].system_prompt_file) speaks as
+    # itself, not as CODEC: the operator prompt makes a small fine-tune answer
+    # in [SKILL:...] tags instead of prose. Its prompt replaces the base and
+    # skips the skill/step-budget scaffolding below, which only exists for the
+    # tool-driven operator persona.
+    _persona = None
+    try:
+        import codec_models
+        _persona = codec_models.model_extras().get("system_prompt")
+    except Exception as e:
+        log.debug("model persona lookup failed: %s", e)
+    if _persona:
+        # Persona text is user-authored and may contain braces — never .format it.
+        return _persona.replace("{date}", _dt.now().strftime("%A, %B %d, %Y"))
     sys_prompt = _chat_prompt.format(date=_dt.now().strftime("%A, %B %d, %Y"))
     # Standing rules the user actually saved (codec_standing_rules). Appended,
     # never replacing — a user rule must not silently discard CODEC's identity
@@ -1103,6 +1117,13 @@ async def chat_completion(request: Request):
         # wins (matches the old chat_template_kwargs assignment after the update).
         _extra = {"top_p": 0.9, "frequency_penalty": 1.1,
                   **{k: v for k, v in kwargs.items() if k != "chat_template_kwargs"}}
+        # Per-model sampling (config extra_models[].sampling) — a small local
+        # fine-tune needs repetition_penalty that the everyday model does not.
+        try:
+            import codec_models as _cm
+            _extra.update(_cm.model_extras(model).get("sampling") or {})
+        except Exception as _e:
+            log.debug("model sampling lookup failed: %s", _e)
         # 2026-07 chat-visibility fix: max_tokens + timeout are operator-tunable
         # via ~/.codec/config.json:chat.{max_tokens, llm_timeout_s}. Note the
         # cap includes <think> tokens when thinking mode is on — deep answers
