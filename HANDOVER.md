@@ -1,6 +1,44 @@
 # HANDOVER — CODEC buyer journey
 
-**Last updated:** 2026-08-20 · session: design system, model switching, reply stats, CLAUDE.md split
+**Last updated:** 2026-09-03 · session: Mac app ships, licence leak closed, four CODEC PRs
+
+## 2026-09-03 — the Mac app: from "installs and does nothing" to a menu-bar item that serves HTTP
+
+**State: main @ 3e98681. codec-repo clean. ava-stack `harden/installer-and-subscription-filter`
+pushed (c020321), NOT merged — it touches license-server money paths and needs a look
+before main. Fleet untouched throughout.**
+
+### What shipped
+- **#327** model switch restarts the PM2 process — footprint 20→peak 39 GB before, peak==current after.
+- **#328** localStorage shim on all 8 surfaces; pytest no longer writes 315 lines/run into the real audit log.
+- **#329** design system on auth/audit/tasks; phantom Inter font tokens on vibe/voice.
+- **#332** trusted-skill manifest regenerated — chrome_open was DEAD live (hash mismatch → AST gate).
+- **#335** the packaged app runs. Six root causes, all in the commit message. G6 proves it: bundled
+  interpreter + bundled sources served HTTP 200 on :8099 with the port asserted free first.
+
+### Licences
+- Dr. Jansen's leaked CODEC licence revoked via /admin/revoke (was resurrected 2026-08-07 by an
+  unfiltered `customer.subscription.updated`; that door is now closed in ava-stack).
+- Mickael's own licence (db80be4b) reactivated and hardware-bound to this Mac.
+
+### Do not repeat
+- `git stash -u` sweeps UNTRACKED files — it stashed the installer's AppIcon.icns and every
+  build after had no logo. Check `git status` for `??` before stashing.
+- Never import inside the bundled Python without `-B`: it writes .pyc into the signed bundle.
+- Removing a worktree deletes its `dist/` — check nothing is still reading from it.
+- Both hosts `codec-license.avadigital.ai` and `ava-license.lucyvpa.com` resolve to the same IP;
+  the domain migration is COMPLETE. The memory note saying "gated on DNS" is stale.
+
+### Open
+1. ava-stack branch review + merge (money path).
+2. Installer should bundle the CODEC app in its own Resources/ — today `installApp()` no-ops
+   when the installer is run from /Applications alone. Mickael's app was hand-copied.
+3. `routes/auth.py` writes unsigned plaintext into the HMAC audit log → `audit_verify`
+   reports integrity_ok=False on the live machine. Logged in docs/known-issues.md.
+4. Demo narration script (item 3 from 08-20) — still unwritten.
+5. Active model is whatever config says — it was Fréd at one point; check before recording.
+
+---
 
 ## 2026-08-20 — five surfaces on one design system; model switching shipped
 
