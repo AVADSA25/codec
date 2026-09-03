@@ -34,8 +34,16 @@ argon2-cffi>=25.1.0
 # Optional: TTS (Kokoro 82M — Apple Silicon)
 # mlx-audio misaki num2words phonemizer-fork spacy
 
+# The dashboard, MCP HTTP transport and every route module import these
+# UNCONDITIONALLY (codec_dashboard.py line 9). They were listed only inside the
+# "Optional: STT" comment below, so a bundled interpreter never got them and the
+# packaged app died with ModuleNotFoundError: No module named 'fastapi' — while
+# the build machine looked fine, because the dev environment had them already.
+fastapi>=0.115.0
+uvicorn>=0.35.0
+
 # Optional: STT (Whisper via MLX)
-# mlx-whisper fastapi uvicorn
+# mlx-whisper
 
 # Optional: Google Workspace integration
 # google-auth google-auth-oauthlib google-api-python-client

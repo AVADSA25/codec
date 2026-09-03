@@ -39,6 +39,42 @@ def bundle_contents() -> str | None:
     return None
 
 
+class EphemeralLocationError(RuntimeError):
+    """The app is running from somewhere its own paths will not survive."""
+
+
+def refuse_if_ephemeral(contents: str | None) -> None:
+    """Refuse to write LaunchAgents that point at a volume the user will eject.
+
+    Incident 2026-09-03. The app was launched from the mounted installer DMG, so
+    every generated plist baked in
+    `/Volumes/CODEC Installer 1/Sovereign AI Workstation.app/...`. The moment the
+    image was ejected — which every user does immediately — all 14 services
+    failed with exit 78 and the product was silently dead, with the install
+    still reporting success.
+
+    LaunchAgents record ABSOLUTE paths, so they are only as durable as the
+    location the app occupied when they were written. Writing them from a
+    removable or read-only volume is never correct; failing loudly here is far
+    cheaper than a fleet that dies on eject.
+    """
+    if not contents:
+        return
+    app_path = os.path.dirname(contents)
+    real = os.path.realpath(app_path)
+    if real.startswith("/Volumes/"):
+        raise EphemeralLocationError(
+            f"CODEC is running from {real}, a mounted volume. Service definitions "
+            "written from here would break as soon as it is ejected. Move CODEC "
+            "into /Applications and open it from there."
+        )
+    if "/AppTranslocation/" in real:
+        raise EphemeralLocationError(
+            "macOS is running CODEC from a temporary randomised location (App "
+            "Translocation). Move it into /Applications and open it from there."
+        )
+
+
 def launchagent_args(contents: str | None) -> list[str]:
     """Extra args for install_launchagents.sh when running inside the .app.
 
@@ -188,6 +224,11 @@ def run(home: str, *, dry_run: bool = False, yes: bool = False,
 
     os.makedirs(home, exist_ok=True)
     os.makedirs(os.path.expanduser("~/Library/Logs/CODEC"), exist_ok=True)
+
+    # Before writing anything: LaunchAgents bake in absolute paths, so refuse
+    # outright if the app is somewhere those paths will not outlive (a mounted
+    # DMG, a translocated copy). See refuse_if_ephemeral.
+    refuse_if_ephemeral(bundle_contents())
 
     install = ["bash", os.path.join(HERE, "launchd", "install_launchagents.sh")]
     install += launchagent_args(bundle_contents())

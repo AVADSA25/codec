@@ -82,8 +82,41 @@ fi
 printf 'APPL????' > "$CONTENTS/PkgInfo"
 
 # --- launcher + entry point -----------------------------------------------
-cp "$LAUNCHER_SRC" "$CONTENTS/MacOS/codec"          # CFBundleExecutable = codec
+# CFBundleExecutable MUST be a Mach-O binary, not a script. macOS attaches
+# entitlements only to Mach-O executables, so signing a script-headed bundle is
+# accepted and silently ignored — which left the app with hardened runtime and
+# ZERO entitlements, and therefore no way to ever be granted a microphone.
+# See launcher/codec_launcher.swift for the full account.
+LAUNCHER_SWIFT="$PKG_DIR/launcher/codec_launcher.swift"
+if [ -f "$LAUNCHER_SWIFT" ]; then
+    echo "==> compiling Mach-O launcher"
+    SWIFTC_ARGS=(-O -o "$CONTENTS/MacOS/codec" "$LAUNCHER_SWIFT")
+    [ -n "${ARCH:-}" ] && case "$ARCH" in
+        aarch64) SWIFTC_ARGS=(-target arm64-apple-macos13.0 "${SWIFTC_ARGS[@]}") ;;
+        x86_64)  SWIFTC_ARGS=(-target x86_64-apple-macos13.0 "${SWIFTC_ARGS[@]}") ;;
+    esac
+    swiftc "${SWIFTC_ARGS[@]}"
+    # Fail loudly: a script here silently disables every entitlement.
+    file "$CONTENTS/MacOS/codec" | grep -q "Mach-O" || {
+        echo "build_app.sh: launcher is not Mach-O — entitlements would be ignored" >&2; exit 1; }
+    echo "    ✓ Mach-O launcher (entitlements will apply)"
+else
+    echo "build_app.sh: launcher source missing: $LAUNCHER_SWIFT" >&2
+    exit 1
+fi
 chmod +x "$CONTENTS/MacOS/codec"
+
+# --- app icon ---------------------------------------------------------------
+# There was no icon step at all, so Contents/Resources held no .icns and the
+# Dock, Finder and Launchpad all showed a blank generic tile.
+APP_ICON_SRC="$PKG_DIR/AppIcon.icns"
+if [ -f "$APP_ICON_SRC" ]; then
+    cp "$APP_ICON_SRC" "$CONTENTS/Resources/AppIcon.icns"
+    echo "    ✓ AppIcon.icns embedded ($(du -h "$APP_ICON_SRC" | cut -f1))"
+else
+    echo "build_app.sh: no icon at $APP_ICON_SRC — refusing to ship a blank tile" >&2
+    exit 1
+fi
 cp "$ENTRY_SRC" "$CONTENTS/Resources/codec_app_main.py"
 
 # --- CODEC Python application surface --------------------------------------

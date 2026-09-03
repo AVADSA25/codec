@@ -13,6 +13,11 @@
     <string>CODEC</string>
     <key>CFBundleDisplayName</key>
     <string>Sovereign AI Workstation</string>
+    <!-- Names the .icns that build_app.sh copies into Resources. Declaring it
+         is not enough on its own: the file must actually be in the bundle, or
+         the Dock shows a blank tile with no error. -->
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundleExecutable</key>
     <string>codec</string>
     <key>CFBundlePackageType</key>
