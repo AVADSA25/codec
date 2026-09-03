@@ -213,3 +213,17 @@ proper event names (`auth_success`, `auth_failed`, `totp_enabled`, ...), then
 re-run `verify_audit_log()` to confirm `integrity_ok` goes true. The two
 existing broken lines stay — §6 forbids hand-editing the log, and per-line HMAC
 cannot detect a deletion anyway.
+
+## `_bootstrap_fleet` bypasses the ephemeral-location guard (2026-09-03)
+
+`packaging/macos/first_run.py` now refuses to write LaunchAgents when the app runs
+from a removable or translocated location (#335). But
+`launcher/codec_app_main.py:_bootstrap_fleet` — the "launchd forgot the agents,
+re-install them" path — calls `launchd/install_launchagents.sh` DIRECTLY, skipping
+`first_run.py` and therefore the guard. An app launched from a mounted DMG with
+zero agents loaded would bake `/Volumes/...` paths again. Fix: move
+`refuse_if_ephemeral` into `install_launchagents.sh` (or call it from
+`_bootstrap_fleet`) so every writer of a plist is covered. Also note: on a machine
+running the PM2 dev fleet, `_bootstrap_fleet` starts the same services on the same
+ports — the packaged app cannot be launched on the dev box without a port fight,
+so packaged-app testing belongs on the Mac Air.
