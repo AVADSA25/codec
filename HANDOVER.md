@@ -1,6 +1,44 @@
 # HANDOVER — CODEC buyer journey
 
-**Last updated:** 2026-09-04 · session: LiteLLM restored, notifications/theme fixed, launcher proven via System Events
+**Last updated:** 2026-09-04 pm · native window, connect screen, one key slot, text size
+
+## 2026-09-04 (pm) — a real window, a connect screen, and the false green that almost shipped
+
+**State: main @ c3f840b, clean. ava-stack `harden/...` at ff6b4a9, pushed, NOT merged.**
+
+### Shipped
+- **#346** native WKWebView window — the app is no longer a Chrome tab. Links out go
+  to the real browser; closing the window keeps the agent alive; Dock icon returns it.
+  (It sat UNCOMMITTED in a worktree for hours after being installed and verified — a build
+  from main would have shipped without it. Always check `git status` in every worktree
+  before building from main.)
+- **#342** first-run "Connect your AI": local / AVA cloud / any OpenAI-compatible URL. Only a
+  real reply from the endpoint clears it. Fixed the underlying default: chat fell back to
+  the 20 GB Qwen3.6 that a fresh install never downloads — every first message failed.
+- **#343** setup and chat now read ONE Keychain slot. The first cut stored keys privately,
+  verify() went green, chat sent no bearer → 401. A false green from the screen built to
+  prevent false greens. Also: local option disabled with a reason when no server can answer.
+- **#344** text size S/M/L, default M (1.15 zoom), all 8 surfaces.
+- LiteLLM restored after my `git stash -u` took its untracked gateway/ dir (memory note).
+
+### Verified live
+AVA proxy answers the licence JWT with READY. Mickael connected his own local model
+through the screen: `/api/setup/status → connected: true`.
+
+### Needs Mickael — product decision
+"Use the local model" cannot work on a buyer's Mac: the bundle has no mlx_vlm and the
+model-server script needs a venv only the dev machine has. Bundling the serving stack is
+~+900 MB (273 MB → ~1.2 GB download). Until decided, the screen disables that option
+honestly. AVA cloud is the working zero-friction path today.
+
+### Open
+1. ava-stack branch review + merge (money path). Installer DMG must be rebuilt to bundle
+   the new app (window + connect screen) — the shipped DMG is from Sep 3.
+2. `_fleet_loaded()` false positive; `_bootstrap_fleet` bypasses the ephemeral guard.
+3. Auth route writes unsigned lines into the HMAC audit log.
+4. Demo narration script.
+
+---
 
 ## 2026-09-04 — four user reports, one shared root cause, and the launcher proven by macOS itself
 
