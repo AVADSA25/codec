@@ -21,8 +21,14 @@
          launched through `open`/LaunchServices the runtime call left the app
          in the Dock with no status item (observed 2026-09-04: System Events
          reported background-only=false and no menu bar 2). -->
-    <key>LSUIElement</key>
-    <true/>
+    <!-- The dashboard is served over plain http on loopback; ATS blocks that
+         by default and the WKWebView would show a blank window. Scoped to
+         localhost only — no general cleartext exemption. -->
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleExecutable</key>

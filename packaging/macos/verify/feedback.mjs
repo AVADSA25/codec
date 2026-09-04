@@ -19,10 +19,24 @@ if (!/Open CODEC Dashboard/.test(s)) fail.push("no route to the dashboard, so a 
 if (!/terminationStatus != 0/.test(s)) fail.push("child exit status is never checked");
 if (!/Show Logs/.test(s)) fail.push("no way to reach the logs from the failure alert");
 if (!/openDashboard\(\)/.test(s.split("guard !outcome.ok else {")[1] || "")) fail.push("a successful start opens nothing");
-// LSUIElement in the SHIPPED plist: runtime setActivationPolicy alone left the
-// app in the Dock with no status item when launched via `open`.
-const plist = join(dirname(pkg), "macos/Info.plist");
-if (!/<key>LSUIElement<\/key>\s*<true\/>/.test(readFileSync(plist, "utf8"))) fail.push("Info.plist lacks LSUIElement=true");
+// The app owns a real window now, so it must NOT be LSUIElement (that hides it
+// from the Dock and app switcher) and must declare the localhost ATS exemption,
+// without which the WKWebView renders a blank window over plain-http loopback.
+const plist = readFileSync(join(dirname(pkg), "macos/Info.plist"), "utf8");
+if (/<key>LSUIElement<\/key>\s*<true\/>/.test(plist))
+  fail.push("LSUIElement=true hides a windowed app from the Dock");
+if (!/NSAllowsLocalNetworking/.test(plist))
+  fail.push("no ATS localhost exemption — the dashboard window would be blank");
+// The dashboard must render IN the app, not be handed to a browser.
+const win = join(pkg, "launcher/DashboardWindow.swift");
+if (!existsSync(win)) fail.push("no DashboardWindow.swift — the UI would still be a browser tab");
+else {
+  const w = readFileSync(win, "utf8");
+  if (!/WKWebView/.test(w)) fail.push("dashboard window does not embed a web view");
+  if (!/decidePolicyFor/.test(w)) fail.push("no navigation policy — the window would act as an open browser");
+}
+if (/NSWorkspace\.shared\.open\(URL\(string: "http:\/\/127\.0\.0\.1:8090/.test(s))
+  fail.push("still opens the dashboard in an external browser");
 
 if (fail.length) { console.error("G5 FAILED:\n - " + fail.join("\n - ")); process.exit(1); }
 console.log("UNLAZY-G5-PASS");
