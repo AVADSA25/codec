@@ -1,6 +1,42 @@
 # HANDOVER — CODEC buyer journey
 
-**Last updated:** 2026-09-04 pm · native window, connect screen, one key slot, text size
+**Last updated:** 2026-09-04 evening · local model for buyers (#347), ava-stack #2 merged, license server live
+
+## 2026-09-04 (evening) — local model works for buyers; ava-stack merged; license server live-fixed
+
+**State: main @ 0752cb9, clean. ava-stack main @ 9331b37 (PR #2 merged), ava-license
+restarted with both webhook guards live. Installed on this Mac from the notarized DMG.**
+
+### Shipped
+- **#347** "Use the local model" on a buyer's Mac. Bundle now carries mlx-vlm (+jinja2),
+  ships scripts/start_model_server.sh, and the script resolves Resources/python when no
+  dev venv exists. Connect screen downloads the bundled Qwen2.5-7B (~4.3 GB) with live
+  progress; first_run's fetch had been a DRY RUN. App 900 MB, DMG 443 MB. 7/7 gates; the
+  e2e makes the BUNDLED interpreter answer a completion on :8098.
+- **ava-stack #2** merged; `pm2 restart ava-license` → /health 200; revoked-is-terminal +
+  subscription price filter are running code now, not a branch.
+
+### Caught by gates, would have shipped otherwise
+- `jinja2` missing: server listened, every completion failed. transformers doesn't declare it.
+- start_download checked "already downloaded" before "already running" → a half-finished
+  download refused for the wrong reason.
+- test_a12_invariant scanned dist/ → false offenders the moment anyone builds locally.
+
+### Traps
+- Locked screen ⇒ `windows: 0` AND `notarytool: No Keychain password item`. Check
+  `CGSSessionScreenIsLocked` before debugging either (memory note).
+- A verifier that prints one ledger's gate token fails in the next ledger. Print
+  ledger-independent tokens for reused verifiers.
+- Do not run gates that read dist/ while `release_macos.sh --clean` is mid-build.
+
+### Open
+1. `_fleet_loaded()` counts the app's own LS registration; `_bootstrap_fleet` bypasses the
+   ephemeral guard. On a buyer's Mac the first launch WILL install 14 LaunchAgents — untested
+   end-to-end on clean hardware. **Mac Air test is the gate before the Buy button.**
+2. Auth route writes unsigned lines into the HMAC audit log (known-issues).
+3. Demo narration script.
+
+---
 
 ## 2026-09-04 (pm) — a real window, a connect screen, and the false green that almost shipped
 
