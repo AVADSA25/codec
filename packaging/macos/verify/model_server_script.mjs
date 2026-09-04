@@ -15,8 +15,13 @@ if (!existsSync(script)) fail.push("start_model_server.sh is not in the bundle â
 else {
   const fakeHome = mkdtempSync(join(tmpdir(), "nohome-"));
   // Replace the final exec with an echo so we see which interpreter it chose
-  // without actually starting a 4 GB model server.
-  const probe = `sed 's|^exec "\\$PY" .*|echo "CHOSEN=$PY"|' ${JSON.stringify(script)} > /tmp/sms_probe.sh && bash /tmp/sms_probe.sh`;
+  // without starting a 4 GB model server. The probe copy must live in the SAME
+  // directory as the script: it resolves the bundled interpreter relative to
+  // its own location, so a copy in /tmp would look for /tmp/../../python and
+  // fall through to the system python â€” which is what the first version of
+  // this gate did, and it blamed the script for the gate's own mistake.
+  const probePath = join(dirname(script), ".sms_probe.sh");
+  const probe = `sed 's|^exec "\\$PY" .*|echo "CHOSEN=$PY"|' ${JSON.stringify(script)} > ${JSON.stringify(probePath)} && bash ${JSON.stringify(probePath)}; rm -f ${JSON.stringify(probePath)}`;
   let out = "";
   try { out = execFileSync("/bin/bash", ["-c", probe], { encoding: "utf8", env: { HOME: fakeHome, PATH: "/usr/bin:/bin", CODEC_CONFIG: "/nonexistent" }, stdio: ["ignore", "pipe", "pipe"] }); }
   catch (e) { out = (e.stdout || "") + (e.stderr || ""); }

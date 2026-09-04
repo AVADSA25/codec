@@ -12,7 +12,11 @@ else if (!/sys_platform\s*==\s*"darwin"/.test(line) || !/platform_machine\s*==\s
   fail.push("mlx-vlm is not marker-gated to darwin/arm64 — Linux CI would fail to install it");
 const py = join(repo, "dist/Sovereign AI Workstation.app/Contents/Resources/python/bin/python3");
 if (!existsSync(py)) fail.push("app not built — no bundled interpreter to test");
-else for (const m of ["mlx_vlm", "mlx", "mlx_lm", "huggingface_hub"]) {
+else // mlx_lm is NOT a dependency of the serving path (mlx-vlm does not pull it;
+// the e2e reached the chat template without it). jinja2 IS — transformers'
+// chat template needs it and does not declare it; without it the server
+// listens and then fails every completion.
+for (const m of ["mlx_vlm", "mlx", "huggingface_hub", "jinja2"]) {
   try { execFileSync(py, ["-B", "-c", `import ${m}`], { stdio: "pipe", env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" } }); }
   catch { fail.push(`bundled python cannot import ${m}`); }
 }
