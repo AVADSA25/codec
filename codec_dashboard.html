@@ -587,6 +587,7 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
 .setup-opt{text-align:left;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;cursor:pointer;display:flex;flex-direction:column;gap:3px;transition:border-color .15s,background .15s}
 .setup-opt:hover{border-color:var(--border-hover);background:var(--surface-3)}
 .setup-opt.sel{border-color:var(--accent);background:var(--accent-dim)}
+.setup-opt.disabled,.setup-opt:disabled{opacity:.45;cursor:not-allowed}
 .setup-opt-t{font-size:14px;font-weight:600;color:var(--text)}
 .setup-opt-d{font-size:12px;color:var(--text-muted)}
 .setup-opt-meta{font-size:11px;color:var(--text-dim)}
@@ -3103,7 +3104,14 @@ setInterval(checkForUpdate, 6*60*60*1000);   // re-check every 6h
   function refresh(){
     return fetch('/api/setup/status').then(function(r){return r.json()}).then(function(d){
       var lm=document.getElementById('setupLocalMeta');
-      if(d.local_models&&d.local_models.length){
+      var localBtn=document.querySelector('.setup-opt[data-mode="local"]');
+      if(d.local_available===false){
+        // No server to answer a local model on this Mac. Offering it anyway
+        // would fail after a multi-GB download — say so and disable it.
+        lm.textContent=(d.local_reason||'Local model server is not running.')+' Choose AVA cloud or your own endpoint.';
+        if(localBtn){localBtn.disabled=true;localBtn.classList.add('disabled')}
+      } else if(d.local_models&&d.local_models.length){
+        if(localBtn){localBtn.disabled=false;localBtn.classList.remove('disabled')}
         lm.textContent=d.local_models.length+' model'+(d.local_models.length>1?'s':'')+' ready on this Mac';
         localPick.innerHTML='';
         d.local_models.forEach(function(m){

@@ -23,6 +23,16 @@ if str(REPO) not in sys.path:
 import codec_setup  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _no_real_side_effects(monkeypatch):
+    """Never let the suite restart the operator's model server or touch the
+    real Keychain: set_provider('local') calls codec_models.restart_server()."""
+    import codec_models
+    monkeypatch.setattr(codec_models, "restart_server", lambda *a, **k: (False, "test"))
+    monkeypatch.setattr(codec_setup, "_store_key", lambda k: None)
+    monkeypatch.setattr(codec_setup, "get_key", lambda: "")
+
+
 @pytest.fixture
 def cfg(tmp_path, monkeypatch):
     path = tmp_path / "config.json"
@@ -172,11 +182,25 @@ def test_test_call_is_honest(cfg, server, monkeypatch, capsys):
 
 def test_key_never_on_disk(cfg, monkeypatch, capsys):
     stored = {}
-    monkeypatch.setattr(codec_setup, "_store_custom_key", lambda k: stored.update(key=k))
+    monkeypatch.setattr(codec_setup, "_store_key", lambda k: stored.update(key=k))
     codec_setup.set_provider("custom", base_url="https://api.example/v1",
                              model="m", api_key="sk-super-secret-value")
     raw = Path(cfg).read_text()
     assert "sk-super-secret-value" not in raw, "API KEY LEAKED INTO config.json"
     assert "llm_api_key" not in _read(cfg), "llm_api_key must not be written to disk"
     assert stored.get("key") == "sk-super-secret-value", "key never reached the Keychain"
+
+    # The slot must be the one the CHAT path reads, or verify() passes while
+    # every real message sends no key. That happened.
+    assert codec_setup.KEY_SLOT == "llm_api_key", \
+        f"setup stores keys under {codec_setup.KEY_SLOT!r} but chat reads 'llm_api_key'"
+
+    # AVA mode must put the licence key in that same slot.
+    Path(cfg).write_text(json.dumps({"ava": {"license_key": "lic-123", "proxy_url": "https://p.example"}}))
+    codec_setup.set_provider("ava")
+    assert stored.get("key") == "lic-123", "AVA licence key never reached the chat's key slot"
+
+    # And a local choice must clear it, so no cloud bearer is sent to the local server.
+    codec_setup.set_provider("local", model="x")
+    assert stored.get("key") == "", "stale cloud key left in place for the local server"
     print("UNLAZY-G5-PASS")
