@@ -1,7 +1,7 @@
 // G5: launching must never be silent.
 // "when I click it nothing happened It just nothing happened." The launcher
 // started the fleet and exited: no window, no menu-bar item, no notification.
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -9,11 +9,16 @@ const pkg = dirname(dirname(fileURLToPath(import.meta.url)));
 const src = join(pkg, "launcher/codec_launcher.swift");
 const fail = [];
 if (!existsSync(src)) { console.error("G5 FAILED: no launcher source"); process.exit(1); }
-const s = readFileSync(src, "utf8");
+// The launcher is multi-file now: declarations in codec_launcher.swift, the
+// bootstrap (and activation policy) in main.swift, the window in
+// DashboardWindow.swift. Read them all, or a check on one file goes stale the
+// moment code moves — which is exactly what happened here.
+const s = readdirSync(join(pkg, "launcher")).filter(f => f.endsWith(".swift"))
+  .map(f => readFileSync(join(pkg, "launcher", f), "utf8")).join("\n");
 
 if (!/NSStatusBar\.system\.statusItem/.test(s)) fail.push("no menu-bar item — the app is invisible once started");
 if (!/NSAlert\(\)/.test(s)) fail.push("failures are not surfaced to the user");
-if (!/setActivationPolicy\(\.accessory\)/.test(s)) fail.push("activation policy not set — presence is undefined");
+if (!/setActivationPolicy\(\.regular\)/.test(s)) fail.push("activation policy is not .regular — a windowed app belongs in the Dock and ⌘-Tab");
 if (!/Open CODEC Dashboard/.test(s)) fail.push("no route to the dashboard, so a running agent has nowhere to go");
 // A failure must name a cause, not just say something went wrong.
 if (!/terminationStatus != 0/.test(s)) fail.push("child exit status is never checked");
