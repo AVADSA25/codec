@@ -46,3 +46,15 @@ async def verify():
 async def local_models():
     return {"models": codec_setup.discover_local_models(),
             "bundled": codec_setup.BUNDLED_LOCAL_MODEL}
+
+
+@router.post("/api/setup/download_local")
+async def download_local():
+    """Fetch the bundled local model into ~/.codec/models, in the background."""
+    result = codec_setup.start_download()
+    return JSONResponse(result, status_code=200 if result.get("ok") else 409)
+
+
+@router.get("/api/setup/download_status")
+async def download_status():
+    return codec_setup.download_status()

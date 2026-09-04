@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -341,3 +342,78 @@ def status() -> Dict[str, Any]:
         "bundled_model": BUNDLED_LOCAL_MODEL,
         "has_license": bool((cfg.get("ava") or {}).get("license_key")),
     }
+
+
+# ── Downloading the bundled model from the connect screen ────────────────────
+#
+# first_run.py invoked fetch_models WITHOUT --yes, so the "bundled" LLM was a
+# dry run — a fresh install never had it. Downloading 4 GB behind a first-run
+# script with no UI was the wrong place anyway: the user should choose it, see
+# it progress, and be able to pick the cloud instead. So it lives here, behind
+# a button, with a byte count the screen can poll.
+
+BUNDLED_APPROX_BYTES = int(4.3 * 1024 ** 3)
+_DL_LOCK = threading.Lock()
+_DL: Dict[str, Any] = {"state": "idle", "bytes": 0, "error": "", "dest": "", "started": 0.0}
+
+
+def _dir_bytes(path: str) -> int:
+    total = 0
+    for root, _d, files in os.walk(path):
+        for fn in files:
+            try:
+                total += os.path.getsize(os.path.join(root, fn))
+            except OSError:
+                pass
+    return total
+
+
+def _bundled_dest() -> str:
+    return os.path.join(MODELS_DIR, BUNDLED_LOCAL_MODEL.split("/")[-1])
+
+
+def download_status() -> Dict[str, Any]:
+    with _DL_LOCK:
+        st = dict(_DL)
+    if st["state"] == "running" and st["dest"]:
+        st["bytes"] = _dir_bytes(st["dest"])
+    st["approx_bytes"] = BUNDLED_APPROX_BYTES
+    st["percent"] = min(99, int(100 * st["bytes"] / BUNDLED_APPROX_BYTES)) if st["state"] == "running" else (100 if st["state"] == "done" else 0)
+    return st
+
+
+def start_download(fetch=None) -> Dict[str, Any]:
+    """Begin downloading the bundled LLM into ~/.codec/models in a thread.
+
+    `fetch` is injectable so tests never touch the network. Refuses to start a
+    second download while one runs, and refuses if the weights already exist.
+    """
+    dest = _bundled_dest()
+    # Order matters: a download in flight has already written real bytes, so
+    # the weights check would call a half-finished download "already
+    # downloaded" and a second click would be refused for the wrong reason.
+    with _DL_LOCK:
+        if _DL["state"] == "running":
+            return {"ok": False, "error": "a download is already running"}
+        if _dir_has_weights(dest):
+            return {"ok": False, "error": "already downloaded", "dest": dest}
+        _DL.update(state="running", bytes=0, error="", dest=dest, started=time.time())
+
+    def _work():
+        try:
+            os.makedirs(dest, exist_ok=True)
+            if fetch is not None:
+                fetch(BUNDLED_LOCAL_MODEL, dest)
+            else:
+                from huggingface_hub import snapshot_download
+                snapshot_download(repo_id=BUNDLED_LOCAL_MODEL, local_dir=dest)
+            if not _dir_has_weights(dest):
+                raise RuntimeError("download finished but no weights were written")
+            with _DL_LOCK:
+                _DL.update(state="done", bytes=_dir_bytes(dest))
+        except Exception as e:  # report, never hang the screen
+            with _DL_LOCK:
+                _DL.update(state="error", error=f"{type(e).__name__}: {e}"[:300])
+
+    threading.Thread(target=_work, daemon=True, name="codec-model-download").start()
+    return {"ok": True, "dest": dest, "approx_bytes": BUNDLED_APPROX_BYTES}
