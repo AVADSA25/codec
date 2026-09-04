@@ -54,8 +54,13 @@ AVA_DEFAULT_MODEL = "gemini-2.5-flash-lite"
 
 PROVIDERS = ("local", "ava", "custom")
 
-# Keychain service for a user-supplied key. config.json must never hold it.
-CUSTOM_KEY_SERVICE = "ai.avadigital.codec.custom_llm_key"
+# The bearer for llm_base_url lives in ONE Keychain slot: "llm_api_key", which
+# is what codec_dashboard already reads via codec_config.get_llm_api_key().
+# The first version stored custom keys under a separate slot; verify() added
+# the key itself and went green, then every real chat sent no key and got 401.
+# A false green from the setup screen is the exact failure it exists to prevent,
+# so setup and chat now read the same slot by construction.
+KEY_SLOT = "llm_api_key"
 
 
 def _load_config() -> Dict[str, Any]:
@@ -141,11 +146,18 @@ def set_provider(mode: str, *, model: str = "", base_url: str = "",
         cfg["llm_base_url"] = LOCAL_BASE_URL
         cfg["llm_model"] = chosen
         cfg["llm_provider"] = "mlx"
+        # The local server needs no bearer; a stale cloud key must not be sent
+        # to it, and the model server must actually be serving THIS model —
+        # codec_models.restart_server() makes the launcher preload it.
+        _store_key("")
     elif mode == "ava":
         ava = cfg.get("ava") if isinstance(cfg.get("ava"), dict) else {}
         cfg["llm_base_url"] = (ava.get("proxy_url") or AVA_PROXY_URL).rstrip("/") + "/v1"
         cfg["llm_model"] = model or ava.get("default_cloud_model") or AVA_DEFAULT_MODEL
         cfg["llm_provider"] = "ava"
+        # The proxy is authorised by the licence key, so THAT is the bearer the
+        # chat path must send. Put it where the chat path looks.
+        _store_key(ava.get("license_key", ""))
     else:  # custom
         if not base_url:
             return {"ok": False, "error": "a base URL is required"}
@@ -153,35 +165,52 @@ def set_provider(mode: str, *, model: str = "", base_url: str = "",
         cfg["llm_model"] = model or ""
         cfg["llm_provider"] = "custom"
         if api_key:
-            _store_custom_key(api_key)
-        # Belt and braces: an older build may have left a key on disk.
-        cfg.pop("llm_api_key", None)
+            _store_key(api_key)
+    # Never on disk, whatever an older build left behind.
+    cfg.pop("llm_api_key", None)
 
     # A new choice is unproven until verify() says otherwise.
     cfg["llm_verified_at"] = ""
     _save_config(cfg)
+    if mode == "local":
+        try:
+            import codec_models
+            codec_models.restart_server()   # preload the chosen model; best effort
+        except Exception:
+            pass
     return {"ok": True, "provider": mode,
             "model": cfg.get("llm_model", ""), "base_url": cfg.get("llm_base_url", "")}
 
 
-def _store_custom_key(key: str) -> None:
-    """Keychain only. config.json is backed up and pasted into support threads."""
+def _store_key(key: str) -> None:
+    """Keychain only, in the slot the chat path reads. config.json is backed up
+    and pasted into support threads."""
     try:
         from codec_keychain import keychain_set
-        keychain_set(CUSTOM_KEY_SERVICE, key)
+        keychain_set(KEY_SLOT, key)
     except Exception:
-        # Headless/CI falls back to the envelope store PR-2B already uses.
         try:
             from codec_keychain import _fallback_set  # type: ignore
-            _fallback_set(CUSTOM_KEY_SERVICE, key)
+            _fallback_set(KEY_SLOT, key)
         except Exception:
             pass
+    # codec_config caches secrets for 30s; a chat sent right after setup must
+    # not read a stale empty value.
+    try:
+        import codec_config
+        cache = getattr(codec_config, "_SECRET_CACHE", None)
+        if isinstance(cache, dict):
+            cache.pop(KEY_SLOT, None)
+    except Exception:
+        pass
 
 
-def get_custom_key() -> str:
+def get_key() -> str:
+    """Read the SAME slot the chat path reads — so verify() proves what chat
+    will actually send, not what setup happens to remember."""
     try:
         from codec_keychain import keychain_get
-        return keychain_get(CUSTOM_KEY_SERVICE) or ""
+        return keychain_get(KEY_SLOT) or ""
     except Exception:
         return ""
 
@@ -217,12 +246,11 @@ def verify(timeout: float = 45.0) -> Dict[str, Any]:
                                f"Download it, or pick one of: "
                                f"{', '.join(sorted(local)) or 'none found'}.")}
 
-    key = get_custom_key() if mode == "custom" else ""
-    if mode == "ava":
-        ava = cfg.get("ava") if isinstance(cfg.get("ava"), dict) else {}
-        key = ava.get("license_key", "")
-        if not key:
-            return {"ok": False, "detail": "No licence key — AVA cloud needs the key from your welcome email."}
+    # Read the key exactly as chat will: from the shared slot, never from a
+    # private copy — otherwise verify() can pass while chat fails.
+    key = get_key() if mode in ("ava", "custom") else ""
+    if mode == "ava" and not key:
+        return {"ok": False, "detail": "No licence key — AVA cloud needs the key from your welcome email."}
 
     body = json.dumps({"model": model,
                        "messages": [{"role": "user", "content": "Reply with the single word: READY"}],
@@ -282,11 +310,28 @@ def _explain_http(code: int, detail: str, mode: str) -> str:
     return f"HTTP {code}: {detail[:160]}"
 
 
+def _local_server_listening(timeout: float = 1.0) -> bool:
+    import socket
+    from urllib.parse import urlparse
+    u = urlparse(LOCAL_BASE_URL)
+    try:
+        with socket.create_connection((u.hostname or "localhost", u.port or 8083), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
 def status() -> Dict[str, Any]:
     """What the first-run screen asks: is there a working brain?"""
     cfg = _load_config()
     mode = get_provider(cfg)
+    local_up = _local_server_listening()
     return {
+        # A buyer's build cannot serve a local model unless the model server
+        # is part of the fleet AND running. Say so instead of offering an option
+        # that fails after a 4 GB download.
+        "local_available": local_up,
+        "local_reason": "" if local_up else "CODEC's local model server is not running on this Mac.",
         "connected": bool(mode and cfg.get("llm_verified_at")),
         "provider": mode,
         "model": cfg.get("llm_model", ""),
