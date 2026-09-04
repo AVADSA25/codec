@@ -1,6 +1,45 @@
 # HANDOVER — CODEC buyer journey
 
-**Last updated:** 2026-09-03 · session: Mac app ships, licence leak closed, four CODEC PRs
+**Last updated:** 2026-09-04 · session: LiteLLM restored, notifications/theme fixed, launcher proven via System Events
+
+## 2026-09-04 — four user reports, one shared root cause, and the launcher proven by macOS itself
+
+**State: main @ 13d8b16, clean. ava-stack `harden/installer-and-subscription-filter` pushed,
+NOT merged (money path — needs Mickael). Fleet 19/19, LiteLLM :4000 back.**
+
+### What was wrong
+- **"CODEC ALERT: AVA Gateway (LiteLLM 4000) not responding" every 5 min** — `git stash -u`
+  on Aug 27 swept the UNTRACKED `~/ava-stack/gateway/` (run-litellm.sh, config, .env, venv).
+  ava-litellm survived until a Sep 2 restart, then crash-looped and fell out of PM2;
+  ava-units-reconcile hit 33,351,309 restarts. Restored from `stash@{0}^3`, re-added,
+  `pm2 save`. Same stash had taken the installer's AppIcon.icns. Memory note written.
+- **Notifications link "does nothing"** — it goes to `/tasks#reports` and the tasks page never
+  read the hash. Now honours it (#338).
+- **No "system" theme option** — tasks/auth/audit still had the 2-state toggle. 3-state ported (#338).
+- **"Logo in the Dock, nothing opens"** — runtime `setActivationPolicy(.accessory)` not honoured
+  when launched via `open`. `LSUIElement=true` in Info.plist; success now opens the dashboard;
+  failure shows a modal with the real reason (#338, #340).
+
+### Proven, not asserted
+Instrumented launcher run inside a signed, hardened bundle copy, observed via System Events:
+`status item created visible=true`, `bg-only: true`, failure path → `windows: 1` "CODEC could not
+start". Via `open` on this machine the fleet reports running (see known-issues: `_fleet_loaded`
+counts the app's own LS registration) so no alert — correct.
+
+### Do not repeat
+- **Never `git stash -u` here.** Untracked dirs are live runtime inputs.
+- Direct-exec vs `open` differ in PATH and stdio; test the double-click path with `open` +
+  System Events, never only from a shell.
+- 40 `test_llm_*` failures on main are pre-existing (cloud-gating commits) — known-issues.
+
+### Open
+1. ava-stack branch review + merge.
+2. Installer should bundle the CODEC app inside its Resources (installApp no-ops from /Applications).
+3. `_fleet_loaded()` false positive; `_bootstrap_fleet` bypasses the ephemeral guard.
+4. Auth route writes unsigned lines into the HMAC audit log.
+5. Demo narration script.
+
+---
 
 ## 2026-09-03 — the Mac app: from "installs and does nothing" to a menu-bar item that serves HTTP
 
