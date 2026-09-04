@@ -5,7 +5,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 const repo = dirname(dirname(dirname(dirname(fileURLToPath(import.meta.url)))));
 const app = join(repo, "dist/Sovereign AI Workstation.app");
@@ -27,7 +27,11 @@ else {
   catch (e) { out = (e.stdout || "") + (e.stderr || ""); }
   const m = out.match(/CHOSEN=(.+)/);
   if (!m) fail.push("could not determine the chosen interpreter: " + out.slice(0, 200));
-  else if (!m[1].includes("/Contents/Resources/python/bin/python3")) fail.push(`with no dev venv, chose ${m[1]} instead of the bundled interpreter`);
+  // Resolve before comparing: the script reaches the interpreter via
+  // scripts/../../python, which is correct and does not contain the literal
+  // "Resources/python" until normalised. The first version of this gate failed
+  // the right answer on a string-match technicality.
+  else if (!resolve(m[1].trim()).endsWith("/Contents/Resources/python/bin/python3")) fail.push(`with no dev venv, chose ${m[1]} instead of the bundled interpreter`);
 }
 if (fail.length) { console.error("G2 FAILED:\n - " + fail.join("\n - ")); process.exit(1); }
 console.log("UNLAZY-G2-PASS");
