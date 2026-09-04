@@ -7,8 +7,11 @@
 **State: main @ c3f840b, clean. ava-stack `harden/...` at ff6b4a9, pushed, NOT merged.**
 
 ### Shipped
-- **#338/#340** native WKWebView window — the app is no longer a Chrome tab. Links out go
+- **#346** native WKWebView window — the app is no longer a Chrome tab. Links out go
   to the real browser; closing the window keeps the agent alive; Dock icon returns it.
+  (It sat UNCOMMITTED in a worktree for hours after being installed and verified — a build
+  from main would have shipped without it. Always check `git status` in every worktree
+  before building from main.)
 - **#342** first-run "Connect your AI": local / AVA cloud / any OpenAI-compatible URL. Only a
   real reply from the endpoint clears it. Fixed the underlying default: chat fell back to
   the 20 GB Qwen3.6 that a fresh install never downloads — every first message failed.
