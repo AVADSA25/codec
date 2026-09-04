@@ -88,9 +88,12 @@ printf 'APPL????' > "$CONTENTS/PkgInfo"
 # ZERO entitlements, and therefore no way to ever be granted a microphone.
 # See launcher/codec_launcher.swift for the full account.
 LAUNCHER_SWIFT="$PKG_DIR/launcher/codec_launcher.swift"
+# Every .swift in launcher/ is compiled into the one binary — the window lives
+# in DashboardWindow.swift, and omitting it would silently drop the app's UI.
+LAUNCHER_SOURCES=("$PKG_DIR/launcher"/*.swift)
 if [ -f "$LAUNCHER_SWIFT" ]; then
     echo "==> compiling Mach-O launcher"
-    SWIFTC_ARGS=(-O -o "$CONTENTS/MacOS/codec" "$LAUNCHER_SWIFT")
+    SWIFTC_ARGS=(-O -o "$CONTENTS/MacOS/codec" "${LAUNCHER_SOURCES[@]}")
     [ -n "${ARCH:-}" ] && case "$ARCH" in
         aarch64) SWIFTC_ARGS=(-target arm64-apple-macos13.0 "${SWIFTC_ARGS[@]}") ;;
         x86_64)  SWIFTC_ARGS=(-target x86_64-apple-macos13.0 "${SWIFTC_ARGS[@]}") ;;

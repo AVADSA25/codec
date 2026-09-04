@@ -132,6 +132,10 @@ func startFleet() -> StartResult {
 final class Launcher: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var result: StartResult?
+    // The dashboard renders INSIDE the app now. Handing the URL to the user's
+    // browser made "the Mac app" a website with an app icon in front of it.
+    private lazy var dashboard = DashboardWindowController(
+        url: URL(string: "http://127.0.0.1:8090/")!)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         log("CODEC launched from \(bundleURL.path)")
@@ -143,8 +147,7 @@ final class Launcher: NSObject, NSApplicationDelegate {
         }
         statusItem = item
         if item.button == nil {
-            log("status bar refused a status item — falling back to a Dock presence")
-            NSApp.setActivationPolicy(.regular)
+            log("status bar refused a status item — the Dock icon remains the way back in")
         }
         rebuildMenu(status: "Starting…", enabled: false)
 
@@ -166,6 +169,8 @@ final class Launcher: NSObject, NSApplicationDelegate {
                                      action: #selector(openDashboard), keyEquivalent: "")
         dashboard.target = self
         dashboard.isEnabled = enabled
+        let reload = menu.addItem(withTitle: "Reload", action: #selector(reloadDashboard), keyEquivalent: "r")
+        reload.target = self
         let logs = menu.addItem(withTitle: "Show Logs", action: #selector(openLogs), keyEquivalent: "")
         logs.target = self
         menu.addItem(.separator())
@@ -178,10 +183,10 @@ final class Launcher: NSObject, NSApplicationDelegate {
     /// gets a modal the user has to dismiss, and a success only updates the menu.
     private func announce(_ outcome: StartResult) {
         guard !outcome.ok else {
-            // The product's only UI is the dashboard. A successful start that
-            // shows nothing is indistinguishable from a broken one, so open it
-            // once, after the fleet has had a moment to bind its port.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in self?.openDashboard() }
+            // A successful start that shows nothing is indistinguishable from a
+            // broken one. The window retries its own load while the fleet binds
+            // its port, so it can open immediately.
+            DispatchQueue.main.async { [weak self] in self?.openDashboard() }
             return
         }
         let alert = NSAlert()
@@ -193,9 +198,16 @@ final class Launcher: NSObject, NSApplicationDelegate {
         if alert.runModal() == .alertFirstButtonReturn { openLogs() }
     }
 
-    @objc private func openDashboard() {
-        NSWorkspace.shared.open(URL(string: "http://127.0.0.1:8090/")!)
+    @objc private func openDashboard() { dashboard.show() }
+
+    /// Clicking the Dock icon with no window open must bring CODEC back, or the
+    /// app looks dead after the window is closed.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag { dashboard.show() }
+        return true
     }
+
+    @objc private func reloadDashboard() { dashboard.reload() }
 
     @objc private func openLogs() {
         let logs = FileManager.default.homeDirectoryForCurrentUser
@@ -205,10 +217,3 @@ final class Launcher: NSObject, NSApplicationDelegate {
 
     @objc private func quit() { NSApp.terminate(nil) }
 }
-
-let app = NSApplication.shared
-let delegate = Launcher()
-app.delegate = delegate
-// .accessory: menu-bar presence with no Dock icon bouncing for a background agent.
-app.setActivationPolicy(.accessory)
-app.run()
