@@ -138,6 +138,10 @@ final class Launcher: NSObject, NSApplicationDelegate {
             button.image?.isTemplate = true
         }
         statusItem = item
+        if item.button == nil {
+            log("status bar refused a status item — falling back to a Dock presence")
+            NSApp.setActivationPolicy(.regular)
+        }
         rebuildMenu(status: "Starting…", enabled: false)
 
         DispatchQueue.global().async { [weak self] in
@@ -169,7 +173,13 @@ final class Launcher: NSObject, NSApplicationDelegate {
     /// A failure must be impossible to miss; a success must not nag. So an error
     /// gets a modal the user has to dismiss, and a success only updates the menu.
     private func announce(_ outcome: StartResult) {
-        guard !outcome.ok else { return }
+        guard !outcome.ok else {
+            // The product's only UI is the dashboard. A successful start that
+            // shows nothing is indistinguishable from a broken one, so open it
+            // once, after the fleet has had a moment to bind its port.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in self?.openDashboard() }
+            return
+        }
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = outcome.summary

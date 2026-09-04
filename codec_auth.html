@@ -222,10 +222,16 @@ function _ssSet(k,v){try{sessionStorage.setItem(k,v)}catch(e){}}
 function _ssDel(k){try{sessionStorage.removeItem(k)}catch(e){}}
 </script>
 <script>
-function toggleTheme(){var t=document.documentElement.getAttribute('data-theme')==='light'?'dark':'light';document.documentElement.setAttribute('data-theme',t);_lsSet('codec-theme',t);updateThemeIcon(t)}
-function updateThemeIcon(t){document.getElementById('themeIco').innerHTML=t==='light'?'<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>':'<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>'}
-(function(){var s=_lsGet('codec-theme');if(s==='light'){document.documentElement.setAttribute('data-theme','light');updateThemeIcon('light')}})();
-
+// Theme: system / light / dark (ported from chat). "system" follows the OS and
+// switches live at sunset; an explicit choice pins it until you cycle back.
+function _themePref(){var v=null;try{v=_lsGet('codec-theme')}catch(e){}return (v==='light'||v==='dark'||v==='system')?v:'system'}
+function _themeResolved(pref){if(pref==='light'||pref==='dark')return pref;try{return (window.matchMedia&&matchMedia('(prefers-color-scheme: light)').matches)?'light':'dark'}catch(e){return 'dark'}}
+function applyTheme(){var pref=_themePref(),eff=_themeResolved(pref);if(eff==='light'){document.documentElement.setAttribute('data-theme','light')}else{document.documentElement.setAttribute('data-theme','dark')}updateThemeIcon(pref,eff)}
+function toggleTheme(){var order=['system','light','dark'],next=order[(order.indexOf(_themePref())+1)%3];try{_lsSet('codec-theme',next)}catch(e){}applyTheme();if(typeof showToast==='function')showToast(next==='system'?'Theme follows your system':'Theme: '+next)}
+try{if(window.matchMedia){matchMedia('(prefers-color-scheme: light)').addEventListener('change',function(){if(_themePref()==='system')applyTheme()})}}catch(e){}
+window.addEventListener('storage',function(e){if(e.key==='codec-theme')applyTheme()});
+function updateThemeIcon(pref,eff){var ico=document.getElementById('themeIco');if(!ico)return;var theme=(pref==='system')?'system':(eff||pref);var btn=ico.parentNode;if(theme==='system'){ico.innerHTML='<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 000 18z" fill="currentColor" stroke="none"/>';btn&&btn.setAttribute('title','Theme: follows your system — click to pin light');return}btn&&btn.setAttribute('title','Theme: '+theme+' — click to change');if(theme==='light'){ico.innerHTML='<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>'}else{ico.innerHTML='<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>'}}
+applyTheme();
 var isRemote = location.hostname !== 'localhost' && location.hostname !== '127.0.0.1';
 if (isRemote) {
     document.getElementById('remoteNote').style.display = 'block';

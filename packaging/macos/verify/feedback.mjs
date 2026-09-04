@@ -18,6 +18,11 @@ if (!/Open CODEC Dashboard/.test(s)) fail.push("no route to the dashboard, so a 
 // A failure must name a cause, not just say something went wrong.
 if (!/terminationStatus != 0/.test(s)) fail.push("child exit status is never checked");
 if (!/Show Logs/.test(s)) fail.push("no way to reach the logs from the failure alert");
+if (!/openDashboard\(\)/.test(s.split("guard !outcome.ok else {")[1] || "")) fail.push("a successful start opens nothing");
+// LSUIElement in the SHIPPED plist: runtime setActivationPolicy alone left the
+// app in the Dock with no status item when launched via `open`.
+const plist = join(dirname(pkg), "macos/Info.plist");
+if (!/<key>LSUIElement<\/key>\s*<true\/>/.test(readFileSync(plist, "utf8"))) fail.push("Info.plist lacks LSUIElement=true");
 
 if (fail.length) { console.error("G5 FAILED:\n - " + fail.join("\n - ")); process.exit(1); }
 console.log("UNLAZY-G5-PASS");
