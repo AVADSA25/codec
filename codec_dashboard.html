@@ -576,9 +576,86 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
 .pip-btn:hover{background:var(--accent)}
 .pip-btn.snap-btn{background:rgba(255,80,80,.7)}
 .pip-btn.snap-btn:hover{background:#e33}
+
+/* Connect-your-AI overlay */
+.setup-overlay{position:fixed;inset:0;z-index:9000;background:rgba(9,9,11,.92);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:24px;overflow:auto}
+.setup-overlay[hidden]{display:none}
+.setup-card{width:100%;max-width:560px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:28px}
+.setup-head h2{font-size:20px;font-weight:600;color:var(--text);margin-bottom:6px}
+.setup-head p{font-size:13px;color:var(--text-muted);margin-bottom:20px}
+.setup-opts{display:flex;flex-direction:column;gap:10px}
+.setup-opt{text-align:left;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;cursor:pointer;display:flex;flex-direction:column;gap:3px;transition:border-color .15s,background .15s}
+.setup-opt:hover{border-color:var(--border-hover);background:var(--surface-3)}
+.setup-opt.sel{border-color:var(--accent);background:var(--accent-dim)}
+.setup-opt-t{font-size:14px;font-weight:600;color:var(--text)}
+.setup-opt-d{font-size:12px;color:var(--text-muted)}
+.setup-opt-meta{font-size:11px;color:var(--text-dim)}
+.setup-custom,.setup-local{display:flex;flex-direction:column;gap:12px;margin-top:16px}
+.setup-custom[hidden],.setup-local[hidden]{display:none}
+.setup-custom label,.setup-local label{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--text-muted)}
+.setup-custom input,.setup-local select{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:9px 11px;color:var(--text);font-size:13px;font-family:var(--font)}
+.setup-status{margin-top:16px;font-size:12px;min-height:18px;color:var(--text-muted)}
+.setup-status.err{color:var(--danger)}
+.setup-status.ok{color:var(--success)}
+.setup-actions{display:flex;align-items:center;gap:12px;margin-top:18px}
+.setup-btn{background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);padding:10px 22px;font-size:14px;font-weight:600;cursor:pointer}
+.setup-btn:disabled{background:var(--surface-3);color:var(--text-dim);cursor:not-allowed}
+.setup-skip{background:none;border:none;color:var(--text-dim);font-size:12px;cursor:pointer;text-decoration:underline}
+
 </style>
 </head>
 <body>
+
+<!-- ── Connect your AI (first run) ─────────────────────────────────────────
+     Shown until CODEC has a VERIFIED brain. A fresh paid install had no way
+     to connect one at all: it downloaded Qwen2.5-7B, defaulted to a 20 GB
+     model it never fetched, and offered no UI to change either — so the first
+     message always failed. Reachable afterwards from Settings.
+     Nothing here marks success on its own; only a real reply from a real
+     endpoint (POST /api/setup/verify) dismisses it. -->
+<div class="setup-overlay" id="setupOverlay" hidden>
+  <div class="setup-card">
+    <div class="setup-head">
+      <h2 id="setupTitle">Connect CODEC to an AI</h2>
+      <p id="setupSub">CODEC needs a model to think with. Pick one — you can change this later in Settings.</p>
+    </div>
+
+    <div class="setup-opts" id="setupOpts">
+      <button class="setup-opt" data-mode="local">
+        <span class="setup-opt-t">Use the local model</span>
+        <span class="setup-opt-d">Private and free. Runs on this Mac, nothing leaves it.</span>
+        <span class="setup-opt-meta" id="setupLocalMeta">Checking…</span>
+      </button>
+      <button class="setup-opt" data-mode="ava">
+        <span class="setup-opt-t">Use AVA cloud</span>
+        <span class="setup-opt-d">Fastest to start. Uses the licence key from your welcome email — no API key to find.</span>
+        <span class="setup-opt-meta" id="setupAvaMeta"></span>
+      </button>
+      <button class="setup-opt" data-mode="custom">
+        <span class="setup-opt-t">Connect your own</span>
+        <span class="setup-opt-d">Any OpenAI-compatible endpoint — Ollama, LM Studio, OpenRouter, or your own server.</span>
+      </button>
+    </div>
+
+    <div class="setup-custom" id="setupCustom" hidden>
+      <label>Base URL<input type="text" id="setupUrl" placeholder="http://localhost:11434/v1" autocomplete="off"></label>
+      <label>Model<input type="text" id="setupModel" placeholder="llama3.1" autocomplete="off"></label>
+      <label>API key <span class="setup-opt-meta">optional — stored in your Keychain, never on disk</span>
+        <input type="password" id="setupKey" autocomplete="off"></label>
+    </div>
+
+    <div class="setup-local" id="setupLocal" hidden>
+      <label>Model<select id="setupLocalPick"></select></label>
+    </div>
+
+    <div class="setup-status" id="setupStatus"></div>
+
+    <div class="setup-actions">
+      <button class="setup-btn" id="setupConnect" disabled>Connect</button>
+      <button class="setup-skip" id="setupSkip" hidden>Continue without a model</button>
+    </div>
+  </div>
+</div>
 <div class="app">
   <div class="header">
     <div class="header-left">
@@ -624,6 +701,7 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
       <a href="/tasks#reports" class="sp-item notif-bell" id="notifBellBtn"><svg class="ico" viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg><span class="sp-item-label">Notifications</span><span class="notif-badge hidden" id="notifBadge">0</span></a>
       <div class="sp-item sp-theme" id="themeBtn" role="group" aria-label="Theme"><svg class="ico" viewBox="0 0 24 24" id="themeIco"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 000 18z" fill="currentColor" stroke="none"/></svg><span class="sp-item-label">Theme</span><span class="theme-seg"><button type="button" data-theme-opt="system" onclick="setThemePref('system')" title="Follow your system day-night setting">Auto</button><button type="button" data-theme-opt="light" onclick="setThemePref('light')">Light</button><button type="button" data-theme-opt="dark" onclick="setThemePref('dark')">Dark</button></span></div>
       <button class="sp-item" onclick="showTab('settings');closeSidePanel()"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg><span class="sp-item-label">Settings</span></button>
+      <button class="sp-item" onclick="openConnectSetup();closeSidePanel()"><svg class="ico" viewBox="0 0 24 24"><path d="M12 2a10 10 0 100 20 10 10 0 000-20z"/><path d="M12 8v4l3 2"/></svg><span class="sp-item-label">Connect AI model</span></button>
       <div class="sp-divider"></div>
       <button class="sp-item" onclick="lockSession()" style="color:var(--danger)"><svg class="ico" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg><span class="sp-item-label">Lock Session</span></button>
     </div>
@@ -2994,6 +3072,86 @@ function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, function
   return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 setTimeout(checkForUpdate, 1500);            // on load
 setInterval(checkForUpdate, 6*60*60*1000);   // re-check every 6h
+
+/* ── Connect your AI ──────────────────────────────────────────────────────
+   The screen clears ONLY on a verified reply from a real endpoint. Choosing a
+   provider is not connecting — that distinction is the whole point: the
+   install that shipped before this reported success and could not answer a
+   single message. */
+(function(){
+  var overlay=document.getElementById('setupOverlay');
+  if(!overlay)return;
+  var mode='', status=document.getElementById('setupStatus'),
+      connect=document.getElementById('setupConnect'),
+      custom=document.getElementById('setupCustom'),
+      localBox=document.getElementById('setupLocal'),
+      localPick=document.getElementById('setupLocalPick');
+
+  function say(msg,cls){status.textContent=msg||'';status.className='setup-status'+(cls?' '+cls:'')}
+
+  function select(m){
+    mode=m;
+    Array.prototype.forEach.call(document.querySelectorAll('.setup-opt'),function(b){
+      b.classList.toggle('sel',b.getAttribute('data-mode')===m)});
+    custom.hidden=(m!=='custom'); localBox.hidden=(m!=='local');
+    connect.disabled=false; say('');
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll('.setup-opt'),function(b){
+    b.addEventListener('click',function(){select(b.getAttribute('data-mode'))})});
+
+  function refresh(){
+    return fetch('/api/setup/status').then(function(r){return r.json()}).then(function(d){
+      var lm=document.getElementById('setupLocalMeta');
+      if(d.local_models&&d.local_models.length){
+        lm.textContent=d.local_models.length+' model'+(d.local_models.length>1?'s':'')+' ready on this Mac';
+        localPick.innerHTML='';
+        d.local_models.forEach(function(m){
+          var o=document.createElement('option');o.value=m.id;o.textContent=m.id;localPick.appendChild(o)});
+      } else {
+        lm.textContent='No model downloaded yet — choose another option, or download '+(d.bundled_model||'one')+' first.';
+      }
+      document.getElementById('setupAvaMeta').textContent =
+        d.has_license ? 'Licence key found' : 'No licence key in this install';
+      overlay.hidden = !!d.connected;
+      return d;
+    }).catch(function(){ return {}; });
+  }
+
+  connect.addEventListener('click',function(){
+    if(!mode)return;
+    connect.disabled=true; say('Connecting…');
+    var body={provider:mode};
+    if(mode==='custom'){
+      body.base_url=document.getElementById('setupUrl').value.trim();
+      body.model=document.getElementById('setupModel').value.trim();
+      body.api_key=document.getElementById('setupKey').value;
+      if(!body.base_url){say('A base URL is required.','err');connect.disabled=false;return}
+    } else if(mode==='local'){ body.model=localPick.value||''; }
+
+    fetch('/api/setup/provider',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+      .then(function(r){return r.json()})
+      .then(function(d){
+        if(!d.ok){throw new Error(d.error||'Could not save that choice.')}
+        say('Testing the connection…');
+        return fetch('/api/setup/verify',{method:'POST'}).then(function(r){return r.json()})
+      })
+      .then(function(v){
+        if(v.ok){
+          say('Connected — '+(v.model||'')+' answered. '+(v.detail||''),'ok');
+          document.getElementById('setupKey').value='';
+          setTimeout(function(){overlay.hidden=true;location.reload()},1200);
+        } else {
+          say(v.detail||'That did not work.','err'); connect.disabled=false;
+        }
+      })
+      .catch(function(e){ say(e.message,'err'); connect.disabled=false });
+  });
+
+  window.openConnectSetup=function(){overlay.hidden=false;refresh()};
+  refresh();
+})();
+
 </script>
 <div class="webcam-pip" id="webcamPip">
   <img id="pipVideo" alt="Mac Webcam" onclick="expandPip()" style="cursor:pointer" />

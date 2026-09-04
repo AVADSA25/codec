@@ -1,84 +1,78 @@
-# Gates: the packaged CODEC app must actually run on a stranger's Mac
+# Gates: a buyer can connect a brain to CODEC without help
 
-OWNS: packaging/macos/**, requirements.txt, GATES.md
+OWNS: codec_setup.py, routes/setup.py, codec_dashboard.html, packaging/macos/**,
+      tests/test_setup_connect.py, GATES.md
 
-Scope: `Sovereign AI Workstation.app` installs and appears to succeed, then does
-nothing. Five independent defects, each fatal on its own, each found 2026-09-03
-while walking a real first-run. Fixing four and shipping is worthless — the app
-is only usable when all five are closed.
+(The previous ledger — "the packaged CODEC app must actually run on a stranger's
+Mac", 6/6 met — is in git history at PR #335.)
 
-## Dependencies
+Scope: today a fresh install cannot talk to any model at all. `fetch_models.py`
+downloads `Qwen2.5-7B-Instruct-4bit`; the chat handler defaults to
+`Qwen3.6-35B-A3B-4bit`, which was never downloaded; the installer writes neither
+`llm_model` nor `llm_base_url`; and `codec_ava_client.py` is not wired into the
+chat path. Every first message fails, with no UI anywhere to fix it. This is the
+single thing between "installed" and "usable" for a paying stranger.
 
-- [x] G1: Every module the app imports at startup is a DECLARED dependency and present in the bundled Python.
-  CHECK: node packaging/macos/verify/deps.mjs
+Decision (operator, 2026-09-04): the setup lives in BOTH the installer and the
+app, and bring-your-own is a generic OpenAI-compatible base URL + key. To stop
+two surfaces diverging, the APP is the source of truth: the installer only
+pre-seeds a choice, and the app re-tests it before clearing the first-run screen.
+
+## Connectivity is real, not assumed
+
+- [x] G1: A fresh config resolves to a model that actually exists — the downloaded model and the configured default are the same one.
+  CHECK: python3 -m pytest tests/test_setup_connect.py -q -s -k defaults_match_reality
   EXPECT: UNLAZY-G1-PASS
-  EVIDENCE: exit=0; shell=/bin/sh; cwd=/Users/mickaelfarina/codec-wt-app; path=2cbcf16e1311/44 entries; EXPECT=matched; output-sha256=dc6dc367ec60e5dddea47d34ea91736c4149d3449a1ccbf44002528e86284577; output-bytes=15
-  WHY: `fastapi` appears only inside an "Optional: STT" COMMENT in
-  requirements.txt, yet codec_dashboard.py imports it unconditionally. The build
-  machine has it from the dev environment, so the bundle looked fine and the
-  dashboard could never start on a clean Mac. Measured, not assumed: the check
-  imports each module inside the BUNDLED interpreter.
+  EVIDENCE: exit=0; shell=/bin/sh; cwd=/Users/mickaelfarina/codec-wt-setup; path=2cbcf16e1311/44 entries; EXPECT=matched; output-sha256=678eec6a73422a25a5aa59d3e454dc0ece5e24dc9364b40de30093925c38471d; output-bytes=591
 
-## Identity
-
-- [x] G2: The app bundle carries the CODEC icon and declares it.
-  CHECK: node packaging/macos/verify/icon.mjs
+- [x] G2: /api/setup/status reports not-connected on a fresh config, and connected only after a provider is configured AND verified.
+  CHECK: python3 -m pytest tests/test_setup_connect.py -q -s -k status_reflects
   EXPECT: UNLAZY-G2-PASS
-  EVIDENCE: exit=0; shell=/bin/sh; cwd=/Users/mickaelfarina/codec-wt-app; path=2cbcf16e1311/44 entries; EXPECT=matched; output-sha256=f84ca6efa6efa2657b3702f9a7391fa2b6fb2142e9c61a59e4a0476490dc4c7f; output-bytes=15
-  WHY: build_app.sh has no icon step at all — Contents/Resources holds no .icns,
-  so the Dock, Finder and Launchpad all show a blank generic tile.
+  EVIDENCE: exit=0; shell=/bin/sh; cwd=/Users/mickaelfarina/codec-wt-setup; path=2cbcf16e1311/44 entries; EXPECT=matched; output-sha256=19e51a3b0cdb1a5337e3f1a781ac43c65ee6a25f3433ce59dd36463b4061e674; output-bytes=591
 
-## Entitlements
-
-- [x] G3: The app's main executable is a Mach-O binary, so codesign entitlements actually apply, and the signed app carries the microphone entitlement.
-  CHECK: node packaging/macos/verify/launcher.mjs
+- [x] G3: All three provider modes round-trip: local, AVA cloud, and a custom OpenAI-compatible base URL.
+  CHECK: python3 -m pytest tests/test_setup_connect.py -q -s -k provider_roundtrip
   EXPECT: UNLAZY-G3-PASS
-  EVIDENCE: exit=0; shell=/bin/sh; cwd=/Users/mickaelfarina/codec-wt-app; path=2cbcf16e1311/44 entries; EXPECT=matched; output-sha256=b6c285e5093eb3a6ab27031621db097d098dc2446b7edfca7fdfa90119161439; output-bytes=15
-  WHY: CFBundleExecutable is a /bin/sh script. macOS attaches entitlements only
-  to Mach-O binaries, so `codesign --entitlements` is accepted and SILENTLY
-  ignored — the app has hardened runtime with ZERO entitlements. A voice-first
-  product that can never be granted a microphone. This is the load-bearing gate:
-  no entitlements-file edit can fix it while the executable is a script.
+  EVIDENCE: exit=0; shell=/bin/sh; cwd=/Users/mickaelfarina/codec-wt-setup; path=2cbcf16e1311/44 entries; EXPECT=matched; output-sha256=62911349c51de7d47b70436137b08b17df91438a590e4feb8e720af8a7ee2c19; output-bytes=591
 
-## Service paths
-
-- [x] G4: No installed LaunchAgent references a removable volume, and the generated paths follow the app's real location.
-  CHECK: node packaging/macos/verify/launchagents.mjs
+- [x] G4: The connection test exercises the REAL chat path and fails honestly — a wrong URL, a bad key and a missing model each report a usable reason, never a false green.
+  CHECK: python3 -m pytest tests/test_setup_connect.py -q -s -k test_call_is_honest
   EXPECT: UNLAZY-G4-PASS
-  EVIDENCE: exit=0; shell=/bin/sh; cwd=/Users/mickaelfarina/codec-wt-app; path=2cbcf16e1311/44 entries; EXPECT=matched; output-sha256=2319a7eceda202fa75482ed4b87f422398aaf35e9cccfc43060ce91a64f014f8; output-bytes=15
-  WHY: all 14 ai.avadigital.codec.* plists were written pointing at
-  /Volumes/CODEC Installer 1/... because first_run.py ran while the app was
-  still on the disk image. Every one exits 78 once the image is ejected, which
-  every user does immediately.
+  EVIDENCE: exit=0; shell=/bin/sh; cwd=/Users/mickaelfarina/codec-wt-setup; path=2cbcf16e1311/44 entries; EXPECT=matched; output-sha256=ede76cb89a897f70309c22c65c67772bab1c7aace49cc5121e2a19234503151a; output-bytes=591
 
-## First-run feedback
+## Secrets
 
-- [x] G5: Launching the app produces a visible, non-silent result — the user is never left clicking an icon that appears to do nothing.
-  CHECK: node packaging/macos/verify/feedback.mjs
+- [x] G5: A user-supplied API key is stored in the Keychain and NEVER written to config.json.
+  CHECK: python3 -m pytest tests/test_setup_connect.py -q -s -k key_never_on_disk
   EXPECT: UNLAZY-G5-PASS
-  EVIDENCE: exit=0; shell=/bin/sh; cwd=/Users/mickaelfarina/codec-wt-app; path=2cbcf16e1311/44 entries; EXPECT=matched; output-sha256=ff06227ef6ae0c5d20b638683282d214245eed49afda1c2d823c703163ce5142; output-bytes=15
-  WHY: the launcher starts the fleet and exits with no window, no menu-bar item
-  and no notification. Reported verbatim: "when I click it nothing happened It
-  just nothing happened."
+  EVIDENCE: exit=0; shell=/bin/sh; cwd=/Users/mickaelfarina/codec-wt-setup; path=2cbcf16e1311/44 entries; EXPECT=matched; output-sha256=6b02264f017da8f47a3951f24f08d48801d1f3c7ce59f360170101ac129e792a; output-bytes=591
 
-## End to end
+## The screen
 
-- [x] G6: A fresh install from the built app starts a working dashboard — proven by an HTTP response from the bundled stack, not by a log line claiming success.
-  CHECK: node packaging/macos/verify/e2e.mjs
+- [x] G6: The dashboard shows the connect screen while no brain is connected, dismisses it once one is, and offers the same screen from Settings afterwards.
+  CHECK: node packaging/macos/verify/setup_screen.mjs
   EXPECT: UNLAZY-G6-PASS
-  EVIDENCE: exit=0; shell=/bin/sh; cwd=/Users/mickaelfarina/codec-wt-app; path=2cbcf16e1311/44 entries; EXPECT=matched; output-sha256=03379ff5eade424e30a2fe4da785b2a744fe7698dd409444d952921c1a72cd48; output-bytes=56
-  WHY: every previous "success" in this saga was a log line. This gate must
-  observe the product working, on a port the bundled app owns, and must not be
-  satisfiable by the operator's existing PM2 fleet.
+  EVIDENCE: exit=0; shell=/bin/sh; cwd=/Users/mickaelfarina/codec-wt-setup; path=2cbcf16e1311/44 entries; EXPECT=matched; output-sha256=30c91a661ce0bcca63f516d474e01e7e31615c1e33fd39670d74deb48da044a8; output-bytes=15
+
+## Both surfaces agree
+
+- [x] G7: The installer's provider choice is written in the exact shape the app reads, and the app re-verifies rather than trusting it.
+  CHECK: node packaging/macos/verify/installer_contract.mjs
+  EXPECT: UNLAZY-G7-PASS
+  EVIDENCE: exit=0; shell=/bin/sh; cwd=/Users/mickaelfarina/codec-wt-setup; path=2cbcf16e1311/44 entries; EXPECT=matched; output-sha256=a0d8eb69aa26d9bffb4b9db35037257a83ac7c7073ad3cb4d656fa6fd3af47ac; output-bytes=15
+
+## No regression
+
+- [x] G8: The existing suite gains no NEW failures beyond the 40 pre-existing llm/stream ones in docs/known-issues.md.
+  CHECK: node packaging/macos/verify/suite_no_new_failures.mjs
+  EXPECT: UNLAZY-G8-PASS
+  EVIDENCE: exit=0; shell=/bin/sh; cwd=/Users/mickaelfarina/codec-wt-setup; path=2cbcf16e1311/44 entries; EXPECT=matched; output-sha256=da0edbf8a7d0be62cd58b5b322681f6177d9daceee987ded6330193c62bd1ca9; output-bytes=59
 
 <!--
-Negative controls: G1..G4 all assert properties absent in the CURRENT build, so
-each verifier is run against the unfixed tree first and MUST fail there. G6 must
-bind a port the PM2 fleet does not use, or it would pass on the operator's
-existing dashboard and prove nothing about the bundle.
-
-Toolchain: macOS only — codesign, spctl, launchctl, file(1). Shell: /bin/bash.
-
-NOT in scope, deliberately: publishing a release asset, the Buy button, and the
-ava-stack installer changes (those live in that repo's own ledger).
+Negative controls: G1..G5 run against the pre-fix tree and must fail there.
+G4 is exercised against a KNOWN-BAD endpoint as a positive control — a test that
+only ever sees a working server proves nothing about honesty.
+G8 compares the failure SET, not a count, so a new failure cannot hide behind a
+pre-existing one.
+Toolchain: macOS. Shell: /bin/bash.
 -->

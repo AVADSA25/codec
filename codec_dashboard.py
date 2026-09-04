@@ -314,6 +314,8 @@ app.add_middleware(E2EMiddleware)
 # ═══════════════════════════════════════════════════════════════
 
 from routes.auth import router as auth_router
+from routes.setup import router as setup_router
+import codec_models
 from routes.skills import router as skills_router
 from routes.agents import router as agents_router
 from routes.memory import router as memory_router
@@ -384,6 +386,7 @@ except Exception as _e:
     log.debug(f"[triggers] routes not loaded: {_e}")
     _has_triggers = False
 
+app.include_router(setup_router)
 app.include_router(auth_router)
 app.include_router(skills_router)
 app.include_router(agents_router)
@@ -490,7 +493,7 @@ async def send_command(request: Request):
         except Exception:
             pass
         base_url = config.get("llm_base_url", "http://localhost:8083/v1")
-        model = config.get("llm_model", "mlx-community/Qwen3.6-35B-A3B-4bit")
+        model = config.get("llm_model", codec_models.DEFAULT_MODEL)
         # PR-2B (D-15 partial): keychain-aware live read.
         from codec_config import get_llm_api_key as _kc_get_llm
         api_key = _kc_get_llm()
