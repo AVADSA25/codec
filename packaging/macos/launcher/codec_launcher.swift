@@ -106,10 +106,14 @@ func startFleet() -> StartResult {
     if process.terminationStatus != 0 {
         // Surface the real reason, not "something went wrong". The first line of
         // a Python traceback's final frame is what actually helps.
-        let reason = combined
-            .split(separator: "\n")
-            .last(where: { $0.contains("Error") || $0.contains("error") })
-            .map(String.init) ?? "exit code \(process.terminationStatus)"
+        // Case-insensitive: codec_app_main prints "FLEET ERROR: ... REFUSING: ..."
+        // and the old match missed it, so the alert read "exit code 1" — true
+        // and useless. Prefer the REFUSING/Error line, else the last non-empty one.
+        let lines = combined.split(separator: "\n").map(String.init).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        let reason = lines.last(where: { $0.range(of: "refus", options: .caseInsensitive) != nil })
+            ?? lines.last(where: { $0.range(of: "error", options: .caseInsensitive) != nil })
+            ?? lines.last
+            ?? "exit code \(process.terminationStatus)"
         return StartResult(ok: false, summary: "CODEC could not start", detail: reason)
     }
 
