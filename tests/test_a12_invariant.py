@@ -34,7 +34,11 @@ _ALLOWLIST = {
 }
 
 _INLINE_POST_RE = re.compile(r"\.post\s*\([^)]*chat/completions")
-_SKIP_PREFIXES = ("tests/", ".claude/", "scripts/")
+# dist/ and .build/ hold BUILT output: bundled copies of these same files plus
+# third-party site-packages (mlx_vlm, transformers) that legitimately POST to
+# chat/completions. Scanning them reports the repo twice and every dependency
+# once, the moment anyone builds the app locally and runs pytest.
+_SKIP_PREFIXES = ("tests/", ".claude/", "scripts/", "dist/", ".build/", "node_modules/")
 
 
 def _scan(root: Path) -> set:
