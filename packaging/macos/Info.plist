@@ -16,6 +16,13 @@
     <!-- Names the .icns that build_app.sh copies into Resources. Declaring it
          is not enough on its own: the file must actually be in the bundle, or
          the Dock shows a blank tile with no error. -->
+    <!-- Menu-bar agent: no Dock icon, no app switcher entry. Declared here
+         rather than only via setActivationPolicy(.accessory) at runtime — when
+         launched through `open`/LaunchServices the runtime call left the app
+         in the Dock with no status item (observed 2026-09-04: System Events
+         reported background-only=false and no menu bar 2). -->
+    <key>LSUIElement</key>
+    <true/>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleExecutable</key>
