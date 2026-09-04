@@ -227,3 +227,17 @@ zero agents loaded would bake `/Volumes/...` paths again. Fix: move
 running the PM2 dev fleet, `_bootstrap_fleet` starts the same services on the same
 ports — the packaged app cannot be launched on the dev box without a port fight,
 so packaged-app testing belongs on the Mac Air.
+
+## 40 `test_llm_*` / stream / vision / agent_plan tests fail locally on main (2026-09-04)
+
+On main @ cfd8b1e, `pytest` reports 40 failures across tests/test_llm_stream.py (15),
+test_llm_async.py (8), test_stream_usage.py (5), test_llm_vision_dedup.py (4),
+test_agent_plan.py (3), test_llm_raise_mode.py (2), test_skill_loader_unification.py,
+test_security.py. Sample: `assert ['🔒 Cloud mod...local model.'] == ['Hello', ...]` —
+codec_llm now returns a cloud-mode lock message where the tests expect a streamed
+reply, i.e. a behaviour change in the persona/cloud-gating commits (8d72204..aca9270)
+landed without updating these tests. CI's `smoke` job stays green, so it does not
+exercise them. Confirmed pre-existing by diffing failing IDs on main vs a clean
+branch: zero unique to the branch. Fix: decide whether the cloud-mode lock is the
+intended default in tests (then update expectations) or gate it behind config in the
+test fixture.
