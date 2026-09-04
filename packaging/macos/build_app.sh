@@ -132,6 +132,11 @@ find "$REPO" -maxdepth 1 -name '*.py' -exec cp {} "$CONTENTS/Resources/app/" \;
 for d in routes skills; do
     [ -d "$REPO/$d" ] && cp -R "$REPO/$d" "$CONTENTS/Resources/app/$d"
 done
+# The model-server launcher. services.json runs `bash scripts/start_model_server.sh`
+# from Resources/app; without this copy the qwen3.6 service has nothing to run.
+mkdir -p "$CONTENTS/Resources/app/scripts"
+cp "$REPO/scripts/start_model_server.sh" "$CONTENTS/Resources/app/scripts/"
+chmod +x "$CONTENTS/Resources/app/scripts/start_model_server.sh"
 # runtime assets the app needs
 for f in requirements.txt ecosystem.config.js codec_dashboard.html VERSION; do
     [ -f "$REPO/$f" ] && cp "$REPO/$f" "$CONTENTS/Resources/app/$f"

@@ -601,6 +601,9 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
 .setup-actions{display:flex;align-items:center;gap:12px;margin-top:18px}
 .setup-btn{background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);padding:10px 22px;font-size:14px;font-weight:600;cursor:pointer}
 .setup-btn:disabled{background:var(--surface-3);color:var(--text-dim);cursor:not-allowed}
+.setup-btn-secondary{background:var(--surface-3);color:var(--text)}
+.setup-dl{display:flex;flex-direction:column;gap:6px;margin-top:4px}
+.setup-dl[hidden]{display:none}
 .setup-skip{background:none;border:none;color:var(--text-dim);font-size:12px;cursor:pointer;text-decoration:underline}
 
 
@@ -652,6 +655,10 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
 
     <div class="setup-local" id="setupLocal" hidden>
       <label>Model<select id="setupLocalPick"></select></label>
+      <div class="setup-dl" id="setupDl" hidden>
+        <button class="setup-btn setup-btn-secondary" id="setupDlBtn">Download the local model (about 4.3 GB)</button>
+        <div class="setup-opt-meta" id="setupDlMeta">Private, one-time, resumable. Runs on your Mac after that.</div>
+      </div>
     </div>
 
     <div class="setup-status" id="setupStatus"></div>
@@ -3135,8 +3142,9 @@ setInterval(checkForUpdate, 6*60*60*1000);   // re-check every 6h
         d.local_models.forEach(function(m){
           var o=document.createElement('option');o.value=m.id;o.textContent=m.id;localPick.appendChild(o)});
       } else {
-        lm.textContent='No model downloaded yet — choose another option, or download '+(d.bundled_model||'one')+' first.';
+        lm.textContent='No model on this Mac yet — download one below, or choose another option.';
       }
+      var dl=document.getElementById('setupDl'); if(dl) dl.hidden=!!(d.local_models&&d.local_models.length);
       document.getElementById('setupAvaMeta').textContent =
         d.has_license ? 'Licence key found' : 'No licence key in this install';
       overlay.hidden = !!d.connected;
@@ -3174,6 +3182,22 @@ setInterval(checkForUpdate, 6*60*60*1000);   // re-check every 6h
       .catch(function(e){ say(e.message,'err'); connect.disabled=false });
   });
 
+  // Download with visible progress; the screen re-discovers models when done.
+  var dlBtn=document.getElementById('setupDlBtn'), dlMeta=document.getElementById('setupDlMeta'), dlTimer=null;
+  function pollDl(){
+    fetch('/api/setup/download_status').then(function(r){return r.json()}).then(function(d){
+      if(d.state==='running'){dlMeta.textContent='Downloading… '+(d.bytes/1073741824).toFixed(1)+' GB of about '+(d.approx_bytes/1073741824).toFixed(1)+' GB ('+d.percent+'%)';}
+      else if(d.state==='done'){clearInterval(dlTimer);dlMeta.textContent='Downloaded. Select it above and click Connect.';dlBtn.disabled=false;refresh().then(function(){select('local')});}
+      else if(d.state==='error'){clearInterval(dlTimer);dlMeta.textContent='Download failed: '+d.error;dlBtn.disabled=false;}
+    }).catch(function(){});
+  }
+  if(dlBtn)dlBtn.addEventListener('click',function(){
+    dlBtn.disabled=true; dlMeta.textContent='Starting download…';
+    fetch('/api/setup/download_local',{method:'POST'}).then(function(r){return r.json()}).then(function(d){
+      if(!d.ok){dlMeta.textContent=d.error||'Could not start.';dlBtn.disabled=false;return}
+      dlTimer=setInterval(pollDl,2000);
+    }).catch(function(e){dlMeta.textContent=e.message;dlBtn.disabled=false});
+  });
   window.openConnectSetup=function(){overlay.hidden=false;refresh()};
   refresh();
 })();

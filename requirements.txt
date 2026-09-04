@@ -42,6 +42,19 @@ argon2-cffi>=25.1.0
 fastapi>=0.115.0
 uvicorn>=0.35.0
 
+# The local model server. A buyer's Mac has no venv of ours, so the bundled
+# interpreter must be able to run `mlx_vlm.server` itself — otherwise "Use the
+# local model" is an option that cannot work. Marker-gated: MLX exists only for
+# Apple Silicon, and Linux CI would fail to resolve it. Pulls mlx, mlx-lm,
+# transformers and huggingface_hub (which fetch_models.py also needs).
+# Accepted cost (operator, 2026-09-04): the app grows from ~273 MB to ~1.2 GB.
+mlx-vlm>=0.6.13; sys_platform == "darwin" and platform_machine == "arm64"
+# transformers' apply_chat_template needs jinja2 and does NOT pull it in. The
+# bundled server started, listened, and then failed every completion with
+# "apply_chat_template requires jinja2" — caught only by the end-to-end gate
+# that asks the bundled server a real question. Pure Python, tiny, unconditional.
+jinja2>=3.1
+
 # Optional: STT (Whisper via MLX)
 # mlx-whisper
 

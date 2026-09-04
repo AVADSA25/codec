@@ -17,4 +17,7 @@ if (novel.length) {
   process.exit(1);
 }
 console.log(`${failing.length} failing, all pre-existing and documented`);
-console.log("UNLAZY-G8-PASS");
+// Ledger-independent token: this verifier is reused across ledgers where it
+// sits at different gate numbers. Printing "G8" made a G6 gate fail on a token
+// mismatch while the suite was clean.
+console.log("UNLAZY-SUITE-NO-NEW-FAILURES");
