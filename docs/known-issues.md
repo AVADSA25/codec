@@ -241,3 +241,15 @@ exercise them. Confirmed pre-existing by diffing failing IDs on main vs a clean
 branch: zero unique to the branch. Fix: decide whether the cloud-mode lock is the
 intended default in tests (then update expectations) or gate it behind config in the
 test fixture.
+
+## `_fleet_loaded()` counts the app's own LaunchServices registration (2026-09-04)
+
+`launcher/codec_app_main.py:_fleet_loaded()` counts `launchctl list` entries matching
+`ai.avadigital.codec`. LaunchServices registers the running app itself as
+`application.ai.avadigital.codec.<pid>.<n>`, which matches, so an app launched via
+`open`/double-click sees "1 loaded" and skips `_bootstrap_fleet` even when zero fleet
+agents exist — it then reports "fleet running: 1 launchd service(s)" with nothing
+running. Launched directly from a shell the LS entry is absent, the count is 0, and
+bootstrap runs (and on a dev box is correctly refused by the PM2 guard). Fix: match
+`ai.avadigital.codec.<service>` labels only, excluding the `application.` prefix.
+Found while diffing `open` vs direct-exec behaviour of the Mach-O launcher.
