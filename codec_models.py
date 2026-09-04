@@ -57,7 +57,12 @@ from codec_jsonstore import atomic_write_json
 CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
 HF_CACHE = os.path.expanduser("~/.cache/huggingface/hub")
 
-DEFAULT_MODEL = "mlx-community/Qwen3.6-35B-A3B-4bit"
+# The model a FRESH install actually has. packaging/macos/models.json fetches
+# Qwen2.5-7B as the bundled tier; this used to name the 20 GB Qwen3.6-35B, which
+# no new install ever downloads — so every first chat on a buyer's Mac failed
+# with a model-not-found. The developer's machine had both, so it looked fine.
+# tests/test_setup_connect.py::test_defaults_match_reality pins these together.
+DEFAULT_MODEL = "mlx-community/Qwen2.5-7B-Instruct-4bit"
 DEFAULT_BASE_URL = "http://localhost:8083/v1"
 
 # PM2 process that serves the models. Overridable via config.json so a second
