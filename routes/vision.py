@@ -17,7 +17,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from codec_audit import log_event
-from routes._shared import CONFIG_PATH, _audit_write, get_db
+from routes._shared import CONFIG_PATH, _audit_event, get_db
 
 router = APIRouter()
 log = logging.getLogger("codec_dashboard")
@@ -66,7 +66,7 @@ async def vision_analyze(request: Request):
         r = rq.post(f"{vision_url}/chat/completions", json=payload, headers=headers, timeout=120)
         data = r.json()
         answer = data["choices"][0]["message"]["content"].strip()
-        _audit_write(f"[{datetime.now().isoformat()}] VISION: {prompt[:100]}\n")
+        _audit_event("vision_request", prompt_len=len(prompt), prompt_preview=prompt[:100])
         log_event("chat_vision", "codec-dashboard",
                   f"Vision analysis: {prompt[:60]}",
                   extra={"prompt_preview": prompt[:200]})

@@ -33,7 +33,8 @@ restarted with both webhook guards live. Installed on this Mac from the notarize
 1. `_fleet_loaded()` counts the app's own LS registration; `_bootstrap_fleet` bypasses the
    ephemeral guard. On a buyer's Mac the first launch WILL install 14 LaunchAgents — untested
    end-to-end on clean hardware. **Mac Air test is the gate before the Buy button.**
-2. Auth route writes unsigned lines into the HMAC audit log (known-issues).
+2. ~~Auth route writes unsigned lines into the HMAC audit log~~ — RESOLVED 2026-09-05
+   (routes/_shared._audit_event; 10 call sites; legacy shim can no longer write plaintext).
 3. Demo narration script.
 
 ---

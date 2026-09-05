@@ -187,6 +187,12 @@ regenerate `skills/.manifest.json`, or delete both files.
 
 ## Auth routes write unsigned plaintext into the HMAC-signed audit log (2026-08-21)
 
+**RESOLVED 2026-09-05:** `routes/_shared._audit_event` routes every route-level audit
+through `codec_audit.audit()` (HMAC, redaction, JSON). All 10 call sites (auth 8, media,
+vision) converted; `_audit_write` survives only as a shim that converts a legacy string
+into an envelope line, so plaintext can never reach the log again. The live log had
+rotated by then: `verify_audit_log()` → integrity_ok=True.
+
 `routes/_shared._audit_write` appends raw strings straight to `~/.codec/audit.log`,
 bypassing `codec_audit.audit()` and therefore the whole PR-2E envelope — no HMAC,
 no secret redaction, no JSON. Nine call sites in `routes/auth.py`, all
