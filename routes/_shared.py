@@ -38,15 +38,41 @@ def _get_skills_dir():
         return os.path.join(DASHBOARD_DIR, "skills")
 
 
-def _audit_write(line: str):
-    """Append to audit log with restricted permissions."""
-    os.makedirs(os.path.dirname(AUDIT_LOG), exist_ok=True)
-    with open(AUDIT_LOG, "a") as f:
-        f.write(line)
+def _audit_event(event: str, *, outcome: str = "ok", level: str | None = None,
+                 message: str | None = None, **fields) -> None:
+    """Emit a structured, HMAC-signed audit line via codec_audit.
+
+    Routes used to append raw f-strings straight to ~/.codec/audit.log,
+    bypassing the PR-2E envelope — no HMAC, no secret redaction, not even JSON.
+    Nine auth events (AUTH_SUCCESS, AUTH_FAILED, TOTP_*), the ones an intruder
+    would most want to edit, were the only UNSIGNED lines in the log, and they
+    made `verify_audit_log()` report the operator's own log as tampered
+    (broken_lines=2, integrity_ok=False on 2026-08-27). This is the only writer
+    routes may use.
+    """
+    # `error` / `error_type` are reserved top-level envelope fields; codec_audit
+    # refuses to accept them via extra, so route them to the real slots.
+    error = fields.pop("error", None)
+    error_type = fields.pop("error_type", None)
     try:
-        os.chmod(AUDIT_LOG, 0o600)
-    except OSError:
-        pass
+        from codec_audit import audit
+        audit(event=event, source="codec-dashboard", outcome=outcome, level=level,
+              message=message, error=str(error) if error is not None else None,
+              error_type=error_type,
+              extra={k: v for k, v in fields.items() if v is not None} or None)
+    except Exception:
+        logging.getLogger("codec.routes").warning("audit emit failed for %s", event)
+
+
+def _audit_write(line: str) -> None:
+    """DEPRECATED shim: legacy `[ts] KIND: detail` strings become envelope
+    lines. Kept so a missed or third-party caller can never append plaintext
+    to the signed log again; every in-repo caller uses _audit_event directly.
+    """
+    text = (line or "").strip()
+    kind, _, detail = text.partition(": ")
+    kind = kind.split("] ", 1)[-1].strip().lower() or "legacy_audit_line"
+    _audit_event(kind, detail=detail or None, legacy=True)
 
 
 # ── Notification helpers ──

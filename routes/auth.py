@@ -20,7 +20,7 @@ from routes._shared import (
     AUTH_ENABLED, AUTH_SESSION_HOURS, AUTH_BINARY, AUTH_PIN_HASH, AUTH_COOKIE_NAME,
     _auth_sessions, _auth_lock, _e2e_keys,
     _is_auth_compiled, _is_totp_enabled, _verify_biometric_session,
-    _save_sessions, _save_e2e_keys, _audit_write, _pin_attempts,
+    _save_sessions, _save_e2e_keys, _audit_event, _pin_attempts,
 )
 
 router = APIRouter()
@@ -73,9 +73,9 @@ async def auth_verify(request: Request):
 
             try:
                 if result.get("authenticated"):
-                    _audit_write(f"[{datetime.now().isoformat()}] AUTH_SUCCESS: method={result.get('method')} ip={client_ip}\n")
+                    _audit_event("auth_success", method=result.get("method"), ip=client_ip)
                 else:
-                    _audit_write(f"[{datetime.now().isoformat()}] AUTH_FAILED: error={result.get('error')} ip={client_ip}\n")
+                    _audit_event("auth_failed", outcome="error", level="warning", error=result.get("error"), ip=client_ip)
             except Exception:
                 pass
 
@@ -140,9 +140,9 @@ async def auth_pin(request: Request):
     pin_ok = verify_pin(pin, AUTH_PIN_HASH)
     try:
         if pin_ok:
-            _audit_write(f"[{datetime.now().isoformat()}] AUTH_SUCCESS: method=pin ip={client_ip}\n")
+            _audit_event("auth_success", method="pin", ip=client_ip)
         else:
-            _audit_write(f"[{datetime.now().isoformat()}] AUTH_FAILED: method=pin error=wrong_pin ip={client_ip}\n")
+            _audit_event("auth_failed", outcome="error", level="warning", method="pin", error="wrong_pin", ip=client_ip)
     except Exception:
         pass
 
@@ -253,7 +253,7 @@ async def totp_confirm(request: Request):
                 sess = _auth_sessions.get(token)
                 if sess:
                     sess.pop("pending_totp_secret", None)
-        _audit_write(f"[{datetime.now().isoformat()}] TOTP_SETUP: 2FA enabled\n")
+        _audit_event("totp_enabled")
         return {"verified": True, "enabled": True, "message": "2FA enabled successfully"}
     return {"verified": False, "error": "Invalid code. Try again."}
 
@@ -282,9 +282,9 @@ async def totp_verify(request: Request):
             if pending_token in _auth_sessions:
                 _auth_sessions[pending_token]["totp_verified"] = True
                 _save_sessions()
-        _audit_write(f"[{datetime.now().isoformat()}] TOTP_SUCCESS: ip={client_ip}\n")
+        _audit_event("totp_success", ip=client_ip)
         return {"verified": True, "token": pending_token}
-    _audit_write(f"[{datetime.now().isoformat()}] TOTP_FAILED: ip={client_ip}\n")
+    _audit_event("totp_failed", outcome="error", level="warning", ip=client_ip)
     return {"verified": False, "error": "Invalid code"}
 
 
@@ -327,7 +327,7 @@ async def totp_disable(request: Request):
             session.pop("totp_verified", None)
         _save_sessions()
     client_ip = request.client.host if request.client else "unknown"
-    _audit_write(f"[{datetime.now().isoformat()}] TOTP_DISABLED: 2FA disabled by ip={client_ip}\n")
+    _audit_event("totp_disabled", level="warning", ip=client_ip)
     return {"disabled": True}
 
 

@@ -23,7 +23,7 @@ from datetime import datetime
 from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
-from routes._shared import CONFIG_PATH, _audit_write
+from routes._shared import CONFIG_PATH, _audit_event
 
 router = APIRouter()
 
@@ -72,7 +72,7 @@ async def webcam_capture(request: Request):
                 result["model"] = vision_model
             except Exception as e:
                 result["analysis_error"] = str(e)
-        _audit_write(f"[{datetime.now().isoformat()}] WEBCAM: {filename} analyze={analyze}\n")
+        _audit_event("webcam_capture", filename=filename, analyze=analyze)
         return result
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
