@@ -87,7 +87,8 @@ _sync_http  = httpx.Client(timeout=30, follow_redirects=True, headers=_HTTP_HEAD
 # Operator-tunable via ~/.codec/config.json:agents.llm_timeout_s.
 def _agent_llm_timeout():
     try:
-        import json as _j, os as _o
+        import json as _j
+        import os as _o
         with open(_o.path.expanduser('~/.codec/config.json')) as _f:
             _c = _j.load(_f).get('agents', {})
         return float(_c.get('llm_timeout_s', 900))
