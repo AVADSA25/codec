@@ -80,7 +80,21 @@ _HTTP_HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 }
 _sync_http  = httpx.Client(timeout=30, follow_redirects=True, headers=_HTTP_HEADERS)
-_async_http = httpx.AsyncClient(timeout=180)
+# Deep Research sends very large prompts (14k+ tokens). On a 27B at ~13 tok/s a
+# single call measured 336s (78s prefill + 258s decode) — the old 180s ceiling
+# aborted it while the model was still generating, surfacing as
+# "async LLM call failed" after the run had already burned 12 minutes.
+# Operator-tunable via ~/.codec/config.json:agents.llm_timeout_s.
+def _agent_llm_timeout():
+    try:
+        import json as _j, os as _o
+        with open(_o.path.expanduser('~/.codec/config.json')) as _f:
+            _c = _j.load(_f).get('agents', {})
+        return float(_c.get('llm_timeout_s', 900))
+    except Exception:
+        return 900.0
+
+_async_http = httpx.AsyncClient(timeout=_agent_llm_timeout())
 
 # ── AUDIT LOGGER ──
 # Crew/agent events route through codec_audit.audit() — writes to

@@ -40,7 +40,7 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html { background: var(--bg); }
 html, body { font-family: var(--font); background: var(--bg); color: var(--text); height: 100%; overflow: hidden; -webkit-tap-highlight-color: transparent; }
-.app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; padding-top: var(--safe-top); padding-bottom: var(--safe-bottom); padding-bottom: env(safe-area-inset-bottom, 0px); }
+.app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; padding-top: var(--safe-top); padding-bottom: var(--safe-bottom); overflow: hidden; }
 
 /* ── Icons (inline SVG) ── */
 .ico { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
@@ -165,8 +165,8 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
 .tab-badge.hidden { display: none; }
 
 /* ── Content ── */
-.content { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
-.panel { display: none; padding: 14px; min-height: 100%; }
+.content { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: calc(var(--input-h,76px) + 16px); -webkit-overflow-scrolling: touch; }
+.panel { display: none; padding: 14px; }
 .panel.active { display: block; }
 #panel-chat { position: relative; }
 #panel-chat::before {
@@ -179,8 +179,9 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
 
 /* ── Input Area (matches Deep Chat) ── */
 .input-area {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 9997;
   padding: 8px 12px; border-top: 1px solid var(--border); background: var(--surface);
-  flex-shrink: 0; padding-bottom: calc(8px + var(--safe-bottom));
+  padding-bottom: calc(8px + var(--safe-bottom));
 }
 .input-row { display: flex; gap: 6px; align-items: flex-end; }
 .chat-input {
@@ -551,7 +552,7 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
   .settings-section { width: 100%; }
   .card { overflow: hidden; word-break: break-word; }
   .panel { padding: 10px; }
-  .input-area{padding-bottom:calc(60px + env(safe-area-inset-bottom, 8px))}
+  
   .ibtn { width: 36px; height: 36px; }
   .side-panel { width: 280px; right: -280px; }
 }
@@ -611,6 +612,12 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
 .text-size-group{display:inline-flex;gap:4px}
 .text-size-group button{background:var(--surface-2);border:1px solid var(--border);color:var(--text-muted);border-radius:var(--radius-sm);width:28px;height:24px;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font)}
 .text-size-group button.sel{background:var(--accent);border-color:var(--accent);color:#fff}
+
+@media (max-width: 768px), (max-height: 600px) and (pointer: coarse){
+  .input-area{bottom:var(--nav-h,56px);padding-bottom:8px}
+  .page-nav{padding-bottom:calc(6px + env(safe-area-inset-bottom,0px))}
+  .content{padding-bottom:calc(var(--nav-h,56px) + var(--input-h,64px) + 12px)}
+}
 </style>
 </head>
 <body>
@@ -3212,5 +3219,29 @@ setInterval(checkForUpdate, 6*60*60*1000);   // re-check every 6h
     <button class="pip-btn" onclick="closeWebcamPip()" title="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
   </div>
 </div>
+
+<script>
+/* Pin the composer above the bottom nav on every phone.
+   Flex/dvh math differs per device (gesture bars, browser vs installed PWA),
+   so measure the real nav + composer heights and expose them as CSS vars. */
+(function(){
+  function sync(){
+    var nav=document.querySelector('.page-nav'), ia=document.querySelector('.input-area');
+    var mobile=window.matchMedia('(max-width: 768px), (max-height: 600px) and (pointer: coarse)').matches;
+    var r=document.documentElement.style;
+    var docked = nav && getComputedStyle(nav).position==='fixed';
+    r.setProperty('--nav-h', (mobile&&docked?nav.offsetHeight:0)+'px');
+    r.setProperty('--input-h', (ia?ia.offsetHeight:0)+'px');
+  }
+  var ro=window.ResizeObserver?new ResizeObserver(sync):null;
+  function attach(){
+    ['.page-nav','.input-area'].forEach(function(s){var e=document.querySelector(s); if(e&&ro) ro.observe(e);});
+    sync();
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',attach); else attach();
+  addEventListener('resize',sync); addEventListener('orientationchange',function(){setTimeout(sync,150)});
+  if(window.visualViewport) visualViewport.addEventListener('resize',sync);
+})();
+</script>
 </body>
 </html>

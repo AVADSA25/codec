@@ -57,7 +57,13 @@ async def deep_research_status(job_id: str):
     """Poll research job status"""
     job = _research_jobs.get(job_id)
     if not job:
-        return JSONResponse({"error": "Job not found"}, status_code=404)
+        # _research_jobs is in-memory: a dashboard restart (deploy, crash, pm2
+        # reload) drops every in-flight job while the browser keeps polling.
+        # Say so, instead of a bare "not found" that reads like a code fault.
+        return JSONResponse(
+            {"error": "Job not found — it was lost when the CODEC server restarted. "
+                      "Re-run the research."},
+            status_code=404)
     return job
 
 

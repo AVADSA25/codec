@@ -32,7 +32,7 @@
 *{margin:0;padding:0;box-sizing:border-box}
 html{background:var(--bg)}
 html,body{font-family:var(--font);background:var(--bg);color:var(--text);height:100%;overflow:hidden;-webkit-tap-highlight-color:transparent}
-.app{display:flex;flex-direction:column;height:100vh;height:100dvh;position:relative;padding-bottom:env(safe-area-inset-bottom, 0px)}
+.app{display:flex;flex-direction:column;height:100vh;height:100dvh;position:relative;overflow:hidden}
 .ico{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
 .ico-sm{width:16px;height:16px}
 
@@ -100,7 +100,7 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);height:
 .sidebar-new:hover{background:var(--surface-2)}
 
 /* ── Messages ── */
-.messages{flex:1;overflow-y:auto;padding:14px;-webkit-overflow-scrolling:touch}
+.messages{flex:1;min-height:0;overflow-y:auto;padding:14px;padding-bottom:calc(var(--input-h,76px) + 16px);-webkit-overflow-scrolling:touch}
 .msg{margin-bottom:14px;max-width:85%;animation:fadeIn .2s ease;position:relative}
 @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 .msg.user{margin-left:auto}
@@ -144,7 +144,7 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);height:
 @keyframes thinkPulse{0%,100%{opacity:.2;transform:scale(.8)}50%{opacity:1;transform:scale(1.1)}}
 
 /* ── Input Area ── */
-.input-area{padding:8px 12px;border-top:1px solid var(--border);background:var(--surface);flex-shrink:0;padding-bottom:calc(8px + env(safe-area-inset-bottom,8px))}
+.input-area{position:fixed;left:0;right:0;bottom:0;z-index:9997;padding:8px 12px;border-top:1px solid var(--border);background:var(--surface);padding-bottom:calc(8px + env(safe-area-inset-bottom,0px))}
 .file-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px}
 .file-chip{display:flex;align-items:center;gap:5px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:4px 8px;font-size:11px;font-family:var(--mono);color:var(--text-muted);max-width:200px}
 .file-chip .fc-icon{font-size:14px;flex-shrink:0}
@@ -258,7 +258,7 @@ input[type=file]{display:none}
 [data-theme=light] .msg.user .msg-bubble{background:rgba(217,119,87,0.10);color:var(--text);border:1px solid rgba(217,119,87,0.22)}
 
 /* ── Mobile Responsive ── */
-@media (max-width:768px){
+@media (max-width: 768px), (max-height: 600px) and (pointer: coarse){
   .page-nav{position:fixed;bottom:0;left:0;right:0;z-index:9998;transform:none;border-radius:0;padding:6px 0;justify-content:center;background:var(--surface);border-top:1px solid var(--border);gap:0;overflow-x:auto}
   .nav-link{padding:8px 8px;font-size:10px}
   .side-panel{width:280px;right:-280px}
@@ -266,7 +266,7 @@ input[type=file]{display:none}
   .logo-link img{width:28px;height:28px}
   .model-tag{display:none}
   .msg{max-width:90%}
-  .input-area{padding-bottom:calc(60px + env(safe-area-inset-bottom, 8px))}
+  
   .mode-toggle{flex-wrap:wrap}
   #crewSelect{width:100%}
   #agentBuilder .ab-row{flex-direction:column}
@@ -279,7 +279,7 @@ input[type=file]{display:none}
   .header{padding:8px 10px}
   .header-left{gap:6px}
   .messages{padding:10px}
-  .input-area{padding:6px 8px;padding-bottom:calc(60px + env(safe-area-inset-bottom,8px))}
+  .input-area{padding:6px 8px}
   .sidebar{width:260px}
 }
 .notif-bell{position:relative;font-weight:400}.notif-badge{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;background:var(--accent);color:#fff;font-size:10px;font-weight:700;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 4px;line-height:1;pointer-events:none}.notif-badge.hidden{display:none}
@@ -303,6 +303,12 @@ input[type=file]{display:none}
 .text-size-group{display:inline-flex;gap:4px}
 .text-size-group button{background:var(--surface-2);border:1px solid var(--border);color:var(--text-muted);border-radius:var(--radius-sm);width:28px;height:24px;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font)}
 .text-size-group button.sel{background:var(--accent);border-color:var(--accent);color:#fff}
+
+@media (max-width: 768px), (max-height: 600px) and (pointer: coarse){
+  .input-area{bottom:var(--nav-h,56px);padding-bottom:8px}
+  .page-nav{padding-bottom:calc(6px + env(safe-area-inset-bottom,0px))}
+  .messages{padding-bottom:calc(var(--nav-h,56px) + var(--input-h,64px) + 16px)}
+}
 </style>
 </head>
 <body>
@@ -2591,6 +2597,30 @@ setTimeout(refreshAgentStatusPills,500);setInterval(function(){ refreshAgentStat
   s.id = '_codec_pulse_css';
   s.textContent = '@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .35 } }';
   document.head.appendChild(s);
+})();
+</script>
+
+<script>
+/* Pin the composer above the bottom nav on every phone.
+   Flex/dvh math differs per device (gesture bars, browser vs installed PWA),
+   so measure the real nav + composer heights and expose them as CSS vars. */
+(function(){
+  function sync(){
+    var nav=document.querySelector('.page-nav'), ia=document.querySelector('.input-area');
+    var mobile=window.matchMedia('(max-width: 768px), (max-height: 600px) and (pointer: coarse)').matches;
+    var r=document.documentElement.style;
+    var docked = nav && getComputedStyle(nav).position==='fixed';
+    r.setProperty('--nav-h', (mobile&&docked?nav.offsetHeight:0)+'px');
+    r.setProperty('--input-h', (ia?ia.offsetHeight:0)+'px');
+  }
+  var ro=window.ResizeObserver?new ResizeObserver(sync):null;
+  function attach(){
+    ['.page-nav','.input-area'].forEach(function(s){var e=document.querySelector(s); if(e&&ro) ro.observe(e);});
+    sync();
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',attach); else attach();
+  addEventListener('resize',sync); addEventListener('orientationchange',function(){setTimeout(sync,150)});
+  if(window.visualViewport) visualViewport.addEventListener('resize',sync);
 })();
 </script>
 </body>

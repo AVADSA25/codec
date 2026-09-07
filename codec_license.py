@@ -165,7 +165,14 @@ def _fetch_pubkey(cfg: dict, timeout: float = 4.0) -> Optional[bytes]:
     if _PUBKEY_CACHE_VALUE is not None and (now - _PUBKEY_CACHE_TS) < _PUBKEY_CACHE_TTL:
         return _PUBKEY_CACHE_VALUE
     try:
-        with urllib.request.urlopen(_pubkey_url(cfg), timeout=timeout) as r:
+        # Cloudflare in front of the licence server 403s the default
+        # "Python-urllib/x.y" agent, so the fetch failed on every call and we
+        # silently fell back to whatever was on disk — including a placeholder
+        # written during dev, which surfaces to users as an ASN.1 parse error.
+        req = urllib.request.Request(
+            _pubkey_url(cfg), headers={"User-Agent": "CODEC-license-client/1.0"}
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as r:
             pem = r.read()
         if b"BEGIN PUBLIC KEY" in pem:
             try:
@@ -181,7 +188,11 @@ def _fetch_pubkey(cfg: dict, timeout: float = 4.0) -> Optional[bytes]:
     # on this path so the next call retries the network instead of holding
     # a stale value for an hour.
     try:
-        return PUBKEY_CACHE.read_bytes()
+        pem = PUBKEY_CACHE.read_bytes()
+        # A cached blob that cannot be parsed is worse than no key at all: it
+        # turns "offline" into a hard "licence invalid" for the user.
+        load_pem_public_key(pem)
+        return pem
     except Exception:
         return None
 
