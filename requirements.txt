@@ -39,7 +39,7 @@ argon2-cffi>=25.1.0
 # "Optional: STT" comment below, so a bundled interpreter never got them and the
 # packaged app died with ModuleNotFoundError: No module named 'fastapi' — while
 # the build machine looked fine, because the dev environment had them already.
-fastapi>=0.115.0
+fastapi>=0.141.1
 uvicorn>=0.35.0
 
 # The local model server. A buyer's Mac has no venv of ours, so the bundled
