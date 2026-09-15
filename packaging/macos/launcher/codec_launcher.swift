@@ -140,6 +140,13 @@ final class Launcher: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         log("CODEC launched from \(bundleURL.path)")
 
+        // Without a main menu carrying an Edit menu, macOS has nowhere to
+        // dispatch Cmd-C/X/V/A/Z, so paste (etc.) silently failed inside the
+        // dashboard's WKWebView — the shortcuts only worked in a real browser
+        // because the browser ships its own Edit menu. The status-bar item's
+        // menu is NOT the main menu and does not supply these key-equivalents.
+        installMainMenu()
+
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = item.button {
             button.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: "CODEC")
@@ -159,6 +166,46 @@ final class Launcher: NSObject, NSApplicationDelegate {
                 self?.announce(outcome)
             }
         }
+    }
+
+    /// Install the app's main menu. The only functional requirement is a
+    /// standard Edit menu — its items use the first-responder selectors
+    /// (`paste:`, `copy:`, ...) with a nil target, so the keystroke walks the
+    /// responder chain to the focused WKWebView and the clipboard works inside
+    /// the app window exactly as it does in a browser.
+    private func installMainMenu() {
+        let mainMenu = NSMenu()
+
+        // App menu. macOS always treats the first submenu as the app menu; it
+        // owns Cmd-Q, Cmd-H and friends.
+        let appItem = NSMenuItem()
+        mainMenu.addItem(appItem)
+        let appMenu = NSMenu()
+        appItem.submenu = appMenu
+        appMenu.addItem(withTitle: "Hide CODEC", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        let hideOthers = appMenu.addItem(withTitle: "Hide Others",
+                                         action: #selector(NSApplication.hideOtherApplications(_:)),
+                                         keyEquivalent: "h")
+        hideOthers.keyEquivalentModifierMask = [.command, .option]
+        appMenu.addItem(withTitle: "Show All", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
+        appMenu.addItem(.separator())
+        appMenu.addItem(withTitle: "Quit CODEC", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+
+        // Edit menu — the reason this method exists.
+        let editItem = NSMenuItem()
+        mainMenu.addItem(editItem)
+        let editMenu = NSMenu(title: "Edit")
+        editItem.submenu = editMenu
+        editMenu.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+        let redo = editMenu.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "z")
+        redo.keyEquivalentModifierMask = [.command, .shift]
+        editMenu.addItem(.separator())
+        editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+
+        NSApp.mainMenu = mainMenu
     }
 
     private func rebuildMenu(status: String, enabled: Bool) {
