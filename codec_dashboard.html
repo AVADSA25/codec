@@ -165,7 +165,7 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
 .tab-badge.hidden { display: none; }
 
 /* ── Content ── */
-.content { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: calc(var(--input-h,76px) + 16px); -webkit-overflow-scrolling: touch; }
+.content { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 16px; -webkit-overflow-scrolling: touch; }
 .panel { display: none; padding: 14px; }
 .panel.active { display: block; }
 #panel-chat { position: relative; }
@@ -179,7 +179,13 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
 
 /* ── Input Area (matches Deep Chat) ── */
 .input-area {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 9997;
+  /* Desktop/native app: a normal flex child at the bottom of .app, so the
+     scroll area (.content) sizes to the space left over and a long reply
+     scrolls fully into view. It only goes position:fixed on phones (see the
+     touch media query) where the docked nav + gesture bars need it.
+     Regression note: 1612bf0 made it fixed on EVERY size, which hid the last
+     ~60px of every reply behind the composer in the desktop window. */
+  flex-shrink: 0;
   padding: 8px 12px; border-top: 1px solid var(--border); background: var(--surface);
   padding-bottom: calc(8px + var(--safe-bottom));
 }
@@ -614,7 +620,7 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
 .text-size-group button.sel{background:var(--accent);border-color:var(--accent);color:#fff}
 
 @media (max-width: 768px), (max-height: 600px) and (pointer: coarse){
-  .input-area{bottom:var(--nav-h,56px);padding-bottom:8px}
+  .input-area{position:fixed;left:0;right:0;bottom:var(--nav-h,56px);z-index:9997;padding-bottom:8px}
   .page-nav{padding-bottom:calc(6px + env(safe-area-inset-bottom,0px))}
   .content{padding-bottom:calc(var(--nav-h,56px) + var(--input-h,64px) + 12px)}
 }
