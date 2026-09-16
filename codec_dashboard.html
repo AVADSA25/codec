@@ -622,7 +622,14 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
 @media (max-width: 768px), (max-height: 600px) and (pointer: coarse){
   .input-area{position:fixed;left:0;right:0;bottom:var(--nav-h,56px);z-index:9997;padding-bottom:8px}
   .page-nav{padding-bottom:calc(6px + env(safe-area-inset-bottom,0px))}
-  .content{padding-bottom:calc(var(--nav-h,56px) + var(--input-h,64px) + 12px)}
+  .content{padding-bottom:calc(var(--nav-h,56px) + var(--input-h,64px) + 28px)}
+  /* Composer on phones: 16px so iOS does NOT zoom the viewport on focus (the
+     <16px zoom is what made the text look huge and shifted the layout); nowrap
+     so the placeholder stays one line instead of wrapping to two in the narrow
+     space the button row leaves; tighter buttons/gaps give the field that width. */
+  .chat-input{font-size:16px;white-space:nowrap;overflow:hidden;line-height:1.3;min-height:40px}
+  .input-row{gap:4px}
+  .ibtn{width:34px;height:34px;flex-shrink:0}
 }
 </style>
 </head>
@@ -1198,6 +1205,13 @@ function showTab(id) {
   document.getElementById('tab-' + id).classList.add('active');
   document.getElementById('panel-' + id).classList.add('active');
   currentTab = id;
+  // The composer belongs to the chat panel only. On phones it is position:fixed,
+  // so leaving it visible made it float over Home / Settings / etc. Hide it off
+  // chat; re-run the nav/composer measurement (via resize) when it returns so
+  // .content reserves the right bottom padding.
+  var _ia = document.querySelector('.input-area');
+  if (_ia) _ia.style.display = (id === 'chat') ? '' : 'none';
+  if (id === 'chat') window.dispatchEvent(new Event('resize'));
   if (id === 'history') loadHistory();
   if (id === 'chat') loadChat();
   if (id === 'audit') loadAudit();

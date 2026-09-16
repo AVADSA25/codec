@@ -363,15 +363,18 @@ def _pm2_pid(name: str) -> Optional[int]:
 
 def restart_server(process: Optional[str] = None,
                    ready_timeout: float = _RESTART_READY_TIMEOUT) -> tuple[bool, str]:
-    """Restart the model server via PM2 and wait until it serves again.
+    """Switch the model server STOP-then-START so only one model is ever resident.
 
     Returns (ok, detail). Never raises: a failure here downgrades the switch to
     the old in-place behaviour rather than aborting it.
 
-    Waiting is two-stage because the port is a liar for the first moment after
-    `pm2 restart` — the OLD process still holds it, so an immediate connect
-    succeeds and we would return before the new process exists. So: wait for PM2
-    to report a different pid, THEN wait for that pid to bind the port.
+    Why not `pm2 restart`: restart overlaps the old and new processes — the old
+    MLX server still holds its weights (~17-20 GB of unified memory) while the
+    new one allocates the next model, so for a few seconds BOTH the 27B and the
+    35B are resident. On a 64 GB Mac Studio that peak is survivable but wrong,
+    and it is exactly what another session observed. So: STOP the old process,
+    WAIT until it is gone and its port is free (weights released), THEN START
+    the new one. One model is loaded at a time, by construction.
     """
     cfg = _load_config()
     name = process or _pm2_process_name(cfg)
@@ -381,34 +384,48 @@ def restart_server(process: Optional[str] = None,
     if not pm2:
         return False, "pm2 not on PATH — switching in place"
 
-    before = _pm2_pid(name)
     t0 = time.time()
-    # NOTE: `pm2 start <name>` fails (pm2 reads the name as a filename);
-    # `restart` is the verb that accepts a process name.
+
+    # 1. STOP the old server and wait for it to actually exit. The model's
+    #    unified-memory footprint is freed only when the process dies, so the
+    #    port closing + PM2 reporting it offline is our "weights released" signal.
+    try:
+        subprocess.run([pm2, "stop", name], capture_output=True, text=True, timeout=60)
+    except subprocess.SubprocessError as e:
+        return False, f"pm2 stop {name} failed: {type(e).__name__}: {e}"
+
+    gone_deadline = time.time() + _RESTART_RESPAWN_TIMEOUT
+    while time.time() < gone_deadline:
+        # _pm2_pid returns None once status != online; port must also be free so
+        # we do not start the new process while the old still holds the weights.
+        if _pm2_pid(name) is None and not _is_listening(host, port):
+            break
+        time.sleep(0.5)
+    else:
+        return False, (f"{name} did not release within "
+                       f"{_RESTART_RESPAWN_TIMEOUT:.0f}s of stop — not starting a "
+                       f"second copy on top of it")
+
+    # 2. START the new server (config already points at the new model, so its
+    #    lifespan preload loads only that one). `pm2 restart` is the verb that
+    #    accepts a bare process name — on a stopped app it starts it.
     try:
         r = subprocess.run([pm2, "restart", name, "--update-env"],
                            capture_output=True, text=True, timeout=60)
     except subprocess.SubprocessError as e:
-        return False, f"pm2 restart {name} failed: {type(e).__name__}: {e}"
+        return False, f"pm2 start {name} failed: {type(e).__name__}: {e}"
     if r.returncode != 0:
         err = (r.stderr or r.stdout or "").strip().replace("\n", " ")[:200]
-        return False, f"pm2 restart {name} exited {r.returncode}: {err}"
+        return False, f"pm2 start {name} exited {r.returncode}: {err}"
 
-    deadline = time.time() + _RESTART_RESPAWN_TIMEOUT
-    while time.time() < deadline:
-        now = _pm2_pid(name)
-        if now is not None and now != before:
-            break
-        time.sleep(0.5)
-    else:
-        return False, f"{name} did not respawn within {_RESTART_RESPAWN_TIMEOUT:.0f}s"
-
+    # 3. Wait for the new process to come online and bind the port (uvicorn binds
+    #    only after the FastAPI lifespan preload finishes).
     deadline = time.time() + ready_timeout
     while time.time() < deadline:
-        if _is_listening(host, port):
-            return True, f"{name} restarted, serving in {time.time() - t0:.1f}s"
+        if _pm2_pid(name) is not None and _is_listening(host, port):
+            return True, f"{name} stop-then-start, serving in {time.time() - t0:.1f}s"
         time.sleep(1.0)
-    return False, f"{name} restarted but {host}:{port} never opened within {ready_timeout:.0f}s"
+    return False, f"{name} started but {host}:{port} never opened within {ready_timeout:.0f}s"
 
 
 def _write_active(model_id: str) -> None:
