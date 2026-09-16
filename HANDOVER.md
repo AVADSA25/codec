@@ -1,6 +1,42 @@
 # HANDOVER — CODEC buyer journey
 
-**Last updated:** 2026-09-04 evening · local model for buyers (#347), ava-stack #2 merged, license server live
+**Last updated:** 2026-09-17 · UI fixes (paste, mobile, scroll), notarized DMG 3.5.0 rebuilt, models picker overhauled (Mwen, 8B voice), one-model-at-a-time switch
+
+## 2026-09-17 — app UX fixes shipped, DMG rebuilt, model picker overhauled
+
+**State: main @ 01d87b1, clean. codec-dashboard + codec-telegram restarted, online. Installed app re-signed in place with the paste fix (App Management granted to the terminal).**
+
+### Shipped (all merged + live)
+- **#358** Cmd-V paste inside the native app window — the app never installed an `NSApp.mainMenu`, so no Edit menu = macOS had nowhere to dispatch clipboard shortcuts (worked in Chrome only because Chrome ships its own). Added a minimal App+Edit main menu (`codec_launcher.swift`). Same PR fixed desktop/Chrome long-reply scroll (composer was `position:fixed` on every size; scoped to mobile).
+- **#359** Mobile PWA: text-size feature (#344) set a 1.15× root `zoom` by default → oversized text + broke the phone's fixed-composer/dvh scroll. Zoom now applies only off the phone shell.
+- **#360** Persona models (Fréd/M Corpus/Mwen/8B) speak only as themselves — server was gluing the generic "CODEC Deep Chat/JARVIS" prompt + FINAL-ANSWER scaffold onto the persona. Now replaces, and skips the scaffold.
+- **#361** Model switch = **stop-then-start** (`codec_models.restart_server`): stop old, wait pid gone + port free, then start new. Only ONE model resident (was `pm2 restart` = 27B+35B both up ~37GB). Plus mobile composer 16px (kills iOS zoom-on-focus) + one-line placeholder + `.content` reserve nav+composer+28.
+- **#362** Persona models unified across chat + Telegram: `codec_bridges.call_llm` injects the ACTIVE persona's prompt + sampling; `model_extras` gained `no_think` (chat forces thinking off). Switch in CODEC → Telegram follows. No per-persona standalone server.
+- **Notarized DMG 3.5.0 rebuilt** (Apple-Accepted, stapled): `codec-repo/dist/Sovereign-AI-Workstation-3.5.0.dmg` (447M) AND `~/ava-stack/installer-gui/dist/CODEC-Installer.dmg` (446M, embeds the fixed app — was Sep-4/stale before).
+
+### Model picker (config-local, ~/.codec/config.json, NOT repo)
+8 entries: Qwen3 4B · Qwen3.6 35B A3B · Fréd (Gutenberg 4B) · Qwen3.8 27B Uncensored · M Corpus (Mickaël voice 4B) · **Mwen (Dimensional Observer 35B)** · **Qwen3 8B (abliterated)** · **Mickaël's voice 8B (reformat + chat)**.
+- Mwen = 35B weights via symlink `~/Documents/Claude/Projects/SLM/model-mwen-35b` → 35B HF snapshot; prompt `MWEN-PROMPT.txt` (n8n ONTOLOGICAL). Distinct id so everyday-35B stays plain.
+- M Corpus 8B = `model-mickael-8b` (Qwen3-8B abliterated 4bit, LoRA-fused, val 2.502); prompt `REFORMAT-PROMPT.txt`; sampling temp 0.8/top_p 0.9/rep 1.25; `no_think`. 4B kept.
+
+### Decisions
+- One model resident at a time; switch in CODEC; Telegram uses the active model. No standalone always-on server per persona (would break one-at-once).
+- Persona models own the turn (own prompt, no codec prompt, no_think where declared) on every surface.
+
+### Traps (this session)
+- macOS **App Management** blocks modifying an app in `/Applications` in place (EPERM even unsandboxed) — grant Terminal App Management, or reinstall from the DMG.
+- Browser-pane emulator resolves `100dvh` ≠ innerHeight (934 vs 812) → absolute mobile scroll checks unreliable; trust the CSS math.
+- Never root-`zoom` the phone shell — it desyncs fixed-composer + dvh.
+- A `pgrep` waiter must match the real process path, or it fires early.
+
+### Open
+1. **Mac Air fresh-install test** from `~/ava-stack/installer-gui/dist/CODEC-Installer.dmg` — now embeds the fixed app. 14 LaunchAgents still untested on clean hardware. **Gate before the Buy button.**
+2. Demo narration script (DEMO_SCRIPT.md, 22 beats).
+3. 8B voice: do an in-codec live switch test + a blind A/B (8B vs 4B on real DMs) before retiring the 4B.
+4. Old SLM always-on servers (`:9012` Fréd, `:9013` 4B, `slm_proxy :9010`) still run for n8n — now duplicate CODEC. Retiring + repointing n8n is future cleanup (disrupts n8n, needs explicit OK).
+
+---
+
 
 ## 2026-09-04 (evening) — local model works for buyers; ava-stack merged; license server live-fixed
 
