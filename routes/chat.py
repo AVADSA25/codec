@@ -1110,16 +1110,37 @@ async def chat_completion(request: Request):
                 f"Treat it as the current working directory for this conversation."
             )
 
+        # A persona model (Fréd, M Corpus, Mwen — config extra_models[].system_prompt*)
+        # OWNS the turn: it must speak only as itself. The frontend still ships its
+        # generic "You are CODEC Deep Chat — a J.A.R.V.I.S.-class AI…" system
+        # message; gluing that onto the persona gave the 4B two conflicting
+        # identities (it answered in the generic voice and confabulated an
+        # attachment it never read). So for a persona, REPLACE the client system
+        # message with the persona prompt instead of concatenating.
+        _persona_active = False
+        try:
+            import codec_models as _cmp
+            _persona_active = bool(_cmp.model_extras().get("system_prompt"))
+        except Exception as _e:
+            log.debug("persona check failed: %s", _e)
+
         # Prepend system message (or replace existing one)
         if messages and messages[0].get("role") == "system":
-            messages[0]["content"] = sys_prompt + "\n\n" + messages[0]["content"]
+            messages[0]["content"] = (
+                sys_prompt if _persona_active
+                else sys_prompt + "\n\n" + messages[0]["content"]
+            )
         else:
             messages.insert(0, {"role": "system", "content": sys_prompt})
 
         # Think mode: append the reasoning scaffold LAST so it wins over the base
         # prompt's "answer directly"/emoji rules. Frontend sends reason_scaffold
         # = Think-toggle state; it parses the resulting <thinking>/### FINAL ANSWER.
-        if body.get("reason_scaffold") and messages and messages[0].get("role") == "system":
+        # Skipped for persona models: a small fine-tune renders the format as its
+        # own <Final Answer> variant the UI stripper misses, and it fights the
+        # persona's voice.
+        if (body.get("reason_scaffold") and not _persona_active
+                and messages and messages[0].get("role") == "system"):
             messages[0]["content"] += _REASON_SCAFFOLD
 
         stream_mode = body.get("stream", False)
