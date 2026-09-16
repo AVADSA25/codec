@@ -264,24 +264,42 @@ def test_restart_server_without_pm2_is_a_clean_failure(cfg, monkeypatch):
     assert ok is False and "pm2" in detail
 
 
-def test_restart_server_waits_for_a_new_pid_then_the_port(cfg, monkeypatch):
-    """The port lies for a moment after `pm2 restart` — the OLD process still
-    holds it. Returning on that first connect would report ready before the new
-    process exists."""
+def test_restart_server_stops_then_starts_one_model(cfg, monkeypatch):
+    """Stop-then-start: the old server must be gone (pid None + port closed)
+    before the new one starts, so only one model is ever resident. Success is
+    reported once the new process is up and the port is bound."""
     monkeypatch.setattr(codec_models.shutil, "which", lambda _: "/usr/bin/pm2")
     monkeypatch.setattr(codec_models.subprocess, "run",
                         lambda *a, **kw: __import__("types").SimpleNamespace(
                             returncode=0, stdout="", stderr=""))
     monkeypatch.setattr(codec_models.time, "sleep", lambda _s: None)
 
-    pids = iter([111, 111, 222, 222, 222])
+    # gone-phase: pid None; start-phase: pid 222.
+    pids = iter([None, 222])
     monkeypatch.setattr(codec_models, "_pm2_pid", lambda name: next(pids, 222))
-    listens = iter([False, False, True])
+    # gone-phase: port closed (False); start-phase: port open (True).
+    listens = iter([False, True])
     monkeypatch.setattr(codec_models, "_is_listening",
                         lambda h, p, **kw: next(listens, True))
 
     ok, detail = codec_models.restart_server()
     assert ok is True and "serving in" in detail
+
+
+def test_restart_server_refuses_to_start_over_an_unreleased_old(cfg, monkeypatch):
+    """If the old server never releases (pid stays, port stays open), do NOT
+    start a second copy on top of it — that is the double-load we are killing."""
+    monkeypatch.setattr(codec_models.shutil, "which", lambda _: "/usr/bin/pm2")
+    monkeypatch.setattr(codec_models.subprocess, "run",
+                        lambda *a, **kw: __import__("types").SimpleNamespace(
+                            returncode=0, stdout="", stderr=""))
+    monkeypatch.setattr(codec_models.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(codec_models, "_RESTART_RESPAWN_TIMEOUT", 0.01, raising=False)
+    monkeypatch.setattr(codec_models, "_pm2_pid", lambda name: 111)      # never gone
+    monkeypatch.setattr(codec_models, "_is_listening", lambda h, p, **kw: True)  # port held
+
+    ok, detail = codec_models.restart_server()
+    assert ok is False and "did not release" in detail
 
 
 def test_restart_server_reports_a_port_that_never_opens(cfg, monkeypatch):
@@ -290,9 +308,12 @@ def test_restart_server_reports_a_port_that_never_opens(cfg, monkeypatch):
                         lambda *a, **kw: __import__("types").SimpleNamespace(
                             returncode=0, stdout="", stderr=""))
     monkeypatch.setattr(codec_models.time, "sleep", lambda _s: None)
-    pids = iter([111, 222])
+    # old releases (None + closed), then new process appears but never binds.
+    pids = iter([None])
     monkeypatch.setattr(codec_models, "_pm2_pid", lambda name: next(pids, 222))
-    monkeypatch.setattr(codec_models, "_is_listening", lambda h, p, **kw: False)
+    listens = iter([False])
+    monkeypatch.setattr(codec_models, "_is_listening",
+                        lambda h, p, **kw: next(listens, False))
 
     ok, detail = codec_models.restart_server(ready_timeout=0.01)
     assert ok is False and "never opened" in detail
