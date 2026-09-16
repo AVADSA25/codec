@@ -400,8 +400,21 @@ def test_model_extras_reads_persona_and_sampling(cfg, tmp_path):
     x = codec_models.model_extras()
     assert x["system_prompt"].startswith("You are Fred.")
     assert x["sampling"] == {"repetition_penalty": 1.2, "repetition_context_size": 512}
+    assert x["no_think"] is False           # not declared → defaults off
     # a model with no entry gets no override
-    assert codec_models.model_extras("mlx-community/A") == {"system_prompt": None, "sampling": {}}
+    assert codec_models.model_extras("mlx-community/A") == {
+        "system_prompt": None, "sampling": {}, "no_think": False}
+
+
+def test_model_extras_reads_no_think_flag(cfg, tmp_path):
+    """A reformat model declares no_think:true so chat forces thinking off."""
+    import json as _json
+    data = _json.loads(cfg.read_text())
+    data["llm_model"] = "/abs/reformat-8b"
+    data["extra_models"] = [{"id": "/abs/reformat-8b", "label": "Reformat",
+                             "system_prompt": "Rewrite it.", "no_think": True}]
+    cfg.write_text(_json.dumps(data))
+    assert codec_models.model_extras()["no_think"] is True
 
 
 def test_model_extras_survives_missing_prompt_file(cfg):

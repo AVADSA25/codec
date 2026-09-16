@@ -1147,6 +1147,15 @@ async def chat_completion(request: Request):
         # Dashboard chat & Vibe benefit from thinking mode (deeper answers).
         # Frontend can send thinking=false to override for speed.
         thinking = body.get("thinking", True)
+        # A reformat/persona model declaring no_think answers directly — force
+        # thinking off regardless of the Think toggle (a <think> block would eat
+        # the budget and delay the rewrite).
+        try:
+            import codec_models as _cm_nt
+            if _cm_nt.model_extras(model).get("no_think"):
+                thinking = False
+        except Exception as _e:
+            log.debug("no_think lookup failed: %s", _e)
         # Train-of-thought reveal: when the frontend's Thoughts toggle is ON,
         # also stream the model's <think> reasoning as separate SSE `think`
         # events. Off by default → no think frames → identical to before.
