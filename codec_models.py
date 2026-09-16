@@ -211,7 +211,7 @@ def model_extras(model_id: Optional[str] = None,
     """
     cfg = config if config is not None else _load_config()
     mid = model_id or get_active(cfg)
-    out: Dict[str, Any] = {"system_prompt": None, "sampling": {}}
+    out: Dict[str, Any] = {"system_prompt": None, "sampling": {}, "no_think": False}
     for em in (cfg.get("extra_models") or []):
         if not isinstance(em, dict) or em.get("id") != mid:
             continue
@@ -229,6 +229,10 @@ def model_extras(model_id: Optional[str] = None,
         if isinstance(sampling, dict):
             out["sampling"] = {k: v for k, v in sampling.items()
                                if isinstance(k, str) and isinstance(v, (int, float, str, bool))}
+        # A reformat/persona fine-tune that should answer directly (no <think>
+        # block) declares `"no_think": true`. Chat forces enable_thinking=False;
+        # the bridge path is already thinking-off via codec_llm.
+        out["no_think"] = bool(em.get("no_think", False))
         break
     return out
 

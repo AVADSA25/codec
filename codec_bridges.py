@@ -113,7 +113,21 @@ def call_llm(channel, text, llm_cfg, conversation_history=None,
     bridge degradation). `chat_template_kwargs` is filtered out of
     `llm_cfg["kwargs"]` so codec_llm's enable_thinking=False is preserved."""
     import codec_llm
-    if system_prompt_override:
+    # A persona model (Fréd / M Corpus / Mwen / the 8B reformat voice — config
+    # extra_models[].system_prompt*) owns the turn on every surface, so when it
+    # is the active model the bridge speaks as it, not as the channel persona,
+    # and applies its sampling. This is what makes "switch the model in CODEC,
+    # then use it on Telegram" behave the same as the dashboard chat.
+    _persona = {"system_prompt": None, "sampling": {}}
+    try:
+        import codec_models
+        _persona = codec_models.model_extras(llm_cfg.get("model"))
+    except Exception:
+        pass
+
+    if _persona.get("system_prompt"):
+        sys_prompt = _persona["system_prompt"]           # persona wins over channel
+    elif system_prompt_override:
         sys_prompt = system_prompt_override
     else:
         now_str = datetime.now().strftime("%A %B %d, %Y at %H:%M")
@@ -125,6 +139,7 @@ def call_llm(channel, text, llm_cfg, conversation_history=None,
     messages.append({"role": "user", "content": text})
 
     extra = {k: v for k, v in llm_cfg["kwargs"].items() if k != "chat_template_kwargs"}
+    extra.update(_persona.get("sampling") or {})         # per-model sampling
     content = codec_llm.call(
         messages, base_url=llm_cfg["base_url"], model=llm_cfg["model"],
         api_key=llm_cfg["api_key"], max_tokens=1500, temperature=0.7,
