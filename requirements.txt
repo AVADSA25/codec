@@ -48,7 +48,7 @@ uvicorn>=0.52.4
 # Apple Silicon, and Linux CI would fail to resolve it. Pulls mlx, mlx-lm,
 # transformers and huggingface_hub (which fetch_models.py also needs).
 # Accepted cost (operator, 2026-09-04): the app grows from ~273 MB to ~1.2 GB.
-mlx-vlm>=0.7.0; sys_platform == "darwin" and platform_machine == "arm64"
+mlx-vlm>=0.7.1; sys_platform == "darwin" and platform_machine == "arm64"
 # transformers' apply_chat_template needs jinja2 and does NOT pull it in. The
 # bundled server started, listened, and then failed every completion with
 # "apply_chat_template requires jinja2" — caught only by the end-to-end gate
