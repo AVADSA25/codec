@@ -21,7 +21,7 @@ qrcode[pil]>=8.2
 # ProxyManager / a malicious server vs the SSRF-guarded web_fetch) — this is
 # hygiene, keeping the dep tree current. The deployed interpreters were found
 # STALE vs these floors; refresh them (see docs note) at a maintenance window.
-urllib3>=2.7.0          # CVE-2026-44431 / -44432 (transitive via requests)
+urllib3>=2.8.0          # CVE-2026-44431 / -44432 (transitive via requests)
 pillow>=12.3.0          # CVE-2026-42311 + others (transitive via qrcode[pil])
 cryptography>=50.0.1    # CVE-2026-39892 / -34073 (routes/auth + codec_license)
 
