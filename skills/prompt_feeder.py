@@ -22,7 +22,9 @@ SKILL_DESCRIPTION = (
     "ChatGPT, Claude) in the Pilot browser, waiting for each answer before "
     "sending the next. Watch it happen in the Pilot tab's live view."
 )
-SKILL_MCP_EXPOSE = True
+# Hidden from MCP (2026-09-24): Claude MCP Directory policy bars tools that
+# use drives other AI tools (Flow/Gemini/ChatGPT). Still works from voice and chat.
+SKILL_MCP_EXPOSE = False
 SKILL_TRIGGERS = [
     "feed these prompts",
     "feed prompts",
