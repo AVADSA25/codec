@@ -6,7 +6,9 @@ SKILL_TRIGGERS = [
     "tts", "voice say", "announce", "speak this",
     "tell me out loud", "say it",
 ]
-SKILL_MCP_EXPOSE = True
+# Hidden from MCP (2026-09-24): Claude MCP Directory policy bars tools that
+# use AI-generated audio (Kokoro). Still works from voice and chat.
+SKILL_MCP_EXPOSE = False
 
 import os
 import re
