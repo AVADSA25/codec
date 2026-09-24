@@ -536,44 +536,44 @@ This level of bypass density confirms the blocker should be treated as a **typo-
 ## Files reviewed
 
 Core engine + security:
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/CLAUDE.md` (§6, §7, §10)
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_config.py`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_audit.py`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_oauth_provider.py`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_mcp_http.py`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_mcp.py`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_sandbox.py`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_hooks.py`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_skill_registry.py`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_self_improve.py`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_dashboard.py` (AuthMiddleware, CSPMiddleware, /api/execute, config endpoints, chat handler, skill-tag resolver)
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_agent.py`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_agent_plan.py`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_agent_runner.py`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_agent_messaging.py`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_session.py` (DANGEROUS_PATTERNS import + session safe_cmds)
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec.py` (dispatch_inner, do_screenshot_question)
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_observer.py` (osascript usage)
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_textassist.py` (osascript usage)
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_telegram.py` (bot_token storage)
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_dictate.py`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/CLAUDE.md` (§6, §7, §10)
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_config.py`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_audit.py`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_oauth_provider.py`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_mcp_http.py`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_mcp.py`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_sandbox.py`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_hooks.py`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_skill_registry.py`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_self_improve.py`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_dashboard.py` (AuthMiddleware, CSPMiddleware, /api/execute, config endpoints, chat handler, skill-tag resolver)
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_agent.py`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_agent_plan.py`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_agent_runner.py`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_agent_messaging.py`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_session.py` (DANGEROUS_PATTERNS import + session safe_cmds)
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec.py` (dispatch_inner, do_screenshot_question)
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_observer.py` (osascript usage)
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_textassist.py` (osascript usage)
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_telegram.py` (bot_token storage)
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_dictate.py`
 
 Routes:
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/routes/_shared.py`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/routes/auth.py`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/routes/skills.py`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/routes/_shared.py`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/routes/auth.py`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/routes/skills.py`
 
 Skills (security-relevant):
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/skills/terminal.py`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/skills/python_exec.py`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/skills/calculator.py`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/skills/file_ops.py`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/skills/file_write.py`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/skills/create_skill.py`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/skills/imessage_send.py`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/skills/chrome_open.py`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/skills/chrome_automate.py`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/skills/clipboard_url_fetch.py`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/skills/terminal.py`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/skills/python_exec.py`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/skills/calculator.py`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/skills/file_ops.py`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/skills/file_write.py`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/skills/create_skill.py`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/skills/imessage_send.py`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/skills/chrome_open.py`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/skills/chrome_automate.py`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/skills/clipboard_url_fetch.py`
 
 Config:
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/config.json.example`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/config.json.example`

@@ -56,7 +56,7 @@ ms avg)** and no failures triggered: mark merge as production-stable in
 ```bash
 python3 -c '
 import json
-records = [json.loads(l) for l in open("/Users/mickaelfarina/.codec/audit.log") if l.strip()]
+records = [json.loads(l) for l in open("~/.codec/audit.log") if l.strip()]
 ds = sorted(r["duration_ms"] for r in records if isinstance(r.get("duration_ms"), (int, float)))
 n = len(ds)
 print(f"n={n} avg={sum(ds)/n:.2f} p95={ds[int(n*0.95)-1]:.2f}")

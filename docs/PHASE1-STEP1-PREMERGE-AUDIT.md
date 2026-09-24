@@ -128,7 +128,7 @@ The branch is clean for merge by the contract: no new failures, no silenced test
 The reviewer can re-run any individual test via:
 
 ```
-cd /Users/mickaelfarina/codec-repo/.claude/worktrees/phase1-step1
+cd ~/codec-repo/.claude/worktrees/phase1-step1
 pytest tests/<file>::<TestClass>::<test_name> --tb=long -v
 ```
 

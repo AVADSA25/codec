@@ -177,7 +177,7 @@ PY
 `scripts/capture_audit_sample.py` runs the same analysis and replaces the matching `## Sample <LABEL> — pending` block with the captured numbers. Usage:
 
 ```bash
-python3 /Users/mickaelfarina/codec-repo/scripts/capture_audit_sample.py "T+4h"
+python3 ~/codec-repo/scripts/capture_audit_sample.py "T+4h"
 ```
 
 It exits **0** for `ok`, **1** for `investigate`, **2** for `revert`. The `revert` exit prints the §5.4 mechanics inline.

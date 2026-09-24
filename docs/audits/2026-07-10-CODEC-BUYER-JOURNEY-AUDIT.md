@@ -69,9 +69,9 @@ The OSS story on opencodec.org is mostly true and current (live body says v3.2 �
 **Manual-Mickael steps in this area:**
 - Selling a CODEC software license today: no public buy button exists on any page, so every sale requires Mickael to manually create and send a Stripe checkout link for the CODEC price ID.
 - After any license purchase, Mickael must manually send the buyer a working DMG link — the license email's 'Download CODEC.dmg' button points to https://avadigital.ai/codec/download which returns 404.
-- Publishing each DMG build is manual: run /Users/mickaelfarina/ava-stack/installer-gui/build-app.sh, sign/notarize, then hand-upload the DMG + appcast.xml to the AVADSA25/codec-updates GitHub release (main codec repo releases carry zero binary assets).
+- Publishing each DMG build is manual: run ~/ava-stack/installer-gui/build-app.sh, sign/notarize, then hand-upload the DMG + appcast.xml to the AVADSA25/codec-updates GitHub release (main codec repo releases carry zero binary assets).
 - Re-sending failed or missed license emails requires Mickael to call POST /admin/resend/{license_id} on the license server with the admin bearer token.
-- opencodec.org content is edited in Replit, not the local repo at /Users/mickaelfarina/Documents/Claude/Projects/ava-web-template — Mickael must manually keep the local tree, the deployed body, and the stale <head>/JSON-LD in sync (they currently diverge three ways).
+- opencodec.org content is edited in Replit, not the local repo at ~/Documents/Claude/Projects/ava-web-template — Mickael must manually keep the local tree, the deployed body, and the stale <head>/JSON-LD in sync (they currently diverge three ways).
 - Keeping stats consistent (version, skills, features, tests, MCP tool count) across README badges, FEATURES.md, opencodec.org and avadigital.ai/codec is a manual sweep — currently four different sets of numbers are public.
 - Fulfilling the €500 'Codec — Workstation Setup' cart purchase on avadigital.ai/codec is a hands-on Mickael service ('kickoff within 24 hours' is promised on the page).
 - 'Notify me' for the $99/yr 'CODEC for Mac' tier routes to the generic homepage contact form (index.html#contact) — Mickael must manually track and re-contact that waitlist.
@@ -83,7 +83,7 @@ This is the page wired to a real Stripe cart (€500 'Workstation Setup', data-c
 
 **Fix:** Rewrite avadigital.ai/codec from the real product: reuse the (verified-true) opencodec.org v3.2 copy — Python, 76 skills, 400 features, 9 products, DMG install. Delete the npx terminal, the reception.ts sample, and the 368/940/58K stat block; replace with README-consistent numbers.
 
-**Evidence:** `Live https://avadigital.ai/codec shows terminal 'Codec 0.9.4' + '$ npx codec init' + '✔ Installed 75 skills · 368 features across 8 domains', a 40-line 'agents/reception.ts — TypeScript · Codec 0.9.4' code sample ('import { Agent, Skill } from \'codec\'', voice model 'eleven/jenny'), stats '368 Features / 75 Skills / 940+ Tests / 58K+ Lines TypeScript + Python', and an architecture with 'telegram / voice-sip / slack' interface layers. Source: /Users/mickaelfarina/Documents/Claude/Projects/AVA-site-v2/AVA Digital Design System/site/codec.html:809 ('Codec 0.9.4'), :812 ('npx codec init'), :814, :855-876, :883, :913-915, :1214-1215, :1227. Shipped truth: /Users/mickaelfarina/codec-repo is a Python 3.10 app, VERSION=3.2.0, FEATURES.md:3 says '400 features · 76 skills · 2000+ tests'; no npm package, no TypeScript SDK, no telegram/SIP interfaces exist in the repo.`
+**Evidence:** `Live https://avadigital.ai/codec shows terminal 'Codec 0.9.4' + '$ npx codec init' + '✔ Installed 75 skills · 368 features across 8 domains', a 40-line 'agents/reception.ts — TypeScript · Codec 0.9.4' code sample ('import { Agent, Skill } from \'codec\'', voice model 'eleven/jenny'), stats '368 Features / 75 Skills / 940+ Tests / 58K+ Lines TypeScript + Python', and an architecture with 'telegram / voice-sip / slack' interface layers. Source: ~/Documents/Claude/Projects/AVA-site-v2/AVA Digital Design System/site/codec.html:809 ('Codec 0.9.4'), :812 ('npx codec init'), :814, :855-876, :883, :913-915, :1214-1215, :1227. Shipped truth: ~/codec-repo is a Python 3.10 app, VERSION=3.2.0, FEATURES.md:3 says '400 features · 76 skills · 2000+ tests'; no npm package, no TypeScript SDK, no telegram/SIP interfaces exist in the repo.`
 
 ### POS-02 · CRITICAL · island · ✓ CONFIRMED
 **Paid license has a live backend but zero public surface — no page sells or even mentions it**
@@ -92,7 +92,7 @@ Zero real customers can exist: there is literally no journey from any public pag
 
 **Fix:** Add a Buy section to opencodec.org (or a working avadigital.ai/codec#buy) with a Stripe Payment Link for the CODEC STRIPE_PRICE_ID, stating exactly: price, 1 Mac, 1 year, auto-renew, what the paid build adds over OSS. One page, one button.
 
-**Evidence:** `License server is live (/Users/mickaelfarina/ava-stack/license-server/main.py:1-13: Stripe webhook → mint → email, hardware-bound via /api/v1/activate main.py:119-128, 1-year expiry). But no public page mentions the software license, its price, or terms: opencodec.org's only monetization link is 'Support ❤️' → paypal.me/avadsa25 (live bundle footer; local App.tsx:1856); avadigital.ai/codec's paid tier says 'CODEC for Mac $99 /year … Launching Q3 2026 · Notify me' (link = index.html#contact, codec page text lines 211-221 of extracted copy). licenses.db: 4 licenses, ALL revoked — 3 self-tests at 9900 USD cents, 1 leaked €25 InTake license (the 2026-07-07 incident).`
+**Evidence:** `License server is live (~/ava-stack/license-server/main.py:1-13: Stripe webhook → mint → email, hardware-bound via /api/v1/activate main.py:119-128, 1-year expiry). But no public page mentions the software license, its price, or terms: opencodec.org's only monetization link is 'Support ❤️' → paypal.me/avadsa25 (live bundle footer; local App.tsx:1856); avadigital.ai/codec's paid tier says 'CODEC for Mac $99 /year … Launching Q3 2026 · Notify me' (link = index.html#contact, codec page text lines 211-221 of extracted copy). licenses.db: 4 licenses, ALL revoked — 3 self-tests at 9900 USD cents, 1 leaked €25 InTake license (the 2026-07-07 incident).`
 
 ### POS-03 · CRITICAL · broken · ✓ CONFIRMED
 **License email's 'Download CODEC.dmg' button 404s — buyer dead-ends after paying**
@@ -101,7 +101,7 @@ Every future paying customer receives a receipt email whose Step 1 is a dead lin
 
 **Fix:** Point CODEC_DMG_URL env at the codec-updates release asset URL (or create a 301 at avadigital.ai/codec/download → that asset). Then send yourself a test license via /admin/resend and click the button.
 
-**Evidence:** `/Users/mickaelfarina/ava-stack/license-server/email_sender.py:35-37 renders 'Download CODEC.dmg' → CODEC_DMG_URL; config.py:27 defaults it to https://avadigital.ai/codec/download which returns HTTP 404 (curl verified 2026-07-10). The real DMG exists elsewhere: github.com/AVADSA25/codec-updates release v3.2.0 asset 'Sovereign-AI-Workstation-3.2.0.dmg' (129,562,244 bytes).`
+**Evidence:** `~/ava-stack/license-server/email_sender.py:35-37 renders 'Download CODEC.dmg' → CODEC_DMG_URL; config.py:27 defaults it to https://avadigital.ai/codec/download which returns HTTP 404 (curl verified 2026-07-10). The real DMG exists elsewhere: github.com/AVADSA25/codec-updates release v3.2.0 asset 'Sovereign-AI-Workstation-3.2.0.dmg' (129,562,244 bytes).`
 
 ### POS-04 · HIGH · copy-lie · ✓ CONFIRMED
 **Client identity in public assets: dr@jansen.de in /codec code sample, client-jansen.jpg + clinic URL on homepage**
@@ -128,7 +128,7 @@ A buyer who follows README's 'Get it' lands on a page that says the app doesn't 
 
 **Fix:** Pick ONE price+currency+availability statement. Fix README.md:837 to match reality ('paid Mac app launching Q3 2026 — join the list' or make it purchasable now), and rewrite the opencodec.org FAQ entry to 'The engine is free & MIT; a paid convenience app/license is available' once the buy page exists.
 
-**Evidence:** `/Users/mickaelfarina/codec-repo/README.md:837: 'Paid Mac app — €10/month or €99/year… [Get it → avadigital.ai]' (present tense, euros). Live avadigital.ai/codec: 'CODEC for Mac $99 /year … Launching Q3 2026 · Notify me' (dollars, not purchasable). Live opencodec.org JSON-LD (index.html:60-66): price '0' USD; FAQ (index.html:121-127): 'Is CODEC free? Yes. CODEC is completely free and open-source under the MIT license.' license-server/config.py:20 comment: '$99/yr license'; licenses.db test charges: 9900 usd.`
+**Evidence:** `~/codec-repo/README.md:837: 'Paid Mac app — €10/month or €99/year… [Get it → avadigital.ai]' (present tense, euros). Live avadigital.ai/codec: 'CODEC for Mac $99 /year … Launching Q3 2026 · Notify me' (dollars, not purchasable). Live opencodec.org JSON-LD (index.html:60-66): price '0' USD; FAQ (index.html:121-127): 'Is CODEC free? Yes. CODEC is completely free and open-source under the MIT license.' license-server/config.py:20 comment: '$99/yr license'; licenses.db test charges: 9900 usd.`
 
 ### POS-07 · MEDIUM · copy-lie · unverified
 **Live opencodec.org <head> contradicts its own body: v2.0/234 features/60 skills in meta vs v3.2/400/76 on page**
@@ -146,7 +146,7 @@ Any fix made in the repo listed as the site source would silently roll the live 
 
 **Fix:** Pull the current Replit project state back into ava-web-template (or make the repo the deploy source), then delete/mark the stale tree so no one edits v2.0 copy again.
 
-**Evidence:** `/Users/mickaelfarina/Documents/Claude/Projects/ava-web-template/sources/opencodec.org/artifacts/codec-landing/src/App.tsx:753-758 renders badges 'v2.0 / 60 Skills / 234 Features', footer :1860 'v1.5.0', and has no Pilot/Project/DMG sections — while the deployed bundle at opencodec.org serves v3.2 copy with Pilot (num 08), Project (num 09), Ed25519 updater sections. The deployed bundle even differs in detail ('Qwen 3.6' vs local 'Qwen 3.5', bundle hash index-CWlSL47R.js).`
+**Evidence:** `~/Documents/Claude/Projects/ava-web-template/sources/opencodec.org/artifacts/codec-landing/src/App.tsx:753-758 renders badges 'v2.0 / 60 Skills / 234 Features', footer :1860 'v1.5.0', and has no Pilot/Project/DMG sections — while the deployed bundle at opencodec.org serves v3.2 copy with Pilot (num 08), Project (num 09), Ed25519 updater sections. The deployed bundle even differs in detail ('Qwen 3.6' vs local 'Qwen 3.5', bundle hash index-CWlSL47R.js).`
 
 ### POS-09 · MEDIUM · ux · unverified
 **Product brand 'Sovereign AI Workstation' appears zero times on opencodec.org; three surfaces use three names**
@@ -164,7 +164,7 @@ Users copy the advertised one-command install and get zsh 'command not found: co
 
 **Fix:** Either ship a tiny 'codec' wrapper script in install.sh (one-line dispatch to codec_marketplace.py) or change the page copy to the python3 form.
 
-**Evidence:** `Live bundle marketplace section: 'codec search pomodoro' and 'codec install bitcoin-price' (also local App.tsx:1334-1336). Actual CLI per /Users/mickaelfarina/codec-repo/codec_marketplace.py:6-7: 'python3 codec_marketplace.py install <skill-name>' / 'python3 codec_marketplace.py search <query>'; install.sh creates no 'codec' executable or alias (grep 'alias codec|bin/codec|ln -s' = none).`
+**Evidence:** `Live bundle marketplace section: 'codec search pomodoro' and 'codec install bitcoin-price' (also local App.tsx:1334-1336). Actual CLI per ~/codec-repo/codec_marketplace.py:6-7: 'python3 codec_marketplace.py install <skill-name>' / 'python3 codec_marketplace.py search <query>'; install.sh creates no 'codec' executable or alias (grep 'alias codec|bin/codec|ln -s' = none).`
 
 ### POS-11 · LOW · broken · unverified
 **Copy-pasteable one-liner on opencodec.org fails: missing 'cd codec'**
@@ -182,7 +182,7 @@ A user who 'holds Cmd+R' refreshes their browser instead of dictating — the pa
 
 **Fix:** Correct to 'hold the right ⌘ key' and align F-key claims with the shipped defaults; swap 'Free' for 'open-source (MIT)' phrasing per brand rules.
 
-**Evidence:** `site/codec.html:10 and :788: 'Hold Cmd+R, speak, paste. Press F5 for real-time live typing.' Actual trigger is holding the RIGHT ⌘ key — pynput Key.cmd_r in /Users/mickaelfarina/codec-repo/codec_dictate.py:456,471 ('cmd_r' = right command, not Cmd+R, which is browser refresh); F-keys per opencodec.org are F13/F18/F16 (F5/F8/F9 laptop mode). Same file uses 'Free' repeatedly in sales copy (:788 'Free. MIT-licensed.', tier card 'CODEC OSS — Free', :834 'Free. MIT-licensed. No subscription.') — the brand rule says the word 'free' never appears in client copy.`
+**Evidence:** `site/codec.html:10 and :788: 'Hold Cmd+R, speak, paste. Press F5 for real-time live typing.' Actual trigger is holding the RIGHT ⌘ key — pynput Key.cmd_r in ~/codec-repo/codec_dictate.py:456,471 ('cmd_r' = right command, not Cmd+R, which is browser refresh); F-keys per opencodec.org are F13/F18/F16 (F5/F8/F9 laptop mode). Same file uses 'Free' repeatedly in sales copy (:788 'Free. MIT-licensed.', tier card 'CODEC OSS — Free', :834 'Free. MIT-licensed. No subscription.') — the brand rule says the word 'free' never appears in client copy.`
 
 
 ## 2. PURCHASE & ORDER FLOW — verdict: **half-built**
@@ -214,7 +214,7 @@ Every buyer who receives a license email hits a dead download link at Step 1 —
 
 **Fix:** Host CODEC-Installer.dmg (Cloudflare R2/Pages asset) and add a /codec/download redirect, or point CODEC_DMG_URL at a working URL; add a smoke check that the URL returns 200.
 
-**Evidence:** `config.py:27 + production .env: CODEC_DMG_URL=https://avadigital.ai/codec/download -> verified 'HTTP/2 404' (curl -I). email_sender.py:35-38 renders that URL as the Step-1 download button; admin /admin/resend re-sends the same dead link. A built installer exists at /Users/mickaelfarina/ava-stack/installer-gui/dist/CODEC-Installer.dmg but no /codec/download route exists in the site's _redirects.`
+**Evidence:** `config.py:27 + production .env: CODEC_DMG_URL=https://avadigital.ai/codec/download -> verified 'HTTP/2 404' (curl -I). email_sender.py:35-38 renders that URL as the Step-1 download button; admin /admin/resend re-sends the same dead link. A built installer exists at ~/ava-stack/installer-gui/dist/CODEC-Installer.dmg but no /codec/download route exists in the site's _redirects.`
 
 ### PF-03 · CRITICAL · copy-lie · ✓ CONFIRMED (verifier adjusted severity → high)
 **README sells 'Paid Mac app — €10/month or €99/year — Get it → avadigital.ai' — product doesn't exist there**
@@ -223,7 +223,7 @@ Public claim on the shipped repo is false today: a reader clicking 'Get it' find
 
 **Fix:** Change README to match reality ('$99/year, launching Q3 2026 — join the list at avadigital.ai/codec') or ship the buy path first; pick one currency.
 
-**Evidence:** `/Users/mickaelfarina/codec-repo/README.md:837: '**Paid Mac app — €10/month or €99/year.** A signed, notarized, one-click install... [Get it → avadigital.ai](https://avadigital.ai)'. Reality: avadigital.ai/codec says 'Launching Q3 2026 · Notify me'; Stripe has exactly one CODEC license price — $99 USD/year (no €10/month price exists; license server config holds a single STRIPE_PRICE_ID).`
+**Evidence:** `~/codec-repo/README.md:837: '**Paid Mac app — €10/month or €99/year.** A signed, notarized, one-click install... [Get it → avadigital.ai](https://avadigital.ai)'. Reality: avadigital.ai/codec says 'Launching Q3 2026 · Notify me'; Stripe has exactly one CODEC license price — $99 USD/year (no €10/month price exists; license server config holds a single STRIPE_PRICE_ID).`
 
 ### PF-04 · HIGH · broken · ✓ CONFIRMED
 **Year-2 renewal lockout: subscription renews forever but the license JWT dies at 365 days**
@@ -304,7 +304,7 @@ The license backend is real and live (pm2 ava-license online, ENV=production, RS
 
 **Manual-Mickael steps in this area:**
 - Selling a license at all: no public checkout links the CODEC $99/yr Stripe price (opencodec.org has no buy path, JSON-LD price:0; avadigital.ai/codec only sells the €500 setup) — Mickael must hand-create and send a Stripe checkout/payment link for every license sale.
-- Delivering the app: CODEC_DMG_URL (https://avadigital.ai/codec/download) returns 404 — Mickael must manually transfer the 130MB CODEC-Installer.dmg (exists only locally at /Users/mickaelfarina/ava-stack/installer-gui/dist/) to each buyer.
+- Delivering the app: CODEC_DMG_URL (https://avadigital.ai/codec/download) returns 404 — Mickael must manually transfer the 130MB CODEC-Installer.dmg (exists only locally at ~/ava-stack/installer-gui/dist/) to each buyer.
 - €500 Workstation Setup buyers get no license automatically (webhook skips non-subscription and non-CODEC-price sessions; db shows skipped_non_codec_checkout events) — and there is NO /admin/mint endpoint, so Mickael must SSH in and hand-run Python (licenses.mint + db.insert_license) to issue one.
 - Email failure after payment: send failure is only written to the SQLite events table (no alert, no retry queue) — Mickael must notice it himself and run curl POST /admin/resend/{license_id} with the ADMIN_TOKEN. This already happened for real on 2026-04-20 (Resend: domain not verified).
 - New Mac / machine transfer: activation returns 409 'license already bound to a different Mac' and no unbind endpoint exists (admin API = list/revoke/resend only) — Mickael must hand-edit licenses.db (UPDATE licenses SET hardware_uuid=NULL).
@@ -319,7 +319,7 @@ The mint→email→activate machinery (live in production) can never be triggere
 
 **Fix:** Create a Stripe Checkout/Payment Link for the CODEC license price and put a buy button on opencodec.org + avadigital.ai/codec; align README pricing (€10/mo needs its own Stripe price or must be removed).
 
-**Evidence:** `Live Stripe price (license-server .env STRIPE_PRICE_ID=price_1TOJ1NAnpzAGXuyIdpUKHtZe) is recurring $99/yr USD (unit_amount 9900, interval year, livemode). https://opencodec.org JSON-LD declares "price": "0" and copy says 'You can download it from GitHub'; https://avadigital.ai/codec sells only 'Codec — Workstation Setup €500 · Add to cart' and states 'Free. MIT-licensed. No subscription.' No page links a checkout for the $99/yr price. /Users/mickaelfarina/codec-repo/README.md:837 (public repo) says 'Paid Mac app — €10/month or €99/year… [Get it → avadigital.ai]' — nothing at that destination sells it. licenses.db: 4 licenses ever, all revoked, none activated.`
+**Evidence:** `Live Stripe price (license-server .env STRIPE_PRICE_ID=price_1TOJ1NAnpzAGXuyIdpUKHtZe) is recurring $99/yr USD (unit_amount 9900, interval year, livemode). https://opencodec.org JSON-LD declares "price": "0" and copy says 'You can download it from GitHub'; https://avadigital.ai/codec sells only 'Codec — Workstation Setup €500 · Add to cart' and states 'Free. MIT-licensed. No subscription.' No page links a checkout for the $99/yr price. ~/codec-repo/README.md:837 (public repo) says 'Paid Mac app — €10/month or €99/year… [Get it → avadigital.ai]' — nothing at that destination sells it. licenses.db: 4 licenses ever, all revoked, none activated.`
 
 ### LIC-2 · CRITICAL · broken · ✓ CONFIRMED
 **License email download button 404s — paid buyer cannot get the app**
@@ -328,7 +328,7 @@ Every license email ever sent (and every /admin/resend) sends the buyer to a dea
 
 **Fix:** Host the notarized DMG (R2/S3/GitHub Release), point CODEC_DMG_URL at it, and add a smoke test that curls the URL for 200 before the server starts.
 
-**Evidence:** `/Users/mickaelfarina/ava-stack/license-server/email_sender.py:35 renders `<a href="{CODEC_DMG_URL}">Download CODEC.dmg`; production .env sets CODEC_DMG_URL=https://avadigital.ai/codec/download; `curl -I` returns HTTP 404 (no redirect). The only built DMG lives locally at /Users/mickaelfarina/ava-stack/installer-gui/dist/CODEC-Installer.dmg (May 25).`
+**Evidence:** `~/ava-stack/license-server/email_sender.py:35 renders `<a href="{CODEC_DMG_URL}">Download CODEC.dmg`; production .env sets CODEC_DMG_URL=https://avadigital.ai/codec/download; `curl -I` returns HTTP 404 (no redirect). The only built DMG lives locally at ~/ava-stack/installer-gui/dist/CODEC-Installer.dmg (May 25).`
 
 ### LIC-3 · HIGH · facade · ✓ CONFIRMED
 **Revocation and subscription-cancel are DB-only — shipped app never re-checks, revoked keys work up to 1 year**
@@ -337,7 +337,7 @@ Revoking a leaked/refunded/canceled license (as was needed in the 2026-07-07 inc
 
 **Fix:** Wire a periodic client check-in: call /api/v1/heartbeat from the existing scheduler/heartbeat daemon and downgrade license_state to readonly when server says revoked/canceled (keep the 7-day offline grace).
 
-**Evidence:** `/Users/mickaelfarina/ava-stack/license-server/main.py:142-168 (heartbeat) and :202-209 (admin_revoke) exist, but grep across /Users/mickaelfarina/codec-repo and the staged app bundle finds zero callers of /api/v1/heartbeat or /api/v1/status; codec_ava_client.py:77 verify_license() claims 'called at startup' but has no callers. codec_license.py:301-311 validates only signature+expiry offline against a cached public key.`
+**Evidence:** `~/ava-stack/license-server/main.py:142-168 (heartbeat) and :202-209 (admin_revoke) exist, but grep across ~/codec-repo and the staged app bundle finds zero callers of /api/v1/heartbeat or /api/v1/status; codec_ava_client.py:77 verify_license() claims 'called at startup' but has no callers. codec_license.py:301-311 validates only signature+expiry offline against a cached public key.`
 
 ### LIC-4 · HIGH · island · ✓ CONFIRMED
 **Hardware binding enforced only inside the installer wizard — copying config.json unlocks unlimited Macs**
@@ -346,7 +346,7 @@ One paid key + a copied ~/.codec/config.json = fully working CODEC on any number
 
 **Fix:** Have the client send its IOPlatformUUID with the heartbeat (LIC-3) and enforce the 409 mismatch server-side; grace-period the response so a legitimate restore isn't bricked.
 
-**Evidence:** `Binding happens once, in the installer: /Users/mickaelfarina/ava-stack/installer-gui/CODECInstaller/Sources/CODECInstaller/ActivationView.swift:95 POSTs /api/v1/activate with hardware_uuid. The app itself never checks hardware: codec_license.py license_state() (lines 294-318) verifies only signature/expiry; server-side mismatch check main.py:158 sits in the never-called heartbeat. All 4 DB licenses show hardware_uuid=NULL.`
+**Evidence:** `Binding happens once, in the installer: ~/ava-stack/installer-gui/CODECInstaller/Sources/CODECInstaller/ActivationView.swift:95 POSTs /api/v1/activate with hardware_uuid. The app itself never checks hardware: codec_license.py license_state() (lines 294-318) verifies only signature/expiry; server-side mismatch check main.py:158 sits in the never-called heartbeat. All 4 DB licenses show hardware_uuid=NULL.`
 
 ### LIC-5 · HIGH · half-built · ✓ CONFIRMED
 **No admin mint or unbind endpoints — the only mint path is a Stripe subscription webhook with the exact $99/yr price**
@@ -355,7 +355,7 @@ Every white-glove sale, comp license, machine transfer, or price experiment requ
 
 **Fix:** Add POST /admin/mint {email, tier, days} and POST /admin/unbind/{license_id} behind the existing ADMIN_TOKEN; both are ~15 lines each reusing licenses.mint/db helpers.
 
-**Evidence:** `/Users/mickaelfarina/ava-stack/license-server/main.py:192-225 — admin surface is exactly list/revoke/resend. stripe_handler.py:197-198 skips mode!=subscription; :203 skips non-CODEC prices (db events show 2 skipped_non_codec_checkout). The €500 'Workstation Setup' checkout on avadigital.ai therefore mints nothing, and a new Mac cannot be unbound (main.py:119-123 hard 409).`
+**Evidence:** `~/ava-stack/license-server/main.py:192-225 — admin surface is exactly list/revoke/resend. stripe_handler.py:197-198 skips mode!=subscription; :203 skips non-CODEC prices (db events show 2 skipped_non_codec_checkout). The €500 'Workstation Setup' checkout on avadigital.ai therefore mints nothing, and a new Mac cannot be unbound (main.py:119-123 hard 409).`
 
 ### LIC-6 · HIGH · risk · ✓ CONFIRMED (verifier adjusted severity → medium)
 **Paid-but-no-email failure has no alert and no retry — already happened once in production**
@@ -364,7 +364,7 @@ Customer is charged, license is minted, key never arrives, and nobody is notifie
 
 **Fix:** On email failure, fire an operator alert (Telegram/iMessage hook already exists in codec stack) and add a retry-on-startup sweep for licenses with an unsent-email error event.
 
-**Evidence:** `/Users/mickaelfarina/ava-stack/license-server/stripe_handler.py:152-157 — email send failure after a successful charge only does log.exception + db.log_event('error'). events table contains a real occurrence: 2026-04-20 'The ava-digital.com domain is not verified' (Resend). No monitoring reads the events table; email_sender.py:3-4 says 'retry via admin panel' but no panel exists, only raw curl.`
+**Evidence:** `~/ava-stack/license-server/stripe_handler.py:152-157 — email send failure after a successful charge only does log.exception + db.log_event('error'). events table contains a real occurrence: 2026-04-20 'The ava-digital.com domain is not verified' (Resend). No monitoring reads the events table; email_sender.py:3-4 says 'retry via admin panel' but no panel exists, only raw curl.`
 
 ### LIC-7 · HIGH · copy-lie · ✓ CONFIRMED
 **Public pricing claims contradict the shipped Stripe reality (€10/mo and €99/yr do not exist; only $99/yr USD does)**
@@ -373,7 +373,7 @@ A stranger reading the public README is promised prices that cannot be paid, in 
 
 **Fix:** Pick one price story (e.g. $99/yr), create/retire Stripe prices to match, and update README.md:837, the email copy, and avadigital.ai/codec in the same commit.
 
-**Evidence:** `/Users/mickaelfarina/codec-repo/README.md:837 (public repo AVADSA25/codec): 'Paid Mac app — €10/month or €99/year.' Stripe live account has one CODEC price: USD $99/year recurring (price_1TOJ1NAnpzAGXuyIdpUKHtZe); no monthly price exists. License email (email_sender.py:52) says 'Your subscription renews automatically'; avadigital.ai/codec says 'No subscription'; license-server/config.py:20 comment says '$99/yr'.`
+**Evidence:** `~/codec-repo/README.md:837 (public repo AVADSA25/codec): 'Paid Mac app — €10/month or €99/year.' Stripe live account has one CODEC price: USD $99/year recurring (price_1TOJ1NAnpzAGXuyIdpUKHtZe); no monthly price exists. License email (email_sender.py:52) says 'Your subscription renews automatically'; avadigital.ai/codec says 'No subscription'; license-server/config.py:20 comment says '$99/yr'.`
 
 ### LIC-8 · MEDIUM · copy-lie · unverified
 **PRIVACY.md makes false claims about license handling (Keychain storage, periodic validation)**
@@ -382,7 +382,7 @@ The public privacy policy (in a repo marketed on sovereignty/privacy) misdescrib
 
 **Fix:** Either move the JWT into codec_keychain and implement the heartbeat (LIC-3), or correct both PRIVACY files to describe plaintext-config storage and pubkey-fetch-only traffic.
 
-**Evidence:** `/Users/mickaelfarina/codec-repo/PRIVACY.md:21 lists 'license JWT' under 'macOS Keychain — service codec.*', but codec_keychain.py contains zero license references (grep -c 'licen' = 0) and the installer writes the JWT plaintext to ~/.codec/config.json (SetupView.swift:121-127) and ~/.codec/license.jwt (ActivationView.swift:151-157). docs/PRIVACY.md:37 claims license 'periodic validation' traffic to ava-license.lucyvpa.com — no code performs periodic validation (only unauthenticated pubkey fetch, codec_license.py:152).`
+**Evidence:** `~/codec-repo/PRIVACY.md:21 lists 'license JWT' under 'macOS Keychain — service codec.*', but codec_keychain.py contains zero license references (grep -c 'licen' = 0) and the installer writes the JWT plaintext to ~/.codec/config.json (SetupView.swift:121-127) and ~/.codec/license.jwt (ActivationView.swift:151-157). docs/PRIVACY.md:37 claims license 'periodic validation' traffic to ava-license.lucyvpa.com — no code performs periodic validation (only unauthenticated pubkey fetch, codec_license.py:152).`
 
 ### LIC-9 · MEDIUM · risk · unverified
 **License infrastructure lives on lucyvpa.com — client-adjacent brand baked into the public repo, installer, and privacy docs**
@@ -391,7 +391,7 @@ Violates the never-mix-product/client-contexts rule in public assets; a paying C
 
 **Fix:** Serve the license API from license.avadigital.ai (CNAME to the same tunnel), change the two hardcoded defaults, and keep lucyvpa.com as a redirect during transition (old clients only fetch the pubkey, which stays valid from cache).
 
-**Evidence:** `/Users/mickaelfarina/codec-repo/codec_license.py:50 PUBKEY_URL_DEFAULT = 'https://ava-license.lucyvpa.com/public-key' (public repo); InstallerState.swift:48-50 hardcodes the same; docs/PRIVACY.md:37 names it as the endpoint CODEC talks to. Lucy is a client-project brand (Dr. Jansen's agent) per house rules; the domain also carries ava-proxy for the same tunnel.`
+**Evidence:** `~/codec-repo/codec_license.py:50 PUBKEY_URL_DEFAULT = 'https://ava-license.lucyvpa.com/public-key' (public repo); InstallerState.swift:48-50 hardcodes the same; docs/PRIVACY.md:37 names it as the endpoint CODEC talks to. Lucy is a client-project brand (Dr. Jansen's agent) per house rules; the domain also carries ava-proxy for the same tunnel.`
 
 ### LIC-10 · MEDIUM · risk · unverified
 **License JWT sent as a GET query parameter; no rate limiting; /health publicly discloses customer count**
@@ -400,7 +400,7 @@ The key that IS the product leaks into logs and intermediary analytics; the publ
 
 **Fix:** Make /status a POST (or read the JWT from an Authorization header), drop licenses_total from /health (or gate it behind ADMIN_TOKEN), and add simple per-IP rate limits at the Cloudflare layer.
 
-**Evidence:** `/Users/mickaelfarina/ava-stack/license-server/main.py:171-172 `GET /api/v1/status(license_jwt: str)` puts the full license secret in the URL (mirrored by codec_ava_client.py:89-92 params=), so it lands in uvicorn/Cloudflare access logs. No rate limiting on any endpoint. main.py:54-60 /health returns licenses_total to anyone — live response today: {"ok":true,"env":"production","licenses_total":4}.`
+**Evidence:** `~/ava-stack/license-server/main.py:171-172 `GET /api/v1/status(license_jwt: str)` puts the full license secret in the URL (mirrored by codec_ava_client.py:89-92 params=), so it lands in uvicorn/Cloudflare access logs. No rate limiting on any endpoint. main.py:54-60 /health returns licenses_total to anyone — live response today: {"ok":true,"env":"production","licenses_total":4}.`
 
 ### LIC-11 · LOW · island · unverified
 **Installer persists ~/.codec/license.jwt that nothing reads, with a comment describing binding code that does not exist**
@@ -409,7 +409,7 @@ Dead artifact invites future code to trust the wrong file, and the misleading co
 
 **Fix:** Delete the persistLicense() write (SetupView's config.json write is the real channel) and fix the comment.
 
-**Evidence:** `/Users/mickaelfarina/ava-stack/installer-gui/CODECInstaller/Sources/CODECInstaller/ActivationView.swift:151-157 writes ~/.codec/license.jwt ('Persist for CODEC daemon to pick up'); grep across codec-repo and the staged app bundle finds zero readers (codec_license.py reads only config.json keys, lines 102-104). ActivationView.swift:136-137 comment claims the hardware UUID 'matches what CODEC's codec_ava_client.py uses for hardware binding' — codec_ava_client.py contains no hardware binding.`
+**Evidence:** `~/ava-stack/installer-gui/CODECInstaller/Sources/CODECInstaller/ActivationView.swift:151-157 writes ~/.codec/license.jwt ('Persist for CODEC daemon to pick up'); grep across codec-repo and the staged app bundle finds zero readers (codec_license.py reads only config.json keys, lines 102-104). ActivationView.swift:136-137 comment claims the hardware UUID 'matches what CODEC's codec_ava_client.py uses for hardware binding' — codec_ava_client.py contains no hardware binding.`
 
 ### LIC-12 · LOW · ux · unverified
 **License email subject uses an emoji, violating the CODEC no-emoji rule**
@@ -418,7 +418,7 @@ Off-brand first touch for a product positioned as a serious sovereign workstatio
 
 **Fix:** Change subject to 'Your CODEC license is ready' (and keep the body emoji-free, which it already is).
 
-**Evidence:** `/Users/mickaelfarina/ava-stack/license-server/email_sender.py:18: subject = "Your CODEC license is ready 🎉" — house rule: no smartphone emoji anywhere in CODEC surfaces; this is the first thing every buyer sees.`
+**Evidence:** `~/ava-stack/license-server/email_sender.py:18: subject = "Your CODEC license is ready 🎉" — house rule: no smartphone emoji anywhere in CODEC surfaces; this is the first thing every buyer sees.`
 
 
 ## 4. DELIVERY -> FIRST RUN — verdict: **broken**
@@ -426,7 +426,7 @@ Off-brand first touch for a product positioned as a serious sovereign workstatio
 The paid buyer journey dead-ends three separate times: the license email's download button 404s (https://avadigital.ai/codec/download), the installer DMG it should point at exists only on Mickael's disk (never uploaded anywhere), and even a buyer who somehow gets the DMG installs an app whose entry point logs "no services started" and exits 0 while the installer tells them "CODEC is running. Try the F13 hotkey". The license backend itself (activation server, hardware binding, signed JWT, notarized installer, Sparkle update route) is real and live — but the last mile from "activated" to "CODEC actually running" was never wired, the update feed has been frozen at the May 25 build for 141 fix-commits, and the OSS ./install.sh --update path always rolls itself back because it calls a smoke-test file that doesn't exist. licenses.db currently holds 4 licenses, all revoked — so no active customer is stranded today, but the first real buyer hits every one of these walls.
 
 **Manual-Mickael steps in this area:**
-- Send the installer DMG to each buyer by hand (email/WeTransfer) — the emailed link 404s and the only copy is /Users/mickaelfarina/ava-stack/installer-gui/dist/CODEC-Installer.dmg on his Mac
+- Send the installer DMG to each buyer by hand (email/WeTransfer) — the emailed link 404s and the only copy is ~/ava-stack/installer-gui/dist/CODEC-Installer.dmg on his Mac
 - Create/host the avadigital.ai/codec/download page or file — the route referenced by CODEC_DMG_URL has never existed in the site
 - Re-send any failed license email via curl POST /admin/resend/{license_id} with the ADMIN_TOKEN — there is no admin UI
 - Mint a license manually for any one-time (mode=payment) sale — the webhook only mints for subscription-mode checkouts and silently skips everything else
@@ -442,7 +442,7 @@ Step 1 of the paid onboarding email is dead. Every real buyer's journey stops at
 
 **Fix:** Host CODEC-Installer.dmg (e.g. attach it to the AVADSA25/codec-updates GitHub release or R2) and either create the /codec/download redirect on avadigital.ai or change CODEC_DMG_URL in the license-server .env to the real URL, then restart pm2 ava-license.
 
-**Evidence:** `/Users/mickaelfarina/ava-stack/license-server/email_sender.py:35 renders 'Download CODEC.dmg' pointing at CODEC_DMG_URL; /Users/mickaelfarina/ava-stack/license-server/config.py:27 and the live .env both set it to https://avadigital.ai/codec/download; curl returns 404 (custom 'Page not found — AVA Digital' page, re-verified twice 2026-07-10). No page or redirect for 'codec/download' exists anywhere in /Users/mickaelfarina/Documents/Claude/Projects/AVA-site-v2/ (grep: zero hits).`
+**Evidence:** `~/ava-stack/license-server/email_sender.py:35 renders 'Download CODEC.dmg' pointing at CODEC_DMG_URL; ~/ava-stack/license-server/config.py:27 and the live .env both set it to https://avadigital.ai/codec/download; curl returns 404 (custom 'Page not found — AVA Digital' page, re-verified twice 2026-07-10). No page or redirect for 'codec/download' exists anywhere in ~/Documents/Claude/Projects/AVA-site-v2/ (grep: zero hits).`
 
 ### D2 · CRITICAL · facade · ✓ CONFIRMED
 **Shipped paid app is a stub: launches, logs 'no services started', exits — while installer claims 'CODEC is running'**
@@ -451,7 +451,7 @@ Even with the DMG in hand, a buyer activates a license, grants permissions, and 
 
 **Fix:** Wire the launcher to the already-built W5 modules: call packaging/macos/first_run.py (which invokes install_launchagents.sh + fetch_models.py) on first open, then start the fleet; or have the Swift installer's SetupView invoke them. All pieces exist and are tested — nothing calls them (grep shows zero callers of first_run outside its own tests).
 
-**Evidence:** `Shipped bundle '/Users/mickaelfarina/ava-stack/installer-gui/dist/dmg_staging/Sovereign AI Workstation.app/Contents/Resources/codec_app_main.py' main(): '_log("fleet start deferred to W5-3 (launchd); no services started"); return 0'. Current repo copy /Users/mickaelfarina/codec-repo/packaging/macos/launcher/codec_app_main.py:110-113 is identical — still deferred today. Installer DoneView (/Users/mickaelfarina/ava-stack/installer-gui/CODECInstaller/Sources/CODECInstaller/SetupView.swift:232) tells the buyer: 'CODEC is running. Try the F13 hotkey to toggle voice, or say "Hey CODEC".'`
+**Evidence:** `Shipped bundle '~/ava-stack/installer-gui/dist/dmg_staging/Sovereign AI Workstation.app/Contents/Resources/codec_app_main.py' main(): '_log("fleet start deferred to W5-3 (launchd); no services started"); return 0'. Current repo copy ~/codec-repo/packaging/macos/launcher/codec_app_main.py:110-113 is identical — still deferred today. Installer DoneView (~/ava-stack/installer-gui/CODECInstaller/Sources/CODECInstaller/SetupView.swift:232) tells the buyer: 'CODEC is running. Try the F13 hotkey to toggle voice, or say "Hey CODEC".'`
 
 ### D3 · CRITICAL · island · ✓ CONFIRMED
 **The installer DMG was never published anywhere — nothing to download even if the link worked**
@@ -460,7 +460,7 @@ The delivery artifact is an island on one laptop. Fixing the 404 (D1) is impossi
 
 **Fix:** Upload CODEC-Installer.dmg to the codec-updates GitHub release (or R2/avadigital.ai) and point CODEC_DMG_URL at it. The signing/notarization work is already done — this is purely an upload.
 
-**Evidence:** `CODEC-Installer.dmg (130,529,697 bytes, built May 25, signed 'Developer ID Application: AVA Digital L.L.C', notarized, stapler-validated) exists only at /Users/mickaelfarina/ava-stack/installer-gui/dist/. GitHub API for AVADSA25/codec-updates shows releases v3.1.0/v3.2.0 contain only appcast.xml + the app-only update DMG 'Sovereign-AI-Workstation-3.2.0.dmg' (0 downloads); the installer DMG is in no release, and neither opencodec.org nor avadigital.ai links any .dmg.`
+**Evidence:** `CODEC-Installer.dmg (130,529,697 bytes, built May 25, signed 'Developer ID Application: AVA Digital L.L.C', notarized, stapler-validated) exists only at ~/ava-stack/installer-gui/dist/. GitHub API for AVADSA25/codec-updates shows releases v3.1.0/v3.2.0 contain only appcast.xml + the app-only update DMG 'Sovereign-AI-Workstation-3.2.0.dmg' (0 downloads); the installer DMG is in no release, and neither opencodec.org nor avadigital.ai links any .dmg.`
 
 ### D4 · HIGH · half-built · ✓ CONFIRMED (verifier adjusted severity → medium)
 **Auto-update machinery is live but the feed has been frozen since May 25 — 141 fix-commits never shipped**
@@ -469,7 +469,7 @@ Any buyer runs the May 25 build forever; the in-app update check truthfully repo
 
 **Fix:** Establish a release cadence: bump VERSION, run packaging/macos/release_macos.sh, publish DMG + regenerated appcast.xml to codec-updates. Consider a CI job so releases stop depending on a manual local run.
 
-**Evidence:** `Appcast at github.com/AVADSA25/codec-updates (fetched live) has exactly one item: 3.2.0, pubDate 'Mon, 25 May 2026'. git log in /Users/mickaelfarina/codec-repo shows VERSION last bumped 2026-05-25 (13f2bdd) and 141 commits since, including 9aeee7c 'comprehensive CODEC stability overhaul — wake word, voice, draft, screenshot, identity' and 619f528 security-dialog/mouse fixes. routes/update.py + codec_update (Ed25519-verified) are shipped and polling.`
+**Evidence:** `Appcast at github.com/AVADSA25/codec-updates (fetched live) has exactly one item: 3.2.0, pubDate 'Mon, 25 May 2026'. git log in ~/codec-repo shows VERSION last bumped 2026-05-25 (13f2bdd) and 141 commits since, including 9aeee7c 'comprehensive CODEC stability overhaul — wake word, voice, draft, screenshot, identity' and 619f528 security-dialog/mouse fixes. routes/update.py + codec_update (Ed25519-verified) are shipped and polling.`
 
 ### D5 · HIGH · broken · ✓ CONFIRMED
 **Installer requests macOS permissions for the wrong app — grants attach to the installer bundle, not the workstation app**
@@ -478,7 +478,7 @@ The mandatory permissions step secures the wrong binary: on first real run the w
 
 **Fix:** Move permission prompting into the installed app's own first run (packaging/macos/first_run.py already implements exactly this with deep links per W5-6 design), or launch the installed app to trigger its own TCC prompts; drop the hard gate in the installer.
 
-**Evidence:** `/Users/mickaelfarina/ava-stack/installer-gui/CODECInstaller/Sources/CODECInstaller/PermissionsView.swift:101-127 calls AVCaptureDevice.requestAccess, AXIsProcessTrustedWithOptions and CGRequestScreenCaptureAccess from the installer process (bundle id com.avadigital.codec.installer per build-app.sh); macOS TCC grants are per-bundle-id, so 'Sovereign AI Workstation.app' receives none of them. The wizard hard-blocks progress until all three are granted (PermissionsView.swift:74 '.disabled(!allGranted)').`
+**Evidence:** `~/ava-stack/installer-gui/CODECInstaller/Sources/CODECInstaller/PermissionsView.swift:101-127 calls AVCaptureDevice.requestAccess, AXIsProcessTrustedWithOptions and CGRequestScreenCaptureAccess from the installer process (bundle id com.avadigital.codec.installer per build-app.sh); macOS TCC grants are per-bundle-id, so 'Sovereign AI Workstation.app' receives none of them. The wizard hard-blocks progress until all three are granted (PermissionsView.swift:74 '.disabled(!allGranted)').`
 
 ### D6 · HIGH · facade · ✓ CONFIRMED
 **'Cloud-first' default LLM is unwired — installer config feeds a module only the Compare feature uses, and no local model is bundled**
@@ -487,7 +487,7 @@ Even after fixing D2, a paid buyer's default chat/voice pipeline points at a loc
 
 **Fix:** Route the main pipeline through codec_ava_client.ava_chat when config edition=paid and ava.enabled, falling back to local when a model exists — or bundle/fetch the model via fetch_models.py during setup (W5-5 exists, uncalled).
 
-**Evidence:** `SetupView.swift:122-127 writes ava.proxy_url + default_cloud_model='gemini-2.5-flash-lite' ('customers use Gemini via AVA proxy by default' per its comment, model download skipped). In /Users/mickaelfarina/codec-repo, grep shows 'default_cloud_model' is read only by codec_ava_client.py, whose sole importer is codec_compare.py; codec_ava_client.py's own docstring: 'Nothing in this file auto-wires anything.' Main chat/voice runs codec_session.qwen_* against a local MLX server, and the 130MB DMG contains no model.`
+**Evidence:** `SetupView.swift:122-127 writes ava.proxy_url + default_cloud_model='gemini-2.5-flash-lite' ('customers use Gemini via AVA proxy by default' per its comment, model download skipped). In ~/codec-repo, grep shows 'default_cloud_model' is read only by codec_ava_client.py, whose sole importer is codec_compare.py; codec_ava_client.py's own docstring: 'Nothing in this file auto-wires anything.' Main chat/voice runs codec_session.qwen_* against a local MLX server, and the 130MB DMG contains no model.`
 
 ### D7 · HIGH · broken · ✓ CONFIRMED
 **Documented OSS update command always fails and rolls itself back — calls a smoke test that doesn't exist**
@@ -496,7 +496,7 @@ Every user of the advertised update path ('Update: ./install.sh --update', print
 
 **Fix:** Point install.sh at the real smoke entry (scripts/smoke.py exists) or restore codec_smoke_test.py; add a CI check that files referenced by install.sh exist.
 
-**Evidence:** `/Users/mickaelfarina/codec-repo/install.sh:63 runs 'python3 codec_smoke_test.py' in --update mode; the file exists neither locally (ls: No such file) nor in the public repo (raw.githubusercontent.com/AVADSA25/codec/main/codec_smoke_test.py → 404, while the public install.sh line 63 still calls it). Failure branch (install.sh:66-69) does 'git reset --hard $ROLLBACK_COMMIT' and exits 1.`
+**Evidence:** `~/codec-repo/install.sh:63 runs 'python3 codec_smoke_test.py' in --update mode; the file exists neither locally (ls: No such file) nor in the public repo (raw.githubusercontent.com/AVADSA25/codec/main/codec_smoke_test.py → 404, while the public install.sh line 63 still calls it). Failure branch (install.sh:66-69) does 'git reset --hard $ROLLBACK_COMMIT' and exits 1.`
 
 ### D8 · MEDIUM · copy-lie · unverified
 **Live site troubleshooting instructs commands that don't exist (codec.py --list-skills / --mcp)**
@@ -505,7 +505,7 @@ A stuck first-run user follows official troubleshooting into 'unrecognized' beha
 
 **Fix:** Rewrite the Troubleshooting entries against real entry points (pm2 status, codec_mcp_http on 8091, dashboard on 8090) — the deployed page already fixed the dashboard port, so only these two commands remain wrong.
 
-**Evidence:** `Live bundle https://opencodec.org/assets/index-CWlSL47R.js contains 'Run: python3 codec.py --list-skills to verify they're discovered' and 'the MCP server is started: python3 codec.py --mcp'. /Users/mickaelfarina/codec-repo/codec.py has no argparse/CLI handling (its only 'argv' hits are inside an embedded AppleScript string at lines 608-615); MCP actually starts via codec_mcp.py / codec_mcp_http.py (port 8091 per codec_mcp_http.py:16 — which the same page's marketing copy correctly states).`
+**Evidence:** `Live bundle https://opencodec.org/assets/index-CWlSL47R.js contains 'Run: python3 codec.py --list-skills to verify they're discovered' and 'the MCP server is started: python3 codec.py --mcp'. ~/codec-repo/codec.py has no argparse/CLI handling (its only 'argv' hits are inside an embedded AppleScript string at lines 608-615); MCP actually starts via codec_mcp.py / codec_mcp_http.py (port 8091 per codec_mcp_http.py:16 — which the same page's marketing copy correctly states).`
 
 ### D9 · MEDIUM · risk · unverified
 **License is only minted for subscription-mode checkouts — a one-time payment sale would charge the buyer and deliver nothing**
@@ -514,7 +514,7 @@ The payment→delivery seam fails closed but silently: a legitimate one-time buy
 
 **Fix:** Either support mode=payment for the CODEC price ID in stripe_handler.handle(), or alert (email/log-based notification) whenever a checkout containing STRIPE_PRICE_ID is skipped.
 
-**Evidence:** `/Users/mickaelfarina/ava-stack/license-server/stripe_handler.py:196-198: 'if obj.get("mode") != "subscription": return {"ok": True, "skipped": ...}'; and _issue_license_for_session raises 'missing subscription id' (lines 104-106). No public page currently sells the €25 license at all (avadigital.ai/pricing offers only 'Codec €500 install'; opencodec.org has no purchase path), so any ad-hoc Stripe Payment Link used to sell it would be one-time mode → silent skip, money taken, no email.`
+**Evidence:** `~/ava-stack/license-server/stripe_handler.py:196-198: 'if obj.get("mode") != "subscription": return {"ok": True, "skipped": ...}'; and _issue_license_for_session raises 'missing subscription id' (lines 104-106). No public page currently sells the €25 license at all (avadigital.ai/pricing offers only 'Codec €500 install'; opencodec.org has no purchase path), so any ad-hoc Stripe Payment Link used to sell it would be one-time mode → silent skip, money taken, no email.`
 
 ### D10 · MEDIUM · island · unverified
 **Two disconnected packaging pipelines; the tested first-run/launchd/model machinery (W5-3/5/6) has zero callers in what ships**
@@ -523,7 +523,7 @@ The designed first-run experience (model fetch, launchd fleet, TCC deep-links pe
 
 **Fix:** Pick one canonical pipeline (HANDOFF-MICKAEL.md already flags this decision): have the Swift wizard shell out to first_run.py, or fold the wizard into packaging/macos and retire installer-gui's duplicate logic.
 
-**Evidence:** `/Users/mickaelfarina/codec-repo/packaging/macos/ contains first_run.py, launchd/install_launchagents.sh, fetch_models.py, uninstall_codec.sh, release_macos.sh (all with passing tests); repo-wide grep finds no caller of first_run outside its tests, and docs/HANDOFF-MICKAEL.md §1 states the codec-repo pipeline 'has NEVER produced an artifact' while what ships is the separate ~/ava-stack/installer-gui Swift bootstrapper that invokes none of it.`
+**Evidence:** `~/codec-repo/packaging/macos/ contains first_run.py, launchd/install_launchagents.sh, fetch_models.py, uninstall_codec.sh, release_macos.sh (all with passing tests); repo-wide grep finds no caller of first_run outside its tests, and docs/HANDOFF-MICKAEL.md §1 states the codec-repo pipeline 'has NEVER produced an artifact' while what ships is the separate ~/ava-stack/installer-gui Swift bootstrapper that invokes none of it.`
 
 ### D11 · MEDIUM · ux · unverified
 **No self-serve license rebind — buyer who replaces their Mac dead-ends at 409**
@@ -532,7 +532,7 @@ Any Mac upgrade or clean reinstall on new hardware locks a paying customer out u
 
 **Fix:** Add POST /admin/rebind/{license_id} (clear hardware_uuid) at minimum; ideally a customer-facing 'deactivate this Mac' via the JWT.
 
-**Evidence:** `/Users/mickaelfarina/ava-stack/license-server/main.py:119-123 rejects activation from a second machine ('license already bound to a different Mac', 409); the only admin endpoints are /admin/revoke and /admin/resend (main.py:202-225) — no unbind/rebind exists, and the license email (email_sender.py:51) tells buyers 'bound to your Mac on first activation' with no migration path.`
+**Evidence:** `~/ava-stack/license-server/main.py:119-123 rejects activation from a second machine ('license already bound to a different Mac', 409); the only admin endpoints are /admin/revoke and /admin/resend (main.py:202-225) — no unbind/rebind exists, and the license email (email_sender.py:51) tells buyers 'bound to your Mac on first activation' with no migration path.`
 
 ### D12 · LOW · risk · unverified
 **Local opencodec.org source is stale relative to the live deploy — a redeploy would regress live fixes**
@@ -541,7 +541,7 @@ The tree the audit (and future edits) treats as the site source would reintroduc
 
 **Fix:** Pull the current Replit/deploy source back into this folder (or delete it and document the real source of truth) before the next site edit.
 
-**Evidence:** `/Users/mickaelfarina/Documents/Claude/Projects/ava-web-template/sources/opencodec.org/artifacts/codec-landing/src/App.tsx:1793 says 'Ensure FastAPI is running on port 8765', but the live bundle (index-CWlSL47R.js) says 'localhost:8090' / 'port 8090' and contains zero '8765' hits — the deployed site is newer than this checkout.`
+**Evidence:** `~/Documents/Claude/Projects/ava-web-template/sources/opencodec.org/artifacts/codec-landing/src/App.tsx:1793 says 'Ensure FastAPI is running on port 8765', but the live bundle (index-CWlSL47R.js) says 'localhost:8090' / 'port 8090' and contains zero '8765' hits — the deployed site is newer than this checkout.`
 
 ### D13 · LOW · risk · unverified
 **Paid app DMG is publicly downloadable via the update feed; 'paid' gating rests solely on an installer-written config flag**
@@ -550,7 +550,7 @@ Anyone can fetch the paid bundle and run it as an unenforced OSS build. Largely 
 
 **Fix:** Accept and document it (open-core positioning), or gate the update-DMG release assets behind a token-authenticated redirect if the paid bundle is meant to be buyer-only.
 
-**Evidence:** `Appcast enclosure URL github.com/AVADSA25/codec-updates/releases/download/v3.2.0/Sovereign-AI-Workstation-3.2.0.dmg returns 200 unauthenticated; /Users/mickaelfarina/codec-repo/codec_license.py:6-9 documents that without edition:"paid" in ~/.codec/config.json the build 'is NEVER enforced — full local features'.`
+**Evidence:** `Appcast enclosure URL github.com/AVADSA25/codec-updates/releases/download/v3.2.0/Sovereign-AI-Workstation-3.2.0.dmg returns 200 unauthenticated; ~/codec-repo/codec_license.py:6-9 documents that without edition:"paid" in ~/.codec/config.json the build 'is NEVER enforced — full local features'.`
 
 
 ## 5. Cross-product hygiene (CODEC vs InTake vs AVA separation) — verdict: **half-built**
@@ -694,7 +694,7 @@ A stranger cannot go from the public face to a purchased license at all — the 
 
 **Fix:** Decide the positioning once: if licenses are sold, add a pricing/license section with a Stripe Payment Link (the ava-license webhook already handles checkout.session.completed) and change the JSON-LD Offer to the real price; if the free/OSS positioning is intentional, the license server's CODEC product line has no acquisition channel and that's a business-level gap to close.
 
-**Evidence:** `Live Stripe→license machine exists: /Users/mickaelfarina/ava-stack/license-server/main.py:71 `@app.post("/webhooks/stripe")`; stripe_handler.py:92 `_issue_license_for_session`; config.py:20 `STRIPE_PRICE_ID = _env("STRIPE_PRICE_ID")  # price_... for $99/yr license`. Full external-URL inventory of the live JS bundle (assets/index-CWlSL47R.js): avadigital.ai, github.com/AVADSA25/codec, i.imgur.com/RbrQ7Bt.png, paypal.me/avadsa25, youtube.com/embed/OEXxvxA0_AE — no checkout, no pricing, no license page. Meanwhile live HTML declares `"offers": {"price": "0", "priceCurrency": "USD"}` (JSON-LD) and FAQ schema answers 'Is CODEC free?' with 'Yes. CODEC is completely free and open-source'; the only money link is footer `<a href="https://paypal.me/avadsa25">Support ❤️</a>` (App.tsx:1856).`
+**Evidence:** `Live Stripe→license machine exists: ~/ava-stack/license-server/main.py:71 `@app.post("/webhooks/stripe")`; stripe_handler.py:92 `_issue_license_for_session`; config.py:20 `STRIPE_PRICE_ID = _env("STRIPE_PRICE_ID")  # price_... for $99/yr license`. Full external-URL inventory of the live JS bundle (assets/index-CWlSL47R.js): avadigital.ai, github.com/AVADSA25/codec, i.imgur.com/RbrQ7Bt.png, paypal.me/avadsa25, youtube.com/embed/OEXxvxA0_AE — no checkout, no pricing, no license page. Meanwhile live HTML declares `"offers": {"price": "0", "priceCurrency": "USD"}` (JSON-LD) and FAQ schema answers 'Is CODEC free?' with 'Yes. CODEC is completely free and open-source'; the only money link is footer `<a href="https://paypal.me/avadsa25">Support ❤️</a>` (App.tsx:1856).`
 
 ### WEB-02 · HIGH · copy-lie · unverified
 **Live page contradicts itself: three versions and three feature counts served at once**
@@ -730,7 +730,7 @@ The 'buy → running on my Mac' journey requires Terminal, git, and Python — t
 
 **Fix:** Run installer-gui/build-app.sh as part of the release, upload the artifact to the GitHub release, and put a 'Download for macOS' button in the hero next to 'Get Started'.
 
-**Evidence:** `/Users/mickaelfarina/ava-stack/installer-gui/ contains CODECInstaller, build-app.sh, dist/. GitHub API for latest release: tag v3.2.0, published 2026-05-29, `assets: []`. The live site's entire install path is the quickstart terminal block starting `git clone https://github.com/AVADSA25/codec.git` (present in live bundle); no .dmg/.pkg/download URL exists anywhere in the bundle's link inventory.`
+**Evidence:** `~/ava-stack/installer-gui/ contains CODECInstaller, build-app.sh, dist/. GitHub API for latest release: tag v3.2.0, published 2026-05-29, `assets: []`. The live site's entire install path is the quickstart terminal block starting `git clone https://github.com/AVADSA25/codec.git` (present in live bundle); no .dmg/.pkg/download URL exists anywhere in the bundle's link inventory.`
 
 ### WEB-06 · MEDIUM · broken · unverified
 **www.opencodec.org does not resolve**
@@ -818,7 +818,7 @@ The €25 license cannot be bought by anyone, ever, without Mickael hand-craftin
 
 **Fix:** Add a Buy page/button (opencodec.org and avadigital.ai/codec) that links a Stripe Checkout/payment link for the exact subscription STRIPE_PRICE_ID; remove or date-correct the 'Launching Q3 2026' block.
 
-**Evidence:** `License server LIVE: curl https://ava-license.lucyvpa.com/health → {"ok":true,"env":"production","licenses_total":4}; full pipeline in /Users/mickaelfarina/ava-stack/license-server/stripe_handler.py:195-211 mints only for subscription-mode checkouts of STRIPE_PRICE_ID. But no page can start that checkout: opencodec.org source (/Users/mickaelfarina/Documents/Claude/Projects/ava-web-template/sources/opencodec.org/artifacts/codec-landing/src/App.tsx, full file) has no buy/pricing element — hero CTAs lines 762-767 go to GitHub and #quickstart, footer 1852-1857 offers only GitHub/mailto/PayPal-donate. Live avadigital.ai/codec paid tier reads "Launching Q3 2026 · Notify me →" with href="index.html#contact" (fetched page). codec-repo/README.md:837 sends buyers to avadigital.ai ("Get it → avadigital.ai"), which loops to that same 'Q3 2026' wall.`
+**Evidence:** `License server LIVE: curl https://ava-license.lucyvpa.com/health → {"ok":true,"env":"production","licenses_total":4}; full pipeline in ~/ava-stack/license-server/stripe_handler.py:195-211 mints only for subscription-mode checkouts of STRIPE_PRICE_ID. But no page can start that checkout: opencodec.org source (~/Documents/Claude/Projects/ava-web-template/sources/opencodec.org/artifacts/codec-landing/src/App.tsx, full file) has no buy/pricing element — hero CTAs lines 762-767 go to GitHub and #quickstart, footer 1852-1857 offers only GitHub/mailto/PayPal-donate. Live avadigital.ai/codec paid tier reads "Launching Q3 2026 · Notify me →" with href="index.html#contact" (fetched page). codec-repo/README.md:837 sends buyers to avadigital.ai ("Get it → avadigital.ai"), which loops to that same 'Q3 2026' wall.`
 
 ### JS-02 · CRITICAL · island · ✓ CONFIRMED
 **License email download button 404s — paying buyer dead-ends immediately after payment**
@@ -827,7 +827,7 @@ Every automated license delivery (the ONLY automated seam) hands the buyer a dea
 
 **Fix:** Point CODEC_DMG_URL at the live GitHub release asset (or deploy a real /codec/download redirect on avadigital.ai); add a smoke test that HEADs CODEC_DMG_URL at license-server startup.
 
-**Evidence:** `/Users/mickaelfarina/ava-stack/license-server/email_sender.py:35 renders `<a href="{CODEC_DMG_URL}">Download CODEC.dmg</a>`; .env sets CODEC_DMG_URL=https://avadigital.ai/codec/download (config.py:27 same default); curl → HTTP 404 (AVA 'Page not found' template). A working signed DMG exists but is unreferenced: https://github.com/AVADSA25/codec-updates/releases/download/v3.2.0/Sovereign-AI-Workstation-3.2.0.dmg → HTTP 200.`
+**Evidence:** `~/ava-stack/license-server/email_sender.py:35 renders `<a href="{CODEC_DMG_URL}">Download CODEC.dmg</a>`; .env sets CODEC_DMG_URL=https://avadigital.ai/codec/download (config.py:27 same default); curl → HTTP 404 (AVA 'Page not found' template). A working signed DMG exists but is unreferenced: https://github.com/AVADSA25/codec-updates/releases/download/v3.2.0/Sovereign-AI-Workstation-3.2.0.dmg → HTTP 200.`
 
 ### JS-03 · CRITICAL · copy-lie · ✓ CONFIRMED
 **Public pages claim CODEC is entirely free / owned forever while the shipped product is a 1-year auto-renewing license that degrades to read-only**
@@ -845,7 +845,7 @@ The single live self-serve way to pay for CODEC today produces no license, no do
 
 **Fix:** Have the cart webhook trigger a CODEC-specific 'what happens next' email + notify Mickael for codec items, or add the setup price ID to an allowed list that mints a license alongside the manual install.
 
-**Evidence:** `Live avadigital.ai cart: /site/cart.js line 19 `'codec': { n: 'Codec — Workstation Setup', l: '€500' … }`; catalog source (/Users/mickaelfarina/Documents/Claude/Projects/AVA-site-v2/AVA Digital Design System/functions/_lib/catalog.js:47-51) price_1TgX0DAnpzAGXuyI7bsHNpli recurring:false → checkout.js sets mode=payment. License server: stripe_handler.py:196-198 `if obj.get("mode") != "subscription": return {"skipped"…}` and :203 price-ID guard — so this purchase can never mint a license or send the CODEC welcome email.`
+**Evidence:** `Live avadigital.ai cart: /site/cart.js line 19 `'codec': { n: 'Codec — Workstation Setup', l: '€500' … }`; catalog source (~/Documents/Claude/Projects/AVA-site-v2/AVA Digital Design System/functions/_lib/catalog.js:47-51) price_1TgX0DAnpzAGXuyI7bsHNpli recurring:false → checkout.js sets mode=payment. License server: stripe_handler.py:196-198 `if obj.get("mode") != "subscription": return {"skipped"…}` and :203 price-ID guard — so this purchase can never mint a license or send the CODEC welcome email.`
 
 ### JS-05 · HIGH · copy-lie · unverified
 **Three conflicting public prices/currencies for the same paid app across the journey**
@@ -881,7 +881,7 @@ The post-purchase rescue path (the buyer's only exit from the 404 download, JS-0
 
 **Fix:** Send test mail to mikarina@ and support@ (manual step below); standardize one support address across opencodec.org footer, troubleshooting, and RESEND_REPLY_TO.
 
-**Evidence:** `opencodec.org App.tsx:1811 & 1855: mikarina@avadigital.ai (looks like a typo of Mickael/Farina); license email reply-to default support@avadigital.ai (config.py:24, RESEND_REPLY_TO set in .env); avadigital.ai exposes only /contact form and privacy@avadigital.ai. Domain MX exists (smtp.google.com) but mailbox existence is unverifiable from the repo.`
+**Evidence:** `opencodec.org App.tsx:1811 & 1855: mikarina@avadigital.ai (looks like a typo); license email reply-to default support@avadigital.ai (config.py:24, RESEND_REPLY_TO set in .env); avadigital.ai exposes only /contact form and privacy@avadigital.ai. Domain MX exists (smtp.google.com) but mailbox existence is unverifiable from the repo.`
 
 ### JS-09 · LOW · risk · unverified
 **Paid 'Sovereign AI Workstation' DMG is publicly downloadable and runs fully unlocked without a license**

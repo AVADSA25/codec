@@ -553,40 +553,40 @@ A paid Mac app cannot ship to general consumers without code signing + notarizat
 ## Files reviewed
 
 **Repo root:**
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/README.md` (full, 775 lines)
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/CONTRIBUTING.md`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/CHANGELOG.md` (first 60 lines + spot checks)
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/LICENSE`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/AGENTS.md` (front-door context, full read via system reminder)
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/FEATURES.md` (first 30 lines)
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/CLAUDE.md` (via system reminder; same as AGENTS.md in this repo)
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/requirements.txt`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/install.sh` (first 40 lines)
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/pytest.ini`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/README.md` (full, 775 lines)
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/CONTRIBUTING.md`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/CHANGELOG.md` (first 60 lines + spot checks)
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/LICENSE`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/AGENTS.md` (front-door context, full read via system reminder)
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/FEATURES.md` (first 30 lines)
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/CLAUDE.md` (via system reminder; same as AGENTS.md in this repo)
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/requirements.txt`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/install.sh` (first 40 lines)
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/pytest.ini`
 
 **OSS health / .github:**
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/.github/workflows/ci.yml`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/.github/PULL_REQUEST_TEMPLATE.md`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/.github/ISSUE_TEMPLATE/bug_report.yml`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/.github/ISSUE_TEMPLATE/feature_request.yml`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/.github/ISSUE_TEMPLATE/config.yml`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/.github/workflows/ci.yml`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/.github/PULL_REQUEST_TEMPLATE.md`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/.github/ISSUE_TEMPLATE/bug_report.yml`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/.github/ISSUE_TEMPLATE/feature_request.yml`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/.github/ISSUE_TEMPLATE/config.yml`
 
 **docs/:**
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/docs/ARCHITECTURE.md` (first 40 lines)
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/docs/API.md` (first 20 lines)
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/docs/MCP_HTTP_SETUP.md` (first 20 lines)
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/docs/known-issues.md` (first 40 lines)
-- Full file listing of `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/docs/` (32 files)
-- Full file listing of `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/docs/screenshots/` (15 PNGs)
-- Empty audits subfolder verified: `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/docs/audits/`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/docs/ARCHITECTURE.md` (first 40 lines)
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/docs/API.md` (first 20 lines)
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/docs/MCP_HTTP_SETUP.md` (first 20 lines)
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/docs/known-issues.md` (first 40 lines)
+- Full file listing of `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/docs/` (32 files)
+- Full file listing of `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/docs/screenshots/` (15 PNGs)
+- Empty audits subfolder verified: `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/docs/audits/`
 
 **tests/:**
-- Directory listing of `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/tests/` (54 files matching `test_*.py`)
+- Directory listing of `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/tests/` (54 files matching `test_*.py`)
 - Test function count verified via grep: 873 `def test_` functions
 
 **skills/:**
-- Listing of `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/skills/` (76 files; 70 with `SKILL_MCP_EXPOSE = True`)
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/skills/_template.py`
+- Listing of `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/skills/` (76 files; 70 with `SKILL_MCP_EXPOSE = True`)
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/skills/_template.py`
 
 **Git:**
 - `git tag -l` — returned 2 tags

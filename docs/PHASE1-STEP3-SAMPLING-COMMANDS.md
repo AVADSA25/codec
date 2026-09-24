@@ -26,7 +26,7 @@ cd ~/codec-repo
 import json
 from datetime import datetime, timezone, timedelta
 records = []
-with open('/Users/mickaelfarina/.codec/audit.log') as f:
+with open('~/.codec/audit.log') as f:
     for line in f:
         if line.strip():
             try: records.append(json.loads(line))
@@ -92,8 +92,8 @@ Both endpoints should return `200`. All four PM2 processes should show `online`.
 ## State-file health quick-check (anytime)
 
 ```bash
-echo "pending_questions: $(/Library/Frameworks/Python.framework/Versions/3.13/bin/python3.13 -c "import json; print(len(json.load(open('/Users/mickaelfarina/.codec/pending_questions.json')).get('pending_questions', [])))")"
-echo "question notifs:   $(/Library/Frameworks/Python.framework/Versions/3.13/bin/python3.13 -c "import json; print(len([n for n in json.load(open('/Users/mickaelfarina/.codec/notifications.json')) if n.get('type')=='question']))")"
+echo "pending_questions: $(/Library/Frameworks/Python.framework/Versions/3.13/bin/python3.13 -c "import json; print(len(json.load(open('~/.codec/pending_questions.json')).get('pending_questions', [])))")"
+echo "question notifs:   $(/Library/Frameworks/Python.framework/Versions/3.13/bin/python3.13 -c "import json; print(len([n for n in json.load(open('~/.codec/notifications.json')) if n.get('type')=='question']))")"
 echo "/tmp/codec_*.txt:  $(find /tmp -maxdepth 1 -name 'codec_*.txt' 2>/dev/null | wc -l | tr -d ' ')"
 echo "Apple Reminders:   $(osascript -e 'tell application "Reminders" to count reminders whose completed is false' 2>&1)"
 ```

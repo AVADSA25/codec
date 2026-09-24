@@ -95,9 +95,9 @@ Captured from live `~/.codec/audit.log` at 2026-05-01 16:14 CEST:
 ```bash
 $ ls -la ~/.codec/plugins/
 total 16
-drwxr-xr-x@  3 mickaelfarina  staff     96 May  1 16:11 .
-drwxr-xr-x@ 68 mickaelfarina  staff   2176 May  1 16:11 ..
--rw-r--r--@  1 mickaelfarina  staff  17722 May  1 16:11 self_improve.py
+drwxr-xr-x@  3 user  staff     96 May  1 16:11 .
+drwxr-xr-x@ 68 user  staff   2176 May  1 16:11 ..
+-rw-r--r--@  1 user  staff  17722 May  1 16:11 self_improve.py
 ```
 
 ```bash

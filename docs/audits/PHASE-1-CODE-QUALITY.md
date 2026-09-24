@@ -276,28 +276,28 @@ The 21 `"Non-critical error: {e}"` instances (A-3) are a SUBSET of HIDING_BUG.
 ## Files reviewed
 
 Full reads:
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/CLAUDE.md` (architecture source of truth)
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec.py` (1153 LOC)
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_config.py` (319 LOC)
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_agent.py` (140 LOC)
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_core.py` (623 LOC, key sections)
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_dispatch.py` (113 LOC)
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/skills/codec.py` (460 LOC)
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/CLAUDE.md` (architecture source of truth)
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec.py` (1153 LOC)
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_config.py` (319 LOC)
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_agent.py` (140 LOC)
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_core.py` (623 LOC, key sections)
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_dispatch.py` (113 LOC)
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/skills/codec.py` (460 LOC)
 
 Partial reads (targeted):
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_dashboard.py` (3859 LOC, sections 1-900, 1930-2095, 2349-2430, 2561-3003, 3477-3853)
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_voice.py` (1528 LOC, sections 623-1100, 1217-1530)
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_agents.py` (1750 LOC, sections 280-630, function index)
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_observer.py` (927 LOC, prelude + docstrings)
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_session.py` (984 LOC, function index + run())
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_imessage.py` (1140 LOC, sections 266-365, 740-880, 935-1050)
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_telegram.py` (835 LOC, function index, sections 200-260)
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_dictate.py` (663 LOC, function index, sections 96-280)
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_audit.py` (488 LOC, sections 1-490)
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_proactive.py` (367 LOC, header)
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_mcp.py` (338 LOC, sections 1-200)
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/routes/agents.py` (734 LOC, sections 1-100)
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_alerts.py` (function index)
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_dashboard.py` (3859 LOC, sections 1-900, 1930-2095, 2349-2430, 2561-3003, 3477-3853)
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_voice.py` (1528 LOC, sections 623-1100, 1217-1530)
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_agents.py` (1750 LOC, sections 280-630, function index)
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_observer.py` (927 LOC, prelude + docstrings)
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_session.py` (984 LOC, function index + run())
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_imessage.py` (1140 LOC, sections 266-365, 740-880, 935-1050)
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_telegram.py` (835 LOC, function index, sections 200-260)
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_dictate.py` (663 LOC, function index, sections 96-280)
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_audit.py` (488 LOC, sections 1-490)
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_proactive.py` (367 LOC, header)
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_mcp.py` (338 LOC, sections 1-200)
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/routes/agents.py` (734 LOC, sections 1-100)
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_alerts.py` (function index)
 
 Grep surveys covering ALL Python files in the repo:
 - All `except Exception` / `except:` patterns
