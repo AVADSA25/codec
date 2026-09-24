@@ -202,6 +202,10 @@ def main():
         snap["error_rate"] = round(snap["requests_error"] / total, 4)
         return JSONResponse(snap)
 
+    # Owner gate: /authorize parks requests and redirects here for the PIN.
+    from codec_mcp_consent import build_consent_routes
+    app.router.routes.extend(build_consent_routes(auth))
+
     app.router.routes.append(Route("/health", _health, methods=["GET"]))
     app.router.routes.append(Route("/metrics", _metrics, methods=["GET"]))
 
@@ -219,6 +223,7 @@ def main():
              getattr(_reg, "skills_dir", "?"), _REPO_DIR, os.getcwd())
     log.info("Rate limit: %d req/min per IP", _RATE_LIMIT)
     log.info("OAuth metadata: %s/.well-known/oauth-authorization-server", public_base)
+    log.info("Consent (PIN):  %s/oauth/consent", public_base)
     log.info("MCP endpoint:   %s/mcp", public_base)
     log.info("Health:         %s/health", public_base)
     log.info("Metrics:        %s/metrics", public_base)
