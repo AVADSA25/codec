@@ -17,6 +17,14 @@ TTLs:      access token  365d   (bumped 2026-05-28 from 30d to remove
                                  reason — annual re-auth at most)
            auth code     5m     (in-memory only — short enough that
                                  restart loss is fine)
+
+Owner gate (2026-09-24): `authorize()` never issues a code by itself. The
+SDK base class auto-approves every request, and Dynamic Client Registration
+is open (claude.ai needs it), so before this gate anyone who reached the
+public URL could register a client and walk away with a 1-year token. Now
+`authorize()` parks the request and redirects to `/oauth/consent`, where the
+owner must enter the CODEC PIN (`codec_mcp_consent.py`). Only
+`approve_pending()` mints a code.
 """
 from __future__ import annotations
 
@@ -28,7 +36,10 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from mcp.server.auth.provider import AccessToken, AuthorizationCode, RefreshToken, TokenError
+from mcp.server.auth.provider import (
+    AccessToken, AuthorizationCode, AuthorizationParams, AuthorizeError,
+    RefreshToken, TokenError, construct_redirect_uri,
+)
 from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 
 from fastmcp.server.auth.providers.in_memory import InMemoryOAuthProvider
@@ -57,6 +68,12 @@ def _token_id(token_value: str) -> str:
 ACCESS_TOKEN_TTL = 365 * 24 * 60 * 60    # 1 year (was 30d, originally 24h)
 REFRESH_TOKEN_TTL = 365 * 24 * 60 * 60   # 1 year (was 90d, originally 30d)
 
+# Owner gate: a parked /authorize request lives this long, and at most this
+# many wait at once (oldest evicted) so unauthenticated callers can't grow
+# the dict without bound.
+PENDING_AUTH_TTL = 10 * 60
+PENDING_AUTH_MAX = 50
+
 _STATE_PATH = Path(os.path.expanduser("~/.codec/oauth_state.json"))
 _STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
 
@@ -68,6 +85,10 @@ class PersistentOAuthProvider(InMemoryOAuthProvider):
         super().__init__(*args, **kwargs)
         self._state_path = state_path
         self._lock = threading.Lock()
+        # rid -> (client, params, expires_at). RAM only: a restart drops
+        # in-flight consents, and the user just clicks Connect again.
+        self._pending: dict[str, tuple[OAuthClientInformationFull, AuthorizationParams, float]] = {}
+        self._pending_lock = threading.Lock()
         self._load()
 
     # ---------- persistence ----------
@@ -176,6 +197,87 @@ class PersistentOAuthProvider(InMemoryOAuthProvider):
     async def register_client(self, client_info: OAuthClientInformationFull) -> None:
         await super().register_client(client_info)
         self._save()
+
+    # ---------- owner gate ----------
+
+    async def authorize(
+        self, client: OAuthClientInformationFull, params: AuthorizationParams
+    ) -> str:
+        """Park the request and send the browser to the PIN consent page.
+
+        Never returns a redirect carrying a code — that only happens in
+        `approve_pending()` after the owner enters the PIN."""
+        if client.client_id is None or client.client_id not in self.clients:
+            raise AuthorizeError(
+                error="unauthorized_client",
+                error_description="Client not registered.",
+            )
+        rid = secrets.token_urlsafe(32)
+        now = time.time()
+        with self._pending_lock:
+            for k in [k for k, v in self._pending.items() if v[2] < now]:
+                del self._pending[k]
+            while len(self._pending) >= PENDING_AUTH_MAX:
+                oldest = min(self._pending, key=lambda k: self._pending[k][2])
+                del self._pending[oldest]
+            self._pending[rid] = (client, params, now + PENDING_AUTH_TTL)
+        self._emit_consent("oauth_consent_requested", client, "info")
+        base = str(self.base_url).rstrip("/")
+        return f"{base}/oauth/consent?rid={rid}"
+
+    def pending_request(self, rid: str) -> dict | None:
+        """Display info for a live parked request, or None."""
+        with self._pending_lock:
+            entry = self._pending.get(rid or "")
+            if not entry or entry[2] < time.time():
+                return None
+            client, params, _ = entry
+        return {
+            "client_id": client.client_id,
+            "client_name": client.client_name or "Unnamed client",
+            "redirect_uri": str(params.redirect_uri),
+        }
+
+    def _pop_pending(self, rid: str):
+        with self._pending_lock:
+            entry = self._pending.pop(rid or "", None)
+        if not entry or entry[2] < time.time():
+            return None
+        return entry
+
+    async def approve_pending(self, rid: str) -> str | None:
+        """Owner approved: mint the code and return the client redirect."""
+        entry = self._pop_pending(rid)
+        if entry is None:
+            return None
+        client, params, _ = entry
+        url = await super().authorize(client, params)
+        self._emit_consent("oauth_consent_granted", client, "info")
+        return url
+
+    def deny_pending(self, rid: str, reason: str = "denied") -> str | None:
+        """Drop the request; return the client redirect with access_denied."""
+        entry = self._pop_pending(rid)
+        if entry is None:
+            return None
+        client, params, _ = entry
+        self._emit_consent("oauth_consent_denied", client, "warning", reason=reason)
+        return construct_redirect_uri(
+            str(params.redirect_uri), error="access_denied", state=params.state
+        )
+
+    def _emit_consent(self, event: str, client, level: str, **extra) -> None:
+        try:
+            _oauth_log_event(
+                event, "codec-oauth-provider",
+                f"{event} for client {client.client_id}",
+                client_id=client.client_id,
+                outcome="ok" if level == "info" else "denied",
+                level=level,
+                extra={"client_name": client.client_name, **extra},
+            )
+        except Exception:
+            pass
 
     async def exchange_authorization_code(
         self, client: OAuthClientInformationFull, authorization_code: AuthorizationCode
