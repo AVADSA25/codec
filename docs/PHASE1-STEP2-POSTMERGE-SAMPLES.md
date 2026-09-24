@@ -82,7 +82,7 @@ python3 <<'PY'
 import json, os, re
 from datetime import datetime, timezone, timedelta
 PATH = os.path.expanduser("~/.codec/audit.log")
-DOC = "/Users/mickaelfarina/codec-repo/docs/PHASE1-STEP2-POSTMERGE-SAMPLES.md"
+DOC = "~/codec-repo/docs/PHASE1-STEP2-POSTMERGE-SAMPLES.md"
 LABEL = "T+4h"   # ← change per sample
 
 now = datetime.now(timezone.utc)

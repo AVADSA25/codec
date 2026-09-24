@@ -108,4 +108,4 @@ The architecture is intentionally simple: pure Python, no frameworks, no Docker,
 
 **CODEC v2.1** — [github.com/AVADSA25/codec](https://github.com/AVADSA25/codec) — MIT License
 
-Built by Mickael Farina / [AVA Digital LLC](https://avadigital.ai)
+Built by Mickael / [AVA Digital LLC](https://avadigital.ai)

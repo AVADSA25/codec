@@ -86,7 +86,7 @@ Captured from `~/.codec/audit.log` at 2026-05-02 20:53 CEST:
 
 ```bash
 $ ls -la ~/.codec/skills/shift_report.py
--rw-r--r--@ 1 mickaelfarina  staff  22151 May  2 20:49 /Users/mickaelfarina/.codec/skills/shift_report.py
+-rw-r--r--@ 1 user  staff  22151 May  2 20:49 ~/.codec/skills/shift_report.py
 ```
 
 ```bash

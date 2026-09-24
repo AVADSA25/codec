@@ -1830,7 +1830,7 @@ Open `ecosystem.config.js`. Find the `codec-observer` entry. Immediately after i
       name: "codec-agent-runner",
       script: "codec_agent_runner.py",
       interpreter: "/opt/homebrew/opt/python@3.13/bin/python3.13",
-      cwd: "/Users/mickaelfarina/codec-repo",
+      cwd: "~/codec-repo",
       autorestart: true,
       watch: false,
       max_restarts: 10,
@@ -1839,8 +1839,8 @@ Open `ecosystem.config.js`. Find the `codec-observer` entry. Immediately after i
         AGENT_RUNNER_MAX_CONCURRENT: "3",
         PYTHONUNBUFFERED: "1",
       },
-      out_file: "/Users/mickaelfarina/.pm2/logs/codec-agent-runner-out.log",
-      error_file: "/Users/mickaelfarina/.pm2/logs/codec-agent-runner-error.log",
+      out_file: "~/.pm2/logs/codec-agent-runner-out.log",
+      error_file: "~/.pm2/logs/codec-agent-runner-error.log",
     },
 ```
 

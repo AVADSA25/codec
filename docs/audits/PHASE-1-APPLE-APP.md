@@ -274,21 +274,21 @@ This preserves the MIT OSS pitch ("local-first, no subscription") while letting 
 
 ## Files reviewed
 
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/README.md`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/CHANGELOG.md`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/CLAUDE.md`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/install.sh`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/update.sh`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/setup_codec.py`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/requirements.txt`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/config.json.example`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/ecosystem.config.js`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_slash_commands.py` (license validation references)
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_auth/main.swift`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/swift-overlay/Package.swift`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/request_mic.py`
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_observer.py` (screencapture + Quartz usage)
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec.py` (hotkey + screencapture sites)
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_dictate.py` (keystroke injection)
-- `/Users/mickaelfarina/codec-repo/.claude/worktrees/zealous-villani-2a4867/scripts/` (directory listing — no Apple distribution scripts present)
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/README.md`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/CHANGELOG.md`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/CLAUDE.md`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/install.sh`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/update.sh`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/setup_codec.py`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/requirements.txt`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/config.json.example`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/ecosystem.config.js`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_slash_commands.py` (license validation references)
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_auth/main.swift`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/swift-overlay/Package.swift`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/request_mic.py`
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_observer.py` (screencapture + Quartz usage)
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec.py` (hotkey + screencapture sites)
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/codec_dictate.py` (keystroke injection)
+- `~/codec-repo/.claude/worktrees/zealous-villani-2a4867/scripts/` (directory listing — no Apple distribution scripts present)
 - Repo-wide grep for: `Info.plist`, `codesign`, `notarytool`, `notarize`, `altool`, `entitlements`, `Sparkle`, `*.plist`, `*.entitlements`, `*.dmg`, `*.pkg`, `*.app`, `com.*.codec`, `bundleIdentifier`, `Developer ID`, `Team ID`, `Gatekeeper`, `hardened runtime`, `Mac App Store`, `PrivacyInfo`, `xcprivacy`, `NSPrivacyAccessedAPI`, `NSMicrophoneUsageDescription`, `NSAppleEventsUsageDescription`, `NSScreenCaptureUsageDescription`, `uninstall` — **all returned zero matches outside generic license strings**.

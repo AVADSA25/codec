@@ -89,7 +89,7 @@ We version this with the rest of the codebase. Changes go through the same revie
 ## Questions
 
 - **Security disclosure:** see `SECURITY.md` — `security@avadigital.ai` or the GitHub Security tab.
-- **Anything else:** open an issue at `github.com/AVADSA25/codec/issues` or email `farina.mickael@gmail.com`.
+- **Anything else:** open an issue at `github.com/AVADSA25/codec/issues` or email `privacy@avadigital.ai`.
 
 ---
 

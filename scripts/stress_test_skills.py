@@ -19,7 +19,7 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutTimeout
 from datetime import datetime, timezone
 from pathlib import Path
 
-REPO = Path('/Users/mickaelfarina/codec-repo')
+REPO = Path.home() / 'codec-repo'
 SKILLS_DIR = REPO / 'skills'
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(SKILLS_DIR))

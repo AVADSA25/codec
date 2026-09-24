@@ -165,7 +165,7 @@ The branch is clean for merge by the same gate Step 1 used. Disclosure of the tw
 The reviewer can re-run any individual test via:
 
 ```
-cd /Users/mickaelfarina/codec-repo/.claude/worktrees/phase1-step2
+cd ~/codec-repo/.claude/worktrees/phase1-step2
 pytest tests/<file>::<TestClass>::<test_name> --tb=long -v
 ```
 

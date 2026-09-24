@@ -107,7 +107,7 @@ PLUGIN_TOOL_FILTER = None      # apply to all tools
 # on sys.path; we add the repo root explicitly.
 _CODEC_REPO_CANDIDATES = (
     os.path.expanduser("~/codec-repo"),
-    "/Users/mickaelfarina/codec-repo",   # explicit fallback for installed env
+    os.environ.get("CODEC_REPO", ""),   # explicit fallback for installed env
 )
 for _candidate in _CODEC_REPO_CANDIDATES:
     if os.path.isdir(_candidate) and _candidate not in sys.path:

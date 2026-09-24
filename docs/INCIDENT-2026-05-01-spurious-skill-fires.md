@@ -26,7 +26,7 @@ There IS a separate, lower-priority pre-existing issue: `tests/test_mcp_all_tool
 
 ### (1) `~/.codec/plugins/` — does NOT exist
 ```
-ls: /Users/mickaelfarina/.codec/plugins/: No such file or directory
+ls: ~/.codec/plugins/: No such file or directory
 ```
 **Hypothesis H2 (rogue plugin firing skills) — RULED OUT.**
 Step 2's hook system reads from `~/.codec/plugins/`. Empty dir = no plugins = `run_with_hooks` is a passthrough.
