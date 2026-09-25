@@ -18,15 +18,16 @@ if __name__ == "__main__":
 # experience across the dashboard, voice, and watcher daemons. Was: 5
 # hardcoded localhost URLs that silently desynced on a non-default setup.
 try:
-    from codec_config import QWEN_BASE_URL, QWEN_MODEL, QWEN_VISION_URL, QWEN_VISION_MODEL, KOKORO_URL
+    from codec_config import QWEN_BASE_URL, QWEN_MODEL, QWEN_VISION_URL, QWEN_VISION_MODEL, KOKORO_URL, TTS_VOICE, TTS_SPEED
 except ImportError:
     QWEN_BASE_URL  = "http://localhost:8083/v1"
     QWEN_MODEL     = "mlx-community/Qwen3.6-35B-A3B-4bit"
     QWEN_VISION_URL = "http://localhost:8083/v1"
     QWEN_VISION_MODEL = "mlx-community/Qwen3.6-35B-A3B-4bit"
     KOKORO_URL     = "http://localhost:8085/v1/audio/speech"
+    TTS_VOICE      = "am_adam"
+    TTS_SPEED      = 1.0
 KOKORO_MODEL   = "mlx-community/Kokoro-82M-bf16"
-TTS_VOICE      = "am_adam"
 TASK_FILE      = os.path.expanduser("~/.codec/draft_task.json")
 
 def _load_watcher_config():
@@ -125,7 +126,7 @@ def speak(text):
         clean = clean.replace('"','').replace("'","").strip()
         if not clean: return
         resp = requests.post(KOKORO_URL,
-            json={"model": KOKORO_MODEL, "input": clean, "voice": TTS_VOICE},
+            json={"model": KOKORO_MODEL, "input": clean, "voice": TTS_VOICE, "speed": TTS_SPEED},
             stream=True, timeout=20)
         if resp.status_code == 200:
             tmp = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)

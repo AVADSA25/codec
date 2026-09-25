@@ -38,6 +38,15 @@ CPU_LIMIT_SEC = 120           # RLIMIT_CPU hard cap
 
 # ── Resource Limits ──────────────────────────────────────────────────────────
 
+def _tts_speed() -> float:
+    """Kokoro speech speed from config:tts_speed (1.0 = server default)."""
+    try:
+        with open(os.path.expanduser("~/.codec/config.json")) as f:
+            return float(json.load(f).get("tts_speed", 1.0))
+    except Exception:
+        return 1.0
+
+
 def _apply_resource_limits():
     try:
         # RLIMIT_AS not available on macOS — only set CPU limit
@@ -275,7 +284,8 @@ SAFETY RULES:
             import requests
             r = requests.post(
                 self.kokoro_url,
-                json={"model": self.kokoro_model, "input": clean, "voice": self.tts_voice},
+                json={"model": self.kokoro_model, "input": clean, "voice": self.tts_voice,
+                      "speed": _tts_speed()},
                 stream=True,
                 timeout=20,
             )

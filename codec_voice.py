@@ -787,7 +787,8 @@ class VoicePipeline:
             return None
         try:
             _speed = (FLASH_CFG["tts_speed"]
-                      if getattr(self, "mode", "default") == "flash" else 1.15)
+                      if getattr(self, "mode", "default") == "flash"
+                      else float(_cfg.get("tts_speed", 1.15)))
             r = await self._http.post(
                 KOKORO_URL,
                 json={"model": KOKORO_MODEL, "input": text,
