@@ -337,6 +337,8 @@ TTS_ENGINE        = cfg.get("tts_engine", "kokoro")
 KOKORO_URL        = cfg.get("tts_url", "http://localhost:8085/v1/audio/speech")
 KOKORO_MODEL      = cfg.get("tts_model", "mlx-community/Kokoro-82M-bf16")
 TTS_VOICE         = cfg.get("tts_voice", "am_adam")
+# Kokoro speech speed for every non-live-voice caller (1.0 = server default).
+TTS_SPEED         = float(cfg.get("tts_speed", 1.0))
 
 # STT
 STT_ENGINE        = cfg.get("stt_engine", "whisper_http")

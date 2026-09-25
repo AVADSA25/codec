@@ -66,10 +66,18 @@ def run(task, app="", ctx=""):
         subprocess.run(["osascript", "-e",
             f'display notification "Timer: {display} is up!" with title "CODEC" sound name "Glass"'], timeout=5)
         try:
+            import json
+            import os
             import requests
-            r = requests.post("http://localhost:8085/v1/audio/speech",
-                json={"model": "mlx-community/Kokoro-82M-bf16",
-                      "input": f"Your {display} timer is done.", "voice": "am_adam"},
+            try:
+                _c = json.load(open(os.path.expanduser("~/.codec/config.json")))
+            except Exception:
+                _c = {}
+            r = requests.post(_c.get("tts_url", "http://localhost:8085/v1/audio/speech"),
+                json={"model": _c.get("tts_model", "mlx-community/Kokoro-82M-bf16"),
+                      "input": f"Your {display} timer is done.",
+                      "voice": _c.get("tts_voice", "am_adam"),
+                      "speed": float(_c.get("tts_speed", 1.0))},
                 stream=True, timeout=20)
             if r.status_code == 200:
                 tmp = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)

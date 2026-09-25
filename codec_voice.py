@@ -189,10 +189,14 @@ WHISPER_MODEL = "mlx-community/whisper-large-v3-turbo"
 QWEN_BASE_URL = "http://localhost:8083/v1"   # A-12 (PR-3E-async): base for codec_llm.astream
 QWEN_URL      = "http://localhost:8083/v1/chat/completions"
 QWEN_MODEL    = "mlx-community/Qwen3.6-35B-A3B-4bit"
+# Voice pins its OWN LLM, independent of the chat/telegram picker
+# (config:llm_model). Default = local 35B. Override via config:voice_model.
+VOICE_LLM_MODEL = "mlx-community/Qwen3.6-35B-A3B-4bit"
 LLM_KWARGS    = {}
 KOKORO_URL    = "http://localhost:8085/v1/audio/speech"
 KOKORO_MODEL  = "mlx-community/Kokoro-82M-bf16"
 KOKORO_VOICE  = "am_adam"
+KOKORO_SPEED  = 1.15          # config:tts_speed overrides (normal mode; flash has its own)
 try:
     from codec_config import SKILLS_DIR
 except ImportError:
@@ -206,10 +210,12 @@ try:
     QWEN_BASE_URL = _llm_base
     QWEN_URL      = _llm_base + "/chat/completions"
     QWEN_MODEL    = _cfg.get("llm_model", QWEN_MODEL)
+    VOICE_LLM_MODEL = _cfg.get("voice_model", VOICE_LLM_MODEL)
     LLM_KWARGS    = {k: v for k, v in _cfg.get("llm_kwargs", {}).items() if k != "enable_thinking"}
     KOKORO_URL    = _cfg.get("tts_url",   KOKORO_URL)
     KOKORO_MODEL  = _cfg.get("tts_model", KOKORO_MODEL)
     KOKORO_VOICE  = _cfg.get("tts_voice", KOKORO_VOICE)
+    KOKORO_SPEED  = float(_cfg.get("tts_speed", KOKORO_SPEED))
     WHISPER_URL   = _cfg.get("stt_url",   WHISPER_URL)
     WHISPER_MODEL = _cfg.get("stt_model", WHISPER_MODEL)
 except Exception as _e:
@@ -645,15 +651,10 @@ class VoicePipeline:
         self._stream_error = False
         await llm_queue.acquire(Priority.CRITICAL)
         try:
-            # Resolve the model per call so a switch made in chat / by voice
-            # applies here too. codec_voice reads config at IMPORT, so without
-            # this the voice path would keep using the model that was active
-            # when the process started.
-            try:
-                from codec_models import get_active as _active_model
-                _model = _active_model()
-            except Exception:
-                _model = QWEN_MODEL
+            # Voice always runs VOICE_LLM_MODEL (35B by default), regardless of
+            # the chat/telegram picker (config:llm_model). Pre-warmed at session
+            # start; the shared :8083 server loads it on first request otherwise.
+            _model = VOICE_LLM_MODEL
             async for token in codec_llm.astream(
                 messages, base_url=QWEN_BASE_URL, model=_model,
                 max_tokens=max_tokens, temperature=0.7, enable_thinking=False,
@@ -788,7 +789,8 @@ class VoicePipeline:
             return None
         try:
             _speed = (FLASH_CFG["tts_speed"]
-                      if getattr(self, "mode", "default") == "flash" else 1.15)
+                      if getattr(self, "mode", "default") == "flash"
+                      else KOKORO_SPEED)
             r = await self._http.post(
                 KOKORO_URL,
                 json={"model": KOKORO_MODEL, "input": text,
@@ -1669,6 +1671,17 @@ class VoicePipeline:
         # codec_ask_user knows whether to announce-and-listen vs defer
         # to PWA-only.
         _touch_voice_session_marker(self.session_id)
+        # Pre-warm the voice LLM so the first turn isn't blocked on a cold load.
+        # probe() forces the shared :8083 server to load VOICE_LLM_MODEL (35B)
+        # in-place; it does NOT rewrite config:llm_model, so chat/telegram keep
+        # their own picker model. No-op cost when 35B is already resident.
+        async def _warm_voice_model():
+            try:
+                from codec_models import probe as _probe
+                await asyncio.to_thread(_probe, VOICE_LLM_MODEL, 300.0, QWEN_BASE_URL)
+            except Exception:
+                log.debug("voice: model pre-warm failed", exc_info=True)
+        asyncio.create_task(_warm_voice_model())
         try:
             _voice_log_event("voice_session_start", "codec-voice",
                              f"Voice session {'resumed' if is_resumed else 'started'}",

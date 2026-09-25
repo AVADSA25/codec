@@ -27,6 +27,7 @@ KOKORO_URL   = _cfg.get("tts_url", "http://localhost:8085/v1/audio/speech")
 # Read "tts_model" (canonical key in config.json), fall back to legacy "kokoro_model"
 KOKORO_MODEL = _cfg.get("tts_model", _cfg.get("kokoro_model", "mlx-community/Kokoro-82M-bf16"))
 TTS_VOICE    = _cfg.get("tts_voice", "af_bella")
+TTS_SPEED    = float(_cfg.get("tts_speed", 1.0))
 
 _WRITE_VERBS = (
     "speak", "say out loud", "say aloud", "read aloud",
@@ -66,6 +67,7 @@ def run(task, app="", ctx=""):
                 "model": KOKORO_MODEL,
                 "input": clean,
                 "voice": TTS_VOICE,
+                "speed": TTS_SPEED,
                 "response_format": "wav",
             },
             stream=True,

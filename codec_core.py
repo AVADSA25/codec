@@ -18,7 +18,7 @@ log = logging.getLogger(__name__)
 from codec_config import (
     QWEN_BASE_URL, QWEN_MODEL, LLM_API_KEY, LLM_KWARGS, LLM_PROVIDER,
     QWEN_VISION_URL, QWEN_VISION_MODEL,
-    TTS_ENGINE, KOKORO_URL, KOKORO_MODEL, TTS_VOICE,
+    TTS_ENGINE, KOKORO_URL, KOKORO_MODEL, TTS_VOICE, TTS_SPEED,
     WHISPER_URL,
     DB_PATH, TASK_QUEUE_FILE, SESSION_ALIVE, STREAMING,
 )
@@ -312,7 +312,7 @@ def speak_text(text):
                 else:
                     import requests
                     r = requests.post(KOKORO_URL,
-                        json={"model": KOKORO_MODEL, "input": clean, "voice": TTS_VOICE},
+                        json={"model": KOKORO_MODEL, "input": clean, "voice": TTS_VOICE, "speed": TTS_SPEED},
                         stream=True, timeout=20)
                     if r.status_code == 200:
                         tmp = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
@@ -370,6 +370,7 @@ def build_session_script(safe_sys, session_id, wake_word_label="CODEC"):
     L.append("QWEN_VISION_URL = " + repr(QWEN_VISION_URL))
     L.append("QWEN_VISION_MODEL = " + repr(QWEN_VISION_MODEL))
     L.append("TTS_VOICE = " + repr(TTS_VOICE))
+    L.append("TTS_SPEED = " + repr(TTS_SPEED))
     L.append("LLM_API_KEY = " + repr(LLM_API_KEY))
     L.append("LLM_KWARGS = " + repr(LLM_KWARGS))
     L.append("LLM_PROVIDER = " + repr(LLM_PROVIDER))
@@ -444,7 +445,7 @@ def build_session_script(safe_sys, session_id, wake_word_label="CODEC"):
     L.append("        if TTS_ENGINE == 'macos_say':")
     L.append("            subprocess.Popen(['say', '-v', TTS_VOICE, clean])")
     L.append("            return")
-    L.append("        r = requests.post(KOKORO_URL, json={'model':KOKORO_MODEL,'input':clean,'voice':TTS_VOICE}, stream=True, timeout=20)")
+    L.append("        r = requests.post(KOKORO_URL, json={'model':KOKORO_MODEL,'input':clean,'voice':TTS_VOICE,'speed':TTS_SPEED}, stream=True, timeout=20)")
     L.append("        if r.status_code == 200:")
     L.append("            tmp = tempfile.NamedTemporaryFile(suffix='.mp3', delete=False)")
     L.append("            [tmp.write(c) for c in r.iter_content(4096)]; tmp.close()")

@@ -71,11 +71,12 @@ if MODE == "read_aloud":
     tts_url   = cfg.get("tts_url",   "http://localhost:8085/v1/audio/speech")
     tts_model = cfg.get("tts_model", "mlx-community/Kokoro-82M-bf16")
     tts_voice = cfg.get("tts_voice", "am_adam")
+    tts_speed = float(cfg.get("tts_speed", 1.0))
     overlay("\U0001f50a Reading aloud...", "#E8711A", 6000)
     try:
         import tempfile
         r = requests.post(tts_url, json={
-            "model": tts_model, "input": tts_text, "voice": tts_voice
+            "model": tts_model, "input": tts_text, "voice": tts_voice, "speed": tts_speed
         }, timeout=30)
         if r.status_code == 200:
             with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
