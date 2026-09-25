@@ -196,6 +196,7 @@ LLM_KWARGS    = {}
 KOKORO_URL    = "http://localhost:8085/v1/audio/speech"
 KOKORO_MODEL  = "mlx-community/Kokoro-82M-bf16"
 KOKORO_VOICE  = "am_adam"
+KOKORO_SPEED  = 1.15          # config:tts_speed overrides (normal mode; flash has its own)
 try:
     from codec_config import SKILLS_DIR
 except ImportError:
@@ -214,6 +215,7 @@ try:
     KOKORO_URL    = _cfg.get("tts_url",   KOKORO_URL)
     KOKORO_MODEL  = _cfg.get("tts_model", KOKORO_MODEL)
     KOKORO_VOICE  = _cfg.get("tts_voice", KOKORO_VOICE)
+    KOKORO_SPEED  = float(_cfg.get("tts_speed", KOKORO_SPEED))
     WHISPER_URL   = _cfg.get("stt_url",   WHISPER_URL)
     WHISPER_MODEL = _cfg.get("stt_model", WHISPER_MODEL)
 except Exception as _e:
@@ -788,7 +790,7 @@ class VoicePipeline:
         try:
             _speed = (FLASH_CFG["tts_speed"]
                       if getattr(self, "mode", "default") == "flash"
-                      else float(_cfg.get("tts_speed", 1.15)))
+                      else KOKORO_SPEED)
             r = await self._http.post(
                 KOKORO_URL,
                 json={"model": KOKORO_MODEL, "input": text,

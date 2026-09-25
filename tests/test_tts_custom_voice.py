@@ -24,4 +24,5 @@ def test_speech_callers_send_configured_speed_and_voice():
 
 def test_live_voice_reads_tts_speed_with_old_default():
     src = (REPO / "codec_voice.py").read_text()
-    assert '_cfg.get("tts_speed", 1.15)' in src
+    assert 'KOKORO_SPEED  = float(_cfg.get("tts_speed", KOKORO_SPEED))' in src
+    assert "else KOKORO_SPEED)" in src  # module constant, so no config file still works
