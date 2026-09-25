@@ -58,8 +58,39 @@ def _qwen_base():
     # appends /chat/completions itself.)
     return _cfg().get("llm_base_url", "http://localhost:8083/v1")
 
+# A pinned-model override for crews that must NOT run on the chat picker's
+# active model (a voice/style fine-tune confabulates on factual research).
+# run_crew sets it for the duration of a pinned run; None everywhere else, so
+# chat and every other path keep using cfg:llm_model unchanged.
+_MODEL_OVERRIDE: contextvars.ContextVar = contextvars.ContextVar(
+    "codec_model_override", default=None)
+
+# Deep Research is restricted to strong general models. 35B is the default;
+# 27B is user-selectable. Everything else (voice fine-tunes, 4B/8B) is rejected
+# — research on a small/voice model is exactly what produced the bad report.
+DEEP_RESEARCH_MODELS = {
+    "35b": "mlx-community/Qwen3.6-35B-A3B-4bit",
+    "27b": "mlx-community/Qwen3.8-27B-4bit",
+}
+DEEP_RESEARCH_DEFAULT = DEEP_RESEARCH_MODELS["35b"]
+
+
+def resolve_deep_research_model(requested) -> str:
+    """Map a UI selection to an allowed research model id. Accepts a short key
+    ('35b'/'27b') or a full model id; anything not in the allowlist (incl. None
+    or a chat-picker voice model) falls back to the 35B default."""
+    if not requested:
+        return DEEP_RESEARCH_DEFAULT
+    r = str(requested).strip()
+    if r.lower() in DEEP_RESEARCH_MODELS:
+        return DEEP_RESEARCH_MODELS[r.lower()]
+    if r in DEEP_RESEARCH_MODELS.values():
+        return r
+    return DEEP_RESEARCH_DEFAULT
+
+
 def _qwen_model():
-    return _cfg().get("llm_model", "mlx-community/Qwen3.6-35B-A3B-4bit")
+    return _MODEL_OVERRIDE.get() or _cfg().get("llm_model", "mlx-community/Qwen3.6-35B-A3B-4bit")
 
 # PR-2B-2 (D-15): Keychain-aware getter (cfg→Keychain migration + env fallback).
 def _serper_api_key() -> str:
@@ -1104,6 +1135,14 @@ async def run_crew(crew_name: str, callback=None, **kwargs) -> dict:
     _last_gdoc_url = None
     start = time.time()
 
+    # Deep Research runs on a pinned 35B (default) / 27B model, never the chat
+    # picker's active model. Set before query elevation so that call is pinned
+    # too; reset in finally so no other path is affected.
+    _model_token = None
+    if crew_name == "deep_research":
+        _model_token = _MODEL_OVERRIDE.set(
+            resolve_deep_research_model(kwargs.pop("model", None)))
+
     # ── Query Elevation: refine raw user input for research crews ──
     if crew_name in ("deep_research", "competitor_analysis") and kwargs.get("topic"):
         try:
@@ -1128,6 +1167,9 @@ async def run_crew(crew_name: str, callback=None, **kwargs) -> dict:
     except Exception as e:
         import traceback; traceback.print_exc()
         return {"status": "error", "error": str(e), "elapsed_seconds": int(time.time() - start)}
+    finally:
+        if _model_token is not None:
+            _MODEL_OVERRIDE.reset(_model_token)
 
 
 def list_crews() -> List[dict]:

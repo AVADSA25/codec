@@ -100,7 +100,7 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);height:
 .sidebar-new:hover{background:var(--surface-2)}
 
 /* ── Messages ── */
-.messages{flex:1;min-height:0;overflow-y:auto;padding:14px;padding-bottom:calc(var(--input-h,76px) + 16px);-webkit-overflow-scrolling:touch}
+.messages{flex:1;min-height:0;overflow-y:auto;padding:14px;-webkit-overflow-scrolling:touch}
 .msg{margin-bottom:14px;max-width:85%;animation:fadeIn .2s ease;position:relative}
 @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 .msg.user{margin-left:auto}
@@ -144,7 +144,7 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);height:
 @keyframes thinkPulse{0%,100%{opacity:.2;transform:scale(.8)}50%{opacity:1;transform:scale(1.1)}}
 
 /* ── Input Area ── */
-.input-area{position:fixed;left:0;right:0;bottom:0;z-index:9997;padding:8px 12px;border-top:1px solid var(--border);background:var(--surface);padding-bottom:calc(8px + env(safe-area-inset-bottom,0px))}
+.input-area{position:static;flex-shrink:0;padding:8px 12px;border-top:1px solid var(--border);background:var(--surface);padding-bottom:calc(8px + env(safe-area-inset-bottom,0px))}
 .file-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px}
 .file-chip{display:flex;align-items:center;gap:5px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:4px 8px;font-size:11px;font-family:var(--mono);color:var(--text-muted);max-width:200px}
 .file-chip .fc-icon{font-size:14px;flex-shrink:0}
@@ -305,7 +305,7 @@ input[type=file]{display:none}
 .text-size-group button.sel{background:var(--accent);border-color:var(--accent);color:#fff}
 
 @media (max-width: 768px), (max-height: 600px) and (pointer: coarse){
-  .input-area{bottom:var(--nav-h,56px);padding-bottom:8px}
+  .input-area{position:fixed;left:0;right:0;bottom:var(--nav-h,56px);z-index:9997;padding-bottom:8px}
   .page-nav{padding-bottom:calc(6px + env(safe-area-inset-bottom,0px))}
   .messages{padding-bottom:calc(var(--nav-h,56px) + var(--input-h,64px) + 16px)}
 }
@@ -379,6 +379,10 @@ input[type=file]{display:none}
 <button class="mode-btn" onclick="setMode('project')" id="modeProjectBtn" title="Drop a project — autonomous plan-and-build mode"><svg class="ico" viewBox="0 0 24 24" style="width:14px;height:14px"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="5"/><line x1="12" y1="2" x2="12" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg>Project</button>
 <select id="modelSelect" onchange="switchModel()" title="Local model — switching unloads the current one and loads the new one" style="display:inline-block">
 <option value="">model…</option>
+</select>
+<select id="researchModelSelect" title="Deep Research model — 35B (default) or 27B. Other models are not used for research." style="display:none">
+<option value="mlx-community/Qwen3.6-35B-A3B-4bit" selected>35B (default)</option>
+<option value="mlx-community/Qwen3.8-27B-4bit">27B</option>
 </select>
 <select id="crewSelect">
 <option value="deep_research">Deep Research</option>
@@ -802,6 +806,13 @@ function setMode(mode){
   var cs=document.getElementById('crewSelect');
   cs.style.display=mode==='research'?'inline-block':'none';
   var crew=mode==='research'?cs.value:'deep_research';
+  // Deep Research restricts the model to 35B/27B: show the research picker and
+  // hide the normal chat model picker so no other (voice/4B) model is selectable.
+  var _rms=document.getElementById('researchModelSelect');
+  var _showRms=(mode==='research'&&crew==='deep_research');
+  if(_rms)_rms.style.display=_showRms?'inline-block':'none';
+  var _msel=document.getElementById('modelSelect');
+  if(_msel)_msel.style.display=_showRms?'none':'inline-block';
   var hints={'deep_research':'Research topic... (3-6 min)','daily_briefing':'Press send for daily briefing','trip_planner':'Destination + dates...','competitor_analysis':'Market or product to analyze...','email_handler':'Press send to handle inbox','custom':'Describe your task for the custom agent...'};
   // If the user toggles to chat mode AFTER an agent already produced a
   // report, the report sits in chatHist as the last assistant message —
@@ -1634,7 +1645,7 @@ async function sendMessage(){
     updateStatus('Starting '+(crewLabels[crew]||crew)+'&hellip;\n\n'+(crewHints[crew]||'Running agent...'));
 
     var payload={crew:crew};
-    if(crew==='custom'){payload.agent_name=document.getElementById('agentName').value||'Custom Agent';payload.role=document.getElementById('agentRole').value||'';payload.tools=getSelectedTools();payload.max_iterations=parseInt(document.getElementById('agentMaxIter').value||'8');payload.task=researchText}else{if(['deep_research','competitor_analysis'].includes(crew))payload.topic=researchText;if(crew==='trip_planner')payload.destination=researchText}
+    if(crew==='custom'){payload.agent_name=document.getElementById('agentName').value||'Custom Agent';payload.role=document.getElementById('agentRole').value||'';payload.tools=getSelectedTools();payload.max_iterations=parseInt(document.getElementById('agentMaxIter').value||'8');payload.task=researchText}else{if(['deep_research','competitor_analysis'].includes(crew))payload.topic=researchText;if(crew==='deep_research'){var _rm=document.getElementById('researchModelSelect');if(_rm&&_rm.value)payload.model=_rm.value}if(crew==='trip_planner')payload.destination=researchText}
 
     var elapsed=0;
     _agentTicker=setInterval(function(){elapsed+=5;updateStatus(crewLabels[crew]+' running&hellip; ('+elapsed+'s)  \u2014 press Stop to cancel\n\n'+(crewHints[crew]||''))},5000);

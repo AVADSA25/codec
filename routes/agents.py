@@ -26,6 +26,9 @@ async def deep_research_start(request: Request):
     topic = body.get("topic", "")
     if not topic or len(topic) < 5:
         return JSONResponse({"error": "Topic too short"}, status_code=400)
+    # Optional research model (35b default / 27b); validated crew-side against
+    # the allowlist, so an unknown value safely falls back to 35B.
+    model = body.get("model")
 
     job_id = str(uuid.uuid4())[:8]
     # re-audit N9: evict stale jobs + guard the add/update under the lock so the
@@ -37,7 +40,7 @@ async def deep_research_start(request: Request):
     async def _run_async():
         try:
             from codec_agents import run_crew
-            result = await run_crew("deep_research", topic=topic)
+            result = await run_crew("deep_research", topic=topic, model=model)
             with _research_jobs_lock:
                 if job_id in _research_jobs:
                     _research_jobs[job_id].update(result)
