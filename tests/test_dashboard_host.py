@@ -117,3 +117,91 @@ def test_uvicorn_run_uses_dashboard_host_config():
     assert 'host="0.0.0.0"' not in src, (
         "codec_dashboard.py must not hard-code host=\"0.0.0.0\""
     )
+
+
+# ── Startup hook: the check also runs under `uvicorn codec_dashboard:app` ────
+
+
+def _no_auth(monkeypatch, cd, token=""):
+    import codec_config
+    monkeypatch.setattr(cd, "AUTH_ENABLED", False)
+    monkeypatch.setattr(cd, "_MAIN_BIND_HOST", None)
+    monkeypatch.setattr(codec_config, "get_dashboard_token", lambda: token)
+    monkeypatch.delenv("UVICORN_HOST", raising=False)
+
+
+def test_startup_safety_hook_runs_before_background_services():
+    import codec_dashboard as cd
+    assert cd.app.router.on_startup[0] is cd._enforce_dashboard_start_safety
+
+
+def test_startup_hook_refuses_uvicorn_cli_public_bind_without_auth(monkeypatch):
+    import codec_dashboard as cd
+    import pytest
+    _no_auth(monkeypatch, cd)
+    monkeypatch.setattr(sys, "argv",
+                        ["uvicorn", "codec_dashboard:app", "--host", "0.0.0.0", "--port", "8090"])
+    with pytest.raises(RuntimeError, match="Refusing to start"):
+        cd._enforce_dashboard_start_safety()
+
+
+def test_startup_hook_reads_host_equals_form_and_env(monkeypatch):
+    import codec_dashboard as cd
+    import pytest
+    _no_auth(monkeypatch, cd)
+    monkeypatch.setattr(sys, "argv", ["uvicorn", "codec_dashboard:app", "--host=::"])
+    with pytest.raises(RuntimeError):
+        cd._enforce_dashboard_start_safety()
+    monkeypatch.setattr(sys, "argv", ["uvicorn", "codec_dashboard:app"])
+    monkeypatch.setenv("UVICORN_HOST", "0.0.0.0")
+    with pytest.raises(RuntimeError):
+        cd._enforce_dashboard_start_safety()
+
+
+def test_startup_hook_allows_public_bind_with_token(monkeypatch):
+    import codec_dashboard as cd
+    _no_auth(monkeypatch, cd, token="abc123")
+    monkeypatch.setattr(sys, "argv", ["uvicorn", "codec_dashboard:app", "--host", "0.0.0.0"])
+    cd._enforce_dashboard_start_safety()  # no raise
+
+
+def test_startup_hook_allows_loopback_without_token_lookup(monkeypatch):
+    import codec_config
+    import codec_dashboard as cd
+    _no_auth(monkeypatch, cd)
+
+    def _boom():
+        raise AssertionError("loopback start must not look up the dashboard token")
+    monkeypatch.setattr(codec_config, "get_dashboard_token", _boom)
+    for argv in (["uvicorn", "codec_dashboard:app", "--host", "127.0.0.1"],
+                 ["uvicorn", "codec_dashboard:app"]):  # uvicorn default = 127.0.0.1
+        monkeypatch.setattr(sys, "argv", argv)
+        cd._enforce_dashboard_start_safety()
+
+
+def test_startup_hook_uses_main_block_host(monkeypatch):
+    """`python codec_dashboard.py` records DASHBOARD_HOST; argv has no --host."""
+    import codec_dashboard as cd
+    import pytest
+    _no_auth(monkeypatch, cd)
+    monkeypatch.setattr(sys, "argv", ["codec_dashboard.py"])
+    monkeypatch.setattr(cd, "_MAIN_BIND_HOST", "0.0.0.0")
+    with pytest.raises(RuntimeError):
+        cd._enforce_dashboard_start_safety()
+
+
+def test_unsafe_bind_fails_the_asgi_lifespan(monkeypatch):
+    """End-to-end through Starlette's lifespan: startup fails, so uvicorn
+    would exit before binding. Only the safety hook is registered here so a
+    regression can never start the real background services in a test."""
+    import codec_dashboard as cd
+    import pytest
+    from starlette.testclient import TestClient
+    _no_auth(monkeypatch, cd)
+    monkeypatch.setattr(sys, "argv", ["uvicorn", "codec_dashboard:app", "--host", "0.0.0.0"])
+    monkeypatch.setattr(cd.app.router, "on_startup", [cd._enforce_dashboard_start_safety])
+    monkeypatch.setattr(cd.app.router, "on_shutdown", [])
+    with pytest.raises(BaseException) as exc:
+        with TestClient(cd.app):
+            pass
+    assert "Refusing to start" in repr(exc.value) or "Refusing to start" in str(exc.value)

@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """CODEC Whisper STT Server — runs on port 8084
 Usage: python3 whisper_server.py
+Binds 127.0.0.1 by default (no auth on this endpoint). Set CODEC_STT_HOST
+to another address only if a trusted LAN client must reach it.
 """
 import mlx_whisper
 from fastapi import FastAPI, UploadFile, File
@@ -29,5 +31,6 @@ def health():
 
 if __name__ == "__main__":
     print(f"[Whisper] Starting server with model: {MODEL}")
-    print("[Whisper] Listening on http://localhost:8084")
-    uvicorn.run(app, host="0.0.0.0", port=8084)
+    host = os.environ.get("CODEC_STT_HOST", "127.0.0.1")
+    print(f"[Whisper] Listening on http://{host}:8084")
+    uvicorn.run(app, host=host, port=8084)

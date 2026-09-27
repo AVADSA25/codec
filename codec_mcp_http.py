@@ -22,6 +22,7 @@ Env:   CODEC_MCP_HTTP_PORT       (default 8091)
                                  this var)
        CODEC_MCP_RATE_PER_MIN    (default 60)
 """
+import json
 import os
 import sys
 import logging
@@ -91,6 +92,62 @@ _METRICS = {
     "latency_ms_sum": 0.0,
 }
 _METRICS_LOCK = threading.Lock()
+
+
+# ---------- OAuth state availability (for /health) ----------
+# Legacy plaintext path. Since PR-2B the provider keeps state in Keychain and
+# only writes this file when a Keychain write fails, so its absence is normal.
+_OAUTH_STATE_FILE = os.path.expanduser("~/.codec/oauth_state.json")
+_OAUTH_CHECK_TTL = 30.0  # /health is public via the tunnel: cap Keychain reads
+_OAUTH_CHECK_CACHE: dict = {"ts": 0.0, "value": None}
+_OAUTH_CHECK_LOCK = threading.Lock()
+
+
+def _oauth_state_status(provider=None, state_file: str = _OAUTH_STATE_FILE) -> tuple[str, str]:
+    """Report whether OAuth state is available, never the state itself.
+
+    Mirrors PersistentOAuthProvider._load precedence: Keychain (or the
+    encrypted fallback store codec_keychain uses when Keychain is
+    unavailable), then the legacy plaintext file. If neither is readable
+    (e.g. Keychain locked) but the running provider already holds registered
+    clients in memory, OAuth still works, so that also counts.
+
+    Returns (status, store): status is "ok" / "corrupt" / "missing"; store is
+    "keychain" / "fallback" / "legacy_file" / "memory" / "none".
+    """
+    blob, store = None, "none"
+    try:
+        import codec_keychain
+        blob = codec_keychain.get_oauth_state()
+        store = "keychain" if codec_keychain.is_keychain_available() else "fallback"
+    except Exception:
+        blob = None
+    corrupt = False
+    if blob:
+        try:
+            if isinstance(json.loads(blob), dict):
+                return "ok", store
+        except ValueError:
+            pass
+        corrupt = True
+    if os.path.exists(state_file):
+        return "ok", "legacy_file"
+    if provider is not None and getattr(provider, "clients", None):
+        return "ok", "memory"
+    return ("corrupt", store) if corrupt else ("missing", "none")
+
+
+def _oauth_state_status_cached(provider=None) -> tuple[str, str]:
+    now = time.time()
+    with _OAUTH_CHECK_LOCK:
+        cached = _OAUTH_CHECK_CACHE["value"]
+        if cached is not None and now - _OAUTH_CHECK_CACHE["ts"] < _OAUTH_CHECK_TTL:
+            return cached
+    value = _oauth_state_status(provider)
+    with _OAUTH_CHECK_LOCK:
+        _OAUTH_CHECK_CACHE["value"] = value
+        _OAUTH_CHECK_CACHE["ts"] = now
+    return value
 
 
 def main():
@@ -163,9 +220,12 @@ def main():
         except Exception as e:
             checks["memory_db"] = f"error: {type(e).__name__}"
 
-        # OAuth state file exists?
-        oauth_state = os.path.expanduser("~/.codec/oauth_state.json")
-        checks["oauth_state"] = "ok" if os.path.exists(oauth_state) else "missing"
+        # OAuth state readable (Keychain / fallback / legacy file / in memory)?
+        # Off the event loop: the Keychain read is a `security` subprocess.
+        import asyncio
+        oauth_status, oauth_store = await asyncio.to_thread(_oauth_state_status_cached, auth)
+        checks["oauth_state"] = oauth_status
+        checks["oauth_state_store"] = oauth_store
 
         # Kokoro TTS
         try:
