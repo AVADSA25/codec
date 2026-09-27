@@ -1755,10 +1755,13 @@ class VoicePipeline:
                 _user_name = _cfg.get("user_name", "")
             except NameError:
                 pass
+            # "All systems local" would be false while the picker is on a
+            # cloud model (_resolve_voice_llm): say where the answers come from.
+            _where = "Answering from the cloud model." if self._llm_cloud else "All systems local."
             if _user_name:
-                greeting = f"Greetings {_user_name}. CODEC is online. All systems local. What do you need?"
+                greeting = f"Greetings {_user_name}. CODEC is online. {_where} What do you need?"
             else:
-                greeting = "Greetings. CODEC is online. All systems local. What do you need?"
+                greeting = f"Greetings. CODEC is online. {_where} What do you need?"
             self.messages.append({"role": "assistant", "content": greeting})
             await self.ws.send_json({"type": "transcript", "role": "assistant", "text": greeting})
             g_audio = await self.synthesize(greeting)
