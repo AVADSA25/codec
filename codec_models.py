@@ -483,6 +483,15 @@ def _leave_cloud(model_id: str) -> Dict[str, Any]:
     return restore
 
 
+def _image_busy() -> Optional[str]:
+    """Why a local model must not load now (an image job is running), or None."""
+    try:
+        import codec_image
+        return codec_image.busy_message()
+    except Exception:
+        return None
+
+
 def _local_server_up(base_url: str) -> bool:
     """Is the local model server answering connections? A non-local previous
     provider (AVA, custom) cannot be checked cheaply and counts as up."""
@@ -571,6 +580,12 @@ def set_active(model_id: str, verify: bool = True) -> Dict[str, Any]:
     target = codec_cloud_models.entry_for_id(model_id, cfg)
     if target is not None:
         return _switch_to_cloud(target, previous, verify)
+
+    # A running Create-image job holds ~35 GB; a local model load next to it
+    # overflows memory (docs/CHAT-CREATE-IMAGE-DESIGN.md). Cloud switches pass.
+    busy = _image_busy()
+    if busy:
+        return {"ok": False, "error": busy, "active": previous}
 
     # Coming back from a cloud model points config home first; the switch away
     # never touched the local server, so the rest is an ordinary local switch.

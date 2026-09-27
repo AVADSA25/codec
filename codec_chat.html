@@ -108,6 +108,13 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);height:
 .msg-bubble{padding:10px 14px;border-radius:14px;line-height:1.6;font-size:15px;word-wrap:break-word;white-space:pre-wrap}
 .msg.user .msg-bubble{background:rgba(217,119,87,0.12);color:var(--text);border:1px solid rgba(217,119,87,0.28);border-bottom-right-radius:4px}
 .msg.assistant .msg-bubble{background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-bottom-left-radius:4px}
+.gen-img{display:block;max-width:100%;height:auto;border-radius:10px;margin-top:8px;border:1px solid var(--border)}
+.gen-dl{display:inline-block;margin-top:6px;font-size:12px;color:var(--accent);text-decoration:none}
+.img-status{font-size:13px;color:var(--text-muted);white-space:normal}
+.img-cancel{margin-top:6px;padding:3px 10px;font-size:12px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--text-dim);cursor:pointer}
+#imageOpts{display:none;align-items:center;gap:6px}
+#imageOpts select{background:var(--surface-2);border:1px solid var(--border);color:var(--text-muted);font-family:var(--mono);font-size:11px;border-radius:var(--radius-sm);padding:5px 9px;outline:none}
+#imageOpts label{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text-dim);cursor:pointer}
 .msg-stats{font-size:10px;color:var(--text-dim);letter-spacing:.3px;margin-left:8px;opacity:.75;cursor:default}
 .msg-time{font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-top:3px;padding:0 4px}
 .msg.user .msg-time{text-align:right}
@@ -377,9 +384,11 @@ input[type=file]{display:none}
 </button>
 <button class="mode-btn" onclick="setMode('research')" id="modeResearchBtn"><svg class="ico" viewBox="0 0 24 24" style="width:14px;height:14px"><rect x="4" y="4" width="16" height="16" rx="2"/><circle cx="9" cy="10" r="1.5" fill="currentColor" stroke="none"/><circle cx="15" cy="10" r="1.5" fill="currentColor" stroke="none"/><path d="M9 15h6"/></svg>Agents</button>
 <button class="mode-btn" onclick="setMode('project')" id="modeProjectBtn" title="Drop a project — autonomous plan-and-build mode"><svg class="ico" viewBox="0 0 24 24" style="width:14px;height:14px"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="5"/><line x1="12" y1="2" x2="12" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg>Project</button>
+<button class="mode-btn" onclick="setMode('image')" id="modeImageBtn" title="Create an image on this Mac (Qwen-Image 2.1)" style="display:none"><svg class="ico" viewBox="0 0 24 24" style="width:14px;height:14px"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>Image</button>
 <select id="modelSelect" onchange="switchModel()" title="Local model — switching unloads the current one and loads the new one" style="display:inline-block">
 <option value="">model…</option>
 </select>
+<span id="imageOpts"><select id="imageSize" title="Image size — the first image takes about 2 min at 512 px"><option value="512">512 px (~2 min)</option><option value="768">768 px</option><option value="1024">1024 px</option></select><label title="Transparent background"><input type="checkbox" id="imageTransparent">Transparent</label></span>
 <select id="researchModelSelect" title="Deep Research model — 35B (default) or 27B. Other models are not used for research." style="display:none">
 <option value="mlx-community/Qwen3.6-35B-A3B-4bit" selected>35B (default)</option>
 <option value="mlx-community/Qwen3.8-27B-4bit">27B</option>
@@ -697,6 +706,73 @@ function switchModel(){
     .finally(function(){ _modelBusy=false; sel.disabled=false; });
 }
 
+// ── Create image (docs/CHAT-CREATE-IMAGE-DESIGN.md) ─────────────────────────
+// Qwen-Image 2.1 runs on this Mac, one job at a time: ~1 min to load the model,
+// then ~46 s per 512 px image. The bubble polls the job and shows its stage.
+var _imgMaxRefs=3;
+function loadImageStatus(){
+  fetch('/api/image/status').then(function(r){return r.json()}).then(function(d){
+    var b=document.getElementById('modeImageBtn');if(!b)return;
+    if(!d||!d.available){b.style.display='none';return}
+    b.style.display='';
+    _imgMaxRefs=d.max_refs||3;
+    var sel=document.getElementById('imageSize');
+    if(sel&&Array.isArray(d.sizes)&&d.sizes.length){
+      sel.innerHTML='';
+      d.sizes.forEach(function(px,i){var o=document.createElement('option');o.value=px;o.textContent=px+' px'+(i===0?' (~2 min)':'');sel.appendChild(o)});
+    }
+  }).catch(function(){});
+}
+async function sendImage(text){
+  if(!text){showToast('Describe the image you want',true);return}
+  var refs=pendingFiles.filter(function(f){return f.type==='imgref'});
+  var names=refs.map(function(f){return f.name});
+  addMessage('user',names.length?(names.join('\n')+'\n\n'+text):text);
+  clearChips();
+  var div=document.createElement('div');div.className='msg assistant';
+  var bubble=document.createElement('div');bubble.className='msg-bubble';
+  var status=document.createElement('div');status.className='img-status';status.textContent='Starting…';
+  var cancel=document.createElement('button');cancel.className='img-cancel';cancel.textContent='Cancel';
+  bubble.appendChild(status);bubble.appendChild(cancel);div.appendChild(bubble);
+  document.getElementById('messages').appendChild(div);scrollBottom();
+  var body={prompt:text,refs:refs.map(function(f){return f.content}),count:1,
+    size:parseInt(document.getElementById('imageSize').value,10)||512,
+    transparent:!!document.getElementById('imageTransparent').checked};
+  var d;
+  try{var r=await fetch('/api/image/jobs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});d=await r.json()}
+  catch(e){status.textContent='Could not start the image.';cancel.remove();return}
+  if(!d||!d.ok){status.textContent=(d&&d.error)||'Could not start the image.';cancel.remove();return}
+  var id=d.job.id;
+  cancel.onclick=function(){cancel.disabled=true;fetch('/api/image/jobs/'+id+'/cancel',{method:'POST'}).catch(function(){})};
+  _pollImage(id,status,cancel,bubble);
+}
+function _pollImage(id,status,cancel,bubble){
+  (async function tick(){
+    var j;
+    try{var r=await fetch('/api/image/jobs/'+id);var d=await r.json();j=d&&d.job}catch(e){setTimeout(tick,3000);return}
+    if(!j){status.textContent='This image job was not found.';cancel.remove();return}
+    if(j.state==='queued'){status.textContent='Waiting for the image before it to finish ('+(j.position||1)+' in line)…'}
+    else if(j.state==='running'){
+      status.textContent=j.stage==='loading'?'Loading the image model on this Mac (about 1 min)…':
+        'Creating the image… step '+(j.step||0)+' of '+(j.steps||'?')+(j.count>1?' (image '+j.image+' of '+j.count+')':'');
+    }else if(j.state==='done'){
+      cancel.remove();status.textContent='Created on this Mac in '+Math.round(j.seconds||0)+' s.';
+      (j.results||[]).forEach(function(u){
+        if(!/^\/api\/image\/file\/[0-9a-f]{12}\/\d{2}\.png$/.test(u))return;
+        var a=document.createElement('a');a.href=u;a.target='_blank';a.rel='noopener';
+        var im=document.createElement('img');im.src=u;im.alt=j.prompt||'Created image';im.className='gen-img';im.onload=scrollBottom;
+        a.appendChild(im);bubble.appendChild(a);
+        var dl=document.createElement('a');dl.href=u;dl.download='codec-image-'+id+'.png';dl.textContent='Download';dl.className='gen-dl';
+        bubble.appendChild(dl);
+      });
+      scrollBottom();return;
+    }else{
+      cancel.remove();status.textContent=j.state==='cancelled'?'Cancelled.':(j.error||'The image could not be created.');return;
+    }
+    setTimeout(tick,2000);
+  })();
+}
+
 function _copyFallback(text){
   try{
     var ta=document.createElement('textarea');
@@ -803,6 +879,12 @@ function setMode(mode){
   document.getElementById('modeResearchBtn').classList.toggle('active',mode==='research');
   var pBtn=document.getElementById('modeProjectBtn');
   if(pBtn)pBtn.classList.toggle('active',mode==='project');
+  var iBtn=document.getElementById('modeImageBtn');
+  if(iBtn)iBtn.classList.toggle('active',mode==='image');
+  var iOpts=document.getElementById('imageOpts');
+  if(iOpts)iOpts.style.display=mode==='image'?'flex':'none';
+  // Reference images belong to Image mode only; drop them when leaving it.
+  if(mode!=='image')pendingFiles.filter(function(f){return f.type==='imgref'}).forEach(function(f){removeChip(f.id)});
   var cs=document.getElementById('crewSelect');
   cs.style.display=mode==='research'?'inline-block':'none';
   var crew=mode==='research'?cs.value:'deep_research';
@@ -812,7 +894,7 @@ function setMode(mode){
   var _showRms=(mode==='research'&&crew==='deep_research');
   if(_rms)_rms.style.display=_showRms?'inline-block':'none';
   var _msel=document.getElementById('modelSelect');
-  if(_msel)_msel.style.display=_showRms?'none':'inline-block';
+  if(_msel)_msel.style.display=(_showRms||mode==='image')?'none':'inline-block';
   var hints={'deep_research':'Research topic... (3-6 min)','daily_briefing':'Press send for daily briefing','trip_planner':'Destination + dates...','competitor_analysis':'Market or product to analyze...','email_handler':'Press send to handle inbox','custom':'Describe your task for the custom agent...'};
   // If the user toggles to chat mode AFTER an agent already produced a
   // report, the report sits in chatHist as the last assistant message —
@@ -824,6 +906,7 @@ function setMode(mode){
   var ph;
   if(mode==='research')ph=hints[crew]||'Enter crew task...';
   else if(mode==='project')ph='Drop your project here — describe what you want CODEC to build...';
+  else if(mode==='image')ph='Describe the image to create (attach up to '+_imgMaxRefs+' reference images)...';
   else ph=hasAgentReport?'Ask follow-up about the report...':'Message CODEC...';
   document.getElementById('chatInput').placeholder=ph;
   document.getElementById('scheduleBtn').style.display=mode==='research'?'':'none';
@@ -1483,7 +1566,7 @@ function addFileChip(name,content,type){
   pendingFiles.push({id:id,name:name,content:content,type:type});
   var chips=document.getElementById('fileChips');
   var chip=document.createElement('div');chip.className='file-chip';chip.id=id;
-  var _fcIco=(type==='image')?'<svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>':'<svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>';
+  var _fcIco=(type==='image'||type==='imgref')?'<svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>':'<svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>';
   chip.innerHTML='<span class="fc-icon">'+_fcIco+'</span><span class="fc-name">'+escHtml(name)+'</span><span class="fc-close" onclick="removeChip(\''+id+'\')">\u2715</span>';
   chips.appendChild(chip)
 }
@@ -1527,6 +1610,10 @@ async function sendMessage(){
   for(var i=0;i<pendingFiles.length;i++){var f=pendingFiles[i];fileNames.push(f.name);
     if(f.type==='text'||f.type==='pdf'){fileContext+='\n\n[DOCUMENT: '+f.name+']\n'+f.content.substring(0,80000)+'\n[END DOCUMENT]'}
     else if(f.type==='image'){fileContext+='\n\n[IMAGE ANALYSIS of '+f.name+']\n'+f.content.substring(0,80000)+'\n[END IMAGE]'}}
+
+  // Image mode → local Qwen-Image 2.1 (codec_image). The text is the prompt,
+  // the 'imgref' chips are the reference images.
+  if(chatMode==='image'){return sendImage(text)}
 
   // Project mode → POST /api/agents (Step 8 plan dispatch)
   // OR if there's an active agent in this thread, route the message to that agent
@@ -1779,8 +1866,16 @@ function _downscaleImage(file,maxDim){
 }
 async function handleUpload(e){
   var files=e.target.files;
+  var _refSlots=null;
   for(var i=0;i<files.length;i++){
     var file=files[i];
+    if(file.type.startsWith('image/')&&chatMode==='image'){
+      if(_refSlots===null)_refSlots=_imgMaxRefs-pendingFiles.filter(function(f){return f.type==='imgref'}).length;
+      if(_refSlots<=0){showToast('Up to '+_imgMaxRefs+' reference images',true);continue}
+      _refSlots--;
+      (function(theFile){_downscaleImage(theFile,1280).then(function(b64){if(b64)addFileChip(theFile.name,b64,'imgref');else showToast('Could not read '+theFile.name,true)})})(file);
+      continue;
+    }
     if(file.type.startsWith('image/')){
       var tid='loading_'+genId();var chips=document.getElementById('fileChips');
       var chip=document.createElement('div');chip.className='file-chip loading';chip.id=tid;
@@ -2007,6 +2102,7 @@ setTimeout(updateSpeakToggle, 0);
 updateVoiceIcon();
 // Populate the model picker with what is on disk + which one is active.
 try{loadModels()}catch(e){}
+try{loadImageStatus()}catch(e){}
 async function takeScreenshot(){try{window.open('/api/screenshot?'+Date.now(),'_blank')}catch(e){}}
 
 // ── Server Photo (Mac webcam) ──

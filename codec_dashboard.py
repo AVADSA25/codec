@@ -377,6 +377,7 @@ from routes.heartbeat import router as heartbeat_router
 # C3 / SR-38: cortex endpoints extracted.
 from routes.cortex import router as cortex_router
 from routes.models import router as models_router
+from routes.image import router as image_router
 # C4 / SR-39: audit endpoints extracted.
 from routes.audit import router as audit_router
 # C5 / SR-40: observer endpoint extracted.
@@ -442,6 +443,7 @@ app.include_router(memory_router)
 app.include_router(websocket_router)
 app.include_router(notifications_router)
 app.include_router(models_router)
+app.include_router(image_router)
 app.include_router(approvals_router)
 app.include_router(heartbeat_router)
 app.include_router(cortex_router)
