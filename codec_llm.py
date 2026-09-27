@@ -167,6 +167,33 @@ def _cloud_blocked_msg(base_url: str) -> Optional[str]:
         return None  # fail-open — licensing must never break the LLM transport
 
 
+def _cloud_route(base_url: str, model: str):
+    """The registered cloud model (codec_cloud_models) served at `base_url`, or
+    None. Local URLs return before the registry is read.
+
+    Fail-open like the licence gate: if the registry cannot be read, the request
+    goes out unchanged, and without the entry's key a cloud model rejects it, so
+    nothing is spent unmetered."""
+    try:
+        import codec_cloud_models
+        return codec_cloud_models.route(base_url, model)
+    except Exception as e:
+        log.warning("cloud model check failed: %s", e)
+        return None
+
+
+def _preflight(base_url: str, model: str):
+    """(block message or None, cloud route or None): the licence gate, then the
+    cloud-model check (key, spend cap)."""
+    blocked = _cloud_blocked_msg(base_url)
+    if blocked is not None:
+        return blocked, None
+    route = _cloud_route(base_url, model)
+    if route is not None and route.blocked:
+        return route.blocked, None
+    return None, route
+
+
 def call(
     messages: List[Dict[str, Any]],
     *,
@@ -196,16 +223,20 @@ def call(
       proceed on an empty answer.
     """
     import requests
-    _blocked = _cloud_blocked_msg(base_url)
+    _blocked, _route = _preflight(base_url, model)
     if _blocked is not None:
         if raise_on_error:
             raise LLMError(_blocked)
         return _blocked
+    if _route is not None:
+        model, api_key, extra_kwargs = _route.model, _route.api_key, _route.kwargs(extra_kwargs)
     headers, payload = _build_request(
         messages, model=model, api_key=api_key, max_tokens=max_tokens,
         temperature=temperature, enable_thinking=enable_thinking,
         extra_kwargs=extra_kwargs,
     )
+    if _route is not None:
+        _route.shape(payload, stream=False)
 
     attempts = max(1, retries)
     url = base_url.rstrip("/") + "/chat/completions"
@@ -214,7 +245,10 @@ def call(
         try:
             r = requests.post(url, json=payload, headers=headers, timeout=timeout)
             if r.status_code == 200:
-                resp = extract_content(r.json())
+                _body = r.json()
+                resp = extract_content(_body)
+                if _route is not None and isinstance(_body, dict):
+                    _route.record(_body.get("usage"), messages, resp)
                 if resp:
                     return resp
                 # 200 but empty/odd shape — nothing more to get; don't retry.
@@ -276,10 +310,12 @@ def stream(
     """
     import json as _json
     import requests
-    _blocked = _cloud_blocked_msg(base_url)
+    _blocked, _route = _preflight(base_url, model)
     if _blocked is not None:
         yield _blocked
         return
+    if _route is not None:
+        model, api_key, extra_kwargs = _route.model, _route.api_key, _route.kwargs(extra_kwargs)
     headers, payload = _build_request(
         messages, model=model, api_key=api_key, max_tokens=max_tokens,
         temperature=temperature, enable_thinking=enable_thinking,
@@ -290,8 +326,14 @@ def stream(
         # for. mlx_vlm.server honours this and emits a final choices-empty chunk
         # carrying prompt/completion tokens.
         payload["stream_options"] = {"include_usage": True}
+    if _route is not None:
+        _route.shape(payload, stream=True)
     url = base_url.rstrip("/") + "/chat/completions"
     _empty = 0  # empty "thinking" chunks seen (drives keepalive)
+    # Cloud metering: charged once per reply, from the usage chunk, or from an
+    # estimate if the stream ended without one.
+    _billable = _charged = False
+    _out: List[str] = []
     try:
         with requests.post(url, json=payload, headers=headers,
                            timeout=timeout, stream=True) as r:
@@ -301,6 +343,7 @@ def stream(
                 if error_sentinel:
                     yield STREAM_ERROR
                 return
+            _billable = _route is not None
             reasoning_open = False  # inline_reasoning: are we inside a synth <think>?
             for line in r.iter_lines():
                 if not line:
@@ -322,6 +365,9 @@ def stream(
                 # to raise IndexError and the counts were swallowed as a parse
                 # failure.
                 if _obj.get("usage"):
+                    if _billable and not _charged:
+                        _route.record(_obj["usage"])
+                        _charged = True
                     if usage_sentinel:
                         # Carry `timings` alongside the token counts when the
                         # server provides it. predicted_per_second is the TRUE
@@ -357,6 +403,8 @@ def stream(
                         yield "</think>"
                         reasoning_open = False
                 if delta:
+                    if _billable:
+                        _out.append(delta)
                     yield delta
                 elif keepalive and not (inline_reasoning and reasoning_open):
                     _empty += 1
@@ -372,6 +420,9 @@ def stream(
         if error_sentinel:
             yield STREAM_ERROR
         return
+    finally:
+        if _billable and not _charged:
+            _route.record(None, messages, "".join(_out))
 
 
 async def acall(
@@ -397,16 +448,20 @@ async def acall(
     The queue (codec_llm_proxy) stays at the call site — never owned here.
     """
     import httpx
-    _blocked = _cloud_blocked_msg(base_url)
+    _blocked, _route = _preflight(base_url, model)
     if _blocked is not None:
         if raise_on_error:
             raise LLMError(_blocked)
         return _blocked
+    if _route is not None:
+        model, api_key, extra_kwargs = _route.model, _route.api_key, _route.kwargs(extra_kwargs)
     headers, payload = _build_request(
         messages, model=model, api_key=api_key, max_tokens=max_tokens,
         temperature=temperature, enable_thinking=enable_thinking,
         extra_kwargs=extra_kwargs,
     )
+    if _route is not None:
+        _route.shape(payload, stream=False)
     url = base_url.rstrip("/") + "/chat/completions"
     own_client = http is None
     client = http or httpx.AsyncClient(timeout=timeout)
@@ -414,7 +469,10 @@ async def acall(
         try:
             r = await client.post(url, json=payload, headers=headers)
             if r.status_code == 200:
-                resp = extract_content(r.json())
+                _body = r.json()
+                resp = extract_content(_body)
+                if _route is not None and isinstance(_body, dict):
+                    _route.record(_body.get("usage"), messages, resp)
                 if resp:
                     return resp
                 if raise_on_error:
@@ -463,21 +521,29 @@ async def astream(
     """
     import json as _json
     import httpx
-    _blocked = _cloud_blocked_msg(base_url)
+    _blocked, _route = _preflight(base_url, model)
     if _blocked is not None:
         yield _blocked
         return
+    if _route is not None:
+        model, api_key, extra_kwargs = _route.model, _route.api_key, _route.kwargs(extra_kwargs)
     headers, payload = _build_request(
         messages, model=model, api_key=api_key, max_tokens=max_tokens,
         temperature=temperature, enable_thinking=enable_thinking,
         extra_kwargs=extra_kwargs, stream=True,
     )
+    if _route is not None:
+        _route.shape(payload, stream=True)
     url = base_url.rstrip("/") + "/chat/completions"
     own_client = http is None
     client = http or httpx.AsyncClient(timeout=timeout)
     _empty = 0
+    # Cloud metering, as in stream(): once per reply, usage chunk or estimate.
+    _billable = _charged = False
+    _out: List[str] = []
     try:
         async with client.stream("POST", url, json=payload, headers=headers) as resp:
+            _billable = _route is not None and getattr(resp, "status_code", 200) == 200
             async for line in resp.aiter_lines():
                 if not line or not line.startswith("data: "):
                     continue
@@ -485,16 +551,24 @@ async def astream(
                 if data.strip() == "[DONE]":
                     return
                 try:
-                    delta = (_json.loads(data).get("choices", [{}])[0]
+                    _obj = _json.loads(data)
+                    if _billable and not _charged and _obj.get("usage"):
+                        _route.record(_obj["usage"])
+                        _charged = True
+                    delta = (_obj.get("choices", [{}])[0]
                              .get("delta", {}).get("content", ""))
-                except (ValueError, KeyError, IndexError, TypeError):
+                except (ValueError, KeyError, IndexError, TypeError, AttributeError):
                     continue
                 if delta:
+                    if _billable:
+                        _out.append(delta)
                     yield delta
                 elif keepalive:
                     _empty += 1
                     if _empty % 10 == 1:
                         yield KEEPALIVE
     finally:
+        if _billable and not _charged:
+            _route.record(None, messages, "".join(_out))
         if own_client:
             await client.aclose()

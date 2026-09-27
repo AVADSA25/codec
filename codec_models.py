@@ -52,6 +52,7 @@ import urllib.parse
 import urllib.request
 from typing import Any, Dict, List, Optional
 
+import codec_cloud_models
 from codec_jsonstore import atomic_write_json
 
 CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
@@ -187,6 +188,10 @@ def _extra_models(cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
         entry: Dict[str, Any] = {"id": mid, "label": item.get("label") or _friendly(mid)}
         size = item.get("size_gb")
         entry["size_gb"] = size if isinstance(size, (int, float)) else None
+        if codec_cloud_models.entry_for_id(mid, cfg) is not None:
+            # A `base_url` off this Mac makes it a cloud model (codec_cloud_models):
+            # switching to it rewrites config, it never touches the local server.
+            entry["cloud"] = True
         out.append(entry)
     return out
 
@@ -282,6 +287,8 @@ def list_models() -> Dict[str, Any]:
     for m in models:
         m["role"] = roles.get(m["id"], "")
         m["active"] = (m["id"] == active)
+        if m.get("cloud"):
+            m["role"] = _cloud_role(m["id"], m["role"], cfg)
     if active and not any(m["id"] == active for m in models):
         # Active model isn't on disk (or was pruned) — still show it as active.
         models.insert(0, {"id": active, "label": _friendly(active), "size_gb": None,
@@ -289,14 +296,29 @@ def list_models() -> Dict[str, Any]:
     return {"active": active, "models": models}
 
 
+def _cloud_role(model_id: str, role: str, cfg: Dict[str, Any]) -> str:
+    """Picker text for a cloud model: its role plus this month's spend, so the
+    cost is visible where the switch is made."""
+    entry = codec_cloud_models.entry_for_id(model_id, cfg)
+    if entry is None:
+        return role
+    spend = (f"${codec_cloud_models.spent_usd(model_id):.2f} of "
+             f"${codec_cloud_models.cap_usd(entry):g} this month")
+    return f"{role} · {spend}" if role else f"cloud · {spend}"
+
+
 def probe(model_id: str, timeout: float = 240.0,
           base_url: Optional[str] = None) -> tuple[bool, str]:
     """Force the server to load `model_id` with a 1-token request.
 
     Returns (ok, detail). This is what makes a switch safe: it surfaces a load
-    failure while we still know which model to fall back to.
+    failure while we still know which model to fall back to. A cloud model gets
+    a short real request with its own key instead (codec_cloud_models.probe).
     """
     cfg = _load_config()
+    entry = codec_cloud_models.entry_for_id(model_id, cfg)
+    if entry is not None:
+        return codec_cloud_models.probe(entry, timeout=min(timeout, 60.0))
     url = (base_url or _base_url(cfg)) + "/chat/completions"
     body = json.dumps({
         "model": model_id,
@@ -438,11 +460,76 @@ def _write_active(model_id: str) -> None:
     atomic_write_json(CONFIG_PATH, cfg)  # helper already writes 0600
 
 
+def _enter_cloud(entry: Dict[str, Any], restore: Dict[str, Any]) -> None:
+    """Point config at a cloud model. `llm_local_restore` keeps the local
+    base_url and model to come back to (and for callers that must stay local,
+    codec_cloud_models.local_only)."""
+    cfg = _load_config()
+    cfg["llm_local_restore"] = restore
+    cfg["llm_base_url"] = entry["base_url"].strip().rstrip("/")
+    cfg["llm_model"] = entry["id"]
+    atomic_write_json(CONFIG_PATH, cfg)
+
+
+def _leave_cloud(model_id: str) -> Dict[str, Any]:
+    """Point config back at the local server with `model_id` active. Returns
+    the `llm_local_restore` record it consumed, to go back if the load fails."""
+    cfg = _load_config()
+    restore = cfg.pop("llm_local_restore", None)
+    restore = restore if isinstance(restore, dict) else {}
+    cfg["llm_base_url"] = restore.get("llm_base_url") or DEFAULT_BASE_URL
+    cfg["llm_model"] = model_id
+    atomic_write_json(CONFIG_PATH, cfg)
+    return restore
+
+
+def _switch_to_cloud(entry: Dict[str, Any], previous: str,
+                     verify: bool) -> Dict[str, Any]:
+    """Switch to a cloud model, keeping it only if it answers.
+
+    The local server is left exactly as it is: the switch exists for when that
+    server is down, and whatever state it is in must still be there for the
+    switch back. So neither this switch nor its revert restarts anything.
+    """
+    cfg = _load_config()
+    current = codec_cloud_models.active_entry(cfg)
+    if current is None:
+        restore = {"llm_base_url": cfg.get("llm_base_url") or DEFAULT_BASE_URL,
+                   "llm_model": previous}
+    else:  # cloud to cloud: keep the record of the local model
+        restore = cfg.get("llm_local_restore")
+        restore = restore if isinstance(restore, dict) else {}
+    _enter_cloud(entry, restore)
+    if not verify:
+        return {"ok": True, "active": entry["id"], "previous": previous,
+                "changed": True, "cloud": True, "detail": "switched (unverified)"}
+
+    ok, detail = probe(entry["id"])
+    if ok:
+        _emit_audit(previous, entry["id"], True, detail)
+        return {"ok": True, "active": entry["id"], "previous": previous,
+                "changed": True, "cloud": True, "detail": detail}
+
+    # No answer (no key, cap reached, provider down): put config back exactly
+    # as it was. Nothing to reload, because nothing was unloaded.
+    if current is None:
+        _leave_cloud(previous)
+    else:
+        _enter_cloud(current, restore)
+    _emit_audit(previous, entry["id"], False, detail)
+    label = entry.get("label") or entry["id"]
+    return {"ok": False, "active": previous, "attempted": entry["id"],
+            "changed": False, "reverted": True,
+            "error": f"{label} did not answer ({detail}) — kept {_friendly(previous)}"}
+
+
 def set_active(model_id: str, verify: bool = True) -> Dict[str, Any]:
     """Switch the chat model, verifying it loads and reverting if it does not.
 
     Only models discovered locally may be selected — an arbitrary string would
-    unload the working model in exchange for a 404.
+    unload the working model in exchange for a 404. A cloud model registered in
+    `extra_models` (codec_cloud_models) is switched by config alone; see
+    _switch_to_cloud.
     """
     previous = get_active()
     cfg = _load_config()
@@ -461,7 +548,16 @@ def set_active(model_id: str, verify: bool = True) -> Dict[str, Any]:
         return {"ok": True, "active": previous, "changed": False,
                 "detail": "already active"}
 
-    _write_active(model_id)
+    target = codec_cloud_models.entry_for_id(model_id, cfg)
+    if target is not None:
+        return _switch_to_cloud(target, previous, verify)
+
+    # Coming back from a cloud model points config home first; the switch away
+    # never touched the local server, so the rest is an ordinary local switch.
+    from_cloud = codec_cloud_models.active_entry(cfg)
+    restore = _leave_cloud(model_id) if from_cloud is not None else None
+    if restore is None:
+        _write_active(model_id)
     if not verify:
         # No restart either: an unverified switch is the caller asking not to
         # wait, and a restart is the longest part of the wait.
@@ -476,6 +572,18 @@ def set_active(model_id: str, verify: bool = True) -> Dict[str, Any]:
         _emit_audit(previous, model_id, True, detail, restarted, restart_detail)
         return {"ok": True, "active": model_id, "previous": previous,
                 "changed": True, "detail": detail,
+                "restarted": restarted, "restart_detail": restart_detail}
+
+    if from_cloud is not None:
+        # The local model did not load: go back to the cloud model that was
+        # answering. No restart — the cloud model does not live on this Mac.
+        _enter_cloud(from_cloud, restore or {})
+        reverted_ok, revert_detail = probe(previous)
+        _emit_audit(previous, model_id, False, detail, restarted, restart_detail)
+        return {"ok": False, "active": previous, "attempted": model_id,
+                "changed": False,
+                "error": f"{model_id} failed to load ({detail}) — reverted to {previous}",
+                "reverted": reverted_ok, "revert_detail": revert_detail,
                 "restarted": restarted, "restart_detail": restart_detail}
 
     # Failed to load — the old model is already unloaded, so put it back and

@@ -220,6 +220,31 @@ try:
     WHISPER_MODEL = _cfg.get("stt_model", WHISPER_MODEL)
 except Exception as _e:
     log.warning(f"Config load warning: {_e} — using defaults")
+
+
+def _resolve_voice_llm() -> tuple:
+    """(base_url, model, is_cloud) for one voice session, read when it starts.
+
+    Voice keeps its own pinned local model (config:voice_model) and ignores the
+    chat picker, except when the picker is on a registered cloud model
+    (codec_cloud_models). That switch exists for when the local server is down,
+    and then the pinned local model is down too. Reading config per session,
+    not at import, lets a switch reach the next call without a restart.
+    """
+    try:
+        with open(_CONFIG_PATH) as f:
+            cfg = json.load(f)
+        import codec_cloud_models
+        entry = codec_cloud_models.active_entry(cfg)
+        if entry is not None:
+            return entry["base_url"].strip().rstrip("/"), entry["id"], True
+        base, _ = codec_cloud_models.local_only(
+            (cfg.get("llm_base_url") or QWEN_BASE_URL).rstrip("/"), "", cfg)
+        return base, cfg.get("voice_model") or VOICE_LLM_MODEL, False
+    except Exception:
+        return QWEN_BASE_URL, VOICE_LLM_MODEL, False
+
+
 # ── Vision config ────────────────────────────────────────────────────────
 VISION_URL   = "http://localhost:8083/v1/chat/completions"
 VISION_MODEL = "mlx-community/Qwen2.5-VL-7B-Instruct-4bit"
@@ -447,6 +472,9 @@ class VoicePipeline:
 
         self.skills = {}
         self._http  = httpx.AsyncClient(timeout=120.0)
+        # Which model answers this session: the pinned local one, or the cloud
+        # model the picker is switched to (docs/CLOUD-FALLBACK-MODEL-DESIGN.md).
+        self._llm_base, self._llm_model, self._llm_cloud = _resolve_voice_llm()
         self._warmed_up = False
         # Voice mode (flash / default / think) — per-session, switchable by
         # voice command or WS control message. docs/VOICE-MODES-DESIGN.md.
@@ -652,11 +680,12 @@ class VoicePipeline:
         await llm_queue.acquire(Priority.CRITICAL)
         try:
             # Voice always runs VOICE_LLM_MODEL (35B by default), regardless of
-            # the chat/telegram picker (config:llm_model). Pre-warmed at session
+            # the chat/telegram picker (config:llm_model), unless the picker is
+            # on a cloud model (_resolve_voice_llm). Pre-warmed at session
             # start; the shared :8083 server loads it on first request otherwise.
-            _model = VOICE_LLM_MODEL
+            _model = getattr(self, "_llm_model", VOICE_LLM_MODEL)
             async for token in codec_llm.astream(
-                messages, base_url=QWEN_BASE_URL, model=_model,
+                messages, base_url=getattr(self, "_llm_base", QWEN_BASE_URL), model=_model,
                 max_tokens=max_tokens, temperature=0.7, enable_thinking=False,
                 extra_kwargs={"top_p": 0.9, "frequency_penalty": 0.8, **LLM_KWARGS},
                 http=self._http,
@@ -745,13 +774,16 @@ class VoicePipeline:
             except Exception:
                 log.debug("voice: targeted-memory injection skipped", exc_info=True)
             # Phase 2 Step 5 — Observer summary injection (gated per §X).
-            # Voice always uses local Qwen by default (transport="local"); if
-            # the user has cloud-routed voice configured (vision_provider=
-            # "gemini"), pass transport="voice" so the cloud-transport gate
-            # applies. Audit emit fires inside the helper.
+            # Voice uses local Qwen by default (transport="local"). When the
+            # reply comes from off this Mac (a cloud model, or cloud-routed
+            # voice via vision_provider="gemini"), pass transport="voice" so the
+            # cloud-transport gate applies. Audit emit fires inside the helper.
             try:
                 from codec_observer import maybe_inject_observation_summary
-                _voice_transport = "voice" if VISION_PROVIDER == "gemini" else "local"
+                import codec_cloud_models
+                _off_mac = not codec_cloud_models.is_local_url(
+                    getattr(self, "_llm_base", QWEN_BASE_URL))
+                _voice_transport = "voice" if (VISION_PROVIDER == "gemini" or _off_mac) else "local"
                 _obs_summary, _obs_reason = maybe_inject_observation_summary(
                     user_prompt=user_text or "",
                     transport=_voice_transport,
@@ -1675,13 +1707,15 @@ class VoicePipeline:
         # probe() forces the shared :8083 server to load VOICE_LLM_MODEL (35B)
         # in-place; it does NOT rewrite config:llm_model, so chat/telegram keep
         # their own picker model. No-op cost when 35B is already resident.
+        # A cloud model has nothing to load, and a probe would be a paid call.
         async def _warm_voice_model():
             try:
                 from codec_models import probe as _probe
-                await asyncio.to_thread(_probe, VOICE_LLM_MODEL, 300.0, QWEN_BASE_URL)
+                await asyncio.to_thread(_probe, self._llm_model, 300.0, self._llm_base)
             except Exception:
                 log.debug("voice: model pre-warm failed", exc_info=True)
-        asyncio.create_task(_warm_voice_model())
+        if not self._llm_cloud:
+            asyncio.create_task(_warm_voice_model())
         try:
             _voice_log_event("voice_session_start", "codec-voice",
                              f"Voice session {'resumed' if is_resumed else 'started'}",
