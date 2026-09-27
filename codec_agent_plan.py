@@ -376,6 +376,18 @@ def _qwen_base() -> str:
         return "http://localhost:8083/v1"
 
 
+def _local_llm() -> tuple:
+    """(base_url, model) for this call: always the local model, even while the
+    owner has switched chat to a cloud model (Step 8 Q1: no cloud fallback for
+    Project-mode agents). See codec_cloud_models.local_only."""
+    base, model = _qwen_base(), _qwen_model()
+    try:
+        import codec_cloud_models
+        return codec_cloud_models.local_only(base, model)
+    except Exception:
+        return base, model
+
+
 QWEN_URL = _qwen_url()       # back-compat — module-level constant for tests
 QWEN_MODEL = _qwen_model()   # back-compat
 QWEN_TIMEOUT = 60  # seconds
@@ -404,13 +416,14 @@ def _qwen_chat(user_prompt: str, system_prompt: str = "",
     # is unchanged. (Now also strips <think> + enable_thinking=False — the
     # downstream JSON parse is more robust for it.)
     import codec_llm
+    _base, _model = _local_llm()
     try:
         return codec_llm.call(
             [
                 {"role": "system", "content": system_prompt or ""},
                 {"role": "user",   "content": user_prompt},
             ],
-            base_url=_qwen_base(), model=_qwen_model(),
+            base_url=_base, model=_model,
             max_tokens=max_tokens, temperature=0.2,
             timeout=QWEN_TIMEOUT, raise_on_error=True,
         )

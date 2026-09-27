@@ -259,3 +259,13 @@ running. Launched directly from a shell the LS entry is absent, the count is 0, 
 bootstrap runs (and on a dev box is correctly refused by the PM2 guard). Fix: match
 `ai.avadigital.codec.<service>` labels only, excluding the `application.` prefix.
 Found while diffing `open` vs direct-exec behaviour of the Mach-O launcher.
+
+## `ava.license_key` is stored as plain text in `config.json` (2026-09-27)
+
+`~/.codec/config.json:ava.license_key` holds the buyer's licence key (a signed JWT)
+in plain text. PR-2B/2B-2 moved every provider secret to the Keychain, and
+`codec_setup` notes that config.json is backed up and pasted into support threads,
+yet this key stayed on disk. It is also the bearer `codec_setup.set_provider("ava")`
+sends to the AVA proxy. Found while reviewing LLM config for the cloud fallback
+model (docs/CLOUD-FALLBACK-MODEL-DESIGN.md). Fix: migrate it to a Keychain slot with
+the same first-read migration as the PR-2B-2 getters and blank the field.

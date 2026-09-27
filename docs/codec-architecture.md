@@ -145,6 +145,13 @@ Four new event names exported from `codec_audit.py` for the Continuous Observati
 
 `PHASE2_STEP5_EVENTS` frozenset exposed for analyzer breakdown. `observation_tick` is METADATA-ONLY by design — no titles, no OCR text, no clipboard content, no file paths leak to `~/.codec/audit.log`.
 
+### Cloud fallback model events (2026-09)
+One event name, emitted by `codec_cloud_models.record()` when a reply pushes a registered cloud model's spend for the month past its `monthly_cap_usd` (once per crossing; later calls are refused before any request is sent). Ledger: `~/.codec/cloud_spend.json`. Switches to and from a cloud model reuse the existing `model_switched` event. Design: `docs/CLOUD-FALLBACK-MODEL-DESIGN.md`.
+
+| Event | Source | level | extra fields |
+|---|---|---|---|
+| `cloud_spend_cap_reached` | `codec-cloud-models` | warning | `model`, `month` (`YYYY-MM`), `spent_usd`, `cap_usd` |
+
 ### Watchdog events (2026-07 log review)
 One event name, emitted by the heartbeat's PM2 restart-storm detector (`codec_heartbeat.check_pm2_restart_storms`). Fires when an `autorestart:true` PM2 process burned ≥5 restarts since the previous heartbeat (~20 min) — the signature of a crash loop hiding behind PM2 status "online" (incident: `ava-litellm` restarted 34,207× over 3 weeks unnoticed). Cron-style jobs (`autorestart:false`) are excluded; a persisting storm re-alerts at most every 6h. State: `~/.codec/pm2_restart_state.json`. Related (no new event): `codec_alerts` supports read-only `alerts.extra_services` probes in `~/.codec/config.json` (`http(s)://` or `tcp://host:port`) with the same consecutive-failure alerting as built-ins but NEVER auto-restart.
 
