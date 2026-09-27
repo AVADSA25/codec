@@ -4,6 +4,8 @@ import json
 import time
 import hmac
 import asyncio
+import ipaddress
+from urllib.parse import urlparse
 from datetime import datetime, timedelta
 
 from fastapi import FastAPI, Request
@@ -61,11 +63,42 @@ _bg_status: dict = {
 }
 
 
+def _is_remote_request(request) -> bool:
+    """True when a request did not come directly from this Mac: it came through
+    a proxy/tunnel (forwarding headers) or from a non-loopback address."""
+    if request.headers.get("cf-connecting-ip") or request.headers.get("x-forwarded-for"):
+        return True
+    host = request.client.host if request.client else ""
+    try:
+        return not ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False  # not an IP (in-process test client, unix socket)
+
+
+def _route_label(request) -> str:
+    """Metric label = route template, never the raw path (raw paths leaked IDs
+    and grew the label set without bound)."""
+    from starlette.routing import Match
+    for route in app.router.routes:
+        try:
+            if route.matches(request.scope)[0] == Match.FULL:
+                return getattr(route, "path", "other")
+        except Exception:
+            continue
+    return "other"
+
+
 class AuthMiddleware(BaseHTTPMiddleware):
     """Combined auth: bearer token (API) + biometric Touch ID sessions (dashboard)."""
 
     # Routes that never require authentication
-    PUBLIC_ROUTES = {"/", "/chat", "/vibe", "/voice", "/auth", "/health", "/api/health", "/metrics", "/favicon.ico", "/manifest.json", "/docs", "/redoc", "/openapi.json"}
+    # /docs, /redoc, /openapi.json and /metrics are NOT public (audit 2026-09-27:
+    # they handed the full 139-route map and per-path traffic to anyone).
+    PUBLIC_ROUTES = {"/", "/chat", "/vibe", "/voice", "/auth", "/health", "/api/health", "/favicon.ico", "/manifest.json"}
+    # Browser origins allowed to make state-changing requests (plus the
+    # request's own host). Blocks drive-by POSTs from other websites to
+    # http://127.0.0.1:8090 on the owner's Mac.
+    TRUSTED_ORIGIN_HOSTS = {"localhost:8090", "127.0.0.1:8090", "codec.avadigital.ai", "codec.lucyvpa.com"}
     PUBLIC_PREFIXES = ("/api/auth/", "/static")
     # CSRF-exempt paths (auth endpoints handle their own protection)
     CSRF_EXEMPT = {"/api/auth/verify", "/api/auth/pin", "/api/auth/logout",
@@ -81,7 +114,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         DASHBOARD_TOKEN = get_dashboard_token()
         from codec_metrics import metrics
         path = request.url.path
-        metrics.inc("codec_http_requests_total", {"method": request.method, "path": path})
+        metrics.inc("codec_http_requests_total", {"method": request.method, "path": _route_label(request)})
 
         # Always allow public routes
         if path in self.PUBLIC_ROUTES:
@@ -122,6 +155,15 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     )
                 except Exception:
                     pass
+        # ── Cross-site request block (any auth mode) ──
+        if request.method in ("POST", "PUT", "DELETE", "PATCH"):
+            origin = request.headers.get("origin", "")
+            if origin:
+                o_host = urlparse(origin).netloc.lower() if origin != "null" else "null"
+                own_host = request.headers.get("host", "").lower()
+                if o_host != own_host and o_host not in self.TRUSTED_ORIGIN_HOSTS:
+                    log.warning("CROSS-SITE REJECTED: path=%s origin=%s", path, origin[:80])
+                    return StarletteJSONResponse({"error": "Cross-site request blocked"}, status_code=403)
         # Allow static assets
         if path.endswith(('.css', '.js', '.png', '.ico', '.svg', '.woff2', '.woff', '.ttf')):
             return await call_next(request)
@@ -140,8 +182,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
                         status_code=403
                     )
 
-        # ── Layer 0: No auth configured → allow all ──
+        # ── Layer 0: No auth configured → this Mac only ──
+        # Was "allow all": with a 0.0.0.0 bind or a tunnel, that handed the LAN /
+        # internet unauthenticated access incl. /api/run_code (audit 2026-09-27).
         if not DASHBOARD_TOKEN and (not AUTH_ENABLED or not _auth_available()):
+            if _is_remote_request(request):
+                return StarletteJSONResponse(
+                    {"error": "Remote access needs a PIN or dashboard token. Set one in CODEC on this Mac."},
+                    status_code=403)
             return await call_next(request)
 
         # ── Layer 1: Token check (API key — works as standalone auth for API) ──

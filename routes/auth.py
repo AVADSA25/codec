@@ -5,6 +5,8 @@ import json
 # now owns the constant-time compare. Kept the import removal to avoid F401.
 import secrets
 import time
+import asyncio
+import threading
 import subprocess
 from datetime import datetime
 
@@ -26,6 +28,68 @@ from routes._shared import (
 router = APIRouter()
 
 
+# ── Brute-force + prompt-spam limits (audit 2026-09-27) ──────────────────
+# Behind the Cloudflare tunnel every request arrives from 127.0.0.1, so
+# request.client.host was one shared key for the whole internet: an attacker
+# could lock the owner out, and each owner login reset the attacker's ladder.
+_GLOBAL_FAIL_WINDOW_S = 3600
+_GLOBAL_FAIL_MAX = 30          # failed PIN/TOTP attempts per hour, all clients
+_global_fails: list = []
+_global_fail_lock = threading.Lock()
+_TOUCHID_WINDOW_S = 600
+_TOUCHID_MAX_PROMPTS = 5       # Touch ID prompts per 10 min, all clients
+_touchid_prompts: list = []
+_touchid_busy = threading.Lock()
+
+
+def _client_key(request: Request) -> str:
+    """Per-visitor key. cloudflared connects from loopback and Cloudflare sets
+    CF-Connecting-IP (a visitor cannot override it through the tunnel); a
+    direct local request has no such header and keeps the peer address."""
+    peer = request.client.host if request.client else "unknown"
+    if peer in ("127.0.0.1", "::1"):
+        cf_ip = request.headers.get("cf-connecting-ip", "").strip()
+        if cf_ip:
+            return cf_ip
+    return peer
+
+
+def _global_fail_locked() -> bool:
+    now = time.time()
+    with _global_fail_lock:
+        _global_fails[:] = [t for t in _global_fails if t > now - _GLOBAL_FAIL_WINDOW_S]
+        return len(_global_fails) >= _GLOBAL_FAIL_MAX
+
+
+def _record_global_fail() -> None:
+    with _global_fail_lock:
+        _global_fails.append(time.time())
+
+
+def _upgrade_pin_hash(pin: str) -> None:
+    """After a correct PIN, replace a legacy unsalted SHA-256 hash with argon2id.
+    Best effort; never blocks login."""
+    global AUTH_PIN_HASH
+    try:
+        from codec_pinhash import ARGON2_AVAILABLE, hash_pin
+        if not ARGON2_AVAILABLE or AUTH_PIN_HASH.startswith("$argon2"):
+            return
+        new_hash = hash_pin(pin)
+        from codec_jsonstore import read_modify_write
+
+        def _mutate(cfg):
+            if not cfg:  # missing/corrupt config: never overwrite with {}
+                raise ValueError("config unreadable")
+            cfg["auth_pin_hash"] = new_hash
+            return cfg
+        read_modify_write(CONFIG_PATH, _mutate)
+        AUTH_PIN_HASH = new_hash
+        log_event("auth_pin_rehashed", "codec-auth", "PIN hash upgraded to argon2id")
+    except Exception as e:
+        log_event("auth_pin_rehash_failed", "codec-auth", f"PIN rehash skipped: {type(e).__name__}",
+                  level="warning", outcome="error")
+
+
 @router.get("/auth", response_class=HTMLResponse)
 async def auth_page():
     """Serve the biometric authentication page."""
@@ -43,7 +107,9 @@ async def auth_check():
 
     if _is_auth_compiled():
         try:
-            r = subprocess.run([AUTH_BINARY, "--check"], capture_output=True, text=True, timeout=5)
+            r = await asyncio.to_thread(
+                subprocess.run, [AUTH_BINARY, "--check"],
+                capture_output=True, text=True, timeout=5)
             if r.returncode == 0:
                 data = json.loads(r.stdout)
                 result["touchid_available"] = data.get("available", False)
@@ -62,14 +128,22 @@ async def auth_verify(request: Request):
     """Trigger Touch ID verification on the Mac."""
     if not _is_auth_compiled():
         return JSONResponse({"error": "Auth binary not compiled"}, status_code=500)
+    now = time.time()
+    _touchid_prompts[:] = [t for t in _touchid_prompts if t > now - _TOUCHID_WINDOW_S]
+    if len(_touchid_prompts) >= _TOUCHID_MAX_PROMPTS:
+        return JSONResponse({"error": "Too many Touch ID requests. Try again in a few minutes."}, status_code=429)
+    if not _touchid_busy.acquire(blocking=False):
+        return JSONResponse({"error": "A Touch ID prompt is already waiting on the Mac."}, status_code=429)
+    _touchid_prompts.append(now)
     try:
-        r = subprocess.run(
-            [AUTH_BINARY, "--verify"],
-            capture_output=True, text=True, timeout=65
+        # Off the event loop: the prompt can wait up to 65 s for a finger.
+        r = await asyncio.to_thread(
+            subprocess.run, [AUTH_BINARY, "--verify"],
+            capture_output=True, text=True, timeout=65,
         )
         if r.returncode == 0:
             result = json.loads(r.stdout)
-            client_ip = request.client.host if request.client else "unknown"
+            client_ip = _client_key(request)
 
             try:
                 if result.get("authenticated"):
@@ -107,6 +181,8 @@ async def auth_verify(request: Request):
         return JSONResponse({"error": "Authentication timed out"}, status_code=408)
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+    finally:
+        _touchid_busy.release()
 
 
 @router.post("/api/auth/pin")
@@ -127,7 +203,9 @@ async def auth_pin(request: Request):
     except Exception:
         return JSONResponse({"error": "Missing pin field"}, status_code=400)
 
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = _client_key(request)
+    if _global_fail_locked():
+        return JSONResponse({"error": "Too many failed attempts. Try again later."}, status_code=429)
 
     # Brute-force protection — escalating lockout (OWASP standard)
     # Lockout durations: 30s → 60s → 2min → 5min → 15min → 30min (cap)
@@ -150,6 +228,7 @@ async def auth_pin(request: Request):
         method = "pin"
         log_event("auth_success", "codec-auth", f"Auth success: {method}", extra={"method": method})
         _pin_attempts.pop(client_ip, None)
+        _upgrade_pin_hash(pin)
         token = secrets.token_hex(32)
         with _auth_lock:
             _auth_sessions[token] = {
@@ -166,6 +245,7 @@ async def auth_pin(request: Request):
         }
     else:
         log_event("auth_reject", "codec-auth", "Auth failed", outcome="denied", level="warning")
+        _record_global_fail()
         attempt = _pin_attempts.get(client_ip, {"count": 0, "locked_until": 0.0, "lockout_level": 0})
         attempt["count"] = attempt.get("count", 0) + 1
         if attempt["count"] >= 5:
@@ -276,8 +356,12 @@ async def totp_verify(request: Request):
     if not totp_secret:
         return JSONResponse({"error": "TOTP not configured"}, status_code=400)
     totp = pyotp.TOTP(totp_secret)
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = _client_key(request)
+    _tkey = "totp:" + client_ip
+    if _global_fail_locked() or time.time() < _pin_attempts.get(_tkey, {}).get("locked_until", 0.0):
+        return JSONResponse({"error": "Too many failed attempts. Try again later."}, status_code=429)
     if totp.verify(code, valid_window=1):
+        _pin_attempts.pop(_tkey, None)
         with _auth_lock:
             if pending_token in _auth_sessions:
                 _auth_sessions[pending_token]["totp_verified"] = True
@@ -285,6 +369,12 @@ async def totp_verify(request: Request):
         _audit_event("totp_success", ip=client_ip)
         return {"verified": True, "token": pending_token}
     _audit_event("totp_failed", outcome="error", level="warning", ip=client_ip)
+    _record_global_fail()
+    _t = _pin_attempts.get(_tkey, {"count": 0, "locked_until": 0.0})
+    _t["count"] = _t.get("count", 0) + 1
+    if _t["count"] >= 5:
+        _t["locked_until"], _t["count"] = time.time() + 900, 0
+    _pin_attempts[_tkey] = _t
     return {"verified": False, "error": "Invalid code"}
 
 
