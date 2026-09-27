@@ -689,6 +689,9 @@ class VoicePipeline:
                 max_tokens=max_tokens, temperature=0.7, enable_thinking=False,
                 extra_kwargs={"top_p": 0.9, "frequency_penalty": 0.8, **LLM_KWARGS},
                 http=self._http,
+                # Used only as a cloud model's first-reply deadline; a local
+                # call keeps the injected client's own timeout.
+                timeout=60.0,
             ):
                 token = re.sub(r"<think>[\s\S]*?</think>", "", token)
                 if token:

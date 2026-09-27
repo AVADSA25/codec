@@ -74,7 +74,11 @@ class _Resp:
         return self._payload
 
     def iter_lines(self):
-        yield from (ln.encode() for ln in self._lines)
+        lines = self._lines
+        if not lines and self._payload is not None:   # the reply, as the stream CODEC asks for
+            lines = ["", _sse({"choices": [{"delta": {"content": self._payload["choices"][0]["message"]["content"]}}]}),
+                     _sse({"choices": [], "usage": self._payload.get("usage")}), "data: [DONE]"]
+        yield from (ln.encode() for ln in lines)
 
     def __enter__(self):
         return self
@@ -114,6 +118,19 @@ def test_failed_cloud_switch_restores_config_exactly(env, monkeypatch):
     r = codec_models.set_active("cloud-pro")
     assert r["ok"] is False and r["active"] == "mlx-community/A" and "HTTP 401" in r["error"]
     assert _cfg(env) == before
+
+
+@pytest.mark.parametrize("local_up, detail, kept", [
+    (False, "LLM call failed after 1 attempt(s): no complete reply within 30s", True),
+    (True, "LLM call failed after 1 attempt(s): no complete reply within 30s", False),
+    (False, "LLM call failed after 1 attempt(s): LLM call returned 401: bad key", False),
+])
+def test_slow_cloud_model_is_kept_only_when_local_is_down(env, monkeypatch, local_up, detail, kept):
+    monkeypatch.setattr(codec_models, "restart_server", lambda *a, **k: pytest.fail("no restart"))
+    monkeypatch.setattr(codec_models, "probe", lambda m, **k: (False, detail))
+    monkeypatch.setattr(codec_models, "_is_listening", lambda *a, **k: local_up)
+    r = codec_models.set_active("cloud-pro")
+    assert r["ok"] is kept and (_cfg(env)["llm_model"] == "cloud-pro") is kept
 
 
 def test_switch_back_to_local_restores_base_url(env, monkeypatch):
@@ -170,6 +187,7 @@ def test_cloud_request_gets_key_model_kwargs_and_is_charged(env, monkeypatch):
                                        "top_p": 0.9})
     assert out == "READY"
     body = seen["json"]
+    assert body["stream"] is True, "cloud models are only ever asked for a stream"
     assert body["model"] == "cloud-pro" and body["thinking"] == {"type": "disabled"}
     assert "chat_template_kwargs" not in body and body["top_p"] == 0.9
     assert seen["headers"]["Authorization"] == "Bearer sk-test"
@@ -245,6 +263,55 @@ def test_astream_charges_the_usage_chunk(env):
 
     assert asyncio.run(run()) == ["Hi"]
     assert _ledger(env)["prompt_tokens"] == 50
+
+
+class _Stalling(_Resp):
+    """Keep-alive newlines and nothing else, like a queued MiMo request."""
+
+    def iter_lines(self):
+        for _ in range(200):
+            time.sleep(0.01)
+            yield b""
+
+
+def test_a_stalled_cloud_call_stops_at_its_deadline(env, monkeypatch):
+    import requests
+    monkeypatch.setattr(requests, "post", lambda *a, **k: _Stalling())
+    t0 = time.monotonic()
+    assert codec_llm.call(MSGS, base_url=CLOUD_URL, model="x", timeout=0.2) == ""
+    with pytest.raises(codec_llm.LLMError, match="within"):
+        codec_llm.call(MSGS, base_url=CLOUD_URL, model="x", timeout=0.2, raise_on_error=True)
+    out = list(codec_llm.stream(MSGS, base_url=CLOUD_URL, model="x", timeout=0.2,
+                                error_sentinel=True))
+    assert out == [codec_llm.STREAM_ERROR]
+
+    class _StallCM:
+        status_code = 200
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def aiter_lines(self):
+            for _ in range(200):
+                await asyncio.sleep(0.01)
+                yield ""
+
+    class _Client:
+        def stream(self, *a, **k):
+            return _StallCM()
+
+    async def run():
+        return [t async for t in codec_llm.astream(MSGS, base_url=CLOUD_URL, model="x",
+                                                   http=_Client(), timeout=0.2)]
+
+    with pytest.raises(codec_llm.LLMError, match="within"):
+        asyncio.run(run())
+    assert asyncio.run(codec_llm.acall(MSGS, base_url=CLOUD_URL, model="x",
+                                       http=_Client(), timeout=0.2)) == ""
+    assert time.monotonic() - t0 < 2.0, "each call must stop near its 0.2 s deadline"
 
 
 @pytest.mark.parametrize("problem, expect", [
