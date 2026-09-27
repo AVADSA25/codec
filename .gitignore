@@ -42,3 +42,8 @@ build/
 .coverage.*
 htmlcov/
 .pytest_cache/
+
+# Internal working docs (kept local; private copies in ~/Documents/CODEC-private)
+HANDOVER.md
+GATES.md
+THINK_PROMPT.md
