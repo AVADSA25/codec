@@ -223,6 +223,25 @@ def _load_skill_tools_into(mcp):
                 except ImportError:
                     pass  # consent module unavailable — fall through (other guards remain)
 
+                # 2026-09 MCP blast-radius audit: over HTTP (claude.ai) the
+                # side-effect skills in codec_config._HTTP_CONSENT_REQUIRED run
+                # only after the owner approves this call in the PWA. Stdio
+                # (local Claude Desktop / Code, own approval dialog) unchanged.
+                # No ImportError fallback here: this gate fails closed.
+                if os.environ.get("CODEC_MCP_TRANSPORT", "stdio").lower() == "http":
+                    import codec_consent
+                    if (codec_consent.gate_enabled()
+                            and (codec_consent.mcp_http_consent_required(rkey)
+                                 or codec_consent.mcp_http_consent_required(sname))
+                            and not codec_consent.mcp_http_consent_ok(rkey, task)):
+                        _audit(sname, event="denied",
+                               task_len=tlen, context_len=clen,
+                               duration_ms=(time.time()-t0)*1000,
+                               outcome="denied", error_type="OwnerConsentDenied",
+                               transport="http",
+                               correlation_id=cid)
+                        return codec_consent.mcp_http_consent_refuse_message(rkey)
+
                 # Phase 1 Step 2: refactor per design §3.3 path 5. The
                 # threadpool/timeout/result block becomes the `invoke` closure
                 # passed to run_with_hooks. The invoke closure RAISES on skill
