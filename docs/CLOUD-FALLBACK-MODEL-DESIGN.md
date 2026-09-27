@@ -84,8 +84,10 @@ cloud model do not work as a quick switch:
      want one reply (`call`, `acall`), and rebuilds that reply from the
      stream. Streamed replies include token usage.
    - It stops the call at a wall-clock deadline: the caller's `timeout` for a
-     whole reply, or for the first words of a streamed reply (voice uses 60
-     s). Measured on 2026-09-27, MiMo sends keep-alive newlines while a
+     whole reply, and at most 60 s (`first_reply_timeout_s`) for the first
+     words. Normal first words arrive in 1-5 s. When a chat reply is cut off
+     this way, the chat says the cloud model stopped answering; the old
+     local-server advice would be wrong. Measured on 2026-09-27, MiMo sends keep-alive newlines while a
      request waits in its queue, so an ordinary read timeout never fires. One
      2-token request took 489 s. Streamed requests were faster and more
      regular than non-streamed ones, but some still stalled for over 90 s.

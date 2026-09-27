@@ -1081,6 +1081,13 @@ async def chat_completion(request: Request):
         except (OSError, json.JSONDecodeError) as e:
             log.warning(f"Config read failed; proceeding without overrides: {e}")
         base_url = config.get("llm_base_url", "http://localhost:8083/v1")
+        # A registered cloud model (codec_cloud_models) gets its own wording
+        # when a reply is interrupted: the local-server advice would be wrong.
+        try:
+            import codec_cloud_models as _ccm
+            _on_cloud = _ccm.active_entry(config) is not None
+        except Exception:
+            _on_cloud = False
         model = config.get("llm_model", "mlx-community/Qwen3.6-35B-A3B-4bit")
         # PR-2B (D-15 partial): keychain-aware live read.
         from codec_config import get_llm_api_key as _kc_get_llm
@@ -1343,7 +1350,13 @@ async def chat_completion(request: Request):
                             "`~/.codec/config.json` (chat → max_tokens) for "
                             "longer replies.*"
                         )
-                    if stream_died:
+                    if stream_died and _on_cloud:
+                        yield _frame(
+                            "\n\n⚠️ *Reply interrupted — the cloud model stopped "
+                            "answering (it can be slow at times). Retry, or pick a "
+                            "local model in the model picker.*"
+                        )
+                    elif stream_died:
                         yield _frame(
                             "\n\n⚠️ *Reply interrupted — the connection to the "
                             "local model dropped mid-answer. Ask me to continue, "

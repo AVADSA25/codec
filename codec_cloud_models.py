@@ -55,6 +55,12 @@ SPEND_PATH = os.path.expanduser("~/.codec/cloud_spend.json")
 
 DEFAULT_MONTHLY_CAP_USD = 10.0
 
+# A cloud model that has not sent its first words after this long is stalled:
+# MiMo's normal first words arrive in 1-5 s, and a stalled request can sit in
+# its queue for minutes (measured 2026-09-27). `first_reply_timeout_s` on an
+# entry overrides it.
+FIRST_REPLY_S = 60.0
+
 # Where a switch back to local points when `llm_local_restore` is missing.
 DEFAULT_LOCAL_BASE_URL = "http://localhost:8083/v1"
 
@@ -336,13 +342,14 @@ def block_message(entry: Dict[str, Any]) -> Optional[str]:
 class Route:
     """How codec_llm sends one call to a registered cloud model."""
 
-    __slots__ = ("entry", "model", "api_key", "blocked")
+    __slots__ = ("entry", "model", "api_key", "blocked", "first_reply_s")
 
     def __init__(self, entry: Dict[str, Any], blocked: Optional[str]):
         self.entry = entry
         self.model = entry["id"]
         self.api_key = "" if blocked else get_key(entry)
         self.blocked = blocked
+        self.first_reply_s = _number(entry.get("first_reply_timeout_s")) or FIRST_REPLY_S
 
     def kwargs(self, extra: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         merged = {k: v for k, v in (extra or {}).items() if k != "chat_template_kwargs"}

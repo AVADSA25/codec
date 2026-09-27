@@ -196,9 +196,11 @@ class _CloudReply:
 class _StreamedReply:
     """Rebuilds one chat.completion from a streamed reply."""
 
-    def __init__(self, timeout: float):
+    def __init__(self, timeout: float, first_reply_s: float):
         self.timeout = timeout
         self.deadline = time.monotonic() + timeout
+        self.first_reply_s = min(timeout, first_reply_s)
+        self.first_by = time.monotonic() + self.first_reply_s
         self.content: List[str] = []
         self.reasoning: List[str] = []
         self.usage: Optional[Dict[str, Any]] = None
@@ -207,8 +209,11 @@ class _StreamedReply:
     def feed(self, line: Any) -> None:
         """Take one SSE line. Raises TimeoutError past the deadline."""
         import json as _json
-        if time.monotonic() > self.deadline:
+        now = time.monotonic()
+        if now > self.deadline:
             raise TimeoutError(f"no complete reply within {self.timeout:.0f}s")
+        if not self.content and now > self.first_by:
+            raise TimeoutError(f"no reply started within {self.first_reply_s:.0f}s")
         if isinstance(line, (bytes, bytearray)):
             line = line.decode("utf-8", "replace")
         if not line or not line.startswith("data: "):
@@ -249,7 +254,8 @@ def _streamed(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _cloud_post(requests: Any, url: str, payload: Dict[str, Any],
-                headers: Dict[str, str], timeout: float) -> _CloudReply:
+                headers: Dict[str, str], timeout: float,
+                first_reply_s: float) -> _CloudReply:
     """One reply from a cloud model, asked for as a stream, with a wall-clock
     deadline of `timeout` seconds.
 
@@ -258,7 +264,7 @@ def _cloud_post(requests: Any, url: str, payload: Dict[str, Any],
     non-streamed request waits, MiMo sends keep-alive newlines, so the per-read
     timeout never fires. A stream, rebuilt into the single reply the caller
     expects, avoids both."""
-    acc = _StreamedReply(timeout)
+    acc = _StreamedReply(timeout, first_reply_s)
     with requests.post(url, json=_streamed(payload), headers=headers,
                        timeout=timeout, stream=True) as r:
         if r.status_code != 200:
@@ -271,12 +277,13 @@ def _cloud_post(requests: Any, url: str, payload: Dict[str, Any],
 
 
 async def _cloud_apost(client: Any, url: str, payload: Dict[str, Any],
-                       headers: Dict[str, str], timeout: float) -> _CloudReply:
+                       headers: Dict[str, str], timeout: float,
+                       first_reply_s: float) -> _CloudReply:
     """Async twin of _cloud_post for acall()."""
     import asyncio
 
     async def _run() -> _CloudReply:
-        acc = _StreamedReply(timeout)
+        acc = _StreamedReply(timeout, first_reply_s)
         async with client.stream("POST", url, json=_streamed(payload),
                                  headers=headers) as r:
             if getattr(r, "status_code", 200) != 200:
@@ -357,7 +364,8 @@ def call(
             if _route is None:
                 r = requests.post(url, json=payload, headers=headers, timeout=timeout)
             else:
-                r = _cloud_post(requests, url, payload, headers, timeout)
+                r = _cloud_post(requests, url, payload, headers, timeout,
+                                _route.first_reply_s)
             if r.status_code == 200:
                 _body = r.json()
                 resp = extract_content(_body)
@@ -448,7 +456,8 @@ def stream(
     # estimate if the stream ended without one.
     _billable = _charged = False
     _out: List[str] = []
-    _first_by = time.monotonic() + timeout if _route is not None else None
+    _first_by = (time.monotonic() + min(timeout, _route.first_reply_s)
+                 if _route is not None else None)
     try:
         with requests.post(url, json=payload, headers=headers,
                            timeout=timeout, stream=True) as r:
@@ -464,7 +473,7 @@ def stream(
                 if _first_by is not None and not _out and time.monotonic() > _first_by:
                     # Keep-alive newlines (see _cloud_post) would otherwise
                     # hold a reply that never starts open for minutes.
-                    log.warning("cloud stream %s sent no content within %.0fs", url, timeout)
+                    log.warning("cloud stream %s sent no content in time", url)
                     if error_sentinel:
                         yield STREAM_ERROR
                     return
@@ -592,7 +601,8 @@ async def acall(
             if _route is None:
                 r = await client.post(url, json=payload, headers=headers)
             else:  # streamed, with a wall-clock deadline (see _cloud_post)
-                r = await _cloud_apost(client, url, payload, headers, timeout)
+                r = await _cloud_apost(client, url, payload, headers, timeout,
+                                       _route.first_reply_s)
             if r.status_code == 200:
                 _body = r.json()
                 resp = extract_content(_body)
@@ -666,13 +676,14 @@ async def astream(
     # Cloud metering, as in stream(): once per reply, usage chunk or estimate.
     _billable = _charged = False
     _out: List[str] = []
-    _first_by = time.monotonic() + timeout if _route is not None else None
+    _first_by = (time.monotonic() + min(timeout, _route.first_reply_s)
+                 if _route is not None else None)
     try:
         async with client.stream("POST", url, json=payload, headers=headers) as resp:
             _billable = _route is not None and getattr(resp, "status_code", 200) == 200
             async for line in resp.aiter_lines():
                 if _first_by is not None and not _out and time.monotonic() > _first_by:
-                    raise LLMError(f"cloud model sent no reply within {timeout:.0f}s")
+                    raise LLMError("cloud model sent no reply in time")
                 if not line or not line.startswith("data: "):
                     continue
                 data = line[6:]
