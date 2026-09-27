@@ -1148,6 +1148,53 @@ def _check_dashboard_start_safety(host: str, dashboard_token: str,
     )
 
 
+# Set by the __main__ block below. None means the process was started some
+# other way — normally the uvicorn CLI (`uvicorn codec_dashboard:app ...`),
+# which is how PM2 runs the dashboard.
+_MAIN_BIND_HOST = None
+
+
+def _resolve_bind_host() -> str:
+    """The host this process is about to bind.
+
+    Under the uvicorn CLI the host comes from `--host` / `UVICORN_HOST`, not
+    from DASHBOARD_HOST, and uvicorn's own default is 127.0.0.1.
+    """
+    if _MAIN_BIND_HOST is not None:
+        return _MAIN_BIND_HOST
+    import sys
+    argv = sys.argv
+    for i, arg in enumerate(argv):
+        if arg == "--host" and i + 1 < len(argv):
+            return argv[i + 1]
+        if arg.startswith("--host="):
+            return arg.split("=", 1)[1]
+    return os.environ.get("UVICORN_HOST") or "127.0.0.1"
+
+
+def _enforce_dashboard_start_safety() -> None:
+    """Startup hook: run the D-7 check however the app was launched.
+
+    The __main__ block only covers `python codec_dashboard.py`;
+    `uvicorn codec_dashboard:app --host 0.0.0.0` skipped it. Raising here
+    fails the ASGI lifespan startup, so uvicorn exits before it binds.
+    """
+    host = _resolve_bind_host()
+    ok, msg = _check_dashboard_start_safety(host, "", AUTH_ENABLED)
+    if not ok:
+        # Public bind without Touch ID/PIN: only a dashboard token can still
+        # allow it. Looked up here so loopback starts never touch Keychain.
+        from codec_config import get_dashboard_token
+        ok, msg = _check_dashboard_start_safety(host, get_dashboard_token(), AUTH_ENABLED)
+    if not ok:
+        log.critical(msg)
+        raise RuntimeError(msg)
+
+
+# Registered first so the check runs before any background service starts.
+app.router.on_startup.insert(0, _enforce_dashboard_start_safety)
+
+
 if __name__ == "__main__":
     from codec_logging import setup_logging
     from codec_config import DASHBOARD_HOST, DASHBOARD_TOKEN
@@ -1159,6 +1206,7 @@ if __name__ == "__main__":
         import sys
         log.critical(msg)
         sys.exit(2)
+    _MAIN_BIND_HOST = DASHBOARD_HOST
     log.info("Dashboard binding host=%s port=8090 (D-7 safe).", DASHBOARD_HOST)
     uvicorn.run(app, host=DASHBOARD_HOST, port=8090,
                 h11_max_incomplete_event_size=50 * 1024 * 1024)  # 50MB for large doc uploads
