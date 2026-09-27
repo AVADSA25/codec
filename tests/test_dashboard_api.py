@@ -54,12 +54,15 @@ class TestPublicEndpoints:
         r = client.get("/")
         assert r.status_code == 200
 
-    def test_docs_accessible(self, client):
-        r = client.get("/docs")
+    def test_docs_accessible(self, client, auth_headers):
+        # Not public since 2026-09-27 (see tests/test_auth_hardening.py).
+        _skip_if_no_auth(auth_headers)
+        r = client.get("/docs", headers=auth_headers)
         assert r.status_code == 200
 
-    def test_openapi_json(self, client):
-        r = client.get("/openapi.json")
+    def test_openapi_json(self, client, auth_headers):
+        _skip_if_no_auth(auth_headers)
+        r = client.get("/openapi.json", headers=auth_headers)
         assert r.status_code == 200
         data = r.json()
         assert "paths" in data

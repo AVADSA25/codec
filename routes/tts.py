@@ -103,7 +103,8 @@ async def tts(text: str = ""):
         tts_url = config.get("tts_url", "http://localhost:8085/v1/audio/speech")
         tts_model = config.get("tts_model", "mlx-community/Kokoro-82M-bf16")
         tts_voice = config.get("tts_voice", "am_adam")
-        r = rq.post(tts_url, json={"model": tts_model, "input": text[:500], "voice": tts_voice, "speed": 1.1}, timeout=30)
+        r = rq.post(tts_url, json={"model": tts_model, "input": text[:500], "voice": tts_voice,
+                                     "speed": float(config.get("tts_speed", 1.1))}, timeout=30)
         if r.status_code == 200:
             audio_path = os.path.expanduser("~/.codec/pwa_audio.mp3")
             with open(audio_path, "wb") as f:

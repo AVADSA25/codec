@@ -1127,7 +1127,7 @@ async function deleteSession(evt, sid){
   }catch(e){console.error('deleteSession failed',e)}
 }
 
-function escHtml(s){var d=document.createElement('div');d.textContent=s||'';return d.innerHTML}
+function escHtml(s){var d=document.createElement('div');d.textContent=s||'';return d.innerHTML.replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
 function formatMsg(c){
   var f=escHtml(c);
   f=f.replace(/```(\w*)\n([\s\S]*?)```/g,'<div class="code-wrap"><button class="code-copy" onclick="copyCodeBlock(this)" title="Copy code"><svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button><pre><code>$2</code></pre></div>');
