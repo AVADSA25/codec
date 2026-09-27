@@ -1717,7 +1717,14 @@ class VoicePipeline:
                 await asyncio.to_thread(_probe, self._llm_model, 300.0, self._llm_base)
             except Exception:
                 log.debug("voice: model pre-warm failed", exc_info=True)
-        if not self._llm_cloud:
+        # Nor while a Create-image job runs: the warm-up could load a 35B
+        # model next to it and overflow memory (codec_image.busy_message).
+        try:
+            import codec_image
+            _image_busy = codec_image.busy_message()
+        except Exception:
+            _image_busy = None
+        if not self._llm_cloud and not _image_busy:
             asyncio.create_task(_warm_voice_model())
         try:
             _voice_log_event("voice_session_start", "codec-voice",
