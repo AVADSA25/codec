@@ -305,7 +305,7 @@ Three smart agents ship built-in: Daily Briefing, Restaurant Decider (location-a
 | Right-click AI services | 8 system-wide services | No | No |
 | Writes its own plugins | Yes, via review-and-approve flow | No | No |
 | Hands-free live typing at cursor | Dictate F5 | No | No |
-| Process watchdog | Auto-kills stuck processes | No | No |
+| Process watchdog | Flags stuck CODEC processes (kills them if you opt in) | No | No |
 | Full audit trail | 16 event categories | No | No |
 | iMessage + Telegram | Daily Briefing, smart agents, voice notes | No | No |
 | Open source | MIT | No | No |
@@ -640,8 +640,8 @@ python3 -c "from codec_config import *; print('Config OK')"
 <details>
 <summary><strong>Stuck processes eating RAM</strong></summary>
 
-- CODEC includes a watchdog (`codec-watchdog` in PM2) that monitors all Python, Terminal, and iTerm processes.
-- It only kills processes using >500MB RAM with <0.5% CPU for 10+ consecutive minutes (truly stuck/zombie).
+- CODEC includes a watchdog (`codec-watchdog` in PM2) that monitors CODEC's own processes only (`codec_*.py` scripts, scripts in the CODEC repo, CODEC's MLX servers). Your other Python, Terminal and iTerm processes are never touched.
+- It flags processes using >500MB RAM with <0.5% CPU for 10+ consecutive minutes (truly stuck/zombie). By default it only reports them (dashboard notification + audit log); it kills them only when `"watchdog": {"enforce": true}` is set in `~/.codec/config.json`.
 - Active processes are never killed — a model using 8GB at 80% CPU is safe.
 - Check status: `pm2 logs codec-watchdog --lines 20 --nostream`
 - If the watchdog itself is not running: `pm2 restart codec-watchdog`

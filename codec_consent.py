@@ -9,6 +9,9 @@ classifier + per-transport policy:
 
   - MCP  → hard-refuse destructive skills (claude.ai can't consent at the
            operator tier; consistent with the _HTTP_BLOCKED principle).
+           Over HTTP only, the side-effect skills in
+           codec_config._HTTP_CONSENT_REQUIRED additionally wait for the owner
+           to approve each call in the PWA (mcp_http_consent_ok).
   - chat → require explicit confirmation (the handler returns consent_required;
            the user confirms; re-dispatch carries a token).
   - voice/agent → existing ask_user announce-and-listen (unchanged).
@@ -23,7 +26,12 @@ Kill switch: `CONSENT_GATE_ENABLED=false`.
 import os
 
 __all__ = ["gate_enabled", "is_destructive_skill", "chat_consent_ok",
-           "mcp_refuse_message", "mcp_allowed"]
+           "mcp_refuse_message", "mcp_allowed", "mcp_http_consent_required",
+           "mcp_http_consent_ok", "mcp_http_consent_refuse_message"]
+
+# How long a remote MCP call waits for the owner's PWA approval before it is
+# refused. Short on purpose: the claude.ai request is held open while we wait.
+MCP_HTTP_CONSENT_TIMEOUT_SEC = int(os.environ.get("CODEC_MCP_CONSENT_TIMEOUT", "120"))
 
 # Known high-power built-ins that are destructive but NOT in _HTTP_BLOCKED.
 # (terminal / python_exec / process_manager / pm2_control / ax_control are
@@ -126,4 +134,53 @@ def mcp_refuse_message(tool_name) -> str:
         f"Skill '{tool_name}' is a destructive/high-power operation and is not "
         "permitted over MCP. Run it locally (chat or voice), where the operator "
         "can confirm it."
+    )
+
+
+def mcp_http_consent_required(tool_name) -> bool:
+    """Does this skill need the owner's per-call approval over HTTP MCP?
+    Fail-closed: if the list can't be read, every call needs approval."""
+    try:
+        from codec_config import _HTTP_CONSENT_REQUIRED
+    except Exception:
+        return True
+    return tool_name in _HTTP_CONSENT_REQUIRED
+
+
+def mcp_http_consent_ok(tool_name, task="") -> bool:
+    """HTTP MCP (remote claude.ai caller): ask the owner to approve this call.
+
+    Uses the Step 3 AskUserQuestion strict-consent path: the question shows in
+    the PWA (notifications.json, type="question") with an "Allow <tool>" button
+    and a "Decline" button. ask() polls pending_questions.json, so an answer the
+    dashboard writes reaches this (codec-mcp-http) process. Only the Allow
+    button (or a reply that is exactly "allow") approves; decline, timeout
+    (MCP_HTTP_CONSENT_TIMEOUT_SEC), ask_user disabled, or any error → False.
+    Blocks the calling worker thread (FastMCP runs sync tools in a threadpool).
+    """
+    allow = f"Allow {tool_name}"
+    try:
+        import codec_ask_user
+        answer = codec_ask_user.ask(
+            f"claude.ai (remote MCP) wants to run the '{tool_name}' skill on "
+            f"this Mac for: {(task or '')[:200]}",
+            options=[allow, "Decline"],
+            timeout=MCP_HTTP_CONSENT_TIMEOUT_SEC,
+            destructive=True,
+            destructive_verb="allow",
+            asked_from="mcp",
+            tool_name=tool_name,
+        )
+    except Exception:
+        return False
+    # ask()'s strict mode accepts any reply containing the verb ("don't allow"
+    # included), so approve only on the exact button label or the bare verb.
+    return isinstance(answer, str) and answer.strip().lower() in (allow.lower(), "allow")
+
+
+def mcp_http_consent_refuse_message(tool_name) -> str:
+    return (
+        f"Skill '{tool_name}' was not run: over remote MCP it needs the owner's "
+        "approval in the CODEC dashboard for each call, and none was given "
+        f"(declined or no answer within {MCP_HTTP_CONSENT_TIMEOUT_SEC}s)."
     )

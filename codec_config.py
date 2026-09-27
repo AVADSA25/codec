@@ -420,15 +420,41 @@ _STDIO_BLOCKED = ["terminal", "process_manager", "pm2_control"]
 _HTTP_BLOCKED = ["python_exec", "terminal", "process_manager", "pm2_control",
                   "ax_control"]
 
-if _TRANSPORT == "http":
-    # HTTP/remote always uses the strict set — user config cannot soften it.
-    # Merges user-configured entries on top (additive only).
-    _user = cfg.get("mcp_blocked_tools", [])
-    MCP_BLOCKED_TOOLS = sorted(set(_HTTP_BLOCKED) | set(_user))
-else:
+# 2026-09 MCP blast-radius audit: side-effect skills a remote (claude.ai) caller
+# must never reach. Deliberately NOT part of _HTTP_BLOCKED: membership there also
+# marks a skill destructive on EVERY path (codec_consent.is_destructive_skill,
+# codec_ask_user strict-consent, codec_agent_runner), which would refuse these
+# over stdio MCP too and change local chat. Blocked over HTTP only; stdio and
+# local chat/voice are unchanged. User config cannot remove them (additive only).
+#   standing_rules — saved text is appended to every local chat system prompt
+#                    (persistent prompt injection from a remote caller)
+#   create_skill   — writes new skill code to disk
+_HTTP_ONLY_BLOCKED = ["standing_rules", "create_skill"]
+
+# Side-effect skills that stay reachable over HTTP MCP, but each call waits for
+# the owner to approve it in the PWA (codec_consent.mcp_http_consent_ok →
+# codec_ask_user strict consent). Stdio and local paths are unchanged.
+#   delegate (posts to the n8n webhook), scheduler (creates recurring jobs),
+#   chrome_fill / chrome_click_cdp / mouse_control (act in the live desktop
+#   session), clipboard / screenshot_text (read what is on this Mac)
+_HTTP_CONSENT_REQUIRED = ["delegate", "scheduler", "chrome_fill",
+                          "chrome_click_cdp", "mouse_control", "clipboard",
+                          "screenshot_text"]
+
+
+def _mcp_blocked_tools(transport: str, config: dict) -> list:
+    """The MCP blocklist for a transport (pure — unit-testable without reload)."""
+    if transport == "http":
+        # HTTP/remote always uses the strict set — user config cannot soften it.
+        # Merges user-configured entries on top (additive only).
+        _user = config.get("mcp_blocked_tools", [])
+        return sorted(set(_HTTP_BLOCKED) | set(_HTTP_ONLY_BLOCKED) | set(_user))
     # Stdio trusts the client's approval dialog. User config wins; default lighter.
-    MCP_BLOCKED_TOOLS = cfg.get("mcp_blocked_tools_stdio",
-                                  cfg.get("mcp_blocked_tools", _STDIO_BLOCKED))
+    return config.get("mcp_blocked_tools_stdio",
+                      config.get("mcp_blocked_tools", _STDIO_BLOCKED))
+
+
+MCP_BLOCKED_TOOLS = _mcp_blocked_tools(_TRANSPORT, cfg)
 
 # Safety
 DANGEROUS_PATTERNS = [
