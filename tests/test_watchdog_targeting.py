@@ -193,6 +193,13 @@ def test_active_process_resets_strikes(harness):
     assert harness.kills == []
 
 
+def test_logged_command_line_is_redacted_and_truncated():
+    key = "sk-" + "a" * 40
+    out = wd._short(f"python3 codec_session.py --api-key {key} " + "x" * 400)
+    assert key not in out
+    assert len(out) <= wd.CMD_LOG_MAX
+
+
 def test_audit_is_log_event_not_http_post():
     """/api/audit is GET-only: the old POST dropped every kill record."""
     src = (REPO / "codec_watchdog.py").read_text()

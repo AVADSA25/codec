@@ -84,8 +84,14 @@ idle_tracker = {}
 
 
 def _short(cmd):
-    """Command line truncated for logs / audit."""
+    """Command line for logs / audit / notifications: secrets redacted (same
+    patterns as the audit log), then truncated."""
     cmd = " ".join((cmd or "").split())
+    try:
+        from codec_audit import _redact_string
+        cmd = _redact_string(cmd)
+    except Exception:
+        pass
     return cmd if len(cmd) <= CMD_LOG_MAX else cmd[:CMD_LOG_MAX - 1] + "…"
 
 
