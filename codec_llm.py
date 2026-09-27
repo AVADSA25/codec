@@ -182,6 +182,117 @@ def _cloud_route(base_url: str, model: str):
         return None
 
 
+class _CloudReply:
+    """The parts of a `requests` / `httpx` response that call() and acall() read."""
+
+    def __init__(self, status_code: int, text: str):
+        self.status_code, self.text = status_code, text
+
+    def json(self) -> Any:
+        import json as _json
+        return _json.loads(self.text)
+
+
+class _StreamedReply:
+    """Rebuilds one chat.completion from a streamed reply."""
+
+    def __init__(self, timeout: float):
+        self.timeout = timeout
+        self.deadline = time.monotonic() + timeout
+        self.content: List[str] = []
+        self.reasoning: List[str] = []
+        self.usage: Optional[Dict[str, Any]] = None
+        self.done = False
+
+    def feed(self, line: Any) -> None:
+        """Take one SSE line. Raises TimeoutError past the deadline."""
+        import json as _json
+        if time.monotonic() > self.deadline:
+            raise TimeoutError(f"no complete reply within {self.timeout:.0f}s")
+        if isinstance(line, (bytes, bytearray)):
+            line = line.decode("utf-8", "replace")
+        if not line or not line.startswith("data: "):
+            return
+        data = line[6:]
+        if data.strip() == "[DONE]":
+            self.done = True
+            return
+        try:
+            obj = _json.loads(data)
+        except ValueError:
+            return
+        if not isinstance(obj, dict):
+            return
+        if obj.get("usage"):
+            self.usage = obj["usage"]
+        for ch in obj.get("choices") or []:
+            d = (ch or {}).get("delta") or {}
+            if d.get("content"):
+                self.content.append(d["content"])
+            r = d.get("reasoning_content") or d.get("reasoning")
+            if r:
+                self.reasoning.append(r)
+
+    def reply(self) -> _CloudReply:
+        import json as _json
+        msg: Dict[str, Any] = {"role": "assistant", "content": "".join(self.content)}
+        if self.reasoning:
+            msg["reasoning"] = "".join(self.reasoning)
+        body: Dict[str, Any] = {"choices": [{"message": msg}]}
+        if self.usage:
+            body["usage"] = self.usage
+        return _CloudReply(200, _json.dumps(body))
+
+
+def _streamed(payload: Dict[str, Any]) -> Dict[str, Any]:
+    return dict(payload, stream=True, stream_options={"include_usage": True})
+
+
+def _cloud_post(requests: Any, url: str, payload: Dict[str, Any],
+                headers: Dict[str, str], timeout: float) -> _CloudReply:
+    """One reply from a cloud model, asked for as a stream, with a wall-clock
+    deadline of `timeout` seconds.
+
+    Measured on MiMo (2026-09-27): streamed requests answered in 1-3 s every
+    time, while non-streamed ones took 1.7 s to over 45 s, once 489 s. While a
+    non-streamed request waits, MiMo sends keep-alive newlines, so the per-read
+    timeout never fires. A stream, rebuilt into the single reply the caller
+    expects, avoids both."""
+    acc = _StreamedReply(timeout)
+    with requests.post(url, json=_streamed(payload), headers=headers,
+                       timeout=timeout, stream=True) as r:
+        if r.status_code != 200:
+            return _CloudReply(r.status_code, getattr(r, "text", "") or "")
+        for line in r.iter_lines():
+            acc.feed(line)
+            if acc.done:
+                break
+    return acc.reply()
+
+
+async def _cloud_apost(client: Any, url: str, payload: Dict[str, Any],
+                       headers: Dict[str, str], timeout: float) -> _CloudReply:
+    """Async twin of _cloud_post for acall()."""
+    import asyncio
+
+    async def _run() -> _CloudReply:
+        acc = _StreamedReply(timeout)
+        async with client.stream("POST", url, json=_streamed(payload),
+                                 headers=headers) as r:
+            if getattr(r, "status_code", 200) != 200:
+                return _CloudReply(r.status_code, "")
+            async for line in r.aiter_lines():
+                acc.feed(line)
+                if acc.done:
+                    break
+        return acc.reply()
+
+    try:
+        return await asyncio.wait_for(_run(), timeout)
+    except asyncio.TimeoutError:
+        raise TimeoutError(f"no complete reply within {timeout:.0f}s") from None
+
+
 def _preflight(base_url: str, model: str):
     """(block message or None, cloud route or None): the licence gate, then the
     cloud-model check (key, spend cap)."""
@@ -243,7 +354,10 @@ def call(
     last_error: Optional[Exception] = None
     for attempt in range(attempts):
         try:
-            r = requests.post(url, json=payload, headers=headers, timeout=timeout)
+            if _route is None:
+                r = requests.post(url, json=payload, headers=headers, timeout=timeout)
+            else:
+                r = _cloud_post(requests, url, payload, headers, timeout)
             if r.status_code == 200:
                 _body = r.json()
                 resp = extract_content(_body)
@@ -334,6 +448,7 @@ def stream(
     # estimate if the stream ended without one.
     _billable = _charged = False
     _out: List[str] = []
+    _first_by = time.monotonic() + timeout if _route is not None else None
     try:
         with requests.post(url, json=payload, headers=headers,
                            timeout=timeout, stream=True) as r:
@@ -346,6 +461,13 @@ def stream(
             _billable = _route is not None
             reasoning_open = False  # inline_reasoning: are we inside a synth <think>?
             for line in r.iter_lines():
+                if _first_by is not None and not _out and time.monotonic() > _first_by:
+                    # Keep-alive newlines (see _cloud_post) would otherwise
+                    # hold a reply that never starts open for minutes.
+                    log.warning("cloud stream %s sent no content within %.0fs", url, timeout)
+                    if error_sentinel:
+                        yield STREAM_ERROR
+                    return
                 if not line:
                     continue
                 if isinstance(line, (bytes, bytearray)):
@@ -467,7 +589,10 @@ async def acall(
     client = http or httpx.AsyncClient(timeout=timeout)
     try:
         try:
-            r = await client.post(url, json=payload, headers=headers)
+            if _route is None:
+                r = await client.post(url, json=payload, headers=headers)
+            else:  # streamed, with a wall-clock deadline (see _cloud_post)
+                r = await _cloud_apost(client, url, payload, headers, timeout)
             if r.status_code == 200:
                 _body = r.json()
                 resp = extract_content(_body)
@@ -541,10 +666,13 @@ async def astream(
     # Cloud metering, as in stream(): once per reply, usage chunk or estimate.
     _billable = _charged = False
     _out: List[str] = []
+    _first_by = time.monotonic() + timeout if _route is not None else None
     try:
         async with client.stream("POST", url, json=payload, headers=headers) as resp:
             _billable = _route is not None and getattr(resp, "status_code", 200) == 200
             async for line in resp.aiter_lines():
+                if _first_by is not None and not _out and time.monotonic() > _first_by:
+                    raise LLMError(f"cloud model sent no reply within {timeout:.0f}s")
                 if not line or not line.startswith("data: "):
                     continue
                 data = line[6:]

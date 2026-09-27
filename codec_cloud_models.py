@@ -40,6 +40,7 @@ import fcntl
 import json
 import logging
 import os
+import re
 import threading
 import time
 import urllib.parse
@@ -376,7 +377,17 @@ def route(base_url: str, model: str,
     return Route(e, block_message(e))
 
 
-def probe(entry: Dict[str, Any], timeout: float = 60.0) -> Tuple[bool, str]:
+# Failures that waiting cannot fix: the call was refused before it was sent
+# (cap, key, price), or the provider rejected the request itself (4xx but 429).
+_DEFINITIVE = re.compile(r"monthly spend cap reached|no API key|no price set|(?:returned|HTTP) 4(?!29)\d\d")
+
+
+def is_transient_failure(detail: str) -> bool:
+    """True when a failed call may succeed later: slow, overloaded, unreachable."""
+    return not _DEFINITIVE.search(detail or "")
+
+
+def probe(entry: Dict[str, Any], timeout: float = 30.0) -> Tuple[bool, str]:
     """One tiny real request, so a switch is kept only when the model answers."""
     import codec_llm
     t0 = time.time()

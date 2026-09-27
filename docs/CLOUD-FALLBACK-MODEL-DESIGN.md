@@ -62,8 +62,11 @@ cloud model do not work as a quick switch:
      `llm_local_restore`.
    - It writes the entry's `base_url`, id and `kwargs`.
    - It does not restart PM2.
-   - It sends a 1-token check request with the key. If the check fails, it
-     reverts.
+   - It sends a 1-token check request with the key (30 s deadline). If the
+     check fails, it reverts, with one exception: when the check only timed out
+     or could not connect, and the local server is not running, it keeps the
+     cloud model, because a slow model is better than none. A missing key, a
+     reached cap or a rejected request (4xx other than 429) always revert.
 
    Switching back to a local model restores the stored values, then runs the
    existing stop, start and check sequence. `llm_provider_mode` and
@@ -77,7 +80,15 @@ cloud model do not work as a quick switch:
    - It sets the entry's key and model id. This fixes callers that pass a local
      model id, such as voice.
    - It merges the entry's `kwargs` and removes `chat_template_kwargs`.
-   - It asks streamed replies to include token usage.
+   - It always asks the cloud model for a stream, including for callers that
+     want one reply (`call`, `acall`), and rebuilds that reply from the
+     stream. Streamed replies include token usage.
+   - It stops the call at a wall-clock deadline: the caller's `timeout` for a
+     whole reply, or for the first words of a streamed reply (voice uses 60
+     s). Measured on 2026-09-27, MiMo sends keep-alive newlines while a
+     request waits in its queue, so an ordinary read timeout never fires. One
+     2-token request took 489 s. Streamed requests were faster and more
+     regular than non-streamed ones, but some still stalled for over 90 s.
    - It refuses the call when this month's spend has reached the cap. The
      refusal is a plain message, like the licence gate: "MiMo monthly cap ($10)
      reached. Switch back to a local model or raise the cap."

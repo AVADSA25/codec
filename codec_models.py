@@ -318,7 +318,7 @@ def probe(model_id: str, timeout: float = 240.0,
     cfg = _load_config()
     entry = codec_cloud_models.entry_for_id(model_id, cfg)
     if entry is not None:
-        return codec_cloud_models.probe(entry, timeout=min(timeout, 60.0))
+        return codec_cloud_models.probe(entry, timeout=min(timeout, 30.0))
     url = (base_url or _base_url(cfg)) + "/chat/completions"
     body = json.dumps({
         "model": model_id,
@@ -483,6 +483,15 @@ def _leave_cloud(model_id: str) -> Dict[str, Any]:
     return restore
 
 
+def _local_server_up(base_url: str) -> bool:
+    """Is the local model server answering connections? A non-local previous
+    provider (AVA, custom) cannot be checked cheaply and counts as up."""
+    if not codec_cloud_models.is_local_url(base_url):
+        return True
+    parsed = urllib.parse.urlparse(base_url)
+    return _is_listening(parsed.hostname or "localhost", parsed.port or 8083)
+
+
 def _switch_to_cloud(entry: Dict[str, Any], previous: str,
                      verify: bool) -> Dict[str, Any]:
     """Switch to a cloud model, keeping it only if it answers.
@@ -510,6 +519,18 @@ def _switch_to_cloud(entry: Dict[str, Any], previous: str,
         return {"ok": True, "active": entry["id"], "previous": previous,
                 "changed": True, "cloud": True, "detail": detail}
 
+    label = entry.get("label") or entry["id"]
+    # A slow cloud model beats no model. When the local server is not running
+    # (the reason to switch), keep the cloud model after a failure that waiting
+    # can fix. A missing key, a reached cap or a rejected request still revert.
+    if (current is None and codec_cloud_models.is_transient_failure(detail)
+            and not _local_server_up(restore.get("llm_base_url") or DEFAULT_BASE_URL)):
+        _emit_audit(previous, entry["id"], True, f"kept while slow: {detail}")
+        return {"ok": True, "active": entry["id"], "previous": previous,
+                "changed": True, "cloud": True, "slow": True,
+                "detail": (f"{label} is slow to answer right now ({detail}); kept it "
+                           f"because the local model is not running")}
+
     # No answer (no key, cap reached, provider down): put config back exactly
     # as it was. Nothing to reload, because nothing was unloaded.
     if current is None:
@@ -517,7 +538,6 @@ def _switch_to_cloud(entry: Dict[str, Any], previous: str,
     else:
         _enter_cloud(current, restore)
     _emit_audit(previous, entry["id"], False, detail)
-    label = entry.get("label") or entry["id"]
     return {"ok": False, "active": previous, "attempted": entry["id"],
             "changed": False, "reverted": True,
             "error": f"{label} did not answer ({detail}) — kept {_friendly(previous)}"}
