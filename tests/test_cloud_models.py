@@ -307,11 +307,25 @@ def test_a_stalled_cloud_call_stops_at_its_deadline(env, monkeypatch):
         return [t async for t in codec_llm.astream(MSGS, base_url=CLOUD_URL, model="x",
                                                    http=_Client(), timeout=0.2)]
 
-    with pytest.raises(codec_llm.LLMError, match="within"):
+    with pytest.raises(codec_llm.LLMError, match="in time"):
         asyncio.run(run())
     assert asyncio.run(codec_llm.acall(MSGS, base_url=CLOUD_URL, model="x",
                                        http=_Client(), timeout=0.2)) == ""
     assert time.monotonic() - t0 < 2.0, "each call must stop near its 0.2 s deadline"
+
+
+def test_a_reply_that_never_starts_stops_at_the_first_reply_limit(env, monkeypatch):
+    """A 300 s chat budget must not mean 300 s of silence from a stalled cloud model."""
+    import requests
+    monkeypatch.setattr(codec_cloud_models, "FIRST_REPLY_S", 0.2)
+    monkeypatch.setattr(requests, "post", lambda *a, **k: _Stalling())
+    t0 = time.monotonic()
+    with pytest.raises(codec_llm.LLMError, match="no reply started"):
+        codec_llm.call(MSGS, base_url=CLOUD_URL, model="x", timeout=300, raise_on_error=True)
+    out = list(codec_llm.stream(MSGS, base_url=CLOUD_URL, model="x", timeout=300,
+                                error_sentinel=True))
+    assert out == [codec_llm.STREAM_ERROR]
+    assert time.monotonic() - t0 < 1.5
 
 
 @pytest.mark.parametrize("problem, expect", [
