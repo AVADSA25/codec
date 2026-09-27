@@ -167,9 +167,12 @@ if command -v node >/dev/null 2>&1; then
     # Baking that into a buyer's LaunchAgents makes all 15 services fail to start
     # (the directory doesn't exist on their Mac). Drop the repo-root cwd so the
     # generator substitutes the bundle's own Resources/app via --workdir.
+    # Dev-only services never ship to a buyer: codec-watchdog is a developer
+    # RAM guard for the PM2 fleet (a buyer Mac has no PM2 to exempt its PIDs).
     node -e '
       const [eco, repo] = process.argv.slice(1);
-      const apps = require(eco).apps.map(a => {
+      const DEV_ONLY = new Set(["codec-watchdog"]);
+      const apps = require(eco).apps.filter(a => !DEV_ONLY.has(a.name)).map(a => {
         if (a.cwd === repo) delete a.cwd;   // -> --workdir applies
         return a;
       });

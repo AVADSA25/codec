@@ -22,6 +22,8 @@ from __future__ import annotations
 import importlib.util
 import json
 import plistlib
+import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -195,6 +197,22 @@ def test_build_app_strips_the_developers_repo_path():
     assert "delete a.cwd" in src, "the repo-root cwd must be dropped so --workdir applies"
     assert 'grep -q "$REPO"' in src and "FATAL: services.json still contains" in src, \
         "the build must FAIL if a build-machine path survives into services.json"
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="needs node to dump ecosystem.config.js")
+def test_build_app_services_json_excludes_the_dev_only_watchdog():
+    """Runs build_app.sh's own node dump against the real ecosystem. The
+    watchdog kills idle processes and exempts PM2 PIDs; a buyer's Mac has no
+    PM2, so it must never ship there."""
+    m = re.search(r"node -e '(.*?)' \"\$REPO/ecosystem\.config\.js\"", BUILD.read_text(), re.S)
+    assert m, "build_app.sh must dump services.json with an inline node program"
+    eco = REPO / "ecosystem.config.js"
+    r = subprocess.run(["node", "-e", m.group(1), str(eco), str(REPO)],
+                       capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr
+    names = [a["name"] for a in json.loads(r.stdout)]
+    assert "codec-watchdog" not in names
+    assert "codec-dashboard" in names  # positive control: the rest still ships
 
 
 def test_generator_substitutes_workdir_when_cwd_is_the_repo_root():
