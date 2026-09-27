@@ -8,7 +8,31 @@
  *   pm2 restart ecosystem.config.js        # Restart all
  *
  * Requires: Python 3.10+, mlx-lm, whisper, kokoro installed
+ *
+ * Every local service binds 127.0.0.1. Remote access goes through the
+ * Cloudflare tunnel (which connects to loopback), never a LAN bind.
+ *
+ * Crash-loop caps (applied to every app by withCrashCaps below). PM2 counts a
+ * crash toward max_restarts only if the process died less than min_uptime
+ * after starting (default 1s), and only within min_uptime x max_restarts of
+ * the last start / `pm2 restart`. With the 1s default, nothing that took more
+ * than a second to crash was ever counted — qwen3.6 crash-looped 37 times.
+ * min_uptime "60s" counts any death inside the first minute and widens that
+ * window (5 x 60s for qwen3.6), so a service that comes up broken after a
+ * start, deploy or model switch stops as "errored" instead of looping.
+ * A loop that begins long after the last start is still not capped by PM2;
+ * exp_backoff_restart_delay slows it down (x1.5 per crash, max 15s, reset
+ * after 30s up). The backoff starts at each app's restart_delay, so no app
+ * restarts sooner than it did before.
  */
+function withCrashCaps(app) {
+  return {
+    min_uptime: "60s",
+    exp_backoff_restart_delay: app.restart_delay || 2000,
+    ...app,
+  };
+}
+
 module.exports = {
   apps: [
     // ── Core CODEC (voice + text agent) ──
@@ -27,7 +51,7 @@ module.exports = {
     {
       name: "codec-dashboard",
       script: "python3",
-      args: "-m uvicorn codec_dashboard:app --host 0.0.0.0 --port 8090",
+      args: "-m uvicorn codec_dashboard:app --host 127.0.0.1 --port 8090",
       cwd: __dirname,
       max_memory_restart: "256M",
       restart_delay: 2000,
@@ -120,7 +144,7 @@ module.exports = {
     {
       name: "kokoro-82m",
       script: "python3",
-      args: "-m mlx_audio.server --host 0.0.0.0 --port 8085",
+      args: "-m mlx_audio.server --host 127.0.0.1 --port 8085",
       cwd: __dirname,
       max_memory_restart: "512M",
       restart_delay: 5000,
@@ -217,5 +241,5 @@ module.exports = {
         PYTHONUNBUFFERED: "1",
       },
     },
-  ],
+  ].map(withCrashCaps),
 };

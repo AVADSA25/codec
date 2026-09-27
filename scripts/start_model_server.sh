@@ -22,7 +22,10 @@ CONFIG="${CODEC_CONFIG:-$HOME/.codec/config.json}"
 VENV="${CODEC_MODEL_VENV:-$HOME/codec-qwen38-venv}"
 DEFAULT_MODEL="mlx-community/Qwen3.6-35B-A3B-4bit"
 DEFAULT_PORT=8083
-HOST="${CODEC_MODEL_HOST:-0.0.0.0}"
+# Loopback by default: the model server has no auth. Every CODEC client calls
+# it on 127.0.0.1/localhost. Set CODEC_MODEL_HOST only if a trusted LAN client
+# must reach it.
+HOST="${CODEC_MODEL_HOST:-127.0.0.1}"
 
 # Model and port both come from config.json so there is ONE source of truth.
 # Any failure here (missing file, bad JSON, no key) falls through to the
