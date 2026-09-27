@@ -52,10 +52,16 @@ def _make_pipeline():
     ws.send_bytes = AsyncMock()
     ws.send_json = AsyncMock()
 
+    import codec_voice
+    # Pin the local model: the owner's ~/.codec/config.json may have chat on a
+    # cloud model, which voice would otherwise follow (_resolve_voice_llm).
+    local = (codec_voice.QWEN_BASE_URL if "localhost" in codec_voice.QWEN_BASE_URL
+             else "http://localhost:8083/v1", codec_voice.VOICE_LLM_MODEL, False)
     with patch("codec_voice.VoicePipeline._load_skills"):
         with patch("codec_voice._build_system_prompt", return_value="You are a test assistant."):
-            from codec_voice import VoicePipeline
-            pipeline = VoicePipeline(ws)
+            with patch("codec_voice._resolve_voice_llm", return_value=local):
+                from codec_voice import VoicePipeline
+                pipeline = VoicePipeline(ws)
 
     pipeline.skills = {}
     pipeline._skill_registry = MagicMock()
