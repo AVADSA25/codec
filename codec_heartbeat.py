@@ -272,6 +272,99 @@ def check_pm2_restart_storms(procs=None) -> list:
     return storms
 
 
+# CODEC's own PM2 apps: every "codec-*" name plus these.
+_CODEC_PM2_APPS = ("open-codec", "whisper-stt", "kokoro-82m")
+_AUTO_PULL_LOG = os.path.expanduser("~/.codec/logs/auto_pull.log")
+DAILY_STATUS_AT = (7, 30)  # local time; the first heartbeat after it sends
+
+
+def _is_codec_app(name: str) -> bool:
+    return name.startswith("codec-") or name in _CODEC_PM2_APPS
+
+
+def check_errored_codec_apps(procs=None) -> list:
+    """Alert when a CODEC PM2 app is `errored`: its crash loop hit the PM2 cap
+    (min_uptime + max_restarts) and PM2 gave up restarting it. One message per
+    app, repeated at most every 6 h, and one when it runs again."""
+    from codec_alerts import alert_once, alert_resolved
+    if procs is None:
+        procs = _pm2_jlist()
+    errored = []
+    for p in procs or []:
+        name = p.get("name", "")
+        if not _is_codec_app(name):
+            continue
+        status = (p.get("pm2_env") or {}).get("status")
+        key = f"pm2_errored:{name}"
+        if status == "errored":
+            errored.append(name)
+            alert_once(key, "critical",
+                       f"CODEC ALERT: {name} crashed repeatedly and PM2 gave up restarting it. "
+                       f"It needs a look (pm2 logs {name}).")
+        elif status == "online":
+            alert_resolved(key, f"CODEC RECOVERED: {name} is running again.")
+    return errored
+
+
+def _last_auto_pull() -> str:
+    """'06:00 up_to_date' from the last line of auto_pull.log, or why not."""
+    try:
+        with open(_AUTO_PULL_LOG) as f:
+            last = f.read().strip().splitlines()[-1]
+    except Exception:
+        return "no run logged"
+    stamp, _, rest = last.partition(" ")
+    outcome = rest.split("outcome=", 1)[1].split()[0] if "outcome=" in rest else "unknown"
+    when = stamp[11:16] if len(stamp) >= 16 else stamp
+    if not stamp.startswith(datetime.now().date().isoformat()):
+        when = stamp[:10] + " " + when
+    return f"{when} {outcome}"
+
+
+def daily_status_text(procs=None) -> str:
+    """One plain line: apps online, last auto-pull, free disk, open problems."""
+    import shutil
+    from codec_alerts import open_problems
+    if procs is None:
+        procs = _pm2_jlist()
+    apps = [p for p in procs or [] if _is_codec_app(p.get("name", ""))]
+    online = sum(1 for p in apps if (p.get("pm2_env") or {}).get("status") == "online")
+    free_gb = shutil.disk_usage("/").free / (1024 ** 3)
+    labels = []
+    for key in open_problems():
+        kind, _, what = key.partition(":")
+        labels.append(f"{what} errored" if kind == "pm2_errored" else
+                      f"{what} down" if kind == "down" else key.replace("_", " "))
+    return (f"CODEC daily, {datetime.now().strftime('%d %b')}: {online}/{len(apps)} apps online, "
+            f"auto-pull {_last_auto_pull()}, {free_gb:.0f} GB free, "
+            + (f"open problems: {', '.join(labels)}." if labels else "no open problems."))
+
+
+def maybe_send_daily_status(now=None, procs=None) -> bool:
+    """Send the daily status once per day, from the first heartbeat after
+    07:30. It is also CODEC's proof of life: if it does not arrive, the Mac or
+    the heartbeat is down."""
+    import codec_alerts
+    import codec_jsonstore
+    now = now or datetime.now()
+    if (now.hour, now.minute) < DAILY_STATUS_AT:
+        return False
+    today = now.date().isoformat()
+    decided = {"send": False}
+
+    def _mutate(state):
+        state = state if isinstance(state, dict) else {}
+        if state.get("daily_status") != today:
+            state["daily_status"] = today
+            decided["send"] = True
+        return state
+
+    codec_jsonstore.read_modify_write(codec_alerts.ALERTS_SENT_PATH, _mutate)
+    if decided["send"]:
+        codec_alerts.send_alert("info", daily_status_text(procs))
+    return decided["send"]
+
+
 def extract_task_from_message(content: str) -> str:
     """Extract actionable task from assistant's confirmation message."""
     import re
@@ -545,7 +638,13 @@ def heartbeat():
     global _last_cleanup
     log.info("═══ CODEC Heartbeat ═══")
     check_system_health()
-    check_pm2_restart_storms()
+    procs = _pm2_jlist()  # one `pm2 jlist` for the three PM2 checks
+    check_pm2_restart_storms(procs)
+    for check in (lambda: check_errored_codec_apps(procs), lambda: maybe_send_daily_status(procs=procs)):
+        try:
+            check()
+        except Exception as e:
+            log.warning(f"Owner alert check failed: {e}")
     # Run alert-based service monitoring (Telegram/Email/Slack)
     try:
         from codec_alerts import check_services_and_alert

@@ -435,7 +435,7 @@ Three secrets live in macOS Keychain instead of `~/.codec/config.json` / `~/.cod
 - `codec_config.get_gemini_api_key()` / `get_pexels_api_key()` / `get_serper_api_key()` / `get_telegram_bot_token()` (PR-2B-2) — same 30s cache; precedence Keychain → cfg (migrate) → env-var fallback (`GEMINI_API_KEY` / `PEXELS_API_KEY` / `SERPER_API_KEY` / `TELEGRAM_BOT_TOKEN`)
 - `codec_keychain.get_oauth_state()` — no cache (called only at provider init)
 
-**D-15 fully closed by PR-2B-2.** All six audit-named plaintext secrets are now Keychain-backed. **Residuals:** `alerts.telegram.bot_token` (a SEPARATE nested key under `alerts`, not the audit-named `telegram.bot_token`) is still plaintext — a future cleanup, not in D-15 scope. `auth_pin_hash` argon2id refactor remains deferred per the original Out-of-scope decision.
+**D-15 fully closed by PR-2B-2.** All six audit-named plaintext secrets are now Keychain-backed. **Residuals:** `alerts.telegram.bot_token` (a SEPARATE nested key under `alerts`) is no longer needed since Sep 2026: `codec_alerts` reads the CODEC bot token from the Keychain and only needs `alerts.telegram.chat_id` (owner alerts, outbound only; see `docs/SECURITY-HARDENING-2026-09.md`). An old plaintext value is still honoured if present. `auth_pin_hash` argon2id refactor remains deferred per the original Out-of-scope decision.
 
 **Headless / CI fallback** (`codec_keychain.is_keychain_available() → False` on Linux): envelope-encrypted store at `~/.codec/secrets.enc.json` keyed by `~/.codec/secret.key` (0600, stdlib XOR keystream). **Fallback-grade, NOT Keychain-grade** — defends against casual file-read disclosure on a CI runner; does NOT defend against a determined attacker with shell access. Production threat model assumes real Keychain on macOS.
 

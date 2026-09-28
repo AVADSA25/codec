@@ -8,7 +8,8 @@
 #   - after a pull, import-smokes codec_dashboard + codec_mcp_http; if that
 #     fails, rolls back to the previous HEAD with `git reset --keep`
 #   - never restarts services (that is the owner's action); posts a CODEC
-#     notification saying what to restart, or why it failed
+#     notification saying what to restart, or why it failed; failures also
+#     reach the owner off the Mac through codec_alerts (at most every 6 h)
 #   - always appends one proof-of-execution line to ~/.codec/logs/auto_pull.log
 #
 # Crontab line (replaces the old reset --hard line):
@@ -194,6 +195,25 @@ codec_jsonstore.read_modify_write(os.environ["NOTIF_PATH"], add, default_factory
     else
         NOTIFY="failed"
     fi
+    if [ "$status" = "error" ]; then
+        remote_alert fail "CODEC $title: $body"
+    fi
+}
+
+# Owner alert off the Mac (codec_alerts: Telegram when configured, plus a
+# macOS banner): a failure at most once per 6 h, and one message when a later
+# run pulls or finds the checkout up to date again.
+remote_alert() {
+    local mode="$1" text="$2"
+    (cd "$REPO" 2>/dev/null && ALERT_MODE="$mode" ALERT_TEXT="$text" capped 30 "$PY" -c '
+import os
+import codec_alerts
+text = os.environ["ALERT_TEXT"][:500]
+if os.environ["ALERT_MODE"] == "fail":
+    codec_alerts.alert_once("auto_pull", "critical", text)
+else:
+    codec_alerts.alert_resolved("auto_pull", text)
+') >/dev/null 2>&1 || true
 }
 
 # One proof-of-execution line per run, whatever happened.
@@ -203,6 +223,9 @@ finish() {
     printf '%s outcome=%s old=%s new=%s commits=%s notify=%s detail="%s"\n' \
         "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$OUTCOME" "$OLD" "$NEW" "$COMMITS" "$NOTIFY" "$detail" \
         >> "$LOG" 2>/dev/null
+    case "$OUTCOME" in
+        pulled|up_to_date) remote_alert ok "CODEC auto-pull works again ($OUTCOME)." ;;
+    esac
     [ "$HAVE_LOCK" -eq 1 ] && rm -rf "$LOCK"
 }
 
