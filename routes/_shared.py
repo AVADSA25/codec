@@ -5,6 +5,7 @@ Both codec_dashboard.py and routes/*.py import from here.
 """
 import os
 import json
+import ipaddress
 import threading
 import logging
 import uuid
@@ -301,11 +302,9 @@ def _is_totp_enabled():
 
 def _session_token_valid(token) -> bool:
     """Core session validity: the token exists, is unexpired, and is
-    TOTP-verified when TOTP is enabled. Shared by the cookie path
-    (_verify_biometric_session) AND the ?s= query-param fallback in
-    AuthMiddleware — re-audit N5: the ?s= path previously checked only
-    existence + age, skipping the TOTP-verified gate, so a pre-TOTP token could
-    bypass 2FA via ?s=<token> on any GET /api endpoint."""
+    TOTP-verified when TOTP is enabled. Re-audit N5: the old ?s= query-param
+    fallback skipped the TOTP check; that fallback is gone (audit 2026-09-27),
+    and the session cookie is the only way in."""
     if not token:
         return False
     with _auth_lock:
@@ -326,6 +325,18 @@ def _verify_biometric_session(request):
     if not AUTH_ENABLED or not _auth_available():
         return True
     return _session_token_valid(request.cookies.get(AUTH_COOKIE_NAME))
+
+
+def _is_remote_request(request) -> bool:
+    """True when a request did not come directly from this Mac: it came through
+    a proxy/tunnel (forwarding headers) or from a non-loopback address."""
+    if request.headers.get("cf-connecting-ip") or request.headers.get("x-forwarded-for"):
+        return True
+    host = request.client.host if request.client else ""
+    try:
+        return not ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False  # not an IP (in-process test client, unix socket)
 
 
 # ── Database helpers ──

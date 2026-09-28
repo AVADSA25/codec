@@ -605,11 +605,8 @@ applyTextSize();
     // On mobile (Android Chrome), cookies may not persist — fallback to sessionStorage
     (function(){
     var _f=window.fetch;
-    function _getSession(){return document.cookie.match(/codec_session=([^;]+)/)?.[1]||_ssGet('codec_session')||''}
-    function _injectSession(url){var s=_getSession();if(!s)return url;var sep=url.indexOf('?')>=0?'&':'?';return url+sep+'s='+s}
     window.fetch=function(u,o){
       o=o||{};
-      if(typeof u==='string')u=_injectSession(u);
       if(o.method&&o.method!=='GET'){var c=document.cookie.match(/codec_csrf=([^;]+)/);if(c){o.headers=o.headers||{};if(o.headers instanceof Headers){o.headers.set('x-csrf-token',c[1])}else{o.headers['x-csrf-token']=c[1]}}}
       return _f.call(this,u,o)};
     })();
@@ -658,7 +655,7 @@ window.addEventListener('storage',function(e){if(e.key==='codec-theme')applyThem
       var btn = document.getElementById('photoBtn');
       btn.style.borderColor = 'var(--accent)';
       addTranscript('system', 'Capturing from Mac webcam...');
-      fetch('/api/webcam/snapshot?_t=' + Date.now() + _getAuthParam()).then(function(r) { return r.json(); }).then(function(d) {
+      fetch('/api/webcam/snapshot?_t=' + Date.now()).then(function(r) { return r.json(); }).then(function(d) {
         btn.style.borderColor = '';
         if (d.error) { addTranscript('system', 'Error: ' + d.error); return; }
         addTranscript('system', 'Photo saved: ' + d.filename);
@@ -676,15 +673,11 @@ window.addEventListener('storage',function(e){if(e.key==='codec-theme')applyThem
 
     // ── Live Webcam PIP (Mac MJPEG stream) ──
     var _pipDrag = { active: false, x: 0, y: 0 };
-    function _getAuthParam(first) {
-      var m = document.cookie.match(/codec_session=([^;]+)/);
-      return m ? (first ? '?s=' : '&s=') + m[1] : '';
-    }
     function toggleWebcamPip() {
       var pip = document.getElementById('webcamPip');
       if (pip.style.display === 'block') { closeWebcamPip(); return; }
       var img = document.getElementById('pipVideo');
-      img.src = '/api/webcam/stream?_t=' + Date.now() + _getAuthParam();
+      img.src = '/api/webcam/stream?_t=' + Date.now();
       pip.style.display = 'block';
       document.getElementById('camBtn').style.borderColor = 'var(--accent)';
     }
@@ -700,7 +693,7 @@ window.addEventListener('storage',function(e){if(e.key==='codec-theme')applyThem
     }
     function snapFromPip() {
       addTranscript('system', 'Snapshot from Mac webcam...');
-      fetch('/api/webcam/snapshot?_t=' + Date.now() + _getAuthParam()).then(function(r) { return r.json(); }).then(function(d) {
+      fetch('/api/webcam/snapshot?_t=' + Date.now()).then(function(r) { return r.json(); }).then(function(d) {
         if (d.error) { addTranscript('system', 'Error: ' + d.error); return; }
         addTranscript('system', 'Photo saved: ' + d.filename);
         fetch('/api/webcam', { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -711,7 +704,7 @@ window.addEventListener('storage',function(e){if(e.key==='codec-theme')applyThem
       }).catch(function(e) { addTranscript('system', 'Snap error: ' + e.message); });
     }
     function savePipFrame() {
-      fetch('/api/webcam/snapshot?_t=' + Date.now() + _getAuthParam()).then(function(r) { return r.json(); }).then(function(d) {
+      fetch('/api/webcam/snapshot?_t=' + Date.now()).then(function(r) { return r.json(); }).then(function(d) {
         if (d.filename) addTranscript('system', 'Saved: ' + d.filename);
         else addTranscript('system', 'Error saving');
       }).catch(function(e) { addTranscript('system', 'Save error: ' + e.message); });
