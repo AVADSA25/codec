@@ -157,9 +157,21 @@ html,body{font-family:var(--font-sans);background:var(--bg);color:var(--text);he
 .thinking-indicator .thinking-dots span:nth-child(3){animation-delay:.4s}
 @keyframes thinkPulse{0%,100%{opacity:.2;transform:scale(.8)}50%{opacity:1;transform:scale(1.1)}}
 
-/* ── Input Area ── */
-.input-area{position:static;flex-shrink:0;padding:8px 12px;border-top:1px solid var(--border);background:var(--surface);padding-bottom:calc(8px + env(safe-area-inset-bottom,0px))}
-.file-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px}
+/* ── Composer card (UI phase 1 PR-D) ──
+   One card in the reading column: queued messages, attachments and the working
+   folder above the textarea, then a toolbar row: + menu, mode pill and chips on
+   the left; model pill, mic and send (stop while a reply streams) on the right. */
+.input-area{position:relative;flex-shrink:0;padding:8px max(12px,calc((100% - 760px) / 2)) calc(10px + env(safe-area-inset-bottom,0px));background:var(--bg)}
+.composer{position:relative;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-24);box-shadow:var(--shadow-composer);padding:12px 12px 8px 16px;transition:border-color .15s,box-shadow .15s}
+.composer:focus-within{border-color:var(--border-strong)}
+.composer:has(.chat-input:focus-visible){box-shadow:var(--shadow-composer),var(--focus-ring)}
+.chat-input{display:block;width:100%;background:transparent;border:0;color:var(--text);padding:4px 0;font-size:max(16px,var(--fs-16));font-family:var(--font-sans);line-height:1.5;outline:none;resize:none;min-height:32px;max-height:40vh;overflow-y:auto}
+.chat-input:focus-visible{outline:none}
+.chat-input::placeholder{color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.file-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+.ibtn{background:none;border:0;border-radius:50%;color:var(--text-dim);cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.ibtn:hover{color:var(--text)}
+.file-chips:empty{display:none}
 .file-chip{display:flex;align-items:center;gap:5px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:4px 8px;font-size:var(--fs-13);font-family:var(--font-mono);color:var(--text-muted);max-width:200px}
 .file-chip .fc-icon{font-size:calc(14px * var(--fs-scale));flex-shrink:0}
 .file-chip .fc-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -167,45 +179,121 @@ html,body{font-family:var(--font-sans);background:var(--bg);color:var(--text);he
 .file-chip .fc-close:hover{color:var(--danger)}
 .file-chip.loading{opacity:.6}
 .file-chip.loading .fc-icon{animation:pulse 1s infinite}
-.input-row{display:flex;gap:6px;align-items:flex-end}
-.chat-input{flex:1;background:var(--surface-2);border:1px solid var(--border);color:var(--text);padding:9px 14px;border-radius:20px;font-size:max(16px,var(--fs-16));font-family:var(--font-sans);outline:none;resize:none;min-height:38px;max-height:120px;line-height:1.4}
-.chat-input:focus{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-dim)}
-.chat-input::placeholder{color:var(--text-dim)}
-.ibtn{background:none;border:1px solid var(--border);color:var(--text-muted);width:36px;height:36px;border-radius:50%;cursor:pointer;font-size:calc(16px * var(--fs-scale));flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .15s}
-.ibtn:active{opacity:.7;transform:scale(.92)}
-.ibtn:hover{border-color:var(--border-strong);color:var(--text)}
-.ibtn.send{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
-.ibtn.send:disabled{opacity:.4}
-.ibtn.stop{background:var(--danger);color:#fff;border-color:var(--danger);display:none}
-.ibtn.stop:hover{opacity:.85}
-.on-mac{display:none;font-size:calc(12px * var(--fs-scale));font-weight:600;white-space:nowrap}
-.ibtn.recording{background:var(--danger);color:#fff;border-color:var(--danger);animation:pulse 1s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
 .dragover .messages{border:2px dashed var(--accent)!important}
 #dropOverlay{position:fixed;inset:0;z-index:9999;display:none;align-items:center;justify-content:center;background:rgba(217,119,87,0.10);backdrop-filter:blur(2px)}
 #dropOverlay.show{display:flex}
 #dropOverlay .drop-inner{display:flex;flex-direction:column;align-items:center;gap:14px;color:var(--accent);font-size:calc(16px * var(--fs-scale));font-weight:600;padding:40px 60px;border:2px dashed var(--accent);border-radius:18px;background:var(--surface);box-shadow:0 10px 40px rgba(0,0,0,.25);pointer-events:none}
-.empty-state{text-align:center;padding:50px 20px}
-.empty-state img{width:140px;opacity:.25;margin-bottom:20px;filter:drop-shadow(0 0 30px rgba(217,119,87,0.4))}
-.empty-state p{color:var(--text-muted);font-size:calc(16px * var(--fs-scale));line-height:1.6}
+.composer-bar{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:40px;margin-top:4px}
+.cb-left,.cb-right{display:flex;align-items:center;gap:6px;min-width:0}
+.cb-left{flex:1;flex-wrap:wrap}
+.cb-right{flex-shrink:0}
+.cb-btn,.cb-send{width:36px;height:36px;border-radius:50%;border:0;cursor:pointer;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;transition:background .12s,color .12s}
+.cb-btn{background:transparent;color:var(--text-muted)}
+.cb-btn:hover,.cb-btn[aria-expanded="true"]{background:var(--surface-2);color:var(--text)}
+.cb-btn .ico{width:20px;height:20px;stroke-width:1.75}
+.cb-btn.recording{background:var(--danger);color:#fff;animation:pulse 1s infinite}
+.cb-send{background:var(--accent);color:var(--on-accent)}
+.cb-send:hover{background:var(--accent-hover)}
+.cb-send.empty{background:var(--surface-3);color:var(--text-dim)}
+.cb-send .ico{width:18px;height:18px}
+.cb-send.stop{display:none;background:var(--text);color:var(--bg)}
+.cb-btn:active,.cb-send:active{transform:scale(.94)}
+.mode-pill,.cb-chip{height:32px;display:inline-flex;align-items:center;gap:6px;border-radius:var(--radius-pill);font-family:var(--font-sans);font-weight:500;white-space:nowrap;cursor:pointer;max-width:100%}
+.mode-pill{padding:0 10px 0 9px;border:0;background:var(--surface-2);color:var(--text);font-size:var(--fs-14)}
+.mode-pill:hover,.mode-pill[aria-expanded="true"]{background:var(--surface-3)}
+.mode-pill .mp-ico{display:inline-flex}
+.mode-pill .ico{width:16px;height:16px;stroke-width:1.75}
+.mode-pill .chev{width:14px;height:14px;color:var(--text-dim)}
+.cb-chip{padding:0 10px;border:1px solid var(--border);background:transparent;color:var(--text-muted);font-size:var(--fs-13)}
+.cb-chip:hover{border-color:var(--border-strong);color:var(--text)}
+.cb-chip .ico{width:14px;height:14px;stroke-width:1.75}
+.cb-chip .cc-label{overflow:hidden;text-overflow:ellipsis}
+.cb-chip.static{padding-right:4px;cursor:default}
+.cb-chip .x{width:24px;height:24px;border-radius:50%;border:0;background:none;color:inherit;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.cb-chip .x:hover{background:var(--surface-2);color:var(--text)}
+/* Model pill: sans, never mono (design brief). Accent while a non-everyday model is active. */
+#modelSelect{height:32px;background:var(--surface-2);border:0;color:var(--text-muted);font-family:var(--font-sans);font-size:var(--fs-13);font-weight:500;border-radius:var(--radius-pill);padding:0 12px;outline:none;cursor:pointer;max-width:200px;transition:color .15s,box-shadow .15s}
+#modelSelect:hover{color:var(--text)}
+#modelSelect.alt{color:var(--accent);box-shadow:inset 0 0 0 1px rgba(217,119,87,.45)}
+#modelSelect:disabled{opacity:.5;cursor:progress}
+/* Menus: one popover component, above the composer. */
+.pop-menu{position:absolute;bottom:calc(100% + 8px);left:8px;z-index:60;min-width:240px;max-width:min(340px,calc(100vw - 24px));background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-12);box-shadow:var(--shadow-popover);padding:6px;display:none}
+.pop-menu.open{display:block}
+.pop-item{width:100%;display:flex;align-items:center;gap:10px;min-height:36px;padding:6px 10px;border:0;border-radius:var(--radius-8);background:none;color:var(--text);font-family:var(--font-sans);font-size:var(--fs-14);line-height:1.3;text-align:left;cursor:pointer}
+.pop-item:hover,.pop-item:focus-visible{background:var(--surface-2)}
+.pop-item .ico{width:18px;height:18px;stroke-width:1.75;color:var(--text-muted)}
+.pop-item .pi-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.pop-item .pi-desc{font-size:var(--fs-12);color:var(--text-muted)}
+.pop-item .pi-tag{font-size:var(--fs-12);color:var(--text-dim)}
+.pop-item .pi-check{width:16px;height:16px;color:var(--accent);visibility:hidden}
+.pop-item[aria-checked="true"] .pi-check{visibility:visible}
+.pop-sep{height:1px;background:var(--border);margin:4px 6px}
+.touch-only{display:none}
+@media (hover:none) and (pointer:coarse){.touch-only{display:flex}}
+/* Messages sent while a reply streams wait here and send when it ends. */
+.queue-chips{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
+.queue-chips:empty{display:none}
+.queue-chip{display:flex;align-items:center;gap:8px;padding:4px 4px 4px 12px;border-radius:var(--radius-12);background:var(--surface-2);font-size:var(--fs-14);color:var(--text)}
+.queue-chip .qc-label{flex-shrink:0;font-size:var(--fs-12);font-weight:600;color:var(--text-muted)}
+.queue-chip .qc-text{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.queue-chip button{width:28px;height:28px;flex-shrink:0;border-radius:var(--radius-8);border:0;background:none;color:var(--text-muted);cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.queue-chip button:hover{background:var(--surface-3);color:var(--text)}
+.queue-chip .ico{width:16px;height:16px;stroke-width:1.75}
+.jump-latest{position:absolute;left:50%;bottom:calc(100% + 4px);transform:translateX(-50%);z-index:50;display:none;align-items:center;gap:6px;height:32px;padding:0 14px 0 10px;border-radius:var(--radius-pill);border:1px solid var(--border);background:var(--surface);color:var(--text);font-family:var(--font-sans);font-size:var(--fs-13);font-weight:500;box-shadow:var(--shadow-popover);cursor:pointer;white-space:nowrap}
+.jump-latest.show{display:inline-flex}
+.jump-latest .ico{width:16px;height:16px;stroke-width:1.75}
+/* Agents sheet: centred card on desktop, bottom sheet on the phone. */
+.sheet-overlay{position:fixed;inset:0;z-index:10005;display:none;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,.5)}
+.sheet-overlay.open{display:flex}
+.sheet{width:min(600px,100%);max-height:min(84vh,760px);overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-20);box-shadow:var(--shadow-popover);padding:16px 18px}
+.sheet-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.sheet-head h2{font-family:var(--font-sans);font-size:var(--fs-16);font-weight:600;color:var(--text)}
+.sheet-x{width:32px;height:32px;border-radius:50%;border:0;background:none;color:var(--text-muted);cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.sheet-x:hover{background:var(--surface-2);color:var(--text)}
+.sheet-x .ico{width:18px;height:18px;stroke-width:1.75}
+.sheet-sub{margin:4px 0 12px;font-size:var(--fs-13);color:var(--text-muted)}
+.crew-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:6px}
+.crew-item{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius-12);background:transparent;color:var(--text);font-family:var(--font-sans);text-align:left;cursor:pointer;min-width:0}
+.crew-item:hover{border-color:var(--border-strong);background:var(--surface-2)}
+.crew-item.active{border-color:var(--accent);background:var(--accent-dim)}
+.crew-item .ci-title{font-size:var(--fs-14);font-weight:500}
+.crew-item .ci-desc{font-size:var(--fs-12);color:var(--text-muted)}
+.crew-item .ci-desc:empty{display:none}
+.sheet-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px}
+.sheet-label{font-size:var(--fs-13);color:var(--text-muted)}
+#researchModelSelect{height:32px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);font-family:var(--font-sans);font-size:var(--fs-13);border-radius:var(--radius-8);padding:0 10px;cursor:pointer}
+.sheet-foot{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+.sheet-btn{height:36px;display:inline-flex;align-items:center;gap:6px;padding:0 16px;border-radius:var(--radius-pill);border:1px solid var(--border);background:transparent;color:var(--text);font-family:var(--font-sans);font-size:var(--fs-14);font-weight:500;cursor:pointer}
+.sheet-btn:hover{background:var(--surface-2)}
+.sheet-btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.sheet-btn.primary:hover{background:var(--accent-hover)}
+.sheet-btn .ico{width:16px;height:16px;stroke-width:1.75}
+/* New chat: greeting, starter cards, recent chats. On desktop the composer sits
+   under them, centred in the window, and docks at the bottom after the first message. */
+.empty-state{padding:32px 0 16px}
+.greet-title{font-family:var(--font-sans);font-size:var(--fs-30);line-height:var(--lh-30);font-weight:400;color:var(--text)}
+.greet-sub{margin-top:6px;font-size:var(--fs-16);line-height:var(--lh-16);color:var(--text-muted)}
+.starters{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:24px}
+.starter{display:flex;align-items:flex-start;gap:10px;min-width:0;padding:12px 14px;border:1px solid var(--border);border-radius:var(--radius-12);background:var(--surface);color:var(--text);font-family:var(--font-sans);text-align:left;cursor:pointer;transition:border-color .12s,background .12s}
+.starter:hover{border-color:var(--border-strong);background:var(--surface-2)}
+.starter .ico{width:18px;height:18px;stroke-width:1.75;color:var(--accent);margin-top:1px}
+.starter .st-text{min-width:0;display:flex;flex-direction:column;gap:2px}
+.starter .st-title{font-size:var(--fs-14);font-weight:500;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.starter .st-desc{font-size:var(--fs-12);color:var(--text-muted)}
+.recent{margin-top:20px}
+.recent-h{margin:0 0 4px 10px;font-size:var(--fs-12);font-weight:600;color:var(--text-dim)}
+.recent-item{display:flex;justify-content:space-between;align-items:baseline;gap:12px;width:100%;padding:8px 10px;border:0;border-radius:var(--radius-8);background:none;color:var(--text-muted);font-family:var(--font-sans);font-size:var(--fs-14);text-align:left;cursor:pointer}
+.recent-item:hover{background:var(--surface-2);color:var(--text)}
+.recent-item .ri-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.recent-item .ri-time{flex-shrink:0;font-size:var(--fs-12);color:var(--text-dim)}
+.app.is-empty .messages{flex:0 1 auto;margin-top:auto}
+.app.is-empty .input-area{margin-bottom:auto}
 pre{background:var(--surface-3);padding:10px;border-radius:8px;overflow-x:auto;font-family:var(--font-mono);font-size:var(--fs-code);margin:8px 0}
 pre code{font-size:1em}
 code{font-family:var(--font-mono);font-size:var(--fs-code-inline);background:var(--surface-3);padding:2px 6px;border-radius:4px}
 input[type=file]{display:none}
 
-/* ── Mode Toggle ── */
-.mode-toggle{display:flex;gap:2px;padding:2px;background:var(--surface-2);border-radius:var(--radius-sm)}
-/* Model picker — reads as instrumentation next to the mode bar, not a form
-   control. Accent border while a non-default model is active so the state is
-   visible without opening it. */
-#modelSelect{background:var(--surface-2);border:1px solid var(--border);color:var(--text-muted);font-family:var(--font-mono);font-size:var(--fs-13);border-radius:var(--radius-sm);padding:5px 9px;outline:none;cursor:pointer;max-width:230px;transition:border-color .15s,color .15s}
-#modelSelect:hover{border-color:var(--border-strong);color:var(--text)}
-#modelSelect:focus{border-color:var(--accent)}
-#modelSelect.alt{border-color:rgba(217,119,87,.45);color:var(--accent)}
-#modelSelect:disabled{opacity:.5;cursor:progress}
-.mode-btn{padding:4px 8px;border:none;border-radius:4px;cursor:pointer;font-size:var(--fs-13);background:transparent;color:var(--text-dim);font-family:var(--font-sans);font-weight:500;transition:all .15s;display:flex;align-items:center;gap:4px;white-space:nowrap}
-.mode-btn:hover{color:var(--text-muted)}
-.mode-btn.active{background:var(--surface);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.2)}
 .discuss-report-btn{margin-top:2px;padding:9px 16px;border:1px solid var(--accent);border-radius:8px;cursor:pointer;font-size:calc(13px * var(--fs-scale));font-family:var(--font-sans);font-weight:600;background:var(--accent);color:var(--on-accent);transition:all .15s;display:inline-flex;align-items:center;gap:6px}
 .discuss-report-btn:hover:not(:disabled){background:var(--accent-hover);border-color:var(--accent-hover)}
 .discuss-report-btn:disabled{cursor:default;opacity:.7;background:transparent;color:var(--accent)}
@@ -226,7 +314,7 @@ input[type=file]{display:none}
 .status-stop:hover{border-color:#e55;color:#e55}
 
 /* ── Agent Builder ── */
-#agentBuilder{display:none;flex-shrink:0;background:var(--surface);border-bottom:1px solid var(--border);padding:12px 14px;gap:10px;flex-direction:column}
+#agentBuilder{display:none;margin-top:12px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-12);padding:12px 14px;gap:10px;flex-direction:column}
 #agentBuilder.show{display:flex}
 .ab-row{display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap}
 .ab-field{display:flex;flex-direction:column;gap:3px;flex:1;min-width:140px}
@@ -245,11 +333,8 @@ input[type=file]{display:none}
 .ab-load-wrap{display:flex;align-items:center;gap:6px}
 .ab-select{background:var(--surface-2);border:1px solid var(--border);border-radius:5px;padding:4px 8px;color:var(--text-muted);font-size:var(--fs-14);font-family:var(--font-sans);cursor:pointer}
 
-/* ── Sub Tabs ── */
-.sub-tabs{padding:6px 14px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0;display:flex;align-items:center;gap:8px}
-
 /* ── Crew Select ── */
-#crewSelect{display:none;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:5px;padding:3px 6px;font-size:var(--fs-14);cursor:pointer;font-family:var(--font-sans)}
+#crewSelect{display:none}
 
 /* ── Toast ── */
 .toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:7px 14px;font-size:var(--fs-14);color:var(--text);opacity:0;transition:all .2s;z-index:200;pointer-events:none;box-shadow:0 4px 20px rgba(0,0,0,.4)}
@@ -266,7 +351,6 @@ input[type=file]{display:none}
 [data-theme=light] .icon-btn{border-color:#bbb;color:#444}
 [data-theme=light] .icon-btn:hover{border-color:#999;color:#1a1a1a;background:#e8e4de}
 [data-theme=light] .nav-link.active{color:var(--accent);background:var(--accent-dim)}
-[data-theme=light] .mode-btn.active{box-shadow:0 1px 3px rgba(0,0,0,.08)}
 
 /* ── Mobile Responsive ── */
 @media (max-width: 768px), (max-height: 600px) and (pointer: coarse){
@@ -278,18 +362,14 @@ input[type=file]{display:none}
   .model-tag{display:none}
   .msg{max-width:90%}
   
-  .mode-toggle{flex-wrap:wrap}
-  #crewSelect{width:100%}
   #agentBuilder .ab-row{flex-direction:column}
   #agentBuilder .ab-field{min-width:100%;max-width:100%!important}
   .msg-meta{opacity:.7}
-  .ibtn{width:36px;height:36px}
 }
 @media (max-width:480px){
   .header{padding:8px 10px}
   .header-left{gap:6px}
   .messages{padding:10px 16px}
-  .input-area{padding:6px 8px}
   .sidebar{width:260px}
 }
 .notif-bell{position:relative;font-weight:400}.notif-badge{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;background:var(--accent);color:var(--on-accent);font-size:var(--fs-11);font-weight:700;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 4px;line-height:1;pointer-events:none}.notif-badge.hidden{display:none}
@@ -326,9 +406,17 @@ input[type=file]{display:none}
   .modal-overlay{z-index:10002}
   .modal-close{z-index:10003}
   .toast{z-index:10004;bottom:calc(var(--nav-h,56px) + var(--input-h,64px) + 12px)}
-  /* The folder picker opens on the Mac, not on this phone */
-  #folderBtn{width:auto;padding:0 9px;border-radius:18px;gap:4px}
-  #folderBtn .on-mac{display:inline}
+  /* Phone: the composer is full width minus 12px gutters and stays docked; the
+     model pill lives in the header; the Agents sheet is a bottom sheet. */
+  .input-area{padding:6px 12px 8px;background:var(--bg)}
+  .app.is-empty .messages{flex:1;margin-top:0}
+  .app.is-empty .input-area{margin-bottom:0}
+  #hdrModelSlot #modelSelect{max-width:136px;height:30px;padding:0 10px}
+  .starters{grid-template-columns:1fr}
+  .empty-state{padding-top:16px}
+  .greet-title{font-size:var(--fs-24);line-height:var(--lh-24)}
+  .sheet-overlay{align-items:flex-end;padding:0}
+  .sheet{width:100%;max-height:88vh;border-radius:var(--radius-20) var(--radius-20) 0 0;padding-bottom:calc(16px + env(safe-area-inset-bottom,0px))}
 }
 </style>
 </head>
@@ -351,6 +439,7 @@ input[type=file]{display:none}
 
 <div class="header">
 <div class="header-left">
+<button class="icon-btn sidebar-toggle" onclick="openSidebar()" title="Chat history" aria-label="Chat history"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
 <a href="/" class="logo-link"><img src="/static/logo.svg" alt="CODEC"></a>
 <h1><a href="/" style="color:inherit;text-decoration:none">CODEC</a></h1>
 <div class="status-dot" id="statusDot" title="CODEC status"></div>
@@ -363,6 +452,7 @@ input[type=file]{display:none}
 <a href="/tasks" class="nav-link">Tasks</a>
 </nav>
 <div class="header-right">
+<span id="hdrModelSlot"></span>
 <button class="menu-btn" onclick="openSidePanel()" title="Home" id="menuBtn"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span class="menu-notif-dot" id="menuNotifDot"></span></button>
 </div>
 </div>
@@ -387,27 +477,66 @@ input[type=file]{display:none}
 </div>
 </div>
 
-<div class="sub-tabs">
-<button class="icon-btn sidebar-toggle" onclick="openSidebar()" title="Chat history" style="flex-shrink:0">
-  <svg class="ico" viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-</button>
-<div id="modeToggle" class="mode-toggle">
-<button class="mode-btn active" onclick="setMode('chat')" id="modeChatBtn"><svg class="ico" viewBox="0 0 24 24" style="width:14px;height:14px"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>Chat</button>
-<button class="mode-btn active" id="thinkToggle" onclick="toggleThinking()" title="Deep thinking ON — better answers, slower (~15s)">
-  <svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>Think
-</button>
-<button class="mode-btn" onclick="setMode('research')" id="modeResearchBtn"><svg class="ico" viewBox="0 0 24 24" style="width:14px;height:14px"><rect x="4" y="4" width="16" height="16" rx="2"/><circle cx="9" cy="10" r="1.5" fill="currentColor" stroke="none"/><circle cx="15" cy="10" r="1.5" fill="currentColor" stroke="none"/><path d="M9 15h6"/></svg>Agents</button>
-<button class="mode-btn" onclick="setMode('project')" id="modeProjectBtn" title="Drop a project — autonomous plan-and-build mode"><svg class="ico" viewBox="0 0 24 24" style="width:14px;height:14px"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="5"/><line x1="12" y1="2" x2="12" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg>Project</button>
-<button class="mode-btn" onclick="setMode('image')" id="modeImageBtn" title="Create an image on this Mac (Qwen-Image 2.1)" style="display:none"><svg class="ico" viewBox="0 0 24 24" style="width:14px;height:14px"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>Image</button>
-<select id="modelSelect" onchange="switchModel()" title="Local model — switching unloads the current one and loads the new one" style="display:inline-block">
-<option value="">model…</option>
-</select>
+<div class="messages" id="messages"></div>
+
+<div class="input-area">
+<button type="button" class="jump-latest" id="jumpLatest" onclick="jumpToLatest()"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>Jump to latest</button>
+<div class="composer" id="composer">
+<div class="pop-menu" id="plusMenu" role="menu" aria-label="Add to your message">
+  <button type="button" class="pop-item" role="menuitem" onclick="closeMenus();document.getElementById('fileUp').click()"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg><span class="pi-text">Attach files</span></button>
+  <button type="button" class="pop-item touch-only" role="menuitem" onclick="closeMenus();document.getElementById('photoUp').click()"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg><span class="pi-text">Photo or camera</span></button>
+  <button type="button" class="pop-item" role="menuitem" onclick="closeMenus();takeScreenshot()"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg><span class="pi-text">Screenshot of Mac</span></button>
+  <button type="button" class="pop-item" role="menuitem" onclick="closeMenus();takeServerPhoto()"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg><span class="pi-text">Webcam snapshot</span></button>
+  <button type="button" class="pop-item" id="folderBtn" role="menuitem" onclick="closeMenus();pickWorkingFolder()" title="Give this chat a working folder on the Mac"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg><span class="pi-text">Working folder</span><span class="pi-tag">on Mac</span></button>
+  <div class="pop-sep" role="separator"></div>
+  <button type="button" class="pop-item" id="webSearchItem" role="menuitemcheckbox" aria-checked="false" onclick="toggleWebSearch()"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg><span class="pi-text">Search the web</span><svg class="ico pi-check" viewBox="0 0 24 24" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></button>
+</div>
+<div class="pop-menu" id="modeMenu" role="menu" aria-label="Mode">
+  <button type="button" class="pop-item" role="menuitemradio" aria-checked="false" data-mode="chat" id="modeChatBtn" onclick="chooseMode('chat')"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg><span class="pi-text">Chat<span class="pi-desc">Fast answers</span></span><svg class="ico pi-check" viewBox="0 0 24 24" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></button>
+  <button type="button" class="pop-item" role="menuitemradio" aria-checked="false" data-mode="think" id="modeThinkBtn" onclick="chooseMode('think')"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg><span class="pi-text">Think<span class="pi-desc">Reasons first: better answers, slower</span></span><svg class="ico pi-check" viewBox="0 0 24 24" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></button>
+  <button type="button" class="pop-item" role="menuitemradio" aria-checked="false" data-mode="research" id="modeResearchBtn" onclick="chooseMode('research')"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><circle cx="9" cy="10" r="1.5" fill="currentColor" stroke="none"/><circle cx="15" cy="10" r="1.5" fill="currentColor" stroke="none"/><path d="M9 15h6"/></svg><span class="pi-text">Agents<span class="pi-desc">Run a crew: research, briefing, trips and more</span></span><svg class="ico pi-check" viewBox="0 0 24 24" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></button>
+  <button type="button" class="pop-item" role="menuitemradio" aria-checked="false" data-mode="project" id="modeProjectBtn" onclick="chooseMode('project')"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="5"/><line x1="12" y1="2" x2="12" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg><span class="pi-text">Project<span class="pi-desc">Plan and build a bigger job in the background</span></span><svg class="ico pi-check" viewBox="0 0 24 24" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></button>
+  <button type="button" class="pop-item" role="menuitemradio" aria-checked="false" data-mode="image" id="modeImageBtn" onclick="chooseMode('image')" style="display:none"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg><span class="pi-text">Image<span class="pi-desc">Create an image on this Mac</span></span><svg class="ico pi-check" viewBox="0 0 24 24" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></button>
+</div>
+<div class="queue-chips" id="queueChips"></div>
+<div class="file-chips" id="fileChips"></div>
+<div id="workdirChip" style="display:none;align-items:center;gap:6px;margin:0 0 6px 2px;font-size:calc(12px * var(--fs-scale));color:var(--text-dim)">
+  <svg class="ico" viewBox="0 0 24 24" style="width:13px;height:13px"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+  <span id="workdirPath" style="max-width:60ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+  <button class="ibtn" onclick="clearWorkingFolder()" title="Remove working folder" style="width:16px;height:16px;padding:0">
+    <svg class="ico" viewBox="0 0 24 24" style="width:11px;height:11px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+  </button>
+</div>
+<textarea class="chat-input" id="chatInput" placeholder="Message CODEC" rows="1" aria-label="Message CODEC" onkeydown="handleKey(event)"></textarea>
+<div class="composer-bar">
+<div class="cb-left">
+<button type="button" class="cb-btn" id="plusBtn" onclick="toggleMenu('plusMenu',this)" title="Add files and more" aria-label="Add files and more" aria-haspopup="menu" aria-expanded="false"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+<button type="button" class="mode-pill" id="modePill" onclick="toggleMenu('modeMenu',this)" title="Mode" aria-haspopup="menu" aria-expanded="false"><span class="mp-ico"></span><span class="mp-label">Think</span><svg class="ico chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg></button>
+<button type="button" class="cb-chip" id="crewChip" onclick="openAgentSheet()" title="Choose the crew" style="display:none"><span class="cc-label">Deep Research</span><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg></button>
+<span class="cb-chip static" id="webChip" style="display:none"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>Web search<button type="button" class="x" onclick="toggleWebSearch()" title="Turn off web search" aria-label="Turn off web search"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></span>
 <span id="imageOpts"><select id="imageSize" title="Image size — the first image takes about 2 min at 512 px"><option value="512">512 px (~2 min)</option><option value="768">768 px</option><option value="1024">1024 px</option></select><label title="Transparent background"><input type="checkbox" id="imageTransparent">Transparent</label></span>
-<select id="researchModelSelect" title="Deep Research model — 35B (default) or 27B. Other models are not used for research." style="display:none">
-<option value="mlx-community/Qwen3.6-35B-A3B-4bit" selected>35B (default)</option>
-<option value="mlx-community/Qwen3.8-27B-4bit">27B</option>
-</select>
-<select id="crewSelect">
+</div>
+<div class="cb-right">
+<span id="cbModelSlot"><select id="modelSelect" onchange="switchModel()" title="Local model — switching unloads the current one and loads the new one" style="display:inline-block">
+<option value="">model…</option>
+</select></span>
+<button type="button" class="cb-btn" id="micBtn" onclick="toggleMic()" title="Voice input" aria-label="Voice input"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button>
+<button type="button" class="cb-send empty" id="sendBtn" onclick="sendMessage()" title="Send" aria-label="Send"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></button>
+<button type="button" class="cb-send stop" id="stopBtn" onclick="stopGeneration()" title="Stop generating" aria-label="Stop generating"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/></svg></button>
+</div>
+</div>
+</div>
+<input type="file" id="fileUp" accept="*/*" multiple onchange="handleUpload(event)">
+<input type="file" id="photoUp" accept="image/*" capture="environment" onchange="handleUpload(event)">
+</div>
+
+<!-- Agents: the crew picker and the custom-agent builder open in a sheet from the mode pill -->
+<div class="sheet-overlay" id="agentSheet" onclick="if(event.target===this)closeAgentSheet()">
+<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="agentSheetTitle">
+<div class="sheet-head"><h2 id="agentSheetTitle">Agents</h2><button type="button" class="sheet-x" onclick="closeAgentSheet()" aria-label="Close"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+<p class="sheet-sub">Pick a crew, then type its task in the message box and press Send.</p>
+<div class="crew-list" id="crewList"></div>
+<select id="crewSelect" hidden>
 <option value="deep_research">Deep Research</option>
 <option value="daily_briefing">Daily Briefing</option>
 <option value="trip_planner">Trip Planner</option>
@@ -422,12 +551,10 @@ input[type=file]{display:none}
 <option value="project_manager">Project Manager</option>
 <option value="custom">Custom Agent</option>
 </select>
-<button id="scheduleBtn" class="mode-btn" onclick="showSchedulePanel()" title="Schedule crew" style="display:none">
-  <svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-</button>
-</div>
-</div>
-
+<div class="sheet-row" id="researchModelRow" style="display:none"><span class="sheet-label">Research model</span><select id="researchModelSelect" title="Deep Research model — 35B (default) or 27B. Other models are not used for research.">
+<option value="mlx-community/Qwen3.6-35B-A3B-4bit" selected>35B (default)</option>
+<option value="mlx-community/Qwen3.8-27B-4bit">27B</option>
+</select></div>
 <!-- Custom Agent Builder -->
 <div id="agentBuilder">
   <div class="ab-row">
@@ -461,39 +588,11 @@ input[type=file]{display:none}
     <span style="font-size:calc(12px * var(--fs-scale));color:var(--text-dim)">Type your task below and press Send</span>
   </div>
 </div>
-
-<div class="messages" id="messages">
-<div class="empty-state" id="emptyState"><img src="/static/logo.svg"><p>Deep Chat — 250K context window<br>Drop files, images, or just talk.</p></div>
+<div class="sheet-foot">
+<button type="button" id="scheduleBtn" class="sheet-btn" onclick="showSchedulePanel()" title="Run this crew every day"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Schedule daily</button>
+<button type="button" class="sheet-btn primary" onclick="closeAgentSheet()">Done</button>
 </div>
-
-<div class="input-area">
-<div class="file-chips" id="fileChips"></div>
-<div id="workdirChip" style="display:none;align-items:center;gap:6px;margin:0 0 6px 2px;font-size:calc(12px * var(--fs-scale));color:var(--text-dim)">
-  <svg class="ico" viewBox="0 0 24 24" style="width:13px;height:13px"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
-  <span id="workdirPath" style="max-width:60ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
-  <button class="ibtn" onclick="clearWorkingFolder()" title="Remove working folder" style="width:16px;height:16px;padding:0">
-    <svg class="ico" viewBox="0 0 24 24" style="width:11px;height:11px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-  </button>
 </div>
-<div class="input-row">
-<button class="ibtn" id="micBtn" onclick="toggleMic()" title="Voice input">
-  <svg class="ico" viewBox="0 0 24 24"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
-</button>
-<textarea class="chat-input" id="chatInput" placeholder="Message CODEC..." rows="1" onkeydown="handleKey(event)"></textarea>
-<button class="ibtn" onclick="document.getElementById('fileUp').click()" title="Upload file">
-  <svg class="ico" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
-</button>
-<button class="ibtn" id="folderBtn" onclick="pickWorkingFolder()" title="Allocate a working folder to this chat">
-  <svg class="ico" viewBox="0 0 24 24"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg><span class="on-mac">on Mac</span>
-</button>
-<button class="ibtn send" id="sendBtn" onclick="sendMessage()">
-  <svg class="ico" viewBox="0 0 24 24" style="stroke:#fff"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
-</button>
-<button class="ibtn stop" id="stopBtn" onclick="stopGeneration()" title="Stop generating">
-  <svg class="ico" viewBox="0 0 24 24" style="stroke:#fff;fill:#fff"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
-</button>
-</div>
-<input type="file" id="fileUp" accept="*/*" multiple onchange="handleUpload(event)">
 </div>
 </div>
 
@@ -897,13 +996,13 @@ function setMode(mode){
   // Reference images belong to Image mode only; drop them when leaving it.
   if(mode!=='image')pendingFiles.filter(function(f){return f.type==='imgref'}).forEach(function(f){removeChip(f.id)});
   var cs=document.getElementById('crewSelect');
-  cs.style.display=mode==='research'?'inline-block':'none';
   var crew=mode==='research'?cs.value:'deep_research';
   // Deep Research restricts the model to 35B/27B: show the research picker and
   // hide the normal chat model picker so no other (voice/4B) model is selectable.
   var _rms=document.getElementById('researchModelSelect');
   var _showRms=(mode==='research'&&crew==='deep_research');
-  if(_rms)_rms.style.display=_showRms?'inline-block':'none';
+  var _rmr=document.getElementById('researchModelRow');
+  if(_rmr)_rmr.style.display=_showRms?'flex':'none';
   var _msel=document.getElementById('modelSelect');
   if(_msel)_msel.style.display=(_showRms||mode==='image')?'none':'inline-block';
   var hints={'deep_research':'Research topic... (3-6 min)','daily_briefing':'Press send for daily briefing','trip_planner':'Destination + dates...','competitor_analysis':'Market or product to analyze...','email_handler':'Press send to handle inbox','custom':'Describe your task for the custom agent...'};
@@ -918,7 +1017,7 @@ function setMode(mode){
   if(mode==='research')ph=hints[crew]||'Enter crew task...';
   else if(mode==='project')ph='Drop your project here — describe what you want CODEC to build...';
   else if(mode==='image')ph='Describe the image to create (attach up to '+_imgMaxRefs+' reference images)...';
-  else ph=hasAgentReport?'Ask follow-up about the report...':'Message CODEC...';
+  else ph=hasAgentReport?'Ask a follow-up about the report':'Message CODEC';
   document.getElementById('chatInput').placeholder=ph;
   document.getElementById('scheduleBtn').style.display=mode==='research'?'':'none';
   var builder=document.getElementById('agentBuilder');
@@ -953,6 +1052,7 @@ function setMode(mode){
   if(changed&&mode==='chat'&&hasAgentReport){
     try{showToast('Context preserved — ask follow-up questions about the report')}catch(e){}
   }
+  _syncModeUi();
 }
 
 function regenerateResponse(btn){
@@ -1012,13 +1112,200 @@ function regenerateResponse(btn){
 }
 document.getElementById('crewSelect').addEventListener('change',function(){setMode('research')});
 
-function toggleThinking(){
-  thinkingEnabled=!thinkingEnabled;
-  var btn=document.getElementById('thinkToggle');
-  btn.classList.toggle('active',thinkingEnabled);
-  btn.title=thinkingEnabled?'Deep thinking ON — better answers, slower (~15s)':'Quick mode — fast answers';
-  showToast(thinkingEnabled?'Thinking ON — deeper answers':'Thinking OFF — fast mode');
+function toggleThinking(){thinkingEnabled=!thinkingEnabled;_syncModeUi()}
+
+// ── Composer card (UI phase 1 PR-D) ────────────────────────────────────────
+// The mode pill shows Chat or Think (both /api/chat; Think adds the reasoning
+// scaffold), Agents, Project or Image. setMode() keeps doing the real work.
+function _modeKey(){return chatMode==='chat'?(thinkingEnabled?'think':'chat'):chatMode}
+function _syncModeUi(){
+  var k=_modeKey(),pill=document.getElementById('modePill');if(!pill)return;
+  document.querySelectorAll('#modeMenu .pop-item').forEach(function(b){b.setAttribute('aria-checked',String(b.dataset.mode===k))});
+  var item=document.querySelector('#modeMenu .pop-item[data-mode="'+k+'"]');
+  if(item){var lb=item.querySelector('.pi-text').firstChild.textContent;pill.querySelector('.mp-label').textContent=lb;pill.querySelector('.mp-ico').innerHTML=item.querySelector('svg').outerHTML;pill.setAttribute('aria-label','Mode: '+lb);pill.title='Mode: '+lb}
+  var chip=document.getElementById('crewChip'),cs=document.getElementById('crewSelect');
+  if(chip&&cs){chip.style.display=chatMode==='research'?'':'none';var o=cs.options[cs.selectedIndex];chip.querySelector('.cc-label').textContent=o?o.textContent:'Crew'}
 }
+function chooseMode(m){
+  closeMenus();
+  if(m==='chat'||m==='think'){thinkingEnabled=(m==='think');setMode('chat')}
+  else{setMode(m);if(m==='research')openAgentSheet()}
+  _syncModeUi();
+  if(!_isTouch())document.getElementById('chatInput').focus();
+}
+function _isTouch(){try{return matchMedia('(hover: none) and (pointer: coarse)').matches}catch(e){return false}}
+// One popover open at a time; a click outside or Esc closes it.
+function toggleMenu(id,btn){
+  var m=document.getElementById(id),open=!m.classList.contains('open');
+  closeMenus();
+  if(!open)return;
+  // The mode menu opens above its pill; the + menu at the card's left edge.
+  if(id==='modeMenu'&&btn)m.style.left=Math.max(8,btn.offsetLeft)+'px';
+  m.classList.add('open');if(btn)btn.setAttribute('aria-expanded','true');
+  var first=m.querySelector('.pop-item[aria-checked="true"]')||m.querySelector('.pop-item');
+  if(first&&!_isTouch())first.focus();
+}
+function closeMenus(){
+  document.querySelectorAll('.pop-menu.open').forEach(function(m){m.classList.remove('open')});
+  document.querySelectorAll('[aria-haspopup="menu"][aria-expanded="true"]').forEach(function(b){b.setAttribute('aria-expanded','false')});
+}
+document.addEventListener('click',function(e){if(!e.target.closest('.pop-menu,[aria-haspopup="menu"]'))closeMenus()});
+// Arrow keys move through an open menu.
+document.addEventListener('keydown',function(e){
+  var m=document.querySelector('.pop-menu.open');if(!m||(e.key!=='ArrowDown'&&e.key!=='ArrowUp'))return;
+  var items=[].slice.call(m.querySelectorAll('.pop-item')).filter(function(b){return b.offsetParent!==null});
+  var i=items.indexOf(document.activeElement);e.preventDefault();
+  i=e.key==='ArrowDown'?(i+1)%items.length:(i<=0?items.length-1:i-1);if(items[i])items[i].focus();
+});
+// "Search the web": the next replies send force_search, which the backend honours.
+function toggleWebSearch(){
+  webSearchEnabled=!webSearchEnabled;
+  document.getElementById('webSearchItem').setAttribute('aria-checked',String(webSearchEnabled));
+  document.getElementById('webChip').style.display=webSearchEnabled?'':'none';
+  closeMenus();
+}
+// Agents: pick a crew in a sheet; the hidden #crewSelect keeps the value.
+var _CREW_DESC={deep_research:'Web research and a written report, 3 to 6 min',daily_briefing:'Calendar, weather and news',trip_planner:'Destination research and an itinerary',competitor_analysis:'Competitors and a written analysis',email_handler:'Reads the inbox and drafts replies',custom:'Your own agent: role, tools and steps'};
+function _renderCrewList(){
+  var cs=document.getElementById('crewSelect'),list=document.getElementById('crewList');if(!cs||!list)return;
+  list.innerHTML='';
+  [].forEach.call(cs.options,function(o){
+    var b=document.createElement('button');b.type='button';
+    b.className='crew-item'+(o.value===cs.value?' active':'');b.setAttribute('aria-pressed',String(o.value===cs.value));
+    b.innerHTML='<span class="ci-title"></span><span class="ci-desc"></span>';
+    b.querySelector('.ci-title').textContent=o.textContent;b.querySelector('.ci-desc').textContent=_CREW_DESC[o.value]||'';
+    b.onclick=function(){cs.value=o.value;setMode('research');_renderCrewList()};
+    list.appendChild(b);
+  });
+}
+function openAgentSheet(){
+  if(chatMode!=='research')setMode('research');
+  _renderCrewList();closeMenus();
+  document.getElementById('agentSheet').classList.add('open');
+  var a=document.querySelector('#crewList .crew-item.active');if(a&&!_isTouch())a.focus();
+}
+function closeAgentSheet(){
+  document.getElementById('agentSheet').classList.remove('open');
+  if(!_isTouch())document.getElementById('chatInput').focus();
+}
+// The model pill sits in the composer on desktop and in the header on the phone.
+var _phoneMq=null;try{_phoneMq=matchMedia('(max-width: 768px), (max-height: 600px) and (pointer: coarse)')}catch(e){}
+function _placeModelPill(){
+  var sel=document.getElementById('modelSelect');if(!sel)return;
+  var slot=document.getElementById(_phoneMq&&_phoneMq.matches?'hdrModelSlot':'cbModelSlot');
+  if(slot&&sel.parentNode!==slot)slot.appendChild(sel);
+}
+_placeModelPill();
+if(_phoneMq){try{_phoneMq.addEventListener('change',_placeModelPill)}catch(e){_phoneMq.addListener(_placeModelPill)}}
+
+// ── Send button state + queued messages ────────────────────────────────────
+// Send is muted while the composer is empty. While a reply streams, Stop shows,
+// and Send stays next to it whenever there is text, to queue that text.
+var _streamingUi=false,_queue=[],_queuePaused=false;
+function _syncSendState(){
+  var ci=document.getElementById('chatInput'),send=document.getElementById('sendBtn'),stop=document.getElementById('stopBtn');
+  if(!ci||!send||!stop)return;
+  var hasText=!!ci.value.trim();
+  stop.style.display=_streamingUi?'inline-flex':'none';
+  send.style.display=(!_streamingUi||hasText)?'inline-flex':'none';
+  send.classList.toggle('empty',!hasText&&!pendingFiles.length&&!(_queue.length&&!_streamingUi));
+  send.title=_streamingUi?'Queue this message':'Send';send.setAttribute('aria-label',send.title);
+  send.disabled=false;
+}
+function _renderQueue(){
+  var el=document.getElementById('queueChips');if(!el)return;
+  el.innerHTML='';
+  _queue.forEach(function(t,i){
+    var c=document.createElement('div');c.className='queue-chip';
+    c.innerHTML='<span class="qc-label">'+(_queuePaused?'Kept':'Queued')+'</span><span class="qc-text"></span>'+
+      '<button type="button" data-act="edit" title="Edit" aria-label="Edit queued message"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button>'+
+      '<button type="button" data-act="remove" title="Remove" aria-label="Remove queued message"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>';
+    c.querySelector('.qc-text').textContent=t;
+    c.querySelector('[data-act="edit"]').addEventListener('click',function(){_editQueued(i)});
+    c.querySelector('[data-act="remove"]').addEventListener('click',function(){_queue.splice(i,1);_renderQueue()});
+    el.appendChild(c);
+  });
+  _syncSendState();
+}
+function _editQueued(i){
+  var t=_queue.splice(i,1)[0],ci=document.getElementById('chatInput');
+  ci.value=ci.value.trim()?(t+'\n'+ci.value):t;_autosize(ci);ci.focus();_renderQueue();
+}
+// Runs after every reply ends (from _showSend). Stop pauses the queue: it waits
+// until the owner presses Send.
+function _drainQueue(){setTimeout(function(){if(isProcessing||_queuePaused||!_queue.length)return;var t=_queue.shift();_renderQueue();sendMessage(t)},0)}
+function _clearQueue(){_queue=[];_queuePaused=false;_renderQueue()}
+function _autosize(ta){ta.style.height='auto';ta.style.height=Math.min(ta.scrollHeight,Math.round(window.innerHeight*0.4))+'px'}
+(function(){var ci=document.getElementById('chatInput');if(ci)ci.addEventListener('input',function(){_autosize(ci);_syncSendState()})})();
+
+// ── Follow the stream only at the bottom (P1.8) ────────────────────────────
+// A reader who scrolls up more than 80px stops the page following the reply;
+// "Jump to latest" brings them back and following resumes.
+var _follow=true,_userScrollAt=0;
+function _nearBottom(m){return m.scrollHeight-m.scrollTop-m.clientHeight<80}
+function _showJump(on){var j=document.getElementById('jumpLatest');if(j)j.classList.toggle('show',!!on)}
+function jumpToLatest(){var m=document.getElementById('messages');if(!m)return;_follow=true;m.scrollTop=m.scrollHeight;_showJump(false)}
+(function(){
+  var m=document.getElementById('messages');if(!m)return;
+  function mark(){_userScrollAt=Date.now()}
+  ['wheel','touchmove','mousedown'].forEach(function(ev){m.addEventListener(ev,mark,{passive:true})});
+  document.addEventListener('keydown',function(e){if(/^(PageUp|PageDown|Home|End|ArrowUp|ArrowDown| )$/.test(e.key)&&!/^(INPUT|TEXTAREA|SELECT)$/.test((e.target&&e.target.tagName)||''))mark()});
+  // Only a scroll the reader made changes following; the page's own scrolls do not.
+  m.addEventListener('scroll',function(){
+    if(!_follow||Date.now()-_userScrollAt<800){var near=_nearBottom(m);_follow=near;_showJump(!near)}
+  },{passive:true});
+})();
+
+// ── New chat: greeting, starters, recent chats (P1.11) ─────────────────────
+// Starter phrases are real triggers: "start my day" fires daily_kickoff, the
+// calendar and inbox lines fire google_calendar and google_gmail. The titles of
+// the owner's recent chats come from their own server at runtime.
+var _ICO={
+  sun:'<path d="M17 18a5 5 0 00-10 0"/><line x1="12" y1="2" x2="12" y2="9"/><line x1="4.22" y1="10.22" x2="5.64" y2="11.64"/><line x1="1" y1="18" x2="3" y2="18"/><line x1="21" y1="18" x2="23" y2="18"/><line x1="18.36" y1="11.64" x2="19.78" y2="10.22"/><line x1="23" y1="22" x2="1" y2="22"/><polyline points="8 6 12 2 16 6"/>',
+  chat:'<path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>',
+  cal:'<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
+  mail:'<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>'
+};
+var STARTERS=[
+  {ico:'sun',title:'Start my day',desc:'Where we left off, calendar and open threads',send:'start my day'},
+  {ico:'cal',title:"What's on my calendar today",desc:'Today\'s events from Google Calendar',send:"What's on my calendar today"},
+  {ico:'mail',title:'Check unread email',desc:'Latest unread messages in the inbox',send:'Show my unread emails'}
+];
+function _greeting(){var h=new Date().getHours();return h>=5&&h<12?'Good morning':(h>=12&&h<18?'Good afternoon':'Good evening')}
+function _starterBtn(ico,title,desc,onclick){
+  var b=document.createElement('button');b.type='button';b.className='starter';
+  b.innerHTML='<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">'+_ICO[ico]+'</svg><span class="st-text"><span class="st-title"></span><span class="st-desc"></span></span>';
+  b.querySelector('.st-title').textContent=title;b.querySelector('.st-desc').textContent=desc;b.addEventListener('click',onclick);return b;
+}
+function sendStarter(text){if(chatMode!=='chat')setMode('chat');sendMessage(text)}
+function _renderEmptyState(){
+  var m=document.getElementById('messages');if(!m)return;
+  m.innerHTML='<div class="empty-state" id="emptyState"><div class="greet-title"></div><div class="greet-sub">What should we work on?</div><div class="starters"></div><div class="recent" hidden><div class="recent-h">Recent</div></div></div>';
+  var es=m.firstChild;es.querySelector('.greet-title').textContent=_greeting();
+  var grid=es.querySelector('.starters');
+  STARTERS.forEach(function(s){grid.appendChild(_starterBtn(s.ico,s.title,s.desc,function(){sendStarter(s.send)}))});
+  fetch('/api/qchat/sessions').then(function(r){return r.ok?r.json():[]}).then(function(data){
+    if(!document.getElementById('emptyState')||!Array.isArray(data))return;
+    var past=data.filter(function(x){return x&&x.id&&x.id!==sessionId});
+    if(past[0]){var last=past[0];grid.insertBefore(_starterBtn('chat','Continue: '+(last.title||'last chat'),'Pick up your last chat',function(){loadSession(last.id)}),grid.children[1]||null)}
+    var rec=es.querySelector('.recent'),rest=past.slice(1,4);
+    rest.forEach(function(x){
+      var b=document.createElement('button');b.type='button';b.className='recent-item';
+      b.innerHTML='<span class="ri-title"></span><span class="ri-time"></span>';
+      b.querySelector('.ri-title').textContent=x.title||'Untitled chat';
+      var t=x.updated_at?new Date(x.updated_at):null;b.querySelector('.ri-time').textContent=t&&!isNaN(t)?t.toLocaleDateString([],{month:'short',day:'numeric'}):'';
+      b.addEventListener('click',function(){loadSession(x.id)});rec.appendChild(b);
+    });
+    rec.hidden=!rest.length;
+  }).catch(function(){});
+}
+// The page is "empty" while the greeting shows: on desktop the composer then sits under it.
+(function(){
+  var m=document.getElementById('messages'),app=document.getElementById('appContainer');if(!m||!app)return;
+  function sync(){var empty=!!document.getElementById('emptyState');app.classList.toggle('is-empty',empty);if(empty)_showJump(false)}
+  if(window.MutationObserver)new MutationObserver(sync).observe(m,{childList:true});sync();
+})();
+_syncModeUi();_syncSendState();
 
 // ── Train of thought ───────────────────────────────────────────────────────
 // A reveal control ("click to reveal train of thought") + a fixed-size window
@@ -1088,7 +1375,7 @@ function parseScaffold(raw){
 
 function genId(){return Date.now().toString(36)+Math.random().toString(36).substr(2,5)}
 
-function startNewSession(){sessionId=genId();_lsSet('codec-chat-session',sessionId);chatHist=[];pendingFiles=[];document.getElementById('fileChips').innerHTML='';document.getElementById('messages').innerHTML='<div class="empty-state" id="emptyState"><img src="/static/logo.svg"><p>Deep Chat \u2014 250K context window<br>Drop files, images, or just talk.</p></div>'}
+function startNewSession(){sessionId=genId();_lsSet('codec-chat-session',sessionId);chatHist=[];pendingFiles=[];document.getElementById('fileChips').innerHTML='';_clearQueue();_follow=true;_renderEmptyState();_syncSendState()}
 
 // PR #39: persist sessionId across page reloads. If a previous session
 // exists, load it on boot so the user lands back on the same chat (with
@@ -1114,7 +1401,7 @@ function startNewSession(){sessionId=genId();_lsSet('codec-chat-session',session
         addMessage(m.role==='user'?'user':'assistant',m.content||'',false,m.timestamp);
         chatHist.push({role:m.role,content:m.content||''});
       }
-      rehydrateAgentPlanCards().then(scrollBottom);
+      rehydrateAgentPlanCards().then(jumpToLatest);
     }else{
       startNewSession();
     }
@@ -1195,7 +1482,7 @@ async function loadSidebarHistory(){
 }
 
 async function loadSession(sid){
-  closeSidebar();sessionId=sid;_lsSet('codec-chat-session',sid);chatHist=[];pendingFiles=[];
+  closeSidebar();sessionId=sid;_lsSet('codec-chat-session',sid);chatHist=[];pendingFiles=[];_clearQueue();
   document.getElementById('fileChips').innerHTML='';
   var es=document.getElementById('emptyState');if(es)es.remove();
   document.getElementById('messages').innerHTML='';
@@ -1205,7 +1492,7 @@ async function loadSession(sid){
     // PR #39: any assistant message with [CODEC_AGENT_PLAN:<id>] marker
     // gets replaced by the live plan card (fetched from /api/agents/<id>).
     await rehydrateAgentPlanCards();
-    scrollBottom()
+    jumpToLatest()
   }catch(e){}
 }
 
@@ -1231,7 +1518,7 @@ function formatMsg(c){return window.codecMarkdown?codecMarkdown.html(c):escHtml(
 function mdRender(el,text){if(window.codecMarkdown){codecMarkdown.render(el,text);return}el.textContent=String(text==null?'':text);el.style.whiteSpace='pre-wrap'}
 function mdStream(el,opts){if(window.codecMarkdown)return codecMarkdown.stream(el,opts);return{update:function(t){mdRender(el,t);if(opts&&opts.onRender)opts.onRender(el)},cancel:function(){}}}
 
-function addMessage(role,content,animate,ts){
+function addMessage(role,content,animate,ts,quiet){
   var es=document.getElementById('emptyState');if(es)es.remove();
   var div=document.createElement('div');
   div.className='msg '+role;
@@ -1263,16 +1550,18 @@ function addMessage(role,content,animate,ts){
   // The user's own words stay plain text (textContent, pre-wrap), never Markdown.
   var bub=div.firstChild;if(role==='user')bub.textContent=String(content==null?'':content);else mdRender(bub,content);
   // Bind the action buttons to the raw text via a closure — see the note above.
+  // One variable per button: a shared one was reassigned by the later lookups, so
+  // at click time Edit got null (and Copy the speak button).
   (function(host,txt){
-    var b;
-    if((b=host.querySelector('[data-act="copy"]')))b.addEventListener('click',function(){copyMsgText(txt,b)});
-    if((b=host.querySelector('[data-act="edit"]')))b.addEventListener('click',function(){editMessage(txt,b)});
-    if((b=host.querySelector('[data-act="speak"]')))b.addEventListener('click',function(){speakMessage(txt,b)});
+    var cb=host.querySelector('[data-act="copy"]'),eb=host.querySelector('[data-act="edit"]'),sb=host.querySelector('[data-act="speak"]');
+    if(cb)cb.addEventListener('click',function(){copyMsgText(txt,cb)});
+    if(eb)eb.addEventListener('click',function(){editMessage(txt,eb)});
+    if(sb)sb.addEventListener('click',function(){speakMessage(txt,sb)});
   })(div,String(content));
   document.getElementById('messages').appendChild(div);
-  scrollBottom();
+  if(role==='user')jumpToLatest();else scrollBottom();
   // ── Auto-speak via Kokoro when global "Voice Replies" toggle is ON
-  if (role === 'assistant' && voiceReplyEnabled) {
+  if (role === 'assistant' && voiceReplyEnabled && !quiet) {
     var plain = String(content).replace(/[`*_#>\[\]()]/g,'').replace(/\s+/g,' ').trim();
     if (plain) speakMessage(plain);
   }
@@ -1340,7 +1629,7 @@ function editMessage(text,btn){
   // Put text in input for editing
   var input=document.getElementById('chatInput');
   input.value=text;
-  input.style.height='auto';input.style.height=Math.min(input.scrollHeight,120)+'px';
+  _autosize(input);_syncSendState();
   input.focus();
   // Remove this message and everything after it
   var msgDiv=btn.closest('.msg');
@@ -1576,7 +1865,9 @@ async function rehydrateAgentPlanCards(){
   if(jobs.length){await Promise.all(jobs)}
 }
 
-function scrollBottom(){var m=document.getElementById('messages');m.scrollTop=m.scrollHeight}
+// Called on every streamed token and new message. Takes no arguments on purpose:
+// callers such as mdStream's onRender pass one, and it must not force a jump.
+function scrollBottom(){var m=document.getElementById('messages');if(!m)return;if(_follow){m.scrollTop=m.scrollHeight;_showJump(false)}else if(!_nearBottom(m)){_showJump(true)}}
 function showTyping(){var div=document.createElement('div');div.className='typing';div.id='typing';div.innerHTML='<span></span><span></span><span></span> CODEC is thinking...';document.getElementById('messages').appendChild(div);scrollBottom()}
 function hideTyping(){var t=document.getElementById('typing');if(t)t.remove()}
 
@@ -1587,19 +1878,21 @@ function addFileChip(name,content,type){
   var chip=document.createElement('div');chip.className='file-chip';chip.id=id;
   var _fcIco=(type==='image'||type==='imgref')?'<svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>':'<svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>';
   chip.innerHTML='<span class="fc-icon">'+_fcIco+'</span><span class="fc-name">'+escHtml(name)+'</span><span class="fc-close" role="button" aria-label="Remove file" onclick="removeChip(\''+id+'\')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:block"><path d="M18 6 6 18M6 6l12 12"/></svg></span>';
-  chips.appendChild(chip)
+  chips.appendChild(chip);_syncSendState()
 }
-function removeChip(id){pendingFiles=pendingFiles.filter(function(f){return f.id!==id});var el=document.getElementById(id);if(el)el.remove()}
-function clearChips(){pendingFiles=[];document.getElementById('fileChips').innerHTML=''}
+function removeChip(id){pendingFiles=pendingFiles.filter(function(f){return f.id!==id});var el=document.getElementById(id);if(el)el.remove();_syncSendState()}
+function clearChips(){pendingFiles=[];document.getElementById('fileChips').innerHTML='';_syncSendState()}
 
 var _currentAbort=null;
 // Agent/crew run handles — set while a Deep Research/crew job is polling so the
 // Stop button can cancel it (crews can't be killed mid-run, so this stops the
 // UI waiting AND flags the job cancelled server-side to ignore a late result).
 var _agentJobId=null,_agentPoll=null,_agentTicker=null;
-function _showStop(){document.getElementById('sendBtn').style.display='none';document.getElementById('stopBtn').style.display='flex'}
-function _showSend(){document.getElementById('stopBtn').style.display='none';document.getElementById('sendBtn').style.display='flex'}
+function _showStop(){_streamingUi=true;_syncSendState()}
+function _showSend(){_streamingUi=false;_syncSendState();_drainQueue()}
 function stopGeneration(){
+  // Stop halts the queue too: queued messages stay, marked "Kept", until Send.
+  if(_queue.length){_queuePaused=true;_renderQueue();showToast('Stopped. Queued message kept: press Send to send it')}
   // An agent/crew run in progress takes priority over chat streaming.
   if(_agentJobId||_agentPoll||_agentTicker){
     if(_agentPoll){clearInterval(_agentPoll);_agentPoll=null}
@@ -1618,21 +1911,39 @@ function stopGeneration(){
 // into the bubble, chatHist and the saved session. `div` is the streaming bubble;
 // once a finished reply replaced it, it is detached and nothing is added twice.
 function _keepPartial(raw,div){
-  if(!raw||!div||!div.isConnected)return;
-  var pp=parseScaffold(raw);
-  var ans=(pp.answer&&pp.answer.trim())||raw.replace(/<thinking>[\s\S]*?<\/thinking>/i,'').replace(/<thinking>[\s\S]*$/i,'').replace(/###\s*FINAL ANSWER:?/i,'').replace(/<\/?final\s*answer>/gi,'').trim();
-  if(!ans)return;
+  if(!div||!div.isConnected)return;
+  var pp=parseScaffold(raw||'');
+  var ans=raw?((pp.answer&&pp.answer.trim())||raw.replace(/<thinking>[\s\S]*?<\/thinking>/i,'').replace(/<thinking>[\s\S]*$/i,'').replace(/###\s*FINAL ANSWER:?/i,'').replace(/<\/?final\s*answer>/gi,'').trim()):'';
+  // Stopped before any answer text: drop the "thinking" placeholder bubble.
+  if(!ans){div.remove();return}
   var txt=ans+'\n\n(stopped)';
-  var b=div.querySelector('.msg-bubble');if(b)mdRender(b,txt);
+  var md=addMessage('assistant',txt,false,null,true);
+  if(div.parentNode){div.parentNode.insertBefore(md,div);div.remove()}
+  if(thinkingEnabled&&pp.think&&pp.think.trim()){var fp=makeToT(md,'Train of thought',false);totSet(fp,pp.think.trim())}
   chatHist.push({role:'assistant',content:txt});saveMessages([{role:'assistant',content:txt}]);
 }
 
-async function sendMessage(){
-  if(isProcessing)return;
+async function sendMessage(queued){
   var input=document.getElementById('chatInput');
-  var text=input.value.trim();
+  var direct=typeof queued==='string';
+  if(isProcessing){
+    var qt=direct?queued.trim():input.value.trim();
+    if(qt){_queue.push(qt);if(!direct){input.value='';_autosize(input)}_renderQueue()}
+    return;
+  }
+  var text;
+  if(direct){text=queued.trim()}
+  else{
+    text=input.value.trim();
+    if(!text&&!pendingFiles.length){
+      // Empty composer: Send releases a queue that Stop kept.
+      if(!_queue.length)return;
+      text=_queue.shift();_renderQueue();
+    }else{input.value='';input.style.height='auto'}
+  }
+  _queuePaused=false;
   if(!text&&!pendingFiles.length)return;
-  input.value='';input.style.height='auto';
+  _syncSendState();
 
   // Attachments are read HERE, before the mode branches. They used to be built
   // only in the chat path further down, which the project and research branches
@@ -1848,7 +2159,13 @@ async function sendMessage(){
   _currentAbort=null;isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false
 }
 
-function handleKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage()}var ta=e.target;ta.style.height='auto';ta.style.height=Math.min(ta.scrollHeight,120)+'px'}
+function handleKey(e){
+  if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing&&e.keyCode!==229&&!_isTouch()){e.preventDefault();sendMessage();return}
+  if(e.key==='ArrowUp'&&!e.shiftKey&&!e.altKey&&!e.metaKey&&!e.ctrlKey&&!e.target.value&&!isProcessing){
+    var eb=[].slice.call(document.querySelectorAll('#messages .msg.user [data-act="edit"]')).pop();
+    if(eb){e.preventDefault();eb.click()}
+  }
+}
 
 function toggleMic(){
   var btn=document.getElementById('micBtn');
@@ -1957,6 +2274,21 @@ document.addEventListener('drop',function(e){
     var dt=new DataTransfer();for(var i=0;i<e.dataTransfer.files.length;i++)dt.items.add(e.dataTransfer.files[i]);
     document.getElementById('fileUp').files=dt.files;handleUpload({target:document.getElementById('fileUp')})
   }
+});
+function copyLastReply(){
+  var b=[].slice.call(document.querySelectorAll('#messages .msg.assistant [data-act="copy"]')).pop();
+  if(b)b.click();else showToast('No reply to copy yet');
+}
+document.addEventListener('keydown',function(e){
+  var mod=e.metaKey||e.ctrlKey;
+  if(e.key==='Escape'){
+    if(document.querySelector('.pop-menu.open')){closeMenus();return}
+    if(document.getElementById('agentSheet').classList.contains('open')){closeAgentSheet();return}
+    if(isProcessing||_currentAbort||_agentJobId){e.preventDefault();stopGeneration()}
+    return;
+  }
+  if(mod&&e.shiftKey&&!e.altKey&&(e.key==='o'||e.key==='O')){e.preventDefault();newChat();return}
+  if(mod&&e.shiftKey&&!e.altKey&&(e.key==='c'||e.key==='C')){e.preventDefault();copyLastReply();return}
 });
 // Type anywhere to focus the composer (no need to click into it first).
 document.addEventListener('keydown',function(e){

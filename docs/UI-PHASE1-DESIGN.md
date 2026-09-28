@@ -69,10 +69,34 @@ It ships as four PRs, in this order, each tested at 375x812 and 1470x956.
 ## PR-D — composer, scrolling, starters, keys
 
 - One composer card with a + menu, mode pill and model pill.
-- The page follows the stream only at the bottom, with "Jump to latest" and
-  queued messages.
-- A new chat shows a greeting and starter cards.
-- Enter is IME-safe, and there are core shortcuts.
+  - The mode-bar row above the messages is gone. The history button moves to
+    the header, and on the phone the model pill does too.
+  - The + menu holds Attach files, Photo or camera (touch screens), Screenshot
+    of Mac, Webcam snapshot, Working folder ("on Mac") and a Search the web
+    toggle that sends `force_search`.
+  - The mode pill picks Chat (fast), Think (reasoning scaffold, the default),
+    Agents, Project or Image. Agents opens a sheet with the crews, the research
+    model, the custom-agent builder and Schedule daily.
+- The page follows the stream only while the reader is within 80px of the
+  bottom, and shows "Jump to latest" otherwise.
+- A message sent during a reply becomes a queued chip that can be edited or
+  removed. It sends when the reply ends. Stop keeps the queue until Send.
+- A new chat shows a time-of-day greeting, starter cards and the 3 most
+  recent chats. On desktop the composer sits under them and docks at the
+  bottom after the first message. The starters send real trigger phrases:
+  "start my day" (daily_kickoff), the calendar (google_calendar) and unread
+  email (google_gmail).
+- Enter is IME-safe, and on touch screens Enter adds a new line.
+  - Esc stops a reply (or closes a menu).
+  - Cmd/Ctrl+Shift+O starts a new chat.
+  - Up in an empty composer edits the last message.
+  - Cmd/Ctrl+Shift+C copies the last reply.
+  - The Flash composer binds Enter once.
+- A stopped reply is a normal message with its action row. A stop before any
+  text removes the "thinking" placeholder.
+- Later: temporary chat (it needs a no-save path on the server), 56px
+  attachment tiles, and the model picker popover (all Phase 2). The Flash
+  composer card and Flash starters wait for the Today-or-Flash decision.
 
 ## Tests and rollback
 

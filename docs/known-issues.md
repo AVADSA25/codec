@@ -319,9 +319,6 @@ nor in `AuthMiddleware.TRUSTED_ORIGIN_HOSTS`, treating `null` as untrusted.
   `loadChat()` replaces that list. A pending question can disappear while
   `_activePanels` still marks it as shown, so it is not drawn again. Fix: keep
   question panels in their own container outside `#chatList`.
-- **A stopped reply has no action row.** In chat, a reply stopped with Stop
-  keeps its text ("(stopped)") but gets no copy/regenerate row. Fix: render the
-  action row in the stop path too (planned with the composer work, PR-D).
 - **Train-of-thought text contrast.** The collapsible reasoning text is 12px
   `--text-dim`, 4.18:1 on `--surface-2` in light. Fix: `--text-muted`.
 - **`codec_mcp_http.py` reads `request.url.path`.** Same pattern as the
