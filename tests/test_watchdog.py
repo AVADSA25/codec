@@ -72,6 +72,16 @@ def test_check_service_remote_4xx_is_up(monkeypatch):
     assert codec_alerts._check_service("https://vpa.example.com/healthz") is True
 
 
+def test_check_service_sends_its_own_user_agent(monkeypatch):
+    seen = []
+
+    def _urlopen(req, timeout=None):
+        seen.append(req.get_header("User-agent"))
+    monkeypatch.setattr(codec_alerts.urllib.request, "urlopen", _urlopen)
+    assert codec_alerts._check_service("https://vpa.example.com/healthz") is True
+    assert seen == ["CODEC-alerts/1.0"]  # not Python-urllib, which Cloudflare blocks
+
+
 # ── check_services_and_alert: dedupe + extras ────────────────────────────────
 
 
