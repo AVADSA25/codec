@@ -953,7 +953,7 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
       <button class="ibtn phone" onclick="startLiveChat()" title="Start voice call">
         <svg class="ico" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.362 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
       </button>
-      <textarea class="chat-input" id="cmdInput" placeholder="Flash — ask anything..." rows="1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendCmd()}"></textarea>
+      <textarea class="chat-input" id="cmdInput" placeholder="Flash — ask anything..." rows="1"></textarea>
       <button class="ibtn" onclick="uploadFile()" title="Upload file">
         <svg class="ico" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
       </button>
@@ -1605,7 +1605,9 @@ async function sendCmd() {
   window._flashPollTimer = pollResp;
 }
 
-document.getElementById('cmdInput').addEventListener('keydown', function(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendCmd(); } });
+// One Enter binding (the textarea used to carry a second, inline one). Enter that
+// confirms an IME composition (Japanese, Chinese, Korean input) must not send.
+document.getElementById('cmdInput').addEventListener('keydown', function(e) { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); sendCmd(); } });
 document.getElementById('cmdInput').addEventListener('input', function() { this.style.height = 'auto'; this.style.height = Math.min(this.scrollHeight, 120) + 'px'; });
 
 // ── Paste image into chat (Cmd+V on a screenshot) ──
