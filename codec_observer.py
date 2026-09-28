@@ -35,8 +35,13 @@ Architecture
 Privacy & safety contract
 ────────────────────────────────────────────────────────────────────────
 
-1. RAM only. Buffer is `collections.deque(maxlen=N)`. Process restart
-   (PM2 SIGTERM, crash, boot) wipes it. By design.
+1. The buffer is `collections.deque(maxlen=N)` in RAM. Process restart
+   (PM2 SIGTERM, crash, boot) wipes it. By design. The daemon mirrors it
+   to ~/.codec/observer_buffer.json so skills in other processes can
+   recall it (observer_recall). That file is owner-only (0600, atomic
+   write), holds no clipboard text (content type and length only), and
+   is deleted when the observer is paused, after the long-idle reset,
+   and on shutdown (docs/OBS-DESIGN.md).
 2. Audit emits are METADATA-ONLY — `observation_tick` carries lengths,
    counts, and content_type tags but NEVER the raw window title / OCR
    text / clipboard content / file path.
@@ -85,6 +90,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from codec_concurrency import run_with_timeout
+from codec_jsonstore import atomic_write_json
 
 # ── Audit emit ────────────────────────────────────────────────────────────────
 # Lazy-import so module import doesn't pull in codec_audit at startup time.
@@ -613,6 +619,7 @@ def poll(buffer: Optional[RingBuffer] = None,
         clipboard_block = {
             "preview": cb_now[:200],
             "content_type": _classify_clipboard_kind(cb_now),
+            "length": len(cb_now),
         }
 
     # 3. Screenshot OCR (with retry per Q5.1).
@@ -891,25 +898,51 @@ def get_global_buffer() -> RingBuffer:
 # codec-observer daemon, so a skill running in chat / voice / terminal (a
 # different process) can't read it — "what was I doing?" returned nothing. The
 # daemon now mirrors the buffer to this file every poll; skills/observer_recall.py
-# reads it. Local, user-private (~/.codec, 0700), same trust boundary as the rest
-# of CODEC's state.
+# reads it. Owner decision 2026-09-29 (docs/OBS-DESIGN.md): the file is
+# owner-only (0600, atomic), holds no clipboard text (content type and length
+# only), and is deleted on pause, after the long-idle reset and on shutdown.
 _BUFFER_DISK_PATH = Path(os.path.expanduser("~/.codec/observer_buffer.json"))
 
 
+def _disk_entry(snapshot: dict) -> dict:
+    """The on-disk form of one snapshot: the clipboard block keeps only its
+    content type and length, never the text."""
+    entry = dict(snapshot)
+    cb = entry.get("clipboard")
+    if cb:
+        entry["clipboard"] = {
+            "content_type": cb.get("content_type", "text"),
+            "length": int(cb.get("length", len(cb.get("preview") or ""))),
+        }
+    return entry
+
+
 def _persist_buffer_to_disk(buffer: RingBuffer) -> None:
-    """Atomically mirror the RAM ring buffer to disk. Best-effort; never raises
-    (a persistence failure must not break the observer poll loop)."""
+    """Atomically mirror the RAM ring buffer to disk, owner-only and without
+    clipboard text. Best-effort; never raises (a persistence failure must not
+    break the observer poll loop)."""
     try:
         payload = {
             "updated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            "entries": buffer.snapshot(),
+            "entries": [_disk_entry(s) for s in buffer.snapshot()],
         }
-        _BUFFER_DISK_PATH.parent.mkdir(parents=True, exist_ok=True)
-        tmp = _BUFFER_DISK_PATH.with_name(_BUFFER_DISK_PATH.name + ".tmp")
-        tmp.write_text(json.dumps(payload, default=str))
-        tmp.replace(_BUFFER_DISK_PATH)
+        atomic_write_json(_BUFFER_DISK_PATH, payload, default=str)
     except Exception:
         pass
+
+
+def _wipe_disk_buffer() -> None:
+    """Delete the disk mirror, plus the fixed-name tmp the pre-2026-09-29
+    writer used if one was left behind. Called on pause, after the long-idle
+    reset and on shutdown. Never raises."""
+    for path in (_BUFFER_DISK_PATH,
+                 _BUFFER_DISK_PATH.with_name(_BUFFER_DISK_PATH.name + ".tmp")):
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
+        except OSError as e:
+            log.debug("[observer] could not delete %s: %s", path.name, e)
 
 
 def persist_for_shift_report() -> Optional[Path]:
@@ -952,15 +985,25 @@ def run_daemon() -> None:
                 os.unlink(_f)
             except OSError:
                 pass
+        # The RAM buffer dies with the process; the disk mirror goes too.
+        _wipe_disk_buffer()
         log.info("[observer] graceful shutdown")
     import codec_lifecycle
     codec_lifecycle.install_handlers(_observer_cleanup, name="codec-observer")
 
+    paused = False
     while True:
         if not _enabled():
-            # Sleep 30s and re-check — cheap; enables runtime kill via env.
+            # Paused by the kill switch: forget what was seen (RAM and the disk
+            # mirror) once, then sleep 30s and re-check — cheap; enables
+            # runtime kill via env.
+            if not paused:
+                _get_or_init_buffer(_load_config()).clear()
+                _wipe_disk_buffer()
+                paused = True
             time.sleep(30)
             continue
+        paused = False
         # M-4 (PR-4I): the WHOLE iteration body is inside this try. Previously
         # only poll() was guarded, so an exception in _idle_seconds() /
         # _load_config() (e.g. a macOS API throttle during Spotlight reindex)
@@ -986,7 +1029,8 @@ def run_daemon() -> None:
                 buf = _get_or_init_buffer(cfg)
                 if len(buf) > 0:
                     buf.clear()
-                    log.info("[observer] buffer cleared after long idle")
+                    _wipe_disk_buffer()
+                    log.info("[observer] buffer and disk mirror cleared after long idle")
 
             # Phase 2 Step 7 — fire shift report at 18:00 local OR after 30 min
             # idle. Per-day dedup via skills/shift_report._STATE_PATH so the

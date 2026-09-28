@@ -15,7 +15,11 @@ NO Terminal popups. Per the 2026-05-01 incident contract.
 from __future__ import annotations
 
 import json
+import os
+import stat
 import sys
+import time
+import types
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -590,3 +594,103 @@ def test_recent_files_bounded_passthrough(monkeypatch):
                         lambda window_seconds=300: [{"path": "/x", "mtime": "t"}])
     out = codec_observer._get_recent_files_bounded()
     assert out == [{"path": "/x", "mtime": "t"}]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Disk mirror (OBS, docs/OBS-DESIGN.md): ~/.codec/observer_buffer.json is
+# owner-only, holds no clipboard text, and is deleted on pause, after the
+# long-idle reset and when the daemon exits.
+# ─────────────────────────────────────────────────────────────────────────────
+
+class _StopLoop(Exception):
+    """Raised from the stubbed sleep to leave run_daemon's while-loop."""
+
+
+@pytest.fixture
+def disk_path(tmp_path, monkeypatch):
+    path = tmp_path / "observer_buffer.json"
+    monkeypatch.setattr(codec_observer, "_BUFFER_DISK_PATH", path)
+    return path
+
+
+def _run_until_first_sleep(monkeypatch, cfg, cleanups=None):
+    """Run run_daemon until its first sleep. No signal handlers are installed;
+    the exit cleanup it registers is collected into `cleanups`."""
+    import codec_lifecycle
+    collected = cleanups if cleanups is not None else []
+    monkeypatch.setattr(codec_lifecycle, "install_handlers",
+                        lambda fn, name="daemon", **kw: collected.append(fn))
+    monkeypatch.setattr(codec_observer, "_load_config", lambda: cfg)
+
+    def _stop(_seconds):
+        raise _StopLoop
+    monkeypatch.setattr(codec_observer, "time",
+                        types.SimpleNamespace(sleep=_stop, monotonic=time.monotonic))
+    with pytest.raises(_StopLoop):
+        codec_observer.run_daemon()
+
+
+def test_disk_mirror_is_owner_only(disk_path):
+    """A 0644 file left by the old writer is replaced by a 0600 one."""
+    disk_path.write_text("{}")
+    os.chmod(disk_path, 0o644)
+    buf = codec_observer.RingBuffer(maxlen=5)
+    buf.append({"ts": "t", "active_window": {"app": "Figma"}})
+    codec_observer._persist_buffer_to_disk(buf)
+    assert stat.S_IMODE(disk_path.stat().st_mode) == 0o600
+    assert json.loads(disk_path.read_text())["entries"][0]["active_window"]["app"] == "Figma"
+
+
+def test_disk_mirror_has_no_clipboard_text(disk_path, fresh_buffer, cfg_default,
+                                           mocked_primitives, monkeypatch):
+    """RAM keeps the clipboard preview for the local summary; the file keeps
+    only the content type and the length."""
+    secret = "https://example.com/private-invite?token=abc123"
+    monkeypatch.setattr(codec_observer, "_get_clipboard_now", lambda: secret)
+    codec_observer.poll(buffer=fresh_buffer, cfg=cfg_default, emit_audit=False)
+    assert fresh_buffer.snapshot()[0]["clipboard"]["preview"] == secret
+    codec_observer._persist_buffer_to_disk(fresh_buffer)
+    raw = disk_path.read_text()
+    assert "private-invite" not in raw and "preview" not in raw
+    assert json.loads(raw)["entries"][0]["clipboard"] == {
+        "content_type": "url", "length": len(secret)}
+
+
+def test_disk_mirror_wiped_on_pause(disk_path, fresh_buffer, cfg_default, monkeypatch):
+    """Kill switch on: the daemon deletes the mirror and clears RAM before it idles."""
+    disk_path.write_text('{"entries": [{"active_window": {"app": "Mail"}}]}')
+    fresh_buffer.append({"ts": "t"})
+    monkeypatch.setattr(codec_observer, "_GLOBAL_BUFFER", fresh_buffer)
+    monkeypatch.setenv("OBSERVER_ENABLED", "false")
+    _run_until_first_sleep(monkeypatch, cfg_default)
+    assert not disk_path.exists()
+    assert len(fresh_buffer) == 0
+
+
+def test_disk_mirror_wiped_on_long_idle_reset(disk_path, fresh_buffer, cfg_default,
+                                              monkeypatch):
+    """The long-idle reset deletes the mirror written earlier in the same cycle."""
+    cfg = dict(cfg_default, reset_on_long_idle=True, reset_idle_threshold_s=60)
+    monkeypatch.setattr(codec_observer, "_GLOBAL_BUFFER", fresh_buffer)
+    monkeypatch.setenv("OBSERVER_ENABLED", "true")
+    monkeypatch.setattr(codec_observer, "_idle_seconds", lambda: 3600.0)
+    monkeypatch.setattr(codec_observer, "poll", lambda cfg=None: fresh_buffer.append(
+        {"ts": "t", "active_window": {"app": "Mail"}}))
+    monkeypatch.setattr(codec_observer, "_maybe_fire_shift_report", lambda idle: None)
+    _run_until_first_sleep(monkeypatch, cfg)
+    assert len(fresh_buffer) == 0
+    assert not disk_path.exists()
+
+
+def test_disk_mirror_wiped_on_daemon_exit(disk_path, cfg_default, tmp_path, monkeypatch):
+    """The cleanup run_daemon registers for SIGTERM / atexit deletes the mirror."""
+    import tempfile
+    cleanups = []
+    monkeypatch.setattr(codec_observer, "_GLOBAL_BUFFER", None)
+    monkeypatch.setenv("OBSERVER_ENABLED", "false")
+    _run_until_first_sleep(monkeypatch, cfg_default, cleanups)
+    disk_path.write_text("{}")
+    monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path))
+    assert len(cleanups) == 1
+    cleanups[0]()
+    assert not disk_path.exists()
