@@ -419,6 +419,7 @@ CHAT_SKILL_ALLOWLIST = {
     # System control (volume, brightness, apps — NO mouse_control)
     "screenshot_text", "app_switch",
     "brightness", "volume_brightness", "process_manager",
+    "tailscale",  # on / off / status of Tailscale on this Mac
     "ax_control",
     # PM2 service management
     "pm2_control",
