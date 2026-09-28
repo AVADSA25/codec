@@ -1092,6 +1092,21 @@ async def _bg_session_cleanup():
             log.warning("Session cleanup error: %s", e)
 
 
+async def _bg_llm_fallback():
+    """Automatic cloud fallback (opt-in, docs/CLOUD-AUTO-FALLBACK-DESIGN.md):
+    every 60 s, switch to the cloud model if the local one went down, or come
+    back once it answers again. A no-op without config llm_auto_fallback."""
+    while True:
+        await asyncio.sleep(60)
+        try:
+            import codec_models
+            note = await asyncio.to_thread(codec_models.auto_fallback_tick)
+            if note:
+                log.info("[LLM fallback] %s", note)
+        except Exception as e:
+            log.warning("[LLM fallback] check failed: %s", e)
+
+
 @app.on_event("startup")
 async def _start_background_services():
     """Launch scheduler, heartbeat, watcher, and vision warmup as background async tasks."""
@@ -1101,6 +1116,7 @@ async def _start_background_services():
     _bg_tasks["vision_warmup"] = asyncio.create_task(_warmup_vision())
     _bg_tasks["vision_keepalive"] = asyncio.create_task(_vision_keepalive())
     _bg_tasks["session_cleanup"] = asyncio.create_task(_bg_session_cleanup())
+    _bg_tasks["llm_fallback"] = asyncio.create_task(_bg_llm_fallback())
     # Load skill registry for Chat tool calling
     try:
         from codec_dispatch import load_skills

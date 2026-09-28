@@ -6,6 +6,9 @@ When the local model server is stopped (a memory-heavy job, a crash, a model
 that will not load), CODEC has no model and every chat fails. A cloud model in
 the model picker keeps it answering. The switch is MANUAL: nothing in this
 module ever moves CODEC to the cloud on its own. docs/CLOUD-FALLBACK-MODEL-DESIGN.md
+The one exception is opt-in: with config `llm_auto_fallback`, codec_models
+switches to that entry when the local server is down and back when it answers
+(ensure_llm_available / maybe_switch_back, docs/CLOUD-AUTO-FALLBACK-DESIGN.md).
 
 THE REGISTRY
 ------------

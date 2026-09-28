@@ -1075,6 +1075,15 @@ async def chat_completion(request: Request):
     if vision_resp is not None:
         return vision_resp
 
+    # Automatic cloud fallback (opt-in): if the local model server is down,
+    # switch before the config below is read and the prompt is built, so the
+    # observer privacy gate sees the cloud endpoint.
+    try:
+        import codec_models as _cm
+        await asyncio.to_thread(_cm.ensure_llm_available)
+    except Exception as e:
+        log.debug(f"[Chat] automatic fallback check failed: {e}")
+
     try:
         config = {}
         try:

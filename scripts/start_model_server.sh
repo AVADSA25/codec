@@ -42,8 +42,18 @@ try:
 except Exception:
     pass
 model = cfg.get("llm_model") or os.environ["DEFAULT_MODEL"]
+base = cfg.get("llm_base_url", "")
+# While CODEC answers from a cloud model, config names the cloud endpoint. This
+# server must still load the local model CODEC comes back to (llm_local_restore,
+# written by the cloud switch), never the cloud model id.
+restore = cfg.get("llm_local_restore")
+host = (urlparse(base).hostname or "").lower()
+if (isinstance(restore, dict) and restore.get("llm_model")
+        and host not in ("", "localhost", "127.0.0.1", "::1", "0.0.0.0")):
+    model = restore["llm_model"]
+    base = restore.get("llm_base_url") or ""
 try:
-    port = urlparse(cfg.get("llm_base_url", "")).port or int(os.environ["DEFAULT_PORT"])
+    port = urlparse(base).port or int(os.environ["DEFAULT_PORT"])
 except Exception:
     port = int(os.environ["DEFAULT_PORT"])
 print(model, port)
@@ -77,4 +87,5 @@ fi
 # Never write .pyc into a signed bundle; it invalidates the code signature.
 export PYTHONDONTWRITEBYTECODE=1
 echo "start_model_server: python=$PY model=$MODEL port=$PORT host=$HOST" >&2
+[ -z "${CODEC_LAUNCHER_DRY_RUN:-}" ] || exit 0   # tests: print the choice, start nothing
 exec "$PY" -m mlx_vlm.server --model "$MODEL" --port "$PORT" --host "$HOST"
