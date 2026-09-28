@@ -35,6 +35,7 @@
             height: 100vh; display: flex; align-items: center; justify-content: center;
             transition: background 0.2s, color 0.2s;
         }
+        @supports (height: 100dvh) { body { height: calc(100dvh / var(--tz, 1)); } }
         .auth-container {
             text-align: center; max-width: 360px; width: 100%; padding: 32px;
         }
@@ -228,9 +229,15 @@ function _ssDel(k){try{sessionStorage.removeItem(k)}catch(e){}}
    Shared across surfaces via localStorage + the storage event. */
 var _TEXT_SIZES={small:1,medium:1.15,large:1.3};
 function _textSize(){var v=_lsGet('codec-text-size');return (v in _TEXT_SIZES)?v:'medium'}
-function applyTextSize(){document.documentElement.style.zoom=String(_TEXT_SIZES[_textSize()]);var g=document.getElementById('textSizeGroup');if(g){Array.prototype.forEach.call(g.querySelectorAll('button'),function(b){b.classList.toggle('sel',b.getAttribute('data-size')===_textSize())})}}
+/* Same guard as Home (#344): a root zoom>1 breaks the phone shell's fixed nav/composer
+   math, so the phone always renders at 1. --tz carries the zoom so full-height roots can
+   size to calc(100dvh / var(--tz)) instead of overflowing the window on desktop. */
+function _isPhoneShell(){return window.matchMedia('(max-width: 768px), (max-height: 600px) and (pointer: coarse)').matches}
+function applyTextSize(){var z=_isPhoneShell()?1:_TEXT_SIZES[_textSize()];document.documentElement.style.zoom=String(z);document.documentElement.style.setProperty('--tz',String(z));var g=document.getElementById('textSizeGroup');if(g){Array.prototype.forEach.call(g.querySelectorAll('button'),function(b){b.classList.toggle('sel',b.getAttribute('data-size')===_textSize())})}}
 function setTextSize(s){if(!(s in _TEXT_SIZES))return;_lsSet('codec-text-size',s);applyTextSize()}
 window.addEventListener('storage',function(e){if(e.key==='codec-text-size')applyTextSize()});
+window.addEventListener('resize',applyTextSize);          // re-evaluate the phone-shell gate on rotate / resize
+window.addEventListener('orientationchange',function(){setTimeout(applyTextSize,150)});
 applyTextSize();
 </script>
 <script>

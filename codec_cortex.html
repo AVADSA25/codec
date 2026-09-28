@@ -10,6 +10,7 @@
 *{margin:0;padding:0;box-sizing:border-box}
 :root{--bg:#121215;--accent:#d97757;--green:#34d399;--red:#f87171;--yellow:#fbbf24;--blue:#60a5fa;--purple:#a78bfa;--text:#e4e4e7;--dim:#52525b}
 body{background:radial-gradient(ellipse at 50% 30%,#0c0a14 0%,#060610 40%,var(--bg) 70%);color:var(--text);font-family:'IBM Plex Sans',-apple-system,system-ui,sans-serif;overflow:hidden;height:100vh;width:100vw}
+@supports (height:100dvh){body{height:calc(100dvh / var(--tz, 1))}}
 #cortex{position:absolute;top:0;left:0;width:100%;height:100%;cursor:grab}
 #cortex:active{cursor:grabbing}
 #hud{position:fixed;top:0;left:0;right:0;z-index:100;background:linear-gradient(180deg,rgba(5,5,8,.95),rgba(5,5,8,.6),transparent);padding:16px 24px 44px;pointer-events:none}
@@ -175,8 +176,8 @@ svg text{font-family:'IBM Plex Sans',-apple-system,system-ui,sans-serif}
 /* ── Side Panel ── */
 .side-panel-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9990}
 .side-panel-overlay.open{display:block}
-.side-panel{position:fixed;top:0;right:-300px;width:300px;height:100%;background:rgba(5,5,8,.98);border-left:1px solid rgba(255,255,255,.06);z-index:9991;transition:right .3s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;box-shadow:-4px 0 24px rgba(0,0,0,.3)}
-.side-panel.open{right:0}
+.side-panel{position:fixed;top:0;right:-300px;width:300px;height:100%;background:rgba(5,5,8,.98);border-left:1px solid rgba(255,255,255,.06);z-index:9991;transition:right .3s cubic-bezier(.4,0,.2,1),visibility 0s .3s;visibility:hidden;display:flex;flex-direction:column;box-shadow:-4px 0 24px rgba(0,0,0,.3)}
+.side-panel.open{right:0;visibility:visible;transition:right .3s cubic-bezier(.4,0,.2,1)}
 [data-theme="light"] .side-panel{background:rgba(245,243,239,.98);border-color:rgba(0,0,0,.08)}
 .side-panel-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid rgba(255,255,255,.06)}
 [data-theme="light"] .side-panel-header{border-color:rgba(0,0,0,.08)}
@@ -198,6 +199,12 @@ svg text{font-family:'IBM Plex Sans',-apple-system,system-ui,sans-serif}
   [data-theme="light"] .page-nav{background:rgba(245,243,239,.95);border-color:rgba(0,0,0,.08)}
   .nav-link{padding:8px 8px;font-size:10px}
   .side-panel{width:280px;right:-280px}
+  /* backdrop-filter would make the fixed header the containing block of the fixed nav inside it */
+  .header{backdrop-filter:none;-webkit-backdrop-filter:none}
+  /* the fixed nav covers the bottom 44px: lift the bottom-pinned panels above it */
+  .legend{bottom:calc(16px + 44px)}
+  #settings-float,#activity-feed{bottom:calc(20px + 44px)}
+  #detail,#skills-panel{padding-bottom:calc(20px + 44px + env(safe-area-inset-bottom,0px))}
 }
 </style>
 </head>
@@ -288,9 +295,15 @@ function _ssDel(k){try{sessionStorage.removeItem(k)}catch(e){}}
    Shared across surfaces via localStorage + the storage event. */
 var _TEXT_SIZES={small:1,medium:1.15,large:1.3};
 function _textSize(){var v=_lsGet('codec-text-size');return (v in _TEXT_SIZES)?v:'medium'}
-function applyTextSize(){document.documentElement.style.zoom=String(_TEXT_SIZES[_textSize()]);var g=document.getElementById('textSizeGroup');if(g){Array.prototype.forEach.call(g.querySelectorAll('button'),function(b){b.classList.toggle('sel',b.getAttribute('data-size')===_textSize())})}}
+/* Same guard as Home (#344): a root zoom>1 breaks the phone shell's fixed nav/composer
+   math, so the phone always renders at 1. --tz carries the zoom so full-height roots can
+   size to calc(100dvh / var(--tz)) instead of overflowing the window on desktop. */
+function _isPhoneShell(){return window.matchMedia('(max-width: 768px), (max-height: 600px) and (pointer: coarse)').matches}
+function applyTextSize(){var z=_isPhoneShell()?1:_TEXT_SIZES[_textSize()];document.documentElement.style.zoom=String(z);document.documentElement.style.setProperty('--tz',String(z));var g=document.getElementById('textSizeGroup');if(g){Array.prototype.forEach.call(g.querySelectorAll('button'),function(b){b.classList.toggle('sel',b.getAttribute('data-size')===_textSize())})}}
 function setTextSize(s){if(!(s in _TEXT_SIZES))return;_lsSet('codec-text-size',s);applyTextSize()}
 window.addEventListener('storage',function(e){if(e.key==='codec-text-size')applyTextSize()});
+window.addEventListener('resize',applyTextSize);          // re-evaluate the phone-shell gate on rotate / resize
+window.addEventListener('orientationchange',function(){setTimeout(applyTextSize,150)});
 applyTextSize();
 </script>
 <script>

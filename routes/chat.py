@@ -425,8 +425,9 @@ CHAT_SKILL_ALLOWLIST = {
     "pm2_control",
     # Smart home & media
     "philips_hue", "music",
-    # Self-improvement & meta
-    "ai_news_digest", "scheduler",
+    # Self-improvement & meta. The digest's registry name is its SKILL_NAME
+    # ("AI News Digest"), not the file name — the file name never matched.
+    "AI News Digest", "scheduler",
     # Skill creation & delegation
     # re-audit (CHAIN-002): skill_forge writes forged code to disk WITHOUT the
     # review gate, so it must not be auto-firable from a chat [SKILL:...] tag —
