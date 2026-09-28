@@ -456,13 +456,15 @@ Skills opt-in to MCP exposure with `SKILL_MCP_EXPOSE = True`. Input validation e
 
 ### Configuring which skills CODEC exposes over MCP
 
-CODEC defaults to **opt-in** — only skills you explicitly allow reach the MCP surface. Three keys in `~/.codec/config.json` control the policy:
+CODEC defaults to **opt-in**: a skill reaches the MCP surface only if it opts in itself (`SKILL_MCP_EXPOSE = True`) or you list it. Three keys in `~/.codec/config.json` control the policy:
 
 | Option | Default | Effect |
 |---|---|---|
-| `mcp_default_allow` | `false` | When `true`, every skill with `SKILL_MCP_EXPOSE = True` is exposed (opt-out via `mcp_blocked_tools`). When `false` (recommended), nothing is exposed unless listed in `mcp_allowed_tools`. |
-| `mcp_allowed_tools` | `[]` | Explicit allowlist of skill names exposed over MCP when `mcp_default_allow` is `false`. Example: `["calculator", "weather", "memory_search"]`. |
-| `mcp_blocked_tools` | `["terminal", "process_manager", "pm2_control"]` | Hard blocklist applied on every MCP transport regardless of the above. The HTTP transport adds a stricter built-in blocklist (`python_exec`, `ax_control`) that cannot be overridden. |
+| `mcp_default_allow` | `false` | When `false` (recommended), a skill is exposed only if it sets `SKILL_MCP_EXPOSE = True` or is listed in `mcp_allowed_tools`. When `true`, every skill is exposed unless it sets `SKILL_MCP_EXPOSE = False`. |
+| `mcp_allowed_tools` | `[]` | Extra skills to expose while `mcp_default_allow` is `false`, for skills that do not set `SKILL_MCP_EXPOSE = True` themselves. Example: `["calculator", "weather", "memory_search"]`. |
+| `mcp_blocked_tools` | `["terminal", "process_manager", "pm2_control"]` | Never exposed. Over stdio this list replaces the default (`mcp_blocked_tools_stdio` wins if set). Over HTTP it is added to a built-in list that config cannot shrink: `python_exec`, `terminal`, `process_manager`, `pm2_control`, `ax_control`, `standing_rules`, `create_skill`. |
+
+Over HTTP, tools with side effects wait for the owner to tap **Allow** in the PWA on every call: `delegate`, `scheduler`, `mouse_control`, `clipboard`, `screenshot_text`, and every `chrome_*` tool except `chrome_scroll`.
 
 Example config snippet:
 
