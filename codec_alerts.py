@@ -268,7 +268,9 @@ def _check_service(url: str, timeout: int = 5) -> bool:
         except Exception:
             return False
     try:
-        req = urllib.request.Request(url, method="GET")
+        # Cloudflare's browser check answers 403 (error 1010) to urllib's
+        # default "Python-urllib" agent without asking the service at all.
+        req = urllib.request.Request(url, method="GET", headers={"User-Agent": "CODEC-alerts/1.0"})
         urllib.request.urlopen(req, timeout=timeout)
         return True
     except urllib.error.HTTPError as e:
