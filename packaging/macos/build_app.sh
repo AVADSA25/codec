@@ -128,8 +128,8 @@ cp "$ENTRY_SRC" "$CONTENTS/Resources/codec_app_main.py"
 echo "==> copying CODEC sources"
 # top-level Python modules
 find "$REPO" -maxdepth 1 -name '*.py' -exec cp {} "$CONTENTS/Resources/app/" \;
-# package directories that exist
-for d in routes skills; do
+# package directories that exist (static/ = the dashboard's /static assets)
+for d in routes skills static; do
     [ -d "$REPO/$d" ] && cp -R "$REPO/$d" "$CONTENTS/Resources/app/$d"
 done
 # The model-server launcher. services.json runs `bash scripts/start_model_server.sh`

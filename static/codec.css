@@ -1,0 +1,149 @@
+/* CODEC design tokens (UI phase 1, PR-B).
+
+   Every page links this before its own <style>. The token blocks sit inside
+   :where(), so they carry no specificity and a page's own declarations always
+   win; pages move onto the tokens in PR-C. The theme follows
+   <html data-theme="light|dark">, which each page's applyTheme() sets; before
+   that runs, the OS preference decides. */
+
+:where(:root) {
+  /* Type. Plex Sans for UI and reading text; Plex Mono only for code,
+     commands, file paths, token stats and key hints. */
+  --font-sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", "SF Mono", Menlo, monospace;
+  --fs-scale: 1; /* text size S / M / L = 0.93 / 1 / 1.12 */
+  --fs-11: max(11px, calc(11px * var(--fs-scale))); /* badge digits and phone tab labels only */
+  --fs-12: max(12px, calc(12px * var(--fs-scale))); /* timestamps, meta, badges; 12px floor */
+  --fs-13: calc(13px * var(--fs-scale)); /* chips, pills, captions */
+  --fs-14: calc(14px * var(--fs-scale)); /* sidebar and settings rows, menus, buttons, toasts */
+  --fs-16: calc(16px * var(--fs-scale)); /* message body, composer, voice transcript */
+  --fs-20: calc(20px * var(--fs-scale)); /* section titles */
+  --fs-24: calc(24px * var(--fs-scale)); /* page titles */
+  --fs-30: calc(30px * var(--fs-scale)); /* greeting */
+  --fs-code: calc(14px * var(--fs-scale));
+  --fs-code-inline: 0.9em;
+  --lh-12: 1.4; --lh-13: 1.45; --lh-14: 1.45; --lh-16: 1.65;
+  --lh-20: 1.3; --lh-24: 1.25; --lh-30: 1.2; --lh-code: 1.55;
+  --fw-regular: 400; --fw-medium: 500; --fw-semibold: 600;
+
+  /* Spacing, 4px base */
+  --space-4: 4px; --space-8: 8px; --space-12: 12px; --space-16: 16px;
+  --space-20: 20px; --space-24: 24px; --space-32: 32px; --space-48: 48px;
+
+  /* Radii */
+  --radius-8: 8px;     /* inputs, chips */
+  --radius-12: 12px;   /* cards, menus, code, tables */
+  --radius-20: 20px;   /* user bubble, sheets */
+  --radius-24: 24px;   /* composer card */
+  --radius-pill: 999px;
+
+  /* Colours, light */
+  --bg: #faf8f5;
+  --surface: #ffffff;
+  --surface-2: #f2eee8;
+  --surface-3: #ebe6df;
+  --border: #e2ddd5;
+  --border-strong: #cfc8be;
+  --text: #18181b;
+  --text-muted: #52525b;
+  --text-dim: #71717a;
+  --accent: #b85a3a;
+  --accent-hover: #a04d31;
+  --accent-dim: rgba(184, 90, 58, 0.12);
+  --on-accent: #ffffff;
+  --success: #15803d;
+  --danger: #dc2626;
+  --warning: #b45309;
+  --info: #2563eb;
+  /* Status pills: a 14% tint of the hue behind text in that hue. The -text
+     shades are the hue made darker (light) or lighter (dark danger), so small
+     pill and badge text reaches 4.5:1 over its tint. */
+  --success-tint: rgba(21, 128, 61, 0.14);
+  --danger-tint: rgba(220, 38, 38, 0.14);
+  --warning-tint: rgba(180, 83, 9, 0.14);
+  --info-tint: rgba(37, 99, 235, 0.14);
+  --success-text: #166534;
+  --danger-text: #991b1b;
+  --warning-text: #92400e;
+  --info-text: #1d4ed8;
+  --accent-ring: rgba(184, 90, 58, 0.55);
+  --selection: rgba(184, 90, 58, 0.22);
+  --shadow-composer: 0 4px 16px rgba(0, 0, 0, 0.08);
+  --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.12);
+
+  /* Focus ring: a gap in the page colour, then the accent at 55% */
+  --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent-ring);
+}
+
+/* Colours, dark: the OS preference until the page sets data-theme ... */
+@media (prefers-color-scheme: dark) {
+  :where(:root:not([data-theme=light])) {
+    --bg: #121215;
+    --surface: #18181b;
+    --surface-2: #1f1f22;
+    --surface-3: #27272a;
+    --border: #2a2a2f;
+    --border-strong: #3a3a40;
+    --text: #ececec;
+    --text-muted: #9a9aa0;
+    --text-dim: #8b8b92;
+    --accent: #d97757;
+    --accent-hover: #e08766;
+    --accent-dim: rgba(217, 119, 87, 0.12);
+    --on-accent: #121215;
+    --success: #22c55e;
+    --danger: #ef4444;
+    --warning: #f59e0b;
+    --info: #60a5fa;
+    --success-tint: rgba(34, 197, 94, 0.14);
+    --danger-tint: rgba(239, 68, 68, 0.14);
+    --warning-tint: rgba(245, 158, 11, 0.14);
+    --info-tint: rgba(96, 165, 250, 0.14);
+    --success-text: #22c55e;
+    --danger-text: #f87171;
+    --warning-text: #f59e0b;
+    --info-text: #60a5fa;
+    --accent-ring: rgba(217, 119, 87, 0.55);
+    --selection: rgba(217, 119, 87, 0.3);
+    --shadow-composer: 0 8px 24px rgba(0, 0, 0, 0.35);
+    --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.35);
+  }
+}
+
+/* ... and an explicit dark choice whatever the OS says. */
+:where(:root[data-theme=dark]) {
+  --bg: #121215;
+  --surface: #18181b;
+  --surface-2: #1f1f22;
+  --surface-3: #27272a;
+  --border: #2a2a2f;
+  --border-strong: #3a3a40;
+  --text: #ececec;
+  --text-muted: #9a9aa0;
+  --text-dim: #8b8b92;
+  --accent: #d97757;
+  --accent-hover: #e08766;
+  --accent-dim: rgba(217, 119, 87, 0.12);
+  --on-accent: #121215;
+  --success: #22c55e;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  --info: #60a5fa;
+  --success-tint: rgba(34, 197, 94, 0.14);
+  --danger-tint: rgba(239, 68, 68, 0.14);
+  --warning-tint: rgba(245, 158, 11, 0.14);
+  --info-tint: rgba(96, 165, 250, 0.14);
+  --success-text: #22c55e;
+  --danger-text: #f87171;
+  --warning-text: #f59e0b;
+  --info-text: #60a5fa;
+  --accent-ring: rgba(217, 119, 87, 0.55);
+  --selection: rgba(217, 119, 87, 0.3);
+  --shadow-composer: 0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+/* Base. The outline draws the same 2px gap + 2px ring as --focus-ring without
+   replacing an element's own box-shadow; a page rule that sets outline wins. */
+:focus-visible { outline: 2px solid var(--accent-ring); outline-offset: 2px; }
+::selection { background: var(--selection); }

@@ -1,5 +1,6 @@
 """CODEC v2.1 — Phone Dashboard & PWA"""
 import os
+import re
 import json
 import time
 import hmac
@@ -11,7 +12,10 @@ from datetime import datetime, timedelta
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from starlette.datastructures import Headers
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.staticfiles import NotModifiedResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse as StarletteJSONResponse
 import uvicorn
@@ -83,12 +87,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
     # Routes that never require authentication
     # /docs, /redoc, /openapi.json and /metrics are NOT public (audit 2026-09-27:
     # they handed the full 139-route map and per-path traffic to anyone).
-    PUBLIC_ROUTES = {"/", "/chat", "/vibe", "/voice", "/auth", "/health", "/api/health", "/favicon.ico", "/manifest.json"}
+    PUBLIC_ROUTES = {"/", "/chat", "/vibe", "/voice", "/auth", "/health", "/api/health", "/favicon.ico", "/favicon.png", "/manifest.json"}
     # Browser origins allowed to make state-changing requests (plus the
     # request's own host). Blocks drive-by POSTs from other websites to
     # http://127.0.0.1:8090 on the owner's Mac.
     TRUSTED_ORIGIN_HOSTS = {"localhost:8090", "127.0.0.1:8090", "codec.avadigital.ai", "codec.lucyvpa.com"}
-    PUBLIC_PREFIXES = ("/api/auth/", "/static")
+    PUBLIC_PREFIXES = ("/api/auth/", "/static/")
     # CSRF-exempt paths (auth endpoints handle their own protection)
     CSRF_EXEMPT = {"/api/auth/verify", "/api/auth/pin", "/api/auth/logout",
                     "/api/auth/totp/setup", "/api/auth/totp/confirm", "/api/auth/totp/verify",
@@ -102,7 +106,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
         from codec_config import get_dashboard_token
         DASHBOARD_TOKEN = get_dashboard_token()
         from codec_metrics import metrics
-        path = request.url.path
+        # The routed path, never request.url.path: that one is rebuilt from the
+        # Host header, so `Host: [::1]/static` turned /api/config into
+        # /static/api/config and matched a public prefix.
+        path = request.scope["path"]
         metrics.inc("codec_http_requests_total", {"method": request.method, "path": _route_label(request)})
 
         # Always allow public routes
@@ -153,10 +160,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 if o_host != own_host and o_host not in self.TRUSTED_ORIGIN_HOSTS:
                     log.warning("CROSS-SITE REJECTED: path=%s origin=%s", path, origin[:80])
                     return StarletteJSONResponse({"error": "Cross-site request blocked"}, status_code=403)
-        # Allow static assets
-        if path.endswith(('.css', '.js', '.png', '.ico', '.svg', '.woff2', '.woff', '.ttf')):
-            return await call_next(request)
-
         # ── CSRF check for state-changing requests ──
         # Only enforce CSRF if the user has a valid auth session (avoids blocking expired sessions
         # with stale CSRF cookies — let them fall through to the 401 auth check instead)
@@ -362,14 +365,26 @@ def _public_host_names() -> set:
 
 
 _ALLOWED_HOST_NAMES = {"localhost"} | _public_host_names()
+_HOST_BAD_CHARS = set("/?#@\\")
+_HOST_PORT = re.compile(r":[0-9]{1,5}")
 
 
 def _host_name(host_header: str) -> str:
-    """'example.com:8090' -> 'example.com', '[::1]:8090' -> '::1'."""
+    """'example.com:8090' -> 'example.com', '[::1]:8090' -> '::1'.
+    Anything that is not a bare host with an optional numeric port gives ''
+    (refused): '[::1]/static' once made request.url.path start with /static."""
     h = (host_header or "").strip().lower()
+    if not h or any(c in _HOST_BAD_CHARS or c.isspace() for c in h):
+        return ""
     if h.startswith("["):
-        return h[1:h.find("]")] if "]" in h else ""
-    return h.rsplit(":", 1)[0] if h.count(":") == 1 else h
+        end = h.find("]")
+        if end < 0 or (h[end + 1:] and not _HOST_PORT.fullmatch(h[end + 1:])):
+            return ""
+        return h[1:end]
+    if h.count(":") == 1:
+        name, port = h.split(":")
+        return name if _HOST_PORT.fullmatch(":" + port) else ""
+    return h
 
 
 def _host_allowed(host_header: str) -> bool:
@@ -540,6 +555,39 @@ async def favicon():
     if os.path.exists(fav_path):
         return FileResponse(fav_path, media_type="image/png", headers={"Cache-Control": "public, max-age=86400"})
     return JSONResponse({"error": "not found"}, status_code=404)
+
+
+class _StaticAssets(StaticFiles):
+    """/static: generic UI assets only (stylesheet, logo, fonts). The prefix is
+    auth-public, so this refuses anything outside static/ (StaticFiles resolves
+    the real path and never lists a directory), dotfiles, and unknown types."""
+
+    TYPES = {".css": "text/css", ".svg": "image/svg+xml", ".woff2": "font/woff2",
+             ".js": "text/javascript", ".png": "image/png"}
+
+    async def get_response(self, path, scope):
+        parts = path.replace("\\", "/").split("/")
+        # A NUL byte made realpath raise ValueError, which StaticFiles lets
+        # through as a 500 with a traceback in the log.
+        if "\x00" in path or any(p.startswith(".") for p in parts) or os.path.splitext(path)[1].lower() not in self.TYPES:
+            raise StarletteHTTPException(status_code=404)
+        return await super().get_response(path, scope)
+
+    def file_response(self, full_path, stat_result, scope, status_code=200):
+        response = FileResponse(full_path, status_code=status_code, stat_result=stat_result,
+                                media_type=self.TYPES.get(os.path.splitext(str(full_path))[1].lower()))
+        response.headers["Cache-Control"] = "public, max-age=3600"
+        if self.is_not_modified(response.headers, Headers(scope=scope)):
+            return NotModifiedResponse(response.headers)
+        return response
+
+    async def check_config(self):
+        if os.path.isdir(self.directory):  # no folder: plain 404s, not a 500 per request
+            await super().check_config()
+
+
+# check_dir=False: an install without the folder still starts.
+app.mount("/static", _StaticAssets(directory=os.path.join(DASHBOARD_DIR, "static"), check_dir=False), name="static")
 
 # E2 manifest → moved to routes/*.py
 # E2 metrics → moved to routes/*.py

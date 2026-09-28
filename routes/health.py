@@ -43,8 +43,8 @@ async def manifest():
         "description": "CODEC — Your Open-Source Intelligent Command Layer",
         "start_url": "/",
         "display": "standalone",
-        "background_color": "#0a0a0a",
-        "theme_color": "#E8711A",
+        "background_color": "#121215",
+        "theme_color": "#d97757",
         # B5 / SR-28: 192/512 icon entries declared so Android Add-to-Home-
         # Screen installers don't warn about missing standard sizes.
         "icons": [
