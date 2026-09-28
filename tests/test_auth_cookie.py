@@ -38,6 +38,8 @@ def pin_auth(monkeypatch):
     monkeypatch.setattr(shared, "_save_sessions", lambda: None)
     monkeypatch.setattr(auth, "_global_fails", [])
     monkeypatch.setattr(auth, "_pin_attempts", {})
+    monkeypatch.setattr(auth, "_touchid_prompts", [])
+    monkeypatch.setattr(auth, "AUTH_TOUCHID_REMOTE", False)
     saved = dict(shared._auth_sessions)
     shared._auth_sessions.clear()
     yield
@@ -155,3 +157,41 @@ def test_touchid_hidden_from_tunnel_in_auth_check(monkeypatch):
     n = len(calls)
     assert client.get("/api/auth/check", headers=TUNNEL).json()["touchid_available"] is False
     assert len(calls) == n  # not even asked
+
+
+def _touchid_binary(monkeypatch, stdout):
+    """Fake the Touch ID binary; returns the list of calls it received."""
+    monkeypatch.setattr(auth, "_is_auth_compiled", lambda: True)
+    calls = []
+
+    def _run(*a, **k):
+        calls.append(a)
+        return type("R", (), {"returncode": 0, "stdout": stdout})()
+    monkeypatch.setattr(auth.subprocess, "run", _run)
+    return calls
+
+
+def test_touchid_offered_to_tunnel_when_remote_switch_on(monkeypatch):
+    monkeypatch.setattr(auth, "AUTH_TOUCHID_REMOTE", True)
+    _touchid_binary(monkeypatch, '{"available": true, "method": "touchid"}')
+    client = TestClient(app, client=("127.0.0.1", 5000))
+    assert client.get("/api/auth/check", headers=TUNNEL).json()["touchid_available"] is True
+
+
+def test_touchid_verify_prompts_for_tunnel_when_remote_switch_on(monkeypatch):
+    monkeypatch.setattr(auth, "AUTH_TOUCHID_REMOTE", True)
+    calls = _touchid_binary(monkeypatch, '{"authenticated": true, "method": "touchid"}')
+    r = TestClient(app, client=("127.0.0.1", 5000)).post("/api/auth/verify", headers=TUNNEL)
+    assert r.status_code == 200 and r.json()["authenticated"] is True
+    assert len(calls) == 1  # the prompt ran on the Mac
+    assert _value(_cookies(r)["codec_session"]) in shared._auth_sessions
+
+
+def test_touchid_rate_limit_applies_to_tunnel_requests(monkeypatch):
+    monkeypatch.setattr(auth, "AUTH_TOUCHID_REMOTE", True)
+    calls = _touchid_binary(monkeypatch, '{"authenticated": false, "error": "cancelled"}')
+    client = TestClient(app, client=("127.0.0.1", 5000))
+    codes = [client.post("/api/auth/verify", headers=TUNNEL).status_code
+             for _ in range(auth._TOUCHID_MAX_PROMPTS + 1)]
+    assert codes == [200] * auth._TOUCHID_MAX_PROMPTS + [429]
+    assert len(calls) == auth._TOUCHID_MAX_PROMPTS  # the extra request never prompts

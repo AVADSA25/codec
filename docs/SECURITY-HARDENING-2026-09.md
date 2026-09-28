@@ -13,6 +13,7 @@ Follow-ups to the 27 Sep 2026 audit (items 2, 3, 5 and 6). One section per PR.
 - Logout deletes the session and clears both cookies from the server side.
 - `AuthMiddleware` no longer accepts `?s=<token>`. Same-origin images, streams and the WebSocket send the cookie by themselves. The `AUTH REJECTED` log line says only whether a cookie was present.
 - `/api/auth/verify` (Touch ID) answers 403 to requests from the tunnel or another machine, and `/api/auth/check` reports Touch ID as unavailable to them. The prompt appears on the Mac, so remote visitors use the PIN.
+- Since 28 Sep 2026, `auth_touchid_remote: true` in `config.json` lets phone and tunnel visitors ask for the Touch ID prompt on the Mac again. The default stays off. Turn it on only when the tunnel hostname sits behind an access gate such as Cloudflare Access. Either way, all visitors together get at most 5 prompts per 10 minutes, and only one prompt waits at a time.
 
 **Compatibility:** a browser that still holds an old JavaScript-written cookie keeps working until it expires. The auth page writes the cookies itself only when an older server returns the token in the body, so a new page served by a not-yet-restarted server still logs in.
 
