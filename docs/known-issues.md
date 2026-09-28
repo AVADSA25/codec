@@ -269,3 +269,29 @@ yet this key stayed on disk. It is also the bearer `codec_setup.set_provider("av
 sends to the AVA proxy. Found while reviewing LLM config for the cloud fallback
 model (docs/CLOUD-FALLBACK-MODEL-DESIGN.md). Fix: migrate it to a Keychain slot with
 the same first-read migration as the PR-2B-2 getters and blank the field.
+
+## `codec_sandbox` shares one profile file between callers (2026-09-28)
+
+`codec_sandbox._write_sandbox_profile(allow_network=...)` rewrites the single
+file `~/.codec/sandbox.sb` on every call. Two sandboxed runs that start at the
+same time with different `allow_network` values race, and the last writer wins
+for both. Found while reviewing `/api/run_code` for the 27 Sep audit follow-up.
+Fix: write a per-call profile (a temp file, or one file per network mode).
+
+## Sandbox docstrings claim "no process spawning" (2026-09-28)
+
+`codec_sandbox.py` (module docstring), `skills/python_exec.py` (module docstring),
+the comment at the top of `routes/vibe_exec.py`, and AGENTS.md §7 (`python_exec`
+hardening) say the sandbox profile denies spawning processes. The profile
+actually allows `process-fork`, and `process-exec` from `/usr`, `/opt/homebrew`
+and the Python framework. What it does restrict is writes (to
+`~/.codec/skill_output`, `/private/tmp`, `/private/var/folders`) and, when asked,
+the network. Fix: correct the four descriptions, or tighten the profile and test
+it.
+
+## `codec_telegram.py` config example says an empty allowlist allows everyone (2026-09-28)
+
+The example config at the top of `codec_telegram.py` says
+`"allowed_chat_ids": []  // empty = allow all`. The code is fail-closed: an empty
+or missing list denies every chat (`is_chat_allowed`, C2). Only the comment is
+wrong. Fix: change it to "empty = deny all".
