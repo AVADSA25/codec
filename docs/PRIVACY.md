@@ -17,7 +17,7 @@ These are processed locally and never transmitted unless you explicitly route th
 | Conversation + task memory | SQLite | `~/.codec/memory.db` | until you delete; `cleanup(retention_days=90)` available |
 | Audit log (every action CODEC takes) | local | `~/.codec/audit.log` (0600, HMAC-signed, secrets redacted) | 30-day rotation |
 | Skills, plugins, agent workspaces | local | `~/.codec/` | until you delete |
-| Clipboard, recent-file metadata, idle time (observer) | local, RAM only | `collections.deque`, wiped on restart | ≤10 min ring buffer |
+| Active window, screen text, clipboard, recent-file metadata, idle time (observer) | local | RAM (`collections.deque`, wiped on restart), mirrored to `~/.codec/observer_buffer.json` (0600; no clipboard text, only its type and length) for "what was I doing?" | ≤10 min ring buffer; the file is deleted on pause, after long idle and when the observer stops |
 
 The local LLM (Qwen via MLX), STT (Whisper), and TTS (Kokoro) all run on-device.
 

@@ -84,13 +84,17 @@ def test_window_parsing():
 
 
 def test_persist_round_trips_the_daemon_buffer(tmp_path, monkeypatch):
-    """The daemon's _persist_buffer_to_disk writes exactly what the skill reads."""
+    """The daemon's _persist_buffer_to_disk writes what the skill reads, and
+    'what was I doing?' still works on the file without clipboard text."""
     import codec_observer
     monkeypatch.setattr(codec_observer, "_BUFFER_DISK_PATH", tmp_path / "observer_buffer.json")
     buf = codec_observer.RingBuffer(maxlen=10)
-    buf.append({"ts": datetime.now(timezone.utc).isoformat(), "active_window": {"app": "Figma"}})
+    buf.append({"ts": datetime.now(timezone.utc).isoformat(), "active_window": {"app": "Figma"},
+                "clipboard": {"preview": "copied text", "content_type": "text", "length": 11}})
     codec_observer._persist_buffer_to_disk(buf)
 
     monkeypatch.setattr(observer_recall, "_BUFFER_PATH", str(tmp_path / "observer_buffer.json"))
     entries, _updated = observer_recall._load_entries()
     assert len(entries) == 1 and entries[0]["active_window"]["app"] == "Figma"
+    assert entries[0]["clipboard"] == {"content_type": "text", "length": 11}
+    assert "Figma" in observer_recall.run("what was I doing?")

@@ -69,13 +69,13 @@ CODEC agents can pause and ask the user a structured question, self-detect when 
 
 ### Continuous Observation Loop (Phase 2 Step 5)
 
-CODEC has a background process (`codec-observer` PM2 service, `codec_observer.py`) that polls four cheap signals — frontmost window, screenshot OCR, clipboard delta, recent file changes — and keeps the last 10 minutes of state in a RAM-only ring buffer. On every chat / voice request, an injection helper decides whether to prepend a ≤200-token summary to the LLM's system prompt, gated per the §X "Observation injection contract":
+CODEC has a background process (`codec-observer` PM2 service, `codec_observer.py`) that polls four cheap signals — frontmost window, screenshot OCR, clipboard delta, recent file changes — and keeps the last 10 minutes of state in a RAM ring buffer, mirrored to one owner-only file for cross-process recall (privacy contract below). On every chat / voice request, an injection helper decides whether to prepend a ≤200-token summary to the LLM's system prompt, gated per the §X "Observation injection contract":
 
 - **`transport="local"`** (local Qwen) → always inject. Cheap + private.
 - **`transport="mcp"`** → never inject. The MCP client (claude.ai, Claude.app) brings its own context.
 - **`transport in {"chat", "voice", "http"}`** → gated on cheap text-pattern checks: possessive-without-context (`"my X"`/`"this Y"` filtered against a stop-noun list), continuation language (`"continue"`, `"where was I"`), or skill-flag (`SKILL_NEEDS_OBSERVATION = True` on a resolved skill module).
 
-**Privacy contract**: 4 layers. (1) RAM only — `collections.deque` wiped on process restart. (2) Audit emits are METADATA-ONLY: lengths, counts, `content_type` tags, but NEVER raw window titles, OCR text, clipboard content, or file paths. (3) Cloud-transport injection gating per §X. (4) NO new system permissions — uses existing skills + primitives (osascript, pbpaste, Quartz, getmtime).
+**Privacy contract**: 4 layers. (1) RAM buffer — `collections.deque` wiped on process restart — plus one disk mirror, `~/.codec/observer_buffer.json`, which the daemon rewrites after every poll so skills in other processes can answer "what was I doing?" (`skills/observer_recall.py`). The mirror is owner-only (0600, atomic write via `codec_jsonstore.atomic_write_json`), holds no clipboard text (content type and length only; RAM keeps the preview for the local summary), and is deleted when the observer is paused (kill switch), after the long-idle reset, and when the daemon exits (docs/OBS-DESIGN.md). (2) Audit emits are METADATA-ONLY: lengths, counts, `content_type` tags, but NEVER raw window titles, OCR text, clipboard content, or file paths. (3) Cloud-transport injection gating per §X. (4) NO new system permissions — uses existing skills + primitives (osascript, pbpaste, Quartz, getmtime).
 
 **Cadence**: 60s when active (`CGEventSourceSecondsSinceLastEventType < 60s`); drops to 5min when idle. Long-idle reset wipes buffer at 30min idle.
 
