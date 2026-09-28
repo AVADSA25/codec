@@ -1015,12 +1015,9 @@ function closeSidePanel(){document.getElementById('sidePanel').classList.remove(
 // On mobile (Android Chrome), cookies may not persist — fallback to sessionStorage
 (function(){
 var _f=window.fetch;
-function _getSession(){return document.cookie.match(/codec_session=([^;]+)/)?.[1]||_ssGet('codec_session')||''}
-function _injectSession(url){var s=_getSession();if(!s)return url;var sep=url.indexOf('?')>=0?'&':'?';return url+sep+'s='+s}
 window.fetch=function(u,o){
   o=o||{};
   // Always append session token as query param (mobile cookie fallback)
-  if(typeof u==='string')u=_injectSession(u);
   // CSRF for state-changing requests
   if(o.method&&o.method!=='GET'){var c=document.cookie.match(/codec_csrf=([^;]+)/);if(c){o.headers=o.headers||{};if(o.headers instanceof Headers){o.headers.set('x-csrf-token',c[1])}else{o.headers['x-csrf-token']=c[1]}}}
   return _f.call(this,u,o).then(function(resp){
@@ -2564,7 +2561,7 @@ function takeServerPhoto() {
   var btn = document.getElementById('photoBtn');
   btn.style.borderColor = 'var(--accent)';
   showToast('Capturing from Mac webcam...');
-  fetch('/api/webcam/snapshot?_t=' + Date.now() + _getAuthParam()).then(function(r) { return r.json(); }).then(function(d) {
+  fetch('/api/webcam/snapshot?_t=' + Date.now()).then(function(r) { return r.json(); }).then(function(d) {
     btn.style.borderColor = '';
     if (d.error) { showToast('Error: ' + d.error); return; }
     showToast('Photo saved: ' + d.filename);
@@ -2583,16 +2580,12 @@ function takeServerPhoto() {
 
 // ── Live Webcam PIP (Mac MJPEG stream) ──
 // Helper: get session token for img/stream URLs (mobile browsers may not send cookies with img.src)
-function _getAuthParam(first) {
-  var m = document.cookie.match(/codec_session=([^;]+)/);
-  return m ? (first ? '?s=' : '&s=') + m[1] : '';
-}
 var _pipDrag = { active: false, x: 0, y: 0 };
 function toggleWebcamPip() {
   var pip = document.getElementById('webcamPip');
   if (pip.style.display === 'block') { closeWebcamPip(); return; }
   var img = document.getElementById('pipVideo');
-  img.src = '/api/webcam/stream?_t=' + Date.now() + _getAuthParam();
+  img.src = '/api/webcam/stream?_t=' + Date.now();
   pip.style.display = 'block';
   document.getElementById('camBtn').style.borderColor = 'var(--accent)';
 }
@@ -2608,7 +2601,7 @@ function expandPip() {
 }
 function snapFromPip() {
   showToast('Snapshot from Mac webcam...');
-  fetch('/api/webcam/snapshot?_t=' + Date.now() + _getAuthParam()).then(function(r) { return r.json(); }).then(function(d) {
+  fetch('/api/webcam/snapshot?_t=' + Date.now()).then(function(r) { return r.json(); }).then(function(d) {
     if (d.error) { showToast('Error: ' + d.error); return; }
     showToast('Photo saved: ' + d.filename);
     fetch('/api/webcam', { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -2619,7 +2612,7 @@ function snapFromPip() {
   }).catch(function(e) { showToast('Snap error: ' + e.message); });
 }
 function savePipFrame() {
-  fetch('/api/webcam/snapshot?_t=' + Date.now() + _getAuthParam()).then(function(r) { return r.json(); }).then(function(d) {
+  fetch('/api/webcam/snapshot?_t=' + Date.now()).then(function(r) { return r.json(); }).then(function(d) {
     if (d.filename) showToast('Saved: ' + d.filename);
     else showToast('Error saving');
   }).catch(function(e) { showToast('Save error: ' + e.message); });

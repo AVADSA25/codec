@@ -377,6 +377,10 @@ Real adapter over `audit()` for lifecycle events (session start/end, scheduler t
 
 4. **Minimal env.** PATH=`/usr/bin:/bin`. PYTHONPATH, LD_LIBRARY_PATH, SHELL, HOME stripped — an attacker can't redirect the interpreter at a writable site-packages.
 
+### Dashboard session cookie (Sep 2026 audit follow-up)
+
+Logins (`routes/auth.py`) set the session as an **HttpOnly** `codec_session` cookie in the response, plus a separate random `codec_csrf` cookie that pages echo in `x-csrf-token`. The token is never in a response body, a URL (`?s=` is no longer accepted), sessionStorage, or a log line. Never reintroduce page-side token handling: same-origin fetches, images, streams and the WebSocket send the cookie by themselves. Touch ID verify is Mac-only (403 for tunnel requests). Details: `docs/SECURITY-HARDENING-2026-09.md`.
+
 ### Internal IPC token replacement (Phase 1 Wave 2, PR-2D — closes D-11)
 
 Before PR-2D, `AuthMiddleware.dispatch` short-circuited ALL auth for any localhost request that sent the literal header `X-Internal: codec`. Any malicious user-mode process on the user's Mac (Homebrew tap typo-squat, compromised PyPI package, D-1 RCE chain) could spoof that header from a `curl` against `127.0.0.1:8090` and bypass `dashboard_token` + Touch ID / PIN entirely.

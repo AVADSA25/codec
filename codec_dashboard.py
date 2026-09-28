@@ -4,7 +4,6 @@ import json
 import time
 import hmac
 import asyncio
-import ipaddress
 from urllib.parse import urlparse
 from datetime import datetime, timedelta
 
@@ -20,7 +19,7 @@ from routes._shared import (
     log, DASHBOARD_DIR, CONFIG_PATH, _NO_CACHE, _audit_write,
     AUTH_ENABLED, AUTH_SESSION_HOURS, AUTH_COOKIE_NAME,
     _auth_sessions, _auth_lock, _e2e_keys,
-    _auth_available, _verify_biometric_session, _session_token_valid,
+    _auth_available, _verify_biometric_session, _is_remote_request,
     _save_sessions, _save_e2e_keys,
     get_db,
 )
@@ -61,18 +60,6 @@ _bg_status: dict = {
     "heartbeat": {"running": False, "last_tick": None, "errors": 0},
     "watcher":   {"running": False, "last_tick": None, "errors": 0},
 }
-
-
-def _is_remote_request(request) -> bool:
-    """True when a request did not come directly from this Mac: it came through
-    a proxy/tunnel (forwarding headers) or from a non-loopback address."""
-    if request.headers.get("cf-connecting-ip") or request.headers.get("x-forwarded-for"):
-        return True
-    host = request.client.host if request.client else ""
-    try:
-        return not ipaddress.ip_address(host).is_loopback
-    except ValueError:
-        return False  # not an IP (in-process test client, unix socket)
 
 
 def _route_label(request) -> str:
@@ -202,19 +189,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if AUTH_ENABLED and _auth_available():
             if _verify_biometric_session(request):
                 return await call_next(request)
-            # Fallback: accept session token as ?s= query param (for img/stream
-            # URLs on mobile). re-audit N5: route through _session_token_valid so
-            # the TOTP-verified gate is enforced here too — previously this path
-            # checked only token existence + age, letting a pre-TOTP token skip
-            # 2FA via ?s=<token> on any GET /api endpoint.
-            qs_token = request.query_params.get("s", "")
-            if qs_token and request.method == "GET" and _session_token_valid(qs_token):
-                return await call_next(request)
-            # Biometric failed — reject
-            cookie_val = request.cookies.get(AUTH_COOKIE_NAME, "<missing>")
-            log.warning("AUTH REJECTED: path=%s method=%s ip=%s cookie=%s...",
+            # No ?s=<token> fallback any more (audit 2026-09-27): tokens in URLs
+            # ended up in the access log. Same-origin images, streams and the
+            # WebSocket send the HttpOnly session cookie by themselves.
+            log.warning("AUTH REJECTED: path=%s method=%s ip=%s cookie=%s",
                         path, request.method, request.client.host if request.client else "?",
-                        cookie_val[:12] if cookie_val else "<empty>")
+                        "present" if request.cookies.get(AUTH_COOKIE_NAME) else "missing")
             if path.startswith("/api/") or path.startswith("/ws"):
                 return StarletteJSONResponse({"error": "Not authenticated"}, status_code=401)
             from starlette.responses import RedirectResponse

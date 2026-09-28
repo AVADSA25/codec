@@ -21,7 +21,7 @@ from routes._shared import (
     DASHBOARD_DIR, CONFIG_PATH, _NO_CACHE,
     AUTH_ENABLED, AUTH_SESSION_HOURS, AUTH_BINARY, AUTH_PIN_HASH, AUTH_COOKIE_NAME,
     _auth_sessions, _auth_lock, _e2e_keys,
-    _is_auth_compiled, _is_totp_enabled, _verify_biometric_session,
+    _is_auth_compiled, _is_totp_enabled, _verify_biometric_session, _is_remote_request,
     _save_sessions, _save_e2e_keys, _audit_event, _pin_attempts,
 )
 
@@ -40,6 +40,34 @@ _TOUCHID_WINDOW_S = 600
 _TOUCHID_MAX_PROMPTS = 5       # Touch ID prompts per 10 min, all clients
 _touchid_prompts: list = []
 _touchid_busy = threading.Lock()
+
+# The session lives in an HttpOnly cookie set here, so page JavaScript never
+# sees it (audit 2026-09-27 item 2). Pages echo the separate, random CSRF
+# cookie in the x-csrf-token header.
+CSRF_COOKIE_NAME = "codec_csrf"
+
+
+def _is_https(request: Request) -> bool:
+    """True when the visitor's connection is HTTPS. Behind the Cloudflare
+    tunnel the last hop to this Mac is plain HTTP, so read the forwarded scheme."""
+    if request.url.scheme == "https":
+        return True
+    if request.headers.get("x-forwarded-proto", "").split(",")[0].strip().lower() == "https":
+        return True
+    return '"scheme":"https"' in request.headers.get("cf-visitor", "").replace(" ", "")
+
+
+def _login_response(request: Request, token: str, body: dict) -> JSONResponse:
+    """Answer a successful login: the session and CSRF cookies go in
+    Set-Cookie, never in the JSON body."""
+    resp = JSONResponse(body)
+    max_age = int(AUTH_SESSION_HOURS * 3600)
+    secure = _is_https(request)
+    resp.set_cookie(AUTH_COOKIE_NAME, token, max_age=max_age, path="/",
+                    httponly=True, secure=secure, samesite="lax")
+    resp.set_cookie(CSRF_COOKIE_NAME, secrets.token_urlsafe(24), max_age=max_age,
+                    path="/", httponly=False, secure=secure, samesite="lax")
+    return resp
 
 
 def _client_key(request: Request) -> str:
@@ -101,11 +129,13 @@ async def auth_page():
 
 
 @router.get("/api/auth/check")
-async def auth_check():
-    """Check which auth methods are available (Touch ID and/or PIN)."""
+async def auth_check(request: Request):
+    """Check which auth methods are available (Touch ID and/or PIN).
+    Touch ID is offered only to requests from this Mac: the prompt appears
+    on the Mac, so a phone or the tunnel gets the PIN."""
     result = {"touchid_available": False, "pin_available": bool(AUTH_PIN_HASH)}
 
-    if _is_auth_compiled():
+    if _is_auth_compiled() and not _is_remote_request(request):
         try:
             r = await asyncio.to_thread(
                 subprocess.run, [AUTH_BINARY, "--check"],
@@ -125,7 +155,10 @@ async def auth_check():
 
 @router.post("/api/auth/verify")
 async def auth_verify(request: Request):
-    """Trigger Touch ID verification on the Mac."""
+    """Trigger Touch ID verification on the Mac. Only requests from this Mac
+    may pop the prompt (audit 2026-09-27)."""
+    if _is_remote_request(request):
+        return JSONResponse({"error": "Touch ID works only on this Mac. Use your PIN."}, status_code=403)
     if not _is_auth_compiled():
         return JSONResponse({"error": "Auth binary not compiled"}, status_code=500)
     now = time.time()
@@ -164,12 +197,11 @@ async def auth_verify(request: Request):
                         "method": result.get("method", "unknown"),
                     }
                     _save_sessions()
-                return {
+                return _login_response(request, token, {
                     "authenticated": True,
                     "method": result.get("method"),
-                    "token": token,
                     "expires_hours": AUTH_SESSION_HOURS,
-                }
+                })
             else:
                 log_event("auth_reject", "codec-auth", "Auth failed", outcome="denied", level="warning")
                 return {
@@ -237,12 +269,11 @@ async def auth_pin(request: Request):
                 "method": "pin",
             }
             _save_sessions()
-        return {
+        return _login_response(request, token, {
             "authenticated": True,
             "method": "pin",
-            "token": token,
             "expires_hours": AUTH_SESSION_HOURS,
-        }
+        })
     else:
         log_event("auth_reject", "codec-auth", "Auth failed", outcome="denied", level="warning")
         _record_global_fail()
@@ -344,9 +375,11 @@ async def totp_verify(request: Request):
     import pyotp
     body = await request.json()
     code = str(body.get("code", ""))
-    pending_token = body.get("token", "")
+    # The PIN / Touch ID step already set the (not yet TOTP-verified) session
+    # cookie; a token in the body is no longer read.
+    pending_token = request.cookies.get(AUTH_COOKIE_NAME, "")
     if not code or not pending_token:
-        return JSONResponse({"error": "Missing code or token"}, status_code=400)
+        return JSONResponse({"error": "Missing code or session. Log in again."}, status_code=400)
     totp_secret = ""
     try:
         with open(CONFIG_PATH) as f:
@@ -367,7 +400,7 @@ async def totp_verify(request: Request):
                 _auth_sessions[pending_token]["totp_verified"] = True
                 _save_sessions()
         _audit_event("totp_success", ip=client_ip)
-        return {"verified": True, "token": pending_token}
+        return {"verified": True}
     _audit_event("totp_failed", outcome="error", level="warning", ip=client_ip)
     _record_global_fail()
     _t = _pin_attempts.get(_tkey, {"count": 0, "locked_until": 0.0})
@@ -457,7 +490,10 @@ async def auth_logout(request: Request):
             del _auth_sessions[token]
             _save_sessions()
     _e2e_keys.pop(token, None)
-    return {"logged_out": True}
+    resp = JSONResponse({"logged_out": True})
+    resp.delete_cookie(AUTH_COOKIE_NAME, path="/")
+    resp.delete_cookie(CSRF_COOKIE_NAME, path="/")
+    return resp
 
 
 @router.get("/api/auth/status")
