@@ -31,7 +31,7 @@ strict consent) are add-only. No personal data in the repo. No emoji in the UI.
 
 | # | Item | Effort | Needs the Mac | Status |
 |---|---|---|---|---|
-| 1 | OBS: Observer disk file made safe | S | yes | open |
+| 1 | OBS: Observer disk file made safe | S | yes | done (#401) |
 | 2 | P2.1: Desktop sidebar, phone tab bar, and every page on the shared shell | M | yes | open |
 | 3 | P2.2: Rename, pin, archive, group, load more and export chats | M | yes | open |
 | 4 | P2.14: Installable PWA with an offline shell | M | yes | open |
