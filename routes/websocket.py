@@ -15,8 +15,7 @@ def _ws_authorized(websocket) -> bool:
 
     BaseHTTPMiddleware (AuthMiddleware's base) only runs on the `http` scope,
     NOT `websocket` — so /ws/voice was unauthenticated. This replicates the
-    HTTP Layers 0/1/2: open when nothing is configured (loopback dev posture);
-    else accept a matching dashboard_token (via `?token=` or an Authorization:
+    HTTP Layers 0/1/2: when nothing is configured, only this Mac; else accept a matching dashboard_token (via `?token=` or an Authorization:
     Bearer header) OR a valid biometric session cookie (TOTP-verified per
     _verify_biometric_session). Never raises — returns False on any error.
     """
@@ -24,6 +23,7 @@ def _ws_authorized(websocket) -> bool:
     from routes._shared import (
         AUTH_ENABLED,
         _auth_available,
+        _is_remote_request,
         _verify_biometric_session,
     )
     try:
@@ -33,10 +33,10 @@ def _ws_authorized(websocket) -> bool:
         token = ""
     biometric = bool(AUTH_ENABLED) and bool(_auth_available())
 
-    # Layer 0 — nothing configured → open (loopback-only dev; the startup
-    # safety gate refuses a public bind without a token or auth).
+    # Layer 0 — nothing configured → this Mac only, the same rule as HTTP
+    # (AuthMiddleware). Tunnel and LAN clients need a PIN or token.
     if not token and not biometric:
-        return True
+        return not _is_remote_request(websocket)
 
     # Layer 1 — dashboard_token bearer, presented as ?token= or Authorization.
     if token:

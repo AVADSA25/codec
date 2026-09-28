@@ -4,12 +4,14 @@ import json
 import time
 import hmac
 import asyncio
+import ipaddress
 from urllib.parse import urlparse
 from datetime import datetime, timedelta
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.datastructures import Headers
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse as StarletteJSONResponse
 import uvicorn
@@ -335,6 +337,76 @@ class E2EMiddleware(BaseHTTPMiddleware):
         return response
 
 app.add_middleware(E2EMiddleware)
+
+
+# ═══════════════════════════════════════════════════════════════
+# HOST ALLOWLIST — outermost layer (audit 2026-09-27 follow-up)
+# ═══════════════════════════════════════════════════════════════
+
+def _public_host_names() -> set:
+    """Host names this dashboard answers to besides localhost: this Mac's own
+    name (for LAN setups), the tunnel hosts, `dashboard_public_hosts` in
+    config.json, and the comma-separated CODEC_DASHBOARD_EXTRA_HOSTS (the
+    test suite adds Starlette's "testserver")."""
+    import socket
+    own = socket.gethostname().lower()
+    names = {own, own.removesuffix(".local"), own.removesuffix(".local") + ".local"}
+    names |= {h.split(":")[0] for h in AuthMiddleware.TRUSTED_ORIGIN_HOSTS}
+    try:
+        from codec_config import cfg as _cfg
+        names |= {str(h).strip().lower() for h in (_cfg.get("dashboard_public_hosts") or [])}
+    except Exception:
+        pass
+    extra = os.environ.get("CODEC_DASHBOARD_EXTRA_HOSTS", "")
+    return names | {h.strip().lower() for h in extra.split(",") if h.strip()}
+
+
+_ALLOWED_HOST_NAMES = {"localhost"} | _public_host_names()
+
+
+def _host_name(host_header: str) -> str:
+    """'example.com:8090' -> 'example.com', '[::1]:8090' -> '::1'."""
+    h = (host_header or "").strip().lower()
+    if h.startswith("["):
+        return h[1:h.find("]")] if "]" in h else ""
+    return h.rsplit(":", 1)[0] if h.count(":") == 1 else h
+
+
+def _host_allowed(host_header: str) -> bool:
+    name = _host_name(host_header)
+    if not name:
+        return False
+    try:
+        ipaddress.ip_address(name)
+        return True  # an IP literal can only reach us if the client dialled us
+    except ValueError:
+        return name in _ALLOWED_HOST_NAMES
+
+
+class HostAllowlistMiddleware:
+    """Refuse requests whose Host header names a site this dashboard does not
+    serve. A web page can point its own domain at 127.0.0.1 ("DNS
+    rebinding"); its requests then look local and same-origin, so without
+    this check an install with no login would run /api/run_code for any
+    website. Covers HTTP and the WebSocket."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] in ("http", "websocket"):
+            host = Headers(scope=scope).get("host", "")
+            if not _host_allowed(host):
+                log.warning("HOST REJECTED: host=%s path=%s", host[:80], scope.get("path", "")[:120])
+                if scope["type"] == "websocket":
+                    await send({"type": "websocket.close", "code": 1008})
+                    return
+                await StarletteJSONResponse({"error": "Unknown host"}, status_code=400)(scope, receive, send)
+                return
+        await self.app(scope, receive, send)
+
+
+app.add_middleware(HostAllowlistMiddleware)
 
 
 # ═══════════════════════════════════════════════════════════════
