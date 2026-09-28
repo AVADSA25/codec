@@ -109,7 +109,7 @@ def check_memory_stats():
                 from codec_keychain import get_internal_token
                 _token = get_internal_token() or ""
                 requests.post("http://localhost:8090/api/notifications",
-                              json={"message": f"💾 Memory DB is {db_size_mb:.0f} MB — consider running cleanup", "type": "warning", "source": "heartbeat"},
+                              json={"message": f"Warning: Memory DB is {db_size_mb:.0f} MB — consider running cleanup", "type": "warning", "source": "heartbeat"},
                               headers={"x-internal-token": _token},
                               timeout=5)
             except Exception:
@@ -530,8 +530,7 @@ def check_alerts():
                     change_pct = ((price - last_price) / last_price) * 100
                     if abs(change_pct) >= threshold_pct:
                         if direction == "any" or (direction == "up" and change_pct > 0) or (direction == "down" and change_pct < 0):
-                            arrow = "📈" if change_pct > 0 else "📉"
-                            msg = f"{arrow} {name}: ${price:,.2f} ({change_pct:+.1f}% since last check)"
+                            msg = f"{name}: ${price:,.2f} ({change_pct:+.1f}% since last check)"
                             log.info(f"  🚨 ALERT: {msg}")
                             triggered.append(msg)
                             state[f"price_{asset}"] = price  # reset baseline
@@ -562,7 +561,7 @@ def check_alerts():
                     first_line = _re.search(r'\* (.+?)(?:\n|$)', str(result))
                     if first_line:
                         preview = f" — {first_line.group(1)[:60]}"
-                    msg = f"📧 {name}: {count} unread email{'s' if count != 1 else ''}{preview}"
+                    msg = f"{name}: {count} unread email{'s' if count != 1 else ''}{preview}"
                     log.info(f"  {msg}")
                     triggered.append(msg)
                 elif count == 0:
@@ -579,7 +578,7 @@ def check_alerts():
                 threshold = alert.get("threshold_pct", 90)
                 free_gb = usage.free / (1024**3)
                 if used_pct >= threshold:
-                    msg = f"💾 {name}: {used_pct:.0f}% used — only {free_gb:.1f} GB free"
+                    msg = f"{name}: {used_pct:.0f}% used — only {free_gb:.1f} GB free"
                     log.info(f"  🚨 ALERT: {msg}")
                     triggered.append(msg)
                 else:

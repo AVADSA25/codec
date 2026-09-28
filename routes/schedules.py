@@ -194,7 +194,7 @@ async def run_schedule_now(sched_id: str):
             # ── Step 4: Save success notification with doc link ──
             body_text = answer[:2000]
             if doc_url:
-                body_text = f"📄 [View Full Report]({doc_url})\n\n{body_text}"
+                body_text = f"[View Full Report]({doc_url})\n\n{body_text}"
             with _notif_lock:
                 notifications = _load_notifications()
                 for n in notifications:

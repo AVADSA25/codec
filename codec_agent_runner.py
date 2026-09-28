@@ -674,7 +674,7 @@ def _strict_consent(action: Action, deadline: int = DESTRUCTIVE_CONSENT_TIMEOUT_
     """
     verb = "confirm"
     question = (
-        f"⚠️ Agent requests a DESTRUCTIVE operation\n"
+        f"Warning: Agent requests a DESTRUCTIVE operation\n"
         f"skill: {action.skill}\n"
         f"task: {action.task[:160]}\n\n"
         f"To approve, type '{verb}'. A generic 'yes'/'ok' will be rejected."
@@ -1579,7 +1579,7 @@ def _run_agent(agent_id: str, cid: Optional[str] = None) -> None:
 
         done_body = (
             f"Plan complete. {len(history)} total steps across {len(plan.checkpoints)} checkpoints.\n\n"
-            f"📁 {project_dir}\n"
+            f"Folder: {project_dir}\n"
             + ("\n".join(artifact_lines) if artifact_lines else "  (no files created)")
         )
 
@@ -1593,9 +1593,9 @@ def _run_agent(agent_id: str, cid: Optional[str] = None) -> None:
                          title=f"Done: {manifest.get('title', agent_id)}",
                          body=done_body,
                          actions=[
-                             {"label": "📂 Open folder",
+                             {"label": "Open folder",
                               "endpoint": f"/api/agents/{agent_id}/open-folder"},
-                             {"label": "📄 View files",
+                             {"label": "View files",
                               "endpoint": f"/api/agents/{agent_id}/artifacts"},
                          ],
                          correlation_id=cid)

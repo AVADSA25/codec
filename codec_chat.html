@@ -2,36 +2,35 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="theme-color" content="#121215">
+<script>/* Theme before first paint, so the page never flashes dark: same key and attribute as applyTheme() below. */try{(function(){function _lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}var t=_lsGet('codec-theme');if(t!=='light'&&t!=='dark'){try{t=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'}catch(e){t='dark'}}document.documentElement.setAttribute('data-theme',t);var m=document.querySelector('meta[name="theme-color"]');if(m)m.content=t==='light'?(m.getAttribute('data-light')||'#faf8f5'):'#121215'})()}catch(e){}</script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#0a0a0a">
 <title>CODEC Deep Chat</title>
 <link rel="icon" href="/favicon.png">
 <link rel="apple-touch-icon" href="/favicon.png">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/codec.css">
 <style>
 :root {
   --bg: #121215; --surface: #18181b; --surface-2: #1f1f22; --surface-3: #27272a;
-  --border: #2a2a2f; --border-hover: #3a3a40;
-  --text: #ececec; --text-muted: #9a9aa0; --text-dim: #6a6a70;
+  --border: #2a2a2f; --border-strong: #3a3a40;
+  --text: #ececec; --text-muted: #9a9aa0; --text-dim: #8b8b92;
   /* 2026 refresh: keep CODEC orange identity but warmer + calmer (was pure #E8711A) */
-  --accent: #d97757; --accent-hover: #e08766; --accent-dim: rgba(217,119,87,0.10);
-  --danger: #ef4444; --success: #22c55e; --info: #3b82f6;
+  --accent: #d97757; --accent-hover: #e08766; --accent-dim: rgba(217,119,87,0.10); --on-accent: #121215;
+  --danger: #ef4444; --success: #22c55e; --warning: #f59e0b; --info: #60a5fa;
   /* Muted sage green for agent "running" states — pairs with the warm orange theme instead of the harsh bright green */
   --running: #4f9a7d; --blocked: #d98a5a;
-  --font: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-  --mono: 'IBM Plex Mono', 'SF Mono', monospace;
+  --font-sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'IBM Plex Mono', 'SF Mono', monospace;
   --radius-sm: 6px; --radius: 10px; --radius-lg: 14px;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
-  --bg2: #111111; --bg3: #1a1a1a; --bg4: #222222;
-  --fg: #e8e8e8; --fg2: #7a7a7a; --fg3: #4a4a4a;
-  --ac: #d97757; --bd: #232323;
 }
-[data-theme=light]{--bg:#faf8f5;--surface:#fff;--surface-2:#f2eee8;--surface-3:#ebe6df;--border:#e2ddd5;--border-hover:#c8c2b8;--text:#18181b;--text-muted:#52525b;--text-dim:#71717a;--bg2:#fff;--bg3:#f2eee8;--bg4:#ebe6df;--fg:#18181b;--fg2:#52525b;--fg3:#71717a;--bd:#e2ddd5;--accent:#b85a3a;--accent-hover:#a04d31;--accent-dim:rgba(184,90,58,0.08)}
+[data-theme=light]{--bg:#faf8f5;--surface:#fff;--surface-2:#f2eee8;--surface-3:#ebe6df;--border:#e2ddd5;--border-strong:#c8c2b8;--text:#18181b;--text-muted:#52525b;--text-dim:#71717a;--accent:#b85a3a;--accent-hover:#a04d31;--accent-dim:rgba(184,90,58,0.08);--on-accent:#ffffff;--success:#15803d;--danger:#dc2626;--warning:#b45309;--info:#2563eb}
 *{margin:0;padding:0;box-sizing:border-box}
 html{background:var(--bg)}
-html,body{font-family:var(--font);background:var(--bg);color:var(--text);height:100%;overflow:hidden;-webkit-tap-highlight-color:transparent}
+html,body{font-family:var(--font-sans);background:var(--bg);color:var(--text);height:100%;overflow:hidden;-webkit-tap-highlight-color:transparent}
 .app{display:flex;flex-direction:column;height:100vh;position:relative;overflow:hidden}
 @supports (height:100dvh){.app{height:calc(100dvh / var(--tz, 1))}}
 .ico{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
@@ -41,12 +40,12 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);height:
 .header{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0;z-index:10;position:relative}
 .header-left{display:flex;align-items:center;gap:8px}
 .icon-btn{background:none;border:1px solid var(--border);color:var(--text-muted);width:30px;height:30px;border-radius:var(--radius-sm);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;text-decoration:none}
-.icon-btn:hover{border-color:var(--border-hover);color:var(--text);background:var(--surface-2)}
+.icon-btn:hover{border-color:var(--border-strong);color:var(--text);background:var(--surface-2)}
 .icon-btn:active{transform:scale(.93)}
 .logo-link{display:flex;align-items:center;text-decoration:none}
 .logo-link img{width:34px;height:34px;border-radius:8px}
-.header h1{font-family:var(--mono);font-size:16px;font-weight:700;letter-spacing:2px;color:var(--accent)}
-.model-tag{font-family:var(--mono);font-size:10px;color:var(--text-dim);background:var(--surface-2);padding:2px 6px;border-radius:4px}
+.header h1{font-family:var(--font-mono);font-size:16px;font-weight:700;letter-spacing:2px;color:var(--accent)}
+.model-tag{font-family:var(--font-mono);font-size:10px;color:var(--text-dim);background:var(--surface-2);padding:2px 6px;border-radius:4px}
 .header-right{display:flex;gap:6px;align-items:center}
 .status-dot{width:7px;height:7px;border-radius:50%;background:var(--danger);flex-shrink:0;transition:all .3s}
 .status-dot.on{background:var(--success);box-shadow:0 0 6px rgba(34,197,94,0.5)}
@@ -63,22 +62,22 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);height:
 .side-panel{position:fixed;top:0;right:-300px;width:300px;height:100%;background:var(--surface);border-left:1px solid var(--border);z-index:9991;transition:right .3s cubic-bezier(.4,0,.2,1),visibility 0s .3s;visibility:hidden;display:flex;flex-direction:column;box-shadow:-4px 0 24px rgba(0,0,0,.3)}
 .side-panel.open{right:0;visibility:visible;transition:right .3s cubic-bezier(.4,0,.2,1)}
 .side-panel-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border)}
-.side-panel-header h2{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--accent);letter-spacing:2px}
+.side-panel-header h2{font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--accent);letter-spacing:2px}
 .side-panel-close{background:none;border:none;color:var(--text-muted);font-size:20px;cursor:pointer;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:4px;transition:all .15s}
 .side-panel-close:hover{color:var(--text);background:var(--surface-2)}
 .side-panel-body{padding:12px;display:flex;flex-direction:column;gap:6px;overflow-y:auto;flex:1}
 .sp-item{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-2);cursor:pointer;transition:all .15s;text-decoration:none;color:var(--text);font-size:13px;font-weight:500}
-.sp-item:hover{border-color:var(--border-hover);background:var(--surface-3);color:var(--text)}
+.sp-item:hover{border-color:var(--border-strong);background:var(--surface-3);color:var(--text)}
 .sp-item svg{flex-shrink:0}
 .sp-item-label{flex:1;text-align:center}
 .sp-divider{height:1px;background:var(--border);margin:6px 0}
 .menu-btn{background:none;border:1px solid var(--border);color:var(--text-muted);width:30px;height:30px;border-radius:var(--radius-sm);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;font-size:16px;position:relative}
-.menu-btn:hover{border-color:var(--border-hover);color:var(--text);background:var(--surface-2)}
+.menu-btn:hover{border-color:var(--border-strong);color:var(--text);background:var(--surface-2)}
 .menu-btn:active{transform:scale(.93)}
-.menu-notif-dot{position:absolute;top:-3px;right:-3px;width:10px;height:10px;background:var(--accent,#a78bfa);border-radius:50%;border:2px solid var(--surface,#1a1a2e);display:none;animation:notifPulse 2s infinite}
+.menu-notif-dot{position:absolute;top:-3px;right:-3px;width:10px;height:10px;background:var(--accent);border-radius:50%;border:2px solid var(--surface,#1a1a2e);display:none;animation:notifPulse 2s infinite}
 .menu-notif-dot.active{display:block}
 @keyframes notifPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(1.2)}}
-.sp-item.notif-highlight{border-color:var(--accent,#a78bfa);background:rgba(167,139,250,0.1);box-shadow:0 0 0 1px var(--accent,#a78bfa)}
+.sp-item.notif-highlight{border-color:var(--accent);background:var(--accent-dim);box-shadow:0 0 0 1px var(--accent)}
 
 /* ── Sidebar ── */
 .sidebar-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:20}
@@ -86,14 +85,14 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);height:
 .sidebar{position:fixed;top:0;left:-280px;width:280px;height:100%;background:var(--surface);border-right:1px solid var(--border);z-index:30;transition:left .25s ease;overflow-y:auto;-webkit-overflow-scrolling:touch}
 .sidebar.show{left:0}
 .sidebar-header{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
-.sidebar-header h2{font-family:var(--mono);font-size:11px;color:var(--accent);letter-spacing:1px}
+.sidebar-header h2{font-family:var(--font-mono);font-size:11px;color:var(--accent);letter-spacing:1px}
 .sidebar-close{background:none;border:none;color:var(--text-dim);font-size:18px;cursor:pointer;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:4px}
 .sidebar-close:hover{color:var(--text);background:var(--surface-2)}
 .sidebar-item{display:flex;align-items:center;border-bottom:1px solid var(--border);transition:background .15s}
 .sidebar-item:hover{background:var(--surface-2)}
 .sidebar-item .si-main{flex:1;min-width:0;padding:10px 8px 10px 16px;cursor:pointer}
 .sidebar-item .si-title{font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.sidebar-item .si-time{font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:2px}
+.sidebar-item .si-time{font-family:var(--font-mono);font-size:10px;color:var(--text-dim);margin-top:2px}
 .si-del{flex-shrink:0;background:none;border:none;cursor:pointer;padding:8px 12px 8px 4px;font-size:14px;opacity:0;transition:opacity .15s;color:var(--text-dim)}
 .sidebar-item:hover .si-del{opacity:1}
 .si-del:hover{color:#e55;opacity:1!important}
@@ -115,10 +114,10 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);height:
 .img-status{font-size:13px;color:var(--text-muted);white-space:normal}
 .img-cancel{margin-top:6px;padding:3px 10px;font-size:12px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--text-dim);cursor:pointer}
 #imageOpts{display:none;align-items:center;gap:6px}
-#imageOpts select{background:var(--surface-2);border:1px solid var(--border);color:var(--text-muted);font-family:var(--mono);font-size:11px;border-radius:var(--radius-sm);padding:5px 9px;outline:none}
+#imageOpts select{background:var(--surface-2);border:1px solid var(--border);color:var(--text-muted);font-family:var(--font-mono);font-size:11px;border-radius:var(--radius-sm);padding:5px 9px;outline:none}
 #imageOpts label{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text-dim);cursor:pointer}
 .msg-stats{font-size:10px;color:var(--text-dim);letter-spacing:.3px;margin-left:8px;opacity:.75;cursor:default}
-.msg-time{font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-top:3px;padding:0 4px}
+.msg-time{font-family:var(--font-mono);font-size:11px;color:var(--text-dim);margin-top:3px;padding:0 4px}
 .msg.user .msg-time{text-align:right}
 
 /* ── Message action row: timestamp + regenerate / edit / copy / speak ──
@@ -141,7 +140,7 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);height:
 .msg-act.speaking{color:var(--accent)}
 
 .typing{color:var(--accent);font-size:13px;padding:8px 16px}
-.typing span{animation:blink 1.4s infinite}
+.typing span{display:inline-block;width:6px;height:6px;margin-right:4px;border-radius:50%;background:currentColor;vertical-align:middle;animation:blink 1.4s infinite}
 .typing span:nth-child(2){animation-delay:.2s}
 .typing span:nth-child(3){animation-delay:.4s}
 @keyframes blink{0%,100%{opacity:.2}50%{opacity:1}}
@@ -155,7 +154,7 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);height:
 /* ── Input Area ── */
 .input-area{position:static;flex-shrink:0;padding:8px 12px;border-top:1px solid var(--border);background:var(--surface);padding-bottom:calc(8px + env(safe-area-inset-bottom,0px))}
 .file-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px}
-.file-chip{display:flex;align-items:center;gap:5px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:4px 8px;font-size:11px;font-family:var(--mono);color:var(--text-muted);max-width:200px}
+.file-chip{display:flex;align-items:center;gap:5px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:4px 8px;font-size:11px;font-family:var(--font-mono);color:var(--text-muted);max-width:200px}
 .file-chip .fc-icon{font-size:14px;flex-shrink:0}
 .file-chip .fc-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .file-chip .fc-close{cursor:pointer;color:var(--text-dim);font-size:12px;margin-left:2px;flex-shrink:0}
@@ -163,13 +162,13 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);height:
 .file-chip.loading{opacity:.6}
 .file-chip.loading .fc-icon{animation:pulse 1s infinite}
 .input-row{display:flex;gap:6px;align-items:flex-end}
-.chat-input{flex:1;background:var(--surface-2);border:1px solid var(--border);color:var(--text);padding:9px 14px;border-radius:20px;font-size:14px;font-family:var(--font);outline:none;resize:none;min-height:38px;max-height:120px;line-height:1.4}
+.chat-input{flex:1;background:var(--surface-2);border:1px solid var(--border);color:var(--text);padding:9px 14px;border-radius:20px;font-size:14px;font-family:var(--font-sans);outline:none;resize:none;min-height:38px;max-height:120px;line-height:1.4}
 .chat-input:focus{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-dim)}
 .chat-input::placeholder{color:var(--text-dim)}
 .ibtn{background:none;border:1px solid var(--border);color:var(--text-muted);width:36px;height:36px;border-radius:50%;cursor:pointer;font-size:16px;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .15s}
 .ibtn:active{opacity:.7;transform:scale(.92)}
-.ibtn:hover{border-color:var(--border-hover);color:var(--text)}
-.ibtn.send{background:var(--accent);color:#fff;border-color:var(--accent)}
+.ibtn:hover{border-color:var(--border-strong);color:var(--text)}
+.ibtn.send{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
 .ibtn.send:disabled{opacity:.4}
 .ibtn.stop{background:var(--danger);color:#fff;border-color:var(--danger);display:none}
 .ibtn.stop:hover{opacity:.85}
@@ -183,13 +182,13 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);height:
 .empty-state{text-align:center;padding:50px 20px}
 .empty-state img{width:140px;opacity:.25;margin-bottom:20px;filter:drop-shadow(0 0 30px rgba(217,119,87,0.4))}
 .empty-state p{color:var(--text-muted);font-size:16px;line-height:1.6}
-pre{background:var(--bg4);padding:10px;border-radius:8px;overflow-x:auto;font-family:var(--mono);font-size:12px;margin:8px 0}
+pre{background:var(--surface-3);padding:10px;border-radius:8px;overflow-x:auto;font-family:var(--font-mono);font-size:12px;margin:8px 0}
 .code-wrap{position:relative;margin:8px 0}
 .code-wrap pre{margin:0;padding-right:38px}
-.code-copy{position:absolute;top:6px;right:6px;background:var(--bg2,rgba(0,0,0,.35));border:1px solid var(--bg4,#444);border-radius:6px;color:var(--text-dim,#9aa);padding:3px 6px;cursor:pointer;opacity:.65;transition:opacity .15s,color .15s,border-color .15s;line-height:0}
+.code-copy{position:absolute;top:6px;right:6px;background:var(--surface);border:1px solid var(--surface-3);border-radius:6px;color:var(--text-dim,#9aa);padding:3px 6px;cursor:pointer;opacity:.65;transition:opacity .15s,color .15s,border-color .15s;line-height:0}
 .code-copy:hover{opacity:1;color:var(--accent);border-color:var(--accent)}
 .code-copy.copied{opacity:1;color:var(--success,#4caf50);border-color:var(--success,#4caf50)}
-code{font-family:var(--mono);font-size:12px;background:var(--bg4);padding:2px 6px;border-radius:4px}
+code{font-family:var(--font-mono);font-size:12px;background:var(--surface-3);padding:2px 6px;border-radius:4px}
 input[type=file]{display:none}
 
 /* ── Mode Toggle ── */
@@ -197,15 +196,15 @@ input[type=file]{display:none}
 /* Model picker — reads as instrumentation next to the mode bar, not a form
    control. Accent border while a non-default model is active so the state is
    visible without opening it. */
-#modelSelect{background:var(--surface-2);border:1px solid var(--border);color:var(--text-muted);font-family:var(--mono);font-size:11px;border-radius:var(--radius-sm);padding:5px 9px;outline:none;cursor:pointer;max-width:230px;transition:border-color .15s,color .15s}
-#modelSelect:hover{border-color:var(--border-hover);color:var(--text)}
+#modelSelect{background:var(--surface-2);border:1px solid var(--border);color:var(--text-muted);font-family:var(--font-mono);font-size:11px;border-radius:var(--radius-sm);padding:5px 9px;outline:none;cursor:pointer;max-width:230px;transition:border-color .15s,color .15s}
+#modelSelect:hover{border-color:var(--border-strong);color:var(--text)}
 #modelSelect:focus{border-color:var(--accent)}
 #modelSelect.alt{border-color:rgba(217,119,87,.45);color:var(--accent)}
 #modelSelect:disabled{opacity:.5;cursor:progress}
-.mode-btn{padding:4px 8px;border:none;border-radius:4px;cursor:pointer;font-size:11px;background:transparent;color:var(--text-dim);font-family:var(--font);font-weight:500;transition:all .15s;display:flex;align-items:center;gap:4px;white-space:nowrap}
+.mode-btn{padding:4px 8px;border:none;border-radius:4px;cursor:pointer;font-size:11px;background:transparent;color:var(--text-dim);font-family:var(--font-sans);font-weight:500;transition:all .15s;display:flex;align-items:center;gap:4px;white-space:nowrap}
 .mode-btn:hover{color:var(--text-muted)}
 .mode-btn.active{background:var(--surface);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.2)}
-.discuss-report-btn{margin-top:2px;padding:9px 16px;border:1px solid var(--accent);border-radius:8px;cursor:pointer;font-size:13px;font-family:var(--font);font-weight:600;background:var(--accent);color:#fff;transition:all .15s;display:inline-flex;align-items:center;gap:6px}
+.discuss-report-btn{margin-top:2px;padding:9px 16px;border:1px solid var(--accent);border-radius:8px;cursor:pointer;font-size:13px;font-family:var(--font-sans);font-weight:600;background:var(--accent);color:var(--on-accent);transition:all .15s;display:inline-flex;align-items:center;gap:6px}
 .discuss-report-btn:hover:not(:disabled){background:var(--accent-hover);border-color:var(--accent-hover)}
 .discuss-report-btn:disabled{cursor:default;opacity:.7;background:transparent;color:var(--accent)}
 /* Train-of-thought panel — reveals reasoning (chat) / agent steps, collapsed by default */
@@ -215,12 +214,12 @@ input[type=file]{display:none}
 .tot-toggle:hover{color:var(--text-muted)}
 .tot-toggle .chev{font-size:9px;transition:transform .15s;color:var(--accent)}
 .tot.open .tot-toggle .chev{transform:rotate(90deg)}
-.tot-window{display:none;margin-top:6px;height:150px;overflow-y:auto;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;line-height:1.6;color:var(--text-dim);white-space:pre-wrap;word-break:break-word;font-family:var(--font)}
+.tot-window{display:none;margin-top:6px;height:150px;overflow-y:auto;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;line-height:1.6;color:var(--text-dim);white-space:pre-wrap;word-break:break-word;font-family:var(--font-sans)}
 .tot.open .tot-window{display:block}
 .tot-live .tot-toggle .chev{animation:totPulse 1.2s ease-in-out infinite}
 @keyframes totPulse{0%,100%{opacity:.4}50%{opacity:1}}
 /* small inline stop button under the agent status message */
-.status-stop{margin-top:8px;display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border:1px solid var(--border);border-radius:14px;background:transparent;color:var(--text-muted);font-size:12px;font-family:var(--font);cursor:pointer;transition:all .15s}
+.status-stop{margin-top:8px;display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border:1px solid var(--border);border-radius:14px;background:transparent;color:var(--text-muted);font-size:12px;font-family:var(--font-sans);cursor:pointer;transition:all .15s}
 .status-stop:hover{border-color:#e55;color:#e55}
 
 /* ── Agent Builder ── */
@@ -229,7 +228,7 @@ input[type=file]{display:none}
 .ab-row{display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap}
 .ab-field{display:flex;flex-direction:column;gap:3px;flex:1;min-width:140px}
 .ab-label{font-size:9px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em}
-.ab-input{background:var(--surface-2);border:1px solid var(--border);border-radius:5px;padding:7px 10px;color:var(--text);font-size:12px;font-family:var(--font);outline:none;width:100%}
+.ab-input{background:var(--surface-2);border:1px solid var(--border);border-radius:5px;padding:7px 10px;color:var(--text);font-size:12px;font-family:var(--font-sans);outline:none;width:100%}
 .ab-input:focus{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-dim)}
 .ab-ta{height:56px;resize:vertical}
 .ab-tools{background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:8px;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:3px;max-height:100px;overflow-y:auto}
@@ -237,17 +236,17 @@ input[type=file]{display:none}
 .ab-tool:hover{background:var(--surface-3);color:var(--text)}
 .ab-tool input{accent-color:var(--accent);cursor:pointer}
 .ab-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
-.ab-btn{padding:6px 12px;border-radius:5px;border:none;font-size:11px;font-weight:600;cursor:pointer;transition:opacity .2s;font-family:var(--font)}
+.ab-btn{padding:6px 12px;border-radius:5px;border:none;font-size:11px;font-weight:600;cursor:pointer;transition:opacity .2s;font-family:var(--font-sans)}
 .ab-save{background:var(--surface-2);color:var(--text-muted);border:1px solid var(--border)}
 .ab-save:hover{color:var(--text)}
 .ab-load-wrap{display:flex;align-items:center;gap:6px}
-.ab-select{background:var(--surface-2);border:1px solid var(--border);border-radius:5px;padding:4px 8px;color:var(--text-muted);font-size:10px;font-family:var(--font);cursor:pointer}
+.ab-select{background:var(--surface-2);border:1px solid var(--border);border-radius:5px;padding:4px 8px;color:var(--text-muted);font-size:10px;font-family:var(--font-sans);cursor:pointer}
 
 /* ── Sub Tabs ── */
 .sub-tabs{padding:6px 14px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0;display:flex;align-items:center;gap:8px}
 
 /* ── Crew Select ── */
-#crewSelect{display:none;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:5px;padding:3px 6px;font-size:10px;cursor:pointer;font-family:var(--font)}
+#crewSelect{display:none;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:5px;padding:3px 6px;font-size:10px;cursor:pointer;font-family:var(--font-sans)}
 
 /* ── Toast ── */
 .toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:7px 14px;font-size:12px;color:var(--text);opacity:0;transition:all .2s;z-index:200;pointer-events:none;box-shadow:0 4px 20px rgba(0,0,0,.4)}
@@ -292,7 +291,7 @@ input[type=file]{display:none}
   .input-area{padding:6px 8px}
   .sidebar{width:260px}
 }
-.notif-bell{position:relative;font-weight:400}.notif-badge{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;background:var(--accent);color:#fff;font-size:10px;font-weight:700;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 4px;line-height:1;pointer-events:none}.notif-badge.hidden{display:none}
+.notif-bell{position:relative;font-weight:400}.notif-badge{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;background:var(--accent);color:var(--on-accent);font-size:10px;font-weight:700;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 4px;line-height:1;pointer-events:none}.notif-badge.hidden{display:none}
 .webcam-pip{position:fixed;bottom:80px;right:20px;width:240px;border-radius:14px;overflow:hidden;border:2px solid var(--accent);box-shadow:0 4px 24px rgba(0,0,0,.5);z-index:9999;display:none;background:#000;transition:width .3s,height .3s,border-radius .3s}
 .webcam-pip img,.webcam-pip video{width:100%;display:block}
 .webcam-pip.expanded{width:640px;max-width:90vw;border-radius:10px}
@@ -311,8 +310,8 @@ input[type=file]{display:none}
 
 .text-size-row{justify-content:space-between;cursor:default}
 .text-size-group{display:inline-flex;gap:4px}
-.text-size-group button{background:var(--surface-2);border:1px solid var(--border);color:var(--text-muted);border-radius:var(--radius-sm);width:28px;height:24px;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font)}
-.text-size-group button.sel{background:var(--accent);border-color:var(--accent);color:#fff}
+.text-size-group button{background:var(--surface-2);border:1px solid var(--border);color:var(--text-muted);border-radius:var(--radius-sm);width:28px;height:24px;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font-sans)}
+.text-size-group button.sel{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 
 @media (max-width: 768px), (max-height: 600px) and (pointer: coarse){
   .input-area{position:fixed;left:0;right:0;bottom:var(--nav-h,56px);z-index:9997;padding-bottom:8px}
@@ -336,10 +335,10 @@ input[type=file]{display:none}
 <div class="app" id="appContainer">
 <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
 <div class="sidebar" id="sidebar">
-<div class="sidebar-header"><h2>CONVERSATIONS</h2><button class="sidebar-close" onclick="closeSidebar()">&times;</button></div>
+<div class="sidebar-header"><h2>CONVERSATIONS</h2><button class="sidebar-close" onclick="closeSidebar()" aria-label="Close conversations"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
 <div style="padding:0 12px 8px">
   <input type="text" id="sidebarSearch" placeholder="Search all chats..." oninput="handleSidebarSearch(this.value)"
-    style="width:100%;padding:8px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-family:var(--font);outline:none">
+    style="width:100%;padding:8px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-family:var(--font-sans);outline:none">
 </div>
 <div class="sidebar-new" onclick="newChat()">
   <svg class="ico ico-sm" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -351,7 +350,7 @@ input[type=file]{display:none}
 
 <div class="header">
 <div class="header-left">
-<a href="/" class="logo-link"><img src="https://i.imgur.com/jD1X5W8.png" alt="CODEC"></a>
+<a href="/" class="logo-link"><img src="/static/logo.svg" alt="CODEC"></a>
 <h1><a href="/" style="color:inherit;text-decoration:none">CODEC</a></h1>
 <div class="status-dot" id="statusDot" title="CODEC status"></div>
 </div>
@@ -369,7 +368,7 @@ input[type=file]{display:none}
 <!-- Side Panel -->
 <div class="side-panel-overlay" id="sidePanelOverlay" onclick="closeSidePanel()"></div>
 <div class="side-panel" id="sidePanel">
-<div class="side-panel-header"><h2>MENU</h2><button class="side-panel-close" onclick="closeSidePanel()">&times;</button></div>
+<div class="side-panel-header"><h2>MENU</h2><button class="side-panel-close" onclick="closeSidePanel()" aria-label="Close menu"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
 <div class="side-panel-body">
   <a href="/" class="sp-item"><svg class="ico" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span class="sp-item-label">Home</span></a>
   <div class="sp-divider"></div>
@@ -456,14 +455,14 @@ input[type=file]{display:none}
       <select class="ab-select" id="savedAgentSelect" onchange="loadSavedAgent(this.value)">
         <option value="">Load saved...</option>
       </select>
-      <button class="ab-btn" onclick="deleteSelectedAgent()" title="Delete selected agent" style="background:var(--danger);padding:4px 8px;font-size:10px">✕ Delete</button>
+      <button class="ab-btn" onclick="deleteSelectedAgent()" title="Delete selected agent" style="background:var(--danger);padding:4px 8px;font-size:10px">Delete</button>
     </div>
     <span style="font-size:10px;color:var(--text-dim)">Type your task below and press Send</span>
   </div>
 </div>
 
 <div class="messages" id="messages">
-<div class="empty-state" id="emptyState"><img src="https://i.imgur.com/jD1X5W8.png"><p>Deep Chat — 250K context window<br>Drop files, images, or just talk.</p></div>
+<div class="empty-state" id="emptyState"><img src="/static/logo.svg"><p>Deep Chat — 250K context window<br>Drop files, images, or just talk.</p></div>
 </div>
 
 <div class="input-area">
@@ -498,7 +497,7 @@ input[type=file]{display:none}
 </div>
 
 <div class="modal-overlay" id="screenModal" onclick="closeScreenshot()">
-  <button class="modal-close" onclick="event.stopPropagation(); closeScreenshot()" aria-label="Close screenshot">&times;</button>
+  <button class="modal-close" onclick="event.stopPropagation(); closeScreenshot()" aria-label="Close screenshot"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
   <img id="screenImg" src="" onclick="event.stopPropagation()">
 </div>
 
@@ -826,11 +825,11 @@ function renderEscalateChip(sugg,userText){
   _lastEscalateText=userText||'';
   var n=sugg&&sugg.estimated_checkpoints?sugg.estimated_checkpoints:'several';
   var div=document.createElement('div');div.className='msg assistant';
-  div.innerHTML='<div class="msg-bubble" style="border:1px dashed var(--accent,#a78bfa);background:rgba(167,139,250,0.06)">'+
+  div.innerHTML='<div class="msg-bubble" style="border:1px dashed var(--accent);background:var(--accent-dim)">'+
     '<div style="font-weight:600;margin-bottom:6px">This looks like a multi-step project (~'+escHtml(String(n))+' checkpoints)</div>'+
     '<div style="font-size:12px;color:var(--text-dim);margin-bottom:8px">CODEC can draft a plan, ask for your approval once, then run it autonomously in the background.</div>'+
     '<div style="display:flex;gap:8px">'+
-    '<button onclick="escalateStartProject(this)" style="padding:6px 14px;background:var(--accent,#a78bfa);color:#000;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">Start as Project</button>'+
+    '<button onclick="escalateStartProject(this)" style="padding:6px 14px;background:var(--accent);color:var(--on-accent);border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">Start as Project</button>'+
     '<button onclick="escalateDismiss(this)" style="padding:6px 14px;background:transparent;color:var(--text);border:1px solid var(--border,#2a2a30);border-radius:6px;cursor:pointer;font-size:12px">No thanks</button>'+
     '</div></div>';
   document.getElementById('messages').appendChild(div);scrollBottom();
@@ -855,11 +854,11 @@ var _lastSkillDesc='';
 function renderSkillConfirmChip(info,userText){
   _lastSkillDesc=(info&&info.description)||'';
   var div=document.createElement('div');div.className='msg assistant';
-  div.innerHTML='<div class="msg-bubble" style="border:1px dashed var(--accent,#a78bfa);background:rgba(167,139,250,0.06)">'+
+  div.innerHTML='<div class="msg-bubble" style="border:1px dashed var(--accent);background:var(--accent-dim)">'+
     '<div style="font-weight:600;margin-bottom:6px">Build this skill?</div>'+
     '<div style="font-size:12px;color:var(--text-dim);margin-bottom:8px">'+escHtml(_lastSkillDesc)+' — I\'ll generate it and stage it in your Skills tab for review. Nothing runs until you approve it there.</div>'+
     '<div style="display:flex;gap:8px">'+
-    '<button onclick="skillConfirmBuild(this)" style="padding:6px 14px;background:var(--accent,#a78bfa);color:#000;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">Build it</button>'+
+    '<button onclick="skillConfirmBuild(this)" style="padding:6px 14px;background:var(--accent);color:var(--on-accent);border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">Build it</button>'+
     '<button onclick="skillConfirmCancel(this)" style="padding:6px 14px;background:transparent;color:var(--text);border:1px solid var(--border,#2a2a30);border-radius:6px;cursor:pointer;font-size:12px">Cancel</button>'+
     '</div></div>';
   document.getElementById('messages').appendChild(div);scrollBottom();
@@ -935,11 +934,11 @@ function setMode(mode){
     if(!pPanel){
       pPanel=document.createElement('div');
       pPanel.id='projectModePanel';
-      pPanel.style.cssText='margin:12px 16px 8px;padding:14px 16px;background:rgba(167,139,250,0.08);border:1px solid var(--accent,#a78bfa);border-radius:10px;font-size:13px;line-height:1.5';
+      pPanel.style.cssText='margin:12px 16px 8px;padding:14px 16px;background:var(--accent-dim);border:1px solid var(--accent);border-radius:10px;font-size:13px;line-height:1.5';
       pPanel.innerHTML=
-        '<div style="font-weight:600;color:var(--accent,#a78bfa);margin-bottom:6px">Project mode — autonomous plan-and-build</div>'+
+        '<div style="font-weight:600;color:var(--accent);margin-bottom:6px">Project mode — autonomous plan-and-build</div>'+
         '<div style="color:var(--text-dim);margin-bottom:6px">Tell me what you want built or handled. I\'ll ask if anything\'s unclear, then show you the plan — one approval and I take it from there, updates posted right here.</div>'+
-        '<a href="https://github.com/AVADSA25/codec#readme" target="_blank" rel="noopener" style="color:var(--accent,#a78bfa);font-size:12px;text-decoration:none">Learn more &rarr;</a>';
+        '<a href="https://github.com/AVADSA25/codec#readme" target="_blank" rel="noopener" style="color:var(--accent);font-size:12px;text-decoration:none">Learn more &rarr;</a>';
     }
     var msgsEl=document.getElementById('messages');
     if(msgsEl&&!document.getElementById('projectModePanel')){
@@ -1038,7 +1037,7 @@ function makeToT(container,label,live){
   var tot=container.querySelector('.tot');
   if(tot)return tot;
   tot=document.createElement('div');tot.className='tot'+(live?' tot-live':'');
-  tot.innerHTML='<div class="tot-toggle"><span class="chev">▸</span><span class="tot-label"></span></div><div class="tot-window"></div>';
+  tot.innerHTML='<div class="tot-toggle"><span class="chev"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:block"><path d="m9 6 6 6-6 6"/></svg></span><span class="tot-label"></span></div><div class="tot-window"></div>';
   tot.querySelector('.tot-label').textContent=label||'Reveal train of thought';
   tot.querySelector('.tot-toggle').onclick=function(){tot.classList.toggle('open');var w=tot.querySelector('.tot-window');if(tot.classList.contains('open'))w.scrollTop=w.scrollHeight};
   var meta=container.querySelector('.msg-meta');
@@ -1091,7 +1090,7 @@ function parseScaffold(raw){
 
 function genId(){return Date.now().toString(36)+Math.random().toString(36).substr(2,5)}
 
-function startNewSession(){sessionId=genId();_lsSet('codec-chat-session',sessionId);chatHist=[];pendingFiles=[];document.getElementById('fileChips').innerHTML='';document.getElementById('messages').innerHTML='<div class="empty-state" id="emptyState"><img src="https://i.imgur.com/jD1X5W8.png"><p>Deep Chat \u2014 250K context window<br>Drop files, images, or just talk.</p></div>'}
+function startNewSession(){sessionId=genId();_lsSet('codec-chat-session',sessionId);chatHist=[];pendingFiles=[];document.getElementById('fileChips').innerHTML='';document.getElementById('messages').innerHTML='<div class="empty-state" id="emptyState"><img src="/static/logo.svg"><p>Deep Chat \u2014 250K context window<br>Drop files, images, or just talk.</p></div>'}
 
 // PR #39: persist sessionId across page reloads. If a previous session
 // exists, load it on boot so the user lands back on the same chat (with
@@ -1143,6 +1142,8 @@ function _themeResolved(pref){
 function applyTheme(){
   var pref=_themePref(),eff=_themeResolved(pref);
   document.documentElement.setAttribute('data-theme',eff);
+  var meta=document.querySelector('meta[name="theme-color"]');
+  if(meta)meta.content=eff==='light'?'#faf8f5':'#121215';
   updateThemeIcon(pref,eff);
 }
 function toggleTheme(){
@@ -1393,8 +1394,8 @@ function renderAgentPlanCard(agentId,agentInfo){
   var projectDir=manifest.project_dir||'';
   var folderHtml='';
   if(projectDir){
-    folderHtml='<div style="margin:6px 0 8px;padding:8px 10px;background:rgba(167,139,250,0.08);border:1px solid var(--accent,#a78bfa);border-radius:6px;font-size:12px">'+
-      '<div style="font-weight:600;color:var(--accent,#a78bfa);margin-bottom:2px">Project folder</div>'+
+    folderHtml='<div style="margin:6px 0 8px;padding:8px 10px;background:var(--accent-dim);border:1px solid var(--accent);border-radius:6px;font-size:12px">'+
+      '<div style="font-weight:600;color:var(--accent);margin-bottom:2px">Project folder</div>'+
       '<code style="font-size:11px;word-break:break-all">'+escHtml(projectDir)+'</code>'+
       '<div style="color:var(--text-dim);margin-top:4px;font-size:11px">Open this folder in your IDE to see the agent\'s files as they\'re created. (cmd+click to open in Finder)</div>'+
     '</div>';
@@ -1408,12 +1409,12 @@ function renderAgentPlanCard(agentId,agentInfo){
   var isTerminal=status==='done'||status==='aborted'||status==='plan_failed';
   if(isPendingApproval){
     buttonsHtml=
-      '<button onclick="approveAgentInChat(\''+agentId+'\',event)" style="padding:6px 14px;background:var(--accent,#a78bfa);color:#000;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">Approve plan</button>'+
+      '<button onclick="approveAgentInChat(\''+agentId+'\',event)" style="padding:6px 14px;background:var(--accent);color:var(--on-accent);border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">Approve plan</button>'+
       '<button onclick="rejectAgentInChat(\''+agentId+'\',event)" style="padding:6px 14px;background:transparent;color:var(--text);border:1px solid var(--border,#2a2a30);border-radius:6px;cursor:pointer;font-size:12px">Reject</button>'+
       '<button onclick="viewAgentPlan(\''+agentId+'\',event)" style="padding:6px 14px;background:transparent;color:var(--text);border:1px solid var(--border,#2a2a30);border-radius:6px;cursor:pointer;font-size:12px">View plan</button>';
   }else if(isBlocked){
     buttonsHtml=
-      '<button onclick="viewAgentPlan(\''+agentId+'\',event)" style="padding:6px 14px;background:var(--accent,#a78bfa);color:#000;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">View plan + resolve</button>'+
+      '<button onclick="viewAgentPlan(\''+agentId+'\',event)" style="padding:6px 14px;background:var(--accent);color:var(--on-accent);border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">View plan + resolve</button>'+
       '<button onclick="rejectAgentInChat(\''+agentId+'\',event)" style="padding:6px 14px;background:transparent;color:var(--text);border:1px solid var(--border,#2a2a30);border-radius:6px;cursor:pointer;font-size:12px">Abort</button>';
   }else{
     buttonsHtml=
@@ -1460,8 +1461,8 @@ function renderClarifyingQuestion(container,pendingQuestionId,questionText){
   var fid='cq_'+pendingQuestionId;
   div.innerHTML='<div class="msg-bubble">'+formatMsg(questionText)+
     '<div style="margin-top:10px;display:flex;gap:6px">'+
-    '<input type="text" id="'+fid+'" placeholder="Your answer…" style="flex:1;padding:7px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font-size:13px;font-family:var(--font)">'+
-    '<button onclick="answerClarifyingQuestion(\''+pendingQuestionId+'\',this)" style="padding:7px 14px;background:var(--accent);color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600">Answer</button>'+
+    '<input type="text" id="'+fid+'" placeholder="Your answer…" style="flex:1;padding:7px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font-size:13px;font-family:var(--font-sans)">'+
+    '<button onclick="answerClarifyingQuestion(\''+pendingQuestionId+'\',this)" style="padding:7px 14px;background:var(--accent);color:var(--on-accent);border:none;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600">Answer</button>'+
     '</div></div>';
   container.appendChild(div);scrollBottom();
   var inp=document.getElementById(fid);
@@ -1577,7 +1578,7 @@ async function rehydrateAgentPlanCards(){
 }
 
 function scrollBottom(){var m=document.getElementById('messages');m.scrollTop=m.scrollHeight}
-function showTyping(){var div=document.createElement('div');div.className='typing';div.id='typing';div.innerHTML='<span>\u25CF</span><span>\u25CF</span><span>\u25CF</span> CODEC is thinking...';document.getElementById('messages').appendChild(div);scrollBottom()}
+function showTyping(){var div=document.createElement('div');div.className='typing';div.id='typing';div.innerHTML='<span></span><span></span><span></span> CODEC is thinking...';document.getElementById('messages').appendChild(div);scrollBottom()}
 function hideTyping(){var t=document.getElementById('typing');if(t)t.remove()}
 
 function addFileChip(name,content,type){
@@ -1586,7 +1587,7 @@ function addFileChip(name,content,type){
   var chips=document.getElementById('fileChips');
   var chip=document.createElement('div');chip.className='file-chip';chip.id=id;
   var _fcIco=(type==='image'||type==='imgref')?'<svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>':'<svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>';
-  chip.innerHTML='<span class="fc-icon">'+_fcIco+'</span><span class="fc-name">'+escHtml(name)+'</span><span class="fc-close" onclick="removeChip(\''+id+'\')">\u2715</span>';
+  chip.innerHTML='<span class="fc-icon">'+_fcIco+'</span><span class="fc-name">'+escHtml(name)+'</span><span class="fc-close" role="button" aria-label="Remove file" onclick="removeChip(\''+id+'\')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:block"><path d="M18 6 6 18M6 6l12 12"/></svg></span>';
   chips.appendChild(chip)
 }
 function removeChip(id){pendingFiles=pendingFiles.filter(function(f){return f.id!==id});var el=document.getElementById(id);if(el)el.remove()}
@@ -2122,7 +2123,7 @@ function lockSession(){fetch('/api/auth/logout',{method:'POST'}).then(function()
 // ── Header icons (matching dashboard) ──
 var voiceReplyEnabled=_lsGet('codec-voice')==='true';
 function toggleVoiceReply(){voiceReplyEnabled=!voiceReplyEnabled;_lsSet('codec-voice',voiceReplyEnabled);updateVoiceIcon()}
-function updateVoiceIcon(){var m1=document.getElementById('muteX1'),m2=document.getElementById('muteX2'),st=document.getElementById('voiceState');if(voiceReplyEnabled){if(m1)m1.style.display='none';if(m2)m2.style.display='none';if(st){st.textContent='ON';st.style.color='#0a0a0a';st.style.background='#d97757'}}else{if(m1)m1.style.display='';if(m2)m2.style.display='';if(st){st.textContent='OFF';st.style.color='#888';st.style.background='#2a2a2a'}}}
+function updateVoiceIcon(){var m1=document.getElementById('muteX1'),m2=document.getElementById('muteX2'),st=document.getElementById('voiceState');if(voiceReplyEnabled){if(m1)m1.style.display='none';if(m2)m2.style.display='none';if(st){st.textContent='ON';st.style.color='var(--on-accent)';st.style.background='var(--accent)'}}else{if(m1)m1.style.display='';if(m2)m2.style.display='';if(st){st.textContent='OFF';st.style.color='var(--text-muted)';st.style.background='var(--surface-3)'}}}
 updateVoiceIcon();
 // Populate the model picker with what is on disk + which one is active.
 try{loadModels()}catch(e){}
@@ -2247,28 +2248,29 @@ function showSchedulePanel(){
 </div>
 
 <!-- Approval Banner (floats above content) -->
-<div id="approvalBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(135deg,#1a0a00,#2a1500);border-bottom:2px solid #d97757;padding:12px 16px;animation:slideDown .3s ease">
+<div id="approvalBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:var(--surface);border-bottom:2px solid var(--accent);box-shadow:var(--shadow-popover);padding:12px 16px;animation:slideDown .3s ease">
   <div id="approvalList" style="max-width:800px;margin:0 auto"></div>
 </div>
 <style>
 @keyframes slideDown{from{transform:translateY(-100%)}to{transform:translateY(0)}}
-.approval-card{background:#111;border:1px solid #d97757;border-radius:8px;padding:12px 16px;margin-bottom:8px;display:flex;align-items:center;gap:12px}
-.approval-card.danger{border-color:#ff3333}
-.approval-card .cmd{flex:1;font-family:'SF Mono',monospace;font-size:12px;color:#e0e0e0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.approval-card .explain{font-size:11px;color:#aaddff;margin-top:2px}
-.approval-card.danger .explain{color:#ffaaaa}
-.approval-card .label{font-size:11px;font-weight:700;color:#d97757;text-transform:uppercase;white-space:nowrap}
-.approval-card.danger .label{color:#ff3333}
+.approval-card{background:var(--surface-2);border:1px solid var(--accent);border-radius:8px;padding:12px 16px;margin-bottom:8px;display:flex;align-items:center;gap:12px}
+.approval-card.danger{border-color:var(--danger)}
+.approval-card .cmd{flex:1;font-family:'SF Mono',monospace;font-size:12px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.approval-card .explain{font-size:11px;color:var(--text-muted);margin-top:2px}
+.approval-card.danger .explain{color:var(--text)}
+.approval-card .label{font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;white-space:nowrap}
+[data-theme=light] .approval-card .label{color:var(--accent-hover)}
+.approval-card.danger .label{color:var(--danger-text)}
 .approval-btn{border:none;border-radius:6px;padding:8px 18px;font-weight:700;font-size:13px;cursor:pointer;transition:opacity .2s}
 .approval-btn:hover{opacity:.85}
-.approval-btn.allow{background:#00cc55;color:#000}
-.approval-btn.deny{background:#555;color:#fff}
-.approval-card.danger .approval-btn.allow{background:#ff3333;color:#fff}
+.approval-btn.allow{background:var(--success);color:var(--on-accent)}
+.approval-btn.deny{background:var(--surface-3);color:var(--text);box-shadow:inset 0 0 0 1px var(--border-strong)}
+.approval-card.danger .approval-btn.allow{background:var(--danger);color:var(--on-accent)}
 </style>
 <script>
 (function(){
   var banner=document.getElementById('approvalBanner'),list=document.getElementById('approvalList'),lastCount=0;
-  function render(approvals){if(!approvals.length){banner.style.display='none';return}banner.style.display='block';var h='';approvals.forEach(function(a){var c=a.is_dangerous?'approval-card danger':'approval-card';var p=a.is_dangerous?'&#9888; DANGEROUS':'&#9889; Approval';h+='<div class="'+c+'"><div style="flex:1"><span class="label">'+p+'</span><div class="cmd">'+(a.command||'').replace(/</g,'&lt;').substring(0,120)+'</div><div class="explain">This will: '+(a.explanation||'').replace(/</g,'&lt;').substring(0,120)+'</div></div><button class="approval-btn allow" onclick="approvalAction(\''+a.id+'\',\'allow\')">&#10003; Allow</button><button class="approval-btn deny" onclick="approvalAction(\''+a.id+'\',\'deny\')">&#10007; Deny</button></div>'});list.innerHTML=h}
+  function render(approvals){if(!approvals.length){banner.style.display='none';return}banner.style.display='block';var h='';approvals.forEach(function(a){var c=a.is_dangerous?'approval-card danger':'approval-card';var p=a.is_dangerous?'Dangerous':'Needs approval';h+='<div class="'+c+'"><div style="flex:1"><span class="label">'+p+'</span><div class="cmd">'+(a.command||'').replace(/</g,'&lt;').substring(0,120)+'</div><div class="explain">This will: '+(a.explanation||'').replace(/</g,'&lt;').substring(0,120)+'</div></div><button class="approval-btn allow" onclick="approvalAction(\''+a.id+'\',\'allow\')">Allow</button><button class="approval-btn deny" onclick="approvalAction(\''+a.id+'\',\'deny\')">Deny</button></div>'});list.innerHTML=h}
   window.approvalAction=function(id,action){fetch('/api/approvals/'+id+'/'+action,{method:'POST'}).then(function(){poll()}).catch(function(e){console.error(e)})};
   function poll(){fetch('/api/approvals').then(function(r){return r.json()}).then(function(d){var a=d.approvals||[];render(a);if(a.length>lastCount&&lastCount>=0&&Notification&&Notification.permission==='granted'){new Notification('CODEC — '+(a[0].is_dangerous?'DANGEROUS':'Approval needed'),{body:a[0].command.substring(0,80),tag:'codec-approval-'+a[0].id,requireInteraction:true})}lastCount=a.length}).catch(function(){})}
   if(Notification&&Notification.permission==='default')Notification.requestPermission();
@@ -2341,7 +2343,7 @@ async function _injectMissedAgentMessages(agentId){
         m.actions.forEach(function(a){actionsHtml+='<button onclick="_agentAction(\''+escHtml(a.endpoint)+'\')" style="padding:5px 12px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:12px;color:var(--text)">'+escHtml(a.label)+'</button>';});
         actionsHtml+='</div>';
       }
-      bubble.innerHTML='<div class="msg-bubble" style="border-left:3px solid var(--accent,#a78bfa);padding-left:10px">'+titleHtml+bodyHtml+actionsHtml+'</div>';
+      bubble.innerHTML='<div class="msg-bubble" style="border-left:3px solid var(--accent);padding-left:10px">'+titleHtml+bodyHtml+actionsHtml+'</div>';
       document.getElementById('messages').appendChild(bubble);
       var msgText=icon+' '+title+(m.body?'\n'+m.body:'');
       chatHist.push({role:'assistant',content:msgText});
@@ -2385,12 +2387,12 @@ function _startAgentPoller(agentId){
               bodyEnc=encodeURIComponent(JSON.stringify({kind:kind,value:a.body_hint.value}));
             }
             var isGrant=(a.endpoint||'').indexOf('/grant')>=0;
-            var bg=isGrant?'var(--accent)':'var(--surface-2)';var fg=isGrant?'#fff':'var(--text)';
+            var bg=isGrant?'var(--accent)':'var(--surface-2)';var fg=isGrant?'var(--on-accent)':'var(--text)';
             actionsHtml+='<button onclick="_agentAction(\''+escHtml(a.endpoint)+'\',\''+bodyEnc+'\')" style="padding:5px 12px;background:'+bg+';border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:12px;color:'+fg+'">'+escHtml(a.label)+'</button>';
           });
           actionsHtml+='</div>';
         }
-        bubble.innerHTML='<div class="msg-bubble" style="border-left:3px solid var(--accent,#a78bfa);padding-left:10px">'+titleHtml+bodyHtml+actionsHtml+'</div>';
+        bubble.innerHTML='<div class="msg-bubble" style="border-left:3px solid var(--accent);padding-left:10px">'+titleHtml+bodyHtml+actionsHtml+'</div>';
         document.getElementById('messages').appendChild(bubble);
         scrollBottom();
         // Persist to qchat so messages survive page reload
@@ -2463,7 +2465,7 @@ async function viewAgentPlan(agentId,e){
       html+='</ol>';
     }
     html+='<div style="font-weight:500;margin:8px 0 4px;font-size:12px;text-transform:uppercase;color:var(--text-dim)">Permission manifest</div>';
-    html+='<div style="font-size:12px;background:rgba(0,0,0,0.2);padding:8px;border-radius:6px;font-family:var(--mono,monospace)">';
+    html+='<div style="font-size:12px;background:rgba(0,0,0,0.2);padding:8px;border-radius:6px;font-family:var(--font-mono,monospace)">';
     html+='skills: '+escHtml((manifest.skills||[]).join(', ')||'(none)')+'<br>';
     html+='network_domains: '+escHtml((manifest.network_domains||[]).join(', ')||'(none)')+'<br>';
     html+='write_paths: '+escHtml((manifest.write_paths||[]).join(', ')||'(none)')+'<br>';
@@ -2514,11 +2516,11 @@ function renderActiveAgentChip(){
   bar.style.display = 'inline-flex';
   bar.innerHTML =
     '<span style="width:6px;height:6px;border-radius:50%;background:var(--running);animation:pulse 2s infinite"></span>'+
-    '<span style="opacity:.85">Talking to <code style="opacity:1;font-family:var(--mono,ui-monospace)">'+escHtml(_activeAgentId.slice(0,12))+'</code></span>'+
+    '<span style="opacity:.85">Talking to <code style="opacity:1;font-family:var(--font-mono,ui-monospace)">'+escHtml(_activeAgentId.slice(0,12))+'</code></span>'+
     '<span style="opacity:.5">·</span>'+
     '<a href="#" onclick="toggleLivePreview(event)" id="livePreviewToggle" style="color:var(--text-muted,#9ca3af);text-decoration:none;font-size:13px" title="Show what the agent is producing">preview</a>'+
     '<span style="opacity:.5">·</span>'+
-    '<a href="#" onclick="exitConversation(event)" style="color:var(--text-muted,#9ca3af);text-decoration:none;font-size:13px" title="Exit conversation — next message will draft a new project">× exit</a>';
+    '<a href="#" onclick="exitConversation(event)" style="color:var(--text-muted,#9ca3af);text-decoration:none;font-size:13px" title="Exit conversation — next message will draft a new project">exit</a>';
   renderLivePreviewPanel();
 }
 
@@ -2573,7 +2575,7 @@ async function pollLivePreview(){
         '<div style="font-weight:600;letter-spacing:.04em;opacity:.7;text-transform:uppercase;font-size:10px">Live · agent workspace</div>'+
         '<div style="display:flex;gap:8px">'+
           (projectDir ? '<a href="#" onclick="openAgentFolder(\''+encodeURIComponent(_activeAgentId)+'\',event)" style="color:var(--text-muted,#9ca3af);text-decoration:none;font-size:11px">open folder</a>' : '')+
-          '<a href="#" onclick="toggleLivePreview(event)" style="color:var(--text-muted,#9ca3af);text-decoration:none;font-size:11px">×</a>'+
+          '<a href="#" onclick="toggleLivePreview(event)" style="color:var(--text-muted,#9ca3af);text-decoration:none;font-size:11px">close</a>'+
         '</div>'+
       '</div>';
     if (!files.length){
@@ -2584,7 +2586,7 @@ async function pollLivePreview(){
       var ago = Math.max(0, Math.round(Date.now()/1000 - (f.mtime||0)));
       var agoStr = ago < 60 ? ago + 's' : ago < 3600 ? Math.round(ago/60) + 'm' : Math.round(ago/3600) + 'h';
       var sizeKB = f.size_bytes < 1024 ? f.size_bytes + 'B' : (f.size_bytes/1024).toFixed(1) + 'K';
-      return '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.05);font-family:var(--mono,ui-monospace);font-size:11px">'+
+      return '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.05);font-family:var(--font-mono,ui-monospace);font-size:11px">'+
         '<span style="opacity:.85">'+escHtml(f.rel_path)+'</span>'+
         '<span style="opacity:.5">'+sizeKB+' · '+agoStr+' ago</span>'+
       '</div>';
@@ -2694,23 +2696,23 @@ async function refreshAgentStatusPills(){
     if(pills.length===0){container.style.display='none';container.innerHTML='';return}
     container.style.display='flex';
     container.innerHTML=pills.map(function(p){
-      var color='#888';
-      if(p.status==='running')color='var(--running)';
-      else if(p.status==='paused')color='#f59e0b';
-      else if(p.status==='awaiting_approval')color='#eab308';
-      else if(p.status==='draft_pending')color='#6b7280';
-      else if(p.status==='blocked_on_permission'||p.status==='blocked_on_destructive')color='var(--blocked)';
-      else if(p.status==='crashed_resumed')color='#f59e0b';
+      // Status pill: a 14% tint of the hue behind text in that hue; draft_pending stays neutral.
+      var hue='';
+      if(p.status==='running')hue='success';
+      else if(p.status==='paused'||p.status==='crashed_resumed')hue='warning';
+      else if(p.status==='awaiting_approval')hue='info';
+      else if(p.status==='blocked_on_permission'||p.status==='blocked_on_destructive')hue='danger';
+      var fg=hue?'var(--'+hue+'-text)':'var(--text-muted)',bg=hue?'var(--'+hue+'-tint)':'var(--surface-3)';
       var actions='';
       if(p.status==='awaiting_approval'){
-        actions=' <a href="#" onclick="approveAgentInChat(\''+p.agent_id+'\',event)" style="color:#fff;text-decoration:underline;margin-left:4px">approve</a>';
+        actions=' <a href="#" onclick="approveAgentInChat(\''+p.agent_id+'\',event)" style="color:inherit;text-decoration:underline;margin-left:4px">approve</a>';
       }else if(p.status==='paused'){
-        actions=' <a href="#" onclick="resumeAgentInChat(\''+p.agent_id+'\',event)" style="color:#fff;text-decoration:underline;margin-left:4px">resume</a>';
+        actions=' <a href="#" onclick="resumeAgentInChat(\''+p.agent_id+'\',event)" style="color:inherit;text-decoration:underline;margin-left:4px">resume</a>';
       }else if(p.status==='running'){
-        actions=' <a href="#" onclick="pauseAgentInChat(\''+p.agent_id+'\',event)" style="color:#fff;text-decoration:underline;margin-left:4px">pause</a>';
+        actions=' <a href="#" onclick="pauseAgentInChat(\''+p.agent_id+'\',event)" style="color:inherit;text-decoration:underline;margin-left:4px">pause</a>';
       }
-      actions+=' <a href="#" onclick="abortAgentInChat(\''+p.agent_id+'\',event)" style="color:#fff;text-decoration:underline;margin-left:4px">abort</a>';
-      return '<span style="display:inline-flex;align-items:center;padding:3px 10px;background:'+color+';color:#fff;border-radius:10px">'+
+      actions+=' <a href="#" onclick="abortAgentInChat(\''+p.agent_id+'\',event)" style="color:inherit;text-decoration:underline;margin-left:4px">abort</a>';
+      return '<span style="display:inline-flex;align-items:center;padding:3px 10px;background:'+bg+';color:'+fg+';border-radius:10px">'+
              escHtml((p.title||p.agent_id).slice(0,40))+' · '+p.status+actions+'</span>';
     }).join('');
   }catch(e){/* silent */}

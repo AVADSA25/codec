@@ -535,7 +535,7 @@ def _try_skill(user_text: str):
             import codec_consent
             if not codec_consent.chat_consent_ok(skill["name"], user_text):
                 return skill["name"], (
-                    f"⚠ '{skill['name']}' is a destructive operation and wasn't "
+                    f"Warning: '{skill['name']}' is a destructive operation and wasn't "
                     "confirmed — skipped."
                 )
             result = run_skill(skill, user_text, app="CODEC Chat")
@@ -566,7 +566,7 @@ def _try_skill_by_name(name: str, query: str):
         import codec_consent
         if not codec_consent.chat_consent_ok(name, query):
             return name, (
-                f"⚠ '{name}' is a destructive operation and wasn't confirmed — skipped."
+                f"Warning: '{name}' is a destructive operation and wasn't confirmed — skipped."
             )
         result = run_skill(skill, query, app="CODEC Chat (LLM-routed)")
         if result is not None:
@@ -1356,20 +1356,20 @@ async def chat_completion(request: Request):
                         )
                     if hit_token_cap:
                         yield _frame(
-                            "\n\n⚠️ *Reply truncated — the model hit the "
+                            "\n\n*Warning: reply truncated — the model hit the "
                             "`chat.max_tokens` cap. Raise it in "
                             "`~/.codec/config.json` (chat → max_tokens) for "
                             "longer replies.*"
                         )
                     if stream_died and _on_cloud:
                         yield _frame(
-                            "\n\n⚠️ *Reply interrupted — the cloud model stopped "
+                            "\n\n*Warning: reply interrupted — the cloud model stopped "
                             "answering (it can be slow at times). Retry, or pick a "
                             "local model in the model picker.*"
                         )
                     elif stream_died:
                         yield _frame(
-                            "\n\n⚠️ *Reply interrupted — the connection to the "
+                            "\n\n*Warning: reply interrupted — the connection to the "
                             "local model dropped mid-answer. Ask me to continue, "
                             "or retry. (If this repeats: `pm2 logs qwen3.6`.)*"
                         )
