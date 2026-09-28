@@ -123,7 +123,8 @@ def test_unknown_host_is_still_refused():
 def test_static_links_carry_the_current_content_version():
     """Pages are no-cache but /static is cached for an hour; a stale ?v= would
     pair a new page with an old stylesheet. Fix: python3 tools/stamp_static.py"""
-    import subprocess, sys as _sys
+    import subprocess
+    import sys as _sys
     from pathlib import Path as _P
     repo = _P(__file__).resolve().parent.parent
     r = subprocess.run([_sys.executable, str(repo / "tools" / "stamp_static.py"), "--check"],
