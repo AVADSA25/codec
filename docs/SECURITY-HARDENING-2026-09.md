@@ -43,3 +43,19 @@ Anything else gets 400, or a closed WebSocket. This stops DNS rebinding: a web p
 - The installer does not generate a token automatically. With a token and no PIN, every dashboard page would get 401, because pages cannot send the token.
 
 **Tests:** `tests/test_safe_defaults.py`. `tests/conftest.py` adds Starlette's `testserver` host through `CODEC_DASHBOARD_EXTRA_HOSTS`.
+
+## MCP: default deny and chrome consent (audit item 5)
+
+- **`mcp_default_allow: false`** on the live Mac since 28 Sep. The default in code was already `false`; the live config had it `true`. The switch left the same 71 skill tools exposed, because every exposed skill already sets `SKILL_MCP_EXPOSE = True`. From now on a new skill stays off MCP until it opts in or is listed in `mcp_allowed_tools`.
+- **Seven more tools need the owner's Allow over HTTP** (`_HTTP_CONSENT_REQUIRED` only grows):
+  - `chrome_read`, `chrome_extract` and `chrome_tabs` read pages and URLs from the logged-in browser;
+  - `chrome_open` and `chrome_search` load URLs, which can carry data out;
+  - `chrome_close` and `chrome_automate` can close every tab or quit Chrome.
+
+  `chrome_scroll` stays open: it moves the page and reads nothing. Over stdio nothing changed.
+- **README:** the table described both modes wrongly. It now says:
+  - opt-in exposes skills with `SKILL_MCP_EXPOSE = True` plus `mcp_allowed_tools`;
+  - opt-out exposes everything except `SKILL_MCP_EXPOSE = False`;
+  - the HTTP built-in blocklist is listed in full.
+
+**Tests:** `tests/test_mcp_http_side_effects.py` (the consent tests run for all 14 tools, plus an add-only check).

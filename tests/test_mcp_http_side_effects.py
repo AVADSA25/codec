@@ -12,7 +12,8 @@ Pins:
     normally over stdio, and NOT in _HTTP_BLOCKED (which would also refuse them
     over stdio via codec_consent.is_destructive_skill)
   - delegate / scheduler / chrome_fill / chrome_click_cdp / mouse_control /
-    clipboard / screenshot_text: over HTTP each call waits for the owner's PWA
+    clipboard / screenshot_text, and since 28 Sep every other chrome_* tool
+    except chrome_scroll: over HTTP each call waits for the owner's PWA
     approval (codec_ask_user strict consent); over stdio no prompt
 """
 from __future__ import annotations
@@ -34,8 +35,11 @@ import codec_mcp
 from codec_skill_registry import SkillRegistry
 
 HTTP_ONLY_BLOCKED = ["standing_rules", "create_skill"]
-CONSENT_TOOLS = ["delegate", "scheduler", "chrome_fill", "chrome_click_cdp",
-                 "mouse_control", "clipboard", "screenshot_text"]
+FIRST_CONSENT_TOOLS = ["delegate", "scheduler", "chrome_fill", "chrome_click_cdp",
+                       "mouse_control", "clipboard", "screenshot_text"]
+CHROME_CONSENT_TOOLS = ["chrome_read", "chrome_extract", "chrome_tabs", "chrome_open",
+                        "chrome_search", "chrome_close", "chrome_automate"]
+CONSENT_TOOLS = FIRST_CONSENT_TOOLS + CHROME_CONSENT_TOOLS
 
 
 # ── blocklist composition (pure) ─────────────────────────────────────────────
@@ -64,6 +68,17 @@ def test_new_entries_do_not_leak_into_the_cross_path_destructive_set():
     for name in HTTP_ONLY_BLOCKED + CONSENT_TOOLS:
         assert name not in codec_config._HTTP_BLOCKED
         assert codec_consent.mcp_allowed(name, registry=_registry()) is True
+
+
+def test_consent_list_only_grows_and_chrome_scroll_stays_open():
+    """The list is add-only (AGENTS.md §10): the first seven stay, the seven
+    chrome tools are added, and chrome_scroll (moves the page, reads nothing)
+    runs over HTTP without a prompt."""
+    assert set(FIRST_CONSENT_TOOLS + CHROME_CONSENT_TOOLS) <= set(codec_config._HTTP_CONSENT_REQUIRED)
+    assert codec_consent.mcp_http_consent_required("chrome_scroll") is False
+    reg = _registry()
+    for name in CHROME_CONSENT_TOOLS + ["chrome_scroll"]:
+        assert reg.get_meta(name) is not None, f"{name} is not a skill any more"
 
 
 def test_consent_tools_are_not_blocked_over_http():

@@ -437,9 +437,17 @@ _HTTP_ONLY_BLOCKED = ["standing_rules", "create_skill"]
 #   delegate (posts to the n8n webhook), scheduler (creates recurring jobs),
 #   chrome_fill / chrome_click_cdp / mouse_control (act in the live desktop
 #   session), clipboard / screenshot_text (read what is on this Mac)
+# 2026-09-28 (audit follow-up): the other chrome_* tools too, except
+# chrome_scroll. chrome_read / chrome_extract / chrome_tabs read pages and URLs
+# from the owner's logged-in browser; chrome_open / chrome_search load URLs,
+# which can carry data out; chrome_close / chrome_automate can close every tab
+# or quit Chrome.
 _HTTP_CONSENT_REQUIRED = ["delegate", "scheduler", "chrome_fill",
                           "chrome_click_cdp", "mouse_control", "clipboard",
-                          "screenshot_text"]
+                          "screenshot_text",
+                          "chrome_read", "chrome_extract", "chrome_tabs",
+                          "chrome_open", "chrome_search", "chrome_close",
+                          "chrome_automate"]
 
 
 def _mcp_blocked_tools(transport: str, config: dict) -> list:
