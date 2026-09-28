@@ -677,7 +677,7 @@ def process_message(bot, update, tg_cfg, llm_cfg):
             f"[X] unread\n\n"
             f"### ✅ Tasks\n"
             f"- [Items]\n\n"
-            f"### ⚡ Quote\n"
+            f"### Quote\n"
             f"\"[Quote]\" — [Author]\n\n"
             f"### 😈 Joke of the day\n"
             f"[One sharp line]\n\n"

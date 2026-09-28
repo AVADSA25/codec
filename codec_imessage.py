@@ -727,7 +727,7 @@ def detect_intent(text, sender):
             f"[X] unread | [notable senders if any]\n\n"
             f"### ✅ Tasks\n"
             f"- [Pending items]\n\n"
-            f"### ⚡ Quote\n"
+            f"### Quote\n"
             f"\"[Motivational quote]\" — [Author]\n\n"
             f"### 😈 Joke of the day\n"
             f"[One sharp, witty line]\n\n"

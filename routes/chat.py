@@ -1063,12 +1063,12 @@ async def chat_completion(request: Request):
                         # Send skill indicator
                         yield f"data: {json.dumps({'skill': skill_name})}\n\n"
                         # Send the result as a single token, then LLM follow-up
-                        skill_prefix = f"**⚡ {skill_name}**: {skill_result}\n\n"
+                        skill_prefix = f"**{skill_name}**: {skill_result}\n\n"
                         yield f"data: {json.dumps({'token': skill_prefix})}\n\n"
                         yield "data: [DONE]\n\n"
                     return _SkillSR(_skill_stream(), media_type="text/event-stream")
                 else:
-                    return {"response": f"**⚡ {skill_name}**: {skill_result}", "skill": skill_name}
+                    return {"response": f"**{skill_name}**: {skill_result}", "skill": skill_name}
 
     # Check for images — route to vision model (extracted, Fix #8)
     vision_resp = _chat_vision_response(body, messages)

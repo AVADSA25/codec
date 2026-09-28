@@ -114,7 +114,7 @@ if MODE == "save":
     overlay("\u2705 Saved to Apple Notes!", "#44cc66", 2000)
     sys.exit(0)
 
-overlay("⚡ Processing...", "#00aaff", 15000)
+overlay("Processing...", "#00aaff", 15000)
 try:
     result = call_qwen(text, MODE)
     # Dismiss the processing overlay now that we have the result

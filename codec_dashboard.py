@@ -647,7 +647,7 @@ async def send_command(request: Request):
                 try:
                     skill_name, skill_result = await asyncio.to_thread(_try_skill, task)
                     if skill_result and skill_name not in _FLASH_SKIP_SKILLS:
-                        skill_answer = f"⚡ {skill_name}: {skill_result}"
+                        skill_answer = f"{skill_name}: {skill_result}"
                         log.info(f"[Command] Skill '{skill_name}' handled: {skill_result[:80]}")
                         log_event("chat_skill", "codec-dashboard",
                                   f"Dashboard skill: {skill_name}",
