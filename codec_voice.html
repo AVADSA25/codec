@@ -2,25 +2,27 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <script>/* Theme before first paint, so the page never flashes dark: same key and attribute as applyTheme() below. */try{(function(){function _lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}var t=_lsGet('codec-theme');if(t!=='light'&&t!=='dark'){try{t=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'}catch(e){t='dark'}}document.documentElement.setAttribute('data-theme',t);var m=document.querySelector('meta[name="theme-color"]');if(m)m.content=t==='light'?(m.getAttribute('data-light')||'#faf8f5'):'#121215'})()}catch(e){}</script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>CODEC — Voice Call</title>
     <link rel="icon" href="/favicon.png">
     <link rel="apple-touch-icon" href="/favicon.png">
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/codec.css">
     <style>
         * { margin:0; padding:0; box-sizing:border-box; }
 
         :root {
           --bg: #121215; --surface: #1a1a1d; --surface-2: #212125; --surface-3: #2a2a2e;
           --border: #303035; --border-hover: #424248;
-          --text: #ececec; --text-muted: #9a9aa0; --text-dim: #6a6a70;
-          --accent: #d97757; --accent-hover: #e08766; --accent-dim: rgba(217,119,87,0.10);
+          --text: #ececec; --text-muted: #9a9aa0; --text-dim: #8b8b92;
+          --accent: #d97757; --accent-hover: #e08766; --accent-dim: rgba(217,119,87,0.10); --on-accent: #121215;
           --danger: #ef4444; --success: #22c55e; --info: #3b82f6;
           --font: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
           --mono: 'IBM Plex Mono', 'SF Mono', monospace;
           --radius: 10px; --radius-sm: 6px;
           --bg2: #1a1a1d; --bg3: #212125; --bg4: #2a2a2e;
-          --fg: #ececec; --fg2: #9a9aa0; --fg3: #6a6a70;
+          --fg: #ececec; --fg2: #9a9aa0; --fg3: #8b8b92;
           --ac: #d97757; --bd: #303035;
           --tx: #ececec; --tx2: #9a9aa0;
           --ft: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -39,6 +41,8 @@
           --bg: #f7f5f2; --surface: #fff; --surface-2: #f0ece6; --surface-3: #e8e4de;
           --border: #d5d0ca; --border-hover: #bbb;
           --text: #1a1a1a; --text-muted: #555; --text-dim: #777;
+          --accent: #b85a3a; --accent-hover: #a04d31; --accent-dim: rgba(184,90,58,0.08); --on-accent: #ffffff;
+          --ac: #b85a3a; --accent-bg: rgba(184,90,58,0.08);
           /* Override voice-specific vars */
           --bg2: #fff; --bd: #d5d0ca; --tx: #1a1a1a; --tx2: #555;
         }
@@ -133,7 +137,7 @@
         .menu-notif-dot{position:absolute;top:-3px;right:-3px;width:10px;height:10px;background:var(--accent,#a78bfa);border-radius:50%;border:2px solid var(--surface,#1a1a2e);display:none;animation:notifPulse 2s infinite}
         .menu-notif-dot.active{display:block}
         @keyframes notifPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(1.2)}}
-        .sp-item.notif-highlight{border-color:var(--accent,#a78bfa);background:rgba(167,139,250,0.1);box-shadow:0 0 0 1px var(--accent,#a78bfa)}
+        .sp-item.notif-highlight{border-color:var(--accent,#a78bfa);background:var(--accent-dim);box-shadow:0 0 0 1px var(--accent,#a78bfa)}
 
         /* ── Scrollbar ── */
         * { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
@@ -446,7 +450,7 @@
           .call-container { gap: 20px; }
           .call-btn { width: 56px; height: 56px; }
         }
-        .notif-bell{position:relative;font-weight:400}.notif-badge{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;background:var(--accent);color:#fff;font-size:10px;font-weight:700;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 4px;line-height:1;pointer-events:none}.notif-badge.hidden{display:none}
+        .notif-bell{position:relative;font-weight:400}.notif-badge{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;background:var(--accent);color:var(--on-accent);font-size:10px;font-weight:700;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 4px;line-height:1;pointer-events:none}.notif-badge.hidden{display:none}
         .webcam-pip{position:fixed;bottom:80px;right:20px;width:240px;border-radius:14px;overflow:hidden;border:2px solid var(--accent);box-shadow:0 4px 24px rgba(0,0,0,.5);z-index:9999;display:none;background:#000;transition:width .3s,height .3s,border-radius .3s}
         .webcam-pip img,.webcam-pip video{width:100%;display:block}
         .webcam-pip.expanded{width:640px;max-width:90vw;border-radius:10px}
@@ -470,7 +474,7 @@
         }
         .mode-pill:hover { color:var(--text,#ececec); border-color:var(--border-hover,#3a3a40); }
         .mode-pill.active {
-            color:#fff; background:var(--accent,#d97757); border-color:var(--accent,#d97757);
+            color:var(--on-accent); background:var(--accent,#d97757); border-color:var(--accent,#d97757);
             box-shadow:0 0 12px rgba(217,119,87,.35);
         }
         .mode-pill.think.active { box-shadow:0 0 12px rgba(217,119,87,.5); }
@@ -479,7 +483,7 @@
 <body id="body">
     <header class="header">
       <div class="header-left">
-        <a href="/" class="logo-link"><img src="https://i.imgur.com/jD1X5W8.png" alt="CODEC"></a>
+        <a href="/" class="logo-link"><img src="/static/logo.svg" alt="CODEC"></a>
         <h1><a href="/" style="color:inherit;text-decoration:none">CODEC</a></h1>
         <div class="status-dot" id="statusDot" title="CODEC status"></div>
       </div>
@@ -497,7 +501,7 @@
     <!-- Side Panel -->
     <div class="side-panel-overlay" id="sidePanelOverlay" onclick="closeSidePanel()"></div>
     <div class="side-panel" id="sidePanel">
-      <div class="side-panel-header"><h2>MENU</h2><button class="side-panel-close" onclick="closeSidePanel()">&times;</button></div>
+      <div class="side-panel-header"><h2>MENU</h2><button class="side-panel-close" onclick="closeSidePanel()" aria-label="Close menu"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
       <div class="side-panel-body">
         <a href="/" class="sp-item"><svg class="ico" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span class="sp-item-label">Home</span></a>
         <div class="sp-divider"></div>
@@ -522,7 +526,7 @@
             <div class="ring-inner"></div>
             <div class="ring-energy" id="ringEnergy"></div>
             <div class="hold-indicator" id="holdIndicator"></div>
-            <div class="avatar-core"><img src="https://i.imgur.com/jD1X5W8.png" alt="CODEC"></div>
+            <div class="avatar-core"><img src="/static/logo.svg" alt="CODEC"></div>
             <div class="waveform">
                 <div class="bar"></div><div class="bar"></div><div class="bar"></div>
                 <div class="bar"></div><div class="bar"></div>
@@ -657,7 +661,7 @@ window.addEventListener('storage',function(e){if(e.key==='codec-theme')applyThem
     function lockSession(){fetch('/api/auth/logout',{method:'POST'}).then(function(){document.cookie='codec_session=;path=/;max-age=0;SameSite=Lax'+(location.protocol==='https:'?';Secure':'');window.location.href='/auth'})}
     var _voiceOn=_lsGet('codec-voice')==='true';
     function toggleVoiceReply(){_voiceOn=!_voiceOn;_lsSet('codec-voice',_voiceOn);updateVoiceIcon()}
-    function updateVoiceIcon(){var m1=document.getElementById('muteX1'),m2=document.getElementById('muteX2'),st=document.getElementById('voiceState');if(_voiceOn){if(m1)m1.style.display='none';if(m2)m2.style.display='none';if(st){st.textContent='ON';st.style.color='#0a0a0a';st.style.background='#d97757'}}else{if(m1)m1.style.display='';if(m2)m2.style.display='';if(st){st.textContent='OFF';st.style.color='#888';st.style.background='#2a2a2a'}}}
+    function updateVoiceIcon(){var m1=document.getElementById('muteX1'),m2=document.getElementById('muteX2'),st=document.getElementById('voiceState');if(_voiceOn){if(m1)m1.style.display='none';if(m2)m2.style.display='none';if(st){st.textContent='ON';st.style.color='var(--on-accent)';st.style.background='var(--accent)'}}else{if(m1)m1.style.display='';if(m2)m2.style.display='';if(st){st.textContent='OFF';st.style.color='var(--text-muted)';st.style.background='var(--surface-3)'}}}
     updateVoiceIcon();
     function takeScreenshot(){fetch('/api/screenshot',{method:'POST'}).then(function(r){return r.json()}).then(function(d){if(d.path)alert('Screenshot saved: '+d.path)}).catch(function(){})}
 
@@ -1268,7 +1272,7 @@ window.addEventListener('storage',function(e){if(e.key==='codec-theme')applyThem
 </div>
 
 <div class="modal-overlay" id="screenModal" onclick="closeScreenshot()">
-  <button class="modal-close" onclick="closeScreenshot()">&times;</button>
+  <button class="modal-close" onclick="closeScreenshot()" aria-label="Close screenshot"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
   <img id="screenImg" src="">
 </div>
 

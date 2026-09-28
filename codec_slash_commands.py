@@ -110,12 +110,12 @@ def dispatch(name: str, args: list[str]) -> str:
     try:
         return cmd.handler(args)
     except Exception as e:
-        return f"⚠️ `/{name}` failed: `{type(e).__name__}: {e}`"
+        return f"Error: `/{name}` failed: `{type(e).__name__}: {e}`"
 
 
 def _unknown_command(name: str) -> str:
     suggestions = [c.name for c in SLASH_COMMANDS if c.name.startswith(name[:2])]
-    body = [f"❓ Unknown slash command: `/{name}`"]
+    body = [f"Unknown slash command: `/{name}`"]
     if suggestions:
         body.append(f"Did you mean: {', '.join(f'`/{s}`' for s in suggestions[:5])}?")
     body.append("Type `/help` for the full list.")
@@ -164,7 +164,7 @@ def _cmd_skills(args: list[str]) -> str:
         from codec_skill_registry import SkillRegistry
         from codec_config import SKILLS_DIR
     except Exception as e:
-        return f"⚠️ skill registry unavailable: {e}"
+        return f"Error: skill registry unavailable: {e}"
 
     reg = SkillRegistry(SKILLS_DIR)
     reg.scan()
@@ -176,36 +176,36 @@ def _cmd_skills(args: list[str]) -> str:
         rows = []
         for n in names:
             meta = reg.get_meta(n) or {}
-            on = "✅" if n in enabled or len(enabled) == 0 else "⚪"
+            on = "on" if n in enabled or len(enabled) == 0 else "off"
             desc = (meta.get("SKILL_DESCRIPTION") or "")[:60]
             rows.append([on, f"`{n}`", desc])
         return f"## Skills ({len(names)} total)\n\n" + _table(
-            ["", "Name", "Description"], rows
+            ["State", "Name", "Description"], rows
         )
 
     sub = args[0].lower()
     if sub in ("enable", "on") and len(args) >= 2:
         target = args[1]
         if target not in reg.names():
-            return f"⚠️ unknown skill `{target}`"
+            return f"Error: unknown skill `{target}`"
         if "skills" not in cfg or not isinstance(cfg["skills"], list):
             cfg["skills"] = list(reg.names())
         if target not in cfg["skills"]:
             cfg["skills"].append(target)
             _save_config(cfg)
-        return f"✅ Skill `{target}` enabled."
+        return f"Skill `{target}` enabled."
 
     if sub in ("disable", "off") and len(args) >= 2:
         target = args[1]
         cfg["skills"] = [s for s in cfg.get("skills", []) if s != target]
         _save_config(cfg)
-        return f"🚫 Skill `{target}` disabled."
+        return f"Skill `{target}` disabled."
 
     if sub == "info" and len(args) >= 2:
         target = args[1]
         meta = reg.get_meta(target)
         if not meta:
-            return f"⚠️ unknown skill `{target}`"
+            return f"Error: unknown skill `{target}`"
         triggers = meta.get("SKILL_TRIGGERS", [])
         return (
             f"## `{target}`\n\n"
@@ -224,7 +224,7 @@ def _cmd_plugins(args: list[str]) -> str:
 
 def _cmd_clear(args: list[str]) -> str:
     return (
-        "🧹 Chat cleared.\n\n"
+        "Chat cleared.\n\n"
         "*(The dashboard frontend should hide all prior messages on receiving "
         "this command. If they're still visible, refresh the page — the "
         "frontend hook for `/clear` is being added.)*"
@@ -281,7 +281,7 @@ def _ava_license_status(cfg: dict) -> str:
 def _cmd_cost(args: list[str]) -> str:
     """Today's spend from the AVA proxy usage table."""
     if not LICENSE_DB.exists():
-        return "⚠️ AVA usage DB not found at `~/ava-stack/license-server/licenses.db`."
+        return "Warning: AVA usage DB not found at `~/ava-stack/license-server/licenses.db`."
     today_utc = datetime.now(timezone.utc).date().isoformat()
     try:
         with sqlite3.connect(str(LICENSE_DB)) as c:
@@ -300,7 +300,7 @@ def _cmd_cost(args: list[str]) -> str:
                 "FROM usage WHERE ts >= ?", (month_start,)
             ).fetchone()
     except sqlite3.OperationalError as e:
-        return f"⚠️ usage DB query failed: {e}"
+        return f"Error: usage DB query failed: {e}"
 
     return (
         f"## Today's spend ({today_utc})\n\n"
@@ -315,7 +315,7 @@ def _cmd_cost(args: list[str]) -> str:
 
 
 def _cmd_status(args: list[str]) -> str:
-    """Quick green/red dot for each major service."""
+    """Quick up/down check for each major service."""
     import requests
     services = [
         ("Local Qwen", "http://localhost:8083/v1/models"),
@@ -331,10 +331,10 @@ def _cmd_status(args: list[str]) -> str:
             r = requests.get(url, timeout=2)
             ok = r.status_code < 500
             ms = int((time.monotonic() - t0) * 1000)
-            rows.append([("🟢" if ok else "🔴"), name, f"HTTP {r.status_code}", f"{ms}ms"])
+            rows.append([("up" if ok else "down"), name, f"HTTP {r.status_code}", f"{ms}ms"])
         except Exception:
-            rows.append(["🔴", name, "(no response)", "—"])
-    return "## Service status\n\n" + _table(["", "Service", "HTTP", "Latency"], rows)
+            rows.append(["down", name, "(no response)", "—"])
+    return "## Service status\n\n" + _table(["State", "Service", "HTTP", "Latency"], rows)
 
 
 def _cmd_who(args: list[str]) -> str:

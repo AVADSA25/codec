@@ -101,7 +101,7 @@ def _notify(title, body, status="success", schedule_id=None):
         doc_url = doc_match.group(1)
         # Clean body: remove raw URL line, add markdown link
         body = _re.sub(r'https://docs\.google\.com/document/d/[^\s]+\n*', '', body).strip()
-        body = f"📄 [View Full Report]({doc_url})\n\n{body}"
+        body = f"[View Full Report]({doc_url})\n\n{body}"
     # 1. Save to notifications.json (same format as dashboard)
     notif_path = os.path.expanduser("~/.codec/notifications.json")
     try:
@@ -398,8 +398,8 @@ def run(task: str, context: str = "") -> str:
         lines = [f"{len(schedules)} schedule(s):"]
         for s in schedules:
             days_str = ", ".join(day_names[d] for d in s.get("days", []))
-            status = "✅" if s.get("enabled") else "❌"
-            lines.append(f"  {status} {s['crew']} at {s['hour']:02d}:{s['minute']:02d} [{days_str}]")
+            status = "on" if s.get("enabled") else "off"
+            lines.append(f"  {s['crew']} at {s['hour']:02d}:{s['minute']:02d} [{days_str}] ({status})")
         return "\n".join(lines)
 
     if "remove" in tl or "delete" in tl or "cancel" in tl:

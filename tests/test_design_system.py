@@ -29,15 +29,22 @@ _OLD_HEX = re.compile(r"#E8711A", re.I)
 _OLD_RGBA = re.compile(r"rgba\(\s*232\s*,\s*113\s*,\s*26")
 _ACCENT_DECL = re.compile(r"--accent:\s*([^;}]+)")
 
-# Smartphone emoji only. Geometric glyphs (✓ ✕ ● ▸ ⚠) are typography, not emoji,
-# and are used deliberately across the surfaces.
-_EMOJI = re.compile(r"[\U0001F300-\U0001FAFF]")
-_EMOJI_ENTITY = re.compile(r"&#(1[0-9]{5});")
+# Emoji, plus the symbol ranges iOS also draws as colour emoji or that served as
+# glyph icons (● ▸ ▶ ⚠ ⚡ ✓ ✕ ✗ ☰). Since UI phase 1 (PR-B) the UI uses line SVG
+# or words instead. Checked as raw characters, HTML entities and JS escapes.
+_EMOJI = re.compile(r"[\u25A0-\u25FF\u2600-\u27BF\u2B50\uFE0F\U0001F300-\U0001FAFF]")
+_EMOJI_ENTITY = re.compile(r"&#(?:x([0-9a-fA-F]+)|([0-9]+));")
+_JS_ESCAPE = re.compile(r"\\u\{([0-9a-fA-F]+)\}|\\u([0-9a-fA-F]{4})")
 
-# `codec_tasks.html` strips a marker that `shift_report` puts in the report BODY.
-# The emoji is content produced elsewhere, not UI chrome — editing it would break
-# the strip and the marker would start rendering.
+# `codec_tasks.html` strips the document emoji that reports saved before PR-B
+# carry in their BODY; the strip names it by its JS escape.
 _CONTENT_EMOJI_EXEMPT = {"codec_tasks.html": 1}
+
+
+def _escaped_chars(text: str) -> list[str]:
+    points = [int(h, 16) if h else int(d) for h, d in _EMOJI_ENTITY.findall(text)]
+    points += [int(a or b, 16) for a, b in _JS_ESCAPE.findall(text)]
+    return [chr(p) for p in points if p <= 0x10FFFF]
 
 
 def test_surfaces_are_discovered():
@@ -80,7 +87,7 @@ def test_typeface_is_ibm_plex(path: Path):
 @pytest.mark.parametrize("path", SURFACES, ids=lambda p: p.name)
 def test_no_emoji_in_ui(path: Path):
     text = path.read_text()
-    found = _EMOJI.findall(text) + [chr(int(c)) for c in _EMOJI_ENTITY.findall(text)]
+    found = _EMOJI.findall(text) + [c for c in _escaped_chars(text) if _EMOJI.match(c)]
     allowed = _CONTENT_EMOJI_EXEMPT.get(path.name, 0)
     assert len(found) <= allowed, (
         f"{path.name} has {len(found)} emoji ({''.join(found)}) but only {allowed} "

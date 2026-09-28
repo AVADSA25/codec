@@ -2,17 +2,19 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <script>/* Theme before first paint, so the page never flashes dark: same key and attribute as applyTheme() below. */try{(function(){function _lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}var t=_lsGet('codec-theme');if(t!=='light'&&t!=='dark'){try{t=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'}catch(e){t='dark'}}document.documentElement.setAttribute('data-theme',t);var m=document.querySelector('meta[name="theme-color"]');if(m)m.content=t==='light'?(m.getAttribute('data-light')||'#faf8f5'):'#121215'})()}catch(e){}</script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>CODEC — Authenticate</title>
     <link rel="icon" href="/favicon.png">
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/codec.css">
     <style>
         :root {
             --bg: #121215; --surface: #18181b; --surface-2: #1f1f22; --surface-3: #27272a;
             --border: #2a2a2f; --border-hover: #3a3a40;
-            --text: #ececec; --text-muted: #9a9aa0; --text-dim: #6a6a70;
+            --text: #ececec; --text-muted: #9a9aa0; --text-dim: #8b8b92;
             /* 2026 refresh: keep CODEC orange identity but warmer + calmer (was pure #E8711A) */
-            --accent: #d97757; --accent-hover: #e08766; --accent-dim: rgba(217,119,87,0.10);
+            --accent: #d97757; --accent-hover: #e08766; --accent-dim: rgba(217,119,87,0.10); --on-accent: #121215;
             --danger: #ef4444; --success: #22c55e; --info: #3b82f6;
             --font: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
             --mono: 'IBM Plex Mono', 'SF Mono', monospace;
@@ -22,7 +24,7 @@
             --bg: #faf8f5; --surface: #fff; --surface-2: #f2eee8; --surface-3: #ebe6df;
             --border: #e2ddd5; --border-hover: #c8c2b8;
             --text: #18181b; --text-muted: #52525b; --text-dim: #71717a;
-            --accent: #b85a3a; --accent-hover: #a04d31; --accent-dim: rgba(184,90,58,0.08);
+            --accent: #b85a3a; --accent-hover: #a04d31; --accent-dim: rgba(184,90,58,0.08); --on-accent: #ffffff;
         }
         /* Line-SVG icon base — no emoji anywhere in CODEC UI. */
         .ico { width: 18px; height: 18px; stroke: currentColor; fill: none;
@@ -67,7 +69,7 @@
 
         .auth-btn {
             padding: 14px 36px; font-size: 14px; font-weight: 600;
-            background: var(--accent); color: #fff; border: none; border-radius: var(--radius);
+            background: var(--accent); color: var(--on-accent); border: none; border-radius: var(--radius);
             cursor: pointer; width: 100%; margin-bottom: 12px;
             transition: all 0.15s; font-family: var(--font);
         }
@@ -129,7 +131,7 @@
     </button>
 
     <div class="auth-container">
-        <img class="logo" src="https://i.imgur.com/jD1X5W8.png" alt="CODEC">
+        <img class="logo" src="/static/logo.svg" alt="CODEC">
         <div class="title">CODEC</div>
         <div class="subtitle">Authentication required</div>
 
