@@ -1695,6 +1695,16 @@ class VoicePipeline:
         cid = secrets.token_hex(6)
         cid_token = _voice_correlation_id_var.set(cid)
         self._cid = cid
+        # Automatic cloud fallback (opt-in): checked once per session, before
+        # the first prompt. Not mid-session: the history may already hold
+        # observer summaries that were meant for the local model only.
+        if not self._llm_cloud:
+            try:
+                import codec_models
+                if await asyncio.to_thread(codec_models.ensure_llm_available):
+                    self._llm_base, self._llm_model, self._llm_cloud = _resolve_voice_llm()
+            except Exception:
+                log.debug("voice: automatic fallback check failed", exc_info=True)
         # Phase 1 Step 3 §5.3 — single-question listen mode state.
         # When non-None, the next user utterance is treated as the answer
         # to the pending question (NOT a new wake-word command). Cleared

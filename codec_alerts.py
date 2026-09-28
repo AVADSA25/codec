@@ -340,9 +340,17 @@ def check_services_and_alert():
     state = _load_state()
     now = datetime.now().isoformat()
 
+    # On an automatic cloud fallback (codec_models.ensure_llm_available) the
+    # local server is down by accident, not on purpose: keep probing it at its
+    # own address, and keep restarting a crashed one, so CODEC can switch back.
+    auto_fallback = isinstance(cfg.get("llm_auto_fallback_active"), dict)
+    llm_url = cfg.get("llm_base_url", "http://localhost:8083")
+    if auto_fallback:
+        llm_url = (cfg.get("llm_local_restore") or {}).get("llm_base_url") or "http://localhost:8083/v1"
+
     # Resolve ports from config
     ports = {
-        "llm_port": cfg.get("llm_base_url", "http://localhost:8083").split(":")[-1].split("/")[0],
+        "llm_port": llm_url.split(":")[-1].split("/")[0],
         "stt_port": cfg.get("stt_url", "http://localhost:8084").split(":")[-1].split("/")[0],
         "tts_port": cfg.get("tts_url", "http://localhost:8085").split(":")[-1].split("/")[0],
         "dashboard_port": cfg.get("dashboard_port", 8090),
@@ -359,9 +367,10 @@ def check_services_and_alert():
     for name, url in extras.items():
         all_services.setdefault(str(name), str(url))
 
-    # While CODEC answers from a cloud model, the local model server (chat +
-    # vision on one process) is off on purpose: do not probe or alert on it.
-    if not _is_local_url(cfg.get("llm_base_url", "http://localhost:8083")):
+    # While CODEC answers from a cloud model picked by hand, the local model
+    # server (chat + vision on one process) is off on purpose: do not probe or
+    # alert on it.
+    if not auto_fallback and not _is_local_url(cfg.get("llm_base_url", "http://localhost:8083")):
         for name in _LOCAL_MODEL_SERVICES:
             if all_services.pop(name, None) is not None:
                 failures[name] = 0

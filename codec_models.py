@@ -41,6 +41,8 @@ The chat handler re-reads ~/.codec/config.json on every request, so writing
 """
 from __future__ import annotations
 
+import contextlib
+import fcntl
 import json
 import os
 import shutil
@@ -553,6 +555,19 @@ def _switch_to_cloud(entry: Dict[str, Any], previous: str,
 
 
 def set_active(model_id: str, verify: bool = True) -> Dict[str, Any]:
+    """Switch the chat model (the model picker and every explicit switch).
+
+    Holds the switch lock, so an automatic fallback never runs in the middle
+    of it, and clears the automatic-fallback flag: the owner's pick wins.
+    """
+    with _switch_lock():
+        r = _set_active_unlocked(model_id, verify)
+        if r.get("changed"):
+            _set_auto_flag(None)
+    return r
+
+
+def _set_active_unlocked(model_id: str, verify: bool = True) -> Dict[str, Any]:
     """Switch the chat model, verifying it loads and reverting if it does not.
 
     Only models discovered locally may be selected — an arbitrary string would
@@ -655,3 +670,163 @@ def _emit_audit(previous: str, requested: str, ok: bool, detail: str,
               extra=extra)
     except Exception:
         pass
+
+
+# ── Automatic cloud fallback (docs/CLOUD-AUTO-FALLBACK-DESIGN.md) ────────────
+# Opt-in: config.json "llm_auto_fallback" names a registered cloud entry. When
+# the local model server is not listening, CODEC switches to that entry before a
+# chat turn or a voice session builds its prompt (so the observer privacy gate
+# sees the cloud endpoint), and the dashboard checks every 60 s. It switches
+# back once the local model answers twice in a row. Any explicit switch
+# (set_active) clears the flag, so a model the owner picks is never overridden.
+
+_SWITCH_LOCK_PATH = os.path.expanduser("~/.codec/model_switch.lock")
+_LOADING_GRACE_S = 300.0   # a just-started server binds its port only once loaded
+_SWITCH_BACK_OKS = 2       # good local probes in a row before switching back
+_FALLBACK_ALERT_KEY = "llm_auto_fallback"
+
+
+@contextlib.contextmanager
+def _switch_lock(blocking: bool = True):
+    """One model switch at a time across CODEC's processes. Yields True when
+    held; with blocking=False, False while another switch holds it."""
+    os.makedirs(os.path.dirname(_SWITCH_LOCK_PATH), exist_ok=True)
+    fd = os.open(_SWITCH_LOCK_PATH, os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | (0 if blocking else fcntl.LOCK_NB))
+        except BlockingIOError:
+            yield False
+            return
+        try:
+            yield True
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
+
+
+def _set_auto_flag(value: Optional[Dict[str, Any]]) -> None:
+    cfg = _load_config()
+    if value is None:
+        if "llm_auto_fallback_active" not in cfg:
+            return
+        cfg.pop("llm_auto_fallback_active", None)
+    else:
+        cfg["llm_auto_fallback_active"] = value
+    atomic_write_json(CONFIG_PATH, cfg)
+
+
+def _fallback_entry(cfg: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """The cloud entry the owner opted in to, or None (the default: no fallback)."""
+    return codec_cloud_models.entry_for_id(cfg.get("llm_auto_fallback"), cfg)
+
+
+def _server_loading(cfg: Dict[str, Any]) -> bool:
+    """True while the PM2 model server is online but started less than 5 min
+    ago: it binds its port only after the model has loaded."""
+    pm2 = shutil.which("pm2")
+    if not pm2:
+        return False
+    try:
+        out = subprocess.run([pm2, "jlist"], capture_output=True, text=True,
+                             timeout=20).stdout
+        for proc in json.loads(out):
+            if proc.get("name") == _pm2_process_name(cfg):
+                env = proc.get("pm2_env") or {}
+                started = float(env.get("pm_uptime") or 0) / 1000.0
+                return env.get("status") == "online" and time.time() - started < _LOADING_GRACE_S
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return False
+    return False
+
+
+def _fallback_alert(message: str, *, resolved: bool = False) -> None:
+    try:
+        import codec_alerts
+        if resolved:
+            codec_alerts.alert_resolved(_FALLBACK_ALERT_KEY, message)
+        else:
+            codec_alerts.alert_once(_FALLBACK_ALERT_KEY, "warning", message)
+    except Exception:
+        pass  # an alert must never stop the switch
+
+
+def ensure_llm_available() -> Optional[str]:
+    """Switch to the owner's cloud fallback if the local model server is down.
+
+    Returns what it did, or None when it did nothing: no opt-in, already on a
+    cloud model, the local server listening or still loading, the cloud entry
+    blocked (cap reached, no key), or another process switching right now.
+    """
+    cfg = _load_config()
+    entry = _fallback_entry(cfg)
+    if entry is None or codec_cloud_models.active_entry(cfg) is not None:
+        return None
+    if not codec_cloud_models.is_local_url(_base_url(cfg)):
+        return None
+    host, port = _host_port(cfg)
+    if _is_listening(host, port) or _server_loading(cfg):
+        return None
+    if codec_cloud_models.block_message(entry):
+        return None   # stay put: the local error is the honest answer
+    with _switch_lock(blocking=False) as held:
+        if not held:
+            return None
+        cfg = _load_config()
+        if codec_cloud_models.active_entry(cfg) is not None:
+            return None
+        local = get_active(cfg)
+        r = _set_active_unlocked(entry["id"], verify=True)
+        if not (r.get("ok") and r.get("changed")):
+            return None
+        _set_auto_flag({"from": local, "at": time.time(), "local_oks": 0})
+    label = entry.get("label") or entry["id"]
+    _fallback_alert(f"CODEC: the local model ({_friendly(local)}) is not answering. "
+                    f"Switched to {label} until it is back.")
+    return f"switched to {label}"
+
+
+def maybe_switch_back() -> Optional[str]:
+    """After an automatic fallback, go back to the local model once it answers
+    two probes in a row. No restart: the server already serves that model."""
+    cfg = _load_config()
+    flag = cfg.get("llm_auto_fallback_active")
+    if not isinstance(flag, dict):
+        return None
+    cloud = codec_cloud_models.active_entry(cfg)
+    restore = cfg.get("llm_local_restore")
+    restore = restore if isinstance(restore, dict) else {}
+    local = flag.get("from") or restore.get("llm_model") or DEFAULT_MODEL
+    ok = False
+    if cloud is not None:
+        ok, _ = probe(local, timeout=30.0,
+                      base_url=(restore.get("llm_base_url") or DEFAULT_BASE_URL).rstrip("/"))
+    with _switch_lock(blocking=False) as held:
+        if not held:
+            return None
+        cfg = _load_config()
+        flag = cfg.get("llm_auto_fallback_active")
+        if not isinstance(flag, dict):
+            return None
+        cloud = codec_cloud_models.active_entry(cfg)
+        if cloud is None:           # left the cloud some other way
+            _set_auto_flag(None)
+            return None
+        oks = int(flag.get("local_oks") or 0) + 1 if ok else 0
+        if oks < _SWITCH_BACK_OKS:
+            if oks != flag.get("local_oks"):
+                flag["local_oks"] = oks
+                _set_auto_flag(flag)
+            return None
+        _leave_cloud(local)
+        _set_auto_flag(None)
+    _emit_audit(cloud["id"], local, True, "automatic switch back: local model answers again")
+    _fallback_alert(f"CODEC: the local model ({_friendly(local)}) answers again. "
+                    f"Switched back to it.", resolved=True)
+    return f"back on {_friendly(local)}"
+
+
+def auto_fallback_tick() -> Optional[str]:
+    """One background pass (codec-dashboard, every 60 s): fall back, or come back."""
+    return ensure_llm_available() or maybe_switch_back()
