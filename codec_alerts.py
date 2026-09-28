@@ -249,9 +249,15 @@ _SERVICES = {
 }
 
 
+# Gateway errors: a proxy or tunnel (Cloudflare) answered because the service
+# behind it did not. From a remote URL they mean the service is down.
+_GATEWAY_DOWN = {502, 503, 504} | set(range(520, 531))
+
+
 def _check_service(url: str, timeout: int = 5) -> bool:
-    """Probe one service. `http(s)://` → GET (any HTTP response = up);
-    `tcp://host:port` → bare connect (for non-HTTP services like Postgres)."""
+    """Probe one service. `http(s)://` → GET (any HTTP response = up, except
+    a gateway error from a remote URL); `tcp://host:port` → bare connect
+    (for non-HTTP services like Postgres)."""
     if url.startswith("tcp://"):
         try:
             hostport = url[len("tcp://"):].rstrip("/")
@@ -265,8 +271,9 @@ def _check_service(url: str, timeout: int = 5) -> bool:
         req = urllib.request.Request(url, method="GET")
         urllib.request.urlopen(req, timeout=timeout)
         return True
-    except urllib.error.HTTPError:
-        return True  # 4xx/5xx means service is up
+    except urllib.error.HTTPError as e:
+        # 4xx/5xx means the service is up, unless a gateway answered for it.
+        return _is_local_url(url) or e.code not in _GATEWAY_DOWN
     except Exception:
         return False
 

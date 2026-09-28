@@ -47,6 +47,31 @@ def test_check_service_tcp_down():
     assert codec_alerts._check_service(f"tcp://127.0.0.1:{port}", timeout=1) is False
 
 
+# ── _check_service http(s):// status codes ───────────────────────────────────
+
+
+def _answer(monkeypatch, code):
+    def _urlopen(req, timeout=None):
+        raise codec_alerts.urllib.error.HTTPError(req.full_url, code, "x", {}, None)
+    monkeypatch.setattr(codec_alerts.urllib.request, "urlopen", _urlopen)
+
+
+def test_check_service_remote_gateway_error_is_down(monkeypatch):
+    for code in (502, 530):  # Cloudflare: origin unreachable / tunnel down
+        _answer(monkeypatch, code)
+        assert codec_alerts._check_service("https://vpa.example.com/healthz") is False
+
+
+def test_check_service_local_5xx_is_up(monkeypatch):
+    _answer(monkeypatch, 502)
+    assert codec_alerts._check_service("http://127.0.0.1:8090/") is True
+
+
+def test_check_service_remote_4xx_is_up(monkeypatch):
+    _answer(monkeypatch, 404)
+    assert codec_alerts._check_service("https://vpa.example.com/healthz") is True
+
+
 # ── check_services_and_alert: dedupe + extras ────────────────────────────────
 
 

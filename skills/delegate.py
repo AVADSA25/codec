@@ -1,4 +1,9 @@
-"""CODEC Workflow — Delegate complex tasks via n8n webhook"""
+"""CODEC Workflow — Delegate complex tasks via n8n webhook
+
+Posts to the local n8n webhook below unless ~/.codec/config.json has a
+"delegate" block, e.g. {"url": "https://n8n.example.com/webhook/x",
+"auth_header": "X-Webhook-Key", "key_slot": "delegate_webhook_key"}.
+The header value is read from the Keychain slot, never from config."""
 SKILL_NAME = "delegate"
 SKILL_TRIGGERS = ["delegate", "send to workflow", "invoice", "expense", "calorie", "daily briefing", "book a call", "vapi"]
 SKILL_DESCRIPTION = "Delegates complex tasks to CODEC workflows — invoices, expenses, calorie tracking, phone calls, and multi-step workflows"
@@ -8,6 +13,27 @@ import requests
 
 WORKFLOW_WEBHOOK = "http://localhost:5678/webhook/codec-delegate"
 
+
+def _target():
+    """(url, headers) for the webhook call: config "delegate" block or the default."""
+    try:
+        from codec_config import cfg
+        conf = cfg.get("delegate") or {}
+    except Exception:
+        conf = {}
+    headers = {}
+    header, slot = conf.get("auth_header"), conf.get("key_slot")
+    if header and slot:
+        try:
+            from codec_keychain import keychain_get
+            key = keychain_get(slot)
+        except Exception:
+            key = None
+        if key:
+            headers[header] = key
+    return conf.get("url") or WORKFLOW_WEBHOOK, headers
+
+
 def run(task, app="", ctx=""):
     try:
         clean = task.lower()
@@ -16,11 +42,12 @@ def run(task, app="", ctx=""):
         if not clean:
             clean = task
 
-        r = requests.post(WORKFLOW_WEBHOOK, json={
+        url, headers = _target()
+        r = requests.post(url, json={
             "message": clean,
             "source": "codec",
             "app": app
-        }, timeout=300)
+        }, headers=headers, timeout=300)
 
         if r.status_code == 200:
             try:
