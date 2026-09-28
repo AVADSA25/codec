@@ -26,7 +26,13 @@ def test_every_surface_applies_text_size(path: Path):
     assert m, f"{path.name}: size map missing"
     small, medium, large = map(float, m.groups())
     assert small < medium < large
-    assert medium > 1.0, "medium must enlarge the page — that is the whole point"
+    if "setProperty('--fs-scale'" in s:
+        # UI phase 1 PR-C: the size multiplies the type tokens (body and composer
+        # are 16px at medium) instead of zooming the root, so medium is 1.
+        assert medium == 1.0, f"{path.name}: medium must be the token sizes"
+        assert "style.zoom" not in s, f"{path.name}: scales the tokens and zooms the root"
+    else:
+        assert medium > 1.0, "medium must enlarge the page — that is the whole point"
     assert "?v:'medium'" in s, f"{path.name}: default is not medium"
     # Storage access must go through the shim — it throws when blocked.
     assert "_lsGet('codec-text-size')" in s and "_lsSet('codec-text-size'" in s
