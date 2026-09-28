@@ -58,13 +58,15 @@
             font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
             background: var(--bg);
             color: var(--tx);
-            height: 100dvh;
+            height: 100vh;
             display: flex;
             flex-direction: column;
             overflow: hidden;
             position: relative;
             padding-top: 0;
         }
+        /* var() sits behind @supports: an unsupported dvh inside var() would drop height to auto, not to 100vh */
+        @supports (height: 100dvh) { body { height: calc(100dvh / var(--tz, 1)); } }
 
         /* Ambient background glow — reacts to state */
         body::before {
@@ -113,8 +115,8 @@
         /* ── Side Panel ── */
         .side-panel-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9990}
         .side-panel-overlay.open{display:block}
-        .side-panel{position:fixed;top:0;right:-300px;width:300px;height:100%;background:var(--surface);border-left:1px solid var(--border);z-index:9991;transition:right .3s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;box-shadow:-4px 0 24px rgba(0,0,0,.3)}
-        .side-panel.open{right:0}
+        .side-panel{position:fixed;top:0;right:-300px;width:300px;height:100%;background:var(--surface);border-left:1px solid var(--border);z-index:9991;transition:right .3s cubic-bezier(.4,0,.2,1),visibility 0s .3s;visibility:hidden;display:flex;flex-direction:column;box-shadow:-4px 0 24px rgba(0,0,0,.3)}
+        .side-panel.open{right:0;visibility:visible;transition:right .3s cubic-bezier(.4,0,.2,1)}
         .side-panel-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border)}
         .side-panel-header h2{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--accent);letter-spacing:2px}
         .side-panel-close{background:none;border:none;color:var(--text-muted);font-size:20px;cursor:pointer;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:4px;transition:all .15s}
@@ -424,12 +426,15 @@
           .page-nav{position:fixed;bottom:0;left:0;right:0;z-index:9998;transform:none;border-radius:0;padding:6px 0;justify-content:center;background:var(--surface);border-top:1px solid var(--border);gap:0;overflow-x:auto}
           .nav-link{padding:8px 8px;font-size:10px}
           .side-panel{width:280px;right:-280px}
-          .header { padding: 10px 14px; }
+          /* backdrop-filter makes the header the containing block of the fixed nav
+             inside it, pinning the nav under the header instead of the screen bottom */
+          .header { padding: 10px 14px; backdrop-filter: none; -webkit-backdrop-filter: none; }
           .avatar-wrap { width: 180px; height: 180px; }
           .avatar-core { inset: 26px; }
-          .call-container { gap: 24px; padding: 20px; }
+          /* room for the fixed bottom nav (about 41px) so the transcript ends above it */
+          .call-container { gap: 24px; padding: 20px; padding-bottom: calc(20px + 41px + env(safe-area-inset-bottom, 0px)); }
           .transcript-wrap { width: 100%; }
-          .transcript { max-height: 220px; }
+          .transcript { max-height: 160px; }
           .call-btn { width: 64px; height: 64px; }
           .timer { font-size: 24px; }
         }
@@ -593,9 +598,15 @@ function _ssDel(k){try{sessionStorage.removeItem(k)}catch(e){}}
    Shared across surfaces via localStorage + the storage event. */
 var _TEXT_SIZES={small:1,medium:1.15,large:1.3};
 function _textSize(){var v=_lsGet('codec-text-size');return (v in _TEXT_SIZES)?v:'medium'}
-function applyTextSize(){document.documentElement.style.zoom=String(_TEXT_SIZES[_textSize()]);var g=document.getElementById('textSizeGroup');if(g){Array.prototype.forEach.call(g.querySelectorAll('button'),function(b){b.classList.toggle('sel',b.getAttribute('data-size')===_textSize())})}}
+/* Same guard as Home (#344): a root zoom>1 breaks the phone shell's fixed nav/composer
+   math, so the phone always renders at 1. --tz carries the zoom so full-height roots can
+   size to calc(100dvh / var(--tz)) instead of overflowing the window on desktop. */
+function _isPhoneShell(){return window.matchMedia('(max-width: 768px), (max-height: 600px) and (pointer: coarse)').matches}
+function applyTextSize(){var z=_isPhoneShell()?1:_TEXT_SIZES[_textSize()];document.documentElement.style.zoom=String(z);document.documentElement.style.setProperty('--tz',String(z));var g=document.getElementById('textSizeGroup');if(g){Array.prototype.forEach.call(g.querySelectorAll('button'),function(b){b.classList.toggle('sel',b.getAttribute('data-size')===_textSize())})}}
 function setTextSize(s){if(!(s in _TEXT_SIZES))return;_lsSet('codec-text-size',s);applyTextSize()}
 window.addEventListener('storage',function(e){if(e.key==='codec-text-size')applyTextSize()});
+window.addEventListener('resize',applyTextSize);          // re-evaluate the phone-shell gate on rotate / resize
+window.addEventListener('orientationchange',function(){setTimeout(applyTextSize,150)});
 applyTextSize();
 </script>
 <script>
@@ -1244,7 +1255,7 @@ window.addEventListener('storage',function(e){if(e.key==='codec-theme')applyThem
       });
     })();
     // Apply UI preferences from dashboard settings
-    (function(){try{var p=JSON.parse(_lsGet('codec-ui-prefs')||'{}'),m={'screenshot_btn':'#screenBtn','photo_btn':'#photoBtn','webcam_pip_btn':'#camBtn','voice_btn':'#voiceBtn','notif_bell':'#notifBellBtn','mic_btn':'#micBtn','voice_transcript':'.transcript-wrap','voice_actions':'#actionRow'};Object.keys(m).forEach(function(k){if(p[k]===false)m[k].split(',').forEach(function(s){document.querySelectorAll(s.trim()).forEach(function(el){el.style.display='none'})})})}catch(e){}})();
+    (function(){try{var p=JSON.parse(_lsGet('codec-ui-prefs')||'{}'),m={'screenshot_btn':'#screenBtn','photo_btn':'#photoBtn','webcam_pip_btn':'#camBtn','voice_btn':'#voiceBtn','notif_bell':'#notifBellBtn','voice_transcript':'.transcript-wrap','voice_actions':'#actionRow'};Object.keys(m).forEach(function(k){if(p[k]===false)m[k].split(',').forEach(function(s){document.querySelectorAll(s.trim()).forEach(function(el){el.style.display='none'})})})}catch(e){}})();
     </script>
 <div class="webcam-pip" id="webcamPip">
   <img id="pipVideo" alt="Mac Webcam" onclick="expandPip()" style="cursor:pointer" />

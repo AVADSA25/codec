@@ -32,7 +32,8 @@
 *{margin:0;padding:0;box-sizing:border-box}
 html{background:var(--bg)}
 html,body{font-family:var(--font);background:var(--bg);color:var(--text);height:100%;overflow:hidden;-webkit-tap-highlight-color:transparent}
-.app{display:flex;flex-direction:column;height:100vh;height:100dvh;position:relative;overflow:hidden}
+.app{display:flex;flex-direction:column;height:100vh;position:relative;overflow:hidden}
+@supports (height:100dvh){.app{height:calc(100dvh / var(--tz, 1))}}
 .ico{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
 .ico-sm{width:16px;height:16px}
 
@@ -59,8 +60,8 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);height:
 /* ── Side Panel ── */
 .side-panel-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9990}
 .side-panel-overlay.open{display:block}
-.side-panel{position:fixed;top:0;right:-300px;width:300px;height:100%;background:var(--surface);border-left:1px solid var(--border);z-index:9991;transition:right .3s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;box-shadow:-4px 0 24px rgba(0,0,0,.3)}
-.side-panel.open{right:0}
+.side-panel{position:fixed;top:0;right:-300px;width:300px;height:100%;background:var(--surface);border-left:1px solid var(--border);z-index:9991;transition:right .3s cubic-bezier(.4,0,.2,1),visibility 0s .3s;visibility:hidden;display:flex;flex-direction:column;box-shadow:-4px 0 24px rgba(0,0,0,.3)}
+.side-panel.open{right:0;visibility:visible;transition:right .3s cubic-bezier(.4,0,.2,1)}
 .side-panel-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border)}
 .side-panel-header h2{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--accent);letter-spacing:2px}
 .side-panel-close{background:none;border:none;color:var(--text-muted);font-size:20px;cursor:pointer;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:4px;transition:all .15s}
@@ -96,6 +97,7 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);height:
 .si-del{flex-shrink:0;background:none;border:none;cursor:pointer;padding:8px 12px 8px 4px;font-size:14px;opacity:0;transition:opacity .15s;color:var(--text-dim)}
 .sidebar-item:hover .si-del{opacity:1}
 .si-del:hover{color:#e55;opacity:1!important}
+@media (hover:none){.si-del{opacity:1}} /* touch screens have no hover to reveal it */
 .sidebar-new{padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;color:var(--accent);font-weight:600;font-size:12px;display:flex;align-items:center;gap:6px}
 .sidebar-new:hover{background:var(--surface-2)}
 
@@ -171,6 +173,7 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);height:
 .ibtn.send:disabled{opacity:.4}
 .ibtn.stop{background:var(--danger);color:#fff;border-color:var(--danger);display:none}
 .ibtn.stop:hover{opacity:.85}
+.on-mac{display:none;font-size:10px;font-weight:600;white-space:nowrap}
 .ibtn.recording{background:var(--danger);color:#fff;border-color:var(--danger);animation:pulse 1s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
 .dragover .messages{border:2px dashed var(--accent)!important}
@@ -315,6 +318,17 @@ input[type=file]{display:none}
   .input-area{position:fixed;left:0;right:0;bottom:var(--nav-h,56px);z-index:9997;padding-bottom:8px}
   .page-nav{padding-bottom:calc(6px + env(safe-area-inset-bottom,0px))}
   .messages{padding-bottom:calc(var(--nav-h,56px) + var(--input-h,64px) + 16px)}
+  /* Drawers, modals and toasts stack above the docked composer (9997) and nav (9998);
+     the composer hides while the history drawer is open. */
+  .sidebar-overlay,.side-panel-overlay{z-index:10000}
+  .sidebar,.side-panel{z-index:10001}
+  .sidebar.show~.input-area{visibility:hidden}
+  .modal-overlay{z-index:10002}
+  .modal-close{z-index:10003}
+  .toast{z-index:10004;bottom:calc(var(--nav-h,56px) + var(--input-h,64px) + 12px)}
+  /* The folder picker opens on the Mac, not on this phone */
+  #folderBtn{width:auto;padding:0 9px;border-radius:18px;gap:4px}
+  #folderBtn .on-mac{display:inline}
 }
 </style>
 </head>
@@ -374,7 +388,7 @@ input[type=file]{display:none}
 </div>
 
 <div class="sub-tabs">
-<button class="icon-btn" onclick="openSidebar()" title="Chat history" style="flex-shrink:0">
+<button class="icon-btn sidebar-toggle" onclick="openSidebar()" title="Chat history" style="flex-shrink:0">
   <svg class="ico" viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
 </button>
 <div id="modeToggle" class="mode-toggle">
@@ -470,7 +484,7 @@ input[type=file]{display:none}
   <svg class="ico" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
 </button>
 <button class="ibtn" id="folderBtn" onclick="pickWorkingFolder()" title="Allocate a working folder to this chat">
-  <svg class="ico" viewBox="0 0 24 24"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
+  <svg class="ico" viewBox="0 0 24 24"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg><span class="on-mac">on Mac</span>
 </button>
 <button class="ibtn send" id="sendBtn" onclick="sendMessage()">
   <svg class="ico" viewBox="0 0 24 24" style="stroke:#fff"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
@@ -515,9 +529,15 @@ function _ssDel(k){try{sessionStorage.removeItem(k)}catch(e){}}
    Shared across surfaces via localStorage + the storage event. */
 var _TEXT_SIZES={small:1,medium:1.15,large:1.3};
 function _textSize(){var v=_lsGet('codec-text-size');return (v in _TEXT_SIZES)?v:'medium'}
-function applyTextSize(){document.documentElement.style.zoom=String(_TEXT_SIZES[_textSize()]);var g=document.getElementById('textSizeGroup');if(g){Array.prototype.forEach.call(g.querySelectorAll('button'),function(b){b.classList.toggle('sel',b.getAttribute('data-size')===_textSize())})}}
+/* Same guard as Home (#344): a root zoom>1 breaks the phone shell's fixed nav/composer
+   math, so the phone always renders at 1. --tz carries the zoom so full-height roots can
+   size to calc(100dvh / var(--tz)) instead of overflowing the window on desktop. */
+function _isPhoneShell(){return window.matchMedia('(max-width: 768px), (max-height: 600px) and (pointer: coarse)').matches}
+function applyTextSize(){var z=_isPhoneShell()?1:_TEXT_SIZES[_textSize()];document.documentElement.style.zoom=String(z);document.documentElement.style.setProperty('--tz',String(z));var g=document.getElementById('textSizeGroup');if(g){Array.prototype.forEach.call(g.querySelectorAll('button'),function(b){b.classList.toggle('sel',b.getAttribute('data-size')===_textSize())})}}
 function setTextSize(s){if(!(s in _TEXT_SIZES))return;_lsSet('codec-text-size',s);applyTextSize()}
 window.addEventListener('storage',function(e){if(e.key==='codec-text-size')applyTextSize()});
+window.addEventListener('resize',applyTextSize);          // re-evaluate the phone-shell gate on rotate / resize
+window.addEventListener('orientationchange',function(){setTimeout(applyTextSize,150)});
 applyTextSize();
 </script>
 <script>
@@ -957,11 +977,12 @@ function regenerateResponse(btn){
   isProcessing=true;document.getElementById('sendBtn').disabled=true;_showStop();showTyping();
   _currentAbort=new AbortController();
   var msgs=[{role:'system',content:buildSystem()}].concat(chatHist);
+  var raw='',div=null; // outside the .then so the .catch can keep a partial answer
   fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs,force_search:webSearchEnabled,thinking:false,show_thoughts:false,reason_scaffold:thinkingEnabled,stream:true,workdir:_workdir}),signal:_currentAbort.signal}).then(async function(r){
     if(r.status===401||r.status===403){hideTyping();addMessage('assistant','Session expired — redirecting to login...');setTimeout(function(){window.location.href='/auth'},1500);isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false;return}
     hideTyping();
-    var reader=r.body.getReader();var decoder=new TextDecoder();var raw='';var bubbleId='stream_'+genId();
-    var div=document.createElement('div');div.className='msg assistant';div.innerHTML='<div class="msg-bubble" id="'+bubbleId+'"><div class="thinking-indicator"><div class="thinking-dots"><span></span><span></span><span></span></div>CODEC is thinking...</div></div>';document.getElementById('messages').appendChild(div);
+    var reader=r.body.getReader();var decoder=new TextDecoder();raw='';var bubbleId='stream_'+genId();
+    div=document.createElement('div');div.className='msg assistant';div.innerHTML='<div class="msg-bubble" id="'+bubbleId+'"><div class="thinking-indicator"><div class="thinking-dots"><span></span><span></span><span></span></div>CODEC is thinking...</div></div>';document.getElementById('messages').appendChild(div);
     var bubble=document.getElementById(bubbleId);var buf='';var answerStarted=false;
     while(true){
       var chunk=await reader.read();
@@ -990,18 +1011,12 @@ function regenerateResponse(btn){
     _currentAbort=null;isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false
   }).catch(function(e){
     hideTyping();
+    _keepPartial(raw,div);
     if(e.name!=='AbortError')addMessage('assistant','Error: '+e.message);
     _currentAbort=null;isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false
   })
 }
 document.getElementById('crewSelect').addEventListener('change',function(){setMode('research')});
-
-function toggleWebSearch(){
-  webSearchEnabled=!webSearchEnabled;
-  var btn=document.getElementById('modeWebBtn');
-  btn.classList.toggle('active',webSearchEnabled);
-  btn.title=webSearchEnabled?'Web search ON':'Force web search on every message';
-}
 
 function toggleThinking(){
   thinkingEnabled=!thinkingEnabled;
@@ -1099,7 +1114,7 @@ function startNewSession(){sessionId=genId();_lsSet('codec-chat-session',session
       chatHist=[];
       for(var i=0;i<data.length;i++){
         var m=data[i];
-        addMessage(m.role==='user'?'user':'assistant',m.content||'',false);
+        addMessage(m.role==='user'?'user':'assistant',m.content||'',false,m.timestamp);
         chatHist.push({role:m.role,content:m.content||''});
       }
       rehydrateAgentPlanCards().then(scrollBottom);
@@ -1187,7 +1202,7 @@ async function loadSession(sid){
   document.getElementById('messages').innerHTML='';
   try{
     var r=await fetch('/api/qchat/session/'+sid);var data=await r.json();
-    for(var i=0;i<data.length;i++){var m=data[i];addMessage(m.role==='user'?'user':'assistant',m.content||'',false);chatHist.push({role:m.role,content:m.content||''})}
+    for(var i=0;i<data.length;i++){var m=data[i];addMessage(m.role==='user'?'user':'assistant',m.content||'',false,m.timestamp);chatHist.push({role:m.role,content:m.content||''})}
     // PR #39: any assistant message with [CODEC_AGENT_PLAN:<id>] marker
     // gets replaced by the live plan card (fetched from /api/agents/<id>).
     await rehydrateAgentPlanCards();
@@ -1218,12 +1233,19 @@ function formatMsg(c){
   return f
 }
 
-function addMessage(role,content,animate){
+function addMessage(role,content,animate,ts){
   var es=document.getElementById('emptyState');if(es)es.remove();
   var div=document.createElement('div');
   div.className='msg '+role;
   if(animate===false)div.style.animation='none';
-  var time=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  // Each row keeps its own time: the saved timestamp when a session is restored
+  // (the server writes 6 fractional digits; trim to 3 so every browser parses it),
+  // the moment it was added for a live message. Another day also shows the date.
+  var at=ts?new Date(String(ts).replace(/(\.\d{3})\d+/,'$1')):new Date(),time='';
+  if(!isNaN(at)){
+    div.dataset.ts=at.toISOString();
+    time=at.toDateString()===new Date().toDateString()?at.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):at.toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+  }
   // Message text is NEVER embedded in an inline onclick. encodeURIComponent does
   // NOT escape apostrophes — "'" is an unreserved mark, so it survives untouched
   // and "don't" still terminated the JS string literal, killing the handler with a
@@ -1591,6 +1613,19 @@ function stopGeneration(){
   if(_currentAbort){_currentAbort.abort();_currentAbort=null}
   hideTyping();_showSend();isProcessing=false;document.getElementById('sendBtn').disabled=false
 }
+// A stopped or failed stream keeps the answer that already arrived: the streamed
+// buffer's answer part (never the unfinished reasoning), marked "(stopped)", goes
+// into the bubble, chatHist and the saved session. `div` is the streaming bubble;
+// once a finished reply replaced it, it is detached and nothing is added twice.
+function _keepPartial(raw,div){
+  if(!raw||!div||!div.isConnected)return;
+  var pp=parseScaffold(raw);
+  var ans=(pp.answer&&pp.answer.trim())||raw.replace(/<thinking>[\s\S]*?<\/thinking>/i,'').replace(/<thinking>[\s\S]*$/i,'').replace(/###\s*FINAL ANSWER:?/i,'').replace(/<\/?final\s*answer>/gi,'').trim();
+  if(!ans)return;
+  var txt=ans+'\n\n(stopped)';
+  var b=div.querySelector('.msg-bubble');if(b)b.innerHTML=formatMsg(txt);
+  chatHist.push({role:'assistant',content:txt});saveMessages([{role:'assistant',content:txt}]);
+}
 
 async function sendMessage(){
   if(isProcessing)return;
@@ -1776,7 +1811,7 @@ async function sendMessage(){
     } else {
       r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs,force_search:webSearchEnabled,thinking:false,show_thoughts:false,reason_scaffold:thinkingEnabled,stream:true,workdir:_workdir}),signal:_currentAbort.signal});
       if(r.status===401||r.status===403){hideTyping();addMessage('assistant','Session expired — redirecting to login...');setTimeout(function(){window.location.href='/auth'},1500);isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false;return}
-      hideTyping();
+      hideTyping();_lastStats=null;
       // SSE streaming — parse the Think-mode scaffold as tokens arrive
       var reader=r.body.getReader();var decoder=new TextDecoder();var raw='';var bubbleId='stream_'+genId();
       var es=document.getElementById('emptyState');if(es)es.remove();
@@ -1792,7 +1827,7 @@ async function sendMessage(){
           if(!line.startsWith('data: '))continue;
           var payload=line.substring(6);
           if(payload==='[DONE]')break;
-          try{var j=JSON.parse(payload);if(j.token){raw+=j.token;var ps=parseScaffold(raw);if(thinkingEnabled&&ps.think){var tp2=makeToT(div,'Reveal train of thought',true);totSet(tp2,ps.think)}if(ps.answer){if(!answerStarted){bubble.innerHTML='';answerStarted=true}bubble.innerHTML=formatMsg(ps.answer)}scrollBottom()}if(j.escalate_project){renderEscalateChip(j.escalate_project,text)}if(j.skill_confirm){renderSkillConfirmChip(j.skill_confirm,text)}if(j.error){raw+='\n\nError: '+j.error}}catch(pe){}
+          try{var j=JSON.parse(payload);if(j.stats){_lastStats=j.stats}if(j.token){raw+=j.token;var ps=parseScaffold(raw);if(thinkingEnabled&&ps.think){var tp2=makeToT(div,'Reveal train of thought',true);totSet(tp2,ps.think)}if(ps.answer){if(!answerStarted){bubble.innerHTML='';answerStarted=true}bubble.innerHTML=formatMsg(ps.answer)}scrollBottom()}if(j.escalate_project){renderEscalateChip(j.escalate_project,text)}if(j.skill_confirm){renderSkillConfirmChip(j.skill_confirm,text)}if(j.error){raw+='\n\nError: '+j.error}}catch(pe){}
         }
       }
       var pf2=parseScaffold(raw);
@@ -1800,14 +1835,14 @@ async function sendMessage(){
       // <thinking> tail into the bubble; keep reasoning in the reveal panel.
       var answer2=(pf2.answer&&pf2.answer.trim())||raw.replace(/<thinking>[\s\S]*?<\/thinking>/i,'').replace(/<thinking>[\s\S]*$/i,'').replace(/###\s*FINAL ANSWER:?/i,'').replace(/<\/?final\s*answer>/gi,'').trim();
       if(!answer2&&pf2.think&&pf2.think.trim()){answer2='*My reasoning ran on without reaching a final answer — a local-model glitch, not a real reply. The train of thought is below; please ask again.*'}
-      if(answer2){div.remove();var md2=addMessage('assistant',answer2);if(thinkingEnabled&&pf2.think&&pf2.think.trim()&&md2){var fp2=makeToT(md2,'Train of thought',false);totSet(fp2,pf2.think.trim())}chatHist.push({role:'assistant',content:answer2});saveMessages([{role:'assistant',content:answer2}])}
+      if(answer2){div.remove();var md2=addMessage('assistant',answer2);if(thinkingEnabled&&pf2.think&&pf2.think.trim()&&md2){var fp2=makeToT(md2,'Train of thought',false);totSet(fp2,pf2.think.trim())}if(md2&&_lastStats)renderStats(md2,_lastStats);_lastStats=null;chatHist.push({role:'assistant',content:answer2});saveMessages([{role:'assistant',content:answer2}])}
       else{bubble.innerHTML='<em style="color:var(--text-dim)">No response</em>'}
     }
   }catch(e){
     hideTyping();
     if(e.name==='AbortError'){
       // User clicked stop — keep partial response
-      if(typeof fullText!=='undefined'&&fullText){chatHist.push({role:'assistant',content:fullText});saveMessages([{role:'assistant',content:fullText}])}
+      _keepPartial(raw,div);
     }else{addMessage('assistant','Error: '+e.message)}
   }
   _currentAbort=null;isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false
@@ -2086,16 +2121,8 @@ function lockSession(){fetch('/api/auth/logout',{method:'POST'}).then(function()
 
 // ── Header icons (matching dashboard) ──
 var voiceReplyEnabled=_lsGet('codec-voice')==='true';
-function toggleVoiceReply(){voiceReplyEnabled=!voiceReplyEnabled;_lsSet('codec-voice',voiceReplyEnabled);updateVoiceIcon();updateSpeakToggle()}
+function toggleVoiceReply(){voiceReplyEnabled=!voiceReplyEnabled;_lsSet('codec-voice',voiceReplyEnabled);updateVoiceIcon()}
 function updateVoiceIcon(){var m1=document.getElementById('muteX1'),m2=document.getElementById('muteX2'),st=document.getElementById('voiceState');if(voiceReplyEnabled){if(m1)m1.style.display='none';if(m2)m2.style.display='none';if(st){st.textContent='ON';st.style.color='#0a0a0a';st.style.background='#d97757'}}else{if(m1)m1.style.display='';if(m2)m2.style.display='';if(st){st.textContent='OFF';st.style.color='#888';st.style.background='#2a2a2a'}}}
-function updateSpeakToggle(){
-  var btn=document.getElementById('speakToggle');
-  if(!btn)return;
-  var mute=document.getElementById('speakMuteX1');
-  if(voiceReplyEnabled){btn.classList.add('active');if(mute)mute.style.display='none';btn.title='Voice replies ON — click to mute';}
-  else{btn.classList.remove('active');if(mute)mute.style.display='';btn.title='Voice replies OFF — click to enable Kokoro speech';}
-}
-setTimeout(updateSpeakToggle, 0);
 updateVoiceIcon();
 // Populate the model picker with what is on disk + which one is active.
 try{loadModels()}catch(e){}
@@ -2568,9 +2595,11 @@ async function pollLivePreview(){
 async function openAgentFolder(agentIdEnc, e){
   if (e) e.preventDefault();
   try {
-    var r = await fetch('/api/agents/'+agentIdEnc+'/open_folder', {method:'POST'});
-    if (r.ok) showToast && showToast('Opened in Finder');
-  } catch(err){}
+    var r = await fetch('/api/agents/'+agentIdEnc+'/open-folder', {method:'POST'});
+    if (r.ok) { showToast('Opened in Finder'); return; }
+    var d = {}; try { d = await r.json(); } catch(_){}
+    showToast('Could not open folder: ' + (d.error || d.detail || ('HTTP ' + r.status)), true);
+  } catch(err){ showToast('Could not open folder: ' + err.message, true); }
 }
 
 function exitConversation(e){

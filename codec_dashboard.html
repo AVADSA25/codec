@@ -40,7 +40,8 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html { background: var(--bg); }
 html, body { font-family: var(--font); background: var(--bg); color: var(--text); height: 100%; overflow: hidden; -webkit-tap-highlight-color: transparent; }
-.app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; padding-top: var(--safe-top); padding-bottom: var(--safe-bottom); overflow: hidden; }
+.app { display: flex; flex-direction: column; height: 100vh; padding-top: var(--safe-top); padding-bottom: var(--safe-bottom); overflow: hidden; }
+@supports (height: 100dvh) { .app { height: calc(100dvh / var(--tz, 1)); } }
 
 /* ── Icons (inline SVG) ── */
 .ico { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
@@ -86,10 +87,10 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
 .side-panel {
   position: fixed; top: 0; right: -300px; width: 300px; height: 100%;
   background: var(--surface); border-left: 1px solid var(--border);
-  z-index: 9991; transition: right 0.3s cubic-bezier(0.4,0,0.2,1);
+  z-index: 9991; transition: right 0.3s cubic-bezier(0.4,0,0.2,1), visibility 0s 0.3s; visibility: hidden;
   display: flex; flex-direction: column; box-shadow: -4px 0 24px rgba(0,0,0,0.3);
 }
-.side-panel.open { right: 0; }
+.side-panel.open { right: 0; visibility: visible; transition: right 0.3s cubic-bezier(0.4,0,0.2,1); }
 .side-panel-header {
   display: flex; align-items: center; justify-content: space-between;
   padding: 16px 20px; border-bottom: 1px solid var(--border);
@@ -630,6 +631,12 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
   .chat-input{font-size:16px;white-space:nowrap;overflow:hidden;line-height:1.3;min-height:40px}
   .input-row{gap:4px}
   .ibtn{width:34px;height:34px;flex-shrink:0}
+  /* The side panel, modals and toasts stack above the docked composer (9997) and nav (9998) */
+  .side-panel-overlay{z-index:10000}
+  .side-panel{z-index:10001}
+  .modal-overlay,.setup-overlay{z-index:10002}
+  .modal-close{z-index:10003}
+  .toast{z-index:10004;bottom:calc(var(--nav-h,56px) + var(--input-h,64px) + 12px)}
 }
 </style>
 </head>
@@ -1000,7 +1007,7 @@ function _textSize(){var v=_lsGet('codec-text-size');return (v in _TEXT_SIZES)?v
    and nothing is position:fixed). On the phone the page always renders at 1.0 —
    the pre-#344 size — regardless of the saved choice. */
 function _isPhoneShell(){return window.matchMedia('(max-width: 768px), (max-height: 600px) and (pointer: coarse)').matches}
-function applyTextSize(){document.documentElement.style.zoom=String(_isPhoneShell()?1:_TEXT_SIZES[_textSize()]);var g=document.getElementById('textSizeGroup');if(g){Array.prototype.forEach.call(g.querySelectorAll('button'),function(b){b.classList.toggle('sel',b.getAttribute('data-size')===_textSize())})}}
+function applyTextSize(){var z=_isPhoneShell()?1:_TEXT_SIZES[_textSize()];document.documentElement.style.zoom=String(z);document.documentElement.style.setProperty('--tz',String(z));var g=document.getElementById('textSizeGroup');if(g){Array.prototype.forEach.call(g.querySelectorAll('button'),function(b){b.classList.toggle('sel',b.getAttribute('data-size')===_textSize())})}}
 function setTextSize(s){if(!(s in _TEXT_SIZES))return;_lsSet('codec-text-size',s);applyTextSize()}
 window.addEventListener('storage',function(e){if(e.key==='codec-text-size')applyTextSize()});
 window.addEventListener('resize',applyTextSize);          // re-evaluate the phone-shell gate on rotate / resize

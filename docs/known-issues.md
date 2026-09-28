@@ -295,3 +295,19 @@ The example config at the top of `codec_telegram.py` says
 `"allowed_chat_ids": []  // empty = allow all`. The code is fail-closed: an empty
 or missing list denies every chat (`is_chat_allowed`, C2). Only the comment is
 wrong. Fix: change it to "empty = deny all".
+
+## `/ws/voice` does not check the handshake Origin (2026-09-28)
+
+`routes/websocket.py:voice_websocket` authorizes the handshake with
+`_ws_authorized` only. With no login configured (no `dashboard_token`, no Touch
+ID / PIN), that allows any request from this Mac (`not _is_remote_request`), and
+nothing checks the `Origin` header. So any web page open in the Mac's browser,
+and the Vibe preview frame (opaque origin, `Origin: null`), can open
+`ws://127.0.0.1:8090/ws/voice`, send audio or control frames into the
+voice-to-skill pipeline and read the replies. `HostAllowlistMiddleware` checks
+only `Host`, which is `127.0.0.1:8090` here. HTTP POSTs are covered by the
+cross-site block in `AuthMiddleware` (`codec_dashboard.py`, Origin vs Host or
+`TRUSTED_ORIGIN_HOSTS`, `null` refused); the WebSocket has no equivalent. Found
+in the UI Phase 1 PR-A review. Fix (own PR): before `accept()`, close with 4403
+when an `Origin` header is present and its host is neither the request `Host`
+nor in `AuthMiddleware.TRUSTED_ORIGIN_HOSTS`, treating `null` as untrusted.
