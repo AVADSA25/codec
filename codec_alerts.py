@@ -2,7 +2,7 @@
 
 Configure in ~/.codec/config.json:
   "alerts": {
-    "telegram": {"enabled": true, "bot_token": "...", "chat_id": "..."},
+    "telegram": {"chat_id": "..."},   # bot token: the CODEC bot's Keychain slot
     "email": {"enabled": false, "smtp_host": "smtp.gmail.com", "smtp_port": 587,
               "from": "codec@you.com", "to": "you@you.com", "password": "app-password"},
     "slack": {"enabled": false, "webhook_url": "https://hooks.slack.com/..."},
@@ -18,6 +18,15 @@ counts as up) or `tcp://host:port` (a successful connect counts as up).
 Extra services get the same consecutive-failure alerting + recovery
 notifications as built-ins but are NEVER auto-restarted — monitoring is
 strictly read-only for them.
+
+Remote alerts (27 Sep 2026 audit, item 6): with `alerts.telegram.chat_id` set,
+alerts reach the owner's phone through the CODEC Telegram bot. The token comes
+from the Keychain (`get_telegram_bot_token()`); a plaintext
+`alerts.telegram.bot_token` is still honoured for older configs. Outbound only:
+the bot's `telegram.allowed_chat_ids` stays empty, so it accepts no commands.
+`alert_once` / `alert_resolved` send an ongoing problem once, repeat it at most
+every 6 h, and send one message when it clears. Messages carry service names
+and states only, never user data.
 """
 import json
 import logging
@@ -37,6 +46,10 @@ log = logging.getLogger("codec_alerts")
 
 CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
 ALERT_STATE_PATH = os.path.expanduser("~/.codec/alert_state.json")
+# Which problems have alerted and when; shared by every process that runs the
+# heartbeat (codec-heartbeat and the dashboard), so writes go through a lock.
+ALERTS_SENT_PATH = os.path.expanduser("~/.codec/alerts_sent.json")
+REPEAT_EVERY_S = 6 * 3600
 
 
 def _load_config() -> dict:
@@ -66,7 +79,9 @@ def _save_state(state: dict):
 
 def _send_telegram(bot_token: str, chat_id: str, message: str) -> bool:
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-    data = json.dumps({"chat_id": chat_id, "text": message, "parse_mode": "HTML"}).encode()
+    # Plain text: an alert quoting an error with "<" or "&" must not be
+    # rejected by Telegram's HTML parser.
+    data = json.dumps({"chat_id": chat_id, "text": message[:4000]}).encode()
     req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
     try:
         urllib.request.urlopen(req, timeout=10)
@@ -103,14 +118,36 @@ def _send_slack(webhook_url: str, message: str) -> bool:
         return False
 
 
+def _applescript_text(text: str) -> str:
+    """Quote text for an AppleScript string literal: alert text can quote git
+    or Python errors, and a stray double quote must not end the literal."""
+    return " ".join(text.split()).replace("\\", "\\\\").replace('"', '\\"')
+
+
 def _send_macos_notification(message: str):
     try:
         subprocess.run(
-            ["osascript", "-e", f'display notification "{message[:120]}" with title "CODEC Alert" sound name "Glass"'],
+            ["osascript", "-e", f'display notification "{_applescript_text(message[:120])}" with title "CODEC Alert" sound name "Glass"'],
             capture_output=True, timeout=5,
         )
     except Exception:
         pass
+
+
+def _telegram_target(alerts_cfg: dict):
+    """(bot_token, chat_id) for owner alerts, or None when not configured."""
+    tg = alerts_cfg.get("telegram") or {}
+    chat_id = str(tg.get("chat_id") or "").strip()
+    if not chat_id or tg.get("enabled") is False:
+        return None
+    token = tg.get("bot_token") or ""
+    if not token:
+        try:
+            from codec_config import get_telegram_bot_token
+            token = get_telegram_bot_token() or ""
+        except Exception:
+            token = ""
+    return (token, chat_id) if token else None
 
 
 def send_alert(level: str, message: str, subject: Optional[str] = None):
@@ -128,9 +165,9 @@ def send_alert(level: str, message: str, subject: Optional[str] = None):
     _send_macos_notification(message)
 
     # Telegram
-    tg = alerts_cfg.get("telegram", {})
-    if tg.get("enabled") and tg.get("bot_token") and tg.get("chat_id"):
-        _send_telegram(tg["bot_token"], tg["chat_id"], message)
+    target = _telegram_target(alerts_cfg)
+    if target:
+        _send_telegram(target[0], target[1], message)
 
     # Email
     em = alerts_cfg.get("email", {})
@@ -145,7 +182,63 @@ def send_alert(level: str, message: str, subject: Optional[str] = None):
     log.info("Alert dispatched [%s]: %s", level, message[:100])
 
 
+def alert_once(key: str, level: str, message: str, *, repeat_s: int = REPEAT_EVERY_S,
+               now: Optional[float] = None) -> bool:
+    """Alert about an ongoing problem, at most once every `repeat_s` (6 h).
+    `key` names the problem (e.g. "down:Dashboard"). Returns True if sent."""
+    import codec_jsonstore
+    now = time.time() if now is None else now
+    decided = {"send": False}
+
+    def _mutate(state):
+        state = state if isinstance(state, dict) else {}
+        problems = state.setdefault("problems", {})
+        entry = problems.get(key) or {}
+        if now - float(entry.get("last_sent", 0)) >= repeat_s:
+            problems[key] = {"since": entry.get("since", now), "last_sent": now}
+            decided["send"] = True
+        return state
+
+    codec_jsonstore.read_modify_write(ALERTS_SENT_PATH, _mutate)
+    if decided["send"]:
+        send_alert(level, message)
+    return decided["send"]
+
+
+def alert_resolved(key: str, message: str) -> bool:
+    """If `key` alerted before, send one recovery message and forget it."""
+    import codec_jsonstore
+    decided = {"send": False}
+
+    def _mutate(state):
+        state = state if isinstance(state, dict) else {}
+        decided["send"] = state.setdefault("problems", {}).pop(key, None) is not None
+        return state
+
+    codec_jsonstore.read_modify_write(ALERTS_SENT_PATH, _mutate)
+    if decided["send"]:
+        send_alert("recovery", message)
+    return decided["send"]
+
+
+def open_problems() -> list:
+    """Keys of the problems that have alerted and not cleared yet."""
+    try:
+        with open(ALERTS_SENT_PATH) as f:
+            return sorted((json.load(f).get("problems") or {}).keys())
+    except Exception:
+        return []
+
+
+def _is_local_url(url: str) -> bool:
+    host = (urllib.parse.urlparse(url or "").hostname or "").lower()
+    return host in ("localhost", "127.0.0.1", "::1")
+
+
 # ── Service Monitoring ──────────────────────────────────────────────────
+
+# Both run on the local model server; skipped while chat uses a cloud model.
+_LOCAL_MODEL_SERVICES = ("LLM (Qwen)", "Vision")
 
 _SERVICES = {
     "LLM (Qwen)": "http://localhost:{llm_port}/v1/models",
@@ -257,6 +350,14 @@ def check_services_and_alert():
     for name, url in extras.items():
         all_services.setdefault(str(name), str(url))
 
+    # While CODEC answers from a cloud model, the local model server (chat +
+    # vision on one process) is off on purpose: do not probe or alert on it.
+    if not _is_local_url(cfg.get("llm_base_url", "http://localhost:8083")):
+        for name in _LOCAL_MODEL_SERVICES:
+            if all_services.pop(name, None) is not None:
+                failures[name] = 0
+                alert_resolved(f"down:{name}", f"CODEC: {name} is no longer checked while chat uses the cloud model.")
+
     # Dedupe probes by resolved URL — LLM and Vision usually share one
     # qwen process on :8083; probing it twice double-counted every blip.
     _probe_cache: dict = {}
@@ -269,10 +370,10 @@ def check_services_and_alert():
         if up:
             prev_fails = failures.get(name, 0)
             if prev_fails >= 2:
-                # Recovery — was down, now up
+                # Recovery — was down, now up (one message, only if it alerted)
                 downtime = state.get(f"down_since_{name}", "unknown")
-                send_alert(
-                    "recovery",
+                alert_resolved(
+                    f"down:{name}",
                     f"CODEC RECOVERED: {name} is back online. Was down since {downtime}.",
                 )
             failures[name] = 0
@@ -328,12 +429,14 @@ def check_services_and_alert():
                     if _check_service(url):
                         failures[name] = 0
                         _probe_cache[url] = True  # later names on this URL see the recovery
-                        send_alert("recovery", f"CODEC RECOVERED: {name} auto-restarted successfully.")
+                        log.info("%s auto-restarted successfully", name)
+                        alert_resolved(f"down:{name}", f"CODEC RECOVERED: {name} auto-restarted successfully.")
                         continue
 
             if failures[name] >= 2:
-                # 2 consecutive failures — alert
-                send_alert(
+                # 2 consecutive failures — alert (then at most every 6 h)
+                alert_once(
+                    f"down:{name}",
                     "critical",
                     f"CODEC ALERT: {name} is not responding.\n"
                     f"Down since: {state.get(f'down_since_{name}', 'unknown')}\n"
@@ -346,7 +449,9 @@ def check_services_and_alert():
         usage = shutil.disk_usage("/")
         free_gb = usage.free / (1024 ** 3)
         if free_gb < 0.5:
-            send_alert("critical", f"CODEC ALERT: Disk space critically low — only {free_gb:.1f} GB free!")
+            alert_once("disk_low", "critical", f"CODEC ALERT: Disk space critically low — only {free_gb:.1f} GB free!")
+        else:
+            alert_resolved("disk_low", f"CODEC RECOVERED: disk space is back to {free_gb:.1f} GB free.")
     except Exception:
         pass
 
@@ -363,7 +468,7 @@ def check_services_and_alert():
             if "exec cwd" in line.lower():
                 cwd = line.split("│")[-2].strip() if "│" in line else line.split()[-1]
                 if cwd != expected_cwd:
-                    send_alert("warning", f"CODEC WARNING: PM2 exec_cwd is {cwd}, expected {expected_cwd}. Run sync_to_pm2.sh.")
+                    alert_once("pm2_cwd", "warning", f"CODEC WARNING: PM2 exec_cwd is {cwd}, expected {expected_cwd}. Run sync_to_pm2.sh.")
                 break
     except Exception:
         pass

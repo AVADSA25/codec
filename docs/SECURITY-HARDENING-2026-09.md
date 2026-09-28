@@ -59,3 +59,28 @@ Anything else gets 400, or a closed WebSocket. This stops DNS rebinding: a web p
   - the HTTP built-in blocklist is listed in full.
 
 **Tests:** `tests/test_mcp_http_side_effects.py` (the consent tests run for all 14 tools, plus an add-only check).
+
+## One remote alert channel (audit item 6)
+
+**Channel:** Telegram, outbound only, through the existing CODEC bot.
+- Set `alerts.telegram.chat_id` in `config.json`. The bot token comes from the Keychain (`get_telegram_bot_token()`), so no plaintext token is needed; an older `alerts.telegram.bot_token` still works.
+- `telegram.allowed_chat_ids` stays empty, so the bot accepts no commands.
+- Messages are plain text, never HTML, so quoted errors cannot break them. They carry only service names and states.
+
+**Once per problem.** `codec_alerts.alert_once(key, …)` sends an ongoing problem once, repeats it at most every 6 h, and `alert_resolved(key, …)` sends one message when it clears. State lives in `~/.codec/alerts_sent.json` (0600, file lock), shared by `codec-heartbeat` and the dashboard's own heartbeat. Before this, "not responding" fired on every heartbeat (every 20–30 min) for as long as a service stayed down.
+
+**What alerts:**
+- a service down twice in a row, and its recovery;
+- disk under 0.5 GB;
+- the PM2 working-directory check;
+- PM2 restart storms (unchanged);
+- new: any CODEC PM2 app in `errored`, meaning its crash loop hit the PM2 cap;
+- new: `scripts/auto_pull.sh` failures, with one message when a later run pulls or finds main up to date again.
+
+**Daily status.** The first heartbeat after 07:30 sends one line: CODEC apps online, the last auto-pull, free disk, open problems. It doubles as proof of life: no message means the Mac or the heartbeat is down.
+
+**Cloud model.** While chat uses a cloud model (`llm_base_url` not local), the local model server is off on purpose, so "LLM (Qwen)" and "Vision" are not probed.
+
+**macOS banner:** alert text is escaped before it goes into the AppleScript string.
+
+**Tests:** `tests/test_remote_alerts.py`. The auto-pull tests run the real script with a stand-in Python and a throwaway git remote.
