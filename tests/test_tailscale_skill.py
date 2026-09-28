@@ -51,6 +51,13 @@ def test_turn_on_runs_up(monkeypatch):
     assert calls == ["status", "up", "status"]
 
 
+def test_turn_on_waits_for_the_device_list(monkeypatch):
+    mod = _load()
+    calls = _fake(monkeypatch, mod, [STOPPED, {"BackendState": "Running", "Peer": {}}, RUNNING])
+    assert mod.run("turn on tailscale") == "Tailscale is on. 1 of 2 other devices online."
+    assert calls == ["status", "up", "status", "status"]
+
+
 def test_turn_off_runs_down(monkeypatch):
     mod = _load()
     calls = _fake(monkeypatch, mod, [RUNNING, STOPPED])

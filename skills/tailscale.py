@@ -81,7 +81,13 @@ def run(task, app="", ctx=""):
         r = subprocess.run([cli, intent], capture_output=True, text=True, timeout=30)
         if r.returncode != 0:
             return f"Tailscale {intent} failed: {(r.stderr or r.stdout).strip()[:200]}"
-        return _describe(_status(cli) or st)
+        new = _status(cli) or st
+        for _ in range(5 if intent == "up" else 0):
+            if new.get("Peer"):
+                break
+            time.sleep(1)  # the device list arrives a moment after `up`
+            new = _status(cli) or new
+        return _describe(new)
     except subprocess.TimeoutExpired:
         return "Tailscale did not answer in time."
     except Exception as e:
