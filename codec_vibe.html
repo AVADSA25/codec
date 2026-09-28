@@ -38,9 +38,15 @@ function _ssDel(k){try{sessionStorage.removeItem(k)}catch(e){}}
    Shared across surfaces via localStorage + the storage event. */
 var _TEXT_SIZES={small:1,medium:1.15,large:1.3};
 function _textSize(){var v=_lsGet('codec-text-size');return (v in _TEXT_SIZES)?v:'medium'}
-function applyTextSize(){document.documentElement.style.zoom=String(_TEXT_SIZES[_textSize()]);var g=document.getElementById('textSizeGroup');if(g){Array.prototype.forEach.call(g.querySelectorAll('button'),function(b){b.classList.toggle('sel',b.getAttribute('data-size')===_textSize())})}}
+/* Same guard as Home (#344): a root zoom>1 breaks the phone shell's fixed nav/composer
+   math, so the phone always renders at 1. --tz carries the zoom so full-height roots can
+   size to calc(100dvh / var(--tz)) instead of overflowing the window on desktop. */
+function _isPhoneShell(){return window.matchMedia('(max-width: 768px), (max-height: 600px) and (pointer: coarse)').matches}
+function applyTextSize(){var z=_isPhoneShell()?1:_TEXT_SIZES[_textSize()];document.documentElement.style.zoom=String(z);document.documentElement.style.setProperty('--tz',String(z));var g=document.getElementById('textSizeGroup');if(g){Array.prototype.forEach.call(g.querySelectorAll('button'),function(b){b.classList.toggle('sel',b.getAttribute('data-size')===_textSize())})}}
 function setTextSize(s){if(!(s in _TEXT_SIZES))return;_lsSet('codec-text-size',s);applyTextSize()}
 window.addEventListener('storage',function(e){if(e.key==='codec-text-size')applyTextSize()});
+window.addEventListener('resize',applyTextSize);          // re-evaluate the phone-shell gate on rotate / resize
+window.addEventListener('orientationchange',function(){setTimeout(applyTextSize,150)});
 applyTextSize();
 </script>
 <script crossorigin="anonymous" src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.8/purify.min.js"></script>
@@ -68,7 +74,8 @@ applyTextSize();
 [data-theme=light]{--bg:#f7f5f2;--surface:#fff;--surface-2:#f0ece6;--surface-3:#e8e4de;--border:#d5d0ca;--border-hover:#bbb;--text:#1a1a1a;--text-muted:#555;--text-dim:#777;--bg2:#fff;--bg3:#f0ece6;--bg4:#e8e4de;--tx:#1a1a1a;--tx2:#555;--bd:#d5d0ca;--fg:#1a1a1a;--fg2:#555;--fg3:#777}
 *{margin:0;padding:0;box-sizing:border-box}
 html{background:var(--bg)}
-body{font-family:var(--ft);background:var(--bg);color:var(--tx);height:100vh;height:100dvh;display:flex;flex-direction:column;overflow:hidden;padding-bottom:env(safe-area-inset-bottom, 0px)}
+body{font-family:var(--ft);background:var(--bg);color:var(--tx);height:100vh;display:flex;flex-direction:column;overflow:hidden;padding-bottom:env(safe-area-inset-bottom, 0px)}
+@supports (height:100dvh){body{height:calc(100dvh / var(--tz, 1))}}
 .bar{display:flex;align-items:center;justify-content:space-between;padding:8px 16px;background:var(--bg2);border-bottom:1px solid var(--bd);height:48px;flex-shrink:0;position:relative}
 .bar-l{display:flex;align-items:center;gap:12px}
 .bb{padding:4px 12px;border:1px solid var(--bd);border-radius:6px;background:0;color:var(--tx2);cursor:pointer;font-size:12px;text-decoration:none;transition:all 0.2s ease}
@@ -83,6 +90,9 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx);height:100vh;hei
 .ph span{font-size:12px;color:var(--ac);font-family:var(--mn);font-weight:600}
 #pf{flex:1;border:none;background:#fff}
 #eb{flex:1}
+.vtabs{display:none}
+.vtab{flex:1;padding:6px 10px;border:1px solid var(--bd);border-radius:6px;background:0;color:var(--tx2);font-size:12px;font-weight:600;font-family:var(--ft);cursor:pointer}
+.vtab.sel{color:var(--ac);border-color:var(--ac);background:var(--accent-dim)}
 .tb{display:flex;align-items:center;gap:4px;padding:8px 12px;background:var(--bg2);border-top:1px solid var(--bd);flex-shrink:0;flex-wrap:wrap;min-height:54px}
 .bt{padding:8px 12px;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;transition:all .15s;font-family:var(--ft);background:var(--surface-2);color:var(--text-muted);white-space:nowrap;display:inline-flex;align-items:center;gap:5px;height:36px}
 .bt .ico-sm{width:14px;height:14px}
@@ -107,6 +117,7 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx);height:100vh;hei
 .vibe-mic:hover{border-color:var(--border-hover);color:var(--text)}
 .vibe-mic.recording{background:var(--danger);color:#fff;border-color:var(--danger);animation:vibePulse 1s infinite}
 @keyframes vibePulse{0%,100%{opacity:1}50%{opacity:.6}}
+.on-mac{display:none;font-size:10px;font-weight:600;white-space:nowrap}
 .mg{margin-bottom:12px;padding:10px 12px;border-radius:10px;font-size:14px;line-height:1.6;word-wrap:break-word}
 .mu{background:rgba(217,119,87,0.15);color:var(--tx);border:1px solid rgba(217,119,87,0.25);margin-left:20%;border-bottom-right-radius:3px}
 .ma{background:var(--bg2);border:1px solid var(--bd);margin-right:10%;border-bottom-left-radius:3px}
@@ -130,8 +141,8 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx);height:100vh;hei
 /* ── Side Panel ── */
 .side-panel-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9990}
 .side-panel-overlay.open{display:block}
-.side-panel{position:fixed;top:0;right:-300px;width:300px;height:100%;background:var(--surface);border-left:1px solid var(--border);z-index:9991;transition:right .3s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;box-shadow:-4px 0 24px rgba(0,0,0,.3)}
-.side-panel.open{right:0}
+.side-panel{position:fixed;top:0;right:-300px;width:300px;height:100%;background:var(--surface);border-left:1px solid var(--border);z-index:9991;transition:right .3s cubic-bezier(.4,0,.2,1),visibility 0s .3s;visibility:hidden;display:flex;flex-direction:column;box-shadow:-4px 0 24px rgba(0,0,0,.3)}
+.side-panel.open{right:0;visibility:visible;transition:right .3s cubic-bezier(.4,0,.2,1)}
 .side-panel-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border)}
 .side-panel-header h2{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--accent);letter-spacing:2px}
 .side-panel-close{background:none;border:none;color:var(--text-muted);font-size:20px;cursor:pointer;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:4px;transition:all .15s}
@@ -180,12 +191,21 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx);height:100vh;hei
   .cp{width:100%;min-width:0;border-right:none;border-bottom:1px solid var(--bd);max-height:50vh}
   .ep{width:100%;min-width:0}
   .pp{width:100%;border-left:none;border-top:1px solid var(--bd)}
+  /* Code / Preview tabs: one of editor or preview at a time, toolbar always shown */
+  .vtabs{display:flex;order:0;gap:6px;padding:6px 12px;background:var(--bg2);border-bottom:1px solid var(--bd);flex-shrink:0}
+  .ep,#eb,.pp,#pf{min-height:0}
+  .sp:not(.tab-preview) .pp{display:none}
+  .sp.tab-preview #eb{display:none}
+  .sp.tab-preview .ep{flex:none}
   #rh{display:none}
   .tb{flex-wrap:wrap;gap:6px}
   .bar{flex-wrap:wrap;gap:6px;height:auto;padding:8px 12px}
   .bar-l{flex-wrap:wrap}
   .fi{width:120px}
   .op{height:100px}
+  /* The folder picker opens on the Mac, not on this phone */
+  #vibeFolder{width:auto;padding:0 9px;border-radius:18px;gap:4px}
+  #vibeFolder .on-mac{display:inline}
 }
 @media (max-width:480px){
   .cp{max-height:40vh}
@@ -296,10 +316,11 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx);height:100vh;hei
   </div>
 </div>
 <div class="sp">
-<div class="cp"><div class="hd" style="font-size:13px;color:var(--tx2);font-weight:500">Vibe Coding</div><div class="ms" id="cm"><div class="mg ma">Tell me what to build!</div></div><div class="ia"><button class="vibe-mic" id="vibeMic" onclick="toggleVibeMic()" title="Voice input"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button><textarea id="vi" class="ii" rows="1" placeholder="Describe what to build..."></textarea><button class="vibe-mic" id="vibeFolder" onclick="pickWorkingFolder()" title="Allocate a working folder"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg></button><button class="sb" id="sndb" title="Send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></button><button class="sb" id="stopb" onclick="doStop()" style="display:none;background:#c0392b" title="Stop"><svg width="14" height="14" viewBox="0 0 24 24" fill="#fff" stroke="none"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></button></div></div>
+<div class="cp"><div class="hd" style="font-size:13px;color:var(--tx2);font-weight:500">Vibe Coding</div><div class="ms" id="cm"><div class="mg ma">Tell me what to build!</div></div><div class="ia"><button class="vibe-mic" id="vibeMic" onclick="toggleVibeMic()" title="Voice input"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button><textarea id="vi" class="ii" rows="1" placeholder="Describe what to build..."></textarea><button class="vibe-mic" id="vibeFolder" onclick="pickWorkingFolder()" title="Allocate a working folder"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg><span class="on-mac">on Mac</span></button><button class="sb" id="sndb" title="Send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></button><button class="sb" id="stopb" onclick="doStop()" style="display:none;background:#c0392b" title="Stop"><svg width="14" height="14" viewBox="0 0 24 24" fill="#fff" stroke="none"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></button></div></div>
 <div style="width:4px;cursor:col-resize;background:var(--bd)" id="rh"></div>
+<div class="vtabs" id="vtabs"><button class="vtab sel" id="vtabCode" onclick="_setVibeTab('code')">Code</button><button class="vtab" id="vtabPrev" onclick="_vibeTabPreview()">Preview</button></div>
 <div class="ep"><div id="eb"></div><div class="tb"><button class="bt primary" onclick="doRun()" title="Execute code"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5 3 19 12 5 21 5 3"/></svg>Run</button><button class="bt" onclick="doPrev()" title="Live preview"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>Preview</button><button class="bt" id="inspectBtn" onclick="toggleInspect()" title="Inspect elements"><svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Inspect</button><div class="tb-sep"></div><button class="bt" onclick="doSave()" title="Save file"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save</button><button class="bt" onclick="doCopy()" title="Copy code"><svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>Copy</button><span class="rs" id="rs"></span></div></div>
-<div class="pp" id="pp"><div class="ph"><span>Live Preview</span><button onclick="document.getElementById('pp').classList.remove('sh')" style="background:0;border:0;color:var(--tx2);cursor:pointer;font-size:16px">&#10005;</button></div><iframe id="pf" sandbox="allow-scripts allow-same-origin"></iframe></div>
+<div class="pp" id="pp"><div class="ph"><span>Live Preview</span><button onclick="closePrev()" style="background:0;border:0;color:var(--tx2);cursor:pointer;font-size:16px">&#10005;</button></div><iframe id="pf" sandbox="allow-scripts"></iframe></div>
 </div>
 <div class="op" id="op"><span style="color:var(--ac)">Vibe Coding</span></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
@@ -769,29 +790,124 @@ function doRun() {
   });
 }
 
+// ── Preview frame ───────────────────────────────────────────────────────────
+// The frame is sandbox="allow-scripts" with no allow-same-origin: previewed code
+// runs in an opaque origin, so it cannot read the codec_csrf cookie or call
+// /api/* as the owner. Error capture and Inspect talk to it by postMessage
+// through _pvAgent, which is injected at the top of the previewed document.
+// Everything the frame sends is untrusted: shown with textContent, never run.
+// _pvAgent is serialised into the frame on one line, so it must use explicit
+// semicolons and no // comments.
+// The opaque origin makes localStorage / sessionStorage throw SecurityError, which
+// would stop a previewed app at its first save; the agent swaps in in-memory ones.
+function _pvAgent() {
+  function mem() {
+    var d = Object.create(null);
+    return {getItem: function (k) { k = String(k); return k in d ? d[k] : null; }, setItem: function (k, v) { d[String(k)] = String(v); }, removeItem: function (k) { delete d[String(k)]; }, clear: function () { d = Object.create(null); }, key: function (i) { var ks = Object.keys(d); return i >= 0 && i < ks.length ? ks[i] : null; }, get length() { return Object.keys(d).length; }};
+  }
+  ['localStorage', 'sessionStorage'].forEach(function (nm) {
+    try { window[nm]; } catch (x) { var s = mem(); try { Object.defineProperty(window, nm, {configurable: true, get: function () { return s; }}); } catch (y) {} }
+  });
+  var P = window.parent, on = false, hl = null, hlOut = '', picked = null, n = 0;
+  function send(kind, o) { o = o || {}; o.codecPreview = kind; try { P.postMessage(o, '*'); } catch (x) {} }
+  function err(msg, line) { if (++n > 20) return; send('error', {msg: String(msg).slice(0, 500), line: line || 0}); }
+  function str(a) { if (a && a.message) return String(a.message); if (a && typeof a === 'object') { try { return JSON.stringify(a); } catch (x) {} } return String(a); }
+  window.addEventListener('error', function (e) { if (e && e.message) err(e.message, e.lineno); });
+  window.addEventListener('unhandledrejection', function (e) { err('Unhandled promise rejection: ' + str(e && e.reason), 0); });
+  var ce = console.error;
+  console.error = function () { try { err('console.error: ' + Array.prototype.map.call(arguments, str).join(' '), 0); } catch (x) {} return ce.apply(console, arguments); };
+  function unhl() { if (hl) { hl.style.outline = hlOut; hl = null; } }
+  document.addEventListener('mouseover', function (e) { if (!on || !e.target.style) return; e.stopPropagation(); unhl(); hl = e.target; hlOut = hl.style.outline; hl.style.outline = '2px solid #d97757'; }, true);
+  document.addEventListener('mouseout', function (e) { if (on && e.target === hl) unhl(); }, true);
+  document.addEventListener('click', function (e) {
+    if (!on) return;
+    e.preventDefault(); e.stopPropagation();
+    var el = e.target, cs = getComputedStyle(el);
+    picked = el;
+    send('pick', {tag: String(el.tagName || '').toLowerCase(), id: el.id || '', cls: el.getAttribute('class') || '', text: (el.textContent || '').substring(0, 200), color: cs.color, bg: cs.backgroundColor, fs: cs.fontSize, pad: cs.padding, x: e.clientX, y: e.clientY});
+  }, true);
+  window.addEventListener('message', function (e) {
+    var d = e.data;
+    if (e.source !== P || !d || typeof d !== 'object' || !d.codecPreview) return;
+    if (d.codecPreview === 'inspect') {
+      on = !!d.on;
+      if (document.body) document.body.style.cursor = on ? 'crosshair' : '';
+      if (!on) { unhl(); picked = null; }
+    } else if (d.codecPreview === 'apply' && picked) {
+      if (d.textChanged) picked.textContent = String(d.text);
+      picked.style.color = String(d.color);
+      picked.style.backgroundColor = String(d.bg);
+      picked.style.fontSize = parseFloat(d.fs) + 'px';
+      picked.style.padding = parseFloat(d.pad) + 'px';
+    }
+  });
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { send('ready'); });
+  else send('ready');
+}
+// Put the agent right after the doctype (before it would force quirks mode),
+// on the same line, so error line numbers still match the editor.
+function _pvInject(c) {
+  var tag = '<script>(' + String(_pvAgent).replace(/\s*\n\s*/g, ' ') + ')();<\/script>';
+  var m = c.match(/^\s*<!DOCTYPE[^>]*>/i);
+  return m ? m[0] + tag + c.slice(m[0].length) : tag + c;
+}
+var _pvReady = false, _pvErrSeen = {}, _pvErrN = 0, _pvFill = '';
+function _pvSend(msg) {
+  var pf = document.getElementById('pf');
+  if (pf && pf.contentWindow) pf.contentWindow.postMessage(msg, '*');
+}
+function _pvError(msg, line) {
+  var errText = 'Preview error' + (line ? ' (line ' + line + ')' : '') + ': ' + msg;
+  if (_pvErrSeen[errText]) return;   // an error in an animation loop fires every frame
+  if (++_pvErrN > 20) return;   // the frame is untrusted: cap here, not only in _pvAgent
+  _pvErrSeen[errText] = 1;
+  addOut('er', errText);
+  addMsg('assistant', 'Error found in preview — send to fix:\n' + errText);
+  var inp = document.getElementById('vi');
+  if (inp.value.trim() && inp.value !== _pvFill) return;   // never overwrite the user's own draft
+  inp.value = _pvFill = 'Fix this error: ' + msg + (line ? ' at line ' + line : '');
+  inp.style.height = 'auto';
+}
+window.addEventListener('message', function(e) {
+  var pf = document.getElementById('pf');
+  var d = e.data;
+  if (!pf || e.source !== pf.contentWindow || !d || typeof d !== 'object' || !d.codecPreview) return;
+  if (d.codecPreview === 'ready') {
+    _pvReady = true;
+    if (inspectMode) _pvSend({codecPreview: 'inspect', on: true});   // survive a preview reload
+  } else if (d.codecPreview === 'error') {
+    _pvError(String(d.msg || 'Error').slice(0, 500), parseInt(d.line, 10) || 0);
+  } else if (d.codecPreview === 'pick') {
+    handleInspectPick(d);
+  }
+});
+
+// Phone: Code / Preview tabs (the CSS only applies at the phone breakpoint)
+function _setVibeTab(t) {
+  var sp = document.querySelector('.sp');
+  if (sp) sp.classList.toggle('tab-preview', t === 'preview');
+  var a = document.getElementById('vtabCode'), b = document.getElementById('vtabPrev');
+  if (a) a.classList.toggle('sel', t !== 'preview');
+  if (b) b.classList.toggle('sel', t === 'preview');
+}
+function _vibeTabPreview() {
+  if (document.getElementById('pp').classList.contains('sh')) _setVibeTab('preview');
+  else doPrev();
+}
+function closePrev() {
+  document.getElementById('pp').classList.remove('sh');
+  _setVibeTab('code');
+}
+
 function doPrev() {
   var c = ed.getValue();
   if (c.trim().startsWith('<!DOCTYPE') || c.includes('<canvas') || c.includes('<body')) {
     document.getElementById('pp').classList.add('sh');
+    _setVibeTab('preview');
     var pf = document.getElementById('pf');
-    pf.srcdoc = c;
+    _pvReady = false; _pvErrSeen = {}; _pvErrN = 0;
+    pf.srcdoc = _pvInject(c);
     addOut('sy', 'Preview updated');
-    // Listen for preview errors and auto-load to chat
-    pf.onload = function() {
-      try {
-        var iframeWin = pf.contentWindow;
-        if (iframeWin) {
-          iframeWin.onerror = function(msg, src, line) {
-            var errText = 'Preview error (line ' + line + '): ' + msg;
-            addOut('er', errText);
-            addMsg('assistant', 'Error found in preview — send to fix:\n' + errText);
-            var inp = document.getElementById('vi');
-            inp.value = 'Fix this error: ' + msg + ' at line ' + line;
-            inp.style.height = 'auto';
-          };
-        }
-      } catch(e) {}
-    };
   } else {
     addMsg('assistant', 'Preview works with HTML. Ask CODEC to build a web page!');
   }
@@ -956,28 +1072,16 @@ function toggleInspect() {
   var btn = document.getElementById('inspectBtn');
   btn.classList.toggle('active', inspectMode);
 
-  var iframe = document.getElementById('pf');
-  if (!iframe || !iframe.contentDocument) {
-    if (inspectMode) { addOut('sy', 'Open a Preview first, then click Inspect'); inspectMode = false; btn.classList.remove('active'); }
+  if (inspectMode && !_pvReady) {
+    addOut('sy', 'Open a Preview first, then click Inspect'); inspectMode = false; btn.classList.remove('active');
     return;
   }
-  var doc = iframe.contentDocument;
+  // The preview's injected agent does the hover outline and reports clicks.
+  _pvSend({codecPreview: 'inspect', on: inspectMode});
 
   if (inspectMode) {
-    doc.addEventListener('click',     handleInspectClick, true);
-    doc.addEventListener('mouseover', handleInspectHover, true);
-    doc.addEventListener('mouseout',  handleInspectOut,   true);
-    doc.body.style.cursor = 'crosshair';
     addOut('sy', 'Inspect ON — click any element in preview');
   } else {
-    doc.removeEventListener('click',     handleInspectClick, true);
-    doc.removeEventListener('mouseover', handleInspectHover, true);
-    doc.removeEventListener('mouseout',  handleInspectOut,   true);
-    doc.body.style.cursor = '';
-    doc.querySelectorAll('.codec-hl').forEach(function(el) {
-      el.style.outline = '';
-      el.classList.remove('codec-hl');
-    });
     var ep = document.getElementById('edit-panel');
     if (ep) ep.style.display = 'none';
     var tip = document.getElementById('inspect-tooltip');
@@ -986,38 +1090,25 @@ function toggleInspect() {
   }
 }
 
-function handleInspectHover(e) {
+// d is a 'pick' message from the preview frame: untrusted data only.
+function handleInspectPick(d) {
   if (!inspectMode) return;
-  e.preventDefault(); e.stopPropagation();
-  var iframe = document.getElementById('pf');
-  if (!iframe || !iframe.contentDocument) return;
-  iframe.contentDocument.querySelectorAll('.codec-hl').forEach(function(el) {
-    el.style.outline = ''; el.classList.remove('codec-hl');
-  });
-  e.target.style.outline = '2px solid #d97757';
-  e.target.classList.add('codec-hl');
-}
 
-function handleInspectOut(e) {
-  if (!inspectMode) return;
-  e.target.style.outline = '';
-  e.target.classList.remove('codec-hl');
-}
-
-function handleInspectClick(e) {
-  if (!inspectMode) return;
-  e.preventDefault(); e.stopPropagation();
-
-  var el = e.target;
-  var tag = el.tagName.toLowerCase();
-  var id = el.id ? '#' + el.id : '';
-  var rawClass = (el.className || '').toString().replace('codec-hl', '').trim();
+  var info = {
+    tag:  String(d.tag || '').toLowerCase().substring(0, 64),
+    id:   String(d.id || '').substring(0, 200),
+    cls:  String(d.cls || '').replace('codec-hl', '').trim().substring(0, 200),
+    text: String(d.text || '').substring(0, 200)
+  };
+  var tag = info.tag;
+  var id = info.id ? '#' + info.id : '';
+  var rawClass = info.cls;
   var classes = rawClass ? '.' + rawClass.split(/\s+/).join('.') : '';
-  var text = (el.textContent || '').substring(0, 50).trim();
+  var text = info.text.substring(0, 50).trim();
 
   // Build ordered list of search strings: most specific first
   var searches = [];
-  if (el.id)       searches.push('id="' + el.id + '"');
+  if (info.id)     searches.push('id="' + info.id + '"');
   if (rawClass)    searches.push('class="' + rawClass + '"');
   if (text.length > 5 && text.length < 50) searches.push(text);
   searches.push('<' + tag);
@@ -1039,13 +1130,13 @@ function handleInspectClick(e) {
         break;
       }
     }
-    showInspectTooltip(e.clientX, e.clientY,
+    showInspectTooltip(parseInt(d.x, 10) || 0, parseInt(d.y, 10) || 0,
       tag + id + classes,
       found ? text || '(no text)' : '(not found in editor — might be generated)');
   }
 
   // Show inline edit panel
-  showEditPanel(el);
+  showEditPanel(info, d);
 }
 
 function showInspectTooltip(x, y, selector, preview) {
@@ -1056,7 +1147,14 @@ function showInspectTooltip(x, y, selector, preview) {
     tip.style.cssText = 'position:fixed;z-index:10000;background:#1a1a1a;border:1px solid #d97757;color:#e0e0e0;padding:8px 12px;border-radius:6px;font-family:SF Mono,monospace;font-size:12px;max-width:300px;pointer-events:none;transition:opacity .2s;';
     document.body.appendChild(tip);
   }
-  tip.innerHTML = '<strong style="color:#d97757">' + selector + '</strong><br>' + (preview || '').substring(0, 80);
+  // selector and preview come from the preview frame: text only, never HTML.
+  tip.textContent = '';
+  var sel = document.createElement('strong');
+  sel.style.color = '#d97757';
+  sel.textContent = selector;
+  tip.appendChild(sel);
+  tip.appendChild(document.createElement('br'));
+  tip.appendChild(document.createTextNode((preview || '').substring(0, 80)));
   tip.style.left = (x + 12) + 'px';
   tip.style.top  = (y + 12) + 'px';
   tip.style.display = 'block';
@@ -1074,7 +1172,9 @@ function rgbToHex(rgb) {
   return '#' + m.slice(0, 3).map(function(x) { return parseInt(x).toString(16).padStart(2,'0'); }).join('');
 }
 
-function showEditPanel(element) {
+// info: sanitised element fields; cs: computed style values from the preview
+// frame (untrusted). Values go in through textContent / .value only.
+function showEditPanel(info, cs) {
   var panel = document.getElementById('edit-panel');
   if (!panel) {
     panel = document.createElement('div');
@@ -1083,40 +1183,44 @@ function showEditPanel(element) {
     document.body.appendChild(panel);
   }
 
-  var tag = element.tagName.toLowerCase();
-  var doc = element.ownerDocument;
-  var cs = doc.defaultView ? doc.defaultView.getComputedStyle(element) : {};
-
   panel.innerHTML =
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">' +
-      '<strong style="color:#d97757;font-family:monospace">&lt;' + tag + '&gt;</strong>' +
+      '<strong id="ep-tag" style="color:#d97757;font-family:monospace"></strong>' +
       '<button onclick="document.getElementById(\'edit-panel\').style.display=\'none\'" ' +
               'style="background:none;border:none;color:#888;cursor:pointer;font-size:18px;line-height:1">&#10005;</button>' +
     '</div>' +
     '<label style="color:#888;font-size:10px;text-transform:uppercase;letter-spacing:.05em">Text content</label>' +
-    '<textarea id="ep-text" rows="2" style="width:100%;background:#0a0a0a;border:1px solid #2a2a2a;color:#e0e0e0;padding:6px 8px;border-radius:5px;margin:3px 0 10px;resize:vertical;font-size:12px;font-family:inherit">' + (element.textContent || '').substring(0, 200) + '</textarea>' +
+    '<textarea id="ep-text" rows="2" style="width:100%;background:#0a0a0a;border:1px solid #2a2a2a;color:#e0e0e0;padding:6px 8px;border-radius:5px;margin:3px 0 10px;resize:vertical;font-size:12px;font-family:inherit"></textarea>' +
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">' +
       '<div><label style="color:#888;font-size:10px;text-transform:uppercase;letter-spacing:.05em">Color</label>' +
-           '<input type="color" id="ep-color" value="' + rgbToHex(cs.color || '') + '" style="width:100%;height:30px;border:none;border-radius:5px;cursor:pointer;background:#0a0a0a"></div>' +
+           '<input type="color" id="ep-color" style="width:100%;height:30px;border:none;border-radius:5px;cursor:pointer;background:#0a0a0a"></div>' +
       '<div><label style="color:#888;font-size:10px;text-transform:uppercase;letter-spacing:.05em">Background</label>' +
-           '<input type="color" id="ep-bg" value="' + rgbToHex(cs.backgroundColor || '') + '" style="width:100%;height:30px;border:none;border-radius:5px;cursor:pointer;background:#0a0a0a"></div>' +
+           '<input type="color" id="ep-bg" style="width:100%;height:30px;border:none;border-radius:5px;cursor:pointer;background:#0a0a0a"></div>' +
       '<div><label style="color:#888;font-size:10px;text-transform:uppercase;letter-spacing:.05em">Font size</label>' +
-           '<input type="number" id="ep-fs" value="' + (parseInt(cs.fontSize) || 14) + '" style="width:100%;background:#0a0a0a;border:1px solid #2a2a2a;color:#e0e0e0;padding:4px 6px;border-radius:5px;font-size:12px"></div>' +
+           '<input type="number" id="ep-fs" style="width:100%;background:#0a0a0a;border:1px solid #2a2a2a;color:#e0e0e0;padding:4px 6px;border-radius:5px;font-size:12px"></div>' +
       '<div><label style="color:#888;font-size:10px;text-transform:uppercase;letter-spacing:.05em">Padding</label>' +
-           '<input type="number" id="ep-pad" value="' + (parseInt(cs.padding) || 0) + '" style="width:100%;background:#0a0a0a;border:1px solid #2a2a2a;color:#e0e0e0;padding:4px 6px;border-radius:5px;font-size:12px"></div>' +
+           '<input type="number" id="ep-pad" style="width:100%;background:#0a0a0a;border:1px solid #2a2a2a;color:#e0e0e0;padding:4px 6px;border-radius:5px;font-size:12px"></div>' +
     '</div>' +
     '<button onclick="applyEdits()" style="width:100%;padding:8px;background:#d97757;color:#000;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-size:13px">&#9654; Apply + Sync to Editor</button>' +
     '<p style="color:#4a9;font-size:10px;margin-top:8px;text-align:center">&#10003; Changes update both preview AND source code</p>';
 
-  panel._el = element;
-  panel._origText = (element.textContent || '').substring(0, 200);
+  document.getElementById('ep-tag').textContent = '<' + info.tag + '>';
+  document.getElementById('ep-text').value = info.text;
+  // A color input turns any invalid value into #000000.
+  document.getElementById('ep-color').value = rgbToHex(String(cs.color || ''));
+  document.getElementById('ep-bg').value = rgbToHex(String(cs.bg || ''));
+  document.getElementById('ep-fs').value = parseInt(cs.fs) || 14;
+  document.getElementById('ep-pad').value = parseInt(cs.pad) || 0;
+
+  panel._info = info;
+  panel._origText = info.text;
   panel.style.display = 'block';
 }
 
 function applyEdits() {
   var panel = document.getElementById('edit-panel');
-  var el = panel ? panel._el : null;
-  if (!el) return;
+  var info = panel ? panel._info : null;
+  if (!info) return;
 
   var newText = document.getElementById('ep-text').value;
   var color   = document.getElementById('ep-color').value;
@@ -1126,18 +1230,15 @@ function applyEdits() {
 
   // ── 1. Apply to live preview immediately ───────────────────────────────────
   var origText = panel._origText || '';
-  if (newText !== origText) el.textContent = newText;
-  el.style.color           = color;
-  el.style.backgroundColor = bg;
-  el.style.fontSize        = fs + 'px';
-  el.style.padding         = pad + 'px';
+  _pvSend({codecPreview: 'apply', textChanged: newText !== origText, text: newText,
+           color: color, bg: bg, fs: fs, pad: pad});
 
   // ── 2. Sync back to Monaco source code ────────────────────────────────────
   if (ed) {
-    var tag      = el.tagName.toLowerCase();
-    var rawClass = (el.className || '').toString().replace('codec-hl', '').trim();
+    var tag      = info.tag;
+    var rawClass = info.cls;
     var searches = [];
-    if (el.id)    searches.push('id="' + el.id + '"');
+    if (info.id)  searches.push('id="' + info.id + '"');
     if (rawClass) searches.push('class="' + rawClass + '"');
     searches.push('<' + tag);
 
