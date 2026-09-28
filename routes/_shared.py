@@ -329,10 +329,14 @@ def _verify_biometric_session(request):
 
 def _is_remote_request(request) -> bool:
     """True when a request did not come directly from this Mac: it came through
-    a proxy/tunnel (forwarding headers) or from a non-loopback address."""
-    if request.headers.get("cf-connecting-ip") or request.headers.get("x-forwarded-for"):
+    a proxy/tunnel (forwarding headers) or from a non-loopback address.
+    An object without peer details (unix socket, in-process test double)
+    counts as local, like a peer that is not an IP."""
+    headers = getattr(request, "headers", None) or {}
+    if headers.get("cf-connecting-ip") or headers.get("x-forwarded-for"):
         return True
-    host = request.client.host if request.client else ""
+    client = getattr(request, "client", None)
+    host = getattr(client, "host", "") or ""
     try:
         return not ipaddress.ip_address(host).is_loopback
     except ValueError:

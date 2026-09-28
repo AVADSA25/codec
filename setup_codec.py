@@ -21,6 +21,21 @@ X = "\033[0m"                 # Reset
 
 CONFIG_DIR = os.path.expanduser("~/.codec")
 CONFIG_PATH = os.path.join(CONFIG_DIR, "config.json")
+
+# The dashboard runs code and reads mail, so a new install asks for a login by
+# default; "None" stays available when chosen on purpose (audit 2026-09-27).
+AUTH_CHOICES = ["Touch ID only", "PIN code only", "Both Touch ID + PIN", "None"]
+DEFAULT_AUTH_CHOICE = "Both Touch ID + PIN"
+
+
+def save_config(config, path=CONFIG_PATH):
+    """Write config.json readable by this user only (0600): it holds the PIN
+    hash and, until the first dashboard start moves them to the Keychain,
+    any API keys."""
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        json.dump(config, f, indent=2)
+    os.chmod(path, 0o600)  # an existing file keeps its old mode otherwise
 SKILLS_DIR = os.path.join(CONFIG_DIR, "skills")
 
 def clear():
@@ -498,10 +513,10 @@ def main():
     config["dashboard_enabled"] = ask_yn("\nEnable phone dashboard?", True)
     if config["dashboard_enabled"]:
         config["dashboard_port"] = int(ask_text("Dashboard port", "8090"))
-        print(f"\n{W}  Dashboard Security (optional):{X}")
-        print(f"  {D}Set a token to protect your dashboard API.{X}")
-        print(f"  {D}Leave blank for no auth (local use only).{X}")
-        _dash_token = ask_text("Dashboard token (or press Enter to skip)", "")
+        print(f"\n{W}  API token for scripts (optional):{X}")
+        print(f"  {D}Lets your own scripts call the dashboard API with an Authorization header.{X}")
+        print(f"  {D}It is not a login: the dashboard pages use the Touch ID / PIN login below.{X}")
+        _dash_token = ask_text("API token for scripts (or press Enter to skip)", "")
         if _dash_token:
             config["dashboard_token"] = _dash_token
         print(f"\n{W}  Remote access options:{X}")
@@ -534,13 +549,8 @@ def main():
         print(f"  {O}1.{X} Touch ID (biometric — requires Mac with Touch ID sensor)")
         print(f"  {O}2.{X} PIN code (4-6 digit code)")
         print(f"  {O}3.{X} Both Touch ID + PIN")
-        print(f"  {O}4.{X} None (no login required)")
-        auth_choice = ask("Authentication method:", [
-            "Touch ID only",
-            "PIN code only",
-            "Both Touch ID + PIN",
-            "None"
-        ], default="None")
+        print(f"  {O}4.{X} None (no login; this Mac only, the phone cannot connect)")
+        auth_choice = ask("Authentication method:", AUTH_CHOICES, default=DEFAULT_AUTH_CHOICE)
 
         if auth_choice != "None":
             config["auth_enabled"] = True
@@ -621,8 +631,7 @@ def main():
     os.makedirs(SKILLS_DIR, exist_ok=True)
 
     # Save config
-    with open(CONFIG_PATH, "w") as f:
-        json.dump(config, f, indent=2)
+    save_config(config)
     print(f"\n{G}  ✓ Config saved to {CONFIG_PATH}{X}")
 
     # Copy skills

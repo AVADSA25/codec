@@ -381,6 +381,10 @@ Real adapter over `audit()` for lifecycle events (session start/end, scheduler t
 
 Logins (`routes/auth.py`) set the session as an **HttpOnly** `codec_session` cookie in the response, plus a separate random `codec_csrf` cookie that pages echo in `x-csrf-token`. The token is never in a response body, a URL (`?s=` is no longer accepted), sessionStorage, or a log line. Never reintroduce page-side token handling: same-origin fetches, images, streams and the WebSocket send the cookie by themselves. Touch ID verify is Mac-only (403 for tunnel requests). Details: `docs/SECURITY-HARDENING-2026-09.md`.
 
+### Host allowlist + Mac-only code execution (Sep 2026 audit follow-up)
+
+`HostAllowlistMiddleware` (outermost, HTTP + WebSocket) refuses any Host that is not an IP literal, `localhost`, a tunnel host in `TRUSTED_ORIGIN_HOSTS`, or listed in `config.json:dashboard_public_hosts` / `CODEC_DASHBOARD_EXTRA_HOSTS`. It is the DNS-rebinding guard for installs without a login. With no login configured, both HTTP and the voice WebSocket serve this Mac only. `/api/run_code` refuses tunnel requests (403) and kills the program's whole process group at its timeout. Details: `docs/SECURITY-HARDENING-2026-09.md`.
+
 ### Internal IPC token replacement (Phase 1 Wave 2, PR-2D — closes D-11)
 
 Before PR-2D, `AuthMiddleware.dispatch` short-circuited ALL auth for any localhost request that sent the literal header `X-Internal: codec`. Any malicious user-mode process on the user's Mac (Homebrew tap typo-squat, compromised PyPI package, D-1 RCE chain) could spoof that header from a `curl` against `127.0.0.1:8090` and bypass `dashboard_token` + Touch ID / PIN entirely.

@@ -17,3 +17,29 @@ Follow-ups to the 27 Sep 2026 audit (items 2, 3, 5 and 6). One section per PR.
 **Compatibility:** a browser that still holds an old JavaScript-written cookie keeps working until it expires. The auth page writes the cookies itself only when an older server returns the token in the body, so a new page served by a not-yet-restarted server still logs in.
 
 **Tests:** `tests/test_auth_cookie.py`.
+
+## Safe defaults (audit item 3)
+
+**Host allowlist.** `HostAllowlistMiddleware` in `codec_dashboard.py` is the outermost layer, for HTTP and the WebSocket. It accepts:
+- any IP literal (`127.0.0.1`, `[::1]`, a LAN address), since a client can only send one of those by connecting to this Mac directly;
+- `localhost` and this Mac's own name (`socket.gethostname()`, with and without `.local`), for LAN setups;
+- the tunnel hosts in `AuthMiddleware.TRUSTED_ORIGIN_HOSTS`;
+- any name in `config.json:dashboard_public_hosts`;
+- any name in the comma-separated `CODEC_DASHBOARD_EXTRA_HOSTS`.
+
+Anything else gets 400, or a closed WebSocket. This stops DNS rebinding: a web page that points its own domain at 127.0.0.1 would otherwise look local and same-origin, and on an install with no login it could call `/api/run_code`. Put your own tunnel hostname in `dashboard_public_hosts`.
+
+**WebSocket with no login configured:** only this Mac, the same rule as HTTP since #374.
+
+**`/api/run_code`:**
+- It answers 403 to requests from the tunnel or another machine. Clicking Run at the Mac is the approval.
+- Each program runs in its own process group. When the 30 s timeout fires, the whole group is killed, so children it started in the background stop too. A child that starts its own session escapes this.
+- There is still no `sandbox-exec` profile, for the reason given at the top of `routes/vibe_exec.py`: 8 languages, compilers and network.
+
+**Installer (`setup_codec.py`):**
+- The login question defaults to "Both Touch ID + PIN"; "None" is still available.
+- `config.json` is written 0600.
+- The token question now says what the token is: an API token for scripts, not a login.
+- The installer does not generate a token automatically. With a token and no PIN, every dashboard page would get 401, because pages cannot send the token.
+
+**Tests:** `tests/test_safe_defaults.py`. `tests/conftest.py` adds Starlette's `testserver` host through `CODEC_DASHBOARD_EXTRA_HOSTS`.

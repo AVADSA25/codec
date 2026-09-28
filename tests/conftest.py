@@ -30,6 +30,11 @@ sys.path.insert(0, os.path.expanduser("~/codec-repo"))
 sys.path.insert(0, os.path.expanduser("~/.codec/skills"))
 sys.path.insert(0, str(_WORKTREE_REPO))
 
+# Starlette's TestClient sends `Host: testserver`; the dashboard's Host
+# allowlist (codec_dashboard.HostAllowlistMiddleware) reads extra names from
+# this variable when the module is imported.
+os.environ.setdefault("CODEC_DASHBOARD_EXTRA_HOSTS", "testserver")
+
 
 def _isolate_audit_log() -> None:
     """Point the audit log at a throwaway file for the whole test session.

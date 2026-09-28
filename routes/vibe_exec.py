@@ -16,6 +16,7 @@ import asyncio
 import logging
 import os
 import re
+import signal
 import tempfile
 import time as _time
 
@@ -111,8 +112,27 @@ async def preview_frame():
         return HTMLResponse("<html><body style='background:#0a0a0a;color:#888;padding:40px;font-family:sans-serif'><h2>No preview available</h2><p>Write some HTML and click Preview.</p></body></html>")
 
 
+_RUNCODE_TIMEOUT_S = 30
+
+
+def _kill_process_group(proc) -> None:
+    """Stop the program and everything it started. It runs in its own process
+    group (start_new_session), so this also reaches children that a timed-out
+    program left behind. A child that starts its own session escapes."""
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
+
+
 @router.post("/api/run_code")
 async def run_code(request: Request):
+    # Runs arbitrary code, so only a person at this Mac may call it: clicking
+    # Run here is the approval. Requests through the tunnel get 403
+    # (audit 2026-09-27 item 3).
+    from routes._shared import _is_remote_request
+    if _is_remote_request(request):
+        return JSONResponse({"error": "Running code works only on this Mac."}, status_code=403)
     body = await request.json()
     code = body.get("code", "")
     language = body.get("language", "python")
@@ -166,11 +186,17 @@ async def run_code(request: Request):
             cwd=os.path.expanduser("~"),
             env=_hardened_run_env(),
             preexec_fn=_preexec_set_rlimits,
+            start_new_session=True,
         )
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=_RUNCODE_TIMEOUT_S)
+        except asyncio.TimeoutError:
+            _kill_process_group(proc)
+            await proc.wait()
+            raise
         return {"stdout": stdout.decode(errors="replace")[:10000], "stderr": stderr.decode(errors="replace")[:5000], "exit_code": proc.returncode, "elapsed": round(_time.time() - start, 1)}
     except asyncio.TimeoutError:
-        return {"stdout": "", "stderr": "Timed out (30s)", "exit_code": -1, "elapsed": 30}
+        return {"stdout": "", "stderr": f"Timed out ({_RUNCODE_TIMEOUT_S}s)", "exit_code": -1, "elapsed": _RUNCODE_TIMEOUT_S}
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
     finally:
