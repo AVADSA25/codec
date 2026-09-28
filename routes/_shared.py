@@ -196,6 +196,10 @@ AUTH_ENABLED = _bio_cfg.get("auth_enabled", False)
 AUTH_SESSION_HOURS = _bio_cfg.get("auth_session_hours", 24)
 AUTH_BINARY = os.path.join(DASHBOARD_DIR, "codec_auth", "codec_auth")
 AUTH_PIN_HASH = _bio_cfg.get("auth_pin_hash", "")
+# Touch ID for phone/tunnel visitors (the prompt still appears on this Mac).
+# Off by default since the 27 Sep 2026 audit; turn on only when the tunnel
+# hostname sits behind an access gate such as Cloudflare Access.
+AUTH_TOUCHID_REMOTE = bool(_bio_cfg.get("auth_touchid_remote", False))
 AUTH_COOKIE_NAME = "codec_session"
 
 # Persistent session store

@@ -20,6 +20,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from routes._shared import (
     DASHBOARD_DIR, CONFIG_PATH, _NO_CACHE,
     AUTH_ENABLED, AUTH_SESSION_HOURS, AUTH_BINARY, AUTH_PIN_HASH, AUTH_COOKIE_NAME,
+    AUTH_TOUCHID_REMOTE,
     _auth_sessions, _auth_lock, _e2e_keys,
     _is_auth_compiled, _is_totp_enabled, _verify_biometric_session, _is_remote_request,
     _save_sessions, _save_e2e_keys, _audit_event, _pin_attempts,
@@ -128,14 +129,21 @@ async def auth_page():
     return HTMLResponse("<h1>Auth page not found</h1>", status_code=500)
 
 
+def _touchid_allowed(request) -> bool:
+    """Requests from this Mac may always ask for Touch ID. Phone and tunnel
+    requests may ask only when config.json:auth_touchid_remote is true; the
+    rate limit and the one-prompt lock above apply either way."""
+    return AUTH_TOUCHID_REMOTE or not _is_remote_request(request)
+
+
 @router.get("/api/auth/check")
 async def auth_check(request: Request):
     """Check which auth methods are available (Touch ID and/or PIN).
-    Touch ID is offered only to requests from this Mac: the prompt appears
-    on the Mac, so a phone or the tunnel gets the PIN."""
+    The Touch ID prompt appears on this Mac, so a phone or the tunnel gets
+    it only when auth_touchid_remote is on; otherwise they get the PIN."""
     result = {"touchid_available": False, "pin_available": bool(AUTH_PIN_HASH)}
 
-    if _is_auth_compiled() and not _is_remote_request(request):
+    if _is_auth_compiled() and _touchid_allowed(request):
         try:
             r = await asyncio.to_thread(
                 subprocess.run, [AUTH_BINARY, "--check"],
@@ -156,8 +164,8 @@ async def auth_check(request: Request):
 @router.post("/api/auth/verify")
 async def auth_verify(request: Request):
     """Trigger Touch ID verification on the Mac. Only requests from this Mac
-    may pop the prompt (audit 2026-09-27)."""
-    if _is_remote_request(request):
+    may pop the prompt (audit 2026-09-27), unless auth_touchid_remote is on."""
+    if not _touchid_allowed(request):
         return JSONResponse({"error": "Touch ID works only on this Mac. Use your PIN."}, status_code=403)
     if not _is_auth_compiled():
         return JSONResponse({"error": "Auth binary not compiled"}, status_code=500)
