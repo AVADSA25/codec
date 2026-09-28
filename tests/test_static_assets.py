@@ -41,6 +41,28 @@ def test_logo_is_an_svg(pin_login_required):
     assert r.headers["content-type"].startswith("image/svg+xml")
 
 
+def test_font_is_served_without_login(pin_login_required):
+    r = pin_login_required.get("/static/fonts/IBMPlexSans-Regular.woff2")
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "font/woff2"
+
+
+def test_vendored_dompurify_is_served_without_login(pin_login_required):
+    r = pin_login_required.get("/static/vendor/purify.min.js")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/javascript")
+
+
+def test_csp_drops_google_fonts_but_keeps_cdnjs(pin_login_required):
+    # PR-C self-hosts IBM Plex (static/codec.css), so the CSP no longer needs
+    # the Google Fonts origins; cdnjs.cloudflare.com stays for Vibe's Monaco.
+    r = pin_login_required.get("/")
+    csp = r.headers["content-security-policy"]
+    assert "fonts.googleapis.com" not in csp
+    assert "fonts.gstatic.com" not in csp
+    assert "cdnjs.cloudflare.com" in csp
+
+
 def test_the_login_still_guards_everything_else(pin_login_required):
     assert pin_login_required.get("/api/config").status_code == 401
     # "/static" without the slash is not the public prefix: a page path goes to login.
@@ -96,3 +118,14 @@ def test_missing_file_dotfile_directory_and_unknown_type_are_404(pin_login_requi
 def test_unknown_host_is_still_refused():
     r = TestClient(app).get("/static/codec.css", headers={"host": "rebind.evil.example"})
     assert r.status_code == 400
+
+
+def test_static_links_carry_the_current_content_version():
+    """Pages are no-cache but /static is cached for an hour; a stale ?v= would
+    pair a new page with an old stylesheet. Fix: python3 tools/stamp_static.py"""
+    import subprocess, sys as _sys
+    from pathlib import Path as _P
+    repo = _P(__file__).resolve().parent.parent
+    r = subprocess.run([_sys.executable, str(repo / "tools" / "stamp_static.py"), "--check"],
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stdout + r.stderr

@@ -311,3 +311,30 @@ cross-site block in `AuthMiddleware` (`codec_dashboard.py`, Origin vs Host or
 in the UI Phase 1 PR-A review. Fix (own PR): before `accept()`, close with 4403
 when an `Origin` header is present and its host is neither the request `Host`
 nor in `AuthMiddleware.TRUSTED_ORIGIN_HOSTS`, treating `null` as untrusted.
+
+## Found during UI Phase 1 PR-C (2026-09-28)
+
+- **Home question panels can vanish.** Question panels are inserted into
+  `#chatList` (`codec_dashboard.html`, the ask_user panel code), and
+  `loadChat()` replaces that list. A pending question can disappear while
+  `_activePanels` still marks it as shown, so it is not drawn again. Fix: keep
+  question panels in their own container outside `#chatList`.
+- **A stopped reply has no action row.** In chat, a reply stopped with Stop
+  keeps its text ("(stopped)") but gets no copy/regenerate row. Fix: render the
+  action row in the stop path too (planned with the composer work, PR-D).
+- **Train-of-thought text contrast.** The collapsible reasoning text is 12px
+  `--text-dim`, 4.18:1 on `--surface-2` in light. Fix: `--text-muted`.
+- **`codec_mcp_http.py` reads `request.url.path`.** Same pattern as the
+  dashboard's Host-header bypass fixed in #397; there a crafted Host only
+  skips the rate limit, not the login. Fix: read `request.scope["path"]`.
+- **Home Flash refuses any message with a backtick or `$(`.** `/api/command`
+  runs `codec_config.is_dangerous` on the chat text, and that check treats a
+  backtick as shell command substitution. "Reply with one inline `code` word"
+  gets "Command blocked: matches a dangerous pattern". Deep Chat does not run
+  this check; it relies on the skill-level gates (strict consent, the MCP
+  block lists). Fix: decide whether Flash text needs this check at all, since
+  it goes to the LLM, not to a shell.
+- **Flash keeps polling after an error.** In `sendCmd` (`codec_dashboard.html`)
+  an error from `/api/command` is shown, but the poll loop still starts and
+  overwrites the error with "Processing... <message>" for up to 5 minutes. Fix:
+  return after showing the error.

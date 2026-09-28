@@ -75,10 +75,13 @@ def test_accent_token_is_the_shared_value(path: Path):
 
 @pytest.mark.parametrize("path", SURFACES, ids=lambda p: p.name)
 def test_typeface_is_ibm_plex(path: Path):
+    """PR-C self-hosts IBM Plex (codec.css @font-face); pages no longer load
+    fonts.googleapis.com, but each still names the family in its own
+    --font/--font-sans custom property."""
     text = path.read_text()
-    if "fonts.googleapis.com" not in text:
+    if "IBM Plex" not in text:
         pytest.skip(f"{path.name} loads no webfont")
-    assert "IBM+Plex" in text, f"{path.name} still loads the pre-refresh typeface"
+    assert "fonts.googleapis.com" not in text, f"{path.name} still loads Google Fonts"
     assert "'Inter'" not in text and "'JetBrains Mono'" not in text, (
         f"{path.name} still names Inter/JetBrains Mono in a font stack"
     )

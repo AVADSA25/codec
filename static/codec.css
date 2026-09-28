@@ -6,6 +6,51 @@
    <html data-theme="light|dark">, which each page's applyTheme() sets; before
    that runs, the OS preference decides. */
 
+/* Self-hosted IBM Plex (UI phase 1, PR-C): the CSP drops the Google Fonts
+   origins, so these are the only source for the family names below. */
+@font-face {
+  font-family: "IBM Plex Sans";
+  src: url("/static/fonts/IBMPlexSans-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "IBM Plex Sans";
+  src: url("/static/fonts/IBMPlexSans-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "IBM Plex Sans";
+  src: url("/static/fonts/IBMPlexSans-SemiBold.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "IBM Plex Sans";
+  src: url("/static/fonts/IBMPlexSans-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  src: url("/static/fonts/IBMPlexMono-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  src: url("/static/fonts/IBMPlexMono-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
 :where(:root) {
   /* Type. Plex Sans for UI and reading text; Plex Mono only for code,
      commands, file paths, token stats and key hints. */
@@ -143,7 +188,92 @@
   --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 
+/* Code colours for highlight.js: the token hues (accent, success, info,
+   warning, danger, text-muted) darkened for light and lightened for dark until
+   each reaches 4.5:1 on --surface-2, the code-block background. */
+:where(:root) {
+  --hl-keyword: #a04d31; --hl-string: #166534; --hl-number: #1d4ed8; --hl-literal: #b91c1c;
+  --hl-comment: #5f5f67; --hl-title: #92400e; --hl-attr: #0f766e; --hl-built-in: #6d28d9;
+  --hl-type: #6d28d9; --hl-meta: #52525b; --hl-variable: #9f1239;
+}
+@media (prefers-color-scheme: dark) {
+  :where(:root:not([data-theme=light])) {
+    --hl-keyword: #e08766; --hl-string: #7cc795; --hl-number: #8ab4f8; --hl-literal: #f28b82;
+    --hl-comment: #8b8b92; --hl-title: #f0b36a; --hl-attr: #5fc4b8; --hl-built-in: #b39ddb;
+    --hl-type: #b39ddb; --hl-meta: #a1a1aa; --hl-variable: #f4a3b4;
+  }
+}
+:where(:root[data-theme=dark]) {
+  --hl-keyword: #e08766; --hl-string: #7cc795; --hl-number: #8ab4f8; --hl-literal: #f28b82;
+  --hl-comment: #8b8b92; --hl-title: #f0b36a; --hl-attr: #5fc4b8; --hl-built-in: #b39ddb;
+  --hl-type: #b39ddb; --hl-meta: #a1a1aa; --hl-variable: #f4a3b4;
+}
+
 /* Base. The outline draws the same 2px gap + 2px ring as --focus-ring without
    replacing an element's own box-shadow; a page rule that sets outline wins. */
 :focus-visible { outline: 2px solid var(--accent-ring); outline-offset: 2px; }
 ::selection { background: var(--selection); }
+
+/* Markdown replies (UI phase 1, PR-C). static/codec-md.js renders into an
+   element with class "md". Sizes are relative to that element's text, so at
+   the 16px reply size h1/h2/h3 are 24/20/16px, and the smaller Home cards and
+   Tasks reports scale down with their own text. */
+.md { white-space: normal; overflow-wrap: break-word; }
+.md p, .md ul, .md ol, .md blockquote, .md hr, .md details, .md .md-code, .md .md-table { margin: 0 0 12px; }
+.md h1, .md h2, .md h3, .md h4, .md h5, .md h6 { font-weight: var(--fw-semibold); margin: 20px 0 8px; }
+.md h1 { font-size: 1.5em; line-height: var(--lh-24); }
+.md h2 { font-size: 1.25em; line-height: var(--lh-20); }
+.md h3, .md h4, .md h5, .md h6 { font-size: 1em; }
+.md > :first-child { margin-top: 0; }
+.md > :last-child { margin-bottom: 0; }
+.md strong { font-weight: var(--fw-semibold); }
+.md ul, .md ol { padding-left: 1.5em; }
+.md li + li, .md li > ul, .md li > ol { margin-top: 6px; }
+.md li > p { margin: 0; }
+.md li > p + p { margin-top: 6px; }
+.md li > ul, .md li > ol { margin-bottom: 0; }
+.md blockquote { border-left: 3px solid var(--border-strong); padding-left: 14px; color: var(--text-muted); }
+.md a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.md hr { border: 0; border-top: 1px solid var(--border); }
+.md img { max-width: 100%; height: auto; border-radius: var(--radius-12); }
+.md :not(pre) > code { font-family: var(--font-mono); font-size: var(--fs-code-inline); background: var(--surface-2); border-radius: 6px; padding: 0.1em 0.35em; }
+
+/* Code block and table boxes: a 36px header (language or "Table", then the
+   icon buttons) above the content. */
+.md-code { background: var(--surface-2); border-radius: var(--radius-12); overflow: hidden; }
+.md-table { border: 1px solid var(--border); border-radius: var(--radius-12); overflow: hidden; }
+.md-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 36px; padding: 0 6px 0 14px; border-bottom: 1px solid var(--border); }
+.md-table .md-head { background: var(--surface-2); }
+.md-label { font-family: var(--font-sans); font-size: var(--fs-12); line-height: var(--lh-12); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.md-acts { display: inline-flex; gap: 2px; }
+.md-btn { flex-shrink: 0; width: 28px; height: 28px; padding: 0; border: 0; border-radius: var(--radius-8); background: none; color: var(--text-muted); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; transition: color .12s, background .12s; }
+.md-btn:hover { background: var(--surface-3); color: var(--text); }
+.md-btn.copied { color: var(--success-text); }
+.md-btn svg { display: block; }
+.md-code pre { margin: 0; padding: 12px 14px; overflow-x: auto; background: none; border-radius: 0; font-family: var(--font-mono); font-size: var(--fs-code); line-height: var(--lh-code); white-space: pre; tab-size: 4; }
+.md-code pre code { display: block; padding: 0; background: none; border-radius: 0; font: inherit; color: var(--text); }
+.md-table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.md-table table { border-collapse: collapse; width: 100%; font-size: 0.9375em; line-height: 1.5; }
+.md-table th, .md-table td { padding: 8px 12px; vertical-align: top; border-top: 1px solid var(--border); }
+.md-table tr:first-child > th, .md-table tr:first-child > td { border-top: 0; }
+.md-table th { font-weight: var(--fw-semibold); }
+.md-table th:not([align]), .md-table td:not([align]) { text-align: left; }
+
+/* highlight.js theme, from the --hl-* colours above. */
+.hljs { color: var(--text); background: transparent; }
+.hljs-comment, .hljs-quote { color: var(--hl-comment); font-style: italic; }
+.hljs-keyword, .hljs-selector-tag, .hljs-doctag, .hljs-template-tag { color: var(--hl-keyword); }
+.hljs-string, .hljs-regexp, .hljs-symbol, .hljs-char.escape_, .hljs-addition { color: var(--hl-string); }
+.hljs-number { color: var(--hl-number); }
+.hljs-literal { color: var(--hl-literal); }
+.hljs-title, .hljs-section { color: var(--hl-title); }
+.hljs-attr, .hljs-attribute, .hljs-property, .hljs-selector-id, .hljs-selector-class, .hljs-selector-attr { color: var(--hl-attr); }
+.hljs-built_in { color: var(--hl-built-in); }
+.hljs-type, .hljs-title.class_, .hljs-title.class_.inherited__ { color: var(--hl-type); }
+.hljs-meta, .hljs-meta .hljs-keyword { color: var(--hl-meta); }
+.hljs-meta .hljs-string { color: var(--hl-string); }
+.hljs-variable, .hljs-template-variable { color: var(--hl-variable); }
+.hljs-deletion { color: var(--danger-text); }
+.hljs-emphasis { font-style: italic; }
+.hljs-strong { font-weight: var(--fw-semibold); }
+.hljs-link { text-decoration: underline; }
