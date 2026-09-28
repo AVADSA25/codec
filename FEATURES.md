@@ -1,6 +1,6 @@
 # Sovereign AI Workstation — Full Product Breakdown
 
-> Engine: **CODEC v3.5** — 370 features · 90 skills · 2000+ tests · 52K+ lines of production code · 7 products
+> Engine: **CODEC v3.5** — 370 features · 91 skills · 2000+ tests · 52K+ lines of production code · 7 products
 
 The product name is **Sovereign AI Workstation**. Throughout this document
 and the codebase, **CODEC** refers to the underlying open-source engine /
@@ -209,7 +209,7 @@ MCP tool name shown where it differs from the file name.
 |---|---|
 | **Google Workspace** (8) | google_calendar, google_docs, google_drive, google_gmail, google_keep, google_sheets, google_slides, google_tasks |
 | **Chrome Automation** (10) | chrome_automate, chrome_click_cdp, chrome_close, chrome_extract, chrome_fill, chrome_open, chrome_read, chrome_scroll, chrome_search, chrome_tabs |
-| **System Control** (11) | app_switch, brightness, clipboard, file_ops, file_search, file_write, network_info, process_manager, `system` (system_info), terminal, `volume_brightness` (volume) |
+| **System Control** (12) | app_switch, brightness, clipboard, file_ops, file_search, file_write, network_info, process_manager, `system` (system_info), tailscale, terminal, `volume_brightness` (volume) |
 | **Vision & Mouse** (2) | mouse_control (UI-TARS vision click), screenshot_text |
 | **AI & Content** (6) | `AI_News_Digest` (ai_news_digest), create_skill, skill_forge, translate, web_search, memory_search |
 | **Memory Layer** (5) | memory_search (FTS5), memory_history (temporal facts), memory_entities (CCF map), memory_save, auto_memorize, fact_extract |
