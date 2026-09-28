@@ -201,9 +201,9 @@ Overview, so CODEC ships as a **7-product system**.
 | 3 | Skill Marketplace (install, search, list, update, remove, publish) |
 | 4 | **`SKILL_OBSERVATION_TRIGGER` declarative trigger metadata** — skills opt into auto-fire via 5 trigger types (window_title_match, clipboard_pattern, file_change, time, compound) *(Phase 2 Step 6)* |
 
-### 75 Built-in Skills
+### Built-in Skills
 
-MCP tool name shown where it differs from the file name.
+The table groups the main built-in skills; `skills/.manifest.json` lists all of them. MCP tool name shown where it differs from the file name.
 
 | Category | Skills |
 |---|---|
