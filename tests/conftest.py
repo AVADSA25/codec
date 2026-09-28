@@ -67,6 +67,35 @@ def _isolate_audit_log() -> None:
 _isolate_audit_log()
 
 
+def _isolate_owner_alerts() -> None:
+    """Keep the suite away from the owner's alert state and alert channels.
+
+    `codec_alerts` keeps which problems have alerted in ~/.codec/alerts_sent.json
+    and the probe history in ~/.codec/alert_state.json. An unmocked
+    `check_services_and_alert()` read the live probe history and wrote the live
+    once-per-6-h state, so a second run's dedupe swallowed the alert a test
+    expected, and live state gained test entries. The real channels are switched
+    off too: a test run must never pop a macOS banner or send a Telegram
+    message. Tests that assert on alerts monkeypatch these per test, as before.
+
+    Done at conftest import time, like `_isolate_audit_log`.
+    """
+    try:
+        import codec_alerts
+    except Exception:
+        return
+    tmp = Path(tempfile.mkdtemp(prefix="codec-test-alerts-"))
+    codec_alerts.ALERTS_SENT_PATH = str(tmp / "alerts_sent.json")
+    codec_alerts.ALERT_STATE_PATH = str(tmp / "alert_state.json")
+    codec_alerts._send_macos_notification = lambda message: None
+    codec_alerts._send_telegram = lambda bot_token, chat_id, message: False
+    codec_alerts._send_email = lambda cfg, subject, body: False
+    codec_alerts._send_slack = lambda webhook_url, message: False
+
+
+_isolate_owner_alerts()
+
+
 def _install_pynput_stub_if_needed() -> None:
     """Stub `pynput` + `pynput.keyboard` if the real package can't import
     (headless Linux CI). On macOS the real package imports fine and this
