@@ -1311,6 +1311,75 @@
   }
   window.addEventListener('pagehide', sayStop);
 
+  // ── Schedule this (P3.3): turns a question into a prompt job on a plain-language timing ──
+  var SCHED = { el: null, timer: null, busy: false };
+  function schedEl() {
+    if (SCHED.el) return SCHED.el;
+    var wrap = document.createElement('div');
+    wrap.className = 'cs-dialog-backdrop';
+    wrap.id = 'csSchedDialog';
+    wrap.hidden = true;
+    wrap.innerHTML =
+      '<div class="cs-dialog" role="dialog" aria-modal="true" aria-labelledby="csSchedTitle">' +
+        '<h2 id="csSchedTitle">Schedule this</h2>' +
+        '<label class="cs-field"><span>Ask CODEC</span><textarea id="csSchedPrompt" maxlength="4000" rows="3"></textarea></label>' +
+        '<label class="cs-field"><span>When</span><input id="csSchedWhen" autocomplete="off"' +
+          ' placeholder="weekdays at 7:30, every 2 hours, mondays at 9am"></label>' +
+        '<div class="cs-dialog-note" id="csSchedPreview" aria-live="polite"></div>' +
+        '<label class="cs-check"><input type="checkbox" id="csSchedToday">Also put the result on Today</label>' +
+        '<label class="cs-check"><input type="checkbox" id="csSchedSpeak">Say it on the Mac</label>' +
+        '<label class="cs-check"><input type="checkbox" id="csSchedChanged">Only send it when the result changed</label>' +
+        '<div class="cs-dialog-error" id="csSchedError" role="alert"></div>' +
+        '<div class="cs-dialog-actions"><button type="button" class="cs-dbtn" id="csSchedCancel">Cancel</button>' +
+          '<button type="button" class="cs-dbtn cs-dbtn-primary" id="csSchedSave">Schedule</button></div>' +
+      '</div>';
+    document.body.appendChild(wrap);
+    wrap.addEventListener('click', function (e) { if (e.target === wrap) schedClose(); });
+    wrap.addEventListener('keydown', function (e) { if (e.key === 'Escape') { e.stopPropagation(); schedClose(); } });
+    $('csSchedCancel').addEventListener('click', schedClose);
+    $('csSchedSave').addEventListener('click', schedSave);
+    $('csSchedWhen').addEventListener('input', schedPreview);
+    SCHED.el = wrap;
+    return wrap;
+  }
+  function schedPreview() {
+    clearTimeout(SCHED.timer);
+    SCHED.timer = setTimeout(function () {
+      var v = $('csSchedWhen').value.trim(), el = $('csSchedPreview');
+      if (!v) { el.textContent = ''; el.classList.remove('err'); return; }
+      postJSON('/api/schedules/parse', { when: v }).then(function (d) {
+        el.classList.toggle('err', !d.ok);
+        el.textContent = d.ok ? d.text + (d.next_run ? '. Next run ' + new Date(d.next_run).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' }) + '.' : '') : d.error;
+      }).catch(function () { /* the save shows the error */ });
+    }, 250);
+  }
+  function schedOpen(opts) {
+    var el = schedEl();
+    $('csSchedPrompt').value = (opts && opts.prompt) || '';
+    $('csSchedWhen').value = '';
+    $('csSchedPreview').textContent = '';
+    $('csSchedError').textContent = '';
+    ['csSchedToday', 'csSchedSpeak', 'csSchedChanged'].forEach(function (id) { $(id).checked = false; });
+    el.hidden = false;
+    ($('csSchedPrompt').value ? $('csSchedWhen') : $('csSchedPrompt')).focus();
+  }
+  function schedClose() { if (SCHED.el) SCHED.el.hidden = true; }
+  function schedSave() {
+    if (SCHED.busy) return;
+    var prompt = $('csSchedPrompt').value.trim(), err = $('csSchedError');
+    var deliver = ['notification'];
+    if ($('csSchedToday').checked) deliver.push('today');
+    SCHED.busy = true;
+    err.textContent = '';
+    postJSON('/api/schedules', { kind: 'prompt', prompt: prompt, when: $('csSchedWhen').value, deliver: deliver,
+                                 label: prompt.split('\n')[0].slice(0, 80), speak: $('csSchedSpeak').checked,
+                                 only_if_changed: $('csSchedChanged').checked, enabled: true }).then(function (d) {
+      schedClose();
+      toast('Scheduled: ' + ((d.schedule && d.schedule.summary) || 'saved') + '. See it in Tasks.', '/tasks');
+    }, function (e) { err.textContent = (e && e.message) || 'Could not schedule it.'; })
+      .then(function () { SCHED.busy = false; });
+  }
+
   // ── Keys: Cmd/Ctrl+Shift+S sidebar, Cmd/Ctrl+K search, Esc closes ────────
   document.addEventListener('keydown', function (e) {
     var mod = e.metaKey || e.ctrlKey;
@@ -1339,7 +1408,8 @@
     dictation: { toggle: dictToggle, stop: dictStop, mode: dictMode, toggleMode: toggleDictMode,
                  state: function () { return DICT.state; } },
     speech: { speak: speak, stop: sayStop, toggle: sayToggle, rate: sayRate, text: speechText, chunks: speechChunks,
-              reading: function () { return SAY.parts.length > 0; } }
+              reading: function () { return SAY.parts.length > 0; } },
+    schedule: { open: schedOpen, close: schedClose, save: schedSave }
   };
   window.openSidePanel = openSidePanel;
   window.closeSidePanel = closeSidePanel;
