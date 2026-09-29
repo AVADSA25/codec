@@ -10,7 +10,7 @@
 <link rel="icon" href="/favicon.png">
 <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
 <link rel="manifest" href="/manifest.json">
-<link rel="stylesheet" href="/static/codec.css?v=38bc78b5">
+<link rel="stylesheet" href="/static/codec.css?v=99bc6e42">
 <style>
 :root {
   --bg: #121215; --surface: #18181b; --surface-2: #1f1f22; --surface-3: #27272a;
@@ -154,6 +154,24 @@ html,body{font-family:var(--font-sans);background:var(--bg);color:var(--text);he
 #modelSelect:hover{color:var(--text)}
 #modelSelect.alt{color:var(--accent);box-shadow:inset 0 0 0 1px rgba(217,119,87,.45)}
 #modelSelect:disabled{opacity:.5;cursor:progress}
+/* P2.6: the styled picker's button takes the pill look the model select had. */
+.cs-menu-btn.cs-menu-pill{height:32px;border:0;border-radius:var(--radius-pill);background:var(--surface-2);color:var(--text-muted);font-size:var(--fs-13);max-width:200px;padding:0 10px 0 12px}
+.cs-menu-btn.cs-menu-pill:hover{color:var(--text)}
+.cs-menu-btn.cs-menu-pill.alt{color:var(--accent);box-shadow:inset 0 0 0 1px rgba(217,119,87,.45)}
+.cs-menu-btn.cs-menu-small{height:28px;font-size:var(--fs-12)}
+.img-switch{position:relative}
+.img-switch input{position:absolute;opacity:0;width:1px;height:1px}
+.img-switch-track{position:relative;flex:none;width:28px;height:16px;border-radius:999px;background:var(--surface-3);border:1px solid var(--border);transition:background .15s}
+.img-switch-track::after{content:'';position:absolute;top:1px;left:1px;width:12px;height:12px;border-radius:50%;background:var(--text-muted);transition:transform .15s,background .15s}
+.img-switch input:checked+.img-switch-track{background:var(--accent);border-color:var(--accent)}
+.img-switch input:checked+.img-switch-track::after{transform:translateX(12px);background:var(--on-accent)}
+.img-switch input:focus-visible+.img-switch-track{box-shadow:var(--focus-ring)}
+.ab-stepper{display:inline-flex;align-items:stretch;border:1px solid var(--border);border-radius:var(--radius-8);overflow:hidden}
+.ab-stepper .ab-input{width:40px;text-align:center;border:0;border-radius:0;-moz-appearance:textfield;appearance:textfield}
+.ab-stepper .ab-input::-webkit-outer-spin-button,.ab-stepper .ab-input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.ab-step{width:30px;border:0;background:var(--surface-2);color:var(--text);font-size:var(--fs-16);cursor:pointer}
+.ab-step:hover{background:var(--surface-3)}
+.ab-step:focus-visible{outline:none;box-shadow:var(--focus-ring)}
 /* Menus: one popover component, above the composer. */
 .msg-memory{border:0;background:none;padding:0 2px;margin-left:6px;font:inherit;font-size:var(--fs-12);color:var(--text-muted);text-decoration:underline;text-underline-offset:2px;cursor:pointer}
 .msg-memory:hover{color:var(--accent)}
@@ -337,6 +355,7 @@ input[type=file]{display:none}
   .app.is-empty .messages{flex:1;margin-top:0}
   .app.is-empty .input-area{margin-bottom:0}
   #hdrModelSlot #modelSelect{max-width:136px;height:30px;padding:0 10px}
+  #hdrModelSlot .cs-menu-btn.cs-menu-pill{max-width:136px;height:30px;padding:0 8px 0 10px}
   .starters{grid-template-columns:1fr}
   .empty-state{padding-top:16px}
   .greet-title{font-size:var(--fs-24);line-height:var(--lh-24)}
@@ -346,7 +365,7 @@ input[type=file]{display:none}
 </style>
 </head>
 <body>
-<script src="/static/codec-shell.js?v=a80f433a" data-page="chat" data-title="Chat" data-status data-model-slot></script>
+<script src="/static/codec-shell.js?v=3a539cdf" data-page="chat" data-title="Chat" data-status data-model-slot></script>
 <div class="app cs-main" id="appContainer">
 <div class="messages" id="messages"></div>
 
@@ -387,7 +406,7 @@ input[type=file]{display:none}
 <button type="button" class="cb-chip" id="crewChip" onclick="openAgentSheet()" title="Choose the crew" style="display:none"><span class="cc-label">Deep Research</span><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg></button>
 <span class="cb-chip static" id="webChip" style="display:none"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>Web search<button type="button" class="x" onclick="toggleWebSearch()" title="Turn off web search" aria-label="Turn off web search"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></span>
 <span class="cb-chip static" id="pickChip" style="display:none"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z"/></svg><span class="pk-label"></span><button type="button" class="x" onclick="setPick(null)" title="Remove the pick" aria-label="Remove the pick"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></span>
-<span id="imageOpts"><select id="imageSize" title="Image size — the first image takes about 2 min at 512 px"><option value="512">512 px (~2 min)</option><option value="768">768 px</option><option value="1024">1024 px</option></select><label title="Transparent background"><input type="checkbox" id="imageTransparent">Transparent</label></span>
+<span id="imageOpts"><select id="imageSize" title="Image size — the first image takes about 2 min at 512 px"><option value="512">512 px (~2 min)</option><option value="768">768 px</option><option value="1024">1024 px</option></select><label class="img-switch" title="Transparent background"><input type="checkbox" role="switch" id="imageTransparent"><span class="img-switch-track" aria-hidden="true"></span>Transparent</label></span>
 </div>
 <div class="cb-right">
 <span id="cbModelSlot"><select id="modelSelect" onchange="switchModel()" title="Local model — switching unloads the current one and loads the new one" style="display:inline-block">
@@ -439,9 +458,9 @@ input[type=file]{display:none}
       <span class="ab-label">Role / System Prompt</span>
       <textarea class="ab-input ab-ta" id="agentRole" placeholder="You are an expert researcher..."></textarea>
     </div>
-    <div class="ab-field" style="max-width:70px">
+    <div class="ab-field" style="max-width:120px">
       <span class="ab-label">Max Steps</span>
-      <input class="ab-input" id="agentMaxIter" type="number" value="8" min="1" max="20">
+      <span class="ab-stepper"><button type="button" class="ab-step" onclick="_stepMaxIter(-1)" aria-label="Fewer steps">&minus;</button><input class="ab-input" id="agentMaxIter" type="number" value="8" min="1" max="20" inputmode="numeric" aria-label="Max steps"><button type="button" class="ab-step" onclick="_stepMaxIter(1)" aria-label="More steps">+</button></span>
     </div>
   </div>
   <div class="ab-field">
@@ -896,7 +915,7 @@ function setMode(mode){
   var _rmr=document.getElementById('researchModelRow');
   if(_rmr)_rmr.style.display=_showRms?'flex':'none';
   var _msel=document.getElementById('modelSelect');
-  if(_msel)_msel.style.display=(_showRms||mode==='image')?'none':'inline-block';
+  if(_msel){var _mnode=(_msel.__csMenu&&_msel.__csMenu.wrap)||_msel;_mnode.style.display=(_showRms||mode==='image')?'none':(_msel.__csMenu?'inline-flex':'inline-block')}
   var hints={'deep_research':'Research topic... (3-6 min)','daily_briefing':'Press send for daily briefing','trip_planner':'Destination + dates...','competitor_analysis':'Market or product to analyze...','email_handler':'Press send to handle inbox','custom':'Describe your task for the custom agent...'};
   // If the user toggles to chat mode AFTER an agent already produced a
   // report, the report sits in chatHist as the last assistant message —
@@ -1086,8 +1105,9 @@ function closeAgentSheet(){
 var _phoneMq=null;try{_phoneMq=matchMedia('(max-width: 768px), (max-height: 600px) and (pointer: coarse)')}catch(e){}
 function _placeModelPill(){
   var sel=document.getElementById('modelSelect');if(!sel)return;
+  var node=(sel.__csMenu&&sel.__csMenu.wrap)||sel;  // P2.6: the styled picker wraps the select
   var slot=document.getElementById(_phoneMq&&_phoneMq.matches?'hdrModelSlot':'cbModelSlot');
-  if(slot&&sel.parentNode!==slot)slot.appendChild(sel);
+  if(slot&&node.parentNode!==slot)slot.appendChild(node);
 }
 _placeModelPill();
 if(_phoneMq){try{_phoneMq.addEventListener('change',_placeModelPill)}catch(e){_phoneMq.addListener(_placeModelPill)}}
@@ -2540,12 +2560,23 @@ function savePipFrame() {
 setInterval(async function(){try{var r=await fetch('/api/status');var s=await r.json();document.getElementById('statusDot').classList.toggle('on',s.alive)}catch(e){}},10000);
 fetch('/api/status').then(r=>r.json()).then(s=>{document.getElementById('statusDot').classList.toggle('on',s.alive)}).catch(()=>{});
 
+// P2.6: the model, research-model, image-size and saved-agent pickers are the shell's styled menu.
+function _stepMaxIter(d){var i=document.getElementById('agentMaxIter');i.value=String(Math.max(1,Math.min(20,(parseInt(i.value,10)||8)+d)))}
+(function(){
+  if(!window.CodecShell||!CodecShell.menu)return;
+  [['modelSelect','cs-menu-pill'],['researchModelSelect',''],['imageSize','cs-menu-small'],['savedAgentSelect','cs-menu-small']].forEach(function(p){
+    var s=document.getElementById(p[0]);if(s)CodecShell.menu(s,{className:p[1]});
+  });
+})();
+
 function showSchedulePanel(){
-  var crew=document.getElementById('crewSelect').value||'daily_briefing';
-  var hour=prompt('Run '+crew+' every day at what hour? (0-23)','8');
-  if(!hour)return;
-  fetch('/api/schedules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({crew:crew,hour:parseInt(hour),minute:0})}).then(function(r){return r.json()}).then(function(d){if(d.schedule){showToast('Scheduled! '+crew+' daily at '+String(parseInt(hour)).padStart(2,'0')+':00')}else{showToast('Error: '+(d.error||'unknown'))}}).catch(function(e){showToast('Schedule error: '+e)})
+  // P2.6: the shell's schedule sheet for this crew (a task and a plain-language time), not an hour prompt.
+  var cs=document.getElementById('crewSelect'),crew=cs.value||'daily_briefing',o=cs.options[cs.selectedIndex];
+  if(crew==='custom'){CodecShell.toast('A custom agent cannot be scheduled yet; pick a crew.');return}
+  closeAgentSheet();
+  CodecShell.schedule.open({kind:'crew',crew:crew,label:o?o.textContent:crew,topic:document.getElementById('chatInput').value.trim()});
 }
+// Apply UI preferences from dashboard settings}
 // Apply UI preferences from dashboard settings
 (function(){try{var p=JSON.parse(_lsGet('codec-ui-prefs')||'{}'),m={'screenshot_btn':'#screenBtn','photo_btn':'#photoBtn','webcam_pip_btn':'#camBtn','voice_btn':'#voiceBtn','notif_bell':'#csInbox,#csTabInbox','mic_btn':'#micBtn','chat_sidebar':'#csHist,#csHistHead','chat_agents':'#modeResearchBtn','chat_agent_builder':'#agentBuilder'};Object.keys(m).forEach(function(k){if(p[k]===false)m[k].split(',').forEach(function(s){document.querySelectorAll(s.trim()).forEach(function(el){el.style.display='none'})})})}catch(e){}})();
 </script>
@@ -2728,7 +2759,7 @@ function _startAgentPoller(agentId){
 
 async function approveAgentInChat(agentId,e){
   if(e)e.preventDefault();
-  if(!confirm('Approve plan for '+agentId+'?\n\nThe agent will run autonomously with the manifest permissions.'))return;
+  if(!await CodecShell.ask({title:'Approve this plan?',message:'Agent '+agentId+' will run on its own, within the permissions in its plan.',confirm:'Approve'}))return;
   try{
     var r=await fetch('/api/agents/'+encodeURIComponent(agentId)+'/approve',{method:'POST'});
     if(r.ok){
@@ -2746,7 +2777,8 @@ async function approveAgentInChat(agentId,e){
 }
 async function rejectAgentInChat(agentId,e){
   if(e)e.preventDefault();
-  var reason=prompt('Reason for rejection (optional):','');
+  var reason=await CodecShell.ask({title:'Reject this plan?',message:'Agent '+agentId+' will not run.',confirm:'Reject',danger:true,
+    input:{label:'Reason (optional)',maxlength:500,placeholder:'What should change'}});
   if(reason===null)return;
   try{
     var r=await fetch('/api/agents/'+encodeURIComponent(agentId)+'/reject',{method:'POST',
@@ -3031,7 +3063,7 @@ async function refreshAgentStatusPills(){
 }
 async function pauseAgentInChat(agentId,e){if(e)e.preventDefault();await fetch('/api/agents/'+encodeURIComponent(agentId)+'/pause',{method:'POST'});refreshAgentStatusPills()}
 async function resumeAgentInChat(agentId,e){if(e)e.preventDefault();await fetch('/api/agents/'+encodeURIComponent(agentId)+'/resume',{method:'POST'});refreshAgentStatusPills()}
-async function abortAgentInChat(agentId,e){if(e)e.preventDefault();if(!confirm('Abort agent '+agentId+'?'))return;await fetch('/api/agents/'+encodeURIComponent(agentId)+'/abort',{method:'POST'});refreshAgentStatusPills()}
+async function abortAgentInChat(agentId,e){if(e)e.preventDefault();if(!await CodecShell.ask({title:'Stop this agent?',message:'Agent '+agentId+' stops where it is.',confirm:'Stop agent',danger:true}))return;await fetch('/api/agents/'+encodeURIComponent(agentId)+'/abort',{method:'POST'});refreshAgentStatusPills()}
 setTimeout(refreshAgentStatusPills,500);setInterval(function(){ refreshAgentStatusPills(); checkActiveAgentLifecycle(); },5000);
 // Pulse animation for the active-agent chip dot
 (function(){

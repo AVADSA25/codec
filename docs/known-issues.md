@@ -347,7 +347,7 @@ while adding P3.13's push calls, which set the header themselves (`postJSON` in
 the shell). Fix: route the history calls through the same helper, or add the
 wrapper to `codec_audit.html`. Revisit: next UI queue item that touches the shell.
 
-## The Vibe page's Screenshot quick setting does nothing (2026-09-29)
+## The Vibe page's Screenshot quick setting does nothing (2026-09-29) — FIXED in P2.6
 
 `codec_vibe.html`'s `takeScreenshot()` sends `POST /api/screenshot`, but the route
 (`routes/media.py`) is GET-only and returns the PNG itself, so the request gets a
@@ -365,3 +365,11 @@ without text, but it is never reached with an empty box, so picking one (in the
 Agents sheet, or with '@' since P2.3) and pressing Send does nothing; any typed
 word works. Fix: let the early return through when chatMode is 'research' and
 the crew needs no text. Revisit: P3.8 (Activity board), which touches agent runs.
+
+## Deleting a saved custom agent does not ask first (2026-09-29)
+
+In Chat's Agents sheet (Custom Agent), the red Delete next to "Load saved"
+(`deleteSelectedAgent` in `codec_chat.html`) removes the selected agent at once,
+with no question and no undo. It never used the browser's `confirm()`, so P2.6
+left it as it was. Fix: ask with `CodecShell.ask({danger: true})` first, like
+the other deletes. Revisit: P3.8 (Activity board), which touches agents.

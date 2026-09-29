@@ -576,6 +576,7 @@ body.cs-rail .cs-profile > .cs-ico { display: none; }
 .cs-dialog-error { min-height: 1.3em; font-size: var(--fs-13); margin: 6px 0; }
 .cs-check { display: flex; align-items: center; gap: 8px; margin: 6px 0; font-size: var(--fs-14); cursor: pointer; }
 .cs-check input { width: 16px; height: 16px; accent-color: var(--accent); }
+.cs-field[hidden], .cs-check[hidden] { display: none; }
 .cs-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
 .cs-dbtn { height: 36px; padding: 0 16px; border: 1px solid var(--border); border-radius: var(--radius-pill); background: var(--surface-2);
   color: var(--text); font: 600 var(--fs-13)/1 var(--font-sans); cursor: pointer; }
@@ -584,7 +585,36 @@ body.cs-rail .cs-profile > .cs-ico { display: none; }
   .cs-dialog-backdrop { align-items: flex-end; padding: 0; }
   .cs-dialog { width: 100%; border-radius: 16px 16px 0 0; padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px)); }
   .cs-dbtn { height: 44px; }
+  /* iOS zooms the page into any field under 16px. */
+  .cs-field textarea, .cs-field input { font-size: max(16px, var(--fs-16)); }
 }
+
+/* The question modal (P2.6: CodecShell.ask) is a cs-dialog: the P3.3 look, a bottom sheet on the phone. */
+.cs-ask-msg { margin: -6px 0 14px; font-size: var(--fs-14); line-height: 1.5; color: var(--text-muted); white-space: pre-line; overflow-wrap: anywhere; }
+.cs-ask-msg[hidden] { display: none; }
+.cs-dbtn-danger { background: var(--danger); border-color: var(--danger); color: var(--on-accent); }
+.cs-dbtn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+/* The picker (P2.6: CodecShell.menu): a button over a hidden native select, and a listbox popover. */
+.cs-menu-wrap { display: inline-flex; min-width: 0; max-width: 100%; }
+.cs-menu-btn { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; height: 32px; padding: 0 10px 0 12px;
+  border: 1px solid var(--border); border-radius: var(--radius-8); background: var(--surface-2); color: var(--text);
+  font: 500 var(--fs-13)/1 var(--font-sans); cursor: pointer; }
+.cs-menu-btn:hover { border-color: var(--border-strong); }
+.cs-menu-btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.cs-menu-btn:disabled { opacity: .5; cursor: progress; }
+.cs-menu-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cs-menu-chev { flex: none; color: var(--text-muted); }
+.cs-menu-list { position: fixed; z-index: 10040; box-sizing: border-box; max-width: min(360px, calc(100vw - 16px)); max-height: 320px; overflow-y: auto;
+  padding: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-12); box-shadow: var(--shadow-popover); outline: none; }
+.cs-menu-list[hidden] { display: none; }
+.cs-menu-group { padding: 8px 10px 4px; font: 600 var(--fs-12)/1.3 var(--font-sans); color: var(--text-muted); }
+.cs-menu-item { display: flex; align-items: center; min-height: 34px; padding: 6px 10px; border-radius: var(--radius-8); color: var(--text);
+  font: 400 var(--fs-14)/1.3 var(--font-sans); cursor: pointer; overflow-wrap: anywhere; }
+.cs-menu-item.cs-active, .cs-menu-item:hover { background: var(--surface-2); }
+.cs-menu-item[aria-selected="true"] { font-weight: 600; color: var(--accent); }
+.cs-menu-item[aria-disabled="true"] { opacity: .5; cursor: default; }
+@media (max-width: 767px) { .cs-menu-item { min-height: 44px; } }
 
 /* Command palette (P2.3): near the top, one search box over a grouped list; the shortcut sheet is a cs-dialog. */
 .cs-pal-backdrop { align-items: flex-start; padding-top: 12vh; }

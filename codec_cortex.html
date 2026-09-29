@@ -8,7 +8,7 @@
 <link rel="icon" href="/favicon.png">
 <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
 <link rel="manifest" href="/manifest.json">
-<link rel="stylesheet" href="/static/codec.css?v=38bc78b5">
+<link rel="stylesheet" href="/static/codec.css?v=99bc6e42">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{--bg:#121215;--accent:#d97757;--green:#34d399;--red:#f87171;--yellow:#fbbf24;--blue:#60a5fa;--purple:#a78bfa;--text:#e4e4e7;--dim:#8b8b92;--on-accent:#121215}
@@ -158,7 +158,7 @@ svg text{font-family:'IBM Plex Sans',-apple-system,system-ui,sans-serif}
 </style>
 </head>
 <body>
-<script src="/static/codec-shell.js?v=a80f433a" data-page="cortex" data-title="Cortex"></script>
+<script src="/static/codec-shell.js?v=3a539cdf" data-page="cortex" data-title="Cortex"></script>
 <div class="cs-main cortex-main">
 <div id="stats"></div>
 <div id="viewSwitch">
@@ -602,8 +602,11 @@ function viewLogs(id) {
   }).catch(function() { lv.textContent = 'Failed to load logs'; });
 }
 
-function restartService(id) {
-  if (!confirm('Restart ' + (nodeMap[id]||{}).label + '?')) return;
+// P2.6: the shell's toast and question modal, not the browser's own dialogs.
+function _toast(m) { if (window.CodecShell && CodecShell.toast) CodecShell.toast(m); }
+async function restartService(id) {
+  var name = (nodeMap[id]||{}).label || id;
+  if (!await CodecShell.ask({ title: 'Restart ' + name + '?', message: 'It stops for a few seconds while it starts again.', confirm: 'Restart', danger: true })) return;
   var hdrs = {'Content-Type':'application/json'};
   var cm = document.cookie.match(/codec_csrf=([^;]+)/);
   if (cm) hdrs['x-csrf-token'] = cm[1];
@@ -611,13 +614,13 @@ function restartService(id) {
     if (data.ok) {
       healthStatus[id] = 'warn';
       render(); updateStats();
-      alert('Restarted ' + data.pm2_name);
+      _toast('Restarted ' + data.pm2_name);
       // Re-check health after 5s
       setTimeout(checkHealth, 5000);
     } else {
-      alert('Failed: ' + (data.error || 'unknown'));
+      _toast('Could not restart: ' + (data.error || 'unknown'));
     }
-  }).catch(function() { alert('Request failed'); });
+  }).catch(function() { _toast('The restart request failed.'); });
 }
 
 // ── Pan & Zoom ──

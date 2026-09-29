@@ -103,7 +103,8 @@
     stop: '<rect x="5" y="5" width="14" height="14" rx="2"/>',
     tool: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z"/>',
     cpu: '<rect x="5" y="5" width="14" height="14" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/>',
-    keys: '<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/>'
+    keys: '<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/>',
+    chev: '<path d="m6 9 6 6 6-6"/>'
   };
   function ico(name, size, cls) {
     return '<svg class="cs-ico' + (cls ? ' ' + cls : '') + '" width="' + (size || 20) + '" height="' + (size || 20) +
@@ -1359,7 +1360,12 @@
   }
   function schedOpen(opts) {
     var el = schedEl();
-    $('csSchedPrompt').value = (opts && opts.prompt) || '';
+    // A crew job (P2.6: Chat's "Schedule daily") runs that crew with the text as its task.
+    SCHED.crew = opts && opts.kind === 'crew' && opts.crew ? { name: String(opts.crew), label: String(opts.label || opts.crew) } : null;
+    $('csSchedTitle').textContent = SCHED.crew ? 'Schedule ' + SCHED.crew.label : 'Schedule this';
+    el.querySelector('.cs-field span').textContent = SCHED.crew ? 'Task for the crew (optional)' : 'Ask CODEC';
+    $('csSchedChanged').parentNode.hidden = !!SCHED.crew;
+    $('csSchedPrompt').value = (opts && (opts.prompt || opts.topic)) || '';
     $('csSchedWhen').value = '';
     $('csSchedPreview').textContent = '';
     $('csSchedError').textContent = '';
@@ -1375,14 +1381,262 @@
     if ($('csSchedToday').checked) deliver.push('today');
     SCHED.busy = true;
     err.textContent = '';
-    postJSON('/api/schedules', { kind: 'prompt', prompt: prompt, when: $('csSchedWhen').value, deliver: deliver,
-                                 label: prompt.split('\n')[0].slice(0, 80), speak: $('csSchedSpeak').checked,
-                                 only_if_changed: $('csSchedChanged').checked, enabled: true }).then(function (d) {
+    var job = SCHED.crew
+      ? { kind: 'crew', crew: SCHED.crew.name, topic: prompt, when: $('csSchedWhen').value,
+          label: (prompt ? SCHED.crew.label + ': ' + prompt.split('\n')[0] : SCHED.crew.label).slice(0, 80),
+          deliver: deliver, speak: $('csSchedSpeak').checked, enabled: true }
+      : { kind: 'prompt', prompt: prompt, when: $('csSchedWhen').value, deliver: deliver,
+          label: prompt.split('\n')[0].slice(0, 80), speak: $('csSchedSpeak').checked,
+          only_if_changed: $('csSchedChanged').checked, enabled: true };
+    postJSON('/api/schedules', job).then(function (d) {
       schedClose();
       toast('Scheduled: ' + ((d.schedule && d.schedule.summary) || 'saved') + '. See it in Tasks.', '/tasks');
     }, function (e) { err.textContent = (e && e.message) || 'Could not schedule it.'; })
       .then(function () { SCHED.busy = false; });
   }
+
+  // ── One modal for questions (P2.6; docs/P2.6-DESIGN.md) ─────────────────
+  // CodecShell.ask({title, message, confirm, cancel, danger, input: {label, value,
+  // placeholder, pattern, patternText, required, requiredText, inputmode, maxlength,
+  // type}}) -> Promise: true/false, or the text/null when there is an input. It
+  // replaces the browser's confirm and prompt dialogs: a bottom sheet on the phone, Enter confirms,
+  // Esc and the backdrop cancel, focus goes back where it was.
+  var ASK = { el: null, resolve: null, input: null, back: null };
+  function askEl() {
+    if (ASK.el) return ASK.el;
+    var wrap = document.createElement('div');
+    wrap.className = 'cs-dialog-backdrop';
+    wrap.id = 'csAsk';
+    wrap.hidden = true;
+    wrap.innerHTML =
+      '<div class="cs-dialog" role="alertdialog" aria-modal="true" aria-labelledby="csAskTitle" aria-describedby="csAskMsg">' +
+        '<h2 id="csAskTitle"></h2><p class="cs-ask-msg" id="csAskMsg"></p>' +
+        '<label class="cs-field" id="csAskField" hidden><span id="csAskLabel"></span><input id="csAskInput" autocomplete="off"></label>' +
+        '<div class="cs-dialog-error" id="csAskError" role="alert"></div>' +
+        '<div class="cs-dialog-actions"><button type="button" class="cs-dbtn" id="csAskCancel"></button>' +
+          '<button type="button" class="cs-dbtn cs-dbtn-primary" id="csAskOk"></button></div>' +
+      '</div>';
+    document.body.appendChild(wrap);
+    wrap.addEventListener('mousedown', function (e) { if (e.target === wrap) askDone(false); });
+    wrap.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); askDone(false); return; }
+      if (e.key === 'Enter' && e.target && e.target.id === 'csAskInput') { e.preventDefault(); askDone(true); return; }
+      if (e.key === 'Tab') {  // keep Tab inside the dialog
+        var f = [].slice.call(wrap.querySelectorAll('input, button')).filter(function (x) { return x.offsetParent !== null; });
+        var i = f.indexOf(document.activeElement);
+        if (e.shiftKey && i <= 0) { e.preventDefault(); f[f.length - 1].focus(); } else if (!e.shiftKey && i === f.length - 1) { e.preventDefault(); f[0].focus(); }
+      }
+    });
+    $('csAskCancel').addEventListener('click', function () { askDone(false); });
+    $('csAskOk').addEventListener('click', function () { askDone(true); });
+    ASK.el = wrap;
+    return wrap;
+  }
+  function ask(opts) {
+    opts = opts || {};
+    var el = askEl(), inp = $('csAskInput'), f = opts.input || null;
+    if (ASK.resolve) askDone(false);  // a newer question replaces an open one
+    $('csAskTitle').textContent = opts.title || 'Are you sure?';
+    $('csAskMsg').textContent = opts.message || '';
+    $('csAskMsg').hidden = !opts.message;
+    $('csAskField').hidden = !f;
+    $('csAskError').textContent = '';
+    if (f) {
+      $('csAskLabel').textContent = f.label || '';
+      inp.type = f.type || 'text';
+      inp.value = f.value || '';
+      inp.placeholder = f.placeholder || '';
+      if (f.inputmode) inp.setAttribute('inputmode', f.inputmode); else inp.removeAttribute('inputmode');
+      if (f.maxlength) inp.maxLength = f.maxlength; else inp.removeAttribute('maxlength');
+    }
+    $('csAskOk').textContent = opts.confirm || 'OK';
+    $('csAskOk').classList.toggle('cs-dbtn-danger', !!opts.danger);
+    $('csAskCancel').textContent = opts.cancel || 'Cancel';
+    ASK.input = f;
+    ASK.back = document.activeElement;
+    el.hidden = false;
+    // A destructive question starts on Cancel; a question with a field, in the field.
+    (f ? inp : (opts.danger ? $('csAskCancel') : $('csAskOk'))).focus();
+    return new Promise(function (resolve) { ASK.resolve = resolve; });
+  }
+  function askDone(ok) {
+    if (!ASK.resolve) return;
+    var value = !!ok, f = ASK.input;
+    if (f) {
+      var v = $('csAskInput').value.trim(), err = $('csAskError');
+      if (ok && f.required && !v) { err.textContent = f.requiredText || 'This is needed.'; $('csAskInput').focus(); return; }
+      if (ok && f.pattern && v && !new RegExp('^(?:' + f.pattern + ')$').test(v)) {
+        err.textContent = f.patternText || 'That does not look right.'; $('csAskInput').focus(); return;
+      }
+      value = ok ? v : null;
+    }
+    var done = ASK.resolve;
+    ASK.resolve = null;
+    ASK.input = null;
+    var inside = ASK.el.contains(document.activeElement);
+    ASK.el.hidden = true;
+    try { if (ASK.back && ASK.back.focus) ASK.back.focus(); } catch (e) { /* the element is gone */ }
+    // Focus must not stay on a hidden button when there was nothing to go back to.
+    if (inside && ASK.el.contains(document.activeElement)) document.activeElement.blur();
+    done(value);
+  }
+
+  // ── One styled picker over a native <select> (P2.6) ───────────────────────
+  // CodecShell.menu(select, {className}) -> {sync, open, close, button, wrap}: a
+  // button with the chosen option opens a listbox (Up/Down, Home/End, Enter or
+  // Space, Esc, type to jump). The select stays in the page, hidden, as the source
+  // of truth: picking sets its value and fires its `change`; code that changes its
+  // options or attributes updates the button at once, and code that only sets its
+  // value within half a second (one shared check; no property is overridden).
+  var MENU = { open: null, all: [], timer: null };
+  function menu(sel, opts) {
+    if (!sel) return null;
+    if (sel.__csMenu) return sel.__csMenu;
+    opts = opts || {};
+    var wrap = document.createElement('span');
+    wrap.className = 'cs-menu-wrap';
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = (sel.id || 'csSel') + 'Btn';
+    btn.className = 'cs-menu-btn' + (opts.className ? ' ' + opts.className : '');
+    btn.setAttribute('aria-haspopup', 'listbox');
+    btn.setAttribute('aria-expanded', 'false');
+    btn.innerHTML = '<span class="cs-menu-label"></span>' + ico('chev', 14, 'cs-menu-chev');
+    var list = document.createElement('div');
+    list.className = 'cs-menu-list';
+    list.id = btn.id + 'List';
+    list.tabIndex = -1;
+    list.hidden = true;
+    list.setAttribute('role', 'listbox');
+    list.setAttribute('aria-label', sel.getAttribute('aria-label') || sel.title || 'Choose');
+    btn.setAttribute('aria-controls', list.id);
+    sel.parentNode.insertBefore(wrap, sel);
+    wrap.appendChild(btn);
+    wrap.appendChild(sel);
+    document.body.appendChild(list);
+    sel.hidden = true;
+    sel.style.setProperty('display', 'none', 'important');  // an inline display on the select would beat `hidden`
+    sel.tabIndex = -1;
+    var st = { active: 0, typed: '', typedAt: 0 };
+    function items() { return [].slice.call(sel.options); }
+    function sync() {
+      var o = sel.options[sel.selectedIndex], lab = btn.querySelector('.cs-menu-label'), text = o ? o.textContent : '';
+      if (lab.textContent !== text) lab.textContent = text;
+      if (btn.title !== (sel.title || '')) btn.title = sel.title || '';
+      if (btn.disabled !== !!sel.disabled) btn.disabled = !!sel.disabled;
+      btn.classList.toggle('alt', sel.classList.contains('alt'));
+    }
+    function render() {
+      list.innerHTML = '';
+      var last = null;
+      items().forEach(function (o, i) {
+        var g = o.parentNode && o.parentNode.nodeName === 'OPTGROUP' ? o.parentNode.label : null;
+        if (g && g !== last) {
+          var h = document.createElement('div');
+          h.className = 'cs-menu-group';
+          h.setAttribute('role', 'presentation');
+          h.textContent = g;
+          list.appendChild(h);
+        }
+        last = g;
+        var it = document.createElement('div');
+        it.className = 'cs-menu-item' + (i === st.active ? ' cs-active' : '');
+        it.id = list.id + '-' + i;
+        it.setAttribute('role', 'option');
+        it.setAttribute('aria-selected', String(i === sel.selectedIndex));
+        if (o.disabled) it.setAttribute('aria-disabled', 'true');
+        it.textContent = o.textContent;
+        it.addEventListener('mousedown', function (e) { e.preventDefault(); });
+        it.addEventListener('click', function () { choose(i); });
+        list.appendChild(it);
+      });
+      list.setAttribute('aria-activedescendant', list.id + '-' + st.active);
+      var a = $(list.id + '-' + st.active);
+      if (a && a.scrollIntoView) a.scrollIntoView({ block: 'nearest' });
+    }
+    function place() {
+      var r = btn.getBoundingClientRect();
+      list.style.minWidth = Math.max(r.width, 160) + 'px';
+      var h = Math.min(list.scrollHeight, 320), below = window.innerHeight - r.bottom;
+      var top = (below >= h + 8 || below >= r.top) ? r.bottom + 4 : r.top - h - 4;
+      list.style.top = Math.max(8, top) + 'px';
+      list.style.left = Math.max(8, Math.min(r.left, window.innerWidth - list.offsetWidth - 8)) + 'px';
+    }
+    function open() {
+      if (btn.disabled || !list.hidden) return;
+      if (MENU.open && MENU.open !== api) MENU.open.close(false);
+      st.active = Math.max(0, sel.selectedIndex);
+      render();
+      list.hidden = false;
+      place();
+      btn.setAttribute('aria-expanded', 'true');
+      list.focus();
+      MENU.open = api;
+    }
+    function close(refocus) {
+      if (list.hidden) return;
+      list.hidden = true;
+      btn.setAttribute('aria-expanded', 'false');
+      if (MENU.open === api) MENU.open = null;
+      if (refocus) btn.focus();
+    }
+    function move(to) {
+      var all = items(), n = all.length, i = to;
+      for (var k = 0; k < n && all[(i + n) % n] && all[(i + n) % n].disabled; k++) i += to >= st.active ? 1 : -1;
+      st.active = Math.max(0, Math.min(n - 1, i));
+      render();
+    }
+    function choose(i) {
+      var o = items()[i];
+      if (!o || o.disabled) return;
+      var changed = sel.selectedIndex !== i;
+      sel.selectedIndex = i;
+      sync();
+      close(true);
+      if (changed) sel.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    btn.addEventListener('click', function () { if (list.hidden) open(); else close(false); });
+    btn.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+    });
+    list.addEventListener('keydown', function (e) {
+      var n = items().length;
+      if (e.key === 'ArrowDown') { e.preventDefault(); move(st.active + 1); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); move(st.active - 1); }
+      else if (e.key === 'Home') { e.preventDefault(); move(0); }
+      else if (e.key === 'End') { e.preventDefault(); move(n - 1); }
+      else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); choose(st.active); }
+      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(true); }
+      else if (e.key === 'Tab') { close(false); }
+      else if (e.key.length === 1 && /\S/.test(e.key)) {  // type to jump
+        var now = Date.now();
+        st.typed = (now - st.typedAt < 700 ? st.typed : '') + e.key.toLowerCase();
+        st.typedAt = now;
+        var all = items();
+        for (var k = 0; k < all.length; k++) {
+          if (all[k].textContent.trim().toLowerCase().indexOf(st.typed) === 0) { move(k); break; }
+        }
+      }
+    });
+    sel.addEventListener('change', sync);
+    new MutationObserver(sync).observe(sel, { childList: true, subtree: true, attributes: true,
+                                              attributeFilter: ['disabled', 'class', 'title', 'selected'] });
+    var api = { sync: sync, open: open, close: close, button: btn, wrap: wrap };
+    sel.__csMenu = api;
+    MENU.all.push(api);
+    if (!MENU.timer) {
+      MENU.timer = setInterval(function () { if (!document.hidden) MENU.all.forEach(function (m) { m.sync(); }); }, 500);
+    }
+    sync();
+    return api;
+  }
+  document.addEventListener('mousedown', function (e) {
+    if (MENU.open && !e.target.closest('.cs-menu-list, .cs-menu-btn')) MENU.open.close(false);
+  });
+  window.addEventListener('resize', function () { if (MENU.open) MENU.open.close(false); });
+  document.addEventListener('scroll', function (e) {
+    if (MENU.open && !(e.target && e.target.closest && e.target.closest('.cs-menu-list'))) MENU.open.close(false);
+  }, true);
 
   // ── Command palette (P2.3; docs/P2.3-DESIGN.md) ─────────────────────────
   // Cmd/Ctrl+K on every page, over one list: chats (the loaded list, then
@@ -1621,6 +1875,8 @@
     }
     if (mod && !e.altKey && (k === '/' || e.code === 'Slash') && !inEditor) { e.preventDefault(); shortcutsOpen(); return; }
     if (e.key === 'Escape') {
+      if (ASK.el && !ASK.el.hidden) { askDone(false); e.stopImmediatePropagation(); return; }
+      if (MENU.open) { MENU.open.close(true); e.stopImmediatePropagation(); return; }
       if (PAL.el && !PAL.el.hidden) { palClose(); e.stopImmediatePropagation(); return; }
       if (KEYS_EL && !KEYS_EL.hidden) { shortcutsClose(); e.stopImmediatePropagation(); return; }
       if (!pop.hidden) { closeMenu(); e.stopImmediatePropagation(); return; }
@@ -1636,7 +1892,7 @@
     toggleRail: toggleRail, openDrawer: openDrawer, closeDrawer: closeDrawer, focusSearch: focusSearch,
     refreshHistory: refreshHistory, refreshHistorySoon: refreshHistorySoon, setActiveChat: setActiveChat,
     newChat: newChat, voiceReplies: voiceReplies, wakeWord: wakeWord, refreshWake: refreshWake, pollInbox: pollInbox,
-    install: install, toast: toast, palette: palOpen, shortcuts: shortcutsOpen,
+    install: install, toast: toast, palette: palOpen, shortcuts: shortcutsOpen, ask: ask, menu: menu,
     push: { support: pushSupport, subscription: currentSub, on: pushOn, off: pushOff, deviceId: deviceId,
             post: postJSON },
     dictation: { toggle: dictToggle, stop: dictStop, mode: dictMode, toggleMode: toggleDictMode,
