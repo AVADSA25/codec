@@ -19,8 +19,10 @@ import logging
 import subprocess
 from datetime import datetime
 
+import os
+
 from fastapi import APIRouter
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
 from routes._shared import CONFIG_PATH
@@ -35,24 +37,46 @@ class HealthResponse(BaseModel):
     timestamp: str = Field(description="ISO timestamp", json_schema_extra={"example": "2026-05-30T12:00:00"})
 
 
+_ICON = "/static/icons/icon-192.png"
+
+
 @router.get("/manifest.json")
 async def manifest():
+    """PWA install manifest (UI phase 2, P2.14): real 192 / 512 icons, a maskable
+    icon with the safe zone, and shortcuts to a new chat, Voice and Start my day."""
     return JSONResponse({
+        "id": "/",
         "name": "CODEC",
         "short_name": "CODEC",
         "description": "CODEC — Your Open-Source Intelligent Command Layer",
         "start_url": "/",
+        "scope": "/",
         "display": "standalone",
         "background_color": "#121215",
-        "theme_color": "#d97757",
-        # B5 / SR-28: 192/512 icon entries declared so Android Add-to-Home-
-        # Screen installers don't warn about missing standard sizes.
+        "theme_color": "#121215",
         "icons": [
-            {"src": "/favicon.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
-            {"src": "/favicon.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"},
-            {"src": "/favicon.png", "sizes": "2048x2048", "type": "image/png"},
-        ]
+            {"src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+            {"src": "/static/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+            {"src": "/static/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
+        ],
+        "shortcuts": [
+            {"name": "New chat", "url": "/chat#new", "icons": [{"src": _ICON, "sizes": "192x192"}]},
+            {"name": "Voice", "url": "/voice", "icons": [{"src": _ICON, "sizes": "192x192"}]},
+            {"name": "Start my day", "short_name": "My day", "url": "/chat#starter=day",
+             "icons": [{"src": _ICON, "sizes": "192x192"}]},
+        ],
     })
+
+
+# The service worker lives in static/ but must be served from the root so its
+# scope covers every page. Public like the manifest: it holds no secrets.
+_SW_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static", "sw.js")
+
+
+@router.get("/sw.js", include_in_schema=False)
+async def service_worker():
+    return FileResponse(_SW_PATH, media_type="text/javascript",
+                        headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/"})
 
 
 @router.get("/metrics")

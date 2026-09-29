@@ -543,6 +543,8 @@ body.cs-rail .cs-profile > .cs-ico { display: none; }
   font: var(--fw-medium) var(--fs-12)/var(--lh-12) var(--font-sans); color: var(--text-muted); background: var(--surface-3);
 }
 .sp-state:empty { display: none; }
+.sp-note { cursor: default; color: var(--text-muted); font-size: var(--fs-13); }
+.sp-note:hover { background: none; }
 .sp-state.on { color: var(--accent); background: var(--accent-dim); }
 .sp-divider { height: 1px; margin: 6px 4px; background: var(--border); }
 .sp-theme, .text-size-row { cursor: default; }

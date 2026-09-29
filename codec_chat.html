@@ -8,8 +8,9 @@
 <meta name="mobile-web-app-capable" content="yes">
 <title>CODEC Deep Chat</title>
 <link rel="icon" href="/favicon.png">
-<link rel="apple-touch-icon" href="/favicon.png">
-<link rel="stylesheet" href="/static/codec.css?v=48371fdb">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.json">
+<link rel="stylesheet" href="/static/codec.css?v=65686d49">
 <style>
 :root {
   --bg: #121215; --surface: #18181b; --surface-2: #1f1f22; --surface-3: #27272a;
@@ -331,7 +332,7 @@ input[type=file]{display:none}
 </style>
 </head>
 <body>
-<script src="/static/codec-shell.js?v=c31f7658" data-page="chat" data-title="Chat" data-status data-model-slot></script>
+<script src="/static/codec-shell.js?v=d46ccbb7" data-page="chat" data-title="Chat" data-status data-model-slot></script>
 <div class="app cs-main" id="appContainer">
 <div class="messages" id="messages"></div>
 
@@ -1226,6 +1227,15 @@ function startNewSession(){_discardFrom=null;sessionId=genId();_lsSet('codec-cha
 // The shell's sidebar on other pages links here as /chat#new and /chat#session=<id>.
 function _chatFromHash(){
   var h=location.hash||'';
+  // The PWA's "Start my day" shortcut (P2.14). Only this fixed starter: a link
+  // can never make CODEC send text of its choosing.
+  if(h==='#starter=day'){
+    try{history.replaceState(null,'',location.pathname+location.search)}catch(e){}
+    startNewSession();
+    var go=function(){sendStarter('start my day')};
+    if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',go);else go();
+    return true;
+  }
   if(h!=='#new'&&h.indexOf('#session=')!==0)return false;
   try{history.replaceState(null,'',location.pathname+location.search)}catch(e){}
   var want=h==='#new'?'':decodeURIComponent(h.slice(9));

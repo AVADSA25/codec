@@ -223,6 +223,10 @@
           '<button type="button" class="sp-item" id="connectBtn" data-needs="openConnectSetup"' +
             ' onclick="openConnectSetup();closeSidePanel()">' + ico('plug', 18) +
             '<span class="sp-item-label">Connect AI model</span></button>' +
+          '<button type="button" class="sp-item" id="installBtn" hidden onclick="CodecShell.install()">' +
+            ico('download', 18) + '<span class="sp-item-label">Install CODEC</span></button>' +
+          '<div class="sp-item sp-note" id="installHint" hidden>' + ico('download', 18) +
+            '<span class="sp-item-label">To install on this phone: tap Share, then Add to Home Screen.</span></div>' +
         '</div>' +
       '</div>';
   }
@@ -808,6 +812,41 @@
     }).catch(function () { /* offline: keep the last count */ });
   }
 
+  // ── Install (P2.14): the browser's prompt where there is one, a hint on iOS ─
+  var installEvt = null;
+  function standalone() {
+    try { return matchMedia('(display-mode: standalone)').matches || navigator.standalone === true; } catch (e) { return false; }
+  }
+  function isIOS() {
+    return /iPhone|iPad|iPod/.test(navigator.userAgent || '') || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  }
+  function syncInstall() {
+    var b = $('installBtn'), hint = $('installHint');
+    if (b) b.hidden = !installEvt || standalone();
+    if (hint) hint.hidden = !isIOS() || standalone() || !!installEvt;
+  }
+  window.addEventListener('beforeinstallprompt', function (e) {
+    e.preventDefault();  // no mini-infobar: Install lives in quick settings
+    installEvt = e;
+    window.deferredPrompt = e;
+    syncInstall();
+  });
+  window.addEventListener('appinstalled', function () {
+    installEvt = null;
+    window.deferredPrompt = null;
+    syncInstall();
+    toast('CODEC is installed.');
+  });
+  function install() {
+    if (!installEvt) return;
+    var ev = installEvt;
+    installEvt = null;
+    window.deferredPrompt = null;
+    closeSidePanel();
+    ev.prompt();
+    Promise.resolve(ev.userChoice).then(syncInstall, syncInstall);
+  }
+
   // ── Keys: Cmd/Ctrl+Shift+S sidebar, Cmd/Ctrl+K search, Esc closes ────────
   document.addEventListener('keydown', function (e) {
     var mod = e.metaKey || e.ctrlKey;
@@ -829,7 +868,8 @@
     page: PAGE,
     toggleRail: toggleRail, openDrawer: openDrawer, closeDrawer: closeDrawer, focusSearch: focusSearch,
     refreshHistory: refreshHistory, refreshHistorySoon: refreshHistorySoon, setActiveChat: setActiveChat,
-    newChat: newChat, voiceReplies: voiceReplies, wakeWord: wakeWord, refreshWake: refreshWake, pollInbox: pollInbox
+    newChat: newChat, voiceReplies: voiceReplies, wakeWord: wakeWord, refreshWake: refreshWake, pollInbox: pollInbox,
+    install: install
   };
   window.openSidePanel = openSidePanel;
   window.closeSidePanel = closeSidePanel;
@@ -856,6 +896,11 @@
     refreshHistory();
     pollInbox();
     setInterval(pollInbox, 30000);
+    syncInstall();
+    // The offline shell (P2.14): static assets only, never /api (static/sw.js).
+    if ('serviceWorker' in navigator && window.isSecureContext) {
+      navigator.serviceWorker.register('/sw.js').catch(function () { /* not fatal */ });
+    }
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ready);
   else ready();
