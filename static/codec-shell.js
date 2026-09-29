@@ -24,8 +24,13 @@
   var HAS_MODEL_SLOT = 'modelSlot' in ds;
 
   // ── Small helpers ─────────────────────────────────────────────────────────
-  function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
-  function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* private mode */ } }
+  // Preferences live in localStorage; when storage is blocked (private mode, a
+  // hardened profile) they still hold for this page view.
+  var mem = {};
+  function lsGet(k) {
+    try { var v = localStorage.getItem(k); return v === null && k in mem ? mem[k] : v; } catch (e) { return k in mem ? mem[k] : null; }
+  }
+  function lsSet(k, v) { mem[k] = v; try { localStorage.setItem(k, v); } catch (e) { /* blocked: kept in memory */ } }
   function esc(s) {
     return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
       .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -370,7 +375,7 @@
   function setWakeBadge(on) {
     var st = $('wakeState');
     if (!st) return;
-    st.textContent = on ? 'On' : 'Off';
+    st.textContent = on ? 'ON' : 'OFF';
     st.classList.toggle('on', !!on);
   }
   function refreshWake() {
