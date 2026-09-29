@@ -141,14 +141,21 @@ def make_script(briefing: str) -> str:
     except (OSError, ValueError):
         config = {}  # a fresh install: the defaults below
     try:
+        import codec_cloud_models
         from codec_config import get_llm_api_key
+        # The local model only, even while chat is switched to a cloud model: the
+        # briefing holds the owner's calendar, threads and mail (plan P3.1).
+        base_url, model = codec_cloud_models.local_only(
+            config.get("llm_base_url", "http://localhost:8083/v1"),
+            config.get("llm_model", "mlx-community/Qwen3.6-35B-A3B-4bit"), config)
+        if not codec_cloud_models.is_local_url(base_url):
+            raise RuntimeError("no local model configured")
         answer = codec_llm.call(
             [{"role": "system", "content": "You write a short spoken morning briefing, read aloud by a voice. "
                                           "110 to 150 words, 45 to 60 seconds. Warm and natural. Plain sentences: "
                                           "no lists, symbols, links or headings. Never say the word CODEC."},
              {"role": "user", "content": "Turn this into the spoken briefing:\n\n" + str(briefing)[:6000]}],
-            base_url=config.get("llm_base_url", "http://localhost:8083/v1"),
-            model=config.get("llm_model", "mlx-community/Qwen3.6-35B-A3B-4bit"),
+            base_url=base_url, model=model,
             api_key=get_llm_api_key() or "", max_tokens=400, temperature=0.5, timeout=120,
             extra_kwargs=config.get("llm_kwargs") or {}, raise_on_error=True)
         script = re.sub(r"<think>[\s\S]*?</think>", "", str(answer or "")).strip()

@@ -123,6 +123,8 @@ def test_delivery_leaves_the_card_pushes_and_waits_with_a_script(br):
     assert "Gym at 7" in script and "**" not in script and "http" not in script, "falls back to plain words"
     Path(cb.STATE_PATH).unlink()
     cb.deliver({"id": cb.BRIEFING_ID, "speak": False}, "Quiet day.")
+    src = (REPO / "codec_briefing.py").read_text(encoding="utf-8")
+    assert "codec_cloud_models.local_only(" in src and "is_local_url(base_url)" in src, "the local model only"
     assert not Path(cb.STATE_PATH).exists(), "no speaking: no script waits"
 
 
