@@ -81,6 +81,17 @@ html,body{font-family:var(--font-sans);background:var(--bg);color:var(--text);he
 .msg-act:active{transform:scale(.9)}
 .msg-act.copied{color:var(--success)}
 .msg-act.speaking{color:var(--accent)}
+/* P2.7: thumbs, version pager, thumbs-down reasons */
+.msg-act[aria-pressed="true"]{color:var(--accent)}
+.msg-ver{display:inline-flex;align-items:center;gap:0;margin:0 2px;font-family:var(--font-mono);font-size:var(--fs-12);color:var(--text-muted)}
+.msg-ver .msg-act{width:28px}
+.msg-ver .msg-act:disabled{opacity:.35;cursor:default;background:none}
+.msg-ver-n{min-width:38px;text-align:center}
+.fb-reasons{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 0 4px}
+.fb-reasons[hidden]{display:none}
+.fb-reason{height:28px;padding:0 12px;border-radius:var(--radius-pill);border:1px solid var(--border);background:none;color:var(--text-muted);font:inherit;font-size:var(--fs-12);cursor:pointer}
+.fb-reason:hover{color:var(--text);background:var(--surface-2)}
+.fb-reason[aria-pressed="true"]{color:var(--accent);border-color:var(--accent)}
 
 .typing{color:var(--accent);font-size:calc(13px * var(--fs-scale));padding:8px 16px}
 .typing span{display:inline-block;width:6px;height:6px;margin-right:4px;border-radius:50%;background:currentColor;vertical-align:middle;animation:blink 1.4s infinite}
@@ -365,7 +376,7 @@ input[type=file]{display:none}
 </style>
 </head>
 <body>
-<script src="/static/codec-shell.js?v=3a539cdf" data-page="chat" data-title="Chat" data-status data-model-slot></script>
+<script src="/static/codec-shell.js?v=5ec422ca" data-page="chat" data-title="Chat" data-status data-model-slot></script>
 <div class="app cs-main" id="appContainer">
 <div class="messages" id="messages"></div>
 
@@ -726,11 +737,14 @@ function switchModel(){
     .then(function(r){return r.json()})
     .then(function(d){
       if(d.ok){ sel.dataset.current=d.active; showToast('Now using '+label+' ('+(d.detail||'')+')'); loadModels(); }
-      else { sel.value=d.active||prev; sel.dataset.current=d.active||prev;
+      else { sel.value=d.active||prev; sel.dataset.current=d.active||prev; _retryAfterSwitch=null;
              showToast(d.error||'Switch failed — kept the previous model', true); }
     })
-    .catch(function(){ sel.value=prev; showToast('Switch failed',true); })
-    .finally(function(){ _modelBusy=false; sel.disabled=false; });
+    .catch(function(){ sel.value=prev; _retryAfterSwitch=null; showToast('Switch failed',true); })
+    .finally(function(){ _modelBusy=false; sel.disabled=false;
+      // P2.7 "Retry with another model": regenerate the reply once the new model is loaded.
+      var rd=_retryAfterSwitch; _retryAfterSwitch=null;
+      if(rd&&rd.isConnected)regenerateResponse(rd); });
 }
 
 // ── Create image (docs/CHAT-CREATE-IMAGE-DESIGN.md) ─────────────────────────
@@ -968,20 +982,24 @@ function setMode(mode){
 
 function regenerateResponse(btn){
   if(isProcessing)return;
-  // Remove last assistant message from history and UI
-  var msgDiv=btn.closest('.msg');
-  if(msgDiv)msgDiv.remove();
-  // Pop last assistant from chatHist
-  while(chatHist.length&&chatHist[chatHist.length-1].role==='assistant')chatHist.pop();
-  _markDiscard(chatHist.length);
-  if(!chatHist.length)return;
+  // P2.7: the trailing answer(s) are kept as an earlier version of this turn, not thrown away.
+  var n=chatHist.length;
+  while(n&&chatHist[n-1].role==='assistant')n--;
+  if(!n)return;
+  var box=document.getElementById('messages'),tail=[],el=box.lastElementChild;
+  while(el&&el.classList.contains('msg')&&el.classList.contains('assistant')){tail.unshift(el);el=el.previousElementSibling}
+  if(!tail.length&&btn&&btn.closest){var md=btn.closest('.msg');if(md)tail=[md]}
+  _verKeep(n,tail,'assistant');
+  tail.forEach(function(t){t.remove()});
+  chatHist=chatHist.slice(0,n);
+  _markDiscard(n);
   // Find last user message to re-send
   var lastUser='';
   for(var i=chatHist.length-1;i>=0;i--){if(chatHist[i].role==='user'){lastUser=chatHist[i].content;break}}
   if(!lastUser)return;
   // Re-run the chat call
   isProcessing=true;document.getElementById('sendBtn').disabled=true;_showStop();showTyping();
-  _currentAbort=new AbortController();
+  _currentAbort=new AbortController();_lastSkill=null;
   var msgs=[{role:'system',content:buildSystem()}].concat(chatHist);
   var raw='',div=null; // outside the .then so the .catch can keep a partial answer
   fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs,force_search:webSearchEnabled,thinking:false,show_thoughts:false,reason_scaffold:thinkingEnabled,stream:true,workdir:_workdir}),signal:_currentAbort.signal}).then(async function(r){
@@ -998,7 +1016,7 @@ function regenerateResponse(btn){
       for(var li=0;li<lines.length;li++){
         var line=lines[li].trim();if(!line.startsWith('data: '))continue;var payload=line.substring(6);
         if(payload==='[DONE]')break;
-        try{var j=JSON.parse(payload);if(j.stats){_lastStats=j.stats}if(j.memory){_lastMemory=j.memory}if(j.skill){showToast('Skill: '+j.skill)}if(j.token){raw+=j.token;var ps=parseScaffold(raw);if(thinkingEnabled&&ps.think){var tp=makeToT(div,'Reveal train of thought',true);totSet(tp,ps.think)}if(ps.answer){(answerStream||(answerStream=mdStream(bubble,{onRender:scrollBottom}))).update(ps.answer)}scrollBottom()}if(j.error){raw+='\nError: '+j.error}}catch(pe){}
+        try{var j=JSON.parse(payload);if(j.stats){_lastStats=j.stats}if(j.memory){_lastMemory=j.memory}if(j.skill){showToast('Skill: '+j.skill);_lastSkill=j.skill}if(j.token){raw+=j.token;var ps=parseScaffold(raw);if(thinkingEnabled&&ps.think){var tp=makeToT(div,'Reveal train of thought',true);totSet(tp,ps.think)}if(ps.answer){(answerStream||(answerStream=mdStream(bubble,{onRender:scrollBottom}))).update(ps.answer)}scrollBottom()}if(j.error){raw+='\nError: '+j.error}}catch(pe){}
       }
     }
     var pf=parseScaffold(raw);
@@ -1014,18 +1032,151 @@ function regenerateResponse(btn){
       if(md&&_lastStats)renderStats(md,_lastStats);_lastStats=null;
       if(md&&_lastMemory)renderMemoryUsed(md,_lastMemory);_lastMemory=null;
       chatHist.push({role:'assistant',content:answer});saveMessages([{role:'assistant',content:answer}])
-    }else{if(answerStream)answerStream.cancel();bubble.innerHTML='<em style="color:var(--text-dim)">No response</em>'}
+    }else{if(answerStream)answerStream.cancel();div.remove();_verRestore()}
     _currentAbort=null;isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false
   }).catch(function(e){
     hideTyping();
     _keepPartial(raw,div);
-    if(e.name!=='AbortError')addMessage('assistant','Error: '+e.message);
+    if(div&&div.isConnected)div.remove();
+    if(e.name!=='AbortError')addMessage('assistant','Error: '+e.message);else if(_verPending)_verRestore();
     _currentAbort=null;isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false
   })
 }
 document.getElementById('crewSelect').addEventListener('change',function(){setMode('research')});
 
 function toggleThinking(){thinkingEnabled=!thinkingEnabled;_syncModeUi()}
+
+// ── Versions of a turn (P2.7, docs/P2.7-DESIGN.md) ─────────────────────────
+// Regenerate keeps the replaced answer, edit keeps the replaced question and all
+// after it, as earlier versions of the same turn. A group holds the chat position
+// where the turn starts (prefix) and each version's DOM nodes, chatHist entries and
+// saved rows. Only the version on screen is in chatHist and the saved chat.
+var _verPending=null;
+function _verKeep(prefix,nodes,role){
+  if(!nodes||!nodes.length){_verPending=null;return}
+  var g=nodes[0]._verGroup;
+  var v={nodes:nodes.slice(),hist:chatHist.slice(prefix),saved:_savedTail(prefix)};
+  if(g&&g.prefix===prefix){g.versions[g.cur]=v}
+  else{g={prefix:prefix,versions:[v],cur:0}}
+  _verPending={g:g,role:role};
+}
+function _savedTail(prefix){return(_savedRows.length===chatHist.length?_savedRows:chatHist).slice(prefix).map(function(m){return{role:m.role,content:m.content}})}
+// Called by addMessage: the first message of the new version joins the group.
+function _verAttach(div,role){
+  var p=_verPending;
+  if(!p||p.role!==role)return;
+  _verPending=null;
+  if(chatHist.length!==p.g.prefix)return;
+  p.g.versions.push({nodes:[div],hist:null,saved:null});
+  p.g.cur=p.g.versions.length-1;
+  div._verGroup=p.g;
+  p.g.versions.forEach(function(v){if(v.nodes[0])v.nodes[0]._verGroup=p.g});
+  _verPager(div);
+}
+// A regenerate that produced nothing puts the previous version back.
+function _verRestore(){
+  var p=_verPending;_verPending=null;
+  if(!p)return;
+  var v=p.g.versions[p.g.cur],box=document.getElementById('messages');
+  if(chatHist.length!==p.g.prefix)return;
+  v.nodes.forEach(function(n){box.appendChild(n)});
+  chatHist=chatHist.concat(v.hist||[]);_savedRows=_savedRows.slice(0,p.g.prefix).concat(v.saved||[]);
+  _discardFrom=null;
+  if(p.g.versions.length>1)_verPager(v.nodes[0]);
+}
+function _verPager(div){
+  var g=div&&div._verGroup,meta=div&&div.querySelector('.msg-meta');
+  if(!g||!meta)return;
+  var pg=meta.querySelector('.msg-ver');
+  if(g.versions.length<2){if(pg)pg.remove();return}
+  if(!pg){
+    pg=document.createElement('span');pg.className='msg-ver';
+    pg.innerHTML='<button type="button" class="msg-act" data-ver="-1" title="Previous version" aria-label="Previous version"><svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button><span class="msg-ver-n" aria-live="polite"></span><button type="button" class="msg-act" data-ver="1" title="Next version" aria-label="Next version"><svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>';
+    pg.addEventListener('click',function(e){var b=e.target.closest('[data-ver]');var gg=div._verGroup;if(b&&gg)_verShow(gg,gg.cur+Number(b.getAttribute('data-ver')))});
+    var t=meta.querySelector('.msg-time');
+    if(t&&t.nextSibling)meta.insertBefore(pg,t.nextSibling);else meta.appendChild(pg);
+  }
+  pg.querySelector('.msg-ver-n').textContent=(g.cur+1)+' / '+g.versions.length;
+  pg.querySelector('[data-ver="-1"]').disabled=g.cur===0;
+  pg.querySelector('[data-ver="1"]').disabled=g.cur===g.versions.length-1;
+}
+// Show version k: the current tail (from this turn's first message to the end) is
+// kept as it is, the chosen one goes back in, and the saved chat follows.
+function _verShow(g,k){
+  if(isProcessing){showToast('Wait for the reply to finish');return}
+  if(k<0||k>=g.versions.length||k===g.cur)return;
+  var box=document.getElementById('messages'),anchor=g.versions[g.cur].nodes[0];
+  if(!anchor||anchor.parentNode!==box)return;
+  var kids=Array.prototype.slice.call(box.children),tail=kids.slice(kids.indexOf(anchor));
+  g.versions[g.cur]={nodes:tail,hist:chatHist.slice(g.prefix),saved:_savedTail(g.prefix)};
+  tail.forEach(function(n){n.remove()});
+  var v=g.versions[k];
+  v.nodes.forEach(function(n){box.appendChild(n)});
+  g.cur=k;
+  chatHist=chatHist.slice(0,g.prefix).concat(v.hist||[]);
+  _savedRows=_savedRows.slice(0,g.prefix);
+  _markDiscard(g.prefix);
+  saveMessages(v.saved||[]);
+  _verPager(v.nodes[0]);
+  scrollBottom();
+}
+
+// ── Thumbs feedback (P2.7) ─────────────────────────────────────────────────
+// Stored locally (qchat_feedback, hash of the reply only) and counted by the
+// shift report and the self-improvement run.
+var _lastSkill=null;
+var _FB_REASONS=[['wrong','Wrong'],['too_long','Too long'],['no_data','Didn\'t use my data']];
+function _sendFeedback(div,text,rating,reason){
+  var sel=document.getElementById('modelSelect');
+  var hdrs={'Content-Type':'application/json'};
+  var cm=document.cookie.match(/codec_csrf=([^;]+)/);if(cm)hdrs['x-csrf-token']=cm[1];
+  return fetch('/api/qchat/feedback',{method:'POST',headers:hdrs,body:JSON.stringify({session_id:sessionId,content:text,rating:rating,reason:reason||'',model:(sel&&sel.dataset.current)||'',skill:div.dataset.skill||''})})
+    .then(function(r){if(!r.ok)throw new Error(r.status)}).catch(function(){showToast('Could not save your rating')});
+}
+function rateMessage(div,text,rating){
+  var up=div.querySelector('[data-act="up"]'),down=div.querySelector('[data-act="down"]');
+  var was=div.dataset.rating||'none',now=(was===rating)?'none':rating;
+  div.dataset.rating=now;
+  if(up)up.setAttribute('aria-pressed',String(now==='up'));
+  if(down)down.setAttribute('aria-pressed',String(now==='down'));
+  var box=div.querySelector('.fb-reasons');
+  if(now==='down'){
+    if(!box){
+      box=document.createElement('div');box.className='fb-reasons';box.setAttribute('role','group');box.setAttribute('aria-label','What was wrong (optional)');
+      box.innerHTML=_FB_REASONS.map(function(r){return'<button type="button" class="fb-reason" aria-pressed="false" data-reason="'+r[0]+'">'+r[1]+'</button>'}).join('');
+      box.addEventListener('click',function(e){
+        var b=e.target.closest('[data-reason]');if(!b||div.dataset.rating!=='down')return;
+        var on=b.getAttribute('aria-pressed')!=='true';
+        box.querySelectorAll('.fb-reason').forEach(function(x){x.setAttribute('aria-pressed','false')});
+        if(on)b.setAttribute('aria-pressed','true');
+        _sendFeedback(div,text,'down',on?b.getAttribute('data-reason'):'');
+      });
+      div.appendChild(box);
+    }
+    box.hidden=false;
+  }else if(box){box.hidden=true;box.querySelectorAll('.fb-reason').forEach(function(x){x.setAttribute('aria-pressed','false')})}
+  _sendFeedback(div,text,now,'');
+}
+
+// ── More menu on a reply (P2.7): retry with Think, or with another model ────
+var _retryAfterSwitch=null;
+function _isLastReply(div){var box=document.getElementById('messages');var el=box.lastElementChild;while(el&&el!==div&&el.classList.contains('msg')&&el.classList.contains('assistant'))el=el.previousElementSibling;return el===div}
+function replyMore(div,btn){
+  var last=_isLastReply(div);
+  var items=[];
+  if(last){
+    items.push({label:thinkingEnabled?'Retry (Think is on)':'Retry with Think',icon:'bulb',run:function(){if(!thinkingEnabled)toggleThinking();regenerateResponse(div)}});
+    items.push({label:'Retry with another model',icon:'cpu',run:function(){retryOtherModel(div)}});
+  }
+  items.push({label:'Copy',icon:'doc',run:function(){var cb=div.querySelector('[data-act="copy"]');if(cb)cb.click()}});
+  CodecShell.actions(btn,items);
+}
+function retryOtherModel(div){
+  var sel=document.getElementById('modelSelect');
+  var m=sel&&window.CodecShell&&CodecShell.menu(sel);
+  if(!m||_modelBusy){showToast('The model picker is busy');return}
+  m.open({onClose:function(changed){_retryAfterSwitch=changed?div:null}});
+}
 
 // ── Composer card (UI phase 1 PR-D) ────────────────────────────────────────
 // The mode pill shows Chat or Think (both /api/chat; Think adds the reasoning
@@ -1289,7 +1440,7 @@ function parseScaffold(raw){
 
 function genId(){return Date.now().toString(36)+Math.random().toString(36).substr(2,5)}
 
-function startNewSession(){if(typeof setPick==='function')setPick(null);_pickAgent=null;_discardFrom=null;sessionId=genId();_lsSet('codec-chat-session',sessionId);chatHist=[];pendingFiles=[];document.getElementById('fileChips').innerHTML='';_clearQueue();_follow=true;_renderEmptyState();_syncSendState();if(window.CodecShell)CodecShell.setActiveChat(sessionId)}
+function startNewSession(){if(typeof setPick==='function')setPick(null);_pickAgent=null;_discardFrom=null;_verPending=null;_savedRows=[];sessionId=genId();_lsSet('codec-chat-session',sessionId);chatHist=[];pendingFiles=[];document.getElementById('fileChips').innerHTML='';_clearQueue();_follow=true;_renderEmptyState();_syncSendState();if(window.CodecShell)CodecShell.setActiveChat(sessionId)}
 
 // PR #39: persist sessionId across page reloads. If a previous session
 // exists, load it on boot so the user lands back on the same chat (with
@@ -1368,24 +1519,27 @@ window.addEventListener('hashchange',_chatFromHash);
 // the saved rows from that position on as superseded, so a reload shows exactly
 // what this page shows. Nothing is deleted.
 var _discardFrom=null;
+// _savedRows mirrors the chat's current saved rows, in order (P2.7 re-saves a version with them).
+var _savedRows=[];
 function _markDiscard(n){_discardFrom=(_discardFrom===null)?n:Math.min(_discardFrom,n)}
 async function saveMessages(msgs){
   var title=(chatHist.find(function(m){return m.role==='user'})||{}).content||'New Chat';
   var payload={session_id:sessionId,title:title.substring(0,60),messages:msgs||[]};
-  if(_discardFrom!==null){payload.discard_from=_discardFrom;_discardFrom=null}
+  if(_discardFrom!==null){payload.discard_from=_discardFrom;_savedRows=_savedRows.slice(0,_discardFrom);_discardFrom=null}
+  _savedRows=_savedRows.concat((msgs||[]).map(function(m){return{role:m.role,content:m.content}}));
   try{await fetch('/api/qchat/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});if(window.CodecShell)CodecShell.refreshHistorySoon()}catch(e){}
 }
 
 
 
 async function loadSession(sid){
-  if(window.CodecShell){CodecShell.closeDrawer();CodecShell.setActiveChat(sid)}_discardFrom=null;sessionId=sid;_lsSet('codec-chat-session',sid);chatHist=[];pendingFiles=[];_clearQueue();
+  if(window.CodecShell){CodecShell.closeDrawer();CodecShell.setActiveChat(sid)}_discardFrom=null;_verPending=null;_savedRows=[];sessionId=sid;_lsSet('codec-chat-session',sid);chatHist=[];pendingFiles=[];_clearQueue();
   document.getElementById('fileChips').innerHTML='';
   var es=document.getElementById('emptyState');if(es)es.remove();
   document.getElementById('messages').innerHTML='';
   try{
     var r=await fetch('/api/qchat/session/'+sid);var data=await r.json();
-    for(var i=0;i<data.length;i++){var m=data[i];addMessage(m.role==='user'?'user':'assistant',m.content||'',false,m.timestamp);chatHist.push({role:m.role,content:m.content||''})}
+    for(var i=0;i<data.length;i++){var m=data[i];addMessage(m.role==='user'?'user':'assistant',m.content||'',false,m.timestamp);chatHist.push({role:m.role,content:m.content||''});_savedRows.push({role:m.role,content:m.content||''})}
     // PR #39: any assistant message with [CODEC_AGENT_PLAN:<id>] marker
     // gets replaced by the live plan card (fetched from /api/agents/<id>).
     await rehydrateAgentPlanCards();
@@ -1434,8 +1588,10 @@ function addMessage(role,content,animate,ts,quiet){
   var speakBtn=role==='assistant'?'<button class="msg-act msg-speak" data-act="speak" title="Speak" aria-label="Speak"><svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 010 14.14"/><path d="M15.54 8.46a5 5 0 010 7.07"/></svg></button>':'';
   // P3.3: Schedule this — run the question behind this reply again on a plain-language timing.
   var schedBtn=role==='assistant'?'<button class="msg-act msg-sched" data-act="schedule" title="Schedule this" aria-label="Schedule this"><svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg></button>':'';
-  // One inline action row beneath the bubble: timestamp + regenerate / edit / copy / speak / schedule (role-gated)
-  var actions=regenBtn+editBtn+copyBtn+speakBtn+schedBtn;
+  // P2.7: thumbs up / down and the more menu (retry with Think or another model).
+  var fbBtns=role==='assistant'?'<button class="msg-act msg-up" data-act="up" aria-pressed="false" title="Good reply" aria-label="Good reply"><svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"/></svg></button><button class="msg-act msg-down" data-act="down" aria-pressed="false" title="Bad reply" aria-label="Bad reply"><svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M17 14V2"/><path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"/></svg></button><button class="msg-act msg-more" data-act="more" aria-haspopup="menu" aria-expanded="false" title="More" aria-label="More actions"><svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>':'';
+  // One inline action row beneath the bubble: timestamp + regenerate / edit / copy / speak / schedule / thumbs / more (role-gated)
+  var actions=regenBtn+editBtn+copyBtn+speakBtn+schedBtn+fbBtns;
   div.innerHTML='<div class="msg-bubble"></div><div class="msg-meta"><span class="msg-time">'+time+'</span>'+actions+'</div>';
   // The user's own words stay plain text (textContent, pre-wrap), never Markdown.
   var bub=div.firstChild;if(role==='user')bub.textContent=String(content==null?'':content);else mdRender(bub,content);
@@ -1449,8 +1605,14 @@ function addMessage(role,content,animate,ts,quiet){
     if(sb)sb.addEventListener('click',function(){speakMessage(txt,sb)});
     var sch=host.querySelector('[data-act="schedule"]');
     if(sch)sch.addEventListener('click',function(){CodecShell.schedule.open({prompt:_questionBefore(host)})});
+    var ub=host.querySelector('[data-act="up"]'),db=host.querySelector('[data-act="down"]'),mb=host.querySelector('[data-act="more"]');
+    if(ub)ub.addEventListener('click',function(){rateMessage(host,txt,'up')});
+    if(db)db.addEventListener('click',function(){rateMessage(host,txt,'down')});
+    if(mb)mb.addEventListener('click',function(){replyMore(host,mb)});
   })(div,String(content));
+  if(role==='assistant'&&_lastSkill){div.dataset.skill=_lastSkill;_lastSkill=null}
   document.getElementById('messages').appendChild(div);
+  _verAttach(div,role);
   if(role==='user')jumpToLatest();else scrollBottom();
   // ── Auto-speak via Kokoro when global "Voice Replies" toggle is ON
   if (role === 'assistant' && voiceReplyEnabled && !quiet) speakMessage(String(content));
@@ -1522,18 +1684,19 @@ function editMessage(text,btn){
   input.value=text;
   _autosize(input);_syncSendState();
   input.focus();
-  // Remove this message and everything after it
-  var msgDiv=btn.closest('.msg');
+  // Take this message and everything after it off the page. P2.7: they are kept as
+  // an earlier version of this turn; the edited question starts the next version.
+  var msgDiv=btn.closest('.msg'),tail=[];
   if(msgDiv){
     var msgs=document.getElementById('messages');
     var siblings=Array.from(msgs.children);
-    var idx=siblings.indexOf(msgDiv);
-    for(var i=siblings.length-1;i>=idx;i--){siblings[i].remove()}
+    tail=siblings.slice(siblings.indexOf(msgDiv));
   }
-  // Trim chat history: find and remove this user message and all after it
+  // Trim chat history: find this user message; it and all after it leave chatHist
   for(var i=chatHist.length-1;i>=0;i--){
-    if(chatHist[i].role==='user'&&chatHist[i].content===text){chatHist=chatHist.slice(0,i);_markDiscard(i);break}
+    if(chatHist[i].role==='user'&&chatHist[i].content===text){_verKeep(i,tail,'user');chatHist=chatHist.slice(0,i);_markDiscard(i);break}
   }
+  tail.forEach(function(n){n.remove()});
 }
 var addMsg=addMessage; // alias for webcam code
 
@@ -2021,6 +2184,7 @@ async function sendMessage(queued){
       else{addMessage('assistant','Error: '+(data.error||'No response'))}
     } else {
       if(pick)setPick(null); // the pick goes with this one message
+      _lastSkill=(pick&&pick.kind!=='agent'&&pick.name)||null; // P2.7: the reply's skill, for feedback
       r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs,force_search:webSearchEnabled,thinking:false,show_thoughts:false,reason_scaffold:thinkingEnabled,stream:true,workdir:_workdir,skill:pick?pick.name:undefined}),signal:_currentAbort.signal});
       if(r.status===401||r.status===403){hideTyping();addMessage('assistant','Session expired — redirecting to login...');setTimeout(function(){window.location.href='/auth'},1500);isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false;return}
       hideTyping();_lastStats=null;
@@ -2039,7 +2203,7 @@ async function sendMessage(queued){
           if(!line.startsWith('data: '))continue;
           var payload=line.substring(6);
           if(payload==='[DONE]')break;
-          try{var j=JSON.parse(payload);if(j.stats){_lastStats=j.stats}if(j.memory){_lastMemory=j.memory}if(j.token){raw+=j.token;var ps=parseScaffold(raw);if(thinkingEnabled&&ps.think){var tp2=makeToT(div,'Reveal train of thought',true);totSet(tp2,ps.think)}if(ps.answer){(answerStream||(answerStream=mdStream(bubble,{onRender:scrollBottom}))).update(ps.answer)}scrollBottom()}if(j.escalate_project){renderEscalateChip(j.escalate_project,text)}if(j.skill_confirm){renderSkillConfirmChip(j.skill_confirm,text)}if(j.error){raw+='\n\nError: '+j.error}}catch(pe){}
+          try{var j=JSON.parse(payload);if(j.stats){_lastStats=j.stats}if(j.memory){_lastMemory=j.memory}if(j.skill){_lastSkill=j.skill}if(j.token){raw+=j.token;var ps=parseScaffold(raw);if(thinkingEnabled&&ps.think){var tp2=makeToT(div,'Reveal train of thought',true);totSet(tp2,ps.think)}if(ps.answer){(answerStream||(answerStream=mdStream(bubble,{onRender:scrollBottom}))).update(ps.answer)}scrollBottom()}if(j.escalate_project){renderEscalateChip(j.escalate_project,text)}if(j.skill_confirm){renderSkillConfirmChip(j.skill_confirm,text)}if(j.error){raw+='\n\nError: '+j.error}}catch(pe){}
         }
       }
       var pf2=parseScaffold(raw);

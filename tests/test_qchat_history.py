@@ -174,11 +174,12 @@ def test_patch_is_csrf_checked_like_other_writes():
 
 def test_chat_marks_the_discarded_tail_on_regenerate_and_edit():
     regen = CHAT[CHAT.index("function regenerateResponse("):CHAT.index("function regenerateResponse(") + 800]
-    assert "chatHist.pop();\n  _markDiscard(chatHist.length);" in regen
+    # P2.7 keeps the replaced tail as a version; the saved chat still drops it.
+    assert "chatHist=chatHist.slice(0,n);\n  _markDiscard(n);" in regen
     assert "chatHist=chatHist.slice(0,i);_markDiscard(i);break" in CHAT
     save = CHAT[CHAT.index("async function saveMessages("):]
     save = save[:save.index("\n}\n")]
-    assert "payload.discard_from=_discardFrom;_discardFrom=null" in save
+    assert "payload.discard_from=_discardFrom;" in save and "_discardFrom=null}" in save
 
 
 def test_sidebar_groups_menu_paging_archive_and_select():
