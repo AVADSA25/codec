@@ -632,10 +632,11 @@ function renderStats(msgEl, st){
 // /api/chat sends the sources and counts (never the text) as a `memory` event;
 // the button under the reply lists them and links to Settings > Memory.
 var _lastMemory = null;
-var _MEM_LABEL = {
-  'chat:recent': 'recent chat messages', 'chat:relevant': 'past chat messages about this',
-  'voice:recent': 'recent voice lines', 'voice:relevant': 'past voice lines about this',
-  'vibe:relevant': 'past Vibe messages about this', 'rules:standing': 'standing rules', 'threads:open': 'open threads'
+var _MEM_LABEL = {  // [one, more than one]
+  'chat:recent': ['recent chat message', 'recent chat messages'], 'chat:relevant': ['past chat message about this', 'past chat messages about this'],
+  'voice:recent': ['recent voice line', 'recent voice lines'], 'voice:relevant': ['past voice line about this', 'past voice lines about this'],
+  'vibe:relevant': ['past Vibe message about this', 'past Vibe messages about this'], 'rules:standing': ['standing rule', 'standing rules'],
+  'threads:open': ['open thread', 'open threads']
 };
 function renderMemoryUsed(msgEl, items){
   try{
@@ -648,7 +649,8 @@ function renderMemoryUsed(msgEl, items){
     var ul = document.createElement('ul');
     items.forEach(function(it){
       var li = document.createElement('li');
-      li.textContent = it.count + ' ' + (_MEM_LABEL[it.source + ':' + it.kind] || (it.source + ' ' + it.kind));
+      var lb = _MEM_LABEL[it.source + ':' + it.kind] || [it.source + ' ' + it.kind, it.source + ' ' + it.kind];
+      li.textContent = it.count + ' ' + lb[it.count === 1 ? 0 : 1];
       ul.appendChild(li);
     });
     var a = document.createElement('a');

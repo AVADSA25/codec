@@ -859,7 +859,9 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
     #panel-memory .settings-section{margin-top:16px}
     .mem-lead{margin:4px 2px 0}
     .mem-sub{display:block;font-weight:400;font-size:var(--fs-12);color:var(--text-muted);margin-top:2px}
-    .mem-about{width:100%;box-sizing:border-box;resize:vertical;min-height:96px;font-family:var(--font-sans)}
+    /* Home's .setting-input is right-aligned mono (config values); these hold prose. */
+    #panel-memory .setting-input{text-align:left;font-family:var(--font-sans);font-size:max(16px,var(--fs-14));max-width:none;width:auto}
+    #panel-memory .mem-about,.mem-extra textarea{width:100%!important;box-sizing:border-box;resize:vertical;min-height:96px}
     .mem-row-end{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-top:8px}
     .mem-count{font-size:var(--fs-12);color:var(--text-dim)}
     .mem-add{display:flex;gap:8px;margin-top:8px}
@@ -881,7 +883,6 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
     .mem-acts .mcp-btn{padding:4px 10px}
     .mem-btn-danger{color:var(--danger-text)!important;border-color:var(--danger)!important}
     .mem-extra{margin-top:8px}
-    .mem-extra textarea{width:100%;box-sizing:border-box;min-height:64px;font-family:var(--font-sans)}
     .mem-hist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;font-size:var(--fs-13)}
     .mem-hist li{padding:6px 8px;border-radius:var(--radius-8);background:var(--surface-2)}
     .mem-hist .mem-meta{margin-top:2px}
@@ -2326,8 +2327,9 @@ async function loadMemorySwitches() {
     var d = await _memJSON('/api/memory/settings');
     document.getElementById('memFactExtract').checked = !!d.fact_extract;
     document.getElementById('memNightly').checked = !!d.nightly;
-    document.getElementById('memNightlyNote').textContent = 'Every night (' + d.nightly_when + '), CODEC reads the last 24 hours of chats and saves the lasting facts it finds' +
-      (d.fact_extract ? '.' : ', once Save facts from text is on.') + (d.nightly_last_run ? ' Last run ' + _memDate(d.nightly_last_run) + '.' : '');
+    document.getElementById('memNightlyNote').textContent = 'CODEC reads the last 24 hours of chats and saves the lasting facts it finds' +
+      (d.fact_extract ? '' : ', once Save facts from text is on') + '. Runs ' + String(d.nightly_when || '').toLowerCase() + '.' +
+      (d.nightly_last_run ? ' Last run ' + _memDate(d.nightly_last_run) + '.' : '');
   } catch (e) { _memMsg('memSwitchMsg', 'Could not load: ' + e.message, true); }
 }
 async function saveMemorySwitch(name, on) {
