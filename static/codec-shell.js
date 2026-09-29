@@ -95,7 +95,11 @@
     video: '<path d="m23 7-7 5 7 5z"/><rect x="1" y="5" width="15" height="14" rx="2"/>',
     theme: '<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor" stroke="none"/>',
     text: '<path d="M4 7V5h16v2M9 19h6M12 5v14"/>',
-    plug: '<path d="M12 22v-5M9 8V2M15 8V2M18 8v5a6 6 0 0 1-12 0V8z"/>'
+    plug: '<path d="M12 22v-5M9 8V2M15 8V2M18 8v5a6 6 0 0 1-12 0V8z"/>',
+    sound: '<path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>',
+    pause: '<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>',
+    play: '<path d="M7 4v16l13-8z"/>',
+    stop: '<rect x="5" y="5" width="14" height="14" rx="2"/>'
   };
   function ico(name, size, cls) {
     return '<svg class="cs-ico' + (cls ? ' ' + cls : '') + '" width="' + (size || 20) + '" height="' + (size || 20) +
@@ -152,6 +156,18 @@
         '</div>' +
       '</aside>' +
       '<div class="cs-scrim" id="csScrim" onclick="CodecShell.closeDrawer()"></div>';
+  }
+
+  // Read-aloud player strip (P2.8): under the top bar, in the page flow; shown while reading.
+  function playerHTML() {
+    return '<div class="cs-player" id="csPlayer" role="region" aria-label="Read aloud" hidden>' + ico('sound', 16) +
+      '<span class="cs-player-label">Reading aloud</span><span class="cs-player-pos" id="csPlayerPos"></span>' +
+      '<button type="button" class="cs-player-btn" id="csPlayerToggle" onclick="CodecShell.speech.toggle()"' +
+      ' aria-label="Pause">' + ico('pause', 18) + '</button>' +
+      '<button type="button" class="cs-player-btn cs-player-rate" id="csPlayerRate" onclick="CodecShell.speech.rate()"' +
+      ' aria-label="Reading speed" title="Reading speed">1.0x</button>' +
+      '<button type="button" class="cs-player-btn" id="csPlayerStop" onclick="CodecShell.speech.stop()"' +
+      ' aria-label="Stop reading">' + ico('stop', 18) + '</button></div>';
   }
 
   function topHTML() {
@@ -239,7 +255,7 @@
   var body = document.body;
   body.classList.add('cs', 'cs-page-' + (PAGE || 'other'));
   var holder = document.createElement('div');
-  holder.innerHTML = sidebarHTML() + topHTML() + tabsHTML() + panelHTML();
+  holder.innerHTML = sidebarHTML() + topHTML() + playerHTML() + tabsHTML() + panelHTML();
   while (holder.firstChild) {
     if (script && script.parentNode === body) body.insertBefore(holder.firstChild, script);
     else body.insertBefore(holder.firstChild, body.firstChild);
@@ -1138,6 +1154,163 @@
   }
   window.addEventListener('pagehide', dictRelease);
 
+  // ── Read aloud (P2.8): the whole answer, sentence by sentence, through
+  // POST /api/tts (CODEC's Kokoro on the Mac). The next two pieces are fetched
+  // while one plays; the speed is the audio playback rate, per device.
+  // speech text: begin (tests/test_tts_reader.py runs this block under Node)
+  function speechText(md) {
+    var s = String(md == null ? '' : md).replace(/\r\n?/g, '\n');
+    s = s.replace(/```[\s\S]*?(?:```|$)/g, '\n').replace(/~~~[\s\S]*?(?:~~~|$)/g, '\n');   // code blocks
+    s = s.replace(/<[^>\n]+>/g, ' ');                                                    // HTML tags
+    s = s.replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1');     // images, links
+    s = s.replace(/<?\bhttps?:\/\/[^\s>)]+>?/g, 'the link');                               // bare URLs
+    s = s.replace(/`([^`\n]*)`/g, '$1');                                                 // inline code: its text
+    s = s.replace(/^[ \t]*\|?[ \t]*:?-{3,}:?[ \t]*(?:\|[ \t]*:?-{3,}:?[ \t]*)*\|?[ \t]*$/gm, ''); // table rules
+    s = s.replace(/^[ \t]*\|(.*)\|[ \t]*$/gm, function (m, row) {                          // table rows
+      return row.split('|').map(function (c) { return c.trim(); }).filter(Boolean).join(', ') + '.';
+    });
+    s = s.replace(/^[ \t]*(?:[-*_][ \t]*){3,}$/gm, '');                                    // rules
+    s = s.replace(/^[ \t]{0,3}#{1,6}[ \t]+/gm, '').replace(/^[ \t]*>[ \t]?/gm, '');         // headings, quotes
+    s = s.replace(/^[ \t]*(?:[-*+]|\d+[.)])[ \t]+/gm, '');                                  // list markers
+    s = s.replace(/\*\*([^*\n]+)\*\*/g, '$1').replace(/\*([^*\n]+)\*/g, '$1').replace(/~~([^~\n]+)~~/g, '$1');
+    s = s.replace(/(^|[^\w])__([^_\n]+)__(?=[^\w]|$)/g, '$1$2').replace(/(^|[^\w])_([^_\n]+)_(?=[^\w]|$)/g, '$1$2');
+    // One line per heading, item or paragraph, each ending in punctuation so it is read as a pause.
+    return s.split('\n').map(function (l) { return l.replace(/[ \t]+/g, ' ').trim(); }).filter(Boolean)
+      .map(function (l) { return /[.!?:;,\u2026]["')\]]*$/.test(l) ? l : l + '.'; }).join('\n');
+  }
+  // Sentence-sized pieces of at most `max` characters; short neighbours are merged.
+  function speechChunks(text, max) {
+    max = max || 280;
+    var parts = [];
+    String(text || '').split(/\n+/).forEach(function (line) {
+      (line.match(/.*?[.!?\u2026]+["')\]]*(?=\s|$)|.+$/g) || []).forEach(function (s) {
+        s = s.trim();
+        while (s.length > max) {
+          var cut = s.lastIndexOf(', ', max);
+          if (cut < max / 2) cut = s.lastIndexOf(' ', max);
+          if (cut < max / 2) cut = max;
+          parts.push(s.slice(0, cut + 1).trim());
+          s = s.slice(cut + 1).trim();
+        }
+        if (s) parts.push(s);
+      });
+    });
+    var out = [];
+    parts.forEach(function (p) {
+      var last = out[out.length - 1];
+      if (last !== undefined && last.length < 60 && last.length + 1 + p.length <= max) out[out.length - 1] = last + ' ' + p;
+      else out.push(p);
+    });
+    return out;
+  }
+  // speech text: end
+  var RATES = [0.9, 1, 1.1, 1.2, 1.3, 1.4];
+  var SAY = { gen: 0, parts: [], i: 0, reqs: [], urls: [], audio: null, btn: null, paused: false,
+              rate: RATES.indexOf(parseFloat(lsGet('codec-read-rate'))) >= 0 ? parseFloat(lsGet('codec-read-rate')) : 1 };
+  function sayUI() {
+    var bar = $('csPlayer');
+    if (!bar) return;
+    bar.hidden = !SAY.parts.length;
+    var pos = $('csPlayerPos'), tog = $('csPlayerToggle'), rate = $('csPlayerRate');
+    if (pos) pos.textContent = SAY.parts.length > 1 ? (Math.min(SAY.i + 1, SAY.parts.length) + ' of ' + SAY.parts.length) : '';
+    if (tog) {
+      tog.innerHTML = ico(SAY.paused ? 'play' : 'pause', 18);
+      tog.setAttribute('aria-label', SAY.paused ? 'Resume' : 'Pause');
+    }
+    if (rate) rate.textContent = SAY.rate.toFixed(1) + 'x';
+  }
+  function sayFetch(i, gen) {
+    if (!SAY.reqs[i]) {
+      SAY.reqs[i] = fetch('/api/tts', { method: 'POST', headers: csrf({ 'Content-Type': 'application/json' }),
+                                         body: JSON.stringify({ text: SAY.parts[i] }) }).then(function (r) {
+        if (!r.ok) return r.json().catch(function () { return {}; }).then(function (d) { throw new Error(d.error || ('HTTP ' + r.status)); });
+        return r.blob();
+      }).then(function (b) {
+        var u = URL.createObjectURL(b);
+        if (gen !== SAY.gen) { URL.revokeObjectURL(u); throw new Error('stale'); }
+        SAY.urls[i] = u;
+        return u;
+      });
+    }
+    return SAY.reqs[i];
+  }
+  function sayNext(gen) {
+    if (gen !== SAY.gen) return;
+    var i = SAY.i;
+    if (i >= SAY.parts.length) { sayStop(); return; }
+    sayUI();
+    for (var k = i + 1; k <= i + 2 && k < SAY.parts.length; k++) sayFetch(k, gen).catch(function () { /* its turn retries */ });
+    sayFetch(i, gen).then(function (url) {
+      if (gen !== SAY.gen) return;
+      if (!SAY.audio) SAY.audio = new Audio();
+      var a = SAY.audio;
+      a.onended = function () {
+        if (gen !== SAY.gen) return;
+        URL.revokeObjectURL(url);
+        SAY.urls[i] = null;
+        SAY.i = i + 1;
+        sayNext(gen);
+      };
+      a.onerror = function () { if (gen === SAY.gen) { toast('Read aloud stopped: the audio could not play.'); sayStop(); } };
+      a.src = url;
+      a.defaultPlaybackRate = SAY.rate;
+      a.playbackRate = SAY.rate;
+      if (!SAY.paused) a.play().catch(function (e) {
+        if (gen !== SAY.gen) return;
+        // Autoplay without a tap (voice replies): wait for Resume instead of failing.
+        if (e && e.name === 'NotAllowedError') { SAY.paused = true; sayUI(); return; }
+        toast('Read aloud stopped: the audio could not play.');
+        sayStop();
+      });
+    }, function (e) {
+      if (gen !== SAY.gen || (e && e.message === 'stale')) return;
+      toast('Read aloud stopped: ' + ((e && e.message) || 'the voice service failed.'));
+      sayStop();
+    });
+  }
+  function sayStop() {
+    SAY.gen++;
+    if (SAY.audio) {
+      try { SAY.audio.pause(); } catch (e) { /* not started */ }
+      SAY.audio.removeAttribute('src');
+    }
+    SAY.urls.forEach(function (u) { if (u) URL.revokeObjectURL(u); });
+    SAY.urls = [];
+    SAY.reqs = [];
+    SAY.parts = [];
+    SAY.i = 0;
+    SAY.paused = false;
+    if (SAY.btn) SAY.btn.classList.remove('speaking');
+    SAY.btn = null;
+    sayUI();
+  }
+  // Read `text` (Markdown) aloud from the start; `opts.btn` gets the 'speaking' class meanwhile.
+  function speak(text, opts) {
+    var parts = speechChunks(speechText(text));
+    sayStop();
+    if (!parts.length) return false;
+    SAY.gen++;
+    SAY.parts = parts;
+    SAY.btn = (opts && opts.btn) || null;
+    if (SAY.btn) SAY.btn.classList.add('speaking');
+    sayNext(SAY.gen);
+    return true;
+  }
+  function sayToggle() {
+    if (!SAY.parts.length) return;
+    SAY.paused = !SAY.paused;
+    var a = SAY.audio;
+    if (a) { if (SAY.paused) a.pause(); else if (a.getAttribute('src')) a.play().catch(function () { /* next tap */ }); }
+    sayUI();
+  }
+  function sayRate() {
+    SAY.rate = RATES[(RATES.indexOf(SAY.rate) + 1) % RATES.length];
+    lsSet('codec-read-rate', String(SAY.rate));
+    if (SAY.audio) { SAY.audio.defaultPlaybackRate = SAY.rate; SAY.audio.playbackRate = SAY.rate; }
+    sayUI();
+  }
+  window.addEventListener('pagehide', sayStop);
+
   // ── Keys: Cmd/Ctrl+Shift+S sidebar, Cmd/Ctrl+K search, Esc closes ────────
   document.addEventListener('keydown', function (e) {
     var mod = e.metaKey || e.ctrlKey;
@@ -1164,7 +1337,9 @@
     push: { support: pushSupport, subscription: currentSub, on: pushOn, off: pushOff, deviceId: deviceId,
             post: postJSON },
     dictation: { toggle: dictToggle, stop: dictStop, mode: dictMode, toggleMode: toggleDictMode,
-                 state: function () { return DICT.state; } }
+                 state: function () { return DICT.state; } },
+    speech: { speak: speak, stop: sayStop, toggle: sayToggle, rate: sayRate, text: speechText, chunks: speechChunks,
+              reading: function () { return SAY.parts.length > 0; } }
   };
   window.openSidePanel = openSidePanel;
   window.closeSidePanel = closeSidePanel;

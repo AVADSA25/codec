@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
 <link rel="manifest" href="/manifest.json">
 <title>CODEC</title>
-<link rel="stylesheet" href="/static/codec.css?v=8e957e11">
+<link rel="stylesheet" href="/static/codec.css?v=689a8f05">
 <style>
 :root {
   --bg: #121215; --surface: #18181b; --surface-2: #1f1f22; --surface-3: #2a2a2f;
@@ -192,6 +192,12 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
 .push-row-name { font-size: var(--fs-14); color: var(--text); }
 .push-row-hint { font-size: var(--fs-12); color: var(--text-dim); margin-top: 2px; }
 .push-empty { font-size: var(--fs-13); color: var(--text-dim); padding: 4px 14px 12px; }
+/* Voice (P2.8) */
+.voice-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 10px; flex-wrap: wrap; }
+.voice-row .voice-select { max-width: 100%; min-width: 0; flex: 1 1 220px; text-align: left; font-family: var(--font-sans); font-size: var(--fs-14); height: 36px; }
+.voice-speed { display: inline-flex; align-items: center; gap: 10px; flex: 1 1 220px; }
+.voice-speed input { flex: 1; accent-color: var(--accent); min-width: 0; }
+.voice-speed output { min-width: 48px; text-align: right; font-size: var(--fs-13); color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .ui-toggle-group { margin-bottom: 14px; }
 .ui-toggle-group-title { font-size: calc(12px * var(--fs-scale)); text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent); margin: 0 0 6px; font-weight: 600; }
 .ui-toggle-row { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--border); }
@@ -546,7 +552,7 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
 </style>
 </head>
 <body>
-<script src="/static/codec-shell.js?v=497d6d9e" data-page="home" data-title="Today" data-status></script>
+<script src="/static/codec-shell.js?v=58eaa5a8" data-page="home" data-title="Today" data-status></script>
 
 <!-- ── Connect your AI (first run) ─────────────────────────────────────────
      Shown until CODEC has a VERIFIED brain. A fresh paid install had no way
@@ -796,6 +802,23 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
           <div id="pushDevices"></div>
         </div>
       </div>
+      <div class="settings-section" style="margin-top:20px" id="voiceSection">
+        <div class="settings-title">Voice</div>
+        <div class="settings-card">
+          <div class="push-body">
+            <p class="push-intro">The voice CODEC uses when it reads answers aloud and for voice replies. The speed button on the reading strip changes the pace on this device only.</p>
+            <label class="voice-row"><span class="push-row-name">Voice</span>
+              <select id="voiceSelect" class="setting-input voice-select" onchange="saveVoice()" aria-label="Voice"></select></label>
+            <div class="push-actions" style="margin-bottom:12px">
+              <button type="button" class="mcp-btn" id="voicePreviewBtn" onclick="previewVoice()">Preview</button>
+            </div>
+            <label class="voice-row"><span class="push-row-name">Speaking speed</span>
+              <span class="voice-speed"><input type="range" id="voiceSpeed" min="0.7" max="1.3" step="0.05" aria-label="Speaking speed"
+                oninput="_voiceSpeedLabel()" onchange="saveVoiceSpeed()"><output id="voiceSpeedOut" for="voiceSpeed"></output></span></label>
+            <div class="push-msg" id="voiceMsg" role="status" aria-live="polite"></div>
+          </div>
+        </div>
+      </div>
       <div class="settings-section" style="margin-top:20px">
         <div class="settings-title">Page Customization</div>
         <div class="settings-card" style="padding:12px 16px">
@@ -1020,7 +1043,7 @@ function showTab(id) {
   if (id === 'audit') loadAudit();
   if (id === 'skills') loadSkillReviews();
   if (id === 'connector') renderConnectors();
-  if (id === 'settings') { loadSettings(); renderUIToggles(); loadPrompts(); loadPush(); }
+  if (id === 'settings') { loadSettings(); renderUIToggles(); loadPrompts(); loadPush(); loadVoice(); }
 }
 // Links such as /#settings (the shell's Settings row, other pages) open that panel.
 function _tabFromHash() {
@@ -1979,6 +2002,87 @@ function _pushRemove(id, btn) {
     function (e) { _pushMsg('Could not remove: ' + e.message, true); }).then(loadPush);
 }
 
+// ── Voice (P2.8): the reading voice with a short preview, and tts_speed. Both save at once.
+var _VOICE_PREVIEW = 'Hi, this is how CODEC sounds when it reads to you.';
+var _voice = { cfg: null, audio: null };
+function _voiceMsg(text, err) {
+  var m = document.getElementById('voiceMsg');
+  if (m) { m.textContent = text || ''; m.classList.toggle('err', !!err); }
+}
+function _voiceSpeedLabel() {
+  var v = parseFloat(document.getElementById('voiceSpeed').value);
+  document.getElementById('voiceSpeedOut').textContent = (isNaN(v) ? 1 : v).toFixed(2) + 'x';
+}
+async function loadVoice() {
+  try {
+    var r = await fetch('/api/tts/voices');
+    _voice.cfg = r.ok ? await r.json() : null;
+  } catch (e) { _voice.cfg = null; }
+  var cfg = _voice.cfg, sel = document.getElementById('voiceSelect');
+  if (!cfg) { _voiceMsg('Could not load the voices.', true); return; }
+  var groups = {};
+  cfg.voices.forEach(function (v) { (groups[v.group] = groups[v.group] || []).push(v); });
+  var html = '';
+  if (!cfg.voices.some(function (v) { return v.id === cfg.current; })) {
+    html += '<option value="' + escHtml(cfg.current) + '">Current: ' + escHtml(String(cfg.current).split('/').pop()) + '</option>';
+  }
+  ['Your voices', 'English', 'Other languages'].forEach(function (g) {
+    if (!groups[g]) return;
+    html += '<optgroup label="' + escHtml(g) + '">' + groups[g].map(function (v) {
+      return '<option value="' + escHtml(v.id) + '">' + escHtml(v.label) + '</option>';
+    }).join('') + '</optgroup>';
+  });
+  sel.innerHTML = html;
+  sel.value = cfg.current;
+  document.getElementById('voiceSpeed').value = cfg.speed;
+  _voiceSpeedLabel();
+}
+async function _voiceSave(fields, done) {
+  try {
+    var r = await fetch('/api/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tts: fields }) });
+    var d = await r.json();
+    if (!r.ok || !d.saved) throw new Error((d && (d.details || d.error)) || ('HTTP ' + r.status));
+    _voiceMsg(done);
+    return true;
+  } catch (e) {
+    _voiceMsg('Could not save: ' + e.message, true);
+    return false;
+  }
+}
+async function saveVoice() {
+  var sel = document.getElementById('voiceSelect');
+  if (await _voiceSave({ tts_voice: sel.value }, 'Voice saved.') && _voice.cfg) _voice.cfg.current = sel.value;
+  else if (_voice.cfg) sel.value = _voice.cfg.current;
+}
+async function saveVoiceSpeed() {
+  var v = Math.round(parseFloat(document.getElementById('voiceSpeed').value) * 100) / 100;
+  if (await _voiceSave({ tts_speed: v }, 'Speed saved.') && _voice.cfg) _voice.cfg.speed = v;
+}
+async function previewVoice() {
+  var btn = document.getElementById('voicePreviewBtn');
+  if (btn.disabled) return;
+  btn.disabled = true;
+  _voiceMsg('Preparing the preview...');
+  if (window.CodecShell) CodecShell.speech.stop();
+  if (_voice.audio) { try { _voice.audio.pause(); } catch (e) {} }
+  try {
+    var r = await fetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: _VOICE_PREVIEW, voice: document.getElementById('voiceSelect').value,
+                             speed: parseFloat(document.getElementById('voiceSpeed').value) }) });
+    if (!r.ok) { var d = await r.json().catch(function () { return {}; }); throw new Error(d.error || ('HTTP ' + r.status)); }
+    var url = URL.createObjectURL(await r.blob());
+    _voice.audio = new Audio(url);
+    _voice.audio.onended = function () { URL.revokeObjectURL(url); };
+    await _voice.audio.play();
+    _voiceMsg('');
+  } catch (e) {
+    _voiceMsg('Preview failed: ' + e.message, true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 async function loadTotpStatus() {
   try {
     var r = await fetch('/api/auth/status');
@@ -2094,6 +2198,7 @@ function renderSettings(cfg) {
     if (!sec.keys) continue;
     html += '<div class="settings-section"><div class="settings-title">' + escHtml(title) + '</div><div class="settings-card">';
     for (var key in sec.keys) {
+      if (key === 'tts_voice' || key === 'tts_speed') continue;  // the Voice section edits these (P2.8)
       var val = sec.keys[key];
       var inputHtml;
       if (typeof val === 'boolean') {
@@ -2427,21 +2532,16 @@ function updateVoiceIcon() {
 // LIVE server value each time the menu opens and writes instantly on click.
 updateVoiceIcon();
 
-var _currentAudio = null;
+// Voice replies (P2.8): the shell's reader speaks the whole answer with its player strip.
 var _lastPlayedText = null;
-async function playResponse(text) {
+function playResponse(text) {
   if (!voiceEnabled || !text) return;
-  if (text === _lastPlayedText) return;
+  if (text === _lastPlayedText && CodecShell.speech.reading()) return;
   _lastPlayedText = text;
-  try {
-    if (_currentAudio) { _currentAudio.pause(); _currentAudio = null; }
-    _currentAudio = new Audio('/api/tts?text=' + encodeURIComponent(text.substring(0, 300)));
-    _currentAudio.onended = function() { _currentAudio = null; _lastPlayedText = null; };
-    _currentAudio.play();
-  } catch(e) {}
+  CodecShell.speech.speak(text);
 }
 function stopPlayback() {
-  if (_currentAudio) { _currentAudio.pause(); _currentAudio = null; }
+  CodecShell.speech.stop();
 }
 
 // ── Server Photo (Mac webcam) ──
