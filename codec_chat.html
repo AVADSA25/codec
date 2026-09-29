@@ -10,7 +10,7 @@
 <link rel="icon" href="/favicon.png">
 <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
 <link rel="manifest" href="/manifest.json">
-<link rel="stylesheet" href="/static/codec.css?v=8e957e11">
+<link rel="stylesheet" href="/static/codec.css?v=689a8f05">
 <style>
 :root {
   --bg: #121215; --surface: #18181b; --surface-2: #1f1f22; --surface-3: #27272a;
@@ -332,7 +332,7 @@ input[type=file]{display:none}
 </style>
 </head>
 <body>
-<script src="/static/codec-shell.js?v=497d6d9e" data-page="chat" data-title="Chat" data-status data-model-slot></script>
+<script src="/static/codec-shell.js?v=58eaa5a8" data-page="chat" data-title="Chat" data-status data-model-slot></script>
 <div class="app cs-main" id="appContainer">
 <div class="messages" id="messages"></div>
 
@@ -1357,10 +1357,7 @@ function addMessage(role,content,animate,ts,quiet){
   document.getElementById('messages').appendChild(div);
   if(role==='user')jumpToLatest();else scrollBottom();
   // ── Auto-speak via Kokoro when global "Voice Replies" toggle is ON
-  if (role === 'assistant' && voiceReplyEnabled && !quiet) {
-    var plain = String(content).replace(/[`*_#>\[\]()]/g,'').replace(/\s+/g,' ').trim();
-    if (plain) speakMessage(plain);
-  }
+  if (role === 'assistant' && voiceReplyEnabled && !quiet) speakMessage(String(content));
   return div;
 }
 
@@ -1405,20 +1402,12 @@ async function discussReportInChat(docUrl, btn){
   var ci=document.getElementById('chatInput');if(ci)ci.focus();
 }
 
-// Play Kokoro TTS for any text — used by per-message Speak button + voice-reply autoplay
-var _ttsAudio = null;
+// Read an answer aloud (P2.8): the shell's reader speaks the whole text, sentence by sentence,
+// with its player strip (pause, speed, stop). A second tap on a speaking button stops it.
 function speakMessage(text, btn){
   if (!text) return;
-  // Stop any in-flight playback (prevents pile-up)
-  if (_ttsAudio) { try { _ttsAudio.pause(); } catch(e){} _ttsAudio = null; }
-  // Trim to ~500 chars (TTS endpoint caps internally too)
-  var snippet = String(text).slice(0, 500);
-  var url = '/api/tts?text=' + encodeURIComponent(snippet);
-  _ttsAudio = new Audio(url);
-  if (btn) btn.classList.add('speaking');
-  _ttsAudio.onended = function(){ if (btn) btn.classList.remove('speaking'); _ttsAudio = null; };
-  _ttsAudio.onerror = function(){ if (btn) btn.classList.remove('speaking'); _ttsAudio = null; };
-  _ttsAudio.play().catch(function(){ if (btn) btn.classList.remove('speaking'); });
+  if (btn && btn.classList.contains('speaking')) { CodecShell.speech.stop(); return; }
+  CodecShell.speech.speak(String(text), { btn: btn });
 }
 
 function editMessage(text,btn){

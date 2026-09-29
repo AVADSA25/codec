@@ -46,6 +46,7 @@ _VALIDATION_RULES = {
     "tts_url":             (str,  False, lambda v: (v == "" or v.startswith("http"), "tts_url must be a valid URL")),
     "tts_model":           (str,  False, None),
     "tts_voice":           (str,  False, None),
+    "tts_speed":           ((int, float), False, lambda v: (0.5 <= v <= 2.0, "tts_speed must be between 0.5 and 2.0")),
     "stt_engine":          (str,  False, None),
     "stt_url":             (str,  False, lambda v: (v == "" or v.startswith("http"), "stt_url must be a valid URL")),
     "key_toggle":          (str,  True,  lambda v: (len(v.strip()) > 0, "key_toggle cannot be empty")),
@@ -108,6 +109,7 @@ async def get_config():
             "tts_url": config.get("tts_url", "http://localhost:8085/v1/audio/speech"),
             "tts_model": config.get("tts_model", ""),
             "tts_voice": config.get("tts_voice", "am_adam"),
+            "tts_speed": config.get("tts_speed", 1.1),
         },
         "stt": {
             "stt_engine": config.get("stt_engine", "whisper_http"),

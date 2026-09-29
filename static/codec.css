@@ -546,6 +546,20 @@ body.cs-rail .cs-profile > .cs-ico { display: none; }
 .sp-note { cursor: default; color: var(--text-muted); font-size: var(--fs-13); }
 .sp-note:hover { background: none; }
 .sp-state.on { color: var(--accent); background: var(--accent-dim); }
+
+/* Read-aloud player (P2.8): a strip under the top bar, in the page flow, shown while reading. */
+.cs-player { order: -1; flex: none; display: flex; align-items: center; gap: 8px; min-height: 40px; box-sizing: border-box;
+  padding: 0 10px 0 20px; background: var(--surface-2); border-bottom: 1px solid var(--border);
+  color: var(--text-muted); font: 500 var(--fs-13)/1.2 var(--font-sans); }
+.cs-player[hidden] { display: none; }
+.cs-player-label { color: var(--text); white-space: nowrap; }
+.cs-player-pos { color: var(--text-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cs-player-btn { height: 32px; min-width: 32px; padding: 0 8px; display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border); border-radius: var(--radius-pill); background: var(--surface); color: var(--text);
+  font: 600 var(--fs-12)/1 var(--font-sans); cursor: pointer; }
+.cs-player-btn:first-of-type { margin-left: auto; }
+.cs-player-btn:hover { border-color: var(--border-strong); }
+.cs-player-rate { min-width: 48px; font-variant-numeric: tabular-nums; }
 .sp-hint { display: block; font-size: var(--fs-12); color: var(--text-dim); margin-top: 2px; }
 
 /* Dictation (P2.5): a live level ring on the recording mic button, and the
