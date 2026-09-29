@@ -980,7 +980,7 @@
   function syncDict() {
     var b = $('dictBtn'), s = $('dictState');
     if (b) b.hidden = !speechClass();
-    if (s) s.textContent = dictMode() === 'browser' ? 'On' : 'Off';
+    if (s) { var on = dictMode() === 'browser'; s.textContent = on ? 'ON' : 'OFF'; s.classList.toggle('on', on); }
   }
   function toggleDictMode() {
     var browser = dictMode() !== 'browser';
