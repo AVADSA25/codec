@@ -39,7 +39,7 @@ strict consent) are add-only. No personal data in the repo. No emoji in the UI.
 | 6 | P2.5: Dictation through CODEC's local Whisper, not Google | M | yes | done (#407) |
 | 7 | P2.8: Read aloud that reads the whole answer, with voice and speed | S | yes | done (#408) |
 | 8 | P3.3: Schedule any skill, crew or prompt in plain language | M | yes | done (#409) |
-| 9 | P3.1: Morning briefing that runs by itself, speaks, then leaves a card | M | yes | open |
+| 9 | P3.1: Morning briefing that runs by itself, speaks, then leaves a card | M | yes | done (#410) |
 | 10 | P3.5: Proactive check-in that speaks only when something matters | M | yes | open |
 | 11 | P2.9: Calm voice call with standard controls | M | yes | open |
 | 12 | MATH: Math and diagrams in replies | S | no | open |
