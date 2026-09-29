@@ -11,7 +11,7 @@
 <link rel="icon" href="/favicon.png">
 <link rel="apple-touch-icon" href="/favicon.png">
 <title>CODEC</title>
-<link rel="stylesheet" href="/static/codec.css?v=a5290fa8">
+<link rel="stylesheet" href="/static/codec.css?v=78031f9b">
 <style>
 :root {
   --bg: #121215; --surface: #18181b; --surface-2: #1f1f22; --surface-3: #2a2a2f;
@@ -37,106 +37,14 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html { background: var(--bg); }
 html, body { font-family: var(--font-sans); background: var(--bg); color: var(--text); height: 100%; overflow: hidden; -webkit-tap-highlight-color: transparent; }
-.app { display: flex; flex-direction: column; height: 100vh; padding-top: var(--safe-top); padding-bottom: var(--safe-bottom); overflow: hidden; }
-@supports (height: 100dvh) { .app { height: calc(100dvh / var(--tz, 1)); } }
+/* The shell (static/codec-shell.js) sizes this column and pads the safe areas: it is the page's .cs-main. */
+.app { display: flex; flex-direction: column; overflow: hidden; }
 
 /* ── Icons (inline SVG) ── */
 .ico { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
 .ico-sm { width: 16px; height: 16px; }
 .ico-lg { width: 22px; height: 22px; }
 
-/* ── Header ── */
-.header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 10px 16px; border-bottom: 1px solid var(--border);
-  background: var(--surface); flex-shrink: 0; position: relative;
-}
-.header-left { display: flex; align-items: center; gap: 10px; }
-.logo-link { display: flex; align-items: center; text-decoration: none; }
-.header img { width: 34px; height: 34px; border-radius: 8px; }
-.header h1 { font-family: var(--font-mono); font-size: calc(16px * var(--fs-scale)); font-weight: 700; letter-spacing: 2px; color: var(--accent); }
-.header-right { display: flex; align-items: center; gap: 6px; }
-.status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--danger); flex-shrink: 0; transition: all 0.3s; }
-.status-dot.on { background: var(--success); box-shadow: 0 0 6px rgba(34,197,94,0.5); }
-.icon-btn {
-  background: none; border: 1px solid var(--border); color: var(--text-muted);
-  width: 30px; height: 30px; border-radius: var(--radius-sm); cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  transition: all 0.15s ease;
-}
-.icon-btn:hover { border-color: var(--border-strong); color: var(--text); background: var(--surface-2); }
-.icon-btn:active { transform: scale(0.93); }
-
-/* ── Page Nav ── */
-.page-nav { display: flex; align-items: center; gap: 1px; position: absolute; left: 50%; transform: translateX(-50%); background: var(--surface-2); border-radius: var(--radius-sm); padding: 2px; }
-.nav-link {
-  padding: 5px 14px; color: var(--text-muted); text-decoration: none;
-  font-size: calc(12px * var(--fs-scale)); font-weight: 500; border-radius: 4px;
-  transition: all 0.15s ease; letter-spacing: 0.02em; white-space: nowrap;
-  text-align: center;
-}
-.nav-link:hover { color: var(--text); }
-.nav-link.active { color: var(--accent); background: var(--accent-dim); }
-
-/* ── Side Panel ── */
-.side-panel-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 9990; }
-.side-panel-overlay.open { display: block; }
-.side-panel {
-  position: fixed; top: 0; right: -300px; width: 300px; height: 100%;
-  background: var(--surface); border-left: 1px solid var(--border);
-  z-index: 9991; transition: right 0.3s cubic-bezier(0.4,0,0.2,1), visibility 0s 0.3s; visibility: hidden;
-  display: flex; flex-direction: column; box-shadow: -4px 0 24px rgba(0,0,0,0.3);
-}
-.side-panel.open { right: 0; visibility: visible; transition: right 0.3s cubic-bezier(0.4,0,0.2,1); }
-.side-panel-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 16px 20px; border-bottom: 1px solid var(--border);
-}
-.side-panel-header h2 { font-family: var(--font-sans); font-size: var(--fs-13); font-weight: 600; color: var(--accent); letter-spacing: 2px; }
-.side-panel-close {
-  background: none; border: none; color: var(--text-muted); font-size: calc(20px * var(--fs-scale));
-  cursor: pointer; width: 28px; height: 28px; display: flex; align-items: center;
-  justify-content: center; border-radius: 4px; transition: all 0.15s;
-}
-.side-panel-close:hover { color: var(--text); background: var(--surface-2); }
-.side-panel-body { padding: 12px; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; flex: 1; }
-.sp-item {
-  display: flex; align-items: center; gap: 12px; padding: 12px 14px;
-  border: 1px solid var(--border); border-radius: var(--radius-sm);
-  background: var(--surface-2); cursor: pointer; transition: all 0.15s;
-  text-decoration: none; color: var(--text); font-size: calc(13px * var(--fs-scale)); font-weight: 500;
-}
-.sp-item:hover { border-color: var(--border-strong); background: var(--surface-3); color: var(--text); }
-.sp-item svg { flex-shrink: 0; }
-.sp-item-label { flex: 1; text-align: center; }
-/* Theme row: a VISIBLE three-way choice. It replaced a single "Toggle Theme"
-   button that cycled blindly — you could not see that a system option existed,
-   let alone which mode was active. */
-.sp-theme { cursor: default; }
-.sp-theme:hover { border-color: var(--border); background: var(--surface-2); }
-.sp-theme .sp-item-label { flex: 0 0 auto; text-align: left; }
-.theme-seg { display: flex; gap: 2px; margin-left: auto; padding: 2px;
-  background: var(--bg); border-radius: var(--radius-sm); }
-.theme-seg button { border: none; background: transparent; color: var(--text-dim);
-  font-family: var(--font-sans); font-size: calc(12px * var(--fs-scale)); font-weight: 500; padding: 5px 10px;
-  border-radius: 4px; cursor: pointer; transition: all .15s; }
-.theme-seg button:hover { color: var(--text); }
-.theme-seg button[aria-pressed="true"] { background: var(--surface-3); color: var(--accent); }
-
-.sp-divider { height: 1px; background: var(--border); margin: 6px 0; }
-.menu-btn {
-  background: none; border: 1px solid var(--border); color: var(--text-muted);
-  width: 30px; height: 30px; border-radius: var(--radius-sm); cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  transition: all 0.15s ease; font-size: calc(16px * var(--fs-scale));
-}
-.menu-btn { position: relative; }
-.menu-btn:hover { border-color: var(--border-strong); color: var(--text); background: var(--surface-2); }
-.menu-btn:active { transform: scale(0.93); }
-.menu-notif-dot { position:absolute;top:-3px;right:-3px;width:10px;height:10px;background:var(--accent);border-radius:50%;border:2px solid var(--surface);display:none;animation:notifPulse 2s infinite; }
-.menu-notif-dot.active { display:block; }
-@keyframes notifPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(1.2)}}
-.sp-item.notif-highlight { border-color:var(--accent);background:var(--accent-dim);box-shadow:0 0 0 1px var(--accent); }
 
 /* ── Tabs ── */
 .tabs {
@@ -161,6 +69,13 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
   border-radius: 8px; line-height: 1;
 }
 .tab-badge.hidden { display: none; }
+
+/* Settings group (P2.1): Audit and Connectors live under Settings; Cortex is its own page. */
+.settings-subnav{display:flex;gap:4px;padding:8px 14px;border-bottom:1px solid var(--border);background:var(--bg);overflow-x:auto;flex-shrink:0;scrollbar-width:none}
+.settings-subnav[hidden]{display:none}
+.settings-subnav button,.settings-subnav a{height:32px;padding:0 14px;border:0;border-radius:var(--radius-pill);background:none;color:var(--text-muted);font:500 var(--fs-13)/32px var(--font-sans);text-decoration:none;cursor:pointer;white-space:nowrap}
+.settings-subnav button:hover,.settings-subnav a:hover{background:var(--surface-2);color:var(--text)}
+.settings-subnav button.active{background:var(--surface-3);color:var(--text)}
 
 /* ── Content ── */
 .content { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 16px; -webkit-overflow-scrolling: touch; }
@@ -538,18 +453,9 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
 ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
 /* ── Light mode extra overrides ── */
-[data-theme="light"] .icon-btn { border-color: #bbb; color: #444; }
-[data-theme="light"] .icon-btn:hover { border-color: #999; color: #1a1a1a; background: #e8e4de; }
-[data-theme="light"] .status-dot { box-shadow: none; }
-[data-theme="light"] .status-dot.on { box-shadow: 0 0 6px rgba(34,197,94,0.4); }
-[data-theme="light"] .nav-link.active { color: var(--accent); background: var(--accent-dim); }
 
 /* ── Mobile Responsive ── */
 @media (max-width: 768px) {
-  .page-nav{position:fixed;bottom:0;left:0;right:0;z-index:9998;transform:none;border-radius:0;padding:6px 0;justify-content:center;background:var(--surface);border-top:1px solid var(--border);gap:0;overflow-x:auto}
-  .nav-link{padding:8px 8px;font-size:var(--fs-11)}
-  .header h1 { font-size: calc(14px * var(--fs-scale)); }
-  .header img { width: 26px; height: 26px; }
   .tabs { -webkit-overflow-scrolling: touch; scrollbar-width: none; }
   .tabs::-webkit-scrollbar { display: none; }
   .stat-grid { grid-template-columns: 1fr 1fr; }
@@ -558,18 +464,13 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
   .panel { padding: 10px; }
   
   .ibtn { width: 36px; height: 36px; }
-  .side-panel { width: 280px; right: -280px; }
 }
 @media (max-width: 480px) {
-  .header { padding: 8px 10px; }
-  .header-right { gap: 4px; }
   .tab { padding: 8px 10px; font-size: calc(12px * var(--fs-scale)); }
   .stat-val { font-size: calc(16px * var(--fs-scale)); }
   .stat-card { padding: 10px; }
   .card { padding: 10px 12px; }
-  .nav-link{padding:8px 6px;font-size:var(--fs-11)}
 }
-.notif-bell{position:relative;font-weight:400}.notif-badge{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;background:var(--accent);color:var(--on-accent);font-size:var(--fs-11);font-weight:700;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 4px;line-height:1;pointer-events:none}.notif-badge.hidden{display:none}
 .dragover #panel-chat{border:2px dashed var(--accent)!important;border-radius:12px;background:var(--accent-dim)}
 .drag-hint{display:none;text-align:center;padding:24px;color:var(--accent);font-size:calc(14px * var(--fs-scale));font-weight:600;letter-spacing:.5px}
 .dragover .drag-hint{display:block}
@@ -612,15 +513,10 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
 .setup-skip{background:none;border:none;color:var(--text-dim);font-size:calc(12px * var(--fs-scale));cursor:pointer;text-decoration:underline}
 
 
-.text-size-row{justify-content:space-between;cursor:default}
-.text-size-group{display:inline-flex;gap:4px}
-.text-size-group button{background:var(--surface-2);border:1px solid var(--border);color:var(--text-muted);border-radius:var(--radius-sm);width:28px;height:24px;font-size:calc(12px * var(--fs-scale));font-weight:600;cursor:pointer;font-family:var(--font-sans)}
-.text-size-group button.sel{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
-
 @media (max-width: 768px), (max-height: 600px) and (pointer: coarse){
-  .input-area{position:fixed;left:0;right:0;bottom:var(--nav-h,56px);z-index:9997;padding-bottom:8px}
-  .page-nav{padding-bottom:calc(6px + env(safe-area-inset-bottom,0px))}
-  .content{padding-bottom:calc(var(--nav-h,56px) + var(--input-h,64px) + 28px)}
+  /* P2.1: the composer sits in the flow above the shell's tab bar (no position:fixed,
+     no measured padding); toasts show under the top bar, clear of the composer. */
+  .input-area{padding-bottom:8px}
   /* Composer on phones: 16px so iOS does NOT zoom the viewport on focus (the
      <16px zoom is what made the text look huge and shifted the layout); nowrap
      so the placeholder stays one line instead of wrapping to two in the narrow
@@ -628,16 +524,14 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
   .chat-input{font-size:16px;white-space:nowrap;overflow:hidden;line-height:1.3;min-height:40px}
   .input-row{gap:4px}
   .ibtn{width:34px;height:34px;flex-shrink:0}
-  /* The side panel, modals and toasts stack above the docked composer (9997) and nav (9998) */
-  .side-panel-overlay{z-index:10000}
-  .side-panel{z-index:10001}
   .modal-overlay,.setup-overlay{z-index:10002}
   .modal-close{z-index:10003}
-  .toast{z-index:10004;bottom:calc(var(--nav-h,56px) + var(--input-h,64px) + 12px)}
+  .toast{z-index:10004;bottom:auto;top:calc(60px + env(safe-area-inset-top,0px))}
 }
 </style>
 </head>
 <body>
+<script src="/static/codec-shell.js?v=d03f5d95" data-page="home" data-title="Today" data-status></script>
 
 <!-- ── Connect your AI (first run) ─────────────────────────────────────────
      Shown until CODEC has a VERIFIED brain. A fresh paid install had no way
@@ -693,25 +587,8 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
     </div>
   </div>
 </div>
-<div class="app">
-  <div class="header">
-    <div class="header-left">
-      <a href="/" class="logo-link"><img src="/static/logo.svg" alt="CODEC"></a>
-      <h1><a href="/" style="color:inherit;text-decoration:none">CODEC</a></h1>
-      <div class="status-dot" id="statusDot" title="CODEC status"></div>
-    </div>
-    <nav class="page-nav">
-      <a href="/" class="nav-link active">Home</a>
-      <a href="/chat" class="nav-link">Chat</a>
-      <a href="/voice" class="nav-link">Voice</a>
-      <a href="/vibe" class="nav-link">Vibe</a>
-      <a href="/tasks" class="nav-link">Tasks</a>
-    </nav>
-    <div class="header-right">
-      <span id="e2eBadge" style="display:none !important"></span>
-      <button class="menu-btn" onclick="openSidePanel()" title="Home" id="menuBtn"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span class="menu-notif-dot" id="menuNotifDot"></span></button>
-    </div>
-  </div>
+<div class="app cs-main">
+  <span id="e2eBadge" style="display:none !important"></span>
   <!-- Sparkle-compatible update banner (shown only when /api/update/check reports one) -->
   <div id="updateBanner" style="display:none;align-items:center;gap:12px;margin:10px 16px 0;padding:10px 14px;background:var(--accent-dim);border:1px solid var(--accent);border-radius:var(--radius-sm);font-size:calc(13px * var(--fs-scale));color:var(--text)">
     <svg class="ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
@@ -719,32 +596,6 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
     <button id="updateBannerBtn" class="btn btn-primary" onclick="downloadUpdate()" style="padding:6px 14px;font-size:calc(12px * var(--fs-scale));white-space:nowrap">Download &amp; open</button>
     <a href="#" onclick="dismissUpdate(event)" style="color:var(--text-muted);text-decoration:none;display:inline-flex" title="Dismiss until next launch" aria-label="Dismiss update"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></a>
   </div>
-  <!-- Side Panel -->
-  <div class="side-panel-overlay" id="sidePanelOverlay" onclick="closeSidePanel()"></div>
-  <div class="side-panel" id="sidePanel">
-    <div class="side-panel-header">
-      <h2>MENU</h2>
-      <button class="side-panel-close" onclick="closeSidePanel()" aria-label="Close menu"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
-    </div>
-    <div class="side-panel-body">
-      <a href="/" class="sp-item"><svg class="ico" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span class="sp-item-label">Home</span></a>
-      <div class="sp-divider"></div>
-      <button class="sp-item" id="voiceBtn" onclick="toggleVoice();closeSidePanel()"><svg class="ico" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 010 14.14"/><path d="M15.54 8.46a5 5 0 010 7.07"/><line id="muteX1" x1="4" y1="4" x2="20" y2="20" stroke-width="2.5" style="display:none"/><line id="muteX2" x1="4" y1="20" x2="20" y2="4" stroke-width="2.5" style="display:none"/></svg><span class="sp-item-label" style="flex:none">Voice Replies</span><span id="voiceState" style="font-size:calc(12px * var(--fs-scale));font-weight:700;padding:2px 8px;border-radius:4px"></span></button>
-      <button class="sp-item" id="wakeBtn" onclick="toggleWakeWord()" title="Always-on 'Hey CODEC' wake word"><svg class="ico" viewBox="0 0 24 24"><path d="M12 2a3 3 0 00-3 3v6a3 3 0 006 0V5a3 3 0 00-3-3z"/><path d="M19 10v1a7 7 0 01-14 0v-1"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg><span class="sp-item-label" style="flex:none">Wake Word</span><span id="wakeState" style="font-size:calc(12px * var(--fs-scale));font-weight:700;padding:2px 8px;border-radius:4px"></span></button>
-      <button class="sp-item" id="screenBtn" onclick="takeScreenshot();closeSidePanel()"><svg class="ico" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg><span class="sp-item-label">Screenshot</span></button>
-      <button class="sp-item" id="photoBtn" onclick="takeServerPhoto();closeSidePanel()"><svg class="ico" viewBox="0 0 24 24"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg><span class="sp-item-label">Photo (Webcam)</span></button>
-      <button class="sp-item" id="camBtn" onclick="toggleWebcamPip();closeSidePanel()"><svg class="ico" viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg><span class="sp-item-label">Live Video (PIP)</span></button>
-      <div class="sp-divider"></div>
-      <a href="/tasks#reports" class="sp-item notif-bell" id="notifBellBtn"><svg class="ico" viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg><span class="sp-item-label">Notifications</span><span class="notif-badge hidden" id="notifBadge">0</span></a>
-      <div class="sp-item sp-theme" id="themeBtn" role="group" aria-label="Theme"><svg class="ico" viewBox="0 0 24 24" id="themeIco"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 000 18z" fill="currentColor" stroke="none"/></svg><span class="sp-item-label">Theme</span><span class="theme-seg"><button type="button" data-theme-opt="system" onclick="setThemePref('system')" title="Follow your system day-night setting">Auto</button><button type="button" data-theme-opt="light" onclick="setThemePref('light')">Light</button><button type="button" data-theme-opt="dark" onclick="setThemePref('dark')">Dark</button></span></div>
-      <button class="sp-item" onclick="showTab('settings');closeSidePanel()"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg><span class="sp-item-label">Settings</span></button>
-      <button class="sp-item" onclick="openConnectSetup();closeSidePanel()"><svg class="ico" viewBox="0 0 24 24"><path d="M12 2a10 10 0 100 20 10 10 0 000-20z"/><path d="M12 8v4l3 2"/></svg><span class="sp-item-label">Connect AI model</span></button>
-      <div class="sp-item text-size-row"><span class="sp-item-label">Text size</span><span class="text-size-group" id="textSizeGroup"><button data-size="small" onclick="setTextSize('small')" title="Small">S</button><button data-size="medium" onclick="setTextSize('medium')" title="Medium">M</button><button data-size="large" onclick="setTextSize('large')" title="Large">L</button></span></div>
-      <div class="sp-divider"></div>
-      <button class="sp-item" onclick="lockSession()" style="color:var(--danger)"><svg class="ico" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg><span class="sp-item-label">Lock Session</span></button>
-    </div>
-  </div>
-
   <div class="tabs">
     <button class="tab active" onclick="showTab('chat')" id="tab-chat">
       <svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>Flash
@@ -752,21 +603,18 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
     <button class="tab" onclick="showTab('history')" id="tab-history">
       <svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>History
     </button>
-    <button class="tab" onclick="showTab('audit')" id="tab-audit">
-      <svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Audit
-    </button>
-    <button class="tab" onclick="showTab('cortex')" id="tab-cortex">
-      <svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M12 2C9 2 6.5 3.8 5.5 6.5c-1.5.5-2.7 1.5-3.3 3-.6 1.4-.4 3.1.5 4.3-.3 1.5 0 3.1 1 4.3s2.6 1.9 4.2 1.9h.1c1 1.2 2.5 2 4 2s3-.8 4-2h.1c1.6 0 3.2-.7 4.2-1.9s1.3-2.8 1-4.3c.9-1.2 1.1-2.9.5-4.3-.6-1.5-1.8-2.5-3.3-3C17.5 3.8 15 2 12 2z"/></svg>Cortex
-    </button>
     <button class="tab" onclick="showTab('skills')" id="tab-skills">
       <svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>Skills<span class="tab-badge hidden" id="skillsBadge">0</span>
-    </button>
-    <button class="tab" onclick="showTab('connector')" id="tab-connector">
-      <svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>Connector
     </button>
     <button class="tab" onclick="showTab('settings')" id="tab-settings">
       <svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>Settings
     </button>
+  </div>
+  <div class="settings-subnav" id="settingsSubnav" role="tablist" aria-label="Settings sections" hidden>
+    <button type="button" data-sub="settings" onclick="showTab('settings')">General</button>
+    <button type="button" data-sub="connector" id="subnav-connector" onclick="showTab('connector')">Connectors</button>
+    <button type="button" data-sub="audit" id="subnav-audit" onclick="showTab('audit')">Audit</button>
+    <a href="/cortex">Cortex</a>
   </div>
 
   <!-- Approval Banner (floats above content) -->
@@ -825,11 +673,6 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
       <div class="audit-timeline-wrap" id="auditTimelineWrap">
         <div class="audit-timeline" id="auditTimeline"></div>
       </div>
-    </div>
-
-    <!-- Cortex Panel -->
-    <div class="panel" id="panel-cortex">
-      <iframe id="cortexFrame" src="" style="width:100%;height:calc(100vh - 160px);border:none;border-radius:8px" allowfullscreen></iframe>
     </div>
 
     <!-- Skills Review Panel -->
@@ -996,22 +839,6 @@ function _ssSet(k,v){try{sessionStorage.setItem(k,v)}catch(e){}}
 function _ssDel(k){try{sessionStorage.removeItem(k)}catch(e){}}
 </script>
 <script>
-/* Text size: small / medium / large. Default MEDIUM. PR-C: scales the --fs-scale
-   token instead of a root zoom — zoom broke the phone shell's fixed nav/composer
-   math (#344); a font-size-only variable doesn't touch that math, so the same
-   scale now applies everywhere and --tz stays at 1 (calc(100dvh / var(--tz,1))
-   is unaffected). Shared across surfaces via localStorage + the storage event. */
-var _TEXT_SIZES={small:0.93,medium:1,large:1.12};
-function _textSize(){var v=_lsGet('codec-text-size');return (v in _TEXT_SIZES)?v:'medium'}
-function applyTextSize(){document.documentElement.style.setProperty('--fs-scale',String(_TEXT_SIZES[_textSize()]));var g=document.getElementById('textSizeGroup');if(g){Array.prototype.forEach.call(g.querySelectorAll('button'),function(b){b.classList.toggle('sel',b.getAttribute('data-size')===_textSize())})}}
-function setTextSize(s){if(!(s in _TEXT_SIZES))return;_lsSet('codec-text-size',s);applyTextSize()}
-window.addEventListener('storage',function(e){if(e.key==='codec-text-size')applyTextSize()});
-applyTextSize();
-</script>
-<script>
-// Side panel open/close
-function openSidePanel(){document.getElementById('sidePanel').classList.add('open');document.getElementById('sidePanelOverlay').classList.add('open');if(typeof refreshWakeState==='function')refreshWakeState()}
-function closeSidePanel(){document.getElementById('sidePanel').classList.remove('open');document.getElementById('sidePanelOverlay').classList.remove('open')}
 // Auth + CSRF: inject session token and CSRF header on all requests
 // On mobile (Android Chrome), cookies may not persist — fallback to sessionStorage
 (function(){
@@ -1131,96 +958,44 @@ function copyText(text, btn) {
   }
 }
 
-// ── Theme ──
-// ── Theme: system / light / dark ──────────────────────────────────────────
-// 'system' is the DEFAULT and follows the OS day-night setting live, so CODEC
-// darkens with macOS at sunset without anyone touching a toggle. The resolved
-// value is always stamped on data-theme, so every existing [data-theme="light"]
-// rule keeps working untouched. An explicit light/dark choice pins it.
-function _themePref() {
-  var v = null;
-  try { v = _lsGet('codec-theme'); } catch (e) {}
-  return (v === 'light' || v === 'dark' || v === 'system') ? v : 'system';
-}
-function _themeResolved(pref) {
-  if (pref === 'light' || pref === 'dark') return pref;
-  try {
-    return (window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
-  } catch (e) { return 'dark'; }
-}
-function applyTheme() {
-  var pref = _themePref(), eff = _themeResolved(pref);
-  document.documentElement.setAttribute('data-theme', eff);
-  var meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.content = eff === 'light' ? '#f7f5f2' : '#121215';
-  if (typeof updateThemeIcon === 'function') updateThemeIcon(pref, eff);
-  var seg = document.querySelectorAll('.theme-seg button[data-theme-opt]');
-  for (var i = 0; i < seg.length; i++) {
-    seg[i].setAttribute('aria-pressed', String(seg[i].getAttribute('data-theme-opt') === pref));
-  }
-}
-// Explicit choice from the menu. toggleTheme() (the cycling entry point) is kept
-// for any other caller and for keyboard users.
-function setThemePref(v) {
-  if (v !== 'system' && v !== 'light' && v !== 'dark') return;
-  try { _lsSet('codec-theme', v); } catch (e) {}
-  applyTheme();
-  if (typeof showToast === 'function') {
-    showToast(v === 'system' ? 'Theme follows your system' : 'Theme: ' + v);
-  }
-}
-function toggleTheme() {
-  var order = ['system', 'light', 'dark'];
-  var next = order[(order.indexOf(_themePref()) + 1) % 3];
-  try{_lsSet('codec-theme',next)}catch(e){}
-  applyTheme();
-  if (typeof showToast === 'function') {
-    showToast(next === 'system' ? 'Theme follows your system' : 'Theme: ' + next);
-  }
-}
-try {
-  if (window.matchMedia) {
-    matchMedia('(prefers-color-scheme: light)').addEventListener('change', function () {
-      if (_themePref() === 'system') applyTheme();
-    });
-  }
-} catch (e) {}
-window.addEventListener('storage', function (e) { if (e.key === 'codec-theme') applyTheme(); });
-function updateThemeIcon(theme) {
-  var ico = document.getElementById('themeIco');
-  if (theme === 'light') {
-    ico.innerHTML = '<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>';
-  } else {
-    ico.innerHTML = '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
-  }
-}
-applyTheme();
-
 // ── Tabs ──
+// Audit and Connectors live under Settings (P2.1); Cortex is its own page.
+var _SETTINGS_GROUP = { settings: 1, connector: 1, audit: 1 };
 function showTab(id) {
+  if (id === 'cortex') { window.location.href = '/cortex'; return; }
+  if (!document.getElementById('panel-' + id)) id = 'chat';
+  var tabId = _SETTINGS_GROUP[id] ? 'settings' : id;
   document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
   document.querySelectorAll('.panel').forEach(function(p) { p.classList.remove('active'); });
-  document.getElementById('tab-' + id).classList.add('active');
+  var tabEl = document.getElementById('tab-' + tabId);
+  if (tabEl) tabEl.classList.add('active');
   document.getElementById('panel-' + id).classList.add('active');
+  var sub = document.getElementById('settingsSubnav');
+  if (sub) {
+    sub.hidden = !_SETTINGS_GROUP[id];
+    sub.querySelectorAll('[data-sub]').forEach(function(b) {
+      var on = b.getAttribute('data-sub') === id;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-selected', String(on));
+    });
+  }
   currentTab = id;
-  // The composer belongs to the chat panel only. On phones it is position:fixed,
-  // so leaving it visible made it float over Home / Settings / etc. Hide it off
-  // chat; re-run the nav/composer measurement (via resize) when it returns so
-  // .content reserves the right bottom padding.
+  // The composer belongs to the Flash panel only.
   var _ia = document.querySelector('.input-area');
   if (_ia) _ia.style.display = (id === 'chat') ? '' : 'none';
-  if (id === 'chat') window.dispatchEvent(new Event('resize'));
   if (id === 'history') loadHistory();
   if (id === 'chat') loadChat();
   if (id === 'audit') loadAudit();
-  if (id === 'cortex') {
-    var cf = document.getElementById('cortexFrame');
-    if (cf && !cf.src.includes('/cortex')) cf.src = '/cortex?embed=1';
-  }
   if (id === 'skills') loadSkillReviews();
   if (id === 'connector') renderConnectors();
   if (id === 'settings') { loadSettings(); renderUIToggles(); loadPrompts(); }
 }
+// Links such as /#settings (the shell's Settings row, other pages) open that panel.
+function _tabFromHash() {
+  var h = (location.hash || '').replace('#', '');
+  if (h && (document.getElementById('panel-' + h) || h === 'cortex')) showTab(h);
+}
+window.addEventListener('hashchange', _tabFromHash);
 
 // ── Skill Reviews (staged create_skill output → review → approve/reject) ──
 var _skillReviewsBusy = false;
@@ -1676,7 +1451,6 @@ document.addEventListener('paste', function(e) {
   }
 }, true);  // useCapture=true so we run before any sub-element handlers
 
-function lockSession(){fetch('/api/auth/logout',{method:'POST'}).then(function(){document.cookie='codec_session=;path=/;max-age=0;SameSite=Lax'+(location.protocol==='https:'?';Secure':'');window.location.href='/auth'})}
 
 // ── Voice Input ──
 function toggleMic() {
@@ -2305,17 +2079,17 @@ var _uiFeatures = {
     { id: 'photo_btn', label: 'Webcam photo button', sel: '#photoBtn', default: true },
     { id: 'webcam_pip_btn', label: 'Live webcam PIP button', sel: '#camBtn', default: true },
     { id: 'voice_btn', label: 'Voice replies button', sel: '#voiceBtn', default: true },
-    { id: 'notif_bell', label: 'Notification bell', sel: '#notifBellBtn', default: true },
+    { id: 'notif_bell', label: 'Inbox in the sidebar and tab bar', sel: '#csInbox,#csTabInbox', default: true },
     { id: 'mic_btn', label: 'Mic input button', sel: '#micBtn', default: true },
   ],
   'Dashboard': [
     { id: 'dash_status_grid', label: 'Status grid (stats cards)', sel: '#statGrid', default: true },
     { id: 'dash_history_tab', label: 'History tab', sel: '#tab-history', default: true },
-    { id: 'dash_audit_tab', label: 'Audit tab', sel: '#tab-audit', default: true },
+    { id: 'dash_audit_tab', label: 'Audit in Settings', sel: '#subnav-audit', default: true },
     { id: 'dash_phone_btn', label: 'Voice call button', sel: '.ibtn.phone', default: true },
   ],
   'Chat': [
-    { id: 'chat_sidebar', label: 'Conversation sidebar', sel: '#sidebar,#sidebarOverlay,.sidebar-toggle', default: true },
+    { id: 'chat_sidebar', label: 'Chat history in the sidebar', sel: '#csHist,#csHistHead', default: true },
     { id: 'chat_agents', label: 'Agent crews / Research mode', sel: '#modeResearchBtn', default: true },
     { id: 'chat_agent_builder', label: 'Custom agent builder', sel: '#agentBuilder', default: true },
   ],
@@ -2514,44 +2288,6 @@ function updateVoiceIcon() {
 // Bulletproof replacement for the buried Settings toggle that kept not
 // persisting (users flip it and walk away; it never saved). This reads the
 // LIVE server value each time the menu opens and writes instantly on click.
-var _wakeEnabled = null;
-function _setWakeBadge(on) {
-  var st = document.getElementById('wakeState');
-  if (!st) return;
-  if (on) { st.textContent = 'ON'; st.style.color = 'var(--on-accent)'; st.style.background = 'var(--accent)'; }
-  else    { st.textContent = 'OFF'; st.style.color = 'var(--text-muted)'; st.style.background = 'var(--surface-3)'; }
-}
-async function refreshWakeState() {
-  try {
-    var r = await fetch('/api/config');
-    var d = await r.json();
-    _wakeEnabled = !!(d && d.wake && d.wake.wake_word_enabled);
-    _setWakeBadge(_wakeEnabled);
-  } catch (e) { /* leave badge as-is */ }
-}
-async function toggleWakeWord() {
-  var target = !_wakeEnabled;
-  _setWakeBadge(target);  // optimistic
-  var btn = document.getElementById('wakeBtn');
-  if (btn) btn.style.opacity = '0.5';
-  try {
-    var r = await fetch('/api/config', { method: 'PUT', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ 'Wake Word': { wake_word_enabled: target } }) });
-    var d = await r.json();
-    if (d && d.saved) {
-      _wakeEnabled = target;
-      showToast(target ? 'Wake word ON — say “Hey CODEC”' : 'Wake word OFF — CODEC won’t wake on its name (use F13)');
-    } else {
-      _setWakeBadge(_wakeEnabled);  // revert
-      showToast('Could not save: ' + ((d && d.error) || 'unknown'));
-    }
-  } catch (e) {
-    _setWakeBadge(_wakeEnabled);    // revert
-    showToast('Could not save wake setting (network).');
-  } finally {
-    if (btn) btn.style.opacity = '';
-  }
-}
 updateVoiceIcon();
 
 var _currentAudio = null;
@@ -2830,39 +2566,15 @@ async function resetSkillTriggers(name) {
 
 // ── Init ──
 loadChat();
+_tabFromHash();
 setInterval(async function() {
   try { var r = await fetch('/api/status'); var s = await r.json(); document.getElementById('statusDot').classList.toggle('on', s.alive); } catch(e) {}
 }, 10000);
 
 var deferredPrompt;
 window.addEventListener('beforeinstallprompt', function(e) { deferredPrompt = e; });
-(function(){
-  var _notifCount = 0;
-  function pollNotifCount(){
-    fetch('/api/notifications/count').then(function(r){return r.json()}).then(function(d){
-      _notifCount = d.unread||d.count||0;
-      var b=document.getElementById('notifBadge');
-      if(b){b.textContent=_notifCount;b.classList.toggle('hidden',_notifCount===0)}
-      // Update house icon dot
-      var dot=document.getElementById('menuNotifDot');
-      if(dot) dot.classList.toggle('active',_notifCount>0);
-      // Highlight notification item in side panel
-      var bell=document.getElementById('notifBellBtn');
-      if(bell) bell.classList.toggle('notif-highlight',_notifCount>0);
-    }).catch(function(){})
-  }
-  pollNotifCount();setInterval(pollNotifCount,30000);
-  // Skill-review pending count → tab badge (same cadence as notifications)
-  if(typeof refreshSkillsBadge==='function'){refreshSkillsBadge();setInterval(refreshSkillsBadge,30000);}
-  var bell=document.getElementById('notifBellBtn');
-  if(bell)bell.addEventListener('click',function(){
-    fetch('/api/notifications/read-all',{method:'POST'}).catch(function(){});
-    var b=document.getElementById('notifBadge');if(b){b.textContent='0';b.classList.add('hidden')}
-    var dot=document.getElementById('menuNotifDot');if(dot)dot.classList.remove('active');
-    bell.classList.remove('notif-highlight');
-    _notifCount=0;
-  });
-})();
+// Skill-review pending count -> tab badge (the shell polls the Inbox count).
+if(typeof refreshSkillsBadge==='function'){refreshSkillsBadge();setInterval(refreshSkillsBadge,30000);}
 
 /* ── Phase 1 Step 3: AskUserQuestion inline answer panel ──────────────────
    Polls /api/agents/pending_questions every 8s. When a pending question
@@ -3258,28 +2970,5 @@ setInterval(checkForUpdate, 6*60*60*1000);   // re-check every 6h
   </div>
 </div>
 
-<script>
-/* Pin the composer above the bottom nav on every phone.
-   Flex/dvh math differs per device (gesture bars, browser vs installed PWA),
-   so measure the real nav + composer heights and expose them as CSS vars. */
-(function(){
-  function sync(){
-    var nav=document.querySelector('.page-nav'), ia=document.querySelector('.input-area');
-    var mobile=window.matchMedia('(max-width: 768px), (max-height: 600px) and (pointer: coarse)').matches;
-    var r=document.documentElement.style;
-    var docked = nav && getComputedStyle(nav).position==='fixed';
-    r.setProperty('--nav-h', (mobile&&docked?nav.offsetHeight:0)+'px');
-    r.setProperty('--input-h', (ia?ia.offsetHeight:0)+'px');
-  }
-  var ro=window.ResizeObserver?new ResizeObserver(sync):null;
-  function attach(){
-    ['.page-nav','.input-area'].forEach(function(s){var e=document.querySelector(s); if(e&&ro) ro.observe(e);});
-    sync();
-  }
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',attach); else attach();
-  addEventListener('resize',sync); addEventListener('orientationchange',function(){setTimeout(sync,150)});
-  if(window.visualViewport) visualViewport.addEventListener('resize',sync);
-})();
-</script>
 </body>
 </html>

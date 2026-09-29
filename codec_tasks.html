@@ -7,7 +7,7 @@
 <title>CODEC — Tasks</title>
 <link rel="icon" href="/favicon.png">
 <link rel="apple-touch-icon" href="/favicon.png">
-<link rel="stylesheet" href="/static/codec.css?v=a5290fa8">
+<link rel="stylesheet" href="/static/codec.css?v=78031f9b">
 <style>
 :root {
   --bg: #121215; --surface: #18181b; --surface-2: #1f1f22; --surface-3: #27272a;
@@ -29,53 +29,10 @@
   --danger: #dc2626; --success: #15803d; --info: #2563eb;
 }
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100vh; padding-bottom: env(safe-area-inset-bottom, 0px); }
-@supports (min-height: 100dvh) { body { min-height: calc(100dvh / var(--tz, 1)); } }
+/* The shell (static/codec-shell.js) makes body a 100dvh column; the page scrolls inside .cs-main. */
+body { font-family: var(--font); background: var(--bg); color: var(--text); }
 a { color: var(--accent); text-decoration: none; }
 
-/* ── Header ── */
-.header { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100; }
-.header-left { display: flex; align-items: center; gap: 10px; }
-.header-left img { width: 32px; height: 32px; }
-.header-left h1 { font-family: var(--mono); font-size: calc(16px * var(--fs-scale)); font-weight: 700; letter-spacing: 2px; color: var(--accent); }
-.logo-link { display: flex; align-items: center; }
-.page-nav { display: flex; align-items: center; gap: 1px; position: absolute; left: 50%; transform: translateX(-50%); background: var(--surface-2); border-radius: var(--radius-sm); padding: 2px; }
-.nav-link { padding: 5px 14px; color: var(--text-muted); text-decoration: none; font-size: calc(12px * var(--fs-scale)); font-weight: 500; border-radius: 4px; transition: all 0.15s ease; white-space: nowrap; text-align: center; }
-.nav-link:hover { color: var(--text); }
-.nav-link.active { color: var(--accent); background: var(--accent-dim); }
-
-/* ── Side Panel ── */
-.side-panel-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9990}
-.side-panel-overlay.open{display:block}
-.side-panel{position:fixed;top:0;right:-300px;width:300px;height:100%;background:var(--surface);border-left:1px solid var(--border);z-index:9991;transition:right .3s cubic-bezier(.4,0,.2,1),visibility 0s .3s;visibility:hidden;display:flex;flex-direction:column;box-shadow:-4px 0 24px rgba(0,0,0,.3)}
-.side-panel.open{right:0;visibility:visible;transition:right .3s cubic-bezier(.4,0,.2,1)}
-.side-panel-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border)}
-.side-panel-header h2{font-family:var(--font);font-size:var(--fs-13);font-weight:600;color:var(--accent);letter-spacing:2px}
-.side-panel-close{background:none;border:none;color:var(--text-muted);font-size:calc(20px * var(--fs-scale));cursor:pointer;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:4px;transition:all .15s}
-.side-panel-close:hover{color:var(--text);background:var(--surface-2)}
-.side-panel-body{padding:12px;display:flex;flex-direction:column;gap:6px;overflow-y:auto;flex:1}
-.sp-item{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-2);cursor:pointer;transition:all .15s;text-decoration:none;color:var(--text);font-size:calc(13px * var(--fs-scale));font-weight:500}
-.sp-item:hover{border-color:var(--border-hover);background:var(--surface-3);color:var(--text)}
-.sp-item svg{flex-shrink:0}
-.sp-item-label{flex:1;text-align:center}
-.sp-divider{height:1px;background:var(--border);margin:6px 0}
-.menu-btn{background:none;border:1px solid var(--border);color:var(--text-muted);width:30px;height:30px;border-radius:var(--radius-sm);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;font-size:calc(16px * var(--fs-scale));position:relative}
-.menu-btn:hover{border-color:var(--border-hover);color:var(--text);background:var(--surface-2)}
-.menu-btn:active{transform:scale(.93)}
-.menu-notif-dot{position:absolute;top:-3px;right:-3px;width:10px;height:10px;background:var(--accent,#a78bfa);border-radius:50%;border:2px solid var(--surface,#1a1a2e);display:none;animation:notifPulse 2s infinite}
-.menu-notif-dot.active{display:block}
-@keyframes notifPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(1.2)}}
-.sp-item.notif-highlight{border-color:var(--accent,#a78bfa);background:var(--accent-dim);box-shadow:0 0 0 1px var(--accent,#a78bfa)}
-
-.header-right { display: flex; align-items: center; gap: 6px; }
-.icon-btn { background: none; border: 1px solid var(--border); border-radius: var(--radius-sm); width: 30px; height: 30px; cursor: pointer; color: var(--text-muted); transition: all 0.15s ease; display: flex; align-items: center; justify-content: center; }
-.icon-btn:hover { border-color: var(--border-hover); color: var(--text); background: var(--surface-2); }
-.icon-btn:active { transform: scale(0.93); }
-.status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--danger); flex-shrink: 0; transition: all 0.3s; }
-.status-dot.on { background: var(--success); box-shadow: 0 0 6px rgba(34,197,94,0.5); }
-[data-theme="light"] .icon-btn { border-color: #bbb; color: #444; }
-[data-theme="light"] .icon-btn:hover { border-color: #999; color: #1a1a1a; background: #e8e4de; }
-[data-theme="light"] .nav-link.active { color: var(--accent); background: var(--accent-dim); }
 .ico { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .ico-sm { width: 16px; height: 16px; }
 
@@ -173,12 +130,8 @@ a { color: var(--accent); text-decoration: none; }
 .report-more:hover { text-decoration: underline; }
 .report-actions-bar { display: flex; justify-content: flex-end; margin-bottom: 12px; }
 
-/* ── Notification bell ── */
-.notif-bell { position: relative; font-weight: 400; }
-.notif-badge { position: absolute; top: -4px; right: -4px; min-width: 16px; height: 16px; background: var(--accent); color: var(--on-accent); font-size: var(--fs-11); font-weight: 700; border-radius: 8px; display: flex; align-items: center; justify-content: center; padding: 0 4px; line-height: 1; pointer-events: none; }
-.notif-badge.hidden { display: none; }
-
-/* ── Toast ── */
+/* ── Toast ── (above the shell's phone tab bar on the phone) */
+@media (max-width: 767px) { .toast-container { bottom: calc(72px + env(safe-area-inset-bottom, 0px)) !important; } }
 .toast-container { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
 .toast { background: var(--surface-2); border: 1px solid var(--border); color: var(--text); padding: 10px 20px; border-radius: var(--radius); font-size: calc(13px * var(--fs-scale)); font-family: var(--font); box-shadow: 0 4px 12px rgba(0,0,0,0.3); opacity: 0; transform: translateY(10px); animation: toastIn 0.25s ease forwards; pointer-events: auto; }
 .toast.out { animation: toastOut 0.25s ease forwards; }
@@ -195,11 +148,6 @@ a { color: var(--accent); text-decoration: none; }
 
 /* ── Responsive ── */
 @media (max-width: 768px) {
-  .header { padding: 10px 12px; }
-  .header-left h1 { display: none; }
-  .page-nav{position:fixed;bottom:0;left:0;right:0;z-index:9998;transform:none;border-radius:0;padding:6px 0;justify-content:center;background:var(--surface);border-top:1px solid var(--border);gap:0;overflow-x:auto}
-  .nav-link{padding:8px 8px;font-size:var(--fs-11)}
-  .side-panel{width:280px;right:-280px}
   .container { padding: 16px 12px; }
   .form-row { grid-template-columns: 1fr; }
   .history-entry { grid-template-columns: 1fr; gap: 4px; }
@@ -237,44 +185,8 @@ a { color: var(--accent); text-decoration: none; }
 </style>
 </head>
 <body>
-
-<div class="header">
-  <div class="header-left">
-    <a href="/" class="logo-link"><img src="/static/logo.svg" alt="CODEC"></a>
-    <h1><a href="/" style="color:inherit;text-decoration:none">CODEC</a></h1>
-    <div class="status-dot" id="statusDot" title="CODEC status"></div>
-  </div>
-  <nav class="page-nav">
-    <a href="/" class="nav-link">Home</a>
-    <a href="/chat" class="nav-link">Chat</a>
-    <a href="/voice" class="nav-link">Voice</a>
-    <a href="/vibe" class="nav-link">Vibe</a>
-    <a href="/tasks" class="nav-link active">Tasks</a>
-  </nav>
-  <div class="header-right">
-    <button class="menu-btn" onclick="openSidePanel()" title="Home" id="menuBtn"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span class="menu-notif-dot" id="menuNotifDot"></span></button>
-  </div>
-</div>
-<!-- Side Panel -->
-<div class="side-panel-overlay" id="sidePanelOverlay" onclick="closeSidePanel()"></div>
-<div class="side-panel" id="sidePanel">
-  <div class="side-panel-header"><h2>MENU</h2><button class="side-panel-close" onclick="closeSidePanel()" aria-label="Close menu"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
-  <div class="side-panel-body">
-    <a href="/" class="sp-item"><svg class="ico" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span class="sp-item-label">Home</span></a>
-    <div class="sp-divider"></div>
-    <button class="sp-item" id="voiceBtn" onclick="toggleVoiceReply();closeSidePanel()"><svg class="ico" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 010 14.14"/><path d="M15.54 8.46a5 5 0 010 7.07"/><line id="muteX1" x1="4" y1="4" x2="20" y2="20" stroke-width="2.5" style="display:none"/><line id="muteX2" x1="4" y1="20" x2="20" y2="4" stroke-width="2.5" style="display:none"/></svg><span class="sp-item-label" style="flex:none">Voice Replies</span><span id="voiceState" style="font-size:calc(12px * var(--fs-scale));font-weight:700;padding:2px 8px;border-radius:4px"></span></button>
-    <button class="sp-item" id="screenBtn" onclick="takeScreenshot();closeSidePanel()"><svg class="ico" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg><span class="sp-item-label">Screenshot</span></button>
-    <button class="sp-item" id="photoBtn" onclick="takeServerPhoto();closeSidePanel()"><svg class="ico" viewBox="0 0 24 24"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg><span class="sp-item-label">Photo (Webcam)</span></button>
-    <button class="sp-item" id="camBtn" onclick="toggleWebcamPip();closeSidePanel()"><svg class="ico" viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg><span class="sp-item-label">Live Video (PIP)</span></button>
-    <div class="sp-divider"></div>
-    <a href="/tasks#reports" class="sp-item notif-bell" id="notifBellBtn"><svg class="ico" viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg><span class="sp-item-label">Notifications</span><span class="notif-badge hidden" id="notifBadge">0</span></a>
-    <button class="sp-item" id="themeBtn" onclick="toggleTheme()"><svg class="ico" viewBox="0 0 24 24" id="themeIco"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg><span class="sp-item-label">Toggle Theme</span></button>
-    <button class="sp-item" onclick="window.location.href='/#settings'"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg><span class="sp-item-label">Settings</span></button>
-    <div class="sp-divider"></div>
-    <button class="sp-item" onclick="lockSession()" style="color:var(--danger)"><svg class="ico" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg><span class="sp-item-label">Lock Session</span></button>
-  </div>
-</div>
-
+<script src="/static/codec-shell.js?v=d03f5d95" data-page="tasks" data-title="Tasks" data-status></script>
+<div class="cs-main cs-scroll">
 <div class="container">
   <div class="tabs">
     <button class="tab active" onclick="showTab('schedules')" id="tab-schedules"><svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>Schedules</button>
@@ -430,6 +342,7 @@ a { color: var(--accent); text-decoration: none; }
 
 
 </div>
+</div>
 
 <div class="toast-container" id="toastContainer"></div>
 
@@ -457,21 +370,6 @@ function _ssSet(k,v){try{sessionStorage.setItem(k,v)}catch(e){}}
 function _ssDel(k){try{sessionStorage.removeItem(k)}catch(e){}}
 </script>
 <script>
-/* Text size: small / medium / large. Default MEDIUM. PR-C: scales the --fs-scale
-   token instead of a root zoom — zoom broke the phone shell's fixed nav/composer
-   math (#344); a font-size-only variable doesn't touch that math, so the same
-   scale now applies everywhere and --tz stays at 1 (calc(100dvh / var(--tz,1))
-   is unaffected). Shared across surfaces via localStorage + the storage event. */
-var _TEXT_SIZES={small:0.93,medium:1,large:1.12};
-function _textSize(){var v=_lsGet('codec-text-size');return (v in _TEXT_SIZES)?v:'medium'}
-function applyTextSize(){document.documentElement.style.setProperty('--fs-scale',String(_TEXT_SIZES[_textSize()]));var g=document.getElementById('textSizeGroup');if(g){Array.prototype.forEach.call(g.querySelectorAll('button'),function(b){b.classList.toggle('sel',b.getAttribute('data-size')===_textSize())})}}
-function setTextSize(s){if(!(s in _TEXT_SIZES))return;_lsSet('codec-text-size',s);applyTextSize()}
-window.addEventListener('storage',function(e){if(e.key==='codec-text-size')applyTextSize()});
-applyTextSize();
-</script>
-<script>
-function openSidePanel(){document.getElementById('sidePanel').classList.add('open');document.getElementById('sidePanelOverlay').classList.add('open')}
-function closeSidePanel(){document.getElementById('sidePanel').classList.remove('open');document.getElementById('sidePanelOverlay').classList.remove('open')}
 // Auth + CSRF: inject session token and CSRF header on all requests
 // On mobile (Android Chrome), cookies may not persist — fallback to sessionStorage
 (function(){
@@ -490,18 +388,6 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
 function _decResp(r){if(!_e2eKey||r.headers.get('x-e2e')!=='1')return r;return r.clone().json().then(function(d){if(!d.iv||!d.ct)return r;var iv=_unb64(d.iv),ct=_unb64(d.ct);return crypto.subtle.decrypt({name:'AES-GCM',iv:iv},_e2eKey,ct).then(function(pt){var txt=new TextDecoder().decode(pt);return new Response(txt,{status:r.status,headers:r.headers})})}).catch(function(){return r})}
 if(_ssGet('_e2eReady'))window._e2eNegotiate();
 })();
-/* ── Theme ── */
-// Theme: system / light / dark (ported from chat). "system" follows the OS and
-// switches live at sunset; an explicit choice pins it until you cycle back.
-function _themePref(){var v=null;try{v=_lsGet('codec-theme')}catch(e){}return (v==='light'||v==='dark'||v==='system')?v:'system'}
-function _themeResolved(pref){if(pref==='light'||pref==='dark')return pref;try{return (window.matchMedia&&matchMedia('(prefers-color-scheme: light)').matches)?'light':'dark'}catch(e){return 'dark'}}
-function applyTheme(){var pref=_themePref(),eff=_themeResolved(pref);if(eff==='light'){document.documentElement.setAttribute('data-theme','light')}else{document.documentElement.setAttribute('data-theme','dark')}updateThemeIcon(pref,eff)}
-function toggleTheme(){var order=['system','light','dark'],next=order[(order.indexOf(_themePref())+1)%3];try{_lsSet('codec-theme',next)}catch(e){}applyTheme();if(typeof showToast==='function')showToast(next==='system'?'Theme follows your system':'Theme: '+next)}
-try{if(window.matchMedia){matchMedia('(prefers-color-scheme: light)').addEventListener('change',function(){if(_themePref()==='system')applyTheme()})}}catch(e){}
-window.addEventListener('storage',function(e){if(e.key==='codec-theme')applyTheme()});
-function updateThemeIcon(pref,eff){var ico=document.getElementById('themeIco');if(!ico)return;var theme=(pref==='system')?'system':(eff||pref);var btn=ico.parentNode;if(theme==='system'){ico.innerHTML='<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 000 18z" fill="currentColor" stroke="none"/>';btn&&btn.setAttribute('title','Theme: follows your system — click to pin light');return}btn&&btn.setAttribute('title','Theme: '+theme+' — click to change');if(theme==='light'){ico.innerHTML='<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>'}else{ico.innerHTML='<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>'}}
-applyTheme();
-function lockSession(){fetch('/api/auth/logout',{method:'POST'}).then(function(){document.cookie='codec_session=;path=/;max-age=0;SameSite=Lax'+(location.protocol==='https:'?';Secure':'');window.location.href='/auth'})}
 var _voiceOn=_lsGet('codec-voice')==='true';
 function toggleVoiceReply(){_voiceOn=!_voiceOn;_lsSet('codec-voice',_voiceOn);updateVoiceIcon()}
 function updateVoiceIcon(){var m1=document.getElementById('muteX1'),m2=document.getElementById('muteX2'),st=document.getElementById('voiceState');if(_voiceOn){if(m1)m1.style.display='none';if(m2)m2.style.display='none';if(st){st.textContent='ON';st.style.color='var(--on-accent)';st.style.background='var(--accent)'}}else{if(m1)m1.style.display='';if(m2)m2.style.display='';if(st){st.textContent='OFF';st.style.color='var(--text-muted)';st.style.background='var(--surface-3)'}}}
@@ -1078,20 +964,8 @@ function markAllReportsRead() {
 }
 
 /* ── Notification badge polling ── */
-function pollNotifCount() {
-  fetch('/api/notifications/count').then(function(r){ return r.json(); }).then(function(data) {
-    var count = data.unread || data.count || 0;
-    var badge = document.getElementById('notifBadge');
-    if (badge) {
-      badge.textContent = count;
-      badge.classList.toggle('hidden', count === 0);
-    }
-    var dot=document.getElementById('menuNotifDot');
-    if(dot)dot.classList.toggle('active',count>0);
-    var bellBtn=document.getElementById('notifBellBtn');
-    if(bellBtn)bellBtn.classList.toggle('notif-highlight',count>0);
-  }).catch(function(){});
-}
+// The shell owns the Inbox count; reports marked read refresh it at once.
+function pollNotifCount() { if (window.CodecShell) CodecShell.pollInbox(); }
 
 /* ── Utils ── */
 function escHtml(s) {
@@ -1117,15 +991,6 @@ document.addEventListener('DOMContentLoaded', function() {
   function _tabFromHash(){var h=(location.hash||'').replace('#','');if(h&&document.getElementById('tab-'+h))showTab(h)}
   _tabFromHash();
   window.addEventListener('hashchange',_tabFromHash);
-  pollNotifCount();
-  setInterval(pollNotifCount, 30000);
-  var bell=document.getElementById('notifBellBtn');
-  if(bell)bell.addEventListener('click',function(){
-    fetch('/api/notifications/read-all',{method:'POST'}).catch(function(){});
-    var b=document.getElementById('notifBadge');if(b){b.textContent='0';b.classList.add('hidden')}
-    var dot=document.getElementById('menuNotifDot');if(dot)dot.classList.remove('active');
-    bell.classList.remove('notif-highlight');
-  });
   // Handle hash-based tab navigation
   var hash = window.location.hash.replace('#', '');
   if (hash && document.getElementById('tab-' + hash)) {
@@ -1153,7 +1018,7 @@ function showTab(name) {
 }
 
 // Apply UI preferences from dashboard settings
-(function(){try{var p=JSON.parse(_lsGet('codec-ui-prefs')||'{}'),m={'screenshot_btn':'#screenBtn','photo_btn':'#photoBtn','webcam_pip_btn':'#camBtn','voice_btn':'#voiceBtn','notif_bell':'#notifBellBtn','tasks_heartbeat':'#tab-heartbeat','tasks_reports':'#tab-reports'};Object.keys(m).forEach(function(k){if(p[k]===false)m[k].split(',').forEach(function(s){document.querySelectorAll(s.trim()).forEach(function(el){el.style.display='none'})})})}catch(e){}})();
+(function(){try{var p=JSON.parse(_lsGet('codec-ui-prefs')||'{}'),m={'screenshot_btn':'#screenBtn','photo_btn':'#photoBtn','webcam_pip_btn':'#camBtn','voice_btn':'#voiceBtn','notif_bell':'#csInbox,#csTabInbox','tasks_heartbeat':'#tab-heartbeat','tasks_reports':'#tab-reports'};Object.keys(m).forEach(function(k){if(p[k]===false)m[k].split(',').forEach(function(s){document.querySelectorAll(s.trim()).forEach(function(el){el.style.display='none'})})})}catch(e){}})();
 </script>
 <!-- Preview Modal (screenshot + webcam photo) -->
 <div class="preview-modal" id="previewModal" onclick="closePreview(event)">

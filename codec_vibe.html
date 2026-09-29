@@ -7,7 +7,7 @@
 <title>CODEC Vibe Code</title>
 <link rel="icon" href="/favicon.png">
 <link rel="apple-touch-icon" href="/favicon.png">
-<link rel="stylesheet" href="/static/codec.css?v=a5290fa8">
+<link rel="stylesheet" href="/static/codec.css?v=78031f9b">
 <!-- B5 / SR-29: crossorigin attribute added so SRI hash pinning can be
      enabled by adding `integrity="sha384-..."` once the hash is computed.
      Run `openssl dgst -sha384 -binary <file> | openssl base64 -A` against
@@ -31,24 +31,6 @@ function _lsDel(k){try{localStorage.removeItem(k)}catch(e){}}
 function _ssGet(k){try{return sessionStorage.getItem(k)}catch(e){return null}}
 function _ssSet(k,v){try{sessionStorage.setItem(k,v)}catch(e){}}
 function _ssDel(k){try{sessionStorage.removeItem(k)}catch(e){}}
-</script>
-<script>
-/* Text size: small / medium / large. Default MEDIUM (1.15x) — the 14px base was
-   reported too small in the native app window. `zoom` scales every px-sized
-   rule on the page in one move, which a font-size variable alone would not.
-   Shared across surfaces via localStorage + the storage event. */
-var _TEXT_SIZES={small:1,medium:1.15,large:1.3};
-function _textSize(){var v=_lsGet('codec-text-size');return (v in _TEXT_SIZES)?v:'medium'}
-/* Same guard as Home (#344): a root zoom>1 breaks the phone shell's fixed nav/composer
-   math, so the phone always renders at 1. --tz carries the zoom so full-height roots can
-   size to calc(100dvh / var(--tz)) instead of overflowing the window on desktop. */
-function _isPhoneShell(){return window.matchMedia('(max-width: 768px), (max-height: 600px) and (pointer: coarse)').matches}
-function applyTextSize(){var z=_isPhoneShell()?1:_TEXT_SIZES[_textSize()];document.documentElement.style.zoom=String(z);document.documentElement.style.setProperty('--tz',String(z));var g=document.getElementById('textSizeGroup');if(g){Array.prototype.forEach.call(g.querySelectorAll('button'),function(b){b.classList.toggle('sel',b.getAttribute('data-size')===_textSize())})}}
-function setTextSize(s){if(!(s in _TEXT_SIZES))return;_lsSet('codec-text-size',s);applyTextSize()}
-window.addEventListener('storage',function(e){if(e.key==='codec-text-size')applyTextSize()});
-window.addEventListener('resize',applyTextSize);          // re-evaluate the phone-shell gate on rotate / resize
-window.addEventListener('orientationchange',function(){setTimeout(applyTextSize,150)});
-applyTextSize();
 </script>
 <script src="/static/vendor/purify.min.js"></script>
 <style>
@@ -75,27 +57,28 @@ applyTextSize();
 [data-theme=light]{--bg:#f7f5f2;--surface:#fff;--surface-2:#f0ece6;--surface-3:#e8e4de;--border:#d5d0ca;--border-hover:#bbb;--text:#1a1a1a;--text-muted:#555;--text-dim:#777;--bg2:#fff;--bg3:#f0ece6;--bg4:#e8e4de;--tx:#1a1a1a;--tx2:#555;--bd:#d5d0ca;--fg:#1a1a1a;--fg2:#555;--fg3:#777;--accent:#b85a3a;--accent-hover:#a04d31;--accent-dim:rgba(184,90,58,0.08);--on-accent:#ffffff;--ac:#b85a3a;--accent-bg:rgba(184,90,58,0.08);--success:#15803d;--danger:#dc2626;--info:#2563eb;--dn:#dc2626}
 *{margin:0;padding:0;box-sizing:border-box}
 html{background:var(--bg)}
-body{font-family:var(--ft);background:var(--bg);color:var(--tx);height:100vh;display:flex;flex-direction:column;overflow:hidden;padding-bottom:env(safe-area-inset-bottom, 0px)}
-@supports (height:100dvh){body{height:calc(100dvh / var(--tz, 1))}}
+body{font-family:var(--ft);background:var(--bg);color:var(--tx)}
+/* The shell (static/codec-shell.js) makes body a 100dvh column; this page's column is .cs-main. */
+.vibe-main{display:flex;flex-direction:column;overflow:hidden}
 .bar{display:flex;align-items:center;justify-content:space-between;padding:8px 16px;background:var(--bg2);border-bottom:1px solid var(--bd);height:48px;flex-shrink:0;position:relative}
 .bar-l{display:flex;align-items:center;gap:12px}
-.bb{padding:4px 12px;border:1px solid var(--bd);border-radius:6px;background:0;color:var(--tx2);cursor:pointer;font-size:12px;text-decoration:none;transition:all 0.2s ease}
+.bb{padding:4px 12px;border:1px solid var(--bd);border-radius:6px;background:0;color:var(--tx2);cursor:pointer;font-size:var(--fs-12);text-decoration:none;transition:all 0.2s ease}
 .bb:hover{border-color:var(--ac);color:var(--ac)}
-.fi{background:var(--bg3);border:1px solid var(--bd);border-radius:4px;padding:2px 8px;color:var(--tx);font-size:12px;font-family:var(--mn);width:180px}
-.ls{background:var(--bg3);color:var(--tx);border:1px solid var(--bd);border-radius:4px;padding:2px 8px;font-size:11px}
+.fi{background:var(--bg3);border:1px solid var(--bd);border-radius:4px;padding:2px 8px;color:var(--tx);font-size:var(--fs-12);font-family:var(--mn);width:180px}
+.ls{background:var(--bg3);color:var(--tx);border:1px solid var(--bd);border-radius:4px;padding:2px 8px;font-size:var(--fs-12)}
 .sp{display:flex;flex:1;overflow:hidden}
 .cp{order:-1;width:420px;min-width:280px;display:flex;flex-direction:column;border-right:1px solid var(--bd)}
 .ep{order:1;flex:1;display:flex;flex-direction:column;min-width:0}
 .pp{display:none;order:2;flex:1;flex-direction:column;border-left:1px solid var(--bd)}.pp.sh{display:flex}
 .ph{display:flex;align-items:center;justify-content:space-between;padding:6px 12px;background:var(--bg2);border-bottom:1px solid var(--bd)}
-.ph span{font-size:12px;color:var(--ac);font-family:var(--mn);font-weight:600}
+.ph span{font-size:var(--fs-12);color:var(--ac);font-family:var(--mn);font-weight:600}
 #pf{flex:1;border:none;background:#fff}
 #eb{flex:1}
 .vtabs{display:none}
-.vtab{flex:1;padding:6px 10px;border:1px solid var(--bd);border-radius:6px;background:0;color:var(--tx2);font-size:12px;font-weight:600;font-family:var(--ft);cursor:pointer}
+.vtab{flex:1;padding:6px 10px;border:1px solid var(--bd);border-radius:6px;background:0;color:var(--tx2);font-size:var(--fs-12);font-weight:600;font-family:var(--ft);cursor:pointer}
 .vtab.sel{color:var(--ac);border-color:var(--ac);background:var(--accent-dim)}
 .tb{display:flex;align-items:center;gap:4px;padding:8px 12px;background:var(--bg2);border-top:1px solid var(--bd);flex-shrink:0;flex-wrap:wrap;min-height:54px}
-.bt{padding:8px 12px;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;transition:all .15s;font-family:var(--ft);background:var(--surface-2);color:var(--text-muted);white-space:nowrap;display:inline-flex;align-items:center;gap:5px;height:36px}
+.bt{padding:8px 12px;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:var(--fs-12);font-weight:600;transition:all .15s;font-family:var(--ft);background:var(--surface-2);color:var(--text-muted);white-space:nowrap;display:inline-flex;align-items:center;gap:5px;height:36px}
 .bt .ico-sm{width:14px;height:14px}
 .bt:hover{border-color:var(--border-hover);color:var(--text);background:var(--surface-3)}.bt:active{transform:scale(.96)}
 .bt.primary{background:var(--success);color:var(--on-accent);border-color:var(--success)}
@@ -105,12 +88,12 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx);height:100vh;dis
 .bt.forge{background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border-color:#7c3aed}
 .bt.forge:hover{opacity:.9}
 .tb-sep{width:1px;height:28px;background:var(--border);flex-shrink:0;margin:0 2px}
-.op{height:140px;background:var(--bg);border-top:1px solid var(--bd);font-family:var(--mn);font-size:12px;padding:8px 12px;overflow-y:auto;color:var(--text-muted);white-space:pre-wrap;flex-shrink:0}
-.hd{padding:10px 12px;background:var(--bg2);border-bottom:1px solid var(--bd);font-size:14px;font-weight:600;color:var(--ac);font-family:var(--mn)}
+.op{height:140px;background:var(--bg);border-top:1px solid var(--bd);font-family:var(--mn);font-size:var(--fs-12);padding:8px 12px;overflow-y:auto;color:var(--text-muted);white-space:pre-wrap;flex-shrink:0}
+.hd{padding:10px 12px;background:var(--bg2);border-bottom:1px solid var(--bd);font-size:var(--fs-14);font-weight:600;color:var(--ac);font-family:var(--mn)}
 .ms{flex:1;overflow-y:auto;padding:12px;position:relative}
 .ms::before{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:120px;height:120px;background:url('/static/logo.svg') center/contain no-repeat;opacity:0.07;pointer-events:none;z-index:0}
 .ia{display:flex;gap:6px;padding:8px 12px;background:var(--bg2);border-top:1px solid var(--bd);align-items:flex-end;min-height:54px}
-.ii{flex:1;background:var(--bg3);border:1px solid var(--bd);border-radius:18px;padding:8px 14px;color:var(--tx);font-size:14px;resize:none;outline:none;min-height:38px;max-height:100px;line-height:1.4;font-family:var(--ft)}
+.ii{flex:1;background:var(--bg3);border:1px solid var(--bd);border-radius:18px;padding:8px 14px;color:var(--tx);font-size:var(--fs-14);resize:none;outline:none;min-height:38px;max-height:100px;line-height:1.4;font-family:var(--ft)}
 .ii:focus{border-color:var(--ac);box-shadow:0 0 0 2px rgba(217,119,87,0.15)}
 .sb{padding:0;width:36px;height:36px;background:var(--ac);color:var(--on-accent);border:none;border-radius:50%;cursor:pointer;font-weight:600;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s}
 .sb:hover{background:var(--accent-hover)}
@@ -118,50 +101,17 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx);height:100vh;dis
 .vibe-mic:hover{border-color:var(--border-hover);color:var(--text)}
 .vibe-mic.recording{background:var(--danger);color:#fff;border-color:var(--danger);animation:vibePulse 1s infinite}
 @keyframes vibePulse{0%,100%{opacity:1}50%{opacity:.6}}
-.on-mac{display:none;font-size:10px;font-weight:600;white-space:nowrap}
-.mg{margin-bottom:12px;padding:10px 12px;border-radius:10px;font-size:14px;line-height:1.6;word-wrap:break-word}
+.on-mac{display:none;font-size:var(--fs-12);font-weight:600;white-space:nowrap}
+.mg{margin-bottom:12px;padding:10px 12px;border-radius:10px;font-size:var(--fs-14);line-height:1.6;word-wrap:break-word}
 .mu{background:rgba(217,119,87,0.15);color:var(--tx);border:1px solid rgba(217,119,87,0.25);margin-left:20%;border-bottom-right-radius:3px}
 .ma{background:var(--bg2);border:1px solid var(--bd);margin-right:10%;border-bottom-left-radius:3px}
-.ma pre{background:var(--bg);padding:8px;border-radius:6px;margin:8px 0;overflow-x:auto;font-family:var(--mn);font-size:12px;border:1px solid var(--bd)}
-.ab{display:inline-block;margin-top:6px;padding:5px 12px;background:var(--ac);color:var(--on-accent);border:none;border-radius:5px;cursor:pointer;font-size:11px;font-weight:600}
-.ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:20}.ov.sh{display:block}
-.sd{position:fixed;top:0;left:-280px;width:280px;height:100%;background:var(--bg2);border-right:1px solid var(--bd);z-index:30;transition:left .25s;overflow-y:auto}.sd.sh{left:0}
+.ma pre{background:var(--bg);padding:8px;border-radius:6px;margin:8px 0;overflow-x:auto;font-family:var(--mn);font-size:var(--fs-12);border:1px solid var(--bd)}
+.ab{display:inline-block;margin-top:6px;padding:5px 12px;background:var(--ac);color:var(--on-accent);border:none;border-radius:5px;cursor:pointer;font-size:var(--fs-12);font-weight:600}
+.ov{display:none;position:fixed;inset:0;left:var(--cs-side-w,0px);background:rgba(0,0,0,.6);z-index:20}.ov.sh{display:block}
+.sd{position:fixed;top:0;left:calc(var(--cs-side-w,0px) - 280px);width:280px;height:100%;background:var(--bg2);border-right:1px solid var(--bd);z-index:30;transition:left .25s;overflow-y:auto;visibility:hidden}.sd.sh{left:var(--cs-side-w,0px);visibility:visible}
 .si{padding:10px 16px;border-bottom:1px solid var(--bd);cursor:pointer}.si:hover{background:var(--bg3)}
-.rs{font-size:11px;color:var(--tx2);margin-left:auto;font-family:var(--mn)}
+.rs{font-size:var(--fs-12);color:var(--tx2);margin-left:auto;font-family:var(--mn)}
 @keyframes bn{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-8px)}}
-/* ── Page Nav ── */
-.page-nav { display: flex; align-items: center; gap: 1px; position: absolute; left: 50%; transform: translateX(-50%); background: var(--surface-2); border-radius: var(--radius-sm); padding: 2px; }
-.nav-link {
-  padding: 5px 14px; color: var(--text-muted); text-decoration: none;
-  font-size: 12px; font-weight: 500; border-radius: 4px;
-  transition: all 0.15s ease; white-space: nowrap; text-align: center;
-}
-.nav-link:hover { color: var(--text); }
-.nav-link.active { color: var(--accent); background: var(--accent-dim); }
-
-/* ── Side Panel ── */
-.side-panel-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9990}
-.side-panel-overlay.open{display:block}
-.side-panel{position:fixed;top:0;right:-300px;width:300px;height:100%;background:var(--surface);border-left:1px solid var(--border);z-index:9991;transition:right .3s cubic-bezier(.4,0,.2,1),visibility 0s .3s;visibility:hidden;display:flex;flex-direction:column;box-shadow:-4px 0 24px rgba(0,0,0,.3)}
-.side-panel.open{right:0;visibility:visible;transition:right .3s cubic-bezier(.4,0,.2,1)}
-.side-panel-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border)}
-.side-panel-header h2{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--accent);letter-spacing:2px}
-.side-panel-close{background:none;border:none;color:var(--text-muted);font-size:20px;cursor:pointer;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:4px;transition:all .15s}
-.side-panel-close:hover{color:var(--text);background:var(--surface-2)}
-.side-panel-body{padding:12px;display:flex;flex-direction:column;gap:6px;overflow-y:auto;flex:1}
-.sp-item{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-2);cursor:pointer;transition:all .15s;text-decoration:none;color:var(--text);font-size:13px;font-weight:500}
-.sp-item:hover{border-color:var(--border-hover);background:var(--surface-3);color:var(--text)}
-.sp-item svg{flex-shrink:0}
-.sp-item-label{flex:1;text-align:center}
-.sp-divider{height:1px;background:var(--border);margin:6px 0}
-.menu-btn{background:none;border:1px solid var(--border);color:var(--text-muted);width:30px;height:30px;border-radius:var(--radius-sm);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;font-size:16px;position:relative}
-.menu-btn:hover{border-color:var(--border-hover);color:var(--text);background:var(--surface-2)}
-.menu-btn:active{transform:scale(.93)}
-.menu-notif-dot{position:absolute;top:-3px;right:-3px;width:10px;height:10px;background:var(--accent,#a78bfa);border-radius:50%;border:2px solid var(--surface,#1a1a2e);display:none;animation:notifPulse 2s infinite}
-.menu-notif-dot.active{display:block}
-@keyframes notifPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(1.2)}}
-.sp-item.notif-highlight{border-color:var(--accent,#a78bfa);background:var(--accent-dim);box-shadow:0 0 0 1px var(--accent,#a78bfa)}
-.header-right{display:flex;align-items:center;gap:6px}
 
 /* ── Scrollbar ── */
 * { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
@@ -177,17 +127,11 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx);height:100vh;dis
 }
 
 /* ── Light mode extra overrides ── */
-[data-theme=light] .icon-btn{border-color:#bbb;color:#444}
-[data-theme=light] .icon-btn:hover{border-color:#999;color:#1a1a1a;background:#e8e4de}
-[data-theme=light] .nav-link.active{color:var(--accent);background:var(--accent-dim)}
 [data-theme=light] .mu{background:rgba(217,119,87,0.10);color:var(--tx);border:1px solid rgba(217,119,87,0.20)}
 [data-theme=light] .op{background:#f0ece6;color:#555}
 
 /* ── Mobile Responsive ── */
 @media (max-width:768px){
-  .page-nav{position:fixed;bottom:0;left:0;right:0;z-index:9998;transform:none;border-radius:0;padding:6px 0;justify-content:center;background:var(--surface);border-top:1px solid var(--bd);gap:0;overflow-x:auto}
-  .nav-link{padding:8px 8px;font-size:10px}
-  .side-panel{width:280px;right:-280px}
   .sp{flex-direction:column}
   .cp{width:100%;min-width:0;border-right:none;border-bottom:1px solid var(--bd);max-height:50vh}
   .ep{width:100%;min-width:0}
@@ -211,24 +155,12 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx);height:100vh;dis
 @media (max-width:480px){
   .cp{max-height:40vh}
   .bar{padding:6px 10px}
-  .bt{padding:5px 8px;font-size:11px}
+  .bt{padding:5px 8px;font-size:var(--fs-12)}
   .fi{width:100px}
 }
-.header{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0;position:relative;z-index:10}
-.header-left{display:flex;align-items:center;gap:10px}
-.logo-link{display:flex;align-items:center;text-decoration:none}
-.header img{width:34px;height:34px;border-radius:8px}
-.header h1{font-family:var(--mono);font-size:16px;font-weight:700;letter-spacing:2px;color:var(--accent)}
-.header-right{display:flex;align-items:center;gap:6px}
-.icon-btn{background:none;border:1px solid var(--border);color:var(--text-muted);width:30px;height:30px;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;text-decoration:none}
-.icon-btn:hover{border-color:var(--border-hover);color:var(--text);background:var(--surface-2)}
-.icon-btn:active{transform:scale(0.93)}
-.status-dot{width:7px;height:7px;border-radius:50%;background:var(--danger);flex-shrink:0;transition:all .3s}
-.status-dot.on{background:var(--success);box-shadow:0 0 6px rgba(34,197,94,0.5)}
 .ico{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .ico-sm{width:16px;height:16px}
 .vibe-toolbar{height:auto;min-height:42px}
-.notif-bell{position:relative;font-weight:400}.notif-badge{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;background:var(--accent);color:var(--on-accent);font-size:10px;font-weight:700;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 4px;line-height:1;pointer-events:none}.notif-badge.hidden{display:none}
 .webcam-pip{position:fixed;bottom:80px;right:20px;width:240px;border-radius:14px;overflow:hidden;border:2px solid var(--accent);box-shadow:0 4px 24px rgba(0,0,0,.5);z-index:9999;display:none;background:#000;transition:width .3s,height .3s,border-radius .3s}
 .webcam-pip img,.webcam-pip video{width:100%;display:block}
 .webcam-pip.expanded{width:640px;max-width:90vw;border-radius:10px}
@@ -241,56 +173,22 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx);height:100vh;dis
 .modal-overlay { display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.85); z-index:100; justify-content:center; align-items:center; padding:20px; }
 .modal-overlay.show { display:flex; }
 .modal-overlay img { max-width:100%; max-height:90vh; border-radius:var(--radius); border:1px solid var(--border); }
-.modal-close { position:fixed; top:16px; right:16px; background:var(--surface); color:var(--text); border:1px solid var(--border); width:32px; height:32px; border-radius:50%; font-size:18px; cursor:pointer; z-index:101; display:flex; align-items:center; justify-content:center; }
+.modal-close { position:fixed; top:16px; right:16px; background:var(--surface); color:var(--text); border:1px solid var(--border); width:32px; height:32px; border-radius:50%; font-size:calc(18px * var(--fs-scale)); cursor:pointer; z-index:101; display:flex; align-items:center; justify-content:center; }
 </style>
 </head>
 <body>
+<script src="/static/codec-shell.js?v=d03f5d95" data-page="vibe" data-title="Vibe" data-status></script>
 <div class="ov" id="ov" onclick="cS()"></div>
 <div class="sd" id="sd">
-<div style="padding:14px 16px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between"><h2 style="font-family:var(--mn);font-size:13px;color:var(--ac)">PROJECTS</h2><button onclick="cS()" aria-label="Close projects" style="background:0;border:0;color:var(--tx2);cursor:pointer;display:flex;padding:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+<div style="padding:14px 16px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between"><h2 style="font-family:var(--mn);font-size:var(--fs-13);color:var(--ac)">PROJECTS</h2><button onclick="cS()" aria-label="Close projects" style="background:0;border:0;color:var(--tx2);cursor:pointer;display:flex;padding:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
 <div style="padding:0 12px 8px">
   <input type="text" id="sidebarSearch" placeholder="Search projects..." oninput="handleVibeSearch(this.value)"
-    style="width:100%;padding:8px 10px;background:var(--bg3);border:1px solid var(--bd);border-radius:6px;color:var(--tx);font-size:13px;font-family:var(--ft);outline:none;box-sizing:border-box">
+    style="width:100%;padding:8px 10px;background:var(--bg3);border:1px solid var(--bd);border-radius:6px;color:var(--tx);font-size:var(--fs-13);font-family:var(--ft);outline:none;box-sizing:border-box">
 </div>
-<div style="padding:12px 16px;border-bottom:1px solid var(--bd);cursor:pointer;color:var(--ac);font-weight:600;font-size:13px" onclick="nS()">+ New Project</div>
+<div style="padding:12px 16px;border-bottom:1px solid var(--bd);cursor:pointer;color:var(--ac);font-weight:600;font-size:var(--fs-13)" onclick="nS()">+ New Project</div>
 <div id="sl"></div>
 </div>
-<div class="header">
-  <div class="header-left">
-    <a href="/" class="logo-link"><img src="/static/logo.svg" alt="CODEC"></a>
-    <h1><a href="/" style="color:inherit;text-decoration:none">CODEC</a></h1>
-    <div class="status-dot" id="statusDot" title="CODEC status"></div>
-  </div>
-  <nav class="page-nav">
-    <a href="/" class="nav-link">Home</a>
-    <a href="/chat" class="nav-link">Chat</a>
-    <a href="/voice" class="nav-link">Voice</a>
-    <a href="/vibe" class="nav-link active">Vibe</a>
-    <a href="/tasks" class="nav-link">Tasks</a>
-  </nav>
-  <div class="header-right">
-    <button class="menu-btn" onclick="openSidePanel()" title="Home" id="menuBtn"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span class="menu-notif-dot" id="menuNotifDot"></span></button>
-  </div>
-</div>
-<!-- Side Panel -->
-<div class="side-panel-overlay" id="sidePanelOverlay" onclick="closeSidePanel()"></div>
-<div class="side-panel" id="sidePanel">
-  <div class="side-panel-header"><h2>MENU</h2><button class="side-panel-close" onclick="closeSidePanel()" aria-label="Close menu"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
-  <div class="side-panel-body">
-    <a href="/" class="sp-item"><svg class="ico" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span class="sp-item-label">Home</span></a>
-    <div class="sp-divider"></div>
-    <button class="sp-item" id="voiceBtn" onclick="toggleVoiceReply();closeSidePanel()"><svg class="ico" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 010 14.14"/><path d="M15.54 8.46a5 5 0 010 7.07"/><line id="muteX1" x1="4" y1="4" x2="20" y2="20" stroke-width="2.5" style="display:none"/><line id="muteX2" x1="4" y1="20" x2="20" y2="4" stroke-width="2.5" style="display:none"/></svg><span class="sp-item-label" style="flex:none">Voice Replies</span><span id="voiceState" style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px"></span></button>
-    <button class="sp-item" id="screenBtn" onclick="takeScreenshot();closeSidePanel()"><svg class="ico" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg><span class="sp-item-label">Screenshot</span></button>
-    <button class="sp-item" id="photoBtn" onclick="takeServerPhoto();closeSidePanel()"><svg class="ico" viewBox="0 0 24 24"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg><span class="sp-item-label">Photo (Webcam)</span></button>
-    <button class="sp-item" id="camBtn" onclick="toggleWebcamPip();closeSidePanel()"><svg class="ico" viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg><span class="sp-item-label">Live Video (PIP)</span></button>
-    <div class="sp-divider"></div>
-    <a href="/tasks#reports" class="sp-item notif-bell" id="notifBellBtn"><svg class="ico" viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg><span class="sp-item-label">Notifications</span><span class="notif-badge hidden" id="notifBadge">0</span></a>
-    <button class="sp-item" id="themeBtn" onclick="toggleTheme()"><svg class="ico" viewBox="0 0 24 24" id="themeIco"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg><span class="sp-item-label">Toggle Theme</span></button>
-    <button class="sp-item" onclick="window.location.href='/#settings'"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg><span class="sp-item-label">Settings</span></button>
-    <div class="sp-divider"></div>
-    <button class="sp-item" onclick="lockSession()" style="color:var(--danger)"><svg class="ico" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg><span class="sp-item-label">Lock Session</span></button>
-  </div>
-</div>
+<div class="cs-main vibe-main">
 <div class="bar vibe-toolbar">
   <div class="bar-l">
     <button class="bb" onclick="oS()" aria-label="Projects" style="width:32px;padding:0;display:inline-flex;align-items:center;justify-content:center;align-self:stretch"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
@@ -317,17 +215,16 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx);height:100vh;dis
   </div>
 </div>
 <div class="sp">
-<div class="cp"><div class="hd" style="font-size:13px;color:var(--tx2);font-weight:500">Vibe Coding</div><div class="ms" id="cm"><div class="mg ma">Tell me what to build!</div></div><div class="ia"><button class="vibe-mic" id="vibeMic" onclick="toggleVibeMic()" title="Voice input"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button><textarea id="vi" class="ii" rows="1" placeholder="Describe what to build..."></textarea><button class="vibe-mic" id="vibeFolder" onclick="pickWorkingFolder()" title="Allocate a working folder"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg><span class="on-mac">on Mac</span></button><button class="sb" id="sndb" title="Send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></button><button class="sb" id="stopb" onclick="doStop()" style="display:none;background:#c0392b" title="Stop"><svg width="14" height="14" viewBox="0 0 24 24" fill="#fff" stroke="none"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></button></div></div>
+<div class="cp"><div class="hd" style="font-size:var(--fs-13);color:var(--tx2);font-weight:500">Vibe Coding</div><div class="ms" id="cm"><div class="mg ma">Tell me what to build!</div></div><div class="ia"><button class="vibe-mic" id="vibeMic" onclick="toggleVibeMic()" title="Voice input"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button><textarea id="vi" class="ii" rows="1" placeholder="Describe what to build..."></textarea><button class="vibe-mic" id="vibeFolder" onclick="pickWorkingFolder()" title="Allocate a working folder"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg><span class="on-mac">on Mac</span></button><button class="sb" id="sndb" title="Send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></button><button class="sb" id="stopb" onclick="doStop()" style="display:none;background:#c0392b" title="Stop"><svg width="14" height="14" viewBox="0 0 24 24" fill="#fff" stroke="none"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></button></div></div>
 <div style="width:4px;cursor:col-resize;background:var(--bd)" id="rh"></div>
 <div class="vtabs" id="vtabs"><button class="vtab sel" id="vtabCode" onclick="_setVibeTab('code')">Code</button><button class="vtab" id="vtabPrev" onclick="_vibeTabPreview()">Preview</button></div>
 <div class="ep"><div id="eb"></div><div class="tb"><button class="bt primary" onclick="doRun()" title="Execute code"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5 3 19 12 5 21 5 3"/></svg>Run</button><button class="bt" onclick="doPrev()" title="Live preview"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>Preview</button><button class="bt" id="inspectBtn" onclick="toggleInspect()" title="Inspect elements"><svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Inspect</button><div class="tb-sep"></div><button class="bt" onclick="doSave()" title="Save file"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save</button><button class="bt" onclick="doCopy()" title="Copy code"><svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>Copy</button><span class="rs" id="rs"></span></div></div>
 <div class="pp" id="pp"><div class="ph"><span>Live Preview</span><button onclick="closePrev()" aria-label="Close preview" style="background:0;border:0;color:var(--tx2);cursor:pointer;display:flex;padding:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div><iframe id="pf" sandbox="allow-scripts"></iframe></div>
 </div>
 <div class="op" id="op"><span style="color:var(--ac)">Vibe Coding</span></div>
+</div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
 <script>
-function openSidePanel(){document.getElementById('sidePanel').classList.add('open');document.getElementById('sidePanelOverlay').classList.add('open')}
-function closeSidePanel(){document.getElementById('sidePanel').classList.remove('open');document.getElementById('sidePanelOverlay').classList.remove('open')}
 // Auth + CSRF: inject session token and CSRF header on all requests
 // On mobile (Android Chrome), cookies may not persist — fallback to sessionStorage
 (function(){
@@ -346,29 +243,8 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
 function _decResp(r){if(!_e2eKey||r.headers.get('x-e2e')!=='1')return r;return r.clone().json().then(function(d){if(!d.iv||!d.ct)return r;var iv=_unb64(d.iv),ct=_unb64(d.ct);return crypto.subtle.decrypt({name:'AES-GCM',iv:iv},_e2eKey,ct).then(function(pt){var txt=new TextDecoder().decode(pt);return new Response(txt,{status:r.status,headers:r.headers})})}).catch(function(){return r})}
 if(_ssGet('_e2eReady'))window._e2eNegotiate();
 })();
-// ── Theme: system / light / dark ──────────────────────────────────────────
-// 'system' is the DEFAULT and follows the OS day-night setting live. The
-// resolved value is stamped on data-theme (so existing [data-theme="light"]
-// rules work untouched) AND pushed into Monaco, which has its own theme.
-function _themePref(){var v=null;try{v=_lsGet('codec-theme')}catch(e){}return (v==='light'||v==='dark'||v==='system')?v:'system'}
-function _themeResolved(pref){
-  if(pref==='light'||pref==='dark')return pref;
-  try{return (window.matchMedia&&matchMedia('(prefers-color-scheme: light)').matches)?'light':'dark'}catch(e){return 'dark'}
-}
-function applyTheme(){
-  var pref=_themePref(),eff=_themeResolved(pref);
-  document.documentElement.setAttribute('data-theme',eff);
-  if(typeof updateThemeIcon==='function')updateThemeIcon(pref,eff);
-  if(typeof monaco!=='undefined')monaco.editor.setTheme(eff==='light'?'vs':'vs-dark');
-}
-function toggleTheme(){
-  var order=['system','light','dark'],next=order[(order.indexOf(_themePref())+1)%3];
-  try{_lsSet('codec-theme',next)}catch(e){}applyTheme();
-}
-try{if(window.matchMedia){matchMedia('(prefers-color-scheme: light)').addEventListener('change',function(){if(_themePref()==='system')applyTheme()})}}catch(e){}
-window.addEventListener('storage',function(e){if(e.key==='codec-theme')applyTheme()});
-function updateThemeIcon(t){var ico=document.getElementById('themeIco');if(t==='light'){ico.innerHTML='<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>'}else{ico.innerHTML='<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>'}}
-function lockSession(){fetch('/api/auth/logout',{method:'POST'}).then(function(){document.cookie='codec_session=;path=/;max-age=0;SameSite=Lax'+(location.protocol==='https:'?';Secure':'');window.location.href='/auth'})}
+// Theme: the shell stamps data-theme; Monaco has its own theme and follows it.
+window.addEventListener('codec-theme',function(e){if(typeof monaco!=='undefined')monaco.editor.setTheme(e.detail.theme==='light'?'vs':'vs-dark')});
 var _voiceOn=_lsGet('codec-voice')==='true';
 function toggleVoiceReply(){_voiceOn=!_voiceOn;_lsSet('codec-voice',_voiceOn);updateVoiceIcon()}
 function updateVoiceIcon(){var m1=document.getElementById('muteX1'),m2=document.getElementById('muteX2'),st=document.getElementById('voiceState');if(_voiceOn){if(m1)m1.style.display='none';if(m2)m2.style.display='none';if(st){st.textContent='ON';st.style.color='var(--on-accent)';st.style.background='var(--accent)'}}else{if(m1)m1.style.display='';if(m2)m2.style.display='';if(st){st.textContent='OFF';st.style.color='var(--text-muted)';st.style.background='var(--surface-3)'}}}
@@ -492,7 +368,7 @@ require(['vs/editor/editor.main'], function() {
   ed = monaco.editor.create(document.getElementById('eb'), {
     value: '// Ask CODEC to build something\n',
     language: 'plaintext',
-    theme: (_themeResolved(_themePref()) === 'light') ? 'vs' : 'vs-dark',
+    theme: (document.documentElement.getAttribute('data-theme') === 'light') ? 'vs' : 'vs-dark',
     fontSize: 13,
     minimap: {enabled: false},
     automaticLayout: true,
@@ -617,7 +493,7 @@ function _renderVibeWorkdir() {
     var ia = document.querySelector('.ia');
     chip = document.createElement('div');
     chip.id = 'vibeWorkdirChip';
-    chip.style.cssText = 'display:flex;align-items:center;gap:6px;padding:4px 8px;font-size:11px;color:var(--tx2)';
+    chip.style.cssText = 'display:flex;align-items:center;gap:6px;padding:4px 8px;font-size:var(--fs-12);color:var(--tx2)';
     chip.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span id="vibeWorkdirPath" style="max-width:52ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>' +
       '<span onclick="clearWorkingFolder()" title="Remove" role="button" aria-label="Remove working folder" style="cursor:pointer;display:flex"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></span>';
     if (ia && ia.parentNode) ia.parentNode.insertBefore(chip, ia);
@@ -663,7 +539,7 @@ function doSend() {
   var tk = document.createElement('div');
   tk.className = 'mg ma';
   tk.id = 'tkmsg';
-  tk.innerHTML = '<div style="display:flex;align-items:center;gap:8px"><div style="display:flex;gap:3px"><span style="width:8px;height:8px;border-radius:50%;background:var(--ac);animation:bn 1.4s infinite"></span><span style="width:8px;height:8px;border-radius:50%;background:var(--ac);animation:bn 1.4s infinite .2s"></span><span style="width:8px;height:8px;border-radius:50%;background:var(--ac);animation:bn 1.4s infinite .4s"></span></div><span style="color:#888;font-size:12px" id="tktext">Thinking...</span></div>';
+  tk.innerHTML = '<div style="display:flex;align-items:center;gap:8px"><div style="display:flex;gap:3px"><span style="width:8px;height:8px;border-radius:50%;background:var(--ac);animation:bn 1.4s infinite"></span><span style="width:8px;height:8px;border-radius:50%;background:var(--ac);animation:bn 1.4s infinite .2s"></span><span style="width:8px;height:8px;border-radius:50%;background:var(--ac);animation:bn 1.4s infinite .4s"></span></div><span style="color:#888;font-size:var(--fs-12)" id="tktext">Thinking...</span></div>';
   document.getElementById('cm').appendChild(tk);
   document.getElementById('cm').scrollTop = 999999;
 
@@ -1003,12 +879,12 @@ function handleVibeSearch(q) {
 
 function loadSes() {
   var el = document.getElementById('sl');
-  el.innerHTML = '<div style="padding:16px;color:var(--text-muted);font-size:12px">Loading...</div>';
+  el.innerHTML = '<div style="padding:16px;color:var(--text-muted);font-size:var(--fs-12)">Loading...</div>';
   fetch('/api/vibe/sessions').then(function(r){return r.json()}).then(function(d) {
-    if (!d.length) { el.innerHTML = '<div style="padding:16px;color:var(--text-muted);font-size:12px">No projects yet.</div>'; return; }
+    if (!d.length) { el.innerHTML = '<div style="padding:16px;color:var(--text-muted);font-size:var(--fs-12)">No projects yet.</div>'; return; }
     el.innerHTML = d.map(function(s) {
       var ts = s.updated_at ? new Date(s.updated_at).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
-      return '<div class="si" style="display:flex;align-items:center;gap:8px"><div style="flex:1;min-width:0;cursor:pointer" onclick="ldSes(\'' + s.id + '\')"><div style="font-size:13px;color:var(--tx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(s.title) + '</div><div style="font-family:var(--mn);font-size:10px;color:var(--tx2);margin-top:2px">' + ts + '</div></div><button onclick="event.stopPropagation();delSes(\'' + s.id + '\')" style="background:none;border:none;color:var(--tx2);cursor:pointer;padding:4px;opacity:.5;display:flex" title="Delete project" aria-label="Delete project"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>';
+      return '<div class="si" style="display:flex;align-items:center;gap:8px"><div style="flex:1;min-width:0;cursor:pointer" onclick="ldSes(\'' + s.id + '\')"><div style="font-size:var(--fs-13);color:var(--tx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(s.title) + '</div><div style="font-family:var(--mn);font-size:var(--fs-12);color:var(--tx2);margin-top:2px">' + ts + '</div></div><button onclick="event.stopPropagation();delSes(\'' + s.id + '\')" style="background:none;border:none;color:var(--tx2);cursor:pointer;padding:4px;opacity:.5;display:flex" title="Delete project" aria-label="Delete project"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>';
     }).join('');
   }).catch(function() { el.innerHTML = '<div style="padding:16px;color:var(--text-muted)">Error</div>'; });
 }
@@ -1145,7 +1021,7 @@ function showInspectTooltip(x, y, selector, preview) {
   if (!tip) {
     tip = document.createElement('div');
     tip.id = 'inspect-tooltip';
-    tip.style.cssText = 'position:fixed;z-index:10000;background:var(--surface-2);border:1px solid var(--accent);color:var(--text);box-shadow:var(--shadow-popover);padding:8px 12px;border-radius:6px;font-family:SF Mono,monospace;font-size:12px;max-width:300px;pointer-events:none;transition:opacity .2s;';
+    tip.style.cssText = 'position:fixed;z-index:10000;background:var(--surface-2);border:1px solid var(--accent);color:var(--text);box-shadow:var(--shadow-popover);padding:8px 12px;border-radius:6px;font-family:SF Mono,monospace;font-size:var(--fs-12);max-width:300px;pointer-events:none;transition:opacity .2s;';
     document.body.appendChild(tip);
   }
   // selector and preview come from the preview frame: text only, never HTML.
@@ -1180,7 +1056,7 @@ function showEditPanel(info, cs) {
   if (!panel) {
     panel = document.createElement('div');
     panel.id = 'edit-panel';
-    panel.style.cssText = 'position:fixed;right:12px;top:60px;width:268px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;z-index:9999;color:var(--text);font-size:13px;box-shadow:var(--shadow-popover);';
+    panel.style.cssText = 'position:fixed;right:12px;top:60px;width:268px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;z-index:9999;color:var(--text);font-size:var(--fs-13);box-shadow:var(--shadow-popover);';
     document.body.appendChild(panel);
   }
 
@@ -1190,20 +1066,20 @@ function showEditPanel(info, cs) {
       '<button onclick="document.getElementById(\'edit-panel\').style.display=\'none\'" ' +
               'aria-label="Close editor" style="background:none;border:none;color:var(--text-muted);cursor:pointer;display:flex;padding:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>' +
     '</div>' +
-    '<label style="color:var(--text-muted);font-size:10px;text-transform:uppercase;letter-spacing:.05em">Text content</label>' +
-    '<textarea id="ep-text" rows="2" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:5px;margin:3px 0 10px;resize:vertical;font-size:12px;font-family:inherit"></textarea>' +
+    '<label style="color:var(--text-muted);font-size:var(--fs-12);text-transform:uppercase;letter-spacing:.05em">Text content</label>' +
+    '<textarea id="ep-text" rows="2" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:5px;margin:3px 0 10px;resize:vertical;font-size:var(--fs-12);font-family:inherit"></textarea>' +
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">' +
-      '<div><label style="color:var(--text-muted);font-size:10px;text-transform:uppercase;letter-spacing:.05em">Color</label>' +
+      '<div><label style="color:var(--text-muted);font-size:var(--fs-12);text-transform:uppercase;letter-spacing:.05em">Color</label>' +
            '<input type="color" id="ep-color" style="width:100%;height:30px;border:none;border-radius:5px;cursor:pointer;background:var(--bg)"></div>' +
-      '<div><label style="color:var(--text-muted);font-size:10px;text-transform:uppercase;letter-spacing:.05em">Background</label>' +
+      '<div><label style="color:var(--text-muted);font-size:var(--fs-12);text-transform:uppercase;letter-spacing:.05em">Background</label>' +
            '<input type="color" id="ep-bg" style="width:100%;height:30px;border:none;border-radius:5px;cursor:pointer;background:var(--bg)"></div>' +
-      '<div><label style="color:var(--text-muted);font-size:10px;text-transform:uppercase;letter-spacing:.05em">Font size</label>' +
-           '<input type="number" id="ep-fs" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 6px;border-radius:5px;font-size:12px"></div>' +
-      '<div><label style="color:var(--text-muted);font-size:10px;text-transform:uppercase;letter-spacing:.05em">Padding</label>' +
-           '<input type="number" id="ep-pad" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 6px;border-radius:5px;font-size:12px"></div>' +
+      '<div><label style="color:var(--text-muted);font-size:var(--fs-12);text-transform:uppercase;letter-spacing:.05em">Font size</label>' +
+           '<input type="number" id="ep-fs" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 6px;border-radius:5px;font-size:var(--fs-12)"></div>' +
+      '<div><label style="color:var(--text-muted);font-size:var(--fs-12);text-transform:uppercase;letter-spacing:.05em">Padding</label>' +
+           '<input type="number" id="ep-pad" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 6px;border-radius:5px;font-size:var(--fs-12)"></div>' +
     '</div>' +
-    '<button onclick="applyEdits()" style="width:100%;padding:8px;background:var(--accent);color:var(--on-accent);border:none;border-radius:6px;font-weight:700;cursor:pointer;font-size:13px">Apply + Sync to Editor</button>' +
-    '<p style="color:var(--text-muted);font-size:10px;margin-top:8px;text-align:center">Changes update both preview AND source code</p>';
+    '<button onclick="applyEdits()" style="width:100%;padding:8px;background:var(--accent);color:var(--on-accent);border:none;border-radius:6px;font-weight:700;cursor:pointer;font-size:var(--fs-13)">Apply + Sync to Editor</button>' +
+    '<p style="color:var(--text-muted);font-size:var(--fs-12);margin-top:8px;text-align:center">Changes update both preview AND source code</p>';
 
   document.getElementById('ep-tag').textContent = '<' + info.tag + '>';
   document.getElementById('ep-text').value = info.text;
@@ -1334,29 +1210,8 @@ document.getElementById('vi').addEventListener('input', function() {
   });
   document.addEventListener('mouseup', function() { drag = false; });
 })();
-(function(){
-  function pollNotifCount(){
-    fetch('/api/notifications/count').then(function(r){return r.json()}).then(function(d){
-      var c=d.unread||d.count||0;
-      var b=document.getElementById('notifBadge');
-      if(b){b.textContent=c;b.classList.toggle('hidden',c===0)}
-      var dot=document.getElementById('menuNotifDot');
-      if(dot)dot.classList.toggle('active',c>0);
-      var bell=document.getElementById('notifBellBtn');
-      if(bell)bell.classList.toggle('notif-highlight',c>0);
-    }).catch(function(){})
-  }
-  pollNotifCount();setInterval(pollNotifCount,30000);
-  var bell=document.getElementById('notifBellBtn');
-  if(bell)bell.addEventListener('click',function(){
-    fetch('/api/notifications/read-all',{method:'POST'}).catch(function(){});
-    var b=document.getElementById('notifBadge');if(b){b.textContent='0';b.classList.add('hidden')}
-    var dot=document.getElementById('menuNotifDot');if(dot)dot.classList.remove('active');
-    bell.classList.remove('notif-highlight');
-  });
-})();
 // Apply UI preferences from dashboard settings
-(function(){try{var p=JSON.parse(_lsGet('codec-ui-prefs')||'{}'),m={'screenshot_btn':'#screenBtn','photo_btn':'#photoBtn','webcam_pip_btn':'#camBtn','voice_btn':'#voiceBtn','notif_bell':'#notifBellBtn','mic_btn':'#micBtn'};Object.keys(m).forEach(function(k){if(p[k]===false)m[k].split(',').forEach(function(s){document.querySelectorAll(s.trim()).forEach(function(el){el.style.display='none'})})})}catch(e){}})();
+(function(){try{var p=JSON.parse(_lsGet('codec-ui-prefs')||'{}'),m={'screenshot_btn':'#screenBtn','photo_btn':'#photoBtn','webcam_pip_btn':'#camBtn','voice_btn':'#voiceBtn','notif_bell':'#csInbox,#csTabInbox','mic_btn':'#micBtn'};Object.keys(m).forEach(function(k){if(p[k]===false)m[k].split(',').forEach(function(s){document.querySelectorAll(s.trim()).forEach(function(el){el.style.display='none'})})})}catch(e){}})();
 </script>
 <div class="webcam-pip" id="webcamPip">
   <img id="pipVideo" alt="Mac Webcam" onclick="expandPip()" style="cursor:pointer" />
