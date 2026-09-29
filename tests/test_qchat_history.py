@@ -85,9 +85,10 @@ def test_migration_backs_up_once_and_keeps_rows(db, monkeypatch):
     assert backup.stat().st_mtime_ns == before
 
 
-def test_new_empty_database_needs_no_backup(db):
-    qchat.qchat_db()
-    assert not Path(str(db) + ".bak-p2.2").exists()
+def test_new_empty_database_gets_the_columns_without_a_backup(db):
+    conn = qchat.qchat_db()
+    assert {"pinned", "archived"} <= {r[1] for r in conn.execute("PRAGMA table_info(qchat_sessions)")}
+    assert not Path(str(db) + ".bak-p2.2").exists(), "an empty database needs no copy"
 
 
 def test_list_pins_first_hides_archived_and_pages(client):
