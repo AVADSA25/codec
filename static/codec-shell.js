@@ -104,7 +104,8 @@
     tool: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z"/>',
     cpu: '<rect x="5" y="5" width="14" height="14" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/>',
     keys: '<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/>',
-    chev: '<path d="m6 9 6 6 6-6"/>'
+    chev: '<path d="m6 9 6 6 6-6"/>',
+    bulb: '<path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1V17h6v-.2c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2z"/>'
   };
   function ico(name, size, cls) {
     return '<svg class="cs-ico' + (cls ? ' ' + cls : '') + '" width="' + (size || 20) + '" height="' + (size || 20) +
@@ -1562,9 +1563,11 @@
       list.style.top = Math.max(8, top) + 'px';
       list.style.left = Math.max(8, Math.min(r.left, window.innerWidth - list.offsetWidth - 8)) + 'px';
     }
-    function open() {
+    function open(o) {
       if (btn.disabled || !list.hidden) return;
       if (MENU.open && MENU.open !== api) MENU.open.close(false);
+      st.onClose = o && o.onClose;  // P2.7: told once whether a new value was picked
+      st.changed = false;
       st.active = Math.max(0, sel.selectedIndex);
       render();
       list.hidden = false;
@@ -1579,6 +1582,9 @@
       btn.setAttribute('aria-expanded', 'false');
       if (MENU.open === api) MENU.open = null;
       if (refocus) btn.focus();
+      var cb = st.onClose;
+      st.onClose = null;
+      if (cb) { try { cb(st.changed); } catch (e) { /* the page's callback */ } }
     }
     function move(to) {
       var all = items(), n = all.length, i = to;
@@ -1591,6 +1597,7 @@
       if (!o || o.disabled) return;
       var changed = sel.selectedIndex !== i;
       sel.selectedIndex = i;
+      st.changed = changed;
       sync();
       close(true);
       if (changed) sel.dispatchEvent(new Event('change', { bubbles: true }));
@@ -1633,6 +1640,70 @@
   document.addEventListener('mousedown', function (e) {
     if (MENU.open && !e.target.closest('.cs-menu-list, .cs-menu-btn')) MENU.open.close(false);
   });
+
+  // ── Action menu (P2.7): a popover of commands at a button, e.g. a reply's
+  // three-dot menu. items: [{label, icon, run, danger}]. Same look and keys as the
+  // chat-history row menu: Up/Down, Home/End, Enter, Esc returns focus.
+  var ACT = { el: null, btn: null, items: [] };
+  function actionsClose(refocus) {
+    if (!ACT.el || ACT.el.hidden) return;
+    ACT.el.hidden = true;
+    if (ACT.btn) {
+      ACT.btn.setAttribute('aria-expanded', 'false');
+      if (refocus) ACT.btn.focus();
+    }
+    ACT.btn = null;
+  }
+  function actions(btn, items) {
+    if (!btn || !items || !items.length) return;
+    if (ACT.el && !ACT.el.hidden && ACT.btn === btn) { actionsClose(true); return; }
+    if (!ACT.el) {
+      ACT.el = document.createElement('div');
+      ACT.el.className = 'cs-pop';
+      ACT.el.id = 'csActions';
+      ACT.el.setAttribute('role', 'menu');
+      ACT.el.hidden = true;
+      body.appendChild(ACT.el);
+      ACT.el.addEventListener('click', function (e) {
+        var it = e.target.closest('[data-i]');
+        if (!it) return;
+        var item = ACT.items[+it.getAttribute('data-i')];
+        actionsClose(false);
+        if (item && typeof item.run === 'function') item.run();
+      });
+      ACT.el.addEventListener('keydown', function (e) {
+        var all = [].slice.call(ACT.el.querySelectorAll('.cs-pop-item'));
+        var i = all.indexOf(document.activeElement), next = null;
+        if (e.key === 'ArrowDown') next = all[(i + 1) % all.length];
+        else if (e.key === 'ArrowUp') next = all[(i + all.length - 1) % all.length];
+        else if (e.key === 'Home') next = all[0];
+        else if (e.key === 'End') next = all[all.length - 1];
+        else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); actionsClose(true); return; }
+        else if (e.key === 'Tab') { actionsClose(false); return; }
+        if (next) { e.preventDefault(); next.focus(); }
+      });
+      document.addEventListener('mousedown', function (e) {
+        if (ACT.el && !ACT.el.hidden && !ACT.el.contains(e.target) && !(ACT.btn && ACT.btn.contains(e.target))) actionsClose(false);
+      });
+    }
+    actionsClose(false);
+    ACT.items = items;
+    ACT.el.innerHTML = items.map(function (it, i) {
+      var lab = document.createElement('span');
+      lab.textContent = it.label;
+      return '<button type="button" role="menuitem" class="cs-pop-item' + (it.danger ? ' cs-danger' : '') + '" data-i="' + i + '">' +
+        (it.icon ? ico(it.icon, 18) : '') + lab.outerHTML + '</button>';
+    }).join('');
+    ACT.btn = btn;
+    btn.setAttribute('aria-haspopup', 'menu');
+    btn.setAttribute('aria-expanded', 'true');
+    ACT.el.hidden = false;
+    var r = btn.getBoundingClientRect(), w = ACT.el.offsetWidth, h = ACT.el.offsetHeight;
+    ACT.el.style.left = Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8)) + 'px';
+    ACT.el.style.top = (r.bottom + h + 8 > window.innerHeight ? Math.max(8, r.top - h - 4) : r.bottom + 4) + 'px';
+    var first = ACT.el.querySelector('.cs-pop-item');
+    if (first) first.focus();
+  }
   window.addEventListener('resize', function () { if (MENU.open) MENU.open.close(false); });
   document.addEventListener('scroll', function (e) {
     if (MENU.open && !(e.target && e.target.closest && e.target.closest('.cs-menu-list'))) MENU.open.close(false);
@@ -1892,7 +1963,7 @@
     toggleRail: toggleRail, openDrawer: openDrawer, closeDrawer: closeDrawer, focusSearch: focusSearch,
     refreshHistory: refreshHistory, refreshHistorySoon: refreshHistorySoon, setActiveChat: setActiveChat,
     newChat: newChat, voiceReplies: voiceReplies, wakeWord: wakeWord, refreshWake: refreshWake, pollInbox: pollInbox,
-    install: install, toast: toast, palette: palOpen, shortcuts: shortcutsOpen, ask: ask, menu: menu,
+    install: install, toast: toast, palette: palOpen, shortcuts: shortcutsOpen, ask: ask, menu: menu, actions: actions,
     push: { support: pushSupport, subscription: currentSub, on: pushOn, off: pushOff, deviceId: deviceId,
             post: postJSON },
     dictation: { toggle: dictToggle, stop: dictStop, mode: dictMode, toggleMode: toggleDictMode,
