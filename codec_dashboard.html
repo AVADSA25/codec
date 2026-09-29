@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
 <link rel="manifest" href="/manifest.json">
 <title>CODEC</title>
-<link rel="stylesheet" href="/static/codec.css?v=689a8f05">
+<link rel="stylesheet" href="/static/codec.css?v=a4a9e99d">
 <style>
 :root {
   --bg: #121215; --surface: #18181b; --surface-2: #1f1f22; --surface-3: #2a2a2f;
@@ -192,6 +192,17 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
 .push-row-name { font-size: var(--fs-14); color: var(--text); }
 .push-row-hint { font-size: var(--fs-12); color: var(--text-dim); margin-top: 2px; }
 .push-empty { font-size: var(--fs-13); color: var(--text-dim); padding: 4px 14px 12px; }
+/* Today cards (P3.3): a scheduled job's result delivered to Home */
+.today-cards { display: flex; flex-direction: column; gap: 8px; margin: 0 0 12px; }
+.today-cards[hidden] { display: none; }
+.today-head { font-size: var(--fs-12); font-weight: 600; letter-spacing: .5px; text-transform: uppercase; color: var(--text-dim); }
+.today-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
+.today-card-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.today-card-title { font-size: var(--fs-14); font-weight: 600; color: var(--text); min-width: 0; }
+.today-card-time { font-size: var(--fs-12); color: var(--text-dim); white-space: nowrap; }
+.today-card-body { font-size: var(--fs-14); line-height: 1.5; color: var(--text); margin-top: 6px; max-height: 4.5em; overflow: hidden; }
+.today-card.open .today-card-body { max-height: none; }
+.today-card-actions { display: flex; gap: 8px; margin-top: 8px; }
 /* Voice (P2.8) */
 .voice-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 10px; flex-wrap: wrap; }
 .voice-row .voice-select { max-width: 100%; min-width: 0; flex: 1 1 220px; text-align: left; font-family: var(--font-sans); font-size: var(--fs-14); height: 36px; }
@@ -552,7 +563,7 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
 </style>
 </head>
 <body>
-<script src="/static/codec-shell.js?v=58eaa5a8" data-page="home" data-title="Today" data-status></script>
+<script src="/static/codec-shell.js?v=17730038" data-page="home" data-title="Today" data-status></script>
 
 <!-- ── Connect your AI (first run) ─────────────────────────────────────────
      Shown until CODEC has a VERIFIED brain. A fresh paid install had no way
@@ -666,6 +677,7 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
       <div id="cmdResult" style="display:none" class="card">
         <div class="card-task" id="cmdResultText"></div>
       </div>
+      <div class="today-cards" id="todayCards" hidden aria-label="Today"></div>
       <div id="chatList"></div>
     </div>
 
@@ -2001,6 +2013,51 @@ function _pushRemove(id, btn) {
   CodecShell.push.post('/api/push/unsubscribe', { id: id }).then(function () { _pushMsg('Device removed.'); },
     function (e) { _pushMsg('Could not remove: ' + e.message, true); }).then(loadPush);
 }
+
+// ── Today cards (P3.3): results of scheduled jobs sent to Today; P3.1/P3.4 build on them.
+function _todayTime(iso) {
+  var d = iso ? new Date(iso) : null;
+  if (!d || isNaN(d)) return '';
+  var same = d.toDateString() === new Date().toDateString();
+  return same ? d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+              : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+}
+async function loadToday() {
+  var box = document.getElementById('todayCards');
+  if (!box) return;
+  var cards = [];
+  try { var r = await fetch('/api/today'); if (r.ok) cards = (await r.json()).cards || []; } catch (e) { return; }
+  box.hidden = !cards.length;
+  box.innerHTML = cards.length ? '<div class="today-head">Today</div>' : '';
+  cards.forEach(function (c) {
+    var card = document.createElement('div');
+    card.className = 'today-card';
+    card.innerHTML = '<div class="today-card-top"><span class="today-card-title"></span><span class="today-card-time"></span></div>' +
+      '<div class="today-card-body md"></div><div class="today-card-actions">' +
+      '<button type="button" class="mcp-btn" data-act="more">Show all</button>' +
+      (c.url ? '<a class="mcp-btn" target="_blank" rel="noopener" data-act="doc">Google Doc</a>' : '') +
+      '<button type="button" class="mcp-btn" data-act="dismiss">Dismiss</button></div>';
+    card.querySelector('.today-card-title').textContent = c.title || 'Result';
+    card.querySelector('.today-card-time').textContent = _todayTime(c.created);
+    var body = card.querySelector('.today-card-body');
+    if (window.codecMarkdown) window.codecMarkdown.render(body, c.body || ''); else body.textContent = c.body || '';
+    var doc = card.querySelector('[data-act="doc"]');
+    if (doc) { if (/^https:\/\//.test(c.url)) doc.href = c.url; else doc.remove(); }
+    var more = card.querySelector('[data-act="more"]');
+    more.addEventListener('click', function () {
+      var open = card.classList.toggle('open');
+      more.textContent = open ? 'Show less' : 'Show all';
+    });
+    card.querySelector('[data-act="dismiss"]').addEventListener('click', async function (ev) {
+      ev.target.disabled = true;
+      try { await fetch('/api/today/' + encodeURIComponent(c.id) + '/dismiss', { method: 'POST' }); } catch (e) {}
+      loadToday();
+    });
+    box.appendChild(card);
+  });
+}
+loadToday();
+setInterval(loadToday, 60000);
 
 // ── Voice (P2.8): the reading voice with a short preview, and tts_speed. Both save at once.
 var _VOICE_PREVIEW = 'Hi, this is how CODEC sounds when it reads to you.';

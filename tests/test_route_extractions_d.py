@@ -70,10 +70,15 @@ class TestD3Schedules:
         assert path in _registered_paths()
 
     def test_atomic_write_on_update(self):
-        """The update endpoint must use codec_jsonstore.atomic_write_json
-        — re-audit medium fix vs racing the scheduler's read."""
+        """The update endpoint must write schedules.json atomically — re-audit
+        medium fix vs racing the scheduler's read. Since P3.3 the route hands the
+        checked fields to codec_scheduler.update_job, which writes under the
+        file lock with codec_jsonstore.atomic_write_json."""
         text = (REPO / "routes" / "schedules.py").read_text()
-        assert "codec_jsonstore.atomic_write_json" in text
+        assert "codec_scheduler.update_job(sched_id, body)" in text
+        sched = (REPO / "codec_scheduler.py").read_text()
+        assert "codec_jsonstore.atomic_write_json(SCHEDULE_PATH, schedules)" in sched
+        assert "with codec_jsonstore.file_lock(SCHEDULE_PATH):" in sched
 
 
 # ── D4: prompts ────────────────────────────────────────────────────────────

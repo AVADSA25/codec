@@ -25,7 +25,6 @@ except ImportError:
     DB_PATH = os.path.expanduser("~/.codec/memory.db")
 AUDIT_LOG = os.path.expanduser("~/.codec/audit.log")
 NOTIFICATIONS_PATH = os.path.expanduser("~/.codec/notifications.json")
-SCHEDULE_RUNS_LOG = os.path.expanduser("~/.codec/schedule_runs.log")
 
 _NO_CACHE = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"}
 
@@ -166,20 +165,6 @@ def _save_notification(title, body, status="success", schedule_id=None):
         notifications.insert(0, notif)
         _write_notifications(notifications)
     return notif["id"]
-
-
-def _append_schedule_run_log(schedule_id, title, status, body_preview=""):
-    """Append a run record to the schedule runs log."""
-    os.makedirs(os.path.dirname(SCHEDULE_RUNS_LOG), exist_ok=True)
-    entry = {
-        "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
-        "schedule_id": schedule_id,
-        "title": title,
-        "status": status,
-        "body_preview": body_preview[:200]
-    }
-    with open(SCHEDULE_RUNS_LOG, "a") as f:
-        f.write(json.dumps(entry) + "\n")
 
 
 # ── Biometric (Touch ID) Auth ──
