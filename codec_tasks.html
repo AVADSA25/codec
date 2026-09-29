@@ -574,7 +574,7 @@ var _schedKind = 'prompt';
 var _schedSkills = null;
 var _whenTimer = null;
 var _KIND_LABEL = { prompt: 'Prompt', skill: 'Skill', crew: 'Crew' };
-var _DELIVER_LABEL = { notification: 'Notification', today: 'Today', gdoc: 'Google Doc', briefing: 'Briefing card, phone' };
+var _DELIVER_LABEL = { notification: 'Notification', today: 'Today', gdoc: 'Google Doc', briefing: 'Briefing card, phone', silent: 'Nothing (run history only)' };
 
 function _fmtWhen(iso) {
   if (!iso) return '';
@@ -610,8 +610,8 @@ function renderSchedules() {
     html += '<div class="sched-meta" style="margin-top:4px"><span>Sends to: ' + escHtml(sends) + (extras.length ? '; ' + escHtml(extras.join(', ')) : '') + '</span></div>';
     html += '<div class="card-actions">';
     html += '<button class="btn btn-sm btn-primary" onclick="runNow(\'' + escHtml(s.id) + '\')">Run now</button>';
-    if (s.managed === 'briefing') {
-      html += '<a class="btn btn-sm" href="/#settings" style="text-decoration:none">Set up in Settings</a>';
+    if (s.managed) {  // the Morning briefing (P3.1) and the nightly memory job (P2.4) are set up in Settings
+      html += '<a class="btn btn-sm" href="' + (s.managed === 'memory' ? '/#memory' : '/#settings') + '" style="text-decoration:none">Set up in Settings</a>';
     } else {
       html += '<button class="btn btn-sm" style="background:var(--accent);color:var(--on-accent)" onclick="editSchedule(\'' + escHtml(s.id) + '\')">Edit</button>';
       html += '<button class="btn btn-sm btn-danger" onclick="deleteSchedule(\'' + escHtml(s.id) + '\')">Delete</button>';

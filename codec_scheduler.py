@@ -729,8 +729,9 @@ def _speak_on_mac(text: str) -> None:
 
 
 def _deliver(sched: dict, title: str, output: str):
-    """Send a successful result where the job asked. Returns the Google Doc URL."""
-    deliver = [d for d in (sched.get("deliver") or ["notification"]) if d in DELIVER + ("briefing",)] or ["notification"]
+    """Send a successful result where the job asked. Returns the Google Doc URL.
+    "silent" (P2.4: the nightly memory job) delivers nothing: the run history is the record."""
+    deliver = [d for d in (sched.get("deliver") or ["notification"]) if d in DELIVER + ("briefing", "silent")] or ["notification"]
     doc_url = None
     if "briefing" in deliver:  # P3.1: the Morning briefing's own delivery (card, push, script to say)
         try:

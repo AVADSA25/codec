@@ -98,7 +98,20 @@ def _save(fact: str) -> bool:
         return False
 
 
+def _saving_on() -> bool:
+    """Settings > Memory > "Save facts from text" (config memory.fact_extract, default on).
+    Off stops every path: chat, voice, MCP, and auto_memorize, which runs through here."""
+    try:
+        with open(os.path.expanduser("~/.codec/config.json")) as f:
+            mem = json.load(f).get("memory")
+        return not (isinstance(mem, dict) and mem.get("fact_extract") is False)
+    except (OSError, ValueError, AttributeError):
+        return True
+
+
 def run(task: str, context: str = "") -> str:
+    if not _saving_on():
+        return "Saving facts is switched off (Settings > Memory > Save facts from text)."
     text = (task or "").strip()
     # Strip common trigger prefixes
     for trig in ("extract facts from", "extract facts", "fact extract",
