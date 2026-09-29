@@ -847,6 +847,119 @@
     Promise.resolve(ev.userChoice).then(syncInstall, syncInstall);
   }
 
+  // ── Phone notifications (P3.13): Web Push on this device ─────────────────
+  // The Mac keeps the device list (routes/push.py). This device remembers that
+  // the owner turned push on here, so a subscription the browser replaced or
+  // dropped is re-sent or renewed on the next visit without a prompt (the
+  // permission is already granted). A device removed in Settings stays removed.
+  function postJSON(url, data) {
+    var h = { 'Content-Type': 'application/json' };
+    var m = document.cookie.match(/(?:^|;\s*)codec_csrf=([^;]+)/);
+    if (m) h['x-csrf-token'] = m[1];
+    return fetch(url, { method: 'POST', headers: h, body: JSON.stringify(data || {}) }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (d) {
+        if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+        return d;
+      });
+    });
+  }
+  function keyBytes(b64u) {
+    var s = String(b64u || '').replace(/-/g, '+').replace(/_/g, '/');
+    s += '==='.slice(0, (4 - s.length % 4) % 4);
+    var raw = atob(s), out = new Uint8Array(raw.length);
+    for (var i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+    return out;
+  }
+  function sameKey(sub, bytes) {
+    try {
+      var k = new Uint8Array(sub.options.applicationServerKey);
+      if (k.length !== bytes.length) return false;
+      for (var i = 0; i < k.length; i++) if (k[i] !== bytes[i]) return false;
+      return true;
+    } catch (e) { return true; /* the browser does not say: keep it */ }
+  }
+  function pushCapable() {
+    return 'serviceWorker' in navigator && window.isSecureContext && 'PushManager' in window && 'Notification' in window;
+  }
+  function swReady() {
+    return navigator.serviceWorker.register('/sw.js').then(function () { return navigator.serviceWorker.ready; });
+  }
+  function currentSub() {
+    return swReady().then(function (reg) { return reg.pushManager.getSubscription(); });
+  }
+  // 'unsupported' | 'install-first' (iPhone or iPad outside the Home Screen app)
+  // | 'blocked' | 'ready' (the browser can subscribe)
+  function pushSupport() {
+    if (!pushCapable()) return isIOS() && !standalone() && window.isSecureContext ? 'install-first' : 'unsupported';
+    return Notification.permission === 'denied' ? 'blocked' : 'ready';
+  }
+  function askPermission() {
+    if (Notification.permission === 'granted') return Promise.resolve('granted');
+    return new Promise(function (resolve) {
+      var p = Notification.requestPermission(resolve);  // older Safari: callback only
+      if (p && typeof p.then === 'function') p.then(resolve, function () { resolve('default'); });
+    });
+  }
+  function subscribeWith(reg, bytes) {
+    return reg.pushManager.getSubscription().then(function (old) {
+      if (old && sameKey(old, bytes)) return old;
+      var drop = old ? old.unsubscribe().catch(function () {}) : Promise.resolve();
+      return drop.then(function () {
+        return reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: bytes });
+      });
+    });
+  }
+  function sendSub(sub) {
+    return postJSON('/api/push/subscribe', { subscription: sub.toJSON() }).then(function (d) {
+      lsSet('codec-push', '1');
+      lsSet('codec-push-ep', sub.endpoint);
+      return d;
+    });
+  }
+  // Call straight from a click: the permission prompt has to come first.
+  function pushOn(publicKey) {
+    if (!pushCapable()) return Promise.reject(new Error('unsupported'));
+    if (!publicKey) return Promise.reject(new Error('The Mac has no push key yet.'));
+    return askPermission().then(function (perm) {
+      if (perm !== 'granted') throw new Error(perm === 'denied' ? 'blocked' : 'dismissed');
+      return swReady();
+    }).then(function (reg) { return subscribeWith(reg, keyBytes(publicKey)); }).then(sendSub);
+  }
+  function pushOff() {
+    lsSet('codec-push', '0');
+    lsSet('codec-push-ep', '');
+    if (!pushCapable()) return Promise.resolve({});
+    return currentSub().then(function (sub) {
+      if (!sub) return {};
+      var ep = sub.endpoint;
+      return sub.unsubscribe().catch(function () {}).then(function () {
+        return postJSON('/api/push/unsubscribe', { endpoint: ep });
+      });
+    });
+  }
+  // The id routes/push.py gives a device: the first 12 hex digits of SHA-256(endpoint).
+  function deviceId(endpoint) {
+    if (!endpoint || !window.crypto || !crypto.subtle) return Promise.resolve('');
+    return crypto.subtle.digest('SHA-256', new TextEncoder().encode(endpoint)).then(function (buf) {
+      var b = new Uint8Array(buf), hex = '';
+      for (var i = 0; i < 6; i++) hex += ('0' + b[i].toString(16)).slice(-2);
+      return hex;
+    });
+  }
+  function pushResync() {
+    try {
+      if (lsGet('codec-push') !== '1' || !pushCapable() || Notification.permission !== 'granted') return;
+    } catch (e) { return; }
+    swReady().then(function (reg) {
+      return reg.pushManager.getSubscription().then(function (sub) {
+        if (sub) return lsGet('codec-push-ep') === sub.endpoint ? null : sendSub(sub);
+        return fetch('/api/push').then(function (r) { return r.json(); }).then(function (cfg) {
+          if (cfg && cfg.public_key) return subscribeWith(reg, keyBytes(cfg.public_key)).then(sendSub);
+        });
+      });
+    }).catch(function () { /* the next visit tries again */ });
+  }
+
   // ── Keys: Cmd/Ctrl+Shift+S sidebar, Cmd/Ctrl+K search, Esc closes ────────
   document.addEventListener('keydown', function (e) {
     var mod = e.metaKey || e.ctrlKey;
@@ -869,7 +982,9 @@
     toggleRail: toggleRail, openDrawer: openDrawer, closeDrawer: closeDrawer, focusSearch: focusSearch,
     refreshHistory: refreshHistory, refreshHistorySoon: refreshHistorySoon, setActiveChat: setActiveChat,
     newChat: newChat, voiceReplies: voiceReplies, wakeWord: wakeWord, refreshWake: refreshWake, pollInbox: pollInbox,
-    install: install
+    install: install,
+    push: { support: pushSupport, subscription: currentSub, on: pushOn, off: pushOff, deviceId: deviceId,
+            post: postJSON }
   };
   window.openSidePanel = openSidePanel;
   window.closeSidePanel = closeSidePanel;
@@ -901,6 +1016,7 @@
     if ('serviceWorker' in navigator && window.isSecureContext) {
       navigator.serviceWorker.register('/sw.js').catch(function () { /* not fatal */ });
     }
+    pushResync();
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ready);
   else ready();

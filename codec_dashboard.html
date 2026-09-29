@@ -177,6 +177,21 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
   overflow: hidden;
 }
+/* Phone notifications (P3.13) */
+.push-body { padding: 12px 14px; }
+.push-intro { font-size: var(--fs-13); line-height: var(--lh-13); color: var(--text-muted); margin: 0 0 10px; }
+.push-state { font-size: var(--fs-14); color: var(--text); margin: 0 0 10px; }
+.push-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.push-actions button[hidden] { display: none; }
+.push-msg { font-size: var(--fs-13); color: var(--text-muted); min-height: 1.4em; margin-top: 8px; }
+.push-msg.err { color: var(--danger); }
+.push-sub { font-size: var(--fs-12); font-weight: 600; color: var(--text-dim); letter-spacing: .5px; text-transform: uppercase;
+  padding: 12px 14px 6px; border-top: 1px solid var(--border); }
+.push-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 14px; }
+.push-row-main { min-width: 0; }
+.push-row-name { font-size: var(--fs-14); color: var(--text); }
+.push-row-hint { font-size: var(--fs-12); color: var(--text-dim); margin-top: 2px; }
+.push-empty { font-size: var(--fs-13); color: var(--text-dim); padding: 4px 14px 12px; }
 .ui-toggle-group { margin-bottom: 14px; }
 .ui-toggle-group-title { font-size: calc(12px * var(--fs-scale)); text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent); margin: 0 0 6px; font-weight: 600; }
 .ui-toggle-row { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--border); }
@@ -531,7 +546,7 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
 </style>
 </head>
 <body>
-<script src="/static/codec-shell.js?v=d46ccbb7" data-page="home" data-title="Today" data-status></script>
+<script src="/static/codec-shell.js?v=35d8d506" data-page="home" data-title="Today" data-status></script>
 
 <!-- ── Connect your AI (first run) ─────────────────────────────────────────
      Shown until CODEC has a VERIFIED brain. A fresh paid install had no way
@@ -762,6 +777,25 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
           <div class="setting-row" style="justify-content:center;padding-top:8px" id="totpActions"></div>
         </div>
       </div>
+      <div class="settings-section" style="margin-top:20px" id="pushSection">
+        <div class="settings-title">Phone notifications</div>
+        <div class="settings-card">
+          <div class="push-body">
+            <p class="push-intro">CODEC can tell this phone or computer when it needs your approval or an answer, and when an agent finishes. A notification only says what kind of thing is waiting, never its content.</p>
+            <div class="push-state" id="pushState" role="status">Checking this device...</div>
+            <div class="push-actions">
+              <button type="button" class="mcp-btn mcp-btn-primary" id="pushOnBtn" onclick="pushTurnOn()" hidden>Turn on for this device</button>
+              <button type="button" class="mcp-btn" id="pushOffBtn" onclick="pushTurnOff()" hidden>Turn off for this device</button>
+              <button type="button" class="mcp-btn" id="pushTestBtn" onclick="pushSendTest()" hidden>Send a test</button>
+            </div>
+            <div class="push-msg" id="pushMsg" role="status" aria-live="polite"></div>
+          </div>
+          <div class="push-sub">Send a notification for</div>
+          <div id="pushTypes"></div>
+          <div class="push-sub">Devices</div>
+          <div id="pushDevices"></div>
+        </div>
+      </div>
       <div class="settings-section" style="margin-top:20px">
         <div class="settings-title">Page Customization</div>
         <div class="settings-card" style="padding:12px 16px">
@@ -988,7 +1022,7 @@ function showTab(id) {
   if (id === 'audit') loadAudit();
   if (id === 'skills') loadSkillReviews();
   if (id === 'connector') renderConnectors();
-  if (id === 'settings') { loadSettings(); renderUIToggles(); loadPrompts(); }
+  if (id === 'settings') { loadSettings(); renderUIToggles(); loadPrompts(); loadPush(); }
 }
 // Links such as /#settings (the shell's Settings row, other pages) open that panel.
 function _tabFromHash() {
@@ -1840,6 +1874,135 @@ async function loadSettings() {
     // Load 2FA status
     loadTotpStatus();
   } catch(e) { console.error(e); }
+}
+
+// ── Phone notifications (P3.13): Web Push. The device side lives in the shell
+// (CodecShell.push); this section shows the state and the Mac-side switches.
+var _PUSH_SWITCHES = [
+  ['approvals', 'Approvals', 'An action waits for your OK'],
+  ['questions', 'Questions', 'CODEC or an agent asks you something'],
+  ['briefing', 'Morning briefing', 'Your briefing is ready (when the briefing is on)'],
+  ['agents', 'Agent results', 'An agent finished, needs your go-ahead or stopped']
+];
+var _push = { cfg: null, here: '', busy: false };
+function _pushMsg(text, err) {
+  var m = document.getElementById('pushMsg');
+  if (m) { m.textContent = text || ''; m.classList.toggle('err', !!err); }
+}
+function _pushDate(iso) {
+  var d = iso ? new Date(iso) : null;
+  if (!d || isNaN(d)) return '';
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) + ' ' +
+    d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+}
+function _plural(n, word) { return n + ' ' + word + (n === 1 ? '' : 's'); }
+async function loadPush() {
+  var P = window.CodecShell && CodecShell.push;
+  if (!P) return;
+  try {
+    var r = await fetch('/api/push');
+    _push.cfg = r.ok ? await r.json() : null;
+  } catch (e) { _push.cfg = null; }
+  _push.here = '';
+  var support = P.support();
+  if (support === 'ready' && Notification.permission === 'granted') {
+    try {
+      var sub = await P.subscription();
+      if (sub) _push.here = await P.deviceId(sub.endpoint);
+    } catch (e) { /* no worker yet */ }
+  }
+  _renderPush(support);
+}
+function _renderPush(support) {
+  var cfg = _push.cfg || { types: {}, devices: [] };
+  var list = cfg.devices || [];
+  var on = !!_push.here && list.some(function (d) { return d.id === _push.here; });
+  var text = {
+    'unsupported': 'This browser cannot receive notifications.',
+    'install-first': 'On iPhone and iPad, add CODEC to the Home Screen first (Share, then Add to Home Screen), open it from there, then turn this on.',
+    'blocked': "Notifications are blocked for CODEC in this browser's settings. Allow them there, then come back."
+  }[support] || (on ? 'On for this device.' : 'Off for this device.');
+  if (!_push.cfg) text = 'Could not load the notification settings.';
+  else if (!cfg.enabled) text = 'Push is switched off on this Mac (PUSH_ENABLED=false).';
+  document.getElementById('pushState').textContent = text;
+  var ready = support === 'ready' && !!_push.cfg && cfg.enabled && !!cfg.public_key;
+  document.getElementById('pushOnBtn').hidden = !ready || on;
+  document.getElementById('pushOffBtn').hidden = !ready || !on;
+  document.getElementById('pushTestBtn').hidden = !(_push.cfg && cfg.enabled && list.length);
+  var types = document.getElementById('pushTypes');
+  types.innerHTML = _PUSH_SWITCHES.map(function (s) {
+    var checked = !cfg.types || cfg.types[s[0]] !== false;
+    return '<label class="push-row"><span class="push-row-main"><span class="push-row-name">' + escHtml(s[1]) +
+      '</span><div class="push-row-hint">' + escHtml(s[2]) + '</div></span>' +
+      '<span class="mcp-switch"><input type="checkbox" data-push-type="' + s[0] + '"' + (checked ? ' checked' : '') +
+      (_push.cfg ? '' : ' disabled') + ' aria-label="' + escHtml(s[1]) + '"><span class="mcp-slider"></span></span></label>';
+  }).join('');
+  types.querySelectorAll('input[data-push-type]').forEach(function (inp) {
+    inp.addEventListener('change', function () { _pushSetType(inp); });
+  });
+  var devs = document.getElementById('pushDevices');
+  devs.innerHTML = list.length ? list.map(function (d) {
+    var name = (d.label || 'Device') + (d.id === _push.here ? ' (this device)' : '');
+    var hint = 'Added ' + _pushDate(d.created) + (d.last_ok ? ', last reached ' + _pushDate(d.last_ok) : '');
+    return '<div class="push-row"><span class="push-row-main"><span class="push-row-name">' + escHtml(name) +
+      '</span><div class="push-row-hint">' + escHtml(hint) + '</div></span>' +
+      '<button type="button" class="mcp-btn" data-push-remove="' + escHtml(d.id) + '">Remove</button></div>';
+  }).join('') : '<div class="push-empty">No device yet.</div>';
+  devs.querySelectorAll('[data-push-remove]').forEach(function (b) {
+    b.addEventListener('click', function () { _pushRemove(b.getAttribute('data-push-remove'), b); });
+  });
+}
+function pushTurnOn() {
+  var P = window.CodecShell && CodecShell.push;
+  if (!P || !_push.cfg || _push.busy) return;
+  _push.busy = true;
+  _pushMsg('Asking this browser for permission...');
+  // Nothing is awaited before this call: the permission prompt needs the click.
+  P.on(_push.cfg.public_key).then(function () {
+    _pushMsg('Turned on. Use Send a test to check it.');
+  }, function (e) {
+    var why = e && e.message;
+    _pushMsg(why === 'blocked' ? "Notifications are blocked for CODEC in this browser's settings." :
+             why === 'dismissed' ? 'Permission was not given. Nothing changed.' :
+             'Could not turn on: ' + (why || 'unknown error'), true);
+  }).then(function () { _push.busy = false; loadPush(); });
+}
+function pushTurnOff() {
+  var P = window.CodecShell && CodecShell.push;
+  if (!P || _push.busy) return;
+  _push.busy = true;
+  P.off().then(function () { _pushMsg('Turned off for this device.'); },
+    function (e) { _pushMsg('Could not turn off: ' + ((e && e.message) || 'unknown error'), true); })
+    .then(function () { _push.busy = false; loadPush(); });
+}
+function pushSendTest() {
+  var btn = document.getElementById('pushTestBtn');
+  btn.disabled = true;
+  _pushMsg('Sending...');
+  CodecShell.push.post('/api/push/test', {}).then(function (d) {
+    if (!d.devices) { _pushMsg('No device to send to.'); return; }
+    _pushMsg('Sent to ' + d.ok + ' of ' + _plural(d.devices, 'device') + '.' +
+      (d.removed ? ' ' + _plural(d.removed, 'expired device') + ' removed.' : ''), d.ok < d.devices - d.removed);
+  }, function (e) { _pushMsg('Could not send: ' + e.message, true); })
+    .then(function () { btn.disabled = false; loadPush(); });
+}
+function _pushSetType(inp) {
+  var change = {};
+  change[inp.getAttribute('data-push-type')] = inp.checked;
+  inp.disabled = true;
+  CodecShell.push.post('/api/push/types', change).then(function (d) {
+    if (_push.cfg) _push.cfg.types = d.types;
+    _pushMsg('Saved.');
+  }, function (e) {
+    inp.checked = !inp.checked;
+    _pushMsg('Could not save: ' + e.message, true);
+  }).then(function () { inp.disabled = false; });
+}
+function _pushRemove(id, btn) {
+  if (id === _push.here) { pushTurnOff(); return; }
+  btn.disabled = true;
+  CodecShell.push.post('/api/push/unsubscribe', { id: id }).then(function () { _pushMsg('Device removed.'); },
+    function (e) { _pushMsg('Could not remove: ' + e.message, true); }).then(loadPush);
 }
 
 async function loadTotpStatus() {

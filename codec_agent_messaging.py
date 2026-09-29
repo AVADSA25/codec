@@ -209,6 +209,10 @@ def set_silenced(agent_id: str, silenced: bool) -> None:
     _atomic_write_json(_silence_state_path(), state)
 
 
+# P3.13: message types that reach the phone as a Web Push, and their push kind.
+_PUSH_KINDS = {"agent_done": "agent_done", "agent_blocked": "agent_blocked", "agent_aborted": "agent_stopped"}
+
+
 # ── Core post_message + batching ──────────────────────────────────────────────
 def post_message(agent_id: str, type: str, title: str, body: str,
                  actions: Optional[List[Dict[str, Any]]] = None,
@@ -264,6 +268,16 @@ def post_message(agent_id: str, type: str, title: str, body: str,
                 notifs.append(notif)
 
             _write_notifications(notifs)
+
+        # P3.13: content-free Web Push for finished, blocked and stopped agents
+        # (the kind only; the agent's name and message stay on the Mac).
+        push_kind = _PUSH_KINDS.get(type)
+        if push_kind:
+            try:
+                import codec_push
+                codec_push.notify(push_kind)
+            except Exception as e:
+                log.debug("[%s] push failed: %s", agent_id, e)
 
     # Phase 3.5 — multi-channel notification dispatch.
     # Reads agent's notification_channels from manifest. Each non-`pwa`

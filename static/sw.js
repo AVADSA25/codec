@@ -9,7 +9,12 @@
      tunnel answers with a gateway error because the Mac is off, a calm
      "Mac not reachable" page;
    - everything else (/api included)  not handled: no respondWith, so the
-     request reaches the network exactly as without a worker. */
+     request reaches the network exactly as without a worker.
+
+   Web Push (P3.13; docs/P3.13-DESIGN.md): a push carries only a fixed line
+   per kind ("CODEC needs your approval"), never content. It is shown as a
+   notification; a tap focuses an open CODEC window on the given page, or
+   opens one. */
 'use strict';
 
 var VERSION = 'codec-shell-v1';
@@ -101,4 +106,42 @@ self.addEventListener('fetch', function (event) {
     }));
   }
   // Anything else, /api included: not handled here.
+});
+
+// Only a same-origin path may be opened from a notification.
+function safePath(u) {
+  return typeof u === 'string' && u.charAt(0) === '/' && u.charAt(1) !== '/' && u.charAt(1) !== '\\' ? u : '/';
+}
+
+self.addEventListener('push', function (event) {
+  var d = {};
+  try { d = event.data ? event.data.json() : {}; } catch (e) { d = {}; }
+  if (!d || typeof d !== 'object') d = {};
+  var kind = typeof d.kind === 'string' && /^[a-z_]{1,32}$/.test(d.kind) ? d.kind : 'update';
+  var title = typeof d.title === 'string' && d.title ? d.title.slice(0, 80) : 'CODEC';
+  var body = typeof d.body === 'string' ? d.body.slice(0, 160) : 'Open CODEC to see what is new.';
+  event.waitUntil(self.registration.showNotification(title, {
+    body: body,
+    tag: 'codec-' + kind,
+    renotify: true,
+    icon: '/static/icons/icon-192.png',
+    data: { url: safePath(d.url) }
+  }));
+});
+
+self.addEventListener('notificationclick', function (event) {
+  event.notification.close();
+  var url = safePath(event.notification.data && event.notification.data.url);
+  event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (list) {
+    for (var i = 0; i < list.length; i++) {
+      var c = list[i];
+      if (new URL(c.url).origin === self.location.origin && typeof c.focus === 'function') {
+        return c.focus().then(function (w) {
+          var win = w || c;
+          return typeof win.navigate === 'function' ? win.navigate(url) : win;
+        }).catch(function () { return self.clients.openWindow(url); });
+      }
+    }
+    return self.clients.openWindow(url);
+  }));
 });

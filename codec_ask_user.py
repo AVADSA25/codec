@@ -249,6 +249,16 @@ def _write_question_notification(record: dict) -> None:
         log.warning("[ask_user] notification write failed: %s", e)
 
 
+def _push_to_phone(kind: str) -> None:
+    """P3.13: content-free Web Push for the new question (the kind only; the
+    question text never leaves the Mac). Background send, never raises."""
+    try:
+        import codec_push
+        codec_push.notify(kind)
+    except Exception as e:
+        log.debug("[ask_user] push failed: %s", e)
+
+
 # ── §1.7 strict-consent gate ───────────────────────────────────────────────────
 def _is_destructive_tool(tool_name: Optional[str]) -> bool:
     """Auto-trigger: caller's tool is in codec_config._HTTP_BLOCKED. Read each
@@ -458,6 +468,7 @@ def ask(
 
     # Display surface.
     _write_question_notification(record)
+    _push_to_phone("approval" if consent_strict else "question")
 
     # Audit emit — ask_user_question_emit.
     try:
