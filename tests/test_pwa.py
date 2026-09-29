@@ -22,7 +22,8 @@ from PIL import Image
 import routes.health as health
 
 REPO = Path(__file__).resolve().parent.parent
-SW = (REPO / "static" / "sw.js").read_text(encoding="utf-8")
+_SW_FILE = REPO / "static" / "sw.js"
+SW = _SW_FILE.read_text(encoding="utf-8") if _SW_FILE.exists() else ""
 SHELL = (REPO / "static" / "codec-shell.js").read_text(encoding="utf-8")
 APP_PAGES = ["codec_dashboard.html", "codec_chat.html", "codec_voice.html", "codec_vibe.html",
              "codec_tasks.html", "codec_cortex.html", "codec_audit.html"]
@@ -46,6 +47,7 @@ def test_worker_is_served_from_the_root_without_a_login(client):
 
 
 def test_worker_precaches_only_static_files_that_exist():
+    assert "var PRECACHE" in SW, "no worker"
     listed = re.findall(r"'(/static/[^']+)'", SW[SW.index("var PRECACHE"):SW.index("];")])
     assert listed and all(p.startswith("/static/") for p in listed)
     for p in listed:
