@@ -6,6 +6,12 @@ so the whole config-surface lives in one place.
 
   - GET /api/config  returns grouped sections with sensitive fields masked
   - PUT /api/config  validates per-rule + merges, skipping masked values
+
+UI phase 2 P2.10 (docs/P2.10-DESIGN.md): the Settings page also edits the
+nested blocks (shift_report, observer, daybreak, ask_user, step_budget, image,
+ui_prefs). PUT merges those into their block instead of flattening them, with
+their own rules. /api/config/raw is the Advanced editor: the whole file,
+secrets masked; a save merges and never deletes a key.
 """
 from __future__ import annotations
 
@@ -59,6 +65,106 @@ _VALIDATION_RULES = {
     "auth_session_hours":  ((int, float), False, lambda v: (v > 0, "auth_session_hours must be positive")),
     "dashboard_token":     (str,  False, None),
 }
+
+
+def _in(*allowed):
+    return lambda v: (v in allowed, "must be one of " + ", ".join(str(a) for a in allowed))
+
+
+def _between(lo, hi):
+    return lambda v: (lo <= v <= hi, f"must be between {lo} and {hi}")
+
+
+_NUM = (int, float)
+_OPT_STR = (str, type(None))
+
+# P2.10: nested blocks the Settings page edits. block -> {field: (type, check, default)}.
+# The defaults mirror the modules that read them (skills/shift_report.py,
+# codec_observer.py, codec_daybreak.py, codec_ask_user.py, codec_chat_pipeline.py,
+# codec_image.py); GET fills them in for fields the file does not have yet.
+NESTED_BLOCKS = {
+    "shift_report": {
+        "enabled": (bool, None, True),
+        "daily_at_hour": (int, _between(0, 23), 18),
+        "daily_at_minute": (int, _between(0, 59), 0),
+        "idle_minutes": (int, _between(5, 240), 30),
+        "lookback_hours": (int, _between(1, 72), 24),
+        "auto_save_path": (_OPT_STR, None, None),
+    },
+    "observer": {
+        "enabled": (bool, None, True),
+        "ocr_enabled": (bool, None, True),
+        # AGENTS.md §10: never below 30 s (OCR cost).
+        "cadence_active_s": (int, _between(30, 600), 60),
+        "cadence_idle_s": (int, _between(60, 1800), 300),
+    },
+    "daybreak": {
+        "include_calendar": (bool, None, True),
+        "include_email": (bool, None, True),
+        "include_weather": (bool, None, True),
+        "include_reminders": (bool, None, True),
+        "time_budget_seconds": (_NUM, _between(2, 30), 8),
+    },
+    "ask_user": {
+        "timeout_seconds": (int, _between(30, 3600), 600),
+    },
+    "step_budget": {
+        # AGENTS.md §10: "tune up before tuning out" — 5 (default), 8 or 10.
+        "chat": (int, _in(5, 8, 10), 5),
+        "voice": (int, _in(5, 8, 10), 5),
+    },
+    "image": {
+        "steps": (int, _between(4, 50), 20),
+        "max_count": (int, _between(1, 4), 4),
+        "min_free_gb": (_NUM, _between(8, 128), 36),
+    },
+    "ui_prefs": {},  # the Page Customization switches: any id -> bool
+}
+
+# Keys the Advanced editor never changes: masked secrets, and the model switch's
+# own record of the local model to go back to (AGENTS.md §10).
+_RAW_READ_ONLY = _SENSITIVE_FIELDS | {"llm_local_restore"}
+
+
+def _validate_block(block: str, values) -> list:
+    if not isinstance(values, dict):
+        return [f"{block}: expected an object"]
+    rules = NESTED_BLOCKS[block]
+    errors = []
+    for key, value in values.items():
+        if block == "ui_prefs":
+            if not isinstance(value, bool):
+                errors.append(f"ui_prefs.{key}: expected true or false")
+            continue
+        rule = rules.get(key)
+        if not rule:
+            continue  # forward compat, like the flat rules
+        expected, check, _default = rule
+        if isinstance(value, bool) and expected is not bool:  # True is an int to Python
+            errors.append(f"{block}.{key}: expected a number, got true/false")
+            continue
+        if not isinstance(value, expected):
+            errors.append(f"{block}.{key}: wrong type ({type(value).__name__})")
+            continue
+        if check:
+            ok, msg = check(value)
+            if not ok:
+                errors.append(f"{block}.{key} {msg}")
+    return errors
+
+
+def _read_config() -> dict:
+    try:
+        with open(CONFIG_PATH) as f:
+            cfg = json.load(f)
+        return cfg if isinstance(cfg, dict) else {}
+    except Exception:
+        return {}
+
+
+def _write_config(config: dict) -> None:
+    with open(CONFIG_PATH, "w") as f:
+        json.dump(config, f, indent=2)
 
 
 def _validate_config_updates(flat: dict) -> list:
@@ -134,6 +240,12 @@ async def get_config():
             "agent_name": config.get("agent_name", "C"),
         },
     }
+    # P2.10: the nested blocks, with defaults for fields the file does not have.
+    for block, rules in NESTED_BLOCKS.items():
+        saved = config.get(block) if isinstance(config.get(block), dict) else {}
+        vals = {k: rule[2] for k, rule in rules.items()}
+        vals.update({k: v for k, v in saved.items() if block == "ui_prefs" or k in rules})
+        result[block] = vals
     # Mask sensitive fields before sending to the client
     for section in result.values():
         if isinstance(section, dict):
@@ -155,15 +267,22 @@ async def update_config(request: Request):
         except Exception:
             pass
 
-        # Flatten sections for validation and merge
-        flat = {}
-        for section_vals in updates.values():
-            if isinstance(section_vals, dict):
+        if not isinstance(updates, dict):
+            return JSONResponse({"error": "JSON object expected"}, status_code=400)
+        # Flatten the old grouped sections for validation and merge; P2.10's
+        # nested blocks are merged into their own block instead.
+        flat, nested = {}, {}
+        for section, section_vals in updates.items():
+            if section in NESTED_BLOCKS:
+                nested[section] = section_vals
+            elif isinstance(section_vals, dict):
                 for k, v in section_vals.items():
                     flat[k] = v
 
         # Validate all incoming values
         errors = _validate_config_updates(flat)
+        for block, vals in nested.items():
+            errors += _validate_block(block, vals)
         if errors:
             return JSONResponse({"error": "Validation failed", "details": errors}, status_code=422)
 
@@ -175,9 +294,12 @@ async def update_config(request: Request):
                 continue
             config[k] = v
             changed_keys.append(k)
+        for block, vals in nested.items():
+            current = config.get(block) if isinstance(config.get(block), dict) else {}
+            config[block] = {**current, **vals}
+            changed_keys += [f"{block}.{k}" for k in vals]
 
-        with open(CONFIG_PATH, "w") as f:
-            json.dump(config, f, indent=2)
+        _write_config(config)
         return {
             "saved": True,
             "message": f"Configuration saved successfully ({len(changed_keys)} field(s) updated).",
@@ -187,3 +309,42 @@ async def update_config(request: Request):
         return JSONResponse({"error": "Invalid JSON in request body"}, status_code=400)
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+def _masked_config(config: dict) -> dict:
+    out = dict(config)
+    for key in _SENSITIVE_FIELDS:
+        if isinstance(out.get(key), str) and out[key]:
+            out[key] = _mask_sensitive(out[key])
+    return out
+
+
+@router.get("/api/config/raw")
+async def get_config_raw():
+    """P2.10 Advanced editor: the whole config.json, secrets masked."""
+    return {"config": _masked_config(_read_config()), "read_only": sorted(_RAW_READ_ONLY)}
+
+
+@router.put("/api/config/raw")
+async def put_config_raw(request: Request):
+    """Merge an edited config.json. Keys in the body replace the saved ones; keys
+    left out are kept (this never deletes a key); read-only keys stay as saved."""
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON in request body"}, status_code=400)
+    edited = body.get("config") if isinstance(body, dict) else None
+    if not isinstance(edited, dict):
+        return JSONResponse({"error": "config must be a JSON object"}, status_code=400)
+    config = _read_config()
+    changes = {k: v for k, v in edited.items() if k not in _RAW_READ_ONLY and config.get(k) != v}
+    errors = _validate_config_updates({k: v for k, v in changes.items() if k not in NESTED_BLOCKS})
+    for block in NESTED_BLOCKS:
+        if block in changes:
+            errors += _validate_block(block, changes[block])
+    if errors:
+        return JSONResponse({"error": "Validation failed", "details": errors}, status_code=422)
+    config.update(changes)
+    _write_config(config)
+    return {"saved": True, "updated_fields": sorted(changes),
+            "message": f"config.json saved ({len(changes)} key(s) changed)."}

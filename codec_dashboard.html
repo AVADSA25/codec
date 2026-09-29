@@ -248,20 +248,27 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
   text-align: right; max-width: 55%; outline: none; transition: border 0.15s;
 }
 .setting-input:focus { border-color: var(--accent); }
-.setting-toggle {
-  width: 36px; height: 20px; border-radius: 10px; border: none; cursor: pointer;
-  background: var(--border); position: relative; transition: background 0.2s;
+/* Settings fields (P2.10): label, help, status on the left; the control on the right */
+.set-row { gap: 14px; align-items: center; }
+.set-main { min-width: 0; flex: 1 1 auto; }
+.set-main .setting-label { color: var(--text); }
+.set-help { font-size: var(--fs-12); line-height: 1.4; color: var(--text-dim); margin-top: 2px; }
+.set-status { font-size: var(--fs-12); color: var(--success); min-height: 0; }
+.set-status:empty { display: none; }
+.set-status.err { color: var(--danger); }
+.set-row .set-text, .set-row .set-select { flex: 0 1 46%; min-width: 0; text-align: left; font-family: var(--font-sans); font-size: var(--fs-14); height: 34px; }
+.set-row .set-range { flex: 0 1 46%; }
+.set-num { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.set-num input { width: 84px; font-size: var(--fs-14); height: 34px; }
+.set-unit { font-size: var(--fs-12); color: var(--text-dim); }
+.set-advanced > summary { cursor: pointer; list-style: revert; }
+.raw-config { width: 100%; max-width: 100%; text-align: left; font-size: var(--fs-13); line-height: 1.45; min-height: 240px; resize: vertical; margin-bottom: 10px; }
+@media (max-width: 767px) {
+  .set-row { flex-wrap: wrap; }
+  .set-row .set-text, .set-row .set-select, .set-row .set-range { flex: 1 1 100%; font-size: max(16px, var(--fs-14)); }
+  .set-num input, .raw-config { font-size: max(16px, var(--fs-14)); }
 }
-.setting-toggle::after {
-  content: ''; position: absolute; top: 2px; left: 2px;
-  width: 16px; height: 16px; border-radius: 50%; background: var(--text-dim);
-  transition: all 0.2s;
-}
-.setting-toggle.on { background: var(--accent); }
-.setting-toggle.on::after { left: 18px; background: #fff; }
-[data-theme="light"] .setting-toggle { background: #ccc; }
-[data-theme="light"] .setting-toggle::after { background: #fff; }
-[data-theme="light"] .setting-toggle.on { background: var(--accent); }
+
 .save-config-btn {
   width: 100%; padding: 10px; background: var(--accent); color: var(--on-accent); border: none;
   border-radius: var(--radius); font-size: calc(13px * var(--fs-scale)); font-weight: 600; cursor: pointer;
@@ -896,7 +903,16 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
       <div id="settingsContent">
         <div class="refreshing">Loading settings...</div>
       </div>
-      <button class="save-config-btn" id="saveConfigBtn" onclick="saveConfig()">Save Changes</button>
+      <details class="settings-section set-advanced" id="rawConfigSection" ontoggle="if(this.open)loadRawConfig()">
+        <summary class="settings-title">Advanced: edit config.json</summary>
+        <div class="settings-card"><div class="push-body">
+          <p class="push-intro">The whole settings file. Saving changes the keys you edit; a key you delete here is kept in the file. Secrets stay masked and cannot be changed here (<span id="rawReadOnly"></span>).</p>
+          <textarea class="setting-input raw-config" id="rawConfig" rows="16" spellcheck="false" aria-label="config.json"></textarea>
+          <div class="push-actions"><button type="button" class="mcp-btn mcp-btn-primary" onclick="saveRawConfig()">Save config.json</button>
+            <button type="button" class="mcp-btn" onclick="loadRawConfig()">Reload</button></div>
+          <div class="push-msg" id="rawConfigMsg" role="status" aria-live="polite"></div>
+        </div></div>
+      </details>
       <div class="settings-section" style="margin-top:20px">
         <div class="settings-title">Two-Factor Authentication (2FA)</div>
         <div class="settings-card" id="twoFactorCard">
@@ -2740,138 +2756,202 @@ async function confirmTotpSetup(secret) {
   } catch(e) { showToast('Verification failed'); }
 }
 
-function renderSettings(cfg) {
-  var sections = {
-    'Identity': { keys: cfg.identity, icon: 'user' },
-    'LLM': { keys: cfg.llm, icon: 'cpu' },
-    'Vision': { keys: cfg.vision, icon: 'eye' },
-    'Text-to-Speech': { keys: cfg.tts, icon: 'volume' },
-    'Speech-to-Text': { keys: cfg.stt, icon: 'mic' },
-    'Hotkeys': { keys: cfg.keys, icon: 'command' },
-    'Wake Word': { keys: cfg.wake, icon: 'zap' },
-    'Authentication': { keys: cfg.auth, icon: 'lock' },
-  };
+// ── Settings (P2.10, docs/P2.10-DESIGN.md) ─────────────────────────────────
+// One schema: every field has a friendly label, a one-line help and a proper
+// control, and saves by itself (switches, dropdowns and sliders on change; text
+// on Enter or leaving the field). `put` is the section name PUT /api/config
+// expects: an old grouped section (flattened server-side) or a nested block.
+var SETTINGS_SCHEMA = [
+  { title: 'Identity', sec: 'identity', put: 'Identity', fields: [
+    { k: 'agent_name', label: 'Assistant name', help: 'The name CODEC uses for itself in replies and on screen.', c: 'text' } ] },
+  { title: 'Language model', sec: 'llm', put: 'LLM', fields: [
+    { k: 'llm_provider', label: 'Provider', help: 'Where replies come from. "This Mac" keeps everything local.', c: 'select',
+      opts: [['mlx', 'This Mac (MLX)'], ['ollama', 'Ollama'], ['lmstudio', 'LM Studio'], ['openai', 'OpenAI-compatible'], ['anthropic', 'Anthropic'], ['gemini', 'Gemini'], ['custom', 'Custom server']] },
+    { k: 'llm_model', label: 'Model', help: 'The model id the provider serves. The model picker in Chat switches local models.', c: 'text' },
+    { k: 'llm_base_url', label: 'Server address', help: 'The OpenAI-style address of the model server, ending in /v1.', c: 'text', url: true },
+    { k: 'llm_api_key', label: 'API key', help: 'Only for a cloud provider. Kept in the macOS Keychain; shown masked.', c: 'password' },
+    { k: 'streaming', label: 'Stream replies', help: 'Show a reply word by word as it is written.', c: 'switch' } ] },
+  { title: 'Vision', sec: 'vision', put: 'Vision', fields: [
+    { k: 'vision_base_url', label: 'Vision server address', help: 'The server that reads screenshots and photos.', c: 'text', url: true },
+    { k: 'vision_model', label: 'Vision model', help: 'The model id used for images. Empty uses the server default.', c: 'text' } ] },
+  { title: 'Text-to-Speech', sec: 'tts', put: 'TTS', fields: [
+    { k: 'tts_engine', label: 'Speech engine', help: 'How CODEC speaks. Kokoro runs on this Mac; macOS voice uses the system voice.', c: 'select',
+      opts: [['kokoro', 'Kokoro (local)'], ['macos_say', 'macOS voice'], ['disabled', 'Off']] },
+    { k: 'tts_url', label: 'Speech server address', help: 'The Kokoro server CODEC sends text to.', c: 'text', url: true },
+    { k: 'tts_model', label: 'Speech model', help: 'The speech model id. Empty uses the server default. The voice and speed are in Voice below.', c: 'text' } ] },
+  { title: 'Speech-to-Text', sec: 'stt', put: 'STT', fields: [
+    { k: 'stt_engine', label: 'Listening engine', help: 'How CODEC turns your voice into text. Whisper runs on this Mac.', c: 'select',
+      opts: [['whisper_http', 'Whisper server (local)'], ['whisper_local', 'Whisper in CODEC'], ['disabled', 'Off']] },
+    { k: 'stt_url', label: 'Whisper server address', help: 'The transcription endpoint of the Whisper server.', c: 'text', url: true } ] },
+  { title: 'Hotkeys', sec: 'keys', put: 'Hotkeys', fields: [
+    { k: 'key_toggle', label: 'Start / stop CODEC', help: 'The key that turns CODEC on and off (for example f13). Applies after a restart.', c: 'text' },
+    { k: 'key_voice', label: 'Push to talk', help: 'Hold this key to speak a command.', c: 'text' },
+    { k: 'key_text', label: 'Type a command', help: 'Press this key to type instead of speaking.', c: 'text' } ] },
+  { title: 'Wake Word', sec: 'wake', put: 'Wake Word', fields: [
+    { k: 'wake_word_enabled', label: 'Always-on mode', help: 'Wake when you say "Hey CODEC". Off: use the hotkey instead.', c: 'switch' },
+    { k: 'wake_phrases', label: 'Wake phrases', help: 'Other phrases that wake CODEC, separated by commas.', c: 'list' },
+    { k: 'wake_energy', label: 'Microphone sensitivity', help: 'How loud a sound must be before CODEC listens. Lower hears more, higher ignores noise.', c: 'range', min: 50, max: 1000, step: 25 } ] },
+  { title: 'Authentication', sec: 'auth', put: 'Authentication', fields: [
+    { k: 'auth_enabled', label: 'Require login', help: 'Ask for Touch ID or your PIN before the dashboard opens.', c: 'switch' },
+    { k: 'auth_session_hours', label: 'Stay signed in for', help: 'How long a login lasts before CODEC asks again.', c: 'number', min: 1, max: 720, unit: 'hours' },
+    { k: 'dashboard_token', label: 'Dashboard token', help: 'A secret for scripts that call the dashboard. Kept in the Keychain; shown masked.', c: 'password' } ] },
+  { title: 'Shift report', sec: 'shift_report', put: 'shift_report', fields: [
+    { k: 'enabled', label: 'End-of-day report', help: 'A summary of what CODEC did, what got stuck and what is waiting for you.', c: 'switch' },
+    { k: 'daily_at_hour', label: 'Hour', help: 'When the daily report is made (24-hour clock).', c: 'number', min: 0, max: 23 },
+    { k: 'daily_at_minute', label: 'Minute', help: 'Minutes past that hour.', c: 'number', min: 0, max: 59 },
+    { k: 'idle_minutes', label: 'Or after I am away for', help: 'Make it earlier when you have been idle this long.', c: 'number', min: 5, max: 240, unit: 'minutes' },
+    { k: 'lookback_hours', label: 'Covers the last', help: 'How far back the report looks.', c: 'number', min: 1, max: 72, unit: 'hours' },
+    { k: 'auto_save_path', label: 'Also save to folder', help: 'A folder for a dated Markdown copy of each report. Empty: notification only.', c: 'text', nullable: true } ] },
+  { title: 'Observer', sec: 'observer', put: 'observer', fields: [
+    { k: 'enabled', label: 'Watch what I am working on', help: 'Keeps the last 10 minutes of window titles, screen text and file changes on this Mac, so "this" and "continue" make sense.', c: 'switch' },
+    { k: 'ocr_enabled', label: 'Read text on screen', help: 'Needs Screen Recording permission. Off keeps window, clipboard and file signals only.', c: 'switch' },
+    { k: 'cadence_active_s', label: 'Look every (while active)', help: 'How often it looks while you use the Mac. Not below 30 seconds.', c: 'range', min: 30, max: 600, step: 15, unit: 's' },
+    { k: 'cadence_idle_s', label: 'Look every (while idle)', help: 'How often it looks while you are away.', c: 'range', min: 60, max: 1800, step: 60, unit: 's' } ] },
+  { title: 'Morning briefing sources', sec: 'daybreak', put: 'daybreak', fields: [
+    { k: 'include_calendar', label: 'Calendar', help: 'Events on the calendar today.', c: 'switch' },
+    { k: 'include_email', label: 'Email', help: 'Important unread mail.', c: 'switch' },
+    { k: 'include_weather', label: 'Weather', help: 'The forecast for today.', c: 'switch' },
+    { k: 'include_reminders', label: 'Reminders', help: 'Reminders due today.', c: 'switch' },
+    { k: 'time_budget_seconds', label: 'Time limit', help: 'Sources slower than this are left out, so the briefing is never late.', c: 'range', min: 2, max: 30, step: 1, unit: 's' } ] },
+  { title: 'Questions', sec: 'ask_user', put: 'ask_user', fields: [
+    { k: 'timeout_seconds', label: 'Wait for my answer', help: 'How long CODEC waits when it asks you something before it gives up.', c: 'range', min: 30, max: 3600, step: 30, unit: 's' } ] },
+  { title: 'Step budget', sec: 'step_budget', put: 'step_budget', fields: [
+    { k: 'chat', label: 'Chat steps per message', help: 'How many skills one chat message may run. Raise it before turning limits off.', c: 'select', num: true, opts: [[5, '5 (default)'], [8, '8'], [10, '10']] },
+    { k: 'voice', label: 'Voice steps per request', help: 'The same limit for voice.', c: 'select', num: true, opts: [[5, '5 (default)'], [8, '8'], [10, '10']] } ] },
+  { title: 'Image generation', sec: 'image', put: 'image', fields: [
+    { k: 'steps', label: 'Quality steps', help: 'More steps: finer images, slower. 20 takes about 46 seconds at 512 px.', c: 'range', min: 4, max: 50, step: 1 },
+    { k: 'max_count', label: 'Images per request', help: 'The most images one request can make.', c: 'select', num: true, opts: [[1, '1'], [2, '2'], [3, '3'], [4, '4']] },
+    { k: 'min_free_gb', label: 'Free memory needed', help: 'Image jobs wait until this much memory is free (a run holds about 35 GB).', c: 'number', min: 8, max: 128, unit: 'GB' } ] }
+];
 
-  var html = '';
-  for (var title in sections) {
-    var sec = sections[title];
-    if (!sec.keys) continue;
-    html += '<div class="settings-section"><div class="settings-title">' + escHtml(title) + '</div><div class="settings-card">';
-    for (var key in sec.keys) {
-      if (key === 'tts_voice' || key === 'tts_speed') continue;  // the Voice section edits these (P2.8)
-      var val = sec.keys[key];
-      var inputHtml;
-      if (typeof val === 'boolean') {
-        // wake_word_enabled applies INSTANTLY on flip (no Save Changes needed) —
-        // users expect a toggle to just work; requiring a separate save button
-        // meant flipping "always-on off" silently did nothing (2026-07-08).
-        var _click = (key === 'wake_word_enabled') ? 'toggleWakeInstant(this)' : 'toggleSetting(this)';
-        inputHtml = '<button class="setting-toggle ' + (val ? 'on' : '') + '" data-key="' + key + '" data-section="' + title + '" onclick="' + _click + '"></button>';
-      } else if (Array.isArray(val)) {
-        inputHtml = '<input class="setting-input" data-key="' + key + '" data-section="' + title + '" data-type="array" value="' + escAttr(val.join(', ')) + '" style="width:60%">';
-      } else {
-        var inputType = (key.includes('key') && key !== 'llm_api_key') ? 'text' : (key.includes('password') || key.includes('token') || key.includes('api_key') || key.includes('pin_hash')) ? 'password' : 'text';
-        var displayVal = (val === null || val === undefined || val === '') ? '' : String(val);
-        var placeholder = (key.includes('api_key') || key.includes('token')) && !displayVal ? 'Not configured — using local LLM' : '';
-        inputHtml = '<input class="setting-input" data-key="' + key + '" data-section="' + title + '" type="' + inputType + '" value="' + escAttr(displayVal) + '"' + (placeholder ? ' placeholder="' + placeholder + '"' : '') + '>';
-      }
-      var _labels = {
-        'wake_word_enabled': "Always-on mode — wake on “Hey CODEC”",
-        'wake_phrases': 'Wake phrases',
-        'wake_energy': 'Mic sensitivity threshold',
-      };
-      var _label = _labels[key] || key;
-      html += '<div class="setting-row"><span class="setting-label">' + escHtml(_label) + '</span>' + inputHtml + '</div>';
-    }
-    html += '</div></div>';
+function _setId(sec, k) { return 'set-' + sec + '-' + k; }
+function _setControl(sec, f, val) {
+  var id = _setId(sec, f.k), a = ' id="' + id + '" data-sec="' + sec + '" data-key="' + f.k + '" aria-describedby="' + id + '-help"';
+  if (f.c === 'switch') {
+    return '<span class="mcp-switch"><input type="checkbox"' + a + (val ? ' checked' : '') + ' onchange="saveSetting(this)"><span class="mcp-slider"></span></span>';
   }
+  if (f.c === 'select') {
+    var opts = f.opts.slice(), cur = (val === null || val === undefined) ? '' : String(val);
+    if (cur && !opts.some(function (o) { return String(o[0]) === cur; })) opts.push([val, cur]);
+    return '<select class="setting-input set-select"' + a + ' onchange="saveSetting(this)">' + opts.map(function (o) {
+      return '<option value="' + escAttr(String(o[0])) + '"' + (String(o[0]) === cur ? ' selected' : '') + '>' + escHtml(o[1]) + '</option>';
+    }).join('') + '</select>';
+  }
+  if (f.c === 'range') {
+    return '<span class="voice-speed set-range"><input type="range"' + a + ' min="' + f.min + '" max="' + f.max + '" step="' + (f.step || 1) + '" value="' + escAttr(String(val)) +
+      '" oninput="_setRangeOut(this)" onchange="saveSetting(this)"><output for="' + id + '">' + escHtml(String(val) + (f.unit ? ' ' + f.unit : '')) + '</output></span>';
+  }
+  if (f.c === 'number') {
+    return '<span class="set-num"><input type="number" class="setting-input"' + a + ' min="' + f.min + '" max="' + f.max + '" value="' + escAttr(String(val)) +
+      '" onchange="saveSetting(this)" onkeydown="if(event.key===\'Enter\')this.blur()">' + (f.unit ? '<span class="set-unit">' + escHtml(f.unit) + '</span>' : '') + '</span>';
+  }
+  var shown = f.c === 'list' ? (val || []).join(', ') : (val === null || val === undefined ? '' : String(val));
+  var type = f.c === 'password' ? 'password' : 'text';
+  var ph = f.c === 'password' && !shown ? ' placeholder="Not set"' : '';
+  return '<input class="setting-input set-text" type="' + type + '"' + a + ' value="' + escAttr(shown) + '"' + ph +
+    ' autocomplete="off" spellcheck="false" onchange="saveSetting(this)" onkeydown="if(event.key===\'Enter\')this.blur()">';
+}
+function renderSettings(cfg) {
+  var html = '';
+  SETTINGS_SCHEMA.forEach(function (sec) {
+    var vals = cfg[sec.sec];
+    if (!vals) return;
+    html += '<div class="settings-section"><div class="settings-title">' + escHtml(sec.title) + '</div><div class="settings-card">';
+    sec.fields.forEach(function (f) {
+      if (!(f.k in vals)) return;
+      var id = _setId(sec.sec, f.k);
+      html += '<div class="setting-row set-row"><div class="set-main"><label class="setting-label" for="' + id + '">' + escHtml(f.label) + '</label>' +
+        '<div class="set-help" id="' + id + '-help">' + escHtml(f.help) + '</div><div class="set-status" role="status" aria-live="polite"></div></div>' +
+        _setControl(sec.sec, f, vals[f.k]) + '</div>';
+    });
+    html += '</div></div>';
+  });
   document.getElementById('settingsContent').innerHTML = html;
 }
-
-function toggleSetting(btn) {
-  btn.classList.toggle('on');
+function _setField(el) {
+  var sec = SETTINGS_SCHEMA.filter(function (s) { return s.sec === el.dataset.sec; })[0];
+  return { sec: sec, f: sec && sec.fields.filter(function (f) { return f.k === el.dataset.key; })[0] };
 }
-
-// Instant-apply toggle for the always-on wake word — saves immediately on
-// flip (no "Save Changes" step). codec.py re-reads wake_word_enabled live
-// (~2s), so flipping it off here silences "Hey CODEC" within a couple seconds.
-async function toggleWakeInstant(btn) {
-  btn.classList.toggle('on');
-  var on = btn.classList.contains('on');
-  btn.style.opacity = '0.5';
+function _setRangeOut(el) {
+  var o = el.parentNode.querySelector('output'), f = _setField(el).f;
+  if (o) o.textContent = el.value + (f && f.unit ? ' ' + f.unit : '');
+}
+function _setValue(el, f) {
+  if (f.c === 'switch') return el.checked;
+  if (f.c === 'list') return el.value.split(',').map(function (x) { return x.trim(); }).filter(Boolean);
+  if (f.c === 'range' || f.c === 'number' || f.num) { var n = Number(el.value); return el.value === '' || isNaN(n) ? null : n; }
+  if (f.nullable && !el.value.trim()) return null;
+  return el.value.trim();
+}
+function _setShow(el, f, v) {
+  if (f.c === 'switch') el.checked = !!v;
+  else if (f.c === 'list') el.value = (v || []).join(', ');
+  else el.value = v === null || v === undefined ? '' : String(v);
+  if (f.c === 'range') _setRangeOut(el);
+}
+// Save one field. A failed save puts the saved value back and says why.
+async function saveSetting(el) {
+  var m = _setField(el), f = m.f, sec = m.sec;
+  if (!f || !_configData || !_configData[sec.sec]) return;
+  var before = _configData[sec.sec][f.k], v = _setValue(el, f);
+  var row = el.closest('.set-row'), st = row && row.querySelector('.set-status');
+  if (f.c === 'password' && typeof v === 'string' && v.charAt(0) === '*') return;  // still the masked value
+  if (JSON.stringify(v) === JSON.stringify(before)) return;
+  if ((f.c === 'number' || f.num) && (v === null || (f.min !== undefined && (v < f.min || v > f.max)))) {
+    _setShow(el, f, before);
+    if (st) { st.textContent = 'Use a number from ' + f.min + ' to ' + f.max + '.'; st.className = 'set-status err'; }
+    return;
+  }
+  if (f.url && v && !/^https?:\/\//.test(v)) {
+    _setShow(el, f, before);
+    if (st) { st.textContent = 'An address starts with http:// or https://.'; st.className = 'set-status err'; }
+    return;
+  }
+  var body = {}; body[sec.put] = {}; body[sec.put][f.k] = v;
+  el.disabled = true;
+  if (st) { st.textContent = 'Saving...'; st.className = 'set-status'; }
   try {
-    var r = await fetch('/api/config', { method: 'PUT', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ 'Wake Word': { wake_word_enabled: on } }) });
+    var r = await fetch('/api/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     var d = await r.json();
-    if (d && d.saved) {
-      showToast(on ? 'Always-on wake word: ON' : 'Always-on OFF — CODEC won’t wake on its name (use F13)');
-    } else {
-      btn.classList.toggle('on');  // revert on failure
-      showToast('Could not save: ' + ((d && d.error) || 'unknown error'));
+    if (!r.ok || !d.saved) throw new Error((d && d.details && d.details.join('; ')) || (d && d.error) || ('HTTP ' + r.status));
+    _configData[sec.sec][f.k] = v;
+    if (f.c === 'password') { loadSettings(); return; }  // show the new masked value
+    if (st) { st.textContent = 'Saved'; st.className = 'set-status ok'; setTimeout(function () { if (st.textContent === 'Saved') st.textContent = ''; }, 2000); }
+    if (f.k === 'wake_word_enabled') {
+      showToast(v ? 'Always-on wake word: ON' : 'Always-on OFF — CODEC won’t wake on its name (use F13)');
+      if (window.CodecShell) CodecShell.refreshWake();
     }
   } catch (e) {
-    btn.classList.toggle('on');    // revert on network error
-    showToast('Could not save wake setting (network).');
+    _setShow(el, f, before);
+    if (st) { st.textContent = 'Not saved: ' + e.message; st.className = 'set-status err'; }
   } finally {
-    btn.style.opacity = '';
+    el.disabled = false;
   }
 }
 
-async function saveConfig() {
-  var btn = document.getElementById('saveConfigBtn');
-  btn.textContent = 'Saving...';
-  btn.disabled = true;
-
-  // Collect values from inputs
-  var payload = {};
-  document.querySelectorAll('.setting-input').forEach(function(input) {
-    var key = input.dataset.key;
-    var section = input.dataset.section;
-    if (!payload[section]) payload[section] = {};
-    var val = input.value;
-    if (input.dataset.type === 'array') {
-      val = val.split(',').map(function(s) { return s.trim(); }).filter(function(s) { return s; });
-    } else if (val === 'true') val = true;
-    else if (val === 'false') val = false;
-    else if (!isNaN(val) && val !== '' && !key.includes('url') && !key.includes('model') && !key.includes('key') && !key.includes('name') && !key.includes('voice') && !key.includes('engine') && !key.includes('provider') && !key.includes('token') && !key.includes('hash') && !key.includes('phrase')) {
-      val = Number(val);
-    }
-    payload[section][key] = val;
-  });
-
-  // Collect toggles
-  document.querySelectorAll('.setting-toggle').forEach(function(toggle) {
-    var key = toggle.dataset.key;
-    var section = toggle.dataset.section;
-    if (!payload[section]) payload[section] = {};
-    payload[section][key] = toggle.classList.contains('on');
-  });
-
+// ── Advanced: edit config.json (P2.10) ─────────────────────────────────────
+// A save merges: keys removed here are kept in the file, secrets stay masked and
+// read-only, and the model switch's llm_local_restore is never changed from here.
+async function loadRawConfig() {
+  var ta = document.getElementById('rawConfig'), msg = document.getElementById('rawConfigMsg');
+  msg.textContent = ''; msg.className = 'push-msg';
   try {
-    var r = await fetch('/api/config', { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
-    var data = await r.json();
-    if (data.saved) {
-      btn.textContent = 'Saved!';
-      btn.classList.add('saved');
-      var msg = data.message || 'Configuration saved';
-      showToast(msg);
-      setTimeout(function() { btn.textContent = 'Save Changes'; btn.classList.remove('saved'); btn.disabled = false; }, 2000);
-      // Reload settings to reflect any masking changes
-      loadSettings();
-    } else if (data.details && Array.isArray(data.details)) {
-      btn.textContent = 'Validation Error';
-      btn.disabled = false;
-      showToast('Validation failed: ' + data.details.join('; '));
-    } else {
-      btn.textContent = 'Error';
-      btn.disabled = false;
-      showToast('Error: ' + (data.error || 'Unknown'));
-    }
-  } catch(e) {
-    btn.textContent = 'Error saving';
-    btn.disabled = false;
-    showToast('Network error saving configuration');
-  }
+    var r = await fetch('/api/config/raw'); var d = await r.json();
+    ta.value = JSON.stringify(d.config || {}, null, 2);
+    document.getElementById('rawReadOnly').textContent = (d.read_only || []).join(', ');
+  } catch (e) { msg.textContent = 'Could not load config.json.'; msg.className = 'push-msg err'; }
+}
+async function saveRawConfig() {
+  var ta = document.getElementById('rawConfig'), msg = document.getElementById('rawConfigMsg'), obj;
+  try { obj = JSON.parse(ta.value); } catch (e) { msg.textContent = 'Not valid JSON: ' + e.message; msg.className = 'push-msg err'; return; }
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) { msg.textContent = 'The file must be one JSON object.'; msg.className = 'push-msg err'; return; }
+  try {
+    var r = await fetch('/api/config/raw', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ config: obj }) });
+    var d = await r.json();
+    if (!r.ok || !d.saved) throw new Error((d && d.details && d.details.join('; ')) || (d && d.error) || ('HTTP ' + r.status));
+    msg.textContent = d.message; msg.className = 'push-msg';
+    loadSettings(); loadRawConfig();
+  } catch (e) { msg.textContent = 'Not saved: ' + e.message; msg.className = 'push-msg err'; }
 }
 
 // ── Page Customization (UI toggles) ──
