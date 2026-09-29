@@ -43,7 +43,7 @@ strict consent) are add-only. No personal data in the repo. No emoji in the UI.
 | 10 | P3.5: Proactive check-in that speaks only when something matters | M | yes | done (#411) |
 | 11 | P2.9: Calm voice call with standard controls | M | yes | done (#412) |
 | 12 | MATH: Math and diagrams in replies | S | no | done (#413) |
-| 13 | P2.3: '/' commands, '@' skills and agents, and a Cmd+K palette | M | no | open |
+| 13 | P2.3: '/' commands, '@' skills and agents, and a Cmd+K palette | M | no | done (#415) |
 | 14 | P2.4: Memory page: see, correct and forget what CODEC remembers | M | no | open |
 | 15 | P2.6: Styled menus and sheets instead of native select, confirm, prompt and alert | M | no | open |
 | 16 | P2.7: Keep regenerated versions and add thumbs feedback | M | no | open |

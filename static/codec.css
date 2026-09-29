@@ -586,6 +586,34 @@ body.cs-rail .cs-profile > .cs-ico { display: none; }
   .cs-dbtn { height: 44px; }
 }
 
+/* Command palette (P2.3): near the top, one search box over a grouped list; the shortcut sheet is a cs-dialog. */
+.cs-pal-backdrop { align-items: flex-start; padding-top: 12vh; }
+.cs-pal { box-sizing: border-box; width: min(600px, 100%); max-height: min(70vh, 560px); display: flex; flex-direction: column;
+  background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-12);
+  box-shadow: var(--shadow-popover); font-family: var(--font-sans); overflow: hidden; }
+.cs-pal-search { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--border); color: var(--text-muted); }
+.cs-pal-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; color: var(--text); font: 400 var(--fs-16)/1.4 var(--font-sans); }
+.cs-pal-list { overflow-y: auto; padding: 6px; }
+.cs-pal-group { padding: 8px 10px 4px; font-size: var(--fs-12); font-weight: var(--fw-semibold); color: var(--text-muted); }
+.cs-pal-item { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 36px; padding: 6px 10px; border: 0;
+  border-radius: var(--radius-8); background: none; color: var(--text); font: 400 var(--fs-14)/1.3 var(--font-sans); text-align: left; cursor: pointer; }
+.cs-pal-item[aria-selected="true"], .cs-pal-item:hover { background: var(--surface-2); }
+.cs-pal-item .cs-ico { flex: none; color: var(--text-muted); }
+.cs-pal-name { flex: none; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cs-pal-desc { flex: 1; min-width: 0; font-size: var(--fs-12); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cs-pal-empty { padding: 14px 10px; font-size: var(--fs-13); color: var(--text-muted); }
+.cs-pal-foot { padding: 8px 14px; border-top: 1px solid var(--border); font-size: var(--fs-12); color: var(--text-dim); }
+.cs-keys { width: 100%; border-collapse: collapse; font-size: var(--fs-14); }
+.cs-keys td { padding: 7px 0; border-top: 1px solid var(--border); vertical-align: top; }
+.cs-keys tr:first-child td { border-top: 0; }
+.cs-keys td:first-child { width: 1%; padding-right: 16px; white-space: nowrap; }
+.cs-keys kbd { font: 400 var(--fs-12)/1 var(--font-mono); padding: 3px 6px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--surface-2); }
+@media (max-width: 767px) {
+  .cs-pal-backdrop { align-items: flex-start; padding: 8px; }
+  .cs-pal { max-height: calc(100dvh - 16px); }
+  .cs-pal-foot { display: none; }
+}
+
 /* Read-aloud player (P2.8): a strip under the top bar, in the page flow, shown while reading. */
 .cs-player { order: -1; flex: none; display: flex; align-items: center; gap: 8px; min-height: 40px; box-sizing: border-box;
   padding: 0 10px 0 20px; background: var(--surface-2); border-bottom: 1px solid var(--border);

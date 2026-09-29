@@ -10,7 +10,7 @@
 <link rel="icon" href="/favicon.png">
 <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
 <link rel="manifest" href="/manifest.json">
-<link rel="stylesheet" href="/static/codec.css?v=7e1ba93b">
+<link rel="stylesheet" href="/static/codec.css?v=38bc78b5">
 <style>
 :root {
   --bg: #121215; --surface: #18181b; --surface-2: #1f1f22; --surface-3: #27272a;
@@ -163,6 +163,15 @@ html,body{font-family:var(--font-sans);background:var(--bg);color:var(--text);he
 .pop-item .pi-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
 .pop-item .pi-desc{font-size:var(--fs-12);color:var(--text-muted)}
 .pop-item .pi-tag{font-size:var(--fs-12);color:var(--text-dim)}
+/* '/' commands and '@' picks (P2.3): a list above the composer; the caret stays in the box. */
+.mention-menu{position:absolute;bottom:calc(100% + 8px);left:8px;right:8px;z-index:61;max-width:460px;max-height:min(360px,50vh);overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-12);box-shadow:var(--shadow-popover);padding:6px;display:none}
+.mention-menu.open{display:block}
+.mention-menu .mm-group{padding:8px 10px 4px;font-size:var(--fs-12);font-weight:var(--fw-semibold);color:var(--text-muted)}
+.mention-menu .mm-item{width:100%;display:flex;align-items:baseline;gap:10px;min-height:34px;padding:6px 10px;border:0;border-radius:var(--radius-8);background:none;color:var(--text);font-family:var(--font-sans);font-size:var(--fs-14);line-height:1.3;text-align:left;cursor:pointer}
+.mention-menu .mm-item[aria-selected="true"],.mention-menu .mm-item:hover{background:var(--surface-2)}
+.mention-menu .mm-name{flex:none;font-weight:var(--fw-medium);white-space:nowrap}
+.mention-menu .mm-desc{flex:1;min-width:0;font-size:var(--fs-12);color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mention-menu .mm-empty{padding:8px 10px;font-size:var(--fs-13);color:var(--text-muted)}
 .pop-item .pi-check{width:16px;height:16px;color:var(--accent);visibility:hidden}
 .pop-item[aria-checked="true"] .pi-check{visibility:visible}
 .pop-sep{height:1px;background:var(--border);margin:4px 6px}
@@ -332,13 +341,14 @@ input[type=file]{display:none}
 </style>
 </head>
 <body>
-<script src="/static/codec-shell.js?v=17524114" data-page="chat" data-title="Chat" data-status data-model-slot></script>
+<script src="/static/codec-shell.js?v=a80f433a" data-page="chat" data-title="Chat" data-status data-model-slot></script>
 <div class="app cs-main" id="appContainer">
 <div class="messages" id="messages"></div>
 
 <div class="input-area">
 <button type="button" class="jump-latest" id="jumpLatest" onclick="jumpToLatest()"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>Jump to latest</button>
 <div class="composer" id="composer">
+<div class="mention-menu" id="mentionMenu" role="listbox" aria-label="Commands, skills and agents"></div>
 <div class="pop-menu" id="plusMenu" role="menu" aria-label="Add to your message">
   <button type="button" class="pop-item" role="menuitem" onclick="closeMenus();document.getElementById('fileUp').click()"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg><span class="pi-text">Attach files</span></button>
   <button type="button" class="pop-item touch-only" role="menuitem" onclick="closeMenus();document.getElementById('photoUp').click()"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg><span class="pi-text">Photo or camera</span></button>
@@ -364,13 +374,14 @@ input[type=file]{display:none}
     <svg class="ico" viewBox="0 0 24 24" style="width:11px;height:11px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
   </button>
 </div>
-<textarea class="chat-input" id="chatInput" placeholder="Message CODEC" rows="1" aria-label="Message CODEC" onkeydown="handleKey(event)"></textarea>
+<textarea class="chat-input" id="chatInput" placeholder="Message CODEC" rows="1" aria-label="Message CODEC" aria-autocomplete="list" aria-controls="mentionMenu" aria-expanded="false" onkeydown="handleKey(event)"></textarea>
 <div class="composer-bar">
 <div class="cb-left">
 <button type="button" class="cb-btn" id="plusBtn" onclick="toggleMenu('plusMenu',this)" title="Add files and more" aria-label="Add files and more" aria-haspopup="menu" aria-expanded="false"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
 <button type="button" class="mode-pill" id="modePill" onclick="toggleMenu('modeMenu',this)" title="Mode" aria-haspopup="menu" aria-expanded="false"><span class="mp-ico"></span><span class="mp-label">Think</span><svg class="ico chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg></button>
 <button type="button" class="cb-chip" id="crewChip" onclick="openAgentSheet()" title="Choose the crew" style="display:none"><span class="cc-label">Deep Research</span><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg></button>
 <span class="cb-chip static" id="webChip" style="display:none"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>Web search<button type="button" class="x" onclick="toggleWebSearch()" title="Turn off web search" aria-label="Turn off web search"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></span>
+<span class="cb-chip static" id="pickChip" style="display:none"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z"/></svg><span class="pk-label"></span><button type="button" class="x" onclick="setPick(null)" title="Remove the pick" aria-label="Remove the pick"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></span>
 <span id="imageOpts"><select id="imageSize" title="Image size — the first image takes about 2 min at 512 px"><option value="512">512 px (~2 min)</option><option value="768">768 px</option><option value="1024">1024 px</option></select><label title="Transparent background"><input type="checkbox" id="imageTransparent">Transparent</label></span>
 </div>
 <div class="cb-right">
@@ -967,7 +978,7 @@ function _syncModeUi(){
   var item=document.querySelector('#modeMenu .pop-item[data-mode="'+k+'"]');
   if(item){var lb=item.querySelector('.pi-text').firstChild.textContent;pill.querySelector('.mp-label').textContent=lb;pill.querySelector('.mp-ico').innerHTML=item.querySelector('svg').outerHTML;pill.setAttribute('aria-label','Mode: '+lb);pill.title='Mode: '+lb}
   var chip=document.getElementById('crewChip'),cs=document.getElementById('crewSelect');
-  if(chip&&cs){chip.style.display=chatMode==='research'?'':'none';var o=cs.options[cs.selectedIndex];chip.querySelector('.cc-label').textContent=o?o.textContent:'Crew'}
+  if(chip&&cs){chip.style.display=chatMode==='research'?'':'none';var o=cs.options[cs.selectedIndex];chip.querySelector('.cc-label').textContent=(cs.value==='custom'&&_pickAgent)?_pickAgent.name:(o?o.textContent:'Crew')}
 }
 function chooseMode(m){
   closeMenus();
@@ -1218,7 +1229,7 @@ function parseScaffold(raw){
 
 function genId(){return Date.now().toString(36)+Math.random().toString(36).substr(2,5)}
 
-function startNewSession(){_discardFrom=null;sessionId=genId();_lsSet('codec-chat-session',sessionId);chatHist=[];pendingFiles=[];document.getElementById('fileChips').innerHTML='';_clearQueue();_follow=true;_renderEmptyState();_syncSendState();if(window.CodecShell)CodecShell.setActiveChat(sessionId)}
+function startNewSession(){if(typeof setPick==='function')setPick(null);_pickAgent=null;_discardFrom=null;sessionId=genId();_lsSet('codec-chat-session',sessionId);chatHist=[];pendingFiles=[];document.getElementById('fileChips').innerHTML='';_clearQueue();_follow=true;_renderEmptyState();_syncSendState();if(window.CodecShell)CodecShell.setActiveChat(sessionId)}
 
 // PR #39: persist sessionId across page reloads. If a previous session
 // exists, load it on boot so the user lands back on the same chat (with
@@ -1869,6 +1880,7 @@ async function sendMessage(queued){
     var researchText=(text||'')+fileContext;
     var crew=document.getElementById('crewSelect').value||'deep_research';
     var noTextCrews=['daily_briefing','email_handler'];
+    var _ci=_crewInfo(crew);if(_ci&&!_ci.arg&&noTextCrews.indexOf(crew)<0)noTextCrews.push(crew);
     if(!text&&!fileNames.length&&!noTextCrews.includes(crew))return;
     if(fileNames.length)clearChips();
 
@@ -1878,6 +1890,8 @@ async function sendMessage(queued){
       'content_writer':'Content Writer','meeting_summarizer':'Meeting Summarizer',
       'invoice_generator':'Invoice Generator','project_manager':'Project Manager',
       'custom':document.getElementById('agentName').value||'Custom Agent'};
+    if(!crewLabels[crew])crewLabels[crew]=(_ci&&_ci.label)||crew;
+    if(crew==='custom'&&_pickAgent)crewLabels.custom=_pickAgent.name;
     var userMsg=(crewLabels[crew]||crew)+': '+((text||'')||(fileNames.length?fileNames.join(', '):'(running)'));
     if(fileNames.length&&text)userMsg+=' ['+fileNames.join(', ')+']';
     addMessage('user',userMsg);chatHist.push({role:'user',content:userMsg});saveMessages([{role:'user',content:userMsg}]);
@@ -1895,7 +1909,11 @@ async function sendMessage(queued){
     updateStatus('Starting '+(crewLabels[crew]||crew)+'&hellip;\n\n'+(crewHints[crew]||'Running agent...'));
 
     var payload={crew:crew};
-    if(crew==='custom'){payload.agent_name=document.getElementById('agentName').value||'Custom Agent';payload.role=document.getElementById('agentRole').value||'';payload.tools=getSelectedTools();payload.max_iterations=parseInt(document.getElementById('agentMaxIter').value||'8');payload.task=researchText}else{if(['deep_research','competitor_analysis'].includes(crew))payload.topic=researchText;if(crew==='deep_research'){var _rm=document.getElementById('researchModelSelect');if(_rm&&_rm.value)payload.model=_rm.value}if(crew==='trip_planner')payload.destination=researchText}
+    if(crew==='custom'){payload.agent_name=document.getElementById('agentName').value||'Custom Agent';payload.role=document.getElementById('agentRole').value||'';payload.tools=getSelectedTools();payload.max_iterations=parseInt(document.getElementById('agentMaxIter').value||'8');payload.task=researchText;
+      // A saved agent picked with '@' runs as saved, whatever the builder's tool grid shows.
+      if(_pickAgent){payload.agent_name=_pickAgent.name;payload.role=_pickAgent.role||payload.role;payload.tools=_pickAgent.tools||[];payload.max_iterations=_pickAgent.max_iterations||8}}
+    else{if(['deep_research','competitor_analysis'].includes(crew))payload.topic=researchText;if(crew==='deep_research'){var _rm=document.getElementById('researchModelSelect');if(_rm&&_rm.value)payload.model=_rm.value}if(crew==='trip_planner')payload.destination=researchText;
+      if(_ci&&_ci.arg&&!payload[_ci.arg])payload[_ci.arg]=researchText}
 
     var elapsed=0;
     _agentTicker=setInterval(function(){elapsed+=5;updateStatus(crewLabels[crew]+' running&hellip; ('+elapsed+'s)  \u2014 press Stop to cancel\n\n'+(crewHints[crew]||''))},5000);
@@ -1922,7 +1940,9 @@ async function sendMessage(queued){
     isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false;return
   }
 
-  var displayText=text;
+  var pick=_pick;
+  if(pick&&!text)text=pick.label; // a pick alone runs it on its own name
+  var displayText=pick?('@'+pick.label+(text&&text!==pick.label?' '+text:'')):text;
   if(fileNames.length){displayText=(fileNames.map(function(n){return n}).join('\n'))+'\n\n'+(text||'Please analyze the attached file(s).')}
   addMessage('user',displayText);
   var imageData=[];
@@ -1940,7 +1960,8 @@ async function sendMessage(queued){
       if(data.response){addMessage('assistant',data.response);chatHist.push({role:'assistant',content:data.response});saveMessages([{role:'assistant',content:data.response}])}
       else{addMessage('assistant','Error: '+(data.error||'No response'))}
     } else {
-      r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs,force_search:webSearchEnabled,thinking:false,show_thoughts:false,reason_scaffold:thinkingEnabled,stream:true,workdir:_workdir}),signal:_currentAbort.signal});
+      if(pick)setPick(null); // the pick goes with this one message
+      r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs,force_search:webSearchEnabled,thinking:false,show_thoughts:false,reason_scaffold:thinkingEnabled,stream:true,workdir:_workdir,skill:pick?pick.name:undefined}),signal:_currentAbort.signal});
       if(r.status===401||r.status===403){hideTyping();addMessage('assistant','Session expired — redirecting to login...');setTimeout(function(){window.location.href='/auth'},1500);isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false;return}
       hideTyping();_lastStats=null;
       // SSE streaming — parse the Think-mode scaffold as tokens arrive
@@ -1979,7 +2000,147 @@ async function sendMessage(queued){
   _currentAbort=null;isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false
 }
 
+// ── '/' commands and '@' picks (P2.3; docs/P2.3-DESIGN.md) ─────────────────
+// '/' at the start lists the backend commands (/api/slash_commands) and the page
+// actions below; '@' at the start or after a space lists skills, crews, saved
+// agents and MCP servers (/api/mentions). A skill or MCP pick is a chip: the next
+// message goes with `skill` and runs exactly that. A crew or agent pick opens
+// Agents with it. The caret stays in the box; the list follows aria-activedescendant.
+var _slashList=null,_mentionData=null,_pick=null,_pickAgent=null;
+var _menu={open:false,items:[],active:0,start:0,end:0};
+var _PAGE_ACTIONS=[
+  {name:'new',summary:'Start a new chat',run:function(){startNewSession()}},
+  {name:'brief',summary:'Run the Morning briefing now',run:function(){_runBriefing()}},
+  {name:'image',summary:'Switch to Image mode',ok:function(){var b=document.getElementById('modeImageBtn');return !!b&&b.style.display!=='none'},run:function(){chooseMode('image')}},
+  {name:'think',summary:'Switch to Think mode',run:function(){chooseMode('think')}},
+  {name:'project',summary:'Switch to Project mode',run:function(){chooseMode('project')}}
+];
+function _getJSON(url){return fetch(url).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()})}
+function _loadSlash(){if(_slashList)return Promise.resolve(_slashList);return _getJSON('/api/slash_commands').then(function(d){_slashList=d.commands||[];return _slashList}).catch(function(){return []})}
+function _loadMentions(){if(_mentionData)return Promise.resolve(_mentionData);return _getJSON('/api/mentions').then(function(d){_mentionData=d;return d}).catch(function(){return {skills:[],crews:[],agents:[],mcp:[]}})}
+function _runBriefing(){
+  fetch('/api/briefing/run',{method:'POST'}).then(function(r){return r.json().catch(function(){return {}}).then(function(d){return {ok:r.ok,d:d}})})
+    .then(function(x){showToast(x.ok?'Morning briefing started':(x.d.error||'Could not start the briefing'))},function(){showToast('Could not start the briefing')});
+}
+// What the text before the caret asks for: '/name' at the very start, or '@query'.
+function _menuWanted(){
+  var ta=document.getElementById('chatInput'),before=ta.value.slice(0,ta.selectionStart||0),m;
+  if((m=/^\/([\w-]*)$/.exec(before)))return {kind:'slash',q:m[1].toLowerCase(),start:0,end:before.length};
+  if((m=/(^|\s)@([\w .:-]{0,40})$/.exec(before)))return {kind:'mention',q:m[2].toLowerCase(),start:before.length-m[2].length-1,end:before.length};
+  return null;
+}
+function _match(q,s){return !q||String(s).toLowerCase().indexOf(q)>=0}
+function _updateMenu(){
+  var want=_menuWanted();
+  if(!want){_closeMenu();return}
+  var load=want.kind==='slash'?_loadSlash():_loadMentions();
+  load.then(function(data){
+    var now=_menuWanted();if(!now||now.kind!==want.kind||now.q!==want.q)return; // typed on
+    var items=[];
+    if(want.kind==='slash'){
+      data.forEach(function(c){if(_match(want.q,c.name)||c.aliases.some(function(a){return _match(want.q,a)}))items.push({group:'Commands',name:'/'+c.name,desc:c.usage!=='/'+c.name?c.usage:c.summary,act:{type:'slash',cmd:c}})});
+      _PAGE_ACTIONS.forEach(function(a){if((!a.ok||a.ok())&&_match(want.q,a.name))items.push({group:'Actions',name:'/'+a.name,desc:a.summary,act:{type:'action',action:a}})});
+    }else{
+      var q=want.q;
+      data.skills.forEach(function(s){if(_match(q,s.name)||_match(q,s.group))items.push({group:'Skills: '+s.group,name:s.name,desc:s.description,act:{type:'skill',skill:s}})});
+      data.crews.forEach(function(c){if(_match(q,c.label)||_match(q,c.name))items.push({group:'Crews',name:c.label,desc:c.description,act:{type:'crew',crew:c}})});
+      data.agents.forEach(function(a){if(_match(q,a.name))items.push({group:'Agents',name:a.name,desc:a.role,act:{type:'agent',agent:a}})});
+      data.mcp.forEach(function(s){if(_match(q,s.name)||_match(q,'mcp'))items.push({group:'MCP servers',name:s.name,desc:s.description,act:{type:'mcp',server:s}})});
+    }
+    _menu.items=items;_menu.active=0;_menu.start=now.start;_menu.end=now.end;_renderMenu();
+  });
+}
+function _renderMenu(){
+  var m=document.getElementById('mentionMenu'),ta=document.getElementById('chatInput');
+  m.innerHTML='';
+  if(!_menu.items.length){_closeMenu();return}
+  var last='';
+  _menu.items.forEach(function(it,i){
+    if(it.group!==last){last=it.group;var g=document.createElement('div');g.className='mm-group';g.setAttribute('role','presentation');g.textContent=it.group;m.appendChild(g)}
+    var b=document.createElement('button');b.type='button';b.className='mm-item';b.id='mm-'+i;b.setAttribute('role','option');b.tabIndex=-1;
+    b.setAttribute('aria-selected',String(i===_menu.active));
+    b.innerHTML='<span class="mm-name"></span><span class="mm-desc"></span>';
+    b.querySelector('.mm-name').textContent=it.name;b.querySelector('.mm-desc').textContent=it.desc||'';
+    b.addEventListener('mousedown',function(ev){ev.preventDefault()}); // keep the caret in the box
+    b.addEventListener('click',function(){_menu.active=i;_choose()});
+    m.appendChild(b);
+  });
+  m.classList.add('open');_menu.open=true;
+  ta.setAttribute('aria-expanded','true');ta.setAttribute('aria-activedescendant','mm-'+_menu.active);
+  var a=document.getElementById('mm-'+_menu.active);if(a)a.scrollIntoView({block:'nearest'});
+}
+function _closeMenu(){
+  var m=document.getElementById('mentionMenu'),ta=document.getElementById('chatInput');
+  if(m){m.classList.remove('open');m.innerHTML=''}_menu.open=false;_menu.items=[];
+  if(ta){ta.setAttribute('aria-expanded','false');ta.removeAttribute('aria-activedescendant')}
+}
+function _menuKey(e){
+  if(!_menu.open)return false;
+  if(e.key==='ArrowDown'||e.key==='ArrowUp'){
+    e.preventDefault();var n=_menu.items.length;
+    _menu.active=e.key==='ArrowDown'?(_menu.active+1)%n:(_menu.active-1+n)%n;_renderMenu();return true;
+  }
+  if((e.key==='Enter'&&!e.shiftKey&&!e.isComposing)||e.key==='Tab'){e.preventDefault();_choose();return true}
+  if(e.key==='Escape'){e.preventDefault();e.stopPropagation();_closeMenu();return true}
+  return false;
+}
+// Replace the typed '/name' or '@query' with `text`.
+function _replaceTyped(text){
+  var ta=document.getElementById('chatInput'),v=ta.value;
+  ta.value=v.slice(0,_menu.start)+text+v.slice(_menu.end).replace(/^\s+/,text?'':'');
+  var at=_menu.start+text.length;ta.setSelectionRange(at,at);_autosize(ta);_syncSendState();
+}
+function _choose(){
+  var it=_menu.items[_menu.active];if(!it)return;var a=it.act;
+  if(a.type==='slash'){_replaceTyped('/'+a.cmd.name+' ');_closeMenu();return}
+  _replaceTyped('');_closeMenu();
+  if(a.type==='action'){a.action.run();return}
+  if(a.type==='skill')setPick({kind:'skill',name:a.skill.name,label:a.skill.name});
+  else if(a.type==='mcp')setPick({kind:'mcp',name:'mcp:'+a.server.name,label:a.server.name});
+  else if(a.type==='crew')_pickCrew(a.crew,null);
+  else if(a.type==='agent')_pickCrew(null,a.agent);
+  document.getElementById('chatInput').focus();
+}
+// A skill or MCP pick: a chip; the next message is sent with `skill`.
+function setPick(p){
+  _pick=p||null;
+  var chip=document.getElementById('pickChip');if(!chip)return;
+  chip.style.display=_pick?'':'none';
+  if(_pick){chip.querySelector('.pk-label').textContent=_pick.label;if(chatMode!=='chat')chooseMode('chat')}
+}
+// A crew or saved agent: Agents mode with it; the message becomes its task.
+function _pickCrew(crew,agent){
+  setPick(null);
+  var cs=document.getElementById('crewSelect'),val=agent?'custom':crew.name;
+  if(crew&&![].some.call(cs.options,function(o){return o.value===val})){var o=document.createElement('option');o.value=val;o.textContent=crew.label;cs.appendChild(o)}
+  _pickAgent=agent||null;
+  if(agent)loadSavedAgent(JSON.stringify(agent));
+  cs.value=val;setMode('research');_syncModeUi();
+}
+// The argument a crew's task fills (CREW_REGISTRY via /api/mentions); null = no text needed.
+function _crewInfo(name){var c=_mentionData&&_mentionData.crews.filter(function(x){return x.name===name})[0];return c||null}
+(function(){
+  var ci=document.getElementById('chatInput');if(!ci)return;
+  ci.addEventListener('input',_updateMenu);
+  ci.addEventListener('click',_updateMenu);
+  ci.addEventListener('blur',function(){setTimeout(_closeMenu,150)});
+})();
+// The Cmd+K palette's "Run a skill" (static/codec-shell.js): a pick handed over in
+// sessionStorage (never in the link), applied only if /api/mentions lists it.
+window.codecChatPick=function(kind,name){
+  return _loadMentions().then(function(d){
+    if(kind==='skill'&&d.skills.some(function(s){return s.name===name})){setPick({kind:'skill',name:name,label:name});return true}
+    if(kind==='crew'){var c=d.crews.filter(function(x){return x.name===name})[0];if(c){_pickCrew(c,null);return true}}
+    return false;
+  });
+};
+(function(){
+  var raw=_ssGet('codec-chat-pick');if(!raw)return;_ssDel('codec-chat-pick');
+  try{var p=JSON.parse(raw);if(p&&typeof p.kind==='string'&&typeof p.name==='string')window.codecChatPick(p.kind,p.name)}catch(e){}
+})();
+
 function handleKey(e){
+  if(_menuKey(e))return;
   if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing&&e.keyCode!==229&&!_isTouch()){e.preventDefault();sendMessage();return}
   if(e.key==='ArrowUp'&&!e.shiftKey&&!e.altKey&&!e.metaKey&&!e.ctrlKey&&!e.target.value&&!isProcessing){
     var eb=[].slice.call(document.querySelectorAll('#messages .msg.user [data-act="edit"]')).pop();

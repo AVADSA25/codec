@@ -100,7 +100,10 @@
     sound: '<path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>',
     pause: '<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>',
     play: '<path d="M7 4v16l13-8z"/>',
-    stop: '<rect x="5" y="5" width="14" height="14" rx="2"/>'
+    stop: '<rect x="5" y="5" width="14" height="14" rx="2"/>',
+    tool: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z"/>',
+    cpu: '<rect x="5" y="5" width="14" height="14" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/>',
+    keys: '<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/>'
   };
   function ico(name, size, cls) {
     return '<svg class="cs-ico' + (cls ? ' ' + cls : '') + '" width="' + (size || 20) + '" height="' + (size || 20) +
@@ -1381,15 +1384,245 @@
       .then(function () { SCHED.busy = false; });
   }
 
-  // ── Keys: Cmd/Ctrl+Shift+S sidebar, Cmd/Ctrl+K search, Esc closes ────────
+  // ── Command palette (P2.3; docs/P2.3-DESIGN.md) ─────────────────────────
+  // Cmd/Ctrl+K on every page, over one list: chats (the loaded list, then
+  // /api/qchat/search from two letters), pages, skills (into Chat as a pick),
+  // models (POST /api/model), the Morning briefing, a new chat and the
+  // shortcut sheet. The caret stays in the box; Up/Down, Enter, Esc.
+  var PAL = { el: null, items: [], active: 0, mentions: null, models: null, found: [], q: '', timer: null, gen: 0 };
+  var PAL_PAGES = NAV.map(function (n) { return { label: n.label, href: n.href, icon: n.icon }; }).concat([
+    { label: 'Inbox', href: '/tasks#reports', icon: 'inbox' },
+    { label: 'Settings', href: '/#settings', icon: 'sliders' },
+    { label: 'Skills', href: '/#skills', icon: 'tool' },
+    { label: 'Connections', href: '/#connector', icon: 'plug' },
+    { label: 'Cortex', href: '/cortex', icon: 'monitor' },
+    { label: 'Audit', href: '/audit', icon: 'doc' }
+  ]);
+  function palEl() {
+    if (PAL.el) return PAL.el;
+    var wrap = document.createElement('div');
+    wrap.className = 'cs-dialog-backdrop cs-pal-backdrop';
+    wrap.id = 'csPalette';
+    wrap.hidden = true;
+    wrap.innerHTML =
+      '<div class="cs-pal" role="dialog" aria-modal="true" aria-label="Command palette">' +
+        '<div class="cs-pal-search">' + ico('search', 18) +
+          '<input id="csPalInput" role="combobox" aria-expanded="true" aria-controls="csPalList" aria-autocomplete="list"' +
+          ' autocomplete="off" spellcheck="false" placeholder="Search chats, pages, skills and models"></div>' +
+        '<div class="cs-pal-list" id="csPalList" role="listbox" aria-label="Results"></div>' +
+        '<div class="cs-pal-foot">Up and Down to move, Enter to open, Esc to close</div>' +
+      '</div>';
+    document.body.appendChild(wrap);
+    wrap.addEventListener('mousedown', function (e) { if (e.target === wrap) palClose(); });
+    var input = wrap.querySelector('input');
+    input.addEventListener('input', function () { palQuery(input.value); });
+    input.addEventListener('keydown', function (e) {
+      var n = PAL.items.length;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (n) { PAL.active = e.key === 'ArrowDown' ? (PAL.active + 1) % n : (PAL.active - 1 + n) % n; palRender(); }
+      } else if (e.key === 'Enter' && !e.isComposing) {
+        e.preventDefault();
+        palRun(PAL.items[PAL.active]);
+      } else if (e.key === 'Escape') {
+        e.preventDefault(); e.stopPropagation(); palClose();
+      }
+    });
+    PAL.el = wrap;
+    return wrap;
+  }
+  function palMatch(q, s) { return !q || String(s || '').toLowerCase().indexOf(q) >= 0; }
+  function palItems() {
+    var q = PAL.q, out = [], seen = {};
+    function add(group, it) { it.group = group; out.push(it); }
+    var actions = [
+      { name: 'New chat', icon: 'pen', run: function () { newChat(); } },
+      { name: 'Start the Morning briefing', icon: 'play', run: palBriefing },
+      { name: 'Keyboard shortcuts', desc: MOD + '+/', icon: 'keys', run: shortcutsOpen }
+    ];
+    var chats = [];
+    if (!H.search) H.items.forEach(function (c) { if (c && c.id && palMatch(q, c.title)) chats.push(c); });
+    if (q.length >= 2) PAL.found.forEach(function (c) { chats.push(c); });
+    chats = chats.filter(function (c) { if (seen[c.id]) return false; seen[c.id] = 1; return true; }).slice(0, q ? 8 : 5);
+    var pages = PAL_PAGES.filter(function (p) { return palMatch(q, p.label); });
+    if (!q) {
+      actions.forEach(function (a) { add('Actions', a); });
+      pages.forEach(function (p) { add('Pages', { name: p.label, icon: p.icon, href: p.href }); });
+      chats.forEach(function (c) { add('Recent chats', { name: c.title || 'Untitled chat', icon: 'chat', chat: c.id }); });
+      return out;
+    }
+    chats.forEach(function (c) { add('Chats', { name: c.title || 'Untitled chat', desc: c.snippet || '', icon: 'chat', chat: c.id }); });
+    pages.forEach(function (p) { add('Pages', { name: p.label, icon: p.icon, href: p.href }); });
+    ((PAL.mentions && PAL.mentions.skills) || []).forEach(function (s) {
+      if (palMatch(q, s.name) || palMatch(q, s.group)) add('Skills', { name: s.name, desc: s.description, icon: 'tool', skill: s.name });
+    });
+    ((PAL.models && PAL.models.models) || []).forEach(function (m) {
+      var label = m.label || m.id;
+      if (palMatch(q, 'model ' + label + ' ' + m.id)) {
+        add('Models', { name: label, desc: m.active ? 'In use' : (m.role || 'Switch to this model'), icon: 'cpu', model: m });
+      }
+    });
+    actions.forEach(function (a) { if (palMatch(q, a.name)) add('Actions', a); });
+    return out;
+  }
+  function palQuery(v) {
+    PAL.q = String(v || '').trim().toLowerCase();
+    PAL.active = 0;
+    palRender();
+    clearTimeout(PAL.timer);
+    if (PAL.q.length < 2) { PAL.found = []; return; }
+    var gen = ++PAL.gen, q = PAL.q;
+    PAL.timer = setTimeout(function () {
+      fetch('/api/qchat/search?q=' + encodeURIComponent(q)).then(function (r) { return r.ok ? r.json() : []; })
+        .then(function (data) {
+          if (gen !== PAL.gen) return;
+          PAL.found = (Array.isArray(data) ? data : []).map(function (s) {
+            return { id: s.session_id, title: s.title, snippet: s.snippet };
+          });
+          palRender();
+        }).catch(function () { /* the list stands */ });
+    }, 200);
+  }
+  function palRender() {
+    var list = $('csPalList'), input = $('csPalInput');
+    if (!list) return;
+    PAL.items = palItems();
+    if (PAL.active >= PAL.items.length) PAL.active = 0;
+    list.innerHTML = '';
+    if (!PAL.items.length) {
+      list.innerHTML = '<div class="cs-pal-empty">Nothing matches.</div>';
+      input.removeAttribute('aria-activedescendant');
+      return;
+    }
+    var last = '';
+    PAL.items.forEach(function (it, i) {
+      if (it.group !== last) {
+        last = it.group;
+        var g = document.createElement('div');
+        g.className = 'cs-pal-group';
+        g.setAttribute('role', 'presentation');
+        g.textContent = it.group;
+        list.appendChild(g);
+      }
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'cs-pal-item';
+      b.id = 'csPal-' + i;
+      b.tabIndex = -1;
+      b.setAttribute('role', 'option');
+      b.setAttribute('aria-selected', String(i === PAL.active));
+      b.innerHTML = ico(it.icon || 'dots', 16) + '<span class="cs-pal-name"></span><span class="cs-pal-desc"></span>';
+      b.querySelector('.cs-pal-name').textContent = it.name;
+      b.querySelector('.cs-pal-desc').textContent = it.desc || '';
+      b.addEventListener('mousedown', function (e) { e.preventDefault(); });
+      b.addEventListener('click', function () { palRun(it); });
+      list.appendChild(b);
+    });
+    input.setAttribute('aria-activedescendant', 'csPal-' + PAL.active);
+    var a = $('csPal-' + PAL.active);
+    if (a) a.scrollIntoView({ block: 'nearest' });
+  }
+  function palOpen() {
+    var el = palEl(), input = $('csPalInput');
+    closeMenu();
+    closeDrawer();
+    el.hidden = false;
+    input.value = '';
+    PAL.found = [];
+    palQuery('');
+    input.focus();
+    if (!H.items.length) loadPage(true);
+    // Skills and models for the list; read on every open, so a new model or skill shows.
+    fetch('/api/mentions').then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) { if (d) { PAL.mentions = d; if (!el.hidden) palRender(); } }).catch(function () {});
+    fetch('/api/models').then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) { if (d) { PAL.models = d; if (!el.hidden) palRender(); } }).catch(function () {});
+  }
+  function palClose() { if (PAL.el) PAL.el.hidden = true; }
+  function palRun(it) {
+    if (!it) return;
+    palClose();
+    if (it.run) { it.run(); return; }
+    if (it.href) { window.location.href = it.href; return; }
+    if (it.chat) { if (!openChat(it.chat)) window.location.href = '/chat#session=' + encodeURIComponent(it.chat); return; }
+    if (it.skill) {
+      if (PAGE === 'chat' && typeof window.codecChatPick === 'function') { window.codecChatPick('skill', it.skill); return; }
+      // Handed to Chat in this tab's storage, never in the link.
+      try { sessionStorage.setItem('codec-chat-pick', JSON.stringify({ kind: 'skill', name: it.skill })); } catch (e) { /* blocked */ }
+      window.location.href = '/chat';
+      return;
+    }
+    if (it.model) palModel(it.model);
+  }
+  function palModel(m) {
+    var label = m.label || m.id;
+    if (m.active) { toast(label + ' is already in use.'); return; }
+    toast('Switching the model to ' + label + '. This can take a minute.');
+    postJSON('/api/model', { model: m.id }).then(function (d) {
+      if (d && d.ok) {
+        toast('Model: ' + label);
+        if (typeof window.loadModels === 'function') window.loadModels();
+      } else {
+        toast('Could not switch: ' + ((d && d.error) || 'unknown'));
+      }
+    }, function (e) { toast('Could not switch: ' + ((e && e.message) || 'unknown')); });
+  }
+  function palBriefing() {
+    postJSON('/api/briefing/run', {}).then(function () { toast('Morning briefing started'); },
+      function (e) { toast((e && e.message) || 'Could not start the briefing'); });
+  }
+
+  // ── Keyboard shortcuts sheet (Cmd/Ctrl+/) ──
+  var MOD = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '') ? 'Cmd' : 'Ctrl';
+  var KEYS_EL = null;
+  function shortcutsOpen() {
+    if (!KEYS_EL) {
+      var rows = [
+        [MOD + '+K', 'Command palette: chats, pages, skills, models'],
+        [MOD + '+/', 'This list'],
+        [MOD + '+Shift+S', 'Show or hide the sidebar'],
+        ['Enter', 'Send (Chat)'],
+        ['Shift+Enter', 'New line (Chat)'],
+        ['/', 'Commands, at the start of a Chat message'],
+        ['@', 'Skills, crews, agents and MCP servers (Chat)'],
+        ['Up', 'Edit your last message, when the Chat box is empty'],
+        ['Esc', 'Close a menu or a dialog']
+      ];
+      KEYS_EL = document.createElement('div');
+      KEYS_EL.className = 'cs-dialog-backdrop';
+      KEYS_EL.id = 'csKeys';
+      KEYS_EL.hidden = true;
+      KEYS_EL.innerHTML = '<div class="cs-dialog" role="dialog" aria-modal="true" aria-labelledby="csKeysTitle" tabindex="-1">' +
+        '<h2 id="csKeysTitle">Keyboard shortcuts</h2><table class="cs-keys"><tbody>' +
+        rows.map(function (r) { return '<tr><td><kbd>' + esc(r[0]) + '</kbd></td><td>' + esc(r[1]) + '</td></tr>'; }).join('') +
+        '</tbody></table><div class="cs-dialog-actions"><button type="button" class="cs-dbtn" id="csKeysClose">Close</button></div></div>';
+      document.body.appendChild(KEYS_EL);
+      KEYS_EL.addEventListener('mousedown', function (e) { if (e.target === KEYS_EL) shortcutsClose(); });
+      KEYS_EL.addEventListener('keydown', function (e) { if (e.key === 'Escape') { e.stopPropagation(); shortcutsClose(); } });
+      $('csKeysClose').addEventListener('click', shortcutsClose);
+    }
+    palClose();
+    KEYS_EL.hidden = false;
+    $('csKeysClose').focus();
+  }
+  function shortcutsClose() { if (KEYS_EL) KEYS_EL.hidden = true; }
+
+  // ── Keys: Cmd/Ctrl+Shift+S sidebar, Cmd/Ctrl+K palette, Cmd/Ctrl+/ shortcuts, Esc closes ────────
   document.addEventListener('keydown', function (e) {
     var mod = e.metaKey || e.ctrlKey;
     var k = (e.key || '').toLowerCase();
     if (mod && e.shiftKey && !e.altKey && k === 's') { e.preventDefault(); toggleRail(); return; }
     // Cmd+K starts chords inside the Vibe code editor; leave it to the editor there.
     var inEditor = e.target && e.target.closest && e.target.closest('.monaco-editor');
-    if (mod && !e.shiftKey && !e.altKey && k === 'k' && !inEditor) { e.preventDefault(); focusSearch(); return; }
+    if (mod && !e.shiftKey && !e.altKey && k === 'k' && !inEditor) {
+      e.preventDefault();
+      if (PAL.el && !PAL.el.hidden) palClose(); else palOpen();
+      return;
+    }
+    if (mod && !e.altKey && (k === '/' || e.code === 'Slash') && !inEditor) { e.preventDefault(); shortcutsOpen(); return; }
     if (e.key === 'Escape') {
+      if (PAL.el && !PAL.el.hidden) { palClose(); e.stopImmediatePropagation(); return; }
+      if (KEYS_EL && !KEYS_EL.hidden) { shortcutsClose(); e.stopImmediatePropagation(); return; }
       if (!pop.hidden) { closeMenu(); e.stopImmediatePropagation(); return; }
       var p = $('sidePanel');
       if (p && p.classList.contains('open')) { closeSidePanel(); e.stopImmediatePropagation(); return; }
@@ -1403,7 +1636,7 @@
     toggleRail: toggleRail, openDrawer: openDrawer, closeDrawer: closeDrawer, focusSearch: focusSearch,
     refreshHistory: refreshHistory, refreshHistorySoon: refreshHistorySoon, setActiveChat: setActiveChat,
     newChat: newChat, voiceReplies: voiceReplies, wakeWord: wakeWord, refreshWake: refreshWake, pollInbox: pollInbox,
-    install: install, toast: toast,
+    install: install, toast: toast, palette: palOpen, shortcuts: shortcutsOpen,
     push: { support: pushSupport, subscription: currentSub, on: pushOn, off: pushOff, deviceId: deviceId,
             post: postJSON },
     dictation: { toggle: dictToggle, stop: dictStop, mode: dictMode, toggleMode: toggleDictMode,
