@@ -203,6 +203,16 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
 .today-card-body { font-size: var(--fs-14); line-height: 1.5; color: var(--text); margin-top: 6px; max-height: 4.5em; overflow: hidden; }
 .today-card.open .today-card-body { max-height: none; }
 .today-card-actions { display: flex; gap: 8px; margin-top: 8px; }
+/* Morning briefing card and settings (P3.1) */
+.today-threads { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.today-thread { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; border-top: 1px solid var(--border); }
+.today-thread-text { font-size: var(--fs-13); color: var(--text); min-width: 0; }
+.today-thread-acts { display: inline-flex; gap: 6px; flex-shrink: 0; }
+.today-card-actions { flex-wrap: wrap; }
+.today-card-actions a.mcp-btn { text-decoration: none; display: inline-flex; align-items: center; }
+.today-card-actions [hidden] { display: none; }
+.opt-check { display: flex; align-items: center; gap: 8px; font-size: var(--fs-14); color: var(--text); cursor: pointer; }
+.opt-check input { width: 16px; height: 16px; accent-color: var(--accent); }
 /* Voice (P2.8) */
 .voice-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 10px; flex-wrap: wrap; }
 .voice-row .voice-select { max-width: 100%; min-width: 0; flex: 1 1 220px; text-align: left; font-family: var(--font-sans); font-size: var(--fs-14); height: 36px; }
@@ -814,6 +824,23 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
           <div id="pushDevices"></div>
         </div>
       </div>
+      <div class="settings-section" style="margin-top:20px" id="briefingSection">
+        <div class="settings-title">Morning briefing</div>
+        <div class="settings-card">
+          <div class="push-body">
+            <p class="push-intro">A short morning briefing: where you left off, today's calendar and weather, open threads. It leaves a card on Flash, sends a phone notification if those are on, and can say it on the Mac when you first sit down (never to an empty room, not after noon).</p>
+            <label class="voice-row"><span class="push-row-name">On</span>
+              <span class="mcp-switch"><input type="checkbox" id="briefOn" onchange="briefToggle()" aria-label="Morning briefing on"><span class="mcp-slider"></span></span></label>
+            <label class="voice-row"><span class="push-row-name">When</span>
+              <input class="setting-input voice-select" id="briefWhen" autocomplete="off" placeholder="weekdays at 7:30"
+                oninput="briefWhenInput()" onchange="briefWhenSave()" onkeydown="if(event.key==='Enter')this.blur()"></label>
+            <label class="opt-check"><input type="checkbox" id="briefSpeak" onchange="briefSpeak()"> Say it on the Mac when I first sit down</label>
+            <div class="push-state" id="briefNext" style="margin-top:10px"></div>
+            <div class="push-actions"><button type="button" class="mcp-btn" id="briefTry" onclick="briefTryNow()" hidden>Try it now</button></div>
+            <div class="push-msg" id="briefMsg" role="status" aria-live="polite"></div>
+          </div>
+        </div>
+      </div>
       <div class="settings-section" style="margin-top:20px" id="voiceSection">
         <div class="settings-title">Voice</div>
         <div class="settings-card">
@@ -1055,7 +1082,7 @@ function showTab(id) {
   if (id === 'audit') loadAudit();
   if (id === 'skills') loadSkillReviews();
   if (id === 'connector') renderConnectors();
-  if (id === 'settings') { loadSettings(); renderUIToggles(); loadPrompts(); loadPush(); loadVoice(); }
+  if (id === 'settings') { loadSettings(); renderUIToggles(); loadPrompts(); loadPush(); loadVoice(); loadBriefing(); }
 }
 // Links such as /#settings (the shell's Settings row, other pages) open that panel.
 function _tabFromHash() {
@@ -2032,9 +2059,14 @@ async function loadToday() {
   cards.forEach(function (c) {
     var card = document.createElement('div');
     card.className = 'today-card';
+    var brief = c.kind === 'briefing';
     card.innerHTML = '<div class="today-card-top"><span class="today-card-title"></span><span class="today-card-time"></span></div>' +
-      '<div class="today-card-body md"></div><div class="today-card-actions">' +
+      '<div class="today-card-body md"></div>' + (brief ? '<div class="today-threads"></div>' : '') +
+      '<div class="today-card-actions">' +
       '<button type="button" class="mcp-btn" data-act="more">Show all</button>' +
+      (brief ? '<a class="mcp-btn" data-act="chat" href="/chat#card=' + encodeURIComponent(c.id) + '">Open in chat</a>' +
+               '<button type="button" class="mcp-btn" data-act="snooze">Snooze 2 hours</button>' +
+               '<button type="button" class="mcp-btn" data-act="stop" hidden>Stop speaking</button>' : '') +
       (c.url ? '<a class="mcp-btn" target="_blank" rel="noopener" data-act="doc">Google Doc</a>' : '') +
       '<button type="button" class="mcp-btn" data-act="dismiss">Dismiss</button></div>';
     card.querySelector('.today-card-title').textContent = c.title || 'Result';
@@ -2053,11 +2085,104 @@ async function loadToday() {
       try { await fetch('/api/today/' + encodeURIComponent(c.id) + '/dismiss', { method: 'POST' }); } catch (e) {}
       loadToday();
     });
+    if (brief) _briefingCard(card, c);
     box.appendChild(card);
   });
 }
+// P3.1: the Morning briefing card: its open Daybreak threads (Done, Draft reply), Snooze, Stop speaking.
+function _briefingCard(card, c) {
+  var list = card.querySelector('.today-threads');
+  (c.threads || []).forEach(function (t) {
+    var row = document.createElement('div');
+    row.className = 'today-thread';
+    row.innerHTML = '<span class="today-thread-text"></span><span class="today-thread-acts">' +
+      ((t.kind === 'waiting_on' || t.kind === 'follow_up') ? '<button type="button" class="mcp-btn" data-t="draft">Draft reply</button>' : '') +
+      '<button type="button" class="mcp-btn" data-t="done">Done</button></span>';
+    row.querySelector('.today-thread-text').textContent = t.text;
+    var draft = row.querySelector('[data-t="draft"]');
+    if (draft) draft.addEventListener('click', function () {
+      _ssSet('codec-chat-draft', 'Draft a reply about this: ' + t.text);
+      location.href = '/chat#new';
+    });
+    row.querySelector('[data-t="done"]').addEventListener('click', async function (ev) {
+      ev.target.disabled = true;
+      try {
+        await fetch('/api/today/threads/done', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: t.key, card_id: c.id }) });
+      } catch (e) {}
+      loadToday();
+    });
+    list.appendChild(row);
+  });
+  card.querySelector('[data-act="snooze"]').addEventListener('click', async function (ev) {
+    ev.target.disabled = true;
+    try { await fetch('/api/today/' + encodeURIComponent(c.id) + '/snooze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ minutes: 120 }) }); } catch (e) {}
+    loadToday();
+  });
+  var stop = card.querySelector('[data-act="stop"]');
+  stop.addEventListener('click', async function () {
+    stop.disabled = true;
+    try { await fetch('/api/briefing/stop', { method: 'POST' }); } catch (e) {}
+    stop.hidden = true;
+  });
+  fetch('/api/briefing').then(function (r) { return r.json(); }).then(function (b) { stop.hidden = !b.speaking; }).catch(function () {});
+}
 loadToday();
 setInterval(loadToday, 60000);
+
+// ── Morning briefing settings (P3.1): off by default; the job is created when switched on.
+var _brief = { cfg: null, timer: null };
+function _briefMsg(text, err) {
+  var m = document.getElementById('briefMsg');
+  if (m) { m.textContent = text || ''; m.classList.toggle('err', !!err); }
+}
+async function loadBriefing() {
+  try { var r = await fetch('/api/briefing'); _brief.cfg = r.ok ? await r.json() : null; } catch (e) { _brief.cfg = null; }
+  var b = _brief.cfg;
+  if (!b) { _briefMsg('Could not load the briefing settings.', true); return; }
+  document.getElementById('briefOn').checked = !!b.enabled;
+  document.getElementById('briefWhen').value = b.when || '';
+  document.getElementById('briefSpeak').checked = b.speak !== false;
+  document.getElementById('briefTry').hidden = !b.enabled;
+  document.getElementById('briefNext').textContent = b.enabled && b.next_run
+    ? 'Next briefing: ' + new Date(b.next_run).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' }) + '.'
+    : 'Off. Switch it on to get a briefing on your chosen days.';
+}
+async function _briefSave(fields, done) {
+  try {
+    var r = await fetch('/api/briefing', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fields) });
+    var d = await r.json();
+    if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    _briefMsg(done);
+  } catch (e) { _briefMsg('Could not save: ' + e.message, true); }
+  loadBriefing();
+}
+function briefToggle() { var on = document.getElementById('briefOn').checked; _briefSave({ enabled: on }, on ? 'Morning briefing on.' : 'Morning briefing off.'); }
+function briefSpeak() { _briefSave({ speak: document.getElementById('briefSpeak').checked }, 'Saved.'); }
+function briefWhenInput() {
+  clearTimeout(_brief.timer);
+  _brief.timer = setTimeout(async function () {
+    var v = document.getElementById('briefWhen').value.trim();
+    if (!v) return;
+    try {
+      var r = await fetch('/api/schedules/parse', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ when: v }) });
+      var d = await r.json();
+      if (!d.ok) { _briefMsg(d.error, true); return; }
+      _briefMsg(d.text + '. Press Enter or leave the field to save.');
+    } catch (e) {}
+  }, 300);
+}
+function briefWhenSave() {
+  var v = document.getElementById('briefWhen').value.trim();
+  if (v && _brief.cfg && v !== _brief.cfg.when) _briefSave({ when: v }, 'Time saved.');
+}
+async function briefTryNow() {
+  var b = document.getElementById('briefTry');
+  b.disabled = true;
+  _briefMsg('Preparing your briefing. The card appears on Flash in a minute or two.');
+  try { await fetch('/api/briefing/run', { method: 'POST' }); } catch (e) { _briefMsg('Could not start it.', true); }
+  setTimeout(function () { b.disabled = false; loadToday(); }, 5000);
+}
 
 // ── Voice (P2.8): the reading voice with a short preview, and tts_speed. Both save at once.
 var _VOICE_PREVIEW = 'Hi, this is how CODEC sounds when it reads to you.';

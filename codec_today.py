@@ -1,8 +1,8 @@
 """Today cards (UI phase 3, P3.3; docs/P3.3-DESIGN.md).
 
 A small store of cards that Home shows above Flash: a scheduled job's result
-delivered to "Today" now, the Morning briefing (P3.1) and the Today home (P3.4)
-later. ``~/.codec/today.json`` (0600, atomic write, cross-process lock) keeps
+delivered to "Today", the Morning briefing (P3.1, with its open threads and a
+snooze), and the Today home (P3.4) later. ``~/.codec/today.json`` (0600, atomic write, cross-process lock) keeps
 the newest MAX_CARDS; dismissed cards stay until they age out so a dismiss is
 not undone by a concurrent writer.
 """
@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import os
 import secrets
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -32,28 +32,65 @@ def _read() -> List[Dict[str, Any]]:
 
 
 def add_card(title: str, body: str, *, kind: str = "schedule", source: Optional[str] = None,
-             url: Optional[str] = None) -> Dict[str, Any]:
+             url: Optional[str] = None, threads: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     card = {"id": "card_" + secrets.token_hex(5), "kind": kind, "title": str(title)[:120],
             "body": str(body or "")[:MAX_BODY], "source": source, "url": url,
-            "created": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"), "dismissed": False}
+            "created": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"), "dismissed": False,
+            "threads": [{"key": str(t.get("key")), "kind": str(t.get("kind") or ""), "text": str(t.get("text") or "")[:300]}
+                        for t in (threads or []) if isinstance(t, dict) and t.get("key")][:20],
+            "snoozed_until": None}
     with codec_jsonstore.file_lock(TODAY_PATH):
         cards = [card] + _read()
         codec_jsonstore.atomic_write_json(TODAY_PATH, {"cards": cards[:MAX_CARDS]})
     return card
 
 
-def list_cards(include_dismissed: bool = False) -> List[Dict[str, Any]]:
-    return [c for c in _read() if include_dismissed or not c.get("dismissed")]
+def _awake(card: Dict[str, Any], now: datetime) -> bool:
+    until = card.get("snoozed_until")
+    try:
+        return not until or datetime.fromisoformat(until) <= now
+    except ValueError:
+        return True
 
 
-def dismiss(card_id: str) -> bool:
+def list_cards(include_dismissed: bool = False, now: Optional[datetime] = None) -> List[Dict[str, Any]]:
+    """Cards to show: not dismissed and not snoozed (unless include_dismissed)."""
+    now = now or datetime.now()
+    if include_dismissed:
+        return _read()
+    return [c for c in _read() if not c.get("dismissed") and _awake(c, now)]
+
+
+def get_card(card_id: str) -> Optional[Dict[str, Any]]:
+    return next((c for c in _read() if c.get("id") == card_id), None)
+
+
+def _change(card_id: str, mutate) -> bool:
     with codec_jsonstore.file_lock(TODAY_PATH):
         cards = _read()
         hit = False
         for c in cards:
             if c.get("id") == card_id and not c.get("dismissed"):
-                c["dismissed"] = True
-                hit = True
+                hit = mutate(c) is not False
         if hit:
             codec_jsonstore.atomic_write_json(TODAY_PATH, {"cards": cards})
     return hit
+
+
+def dismiss(card_id: str) -> bool:
+    return _change(card_id, lambda c: c.update(dismissed=True))
+
+
+def snooze(card_id: str, minutes: int) -> bool:
+    minutes = max(5, min(int(minutes), 24 * 60))
+    until = (datetime.now() + timedelta(minutes=minutes)).strftime("%Y-%m-%dT%H:%M:%S")
+    return _change(card_id, lambda c: c.update(snoozed_until=until))
+
+
+def drop_thread(card_id: str, key: str) -> bool:
+    """Remove a thread from a card once it is closed."""
+    def mutate(c):
+        before = len(c.get("threads") or [])
+        c["threads"] = [t for t in (c.get("threads") or []) if t.get("key") != key]
+        return len(c["threads"]) < before
+    return _change(card_id, mutate)

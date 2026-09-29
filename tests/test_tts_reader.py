@@ -184,6 +184,6 @@ def test_chat_and_home_read_the_whole_answer():
 def test_settings_has_the_voice_picker_preview_and_speed():
     home = (REPO / "codec_dashboard.html").read_text(encoding="utf-8")
     assert 'id="voiceSection"' in home and 'id="voiceSelect"' in home and 'id="voicePreviewBtn"' in home
-    assert 'id="voiceSpeed" min="0.7" max="1.3"' in home and "loadVoice(); }" in home
+    assert 'id="voiceSpeed" min="0.7" max="1.3"' in home and "loadVoice();" in home
     assert "if (key === 'tts_voice' || key === 'tts_speed') continue;" in home
     assert "body: JSON.stringify({ tts: fields })" in home

@@ -487,6 +487,8 @@ from routes.push import router as push_router
 from routes.transcribe import router as transcribe_router
 # P3.3: Today cards (a scheduled job's result delivered to Home).
 from routes.today import router as today_router
+# P3.1: Morning briefing settings, Try it now, Stop.
+from routes.briefing import router as briefing_router
 # H1 / SR-59: chat handler (POST /api/chat) + its helper cluster. The helpers
 # are re-exported back here (below) for the command-handler caller + the
 # existing test surface (codec_dashboard.CHAT_SKILL_ALLOWLIST etc.) — identity-equal.
@@ -542,6 +544,7 @@ app.include_router(mcp_router)
 app.include_router(push_router)
 app.include_router(transcribe_router)
 app.include_router(today_router)
+app.include_router(briefing_router)
 app.include_router(chat_router)
 if _has_triggers:
     app.include_router(triggers_router)
