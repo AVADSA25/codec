@@ -41,7 +41,7 @@ strict consent) are add-only. No personal data in the repo. No emoji in the UI.
 | 8 | P3.3: Schedule any skill, crew or prompt in plain language | M | yes | done (#409) |
 | 9 | P3.1: Morning briefing that runs by itself, speaks, then leaves a card | M | yes | done (#410) |
 | 10 | P3.5: Proactive check-in that speaks only when something matters | M | yes | done (#411) |
-| 11 | P2.9: Calm voice call with standard controls | M | yes | open |
+| 11 | P2.9: Calm voice call with standard controls | M | yes | done (#412) |
 | 12 | MATH: Math and diagrams in replies | S | no | open |
 | 13 | P2.3: '/' commands, '@' skills and agents, and a Cmd+K palette | M | no | open |
 | 14 | P2.4: Memory page: see, correct and forget what CODEC remembers | M | no | open |
