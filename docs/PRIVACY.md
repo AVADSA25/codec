@@ -33,6 +33,7 @@ Each of these is **off by default** or requires explicit configuration. When act
 | **Google Workspace** (Docs/Sheets/Gmail/Calendar/etc.) | the content of the operation you request | Google APIs (OAuth, your own account) | per Google-skill call |
 | **iMessage / Telegram bridges** | the message you send + the reply | Apple / Telegram (your own accounts) | per outbound message |
 | **Twilio bridge** (if configured) | SMS content + recipient number | Twilio | per outbound SMS |
+| **Phone notifications** (Web Push, turned on per device in Settings) | an encrypted, fixed line per kind ("CODEC needs your approval"); never the question, the agent or any chat text | the browser's push service (Apple, Google, Mozilla or Microsoft), which delivers it to your device | when an approval, a question or an agent result is waiting |
 | **Remote PWA / voice from phone** | dashboard traffic | your own Cloudflare tunnel (Zero Trust auth) → your Mac | only while the tunnel runs |
 | **License check** (paid tier) | license key (JWT) | AVA license server (`ava-license.lucyvpa.com`) | periodic validation |
 
@@ -40,7 +41,7 @@ CODEC does **not** include analytics, telemetry, tracking SDKs, or ad identifier
 
 ## 3. Third-party processors (when the relevant feature is used)
 
-DuckDuckGo / Serper (search) · Cloudflare (tunnel transport) · Anthropic and/or OpenAI (cloud LLM, only if configured) · Google (Workspace OAuth) · Apple (iMessage) · Telegram · Twilio (if configured) · AVA Digital LLC (license + LLM proxy for the paid tier). Each processes only the data the corresponding feature sends, per §2.
+DuckDuckGo / Serper (search) · Cloudflare (tunnel transport) · Anthropic and/or OpenAI (cloud LLM, only if configured) · Google (Workspace OAuth) · Apple (iMessage) · Telegram · Twilio (if configured) · the browser's push service (Apple, Google, Mozilla or Microsoft, if phone notifications are on) · AVA Digital LLC (license + LLM proxy for the paid tier). Each processes only the data the corresponding feature sends, per §2.
 
 ## 4. GDPR (paid tier) — Art. 13 disclosures
 

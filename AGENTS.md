@@ -348,6 +348,9 @@ Redaction runs **BEFORE** truncation: a secret near the 500-char `message` cap i
 
 **Performance.** 1000 audit writes on M1 Ultra take ~102 ms (102 µs/call). Cache amortizes the Keychain shellout; the per-write hot path is regex sweep + canonical JSON + SHA-256 + file open/write/close.
 
+### Phone notifications (Web Push, UI P3.13)
+`codec_push.notify(kind)` sends a content-free push to the owner's subscribed devices: `codec_ask_user.ask` sends `approval` (strict consent) or `question`, `codec_agent_messaging.post_message` sends `agent_done` / `agent_blocked` / `agent_stopped` (not for silenced agents), and the morning briefing will send `briefing`. Callers pass only a kind; the text is a fixed line in `codec_push.KINDS`, so no question, agent name or chat text reaches a push service. VAPID private key: Keychain `ai.avadigital.codec.vapid_private_key` (created once by `GET /api/push`; deleting it invalidates every device's subscription). Devices and the per-kind switches: `~/.codec/push.json` (0600; endpoints only on known push services). Kill switch `PUSH_ENABLED=false`. Design: docs/P3.13-DESIGN.md.
+
 ### log_event (`codec_audit.log_event`)
 Real adapter over `audit()` for lifecycle events (session start/end, scheduler tick, dispatch decision, heartbeat alert). Defined in `codec_audit.py`. Call sites in `codec_session.py`, `codec_scheduler.py`, `codec_dispatch.py`, `codec_heartbeat.py`, `codec_dashboard.py`, `codec.py`, `routes/auth.py`.
 
