@@ -185,5 +185,7 @@ def test_settings_has_the_voice_picker_preview_and_speed():
     home = (REPO / "codec_dashboard.html").read_text(encoding="utf-8")
     assert 'id="voiceSection"' in home and 'id="voiceSelect"' in home and 'id="voicePreviewBtn"' in home
     assert 'id="voiceSpeed" min="0.7" max="1.3"' in home and "loadVoice();" in home
-    assert "if (key === 'tts_voice' || key === 'tts_speed') continue;" in home
+    # The Voice section owns these; the Settings schema (P2.10) does not list them.
+    schema = home[home.index("var SETTINGS_SCHEMA = ["):home.index("function _setId(")]
+    assert "k: 'tts_voice'" not in schema and "k: 'tts_speed'" not in schema
     assert "body: JSON.stringify({ tts: fields })" in home
