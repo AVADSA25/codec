@@ -179,3 +179,13 @@ def test_home_offers_settings_and_card_actions():
         assert needle in home, needle
     dash = (REPO / "codec_dashboard.py").read_text(encoding="utf-8")
     assert "app.include_router(checkin_router)" in dash
+
+
+def test_the_audit_line_keeps_the_result(tmp_path, monkeypatch):
+    import codec_audit
+    import codec_checkin
+    log = tmp_path / "audit.log"
+    monkeypatch.setattr(codec_audit, "_AUDIT_LOG", log)
+    codec_checkin._audit("hit", pattern="checkin:x", hits_today=1)
+    line = json.loads(log.read_text().splitlines()[-1])
+    assert line["event"] == "checkin_run" and line["extra"]["result"] == "hit" and line["extra"]["pattern"] == "checkin:x"

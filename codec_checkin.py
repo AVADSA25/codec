@@ -250,7 +250,7 @@ def _audit(outcome: str, reason: str = "", **extra) -> None:
     try:
         from codec_audit import log_event
         log_event("checkin_run", "codec-heartbeat", f"Check-in: {outcome}{(' (' + reason + ')') if reason else ''}",
-                  extra={"outcome": outcome, "reason": reason, **extra},
+                  extra={"result": outcome, "reason": reason, **extra},  # "outcome" is an envelope field
                   level="warning" if outcome == "error" else "info")
     except Exception:
         pass

@@ -176,7 +176,7 @@ snapshot, the model's answer or the card text.
 
 | Event | Source | Level | Extra fields |
 |---|---|---|---|
-| `checkin_run` | `codec-heartbeat` | info (warning on error) | `outcome` (`hit` \| `no_reply` \| `dropped` \| `skipped` \| `error`), `reason` (`away`, `image job`, `daily cap`, `pattern off`, an exception name), `hits_today`, `pattern` (on a hit or drop) |
+| `checkin_run` | `codec-heartbeat` | info (warning on error) | `result` (`hit` \| `no_reply` \| `dropped` \| `skipped` \| `error`), `reason` (`away`, `image job`, `daily cap`, `pattern off`, an exception name), `hits_today`, `pattern` (on a hit or drop) |
 
 ### Watchdog events (2026-07 log review)
 One event name, emitted by the heartbeat's PM2 restart-storm detector (`codec_heartbeat.check_pm2_restart_storms`). Fires when an `autorestart:true` PM2 process burned ≥5 restarts since the previous heartbeat (~20 min) — the signature of a crash loop hiding behind PM2 status "online" (incident: `ava-litellm` restarted 34,207× over 3 weeks unnoticed). Cron-style jobs (`autorestart:false`) are excluded; a persisting storm re-alerts at most every 6h. State: `~/.codec/pm2_restart_state.json`. Related (no new event): `codec_alerts` supports read-only `alerts.extra_services` probes in `~/.codec/config.json` (`http(s)://` or `tcp://host:port`) with the same consecutive-failure alerting as built-ins but NEVER auto-restart.
