@@ -234,6 +234,10 @@ def test_api_creates_updates_and_previews_jobs(sch, monkeypatch):
     assert c.put(f"/api/schedules/{job['id']}", json={"when": "at 99:00"}).status_code == 400
     assert c.put("/api/schedules/nope", json={"enabled": True}).status_code == 404
     assert c.post("/api/schedules/parse", json={"when": "every 30 minutes"}).json()["text"] == "Every 30 minutes"
+    now = datetime.now()
+    passed = (now - timedelta(minutes=5)).strftime("%H:%M")
+    nxt = c.post("/api/schedules/parse", json={"when": f"every day at {passed}"}).json()["next_run"]
+    assert nxt > now.isoformat(timespec="minutes"), "a time already passed today is next shown for tomorrow"
     assert c.post("/api/schedules/parse", json={"when": "weekdays"}).json()["ok"] is False
     listing = c.get("/api/schedules").json()["schedules"]
     assert {s["kind"] for s in listing} == {"prompt", "crew"}

@@ -9,6 +9,7 @@ which records the full output in the history and delivers it.
 from __future__ import annotations
 
 import threading
+from datetime import datetime
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -58,7 +59,8 @@ async def parse_schedule_when(request: Request):
         when = codec_scheduler.parse_when(body.get("when", ""))
     except ValueError as e:
         return {"ok": False, "error": str(e)}
-    nr = codec_scheduler.next_run({"enabled": True, "when": when, "created": None})
+    # As a job created now: a time already passed today is not "now" but next time.
+    nr = codec_scheduler.next_run({"enabled": True, "when": when, "created": datetime.now().isoformat()})
     return {"ok": True, "when": when, "text": codec_scheduler.describe_when(when),
             "next_run": nr.isoformat(timespec="minutes") if nr else None}
 
