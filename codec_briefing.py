@@ -136,9 +136,12 @@ def make_script(briefing: str) -> str:
     """A 45-60 second spoken version of the briefing (110-150 words)."""
     import codec_llm
     try:
-        from codec_config import get_llm_api_key
         with open(os.path.expanduser("~/.codec/config.json")) as f:
             config = json.load(f)
+    except (OSError, ValueError):
+        config = {}  # a fresh install: the defaults below
+    try:
+        from codec_config import get_llm_api_key
         answer = codec_llm.call(
             [{"role": "system", "content": "You write a short spoken morning briefing, read aloud by a voice. "
                                           "110 to 150 words, 45 to 60 seconds. Warm and natural. Plain sentences: "
