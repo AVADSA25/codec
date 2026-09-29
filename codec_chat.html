@@ -10,7 +10,7 @@
 <link rel="icon" href="/favicon.png">
 <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
 <link rel="manifest" href="/manifest.json">
-<link rel="stylesheet" href="/static/codec.css?v=65686d49">
+<link rel="stylesheet" href="/static/codec.css?v=8e957e11">
 <style>
 :root {
   --bg: #121215; --surface: #18181b; --surface-2: #1f1f22; --surface-3: #27272a;
@@ -332,7 +332,7 @@ input[type=file]{display:none}
 </style>
 </head>
 <body>
-<script src="/static/codec-shell.js?v=35d8d506" data-page="chat" data-title="Chat" data-status data-model-slot></script>
+<script src="/static/codec-shell.js?v=497d6d9e" data-page="chat" data-title="Chat" data-status data-model-slot></script>
 <div class="app cs-main" id="appContainer">
 <div class="messages" id="messages"></div>
 
@@ -566,7 +566,7 @@ function pickWorkingFolder(){
 }
 function clearWorkingFolder(){_workdir='';_lsDel('codec_workdir');_renderWorkdir();}
 _renderWorkdir();
-var chatHist=[],isProcessing=false,isRecording=false,recognition=null;
+var chatHist=[],isProcessing=false;
 var pendingFiles=[];
 var sessionId=null;
 var chatMode='chat';
@@ -1963,28 +1963,10 @@ function handleKey(e){
   }
 }
 
+// Dictation (P2.5): recorded here, transcribed by CODEC's Whisper on the Mac (the shell's recorder);
+// the text lands in the input for review.
 function toggleMic(){
-  var btn=document.getElementById('micBtn');
-  var input=document.getElementById('chatInput');
-  if(isRecording){if(recognition)recognition.stop();return}
-  if(!('webkitSpeechRecognition' in window)&&!('SpeechRecognition' in window)){showToast('Speech recognition not supported');return}
-  var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-  recognition=new SR();recognition.lang='en-US';recognition.interimResults=true;recognition.continuous=false;
-  recognition.onresult=function(e){
-    var transcript='';for(var i=0;i<e.results.length;i++){transcript+=e.results[i][0].transcript}
-    input.value=transcript;
-    if(e.results[e.results.length-1].isFinal){
-      isRecording=false;btn.classList.remove('recording');
-      /* user must press send manually */
-    }
-  };
-  recognition.onerror=function(e){isRecording=false;btn.classList.remove('recording');if(e.error!=='no-speech')showToast('Mic error: '+e.error)};
-  recognition.onend=function(){isRecording=false;btn.classList.remove('recording')};
-  recognition.start();isRecording=true;btn.classList.add('recording');
-  input.placeholder='Listening...';
-  var origPlaceholder='Message CODEC...';
-  var clearPlaceholder=function(){input.placeholder=origPlaceholder};
-  recognition.addEventListener('end',clearPlaceholder,{once:true})
+  CodecShell.dictation.toggle(document.getElementById('micBtn'),document.getElementById('chatInput'));
 }
 
 // Downscale big photos client-side before upload so the vision model isn't

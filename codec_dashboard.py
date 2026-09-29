@@ -483,6 +483,8 @@ from routes.memory_search import router as memory_search_router
 from routes.mcp import router as mcp_router
 # P3.13: Web Push devices, switches and the test send.
 from routes.push import router as push_router
+# P2.5: dictation through the local Whisper (mic buttons on Chat, Home, Vibe).
+from routes.transcribe import router as transcribe_router
 # H1 / SR-59: chat handler (POST /api/chat) + its helper cluster. The helpers
 # are re-exported back here (below) for the command-handler caller + the
 # existing test surface (codec_dashboard.CHAT_SKILL_ALLOWLIST etc.) — identity-equal.
@@ -536,6 +538,7 @@ app.include_router(cdp_router)
 app.include_router(memory_search_router)
 app.include_router(mcp_router)
 app.include_router(push_router)
+app.include_router(transcribe_router)
 app.include_router(chat_router)
 if _has_triggers:
     app.include_router(triggers_router)
