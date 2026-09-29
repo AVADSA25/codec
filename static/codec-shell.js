@@ -37,7 +37,8 @@
   }
   function $(id) { return document.getElementById(id); }
   function isPhone() { return window.innerWidth < 768; }
-  // One toast for the shell's own messages (history actions, wake word), with an optional link.
+  // One toast for the shell's own messages (history actions, wake word) and the pages' (CodecShell.toast),
+  // with an optional link.
   var toastTimer = null;
   function toast(msg, url) {
     var t = document.getElementById('csToast');
@@ -1402,7 +1403,7 @@
     toggleRail: toggleRail, openDrawer: openDrawer, closeDrawer: closeDrawer, focusSearch: focusSearch,
     refreshHistory: refreshHistory, refreshHistorySoon: refreshHistorySoon, setActiveChat: setActiveChat,
     newChat: newChat, voiceReplies: voiceReplies, wakeWord: wakeWord, refreshWake: refreshWake, pollInbox: pollInbox,
-    install: install,
+    install: install, toast: toast,
     push: { support: pushSupport, subscription: currentSub, on: pushOn, off: pushOff, deviceId: deviceId,
             post: postJSON },
     dictation: { toggle: dictToggle, stop: dictStop, mode: dictMode, toggleMode: toggleDictMode,
