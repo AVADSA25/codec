@@ -35,7 +35,7 @@ strict consent) are add-only. No personal data in the repo. No emoji in the UI.
 | 2 | P2.1: Desktop sidebar, phone tab bar, and every page on the shared shell | M | yes | done (#402) |
 | 3 | P2.2: Rename, pin, archive, group, load more and export chats | M | yes | done (#403) |
 | 4 | P2.14: Installable PWA with an offline shell | M | yes | done (#404) |
-| 5 | P3.13: Push to the phone for approvals, questions, briefing and agent results | L | yes | open |
+| 5 | P3.13: Push to the phone for approvals, questions, briefing and agent results | L | yes | done (#405) |
 | 6 | P2.5: Dictation through CODEC's local Whisper, not Google | M | yes | open |
 | 7 | P2.8: Read aloud that reads the whole answer, with voice and speed | S | yes | open |
 | 8 | P3.3: Schedule any skill, crew or prompt in plain language | M | yes | open |
