@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import sqlite3
 import stat
@@ -188,7 +189,10 @@ def test_sidebar_groups_menu_paging_archive_and_select():
     assert "'/api/qchat/sessions?offset=' + offset + '&limit=' + limit + '&archived='" in SHELL
     assert "method: 'PATCH'" in SHELL and "/export?format=" in SHELL and "/gdoc'" in SHELL
     assert "data-act=\"many-yes\"" in SHELL and "Delete this chat?" in SHELL
-    assert "confirm(" not in SHELL and "alert(" not in SHELL and "prompt(" not in SHELL, "no native dialogs"
+    # No native dialogs (window.confirm / alert / prompt); the PWA install
+    # prompt (beforeinstallprompt event's .prompt()) is not one.
+    native = re.search(r"(?:^|[^.\w])(confirm|alert|prompt)\(|window\.(confirm|alert|prompt)\(", SHELL)
+    assert native is None, f"native dialog: {native.group(0) if native else ''}"
 
 
 def _jsdom_available() -> bool:

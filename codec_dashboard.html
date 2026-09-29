@@ -7,11 +7,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="manifest" href="/manifest.json">
 <link rel="icon" href="/favicon.png">
-<link rel="apple-touch-icon" href="/favicon.png">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.json">
 <title>CODEC</title>
-<link rel="stylesheet" href="/static/codec.css?v=48371fdb">
+<link rel="stylesheet" href="/static/codec.css?v=65686d49">
 <style>
 :root {
   --bg: #121215; --surface: #18181b; --surface-2: #1f1f22; --surface-3: #2a2a2f;
@@ -531,7 +531,7 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
 </style>
 </head>
 <body>
-<script src="/static/codec-shell.js?v=c31f7658" data-page="home" data-title="Today" data-status></script>
+<script src="/static/codec-shell.js?v=d46ccbb7" data-page="home" data-title="Today" data-status></script>
 
 <!-- ── Connect your AI (first run) ─────────────────────────────────────────
      Shown until CODEC has a VERIFIED brain. A fresh paid install had no way
@@ -2571,8 +2571,6 @@ setInterval(async function() {
   try { var r = await fetch('/api/status'); var s = await r.json(); document.getElementById('statusDot').classList.toggle('on', s.alive); } catch(e) {}
 }, 10000);
 
-var deferredPrompt;
-window.addEventListener('beforeinstallprompt', function(e) { deferredPrompt = e; });
 // Skill-review pending count -> tab badge (the shell polls the Inbox count).
 if(typeof refreshSkillsBadge==='function'){refreshSkillsBadge();setInterval(refreshSkillsBadge,30000);}
 

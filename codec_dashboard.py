@@ -87,7 +87,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
     # Routes that never require authentication
     # /docs, /redoc, /openapi.json and /metrics are NOT public (audit 2026-09-27:
     # they handed the full 139-route map and per-path traffic to anyone).
-    PUBLIC_ROUTES = {"/", "/chat", "/vibe", "/voice", "/auth", "/health", "/api/health", "/favicon.ico", "/favicon.png", "/manifest.json"}
+    PUBLIC_ROUTES = {"/", "/chat", "/vibe", "/voice", "/auth", "/health", "/api/health", "/favicon.ico", "/favicon.png", "/manifest.json", "/sw.js"}
     # Browser origins allowed to make state-changing requests (plus the
     # request's own host). Blocks drive-by POSTs from other websites to
     # http://127.0.0.1:8090 on the owner's Mac.
