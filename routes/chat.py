@@ -9,6 +9,7 @@ This module owns the full chat pipeline:
   - `CHAT_SKILL_ALLOWLIST`   — the set of skills a chat message may auto-fire
   - `_try_skill`             — pre-LLM skill hijack (shared with /api/command)
   - `_try_skill_by_name`     — post-LLM [SKILL:...] tag resolver (+ calc fallback)
+  - `_try_explicit_skill`    — the skill picked with '@' (the `skill` body field, P2.3)
   - `_chat_vision_response`  — image → vision-model branch (A-11 pending)
   - `_build_chat_system_prompt` — override + step-budget + observer suffixes
   - `chat_completion`        — the POST /api/chat endpoint itself
@@ -548,6 +549,55 @@ def _try_skill(user_text: str):
 
 
 
+# A picked skill still has a size cap: the message is its input, not a document.
+MAX_EXPLICIT_SKILL_CHARS = 5000
+_MCP_CALL = re.compile(r"^\S+\s*(\{.*\})?\s*$", re.DOTALL)
+
+
+def _try_explicit_skill(target: str, user_text: str):
+    """Run the skill the user picked with '@' (the chat `skill` body field, P2.3;
+    docs/P2.3-DESIGN.md). Returns (skill_name, result).
+
+    Only the skills the '@' picker lists (routes.palette.pickable_skills: the chat
+    allowlist) run this way, and `mcp_connect` for an "mcp:<server>" target, through
+    codec_dispatch.run_skill (hooks, audit, licence) after the same consent gate as
+    automatic routing. No trigger matching: the pick decides."""
+    target = str(target or "").strip()
+    text = str(user_text or "").strip()
+    if target.startswith("mcp:"):
+        server = target[4:].strip()
+        if not re.fullmatch(r"[\w.-]{1,64}", server):
+            return "mcp_connect", "That MCP server name is not valid."
+        name = "mcp_connect"
+        # "<tool> {json}" calls a tool; anything else lists the server's tools.
+        task = f"call {server} {text}" if text and _MCP_CALL.match(text) else f"list tools on {server}"
+    else:
+        name, task = target, text
+    try:
+        from routes.palette import pickable_skills
+        allowed = pickable_skills() | ({"mcp_connect"} if target.startswith("mcp:") else set())
+    except Exception as e:
+        log.warning(f"[Chat] explicit skill check failed: {e}")
+        allowed = set()
+    if name not in allowed:
+        return name, "That skill can't be run from chat."
+    if len(task) > MAX_EXPLICIT_SKILL_CHARS:
+        return name, f"That message is too long for a skill ({MAX_EXPLICIT_SKILL_CHARS} characters at most)."
+    try:
+        import codec_consent
+        if not codec_consent.chat_consent_ok(name, task):
+            return name, (f"Warning: '{name}' is a destructive operation and wasn't "
+                          "confirmed — skipped.")
+        from codec_dispatch import registry, run_skill
+        skill = {"name": name, "triggers": registry.get_triggers(name), "_all_matches": [name],
+                 "run": lambda t, app="", **kw: registry.run(name, t, app)}
+        result = run_skill(skill, task, app="CODEC Chat")
+    except Exception as e:
+        log.warning(f"[Chat] explicit skill {name} failed: {e}")
+        return name, f"{name} failed: {type(e).__name__}"
+    return name, (str(result) if result is not None else f"{name} had nothing to return for that.")
+
+
 def _try_skill_by_name(name: str, query: str):
     """Execute a specific skill by name (for LLM-routed skill calls).
 
@@ -973,6 +1023,22 @@ async def chat_completion(request: Request):
     # ── Tool Calling: check if last user message matches a skill ──
     use_tools = body.get("tools", True)  # frontend can disable with tools:false
     if use_tools:
+        # ── A skill picked with '@' (P2.3): runs that skill, no trigger matching ──
+        _explicit = body.get("skill")
+        if _explicit and isinstance(_explicit, str) and last_user_text:
+            _budget.consume("skill_hijack")
+            skill_name, skill_result = await asyncio.to_thread(_try_explicit_skill, _explicit, last_user_text)
+            log.info(f"[Chat] Picked skill '{skill_name}' handled ({len(skill_result)} chars)")
+            if body.get("stream", False):
+                from starlette.responses import StreamingResponse as _PickSR
+
+                async def _pick_stream(_n=skill_name, _r=skill_result):
+                    yield f"data: {json.dumps({'skill': _n})}\n\n"
+                    yield f"data: {json.dumps({'token': f'**{_n}**: {_r}'})}\n\n"
+                    yield "data: [DONE]\n\n"
+                return _PickSR(_pick_stream(), media_type="text/event-stream")
+            return {"response": f"**{skill_name}**: {skill_result}", "skill": skill_name}
+
         # ── Slash commands (BEFORE skill check / attachment check) ──
         # Type /help, /skills, /cost, /version, /status, /who, /clear in chat
         # to invoke meta-controls without an LLM round-trip. Slash dispatch
