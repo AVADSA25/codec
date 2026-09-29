@@ -386,15 +386,13 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
     updateVoiceIcon();
     /* One toast, the shell's (CodecShell.toast). */
     function showToast(msg){if(window.CodecShell&&CodecShell.toast)CodecShell.toast(msg)}
-    /* Screenshot of the Mac: GET /api/screenshot, shown in the viewer below, confirmed in a toast. */
+    /* Screenshot of the Mac: the viewer below loads GET /api/screenshot itself (the page's CSP allows
+       'self' images, not blob: ones), then a toast confirms it. */
     function takeScreenshot(){
-      fetch('/api/screenshot?_t='+Date.now()).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.blob()}).then(function(b){
-        var img=document.getElementById('screenImg');
-        if(img.src&&img.src.indexOf('blob:')===0)URL.revokeObjectURL(img.src);
-        img.src=URL.createObjectURL(b);
-        document.getElementById('screenModal').classList.add('show');
-        showToast('Screenshot taken');
-      }).catch(function(){showToast('Could not take a screenshot')});
+      var img=document.getElementById('screenImg');
+      img.onload=function(){document.getElementById('screenModal').classList.add('show');showToast('Screenshot taken')};
+      img.onerror=function(){showToast('Could not take a screenshot')};
+      img.src='/api/screenshot?_t='+Date.now();
     }
 
     // ── Server Photo (Mac webcam) ──
