@@ -9,7 +9,7 @@
 <title>CODEC Deep Chat</title>
 <link rel="icon" href="/favicon.png">
 <link rel="apple-touch-icon" href="/favicon.png">
-<link rel="stylesheet" href="/static/codec.css?v=78031f9b">
+<link rel="stylesheet" href="/static/codec.css?v=48371fdb">
 <style>
 :root {
   --bg: #121215; --surface: #18181b; --surface-2: #1f1f22; --surface-3: #27272a;
@@ -331,7 +331,7 @@ input[type=file]{display:none}
 </style>
 </head>
 <body>
-<script src="/static/codec-shell.js?v=8153c573" data-page="chat" data-title="Chat" data-status data-model-slot></script>
+<script src="/static/codec-shell.js?v=c31f7658" data-page="chat" data-title="Chat" data-status data-model-slot></script>
 <div class="app cs-main" id="appContainer">
 <div class="messages" id="messages"></div>
 
@@ -903,6 +903,7 @@ function regenerateResponse(btn){
   if(msgDiv)msgDiv.remove();
   // Pop last assistant from chatHist
   while(chatHist.length&&chatHist[chatHist.length-1].role==='assistant')chatHist.pop();
+  _markDiscard(chatHist.length);
   if(!chatHist.length)return;
   // Find last user message to re-send
   var lastUser='';
@@ -1216,7 +1217,7 @@ function parseScaffold(raw){
 
 function genId(){return Date.now().toString(36)+Math.random().toString(36).substr(2,5)}
 
-function startNewSession(){sessionId=genId();_lsSet('codec-chat-session',sessionId);chatHist=[];pendingFiles=[];document.getElementById('fileChips').innerHTML='';_clearQueue();_follow=true;_renderEmptyState();_syncSendState();if(window.CodecShell)CodecShell.setActiveChat(sessionId)}
+function startNewSession(){_discardFrom=null;sessionId=genId();_lsSet('codec-chat-session',sessionId);chatHist=[];pendingFiles=[];document.getElementById('fileChips').innerHTML='';_clearQueue();_follow=true;_renderEmptyState();_syncSendState();if(window.CodecShell)CodecShell.setActiveChat(sessionId)}
 
 // PR #39: persist sessionId across page reloads. If a previous session
 // exists, load it on boot so the user lands back on the same chat (with
@@ -1260,15 +1261,23 @@ window.addEventListener('hashchange',_chatFromHash);
   }).catch(function(){startNewSession();});
 })();
 
+// Replace-or-mark saving (P2.2): regenerate and edit drop the tail of chatHist
+// (which mirrors the saved rows, in order); the next save tells the server to mark
+// the saved rows from that position on as superseded, so a reload shows exactly
+// what this page shows. Nothing is deleted.
+var _discardFrom=null;
+function _markDiscard(n){_discardFrom=(_discardFrom===null)?n:Math.min(_discardFrom,n)}
 async function saveMessages(msgs){
   var title=(chatHist.find(function(m){return m.role==='user'})||{}).content||'New Chat';
-  try{await fetch('/api/qchat/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:sessionId,title:title.substring(0,60),messages:msgs})});if(window.CodecShell)CodecShell.refreshHistorySoon()}catch(e){}
+  var payload={session_id:sessionId,title:title.substring(0,60),messages:msgs||[]};
+  if(_discardFrom!==null){payload.discard_from=_discardFrom;_discardFrom=null}
+  try{await fetch('/api/qchat/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});if(window.CodecShell)CodecShell.refreshHistorySoon()}catch(e){}
 }
 
 
 
 async function loadSession(sid){
-  if(window.CodecShell){CodecShell.closeDrawer();CodecShell.setActiveChat(sid)}sessionId=sid;_lsSet('codec-chat-session',sid);chatHist=[];pendingFiles=[];_clearQueue();
+  if(window.CodecShell){CodecShell.closeDrawer();CodecShell.setActiveChat(sid)}_discardFrom=null;sessionId=sid;_lsSet('codec-chat-session',sid);chatHist=[];pendingFiles=[];_clearQueue();
   document.getElementById('fileChips').innerHTML='';
   var es=document.getElementById('emptyState');if(es)es.remove();
   document.getElementById('messages').innerHTML='';
@@ -1418,7 +1427,7 @@ function editMessage(text,btn){
   }
   // Trim chat history: find and remove this user message and all after it
   for(var i=chatHist.length-1;i>=0;i--){
-    if(chatHist[i].role==='user'&&chatHist[i].content===text){chatHist=chatHist.slice(0,i);break}
+    if(chatHist[i].role==='user'&&chatHist[i].content===text){chatHist=chatHist.slice(0,i);_markDiscard(i);break}
   }
 }
 var addMsg=addMessage; // alias for webcam code

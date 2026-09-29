@@ -92,7 +92,7 @@ async def memory_search_endpoint(request: Request):
                 """SELECT m.session_id, m.timestamp, m.role, m.content, s.title
                    FROM qchat_messages m
                    LEFT JOIN qchat_sessions s ON m.session_id = s.id
-                   WHERE m.content LIKE ? COLLATE NOCASE
+                   WHERE m.content LIKE ? COLLATE NOCASE AND m.superseded_at IS NULL
                    ORDER BY m.id DESC LIMIT ?""",
                 (keyword, limit)
             ).fetchall()

@@ -4,17 +4,30 @@ D1 / SR-42: extracted from codec_dashboard.py. The qchat subsystem
 stores Deep Chat conversation history in ~/.codec/qchat.db. The
 endpoints handle session CRUD + a substring search across messages.
 
+UI phase 2 P2.2 (docs/P2.2-DESIGN.md): chats can be renamed, pinned,
+archived and exported; the list pages; a save can mark the discarded tail
+of a chat (regenerate / edit) as superseded instead of leaving it to come
+back on reload. The schema changes are additive and follow a one-time
+backup copy of the database; no row or column is deleted.
+
 DB setup (QCHAT_DB, _qchat_conn singleton, qchat_db helper) lives here
 too — it was only ever referenced by these endpoints. WAL + busy_timeout
 + auto-migration applied on first connect.
 """
 from __future__ import annotations
 
+import asyncio
+import json
+import logging
 import os
+import re
 import sqlite3
 from datetime import datetime
 
 from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse, Response
+
+log = logging.getLogger("codec.qchat")
 
 router = APIRouter()
 
@@ -23,6 +36,36 @@ router = APIRouter()
 QCHAT_DB = os.path.expanduser("~/.codec/qchat.db")
 
 _qchat_conn = None
+
+# P2.2 columns: added once, after a backup copy of the database.
+_P22_COLUMNS = (("qchat_sessions", "pinned", "INTEGER DEFAULT 0"),
+                ("qchat_sessions", "archived", "INTEGER DEFAULT 0"),
+                ("qchat_messages", "superseded_at", "TEXT"))
+
+
+def _columns(conn, table: str) -> set:
+    return {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+
+
+def _backup_once(conn) -> None:
+    """Copy the database (SQLite online backup) to qchat.db.bak-p2.2, owner-only,
+    before the first additive migration. An empty database needs no copy."""
+    dest = QCHAT_DB + ".bak-p2.2"
+    if os.path.exists(dest):
+        return
+    rows = sum(conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+               for t in ("qchat_sessions", "qchat_messages"))
+    if not rows:
+        return
+    fd = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    os.close(fd)
+    copy = sqlite3.connect(dest)
+    try:
+        conn.backup(copy)
+    finally:
+        copy.close()
+    os.chmod(dest, 0o600)
+    log.info("qchat.db backed up to %s before the P2.2 migration", dest)
 
 
 def qchat_db():
@@ -47,25 +90,157 @@ def qchat_db():
                 pass
         _qchat_conn.execute("CREATE INDEX IF NOT EXISTS idx_qchat_sessions_user ON qchat_sessions(user_id)")
         _qchat_conn.execute("CREATE INDEX IF NOT EXISTS idx_qchat_messages_user ON qchat_messages(user_id)")
+        # P2.2: pinned / archived chats and superseded messages (additive, backup first).
+        missing = [(t, c, d) for t, c, d in _P22_COLUMNS if c not in _columns(_qchat_conn, t)]
+        if missing:
+            _qchat_conn.commit()
+            _backup_once(_qchat_conn)
+            for t, c, d in missing:
+                _qchat_conn.execute(f"ALTER TABLE {t} ADD COLUMN {c} {d}")
+        _qchat_conn.execute("CREATE INDEX IF NOT EXISTS idx_qchat_messages_session ON qchat_messages(session_id, id)")
         _qchat_conn.commit()
     return _qchat_conn
 
 
 @router.get("/api/qchat/sessions")
-async def qchat_sessions(user_id: str = None):
+async def qchat_sessions(user_id: str = None, offset: int = 0, limit: int = 30, archived: int = 0):
+    """Newest first, pinned chats on top; archived chats only with archived=1.
+    offset / limit page the list (limit is capped at 100)."""
     conn = qchat_db()
+    limit = max(1, min(int(limit), 100))
+    offset = max(0, int(offset))
+    where, args = ["COALESCE(archived, 0) = ?"], [1 if archived else 0]
     if user_id is not None:
-        rows = conn.execute("SELECT id, title, updated_at FROM qchat_sessions WHERE user_id=? ORDER BY updated_at DESC LIMIT 30", (user_id,)).fetchall()
-    else:
-        rows = conn.execute("SELECT id, title, updated_at FROM qchat_sessions ORDER BY updated_at DESC LIMIT 30").fetchall()
-    return [{"id": r[0], "title": r[1], "updated_at": r[2]} for r in rows]
+        where.append("user_id = ?")
+        args.append(user_id)
+    rows = conn.execute(
+        "SELECT id, title, updated_at, created_at, COALESCE(pinned, 0), COALESCE(archived, 0) "
+        f"FROM qchat_sessions WHERE {' AND '.join(where)} "
+        "ORDER BY COALESCE(pinned, 0) DESC, updated_at DESC LIMIT ? OFFSET ?",
+        (*args, limit, offset)).fetchall()
+    return [{"id": r[0], "title": r[1], "updated_at": r[2], "created_at": r[3],
+             "pinned": bool(r[4]), "archived": bool(r[5])} for r in rows]
+
+
+def _current_messages(conn, sid: str) -> list:
+    return conn.execute("SELECT role, content, timestamp FROM qchat_messages "
+                        "WHERE session_id=? AND superseded_at IS NULL ORDER BY id ASC", (sid,)).fetchall()
 
 
 @router.get("/api/qchat/session/{sid}")
 async def qchat_session(sid: str):
-    conn = qchat_db()
-    rows = conn.execute("SELECT role, content, timestamp FROM qchat_messages WHERE session_id=? ORDER BY id ASC", (sid,)).fetchall()
+    rows = _current_messages(qchat_db(), sid)
     return [{"role": r[0], "content": r[1], "timestamp": r[2]} for r in rows]
+
+
+@router.patch("/api/qchat/session/{sid}")
+async def qchat_update(sid: str, request: Request):
+    """Rename, pin or archive a chat: any of {"title", "pinned", "archived"}."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = None
+    if not isinstance(body, dict):
+        return JSONResponse({"error": "JSON object expected"}, status_code=400)
+    sets, args = [], []
+    if "title" in body:
+        title = str(body.get("title") or "").strip()[:60]
+        if not title:
+            return JSONResponse({"error": "The title cannot be empty"}, status_code=400)
+        sets.append("title = ?")
+        args.append(title)
+    for key in ("pinned", "archived"):
+        if key in body:
+            sets.append(f"{key} = ?")
+            args.append(1 if body.get(key) else 0)
+    if not sets:
+        return JSONResponse({"error": "Nothing to change"}, status_code=400)
+    conn = qchat_db()
+    if not conn.execute("SELECT 1 FROM qchat_sessions WHERE id=?", (sid,)).fetchone():
+        return JSONResponse({"error": "Chat not found"}, status_code=404)
+    conn.execute(f"UPDATE qchat_sessions SET {', '.join(sets)} WHERE id=?", (*args, sid))
+    conn.commit()
+    row = conn.execute("SELECT title, COALESCE(pinned, 0), COALESCE(archived, 0) FROM qchat_sessions WHERE id=?",
+                       (sid,)).fetchone()
+    return {"ok": True, "id": sid, "title": row[0], "pinned": bool(row[1]), "archived": bool(row[2])}
+
+
+def _chat_for_export(sid: str):
+    conn = qchat_db()
+    s = conn.execute("SELECT title, created_at, updated_at FROM qchat_sessions WHERE id=?", (sid,)).fetchone()
+    if not s:
+        return None
+    return {"id": sid, "title": s[0] or "Chat", "created_at": s[1], "updated_at": s[2],
+            "messages": [{"role": r[0], "content": r[1], "timestamp": r[2]} for r in _current_messages(conn, sid)]}
+
+
+def _export_markdown(chat: dict) -> str:
+    def when(ts):
+        try:
+            return datetime.fromisoformat(ts).strftime("%Y-%m-%d %H:%M")
+        except (TypeError, ValueError):
+            return ""
+    out = [f"# {chat['title']}", ""]
+    if chat.get("created_at"):
+        out += [f"_Started {when(chat['created_at'])}, exported from CODEC {datetime.now().strftime('%Y-%m-%d %H:%M')}._", ""]
+    for m in chat["messages"]:
+        who = "You" if m["role"] == "user" else "CODEC"
+        stamp = when(m.get("timestamp"))
+        out += [f"**{who}**" + (f" · {stamp}" if stamp else ""), "", (m.get("content") or "").rstrip(), ""]
+    return "\n".join(out).rstrip() + "\n"
+
+
+def _export_filename(title: str) -> str:
+    slug = re.sub(r"[^A-Za-z0-9]+", "-", title or "").strip("-").lower()[:50]
+    return slug or "chat"
+
+
+@router.get("/api/qchat/session/{sid}/export")
+async def qchat_export(sid: str, format: str = "md"):
+    """Download a chat (current messages only) as Markdown or JSON."""
+    chat = _chat_for_export(sid)
+    if chat is None:
+        return JSONResponse({"error": "Chat not found"}, status_code=404)
+    if format == "json":
+        body, media, ext = json.dumps(chat, ensure_ascii=False, indent=2), "application/json", "json"
+    elif format == "md":
+        body, media, ext = _export_markdown(chat), "text/markdown; charset=utf-8", "md"
+    else:
+        return JSONResponse({"error": "format must be md or json"}, status_code=400)
+    name = _export_filename(chat["title"])
+    return Response(body, media_type=media,
+                    headers={"Content-Disposition": f'attachment; filename="{name}.{ext}"'})
+
+
+@router.post("/api/qchat/session/{sid}/gdoc")
+async def qchat_gdoc(sid: str):
+    """Save a chat to a new Google Doc through the google_docs skill. Runs only
+    on an explicit click; the doc lands in the owner's own Google Drive."""
+    chat = _chat_for_export(sid)
+    if chat is None:
+        return JSONResponse({"error": "Chat not found"}, status_code=404)
+    try:
+        import codec_license
+        if not codec_license.feature_allowed("skill_exec"):
+            return JSONResponse({"error": "Skills need an active CODEC license"}, status_code=403)
+    except Exception:
+        pass
+    import codec_dispatch
+    mod = codec_dispatch.registry.load("google_docs")
+    if mod is None or not hasattr(mod, "create_doc"):
+        return JSONResponse({"error": "The Google Docs skill is not available"}, status_code=503)
+    try:
+        url = await asyncio.to_thread(mod.create_doc, chat["title"], _export_markdown(chat))
+    except Exception as e:
+        log.warning("qchat gdoc export failed: %s", e)
+        return JSONResponse({"error": f"Google Docs: {e}"[:200]}, status_code=502)
+    try:
+        from codec_audit import log_event
+        log_event("qchat_export_gdoc", "codec-dashboard", "chat saved to a Google Doc",
+                  extra={"messages": len(chat["messages"])}, outcome="ok", level="info")
+    except Exception:
+        pass
+    return {"ok": True, "url": url}
 
 
 @router.post("/api/qchat/save")
@@ -73,17 +248,37 @@ async def qchat_save(request: Request):
     body = await request.json()
     sid = body.get("session_id", "")
     title = body.get("title", "New Chat")
-    messages = body.get("messages", [])
+    messages = body.get("messages") or []
     user_id = body.get("user_id", "default")
+    discard_from = body.get("discard_from")
     now = datetime.now().isoformat()
     conn = qchat_db()
-    conn.execute("INSERT OR REPLACE INTO qchat_sessions (id, title, created_at, updated_at, user_id) VALUES (?, ?, COALESCE((SELECT created_at FROM qchat_sessions WHERE id=?), ?), ?, ?)",
-        (sid, title[:60], sid, now, now, user_id))
+    # A renamed chat keeps its name, a pinned or archived one keeps its flags: the
+    # upsert only sets the title when the chat is new.
+    if conn.execute("SELECT 1 FROM qchat_sessions WHERE id=?", (sid,)).fetchone():
+        conn.execute("UPDATE qchat_sessions SET updated_at=? WHERE id=?", (now, sid))
+    else:
+        conn.execute("INSERT INTO qchat_sessions (id, title, created_at, updated_at, user_id) VALUES (?, ?, ?, ?, ?)",
+                     (sid, (title or "New Chat")[:60], now, now, user_id))
+    # Replace-or-mark (P2.2): regenerate and edit drop the tail of the chat on the
+    # page; mark those saved messages superseded instead of leaving them to come
+    # back on reload. Nothing is deleted.
+    if discard_from is not None:
+        try:
+            start = max(0, int(discard_from))
+        except (TypeError, ValueError):
+            return JSONResponse({"error": "discard_from must be a number"}, status_code=400)
+        ids = [r[0] for r in conn.execute(
+            "SELECT id FROM qchat_messages WHERE session_id=? AND superseded_at IS NULL "
+            "ORDER BY id LIMIT -1 OFFSET ?", (sid, start))]
+        conn.executemany("UPDATE qchat_messages SET superseded_at=? WHERE id=?", [(now, i) for i in ids])
     for m in messages:
         conn.execute("INSERT INTO qchat_messages (session_id, role, content, timestamp, user_id) VALUES (?, ?, ?, ?, ?)",
             (sid, m.get("role", "user"), m.get("content", ""), now, user_id))
     conn.commit()
-    return {"ok": True}
+    rows = conn.execute("SELECT COUNT(*) FROM qchat_messages WHERE session_id=? AND superseded_at IS NULL",
+                        (sid,)).fetchone()[0]
+    return {"ok": True, "rows": rows}
 
 
 @router.delete("/api/qchat/session/{sid}")
@@ -106,7 +301,7 @@ async def qchat_search(q: str = "", limit: int = 20):
         """SELECT m.session_id, s.title, m.content, m.role, m.timestamp
            FROM qchat_messages m
            LEFT JOIN qchat_sessions s ON m.session_id = s.id
-           WHERE m.content LIKE ?
+           WHERE m.content LIKE ? AND m.superseded_at IS NULL
            ORDER BY m.timestamp DESC LIMIT ?""",
         (keyword, min(limit, 50))
     ).fetchall()

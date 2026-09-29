@@ -37,7 +37,31 @@
   }
   function $(id) { return document.getElementById(id); }
   function isPhone() { return window.innerWidth < 768; }
-  function toast(msg) { if (typeof window.showToast === 'function') window.showToast(msg); }
+  // One toast for the shell's own messages (history actions, wake word), with an optional link.
+  var toastTimer = null;
+  function toast(msg, url) {
+    var t = document.getElementById('csToast');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'csToast';
+      t.className = 'cs-toast';
+      t.setAttribute('role', 'status');
+      document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    if (url && /^https:\/\//.test(url)) {
+      var a = document.createElement('a');
+      a.href = url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      a.textContent = 'Open';
+      t.appendChild(document.createTextNode(' '));
+      t.appendChild(a);
+    }
+    t.classList.add('cs-show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.classList.remove('cs-show'); }, url ? 8000 : 3200);
+  }
 
   // ── Icons: line SVG, 1.75 stroke, round caps (no emoji, no glyphs) ───────
   var P = {
@@ -56,6 +80,12 @@
     lock: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
     close: '<path d="M18 6 6 18M6 6l12 12"/>',
     trash: '<path d="M3 6h18M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+    dots: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
+    pin: '<path d="M12 17v5M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>',
+    archive: '<rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8M10 12h4"/>',
+    back: '<path d="m15 18-6-6 6-6"/>',
+    download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
+    doc: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/><path d="M14 2v4a2 2 0 0 0 2 2h4M16 13H8M16 17H8M10 9H8"/>',
     speaker: '<path d="M11 5 6 9H2v6h4l5 4z"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>' +
       '<line id="muteX1" x1="4" y1="4" x2="20" y2="20" stroke-width="2.5" style="display:none"/>' +
       '<line id="muteX2" x1="4" y1="20" x2="20" y2="4" stroke-width="2.5" style="display:none"/>',
@@ -105,8 +135,12 @@
           '<input id="csSearch" type="search" placeholder="Search chats" autocomplete="off" aria-label="Search chats">' +
           '<kbd class="cs-kbd">' + KEY_HINT + '</kbd></label>' +
         '<nav class="cs-nav" aria-label="Pages">' + nav + '</nav>' +
-        '<div class="cs-hist-head cs-label" id="csHistHead">Chats</div>' +
+        '<div class="cs-hist-head cs-label" id="csHistHead"><span id="csHistLabel">Chats</span>' +
+          '<button type="button" class="cs-hlink" id="csSelectBtn" hidden>Select</button>' +
+          '<button type="button" class="cs-hicon" id="csArchBtn" title="Archived chats" aria-label="Archived chats">' +
+          ico('archive', 16) + '</button></div>' +
         '<div class="cs-hist" id="csHist" role="list"></div>' +
+        '<div class="cs-selbar" id="csSelBar" hidden></div>' +
         '<div class="cs-foot">' +
           '<a class="cs-row" href="/tasks#reports" id="csInbox" title="Inbox">' + ico('inbox') +
             '<span class="cs-label">Inbox</span><span class="cs-badge" id="csInboxBadge" hidden>0</span></a>' +
@@ -243,8 +277,14 @@
   window.addEventListener('resize', applyRail);
 
   // ── Chat history ──────────────────────────────────────────────────────────
+  // P2.1 list; P2.2 (docs/P2.2-DESIGN.md): date groups with Pinned first, a row
+  // menu (rename, pin, archive, export, Google Doc, delete), load more on scroll,
+  // an archived view, and select mode with an in-page confirm. No native dialogs.
   var activeChat = null;
   var histTimer = null;
+  var PAGE_SIZE = 30;
+  var H = { items: [], offset: 0, done: false, loading: false, gen: 0, archived: false, search: '',
+            select: false, sel: {}, confirm: null, rename: null };
   function fmtTime(ts) {
     if (!ts) return '';
     var d = new Date(ts);
@@ -253,39 +293,155 @@
     if (d.toDateString() === now.toDateString()) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
   }
-  function histRow(id, title, ts, snippet) {
-    return '<div class="cs-hrow' + (id === activeChat ? ' cs-on' : '') + '" role="listitem" data-sid="' + esc(id) + '">' +
-      '<a class="cs-hmain" href="/chat#session=' + encodeURIComponent(id) + '" data-open="' + esc(id) + '">' +
-        '<span class="cs-htitle">' + esc(title || 'New chat') + '</span>' +
-        '<span class="cs-htime">' + esc(fmtTime(ts)) + '</span>' +
-        (snippet ? '<span class="cs-hsnip">' + esc(snippet) + '</span>' : '') +
-      '</a>' +
-      '<button type="button" class="cs-hdel" data-del="' + esc(id) + '" title="Delete" aria-label="Delete chat">' +
-        ico('trash', 16) + '</button></div>';
+  function dayStart(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); }
+  function groupOf(s) {
+    if (s.pinned && !H.archived) return 'Pinned';
+    var d = new Date(s.updated_at || s.created_at || 0);
+    if (isNaN(d)) return 'Older';
+    var today = dayStart(new Date()), day = dayStart(d);
+    if (day >= today) return 'Today';
+    if (day >= today - 864e5) return 'Yesterday';
+    if (day >= today - 7 * 864e5) return 'Previous 7 days';
+    return 'Older';
   }
+  function findChat(id) { for (var i = 0; i < H.items.length; i++) if (H.items[i].id === id) return H.items[i]; return null; }
   function histMsg(text) { return '<div class="cs-hmsg">' + esc(text) + '</div>'; }
-  function refreshHistory() {
+  function histRow(s) {
+    var id = s.id, eid = esc(id);
+    if (H.confirm && H.confirm.one === id) {
+      return '<div class="cs-hrow cs-hask" role="listitem" data-sid="' + eid + '"><span class="cs-hq">Delete this chat?</span>' +
+        '<button type="button" class="cs-hbtn cs-danger" data-act="one-yes">Delete</button>' +
+        '<button type="button" class="cs-hbtn" data-act="one-no">Cancel</button></div>';
+    }
+    if (H.rename === id) {
+      return '<div class="cs-hrow cs-on" role="listitem" data-sid="' + eid + '"><input class="cs-hrename" id="csRename"' +
+        ' maxlength="60" value="' + esc(s.title || '') + '" aria-label="Chat name"></div>';
+    }
+    var picked = !!H.sel[id];
+    return '<div class="cs-hrow' + (id === activeChat ? ' cs-on' : '') + (picked ? ' cs-picked' : '') +
+        '" role="listitem" data-sid="' + eid + '">' +
+      (H.select ? '<input type="checkbox" class="cs-hcheck" data-check="' + eid + '"' + (picked ? ' checked' : '') +
+        ' aria-label="Select ' + esc(s.title || 'chat') + '">' : '') +
+      '<a class="cs-hmain" href="/chat#session=' + encodeURIComponent(id) + '" data-open="' + esc(id) + '">' +
+        '<span class="cs-htitle">' + esc(s.title || 'New chat') + '</span>' +
+        '<span class="cs-htime">' + esc(fmtTime(s.updated_at)) + '</span>' +
+        (s.snippet ? '<span class="cs-hsnip">' + esc(s.snippet) + '</span>' : '') +
+      '</a>' +
+      (H.select || H.search ? '' : '<button type="button" class="cs-hmore" data-menu="' + eid + '" aria-label="Chat options"' +
+        ' aria-haspopup="menu" title="Options">' + ico('dots', 16) + '</button>') +
+      '</div>';
+  }
+  function renderHistory() {
     var el = $('csHist');
     if (!el) return;
-    var q = ($('csSearch') || {}).value || '';
-    if (q.trim().length >= 2) { runSearch(q.trim()); return; }
-    fetch('/api/qchat/sessions').then(function (r) { return r.ok ? r.json() : []; }).then(function (data) {
-      var head = $('csHistHead');
-      if (head) head.textContent = 'Chats';
-      if (!Array.isArray(data) || !data.length) { el.innerHTML = histMsg('No conversations yet.'); return; }
-      el.innerHTML = data.map(function (s) { return histRow(s.id, s.title, s.updated_at); }).join('');
-    }).catch(function () { el.innerHTML = histMsg('Could not load chats.'); });
+    var label = $('csHistLabel'), selBtn = $('csSelectBtn'), arcBtn = $('csArchBtn');
+    if (label) label.textContent = H.search ? 'Results' : (H.archived ? 'Archived chats' : 'Chats');
+    if (selBtn) { selBtn.hidden = !!H.search || !H.items.length; selBtn.textContent = H.select ? 'Done' : 'Select'; }
+    if (arcBtn) {
+      arcBtn.hidden = !!H.search || H.select;
+      arcBtn.title = H.archived ? 'Back to chats' : 'Archived chats';
+      arcBtn.setAttribute('aria-label', arcBtn.title);
+      arcBtn.innerHTML = ico(H.archived ? 'back' : 'archive', 16);
+    }
+    var html = '', group = null;
+    if (!H.items.length && !H.loading) {
+      html += histMsg(H.search ? 'No chats match "' + H.search + '".' : (H.archived ? 'No archived chats.' : 'No conversations yet.'));
+    }
+    H.items.forEach(function (s) {
+      if (!H.search) {
+        var g = groupOf(s);
+        if (g !== group) { group = g; html += '<div class="cs-group" role="presentation">' + g + '</div>'; }
+      }
+      html += histRow(s);
+    });
+    if (H.loading) html += histMsg('Loading...');
+    var top = el.scrollTop;
+    el.innerHTML = html;
+    el.scrollTop = top;
+    renderSelBar();
+    if (H.rename) { var inp = $('csRename'); if (inp) { inp.focus(); inp.select(); } }
+    // A tall window may show the whole first page: keep loading until it scrolls.
+    if (!H.done && !H.loading && !H.search && el.clientHeight > 0 && el.scrollHeight <= el.clientHeight + 8) loadPage(false);
+  }
+  function renderSelBar() {
+    var bar = $('csSelBar');
+    if (!bar) return;
+    if (!H.select) { bar.hidden = true; bar.innerHTML = ''; return; }
+    var n = Object.keys(H.sel).length;
+    bar.hidden = false;
+    bar.innerHTML = H.confirm && H.confirm.many
+      ? '<span class="cs-hq">Delete ' + n + (n === 1 ? ' chat' : ' chats') + '?</span>' +
+        '<button type="button" class="cs-hbtn cs-danger" data-act="many-yes">Delete</button>' +
+        '<button type="button" class="cs-hbtn" data-act="many-no">Cancel</button>'
+      : '<span class="cs-hq">' + (n ? n + ' selected' : 'Select chats') + '</span>' +
+        '<button type="button" class="cs-hbtn cs-danger" data-act="many-ask"' + (n ? '' : ' disabled') + '>Delete</button>' +
+        '<button type="button" class="cs-hbtn" data-act="select-off">Cancel</button>';
+  }
+  // reset: start over, reloading as many chats as are shown now (so a refresh
+  // after a save or a pin keeps the scroll place); otherwise the next page.
+  function loadPage(reset) {
+    var limit = PAGE_SIZE, offset = H.offset;
+    if (reset) {
+      H.gen++;
+      limit = Math.min(Math.max(H.items.length, PAGE_SIZE), 100);
+      offset = 0;
+      H.done = false;
+      H.loading = false;
+      H.search = '';
+    }
+    if (H.loading || H.done) return;
+    H.loading = true;
+    var gen = H.gen;
+    fetch('/api/qchat/sessions?offset=' + offset + '&limit=' + limit + '&archived=' + (H.archived ? 1 : 0))
+      .then(function (r) { return r.ok ? r.json() : []; })
+      .then(function (data) {
+        if (gen !== H.gen) return;
+        data = Array.isArray(data) ? data : [];
+        H.items = reset ? data : H.items.concat(data);
+        H.offset = offset + data.length;
+        H.done = data.length < limit;
+        H.loading = false;
+        var ids = {};
+        H.items.forEach(function (s) { ids[s.id] = 1; });
+        Object.keys(H.sel).forEach(function (k) { if (!ids[k]) delete H.sel[k]; });
+        renderHistory();
+      }).catch(function () {
+        if (gen !== H.gen) return;
+        H.loading = false;
+        H.done = true;
+        var el = $('csHist');
+        if (el) el.innerHTML = histMsg('Could not load chats.');
+      });
+  }
+  function refreshHistory() {
+    if (H.rename || H.confirm) return;  // finish the rename or the delete first
+    var q = (($('csSearch') || {}).value || '').trim();
+    if (q.length >= 2) { runSearch(q); return; }
+    loadPage(true);
   }
   function refreshHistorySoon() { clearTimeout(histTimer); histTimer = setTimeout(refreshHistory, 400); }
   function runSearch(q) {
-    var el = $('csHist');
+    H.gen++;
+    var gen = H.gen;
+    H.search = q;
+    H.select = false;
+    H.sel = {};
+    H.loading = true;
     fetch('/api/qchat/search?q=' + encodeURIComponent(q)).then(function (r) { return r.ok ? r.json() : []; })
       .then(function (data) {
-        var head = $('csHistHead');
-        if (head) head.textContent = 'Results';
-        if (!Array.isArray(data) || !data.length) { el.innerHTML = histMsg('No chats match "' + q + '".'); return; }
-        el.innerHTML = data.map(function (s) { return histRow(s.session_id, s.title, s.timestamp, s.snippet); }).join('');
-      }).catch(function () { el.innerHTML = histMsg('Search failed.'); });
+        if (gen !== H.gen) return;
+        H.items = (Array.isArray(data) ? data : []).map(function (s) {
+          return { id: s.session_id, title: s.title, updated_at: s.timestamp, snippet: s.snippet };
+        });
+        H.loading = false;
+        H.done = true;
+        renderHistory();
+      }).catch(function () {
+        if (gen !== H.gen) return;
+        H.loading = false;
+        var el = $('csHist');
+        if (el) el.innerHTML = histMsg('Search failed.');
+      });
   }
   var searchTimer = null;
   var search = $('csSearch');
@@ -293,10 +449,10 @@
     search.addEventListener('input', function () {
       clearTimeout(searchTimer);
       var q = search.value.trim();
-      searchTimer = setTimeout(function () { if (q.length >= 2) runSearch(q); else refreshHistory(); }, 300);
+      searchTimer = setTimeout(function () { if (q.length >= 2) runSearch(q); else loadPage(true); }, 300);
     });
     search.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') { search.value = ''; refreshHistory(); search.blur(); e.stopPropagation(); }
+      if (e.key === 'Escape') { search.value = ''; loadPage(true); search.blur(); e.stopPropagation(); }
     });
   }
   function setActiveChat(sid) {
@@ -313,22 +469,194 @@
     }
     return false;  // let the link go to /chat#session=<id>
   }
-  function deleteChat(sid) {
-    if (!window.confirm('Delete this conversation?')) return;
-    fetch('/api/qchat/session/' + encodeURIComponent(sid), { method: 'DELETE' }).then(function () {
-      if (PAGE === 'chat' && window.sessionId === sid && typeof window.startNewSession === 'function') {
-        window.startNewSession();
-      }
-      refreshHistory();
-    }).catch(function () { toast('Could not delete the chat.'); });
+  function chatUrl(id) { return '/api/qchat/session/' + encodeURIComponent(id); }
+  function patchChat(id, change) {
+    return fetch(chatUrl(id), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(change) })
+      .then(function (r) { return r.json().then(function (d) { if (!r.ok) throw new Error(d.error || r.status); return d; }); });
   }
+  function afterDelete(ids) {
+    if (PAGE === 'chat' && ids.indexOf(window.sessionId) >= 0 && typeof window.startNewSession === 'function') {
+      window.startNewSession();
+    }
+  }
+  function deleteChats(ids) {
+    return Promise.all(ids.map(function (id) { return fetch(chatUrl(id), { method: 'DELETE' }); }))
+      .then(function () { afterDelete(ids); })
+      .catch(function () { toast('Could not delete every chat.'); });
+  }
+  function finishRename(save) {
+    var id = H.rename, inp = $('csRename');
+    if (!id) return;
+    var s = findChat(id), title = inp ? inp.value.trim() : '';
+    H.rename = null;
+    if (!save || !s || !title || title === s.title) { renderHistory(); return; }
+    s.title = title;
+    renderHistory();
+    patchChat(id, { title: title }).catch(function () { toast('Could not rename the chat.'); refreshHistory(); });
+  }
+  function download(id, format) {
+    var a = document.createElement('a');
+    a.href = chatUrl(id) + '/export?format=' + format;
+    a.download = '';
+    body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+  function saveToDoc(id) {
+    toast('Saving to Google Docs...');
+    fetch(chatUrl(id) + '/gdoc', { method: 'POST' })
+      .then(function (r) { return r.json().then(function (d) { if (!r.ok) throw new Error(d.error || r.status); return d; }); })
+      .then(function (d) { toast('Saved to Google Docs.', d.url); })
+      .catch(function (e) { toast('Could not save: ' + e.message); });
+  }
+
+  // Row menu: one popover, positioned at the row's button.
+  var pop = document.createElement('div');
+  pop.className = 'cs-pop';
+  pop.id = 'csPop';
+  pop.setAttribute('role', 'menu');
+  pop.hidden = true;
+  body.appendChild(pop);
+  function menuItem(act, icon, label, danger) {
+    return '<button type="button" role="menuitem" class="cs-pop-item' + (danger ? ' cs-danger' : '') + '" data-act="' + act +
+      '">' + ico(icon, 18) + '<span>' + label + '</span></button>';
+  }
+  function openMenu(btn, id) {
+    var s = findChat(id);
+    if (!s) return;
+    closeMenu();
+    pop.innerHTML = menuItem('rename', 'pen', 'Rename') +
+      (H.archived ? '' : menuItem(s.pinned ? 'unpin' : 'pin', 'pin', s.pinned ? 'Unpin' : 'Pin')) +
+      menuItem(s.archived ? 'unarchive' : 'archive', 'archive', s.archived ? 'Unarchive' : 'Archive') +
+      '<div class="cs-pop-sep"></div>' +
+      menuItem('md', 'download', 'Export as Markdown') + menuItem('json', 'download', 'Export as JSON') +
+      menuItem('gdoc', 'doc', 'Save to Google Doc') +
+      '<div class="cs-pop-sep"></div>' + menuItem('delete', 'trash', 'Delete', true);
+    pop.setAttribute('data-sid', id);
+    pop.hidden = false;
+    var r = btn.getBoundingClientRect(), w = pop.offsetWidth, h = pop.offsetHeight;
+    pop.style.left = Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8)) + 'px';
+    pop.style.top = (r.bottom + h + 8 > window.innerHeight ? Math.max(8, r.top - h - 4) : r.bottom + 4) + 'px';
+    btn.setAttribute('aria-expanded', 'true');
+    var first = pop.querySelector('.cs-pop-item');
+    if (first) first.focus();
+  }
+  function closeMenu() {
+    if (pop.hidden) return;
+    pop.hidden = true;
+    var b = document.querySelector('.cs-hmore[aria-expanded="true"]');
+    if (b) b.setAttribute('aria-expanded', 'false');
+  }
+  pop.addEventListener('click', function (e) {
+    var it = e.target.closest('[data-act]');
+    if (!it) return;
+    var id = pop.getAttribute('data-sid'), act = it.getAttribute('data-act');
+    closeMenu();
+    if (act === 'rename') { H.rename = id; renderHistory(); }
+    else if (act === 'pin' || act === 'unpin') patchChat(id, { pinned: act === 'pin' }).then(refreshHistory, function () { toast('Could not pin the chat.'); });
+    else if (act === 'archive' || act === 'unarchive') {
+      patchChat(id, { archived: act === 'archive' }).then(function () {
+        toast(act === 'archive' ? 'Chat archived.' : 'Chat moved back to your chats.');
+        refreshHistory();
+      }, function () { toast('Could not archive the chat.'); });
+    }
+    else if (act === 'md' || act === 'json') download(id, act);
+    else if (act === 'gdoc') saveToDoc(id);
+    else if (act === 'delete') { H.confirm = { one: id }; renderHistory(); }
+  });
+  pop.addEventListener('keydown', function (e) {
+    var items = Array.prototype.slice.call(pop.querySelectorAll('.cs-pop-item'));
+    var i = items.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      var next = items[(i + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length];
+      if (next) next.focus();
+    }
+  });
+  document.addEventListener('mousedown', function (e) {
+    if (!pop.hidden && !pop.contains(e.target) && !e.target.closest('.cs-hmore')) closeMenu();
+  });
+
   var hist = $('csHist');
   if (hist) {
     hist.addEventListener('click', function (e) {
-      var del = e.target.closest('[data-del]');
-      if (del) { e.preventDefault(); e.stopPropagation(); deleteChat(del.getAttribute('data-del')); return; }
+      var more = e.target.closest('[data-menu]');
+      if (more) {
+        e.preventDefault();
+        if (!pop.hidden && pop.getAttribute('data-sid') === more.getAttribute('data-menu')) closeMenu();
+        else openMenu(more, more.getAttribute('data-menu'));
+        return;
+      }
+      var act = e.target.closest('[data-act]');
+      if (act) {
+        var a = act.getAttribute('data-act'), id = H.confirm && H.confirm.one;
+        H.confirm = null;
+        if (a === 'one-yes' && id) {
+          H.items = H.items.filter(function (s) { return s.id !== id; });
+          renderHistory();
+          deleteChats([id]).then(refreshHistory);
+        } else renderHistory();
+        return;
+      }
+      if (H.select) {
+        var row = e.target.closest('.cs-hrow');
+        if (row) {
+          e.preventDefault();
+          var sid = row.getAttribute('data-sid');
+          if (H.sel[sid]) delete H.sel[sid]; else H.sel[sid] = 1;
+          renderHistory();
+        }
+        return;
+      }
       var open = e.target.closest('[data-open]');
       if (open && !(e.metaKey || e.ctrlKey || e.shiftKey) && openChat(open.getAttribute('data-open'))) e.preventDefault();
+    });
+    hist.addEventListener('keydown', function (e) {
+      if (e.target.id !== 'csRename') return;
+      if (e.key === 'Enter') { e.preventDefault(); finishRename(true); }
+      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finishRename(false); }
+    });
+    hist.addEventListener('focusout', function (e) { if (e.target.id === 'csRename') finishRename(true); });
+    hist.addEventListener('scroll', function () {
+      closeMenu();
+      if (H.search || H.done || H.loading) return;
+      if (hist.scrollTop + hist.clientHeight > hist.scrollHeight - 120) loadPage(false);
+    });
+  }
+  var selBar = $('csSelBar');
+  if (selBar) {
+    selBar.addEventListener('click', function (e) {
+      var act = e.target.closest('[data-act]');
+      if (!act) return;
+      var a = act.getAttribute('data-act');
+      if (a === 'many-ask') H.confirm = { many: true };
+      else if (a === 'many-no') H.confirm = null;
+      else if (a === 'select-off') { H.select = false; H.sel = {}; H.confirm = null; }
+      else if (a === 'many-yes') {
+        var ids = Object.keys(H.sel);
+        H.select = false;
+        H.sel = {};
+        H.confirm = null;
+        H.items = H.items.filter(function (s) { return ids.indexOf(s.id) < 0; });
+        renderHistory();
+        deleteChats(ids).then(function () { toast(ids.length + (ids.length === 1 ? ' chat deleted.' : ' chats deleted.')); refreshHistory(); });
+        return;
+      }
+      renderHistory();
+    });
+  }
+  var selBtn = $('csSelectBtn');
+  if (selBtn) selBtn.addEventListener('click', function () { H.select = !H.select; H.sel = {}; H.confirm = null; closeMenu(); renderHistory(); });
+  var arcBtn = $('csArchBtn');
+  if (arcBtn) {
+    arcBtn.addEventListener('click', function () {
+      H.archived = !H.archived;
+      H.items = [];
+      H.select = false;
+      H.sel = {};
+      H.confirm = null;
+      closeMenu();
+      loadPage(true);
     });
   }
   function newChat() {
@@ -489,6 +817,7 @@
     var inEditor = e.target && e.target.closest && e.target.closest('.monaco-editor');
     if (mod && !e.shiftKey && !e.altKey && k === 'k' && !inEditor) { e.preventDefault(); focusSearch(); return; }
     if (e.key === 'Escape') {
+      if (!pop.hidden) { closeMenu(); e.stopImmediatePropagation(); return; }
       var p = $('sidePanel');
       if (p && p.classList.contains('open')) { closeSidePanel(); e.stopImmediatePropagation(); return; }
       if (body.classList.contains('cs-drawer')) { closeDrawer(); e.stopImmediatePropagation(); }
