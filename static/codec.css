@@ -546,6 +546,13 @@ body.cs-rail .cs-profile > .cs-ico { display: none; }
 .sp-note { cursor: default; color: var(--text-muted); font-size: var(--fs-13); }
 .sp-note:hover { background: none; }
 .sp-state.on { color: var(--accent); background: var(--accent-dim); }
+.sp-hint { display: block; font-size: var(--fs-12); color: var(--text-dim); margin-top: 2px; }
+
+/* Dictation (P2.5): a live level ring on the recording mic button, and the
+   transcribing state. --mic-level (0-1) is set by the shell's meter. */
+.cs-mic-live { box-shadow: 0 0 0 calc(2px + var(--mic-level, 0) * 10px) color-mix(in srgb, var(--danger) 30%, transparent);
+  transition: box-shadow 90ms linear; }
+.cs-mic-busy { opacity: .55; cursor: progress; }
 .sp-divider { height: 1px; margin: 6px 4px; background: var(--border); }
 .sp-theme, .text-size-row { cursor: default; }
 .sp-theme:hover, .text-size-row:hover { background: none; }

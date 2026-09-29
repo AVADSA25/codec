@@ -14,12 +14,18 @@ B6-P4 / SR-35: extracted from codec_voice.py. These are stateless data
                             WHISPER_HALLUCINATIONS phrase.
   - `rms_int16(chunk)`      Root-mean-square of an int16 PCM byte buffer.
                             Drives VAD silence detection.
+  - `discard_reason(text)`  Why a whole Whisper transcript should be dropped
+                            (noise word, hallucination, repetition) or None.
+                            Used by dictation (routes/transcribe.py, P2.5).
 
 codec_voice re-exports each name so any existing import keeps working.
 Splitting these out lets the filter sets be tested + tuned without
 standing up the full WebSocket pipeline.
 """
 from __future__ import annotations
+
+import re
+from typing import Optional
 
 import numpy as np
 
@@ -84,6 +90,35 @@ def is_hallucination(text: str) -> bool:
         return False
     low = text.lower()
     return any(p in low for p in WHISPER_HALLUCINATIONS)
+
+
+# One fragment of 4+ characters three times in a row, with or without spaces
+# or punctuation between the copies.
+_REPEATED = re.compile(r"(.{4,}?)(?:[\s.,!?;:]*\1){2,}")
+
+
+def discard_reason(text: str) -> Optional[str]:
+    """Why a Whisper transcript should be dropped whole, or None to keep it.
+
+    The voice pipeline's checks (codec_voice.VoicePipeline.transcribe), over
+    the same word sets: the transcript is only a noise word, only a known
+    hallucination, or one fragment of 4+ characters three times in a row.
+    Two differences, both stricter on Whisper's silence artefacts: trailing
+    punctuation is ignored for the set checks ("Thank you for watching."),
+    and the copies may be separated by spaces or punctuation ("Thank you.
+    Thank you. Thank you."). The voice pipeline's one-word rule is not here:
+    a dictated single word is kept unless it is a noise word.
+    """
+    if text is None or not text.strip():
+        return "empty"
+    clean = text.strip().lower().rstrip(".!?, ")
+    if clean in NOISE_WORDS:
+        return "noise"
+    if clean in WHISPER_HALLUCINATIONS:
+        return "hallucination"
+    if _REPEATED.search(text.strip().lower()):
+        return "repetitive"
+    return None
 
 
 def rms_int16(chunk: bytes) -> float:

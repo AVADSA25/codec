@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
 <link rel="manifest" href="/manifest.json">
 <title>CODEC</title>
-<link rel="stylesheet" href="/static/codec.css?v=65686d49">
+<link rel="stylesheet" href="/static/codec.css?v=8e957e11">
 <style>
 :root {
   --bg: #121215; --surface: #18181b; --surface-2: #1f1f22; --surface-3: #2a2a2f;
@@ -546,7 +546,7 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
 </style>
 </head>
 <body>
-<script src="/static/codec-shell.js?v=35d8d506" data-page="home" data-title="Today" data-status></script>
+<script src="/static/codec-shell.js?v=edb9407c" data-page="home" data-title="Today" data-status></script>
 
 <!-- ── Connect your AI (first run) ─────────────────────────────────────────
      Shown until CODEC has a VERIFIED brain. A fresh paid install had no way
@@ -900,8 +900,6 @@ if(_ssGet('_e2eReady'))window._e2eNegotiate();
 })();
 // ── State ──
 var currentTab = 'chat';
-var isRecording = false;
-var recognition = null;
 
 // ── Toast ──
 function showToast(msg) {
@@ -1487,39 +1485,15 @@ document.addEventListener('paste', function(e) {
 
 
 // ── Voice Input ──
+// Dictation (P2.5): recorded here, transcribed by CODEC's Whisper on the Mac (the shell's
+// recorder); the text lands in the Flash box for review. The button shows a stop square while listening.
+var _MIC_ICON = '<svg class="ico" viewBox="0 0 24 24"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>';
+var _STOP_ICON = '<svg class="ico" viewBox="0 0 24 24" style="fill:var(--danger,#ef4444);stroke:var(--danger,#ef4444)"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
 function toggleMic() {
   var btn = document.getElementById('micBtn');
-  var input = document.getElementById('cmdInput');
-  if (isRecording) {
-    recognition && recognition.stop();
-    isRecording = false;
-    btn.classList.remove('recording');
-    btn.innerHTML = '<svg class="ico" viewBox="0 0 24 24"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>';
-    return;
-  }
-  if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) { showToast('Speech recognition not supported'); return; }
-  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  recognition = new SR();
-  recognition.lang = 'en-US';
-  recognition.interimResults = true;
-  recognition.continuous = true;
-  var baseText = input.value;
-  var lastFinal = '';
-  recognition.onresult = function(e) {
-    var final = '', interim = '';
-    for (var i = 0; i < e.results.length; i++) {
-      if (e.results[i].isFinal) { final += e.results[i][0].transcript; }
-      else { interim += e.results[i][0].transcript; }
-    }
-    if (final && final !== lastFinal) { baseText += (baseText ? ' ' : '') + final.trim(); lastFinal = final; }
-    input.value = baseText + (interim ? ' ' + interim : '');
-  };
-  recognition.onerror = function(e) { if (e.error !== 'no-speech') { isRecording = false; btn.classList.remove('recording'); btn.innerHTML = '<svg class="ico" viewBox="0 0 24 24"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>'; } };
-  recognition.onend = function() { if (isRecording) recognition.start(); };
-  recognition.start();
-  isRecording = true;
-  btn.classList.add('recording');
-  btn.innerHTML = '<svg class="ico" viewBox="0 0 24 24" style="fill:var(--danger,#ef4444);stroke:var(--danger,#ef4444)"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
+  CodecShell.dictation.toggle(btn, document.getElementById('cmdInput'), {
+    onState: function(state) { btn.innerHTML = state === 'listening' ? _STOP_ICON : _MIC_ICON; }
+  });
 }
 
 // ── Load Data ──

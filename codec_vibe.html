@@ -8,7 +8,7 @@
 <link rel="icon" href="/favicon.png">
 <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
 <link rel="manifest" href="/manifest.json">
-<link rel="stylesheet" href="/static/codec.css?v=65686d49">
+<link rel="stylesheet" href="/static/codec.css?v=8e957e11">
 <!-- B5 / SR-29: crossorigin attribute added so SRI hash pinning can be
      enabled by adding `integrity="sha384-..."` once the hash is computed.
      Run `openssl dgst -sha384 -binary <file> | openssl base64 -A` against
@@ -178,7 +178,7 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx)}
 </style>
 </head>
 <body>
-<script src="/static/codec-shell.js?v=35d8d506" data-page="vibe" data-title="Vibe" data-status></script>
+<script src="/static/codec-shell.js?v=edb9407c" data-page="vibe" data-title="Vibe" data-status></script>
 <div class="ov" id="ov" onclick="cS()"></div>
 <div class="sd" id="sd">
 <div style="padding:14px 16px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between"><h2 style="font-family:var(--mn);font-size:var(--fs-13);color:var(--ac)">PROJECTS</h2><button onclick="cS()" aria-label="Close projects" style="background:0;border:0;color:var(--tx2);cursor:pointer;display:flex;padding:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
@@ -329,17 +329,9 @@ pollStatus();setInterval(pollStatus,15000);
 applyTheme();
 
 // ── Vibe Mic (voice input) ──
-var _vibeRec=null,_vibeRecording=false;
+// Dictation (P2.5): recorded here, transcribed by CODEC's Whisper on the Mac (the shell's recorder).
 function toggleVibeMic(){
-  var btn=document.getElementById('vibeMic');
-  if(_vibeRecording){_vibeRec&&_vibeRec.stop();_vibeRecording=false;btn.classList.remove('recording');return}
-  if(!('webkitSpeechRecognition' in window)&&!('SpeechRecognition' in window))return;
-  var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-  _vibeRec=new SR();_vibeRec.lang='en-US';_vibeRec.interimResults=false;_vibeRec.continuous=false;
-  _vibeRec.onresult=function(e){document.getElementById('vi').value=e.results[0][0].transcript;_vibeRecording=false;btn.classList.remove('recording')};
-  _vibeRec.onerror=function(){_vibeRecording=false;btn.classList.remove('recording')};
-  _vibeRec.onend=function(){_vibeRecording=false;btn.classList.remove('recording')};
-  _vibeRec.start();_vibeRecording=true;btn.classList.add('recording');
+  CodecShell.dictation.toggle(document.getElementById('vibeMic'),document.getElementById('vi'));
 }
 
 var ed = null;

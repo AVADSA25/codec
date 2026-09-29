@@ -197,6 +197,10 @@
           '<button type="button" class="sp-item" id="wakeBtn" onclick="CodecShell.wakeWord()"' +
             ' title="Always-on &quot;Hey CODEC&quot; wake word">' + ico('mic', 18) +
             '<span class="sp-item-label">Wake word</span><span class="sp-state" id="wakeState"></span></button>' +
+          '<button type="button" class="sp-item" id="dictBtn" hidden onclick="CodecShell.dictation.toggleMode()"' +
+            ' title="Off: the mic records on this page and CODEC transcribes on your Mac">' + ico('mic', 18) +
+            '<span class="sp-item-label">Browser dictation<span class="sp-hint">Uses your browser\'s cloud service</span>' +
+            '</span><span class="sp-state" id="dictState"></span></button>' +
           '<button type="button" class="sp-item" id="screenBtn" data-needs="takeScreenshot"' +
             ' onclick="takeScreenshot();closeSidePanel()">' + ico('monitor', 18) +
             '<span class="sp-item-label">Screenshot</span></button>' +
@@ -852,10 +856,13 @@
   // the owner turned push on here, so a subscription the browser replaced or
   // dropped is re-sent or renewed on the next visit without a prompt (the
   // permission is already granted). A device removed in Settings stays removed.
-  function postJSON(url, data) {
-    var h = { 'Content-Type': 'application/json' };
+  function csrf(h) {
     var m = document.cookie.match(/(?:^|;\s*)codec_csrf=([^;]+)/);
     if (m) h['x-csrf-token'] = m[1];
+    return h;
+  }
+  function postJSON(url, data) {
+    var h = csrf({ 'Content-Type': 'application/json' });
     return fetch(url, { method: 'POST', headers: h, body: JSON.stringify(data || {}) }).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (d) {
         if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
@@ -960,6 +967,177 @@
     }).catch(function () { /* the next visit tries again */ });
   }
 
+  // ── Dictation (P2.5): the mic buttons record here and CODEC's own Whisper
+  // transcribes on the Mac (POST /api/transcribe). The browser's speech
+  // service (Web Speech; Chrome sends the audio to Google) only when the owner
+  // turns on Browser dictation in quick settings, per device. The text goes
+  // into the input for review; nothing is sent by dictation.
+  var DICT = { state: 'idle', btn: null, input: null, opts: {}, ph: null, rec: null, stream: null, chunks: [],
+               ctx: null, raf: 0, sr: null };
+  var DICT_SILENCE_MS = 2000, DICT_MAX_MS = 120000, DICT_QUIET_RMS = 0.02;
+  function speechClass() { return window.SpeechRecognition || window.webkitSpeechRecognition || null; }
+  function dictMode() { return lsGet('codec-dictation') === 'browser' && speechClass() ? 'browser' : 'local'; }
+  function syncDict() {
+    var b = $('dictBtn'), s = $('dictState');
+    if (b) b.hidden = !speechClass();
+    if (s) s.textContent = dictMode() === 'browser' ? 'On' : 'Off';
+  }
+  function toggleDictMode() {
+    var browser = dictMode() !== 'browser';
+    lsSet('codec-dictation', browser ? 'browser' : 'local');
+    syncDict();
+    toast(browser ? "Browser dictation on: the mic uses your browser's cloud service (Chrome sends the audio to Google)."
+                  : 'Browser dictation off: dictation is transcribed on your Mac.');
+  }
+  function dictUI(state) {
+    DICT.state = state;
+    var b = DICT.btn, inp = DICT.input;
+    if (b) {
+      b.classList.toggle('recording', state === 'listening');
+      b.classList.toggle('cs-mic-live', state === 'listening' && !DICT.sr);
+      b.classList.toggle('cs-mic-busy', state === 'working');
+      b.setAttribute('aria-pressed', state === 'listening' ? 'true' : 'false');
+      if (state !== 'listening') b.style.removeProperty('--mic-level');
+    }
+    if (inp) {
+      if (state === 'idle') { if (DICT.ph !== null) inp.placeholder = DICT.ph; }
+      else inp.placeholder = state === 'listening' ? 'Listening... tap the mic to stop' : 'Transcribing...';
+    }
+    if (DICT.opts.onState) { try { DICT.opts.onState(state); } catch (e) { /* page hook */ } }
+  }
+  function dictInsert(text) {
+    var inp = DICT.input;
+    if (!inp || !text) return;
+    var v = inp.value;
+    inp.value = v + (v && !/\s$/.test(v) ? ' ' : '') + text;
+    inp.dispatchEvent(new Event('input', { bubbles: true }));
+    try { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); } catch (e) { /* not a text field */ }
+  }
+  function dictRelease() {
+    if (DICT.raf) cancelAnimationFrame(DICT.raf);
+    DICT.raf = 0;
+    if (DICT.stream) DICT.stream.getTracks().forEach(function (t) { t.stop(); });
+    DICT.stream = null;
+    if (DICT.ctx) { try { DICT.ctx.close(); } catch (e) { /* already closed */ } }
+    DICT.ctx = null;
+  }
+  function recordType() {
+    if (!window.MediaRecorder || typeof MediaRecorder.isTypeSupported !== 'function') return '';
+    var types = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'];
+    for (var i = 0; i < types.length; i++) if (MediaRecorder.isTypeSupported(types[i])) return types[i];
+    return '';
+  }
+  // Level ring on the button; stops after DICT_SILENCE_MS of quiet once speech was heard.
+  function dictMeter(stream) {
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    var ctx;
+    try { ctx = new AC(); } catch (e) { return; }
+    DICT.ctx = ctx;
+    var an = ctx.createAnalyser();
+    an.fftSize = 1024;
+    ctx.createMediaStreamSource(stream).connect(an);
+    var buf = new Float32Array(an.fftSize), started = Date.now(), heard = false, quietSince = 0;
+    (function tick() {
+      if (DICT.state !== 'listening' || DICT.ctx !== ctx) return;
+      an.getFloatTimeDomainData(buf);
+      var sum = 0;
+      for (var i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+      var rms = Math.sqrt(sum / buf.length), now = Date.now();
+      if (DICT.btn) DICT.btn.style.setProperty('--mic-level', Math.min(1, rms * 8).toFixed(2));
+      if (rms > DICT_QUIET_RMS) { heard = true; quietSince = 0; }
+      else if (heard && !quietSince) quietSince = now;
+      if ((quietSince && now - quietSince > DICT_SILENCE_MS) || now - started > DICT_MAX_MS) { dictStop(); return; }
+      DICT.raf = requestAnimationFrame(tick);
+    })();
+  }
+  function dictUpload(type) {
+    dictRelease();
+    var blob = new Blob(DICT.chunks, { type: type });
+    DICT.chunks = [];
+    DICT.rec = null;
+    if (blob.size < 1000) { dictUI('idle'); toast('Nothing was recorded.'); return; }
+    var ext = /mp4|aac/.test(type) ? 'm4a' : /ogg/.test(type) ? 'ogg' : 'webm';
+    var fd = new FormData();
+    fd.append('file', blob, 'dictation.' + ext);
+    fetch('/api/transcribe', { method: 'POST', headers: csrf({}), body: fd }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (d) {
+        if (!r.ok) throw new Error(d.error || ('Dictation failed (HTTP ' + r.status + ').'));
+        return d;
+      });
+    }).then(function (d) {
+      dictUI('idle');
+      if (d.text) dictInsert(d.text);
+      else toast('Nothing clear was heard. Try again a little closer to the mic.');
+    }, function (e) {
+      dictUI('idle');
+      toast(e && e.message ? e.message : 'Dictation failed.');
+    });
+  }
+  function dictStop() {
+    if (DICT.state !== 'listening') return;
+    if (DICT.sr) { DICT.sr.stop(); return; }
+    var rec = DICT.rec;
+    dictUI('working');
+    if (rec && rec.state !== 'inactive') rec.stop();
+    else { dictRelease(); dictUI('idle'); }
+  }
+  function dictBrowser() {
+    var SR = speechClass(), r = new SR(), inp = DICT.input, base = inp ? inp.value : '';
+    DICT.sr = r;
+    r.lang = navigator.language || 'en-US';
+    r.interimResults = true;
+    r.continuous = false;
+    r.onresult = function (e) {
+      var t = '';
+      for (var i = 0; i < e.results.length; i++) t += e.results[i][0].transcript;
+      if (!inp) return;
+      inp.value = base + (base && !/\s$/.test(base) ? ' ' : '') + t;
+      inp.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    r.onerror = function (e) { if (e.error !== 'no-speech' && e.error !== 'aborted') toast('Browser dictation: ' + e.error); };
+    r.onend = function () { DICT.sr = null; dictUI('idle'); };
+    dictUI('listening');
+    try { r.start(); } catch (e) { DICT.sr = null; dictUI('idle'); }
+  }
+  function dictStart(btn, input, opts) {
+    DICT.btn = btn || null;
+    DICT.input = input || null;
+    DICT.opts = opts || {};
+    DICT.ph = input ? input.placeholder : null;
+    if (dictMode() === 'browser') { dictBrowser(); return; }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) {
+      toast('This browser cannot record audio here. Type instead.');
+      return;
+    }
+    dictUI('listening');
+    navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }).then(function (stream) {
+      if (DICT.state !== 'listening') { stream.getTracks().forEach(function (t) { t.stop(); }); return; }
+      DICT.stream = stream;
+      DICT.chunks = [];
+      var type = recordType(), rec;
+      try { rec = type ? new MediaRecorder(stream, { mimeType: type }) : new MediaRecorder(stream); }
+      catch (e) { dictRelease(); dictUI('idle'); toast('Could not start recording.'); return; }
+      DICT.rec = rec;
+      rec.ondataavailable = function (e) { if (e.data && e.data.size) DICT.chunks.push(e.data); };
+      rec.onstop = function () { dictUpload(rec.mimeType || type || 'audio/webm'); };
+      rec.start(250);
+      dictMeter(stream);
+    }, function (err) {
+      dictUI('idle');
+      var n = err && err.name;
+      toast(n === 'NotAllowedError' || n === 'SecurityError' ? 'The microphone is blocked. Allow it for CODEC in the browser settings.'
+          : n === 'NotFoundError' ? 'No microphone found.' : 'Could not start the microphone.');
+    });
+  }
+  // The mic buttons call this: a first tap starts, a second tap stops.
+  function dictToggle(btn, input, opts) {
+    if (DICT.state === 'listening') { dictStop(); return; }
+    if (DICT.state === 'working') return;
+    dictStart(btn, input, opts);
+  }
+  window.addEventListener('pagehide', dictRelease);
+
   // ── Keys: Cmd/Ctrl+Shift+S sidebar, Cmd/Ctrl+K search, Esc closes ────────
   document.addEventListener('keydown', function (e) {
     var mod = e.metaKey || e.ctrlKey;
@@ -984,7 +1162,9 @@
     newChat: newChat, voiceReplies: voiceReplies, wakeWord: wakeWord, refreshWake: refreshWake, pollInbox: pollInbox,
     install: install,
     push: { support: pushSupport, subscription: currentSub, on: pushOn, off: pushOff, deviceId: deviceId,
-            post: postJSON }
+            post: postJSON },
+    dictation: { toggle: dictToggle, stop: dictStop, mode: dictMode, toggleMode: toggleDictMode,
+                 state: function () { return DICT.state; } }
   };
   window.openSidePanel = openSidePanel;
   window.closeSidePanel = closeSidePanel;
@@ -1017,6 +1197,7 @@
       navigator.serviceWorker.register('/sw.js').catch(function () { /* not fatal */ });
     }
     pushResync();
+    syncDict();
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ready);
   else ready();
