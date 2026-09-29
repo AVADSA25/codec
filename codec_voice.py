@@ -297,6 +297,9 @@ MAX_UTTERANCE_BYTES    = int(SAMPLE_RATE * BYTES_PER_SAMPLE * VAD_MAX_UTTERANCE_
 # RMS threshold for interrupt detection (slightly lower than VAD to catch early speech)
 INTERRUPT_THRESHOLD = 1500  # raised from 600 — too sensitive to background noise
 
+# A typed turn from the call's Type box (P2.9) is capped like a long spoken one.
+MAX_TYPED_CHARS = 2000
+
 # ── Whisper noise filter ──────────────────────────────────────────────────
 # B6-P4 / SR-35: NOISE_WORDS + WHISPER_HALLUCINATIONS moved to
 # codec_voice_filters. Re-exported here for back-compat with any
@@ -1298,8 +1301,10 @@ class VoicePipeline:
 
     # ── Concurrency helpers (L2 / SR-62) ───────────────────────────────────
 
-    def _enqueue_utterance(self, utterance: bytes) -> None:
-        """Non-blocking enqueue so the receiver loop never parks on a full
+    def _enqueue_utterance(self, utterance: bytes | str) -> None:
+        """Queue a spoken utterance (PCM bytes) or a typed turn (str, P2.9).
+
+        Non-blocking enqueue so the receiver loop never parks on a full
         queue. `await queue.put()` on the maxsize=3 utterance_queue would block
         the receiver while the pipeline is slow — and a blocked receiver stops
         reading interrupt / ping control frames (head-of-line block). On
@@ -1347,6 +1352,7 @@ class VoicePipeline:
         - Bytes: feeds VAD; queues complete utterances for processing.
         - Text {"type":"interrupt"}: sets self.interrupted to stop active TTS.
         - Text {"type":"ping"}: responds with pong (heartbeat keepalive).
+        - Text {"type":"text","text":...}: a typed turn, queued for the pipeline (P2.9).
         """
         try:
             while True:
@@ -1411,6 +1417,13 @@ class VoicePipeline:
                             # User started hold-to-talk — ensure we're in listening mode
                             log.info("Hold-to-talk started")
 
+                        elif ctrl_type == "text":
+                            # A typed turn from the call's Type box (P2.9): queued like an
+                            # utterance, run by the pipeline without speech to text.
+                            typed = str(ctrl.get("text") or "").strip()[:MAX_TYPED_CHARS]
+                            if typed:
+                                self._enqueue_utterance(typed)
+
                         elif ctrl_type == "mode":
                             # UI mode pill — docs/VOICE-MODES-DESIGN.md
                             _m = str(ctrl.get("mode", "")).lower()
@@ -1473,6 +1486,8 @@ class VoicePipeline:
     async def _pipeline(self):
         """
         Dequeues utterances and runs the full STT → skill/LLM → TTS pipeline.
+        A typed turn (a str from the Type box, P2.9) skips STT and is not echoed:
+        the page already shows it.
         Checks self.interrupted before/after each TTS chunk.
         """
         while True:
@@ -1490,15 +1505,17 @@ class VoicePipeline:
             await self.ws.send_json({"type": "hint", "text": "Speak to interrupt"})
 
             try:
-                # 1. STT
-                user_text = await self.transcribe(utterance)
+                # 1. STT (a typed turn is already text)
+                typed = isinstance(utterance, str)
+                user_text = utterance if typed else await self.transcribe(utterance)
                 if not user_text:
                     self.processing = False
                     await self.ws.send_json({"type": "status", "status": "listening"})
                     continue
 
-                log.info(f"User: {user_text}")
-                await self.ws.send_json({"type": "transcript", "role": "user", "text": user_text})
+                log.info(f"User{' (typed)' if typed else ''}: {user_text}")
+                if not typed:
+                    await self.ws.send_json({"type": "transcript", "role": "user", "text": user_text})
 
                 # Phase 1 Step 3 §5.3 — single-question listen mode.
                 # If an AskUserQuestion is awaiting an answer for THIS

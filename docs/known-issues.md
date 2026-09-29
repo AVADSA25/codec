@@ -346,3 +346,12 @@ login configured, `AuthMiddleware` answers 403 "CSRF token mismatch". Found
 while adding P3.13's push calls, which set the header themselves (`postJSON` in
 the shell). Fix: route the history calls through the same helper, or add the
 wrapper to `codec_audit.html`. Revisit: next UI queue item that touches the shell.
+
+## The Vibe page's Screenshot quick setting does nothing (2026-09-29)
+
+`codec_vibe.html`'s `takeScreenshot()` sends `POST /api/screenshot`, but the route
+(`routes/media.py`) is GET-only and returns the PNG itself, so the request gets a
+405 and the `alert()` it waits for never shows. The voice page had the same code;
+P2.9 moved it to `GET` plus the shell toast (`CodecShell.toast`), showing the image
+in the page's viewer. Fix Vibe the same way. Revisit: P2.6, which routes the
+pages' `alert()` calls through toasts.

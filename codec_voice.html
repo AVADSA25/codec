@@ -12,68 +12,21 @@
     <style>
         * { margin:0; padding:0; box-sizing:border-box; }
 
+        /* Colours and type are the shared tokens (static/codec.css), so the light and dark themes match the rest
+           of CODEC. These are the page's older short names for them. */
         :root {
-          --bg: #121215; --surface: #1a1a1d; --surface-2: #212125; --surface-3: #2a2a2e;
-          --border: #303035; --border-hover: #424248;
-          --text: #ececec; --text-muted: #9a9aa0; --text-dim: #8b8b92;
-          --accent: #d97757; --accent-hover: #e08766; --accent-dim: rgba(217,119,87,0.10); --on-accent: #121215;
-          --danger: #ef4444; --success: #22c55e; --info: #3b82f6;
-          --font: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-          --mono: 'IBM Plex Mono', 'SF Mono', monospace;
-          --radius: 10px; --radius-sm: 6px;
-          --bg2: #1a1a1d; --bg3: #212125; --bg4: #2a2a2e;
-          --fg: #ececec; --fg2: #9a9aa0; --fg3: #8b8b92;
-          --ac: #d97757; --bd: #303035;
-          --tx: #ececec; --tx2: #9a9aa0;
-          --ft: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-          --mn: 'IBM Plex Mono', 'SF Mono', monospace;
-          --dn: #ef4444;
-          --accent2: #ff9a4d; --accent-bg: rgba(217,119,87,0.10);
-          --safe-top: env(safe-area-inset-top, 0px);
-          --safe-bottom: env(safe-area-inset-bottom, 0px);
-          /* Voice-specific */
-          --green: #66bb6a;
-          --blue: #40c4ff;
+          --bg2: var(--surface); --bd: var(--border); --tx: var(--text); --tx2: var(--text-muted);
+          --ac: var(--accent); --border-hover: var(--border-strong); --radius: 10px;
         }
-
-        /* ── Light mode ── */
-        [data-theme="light"] {
-          --bg: #f7f5f2; --surface: #fff; --surface-2: #f0ece6; --surface-3: #e8e4de;
-          --border: #d5d0ca; --border-hover: #bbb;
-          --text: #1a1a1a; --text-muted: #555; --text-dim: #777;
-          --accent: #b85a3a; --accent-hover: #a04d31; --accent-dim: rgba(184,90,58,0.08); --on-accent: #ffffff;
-          --ac: #b85a3a; --accent-bg: rgba(184,90,58,0.08);
-          /* Override voice-specific vars */
-          --bg2: #fff; --bd: #d5d0ca; --tx: #1a1a1a; --tx2: #555;
-        }
-        [data-theme="light"] body::before { background: radial-gradient(ellipse 60% 60% at 50% 50%, rgba(217,119,87,0.06) 0%, transparent 70%); }
-        [data-theme="light"] .avatar-core { background: #f0ece6; border-color: #d5d0ca; }
-        [data-theme="light"] .transcript { background: #fff; border-color: #d5d0ca; }
-        [data-theme="light"] .transcript-header { border-color: #d5d0ca; }
 
         body {
-            font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-family: var(--font-sans);
             background: var(--bg);
             color: var(--tx);
             position: relative;
         }
         /* The shell (static/codec-shell.js) makes body a 100dvh column; the call is its .cs-main. */
         .call-container.cs-main { overflow-y: auto; }
-
-        /* Ambient background glow — reacts to state */
-        body::before {
-            content: '';
-            position: fixed;
-            inset: 0;
-            background: radial-gradient(ellipse 60% 60% at 50% 50%, rgba(217,119,87,0.04) 0%, transparent 70%);
-            transition: all 1s ease;
-            pointer-events: none;
-        }
-        body.state-listening::before { background: radial-gradient(ellipse 60% 60% at 50% 50%, rgba(0,230,118,0.05) 0%, transparent 70%); }
-        body.state-speaking::before  { background: radial-gradient(ellipse 70% 70% at 50% 50%, rgba(217,119,87,0.08) 0%, transparent 70%); }
-        body.state-processing::before { background: radial-gradient(ellipse 60% 60% at 50% 50%, rgba(64,196,255,0.06) 0%, transparent 70%); }
-        body.state-analyzing_screen::before { background: radial-gradient(ellipse 65% 65% at 50% 50%, rgba(168,85,247,0.08) 0%, transparent 70%); }
-
 
         /* ── Scrollbar ── */
         * { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
@@ -82,302 +35,205 @@
         ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
         ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
-        /* Main layout */
+        /* Main layout: centred when it fits, scrolling from the top when it does not (auto margins; a
+           justify-content: center column taller than the screen would lose its top). */
         .call-container {
-            flex: 1; display: flex; flex-direction: column;
-            align-items: center; justify-content: center;
-            gap: 36px;
-            max-width: 600px; width: 100%; padding: 32px;
+            flex: 1; display: flex; flex-direction: column; align-items: center;
+            gap: 20px; max-width: 600px; width: 100%; padding: 28px 20px;
             margin: 0 auto;
         }
+        .call-container > :first-child { margin-top: auto; }
+        .call-container > :last-child { margin-bottom: auto; }
 
-        /* ── Avatar ring ── */
+        /* ── The orb (P2.9): one circle whose size follows --lvl, 0 to 1 (the mic level while listening,
+           the reply's level while CODEC speaks). It breathes while CODEC works. Hold it to talk. ── */
         .avatar-wrap {
-            position: relative;
-            width: 240px; height: 240px;
-        }
-
-        .ring-outer {
-            position: absolute; inset: 0;
-            border-radius: 50%;
-            border: 1.5px solid rgba(217,119,87,0.25);
-            animation: spin-slow 8s linear infinite;
-        }
-        .ring-outer::after {
-            content: '';
-            position: absolute;
-            top: -2px; left: 50%;
-            width: 6px; height: 6px;
-            margin-left: -3px;
-            border-radius: 50%;
-            background: var(--ac);
-            box-shadow: 0 0 8px 2px var(--ac);
-        }
-        @keyframes spin-slow { 100% { transform: rotate(360deg); } }
-
-        .ring-inner {
-            position: absolute; inset: 16px;
-            border-radius: 50%;
-            border: 1px solid var(--bd);
-            transition: border-color 0.4s, box-shadow 0.4s;
-        }
-        .state-listening .ring-inner {
-            border-color: rgba(0,230,118,0.5);
-            box-shadow: 0 0 20px rgba(0,230,118,0.15);
-            animation: pulse-green 1.5s ease-in-out infinite;
-        }
-        .state-speaking .ring-inner {
-            border-color: rgba(217,119,87,0.7);
-            box-shadow: 0 0 24px rgba(217,119,87,0.25);
-            animation: pulse-orange 0.6s ease-in-out infinite;
-        }
-        .state-processing .ring-inner {
-            border-color: rgba(64,196,255,0.6);
-            box-shadow: 0 0 20px rgba(64,196,255,0.15);
-        }
-        .state-analyzing_screen .ring-inner {
-            border-color: rgba(168,85,247,0.7);
-            box-shadow: 0 0 24px rgba(168,85,247,0.25);
-            animation: pulse-purple 1.0s ease-in-out infinite;
-        }
-        @keyframes pulse-green {
-            0%,100% { transform: scale(1); opacity:0.7; }
-            50%      { transform: scale(1.04); opacity:1; }
-        }
-        @keyframes pulse-orange {
-            0%,100% { transform: scale(1); opacity:0.8; }
-            50%      { transform: scale(1.06); opacity:1; }
-        }
-        @keyframes pulse-purple {
-            0%,100% { transform: scale(1); opacity:0.7; }
-            50%      { transform: scale(1.08); opacity:1; }
-        }
-
-        /* ── Live mic energy ring — driven by JS in onaudioprocess ── */
-        .ring-energy {
-            position: absolute; inset: 4px;
-            border-radius: 50%;
-            border: 2px solid transparent;
-            pointer-events: none;
-            transition: transform 0.06s ease-out, box-shadow 0.06s ease-out, border-color 0.06s ease-out;
-            will-change: transform, box-shadow;
-        }
-        .state-listening .ring-energy {
-            border-color: rgba(0,230,118,0.35);
-        }
-
-        .avatar-core {
-            position: absolute; inset: 32px;
-            border-radius: 50%;
-            background: var(--bg2);
-            border: 1px solid var(--bd);
+            --lvl: 0;
+            position: relative; width: 200px; height: 200px; flex: none;
             display: flex; align-items: center; justify-content: center;
-            user-select: none;
-            overflow: hidden;
+            border-radius: 50%; cursor: pointer; -webkit-touch-callout: none;
+            user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
         }
-        .avatar-core img {
-            width: 60%; height: 60%; object-fit: contain;
-            filter: drop-shadow(0 0 12px rgba(217,119,87,0.4));
-            transition: filter 0.4s;
+        .avatar-wrap:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+        .orb {
+            width: 64%; height: 64%; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            background: var(--surface-2); border: 2px solid var(--border);
+            transform: scale(calc(1 + var(--lvl) * 0.3));
+            transition: transform 0.2s ease-out, background-color 0.3s, border-color 0.3s;
         }
-        .state-listening .avatar-core img { filter: drop-shadow(0 0 16px rgba(0,230,118,0.5)); }
-        .state-speaking .avatar-core img { filter: drop-shadow(0 0 20px rgba(217,119,87,0.6)); }
-        .state-processing .avatar-core img { filter: drop-shadow(0 0 16px rgba(64,196,255,0.5)); }
-        .state-analyzing_screen .avatar-core img { filter: drop-shadow(0 0 20px rgba(168,85,247,0.6)); }
+        .orb img { width: 44%; height: 44%; object-fit: contain; pointer-events: none; }
+        .state-listening .orb { background: var(--success-tint); border-color: var(--success); }
+        .state-speaking .orb { background: var(--accent-dim); border-color: var(--accent); }
+        .state-processing .orb,
+        .state-analyzing_screen .orb { border-color: var(--info); animation: breathe 2.4s ease-in-out infinite; }
+        .avatar-wrap.muted .orb { background: var(--surface-2); border-color: var(--border-strong); border-style: dashed; }
+        .avatar-wrap.holding .orb { background: var(--success-tint); border-color: var(--success); border-style: solid; border-width: 4px; }
+        @keyframes breathe { 0%,100% { transform: scale(1); } 50% { transform: scale(1.05); } }
 
-        /* Waveform bars (shown while Q is speaking) */
-        .waveform {
-            position: absolute; bottom: 24px;
-            left: 50%; transform: translateX(-50%);
-            display: flex; gap: 3px; align-items: flex-end;
-            height: 20px; opacity: 0;
-            transition: opacity 0.3s;
-        }
-        .state-speaking .waveform { opacity: 1; }
-        .waveform .bar {
-            width: 3px; background: var(--ac); border-radius: 2px;
-            animation: wave 0.8s ease-in-out infinite;
-        }
-        .waveform .bar:nth-child(1) { animation-delay: 0s;    height: 10px;  }
-        .waveform .bar:nth-child(2) { animation-delay: 0.1s;  height: 18px; }
-        .waveform .bar:nth-child(3) { animation-delay: 0.2s;  height: 26px; }
-        .waveform .bar:nth-child(4) { animation-delay: 0.15s; height: 18px; }
-        .waveform .bar:nth-child(5) { animation-delay: 0.05s; height: 10px;  }
-        @keyframes wave {
-            0%,100% { transform: scaleY(1); }
-            50%      { transform: scaleY(1.8); }
-        }
-
-        /* Timer */
+        /* Timer, caption, hints */
+        .call-meta { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; }
         .timer {
-            font-size: calc(28px * var(--fs-scale)); font-weight: 300;
-            color: var(--tx2); letter-spacing: 0.08em;
-            font-variant-numeric: tabular-nums;
-            min-height: 28px;
-            font-family: 'SF Mono', 'Menlo', monospace;
+            font-family: var(--font-mono); font-size: var(--fs-24); font-weight: 300;
+            color: var(--text-muted); letter-spacing: 0.06em; font-variant-numeric: tabular-nums;
+            min-height: 1.25em;
         }
-
-        /* Status label */
-        .status {
-            font-size: var(--fs-16); color: var(--tx2);
-            text-align: center; letter-spacing: 0.04em;
-            min-height: 18px; transition: color 0.3s;
-        }
-        .state-listening .status  { color: var(--green); }
-        .state-speaking  .status  { color: var(--ac); }
-        .state-processing .status { color: var(--blue); }
-        .state-analyzing_screen .status { color: #a855f7; }
-
-        /* Speak-to-interrupt hint */
-        .interrupt-hint {
-            font-size: var(--fs-12); color: var(--text-dim); text-align: center;
-            letter-spacing: 0.05em; min-height: 14px; opacity: 0;
-            transition: opacity 0.3s; margin-top: 2px;
-        }
+        .status { font-size: var(--fs-16); color: var(--text); min-height: 1.5em; }
+        .interrupt-hint, .hold-hint { font-size: var(--fs-13); color: var(--text-dim); min-height: 1.45em; }
+        .interrupt-hint { visibility: hidden; }
         .state-speaking .interrupt-hint,
         .state-processing .interrupt-hint,
-        .state-analyzing_screen .interrupt-hint { opacity: 1; }
+        .state-analyzing_screen .interrupt-hint { visibility: visible; }
+        .hold-hint { display: none; }
+        body.in-call .hold-hint { display: block; }
 
-        /* Call button */
+        /* Call button: a flat circle, green to start and red to end. */
         .call-btn {
-            width: 72px; height: 72px; border-radius: 50%;
-            border: none; cursor: pointer; font-size: calc(22px * var(--fs-scale));
+            width: 64px; height: 64px; border-radius: 50%; border: none; cursor: pointer; flex: none;
             display: flex; align-items: center; justify-content: center;
-            transition: transform 0.15s, box-shadow 0.2s;
-            position: relative; z-index: 1;
+            background: var(--success); color: var(--on-accent);
+            transition: background-color 0.15s, transform 0.1s;
         }
-        .call-btn::after {
-            content: ''; position: absolute; inset: -3px;
-            border-radius: 50%; border: 1px solid transparent;
-            transition: border-color 0.2s;
-        }
-        .call-btn.start {
-            background: linear-gradient(135deg, #00aa55, #00cc66);
-            box-shadow: 0 4px 20px rgba(0,170,85,0.35);
-        }
-        .call-btn.start:hover  { transform: scale(1.07); box-shadow: 0 6px 28px rgba(0,170,85,0.5); }
-        .call-btn.end {
-            background: linear-gradient(135deg, #cc2222, #ff3b3b);
-            box-shadow: 0 4px 20px rgba(255,59,59,0.35);
-        }
-        .call-btn.end:hover    { transform: scale(1.07); box-shadow: 0 6px 28px rgba(255,59,59,0.5); }
-        .call-btn:active       { transform: scale(0.95); }
+        .call-btn.end { background: var(--danger); }
+        .call-btn:hover { filter: brightness(0.94); }
+        .call-btn:active { transform: scale(0.96); }
+        .call-btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+        .call-btn svg { fill: currentColor; }
 
-        /* ── Action buttons row ── */
-        .action-row {
-            display: flex; gap: 12px; align-items: center;
-            opacity: 0; pointer-events: none; transition: opacity 0.3s;
-        }
-        body.state-listening .action-row,
-        body.state-processing .action-row,
-        body.state-speaking .action-row,
-        body.state-analyzing_screen .action-row { opacity: 1; pointer-events: auto; }
-
+        /* ── Call controls ── */
+        .action-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+        body:not(.in-call) .action-row { display: none; }
         .action-btn {
-            display: flex; align-items: center; gap: 6px;
-            padding: 8px 18px; border-radius: 20px;
-            border: 1px solid var(--border); background: var(--surface-2);
-            color: var(--text-muted); font-size: var(--fs-13); font-weight: 500;
-            cursor: pointer; transition: all 0.15s; font-family: var(--font);
-            -webkit-tap-highlight-color: transparent;
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 7px 14px; border-radius: var(--radius-pill);
+            border: 1px solid var(--border); background: var(--surface); color: var(--text);
+            font-family: var(--font-sans); font-size: var(--fs-13); font-weight: var(--fw-medium); line-height: 1.2;
+            cursor: pointer; -webkit-tap-highlight-color: transparent;
         }
-        .action-btn:hover { border-color: var(--border-hover); color: var(--text); background: var(--surface-3); }
-        .action-btn:active { transform: scale(0.95); }
-        .action-btn svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-
-        .action-btn.your-turn { border-color: var(--green); color: var(--green); }
-        .action-btn.your-turn:hover { background: rgba(102,187,106,0.1); }
-        body.state-speaking .action-btn.your-turn,
-        body.state-processing .action-btn.your-turn { opacity: 0.3; pointer-events: none; }
-
+        .action-btn:hover { background: var(--surface-2); border-color: var(--border-strong); }
+        .action-btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+        .action-btn svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+        .action-btn[aria-pressed="true"] { background: var(--danger-tint); border-color: var(--danger); color: var(--danger-text); }
+        .action-btn .when-muted { display: none; }
+        .action-btn[aria-pressed="true"] .when-muted { display: inline; }
+        .action-btn[aria-pressed="true"] .when-live { display: none; }
+        .action-btn.stop-speaking,
         .action-btn.nudge { display: none; }
-        body.state-processing .action-btn.nudge { display: flex; border-color: var(--blue); color: var(--blue); }
-        .action-btn.nudge:hover { background: rgba(64,196,255,0.1); }
+        body.state-speaking .action-btn.stop-speaking,
+        body.state-processing .action-btn.stop-speaking,
+        body.state-analyzing_screen .action-btn.stop-speaking { display: inline-flex; }
+        .stop-speaking .when-working { display: none; }
+        body.state-processing .stop-speaking .when-working,
+        body.state-analyzing_screen .stop-speaking .when-working { display: inline; }
+        body.state-processing .stop-speaking .when-speaking,
+        body.state-analyzing_screen .stop-speaking .when-speaking { display: none; }
+        body.state-processing .action-btn.nudge { display: inline-flex; }
+        body.state-speaking .action-btn.your-turn,
+        body.state-processing .action-btn.your-turn,
+        body.state-analyzing_screen .action-btn.your-turn { display: none; }
 
-        /* Hold-to-talk indicator */
-        .hold-indicator {
-            position: absolute; inset: 0; border-radius: 50%;
-            background: rgba(102,187,106,0.08);
-            border: 2px solid var(--green);
-            opacity: 0; transform: scale(0.95);
-            transition: opacity 0.2s, transform 0.2s;
-            pointer-events: none;
+        /* Microphone picker */
+        .mic-row { display: flex; align-items: center; gap: 8px; font-size: var(--fs-13); color: var(--text-muted); }
+        .mic-row[hidden] { display: none; }
+        .mic-select {
+            max-width: 240px; padding: 6px 10px; border-radius: var(--radius-8);
+            border: 1px solid var(--border); background: var(--surface); color: var(--text);
+            font-family: var(--font-sans); font-size: var(--fs-14);
         }
-        .hold-indicator.active { opacity: 1; transform: scale(1); }
+        .mic-select:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
-        /* Transcript */
+        /* ── Transcript: chat bubbles ── */
         .transcript-wrap {
-            width: 100%; background: var(--bg2);
-            border: 1px solid var(--bd); border-radius: 14px;
+            width: 100%; max-width: 560px; background: var(--surface);
+            border: 1px solid var(--border); border-radius: var(--radius-12);
             overflow: hidden; display: flex; flex-direction: column;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-            max-width: 540px;
         }
         .transcript-header {
-            padding: 12px 16px;
-            border-bottom: 1px solid var(--bd);
-            font-size: var(--fs-12); font-weight: 600;
-            letter-spacing: 0.1em; color: var(--tx2);
-            font-family: 'SF Mono', monospace;
-            display: flex; justify-content: space-between; align-items: center;
+            padding: 8px 10px 8px 16px; border-bottom: 1px solid var(--border);
+            display: flex; justify-content: space-between; align-items: center; gap: 8px;
+            font-family: var(--font-mono); font-size: var(--fs-12); font-weight: var(--fw-semibold);
+            letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted);
         }
+        .tx-tools { display: flex; align-items: center; gap: 6px; }
         .tx-copy-btn {
-            display: flex; align-items: center; gap: 5px;
-            padding: 4px 9px; font-size: var(--fs-12); font-weight: 600;
-            letter-spacing: 0.08em; color: var(--tx2);
-            background: transparent; border: 1px solid var(--bd); border-radius: 6px;
-            cursor: pointer; font-family: 'SF Mono', monospace;
-            transition: all 0.15s ease;
+            display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px;
+            font-family: var(--font-sans); font-size: var(--fs-12); font-weight: var(--fw-medium);
+            letter-spacing: 0; text-transform: none; white-space: nowrap;
+            color: var(--text-muted); background: transparent;
+            border: 1px solid var(--border); border-radius: var(--radius-8); cursor: pointer;
         }
-        .tx-copy-btn:hover { color: var(--ac); border-color: var(--ac); }
-        .tx-copy-btn.copied { color: var(--green); border-color: var(--green); }
-        .tx-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--bd); }
-        .state-listening  .tx-dot { background: var(--green); box-shadow: 0 0 6px var(--green); }
-        .state-speaking   .tx-dot { background: var(--ac);    box-shadow: 0 0 6px var(--ac); }
-        .state-processing .tx-dot { background: var(--blue);  box-shadow: 0 0 6px var(--blue); }
-        .state-analyzing_screen .tx-dot { background: #a855f7; box-shadow: 0 0 6px #a855f7; }
+        .tx-copy-btn:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
+        .tx-copy-btn:disabled { opacity: 0.45; cursor: default; }
+        .tx-copy-btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+        .tx-copy-btn.copied { color: var(--success-text); border-color: var(--success); }
+        .tx-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--border-strong); flex: none; }
+        .state-listening .tx-dot { background: var(--success); }
+        .state-speaking .tx-dot { background: var(--accent); }
+        .state-processing .tx-dot,
+        .state-analyzing_screen .tx-dot { background: var(--info); }
 
         .transcript {
-            max-height: 300px; overflow-y: auto;
-            padding: 16px 20px; font-size: calc(15px * var(--fs-scale)); line-height: 1.7;
-            scrollbar-width: thin; scrollbar-color: var(--bd) transparent;
+            max-height: 320px; overflow-y: auto; padding: 14px 14px 16px;
+            display: flex; flex-direction: column; gap: 8px;
+            font-size: var(--fs-16); line-height: var(--lh-16);
         }
-        .transcript::-webkit-scrollbar       { width: 4px; }
-        .transcript::-webkit-scrollbar-track { background: transparent; }
-        .transcript::-webkit-scrollbar-thumb { background: var(--bd); border-radius: 2px; }
-
-        .tx-line { margin-bottom: 8px; animation: fadeIn 0.2s ease; }
-        .tx-line:last-child { margin-bottom: 0; }
+        .tx-line { max-width: 85%; overflow-wrap: anywhere; animation: fadeIn 0.2s ease; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; } }
-
-        .tx-line.user      { color: var(--ac); }
-        .tx-line.assistant { color: var(--green); }
-        .tx-line.system    { color: var(--tx2); font-style: italic; font-size: var(--fs-13); }
-        .tx-label { font-weight: 700; margin-right: 6px; font-size: var(--fs-12); letter-spacing: 0.05em; }
-
-        /* Streaming cursor */
-        .cursor { display: inline-block; width: 2px; height: 12px;
-                  background: var(--green); margin-left: 2px;
-                  animation: blink 0.7s step-end infinite; vertical-align: middle; }
+        .tx-line.user {
+            align-self: flex-end; padding: 8px 14px; background: var(--accent-dim);
+            border-radius: var(--radius-20) var(--radius-20) 6px var(--radius-20);
+        }
+        .tx-line.assistant {
+            align-self: flex-start; padding: 8px 14px; background: var(--surface-2);
+            border-radius: var(--radius-20) var(--radius-20) var(--radius-20) 6px;
+        }
+        .tx-line.system { align-self: center; max-width: 100%; font-size: var(--fs-13); color: var(--text-muted); text-align: center; }
+        .tx-label { display: block; font-size: var(--fs-12); font-weight: var(--fw-semibold); color: var(--text-muted); line-height: 1.4; }
+        .tx-chip {
+            align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px;
+            border: 1px solid var(--border); border-radius: var(--radius-pill); background: var(--surface);
+            font-size: var(--fs-12); color: var(--text-muted);
+        }
+        .tx-chip svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+        .cursor {
+            display: inline-block; width: 2px; height: 1em; background: var(--text-muted);
+            margin-left: 2px; vertical-align: text-bottom; animation: blink 0.7s step-end infinite;
+        }
         @keyframes blink { 50% { opacity: 0; } }
 
-        /* ── Mobile Responsive ── */
-        @media (max-width: 768px) {
-          .avatar-wrap { width: 180px; height: 180px; }
-          .avatar-core { inset: 26px; }
-          .call-container { gap: 24px; padding: 20px; }
-          .transcript-wrap { width: 100%; }
-          .transcript { max-height: 160px; }
-          .call-btn { width: 64px; height: 64px; }
-          .timer { font-size: var(--fs-24); }
+        /* ── Type box: a typed turn goes through the same call ── */
+        .type-row { width: 100%; max-width: 560px; display: flex; gap: 8px; }
+        body:not(.in-call) .type-row { display: none; }
+        .type-row input {
+            flex: 1; min-width: 0; padding: 10px 16px; border-radius: var(--radius-pill);
+            border: 1px solid var(--border); background: var(--surface); color: var(--text);
+            font-family: var(--font-sans); font-size: var(--fs-16);
         }
-        @media (max-width: 480px) {
+        .type-row input::placeholder { color: var(--text-dim); }
+        .type-row input:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+        .type-send {
+            width: 42px; height: 42px; flex: none; border-radius: 50%; border: none; cursor: pointer;
+            background: var(--accent); color: var(--on-accent);
+            display: flex; align-items: center; justify-content: center;
+        }
+        .type-send:disabled { opacity: 0.4; cursor: default; }
+        .type-send:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+        .type-send svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+        @media (prefers-reduced-motion: reduce) {
+          .orb { transition: none; animation: none !important; transform: none; }
+          .tx-line, .cursor { animation: none; }
+        }
+
+        /* ── Phone ── */
+        @media (max-width: 767px) {
+          .call-container { gap: 14px; padding: 16px; }
           .avatar-wrap { width: 150px; height: 150px; }
-          .avatar-core { inset: 22px; }
-          .ring-inner { inset: 12px; }
+          .transcript { max-height: 240px; }
+          .call-btn { width: 58px; height: 58px; }
           .timer { font-size: var(--fs-20); }
-          .call-container { gap: 20px; }
-          .call-btn { width: 56px; height: 56px; }
+          /* 16px or more, so iOS does not zoom into the field */
+          .mic-select, .type-row input { font-size: max(16px, var(--fs-16)); }
         }
         .webcam-pip{position:fixed;bottom:80px;right:20px;width:240px;border-radius:14px;overflow:hidden;border:2px solid var(--accent);box-shadow:0 4px 24px rgba(0,0,0,.5);z-index:9999;display:none;background:#000;transition:width .3s,height .3s,border-radius .3s}
         .webcam-pip img,.webcam-pip video{width:100%;display:block}
@@ -393,41 +249,33 @@
         .modal-overlay img { max-width:100%; max-height:90vh; border-radius:var(--radius); border:1px solid var(--border); }
         .modal-close { position:fixed; top:16px; right:16px; background:var(--surface); color:var(--text); border:1px solid var(--border); width:32px; height:32px; border-radius:50%; font-size:calc(18px * var(--fs-scale)); cursor:pointer; z-index:101; display:flex; align-items:center; justify-content:center; }
         /* ── Voice mode pills (flash / default / think) ── */
-        .mode-row { display:flex; gap:8px; justify-content:center; margin:10px 0 2px; }
+        .mode-row { display:flex; gap:8px; justify-content:center; }
         .mode-pill {
-            background:var(--surface-2,#1f1f22); border:1px solid var(--border,#2a2a2f);
-            color:var(--text-dim,#6a6a70); font-size:var(--fs-12); font-weight:700;
-            letter-spacing:1px; padding:5px 14px; border-radius:999px; cursor:pointer;
-            transition:all .15s; text-transform:uppercase;
+            background:var(--surface-2); border:1px solid var(--border);
+            color:var(--text-muted); font-family:var(--font-sans); font-size:var(--fs-12); font-weight:var(--fw-semibold);
+            letter-spacing:1px; padding:5px 14px; border-radius:var(--radius-pill); cursor:pointer;
+            transition:background-color .15s, color .15s, border-color .15s; text-transform:uppercase;
         }
-        .mode-pill:hover { color:var(--text,#ececec); border-color:var(--border-hover,#3a3a40); }
-        .mode-pill.active {
-            color:var(--on-accent); background:var(--accent,#d97757); border-color:var(--accent,#d97757);
-            box-shadow:0 0 12px rgba(217,119,87,.35);
-        }
-        .mode-pill.think.active { box-shadow:0 0 12px rgba(217,119,87,.5); }
+        .mode-pill:hover { color:var(--text); border-color:var(--border-strong); }
+        .mode-pill:focus-visible { outline:none; box-shadow:var(--focus-ring); }
+        .mode-pill.active { color:var(--on-accent); background:var(--accent); border-color:var(--accent); }
     </style>
 </head>
 <body id="body">
-<script src="/static/codec-shell.js?v=17730038" data-page="voice" data-title="Voice" data-status></script>
+<script src="/static/codec-shell.js?v=17524114" data-page="voice" data-title="Voice" data-status></script>
     <div class="call-container cs-main">
 
-        <!-- Avatar (tap-and-hold for push-to-talk) -->
-        <div class="avatar-wrap" id="avatarWrap">
-            <div class="ring-outer"></div>
-            <div class="ring-inner"></div>
-            <div class="ring-energy" id="ringEnergy"></div>
-            <div class="hold-indicator" id="holdIndicator"></div>
-            <div class="avatar-core"><img src="/static/logo.svg" alt="CODEC"></div>
-            <div class="waveform">
-                <div class="bar"></div><div class="bar"></div><div class="bar"></div>
-                <div class="bar"></div><div class="bar"></div>
-            </div>
+        <!-- The orb: its size follows the level. Press and hold it to talk. -->
+        <div class="avatar-wrap" id="avatarWrap" role="button" tabindex="0" aria-label="Hold to talk">
+            <div class="orb" id="orb"><img src="/static/logo.svg" alt=""></div>
         </div>
 
-        <div class="timer" id="timer"></div>
-        <div class="status" id="statusLabel">Tap to start voice call</div>
-        <div class="interrupt-hint" id="interruptHint"></div>
+        <div class="call-meta">
+            <div class="timer" id="timer"></div>
+            <div class="status" id="statusLabel" aria-live="polite">Tap to start voice call</div>
+            <div class="interrupt-hint" id="interruptHint"></div>
+            <div class="hold-hint" id="holdHint">Hold the circle to talk, let go to send</div>
+        </div>
 
         <!-- Voice mode: flash / default / think (docs/VOICE-MODES-DESIGN.md) -->
         <div class="mode-row" id="modeRow">
@@ -436,8 +284,17 @@
             <button class="mode-pill think" id="modeThink" onclick="setVoiceMode('think')" title="Live tool calling — lights, music, web, calendar, email — with spoken progress"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><path d="M12 2C9 2 6.5 4 6 7c-2 .5-4 3-4 5.5C2 15 4 17 6.5 17H7v2a2 2 0 002 2h6a2 2 0 002-2v-2h.5C20 17 22 15 22 12.5 22 10 20 7.5 18 7c-.5-3-3-5-6-5z"/></svg>Think</button>
         </div>
 
-        <!-- Action row: your turn + nudge -->
+        <!-- Call controls: mute, stop speaking, your turn, still there? -->
         <div class="action-row" id="actionRow">
+            <button class="action-btn" id="muteBtn" aria-pressed="false" onclick="toggleMute()">
+                <svg viewBox="0 0 24 24" class="when-live"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>
+                <svg viewBox="0 0 24 24" class="when-muted"><path d="M3 3l18 18"/><path d="M9 9v2a3 3 0 0 0 5.1 2.1M15 10V6a3 3 0 0 0-5.7-1.3"/><path d="M5 11a7 7 0 0 0 11.5 5.4M19 11a7 7 0 0 1-.6 2.8"/><path d="M12 18v3"/></svg>
+                <span class="when-live">Mute</span><span class="when-muted">Unmute</span>
+            </button>
+            <button class="action-btn stop-speaking" id="stopSpeakBtn" onclick="stopSpeaking()">
+                <svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                <span class="when-speaking">Stop speaking</span><span class="when-working">Stop</span>
+            </button>
             <button class="action-btn your-turn" id="yourTurnBtn" onclick="sendYourTurn()">
                 <svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>
                 Your Turn
@@ -448,24 +305,39 @@
             </button>
         </div>
 
-        <button class="call-btn start" id="callBtn" onclick="toggleCall()"><svg width="34" height="34" viewBox="0 0 24 24" fill="white"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/></svg></button>
+        <button class="call-btn start" id="callBtn" onclick="toggleCall()" aria-label="Start call"><svg width="30" height="30" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/></svg></button>
+
+        <!-- Microphone: kept in this browser (codec-voice-mic) -->
+        <label class="mic-row" id="micRow" for="micSelect">Microphone
+            <select id="micSelect" class="mic-select" onchange="chooseMic(this.value)"><option value="">Default microphone</option></select>
+        </label>
 
         <!-- Transcript -->
         <div class="transcript-wrap">
             <div class="transcript-header">
-                <span>TRANSCRIPT</span>
-                <div style="display: flex; align-items: center; gap: 10px;">
+                <span>Transcript</span>
+                <div class="tx-tools">
+                    <button id="continueChatBtn" class="tx-copy-btn" onclick="continueInChat()" disabled title="Save this call as a chat and open it">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg>
+                        Continue in chat
+                    </button>
                     <button id="copyTxBtn" class="tx-copy-btn" title="Copy transcript">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                        <span id="copyTxLabel">COPY</span>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        <span id="copyTxLabel">Copy</span>
                     </button>
                     <div class="tx-dot" id="txDot"></div>
                 </div>
             </div>
             <div class="transcript" id="transcript">
-                <div class="tx-line system"><span class="tx-label">SYS</span>CODEC Voice — Ready</div>
+                <div class="tx-line system" data-role="system"><span class="tx-text">CODEC Voice — Ready</span></div>
             </div>
         </div>
+
+        <!-- Type a turn instead of saying it (sent as {type:'text'}) -->
+        <form class="type-row" id="typeForm" onsubmit="sendTyped(event)">
+            <input id="typeInput" type="text" maxlength="2000" placeholder="Type a message" autocomplete="off" aria-label="Type a message" disabled>
+            <button type="submit" class="type-send" id="typeSend" aria-label="Send" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg></button>
+        </form>
 
     </div>
 
@@ -510,7 +382,18 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
     function toggleVoiceReply(){_voiceOn=!_voiceOn;_lsSet('codec-voice',_voiceOn);updateVoiceIcon()}
     function updateVoiceIcon(){var m1=document.getElementById('muteX1'),m2=document.getElementById('muteX2'),st=document.getElementById('voiceState');if(_voiceOn){if(m1)m1.style.display='none';if(m2)m2.style.display='none';if(st){st.textContent='ON';st.style.color='var(--on-accent)';st.style.background='var(--accent)'}}else{if(m1)m1.style.display='';if(m2)m2.style.display='';if(st){st.textContent='OFF';st.style.color='var(--text-muted)';st.style.background='var(--surface-3)'}}}
     updateVoiceIcon();
-    function takeScreenshot(){fetch('/api/screenshot',{method:'POST'}).then(function(r){return r.json()}).then(function(d){if(d.path)alert('Screenshot saved: '+d.path)}).catch(function(){})}
+    /* One toast, the shell's (CodecShell.toast). */
+    function showToast(msg){if(window.CodecShell&&CodecShell.toast)CodecShell.toast(msg)}
+    /* Screenshot of the Mac: GET /api/screenshot, shown in the viewer below, confirmed in a toast. */
+    function takeScreenshot(){
+      fetch('/api/screenshot?_t='+Date.now()).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.blob()}).then(function(b){
+        var img=document.getElementById('screenImg');
+        if(img.src&&img.src.indexOf('blob:')===0)URL.revokeObjectURL(img.src);
+        img.src=URL.createObjectURL(b);
+        document.getElementById('screenModal').classList.add('show');
+        showToast('Screenshot taken');
+      }).catch(function(){showToast('Could not take a screenshot')});
+    }
 
     // ── Server Photo (Mac webcam) ──
     function takeServerPhoto() {
@@ -615,12 +498,38 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
     var processingStart = 0;
     var processingTmr   = null;
 
+    /* ── Orb level, mute, microphone (P2.9) ── */
+    var micSource   = null;   /* the mic stream's node, swapped when the picker changes */
+    var outAnalyser = null;   /* reads the level of CODEC's reply */
+    var levelRaf    = null;
+    var micMuted    = false;
+    var isHolding   = false;
+    var MIC_KEY     = 'codec-voice-mic';
+
+    /* The orb's size follows --lvl, 0 to 1. */
+    function setLevel(v) {
+        var w = document.getElementById('avatarWrap');
+        if (w) w.style.setProperty('--lvl', Math.max(0, Math.min(1, v || 0)).toFixed(3));
+    }
+    /* While CODEC speaks, the orb follows the reply audio. */
+    function levelLoop() {
+        levelRaf = null;
+        if (!isPlaying || !outAnalyser) { setLevel(0); return; }
+        var buf = new Float32Array(outAnalyser.fftSize);
+        outAnalyser.getFloatTimeDomainData(buf);
+        var sum = 0;
+        for (var i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+        setLevel(Math.sqrt(sum / buf.length) * 5);
+        levelRaf = requestAnimationFrame(levelLoop);
+    }
+
     /* ── UI helpers ── */
     function setState(s) {
         var body = document.getElementById('body');
         Array.prototype.slice.call(body.classList).forEach(function(c){ if (c.indexOf('state-') === 0) body.classList.remove(c); });
         body.classList.add('state-' + s);
         var el = document.getElementById('statusLabel');
+        if (s !== 'listening' && s !== 'speaking') setLevel(0);
         // Clear processing timer on state change
         if (processingTmr && s !== 'processing') {
             clearInterval(processingTmr); processingTmr = null;
@@ -641,24 +550,41 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
         }
     }
 
+    var TX_LABEL = { user: 'You', assistant: 'CODEC' };
+    var TOOL_NARRATION = /^Using (.{1,60})\u2026$/;   /* Think mode says "Using web search…" per tool call */
+
+    function txLineHtml(role, textHtml) {
+        return (TX_LABEL[role] ? '<span class="tx-label">' + TX_LABEL[role] + '</span>' : '') +
+               '<span class="tx-text">' + textHtml + '</span>';
+    }
+
     function addTranscript(role, text) {
         var el = document.getElementById('transcript');
-        var label = role === 'user' ? 'M' : role === 'assistant' ? 'CODEC' : 'SYS';
+        if (role !== 'user' && role !== 'assistant') role = 'system';
         /* Assistant final: replace streaming line instead of adding a duplicate */
         if (role === 'assistant' && streamLine) {
-            var cur = streamLine.querySelector('.cursor');
-            if (cur) cur.remove();
-            streamLine.innerHTML = '<span class="tx-label">' + label + '</span>' + escHtml(text);
+            streamLine.innerHTML = txLineHtml('assistant', escHtml(text));
             streamLine = null; streamText = '';
             el.scrollTop = el.scrollHeight;
+            syncContinue();
             return;
         }
-        if (streamLine) { streamLine.querySelector('.cursor').remove(); streamLine = null; streamText = ''; }
+        if (streamLine) { var cur = streamLine.querySelector('.cursor'); if (cur) cur.remove(); streamLine = null; streamText = ''; }
         var div = document.createElement('div');
-        div.className = 'tx-line ' + role;
-        div.innerHTML = '<span class="tx-label">' + label + '</span>' + escHtml(text);
+        var tool = role === 'system' && TOOL_NARRATION.exec(String(text));
+        if (tool) {
+            div.className = 'tx-chip';
+            div.setAttribute('data-role', 'tool');
+            div.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z"/></svg>' +
+                            '<span class="tx-text">' + escHtml(tool[1]) + '</span>';
+        } else {
+            div.className = 'tx-line ' + role;
+            div.setAttribute('data-role', role);
+            div.innerHTML = txLineHtml(role, escHtml(text));
+        }
         el.appendChild(div);
         el.scrollTop = el.scrollHeight;
+        syncContinue();
     }
 
     function appendStreamChunk(chunk) {
@@ -666,15 +592,13 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
         if (!streamLine) {
             streamLine = document.createElement('div');
             streamLine.className = 'tx-line assistant';
-            streamLine.innerHTML = '<span class="tx-label">CODEC</span>';
+            streamLine.setAttribute('data-role', 'assistant');
             el.appendChild(streamLine);
         }
-        /* Remove cursor, append text, re-add cursor */
-        var cur = streamLine.querySelector('.cursor');
-        if (cur) cur.remove();
         streamText += escHtml(chunk);
-        streamLine.innerHTML = '<span class="tx-label">CODEC</span>' + streamText + '<span class="cursor"></span>';
+        streamLine.innerHTML = txLineHtml('assistant', streamText + '<span class="cursor"></span>');
         el.scrollTop = el.scrollHeight;
+        syncContinue();
     }
 
     function escHtml(s) {
@@ -698,10 +622,11 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
             var buf = await audioCtx.decodeAudioData(data.slice(0));
             var src = audioCtx.createBufferSource();
             src.buffer = buf;
-            src.connect(audioCtx.destination);
+            src.connect(outAnalyser || audioCtx.destination);
             src.onended = function() { curSource = null; playNext(); };
             src.start();
             curSource = src;
+            if (!levelRaf && outAnalyser) levelRaf = requestAnimationFrame(levelLoop);
         } catch(e) {
             console.warn('[Voice] Decode error:', e);
             playNext();
@@ -726,6 +651,7 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
         audioQueue = [];
         isPlaying  = false;
         if (curSource) { try { curSource.stop(); } catch(e){} curSource = null; }
+        setLevel(0);
     }
 
     /* ── WebSocket with auto-reconnect ── */
@@ -752,6 +678,7 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
             wsRetryCount = 0;
             wsRetryDelay = 1000;
             setState('listening');
+            setTyping(true);
             startMic();
             /* Ping every 8s to detect stale connections */
             if (wsPingTimer) clearInterval(wsPingTimer);
@@ -815,6 +742,7 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
 
         ws.onclose = function() {
             if (wsPingTimer) { clearInterval(wsPingTimer); wsPingTimer = null; }
+            setTyping(false);
             if (wsIntentionalClose) {
                 addTranscript('system', 'Disconnected — transcript saved to memory');
                 return;
@@ -842,46 +770,44 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
     }
 
     /* ── Microphone ── */
+    /* The chosen microphone (the picker), or the default one when it is gone. */
+    async function openMicStream() {
+        var want = _lsGet(MIC_KEY) || '';
+        var audio = { sampleRate: 16000, channelCount: 1, echoCancellation: true,
+                      noiseSuppression: true, autoGainControl: true };
+        if (want) audio.deviceId = { exact: want };
+        try {
+            return await navigator.mediaDevices.getUserMedia({ audio: audio });
+        } catch (e) {
+            if (!want || (e.name !== 'OverconstrainedError' && e.name !== 'NotFoundError')) throw e;
+            delete audio.deviceId;
+            _lsDel(MIC_KEY);
+            showToast('That microphone is not available, so the default one is on.');
+            return await navigator.mediaDevices.getUserMedia({ audio: audio });
+        }
+    }
+
     async function startMic() {
         try {
             audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
-            mediaStream = await navigator.mediaDevices.getUserMedia({
-                audio: {
-                    sampleRate: 16000, channelCount: 1,
-                    echoCancellation: true, noiseSuppression: true,
-                    autoGainControl: true
-                }
-            });
-            var source = audioCtx.createMediaStreamSource(mediaStream);
+            outAnalyser = audioCtx.createAnalyser();
+            outAnalyser.fftSize = 1024;
+            outAnalyser.connect(audioCtx.destination);
+            mediaStream = await openMicStream();
+            micSource = audioCtx.createMediaStreamSource(mediaStream);
             /* 4096-sample chunks ~= 256 ms at 16 kHz */
             processor = audioCtx.createScriptProcessor(4096, 1, 1);
             processor.onaudioprocess = function(e) {
                 if (!ws || ws.readyState !== WebSocket.OPEN) return;
                 var f32 = e.inputBuffer.getChannelData(0);
 
-                /* ── Always compute RMS for energy ring + interrupt ── */
+                /* ── Always compute RMS for the orb + interrupt (a muted track gives silence) ── */
                 var sum = 0;
                 for (var j = 0; j < f32.length; j++) sum += f32[j] * f32[j];
                 var rms = Math.sqrt(sum / f32.length) * 32768;
 
-                /* ── Energy ring: scales ring border + glow with mic input ── */
-                var re = document.getElementById('ringEnergy');
-                if (re) {
-                    var bodyClass = document.getElementById('body').className;
-                    if (bodyClass.indexOf('state-listening') >= 0) {
-                        var lvl  = Math.min(rms / 2800, 1.0);
-                        var sc   = (1 + lvl * 0.13).toFixed(3);
-                        var glow = Math.round(lvl * 22);
-                        var op   = (0.25 + lvl * 0.6).toFixed(2);
-                        re.style.transform   = 'scale(' + sc + ')';
-                        re.style.boxShadow   = '0 0 ' + glow + 'px rgba(0,230,118,' + op + ')';
-                        re.style.borderColor = 'rgba(0,230,118,' + op + ')';
-                    } else {
-                        re.style.transform   = '';
-                        re.style.boxShadow   = '';
-                        re.style.borderColor = '';
-                    }
-                }
+                /* ── The orb follows the mic while listening ── */
+                if (document.getElementById('body').classList.contains('state-listening')) setLevel(rms / 2800);
 
                 /* ── Interrupt detection: if Q is speaking and user talks ── */
                 if (isPlaying) {
@@ -902,17 +828,151 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
                 }
                 ws.send(i16.buffer);
             };
-            source.connect(processor);
+            micSource.connect(processor);
             processor.connect(audioCtx.destination);
+            applyMute();
+            refreshMics();
         } catch(e) {
-            addTranscript('system', 'Microphone error: ' + e.message);
+            addTranscript('system', 'Microphone error: ' + e.message + '. You can still type.');
+        }
+    }
+
+    /* Switch to another microphone during a call: only the mic stream changes;
+       the socket and the reply audio carry on. */
+    async function swapMic() {
+        if (!audioCtx || !processor) { if (audioCtx) { stopMic(); } return startMic(); }
+        try {
+            var s = await openMicStream();
+            if (micSource) { try { micSource.disconnect(); } catch (e) {} }
+            if (mediaStream) mediaStream.getTracks().forEach(function(t){ t.stop(); });
+            mediaStream = s;
+            micSource = audioCtx.createMediaStreamSource(s);
+            micSource.connect(processor);
+            applyMute();
+            refreshMics();
+        } catch (e) {
+            showToast('Could not switch the microphone: ' + e.message);
         }
     }
 
     function stopMic() {
+        if (levelRaf)     { cancelAnimationFrame(levelRaf); levelRaf = null; }
+        if (micSource)    { try { micSource.disconnect(); } catch (e) {} micSource = null; }
         if (processor)    { processor.disconnect();  processor    = null; }
         if (mediaStream)  { mediaStream.getTracks().forEach(function(t){ t.stop(); }); mediaStream = null; }
         if (audioCtx)     { audioCtx.close();         audioCtx     = null; }
+        outAnalyser = null;
+        setLevel(0);
+    }
+
+    /* The picker lists the audio inputs; names show once the browser has granted the mic. */
+    function refreshMics() {
+        var sel = document.getElementById('micSelect'), row = document.getElementById('micRow');
+        if (!sel) return;
+        if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) { if (row) row.hidden = true; return; }
+        navigator.mediaDevices.enumerateDevices().then(function(devs) {
+            var want = _lsGet(MIC_KEY) || '';
+            var ins = devs.filter(function(d) {
+                return d.kind === 'audioinput' && d.deviceId && d.deviceId !== 'default' && d.deviceId !== 'communications';
+            });
+            sel.innerHTML = '';
+            var def = document.createElement('option');
+            def.value = ''; def.textContent = 'Default microphone';
+            sel.appendChild(def);
+            ins.forEach(function(d, i) {
+                var o = document.createElement('option');
+                o.value = d.deviceId; o.textContent = d.label || ('Microphone ' + (i + 1));
+                sel.appendChild(o);
+            });
+            sel.value = ins.some(function(d) { return d.deviceId === want; }) ? want : '';
+        }).catch(function() {});
+    }
+    function chooseMic(id) {
+        if (id) _lsSet(MIC_KEY, id); else _lsDel(MIC_KEY);
+        if (isInCall && audioCtx) swapMic();
+    }
+    if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+        navigator.mediaDevices.addEventListener('devicechange', refreshMics);
+    }
+    refreshMics();
+
+    /* ── Mute: the mic track goes silent (the server's voice detection closes any open utterance).
+       Holding the orb while muted talks for as long as the hold lasts. ── */
+    function applyMute() {
+        var live = !micMuted || isHolding;
+        if (mediaStream) mediaStream.getAudioTracks().forEach(function(t) { t.enabled = live; });
+        var b = document.getElementById('muteBtn');
+        if (b) b.setAttribute('aria-pressed', micMuted ? 'true' : 'false');
+        var w = document.getElementById('avatarWrap');
+        if (w) w.classList.toggle('muted', micMuted && !isHolding);
+        var h = document.getElementById('holdHint');
+        if (h) h.textContent = micMuted ? 'Muted. Hold the circle to talk.' : 'Hold the circle to talk, let go to send';
+        if (!live) setLevel(0);
+    }
+    function toggleMute() {
+        micMuted = !micMuted;
+        applyMute();
+    }
+
+    /* ── Stop speaking: the existing interrupt, and the queued reply audio stops here too. ── */
+    function stopSpeaking() {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            try { ws.send(JSON.stringify({ type: 'interrupt' })); } catch (e) {}
+        }
+        stopAudio();
+        if (isInCall) setState('listening');
+    }
+
+    /* ── Type box: a typed turn runs through the same call (server control 'text'). ── */
+    function setTyping(on) {
+        var i = document.getElementById('typeInput'), b = document.getElementById('typeSend');
+        if (i) i.disabled = !on;
+        if (b) b.disabled = !on;
+    }
+    function sendTyped(ev) {
+        if (ev) ev.preventDefault();
+        var input = document.getElementById('typeInput');
+        var text = (input.value || '').trim().slice(0, 2000);
+        if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
+        ws.send(JSON.stringify({ type: 'text', text: text }));
+        addTranscript('user', text);   /* the server does not echo a typed turn */
+        input.value = '';
+    }
+
+    /* ── Continue in chat: the call's You and CODEC lines become a new chat. ── */
+    function callMessages() {
+        var out = [];
+        document.querySelectorAll('#transcript .tx-line.user, #transcript .tx-line.assistant').forEach(function(el) {
+            var t = el.querySelector('.tx-text');
+            var text = (t ? t.textContent : '').trim();
+            if (text) out.push({ role: el.classList.contains('user') ? 'user' : 'assistant', content: text });
+        });
+        return out;
+    }
+    function syncContinue() {
+        var b = document.getElementById('continueChatBtn');
+        if (b && !b.dataset.busy) b.disabled = !document.querySelector('#transcript .tx-line.user, #transcript .tx-line.assistant');
+    }
+    function continueInChat() {
+        var msgs = callMessages();
+        var btn = document.getElementById('continueChatBtn');
+        if (!msgs.length || btn.dataset.busy) return;
+        btn.dataset.busy = '1'; btn.disabled = true;
+        var id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+        var d = new Date();
+        var title = 'Voice call ' + d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) + ' ' +
+                    String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+        fetch('/api/qchat/save', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                   body: JSON.stringify({ session_id: id, title: title, messages: msgs }) })
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            .then(function() {
+                if (isInCall) endCall();
+                location.href = '/chat#session=' + encodeURIComponent(id);
+            })
+            .catch(function(e) {
+                delete btn.dataset.busy; syncContinue();
+                showToast('Could not save the call as a chat: ' + e.message);
+            });
     }
 
     /* ── Call control ── */
@@ -925,10 +985,14 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
         callStart  = Date.now();
         var btn    = document.getElementById('callBtn');
         btn.className = 'call-btn end';
-        btn.innerHTML = '<svg width="28" height="28" viewBox="0 0 24 24" fill="white"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z" transform="rotate(135 12 12)"/></svg>';
+        btn.setAttribute('aria-label', 'End call');
+        btn.innerHTML = '<svg width="30" height="30" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z" transform="rotate(135 12 12)"/></svg>';
+        document.getElementById('body').classList.add('in-call');
         timerIv = setInterval(updateTimer, 1000);
         document.getElementById('timer').textContent = '00:00';
-        document.getElementById('transcript').innerHTML = '<div class="tx-line system"><span class="tx-label">SYS</span>Connecting…</div>';
+        document.getElementById('transcript').innerHTML = '';
+        streamLine = null; streamText = '';
+        addTranscript('system', 'Connecting…');
         setState('processing');
         connectWS();
     }
@@ -937,7 +1001,10 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
         isInCall = false;
         var btn = document.getElementById('callBtn');
         btn.className = 'call-btn start';
-        btn.innerHTML = '<svg width="28" height="28" viewBox="0 0 24 24" fill="white"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/></svg>';
+        btn.setAttribute('aria-label', 'Start call');
+        btn.innerHTML = '<svg width="30" height="30" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/></svg>';
+        document.getElementById('body').classList.remove('in-call');
+        setTyping(false);
         if (timerIv) { clearInterval(timerIv); timerIv = null; }
         stopAudio();
         stopMic();
@@ -995,19 +1062,20 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
         if (navigator.vibrate) navigator.vibrate([20, 40, 20]);
     }
 
-    /* ── Hold-to-talk on avatar ── */
+    /* ── Hold-to-talk on the orb (mouse, touch, and Space or Enter on the focused orb).
+       While muted, the hold is push to talk. ── */
     (function() {
         var avatar = document.getElementById('avatarWrap');
-        var holdEl = document.getElementById('holdIndicator');
         var holdTimer = null;
-        var isHolding = false;
 
         function startHold(e) {
-            if (!isInCall) return;
+            if (!isInCall || isHolding || holdTimer) return;
             e.preventDefault();
             holdTimer = setTimeout(function() {
+                holdTimer = null;
                 isHolding = true;
-                holdEl.classList.add('active');
+                avatar.classList.add('holding');
+                applyMute();
                 // Unmute / signal "user speaking" to server
                 if (ws && ws.readyState === WebSocket.OPEN) {
                     ws.send(JSON.stringify({ type: 'hold_start' }));
@@ -1020,12 +1088,14 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
             if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
             if (!isHolding) return;
             isHolding = false;
-            holdEl.classList.remove('active');
+            avatar.classList.remove('holding');
             // Signal "done talking" — force send
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ type: 'your_turn' }));
             }
             setState('processing');
+            /* Muted again only after the last of the held speech has gone out. */
+            setTimeout(applyMute, 300);
         }
 
         avatar.addEventListener('touchstart', startHold, { passive: false });
@@ -1034,6 +1104,8 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
         avatar.addEventListener('mousedown', startHold);
         avatar.addEventListener('mouseup', endHold);
         avatar.addEventListener('mouseleave', endHold);
+        avatar.addEventListener('keydown', function(e) { if (e.key === ' ' || e.key === 'Enter') startHold(e); });
+        avatar.addEventListener('keyup', function(e) { if (e.key === ' ' || e.key === 'Enter') endHold(e); });
     })();
 
     /* ── Copy transcript button ── */
@@ -1042,22 +1114,23 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
         var label = document.getElementById('copyTxLabel');
         if (!btn) return;
         btn.addEventListener('click', function() {
-            var lines = document.querySelectorAll('#transcript .tx-line');
+            var lines = document.querySelectorAll('#transcript [data-role]');
             if (!lines.length) return;
+            var names = { user: 'You', assistant: 'CODEC', tool: 'Tool' };
             var out = [];
             lines.forEach(function(line) {
-                var roleEl = line.querySelector('.tx-label');
-                var role = roleEl ? roleEl.textContent.trim() : '';
-                var text = line.textContent.replace(role, '').trim();
+                var t = line.querySelector('.tx-text');
+                var text = (t ? t.textContent : line.textContent).trim();
+                var role = names[line.getAttribute('data-role')] || '';
                 if (text) out.push((role ? '[' + role + '] ' : '') + text);
             });
             var payload = out.join('\n');
             var done = function() {
                 btn.classList.add('copied');
-                label.textContent = 'COPIED';
+                label.textContent = 'Copied';
                 setTimeout(function() {
                     btn.classList.remove('copied');
-                    label.textContent = 'COPY';
+                    label.textContent = 'Copy';
                 }, 1500);
             };
             if (navigator.clipboard && navigator.clipboard.writeText) {
