@@ -255,3 +255,29 @@ def test_sidebar_groups_menu_and_select_delete_under_jsdom():
     assert "Delete 2 chats?" in r["bar"]
     assert sorted(r["deleted"]) == ["/api/qchat/session/o", "/api/qchat/session/y"]
 
+
+
+def test_memory_search_skill_skips_superseded_replies(tmp_path, monkeypatch):
+    import sys
+    sys.path.insert(0, str(REPO / "skills"))
+    import memory_search
+    path = tmp_path / "qchat.db"
+    _legacy_db(path)
+    monkeypatch.setattr(memory_search, "QCHAT_DB", str(path))
+    monkeypatch.setattr(memory_search, "VIBE_DB", str(tmp_path / "none.db"))
+    import codec_memory  # never read the real voice memory in a test
+
+    class NoMemory:
+        def search(self, *a, **k):
+            return []
+    monkeypatch.setattr(codec_memory, "CodecMemory", NoMemory)
+
+    def chat_hits():
+        return [r for r in memory_search._search_all("coast") if r["source"] == "CHAT"]
+    assert chat_hits(), "works before the migration"
+    c = sqlite3.connect(path)
+    c.execute("ALTER TABLE qchat_messages ADD COLUMN superseded_at TEXT")
+    c.execute("UPDATE qchat_messages SET superseded_at='2026-09-29T00:00:00' WHERE content LIKE '%coast%'")
+    c.commit()
+    c.close()
+    assert chat_hits() == []

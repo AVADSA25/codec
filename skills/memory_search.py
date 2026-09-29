@@ -67,9 +67,13 @@ def _search_all(query, limit=15):
             conn = sqlite3.connect(QCHAT_DB)
             conn.execute("PRAGMA busy_timeout=3000")
             q = f"%{query}%"
+            # Replies dropped by regenerate / edit are marked superseded (UI P2.2);
+            # skip them once the dashboard has added that column.
+            cols = {c[1] for c in conn.execute("PRAGMA table_info(qchat_messages)")}
+            live = " AND superseded_at IS NULL" if "superseded_at" in cols else ""
             rows = conn.execute(
                 "SELECT role, content, timestamp FROM qchat_messages "
-                "WHERE content LIKE ? COLLATE NOCASE ORDER BY id DESC LIMIT ?",
+                "WHERE content LIKE ? COLLATE NOCASE" + live + " ORDER BY id DESC LIMIT ?",
                 (q, limit)
             ).fetchall()
             conn.close()
