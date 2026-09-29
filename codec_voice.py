@@ -1397,6 +1397,9 @@ class VoicePipeline:
                                 await self.ws.send_json({"type": "status", "status": "listening"})
                                 log.debug("Your-turn: buffer too short, discarded")
                             else:
+                                # Nothing said (an empty hold or tap): the page shows
+                                # "processing" until told otherwise.
+                                await self.ws.send_json({"type": "status", "status": "listening"})
                                 log.info("Your-turn: no audio buffered")
                         elif ctrl_type == "nudge":
                             # User tapped "still there?" — send reassurance

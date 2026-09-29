@@ -53,6 +53,15 @@ def test_the_text_control_queues_a_typed_turn():
     assert items == ["what's on today?", "x" * 2000, None], "stripped, empty ones ignored, capped at 2,000"
 
 
+def test_your_turn_with_nothing_said_goes_back_to_listening():
+    """An empty hold (or Your Turn) must not leave the page on "processing"."""
+    p, ws = _pipeline()
+    ws.receive = AsyncMock(side_effect=[{"type": "websocket.receive", "text": json.dumps({"type": "your_turn"})},
+                                        {"type": "websocket.disconnect"}])
+    asyncio.run(p._audio_receiver())
+    assert {"type": "status", "status": "listening"} in [c.args[0] for c in ws.send_json.await_args_list]
+
+
 def test_a_typed_turn_skips_speech_to_text_and_is_not_echoed():
     p, ws = _pipeline()
     p.transcribe = AsyncMock(return_value="spoken words")
@@ -115,13 +124,13 @@ def test_the_screenshot_uses_get_and_a_toast():
 
 
 def test_the_call_controls_are_wired():
-    assert 'id="muteBtn" aria-pressed="false" onclick="toggleMute()"' in PAGE
+    assert 'id="muteBtn" aria-label="Mute" aria-pressed="false" onclick="toggleMute()"' in PAGE
     mute = _fn("applyMute")
     assert "t.enabled = live" in mute and "var live = !micMuted || isHolding;" in mute
     stop = _fn("stopSpeaking")
     assert "JSON.stringify({ type: 'interrupt' })" in stop and "stopAudio();" in stop
     typed = _fn("sendTyped")
-    assert "ws.send(JSON.stringify({ type: 'text', text: text }))" in typed and "addTranscript('user', text)" in typed
+    assert "ws.send(JSON.stringify({ type: 'text', text: text }))" in typed and "txAppend('user', text)" in typed
     assert 'maxlength="2000"' in PAGE
     cont = _fn("continueInChat")
     assert "fetch('/api/qchat/save'" in cont and "session_id: id, title: title, messages: msgs" in cont

@@ -79,13 +79,13 @@
             min-height: 1.25em;
         }
         .status { font-size: var(--fs-16); color: var(--text); min-height: 1.5em; }
-        .interrupt-hint, .hold-hint { font-size: var(--fs-13); color: var(--text-dim); min-height: 1.45em; }
-        .interrupt-hint { visibility: hidden; }
-        .state-speaking .interrupt-hint,
-        .state-processing .interrupt-hint,
-        .state-analyzing_screen .interrupt-hint { visibility: visible; }
-        .hold-hint { display: none; }
-        body.in-call .hold-hint { display: block; }
+        /* One hint line during a call: the server's "Speak to interrupt" while CODEC speaks or works,
+           the hold-to-talk hint otherwise. */
+        .interrupt-hint, .hold-hint { display: none; font-size: var(--fs-13); color: var(--text-dim); min-height: 1.45em; }
+        body.in-call.state-speaking .interrupt-hint,
+        body.in-call.state-processing .interrupt-hint,
+        body.in-call.state-analyzing_screen .interrupt-hint,
+        body.in-call:not(.state-speaking):not(.state-processing):not(.state-analyzing_screen) .hold-hint { display: block; }
 
         /* Call button: a flat circle, green to start and red to end. */
         .call-btn {
@@ -147,6 +147,7 @@
             width: 100%; max-width: 560px; background: var(--surface);
             border: 1px solid var(--border); border-radius: var(--radius-12);
             overflow: hidden; display: flex; flex-direction: column;
+            min-height: 180px;   /* shrinks with the screen down to this, then the page scrolls */
         }
         .transcript-header {
             padding: 8px 10px 8px 16px; border-bottom: 1px solid var(--border);
@@ -228,7 +229,8 @@
         /* ── Phone ── */
         @media (max-width: 767px) {
           .call-container { gap: 14px; padding: 16px; }
-          .avatar-wrap { width: 150px; height: 150px; }
+          .avatar-wrap { width: 120px; height: 120px; }
+          .transcript-wrap { min-height: 160px; }
           .transcript { max-height: 240px; }
           .call-btn { width: 58px; height: 58px; }
           .timer { font-size: var(--fs-20); }
@@ -286,12 +288,12 @@
 
         <!-- Call controls: mute, stop speaking, your turn, still there? -->
         <div class="action-row" id="actionRow">
-            <button class="action-btn" id="muteBtn" aria-pressed="false" onclick="toggleMute()">
+            <button class="action-btn" id="muteBtn" aria-label="Mute" aria-pressed="false" onclick="toggleMute()">
                 <svg viewBox="0 0 24 24" class="when-live"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>
                 <svg viewBox="0 0 24 24" class="when-muted"><path d="M3 3l18 18"/><path d="M9 9v2a3 3 0 0 0 5.1 2.1M15 10V6a3 3 0 0 0-5.7-1.3"/><path d="M5 11a7 7 0 0 0 11.5 5.4M19 11a7 7 0 0 1-.6 2.8"/><path d="M12 18v3"/></svg>
                 <span class="when-live">Mute</span><span class="when-muted">Unmute</span>
             </button>
-            <button class="action-btn stop-speaking" id="stopSpeakBtn" onclick="stopSpeaking()">
+            <button class="action-btn stop-speaking" id="stopSpeakBtn" aria-label="Stop speaking" onclick="stopSpeaking()">
                 <svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
                 <span class="when-speaking">Stop speaking</span><span class="when-working">Stop</span>
             </button>
@@ -306,11 +308,6 @@
         </div>
 
         <button class="call-btn start" id="callBtn" onclick="toggleCall()" aria-label="Start call"><svg width="30" height="30" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/></svg></button>
-
-        <!-- Microphone: kept in this browser (codec-voice-mic) -->
-        <label class="mic-row" id="micRow" for="micSelect">Microphone
-            <select id="micSelect" class="mic-select" onchange="chooseMic(this.value)"><option value="">Default microphone</option></select>
-        </label>
 
         <!-- Transcript -->
         <div class="transcript-wrap">
@@ -338,6 +335,11 @@
             <input id="typeInput" type="text" maxlength="2000" placeholder="Type a message" autocomplete="off" aria-label="Type a message" disabled>
             <button type="submit" class="type-send" id="typeSend" aria-label="Send" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg></button>
         </form>
+
+        <!-- Microphone: kept in this browser (codec-voice-mic) -->
+        <label class="mic-row" id="micRow" for="micSelect">Microphone
+            <select id="micSelect" class="mic-select" onchange="chooseMic(this.value)"><option value="">Default microphone</option></select>
+        </label>
 
     </div>
 
@@ -570,6 +572,13 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
             return;
         }
         if (streamLine) { var cur = streamLine.querySelector('.cursor'); if (cur) cur.remove(); streamLine = null; streamText = ''; }
+        txAppend(role, text);
+    }
+
+    /* Append one line or chip. A typed turn calls this directly, so a reply still streaming
+       keeps its bubble (the typed line waits in the queue after it). */
+    function txAppend(role, text) {
+        var el = document.getElementById('transcript');
         var div = document.createElement('div');
         var tool = role === 'system' && TOOL_NARRATION.exec(String(text));
         if (tool) {
@@ -935,7 +944,7 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
         var text = (input.value || '').trim().slice(0, 2000);
         if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
         ws.send(JSON.stringify({ type: 'text', text: text }));
-        addTranscript('user', text);   /* the server does not echo a typed turn */
+        txAppend('user', text);   /* the server does not echo a typed turn */
         input.value = '';
     }
 
