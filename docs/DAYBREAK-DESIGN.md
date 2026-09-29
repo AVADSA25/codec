@@ -90,7 +90,10 @@ meanwhile; `future.result(timeout=remaining)` against `daybreak.time_budget_seco
   enters audit lines.
 - AGENTS.md: §2 repo map, §6 events, §5 `valid_at` correction.
 - **No new files in `~/.codec/`** — threads are ordinary facts rows; no state file, no
-  notifications posted.
+  notifications posted. Exception for owners who switch it on: the opt-in Morning briefing
+  (UI P3.1, docs/P3.1-DESIGN.md) runs this skill on a schedule, leaves a card on Home,
+  sends a content-free phone notification and keeps its spoken script in
+  `~/.codec/briefing_state.json`.
 
 ## 6. Files touched
 

@@ -610,8 +610,12 @@ function renderSchedules() {
     html += '<div class="sched-meta" style="margin-top:4px"><span>Sends to: ' + escHtml(sends) + (extras.length ? '; ' + escHtml(extras.join(', ')) : '') + '</span></div>';
     html += '<div class="card-actions">';
     html += '<button class="btn btn-sm btn-primary" onclick="runNow(\'' + escHtml(s.id) + '\')">Run now</button>';
-    html += '<button class="btn btn-sm" style="background:var(--accent);color:var(--on-accent)" onclick="editSchedule(\'' + escHtml(s.id) + '\')">Edit</button>';
-    html += '<button class="btn btn-sm btn-danger" onclick="deleteSchedule(\'' + escHtml(s.id) + '\')">Delete</button>';
+    if (s.managed === 'briefing') {
+      html += '<a class="btn btn-sm" href="/#settings" style="text-decoration:none">Set up in Settings</a>';
+    } else {
+      html += '<button class="btn btn-sm" style="background:var(--accent);color:var(--on-accent)" onclick="editSchedule(\'' + escHtml(s.id) + '\')">Edit</button>';
+      html += '<button class="btn btn-sm btn-danger" onclick="deleteSchedule(\'' + escHtml(s.id) + '\')">Delete</button>';
+    }
     html += '</div></div>';
   });
   el.innerHTML = html;

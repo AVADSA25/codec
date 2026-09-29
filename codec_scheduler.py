@@ -525,7 +525,13 @@ def update_job(sched_id: str, body: dict):
     def mutate(schedules):
         for s in schedules:
             if s.get("id") == sched_id:
-                fields = clean_job_input(body, existing=s)
+                if s.get("managed"):  # e.g. the Morning briefing: set up in Settings; here only on/off
+                    body_ = {k: v for k, v in body.items() if k == "enabled"}
+                    if not body_:
+                        raise ValueError("This job is set up in Settings.")
+                    fields = {"enabled": bool(body_["enabled"])}
+                else:
+                    fields = clean_job_input(body, existing=s)
                 if fields.get("enabled") and not s.get("enabled"):
                     s["enabled_at"] = datetime.now().isoformat()
                 s.update(fields)
@@ -724,8 +730,14 @@ def _speak_on_mac(text: str) -> None:
 
 def _deliver(sched: dict, title: str, output: str):
     """Send a successful result where the job asked. Returns the Google Doc URL."""
-    deliver = [d for d in (sched.get("deliver") or ["notification"]) if d in DELIVER] or ["notification"]
+    deliver = [d for d in (sched.get("deliver") or ["notification"]) if d in DELIVER + ("briefing",)] or ["notification"]
     doc_url = None
+    if "briefing" in deliver:  # P3.1: the Morning briefing's own delivery (card, push, script to say)
+        try:
+            import codec_briefing
+            codec_briefing.deliver(sched, output)
+        except Exception as e:
+            log.warning(f"  Briefing delivery failed: {e}")
     if "gdoc" in deliver:
         try:
             from codec_gdocs import create_google_doc
@@ -795,6 +807,8 @@ def check_and_run(now: datetime | None = None):
         picked = []
         for s in schedules:
             if due(s, now):
+                if s.get("managed") == "briefing" and _briefing_busy():
+                    continue  # P3.1: waits while an image job or low memory (caught up later)
                 s["last_attempt"] = stamp
                 picked.append(dict(s))
         return picked
@@ -804,6 +818,19 @@ def check_and_run(now: datetime | None = None):
             run_scheduled(sched)
         except Exception as e:
             log.error(f"Scheduled run failed: {e}")
+    try:  # P3.1: say a waiting briefing at the first activity
+        import codec_briefing
+        codec_briefing.tick(now)
+    except Exception as e:
+        log.debug(f"Briefing tick failed: {e}")
+
+
+def _briefing_busy() -> bool:
+    try:
+        import codec_briefing
+        return bool(codec_briefing.busy())
+    except Exception:
+        return False
 
 
 _PID_FILE = os.path.expanduser("~/.codec/scheduler.pid")

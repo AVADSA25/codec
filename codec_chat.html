@@ -1236,11 +1236,32 @@ function _chatFromHash(){
     if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',go);else go();
     return true;
   }
+  // A Today card opened in chat (P3.1 "Open in chat"): only a card id, never text from the link.
+  var cm=h.match(/^#card=(card_[0-9a-f]{10})$/);
+  if(cm){
+    try{history.replaceState(null,'',location.pathname+location.search)}catch(e){}
+    startNewSession();
+    fetch('/api/today/'+cm[1]).then(function(r){return r.ok?r.json():null}).then(function(c){
+      if(!c||!c.body)return;
+      addMessage('assistant',String(c.body),false,null,true);
+      chatHist.push({role:'assistant',content:String(c.body)});
+    }).catch(function(){});
+    return true;
+  }
   if(h!=='#new'&&h.indexOf('#session=')!==0)return false;
   try{history.replaceState(null,'',location.pathname+location.search)}catch(e){}
   var want=h==='#new'?'':decodeURIComponent(h.slice(9));
-  if(want){loadSession(want)}else{startNewSession()}
+  if(want){loadSession(want)}else{startNewSession();_takeDraft()}
   return true;
+}
+// A draft handed over by Home's "Draft reply" (P3.1), through sessionStorage, never the URL.
+// It goes into the box for review; nothing is sent.
+function _takeDraft(){
+  var d=_ssGet('codec-chat-draft');
+  if(!d)return;
+  _ssDel('codec-chat-draft');
+  var i=document.getElementById('chatInput');
+  i.value=String(d).slice(0,4000);_autosize(i);_syncSendState();i.focus();
 }
 window.addEventListener('hashchange',_chatFromHash);
 (function bootSession(){
