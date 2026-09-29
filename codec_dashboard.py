@@ -163,7 +163,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # ── CSRF check for state-changing requests ──
         # Only enforce CSRF if the user has a valid auth session (avoids blocking expired sessions
         # with stale CSRF cookies — let them fall through to the 401 auth check instead)
-        if request.method in ("POST", "PUT", "DELETE") and path not in self.CSRF_EXEMPT:
+        if request.method in ("POST", "PUT", "DELETE", "PATCH") and path not in self.CSRF_EXEMPT:
             csrf_cookie = request.cookies.get("codec_csrf", "")
             csrf_header = request.headers.get("x-csrf-token", "")
             session_cookie = request.cookies.get(AUTH_COOKIE_NAME, "")

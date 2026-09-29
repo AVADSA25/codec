@@ -61,10 +61,20 @@ def _parse_create_request(task):
 
 def _create_doc(task):
     """Create a new Google Doc with optional content."""
+    title, content = _parse_create_request(task)
+    url = create_doc(title, content)
+    result = f"Created Google Doc: **{title}**\n{url}"
+    if content:
+        result += f"\nContent: \"{content[:100]}{'...' if len(content) > 100 else ''}\""
+    return result
+
+
+def create_doc(title, content=""):
+    """Create a Google Doc with this exact title and text; return its URL.
+    Used by the chat export (routes/qchat.py, UI phase 2 P2.2) as well as
+    the natural-language create path above."""
     from googleapiclient.discovery import build
     creds = _get_creds()
-
-    title, content = _parse_create_request(task)
 
     docs_service = build("docs", "v1", credentials=creds)
 
@@ -83,10 +93,7 @@ def _create_doc(task):
             body={"requests": requests_body}
         ).execute()
 
-    result = f"Created Google Doc: **{title}**\n{url}"
-    if content:
-        result += f"\nContent: \"{content[:100]}{'...' if len(content) > 100 else ''}\""
-    return result
+    return url
 
 
 def run(task, context=None):
