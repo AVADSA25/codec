@@ -365,3 +365,11 @@ without text, but it is never reached with an empty box, so picking one (in the
 Agents sheet, or with '@' since P2.3) and pressing Send does nothing; any typed
 word works. Fix: let the early return through when chatMode is 'research' and
 the crew needs no text. Revisit: P3.8 (Activity board), which touches agent runs.
+
+## Deleting a saved custom agent does not ask first (2026-09-29)
+
+In Chat's Agents sheet (Custom Agent), the red Delete next to "Load saved"
+(`deleteSelectedAgent` in `codec_chat.html`) removes the selected agent at once,
+with no question and no undo. It never used the browser's `confirm()`, so P2.6
+left it as it was. Fix: ask with `CodecShell.ask({danger: true})` first, like
+the other deletes. Revisit: P3.8 (Activity board), which touches agents.

@@ -45,7 +45,7 @@ strict consent) are add-only. No personal data in the repo. No emoji in the UI.
 | 12 | MATH: Math and diagrams in replies | S | no | done (#413) |
 | 13 | P2.3: '/' commands, '@' skills and agents, and a Cmd+K palette | M | no | done (#415) |
 | 14 | P2.4: Memory page: see, correct and forget what CODEC remembers | M | no | done (#416) |
-| 15 | P2.6: Styled menus and sheets instead of native select, confirm, prompt and alert | M | no | open |
+| 15 | P2.6: Styled menus and sheets instead of native select, confirm, prompt and alert | M | no | done (#417) |
 | 16 | P2.7: Keep regenerated versions and add thumbs feedback | M | no | open |
 | 17 | P2.10: Settings with human labels, help text and proper controls | M | no | open |
 | 18 | P2.11: Temporary chat that is not saved to history or memory | M | no | open |

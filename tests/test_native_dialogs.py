@@ -63,6 +63,7 @@ def test_chat_uses_them():
     assert "await CodecShell.ask({title:'Stop this agent?'" in _fn(chat, "async function abortAgentInChat")
     sched = _fn(chat, "function showSchedulePanel()")
     assert "CodecShell.schedule.open({kind:'crew',crew:crew" in sched
+    assert "CodecShell.toast('A custom agent cannot be scheduled yet" in sched, "the shell toast shows above the open sheet"
     assert '<input type="checkbox" role="switch" id="imageTransparent">' in chat and 'class="img-switch"' in chat
     assert 'onclick="_stepMaxIter(-1)" aria-label="Fewer steps"' in chat and 'onclick="_stepMaxIter(1)" aria-label="More steps"' in chat
     assert "Math.max(1,Math.min(20," in _fn(chat, "function _stepMaxIter(d)")
@@ -90,7 +91,13 @@ def test_the_other_pages_use_them():
 def test_the_schedule_sheet_takes_a_crew():
     s = SHELL[SHELL.index("function schedOpen(opts)"):SHELL.index("// ── One modal for questions")]
     assert "opts.kind === 'crew' && opts.crew" in s and "'Schedule ' + SCHED.crew.label" in s
-    assert "{ kind: 'crew', crew: SCHED.crew.name, topic: prompt, label: SCHED.crew.label, when:" in s
+    assert "{ kind: 'crew', crew: SCHED.crew.name, topic: prompt, when:" in s
+    assert "label: (prompt ? SCHED.crew.label + ': ' + prompt.split('\\n')[0] : SCHED.crew.label).slice(0, 80)," in s
+    assert "$('csSchedChanged').parentNode.hidden = !!SCHED.crew;" in s
+    css = (REPO / "static" / "codec.css").read_text(encoding="utf-8")
+    assert ".cs-field[hidden], .cs-check[hidden] { display: none; }" in css, "a flex row or field would ignore hidden"
+    phone = css[css.index(".cs-dialog-backdrop { align-items: flex-end; padding: 0; }"):]
+    assert ".cs-field textarea, .cs-field input { font-size: max(16px, var(--fs-16)); }" in phone[:500], "no iOS zoom on focus"
 
 
 _JS_HARNESS = r"""

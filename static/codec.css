@@ -576,6 +576,7 @@ body.cs-rail .cs-profile > .cs-ico { display: none; }
 .cs-dialog-error { min-height: 1.3em; font-size: var(--fs-13); margin: 6px 0; }
 .cs-check { display: flex; align-items: center; gap: 8px; margin: 6px 0; font-size: var(--fs-14); cursor: pointer; }
 .cs-check input { width: 16px; height: 16px; accent-color: var(--accent); }
+.cs-field[hidden], .cs-check[hidden] { display: none; }
 .cs-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
 .cs-dbtn { height: 36px; padding: 0 16px; border: 1px solid var(--border); border-radius: var(--radius-pill); background: var(--surface-2);
   color: var(--text); font: 600 var(--fs-13)/1 var(--font-sans); cursor: pointer; }
@@ -584,6 +585,8 @@ body.cs-rail .cs-profile > .cs-ico { display: none; }
   .cs-dialog-backdrop { align-items: flex-end; padding: 0; }
   .cs-dialog { width: 100%; border-radius: 16px 16px 0 0; padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px)); }
   .cs-dbtn { height: 44px; }
+  /* iOS zooms the page into any field under 16px. */
+  .cs-field textarea, .cs-field input { font-size: max(16px, var(--fs-16)); }
 }
 
 /* The question modal (P2.6: CodecShell.ask) is a cs-dialog: the P3.3 look, a bottom sheet on the phone. */
@@ -611,6 +614,7 @@ body.cs-rail .cs-profile > .cs-ico { display: none; }
 .cs-menu-item.cs-active, .cs-menu-item:hover { background: var(--surface-2); }
 .cs-menu-item[aria-selected="true"] { font-weight: 600; color: var(--accent); }
 .cs-menu-item[aria-disabled="true"] { opacity: .5; cursor: default; }
+@media (max-width: 767px) { .cs-menu-item { min-height: 44px; } }
 
 /* Command palette (P2.3): near the top, one search box over a grouped list; the shortcut sheet is a cs-dialog. */
 .cs-pal-backdrop { align-items: flex-start; padding-top: 12vh; }

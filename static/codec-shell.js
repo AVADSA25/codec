@@ -1382,7 +1382,8 @@
     SCHED.busy = true;
     err.textContent = '';
     var job = SCHED.crew
-      ? { kind: 'crew', crew: SCHED.crew.name, topic: prompt, label: SCHED.crew.label, when: $('csSchedWhen').value,
+      ? { kind: 'crew', crew: SCHED.crew.name, topic: prompt, when: $('csSchedWhen').value,
+          label: (prompt ? SCHED.crew.label + ': ' + prompt.split('\n')[0] : SCHED.crew.label).slice(0, 80),
           deliver: deliver, speak: $('csSchedSpeak').checked, enabled: true }
       : { kind: 'prompt', prompt: prompt, when: $('csSchedWhen').value, deliver: deliver,
           label: prompt.split('\n')[0].slice(0, 80), speak: $('csSchedSpeak').checked,
@@ -1472,8 +1473,11 @@
     var done = ASK.resolve;
     ASK.resolve = null;
     ASK.input = null;
+    var inside = ASK.el.contains(document.activeElement);
     ASK.el.hidden = true;
     try { if (ASK.back && ASK.back.focus) ASK.back.focus(); } catch (e) { /* the element is gone */ }
+    // Focus must not stay on a hidden button when there was nothing to go back to.
+    if (inside && ASK.el.contains(document.activeElement)) document.activeElement.blur();
     done(value);
   }
 

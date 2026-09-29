@@ -10,7 +10,7 @@
 <link rel="icon" href="/favicon.png">
 <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
 <link rel="manifest" href="/manifest.json">
-<link rel="stylesheet" href="/static/codec.css?v=a6a108d7">
+<link rel="stylesheet" href="/static/codec.css?v=99bc6e42">
 <style>
 :root {
   --bg: #121215; --surface: #18181b; --surface-2: #1f1f22; --surface-3: #27272a;
@@ -365,7 +365,7 @@ input[type=file]{display:none}
 </style>
 </head>
 <body>
-<script src="/static/codec-shell.js?v=94eedac3" data-page="chat" data-title="Chat" data-status data-model-slot></script>
+<script src="/static/codec-shell.js?v=3a539cdf" data-page="chat" data-title="Chat" data-status data-model-slot></script>
 <div class="app cs-main" id="appContainer">
 <div class="messages" id="messages"></div>
 
@@ -2572,7 +2572,7 @@ function _stepMaxIter(d){var i=document.getElementById('agentMaxIter');i.value=S
 function showSchedulePanel(){
   // P2.6: the shell's schedule sheet for this crew (a task and a plain-language time), not an hour prompt.
   var cs=document.getElementById('crewSelect'),crew=cs.value||'daily_briefing',o=cs.options[cs.selectedIndex];
-  if(crew==='custom'){showToast('A custom agent cannot be scheduled yet; pick a crew.');return}
+  if(crew==='custom'){CodecShell.toast('A custom agent cannot be scheduled yet; pick a crew.');return}
   closeAgentSheet();
   CodecShell.schedule.open({kind:'crew',crew:crew,label:o?o.textContent:crew,topic:document.getElementById('chatInput').value.trim()});
 }
