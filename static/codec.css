@@ -371,7 +371,9 @@ body.cs.cs-rail { --cs-side-w: 64px; }
 }
 .cs-group { margin: 12px 0 2px; padding: 0 10px; font: var(--fw-semibold) var(--fs-12)/var(--lh-12) var(--font-sans); color: var(--text-dim); }
 .cs-group:first-child { margin-top: 2px; }
-.cs-hist { flex: 1 1 auto; min-height: 0; overflow-y: auto; margin: 0 -4px; padding: 0 4px; -webkit-overflow-scrolling: touch; }
+/* Only the chat list shrinks; a long list must not squeeze New chat, search or the nav. */
+.cs-side > :not(.cs-hist) { flex-shrink: 0; }
+.cs-hist { flex: 1 1 0; min-height: 0; overflow-y: auto; margin: 0 -4px; padding: 0 4px; -webkit-overflow-scrolling: touch; }
 .cs-hrow { display: flex; align-items: center; border-radius: var(--radius-8); transition: background .15s ease-out; }
 .cs-hrow:hover { background: var(--surface-2); }
 .cs-hrow.cs-on { background: var(--surface-3); }
