@@ -355,3 +355,13 @@ wrapper to `codec_audit.html`. Revisit: next UI queue item that touches the shel
 P2.9 moved it to `GET` plus the shell toast (`CodecShell.toast`), showing the image
 in the page's viewer. Fix Vibe the same way. Revisit: P2.6, which routes the
 pages' `alert()` calls through toasts.
+
+## A crew that needs no text cannot start from an empty Chat box (2026-09-29)
+
+`codec_chat.html`'s `sendMessage` returns early when the box is empty and no
+file is attached (it only releases a queued message then). The Agents branch
+further down lists `daily_briefing` and `email_handler` as crews that run
+without text, but it is never reached with an empty box, so picking one (in the
+Agents sheet, or with '@' since P2.3) and pressing Send does nothing; any typed
+word works. Fix: let the early return through when chatMode is 'research' and
+the crew needs no text. Revisit: P3.8 (Activity board), which touches agent runs.

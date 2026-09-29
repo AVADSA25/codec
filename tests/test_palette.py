@@ -64,7 +64,9 @@ def test_mentions_lists_picks_by_skill_name_in_groups(pal):
     assert {s["name"]: s["group"] for s in d["skills"]} == {
         "AI News Digest": "Reports", "time": "Tools", "google_calendar": "Google", "chrome_open": "Browser",
         "terminal": "Mac"}, "the chat allowlist only, minus create_skill; never python_exec or mcp_connect"
-    assert d["skills"][0]["description"] == "AI News Digest does its job"
+    assert [s["name"] for s in d["skills"]] == ["google_calendar", "chrome_open", "terminal", "AI News Digest", "time"], \
+        "by group (the SKILL_GROUPS order), then name: one heading per group"
+    assert d["skills"][3]["description"] == "AI News Digest does its job"
     crews = {c["name"]: c for c in d["crews"]}
     assert len(crews) == 12 and crews["deep_research"]["arg"] == "topic" and crews["daily_briefing"]["arg"] is None
     assert crews["trip_planner"]["label"] == "Trip Planner"

@@ -98,8 +98,10 @@ def _mcp_servers() -> list[dict]:
 def mentions():
     from codec_agents import CREW_REGISTRY
     from codec_dispatch import registry
-    skills = [{"name": n, "description": _short(registry.get_description(n)), "group": skill_group(n)}
-              for n in sorted(pickable_skills(), key=str.lower)]
+    order = [g for g, _ in SKILL_GROUPS] + ["Other"]
+    skills = sorted(({"name": n, "description": _short(registry.get_description(n)), "group": skill_group(n)}
+                     for n in pickable_skills()),
+                    key=lambda s: (order.index(s["group"]), s["name"].lower()))  # one heading per group
     crews = [{"name": k, "label": k.replace("_", " ").title(), "description": _short(v.get("description", ""), 90),
               "arg": (v.get("args") or [None])[0]} for k, v in CREW_REGISTRY.items()]
     return {"skills": skills, "crews": crews, "agents": _agents(), "mcp": _mcp_servers()}
