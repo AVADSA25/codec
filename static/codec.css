@@ -219,7 +219,7 @@
    the 16px reply size h1/h2/h3 are 24/20/16px, and the smaller Home cards and
    Tasks reports scale down with their own text. */
 .md { white-space: normal; overflow-wrap: break-word; }
-.md p, .md ul, .md ol, .md blockquote, .md hr, .md details, .md .md-code, .md .md-table { margin: 0 0 12px; }
+.md p, .md ul, .md ol, .md blockquote, .md hr, .md details, .md .md-code, .md .md-table, .md .md-diagram, .md .md-math-block { margin: 0 0 12px; }
 .md h1, .md h2, .md h3, .md h4, .md h5, .md h6 { font-weight: var(--fw-semibold); margin: 20px 0 8px; }
 .md h1 { font-size: 1.5em; line-height: var(--lh-24); }
 .md h2 { font-size: 1.25em; line-height: var(--lh-20); }
@@ -258,6 +258,18 @@
 .md-table tr:first-child > th, .md-table tr:first-child > td { border-top: 0; }
 .md-table th { font-weight: var(--fw-semibold); }
 .md-table th:not([align]), .md-table td:not([align]) { text-align: left; }
+
+/* Math (KaTeX) and diagrams (Mermaid, shown as an image), MATH. KaTeX takes
+   the text colour, so it follows the theme; a wide formula scrolls on its own. */
+.md-math-block, .md-math-display { display: block; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; }
+.md-math-block .katex-display, .md-math-display .katex-display { margin: 0.5em 0; }
+.md-diagram { border: 1px solid var(--border); border-radius: var(--radius-12); overflow: hidden; }
+.md-diagram .md-head { background: var(--surface-2); }
+/* The diagram keeps the background of the theme it was drawn in. */
+.md-diagram-body { display: flex; justify-content: center; padding: 16px; overflow-x: auto; }
+.md-diagram-dark { background: #1f2020; }
+.md-diagram-light { background: #ffffff; }
+.md .md-diagram-body img { max-width: 100%; height: auto; border-radius: 0; }
 
 /* highlight.js theme, from the --hl-* colours above. */
 .hljs { color: var(--text); background: transparent; }
