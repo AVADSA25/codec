@@ -8,7 +8,7 @@
 <link rel="icon" href="/favicon.png">
 <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
 <link rel="manifest" href="/manifest.json">
-<link rel="stylesheet" href="/static/codec.css?v=38bc78b5">
+<link rel="stylesheet" href="/static/codec.css?v=a6a108d7">
 <style>
 :root {
   --bg: #121215; --surface: #18181b; --surface-2: #1f1f22; --surface-3: #27272a;
@@ -204,7 +204,7 @@ a { color: var(--accent); text-decoration: none; }
 </style>
 </head>
 <body>
-<script src="/static/codec-shell.js?v=a80f433a" data-page="tasks" data-title="Tasks" data-status></script>
+<script src="/static/codec-shell.js?v=94eedac3" data-page="tasks" data-title="Tasks" data-status></script>
 <div class="cs-main cs-scroll">
 <div class="container">
   <div class="tabs">
@@ -749,11 +749,11 @@ function editSchedule(id) {
   document.getElementById('newScheduleForm').classList.add('visible');
 }
 
-function deleteSchedule(id) {
-  if (!confirm('Delete this schedule?')) return;
+async function deleteSchedule(id) {
+  if (!await CodecShell.ask({ title: 'Delete this schedule?', message: 'It stops running. Its past results stay in the history.', confirm: 'Delete', danger: true })) return;
   fetch('/api/schedules/' + id, { method: 'DELETE' })
     .then(function(){ loadSchedules(); showToast('Schedule deleted'); })
-    .catch(function(e){ alert('Error: ' + e); });
+    .catch(function(e){ showToast('Could not delete: ' + e); });
 }
 
 /* ── Heartbeat ── */

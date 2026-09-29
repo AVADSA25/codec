@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
 <link rel="manifest" href="/manifest.json">
 <title>CODEC</title>
-<link rel="stylesheet" href="/static/codec.css?v=38bc78b5">
+<link rel="stylesheet" href="/static/codec.css?v=a6a108d7">
 <style>
 :root {
   --bg: #121215; --surface: #18181b; --surface-2: #1f1f22; --surface-3: #2a2a2f;
@@ -578,7 +578,7 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
 </style>
 </head>
 <body>
-<script src="/static/codec-shell.js?v=a80f433a" data-page="home" data-title="Today" data-status></script>
+<script src="/static/codec-shell.js?v=94eedac3" data-page="home" data-title="Today" data-status></script>
 
 <!-- ── Connect your AI (first run) ─────────────────────────────────────────
      Shown until CODEC has a VERIFIED brain. A fresh paid install had no way
@@ -2668,8 +2668,9 @@ async function loadTotpStatus() {
 }
 
 async function disableTotp() {
-  var code = prompt('Enter your 6-digit authenticator code to disable 2FA:');
-  if (!code || code.length < 6) { showToast('Enter a valid 6-digit code'); return; }
+  var code = await CodecShell.ask({ title: 'Turn off two-factor sign-in?', message: 'Signing in will need only your PIN or Touch ID. Your authenticator entry is kept.',
+    confirm: 'Turn off', danger: true, input: {label:'Code from your authenticator app',inputmode:'numeric',maxlength:6,pattern:'[0-9]{6}',patternText:'Enter the 6 digits.',required:true,requiredText:'Enter the 6 digits.'} });
+  if (!code) return;
   try {
     var r = await fetch('/api/auth/totp/disable', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: code }) });
     var data = await r.json();
@@ -2685,8 +2686,8 @@ async function disableTotp() {
 }
 
 async function enableTotp() {
-  var code = prompt('Enter your 6-digit authenticator code to re-enable 2FA:');
-  if (!code || code.length < 6) { showToast('Enter a valid 6-digit code'); return; }
+  var code = await CodecShell.ask({ title: 'Turn two-factor sign-in back on?', confirm: 'Turn on', input: {label:'Code from your authenticator app',inputmode:'numeric',maxlength:6,pattern:'[0-9]{6}',patternText:'Enter the 6 digits.',required:true,requiredText:'Enter the 6 digits.'} });
+  if (!code) return;
   try {
     var r = await fetch('/api/auth/totp/enable', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: code }) });
     var data = await r.json();
@@ -3008,7 +3009,7 @@ async function savePrompt(key) {
   } catch(e) { console.error('Save prompt failed:', e); }
 }
 async function resetPrompt(key) {
-  if (!confirm('Reset "' + (_promptsData[key]||{}).label + '" to default?')) return;
+  if (!await CodecShell.ask({ title: 'Reset this prompt?', message: '"' + (_promptsData[key]||{}).label + '" goes back to the default text.', confirm: 'Reset', danger: true })) return;
   try {
     await fetch('/api/prompts/reset', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key:key})});
     _promptsData[key].value = _promptsData[key].default;
@@ -3338,26 +3339,26 @@ async function saveSkillTriggers(name) {
   var ta = document.getElementById('ta-' + name);
   if (!ta) return;
   var triggers = ta.value.split('\n').map(function(t) { return t.trim(); }).filter(Boolean);
-  if (!triggers.length) { alert('Add at least one trigger'); return; }
+  if (!triggers.length) { showToast('Add at least one trigger'); return; }
   try {
     var body = {}; body[name] = { triggers: triggers };
     var r = await fetch('/api/triggers', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
     var d = await r.json();
     if (d.status === 'saved') {
       loadTriggerGuide();
-      alert('Triggers saved! Restart CODEC (F13 off/on) to apply.');
+      showToast('Triggers saved. Restart CODEC (F13 off/on) to apply.');
     }
-  } catch(e) { alert('Save failed: ' + e.message); }
+  } catch(e) { showToast('Save failed: ' + e.message); }
 }
 
 async function resetSkillTriggers(name) {
-  if (!confirm('Reset "' + name + '" triggers to defaults?')) return;
+  if (!await CodecShell.ask({ title: 'Reset these triggers?', message: 'The "' + name + '" skill goes back to its own trigger phrases.', confirm: 'Reset', danger: true })) return;
   try {
     var body = {}; body[name] = { triggers: null };
     await fetch('/api/triggers', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
     loadTriggerGuide();
-    alert('Reset to defaults! Restart CODEC (F13 off/on) to apply.');
-  } catch(e) { alert('Reset failed: ' + e.message); }
+    showToast('Reset to defaults. Restart CODEC (F13 off/on) to apply.');
+  } catch(e) { showToast('Reset failed: ' + e.message); }
 }
 
 // ── Init ──

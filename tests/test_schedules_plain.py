@@ -271,7 +271,7 @@ def test_pages_offer_the_new_schedules():
     assert 'data-act="schedule"' in chat and "CodecShell.schedule.open({prompt:_questionBefore(host)})" in chat
     shell = (REPO / "static" / "codec-shell.js").read_text(encoding="utf-8")
     assert "schedule: { open: schedOpen, close: schedClose, save: schedSave }" in shell
-    assert "postJSON('/api/schedules', { kind: 'prompt'" in shell and "enabled: true" in shell
+    assert "{ kind: 'prompt', prompt: prompt, when: $('csSchedWhen').value" in shell and "postJSON('/api/schedules', job)" in shell and "enabled: true" in shell
     home = (REPO / "codec_dashboard.html").read_text(encoding="utf-8")
     assert 'id="todayCards"' in home and "fetch('/api/today')" in home and "/dismiss', { method: 'POST' }" in home
     dash = (REPO / "codec_dashboard.py").read_text(encoding="utf-8")

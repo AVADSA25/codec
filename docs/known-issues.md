@@ -347,7 +347,7 @@ while adding P3.13's push calls, which set the header themselves (`postJSON` in
 the shell). Fix: route the history calls through the same helper, or add the
 wrapper to `codec_audit.html`. Revisit: next UI queue item that touches the shell.
 
-## The Vibe page's Screenshot quick setting does nothing (2026-09-29)
+## The Vibe page's Screenshot quick setting does nothing (2026-09-29) — FIXED in P2.6
 
 `codec_vibe.html`'s `takeScreenshot()` sends `POST /api/screenshot`, but the route
 (`routes/media.py`) is GET-only and returns the PNG itself, so the request gets a
