@@ -213,6 +213,11 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
 .today-card-actions [hidden] { display: none; }
 .opt-check { display: flex; align-items: center; gap: 8px; font-size: var(--fs-14); color: var(--text); cursor: pointer; }
 .opt-check input { width: 16px; height: 16px; accent-color: var(--accent); }
+/* Check-ins (P3.5) */
+.ck-hours { display: inline-flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: var(--fs-13); }
+.ck-hours input { max-width: 120px; text-align: left; font-family: var(--font-sans); }
+.ck-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.ck-list textarea { max-width: 100%; width: 100%; text-align: left; font-family: var(--font-sans); font-size: var(--fs-14); box-sizing: border-box; }
 /* Voice (P2.8) */
 .voice-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 10px; flex-wrap: wrap; }
 .voice-row .voice-select { max-width: 100%; min-width: 0; flex: 1 1 220px; text-align: left; font-family: var(--font-sans); font-size: var(--fs-14); height: 36px; }
@@ -841,6 +846,31 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
           </div>
         </div>
       </div>
+      <div class="settings-section" style="margin-top:20px" id="checkinSection">
+        <div class="settings-title">Check-ins</div>
+        <div class="settings-card">
+          <div class="push-body">
+            <p class="push-intro">Now and then, while you are at the Mac, CODEC's local model looks at your next two hours, due follow-ups, important unread mail, failing services and your checklist. It stays quiet unless something needs you; then it leaves a card on Flash. Nothing leaves the Mac.</p>
+            <label class="voice-row"><span class="push-row-name">On</span>
+              <span class="mcp-switch"><input type="checkbox" id="ckOn" aria-label="Check-ins on"><span class="mcp-slider"></span></span></label>
+            <label class="voice-row"><span class="push-row-name">Every</span>
+              <select class="setting-input voice-select" id="ckEvery" aria-label="How often">
+                <option value="30">30 minutes</option><option value="45">45 minutes</option><option value="60">hour</option>
+                <option value="90">90 minutes</option><option value="120">2 hours</option></select></label>
+            <div class="voice-row"><span class="push-row-name">Active hours</span>
+              <span class="ck-hours"><input type="time" class="setting-input" id="ckFrom" aria-label="From"> to
+                <input type="time" class="setting-input" id="ckUntil" aria-label="Until"></span></div>
+            <label class="voice-row"><span class="push-row-name">At most per day</span>
+              <input type="number" class="setting-input" id="ckCap" min="1" max="12" style="max-width:90px" aria-label="At most per day"></label>
+            <label class="opt-check"><input type="checkbox" id="ckSpeak"> Say one sentence aloud on the Mac</label>
+            <label class="ck-list"><span class="push-row-name">My checklist (one per line)</span>
+              <textarea class="setting-input" id="ckList" rows="4" placeholder="Did I send the weekly invoice?&#10;Water the plants on Fridays"></textarea></label>
+            <div class="push-state" id="ckStatus" style="margin-top:10px"></div>
+            <div class="push-actions"><button type="button" class="mcp-btn mcp-btn-primary" onclick="saveCheckin()">Save</button></div>
+            <div class="push-msg" id="ckMsg" role="status" aria-live="polite"></div>
+          </div>
+        </div>
+      </div>
       <div class="settings-section" style="margin-top:20px" id="voiceSection">
         <div class="settings-title">Voice</div>
         <div class="settings-card">
@@ -1082,7 +1112,7 @@ function showTab(id) {
   if (id === 'audit') loadAudit();
   if (id === 'skills') loadSkillReviews();
   if (id === 'connector') renderConnectors();
-  if (id === 'settings') { loadSettings(); renderUIToggles(); loadPrompts(); loadPush(); loadVoice(); loadBriefing(); }
+  if (id === 'settings') { loadSettings(); renderUIToggles(); loadPrompts(); loadPush(); loadVoice(); loadBriefing(); loadCheckin(); }
 }
 // Links such as /#settings (the shell's Settings row, other pages) open that panel.
 function _tabFromHash() {
@@ -2060,6 +2090,7 @@ async function loadToday() {
     var card = document.createElement('div');
     card.className = 'today-card';
     var brief = c.kind === 'briefing';
+    var chk = c.kind === 'checkin';
     card.innerHTML = '<div class="today-card-top"><span class="today-card-title"></span><span class="today-card-time"></span></div>' +
       '<div class="today-card-body md"></div>' + (brief ? '<div class="today-threads"></div>' : '') +
       '<div class="today-card-actions">' +
@@ -2067,8 +2098,12 @@ async function loadToday() {
       (brief ? '<a class="mcp-btn" data-act="chat" href="/chat#card=' + encodeURIComponent(c.id) + '">Open in chat</a>' +
                '<button type="button" class="mcp-btn" data-act="snooze">Snooze 2 hours</button>' +
                '<button type="button" class="mcp-btn" data-act="stop" hidden>Stop speaking</button>' : '') +
+      (chk ? '<button type="button" class="mcp-btn" data-act="act">Act</button>' +
+             '<button type="button" class="mcp-btn" data-act="snooze1">Snooze 1 hour</button>' +
+             '<button type="button" class="mcp-btn" data-act="today">Dismiss today</button>' +
+             '<button type="button" class="mcp-btn" data-act="never">Never for this</button>' : '') +
       (c.url ? '<a class="mcp-btn" target="_blank" rel="noopener" data-act="doc">Google Doc</a>' : '') +
-      '<button type="button" class="mcp-btn" data-act="dismiss">Dismiss</button></div>';
+      (chk ? '' : '<button type="button" class="mcp-btn" data-act="dismiss">Dismiss</button>') + '</div>';
     card.querySelector('.today-card-title').textContent = c.title || 'Result';
     card.querySelector('.today-card-time').textContent = _todayTime(c.created);
     var body = card.querySelector('.today-card-body');
@@ -2080,12 +2115,14 @@ async function loadToday() {
       var open = card.classList.toggle('open');
       more.textContent = open ? 'Show less' : 'Show all';
     });
-    card.querySelector('[data-act="dismiss"]').addEventListener('click', async function (ev) {
+    var dis = card.querySelector('[data-act="dismiss"]');
+    if (dis) dis.addEventListener('click', async function (ev) {
       ev.target.disabled = true;
       try { await fetch('/api/today/' + encodeURIComponent(c.id) + '/dismiss', { method: 'POST' }); } catch (e) {}
       loadToday();
     });
     if (brief) _briefingCard(card, c);
+    if (chk) _checkinCard(card, c);
     box.appendChild(card);
   });
 }
@@ -2127,8 +2164,74 @@ function _briefingCard(card, c) {
   });
   fetch('/api/briefing').then(function (r) { return r.json(); }).then(function (b) { stop.hidden = !b.speaking; }).catch(function () {});
 }
+// P3.5: a check-in card: Act (opens a chat with the message as a draft), Snooze, Dismiss today,
+// Never for this pattern. The pattern id travels to the existing /api/proactive endpoints.
+function _checkinCard(card, c) {
+  var post = function (url, body) {
+    return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) }).catch(function () {});
+  };
+  var close = function () { return post('/api/today/' + encodeURIComponent(c.id) + '/dismiss'); };
+  card.querySelector('[data-act="act"]').addEventListener('click', async function () {
+    await post('/api/proactive/acknowledge', { pattern_id: c.source || 'checkin:attention' });
+    await close();
+    _ssSet('codec-chat-draft', c.body || '');
+    location.href = '/chat#new';
+  });
+  card.querySelector('[data-act="snooze1"]').addEventListener('click', async function (ev) {
+    ev.target.disabled = true;
+    await post('/api/today/' + encodeURIComponent(c.id) + '/snooze', { minutes: 60 });
+    loadToday();
+  });
+  [['today', 'today'], ['never', 'forever']].forEach(function (pair) {
+    card.querySelector('[data-act="' + pair[0] + '"]').addEventListener('click', async function (ev) {
+      ev.target.disabled = true;
+      await post('/api/proactive/dismiss', { pattern_id: c.source || 'checkin:attention', scope: pair[1] });
+      await close();
+      loadToday();
+    });
+  });
+}
 loadToday();
 setInterval(loadToday, 60000);
+
+// ── Check-ins (P3.5): settings for the heartbeat's proactive check-in. Default off.
+async function loadCheckin() {
+  var d = null;
+  try { var r = await fetch('/api/checkin'); d = r.ok ? await r.json() : null; } catch (e) {}
+  if (!d) { _ckMsg('Could not load the check-in settings.', true); return; }
+  document.getElementById('ckOn').checked = !!d.enabled;
+  document.getElementById('ckEvery').value = String(d.every_minutes);
+  document.getElementById('ckFrom').value = d.active_from;
+  document.getElementById('ckUntil').value = d.active_until;
+  document.getElementById('ckCap').value = d.daily_cap;
+  document.getElementById('ckSpeak').checked = !!d.speak;
+  document.getElementById('ckList').value = (d.checklist || []).join('\n');
+  document.getElementById('ckStatus').textContent = d.enabled
+    ? 'Today: ' + d.hits_today + ' of ' + d.daily_cap + ' check-ins used.' + (d.last_run ? ' Last run ' + new Date(d.last_run).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' (' + String(d.last_outcome || '').replace('_', ' ') + ').' : '')
+    : 'Off.';
+}
+function _ckMsg(text, err) {
+  var m = document.getElementById('ckMsg');
+  if (m) { m.textContent = text || ''; m.classList.toggle('err', !!err); }
+}
+async function saveCheckin() {
+  var body = {
+    enabled: document.getElementById('ckOn').checked,
+    every_minutes: parseInt(document.getElementById('ckEvery').value, 10),
+    active_from: document.getElementById('ckFrom').value,
+    active_until: document.getElementById('ckUntil').value,
+    daily_cap: parseInt(document.getElementById('ckCap').value, 10),
+    speak: document.getElementById('ckSpeak').checked,
+    checklist: document.getElementById('ckList').value
+  };
+  try {
+    var r = await fetch('/api/checkin', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    var d = await r.json();
+    if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    _ckMsg('Saved.');
+  } catch (e) { _ckMsg('Could not save: ' + e.message, true); }
+  loadCheckin();
+}
 
 // ── Morning briefing settings (P3.1): off by default; the job is created when switched on.
 var _brief = { cfg: null, timer: null };

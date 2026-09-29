@@ -54,9 +54,9 @@ def _check_one_service(name: str, url: str) -> tuple:
     """Check a single service endpoint. Returns (name, status_string)."""
     try:
         r = requests.get(url, timeout=5)
-        status = "✅" if r.status_code in (200, 404, 405) else f"⚠️ {r.status_code}"
+        status = "ok" if r.status_code in (200, 404, 405) else f"HTTP {r.status_code}"
     except Exception:
-        status = "❌ DOWN"
+        status = "DOWN"
         log_event("service_down", "codec-heartbeat",
                   f"Service down: {name}",
                   outcome="error", level="error",
@@ -101,7 +101,7 @@ def check_memory_stats():
 
         # Database size monitoring
         db_size_mb = os.path.getsize(DB_PATH) / (1024 * 1024) if os.path.exists(DB_PATH) else 0
-        size_warn = " ⚠️ LARGE" if db_size_mb > 100 else ""
+        size_warn = " (large)" if db_size_mb > 100 else ""
         log.info(f"Memory: {total} entries, {sessions} sessions, {db_size_mb:.1f} MB{size_warn}, latest: {latest[0][:16] if latest else 'none'}")
 
         if db_size_mb > 100:
@@ -658,6 +658,12 @@ def heartbeat():
         execute_pending_tasks()
     # Configurable alerts (BTC price, etc.)
     check_alerts()
+    # P3.5: the proactive check-in (off unless switched on in Settings; docs/P3.5-DESIGN.md)
+    try:
+        import codec_checkin
+        log.info(f"Check-in: {codec_checkin.run_checkin()}")
+    except Exception as e:
+        log.warning(f"Check-in failed: {e}")
     # Daily memory backup + cleanup
     backup_memory_db()
     now = datetime.now()

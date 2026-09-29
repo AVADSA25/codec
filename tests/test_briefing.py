@@ -243,7 +243,7 @@ def test_the_job_runs_the_kickoff_and_delivers_as_a_briefing(br, monkeypatch):
 
 def test_pages_offer_the_briefing():
     home = (REPO / "codec_dashboard.html").read_text(encoding="utf-8")
-    for needle in ('id="briefingSection"', 'id="briefOn"', 'id="briefWhen"', 'id="briefSpeak"', "loadBriefing(); }",
+    for needle in ('id="briefingSection"', 'id="briefOn"', 'id="briefWhen"', 'id="briefSpeak"', "loadBriefing();",
                    "function _briefingCard(card, c)", "fetch('/api/today/threads/done'", "_ssSet('codec-chat-draft'",
                    "href=\"/chat#card=' + encodeURIComponent(c.id)", "fetch('/api/briefing/stop'"):
         assert needle in home, needle
