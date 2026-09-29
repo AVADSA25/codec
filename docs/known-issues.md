@@ -335,3 +335,14 @@ nor in `AuthMiddleware.TRUSTED_ORIGIN_HOSTS`, treating `null` as untrusted.
   an error from `/api/command` is shown, but the poll loop still starts and
   overwrites the error with "Processing... <message>" for up to 5 minutes. Fix:
   return after showing the error.
+
+## Sidebar chat actions on the Audit page send no CSRF header (2026-09-29)
+
+`codec_audit.html` has no page fetch wrapper (the other six app pages add
+`x-csrf-token` to every non-GET `fetch`). The shell's history actions
+(`static/codec-shell.js`: rename, pin, archive via `PATCH`, delete via `DELETE`,
+Save to Google Doc via `POST`) rely on that wrapper, so on the Audit page, with a
+login configured, `AuthMiddleware` answers 403 "CSRF token mismatch". Found
+while adding P3.13's push calls, which set the header themselves (`postJSON` in
+the shell). Fix: route the history calls through the same helper, or add the
+wrapper to `codec_audit.html`. Revisit: next UI queue item that touches the shell.
