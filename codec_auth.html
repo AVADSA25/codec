@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>CODEC — Authenticate</title>
     <link rel="icon" href="/favicon.png">
-    <link rel="stylesheet" href="/static/codec.css?v=a5290fa8">
+    <link rel="stylesheet" href="/static/codec.css?v=78031f9b">
     <style>
         :root {
             --bg: #121215; --surface: #18181b; --surface-2: #1f1f22; --surface-3: #27272a;
@@ -36,13 +36,13 @@
             height: 100vh; display: flex; align-items: center; justify-content: center;
             transition: background 0.2s, color 0.2s;
         }
-        @supports (height: 100dvh) { body { height: calc(100dvh / var(--tz, 1)); } }
+        @supports (height: 100dvh) { body { height: 100dvh; } }
         .auth-container {
             text-align: center; max-width: 360px; width: 100%; padding: 32px;
         }
         .logo { width: 68px; height: 68px; margin: 0 auto 16px; filter: drop-shadow(0 0 18px rgba(217,119,87,0.35)); }
-        .title { font-family: var(--mono); font-size: 24px; font-weight: 700; color: var(--text); letter-spacing: 2px; margin-bottom: 6px; }
-        .subtitle { font-size: 13px; color: var(--text-dim); margin-bottom: 32px; }
+        .title { font-family: var(--mono); font-size: var(--fs-24); font-weight: 700; color: var(--text); letter-spacing: 2px; margin-bottom: 6px; }
+        .subtitle { font-size: var(--fs-13); color: var(--text-dim); margin-bottom: 32px; }
 
         .fingerprint-ring {
             width: 120px; height: 120px; border-radius: 50%; margin: 0 auto 24px;
@@ -67,7 +67,7 @@
         }
 
         .auth-btn {
-            padding: 14px 36px; font-size: 14px; font-weight: 600;
+            padding: 14px 36px; font-size: var(--fs-14); font-weight: 600;
             background: var(--accent); color: var(--on-accent); border: none; border-radius: var(--radius);
             cursor: pointer; width: 100%; margin-bottom: 12px;
             transition: all 0.15s; font-family: var(--font);
@@ -82,14 +82,14 @@
         .divider::before, .divider::after {
             content: ''; flex: 1; height: 1px; background: var(--border);
         }
-        .divider span { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; font-weight: 500; }
+        .divider span { font-size: var(--fs-12); color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; font-weight: 500; }
 
         .pin-section { display: none; }
         .pin-input-row {
             display: flex; gap: 8px; justify-content: center; margin-bottom: 16px;
         }
         .pin-digit {
-            width: 50px; height: 56px; text-align: center; font-size: 22px;
+            width: 50px; height: 56px; text-align: center; font-size: calc(22px * var(--fs-scale));
             font-weight: 600; letter-spacing: 2px;
             background: var(--surface); color: var(--accent); border: 1px solid var(--border);
             border-radius: 8px; outline: none;
@@ -98,13 +98,13 @@
         .pin-digit:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(217,119,87,0.1); }
         .pin-digit.filled { border-color: var(--accent); }
 
-        .status { font-size: 13px; color: var(--text-dim); min-height: 20px; margin-top: 16px; }
+        .status { font-size: var(--fs-13); color: var(--text-dim); min-height: 20px; margin-top: 16px; }
         .status.error { color: var(--danger); }
         .status.success { color: var(--success); }
 
         .remote-note {
             background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-            padding: 12px; margin-top: 24px; font-size: 12px; color: var(--text-dim);
+            padding: 12px; margin-top: 24px; font-size: var(--fs-12); color: var(--text-dim);
             line-height: 1.5;
         }
 
@@ -118,7 +118,7 @@
         @media (max-width: 480px) {
           .auth-container { padding: 24px 16px; }
           .pin-input-row { gap: 6px; }
-          .pin-digit { width: 44px; height: 50px; font-size: 20px; }
+          .pin-digit { width: 44px; height: 50px; font-size: var(--fs-20); }
           .fingerprint-ring { width: 100px; height: 100px; }
           .fingerprint-icon .ico { width: 34px; height: 34px; }
         }
@@ -163,7 +163,7 @@
         <!-- TOTP 2FA section (hidden until Touch ID/PIN succeeds) -->
         <div id="totpSection" style="display:none">
             <div class="divider"><span>2FA Verification</span></div>
-            <div style="font-size:13px;color:var(--text-muted);margin-bottom:16px">Enter the 6-digit code from your authenticator app</div>
+            <div style="font-size:var(--fs-13);color:var(--text-muted);margin-bottom:16px">Enter the 6-digit code from your authenticator app</div>
             <div class="pin-input-row">
                 <input type="text" class="pin-digit" id="totp1" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
                 <input type="text" class="pin-digit" id="totp2" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
@@ -178,9 +178,9 @@
         <!-- TOTP Setup section (shown only during first-time setup) -->
         <div id="totpSetupSection" style="display:none">
             <div class="divider"><span>Setup 2FA</span></div>
-            <div style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Scan this QR code with Google Authenticator or Authy</div>
+            <div style="font-size:var(--fs-13);color:var(--text-muted);margin-bottom:12px">Scan this QR code with Google Authenticator or Authy</div>
             <img id="totpQR" style="width:200px;height:200px;margin:0 auto 12px;display:block;border-radius:8px;background:#fff;padding:8px" />
-            <div style="font-size:11px;color:var(--text-dim);margin-bottom:16px;word-break:break-all" id="totpManualKey"></div>
+            <div style="font-size:var(--fs-12);color:var(--text-dim);margin-bottom:16px;word-break:break-all" id="totpManualKey"></div>
             <div class="pin-input-row">
                 <input type="text" class="pin-digit" id="setup1" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
                 <input type="text" class="pin-digit" id="setup2" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
@@ -196,7 +196,7 @@
 
         <!-- Setup 2FA link (shown when TOTP not yet configured) -->
         <div id="setup2faLink" style="display:none;margin-top:12px">
-            <a href="#" onclick="startTotpSetup();return false" style="font-size:12px;color:var(--accent);text-decoration:none;opacity:0.7"><svg viewBox="0 0 24 24" class="ico"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg> Setup 2FA (Authenticator App)</a>
+            <a href="#" onclick="startTotpSetup();return false" style="font-size:var(--fs-12);color:var(--accent);text-decoration:none;opacity:0.7"><svg viewBox="0 0 24 24" class="ico"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg> Setup 2FA (Authenticator App)</a>
         </div>
 
         <div class="remote-note" id="remoteNote" style="display:none;">
@@ -224,22 +224,9 @@ function _ssSet(k,v){try{sessionStorage.setItem(k,v)}catch(e){}}
 function _ssDel(k){try{sessionStorage.removeItem(k)}catch(e){}}
 </script>
 <script>
-/* Text size: small / medium / large. Default MEDIUM (1.15x) — the 14px base was
-   reported too small in the native app window. `zoom` scales every px-sized
-   rule on the page in one move, which a font-size variable alone would not.
-   Shared across surfaces via localStorage + the storage event. */
-var _TEXT_SIZES={small:1,medium:1.15,large:1.3};
-function _textSize(){var v=_lsGet('codec-text-size');return (v in _TEXT_SIZES)?v:'medium'}
-/* Same guard as Home (#344): a root zoom>1 breaks the phone shell's fixed nav/composer
-   math, so the phone always renders at 1. --tz carries the zoom so full-height roots can
-   size to calc(100dvh / var(--tz)) instead of overflowing the window on desktop. */
-function _isPhoneShell(){return window.matchMedia('(max-width: 768px), (max-height: 600px) and (pointer: coarse)').matches}
-function applyTextSize(){var z=_isPhoneShell()?1:_TEXT_SIZES[_textSize()];document.documentElement.style.zoom=String(z);document.documentElement.style.setProperty('--tz',String(z));var g=document.getElementById('textSizeGroup');if(g){Array.prototype.forEach.call(g.querySelectorAll('button'),function(b){b.classList.toggle('sel',b.getAttribute('data-size')===_textSize())})}}
-function setTextSize(s){if(!(s in _TEXT_SIZES))return;_lsSet('codec-text-size',s);applyTextSize()}
-window.addEventListener('storage',function(e){if(e.key==='codec-text-size')applyTextSize()});
-window.addEventListener('resize',applyTextSize);          // re-evaluate the phone-shell gate on rotate / resize
-window.addEventListener('orientationchange',function(){setTimeout(applyTextSize,150)});
-applyTextSize();
+/* Text size S / M / L scales the type tokens (--fs-scale 0.93 / 1 / 1.12), the same
+   setting as every other page (static/codec-shell.js). The root is never zoomed. */
+(function(){var S={small:0.93,medium:1,large:1.12};function apply(){var v=_lsGet('codec-text-size');document.documentElement.style.setProperty('--fs-scale',String(S[v]||1))}apply();window.addEventListener('storage',function(e){if(e.key==='codec-text-size')apply()})})();
 </script>
 <script>
 // Theme: system / light / dark (ported from chat). "system" follows the OS and

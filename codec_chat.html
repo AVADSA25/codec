@@ -9,7 +9,7 @@
 <title>CODEC Deep Chat</title>
 <link rel="icon" href="/favicon.png">
 <link rel="apple-touch-icon" href="/favicon.png">
-<link rel="stylesheet" href="/static/codec.css?v=a5290fa8">
+<link rel="stylesheet" href="/static/codec.css?v=78031f9b">
 <style>
 :root {
   --bg: #121215; --surface: #18181b; --surface-2: #1f1f22; --surface-3: #27272a;
@@ -30,74 +30,10 @@
 *{margin:0;padding:0;box-sizing:border-box}
 html{background:var(--bg)}
 html,body{font-family:var(--font-sans);background:var(--bg);color:var(--text);height:100%;overflow:hidden;-webkit-tap-highlight-color:transparent}
-.app{display:flex;flex-direction:column;height:100vh;position:relative;overflow:hidden}
-@supports (height:100dvh){.app{height:calc(100dvh / var(--tz, 1))}}
+/* The shell (static/codec-shell.js) sizes this column: it is the page's .cs-main. */
+.app{display:flex;flex-direction:column;position:relative;overflow:hidden}
 .ico{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
 .ico-sm{width:16px;height:16px}
-
-/* ── Header ── */
-.header{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0;z-index:10;position:relative}
-.header-left{display:flex;align-items:center;gap:8px}
-.icon-btn{background:none;border:1px solid var(--border);color:var(--text-muted);width:30px;height:30px;border-radius:var(--radius-sm);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;text-decoration:none}
-.icon-btn:hover{border-color:var(--border-strong);color:var(--text);background:var(--surface-2)}
-.icon-btn:active{transform:scale(.93)}
-.logo-link{display:flex;align-items:center;text-decoration:none}
-.logo-link img{width:34px;height:34px;border-radius:8px}
-.header h1{font-family:var(--font-mono);font-size:calc(16px * var(--fs-scale));font-weight:700;letter-spacing:2px;color:var(--accent)}
-.model-tag{font-family:var(--font-mono);font-size:calc(12px * var(--fs-scale));color:var(--text-dim);background:var(--surface-2);padding:2px 6px;border-radius:4px}
-.header-right{display:flex;gap:6px;align-items:center}
-.status-dot{width:7px;height:7px;border-radius:50%;background:var(--danger);flex-shrink:0;transition:all .3s}
-.status-dot.on{background:var(--success);box-shadow:0 0 6px rgba(34,197,94,0.5)}
-
-/* ── Page Nav ── */
-.page-nav{display:flex;align-items:center;gap:1px;position:absolute;left:50%;transform:translateX(-50%);background:var(--surface-2);border-radius:var(--radius-sm);padding:2px}
-.nav-link{padding:5px 14px;color:var(--text-muted);text-decoration:none;font-size:calc(12px * var(--fs-scale));font-weight:500;border-radius:4px;transition:all .15s;white-space:nowrap;text-align:center}
-.nav-link:hover{color:var(--text)}
-.nav-link.active{color:var(--accent);background:var(--accent-dim)}
-
-/* ── Side Panel ── */
-.side-panel-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9990}
-.side-panel-overlay.open{display:block}
-.side-panel{position:fixed;top:0;right:-300px;width:300px;height:100%;background:var(--surface);border-left:1px solid var(--border);z-index:9991;transition:right .3s cubic-bezier(.4,0,.2,1),visibility 0s .3s;visibility:hidden;display:flex;flex-direction:column;box-shadow:-4px 0 24px rgba(0,0,0,.3)}
-.side-panel.open{right:0;visibility:visible;transition:right .3s cubic-bezier(.4,0,.2,1)}
-.side-panel-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border)}
-.side-panel-header h2{font-family:var(--font-sans);font-size:var(--fs-13);font-weight:600;color:var(--accent);letter-spacing:2px}
-.side-panel-close{background:none;border:none;color:var(--text-muted);font-size:calc(20px * var(--fs-scale));cursor:pointer;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:4px;transition:all .15s}
-.side-panel-close:hover{color:var(--text);background:var(--surface-2)}
-.side-panel-body{padding:12px;display:flex;flex-direction:column;gap:6px;overflow-y:auto;flex:1}
-.sp-item{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-2);cursor:pointer;transition:all .15s;text-decoration:none;color:var(--text);font-size:calc(13px * var(--fs-scale));font-weight:500}
-.sp-item:hover{border-color:var(--border-strong);background:var(--surface-3);color:var(--text)}
-.sp-item svg{flex-shrink:0}
-.sp-item-label{flex:1;text-align:center}
-.sp-divider{height:1px;background:var(--border);margin:6px 0}
-.menu-btn{background:none;border:1px solid var(--border);color:var(--text-muted);width:30px;height:30px;border-radius:var(--radius-sm);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;font-size:calc(16px * var(--fs-scale));position:relative}
-.menu-btn:hover{border-color:var(--border-strong);color:var(--text);background:var(--surface-2)}
-.menu-btn:active{transform:scale(.93)}
-.menu-notif-dot{position:absolute;top:-3px;right:-3px;width:10px;height:10px;background:var(--accent);border-radius:50%;border:2px solid var(--surface,#1a1a2e);display:none;animation:notifPulse 2s infinite}
-.menu-notif-dot.active{display:block}
-@keyframes notifPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(1.2)}}
-.sp-item.notif-highlight{border-color:var(--accent);background:var(--accent-dim);box-shadow:0 0 0 1px var(--accent)}
-
-/* ── Sidebar ── */
-.sidebar-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:20}
-.sidebar-overlay.show{display:block}
-.sidebar{position:fixed;top:0;left:-280px;width:280px;height:100%;background:var(--surface);border-right:1px solid var(--border);z-index:30;transition:left .25s ease;overflow-y:auto;-webkit-overflow-scrolling:touch}
-.sidebar.show{left:0}
-.sidebar-header{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
-.sidebar-header h2{font-family:var(--font-sans);font-size:var(--fs-13);font-weight:600;color:var(--accent);letter-spacing:1px}
-.sidebar-close{background:none;border:none;color:var(--text-dim);font-size:calc(18px * var(--fs-scale));cursor:pointer;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:4px}
-.sidebar-close:hover{color:var(--text);background:var(--surface-2)}
-.sidebar-item{display:flex;align-items:center;border-bottom:1px solid var(--border);transition:background .15s}
-.sidebar-item:hover{background:var(--surface-2)}
-.sidebar-item .si-main{flex:1;min-width:0;padding:10px 8px 10px 16px;cursor:pointer}
-.sidebar-item .si-title{font-size:var(--fs-14);color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.sidebar-item .si-time{font-family:var(--font-mono);font-size:var(--fs-12);color:var(--text-dim);margin-top:2px}
-.si-del{flex-shrink:0;background:none;border:none;cursor:pointer;padding:8px 12px 8px 4px;font-size:calc(14px * var(--fs-scale));opacity:0;transition:opacity .15s;color:var(--text-dim)}
-.sidebar-item:hover .si-del{opacity:1}
-.si-del:hover{color:#e55;opacity:1!important}
-@media (hover:none){.si-del{opacity:1}} /* touch screens have no hover to reveal it */
-.sidebar-new{padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;color:var(--accent);font-weight:600;font-size:calc(12px * var(--fs-scale));display:flex;align-items:center;gap:6px}
-.sidebar-new:hover{background:var(--surface-2)}
 
 /* ── Messages ── */
 /* Reading column: 760px, centred. The side padding (16px on the phone) keeps the scrollbar at the window edge. */
@@ -347,19 +283,8 @@ input[type=file]{display:none}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
 ::-webkit-scrollbar-thumb:hover{background:var(--text-muted)}
 
-/* ── Light mode extra overrides ── */
-[data-theme=light] .icon-btn{border-color:#bbb;color:#444}
-[data-theme=light] .icon-btn:hover{border-color:#999;color:#1a1a1a;background:#e8e4de}
-[data-theme=light] .nav-link.active{color:var(--accent);background:var(--accent-dim)}
-
 /* ── Mobile Responsive ── */
 @media (max-width: 768px), (max-height: 600px) and (pointer: coarse){
-  .page-nav{position:fixed;bottom:0;left:0;right:0;z-index:9998;transform:none;border-radius:0;padding:6px 0;justify-content:center;background:var(--surface);border-top:1px solid var(--border);gap:0;overflow-x:auto}
-  .nav-link{padding:8px 8px;font-size:var(--fs-11)}
-  .side-panel{width:280px;right:-280px}
-  .header h1{font-size:calc(13px * var(--fs-scale))}
-  .logo-link img{width:28px;height:28px}
-  .model-tag{display:none}
   .msg{max-width:90%}
   
   #agentBuilder .ab-row{flex-direction:column}
@@ -367,12 +292,8 @@ input[type=file]{display:none}
   .msg-meta{opacity:.7}
 }
 @media (max-width:480px){
-  .header{padding:8px 10px}
-  .header-left{gap:6px}
   .messages{padding:10px 16px}
-  .sidebar{width:260px}
 }
-.notif-bell{position:relative;font-weight:400}.notif-badge{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;background:var(--accent);color:var(--on-accent);font-size:var(--fs-11);font-weight:700;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 4px;line-height:1;pointer-events:none}.notif-badge.hidden{display:none}
 .webcam-pip{position:fixed;bottom:80px;right:20px;width:240px;border-radius:14px;overflow:hidden;border:2px solid var(--accent);box-shadow:0 4px 24px rgba(0,0,0,.5);z-index:9999;display:none;background:#000;transition:width .3s,height .3s,border-radius .3s}
 .webcam-pip img,.webcam-pip video{width:100%;display:block}
 .webcam-pip.expanded{width:640px;max-width:90vw;border-radius:10px}
@@ -389,25 +310,14 @@ input[type=file]{display:none}
 .modal-close:hover { background:rgba(220,50,50,0.9); transform:scale(1.1); }
 @media(max-width:600px){ .modal-close { width:52px; height:52px; font-size:calc(30px * var(--fs-scale)); top:10px; right:10px; } }
 
-.text-size-row{justify-content:space-between;cursor:default}
-.text-size-group{display:inline-flex;gap:4px}
-.text-size-group button{background:var(--surface-2);border:1px solid var(--border);color:var(--text-muted);border-radius:var(--radius-sm);width:28px;height:24px;font-size:calc(12px * var(--fs-scale));font-weight:600;cursor:pointer;font-family:var(--font-sans)}
-.text-size-group button.sel{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
-
 @media (max-width: 768px), (max-height: 600px) and (pointer: coarse){
-  .input-area{position:fixed;left:0;right:0;bottom:var(--nav-h,56px);z-index:9997;padding-bottom:8px}
-  .page-nav{padding-bottom:calc(6px + env(safe-area-inset-bottom,0px))}
-  .messages{padding-bottom:calc(var(--nav-h,56px) + var(--input-h,64px) + 16px)}
-  /* Drawers, modals and toasts stack above the docked composer (9997) and nav (9998);
-     the composer hides while the history drawer is open. */
-  .sidebar-overlay,.side-panel-overlay{z-index:10000}
-  .sidebar,.side-panel{z-index:10001}
-  .sidebar.show~.input-area{visibility:hidden}
+  /* Phone (P2.1): the composer sits in the flow above the shell's tab bar, full
+     width minus 12px gutters (no position:fixed, no measured padding). The model
+     pill lives in the top bar; the Agents sheet is a bottom sheet; toasts show
+     under the top bar, clear of the composer. */
   .modal-overlay{z-index:10002}
   .modal-close{z-index:10003}
-  .toast{z-index:10004;bottom:calc(var(--nav-h,56px) + var(--input-h,64px) + 12px)}
-  /* Phone: the composer is full width minus 12px gutters and stays docked; the
-     model pill lives in the header; the Agents sheet is a bottom sheet. */
+  .toast{z-index:10004;bottom:auto;top:calc(60px + env(safe-area-inset-top,0px))}
   .input-area{padding:6px 12px 8px;background:var(--bg)}
   .app.is-empty .messages{flex:1;margin-top:0}
   .app.is-empty .input-area{margin-bottom:0}
@@ -421,62 +331,8 @@ input[type=file]{display:none}
 </style>
 </head>
 <body>
-<div class="app" id="appContainer">
-<div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
-<div class="sidebar" id="sidebar">
-<div class="sidebar-header"><h2>CONVERSATIONS</h2><button class="sidebar-close" onclick="closeSidebar()" aria-label="Close conversations"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
-<div style="padding:0 12px 8px">
-  <input type="text" id="sidebarSearch" placeholder="Search all chats..." oninput="handleSidebarSearch(this.value)"
-    style="width:100%;padding:8px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:calc(13px * var(--fs-scale));font-family:var(--font-sans);outline:none">
-</div>
-<div class="sidebar-new" onclick="newChat()">
-  <svg class="ico ico-sm" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-  New Chat
-</div>
-<div id="sidebarSearchResults" style="display:none"></div>
-<div id="sidebarList"></div>
-</div>
-
-<div class="header">
-<div class="header-left">
-<button class="icon-btn sidebar-toggle" onclick="openSidebar()" title="Chat history" aria-label="Chat history"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
-<a href="/" class="logo-link"><img src="/static/logo.svg" alt="CODEC"></a>
-<h1><a href="/" style="color:inherit;text-decoration:none">CODEC</a></h1>
-<div class="status-dot" id="statusDot" title="CODEC status"></div>
-</div>
-<nav class="page-nav">
-<a href="/" class="nav-link">Home</a>
-<a href="/chat" class="nav-link active">Chat</a>
-<a href="/voice" class="nav-link">Voice</a>
-<a href="/vibe" class="nav-link">Vibe</a>
-<a href="/tasks" class="nav-link">Tasks</a>
-</nav>
-<div class="header-right">
-<span id="hdrModelSlot"></span>
-<button class="menu-btn" onclick="openSidePanel()" title="Home" id="menuBtn"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span class="menu-notif-dot" id="menuNotifDot"></span></button>
-</div>
-</div>
-<!-- Side Panel -->
-<div class="side-panel-overlay" id="sidePanelOverlay" onclick="closeSidePanel()"></div>
-<div class="side-panel" id="sidePanel">
-<div class="side-panel-header"><h2>MENU</h2><button class="side-panel-close" onclick="closeSidePanel()" aria-label="Close menu"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
-<div class="side-panel-body">
-  <a href="/" class="sp-item"><svg class="ico" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span class="sp-item-label">Home</span></a>
-  <div class="sp-divider"></div>
-  <button class="sp-item" id="voiceBtn" onclick="toggleVoiceReply();closeSidePanel()"><svg class="ico" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 010 14.14"/><path d="M15.54 8.46a5 5 0 010 7.07"/><line id="muteX1" x1="4" y1="4" x2="20" y2="20" stroke-width="2.5" style="display:none"/><line id="muteX2" x1="4" y1="20" x2="20" y2="4" stroke-width="2.5" style="display:none"/></svg><span class="sp-item-label" style="flex:none">Voice Replies</span><span id="voiceState" style="font-size:calc(12px * var(--fs-scale));font-weight:700;padding:2px 8px;border-radius:4px"></span></button>
-  <button class="sp-item" id="screenBtn" onclick="takeScreenshot();closeSidePanel()"><svg class="ico" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg><span class="sp-item-label">Screenshot</span></button>
-  <button class="sp-item" id="photoBtn" onclick="takeServerPhoto();closeSidePanel()"><svg class="ico" viewBox="0 0 24 24"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg><span class="sp-item-label">Photo (Webcam)</span></button>
-  <button class="sp-item" id="camBtn" onclick="toggleWebcamPip();closeSidePanel()"><svg class="ico" viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg><span class="sp-item-label">Live Video (PIP)</span></button>
-  <div class="sp-divider"></div>
-  <a href="/tasks#reports" class="sp-item notif-bell" id="notifBellBtn"><svg class="ico" viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg><span class="sp-item-label">Notifications</span><span class="notif-badge hidden" id="notifBadge">0</span></a>
-  <button class="sp-item" id="themeBtn" onclick="toggleTheme()"><svg class="ico" viewBox="0 0 24 24" id="themeIco"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg><span class="sp-item-label">Toggle Theme</span></button>
-      <div class="sp-item text-size-row"><span class="sp-item-label">Text size</span><span class="text-size-group" id="textSizeGroup"><button data-size="small" onclick="setTextSize('small')" title="Small">S</button><button data-size="medium" onclick="setTextSize('medium')" title="Medium">M</button><button data-size="large" onclick="setTextSize('large')" title="Large">L</button></span></div>
-  <button class="sp-item" onclick="window.location.href='/#settings'"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg><span class="sp-item-label">Settings</span></button>
-  <div class="sp-divider"></div>
-  <button class="sp-item" onclick="lockSession()" style="color:var(--danger)"><svg class="ico" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg><span class="sp-item-label">Lock Session</span></button>
-</div>
-</div>
-
+<script src="/static/codec-shell.js?v=8153c573" data-page="chat" data-title="Chat" data-status data-model-slot></script>
+<div class="app cs-main" id="appContainer">
 <div class="messages" id="messages"></div>
 
 <div class="input-area">
@@ -627,21 +483,6 @@ function _ssSet(k,v){try{sessionStorage.setItem(k,v)}catch(e){}}
 function _ssDel(k){try{sessionStorage.removeItem(k)}catch(e){}}
 </script>
 <script>
-/* Text size: small / medium / large. Default MEDIUM. PR-C: scales the --fs-scale
-   token instead of a root zoom — zoom broke the phone shell's fixed nav/composer
-   math (#344); a font-size-only variable doesn't touch that math, so the same
-   scale now applies everywhere and --tz stays at 1 (calc(100dvh / var(--tz,1))
-   is unaffected). Shared across surfaces via localStorage + the storage event. */
-var _TEXT_SIZES={small:0.93,medium:1,large:1.12};
-function _textSize(){var v=_lsGet('codec-text-size');return (v in _TEXT_SIZES)?v:'medium'}
-function applyTextSize(){document.documentElement.style.setProperty('--fs-scale',String(_TEXT_SIZES[_textSize()]));var g=document.getElementById('textSizeGroup');if(g){Array.prototype.forEach.call(g.querySelectorAll('button'),function(b){b.classList.toggle('sel',b.getAttribute('data-size')===_textSize())})}}
-function setTextSize(s){if(!(s in _TEXT_SIZES))return;_lsSet('codec-text-size',s);applyTextSize()}
-window.addEventListener('storage',function(e){if(e.key==='codec-text-size')applyTextSize()});
-applyTextSize();
-</script>
-<script>
-function openSidePanel(){document.getElementById('sidePanel').classList.add('open');document.getElementById('sidePanelOverlay').classList.add('open')}
-function closeSidePanel(){document.getElementById('sidePanel').classList.remove('open');document.getElementById('sidePanelOverlay').classList.remove('open')}
 // Auth + CSRF: inject session token and CSRF header on all requests
 // On mobile (Android Chrome), cookies may not persist — fallback to sessionStorage
 (function(){
@@ -1375,13 +1216,24 @@ function parseScaffold(raw){
 
 function genId(){return Date.now().toString(36)+Math.random().toString(36).substr(2,5)}
 
-function startNewSession(){sessionId=genId();_lsSet('codec-chat-session',sessionId);chatHist=[];pendingFiles=[];document.getElementById('fileChips').innerHTML='';_clearQueue();_follow=true;_renderEmptyState();_syncSendState()}
+function startNewSession(){sessionId=genId();_lsSet('codec-chat-session',sessionId);chatHist=[];pendingFiles=[];document.getElementById('fileChips').innerHTML='';_clearQueue();_follow=true;_renderEmptyState();_syncSendState();if(window.CodecShell)CodecShell.setActiveChat(sessionId)}
 
 // PR #39: persist sessionId across page reloads. If a previous session
 // exists, load it on boot so the user lands back on the same chat (with
 // any project plan cards rehydrated). Falls back to a fresh session if
 // the previous one's GET returns empty.
+// The shell's sidebar on other pages links here as /chat#new and /chat#session=<id>.
+function _chatFromHash(){
+  var h=location.hash||'';
+  if(h!=='#new'&&h.indexOf('#session=')!==0)return false;
+  try{history.replaceState(null,'',location.pathname+location.search)}catch(e){}
+  var want=h==='#new'?'':decodeURIComponent(h.slice(9));
+  if(want){loadSession(want)}else{startNewSession()}
+  return true;
+}
+window.addEventListener('hashchange',_chatFromHash);
 (function bootSession(){
+  if(_chatFromHash())return;
   var saved=_lsGet('codec-chat-session');
   if(!saved){startNewSession();return}
   // Optimistically load \u2014 if the session is empty/missing, we'll start fresh
@@ -1392,7 +1244,7 @@ function startNewSession(){sessionId=genId();_lsSet('codec-chat-session',session
       // Use the saved id and replay history through the same code path
       // sidebar uses (so the plan-card rehydration runs once the messages
       // are in the DOM).
-      sessionId=saved;
+      sessionId=saved;if(window.CodecShell)CodecShell.setActiveChat(saved);
       var es=document.getElementById('emptyState');if(es)es.remove();
       document.getElementById('messages').innerHTML='';
       chatHist=[];
@@ -1410,79 +1262,13 @@ function startNewSession(){sessionId=genId();_lsSet('codec-chat-session',session
 
 async function saveMessages(msgs){
   var title=(chatHist.find(function(m){return m.role==='user'})||{}).content||'New Chat';
-  try{await fetch('/api/qchat/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:sessionId,title:title.substring(0,60),messages:msgs})})}catch(e){}
+  try{await fetch('/api/qchat/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:sessionId,title:title.substring(0,60),messages:msgs})});if(window.CodecShell)CodecShell.refreshHistorySoon()}catch(e){}
 }
 
-// ── Theme: system / light / dark ──────────────────────────────────────────
-// 'system' is the DEFAULT and follows the OS day-night setting live, so CODEC
-// darkens with macOS at sunset without anyone touching a toggle. The resolved
-// value is always stamped on data-theme, so every existing [data-theme="light"]
-// rule keeps working untouched. An explicit light/dark choice pins it and stops
-// following the OS until the user cycles back to system.
-function _themePref(){var v=null;try{v=_lsGet('codec-theme')}catch(e){}return (v==='light'||v==='dark'||v==='system')?v:'system'}
-function _themeResolved(pref){
-  if(pref==='light'||pref==='dark')return pref;
-  try{return (window.matchMedia&&matchMedia('(prefers-color-scheme: light)').matches)?'light':'dark'}catch(e){return 'dark'}
-}
-function applyTheme(){
-  var pref=_themePref(),eff=_themeResolved(pref);
-  document.documentElement.setAttribute('data-theme',eff);
-  var meta=document.querySelector('meta[name="theme-color"]');
-  if(meta)meta.content=eff==='light'?'#faf8f5':'#121215';
-  updateThemeIcon(pref,eff);
-}
-function toggleTheme(){
-  var order=['system','light','dark'],next=order[(order.indexOf(_themePref())+1)%3];
-  try{_lsSet('codec-theme',next)}catch(e){}
-  applyTheme();
-  if(typeof showToast==='function')showToast(next==='system'?'Theme follows your system':'Theme: '+next);
-}
-// Live OS changes only move the UI while the user is on 'system'.
-try{if(window.matchMedia){matchMedia('(prefers-color-scheme: light)').addEventListener('change',function(){if(_themePref()==='system')applyTheme()})}}catch(e){}
-// Another CODEC tab changing the preference keeps this one in step.
-window.addEventListener('storage',function(e){if(e.key==='codec-theme')applyTheme()});
-function updateThemeIcon(pref,eff){var ico=document.getElementById('themeIco');if(!ico)return;var theme=(pref==='system')?'system':(eff||pref);if(theme==='system'){ico.innerHTML='<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 000 18z" fill="currentColor" stroke="none"/>';ico.parentNode&&ico.parentNode.setAttribute('title','Theme: follows your system — click to pin light');return}ico.parentNode&&ico.parentNode.setAttribute('title','Theme: '+theme+' — click to change');if(theme==='light'){ico.innerHTML='<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>'}else{ico.innerHTML='<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>'}}
-applyTheme();
 
-function openSidebar(){document.getElementById('sidebar').classList.add('show');document.getElementById('sidebarOverlay').classList.add('show');loadSidebarHistory();var si=document.getElementById('sidebarSearch');if(si){si.value='';document.getElementById('sidebarSearchResults').style.display='none';document.getElementById('sidebarList').style.display=''}}
-function closeSidebar(){document.getElementById('sidebar').classList.remove('show');document.getElementById('sidebarOverlay').classList.remove('show')}
-
-var _searchTimer=null;
-function handleSidebarSearch(q){
-  clearTimeout(_searchTimer);
-  var resultsEl=document.getElementById('sidebarSearchResults');
-  var listEl=document.getElementById('sidebarList');
-  if(!q||q.length<2){resultsEl.style.display='none';listEl.style.display='';return}
-  _searchTimer=setTimeout(async function(){
-    try{
-      var r=await fetch('/api/qchat/search?q='+encodeURIComponent(q));
-      var data=await r.json();
-      if(!data.length){resultsEl.innerHTML='<div style="padding:16px;color:var(--text-dim);font-size:calc(12px * var(--fs-scale))">No results for "'+escHtml(q)+'"</div>';resultsEl.style.display='';listEl.style.display='none';return}
-      resultsEl.innerHTML='<div style="padding:4px 12px 4px;font-size:calc(13px * var(--fs-scale));font-weight:600;color:var(--text-dim);letter-spacing:1px">Search Results</div>'+data.map(function(s){
-        var ts=s.timestamp?new Date(s.timestamp).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
-        return'<div class="sidebar-item" onclick="loadSession(\''+s.session_id+'\');closeSidebar()"><div class="si-title">'+escHtml(s.title)+'</div><div style="font-size:calc(12px * var(--fs-scale));color:var(--text-dim);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(s.snippet)+'</div><div class="si-time">'+ts+'</div></div>'
-      }).join('');
-      resultsEl.style.display='';listEl.style.display='none'
-    }catch(e){resultsEl.innerHTML='<div style="padding:16px;color:var(--text-dim);font-size:calc(12px * var(--fs-scale))">Search error</div>';resultsEl.style.display='';listEl.style.display='none'}
-  },300)
-}
-
-async function loadSidebarHistory(){
-  var el=document.getElementById('sidebarList');
-  el.innerHTML='<div style="padding:16px;color:var(--text-dim);font-size:calc(12px * var(--fs-scale))">Loading...</div>';
-  try{
-    var r=await fetch('/api/qchat/sessions');var data=await r.json();
-    if(!data.length){el.innerHTML='<div style="padding:16px;color:var(--text-dim);font-size:calc(12px * var(--fs-scale))">No conversations yet.</div>';return}
-    el.innerHTML=data.map(function(s){
-      var ts=s.updated_at?new Date(s.updated_at).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
-      var active=s.id===sessionId?' style="background:var(--surface-2)"':'';
-      return'<div class="sidebar-item"'+active+'><div class="si-main" onclick="loadSession(\''+s.id+'\')"><div class="si-title">'+escHtml(s.title)+'</div><div class="si-time">'+ts+'</div></div><button class="si-del" onclick="deleteSession(event,\''+s.id+'\')" title="Delete"><svg class="ico ico-sm" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></button></div>'
-    }).join('')
-  }catch(e){el.innerHTML='<div style="padding:16px;color:var(--text-dim);font-size:calc(12px * var(--fs-scale))">Error loading.</div>'}
-}
 
 async function loadSession(sid){
-  closeSidebar();sessionId=sid;_lsSet('codec-chat-session',sid);chatHist=[];pendingFiles=[];_clearQueue();
+  if(window.CodecShell){CodecShell.closeDrawer();CodecShell.setActiveChat(sid)}sessionId=sid;_lsSet('codec-chat-session',sid);chatHist=[];pendingFiles=[];_clearQueue();
   document.getElementById('fileChips').innerHTML='';
   var es=document.getElementById('emptyState');if(es)es.remove();
   document.getElementById('messages').innerHTML='';
@@ -1496,17 +1282,8 @@ async function loadSession(sid){
   }catch(e){}
 }
 
-function newChat(){closeSidebar();startNewSession()}
+function newChat(){if(window.CodecShell)CodecShell.closeDrawer();startNewSession()}
 
-async function deleteSession(evt, sid){
-  evt.stopPropagation();
-  if(!confirm('Delete this conversation?'))return;
-  try{
-    await fetch('/api/qchat/session/'+sid,{method:'DELETE'});
-    if(sid===sessionId){startNewSession()}
-    loadSidebarHistory();
-  }catch(e){console.error('deleteSession failed',e)}
-}
 
 function escHtml(s){var d=document.createElement('div');d.textContent=s||'';return d.innerHTML.replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
 // Reply text -> safe HTML via static/codec-md.js: marked (GFM, line breaks kept), then DOMPurify.
@@ -2449,7 +2226,6 @@ async function deleteSelectedAgent(){
   try{var a=JSON.parse(json);var r=await fetch('/api/agents/custom/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:a.id})});var d=await r.json();if(d.deleted){addMessage('assistant','Agent **'+(a.name||a.id)+'** deleted');await loadSavedAgentList()}else{addMessage('assistant','Delete failed: '+(d.error||'unknown'))}}catch(e){addMessage('assistant','Delete error: '+e.message)}
 }
 
-function lockSession(){fetch('/api/auth/logout',{method:'POST'}).then(function(){document.cookie='codec_session=;path=/;max-age=0;SameSite=Lax'+(location.protocol==='https:'?';Secure':'');window.location.href='/auth'})}
 
 // ── Header icons (matching dashboard) ──
 var voiceReplyEnabled=_lsGet('codec-voice')==='true';
@@ -2544,29 +2320,8 @@ function showSchedulePanel(){
   if(!hour)return;
   fetch('/api/schedules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({crew:crew,hour:parseInt(hour),minute:0})}).then(function(r){return r.json()}).then(function(d){if(d.schedule){showToast('Scheduled! '+crew+' daily at '+String(parseInt(hour)).padStart(2,'0')+':00')}else{showToast('Error: '+(d.error||'unknown'))}}).catch(function(e){showToast('Schedule error: '+e)})
 }
-(function(){
-  function pollNotifCount(){
-    fetch('/api/notifications/count').then(function(r){return r.json()}).then(function(d){
-      var c=d.unread||d.count||0;
-      var b=document.getElementById('notifBadge');
-      if(b){b.textContent=c;b.classList.toggle('hidden',c===0)}
-      var dot=document.getElementById('menuNotifDot');
-      if(dot)dot.classList.toggle('active',c>0);
-      var bell=document.getElementById('notifBellBtn');
-      if(bell)bell.classList.toggle('notif-highlight',c>0);
-    }).catch(function(){})
-  }
-  pollNotifCount();setInterval(pollNotifCount,30000);
-  var bell=document.getElementById('notifBellBtn');
-  if(bell)bell.addEventListener('click',function(){
-    fetch('/api/notifications/read-all',{method:'POST'}).catch(function(){});
-    var b=document.getElementById('notifBadge');if(b){b.textContent='0';b.classList.add('hidden')}
-    var dot=document.getElementById('menuNotifDot');if(dot)dot.classList.remove('active');
-    bell.classList.remove('notif-highlight');
-  });
-})();
 // Apply UI preferences from dashboard settings
-(function(){try{var p=JSON.parse(_lsGet('codec-ui-prefs')||'{}'),m={'screenshot_btn':'#screenBtn','photo_btn':'#photoBtn','webcam_pip_btn':'#camBtn','voice_btn':'#voiceBtn','notif_bell':'#notifBellBtn','mic_btn':'#micBtn','chat_sidebar':'#sidebar,#sidebarOverlay,.sidebar-toggle','chat_agents':'#modeResearchBtn','chat_agent_builder':'#agentBuilder'};Object.keys(m).forEach(function(k){if(p[k]===false)m[k].split(',').forEach(function(s){document.querySelectorAll(s.trim()).forEach(function(el){el.style.display='none'})})})}catch(e){}})();
+(function(){try{var p=JSON.parse(_lsGet('codec-ui-prefs')||'{}'),m={'screenshot_btn':'#screenBtn','photo_btn':'#photoBtn','webcam_pip_btn':'#camBtn','voice_btn':'#voiceBtn','notif_bell':'#csInbox,#csTabInbox','mic_btn':'#micBtn','chat_sidebar':'#csHist,#csHistHead','chat_agents':'#modeResearchBtn','chat_agent_builder':'#agentBuilder'};Object.keys(m).forEach(function(k){if(p[k]===false)m[k].split(',').forEach(function(s){document.querySelectorAll(s.trim()).forEach(function(el){el.style.display='none'})})})}catch(e){}})();
 </script>
 <div class="webcam-pip" id="webcamPip">
   <img id="pipVideo" alt="Mac Webcam" onclick="expandPip()" style="cursor:pointer" />
@@ -3062,28 +2817,5 @@ setTimeout(refreshAgentStatusPills,500);setInterval(function(){ refreshAgentStat
 })();
 </script>
 
-<script>
-/* Pin the composer above the bottom nav on every phone.
-   Flex/dvh math differs per device (gesture bars, browser vs installed PWA),
-   so measure the real nav + composer heights and expose them as CSS vars. */
-(function(){
-  function sync(){
-    var nav=document.querySelector('.page-nav'), ia=document.querySelector('.input-area');
-    var mobile=window.matchMedia('(max-width: 768px), (max-height: 600px) and (pointer: coarse)').matches;
-    var r=document.documentElement.style;
-    var docked = nav && getComputedStyle(nav).position==='fixed';
-    r.setProperty('--nav-h', (mobile&&docked?nav.offsetHeight:0)+'px');
-    r.setProperty('--input-h', (ia?ia.offsetHeight:0)+'px');
-  }
-  var ro=window.ResizeObserver?new ResizeObserver(sync):null;
-  function attach(){
-    ['.page-nav','.input-area'].forEach(function(s){var e=document.querySelector(s); if(e&&ro) ro.observe(e);});
-    sync();
-  }
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',attach); else attach();
-  addEventListener('resize',sync); addEventListener('orientationchange',function(){setTimeout(sync,150)});
-  if(window.visualViewport) visualViewport.addEventListener('resize',sync);
-})();
-</script>
 </body>
 </html>

@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-STAMPED = ("codec.css", "codec-md.js")
+STAMPED = ("codec.css", "codec-md.js", "codec-shell.js")
 
 
 def versions() -> dict:
