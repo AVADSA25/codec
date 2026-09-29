@@ -116,8 +116,12 @@ def test_bubbles_say_you_and_the_type_is_plex():
 
 def test_the_screenshot_uses_get_and_a_toast():
     shot = _fn("takeScreenshot")
-    assert "fetch('/api/screenshot?_t='" in shot and "method" not in shot
+    # The image loads from the GET-only route itself: the page CSP allows 'self' images, not blob: URLs.
+    assert "img.src='/api/screenshot?_t='+Date.now();" in shot and "createObjectURL" not in shot and "method" not in shot
     assert "showToast('Screenshot taken')" in shot and "showToast('Could not take a screenshot')" in shot
+    import codec_dashboard
+    img_src = re.search(r"img-src ([^;]+);", codec_dashboard.CSPMiddleware.CSP).group(1)
+    assert "'self'" in img_src and "blob:" not in img_src
     assert "alert(" not in PAGE
     shell = (REPO / "static" / "codec-shell.js").read_text(encoding="utf-8")
     assert "install: install, toast: toast," in shell, "the shell exports its toast"
