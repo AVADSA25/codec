@@ -196,12 +196,20 @@ def _degenerate_tail(text: str) -> bool:
     return text[-2400:].count(probe) >= 5
 
 
-def _enrich_messages(messages: list, config: dict, force_search: bool = False) -> list:
+def _note_memory(meta, source: str, kind: str, count: int) -> None:
+    """Record what memory went into this turn, for the reply's "Memory used" (P2.4):
+    source, kind and a count, never the text."""
+    if meta is not None and count:
+        meta.setdefault("memory", []).append({"source": source, "kind": kind, "count": int(count)})
+
+
+def _enrich_messages(messages: list, config: dict, force_search: bool = False, meta: dict | None = None) -> list:
     """
     Auto-detect URLs, search intent, and memory recall in the last user message.
     Injects context messages before the last user message when content is found.
     force_search=True bypasses intent detection and always searches.
-    Returns a (possibly modified) copy of the messages list.
+    Returns a (possibly modified) copy of the messages list. With `meta`, it also
+    records what memory it injected (_note_memory).
     """
     import re as _re
     if not messages:
@@ -254,6 +262,7 @@ def _enrich_messages(messages: list, config: dict, force_search: bool = False) -
             mem_context = mem.get_context(last_text, n=8)
             if mem_context:
                 memory_parts.append(f"[MEMORY — RELEVANT PAST CONVERSATIONS (VOICE)]\n{mem_context}\n[END MEMORY]")
+                _note_memory(meta, "voice", "relevant", len([ln for ln in mem_context.splitlines() if ln.strip()]))
                 log.info(f"Memory recall injected (voice targeted): {len(mem_context)} chars")
         recent = mem.search_recent(days=3, limit=5)
         if recent:
@@ -267,6 +276,7 @@ def _enrich_messages(messages: list, config: dict, force_search: bool = False) -
             if len(lines) > 1:
                 lines.append("[END RECENT MEMORY]")
                 memory_parts.append("\n".join(lines))
+                _note_memory(meta, "voice", "recent", len(lines) - 2)
                 log.info(f"Recent memory injected: {len(lines) - 2} messages")
     except Exception as e:
         log.warning(f"Memory enrichment (voice) failed: {e}")
@@ -292,6 +302,7 @@ def _enrich_messages(messages: list, config: dict, force_search: bool = False) -
                 if len(lines) > 1:
                     lines.append("[END MEMORY]")
                     memory_parts.append("\n".join(lines))
+                    _note_memory(meta, "chat", "relevant", len(lines) - 2)
                     log.info(f"Memory recall injected (chat targeted): {len(lines) - 2} msgs")
         # Recent chat messages for continuity
         qrecent = _qc.execute(
@@ -308,6 +319,7 @@ def _enrich_messages(messages: list, config: dict, force_search: bool = False) -
             if len(lines) > 1:
                 lines.append("[END RECENT MEMORY]")
                 memory_parts.append("\n".join(lines))
+                _note_memory(meta, "chat", "recent", len(lines) - 2)
                 log.info(f"Recent chat memory injected: {len(lines) - 2} messages")
     except Exception as e:
         log.warning(f"Memory enrichment (chat) failed: {e}")
@@ -330,6 +342,7 @@ def _enrich_messages(messages: list, config: dict, force_search: bool = False) -
                     lines.append(f"  [{ts}] {(r[0] or '').upper()}: {snippet}")
                 lines.append("[END MEMORY]")
                 memory_parts.append("\n".join(lines))
+                _note_memory(meta, "vibe", "relevant", len(vrows))
                 log.info(f"Memory recall injected (vibe targeted): {len(vrows)} msgs")
         except Exception as e:
             log.warning(f"Memory enrichment (vibe) failed: {e}")
@@ -752,7 +765,7 @@ _REASON_SCAFFOLD = (
 
 
 def _build_chat_system_prompt(config: dict, budget, has_attachment: bool,
-                              last_user_text: str) -> str:
+                              last_user_text: str, meta: dict | None = None) -> str:
     """Build the chat system prompt: override-aware base + per-turn step-budget
     warnings + attachment / content-rewrite / observer-injection suffixes.
 
@@ -799,6 +812,7 @@ def _build_chat_system_prompt(config: dict, budget, has_attachment: bool,
         _sr = codec_standing_rules.prompt_block(record=True)
         if _sr:
             sys_prompt += "\n\n" + _sr
+            _note_memory(meta, "rules", "standing", len(codec_standing_rules.list_rules()))
     except Exception as e:
         log.debug("standing rules unavailable: %s", e)
 
@@ -810,6 +824,7 @@ def _build_chat_system_prompt(config: dict, budget, has_attachment: bool,
         _wc = get_working_context()
         if _wc:
             sys_prompt += "\n\n" + _wc
+            _note_memory(meta, "threads", "open", sum(1 for ln in _wc.splitlines() if ln.startswith("- ")))
     except Exception:
         pass
     if budget.warn_now():
@@ -1173,14 +1188,16 @@ async def chat_completion(request: Request):
         # (A-12 PR-3E-chat-stream: the `import requests as rq` + `headers` here are
         # gone — both chat POSTs now go through codec_llm, which builds its own.)
         force_search = body.get("force_search", False)
-        messages = _enrich_messages(messages, config, force_search=bool(force_search))
+        _mem_meta: dict = {}  # what memory this turn used, for the reply's "Memory used" (P2.4)
+        messages = _enrich_messages(messages, config, force_search=bool(force_search), meta=_mem_meta)
 
         # Build the system prompt (override + step-budget + attachment /
         # content-rewrite / observer suffixes) — extracted to a helper for
         # readability (Fix #8). Consumes the llm_call step budget internally.
         sys_prompt = _build_chat_system_prompt(
-            config, _budget, has_attachment, last_user_text
+            config, _budget, has_attachment, last_user_text, meta=_mem_meta
         )
+        _mem_items = _mem_meta.get("memory", [])
 
         # Working folder allocated to this chat via the "+" button. Tell the model
         # so file operations (save/read with relative names) resolve there — the
@@ -1287,6 +1304,8 @@ async def chat_completion(request: Request):
                 # is the streaming half.
                 _visible: list[str] = []
                 _stream_actions: set[str] = set()
+                if _mem_items:  # before any token, so the page can show "Memory used" on the reply
+                    yield f"data: {json.dumps({'memory': _mem_items})}\n\n"
 
                 def _frame(tok):
                     if tok:
@@ -1595,6 +1614,9 @@ async def chat_completion(request: Request):
         except Exception as e:
             log.warning(f"[Chat] premise check skipped: {e}")
 
-        return {"response": answer, "model": model}
+        out = {"response": answer, "model": model}
+        if _mem_items:
+            out["memory"] = _mem_items
+        return out
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)

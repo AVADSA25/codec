@@ -659,6 +659,7 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
   </div>
   <div class="settings-subnav" id="settingsSubnav" role="tablist" aria-label="Settings sections" hidden>
     <button type="button" data-sub="settings" onclick="showTab('settings')">General</button>
+    <button type="button" data-sub="memory" id="subnav-memory" onclick="showTab('memory')">Memory</button>
     <button type="button" data-sub="connector" id="subnav-connector" onclick="showTab('connector')">Connectors</button>
     <button type="button" data-sub="audit" id="subnav-audit" onclick="showTab('audit')">Audit</button>
     <a href="/cortex">Cortex</a>
@@ -794,6 +795,101 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
     </style>
 
     <!-- Settings Panel -->
+    <!-- Memory (P2.4; docs/P2.4-DESIGN.md): see, correct and forget what CODEC remembers -->
+    <div class="panel" id="panel-memory">
+      <p class="push-intro mem-lead">What CODEC keeps about you, in one place. Editing or forgetting a fact never deletes it: the old version stays in its history.</p>
+      <div class="settings-section" id="memSwitchSection">
+        <div class="settings-title">Learning</div>
+        <div class="settings-card"><div class="push-body">
+          <label class="voice-row"><span class="push-row-name">Save facts from text<span class="mem-sub">When you ask CODEC to remember facts from a note or a chat, in chat, voice or from Claude.</span></span>
+            <span class="mcp-switch"><input type="checkbox" id="memFactExtract" aria-label="Save facts from text" onchange="saveMemorySwitch('fact_extract', this.checked)"><span class="mcp-slider"></span></span></label>
+          <label class="voice-row"><span class="push-row-name">Learn from each day's chats<span class="mem-sub" id="memNightlyNote">Every night, CODEC reads the last 24 hours of chats and saves the lasting facts it finds.</span></span>
+            <span class="mcp-switch"><input type="checkbox" id="memNightly" aria-label="Learn from each day's chats" onchange="saveMemorySwitch('nightly', this.checked)"><span class="mcp-slider"></span></span></label>
+          <div class="push-msg" id="memSwitchMsg" role="status" aria-live="polite"></div>
+        </div></div>
+      </div>
+      <div class="settings-section" id="memAboutSection">
+        <div class="settings-title">About me</div>
+        <div class="settings-card"><div class="push-body">
+          <p class="push-intro">Voice and the wake word read this at the start of every conversation. Keep it short: who you are and how you like answers.</p>
+          <textarea class="setting-input mem-about" id="memAbout" rows="5" maxlength="1500" aria-label="About me" oninput="_memAboutCount()"></textarea>
+          <div class="mem-row-end"><span class="mem-count" id="memAboutCount"></span><button type="button" class="mcp-btn mcp-btn-primary" onclick="saveAbout()">Save</button></div>
+          <div class="push-msg" id="memAboutMsg" role="status" aria-live="polite"></div>
+        </div></div>
+      </div>
+      <div class="settings-section" id="memRulesSection">
+        <div class="settings-title">Standing rules</div>
+        <div class="settings-card"><div class="push-body">
+          <p class="push-intro">Sent with every reply, in every session.</p>
+          <ol class="mem-list" id="memRules"></ol>
+          <div class="mem-add"><input class="setting-input" id="memRuleText" maxlength="500" placeholder="Always answer in French" aria-label="New standing rule" onkeydown="if(event.key==='Enter'){event.preventDefault();addRule()}">
+            <button type="button" class="mcp-btn mcp-btn-primary" onclick="addRule()">Add</button></div>
+          <div class="mem-row-end"><button type="button" class="mcp-btn" id="memClearRules" onclick="clearRules(this)">Clear all</button></div>
+          <div class="push-msg" id="memRulesMsg" role="status" aria-live="polite"></div>
+        </div></div>
+      </div>
+      <div class="settings-section" id="memFactsSection">
+        <div class="settings-title">Facts</div>
+        <div class="settings-card"><div class="push-body">
+          <div class="mem-facts" id="memFacts"></div>
+          <div class="push-msg" id="memFactsMsg" role="status" aria-live="polite"></div>
+        </div></div>
+      </div>
+      <div class="settings-section" id="memThreadsSection">
+        <div class="settings-title">Working threads</div>
+        <div class="settings-card"><div class="push-body">
+          <p class="push-intro">What you are working on or waiting for, kept for the morning briefing.</p>
+          <div class="mem-facts" id="memThreads"></div>
+          <div class="push-msg" id="memThreadsMsg" role="status" aria-live="polite"></div>
+        </div></div>
+      </div>
+      <div class="settings-section" id="memSearchSection">
+        <div class="settings-title">Search what CODEC remembers</div>
+        <div class="settings-card"><div class="push-body">
+          <div class="mem-add"><input class="setting-input" id="memQuery" type="search" placeholder="Search past chats and voice" aria-label="Search memory" onkeydown="if(event.key==='Enter'){event.preventDefault();searchMemory()}">
+            <button type="button" class="mcp-btn mcp-btn-primary" onclick="searchMemory()">Search</button></div>
+          <div class="mem-results" id="memResults"></div>
+          <div class="mem-row-end"><button type="button" class="mcp-btn" onclick="rebuildMemoryIndex(this)">Rebuild index</button></div>
+          <div class="push-msg" id="memSearchMsg" role="status" aria-live="polite"></div>
+        </div></div>
+      </div>
+      <p class="push-intro mem-lead">CODEC's personality and instructions live in <a href="/#settings" onclick="openPrompts(event)">System Prompts</a>.</p>
+    </div>
+    <style>
+    #panel-memory .settings-section{margin-top:16px}
+    .mem-lead{margin:4px 2px 0}
+    .mem-sub{display:block;font-weight:400;font-size:var(--fs-12);color:var(--text-muted);margin-top:2px}
+    .mem-about{width:100%;box-sizing:border-box;resize:vertical;min-height:96px;font-family:var(--font-sans)}
+    .mem-row-end{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-top:8px}
+    .mem-count{font-size:var(--fs-12);color:var(--text-dim)}
+    .mem-add{display:flex;gap:8px;margin-top:8px}
+    .mem-add .setting-input{flex:1;min-width:0}
+    .mem-list{margin:6px 0 0;padding-left:22px;display:flex;flex-direction:column;gap:6px}
+    .mem-list li{font-size:var(--fs-14);line-height:1.4}
+    .mem-rule{display:flex;align-items:flex-start;gap:8px}
+    .mem-rule-text{flex:1;min-width:0;overflow-wrap:anywhere}
+    .mem-rule-meta{display:block;font-size:var(--fs-12);color:var(--text-muted)}
+    .mem-facts{display:flex;flex-direction:column}
+    .mem-fact{padding:10px 0;border-top:1px solid var(--border)}
+    .mem-fact:first-child{border-top:0}
+    .mem-fact-head{display:flex;align-items:flex-start;gap:10px}
+    .mem-fact-main{flex:1;min-width:0}
+    .mem-key{display:block;font-family:var(--font-mono);font-size:var(--fs-12);color:var(--text-muted);overflow-wrap:anywhere}
+    .mem-val{display:block;font-size:var(--fs-14);line-height:1.45;overflow-wrap:anywhere;white-space:pre-wrap}
+    .mem-meta{display:block;font-size:var(--fs-12);color:var(--text-dim);margin-top:2px}
+    .mem-acts{display:flex;flex-wrap:wrap;gap:6px;flex:none}
+    .mem-acts .mcp-btn{padding:4px 10px}
+    .mem-btn-danger{color:var(--danger-text)!important;border-color:var(--danger)!important}
+    .mem-extra{margin-top:8px}
+    .mem-extra textarea{width:100%;box-sizing:border-box;min-height:64px;font-family:var(--font-sans)}
+    .mem-hist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;font-size:var(--fs-13)}
+    .mem-hist li{padding:6px 8px;border-radius:var(--radius-8);background:var(--surface-2)}
+    .mem-hist .mem-meta{margin-top:2px}
+    .mem-empty{font-size:var(--fs-13);color:var(--text-muted);padding:4px 0}
+    .mem-results{display:flex;flex-direction:column;gap:6px;margin-top:10px}
+    .mem-result{padding:8px 10px;border-radius:var(--radius-8);background:var(--surface-2);font-size:var(--fs-13);line-height:1.45;overflow-wrap:anywhere}
+    @media (max-width:767px){.mem-fact-head{flex-direction:column}.mem-acts{margin-top:6px}}
+    </style>
     <div class="panel" id="panel-settings">
       <div class="stat-grid" id="statGrid"></div>
       <div id="settingsContent">
@@ -895,7 +991,7 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
           <div id="uiToggles"></div>
         </div>
       </div>
-      <div class="settings-section" style="margin-top:20px">
+      <div class="settings-section" style="margin-top:20px" id="promptsSection">
         <div class="settings-title">System Prompts</div>
         <p style="font-size:calc(12px * var(--fs-scale));color:var(--text-dim);margin:0 0 12px;padding:0 4px">These define CODEC's personality and behavior across all interfaces. Edit to customize.</p>
         <div id="promptsContainer"><div class="refreshing">Loading prompts...</div></div>
@@ -1084,7 +1180,7 @@ function copyText(text, btn) {
 
 // ── Tabs ──
 // Audit and Connectors live under Settings (P2.1); Cortex is its own page.
-var _SETTINGS_GROUP = { settings: 1, connector: 1, audit: 1 };
+var _SETTINGS_GROUP = { settings: 1, memory: 1, connector: 1, audit: 1 };
 function showTab(id) {
   if (id === 'cortex') { window.location.href = '/cortex'; return; }
   if (!document.getElementById('panel-' + id)) id = 'chat';
@@ -1112,6 +1208,7 @@ function showTab(id) {
   if (id === 'audit') loadAudit();
   if (id === 'skills') loadSkillReviews();
   if (id === 'connector') renderConnectors();
+  if (id === 'memory') loadMemoryPage();
   if (id === 'settings') { loadSettings(); renderUIToggles(); loadPrompts(); loadPush(); loadVoice(); loadBriefing(); loadCheckin(); }
 }
 // Links such as /#settings (the shell's Settings row, other pages) open that panel.
@@ -2195,6 +2292,181 @@ loadToday();
 setInterval(loadToday, 60000);
 
 // ── Check-ins (P3.5): settings for the heartbeat's proactive check-in. Default off.
+// ── Memory (P2.4; docs/P2.4-DESIGN.md) ──────────────────────────────────────
+// Values are only ever put in the page with textContent. Forget and Clear all ask
+// once more on the button itself (no browser dialog).
+function _memMsg(id, text, err) { var m = document.getElementById(id); if (m) { m.textContent = text || ''; m.classList.toggle('err', !!err); } }
+async function _memJSON(url, opts) {
+  var r = await fetch(url, opts), d = null;
+  try { d = await r.json(); } catch (e) {}
+  if (!r.ok) throw new Error((d && d.error) || ('HTTP ' + r.status));
+  return d;
+}
+function _memSend(method, url, body) {
+  return _memJSON(url, { method: method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+}
+function _memEl(tag, cls, text) { var n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; }
+function _memBtn(label, onClick, cls) { var b = _memEl('button', 'mcp-btn' + (cls ? ' ' + cls : ''), label); b.type = 'button'; b.addEventListener('click', onClick); return b; }
+function _memDate(s) { if (!s) return ''; var d = new Date(s); return isNaN(d) ? String(s).slice(0, 16) : d.toLocaleString([], { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }
+// A second click within 5 s confirms (Forget, Clear all).
+function _memConfirm(btn, ask, run) {
+  if (btn.dataset.armed) { delete btn.dataset.armed; btn.classList.remove('mem-btn-danger'); btn.textContent = btn.dataset.label; run(); return; }
+  btn.dataset.label = btn.textContent; btn.dataset.armed = '1'; btn.textContent = ask; btn.classList.add('mem-btn-danger');
+  setTimeout(function () { if (btn.dataset.armed) { delete btn.dataset.armed; btn.classList.remove('mem-btn-danger'); btn.textContent = btn.dataset.label; } }, 5000);
+}
+function loadMemoryPage() { loadMemorySwitches(); loadAbout(); loadRules(); loadFacts(); }
+function openPrompts(ev) {
+  if (ev) ev.preventDefault();
+  showTab('settings');
+  setTimeout(function () { var p = document.getElementById('promptsSection'); if (p) p.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 200);
+}
+
+async function loadMemorySwitches() {
+  try {
+    var d = await _memJSON('/api/memory/settings');
+    document.getElementById('memFactExtract').checked = !!d.fact_extract;
+    document.getElementById('memNightly').checked = !!d.nightly;
+    document.getElementById('memNightlyNote').textContent = 'Every night (' + d.nightly_when + '), CODEC reads the last 24 hours of chats and saves the lasting facts it finds' +
+      (d.fact_extract ? '.' : ', once Save facts from text is on.') + (d.nightly_last_run ? ' Last run ' + _memDate(d.nightly_last_run) + '.' : '');
+  } catch (e) { _memMsg('memSwitchMsg', 'Could not load: ' + e.message, true); }
+}
+async function saveMemorySwitch(name, on) {
+  var body = {}; body[name] = on;
+  try { await _memSend('PUT', '/api/memory/settings', body); _memMsg('memSwitchMsg', 'Saved.'); loadMemorySwitches(); }
+  catch (e) { _memMsg('memSwitchMsg', 'Could not save: ' + e.message, true); loadMemorySwitches(); }
+}
+
+function _memAboutCount() {
+  var t = document.getElementById('memAbout'); document.getElementById('memAboutCount').textContent = t.value.length + ' / 1500';
+}
+async function loadAbout() {
+  try { var d = await _memJSON('/api/memory/about'); document.getElementById('memAbout').value = d.text || ''; _memAboutCount(); }
+  catch (e) { _memMsg('memAboutMsg', 'Could not load: ' + e.message, true); }
+}
+async function saveAbout() {
+  try { await _memSend('PUT', '/api/memory/about', { text: document.getElementById('memAbout').value }); _memMsg('memAboutMsg', 'Saved.'); }
+  catch (e) { _memMsg('memAboutMsg', 'Could not save: ' + e.message, true); }
+}
+
+function _renderRules(rules) {
+  var ol = document.getElementById('memRules'); ol.innerHTML = '';
+  if (!rules.length) { ol.appendChild(_memEl('li', 'mem-empty', 'No standing rules yet.')); ol.style.listStyle = 'none'; ol.style.paddingLeft = '0'; }
+  else { ol.style.listStyle = ''; ol.style.paddingLeft = ''; }
+  rules.forEach(function (r) {
+    var li = _memEl('li'), row = _memEl('div', 'mem-rule'), txt = _memEl('span', 'mem-rule-text', r.text);
+    var n = parseInt(r.inject_count || 0, 10);
+    txt.appendChild(_memEl('span', 'mem-rule-meta', n ? 'Sent to the model ' + n + (n === 1 ? ' time' : ' times') + (r.last_injected ? ', last ' + _memDate(r.last_injected) : '') : 'Not sent yet'));
+    row.appendChild(txt);
+    row.appendChild(_memBtn('Remove', async function () {
+      try { var d = await _memSend('DELETE', '/api/memory/rules/' + encodeURIComponent(r.id)); _renderRules(d.rules); _memMsg('memRulesMsg', 'Removed.'); }
+      catch (e) { _memMsg('memRulesMsg', 'Could not remove: ' + e.message, true); }
+    }));
+    li.appendChild(row); ol.appendChild(li);
+  });
+  document.getElementById('memClearRules').disabled = !rules.length;
+}
+async function loadRules() {
+  try { var d = await _memJSON('/api/memory/rules'); _renderRules(d.rules || []); }
+  catch (e) { _memMsg('memRulesMsg', 'Could not load: ' + e.message, true); }
+}
+async function addRule() {
+  var inp = document.getElementById('memRuleText'), text = inp.value.trim(); if (!text) return;
+  try { var d = await _memSend('POST', '/api/memory/rules', { text: text }); inp.value = ''; _renderRules(d.rules); _memMsg('memRulesMsg', 'Added.'); }
+  catch (e) { _memMsg('memRulesMsg', e.message, true); }
+}
+function clearRules(btn) {
+  _memConfirm(btn, 'Clear all rules?', async function () {
+    try { var d = await _memSend('POST', '/api/memory/rules/clear'); _renderRules(d.rules); _memMsg('memRulesMsg', 'All rules cleared.'); }
+    catch (e) { _memMsg('memRulesMsg', 'Could not clear: ' + e.message, true); }
+  });
+}
+
+function _factRow(f) {
+  var row = _memEl('div', 'mem-fact'), head = _memEl('div', 'mem-fact-head'), main = _memEl('div', 'mem-fact-main');
+  var val = _memEl('span', 'mem-val', f.value), extra = _memEl('div', 'mem-extra');
+  main.appendChild(_memEl('span', 'mem-key', f.key)); main.appendChild(val);
+  main.appendChild(_memEl('span', 'mem-meta', (f.fact_type || 'fact') + ' · since ' + _memDate(f.valid_from) + (f.source ? ' · from ' + f.source : '')));
+  var acts = _memEl('div', 'mem-acts');
+  acts.appendChild(_memBtn('Edit', function () {
+    extra.innerHTML = '';
+    var ta = _memEl('textarea', 'setting-input'); ta.value = f.value; ta.maxLength = 1000; ta.setAttribute('aria-label', 'New value for ' + f.key);
+    var bar = _memEl('div', 'mem-row-end');
+    bar.appendChild(_memBtn('Cancel', function () { extra.innerHTML = ''; }));
+    bar.appendChild(_memBtn('Save', async function () {
+      try { var d = await _memSend('PUT', '/api/memory/facts', { key: f.key, value: ta.value }); _memMsg('memFactsMsg', d.changed ? 'Saved. The old value is in the history.' : 'No change.'); loadFacts(); }
+      catch (e) { _memMsg('memFactsMsg', 'Could not save: ' + e.message, true); }
+    }, 'mcp-btn-primary'));
+    extra.appendChild(ta); extra.appendChild(bar); ta.focus();
+  }));
+  acts.appendChild(_memBtn('History', async function () {
+    if (extra.dataset.open === 'hist') { extra.innerHTML = ''; delete extra.dataset.open; return; }
+    try {
+      var d = await _memJSON('/api/memory/facts/history?key=' + encodeURIComponent(f.key)), ul = _memEl('ul', 'mem-hist');
+      (d.versions || []).forEach(function (v) {
+        var li = _memEl('li'); li.appendChild(_memEl('span', 'mem-val', v.value));
+        li.appendChild(_memEl('span', 'mem-meta', _memDate(v.valid_from) + ' to ' + (v.valid_until ? _memDate(v.valid_until) : 'now') + (v.superseded_by ? ' · replaced' : (v.valid_until ? ' · forgotten' : ' · current'))));
+        ul.appendChild(li);
+      });
+      extra.innerHTML = ''; extra.appendChild(ul); extra.dataset.open = 'hist';
+    } catch (e) { _memMsg('memFactsMsg', 'Could not load the history: ' + e.message, true); }
+  }));
+  acts.appendChild(_memBtn('Forget', function () {
+    var b = this;
+    _memConfirm(b, 'Forget it?', async function () {
+      try { await _memSend('POST', '/api/memory/facts/forget', { key: f.key }); _memMsg('memFactsMsg', 'Forgotten. It stays in the history.'); loadFacts(); }
+      catch (e) { _memMsg('memFactsMsg', 'Could not forget: ' + e.message, true); }
+    });
+  }));
+  head.appendChild(main); head.appendChild(acts); row.appendChild(head); row.appendChild(extra);
+  return row;
+}
+function _threadRow(t) {
+  var row = _memEl('div', 'mem-fact'), head = _memEl('div', 'mem-fact-head'), main = _memEl('div', 'mem-fact-main');
+  main.appendChild(_memEl('span', 'mem-key', String(t.kind || '').replace(/_/g, ' ')));
+  main.appendChild(_memEl('span', 'mem-val', t.text));
+  main.appendChild(_memEl('span', 'mem-meta', 'since ' + (t.since || '')));
+  var acts = _memEl('div', 'mem-acts');
+  acts.appendChild(_memBtn('Close', async function () {
+    try { var d = await _memSend('POST', '/api/today/threads/done', { key: t.key }); _memMsg('memThreadsMsg', d.message || 'Closed.'); loadFacts(); }
+    catch (e) { _memMsg('memThreadsMsg', 'Could not close: ' + e.message, true); }
+  }));
+  head.appendChild(main); head.appendChild(acts); row.appendChild(head);
+  return row;
+}
+async function loadFacts() {
+  try {
+    var d = await _memJSON('/api/memory/facts'), box = document.getElementById('memFacts'), th = document.getElementById('memThreads');
+    box.innerHTML = ''; th.innerHTML = '';
+    if (!(d.facts || []).length) box.appendChild(_memEl('div', 'mem-empty', 'No facts saved yet.'));
+    (d.facts || []).forEach(function (f) { box.appendChild(_factRow(f)); });
+    if (!(d.threads || []).length) th.appendChild(_memEl('div', 'mem-empty', 'No open threads.'));
+    (d.threads || []).forEach(function (t) { th.appendChild(_threadRow(t)); });
+  } catch (e) { _memMsg('memFactsMsg', 'Could not load: ' + e.message, true); }
+}
+
+async function searchMemory() {
+  var q = document.getElementById('memQuery').value.trim(), box = document.getElementById('memResults');
+  if (q.length < 2) { _memMsg('memSearchMsg', 'Type at least two letters.', true); return; }
+  try {
+    var rows = await _memJSON('/api/memory/search?limit=20&q=' + encodeURIComponent(q));
+    box.innerHTML = '';
+    if (!rows.length) { box.appendChild(_memEl('div', 'mem-empty', 'Nothing found.')); }
+    rows.forEach(function (r) {
+      var el = _memEl('div', 'mem-result');
+      el.appendChild(_memEl('span', 'mem-meta', (r.role || '') + ' · ' + _memDate(r.timestamp)));
+      el.appendChild(_memEl('span', 'mem-val', String(r.content || '').slice(0, 400)));
+      box.appendChild(el);
+    });
+    _memMsg('memSearchMsg', rows.length + (rows.length === 1 ? ' match.' : ' matches.'));
+  } catch (e) { _memMsg('memSearchMsg', 'Could not search: ' + e.message, true); }
+}
+async function rebuildMemoryIndex(btn) {
+  btn.disabled = true; _memMsg('memSearchMsg', 'Rebuilding the index...');
+  try { var d = await _memSend('POST', '/api/memory/rebuild'); _memMsg('memSearchMsg', 'Index rebuilt: ' + d.indexed + ' lines.'); }
+  catch (e) { _memMsg('memSearchMsg', 'Could not rebuild: ' + e.message, true); }
+  btn.disabled = false;
+}
+
 async function loadCheckin() {
   var d = null;
   try { var r = await fetch('/api/checkin'); d = r.ok ? await r.json() : null; } catch (e) {}

@@ -250,6 +250,6 @@ def test_pages_offer_the_briefing():
     chat = (REPO / "codec_chat.html").read_text(encoding="utf-8")
     assert "h.match(/^#card=(card_[0-9a-f]{10})$/)" in chat and "_ssGet('codec-chat-draft')" in chat
     tasks = (REPO / "codec_tasks.html").read_text(encoding="utf-8")
-    assert "s.managed === 'briefing'" in tasks and "Set up in Settings" in tasks
+    assert "if (s.managed) {" in tasks and "'/#settings'" in tasks and "Set up in Settings" in tasks
     daybreak = (REPO / "docs" / "DAYBREAK-DESIGN.md").read_text(encoding="utf-8")
     assert "opt-in Morning briefing" in daybreak

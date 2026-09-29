@@ -305,6 +305,7 @@ Single SQLite database at `~/.codec/memory.db`. Wrapper: `codec_memory.CodecMemo
 
 ### Facts table
 Temporal KV with `valid_from`, `valid_until`, `superseded_by`. NOTE (2026-06-09 correction): a `valid_at(timestamp)` time-travel query does NOT exist in code — currently-active facts are `valid_until IS NULL` (`query_valid_facts`); full timelines via `get_fact_history`; close-without-replace via `expire_fact` (added for Daybreak). Daybreak working threads live here as `key="thread:{kind}:{slug}"`, `fact_type="thread"` (docs/DAYBREAK-DESIGN.md).
+Settings > Memory (P2.4, `routes/memory_page.py`) edits facts only by superseding (`store_fact`) or closing (`expire_fact`) — never a DELETE — and also edits standing rules and `~/.codec/memory/identity.txt` (0600). `config.json:memory.fact_extract=false` makes the `fact_extract` skill save nothing on every path; the nightly `auto_memorize` run is the managed schedule job `sched_auto_memorize` (delivery `silent`).
 
 ### CCF (Conversational Context Fragmentation)
 Rule-based compressor for memory writes that need shrinking. Entity abbreviation + filler stripping. Personal entity entries belong in `~/.codec/entity_map.json` (private), not in source.

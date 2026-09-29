@@ -155,6 +155,11 @@ html,body{font-family:var(--font-sans);background:var(--bg);color:var(--text);he
 #modelSelect.alt{color:var(--accent);box-shadow:inset 0 0 0 1px rgba(217,119,87,.45)}
 #modelSelect:disabled{opacity:.5;cursor:progress}
 /* Menus: one popover component, above the composer. */
+.msg-memory{border:0;background:none;padding:0 2px;margin-left:6px;font:inherit;font-size:var(--fs-12);color:var(--text-muted);text-decoration:underline;text-underline-offset:2px;cursor:pointer}
+.msg-memory:hover{color:var(--accent)}
+.msg-memory-panel{margin:4px 0 0;padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius-8);background:var(--surface);font-size:var(--fs-13);color:var(--text-muted);max-width:420px}
+.msg-memory-panel ul{margin:0 0 6px;padding-left:18px}
+.msg-memory-panel a{color:var(--accent)}
 .pop-menu{position:absolute;bottom:calc(100% + 8px);left:8px;z-index:60;min-width:240px;max-width:min(340px,calc(100vw - 24px));background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-12);box-shadow:var(--shadow-popover);padding:6px;display:none}
 .pop-menu.open{display:block}
 .pop-item{width:100%;display:flex;align-items:center;gap:10px;min-height:36px;padding:6px 10px;border:0;border-radius:var(--radius-8);background:none;color:var(--text);font-family:var(--font-sans);font-size:var(--fs-14);line-height:1.3;text-align:left;cursor:pointer}
@@ -623,6 +628,38 @@ function renderStats(msgEl, st){
   }catch(e){}
 }
 
+// ── "Memory used" (P2.4): what the reply was given from memory ────────────
+// /api/chat sends the sources and counts (never the text) as a `memory` event;
+// the button under the reply lists them and links to Settings > Memory.
+var _lastMemory = null;
+var _MEM_LABEL = {
+  'chat:recent': 'recent chat messages', 'chat:relevant': 'past chat messages about this',
+  'voice:recent': 'recent voice lines', 'voice:relevant': 'past voice lines about this',
+  'vibe:relevant': 'past Vibe messages about this', 'rules:standing': 'standing rules', 'threads:open': 'open threads'
+};
+function renderMemoryUsed(msgEl, items){
+  try{
+    var meta = msgEl.querySelector('.msg-meta'); if(!meta || !items || !items.length) return;
+    var btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'msg-memory'; btn.textContent = 'Memory used';
+    btn.setAttribute('aria-expanded', 'false');
+    var panel = document.createElement('div');
+    panel.className = 'msg-memory-panel'; panel.hidden = true;
+    var ul = document.createElement('ul');
+    items.forEach(function(it){
+      var li = document.createElement('li');
+      li.textContent = it.count + ' ' + (_MEM_LABEL[it.source + ':' + it.kind] || (it.source + ' ' + it.kind));
+      ul.appendChild(li);
+    });
+    var a = document.createElement('a');
+    a.href = '/#memory'; a.textContent = 'See and edit what CODEC remembers';
+    panel.appendChild(ul); panel.appendChild(a);
+    btn.addEventListener('click', function(){ panel.hidden = !panel.hidden; btn.setAttribute('aria-expanded', String(!panel.hidden)); });
+    meta.appendChild(btn);
+    meta.parentNode.insertBefore(panel, meta.nextSibling);
+  }catch(e){}
+}
+
 // ── Model picker ──────────────────────────────────────────────────────────
 // All local models are served by ONE mlx_vlm.server holding a single model at a
 // time, so switching unloads the current model and loads the new one. That is a
@@ -940,7 +977,7 @@ function regenerateResponse(btn){
       for(var li=0;li<lines.length;li++){
         var line=lines[li].trim();if(!line.startsWith('data: '))continue;var payload=line.substring(6);
         if(payload==='[DONE]')break;
-        try{var j=JSON.parse(payload);if(j.stats){_lastStats=j.stats}if(j.skill){showToast('Skill: '+j.skill)}if(j.token){raw+=j.token;var ps=parseScaffold(raw);if(thinkingEnabled&&ps.think){var tp=makeToT(div,'Reveal train of thought',true);totSet(tp,ps.think)}if(ps.answer){(answerStream||(answerStream=mdStream(bubble,{onRender:scrollBottom}))).update(ps.answer)}scrollBottom()}if(j.error){raw+='\nError: '+j.error}}catch(pe){}
+        try{var j=JSON.parse(payload);if(j.stats){_lastStats=j.stats}if(j.memory){_lastMemory=j.memory}if(j.skill){showToast('Skill: '+j.skill)}if(j.token){raw+=j.token;var ps=parseScaffold(raw);if(thinkingEnabled&&ps.think){var tp=makeToT(div,'Reveal train of thought',true);totSet(tp,ps.think)}if(ps.answer){(answerStream||(answerStream=mdStream(bubble,{onRender:scrollBottom}))).update(ps.answer)}scrollBottom()}if(j.error){raw+='\nError: '+j.error}}catch(pe){}
       }
     }
     var pf=parseScaffold(raw);
@@ -954,6 +991,7 @@ function regenerateResponse(btn){
       div.remove();var md=addMessage('assistant',answer);
       if(thinkingEnabled&&pf.think&&pf.think.trim()&&md){var fp=makeToT(md,'Train of thought',false);totSet(fp,pf.think.trim())}
       if(md&&_lastStats)renderStats(md,_lastStats);_lastStats=null;
+      if(md&&_lastMemory)renderMemoryUsed(md,_lastMemory);_lastMemory=null;
       chatHist.push({role:'assistant',content:answer});saveMessages([{role:'assistant',content:answer}])
     }else{if(answerStream)answerStream.cancel();bubble.innerHTML='<em style="color:var(--text-dim)">No response</em>'}
     _currentAbort=null;isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false
@@ -1979,7 +2017,7 @@ async function sendMessage(queued){
           if(!line.startsWith('data: '))continue;
           var payload=line.substring(6);
           if(payload==='[DONE]')break;
-          try{var j=JSON.parse(payload);if(j.stats){_lastStats=j.stats}if(j.token){raw+=j.token;var ps=parseScaffold(raw);if(thinkingEnabled&&ps.think){var tp2=makeToT(div,'Reveal train of thought',true);totSet(tp2,ps.think)}if(ps.answer){(answerStream||(answerStream=mdStream(bubble,{onRender:scrollBottom}))).update(ps.answer)}scrollBottom()}if(j.escalate_project){renderEscalateChip(j.escalate_project,text)}if(j.skill_confirm){renderSkillConfirmChip(j.skill_confirm,text)}if(j.error){raw+='\n\nError: '+j.error}}catch(pe){}
+          try{var j=JSON.parse(payload);if(j.stats){_lastStats=j.stats}if(j.memory){_lastMemory=j.memory}if(j.token){raw+=j.token;var ps=parseScaffold(raw);if(thinkingEnabled&&ps.think){var tp2=makeToT(div,'Reveal train of thought',true);totSet(tp2,ps.think)}if(ps.answer){(answerStream||(answerStream=mdStream(bubble,{onRender:scrollBottom}))).update(ps.answer)}scrollBottom()}if(j.escalate_project){renderEscalateChip(j.escalate_project,text)}if(j.skill_confirm){renderSkillConfirmChip(j.skill_confirm,text)}if(j.error){raw+='\n\nError: '+j.error}}catch(pe){}
         }
       }
       var pf2=parseScaffold(raw);
@@ -1987,7 +2025,7 @@ async function sendMessage(queued){
       // <thinking> tail into the bubble; keep reasoning in the reveal panel.
       var answer2=(pf2.answer&&pf2.answer.trim())||raw.replace(/<thinking>[\s\S]*?<\/thinking>/i,'').replace(/<thinking>[\s\S]*$/i,'').replace(/###\s*FINAL ANSWER:?/i,'').replace(/<\/?final\s*answer>/gi,'').trim();
       if(!answer2&&pf2.think&&pf2.think.trim()){answer2='*My reasoning ran on without reaching a final answer — a local-model glitch, not a real reply. The train of thought is below; please ask again.*'}
-      if(answer2){div.remove();var md2=addMessage('assistant',answer2);if(thinkingEnabled&&pf2.think&&pf2.think.trim()&&md2){var fp2=makeToT(md2,'Train of thought',false);totSet(fp2,pf2.think.trim())}if(md2&&_lastStats)renderStats(md2,_lastStats);_lastStats=null;chatHist.push({role:'assistant',content:answer2});saveMessages([{role:'assistant',content:answer2}])}
+      if(answer2){div.remove();var md2=addMessage('assistant',answer2);if(thinkingEnabled&&pf2.think&&pf2.think.trim()&&md2){var fp2=makeToT(md2,'Train of thought',false);totSet(fp2,pf2.think.trim())}if(md2&&_lastStats)renderStats(md2,_lastStats);_lastStats=null;if(md2&&_lastMemory)renderMemoryUsed(md2,_lastMemory);_lastMemory=null;chatHist.push({role:'assistant',content:answer2});saveMessages([{role:'assistant',content:answer2}])}
       else{if(answerStream)answerStream.cancel();bubble.innerHTML='<em style="color:var(--text-dim)">No response</em>'}
     }
   }catch(e){
