@@ -287,8 +287,8 @@ def test_routes_list_subscribe_switch_test_and_remove(push):
     listing = c.get("/api/push")
     assert sub["endpoint"] not in listing.text and sub["keys"]["p256dh"] not in listing.text
     assert c.post("/api/push/types", json={"agents": False}).json()["types"]["agents"] is False
-    t = c.post("/api/push/test").json()
-    assert (t["devices"], t["ok"]) == (1, 1) and len(push.posts) == 1
+    assert c.post("/api/push/test").json() == {"devices": 1, "ok": 1, "failed": 0, "removed": 0}
+    assert len(push.posts) == 1
     dev_id = listing.json()["devices"][0]["id"]
     assert c.post("/api/push/unsubscribe", json={"id": dev_id}).json()["removed"] is True
     assert c.get("/api/push").json()["devices"] == []

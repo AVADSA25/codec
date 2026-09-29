@@ -7,7 +7,7 @@ by AuthMiddleware. The replies never contain a device's endpoint or keys.
   - POST /api/push/subscribe    {"subscription": PushSubscription.toJSON()}
   - POST /api/push/unsubscribe  {"endpoint": ...} or {"id": ...}
   - POST /api/push/types        {"approvals": bool, ...}
-  - POST /api/push/test         send the test notification now
+  - POST /api/push/test         send the test notification now; replies with counts
 
 The handlers are plain `def`: FastAPI runs them in its thread pool, so the
 Keychain read and the posts to the push services never block the event loop.
@@ -68,5 +68,4 @@ def push_types(payload: dict | None = None):
 def push_test():
     if not codec_push.enabled():
         return JSONResponse({"error": "Push is switched off on this Mac (PUSH_ENABLED=false)."}, status_code=409)
-    result = codec_push.send("test")
-    return {"ok": True, **result, "devices_list": codec_push.public_devices()}
+    return codec_push.send("test")  # {"devices", "ok", "failed", "removed"}: counts
