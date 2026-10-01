@@ -167,7 +167,7 @@ def test_enrich_messages_reports_what_memory_it_used(monkeypatch):
 
 def test_the_chat_passes_the_memory_on_and_the_pages_show_it():
     src = (REPO / "routes" / "chat.py").read_text(encoding="utf-8")
-    assert "messages = _enrich_messages(messages, config, force_search=bool(force_search), meta=_mem_meta)" in src
+    assert "messages = _enrich_messages(messages, config, force_search=bool(force_search), meta=_mem_meta," in src
     assert "config, _budget, has_attachment, last_user_text, meta=_mem_meta" in src
     assert "yield f\"data: {json.dumps({'memory': _mem_items})}\\n\\n\"" in src and 'out["memory"] = _mem_items' in src
     assert '_note_memory(meta, "rules", "standing"' in src and '_note_memory(meta, "threads", "open"' in src

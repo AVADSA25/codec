@@ -110,6 +110,10 @@ html,body{font-family:var(--font-sans);background:var(--bg);color:var(--text);he
    folder above the textarea, then a toolbar row: + menu, mode pill and chips on
    the left; model pill, mic and send (stop while a reply streams) on the right. */
 .input-area{position:relative;flex-shrink:0;padding:8px max(12px,calc((100% - 760px) / 2)) calc(10px + env(safe-area-inset-bottom,0px));background:var(--bg)}
+/* P2.11: a temporary chat — dashed composer border, an eye-off chip, a note in the empty chat */
+.composer.temp{border-style:dashed;border-color:var(--text-dim)}
+.temp-note{display:flex;align-items:center;gap:8px;justify-content:center;margin:12px auto 0;max-width:46ch;text-align:center;font-size:var(--fs-13);color:var(--text-muted)}
+.temp-chat .msg-up,.temp-chat .msg-down{display:none}
 .composer{position:relative;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-24);box-shadow:var(--shadow-composer);padding:12px 12px 8px 16px;transition:border-color .15s,box-shadow .15s}
 .composer:focus-within{border-color:var(--border-strong)}
 .composer:has(.chat-input:focus-visible){box-shadow:var(--shadow-composer),var(--focus-ring)}
@@ -392,6 +396,7 @@ input[type=file]{display:none}
   <button type="button" class="pop-item" id="folderBtn" role="menuitem" onclick="closeMenus();pickWorkingFolder()" title="Give this chat a working folder on the Mac"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg><span class="pi-text">Working folder</span><span class="pi-tag">on Mac</span></button>
   <div class="pop-sep" role="separator"></div>
   <button type="button" class="pop-item" id="webSearchItem" role="menuitemcheckbox" aria-checked="false" onclick="toggleWebSearch()"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg><span class="pi-text">Search the web</span><svg class="ico pi-check" viewBox="0 0 24 24" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></button>
+  <button type="button" class="pop-item" id="tempChatItem" role="menuitemcheckbox" aria-checked="false" onclick="toggleTemporary()"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.53 13.53 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/></svg><span class="pi-text">Temporary chat<span class="pi-desc">Not saved to history or memory</span></span><svg class="ico pi-check" viewBox="0 0 24 24" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></button>
 </div>
 <div class="pop-menu" id="modeMenu" role="menu" aria-label="Mode">
   <button type="button" class="pop-item" role="menuitemradio" aria-checked="false" data-mode="chat" id="modeChatBtn" onclick="chooseMode('chat')"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg><span class="pi-text">Chat<span class="pi-desc">Fast answers</span></span><svg class="ico pi-check" viewBox="0 0 24 24" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></button>
@@ -416,6 +421,7 @@ input[type=file]{display:none}
 <button type="button" class="mode-pill" id="modePill" onclick="toggleMenu('modeMenu',this)" title="Mode" aria-haspopup="menu" aria-expanded="false"><span class="mp-ico"></span><span class="mp-label">Think</span><svg class="ico chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg></button>
 <button type="button" class="cb-chip" id="crewChip" onclick="openAgentSheet()" title="Choose the crew" style="display:none"><span class="cc-label">Deep Research</span><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg></button>
 <span class="cb-chip static" id="webChip" style="display:none"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>Web search<button type="button" class="x" onclick="toggleWebSearch()" title="Turn off web search" aria-label="Turn off web search"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></span>
+<span class="cb-chip static temp-chip" id="tempChip" style="display:none" title="Not saved to history or memory. The audit log still records what CODEC does."><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.53 13.53 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/></svg>Temporary<button type="button" class="x" onclick="toggleTemporary()" title="Turn off temporary chat" aria-label="Turn off temporary chat"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></span>
 <span class="cb-chip static" id="pickChip" style="display:none"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z"/></svg><span class="pk-label"></span><button type="button" class="x" onclick="setPick(null)" title="Remove the pick" aria-label="Remove the pick"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></span>
 <span id="imageOpts"><select id="imageSize" title="Image size — the first image takes about 2 min at 512 px"><option value="512">512 px (~2 min)</option><option value="768">768 px</option><option value="1024">1024 px</option></select><label class="img-switch" title="Transparent background"><input type="checkbox" role="switch" id="imageTransparent"><span class="img-switch-track" aria-hidden="true"></span>Transparent</label></span>
 </div>
@@ -1002,7 +1008,7 @@ function regenerateResponse(btn){
   _currentAbort=new AbortController();_lastSkill=null;
   var msgs=[{role:'system',content:buildSystem()}].concat(chatHist);
   var raw='',div=null; // outside the .then so the .catch can keep a partial answer
-  fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs,force_search:webSearchEnabled,thinking:false,show_thoughts:false,reason_scaffold:thinkingEnabled,stream:true,workdir:_workdir}),signal:_currentAbort.signal}).then(async function(r){
+  fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs,force_search:webSearchEnabled,thinking:false,show_thoughts:false,reason_scaffold:thinkingEnabled,stream:true,workdir:_workdir,temporary:temporaryChat||undefined}),signal:_currentAbort.signal}).then(async function(r){
     if(r.status===401||r.status===403){hideTyping();addMessage('assistant','Session expired — redirecting to login...');setTimeout(function(){window.location.href='/auth'},1500);isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false;return}
     hideTyping();
     var reader=r.body.getReader();var decoder=new TextDecoder();raw='';var bubbleId='stream_'+genId();
@@ -1222,6 +1228,26 @@ document.addEventListener('keydown',function(e){
   i=e.key==='ArrowDown'?(i+1)%items.length:(i<=0?items.length-1:i-1);if(items[i])items[i].focus();
 });
 // "Search the web": the next replies send force_search, which the backend honours.
+// ── Temporary chat (P2.11, docs/P2.11-DESIGN.md) ───────────────────────────
+// Starts a fresh chat that the page never saves (no /api/qchat/save) and whose
+// turns send temporary:true, so the server skips memory recall, the observer
+// summary and the memory-writing skills. The audit log still records events,
+// so the label never says "no trace". Turning it off starts a fresh normal chat.
+var temporaryChat=false;
+function toggleTemporary(){
+  closeMenus();
+  if(isProcessing){showToast('Wait for the reply to finish');return}
+  _setTemporary(!temporaryChat);
+  startNewSession();
+  showToast(temporaryChat?'Temporary chat: not saved to history or memory':'Temporary chat off: this chat is saved');
+}
+function _setTemporary(on){
+  temporaryChat=!!on;
+  document.getElementById('tempChatItem').setAttribute('aria-checked',String(temporaryChat));
+  document.getElementById('tempChip').style.display=temporaryChat?'':'none';
+  document.getElementById('composer').classList.toggle('temp',temporaryChat);
+  document.body.classList.toggle('temp-chat',temporaryChat);
+}
 function toggleWebSearch(){
   webSearchEnabled=!webSearchEnabled;
   document.getElementById('webSearchItem').setAttribute('aria-checked',String(webSearchEnabled));
@@ -1347,6 +1373,7 @@ function _renderEmptyState(){
   var m=document.getElementById('messages');if(!m)return;
   m.innerHTML='<div class="empty-state" id="emptyState"><div class="greet-title"></div><div class="greet-sub">What should we work on?</div><div class="starters"></div><div class="recent" hidden><div class="recent-h">Recent</div></div></div>';
   var es=m.firstChild;es.querySelector('.greet-title').textContent=_greeting();
+  if(temporaryChat)es.querySelector('.greet-sub').textContent='Temporary chat: not saved to history or memory. The audit log still records what CODEC does.';
   var grid=es.querySelector('.starters');
   STARTERS.forEach(function(s){grid.appendChild(_starterBtn(s.ico,s.title,s.desc,function(){sendStarter(s.send)}))});
   fetch('/api/qchat/sessions').then(function(r){return r.ok?r.json():[]}).then(function(data){
@@ -1523,6 +1550,7 @@ var _discardFrom=null;
 var _savedRows=[];
 function _markDiscard(n){_discardFrom=(_discardFrom===null)?n:Math.min(_discardFrom,n)}
 async function saveMessages(msgs){
+  if(temporaryChat)return;  // P2.11: a temporary chat is never saved
   var title=(chatHist.find(function(m){return m.role==='user'})||{}).content||'New Chat';
   var payload={session_id:sessionId,title:title.substring(0,60),messages:msgs||[]};
   if(_discardFrom!==null){payload.discard_from=_discardFrom;_savedRows=_savedRows.slice(0,_discardFrom);_discardFrom=null}
@@ -1533,6 +1561,7 @@ async function saveMessages(msgs){
 
 
 async function loadSession(sid){
+  if(temporaryChat)_setTemporary(false);  // opening a saved chat leaves temporary mode
   if(window.CodecShell){CodecShell.closeDrawer();CodecShell.setActiveChat(sid)}_discardFrom=null;_verPending=null;_savedRows=[];sessionId=sid;_lsSet('codec-chat-session',sid);chatHist=[];pendingFiles=[];_clearQueue();
   document.getElementById('fileChips').innerHTML='';
   var es=document.getElementById('emptyState');if(es)es.remove();
@@ -2185,7 +2214,7 @@ async function sendMessage(queued){
     } else {
       if(pick)setPick(null); // the pick goes with this one message
       _lastSkill=(pick&&pick.kind!=='agent'&&pick.name)||null; // P2.7: the reply's skill, for feedback
-      r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs,force_search:webSearchEnabled,thinking:false,show_thoughts:false,reason_scaffold:thinkingEnabled,stream:true,workdir:_workdir,skill:pick?pick.name:undefined}),signal:_currentAbort.signal});
+      r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs,force_search:webSearchEnabled,thinking:false,show_thoughts:false,reason_scaffold:thinkingEnabled,stream:true,workdir:_workdir,skill:pick?pick.name:undefined,temporary:temporaryChat||undefined}),signal:_currentAbort.signal});
       if(r.status===401||r.status===403){hideTyping();addMessage('assistant','Session expired — redirecting to login...');setTimeout(function(){window.location.href='/auth'},1500);isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false;return}
       hideTyping();_lastStats=null;
       // SSE streaming — parse the Think-mode scaffold as tokens arrive
