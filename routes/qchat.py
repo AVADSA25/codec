@@ -15,6 +15,10 @@ reason, in a qchat_feedback table (the reply text is not copied, only its
 hash and length) plus a metadata-only chat_feedback audit event that the
 shift report and the self-improvement run count.
 
+P2.12 (docs/P2.12-DESIGN.md): a sent message keeps its attachment tiles: an
+attachments column (JSON: name, kind, size, a small JPEG thumbnail, and for an
+image what the vision model saw). Additive, after a backup copy.
+
 DB setup (QCHAT_DB, _qchat_conn singleton, qchat_db helper) lives here
 too — it was only ever referenced by these endpoints. WAL + busy_timeout
 + auto-migration applied on first connect.
@@ -104,6 +108,11 @@ def qchat_db():
             for t, c, d in missing:
                 _qchat_conn.execute(f"ALTER TABLE {t} ADD COLUMN {c} {d}")
         _qchat_conn.execute("CREATE INDEX IF NOT EXISTS idx_qchat_messages_session ON qchat_messages(session_id, id)")
+        # P2.12: attachment tiles on sent messages (a new column; additive, backup first).
+        if "attachments" not in _columns(_qchat_conn, "qchat_messages"):
+            _qchat_conn.commit()
+            _backup_once(_qchat_conn, "p2.12")
+            _qchat_conn.execute("ALTER TABLE qchat_messages ADD COLUMN attachments TEXT")
         # P2.7: reply feedback (a new table; additive, backup first).
         has_feedback = _qchat_conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='qchat_feedback'").fetchone()
@@ -139,14 +148,68 @@ async def qchat_sessions(user_id: str = None, offset: int = 0, limit: int = 30, 
 
 
 def _current_messages(conn, sid: str) -> list:
-    return conn.execute("SELECT role, content, timestamp FROM qchat_messages "
+    return conn.execute("SELECT role, content, timestamp, attachments FROM qchat_messages "
                         "WHERE session_id=? AND superseded_at IS NULL ORDER BY id ASC", (sid,)).fetchall()
+
+
+# P2.12: what one attachment tile may hold. A thumbnail is a small JPEG data URL
+# made in the browser; anything else (another type, script, a big image) is dropped.
+ATTACH_MAX = 8
+ATTACH_KINDS = ("image", "pdf", "text", "file")
+THUMB_MAX_CHARS = 16000
+SAW_MAX_CHARS = 4000
+_THUMB_RE = re.compile(r"^data:image/jpeg;base64,[A-Za-z0-9+/]+={0,2}$")
+
+
+def _clean_attachments(items) -> list:
+    out = []
+    if not isinstance(items, list):
+        return out
+    for a in items[:ATTACH_MAX * 4]:
+        if len(out) >= ATTACH_MAX:
+            break
+        if not isinstance(a, dict):
+            continue
+        name = str(a.get("name") or "").strip()[:120]
+        if not name:
+            continue
+        kind = a.get("kind") if a.get("kind") in ATTACH_KINDS else "file"
+        tile = {"name": name, "kind": kind}
+        try:
+            size = int(a.get("size") or 0)
+            if size > 0:
+                tile["size"] = size
+        except (TypeError, ValueError):
+            pass
+        thumb = a.get("thumb")
+        if kind == "image" and isinstance(thumb, str) and len(thumb) <= THUMB_MAX_CHARS and _THUMB_RE.match(thumb):
+            tile["thumb"] = thumb
+        saw = a.get("saw")
+        if kind == "image" and isinstance(saw, str) and saw.strip():
+            tile["saw"] = saw.strip()[:SAW_MAX_CHARS]
+        out.append(tile)
+    return out
+
+
+def _attachments_out(raw) -> list:
+    try:
+        items = json.loads(raw) if raw else []
+    except (TypeError, ValueError):
+        return []
+    return items if isinstance(items, list) else []
 
 
 @router.get("/api/qchat/session/{sid}")
 async def qchat_session(sid: str):
     rows = _current_messages(qchat_db(), sid)
-    return [{"role": r[0], "content": r[1], "timestamp": r[2]} for r in rows]
+    out = []
+    for r in rows:
+        m = {"role": r[0], "content": r[1], "timestamp": r[2]}
+        atts = _attachments_out(r[3])
+        if atts:
+            m["attachments"] = atts
+        out.append(m)
+    return out
 
 
 @router.patch("/api/qchat/session/{sid}")
@@ -187,7 +250,9 @@ def _chat_for_export(sid: str):
     if not s:
         return None
     return {"id": sid, "title": s[0] or "Chat", "created_at": s[1], "updated_at": s[2],
-            "messages": [{"role": r[0], "content": r[1], "timestamp": r[2]} for r in _current_messages(conn, sid)]}
+            "messages": [{"role": r[0], "content": r[1], "timestamp": r[2],
+                          "attachments": [{k: v for k, v in a.items() if k != "thumb"} for a in _attachments_out(r[3])]}
+                         for r in _current_messages(conn, sid)]}
 
 
 def _export_markdown(chat: dict) -> str:
@@ -203,6 +268,9 @@ def _export_markdown(chat: dict) -> str:
         who = "You" if m["role"] == "user" else "CODEC"
         stamp = when(m.get("timestamp"))
         out += [f"**{who}**" + (f" · {stamp}" if stamp else ""), "", (m.get("content") or "").rstrip(), ""]
+        names = [a.get("name") for a in (m.get("attachments") or []) if a.get("name")]
+        if names:
+            out += ["_Attached: " + ", ".join(names) + "_", ""]
     return "\n".join(out).rstrip() + "\n"
 
 
@@ -289,8 +357,11 @@ async def qchat_save(request: Request):
             "ORDER BY id LIMIT -1 OFFSET ?", (sid, start))]
         conn.executemany("UPDATE qchat_messages SET superseded_at=? WHERE id=?", [(now, i) for i in ids])
     for m in messages:
-        conn.execute("INSERT INTO qchat_messages (session_id, role, content, timestamp, user_id) VALUES (?, ?, ?, ?, ?)",
-            (sid, m.get("role", "user"), m.get("content", ""), now, user_id))
+        atts = _clean_attachments(m.get("attachments"))
+        conn.execute("INSERT INTO qchat_messages (session_id, role, content, timestamp, user_id, attachments) "
+                     "VALUES (?, ?, ?, ?, ?, ?)",
+                     (sid, m.get("role", "user"), m.get("content", ""), now, user_id,
+                      json.dumps(atts, ensure_ascii=False) if atts else None))
     conn.commit()
     rows = conn.execute("SELECT COUNT(*) FROM qchat_messages WHERE session_id=? AND superseded_at IS NULL",
                         (sid,)).fetchone()[0]

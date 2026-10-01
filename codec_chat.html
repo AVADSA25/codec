@@ -129,8 +129,24 @@ html,body{font-family:var(--font-sans);background:var(--bg);color:var(--text);he
 .file-chip .fc-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .file-chip .fc-close{cursor:pointer;color:var(--text-dim);font-size:calc(12px * var(--fs-scale));margin-left:2px;flex-shrink:0}
 .file-chip .fc-close:hover{color:var(--danger)}
-.file-chip.loading{opacity:.6}
-.file-chip.loading .fc-icon{animation:pulse 1s infinite}
+.file-chip.loading{opacity:.75}
+/* P2.12: tiles — a 56px thumbnail, or an icon with name and size; a ring while uploading */
+.file-chip.tile{padding:4px 8px 4px 4px;max-width:240px;font-family:var(--font-sans)}
+.fc-thumb{width:56px;height:56px;border-radius:6px;object-fit:cover;flex-shrink:0;display:block;border:1px solid var(--border)}
+.fc-meta{display:flex;flex-direction:column;min-width:0}
+.fc-size{font-size:var(--fs-12);color:var(--text-dim)}
+.fc-ring{width:16px;height:16px;border-radius:50%;border:2px solid var(--border);border-top-color:var(--accent);flex-shrink:0;animation:fcspin .8s linear infinite}
+@keyframes fcspin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion: reduce){.fc-ring{animation:none;border-top-color:var(--border)}}
+.msg-atts{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;margin-bottom:6px}
+.msg-att{display:inline-flex;align-items:center;gap:6px;max-width:220px;padding:4px 8px 4px 4px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2);color:var(--text-muted);font:inherit;font-size:var(--fs-12);text-align:left}
+button.msg-att{cursor:zoom-in}
+.msg-att .fc-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.msg-att .ico{width:18px;height:18px;flex-shrink:0;margin-left:4px}
+.msg-saw{margin:6px 0 0;font-size:var(--fs-13);color:var(--text-muted);text-align:left}
+.msg-saw summary{cursor:pointer;color:var(--text-dim)}
+.msg-saw div{white-space:pre-wrap;margin-top:4px}
+.gen-img{cursor:zoom-in}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
 .dragover .messages{border:2px dashed var(--accent)!important}
 #dropOverlay{position:fixed;inset:0;z-index:9999;display:none;align-items:center;justify-content:center;background:rgba(217,119,87,0.10);backdrop-filter:blur(2px)}
@@ -353,7 +369,10 @@ input[type=file]{display:none}
 /* ── Screenshot/Photo Modal ── */
 .modal-overlay { display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.85); z-index:100; justify-content:center; align-items:center; padding:20px; }
 .modal-overlay.show { display:flex; }
-.modal-overlay img { max-width:100%; max-height:90vh; border-radius:var(--radius); border:1px solid var(--border); }
+.modal-overlay img { max-width:100%; max-height:84vh; border-radius:var(--radius); border:1px solid var(--border); }
+.modal-overlay { flex-direction:column; gap:12px; }
+.modal-dl { display:inline-flex; align-items:center; gap:6px; height:36px; padding:0 16px; border-radius:var(--radius-pill); background:rgba(30,30,30,0.9); color:#fff; border:1px solid rgba(255,255,255,0.3); text-decoration:none; font-size:var(--fs-14); }
+.modal-dl[hidden] { display:none; }
 .modal-close { position:fixed; top:16px; right:16px; background:rgba(30,30,30,0.9); color:#fff; border:2px solid rgba(255,255,255,0.3); width:44px; height:44px; border-radius:50%; font-size:calc(26px * var(--fs-scale)); cursor:pointer; z-index:101; display:flex; align-items:center; justify-content:center; transition:background 0.2s, transform 0.2s; }
 .modal-close:hover { background:rgba(220,50,50,0.9); transform:scale(1.1); }
 @media(max-width:600px){ .modal-close { width:52px; height:52px; font-size:calc(30px * var(--fs-scale)); top:10px; right:10px; } }
@@ -505,9 +524,10 @@ input[type=file]{display:none}
 </div>
 </div>
 
-<div class="modal-overlay" id="screenModal" onclick="closeScreenshot()">
-  <button class="modal-close" onclick="event.stopPropagation(); closeScreenshot()" aria-label="Close screenshot"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
-  <img id="screenImg" src="" onclick="event.stopPropagation()">
+<div class="modal-overlay" id="screenModal" onclick="closeScreenshot()" role="dialog" aria-modal="true" aria-label="Image">
+  <button class="modal-close" onclick="event.stopPropagation(); closeScreenshot()" aria-label="Close image"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+  <img id="screenImg" src="" alt="" onclick="event.stopPropagation()">
+  <a class="modal-dl" id="screenDl" href="#" download hidden onclick="event.stopPropagation()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>Download</a>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -806,7 +826,8 @@ function _pollImage(id,status,cancel,bubble){
       cancel.remove();status.textContent='Created on this Mac in '+Math.round(j.seconds||0)+' s.';
       (j.results||[]).forEach(function(u){
         if(!/^\/api\/image\/file\/[0-9a-f]{12}\/\d{2}\.png$/.test(u))return;
-        var a=document.createElement('a');a.href=u;a.target='_blank';a.rel='noopener';
+        var a=document.createElement('a');a.href=u;a.title='Open';
+        a.addEventListener('click',function(ev){ev.preventDefault();openLightbox(u,'codec-image-'+id+'.png',a)});  // P2.12 lightbox
         var im=document.createElement('img');im.src=u;im.alt=j.prompt||'Created image';im.className='gen-img';im.onload=scrollBottom;
         a.appendChild(im);bubble.appendChild(a);
         var dl=document.createElement('a');dl.href=u;dl.download='codec-image-'+id+'.png';dl.textContent='Download';dl.className='gen-dl';
@@ -1066,7 +1087,13 @@ function _verKeep(prefix,nodes,role){
   else{g={prefix:prefix,versions:[v],cur:0}}
   _verPending={g:g,role:role};
 }
-function _savedTail(prefix){return(_savedRows.length===chatHist.length?_savedRows:chatHist).slice(prefix).map(function(m){return{role:m.role,content:m.content}})}
+function _savedTail(prefix){return(_savedRows.length===chatHist.length?_savedRows:chatHist).slice(prefix).map(_rowCopy)}
+// A saved row: role, content and (P2.12) attachment tiles without the in-page full image.
+function _rowCopy(m){
+  var r={role:m.role,content:m.content};
+  if(m.attachments&&m.attachments.length)r.attachments=m.attachments.map(function(a){var c={};for(var k in a)if(k!=='full')c[k]=a[k];return c});
+  return r;
+}
 // Called by addMessage: the first message of the new version joins the group.
 function _verAttach(div,role){
   var p=_verPending;
@@ -1552,9 +1579,10 @@ function _markDiscard(n){_discardFrom=(_discardFrom===null)?n:Math.min(_discardF
 async function saveMessages(msgs){
   if(temporaryChat)return;  // P2.11: a temporary chat is never saved
   var title=(chatHist.find(function(m){return m.role==='user'})||{}).content||'New Chat';
-  var payload={session_id:sessionId,title:title.substring(0,60),messages:msgs||[]};
+  msgs=(msgs||[]).map(_rowCopy);  // P2.12: tiles go without the in-page full image
+  var payload={session_id:sessionId,title:title.substring(0,60),messages:msgs};
   if(_discardFrom!==null){payload.discard_from=_discardFrom;_savedRows=_savedRows.slice(0,_discardFrom);_discardFrom=null}
-  _savedRows=_savedRows.concat((msgs||[]).map(function(m){return{role:m.role,content:m.content}}));
+  _savedRows=_savedRows.concat(msgs);
   try{await fetch('/api/qchat/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});if(window.CodecShell)CodecShell.refreshHistorySoon()}catch(e){}
 }
 
@@ -1568,7 +1596,7 @@ async function loadSession(sid){
   document.getElementById('messages').innerHTML='';
   try{
     var r=await fetch('/api/qchat/session/'+sid);var data=await r.json();
-    for(var i=0;i<data.length;i++){var m=data[i];addMessage(m.role==='user'?'user':'assistant',m.content||'',false,m.timestamp);chatHist.push({role:m.role,content:m.content||''});_savedRows.push({role:m.role,content:m.content||''})}
+    for(var i=0;i<data.length;i++){var m=data[i];addMessage(m.role==='user'?'user':'assistant',m.content||'',false,m.timestamp,false,m.attachments);chatHist.push({role:m.role,content:m.content||''});_savedRows.push(_rowCopy(m))}
     // PR #39: any assistant message with [CODEC_AGENT_PLAN:<id>] marker
     // gets replaced by the live plan card (fetched from /api/agents/<id>).
     await rehydrateAgentPlanCards();
@@ -1589,7 +1617,7 @@ function formatMsg(c){return window.codecMarkdown?codecMarkdown.html(c):escHtml(
 function mdRender(el,text){if(window.codecMarkdown){codecMarkdown.render(el,text);return}el.textContent=String(text==null?'':text);el.style.whiteSpace='pre-wrap'}
 function mdStream(el,opts){if(window.codecMarkdown)return codecMarkdown.stream(el,opts);return{update:function(t){mdRender(el,t);if(opts&&opts.onRender)opts.onRender(el)},cancel:function(){}}}
 
-function addMessage(role,content,animate,ts,quiet){
+function addMessage(role,content,animate,ts,quiet,atts){
   var es=document.getElementById('emptyState');if(es)es.remove();
   var div=document.createElement('div');
   div.className='msg '+role;
@@ -1624,6 +1652,7 @@ function addMessage(role,content,animate,ts,quiet){
   div.innerHTML='<div class="msg-bubble"></div><div class="msg-meta"><span class="msg-time">'+time+'</span>'+actions+'</div>';
   // The user's own words stay plain text (textContent, pre-wrap), never Markdown.
   var bub=div.firstChild;if(role==='user')bub.textContent=String(content==null?'':content);else mdRender(bub,content);
+  if(role==='user')_renderAtts(div,atts);
   // Bind the action buttons to the raw text via a closure — see the note above.
   // One variable per button: a shared one was reassigned by the later lookups, so
   // at click time Edit got null (and Copy the speak button).
@@ -1954,14 +1983,82 @@ function scrollBottom(){var m=document.getElementById('messages');if(!m)return;i
 function showTyping(){var div=document.createElement('div');div.className='typing';div.id='typing';div.innerHTML='<span></span><span></span><span></span> CODEC is thinking...';document.getElementById('messages').appendChild(div);scrollBottom()}
 function hideTyping(){var t=document.getElementById('typing');if(t)t.remove()}
 
-function addFileChip(name,content,type){
+// ── Attachment tiles (P2.12, docs/P2.12-DESIGN.md) ─────────────────────────
+// An image keeps a 56px thumbnail (a ~112px JPEG made here, never the original);
+// any other file shows its icon, name and size. A sent message keeps its tiles.
+var _ICO_IMG='<svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>';
+var _ICO_DOC='<svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>';
+function _fmtSize(n){n=Number(n)||0;if(!n)return'';if(n<1024)return n+' B';if(n<1048576)return Math.round(n/1024)+' KB';return(n/1048576).toFixed(1)+' MB'}
+function _thumbOf(file){
+  return new Promise(function(resolve){
+    var url;try{url=URL.createObjectURL(file)}catch(e){resolve('');return}
+    var img=new Image();
+    img.onload=function(){
+      var s=Math.min(1,112/Math.max(img.width,img.height,1));
+      var cv=document.createElement('canvas');cv.width=Math.max(1,Math.round(img.width*s));cv.height=Math.max(1,Math.round(img.height*s));
+      try{cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);resolve(cv.toDataURL('image/jpeg',0.7))}catch(e){resolve('')}
+      URL.revokeObjectURL(url);
+    };
+    img.onerror=function(){URL.revokeObjectURL(url);resolve('')};
+    img.src=url;
+  });
+}
+function _attKind(type){return type==='image'||type==='imgref'?'image':type==='pdf'?'pdf':type==='text'?'text':'file'}
+// A loading tile: the file's name, size and a progress ring until it is read.
+function _loadingChip(id,name,size,thumb){
+  var chip=document.createElement('div');chip.className='file-chip tile loading';chip.id=id;
+  chip.innerHTML=(thumb?'<img class="fc-thumb" alt="">':'<span class="fc-icon">'+_ICO_DOC+'</span>')+'<span class="fc-meta"><span class="fc-name"></span><span class="fc-size"></span></span><span class="fc-ring" role="progressbar" aria-label="Reading the file"></span>';
+  if(thumb)chip.querySelector('.fc-thumb').src=thumb;
+  chip.querySelector('.fc-name').textContent=name;chip.querySelector('.fc-size').textContent=_fmtSize(size)||'reading...';
+  document.getElementById('fileChips').appendChild(chip);
+  return chip;
+}
+function addFileChip(name,content,type,meta){
+  meta=meta||{};
   var id='file_'+genId();
-  pendingFiles.push({id:id,name:name,content:content,type:type});
+  pendingFiles.push({id:id,name:name,content:content,type:type,thumb:meta.thumb||'',size:meta.size||0,full:meta.full||''});
   var chips=document.getElementById('fileChips');
-  var chip=document.createElement('div');chip.className='file-chip';chip.id=id;
-  var _fcIco=(type==='image'||type==='imgref')?'<svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>':'<svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>';
-  chip.innerHTML='<span class="fc-icon">'+_fcIco+'</span><span class="fc-name">'+escHtml(name)+'</span><span class="fc-close" role="button" aria-label="Remove file" onclick="removeChip(\''+id+'\')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:block"><path d="M18 6 6 18M6 6l12 12"/></svg></span>';
+  var chip=document.createElement('div');chip.className='file-chip tile';chip.id=id;
+  var lead=meta.thumb?'<img class="fc-thumb" alt="">':'<span class="fc-icon">'+((type==='image'||type==='imgref')?_ICO_IMG:_ICO_DOC)+'</span>';
+  chip.innerHTML=lead+'<span class="fc-meta"><span class="fc-name"></span><span class="fc-size"></span></span><span class="fc-close" role="button" tabindex="0" aria-label="Remove file" onclick="removeChip(\''+id+'\')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:block"><path d="M18 6 6 18M6 6l12 12"/></svg></span>';
+  if(meta.thumb)chip.querySelector('.fc-thumb').src=meta.thumb;
+  chip.querySelector('.fc-name').textContent=name;chip.querySelector('.fc-size').textContent=_fmtSize(meta.size);
   chips.appendChild(chip);_syncSendState()
+}
+// The tiles of the files about to be sent, as stored with the message (no file text).
+function _attTiles(files){
+  return(files||[]).filter(function(f){return f.type!=='imgref'}).map(function(f){
+    var t={name:f.name,kind:_attKind(f.type)};
+    if(f.size)t.size=f.size;
+    if(f.thumb)t.thumb=f.thumb;
+    if(f.type==='image'){var m=/^\[IMAGE ANALYSIS: ([\s\S]*)\]$/.exec(f.content||'');if(m)t.saw=m[1]}
+    if(f.full)t.full=f.full;
+    return t;
+  });
+}
+function _renderAtts(div,atts){
+  if(!atts||!atts.length)return;
+  var row=document.createElement('div');row.className='msg-atts';
+  var saw=[];
+  atts.forEach(function(a){
+    var t=document.createElement(a.thumb?'button':'span');t.className='msg-att';
+    if(a.thumb){t.type='button';t.setAttribute('aria-label','Open '+a.name);var im=document.createElement('img');im.className='fc-thumb';im.alt='';im.src=a.thumb;t.appendChild(im);
+      t.addEventListener('click',function(){openLightbox(a.full||a.thumb,a.name,t)})}
+    else t.insertAdjacentHTML('beforeend',a.kind==='image'?_ICO_IMG:_ICO_DOC);
+    var meta=document.createElement('span');meta.className='fc-meta';
+    var n=document.createElement('span');n.className='fc-name';n.textContent=a.name;meta.appendChild(n);
+    if(a.size){var z=document.createElement('span');z.className='fc-size';z.textContent=_fmtSize(a.size);meta.appendChild(z)}
+    t.appendChild(meta);row.appendChild(t);
+    if(a.saw)saw.push(a);
+  });
+  div.insertBefore(row,div.firstChild);
+  // The vision model's description goes to the model; on screen it is folded away.
+  if(saw.length){
+    var d=document.createElement('details');d.className='msg-saw';
+    var sm=document.createElement('summary');sm.textContent='What CODEC saw';d.appendChild(sm);
+    saw.forEach(function(a){var p=document.createElement('div');p.textContent=(saw.length>1?a.name+': ':'')+a.saw;d.appendChild(p)});
+    var meta=div.querySelector('.msg-meta');div.insertBefore(d,meta||null);
+  }
 }
 function removeChip(id){pendingFiles=pendingFiles.filter(function(f){return f.id!==id});var el=document.getElementById(id);if(el)el.remove();_syncSendState()}
 function clearChips(){pendingFiles=[];document.getElementById('fileChips').innerHTML='';_syncSendState()}
@@ -2032,7 +2129,7 @@ async function sendMessage(queued){
   // only in the chat path further down, which the project and research branches
   // return past — so a PDF attached in Agents or Project mode was silently
   // dropped: chips cleared, crew ran on the prompt alone, no error shown.
-  var fileContext='';var fileNames=[];
+  var fileContext='';var fileNames=[];var atts=_attTiles(pendingFiles);  // P2.12: tiles kept with the message
   for(var i=0;i<pendingFiles.length;i++){var f=pendingFiles[i];fileNames.push(f.name);
     if(f.type==='text'||f.type==='pdf'){fileContext+='\n\n[DOCUMENT: '+f.name+']\n'+f.content.substring(0,80000)+'\n[END DOCUMENT]'}
     else if(f.type==='image'){fileContext+='\n\n[IMAGE ANALYSIS of '+f.name+']\n'+f.content.substring(0,80000)+'\n[END IMAGE]'}}
@@ -2146,7 +2243,7 @@ async function sendMessage(queued){
     if(crew==='custom'&&_pickAgent)crewLabels.custom=_pickAgent.name;
     var userMsg=(crewLabels[crew]||crew)+': '+((text||'')||(fileNames.length?fileNames.join(', '):'(running)'));
     if(fileNames.length&&text)userMsg+=' ['+fileNames.join(', ')+']';
-    addMessage('user',userMsg);chatHist.push({role:'user',content:userMsg});saveMessages([{role:'user',content:userMsg}]);
+    addMessage('user',userMsg,undefined,null,false,atts);chatHist.push({role:'user',content:userMsg});saveMessages([{role:'user',content:userMsg,attachments:atts}]);
 
     var statusEl=null;
     function updateStatus(msg){
@@ -2196,11 +2293,11 @@ async function sendMessage(queued){
   if(pick&&!text)text=pick.label; // a pick alone runs it on its own name
   var displayText=pick?('@'+pick.label+(text&&text!==pick.label?' '+text:'')):text;
   if(fileNames.length){displayText=(fileNames.map(function(n){return n}).join('\n'))+'\n\n'+(text||'Please analyze the attached file(s).')}
-  addMessage('user',displayText);
+  addMessage('user',displayText,undefined,null,false,atts);
   var imageData=[];
   var llmText=(text||'Please analyze the attached file(s).')+fileContext;
   chatHist.push({role:'user',content:llmText});clearChips();
-  saveMessages([{role:'user',content:displayText}]);
+  saveMessages([{role:'user',content:displayText,attachments:atts}]);
   var hasImages=imageData.length>0;
   isProcessing=true;document.getElementById('sendBtn').disabled=true;_showStop();showTyping();
   _currentAbort=new AbortController();
@@ -2438,37 +2535,43 @@ async function handleUpload(e){
       if(_refSlots===null)_refSlots=_imgMaxRefs-pendingFiles.filter(function(f){return f.type==='imgref'}).length;
       if(_refSlots<=0){showToast('Up to '+_imgMaxRefs+' reference images',true);continue}
       _refSlots--;
-      (function(theFile){_downscaleImage(theFile,1280).then(function(b64){if(b64)addFileChip(theFile.name,b64,'imgref');else showToast('Could not read '+theFile.name,true)})})(file);
+      (function(theFile){Promise.all([_downscaleImage(theFile,1280),_thumbOf(theFile)]).then(function(v){if(v[0])addFileChip(theFile.name,v[0],'imgref',{thumb:v[1],size:theFile.size});else showToast('Could not read '+theFile.name,true)})})(file);
       continue;
     }
     if(file.type.startsWith('image/')){
-      var tid='loading_'+genId();var chips=document.getElementById('fileChips');
-      var chip=document.createElement('div');chip.className='file-chip loading';chip.id=tid;
-      chip.innerHTML='<span class="fc-icon"><svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></span><span class="fc-name">'+escHtml(file.name)+' (analyzing...)</span>';chips.appendChild(chip);
-      (function(theFile,loadId){_downscaleImage(theFile,1280).then(async function(b64){try{var r=await fetch('/api/upload_image',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:theFile.name,data:b64})});var data=await r.json();var el=document.getElementById(loadId);if(el)el.remove();if(data.text){addFileChip(theFile.name,'[IMAGE ANALYSIS: '+data.text+']','image')}else{addFileChip(theFile.name,'[Image upload failed]','image')}}catch(err){var el=document.getElementById(loadId);if(el)el.remove();addFileChip(theFile.name,'[Image error]','image')}})})(file,tid);continue
+      (function(theFile){
+        var tid='loading_'+genId();
+        _thumbOf(theFile).then(function(th){
+          _loadingChip(tid,theFile.name,theFile.size,th);
+          _downscaleImage(theFile,1280).then(async function(b64){
+            var meta={thumb:th,size:theFile.size,full:b64&&b64.length<3000000?'data:image/jpeg;base64,'+b64:''};
+            try{var r=await fetch('/api/upload_image',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:theFile.name,data:b64})});var data=await r.json();var el=document.getElementById(tid);if(el)el.remove();if(data.text){addFileChip(theFile.name,'[IMAGE ANALYSIS: '+data.text+']','image',meta)}else{addFileChip(theFile.name,'[Image upload failed]','image',meta)}}
+            catch(err){var el=document.getElementById(tid);if(el)el.remove();addFileChip(theFile.name,'[Image error]','image',meta)}
+          });
+        });
+      })(file);continue
     }else if(/\.(pdf|docx|csv|tsv)$/i.test(file.name)){
       (function(theFile){
-        var tempId='loading_'+genId();var chips=document.getElementById('fileChips');
-        var chip=document.createElement('div');chip.className='file-chip loading';chip.id=tempId;
-        var fIcon=/\.pdf$/i.test(theFile.name)?'<svg class=\"ico ico-sm\" viewBox=\"0 0 24 24\"><path d=\"M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z\"/><path d=\"M14 2v6h6\"/></svg>':'<svg class=\"ico ico-sm\" viewBox=\"0 0 24 24\"><path d=\"M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z\"/><path d=\"M14 2v6h6\"/></svg>';
+        var tempId='loading_'+genId();
         var fType=/\.pdf$/i.test(theFile.name)?'pdf':'text';
-        chip.innerHTML='<span class="fc-icon">'+fIcon+'</span><span class="fc-name">'+escHtml(theFile.name)+' (extracting...)</span>';chips.appendChild(chip);
+        _loadingChip(tempId,theFile.name,theFile.size,'');
+        var _sz={size:theFile.size};
         var rd=new FileReader();
         rd.onload=async function(){
           var base64=rd.result.split(',')[1];
           try{
             var r=await fetch('/api/upload',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:theFile.name,data:base64})});
             var el=document.getElementById(tempId);if(el)el.remove();
-            if(!r.ok){var errText='';try{var ej=await r.json();errText=ej.error||r.status}catch(e){errText='Server error ('+r.status+')'}addFileChip(theFile.name,'[Upload failed: '+errText+']',fType);return}
+            if(!r.ok){var errText='';try{var ej=await r.json();errText=ej.error||r.status}catch(e){errText='Server error ('+r.status+')'}addFileChip(theFile.name,'[Upload failed: '+errText+']',fType,_sz);return}
             var data=await r.json();
-            if(data.text&&data.text.trim().length>10){addFileChip(theFile.name,data.text,fType)}
-            else if(data.error){addFileChip(theFile.name,'[Error: '+data.error+']',fType)}
-            else{addFileChip(theFile.name,'[Could not extract text]',fType)}
-          }catch(err){var el=document.getElementById(tempId);if(el)el.remove();addFileChip(theFile.name,'[Upload error: '+err.message+']',fType)}
+            if(data.text&&data.text.trim().length>10){addFileChip(theFile.name,data.text,fType,_sz)}
+            else if(data.error){addFileChip(theFile.name,'[Error: '+data.error+']',fType,_sz)}
+            else{addFileChip(theFile.name,'[Could not extract text]',fType,_sz)}
+          }catch(err){var el=document.getElementById(tempId);if(el)el.remove();addFileChip(theFile.name,'[Upload error: '+err.message+']',fType,_sz)}
         };
         rd.readAsDataURL(theFile);
       })(file);
-    }else{try{var text=await file.text();addFileChip(file.name,text,'text')}catch(err){addFileChip(file.name,'[Cannot read file]','text')}}
+    }else{try{var text=await file.text();addFileChip(file.name,text,'text',{size:file.size})}catch(err){addFileChip(file.name,'[Cannot read file]','text',{size:file.size})}}
   }
   e.target.value=''
 }
@@ -2685,9 +2788,7 @@ function takeServerPhoto() {
     btn.style.borderColor = '';
     if (d.error) { addMsg('system', 'Error: ' + d.error); return; }
     addMsg('system', 'Photo saved: ' + d.filename);
-    var img = document.getElementById('screenImg');
-    img.src = 'data:image/jpeg;base64,' + d.image;
-    document.getElementById('screenModal').classList.add('show');
+    openLightbox('data:image/jpeg;base64,' + d.image, d.filename || 'webcam.jpg');
     fetch('/api/webcam', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ image: d.image, analyze: true, prompt: 'Describe what you see in this photo. Be concise.' })
     }).then(function(r2) { return r2.json(); }).then(function(d2) {
@@ -2695,7 +2796,26 @@ function takeServerPhoto() {
     });
   }).catch(function(e) { btn.style.borderColor = ''; addMsg('system', 'Camera error: ' + e.message); });
 }
-function closeScreenshot() { document.getElementById('screenModal').classList.remove('show'); }
+function closeScreenshot() {
+  var m = document.getElementById('screenModal');
+  if (!m.classList.contains('show')) return;
+  m.classList.remove('show');
+  if (_lightboxFrom && _lightboxFrom.isConnected) _lightboxFrom.focus();
+  _lightboxFrom = null;
+}
+// P2.12: #screenModal doubles as the lightbox for chat and generated images, with a
+// Download button. Only same-origin image URLs and data: JPEG/PNG images open.
+var _lightboxFrom = null;
+function openLightbox(src, name, from) {
+  src = String(src || '');
+  if (!/^(\/api\/image\/file\/[0-9a-f]{12}\/\d{2}\.png|data:image\/(jpeg|png);base64,[A-Za-z0-9+\/=]+)$/.test(src)) return;
+  var img = document.getElementById('screenImg'), dl = document.getElementById('screenDl');
+  img.src = src; img.alt = name || 'Image';
+  dl.href = src; dl.setAttribute('download', (name || 'image').replace(/[^\w.-]+/g, '-')); dl.hidden = false;
+  _lightboxFrom = from || document.activeElement;
+  document.getElementById('screenModal').classList.add('show');
+  document.querySelector('#screenModal .modal-close').focus();
+}
 document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeScreenshot(); });
 
 // ── Live Webcam PIP (Mac MJPEG stream) ──
