@@ -7,7 +7,7 @@
     <title>CODEC — Authenticate</title>
     <link rel="icon" href="/favicon.png">
     <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
-    <link rel="stylesheet" href="/static/codec.css?v=99bc6e42">
+    <link rel="stylesheet" href="/static/codec.css?v=bdf9bbd1">
     <style>
         :root {
             --bg: #121215; --surface: #18181b; --surface-2: #1f1f22; --surface-3: #27272a;
@@ -93,7 +93,7 @@
             width: 50px; height: 56px; text-align: center; font-size: calc(22px * var(--fs-scale));
             font-weight: 600; letter-spacing: 2px;
             background: var(--surface); color: var(--accent); border: 1px solid var(--border);
-            border-radius: 8px; outline: none;
+            border-radius: 8px;
             transition: border-color 0.15s; font-family: var(--mono);
         }
         .pin-digit:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(217,119,87,0.1); }
@@ -126,7 +126,7 @@
     </style>
 </head>
 <body>
-    <button id="themeBtn" onclick="toggleTheme()" style="position:fixed;top:16px;right:16px;background:none;border:1px solid var(--border);color:var(--text-muted);width:32px;height:32px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center">
+    <button id="themeBtn" type="button" aria-label="Switch light or dark theme" onclick="toggleTheme()" style="position:fixed;top:16px;right:16px;background:none;border:1px solid var(--border);color:var(--text-muted);width:32px;height:32px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center">
         <svg id="themeIco" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
     </button>
 
@@ -137,7 +137,7 @@
 
         <!-- Touch ID section -->
         <div id="touchidSection">
-            <div class="fingerprint-ring" id="fpRing" onclick="authenticate()">
+            <div class="fingerprint-ring" id="fpRing" onclick="authenticate()" aria-hidden="true">
                 <span class="fingerprint-icon" id="fpIcon"><svg viewBox="0 0 24 24" class="ico"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
             </div>
             <button class="auth-btn" id="authBtn" onclick="authenticate()">Authenticate with Touch ID</button>
@@ -151,12 +151,12 @@
         <!-- PIN section -->
         <div class="pin-section" id="pinSection">
             <div class="pin-input-row">
-                <input type="password" class="pin-digit" id="pin1" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
-                <input type="password" class="pin-digit" id="pin2" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
-                <input type="password" class="pin-digit" id="pin3" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
-                <input type="password" class="pin-digit" id="pin4" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
-                <input type="password" class="pin-digit" id="pin5" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
-                <input type="password" class="pin-digit" id="pin6" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
+                <input type="password" class="pin-digit" id="pin1" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off" aria-label="PIN digit 1">
+                <input type="password" class="pin-digit" id="pin2" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off" aria-label="PIN digit 2">
+                <input type="password" class="pin-digit" id="pin3" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off" aria-label="PIN digit 3">
+                <input type="password" class="pin-digit" id="pin4" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off" aria-label="PIN digit 4">
+                <input type="password" class="pin-digit" id="pin5" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off" aria-label="PIN digit 5">
+                <input type="password" class="pin-digit" id="pin6" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off" aria-label="PIN digit 6">
             </div>
             <button class="auth-btn" id="pinBtn" onclick="verifyPin()" style="background:var(--border-hover)">Unlock with PIN</button>
         </div>
@@ -166,12 +166,12 @@
             <div class="divider"><span>2FA Verification</span></div>
             <div style="font-size:var(--fs-13);color:var(--text-muted);margin-bottom:16px">Enter the 6-digit code from your authenticator app</div>
             <div class="pin-input-row">
-                <input type="text" class="pin-digit" id="totp1" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
-                <input type="text" class="pin-digit" id="totp2" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
-                <input type="text" class="pin-digit" id="totp3" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
-                <input type="text" class="pin-digit" id="totp4" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
-                <input type="text" class="pin-digit" id="totp5" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
-                <input type="text" class="pin-digit" id="totp6" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
+                <input type="text" class="pin-digit" id="totp1" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" aria-label="Authenticator code, digit 1 (paste or autofill the whole code)">
+                <input type="text" class="pin-digit" id="totp2" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off" aria-label="Digit 2">
+                <input type="text" class="pin-digit" id="totp3" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off" aria-label="Digit 3">
+                <input type="text" class="pin-digit" id="totp4" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off" aria-label="Digit 4">
+                <input type="text" class="pin-digit" id="totp5" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off" aria-label="Digit 5">
+                <input type="text" class="pin-digit" id="totp6" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off" aria-label="Digit 6">
             </div>
             <button class="auth-btn" id="totpBtn" onclick="verifyTotp()">Verify Code</button>
         </div>
@@ -183,12 +183,12 @@
             <img id="totpQR" style="width:200px;height:200px;margin:0 auto 12px;display:block;border-radius:8px;background:#fff;padding:8px" />
             <div style="font-size:var(--fs-12);color:var(--text-dim);margin-bottom:16px;word-break:break-all" id="totpManualKey"></div>
             <div class="pin-input-row">
-                <input type="text" class="pin-digit" id="setup1" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
-                <input type="text" class="pin-digit" id="setup2" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
-                <input type="text" class="pin-digit" id="setup3" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
-                <input type="text" class="pin-digit" id="setup4" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
-                <input type="text" class="pin-digit" id="setup5" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
-                <input type="text" class="pin-digit" id="setup6" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off">
+                <input type="text" class="pin-digit" id="setup1" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" aria-label="Authenticator code, digit 1 (paste or autofill the whole code)">
+                <input type="text" class="pin-digit" id="setup2" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off" aria-label="Digit 2">
+                <input type="text" class="pin-digit" id="setup3" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off" aria-label="Digit 3">
+                <input type="text" class="pin-digit" id="setup4" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off" aria-label="Digit 4">
+                <input type="text" class="pin-digit" id="setup5" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off" aria-label="Digit 5">
+                <input type="text" class="pin-digit" id="setup6" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off" aria-label="Digit 6">
             </div>
             <button class="auth-btn" id="setupBtn" onclick="confirmTotpSetup()">Confirm &amp; Enable 2FA</button>
         </div>
@@ -644,6 +644,19 @@ function setupDigitInputs(prefix, count, submitFn) {
             var clone = el.cloneNode(true);
             el.parentNode.replaceChild(clone, el);
             clone.addEventListener('input', function() {
+                // P2.13: the first box takes a whole code (autocomplete="one-time-code"
+                // autofill, or typing fast) and spreads it over the six boxes.
+                if (idx === 1 && this.value.replace(/\D/g, '').length > 1) {
+                    var all = this.value.replace(/\D/g, '').substring(0, count);
+                    for (var j = 0; j < all.length; j++) {
+                        var tj = document.getElementById(prefix + (j + 1));
+                        tj.value = all[j];
+                        tj.classList.add('filled');
+                    }
+                    if (all.length === count) submitFn();
+                    else document.getElementById(prefix + Math.min(all.length + 1, count)).focus();
+                    return;
+                }
                 if (this.value.length === 1) {
                     this.classList.add('filled');
                     if (idx < count) document.getElementById(prefix + (idx + 1)).focus();
@@ -660,7 +673,7 @@ function setupDigitInputs(prefix, count, submitFn) {
                 if (e.key === 'Enter') submitFn();
             });
             clone.addEventListener('beforeinput', function(e) {
-                if (e.data && !/^\d$/.test(e.data)) e.preventDefault();
+                if (e.data && !(idx === 1 ? /^\d+$/ : /^\d$/).test(e.data)) e.preventDefault();
             });
             // Handle paste on first input
             if (idx === 1) {

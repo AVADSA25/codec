@@ -212,6 +212,15 @@
 /* Base. The outline draws the same 2px gap + 2px ring as --focus-ring without
    replacing an element's own box-shadow; a page rule that sets outline wins. */
 :focus-visible { outline: 2px solid var(--accent-ring); outline-offset: 2px; }
+
+/* P2.13: people who ask for less motion get no animations, transitions or smooth
+   scrolling on any page (spinners stop; state still shows through colour and text). */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important; animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important; scroll-behavior: auto !important;
+  }
+}
 ::selection { background: var(--selection); }
 
 /* Markdown replies (UI phase 1, PR-C). static/codec-md.js renders into an

@@ -207,9 +207,9 @@
   function panelHTML() {
     return '' +
       '<div class="side-panel-overlay" id="sidePanelOverlay" onclick="closeSidePanel()"></div>' +
-      '<div class="side-panel" id="sidePanel" role="dialog" aria-label="Quick settings">' +
+      '<div class="side-panel" id="sidePanel" role="dialog" aria-modal="true" aria-label="Quick settings" data-dialog="open">' +
         '<div class="side-panel-header"><h2>Quick settings</h2>' +
-          '<button type="button" class="cs-ibtn side-panel-close" onclick="closeSidePanel()" aria-label="Close quick settings">' +
+          '<button type="button" class="cs-ibtn side-panel-close" onclick="closeSidePanel()" aria-label="Close quick settings" data-dialog-close>' +
           ico('close', 18) + '</button></div>' +
         '<div class="side-panel-body">' +
           '<button type="button" class="sp-item" id="voiceBtn" onclick="CodecShell.voiceReplies()">' +
@@ -735,6 +735,8 @@
     if (!st) return;
     st.textContent = on ? 'ON' : 'OFF';
     st.classList.toggle('on', !!on);
+    var b = $('wakeBtn');
+    if (b) b.setAttribute('aria-pressed', String(!!on));  // P2.13
   }
   function refreshWake() {
     fetch('/api/config').then(function (r) { return r.json(); }).then(function (d) {
@@ -1970,7 +1972,8 @@
                  state: function () { return DICT.state; } },
     speech: { speak: speak, stop: sayStop, toggle: sayToggle, rate: sayRate, text: speechText, chunks: speechChunks,
               reading: function () { return SAY.parts.length > 0; } },
-    schedule: { open: schedOpen, close: schedClose, save: schedSave }
+    schedule: { open: schedOpen, close: schedClose, save: schedSave },
+    watchDialogs: dlgWatch
   };
   window.openSidePanel = openSidePanel;
   window.closeSidePanel = closeSidePanel;
@@ -1988,7 +1991,94 @@
 
   // After the page's own scripts: hide quick settings the page cannot run,
   // sync the voice badge, load the lists.
+  // ── Dialogs and clickable rows (P2.13, docs/P2.13-DESIGN.md) ─────────────
+  // Any element marked data-dialog is a modal: while it shows, Tab stays inside it,
+  // Esc presses its [data-dialog-close] button, and focus goes back where it was
+  // when it closes. data-dialog="open" means "shown while it has class open";
+  // an empty value means "shown while it is displayed". The page opens and
+  // closes it as before; the shell only watches.
+  var DLG = { stack: [], seen: [] };
+  var FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]):not([type="hidden"]),select:not([disabled]),' +
+    'textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+  function dlgShown(el) {
+    if (!el.isConnected || el.hidden) return false;
+    var cls = el.getAttribute('data-dialog');
+    if (cls) return el.classList.contains(cls);
+    var cs = window.getComputedStyle(el);
+    return cs.display !== 'none' && cs.visibility !== 'hidden';
+  }
+  function dlgFocusables(el) {
+    return [].slice.call(el.querySelectorAll(FOCUSABLE)).filter(function (f) {
+      return f.getClientRects().length > 0 && !f.closest('[hidden]');
+    });
+  }
+  function dlgSync(el) {
+    var shown = dlgShown(el), i = DLG.stack.indexOf(el);
+    if (shown && i < 0) {
+      el.__csReturn = document.activeElement;
+      DLG.stack.push(el);
+      setTimeout(function () {
+        if (!dlgShown(el) || el.contains(document.activeElement)) return;
+        var f = dlgFocusables(el);
+        (el.querySelector('[autofocus]') || f[0] || el).focus();
+      }, 30);
+    } else if (!shown && i >= 0) {
+      DLG.stack.splice(i, 1);
+      var back = el.__csReturn;
+      el.__csReturn = null;
+      if (back && back.isConnected && typeof back.focus === 'function' && (!document.activeElement ||
+          document.activeElement === document.body || el.contains(document.activeElement))) back.focus();
+    }
+  }
+  function dlgWatch() {
+    var all = document.querySelectorAll('[data-dialog]');
+    for (var i = 0; i < all.length; i++) {
+      var el = all[i];
+      if (DLG.seen.indexOf(el) >= 0) continue;
+      DLG.seen.push(el);
+      if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1');
+      new MutationObserver((function (d) { return function () { dlgSync(d); }; })(el))
+        .observe(el, { attributes: true, attributeFilter: ['class', 'style', 'hidden'] });
+      dlgSync(el);
+    }
+  }
+  document.addEventListener('keydown', function (e) {
+    var top = DLG.stack[DLG.stack.length - 1];
+    if (top && !dlgShown(top)) { dlgSync(top); top = DLG.stack[DLG.stack.length - 1]; }
+    if (top && e.key === 'Tab') {
+      var f = dlgFocusables(top);
+      if (!f.length) { e.preventDefault(); top.focus(); return; }
+      var first = f[0], last = f[f.length - 1], a = document.activeElement;
+      if (e.shiftKey && (a === first || !top.contains(a))) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && (a === last || !top.contains(a))) { e.preventDefault(); first.focus(); }
+      return;
+    }
+    if (top && e.key === 'Escape') {
+      var x = top.querySelector('[data-dialog-close]');
+      if (x) { e.preventDefault(); x.click(); }
+      return;
+    }
+    // A clickable row that cannot be a <button> (it holds other controls) is
+    // role="button" tabindex="0": Enter and Space press it like a button.
+    var t = e.target;
+    if ((e.key === 'Enter' || e.key === ' ') && t && t.getAttribute && t.getAttribute('role') === 'button' &&
+        !/^(BUTTON|A|INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) {
+      e.preventDefault();
+      t.click();
+    }
+  });
+
+  // Voice replies: each page's updateVoiceIcon writes ON / OFF into #voiceState;
+  // the button's aria-pressed follows it (P2.13).
+  function syncVoicePressed() {
+    var st = $('voiceState'), b = $('voiceBtn');
+    if (st && b) b.setAttribute('aria-pressed', String(st.textContent.trim() === 'ON'));
+  }
   function ready() {
+    dlgWatch();
+    var vs = $('voiceState');
+    if (vs) new MutationObserver(syncVoicePressed).observe(vs, { childList: true, characterData: true, subtree: true });
+    syncVoicePressed();
     var needs = document.querySelectorAll('#sidePanel [data-needs]');
     for (var i = 0; i < needs.length; i++) {
       needs[i].hidden = typeof window[needs[i].getAttribute('data-needs')] !== 'function';

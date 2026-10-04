@@ -374,7 +374,7 @@ with no question and no undo. It never used the browser's `confirm()`, so P2.6
 left it as it was. Fix: ask with `CodecShell.ask({danger: true})` first, like
 the other deletes. Revisit: P3.8 (Activity board), which touches agents.
 
-## `test_shell_mounts_and_switches_on_desktop` expects the old shell order (2026-09-29)
+## `test_shell_mounts_and_switches_on_desktop` expects the old shell order (2026-09-29) — FIXED in P2.13
 
 `tests/test_ui_shell.py::test_shell_mounts_and_switches_on_desktop` (jsdom only, so skipped in CI) asserts the
 shell mounts `csSide, csScrim, csTop, csTabs` first. Since P2.8 the reading strip `csPlayer` is mounted before
