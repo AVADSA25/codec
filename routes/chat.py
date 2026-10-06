@@ -196,6 +196,21 @@ def _degenerate_tail(text: str) -> bool:
     return text[-2400:].count(probe) >= 5
 
 
+# P2.11 (docs/P2.11-DESIGN.md): a temporary chat is not saved to history (the page
+# skips /api/qchat/save) and sends temporary:true; the turn then skips memory
+# recall, the observer summary and open threads, and these memory-writing skills
+# do not run on any chat path (pre-LLM match, '@' pick, post-LLM tag).
+TEMPORARY_NO_MEMORY_SKILLS = frozenset({
+    "auto_memorize", "fact_extract", "thread_note", "standing_rules", "memory_save",
+})
+TEMPORARY_REFUSAL = ("Not saved: this is a temporary chat, so nothing goes to memory. "
+                     "Turn off Temporary chat in the + menu to save it.")
+
+
+def _temporary_blocks(name, temporary: bool) -> bool:
+    return bool(temporary) and name in TEMPORARY_NO_MEMORY_SKILLS
+
+
 def _note_memory(meta, source: str, kind: str, count: int) -> None:
     """Record what memory went into this turn, for the reply's "Memory used" (P2.4):
     source, kind and a count, never the text."""
@@ -203,13 +218,15 @@ def _note_memory(meta, source: str, kind: str, count: int) -> None:
         meta.setdefault("memory", []).append({"source": source, "kind": kind, "count": int(count)})
 
 
-def _enrich_messages(messages: list, config: dict, force_search: bool = False, meta: dict | None = None) -> list:
+def _enrich_messages(messages: list, config: dict, force_search: bool = False, meta: dict | None = None,
+                     temporary: bool = False) -> list:
     """
     Auto-detect URLs, search intent, and memory recall in the last user message.
     Injects context messages before the last user message when content is found.
     force_search=True bypasses intent detection and always searches.
     Returns a (possibly modified) copy of the messages list. With `meta`, it also
-    records what memory it injected (_note_memory).
+    records what memory it injected (_note_memory). A temporary chat (P2.11)
+    gets no memory recall; links and web search still work.
     """
     import re as _re
     if not messages:
@@ -231,121 +248,123 @@ def _enrich_messages(messages: list, config: dict, force_search: bool = False, m
     context_parts = []
     memory_parts = []
 
-    # ── Memory recall ──────────────────────────────────────────────────────────
-    # Inject relevant memory context from ALL sources (voice, chat, vibe) for
-    # full cross-session recall.
-    lower = last_text.lower()
-    memory_triggers = [
-        'remember', 'recall', 'earlier', 'before', 'last time',
-        'previously', 'we talked', 'we discussed', 'you said',
-        'did i', 'did we', 'have i', 'have we', 'my previous',
-        'past conversation', 'history', 'do you know my',
-        'what was', 'what did', 'when did',
-    ]
-    # Word-boundary match, and only scan the FIRST 300 chars — the user's own
-    # intent lives at the front of the message, not inside pasted content.
-    # (2026-07-10 trailer incident: a pasted movie-trailer transcript contained
-    # "I remembered something" + "human history", substring-fired 'remember' +
-    # 'history', and the resulting memory dump of old film chats derailed the
-    # model into rambling about other movies instead of the pasted script.)
-    _trigger_zone = lower[:300]
-    has_memory_trigger = any(
-        re.search(r"\b" + re.escape(t) + r"\b", _trigger_zone)
-        for t in memory_triggers
-    )
+    # P2.11: a temporary chat recalls nothing from memory.
+    if not temporary:
+        # ── Memory recall ──────────────────────────────────────────────────────────
+        # Inject relevant memory context from ALL sources (voice, chat, vibe) for
+        # full cross-session recall.
+        lower = last_text.lower()
+        memory_triggers = [
+            'remember', 'recall', 'earlier', 'before', 'last time',
+            'previously', 'we talked', 'we discussed', 'you said',
+            'did i', 'did we', 'have i', 'have we', 'my previous',
+            'past conversation', 'history', 'do you know my',
+            'what was', 'what did', 'when did',
+        ]
+        # Word-boundary match, and only scan the FIRST 300 chars — the user's own
+        # intent lives at the front of the message, not inside pasted content.
+        # (2026-07-10 trailer incident: a pasted movie-trailer transcript contained
+        # "I remembered something" + "human history", substring-fired 'remember' +
+        # 'history', and the resulting memory dump of old film chats derailed the
+        # model into rambling about other movies instead of the pasted script.)
+        _trigger_zone = lower[:300]
+        has_memory_trigger = any(
+            re.search(r"\b" + re.escape(t) + r"\b", _trigger_zone)
+            for t in memory_triggers
+        )
 
-    # 1. Voice memory (FTS5 via CodecMemory) — always inject recent, targeted on trigger
-    try:
-        from codec_memory import CodecMemory
-        mem = CodecMemory()
-        if has_memory_trigger:
-            mem_context = mem.get_context(last_text, n=8)
-            if mem_context:
-                memory_parts.append(f"[MEMORY — RELEVANT PAST CONVERSATIONS (VOICE)]\n{mem_context}\n[END MEMORY]")
-                _note_memory(meta, "voice", "relevant", len([ln for ln in mem_context.splitlines() if ln.strip()]))
-                log.info(f"Memory recall injected (voice targeted): {len(mem_context)} chars")
-        recent = mem.search_recent(days=3, limit=5)
-        if recent:
-            lines = ["[RECENT MEMORY — VOICE (LAST 3 DAYS)]"]
-            for r in recent:
-                if _mem_noise(r["content"], last_text):
-                    continue
-                ts = r["timestamp"][:16].replace("T", " ")
-                snippet = r["content"][:200].replace("\n", " ")
-                lines.append(f"  [{ts}] {r['role'].upper()}: {snippet}")
-            if len(lines) > 1:
-                lines.append("[END RECENT MEMORY]")
-                memory_parts.append("\n".join(lines))
-                _note_memory(meta, "voice", "recent", len(lines) - 2)
-                log.info(f"Recent memory injected: {len(lines) - 2} messages")
-    except Exception as e:
-        log.warning(f"Memory enrichment (voice) failed: {e}")
+        # 1. Voice memory (FTS5 via CodecMemory) — always inject recent, targeted on trigger
+        try:
+            from codec_memory import CodecMemory
+            mem = CodecMemory()
+            if has_memory_trigger:
+                mem_context = mem.get_context(last_text, n=8)
+                if mem_context:
+                    memory_parts.append(f"[MEMORY — RELEVANT PAST CONVERSATIONS (VOICE)]\n{mem_context}\n[END MEMORY]")
+                    _note_memory(meta, "voice", "relevant", len([ln for ln in mem_context.splitlines() if ln.strip()]))
+                    log.info(f"Memory recall injected (voice targeted): {len(mem_context)} chars")
+            recent = mem.search_recent(days=3, limit=5)
+            if recent:
+                lines = ["[RECENT MEMORY — VOICE (LAST 3 DAYS)]"]
+                for r in recent:
+                    if _mem_noise(r["content"], last_text):
+                        continue
+                    ts = r["timestamp"][:16].replace("T", " ")
+                    snippet = r["content"][:200].replace("\n", " ")
+                    lines.append(f"  [{ts}] {r['role'].upper()}: {snippet}")
+                if len(lines) > 1:
+                    lines.append("[END RECENT MEMORY]")
+                    memory_parts.append("\n".join(lines))
+                    _note_memory(meta, "voice", "recent", len(lines) - 2)
+                    log.info(f"Recent memory injected: {len(lines) - 2} messages")
+        except Exception as e:
+            log.warning(f"Memory enrichment (voice) failed: {e}")
 
-    # 2. Dashboard chat history (qchat.db) — targeted search on trigger, recent always
-    try:
-        from routes.qchat import qchat_db as _qchat_db; _qc = _qchat_db()
-        if has_memory_trigger:
-            keyword = f"%{last_text[:80]}%"
-            qrows = _qc.execute(
-                "SELECT role, content, timestamp FROM qchat_messages "
-                "WHERE content LIKE ? COLLATE NOCASE ORDER BY id DESC LIMIT 6",
-                (keyword,)
+        # 2. Dashboard chat history (qchat.db) — targeted search on trigger, recent always
+        try:
+            from routes.qchat import qchat_db as _qchat_db; _qc = _qchat_db()
+            if has_memory_trigger:
+                keyword = f"%{last_text[:80]}%"
+                qrows = _qc.execute(
+                    "SELECT role, content, timestamp FROM qchat_messages "
+                    "WHERE content LIKE ? COLLATE NOCASE ORDER BY id DESC LIMIT 6",
+                    (keyword,)
+                ).fetchall()
+                if qrows:
+                    lines = ["[MEMORY — RELEVANT PAST CHATS]"]
+                    for r in qrows:
+                        if _mem_noise(r[1], last_text):
+                            continue
+                        ts = (r[2] or "")[:16].replace("T", " ")
+                        snippet = (r[1] or "")[:200].replace("\n", " ")
+                        lines.append(f"  [{ts}] {(r[0] or '').upper()}: {snippet}")
+                    if len(lines) > 1:
+                        lines.append("[END MEMORY]")
+                        memory_parts.append("\n".join(lines))
+                        _note_memory(meta, "chat", "relevant", len(lines) - 2)
+                        log.info(f"Memory recall injected (chat targeted): {len(lines) - 2} msgs")
+            # Recent chat messages for continuity
+            qrecent = _qc.execute(
+                "SELECT role, content, timestamp FROM qchat_messages ORDER BY id DESC LIMIT 5"
             ).fetchall()
-            if qrows:
-                lines = ["[MEMORY — RELEVANT PAST CHATS]"]
-                for r in qrows:
+            if qrecent:
+                lines = ["[RECENT MEMORY — CHAT]"]
+                for r in qrecent:
                     if _mem_noise(r[1], last_text):
                         continue
                     ts = (r[2] or "")[:16].replace("T", " ")
                     snippet = (r[1] or "")[:200].replace("\n", " ")
                     lines.append(f"  [{ts}] {(r[0] or '').upper()}: {snippet}")
                 if len(lines) > 1:
+                    lines.append("[END RECENT MEMORY]")
+                    memory_parts.append("\n".join(lines))
+                    _note_memory(meta, "chat", "recent", len(lines) - 2)
+                    log.info(f"Recent chat memory injected: {len(lines) - 2} messages")
+        except Exception as e:
+            log.warning(f"Memory enrichment (chat) failed: {e}")
+
+        # 3. Vibe IDE history (vibe.db) — targeted search on trigger only (less relevant day-to-day)
+        if has_memory_trigger:
+            try:
+                from routes.vibe import vibe_db as _vibe_db; _vc = _vibe_db()
+                keyword = f"%{last_text[:80]}%"
+                vrows = _vc.execute(
+                    "SELECT role, content, timestamp FROM vibe_messages "
+                    "WHERE content LIKE ? COLLATE NOCASE ORDER BY id DESC LIMIT 4",
+                    (keyword,)
+                ).fetchall()
+                if vrows:
+                    lines = ["[MEMORY — RELEVANT VIBE/CODE CONVERSATIONS]"]
+                    for r in vrows:
+                        ts = (r[2] or "")[:16].replace("T", " ")
+                        snippet = (r[1] or "")[:200].replace("\n", " ")
+                        lines.append(f"  [{ts}] {(r[0] or '').upper()}: {snippet}")
                     lines.append("[END MEMORY]")
                     memory_parts.append("\n".join(lines))
-                    _note_memory(meta, "chat", "relevant", len(lines) - 2)
-                    log.info(f"Memory recall injected (chat targeted): {len(lines) - 2} msgs")
-        # Recent chat messages for continuity
-        qrecent = _qc.execute(
-            "SELECT role, content, timestamp FROM qchat_messages ORDER BY id DESC LIMIT 5"
-        ).fetchall()
-        if qrecent:
-            lines = ["[RECENT MEMORY — CHAT]"]
-            for r in qrecent:
-                if _mem_noise(r[1], last_text):
-                    continue
-                ts = (r[2] or "")[:16].replace("T", " ")
-                snippet = (r[1] or "")[:200].replace("\n", " ")
-                lines.append(f"  [{ts}] {(r[0] or '').upper()}: {snippet}")
-            if len(lines) > 1:
-                lines.append("[END RECENT MEMORY]")
-                memory_parts.append("\n".join(lines))
-                _note_memory(meta, "chat", "recent", len(lines) - 2)
-                log.info(f"Recent chat memory injected: {len(lines) - 2} messages")
-    except Exception as e:
-        log.warning(f"Memory enrichment (chat) failed: {e}")
-
-    # 3. Vibe IDE history (vibe.db) — targeted search on trigger only (less relevant day-to-day)
-    if has_memory_trigger:
-        try:
-            from routes.vibe import vibe_db as _vibe_db; _vc = _vibe_db()
-            keyword = f"%{last_text[:80]}%"
-            vrows = _vc.execute(
-                "SELECT role, content, timestamp FROM vibe_messages "
-                "WHERE content LIKE ? COLLATE NOCASE ORDER BY id DESC LIMIT 4",
-                (keyword,)
-            ).fetchall()
-            if vrows:
-                lines = ["[MEMORY — RELEVANT VIBE/CODE CONVERSATIONS]"]
-                for r in vrows:
-                    ts = (r[2] or "")[:16].replace("T", " ")
-                    snippet = (r[1] or "")[:200].replace("\n", " ")
-                    lines.append(f"  [{ts}] {(r[0] or '').upper()}: {snippet}")
-                lines.append("[END MEMORY]")
-                memory_parts.append("\n".join(lines))
-                _note_memory(meta, "vibe", "relevant", len(vrows))
-                log.info(f"Memory recall injected (vibe targeted): {len(vrows)} msgs")
-        except Exception as e:
-            log.warning(f"Memory enrichment (vibe) failed: {e}")
+                    _note_memory(meta, "vibe", "relevant", len(vrows))
+                    log.info(f"Memory recall injected (vibe targeted): {len(vrows)} msgs")
+            except Exception as e:
+                log.warning(f"Memory enrichment (vibe) failed: {e}")
 
     # ── URL detection ──────────────────────────────────────────────────────────
     urls = _re.findall(r'https?://[^\s\)\]>,"\']+', last_text)
@@ -518,7 +537,7 @@ def _skill_outcome_message(result: str) -> str:
     return r  # error / vague / dashboard-unreachable — pass through as-is
 
 
-def _try_skill(user_text: str):
+def _try_skill(user_text: str, temporary: bool = False):
     """Check if user_text matches a skill. Returns (skill_name, result) or (None, None).
 
     An explicit allowlisted-trigger match (e.g. "what was I doing 1h ago?" →
@@ -543,6 +562,8 @@ def _try_skill(user_text: str):
         matched = bool(skill and skill.get("name") in CHAT_SKILL_ALLOWLIST)
         if not matched and _is_conversational(user_text):
             return None, None
+        if matched and _temporary_blocks(skill["name"], temporary):
+            return skill["name"], TEMPORARY_REFUSAL
         if matched:
             # re-audit A2: destructive skills need explicit consent (reuses the
             # AskUserQuestion PWA panel; blocks this worker thread until answered).
@@ -567,7 +588,7 @@ MAX_EXPLICIT_SKILL_CHARS = 5000
 _MCP_CALL = re.compile(r"^\S+\s*(\{.*\})?\s*$", re.DOTALL)
 
 
-def _try_explicit_skill(target: str, user_text: str):
+def _try_explicit_skill(target: str, user_text: str, temporary: bool = False):
     """Run the skill the user picked with '@' (the chat `skill` body field, P2.3;
     docs/P2.3-DESIGN.md). Returns (skill_name, result).
 
@@ -594,6 +615,8 @@ def _try_explicit_skill(target: str, user_text: str):
         allowed = set()
     if name not in allowed:
         return name, "That skill can't be run from chat."
+    if _temporary_blocks(name, temporary):
+        return name, TEMPORARY_REFUSAL
     if len(task) > MAX_EXPLICIT_SKILL_CHARS:
         return name, f"That message is too long for a skill ({MAX_EXPLICIT_SKILL_CHARS} characters at most)."
     try:
@@ -611,7 +634,7 @@ def _try_explicit_skill(target: str, user_text: str):
     return name, (str(result) if result is not None else f"{name} had nothing to return for that.")
 
 
-def _try_skill_by_name(name: str, query: str):
+def _try_skill_by_name(name: str, query: str, temporary: bool = False):
     """Execute a specific skill by name (for LLM-routed skill calls).
 
     For calculator specifically: LLMs often pass natural-language descriptions
@@ -620,6 +643,8 @@ def _try_skill_by_name(name: str, query: str):
     every number out of the string and summing/computing locally so the user
     always gets a number instead of a raw [SKILL:...] tag leaking through.
     """
+    if _temporary_blocks(name, temporary):
+        return name, TEMPORARY_REFUSAL
     try:
         from codec_dispatch import run_skill
         skill = {"name": name}
@@ -765,7 +790,8 @@ _REASON_SCAFFOLD = (
 
 
 def _build_chat_system_prompt(config: dict, budget, has_attachment: bool,
-                              last_user_text: str, meta: dict | None = None) -> str:
+                              last_user_text: str, meta: dict | None = None,
+                              temporary: bool = False) -> str:
     """Build the chat system prompt: override-aware base + per-turn step-budget
     warnings + attachment / content-rewrite / observer-injection suffixes.
 
@@ -821,7 +847,7 @@ def _build_chat_system_prompt(config: dict, budget, has_attachment: bool,
     # live memory voice already gets via [ACTIVE FACTS]. "" when disabled.
     try:
         from codec_daybreak import get_working_context
-        _wc = get_working_context()
+        _wc = "" if temporary else get_working_context()  # P2.11: no open threads in a temporary chat
         if _wc:
             sys_prompt += "\n\n" + _wc
             _note_memory(meta, "threads", "open", sum(1 for ln in _wc.splitlines() if ln.startswith("- ")))
@@ -867,6 +893,8 @@ def _build_chat_system_prompt(config: dict, budget, has_attachment: bool,
             "DO NOT emit [SKILL:...] tool-calling tags in this response — "
             "the answer IS the rewritten text, no tools needed."
         )
+    if temporary:
+        return sys_prompt  # P2.11: no observer summary in a temporary chat
     try:
         from codec_observer import maybe_inject_observation_summary
         _obs_transport = "local" if "localhost" in (config.get("llm_base_url") or "") else "chat"
@@ -1028,6 +1056,8 @@ async def chat_completion(request: Request):
     # claim-check, which needs the request to spot an unbacked persistence ask,
     # silently degraded to reply-pattern-only. A safety check must not depend on
     # an unrelated feature flag.
+    # P2.11: a temporary chat (see TEMPORARY_NO_MEMORY_SKILLS).
+    _temporary = bool(body.get("temporary"))
     last_user_text = ""
     for _m in reversed(messages):
         if _m.get("role") == "user" and isinstance(_m.get("content"), str):
@@ -1042,7 +1072,7 @@ async def chat_completion(request: Request):
         _explicit = body.get("skill")
         if _explicit and isinstance(_explicit, str) and last_user_text:
             _budget.consume("skill_hijack")
-            skill_name, skill_result = await asyncio.to_thread(_try_explicit_skill, _explicit, last_user_text)
+            skill_name, skill_result = await asyncio.to_thread(_try_explicit_skill, _explicit, last_user_text, _temporary)
             log.info(f"[Chat] Picked skill '{skill_name}' handled ({len(skill_result)} chars)")
             if body.get("stream", False):
                 from starlette.responses import StreamingResponse as _PickSR
@@ -1133,7 +1163,7 @@ async def chat_completion(request: Request):
             if _has_persona:
                 skill_name, skill_result = None, None
             else:
-                skill_name, skill_result = await asyncio.to_thread(_try_skill, last_user_text)
+                skill_name, skill_result = await asyncio.to_thread(_try_skill, last_user_text, _temporary)
             if skill_result:
                 _budget.consume("skill_hijack")   # pre-LLM hijack consumes 1
                 log.info(f"[Chat] Skill '{skill_name}' handled: {skill_result[:80]}")
@@ -1189,13 +1219,14 @@ async def chat_completion(request: Request):
         # gone — both chat POSTs now go through codec_llm, which builds its own.)
         force_search = body.get("force_search", False)
         _mem_meta: dict = {}  # what memory this turn used, for the reply's "Memory used" (P2.4)
-        messages = _enrich_messages(messages, config, force_search=bool(force_search), meta=_mem_meta)
+        messages = _enrich_messages(messages, config, force_search=bool(force_search), meta=_mem_meta,
+                                    temporary=_temporary)
 
         # Build the system prompt (override + step-budget + attachment /
         # content-rewrite / observer suffixes) — extracted to a helper for
         # readability (Fix #8). Consumes the llm_call step budget internally.
         sys_prompt = _build_chat_system_prompt(
-            config, _budget, has_attachment, last_user_text, meta=_mem_meta
+            config, _budget, has_attachment, last_user_text, meta=_mem_meta, temporary=_temporary
         )
         _mem_items = _mem_meta.get("memory", [])
 
@@ -1338,7 +1369,7 @@ async def chat_completion(request: Request):
                         log.info(f"[Chat] LLM tried disallowed skill {s_name!r} — dropping tag")
                         return raw_tag.replace(m.group(0), "")
                     try:
-                        _, s_result = _try_skill_by_name(s_name, s_query)
+                        _, s_result = _try_skill_by_name(s_name, s_query, _temporary)
                         _stream_actions.add(s_name)   # backs any claim about it
                         if s_result:
                             return raw_tag.replace(m.group(0), f"**{s_result}**")
@@ -1544,7 +1575,7 @@ async def chat_completion(request: Request):
                 answer = answer.replace(skill_tag.group(0), "")
             elif s_name in CHAT_SKILL_ALLOWLIST:
                 try:
-                    _, s_result = await asyncio.to_thread(_try_skill_by_name, s_name, s_query)
+                    _, s_result = await asyncio.to_thread(_try_skill_by_name, s_name, s_query, _temporary)
                     _turn_actions.add(s_name)   # backs any claim about this action
                     if s_result:
                         answer = answer.replace(skill_tag.group(0), f"**{s_result}**")
