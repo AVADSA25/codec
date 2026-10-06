@@ -8,7 +8,7 @@
 <link rel="icon" href="/favicon.png">
 <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
 <link rel="manifest" href="/manifest.json">
-<link rel="stylesheet" href="/static/codec.css?v=99bc6e42">
+<link rel="stylesheet" href="/static/codec.css?v=bdf9bbd1">
 <!-- B5 / SR-29: crossorigin attribute added so SRI hash pinning can be
      enabled by adding `integrity="sha384-..."` once the hash is computed.
      Run `openssl dgst -sha384 -binary <file> | openssl base64 -A` against
@@ -94,7 +94,7 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx)}
 .ms{flex:1;overflow-y:auto;padding:12px;position:relative}
 .ms::before{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:120px;height:120px;background:url('/static/logo.svg') center/contain no-repeat;opacity:0.07;pointer-events:none;z-index:0}
 .ia{display:flex;gap:6px;padding:8px 12px;background:var(--bg2);border-top:1px solid var(--bd);align-items:flex-end;min-height:54px}
-.ii{flex:1;background:var(--bg3);border:1px solid var(--bd);border-radius:18px;padding:8px 14px;color:var(--tx);font-size:var(--fs-14);resize:none;outline:none;min-height:38px;max-height:100px;line-height:1.4;font-family:var(--ft)}
+.ii{flex:1;background:var(--bg3);border:1px solid var(--bd);border-radius:18px;padding:8px 14px;color:var(--tx);font-size:var(--fs-14);resize:none;min-height:38px;max-height:100px;line-height:1.4;font-family:var(--ft)}
 .ii:focus{border-color:var(--ac);box-shadow:0 0 0 2px rgba(217,119,87,0.15)}
 .sb{padding:0;width:36px;height:36px;background:var(--ac);color:var(--on-accent);border:none;border-radius:50%;cursor:pointer;font-weight:600;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s}
 .sb:hover{background:var(--accent-hover)}
@@ -178,15 +178,15 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx)}
 </style>
 </head>
 <body>
-<script src="/static/codec-shell.js?v=5ec422ca" data-page="vibe" data-title="Vibe" data-status></script>
+<script src="/static/codec-shell.js?v=e273525f" data-page="vibe" data-title="Vibe" data-status></script>
 <div class="ov" id="ov" onclick="cS()"></div>
-<div class="sd" id="sd">
-<div style="padding:14px 16px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between"><h2 style="font-family:var(--mn);font-size:var(--fs-13);color:var(--ac)">PROJECTS</h2><button onclick="cS()" aria-label="Close projects" style="background:0;border:0;color:var(--tx2);cursor:pointer;display:flex;padding:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+<div class="sd" id="sd" role="dialog" aria-modal="true" aria-label="Projects" data-dialog="sh">
+<div style="padding:14px 16px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between"><h2 style="font-family:var(--mn);font-size:var(--fs-13);color:var(--ac)">PROJECTS</h2><button type="button" onclick="cS()" aria-label="Close projects" data-dialog-close style="background:0;border:0;color:var(--tx2);cursor:pointer;display:flex;padding:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
 <div style="padding:0 12px 8px">
   <input type="text" id="sidebarSearch" placeholder="Search projects..." oninput="handleVibeSearch(this.value)"
-    style="width:100%;padding:8px 10px;background:var(--bg3);border:1px solid var(--bd);border-radius:6px;color:var(--tx);font-size:var(--fs-13);font-family:var(--ft);outline:none;box-sizing:border-box">
+    style="width:100%;padding:8px 10px;background:var(--bg3);border:1px solid var(--bd);border-radius:6px;color:var(--tx);font-size:var(--fs-13);font-family:var(--ft);box-sizing:border-box">
 </div>
-<div style="padding:12px 16px;border-bottom:1px solid var(--bd);cursor:pointer;color:var(--ac);font-weight:600;font-size:var(--fs-13)" onclick="nS()">+ New Project</div>
+<button type="button" style="display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--bd);padding:12px 16px;cursor:pointer;color:var(--ac);font-weight:600;font-size:var(--fs-13);font-family:inherit" onclick="nS()">+ New Project</button>
 <div id="sl"></div>
 </div>
 <div class="cs-main vibe-main">
@@ -216,7 +216,7 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx)}
   </div>
 </div>
 <div class="sp">
-<div class="cp"><div class="hd" style="font-size:var(--fs-13);color:var(--tx2);font-weight:500">Vibe Coding</div><div class="ms" id="cm"><div class="mg ma">Tell me what to build!</div></div><div class="ia"><button class="vibe-mic" id="vibeMic" onclick="toggleVibeMic()" title="Voice input"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button><textarea id="vi" class="ii" rows="1" placeholder="Describe what to build..."></textarea><button class="vibe-mic" id="vibeFolder" onclick="pickWorkingFolder()" title="Allocate a working folder"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg><span class="on-mac">on Mac</span></button><button class="sb" id="sndb" title="Send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></button><button class="sb" id="stopb" onclick="doStop()" style="display:none;background:#c0392b" title="Stop"><svg width="14" height="14" viewBox="0 0 24 24" fill="#fff" stroke="none"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></button></div></div>
+<div class="cp"><div class="hd" style="font-size:var(--fs-13);color:var(--tx2);font-weight:500">Vibe Coding</div><div class="ms" id="cm"><div class="mg ma">Tell me what to build!</div></div><div class="ia"><button class="vibe-mic" id="vibeMic" onclick="toggleVibeMic()" title="Voice input" aria-label="Voice input"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button><textarea id="vi" class="ii" rows="1" placeholder="Describe what to build..."></textarea><button class="vibe-mic" id="vibeFolder" onclick="pickWorkingFolder()" title="Allocate a working folder"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg><span class="on-mac">on Mac</span></button><button class="sb" id="sndb" title="Send" aria-label="Send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></button><button class="sb" id="stopb" onclick="doStop()" style="display:none;background:#c0392b" title="Stop" aria-label="Stop"><svg width="14" height="14" viewBox="0 0 24 24" fill="#fff" stroke="none"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></button></div></div>
 <div style="width:4px;cursor:col-resize;background:var(--bd)" id="rh"></div>
 <div class="vtabs" id="vtabs"><button class="vtab sel" id="vtabCode" onclick="_setVibeTab('code')">Code</button><button class="vtab" id="vtabPrev" onclick="_vibeTabPreview()">Preview</button></div>
 <div class="ep"><div id="eb"></div><div class="tb"><button class="bt primary" onclick="doRun()" title="Execute code"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5 3 19 12 5 21 5 3"/></svg>Run</button><button class="bt" onclick="doPrev()" title="Live preview"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>Preview</button><button class="bt" id="inspectBtn" onclick="toggleInspect()" title="Inspect elements"><svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Inspect</button><div class="tb-sep"></div><button class="bt" onclick="doSave()" title="Save file"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save</button><button class="bt" onclick="doCopy()" title="Copy code"><svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>Copy</button><span class="rs" id="rs"></span></div></div>
@@ -496,7 +496,7 @@ function _renderVibeWorkdir() {
     chip.id = 'vibeWorkdirChip';
     chip.style.cssText = 'display:flex;align-items:center;gap:6px;padding:4px 8px;font-size:var(--fs-12);color:var(--tx2)';
     chip.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span id="vibeWorkdirPath" style="max-width:52ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>' +
-      '<span onclick="clearWorkingFolder()" title="Remove" role="button" aria-label="Remove working folder" style="cursor:pointer;display:flex"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></span>';
+      '<button type="button" onclick="clearWorkingFolder()" title="Remove" aria-label="Remove working folder" style="cursor:pointer;display:flex;background:none;border:0;padding:2px;color:inherit"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>';
     if (ia && ia.parentNode) ia.parentNode.insertBefore(chip, ia);
   }
   chip.style.display = 'flex';
@@ -885,7 +885,7 @@ function loadSes() {
     if (!d.length) { el.innerHTML = '<div style="padding:16px;color:var(--text-muted);font-size:var(--fs-12)">No projects yet.</div>'; return; }
     el.innerHTML = d.map(function(s) {
       var ts = s.updated_at ? new Date(s.updated_at).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
-      return '<div class="si" style="display:flex;align-items:center;gap:8px"><div style="flex:1;min-width:0;cursor:pointer" onclick="ldSes(\'' + s.id + '\')"><div style="font-size:var(--fs-13);color:var(--tx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(s.title) + '</div><div style="font-family:var(--mn);font-size:var(--fs-12);color:var(--tx2);margin-top:2px">' + ts + '</div></div><button onclick="event.stopPropagation();delSes(\'' + s.id + '\')" style="background:none;border:none;color:var(--tx2);cursor:pointer;padding:4px;opacity:.5;display:flex" title="Delete project" aria-label="Delete project"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>';
+      return '<div class="si" style="display:flex;align-items:center;gap:8px"><div style="flex:1;min-width:0;cursor:pointer" role="button" tabindex="0" onclick="ldSes(\'' + s.id + '\')"><div style="font-size:var(--fs-13);color:var(--tx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(s.title) + '</div><div style="font-family:var(--mn);font-size:var(--fs-12);color:var(--tx2);margin-top:2px">' + ts + '</div></div><button onclick="event.stopPropagation();delSes(\'' + s.id + '\')" style="background:none;border:none;color:var(--tx2);cursor:pointer;padding:4px;opacity:.5;display:flex" title="Delete project" aria-label="Delete project"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>';
     }).join('');
   }).catch(function() { el.innerHTML = '<div style="padding:16px;color:var(--text-muted)">Error</div>'; });
 }
@@ -1217,16 +1217,16 @@ document.getElementById('vi').addEventListener('input', function() {
 <div class="webcam-pip" id="webcamPip">
   <img id="pipVideo" alt="Mac Webcam" onclick="expandPip()" style="cursor:pointer" />
   <div class="pip-bar">
-    <button class="pip-btn snap-btn" onclick="snapFromPip()" title="Snapshot + Analyze"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/></svg></button>
-    <button class="pip-btn" onclick="savePipFrame()" title="Save photo"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg></button>
-    <button class="pip-btn" onclick="expandPip()" title="Expand / Shrink"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>
-    <button class="pip-btn" onclick="closeWebcamPip()" title="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    <button class="pip-btn snap-btn" onclick="snapFromPip()" title="Snapshot + Analyze" aria-label="Snapshot + Analyze"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/></svg></button>
+    <button class="pip-btn" onclick="savePipFrame()" title="Save photo" aria-label="Save photo"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg></button>
+    <button class="pip-btn" onclick="expandPip()" title="Expand / Shrink" aria-label="Expand / Shrink"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>
+    <button class="pip-btn" onclick="closeWebcamPip()" title="Close" aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
   </div>
 </div>
 
-<div class="modal-overlay" id="screenModal" onclick="closeScreenshot()">
-  <button class="modal-close" onclick="closeScreenshot()" aria-label="Close screenshot"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
-  <img id="screenImg" src="">
+<div class="modal-overlay" id="screenModal" onclick="closeScreenshot()" role="dialog" aria-modal="true" aria-label="Image" data-dialog="show">
+  <button class="modal-close" onclick="closeScreenshot()" aria-label="Close screenshot" data-dialog-close><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+  <img id="screenImg" alt="" src="">
 </div>
 
 </body>

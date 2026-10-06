@@ -180,7 +180,8 @@ def _run_shell(width: int) -> dict:
 def test_shell_mounts_and_switches_on_desktop():
     r = _run_shell(1470)
     # After the harness's fetch stub (no id), the shell comes before the page content.
-    assert [x for x in r["order"] if x][:4] == ["csSide", "csScrim", "csTop", "csTabs"], r["order"]
+    # P2.8's read-aloud strip (csPlayer) mounts between the top bar and the tab bar.
+    assert [x for x in r["order"] if x][:5] == ["csSide", "csScrim", "csTop", "csPlayer", "csTabs"], r["order"]
     assert r["navOn"] == "Tasks" and r["tabOn"] == "Tasks"
     assert r["scale"] == "1.12" and r["zoom"] == ""
     assert r["theme"] == "light" and r["pressed"] == "true"
