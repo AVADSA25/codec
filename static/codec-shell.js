@@ -857,6 +857,7 @@
       inboxBadges();
       inboxNotifyNew();
       if (INBOX.open) inboxRender();
+      inboxDrawMounts();
       INBOX.subs.forEach(function (fn) { try { fn(INBOX.items.slice(), INBOX.counts); } catch (e) { /* the page's own */ } });
     }).catch(function () { /* offline: keep what is shown */ }).then(inboxSchedule);
   }
@@ -871,6 +872,34 @@
     if (typeof fn !== 'function') return;
     INBOX.subs.push(fn);
     if (INBOX.loaded) { try { fn(INBOX.items.slice(), INBOX.counts); } catch (e) { /* the page's own */ } }
+  }
+
+  // A page shows an Inbox group with the same cards and actions (P3.4: Today's Needs you).
+  var MOUNTS = [];
+  function inboxMount(el, group, onCount) {
+    if (!el) return;
+    el.addEventListener('click', inboxClick);
+    MOUNTS.push({ el: el, group: /^(needs_you|reports|agents|suggestions)$/.test(group || '') ? group : 'needs_you',
+                  sig: null, onCount: typeof onCount === 'function' ? onCount : null });
+    if (INBOX.loaded) inboxDrawMounts();
+  }
+  function inboxDrawMounts() {
+    MOUNTS.forEach(function (m) {
+      var items = INBOX.items.filter(function (i) { return i.group === m.group; });
+      var sig = items.map(function (i) { return [i.id, i.read, i.title, i.agent_status || ''].join(':'); }).join(',');
+      if (sig !== m.sig) {
+        m.sig = sig;
+        var typed = {};  // an answer being typed survives the redraw
+        m.el.querySelectorAll('.cs-qcard').forEach(function (q) { typed[q.getAttribute('data-qid')] = q.querySelector('.cs-q-text').value; });
+        m.el.innerHTML = '';
+        items.forEach(function (it) {
+          var card = inboxCard(it);
+          if (it.kind === 'question' && typed[it.question_id]) card.querySelector('.cs-q-text').value = typed[it.question_id];
+          m.el.appendChild(card);
+        });
+      }
+      if (m.onCount) { try { m.onCount(items.length); } catch (err) { /* the page's own */ } }
+    });
   }
 
   function inboxBadges() {
@@ -2292,7 +2321,7 @@
     toggleRail: toggleRail, openDrawer: openDrawer, closeDrawer: closeDrawer, focusSearch: focusSearch,
     refreshHistory: refreshHistory, refreshHistorySoon: refreshHistorySoon, setActiveChat: setActiveChat,
     newChat: newChat, voiceReplies: voiceReplies, wakeWord: wakeWord, refreshWake: refreshWake, pollInbox: pollInbox,
-    inbox: { open: inboxOpen, close: inboxClose, refresh: pollInbox, onChange: inboxOnChange,
+    inbox: { open: inboxOpen, close: inboxClose, refresh: pollInbox, onChange: inboxOnChange, mount: inboxMount,
              items: function () { return INBOX.items.slice(); } },
     questionCard: questionCard,
     install: install, toast: toast, palette: palOpen, shortcuts: shortcutsOpen, ask: ask, menu: menu, actions: actions,

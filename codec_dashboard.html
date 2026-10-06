@@ -192,6 +192,37 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
 .push-row-name { font-size: var(--fs-14); color: var(--text); }
 .push-row-hint { font-size: var(--fs-12); color: var(--text-dim); margin-top: 2px; }
 .push-empty { font-size: var(--fs-13); color: var(--text-dim); padding: 4px 14px 12px; }
+/* Today home (P3.4): greeting, Needs you, Next up, threads, agents, yesterday, quick tiles */
+.today-home { margin: 0 0 16px; }
+.th-greet h2 { margin: 0; font-size: var(--fs-20, 20px); font-weight: 600; color: var(--text); }
+.th-greet p { margin: 2px 0 12px; font-size: var(--fs-13); color: var(--text-dim); }
+.th-sec { margin: 0 0 12px; }
+.th-sec[hidden] { display: none; }
+.th-sec .today-head { margin: 0 0 6px; }
+.th-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0 16px; }
+.th-list, #thYesterday { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 12px; }
+.th-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--border); font-size: var(--fs-13); flex-wrap: wrap; }
+.th-row:first-child { border-top: 0; }
+.th-time { flex: none; min-width: 64px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.th-kind { flex: none; font-size: var(--fs-12); color: var(--text-dim); }
+.th-text { flex: 1; min-width: 0; color: var(--text); overflow-wrap: anywhere; }
+.th-acts { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.th-dim { margin: 8px 0; font-size: var(--fs-13); color: var(--text-dim); }
+.th-lines { margin: 8px 0; padding-left: 18px; font-size: var(--fs-13); color: var(--text); }
+#thYesterday .th-acts { padding: 0 0 8px; }
+.th-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; margin: 4px 0 12px; }
+.th-tile { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-height: 64px; padding: 10px 12px; border: 1px solid var(--border);
+  border-radius: var(--radius); background: var(--surface); color: var(--text); font: 500 var(--fs-13)/1.3 var(--font-sans); text-align: left; cursor: pointer; }
+.th-tile:hover { border-color: var(--accent); }
+.th-tile:disabled { opacity: .6; cursor: progress; }
+.th-tile-s { font-size: var(--fs-12); color: var(--text-dim); overflow-wrap: anywhere; }
+.th-tile-s:empty { display: none; }
+#thNeeds .cs-ib { background: var(--surface); }
+@media (max-width: 767px) {
+  .th-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .th-tile { min-height: 56px; }
+}
+
 /* Today cards (P3.3): a scheduled job's result delivered to Home */
 .today-cards { display: flex; flex-direction: column; gap: 8px; margin: 0 0 12px; }
 .today-cards[hidden] { display: none; }
@@ -607,7 +638,7 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
 </style>
 </head>
 <body>
-<script src="/static/codec-shell.js?v=27696c8c" data-page="home" data-title="Today" data-status></script>
+<script src="/static/codec-shell.js?v=be9f6847" data-page="home" data-title="Today" data-status></script>
 
 <!-- ── Connect your AI (first run) ─────────────────────────────────────────
      Shown until CODEC has a VERIFIED brain. A fresh paid install had no way
@@ -674,7 +705,7 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
   </div>
   <div class="tabs">
     <button class="tab active" onclick="showTab('chat')" id="tab-chat">
-      <svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>Flash
+      <svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>Today
     </button>
     <button class="tab" onclick="showTab('history')" id="tab-history">
       <svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>History
@@ -701,7 +732,28 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
       <div id="cmdResult" style="display:none" class="card">
         <div class="card-task" id="cmdResultText"></div>
       </div>
-      <div class="today-cards" id="todayCards" hidden aria-label="Today"></div>
+      <section class="today-home" id="todayHome" aria-labelledby="thHello">
+        <div class="th-greet"><h2 id="thHello">Today</h2><p id="thDate"></p></div>
+        <div class="th-sec" id="thNeedsSec" hidden><h3 class="today-head">Needs you</h3><div id="thNeeds"></div></div>
+        <div class="th-grid">
+          <div class="th-sec" id="thNextSec"><h3 class="today-head">Next up</h3><div class="th-list" id="thNext"><p class="th-dim">Loading the calendar...</p></div></div>
+          <div class="th-sec" id="thThreadsSec" hidden><h3 class="today-head">Open threads</h3><div class="th-list" id="thThreads"></div></div>
+          <div class="th-sec" id="thAgentsSec" hidden><h3 class="today-head">Agents</h3><div class="th-list" id="thAgents"></div></div>
+          <div class="th-sec" id="thYesterdaySec" hidden><h3 class="today-head">Yesterday</h3><div id="thYesterday"></div></div>
+        </div>
+        <div class="th-tiles" role="group" aria-label="Quick actions">
+          <button type="button" class="th-tile" data-tile="now_playing"><svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg><span class="th-tile-t">Now playing</span><span class="th-tile-s" id="thNowPlaying"></span></button>
+          <button type="button" class="th-tile" data-tile="music_pause"><svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg><span class="th-tile-t">Pause</span></button>
+          <button type="button" class="th-tile" data-tile="music_resume"><svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4l13 8-13 8z"/></svg><span class="th-tile-t">Play</span></button>
+          <button type="button" class="th-tile" data-tile="lights_relax"><svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/></svg><span class="th-tile-t">Lights: relax</span></button>
+          <button type="button" class="th-tile" data-tile="lights_off"><svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2zM3 3l18 18"/></svg><span class="th-tile-t">Lights off</span></button>
+          <button type="button" class="th-tile" data-tile="volume_down"><svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4zM16 12h5"/></svg><span class="th-tile-t">Volume down</span></button>
+          <button type="button" class="th-tile" data-tile="volume_up"><svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4zM16 12h5M18.5 9.5v5"/></svg><span class="th-tile-t">Volume up</span></button>
+          <button type="button" class="th-tile" data-tile="timer"><svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M9 2h6"/></svg><span class="th-tile-t">Timer</span></button>
+          <button type="button" class="th-tile" data-tile="screenshot"><svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="4" width="20" height="14" rx="2"/><path d="M8 21h8M12 18v3"/></svg><span class="th-tile-t">Screenshot</span></button>
+        </div>
+      </section>
+      <div class="today-cards" id="todayCards" hidden aria-label="Briefing and updates"></div>
       <div id="chatList"></div>
     </div>
 
@@ -1230,7 +1282,7 @@ function showTab(id) {
   var _ia = document.querySelector('.input-area');
   if (_ia) _ia.style.display = (id === 'chat') ? '' : 'none';
   if (id === 'history') loadHistory();
-  if (id === 'chat') loadChat();
+  if (id === 'chat') { loadChat(); loadTodayHome(); loadTodayNext(); }
   if (id === 'audit') loadAudit();
   if (id === 'skills') loadSkillReviews();
   if (id === 'connector') renderConnectors();
@@ -2284,7 +2336,7 @@ async function loadToday() {
   var cards = [];
   try { var r = await fetch('/api/today'); if (r.ok) cards = (await r.json()).cards || []; } catch (e) { return; }
   box.hidden = !cards.length;
-  box.innerHTML = cards.length ? '<div class="today-head">Today</div>' : '';
+  box.innerHTML = cards.length ? '<div class="today-head">Briefing and updates</div>' : '';
   cards.forEach(function (c) {
     var card = document.createElement('div');
     card.className = 'today-card';
@@ -2294,7 +2346,8 @@ async function loadToday() {
       '<div class="today-card-body md"></div>' + (brief ? '<div class="today-threads"></div>' : '') +
       '<div class="today-card-actions">' +
       '<button type="button" class="mcp-btn" data-act="more">Show all</button>' +
-      (brief ? '<a class="mcp-btn" data-act="chat" href="/chat#card=' + encodeURIComponent(c.id) + '">Open in chat</a>' +
+      (brief ? '<button type="button" class="mcp-btn" data-act="replay">Replay</button>' +
+               '<a class="mcp-btn" data-act="chat" href="/chat#card=' + encodeURIComponent(c.id) + '">Open in chat</a>' +
                '<button type="button" class="mcp-btn" data-act="snooze">Snooze 2 hours</button>' +
                '<button type="button" class="mcp-btn" data-act="stop" hidden>Stop speaking</button>' : '') +
       (chk ? '<button type="button" class="mcp-btn" data-act="act">Act</button>' +
@@ -2355,6 +2408,11 @@ function _briefingCard(card, c) {
     try { await fetch('/api/today/' + encodeURIComponent(c.id) + '/snooze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ minutes: 120 }) }); } catch (e) {}
     loadToday();
   });
+  // P3.4: Replay reads this morning's briefing aloud again, here (the shell's read-aloud).
+  var replay = card.querySelector('[data-act="replay"]');
+  if (replay) replay.addEventListener('click', function () {
+    if (window.CodecShell && CodecShell.speech && !CodecShell.speech.speak(c.body || '', { btn: replay })) showToast('Nothing to read.');
+  });
   var stop = card.querySelector('[data-act="stop"]');
   stop.addEventListener('click', async function () {
     stop.disabled = true;
@@ -2391,6 +2449,141 @@ function _checkinCard(card, c) {
   });
 }
 loadToday();
+
+// ── Today home (P3.4; docs/P3.4-DESIGN.md) ─────────────────────────────────
+// Greeting; Needs you (the Inbox's own cards, from the shell's one poll); Next up (the
+// calendar, cached on the server); open threads (Close, Snooze a day, Draft reply); agents;
+// yesterday's shift report; quick tiles that name a fixed server-side action.
+var _TH_KIND = { working_on: 'Working on', waiting_on: 'Waiting on', follow_up: 'Follow up' };
+var _TH_STATUS = { running: 'running', paused: 'paused', approved: 'starting', crashed_resumed: 'resuming',
+  awaiting_approval: 'waits for your approval', completed: 'finished', aborted: 'stopped', plan_failed: 'could not plan' };
+function _thPost(url, body) {
+  var h = { 'Content-Type': 'application/json' };
+  var m = document.cookie.match(/codec_csrf=([^;]+)/);
+  if (m) h['x-csrf-token'] = m[1];
+  return fetch(url, { method: 'POST', headers: h, body: JSON.stringify(body || {}) }).then(function (r) {
+    return r.json().catch(function () { return {}; }).then(function (d) { if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status)); return d; });
+  });
+}
+function _thGreeting() {
+  var now = new Date(), h = now.getHours();
+  document.getElementById('thHello').textContent = h < 12 ? 'Good morning' : (h < 18 ? 'Good afternoon' : 'Good evening');
+  document.getElementById('thDate').textContent = now.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+}
+async function loadTodayHome() {
+  if (!document.getElementById('todayHome')) return;
+  _thGreeting();
+  var d;
+  try { var r = await fetch('/api/today/home'); if (!r.ok) return; d = await r.json(); } catch (e) { return; }
+  _thThreads(d.threads || []);
+  _thAgents(d.agents || []);
+  _thYesterday(d.yesterday || null);
+}
+async function loadTodayNext() {
+  var box = document.getElementById('thNext');
+  if (!box) return;
+  var d;
+  try { var r = await fetch('/api/today/next'); if (!r.ok) throw new Error(); d = await r.json(); }
+  catch (e) { box.innerHTML = '<p class="th-dim">The calendar did not answer.</p>'; return; }
+  box.innerHTML = '';
+  (d.events || []).forEach(function (ev) {
+    var row = document.createElement('div');
+    row.className = 'th-row';
+    row.innerHTML = '<span class="th-time"></span><span class="th-text"></span>';
+    row.querySelector('.th-time').textContent = ev.time;
+    row.querySelector('.th-text').textContent = ev.title;
+    box.appendChild(row);
+  });
+  if (!(d.events || []).length) {
+    box.innerHTML = '<p class="th-dim"></p>';
+    box.firstChild.textContent = d.note || 'Nothing more today.';
+    if (d.connected === false) box.insertAdjacentHTML('beforeend', '<a class="mcp-btn" href="/#connector">Connect Google</a>');
+  }
+}
+function _thThreads(list) {
+  var sec = document.getElementById('thThreadsSec'), box = document.getElementById('thThreads');
+  sec.hidden = !list.length;
+  box.innerHTML = '';
+  list.forEach(function (t) {
+    var row = document.createElement('div');
+    row.className = 'th-row th-thread';
+    row.innerHTML = '<span class="th-kind"></span><span class="th-text"></span><span class="th-acts">' +
+      ((t.kind === 'waiting_on' || t.kind === 'follow_up') ? '<button type="button" class="mcp-btn" data-t="draft">Draft reply</button>' : '') +
+      '<button type="button" class="mcp-btn" data-t="snooze">Snooze a day</button>' +
+      '<button type="button" class="mcp-btn" data-t="close">Close</button></span>';
+    row.querySelector('.th-kind').textContent = _TH_KIND[t.kind] || 'Thread';
+    row.querySelector('.th-text').textContent = t.text;
+    var draft = row.querySelector('[data-t="draft"]');
+    if (draft) draft.addEventListener('click', function () {
+      _ssSet('codec-chat-draft', 'Draft a reply about this: ' + t.text);
+      location.href = '/chat#new';
+    });
+    row.querySelector('[data-t="snooze"]').addEventListener('click', function (ev) {
+      ev.target.disabled = true;
+      _thPost('/api/today/threads/snooze', { key: t.key, hours: 24 }).then(function () { showToast('Back tomorrow.'); },
+        function (err) { showToast('Could not snooze: ' + err.message); }).then(loadTodayHome);
+    });
+    row.querySelector('[data-t="close"]').addEventListener('click', function (ev) {
+      ev.target.disabled = true;
+      _thPost('/api/today/threads/done', { key: t.key }).then(function (d) { showToast(d.message || 'Closed.'); },
+        function (err) { showToast('Could not close: ' + err.message); }).then(function () { loadTodayHome(); loadToday(); });
+    });
+    box.appendChild(row);
+  });
+}
+function _thAgents(list) {
+  var sec = document.getElementById('thAgentsSec'), box = document.getElementById('thAgents');
+  sec.hidden = !list.length;
+  box.innerHTML = '';
+  list.forEach(function (a) {
+    var row = document.createElement('div');
+    row.className = 'th-row';
+    var blocked = /^blocked/.test(a.status);
+    row.innerHTML = '<span class="th-text"></span><span class="th-kind"></span>' +
+      (blocked ? '<span class="th-acts"><button type="button" class="mcp-btn">Open the Inbox</button></span>' : '');
+    row.querySelector('.th-text').textContent = a.title || a.agent_id;
+    row.querySelector('.th-kind').textContent = blocked ? 'needs you' : (_TH_STATUS[a.status] || a.status.replace(/_/g, ' '));
+    if (blocked) row.querySelector('button').addEventListener('click', function () { CodecShell.inbox.open('needs_you'); });
+    box.appendChild(row);
+  });
+}
+function _thYesterday(y) {
+  var sec = document.getElementById('thYesterdaySec'), box = document.getElementById('thYesterday');
+  sec.hidden = !y;
+  if (!y) return;
+  box.innerHTML = '<ul class="th-lines"></ul><div class="th-acts"><a class="mcp-btn">Read it</a></div>';
+  var ul = box.querySelector('ul');
+  (y.lines || []).forEach(function (s) { var li = document.createElement('li'); li.textContent = s; ul.appendChild(li); });
+  box.querySelector('a').href = '/chat#report=' + encodeURIComponent(y.id);
+}
+(function () {
+  var needs = document.getElementById('thNeeds');
+  if (needs && window.CodecShell && CodecShell.inbox && CodecShell.inbox.mount) {
+    CodecShell.inbox.mount(needs, 'needs_you', function (n) { document.getElementById('thNeedsSec').hidden = !n; });
+  }
+  var tiles = document.querySelector('.th-tiles');
+  if (tiles) tiles.addEventListener('click', async function (e) {
+    var b = e.target.closest('[data-tile]');
+    if (!b) return;
+    var tile = b.getAttribute('data-tile'), body = { tile: tile };
+    if (tile === 'screenshot') { takeScreenshot(); return; }
+    if (tile === 'timer') {
+      var m = await CodecShell.ask({ title: 'Set a timer', confirm: 'Start', input: { label: 'Minutes', inputmode: 'numeric',
+        maxlength: 3, pattern: '[0-9]{1,3}', patternText: 'A number of minutes.', required: true, requiredText: 'How many minutes?' } });
+      if (m === null) return;
+      body.minutes = parseInt(m, 10);
+    }
+    b.disabled = true;
+    _thPost('/api/today/tile', body).then(function (d) {
+      var text = String(d.result || '').replace(/\*\*/g, '');
+      if (tile === 'now_playing') document.getElementById('thNowPlaying').textContent = text.replace(/^Now playing:\s*/, '');
+      showToast(text || 'Done.');
+    }, function (err) { showToast('Could not do that: ' + err.message); }).then(function () { b.disabled = false; });
+  });
+})();
+loadTodayHome();
+loadTodayNext();
+setInterval(function () { if (currentTab === 'chat' && !document.hidden) loadTodayHome(); }, 120000);
 setInterval(loadToday, 60000);
 
 // ── Check-ins (P3.5): settings for the heartbeat's proactive check-in. Default off.
@@ -3537,31 +3730,6 @@ setInterval(async function() {
 
 // Skill-review pending count -> tab badge (the shell polls the Inbox count).
 if(typeof refreshSkillsBadge==='function'){refreshSkillsBadge();setInterval(refreshSkillsBadge,30000);}
-
-/* ── ask_user questions inline in Flash (Phase 1 Step 3; P3.2) ─────────────
-   The shell's one Inbox poll feeds them and its shared card (CodecShell.questionCard)
-   draws them, the same card the Inbox uses: options, a text answer, the
-   strict-consent word, the time left. No poller of its own. */
-(function(){
-  var shown = {};   // question id -> card in Flash
-  function sync(items){
-    var host = document.getElementById('chatList');
-    if (!host || !window.CodecShell || !CodecShell.questionCard) return;
-    var keep = {};
-    items.filter(function(i){ return i.kind === 'question'; }).forEach(function(q){
-      keep[q.question_id] = 1;
-      var card = shown[q.question_id];
-      if (!card) { card = CodecShell.questionCard(q); card.classList.add('askuser-panel'); shown[q.question_id] = card; }
-      if (!card.isConnected) host.insertBefore(card, host.firstChild);  // Flash redraws its list
-    });
-    Object.keys(shown).forEach(function(id){
-      if (keep[id]) return;
-      if (shown[id].parentNode) shown[id].parentNode.removeChild(shown[id]);
-      delete shown[id];
-    });
-  }
-  if (window.CodecShell && CodecShell.inbox) CodecShell.inbox.onChange(sync);
-})();
 
 /* ── Drag & Drop files/images into Flash ── */
 (function(){

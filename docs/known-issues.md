@@ -381,3 +381,13 @@ shell mounts `csSide, csScrim, csTop, csTabs` first. Since P2.8 the reading stri
 `csTabs`, so the test fails wherever jsdom is available (the Mac with NODE_PATH set). The shell is right; the
 expected list is stale. Found while running the suite with jsdom for P2.7. **Revisit when:** the next item that edits
 tests/test_ui_shell.py (P2.13 accessibility): add `csPlayer` to the expected order.
+
+## A missing notifications file is refilled with four made-up reports (2026-10-06)
+
+`routes/_shared._load_notifications` writes four sample reports ("Daily Morning
+Briefing", "Security Scan", "AI News Digest", "Weekly Code Review Summary") to
+`~/.codec/notifications.json` when the file is missing or cannot be parsed, and
+returns them. On a fresh install, or after a damaged file, they show in the Inbox
+(P3.2) as real reports, as they did in Tasks' old Reports tab. P3.4's Today reads
+the file directly and is not affected. Fix: return `[]` instead of seeding (and drop
+the samples). Revisit: P3.11 or any item that touches notifications.
