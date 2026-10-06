@@ -124,8 +124,10 @@ def _isolate_usage_stores() -> None:
     ~/.codec/reply_stats.jsonl (Settings > Usage), and every crew run is kept in
     ~/.codec/agent_jobs.json (Tasks > Activity). A test that streams a chat reply
     or starts a crew would otherwise add fake replies and runs to the owner's
-    numbers. Tests that assert on these files point them at their own tmp paths.
-    Done at conftest import time, like `_isolate_audit_log`.
+    numbers. The chat route also opens qchat.db: an unpointed run opened the
+    owner's ~/.codec/qchat.db and ran its column migrations there (Mac merge
+    pass, 6 Oct). Tests that assert on these files point them at their own tmp
+    paths. Done at conftest import time, like `_isolate_audit_log`.
     """
     tmp = Path(tempfile.mkdtemp(prefix="codec-test-usage-"))
     try:
@@ -136,6 +138,11 @@ def _isolate_usage_stores() -> None:
     try:
         import routes._shared as shared
         shared.AGENT_JOBS_PATH = str(tmp / "agent_jobs.json")
+    except Exception:
+        pass
+    try:
+        import routes.qchat as qchat
+        qchat.QCHAT_DB = str(tmp / "qchat.db")
     except Exception:
         pass
 
