@@ -391,3 +391,10 @@ returns them. On a fresh install, or after a damaged file, they show in the Inbo
 (P3.2) as real reports, as they did in Tasks' old Reports tab. P3.4's Today reads
 the file directly and is not affected. Fix: return `[]` instead of seeding (and drop
 the samples). Revisit: P3.11 or any item that touches notifications.
+
+## fact_extract writes a fixed user_id (2026-10-06)
+
+`skills/fact_extract.py`'s `_save` stores each learned fact's conversation row with `user_id="mickael"`, a
+personal name in the public repo, while every other memory path uses the default user id. Found while fixing its
+structured write in P3.12 (Learning page), which left this line as it was. Fix: use the default user id (or
+`config.json`'s), regenerate the skill manifest, and decide whether the existing rows need it changed.

@@ -748,6 +748,7 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
   <div class="settings-subnav" id="settingsSubnav" role="tablist" aria-label="Settings sections" hidden>
     <button type="button" role="tab" aria-selected="false" data-sub="settings" onclick="showTab('settings')">General</button>
     <button type="button" role="tab" aria-selected="false" data-sub="memory" id="subnav-memory" onclick="showTab('memory')">Memory</button>
+    <button type="button" role="tab" aria-selected="false" data-sub="learning" id="subnav-learning" onclick="showTab('learning')">Learning</button>
     <button type="button" role="tab" aria-selected="false" data-sub="connector" id="subnav-connector" onclick="showTab('connector')">Connectors</button>
     <button type="button" role="tab" aria-selected="false" data-sub="audit" id="subnav-audit" onclick="showTab('audit')">Audit</button>
     <a href="/cortex">Cortex</a>
@@ -1024,6 +1025,40 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
     .mem-results{display:flex;flex-direction:column;gap:6px;margin-top:10px}
     .mem-result{padding:8px 10px;border-radius:var(--radius-8);background:var(--surface-2);font-size:var(--fs-13);line-height:1.45;overflow-wrap:anywhere}
     @media (max-width:767px){.mem-fact-head{flex-direction:column}.mem-acts{margin-top:6px}}
+    </style>
+    <!-- Learning (P3.12; docs/P3.12-DESIGN.md): what CODEC proposes to learn, and what it learned -->
+    <div class="panel" id="panel-learning">
+      <p class="push-intro mem-lead">What CODEC proposes to learn and what it learned. Nothing installs by itself: a proposed skill runs only after you review and approve it.</p>
+      <div class="settings-section" id="learnProposalsSection">
+        <div class="settings-title">Proposed skills</div>
+        <div class="settings-card"><div class="push-body">
+          <p class="push-intro">Drafted by the self-improvement run when CODEC lacked a skill. Review shows the code; Approve and install writes it to your skills folder after the safety check, and CODEC loads it after the next restart.</p>
+          <div id="learnProposals" class="mem-facts"><div class="refreshing">Loading...</div></div>
+          <div class="push-msg" id="learnMsg" role="status" aria-live="polite"></div>
+        </div></div>
+      </div>
+      <div class="settings-section" id="learnDiarySection">
+        <div class="settings-title">What CODEC learned</div>
+        <div class="settings-card"><div class="push-body" id="learnDiary"><div class="refreshing">Loading...</div></div></div>
+      </div>
+      <div class="settings-section" id="learnFactsSection">
+        <div class="settings-title">Recently learned facts</div>
+        <div class="settings-card"><div class="push-body">
+          <p class="push-intro">Saved by "extract facts" and the nightly run, without asking. Edit keeps the old value in the history; Forget closes the fact and keeps it in the history.</p>
+          <div id="learnFacts" class="mem-facts"></div>
+          <div class="push-msg" id="learnFactsMsg" role="status" aria-live="polite"></div>
+        </div></div>
+      </div>
+    </div>
+    <style>
+    #panel-learning .settings-section{margin-top:16px}
+    .learn-day{padding:10px 0;border-top:1px solid var(--border)}
+    .learn-day:first-child{border-top:0}
+    .learn-day h3{margin:0 0 4px;font-size:var(--fs-14);font-weight:600}
+    .learn-day ul{margin:0;padding-left:18px;font-size:var(--fs-13);line-height:1.5;color:var(--text)}
+    .learn-day li{overflow-wrap:anywhere}
+    .learn-code{margin:0 0 8px;max-height:50vh;overflow:auto;padding:10px 12px;border-radius:var(--radius-8);background:var(--surface-2);border:1px solid var(--border);font:400 var(--fs-12)/1.5 var(--font-mono);white-space:pre}
+    .cs-dialog.learn-dialog{width:min(760px,100%)}
     </style>
     <div class="panel" id="panel-settings">
       <div class="stat-grid" id="statGrid"></div>
@@ -1328,7 +1363,7 @@ function copyText(text, btn) {
 
 // ── Tabs ──
 // Audit and Connectors live under Settings (P2.1); Cortex is its own page.
-var _SETTINGS_GROUP = { settings: 1, memory: 1, connector: 1, audit: 1 };
+var _SETTINGS_GROUP = { settings: 1, memory: 1, learning: 1, connector: 1, audit: 1 };
 function showTab(id) {
   if (id === 'cortex') { window.location.href = '/cortex'; return; }
   if (!document.getElementById('panel-' + id)) id = 'chat';
@@ -1357,6 +1392,7 @@ function showTab(id) {
   if (id === 'skills') { loadSkillReviews(); loadSkillsCatalog(); }
   if (id === 'connector') { renderConnections(); renderConnectors(); }
   if (id === 'memory') loadMemoryPage();
+  if (id === 'learning') loadLearning();
   if (id === 'settings') { loadSettings(); renderUIToggles(); loadPrompts(); loadPush(); loadVoice(); loadBriefing(); loadCheckin(); loadUsage(); }
 }
 // Links such as /#settings (the shell's Settings row, other pages) open that panel.
@@ -2905,6 +2941,146 @@ function _memConfirm(btn, ask, run) {
   btn.dataset.label = btn.textContent; btn.dataset.armed = '1'; btn.textContent = ask; btn.classList.add('mem-btn-danger');
   setTimeout(function () { if (btn.dataset.armed) { delete btn.dataset.armed; btn.classList.remove('mem-btn-danger'); btn.textContent = btn.dataset.label; } }, 5000);
 }
+// ── Learning (P3.12; docs/P3.12-DESIGN.md) ──────────────────────────────────
+// Proposed skills go through the existing review-and-approve gates; the diary and
+// the learned facts are read-only lists, and Edit / Forget use the Memory routes.
+var LRN = { list: [], el: null, review: null, name: '' };
+function loadLearning() { loadLearnProposals(); loadLearnDiary(); loadLearnFacts(); }
+async function loadLearnProposals() {
+  var box = document.getElementById('learnProposals');
+  if (!box) return;
+  var d;
+  try { d = await _memJSON('/api/learning/proposals'); }
+  catch (e) { box.innerHTML = ''; _memMsg('learnMsg', 'Could not load the proposals: ' + e.message, true); return; }
+  LRN.list = d.proposals || [];
+  box.innerHTML = '';
+  if (!LRN.list.length) { box.appendChild(_memEl('div', 'mem-empty', 'No proposals yet. CODEC drafts one when it notices a skill it lacked.')); return; }
+  LRN.list.forEach(function (p, i) {
+    var row = _memEl('div', 'mem-fact'), head = _memEl('div', 'mem-fact-head'), main = _memEl('div', 'mem-fact-main');
+    main.appendChild(_memEl('span', 'mem-val', p.name));
+    var n = (p.earlier || []).length;
+    main.appendChild(_memEl('span', 'mem-meta', 'proposed ' + p.date + (n ? ' (and on ' + n + (n === 1 ? ' earlier day)' : ' earlier days)') : '') +
+      (p.tool ? ' · prompted by ' + (p.gap_kind || 'a gap') + ' in ' + p.tool + (p.signals ? ', ' + p.signals + ' times' : '') : '')));
+    main.appendChild(_memEl('span', 'mem-meta' + (p.status === 'rejected' ? ' conn-bad' : ''),
+      p.status === 'passed' ? 'Passed the safety check when it was drafted.' : p.status === 'rejected' ? 'Failed the safety check: ' + (p.reason || 'see its note') + '.' : 'Not checked yet.'));
+    var acts = _memEl('div', 'mem-acts');
+    if (p.installed) acts.appendChild(_memEl('span', 'mem-meta', 'Installed'));
+    else if (p.status !== 'rejected') acts.appendChild(_memBtn('Review', function () { learnReview(i); }, 'mcp-btn-primary'));
+    head.appendChild(main); head.appendChild(acts); row.appendChild(head); box.appendChild(row);
+  });
+}
+function _learnDlg() {
+  if (LRN.el) return LRN.el;
+  var w = document.createElement('div');
+  w.className = 'cs-dialog-backdrop'; w.id = 'learnWrap'; w.hidden = true;
+  w.innerHTML = '<section class="cs-dialog learn-dialog" id="learnBox" role="dialog" aria-modal="true" aria-labelledby="learnTitle" data-dialog="open">' +
+    '<h2 id="learnTitle">Review</h2><p class="cs-ask-msg" id="learnWhat"></p><pre class="learn-code" tabindex="0"><code id="learnCode"></code></pre>' +
+    '<div class="cs-dialog-error" id="learnErr" role="alert"></div>' +
+    '<div class="cs-dialog-actions"><button type="button" class="cs-dbtn" id="learnClose" data-dialog-close>Close</button>' +
+    '<button type="button" class="cs-dbtn" id="learnNo">Not now</button>' +
+    '<button type="button" class="cs-dbtn cs-dbtn-primary" id="learnYes">Approve and install</button></div></section>';
+  document.body.appendChild(w);
+  w.addEventListener('click', function (e) { if (e.target === w) _learnClose(); });
+  document.getElementById('learnClose').addEventListener('click', _learnClose);
+  document.getElementById('learnNo').addEventListener('click', learnNotNow);
+  document.getElementById('learnYes').addEventListener('click', learnApprove);
+  LRN.el = w;
+  if (window.CodecShell && CodecShell.watchDialogs) CodecShell.watchDialogs();
+  return w;
+}
+function _learnClose() { if (!LRN.el) return; document.getElementById('learnBox').classList.remove('open'); LRN.el.hidden = true; }
+async function learnReview(i) {
+  var p = LRN.list[i];
+  if (!p) return;
+  var fname = p.name + '.py', rid = null;
+  try {
+    // One staged review per proposal: reuse the one already waiting (it also shows in Skills).
+    var staged = await _memJSON('/api/skill/reviews');
+    (staged.reviews || []).forEach(function (r) { if (!rid && r.filename === fname && r.code === p.code) rid = r.id; });
+    if (!rid) rid = (await _memSend('POST', '/api/skill/review', { code: p.code, filename: fname })).review_id;
+  } catch (e) { _memMsg('learnMsg', 'Could not stage it for review: ' + e.message, true); return; }
+  LRN.review = rid; LRN.name = p.name;
+  _learnDlg();
+  document.getElementById('learnTitle').textContent = 'Review ' + p.name;
+  document.getElementById('learnWhat').textContent = 'Approve and install writes ' + fname + ' to your skills folder after the safety check; CODEC loads it after the next restart.' +
+    (p.truncated ? ' The code is longer than shown here.' : '');
+  document.getElementById('learnCode').textContent = p.code;
+  document.getElementById('learnErr').textContent = '';
+  LRN.el.hidden = false; document.getElementById('learnBox').classList.add('open');
+}
+async function learnApprove() {
+  if (!LRN.review) return;
+  var btn = document.getElementById('learnYes'); btn.disabled = true;
+  try {
+    await _memSend('POST', '/api/skill/approve', { review_id: LRN.review });
+    _learnClose(); LRN.review = null;
+    _memMsg('learnMsg', LRN.name + ' is installed. CODEC loads it after the next restart.');
+    loadLearnProposals(); loadLearnDiary();
+  } catch (e) { document.getElementById('learnErr').textContent = 'Not installed: ' + e.message; }
+  btn.disabled = false;
+}
+async function learnNotNow() {
+  if (!LRN.review) { _learnClose(); return; }
+  try { await _memSend('POST', '/api/skill/reject/' + encodeURIComponent(LRN.review)); _memMsg('learnMsg', 'Not installed. The proposal stays here.'); }
+  catch (e) { _memMsg('learnMsg', 'Could not discard the review: ' + e.message, true); }
+  LRN.review = null; _learnClose(); loadLearnDiary();
+}
+async function loadLearnDiary() {
+  var box = document.getElementById('learnDiary');
+  if (!box) return;
+  var d;
+  try { d = await _memJSON('/api/learning/diary?days=14'); }
+  catch (e) { box.textContent = 'Could not load the diary: ' + e.message; return; }
+  box.innerHTML = '';
+  if (!(d.days || []).length) box.appendChild(_memEl('div', 'mem-empty', 'Nothing learned in the last 14 days.'));
+  (d.days || []).forEach(function (x) {
+    var sec = _memEl('div', 'learn-day'), ul = _memEl('ul');
+    var dt = new Date(x.date + 'T12:00:00');
+    sec.appendChild(_memEl('h3', '', isNaN(dt) ? x.date : dt.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })));
+    (x.facts || []).forEach(function (f) { ul.appendChild(_memEl('li', '', 'Learned: ' + f)); });
+    (x.proposed || []).forEach(function (p) { ul.appendChild(_memEl('li', '', 'Proposed a skill: ' + p.name + (p.status === 'rejected' ? ' (it failed the safety check)' : ''))); });
+    (x.approved || []).forEach(function (n) { ul.appendChild(_memEl('li', '', 'You approved the skill ' + n + '.')); });
+    (x.turned_down || []).forEach(function (n) { ul.appendChild(_memEl('li', '', 'You turned down the skill ' + n + '.')); });
+    sec.appendChild(ul); box.appendChild(sec);
+  });
+  if (d.older_facts) box.appendChild(_memEl('p', 'push-intro', d.older_facts + (d.older_facts === 1 ? ' fact' : ' facts') +
+    ' learned before this version are kept in conversation memory: search finds them, and they are not listed here.'));
+}
+async function loadLearnFacts() {
+  var box = document.getElementById('learnFacts');
+  if (!box) return;
+  var d;
+  try { d = await _memJSON('/api/learning/facts'); }
+  catch (e) { _memMsg('learnFactsMsg', 'Could not load: ' + e.message, true); return; }
+  box.innerHTML = '';
+  if (!(d.facts || []).length) { box.appendChild(_memEl('div', 'mem-empty', 'No learned facts yet.')); return; }
+  d.facts.forEach(function (f) {
+    var row = _memEl('div', 'mem-fact'), head = _memEl('div', 'mem-fact-head'), main = _memEl('div', 'mem-fact-main'), extra = _memEl('div', 'mem-extra');
+    main.appendChild(_memEl('span', 'mem-val', f.value));
+    main.appendChild(_memEl('span', 'mem-meta', 'learned ' + _memDate(f.valid_from)));
+    var acts = _memEl('div', 'mem-acts');
+    acts.appendChild(_memBtn('Edit', function () {
+      extra.innerHTML = '';
+      var ta = _memEl('textarea', 'setting-input'); ta.value = f.value; ta.maxLength = 1000; ta.setAttribute('aria-label', 'New text for this fact');
+      var bar = _memEl('div', 'mem-row-end');
+      bar.appendChild(_memBtn('Cancel', function () { extra.innerHTML = ''; }));
+      bar.appendChild(_memBtn('Save', async function () {
+        try { var r = await _memSend('PUT', '/api/memory/facts', { key: f.key, value: ta.value }); _memMsg('learnFactsMsg', r.changed ? 'Saved. The old text is in the history.' : 'No change.'); loadLearnFacts(); }
+        catch (e) { _memMsg('learnFactsMsg', 'Could not save: ' + e.message, true); }
+      }, 'mcp-btn-primary'));
+      extra.appendChild(ta); extra.appendChild(bar); ta.focus();
+    }));
+    acts.appendChild(_memBtn('Forget', function () {
+      var b = this;
+      _memConfirm(b, 'Forget it?', async function () {
+        try { await _memSend('POST', '/api/memory/facts/forget', { key: f.key }); _memMsg('learnFactsMsg', 'Forgotten. It stays in the history.'); loadLearnFacts(); loadLearnDiary(); }
+        catch (e) { _memMsg('learnFactsMsg', 'Could not forget: ' + e.message, true); }
+      });
+    }));
+    head.appendChild(main); head.appendChild(acts); row.appendChild(head); row.appendChild(extra); box.appendChild(row);
+  });
+}
+
 function loadMemoryPage() { loadMemorySwitches(); loadAbout(); loadRules(); loadFacts(); }
 function openPrompts(ev) {
   if (ev) ev.preventDefault();
