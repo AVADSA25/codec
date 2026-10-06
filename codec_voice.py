@@ -704,6 +704,10 @@ class VoicePipeline:
             log.error(f"Qwen error: {e}")
             self._stream_error = True
             yield "Sorry, I had a processing error."
+        else:
+            # UI P3.11: one metadata line per voice reply (model, local or cloud) for Settings > Usage.
+            import codec_usage
+            codec_usage.record_reply(_model, getattr(self, "_llm_base", QWEN_BASE_URL), source="voice")
         finally:
             await llm_queue.release(Priority.CRITICAL)
 

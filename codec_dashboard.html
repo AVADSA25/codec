@@ -192,6 +192,14 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
 .push-row-name { font-size: var(--fs-14); color: var(--text); }
 .push-row-hint { font-size: var(--fs-12); color: var(--text-dim); margin-top: 2px; }
 .push-empty { font-size: var(--fs-13); color: var(--text-dim); padding: 4px 14px 12px; }
+/* Usage (P3.11): cloud spend, where CODEC runs now, the automatic fallback, replies, skills, speed */
+.use-bar { height: 6px; border-radius: 3px; background: var(--surface-3); overflow: hidden; margin: 6px 0 2px; }
+.use-bar > span { display: block; height: 100%; min-width: 2px; background: var(--accent); }
+.use-bar.full > span { background: var(--danger); }
+.use-opts { display: flex; flex-direction: column; gap: 6px; padding: 0 14px 4px; }
+.use-note { font-size: var(--fs-12); color: var(--text-dim); padding: 2px 14px 10px; line-height: 1.5; }
+.use-speed { display: flex; align-items: flex-end; gap: 3px; height: 48px; margin-top: 6px; }
+.use-speed span { flex: 1 1 0; min-width: 4px; max-width: 18px; background: var(--accent); border-radius: 2px 2px 0 0; opacity: .85; }
 /* Today home (P3.4): greeting, Needs you, Next up, threads, agents, yesterday, quick tiles */
 .today-home { margin: 0 0 16px; }
 .th-greet h2 { margin: 0; font-size: var(--fs-20, 20px); font-weight: 600; color: var(--text); }
@@ -1032,6 +1040,11 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
           <div class="push-msg" id="rawConfigMsg" role="status" aria-live="polite"></div>
         </div></div>
       </details>
+      <!-- Usage (P3.11; docs/P3.11-DESIGN.md) -->
+      <div class="settings-section" style="margin-top:20px" id="usageSection">
+        <div class="settings-title">Usage</div>
+        <div class="settings-card" id="usageCard"><div class="push-body"><div class="refreshing">Loading usage...</div></div></div>
+      </div>
       <div class="settings-section" style="margin-top:20px">
         <div class="settings-title">Two-Factor Authentication (2FA)</div>
         <div class="settings-card" id="twoFactorCard">
@@ -1344,7 +1357,7 @@ function showTab(id) {
   if (id === 'skills') { loadSkillReviews(); loadSkillsCatalog(); }
   if (id === 'connector') { renderConnections(); renderConnectors(); }
   if (id === 'memory') loadMemoryPage();
-  if (id === 'settings') { loadSettings(); renderUIToggles(); loadPrompts(); loadPush(); loadVoice(); loadBriefing(); loadCheckin(); }
+  if (id === 'settings') { loadSettings(); renderUIToggles(); loadPrompts(); loadPush(); loadVoice(); loadBriefing(); loadCheckin(); loadUsage(); }
 }
 // Links such as /#settings (the shell's Settings row, other pages) open that panel.
 function _tabFromHash() {
@@ -2430,6 +2443,72 @@ function _pushDate(iso) {
     d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 }
 function _plural(n, word) { return n + ' ' + word + (n === 1 ? '' : 's'); }
+// ── Usage (P3.11; docs/P3.11-DESIGN.md): cloud spend against the cap, where CODEC
+// runs now, the automatic cloud fallback, replies and skills over 7 days, speed. ──
+async function loadUsage() {
+  var card = document.getElementById('usageCard');
+  if (!card) return;
+  var d;
+  try { var r = await fetch('/api/usage'); d = await r.json(); if (!r.ok) throw new Error(d.error || r.status); }
+  catch (e) { card.innerHTML = '<div class="push-body"><div class="push-empty">Usage is not available right now.</div></div>'; return; }
+  var now = d.now || {}, h = '<div class="push-body">';
+  if (!now.cloud) h += '<p class="push-state">CODEC runs on the local model on this Mac.</p>';
+  else if (now.auto) h += '<p class="push-state">CODEC is on ' + escHtml(now.label) + ' (cloud) since ' + escHtml(fmtTime(now.since)) +
+    ': the local model stopped answering. It goes back by itself once the local model answers twice in a row.</p>';
+  else h += '<p class="push-state">CODEC is on ' + escHtml(now.label) + ' (cloud): it was picked in the model picker.</p>';
+  h += '</div><div class="push-sub">Cloud spend this month</div>';
+  if (!(d.cloud || []).length) h += '<div class="push-empty">No cloud model is registered, so CODEC spends nothing.</div>';
+  (d.cloud || []).forEach(function (c) {
+    var pct = c.cap > 0 ? Math.min(100, Math.round(100 * c.spent / c.cap)) : 100;
+    var past = (c.months || []).slice(1, 4).map(function (m) { return m.label + ': $' + m.usd.toFixed(2); }).join(' · ');
+    h += '<div class="push-row"><div class="push-row-main" style="flex:1"><div class="push-row-name">' + escHtml(c.label) + ': $' +
+      Number(c.spent).toFixed(2) + ' of $' + escHtml(String(c.cap)) + '</div>' +
+      '<div class="use-bar' + (c.cap > 0 && c.spent >= c.cap ? ' full' : '') + '" role="progressbar" aria-label="' + escHtml(c.label) + ' spend" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + pct + '"><span style="width:' + pct + '%"></span></div>' +
+      (c.cap > 0 && c.spent >= c.cap ? '<div class="push-row-hint conn-bad">At the cap: it refuses to answer until next month.</div>' : '') +
+      (past ? '<div class="push-row-hint">Earlier: ' + escHtml(past) + '</div>' : '') + '</div></div>';
+  });
+  var fb = d.fallback || {};
+  h += '<div class="push-sub">Automatic cloud fallback</div><div class="use-opts" role="radiogroup" aria-label="Automatic cloud fallback">' +
+    '<label class="cs-check"><input type="radio" name="useFallback" value=""' + (fb.value ? '' : ' checked') + '> Off: when the local model stops, CODEC stops answering</label>' +
+    (fb.choices || []).map(function (c) {
+      return '<label class="cs-check"><input type="radio" name="useFallback" value="' + escHtml(c.id) + '"' + (fb.value === c.id ? ' checked' : '') + '> ' + escHtml(c.label) + '</label>';
+    }).join('') + '</div><div class="use-note">' + escHtml(fb.note || '') + '</div>';
+  var rep = d.replies || {}, n = rep.replies || {};
+  h += '<div class="push-sub">Replies in the last 7 days</div><div class="push-row"><div class="push-row-main"><div class="push-row-name">' +
+    (n.local || 0) + ' on this Mac · ' + (n.cloud || 0) + ' in the cloud</div>' +
+    (rep.since ? '<div class="push-row-hint">Counted since ' + escHtml(fmtTime(rep.since)) + ' (chat and voice).</div>' : '<div class="push-row-hint">Counting starts with the next reply.</div>') + '</div></div>';
+  h += '<div class="push-sub">Busiest skills, last 7 days</div>';
+  h += (d.skills || []).length ? (d.skills || []).map(function (s) {
+    return '<div class="push-row"><span class="push-row-name">' + escHtml(s.name) + '</span><span class="push-row-hint">' + s.count + (s.count === 1 ? ' run' : ' runs') + '</span></div>';
+  }).join('') : '<div class="push-empty">No skill ran in the last 7 days.</div>';
+  var byModel = {};
+  (rep.speed || []).forEach(function (x) { (byModel[x.model] = byModel[x.model] || []).push(x); });
+  h += '<div class="push-sub">Reply speed, last 14 days</div>';
+  var models = Object.keys(byModel);
+  if (!models.length) h += '<div class="push-empty">No reply has reported its speed yet.</div>';
+  models.forEach(function (m) {
+    var rows = byModel[m], top = Math.max.apply(null, rows.map(function (x) { return x.tok_s; })) || 1, last = rows[rows.length - 1];
+    var name = String(m).split('/').pop().replace('-4bit', '');
+    h += '<div class="push-row"><div class="push-row-main" style="flex:1"><div class="push-row-name">' + escHtml(name) + ': ' + last.tok_s + ' tokens a second on ' + escHtml(last.day) + '</div>' +
+      '<div class="use-speed" role="img" aria-label="' + escHtml(name + ' speed per day: ' + rows.map(function (x) { return x.day + ' ' + x.tok_s; }).join(', ')) + '">' +
+      rows.map(function (x) { return '<span title="' + escHtml(x.day + ': ' + x.tok_s + ' tok/s, ' + x.replies + ' replies') + '" style="height:' + Math.max(6, Math.round(100 * x.tok_s / top)) + '%"></span>'; }).join('') +
+      '</div></div></div>';
+  });
+  card.innerHTML = h;
+  card.querySelectorAll('input[name="useFallback"]').forEach(function (inp) {
+    inp.addEventListener('change', function () { if (inp.checked) setAutoFallback(inp.value || null); });
+  });
+}
+async function setAutoFallback(value) {
+  try {
+    var r = await fetch('/api/usage/auto_fallback', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: value }) });
+    var d = await r.json().catch(function () { return {}; });
+    if (!r.ok) throw new Error(d.error || r.status);
+    showToast(value ? 'Automatic fallback is on.' : 'Automatic fallback is off.');
+  } catch (e) { showToast('Not saved: ' + e.message); }
+  loadUsage();
+}
+
 async function loadPush() {
   var P = window.CodecShell && CodecShell.push;
   if (!P) return;

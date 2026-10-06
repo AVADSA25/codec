@@ -160,6 +160,7 @@ def test_get_stats_empty_when_no_log(isolated_audit):
         "errors_24h": 0,
         "by_category": {},
         "by_level": {},
+        "by_tool": {},
     }
 
 

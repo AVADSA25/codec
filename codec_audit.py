@@ -1054,11 +1054,17 @@ def read_events(
     return results
 
 
+# One line per skill run: MCP and crews write tool_result, the chat, voice and
+# wake-word path (codec_dispatch.run_skill) writes wake_dispatch.
+_TOOL_RUN_EVENTS = ("tool_result", "wake_dispatch")
+
+
 def get_stats(hours: int = 24) -> dict:
     """Aggregate event counts over the last `hours` hours, shaped for
     the audit view's stats panel: {total_24h, errors_24h, by_category,
-    by_level}. Field names stay '_24h' regardless of `hours` to match the
-    UI's fixed contract (routes/audit.py always calls this with hours=24)."""
+    by_level, by_tool}. Field names stay '_24h' regardless of `hours` to match the
+    UI's fixed contract (routes/audit.py always calls this with hours=24).
+    `by_tool` counts skill runs per skill (UI P3.11: Settings > Usage asks for 7 days)."""
     cutoff_n = _norm_ts((datetime.now(timezone.utc) - timedelta(hours=hours))
                          .isoformat(timespec="milliseconds"))
 
@@ -1066,6 +1072,7 @@ def get_stats(hours: int = 24) -> dict:
     errors = 0
     by_category: dict[str, int] = {}
     by_level: dict[str, int] = {}
+    by_tool: dict[str, int] = {}
 
     for date_str, path in _log_files_desc():
         if date_str is not None and f"{date_str}T23:59:59.999Z" < cutoff_n:
@@ -1081,10 +1088,14 @@ def get_stats(hours: int = 24) -> dict:
             by_level[lvl] = by_level.get(lvl, 0) + 1
             if lvl == "error":
                 errors += 1
+            if rec.get("event") in _TOOL_RUN_EVENTS and rec.get("tool"):
+                tool = str(rec["tool"])[:80]
+                by_tool[tool] = by_tool.get(tool, 0) + 1
 
     return {
         "total_24h": total,
         "errors_24h": errors,
         "by_category": by_category,
         "by_level": by_level,
+        "by_tool": by_tool,
     }
