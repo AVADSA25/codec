@@ -187,6 +187,41 @@ a { color: var(--accent); text-decoration: none; }
 .pip-btn:hover{background:var(--accent)}
 .pip-btn.snap-btn{background:rgba(255,80,80,.7)}
 .pip-btn.snap-btn:hover{background:#e33}
+
+/* ── Activity (P3.8): projects, crew runs, permissions for every project ── */
+.act-sec { margin-bottom: 28px; }
+.act-sec > h2 { font-size: calc(16px * var(--fs-scale)); font-weight: 600; margin-bottom: 12px; }
+.act-note { font-size: var(--fs-13); color: var(--text-muted); line-height: 1.5; margin: -4px 0 12px; }
+.act-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 10px; }
+.act-top { display: flex; align-items: baseline; justify-content: space-between; gap: 4px 12px; flex-wrap: wrap; }
+.act-title { font-weight: 600; font-size: var(--fs-14); min-width: 0; overflow-wrap: anywhere; }
+.act-state { font-size: var(--fs-12); font-weight: 600; color: var(--text-muted); }
+.act-state.ok { color: var(--success-text); }
+.act-state.warn { color: var(--warning-text); }
+.act-state.bad { color: var(--danger-text); }
+.act-state.info { color: var(--info-text); }
+.act-bar { height: 6px; border-radius: 3px; background: var(--surface-3); margin: 10px 0 6px; overflow: hidden; }
+.act-bar > span { display: block; height: 100%; min-width: 2px; background: var(--accent); border-radius: 3px; }
+.act-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: var(--fs-12); color: var(--text-muted); margin-top: 4px; }
+.act-last { font-size: var(--fs-13); color: var(--text); margin-top: 6px; overflow-wrap: anywhere; }
+.act-err { font-size: var(--fs-13); color: var(--danger-text); margin-top: 6px; overflow-wrap: anywhere; }
+.act-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.act-gkind { margin-bottom: 12px; }
+.act-gkind h3 { font-size: var(--fs-13); font-weight: 600; color: var(--text-muted); margin-bottom: 6px; }
+.act-chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 2px 2px 2px 10px; margin: 0 6px 6px 0; border: 1px solid var(--border); border-radius: var(--radius-pill); background: var(--surface-2); font: 400 var(--fs-13)/1.4 var(--mono); }
+.act-chip span { overflow-wrap: anywhere; }
+.act-chip button { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: 0; border-radius: 50%; background: none; color: var(--text-muted); cursor: pointer; }
+.act-chip button:hover { background: var(--surface-3); color: var(--danger); }
+.act-none { font-size: var(--fs-13); color: var(--text-dim); margin-bottom: 6px; }
+.act-add { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+.act-add .form-input { flex: 1 1 220px; width: auto; }
+.act-files { list-style: none; margin: 0 0 8px; padding: 0; max-height: 50vh; overflow-y: auto; }
+.act-files li { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: var(--fs-13); overflow-wrap: anywhere; }
+.act-files li span:last-child { color: var(--text-muted); font-family: var(--mono); white-space: nowrap; }
+.act-cp { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px 2px; margin-bottom: 12px; }
+.act-cp legend { padding: 0 4px; font-size: var(--fs-12); font-weight: 600; color: var(--text-muted); }
+.cs-dialog.act-wide { width: min(620px, 100%); }
+@media (max-width: 767px) { .act-add .form-input { font-size: max(16px, var(--fs-16)); } }
 </style>
 </head>
 <body>
@@ -195,6 +230,7 @@ a { color: var(--accent); text-decoration: none; }
 <div class="container">
   <div class="tabs" role="tablist" aria-label="Tasks sections">
     <button type="button" class="tab active" role="tab" aria-selected="true" aria-controls="panel-schedules" onclick="showTab('schedules')" id="tab-schedules"><svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>Schedules</button>
+    <button type="button" class="tab" role="tab" aria-selected="false" aria-controls="panel-activity" onclick="showTab('activity')" id="tab-activity"><svg class="ico ico-sm" viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>Activity</button>
     <button type="button" class="tab" role="tab" aria-selected="false" aria-controls="panel-heartbeat" onclick="showTab('heartbeat')" id="tab-heartbeat"><svg class="ico ico-sm" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>Heartbeat</button>
     <button type="button" class="tab" role="tab" aria-selected="false" aria-controls="panel-history" onclick="showTab('history')" id="tab-history"><svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>History</button>
   </div>
@@ -345,6 +381,33 @@ a { color: var(--accent); text-decoration: none; }
     </div>
   </div>
 
+  <!-- ── Activity Tab (P3.8; docs/P3.8-DESIGN.md) ── -->
+  <div class="tab-panel" id="panel-activity" role="tabpanel" aria-labelledby="tab-activity">
+    <section class="act-sec" aria-labelledby="actProjectsH">
+      <h2 id="actProjectsH">Projects</h2>
+      <div id="actProjects"><div class="loading">Loading projects...</div></div>
+    </section>
+    <section class="act-sec" aria-labelledby="actCrewsH">
+      <h2 id="actCrewsH">Crew runs</h2>
+      <div id="actCrews"><div class="loading">Loading crew runs...</div></div>
+    </section>
+    <section class="act-sec" aria-labelledby="actGrantsH">
+      <h2 id="actGrantsH">Permissions for every project</h2>
+      <p class="act-note">Every project may use these without asking. A project's own plan can add more; anything else pauses it and asks you in the Inbox.</p>
+      <div id="actGrants"><div class="loading">Loading permissions...</div></div>
+      <form class="act-add" id="actGrantForm" onsubmit="return actAddGrant(event)">
+        <div class="kind-seg" role="radiogroup" aria-label="Kind of permission" id="actGrantKind">
+          <button type="button" role="radio" aria-checked="true" class="active" data-kind="network_domains">Site</button>
+          <button type="button" role="radio" aria-checked="false" data-kind="read_paths">Folder to read</button>
+          <button type="button" role="radio" aria-checked="false" data-kind="write_paths">Folder to write</button>
+          <button type="button" role="radio" aria-checked="false" data-kind="skills">Skill</button>
+        </div>
+        <input class="form-input" id="actGrantValue" autocomplete="off" maxlength="300" aria-label="Value" placeholder="example.com">
+        <button type="submit" class="btn btn-sm btn-primary">Add</button>
+      </form>
+    </section>
+  </div>
+
   <!-- ── History Tab ── -->
   <div class="tab-panel" id="panel-history" role="tabpanel" aria-labelledby="tab-history">
     <h2 style="font-size:calc(16px * var(--fs-scale)); font-weight:600; margin-bottom:16px;">Run History</h2>
@@ -356,6 +419,25 @@ a { color: var(--accent); text-decoration: none; }
 
 
 </div>
+</div>
+
+<!-- Activity dialogs (P3.8): Revise plan, Files. The shell's data-dialog watch keeps focus inside. -->
+<div class="cs-dialog-backdrop" id="actReviseWrap" hidden onclick="if(event.target===this)actCloseDialog('actRevise')">
+  <section class="cs-dialog act-wide" id="actRevise" role="dialog" aria-modal="true" aria-labelledby="actReviseTitle" data-dialog="open">
+    <h2 id="actReviseTitle">Revise the plan</h2>
+    <p class="cs-ask-msg">Change the goals and what each checkpoint does. The plan then waits for your approval again.</p>
+    <div id="actReviseBody"></div>
+    <div class="cs-dialog-error" id="actReviseError" role="alert"></div>
+    <div class="cs-dialog-actions"><button type="button" class="cs-dbtn" data-dialog-close onclick="actCloseDialog('actRevise')">Cancel</button><button type="button" class="cs-dbtn cs-dbtn-primary" id="actReviseSave" onclick="actSaveRevise()">Save the plan</button></div>
+  </section>
+</div>
+<div class="cs-dialog-backdrop" id="actFilesWrap" hidden onclick="if(event.target===this)actCloseDialog('actFiles')">
+  <section class="cs-dialog" id="actFiles" role="dialog" aria-modal="true" aria-labelledby="actFilesTitle" data-dialog="open">
+    <h2 id="actFilesTitle">Files</h2>
+    <p class="cs-ask-msg" id="actFilesDir"></p>
+    <ul class="act-files" id="actFilesList"></ul>
+    <div class="cs-dialog-actions"><button type="button" class="cs-dbtn" id="actOpenFolder" onclick="actOpenFolder()" hidden>Open folder</button><button type="button" class="cs-dbtn cs-dbtn-primary" data-dialog-close onclick="actCloseDialog('actFiles')">Close</button></div>
+  </section>
 </div>
 
 <div class="toast-container" id="toastContainer" role="status" aria-live="polite"></div>
@@ -874,6 +956,287 @@ function loadHistory() {
   });
 }
 
+/* ── Activity (P3.8; docs/P3.8-DESIGN.md): every project with its progress and the
+   actions that fit its state, the crew runs (kept across a restart), and the
+   permissions every project gets. Refreshed every 5 seconds while the tab shows. ── */
+var _actTimer = null, _actRev = null, _actFilesId = null, _actGrantKind = 'network_domains';
+var _ACT_LIVE = ['draft_pending', 'awaiting_approval', 'revised', 'approved', 'running', 'paused', 'crashed_resumed',
+  'blocked_on_permission', 'blocked_on_destructive', 'blocked_on_qwen'];
+var _ACT_STATUS = {
+  draft_pending: ['Drafting the plan', 'info'], awaiting_approval: ['Waiting for your approval', 'info'],
+  revised: ['Plan revised', 'info'], approved: ['Starting', 'ok'], running: ['Running', 'ok'],
+  paused: ['Paused', 'warn'], crashed_resumed: ['Resuming after a restart', 'warn'],
+  blocked_on_permission: ['Needs a permission', 'bad'], blocked_on_destructive: ['Needs your consent', 'bad'],
+  blocked_on_qwen: ['Waiting for the local model', 'warn'], completed: ['Done', ''], aborted: ['Stopped', ''],
+  rejected: ['Plan rejected', ''], plan_failed: ['Could not make a plan', 'bad']
+};
+var _ACT_REASON = {
+  step_budget_exhausted: 'It used all the steps it had for this checkpoint.', user_paused: 'You paused it.',
+  user_aborted: 'You stopped it.', plan_tampered: 'Its plan changed on disk after approval, so it was stopped.',
+  description_too_vague: 'The description was too thin to plan.'
+};
+var _ACT_KINDS = [['network_domains', 'Sites', 'example.com'], ['read_paths', 'Folders it may read', '~/Documents/notes'],
+  ['write_paths', 'Folders it may write', '~/codec-workspace'], ['skills', 'Skills', 'web_search']];
+var _CREW_STATUS = { running: ['Running', 'ok'], complete: ['Done', ''], completed: ['Done', ''], success: ['Done', ''],
+  error: ['Failed', 'bad'], failed: ['Failed', 'bad'], cancelled: ['Stopped', ''], interrupted: ['Interrupted', 'warn'] };
+
+function _actDur(s) {
+  if (s == null || isNaN(s)) return '';
+  s = Math.max(0, Math.round(s));
+  if (s < 60) return s + ' s';
+  var m = Math.floor(s / 60);
+  if (m < 60) return m + ' min';
+  var h = Math.floor(m / 60);
+  return h < 48 ? h + ' h ' + (m % 60) + ' min' : Math.floor(h / 24) + ' days';
+}
+function _actWhen(v) {
+  var d = typeof v === 'number' ? new Date(v * 1000) : new Date(v);
+  return isNaN(d) ? '' : _fmtWhen(d.toISOString());
+}
+function _actCrewName(c) {
+  var s = String(c || 'crew').replace(/_/g, ' ');
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+function _actBtn(label, act, id, cls, on) {
+  return '<button type="button" class="btn btn-sm' + (cls ? ' ' + cls : '') + '" data-act="' + act + '" data-id="' + escHtml(id) + '"' +
+    (on != null ? ' data-on="' + (on ? 1 : 0) + '"' : '') + '>' + label + '</button>';
+}
+function _actProjectCard(p) {
+  var st = _ACT_STATUS[p.status] || [String(p.status || 'Unknown').replace(/_/g, ' '), ''];
+  var live = _ACT_LIVE.indexOf(p.status) >= 0, total = +p.checkpoints_total || 0, idx = +p.checkpoint_index || 0;
+  var h = '<article class="act-card" data-agent="' + escHtml(p.agent_id) + '"><div class="act-top"><span class="act-title">' +
+    escHtml(p.title || p.agent_id) + '</span><span class="act-state ' + st[1] + '">' + escHtml(st[0]) + '</span></div>';
+  if (total) {
+    var pct = Math.round(100 * Math.min(idx, total) / total);
+    h += '<div class="act-bar" role="progressbar" aria-label="Checkpoints done" aria-valuemin="0" aria-valuemax="' + total +
+      '" aria-valuenow="' + Math.min(idx, total) + '"><span style="width:' + pct + '%"></span></div>';
+  }
+  var meta = [];
+  if (total) meta.push(Math.min(idx, total) + ' of ' + total + ' checkpoints');
+  if (p.elapsed_s != null) meta.push((live ? 'running for ' : 'took ') + _actDur(p.elapsed_s));
+  if (p.created_at) meta.push('started ' + _actWhen(p.created_at));
+  if (p.silenced) meta.push('notifications off');
+  h += '<div class="act-meta">' + meta.map(function (m) { return '<span>' + escHtml(m) + '</span>'; }).join('') + '</div>';
+  if (_ACT_REASON[p.status_reason] && p.status !== 'completed') h += '<div class="act-last">' + escHtml(_ACT_REASON[p.status_reason]) + '</div>';
+  if (p.last_message && p.last_message.title) h += '<div class="act-last">' + escHtml(p.last_message.title) + '</div>';
+  var b = [], id = p.agent_id;
+  if (p.status === 'running') b.push(_actBtn('Pause', 'pause', id));
+  if (p.status === 'paused' && p.can_extend) b.push(_actBtn('Extend budget', 'extend', id, 'btn-primary'));
+  else if (p.status === 'paused') b.push(_actBtn('Resume', 'resume', id, 'btn-primary'));
+  if (p.status === 'awaiting_approval') { b.push(_actBtn('Approve', 'approve', id, 'btn-primary')); b.push(_actBtn('Revise plan', 'revise', id)); }
+  if (/^blocked_on_(permission|destructive)$/.test(p.status)) b.push(_actBtn('Open the Inbox', 'inbox', id, 'btn-primary'));
+  if (live) b.push(_actBtn(p.silenced ? 'Turn notifications on' : 'Silence', 'silence', id, '', !!p.silenced));
+  b.push(_actBtn('Files', 'files', id));
+  if (live) b.push(_actBtn('Stop', 'stop', id, 'btn-danger'));
+  return h + '<div class="act-btns">' + b.join('') + '</div></article>';
+}
+function _actCrewCard(j) {
+  var st = _CREW_STATUS[j.status] || [String(j.status || ''), ''];
+  var started = Date.parse(j.started), ended = j.finished ? Date.parse(j.finished) : (j.status === 'running' ? Date.now() : NaN);
+  var meta = [];
+  if (!isNaN(started)) meta.push('started ' + _actWhen(j.started));
+  if (!isNaN(started) && !isNaN(ended)) meta.push((j.status === 'running' ? 'running for ' : 'took ') + _actDur((ended - started) / 1000));
+  if (j.steps) meta.push(j.steps + (j.steps === 1 ? ' step' : ' steps'));
+  var h = '<article class="act-card" data-job="' + escHtml(j.job_id) + '"><div class="act-top"><span class="act-title">' +
+    escHtml(_actCrewName(j.crew)) + '</span><span class="act-state ' + st[1] + '">' + escHtml(st[0]) + '</span></div>' +
+    '<div class="act-meta">' + meta.map(function (m) { return '<span>' + escHtml(m) + '</span>'; }).join('') + '</div>';
+  if (j.last) h += '<div class="act-last">' + escHtml(j.last) + '</div>';
+  if (j.error) h += '<div class="act-err">' + escHtml(j.error) + '</div>';
+  var b = [];
+  if (j.doc_url && /^https:\/\//.test(j.doc_url)) b.push('<a class="btn btn-sm" href="' + escHtml(j.doc_url) + '" target="_blank" rel="noopener">Google Doc</a>');
+  if (j.status === 'running') b.push(_actBtn('Stop', 'crewstop', j.job_id, 'btn-danger'));
+  return h + (b.length ? '<div class="act-btns">' + b.join('') + '</div>' : '') + '</article>';
+}
+// The 5-second refresh only touches the page when something changed, so focus and hover stay put.
+function _actPut(el, html) { if (el.__html !== html) { el.innerHTML = html; el.__html = html; } }
+function actLoad() {
+  var pe = document.getElementById('actProjects'), ce = document.getElementById('actCrews');
+  fetch('/api/agents').then(function (r) { return r.json(); }).then(function (d) {
+    var list = (d.agents || []).slice();
+    list.sort(function (a, b) {
+      var la = _ACT_LIVE.indexOf(a.status) >= 0 ? 0 : 1, lb = _ACT_LIVE.indexOf(b.status) >= 0 ? 0 : 1;
+      if (la !== lb) return la - lb;
+      return String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || ''));
+    });
+    _actPut(pe, list.length ? list.slice(0, 40).map(_actProjectCard).join('') :
+      '<div class="empty"><div class="empty-text">No projects yet. Start one in Chat: pick Project and describe what you want built.</div></div>');
+  }).catch(function () { _actPut(pe, '<div class="empty"><div class="empty-text">Projects are not available right now.</div></div>'); });
+  fetch('/api/agents/jobs').then(function (r) { return r.json(); }).then(function (d) {
+    var jobs = d.jobs || [];
+    _actPut(ce, jobs.length ? jobs.slice(0, 30).map(_actCrewCard).join('') :
+      '<div class="empty"><div class="empty-text">No crew runs yet. Run one from Chat (Agents) or a schedule.</div></div>');
+  }).catch(function () { _actPut(ce, '<div class="empty"><div class="empty-text">Crew runs are not available right now.</div></div>'); });
+}
+function actLoadGrants() {
+  var el = document.getElementById('actGrants');
+  fetch('/api/agent_global_grants').then(function (r) { return r.json(); }).then(function (g) {
+    el.innerHTML = _ACT_KINDS.map(function (k) {
+      var vals = (g && g[k[0]]) || [];
+      return '<div class="act-gkind"><h3>' + k[1] + '</h3>' + (vals.length ? vals.map(function (v) {
+        return '<span class="act-chip"><span>' + escHtml(v) + '</span><button type="button" data-kind="' + k[0] + '" data-value="' + escHtml(v) +
+          '" aria-label="Remove ' + escHtml(v) + '"><svg class="ico ico-sm" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></span>';
+      }).join('') : '<div class="act-none">None.</div>') + '</div>';
+    }).join('');
+  }).catch(function () { el.innerHTML = '<div class="act-none">Permissions are not available right now.</div>'; });
+}
+function _actPost(url, body, method) {
+  return fetch(url, { method: method || 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) })
+    .then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (d) {
+        if (!r.ok) throw new Error((d && (d.detail || d.error)) || ('HTTP ' + r.status));
+        return d;
+      });
+    });
+}
+function _actTitle(id) {
+  var c = document.querySelector('.act-card[data-agent="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"] .act-title');
+  return c ? c.textContent : 'This project';
+}
+async function actAction(act, id, btn) {
+  var base = '/api/agents/' + encodeURIComponent(id);
+  try {
+    if (act === 'pause') { await _actPost(base + '/pause'); showToast('Paused.'); }
+    else if (act === 'resume') { await _actPost(base + '/resume'); showToast('Resumed.'); }
+    else if (act === 'approve') {
+      if (!await CodecShell.ask({ title: 'Approve this plan?', message: _actTitle(id) + ' runs on its own, within the permissions in its plan.', confirm: 'Approve' })) return;
+      await _actPost(base + '/approve'); showToast('Approved. It starts within a few seconds.');
+    } else if (act === 'extend') {
+      var n = await CodecShell.ask({ title: 'Give it more steps?', message: 'It used all the steps it had for this checkpoint. Add steps and it carries on.',
+        confirm: 'Add steps', input: { label: 'Extra steps (1 to 100)', value: '10', inputmode: 'numeric', maxlength: 3, required: true,
+          pattern: '[1-9][0-9]?|100', patternText: 'A whole number from 1 to 100.' } });
+      if (!n) return;
+      await _actPost(base + '/extend_budget', { additional_steps: parseInt(n, 10) }); showToast('It carries on with ' + n + ' more steps.');
+    } else if (act === 'stop') {
+      if (!await CodecShell.ask({ title: 'Stop this project?', message: _actTitle(id) + ' stops where it is. It cannot be started again.', confirm: 'Stop', danger: true })) return;
+      await _actPost(base + '/abort'); showToast('Stopped.');
+    } else if (act === 'silence') {
+      var on = !!(btn && btn.getAttribute('data-on') === '1');
+      await _actPost(base + '/silence', { silenced: !on }); showToast(on ? 'Its notifications are on again.' : 'Its notifications are off. It still runs.');
+    } else if (act === 'inbox') { if (window.CodecShell && CodecShell.inbox) CodecShell.inbox.open('needs_you'); return; }
+    else if (act === 'revise') { actRevise(id); return; }
+    else if (act === 'files') { actFiles(id); return; }
+    else if (act === 'crewstop') {
+      if (!await CodecShell.ask({ title: 'Stop this crew run?', message: 'It stops after the step it is on.', confirm: 'Stop', danger: true })) return;
+      await _actPost('/api/agents/cancel/' + encodeURIComponent(id)); showToast('Stopped.');
+    }
+  } catch (err) { showToast('Could not do that: ' + err.message); }
+  actLoad();
+}
+function _actShow(id) {
+  document.getElementById(id + 'Wrap').hidden = false;
+  document.getElementById(id).classList.add('open');
+}
+function actCloseDialog(id) {
+  document.getElementById(id).classList.remove('open');
+  document.getElementById(id + 'Wrap').hidden = true;
+  if (id === 'actRevise') _actRev = null;
+}
+function actRevise(id) {
+  fetch('/api/agents/' + encodeURIComponent(id)).then(function (r) { return r.json(); }).then(function (d) {
+    if (!d || !d.plan) { showToast('This project has no plan to revise.'); return; }
+    _actRev = { id: id, plan: d.plan };
+    var h = '<label class="cs-field"><span>Goals, one per line</span><textarea id="actRevGoals" rows="3">' + escHtml((d.plan.goals || []).join('\n')) + '</textarea></label>';
+    (d.plan.checkpoints || []).forEach(function (cp, i) {
+      h += '<fieldset class="act-cp"><legend>Checkpoint ' + (i + 1) + '</legend>' +
+        '<label class="cs-field"><span>Title</span><input data-cp="' + i + '" data-f="title" maxlength="200" value="' + escHtml(cp.title || '') + '"></label>' +
+        '<label class="cs-field"><span>What it does</span><textarea data-cp="' + i + '" data-f="description" rows="3">' + escHtml(cp.description || '') + '</textarea></label></fieldset>';
+    });
+    document.getElementById('actReviseBody').innerHTML = h;
+    document.getElementById('actReviseError').textContent = '';
+    _actShow('actRevise');
+  }).catch(function () { showToast('Could not load the plan.'); });
+}
+function actSaveRevise() {
+  if (!_actRev) return;
+  var err = document.getElementById('actReviseError');
+  var plan = JSON.parse(JSON.stringify(_actRev.plan));
+  plan.goals = document.getElementById('actRevGoals').value.split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
+  if (!plan.goals.length) { err.textContent = 'Give at least one goal.'; return; }
+  var bad = false;
+  document.querySelectorAll('#actReviseBody [data-cp]').forEach(function (f) {
+    var v = f.value.trim(), cp = plan.checkpoints[+f.getAttribute('data-cp')];
+    if (!v) bad = true;
+    if (cp) cp[f.getAttribute('data-f')] = v;
+  });
+  if (bad) { err.textContent = 'Every checkpoint needs a title and a description.'; return; }
+  var save = document.getElementById('actReviseSave');
+  save.disabled = true;
+  _actPost('/api/agents/' + encodeURIComponent(_actRev.id) + '/revise', { edited_plan: plan }).then(function () {
+    actCloseDialog('actRevise');
+    showToast('Plan saved. Approve it when it looks right.');
+    actLoad();
+  }).catch(function (e) { err.textContent = 'Not saved: ' + e.message; }).then(function () { save.disabled = false; });
+}
+function _actSize(n) {
+  n = +n || 0;
+  return n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(1) + ' MB';
+}
+function actFiles(id) {
+  fetch('/api/agents/' + encodeURIComponent(id) + '/artifacts').then(function (r) { return r.json(); }).then(function (d) {
+    _actFilesId = id;
+    var files = (d && d.files) || [];
+    document.getElementById('actFilesTitle').textContent = 'Files of ' + _actTitle(id);
+    document.getElementById('actFilesDir').textContent = d && d.project_dir ? 'In ' + String(d.project_dir).replace(/^\/Users\/[^/]+/, '~') : 'This project has no folder yet.';
+    document.getElementById('actFilesList').innerHTML = files.length ? files.map(function (f) {
+      return '<li><span>' + escHtml(f.name) + '</span><span>' + _actSize(f.size) + '</span></li>';
+    }).join('') : '<li><span>No files yet.</span><span></span></li>';
+    // Open folder shows the folder in Finder on the Mac, so only a Mac browser offers it.
+    document.getElementById('actOpenFolder').hidden = !(d && d.project_dir && /Macintosh/.test(navigator.userAgent) && !(navigator.maxTouchPoints > 1));
+    _actShow('actFiles');
+  }).catch(function () { showToast('Could not list the files.'); });
+}
+function actOpenFolder() {
+  if (!_actFilesId) return;
+  _actPost('/api/agents/' + encodeURIComponent(_actFilesId) + '/open-folder').then(function () { showToast('Opened in Finder.'); })
+    .catch(function (e) { showToast('Could not open it: ' + e.message); });
+}
+function actAddGrant(ev) {
+  if (ev) ev.preventDefault();
+  var inp = document.getElementById('actGrantValue'), v = inp.value.trim();
+  if (!v) { inp.focus(); return false; }
+  _actPost('/api/agent_global_grants', { kind: _actGrantKind, value: v }).then(function () {
+    inp.value = '';
+    showToast('Added.');
+    actLoadGrants();
+  }).catch(function (e) { showToast('Not added: ' + e.message); });
+  return false;
+}
+function _actSetKind(kind) {
+  _actGrantKind = kind;
+  document.querySelectorAll('#actGrantKind [data-kind]').forEach(function (b) {
+    var on = b.getAttribute('data-kind') === kind;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-checked', String(on));
+  });
+  var k = _ACT_KINDS.filter(function (x) { return x[0] === kind; })[0];
+  document.getElementById('actGrantValue').placeholder = k ? k[2] : '';
+}
+document.addEventListener('DOMContentLoaded', function () {
+  var panel = document.getElementById('panel-activity');
+  panel.addEventListener('click', function (ev) {
+    var b = ev.target.closest('button[data-act]');
+    if (b) { actAction(b.getAttribute('data-act'), b.getAttribute('data-id'), b); return; }
+    var r = ev.target.closest('.act-chip button[data-kind]');
+    if (r) {
+      var kind = r.getAttribute('data-kind'), value = r.getAttribute('data-value');
+      CodecShell.ask({ title: 'Remove this permission?', message: value + ' is no longer allowed for every project. A project that needs it asks you.', confirm: 'Remove', danger: true })
+        .then(function (ok) {
+          if (!ok) return;
+          _actPost('/api/agent_global_grants', { kind: kind, value: value }, 'DELETE').then(function () { showToast('Removed.'); actLoadGrants(); })
+            .catch(function (e) { showToast('Not removed: ' + e.message); });
+        });
+      return;
+    }
+    var k = ev.target.closest('#actGrantKind [data-kind]');
+    if (k) _actSetKind(k.getAttribute('data-kind'));
+  });
+  // The board refreshes every 5 seconds while its tab shows and the page is visible.
+  setInterval(function () {
+    if (document.hidden || !panel.classList.contains('active')) return;
+    if (document.getElementById('actReviseWrap').hidden && document.getElementById('actFilesWrap').hidden) actLoad();
+  }, 5000);
+});
+
 /* ── Utils ── */
 function escHtml(s) {
   var d = document.createElement('div');
@@ -887,7 +1250,7 @@ document.addEventListener('DOMContentLoaded', function() {
   loadHeartbeat();
   loadAlerts();
   loadHistory();
-  // A tab named in the hash opens (Schedules, Heartbeat, History). The old
+  // A tab named in the hash opens (Schedules, Activity, Heartbeat, History). The old
   // /tasks#reports link opens the shell's Inbox on Reports (P3.2).
   function _tabFromHash(){var h=(location.hash||'').replace('#','');if(h&&document.getElementById('tab-'+h))showTab(h)}
   _tabFromHash();
@@ -917,6 +1280,7 @@ function showTab(name) {
   document.getElementById('tab-' + name).setAttribute('aria-selected', 'true');
   document.getElementById('panel-' + name).classList.add('active');
   window.location.hash = name;
+  if (name === 'activity') { actLoad(); actLoadGrants(); }
 }
 
 // Apply UI preferences from dashboard settings

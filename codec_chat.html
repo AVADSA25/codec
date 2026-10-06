@@ -234,6 +234,22 @@ button.msg-att{cursor:zoom-in}
 /* Messages sent while a reply streams wait here and send when it ends. */
 .queue-chips{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
 .queue-chips:empty{display:none}
+/* P3.8: the running-task rail above the composer (active projects, running crew runs) */
+.run-rail{display:flex;flex-direction:column;gap:6px;flex-shrink:0;padding:0 max(12px,calc((100% - 760px) / 2)) 6px;background:var(--bg)}
+.run-rail[hidden]{display:none}
+.run-item{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;padding:7px 8px 7px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-12);font-size:var(--fs-13)}
+.run-name{min-width:0;max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.run-state{font-size:var(--fs-12);font-weight:600;color:var(--text-muted);white-space:nowrap}
+.run-state.ok{color:var(--success-text)}.run-state.warn{color:var(--warning-text)}.run-state.bad{color:var(--danger-text)}.run-state.info{color:var(--info-text)}
+.run-bar{flex:1 1 60px;min-width:40px;height:4px;border-radius:2px;background:var(--surface-3);overflow:hidden}
+.run-bar>span{display:block;height:100%;min-width:2px;background:var(--accent)}
+.run-count{font-size:var(--fs-12);color:var(--text-muted);white-space:nowrap}
+.run-acts{display:flex;gap:6px;margin-left:auto}
+.run-btn{height:28px;padding:0 10px;border:1px solid var(--border);border-radius:var(--radius-pill);background:var(--surface-2);color:var(--text);font:600 var(--fs-12)/1 var(--font-sans);cursor:pointer}
+.run-btn:hover{border-color:var(--border-hover)}
+.run-btn.danger{color:var(--danger-text)}
+.run-all{align-self:flex-end;font-size:var(--fs-12);color:var(--text-muted);text-decoration:underline}
+@media(max-width:767px){.run-name{max-width:60%}.run-btn{height:32px}}
 .queue-chip{display:flex;align-items:center;gap:8px;padding:4px 4px 4px 12px;border-radius:var(--radius-12);background:var(--surface-2);font-size:var(--fs-14);color:var(--text)}
 .queue-chip .qc-label{flex-shrink:0;font-size:var(--fs-12);font-weight:600;color:var(--text-muted)}
 .queue-chip .qc-text{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -1005,6 +1021,7 @@ function setMode(mode){
     try{showToast('Context preserved — ask follow-up questions about the report')}catch(e){}
   }
   _syncModeUi();
+  _syncSendState();
 }
 
 function regenerateResponse(btn){
@@ -1320,13 +1337,22 @@ if(_phoneMq){try{_phoneMq.addEventListener('change',_placeModelPill)}catch(e){_p
 // Send is muted while the composer is empty. While a reply streams, Stop shows,
 // and Send stays next to it whenever there is text, to queue that text.
 var _streamingUi=false,_queue=[],_queuePaused=false;
+// P3.8: a crew that needs no text (Daily Briefing, Email Handler, or one that takes
+// no input) starts from an empty box, so Send is live for it.
+function _emptySendOk(){
+  if(typeof chatMode==='undefined'||chatMode!=='research')return false;
+  var cs=document.getElementById('crewSelect'),crew=(cs&&cs.value)||'deep_research';
+  if(crew==='daily_briefing'||crew==='email_handler')return true;
+  var ci=typeof _crewInfo==='function'?_crewInfo(crew):null;
+  return !!(ci&&!ci.arg);
+}
 function _syncSendState(){
   var ci=document.getElementById('chatInput'),send=document.getElementById('sendBtn'),stop=document.getElementById('stopBtn');
   if(!ci||!send||!stop)return;
   var hasText=!!ci.value.trim();
   stop.style.display=_streamingUi?'inline-flex':'none';
   send.style.display=(!_streamingUi||hasText)?'inline-flex':'none';
-  send.classList.toggle('empty',!hasText&&!pendingFiles.length&&!(_queue.length&&!_streamingUi));
+  send.classList.toggle('empty',!hasText&&!pendingFiles.length&&!(_queue.length&&!_streamingUi)&&!(_emptySendOk()&&!_streamingUi));
   send.title=_streamingUi?'Queue this message':'Send';send.setAttribute('aria-label',send.title);
   send.disabled=false;
 }
@@ -2134,13 +2160,13 @@ async function sendMessage(queued){
   else{
     text=input.value.trim();
     if(!text&&!pendingFiles.length){
-      // Empty composer: Send releases a queue that Stop kept.
-      if(!_queue.length)return;
-      text=_queue.shift();_renderQueue();
+      // Empty composer: Send releases a queue that Stop kept, or starts a crew that needs no text (P3.8).
+      if(_queue.length){text=_queue.shift();_renderQueue()}
+      else if(!_emptySendOk())return;
     }else{input.value='';input.style.height='auto'}
   }
   _queuePaused=false;
-  if(!text&&!pendingFiles.length)return;
+  if(!text&&!pendingFiles.length&&!_emptySendOk())return;
   _syncSendState();
 
   // Attachments are read HERE, before the mode branches. They used to be built
@@ -2783,6 +2809,9 @@ function loadSavedAgent(json){
 
 async function deleteSelectedAgent(){
   var sel=document.getElementById('savedAgentSelect');var json=sel.value;if(!json){addMessage('assistant','Select an agent to delete first');return}
+  var a0=null;try{a0=JSON.parse(json)}catch(e){}
+  // P3.8: deleting a saved agent asks first, like every other delete.
+  if(!await CodecShell.ask({title:'Delete this agent?',message:((a0&&(a0.name||a0.id))||'This agent')+' is removed from your saved agents.',confirm:'Delete',danger:true}))return;
   try{var a=JSON.parse(json);var r=await fetch('/api/agents/custom/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:a.id})});var d=await r.json();if(d.deleted){addMessage('assistant','Agent **'+(a.name||a.id)+'** deleted');await loadSavedAgentList()}else{addMessage('assistant','Delete failed: '+(d.error||'unknown'))}}catch(e){addMessage('assistant','Delete error: '+e.message)}
 }
 
@@ -3318,53 +3347,76 @@ async function checkActiveAgentLifecycle(){
 // Show the chip on page load if a binding survived
 setTimeout(renderActiveAgentChip, 100);
 
+// P3.8 (docs/P3.8-DESIGN.md): the running-task rail above the composer. One row per
+// active project or running crew run, with its progress, its state and its buttons;
+// All activity opens the Activity tab in Tasks. Polled with the lifecycle check below.
+var _RAIL_STATE={running:['Running','ok'],approved:['Starting','ok'],paused:['Paused','warn'],crashed_resumed:['Resuming','warn'],
+  awaiting_approval:['Waiting for approval','info'],draft_pending:['Drafting the plan','info'],blocked_on_permission:['Needs a permission','bad'],
+  blocked_on_destructive:['Needs your consent','bad'],blocked_on_qwen:['Waiting for the model','warn']};
+function _railBtn(label,act,id,danger){return '<button type="button" class="run-btn'+(danger?' danger':'')+'" data-run="'+act+'" data-id="'+escHtml(id)+'">'+label+'</button>'}
 async function refreshAgentStatusPills(){
-  var container=document.getElementById('agentStatusPills');
-  if(!container){
-    // Inject the container right above the input area
+  var rail=document.getElementById('agentStatusPills');
+  if(!rail){
     var inputArea=document.querySelector('.input-area');
     if(!inputArea)return;
-    container=document.createElement('div');
-    container.id='agentStatusPills';
-    container.style.cssText='display:none;flex-wrap:wrap;gap:6px;margin:0 16px 6px;font-size:calc(12px * var(--fs-scale))';
-    inputArea.parentNode.insertBefore(container,inputArea);
+    rail=document.createElement('div');
+    rail.id='agentStatusPills';rail.className='run-rail';rail.hidden=true;
+    rail.setAttribute('role','region');rail.setAttribute('aria-label','Running tasks');
+    rail.addEventListener('click',function(e){
+      var b=e.target.closest('[data-run]');if(!b)return;
+      var id=b.getAttribute('data-id'),a=b.getAttribute('data-run');
+      if(a==='approve')approveAgentInChat(id,e);else if(a==='pause')pauseAgentInChat(id,e);else if(a==='resume')resumeAgentInChat(id,e);
+      else if(a==='extend')extendAgentInChat(id,e);else if(a==='stop')abortAgentInChat(id,e);else if(a==='crewstop')stopCrewInChat(id,e);
+      else if(a==='inbox'&&window.CodecShell&&CodecShell.inbox)CodecShell.inbox.open('needs_you');
+    });
+    inputArea.parentNode.insertBefore(rail,inputArea);
   }
   try{
-    var r=await fetch('/api/agents');
-    if(r.status===401||r.status===403)return;
-    if(!r.ok)return;
-    var data=await r.json();
-    var pills=(data.agents||[]).filter(function(a){
-      return ['running','paused','blocked_on_permission','blocked_on_destructive',
-              'awaiting_approval','draft_pending','crashed_resumed'].indexOf(a.status)>=0;
-    }).slice(0,5);
-    if(pills.length===0){container.style.display='none';container.innerHTML='';return}
-    container.style.display='flex';
-    container.innerHTML=pills.map(function(p){
-      // Status pill: a 14% tint of the hue behind text in that hue; draft_pending stays neutral.
-      var hue='';
-      if(p.status==='running')hue='success';
-      else if(p.status==='paused'||p.status==='crashed_resumed')hue='warning';
-      else if(p.status==='awaiting_approval')hue='info';
-      else if(p.status==='blocked_on_permission'||p.status==='blocked_on_destructive')hue='danger';
-      var fg=hue?'var(--'+hue+'-text)':'var(--text-muted)',bg=hue?'var(--'+hue+'-tint)':'var(--surface-3)';
-      var actions='';
-      if(p.status==='awaiting_approval'){
-        actions=' <a href="#" onclick="approveAgentInChat(\''+p.agent_id+'\',event)" style="color:inherit;text-decoration:underline;margin-left:4px">approve</a>';
-      }else if(p.status==='paused'){
-        actions=' <a href="#" onclick="resumeAgentInChat(\''+p.agent_id+'\',event)" style="color:inherit;text-decoration:underline;margin-left:4px">resume</a>';
-      }else if(p.status==='running'){
-        actions=' <a href="#" onclick="pauseAgentInChat(\''+p.agent_id+'\',event)" style="color:inherit;text-decoration:underline;margin-left:4px">pause</a>';
-      }
-      actions+=' <a href="#" onclick="abortAgentInChat(\''+p.agent_id+'\',event)" style="color:inherit;text-decoration:underline;margin-left:4px">abort</a>';
-      return '<span style="display:inline-flex;align-items:center;padding:3px 10px;background:'+bg+';color:'+fg+';border-radius:10px">'+
-             escHtml((p.title||p.agent_id).slice(0,40))+' · '+p.status+actions+'</span>';
-    }).join('');
+    var rs=await Promise.all([fetch('/api/agents'),fetch('/api/agents/jobs')]);
+    if(rs[0].status===401||rs[0].status===403)return;
+    var agents=rs[0].ok?((await rs[0].json()).agents||[]):[];
+    var jobs=rs[1].ok?((await rs[1].json()).jobs||[]):[];
+    var rows=agents.filter(function(a){return !!_RAIL_STATE[a.status]}).slice(0,4).map(function(p){
+      var st=_RAIL_STATE[p.status],total=+p.checkpoints_total||0,idx=Math.min(+p.checkpoint_index||0,total),id=p.agent_id,b='';
+      if(p.status==='awaiting_approval')b+=_railBtn('Approve','approve',id);
+      else if(p.status==='running')b+=_railBtn('Pause','pause',id);
+      else if(p.status==='paused')b+=p.can_extend?_railBtn('Extend','extend',id):_railBtn('Resume','resume',id);
+      else if(p.status==='blocked_on_permission'||p.status==='blocked_on_destructive')b+=_railBtn('Inbox','inbox',id);
+      b+=_railBtn('Stop','stop',id,true);
+      return '<div class="run-item"><span class="run-name" title="'+escHtml(p.title||id)+'">'+escHtml(p.title||id)+'</span>'+
+        '<span class="run-state '+st[1]+'">'+st[0]+'</span>'+
+        (total?'<span class="run-bar" role="progressbar" aria-label="Checkpoints done" aria-valuemin="0" aria-valuemax="'+total+'" aria-valuenow="'+idx+'"><span style="width:'+Math.round(100*idx/total)+'%"></span></span><span class="run-count">'+idx+' of '+total+'</span>':'')+
+        '<span class="run-acts">'+b+'</span></div>';
+    });
+    jobs.filter(function(j){return j.status==='running'}).slice(0,3).forEach(function(j){
+      var name=String(j.crew||'crew').replace(/_/g,' ');name=name.charAt(0).toUpperCase()+name.slice(1);
+      rows.push('<div class="run-item"><span class="run-name" title="'+escHtml(j.last||name)+'">'+escHtml(name)+'</span>'+
+        '<span class="run-state ok">Running</span><span class="run-count">'+(+j.steps||0)+((+j.steps===1)?' step':' steps')+'</span>'+
+        '<span class="run-acts">'+_railBtn('Stop','crewstop',j.job_id,true)+'</span></div>');
+    });
+    if(!rows.length){rail.hidden=true;rail.innerHTML='';rail.__html='';return}
+    var html=rows.join('')+'<a class="run-all" href="/tasks#activity">All activity</a>';
+    if(rail.__html!==html){rail.innerHTML=html;rail.__html=html}  // unchanged rows keep their focus
+    rail.hidden=false;
   }catch(e){/* silent */}
 }
 async function pauseAgentInChat(agentId,e){if(e)e.preventDefault();await fetch('/api/agents/'+encodeURIComponent(agentId)+'/pause',{method:'POST'});refreshAgentStatusPills()}
 async function resumeAgentInChat(agentId,e){if(e)e.preventDefault();await fetch('/api/agents/'+encodeURIComponent(agentId)+'/resume',{method:'POST'});refreshAgentStatusPills()}
 async function abortAgentInChat(agentId,e){if(e)e.preventDefault();if(!await CodecShell.ask({title:'Stop this agent?',message:'Agent '+agentId+' stops where it is.',confirm:'Stop agent',danger:true}))return;await fetch('/api/agents/'+encodeURIComponent(agentId)+'/abort',{method:'POST'});refreshAgentStatusPills()}
+async function extendAgentInChat(agentId,e){
+  if(e)e.preventDefault();
+  var n=await CodecShell.ask({title:'Give it more steps?',message:'It used all the steps it had for this checkpoint. Add steps and it carries on.',confirm:'Add steps',
+    input:{label:'Extra steps (1 to 100)',value:'10',inputmode:'numeric',maxlength:3,required:true,pattern:'[1-9][0-9]?|100',patternText:'A whole number from 1 to 100.'}});
+  if(!n)return;
+  var r=await fetch('/api/agents/'+encodeURIComponent(agentId)+'/extend_budget',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({additional_steps:parseInt(n,10)})});
+  if(!r.ok){var d=await r.json().catch(function(){return{}});showToast('Could not add steps: '+(d.detail||r.status))}
+  refreshAgentStatusPills();
+}
+async function stopCrewInChat(jobId,e){
+  if(e)e.preventDefault();
+  if(!await CodecShell.ask({title:'Stop this crew run?',message:'It stops after the step it is on.',confirm:'Stop',danger:true}))return;
+  await fetch('/api/agents/cancel/'+encodeURIComponent(jobId),{method:'POST'});refreshAgentStatusPills();
+}
 setTimeout(refreshAgentStatusPills,500);setInterval(function(){ refreshAgentStatusPills(); checkActiveAgentLifecycle(); },5000);
 // Pulse animation for the active-agent chip dot
 (function(){

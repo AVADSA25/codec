@@ -14,6 +14,7 @@ from routes._shared import (
     _research_jobs, _agent_jobs, _AGENTS_DIR,
     _agent_jobs_lock, _evict_stale_agent_jobs,
     _research_jobs_lock, _evict_stale_research_jobs,
+    _ensure_agent_jobs_loaded, _save_agent_jobs,
 )
 
 router = APIRouter()
@@ -70,6 +71,28 @@ async def deep_research_status(job_id: str):
     return job
 
 
+@router.get("/api/agents/jobs")
+async def list_agent_jobs():
+    """Crew runs, newest first (UI P3.8: the Activity tab and Chat's rail). They are
+    kept in ~/.codec/agent_jobs.json, so they outlive a dashboard restart."""
+    _ensure_agent_jobs_loaded()
+    with _agent_jobs_lock:
+        jobs = [(jid, dict(j)) for jid, j in _agent_jobs.items() if isinstance(j, dict)]
+    out = []
+    for jid, j in sorted(jobs, key=lambda kv: str(kv[1].get("started") or ""), reverse=True)[:50]:
+        progress = j.get("progress") or []
+        last = progress[-1] if progress else ""
+        if isinstance(last, dict):
+            last = last.get("message") or last.get("text") or last.get("status") or ""
+        doc = j.get("doc_url") or j.get("url")
+        out.append({"job_id": jid, "crew": j.get("crew", ""), "status": j.get("status", ""),
+                    "started": j.get("started"), "finished": j.get("finished"), "steps": len(progress),
+                    "last": str(last)[:200],
+                    "error": str(j.get("error") or "")[:300],
+                    "doc_url": doc if isinstance(doc, str) and doc.startswith("https://") else None})
+    return {"jobs": out}
+
+
 @router.get("/api/agents/crews")
 async def list_agent_crews():
     """List available agent crews."""
@@ -110,6 +133,7 @@ async def run_agent_crew(request: Request):
             "progress": [],
             "started": datetime.now().isoformat(),
         }
+    _save_agent_jobs()  # P3.8: the run is on disk from its start
 
     def _run():
         import asyncio
@@ -149,6 +173,8 @@ async def run_agent_crew(request: Request):
             _agent_jobs[job_id]["error"] = str(e)
         finally:
             loop.close()
+            _agent_jobs[job_id]["finished"] = datetime.now().isoformat()
+            _save_agent_jobs()
 
     threading.Thread(target=_run, daemon=True).start()
     return {"job_id": job_id, "status": "running", "crew": crew_name}
@@ -157,6 +183,7 @@ async def run_agent_crew(request: Request):
 @router.get("/api/agents/status/{job_id}")
 async def agent_job_status(job_id: str):
     """Poll agent job status. Returns full result when status != 'running'."""
+    _ensure_agent_jobs_loaded()
     job = _agent_jobs.get(job_id)
     if not job:
         return JSONResponse({"error": "Job not found"}, status_code=404)
@@ -172,12 +199,14 @@ async def cancel_agent_job(job_id: str):
     its final status, and status polls immediately see 'cancelled'. The chat UI
     stops waiting as soon as this returns.
     """
+    _ensure_agent_jobs_loaded()
     job = _agent_jobs.get(job_id)
     if not job:
         return JSONResponse({"error": "Job not found"}, status_code=404)
     job["cancel_requested"] = True
     if job.get("status") == "running":
         job["status"] = "cancelled"
+    _save_agent_jobs()
     return {"job_id": job_id, "status": "cancelled"}
 
 
@@ -405,9 +434,72 @@ def create_agent(body: CreateAgentBody):
     }
 
 
+_LIVE_STATUSES = {"running", "paused", "approved", "crashed_resumed", "awaiting_approval", "draft_pending",
+                  "blocked_on_permission", "blocked_on_destructive", "blocked_on_qwen"}
+
+
+def _epoch(value) -> float:
+    try:
+        dt = datetime.fromisoformat(str(value))
+    except (TypeError, ValueError):
+        return 0.0
+    return (dt if dt.tzinfo else dt.astimezone()).timestamp()
+
+
+def _last_message(agent_id: str):
+    """The newest line of the agent's messages.jsonl, read from the end of the file."""
+    try:
+        path = _cap._agent_dir(agent_id) / "messages.jsonl"
+        with open(path, "rb") as f:
+            f.seek(0, 2)
+            size = f.tell()
+            f.seek(max(0, size - 16384))
+            lines = f.read().decode("utf-8", "replace").splitlines()
+    except (OSError, ValueError):
+        return None
+    for line in reversed(lines):
+        try:
+            m = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(m, dict) and (m.get("title") or m.get("body")):
+            return {"type": m.get("type"), "title": str(m.get("title") or m.get("body") or "")[:200], "ts": m.get("ts")}
+    return None
+
+
+def _progress(agent_id: str, m: dict) -> dict:
+    """UI P3.8: n of N checkpoints, elapsed time, the last message, silence, extend."""
+    import time as _time
+    status = m.get("status", "")
+    try:
+        plan = _cap.load_plan(agent_id)
+        total = len(plan.checkpoints) if plan else 0
+    except Exception:
+        total = 0
+    try:
+        idx = int((_cap.load_state(agent_id) or {}).get("current_checkpoint", 0))
+    except (TypeError, ValueError):
+        idx = 0
+    if status == "completed":
+        idx = total
+    start = _epoch(m.get("approved_at") or m.get("created_at"))
+    end = _time.time() if status in _LIVE_STATUSES else _epoch(m.get("updated_at"))
+    try:
+        from codec_agent_messaging import is_silenced
+        silenced = bool(is_silenced(agent_id))
+    except Exception:
+        silenced = False
+    return {"checkpoints_total": total, "checkpoint_index": max(0, min(idx, total)),
+            "elapsed_s": int(max(0.0, end - start)) if start else None,
+            "status_reason": m.get("status_reason") or "",
+            "can_extend": status == "paused" and m.get("status_reason") == "step_budget_exhausted",
+            "silenced": silenced, "last_message": _last_message(agent_id)}
+
+
 @router.get("/api/agents")
 def list_agents():
-    """List all agents (any status). Returns a thin manifest summary."""
+    """List all agents (any status). Returns a thin manifest summary, plus the
+    progress fields the Activity tab and Chat's rail show (UI P3.8)."""
     out: _List[_Dict[str, _Any]] = []
     if not _cap._AGENTS_DIR.exists():
         return {"agents": []}
@@ -416,13 +508,14 @@ def list_agents():
             continue
         m = _cap.load_manifest(d.name)
         if m:
-            out.append({
-                "agent_id": m.get("agent_id", d.name),
+            aid = m.get("agent_id", d.name)
+            out.append(dict({
+                "agent_id": aid,
                 "title":    m.get("title", "(untitled)"),
                 "status":   m.get("status", "unknown"),
                 "created_at": m.get("created_at"),
                 "updated_at": m.get("updated_at"),
-            })
+            }, **_progress(aid, m)))
     return {"agents": out}
 
 
@@ -509,6 +602,11 @@ def get_global_grants():
 
 @router.post("/api/agent_global_grants")
 def add_global_grant(body: GlobalGrantBody):
+    # UI P3.8: the Activity tab edits this list; a folder goes through the same
+    # refusal as a per-agent grant (traversal, blocklisted or over-broad paths).
+    if body.kind in ("read_paths", "write_paths") and _grant_path_unsafe(body.value):
+        raise HTTPException(status_code=400,
+                            detail=f"refused: '{body.value}' is a blocked, traversal, or over-broad path grant")
     try:
         _cap.add_global_grant(body.kind, body.value)
     except ValueError as e:

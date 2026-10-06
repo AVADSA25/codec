@@ -356,7 +356,7 @@ P2.9 moved it to `GET` plus the shell toast (`CodecShell.toast`), showing the im
 in the page's viewer. Fix Vibe the same way. Revisit: P2.6, which routes the
 pages' `alert()` calls through toasts.
 
-## A crew that needs no text cannot start from an empty Chat box (2026-09-29)
+## A crew that needs no text cannot start from an empty Chat box (2026-09-29) — FIXED in P3.8
 
 `codec_chat.html`'s `sendMessage` returns early when the box is empty and no
 file is attached (it only releases a queued message then). The Agents branch
@@ -366,7 +366,7 @@ Agents sheet, or with '@' since P2.3) and pressing Send does nothing; any typed
 word works. Fix: let the early return through when chatMode is 'research' and
 the crew needs no text. Revisit: P3.8 (Activity board), which touches agent runs.
 
-## Deleting a saved custom agent does not ask first (2026-09-29)
+## Deleting a saved custom agent does not ask first (2026-09-29) — FIXED in P3.8
 
 In Chat's Agents sheet (Custom Agent), the red Delete next to "Load saved"
 (`deleteSelectedAgent` in `codec_chat.html`) removes the selected agent at once,
