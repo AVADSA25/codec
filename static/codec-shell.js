@@ -40,7 +40,7 @@
   // One toast for the shell's own messages (history actions, wake word) and the pages' (CodecShell.toast),
   // with an optional link.
   var toastTimer = null;
-  function toast(msg, url) {
+  function toast(msg, url, action) {
     var t = document.getElementById('csToast');
     if (!t) {
       t = document.createElement('div');
@@ -59,9 +59,18 @@
       t.appendChild(document.createTextNode(' '));
       t.appendChild(a);
     }
+    if (action && typeof action.run === 'function') {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'cs-toast-act';
+      b.textContent = action.label || 'Open';
+      b.addEventListener('click', function () { t.classList.remove('cs-show'); action.run(); });
+      t.appendChild(document.createTextNode(' '));
+      t.appendChild(b);
+    }
     t.classList.add('cs-show');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { t.classList.remove('cs-show'); }, url ? 8000 : 3200);
+    toastTimer = setTimeout(function () { t.classList.remove('cs-show'); }, url || action ? 8000 : 3200);
   }
 
   // ── Icons: line SVG, 1.75 stroke, round caps (no emoji, no glyphs) ───────
@@ -152,7 +161,7 @@
         '<div class="cs-hist" id="csHist" role="list"></div>' +
         '<div class="cs-selbar" id="csSelBar" hidden></div>' +
         '<div class="cs-foot">' +
-          '<a class="cs-row" href="/tasks#reports" id="csInbox" title="Inbox">' + ico('inbox') +
+          '<a class="cs-row" href="/#inbox" id="csInbox" title="Inbox">' + ico('inbox') +
             '<span class="cs-label">Inbox</span><span class="cs-badge" id="csInboxBadge" hidden>0</span></a>' +
           '<a class="cs-row" href="/#settings" id="csSettings" title="Settings">' + ico('gear') +
             '<span class="cs-label">Settings</span></a>' +
@@ -200,7 +209,7 @@
         '>' + ico(n.icon, 22) + '<span>' + n.label + '</span></a>';
     }).join('');
     return '<nav class="cs-tabs" id="csTabs" aria-label="Pages">' + tabs +
-      '<a class="cs-tab" href="/tasks#reports" id="csTabInbox">' + ico('inbox', 22) + '<span>Inbox</span>' +
+      '<a class="cs-tab" href="/#inbox" id="csTabInbox">' + ico('inbox', 22) + '<span>Inbox</span>' +
       '<span class="cs-badge" id="csTabInboxBadge" hidden>0</span></a></nav>';
   }
 
@@ -829,15 +838,332 @@
     });
   }
 
-  // ── Inbox count (one 30-second poll per page, as before) ─────────────────
+  // ── Inbox (P3.2, docs/P3.2-DESIGN.md) ─────────────────────────────────────
+  // One drawer (a bottom sheet on the phone) over GET /api/inbox, the only poller
+  // left: approvals and questions (Needs you), reports, agent updates and
+  // suggestions. The server picks each item's actions; this only posts what it
+  // was given. Pages that show the same data (Home's question panel) subscribe.
+  var INBOX = { el: null, items: [], counts: {}, filter: '', open: false, seen: null, subs: [], timer: null,
+                loaded: false, full: {}, sig: '' };
+  var INBOX_GROUPS = [['needs_you', 'Needs you'], ['reports', 'Reports'], ['agents', 'Agents'], ['suggestions', 'Suggestions']];
+
   function pollInbox() {
-    fetch('/api/notifications/count').then(function (r) { return r.json(); }).then(function (d) {
-      var n = (d && (d.unread || d.count)) || 0;
-      ['csInboxBadge', 'csTabInboxBadge'].forEach(function (id) {
-        var b = $(id);
-        if (b) { b.textContent = n > 99 ? '99+' : String(n); b.hidden = n === 0; }
+    clearTimeout(INBOX.timer);
+    return fetch('/api/inbox').then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+      if (!d || !Array.isArray(d.items)) return;
+      INBOX.items = d.items;
+      INBOX.counts = d.counts || {};
+      INBOX.loaded = true;
+      inboxBadges();
+      inboxNotifyNew();
+      if (INBOX.open) inboxRender();
+      INBOX.subs.forEach(function (fn) { try { fn(INBOX.items.slice(), INBOX.counts); } catch (e) { /* the page's own */ } });
+    }).catch(function () { /* offline: keep what is shown */ }).then(inboxSchedule);
+  }
+  // 5 s while something needs the owner or the drawer is open, 15 s otherwise, 60 s in the background.
+  function inboxSchedule() {
+    clearTimeout(INBOX.timer);
+    var ms = document.hidden ? 60000 : (INBOX.open || INBOX.counts.needs_you ? 5000 : 15000);
+    INBOX.timer = setTimeout(pollInbox, ms);
+  }
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) pollInbox(); });
+  function inboxOnChange(fn) {
+    if (typeof fn !== 'function') return;
+    INBOX.subs.push(fn);
+    if (INBOX.loaded) { try { fn(INBOX.items.slice(), INBOX.counts); } catch (e) { /* the page's own */ } }
+  }
+
+  function inboxBadges() {
+    var n = INBOX.counts.badge || 0, urgent = (INBOX.counts.needs_you || 0) > 0;
+    ['csInboxBadge', 'csTabInboxBadge'].forEach(function (id) {
+      var b = $(id);
+      if (!b) return;
+      b.textContent = n > 99 ? '99+' : String(n);
+      b.hidden = n === 0;
+      b.classList.toggle('cs-badge-urgent', urgent);
+    });
+    ['csInbox', 'csTabInbox'].forEach(function (id) {
+      var a = $(id);
+      if (a) a.setAttribute('aria-label', n ? 'Inbox, ' + n + ' new' + (urgent ? ', something needs you' : '') : 'Inbox');
+    });
+  }
+
+  // A Needs-you item that was not there at the last poll: a toast with Open, and a desktop
+  // notification when the page is in the background and already may show one (never a prompt).
+  function inboxNotifyNew() {
+    var needs = INBOX.items.filter(function (i) { return i.group === 'needs_you'; });
+    var first = INBOX.seen === null;
+    if (first) INBOX.seen = {};
+    var fresh = needs.filter(function (i) { return !INBOX.seen[i.id]; });
+    needs.forEach(function (i) { INBOX.seen[i.id] = 1; });
+    if (first || !fresh.length || INBOX.open) return;
+    var it = fresh[0];
+    toast('Needs you: ' + it.title, null, { label: 'Open', run: function () { inboxOpen('needs_you'); } });
+    try {
+      if (document.hidden && window.Notification && Notification.permission === 'granted') {
+        var note = new Notification('CODEC: ' + it.title, { tag: 'codec-inbox-' + it.id, icon: '/favicon.png' });
+        note.onclick = function () { window.focus(); inboxOpen('needs_you'); note.close(); };
+      }
+    } catch (e) { /* no notifications on this page */ }
+  }
+
+  function inboxEl() {
+    if (INBOX.el) return INBOX.el;
+    var w = document.createElement('div');
+    w.className = 'cs-inbox-back';
+    w.id = 'csInboxBack';
+    w.hidden = true;
+    w.innerHTML =
+      '<section class="cs-inbox" id="csInboxPanel" role="dialog" aria-modal="true" aria-labelledby="csInboxTitle" data-dialog="open">' +
+        '<div class="cs-inbox-head"><h2 id="csInboxTitle">Inbox</h2>' +
+          '<button type="button" class="cs-ibtn" id="csInboxClose" aria-label="Close the inbox" data-dialog-close>' + ico('close', 18) + '</button></div>' +
+        '<div class="cs-inbox-tabs" role="tablist" aria-label="Show">' + INBOX_GROUPS.map(function (g) {
+          return '<button type="button" role="tab" class="cs-inbox-tab" id="csIbTab_' + g[0] + '" data-g="' + g[0] +
+            '" aria-selected="false" aria-controls="csInboxList">' + g[1] + ' <span class="cs-inbox-n"></span></button>';
+        }).join('') + '</div>' +
+        '<div class="cs-inbox-list" id="csInboxList" role="tabpanel" tabindex="-1"></div>' +
+        '<div class="cs-inbox-foot"><button type="button" class="cs-dbtn" id="csInboxAllRead">Mark all read</button></div>' +
+      '</section>';
+    document.body.appendChild(w);
+    INBOX.el = w;
+    w.addEventListener('click', function (e) { if (e.target === w) inboxClose(); });
+    $('csInboxClose').addEventListener('click', inboxClose);
+    var tabs = w.querySelector('.cs-inbox-tabs');
+    tabs.addEventListener('click', function (e) {
+      var b = e.target.closest('.cs-inbox-tab');
+      if (b) { INBOX.filter = b.getAttribute('data-g'); INBOX.sig = ''; inboxRender(); }
+    });
+    tabs.addEventListener('keydown', function (e) {
+      if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+      var all = [].slice.call(tabs.querySelectorAll('.cs-inbox-tab')), i = all.indexOf(document.activeElement);
+      if (i < 0) return;
+      e.preventDefault();
+      var next = all[(i + (e.key === 'ArrowRight' ? 1 : all.length - 1)) % all.length];
+      next.focus();
+      next.click();
+    });
+    $('csInboxAllRead').addEventListener('click', inboxAllRead);
+    $('csInboxList').addEventListener('click', inboxClick);
+    dlgWatch();  // P2.13: while it shows, Tab stays inside, Esc closes it, focus goes back
+    return w;
+  }
+  function inboxPick() {
+    if (INBOX.counts.needs_you) return 'needs_you';
+    for (var i = 1; i < INBOX_GROUPS.length; i++) if (INBOX.counts[INBOX_GROUPS[i][0]]) return INBOX_GROUPS[i][0];
+    return 'reports';
+  }
+  function inboxOpen(filter) {
+    var w = inboxEl();
+    INBOX.filter = /^(needs_you|reports|agents|suggestions)$/.test(filter || '') ? filter : inboxPick();
+    INBOX.sig = '';
+    w.hidden = false;
+    $('csInboxPanel').classList.add('open');
+    INBOX.open = true;
+    inboxRender();
+    pollInbox();
+  }
+  function inboxClose() {
+    if (!INBOX.el || !INBOX.open) return;
+    $('csInboxPanel').classList.remove('open');
+    INBOX.el.hidden = true;
+    INBOX.open = false;
+    inboxSchedule();
+  }
+  // /#inbox or /#inbox=reports on any page; Tasks' old #reports link too.
+  function inboxFromHash() {
+    var h = location.hash || '', m = h.match(/^#inbox(?:=(needs_you|reports|agents|suggestions))?$/);
+    var old = PAGE === 'tasks' && h === '#reports';
+    if (!m && !old) return;
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { /* file:// */ }
+    inboxOpen(old ? 'reports' : m[1]);
+  }
+
+  function inboxWhen(s) {
+    var t = Date.parse(s || '');
+    if (!t) return '';
+    var m = Math.round((Date.now() - t) / 60000);
+    if (m < 1) return 'now';
+    if (m < 60) return m + ' min ago';
+    if (m < 24 * 60) return Math.round(m / 60) + ' h ago';
+    return new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  }
+  function inboxItem(id) {
+    for (var i = 0; i < INBOX.items.length; i++) if (INBOX.items[i].id === id) return INBOX.items[i];
+    return null;
+  }
+  function inboxText(it) {
+    var full = INBOX.full[it.id];
+    if (full == null) return '<p class="cs-ib-text">' + esc(it.body) + (it.more ? '...' : '') + '</p>';
+    var md = window.codecMarkdown;
+    return '<div class="cs-ib-text cs-ib-full' + (md ? ' md' : '') + '">' + (md ? md.html(full) : esc(full)) + '</div>';
+  }
+  function inboxCard(it) {
+    if (it.kind === 'question') return questionCard(it);
+    var el = document.createElement('article');
+    el.className = 'cs-ib cs-ib-' + it.kind + (it.read ? '' : ' cs-ib-unread') + (it.dangerous ? ' cs-ib-danger' : '');
+    el.setAttribute('data-id', it.id);
+    var head = '<div class="cs-ib-head"><span class="cs-ib-title">' + esc(it.title) + '</span>' +
+      '<span class="cs-ib-when">' + esc(inboxWhen(it.created)) + '</span></div>';
+    var acts = [];
+    if (it.kind === 'approval') {
+      el.innerHTML = head + '<code class="cs-ib-cmd">' + esc(it.command) + '</code>' +
+        (it.body ? '<p class="cs-ib-text">This will: ' + esc(it.body) + '</p>' : '') +
+        (it.expires_in != null ? '<p class="cs-ib-meta">Waits ' + it.expires_in + ' s more, then it is refused.</p>' : '');
+      acts.push('<button type="button" class="cs-dbtn cs-dbtn-primary' + (it.dangerous ? ' cs-dbtn-danger' : '') + '" data-act="allow">Allow once</button>');
+      acts.push('<button type="button" class="cs-dbtn" data-act="deny">Deny</button>');
+    } else {
+      var meta = it.kind === 'agent' && it.agent_id ? 'Agent ' + it.agent_id + (it.agent_status ? ': ' + it.agent_status.replace(/_/g, ' ') : '')
+        : (it.status === 'running' ? 'Still running' : (it.status === 'error' || it.status === 'failed' ? 'Failed' : ''));
+      el.innerHTML = head + (meta ? '<p class="cs-ib-meta">' + esc(meta) + '</p>' : '') + inboxText(it);
+      if (INBOX.full[it.id] == null && (it.more || !it.read)) acts.push('<button type="button" class="cs-dbtn" data-act="open">Open</button>');
+      if (it.doc_url) acts.push('<a class="cs-dbtn" data-act="link" href="' + esc(it.doc_url) + '" target="_blank" rel="noopener noreferrer">Open the document</a>');
+      if (it.kind === 'report') acts.push('<a class="cs-dbtn" data-act="link" href="/chat#report=' + encodeURIComponent(it.id) + '">Discuss in chat</a>');
+      (it.actions || []).forEach(function (a, i) {
+        acts.push('<button type="button" class="cs-dbtn' + (i === 0 ? ' cs-dbtn-primary' : '') + '" data-act="run" data-i="' + i + '">' + esc(a.label) + '</button>');
       });
-    }).catch(function () { /* offline: keep the last count */ });
+    }
+    if (acts.length) el.insertAdjacentHTML('beforeend', '<div class="cs-ib-acts">' + acts.join('') + '</div>');
+    return el;
+  }
+  function inboxRender() {
+    if (!INBOX.el) return;
+    var c = INBOX.counts, f = INBOX.filter;
+    INBOX.el.querySelectorAll('.cs-inbox-tab').forEach(function (b) {
+      var g = b.getAttribute('data-g'), n = c[g] || 0;
+      b.setAttribute('aria-selected', String(g === f));
+      b.tabIndex = g === f ? 0 : -1;
+      b.querySelector('.cs-inbox-n').textContent = n ? String(n) : '';
+    });
+    $('csInboxList').setAttribute('aria-labelledby', 'csIbTab_' + f);
+    var items = INBOX.items.filter(function (i) { return i.group === f; });
+    $('csInboxAllRead').hidden = f === 'needs_you' || !items.some(function (i) { return !i.read; });
+    // Redraw only when the list changed, so an answer being typed is not lost to the refresh.
+    var sig = f + '|' + items.map(function (i) {
+      return [i.id, i.read, i.title, i.agent_status || '', i.expires_in != null ? Math.floor(i.expires_in / 30) : '',
+              INBOX.full[i.id] != null].join(':');
+    }).join(',');
+    if (sig === INBOX.sig) return;
+    INBOX.sig = sig;
+    var list = $('csInboxList'), typed = {};
+    list.querySelectorAll('.cs-qcard').forEach(function (q) { typed[q.getAttribute('data-qid')] = q.querySelector('.cs-q-text').value; });
+    list.innerHTML = '';
+    if (!items.length) {
+      list.innerHTML = '<p class="cs-inbox-empty">' + (f === 'needs_you' ? 'Nothing needs you right now.' : 'Nothing here yet.') + '</p>';
+      return;
+    }
+    items.forEach(function (it) {
+      var card = inboxCard(it);
+      if (it.kind === 'question' && typed[it.question_id]) card.querySelector('.cs-q-text').value = typed[it.question_id];
+      list.appendChild(card);
+    });
+    if (window.codecMarkdown && list.querySelector('.cs-ib-full.md')) window.codecMarkdown.enhance(list);
+  }
+  function inboxMarkRead(ids) {
+    ids = ids.filter(function (id) { return /^(notif|auto)_/.test(id); });
+    if (!ids.length) return Promise.resolve();
+    INBOX.items.forEach(function (i) { if (ids.indexOf(i.id) >= 0) i.read = true; });
+    return postJSON('/api/inbox/read', { ids: ids }).catch(function () { /* next poll shows the truth */ }).then(pollInbox);
+  }
+  function inboxAllRead() {
+    inboxMarkRead(INBOX.items.filter(function (i) { return i.group === INBOX.filter && !i.read; }).map(function (i) { return i.id; }));
+  }
+  function inboxClick(e) {
+    var b = e.target.closest('[data-act]');
+    var card = e.target.closest('.cs-ib');
+    if (!b || !card) return;
+    if (b.tagName === 'A') { inboxMarkRead([card.getAttribute('data-id')]); return; }  // the link still opens
+    var it = inboxItem(card.getAttribute('data-id'));
+    if (!it) return;
+    var act = b.getAttribute('data-act');
+    if (act === 'allow' || act === 'deny') {
+      b.disabled = true;
+      postJSON('/api/approvals/' + encodeURIComponent(it.approval_id) + '/' + act, {}).then(function () {
+        toast(act === 'allow' ? 'Allowed once.' : 'Denied.');
+      }, function (err) { toast('Could not answer: ' + err.message); }).then(pollInbox);
+    } else if (act === 'open') {
+      b.disabled = true;
+      fetch('/api/inbox/item/' + encodeURIComponent(it.id)).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+        INBOX.full[it.id] = d && typeof d.body === 'string' ? d.body : it.body;
+        INBOX.sig = '';
+        inboxRender();
+      }).catch(function () { b.disabled = false; });
+      if (!it.read) inboxMarkRead([it.id]);
+    } else if (act === 'run') {
+      var a = (it.actions || [])[+b.getAttribute('data-i')];
+      if (!a) return;
+      var go = function () {
+        b.disabled = true;
+        postJSON(a.endpoint, a.body || {}).then(function () { toast(a.label + ': done.'); },
+          function (err) { toast(a.label + ' failed: ' + err.message); }).then(function () {
+          if (!it.read) inboxMarkRead([it.id]); else pollInbox();
+        });
+      };
+      if (!a.confirm) { go(); return; }
+      var what = a.body && a.body.value ? a.body.value : '';
+      ask({ title: 'Grant this permission?', message: 'Agent ' + (it.agent_id || '') + ' may then use: ' + what +
+            '. It applies to this agent only.', confirm: 'Grant' }).then(function (ok) { if (ok) go(); });
+    }
+  }
+
+  // ── One card for an ask_user question (P3.2): the Inbox and Home's Flash panel both use it ──
+  function questionCard(q) {
+    var qid = String(q.question_id || q.id || '');
+    var card = document.createElement('article');
+    card.className = 'cs-ib cs-qcard' + (q.strict ? ' cs-ib-danger' : '');
+    card.setAttribute('data-qid', qid);
+    card.setAttribute('data-id', q.id || qid);
+    var opts = Array.isArray(q.options) ? q.options : [];
+    card.innerHTML =
+      '<div class="cs-ib-head"><span class="cs-ib-title">' + esc(q.agent ? q.agent + ' is asking' : 'CODEC is asking') + '</span>' +
+        (q.deadline ? '<span class="cs-ib-when cs-q-left" data-deadline="' + esc(q.deadline) + '"></span>' : '') + '</div>' +
+      '<p class="cs-ib-text">' + esc(q.body || q.question || '') + '</p>' +
+      (q.strict ? '<p class="cs-q-warn">This cannot be undone. To go ahead, type the word <b>' + esc(q.verb || 'from its button') +
+        '</b> or use its button.</p>' : '') +
+      (opts.length ? '<div class="cs-ib-acts">' + opts.map(function (o) {
+        return '<button type="button" class="cs-dbtn cs-q-opt">' + esc(o) + '</button>'; }).join('') + '</div>' : '') +
+      '<div class="cs-q-row"><textarea class="cs-q-text" rows="1" aria-label="Your answer" placeholder="Type your answer"></textarea>' +
+        '<button type="button" class="cs-dbtn cs-dbtn-primary cs-q-send">Send</button></div>' +
+      '<p class="cs-q-status" role="status" aria-live="polite"></p>';
+    var status = card.querySelector('.cs-q-status'), text = card.querySelector('.cs-q-text');
+    function send(answer) {
+      answer = String(answer || '').trim();
+      if (!answer) { text.focus(); return; }
+      status.className = 'cs-q-status';
+      status.textContent = 'Sending...';
+      postJSON('/api/agents/answer/' + encodeURIComponent(qid), { answer: answer, answered_via: 'pwa' }).then(function (d) {
+        if (d && d.ok) {
+          status.textContent = 'Answered.';
+          card.classList.add('cs-q-done');
+          setTimeout(pollInbox, 600);
+        } else {
+          status.className = 'cs-q-status err';
+          status.textContent = 'Not accepted: ' + ((d && d.reason) || 'try again').replace(/_/g, ' ') +
+            (d && d.remaining_attempts != null ? '. ' + d.remaining_attempts + ' tries left.' : '.');
+        }
+      }, function (err) {
+        status.className = 'cs-q-status err';
+        status.textContent = 'Could not send: ' + err.message;
+        setTimeout(pollInbox, 600);
+      });
+    }
+    card.querySelectorAll('.cs-q-opt').forEach(function (b) { b.addEventListener('click', function () { send(b.textContent); }); });
+    card.querySelector('.cs-q-send').addEventListener('click', function () { send(text.value); });
+    text.addEventListener('keydown', function (e) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); send(text.value); }
+    });
+    setTimeout(qTick, 0);  // once the page has put the card in
+    return card;
+  }
+  // Time left on every shown question, once a second while there are any.
+  var QTICK = null;
+  function qTick() {
+    var all = document.querySelectorAll('.cs-q-left[data-deadline]');
+    all.forEach(function (el) {
+      var ms = Date.parse(el.getAttribute('data-deadline')) - Date.now();
+      el.textContent = !(ms > 0) ? 'time is up' : (ms >= 60000 ? Math.floor(ms / 60000) + ' min ' : '') + Math.floor(ms % 60000 / 1000) + ' s left';
+    });
+    clearTimeout(QTICK);
+    if (all.length || !INBOX.loaded) QTICK = setTimeout(qTick, 1000);
   }
 
   // ── Install (P2.14): the browser's prompt where there is one, a hint on iOS ─
@@ -1424,7 +1750,8 @@
     wrap.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); askDone(false); return; }
       if (e.key === 'Enter' && e.target && e.target.id === 'csAskInput') { e.preventDefault(); askDone(true); return; }
-      if (e.key === 'Tab') {  // keep Tab inside the dialog
+      if (e.key === 'Tab') {  // keep Tab inside the dialog, even over another one (the Inbox's Grant)
+        e.stopPropagation();
         var f = [].slice.call(wrap.querySelectorAll('input, button')).filter(function (x) { return x.offsetParent !== null; });
         var i = f.indexOf(document.activeElement);
         if (e.shiftKey && i <= 0) { e.preventDefault(); f[f.length - 1].focus(); } else if (!e.shiftKey && i === f.length - 1) { e.preventDefault(); f[0].focus(); }
@@ -1718,7 +2045,7 @@
   // shortcut sheet. The caret stays in the box; Up/Down, Enter, Esc.
   var PAL = { el: null, items: [], active: 0, mentions: null, models: null, found: [], q: '', timer: null, gen: 0 };
   var PAL_PAGES = NAV.map(function (n) { return { label: n.label, href: n.href, icon: n.icon }; }).concat([
-    { label: 'Inbox', href: '/tasks#reports', icon: 'inbox' },
+    { label: 'Inbox', href: '/#inbox', icon: 'inbox', run: function () { inboxOpen(); } },
     { label: 'Settings', href: '/#settings', icon: 'sliders' },
     { label: 'Skills', href: '/#skills', icon: 'tool' },
     { label: 'Connections', href: '/#connector', icon: 'plug' },
@@ -1965,6 +2292,9 @@
     toggleRail: toggleRail, openDrawer: openDrawer, closeDrawer: closeDrawer, focusSearch: focusSearch,
     refreshHistory: refreshHistory, refreshHistorySoon: refreshHistorySoon, setActiveChat: setActiveChat,
     newChat: newChat, voiceReplies: voiceReplies, wakeWord: wakeWord, refreshWake: refreshWake, pollInbox: pollInbox,
+    inbox: { open: inboxOpen, close: inboxClose, refresh: pollInbox, onChange: inboxOnChange,
+             items: function () { return INBOX.items.slice(); } },
+    questionCard: questionCard,
     install: install, toast: toast, palette: palOpen, shortcuts: shortcutsOpen, ask: ask, menu: menu, actions: actions,
     push: { support: pushSupport, subscription: currentSub, on: pushOn, off: pushOff, deviceId: deviceId,
             post: postJSON },
@@ -2086,7 +2416,8 @@
     if (typeof window.updateVoiceIcon === 'function') window.updateVoiceIcon();
     refreshHistory();
     pollInbox();
-    setInterval(pollInbox, 30000);
+    inboxFromHash();
+    window.addEventListener('hashchange', inboxFromHash);
     syncInstall();
     // The offline shell (P2.14): static assets only, never /api (static/sw.js).
     if ('serviceWorker' in navigator && window.isSecureContext) {

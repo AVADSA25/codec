@@ -8,7 +8,7 @@
 <link rel="icon" href="/favicon.png">
 <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
 <link rel="manifest" href="/manifest.json">
-<link rel="stylesheet" href="/static/codec.css?v=bdf9bbd1">
+<link rel="stylesheet" href="/static/codec.css?v=25910ee3">
 <style>
 :root {
   --bg: #121215; --surface: #18181b; --surface-2: #1f1f22; --surface-3: #27272a;
@@ -135,20 +135,6 @@ a { color: var(--accent); text-decoration: none; }
 .heartbeat-task-item { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border); }
 .heartbeat-task-item:last-child { border-bottom: none; }
 
-/* ── Reports ── */
-.report-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 10px; cursor: pointer; transition: border-color 0.2s, background 0.2s; }
-.report-card:hover { border-color: var(--border-hover); background: var(--surface-2); }
-.report-card.unread { border-left: 3px solid var(--accent); }
-.report-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
-.report-title { font-size: calc(14px * var(--fs-scale)); font-weight: 600; }
-.report-ts { font-size: calc(12px * var(--fs-scale)); color: var(--text-dim); font-family: var(--mono); }
-.report-body { font-size: calc(13px * var(--fs-scale)); color: var(--text-muted); line-height: 1.5; margin-top: 8px; }
-/* A long report opens clamped to about eight lines; Show more / Show less toggles it. */
-.report-body.clamp { max-height: 12em; overflow: hidden; -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent); }
-.report-more { margin-top: 6px; padding: 4px 0; border: none; background: none; color: var(--accent); font-family: var(--font); font-size: calc(13px * var(--fs-scale)); font-weight: 500; cursor: pointer; }
-.report-more:hover { text-decoration: underline; }
-.report-actions-bar { display: flex; justify-content: flex-end; margin-bottom: 12px; }
-
 /* ── Toast ── (above the shell's phone tab bar on the phone) */
 @media (max-width: 767px) { .toast-container { bottom: calc(72px + env(safe-area-inset-bottom, 0px)) !important; } }
 .toast-container { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
@@ -204,14 +190,13 @@ a { color: var(--accent); text-decoration: none; }
 </style>
 </head>
 <body>
-<script src="/static/codec-shell.js?v=6330a55c" data-page="tasks" data-title="Tasks" data-status></script>
+<script src="/static/codec-shell.js?v=27696c8c" data-page="tasks" data-title="Tasks" data-status></script>
 <div class="cs-main cs-scroll">
 <div class="container">
   <div class="tabs" role="tablist" aria-label="Tasks sections">
     <button type="button" class="tab active" role="tab" aria-selected="true" aria-controls="panel-schedules" onclick="showTab('schedules')" id="tab-schedules"><svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>Schedules</button>
     <button type="button" class="tab" role="tab" aria-selected="false" aria-controls="panel-heartbeat" onclick="showTab('heartbeat')" id="tab-heartbeat"><svg class="ico ico-sm" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>Heartbeat</button>
     <button type="button" class="tab" role="tab" aria-selected="false" aria-controls="panel-history" onclick="showTab('history')" id="tab-history"><svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>History</button>
-    <button type="button" class="tab" role="tab" aria-selected="false" aria-controls="panel-reports" onclick="showTab('reports')" id="tab-reports"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>Reports</button>
   </div>
 
   <!-- ── Schedules Tab ── -->
@@ -368,16 +353,6 @@ a { color: var(--accent); text-decoration: none; }
     </div>
   </div>
 
-  <!-- ── Reports Tab ── -->
-  <div class="tab-panel" id="panel-reports" role="tabpanel" aria-labelledby="tab-reports">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-      <h2 style="font-size:calc(16px * var(--fs-scale)); font-weight:600;">Task Reports</h2>
-      <button class="btn btn-sm" onclick="markAllReportsRead()">Mark All Read</button>
-    </div>
-    <div id="reportsList">
-      <div class="loading">Loading reports...</div>
-    </div>
-  </div>
 
 
 </div>
@@ -385,7 +360,7 @@ a { color: var(--accent); text-decoration: none; }
 
 <div class="toast-container" id="toastContainer" role="status" aria-live="polite"></div>
 
-<!-- Markdown report bodies: vendored marked + DOMPurify + highlight.js, then the shared renderer -->
+<!-- Markdown for report text in the shell's Inbox (P3.2): vendored marked + DOMPurify + highlight.js, then the shared renderer -->
 <script src="/static/vendor/marked.umd.js"></script>
 <script src="/static/vendor/purify.min.js"></script>
 <script src="/static/vendor/highlight.min.js"></script>
@@ -541,8 +516,7 @@ function savePipFrame() {
 })();
 function pollStatus(){fetch('/api/health').then(function(r){return r.json()}).then(function(d){var dot=document.getElementById('statusDot');if(dot){dot.classList.toggle('on',!!d.ok)}}).catch(function(){var dot=document.getElementById('statusDot');if(dot)dot.classList.remove('on')})}
 pollStatus();setInterval(pollStatus,15000);
-/* ── Tabs: showTab is defined once, canonically, lower in this file
-      (tab switch + reports load). ── */
+/* ── Tabs: showTab is defined once, canonically, lower in this file. ── */
 
 /* ── Toast ── */
 function showToast(msg) {
@@ -900,139 +874,12 @@ function loadHistory() {
   });
 }
 
-/* ── Reports ── */
-var reports = [];
-var _reportPollTimer = null;
-var _openReports = {};   // report id -> true while the reader has it expanded (survives the 5 s refresh)
-
-// Phase 3.5 hotfix: Reports tab was filtering to ONLY 'task_report' so all
-// the agent_*/proactive/shift_report/question notifications got dropped
-// (bell counted, nothing rendered). Now shows everything CODEC generates.
-var REPORT_NOTIF_TYPES = [
-  'task_report',                                            // Crews
-  'question',                                               // Phase 1 Step 3 ask_user
-  'shift_report',                                           // Phase 2 Step 7
-  'agent_update', 'agent_blocked', 'agent_question',        // Phase 3 Step 10
-  'agent_done', 'agent_aborted',                            // Phase 3 Step 10
-  'proactive_suggestion',                                   // Phase 3.5
-];
-
-function loadReports() {
-  fetch('/api/notifications').then(function(r){ return r.json(); }).then(function(data) {
-    var all = data.notifications || data || [];
-    reports = all.filter(function(n){ return REPORT_NOTIF_TYPES.indexOf(n.type) >= 0; });
-    // Newest first
-    reports.sort(function(a, b) {
-      var ta = a.timestamp || a.created || a.ts || '';
-      var tb = b.timestamp || b.created || b.ts || '';
-      return (tb || '').localeCompare(ta || '');
-    });
-    renderReports();
-    // Auto-refresh every 5s if any task is still running
-    var hasRunning = reports.some(function(r){ return r.status === 'running'; });
-    if (hasRunning && !_reportPollTimer) {
-      _reportPollTimer = setInterval(function(){ loadReports(); }, 5000);
-    } else if (!hasRunning && _reportPollTimer) {
-      clearInterval(_reportPollTimer);
-      _reportPollTimer = null;
-    }
-  }).catch(function() {
-    document.getElementById('reportsList').innerHTML = '<div class="empty"><div class="empty-icon"><svg style="width:28px;height:28px;display:inline-block;vertical-align:middle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div><div class="empty-text">Could not load reports</div></div>';
-  });
-}
-
-function renderReports() {
-  var el = document.getElementById('reportsList');
-  if (!reports.length) {
-    el.innerHTML = '<div class="empty"><div class="empty-icon"><svg style="width:28px;height:28px;display:inline-block;vertical-align:middle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div><div class="empty-text">No task reports yet. Reports will appear here after scheduled tasks run.</div></div>';
-    return;
-  }
-  var html = '';
-  reports.forEach(function(r) {
-    var isUnread = !r.read;
-    var status = (r.status || 'info').toLowerCase();
-    var badgeClass = status === 'success' ? 'badge-success' : status === 'error' || status === 'failed' ? 'badge-danger' : status === 'running' ? 'badge-info' : status === 'warning' ? 'badge-info' : 'badge-muted';
-    var statusLabel = status === 'running' ? 'Running...' : status;
-    var ts = r.timestamp ? new Date(r.timestamp).toLocaleString() : (r.created ? new Date(r.created).toLocaleString() : '');
-    html += '<div class="report-card' + (isUnread ? ' unread' : '') + '" role="button" tabindex="0" onclick="markReportRead(\'' + r.id + '\', this)">';
-    html += '<div class="report-header">';
-    html += '<span class="report-title">' + escHtml(r.title || 'Task Report') + '</span>';
-    html += '<div style="display:flex;align-items:center;gap:8px;">';
-    html += '<span class="badge ' + badgeClass + '">' + escHtml(statusLabel) + '</span>';
-    html += '<span class="report-ts">' + escHtml(ts) + '</span>';
-    html += '</div></div>';
-    if (r.doc_url) {
-      html += '<div style="margin:8px 0;"><a href="' + escHtml(r.doc_url) + '" target="_blank" class="btn btn-primary btn-sm" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;" onclick="event.stopPropagation()"><svg style="width:14px;height:14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>Open Full Report</a></div>';
-    }
-    if (r.body || r.message) {
-      var bodyText = String(r.body || r.message);
-      // The scheduler puts a "[View Full Report](url)" line at the top of the
-      // body; the button above already links it. Reports saved before UI
-      // phase 1 carry a document emoji in front of it, matched by its escape.
-      bodyText = bodyText.replace(/(?:\u{1F4C4}\s*)?\[View Full Report\]\([^)]+\)\n*/gu, '');
-      if (bodyText.trim()) {
-        // Sanitized Markdown (static/codec-md.js). A long body opens clamped with a
-        // Show more / Show less toggle instead of being cut at 500 characters.
-        var isLong = bodyText.length > 500, isOpen = isLong && !!_openReports[r.id];
-        html += '<div class="report-body md' + (isLong && !isOpen ? ' clamp' : '') + '">' + mdHtml(bodyText) + '</div>';
-        if (isLong) html += '<button type="button" class="report-more" data-rid="' + escHtml(String(r.id)) + '" aria-expanded="' + isOpen + '">' + (isOpen ? 'Show less' : 'Show more') + '</button>';
-      }
-    }
-    html += '</div>';
-  });
-  el.innerHTML = html;
-  mdEnhance(el);
-  el.querySelectorAll('.report-more').forEach(function(btn) {
-    var body = btn.previousElementSibling;
-    // Already whole at this width (measurable only while the tab is visible): no toggle.
-    if (body.classList.contains('clamp') && body.clientHeight && body.scrollHeight <= body.clientHeight + 1) {
-      body.classList.remove('clamp'); btn.remove(); return;
-    }
-    btn.addEventListener('click', function() {
-      var open = !body.classList.toggle('clamp');
-      _openReports[btn.getAttribute('data-rid')] = open;
-      btn.textContent = open ? 'Show less' : 'Show more';
-      btn.setAttribute('aria-expanded', String(open));
-    });
-  });
-}
-
-function markReportRead(id, el) {
-  if (el) el.classList.remove('unread');
-  fetch('/api/notifications/' + id + '/read', { method: 'POST' }).then(function() {
-    pollNotifCount();
-  }).catch(function(){});
-}
-
-function markAllReportsRead() {
-  var promises = [];
-  reports.forEach(function(r) {
-    if (!r.read) {
-      promises.push(fetch('/api/notifications/' + r.id + '/read', { method: 'POST' }));
-    }
-  });
-  Promise.all(promises).then(function() {
-    document.querySelectorAll('.report-card.unread').forEach(function(el){ el.classList.remove('unread'); });
-    reports.forEach(function(r){ r.read = true; });
-    pollNotifCount();
-  }).catch(function(){});
-}
-
-/* ── Notification badge polling ── */
-// The shell owns the Inbox count; reports marked read refresh it at once.
-function pollNotifCount() { if (window.CodecShell) CodecShell.pollInbox(); }
-
 /* ── Utils ── */
 function escHtml(s) {
   var d = document.createElement('div');
   d.textContent = s;
   return d.innerHTML.replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
-// Report bodies render as Markdown through static/codec-md.js (marked, then DOMPurify); call
-// mdEnhance on the container once the HTML is in the page. Without the renderer: escaped
-// text with its line breaks, never raw HTML.
-function mdHtml(text) { return window.codecMarkdown ? codecMarkdown.html(text) : escHtml(text).replace(/\n/g, '<br>'); }
-function mdEnhance(root) { if (window.codecMarkdown) codecMarkdown.enhance(root); }
 
 /* ── Init ── */
 document.addEventListener('DOMContentLoaded', function() {
@@ -1040,9 +887,8 @@ document.addEventListener('DOMContentLoaded', function() {
   loadHeartbeat();
   loadAlerts();
   loadHistory();
-  // The dashboard's Notifications item links to /tasks#reports, but nothing
-  // read the hash on arrival, so it landed on the default tab and looked like
-  // the notifications page did not exist. Honour it, and follow later changes.
+  // A tab named in the hash opens (Schedules, Heartbeat, History). The old
+  // /tasks#reports link opens the shell's Inbox on Reports (P3.2).
   function _tabFromHash(){var h=(location.hash||'').replace('#','');if(h&&document.getElementById('tab-'+h))showTab(h)}
   _tabFromHash();
   window.addEventListener('hashchange',_tabFromHash);
@@ -1062,7 +908,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 });
-/* ── Canonical showTab — tab switching + reports load ── */
+/* ── Canonical showTab — tab switching ── */
 function showTab(name) {
   document.querySelectorAll('.tab').forEach(function(t){ t.classList.remove('active'); });
   document.querySelectorAll('.tab-panel').forEach(function(p){ p.classList.remove('active'); });
@@ -1071,11 +917,10 @@ function showTab(name) {
   document.getElementById('tab-' + name).setAttribute('aria-selected', 'true');
   document.getElementById('panel-' + name).classList.add('active');
   window.location.hash = name;
-  if (name === 'reports' && typeof loadReports === 'function') loadReports();
 }
 
 // Apply UI preferences from dashboard settings
-(function(){try{var p=JSON.parse(_lsGet('codec-ui-prefs')||'{}'),m={'screenshot_btn':'#screenBtn','photo_btn':'#photoBtn','webcam_pip_btn':'#camBtn','voice_btn':'#voiceBtn','notif_bell':'#csInbox,#csTabInbox','tasks_heartbeat':'#tab-heartbeat','tasks_reports':'#tab-reports'};Object.keys(m).forEach(function(k){if(p[k]===false)m[k].split(',').forEach(function(s){document.querySelectorAll(s.trim()).forEach(function(el){el.style.display='none'})})})}catch(e){}})();
+(function(){try{var p=JSON.parse(_lsGet('codec-ui-prefs')||'{}'),m={'screenshot_btn':'#screenBtn','photo_btn':'#photoBtn','webcam_pip_btn':'#camBtn','voice_btn':'#voiceBtn','notif_bell':'#csInbox,#csTabInbox','tasks_heartbeat':'#tab-heartbeat'};Object.keys(m).forEach(function(k){if(p[k]===false)m[k].split(',').forEach(function(s){document.querySelectorAll(s.trim()).forEach(function(el){el.style.display='none'})})})}catch(e){}})();
 </script>
 <!-- Preview Modal (screenshot + webcam photo) -->
 <div class="preview-modal" id="previewModal" onclick="closePreview(event)" role="dialog" aria-modal="true" aria-label="Preview" data-dialog="show">

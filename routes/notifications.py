@@ -56,7 +56,7 @@ async def mark_notification_read(notif_id: str):
     with _notif_lock:
         notifications = _load_notifications()
         for n in notifications:
-            if n["id"] == notif_id:
+            if n.get("id") == notif_id:  # agent messages are written without an id
                 n["read"] = True
                 _write_notifications(notifications)
                 return {"status": "ok", "id": notif_id}
