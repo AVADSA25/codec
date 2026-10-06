@@ -60,7 +60,7 @@ strict consent) are add-only. No personal data in the repo. No emoji in the UI.
 | 27 | P3.9: Connections: Google, MCP clients, bridges, permissions | M | no | done (#436) |
 | 28 | P3.10: Side-by-side model compare from any reply | M | no | done (#437) |
 | 29 | P3.11: Usage and cloud spend | S | no | done (#438) |
-| 30 | P3.12: Learning page: review what CODEC proposes to learn | L | no | open |
+| 30 | P3.12: Learning page: review what CODEC proposes to learn | L | no | PR open (#439), needs Mac test |
 
 Items marked "Needs the Mac" use local services (Keychain, Whisper, Kokoro, the local model, PM2) or are the riskiest layout changes; build them on the Mac first. The others can be built without it.
 
