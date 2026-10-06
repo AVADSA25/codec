@@ -837,6 +837,25 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
 
     <!-- Connector Panel (external MCP servers) -->
     <div class="panel" id="panel-connector">
+      <!-- Connections (P3.9; docs/P3.9-DESIGN.md): Google, the AI apps signed in to CODEC, the bridges, macOS permissions -->
+      <section class="conn-sec" aria-labelledby="connGoogleH">
+        <h2 class="mcp-intro-title" id="connGoogleH">Google Workspace</h2>
+        <div id="connGoogle" class="mcp-list"><div class="refreshing">Loading...</div></div>
+      </section>
+      <section class="conn-sec" aria-labelledby="connAppsH">
+        <h2 class="mcp-intro-title" id="connAppsH">AI apps connected to CODEC</h2>
+        <p class="mcp-intro-sub">Apps that signed in to CODEC's MCP server with your PIN, such as Claude on the web. Revoke signs one out; the others stay signed in.</p>
+        <div id="connApps" class="mcp-list"><div class="refreshing">Loading...</div></div>
+      </section>
+      <section class="conn-sec" aria-labelledby="connBridgesH">
+        <h2 class="mcp-intro-title" id="connBridgesH">Bridges</h2>
+        <div id="connBridges" class="mcp-list"><div class="refreshing">Loading...</div></div>
+      </section>
+      <section class="conn-sec" aria-labelledby="connPermsH">
+        <h2 class="mcp-intro-title" id="connPermsH">macOS permissions</h2>
+        <p class="mcp-intro-sub" id="connPermsNote"></p>
+        <div id="connPerms" class="mcp-list"><div class="refreshing">Loading...</div></div>
+      </section>
       <div class="mcp-intro">
         <div class="mcp-intro-title">External MCP connectors</div>
         <p class="mcp-intro-sub">Platforms CODEC can plug into as a client. Flip one on here, then drive it by voice or chat &mdash; e.g. say <span class="mcp-kbd">connect to notion</span> or <span class="mcp-kbd">list tools on github</span>.</p>
@@ -887,6 +906,17 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
     .mcp-switch input:checked+.mcp-slider{background:var(--accent);border-color:var(--accent)}
     .mcp-switch input:checked+.mcp-slider:before{transform:translateX(20px);background:#fff}
     .mcp-switch input:disabled+.mcp-slider{opacity:.5;cursor:wait}
+    /* Connections (P3.9) */
+    .conn-sec{margin-bottom:24px}
+    h2.mcp-intro-title{margin:0 0 6px}
+    .conn-sec .mcp-intro-sub{margin:0 0 10px}
+    .conn-bad{color:var(--danger-text)}
+    .conn-scopes{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 4px}
+    .conn-scope{font-size:calc(12px * var(--fs-scale));padding:2px 9px;border-radius:999px;background:var(--surface-3);color:var(--text)}
+    .conn-scope.miss{background:transparent;border:1px dashed var(--danger-text);color:var(--danger-text)}
+    .conn-tools summary{cursor:pointer;font-size:calc(12.5px * var(--fs-scale));color:var(--text-muted);padding:4px 0}
+    .conn-tools p{font-size:calc(12px * var(--fs-scale));color:var(--text-muted);margin:6px 0 0;line-height:1.55;overflow-wrap:anywhere}
+    #panel-connector a.mcp-btn{display:inline-block;text-decoration:none}
     </style>
 
     <!-- Settings Panel -->
@@ -1311,7 +1341,7 @@ function showTab(id) {
   if (id === 'chat') { loadChat(); loadTodayHome(); loadTodayNext(); }
   if (id === 'audit') loadAudit();
   if (id === 'skills') { loadSkillReviews(); loadSkillsCatalog(); }
-  if (id === 'connector') renderConnectors();
+  if (id === 'connector') { renderConnections(); renderConnectors(); }
   if (id === 'memory') loadMemoryPage();
   if (id === 'settings') { loadSettings(); renderUIToggles(); loadPrompts(); loadPush(); loadVoice(); loadBriefing(); loadCheckin(); }
 }
@@ -1424,6 +1454,166 @@ async function rejectSkill(btn, rid) {
     _skillReviewsBusy = false;
     loadSkillReviews();
   }
+}
+
+// ── Connections (P3.9; docs/P3.9-DESIGN.md): Google, the AI apps signed in to CODEC,
+// the bridges and the dashboard's macOS permissions, above the MCP server list. ──
+var _connPoll = null, _connRecipients = [];
+function _connAgo(iso) {
+  if (!iso) return 'never';
+  var s = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (isNaN(s)) return '';
+  if (s < 90) return 'just now';
+  if (s < 5400) return Math.round(s / 60) + ' min ago';
+  if (s < 129600) return Math.round(s / 3600) + ' h ago';
+  return Math.round(s / 86400) + ' days ago';
+}
+function _connOnMac() { return /Macintosh/.test(navigator.userAgent) && !(navigator.maxTouchPoints > 1); }
+async function _connJSON(url, opts) {
+  var r = await fetch(url, opts);
+  var d = await r.json().catch(function () { return {}; });
+  if (!r.ok) throw new Error((d && (d.error || d.detail)) || ('HTTP ' + r.status));
+  return d;
+}
+function _connPost(url, body) {
+  return _connJSON(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+}
+function _connState(on, onText, offText, bad) {
+  return on ? '<span class="mcp-connected"><span class="dot"></span>' + onText + '</span>'
+    : '<span class="mcp-hint' + (bad ? ' conn-bad' : '') + '">' + offText + '</span>';
+}
+function renderConnections() { loadConnGoogle(); loadConnApps(); loadConnBridges(); loadConnPerms(); }
+
+async function loadConnGoogle() {
+  var box = document.getElementById('connGoogle');
+  if (!box) return;
+  var g;
+  try { g = await _connJSON('/api/connections/google'); }
+  catch (e) { box.innerHTML = '<div class="mcp-empty">Could not read the Google sign-in: ' + escHtml(e.message) + '</div>'; return; }
+  var rc = g.reconnect || {};
+  var h = '<div class="mcp-card"><div class="mcp-card-main"><div class="mcp-card-top"><span class="mcp-name">Google</span>' +
+    _connState(g.connected, 'Connected', 'Not connected', true) + '</div>';
+  if (g.connected) h += '<div class="mcp-note">' + (g.account ? 'Signed in as ' + escHtml(g.account) : 'Google did not say which account is signed in.') + '</div>';
+  if (g.scopes && g.scopes.length) h += '<div class="conn-scopes">' + g.scopes.map(function (s) {
+    return '<span class="conn-scope' + (s.ok ? '' : ' miss') + '">' + escHtml(s.name) + (s.ok ? '' : ': missing') + '</span>';
+  }).join('') + '</div>';
+  if (g.missing && g.missing.length) h += '<div class="mcp-note conn-bad">Reconnect to give CODEC ' + escHtml(g.missing.join(', ')) + '.</div>';
+  if (g.updated) h += '<div class="mcp-note">Access renews by itself every hour. Last renewed ' + escHtml(fmtTime(g.updated)) + '.</div>';
+  h += '<div class="mcp-state">';
+  if (rc.running) h += '<span class="mcp-hint">Google\'s sign-in page is open in the Mac\'s browser. Finish it there.</span>';
+  else if (!rc.allowed) h += '<span class="mcp-hint">To reconnect, open CODEC on the Mac itself (localhost): Google\'s sign-in comes back to the Mac.</span>';
+  else if (!rc.client_file) h += '<span class="mcp-hint">Reconnect needs the Google client file ~/.codec/google_credentials.json.</span>';
+  else h += '<button type="button" class="mcp-btn' + (g.connected ? '' : ' mcp-btn-primary') + '" id="connGoogleBtn">' + (g.connected ? 'Reconnect' : 'Connect Google') + '</button>';
+  box.innerHTML = h + '</div></div></div>';
+  var b = document.getElementById('connGoogleBtn');
+  if (b) b.addEventListener('click', connGoogleReconnect);
+  // While the sign-in page is open on the Mac, look again every 4 seconds.
+  clearTimeout(_connPoll);
+  if (rc.running) _connPoll = setTimeout(function () { if (currentTab === 'connector') loadConnGoogle(); }, 4000);
+}
+async function connGoogleReconnect() {
+  if (!await CodecShell.ask({ title: 'Reconnect Google?', message: 'Google\'s sign-in page opens in this Mac\'s browser. Pick the account and allow what CODEC asks for. The current sign-in keeps working until the new one is saved.', confirm: 'Open the sign-in' })) return;
+  try { await _connPost('/api/connections/google/reconnect'); }
+  catch (e) { showToast('Could not start it: ' + e.message); }
+  loadConnGoogle();
+}
+
+async function loadConnApps() {
+  var box = document.getElementById('connApps');
+  if (!box) return;
+  if (!box.__wired) {
+    box.__wired = true;
+    box.addEventListener('click', async function (e) {
+      var b = e.target.closest('[data-revoke]');
+      if (!b) return;
+      var name = b.getAttribute('data-name');
+      if (!await CodecShell.ask({ title: 'Sign out ' + name + '?', message: name + ' loses access to CODEC from its next request. Other apps stay signed in. It can sign in again later with your PIN.', confirm: 'Revoke', danger: true })) return;
+      b.disabled = true;
+      try { await _connPost('/api/connections/apps/revoke', { client_id: b.getAttribute('data-revoke') }); showToast(name + ' is signed out.'); }
+      catch (err) { showToast('Could not revoke: ' + err.message); }
+      loadConnApps();
+    });
+  }
+  var d;
+  try { d = await _connJSON('/api/connections/apps'); }
+  catch (e) { box.innerHTML = '<div class="mcp-empty">Could not list the apps: ' + escHtml(e.message) + '</div>'; return; }
+  var h = '';
+  if (!d.reported) h += '<div class="mcp-empty">The MCP server has not listed its apps yet. It does once it runs this version (restart codec-mcp-http).</div>';
+  else if (!(d.apps || []).length) h += '<div class="mcp-empty">No app has signed in to CODEC yet.</div>';
+  (d.apps || []).forEach(function (a) {
+    var name = a.name || a.host || 'An app';
+    var meta = [];
+    if (a.host) meta.push('from ' + a.host);
+    if (a.registered) meta.push('connected ' + fmtTime(a.registered));
+    meta.push('last used ' + _connAgo(a.last_used));
+    h += '<div class="mcp-card"><div class="mcp-card-main"><div class="mcp-card-top"><span class="mcp-name">' + escHtml(name) + '</span>' +
+      _connState(a.live, 'Signed in', a.revoking ? 'Signing out' : 'Signed out') + '</div>' +
+      '<div class="mcp-note">' + escHtml(meta.join(' · ')) + '</div>' +
+      (a.revoking ? '<div class="mcp-note">Its next request is refused.</div>' : '') +
+      (a.live ? '<div class="mcp-state"><button type="button" class="mcp-btn" data-revoke="' + escHtml(a.client_id) + '" data-name="' + escHtml(name) + '">Revoke</button></div>' : '') +
+      '</div></div>';
+  });
+  var t = d.tools || {};
+  h += '<details class="conn-tools"><summary>Over the web, signed-in apps can use ' + (t.exposed || 0) + ' of CODEC\'s tools</summary>' +
+    ((t.asks || []).length ? '<p>Ask on your phone first: ' + escHtml(t.asks.join(', ')) + '.</p>' : '') +
+    ((t.blocked || []).length ? '<p>Never over the web: ' + escHtml(t.blocked.join(', ')) + '.</p>' : '') + '</details>';
+  box.innerHTML = h;
+}
+
+async function loadConnBridges() {
+  var box = document.getElementById('connBridges');
+  if (!box) return;
+  if (!box.__wired) {
+    box.__wired = true;
+    box.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-test]');
+      if (!b) return;
+      if (b.getAttribute('data-test') === 'telegram') { connBridgeTest('telegram', 0, 'your Telegram chat'); return; }
+      if (_connRecipients.length === 1) { connBridgeTest('imessage', 0, _connRecipients[0]); return; }
+      CodecShell.actions(b, _connRecipients.map(function (r, i) { return { label: r, run: function () { connBridgeTest('imessage', i, r); } }; }));
+    });
+  }
+  var d;
+  try { d = await _connJSON('/api/connections/bridges'); }
+  catch (e) { box.innerHTML = '<div class="mcp-empty">Could not read the bridges: ' + escHtml(e.message) + '</div>'; return; }
+  var tg = d.telegram || {}, im = d.imessage || {};
+  _connRecipients = im.recipients || [];
+  function running(s) { return _connState(s === 'online', 'Running', s ? 'Not running (' + escHtml(s) + ')' : 'Not set up', !!s); }
+  var tgNote = (tg.token ? 'Bot token set. ' : 'No bot token. ') +
+    (tg.allowed ? tg.allowed + (tg.allowed === 1 ? ' chat may talk to it. ' : ' chats may talk to it. ') : 'It answers nobody: no chat is allowed. ') +
+    (tg.alerts_chat ? 'Owner alerts go to your chat.' : 'Owner alerts have no chat.');
+  var imNote = (im.enabled ? '' : 'Turned off in settings. ') +
+    (im.allowed ? im.allowed + (im.allowed === 1 ? ' sender may talk to it. ' : ' senders may talk to it. ') : 'It answers nobody: no sender is allowed. ') +
+    (im.messages_db === false ? 'The dashboard cannot read the Messages database (Full Disk Access).' : im.messages_db ? 'The Messages database is readable.' : '');
+  box.innerHTML =
+    '<div class="mcp-card"><div class="mcp-card-main"><div class="mcp-card-top"><span class="mcp-name">Telegram</span>' + running(tg.running) + '</div>' +
+      '<div class="mcp-note">' + escHtml(tgNote) + '</div>' +
+      (tg.can_test ? '<div class="mcp-state"><button type="button" class="mcp-btn" data-test="telegram">Send a test</button></div>' : '') + '</div></div>' +
+    '<div class="mcp-card"><div class="mcp-card-main"><div class="mcp-card-top"><span class="mcp-name">iMessage</span>' + running(im.running) + '</div>' +
+      '<div class="mcp-note">' + escHtml(imNote) + '</div>' +
+      (im.can_test ? '<div class="mcp-state"><button type="button" class="mcp-btn" data-test="imessage">Send a test</button></div>' : '') + '</div></div>';
+}
+async function connBridgeTest(bridge, to, who) {
+  if (!await CodecShell.ask({ title: 'Send a test message?', message: 'One line goes to ' + who + ': "CODEC test message: this bridge can reach you."', confirm: 'Send' })) return;
+  try { await _connPost('/api/connections/bridges/test', { bridge: bridge, to: to }); showToast('Sent. Check ' + (bridge === 'telegram' ? 'Telegram' : 'Messages') + '.'); }
+  catch (e) { showToast(e.message); }
+}
+
+async function loadConnPerms() {
+  var box = document.getElementById('connPerms');
+  if (!box) return;
+  var d;
+  try { d = await _connJSON('/api/connections/permissions'); }
+  catch (e) { box.innerHTML = '<div class="mcp-empty">Could not check the permissions: ' + escHtml(e.message) + '</div>'; return; }
+  document.getElementById('connPermsNote').textContent = d.note || '';
+  var mac = _connOnMac();
+  box.innerHTML = (d.items || []).map(function (p) {
+    var st = p.state === 'ok' ? _connState(true, 'Allowed') : p.state === 'missing' ? _connState(false, '', 'Not allowed', true)
+      : _connState(false, '', 'Checked when first used');
+    var link = mac && /^x-apple\.systempreferences:/.test(p.url || '') ? '<div class="mcp-state"><a class="mcp-btn" href="' + escHtml(p.url) + '">Open System Settings</a></div>' : '';
+    return '<div class="mcp-card"><div class="mcp-card-main"><div class="mcp-card-top"><span class="mcp-name">' + escHtml(p.name) + '</span>' + st + '</div>' +
+      '<div class="mcp-note">' + escHtml(p.where) + '</div>' + link + '</div></div>';
+  }).join('');
 }
 
 // ── Connector (external MCP) tab ──
