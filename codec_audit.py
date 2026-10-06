@@ -820,9 +820,9 @@ def verify_audit_log(path: "Path | str | None" = None) -> dict:
     return summary
 
 
-# ── Query API for the /audit dashboard (codec_audit.html) ─────────────────────
+# ── Query API for Settings > Audit (codec_dashboard.html) ─────────────────────
 #
-# codec_audit.html and routes/audit.py (`read_events` / `get_stats`) predate
+# The audit view (codec_audit.html until P2.15) and routes/audit.py (`read_events` / `get_stats`) predate
 # the unified schema:1 envelope — they were written against an older,
 # pre-979edab log format that had explicit `cat`/`lvl`/`sum` fields on every
 # line. That format is gone; the unified envelope (§6 of AGENTS.md) has no
@@ -890,7 +890,7 @@ _KEYWORD_CATEGORY_MAP = (
 
 
 def _categorize_event(record: dict) -> str:
-    """Best-effort category bucket (one of codec_audit.html's 16 filter
+    """Best-effort category bucket (one of the audit view's 16 filter
     pills) for a single audit record. See module note above — not a
     stable contract, safe to extend."""
     event = (record.get("event") or "").lower()
@@ -1001,7 +1001,7 @@ def read_events(
     limit: int = 500,
 ) -> list[dict]:
     """Return matching events from the audit log(s), newest first, shaped
-    for codec_audit.html (adds `cat`/`lvl`/`src`/`sum` on top of the raw
+    for the Settings > Audit view (adds `cat`/`lvl`/`src`/`sum` on top of the raw
     unified-envelope fields).
 
     categories : filter to these derived categories (e.g. ["skill", "error"])
@@ -1056,7 +1056,7 @@ def read_events(
 
 def get_stats(hours: int = 24) -> dict:
     """Aggregate event counts over the last `hours` hours, shaped for
-    codec_audit.html's stats panel: {total_24h, errors_24h, by_category,
+    the audit view's stats panel: {total_24h, errors_24h, by_category,
     by_level}. Field names stay '_24h' regardless of `hours` to match the
     UI's fixed contract (routes/audit.py always calls this with hours=24)."""
     cutoff_n = _norm_ts((datetime.now(timezone.utc) - timedelta(hours=hours))

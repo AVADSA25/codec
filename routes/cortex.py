@@ -57,7 +57,9 @@ async def cortex_skills():
     """Return all loaded skills for CORTEX visualization.
 
     A-4: reads from the canonical codec_dispatch registry (lazy AST scan +
-    custom_triggers overlay) instead of the legacy codec_core.loaded_skills."""
+    custom_triggers overlay) instead of the legacy codec_core.loaded_skills.
+    P2.15: also the crew count, for Cortex's live text."""
+    from codec_agents import CREW_REGISTRY
     from codec_dispatch import registry
     if not registry.names():
         registry.scan()
@@ -66,7 +68,7 @@ async def cortex_skills():
         for name in registry.names()
     ]
     result.sort(key=lambda x: x["name"])
-    return {"skills": result, "count": len(result)}
+    return {"skills": result, "count": len(result), "crew_count": len(CREW_REGISTRY)}
 
 
 @router.get("/api/cortex/logs/{service}")

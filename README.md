@@ -680,7 +680,6 @@ codec_dashboard.html  — Dashboard UI (Flash Chat, History, Audit, Settings, St
 codec_chat.html       — Chat UI (agents, file upload, voice input)
 codec_vibe.html       — Vibe Code IDE (Monaco editor + live preview)
 codec_cortex.html     — Cortex system overview (neural map, product grid)
-codec_audit.html      — Audit log viewer (16 categories, filterable)
 codec_audit.py        — Audit logger (JSON-line, 50MB rotation, thread-safe)
 codec_auth.html       — Authentication (Touch ID + PIN + TOTP 2FA)
 codec_textassist.py   — 8 right-click services

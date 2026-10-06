@@ -1003,14 +1003,11 @@ async def cortex_page():
             return HTMLResponse(f.read(), headers=_NO_CACHE)
     return HTMLResponse("<h1>CORTEX not found</h1>", status_code=500)
 
-@app.get("/audit", response_class=HTMLResponse)
+@app.get("/audit")
 async def audit_page():
-    """AUDIT — Event audit log viewer."""
-    html_path = os.path.join(DASHBOARD_DIR, "codec_audit.html")
-    if os.path.exists(html_path):
-        with open(html_path) as f:
-            return HTMLResponse(f.read(), headers=_NO_CACHE)
-    return HTMLResponse("<h1>Audit page not found</h1>", status_code=500)
+    """The old audit page is retired (P2.15): Settings > Audit has its range, details and paging."""
+    from starlette.responses import RedirectResponse
+    return RedirectResponse(url="/#audit")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

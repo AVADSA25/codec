@@ -1,8 +1,8 @@
 """Tests for the audit query API — read_events() + get_stats().
 
 Both functions read the unified schema:1 envelope (§6) from ~/.codec/audit.log
-+ rotated audit.log.YYYY-MM-DD files and shape it for the /audit dashboard
-(codec_audit.html), which expects per-event `cat`/`lvl`/`sum`/`ts`/`src` and
++ rotated audit.log.YYYY-MM-DD files and shape it for Settings > Audit
+(codec_dashboard.html; the old codec_audit.html page until P2.15), which expects per-event `cat`/`lvl`/`sum`/`ts`/`src` and
 stats `total_24h`/`errors_24h`/`by_category`/`by_level`. Neither function
 writes anything — the write path (audit()/log_event()) is untouched.
 

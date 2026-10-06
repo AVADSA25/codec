@@ -51,7 +51,7 @@ strict consent) are add-only. No personal data in the repo. No emoji in the UI.
 | 18 | P2.11: Temporary chat that is not saved to history or memory | M | no | done (#421) |
 | 19 | P2.12: Thumbnails for attachments and a lightbox | M | no | done (#422) |
 | 20 | P2.13: Accessibility baseline | M | no | done (#423) |
-| 21 | P2.15: Readable Cortex and Audit | M | no | open |
+| 21 | P2.15: Readable Cortex and Audit | M | no | done (#430) |
 | 22 | P3.2: One Inbox for approvals, questions, reports and agent updates | M | no | open |
 | 23 | P3.4: 'Today' home instead of the Flash log | L | no | open |
 | 24 | P3.6: Skills page: browse, try, check readiness | M | no | open |
