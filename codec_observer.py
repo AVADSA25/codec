@@ -178,9 +178,13 @@ def _load_config() -> Dict[str, Any]:
 # ── Kill switch ───────────────────────────────────────────────────────────────
 def _enabled() -> bool:
     """Read OBSERVER_ENABLED env var (default true). Read each call so PM2
-    restart with a different env value takes effect."""
+    restart with a different env value takes effect. P2.10: Settings can also
+    turn the observer off with config.json:observer.enabled=false; the env var
+    still wins when it says false."""
     val = (os.environ.get("OBSERVER_ENABLED") or "true").strip().lower()
-    return val not in ("false", "0", "no", "off")
+    if val in ("false", "0", "no", "off"):
+        return False
+    return _load_config().get("enabled", True) is not False
 
 
 # ── Idle classifier (Q4) ──────────────────────────────────────────────────────
