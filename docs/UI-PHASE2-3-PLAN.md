@@ -49,7 +49,7 @@ strict consent) are add-only. No personal data in the repo. No emoji in the UI.
 | 16 | P2.7: Keep regenerated versions and add thumbs feedback | M | no | done (#418) |
 | 17 | P2.10: Settings with human labels, help text and proper controls | M | no | done (#419) |
 | 18 | P2.11: Temporary chat that is not saved to history or memory | M | no | done (#421) |
-| 19 | P2.12: Thumbnails for attachments and a lightbox | M | no | open |
+| 19 | P2.12: Thumbnails for attachments and a lightbox | M | no | done (#422) |
 | 20 | P2.13: Accessibility baseline | M | no | open |
 | 21 | P2.15: Readable Cortex and Audit | M | no | open |
 | 22 | P3.2: One Inbox for approvals, questions, reports and agent updates | M | no | open |

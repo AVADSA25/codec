@@ -224,7 +224,7 @@ def test_the_pager_swaps_the_tail_and_resaves_the_chosen_version():
         assert needle in ver, needle
     save = _block(CHAT, "async function saveMessages(", "\n}\n")
     assert "_savedRows=_savedRows.slice(0,_discardFrom);" in save, "the saved-rows mirror follows discard_from"
-    assert "_savedRows.push({role:m.role,content:m.content||''})" in CHAT, "a loaded chat fills the mirror"
+    assert "_savedRows.push(_rowCopy(m))" in CHAT, "a loaded chat fills the mirror"
 
 
 def test_thumbs_reasons_and_the_more_menu():
