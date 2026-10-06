@@ -489,6 +489,9 @@ CHAT_SKILL_ALLOWLIST = {
     # through to the LLM, which answers the prompts ITSELF instead of feeding
     # them to the tool the user actually asked for.
     "prompt_feeder",
+    # Read-only status skills the Skills page lists for Chat (UI P3.6): service health,
+    # backup state, an audit summary and a fact's history. None writes anything.
+    "health_check", "backup_status", "audit_report", "memory_history",
 }
 
 

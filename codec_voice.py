@@ -550,8 +550,9 @@ class VoicePipeline:
     def _match_skill(self, text: str) -> Optional[dict]:
         text_lower = text.lower().strip()
         best_match, best_len = None, 0
+        from codec_skill_switches import is_off
         for name, skill in self.skills.items():
-            if name in self._VOICE_SKIP_SKILLS:
+            if name in self._VOICE_SKIP_SKILLS or is_off(name):  # P3.6: switched off on the Skills page
                 continue
             for trigger in skill["triggers"]:
                 if len(trigger.split()) < 2:

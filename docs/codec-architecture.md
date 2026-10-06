@@ -186,6 +186,7 @@ only: never a fact's value, a rule's text or the About me text.
 | Event | Source | Level | Extra fields |
 |---|---|---|---|
 | `memory_changed` | `codec-dashboard` | info | `action` (`fact_edited` \| `fact_forgotten` \| `rule_added` \| `rule_removed` \| `rules_cleared` \| `about_saved` \| `fact_extract_switched` \| `nightly_switched`), then per action: `key`, `value_len`, `rows`, `rule_id`, `text_len`, `rules` (count), `on` |
+| `skill_switched` | `codec-dashboard` | info | `tool` (the skill), `on` (UI P3.6: the Skills page's switch; `config.json:skills_off`) |
 
 ### Watchdog events (2026-07 log review)
 One event name, emitted by the heartbeat's PM2 restart-storm detector (`codec_heartbeat.check_pm2_restart_storms`). Fires when an `autorestart:true` PM2 process burned ≥5 restarts since the previous heartbeat (~20 min) — the signature of a crash loop hiding behind PM2 status "online" (incident: `ava-litellm` restarted 34,207× over 3 weeks unnoticed). Cron-style jobs (`autorestart:false`) are excluded; a persisting storm re-alerts at most every 6h. State: `~/.codec/pm2_restart_state.json`. Related (no new event): `codec_alerts` supports read-only `alerts.extra_services` probes in `~/.codec/config.json` (`http(s)://` or `tcp://host:port`) with the same consecutive-failure alerting as built-ins but NEVER auto-restart.

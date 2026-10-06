@@ -206,6 +206,19 @@ def _load_skill_tools_into(mcp):
                            correlation_id=cid)
                     return err
 
+                # P3.6: a skill switched off on the Skills page does not run over MCP either.
+                try:
+                    import codec_skill_switches
+                    if codec_skill_switches.is_off(rkey):
+                        _audit(sname, event="denied",
+                               task_len=tlen, context_len=clen,
+                               duration_ms=(time.time()-t0)*1000,
+                               outcome="denied", error_type="SkillSwitchedOff",
+                               correlation_id=cid)
+                        return codec_skill_switches.off_message(rkey)
+                except ImportError:
+                    pass
+
                 # re-audit B1: hard-refuse destructive / high-power skills over
                 # MCP — claude.ai (the caller) can't consent at the operator
                 # tier. Most are already in _HTTP_BLOCKED (refused earlier); this

@@ -43,10 +43,11 @@ def pickable_skills() -> set[str]:
     """The skills '@' may pick and the chat `skill` field may run: the chat allowlist (the same set
     automatic routing uses) minus NOT_PICKABLE, limited to what the registry knows."""
     from codec_dispatch import registry
+    from codec_skill_switches import off_set
     from routes.chat import CHAT_SKILL_ALLOWLIST
     if not registry.names():  # metadata only (AST); no skill code runs
         registry.scan()
-    return (set(CHAT_SKILL_ALLOWLIST) - NOT_PICKABLE) & set(registry.names())
+    return (set(CHAT_SKILL_ALLOWLIST) - NOT_PICKABLE - off_set()) & set(registry.names())  # P3.6: not the ones turned off
 
 
 def _short(text: str, limit: int = 110) -> str:

@@ -140,6 +140,16 @@ def _fire(trigger: dict, registry: SkillRegistry):
     cid = _secrets.token_hex(6)
     t0 = time.time()
     try:
+        from codec_skill_switches import is_off
+        if is_off(skill):  # P3.6: switched off on the Skills page
+            log.info("trigger %s: skill %s is turned off", name, skill)
+            audit(f"autopilot:{name}", event="autopilot_fire",
+                  source="codec-autopilot", transport="scheduler",
+                  outcome="denied", error_type="SkillSwitchedOff",
+                  duration_ms=(time.time()-t0)*1000,
+                  extra={"trigger_name": name, "skill": skill},
+                  correlation_id=cid)
+            return
         mod = registry.load(skill)
         if mod is None or not hasattr(mod, "run"):
             log.error("trigger %s: skill %s not found", name, skill)
