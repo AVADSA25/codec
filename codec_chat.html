@@ -1990,17 +1990,22 @@ var _ICO_IMG='<svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><re
 var _ICO_DOC='<svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>';
 function _fmtSize(n){n=Number(n)||0;if(!n)return'';if(n<1024)return n+' B';if(n<1048576)return Math.round(n/1024)+' KB';return(n/1048576).toFixed(1)+' MB'}
 function _thumbOf(file){
+  // Read as a data: URL, never a blob: one: the pages' CSP (img-src 'self' data: https:) blocks blob:
+  // images, so a blob: thumbnail silently failed and every photo showed the plain image icon.
   return new Promise(function(resolve){
-    var url;try{url=URL.createObjectURL(file)}catch(e){resolve('');return}
-    var img=new Image();
-    img.onload=function(){
-      var s=Math.min(1,112/Math.max(img.width,img.height,1));
-      var cv=document.createElement('canvas');cv.width=Math.max(1,Math.round(img.width*s));cv.height=Math.max(1,Math.round(img.height*s));
-      try{cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);resolve(cv.toDataURL('image/jpeg',0.7))}catch(e){resolve('')}
-      URL.revokeObjectURL(url);
+    var rd=new FileReader();
+    rd.onerror=function(){resolve('')};
+    rd.onload=function(){
+      var img=new Image();
+      img.onload=function(){
+        var s=Math.min(1,112/Math.max(img.width,img.height,1));
+        var cv=document.createElement('canvas');cv.width=Math.max(1,Math.round(img.width*s));cv.height=Math.max(1,Math.round(img.height*s));
+        try{cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);resolve(cv.toDataURL('image/jpeg',0.7))}catch(e){resolve('')}
+      };
+      img.onerror=function(){resolve('')};
+      img.src=rd.result;
     };
-    img.onerror=function(){URL.revokeObjectURL(url);resolve('')};
-    img.src=url;
+    try{rd.readAsDataURL(file)}catch(e){resolve('')}
   });
 }
 function _attKind(type){return type==='image'||type==='imgref'?'image':type==='pdf'?'pdf':type==='text'?'text':'file'}

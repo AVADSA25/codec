@@ -127,6 +127,7 @@ def _block(start, end):
 def test_tiles_in_the_composer():
     tiles = _block("// ── Attachment tiles (P2.12", "function removeChip(")
     assert "112/Math.max(img.width,img.height,1)" in tiles and "toDataURL('image/jpeg',0.7)" in tiles
+    assert "rd.readAsDataURL(file)" in tiles and "createObjectURL" not in tiles, "the CSP blocks blob: images"
     assert 'class="fc-ring" role="progressbar"' in tiles and "_fmtSize(" in tiles
     assert ".fc-thumb{width:56px;height:56px" in PAGE
     assert "@media (prefers-reduced-motion: reduce){.fc-ring{animation:none" in PAGE
