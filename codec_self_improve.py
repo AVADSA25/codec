@@ -10,6 +10,8 @@ Signals detected:
   2. Repeatedly failing tools (≥5 calls, ≥40% error rate) — candidate for
      rewrite or wrapper.
   3. Repeated timeouts on same tool (≥3) — candidate for async/retry wrapper.
+  4. Replies the owner thumbed down (P2.7 chat_feedback events) — a skill with
+     ≥3 thumbs-down in the day is a candidate for an improved version.
 
 Output: one markdown file per proposal at
    ~/.codec/skill_proposals/YYYY-MM-DD/<name>.md
@@ -98,6 +100,7 @@ _GAP_KIND_TO_SIGNAL = {
     "missing_tool":   "unknown_tool",
     "unreliable_tool": "failing_tool",
     "timeout_prone": "timeout_tool",
+    "disliked_tool": "thumbs_down",
 }
 
 
@@ -137,7 +140,10 @@ def _load_audit_for(date_str: str) -> list[dict]:
 def _find_gaps(records: list[dict], existing: set[str]) -> list[dict]:
     """Return list of gap descriptors, each a dict with kind/tool/count/examples."""
     by_tool: dict[str, list[dict]] = defaultdict(list)
+    feedback = [r for r in records if r.get("event") == "chat_feedback"]
     for r in records:
+        if r.get("event") == "chat_feedback":
+            continue  # a rating is not a tool call
         by_tool[r.get("tool", "unknown")].append(r)
 
     gaps = []
@@ -189,6 +195,26 @@ def _find_gaps(records: list[dict], existing: set[str]) -> list[dict]:
                 "examples": [{"ts": r.get("ts")} for r in tos[:3]],
             })
 
+    # Kind 4: replies the owner thumbed down, by the skill that produced them
+    # (the last rating per reply counts: a change of mind replaces the earlier one)
+    latest: dict[str, dict] = {}
+    for i, r in enumerate(feedback):
+        latest[(r.get("extra") or {}).get("reply") or f"#{i}"] = r
+    downs: dict[str, list[dict]] = defaultdict(list)
+    for r in latest.values():
+        extra = r.get("extra") or {}
+        if extra.get("rating") == "down" and extra.get("skill"):
+            downs[extra["skill"]].append(r)
+    for tool, rs in sorted(downs.items(), key=lambda kv: -len(kv[1])):
+        if len(rs) >= 3:
+            gaps.append({
+                "kind": "disliked_tool",
+                "tool": tool,
+                "count": len(rs),
+                "examples": [{"ts": r.get("ts"), "reason": (r.get("extra") or {}).get("reason", "")}
+                             for r in rs[:3]],
+            })
+
     return gaps[:MAX_PROPOSALS_PER_RUN]
 
 
@@ -222,6 +248,8 @@ Rules:
 - If addressing a missing_tool gap, infer intent from the tool name
 - If addressing an unreliable_tool gap, wrap with retries + better error messages
 - If addressing timeout_prone, add async/shorter timeouts + clearer failure modes
+- If addressing disliked_tool, the owner rated its replies down (reasons: wrong,
+  too_long, no_data) — make the output more accurate, shorter, or use the data it was given
 
 Output ONLY the Python code, no fences, no commentary."""
 

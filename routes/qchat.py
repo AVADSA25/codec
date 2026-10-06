@@ -10,6 +10,11 @@ of a chat (regenerate / edit) as superseded instead of leaving it to come
 back on reload. The schema changes are additive and follow a one-time
 backup copy of the database; no row or column is deleted.
 
+P2.7 (docs/P2.7-DESIGN.md): thumbs up / down on a reply, with an optional
+reason, in a qchat_feedback table (the reply text is not copied, only its
+hash and length) plus a metadata-only chat_feedback audit event that the
+shift report and the self-improvement run count.
+
 DB setup (QCHAT_DB, _qchat_conn singleton, qchat_db helper) lives here
 too — it was only ever referenced by these endpoints. WAL + busy_timeout
 + auto-migration applied on first connect.
@@ -17,6 +22,7 @@ too — it was only ever referenced by these endpoints. WAL + busy_timeout
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -47,10 +53,10 @@ def _columns(conn, table: str) -> set:
     return {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
 
 
-def _backup_once(conn) -> None:
-    """Copy the database (SQLite online backup) to qchat.db.bak-p2.2, owner-only,
-    before the first additive migration. An empty database needs no copy."""
-    dest = QCHAT_DB + ".bak-p2.2"
+def _backup_once(conn, tag: str = "p2.2") -> None:
+    """Copy the database (SQLite online backup) to qchat.db.bak-<tag>, owner-only,
+    before an additive migration. An empty database needs no copy."""
+    dest = QCHAT_DB + ".bak-" + tag
     if os.path.exists(dest):
         return
     rows = sum(conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
@@ -65,7 +71,7 @@ def _backup_once(conn) -> None:
     finally:
         copy.close()
     os.chmod(dest, 0o600)
-    log.info("qchat.db backed up to %s before the P2.2 migration", dest)
+    log.info("qchat.db backed up to %s before the %s migration", dest, tag.upper())
 
 
 def qchat_db():
@@ -98,6 +104,16 @@ def qchat_db():
             for t, c, d in missing:
                 _qchat_conn.execute(f"ALTER TABLE {t} ADD COLUMN {c} {d}")
         _qchat_conn.execute("CREATE INDEX IF NOT EXISTS idx_qchat_messages_session ON qchat_messages(session_id, id)")
+        # P2.7: reply feedback (a new table; additive, backup first).
+        has_feedback = _qchat_conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='qchat_feedback'").fetchone()
+        if not has_feedback:
+            _qchat_conn.commit()
+            _backup_once(_qchat_conn, "p2.7")
+            _qchat_conn.execute('''CREATE TABLE IF NOT EXISTS qchat_feedback (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, msg_hash TEXT,
+                rating INTEGER, reason TEXT, model TEXT, skill TEXT, chars INTEGER,
+                created_at TEXT, updated_at TEXT, UNIQUE(session_id, msg_hash))''')
         _qchat_conn.commit()
     return _qchat_conn
 
@@ -279,6 +295,60 @@ async def qchat_save(request: Request):
     rows = conn.execute("SELECT COUNT(*) FROM qchat_messages WHERE session_id=? AND superseded_at IS NULL",
                         (sid,)).fetchone()[0]
     return {"ok": True, "rows": rows}
+
+
+# P2.7: thumbs up / down on a reply. The reasons are the three the page offers.
+FEEDBACK_REASONS = ("wrong", "too_long", "no_data")
+_RATINGS = {"up": 1, "down": -1, "none": 0}
+
+
+@router.post("/api/qchat/feedback")
+async def qchat_feedback(request: Request):
+    """Rate one reply: {session_id, content, rating: up|down|none, reason, model, skill}.
+    One row per reply (chat + SHA-256 of its text), updated on a change of mind and
+    never deleted; the reply text itself is not stored."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = None
+    if not isinstance(body, dict):
+        return JSONResponse({"error": "JSON object expected"}, status_code=400)
+    sid = str(body.get("session_id") or "")
+    content = str(body.get("content") or "")
+    rating = _RATINGS.get(str(body.get("rating") or ""))
+    if rating is None:
+        return JSONResponse({"error": "rating must be up, down or none"}, status_code=400)
+    if not sid or not content:
+        return JSONResponse({"error": "session_id and content are required"}, status_code=400)
+    reason = str(body.get("reason") or "")
+    if reason and reason not in FEEDBACK_REASONS:
+        return JSONResponse({"error": "unknown reason"}, status_code=400)
+    if rating != -1:
+        reason = ""
+    model = str(body.get("model") or "")[:80]
+    skill = str(body.get("skill") or "")[:64]
+    conn = qchat_db()
+    if not conn.execute("SELECT 1 FROM qchat_sessions WHERE id=?", (sid,)).fetchone():
+        return JSONResponse({"error": "Chat not found"}, status_code=404)
+    msg_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    now = datetime.now().isoformat()
+    conn.execute(
+        "INSERT INTO qchat_feedback (session_id, msg_hash, rating, reason, model, skill, chars, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(session_id, msg_hash) DO UPDATE SET "
+        "rating=excluded.rating, reason=excluded.reason, model=excluded.model, skill=excluded.skill, "
+        "updated_at=excluded.updated_at",
+        (sid, msg_hash, rating, reason, model, skill, len(content), now, now))
+    conn.commit()
+    try:
+        from codec_audit import log_event
+        log_event("chat_feedback", "codec-dashboard", "reply rated",
+                  extra={"rating": str(body.get("rating")), "reason": reason, "model": model,
+                         "reply": msg_hash[:16],
+                         "skill": skill, "chars": len(content)},
+                  outcome="ok", level="info")
+    except Exception:
+        pass
+    return {"ok": True, "rating": str(body.get("rating")), "reason": reason}
 
 
 @router.delete("/api/qchat/session/{sid}")

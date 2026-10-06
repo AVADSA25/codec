@@ -243,7 +243,8 @@ def _render_completed_tasks(records: List[dict]) -> str:
                  if r.get("event") in _COMPLETED_TASK_EVENTS
                  and r.get("outcome") == "ok"]
     if not completed:
-        return "_(No completed tasks recorded in this window.)_"
+        feedback = _render_feedback(records)
+        return feedback or "_(No completed tasks recorded in this window.)_"
     by_kind = Counter(r.get("event", "?") for r in completed)
     by_tool = Counter(r.get("tool", "") for r in completed
                       if r.get("tool"))
@@ -255,7 +256,39 @@ def _render_completed_tasks(records: List[dict]) -> str:
         lines.append("**Most-fired tools:**")
         for tool, count in by_tool.most_common(5):
             lines.append(f"- `{tool}`: {count}")
+    feedback = _render_feedback(records)
+    if feedback:
+        lines += ["", feedback]
     return "\n".join(lines)
+
+
+_FEEDBACK_REASON_LABELS = {"wrong": "wrong", "too_long": "too long", "no_data": "didn't use my data"}
+
+
+def _render_feedback(records: List[dict]) -> str:
+    """P2.7: thumbs up / down on chat replies (chat_feedback events, metadata only).
+    The last rating per reply counts once; a cleared rating counts as none."""
+    last: Dict[str, dict] = {}
+    for i, r in enumerate(records):
+        if r.get("event") == "chat_feedback":
+            extra = r.get("extra") or {}
+            last[extra.get("reply") or f"#{i}"] = extra
+    ups = downs = 0
+    reasons: Counter = Counter()
+    for extra in last.values():
+        if extra.get("rating") == "up":
+            ups += 1
+        elif extra.get("rating") == "down":
+            downs += 1
+            if extra.get("reason"):
+                reasons[extra["reason"]] += 1
+    if not ups and not downs:
+        return ""
+    line = f"**Reply feedback:** {ups} thumbs up, {downs} thumbs down"
+    if reasons:
+        line += " (" + ", ".join(f"{_FEEDBACK_REASON_LABELS.get(k, k)}: {n}"
+                                 for k, n in reasons.most_common(3)) + ")"
+    return line + "."
 
 
 def _render_blocked(records: List[dict]) -> str:

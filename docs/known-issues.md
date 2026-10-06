@@ -373,3 +373,11 @@ In Chat's Agents sheet (Custom Agent), the red Delete next to "Load saved"
 with no question and no undo. It never used the browser's `confirm()`, so P2.6
 left it as it was. Fix: ask with `CodecShell.ask({danger: true})` first, like
 the other deletes. Revisit: P3.8 (Activity board), which touches agents.
+
+## `test_shell_mounts_and_switches_on_desktop` expects the old shell order (2026-09-29)
+
+`tests/test_ui_shell.py::test_shell_mounts_and_switches_on_desktop` (jsdom only, so skipped in CI) asserts the
+shell mounts `csSide, csScrim, csTop, csTabs` first. Since P2.8 the reading strip `csPlayer` is mounted before
+`csTabs`, so the test fails wherever jsdom is available (the Mac with NODE_PATH set). The shell is right; the
+expected list is stale. Found while running the suite with jsdom for P2.7. **Revisit when:** the next item that edits
+tests/test_ui_shell.py (P2.13 accessibility): add `csPlayer` to the expected order.
