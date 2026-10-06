@@ -625,6 +625,12 @@ body.cs-rail .cs-profile > .cs-ico { display: none; }
 .cs-menu-item[aria-disabled="true"] { opacity: .5; cursor: default; }
 @media (max-width: 767px) { .cs-menu-item { min-height: 44px; } }
 
+/* 'CODEC is watching' (P3.7): an eye in the header while the observer watches; dimmed while paused. */
+.cs-watch[hidden] { display: none; }
+.cs-watch { color: var(--accent); }
+.cs-watch.cs-watch-paused { color: var(--text-muted); }
+.cs-trig-list { max-height: 50vh; overflow-y: auto; margin: 0 0 8px; }
+
 /* Inbox (P3.2): a drawer from the right on a desktop, a bottom sheet on the phone; one card per item. */
 .cs-inbox-back { position: fixed; inset: 0; z-index: 10020; display: flex; justify-content: flex-end; background: rgba(0, 0, 0, .35); }
 .cs-inbox-back[hidden] { display: none; }

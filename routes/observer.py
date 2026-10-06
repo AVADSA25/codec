@@ -53,3 +53,106 @@ async def observer_buffer(request: Request, debug: int = 0):
         }
     except Exception as e:
         return {"error": f"observer not available: {e}"}
+
+
+# ── 'CODEC is watching' (UI P3.7, docs/P3.7-DESIGN.md) ─────────────────────
+# The observer runs in its own process; these read what it leaves on disk (the
+# mirror, ~/.codec/observer_buffer.json) and write the pause flag it reads.
+WATCH_FRESH_S = 11 * 60  # it polls at least every 5 minutes when you are idle
+
+
+def _mirror():
+    import json as _json
+    from codec_observer import _BUFFER_DISK_PATH
+    try:
+        st = _BUFFER_DISK_PATH.stat()
+        with open(_BUFFER_DISK_PATH, encoding="utf-8") as f:
+            data = _json.load(f)
+    except (OSError, ValueError):
+        return None, None
+    return (data if isinstance(data, dict) else None), st.st_mtime
+
+
+def _audit(event: str, message: str, extra: dict):
+    try:
+        from codec_audit import log_event as _le
+        _le(event, "codec-dashboard", message, extra=extra, outcome="ok", level="info")
+    except Exception:
+        pass
+
+
+@router.get("/api/observer/state")
+async def observer_state():
+    """Watching (the mirror is fresh), paused (the flag), or neither."""
+    import time as _time
+
+    from codec_observer import paused_until
+    held = paused_until()
+    data, mtime = _mirror()
+    watching = held is None and mtime is not None and _time.time() - mtime < WATCH_FRESH_S
+    return {"watching": watching, "paused_until": held.strftime("%Y-%m-%dT%H:%M:%S") if held else None,
+            "updated": (data or {}).get("updated") if watching else None,
+            "entries": len((data or {}).get("entries") or []) if watching else 0}
+
+
+@router.post("/api/observer/pause")
+async def observer_pause(request: Request):
+    """{"minutes": 15 or 60} or {"until": "tomorrow"} (06:00 tomorrow, local)."""
+    from datetime import datetime as _dt, timedelta as _td
+
+    import codec_observer
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body if isinstance(body, dict) else {}
+    now = _dt.now()
+    if body.get("until") == "tomorrow":
+        until = (now + _td(days=1)).replace(hour=6, minute=0, second=0, microsecond=0)
+    elif body.get("minutes") in (15, 60):
+        until = now + _td(minutes=int(body["minutes"]))
+    else:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": 'Give "minutes": 15 or 60, or "until": "tomorrow".'}, status_code=400)
+    codec_observer.pause(until)
+    _audit("observer_paused", "Observer paused from the pages", {"until": until.strftime("%Y-%m-%dT%H:%M")})
+    return {"paused_until": until.strftime("%Y-%m-%dT%H:%M:%S")}
+
+
+@router.post("/api/observer/resume")
+async def observer_resume():
+    import codec_observer
+    codec_observer.resume()
+    _audit("observer_resumed", "Observer resumed from the pages", {})
+    return {"ok": True}
+
+
+@router.get("/api/observer/now")
+async def observer_now():
+    """What the observer keeps right now, as metadata only: the frontmost app, the
+    lengths of the window title and the screen text, the clipboard's type and length,
+    how many files changed. Never titles, screen text, clipboard text or paths."""
+    from codec_audit import OBSERVER_BUFFER_INSPECTED
+    from codec_observer import paused_until
+    held = paused_until()
+    data, _ = _mirror()
+    entries = [] if held is not None else ((data or {}).get("entries") or [])
+    latest = entries[-1] if entries and isinstance(entries[-1], dict) else None
+    out = {"paused_until": held.strftime("%Y-%m-%dT%H:%M:%S") if held else None,
+           "updated": (data or {}).get("updated") if entries else None, "entries": len(entries), "latest": None}
+    if latest:
+        win = latest.get("active_window") or {}
+        cb = latest.get("clipboard") or None
+        out["latest"] = {
+            "at": str(latest.get("ts") or ""),
+            "app": str(win.get("app") or "")[:60],
+            "title_length": len(str(win.get("title") or "")),
+            "screen_text_length": len(str(latest.get("screenshot_ocr") or "")),
+            "screen_read": not latest.get("ocr_skipped", False),
+            "clipboard": {"type": str(cb.get("content_type") or "text"), "length": int(cb.get("length") or 0)}
+            if isinstance(cb, dict) else None,
+            "recent_files": len(latest.get("recent_files") or []),
+        }
+    _audit(OBSERVER_BUFFER_INSPECTED, "observer metadata read via /api/observer/now",
+           {"buffer_entries_returned": len(entries), "source": "now"})
+    return out

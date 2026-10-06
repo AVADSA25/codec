@@ -817,8 +817,8 @@ def maybe_inject_observation_summary(
     `skill_module` is the loaded skill module (so we can read its
     SKILL_NEEDS_OBSERVATION attribute without a re-import).
     """
-    # 1. Kill switch
-    if not _enabled():
+    # 1. Kill switch, or paused from the header (P3.7)
+    if not _enabled() or paused_until() is not None:
         return (None, "skipped_disabled")
 
     cfg = _load_config()
@@ -949,6 +949,53 @@ def _wipe_disk_buffer() -> None:
             log.debug("[observer] could not delete %s: %s", path.name, e)
 
 
+# ── Pause from the pages (UI P3.7, docs/P3.7-DESIGN.md) ─────────────────────
+# ~/.codec/observer_paused_until holds one ISO time. While it is in the future the
+# daemon does not poll, forgets what it saw (RAM and the disk mirror) and the chat
+# gets no observation summary. The env kill switch (OBSERVER_ENABLED) is separate.
+_PAUSE_PATH = Path(os.path.expanduser("~/.codec/observer_paused_until"))
+
+
+def paused_until(now: Optional[datetime] = None) -> Optional[datetime]:
+    """The time the pause ends, or None when not paused (a past time is cleaned up)."""
+    try:
+        text = _PAUSE_PATH.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    try:
+        until = datetime.fromisoformat(text)
+    except ValueError:
+        until = None
+    now = now or datetime.now()
+    if until is not None and until.tzinfo is not None:
+        until = until.astimezone().replace(tzinfo=None)
+    if until is None or until <= now:
+        try:
+            _PAUSE_PATH.unlink()
+        except OSError:
+            pass
+        return None
+    return until
+
+
+def pause(until: datetime) -> datetime:
+    """Pause watching until `until` (local time). Owner-only file, written whole."""
+    _PAUSE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    tmp = _PAUSE_PATH.with_name(_PAUSE_PATH.name + "." + secrets.token_hex(4) + ".tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(until.strftime("%Y-%m-%dT%H:%M:%S"))
+    os.replace(tmp, _PAUSE_PATH)
+    return until
+
+
+def resume() -> None:
+    try:
+        _PAUSE_PATH.unlink()
+    except FileNotFoundError:
+        pass
+
+
 def persist_for_shift_report() -> Optional[Path]:
     """Step 7 calls this at shift-report assembly time. Renders the live
     buffer summary to ~/.codec/observation_summaries/YYYY-MM-DDThh-mm.md
@@ -997,15 +1044,26 @@ def run_daemon() -> None:
 
     paused = False
     while True:
-        if not _enabled():
-            # Paused by the kill switch: forget what was seen (RAM and the disk
-            # mirror) once, then sleep 30s and re-check — cheap; enables
-            # runtime kill via env.
+        held = paused_until()  # P3.7: paused from a page's header
+        if not _enabled() or held is not None:
+            # Paused by the kill switch or the pause flag: forget what was seen
+            # (RAM and the disk mirror) once, then sleep and re-check — cheap;
+            # enables runtime kill via env and a resume from the pages.
             if not paused:
                 _get_or_init_buffer(_load_config()).clear()
                 _wipe_disk_buffer()
                 paused = True
-            time.sleep(30)
+                log.info("[observer] paused%s", f" until {held:%H:%M}" if held else " (OBSERVER_ENABLED)")
+            if held is not None and _enabled():
+                # The shift report still fires on time; it reads the audit log, not the screen.
+                try:
+                    _maybe_fire_shift_report(_idle_seconds())
+                except Exception as e:
+                    log.debug("[observer] shift report check failed: %s", e)
+            wait = 30.0
+            if held is not None:
+                wait = max(1.0, min(30.0, (held - datetime.now()).total_seconds()))
+            time.sleep(wait)
             continue
         paused = False
         # M-4 (PR-4I): the WHOLE iteration body is inside this try. Previously

@@ -1,7 +1,8 @@
 """Phase 2 Step 6 — PWA endpoints for the Trigger System.
 
-Three endpoints, all auth-gated by codec_dashboard's existing /api/*
-middleware:
+Four endpoints, all auth-gated by codec_dashboard's existing /api/*
+middleware (reachable from the pages since UI P3.7 moved the voice-trigger
+guide to /api/voice_triggers):
 
   GET  /api/triggers
        List all registered triggers + their state. Returns metadata
@@ -13,6 +14,10 @@ middleware:
   POST /api/triggers/{trigger_key}/kill
        Toggle the killed state. Body: {"killed": true|false}.
        Returns the new state.
+
+  POST /api/triggers/{trigger_key}/mute
+       Mute or unmute the trigger's skill (~/.codec/triggers.json).
+       Body: {"muted": true|false}.
 
 The dashboard frontend renders a "Triggers" tab consuming these.
 """
@@ -29,7 +34,8 @@ router = APIRouter(prefix="/api/triggers", tags=["triggers"])
 
 def _trigger_summary(trig) -> dict:
     """Render a Trigger to a JSON-safe dict for the API."""
-    from codec_triggers import cooldown_remaining, is_killed
+    from codec_triggers import _resolve_mute, cooldown_remaining, is_killed
+    muted, _source, until = _resolve_mute(trig.skill_name)
     return {
         "trigger_key": trig.key,
         "skill_name": trig.skill_name,
@@ -40,6 +46,8 @@ def _trigger_summary(trig) -> dict:
         "require_confirmation": trig.require_confirmation,
         "destructive": trig.destructive,
         "killed": is_killed(trig.key),
+        "muted": muted,  # P3.7: shown with Mute / Unmute on the pages
+        "muted_until": until,
     }
 
 
@@ -103,3 +111,25 @@ async def toggle_kill(trigger_key: str, request: Request):
         "trigger_key": trigger_key,
         "killed": is_killed(trigger_key),
     }
+
+
+@router.post("/{trigger_key}/mute")
+async def set_mute(trigger_key: str, request: Request):
+    """Body: {"muted": bool}. Mutes or unmutes the trigger's skill in
+    ~/.codec/triggers.json (UI P3.7). A muted match is still evaluated and
+    logged (trigger_muted); it does not fire."""
+    try:
+        from codec_triggers import set_muted
+    except Exception:
+        raise HTTPException(status_code=500, detail="codec_triggers unavailable")
+    matches = [t for t in _list_triggers() if t["trigger_key"] == trigger_key]
+    if not matches:
+        raise HTTPException(status_code=404, detail=f"trigger {trigger_key} not registered")
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict) or not isinstance(body.get("muted"), bool):
+        raise HTTPException(status_code=400, detail='Body must be {"muted": true or false}.')
+    set_muted(matches[0]["skill_name"], body["muted"])
+    return {"trigger_key": trigger_key, "skill_name": matches[0]["skill_name"], "muted": body["muted"]}

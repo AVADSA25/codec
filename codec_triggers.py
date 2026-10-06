@@ -113,10 +113,24 @@ _LAST_FIRED_LOCK = threading.Lock()
 _KILLED_CACHE: Optional[set] = None
 _KILLED_CACHE_LOCK = threading.Lock()
 
-# Cached mute config; reloaded from disk lazily. Hand-edits to the JSON file
-# require either a service restart or a call to _refresh_mute_cache().
+# Cached mute config; reloaded from disk lazily.
 _MUTE_CACHE: Optional[dict] = None
 _MUTE_CACHE_LOCK = threading.Lock()
+
+# UI P3.7: both files are written by the dashboard (the pages' Mute and Turn off)
+# and read by codec-observer, which evaluates the triggers. A cache now lasts only
+# while its file is unchanged on disk, so a page's change reaches the observer at
+# its next poll instead of after a restart.
+_KILLED_STAMP: Optional[tuple] = None
+_MUTE_STAMP: Optional[tuple] = None
+
+
+def _stamp(path: Path) -> Optional[tuple]:
+    try:
+        st = path.stat()
+        return (st.st_mtime_ns, st.st_size)
+    except OSError:
+        return None
 
 
 # ── Kill switch ───────────────────────────────────────────────────────────────
@@ -247,9 +261,10 @@ def discover_triggers(registry) -> List[Trigger]:
 def _load_killed() -> set:
     """Read killed_keys set from disk. Cached after first call; use
     _refresh_killed_cache() to invalidate."""
-    global _KILLED_CACHE
+    global _KILLED_CACHE, _KILLED_STAMP
     with _KILLED_CACHE_LOCK:
-        if _KILLED_CACHE is not None:
+        stamp = _stamp(_KILLED_PATH)
+        if _KILLED_CACHE is not None and stamp == _KILLED_STAMP:
             return set(_KILLED_CACHE)
         try:
             with open(_KILLED_PATH) as f:
@@ -257,7 +272,7 @@ def _load_killed() -> set:
             keys = set(data.get("killed_keys", []))
         except (FileNotFoundError, json.JSONDecodeError, OSError):
             keys = set()
-        _KILLED_CACHE = keys
+        _KILLED_CACHE, _KILLED_STAMP = keys, stamp
         return set(keys)
 
 
@@ -300,10 +315,12 @@ def set_killed(trigger_key: str, killed: bool) -> None:
 def _load_mute_config() -> dict:
     """Read mute config from disk, cached. Returns _DEFAULT_MUTE_CONFIG when
     the file is missing or malformed (fail-open: no muting on bad config)."""
-    global _MUTE_CACHE
+    global _MUTE_CACHE, _MUTE_STAMP
     with _MUTE_CACHE_LOCK:
-        if _MUTE_CACHE is not None:
+        stamp = _stamp(_MUTE_CONFIG_PATH)
+        if _MUTE_CACHE is not None and stamp == _MUTE_STAMP:
             return dict(_MUTE_CACHE)
+        _MUTE_STAMP = stamp
         try:
             with open(_MUTE_CONFIG_PATH) as f:
                 data = json.load(f)
@@ -330,10 +347,28 @@ def _load_mute_config() -> dict:
 
 
 def _refresh_mute_cache() -> None:
-    """Invalidate the mute-config cache. Tests + future setter API call this."""
+    """Invalidate the mute-config cache. Tests + the setter call this."""
     global _MUTE_CACHE
     with _MUTE_CACHE_LOCK:
         _MUTE_CACHE = None
+
+
+def set_muted(skill_name: str, muted: bool) -> dict:
+    """Mute or unmute a skill's triggers (UI P3.7). The file is written whole, as its
+    contract says (no merge with defaults), starting from what is in effect now, so the
+    default mute stays unless this very skill is unmuted. Atomic, owner-only."""
+    import codec_jsonstore
+    with codec_jsonstore.file_lock(_MUTE_CONFIG_PATH):
+        _refresh_mute_cache()
+        cfg = _load_mute_config()
+        skills = [s for s in cfg.get("muted_skills", []) if s != skill_name]
+        until = {k: v for k, v in (cfg.get("muted_until") or {}).items() if k != skill_name}
+        if muted:
+            skills.append(skill_name)
+        new = {"muted_skills": sorted(set(skills)), "muted_until": until}
+        codec_jsonstore.atomic_write_json(_MUTE_CONFIG_PATH, new)
+    _refresh_mute_cache()
+    return new
 
 
 def _parse_iso8601(ts: str) -> Optional[datetime]:
