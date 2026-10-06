@@ -53,7 +53,7 @@ strict consent) are add-only. No personal data in the repo. No emoji in the UI.
 | 20 | P2.13: Accessibility baseline | M | no | done (#423) |
 | 21 | P2.15: Readable Cortex and Audit | M | no | done (#430) |
 | 22 | P3.2: One Inbox for approvals, questions, reports and agent updates | M | no | done (#431) |
-| 23 | P3.4: 'Today' home instead of the Flash log | L | no | open |
+| 23 | P3.4: 'Today' home instead of the Flash log | L | no | PR open (#432), needs Mac test |
 | 24 | P3.6: Skills page: browse, try, check readiness | M | no | open |
 | 25 | P3.7: 'CODEC is watching' indicator with pause | M | no | open |
 | 26 | P3.8: Activity board for projects and background jobs | M | no | open |
