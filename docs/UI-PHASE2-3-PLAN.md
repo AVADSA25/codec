@@ -47,7 +47,7 @@ strict consent) are add-only. No personal data in the repo. No emoji in the UI.
 | 14 | P2.4: Memory page: see, correct and forget what CODEC remembers | M | no | done (#416) |
 | 15 | P2.6: Styled menus and sheets instead of native select, confirm, prompt and alert | M | no | done (#417) |
 | 16 | P2.7: Keep regenerated versions and add thumbs feedback | M | no | done (#418) |
-| 17 | P2.10: Settings with human labels, help text and proper controls | M | no | PR open (#419), needs Mac test |
+| 17 | P2.10: Settings with human labels, help text and proper controls | M | no | done (#419) |
 | 18 | P2.11: Temporary chat that is not saved to history or memory | M | no | open |
 | 19 | P2.12: Thumbnails for attachments and a lightbox | M | no | open |
 | 20 | P2.13: Accessibility baseline | M | no | open |
