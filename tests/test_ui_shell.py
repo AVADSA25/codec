@@ -21,9 +21,8 @@ REPO = Path(__file__).resolve().parent.parent
 SHELL = REPO / "static" / "codec-shell.js"
 CSS = (REPO / "static" / "codec.css").read_text(encoding="utf-8")
 PAGES = {"codec_dashboard.html": "home", "codec_chat.html": "chat", "codec_voice.html": "voice",
-         "codec_vibe.html": "vibe", "codec_tasks.html": "tasks", "codec_cortex.html": "cortex",
-         "codec_audit.html": "audit"}
-SCALED = ["codec_voice.html", "codec_vibe.html", "codec_cortex.html", "codec_audit.html", "codec_auth.html"]
+         "codec_vibe.html": "vibe", "codec_tasks.html": "tasks", "codec_cortex.html": "cortex"}
+SCALED = ["codec_voice.html", "codec_vibe.html", "codec_cortex.html", "codec_auth.html"]  # codec_audit.html retired in P2.15
 
 
 def _src(name: str) -> str:

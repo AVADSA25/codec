@@ -1723,7 +1723,7 @@
     { label: 'Skills', href: '/#skills', icon: 'tool' },
     { label: 'Connections', href: '/#connector', icon: 'plug' },
     { label: 'Cortex', href: '/cortex', icon: 'monitor' },
-    { label: 'Audit', href: '/audit', icon: 'doc' }
+    { label: 'Audit', href: '/#audit', icon: 'doc' }
   ]);
   function palEl() {
     if (PAL.el) return PAL.el;

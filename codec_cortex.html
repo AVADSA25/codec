@@ -21,8 +21,8 @@ body{background:radial-gradient(ellipse at 50% 30%,#0c0a14 0%,#060610 40%,var(--
 #hud{position:fixed;top:0;left:0;right:0;z-index:100;background:linear-gradient(180deg,rgba(5,5,8,.95),rgba(5,5,8,.6),transparent);padding:16px 24px 44px;pointer-events:none}
 #hud *{pointer-events:auto}
 #hud h1{font-size:var(--fs-14);letter-spacing:7px;color:var(--accent);text-transform:uppercase;font-weight:300}
-#hud .sub{font-size:calc(10px * var(--fs-scale));color:var(--dim);margin-top:3px;letter-spacing:2px}
-.back-link{color:var(--dim);text-decoration:none;font-size:calc(11px * var(--fs-scale));letter-spacing:1px;transition:color .2s;margin-bottom:4px;display:inline-block}
+#hud .sub{font-size:var(--fs-12);color:var(--dim);margin-top:3px;letter-spacing:2px}
+.back-link{color:var(--dim);text-decoration:none;font-size:var(--fs-12);letter-spacing:1px;transition:color .2s;margin-bottom:4px;display:inline-block}
 .back-link:hover{color:var(--accent)}
 #stats{position:fixed;top:64px;right:24px;z-index:100;display:flex;gap:16px;font-size:var(--fs-12)}
 .stat{display:flex;align-items:center;gap:6px}.stat .dot{width:8px;height:8px;border-radius:50%}
@@ -34,48 +34,48 @@ body{background:radial-gradient(ellipse at 50% 30%,#0c0a14 0%,#060610 40%,var(--
 #detail .info b{color:var(--text)}
 #detail .close{position:absolute;top:10px;right:20px;background:none;border:none;color:var(--dim);font-size:var(--fs-20);cursor:pointer;transition:color .2s}
 #detail .close:hover{color:var(--accent)}
-.legend{position:fixed;bottom:16px;right:20px;z-index:90;font-size:calc(9px * var(--fs-scale));color:var(--dim);display:flex;flex-direction:column;gap:3px;opacity:.7}
+.legend{position:fixed;bottom:16px;right:20px;z-index:90;font-size:var(--fs-12);color:var(--dim);display:flex;flex-direction:column;gap:3px;opacity:.7}
 .legend-item{display:flex;align-items:center;gap:6px}
 .legend-dot{width:10px;height:10px;border-radius:50%;border:1.5px solid}
-.zone-label{font-size:calc(10px * var(--fs-scale));letter-spacing:3px;text-transform:uppercase;fill:currentColor;opacity:.15;font-weight:300}
+.zone-label{font-size:var(--fs-12);letter-spacing:3px;text-transform:uppercase;fill:currentColor;opacity:.15;font-weight:300}
 svg text{font-family:'IBM Plex Sans',-apple-system,system-ui,sans-serif}
 @keyframes flowDash{to{stroke-dashoffset:-20}}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 #skills-panel{position:fixed;left:0;top:0;bottom:0;width:320px;z-index:100;background:linear-gradient(90deg,rgba(5,5,8,.98) 80%,transparent);padding:70px 20px 20px;transform:translateX(-100%);transition:transform .35s cubic-bezier(.22,1,.36,1);overflow-y:auto}
 #skills-panel.open{transform:translateX(0)}
-#skills-panel h2{font-size:calc(11px * var(--fs-scale));letter-spacing:4px;color:var(--accent);text-transform:uppercase;margin-bottom:12px}
+#skills-panel h2{font-size:var(--fs-12);letter-spacing:4px;color:var(--accent);text-transform:uppercase;margin-bottom:12px}
 #skills-panel .close{position:absolute;top:16px;right:16px;background:none;border:none;color:var(--dim);font-size:calc(18px * var(--fs-scale));cursor:pointer}
 #skills-panel .close:hover{color:var(--accent)}
-.skill-item{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;font-size:calc(11px * var(--fs-scale));color:var(--dim);transition:background .15s;cursor:default}
+.skill-item{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;font-size:var(--fs-12);color:var(--dim);transition:background .15s;cursor:default}
 .skill-item:hover{background:rgba(217,119,87,.06);color:var(--text)}
 .skill-dot{width:6px;height:6px;border-radius:50%;background:var(--green);flex-shrink:0}
 .skill-name{color:var(--text);font-weight:500;flex:1}
-.skill-triggers{font-size:calc(9px * var(--fs-scale));color:var(--dim);opacity:.6;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.skill-count{font-size:calc(10px * var(--fs-scale));color:var(--dim);margin-bottom:10px;letter-spacing:1px}
-.skill-search{width:100%;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:6px 10px;color:var(--text);font-size:calc(11px * var(--fs-scale));margin-bottom:12px;}
+.skill-triggers{font-size:var(--fs-12);color:var(--dim);opacity:.6;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.skill-count{font-size:var(--fs-12);color:var(--dim);margin-bottom:10px;letter-spacing:1px}
+.skill-search{width:100%;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:6px 10px;color:var(--text);font-size:var(--fs-12);margin-bottom:12px;}
 .skill-search:focus{border-color:var(--accent)}
 .skill-search::placeholder{color:var(--dim)}
-#settings-float{position:fixed;bottom:20px;left:20px;z-index:90;background:rgba(5,5,8,.85);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:12px 16px;font-size:calc(10px * var(--fs-scale));color:var(--dim);line-height:1.8;backdrop-filter:blur(10px);max-width:220px}
+#settings-float{position:fixed;bottom:20px;left:20px;z-index:90;background:rgba(5,5,8,.85);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:12px 16px;font-size:var(--fs-12);color:var(--dim);line-height:1.8;backdrop-filter:blur(10px);max-width:220px}
 #settings-float b{color:var(--text);font-weight:500}
 #settings-float .setting-row{display:flex;justify-content:space-between;gap:8px}
 #settings-float .setting-val{color:var(--accent);text-align:right;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#settings-float h3{font-size:calc(9px * var(--fs-scale));letter-spacing:3px;color:var(--accent);text-transform:uppercase;margin-bottom:6px;opacity:.7}
-#last-check{font-size:calc(10px * var(--fs-scale));color:var(--dim);opacity:.5}
+#settings-float h3{font-size:var(--fs-12);letter-spacing:3px;color:var(--accent);text-transform:uppercase;margin-bottom:6px;opacity:.7}
+#last-check{font-size:var(--fs-12);color:var(--dim);opacity:.5}
 .detail-actions{display:flex;gap:8px;margin:12px 0}
-.detail-btn{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:5px 12px;color:var(--text);font-size:calc(10px * var(--fs-scale));cursor:pointer;transition:all .2s;letter-spacing:1px}
+.detail-btn{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:5px 12px;color:var(--text);font-size:var(--fs-12);cursor:pointer;transition:all .2s;letter-spacing:1px}
 .detail-btn:hover{background:rgba(217,119,87,.1);border-color:var(--accent);color:var(--accent)}
 .detail-btn.danger{border-color:rgba(255,61,61,.3)}
 .detail-btn.danger:hover{background:rgba(255,61,61,.1);border-color:var(--red);color:var(--red)}
 .detail-btn.success{border-color:rgba(0,230,118,.3)}
 .detail-btn.success:hover{background:rgba(0,230,118,.1);border-color:var(--green);color:var(--green)}
 .detail-btn:disabled{opacity:.3;cursor:not-allowed}
-#logViewer{background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.05);border-radius:6px;padding:10px;margin-top:10px;font-family:'IBM Plex Mono','SF Mono',monospace;font-size:calc(9px * var(--fs-scale));color:var(--dim);line-height:1.6;max-height:200px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;display:none}
+#logViewer{background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.05);border-radius:6px;padding:10px;margin-top:10px;font-family:'IBM Plex Mono','SF Mono',monospace;font-size:var(--fs-12);color:var(--dim);line-height:1.6;max-height:200px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;display:none}
 #logViewer.open{display:block}
 .detail-status-bar{display:flex;align-items:center;gap:8px;margin-bottom:8px}
 .detail-status-dot{width:10px;height:10px;border-radius:50%;animation:pulse 2s infinite}
 /* View switcher */
 #viewSwitch{position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:300;display:flex;gap:0;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;overflow:hidden}
-.vs-btn{padding:6px 16px;font-size:calc(10px * var(--fs-scale));letter-spacing:2px;color:var(--dim);cursor:pointer;transition:all .2s;border:none;background:none;text-transform:uppercase;font-family:inherit}
+.vs-btn{padding:6px 16px;font-size:var(--fs-12);letter-spacing:2px;color:var(--dim);cursor:pointer;transition:all .2s;border:none;background:none;text-transform:uppercase;font-family:inherit}
 .vs-btn.active{background:var(--accent);color:var(--on-accent);font-weight:600}
 .vs-btn:hover:not(.active){background:rgba(255,255,255,.06);color:var(--text)}
 /* Products view */
@@ -89,15 +89,15 @@ svg text{font-family:'IBM Plex Sans',-apple-system,system-ui,sans-serif}
 .pc-header{display:flex;align-items:center;gap:10px;margin-bottom:10px}
 .pc-icon{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:calc(18px * var(--fs-scale))}
 .pc-title{font-size:var(--fs-14);font-weight:600;color:var(--text);letter-spacing:1px}
-.pc-subtitle{font-size:calc(10px * var(--fs-scale));color:var(--dim);letter-spacing:1px}
-.pc-desc{font-size:calc(11px * var(--fs-scale));color:var(--dim);line-height:1.7;margin-bottom:12px}
+.pc-subtitle{font-size:var(--fs-12);color:var(--dim);letter-spacing:1px}
+.pc-desc{font-size:var(--fs-12);color:var(--dim);line-height:1.7;margin-bottom:12px}
 .pc-features{display:flex;flex-wrap:wrap;gap:5px}
-.pc-feat{font-size:calc(9px * var(--fs-scale));padding:3px 8px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:4px;color:var(--dim);letter-spacing:.5px}
+.pc-feat{font-size:var(--fs-12);padding:3px 8px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:4px;color:var(--dim);letter-spacing:.5px}
 .pc-feat:hover{border-color:var(--accent);color:var(--accent)}
 .pc-status{position:absolute;top:16px;right:16px;width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green)}
 .products-header{text-align:center;margin-bottom:30px}
 .products-header h2{font-size:var(--fs-12);letter-spacing:6px;color:var(--accent);text-transform:uppercase;margin-bottom:4px}
-.products-header p{font-size:calc(10px * var(--fs-scale));color:var(--dim);letter-spacing:2px}
+.products-header p{font-size:var(--fs-12);color:var(--dim);letter-spacing:2px}
 /* Light theme overrides */
 [data-theme="light"]{--bg:#f5f3ef;--text:#1a1a2e;--dim:#888}
 [data-theme="light"] body{background:radial-gradient(ellipse at 50% 30%,#faf8f5 0%,#f0ede8 40%,#e8e5e0 70%);color:var(--text)}
@@ -137,33 +137,57 @@ svg text{font-family:'IBM Plex Sans',-apple-system,system-ui,sans-serif}
 [data-theme="light"] svg g path{stroke-opacity:1}
 [data-theme="light"] #productsView{background:var(--bg)}
 [data-theme="light"] .grid-rect{opacity:0}
-.pc-expand-btn{background:none;border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:4px 10px;color:var(--dim);font-size:calc(9px * var(--fs-scale));cursor:pointer;transition:all .2s;margin-top:10px;letter-spacing:1px}
+.pc-expand-btn{background:none;border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:4px 10px;color:var(--dim);font-size:var(--fs-12);cursor:pointer;transition:all .2s;margin-top:10px;letter-spacing:1px}
 .pc-expand-btn:hover{border-color:var(--accent);color:var(--accent)}
-.pc-details{display:none;margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.06);font-size:calc(10px * var(--fs-scale));color:var(--dim);line-height:1.8}
+.pc-details{display:none;margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.06);font-size:var(--fs-12);color:var(--dim);line-height:1.8}
 .pc-details.open{display:block}
 .pc-details b{color:var(--text);font-weight:500}
 .pc-detail-section{margin-bottom:8px}
-.pc-detail-section h4{font-size:calc(9px * var(--fs-scale));letter-spacing:2px;color:var(--accent);text-transform:uppercase;margin-bottom:4px;opacity:.7}
+.pc-detail-section h4{font-size:var(--fs-12);letter-spacing:2px;color:var(--accent);text-transform:uppercase;margin-bottom:4px;opacity:.7}
 [data-theme="light"] .pc-expand-btn{border-color:rgba(0,0,0,.1)}
 [data-theme="light"] .pc-details{border-top-color:rgba(0,0,0,.08)}
-#activity-feed{position:fixed;bottom:20px;right:180px;z-index:90;width:260px;max-height:200px;overflow-y:auto;background:rgba(5,5,8,.85);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:10px;backdrop-filter:blur(10px);font-size:calc(9px * var(--fs-scale));font-family:'IBM Plex Mono','SF Mono',monospace}
-#activity-feed h3{font-size:calc(8px * var(--fs-scale));letter-spacing:3px;color:var(--accent);text-transform:uppercase;margin-bottom:6px;opacity:.7}
+#activity-feed{position:fixed;bottom:20px;right:180px;z-index:90;width:260px;max-height:200px;overflow-y:auto;background:rgba(5,5,8,.85);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:10px;backdrop-filter:blur(10px);font-size:var(--fs-12);font-family:'IBM Plex Mono','SF Mono',monospace}
+#activity-feed h3{font-size:var(--fs-12);letter-spacing:3px;color:var(--accent);text-transform:uppercase;margin-bottom:6px;opacity:.7}
 .af-item{padding:3px 0;color:var(--dim);border-bottom:1px solid rgba(255,255,255,.03);display:flex;gap:6px;align-items:baseline}
 .af-time{color:var(--accent);opacity:.5;flex-shrink:0}
 .af-msg{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .af-new{animation:afFadeIn .3s ease}
 @keyframes afFadeIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
 [data-theme="light"] #activity-feed{background:rgba(245,243,239,.9);border-color:rgba(0,0,0,.08)}
+/* P2.15: zoom buttons beside the map */
+#zoomCtl{position:fixed;top:104px;right:24px;z-index:100;display:flex;flex-direction:column;gap:6px}
+#zoomCtl button{width:36px;height:36px;display:flex;align-items:center;justify-content:center;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:rgba(5,5,8,.85);color:var(--text);cursor:pointer;transition:border-color .2s,color .2s}
+#zoomCtl button:hover{border-color:var(--accent);color:var(--accent)}
+#zoomCtl button:focus-visible{outline:none;box-shadow:var(--focus-ring)}
+[data-theme="light"] #zoomCtl button{background:rgba(245,243,239,.95);border-color:rgba(0,0,0,.12);color:#333}
+/* Config, Live activity and the legend: where they were on a desktop; one collapsed bottom sheet on a phone */
+#cxPanels{display:contents}
+#cxPanelsBtn{display:none}
+@media (max-width:767px){
+  #stats{top:104px;left:12px;right:auto}
+  #zoomCtl{top:104px;right:12px}
+  #detail,#skills-panel{background:var(--bg);border-radius:16px 16px 0 0;box-shadow:0 -8px 24px rgba(0,0,0,.35);padding:20px 16px calc(16px + env(safe-area-inset-bottom,0px));z-index:160}
+  #detail{max-height:65vh}
+  #skills-panel{top:auto;left:0;right:0;bottom:0;width:auto;max-height:70vh;transform:translateY(100%)}
+  #skills-panel.open{transform:translateY(0)}
+  #cxPanels{display:block;position:fixed;left:0;right:0;bottom:0;z-index:95;max-height:55vh;overflow-y:auto;background:var(--bg);border-top:1px solid rgba(255,255,255,.08);border-radius:16px 16px 0 0;transform:translateY(calc(100% - 48px));transition:transform .3s ease}
+  #cxPanels.open{transform:translateY(0)}
+  #cxPanelsBtn{display:flex;align-items:center;justify-content:space-between;width:100%;height:48px;padding:0 16px;background:none;border:0;color:var(--text);font:600 var(--fs-13)/1 'IBM Plex Sans',-apple-system,system-ui,sans-serif;cursor:pointer}
+  #cxPanelsBtn svg{transition:transform .2s}
+  #cxPanels.open #cxPanelsBtn svg{transform:rotate(180deg)}
+  #cxPanels #settings-float,#cxPanels #activity-feed,#cxPanels .legend{position:static;width:auto;max-height:none;margin:0 12px 12px;opacity:1;backdrop-filter:none;-webkit-backdrop-filter:none}
+  [data-theme="light"] #cxPanels{border-top-color:rgba(0,0,0,.1)}
+}
 
 </style>
 </head>
 <body>
-<script src="/static/codec-shell.js?v=e273525f" data-page="cortex" data-title="Cortex"></script>
+<script src="/static/codec-shell.js?v=6330a55c" data-page="cortex" data-title="Cortex"></script>
 <div class="cs-main cortex-main">
 <div id="stats"></div>
 <div id="viewSwitch">
   <button class="vs-btn active" onclick="switchView('neural')">Neural Map</button>
-  <button class="vs-btn" onclick="switchView('products')">7 Products</button>
+  <button class="vs-btn" id="vsProducts" onclick="switchView('products')">Products</button>
 </div>
 <svg id="cortex" xmlns="http://www.w3.org/2000/svg"></svg>
 <div id="productsView"></div>
@@ -175,6 +199,13 @@ svg text{font-family:'IBM Plex Sans',-apple-system,system-ui,sans-serif}
   <div class="skill-count" id="skillCount"></div>
   <div id="skillList"></div>
 </div>
+<div id="zoomCtl" role="group" aria-label="Zoom">
+  <button type="button" onclick="zoomBy(1.25)" aria-label="Zoom in" title="Zoom in"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+  <button type="button" onclick="zoomBy(0.8)" aria-label="Zoom out" title="Zoom out"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+  <button type="button" onclick="fitToScreen()" aria-label="Fit to screen" title="Fit to screen"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+</div>
+<div id="cxPanels">
+<button type="button" id="cxPanelsBtn" aria-expanded="false" onclick="togglePanels()">Config, activity and legend<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg></button>
 <div id="settings-float">
   <h3>Config</h3>
   <div id="settingsContent">Loading...</div>
@@ -184,6 +215,7 @@ svg text{font-family:'IBM Plex Sans',-apple-system,system-ui,sans-serif}
   <div id="activityList"><div class="af-item"><span class="af-time">--:--</span><span class="af-msg">Waiting for events...</span></div></div>
 </div>
 <div class="legend" id="legend"></div>
+</div>
 </div>
 
 <script>
@@ -251,7 +283,7 @@ var ICONS = {
 var NODES = [
   // ─── BRAIN (top center) — Intelligence & Reasoning ───
   {id:'qwen',label:'Qwen LLM',x:550,y:130,r:40,color:'#d97757',icon:'brain',category:'brain',zone:'brain',
-   info:'Qwen 3.6 35B (4-bit MLX). Main language model — all reasoning, conversation, skill routing.',file:'mlx_vlm.server',port:8083,health:'/v1/models'},
+   info:'{llm}. Main language model — all reasoning, conversation, skill routing.',file:'mlx_vlm.server',port:8083,health:'/v1/models'},
   {id:'llm_queue',label:'LLM Queue',x:450,y:100,r:18,color:'#666',icon:'layers',category:'brain',zone:'brain',
    info:'Priority queue: CRITICAL(voice) > HIGH(chat) > MEDIUM(agents) > LOW(background).',file:'codec_llm_proxy.py'},
   {id:'memory',label:'Memory',x:660,y:100,r:24,color:'#a78bfa',icon:'database',category:'brain',zone:'brain',
@@ -263,7 +295,7 @@ var NODES = [
 
   // ─── EYES (upper-left) — Vision & Screen Reading ───
   {id:'vision',label:'Vision VL',x:220,y:140,r:30,color:'#60a5fa',icon:'eye',category:'eyes',zone:'eyes',
-   info:'Qwen2.5-VL-7B for screen reading, image analysis. Gemini Flash as cloud fallback.',file:'mlx_vlm.server',port:8083,health:'/v1/models'},
+   info:'{vision} for screen reading, image analysis. Gemini Flash as cloud fallback.',file:'mlx_vlm.server',port:8083,health:'/v1/models'},
   {id:'screenshot',label:'Screen **',x:140,y:100,r:18,color:'#60a5fa',icon:'monitor',category:'eyes',zone:'eyes',
    info:'Double-asterisk captures screen, reads via Vision, opens question dialog.',file:'codec.py'},
   {id:'document',label:'Doc ++',x:300,y:90,r:18,color:'#60a5fa',icon:'draft',category:'eyes',zone:'eyes',
@@ -311,7 +343,7 @@ var NODES = [
   {id:'dashboard',label:'Dashboard',x:550,y:500,r:34,color:'#60a5fa',icon:'spine',category:'spine',zone:'spine',
    info:'FastAPI server. Serves all UIs, API endpoints, WebSocket. Auth + E2E encryption.',file:'codec_dashboard.py',port:8090,health:'/api/health'},
   {id:'chat',label:'Chat UI',x:420,y:530,r:20,color:'#60a5fa',icon:'chat',category:'spine',zone:'spine',
-   info:'/chat — Conversational interface. 89 skills, streaming, vision, memory search.',file:'codec_chat.html'},
+   info:'/chat — Conversational interface. {skills} skills, streaming, vision, memory search.',file:'codec_chat.html'},
   {id:'voice_ws',label:'Voice WS',x:680,y:530,r:20,color:'#60a5fa',icon:'mic',category:'spine',zone:'spine',
    info:'/ws/voice — WebSocket voice pipeline. VAD, interruption, streaming TTS.',file:'codec_voice.py'},
   {id:'vibe',label:'Vibe IDE',x:550,y:580,r:18,color:'#60a5fa',icon:'globe',category:'spine',zone:'spine',
@@ -441,6 +473,49 @@ var ZONES = [
   {label:'External',x:220,y:480,color:'#22c55e'},
 ];
 
+// ── P2.15: escaping, live text, the Open link, zoom buttons, the phone sheet ──
+// Text from the API (skill names, triggers, config values, log lines) goes into the page escaped.
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+// Counts and model names come from the API: {skills}, {crews}, {llm} and {vision} in the text above.
+var LIVE = { skills: null, crews: null, llm: null, vision: null };
+function live(s) {
+  return String(s)
+    .replace(/\{skills\}/g, LIVE.skills != null ? esc(LIVE.skills) : 'all')
+    .replace(/\{crews\}/g, LIVE.crews != null ? esc(LIVE.crews) : 'all')
+    .replace(/\{llm\}/g, LIVE.llm ? esc(LIVE.llm) : 'The language model')
+    .replace(/\{vision\}/g, LIVE.vision ? esc(LIVE.vision) : 'The vision model');
+}
+// A service's own port on the host this page came from. Through a tunnel host those ports are
+// not reachable, so there is no link (null).
+function serviceUrl(port) {
+  var h = location.hostname || '';
+  var direct = h === 'localhost' || /^\d{1,3}(\.\d{1,3}){3}$/.test(h) || /^\[?[0-9a-f]*:[0-9a-f:.]*\]?$/i.test(h) || /\.local$/i.test(h);
+  if (!direct) return null;
+  if (h.indexOf(':') !== -1 && h.charAt(0) !== '[') h = '[' + h + ']';
+  return 'http://' + h + ':' + port + '/';
+}
+// Zoom around the middle of the view (the wheel and pinch keep working).
+function zoomBy(f) {
+  var w = svg.clientWidth || window.innerWidth, h = svg.clientHeight || window.innerHeight;
+  var s2 = Math.max(.15, Math.min(3, pan.scale * f)), k = s2 / pan.scale;
+  pan.x = w / 2 - (w / 2 - pan.x) * k;
+  pan.y = h / 2 - (h / 2 - pan.y) * k;
+  pan.scale = s2;
+  render();
+}
+// Phone: Config, Live activity and the legend share one bottom sheet that opens from its bar.
+function togglePanels(force) {
+  var p = document.getElementById('cxPanels'), b = document.getElementById('cxPanelsBtn');
+  var open = typeof force === 'boolean' ? force : !p.classList.contains('open');
+  p.classList.toggle('open', open);
+  b.setAttribute('aria-expanded', String(open));
+}
+function showPanels(on) { document.getElementById('cxPanels').style.display = on ? '' : 'none'; }
+
 // ── State ──
 var svg = document.getElementById('cortex');
 var pan = {x:0,y:0,scale:1,dragging:false,startX:0,startY:0};
@@ -564,7 +639,8 @@ function showDetail(id) {
   var actionsHtml = '<div class="detail-actions">';
   if (hasLogs) actionsHtml += '<button class="detail-btn" onclick="viewLogs(\''+id+'\')">View Logs</button>';
   if (restartable) actionsHtml += '<button class="detail-btn success" onclick="restartService(\''+id+'\')">Restart</button>';
-  if (n.port) actionsHtml += '<a class="detail-btn" href="http://localhost:'+n.port+'/" target="_blank">Open :'+n.port+'</a>';
+  var su = n.port ? serviceUrl(n.port) : null;
+  if (su) actionsHtml += '<a class="detail-btn" href="'+su+'" target="_blank" rel="noopener">Open :'+n.port+'</a>';
   actionsHtml += '</div>';
 
   document.getElementById('detailInfo').innerHTML =
@@ -572,20 +648,16 @@ function showDetail(id) {
     '<b>Zone:</b> '+(n.zone||'-').charAt(0).toUpperCase()+(n.zone||'').slice(1)+'<br>'+
     '<b>File:</b> '+n.file+'<br>'+
     (n.port?'<b>Port:</b> '+n.port+'<br>':'')+
-    '<b>Info:</b> '+n.info+'<br>'+
+    '<b>Info:</b> '+live(n.info)+'<br>'+
     '<b>Connections:</b> '+conns.length+'<br>'+
     actionsHtml+
     '<div id="logViewer"></div>';
   d.classList.add('open');
-  document.getElementById('settings-float').style.display='none';
-  document.getElementById('activity-feed').style.display='none';
-  document.getElementById('legend').style.display='none';
+  showPanels(false);
 }
 function closeDetail(){
   document.getElementById('detail').classList.remove('open');
-  document.getElementById('settings-float').style.display='';
-  document.getElementById('activity-feed').style.display='';
-  document.getElementById('legend').style.display='';
+  showPanels(true);
 }
 
 function viewLogs(id) {
@@ -700,10 +772,13 @@ var allSkills = [];
 function loadSkills() {
   fetch('/api/cortex/skills').then(function(r){return r.json();}).then(function(data) {
     allSkills = data.skills || [];
+    LIVE.skills = data.count;
+    if (data.crew_count != null) LIVE.crews = data.crew_count;
     // Update the Skills node label with real count
     var skillNode = nodeMap['skills'];
     if (skillNode) { skillNode.label = 'Skills x' + data.count; render(); }
     renderSkillsList(allSkills);
+    if (document.getElementById('productsView').classList.contains('open')) renderProducts();
   }).catch(function(){});
 }
 
@@ -711,7 +786,7 @@ function renderSkillsList(skills) {
   var html = '';
   skills.forEach(function(s) {
     var triggers = (s.triggers || []).slice(0, 3).join(', ');
-    html += '<div class="skill-item"><span class="skill-dot"></span><span class="skill-name">' + s.name + '</span><span class="skill-triggers">' + triggers + '</span></div>';
+    html += '<div class="skill-item"><span class="skill-dot"></span><span class="skill-name">' + esc(s.name) + '</span><span class="skill-triggers">' + esc(triggers) + '</span></div>';
   });
   document.getElementById('skillList').innerHTML = html;
   document.getElementById('skillCount').textContent = skills.length + ' skills loaded';
@@ -734,10 +809,10 @@ function closeSkills() { document.getElementById('skills-panel').classList.remov
 // ── Product Frames ──
 var PRODUCTS = [
   {name:'CODEC Core',subtitle:'The Command Layer',icon:'mic',color:'#d97757',
-   desc:'Always-on voice assistant. Say "Hey CODEC" or press F13 to activate. F18 for voice commands. F16 for text input. 89 skills fire instantly — most bypass the LLM entirely. Direct action, zero latency.',
-   features:['F13 Toggle','F18 Voice','F16 Text','Hey CODEC Wake','89 Skills','Google Calendar','Gmail','Drive','Docs','Sheets','Tasks','Keep','Chrome','Web Search','Hue Lights','Timers','Spotify','Clipboard','Terminal','Memory FTS5'],
+   desc:'Always-on voice assistant. Say "Hey CODEC" or press F13 to activate. F18 for voice commands. F16 for text input. {skills} skills fire instantly — most bypass the LLM entirely. Direct action, zero latency.',
+   features:['F13 Toggle','F18 Voice','F16 Text','Hey CODEC Wake','{skills} Skills','Google Calendar','Gmail','Drive','Docs','Sheets','Tasks','Keep','Chrome','Web Search','Hue Lights','Timers','Spotify','Clipboard','Terminal','Memory FTS5'],
    files:['codec.py','codec_core.py','codec_config.py'],status:'core',
-   details:{shortcuts:['F13 — Toggle on/off','F18 — Hold to record voice','F16 — Text input dialog','** — Screenshot + Vision','++ — Document analysis','-- — Quick chat'],skills:'89 built-in skills: Google Calendar, Gmail, Drive, Docs, Sheets, Tasks, Keep, Chrome automation, web search, Hue lights, clipboard, terminal commands, music, timers, calculator, weather, bitcoin, brightness, volume, app switch, mouse control, screenshot OCR. Most skills bypass the LLM entirely — direct action, zero latency.',memory:'FTS5-indexed SQLite. BM25 ranking. All conversations logged across all 7 products.',wake:'Always-on "Hey CODEC" via the desktop mic. Energy threshold: 200. Auto-activates and records follow-up.',files:['codec.py','codec_core.py','codec_config.py','codec_identity.py','skills/*.py']}},
+   details:{shortcuts:['F13 — Toggle on/off','F18 — Hold to record voice','F16 — Text input dialog','** — Screenshot + Vision','++ — Document analysis','-- — Quick chat'],skills:'{skills} built-in skills: Google Calendar, Gmail, Drive, Docs, Sheets, Tasks, Keep, Chrome automation, web search, Hue lights, clipboard, terminal commands, music, timers, calculator, weather, bitcoin, brightness, volume, app switch, mouse control, screenshot OCR. Most skills bypass the LLM entirely — direct action, zero latency.',memory:'FTS5-indexed SQLite. BM25 ranking. All conversations logged across all 7 products.',wake:'Always-on "Hey CODEC" via the desktop mic. Energy threshold: 200. Auto-activates and records follow-up.',files:['codec.py','codec_core.py','codec_config.py','codec_identity.py','skills/*.py']}},
   {name:'CODEC Dictate',subtitle:'Hold, Speak, Paste',icon:'draft',color:'#34d399',
    desc:'Hold a key. Say what you mean. Release. Text appears wherever the cursor is. If CODEC detects a message draft, it refines through the LLM — grammar fixed, tone polished, meaning preserved. Works in every app on macOS. A free, open-source SuperWhisper replacement that runs entirely local.',
    features:['Hold to Record','Whisper STT','LLM Refinement','Auto-Paste','Any macOS App','Grammar Fix','Tone Polish','Draft Detection'],
@@ -748,9 +823,9 @@ var PRODUCTS = [
    features:['Proofread','Elevate','Explain','Translate','Reply','Read Aloud','Save','Prompt','System-wide','Any App'],
    files:['codec_textassist.py'],status:'instant',
    details:{services:['Proofread — Fix grammar and spelling','Elevate — Improve writing quality','Explain — Break down complex text','Translate — Multi-language translation','Reply — Generate contextual replies with :tone syntax','Read Aloud — Kokoro TTS on selected text','Save — Store to memory','Prompt — Custom AI prompt on selection'],how:'System-wide macOS Services menu. Select text → right-click → CODEC.',files:['codec_textassist.py']}},
-  {name:'CODEC Chat',subtitle:'250K Context + 12 Agent Crews',icon:'chat',color:'#a78bfa',
-   desc:'Full conversational AI. Long context. File uploads. Image analysis via vision model. Web search. 12 autonomous agent crews — not single prompts, full multi-step workflows. Schedule any crew on a cron.',
-   features:['250K Context','File Upload','Image Analysis','Web Search','12 Agent Crews','Streaming','Skill Execution','Voice Reply','Memory Search','Code Blocks','Thinking Mode'],
+  {name:'CODEC Chat',subtitle:'250K Context + {crews} Agent Crews',icon:'chat',color:'#a78bfa',
+   desc:'Full conversational AI. Long context. File uploads. Image analysis via vision model. Web search. {crews} autonomous agent crews — not single prompts, full multi-step workflows. Schedule any crew on a cron.',
+   features:['250K Context','File Upload','Image Analysis','Web Search','{crews} Agent Crews','Streaming','Skill Execution','Voice Reply','Memory Search','Code Blocks','Thinking Mode'],
    files:['codec_chat.html','codec_dashboard.py'],status:'chat',
    details:{agents:'Deep Research (10,000-word report → Google Docs), Daily Briefing (morning news + calendar), Competitor Analysis (SWOT + positioning), Trip Planner (full itinerary), Email Handler (triage inbox, draft replies), Social Media (posts for Twitter, LinkedIn, Instagram), Code Review (bugs + security), Data Analysis (trends + insights), Content Writer (blog posts, articles), Meeting Summarizer (action items), Invoice Generator (professional invoices), Project Manager (status report from Calendar, Gmail, Drive, Tasks → Google Docs)',features:'250K context, file uploads (PDF/image/text), web search with Serper API, skill execution, streaming responses, voice reply toggle, thinking mode toggle, memory search. Multi-agent framework under 800 lines. Zero dependencies. No CrewAI. No LangChain.',scheduling:'Schedule any crew: "Run competitor analysis every Monday at 9am"',port:'8090 (/chat)',files:['codec_chat.html','codec_dashboard.py','routes/agents.py','codec_agents.py']}},
   {name:'CODEC Vibe',subtitle:'AI Coding IDE',icon:'cpu',color:'#f59e0b',
@@ -766,7 +841,7 @@ var PRODUCTS = [
   {name:'CODEC Overview',subtitle:'Dashboard + Cortex + Audit',icon:'monitor',color:'#668080',
    desc:'Private dashboard accessible from any device, anywhere. Cloudflare Tunnel or Tailscale VPN — no port forwarding, no third-party relay. Cortex neural map, real-time activity feed, full audit trail across 16 categories.',
    features:['Dashboard :8090','Cloudflare Tunnel','Tailscale VPN','MCP Server','Task Scheduler','Heartbeat Monitor','Cortex Visualizer','Audit Stream','Prometheus Metrics','Remote Approval','PM2 Process Manager','Skill Marketplace'],
-   files:['codec_dashboard.py','codec_cortex.html','codec_audit.html'],status:'overview',
+   files:['codec_dashboard.py','codec_cortex.html','codec_dashboard.html'],status:'overview',
    details:{how:'75+ API endpoints. Send commands, view the screen, launch voice calls, manage agents — all from a browser. Installable as PWA on mobile and desktop.',features:'Project mode (drop a project, approve the plan once, the codec-agent-runner daemon executes autonomously for hours), Cortex neural map, real-time activity feed, searchable skills panel, event log viewer. Audit: 16 categories, filterable, colored timeline, JSON-line storage with daily rotation, 30-day retention.',port:'8090',files:['codec_dashboard.py','codec_dashboard.html','codec_cortex.html','codec_audit.html']}},
 ];
 
@@ -776,17 +851,15 @@ function switchView(view) {
   if (view === 'products') {
     btns[1].classList.add('active');
     document.getElementById('cortex').style.display = 'none';
-    document.getElementById('settings-float').style.display = 'none';
-    document.getElementById('activity-feed').style.display = 'none';
-    document.getElementById('legend').style.display = 'none';
+    showPanels(false);
+    document.getElementById('zoomCtl').style.display = 'none';
     document.getElementById('productsView').classList.add('open');
     renderProducts();
   } else {
     btns[0].classList.add('active');
     document.getElementById('cortex').style.display = '';
-    document.getElementById('settings-float').style.display = '';
-    document.getElementById('activity-feed').style.display = '';
-    document.getElementById('legend').style.display = '';
+    showPanels(true);
+    document.getElementById('zoomCtl').style.display = '';
     document.getElementById('productsView').classList.remove('open');
   }
 }
@@ -798,7 +871,7 @@ function pcIconSvg(name, color) {
   return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="'+color+'" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="'+d+'"/></svg>';
 }
 function renderProducts() {
-  var html = '<div class="products-header"><h2>7 Products &middot; One Framework</h2><p>Every capability of the CODEC ecosystem</p></div>';
+  var html = '<div class="products-header"><h2>'+PRODUCTS.length+' Products &middot; One Framework</h2><p>Every capability of the CODEC ecosystem</p></div>';
   html += '<div class="products-grid">';
   PRODUCTS.forEach(function(p) {
     html += '<div class="product-card">';
@@ -859,7 +932,7 @@ function renderProducts() {
   });
   html += '</div></div>';
   html += '</div>';
-  document.getElementById('productsView').innerHTML = html;
+  document.getElementById('productsView').innerHTML = live(html);
 }
 
 // ── Settings Float ──
@@ -870,12 +943,15 @@ function loadSettings() {
     var stt = cfg.stt || {};
     var wake = cfg.wake || {};
     var model = (llm.llm_model || 'unknown').split('/').pop();
+    if (llm.llm_model) LIVE.llm = model;
+    var vm = ((cfg.vision || {}).vision_model || '').split('/').pop();
+    if (vm) LIVE.vision = vm;
     var html = '';
-    html += '<div class="setting-row"><b>LLM</b><span class="setting-val">' + model + '</span></div>';
-    html += '<div class="setting-row"><b>Voice</b><span class="setting-val">' + (tts.tts_voice || '?') + '</span></div>';
-    html += '<div class="setting-row"><b>STT</b><span class="setting-val">' + (stt.stt_engine || '?') + '</span></div>';
+    html += '<div class="setting-row"><b>LLM</b><span class="setting-val">' + esc(model) + '</span></div>';
+    html += '<div class="setting-row"><b>Voice</b><span class="setting-val">' + esc(tts.tts_voice || '?') + '</span></div>';
+    html += '<div class="setting-row"><b>STT</b><span class="setting-val">' + esc(stt.stt_engine || '?') + '</span></div>';
     html += '<div class="setting-row"><b>Wake</b><span class="setting-val">' + (wake.wake_word_enabled ? 'ON' : 'OFF') + '</span></div>';
-    html += '<div class="setting-row"><b>TTS</b><span class="setting-val">' + (tts.tts_engine || '?') + '</span></div>';
+    html += '<div class="setting-row"><b>TTS</b><span class="setting-val">' + esc(tts.tts_engine || '?') + '</span></div>';
     document.getElementById('settingsContent').innerHTML = html;
   }).catch(function(){ document.getElementById('settingsContent').textContent = 'Offline'; });
 }
@@ -909,7 +985,7 @@ function pollActivity() {
         var time = timeMatch ? timeMatch[1].slice(0,5) : '--:--';
         var msg = line.replace(/.*\[CODEC\]\s*/, '').replace(/.*\[TTS\]\s*/, 'TTS: ').replace(/^\d+\|open-co\s*\|\s*/, '').trim();
         if (msg.length > 2) {
-          html += '<div class="af-item af-new"><span class="af-time">'+time+'</span><span class="af-msg">'+msg.substring(0,60)+'</span></div>';
+          html += '<div class="af-item af-new"><span class="af-time">'+esc(time)+'</span><span class="af-msg">'+esc(msg.substring(0,60))+'</span></div>';
         }
       });
       if (html) document.getElementById('activityList').innerHTML = html;
@@ -921,6 +997,7 @@ function pollActivity() {
 var lastCheckTime = 0;
 
 // ── Init ──
+document.getElementById('vsProducts').textContent = PRODUCTS.length + ' Products';
 render();
 checkHealth();
 setInterval(checkHealth, 15000);

@@ -388,7 +388,9 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
   padding: 4px 10px; border-radius: 12px; font-size: calc(12px * var(--fs-scale)); font-weight: 500;
   letter-spacing: 0.5px; cursor: pointer; border: 1px solid transparent;
   transition: all 0.15s; opacity: 0.45; user-select: none; text-transform: uppercase;
+  background: none; font-family: inherit; line-height: 1.2;
 }
+.audit-pill:focus-visible { outline: none; box-shadow: var(--focus-ring); opacity: 1; }
 .audit-pill.active { opacity: 1; }
 .audit-pill[data-cat="command"]  { color: #d97757; border-color: #d97757; }
 .audit-pill[data-cat="command"].active  { background: rgba(217,119,87,0.15); }
@@ -420,7 +422,12 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
 .audit-pill[data-cat="screenshot"].active, .audit-pill[data-cat="config"].active, .audit-pill[data-cat="draft"].active {
   background: rgba(120,144,156,0.15);
 }
-.audit-filter-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.audit-filter-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; flex-wrap: wrap; }
+@media (max-width: 767px) {
+  /* P2.15: range, search, Live and Verify wrap on a phone instead of pushing the page sideways */
+  .audit-filter-right { flex-shrink: 1; width: 100%; }
+  .audit-filter-right .audit-search-input { flex: 1; min-width: 120px; font-size: 16px; }
+}
 .audit-time-btns { display: none; }
 .audit-time-btn {
   padding: 4px 10px; font-size: calc(12px * var(--fs-scale)); font-weight: 500; border: none;
@@ -445,6 +452,21 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
 .audit-live-btn.active { border-color: #22c55e; color: #22c55e; background: rgba(34,197,94,0.08); }
 .audit-timeline-wrap { overflow-y: auto; }
 .audit-timeline { display: flex; flex-direction: column; }
+/* P2.15: each event opens its full record; older pages; the integrity check. */
+.audit-event[role="button"] { cursor: pointer; }
+.audit-event:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--accent-ring); }
+.audit-event[aria-expanded="true"] { background: var(--surface-2); }
+.audit-detail { margin: 0; padding: 10px 12px; border-bottom: 1px solid var(--border); background: var(--surface-2);
+  font: 400 var(--fs-12)/1.5 var(--font-mono); color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere;
+  max-height: 320px; overflow: auto; }
+.audit-detail[hidden] { display: none; }
+.audit-filter-right .cs-menu-btn { height: 28px; font-size: var(--fs-12); }
+.audit-more { display: flex; justify-content: center; padding: 12px; }
+.audit-more button[hidden] { display: none; }
+.audit-verify { padding: 8px 14px; border-bottom: 1px solid var(--border); font-size: var(--fs-13); line-height: 1.5; color: var(--text-muted); }
+.audit-verify[hidden] { display: none; }
+.audit-verify.ok { color: var(--success, #22c55e); }
+.audit-verify.bad { color: var(--danger); }
 [data-theme="light"] .audit-pill { opacity: 0.5; }
 [data-theme="light"] .audit-pill.active { opacity: 1; }
 [data-theme="light"] .tag-auth { background: rgba(59,130,246,0.12); color: #2563eb; }
@@ -585,7 +607,7 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
 </style>
 </head>
 <body>
-<script src="/static/codec-shell.js?v=e273525f" data-page="home" data-title="Today" data-status></script>
+<script src="/static/codec-shell.js?v=6330a55c" data-page="home" data-title="Today" data-status></script>
 
 <!-- ── Connect your AI (first run) ─────────────────────────────────────────
      Shown until CODEC has a VERIFIED brain. A fresh paid install had no way
@@ -712,22 +734,30 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
     <!-- Audit Panel -->
     <div class="panel" id="panel-audit">
       <div class="audit-stats-bar" id="auditStatsBar">
-        <div class="audit-stat-item"><div><div class="audit-stat-label">Events</div><div class="audit-stat-value" id="auditStatTotal">--</div></div></div>
+        <div class="audit-stat-item"><div><div class="audit-stat-label">Events (24h)</div><div class="audit-stat-value" id="auditStatTotal">--</div></div></div>
         <div class="audit-stat-item"><div><div class="audit-stat-label">Errors</div><div class="audit-stat-value a-errors" id="auditStatErrors">--</div></div></div>
         <div class="audit-stat-item"><div><div class="audit-stat-label">Commands</div><div class="audit-stat-value a-commands" id="auditStatCommands">--</div></div></div>
         <div class="audit-stat-item"><div><div class="audit-stat-label">Skills</div><div class="audit-stat-value a-skills" id="auditStatSkills">--</div></div></div>
         <div class="audit-stat-item"><div><div class="audit-stat-label">LLM Calls</div><div class="audit-stat-value a-llm" id="auditStatLLM">--</div></div></div>
       </div>
       <div class="audit-filter-bar">
-        <div class="audit-pills" id="auditPills"></div>
+        <div class="audit-pills" id="auditPills" role="group" aria-label="Categories"></div>
         <div class="audit-filter-right">
-          <!-- time range removed — always shows last 24h -->
-          <input type="text" class="audit-search-input" id="auditSearchInput" placeholder="Search events...">
-          <button class="audit-live-btn" id="auditLiveBtn">Live</button>
+          <select id="auditRange" aria-label="Time range" title="Time range">
+            <option value="1h">Last hour</option>
+            <option value="6h">Last 6 hours</option>
+            <option value="24h" selected>Last 24 hours</option>
+            <option value="7d">Last 7 days</option>
+          </select>
+          <input type="text" class="audit-search-input" id="auditSearchInput" placeholder="Search events..." aria-label="Search events">
+          <button type="button" class="audit-live-btn" id="auditLiveBtn" aria-pressed="false">Live</button>
+          <button type="button" class="audit-live-btn" id="auditVerifyBtn" title="Check today's log against its signatures">Verify integrity</button>
         </div>
       </div>
+      <div class="audit-verify" id="auditVerifyResult" role="status" aria-live="polite" hidden></div>
       <div class="audit-timeline-wrap" id="auditTimelineWrap">
         <div class="audit-timeline" id="auditTimeline"></div>
+        <div class="audit-more"><button type="button" class="audit-live-btn" id="auditMoreBtn" hidden>Show older events</button></div>
       </div>
     </div>
 
@@ -1790,6 +1820,9 @@ var _auditLiveMode = false;
 var _auditEvents = [];
 var _auditLastTimestamp = null;
 var _auditInitialized = false;
+var _auditHasMore = false;          // P2.15: older matches remain past the loaded pages
+var _auditOpenKeys = new Set();     // events whose full record is open, kept across refreshes
+var _AUDIT_PAGE = 200;
 
 function _auditCatClass(cat) {
   if (!cat) return 'audit-cat-system';
@@ -1807,7 +1840,8 @@ function _auditFormatTime(iso) {
   if (!iso) return '--:--:--';
   try {
     var d = new Date(iso);
-    return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    var t = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    return d.toDateString() === new Date().toDateString() ? t : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' ' + t;
   } catch(e) { return iso; }
 }
 
@@ -1822,19 +1856,68 @@ function _renderAuditEvents(el, events) {
     el.innerHTML = '<div class="empty"><div class="empty-icon"><svg class="ico" viewBox="0 0 24 24" style="width:40px;height:40px"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div><div class="empty-text">No events found. Try adjusting filters or time range.</div></div>';
     return;
   }
-  el.innerHTML = events.map(function(ev) {
+  el.innerHTML = events.map(function(ev, i) {
     var cat = ev.cat || ev.category || ev.source || 'system';
     var ts = _auditFormatTime(ev.ts || ev.timestamp);
     var summary = escHtml(ev.sum || ev.summary || ev.message || ev.event || ev.detail || '--');
     var levelCls = '';
     if (cat === 'error' || ev.level === 'error') levelCls = ' style="border-left:3px solid #ef4444"';
     else if (ev.level === 'warning') levelCls = ' style="border-left:3px solid #ffd740"';
-    return '<div class="audit-event"' + levelCls + '>' +
+    var open = _auditOpenKeys.has(_auditKey(ev));
+    return '<div class="audit-event" role="button" tabindex="0" aria-expanded="' + open + '" data-i="' + i + '"' + levelCls + '>' +
       '<span class="audit-ts">' + ts + '</span>' +
       '<span class="audit-cat ' + _auditCatClass(cat) + '">' + _auditCatLabel(cat) + '</span>' +
       '<span class="audit-summary">' + summary + '</span>' +
-      '</div>';
+      '</div><pre class="audit-detail"' + (open ? '' : ' hidden') + '>' + (open ? escHtml(_auditRecord(ev)) : '') + '</pre>';
   }).join('');
+}
+// P2.15: one event's full record, as text. The key keeps it open when the list refreshes.
+function _auditKey(ev) { return [ev.ts || ev.timestamp || '', ev.event || '', ev.sum || ev.summary || ''].join('|'); }
+function _auditRecord(ev) { try { return JSON.stringify(ev, null, 2); } catch (e) { return String(ev); } }
+function _auditToggle(row) {
+  var ev = _auditEvents[+row.getAttribute('data-i')], pre = row.nextElementSibling;
+  if (!ev || !pre) return;
+  var open = row.getAttribute('aria-expanded') !== 'true';
+  row.setAttribute('aria-expanded', String(open));
+  pre.hidden = !open;
+  pre.textContent = open ? _auditRecord(ev) : '';
+  if (open) _auditOpenKeys.add(_auditKey(ev)); else _auditOpenKeys.delete(_auditKey(ev));
+}
+function _auditShowMore() {
+  var b = document.getElementById('auditMoreBtn');
+  if (b) b.hidden = !_auditHasMore;
+}
+// "Verify integrity": today's log against its signatures, through GET /api/audit/verify (read-only).
+async function _auditVerify() {
+  var btn = document.getElementById('auditVerifyBtn'), out = document.getElementById('auditVerifyResult');
+  if (!btn || !out) return;
+  btn.disabled = true;
+  out.hidden = false;
+  out.className = 'audit-verify';
+  out.textContent = 'Checking today\'s log...';
+  function n(x) { return Number(x || 0).toLocaleString(); }
+  try {
+    var r = await fetch('/api/audit/verify');
+    var d = await r.json();
+    if (!r.ok || d.error) {
+      out.className = 'audit-verify bad';
+      out.textContent = 'Could not check: ' + (d.error || ('HTTP ' + r.status));
+    } else if (d.integrity_ok) {
+      out.className = 'audit-verify ok';
+      out.textContent = 'Intact. ' + n(d.total_lines) + ' lines in today\'s log checked, ' + n(d.signed_lines) + ' signed' +
+        (d.unsigned_lines ? ', ' + n(d.unsigned_lines) + ' older ones without a signature' : '') + '.';
+    } else {
+      out.className = 'audit-verify bad';
+      out.textContent = n(d.broken_lines) + ' of ' + n(d.total_lines) + (d.broken_lines === 1 ? ' line does' : ' lines do') +
+        ' not match the signature written with ' + (d.broken_lines === 1 ? 'it' : 'them') +
+        (d.first_broken_line_no ? ' (the first is line ' + d.first_broken_line_no + ')' : '') +
+        '. The log was changed after it was written, or a line is damaged.';
+    }
+  } catch (e) {
+    out.className = 'audit-verify bad';
+    out.textContent = 'Could not check: the request failed.';
+  }
+  btn.disabled = false;
 }
 
 function _parseLegacyAudit(data) {
@@ -1869,24 +1952,38 @@ function _auditInitPanel() {
   var pillsEl = document.getElementById('auditPills');
   if (pillsEl) {
     pillsEl.innerHTML = _auditAllCategories.map(function(c) {
-      return '<span class="audit-pill active" data-cat="' + c + '">' + c.toUpperCase() + '</span>';
+      return '<button type="button" class="audit-pill active" data-cat="' + c + '" aria-pressed="true">' + c.toUpperCase() + '</button>';
     }).join('');
     pillsEl.addEventListener('click', function(e) {
       var pill = e.target.closest('.audit-pill');
       if (!pill) return;
       var cat = pill.getAttribute('data-cat');
-      if (_auditActiveCategories.has(cat)) {
-        _auditActiveCategories.delete(cat);
-        pill.classList.remove('active');
-      } else {
-        _auditActiveCategories.add(cat);
-        pill.classList.add('active');
-      }
+      var on = !_auditActiveCategories.has(cat);
+      if (on) _auditActiveCategories.add(cat); else _auditActiveCategories.delete(cat);
+      pill.classList.toggle('active', on);
+      pill.setAttribute('aria-pressed', String(on));
       _auditFetchEvents();
     });
   }
 
-  // Time buttons removed — always 24h
+  // Time range (P2.15): the last hour to the last 7 days; the stats above stay 24 hours.
+  var rangeEl = document.getElementById('auditRange');
+  if (rangeEl) {
+    rangeEl.value = _auditCurrentRange;
+    rangeEl.addEventListener('change', function() { _auditCurrentRange = rangeEl.value; _auditFetchEvents(); });
+    if (window.CodecShell && CodecShell.menu) CodecShell.menu(rangeEl);
+  }
+
+  // An event opens its full record (Enter and Space too: the shell presses role=button rows).
+  var tl = document.getElementById('auditTimeline');
+  if (tl) tl.addEventListener('click', function(e) {
+    var row = e.target.closest('.audit-event[role="button"]');
+    if (row) _auditToggle(row);
+  });
+  var moreBtn = document.getElementById('auditMoreBtn');
+  if (moreBtn) moreBtn.addEventListener('click', function() { _auditFetchEvents(true); });
+  var verifyBtn = document.getElementById('auditVerifyBtn');
+  if (verifyBtn) verifyBtn.addEventListener('click', _auditVerify);
 
   // Search input (debounced)
   var searchEl = document.getElementById('auditSearchInput');
@@ -1907,6 +2004,7 @@ function _auditInitPanel() {
     liveBtn.addEventListener('click', function() {
       _auditLiveMode = !_auditLiveMode;
       liveBtn.classList.toggle('active', _auditLiveMode);
+      liveBtn.setAttribute('aria-pressed', String(_auditLiveMode));
       if (_auditLiveMode) {
         _auditLiveTimer = setInterval(_auditFetchLive, 2000);
       } else {
@@ -1931,27 +2029,34 @@ async function _auditFetchStats() {
   } catch(e) { /* silent */ }
 }
 
-async function _auditFetchEvents() {
+async function _auditFetchEvents(more, keep) {
   var el = document.getElementById('auditTimeline');
   if (!el) return;
 
   var cats = Array.from(_auditActiveCategories).join(',');
-  var since = _auditSinceFromRange('24h');
-  var url = '/api/audit/stream?categories=' + encodeURIComponent(cats) + '&since=' + encodeURIComponent(since) + '&limit=200';
+  var since = _auditSinceFromRange(_auditCurrentRange);
+  var offset = more ? _auditEvents.length : 0;
+  var limit = keep ? Math.min(1000, Math.max(_AUDIT_PAGE, _auditEvents.length)) : _AUDIT_PAGE;
+  var url = '/api/audit/stream?categories=' + encodeURIComponent(cats) + '&since=' + encodeURIComponent(since) +
+    '&limit=' + limit + '&offset=' + offset;
   if (_auditSearchQuery) url += '&search=' + encodeURIComponent(_auditSearchQuery);
 
   try {
     var r = await fetch(url);
     if (r.ok) {
       var data = await r.json();
-      _auditEvents = data.events || [];
-      if (_auditEvents.length) {
-        _auditLastTimestamp = _auditEvents[0].ts || _auditEvents[0].timestamp || null;
-        _renderAuditEvents(el, _auditEvents);
-        return;
-      }
+      var got = data.events || [];
+      _auditHasMore = !!data.has_more;
+      _auditEvents = more ? _auditEvents.concat(got) : got;
+      _auditShowMore();
+      _auditLastTimestamp = _auditEvents.length ? (_auditEvents[0].ts || _auditEvents[0].timestamp || null) : null;
+      _renderAuditEvents(el, _auditEvents);  // an empty range shows the empty state, not older raw lines
+      return;
     }
   } catch(e) { /* fall through to legacy */ }
+  if (more) return;  // keep what is shown; Show older stays to try again
+  _auditHasMore = false;
+  _auditShowMore();
 
   // Fallback: try old /api/audit endpoint
   try {
@@ -1970,6 +2075,7 @@ async function _auditFetchEvents() {
           }
           return true;
         });
+        _auditEvents = filtered;  // the rows' data-i index into what is shown
         _auditLastTimestamp = filtered.length ? (filtered[0].timestamp || null) : null;
         _renderAuditEvents(el, filtered);
         return;
@@ -2024,7 +2130,7 @@ async function loadAudit() {
 
   // Start periodic event refresh (unless live mode handles it)
   _auditRefreshTimer = setInterval(function() {
-    if (currentTab === 'audit' && !_auditLiveMode) _auditFetchEvents();
+    if (currentTab === 'audit' && !_auditLiveMode && _auditEvents.length <= 1000) _auditFetchEvents(false, true);
   }, 5000);
 }
 

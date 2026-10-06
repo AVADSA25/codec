@@ -26,7 +26,7 @@ _SW_FILE = REPO / "static" / "sw.js"
 SW = _SW_FILE.read_text(encoding="utf-8") if _SW_FILE.exists() else ""
 SHELL = (REPO / "static" / "codec-shell.js").read_text(encoding="utf-8")
 APP_PAGES = ["codec_dashboard.html", "codec_chat.html", "codec_voice.html", "codec_vibe.html",
-             "codec_tasks.html", "codec_cortex.html", "codec_audit.html"]
+             "codec_tasks.html", "codec_cortex.html"]  # codec_audit.html retired in P2.15
 
 
 @pytest.fixture

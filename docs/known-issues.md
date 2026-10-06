@@ -336,7 +336,7 @@ nor in `AuthMiddleware.TRUSTED_ORIGIN_HOSTS`, treating `null` as untrusted.
   overwrites the error with "Processing... <message>" for up to 5 minutes. Fix:
   return after showing the error.
 
-## Sidebar chat actions on the Audit page send no CSRF header (2026-09-29)
+## Sidebar chat actions on the Audit page send no CSRF header (2026-09-29) — FIXED in P2.15 (the page is retired; /audit opens Settings > Audit)
 
 `codec_audit.html` has no page fetch wrapper (the other six app pages add
 `x-csrf-token` to every non-GET `fetch`). The shell's history actions
