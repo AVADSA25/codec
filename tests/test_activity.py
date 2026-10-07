@@ -149,12 +149,14 @@ def test_a_crew_run_is_written_when_it_starts_and_when_it_ends(ag, monkeypatch):
 
     monkeypatch.setattr(codec_agents, "run_crew", fake_run_crew)
     jid = ag.client.post("/api/agents/run", json={"crew": "email_handler"}).json()["job_id"]
-    for _ in range(100):
-        if ag.client.get("/api/agents/status/" + jid).json().get("status") != "running":
+    # Wait for the file, not the status route: the run thread sets the status a
+    # moment before it saves the file.
+    for _ in range(250):
+        saved = json.loads(Path(ag.sh.AGENT_JOBS_PATH).read_text())[jid]
+        if saved.get("status") != "running":
             break
         time.sleep(0.02)
     assert seen["at_start"][jid]["status"] == "running"
-    saved = json.loads(Path(ag.sh.AGENT_JOBS_PATH).read_text())[jid]
     assert saved["status"] == "complete" and saved["finished"] and saved["progress"] == ["Looked at the inbox"]
     assert ag.client.post("/api/agents/cancel/" + jid).status_code == 200
     assert json.loads(Path(ag.sh.AGENT_JOBS_PATH).read_text())[jid]["cancel_requested"] is True
