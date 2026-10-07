@@ -398,3 +398,47 @@ the samples). Revisit: P3.11 or any item that touches notifications.
 personal name in the public repo, while every other memory path uses the default user id. Found while fixing its
 structured write in P3.12 (Learning page), which left this line as it was. Fix: use the default user id (or
 `config.json`'s), regenerate the skill manifest, and decide whether the existing rows need it changed.
+
+## The iMessage and Telegram bridges write plain text into the audit log (2026-10-07)
+
+`codec_imessage.py` and `codec_telegram.py` each have their own `audit(msg)` that
+appends a plain line such as `[2026-10-07T08:54:09] IMESSAGE: SERVICE_START`
+straight to `~/.codec/audit.log`, with no JSON, HMAC or redaction (six call
+sites, including service start). `verify_audit_log()` counts every such line as
+broken, so Settings > Audit says the log failed its integrity check after each
+bridge restart (2 broken lines today, 2 on 6 Oct). The route-level writer had the
+same problem and was fixed on 2026-09-05 (entry above). Fix: send these through
+`codec_audit.log_event` like the other services. Found in the Mac merge pass of
+#418-#439. Revisit: the next item that touches either bridge.
+
+## Inbox actions show "HTTP 400" instead of the reason (2026-10-07)
+
+When an Inbox action is refused (for example a grant that is not allowed), the
+toast says "HTTP 400" and drops the server's `error` / `detail` text, so the
+owner cannot tell why. Fix: read the JSON body's `error` or `detail` before
+falling back to the status code. Found in the Mac
+merge pass (P3.2). Revisit: any item that touches the Inbox drawer.
+
+## The dashboard waits on the local model at startup (2026-10-07)
+
+After a restart, `codec-dashboard` took 90-129 s to answer while the local model
+was stuck, and 1 s once the model answered again, so a startup step most likely
+waits on a model call (not traced yet). Pages are unreachable until then. Fix:
+find that call and run it after startup, in the background, with a short timeout. Found in the Mac merge pass. Revisit:
+the next item that touches dashboard startup.
+
+## Automatic triggers show their raw pattern as the title (2026-10-07)
+
+The 'CODEC is watching' menu's Automatic triggers list (P3.7) titles each trigger
+with `codec_triggers`' summary, which is the raw match rule, for example
+`clipboard~https?://[^\s<>'"]+`. Fix: give each trigger a plain sentence ("When
+you copy a web link") from the skill's `SKILL_OBSERVATION_TRIGGER`, falling back
+to the skill's name. Found in the Mac merge pass. Revisit: the next item that
+touches triggers.
+
+## The Activity board says "running for" a project that is waiting (2026-10-07)
+
+Tasks > Activity (P3.8) shows "running for N min" under every project, including
+one waiting for approval or paused, where it is the time since it started. Fix:
+"started N min ago" unless the project is running. Found in the Mac merge pass.
+Revisit: the next item that touches the Activity board.
