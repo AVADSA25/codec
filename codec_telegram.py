@@ -57,7 +57,6 @@ VERSION = "2.1.0"
 # ── Paths ────────────────────────────────────────────────────────────────────
 CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
 MEMORY_DB   = os.path.expanduser("~/.codec/memory.db")
-AUDIT_LOG   = os.path.expanduser("~/.codec/audit.log")
 
 
 # ── Config ───────────────────────────────────────────────────────────────────
@@ -106,11 +105,15 @@ def get_llm_config(cfg):
 
 
 # ── Audit ────────────────────────────────────────────────────────────────────
-def audit(msg):
+def audit(event, **fields):
+    """One signed line in ~/.codec/audit.log through codec_audit (JSON, HMAC,
+    redaction): `bridge_<event>` with who and how long, never the message text.
+    It used to append a plain-text line, which verify_audit_log() counted as
+    broken (docs/known-issues.md, 2026-10-07)."""
     try:
-        os.makedirs(os.path.dirname(AUDIT_LOG), exist_ok=True)
-        with open(AUDIT_LOG, "a") as f:
-            f.write(f"[{datetime.now().isoformat()}] TELEGRAM: {msg}\n")
+        from codec_audit import log_event
+        log_event(f"bridge_{event}", "codec-telegram", f"Telegram bridge: {event.replace('_', ' ')}",
+                  extra=dict(fields, bridge="telegram"))
     except Exception:
         pass
 
@@ -582,7 +585,7 @@ def process_message(bot, update, tg_cfg, llm_cfg):
                     add_history(chat_id, "user", f"[Photo] {caption}" if caption else "[Photo]")
                     add_history(chat_id, "assistant", result)
                     save_to_memory(chat_id, f"[Photo] {caption}", result)
-                    audit(f"PHOTO chat={chat_id} user={username}")
+                    audit("photo_received", chat=chat_id, user=username)
                     return
                 try:
                     os.unlink(tmp)
@@ -633,7 +636,7 @@ def process_message(bot, update, tg_cfg, llm_cfg):
         return
 
     log.info(f"📨 From {first_name} (@{username}): {text[:80]}")
-    audit(f"RECEIVED chat={chat_id} user={username} text={text[:100]}")
+    audit("message_received", chat=chat_id, user=username, length=len(text))
 
     # Show typing
     bot.send_typing(chat_id)
@@ -733,7 +736,7 @@ def process_message(bot, update, tg_cfg, llm_cfg):
     # ── Send reply ───────────────────────────────────────────────────────
     success = bot.send_message(chat_id, reply, reply_to=msg_id)
     if success:
-        audit(f"SENT chat={chat_id} text={reply[:100]}")
+        audit("reply_sent", chat=chat_id, length=len(reply))
     else:
         log.error(f"Failed to send reply to chat {chat_id}")
 
@@ -771,7 +774,7 @@ def main():
         log.error(f"Bot token verification failed: {e}")
         return
 
-    audit("SERVICE_START")
+    audit("service_start")
     log.info(f"LLM: {llm_cfg['model']}")
     if tg_cfg.get("require_trigger"):
         log.info("Trigger required: 'Hey CODEC' or '/codec'")
@@ -782,7 +785,7 @@ def main():
     # in-memory (Telegram re-delivers un-acked updates), so there's no position
     # to persist — emit the SERVICE_STOP audit the Ctrl-C path already emits.
     def _tg_cleanup():
-        audit("SERVICE_STOP")
+        audit("service_stop")
         log.info("codec-telegram graceful shutdown")
     import codec_lifecycle
     codec_lifecycle.install_handlers(_tg_cleanup, name="codec-telegram")
@@ -798,7 +801,7 @@ def main():
                     log.error(f"Message processing error: {e}")
     except KeyboardInterrupt:
         log.info("Shutting down...")
-        audit("SERVICE_STOP")
+        audit("service_stop")
 
 
 if __name__ == "__main__":
