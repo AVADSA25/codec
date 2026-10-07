@@ -1471,9 +1471,9 @@
       list.innerHTML = (d.global_enabled === false ? '<p class="cs-ib-meta">All triggers are off on this Mac (TRIGGERS_ENABLED).</p>' : '') +
         ts.map(function (t) {
           var state = t.killed ? 'Turned off' : (t.muted ? 'Muted' : 'Active');
-          return '<div class="cs-ib cs-trig-row"><div class="cs-ib-head"><span class="cs-ib-title">' + esc(t.summary || t.skill_name) +
+          return '<div class="cs-ib cs-trig-row"><div class="cs-ib-head"><span class="cs-ib-title">' + esc(t.label || t.summary || t.skill_name) +
             '</span><span class="cs-ib-when">' + esc(state) + '</span></div>' +
-            '<p class="cs-ib-meta">' + esc(t.skill_name) + ' · ' + esc(String(t.type || '').replace(/_/g, ' ')) + '</p>' +
+            '<p class="cs-ib-meta">' + esc(t.skill_name) + (t.summary ? ' · rule: ' + esc(t.summary) : '') + '</p>' +
             '<div class="cs-ib-acts">' +
               '<button type="button" class="cs-dbtn" data-t="mute" data-key="' + esc(t.trigger_key) + '" data-on="' + (t.muted ? 1 : 0) + '">' + (t.muted ? 'Unmute' : 'Mute') + '</button>' +
               '<button type="button" class="cs-dbtn" data-t="kill" data-key="' + esc(t.trigger_key) + '" data-on="' + (t.killed ? 1 : 0) + '">' + (t.killed ? 'Turn on' : 'Turn off') + '</button>' +

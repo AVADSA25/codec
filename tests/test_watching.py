@@ -235,3 +235,14 @@ def test_the_eye_shows_and_pauses_under_jsdom():
     assert d["items"][3:] == ["What CODEC sees now", "Automatic triggers", "Observer settings"]
     assert d["paused"] == ['{"minutes":15}']
     assert d["after"][0] is True and re.match(r"Watching paused until \d", d["after"][1])
+
+
+def test_triggers_get_a_readable_title(obs):
+    trig = SimpleNamespace(key="k2", skill_name="clipboard_url_fetch", type="clipboard_pattern",
+                           short_summary=lambda: "clipboard~https?://[^\\s]+", cooldown_seconds=60,
+                           require_confirmation=True, destructive=False)
+    d = obs.rt._trigger_summary(trig)
+    assert d["label"] == "Clipboard url fetch: when you copy matching text", "a sentence, not the raw pattern"
+    assert d["summary"].startswith("clipboard~"), "the raw rule is still sent, for the detail line"
+    shell = (REPO / "static" / "codec-shell.js").read_text(encoding="utf-8")
+    assert "esc(t.label || t.summary || t.skill_name)" in shell and "' · rule: ' + esc(t.summary)" in shell

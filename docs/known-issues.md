@@ -427,7 +427,7 @@ waits on a model call (not traced yet). Pages are unreachable until then. Fix:
 find that call and run it after startup, in the background, with a short timeout. Found in the Mac merge pass. Revisit:
 the next item that touches dashboard startup.
 
-## Automatic triggers show their raw pattern as the title (2026-10-07)
+## Automatic triggers show their raw pattern as the title (2026-10-07) — FIXED (a sentence per type; the rule moved to the detail line)
 
 The 'CODEC is watching' menu's Automatic triggers list (P3.7) titles each trigger
 with `codec_triggers`' summary, which is the raw match rule, for example
