@@ -37,7 +37,8 @@ def test_page_loads_the_vendored_renderer_before_using_it(name):
           for s in SCRIPTS]
     assert all(i >= 0 for i in at), f"{name} does not load {[s for s, i in zip(SCRIPTS, at) if i < 0]}"
     assert at == sorted(at), f"{name}: the renderer must load after marked, DOMPurify and highlight.js"
-    assert at[-1] < src.find("codecMarkdown."), f"{name} uses codecMarkdown before loading it"
+    use = src.find("codecMarkdown.")  # Tasks loads it for the shell's Inbox only (P3.2) and never calls it itself
+    assert use == -1 or at[-1] < use, f"{name} uses codecMarkdown before loading it"
 
 
 def test_renderer_sanitizes_every_reply():

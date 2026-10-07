@@ -57,14 +57,14 @@ SWITCHES = ("approvals", "questions", "briefing", "agents")
 # kind -> switch (None = always sent), title, body, url, TTL seconds, urgency.
 # These fixed strings are the ONLY text a push ever carries.
 KINDS: Dict[str, Tuple[Optional[str], str, str, str, int, str]] = {
-    "approval": ("approvals", "CODEC needs your approval", "Tap to see what it wants to do.", "/", 600, "high"),
-    "question": ("questions", "CODEC has a question for you", "Tap to answer.", "/", 600, "high"),
+    "approval": ("approvals", "CODEC needs your approval", "Tap to see what it wants to do.", "/#inbox", 600, "high"),
+    "question": ("questions", "CODEC has a question for you", "Tap to answer.", "/#inbox", 600, "high"),
     "briefing": ("briefing", "Your briefing is ready", "Tap to read it.", "/", 4 * 3600, "normal"),
-    "agent_done": ("agents", "An agent finished its work", "Tap to see the result.", "/tasks#reports",
+    "agent_done": ("agents", "An agent finished its work", "Tap to see the result.", "/#inbox=agents",
                    86400, "normal"),
-    "agent_blocked": ("agents", "An agent needs your go-ahead", "Tap to see what it needs.", "/tasks#reports",
+    "agent_blocked": ("agents", "An agent needs your go-ahead", "Tap to see what it needs.", "/#inbox",
                       86400, "high"),
-    "agent_stopped": ("agents", "An agent stopped", "Tap to see why.", "/tasks#reports", 86400, "normal"),
+    "agent_stopped": ("agents", "An agent stopped", "Tap to see why.", "/#inbox=agents", 86400, "normal"),
     "test": (None, "Notifications are on", "CODEC can reach this device.", "/", 300, "normal"),
 }
 

@@ -71,7 +71,7 @@ def test_clickable_rows_are_buttons_or_role_button():
     assert ">+ New Project</button>" in vibe and '<span onclick="clearWorkingFolder()"' not in vibe
     assert 'class="prompt-header" role="button" tabindex="0" aria-expanded="false"' in PAGES["codec_dashboard.html"]
     assert "h.setAttribute('aria-expanded', String(card.classList.contains('open')));" in PAGES["codec_dashboard.html"]
-    assert 'role="button" tabindex="0" onclick="markReportRead(' in PAGES["codec_tasks.html"]
+    assert "markReportRead(" not in PAGES["codec_tasks.html"], "P3.2: reports moved to the Inbox, whose actions are buttons"
     assert 'role="button" tabindex="0" onclick="ldSes(' in vibe
     assert 'id="fpRing" onclick="authenticate()" aria-hidden="true"' in PAGES["codec_auth.html"]
     keys = SHELL[SHELL.index("// A clickable row that cannot be a <button>"):][:500]
@@ -102,8 +102,9 @@ def test_every_marked_dialog_is_a_labelled_modal_with_a_close():
 
 def test_tabs_and_pressed_states():
     tasks = PAGES["codec_tasks.html"]
-    assert '<div class="tabs" role="tablist"' in tasks and tasks.count('role="tab" aria-selected=') == 4
-    assert tasks.count('role="tabpanel"') == 4 and "setAttribute('aria-selected', 'true');" in tasks
+    # Schedules, Heartbeat, History (P3.2 moved Reports to the Inbox)
+    assert '<div class="tabs" role="tablist"' in tasks and tasks.count('role="tab" aria-selected=') == 3
+    assert tasks.count('role="tabpanel"') == 3 and "setAttribute('aria-selected', 'true');" in tasks
     assert PAGES["codec_dashboard.html"].count('role="tab" aria-selected="false" data-sub=') == 4
     assert "b.setAttribute('aria-pressed', String(!!on));  // P2.13" in SHELL
     assert "b.setAttribute('aria-pressed', String(st.textContent.trim() === 'ON'));" in SHELL
