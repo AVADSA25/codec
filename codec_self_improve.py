@@ -330,7 +330,8 @@ def _write_proposal(out_dir: Path, name: str, code: str, gap: dict, ok: bool, wh
         f"## Proposed code\n\n"
         f"See `{name}.py` (next to this file).\n\n"
         f"## To accept\n\n"
-        f"```\npython3 scripts/promote_skill.py {name}\n```\n"
+        f"Open Settings > Learning in CODEC, Review it, then Approve and install.\n"
+        f"(Or, in a terminal: `python3 scripts/promote_skill.py {name}`.)\n"
     )
 
 

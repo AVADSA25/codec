@@ -88,9 +88,15 @@ def _save(fact: str) -> bool:
         from codec_memory import CodecMemory
         mem = CodecMemory()
         mem.save(session_id="fact_extract", role="fact", content=fact, user_id="mickael")
-        # Best-effort structured fact storage too
+        # The structured copy Settings > Learning lists, edits and forgets (UI P3.12). This used to
+        # call CodecMemory.store_fact, which does not exist, so no learned fact reached the facts table.
+        # The key comes from the text: the same fact learned twice is one fact.
         try:
-            mem.store_fact(fact)
+            import hashlib
+            import codec_memory_upgrade as cmu
+            key = "learned:" + hashlib.sha1(fact.encode("utf-8")).hexdigest()[:10]
+            if not cmu.query_valid_facts(key=key, limit=1):
+                cmu.store_fact(key, fact, fact_type="learned", source="fact_extract")
         except Exception:
             pass
         return True

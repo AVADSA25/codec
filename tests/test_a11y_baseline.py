@@ -105,7 +105,7 @@ def test_tabs_and_pressed_states():
     # Schedules, Heartbeat, History (P3.2 moved Reports to the Inbox)
     assert '<div class="tabs" role="tablist"' in tasks and tasks.count('role="tab" aria-selected=') == 4
     assert tasks.count('role="tabpanel"') == 4 and "setAttribute('aria-selected', 'true');" in tasks
-    assert PAGES["codec_dashboard.html"].count('role="tab" aria-selected="false" data-sub=') == 4
+    assert PAGES["codec_dashboard.html"].count('role="tab" aria-selected="false" data-sub=') == 5
     assert "b.setAttribute('aria-pressed', String(!!on));  // P2.13" in SHELL
     assert "b.setAttribute('aria-pressed', String(st.textContent.trim() === 'ON'));" in SHELL
 
