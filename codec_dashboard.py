@@ -1101,9 +1101,16 @@ async def _bg_watcher():
     _bg_status["watcher"]["running"] = False
 
 
+_WARMUP_DELAY_S = 5  # let other services start first
+
+
 async def _warmup_vision():
-    """Pre-load Qwen Vision model so first real request is fast (~7s vs ~23s cold)."""
-    await asyncio.sleep(5)  # let other services start first
+    """Pre-load Qwen Vision model so first real request is fast (~7s vs ~23s cold).
+
+    The request runs in a thread: on the event loop it blocked every page and API
+    call until the model answered or the 60 s timeout passed (a stuck model kept
+    the dashboard unreachable for over a minute after each restart)."""
+    await asyncio.sleep(_WARMUP_DELAY_S)
     try:
         config = {}
         try:
@@ -1118,8 +1125,8 @@ async def _warmup_vision():
             "messages": [{"role": "user", "content": "Hi"}],
             "max_tokens": 1,
         }
-        r = rq.post(f"{vision_url}/chat/completions", json=payload,
-                     headers={"Content-Type": "application/json"}, timeout=60)
+        r = await asyncio.to_thread(rq.post, f"{vision_url}/chat/completions", json=payload,
+                                    headers={"Content-Type": "application/json"}, timeout=60)
         if r.status_code == 200:
             log.info("[WARMUP] Vision model pre-loaded successfully")
         else:
@@ -1140,7 +1147,7 @@ async def _vision_keepalive():
                 pass
             vision_url = config.get("vision_base_url", "http://localhost:8083/v1")
             import requests as rq
-            r = rq.get(f"{vision_url}/models", timeout=10)
+            r = await asyncio.to_thread(rq.get, f"{vision_url}/models", timeout=10)  # off the event loop
             if r.status_code == 200:
                 log.debug("[KEEPALIVE] Vision model alive")
         except Exception:
