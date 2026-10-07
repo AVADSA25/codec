@@ -411,7 +411,7 @@ same problem and was fixed on 2026-09-05 (entry above). Fix: send these through
 `codec_audit.log_event` like the other services. Found in the Mac merge pass of
 #418-#439. Revisit: the next item that touches either bridge.
 
-## Inbox actions show "HTTP 400" instead of the reason (2026-10-07)
+## Inbox actions show "HTTP 400" instead of the reason (2026-10-07) — FIXED (the shell reads {error} or {detail})
 
 When an Inbox action is refused (for example a grant that is not allowed), the
 toast says "HTTP 400" and drops the server's `error` / `detail` text, so the

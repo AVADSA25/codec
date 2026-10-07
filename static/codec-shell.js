@@ -1246,11 +1246,18 @@
     if (m) h['x-csrf-token'] = m[1];
     return h;
   }
+  // The server's reason for a refusal: {error} from CODEC's own routes, {detail} from
+  // FastAPI's HTTPException (a list of {msg} for a validation error); else the status.
+  function errText(d, status) {
+    var x = d && (d.error || d.detail);
+    if (Array.isArray(x)) x = x.map(function (e) { return (e && e.msg) || ''; }).filter(Boolean).join('; ');
+    return (typeof x === 'string' && x) ? x : 'HTTP ' + status;
+  }
   function postJSON(url, data) {
     var h = csrf({ 'Content-Type': 'application/json' });
     return fetch(url, { method: 'POST', headers: h, body: JSON.stringify(data || {}) }).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (d) {
-        if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+        if (!r.ok) throw new Error(errText(d, r.status));
         return d;
       });
     });
@@ -1729,7 +1736,7 @@
     if (!SAY.reqs[i]) {
       SAY.reqs[i] = fetch('/api/tts', { method: 'POST', headers: csrf({ 'Content-Type': 'application/json' }),
                                          body: JSON.stringify({ text: SAY.parts[i] }) }).then(function (r) {
-        if (!r.ok) return r.json().catch(function () { return {}; }).then(function (d) { throw new Error(d.error || ('HTTP ' + r.status)); });
+        if (!r.ok) return r.json().catch(function () { return {}; }).then(function (d) { throw new Error(errText(d, r.status)); });
         return r.blob();
       }).then(function (b) {
         var u = URL.createObjectURL(b);
