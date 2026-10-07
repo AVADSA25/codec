@@ -193,6 +193,7 @@ only: never a fact's value, a rule's text or the About me text.
 | `mcp_client_revoke_requested` | `codec-dashboard` | info | `client_id`; `tokens` (how many ids the request lists) |
 | `mcp_client_revoked` | `codec-oauth-provider` | info | `client_id`; `tokens_removed` (applied by `codec-mcp-http` before a token check) |
 | `bridge_test_sent` | `codec-dashboard` | info | `bridge` (`telegram` \| `imessage`), `sent`; never the recipient |
+| `auto_fallback_set` | `codec-dashboard` | info | `value` (the registered cloud entry, or null for off; UI P3.11, Settings > Usage) |
 | `compare_run` | `codec-dashboard` | info | `target` (Model B's id), `kind` (`local` \| `cloud`), `ok` (per leg); never the question or the answers (UI P3.10) |
 
 ### Watchdog events (2026-07 log review)

@@ -1462,6 +1462,9 @@ async def chat_completion(request: Request):
                             _stats["prompt_s"] = round(float(_tm.get("prompt_ms", 0)) / 1000, 1)
                         elif _ct and _elapsed > 0:
                             _stats["tok_per_s"] = round(_ct / _elapsed, 1)
+                    # UI P3.11: one metadata line per reply (model, local or cloud, speed) for Settings > Usage.
+                    import codec_usage
+                    codec_usage.record_reply(model, base_url, _stats)
                     yield f"data: {json.dumps({'stats': _stats})}\n\n"
                     if show_thoughts:
                         for t in buf.drain_think():
@@ -1562,6 +1565,8 @@ async def chat_completion(request: Request):
         # empty set is unbacked — see codec_claim_check.
         _turn_actions: set[str] = set()
         answer = codec_llm.call(messages, **_common, raise_on_error=True)
+        import codec_usage
+        codec_usage.record_reply(model, base_url)  # UI P3.11: Settings > Usage counts this reply
         answer = re.sub(r'###\s*FINAL ANSWER:\s*', '', answer).strip()
 
         # ── Post-LLM skill routing ──
