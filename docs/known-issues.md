@@ -419,7 +419,7 @@ owner cannot tell why. Fix: read the JSON body's `error` or `detail` before
 falling back to the status code. Found in the Mac
 merge pass (P3.2). Revisit: any item that touches the Inbox drawer.
 
-## The dashboard waits on the local model at startup (2026-10-07)
+## The dashboard waits on the local model at startup (2026-10-07) — FIXED (the vision warmup and keep-alive run in a thread)
 
 After a restart, `codec-dashboard` took 90-129 s to answer while the local model
 was stuck, and 1 s once the model answered again, so a startup step most likely
@@ -456,3 +456,13 @@ gate still checks it (not in the manifest, so the AST check runs). Fix: write
 approved skills to `~/.codec/skills/` (or set `skills_dir` there) and say so on
 the page. Found in the Mac merge pass (P3.12 check). Revisit: before anyone
 approves a skill from the Learning page.
+
+## Three photo routes block the dashboard while the vision model answers (2026-10-07)
+
+`routes/media.py:webcam_capture`, `routes/upload.py:upload_image` and
+`routes/vision.py:vision_analyze` are `async` but call the vision model with
+blocking `requests`, so while a picture is analysed (about 7-23 s) the dashboard
+answers nothing else: pages, polls and the voice socket wait. Same class as the
+startup warmup fixed on 2026-10-07. Fix: `await asyncio.to_thread(requests.post, ...)`
+in each. Found by an AST scan of async routes. Revisit: the next item that touches
+photos or vision.
