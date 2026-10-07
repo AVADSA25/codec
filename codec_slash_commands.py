@@ -162,11 +162,11 @@ def _cmd_skills(args: list[str]) -> str:
     # Lazy import to avoid pulling skill registry at module load
     try:
         from codec_skill_registry import SkillRegistry
-        from codec_config import SKILLS_DIR
+        from codec_config import SKILLS_DIR, USER_SKILLS_DIR
     except Exception as e:
         return f"Error: skill registry unavailable: {e}"
 
-    reg = SkillRegistry(SKILLS_DIR)
+    reg = SkillRegistry(SKILLS_DIR, USER_SKILLS_DIR)
     reg.scan()
     # P3.6: the deny list the Skills page writes and every path enforces (codec_skill_switches).
     import codec_skill_switches as switches

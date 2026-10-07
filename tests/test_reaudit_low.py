@@ -40,6 +40,7 @@ def test_ast_gate_still_allows_safe_code():
 # ── N20: skill_approve must FAIL CLOSED when the pinned-builtin manifest can't be read ──
 def test_skill_approve_fails_closed_when_manifest_unreadable(tmp_path, monkeypatch):
     monkeypatch.setattr(sr, "_get_skills_dir", lambda: str(tmp_path))
+    monkeypatch.setattr(sr, "_approved_skills_dir", lambda: str(tmp_path))
     monkeypatch.setattr(sr, "_pinned_builtin_names", lambda: None)  # simulate read failure
     rid = "rev_failclosed"
     sr._pending_skills[rid] = {"code": _BENIGN, "filename": "my_helper.py"}

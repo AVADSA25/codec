@@ -1032,7 +1032,7 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
       <div class="settings-section" id="learnProposalsSection">
         <div class="settings-title">Proposed skills</div>
         <div class="settings-card"><div class="push-body">
-          <p class="push-intro">Drafted by the self-improvement run when CODEC lacked a skill. Review shows the code; Approve and install writes it to your skills folder after the safety check, and CODEC loads it after the next restart.</p>
+          <p class="push-intro">Drafted by the self-improvement run when CODEC lacked a skill. Review shows the code; Approve and install writes it to your skills folder (~/.codec/skills) after the safety check, and CODEC loads it after the next restart.</p>
           <div id="learnProposals" class="mem-facts"><div class="refreshing">Loading...</div></div>
           <div class="push-msg" id="learnMsg" role="status" aria-live="polite"></div>
         </div></div>
@@ -3002,7 +3002,7 @@ async function learnReview(i) {
   LRN.review = rid; LRN.name = p.name;
   _learnDlg();
   document.getElementById('learnTitle').textContent = 'Review ' + p.name;
-  document.getElementById('learnWhat').textContent = 'Approve and install writes ' + fname + ' to your skills folder after the safety check; CODEC loads it after the next restart.' +
+  document.getElementById('learnWhat').textContent = 'Approve and install writes ' + fname + ' to your skills folder (~/.codec/skills) after the safety check; CODEC loads it after the next restart.' +
     (p.truncated ? ' The code is longer than shown here.' : '');
   document.getElementById('learnCode').textContent = p.code;
   document.getElementById('learnErr').textContent = '';

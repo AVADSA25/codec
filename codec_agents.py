@@ -39,9 +39,10 @@ _TOOL_CALL_TIMEOUT_SECONDS = 120
 # ── CONFIG ──
 CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
 try:
-    from codec_config import SKILLS_DIR
+    from codec_config import SKILLS_DIR, USER_SKILLS_DIR
 except ImportError:
     SKILLS_DIR = os.path.expanduser("~/.codec/skills")
+    USER_SKILLS_DIR = None
 DB_PATH     = os.path.expanduser("~/.codec/memory.db")
 
 def _cfg():
@@ -408,7 +409,7 @@ BUILTIN_TOOLS = [
 
 from codec_skill_registry import SkillRegistry
 
-_agents_registry = SkillRegistry(SKILLS_DIR)
+_agents_registry = SkillRegistry(SKILLS_DIR, USER_SKILLS_DIR)
 
 
 def _make_lazy_fn(registry: "SkillRegistry", skill_name: str):

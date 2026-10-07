@@ -299,6 +299,8 @@ Required: `SKILL_NAME`, `SKILL_TRIGGERS`, `SKILL_DESCRIPTION`. Optional: `SKILL_
 ### Adding a new skill
 Drop a `.py` file in `~/.codec/skills/` (user) or `skills/` (built-in). Restart `codec-dashboard` and the main `open-codec` process. Hot-reload is not currently supported.
 
+**Two folders (2026-10-07, docs/USER-SKILLS-DIR-DESIGN.md).** Every registry reads the built-in folder (`codec_config.SKILLS_DIR`, the repo's `skills/` unless `config.json:skills_dir` says otherwise) and then the user folder (`codec_config.USER_SKILLS_DIR`: `config.json:user_skills_dir`, default `~/.codec/skills`). A built-in name always wins; a user file is never trusted by the manifest, so every load runs the AST gate; files starting with `_` and sub-folders are skipped. `/api/skill/approve` (review-and-approve, Settings > Learning) writes approved skills to the user folder (0700 folder, 0600 file), never the repo. The test suite points `CODEC_USER_SKILLS_DIR` at a temp folder (tests/conftest.py).
+
 ## 5. Memory contract
 
 Single SQLite database at `~/.codec/memory.db`. Wrapper: `codec_memory.CodecMemory`.

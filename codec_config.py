@@ -361,6 +361,10 @@ SESSION_ALIVE     = os.path.join(_CODEC_TMP, "session_alive")
 # Skills load from the repo directly — single source of truth
 _REPO_DIR         = os.path.dirname(os.path.abspath(__file__))
 SKILLS_DIR        = cfg.get("skills_dir", os.path.join(_REPO_DIR, "skills"))
+# The owner's skills (approved reviews, marketplace installs): read after the built-ins,
+# never trusted by the manifest. CODEC_USER_SKILLS_DIR lets the test suite point it away.
+USER_SKILLS_DIR   = os.path.expanduser(os.environ.get("CODEC_USER_SKILLS_DIR")
+                                       or cfg.get("user_skills_dir") or "~/.codec/skills")
 AUDIT_LOG         = os.path.expanduser("~/.codec/audit.log")
 
 # Features

@@ -35,6 +35,12 @@ sys.path.insert(0, str(_WORKTREE_REPO))
 # this variable when the module is imported.
 os.environ.setdefault("CODEC_DASHBOARD_EXTRA_HOSTS", "testserver")
 
+# The owner's skills folder (~/.codec/skills) is read by every skill registry
+# and written by /api/skill/approve. Point it at an empty temp folder before
+# anything imports codec_config, so the suite neither loads nor writes the
+# owner's approved skills (tests that need user skills use their own tmp dirs).
+os.environ.setdefault("CODEC_USER_SKILLS_DIR", tempfile.mkdtemp(prefix="codec-test-user-skills-"))
+
 
 def _isolate_audit_log() -> None:
     """Point the audit log at a throwaway file for the whole test session.

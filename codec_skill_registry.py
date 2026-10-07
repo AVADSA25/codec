@@ -105,8 +105,15 @@ class SkillRegistry:
         mod  = registry.load("weather")   # first call imports; subsequent calls return cache
     """
 
-    def __init__(self, skills_dir: str):
+    def __init__(self, skills_dir: str, user_dir: Optional[str] = None):
         self.skills_dir = skills_dir
+        # The owner's folder (~/.codec/skills): read after the built-ins, a built-in
+        # name always wins, and its files are never trusted by the manifest (every
+        # load runs the AST gate). None, or the built-in folder itself, means off.
+        same = user_dir and os.path.realpath(user_dir) == os.path.realpath(skills_dir)
+        self.user_dir = None if (not user_dir or same) else user_dir
+        # names whose file is in user_dir (set at scan() time)
+        self._user_names: Set[str] = set()
         # name -> metadata dict  (always populated after scan)
         self._meta: Dict[str, Dict[str, Any]] = {}
         # name -> file path
@@ -129,9 +136,11 @@ class SkillRegistry:
         Returns the number of skills discovered."""
         self._meta.clear()
         self._paths.clear()
+        self._user_names.clear()
         # Do NOT clear _modules — keep any already-loaded modules cached
 
-        if not os.path.isdir(self.skills_dir):
+        has_user = bool(self.user_dir) and os.path.isdir(self.user_dir)
+        if not os.path.isdir(self.skills_dir) and not has_user:
             return 0
 
         # Reload the trusted-skill manifest on every scan so manifest edits
@@ -140,21 +149,42 @@ class SkillRegistry:
         # Reload user trigger overrides too (A-4) — same refresh-on-scan policy.
         self._custom_triggers = self._load_custom_triggers()
 
-        for fname in sorted(os.listdir(self.skills_dir)):
-            if not fname.endswith(".py") or fname.startswith("_"):
-                continue
-            filepath = os.path.join(self.skills_dir, fname)
-            meta = _extract_metadata(filepath)
-            if meta is None:
-                continue
-            name = meta.get("SKILL_NAME", fname[:-3])
-            self._meta[name] = meta
-            self._paths[name] = filepath
+        if os.path.isdir(self.skills_dir):
+            for fname in sorted(os.listdir(self.skills_dir)):
+                if not fname.endswith(".py") or fname.startswith("_"):
+                    continue
+                filepath = os.path.join(self.skills_dir, fname)
+                meta = _extract_metadata(filepath)
+                if meta is None:
+                    continue
+                name = meta.get("SKILL_NAME", fname[:-3])
+                self._meta[name] = meta
+                self._paths[name] = filepath
+
+        if has_user:
+            for fname in sorted(os.listdir(self.user_dir)):
+                if not fname.endswith(".py") or fname.startswith("_"):
+                    continue
+                filepath = os.path.join(self.user_dir, fname)
+                if not os.path.isfile(filepath):
+                    continue
+                meta = _extract_metadata(filepath)
+                if meta is None:
+                    continue
+                name = meta.get("SKILL_NAME", fname[:-3])
+                if name in self._meta and name not in self._user_names:
+                    log.warning("User skill %s skipped: the built-in skill %r has that name", fname, name)
+                    continue
+                self._meta[name] = meta
+                self._paths[name] = filepath
+                self._user_names.add(name)
 
         log.info(
             "Skill registry: %d skills discovered (metadata only), %d in trusted manifest",
             len(self._meta), len(self._trusted_hashes),
         )
+        if self._user_names:
+            log.info("Skill registry: %d of them from the user folder %s", len(self._user_names), self.user_dir)
         return len(self._meta)
 
     def _load_trusted_manifest(self) -> Set[str]:
@@ -283,7 +313,9 @@ class SkillRegistry:
             return None
 
         file_hash = hashlib.sha256(raw).hexdigest()
-        trusted = file_hash in self._trusted_hashes
+        # A file in the user folder is never trusted by the manifest, even if its
+        # bytes equal a pinned built-in's: it always goes through the AST gate.
+        trusted = file_hash in self._trusted_hashes and name not in self._user_names
 
         if not trusted:
             # Decode for AST check; fail-safe on UnicodeDecodeError.
