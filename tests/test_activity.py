@@ -253,6 +253,8 @@ setTimeout(async () => {
   const bar = d.querySelector('.act-card[data-agent="run1"] .act-bar');
   out.bar = [bar.getAttribute('aria-valuenow'), bar.getAttribute('aria-valuemax'), bar.firstChild.style.width];
   out.meta = d.querySelector('.act-card[data-agent="run1"] .act-meta').textContent;
+  out.metaPaused = d.querySelector('.act-card[data-agent="bud1"] .act-meta').textContent;
+  out.metaDone = d.querySelector('.act-card[data-agent="old1"] .act-meta').textContent;
   out.last = d.querySelector('.act-card[data-agent="run1"] .act-last').textContent;
   out.crews = [...d.querySelectorAll('#actCrews .act-card')].map(c => [c.querySelector('.act-title').textContent,
     c.querySelector('.act-state').textContent, [...c.querySelectorAll('button')].map(b => b.textContent)]);
@@ -287,6 +289,8 @@ def test_the_activity_tab_renders_projects_crews_and_grants_under_jsdom():
     assert d["buttons"]["old1"] == ["Files"], "a finished project only lists its files"
     assert d["bar"] == ["2", "5", "40%"]
     assert "2 of 5 checkpoints" in d["meta"] and "running for 2 min" in d["meta"]
+    assert "running for" not in d["metaPaused"] and "started" in d["metaPaused"], "a paused project is not running"
+    assert "took 10 min" in d["metaDone"]
     assert d["last"] == "Checkpoint 2 done"
     assert d["crews"][0] == ["Daily briefing", "Running", ["Stop"]] and d["crews"][1][:2] == ["Deep research", "Interrupted"]
     assert d["chips"] == ["example.com", "web_search"]

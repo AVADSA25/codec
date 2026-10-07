@@ -436,7 +436,7 @@ you copy a web link") from the skill's `SKILL_OBSERVATION_TRIGGER`, falling back
 to the skill's name. Found in the Mac merge pass. Revisit: the next item that
 touches triggers.
 
-## The Activity board says "running for" a project that is waiting (2026-10-07)
+## The Activity board says "running for" a project that is waiting (2026-10-07) — FIXED (only while it runs)
 
 Tasks > Activity (P3.8) shows "running for N min" under every project, including
 one waiting for approval or paused, where it is the time since it started. Fix:

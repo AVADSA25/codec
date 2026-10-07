@@ -1013,7 +1013,9 @@ function _actProjectCard(p) {
   }
   var meta = [];
   if (total) meta.push(Math.min(idx, total) + ' of ' + total + ' checkpoints');
-  if (p.elapsed_s != null) meta.push((live ? 'running for ' : 'took ') + _actDur(p.elapsed_s));
+  // "running for" only while it runs; a waiting, paused or blocked project shows when it started.
+  var running = p.status === 'running' || p.status === 'crashed_resumed';
+  if (p.elapsed_s != null && (running || !live)) meta.push((running ? 'running for ' : 'took ') + _actDur(p.elapsed_s));
   if (p.created_at) meta.push('started ' + _actWhen(p.created_at));
   if (p.silenced) meta.push('notifications off');
   h += '<div class="act-meta">' + meta.map(function (m) { return '<span>' + escHtml(m) + '</span>'; }).join('') + '</div>';
