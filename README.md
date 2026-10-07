@@ -573,6 +573,14 @@ python3 -c "from codec_config import *; print('Config OK')"
 </details>
 
 <details>
+<summary><strong>PM2 says "Script not found: /usr/local/bin/python3.13"</strong></summary>
+
+- Five services (codec-mcp-http, codec-dictate, codec-autopilot, codec-observer, codec-agent-runner) run on Python 3.13. `ecosystem.config.js` looks for `python3.13` in `/usr/local/bin`, then `/opt/homebrew/bin`, then your `PATH`, and falls back to `python3`.
+- Install it if it is missing: `brew install python@3.13` (or the python.org installer), then `pm2 start ecosystem.config.js` again.
+- Python 3.13 somewhere else? Point CODEC at it: `CODEC_PYTHON=/path/to/python3.13 pm2 start ecosystem.config.js`.
+</details>
+
+<details>
 <summary><strong>Dictate not working</strong></summary>
 
 - **Check logs:** `pm2 logs codec-dictate --lines 20 --nostream`

@@ -25,6 +25,28 @@
  * after 30s up). The backoff starts at each app's restart_delay, so no app
  * restarts sooner than it did before.
  */
+// Python for the services pinned to 3.13: CODEC_PYTHON if set, else the first python3.13
+// found in /usr/local/bin (python.org installer), /opt/homebrew/bin (Homebrew on Apple
+// Silicon) or on PATH, else plain python3. A hard-coded /usr/local/bin/python3.13 made
+// `pm2 start ecosystem.config.js` fail with "Script not found" on Macs where Python lives
+// elsewhere (GitHub issue #424).
+const fs = require("fs");
+const path = require("path");
+function findPython313() {
+  if (process.env.CODEC_PYTHON) return process.env.CODEC_PYTHON;
+  const dirs = ["/usr/local/bin", "/opt/homebrew/bin"].concat((process.env.PATH || "").split(path.delimiter));
+  for (const dir of dirs) {
+    if (!dir) continue;
+    const candidate = path.join(dir, "python3.13");
+    try {
+      fs.accessSync(candidate, fs.constants.X_OK);
+      return candidate;
+    } catch (e) { /* not here */ }
+  }
+  return "python3";
+}
+const PYTHON313 = findPython313();
+
 function withCrashCaps(app) {
   return {
     min_uptime: "60s",
@@ -62,7 +84,7 @@ module.exports = {
     // ── CODEC MCP HTTP bridge (remote Claude access via Cloudflare) ──
     {
       name: "codec-mcp-http",
-      script: "/usr/local/bin/python3.13",
+      script: PYTHON313,
       args: "codec_mcp_http.py",
       cwd: __dirname,
       env: {
@@ -79,7 +101,7 @@ module.exports = {
     // NOTE: codec-heartbeat and codec-scheduler are unified into codec-dashboard
     {
       name: "codec-dictate",
-      script: "/usr/local/bin/python3.13",
+      script: PYTHON313,
       args: "-u codec_dictate.py",
       cwd: __dirname,
       max_memory_restart: "768M",
@@ -179,7 +201,7 @@ module.exports = {
     // ── Autopilot (ambient scheduler — fires skills at configured times) ──
     {
       name: "codec-autopilot",
-      script: "/usr/local/bin/python3.13",
+      script: PYTHON313,
       args: "-u codec_autopilot.py",
       cwd: __dirname,
       max_memory_restart: "128M",
@@ -208,7 +230,7 @@ module.exports = {
     // content, no file paths leaked to ~/.codec/audit.log.
     {
       name: "codec-observer",
-      script: "/usr/local/bin/python3.13",
+      script: PYTHON313,
       args: "-u codec_observer.py",
       cwd: __dirname,
       max_memory_restart: "128M",
@@ -228,7 +250,7 @@ module.exports = {
     // Kill switch: AGENT_RUNNER_ENABLED=false (daemon idles).
     {
       name: "codec-agent-runner",
-      script: "/usr/local/bin/python3.13",
+      script: PYTHON313,
       args: "-u codec_agent_runner.py",
       cwd: __dirname,
       max_memory_restart: "256M",
