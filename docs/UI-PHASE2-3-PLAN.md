@@ -58,7 +58,7 @@ strict consent) are add-only. No personal data in the repo. No emoji in the UI.
 | 25 | P3.7: 'CODEC is watching' indicator with pause | M | no | done (#434) |
 | 26 | P3.8: Activity board for projects and background jobs | M | no | done (#435) |
 | 27 | P3.9: Connections: Google, MCP clients, bridges, permissions | M | no | done (#436) |
-| 28 | P3.10: Side-by-side model compare from any reply | M | no | open |
+| 28 | P3.10: Side-by-side model compare from any reply | M | no | done (#437) |
 | 29 | P3.11: Usage and cloud spend | S | no | open |
 | 30 | P3.12: Learning page: review what CODEC proposes to learn | L | no | open |
 

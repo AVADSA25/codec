@@ -325,9 +325,13 @@ def call(
     enable_thinking: bool = False,
     extra_kwargs: Optional[Dict[str, Any]] = None,
     raise_on_error: bool = False,
+    usage_out: Optional[Dict[str, Any]] = None,
 ) -> str:
     """POST `messages` to `<base_url>/chat/completions` and return the parsed,
     `<think>`-stripped assistant text.
+
+    `usage_out`, when given, receives the server's `usage` block (token counts)
+    of the successful reply, if it sent one (UI P3.10: model compare).
 
     `retries` includes the first attempt (retries=3 → up to 3 tries with
     exponential 2**n backoff between them, matching codec_session.qwen_call).
@@ -371,6 +375,8 @@ def call(
                 resp = extract_content(_body)
                 if _route is not None and isinstance(_body, dict):
                     _route.record(_body.get("usage"), messages, resp)
+                if usage_out is not None and isinstance(_body, dict) and isinstance(_body.get("usage"), dict):
+                    usage_out.update(_body["usage"])
                 if resp:
                     return resp
                 # 200 but empty/odd shape — nothing more to get; don't retry.

@@ -104,11 +104,24 @@ def default_endpoints() -> list[dict]:
     return eps
 
 
+def _speed(text: str, usage: dict, elapsed_s: float) -> dict:
+    """Completion tokens (the server's count, else about 4 characters a token) and
+    tokens per second over the leg's wall time (UI P3.10)."""
+    n = usage.get("completion_tokens") if isinstance(usage, dict) else None
+    estimated = not isinstance(n, int) or isinstance(n, bool) or n <= 0
+    if estimated:
+        n = max(1, round(len(text) / 4)) if text else 0
+    return {"tokens": n, "tokens_estimated": estimated,
+            "tok_s": round(n / elapsed_s, 1) if n and elapsed_s > 0 else None}
+
+
 def _query_one(ep: dict, prompt: str, system: Optional[str], timeout: int) -> dict:
     """Query a single endpoint. Never raises — failures are captured as
-    {ok: False, error}. Returns the endpoint dict enriched with the result."""
+    {ok: False, error}. Returns the endpoint dict enriched with the result,
+    its time and its token counts."""
     t0 = time.monotonic()
     base = {k: ep.get(k) for k in ("label", "model", "tier")}
+    usage: dict = {}
     try:
         if ep["kind"] == "ava":
             import codec_ava_client
@@ -121,12 +134,16 @@ def _query_one(ep: dict, prompt: str, system: Optional[str], timeout: int) -> di
                 + [{"role": "user", "content": prompt}]
             text = codec_llm.call(
                 messages, base_url=ep["base_url"], model=ep["model"],
-                max_tokens=_MAX_TOKENS, timeout=timeout, raise_on_error=True)
-        return {**base, "ok": True, "response": (text or "").strip(),
-                "elapsed_ms": round((time.monotonic() - t0) * 1000)}
+                max_tokens=_MAX_TOKENS, timeout=timeout, raise_on_error=True,
+                usage_out=usage)
+        text = (text or "").strip()
+        elapsed = time.monotonic() - t0
+        return {**base, "ok": True, "response": text, "elapsed_ms": round(elapsed * 1000),
+                **_speed(text, usage, elapsed)}
     except Exception as e:
         return {**base, "ok": False, "error": str(e)[:300],
-                "elapsed_ms": round((time.monotonic() - t0) * 1000)}
+                "elapsed_ms": round((time.monotonic() - t0) * 1000),
+                "tokens": None, "tokens_estimated": False, "tok_s": None}
 
 
 def compare(prompt: str, *, endpoints: Optional[list[dict]] = None,
@@ -137,7 +154,7 @@ def compare(prompt: str, *, endpoints: Optional[list[dict]] = None,
     concurrently and collect every reply.
 
     Returns {prompt, blind, results:[{label|display, model, tier, ok, response|error,
-    elapsed_ms}], mapping?}. In blind mode each result's display label is
+    elapsed_ms, tokens, tokens_estimated, tok_s}], mapping?}. In blind mode each result's display label is
     anonymized (Model A/B/…) and a `mapping` of anon→real is returned separately
     so the caller decides whether/when to reveal it.
     """

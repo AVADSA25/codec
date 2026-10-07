@@ -234,6 +234,22 @@ button.msg-att{cursor:zoom-in}
 /* Messages sent while a reply streams wait here and send when it ends. */
 .queue-chips{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
 .queue-chips:empty{display:none}
+/* P3.10: Compare models, from a reply's more menu */
+.cs-dialog.cmp-dialog{width:min(980px,100%)}
+.cmp-note{font-size:var(--fs-14);color:var(--text-muted);padding:6px 0;line-height:1.5}
+.cmp-a{font-size:var(--fs-14);margin-bottom:10px}
+.cmp-k{font-weight:600;color:var(--text-muted);margin-right:4px}
+.cmp-pick{border:0;padding:0;margin:0 0 6px}
+.cmp-pick legend{font-weight:600;color:var(--text-muted);font-size:var(--fs-14);margin-bottom:4px}
+.cmp-cost{color:var(--text-muted);font-size:var(--fs-12)}
+.cmp-cols{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.cmp-col{display:flex;flex-direction:column;gap:8px;min-width:0;padding:12px;border:1px solid var(--border);border-radius:var(--radius-12);background:var(--surface-2)}
+.cmp-h{font-weight:600;font-size:var(--fs-14);overflow-wrap:anywhere}
+.cmp-meta{font-size:var(--fs-12);color:var(--text-muted)}
+.cmp-ans{font-size:var(--fs-14);line-height:1.55;max-height:50vh;overflow-y:auto;overflow-wrap:anywhere}
+.cmp-err{font-size:var(--fs-13);color:var(--danger-text);overflow-wrap:anywhere}
+.cmp-col .cs-dbtn{align-self:flex-start}
+@media(max-width:767px){.cmp-cols{grid-template-columns:1fr}.cmp-ans{max-height:none}}
 /* P3.8: the running-task rail above the composer (active projects, running crew runs) */
 .run-rail{display:flex;flex-direction:column;gap:6px;flex-shrink:0;padding:0 max(12px,calc((100% - 760px) / 2)) 6px;background:var(--bg)}
 .run-rail[hidden]{display:none}
@@ -415,7 +431,7 @@ input[type=file]{display:none}
 </style>
 </head>
 <body>
-<script src="/static/codec-shell.js?v=f0a7b01a" data-page="chat" data-title="Chat" data-status data-model-slot></script>
+<script src="/static/codec-shell.js?v=42b8fd6a" data-page="chat" data-title="Chat" data-status data-model-slot></script>
 <div class="app cs-main" id="appContainer">
 <div class="messages" id="messages" role="log" aria-live="polite" aria-label="Conversation"></div>
 
@@ -1218,6 +1234,7 @@ function replyMore(div,btn){
     items.push({label:thinkingEnabled?'Retry (Think is on)':'Retry with Think',icon:'bulb',run:function(){if(!thinkingEnabled)toggleThinking();regenerateResponse(div)}});
     items.push({label:'Retry with another model',icon:'cpu',run:function(){retryOtherModel(div)}});
   }
+  items.push({label:'Compare models',icon:'columns',run:function(){compareOpen(div)}});
   items.push({label:'Copy',icon:'doc',run:function(){var cb=div.querySelector('[data-act="copy"]');if(cb)cb.click()}});
   CodecShell.actions(btn,items);
 }
@@ -1226,6 +1243,112 @@ function retryOtherModel(div){
   var m=sel&&window.CodecShell&&CodecShell.menu(sel);
   if(!m||_modelBusy){showToast('The model picker is busy');return}
   m.open({onClose:function(changed){_retryAfterSwitch=changed?div:null}});
+}
+
+// ── Compare models (P3.10, docs/P3.10-DESIGN.md) ───────────────────────────
+// The question behind a reply goes to the local model and one other (a Cookbook
+// model, or a cloud model only when the box is ticked); the answers show side by
+// side with time, tokens and tok/s. Keep this one makes it a new version of the reply.
+var CMP={el:null,div:null,q:'',targets:[],results:null,busy:false};
+function _cmpEl(){
+  if(CMP.el)return CMP.el;
+  var w=document.createElement('div');w.className='cs-dialog-backdrop';w.id='cmpWrap';w.hidden=true;
+  w.innerHTML='<section class="cs-dialog cmp-dialog" id="cmpBox" role="dialog" aria-modal="true" aria-labelledby="cmpTitle" data-dialog="open">'+
+    '<h2 id="cmpTitle">Compare models</h2><p class="cs-ask-msg" id="cmpQ"></p><div id="cmpBody"></div>'+
+    '<div class="cs-dialog-error" id="cmpErr" role="alert"></div>'+
+    '<div class="cs-dialog-actions"><button type="button" class="cs-dbtn" id="cmpClose" data-dialog-close>Close</button>'+
+    '<button type="button" class="cs-dbtn cs-dbtn-primary" id="cmpGo">Compare</button></div></section>';
+  document.body.appendChild(w);
+  w.addEventListener('click',function(e){if(e.target===w)_cmpClose()});
+  document.getElementById('cmpClose').addEventListener('click',_cmpClose);
+  document.getElementById('cmpGo').addEventListener('click',_cmpRun);
+  var body=document.getElementById('cmpBody');
+  body.addEventListener('change',_cmpSync);
+  body.addEventListener('click',function(e){var k=e.target.closest('[data-keep]');if(k)_cmpKeep(+k.getAttribute('data-keep'))});
+  CMP.el=w;
+  if(window.CodecShell&&CodecShell.watchDialogs)CodecShell.watchDialogs();
+  return w;
+}
+function _cmpClose(){if(!CMP.el)return;document.getElementById('cmpBox').classList.remove('open');CMP.el.hidden=true;CMP.div=null;CMP.results=null}
+async function compareOpen(div){
+  if(isProcessing){showToast('Wait for the reply to finish');return}
+  var q=_questionBefore(div);
+  if(!q){showToast('There is no question before this reply to compare');return}
+  _cmpEl();CMP.div=div;CMP.q=q;CMP.results=null;
+  document.getElementById('cmpQ').textContent='The question, on its own, without the rest of this chat: '+(q.length>220?q.slice(0,220)+'...':q);
+  document.getElementById('cmpErr').textContent='';
+  var body=document.getElementById('cmpBody'),go=document.getElementById('cmpGo');
+  body.innerHTML='<div class="cmp-note">Loading the models...</div>';go.hidden=true;
+  CMP.el.hidden=false;document.getElementById('cmpBox').classList.add('open');
+  var d;
+  try{var r=await fetch('/api/compare/targets');d=await r.json();if(!r.ok)throw new Error(d.error||r.status)}
+  catch(e){body.innerHTML='<div class="cmp-note">Could not list the models: '+escHtml(e.message)+'</div>';return}
+  CMP.targets=d.targets||[];
+  if(!CMP.targets.length){body.innerHTML='<div class="cmp-note">There is no second model to compare with. Serve one with Cookbook, or register a cloud model (extra_models in the config).</div>';return}
+  var h='<div class="cmp-a"><span class="cmp-k">Model A</span>'+escHtml(d.local.label)+'</div><fieldset class="cmp-pick"><legend>Model B</legend>';
+  CMP.targets.forEach(function(t,i){
+    h+='<label class="cs-check"><input type="radio" name="cmpT" value="'+i+'"'+(i===0?' checked':'')+'> '+escHtml(t.label)+
+      (t.kind==='cloud'?' <span class="cmp-cost">cloud, $'+Number(t.spent||0).toFixed(2)+' of $'+escHtml(String(t.cap))+' this month</span>':'')+'</label>';
+  });
+  h+='</fieldset><label class="cs-check" id="cmpCloud" hidden><input type="checkbox" id="cmpCloudOk"> Use the cloud for this compare. It costs money and counts toward the monthly cap.</label>';
+  body.innerHTML=h;go.hidden=false;_cmpSync();
+}
+function _cmpPicked(){var r=document.querySelector('#cmpBody input[name="cmpT"]:checked');return r?CMP.targets[+r.value]:null}
+function _cmpSync(){
+  var t=_cmpPicked(),cl=document.getElementById('cmpCloud'),go=document.getElementById('cmpGo');
+  if(!cl||!go)return;
+  var cloud=!!(t&&t.kind==='cloud');cl.hidden=!cloud;
+  go.disabled=!t||CMP.busy||(cloud&&!document.getElementById('cmpCloudOk').checked);
+}
+async function _cmpRun(){
+  var t=_cmpPicked();if(!t||CMP.busy)return;
+  var go=document.getElementById('cmpGo'),body=document.getElementById('cmpBody'),err=document.getElementById('cmpErr'),ok=document.getElementById('cmpCloudOk');
+  var cloudOk=!!(ok&&ok.checked);
+  CMP.busy=true;go.disabled=true;err.textContent='';
+  body.innerHTML='<div class="cmp-note">Asking both models. A long answer can take a minute.</div>';
+  var hdrs={'Content-Type':'application/json'};var cm=document.cookie.match(/codec_csrf=([^;]+)/);if(cm)hdrs['x-csrf-token']=cm[1];
+  try{
+    var r=await fetch('/api/compare',{method:'POST',headers:hdrs,body:JSON.stringify({prompt:CMP.q,target:t.id,cloud_ok:cloudOk})});
+    var d=await r.json().catch(function(){return{}});
+    if(!r.ok)throw new Error(d.error||('HTTP '+r.status));
+    CMP.results=d.results||[];
+    body.innerHTML='<div class="cmp-cols">'+CMP.results.map(function(x,i){
+      var meta=x.ok?[(x.elapsed_ms/1000).toFixed(1)+' s',(x.tokens_estimated?'about ':'')+x.tokens+' tokens',x.tok_s?x.tok_s+' tok/s':''].filter(Boolean).join(' · '):'';
+      return '<div class="cmp-col"><div class="cmp-h">'+escHtml(x.label||'')+'</div><div class="cmp-meta">'+escHtml(meta)+'</div>'+
+        (x.ok?'<div class="cmp-ans md" data-ans="'+i+'"></div><button type="button" class="cs-dbtn" data-keep="'+i+'">Keep this one</button>'
+          :'<div class="cmp-err">'+escHtml(x.error||'No answer')+'</div>')+'</div>';
+    }).join('')+'</div>';
+    body.querySelectorAll('[data-ans]').forEach(function(el){mdRender(el,CMP.results[+el.getAttribute('data-ans')].response||'')});
+    go.hidden=true;
+  }catch(e){err.textContent='Could not compare: '+e.message;body.innerHTML=''}
+  CMP.busy=false;
+}
+function _cmpKeep(i){
+  var x=CMP.results&&CMP.results[i],div=CMP.div;
+  if(!x||!x.ok||!div)return;
+  _cmpClose();
+  _keepAnswer(div,x.response);
+}
+// The kept answer becomes a new version of the reply (P2.7), as Regenerate makes one;
+// on an older reply the later turns stay with the earlier version, as Edit does.
+function _keepAnswer(div,text){
+  if(isProcessing){showToast('Wait for the reply to finish');return}
+  var box=document.getElementById('messages');
+  if(!div.isConnected||div.parentNode!==box){showToast('That reply is no longer on screen');return}
+  var start=div;
+  while(start.previousElementSibling&&start.previousElementSibling.classList.contains('msg')&&start.previousElementSibling.classList.contains('assistant'))start=start.previousElementSibling;
+  var n=-1;
+  if(_isLastReply(div)){n=chatHist.length;while(n&&chatHist[n-1].role==='assistant')n--}
+  else{var q=_questionBefore(div);for(var i=chatHist.length-1;i>=0;i--){if(chatHist[i].role==='user'&&String(chatHist[i].content).trim()===q){n=i+1;break}}}
+  if(n<1){showToast('Could not find this reply in the chat');return}
+  var kids=Array.prototype.slice.call(box.children),tail=kids.slice(kids.indexOf(start));
+  _verKeep(n,tail,'assistant');
+  tail.forEach(function(t){t.remove()});
+  chatHist=chatHist.slice(0,n);
+  _markDiscard(n);
+  addMessage('assistant',text);
+  chatHist.push({role:'assistant',content:text});saveMessages([{role:'assistant',content:text}]);
+  scrollBottom();
 }
 
 // ── Composer card (UI phase 1 PR-D) ────────────────────────────────────────
