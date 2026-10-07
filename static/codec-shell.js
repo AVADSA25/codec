@@ -114,7 +114,10 @@
     cpu: '<rect x="5" y="5" width="14" height="14" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/>',
     keys: '<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/>',
     chev: '<path d="m6 9 6 6 6-6"/>',
-    bulb: '<path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1V17h6v-.2c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2z"/>'
+    bulb: '<path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1V17h6v-.2c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2z"/>',
+    eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>',
+    eyeoff: '<path d="M10.6 5.1A9.7 9.7 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-2.2 3.2M6.6 6.6C3.6 8.6 2 12 2 12s3.5 7 10 7a9.6 9.6 0 0 0 5.4-1.6M3 3l18 18M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
+    bolt: '<path d="M13 2 3 14h9l-1 8 10-12h-9z"/>'
   };
   function ico(name, size, cls) {
     return '<svg class="cs-ico' + (cls ? ' ' + cls : '') + '" width="' + (size || 20) + '" height="' + (size || 20) +
@@ -194,6 +197,8 @@
         (HAS_STATUS ? '<span class="status-dot" id="statusDot" title="CODEC status"></span>' : '') +
         (HAS_MODEL_SLOT ? '<span class="cs-top-slot" id="hdrModelSlot"></span>' : '') +
         '<div class="cs-top-right">' +
+          '<button type="button" class="cs-ibtn cs-watch" id="csWatch" hidden aria-haspopup="menu" aria-label="CODEC is watching"' +
+            ' title="CODEC is watching"></button>' +
           '<button type="button" class="cs-ibtn cs-newchat" onclick="CodecShell.newChat()" aria-label="New chat"' +
             ' title="New chat">' + ico('pen') + '</button>' +
           '<button type="button" class="cs-ibtn menu-btn" id="menuBtn" onclick="openSidePanel()" title="Quick settings"' +
@@ -1332,6 +1337,143 @@
       return hex;
     });
   }
+  // ── 'CODEC is watching' (P3.7, docs/P3.7-DESIGN.md) ──────────────────────
+  // An eye in the header while the observer watches (or is paused), with a menu:
+  // pause, what it sees now (metadata only), the automatic triggers, settings.
+  var WATCH = { state: null, timer: null };
+  function watchPoll() {
+    clearTimeout(WATCH.timer);
+    fetch('/api/observer/state').then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+      WATCH.state = d;
+      var b = $('csWatch');
+      if (!b) return;
+      var paused = !!(d && d.paused_until), on = !!(d && d.watching);
+      b.hidden = !(on || paused);
+      b.classList.toggle('cs-watch-paused', paused);
+      b.innerHTML = ico(paused ? 'eyeoff' : 'eye');
+      var label = paused ? 'Watching paused until ' + watchTime(d.paused_until) : 'CODEC is watching';
+      b.setAttribute('aria-label', label);
+      b.title = label;
+    }).catch(function () { /* offline: keep what is shown */ }).then(function () {
+      WATCH.timer = setTimeout(watchPoll, document.hidden ? 300000 : 60000);
+    });
+  }
+  function watchTime(iso) {
+    var d = new Date(iso);
+    if (isNaN(d)) return '';
+    var t = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    return d.toDateString() === new Date().toDateString() ? t : t + ' tomorrow';
+  }
+  function watchMenu(btn) {
+    var paused = !!(WATCH.state && WATCH.state.paused_until);
+    var pause = function (body, said) {
+      return function () {
+        postJSON('/api/observer/pause', body).then(function (d) {
+          toast('Watching paused until ' + watchTime(d.paused_until) + '. ' + said);
+        }, function (e) { toast('Could not pause: ' + e.message); }).then(watchPoll);
+      };
+    };
+    var items = paused ? [
+      { label: 'Resume watching', icon: 'eye', run: function () {
+        postJSON('/api/observer/resume', {}).then(function () { toast('Watching again.'); },
+          function (e) { toast('Could not resume: ' + e.message); }).then(watchPoll);
+      } }
+    ] : [
+      { label: 'Pause for 15 minutes', icon: 'pause', run: pause({ minutes: 15 }, 'What it had seen is forgotten.') },
+      { label: 'Pause for 1 hour', icon: 'pause', run: pause({ minutes: 60 }, 'What it had seen is forgotten.') },
+      { label: 'Pause until tomorrow', icon: 'pause', run: pause({ until: 'tomorrow' }, 'What it had seen is forgotten.') }
+    ];
+    items = items.concat([
+      { label: 'What CODEC sees now', icon: 'eye', run: watchNow },
+      { label: 'Automatic triggers', icon: 'bolt', run: trigOpen },
+      { label: 'Observer settings', icon: 'gear', run: function () { location.href = '/#settings'; } }
+    ]);
+    actions(btn, items);
+  }
+  function watchNow() {
+    fetch('/api/observer/now').then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+      var lines;
+      if (!d) lines = ['The observer did not answer.'];
+      else if (d.paused_until) lines = ['Watching is paused until ' + watchTime(d.paused_until) + '. Nothing is kept.'];
+      else if (!d.latest) lines = ['Nothing is kept right now (the observer is off, or it has just been reset).'];
+      else {
+        var l = d.latest;
+        lines = [
+          'Frontmost app: ' + (l.app || 'unknown'),
+          'Window title: ' + l.title_length + ' characters',
+          'Screen text: ' + (l.screen_read ? l.screen_text_length + ' characters' : 'not read'),
+          'Clipboard: ' + (l.clipboard ? l.clipboard.type + ', ' + l.clipboard.length + ' characters' : 'nothing new'),
+          'Files changed lately: ' + l.recent_files,
+          d.entries + ' snapshots kept, the newest from ' + watchTime(l.at || d.updated) + '.',
+          '',
+          'Only these sizes are shown here; the text itself stays in the observer.'
+        ];
+      }
+      ask({ title: 'What CODEC sees now', message: lines.join('\n'), confirm: 'Close', single: true });
+    }).catch(function () { toast('The observer did not answer.'); });
+  }
+
+  // The Step 6 trigger list (reachable since the voice-trigger guide moved): Mute is soft
+  // (still checked and logged), Turn off stops it completely.
+  var TRIG = { el: null };
+  function trigEl() {
+    if (TRIG.el) return TRIG.el;
+    var w = document.createElement('div');
+    w.className = 'cs-dialog-backdrop';
+    w.id = 'csTrig';
+    w.hidden = true;
+    w.innerHTML =
+      '<section class="cs-dialog" id="csTrigBox" role="dialog" aria-modal="true" aria-labelledby="csTrigTitle" data-dialog="open">' +
+        '<h2 id="csTrigTitle">Automatic triggers</h2>' +
+        '<p class="cs-ask-msg">Skills that start by themselves when the observer sees something. Mute stops one firing; ' +
+          'it is still checked and logged. Turn off stops it completely.</p>' +
+        '<div class="cs-trig-list" id="csTrigList"></div>' +
+        '<div class="cs-dialog-actions"><button type="button" class="cs-dbtn" id="csTrigClose" data-dialog-close>Close</button></div>' +
+      '</section>';
+    document.body.appendChild(w);
+    TRIG.el = w;
+    w.addEventListener('click', function (e) { if (e.target === w) trigClose(); });
+    $('csTrigClose').addEventListener('click', trigClose);
+    $('csTrigList').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-t]');
+      if (!b) return;
+      var key = b.getAttribute('data-key'), act = b.getAttribute('data-t'), on = b.getAttribute('data-on') === '1';
+      b.disabled = true;
+      postJSON('/api/triggers/' + encodeURIComponent(key) + '/' + act, act === 'mute' ? { muted: !on } : { killed: !on })
+        .catch(function (err) { toast('Could not change it: ' + err.message); }).then(trigLoad);
+    });
+    dlgWatch();
+    return w;
+  }
+  function trigOpen() {
+    trigEl().hidden = false;
+    $('csTrigBox').classList.add('open');
+    trigLoad();
+  }
+  function trigClose() {
+    if (!TRIG.el) return;
+    $('csTrigBox').classList.remove('open');
+    TRIG.el.hidden = true;
+  }
+  function trigLoad() {
+    var list = $('csTrigList');
+    fetch('/api/triggers').then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+      var ts = (d && d.triggers) || [];
+      if (!ts.length) { list.innerHTML = '<p class="cs-inbox-empty">No skill starts by itself.</p>'; return; }
+      list.innerHTML = (d.global_enabled === false ? '<p class="cs-ib-meta">All triggers are off on this Mac (TRIGGERS_ENABLED).</p>' : '') +
+        ts.map(function (t) {
+          var state = t.killed ? 'Turned off' : (t.muted ? 'Muted' : 'Active');
+          return '<div class="cs-ib cs-trig-row"><div class="cs-ib-head"><span class="cs-ib-title">' + esc(t.summary || t.skill_name) +
+            '</span><span class="cs-ib-when">' + esc(state) + '</span></div>' +
+            '<p class="cs-ib-meta">' + esc(t.skill_name) + ' · ' + esc(String(t.type || '').replace(/_/g, ' ')) + '</p>' +
+            '<div class="cs-ib-acts">' +
+              '<button type="button" class="cs-dbtn" data-t="mute" data-key="' + esc(t.trigger_key) + '" data-on="' + (t.muted ? 1 : 0) + '">' + (t.muted ? 'Unmute' : 'Mute') + '</button>' +
+              '<button type="button" class="cs-dbtn" data-t="kill" data-key="' + esc(t.trigger_key) + '" data-on="' + (t.killed ? 1 : 0) + '">' + (t.killed ? 'Turn on' : 'Turn off') + '</button>' +
+            '</div></div>';
+        }).join('');
+    }).catch(function () { list.innerHTML = '<p class="cs-inbox-empty">Could not load the triggers.</p>'; });
+  }
+
   function pushResync() {
     try {
       if (lsGet('codec-push') !== '1' || !pushCapable() || Notification.permission !== 'granted') return;
@@ -1811,6 +1953,7 @@
     $('csAskOk').textContent = opts.confirm || 'OK';
     $('csAskOk').classList.toggle('cs-dbtn-danger', !!opts.danger);
     $('csAskCancel').textContent = opts.cancel || 'Cancel';
+    $('csAskCancel').hidden = !!opts.single;  // P3.7: an information box has one button
     ASK.input = f;
     ASK.back = document.activeElement;
     el.hidden = false;
@@ -2445,6 +2588,10 @@
     if (typeof window.updateVoiceIcon === 'function') window.updateVoiceIcon();
     refreshHistory();
     pollInbox();
+    watchPoll();
+    var wb = $('csWatch');
+    if (wb) wb.addEventListener('click', function () { watchMenu(wb); });
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) watchPoll(); });
     inboxFromHash();
     window.addEventListener('hashchange', inboxFromHash);
     syncInstall();

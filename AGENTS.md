@@ -81,6 +81,8 @@ CODEC has a background process (`codec-observer` PM2 service, `codec_observer.py
 
 **Kill switch**: `OBSERVER_ENABLED=false` env var disables polling AND injection.
 
+**Pause from the pages (UI P3.7)**: `~/.codec/observer_paused_until` (one ISO time, 0600) is written by `POST /api/observer/pause` (the eye in each page's header) and deleted by `/api/observer/resume`. While it is in the future the daemon does not poll, forgets its RAM buffer and deletes the disk mirror once, injection is skipped, and the shift report still fires. `GET /api/observer/state` and `/api/observer/now` read the disk mirror (metadata only); `/api/observer/buffer` reads the dashboard's own (empty) buffer and stays debug-only.
+
 **Audit events** (4 new): `observation_tick` (per poll, info), `observation_tick_slow` (poll > 150ms, warning), `observation_summary_injected` (gated inject fired, info, inherits cid), `observer_buffer_inspected` (debug-gated PWA read).
 
 **Forward-compat API for Steps 6 + 7**: `get_global_buffer()` exposes the live ring buffer (Step 6 Triggers reads `.snapshot()` for trigger evaluation); `persist_for_shift_report()` writes a summary to `~/.codec/observation_summaries/<ts>.md` (the only persistent observer output, called by Step 7 shift-report assembly).

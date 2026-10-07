@@ -703,7 +703,7 @@ def test_dashboard():
         FAIL(A, 28, "Cortex neural map", detail)
 
     # 29: Voice trigger manager
-    ok, detail = check_endpoint("/api/triggers")
+    ok, detail = check_endpoint("/api/voice_triggers")
     if ok:
         PASS(A, 29, "Editable voice trigger manager", detail[:60])
     else:

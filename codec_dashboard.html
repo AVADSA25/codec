@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
 <link rel="manifest" href="/manifest.json">
 <title>CODEC</title>
-<link rel="stylesheet" href="/static/codec.css?v=25910ee3">
+<link rel="stylesheet" href="/static/codec.css?v=69a2bc56">
 <style>
 :root {
   --bg: #121215; --surface: #18181b; --surface-2: #1f1f22; --surface-3: #2a2a2f;
@@ -658,7 +658,7 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
 </style>
 </head>
 <body>
-<script src="/static/codec-shell.js?v=be9f6847" data-page="home" data-title="Today" data-status></script>
+<script src="/static/codec-shell.js?v=f0a7b01a" data-page="home" data-title="Today" data-status></script>
 
 <!-- ── Connect your AI (first run) ─────────────────────────────────────────
      Shown until CODEC has a VERIFIED brain. A fresh paid install had no way
@@ -3671,7 +3671,7 @@ async function pasteClipboard() {
 var _triggerData = null;
 async function loadTriggerGuide() {
   try {
-    var r = await fetch('/api/triggers');
+    var r = await fetch('/api/voice_triggers');
     _triggerData = await r.json();
     // Hotkeys
     var hkEl = document.getElementById('hotkeysList');
@@ -3690,7 +3690,7 @@ async function saveSkillTriggers(name) {
   if (!triggers.length) { showToast('Add at least one trigger'); return; }
   try {
     var body = {}; body[name] = { triggers: triggers };
-    var r = await fetch('/api/triggers', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    var r = await fetch('/api/voice_triggers', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
     var d = await r.json();
     if (d.status === 'saved') {
       loadTriggerGuide();
@@ -3704,7 +3704,7 @@ async function resetSkillTriggers(name) {
   if (!await CodecShell.ask({ title: 'Reset these triggers?', message: 'The "' + name + '" skill goes back to its own trigger phrases.', confirm: 'Reset', danger: true })) return;
   try {
     var body = {}; body[name] = { triggers: null };
-    await fetch('/api/triggers', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    await fetch('/api/voice_triggers', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
     loadTriggerGuide();
     loadSkillsCatalog();
     showToast('Reset to defaults. Restart CODEC (F13 off/on) to apply.');

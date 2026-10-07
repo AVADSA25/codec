@@ -334,7 +334,9 @@ def _load_custom_triggers() -> dict:
         return {}
 
 
-@router.get("/api/triggers")
+# P3.7: was /api/triggers, which routes/triggers.py (the Step 6 trigger list) also serves;
+# this one won, so that list could not be reached. The voice-trigger guide lives here now.
+@router.get("/api/voice_triggers")
 async def list_triggers():
     """Return all skills with their default + custom triggers and hotkeys."""
     skills_dir = _get_skills_dir()
@@ -391,7 +393,7 @@ async def list_triggers():
     return {"skills": skills, "hotkeys": hotkeys, "wake_words": wake_words}
 
 
-@router.post("/api/triggers")
+@router.post("/api/voice_triggers")
 async def save_triggers(request: Request):
     """Save custom triggers for one or more skills."""
     body = await request.json()
