@@ -159,6 +159,7 @@ def test_review_then_approve_go_through_the_existing_gates(tmp_path, monkeypatch
     skills_dir = tmp_path / "skills"
     monkeypatch.setattr(rs, "_reviews_dir", lambda: str(tmp_path / "reviews"))
     monkeypatch.setattr(rs, "_get_skills_dir", lambda: str(skills_dir))
+    monkeypatch.setattr(rs, "_approved_skills_dir", lambda: str(skills_dir))
     monkeypatch.setattr(rs, "_pending_skills", {})
     app = FastAPI()
     app.include_router(rs.router)

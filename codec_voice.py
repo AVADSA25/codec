@@ -198,9 +198,10 @@ KOKORO_MODEL  = "mlx-community/Kokoro-82M-bf16"
 KOKORO_VOICE  = "am_adam"
 KOKORO_SPEED  = 1.15          # config:tts_speed overrides (normal mode; flash has its own)
 try:
-    from codec_config import SKILLS_DIR
+    from codec_config import SKILLS_DIR, USER_SKILLS_DIR
 except ImportError:
     SKILLS_DIR = os.path.expanduser("~/.codec/skills")
+    USER_SKILLS_DIR = None
 
 _CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
 try:
@@ -511,7 +512,7 @@ class VoicePipeline:
 
     def _load_skills(self):
         from codec_skill_registry import SkillRegistry
-        self._skill_registry = SkillRegistry(SKILLS_DIR)
+        self._skill_registry = SkillRegistry(SKILLS_DIR, USER_SKILLS_DIR)
         self._skill_registry.scan()
         # Build a lightweight dict with triggers only (no module imports)
         for name in self._skill_registry.names():

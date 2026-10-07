@@ -11,7 +11,7 @@ import time
 # Audit emits route through the unified log_event adapter (real, not no-op)
 # per docs/PHASE1-STEP1-DESIGN.md.
 from codec_audit import log_event
-from codec_config import SKILLS_DIR
+from codec_config import SKILLS_DIR, USER_SKILLS_DIR
 from codec_hooks import HookVeto, run_with_hooks
 from codec_skill_registry import SkillRegistry
 from codec_skill_switches import is_off as _skill_off, off_message as _off_message
@@ -19,7 +19,7 @@ from codec_skill_switches import is_off as _skill_off, off_message as _off_messa
 log = logging.getLogger('codec')
 
 # Global registry instance shared across codec.py
-registry = SkillRegistry(SKILLS_DIR)
+registry = SkillRegistry(SKILLS_DIR, USER_SKILLS_DIR)
 
 
 def load_skills():

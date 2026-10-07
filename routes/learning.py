@@ -64,6 +64,11 @@ def _installed() -> set:
         names |= {f[:-3] for f in os.listdir(_get_skills_dir()) if f.endswith(".py")}
     except OSError:
         pass
+    try:  # approved skills go to the user folder; one approved before a restart is not in the registry yet
+        from codec_config import USER_SKILLS_DIR
+        names |= {f[:-3] for f in os.listdir(USER_SKILLS_DIR) if f.endswith(".py") and not f.startswith("_")}
+    except OSError:
+        pass
     return names
 
 

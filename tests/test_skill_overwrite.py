@@ -34,6 +34,7 @@ def _approve(payload):
 
 def test_skill_approve_refuses_pinned_builtin_name(tmp_path, monkeypatch):
     monkeypatch.setattr(skills_routes, "_get_skills_dir", lambda: str(tmp_path))
+    monkeypatch.setattr(skills_routes, "_approved_skills_dir", lambda: str(tmp_path))
     rid = "rev_pinned"
     skills_routes._pending_skills[rid] = {"code": _BENIGN, "filename": "calculator.py"}
     resp = _approve({"review_id": rid})
@@ -44,6 +45,7 @@ def test_skill_approve_refuses_pinned_builtin_name(tmp_path, monkeypatch):
 
 def test_skill_approve_allows_non_pinned_name(tmp_path, monkeypatch):
     monkeypatch.setattr(skills_routes, "_get_skills_dir", lambda: str(tmp_path))
+    monkeypatch.setattr(skills_routes, "_approved_skills_dir", lambda: str(tmp_path))
     rid = "rev_ok"
     skills_routes._pending_skills[rid] = {"code": _BENIGN, "filename": "my_unique_helper.py"}
     resp = _approve({"review_id": rid})

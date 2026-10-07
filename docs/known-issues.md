@@ -443,7 +443,7 @@ one waiting for approval or paused, where it is the time since it started. Fix:
 "started N min ago" unless the project is running. Found in the Mac merge pass.
 Revisit: the next item that touches the Activity board.
 
-## Approved skills are written into the repo's `skills/` folder (2026-10-07)
+## Approved skills are written into the repo's `skills/` folder (2026-10-07) — FIXED (user skills folder, docs/USER-SKILLS-DIR-DESIGN.md: approve writes to ~/.codec/skills and every registry reads it)
 
 `POST /api/skill/approve` (the review-and-approve flow, and Settings > Learning's
 Approve and install since P3.12) writes to `routes._shared._get_skills_dir()`,

@@ -187,6 +187,14 @@ async def skill_review(request: Request):
     }
 
 
+def _approved_skills_dir() -> str:
+    """Where an approved skill is written: the owner's folder (codec_config.USER_SKILLS_DIR,
+    ~/.codec/skills by default), never the repo's built-in folder. The registry reads it
+    after the built-ins (docs/USER-SKILLS-DIR-DESIGN.md)."""
+    from codec_config import USER_SKILLS_DIR
+    return USER_SKILLS_DIR
+
+
 @router.post("/api/skill/approve")
 async def skill_approve(request: Request):
     """Approve a pending skill review -- writes to disk and removes from pending."""
@@ -233,11 +241,14 @@ async def skill_approve(request: Request):
     dangerous, reason = is_dangerous_skill_code(code)
     if dangerous:
         return JSONResponse({"error": f"Blocked: {reason}"}, status_code=400)
-    skill_dir = _get_skills_dir()
-    os.makedirs(skill_dir, exist_ok=True)
+    skill_dir = _approved_skills_dir()
+    os.makedirs(skill_dir, mode=0o700, exist_ok=True)
     path = os.path.join(skill_dir, filename)
-    with open(path, "w") as f:
+    tmp = path + ".tmp"  # not a .py, so a scan never reads a half-written file
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
         f.write(code)
+    os.replace(tmp, path)
     # Only now that the skill is on disk do we clear the staged review (from both
     # disk and the in-memory cache) so a crash mid-write leaves it re-approvable.
     _delete_review(review_id)
@@ -247,7 +258,7 @@ async def skill_approve(request: Request):
             "skill_approved", source="codec-routes-skills",
             message=f"approved skill {filename} ({len(code)} bytes) → {path}",
             level="info", outcome="ok",
-            extra={"filename": filename, "review_id": review_id, "size": len(code)},
+            extra={"filename": filename, "review_id": review_id, "size": len(code), "dir": "user"},
         )
     except Exception:
         pass

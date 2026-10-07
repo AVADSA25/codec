@@ -81,7 +81,7 @@ from pathlib import Path
 _REPO = Path(__file__).resolve().parent
 sys.path.insert(0, str(_REPO))
 
-from codec_config import QWEN_BASE_URL, QWEN_MODEL, SKILLS_DIR, is_dangerous_skill_code
+from codec_config import QWEN_BASE_URL, QWEN_MODEL, SKILLS_DIR, USER_SKILLS_DIR, is_dangerous_skill_code
 
 try:
     from codec_audit import log_event as _si_log_event
@@ -106,7 +106,8 @@ _GAP_KIND_TO_SIGNAL = {
 
 def _existing_skill_names() -> set[str]:
     out = set()
-    for f in Path(SKILLS_DIR).glob("*.py"):
+    # Built-ins and the owner's folder (approved skills): never propose what is already there.
+    for f in [*Path(SKILLS_DIR).glob("*.py"), *Path(USER_SKILLS_DIR).glob("*.py")]:
         if f.name.startswith("_") or f.name == "codec.py":
             continue
         out.add(f.stem)

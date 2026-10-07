@@ -4,8 +4,12 @@ import importlib
 import os
 import sys
 
-SKILLS_DIR = os.path.expanduser("~/.codec/skills")
+# The user skills folder. conftest points CODEC_USER_SKILLS_DIR at an empty temp folder, so the
+# suite never imports (runs module code of) the owner's approved skills. The smoke tests below
+# import built-ins from the repo's skills/ folder.
+SKILLS_DIR = os.environ.get("CODEC_USER_SKILLS_DIR") or os.path.expanduser("~/.codec/skills")
 sys.path.insert(0, SKILLS_DIR)
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "skills"))
 
 
 def get_skill_files():

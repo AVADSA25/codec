@@ -61,7 +61,7 @@ _REPO_DIR = os.path.dirname(os.path.abspath(__file__))
 if _REPO_DIR not in sys.path:
     sys.path.insert(0, _REPO_DIR)
 
-from codec_config import MCP_DEFAULT_ALLOW, MCP_ALLOWED_TOOLS, MCP_BLOCKED_TOOLS, SKILLS_DIR
+from codec_config import MCP_DEFAULT_ALLOW, MCP_ALLOWED_TOOLS, MCP_BLOCKED_TOOLS, SKILLS_DIR, USER_SKILLS_DIR
 if SKILLS_DIR not in sys.path:
     sys.path.insert(0, SKILLS_DIR)
 from codec_skill_registry import SkillRegistry
@@ -78,7 +78,7 @@ class _ToolsProxy:
 
 
 # Global registry for MCP skill tools
-_mcp_registry = SkillRegistry(SKILLS_DIR)
+_mcp_registry = SkillRegistry(SKILLS_DIR, USER_SKILLS_DIR)
 
 
 def build_mcp(auth=None):

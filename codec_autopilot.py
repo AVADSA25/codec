@@ -39,7 +39,7 @@ sys.path.insert(0, str(_REPO))
 sys.path.insert(0, str(_REPO / "skills"))
 
 from codec_skill_registry import SkillRegistry
-from codec_config import SKILLS_DIR
+from codec_config import SKILLS_DIR, USER_SKILLS_DIR
 from codec_audit import audit
 
 log = logging.getLogger("codec-autopilot")
@@ -116,7 +116,7 @@ def _day_matches(days_spec: str, weekday: int) -> bool:
 def _speak(text: str):
     """Best-effort TTS via tts_say skill; falls back to macOS `say`."""
     try:
-        registry = SkillRegistry(SKILLS_DIR)
+        registry = SkillRegistry(SKILLS_DIR, USER_SKILLS_DIR)
         registry.scan()
         mod = registry.load("tts_say")
         if mod and hasattr(mod, "run"):
@@ -225,7 +225,7 @@ def main():
     codec_lifecycle.install_handlers(
         lambda: log.info("CODEC Autopilot graceful shutdown"),
         name="codec-autopilot")
-    registry = SkillRegistry(SKILLS_DIR)
+    registry = SkillRegistry(SKILLS_DIR, USER_SKILLS_DIR)
     registry.scan()
     while True:
         try:

@@ -43,6 +43,7 @@ def client(tmp_path, monkeypatch):
     reviews_dir = tmp_path / "skill_reviews"
     skills_dir.mkdir()
     monkeypatch.setattr(skills_routes, "_get_skills_dir", lambda: str(skills_dir))
+    monkeypatch.setattr(skills_routes, "_approved_skills_dir", lambda: str(skills_dir))
     monkeypatch.setattr(skills_routes, "_reviews_dir", lambda: str(reviews_dir))
     skills_routes._pending_skills.clear()
     app = FastAPI()
