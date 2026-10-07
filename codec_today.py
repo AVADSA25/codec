@@ -18,6 +18,8 @@ from typing import Any, Dict, List, Optional
 import codec_jsonstore
 
 TODAY_PATH = Path(os.path.expanduser("~/.codec/today.json"))
+# P3.4: open threads snoozed from Today, {thread key: until}; memory.db is never touched.
+THREAD_SNOOZE_PATH = Path(os.path.expanduser("~/.codec/thread_snooze.json"))
 MAX_CARDS = 30
 MAX_BODY = 4000
 
@@ -94,3 +96,36 @@ def drop_thread(card_id: str, key: str) -> bool:
         c["threads"] = [t for t in (c.get("threads") or []) if t.get("key") != key]
         return len(c["threads"]) < before
     return _change(card_id, mutate)
+
+
+# ── Thread snoozes (P3.4, docs/P3.4-DESIGN.md) ────────────────────────────────
+def _later(iso: str, now: datetime) -> bool:
+    try:
+        return datetime.fromisoformat(str(iso)) > now
+    except ValueError:
+        return False
+
+
+def _read_snoozes() -> Dict[str, str]:
+    try:
+        data = json.loads(THREAD_SNOOZE_PATH.read_text())
+    except (FileNotFoundError, ValueError, OSError):
+        return {}
+    return {str(k): str(v) for k, v in data.items()} if isinstance(data, dict) else {}
+
+
+def snooze_thread(key: str, hours: int) -> str:
+    """Hide an open thread from Today for `hours` (1 to 168). Returns the time it comes back."""
+    hours = max(1, min(int(hours), 168))
+    now = datetime.now()
+    until = (now + timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%S")
+    with codec_jsonstore.file_lock(THREAD_SNOOZE_PATH):
+        data = {k: v for k, v in _read_snoozes().items() if _later(v, now)}  # expired ones drop out
+        data[str(key)] = until
+        codec_jsonstore.atomic_write_json(THREAD_SNOOZE_PATH, data)
+    return until
+
+
+def snoozed_threads(now: Optional[datetime] = None) -> set:
+    now = now or datetime.now()
+    return {k for k, v in _read_snoozes().items() if _later(v, now)}

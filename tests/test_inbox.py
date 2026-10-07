@@ -158,8 +158,8 @@ def test_one_drawer_one_poller_and_the_pages_use_it():
     for name, src in PAGES.items():
         assert "approvalBanner" not in src and "fetch('/api/approvals')" not in src, name
     home, chat, tasks = PAGES["codec_dashboard.html"], PAGES["codec_chat.html"], PAGES["codec_tasks.html"]
-    assert "/api/agents/pending_questions" not in home and "CodecShell.inbox.onChange(sync)" in home
-    assert "card = CodecShell.questionCard(q);" in home
+    # Home shows questions with the Inbox's own cards, in Today's Needs you (P3.4)
+    assert "/api/agents/pending_questions" not in home and "CodecShell.inbox.mount(needs, 'needs_you'" in home
     assert "/api/notifications" not in tasks and "panel-reports" not in tasks and "tab-reports" not in tasks
     assert "var rm=h.match(/^#report=((?:notif|auto)_[0-9a-z]{1,40})$/);" in chat and "fetch('/api/inbox/item/'+rm[1])" in chat
 
