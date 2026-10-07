@@ -494,6 +494,7 @@ from routes.checkin import router as checkin_router
 from routes.palette import router as palette_router
 from routes.memory_page import router as memory_page_router
 from routes.inbox import router as inbox_router
+from routes.skills_page import router as skills_page_router
 # H1 / SR-59: chat handler (POST /api/chat) + its helper cluster. The helpers
 # are re-exported back here (below) for the command-handler caller + the
 # existing test surface (codec_dashboard.CHAT_SKILL_ALLOWLIST etc.) — identity-equal.
@@ -554,6 +555,7 @@ app.include_router(checkin_router)
 app.include_router(palette_router)
 app.include_router(memory_page_router)
 app.include_router(inbox_router)
+app.include_router(skills_page_router)
 app.include_router(chat_router)
 if _has_triggers:
     app.include_router(triggers_router)

@@ -14,6 +14,7 @@ from codec_audit import log_event
 from codec_config import SKILLS_DIR
 from codec_hooks import HookVeto, run_with_hooks
 from codec_skill_registry import SkillRegistry
+from codec_skill_switches import is_off as _skill_off, off_message as _off_message
 
 log = logging.getLogger('codec')
 
@@ -33,7 +34,8 @@ def check_skill(task):
     module import on first call.  Stores all matching skill names so
     run_skill can fall through to the next match if a skill returns None.
     """
-    matches = registry.match_all_triggers(task)
+    # P3.6: a skill switched off on the Skills page never matches.
+    matches = [m for m in registry.match_all_triggers(task) if not _skill_off(m)]
     if not matches:
         return None
     name = matches[0]
@@ -68,6 +70,11 @@ def run_skill(skill, task, app=""):
         pass  # fail-open: licensing must never break dispatch
 
     all_matches = skill.get('_all_matches', [skill.get('name')])
+    # P3.6: a skill switched off on the Skills page does not run (an explicit pick included).
+    live = [n for n in all_matches if not _skill_off(n)]
+    if not live:
+        return _off_message(all_matches[0] if all_matches else skill.get('name', '?'))
+    all_matches = live
     # One correlation_id for the whole dispatch attempt (covers any
     # fall-through retries across matched skills).
     cid = secrets.token_hex(6)

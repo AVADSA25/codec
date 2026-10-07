@@ -54,7 +54,7 @@ strict consent) are add-only. No personal data in the repo. No emoji in the UI.
 | 21 | P2.15: Readable Cortex and Audit | M | no | done (#430) |
 | 22 | P3.2: One Inbox for approvals, questions, reports and agent updates | M | no | done (#431) |
 | 23 | P3.4: 'Today' home instead of the Flash log | L | no | done (#432) |
-| 24 | P3.6: Skills page: browse, try, check readiness | M | no | open |
+| 24 | P3.6: Skills page: browse, try, check readiness | M | no | done (#433) |
 | 25 | P3.7: 'CODEC is watching' indicator with pause | M | no | open |
 | 26 | P3.8: Activity board for projects and background jobs | M | no | open |
 | 27 | P3.9: Connections: Google, MCP clients, bridges, permissions | M | no | open |

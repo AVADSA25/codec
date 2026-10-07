@@ -414,6 +414,9 @@ _agents_registry = SkillRegistry(SKILLS_DIR)
 def _make_lazy_fn(registry: "SkillRegistry", skill_name: str):
     """Return a callable that lazy-loads the skill module on first call."""
     def _lazy_run(input_str: str) -> str:
+        from codec_skill_switches import is_off, off_message
+        if is_off(skill_name):  # P3.6: switched off on the Skills page
+            return off_message(skill_name)
         mod = registry.load(skill_name)
         if mod is None or not hasattr(mod, "run"):
             return f"Skill '{skill_name}' could not be loaded."

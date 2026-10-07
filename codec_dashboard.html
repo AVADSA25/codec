@@ -503,25 +503,45 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
 [data-theme="light"] .tag-auth { background: rgba(59,130,246,0.12); color: #2563eb; }
 [data-theme="light"] .tag-crew { background: rgba(34,197,94,0.12); color: #15803d; }
 
-/* ── Skills & Triggers ── */
-.skill-card {
-  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 12px 14px; margin-bottom: 6px; position: relative;
-}
-.skill-card.customized { border-left: 3px solid var(--accent); }
-.skill-header { display: flex; justify-content: space-between; align-items: center; }
-.skill-name { font-family: var(--font-mono); font-weight: 600; color: var(--accent); font-size: calc(14px * var(--fs-scale)); }
-.skill-desc { font-size: calc(12px * var(--fs-scale)); color: var(--text-dim); margin-top: 2px; }
-.skill-triggers { font-size: calc(12px * var(--fs-scale)); color: var(--text-muted); margin-top: 3px; line-height: 1.6; }
-.skill-triggers .trig { display: inline-block; background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; margin: 1px 2px; font-family: var(--font-mono); font-size: calc(12px * var(--fs-scale)); }
-.skill-edit-btn { background: none; border: 1px solid var(--border); color: var(--text-dim); font-size: calc(12px * var(--fs-scale)); padding: 2px 8px; border-radius: 4px; cursor: pointer; font-family: var(--font-sans); }
-.skill-edit-btn:hover { border-color: var(--accent); color: var(--accent); }
-.skill-edit-area { margin-top: 8px; }
-.skill-edit-area textarea { width: 100%; min-height: 60px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text); font-family: var(--font-mono); font-size: calc(12px * var(--fs-scale)); border-radius: 4px; padding: 6px 8px; resize: vertical; }
-.skill-edit-actions { display: flex; gap: 6px; margin-top: 6px; }
-.skill-edit-actions button { font-size: calc(12px * var(--fs-scale)); padding: 3px 10px; border-radius: 4px; cursor: pointer; border: 1px solid var(--border); font-family: var(--font-sans); }
-.skill-save-btn { background: var(--accent); color: var(--on-accent); border-color: var(--accent) !important; }
-.skill-reset-btn { background: none; color: var(--text-dim); }
+/* ── Skills page (P3.6): every skill, where it works, what it needs, its triggers and switch ── */
+.sk-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 18px 0 8px; }
+.sk-top input { flex: 1; min-width: 180px; padding: 7px 10px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text); font: 400 var(--fs-13)/1.3 var(--font-sans); }
+.sk-count, .sk-note { font-size: var(--fs-12); color: var(--text-dim); }
+.sk-note { margin: 0 0 10px; }
+.sk-group { margin: 0 0 14px; }
+.sk-group .today-head { margin: 0 0 6px; }
+.sk-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 12px; padding: 10px 12px; margin-bottom: 6px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+.sk-row.sk-off { opacity: .6; }
+.sk-main { flex: 1; min-width: 220px; }
+.sk-name { font-size: var(--fs-14); font-weight: 600; color: var(--text); }
+.sk-id { font: 400 var(--fs-12)/1 var(--font-mono); color: var(--text-dim); }
+.sk-desc { font-size: var(--fs-13); color: var(--text-muted); margin-top: 2px; overflow-wrap: anywhere; }
+.sk-badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.sk-badge { padding: 2px 8px; border-radius: var(--radius-pill, 999px); background: var(--surface-2); border: 1px solid var(--border);
+  font-size: var(--fs-12); color: var(--text-muted); }
+.sk-badge.sk-ready { color: var(--success, #22c55e); border-color: currentColor; }
+.sk-badge.sk-limited { color: var(--warning, #d97706); border-color: currentColor; }
+.sk-badge.sk-setup { color: var(--danger); border-color: currentColor; }
+.sk-why { margin: 6px 0 0; font-size: var(--fs-12); color: var(--text-muted); }
+.sk-why[hidden], .sk-trig[hidden] { display: none; }
+.sk-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.sk-switch { position: relative; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: var(--fs-12); color: var(--text-muted); }
+.sk-switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.sk-track { width: 32px; height: 18px; border-radius: 9px; background: var(--border-strong, #888); position: relative; transition: background .15s; }
+.sk-track::after { content: ''; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: transform .15s; }
+.sk-switch input:checked + .sk-track { background: var(--accent); }
+.sk-switch input:checked + .sk-track::after { transform: translateX(14px); }
+.sk-switch input:focus-visible + .sk-track { box-shadow: var(--focus-ring); }
+.sk-trig { flex-basis: 100%; }
+.sk-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+.sk-chips span { padding: 2px 8px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--border); font: 400 var(--fs-12)/1.4 var(--font-mono); }
+.sk-trig-l { display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-12); color: var(--text-dim); }
+.sk-trig textarea { width: 100%; box-sizing: border-box; min-height: 80px; padding: 8px 10px; background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 8px; color: var(--text); font: 400 var(--fs-13)/1.4 var(--font-mono); }
+.sk-trig .sk-acts { margin-top: 6px; }
+@media (max-width: 767px) { .sk-trig textarea, .sk-top input { font-size: 16px; } }
 .hotkey-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 14px; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; }
 .hotkey-key { font-family: var(--font-mono); font-weight: 600; color: var(--accent); font-size: calc(13px * var(--fs-scale)); }
 .hotkey-action { font-size: calc(12px * var(--fs-scale)); color: var(--text-muted); }
@@ -796,7 +816,7 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
     <div class="panel" id="panel-skills">
       <div class="skills-review-head">
         <div>
-          <div class="settings-title" style="margin-bottom:0">Skill Reviews</div>
+          <div class="settings-title" style="margin-bottom:0">Waiting for your review</div>
           <div class="skills-review-sub">Skills generated by voice or chat are staged here. Review the code, then Approve to activate it or Reject to discard. Nothing runs until you approve.</div>
         </div>
         <button class="skills-refresh-btn" onclick="loadSkillReviews()" title="Refresh" aria-label="Refresh">
@@ -806,6 +826,13 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
       <div id="skillReviewsList">
         <div class="refreshing">Loading staged skills...</div>
       </div>
+      <div class="sk-top">
+        <div class="settings-title" style="margin:0">Skills</div>
+        <input type="search" id="skFilter" placeholder="Search skills, descriptions and trigger phrases" aria-label="Search skills">
+        <span class="sk-count" id="skCount"></span>
+      </div>
+      <p class="sk-note" id="skNote"></p>
+      <div id="skCatalog"><div class="refreshing">Loading skills...</div></div>
     </div>
 
     <!-- Connector Panel (external MCP servers) -->
@@ -1080,10 +1107,9 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
         <div id="hotkeysList"></div>
       </div>
       <div class="settings-section" style="margin-top:20px">
-        <div class="settings-title">Voice Triggers <span style="font-size:calc(12px * var(--fs-scale));font-weight:400;color:var(--text-dim);margin-left:6px" id="skillCount"></span></div>
-        <p style="font-size:calc(12px * var(--fs-scale));color:var(--text-dim);margin:0 0 4px;padding:0 4px">Each skill is activated by trigger phrases. Click <b>Edit</b> to customize triggers — one per line. Changes apply after CODEC restart (F13 off/on).</p>
-        <input type="text" id="skillFilter" placeholder="Filter skills..." style="width:100%;padding:7px 10px;margin-bottom:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);border-radius:6px;font-size:calc(12px * var(--fs-scale));font-family:var(--font-sans)" oninput="filterSkills(this.value)">
-        <div id="skillsList"></div>
+        <div class="settings-title">Voice Triggers</div>
+        <p style="font-size:var(--fs-12);color:var(--text-dim);margin:0 0 8px;padding:0 4px">Trigger phrases now sit with each skill on the Skills page, with where it works and what it needs.</p>
+        <button type="button" class="mcp-btn" onclick="showTab('skills')">Open Skills</button>
       </div>
     </div>
   </div>
@@ -1284,7 +1310,7 @@ function showTab(id) {
   if (id === 'history') loadHistory();
   if (id === 'chat') { loadChat(); loadTodayHome(); loadTodayNext(); }
   if (id === 'audit') loadAudit();
-  if (id === 'skills') loadSkillReviews();
+  if (id === 'skills') { loadSkillReviews(); loadSkillsCatalog(); }
   if (id === 'connector') renderConnectors();
   if (id === 'memory') loadMemoryPage();
   if (id === 'settings') { loadSettings(); renderUIToggles(); loadPrompts(); loadPush(); loadVoice(); loadBriefing(); loadCheckin(); }
@@ -3654,45 +3680,7 @@ async function loadTriggerGuide() {
         return '<div class="hotkey-card"><span class="hotkey-key">' + escHtml(h.key) + '</span><span class="hotkey-action">' + escHtml(h.action) + '</span></div>';
       }).join('');
     }
-    // Skills
-    renderSkillCards(_triggerData.skills);
-    var cnt = document.getElementById('skillCount');
-    if (cnt) cnt.textContent = '(' + _triggerData.skills.length + ' skills)';
   } catch(e) { console.warn('Trigger guide error:', e); }
-}
-
-function renderSkillCards(skills, filter) {
-  var el = document.getElementById('skillsList');
-  if (!el) return;
-  var f = (filter || '').toLowerCase();
-  var html = skills.filter(function(s) {
-    if (!f) return true;
-    return s.name.toLowerCase().indexOf(f) >= 0 || s.description.toLowerCase().indexOf(f) >= 0 || s.triggers.join(' ').toLowerCase().indexOf(f) >= 0;
-  }).map(function(s) {
-    var trigs = s.triggers.map(function(t) { return '<span class="trig">' + escHtml(t) + '</span>'; }).join(' ');
-    var cls = s.customized ? ' customized' : '';
-    return '<div class="skill-card' + cls + '" data-skill="' + escHtml(s.name) + '">' +
-      '<div class="skill-header"><div><div class="skill-name">' + escHtml(s.name) + (s.customized ? ' <span style="color:var(--accent);font-size:calc(12px * var(--fs-scale))">CUSTOM</span>' : '') + '</div>' +
-      '<div class="skill-desc">' + escHtml(s.description) + '</div></div>' +
-      '<button class="skill-edit-btn" onclick="toggleSkillEdit(\'' + escHtml(s.name) + '\')">Edit</button></div>' +
-      '<div class="skill-triggers">' + trigs + '</div>' +
-      '<div class="skill-edit-area" id="edit-' + escHtml(s.name) + '" style="display:none">' +
-      '<textarea id="ta-' + escHtml(s.name) + '">' + s.triggers.join('\n') + '</textarea>' +
-      '<div class="skill-edit-actions">' +
-      '<button class="skill-save-btn" onclick="saveSkillTriggers(\'' + escHtml(s.name) + '\')">Save</button>' +
-      '<button class="skill-reset-btn" onclick="resetSkillTriggers(\'' + escHtml(s.name) + '\')">Reset to Default</button>' +
-      '</div></div></div>';
-  }).join('');
-  el.innerHTML = html || '<div class="empty"><div class="empty-text">No skills match filter</div></div>';
-}
-
-function filterSkills(val) {
-  if (_triggerData) renderSkillCards(_triggerData.skills, val);
-}
-
-function toggleSkillEdit(name) {
-  var el = document.getElementById('edit-' + name);
-  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
 
 async function saveSkillTriggers(name) {
@@ -3706,6 +3694,7 @@ async function saveSkillTriggers(name) {
     var d = await r.json();
     if (d.status === 'saved') {
       loadTriggerGuide();
+      loadSkillsCatalog();
       showToast('Triggers saved. Restart CODEC (F13 off/on) to apply.');
     }
   } catch(e) { showToast('Save failed: ' + e.message); }
@@ -3717,9 +3706,111 @@ async function resetSkillTriggers(name) {
     var body = {}; body[name] = { triggers: null };
     await fetch('/api/triggers', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
     loadTriggerGuide();
+    loadSkillsCatalog();
     showToast('Reset to defaults. Restart CODEC (F13 off/on) to apply.');
   } catch(e) { showToast('Reset failed: ' + e.message); }
 }
+
+// ── Skills page (P3.6; docs/P3.6-DESIGN.md): every skill by group, where it works, whether it is
+// ready, Try it (Chat with the skill picked), its trigger phrases and its on/off switch.
+var _skCat = null;
+var _SK_STATE = { ready: 'Ready', limited: 'Limited', setup: 'Needs setup' };
+async function loadSkillsCatalog() {
+  var box = document.getElementById('skCatalog');
+  if (!box) return;
+  try { var r = await fetch('/api/skills/catalog'); if (!r.ok) throw new Error('HTTP ' + r.status); _skCat = await r.json(); }
+  catch (e) { box.innerHTML = '<div class="empty"><div class="empty-text">Could not load the skills.</div></div>'; return; }
+  document.getElementById('skNote').textContent = _skCat.permissions_note || '';
+  _skRender();
+}
+function _skRender() {
+  var box = document.getElementById('skCatalog');
+  if (!box || !_skCat) return;
+  var q = (document.getElementById('skFilter').value || '').toLowerCase().trim();
+  var all = _skCat.skills || [];
+  var list = all.filter(function (s) {
+    return !q || (s.name + ' ' + s.label + ' ' + s.description + ' ' + s.triggers.join(' ')).toLowerCase().indexOf(q) >= 0;
+  });
+  document.getElementById('skCount').textContent = list.length === all.length ? all.length + ' skills' : list.length + ' of ' + all.length;
+  box.innerHTML = '';
+  (_skCat.groups || []).forEach(function (g) {
+    var items = list.filter(function (s) { return s.group === g; });
+    if (!items.length) return;
+    var sec = document.createElement('section');
+    sec.className = 'sk-group';
+    sec.innerHTML = '<h3 class="today-head"></h3>';
+    sec.firstChild.textContent = g;
+    items.forEach(function (s) { sec.appendChild(_skRow(s)); });
+    box.appendChild(sec);
+  });
+  if (!box.children.length) box.innerHTML = '<div class="empty"><div class="empty-text">No skill matches.</div></div>';
+}
+function _skRow(s) {
+  var row = document.createElement('div');
+  row.className = 'sk-row' + (s.on ? '' : ' sk-off');
+  row.innerHTML =
+    '<div class="sk-main"><div class="sk-name"><span class="sk-label"></span> <code class="sk-id"></code></div>' +
+      '<div class="sk-desc"></div><div class="sk-badges"></div><p class="sk-why" hidden></p></div>' +
+    '<div class="sk-acts">' + (s.paths.chat && s.on ? '<button type="button" class="mcp-btn" data-sk="try">Try it</button>' : '') +
+      '<button type="button" class="mcp-btn" data-sk="trig" aria-expanded="false">Triggers</button>' +
+      '<label class="sk-switch"><input type="checkbox" role="switch" data-sk="on"' + (s.on ? ' checked' : '') + '>' +
+      '<span class="sk-track" aria-hidden="true"></span><span class="sk-switch-t">' + (s.on ? 'On' : 'Off') + '</span></label></div>' +
+    '<div class="sk-trig" hidden><div class="sk-chips"></div><label class="sk-trig-l">Trigger phrases, one per line<textarea rows="4"></textarea></label>' +
+      '<div class="sk-acts"><button type="button" class="mcp-btn" data-sk="save">Save</button>' +
+      '<button type="button" class="mcp-btn" data-sk="reset">Reset to default</button></div></div>';
+  row.querySelector('.sk-label').textContent = s.label;
+  row.querySelector('.sk-id').textContent = s.name;
+  row.querySelector('.sk-desc').textContent = s.description;
+  var badges = row.querySelector('.sk-badges');
+  var paths = [];
+  if (s.paths.chat) paths.push('Chat');
+  if (s.paths.voice) paths.push('Voice');
+  if (s.paths.mcp) paths.push(s.paths.mcp_asks ? 'Claude, asks you first' : 'Claude');
+  if (!paths.length) paths.push('Wake word only');
+  paths.forEach(function (p) { var b = document.createElement('span'); b.className = 'sk-badge'; b.textContent = p; badges.appendChild(b); });
+  var st = document.createElement('span');
+  st.className = 'sk-badge sk-' + s.ready;
+  st.textContent = s.on ? (_SK_STATE[s.ready] || 'Ready') : 'Off';
+  badges.appendChild(st);
+  if (s.customized) { var c = document.createElement('span'); c.className = 'sk-badge'; c.textContent = 'Your triggers'; badges.appendChild(c); }
+  var why = row.querySelector('.sk-why');
+  if (s.reason) { why.hidden = false; why.textContent = s.reason; }
+  var chips = row.querySelector('.sk-chips');
+  s.triggers.forEach(function (t) { var c = document.createElement('span'); c.textContent = t; chips.appendChild(c); });
+  var ta = row.querySelector('textarea');
+  ta.id = 'ta-' + s.name;  // saveSkillTriggers / resetSkillTriggers read it
+  ta.value = s.triggers.join('\n');
+  var sw = row.querySelector('[data-sk="on"]');
+  sw.setAttribute('aria-label', s.label + ' on');
+  sw.addEventListener('change', async function () {
+    var on = sw.checked;
+    sw.disabled = true;
+    try {
+      var r = await fetch('/api/skills/switch', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: s.name, on: on }) });
+      if (!r.ok) throw new Error((await r.json().catch(function () { return {}; })).error || ('HTTP ' + r.status));
+      s.on = on;
+      showToast(on ? s.label + ' is on.' : s.label + ' is off. Chat, voice, Claude and crews will not run it.');
+      row.replaceWith(_skRow(s));
+    } catch (e) { sw.checked = !on; sw.disabled = false; showToast('Could not switch it: ' + e.message); }
+  });
+  var tb = row.querySelector('[data-sk="trig"]'), panel = row.querySelector('.sk-trig');
+  tb.addEventListener('click', function () {
+    panel.hidden = !panel.hidden;
+    tb.setAttribute('aria-expanded', String(!panel.hidden));
+  });
+  row.querySelector('[data-sk="save"]').addEventListener('click', function () { saveSkillTriggers(s.name); });
+  row.querySelector('[data-sk="reset"]').addEventListener('click', function () { resetSkillTriggers(s.name); });
+  var tryBtn = row.querySelector('[data-sk="try"]');
+  if (tryBtn) tryBtn.addEventListener('click', function () {
+    _ssSet('codec-chat-pick', JSON.stringify({ kind: 'skill', name: s.name }));  // Chat adds it as an '@' chip (P2.3)
+    location.href = '/chat#new';
+  });
+  return row;
+}
+(function () {
+  var f = document.getElementById('skFilter');
+  if (f) f.addEventListener('input', function () { clearTimeout(f._t); f._t = setTimeout(_skRender, 150); });
+})();
 
 // ── Init ──
 loadChat();

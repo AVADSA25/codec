@@ -168,15 +168,16 @@ def _cmd_skills(args: list[str]) -> str:
 
     reg = SkillRegistry(SKILLS_DIR)
     reg.scan()
-    cfg = _load_config()
-    enabled = set(cfg.get("skills", []))
+    # P3.6: the deny list the Skills page writes and every path enforces (codec_skill_switches).
+    import codec_skill_switches as switches
+    off = switches.off_set()
 
     if not args or args[0].lower() in ("list", "ls"):
         names = sorted(reg.names())
         rows = []
         for n in names:
             meta = reg.get_meta(n) or {}
-            on = "on" if n in enabled or len(enabled) == 0 else "off"
+            on = "off" if n in off else "on"
             desc = (meta.get("SKILL_DESCRIPTION") or "")[:60]
             rows.append([on, f"`{n}`", desc])
         return f"## Skills ({len(names)} total)\n\n" + _table(
@@ -184,22 +185,13 @@ def _cmd_skills(args: list[str]) -> str:
         )
 
     sub = args[0].lower()
-    if sub in ("enable", "on") and len(args) >= 2:
+    if sub in ("enable", "on", "disable", "off") and len(args) >= 2:
         target = args[1]
         if target not in reg.names():
             return f"Error: unknown skill `{target}`"
-        if "skills" not in cfg or not isinstance(cfg["skills"], list):
-            cfg["skills"] = list(reg.names())
-        if target not in cfg["skills"]:
-            cfg["skills"].append(target)
-            _save_config(cfg)
-        return f"Skill `{target}` enabled."
-
-    if sub in ("disable", "off") and len(args) >= 2:
-        target = args[1]
-        cfg["skills"] = [s for s in cfg.get("skills", []) if s != target]
-        _save_config(cfg)
-        return f"Skill `{target}` disabled."
+        on = sub in ("enable", "on")
+        switches.set_on(target, on)
+        return f"Skill `{target}` {'enabled' if on else 'disabled'}."
 
     if sub == "info" and len(args) >= 2:
         target = args[1]
