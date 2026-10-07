@@ -68,12 +68,19 @@ def test_catalog_groups_paths_and_readiness(sk):
 
 
 def test_customized_triggers_are_flagged(sk, monkeypatch):
+    import codec_skill_registry
     from codec_dispatch import registry
-    real = registry.get_triggers
-    monkeypatch.setattr(registry, "get_triggers", lambda n: ["my own phrase"] if n == "timer" else real(n))
+    if not registry.names():
+        registry.scan()
+    path = sk.tmp / "custom_triggers.json"
+    monkeypatch.setattr(codec_skill_registry, "CUSTOM_TRIGGERS_PATH", str(path))
+    # Saved after the registry scanned (Save on the page): the page shows it at once.
+    path.write_text(json.dumps({"timer": {"triggers": ["my own phrase"]}}))
     s = _by_name(sk.client.get("/api/skills/catalog").json())
     assert s["timer"]["customized"] is True and s["timer"]["triggers"] == ["my own phrase"]
     assert s["calculator"]["customized"] is False
+    path.write_text("{}")  # Reset to default
+    assert _by_name(sk.client.get("/api/skills/catalog").json())["timer"]["customized"] is False
 
 
 def test_the_switch_writes_the_deny_list_and_one_value_free_audit_line(sk):

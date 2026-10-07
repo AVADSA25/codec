@@ -97,17 +97,22 @@ def catalog():
     ctx = dict(_keys(), google=os.path.exists(GOOGLE_TOKEN), screen=screen_recording_ok(),
                accessibility=accessibility_ok())
     off = codec_skill_switches.off_set()
+    # Read the trigger overrides fresh: the registry loads them once at scan, so right after
+    # Save it still holds the old list and the page would show the edit as lost. The running
+    # matchers take the new list at restart, as the Save message says.
+    custom = registry._load_custom_triggers()
     order = [g for g, _ in SKILL_GROUPS] + ["Other"]
     skills = []
     for name in registry.names():
         meta = registry.get_meta(name) or {}
-        triggers = registry.get_triggers(name)
+        default = list(meta.get("SKILL_TRIGGERS", []))
+        triggers = custom.get(name, default)
         mcp = bool(registry.get_mcp_expose(name)) and name not in http_blocked
         state, reason = readiness(name, ctx)
         skills.append({
             "name": name, "label": _label(name), "description": str(registry.get_description(name) or "")[:300],
             "group": skill_group(name), "triggers": [str(t) for t in triggers][:40],
-            "customized": list(triggers) != list(meta.get("SKILL_TRIGGERS", [])),
+            "customized": list(triggers) != default,
             "paths": {"chat": name in CHAT_SKILL_ALLOWLIST, "voice": name not in VOICE_SKIP,
                       "mcp": mcp, "mcp_asks": mcp and name in asks},
             "ready": state, "reason": reason, "on": name not in off,
