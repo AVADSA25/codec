@@ -152,6 +152,7 @@ def test_fact_extract_now_keeps_a_structured_fact(monkeypatch):
     assert stored == [(key, "Juan is launching NovaPay in Q3", {"fact_type": "learned", "source": "fact_extract"})], \
         "one structured fact for the same text"
     assert [s["role"] for s in saved] == ["fact", "fact"], "the conversation row is still written, as before"
+    assert all("user_id" not in s for s in saved), "the default user id, no personal name"
 
 
 def test_review_then_approve_go_through_the_existing_gates(tmp_path, monkeypatch):
