@@ -107,7 +107,10 @@ def proposals():
 
 def learned_facts(limit: int = 200) -> list:
     import codec_memory_upgrade as cmu
-    rows = [f for f in cmu.query_valid_facts(limit=2000) if f.get("source") == "fact_extract"]
+    # An edited learned fact keeps its learned:<hash> key, but the Memory routes save the
+    # new value with their own source, so match the key too or Edit drops it from the list.
+    rows = [f for f in cmu.query_valid_facts(limit=2000)
+            if f.get("source") == "fact_extract" or str(f.get("key") or "").startswith("learned:")]
     rows.sort(key=lambda f: str(f.get("valid_from") or ""), reverse=True)
     return rows[:limit]
 

@@ -105,8 +105,10 @@ def test_the_learned_fact_list_and_the_older_count(lrn, monkeypatch, tmp_path):
     monkeypatch.setattr(cmu, "query_valid_facts", lambda key=None, limit=50, **kw: [
         {"key": "learned:a", "value": "A", "valid_from": "2026-10-01T10:00:00", "source": "fact_extract"},
         {"key": "pref", "value": "dark mode", "valid_from": "2026-10-05T10:00:00", "source": "mcp"},
-        {"key": "learned:b", "value": "B", "valid_from": "2026-10-04T10:00:00", "source": "fact_extract"}])
-    assert [f["key"] for f in lrn.client.get("/api/learning/facts").json()["facts"]] == ["learned:b", "learned:a"]
+        {"key": "learned:b", "value": "B", "valid_from": "2026-10-04T10:00:00", "source": "fact_extract"},
+        {"key": "learned:c", "value": "C, edited", "valid_from": "2026-10-03T10:00:00", "source": "memory page"}])
+    keys = [f["key"] for f in lrn.client.get("/api/learning/facts").json()["facts"]]
+    assert keys == ["learned:b", "learned:c", "learned:a"], "an edited learned fact stays on the list"
     db = tmp_path / "memory.db"
     con = sqlite3.connect(db)
     con.execute("CREATE TABLE conversations (session_id TEXT, timestamp TEXT, role TEXT, content TEXT, user_id TEXT)")
