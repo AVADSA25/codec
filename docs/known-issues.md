@@ -399,7 +399,7 @@ personal name in the public repo, while every other memory path uses the default
 structured write in P3.12 (Learning page), which left this line as it was. Fix: use the default user id (or
 `config.json`'s), regenerate the skill manifest, and decide whether the existing rows need it changed.
 
-## The iMessage and Telegram bridges write plain text into the audit log (2026-10-07)
+## The iMessage and Telegram bridges write plain text into the audit log (2026-10-07) — FIXED (bridge events go through codec_audit, docs/codec-architecture.md)
 
 `codec_imessage.py` and `codec_telegram.py` each have their own `audit(msg)` that
 appends a plain line such as `[2026-10-07T08:54:09] IMESSAGE: SERVICE_START`

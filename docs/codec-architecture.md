@@ -203,6 +203,16 @@ One event name, emitted by the heartbeat's PM2 restart-storm detector (`codec_he
 |---|---|---|---|
 | `pm2_restart_storm` | `codec-heartbeat` | warning | `process`, `delta` (restarts since last heartbeat), `total_restarts` |
 
+### Bridge events (2026-10, iMessage and Telegram)
+`codec_imessage.audit` and `codec_telegram.audit` emit through `codec_audit.log_event` (JSON, HMAC, redaction). Before 7 Oct 2026 they appended plain-text lines with the first 100 characters of each message, which `verify_audit_log()` counted as broken. Never the message text.
+
+| Event | Source | level | extra fields |
+|---|---|---|---|
+| `bridge_service_start` / `bridge_service_stop` | `codec-imessage`, `codec-telegram` | info | `bridge` |
+| `bridge_message_received` | same | info | `bridge`, `sender` (iMessage) or `chat` + `user` (Telegram), `length` |
+| `bridge_reply_sent` | same | info | `bridge`, `to` (iMessage) or `chat` (Telegram), `length` |
+| `bridge_photo_received` | `codec-telegram` | info | `bridge`, `chat`, `user` |
+
 ### Phase 2 Step 6 audit events (Trigger System)
 Four event names. `trigger_evaluated` fires only when a pattern matches (pre-cooldown, pre-consent — silent on no-match to avoid audit spam). `trigger_fired` is the actual dispatch. `trigger_blocked` fires for any non-firing reason except `killed` (silent). `trigger_muted` fires when an otherwise-eligible match is suppressed by the runtime mute config (`~/.codec/triggers.json` — see `docs/PHASE2-STEP6-TRIGGER-MUTE.md`). All inherit the wrapping observer poll's `correlation_id`.
 

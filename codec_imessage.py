@@ -41,7 +41,6 @@ MESSAGES_DB = os.path.expanduser("~/Library/Messages/chat.db")
 CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
 MEMORY_DB   = os.path.expanduser("~/.codec/memory.db")
 STATE_FILE  = os.path.expanduser("~/.codec/imessage_state.json")
-AUDIT_LOG   = os.path.expanduser("~/.codec/audit.log")
 
 # ── Config ───────────────────────────────────────────────────────────────────
 def load_config():
@@ -102,11 +101,15 @@ def save_state(state):
 
 
 # ── Audit logging ────────────────────────────────────────────────────────────
-def audit(msg):
+def audit(event, **fields):
+    """One signed line in ~/.codec/audit.log through codec_audit (JSON, HMAC,
+    redaction): `bridge_<event>` with who and how long, never the message text.
+    It used to append a plain-text line, which verify_audit_log() counted as
+    broken (docs/known-issues.md, 2026-10-07)."""
     try:
-        os.makedirs(os.path.dirname(AUDIT_LOG), exist_ok=True)
-        with open(AUDIT_LOG, "a") as f:
-            f.write(f"[{datetime.now().isoformat()}] IMESSAGE: {msg}\n")
+        from codec_audit import log_event
+        log_event(f"bridge_{event}", "codec-imessage", f"iMessage bridge: {event.replace('_', ' ')}",
+                  extra=dict(fields, bridge="imessage"))
     except Exception:
         pass
 
@@ -873,7 +876,7 @@ def process_message(msg, im_cfg, llm_cfg):
         return
 
     log.info(f"📨 From {sender}: {text[:80]}")
-    audit(f"RECEIVED from={sender} text={text[:100]}")
+    audit("message_received", sender=sender, length=len(text))
 
     # ── Handle attachments ───────────────────────────────────────────────
     attachment_context = []
@@ -918,7 +921,7 @@ def process_message(msg, im_cfg, llm_cfg):
                 reply = reply[:max_len - 3] + "..."
             if im_cfg.get("auto_reply", True):
                 send_imessage(sender, reply)
-                audit(f"SENT to={sender} text={reply[:100]}")
+                audit("reply_sent", to=sender, length=len(reply))
             add_to_conversation(sender, "user", text)
             add_to_conversation(sender, "assistant", reply)
             save_to_memory(sender, text, reply)
@@ -947,7 +950,7 @@ def process_message(msg, im_cfg, llm_cfg):
     if im_cfg.get("auto_reply", True):
         success = send_imessage(sender, reply)
         if success:
-            audit(f"SENT to={sender} text={reply[:100]}")
+            audit("reply_sent", to=sender, length=len(reply))
         else:
             log.error(f"Failed to send reply to {sender}")
 
@@ -1004,7 +1007,7 @@ def main():
     else:
         log.info("All senders allowed (configure imessage.allowed_senders to restrict)")
 
-    audit("SERVICE_START")
+    audit("service_start")
     log.info("Triggers: 'Hey CODEC' or '/codec' — all other messages ignored")
     log.info(f"Polling every {poll_interval}s | LLM: {llm_cfg['model']}")
 
@@ -1020,7 +1023,7 @@ def main():
             save_state(state)
         except Exception as e:
             log.warning(f"shutdown state save failed: {e}")
-        audit("SERVICE_STOP")
+        audit("service_stop")
         log.info("codec-imessage graceful shutdown")
     import codec_lifecycle
     codec_lifecycle.install_handlers(_imsg_cleanup, name="codec-imessage")
@@ -1060,7 +1063,7 @@ def main():
         log.info("Shutting down...")
         state["last_rowid"] = last_rowid
         save_state(state)
-        audit("SERVICE_STOP")
+        audit("service_stop")
 
 
 if __name__ == "__main__":
