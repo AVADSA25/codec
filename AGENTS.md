@@ -24,7 +24,7 @@ CODEC has its own minimalist multi-agent runtime in `codec_agents.py`. **Zero de
 Defined in `codec_agents.py:113-307`: `web_search`, `web_fetch`, `file_read`, `file_write`, `google_docs_create`, `shell`. Plus every registered skill auto-becomes a tool via `_make_lazy_fn` + `load_skill_tools()` (`codec_agents.py:279-307`).
 
 ### Custom agents (user-defined)
-Stored as JSON files at `~/.codec/agents/*.json`, keyed by slugified name. CRUD via `routes/agents.py`. Live job state lives in the in-memory `_agent_jobs` dict and does NOT survive `codec-dashboard` restart — this is a known gap.
+Stored as JSON files at `~/.codec/agents/*.json`, keyed by slugified name. CRUD via `routes/agents.py`. Crew-run state lives in the `_agent_jobs` dict; since UI P3.8 it is also written to `~/.codec/agent_jobs.json` (0600, atomic, the newest 50 runs) when a run starts, ends or is stopped, and read back on first use, so the list survives a `codec-dashboard` restart. A run that was still going when the dashboard stopped comes back as `interrupted` (its thread is gone; it is not resumed). `GET /api/agents/jobs` lists them; Tasks > Activity shows them with the Project-mode agents and the global grants.
 
 ### Voice-side dispatch
 `codec_voice.py:682-721` — `_CREW_TRIGGERS` maps spoken phrases to crew names. `dispatch_crew_from_voice(user_text)` at `codec_voice.py:723-755` does the matching, builds args, runs the crew, streams progress via TTS.

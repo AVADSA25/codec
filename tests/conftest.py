@@ -96,6 +96,27 @@ def _isolate_owner_alerts() -> None:
 _isolate_owner_alerts()
 
 
+def _isolate_observer_pause() -> None:
+    """Keep the suite off the owner's observer pause flag (UI P3.7).
+
+    `codec_observer._PAUSE_PATH` is ~/.codec/observer_paused_until. While the
+    owner has watching paused, every unmocked injection check sees it and skips,
+    so the observer tests failed on this Mac and passed on CI; and an unmocked
+    pause() or resume() would change the owner's real flag. Tests that need the
+    flag monkeypatch it per test, as before. Done at conftest import time, like
+    `_isolate_audit_log`.
+    """
+    try:
+        import codec_observer
+    except Exception:
+        return
+    tmp = Path(tempfile.mkdtemp(prefix="codec-test-observer-"))
+    codec_observer._PAUSE_PATH = tmp / "observer_paused_until"
+
+
+_isolate_observer_pause()
+
+
 def _install_pynput_stub_if_needed() -> None:
     """Stub `pynput` + `pynput.keyboard` if the real package can't import
     (headless Linux CI). On macOS the real package imports fine and this

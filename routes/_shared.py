@@ -414,6 +414,51 @@ def _evict_stale_agent_jobs(now=None, ttl_seconds: int = _AGENT_JOB_TTL_SECONDS)
     return removed
 
 
+# ── Crew runs survive a dashboard restart (UI P3.8, docs/P3.8-DESIGN.md) ──
+# _agent_jobs is written to ~/.codec/agent_jobs.json (0600, atomic) when a run starts,
+# ends or is stopped, and read back on first use; one that was still running when the
+# dashboard stopped comes back as "interrupted" (its thread is gone).
+AGENT_JOBS_PATH = os.path.expanduser("~/.codec/agent_jobs.json")
+AGENT_JOBS_KEEP = 50
+_agent_jobs_loaded = False
+
+
+def _ensure_agent_jobs_loaded() -> None:
+    global _agent_jobs_loaded
+    if _agent_jobs_loaded:
+        return
+    _agent_jobs_loaded = True
+    try:
+        with open(AGENT_JOBS_PATH, encoding="utf-8") as f:
+            saved = json.load(f)
+    except (OSError, ValueError):
+        return
+    if not isinstance(saved, dict):
+        return
+    with _agent_jobs_lock:
+        for jid, job in saved.items():
+            if jid in _agent_jobs or not isinstance(job, dict):
+                continue
+            if job.get("status") == "running":
+                job["status"] = "interrupted"
+                job["error"] = "The dashboard restarted while this run was going."
+            _agent_jobs[jid] = job
+
+
+def _save_agent_jobs() -> None:
+    """Write the newest AGENT_JOBS_KEEP crew runs (their last 50 progress lines). Never raises."""
+    try:
+        import codec_jsonstore
+        _ensure_agent_jobs_loaded()
+        with _agent_jobs_lock:
+            snap = {jid: dict(job, progress=list(job.get("progress") or [])[-50:])
+                    for jid, job in _agent_jobs.items() if isinstance(job, dict)}
+        newest = sorted(snap.items(), key=lambda kv: str(kv[1].get("started") or ""), reverse=True)[:AGENT_JOBS_KEEP]
+        codec_jsonstore.atomic_write_json(AGENT_JOBS_PATH, dict(newest), default=str)
+    except Exception as e:
+        log.warning("agent-job save failed: %s", e)
+
+
 def _evict_stale_research_jobs(now=None, ttl_seconds: int = _AGENT_JOB_TTL_SECONDS) -> int:
     """re-audit N9: mirror _evict_stale_agent_jobs for _research_jobs, which
     previously had NO lock and NO eviction → unbounded growth (memory leak →
