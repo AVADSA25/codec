@@ -442,3 +442,17 @@ Tasks > Activity (P3.8) shows "running for N min" under every project, including
 one waiting for approval or paused, where it is the time since it started. Fix:
 "started N min ago" unless the project is running. Found in the Mac merge pass.
 Revisit: the next item that touches the Activity board.
+
+## Approved skills are written into the repo's `skills/` folder (2026-10-07)
+
+`POST /api/skill/approve` (the review-and-approve flow, and Settings > Learning's
+Approve and install since P3.12) writes to `routes._shared._get_skills_dir()`,
+which is `codec_config.SKILLS_DIR`: `config.json:skills_dir`, or the repo's own
+`skills/` folder when that key is not set. This Mac's config has no `skills_dir`,
+so an approved skill lands as an untracked file in `~/codec-repo/skills/` (not in
+`~/.codec/skills/`, the user folder AGENTS.md describes), next to the hash-pinned
+built-ins, where git operations on the live tree can trip over it. The load-time
+gate still checks it (not in the manifest, so the AST check runs). Fix: write
+approved skills to `~/.codec/skills/` (or set `skills_dir` there) and say so on
+the page. Found in the Mac merge pass (P3.12 check). Revisit: before anyone
+approves a skill from the Learning page.
