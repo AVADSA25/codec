@@ -32,6 +32,21 @@ log = logging.getLogger("routes.triggers")
 router = APIRouter(prefix="/api/triggers", tags=["triggers"])
 
 
+# A readable title for the pages; the raw rule stays in "summary".
+_TYPE_SENTENCE = {
+    "window_title_match": "when a window title matches",
+    "clipboard_pattern": "when you copy matching text",
+    "file_change": "when matching files change",
+    "time": "on a schedule",
+    "compound": "when several conditions match",
+}
+
+
+def _plain_label(trig) -> str:
+    name = str(trig.skill_name).replace("_", " ").strip()
+    return f"{name[:1].upper() + name[1:]}: {_TYPE_SENTENCE.get(trig.type, 'when its rule matches')}"
+
+
 def _trigger_summary(trig) -> dict:
     """Render a Trigger to a JSON-safe dict for the API."""
     from codec_triggers import _resolve_mute, cooldown_remaining, is_killed
@@ -41,6 +56,7 @@ def _trigger_summary(trig) -> dict:
         "skill_name": trig.skill_name,
         "type": trig.type,
         "summary": trig.short_summary(),
+        "label": _plain_label(trig),
         "cooldown_seconds": trig.cooldown_seconds,
         "cooldown_remaining": cooldown_remaining(trig.key, trig.cooldown_seconds),
         "require_confirmation": trig.require_confirmation,
