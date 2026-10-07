@@ -365,6 +365,7 @@ def test_the_connectors_tab_has_the_four_sections():
     block = HOME[HOME.index("// ── Connections (P3.9"):HOME.index("// ── Connector (external MCP) tab ──")]
     assert "confirm: 'Revoke', danger: true" in block and "title: 'Send a test message?'" in block
     assert "var link = mac && /^x-apple\\.systempreferences:/.test" in block, "System Settings links only in a Mac browser"
+    assert ".conn-sec .mcp-name{text-transform:none}" in HOME, "names as written: iMessage, not IMessage"
 
 
 def _jsdom_available() -> bool:
