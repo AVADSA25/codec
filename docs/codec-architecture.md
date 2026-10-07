@@ -189,6 +189,10 @@ only: never a fact's value, a rule's text or the About me text.
 | `skill_switched` | `codec-dashboard` | info | `tool` (the skill), `on` (UI P3.6: the Skills page's switch; `config.json:skills_off`) |
 | `observer_paused` | `codec-dashboard` | info | `until` (local, to the minute; UI P3.7, the header's eye) |
 | `observer_resumed` | `codec-dashboard` | info | — |
+| `google_reconnect_started` | `codec-dashboard` | info | — (UI P3.9: Settings > Connectors ran `reauth_google.py` on the Mac) |
+| `mcp_client_revoke_requested` | `codec-dashboard` | info | `client_id`; `tokens` (how many ids the request lists) |
+| `mcp_client_revoked` | `codec-oauth-provider` | info | `client_id`; `tokens_removed` (applied by `codec-mcp-http` before a token check) |
+| `bridge_test_sent` | `codec-dashboard` | info | `bridge` (`telegram` \| `imessage`), `sent`; never the recipient |
 
 ### Watchdog events (2026-07 log review)
 One event name, emitted by the heartbeat's PM2 restart-storm detector (`codec_heartbeat.check_pm2_restart_storms`). Fires when an `autorestart:true` PM2 process burned ≥5 restarts since the previous heartbeat (~20 min) — the signature of a crash loop hiding behind PM2 status "online" (incident: `ava-litellm` restarted 34,207× over 3 weeks unnoticed). Cron-style jobs (`autorestart:false`) are excluded; a persisting storm re-alerts at most every 6h. State: `~/.codec/pm2_restart_state.json`. Related (no new event): `codec_alerts` supports read-only `alerts.extra_services` probes in `~/.codec/config.json` (`http(s)://` or `tcp://host:port`) with the same consecutive-failure alerting as built-ins but NEVER auto-restart.

@@ -35,6 +35,7 @@ import secrets
 import threading
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from mcp.server.auth.provider import (
     AccessToken, AuthorizationCode, AuthorizationParams, AuthorizeError,
@@ -77,6 +78,26 @@ PENDING_AUTH_MAX = 50
 _STATE_PATH = Path(os.path.expanduser("~/.codec/oauth_state.json"))
 _STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
 
+# UI P3.9 (docs/P3.9-DESIGN.md): Settings > Connectors lists the apps signed in to
+# CODEC and can sign one out without touching the others. The dashboard is another
+# process and must not edit this provider's state, so the two talk through two
+# files next to the state file:
+#   mcp_clients.json  written here: per client its name, sign-in host, times and the
+#                     last 8 characters of its live tokens (the audit log's ids).
+#                     Never a token, a secret or a client secret.
+#   mcp_revoke.json   written by the dashboard: {client_id: {at, tokens}}. Before
+#                     every token check this provider removes that client's listed
+#                     tokens and any it issued before `at`; tokens issued later (a
+#                     reconnect) are kept, so the file can stay.
+_MIRROR_NAME = "mcp_clients.json"
+_REVOKE_NAME = "mcp_revoke.json"
+_TOUCH_EVERY = 300  # seconds between "last used" mirror writes per client
+
+
+def _issued_at(expires_at, ttl: int) -> float:
+    """When a token was issued, from its expiry (every token here gets the fixed TTL)."""
+    return float(expires_at) - ttl if expires_at is not None else float("inf")
+
 
 class PersistentOAuthProvider(InMemoryOAuthProvider):
     """OAuth provider that mirrors its state dicts to disk on every mutation."""
@@ -89,7 +110,16 @@ class PersistentOAuthProvider(InMemoryOAuthProvider):
         # in-flight consents, and the user just clicks Connect again.
         self._pending: dict[str, tuple[OAuthClientInformationFull, AuthorizationParams, float]] = {}
         self._pending_lock = threading.Lock()
+        # UI P3.9: the Connections page's mirror and revoke requests live next to the state file.
+        self._mirror_path = Path(state_path).parent / _MIRROR_NAME
+        self._revoke_path = Path(state_path).parent / _REVOKE_NAME
+        self._revoke_stamp = None
+        self._last_used: dict[str, float] = {}
+        self._touched: dict[str, float] = {}
         self._load()
+        self._read_last_used()
+        self._apply_revocations()
+        self._write_mirror()
 
     # ---------- persistence ----------
 
@@ -157,6 +187,10 @@ class PersistentOAuthProvider(InMemoryOAuthProvider):
             self._refresh_to_access_map = {}
 
     def _save(self):
+        self._save_state()
+        self._write_mirror()  # UI P3.9: the Connections page follows every change
+
+    def _save_state(self):
         # PR-2B (D-8 closure): write serialized state to Keychain. If the
         # legacy plaintext file exists from a pre-migration install, delete
         # it after the Keychain write succeeds. If Keychain is unavailable
@@ -191,6 +225,113 @@ class PersistentOAuthProvider(InMemoryOAuthProvider):
             # (claude.ai forced re-auth on next restart). atomic_write_json
             # closes that durability window.
             atomic_write_json(self._state_path, state)
+
+    # ---------- UI P3.9: the Connections page (mirror, last use, revoke) ----------
+
+    def _read_last_used(self):
+        """Last use survives a restart through the mirror."""
+        try:
+            apps = json.loads(self._mirror_path.read_text()).get("apps") or {}
+        except (OSError, ValueError, AttributeError):
+            return
+        for cid, a in apps.items():
+            if isinstance(a, dict) and isinstance(a.get("last_used"), (int, float)):
+                self._last_used[cid] = float(a["last_used"])
+
+    def _write_mirror(self):
+        """Metadata for the Connections page; never a token or a secret. Never raises."""
+        try:
+            now = time.time()
+
+            def entry(cid):
+                c = self.clients.get(cid)
+                uris = [str(u) for u in (getattr(c, "redirect_uris", None) or [])]
+                return {"name": str(getattr(c, "client_name", "") or "")[:80],
+                        "host": (urlparse(uris[0]).hostname or "") if uris else "",
+                        "registered": getattr(c, "client_id_issued_at", None),
+                        "last_used": self._last_used.get(cid), "tokens": [], "expires": None}
+
+            apps = {cid: entry(cid) for cid in list(self.clients)}
+            for store in (self.access_tokens, self.refresh_tokens):
+                for tok, t in list(store.items()):
+                    if not t.client_id or (t.expires_at is not None and t.expires_at <= now):
+                        continue
+                    a = apps.setdefault(t.client_id, entry(t.client_id))
+                    a["tokens"].append(_token_id(tok))
+                    if t.expires_at is not None:
+                        a["expires"] = max(a["expires"] or 0, int(t.expires_at))
+            atomic_write_json(self._mirror_path, {"updated": now, "apps": apps})
+        except Exception:
+            pass
+
+    def _touch(self, client_id: str):
+        now = time.time()
+        self._last_used[client_id] = now
+        if now - self._touched.get(client_id, 0.0) >= _TOUCH_EVERY:
+            self._touched[client_id] = now
+            self._write_mirror()
+
+    def _apply_revocations(self):
+        """Sign out the apps the owner revoked on the Connections page: only that
+        client's tokens, never the rest of the state. Cheap when nothing changed (a stat)."""
+        try:
+            st = os.stat(self._revoke_path)
+        except OSError:
+            return
+        stamp = (st.st_mtime_ns, st.st_size)
+        if stamp == self._revoke_stamp:
+            return
+        try:
+            data = json.loads(self._revoke_path.read_text())
+        except (OSError, ValueError):
+            return
+        self._revoke_stamp = stamp
+        if not isinstance(data, dict):
+            return
+        removed: dict[str, int] = {}
+        for cid, req in data.items():
+            if not isinstance(req, dict):
+                continue
+            ids = {x for x in (req.get("tokens") or []) if isinstance(x, str)}
+            try:
+                cutoff = float(req.get("at") or 0)
+            except (TypeError, ValueError):
+                cutoff = 0.0
+            before = sum(1 for t in self.access_tokens.values() if t.client_id == cid) + \
+                sum(1 for t in self.refresh_tokens.values() if t.client_id == cid)
+            for tok, t in list(self.access_tokens.items()):
+                if t.client_id == cid and (_token_id(tok) in ids or _issued_at(t.expires_at, ACCESS_TOKEN_TTL) <= cutoff):
+                    self._revoke_internal(access_token_str=tok)
+            for tok, t in list(self.refresh_tokens.items()):
+                if t.client_id == cid and (_token_id(tok) in ids or _issued_at(t.expires_at, REFRESH_TOKEN_TTL) <= cutoff):
+                    self._revoke_internal(refresh_token_str=tok)
+            after = sum(1 for t in self.access_tokens.values() if t.client_id == cid) + \
+                sum(1 for t in self.refresh_tokens.values() if t.client_id == cid)
+            if before > after:
+                removed[cid] = before - after
+        if not removed:
+            return
+        self._save()
+        for cid, n in removed.items():
+            try:
+                _oauth_log_event(
+                    "mcp_client_revoked", "codec-oauth-provider",
+                    f"Signed out client {cid} (Connections page)",
+                    client_id=cid, extra={"tokens_removed": n},
+                )
+            except Exception:
+                pass
+
+    async def load_access_token(self, token: str) -> AccessToken | None:
+        self._apply_revocations()
+        found = await super().load_access_token(token)
+        if found is not None and found.client_id:
+            self._touch(found.client_id)
+        return found
+
+    async def load_refresh_token(self, client: OAuthClientInformationFull, refresh_token: str) -> RefreshToken | None:
+        self._apply_revocations()
+        return await super().load_refresh_token(client, refresh_token)
 
     # ---------- overrides: persist after every mutation ----------
 
