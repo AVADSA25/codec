@@ -87,7 +87,7 @@ def _save(fact: str) -> bool:
     try:
         from codec_memory import CodecMemory
         mem = CodecMemory()
-        mem.save(session_id="fact_extract", role="fact", content=fact, user_id="mickael")
+        mem.save(session_id="fact_extract", role="fact", content=fact)  # the default user id, like every other memory write
         # The structured copy Settings > Learning lists, edits and forgets (UI P3.12). This used to
         # call CodecMemory.store_fact, which does not exist, so no learned fact reached the facts table.
         # The key comes from the text: the same fact learned twice is one fact.

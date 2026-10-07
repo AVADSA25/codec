@@ -392,7 +392,7 @@ returns them. On a fresh install, or after a damaged file, they show in the Inbo
 the file directly and is not affected. Fix: return `[]` instead of seeding (and drop
 the samples). Revisit: P3.11 or any item that touches notifications.
 
-## fact_extract writes a fixed user_id (2026-10-06)
+## fact_extract writes a fixed user_id (2026-10-06) — FIXED 2026-10-07 (default user id; the 13 existing rows on the Mac were moved to it after a backup of memory.db)
 
 `skills/fact_extract.py`'s `_save` stores each learned fact's conversation row with `user_id="mickael"`, a
 personal name in the public repo, while every other memory path uses the default user id. Found while fixing its
