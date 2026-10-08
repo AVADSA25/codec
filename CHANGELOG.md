@@ -1,5 +1,31 @@
 # Changelog
 
+## v3.6.0 (2026-10-08)
+UI phases 2 and 3: every page on one shell, and the features around it.
+
+### Added
+- **One shell for every page.** Desktop sidebar, phone tab bar, an Inbox for approvals, questions, reports and agent updates, and a Today home instead of the Flash log.
+- **Chats.** Rename, pin, archive, group, load more and export; a temporary chat that is saved to neither history nor memory; regenerated answers kept as versions with arrows, plus thumbs feedback; thumbnails and a lightbox for attachments; math and diagrams in replies; side-by-side model compare from any reply.
+- **Commands.** '/' commands, '@' skills and agents, and a Cmd+K palette.
+- **Voice.** Dictation through CODEC's own local Whisper (no browser cloud service), read aloud for the whole answer with voice and speed, and a calm voice call with standard controls.
+- **Phone.** Installable app with an offline page, and push notifications for approvals, questions, the briefing and agent results (the push carries no content).
+- **Routines.** Schedules in plain language for any skill, crew or prompt; a morning briefing that runs by itself, speaks, then leaves a card; a proactive check-in that speaks only when something matters.
+- **Pages.** Memory (see, correct and forget what CODEC remembers), Skills (browse, try, readiness, and an on/off switch every path obeys), Activity (projects and crew runs; crew runs survive a restart), Connections (Google, the AI apps signed in to CODEC with a per-app sign-out, the bridges, macOS permissions), Usage and cloud spend, and Learning (proposed skills, a diary of what CODEC learned, learned facts).
+- **'CODEC is watching' indicator** in every page header, with pause, what the observer keeps (sizes only), and the automatic triggers.
+- **Your own skills folder.** Approved skills install to `~/.codec/skills` and load after the built-ins; a built-in name always wins and every user skill goes through the safety check on each load.
+
+### Changed
+- Settings with plain labels, help text and proper controls; styled menus and dialogs instead of the browser's own; an accessibility baseline (focus ring, labels, live regions); a readable Cortex map and Audit page.
+
+### Fixed
+- The observer's disk file is owner-only and holds no clipboard text.
+- The dashboard no longer freezes at startup or while a picture is analysed (vision calls run off the event loop).
+- Tab and installed-app icons now show behind Cloudflare Access.
+- `ecosystem.config.js` finds Python 3.13 on any Mac instead of assuming `/usr/local/bin` (#424).
+- The iMessage and Telegram bridges write signed audit lines, without message text.
+- Learned facts are saved under the default user id.
+- A refused action shows the server's reason instead of "HTTP 400".
+
 ## v3.5.0 (2026-07-22)
 ### Changed
 - **CODEC Pilot parked.** The browser-automation pillar is withdrawn from the product: the Pilot tab is removed from the dashboard and its product card from the Cortex map. Pilot needs a far deeper build than the rest of CODEC to be trustworthy — Google blocks account sign-in from any CDP-controlled browser (not a setting we can change), and cookie walls plus bot challenges make a large share of real sites unusable. The code is parked, not deleted: the skill, route proxy, vendored copy, and PM2 entry were unhooked from this repo, and the engine lives on in the separate `AVADSA25/codec-pilot` repo (see `docs/PILOT-PARKED.md`), so it can return when it earns its place.
