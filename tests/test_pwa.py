@@ -73,9 +73,26 @@ def test_manifest_has_real_icons_and_three_shortcuts(client):
 @pytest.mark.parametrize("name", APP_PAGES)
 def test_app_pages_link_the_manifest_and_touch_icon(name):
     src = (REPO / name).read_text(encoding="utf-8")
-    assert '<link rel="manifest" href="/manifest.json">' in src
+    # Behind Cloudflare Access a manifest fetched without the login cookie gets the login page,
+    # so Chrome installed the app with no icon: the manifest is fetched with credentials.
+    assert '<link rel="manifest" href="/manifest.json" crossorigin="use-credentials">' in src
     assert '<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">' in src
     assert Image.open(REPO / "static/icons/apple-touch-icon.png").size == (180, 180)
+
+
+@pytest.mark.parametrize("name", [*APP_PAGES, "codec_auth.html"])
+def test_the_tab_icon_is_inline_so_cloudflare_access_cannot_swap_it(name):
+    # A /favicon.png request behind Cloudflare Access got the login page, so the tab kept
+    # the login page's (AVA Digital) icon. The icon is a data: URL: no request at all.
+    import base64
+    import io
+    import re
+    src = (REPO / name).read_text(encoding="utf-8")
+    assert 'href="/favicon.png"' not in src
+    m = re.search(r'<link rel="icon" type="image/png" href="data:image/png;base64,([A-Za-z0-9+/=]+)">', src)
+    assert m, name
+    img = Image.open(io.BytesIO(base64.b64decode(m.group(1))))
+    assert img.format == "PNG" and img.size == (64, 64)
 
 
 def test_shell_registers_the_worker_and_offers_install():
