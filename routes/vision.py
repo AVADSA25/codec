@@ -7,6 +7,7 @@ reply to the conversations table so the chat panel renders them.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re as _re_b64
@@ -63,7 +64,8 @@ async def vision_analyze(request: Request):
             "temperature": 0.7
         }
         headers = {"Content-Type": "application/json"}
-        r = rq.post(f"{vision_url}/chat/completions", json=payload, headers=headers, timeout=120)
+        # In a thread: on the event loop this froze the whole dashboard while the model answered.
+        r = await asyncio.to_thread(rq.post, f"{vision_url}/chat/completions", json=payload, headers=headers, timeout=120)
         data = r.json()
         answer = data["choices"][0]["message"]["content"].strip()
         _audit_event("vision_request", prompt_len=len(prompt), prompt_preview=prompt[:100])

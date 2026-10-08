@@ -66,8 +66,9 @@ async def webcam_capture(request: Request):
                     ]}],
                     "max_tokens": 4000, "temperature": 0.7
                 }
-                r = rq.post(f"{vision_url}/chat/completions", json=payload,
-                            headers={"Content-Type": "application/json"}, timeout=120)
+                # In a thread: on the event loop this froze the whole dashboard while the model answered.
+                r = await asyncio.to_thread(rq.post, f"{vision_url}/chat/completions", json=payload,
+                                            headers={"Content-Type": "application/json"}, timeout=120)
                 result["analysis"] = r.json()["choices"][0]["message"]["content"].strip()
                 result["model"] = vision_model
             except Exception as e:

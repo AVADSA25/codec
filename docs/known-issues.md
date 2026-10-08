@@ -457,7 +457,7 @@ approved skills to `~/.codec/skills/` (or set `skills_dir` there) and say so on
 the page. Found in the Mac merge pass (P3.12 check). Revisit: before anyone
 approves a skill from the Learning page.
 
-## Three photo routes block the dashboard while the vision model answers (2026-10-07)
+## Three photo routes block the dashboard while the vision model answers (2026-10-07) — FIXED 2026-10-08 (asyncio.to_thread; tests/test_no_blocking_requests_in_async.py guards every async handler)
 
 `routes/media.py:webcam_capture`, `routes/upload.py:upload_image` and
 `routes/vision.py:vision_analyze` are `async` but call the vision model with

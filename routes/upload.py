@@ -16,6 +16,7 @@ contract lives in one file. Keep in sync with skills/file_write.py.
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import logging
@@ -277,7 +278,9 @@ async def upload_image(request: Request):
             "chat_template_kwargs": {"enable_thinking": False},
         }
         t0 = time.time()
-        r = rq.post(f"{vision_url}/chat/completions", json=payload, headers={"Content-Type": "application/json"}, timeout=90)
+        # In a thread: on the event loop this froze the whole dashboard while the model answered.
+        r = await asyncio.to_thread(rq.post, f"{vision_url}/chat/completions", json=payload,
+                                    headers={"Content-Type": "application/json"}, timeout=90)
         answer = ""
         try:
             data = r.json()
