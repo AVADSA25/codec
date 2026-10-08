@@ -85,6 +85,8 @@ def test_the_bundle_carries_the_release_version_as_its_build_number():
     version = (REPO / "VERSION").read_text(encoding="utf-8").strip()
     static = plistlib.loads((PKG / "Info.plist").read_bytes())
     assert static["CFBundleVersion"] == static["CFBundleShortVersionString"] == version, "static plist matches VERSION"
+    if sys.platform != "darwin":
+        return  # the build itself needs macOS (Swift/AppKit launcher, plutil)
     with tempfile.TemporaryDirectory() as td:
         r = subprocess.run(["bash", str(BUILD), "--out", td, "--clean"], capture_output=True, text=True, timeout=120)
         assert r.returncode == 0, r.stderr
