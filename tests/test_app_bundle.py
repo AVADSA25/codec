@@ -75,3 +75,20 @@ def test_build_assembles_bundle_and_selftest_passes():
             capture_output=True, text=True, timeout=60,
         )
         assert st.returncode == 0, f"--selftest failed: {st.stderr}\n{st.stdout}"
+
+
+def test_the_bundle_carries_the_release_version_as_its_build_number():
+    # Sparkle offers an update only when the appcast's sparkle:version (CFBundleVersion) is
+    # higher than the installed one. It stayed "1" on every build, so no installed copy was
+    # ever offered an update. Both version keys now come from VERSION.
+    import plistlib
+    version = (REPO / "VERSION").read_text(encoding="utf-8").strip()
+    static = plistlib.loads((PKG / "Info.plist").read_bytes())
+    assert static["CFBundleVersion"] == static["CFBundleShortVersionString"] == version, "static plist matches VERSION"
+    if sys.platform != "darwin":
+        return  # the build itself needs macOS (Swift/AppKit launcher, plutil)
+    with tempfile.TemporaryDirectory() as td:
+        r = subprocess.run(["bash", str(BUILD), "--out", td, "--clean"], capture_output=True, text=True, timeout=120)
+        assert r.returncode == 0, r.stderr
+        built = plistlib.loads((Path(td) / "Sovereign AI Workstation.app" / "Contents" / "Info.plist").read_bytes())
+        assert built["CFBundleVersion"] == built["CFBundleShortVersionString"] == version
