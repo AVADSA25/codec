@@ -78,6 +78,11 @@ APP_VERSION="$(tr -d '[:space:]' < "$REPO/VERSION" 2>/dev/null || true)"
 if [ -n "$APP_VERSION" ] && command -v plutil >/dev/null 2>&1; then
     plutil -replace CFBundleShortVersionString -string "$APP_VERSION" "$CONTENTS/Info.plist"
     echo "==> bundle CFBundleShortVersionString = $APP_VERSION (from VERSION)"
+    # Sparkle decides "is this newer?" from CFBundleVersion (the appcast's sparkle:version),
+    # not the short string. It stayed "1" on every build, so no installed copy was ever
+    # offered an update. Use the same version.
+    plutil -replace CFBundleVersion -string "$APP_VERSION" "$CONTENTS/Info.plist"
+    echo "==> bundle CFBundleVersion = $APP_VERSION (from VERSION)"
 fi
 printf 'APPL????' > "$CONTENTS/PkgInfo"
 
