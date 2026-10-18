@@ -110,10 +110,17 @@
   }
   function scheduleTabs() { clearTimeout(P.tabTimer); P.tabTimer = setTimeout(renderTabs, 250); }
 
+  // The preview follows the files: after an undo, a restore, an opened project and a saved edit.
+  function refreshPreview() {
+    if (typeof window.refreshPreview === 'function') window.refreshPreview();
+  }
+
   // ── saving the person's own edits ──────────────────────────────────────
   function scheduleSave() {
     clearTimeout(P.saveTimer);
-    P.saveTimer = setTimeout(function () { flush().catch(function () {}); }, 1500);
+    P.saveTimer = setTimeout(function () {
+      flush().then(function () { if (!P.live) refreshPreview(); }).catch(function () {});
+    }, 1500);
   }
 
   function dirtyPaths() {
@@ -170,6 +177,7 @@
       return loadFiles(info.files.map(function (f) { return f.path; })).then(function () {
         var first = pickFirst(Object.keys(P.files));
         if (first) activate(first); else renderTabs();
+        refreshPreview();
         return info;
       });
     });
@@ -203,6 +211,7 @@
       return loadFiles(want).then(function () {
         if (!P.files[P.active]) P.active = pickFirst(Object.keys(P.files));
         if (P.active) activate(P.active); else renderTabs();
+        refreshPreview();
       });
     });
   }
@@ -291,9 +300,11 @@
       if (i === blocks.length - 1 && P.live.cur !== b.path) { P.live.cur = b.path; activate(b.path); }
       else if (i === blocks.length - 1) renderTabs();
     });
-    if (window.ed && P.live.cur && window.ed.getModel() === (P.files[P.live.cur] || {}).model) {
-      var n = window.ed.getModel().getLineCount();
-      window.ed.revealLine(n);
+    // Follow the typing only while the editor can be seen: revealing a line in a hidden editor
+    // (code pane hidden, phone on another tab) leaves it scrolled to the end when it comes back.
+    var node = window.ed && window.ed.getDomNode && window.ed.getDomNode();
+    if (node && node.offsetHeight > 0 && P.live.cur && window.ed.getModel() === (P.files[P.live.cur] || {}).model) {
+      window.ed.revealLine(window.ed.getModel().getLineCount());
     }
   }
 

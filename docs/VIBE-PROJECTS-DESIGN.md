@@ -1,6 +1,6 @@
 # Vibe Projects — undo, live preview, hideable code — design
 
-Status: approved 18 Oct 2026. Step 1 is built (this document, "Step 1" section, describes what shipped); step 2 is next. Steps 3 and 4 are direction only and get their own design doc before any build.
+Status: approved 18 Oct 2026. Step 1 and step 2a are built (the "Step 1" and "Step 2a" sections describe what shipped); step 2b is next. Steps 3 and 4 are direction only and get their own design doc before any build.
 
 ## Goal
 
@@ -40,23 +40,34 @@ Storage: a nullable `project_id` on `vibe_sessions`, added with the same try/exc
 
 ## Step 2 — Replit-style layout and live preview
 
-- **Three panes:** chat | live preview | code (file tree, Monaco with line numbers, tabs). A header switch **Code: show / hide** (remembered in `localStorage`, key `codec-vibe-code`). Hidden = chat plus a large preview, like Bolt. Phone: one pane at a time with a Chat / Preview / Code switch; code starts hidden.
-- **Live preview, static projects:** a small supervised static server on `127.0.0.1:<port>` (port range 5300–5399, one at a time), shown in an iframe with `sandbox="allow-scripts allow-forms allow-modals"` and no `allow-same-origin`, so project code cannot read the dashboard or its cookies. The page polls `GET .../mtime` every second and reloads the frame after a change (no script injected into the project).
-- **Dev-server projects (node, python):** `vibe.json` holds `{"start": "...", "port": N}`. The first run shows the exact command and asks for a click; after that it starts without asking. Same hardening as `/api/run_code` (secrets stripped, own process group, killed on stop), bound to `127.0.0.1`, stopped after 30 minutes idle, logs shown in the output panel. The AI never starts a process by itself in this version.
-- **Console errors** in the preview reuse the error reporter Vibe already injects (`_pvAgent`, `codec_vibe.html:682`).
-- **CSP:** the dashboard policy has no `frame-src`, so framing falls back to `default-src 'self'` and a `127.0.0.1` frame would be blocked. Add `frame-src 'self' http://127.0.0.1:*` (additive).
-- **Mac only in this version.** Start, stop and run return 403 for tunnel requests (same rule as `/api/run_code`), and the iframe is plain http. On the phone the preview pane says the project runs on the Mac. A tunnel-safe preview needs a reverse proxy with its own auth: separate design.
+Built in two parts so the visible part ships first and nothing that runs a program rides along with it.
+
+### Step 2a — panes, hideable code, live preview (built)
+
+- **Three panes** side by side on a wide screen: chat | code (file tabs, line numbers) | live preview. A **Hide code / Show code** button in the header hides the code pane and gives the room to the preview (chat plus a large preview, like Bolt); the choice is remembered (`localStorage` key `codec-vibe-code`). The preview pane is open from the start with an empty-state line, and has its own refresh, inspect and close buttons so everything still works with the code hidden.
+- **Phone:** one pane at a time from three tabs, Chat | Preview | Code (it opens on Chat, so the code starts hidden). A dot on the Preview tab says the preview changed while another tab was open; an AI change does not pull the phone away from the chat.
+- **The preview follows the files:** it refreshes after an AI change, an undo, a restore, an opened project, and about 1.5 s after the person stops typing (the same autosave that writes the file). Only while the preview is open; an automatic refresh never complains when there is no page, and goes back to the empty state when every page was undone.
+- Still the sandboxed `srcdoc` frame (`sandbox="allow-scripts"`, no `allow-same-origin`) with local css and js inlined, so it works on the phone through the tunnel and keeps Inspect and error capture. The editor does not follow the typing when it cannot be seen (a hidden editor kept scrolled to its end).
+- Not built here: the localhost server and the dev server below.
+
+### Step 2b — localhost preview and "Run project" (next, own PR)
+
+- **Localhost preview for static projects:** a small read-only file server on `127.0.0.1:<port>` (range 5300–5399, one at a time), started and stopped from the preview header, shown in the same sandboxed frame (`allow-scripts allow-forms allow-modals`, no `allow-same-origin`). It serves only the project folder (never `.vibe`), refuses anything but GET/HEAD and any `Host` that is not loopback, and sends `Content-Security-Policy: sandbox ...` so a page opened on its own is sandboxed too. Gives images, several pages and `fetch` of local files, which `srcdoc` cannot.
+- **Run project (node, python):** the exact command is typed or confirmed in a dialog and **that confirmed string in the request is the only thing executed**; `vibe.json` (which the AI may write) only fills in the dialog's default text, so the AI can never start anything by itself. Own process group, `PORT` and `HOST=127.0.0.1` set, secret-looking environment variables stripped and `is_dangerous` as a typo catcher (as `/api/run_code`), logs in the output panel, stopped on request or after 30 minutes idle, one running project at a time, stale processes from a dashboard restart cleaned up on start.
+- **CSP:** the dashboard policy has no `frame-src`, so framing falls back to `default-src 'self'` and a `127.0.0.1` frame is blocked; add `frame-src 'self' http://127.0.0.1:*` (additive).
+- **Mac only:** start, stop and run answer 403 for tunnel requests (same rule as `/api/run_code`); on the phone the pane keeps the inline preview from step 2a.
+- Console errors for the localhost preview need the error reporter injected into served pages; the first version shows them only for the inline preview.
 
 ## Test plan
 
-- Python: path containment (`..`, absolute path, symlink out, `.git/`, size and count caps), apply writes and commits, restore creates a new commit and keeps history, delete goes to trash, remote request gets 403 on run/stop, blocked names refused. Tests use a temp root (`CODEC_VIBE_ROOT`) and run once with an empty `HOME` (CI has no `~/.codec`).
+- Python: path containment (`..`, absolute path, symlink out, `.git/`, size and count caps), apply writes all or nothing behind checkpoints, restore keeps history, undo walks back one AI change at a time, delete goes to the trash, blocked names refused, audit events carry no names or code; each rule is checked by breaking it on purpose. Tests use temp folders (`CODEC_VIBE_ROOT`, `CODEC_VIBE_TRASH`). Never run the suite with a fake `HOME` on a Mac: `codec_audit` then cannot find its keychain secret and starts replacing it.
 - Browser pane at 1280, 412 and 375 px: AI change then Undo returns the exact old text; Restore then Undo-restore round trip; Code show/hide persists after reload; preview reloads after an edit; a console read at the end of every check (CSP lesson).
 - Phone: the Chat / Preview / Code switch, no horizontal scroll, composer in flow.
 - Whole suite stays green.
 
 ## Rollback
 
-`VIBE_PROJECTS_ENABLED=false` serves the old single-file Vibe. Projects are plain folders with git, so nothing is locked in. Revert the PR to remove the code; the `vibe_projects` table is harmless if left.
+`VIBE_PROJECTS_ENABLED=false` serves the old single-file Vibe (an older server answers 404 and the page falls back the same way). Projects are plain folders, so nothing is locked in. Revert the PR to remove the code; the `project_id` column on `vibe_sessions` is harmless if left.
 
 ## Direction only (separate design doc each, not part of this approval)
 
