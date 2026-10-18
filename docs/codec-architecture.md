@@ -159,6 +159,17 @@ One event name, emitted by `codec_image` when an image job ends. Metadata only: 
 |---|---|---|---|
 | `image_generated` | `codec-image` | info (warning on failure) | `size`, `steps`, `count`, `refs` (number), `results` (number), `seconds`, `state` (`done`\|`failed`\|`refused`\|`cancelled`); `outcome` is `ok` / `error` / `denied` / `warning` |
 
+### Vibe project events (2026-10)
+
+Emitted by `codec_vibe_projects` (docs/VIBE-PROJECTS-DESIGN.md), source `codec-vibe`, level info. Ids and counts only: never a label, a file name or any code.
+
+| Event | extra fields |
+|---|---|
+| `vibe_checkpoint` | `project`, `checkpoint`, `kind` (`start`\|`before`\|`ai`\|`restore`\|`before_restore`\|`manual`), `files`, `files_changed`, `lines_added`, `lines_removed` |
+| `vibe_apply` | `project`, `checkpoint`, `files_changed`, `lines_added`, `lines_removed` |
+| `vibe_restore` | `project`, `restored_to`, `checkpoint`, `saved_before` |
+| `vibe_project_trash` | `project` |
+
 ### Web Push events (2026-09, UI P3.13)
 
 Emitted by `codec_push` (docs/P3.13-DESIGN.md). Metadata only: never an endpoint, a key or any notification text.

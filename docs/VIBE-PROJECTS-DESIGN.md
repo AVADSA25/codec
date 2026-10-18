@@ -1,6 +1,6 @@
 # Vibe Projects — undo, live preview, hideable code — design
 
-Status: proposed, waiting for approval. Scope of this doc: steps 1 and 2. Steps 3 and 4 are direction only and get their own design doc before any build.
+Status: approved 18 Oct 2026. Step 1 is built (this document, "Step 1" section, describes what shipped); step 2 is next. Steps 3 and 4 are direction only and get their own design doc before any build.
 
 ## Goal
 
@@ -23,19 +23,20 @@ Make Vibe work like Replit / Bolt, with a safety net:
 
 ## Step 1 — Projects and checkpoints (the safety net)
 
-**Project = a folder** `~/codec-workspace/vibe/<slug>/` with its own local git repository. Outside `~/.codec` and the repo, so every existing path blocklist still applies.
+**Project = a folder** `~/codec-workspace/vibe/<slug>-<6 hex>/` with a hidden `.vibe/` folder inside (`project.json`, `checkpoints.jsonl`, `objects/<sha256>`). Outside `~/.codec` and the repo, so every existing path blocklist still applies. *(First draft said "its own local git repository". Changed to plain-file checkpoints: a customer Mac may have no git, and macOS then pops up an install window the first time git runs. Same behaviour, no dependency, and the tests can break each rule on purpose.)*
 
-- Old single-file sessions keep working. "Convert to project" writes `main.<ext>` and starts history.
-- **Checkpoint before and after every AI turn.** Before: commit anything the user changed by hand ("before: <your message>"). After: commit the AI's files ("ai: <your message>"). Commits stay local; Vibe never pushes.
-- **Restore = a new commit** that sets the files back to an old checkpoint (`git checkout <hash> -- .` then commit). History is never rewritten and nothing is deleted, so a restore can itself be undone. No `reset --hard`.
-- **Delete project** moves the folder to `~/.codec/trash/vibe/<slug>-<time>`; it is not removed.
+- Old single-file sessions keep working and open as before. The first message sent from one creates a project and seeds it with what the editor shows (`index.html`, `main.py`, ...), so that text is the first checkpoint. A session remembers its project (`vibe_sessions.project_id`); if the folder is gone the session opens with its last saved code.
+- **Checkpoint before and after every AI turn.** Before: anything the user changed by hand ("Before: <your message>", taken only if something changed). After: the AI's files ("<your message>", kind `ai`). Nothing leaves the Mac.
+- **Restore = a new checkpoint** that sets the files back to an old one (files added since are removed, files deleted since come back, exact bytes). History is never rewritten and nothing is deleted, so a restore can itself be undone. Undo takes the newest AI change that is still in effect; a restore to an older version drops the newer AI changes from the Undo stack (they stay in Versions).
+- **Delete project** (the delete button in the project list) moves the folder to `~/.codec/trash/vibe/<id>-<time>`; it is not removed.
 - **AI writes files, not "Apply to editor".** The prompt asks for file blocks with a path (` ```file:index.html `). The server writes them only inside the project folder: real-path check, no `..`, no symlink out, no `.git/`, 1 MB per file, 200 files per project, and the same blocked names as `/api/save_file`.
-- **UI:** an "Undo AI change" button in the header; a Versions drawer (list, diff in Monaco's diff view, "Restore this version"); a "Revert to before this" link on each AI message; per-file change chips ("index.html +34 −2").
+- **UI:** an "Undo AI change" button and a Versions button in the header; file tabs above the editor (one editor model per file, so Cmd-Z also takes back an AI write); a Versions drawer (list, coloured diff, "Restore this version", always asking first); a "Revert to before this" link on each AI message; per-file change chips ("index.html +34 −2"); Stop mid-answer puts every file back as it was. The preview inlines local css and js so a multi-file page still shows.
+- **Prompt:** in project mode the model gets the project files (up to 60,000 characters, open file first) and is asked for one labelled block per file. Older turns are sent without their code, so a long session does not repeat every file each time.
 
 New API (`routes/vibe_projects.py`, same dashboard auth as the rest of Vibe):
-`POST /api/vibe/projects`, `GET /api/vibe/projects`, `GET /api/vibe/projects/{id}/files`, `GET|PUT /api/vibe/projects/{id}/file?path=`, `POST .../apply`, `GET .../checkpoints`, `GET .../diff?from=&to=`, `POST .../restore`, `DELETE /api/vibe/projects/{id}` (to trash).
+`POST /api/vibe/projects`, `GET /api/vibe/projects`, `GET /api/vibe/projects/{id}` (files, can_undo), `GET|PUT /api/vibe/projects/{id}/file`, `POST .../checkpoint`, `POST .../apply`, `GET .../checkpoints`, `GET .../diff?from=&to=`, `POST .../restore`, `POST .../undo`, `DELETE /api/vibe/projects/{id}` (to trash).
 
-Storage: `vibe.db` gets `vibe_projects(id, title, path, start_cmd, port, created_at, updated_at, trashed_at)` and a nullable `project_id` on `vibe_sessions`, added with the same try/except `ALTER TABLE` pattern the file already uses. No change to `memory.db` or the audit envelope. New audit events, metadata only (project id, counts, short hash, never code): `vibe_checkpoint`, `vibe_restore`, `vibe_apply`, `vibe_project_run`, `vibe_project_stop`; added to `docs/codec-architecture.md`.
+Storage: a nullable `project_id` on `vibe_sessions`, added with the same try/except `ALTER TABLE` pattern the file already uses (an old database is upgraded in place). The project list is the folders themselves, so there is no `vibe_projects` table. No change to `memory.db` or the audit envelope. New audit events, metadata only (project id, checkpoint id, counts, never a label, a file name or code): `vibe_checkpoint`, `vibe_apply`, `vibe_restore`, `vibe_project_trash` (documented in `docs/codec-architecture.md`); `vibe_project_run` and `vibe_project_stop` come with step 2.
 
 ## Step 2 — Replit-style layout and live preview
 

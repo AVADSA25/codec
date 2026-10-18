@@ -453,6 +453,8 @@ from routes.observer import router as observer_router
 from routes.qchat import router as qchat_router
 # D2 / SR-43: vibe endpoints extracted.
 from routes.vibe import router as vibe_router
+# Vibe projects (docs/VIBE-PROJECTS-DESIGN.md): project files, checkpoints, undo.
+from routes.vibe_projects import router as vibe_projects_router
 # D3 / SR-44: schedules endpoints extracted.
 from routes.schedules import router as schedules_router
 # D4 / SR-45: prompt overrides endpoints extracted.
@@ -536,6 +538,7 @@ app.include_router(audit_router)
 app.include_router(observer_router)
 app.include_router(qchat_router)
 app.include_router(vibe_router)
+app.include_router(vibe_projects_router)
 app.include_router(schedules_router)
 app.include_router(prompts_router)
 app.include_router(media_router)
