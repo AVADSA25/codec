@@ -26,6 +26,7 @@ import mimetypes
 import os
 import posixpath
 import re
+import resource
 import signal
 import socket
 import subprocess
@@ -280,11 +281,10 @@ def _run_env(port: int) -> dict:
     return env
 
 
-def _limits() -> None:          # runs in the child, before exec
+def _limits() -> None:          # runs in the child between fork and exec: no imports, no locks
     try:
-        import resource
         resource.setrlimit(resource.RLIMIT_FSIZE, (512 * 1024 ** 2, 512 * 1024 ** 2))
-    except Exception:
+    except (ValueError, OSError):
         pass
 
 
