@@ -50,6 +50,7 @@ RUN_FILE = "run.json"
 _LOCK = threading.RLock()
 _TARGET = None          # the one thing that is live: a _Serve or a _Run
 _WATCHER = None
+_WAKE = threading.Event()   # set when something starts, so the watcher re-reads its interval at once
 _REAPED = False
 
 _EXTRA_PATH = ("/opt/homebrew/bin", "/usr/local/bin")
@@ -445,12 +446,14 @@ def _stop_locked(reason: str) -> bool:
 
 def _ensure_watcher() -> None:
     global _WATCHER
+    _WAKE.set()
     if _WATCHER is not None and _WATCHER.is_alive():
         return
 
     def watch() -> None:
         while True:
-            time.sleep(WATCH_INTERVAL)
+            _WAKE.wait(WATCH_INTERVAL)
+            _WAKE.clear()
             with _LOCK:
                 t = _TARGET
                 if t is not None and time.time() - t.last_seen > IDLE_SECONDS:
