@@ -7,6 +7,7 @@ IDE; these endpoints persist code editor sessions + AI chat history to
 from __future__ import annotations
 
 import os
+import re
 import sqlite3
 from datetime import datetime
 
@@ -40,6 +41,11 @@ def vibe_db():
                 _vibe_conn.execute(f"ALTER TABLE {table} ADD COLUMN user_id TEXT DEFAULT 'default'")
             except sqlite3.OperationalError:
                 pass
+        # A session may belong to a project folder (docs/VIBE-PROJECTS-DESIGN.md); NULL = single-file session.
+        try:
+            _vibe_conn.execute("ALTER TABLE vibe_sessions ADD COLUMN project_id TEXT")
+        except sqlite3.OperationalError:
+            pass
         _vibe_conn.execute("CREATE INDEX IF NOT EXISTS idx_vibe_sessions_user ON vibe_sessions(user_id)")
         _vibe_conn.execute("CREATE INDEX IF NOT EXISTS idx_vibe_messages_user ON vibe_messages(user_id)")
         _vibe_conn.commit()
@@ -50,19 +56,20 @@ def vibe_db():
 async def vibe_sessions(user_id: str = None):
     conn = vibe_db()
     if user_id is not None:
-        rows = conn.execute("SELECT id, title, language, updated_at FROM vibe_sessions WHERE user_id=? ORDER BY updated_at DESC LIMIT 30", (user_id,)).fetchall()
+        rows = conn.execute("SELECT id, title, language, updated_at, project_id FROM vibe_sessions WHERE user_id=? ORDER BY updated_at DESC LIMIT 30", (user_id,)).fetchall()
     else:
-        rows = conn.execute("SELECT id, title, language, updated_at FROM vibe_sessions ORDER BY updated_at DESC LIMIT 30").fetchall()
-    return [{"id": r[0], "title": r[1], "language": r[2], "updated_at": r[3]} for r in rows]
+        rows = conn.execute("SELECT id, title, language, updated_at, project_id FROM vibe_sessions ORDER BY updated_at DESC LIMIT 30").fetchall()
+    return [{"id": r[0], "title": r[1], "language": r[2], "updated_at": r[3], "project_id": r[4]} for r in rows]
 
 
 @router.get("/api/vibe/session/{sid}")
 async def vibe_session(sid: str):
     conn = vibe_db()
-    session = conn.execute("SELECT id, title, language, code FROM vibe_sessions WHERE id=?", (sid,)).fetchone()
+    session = conn.execute("SELECT id, title, language, code, project_id FROM vibe_sessions WHERE id=?", (sid,)).fetchone()
     msgs = conn.execute("SELECT role, content, timestamp FROM vibe_messages WHERE session_id=? ORDER BY id ASC", (sid,)).fetchall()
     return {
-        "session": {"id": session[0], "title": session[1], "language": session[2], "code": session[3]} if session else None,
+        "session": {"id": session[0], "title": session[1], "language": session[2], "code": session[3],
+                    "project_id": session[4]} if session else None,
         "messages": [{"role": r[0], "content": r[1], "timestamp": r[2]} for r in msgs]
     }
 
@@ -78,9 +85,14 @@ async def vibe_save(request: Request):
     user_id = body.get("user_id", "default")
     now = datetime.now().isoformat()
     full_sync = body.get("full_sync", False)
+    # The project this session works in. A page that does not send the field (an older
+    # page, a single-file session) keeps whatever the session already had.
+    project_id = body.get("project_id")
+    if not (isinstance(project_id, str) and re.match(r"^[a-z0-9][a-z0-9-]{2,60}$", project_id)):
+        project_id = None
     conn = vibe_db()
-    conn.execute("INSERT OR REPLACE INTO vibe_sessions (id, title, language, code, created_at, updated_at, user_id) VALUES (?, ?, ?, ?, COALESCE((SELECT created_at FROM vibe_sessions WHERE id=?), ?), ?, ?)",
-        (sid, title[:60], language, code, sid, now, now, user_id))
+    conn.execute("INSERT OR REPLACE INTO vibe_sessions (id, title, language, code, created_at, updated_at, user_id, project_id) VALUES (?, ?, ?, ?, COALESCE((SELECT created_at FROM vibe_sessions WHERE id=?), ?), ?, ?, COALESCE(?, (SELECT project_id FROM vibe_sessions WHERE id=?)))",
+        (sid, title[:60], language, code, sid, now, now, user_id, project_id, sid))
     if full_sync and messages:
         conn.execute("DELETE FROM vibe_messages WHERE session_id=?", (sid,))
     for m in messages:
