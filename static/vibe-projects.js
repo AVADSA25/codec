@@ -19,7 +19,10 @@
 
   // files[path] = { model, base, fresh }   base = what is on disk, fresh = made during this answer
   var P = { id: null, title: '', files: {}, active: null, canUndo: false, disabled: false,
-    scratch: null, live: null, lastAi: null, saveTimer: null, tabTimer: null };
+    scratch: null, live: null, lastAi: null, saveTimer: null, tabTimer: null,
+    run: null };   // run: what is live on this Mac { mode, url, since, timer, ready }
+  // Showing or running a project works only on this Mac (the server says no to anything else).
+  var ON_MAC = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
 
   function $(id) { return document.getElementById(id); }
   function toast(m) { if (window.CodecShell && window.CodecShell.toast) window.CodecShell.toast(m); }
@@ -104,9 +107,10 @@
       b.addEventListener('click', function () { activate(p); });
       bar.appendChild(b);
     });
-    var undo = $('undoBtn'), ver = $('verBtn');
+    var undo = $('undoBtn'), ver = $('verBtn'), runb = $('runBtn');
     if (undo) { undo.hidden = !P.id; undo.disabled = !P.canUndo; }
     if (ver) ver.hidden = !P.id;
+    if (runb) runb.hidden = !(P.id && ON_MAC);
   }
   function scheduleTabs() { clearTimeout(P.tabTimer); P.tabTimer = setTimeout(renderTabs, 250); }
 
@@ -156,6 +160,7 @@
 
   function detach() {
     clearTimeout(P.saveTimer);
+    if (P.run && P.id) stopLive(true);
     if (Object.keys(P.files).length && window.ed && window.monaco) window.ed.setModel(scratch());
     dispose();
     P.id = null; P.title = ''; P.active = null; P.canUndo = false; P.live = null; P.lastAi = null;
@@ -178,9 +183,19 @@
         var first = pickFirst(Object.keys(P.files));
         if (first) activate(first); else renderTabs();
         refreshPreview();
+        adoptLive(id);
         return info;
       });
     });
+  }
+
+  // The page was reloaded while a project was live: pick it up again so it can be stopped from here.
+  function adoptLive(id) {
+    if (!ON_MAC) return;
+    api('GET', '/api/vibe/projects/' + id + '/live?since=0').then(function (d) {
+      if (P.id !== id || P.run) return;
+      if (d.state === 'ready' || d.state === 'starting') beginLive(d.kind, d);
+    }).catch(function () { /* nothing live, or not allowed */ });
   }
 
   function loadFiles(paths) {
@@ -505,6 +520,149 @@
     var ov = $('vov'); if (ov) ov.classList.remove('sh');
   }
 
+  // ── showing or running the project on this Mac (step 2b) ───────────────
+  var SANDBOX = { serve: 'allow-scripts allow-forms allow-modals',
+    run: 'allow-scripts allow-same-origin allow-forms allow-modals allow-popups' };
+
+  function liveChip(text, cls) {
+    var c = $('liveState'), b = $('stopLiveBtn');
+    if (c) { c.hidden = !text; c.textContent = text || ''; c.className = 'ph-live' + (cls ? ' ' + cls : ''); }
+    if (b) b.hidden = !(P.run && P.run.mode);
+  }
+
+  function showInline() {
+    var pf = $('pf');
+    if (pf) { pf.removeAttribute('src'); pf.setAttribute('sandbox', 'allow-scripts'); }
+    refreshPreview();
+  }
+
+  function liveEnded(text) {
+    var was = P.run;
+    clearTimeout(was && was.timer);
+    P.run = null;
+    liveChip(text || '', text ? 'down' : '');
+    if (text) setTimeout(function () { if (!P.run) liveChip(''); }, 6000);
+    showInline();
+  }
+
+  function pollLive() {
+    var r = P.run;
+    if (!r || !P.id) return;
+    api('GET', base('/live?since=' + r.since)).then(function (d) {
+      if (P.run !== r) return;
+      (d.lines || []).forEach(function (ln) { out('ot', ln); });
+      if (typeof d.next === 'number') r.since = d.next;
+      if (d.state === 'ready') {
+        if (!r.ready) {
+          r.ready = true; r.url = d.url;
+          var pf = $('pf'), wrap = document.querySelector('.pv-wrap');
+          if (pf) { pf.removeAttribute('srcdoc'); pf.setAttribute('sandbox', SANDBOX[r.mode]); pf.src = d.url; }
+          if (wrap) wrap.classList.add('has');
+          window._pvReady = false;      // the inline preview's inspect needs its own frame
+          out('sy', (r.mode === 'serve' ? 'Showing the files on ' : 'Running on ') + d.url.replace(/^http:\/\//, '').replace(/\/$/, ''));
+        }
+        liveChip((r.mode === 'serve' ? 'Localhost :' : 'Running :') + d.port, 'up');
+      } else if (d.state === 'starting') {
+        liveChip('Starting :' + d.port, 'wait');
+      } else if (d.state === 'exited') {
+        out('sy', 'The command ended (exit ' + d.exit_code + ')');
+        toast('The command ended (exit ' + d.exit_code + ')');
+        return liveEnded('Ended (exit ' + d.exit_code + ')');
+      } else {          // none: stopped from elsewhere, or idle
+        return liveEnded('');
+      }
+      r.timer = setTimeout(pollLive, 1000);
+    }).catch(function (e) {
+      if (P.run !== r) return;
+      out('er', 'Lost touch with the running project: ' + e.message);
+      liveEnded('');
+    });
+  }
+
+  function beginLive(mode, info) {
+    P.run = { mode: mode, since: 0, ready: false, url: info.url, timer: null };
+    liveChip((mode === 'serve' ? 'Opening :' : 'Starting :') + info.port, 'wait');
+    pollLive();
+  }
+
+  function stopLive(quiet) {
+    if (!P.id) return Promise.resolve();
+    var r = P.run;
+    clearTimeout(r && r.timer);
+    var id = P.id;
+    P.run = null;
+    liveChip('');
+    if (!quiet) showInline();
+    return fetch('/api/vibe/projects/' + id + '/stop', { method: 'POST', credentials: 'same-origin' })
+      .then(function () { if (!quiet) out('sy', 'Stopped'); }, function () { /* the server drops it when idle */ });
+  }
+
+  function liveActive() { return !!(P.run && P.run.ready); }
+  function liveReload() {
+    var pf = $('pf');
+    if (P.run && P.run.ready && P.run.mode === 'serve' && pf) pf.src = P.run.url;   // a dev server reloads itself
+  }
+
+  // What the dialog starts with: vibe.json's start (a file the AI may write: only a suggestion), else a guess.
+  function suggestCommand() {
+    var txt = function (p) { return P.files[p] ? P.files[p].model.getValue() : ''; };
+    try {
+      var v = JSON.parse(txt('vibe.json') || '{}');
+      if (v && typeof v.start === 'string' && v.start.trim()) return { command: v.start.trim().slice(0, 500), port: v.port };
+    } catch (e) { /* not valid json: ignore */ }
+    try {
+      var pkg = JSON.parse(txt('package.json') || '{}');
+      var sc = (pkg && pkg.scripts) || {};
+      if (sc.dev) return { command: 'npm run dev' };
+      if (sc.start) return { command: 'npm start' };
+    } catch (e) { /* ignore */ }
+    var guess = ['server.js', 'app.js', 'index.js'].filter(function (f) { return P.files[f] && /listen\(/.test(txt(f)); })[0];
+    if (guess) return { command: 'node ' + guess };
+    guess = ['app.py', 'main.py', 'server.py'].filter(function (f) { return P.files[f]; })[0];
+    if (guess) return { command: 'python3 ' + guess };
+    return { command: '' };
+  }
+
+  function runDialog() {
+    if (!P.id) return;
+    var d = $('rd');
+    if (!d) return;
+    var s = suggestCommand();
+    $('rdCommand').value = s.command || '';
+    $('rdPort').value = s.port || '';
+    $('rdErr').textContent = '';
+    var mode = (s.command && !P.files['index.html']) ? 'run' : 'serve';
+    var sync = function () { $('rdRun').hidden = document.querySelector('input[name=rmode]:checked').value !== 'run'; };
+    document.querySelectorAll('input[name=rmode]').forEach(function (x) { x.checked = x.value === mode; x.onchange = sync; });
+    sync();
+    d.classList.add('ro');
+    var ov = $('rov'); if (ov) ov.classList.add('sh');
+  }
+
+  function closeRun() {
+    var d = $('rd'); if (d) d.classList.remove('ro');
+    var ov = $('rov'); if (ov) ov.classList.remove('sh');
+  }
+
+  function runGo() {
+    var mode = document.querySelector('input[name=rmode]:checked').value;
+    var err = $('rdErr'), go = $('rdGo');
+    err.textContent = '';
+    var command = $('rdCommand').value.trim();
+    if (mode === 'run' && !command) { err.textContent = 'Type the command to run.'; return Promise.resolve(); }
+    var port = $('rdPort').value ? parseInt($('rdPort').value, 10) : null;
+    go.disabled = true;
+    // The files on disk first, so what starts is what the editor shows.
+    return flush().catch(function () {}).then(function () {
+      return mode === 'serve' ? api('POST', base('/serve')) : api('POST', base('/run'), { command: command, port: port });
+    }).then(function (info) {
+      closeRun();
+      if (P.run) clearTimeout(P.run.timer);
+      beginLive(mode, info);
+    }).catch(function (e) { err.textContent = e.message; })
+      .then(function () { go.disabled = false; });
+  }
+
   // ── small hooks for the page ───────────────────────────────────────────
   function previewSource() {
     if (!P.id) return null;
@@ -526,6 +684,8 @@
     begin: begin, contextBlock: contextBlock, live: live, finish: finish, abort: abort, open: open,
     detach: detach, undo: undo, versions: versions, closeVersions: closeVersions, messageNode: messageNode,
     previewSource: previewSource, setActiveText: setActiveText,
+    runDialog: runDialog, closeRun: closeRun, runGo: runGo, stopLive: stopLive, liveActive: liveActive,
+    liveReload: liveReload,
     id: function () { return P.id; }, title: function () { return P.title; }, active: function () { return P.active; },
     on: function () { return !!P.id; }, flush: flush,
     _state: P   // for tests and debugging

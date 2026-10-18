@@ -26,6 +26,17 @@ The single most likely-to-bite-us-soon entry from that list is the `_safe_task` 
 
 ---
 
+## Flaky on CI: `test_cancel_stops_the_running_model` (found 2026-10-18)
+
+| field | value |
+|---|---|
+| **file** | `tests/test_image_create.py::test_cancel_stops_the_running_model` |
+| **what's broken** | Failed once on the CI runner with `assert not _alive(pid) and not os.path.exists(LOCK_PATH)` where the process was gone but `image_job.lock` was still there: the job state turns `cancelled` a moment before the lock file is removed, so the test can read the file in between. Passed on the next run and on three other pull requests the same day. |
+| **status** | **deferred-not-fixed**, unrelated to the change it failed on (Vibe, no image code touched) |
+| **revisit when** | Next touch of `codec_image.py` cancel: remove the lock before reporting `cancelled`, or have the test wait for the lock to disappear (as it already does for the state). |
+
+---
+
 ## Phase 1 Step 1 sign-off
 
 > **Phase 1 Step 1 — production-stable as of 2026-05-01T09:48:43+02:00 (T+24h post-merge).** Merge commit: `45d4aa7`.
