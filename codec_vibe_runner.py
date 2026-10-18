@@ -148,13 +148,23 @@ def _handler_for(target: _Serve):
             name, _, port = host.partition(":")
             return name in ("127.0.0.1", "localhost") and port == str(target.port)
 
+        def _origin_ok(self) -> bool:
+            """A page on another site must not read the project through the browser: only the
+            sandboxed frame itself (Origin: null) and pages on this machine may ask with an Origin."""
+            origin = (self.headers.get("Origin") or "").strip().lower()
+            if not origin or origin == "null":
+                return True
+            parts = urllib.parse.urlsplit(origin)
+            return parts.scheme in ("http", "https") and parts.hostname in ("127.0.0.1", "localhost")
+
         def _common(self) -> None:
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Referrer-Policy", "no-referrer")
             # Even opened on its own, the page stays sandboxed (no cookies, no storage).
             self.send_header("Content-Security-Policy", "sandbox allow-scripts allow-forms allow-modals allow-popups")
-            # Read-only project files: lets the sandboxed page fetch its own files.
+            # Read-only project files: lets the sandboxed page fetch its own files (a request from
+            # a foreign site never gets this far: see _origin_ok).
             self.send_header("Access-Control-Allow-Origin", "*")
 
         def _plain(self, code: int, text: str = "", extra: dict | None = None) -> None:
@@ -170,7 +180,7 @@ def _handler_for(target: _Serve):
                 self.wfile.write(body)
 
         def _serve(self) -> None:
-            if not self._host_ok():
+            if not self._host_ok() or not self._origin_ok():
                 return self._plain(403, "Forbidden")
             target.touch()
             try:
@@ -302,7 +312,8 @@ class _Run:
 
     def _read(self) -> None:
         try:
-            for raw in iter(self.proc.stdout.readline, b""):
+            # A bounded read, so a command that prints without ever ending a line cannot fill memory.
+            for raw in iter(lambda: self.proc.stdout.readline(LOG_LINE_CHARS * 4), b""):
                 text = raw.decode("utf-8", errors="replace").rstrip("\r\n")[:LOG_LINE_CHARS]
                 with self.lines_lock:
                     self.seq += 1

@@ -243,6 +243,12 @@ def test_live_command_comes_only_from_the_dialog_never_from_a_file_the_ai_wrote(
     assert "api(" not in suggest and "fetch(" not in suggest and "exec" not in suggest, "a suggestion is only text for the dialog"
 
 
+def test_live_a_hidden_tab_does_not_keep_what_is_running_alive():
+    poll = CONTROLLER[CONTROLLER.index("function pollLive()"):CONTROLLER.index("function beginLive(")]
+    assert "if (document.hidden) { r.timer = setTimeout(pollLive, 5000); return; }" in poll
+    assert poll.index("document.hidden") < poll.index("api('GET'"), "a hidden tab must not call the server"
+
+
 def test_live_server_adopts_what_is_running_when_a_project_is_opened_and_stops_it_when_leaving():
     open_fn = CONTROLLER[CONTROLLER.index("function open(id)"):CONTROLLER.index("function adoptLive(")]
     assert "adoptLive(id);" in open_fn

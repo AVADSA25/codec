@@ -548,6 +548,8 @@
   function pollLive() {
     var r = P.run;
     if (!r || !P.id) return;
+    // A hidden tab does not ask: what nobody looks at is stopped after the idle time, not kept alive.
+    if (document.hidden) { r.timer = setTimeout(pollLive, 5000); return; }
     api('GET', base('/live?since=' + r.since)).then(function (d) {
       if (P.run !== r) return;
       (d.lines || []).forEach(function (ln) { out('ot', ln); });

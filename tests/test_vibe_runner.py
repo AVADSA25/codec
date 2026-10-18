@@ -179,6 +179,18 @@ def test_serve_answers_only_get_and_head_and_only_to_the_right_host():
     assert _get(port, "/", host="localhost:%d" % port)[0] == 200
 
 
+def test_serve_refuses_a_request_that_a_page_on_another_site_makes_and_answers_the_sandboxed_frame():
+    pid = _project(SITE)
+    port = vr.start_serve(pid)["port"]
+    for origin in ("https://evil.example", "http://evil.example:5300", "http://127.0.0.1.evil.example", "file://", "ftp://localhost"):
+        s, _h, body = _get(port, "/data.json", headers={"Origin": origin})
+        assert s == 403 and b"ok" not in body, origin
+    for origin in ("null", "http://localhost:8090", "http://127.0.0.1:8090", "https://localhost"):
+        s, h, body = _get(port, "/data.json", headers={"Origin": origin})
+        assert s == 200 and b"true" in body and h["access-control-allow-origin"] == "*", origin
+    assert _get(port, "/data.json")[0] == 200, "a plain navigation sends no Origin"
+
+
 def test_serve_listens_on_loopback_only_and_follows_edits():
     pid = _project(SITE)
     info = vr.start_serve(pid)
@@ -255,6 +267,15 @@ def test_run_uses_the_port_the_owner_names():
     assert _ready(pid)["port"] == chosen
 
 
+def test_run_a_command_that_never_ends_a_line_cannot_fill_memory(monkeypatch):
+    monkeypatch.setattr(vr, "LOG_LINE_CHARS", 50)
+    pid = _project()
+    vp.write_file(pid, "vibe-run-test.py", "import sys\nsys.stdout.write('x' * 5000)\nsys.stdout.flush()\n")
+    vr.start_run(pid, f"{PY} vibe-run-test.py")
+    done = _wait(lambda: (lambda s: s if s["state"] == "exited" else None)(vr.status(pid)))
+    assert done and all(len(x) <= 50 for x in done["lines"]) and 20 <= len(done["lines"]) <= 40
+
+
 def test_run_keeps_the_output_in_order_and_reports_the_exit_code():
     pid = _project()
     vp.write_file(pid, "vibe-run-test.py", EXITS)
@@ -270,7 +291,7 @@ def test_run_keeps_the_output_in_order_and_reports_the_exit_code():
 def test_run_cuts_very_long_lines_and_keeps_only_the_latest_lines(monkeypatch):
     monkeypatch.setattr(vr, "LOG_LINES", 5)
     pid = _project()
-    vp.write_file(pid, "vibe-run-test.py", "for i in range(20):\n    print(str(i) + 'x' * 2000, flush=True)\n")
+    vp.write_file(pid, "vibe-run-test.py", "for i in range(20):\n    print(str(i) + 'x' * 1500, flush=True)\n")
     vr.start_run(pid, f"{PY} vibe-run-test.py")
     done = _wait(lambda: (lambda s: s if s["state"] == "exited" else None)(vr.status(pid)))
     assert done and len(done["lines"]) == 5 and all(len(x) <= vr.LOG_LINE_CHARS for x in done["lines"])
