@@ -188,6 +188,12 @@ def test_cancel_stops_the_running_model(img, monkeypatch):
     t0 = time.time()
     codec_image.cancel(job["id"])
     assert _wait(job["id"])["state"] == "cancelled" and time.time() - t0 < 12
+    # cancel() turns the state first; the worker thread then reaps the runner and removes the lock,
+    # so give it a moment instead of reading the lock in the gap (this failed on CI now and then).
+    for _ in range(100):
+        if not codec_image._alive(pid) and not os.path.exists(codec_image.LOCK_PATH):
+            break
+        time.sleep(0.05)
     assert not codec_image._alive(pid) and not os.path.exists(codec_image.LOCK_PATH)
 
 

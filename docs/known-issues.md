@@ -26,14 +26,13 @@ The single most likely-to-bite-us-soon entry from that list is the `_safe_task` 
 
 ---
 
-## Flaky on CI: `test_cancel_stops_the_running_model` (found 2026-10-18)
+## Fixed: flaky `test_cancel_stops_the_running_model` (found and fixed 2026-10-18)
 
 | field | value |
 |---|---|
 | **file** | `tests/test_image_create.py::test_cancel_stops_the_running_model` |
-| **what's broken** | Failed once on the CI runner with `assert not _alive(pid) and not os.path.exists(LOCK_PATH)` where the process was gone but `image_job.lock` was still there: the job state turns `cancelled` a moment before the lock file is removed, so the test can read the file in between. Passed on the next run and on three other pull requests the same day. |
-| **status** | **deferred-not-fixed**, unrelated to the change it failed on (Vibe, no image code touched) |
-| **revisit when** | Next touch of `codec_image.py` cancel: remove the lock before reporting `cancelled`, or have the test wait for the lock to disappear (as it already does for the state). |
+| **what was wrong** | `cancel()` turns a running job to `cancelled` at once; the worker thread then reaps the runner and removes `image_job.lock`. The test read the lock in that gap and failed on CI two times in five runs. Nothing wrong in `codec_image.py`: the state flips first on purpose, and a lock with a dead pid is ignored by every reader. |
+| **fix** | The test now waits (up to 5 s) for the runner to be gone and the lock removed before asserting. |
 
 ---
 
