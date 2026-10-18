@@ -83,7 +83,7 @@ def test_the_other_pages_use_them():
     tasks = PAGES["codec_tasks.html"]
     assert "await CodecShell.ask({ title: 'Delete this schedule?'" in _fn(tasks, "async function deleteSchedule(id)")
     vibe = PAGES["codec_vibe.html"]
-    assert "await CodecShell.ask({ title: 'Delete this project?'" in _fn(vibe, "async function delSes(sid)")
+    assert "await CodecShell.ask({ title: 'Delete this project?'" in _fn(vibe, "async function delSes(sid, pid)")
     shot = _fn(vibe, "function takeScreenshot()")
     assert "img.src='/api/screenshot?_t='+Date.now();" in shot and "method" not in shot and "_toast('Screenshot taken')" in shot
 
