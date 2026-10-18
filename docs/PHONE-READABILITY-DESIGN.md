@@ -1,6 +1,6 @@
 # Phone readability and stability — design
 
-Status: shipped. Target: an Android phone in Chrome or the installed app. iOS Safari was also checked in the simulator.
+Status: shipped. Target: an Android phone in Chrome or the installed app. The Today scroll problem was also seen in iOS Safari (simulator) before the change.
 
 ## What is wrong (measured, 375 and 412 px wide)
 
