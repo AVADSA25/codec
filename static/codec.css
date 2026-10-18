@@ -213,6 +213,17 @@
    replacing an element's own box-shadow; a page rule that sets outline wins. */
 :focus-visible { outline: 2px solid var(--accent-ring); outline-offset: 2px; }
 
+/* Touch screens (docs/PHONE-READABILITY-DESIGN.md): the page is a fixed column whose
+   lists scroll inside it, so a pull past the top of a list must not reload the page
+   (Android Chrome pull-to-refresh) and a swipe that reaches the end of one list must
+   not carry on into the page. Vertical only: a sideways swipe still goes back.
+   The text-size adjust stops a browser re-sizing text it thinks is too small. */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+@media (pointer: coarse), (max-width: 767px) {
+  html, body { overscroll-behavior-y: none; }
+  .cs-main, .content, .messages, .cs-hist, .side-panel-body { overscroll-behavior-y: contain; }
+}
+
 /* P2.13: people who ask for less motion get no animations, transitions or smooth
    scrolling on any page (spinners stop; state still shows through colour and text). */
 @media (prefers-reduced-motion: reduce) {

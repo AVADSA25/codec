@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="theme-color" content="#121215" data-light="#f7f5f2">
 <script>/* Theme before first paint, so the page never flashes dark: same key and attribute as applyTheme() below. */try{(function(){function _lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}var t=_lsGet('codec-theme');if(t!=='light'&&t!=='dark'){try{t=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'}catch(e){t='dark'}}document.documentElement.setAttribute('data-theme',t);var m=document.querySelector('meta[name="theme-color"]');if(m)m.content=t==='light'?(m.getAttribute('data-light')||'#faf8f5'):'#121215'})()}catch(e){}</script>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <!-- Tab icon inline: behind Cloudflare Access a /favicon.png request gets the login page. -->
@@ -12,7 +12,7 @@
 <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
 <link rel="manifest" href="/manifest.json" crossorigin="use-credentials">
 <title>CODEC</title>
-<link rel="stylesheet" href="/static/codec.css?v=69a2bc56">
+<link rel="stylesheet" href="/static/codec.css?v=18a2f029">
 <style>
 :root {
   --bg: #121215; --surface: #18181b; --surface-2: #1f1f22; --surface-3: #2a2a2f;
@@ -214,7 +214,7 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
 .th-row:first-child { border-top: 0; }
 .th-time { flex: none; min-width: 64px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .th-kind { flex: none; font-size: var(--fs-12); color: var(--text-dim); }
-.th-text { flex: 1; min-width: 0; color: var(--text); overflow-wrap: anywhere; }
+.th-text { flex: 1 1 14ch; min-width: 14ch; color: var(--text); overflow-wrap: anywhere; }
 .th-acts { display: inline-flex; flex-wrap: wrap; gap: 6px; }
 .th-dim { margin: 8px 0; font-size: var(--fs-13); color: var(--text-dim); }
 .th-lines { margin: 8px 0; padding-left: 18px; font-size: var(--fs-13); color: var(--text); }
@@ -245,8 +245,8 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
 .today-card-actions { display: flex; gap: 8px; margin-top: 8px; }
 /* Morning briefing card and settings (P3.1) */
 .today-threads { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
-.today-thread { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; border-top: 1px solid var(--border); }
-.today-thread-text { font-size: var(--fs-13); color: var(--text); min-width: 0; }
+.today-thread { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; border-top: 1px solid var(--border); }
+.today-thread-text { flex: 1 1 14ch; font-size: var(--fs-13); color: var(--text); min-width: 14ch; }
 .today-thread-acts { display: inline-flex; gap: 6px; flex-shrink: 0; }
 .today-card-actions { flex-wrap: wrap; }
 .today-card-actions a.mcp-btn { text-decoration: none; display: inline-flex; align-items: center; }
@@ -667,7 +667,7 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
 </style>
 </head>
 <body>
-<script src="/static/codec-shell.js?v=95fbf3b8" data-page="home" data-title="Today" data-status></script>
+<script src="/static/codec-shell.js?v=25558424" data-page="home" data-title="Today" data-status></script>
 
 <!-- ── Connect your AI (first run) ─────────────────────────────────────────
      Shown until CODEC has a VERIFIED brain. A fresh paid install had no way
@@ -1878,7 +1878,7 @@ async function sendCmd() {
         text.innerHTML = thumbHtml +
           '<span style="color:var(--success)">Flash:</span><div class="md">' + mdHtml(data.response) + '</div>';
         mdEnhance(text);
-        loadChat(); playResponse(data.response);
+        loadChat(true); playResponse(data.response);
       } else {
         text.innerHTML = thumbHtml +
           '<span style="color:var(--danger)">Vision error:</span> ' + escHtml(data.error || 'No response');
@@ -1913,7 +1913,7 @@ async function sendCmd() {
   } catch(e) {
     text.innerHTML = '<span style="color:var(--danger)">Failed:</span> ' + escHtml(e.message);
   }
-  loadChat();
+  loadChat(true);
   // Clear any previous poll to prevent stacking
   if (window._flashPollTimer) clearInterval(window._flashPollTimer);
   var pollCount = 0;
@@ -1938,7 +1938,7 @@ async function sendCmd() {
         text.innerHTML = '<span style="color:var(--success)">Flash:</span><div class="md">' + mdHtml(pd.response) + '</div>';
         mdEnhance(text);
         clearInterval(pollResp); window._flashPollTimer = null;
-        loadChat();
+        loadChat(true);
         playResponse(pd.response);
       }
     } catch(e) { console.warn('Poll error:', e); }
@@ -2049,7 +2049,10 @@ async function loadHistory() {
 }
 
 var _chatLoaded = false;
-async function loadChat() {
+// toEnd: scroll to the newest message. Only the calls that follow something the person
+// just did pass it (a sent message, a reply arriving); opening Today or switching back to
+// it stays at the top, where the tiles are, instead of landing deep in the history.
+async function loadChat(toEnd) {
   var el = document.getElementById('chatList');
   if (!_chatLoaded) el.innerHTML = '<div class="refreshing">Loading...</div>';
   try {
@@ -2094,8 +2097,10 @@ async function loadChat() {
     }).join('');
     bindCopyButtons(el, copyTexts);
     mdEnhance(el);   // code and table boxes; their buttons carry no data-copy, so the index above holds
-    var scroller = el.closest('.content') || el.parentElement;
-    setTimeout(function(){ scroller.scrollTop = scroller.scrollHeight; }, 50);
+    if (toEnd) {
+      var scroller = el.closest('.content') || el.parentElement;
+      setTimeout(function(){ scroller.scrollTop = scroller.scrollHeight; }, 50);
+    }
   } catch(e) { if (!_chatLoaded) el.innerHTML = '<div class="empty"><div class="empty-text">Error loading chat</div></div>'; }
 }
 

@@ -1,6 +1,6 @@
 # Phone readability and stability — design
 
-Status: proposed, waiting for approval. Target device: Android (vivo X300 Ultra), Chrome / installed PWA. Not iOS.
+Status: shipped. Target: an Android phone in Chrome or the installed app. iOS Safari was also checked in the simulator.
 
 ## What is wrong (measured, 375 and 412 px wide)
 
@@ -13,13 +13,15 @@ Not reproduced: horizontal overflow (none at 375 or 412; the hidden side panel i
 
 ## Change (CSS and small JS, no schema or API change)
 
-All edits are under the phone media query (`max-width: 767px`) so desktop and the native app window are untouched. No root `zoom` and no transform (see `docs`/memory: #344 broke phone scrolling).
+All edits apply only on a phone (width under 768 px, or a touch screen for the overscroll guard), so desktop and the native app window are untouched. No root `zoom` and no transform (see `docs`/memory: #344 broke phone scrolling).
 
-1. **Phone type scale.** In `static/codec.css`, redefine the phone tokens: `--fs-11`→12, `--fs-12`→13, `--fs-13`→14.5, `--fs-14`→16, `--fs-16`→18, code→15. S / M / L on phone become x1.0 / x1.12 / x1.28 (default M = 18 px body, L = about 23 px). The hard-coded `calc(Npx * var(--fs-scale))` rules in the page files inherit this because they use the same variable; the few plain-px text rules get converted.
-2. **Today opens at the top.** First load does not scroll to the bottom; scroll to the bottom only after the user sends a message or opens the history. Tiles stay visible first.
-3. **Overscroll.** `overscroll-behavior: none` on `html, body`, `.cs-main`, `.content`, `.messages`, `.cs-hist` (stops pull-to-refresh and chaining). `touch-action: manipulation` on buttons and tabs (no double-tap zoom).
-4. **Viewport hints.** Add `interactive-widget=resizes-content` to the viewport meta of every page so the keyboard shrinks the layout the same way on every page; add `-webkit-text-size-adjust: 100%`; drop `user-scalable=no` from `codec_voice.html` and `codec_auth.html`.
-5. **Tap size.** Tab bar labels 11→12 px (follows token), chips and small buttons keep a 44 px minimum height.
+What shipped (differences from the first draft of this doc are marked):
+
+1. **Phone type scale.** Every text size on every page already runs through `--fs-scale`, so one phone-only multiplier covers them all. `static/codec-shell.js` sets `--fs-scale` to the S / M / L step times 1.125 on a phone (`effectiveScale`): reply text 16 px becomes 18 px, Large about 20 px, labels 11 px become 12.4 px. The S / M / L steps themselves (0.93 / 1 / 1.12) are unchanged, and the scale follows a resize across the phone width. *(First draft redefined each token in `codec.css`; the multiplier reaches the many `calc(Npx * var(--fs-scale))` rules too, so it replaced that.)*
+2. **Today opens at the top.** `loadChat(toEnd)` scrolls to the newest message only after a sent message, a vision reply or a polled reply. First load and switching back to Today stay on the tiles.
+3. **Overscroll.** On touch screens `overscroll-behavior-y: none` on `html, body` and `contain` on `.cs-main`, `.content`, `.messages`, `.cs-hist`, `.side-panel-body`. Vertical only, so a sideways swipe still goes back. `touch-action: manipulation` was dropped: Chrome already removes double-tap zoom on pages with a device-width viewport.
+4. **Viewport hints.** `interactive-widget=resizes-content` on every page; `text-size-adjust: 100%`; `user-scalable=no` removed from the voice and sign-in pages. Android keyboard behaviour can only be confirmed on a real device.
+5. **Two layouts the bigger text broke, fixed.** Today's open-thread row kept its text at about 5 characters wide next to two buttons (the text now has a 14-character floor and the buttons wrap below it); the Voice transcript buttons were cut off at 360 px (the header now wraps).
 
 ## Files
 
@@ -31,7 +33,7 @@ All edits are under the phone media query (`max-width: 767px`) so desktop and th
 - Computed font sizes: body at least 18 px on phone, nothing below 12 px.
 - Desktop width 1280: computed sizes unchanged (spot check).
 - Console read at the end of each page (CSP lesson).
-- Real device (Mickael, vivo): pull down at top does not reload; text size S/M/L; keyboard open in Chat and Today.
+- Real Android phone: pull down at top does not reload; text size S/M/L; keyboard open in Chat and Today.
 - Existing test suite, plus one test that the phone block keeps `overscroll-behavior` and the Today first-load scroll rule.
 
 ## Rollback

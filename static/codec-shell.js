@@ -813,11 +813,17 @@
   } catch (e) { /* old browser */ }
 
   // ── Text size: S / M / L scale the type tokens; the root is never zoomed ─
+  // text-scale:begin
   var SIZES = { small: 0.93, medium: 1, large: 1.12 };
+  // On a phone every step sits on a base 12.5% larger (16px reply text becomes 18px, "Large" 20px):
+  // the screen is read at arm's length and Large was still too small. Desktop is unchanged.
+  var PHONE_BOOST = 1.125;
+  function effectiveScale(size, phone) { return Math.round(SIZES[size] * (phone ? PHONE_BOOST : 1) * 1000) / 1000; }
+  // text-scale:end
   function textSize() { var s = lsGet('codec-text-size'); return SIZES[s] ? s : 'medium'; }
   function applyTextSize() {
     var root = document.documentElement;
-    root.style.setProperty('--fs-scale', String(SIZES[textSize()]));
+    root.style.setProperty('--fs-scale', String(effectiveScale(textSize(), isPhone())));
     var g = $('textSizeGroup');
     if (g) {
       var bs = g.querySelectorAll('button');
@@ -829,6 +835,12 @@
     }
   }
   function setTextSize(s) { if (!SIZES[s]) return; lsSet('codec-text-size', s); applyTextSize(); }
+  // Turning the phone, or resizing a window across the phone width, changes the base.
+  var wasPhone = isPhone();
+  window.addEventListener('resize', function () {
+    var now = isPhone();
+    if (now !== wasPhone) { wasPhone = now; applyTextSize(); }
+  });
 
   // Another CODEC tab changing a preference keeps this one in step.
   window.addEventListener('storage', function (e) {
