@@ -130,3 +130,68 @@ def test_an_old_database_without_the_column_is_upgraded_in_place(tmp_path, monke
     assert got["code"] == "print(1)" and got["project_id"] is None
     rv._vibe_conn.close()
     rv._vibe_conn = None
+
+
+# ── panes, hideable code, live preview (step 2a) ────────────────────────
+
+def _css(selector_start: str) -> str:
+    i = PAGE.index(selector_start)
+    return PAGE[i:PAGE.index("\n", i)]
+
+
+def test_layout_has_a_hide_code_button_that_is_remembered_and_only_hides_the_code_on_a_wide_screen():
+    btn = re.search(r'<button[^>]*id="codeBtn"[^>]*>[^<]*</button>', PAGE).group(0)
+    assert 'onclick="toggleCodePane()"' in btn and 'aria-pressed="true"' in btn
+    assert "@media (min-width:769px){.sp.code-off .ep{display:none}}" in PAGE
+    fn = PAGE[PAGE.index("function _applyCodePane()"):PAGE.index("// silent: an automatic refresh")]
+    assert "_lsGet('codec-vibe-code') === 'off'" in fn and "_lsSet('codec-vibe-code'" in fn
+    assert "'Show code'" in fn and "'Hide code'" in fn and fn.rstrip().endswith("_applyCodePane();")
+    assert "#codeBtn{display:none}" in PAGE[PAGE.index("@media (max-width:768px)"):], "the phone has tabs instead"
+
+
+def test_layout_phone_shows_one_pane_at_a_time_from_three_tabs():
+    assert '<div class="sp" data-pane="chat">' in PAGE
+    tabs = re.search(r'<div class="vtabs" id="vtabs"[^>]*>(.*?)</div>', PAGE, re.S).group(1)
+    assert [m for m in re.findall(r"_setVibeTab\('(\w+)'\)", tabs)] == ["chat", "preview", "code"]
+    phone = PAGE[PAGE.index("@media (max-width:768px)"):PAGE.index("@media (max-width:480px)")]
+    for rule in ('.sp[data-pane="chat"] .cp{display:flex}', '.sp[data-pane="preview"] .pp{display:flex}',
+                 '.sp[data-pane="code"] .ep{display:flex}', ".cp,.ep,.pp{display:none;"):
+        assert rule in phone, rule
+    assert "tab-preview" not in PAGE and "_vibeTabPreview" not in PAGE, "the old Code/Preview tabs are gone"
+    fn = PAGE[PAGE.index("function _setVibeTab(t)"):PAGE.index("function closePrev()")]
+    assert "setAttribute('data-pane', t)" in fn and "aria-selected" in fn
+    assert "var d = document.querySelector('#vtabPrev .vdot'); if (d) d.hidden = true;" in fn
+
+
+def test_preview_is_open_from_the_start_with_an_empty_state_and_its_own_buttons():
+    assert ".pp{display:flex;" in PAGE and ".pp.off{display:none}" in PAGE
+    pane = PAGE[PAGE.index('<div class="pp" id="pp">'):PAGE.index('<div class="op" id="op">')]
+    assert 'id="pvEmpty"' in pane and "The preview appears here" in pane
+    assert pane.count('class="ph-b') == 3
+    assert 'onclick="doPrev()"' in pane and 'onclick="toggleInspect()"' in pane and 'onclick="closePrev()"' in pane
+    assert 'sandbox="allow-scripts"' in pane and "allow-same-origin" not in pane
+    assert ".pv-wrap.has .pv-empty{display:none}" in PAGE
+
+
+def test_preview_refresh_is_silent_and_does_not_pull_the_phone_to_the_preview_tab():
+    fn = PAGE[PAGE.index("function doPrev(silent)"):PAGE.index("function refreshPreview()")]
+    assert "silent = silent === true;" in fn
+    assert "} else _setVibeTab('preview');" in fn and "if (!silent) addOut('sy', 'Preview updated');" in fn
+    assert "} else if (!silent) {\n    addMsg('assistant', 'Preview works with HTML." in fn
+    assert "dot.hidden = false" in fn
+    # an automatic refresh that finds no page (everything undone) goes back to the empty state
+    assert "w2.classList.remove('has')" in fn and "document.getElementById('pf').srcdoc = '';" in fn
+
+
+def test_refresh_runs_only_while_the_preview_is_open_and_after_every_way_the_files_change():
+    fn = PAGE[PAGE.index("function refreshPreview()"):]
+    fn = fn[:fn.index("\n}\n")]
+    assert "classList.contains('off')) return;" in fn and "doPrev(true);" in fn
+    src = (REPO / "static" / "vibe-projects.js").read_text(encoding="utf-8")
+    assert src.count("refreshPreview();") >= 4
+    assert "flush().then(function () { if (!P.live) refreshPreview(); })" in src
+    reload_fn = src[src.index("function reload()"):src.index("function meaningful(")]
+    assert "refreshPreview();" in reload_fn
+    open_fn = src[src.index("function open(id)"):src.index("function loadFiles(")]
+    assert "refreshPreview();" in open_fn
+    assert "setTimeout(function () { doPrev(true); }, 300);\n          else refreshPreview();" in PAGE
