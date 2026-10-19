@@ -167,7 +167,7 @@ def test_preview_is_open_from_the_start_with_an_empty_state_and_its_own_buttons(
     assert ".pp{display:flex;" in PAGE and ".pp.off{display:none}" in PAGE
     pane = PAGE[PAGE.index('<div class="pp" id="pp">'):PAGE.index('<div class="op" id="op">')]
     assert 'id="pvEmpty"' in pane and "The preview appears here" in pane
-    assert pane.count('class="ph-b') == 3
+    assert pane.count('class="ph-b') == 5, "stop, run, refresh, inspect and close"
     assert 'onclick="doPrev()"' in pane and 'onclick="toggleInspect()"' in pane and 'onclick="closePrev()"' in pane
     assert 'sandbox="allow-scripts"' in pane and "allow-same-origin" not in pane
     assert ".pv-wrap.has .pv-empty{display:none}" in PAGE
@@ -195,3 +195,61 @@ def test_refresh_runs_only_while_the_preview_is_open_and_after_every_way_the_fil
     open_fn = src[src.index("function open(id)"):src.index("function loadFiles(")]
     assert "refreshPreview();" in open_fn
     assert "setTimeout(function () { doPrev(true); }, 300);\n          else refreshPreview();" in PAGE
+
+
+# ── show on localhost / run a command (step 2b) ─────────────────────────
+
+CONTROLLER = (REPO / "static" / "vibe-projects.js").read_text(encoding="utf-8")
+
+
+def test_live_dialog_is_a_labelled_modal_with_the_command_in_view_and_says_the_ai_cannot_start_it():
+    dlg = re.search(r'<div class="rd" id="rd"[^>]*>', PAGE).group(0)
+    for attr in ('role="dialog"', 'aria-modal="true"', "aria-label=", 'data-dialog="ro"'):
+        assert attr in dlg, attr
+    body = PAGE[PAGE.index('id="rd"'):PAGE.index('id="rdGo"') + 120]
+    assert "data-dialog-close" in body and 'id="rdCommand"' in body and 'maxlength="500"' in body
+    assert "The AI never starts anything by itself" in body and "Read it before you start" in body
+    assert 'id="rdErr"' in body and 'role="alert"' in body
+    assert 'id="rov"' in PAGE and "VibeProj.closeRun()" in PAGE
+
+
+def test_live_header_has_a_state_chip_stop_and_run_all_hidden_until_there_is_something_to_show():
+    for needle in ('id="liveState"', 'id="stopLiveBtn"', 'id="runBtn"'):
+        tag = re.search(r'<[a-z]+[^>]*' + needle + r'[^>]*>', PAGE).group(0)
+        assert "hidden" in tag, needle
+    assert "var ON_MAC = /^(localhost|127\\.0\\.0\\.1|\\[::1\\])$/.test(location.hostname);" in CONTROLLER
+    assert "runb.hidden = !(P.id && ON_MAC)" in CONTROLLER
+    assert 'onclick="VibeProj.runDialog()"' in PAGE and 'onclick="VibeProj.stopLive()"' in PAGE
+
+
+def test_live_frames_are_sandboxed_by_mode_and_the_inline_preview_never_overwrites_a_live_frame():
+    sandbox = re.search(r"var SANDBOX = \{ serve: '([^']*)',\s*run: '([^']*)' \};", CONTROLLER)
+    assert sandbox, "the frame sandbox is set in one place"
+    served, ran = sandbox.groups()
+    assert "allow-scripts" in served and "allow-same-origin" not in served, "files are shown with no access to anything"
+    assert "allow-same-origin" in ran, "a running app needs its own origin for storage"
+    fn = PAGE[PAGE.index("function doPrev(silent)"):PAGE.index("function refreshPreview()")]
+    assert fn.index("VibeProj.liveActive()") < fn.index("VibeProj.previewSource()")
+    assert "VibeProj.liveReload(); return;" in fn
+
+
+def test_live_command_comes_only_from_the_dialog_never_from_a_file_the_ai_wrote():
+    assert CONTROLLER.count("base('/run')") == 1
+    go = CONTROLLER[CONTROLLER.index("function runGo()"):CONTROLLER.index("// ── small hooks for the page")]
+    assert "$('rdCommand').value.trim()" in go and "{ command: command, port: port }" in go
+    assert CONTROLLER.count("runGo(") == 1, "runGo is only defined, nothing calls it by itself"
+    assert PAGE.count("VibeProj.runGo()") == 1 and 'id="rdGo"' in PAGE
+    suggest = CONTROLLER[CONTROLLER.index("function suggestCommand()"):CONTROLLER.index("function runDialog()")]
+    assert "api(" not in suggest and "fetch(" not in suggest and "exec" not in suggest, "a suggestion is only text for the dialog"
+
+
+def test_live_a_hidden_tab_does_not_keep_what_is_running_alive():
+    poll = CONTROLLER[CONTROLLER.index("function pollLive()"):CONTROLLER.index("function beginLive(")]
+    assert "if (document.hidden) { r.timer = setTimeout(pollLive, 5000); return; }" in poll
+    assert poll.index("document.hidden") < poll.index("api('GET'"), "a hidden tab must not call the server"
+
+
+def test_live_server_adopts_what_is_running_when_a_project_is_opened_and_stops_it_when_leaving():
+    open_fn = CONTROLLER[CONTROLLER.index("function open(id)"):CONTROLLER.index("function adoptLive(")]
+    assert "adoptLive(id);" in open_fn
+    assert "if (P.run && P.id) stopLive(true);" in CONTROLLER[CONTROLLER.index("function detach()"):CONTROLLER.index("function pickFirst(")]

@@ -1,6 +1,6 @@
 # Vibe Projects — undo, live preview, hideable code — design
 
-Status: approved 18 Oct 2026. Step 1 and step 2a are built (the "Step 1" and "Step 2a" sections describe what shipped); step 2b is next. Steps 3 and 4 are direction only and get their own design doc before any build.
+Status: approved 18 Oct 2026. Steps 1, 2a and 2b are built (the "Step 1", "Step 2a" and "Step 2b" sections describe what shipped). Steps 3 and 4 are direction only and get their own design doc before any build.
 
 ## Goal
 
@@ -50,13 +50,13 @@ Built in two parts so the visible part ships first and nothing that runs a progr
 - Still the sandboxed `srcdoc` frame (`sandbox="allow-scripts"`, no `allow-same-origin`) with local css and js inlined, so it works on the phone through the tunnel and keeps Inspect and error capture. The editor does not follow the typing when it cannot be seen (a hidden editor kept scrolled to its end).
 - Not built here: the localhost server and the dev server below.
 
-### Step 2b — localhost preview and "Run project" (next, own PR)
+### Step 2b — localhost preview and "Run project" (built)
 
-- **Localhost preview for static projects:** a small read-only file server on `127.0.0.1:<port>` (range 5300–5399, one at a time), started and stopped from the preview header, shown in the same sandboxed frame (`allow-scripts allow-forms allow-modals`, no `allow-same-origin`). It serves only the project folder (never `.vibe`), refuses anything but GET/HEAD and any `Host` that is not loopback, and sends `Content-Security-Policy: sandbox ...` so a page opened on its own is sandboxed too. Gives images, several pages and `fetch` of local files, which `srcdoc` cannot.
-- **Run project (node, python):** the exact command is typed or confirmed in a dialog and **that confirmed string in the request is the only thing executed**; `vibe.json` (which the AI may write) only fills in the dialog's default text, so the AI can never start anything by itself. Own process group, `PORT` and `HOST=127.0.0.1` set, secret-looking environment variables stripped and `is_dangerous` as a typo catcher (as `/api/run_code`), logs in the output panel, stopped on request or after 30 minutes idle, one running project at a time, stale processes from a dashboard restart cleaned up on start.
-- **CSP:** the dashboard policy has no `frame-src`, so framing falls back to `default-src 'self'` and a `127.0.0.1` frame is blocked; add `frame-src 'self' http://127.0.0.1:*` (additive).
-- **Mac only:** start, stop and run answer 403 for tunnel requests (same rule as `/api/run_code`); on the phone the pane keeps the inline preview from step 2a.
-- Console errors for the localhost preview need the error reporter injected into served pages; the first version shows them only for the inline preview.
+- **Localhost preview for static projects** ("Show the files on localhost" in the Run dialog, the play button in the preview header): a read-only file server on `127.0.0.1:<port>` (range 5300–5399, one at a time), shown in the preview frame with `sandbox="allow-scripts allow-forms allow-modals"` (no `allow-same-origin`). It serves only the project folder (never `.vibe`, never a dotfile, never a link that leads out), answers only GET and HEAD, refuses any `Host` that is not `127.0.0.1` or `localhost` on its own port, and sends `Content-Security-Policy: sandbox ...` so a page opened on its own is sandboxed too, plus `Access-Control-Allow-Origin: *` (read-only files) so the sandboxed page can fetch its own files. Gives images, several pages and `fetch` of local files, which `srcdoc` cannot. The frame reloads after an edit is saved.
+- **Run a command (node, python):** the command is typed or confirmed in the dialog and **that string in the request is the only thing executed**. `vibe.json` (`start`, `port`), `package.json` scripts or a likely file name (`app.py`, `server.js`) only fill in the dialog's starting text, so the AI can never start anything by itself. It runs with `bash -c` in the project folder, in its own process group, with `PORT` and `HOST=127.0.0.1` set (a free port from 5300–5399, or the port the owner names), secret-looking environment variables removed, and `is_dangerous` as a typo catcher (as `/api/run_code`); one line, up to 500 characters. Its output goes to the output panel, it is stopped on request or after 30 minutes without the page asking about it, only one thing is live at a time (starting another stops the first), the whole process group is stopped, and a process left by a dashboard restart is recorded in `.vibe/run.json` and stopped the next time anything starts (only if its start time still matches, so a reused number is never touched). A running app is framed with `allow-same-origin` so it can use its own storage; it is a different origin from the dashboard.
+- **CSP:** the dashboard policy had no `frame-src`, so framing fell back to `default-src 'self'`; it now has `frame-src 'self' http://127.0.0.1:*` (additive).
+- **Mac only:** serve, run, live and stop answer 403 for a request that came through the tunnel or from another address (same rule as `/api/run_code`); the play button is hidden unless the page itself is on `localhost`, so on the phone the pane keeps the inline preview from step 2a.
+- Console errors and Inspect work only for the inline preview; the localhost frame is a real site. Anything the command prints (including its errors) is in the output panel.
 
 ## Test plan
 

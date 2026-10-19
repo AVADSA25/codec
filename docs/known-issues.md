@@ -26,6 +26,16 @@ The single most likely-to-bite-us-soon entry from that list is the `_safe_task` 
 
 ---
 
+## Fixed: flaky `test_cancel_stops_the_running_model` (found and fixed 2026-10-18)
+
+| field | value |
+|---|---|
+| **file** | `tests/test_image_create.py::test_cancel_stops_the_running_model` |
+| **what was wrong** | `cancel()` turns a running job to `cancelled` at once; the worker thread then reaps the runner and removes `image_job.lock`. The test read the lock in that gap and failed on CI two times in five runs. Nothing wrong in `codec_image.py`: the state flips first on purpose, and a lock with a dead pid is ignored by every reader. |
+| **fix** | The test now waits (up to 5 s) for the runner to be gone and the lock removed before asserting. |
+
+---
+
 ## Phase 1 Step 1 sign-off
 
 > **Phase 1 Step 1 — production-stable as of 2026-05-01T09:48:43+02:00 (T+24h post-merge).** Merge commit: `45d4aa7`.

@@ -92,7 +92,7 @@ def test_every_marked_dialog_is_a_labelled_modal_with_a_close():
             found += 1
             assert 'role="dialog"' in tag and 'aria-modal="true"' in tag and "aria-label" in tag, (name, tag[:120])
         assert src.count("data-dialog-close") >= len(list(_dialogs(src))), name
-    assert found == 9, "quick settings, image viewers on Chat, Home, Vibe and Voice, Agents sheet, Tasks preview, Vibe projects drawer, Vibe versions drawer"
+    assert found == 10, "quick settings, image viewers on Chat, Home, Vibe and Voice, Agents sheet, Tasks preview, Vibe projects drawer, Vibe versions drawer, Vibe run dialog"
     trap = SHELL[SHELL.index("var DLG = { stack: [], seen: [] };"):SHELL.index("function ready() {")]
     for needle in ("e.key === 'Tab'", "last.focus()", "first.focus()", "e.key === 'Escape'",
                    "top.querySelector('[data-dialog-close]')", "back.focus()", "new MutationObserver("):

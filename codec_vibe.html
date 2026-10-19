@@ -177,6 +177,20 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx)}
 .vdiff{margin:0 0 6px;padding:8px;max-height:260px;overflow:auto;background:var(--bg);border:1px solid var(--bd);border-radius:6px;font:var(--fs-12)/1.5 var(--mn);white-space:pre}
 .vdiff .a{color:var(--success)}.vdiff .r{color:var(--danger)}.vdiff .h{color:var(--tx2)}
 .vrestore{margin-top:8px}
+.ph-live{display:inline-flex;align-items:center;gap:6px;padding:2px 8px;border:1px solid var(--bd);border-radius:10px;color:var(--tx2);font:600 var(--fs-12)/1.4 var(--mn);white-space:nowrap}
+.ph-live[hidden]{display:none}
+.ph-live::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--tx2)}
+.ph-live.up::before{background:var(--success)}.ph-live.wait::before{background:var(--ac);animation:vibePulse 1s infinite}.ph-live.down::before{background:var(--danger)}
+.rd{position:fixed;top:50%;left:50%;width:min(480px,calc(100% - 24px));max-height:calc(100% - 24px);overflow-y:auto;transform:translate(-50%,-50%);display:none;background:var(--bg2);border:1px solid var(--bd);border-radius:12px;z-index:31}
+.rd.ro{display:block}
+.rd-b{padding:14px 16px 16px;display:flex;flex-direction:column;gap:10px}
+.rd-opt{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--bd);border-radius:8px;cursor:pointer;font-size:var(--fs-13);line-height:1.45;color:var(--tx2)}
+.rd-opt b{color:var(--tx)}
+.rd-opt input{margin-top:3px;accent-color:var(--ac)}
+.rd-l{font-size:var(--fs-12);color:var(--tx2)}
+.rd-in{width:100%;padding:8px 10px;background:var(--bg3);border:1px solid var(--bd);border-radius:6px;color:var(--tx);font:var(--fs-13)/1.4 var(--mn)}
+.rd-note{font-size:var(--fs-12);line-height:1.5;color:var(--tx2)}
+.rd-err{min-height:1.2em;font-size:var(--fs-13);color:var(--danger)}
 
 /* ── Mobile Responsive ── */
 @media (max-width:768px){
@@ -230,6 +244,23 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx)}
 <div class="vd-h"><h2>VERSIONS</h2><button type="button" onclick="VibeProj.closeVersions()" aria-label="Close versions" data-dialog-close style="background:0;border:0;color:var(--tx2);cursor:pointer;display:flex;padding:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
 <div class="vd-b" id="vdList"></div>
 </div>
+<div class="ov" id="rov" onclick="VibeProj.closeRun()"></div>
+<div class="rd" id="rd" role="dialog" aria-modal="true" aria-label="Show or run this project on this Mac" data-dialog="ro">
+<div class="vd-h"><h2>ON THIS MAC</h2><button type="button" onclick="VibeProj.closeRun()" aria-label="Close" data-dialog-close style="background:0;border:0;color:var(--tx2);cursor:pointer;display:flex;padding:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+<div class="rd-b">
+<label class="rd-opt"><input type="radio" name="rmode" value="serve" checked> <span><b>Show the files on localhost</b><br>A read-only server for pages, images, scripts and files they fetch. Nothing is run.</span></label>
+<label class="rd-opt"><input type="radio" name="rmode" value="run"> <span><b>Run a command</b><br>For an app with its own server (node, python).</span></label>
+<div id="rdRun" hidden>
+<label class="rd-l" for="rdCommand">Command, run in the project folder</label>
+<input id="rdCommand" class="rd-in" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="500" placeholder="npm run dev -- --port $PORT">
+<label class="rd-l" for="rdPort">Port the app listens on (leave empty to use $PORT)</label>
+<input id="rdPort" class="rd-in" type="number" inputmode="numeric" min="1024" max="65535" placeholder="5300 to 5399, chosen for you">
+<p class="rd-note">It runs on this Mac with your access to your files. Read it before you start. CODEC picks a free port in 5300 to 5399 and passes it as <code>$PORT</code>. The AI never starts anything by itself.</p>
+</div>
+<div class="rd-err" id="rdErr" role="alert"></div>
+<button type="button" class="bt accent" id="rdGo" onclick="VibeProj.runGo()">Start</button>
+</div>
+</div>
 <div class="sd" id="sd" role="dialog" aria-modal="true" aria-label="Projects" data-dialog="sh">
 <div style="padding:14px 16px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between"><h2 style="font-family:var(--mn);font-size:var(--fs-13);color:var(--ac)">PROJECTS</h2><button type="button" onclick="cS()" aria-label="Close projects" data-dialog-close style="background:0;border:0;color:var(--tx2);cursor:pointer;display:flex;padding:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
 <div style="padding:0 12px 8px">
@@ -273,13 +304,13 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx)}
 <div style="width:4px;cursor:col-resize;background:var(--bd)" id="rh"></div>
 <div class="vtabs" id="vtabs" role="tablist" aria-label="Panes"><button type="button" class="vtab sel" id="vtabChat" role="tab" aria-selected="true" onclick="_setVibeTab('chat')">Chat</button><button type="button" class="vtab" id="vtabPrev" role="tab" aria-selected="false" onclick="_setVibeTab('preview')">Preview<span class="vdot" hidden></span></button><button type="button" class="vtab" id="vtabCode" role="tab" aria-selected="false" onclick="_setVibeTab('code')">Code</button></div>
 <div class="ep"><div class="ftabs" id="ftabs" role="tablist" aria-label="Project files" hidden></div><div id="eb"></div><div class="tb"><button class="bt primary" onclick="doRun()" title="Execute code"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5 3 19 12 5 21 5 3"/></svg>Run</button><button class="bt" onclick="doPrev()" title="Live preview"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>Preview</button><button class="bt inspect-btn" id="inspectBtn" onclick="toggleInspect()" title="Inspect elements"><svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Inspect</button><div class="tb-sep"></div><button class="bt" onclick="doSave()" title="Save file"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save</button><button class="bt" onclick="doCopy()" title="Copy code"><svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>Copy</button><span class="rs" id="rs"></span></div></div>
-<div class="pp" id="pp"><div class="ph"><span>Live Preview</span><div class="ph-acts"><button type="button" class="ph-b" onclick="doPrev()" title="Refresh the preview" aria-label="Refresh the preview"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg></button><button type="button" class="ph-b inspect-btn" onclick="toggleInspect()" title="Inspect elements" aria-label="Inspect elements"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button><button type="button" class="ph-b" onclick="closePrev()" aria-label="Close preview" title="Close the preview"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div></div><div class="pv-wrap"><iframe id="pf" sandbox="allow-scripts"></iframe><div class="pv-empty" id="pvEmpty">The preview appears here when there is a page to show.</div></div></div>
+<div class="pp" id="pp"><div class="ph"><span>Live Preview</span><div class="ph-acts"><span class="ph-live" id="liveState" role="status" hidden></span><button type="button" class="ph-b" id="stopLiveBtn" onclick="VibeProj.stopLive()" title="Stop" aria-label="Stop what is running" hidden><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"/></svg></button><button type="button" class="ph-b" id="runBtn" onclick="VibeProj.runDialog()" title="Show the project on localhost, or run it on this Mac" aria-label="Show on localhost or run the project" hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><polygon points="7 4 20 12 7 20 7 4"/></svg></button><button type="button" class="ph-b" onclick="doPrev()" title="Refresh the preview" aria-label="Refresh the preview"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg></button><button type="button" class="ph-b inspect-btn" onclick="toggleInspect()" title="Inspect elements" aria-label="Inspect elements"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button><button type="button" class="ph-b" onclick="closePrev()" aria-label="Close preview" title="Close the preview"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div></div><div class="pv-wrap"><iframe id="pf" sandbox="allow-scripts"></iframe><div class="pv-empty" id="pvEmpty">The preview appears here when there is a page to show.</div></div></div>
 </div>
 <div class="op" id="op"><span style="color:var(--ac)">Vibe Coding</span></div>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
 <script src="/static/vibe-files.js?v=d056f202"></script>
-<script src="/static/vibe-projects.js?v=4bdbc808"></script>
+<script src="/static/vibe-projects.js?v=51ecabd1"></script>
 <script>
 // Auth + CSRF: inject session token and CSRF header on all requests
 // On mobile (Android Chrome), cookies may not persist — fallback to sessionStorage
@@ -898,6 +929,8 @@ _applyCodePane();
 // the phone to the Preview tab (the tab gets a dot instead) and says nothing when there is no page.
 function doPrev(silent) {
   silent = silent === true;
+  // Showing the project on localhost (or running it): refresh that frame instead of the inline copy.
+  if (window.VibeProj && VibeProj.liveActive()) { VibeProj.liveReload(); return; }
   var c = (window.VibeProj && VibeProj.previewSource()) || ed.getValue();
   if (c.trim().startsWith('<!DOCTYPE') || c.includes('<canvas') || c.includes('<body') || c.includes('<html')) {
     document.getElementById('pp').classList.remove('off');

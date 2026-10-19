@@ -529,7 +529,8 @@ A Vibe project is a folder `~/codec-workspace/vibe/<id>/` (`CODEC_VIBE_ROOT` ove
 - **Delete moves the folder to `~/.codec/trash/vibe/`** (`CODEC_VIBE_TRASH`); nothing is erased.
 - **Kill switch:** `VIBE_PROJECTS_ENABLED=false` makes every project route answer 404 and the page falls back to single-file Vibe.
 - **Audit:** `vibe_checkpoint`, `vibe_apply`, `vibe_restore`, `vibe_project_trash`, metadata only (docs/codec-architecture.md).
-- Running a project (preview server, dev server) is step 2 and stays Mac-only like `/api/run_code`; step 1 runs nothing.
+- **Show or run on this Mac (`codec_vibe_runner.py`, `routes/vibe_runner.py`, step 2b):** `serve` is a read-only file server on `127.0.0.1:5300-5399`; `run` starts a command with `bash -c` in the project folder. **The command that runs is the string in the owner's request** (typed or confirmed in the page's dialog): never read it from `vibe.json`, `package.json` or any file the AI could write, and never start anything from a skill, an agent or a timer. One live thing at a time, own process group, `PORT`/`HOST` set, secret-looking env removed, `is_dangerous` as a typo catcher, stopped on request / after 30 minutes without the page asking / when replaced; `.vibe/run.json` lets the next start reap a leftover. All four routes answer 403 to anything not from this Mac. Audit: `vibe_project_run`, `vibe_project_stop` (ports and lengths only, never the command). The dashboard CSP has `frame-src 'self' http://127.0.0.1:*` for the preview frame; do not widen it.
+- Tests that start servers or commands carry the marker `vibe-run-test` in the command line so a gate can check that nothing is left running (`pgrep -f "[v]ibe-run-test"`).
 
 ### Skill self-improvement
 `codec_self_improve.py` drafts skill proposals into `~/.codec/skill_proposals/YYYY-MM-DD/<name>.md`. **Never auto-deploys.** Human review required before promoting to `~/.codec/skills/`.

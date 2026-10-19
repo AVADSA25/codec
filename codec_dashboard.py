@@ -235,6 +235,8 @@ class CSPMiddleware(BaseHTTPMiddleware):
         "font-src 'self' https://cdnjs.cloudflare.com; "
         "img-src 'self' data: https:; "
         "connect-src 'self' ws: wss: http://localhost:* http://127.0.0.1:*; "
+        # Vibe (step 2b) frames a project that runs on this Mac, always at 127.0.0.1.
+        "frame-src 'self' http://127.0.0.1:*; "
         "worker-src 'self' blob:; "
         # Phase 0 (2026-05-27): allow embedding only from same origin or the AVA
         # Digital portal. Adding `https://avadigital.ai` lets /console/codec
@@ -455,6 +457,8 @@ from routes.qchat import router as qchat_router
 from routes.vibe import router as vibe_router
 # Vibe projects (docs/VIBE-PROJECTS-DESIGN.md): project files, checkpoints, undo.
 from routes.vibe_projects import router as vibe_projects_router
+# Vibe step 2b: show or run a project on this Mac (Mac only).
+from routes.vibe_runner import router as vibe_runner_router
 # D3 / SR-44: schedules endpoints extracted.
 from routes.schedules import router as schedules_router
 # D4 / SR-45: prompt overrides endpoints extracted.
@@ -539,6 +543,7 @@ app.include_router(observer_router)
 app.include_router(qchat_router)
 app.include_router(vibe_router)
 app.include_router(vibe_projects_router)
+app.include_router(vibe_runner_router)
 app.include_router(schedules_router)
 app.include_router(prompts_router)
 app.include_router(media_router)
