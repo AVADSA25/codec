@@ -1,6 +1,6 @@
 # Vibe coding agent — design (step 3)
 
-Status: approved 19 Oct 2026 ("proceed"). Step 3a is built (engine, routes, eval script, tests); 3b (page) and 3c (commands) follow. Written 19 Oct 2026.
+Status: approved 19 Oct 2026 ("proceed"). Steps 3a (engine, routes, eval script) and 3b (page) are built; 3c (commands) follows. Written 19 Oct 2026.
 Follows `docs/VIBE-PROJECTS-DESIGN.md`; steps 1, 2a and 2b are built and merged (#458, #459, #460).
 
 ## Goal
@@ -172,6 +172,17 @@ Found by building it and by running the eval on the live local model:
 - A run holds its project in memory; the end event is the last thing written (hold released, logs trimmed and audit written before it), so a page that sees it can undo at once.
 
 Measured on the live local model, final eval run: **6 of 6 file tasks and 4 of 4 behaviour tasks pass** (the bar is met), 52 steps in 134 s, **2.6 s per step on average** with about 925 prompt tokens per step; whole tasks took 7 to 37 s. The "about 20 s per step" in the first section is the worst case at a 10k-token context; small projects stay far below it. Before the fixes above the same eval gave 6 of 6 and 3 of 4: the "make it nicer" task went ahead without asking, because the model put its question before an empty `@@ ask`.
+
+## Changes made while building 3b (19 Oct 2026)
+
+- **Chat | Agent** switch above the composer (remembered per project, then as a default). It appears only when the server has the agent. The model list shows the cloud model only if one is set up; choosing it asks a dialog at every send that names the provider's host and says the goal and every file read go there.
+- While a run holds the project the editor is read-only with a banner, saving of the owner's edits is off, and Undo AI change is disabled; they come back when the run ends.
+- The page follows a run by long polling (`since`, `wait=20`). The editor shows each changed file as the checkpoint lands, and the preview opens or refreshes as it does after a chat answer.
+- The run card shows the goal, a status line (Working, Waiting for you, Done, Stopped, Stopped at a limit, Failed, Interrupted), the model, the step count and the time, a Stop button, and one row per step (click for its output). A step that changed files gets "Show change" (the diff of that step) and "Back to before this step". A question is a card inside the list with its choices and a text box. At the end: the report, **Undo run** and **Keep**.
+- Reopening a project picks a run up again: one still going is followed, one that ended while the page was away (its report missing from the chat) is shown with its whole timeline, and one the server lost on a restart is shown as Interrupted with Undo run still available.
+- The run's report, with the names of the changed files, is added to the chat history, so later chat messages know what the agent did. The session is saved when the run starts.
+- Everything that comes from a run (goal, file names, file text, replies) goes on the page with `textContent`; a test fails if the script ever uses HTML insertion.
+- Checked in the built-in browser against the real routes with a scripted model, on desktop width and phone width: run, question, undo run, show change, stop, cloud dialog (cancelled), reload and reopen.
 
 ## Build order (three pull requests, each with its own gates and tests)
 
