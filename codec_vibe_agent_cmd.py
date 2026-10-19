@@ -43,6 +43,20 @@ _ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 _DENIED_HINT = re.compile(r"operation not permitted|not permitted|permission denied", re.I)
 
 
+# A few lines of perl around the command: they stop its whole process group after the time limit even if
+# CODEC itself is gone (a restart, a crash). macOS has no `timeout` command. Exit codes pass through.
+_WATCHDOG = ('my $t = shift; my $pid = fork(); if (!$pid) { exec @ARGV; exit 127 } '
+             '$SIG{ALRM} = sub { kill "-KILL", $$ }; alarm $t; waitpid($pid, 0); '
+             'exit($? & 127 ? 128 + ($? & 127) : $? >> 8);')
+BACKSTOP_SECONDS = 5            # the watchdog fires this long after the limit CODEC enforces itself
+
+
+def argv(profile_file: str, command: str, seconds: float) -> list[str]:
+    """The watchdog runs outside the sandbox (a sandboxed process may signal only itself) and starts the sandboxed shell."""
+    return ["/usr/bin/perl", "-e", _WATCHDOG, str(int(seconds) + BACKSTOP_SECONDS),
+            SANDBOX_EXEC, "-f", profile_file, "/bin/bash", "-c", command]
+
+
 class Refused(Exception):
     """The command is not one the agent may ask the owner about."""
 
@@ -229,7 +243,7 @@ def run(project, vibe_root, command: str, *, network: bool = False, timeout: flo
         fd, prof_file = tempfile.mkstemp(prefix="vibe-agent-", suffix=".sb", dir=temp)
         with os.fdopen(fd, "w") as f:
             f.write(profile(proj, root, home, temp, bool(network)))
-        proc = subprocess.Popen([SANDBOX_EXEC, "-f", prof_file, "/bin/bash", "-c", command], cwd=proj, env=command_env(temp),
+        proc = subprocess.Popen(argv(prof_file, command, timeout), cwd=proj, env=command_env(temp),
                                 stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                 start_new_session=True, preexec_fn=_limits)
         box = _Collector()

@@ -181,6 +181,27 @@ def test_a_command_that_runs_too_long_is_stopped_with_everything_it_started(box)
 
 
 @needs_sandbox
+def test_the_time_limit_also_holds_without_codec_watching(box, tmp_path):
+    """The perl watchdog around the command stops its whole group on its own, as it would after a CODEC restart."""
+    import subprocess
+    proj, root = box
+    prof_file = tmp_path / "p.sb"
+    prof_file.write_text(cmd.profile(os.path.realpath(proj), os.path.realpath(root), HOME, os.path.realpath(str(tmp_path)), False))
+    args = cmd.argv(str(prof_file), "sleep 60 & sleep 60 # vibe-run-test-child", -3)         # a 2 second alarm (-3 + 5)
+    t0 = time.monotonic()
+    p = subprocess.Popen(args, cwd=proj, start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    assert p.wait(timeout=15) != 0 and time.monotonic() - t0 < 8
+    time.sleep(0.3)
+    assert os.system("pgrep -f 'vibe-run-test-child' > /dev/null") != 0
+
+
+@needs_sandbox
+def test_the_exit_code_passes_through_the_watchdog(box):
+    assert go(box, "exit 7 # vibe-run-test").exit_code == 7
+    assert go(box, "exit 0 # vibe-run-test").exit_code == 0
+
+
+@needs_sandbox
 def test_stop_ends_a_running_command(box):
     ev = threading.Event()
     threading.Timer(0.5, ev.set).start()
