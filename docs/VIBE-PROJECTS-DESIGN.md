@@ -71,7 +71,7 @@ Built in two parts so the visible part ships first and nothing that runs a progr
 
 ## Direction only (separate design doc each, not part of this approval)
 
-**Step 3 — coding agent.** Reuse the Project-mode runner (plan, permission manifest, checkpoints, ask-the-user) with tools limited to the project folder: read, list, search, write, apply patch, run tests or build from an allowlist, checkpoint. Each agent step is a commit, so Undo already covers it. Default model stays local; the cloud fallback model can be chosen, with its monthly cap. A local model will not match Codex or Claude Code on large changes.
+**Step 3 — coding agent.** Designed in `docs/VIBE-AGENT-DESIGN.md` (19 Oct 2026). It does not reuse the Project-mode runner process, only its rules: after reading the runner, a polling background process with a per-path permission list does not fit an interactive coding loop.
 
 **Step 4 — CODEC edits CODEC.** A project that is a git worktree of this repo on a branch `vibe/<name>`. Live preview of page changes with tests (`pytest`) before anything leaves the Mac. Before a push: tests green, a scan of the diff for secrets and personal data (the repo is public), and the owner clicks "Open pull request" after reading the diff. Branch and pull request only, never `main`; CODEC never restarts itself. Open risk to solve first: a second dashboard instance running AI-written code can read the Keychain, so preview of backend changes needs real isolation or stays out.
 
