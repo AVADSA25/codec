@@ -99,6 +99,8 @@ If the context goes over the cap, the oldest full results are dropped first. The
 
 ### 7. Running commands (step 3c)
 
+*This section is the design as approved. Where the build differs (what a command may read, what the web means, the watchdog, the temp folder), "Changes made while building 3c" below is the truth.*
+
 `run_check` exists so the agent can run the project's tests or build and read the result. Rules, in order:
 
 1. The one-line command goes through the step 2b check (500 characters, one line, `is_dangerous`). A refused command is never shown to the owner; the model is told why.
@@ -204,6 +206,8 @@ Measured on the live local model, final eval run with commands: **8 of 8 file ta
 - **3b — page.** Chat | Agent switch, run card, timeline, ask and approval cards, read-only editor, Undo run, Back to before this step, phone layout.
 - **3c — commands.** The spike first, then `run_check`, the sandbox profile, approvals, the command tests and the two command tasks of the eval.
 
+All three are merged (#461, #462, #466). The routes are Python: they answer only after `codec-dashboard` is restarted (the owner's action).
+
 ## Test plan
 
 - Scripted-model tests (no GPU, run in CI): parser (every tool, malformed, cut off, two blocks, `@@` inside code), edit matching (once, none, several, line endings), path and secret refusals, every limit with a fake clock, Stop in the middle of a stream, ask and answer and timeout, checkpoint tagging, Undo run, Back to before this step, the 409 on writes during a run, one run at a time, cloud confirmation, 403 for remote approval, 404 when disabled, audit events carry no goal, path or command text, run-log trimming, `interrupted` after a restart.
@@ -221,9 +225,9 @@ Measured on the live local model, final eval run with commands: **8 of 8 file ta
 - About 20 seconds per step.
 - A cloud model is stronger and faster, but the project's files go to its provider; that is why it is a per-run choice with a dialog.
 
-## Decisions I need
+## Decisions (approved with "proceed", 19 Oct 2026)
 
-I will use these unless you say otherwise; one word ("proceed") approves the design and 3a.
+Mickael approved these defaults with one word; the build follows them.
 
 1. **Model:** local by default; cloud only per run, after a dialog (recommended). Alternative: follow whichever model chat is on.
 2. **Commands:** exact-string approval, inside the macOS sandbox, no network unless ticked (recommended). Alternative: no commands at all in step 3 (skip 3c).
