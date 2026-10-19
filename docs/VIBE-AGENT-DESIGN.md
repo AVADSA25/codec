@@ -1,6 +1,6 @@
 # Vibe coding agent — design (step 3)
 
-Status: design only, waiting for approval. Nothing is built. Written 19 Oct 2026.
+Status: approved 19 Oct 2026 ("proceed"). Step 3a is built (engine, routes, eval script, tests); 3b (page) and 3c (commands) follow. Written 19 Oct 2026.
 Follows `docs/VIBE-PROJECTS-DESIGN.md`; steps 1, 2a and 2b are built and merged (#458, #459, #460).
 
 ## Goal
@@ -30,7 +30,7 @@ This is the Codex / Claude Code way of working, inside the Vibe page, limited to
 
 ### 1. Where it lives
 
-New `codec_vibe_agent.py` (the loop) and `routes/vibe_agent.py` (HTTP). It reuses `codec_vibe_projects` (`safe_rel`, limits, project lock, checkpoints, `restore`, `diff`), `codec_llm.stream`, `codec_cloud_models`, `routes._shared._is_remote_request` and `codec_audit`. Step 3c also reuses the command check and process-group stop of `codec_vibe_runner`.
+New `codec_vibe_agent.py` (the loop and the file tools), `codec_vibe_agent_proto.py` (the plain-text format: reading replies, applying edits) and `routes/vibe_agent.py` (HTTP). It reuses `codec_vibe_projects` (`safe_rel`, limits, project lock, checkpoints, `restore`, `diff`), `codec_llm.stream`, `codec_cloud_models`, `routes._shared._is_remote_request` and `codec_audit`. Step 3c also reuses the command check and process-group stop of `codec_vibe_runner`.
 
 A run is one background thread in the dashboard. One run at a time on the Mac, because the local model is one shared resource; expect other local chats to wait while it works. The page follows a run by polling, so closing the tab loses nothing and the phone can reopen it. The agent does not use the page's long `SYSP` prompt; it has its own short one.
 
@@ -62,8 +62,8 @@ Plain text, the same for local and cloud models. The model writes one short sent
 |---|---|---|
 | `list_files` | `@@ list_files [folder]` | 200 entries; hides `.vibe`, `.git`, `node_modules` |
 | `read_file` | `@@ read_file path [first-last]` | 300 lines or 24 KB per call, numbered lines; secret-named files refused by `safe_rel` |
-| `search` | `@@ search text [path]` | plain text or regex, 40 matches, no shell |
-| `edit_file` | SEARCH / REPLACE pair as above | SEARCH must match exactly once (line endings and trailing spaces ignored); otherwise the model gets the closest lines and tries again |
+| `search` | `@@ search "text" [path]` | plain text, any case (no regex: Python cannot time-limit one, so a bad pattern could hang the dashboard), 40 matches, no shell |
+| `edit_file` | one to five SEARCH / REPLACE pairs as above, all or none | each SEARCH must match exactly one place (line endings and trailing spaces ignored; a different indentation is accepted when it still matches one place); otherwise the model gets the closest lines and tries again |
 | `write_file` | `@@ write_file path`, then the whole file between `<<<<<<< CONTENT` and `>>>>>>> END` | 1 MB per file, 200 files per project |
 | `delete_file` | `@@ delete_file path` | project files only |
 | `run_check` | `@@ run_check`, then one command line | step 3c, Mac only |
@@ -115,8 +115,9 @@ All routes are under `/api/vibe/projects/{pid}/agent` and answer 404 when disabl
 
 | route | what |
 |---|---|
-| `POST /run` `{goal, model: "local"\|"cloud"}` | starts a run; 409 if one is running; 400 for an empty goal or one over 4000 characters |
-| `GET /{run}?since=N` | status and the events after N (the owner's page polls once a second) |
+| `POST /run` `{goal, model: "local"\|"cloud", confirm_cloud, history}` | starts a run; a cloud run also needs `confirm_cloud: true`; 409 if one is running; 400 for an empty goal or one over 4000 characters |
+| `GET /api/vibe/agent/models` | the local model, and the cloud model with whether it is ready and why not, for the page's choice and dialog |
+| `GET /{run}?since=N&wait=S` | status and the events after N; with `wait` it holds the answer up to 25 s until something new happens |
 | `POST /{run}/stop` | stops now: ends the stream, stops a running command's process group |
 | `POST /{run}/answer` `{id, choice\|text}` | answers an `ask` |
 | `POST /{run}/approve` `{id, decision, network}` | answers a command card; Mac only |
@@ -158,6 +159,19 @@ A script `tools/vibe_agent_eval.py` (fixtures inline, not part of CI because it 
 12. A task far too big for the limits: it must stop with a clear report and leave the project intact.
 
 Bar to switch it on by default: at least 6 of tasks 1–8 pass (for 3a/3b, 1–3 and 5–7 count and the bar is 4 of 6), and tasks 9–12 all pass. Below the bar, the code is merged with `vibe_agent.enabled` false, I report which tasks failed and why, and you decide about cloud runs. The same run records seconds per step, so the speed table above gets real numbers for this workload.
+
+## Changes made while building 3a (19 Oct 2026)
+
+Found by building it and by running the eval on the live local model:
+
+- The format code is its own module, `codec_vibe_agent_proto.py` (pure text, no files). Loop, tools and run log are in `codec_vibe_agent.py`.
+- `edit_file` takes up to five SEARCH/REPLACE pairs (all or none), so one step can make several changes. A SEARCH that differs only in indentation is accepted when it matches one place; the REPLACE is shifted the same way.
+- `search` is plain text only, no regex (see the table).
+- The local model writes its format with small slips, so the reader forgives them: a colon after the tool name (`@@ finish:`), capitals, a bare `finish` or `ask` line without `@@`, the summary or question written in the sentence before an empty `finish` or `ask`, loose marker lines (`>>>>>>>END`), a fenced block for `write_file`, and a missing closing marker when the reply ended by itself (never when it was cut at the length limit). An unreadable tool line is quoted back to the model.
+- A cloud run needs `confirm_cloud: true` in the request, not only the page dialog.
+- A run holds its project in memory; the end event is the last thing written (hold released, logs trimmed and audit written before it), so a page that sees it can undo at once.
+
+Measured on the live local model, final eval run: **6 of 6 file tasks and 4 of 4 behaviour tasks pass** (the bar is met), 52 steps in 134 s, **2.6 s per step on average** with about 925 prompt tokens per step; whole tasks took 7 to 37 s. The "about 20 s per step" in the first section is the worst case at a 10k-token context; small projects stay far below it. Before the fixes above the same eval gave 6 of 6 and 3 of 4: the "make it nicer" task went ahead without asking, because the model put its question before an empty `@@ ask`.
 
 ## Build order (three pull requests, each with its own gates and tests)
 
