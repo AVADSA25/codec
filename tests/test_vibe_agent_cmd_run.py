@@ -308,3 +308,20 @@ def test_the_list_of_commands_survives_in_project_json_next_to_the_rest(scripted
     after = json.loads((vp.project_dir(pid) / ".vibe" / "project.json").read_text())
     assert {k: v for k, v in after.items() if k != "allowed_commands"} == before
     assert after["allowed_commands"] == [{"cmd": "pytest -q", "network": False}]
+
+
+def test_what_test_runners_leave_behind_is_not_part_of_the_project(scripted, monkeypatch):
+    class Leaves(FakeCommands):
+        def __call__(self, project, root, command, **kw):
+            for d in (".pytest_cache", ".mypy_cache", ".ruff_cache", ".tox", "__pycache__", "node_modules"):
+                (project / d).mkdir(exist_ok=True)
+                (project / d / "x.txt").write_text("left behind\n")
+            return super().__call__(project, root, command, **kw)
+    Leaves(monkeypatch)
+    pid = make_project()
+    scripted([RUN, "@@ finish\nok\n"])
+    run_id = start(pid)
+    decide(pid, run_id)
+    view = wait_finished(pid, run_id)
+    assert not [e for e in view["events"] if e["type"] == "checkpoint"]
+    assert sorted(f["path"] for f in vp.list_files(pid)) == sorted(["index.html", "style.css", "app.js"])
