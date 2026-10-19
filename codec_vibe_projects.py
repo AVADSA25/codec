@@ -716,6 +716,51 @@ def undo_last_ai(pid: str) -> dict:
         return out
 
 
+# ── commands the owner has allowed for this project (docs/VIBE-AGENT-DESIGN.md, section 7) ──
+# Stored as exact text in .vibe/project.json: a command with other spacing asks again.
+
+MAX_ALLOWED_COMMANDS = 20
+
+
+def allowed_commands(pid: str) -> list[dict]:
+    pdir = project_dir(pid)
+    raw = _read_meta(pdir).get("allowed_commands")
+    out: list[dict] = []
+    if isinstance(raw, list):
+        for e in raw:
+            if isinstance(e, dict) and isinstance(e.get("cmd"), str) and e["cmd"]:
+                out.append({"cmd": e["cmd"], "network": bool(e.get("network"))})
+    return out[-MAX_ALLOWED_COMMANDS:]
+
+
+def allow_command(pid: str, command: str, network: bool = False) -> list[dict]:
+    if not isinstance(command, str) or not command.strip() or len(command) > 500:
+        raise VibeError(400, "Bad command")
+    pdir = project_dir(pid)
+    with _lock(pid):
+        items = [e for e in allowed_commands(pid) if e["cmd"] != command]
+        items.append({"cmd": command, "network": bool(network)})
+        meta = _read_meta(pdir)
+        meta["allowed_commands"] = items[-MAX_ALLOWED_COMMANDS:]
+        _write_json_atomic(_meta_path(pdir), meta)
+    _audit("vibe_agent_allow", "Vibe command allowed for a project", {"project": pid, "action": "allow", "network": bool(network)})
+    return items[-MAX_ALLOWED_COMMANDS:]
+
+
+def forget_command(pid: str, command: str) -> list[dict]:
+    pdir = project_dir(pid)
+    with _lock(pid):
+        items = allowed_commands(pid)
+        kept = [e for e in items if e["cmd"] != command]
+        if len(kept) == len(items):
+            raise VibeError(404, "That command is not on the list")
+        meta = _read_meta(pdir)
+        meta["allowed_commands"] = kept
+        _write_json_atomic(_meta_path(pdir), meta)
+    _audit("vibe_agent_allow", "Vibe command forgotten for a project", {"project": pid, "action": "forget", "network": False})
+    return kept
+
+
 # ── helpers for the agent run that holds the project (the 409 guard does not apply to them) ──
 
 def agent_checkpoint(pid: str, label: str, kind: str, run: str, step: int, *, force: bool = False) -> dict | None:

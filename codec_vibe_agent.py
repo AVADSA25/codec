@@ -24,6 +24,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import codec_vibe_agent_cmd as cmdmod
 import codec_vibe_agent_proto as proto
 import codec_vibe_projects as vp
 from codec_vibe_projects import VibeError
@@ -123,6 +124,11 @@ class _Llm:
     model: str
     label: str
     host: str = ""
+
+
+def _run_command(*args, **kw):
+    """The one place a command is started (tests replace it)."""
+    return cmdmod.run(*args, **kw)
 
 
 def _llm_stream(messages, **kw):
@@ -398,6 +404,8 @@ def _tool_arg(call: proto.Call) -> str:
         return f"{a['path']} ({len(a['pairs'])} edit{'s' if len(a['pairs']) != 1 else ''})"
     if call.name in ("write_file", "delete_file"):
         return a["path"]
+    if call.name == "run_check":
+        return a["command"][:120]
     return ""
 
 
@@ -409,7 +417,7 @@ class Run:
     def __init__(self, pid: str, goal: str, history: list, llm: _Llm, limits: dict, can_run: bool):
         self.id = "r" + secrets.token_hex(4)
         self.pid, self.goal, self.history, self.llm, self.limits, self.can_run = pid, goal, history, llm, limits, can_run
-        self.allowed = tuple(t for t in proto.TOOLS if t != "run_check")
+        self.allowed = tuple(t for t in proto.TOOLS if t != "run_check" or (can_run and cmdmod.available()))
         self.status = "running"
         self.finished = False
         self.step = 0
@@ -430,6 +438,8 @@ class Run:
         self._questions = 0
         self._answer: dict | None = None
         self._qid = ""
+        self._decision: dict | None = None
+        self._aid = ""
         self._thread: threading.Thread | None = None
 
     # events -------------------------------------------------------------
@@ -483,6 +493,15 @@ class Run:
             if self.status != "waiting" or qid != self._qid:
                 raise VibeError(409, "Nothing is waiting for that answer")
             self._answer = {"text": text}
+            self._cond.notify_all()
+
+    def approve(self, aid, decision, network) -> None:
+        if decision not in ("once", "always", "decline"):
+            raise VibeError(400, "Choose once, always or decline")
+        with self._cond:
+            if self.status != "waiting" or not isinstance(aid, str) or not aid or aid != self._aid:
+                raise VibeError(409, "Nothing is waiting for that decision")
+            self._decision = {"decision": decision, "network": bool(network) and decision != "decline"}
             self._cond.notify_all()
 
     def _end(self, status: str, report: str) -> None:
@@ -635,6 +654,10 @@ class Run:
             result = self._ask(n, call)
             if result is None:
                 return True
+        elif call.name == "run_check":
+            result = self._run_check(n, call)
+            if result is None:
+                return True
         else:
             result = self._exec(call)
         ms = int((_mono() - t0) * 1000)
@@ -658,22 +681,28 @@ class Run:
         self.turns.append(_Turn(n, call.name, arg, text[:8000], short, wrapped, result.summary, result.ok,
                                 read_path=call.args.get("path", "") if call.name == "read_file" else ""))
         if result.ok and result.changed:
-            for t in self.turns:
-                if t.read_path and t.read_path in result.changed:
-                    t.stale = True
-            label = f"Agent: {call.name} {result.changed[0]}"[:120]
-            try:
-                cp = vp.agent_checkpoint(self.pid, label, "ai", self.id, n)
-            except VibeError:
-                cp = None
-            if cp:
-                self._emit("checkpoint", step=n, id=cp["id"], parent=cp.get("parent"), label=cp["label"],
-                           lines_added=cp["stat"]["lines_added"], lines_removed=cp["stat"]["lines_removed"], changed=cp.get("changed", []))
+            self._checkpoint(n, f"Agent: {call.name} {result.changed[0]}", result.changed)
+        elif call.name == "run_check":
+            self._checkpoint(n, "Agent: ran " + call.args["command"][:60], ())
         if call.name == "edit_file" and self._edit_fails.get(call.args["path"], 0) >= FAIL_EDITS:
             self._end("limit", f"I could not apply an edit to {call.args['path']} after {FAIL_EDITS} tries. "
                                "The files keep the work done so far.")
             return True
         return False
+
+    def _checkpoint(self, n: int, label: str, paths) -> None:
+        """Save the files as a step of this run, when they changed, and tell the page."""
+        try:
+            cp = vp.agent_checkpoint(self.pid, label[:120], "ai", self.id, n)
+        except VibeError:
+            cp = None
+        changed = set(paths) | set((cp or {}).get("changed", []))
+        for t in self.turns:
+            if t.read_path and t.read_path in changed:
+                t.stale = True
+        if cp:
+            self._emit("checkpoint", step=n, id=cp["id"], parent=cp.get("parent"), label=cp["label"],
+                       lines_added=cp["stat"]["lines_added"], lines_removed=cp["stat"]["lines_removed"], changed=cp.get("changed", []))
 
     def _exec(self, call: proto.Call) -> Result:
         a = call.args
@@ -696,6 +725,87 @@ class Run:
             log.warning("vibe agent tool error: %s", e)
             return _fail("The file could not be read or written.")
         return _fail(f"The tool {call.name} is not available.")
+
+    # commands ----------------------------------------------------------
+
+    def _command_audit(self, n: int, decision: str, command: str, network: bool, exit_code, ms: int) -> None:
+        word = (command.split() or [""])[0].rsplit("/", 1)[-1]
+        program = word if re.fullmatch(r"[A-Za-z0-9._+-]{1,30}", word) else ""
+        _audit("vibe_agent_command", "Vibe agent command", {"project": self.pid, "run": self.id, "n": n, "decision": decision,
+                                                           "program": program, "network": bool(network), "exit_code": exit_code, "ms": ms})
+
+    def _approval(self, n: int, command: str):
+        """Ask the owner. (decision, network), or None when the run ended while waiting."""
+        self._aid = "a" + secrets.token_hex(3)
+        with self._cond:
+            self._decision = None
+            self.status = "waiting"
+        self._emit("approval", step=n, id=self._aid, command=command)
+        end = _mono() + self.limits["wait_seconds"]
+        with self._cond:
+            while self._decision is None and not self.stop_event.is_set():
+                left = end - _mono()
+                if left <= 0:
+                    break
+                self._cond.wait(min(left, WAIT_STEP))
+            got = self._decision
+            self.status = "running" if (got is not None and not self.stop_event.is_set()) else self.status
+        if self.stop_event.is_set():
+            self._end("stopped", "Stopped.")
+            return None
+        if got is None:
+            self._end("stopped", f"No answer came within {_span(self.limits['wait_seconds'])}, so the agent stopped.")
+            return None
+        self._emit("decision", step=n, id=self._aid, decision=got["decision"], network=got["network"])
+        return got["decision"], got["network"]
+
+    def _run_check(self, n: int, call: proto.Call) -> "Result | None":
+        """Run one command the owner approved, in the sandbox. None when the run ended while waiting."""
+        command = call.args["command"]
+        try:
+            command = cmdmod.check_command(command)
+        except cmdmod.Refused as e:
+            self._command_audit(n, "refused", command, False, None, 0)
+            return Result(False, f"That command was refused: {e}. Use a plainer one.", "Command refused", blocked="dangerous")
+        stored = next((a for a in vp.allowed_commands(self.pid) if a["cmd"] == command), None)
+        if stored:
+            decision, network = "stored", bool(stored["network"])
+        else:
+            got = self._approval(n, command)
+            if got is None:
+                return None
+            decision, network = got
+            if decision == "decline":
+                self._command_audit(n, "declined", command, False, None, 0)
+                return Result(False, "The owner did not allow that command, so it was not run. Do not ask for it again. "
+                                     "Check your work another way, or finish and say it was not checked.", "Declined")
+            if decision == "always":
+                try:
+                    vp.allow_command(self.pid, command, network)
+                except VibeError:
+                    pass
+        t0 = _mono()
+        try:
+            res = _run_command(vp.project_dir(self.pid), vp.vibe_root(), command, network=network,
+                               timeout=max(5.0, min(float(cmdmod.DEFAULT_TIMEOUT), self.deadline - _mono())), stop_event=self.stop_event)
+        except cmdmod.Refused as e:
+            return Result(False, str(e), "Command not run")
+        self._command_audit(n, decision, command, network, res.exit_code, int((_mono() - t0) * 1000))
+        if res.stopped:
+            head = "Stopped before the command finished."
+        elif res.timed_out:
+            head = f"Timed out after {int(res.seconds)} s and was stopped."
+        else:
+            head = f"Exit code {res.exit_code} after {res.seconds} s."
+        extra = ""
+        if res.timed_out:
+            extra += f"\nA command is stopped after {cmdmod.DEFAULT_TIMEOUT} seconds. Do not start servers or watchers with run_check."
+        if res.denied:
+            extra += ("\nThe sandbox stopped something: the command can read this project and the usual toolchains, write only inside the "
+                      f"project, and has {'web access only' if network else 'no network'}.")
+        ok = res.exit_code == 0
+        state = "stopped" if res.stopped else "timed out" if res.timed_out else f"exit {res.exit_code}"
+        return Result(ok, head + "\n" + (res.output.strip("\n") or "(no output)") + extra, f"Ran {command[:50]}: {state} ({res.seconds} s)")
 
     def _ask(self, n: int, call: proto.Call) -> "Result | None":
         """Wait for the owner. None when the run ended while waiting."""
@@ -939,6 +1049,24 @@ def _live(pid: str, run_id: str) -> Run:
     if run is None or run.pid != pid:
         raise VibeError(404, "No such run")
     return run
+
+
+def approve_run(pid: str, run_id: str, aid, decision, network=False) -> dict:
+    run = _live(pid, run_id)
+    if not run.can_run:
+        raise VibeError(403, "Commands can only be approved for a run started at this Mac")
+    run.approve(aid, decision, bool(network))
+    return {"run": run_id, "ok": True}
+
+
+def commands(pid: str) -> list:
+    return vp.allowed_commands(pid)
+
+
+def forget(pid: str, command) -> list:
+    if not isinstance(command, str):
+        raise VibeError(400, "Send the command text")
+    return vp.forget_command(pid, command)
 
 
 def stop_run(pid: str, run_id: str) -> dict:

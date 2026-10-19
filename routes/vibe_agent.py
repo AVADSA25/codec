@@ -58,6 +58,21 @@ async def runs(pid: str):
     return await _call(va.list_runs, pid)
 
 
+async def _mac_only(request: Request):
+    from routes._shared import _is_remote_request
+    if _is_remote_request(request):
+        return JSONResponse({"error": "Commands are approved only at this Mac."}, status_code=403)
+    return None
+
+
+@router.get("/api/vibe/projects/{pid}/agent/commands")
+async def commands(pid: str, request: Request):
+    no = await _mac_only(request)
+    if no is not None:
+        return no
+    return await _call(va.commands, pid)
+
+
 @router.get("/api/vibe/projects/{pid}/agent/{run_id}")
 async def get_run(pid: str, run_id: str, since: int = 0, wait: float = 0.0):
     return await _call(va.get_run, pid, run_id, since, wait)
@@ -66,6 +81,28 @@ async def get_run(pid: str, run_id: str, since: int = 0, wait: float = 0.0):
 @router.post("/api/vibe/projects/{pid}/agent/{run_id}/stop")
 async def stop(pid: str, run_id: str):
     return await _call(va.stop_run, pid, run_id)
+
+
+@router.post("/api/vibe/projects/{pid}/agent/{run_id}/approve")
+async def approve(pid: str, run_id: str, request: Request):
+    no = await _mac_only(request)
+    if no is not None:
+        return no
+    body = await _json(request)
+    if body is None:
+        return _BAD_BODY
+    return await _call(va.approve_run, pid, run_id, body.get("id"), body.get("decision"), body.get("network") is True)
+
+
+@router.post("/api/vibe/projects/{pid}/agent/commands/forget")
+async def forget(pid: str, request: Request):
+    no = await _mac_only(request)
+    if no is not None:
+        return no
+    body = await _json(request)
+    if body is None:
+        return _BAD_BODY
+    return await _call(va.forget, pid, body.get("command"))
 
 
 @router.post("/api/vibe/projects/{pid}/agent/{run_id}/answer")
