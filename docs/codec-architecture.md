@@ -172,6 +172,17 @@ Emitted by `codec_vibe_projects` (docs/VIBE-PROJECTS-DESIGN.md), source `codec-v
 | `vibe_project_run` | `project`, `kind` (`serve`\|`run`), `port`, `command_chars` (a length, never the command) |
 | `vibe_project_stop` | `project`, `kind`, `reason` (`user`\|`replaced`\|`idle`\|`reaped`\|`exit`\|`test`), `seconds`, `exit_code` (null for a file server) |
 
+### Vibe agent events (2026-10)
+
+Emitted by `codec_vibe_agent` (docs/VIBE-AGENT-DESIGN.md), source `codec-vibe`, level info. Counts, tool names and statuses only: never the goal, a path, a file's text or a model reply.
+
+| Event | extra fields |
+|---|---|
+| `vibe_agent_start` | `project`, `run`, `model` (`local`\|`cloud`), `goal_chars` |
+| `vibe_agent_step` | `project`, `run`, `n` (step number), `tool`, `ok`, `ms` |
+| `vibe_agent_blocked` | `project`, `run`, `n`, `reason` (`path`\|`secret`: a safety rule refused the step) |
+| `vibe_agent_end` | `project`, `run`, `status` (`done`\|`stopped`\|`limit`\|`failed`), `steps`, `seconds`, `prompt_tokens`, `completion_tokens`, `model` |
+
 ### Web Push events (2026-09, UI P3.13)
 
 Emitted by `codec_push` (docs/P3.13-DESIGN.md). Metadata only: never an endpoint, a key or any notification text.

@@ -53,6 +53,7 @@ _KINDS = {"start", "before", "ai", "restore", "before_restore", "manual"}
 
 _LOCKS: dict[str, threading.RLock] = {}
 _LOCKS_GUARD = threading.Lock()
+_AGENT_RUNS: dict[str, str] = {}    # project id -> run id, while an agent run holds the project
 
 
 class VibeError(Exception):
@@ -96,6 +97,36 @@ def _audit(event: str, message: str, extra: dict) -> None:
         pass
 
 
+# ── an agent run holds its project while it works (docs/VIBE-AGENT-DESIGN.md) ──
+
+def agent_run_active(pid: str) -> str | None:
+    """The id of the agent run that holds this project, or None."""
+    with _LOCKS_GUARD:
+        return _AGENT_RUNS.get(pid)
+
+
+def agent_claim(pid: str, run_id: str) -> None:
+    """Hold the project for one run. While held, every other writer gets a 409."""
+    project_dir(pid)
+    with _lock(pid):
+        with _LOCKS_GUARD:
+            if pid in _AGENT_RUNS:
+                raise VibeError(409, "The agent is already working on this project")
+            _AGENT_RUNS[pid] = run_id
+
+
+def agent_release(pid: str, run_id: str) -> None:
+    with _LOCKS_GUARD:
+        if _AGENT_RUNS.get(pid) == run_id:
+            del _AGENT_RUNS[pid]
+
+
+def _refuse_during_agent_run(pid: str) -> None:
+    """Called inside the project lock by every writer except the agent's own helpers."""
+    if agent_run_active(pid):
+        raise VibeError(409, "The agent is working on this project. Stop it first.")
+
+
 # ── paths ────────────────────────────────────────────────────────────────
 
 def project_dir(pid: str) -> Path:
@@ -109,6 +140,12 @@ def project_dir(pid: str) -> Path:
     if os.path.realpath(pdir) != os.path.join(real_root, pid):
         raise VibeError(404, "No such project")
     return pdir
+
+
+def looks_secret(rel: str) -> bool:
+    """True when the file name looks like a secret (.env, keys, credentials). Same list safe_rel uses."""
+    base = str(rel).rsplit("/", 1)[-1].lower()
+    return base.startswith(_BLOCKED_NAME_PREFIXES) or base.endswith(_BLOCKED_EXTS)
 
 
 def safe_rel(rel: str) -> str:
@@ -438,6 +475,7 @@ def project_info(pid: str) -> dict:
 def trash_project(pid: str) -> dict:
     pdir = project_dir(pid)
     with _lock(pid):
+        _refuse_during_agent_run(pid)
         dest_root = trash_root()
         dest_root.mkdir(parents=True, exist_ok=True, mode=0o700)
         dest = dest_root / f"{pid}-{time.strftime('%Y%m%d-%H%M%S')}"
@@ -495,6 +533,7 @@ def _write_file_locked(pdir: Path, rel: str, content: str) -> int:
 def write_file(pid: str, rel: str, content: str) -> dict:
     pdir = project_dir(pid)
     with _lock(pid):
+        _refuse_during_agent_run(pid)
         size = _write_file_locked(pdir, rel, content)
     return {"path": safe_rel(rel), "size": size}
 
@@ -543,6 +582,7 @@ def apply_blocks(pid: str, blocks: list[dict], label: str = "AI change") -> dict
     """Write every file or none: checkpoint the state before, write, checkpoint after."""
     pdir = project_dir(pid)
     with _lock(pid):
+        _refuse_during_agent_run(pid)
         existing = set(_scan(pdir))
         prepared = _prepare_blocks(blocks, existing)
         if not prepared:
@@ -654,6 +694,7 @@ def _prune_empty_dirs(pdir: Path, start: Path) -> None:
 def restore(pid: str, cid: str) -> dict:
     pdir = project_dir(pid)
     with _lock(pid):
+        _refuse_during_agent_run(pid)
         cps = _load_checkpoints(pdir)
         target = _find(cps, cid)
         return _restore_locked(pid, pdir, target, "Restored: " + (target["label"] or target["id"])[:180],
@@ -663,6 +704,7 @@ def restore(pid: str, cid: str) -> dict:
 def undo_last_ai(pid: str) -> dict:
     pdir = project_dir(pid)
     with _lock(pid):
+        _refuse_during_agent_run(pid)
         cps = _load_checkpoints(pdir)
         ai = _undo_target(cps)
         if ai is None or not ai.get("parent"):
@@ -672,6 +714,42 @@ def undo_last_ai(pid: str) -> dict:
                               {"restored_to": parent["id"], "undid": ai["id"]})
         out["undid"] = ai["id"]
         return out
+
+
+# ── helpers for the agent run that holds the project (the 409 guard does not apply to them) ──
+
+def agent_checkpoint(pid: str, label: str, kind: str, run: str, step: int, *, force: bool = False) -> dict | None:
+    """A checkpoint tagged with the run and step. None when nothing changed (unless forced)."""
+    if kind not in ("before", "ai"):
+        raise VibeError(400, "Bad checkpoint kind")
+    pdir = project_dir(pid)
+    with _lock(pid):
+        rec = _snapshot_locked(pid, pdir, str(label or "")[:200], kind, force=force,
+                               extra={"run": str(run)[:20], "step": int(step)})
+    return _public(rec) if rec else None
+
+
+def agent_write(pid: str, rel: str, content: str) -> dict:
+    """Write one project file. Same path, size and link rules as every other write."""
+    pdir = project_dir(pid)
+    rel = safe_rel(rel)
+    with _lock(pid):
+        existed = (pdir / rel).is_file()
+        size = _write_file_locked(pdir, rel, content)
+    return {"path": rel, "size": size, "created": not existed}
+
+
+def agent_delete(pid: str, rel: str) -> dict:
+    pdir = project_dir(pid)
+    rel = safe_rel(rel)
+    with _lock(pid):
+        _no_symlinks(pdir, rel, include_last=True)
+        target = pdir / rel
+        if not target.is_file():
+            raise VibeError(404, "No such file")
+        target.unlink()
+        _prune_empty_dirs(pdir, target.parent)
+    return {"path": rel}
 
 
 def diff(pid: str, a: str, b: str, path: str | None = None) -> dict:
