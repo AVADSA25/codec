@@ -151,6 +151,53 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx)}
 .ftab-dot{width:7px;height:7px;border-radius:50%;background:var(--ac)}
 .ftab-dot.live{animation:vibePulse 1s infinite}
 .bb:disabled{opacity:.45;cursor:default}.bb:disabled:hover{border-color:var(--bd);color:var(--tx2)}
+.amode{display:flex;align-items:center;gap:6px;padding:6px 12px 0;background:var(--bg2);flex-wrap:wrap}
+.amode[hidden],.abn[hidden],.agc-stop[hidden]{display:none}
+.amb{padding:5px 14px;min-height:32px;border:1px solid var(--bd);border-radius:14px;background:0;color:var(--tx2);font:600 var(--fs-12)/1.2 var(--ft);cursor:pointer}
+.amb.sel{color:var(--ac);border-color:var(--ac);background:var(--accent-dim)}
+.amode select{margin-left:auto;max-width:55%;padding:5px 8px;min-height:32px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font:500 var(--fs-12) var(--ft)}
+.abn{padding:6px 12px;background:var(--accent-dim);color:var(--ac);font-size:var(--fs-12);border-bottom:1px solid var(--bd)}
+.agc{margin:8px 0;border:1px solid var(--bd);border-radius:10px;background:var(--bg2);overflow:hidden}
+.agc-h{padding:10px 12px;border-bottom:1px solid var(--bd);display:grid;gap:6px}
+.agc-goal{font-size:var(--fs-13);color:var(--tx);overflow-wrap:anywhere;white-space:pre-wrap}
+.agc-meta{display:flex;flex-wrap:wrap;gap:4px 10px;font:500 var(--fs-12)/1.3 var(--mn);color:var(--tx2)}
+.agc-st{color:var(--ac);font-weight:700}
+.agc[data-status=done] .agc-st{color:var(--success)}
+.agc[data-status=failed] .agc-st,.agc[data-status=interrupted] .agc-st{color:var(--dn)}
+.agc-stop{justify-self:start;padding:5px 14px;min-height:36px;border:1px solid var(--dn);border-radius:8px;background:0;color:var(--dn);font:600 var(--fs-12) var(--ft);cursor:pointer}
+.agc-stop:disabled{opacity:.5;cursor:default}
+.agc-steps{list-style:none;margin:0;padding:6px 8px;display:grid;gap:4px}
+.agc-rh{display:flex;align-items:center;gap:8px;width:100%;padding:6px 8px;min-height:36px;border:0;border-radius:8px;background:0;color:var(--tx);font:500 var(--fs-13)/1.35 var(--ft);text-align:left;cursor:pointer}
+.agc-rh:disabled{cursor:default}
+.agc-rh:hover:not(:disabled){background:var(--bg3)}
+.agc-ic,.agc-badge{display:inline-flex;flex-shrink:0;color:var(--tx2)}
+.agc-sum{flex:1;min-width:0;overflow-wrap:anywhere}
+.agc-row.ok .agc-badge{color:var(--success)}
+.agc-row.bad .agc-badge,.agc-row.bad .agc-sum{color:var(--dn)}
+.agc-row.run .agc-badge::before{content:'';width:8px;height:8px;border-radius:50%;background:var(--ac);animation:vibePulse 1s infinite}
+.agc-rb{padding:0 8px 6px 36px}
+.agc-out{margin:0;max-height:240px;overflow:auto;padding:8px;background:var(--bg);border:1px solid var(--bd);border-radius:6px;font:var(--fs-12)/1.45 var(--mn);white-space:pre-wrap;overflow-wrap:anywhere;color:var(--tx)}
+.agc-ra{display:flex;flex-wrap:wrap;align-items:center;gap:0 12px;padding:0 8px 6px 36px}
+.agc-chip{font:500 var(--fs-12) var(--mn);color:var(--tx2)}
+.agc-link{border:0;background:0;color:var(--ac);font:600 var(--fs-12) var(--ft);cursor:pointer;padding:6px 0;min-height:32px}
+.agc-link:disabled{color:var(--tx2);cursor:default}
+.agc-diff{flex:1 1 100%;min-width:0;max-width:100%;overflow-x:auto}
+.agc-dfile{font:600 var(--fs-12) var(--mn);color:var(--tx2);margin:6px 0 2px;overflow-wrap:anywhere}
+.agc-note{padding:2px 8px 2px 36px;font-size:var(--fs-12);color:var(--tx2);overflow-wrap:anywhere}
+.agc-q{padding:10px 12px;margin:4px 0;border:1px solid var(--ac);border-radius:8px;background:var(--bg);display:grid;gap:8px}
+.agc-qt{font-size:var(--fs-13);color:var(--tx);overflow-wrap:anywhere}
+.agc-qc{display:flex;flex-wrap:wrap;gap:6px}
+.agc-qf{display:flex;gap:6px}
+.agc-qf input{flex:1;min-width:0;padding:6px 8px;min-height:36px;border:1px solid var(--bd);border-radius:8px;background:var(--bg2);color:var(--tx);font:var(--fs-13) var(--ft)}
+.agc-btn{padding:6px 14px;min-height:36px;border:1px solid var(--ac);border-radius:8px;background:var(--accent-dim);color:var(--ac);font:600 var(--fs-12) var(--ft);cursor:pointer}
+.agc-btn.quiet{border-color:var(--bd);background:0;color:var(--tx2)}
+.agc-btn:disabled{opacity:.5;cursor:default}
+.agc-qa{font-size:var(--fs-12);color:var(--tx2)}
+.agc-live{padding:6px 12px;font-size:var(--fs-12);color:var(--tx2);overflow-wrap:anywhere;border-top:1px dashed var(--bd)}
+.agc-live[hidden],.agc-end[hidden]{display:none}
+.agc-end{padding:10px 12px;border-top:1px solid var(--bd)}
+.agc-rep{margin:0 0 8px;font-size:var(--fs-13);white-space:pre-wrap;overflow-wrap:anywhere}
+.agc-ea{display:flex;gap:8px}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .chip{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border:1px solid var(--bd);border-radius:12px;background:var(--bg);color:var(--tx);font:500 var(--fs-12)/1.3 var(--mn);cursor:pointer}
 .chip:hover{border-color:var(--ac)}
@@ -300,17 +347,18 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx)}
   </div>
 </div>
 <div class="sp" data-pane="chat">
-<div class="cp"><div class="hd" style="font-size:var(--fs-13);color:var(--tx2);font-weight:500">Vibe Coding</div><div class="ms" id="cm"><div class="mg ma">Tell me what to build!</div></div><div class="ia"><button class="vibe-mic" id="vibeMic" onclick="toggleVibeMic()" title="Voice input" aria-label="Voice input"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button><textarea id="vi" class="ii" rows="1" placeholder="Describe what to build..."></textarea><button class="vibe-mic" id="vibeFolder" onclick="pickWorkingFolder()" title="Allocate a working folder"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg><span class="on-mac">on Mac</span></button><button class="sb" id="sndb" title="Send" aria-label="Send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></button><button class="sb" id="stopb" onclick="doStop()" style="display:none;background:#c0392b" title="Stop" aria-label="Stop"><svg width="14" height="14" viewBox="0 0 24 24" fill="#fff" stroke="none"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></button></div></div>
+<div class="cp"><div class="hd" style="font-size:var(--fs-13);color:var(--tx2);font-weight:500">Vibe Coding</div><div class="ms" id="cm"><div class="mg ma">Tell me what to build!</div></div><div class="amode" id="amode" role="group" aria-label="How the next message is handled" hidden><button type="button" class="amb sel" id="amChat" aria-pressed="true" title="One answer: files are written behind a checkpoint">Chat</button><button type="button" class="amb" id="amAgent" aria-pressed="false" title="The agent reads, edits and checks files step by step">Agent</button><select id="amModel" aria-label="Model for the agent" hidden></select></div><div class="ia"><button class="vibe-mic" id="vibeMic" onclick="toggleVibeMic()" title="Voice input" aria-label="Voice input"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button><textarea id="vi" class="ii" rows="1" placeholder="Describe what to build..."></textarea><button class="vibe-mic" id="vibeFolder" onclick="pickWorkingFolder()" title="Allocate a working folder"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg><span class="on-mac">on Mac</span></button><button class="sb" id="sndb" title="Send" aria-label="Send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></button><button class="sb" id="stopb" onclick="doStop()" style="display:none;background:#c0392b" title="Stop" aria-label="Stop"><svg width="14" height="14" viewBox="0 0 24 24" fill="#fff" stroke="none"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></button></div></div>
 <div style="width:4px;cursor:col-resize;background:var(--bd)" id="rh"></div>
 <div class="vtabs" id="vtabs" role="tablist" aria-label="Panes"><button type="button" class="vtab sel" id="vtabChat" role="tab" aria-selected="true" onclick="_setVibeTab('chat')">Chat</button><button type="button" class="vtab" id="vtabPrev" role="tab" aria-selected="false" onclick="_setVibeTab('preview')">Preview<span class="vdot" hidden></span></button><button type="button" class="vtab" id="vtabCode" role="tab" aria-selected="false" onclick="_setVibeTab('code')">Code</button></div>
-<div class="ep"><div class="ftabs" id="ftabs" role="tablist" aria-label="Project files" hidden></div><div id="eb"></div><div class="tb"><button class="bt primary" onclick="doRun()" title="Execute code"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5 3 19 12 5 21 5 3"/></svg>Run</button><button class="bt" onclick="doPrev()" title="Live preview"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>Preview</button><button class="bt inspect-btn" id="inspectBtn" onclick="toggleInspect()" title="Inspect elements"><svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Inspect</button><div class="tb-sep"></div><button class="bt" onclick="doSave()" title="Save file"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save</button><button class="bt" onclick="doCopy()" title="Copy code"><svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>Copy</button><span class="rs" id="rs"></span></div></div>
+<div class="ep"><div class="ftabs" id="ftabs" role="tablist" aria-label="Project files" hidden></div><div class="abn" id="agentBanner" role="status" hidden>The agent is working on these files. Stop it to edit them.</div><div id="eb"></div><div class="tb"><button class="bt primary" onclick="doRun()" title="Execute code"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5 3 19 12 5 21 5 3"/></svg>Run</button><button class="bt" onclick="doPrev()" title="Live preview"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>Preview</button><button class="bt inspect-btn" id="inspectBtn" onclick="toggleInspect()" title="Inspect elements"><svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Inspect</button><div class="tb-sep"></div><button class="bt" onclick="doSave()" title="Save file"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save</button><button class="bt" onclick="doCopy()" title="Copy code"><svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>Copy</button><span class="rs" id="rs"></span></div></div>
 <div class="pp" id="pp"><div class="ph"><span>Live Preview</span><div class="ph-acts"><span class="ph-live" id="liveState" role="status" hidden></span><button type="button" class="ph-b" id="stopLiveBtn" onclick="VibeProj.stopLive()" title="Stop" aria-label="Stop what is running" hidden><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"/></svg></button><button type="button" class="ph-b" id="runBtn" onclick="VibeProj.runDialog()" title="Show the project on localhost, or run it on this Mac" aria-label="Show on localhost or run the project" hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><polygon points="7 4 20 12 7 20 7 4"/></svg></button><button type="button" class="ph-b" onclick="doPrev()" title="Refresh the preview" aria-label="Refresh the preview"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg></button><button type="button" class="ph-b inspect-btn" onclick="toggleInspect()" title="Inspect elements" aria-label="Inspect elements"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button><button type="button" class="ph-b" onclick="closePrev()" aria-label="Close preview" title="Close the preview"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div></div><div class="pv-wrap"><iframe id="pf" sandbox="allow-scripts"></iframe><div class="pv-empty" id="pvEmpty">The preview appears here when there is a page to show.</div></div></div>
 </div>
 <div class="op" id="op"><span style="color:var(--ac)">Vibe Coding</span></div>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
 <script src="/static/vibe-files.js?v=d056f202"></script>
-<script src="/static/vibe-projects.js?v=51ecabd1"></script>
+<script src="/static/vibe-projects.js?v=092f3bd5"></script>
+<script src="/static/vibe-agent.js?v=d29dbb50"></script>
 <script>
 // Auth + CSRF: inject session token and CSRF header on all requests
 // On mobile (Android Chrome), cookies may not persist — fallback to sessionStorage
@@ -579,6 +627,7 @@ function addOut(cls, text) {
 var _vibeAbort = null;
 
 function doStop() {
+  if (window.VibeAgent && VibeAgent.running()) { VibeAgent.stop(); return; }
   if (_vibeAbort) { _vibeAbort.abort(); _vibeAbort = null; }
   clearInterval(thinkTmr);
   var tm = document.getElementById('tkmsg');
@@ -615,6 +664,7 @@ function clearWorkingFolder() { _workdir = ''; _lsDel('codec_workdir'); _renderV
 
 function doSend() {
   var inp = document.getElementById('vi');
+  if (window.VibeAgent && VibeAgent.active()) { VibeAgent.send(inp); return; }   // Agent mode: the run card takes it from here
   var t = inp.value.trim();
   if (!t) return;
   inp.value = '';

@@ -20,7 +20,7 @@
   // files[path] = { model, base, fresh }   base = what is on disk, fresh = made during this answer
   var P = { id: null, title: '', files: {}, active: null, canUndo: false, disabled: false,
     scratch: null, live: null, lastAi: null, saveTimer: null, tabTimer: null,
-    run: null };   // run: what is live on this Mac { mode, url, since, timer, ready }
+    run: null, agent: false };   // run: what is live on this Mac { mode, url, since, timer, ready }
   // Showing or running a project works only on this Mac (the server says no to anything else).
   var ON_MAC = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
 
@@ -50,7 +50,7 @@
   // ── editor models ───────────────────────────────────────────────────────
   function makeModel(path, text) {
     var m = window.monaco.editor.createModel(text, VF.monacoLang(path));
-    m.onDidChangeContent(function () { if (!P.live) { scheduleTabs(); scheduleSave(); } });
+    m.onDidChangeContent(function () { if (!P.live) { scheduleTabs(); if (!P.agent) scheduleSave(); } });
     return m;
   }
 
@@ -108,7 +108,7 @@
       bar.appendChild(b);
     });
     var undo = $('undoBtn'), ver = $('verBtn'), runb = $('runBtn');
-    if (undo) { undo.hidden = !P.id; undo.disabled = !P.canUndo; }
+    if (undo) { undo.hidden = !P.id; undo.disabled = !P.canUndo || P.agent; }
     if (ver) ver.hidden = !P.id;
     if (runb) runb.hidden = !(P.id && ON_MAC);
   }
@@ -135,7 +135,7 @@
   }
 
   function flush(keepalive) {
-    if (!P.id) return Promise.resolve();
+    if (!P.id || P.agent) return Promise.resolve();      // while the agent works the folder is its own
     var id = P.id;
     var jobs = dirtyPaths().map(function (p) {
       var f = P.files[p], text = f.model.getValue();
@@ -164,6 +164,8 @@
     if (Object.keys(P.files).length && window.ed && window.monaco) window.ed.setModel(scratch());
     dispose();
     P.id = null; P.title = ''; P.active = null; P.canUndo = false; P.live = null; P.lastAi = null;
+    if (window.VibeAgent) window.VibeAgent.leave();
+    setBusy(false);
     var fn = $('fn'), lg = $('lg');
     if (fn) { fn.readOnly = false; fn.title = ''; }
     if (lg) lg.disabled = false;
@@ -184,6 +186,7 @@
         if (first) activate(first); else renderTabs();
         refreshPreview();
         adoptLive(id);
+        if (window.VibeAgent) window.VibeAgent.adopt(id);
         return info;
       });
     });
@@ -665,6 +668,19 @@
       .then(function () { go.disabled = false; });
   }
 
+  // ── what the agent's page code needs (static/vibe-agent.js) ───────────
+  // While an agent run holds the project the editor can be looked at but not typed in.
+  function setBusy(on) {
+    P.agent = !!on;
+    if (window.ed && window.ed.updateOptions) window.ed.updateOptions({ readOnly: !!on });
+    var b = $('agentBanner'); if (b) b.hidden = !on;
+    renderTabs();
+  }
+
+  function restoreId(cid) {
+    return flush().catch(function () {}).then(function () { return api('POST', base('/restore'), { checkpoint: cid }); }).then(reload);
+  }
+
   // ── small hooks for the page ───────────────────────────────────────────
   function previewSource() {
     if (!P.id) return null;
@@ -687,7 +703,7 @@
     detach: detach, undo: undo, versions: versions, closeVersions: closeVersions, messageNode: messageNode,
     previewSource: previewSource, setActiveText: setActiveText,
     runDialog: runDialog, closeRun: closeRun, runGo: runGo, stopLive: stopLive, liveActive: liveActive,
-    liveReload: liveReload,
+    liveReload: liveReload, reload: reload, activate: activate, restoreId: restoreId, setBusy: setBusy, diffNode: diffNode,
     id: function () { return P.id; }, title: function () { return P.title; }, active: function () { return P.active; },
     on: function () { return !!P.id; }, flush: flush,
     _state: P   // for tests and debugging
