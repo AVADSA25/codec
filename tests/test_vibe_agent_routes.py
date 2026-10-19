@@ -7,6 +7,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+import codec_vibe_agent as va
+import codec_vibe_agent_cmd as cmd
 import codec_vibe_projects as vp
 from routes.vibe_agent import router
 from vibe_agent_fakes import (  # noqa: F401  (fixtures are used by name)
@@ -164,3 +166,73 @@ def test_the_dashboard_registers_the_agent_routes_behind_its_login():
     sample = "/api/vibe/projects/some-project/agent/r0123abcd"
     assert sample not in auth.PUBLIC_ROUTES and not any(sample.startswith(p) for p in auth.PUBLIC_PREFIXES)
     assert "/api/vibe/agent/models" not in auth.PUBLIC_ROUTES
+
+
+# ── commands: approval and the list of allowed ones (Mac only) ──
+
+REMOTE = {"cf-connecting-ip": "203.0.113.9"}
+
+
+@pytest.fixture
+def commands_on(monkeypatch):
+    calls = []
+    monkeypatch.setattr(cmd, "available", lambda: True)
+    monkeypatch.setattr(va, "_run_command", lambda project, root, command, **kw: calls.append((command, kw["network"])) or cmd.Result(0, "ok", 0.1))
+    return calls
+
+
+def approval(client, pid, run_id):
+    return wait_for(lambda: next((e for e in client.get(f"/api/vibe/projects/{pid}/agent/{run_id}").json()["events"] if e["type"] == "approval"), None))
+
+
+def test_the_owner_approves_a_command_over_http_at_the_mac(client, scripted, commands_on):
+    pid = make_project()
+    scripted(["@@ run_check\nnpm test\n", "@@ finish\nok\n"])
+    run_id = start(client, pid).json()["run"]
+    ev = approval(client, pid, run_id)
+    assert ev["command"] == "npm test" and commands_on == []
+    url = f"/api/vibe/projects/{pid}/agent/{run_id}/approve"
+    assert client.post(url, content=b"nope").status_code == 400
+    assert client.post(url, json={"id": "a-wrong", "decision": "once"}).status_code == 409
+    assert client.post(url, json={"id": ev["id"], "decision": "maybe"}).status_code == 400
+    r = client.post(url, json={"id": ev["id"], "decision": "once", "network": "true"})          # only the boolean true counts
+    assert r.status_code == 200
+    finish_view(client, pid, run_id)
+    assert commands_on == [("npm test", False)]
+
+
+def test_nothing_about_commands_is_open_through_the_tunnel(client, scripted, commands_on):
+    pid = make_project()
+    vp.allow_command(pid, "npm run lint", False)
+    scripted(["@@ run_check\nnpm test\n", "@@ finish\nok\n"])
+    run_id = start(client, pid).json()["run"]
+    ev = approval(client, pid, run_id)
+    base = f"/api/vibe/projects/{pid}/agent"
+    assert client.post(f"{base}/{run_id}/approve", json={"id": ev["id"], "decision": "once"}, headers=REMOTE).status_code == 403
+    assert client.get(f"{base}/commands", headers=REMOTE).status_code == 403
+    assert client.post(f"{base}/commands/forget", json={"command": "npm run lint"}, headers=REMOTE).status_code == 403
+    assert client.post(f"{base}/{run_id}/approve", json={"id": ev["id"], "decision": "decline"}).status_code == 200
+    finish_view(client, pid, run_id)
+    assert vp.allowed_commands(pid) == [{"cmd": "npm run lint", "network": False}] and commands_on == []
+
+
+def test_a_run_started_through_the_tunnel_cannot_be_approved_even_at_the_mac(client, scripted, commands_on):
+    pid = make_project()
+    scripted(["@@ finish\nok\n"])
+    run_id = client.post(f"/api/vibe/projects/{pid}/agent/run", json={"goal": "from the phone"}, headers=REMOTE).json()["run"]
+    finish_view(client, pid, run_id)
+    r = client.post(f"/api/vibe/projects/{pid}/agent/{run_id}/approve", json={"id": "a1", "decision": "once"})
+    assert r.status_code == 403 and "started at this Mac" in r.json()["error"]
+
+
+def test_the_list_of_allowed_commands_can_be_read_and_a_command_forgotten(client):
+    pid = make_project()
+    vp.allow_command(pid, "npm test", False)
+    vp.allow_command(pid, "npm install", True)
+    base = f"/api/vibe/projects/{pid}/agent/commands"
+    assert client.get(base).json() == [{"cmd": "npm test", "network": False}, {"cmd": "npm install", "network": True}]
+    assert client.post(f"{base}/forget", json={"command": "npm install"}).json() == [{"cmd": "npm test", "network": False}]
+    assert client.post(f"{base}/forget", json={"command": "npm install"}).status_code == 404
+    assert client.post(f"{base}/forget", json={"command": 5}).status_code == 400
+    assert client.post(f"{base}/forget", content=b"x").status_code == 400
+    assert client.get("/api/vibe/projects/no-such-project/agent/commands").status_code == 404

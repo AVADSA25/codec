@@ -170,6 +170,30 @@ def test_a_run_read_from_its_log_without_an_end_is_shown_as_interrupted():
     assert run("A.synthEnd(A.newRun('p'), {finished: true, status: 'stopped'}).report") == ""
 
 
+@node
+def test_a_command_approval_makes_the_run_wait_and_a_decision_sets_it_going():
+    events = [{"seq": 1, "type": "start", "goal": "g", "model": {"label": "Local"}, "can_run": True, "limits": {"max_steps": 30}},
+              {"seq": 2, "type": "tool", "step": 1, "name": "run_check", "arg": "npm test"},
+              {"seq": 3, "type": "approval", "step": 1, "id": "a1b2c3", "command": "npm test"},
+              {"seq": 4, "type": "decision", "step": 1, "id": "a1b2c3", "decision": "always", "network": True}]
+    out = run("(function () { var r = A.newRun('p'); var seen = []; E.forEach(function (e) { var fx = A.applyEvent(r, e); seen.push([e.type, r.status, r.approval && r.approval.command, r.ranCommands, fx.map(function (x) { return x.t; })]); }); return seen; })()",
+              f"const E = {json.dumps(events)};")
+    assert out[1] == ["tool", "running", None, True, ["live", "meta", "tool"]]
+    assert out[2] == ["approval", "waiting", "npm test", True, ["meta", "approval"]]
+    assert out[3] == ["decision", "running", None, True, ["meta", "decision"]]
+    assert run("(function () { var r = A.newRun('p'); var fx = A.applyEvent(r, {seq: 1, type: 'approval', id: 'a1', command: 'make'}); return fx[1]; })()") == {"t": "approval", "id": "a1", "command": "make"}
+    assert run("(function () { var r = A.newRun('p'); return A.applyEvent(r, {seq: 2, type: 'decision', id: 'a1', decision: 'decline'})[1]; })()") == {"t": "decision", "id": "a1", "decision": "decline", "network": False}
+
+
+@node
+def test_a_run_started_away_from_the_mac_says_commands_are_off():
+    away = run("A.applyEvent(A.newRun('p'), {seq: 1, type: 'start', goal: 'g', can_run: false})")
+    assert [x["t"] for x in away] == ["meta", "note"] and "started away from this Mac" in away[1]["text"]
+    home = run("A.applyEvent(A.newRun('p'), {seq: 1, type: 'start', goal: 'g', can_run: true})")
+    assert [x["t"] for x in home] == ["meta"]
+    assert run("A.toolLabel('run_check', 'npm test')") == "Running npm test" and run("A.toolLabel('run_check', '')") == "Running a check"
+
+
 # ── wiring ──
 
 def test_the_script_is_stamped_and_loaded_after_the_project_script_and_before_the_page_script():
@@ -221,3 +245,19 @@ def test_the_script_only_talks_to_the_agent_routes_and_the_diff_route():
         assert needed in SRC, needed
     assert "confirm_cloud" in SRC and "'/api/vibe/projects/' + S.run.pid + '/diff?from='" in SRC
     assert not re.search(r"fetch\(\s*['\"]https?://", SRC)
+
+
+def test_the_approval_card_posts_exactly_what_was_clicked_and_shows_the_command_as_text():
+    card = SRC[SRC.index("function drawApproval(eff) {"):SRC.index("function drawDecision(eff) {")]
+    assert "el('code', 'agc-cmd', eff.command)" in card                       # the command goes in as text
+    assert "'/approve'" in card and "decision: decision" in card and "network: net.checked" in card
+    for label in ("Allow once", "Always allow here", "Decline"):
+        assert label in card
+    assert "decision === 'decline'" in card and card.count("createTextNode") == 1       # the only loose text is the fixed label
+    assert "'/commands/forget'" in SRC and "'/commands')" in SRC
+
+
+def test_the_only_call_that_approves_a_command_sits_in_the_cards_click_handlers():
+    assert SRC.count("'/approve'") == 1
+    body = SRC[SRC.index("function drawApproval(eff) {"):SRC.index("function drawDecision(eff) {")]
+    assert body.count("addEventListener('click'") == 3 and body.count("decide('") == 3

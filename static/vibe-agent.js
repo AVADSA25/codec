@@ -22,7 +22,8 @@
 
   function newRun(pid) {
     return { pid: pid, id: null, status: 'running', goal: '', model: '', maxSteps: 30, step: 0, since: 0, startedAt: 0,
-      startCp: null, steps: {}, checkpoints: [], changed: [], live: '', liveStep: 0, question: null, end: null, finished: false };
+      startCp: null, steps: {}, checkpoints: [], changed: [], live: '', liveStep: 0, question: null, approval: null, canRun: true,
+      ranCommands: false, end: null, finished: false };
   }
 
   function addUnique(list, items) {
@@ -40,7 +41,8 @@
         run.startCp = ev.start_checkpoint || null;
         run.startedAt = ev.t || run.startedAt;
         run.status = 'running';
-        return [{ t: 'meta' }];
+        run.canRun = ev.can_run !== false;
+        return [{ t: 'meta' }].concat(run.canRun ? [] : [{ t: 'note', step: 0, text: 'Commands are off for this run: it was started away from this Mac.' }]);
       case 'note':
         run.live = ''; run.liveStep = 0;
         return [{ t: 'live', text: '' }, { t: 'note', step: ev.step, text: ev.text }];
@@ -53,6 +55,7 @@
         run.step = Math.max(run.step, ev.step || 0);
         run.live = ''; run.liveStep = 0;
         run.steps[ev.step] = { step: ev.step, name: ev.name, arg: ev.arg, ok: null, summary: '', output: '', cp: null };
+        if (ev.name === 'run_check') run.ranCommands = true;
         return [{ t: 'live', text: '' }, { t: 'meta' }, { t: 'tool', step: ev.step, name: ev.name, arg: ev.arg }];
       case 'result': {
         var s = run.steps[ev.step] || (run.steps[ev.step] = { step: ev.step, name: ev.tool || '', arg: '', cp: null });
@@ -76,6 +79,14 @@
         run.status = 'running';
         run.question = null;
         return [{ t: 'meta' }, { t: 'answer', id: ev.id }];
+      case 'approval':
+        run.status = 'waiting';
+        run.approval = { id: ev.id, command: ev.command };
+        return [{ t: 'meta' }, { t: 'approval', id: ev.id, command: ev.command }];
+      case 'decision':
+        run.status = 'running';
+        run.approval = null;
+        return [{ t: 'meta' }, { t: 'decision', id: ev.id, decision: ev.decision, network: !!ev.network }];
       case 'end':
         run.status = ev.status || 'done';
         run.finished = true;
@@ -110,7 +121,7 @@
       case 'edit_file': return 'Editing' + a;
       case 'write_file': return 'Writing' + a;
       case 'delete_file': return 'Deleting' + a;
-      case 'run_check': return 'Running a check';
+      case 'run_check': return 'Running' + (arg ? ' ' + arg : ' a check');
       case 'ask': return 'Asking you a question';
       case 'finish': return 'Finishing';
       default: return name;
@@ -436,6 +447,73 @@
     input.focus({ preventScroll: true });
   }
 
+  // The agent asks to run a command. It runs only when the owner clicks, and only this exact text.
+  function drawApproval(eff) {
+    var li = el('li', 'agc-q agc-ap');
+    li.setAttribute('data-a', eff.id);
+    li.appendChild(el('div', 'agc-qt', 'The agent wants to run this command:'));
+    li.appendChild(el('code', 'agc-cmd', eff.command));
+    var label = el('label', 'agc-net');
+    var net = el('input'); net.type = 'checkbox';
+    label.appendChild(net);
+    label.appendChild(document.createTextNode(' Allow the web for this command (npm install, downloads)'));
+    li.appendChild(label);
+    li.appendChild(el('div', 'agc-qa', 'It runs in a sandbox: it reads this project, writes only inside it, has no network unless you tick the box, and is stopped after 60 seconds.'));
+    var row = el('div', 'agc-qc');
+    var once = el('button', 'agc-btn', 'Allow once'), always = el('button', 'agc-btn', 'Always allow here'), no = el('button', 'agc-btn quiet', 'Decline');
+    [once, always, no].forEach(function (b) { b.type = 'button'; row.appendChild(b); });
+    li.appendChild(row);
+    function decide(decision, b) {
+      var all = [once, always, no, net];
+      all.forEach(function (n) { n.disabled = true; });
+      api('POST', base(S.run.pid, '/' + S.run.id + '/approve'), { id: eff.id, decision: decision, network: net.checked }).then(function () {
+        row.hidden = true; label.hidden = true;
+        li.setAttribute('data-done', '1');                      // the log's own "decision" event must not say it twice
+        li.appendChild(el('div', 'agc-qa', decision === 'decline' ? 'You declined.' : (decision === 'always' ? 'You allowed it here, always' : 'You allowed it once') + (net.checked ? ', with the web.' : '.')));
+      }).catch(function (e) {
+        all.forEach(function (n) { n.disabled = false; });
+        toast(e.status === 403 ? 'Commands are approved only at this Mac.' : 'Could not send your decision: ' + e.message);
+      });
+    }
+    once.addEventListener('click', function () { decide('once'); });
+    always.addEventListener('click', function () { decide('always'); });
+    no.addEventListener('click', function () { decide('decline'); });
+    S.card.steps.appendChild(li);
+    once.focus({ preventScroll: true });
+  }
+
+  // A decision seen in the log (the page was away, or another tab decided): settle the card.
+  function drawDecision(eff) {
+    var li = S.card && S.card.steps.querySelector('[data-a="' + eff.id + '"]');
+    if (!li || li.getAttribute('data-done')) return;
+    li.setAttribute('data-done', '1');
+    Array.prototype.forEach.call(li.querySelectorAll('.agc-qc, .agc-net'), function (n) { n.hidden = true; });
+    li.appendChild(el('div', 'agc-qa', eff.decision === 'decline' ? 'Declined.' : 'Allowed' + (eff.decision === 'always' ? ' here, always' : ' once') + (eff.network ? ', with the web.' : '.')));
+  }
+
+  // Commands the owner allowed for good in this project, each with a way to take it back.
+  function drawAllowed() {
+    var c = S.card, run = S.run;
+    if (!c || !run || !run.ranCommands) return;
+    api('GET', base(run.pid, '/commands')).then(function (list) {
+      if (S.run !== run || !list.length) return;
+      var box = el('div', 'agc-allow');
+      box.appendChild(el('div', 'agc-qa', 'Commands allowed here without asking:'));
+      list.forEach(function (item) {
+        var row = el('div', 'agc-arow');
+        row.appendChild(el('code', 'agc-cmd', item.cmd + (item.network ? '  (web)' : '')));
+        var forget = el('button', 'agc-link', 'Forget'); forget.type = 'button';
+        forget.addEventListener('click', function () {
+          forget.disabled = true;
+          api('POST', base(run.pid, '/commands/forget'), { command: item.cmd }).then(function () { row.remove(); toast('That command will ask again'); })
+            .catch(function (e) { forget.disabled = false; toast('Could not forget it: ' + e.message); });
+        });
+        row.appendChild(forget); box.appendChild(row);
+      });
+      c.end.appendChild(box);
+    }).catch(function () { /* away from the Mac, or the list is empty */ });
+  }
+
   function drawNote(eff) {
     if (!S.card || !eff.text) return;
     S.card.steps.appendChild(el('li', 'agc-note', eff.text));
@@ -468,9 +546,11 @@
       else if (eff.t === 'result') drawResult(eff);
       else if (eff.t === 'checkpoint') { drawCheckpoint(eff.cp); scheduleReload(eff.cp.changed); }
       else if (eff.t === 'question') drawQuestion(eff);
+      else if (eff.t === 'approval') drawApproval(eff);
+      else if (eff.t === 'decision') drawDecision(eff);
       else if (eff.t === 'note') drawNote(eff);
       else if (eff.t === 'live') { c.live.textContent = eff.text; c.live.hidden = !eff.text; }
-      else if (eff.t === 'end') drawEnd(eff.end);
+      else if (eff.t === 'end') { drawEnd(eff.end); drawAllowed(); }
     });
     keepInView();
   }

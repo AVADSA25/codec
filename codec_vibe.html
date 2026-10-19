@@ -193,6 +193,12 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx)}
 .agc-btn.quiet{border-color:var(--bd);background:0;color:var(--tx2)}
 .agc-btn:disabled{opacity:.5;cursor:default}
 .agc-qa{font-size:var(--fs-12);color:var(--tx2)}
+.agc-cmd{display:block;padding:8px;background:var(--bg2);border:1px solid var(--bd);border-radius:6px;font:var(--fs-12)/1.45 var(--mn);white-space:pre-wrap;overflow-wrap:anywhere;color:var(--tx)}
+.agc-net{display:flex;align-items:center;gap:6px;font-size:var(--fs-12);color:var(--tx2);min-height:32px}
+.agc-net[hidden],.agc-qc[hidden]{display:none}
+.agc-allow{margin-top:10px;padding-top:8px;border-top:1px dashed var(--bd);display:grid;gap:4px}
+.agc-arow{display:flex;align-items:center;gap:8px}
+.agc-arow .agc-cmd{flex:1;min-width:0;padding:4px 8px}
 .agc-live{padding:6px 12px;font-size:var(--fs-12);color:var(--tx2);overflow-wrap:anywhere;border-top:1px dashed var(--bd)}
 .agc-live[hidden],.agc-end[hidden]{display:none}
 .agc-end{padding:10px 12px;border-top:1px solid var(--bd)}
@@ -358,7 +364,7 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx)}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
 <script src="/static/vibe-files.js?v=d056f202"></script>
 <script src="/static/vibe-projects.js?v=092f3bd5"></script>
-<script src="/static/vibe-agent.js?v=d29dbb50"></script>
+<script src="/static/vibe-agent.js?v=dffcd27d"></script>
 <script>
 // Auth + CSRF: inject session token and CSRF header on all requests
 // On mobile (Android Chrome), cookies may not persist — fallback to sessionStorage
