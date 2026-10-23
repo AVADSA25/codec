@@ -651,10 +651,11 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
     function connectWS() {
         wsIntentionalClose = false;
         var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-        var url = proto + '//' + location.host + '/ws/voice';
+        /* pcm=1: this page plays the streamed voice 02 chunks (static/voice-audio.js); an older page that is still open does not send it */
+        var url = proto + '//' + location.host + '/ws/voice?pcm=1';
         /* If we have a session ID from a previous connection, always request resume */
         if (wsSessionId) {
-            url += '?resume=' + encodeURIComponent(wsSessionId);
+            url += '&resume=' + encodeURIComponent(wsSessionId);
         }
         ws = new WebSocket(url);
         ws.binaryType = 'arraybuffer';

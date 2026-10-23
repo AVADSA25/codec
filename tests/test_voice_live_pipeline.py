@@ -73,7 +73,7 @@ class FakeTTS:
 class Call:
     """A VoicePipeline with a recording socket, a fake model and the fake clone."""
 
-    def __init__(self, state, monkeypatch, tts=None, tokens=("Hello there. ", "How are you?")):
+    def __init__(self, state, monkeypatch, tts=None, tokens=("Hello there. ", "How are you?"), client_pcm=True):
         ws = AsyncMock()
         self.events = []
 
@@ -88,7 +88,7 @@ class Call:
         monkeypatch.setattr(codec_tts, "astream_clone", self.tts)
         with patch("codec_voice.VoicePipeline._load_skills"), patch("codec_voice._build_system_prompt", return_value="sys"):
             from codec_voice import VoicePipeline
-            self.p = VoicePipeline(ws)
+            self.p = VoicePipeline(ws, client_pcm=client_pcm)
         p = self.p
         p.skills, p.mode, p._awaiting_ask_user, p._disconnect_reason = {}, "default", None, "user"
         p._poll_pending_question_for_voice = AsyncMock(return_value=None)
@@ -421,3 +421,50 @@ def test_an_error_in_the_model_leaves_nothing_queued_for_the_next_turn(isolated,
     assert c.frames("pcm") == [], "the sentence that was being made when the model failed is not spoken after the turn ended"
     assert len(c.p._speech._queue) == 0 and not c.p.processing and not c.p.interrupted.is_set()
     assert c.jsons("audio_reset") == [], "an error does not reset the page"
+
+
+# ── only a page that says it can play the stream gets it ────────────────────
+
+def test_a_page_that_did_not_ask_for_streamed_audio_keeps_whole_files_even_with_live_on(isolated, monkeypatch):
+    """A voice page that was already open when this shipped reconnects without ?pcm=1; it cannot play PCM frames."""
+    live_on(isolated)
+
+    async def go():
+        c = Call(isolated, monkeypatch, client_pcm=False)
+        await c.turn()
+        await c.p._speak_outside_a_turn("Greetings.", greeting=True)
+        return c
+    c = asyncio.run(go())
+    assert c.p._live_speech() is None and c.tts.requests == []
+    assert c.frames("pcm") == [] and c.frames("file") == [KOKORO, KOKORO, KOKORO]
+
+
+def test_the_route_tells_the_pipeline_whether_the_page_can_play_the_stream(monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    import codec_voice
+    from routes import websocket as wsmod
+
+    seen = []
+
+    class FakePipeline:
+        def __init__(self, ws, resume_session_id=None, client_pcm=False):
+            seen.append((resume_session_id, client_pcm))
+
+        async def run(self):
+            return None
+
+        def save_to_memory(self):
+            pass
+
+        async def close(self):
+            pass
+    monkeypatch.setattr(codec_voice, "VoicePipeline", FakePipeline)
+    monkeypatch.setattr(wsmod, "_ws_authorized", lambda ws: True)
+    app = FastAPI()
+    app.include_router(wsmod.router)
+    client = TestClient(app)
+    for url in ("/ws/voice", "/ws/voice?pcm=1", "/ws/voice?pcm=0", "/ws/voice?pcm=true", "/ws/voice?pcm=1&resume=abc"):
+        with client.websocket_connect(url):
+            pass
+    assert seen == [(None, False), (None, True), (None, False), (None, False), ("abc", True)]

@@ -322,6 +322,11 @@ def test_the_page_no_longer_decodes_or_queues_audio_itself():
     assert "player.push(data)" in PAGE
 
 
+def test_the_page_says_it_can_play_the_stream_and_keeps_the_resume_parameter():
+    assert "'//' + location.host + '/ws/voice?pcm=1'" in PAGE
+    assert "url += '&resume=' + encodeURIComponent(wsSessionId);" in PAGE
+
+
 def test_the_reply_plays_in_its_own_24_khz_context_and_the_microphone_stays_at_16():
     assert "var PLAY_RATE   = 24000;" in PAGE
     assert "audioCtx = new Ctx({ sampleRate: 16000 });" in PAGE

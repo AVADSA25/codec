@@ -81,9 +81,12 @@ async def voice_websocket(websocket: WebSocket):
     from codec_metrics import metrics
     metrics.inc("codec_voice_sessions_total")
     resume_id = websocket.query_params.get("resume")
+    # ?pcm=1: the page can play streamed voice 02 chunks (docs/CODEC-VOICE-02-LIVE-DESIGN.md). A page opened before that
+    # shipped, or any other client, does not send it and keeps getting whole audio files.
+    client_pcm = websocket.query_params.get("pcm") == "1"
     print(f"[Voice] WebSocket connected{' (resume=' + resume_id + ')' if resume_id else ''}")
     from codec_voice import VoicePipeline
-    pipeline = VoicePipeline(websocket, resume_session_id=resume_id)
+    pipeline = VoicePipeline(websocket, resume_session_id=resume_id, client_pcm=client_pcm)
     try:
         await pipeline.run()
     except WebSocketDisconnect:

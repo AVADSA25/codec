@@ -440,8 +440,11 @@ class VoicePipeline:
     _resume_timestamps: dict[str, float] = {}  # session_id → time.monotonic() at save (M-6)
     _RESUME_TTL = 600  # seconds — discard saved sessions older than this (10 min)
 
-    def __init__(self, websocket, resume_session_id: str | None = None):
+    def __init__(self, websocket, resume_session_id: str | None = None, client_pcm: bool = False):
         self.ws              = websocket
+        # The page said it can play streamed voice 02 chunks (?pcm=1). Without it the call keeps whole Kokoro files, so a page
+        # that was already open when this shipped does not receive audio it cannot play.
+        self.client_pcm      = bool(client_pcm)
         self.session_id      = resume_session_id or "voice_" + datetime.now().strftime("%Y%m%d_%H%M%S")
         self._disconnect_reason = "unexpected"  # "user" or "unexpected"
 
@@ -939,7 +942,7 @@ class VoicePipeline:
         if not self._speech_checked:
             self._speech_checked = True
             try:
-                live = codec_tts.live_settings(codec_tts.load_config())
+                live = codec_tts.live_settings(codec_tts.load_config()) if self.client_pcm else None
                 if live:
                     self._speech = codec_voice_speech.LiveSpeech(
                         live, http=self._http, url=KOKORO_URL, send_bytes=self._safe_send_bytes,
@@ -1851,7 +1854,7 @@ class VoicePipeline:
         # dashboard warmed it). Only when the live voice is on and the model is not already loaded.
         async def _warm_voice_tts():
             try:
-                live = codec_tts.live_settings(codec_tts.load_config())
+                live = codec_tts.live_settings(codec_tts.load_config()) if self.client_pcm else None
                 if live and not await asyncio.to_thread(codec_tts.model_loaded, KOKORO_URL, live["model"]):
                     await asyncio.to_thread(codec_tts.warm_up, KOKORO_URL, None, "live")
             except Exception:
