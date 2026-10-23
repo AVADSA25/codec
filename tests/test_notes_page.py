@@ -260,13 +260,11 @@ const out = {};
   const press = async (ev) => { for (const f of (b.docListeners.keydown || [])) f(ev); await tick(); };
   await press(key);
   out.keys = { posts: b.calls.filter((c) => c.method === 'POST').length, stopped: !!key.stopped };
-  b.els['panel-notes'].cls.delete('active');
-  b.els.notesBody.value = 'another';
-  b.els.notesNew.fire('click');
-  await tick();
+  b.els['panel-notes'].cls.delete('active');          // another tab is open now, the editor still holds words
+  b.els.notesBody.value = 'typed, then the tab changed';
   const key2 = { metaKey: true, key: 's', preventDefault() { this.stopped = true; } };
   await press(key2);
-  out.keys.postsWhenClosed = b.calls.filter((c) => c.method === 'POST').length;
+  out.keys.writesWhenClosed = b.calls.filter((c) => c.method === 'POST' || c.method === 'PUT').length;
   console.log(JSON.stringify(out));
 })();
 """
@@ -351,7 +349,7 @@ def test_delete_asks_first_and_then_moves_the_note_away(panel):
 
 @node
 def test_the_keyboard_shortcut_saves_only_while_the_tab_is_open(panel):
-    assert panel["keys"] == {"posts": 1, "stopped": True, "postsWhenClosed": 1}
+    assert panel["keys"] == {"posts": 1, "stopped": True, "writesWhenClosed": 1}
 
 
 # ── wiring ───────────────────────────────────────────────────────────────────

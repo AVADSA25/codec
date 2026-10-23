@@ -164,13 +164,15 @@ def test_the_list_gives_a_short_preview_and_the_limit_is_clamped(folder):
 
 @pytest.mark.parametrize("bad", ["../x", "..", "A1B2C3D4E5F6", "abc", "a1b2c3d4e5f6/../..", "a1b2c3d4e5f6.json", "", None, 12, "g1b2c3d4e5f6"])
 def test_an_id_that_is_not_twelve_hex_digits_never_touches_the_disk(folder, bad):
+    # A file that looks exactly like a note, one folder up: only the id check can keep it out of reach.
     outside = folder.parent / "x.json"
-    outside.write_text("{}")
-    for call in (lambda: notes.get(bad), lambda: notes.update(bad, body="x"), lambda: notes.trash(bad)):
+    body = json.dumps({"id": "x", "title": "outside", "body": "outside", "created": "c", "updated": "u"})
+    outside.write_text(body)
+    for call in (lambda: notes.get(bad), lambda: notes.update(bad, body="changed"), lambda: notes.trash(bad)):
         with pytest.raises(notes.NoteError) as e:
             call()
         assert e.value.status == 404
-    assert outside.read_text() == "{}"
+    assert outside.read_text() == body
 
 
 def test_trash_moves_the_file_and_nothing_is_erased(folder):
