@@ -89,7 +89,8 @@ function el() {
 
 const NOTE = (id, title, body, extra) => Object.assign({ id, title, body, preview: body, source: 'manual', created: '2026-10-21T08:00:00.000+00:00', updated: '2026-10-21T08:00:00.000+00:00', chars: body.length }, extra || {});
 
-async function boot(handler) {
+async function boot(handler, opts) {
+  opts = opts || {};
   globalThis.__html = 0;
   const ids = ['panel-notes', 'tab-notes', 'notesOff', 'notesWrap', 'notesEdit', 'notesHint', 'notesTitle', 'notesBody', 'notesSave',
     'notesCopy', 'notesDelete', 'notesBack', 'notesNew', 'notesSearch', 'notesItems', 'notesEmpty', 'notesCount', 'notesStatus'];
@@ -114,6 +115,7 @@ async function boot(handler) {
     CodecShell: { toast: (m) => toasts.push(m), ask: async (o) => { asks.push(o.title); return state.ask; } },
     addEventListener: () => {},
   };
+  if (opts.coarse) sandbox.matchMedia = (q) => ({ matches: q.includes('coarse') });
   sandbox.window = sandbox;
   vm.createContext(sandbox);
   vm.runInContext(src, sandbox);
@@ -163,6 +165,23 @@ const out = {};
     listCalls: b.calls.filter((c) => c.url.startsWith('/api/notes?limit=200')).length };
   await b.notes.show();                           // the hash handler echoes show(): no second load
   out.present.echoCalls = b.calls.filter((c) => c.url.startsWith('/api/notes?limit=200')).length;
+
+  // two show() calls at once (the tab opens and the hash handler echoes it) fetch the list once
+  b = await boot(live());
+  await Promise.all([b.notes.show(), b.notes.show()]);
+  out.concurrent = b.calls.filter((c) => c.url.startsWith('/api/notes?limit=200')).length;
+
+  // on a phone, opening a note to read it does not raise the keyboard; a new note does
+  b = await boot(live(), { coarse: true });
+  await b.notes.show();
+  await rows(b)[0].fire('click');
+  out.coarse = { openedFocused: b.els.notesBody.focused };
+  await b.els.notesNew.fire('click');
+  out.coarse.newFocused = b.els.notesBody.focused;
+  b = await boot(live());
+  await b.notes.show();
+  await rows(b)[0].fire('click');
+  out.coarse.mouseOpenedFocused = b.els.notesBody.focused;
 
   // 3. search waits a moment, then asks the server; an empty answer says so
   b = await boot(live());
@@ -280,6 +299,12 @@ def test_notes_are_drawn_as_text_never_as_html(panel):
     assert p["count"] == "2 notes" and p["emptyHidden"] is True
     assert p["html"] == 0
     assert p["listCalls"] == 1 and p["echoCalls"] == 1          # the hash handler's second show() does not reload
+
+
+@node
+def test_the_list_is_fetched_once_for_two_simultaneous_opens_and_a_phone_does_not_pop_the_keyboard(panel):
+    assert panel["concurrent"] == 1
+    assert panel["coarse"] == {"openedFocused": False, "newFocused": True, "mouseOpenedFocused": True}
 
 
 @node

@@ -70,7 +70,7 @@
   // ── the panel ──────────────────────────────────────────────────────────
 
   var S = { ready: null, detecting: null, notes: [], total: 0, matched: 0, q: '', timer: null, lastLoad: 0,
-    saved: { id: null, title: '', body: '' }, busy: false };
+    loading: null, loadingQ: null, saved: { id: null, title: '', body: '' }, busy: false };
 
   function $(id) { return document.getElementById(id); }
   function toast(msg) { if (root.CodecShell && root.CodecShell.toast) root.CodecShell.toast(msg); }
@@ -117,6 +117,9 @@
     return !!(t && b && !$('notesEdit').hidden && isDirty(S.saved, t.value.trim(), b.value));
   }
 
+  // A phone raises the keyboard the moment a text box takes focus: only a new note should do that.
+  function coarsePointer() { return !!(root.matchMedia && root.matchMedia('(pointer: coarse)').matches); }
+
   function ask(opts) {
     if (root.CodecShell && root.CodecShell.ask) return root.CodecShell.ask(opts);
     return Promise.resolve(root.confirm(opts.message));
@@ -160,14 +163,20 @@
     $('notesCount').textContent = countLabel(S.total, S.matched, S.q);
   }
 
-  function load() {
+  // The same list asked for twice at once (the tab opens and the hash handler echoes it) is fetched once.
+  // A save or a delete passes fresh = true: the list must come from after the change.
+  function load(fresh) {
     var q = S.q;
-    return api('GET', listUrl(q)).then(function (d) {
+    if (S.loading && S.loadingQ === q && !fresh) return S.loading;
+    var mine = api('GET', listUrl(q)).then(function (d) {
       if (q !== S.q) return;                         // a newer search is already on its way
       S.notes = d.notes || []; S.total = d.total || 0; S.matched = d.matched || 0;
       S.lastLoad = Date.now();
       render();
-    }, function (e) { setStatus(errorText(e)); });
+    }, function (e) { setStatus(errorText(e)); }).then(function () { if (S.loading === mine) S.loading = null; });
+    S.loading = mine;
+    S.loadingQ = q;
+    return mine;
   }
 
   // Called by the Tasks page when the Notes tab opens (and again by its hash handler: the guard skips that echo).
@@ -200,8 +209,8 @@
       if (!ok) return;
       api('GET', '/api/notes/' + encodeURIComponent(id)).then(function (n) {
         fill(n);
-        $('notesBody').focus();
-      }, function (e) { toast(errorText(e)); load(); });
+        if (!coarsePointer()) $('notesBody').focus();
+      }, function (e) { toast(errorText(e)); load(true); });
     });
   }
 
@@ -228,7 +237,7 @@
       $('notesDelete').disabled = false;
       setStatus('Saved');
       S.lastLoad = 0;
-      return load();
+      return load(true);
     }, function (e) { setStatus(errorText(e)); })
       .then(function () { S.busy = false; $('notesSave').disabled = false; });
   }
@@ -254,7 +263,7 @@
           showEditor(false);
           S.lastLoad = 0;
           toast('Note deleted');
-          return load();
+          return load(true);
         }, function (e) { toast(errorText(e)); });
       });
   }
