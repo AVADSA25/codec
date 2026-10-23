@@ -165,6 +165,8 @@ def test_the_list_gives_a_short_preview_and_the_limit_is_clamped(folder):
 @pytest.mark.parametrize("bad", ["../x", "..", "A1B2C3D4E5F6", "abc", "a1b2c3d4e5f6/../..", "a1b2c3d4e5f6.json", "", None, 12, "g1b2c3d4e5f6"])
 def test_an_id_that_is_not_twelve_hex_digits_never_touches_the_disk(folder, bad):
     # A file that looks exactly like a note, one folder up: only the id check can keep it out of reach.
+    # (The notes folder must exist, or the operating system refuses "notes/../x.json" on its own.)
+    folder.mkdir(parents=True, exist_ok=True)
     outside = folder.parent / "x.json"
     body = json.dumps({"id": "x", "title": "outside", "body": "outside", "created": "c", "updated": "u"})
     outside.write_text(body)
