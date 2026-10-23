@@ -52,7 +52,7 @@ def tts(tmp_path, monkeypatch):
             raise reply["r"]
         return reply["r"]
 
-    monkeypatch.setattr(rt.rq, "post", fake_post)
+    monkeypatch.setattr("requests.post", fake_post)      # codec_tts, which routes/tts.py now asks, calls requests.post
     app = FastAPI()
     app.include_router(rt.router)
     return TestClient(app), calls, reply, custom

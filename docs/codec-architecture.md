@@ -195,6 +195,14 @@ Emitted by `codec_notes` (docs/NOTES-DESIGN.md), source `codec-notes`, level inf
 | `note_updated` | `id`, `source`, `chars` |
 | `note_deleted` | `id`, `source`, `chars` (the note moves to `.trash/`) |
 
+### Voice events (2026-10)
+
+Emitted by `codec_tts` (docs/CODEC-VOICE-02-DESIGN.md), source `codec-tts`, level warning. The reason and the purpose only: never the text. At most one line per reason per minute.
+
+| Event | extra fields |
+|---|---|
+| `tts_fallback` | `purpose` (`speak`), `reason` (an exception name such as `ConnectionError` or `Timeout`, `http_<status>`, or `not_audio`): voice 02 failed and the Kokoro request was used instead |
+
 ### Web Push events (2026-09, UI P3.13)
 
 Emitted by `codec_push` (docs/P3.13-DESIGN.md). Metadata only: never an endpoint, a key or any notification text.

@@ -241,17 +241,17 @@ def _should_stop(audit_path: str, audit_offset: int) -> Optional[str]:
 
 
 def _tts(text: str) -> Optional[bytes]:
-    import requests
     try:
         with open(os.path.expanduser("~/.codec/config.json")) as f:
             config = json.load(f)
     except (OSError, ValueError):
         config = {}
-    r = requests.post(config.get("tts_url", "http://localhost:8085/v1/audio/speech"),
-                      json={"model": config.get("tts_model", "mlx-community/Kokoro-82M-bf16"), "input": text,
-                            "voice": config.get("tts_voice", "am_adam"),
-                            "speed": float(config.get("tts_speed", 1.0))}, timeout=120)
-    return r.content if r.status_code == 200 and r.content else None
+    import codec_tts
+    spoken = codec_tts.speak(config.get("tts_url", "http://localhost:8085/v1/audio/speech"), text, "speak",
+                             {"model": config.get("tts_model", "mlx-community/Kokoro-82M-bf16"),
+                              "voice": config.get("tts_voice", "am_adam"),
+                              "speed": float(config.get("tts_speed", 1.0))}, cfg=config, timeout=120)
+    return spoken.audio
 
 
 def _play(path: str, audit_path: str, audit_offset: int) -> Optional[str]:

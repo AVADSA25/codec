@@ -711,15 +711,16 @@ def _speak_on_mac(text: str) -> None:
     import tempfile
     config = _config()
     try:
-        r = requests.post(config.get("tts_url", "http://localhost:8085/v1/audio/speech"),
-                          json={"model": config.get("tts_model", "mlx-community/Kokoro-82M-bf16"), "input": words,
-                                "voice": config.get("tts_voice", "am_adam"),
-                                "speed": float(config.get("tts_speed", 1.0))}, timeout=120)
-        if r.status_code != 200 or not r.content:
+        import codec_tts
+        spoken = codec_tts.speak(config.get("tts_url", "http://localhost:8085/v1/audio/speech"), words, "speak",
+                                 {"model": config.get("tts_model", "mlx-community/Kokoro-82M-bf16"),
+                                  "voice": config.get("tts_voice", "am_adam"),
+                                  "speed": float(config.get("tts_speed", 1.0))}, cfg=config, timeout=120)
+        if not spoken.audio:
             return
         fd, path = tempfile.mkstemp(suffix=".mp3")
         with os.fdopen(fd, "wb") as f:
-            f.write(r.content)
+            f.write(spoken.audio)
         try:
             subprocess.run(["afplay", path], timeout=600, capture_output=True)
         finally:

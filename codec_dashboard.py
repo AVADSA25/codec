@@ -1214,6 +1214,14 @@ async def _start_background_services():
     _bg_tasks["vision_keepalive"] = asyncio.create_task(_vision_keepalive())
     _bg_tasks["session_cleanup"] = asyncio.create_task(_bg_session_cleanup())
     _bg_tasks["llm_fallback"] = asyncio.create_task(_bg_llm_fallback())
+    # Voice 02 (docs/CODEC-VOICE-02-DESIGN.md): load the clone model in the background, so the first Speak is not the slow one.
+    # Does nothing, and asks nothing of the TTS server, unless tts_clone is set.
+    try:
+        import threading
+        import codec_tts
+        threading.Thread(target=codec_tts.warm_up, daemon=True, name="tts-clone-warmup").start()
+    except Exception as e:
+        log.warning(f"[STARTUP] Voice warm-up not started (non-critical): {e}")
     # Load skill registry for Chat tool calling
     try:
         from codec_dispatch import load_skills

@@ -68,20 +68,20 @@ def run(task, app="", ctx=""):
         try:
             import json
             import os
-            import requests
             try:
                 _c = json.load(open(os.path.expanduser("~/.codec/config.json")))
             except Exception:
                 _c = {}
-            r = requests.post(_c.get("tts_url", "http://localhost:8085/v1/audio/speech"),
-                json={"model": _c.get("tts_model", "mlx-community/Kokoro-82M-bf16"),
-                      "input": f"Your {display} timer is done.",
-                      "voice": _c.get("tts_voice", "am_adam"),
-                      "speed": float(_c.get("tts_speed", 1.0))},
-                stream=True, timeout=20)
-            if r.status_code == 200:
+            import codec_tts
+            spoken = codec_tts.speak(_c.get("tts_url", "http://localhost:8085/v1/audio/speech"),
+                f"Your {display} timer is done.", "speak",
+                {"model": _c.get("tts_model", "mlx-community/Kokoro-82M-bf16"),
+                 "voice": _c.get("tts_voice", "am_adam"),
+                 "speed": float(_c.get("tts_speed", 1.0))},
+                cfg=_c, timeout=20)
+            if spoken.audio:
                 tmp = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
-                [tmp.write(c) for c in r.iter_content(4096)]; tmp.close()
+                tmp.write(spoken.audio); tmp.close()
                 subprocess.Popen(["afplay", tmp.name])
         except Exception:
             pass
