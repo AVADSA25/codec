@@ -10,6 +10,11 @@ Without `tts_clone` every request is exactly what it was.
                   "ref_text_file": "~/.codec/voices/codec-02/reference.txt"}
 
 The live conversation (purpose "live") is not enabled by default: a clone takes about 3 seconds before a sentence starts.
+
+The clone only applies when it cannot hurt the shared TTS server (found with a real server, 23 Oct 2026): the model must already
+be in the local Hugging Face cache (an unknown model makes the server try the network and hold every request for a minute or
+more), the reference clip must be a real WAV file, and the text must be short (a clone is spoken at about the speed of speech,
+so a long text would hold the server, Kokoro requests included, for as long as it lasts). Long texts stay on Kokoro.
 """
 from __future__ import annotations
 
@@ -26,6 +31,7 @@ import requests
 log = logging.getLogger("codec.tts")
 
 CLONE_TIMEOUT = 45          # seconds to wait for the clone before the Kokoro request is tried
+CLONE_MAX_CHARS = 400       # a longer text goes to Kokoro: about 25 s of speech, so the clone cannot hold the server for long
 WARM_TEXT = "Ready."
 _FALLBACK_EVERY = 60.0      # one audit line per reason per minute, so a stopped server cannot flood the log
 _last_note: dict = {}
@@ -51,8 +57,26 @@ def load_config() -> dict:
         return {}
 
 
+def _hf_hub() -> str:
+    return os.environ.get("HF_HUB_CACHE") or os.path.join(os.environ.get("HF_HOME") or os.path.expanduser("~/.cache/huggingface"), "hub")
+
+
+def model_cached(model: str) -> bool:
+    """The model is already in the local Hugging Face cache, so the server never has to fetch it."""
+    return os.path.isdir(os.path.join(_hf_hub(), "models--" + model.replace("/", "--"), "snapshots"))
+
+
+def _is_wav(path: str) -> bool:
+    try:
+        with open(path, "rb") as f:
+            head = f.read(12)
+    except OSError:
+        return False
+    return len(head) == 12 and head[:4] == b"RIFF" and head[8:12] == b"WAVE"
+
+
 def clone_settings(cfg: Optional[dict], purpose: Optional[str]) -> Optional[dict]:
-    """The clone's request fields when it is configured, enabled for this purpose and its reference clip is there, else None."""
+    """The clone's request fields when it is configured, enabled for this purpose and safe to ask for, else None."""
     c = (cfg or {}).get("tts_clone")
     if not isinstance(c, dict) or not purpose:
         return None
@@ -61,7 +85,9 @@ def clone_settings(cfg: Optional[dict], purpose: Optional[str]) -> Optional[dict
         return None
     model = str(c.get("model") or "").strip()
     ref = os.path.expanduser(str(c.get("ref_audio") or ""))
-    if not model or not ref or not os.path.isfile(ref) or os.path.getsize(ref) == 0:
+    if not model or not model_cached(model):
+        return None
+    if not ref or not os.path.isfile(ref) or os.path.getsize(ref) == 0 or not _is_wav(ref):
         return None
     ref_text = str(c.get("ref_text") or "").strip()
     if not ref_text and c.get("ref_text_file"):
@@ -72,14 +98,19 @@ def clone_settings(cfg: Optional[dict], purpose: Optional[str]) -> Optional[dict
             ref_text = ""
     if not ref_text:
         return None
-    return {"model": model, "ref_audio": ref, "ref_text": ref_text, "lang_code": str(c.get("lang_code") or "auto")}
+    try:
+        max_chars = max(1, int(c.get("max_chars") or CLONE_MAX_CHARS))
+    except (TypeError, ValueError):
+        max_chars = CLONE_MAX_CHARS
+    return {"model": model, "ref_audio": ref, "ref_text": ref_text, "lang_code": str(c.get("lang_code") or "auto"),
+            "max_chars": max_chars}
 
 
 def payloads(text: str, purpose: Optional[str], kokoro: dict, cfg: Optional[dict] = None) -> list:
     """The requests to try, best first, as (json body, is_clone): the clone when it applies, then the caller's Kokoro request."""
     plan = []
     s = clone_settings(cfg if cfg is not None else load_config(), purpose)
-    if s:
+    if s and len(text) <= s["max_chars"]:
         body = {"model": s["model"], "input": text, "ref_audio": s["ref_audio"], "ref_text": s["ref_text"], "lang_code": s["lang_code"]}
         if kokoro.get("response_format"):
             body["response_format"] = kokoro["response_format"]

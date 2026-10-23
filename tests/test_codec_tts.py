@@ -22,7 +22,7 @@ import codec_tts
 
 REPO = Path(__file__).resolve().parent.parent
 MP3 = b"ID3\x04\x00" + b"\xff\xf3" * 300
-WAV = b"RIFF" + b"\x00" * 200
+WAV = b"RIFF" + b"\x24\x00\x00\x00" + b"WAVE" + b"\x00" * 200
 KOKORO = {"model": "mlx-community/Kokoro-82M-bf16", "voice": "am_adam", "speed": 0.9}
 
 
@@ -34,6 +34,18 @@ class Reply:
 @pytest.fixture(autouse=True)
 def fresh():
     codec_tts._last_note.clear()
+
+
+CLONE_MODEL = "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16"
+
+
+@pytest.fixture(autouse=True)
+def model_cache(tmp_path, monkeypatch):
+    """The clone model is in a (fake) local Hugging Face cache, as it is on the owner's Mac."""
+    hub = tmp_path / "hub"
+    (hub / ("models--" + CLONE_MODEL.replace("/", "--")) / "snapshots" / "abc").mkdir(parents=True)
+    monkeypatch.setenv("HF_HUB_CACHE", str(hub))
+    return hub
 
 
 @pytest.fixture
@@ -48,7 +60,7 @@ def clone_files(tmp_path):
 @pytest.fixture
 def cfg(clone_files):
     ref, words = clone_files
-    return {"tts_clone": {"enabled_for": ["speak"], "model": "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16",
+    return {"tts_clone": {"enabled_for": ["speak"], "model": CLONE_MODEL,
                           "ref_audio": str(ref), "ref_text_file": str(words)}}
 
 
@@ -97,8 +109,8 @@ def config_file(monkeypatch):
 def test_the_clone_applies_only_when_configured_enabled_and_the_clip_is_there(cfg, tmp_path, clone_files):
     ref, words = clone_files
     s = codec_tts.clone_settings(cfg, "speak")
-    assert s == {"model": "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16", "ref_audio": str(ref),
-                 "ref_text": "Good evening. This is the reference.", "lang_code": "auto"}
+    assert s == {"model": CLONE_MODEL, "ref_audio": str(ref), "ref_text": "Good evening. This is the reference.",
+                 "lang_code": "auto", "max_chars": codec_tts.CLONE_MAX_CHARS}
     assert codec_tts.clone_settings(cfg, "live") is None            # not enabled for the live voice
     assert codec_tts.clone_settings(cfg, None) is None
     assert codec_tts.clone_settings({}, "speak") is None
@@ -110,6 +122,34 @@ def test_the_clone_applies_only_when_configured_enabled_and_the_clip_is_there(cf
         assert codec_tts.clone_settings(broken, "speak") is None, key
     ref.write_bytes(b"")
     assert codec_tts.clone_settings(cfg, "speak") is None            # an empty clip is no clip
+
+
+def test_the_clone_never_asks_the_server_for_something_that_could_hold_it_up(cfg, model_cache, clone_files, tmp_path, monkeypatch):
+    ref, _ = clone_files
+    # a model that is not in the local cache: the server would go to the network and hold every request
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "empty-hub"))
+    assert codec_tts.clone_settings(cfg, "speak") is None
+    monkeypatch.setenv("HF_HUB_CACHE", str(model_cache))
+    assert codec_tts.clone_settings(cfg, "speak") is not None
+    # a reference that is not a WAV file
+    for junk in (b"not audio at all" * 20, b"RIFF" + b"\x00" * 4 + b"AVI " + b"\x00" * 50, b"ID3\x04" + b"\x00" * 40, b"RIFF"):
+        ref.write_bytes(junk)
+        assert codec_tts.clone_settings(cfg, "speak") is None, junk[:8]
+    ref.write_bytes(WAV)
+    assert codec_tts.clone_settings(cfg, "speak") is not None
+
+
+def test_a_long_text_stays_on_kokoro_so_the_clone_cannot_hold_the_server(cfg, server):
+    long_text = "word " * 120                                         # 600 characters, about 40 s of speech
+    plan = codec_tts.payloads(long_text, "speak", KOKORO, cfg=cfg)
+    assert [c for _, c in plan] == [False]
+    r = codec_tts.speak("http://tts/x", long_text, "speak", KOKORO, cfg=cfg)
+    assert r.audio and not r.cloned and "ref_audio" not in server["calls"][0]["json"]
+    assert [c for _, c in codec_tts.payloads("w" * 400, "speak", KOKORO, cfg=cfg)] == [True, False]       # the limit itself is in
+    cfg["tts_clone"]["max_chars"] = 50
+    assert [c for _, c in codec_tts.payloads("w" * 51, "speak", KOKORO, cfg=cfg)] == [False]
+    cfg["tts_clone"]["max_chars"] = "many"
+    assert [c for _, c in codec_tts.payloads("w" * 400, "speak", KOKORO, cfg=cfg)] == [True, False]       # a bad value means the default
 
 
 def test_inline_reference_words_and_a_home_folder_path(cfg, clone_files, monkeypatch):
