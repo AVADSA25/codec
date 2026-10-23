@@ -415,7 +415,9 @@ def test_an_error_in_the_model_leaves_nothing_queued_for_the_next_turn(isolated,
         tts = FakeTTS(lambda text: [0.2, SECOND])
         c = Call(isolated, monkeypatch, tts=tts, tokens=("Hello there. ", RuntimeError("model fell over")))
         await c.turn()
+        await asyncio.sleep(0.5)                     # long enough for the piece that was being made to have finished
         return c
     c = asyncio.run(go())
-    assert c.p._speech._queue.__len__() == 0 and not c.p.processing and not c.p.interrupted.is_set()
+    assert c.frames("pcm") == [], "the sentence that was being made when the model failed is not spoken after the turn ended"
+    assert len(c.p._speech._queue) == 0 and not c.p.processing and not c.p.interrupted.is_set()
     assert c.jsons("audio_reset") == [], "an error does not reset the page"
