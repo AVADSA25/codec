@@ -1915,6 +1915,23 @@
       .then(function () { SCHED.busy = false; });
   }
 
+  // ── Notes (docs/NOTES-DESIGN.md): keep a piece of text on the owner's Notes shelf ──
+  // CodecShell.notes.save({text, title, source}) -> Promise of the saved note, or null when nothing was saved.
+  // The toast offers "Open Notes"; before the dashboard restart that brings the routes it says so.
+  function notesSave(opts) {
+    var text = String((opts && opts.text) || '').trim();
+    if (!text) { toast('There is nothing to save.'); return Promise.resolve(null); }
+    return postJSON('/api/notes', { body: text, title: (opts && opts.title) || '', source: (opts && opts.source) || 'chat' })
+      .then(function (d) {
+        toast('Saved to Notes.', null, { label: 'Open Notes', run: function () { location.href = '/tasks#notes'; } });
+        return d;
+      }, function (e) {
+        var m = (e && e.message) || '';
+        toast(/^(HTTP 404|Not Found|Notes are switched off)/i.test(m) ? 'Notes need a dashboard restart first.' : (m || 'Could not save the note.'));
+        return null;
+      });
+  }
+
   // ── One modal for questions (P2.6; docs/P2.6-DESIGN.md) ─────────────────
   // CodecShell.ask({title, message, confirm, cancel, danger, input: {label, value,
   // placeholder, pattern, patternText, required, requiredText, inputmode, maxlength,
@@ -2495,6 +2512,7 @@
     speech: { speak: speak, stop: sayStop, toggle: sayToggle, rate: sayRate, text: speechText, chunks: speechChunks,
               reading: function () { return SAY.parts.length > 0; } },
     schedule: { open: schedOpen, close: schedClose, save: schedSave },
+    notes: { save: notesSave },
     watchDialogs: dlgWatch
   };
   window.openSidePanel = openSidePanel;

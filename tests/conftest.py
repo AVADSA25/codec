@@ -40,6 +40,7 @@ os.environ.setdefault("CODEC_DASHBOARD_EXTRA_HOSTS", "testserver")
 # anything imports codec_config, so the suite neither loads nor writes the
 # owner's approved skills (tests that need user skills use their own tmp dirs).
 os.environ.setdefault("CODEC_USER_SKILLS_DIR", tempfile.mkdtemp(prefix="codec-test-user-skills-"))
+os.environ.setdefault("CODEC_NOTES_DIR", tempfile.mkdtemp(prefix="codec-test-notes-"))
 
 
 def _isolate_audit_log() -> None:

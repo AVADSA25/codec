@@ -82,6 +82,8 @@ html,body{font-family:var(--font-sans);background:var(--bg);color:var(--text);he
 .msg-act:active{transform:scale(.9)}
 .msg-act.copied{color:var(--success)}
 .msg-act.speaking{color:var(--accent)}
+.msg-act.saved{color:var(--accent)}
+.msg-note.saved .ico{fill:currentColor}
 /* P2.7: thumbs, version pager, thumbs-down reasons */
 .msg-act[aria-pressed="true"]{color:var(--accent)}
 .msg-ver{display:inline-flex;align-items:center;gap:0;margin:0 2px;font-family:var(--font-mono);font-size:var(--fs-12);color:var(--text-muted)}
@@ -432,7 +434,7 @@ input[type=file]{display:none}
 </style>
 </head>
 <body>
-<script src="/static/codec-shell.js?v=25558424" data-page="chat" data-title="Chat" data-status data-model-slot></script>
+<script src="/static/codec-shell.js?v=f6c3e8b6" data-page="chat" data-title="Chat" data-status data-model-slot></script>
 <div class="app cs-main" id="appContainer">
 <div class="messages" id="messages" role="log" aria-live="polite" aria-label="Conversation"></div>
 
@@ -1808,10 +1810,12 @@ function addMessage(role,content,animate,ts,quiet,atts){
   var speakBtn=role==='assistant'?'<button class="msg-act msg-speak" data-act="speak" title="Speak" aria-label="Speak"><svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 010 14.14"/><path d="M15.54 8.46a5 5 0 010 7.07"/></svg></button>':'';
   // P3.3: Schedule this — run the question behind this reply again on a plain-language timing.
   var schedBtn=role==='assistant'?'<button class="msg-act msg-sched" data-act="schedule" title="Schedule this" aria-label="Schedule this"><svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg></button>':'';
+  // Save to Notes: keep this reply on the Notes shelf (Tasks > Notes). Icon: a bookmark, no emoji.
+  var noteBtn=role==='assistant'?'<button class="msg-act msg-note" data-act="note" title="Save to Notes" aria-label="Save to Notes"><svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></button>':'';
   // P2.7: thumbs up / down and the more menu (retry with Think or another model).
   var fbBtns=role==='assistant'?'<button class="msg-act msg-up" data-act="up" aria-pressed="false" title="Good reply" aria-label="Good reply"><svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"/></svg></button><button class="msg-act msg-down" data-act="down" aria-pressed="false" title="Bad reply" aria-label="Bad reply"><svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M17 14V2"/><path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"/></svg></button><button class="msg-act msg-more" data-act="more" aria-haspopup="menu" aria-expanded="false" title="More" aria-label="More actions"><svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>':'';
   // One inline action row beneath the bubble: timestamp + regenerate / edit / copy / speak / schedule / thumbs / more (role-gated)
-  var actions=regenBtn+editBtn+copyBtn+speakBtn+schedBtn+fbBtns;
+  var actions=regenBtn+editBtn+copyBtn+speakBtn+schedBtn+noteBtn+fbBtns;
   div.innerHTML='<div class="msg-bubble"></div><div class="msg-meta"><span class="msg-time">'+time+'</span>'+actions+'</div>';
   // The user's own words stay plain text (textContent, pre-wrap), never Markdown.
   var bub=div.firstChild;if(role==='user')bub.textContent=String(content==null?'':content);else mdRender(bub,content);
@@ -1826,6 +1830,14 @@ function addMessage(role,content,animate,ts,quiet,atts){
     if(sb)sb.addEventListener('click',function(){speakMessage(txt,sb)});
     var sch=host.querySelector('[data-act="schedule"]');
     if(sch)sch.addEventListener('click',function(){CodecShell.schedule.open({prompt:_questionBefore(host)})});
+    var nb=host.querySelector('[data-act="note"]');
+    if(nb)nb.addEventListener('click',function(){
+      if(nb.classList.contains('saved'))return;
+      CodecShell.notes.save({text:txt,source:'chat'}).then(function(n){
+        if(!n)return;
+        nb.classList.add('saved');nb.title='Saved to Notes';nb.setAttribute('aria-label','Saved to Notes');
+      });
+    });
     var ub=host.querySelector('[data-act="up"]'),db=host.querySelector('[data-act="down"]'),mb=host.querySelector('[data-act="more"]');
     if(ub)ub.addEventListener('click',function(){rateMessage(host,txt,'up')});
     if(db)db.addEventListener('click',function(){rateMessage(host,txt,'down')});

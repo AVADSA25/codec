@@ -48,6 +48,39 @@ a { color: var(--accent); text-decoration: none; }
 .tab.active { color: var(--accent); background: var(--accent-dim); }
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
+.tab[hidden] { display: none; }
+
+/* ── Notes ── */
+.notes-wrap { display: grid; grid-template-columns: minmax(240px, 320px) 1fr; gap: 16px; align-items: start; }
+.notes-wrap[hidden], .notes-edit[hidden], .notes-off[hidden], .notes-empty[hidden], .notes-hint[hidden] { display: none; }
+.notes-bar { display: flex; gap: 8px; margin-bottom: 8px; }
+.notes-search { flex: 1; min-width: 0; padding: 8px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-family: var(--font); font-size: calc(13px * var(--fs-scale)); }
+.notes-search:focus, .notes-title:focus, .notes-body:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.notes-count { font-size: calc(12px * var(--fs-scale)); color: var(--text-muted); margin: 0 2px 8px; min-height: 1em; }
+.notes-items { list-style: none; display: flex; flex-direction: column; gap: 6px; max-height: 70vh; overflow-y: auto; }
+.notes-row { display: flex; flex-direction: column; gap: 3px; width: 100%; text-align: left; padding: 10px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-family: var(--font); cursor: pointer; }
+.notes-row:hover { border-color: var(--border-hover); }
+.notes-row[aria-current="true"] { border-color: var(--accent); background: var(--accent-dim); }
+.notes-row-t { font-size: calc(14px * var(--fs-scale)); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.notes-row-p { font-size: calc(12px * var(--fs-scale)); color: var(--text-muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.notes-row-m { display: flex; gap: 8px; font-size: calc(11px * var(--fs-scale)); color: var(--text-dim); }
+.notes-row-src { text-transform: uppercase; letter-spacing: 0.04em; }
+.notes-edit { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.notes-title, .notes-body { width: 100%; padding: 10px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-family: var(--font); font-size: calc(14px * var(--fs-scale)); }
+.notes-title { font-weight: 600; }
+.notes-body { min-height: 340px; resize: vertical; line-height: 1.55; }
+.notes-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.notes-status { margin-left: auto; font-size: calc(12px * var(--fs-scale)); color: var(--text-muted); }
+.notes-back { display: none; align-self: flex-start; }
+.notes-empty, .notes-off, .notes-hint { color: var(--text-muted); font-size: calc(13px * var(--fs-scale)); padding: 16px 4px; }
+@media (max-width: 767px) {
+  .notes-wrap { display: block; }
+  .notes-wrap.editing .notes-list { display: none; }
+  .notes-back { display: inline-flex; }
+  .notes-hint { display: none; }
+  .notes-items { max-height: none; }
+  .notes-body { min-height: 50vh; }
+}
 
 /* ── Cards ── */
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 12px; transition: border-color 0.2s; }
@@ -226,7 +259,8 @@ a { color: var(--accent); text-decoration: none; }
 </style>
 </head>
 <body>
-<script src="/static/codec-shell.js?v=25558424" data-page="tasks" data-title="Tasks" data-status></script>
+<script src="/static/codec-shell.js?v=f6c3e8b6" data-page="tasks" data-title="Tasks" data-status></script>
+<script src="/static/notes.js?v=d7819ac7"></script>
 <div class="cs-main cs-scroll">
 <div class="container">
   <div class="tabs" role="tablist" aria-label="Tasks sections">
@@ -234,6 +268,7 @@ a { color: var(--accent); text-decoration: none; }
     <button type="button" class="tab" role="tab" aria-selected="false" aria-controls="panel-activity" onclick="showTab('activity')" id="tab-activity"><svg class="ico ico-sm" viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>Activity</button>
     <button type="button" class="tab" role="tab" aria-selected="false" aria-controls="panel-heartbeat" onclick="showTab('heartbeat')" id="tab-heartbeat"><svg class="ico ico-sm" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>Heartbeat</button>
     <button type="button" class="tab" role="tab" aria-selected="false" aria-controls="panel-history" onclick="showTab('history')" id="tab-history"><svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>History</button>
+    <button type="button" class="tab" role="tab" aria-selected="false" aria-controls="panel-notes" onclick="showTab('notes')" id="tab-notes" hidden><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/><path d="M8 13h8M8 17h5"/></svg>Notes</button>
   </div>
 
   <!-- ── Schedules Tab ── -->
@@ -414,6 +449,34 @@ a { color: var(--accent); text-decoration: none; }
     <h2 style="font-size:calc(16px * var(--fs-scale)); font-weight:600; margin-bottom:16px;">Run History</h2>
     <div id="historyList">
       <div class="loading">Loading history...</div>
+    </div>
+  </div>
+
+  <!-- ── Notes Tab (docs/NOTES-DESIGN.md; static/notes.js) ── -->
+  <div class="tab-panel" id="panel-notes" role="tabpanel" aria-labelledby="tab-notes">
+    <p class="notes-off" id="notesOff" hidden>Notes are not available yet. Restart the dashboard once and they appear.</p>
+    <div class="notes-wrap" id="notesWrap" hidden>
+      <section class="notes-list" aria-label="Your notes">
+        <div class="notes-bar">
+          <input type="search" class="notes-search" id="notesSearch" placeholder="Search notes" aria-label="Search notes" autocomplete="off" maxlength="200">
+          <button type="button" class="btn btn-primary" id="notesNew">New note</button>
+        </div>
+        <p class="notes-count" id="notesCount"></p>
+        <ul class="notes-items" id="notesItems"></ul>
+        <p class="notes-empty" id="notesEmpty" hidden></p>
+      </section>
+      <section class="notes-edit" id="notesEdit" aria-label="Note" hidden>
+        <button type="button" class="btn btn-sm notes-back" id="notesBack">Back to notes</button>
+        <input type="text" class="notes-title" id="notesTitle" maxlength="120" placeholder="Title (optional)" aria-label="Title" autocomplete="off">
+        <textarea class="notes-body" id="notesBody" placeholder="Write here" aria-label="Note text" spellcheck="true"></textarea>
+        <div class="notes-actions">
+          <button type="button" class="btn btn-primary" id="notesSave">Save</button>
+          <button type="button" class="btn" id="notesCopy">Copy</button>
+          <button type="button" class="btn btn-danger" id="notesDelete" disabled>Delete</button>
+          <span class="notes-status" id="notesStatus" role="status" aria-live="polite"></span>
+        </div>
+      </section>
+      <p class="notes-hint" id="notesHint">Pick a note, or press New note.</p>
     </div>
   </div>
 
@@ -1284,6 +1347,7 @@ function showTab(name) {
   document.getElementById('panel-' + name).classList.add('active');
   window.location.hash = name;
   if (name === 'activity') { actLoad(); actLoadGrants(); }
+  if (name === 'notes' && window.CodecNotes) CodecNotes.show();
 }
 
 // Apply UI preferences from dashboard settings
