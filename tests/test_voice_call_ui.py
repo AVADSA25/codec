@@ -100,7 +100,7 @@ def test_one_orb_follows_the_level_and_the_old_motion_is_gone():
         assert gone not in PAGE, gone
     assert 'class="orb"' in PAGE and "transform: scale(calc(1 + var(--lvl) * 0.3))" in PAGE
     assert "setLevel(rms / 2800)" in PAGE, "the mic RMS the page already computed drives the orb"
-    assert "src.connect(outAnalyser || audioCtx.destination)" in PAGE and "getFloatTimeDomainData" in PAGE
+    assert "out: outAnalyser" in PAGE and "getFloatTimeDomainData" in PAGE, "the reply plays through the analyser that drives the orb"
     assert "@media (prefers-reduced-motion: reduce)" in PAGE
     assert 'id="statusLabel"' in PAGE
 

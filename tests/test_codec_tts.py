@@ -406,9 +406,17 @@ def test_the_watcher_speaks_with_voice_02_when_asked(server, cfg, config_file, m
 
 # ── what is deliberately left alone ──────────────────────────────────────────
 
-def test_the_live_voice_the_wake_word_replies_and_the_telegram_briefings_are_untouched():
-    for name in ("codec_voice.py", "codec_core.py", "codec_telegram.py"):
-        assert "codec_tts" not in (REPO / name).read_text(), f"{name} is outside phase 1 (docs/CODEC-VOICE-02-DESIGN.md)"
+def test_the_wake_word_replies_and_the_telegram_briefings_are_untouched():
+    for name in ("codec_core.py", "codec_telegram.py"):
+        assert "codec_tts" not in (REPO / name).read_text(), f"{name} is outside phases 1 and 2 (docs/CODEC-VOICE-02-DESIGN.md)"
+
+
+def test_the_live_voice_reaches_voice_02_only_through_the_speaking_worker():
+    """Phase 2 (docs/CODEC-VOICE-02-LIVE-DESIGN.md): codec_voice.py asks for the live settings and hands the speaking to
+    LiveSpeech; it never builds a clone request itself."""
+    src = (REPO / "codec_voice.py").read_text()
+    assert "codec_voice_speech.LiveSpeech(" in src and "codec_tts.live_settings(" in src
+    assert "ref_audio" not in src and "astream_clone" not in src and "streaming_interval" not in src
 
 
 def test_every_phase_one_caller_goes_through_the_helper_and_none_posts_speech_itself():

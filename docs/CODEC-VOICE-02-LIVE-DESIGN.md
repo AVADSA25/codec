@@ -1,6 +1,6 @@
 # CODEC voice 02, phase 2: the live conversation voice — design
 
-Status: draft for approval (23 Oct 2026). Phase 1 (reading aloud and announcements) is merged and live (`docs/CODEC-VOICE-02-DESIGN.md`, PR #469). Nothing in this document is built yet.
+Status: approved 23 Oct 2026 ("Proceed") and built the same day. Phase 1 (reading aloud and announcements) is merged and live (`docs/CODEC-VOICE-02-DESIGN.md`, PR #469).
 
 ## Goal
 
@@ -42,7 +42,7 @@ One `LiveSpeech` object per call, with one background task that speaks one piece
 - `say_nowait(text)`: queue text for speaking and return at once. `say(text)` queues and waits until the audio of that text has been sent. `drain()` waits until everything queued has been sent or cancelled. `cancel()` stops the current stream, drops the queue and sends `{"type": "audio_reset"}` to the page.
 - The task takes the first waiting piece and adds the pieces already waiting behind it, up to `chunk_chars` (what the measurements call "greedy"). It streams the clone and sends every PCM chunk as one binary frame (section 4). `transcript_chunk` for that text goes out just before its audio starts, as today, so the text on the page stays in step with the voice.
 - `last_tts_end` moves forward by the length of each chunk (plus the existing browser lag once), so the echo guard still covers the whole spoken reply.
-- **Fallback ladder:** (1) the clone stream; (2) if it fails before any audio (not usable, error, no first byte in 8 s), this piece goes to Kokoro through the existing `synthesize` and one whole-file frame, exactly as today; (3) if it breaks after audio has started, the rest of that piece is dropped (repeating the start would be worse) and the next piece tries the clone again; (4) two failures in one call turn the clone off for the rest of that call; (5) if Kokoro fails as well, the reply is shown as text only, as today. Each failure writes the existing `tts_fallback` audit line with purpose `live` (reason only, never the text, at most one a minute per reason).
+- **Fallback ladder:** (1) the clone stream; (2) if it fails before any audio (not usable, error, no first byte in 8 s), this piece goes to Kokoro through the existing `synthesize` and one whole-file frame, exactly as today; (3) if it breaks after audio has started, the rest of that piece is dropped (repeating the start would be worse) and the next piece tries the clone again; (4) two failures in a row turn the clone off for the rest of that call; (5) if Kokoro fails as well, the reply is shown as text only, as today. Each failure writes the existing `tts_fallback` audit line with purpose `live` (reason only, never the text, at most one a minute per reason).
 - A piece that arrives while the interrupt flag is set is dropped.
 
 ### 3. Voice pipeline, `codec_voice.py`
@@ -57,7 +57,7 @@ One `LiveSpeech` object per call, with one background task that speaks one piece
 
 Existing frames are unchanged: a binary frame that is a complete audio file (Kokoro MP3). New: a PCM frame is `b"CPCM"` + the sample rate as 4 bytes (little endian) + 16-bit little-endian mono samples. Every frame says what it is, so the page needs no mode switch and a mix of both kinds in one reply (a fallback in the middle) plays in order. New JSON message: `{"type": "audio_reset"}`.
 
-### 5. The page, `codec_voice.html`
+### 5. The page, `static/voice-audio.js` and `codec_voice.html`
 
 - **One playback scheduler** replaces the "play the next file when the last one ends" chain: every item (a decoded file or a PCM chunk) is started at the end of the previous one on the audio clock, so playback is gapless. Items are handled in the order they arrive. `isPlaying`, `stopAudio()`, the orb level and the interrupt detection keep their meaning.
 - **Output at 24 kHz:** reply audio plays through its own `AudioContext` at 24,000 Hz (the microphone context stays at 16 kHz), so voice 02 is heard at the rate it was made and chosen at, not cut at 8 kHz. If that context cannot be made, the old one is used.
@@ -66,7 +66,7 @@ Existing frames are unchanged: a binary frame that is a complete audio file (Kok
 
 ### 6. Config (the owner's machine only, nothing in the repo defaults)
 
-`tts_clone.enabled_for` gains `"live"`. Optional keys under `tts_clone.live`, with these defaults in code: `interval` 0.5, `first_byte_timeout` 8, `idle_timeout` 6, `chunk_chars` 280, `breaker_failures` 2, `prebuffer` 0 (seconds of audio to wait for before playing). Phase 1's `max_chars` (400) stays the limit for one request.
+`tts_clone.enabled_for` gains `"live"`. Optional keys under `tts_clone.live`, with these defaults in code: `interval` 0.5, `first_byte_timeout` 8, `idle_timeout` 6, `chunk_chars` 280, `breaker_failures` 2. Phase 1's `max_chars` (400) stays the limit for one request.
 
 ### 7. Limits that stay true (documented, not fixed here)
 
@@ -94,8 +94,19 @@ Merge, then the owner restarts `codec-dashboard open-codec` and hard-refreshes t
 2. **Every spoken output in a call is voice 02**, not only the LLM replies.
 3. **Reply audio plays at 24 kHz through its own audio context.** Other option: keep the 16 kHz context (smaller change, duller voice). It is a single constant; the owner's ear decides.
 4. **The Flash mode speed-up is given up** (the model ignores speed). Other option: keep Flash on Kokoro.
-5. **No waiting buffer before playback** (first sound at about 0.55 s; measured gaps 0.00-0.05 s). Other option: 0.5 s buffer, no gaps at all, first sound at about 0.95 s. It is the config key `prebuffer` if he wants it later.
+5. **No waiting buffer before playback** (first sound at about 0.55 s; measured gaps 0.00-0.05 s). Other option: a 0.5 s buffer, no gaps at all, first sound at about 0.95 s. Not built; easy to add if he hears gaps.
 
 ## Gates (what "done" means for the build)
 
 Tests for the client, the worker, the pipeline and the page pass; the real-server test and the mutation check pass; the full suite and ruff pass; the PR is merged; after the restart the live check passes and the owner has heard a call in voice 02 and says it sounds right.
+
+## Changes made while building
+
+- **The page player is its own file**, `static/voice-audio.js`, stamped by `tools/stamp_static.py` and tested with Node and a fake audio context, as `static/vibe-agent.js` and `static/notes.js` are, instead of more inline script in `codec_voice.html`. The page keeps `queueAudio`, `stopAudio` and `isPlaying`; `playNext`, `audioQueue` and `curSource` are gone.
+- **Two failures "in a row", not "in one call":** a good piece resets the count, so two unlucky moments in a long call do not turn voice 02 off for hours.
+- **`prebuffer` was not built** (measured gaps 0.00-0.05 s without it).
+- **Every `interrupt` control message gets an `audio_reset` answer**, with voice 02 off as well, because the new page ignores audio until it arrives. An interrupt found from the microphone's energy sends one only when the worker exists, once however many loud frames follow, so with voice 02 off the server's messages are exactly what they were.
+- **Greeting, crew progress lines and the think agent's narration are queued, not awaited** (`_speak_outside_a_turn`), so the call starts listening and the agent keeps working while they are spoken.
+- **The call warms the clone model at its start** only when the TTS server does not list it as loaded (`GET /v1/models`, `codec_tts.model_loaded`); `codec_tts.warm_up` takes a `purpose` now.
+- **Real-server check on the real server, not a spare one:** the live path sends no new unusual request shape (all measured on the real server first), and the three protections from phase 1 are applied before any request by `live_settings`, so `check_voice_live_server.py` runs the real worker against the owner's TTS server with short requests only (and a closed port for the fallback case). Result on 23 Oct: first sound 0.54 s, 8.2 s of audio with 0.00 s of gaps, the server free again 0.67 s after a cancel, three Kokoro files when the clone connection is refused, clone off after two failures.
+- Phase 1's test that `codec_voice.py` does not import `codec_tts` became "reaches voice 02 only through `LiveSpeech`"; the orb test now looks for `out: outAnalyser` instead of the old `src.connect(...)` line.
