@@ -21,10 +21,10 @@ import logging
 import os
 from typing import Optional
 
-import requests as rq
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse, Response
 
+import codec_tts
 from routes._shared import CONFIG_PATH, get_db
 
 router = APIRouter()
@@ -140,21 +140,22 @@ def voice_catalog(config: Optional[dict] = None) -> list:
     return voices
 
 
-def _speak(text: str, voice: str, speed: float, config: dict):
-    """Kokoro's audio for `text` as a Response of its own, or a JSON error."""
+def _speak(text: str, voice: str, speed: float, config: dict, clone: bool = False):
+    """The audio for `text` as a Response of its own, or a JSON error.
+    clone=True: this is the owner's own voice setting, so voice 02 (tts_clone) may speak it; a voice picked by hand is Kokoro's."""
     url = config.get("tts_url", "http://localhost:8085/v1/audio/speech")
-    try:
-        r = rq.post(url, json={"model": config.get("tts_model", _DEFAULT_MODEL), "input": text,
-                               "voice": voice, "speed": speed}, timeout=60)
-    except rq.RequestException as e:
-        log.warning("[tts] Kokoro unreachable: %s", type(e).__name__)
-        return JSONResponse({"error": "Read aloud needs CODEC's voice service (kokoro-82m) on the Mac, "
-                                      "and it is not answering."}, status_code=503)
-    if r.status_code != 200 or not r.content:
+    kokoro = {"model": config.get("tts_model", _DEFAULT_MODEL), "voice": voice, "speed": speed}
+    spoken = codec_tts.speak(url, text, "speak" if clone else None, kokoro, cfg=config, timeout=60)
+    if spoken.audio is None:
+        if spoken.unreachable:
+            log.warning("[tts] the voice service is not answering")
+            return JSONResponse({"error": "Read aloud needs CODEC's voice service (kokoro-82m) on the Mac, "
+                                          "and it is not answering."}, status_code=503)
         return JSONResponse({"error": "The voice service could not read this text."}, status_code=502)
-    kind = (r.headers.get("content-type") or "").split(";")[0].strip().lower()
+    kind = spoken.content_type
     media = "audio/mpeg" if kind in ("", "audio/mp3", "audio/mpeg") or not kind.startswith("audio/") else kind
-    return Response(content=r.content, media_type=media, headers={"Cache-Control": "no-store"})
+    return Response(content=spoken.audio, media_type=media,
+                    headers={"Cache-Control": "no-store", "X-CODEC-Voice": "clone" if spoken.cloned else "kokoro"})
 
 
 @router.get("/api/tts")
@@ -167,7 +168,7 @@ def tts(text: str = ""):
         speed = float(config.get("tts_speed", _DEFAULT_SPEED))
     except (TypeError, ValueError):
         speed = _DEFAULT_SPEED
-    return _speak(text[:GET_MAX_CHARS], str(config.get("tts_voice") or _DEFAULT_VOICE), speed, config)
+    return _speak(text[:GET_MAX_CHARS], str(config.get("tts_voice") or _DEFAULT_VOICE), speed, config, clone=True)
 
 
 @router.post("/api/tts")
@@ -193,7 +194,7 @@ def tts_post(payload: dict | None = None):
         return JSONResponse({"error": "speed must be a number"}, status_code=400)
     if not 0.5 <= speed <= 2.0:
         return JSONResponse({"error": "speed must be between 0.5 and 2.0"}, status_code=400)
-    return _speak(text, voice, speed, config)
+    return _speak(text, voice, speed, config, clone=(voice == current))
 
 
 @router.get("/api/tts/voices")

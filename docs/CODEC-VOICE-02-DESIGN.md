@@ -1,6 +1,6 @@
 # CODEC voice 02 (Qwen3-TTS) — design
 
-Status: written 23 Oct 2026, waiting for the owner's "proceed". Nothing is built yet.
+Status: approved 23 Oct 2026 ("proceed on both"). Phase 1 built the same day; phase 2 (live voice) is not started.
 
 ## Goal
 
@@ -32,7 +32,7 @@ Speaker similarity to sample 02 (Qwen3-TTS speaker encoder): clone clips 0.955-0
 
 1. **Reference clip:** `~/.codec/voices/codec-02/reference.wav` (sample 02, 8.8 s) and `reference.txt` (its exact words), folder 0700, files 0600.
 2. **`codec_tts.py` (new):** `payload(text, purpose)` returns the JSON for the TTS server. `purpose` is `live` or `speak`. With `tts_clone` in config, enabled for that purpose, and the reference present, it asks Qwen3-TTS Base to clone the reference (`model`, `input`, `ref_audio`, `ref_text`, `lang_code`); otherwise it returns today's Kokoro payload, byte for byte. `post(url, text, purpose, timeout)` sends it and, on an error, a timeout (45 s) or a reply that is not audio, sends the Kokoro payload once and writes one `tts_fallback` audit event (the reason, never the text).
-3. **Callers that use it in phase 1 (purpose `speak`):** `routes/tts.py`, `skills/tts_say.py`, `skills/timer.py`, `codec_briefing.py`, `codec_scheduler.py`, `codec_watcher.py`, `codec_textassist.py`, `codec_telegram.py`, the session audio in `codec_core`/`codec_session`. **The live voice (`codec_voice.synthesize`) keeps the Kokoro blend** until phase 2, so conversation does not slow down.
+3. **Callers that use it in phase 1 (purpose `speak`):** `routes/tts.py`, `skills/tts_say.py`, `skills/timer.py`, `codec_briefing.py`, `codec_scheduler.py`, `codec_watcher.py`, `codec_textassist.py`. **The live voice (`codec_voice.synthesize`) keeps the Kokoro blend** until phase 2, so conversation does not slow down; see "Changes made while building" for the other two places that stay as they are.
 4. **Config, owner's machine only** (`~/.codec/config.json`, nothing in the repo defaults, so buyers see no change): `tts_clone = {"enabled_for": ["speak"], "model": "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16", "ref_audio": "~/.codec/voices/codec-02/reference.wav", "ref_text_file": "~/.codec/voices/codec-02/reference.txt"}`.
 5. **Warm-up:** the first Qwen request loads the model (about 6 s) and the TTS process then holds 5 GB. The dashboard sends one throw-away word at start, in the background, so the first Speak is not the slow one.
 6. **Speed:** Qwen3-TTS ignores `speed`, so the speed setting does not change this voice. The Settings page says so when `tts_clone` is on.
@@ -59,3 +59,13 @@ After the merge the owner restarts `codec-dashboard` and `open-codec` (they read
 1. **Phase 1 covers reading aloud and announcements; live conversation stays on the Kokoro blend until phase 2.** Other option: use voice 02 for live replies at once, which adds about 1-4 s before each sentence until streaming exists.
 2. **Voice 02 is used as it is** (the sample as the reference clip). Other option: first make a longer, cleaner reference clip.
 3. **Any failure falls back to the Kokoro blend** without an error message.
+
+## Changes made while building
+
+- **Left alone, on purpose:** `codec_telegram.py` (the Telegram voice briefings use their own `briefing_voice`, a decision of 25 Sep), `codec_core.speak` (the wake-word replies on the Mac are a live conversation, so they belong to phase 2) and the two generated session scripts (`codec_core`, `codec_textassist`) that carry their own copy of the request. A test pins that `codec_voice.py`, `codec_core.py` and `codec_telegram.py` do not import `codec_tts`.
+- `/api/tts` answers with a header `X-CODEC-Voice: clone` or `kokoro`, so a check and the owner can tell which voice spoke.
+- A voice chosen by hand in the PWA (any voice other than the configured one) is Kokoro's: the clone only speaks for the owner's own setting.
+- `codec_tts.speak` tells "no answer at all" (`unreachable`, the PWA's 503) from "an answer that is no audio" (the PWA's 502), as `routes/tts.py` did before.
+- The fallback audit line is rate-limited to one per reason per minute, so a stopped TTS server cannot flood the log.
+- `tests/test_tts_reader.py` patches `requests.post` instead of the alias `routes.tts.rq`, which went away with the direct request.
+- The reference clip and the `tts_clone` config are made on the owner's machine at deployment (a copy of sample 02 and its words); nothing in the repo defaults changes.

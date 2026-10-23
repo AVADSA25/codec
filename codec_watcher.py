@@ -28,6 +28,10 @@ except ImportError:
     TTS_VOICE      = "am_adam"
     TTS_SPEED      = 1.0
 KOKORO_MODEL   = "mlx-community/Kokoro-82M-bf16"
+try:
+    import codec_tts as _codec_tts          # voice 02 (docs/CODEC-VOICE-02-DESIGN.md); absent when run apart from the repo
+except ImportError:
+    _codec_tts = None
 TASK_FILE      = os.path.expanduser("~/.codec/draft_task.json")
 
 def _load_watcher_config():
@@ -125,13 +129,15 @@ def speak(text):
         clean = re.sub(r'#+\s*', '', clean)
         clean = clean.replace('"','').replace("'","").strip()
         if not clean: return
-        resp = requests.post(KOKORO_URL,
-            json={"model": KOKORO_MODEL, "input": clean, "voice": TTS_VOICE, "speed": TTS_SPEED},
-            stream=True, timeout=20)
-        if resp.status_code == 200:
+        kokoro = {"model": KOKORO_MODEL, "voice": TTS_VOICE, "speed": TTS_SPEED}
+        if _codec_tts is not None:
+            audio = _codec_tts.speak(KOKORO_URL, clean, "speak", kokoro, timeout=20).audio
+        else:
+            resp = requests.post(KOKORO_URL, json=dict(kokoro, input=clean), timeout=20)
+            audio = resp.content if resp.status_code == 200 and resp.content else None
+        if audio:
             tmp = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
-            for chunk in resp.iter_content(chunk_size=4096):
-                tmp.write(chunk)
+            tmp.write(audio)
             tmp.close()
             subprocess.Popen(["afplay", tmp.name])
     except Exception as e:

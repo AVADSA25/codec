@@ -3,7 +3,6 @@
 import sys
 import os
 import json
-import requests
 import subprocess
 import re
 import time
@@ -75,12 +74,12 @@ if MODE == "read_aloud":
     overlay("\U0001f50a Reading aloud...", "#E8711A", 6000)
     try:
         import tempfile
-        r = requests.post(tts_url, json={
-            "model": tts_model, "input": tts_text, "voice": tts_voice, "speed": tts_speed
-        }, timeout=30)
-        if r.status_code == 200:
+        import codec_tts
+        spoken = codec_tts.speak(tts_url, tts_text, "speak", {"model": tts_model, "voice": tts_voice, "speed": tts_speed},
+                                 cfg=cfg, timeout=30)
+        if spoken.audio:
             with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
-                f.write(r.content)
+                f.write(spoken.audio)
                 mp3_path = f.name
             subprocess.run(["afplay", mp3_path])
             os.unlink(mp3_path)

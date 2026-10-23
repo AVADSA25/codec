@@ -17,6 +17,8 @@ import tempfile
 import subprocess
 import requests
 
+import codec_tts
+
 _CFG_PATH = os.path.expanduser("~/.codec/config.json")
 try:
     _cfg = json.load(open(_CFG_PATH))
@@ -61,26 +63,19 @@ def run(task, app="", ctx=""):
     clean = clean.replace('"', '').strip()
 
     try:
-        resp = requests.post(
-            KOKORO_URL,
-            json={
-                "model": KOKORO_MODEL,
-                "input": clean,
-                "voice": TTS_VOICE,
-                "speed": TTS_SPEED,
-                "response_format": "wav",
-            },
-            stream=True,
-            timeout=30,
-        )
-        if resp.status_code != 200:
+        spoken = codec_tts.speak(
+            KOKORO_URL, clean, "speak",
+            {"model": KOKORO_MODEL, "voice": TTS_VOICE, "speed": TTS_SPEED, "response_format": "wav"},
+            cfg=_cfg, timeout=30)
+        if spoken.audio is None:
             # Fallback to macOS say
             subprocess.Popen(["say", clean])
+            if spoken.unreachable:
+                return f"🔊 (macOS say fallback — Kokoro offline) {clean}"
             return f"🔊 (fallback) Speaking: {clean}"
 
         tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-        for chunk in resp.iter_content(chunk_size=4096):
-            tmp.write(chunk)
+        tmp.write(spoken.audio)
         tmp.close()
         subprocess.Popen(["afplay", tmp.name],
                          stdout=subprocess.DEVNULL,
