@@ -1,6 +1,6 @@
 # Save a note by asking — design
 
-Status: written 23 Oct 2026, waiting for the owner's "proceed". Nothing is built yet.
+Status: approved 23 Oct 2026 ("proceed on both"). Built the same day.
 Follows `docs/NOTES-DESIGN.md` (the Notes tab, #467), which left "CODEC cannot write notes" as its default.
 
 ## Goal
@@ -56,3 +56,9 @@ Revert the commit and restart the two processes. Notes already saved stay in `~/
 2. **claude.ai (MCP):** unchanged for now.
 3. **"Save that" (the previous reply):** not in version one; the bookmark under the reply does that.
 4. **Reading notes back by voice or chat:** not now; "show my notes" only points to the tab. Reading text aloud needs its own design (privacy).
+
+## Changes made while building
+
+- "add to notes", "save to notes" and "note to self" are new trigger phrases; "add to my notes" and "save this to my notes" were already caught by the existing "my notes" trigger but were read as a request to open the notes, so they are now write phrases.
+- The note text is found by a new reader that keeps the case and punctuation ("Chef Giorgio's number is 0612") and does not stop at a colon inside the sentence ("the fish arrives at 10:30"). The old Apple Notes path keeps its own reader, unchanged except that "in Apple Notes" is not saved as part of the note.
+- "Show my notes" over claude.ai (MCP) still lists the Apple Notes inline; locally it now answers with the pointer and the count.
