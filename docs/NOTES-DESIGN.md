@@ -1,6 +1,6 @@
 # Notes — design
 
-Status: written 21 Oct 2026, waiting for the owner's "proceed". Nothing is built yet.
+Status: approved 21 Oct 2026 ("proceed", with the defaults in the decisions below). Built the same day.
 
 ## Goal
 
@@ -99,3 +99,12 @@ Set `NOTES_ENABLED=false`, or revert the PR. No migration: the notes folder stay
 
 New: `codec_notes.py`, `routes/notes.py`, `static/notes.js`, `tests/test_notes.py`, `tests/test_notes_page.py`.
 Changed: `codec_dashboard.py` (router include), `codec_tasks.html` (tab, panel, styles), `codec_chat.html` (button), `static/codec-shell.js` (`notes.save`), `tools/stamp_static.py`, `AGENTS.md` (short section and a don't-touch line for `~/.codec/notes/`), `docs/codec-architecture.md` (events).
+
+## Changes made while building
+
+- The shell's toast links only to `https://` addresses, so "Saved to Notes." carries an "Open Notes" button that goes to `/tasks#notes` instead of a link.
+- A note's `updated` time is made strictly increasing inside the process (milliseconds, +1 when two saves land in the same one), so the list order never depends on a tie.
+- A request body over 1.5 MB is refused with 413 before it is parsed; the 100,000-character limit still gives the readable message.
+- Search needs every word (up to 8) in the title or the text, any case.
+- The editor shows a "Back to notes" button on a phone. Leaving an edited note asks "Discard your changes?"; the tab also warns before the page is closed with unsaved words.
+- `tests/conftest.py` sets `CODEC_NOTES_DIR` to a temp folder, like the user skills folder, so no test can write to the owner's notes.
