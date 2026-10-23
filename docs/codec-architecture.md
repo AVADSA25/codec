@@ -201,7 +201,7 @@ Emitted by `codec_tts` (docs/CODEC-VOICE-02-DESIGN.md), source `codec-tts`, leve
 
 | Event | extra fields |
 |---|---|
-| `tts_fallback` | `purpose` (`speak`), `reason` (an exception name such as `ConnectionError` or `Timeout`, `http_<status>`, or `not_audio`): voice 02 failed and the Kokoro request was used instead |
+| `tts_fallback` | `purpose` (`speak` or `live`), `reason` (an exception name such as `ConnectionError`, `ConnectError` or `Timeout`, `timeout`, `empty`, `http_<status>`, `not_audio`, or `breaker_open` when two live failures in a row turned the clone off for the rest of a call): voice 02 failed and the Kokoro request was used instead |
 
 ### Web Push events (2026-09, UI P3.13)
 

@@ -266,6 +266,7 @@
 </head>
 <body id="body">
 <script src="/static/codec-shell.js?v=f6c3e8b6" data-page="voice" data-title="Voice" data-status></script>
+<script src="/static/voice-audio.js?v=679a2495"></script>
     <div class="call-container cs-main">
 
         <!-- The orb: its size follows the level. Press and hold it to talk. -->
@@ -482,10 +483,11 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
     var timerIv     = null;
     var callStart   = 0;
 
-    /* ── Audio playback queue ── */
-    var audioQueue  = [];
+    /* ── Reply audio: static/voice-audio.js plays the frames from the server back to back ── */
+    var PLAY_RATE   = 24000;     /* voice 02 is made at 24 kHz; the microphone's context stays at 16 kHz */
+    var playCtx     = null;      /* the context the reply plays through */
+    var player      = null;
     var isPlaying   = false;
-    var curSource   = null;
 
     /* ── Interrupt detection ── */
     var INTERRUPT_RMS   = 800;   // mic RMS threshold to trigger interrupt
@@ -616,50 +618,25 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
     }
 
     /* ── Audio playback ── */
-    async function playNext() {
-        if (!audioQueue.length) {
-            isPlaying = false;
-            if (isInCall) setState('listening');
-            return;
-        }
-        isPlaying = true;
-        setState('speaking');
-        var data = audioQueue.shift();
-        try {
-            /* slice to detach, then decode */
-            var buf = await audioCtx.decodeAudioData(data.slice(0));
-            var src = audioCtx.createBufferSource();
-            src.buffer = buf;
-            src.connect(outAnalyser || audioCtx.destination);
-            src.onended = function() { curSource = null; playNext(); };
-            src.start();
-            curSource = src;
-            if (!levelRaf && outAnalyser) levelRaf = requestAnimationFrame(levelLoop);
-        } catch(e) {
-            console.warn('[Voice] Decode error:', e);
-            playNext();
-        }
-    }
-
     function queueAudio(data) {
-        /* Dedup guard: skip if last queued chunk is identical (same bytes) */
-        if (audioQueue.length > 0) {
-            var last = audioQueue[audioQueue.length - 1];
-            if (last.byteLength === data.byteLength) {
-                var a = new Uint8Array(last), b = new Uint8Array(data), dup = true;
-                for (var i = 0; i < a.length; i += 64) { if (a[i] !== b[i]) { dup = false; break; } }
-                if (dup) { console.log('[Voice] Duplicate audio chunk skipped'); return; }
-            }
-        }
-        audioQueue.push(data);
-        if (!isPlaying) playNext();
+        if (player) player.push(data);
     }
 
+    /* Only called when the owner interrupts: stop now, and ignore frames already on the way until the server's audio_reset. */
     function stopAudio() {
-        audioQueue = [];
-        isPlaying  = false;
-        if (curSource) { try { curSource.stop(); } catch(e){} curSource = null; }
+        if (player) player.beginInterrupt();
         setLevel(0);
+    }
+
+    function onPlayState(on) {
+        isPlaying = on;
+        if (on) {
+            setState('speaking');
+            if (!levelRaf && outAnalyser) levelRaf = requestAnimationFrame(levelLoop);
+        } else {
+            setLevel(0);
+            if (isInCall) setState('listening');
+        }
     }
 
     /* ── WebSocket with auto-reconnect ── */
@@ -674,10 +651,11 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
     function connectWS() {
         wsIntentionalClose = false;
         var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-        var url = proto + '//' + location.host + '/ws/voice';
+        /* pcm=1: this page plays the streamed voice 02 chunks (static/voice-audio.js); an older page that is still open does not send it */
+        var url = proto + '//' + location.host + '/ws/voice?pcm=1';
         /* If we have a session ID from a previous connection, always request resume */
         if (wsSessionId) {
-            url += '?resume=' + encodeURIComponent(wsSessionId);
+            url += '&resume=' + encodeURIComponent(wsSessionId);
         }
         ws = new WebSocket(url);
         ws.binaryType = 'arraybuffer';
@@ -719,6 +697,8 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
                         addTranscript(msg.role, msg.text);
                     } else if (msg.type === 'transcript_chunk') {
                         appendStreamChunk(msg.text);
+                    } else if (msg.type === 'audio_reset') {
+                        if (player) player.reset();
                     } else if (msg.type === 'hint') {
                         var hint = document.getElementById('interruptHint');
                         if (hint) hint.textContent = msg.text || '';
@@ -797,10 +777,14 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
 
     async function startMic() {
         try {
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
-            outAnalyser = audioCtx.createAnalyser();
+            var Ctx = window.AudioContext || window.webkitAudioContext;
+            audioCtx = new Ctx({ sampleRate: 16000 });
+            playCtx = VoiceAudio.makeContext(Ctx, PLAY_RATE, audioCtx);
+            outAnalyser = playCtx.createAnalyser();
             outAnalyser.fftSize = 1024;
-            outAnalyser.connect(audioCtx.destination);
+            outAnalyser.connect(playCtx.destination);
+            player = VoiceAudio.create({ ctx: playCtx, out: outAnalyser, onState: onPlayState,
+                                         warn: function (m) { console.warn('[Voice] ' + m); } });
             mediaStream = await openMicStream();
             micSource = audioCtx.createMediaStreamSource(mediaStream);
             /* 4096-sample chunks ~= 256 ms at 16 kHz */
@@ -868,6 +852,9 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
         if (micSource)    { try { micSource.disconnect(); } catch (e) {} micSource = null; }
         if (processor)    { processor.disconnect();  processor    = null; }
         if (mediaStream)  { mediaStream.getTracks().forEach(function(t){ t.stop(); }); mediaStream = null; }
+        if (player)       { player.stop();            player       = null; }
+        if (playCtx && playCtx !== audioCtx) { try { playCtx.close(); } catch (e) {} }
+        playCtx = null;
         if (audioCtx)     { audioCtx.close();         audioCtx     = null; }
         outAnalyser = null;
         setLevel(0);

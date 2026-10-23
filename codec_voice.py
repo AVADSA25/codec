@@ -36,6 +36,8 @@ from codec_hooks import (
     run_with_hooks as _voice_run_with_hooks,
 )
 from codec_llm_proxy import llm_queue, Priority
+import codec_tts
+import codec_voice_speech
 
 # Per-session correlation_id contextvar — set at VoicePipeline.run entry,
 # inherited by every audit emit during the session lifetime (incl. nested
@@ -438,8 +440,11 @@ class VoicePipeline:
     _resume_timestamps: dict[str, float] = {}  # session_id → time.monotonic() at save (M-6)
     _RESUME_TTL = 600  # seconds — discard saved sessions older than this (10 min)
 
-    def __init__(self, websocket, resume_session_id: str | None = None):
+    def __init__(self, websocket, resume_session_id: str | None = None, client_pcm: bool = False):
         self.ws              = websocket
+        # The page said it can play streamed voice 02 chunks (?pcm=1). Without it the call keeps whole Kokoro files, so a page
+        # that was already open when this shipped does not receive audio it cannot play.
+        self.client_pcm      = bool(client_pcm)
         self.session_id      = resume_session_id or "voice_" + datetime.now().strftime("%Y%m%d_%H%M%S")
         self._disconnect_reason = "unexpected"  # "user" or "unexpected"
 
@@ -480,6 +485,10 @@ class VoicePipeline:
         # model the picker is switched to (docs/CLOUD-FALLBACK-MODEL-DESIGN.md).
         self._llm_base, self._llm_model, self._llm_cloud = _resolve_voice_llm()
         self._warmed_up = False
+        # Voice 02 for the live call (docs/CODEC-VOICE-02-LIVE-DESIGN.md): the speaking worker, built on first use when
+        # tts_clone is enabled for "live". None means every reply is spoken the old way, one Kokoro file per sentence.
+        self._speech = None
+        self._speech_checked = False
         # Voice mode (flash / default / think) — per-session, switchable by
         # voice command or WS control message. docs/VOICE-MODES-DESIGN.md.
         self.mode = VOICE_DEFAULT_MODE if VOICE_MODES_ENABLED else "default"
@@ -899,6 +908,9 @@ class VoicePipeline:
         """
         if self.interrupted.is_set():
             return False
+        live = self._live_speech()
+        if live is not None:
+            return await live.say(text)
         audio = await self.synthesize(text)
         if self.interrupted.is_set():
             return False
@@ -922,6 +934,79 @@ class VoicePipeline:
             return time.monotonic()
         duration = len(audio_bytes) / float(TTS_BYTES_PER_SEC)
         return time.monotonic() + TTS_BROWSER_DECODE_LAG + duration
+
+    # ── Voice 02 for the live call (docs/CODEC-VOICE-02-LIVE-DESIGN.md) ─────────
+
+    def _live_speech(self):
+        """The call's speaking worker when voice 02 is on for the live conversation, else None. Decided once per call."""
+        if not self._speech_checked:
+            self._speech_checked = True
+            try:
+                live = codec_tts.live_settings(codec_tts.load_config()) if self.client_pcm else None
+                if live:
+                    self._speech = codec_voice_speech.LiveSpeech(
+                        live, http=self._http, url=KOKORO_URL, send_bytes=self._safe_send_bytes,
+                        send_json=self._safe_send_json, kokoro=self.synthesize, interrupted=self.interrupted,
+                        on_pcm=self._extend_tts_end, on_file=self._note_file_sent)
+            except Exception:
+                log.warning("voice: voice 02 for the live call could not start; using the Kokoro blend", exc_info=True)
+                self._speech = None
+        return self._speech
+
+    def _extend_tts_end(self, seconds: float) -> None:
+        """Speech was sent that the browser plays back to back with what is already queued: the echo guard moves on by its length."""
+        now = time.monotonic()
+        start = self.last_tts_end if self.last_tts_end > now else now + TTS_BROWSER_DECODE_LAG
+        self.last_tts_end = start + seconds
+
+    def _note_file_sent(self, audio: bytes) -> None:
+        self._extend_tts_end(len(audio) / float(TTS_BYTES_PER_SEC))
+
+    async def _say_sentence(self, shown: str, spoken: str) -> bool:
+        """One sentence of the model's reply. Without voice 02: its text goes to the page, then it is spoken (as always).
+        With it: the sentence is only queued, so the model keeps reading while it is spoken, and its text is sent just before
+        its audio starts. False when the owner interrupted."""
+        live = self._live_speech()
+        if live is None:
+            await self.ws.send_json({"type": "transcript_chunk", "text": shown})
+            return await self._speak(spoken)
+
+        async def show():
+            await self._safe_send_json({"type": "transcript_chunk", "text": shown})
+        return live.say_nowait(spoken, on_start=show)
+
+    async def _speech_drain(self) -> bool:
+        """Wait until the queued sentences have been sent. True when the owner interrupted meanwhile. Without voice 02: no wait."""
+        live = self._speech
+        if live is None:
+            return False
+        await live.drain()
+        return self.interrupted.is_set()
+
+    async def _speak_outside_a_turn(self, text: str, *, greeting: bool = False) -> None:
+        """Speak where there is no turn to interrupt: the greeting, the crew's and the think agent's progress lines. No interrupt
+        check, as before. With voice 02 the line is only queued, so the call starts listening and the agent keeps working."""
+        live = self._live_speech()
+        if live is not None:
+            live.say_nowait(text)
+            return
+        audio = await self.synthesize(text)
+        if not audio:
+            return
+        if greeting:
+            await self.ws.send_bytes(audio)
+            self.last_tts_end = time.monotonic()
+        elif await self._safe_send_bytes(audio):
+            self.last_tts_end = self._tts_playback_end_time(audio)
+
+    async def _speech_interrupted(self, *, page_asked: bool) -> None:
+        """The owner interrupted: stop the speaking worker, which tells the page to drop the audio already on its way. When the
+        page itself asked, it always gets an answer (it ignores audio until then), also without voice 02."""
+        live = self._speech
+        if live is not None:
+            await live.cancel()
+        elif page_asked:
+            await self._safe_send_json({"type": "audio_reset"})
 
     # ── Skill dispatch ────────────────────────────────────────────────────
 
@@ -1140,9 +1225,7 @@ class VoicePipeline:
                 # crew must not raise out of the callback (the crew runs detached
                 # in the background; an unguarded send would surface as an error).
                 await self._safe_send_json({"type": "transcript", "role": "assistant", "text": notify})
-                audio = await self.synthesize(notify)
-                if audio and await self._safe_send_bytes(audio):
-                    self.last_tts_end = self._tts_playback_end_time(audio)
+                await self._speak_outside_a_turn(notify)
 
                 async def voice_cb(update):
                     status = update.get("status", "")
@@ -1156,9 +1239,7 @@ class VoicePipeline:
                         return
                     if not await self._safe_send_json({"type": "transcript", "role": "assistant", "text": msg}):
                         return
-                    a = await self.synthesize(msg)
-                    if a and await self._safe_send_bytes(a):
-                        self.last_tts_end = self._tts_playback_end_time(a)
+                    await self._speak_outside_a_turn(msg)
 
                 _dash = os.path.dirname(os.path.abspath(__file__))
                 if _dash not in sys.path:
@@ -1231,9 +1312,7 @@ class VoicePipeline:
                     if not await self._safe_send_json(
                             {"type": "transcript", "role": "system", "text": msg}):
                         return
-                    a = await self.synthesize(msg)
-                    if a and await self._safe_send_bytes(a):
-                        self.last_tts_end = self._tts_playback_end_time(a)
+                    await self._speak_outside_a_turn(msg)
 
             agent = Agent(name="CODEC", role=self._THINK_ROLE,
                           tools=self._think_tools(),
@@ -1387,6 +1466,7 @@ class VoicePipeline:
                             if self.processing:
                                 log.info("Interrupt received")
                                 self.interrupted.set()
+                            await self._speech_interrupted(page_asked=True)
 
                         elif ctrl_type == "your_turn":
                             # Force-flush audio buffer as an utterance (user says "your turn")
@@ -1457,7 +1537,10 @@ class VoicePipeline:
                     if (rms > INTERRUPT_THRESHOLD and
                             time.monotonic() - self.last_tts_end > VAD_ECHO_COOLDOWN):
                         log.info(f"Interrupt by audio energy (RMS {rms:.0f})")
+                        first = not self.interrupted.is_set()
                         self.interrupted.set()
+                        if first:
+                            await self._speech_interrupted(page_asked=False)
                     # Feed VAD so utterance is buffered (queued once processing ends)
                     utterance = self.feed_audio(raw_bytes)
                     if utterance:
@@ -1687,16 +1770,18 @@ class VoicePipeline:
 
                     to_speak, sentence_buf = self._flush_on_boundary(sentence_buf)
                     if to_speak:
-                        await self.ws.send_json({"type": "transcript_chunk", "text": to_speak})
-                        ok = await self._speak(to_speak)
+                        ok = await self._say_sentence(to_speak, to_speak)
                         if not ok:
                             interrupted_mid = True
                             break
 
                 # Flush remainder (only if not interrupted)
                 if not interrupted_mid and sentence_buf.strip():
-                    await self.ws.send_json({"type": "transcript_chunk", "text": sentence_buf})
-                    await self._speak(sentence_buf.strip())
+                    await self._say_sentence(sentence_buf, sentence_buf.strip())
+
+                # Voice 02: the sentences were only queued; wait until they have been sent (no wait without it)
+                if await self._speech_drain():
+                    interrupted_mid = True
 
                 await self.ws.send_json({
                     "type": "transcript", "role": "assistant",
@@ -1708,6 +1793,8 @@ class VoicePipeline:
             except Exception as e:
                 log.error(f"Pipeline error: {type(e).__name__}: {e}")
             finally:
+                if self._speech is not None:
+                    await self._speech.cancel(reset=False)     # nothing queued may leak into the next turn
                 self.interrupted.clear()
                 self.processing = False
                 await self.ws.send_json({"type": "status", "status": "listening"})
@@ -1762,6 +1849,17 @@ class VoicePipeline:
             _image_busy = None
         if not self._llm_cloud and not _image_busy:
             asyncio.create_task(_warm_voice_model())
+
+        # Voice 02: make sure the TTS server holds the clone model before the greeting (it may have restarted since the
+        # dashboard warmed it). Only when the live voice is on and the model is not already loaded.
+        async def _warm_voice_tts():
+            try:
+                live = codec_tts.live_settings(codec_tts.load_config()) if self.client_pcm else None
+                if live and not await asyncio.to_thread(codec_tts.model_loaded, KOKORO_URL, live["model"]):
+                    await asyncio.to_thread(codec_tts.warm_up, KOKORO_URL, None, "live")
+            except Exception:
+                log.debug("voice: voice 02 pre-warm failed", exc_info=True)
+        self._tts_warm_task = asyncio.create_task(_warm_voice_tts())
         try:
             _voice_log_event("voice_session_start", "codec-voice",
                              f"Voice session {'resumed' if is_resumed else 'started'}",
@@ -1790,10 +1888,7 @@ class VoicePipeline:
             greeting = "Reconnected. I'm still here. Go ahead."
             self.messages.append({"role": "assistant", "content": greeting})
             await self.ws.send_json({"type": "transcript", "role": "assistant", "text": greeting})
-            g_audio = await self.synthesize(greeting)
-            if g_audio:
-                await self.ws.send_bytes(g_audio)
-                self.last_tts_end = time.monotonic()
+            await self._speak_outside_a_turn(greeting, greeting=True)
         else:
             # Fresh session — full greeting
             _user_name = ""
@@ -1810,10 +1905,7 @@ class VoicePipeline:
                 greeting = f"Greetings. CODEC is online. {_where} What do you need?"
             self.messages.append({"role": "assistant", "content": greeting})
             await self.ws.send_json({"type": "transcript", "role": "assistant", "text": greeting})
-            g_audio = await self.synthesize(greeting)
-            if g_audio:
-                await self.ws.send_bytes(g_audio)
-                self.last_tts_end = time.monotonic()
+            await self._speak_outside_a_turn(greeting, greeting=True)
 
         # Run both tasks concurrently — receiver feeds queue, pipeline processes
         receiver = asyncio.create_task(self._audio_receiver())
@@ -1837,6 +1929,11 @@ class VoicePipeline:
             _wt = getattr(self, "_warmup_task", None)
             if _wt is not None and not _wt.done():
                 _wt.cancel()
+            _tw = getattr(self, "_tts_warm_task", None)
+            if _tw is not None and not _tw.done():
+                _tw.cancel()
+            if self._speech is not None:
+                await self._speech.close()
             self.save_to_memory()
             log.info(f"Session ended: {self.session_id}")
             try:
@@ -1876,6 +1973,11 @@ class VoicePipeline:
             _clear_voice_session_marker()
 
     async def close(self):
+        if self._speech is not None:
+            try:
+                await self._speech.close()
+            except Exception as e:
+                log.warning(f"Speech worker close warning: {e}")
         try:
             await self._http.aclose()
         except Exception as e:

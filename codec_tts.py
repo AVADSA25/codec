@@ -9,7 +9,8 @@ Without `tts_clone` every request is exactly what it was.
                   "ref_audio": "~/.codec/voices/codec-02/reference.wav",
                   "ref_text_file": "~/.codec/voices/codec-02/reference.txt"}
 
-The live conversation (purpose "live") is not enabled by default: a clone takes about 3 seconds before a sentence starts.
+The live conversation (purpose "live") is on only when "live" is in `enabled_for`; it streams the clone as raw PCM instead
+(first sound after about half a second, docs/CODEC-VOICE-02-LIVE-DESIGN.md).
 
 The clone only applies when it cannot hurt the shared TTS server (found with a real server, 23 Oct 2026): the model must already
 be in the local Hugging Face cache (an unknown model makes the server try the network and hold every request for a minute or
@@ -18,9 +19,11 @@ so a long text would hold the server, Kokoro requests included, for as long as i
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
+import re
 import threading
 import time
 from dataclasses import dataclass
@@ -136,6 +139,11 @@ def _note_fallback(purpose: Optional[str], reason: str) -> None:
         pass
 
 
+def note_fallback(purpose: Optional[str], reason: str) -> None:
+    """Public name of the rate-limited fallback audit line, for the live voice worker."""
+    _note_fallback(purpose, reason)
+
+
 def _is_audio(r) -> bool:
     if r.status_code != 200 or not r.content:
         return False
@@ -176,16 +184,148 @@ def speak(url: str, text: str, purpose: Optional[str], kokoro: dict, *, cfg: Opt
     return out
 
 
-def warm_up(url: Optional[str] = None, cfg: Optional[dict] = None) -> bool:
-    """Make the server load the clone model now (one short word), so the first Speak is not the slow one.
-    Meant for a background thread. True when the clone answered."""
+def warm_up(url: Optional[str] = None, cfg: Optional[dict] = None, purpose: Optional[str] = None) -> bool:
+    """Make the server load the clone model now (one short word), so the first Speak or the first live reply is not the slow one.
+    `purpose` None tries "speak", then "live", whichever is enabled. Meant for a background thread. True when the clone answered."""
     cfg = cfg if cfg is not None else load_config()
     url = url or cfg.get("tts_url") or "http://localhost:8085/v1/audio/speech"
     kokoro = {"model": cfg.get("tts_model", "mlx-community/Kokoro-82M-bf16"), "voice": cfg.get("tts_voice", "am_adam"),
               "speed": float(cfg.get("tts_speed", 1.0))}
-    if not clone_settings(cfg, "speak"):
-        return False
+    for which in ([purpose] if purpose else ["speak", "live"]):
+        if clone_settings(cfg, which):
+            try:
+                return speak(url, WARM_TEXT, which, kokoro, cfg=cfg).cloned
+            except Exception:
+                return False
+    return False
+
+
+# ── Live conversation: the clone streamed as raw PCM (docs/CODEC-VOICE-02-LIVE-DESIGN.md) ──────────────────────────
+
+CLONE_RATE = 24000      # Qwen3-TTS Base: mono, signed 16-bit little-endian, 24 kHz (the non-streamed WAV header says the same)
+LIVE_DEFAULTS = {"interval": 0.5, "first_byte_timeout": 8.0, "idle_timeout": 6.0, "chunk_chars": 280, "breaker_failures": 2}
+_SENTENCE_END = re.compile(r"(?<=[.!?\u2026])\s+")
+_SOFT_BREAK = re.compile(r"[,;:\u2013\u2014]\s")
+
+
+class CloneUnavailable(Exception):
+    """The clone could not start speaking this text (no audio was made): the caller falls back to the Kokoro request."""
+
+
+class CloneBroke(Exception):
+    """The clone stopped, or went silent, after audio had started: the rest of this text is dropped."""
+
+
+def _bounded(value, default, lo, hi):
     try:
-        return speak(url, WARM_TEXT, "speak", kokoro, cfg=cfg).cloned
+        v = float(value)
+    except (TypeError, ValueError):
+        return default
+    if v != v:          # NaN
+        return default
+    return min(max(v, lo), hi)
+
+
+def live_settings(cfg: Optional[dict]) -> Optional[dict]:
+    """The clone's settings for the live conversation when it is on for purpose "live" and safe to ask for, else None.
+    Adds the stream options (all optional under tts_clone.live, kept inside safe bounds)."""
+    s = clone_settings(cfg, "live")
+    if not s:
+        return None
+    c = ((cfg or {}).get("tts_clone") or {}).get("live")
+    c = c if isinstance(c, dict) else {}
+    d = LIVE_DEFAULTS
+    s["interval"] = _bounded(c.get("interval"), d["interval"], 0.25, 2.0)
+    s["first_byte_timeout"] = _bounded(c.get("first_byte_timeout"), d["first_byte_timeout"], 1.0, 30.0)
+    s["idle_timeout"] = _bounded(c.get("idle_timeout"), d["idle_timeout"], 1.0, 30.0)
+    s["chunk_chars"] = int(_bounded(c.get("chunk_chars"), d["chunk_chars"], 40, s["max_chars"]))
+    s["breaker_failures"] = int(_bounded(c.get("breaker_failures"), d["breaker_failures"], 1, 10))
+    s["rate"] = CLONE_RATE
+    return s
+
+
+def models_url(speech_url: str) -> str:
+    """The server's list of loaded models, from the speech URL."""
+    return speech_url.rsplit("/audio/speech", 1)[0] + "/models"
+
+
+def model_loaded(speech_url: str, model: str, *, get=None) -> bool:
+    """True when the TTS server already holds `model` in memory. Any trouble answers False."""
+    try:
+        r = (get or requests.get)(models_url(speech_url), timeout=2)
+        return any(m.get("id") == model for m in (r.json().get("data") or []))
     except Exception:
         return False
+
+
+def split_for_speech(text: str, max_chars: int = CLONE_MAX_CHARS) -> list:
+    """Pieces of `text` for the clone, each at most `max_chars` characters: sentences stay whole, a longer sentence is cut at a
+    comma (or similar), else at a space, else in the middle of a word. No text is lost; spacing is normalised."""
+    flat = " ".join(str(text or "").split())
+    max_chars = max(1, int(max_chars))
+    out = []
+    for sentence in _SENTENCE_END.split(flat):
+        rest = sentence.strip()
+        while len(rest) > max_chars:
+            window = rest[:max_chars]
+            cut = 0
+            for m in _SOFT_BREAK.finditer(window):
+                if m.end() >= max_chars * 0.4:
+                    cut = m.end()
+            if not cut:
+                cut = window.rfind(" ") + 1
+            if cut <= 0:
+                cut = max_chars
+            out.append(rest[:cut].strip())
+            rest = rest[cut:].strip()
+        if rest:
+            out.append(rest)
+    return [x for x in out if x]
+
+
+async def astream_clone(http, url: str, text: str, live: dict):
+    """Async generator over the PCM of `text` in voice 02: signed 16-bit little-endian mono at live["rate"] Hz, whole samples only.
+
+    `http` is an httpx.AsyncClient. CloneUnavailable is raised when nothing was heard yet (a bad status, an answer that is not
+    audio, no first byte in `first_byte_timeout`, an empty body); CloneBroke when it fails after audio started (a stop, or no
+    data for `idle_timeout`). Leaving the loop early (or aclose()) closes the connection, and the server then stops generating."""
+    import httpx
+    body = {"model": live["model"], "input": text, "ref_audio": live["ref_audio"], "ref_text": live["ref_text"],
+            "lang_code": live["lang_code"], "response_format": "pcm", "stream": True, "streaming_interval": live["interval"]}
+    started = False
+    carry = b""
+    backstop = max(live["first_byte_timeout"], live["idle_timeout"]) + 2.0
+
+    def fail(reason: str):
+        return CloneBroke(reason) if started else CloneUnavailable(reason)
+
+    try:
+        async with http.stream("POST", url, json=body, timeout=httpx.Timeout(5.0, read=backstop)) as r:
+            if r.status_code != 200:
+                raise CloneUnavailable(f"http_{r.status_code}")
+            kind = str(r.headers.get("content-type") or "").split(";")[0].strip().lower()
+            if not kind.startswith("audio/"):
+                raise CloneUnavailable("not_audio")
+            parts = r.aiter_raw().__aiter__()
+            while True:
+                wait = live["idle_timeout"] if started else live["first_byte_timeout"]
+                try:
+                    part = await asyncio.wait_for(parts.__anext__(), wait)
+                except StopAsyncIteration:
+                    break
+                if not part:
+                    continue
+                data = carry + part
+                keep = len(data) - (len(data) % 2)
+                carry = data[keep:]
+                if keep:
+                    started = True
+                    yield data[:keep]
+            if not started:
+                raise CloneUnavailable("empty")
+    except (CloneUnavailable, CloneBroke):
+        raise
+    except asyncio.TimeoutError:
+        raise fail("timeout") from None
+    except (httpx.HTTPError, OSError) as e:
+        raise fail(type(e).__name__) from None
