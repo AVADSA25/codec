@@ -50,14 +50,8 @@ def _escape_text(text: str) -> str:
     is gated by validation (above); text body still goes through string
     interpolation, so escape all metachars here. Order matters: backslash
     first so subsequent escapes don't re-escape its own backslash."""
-    if not isinstance(text, str):
-        text = str(text)
-    return (text
-            .replace("\\", "\\\\")
-            .replace('"', '\\"')
-            .replace("\r", "\\r")
-            .replace("\n", "\\n")
-            .replace("\t", "\\t"))
+    import codec_applescript
+    return codec_applescript.escape(text)
 
 
 def _emit_blocked(reason: str, recipient_preview: str) -> None:

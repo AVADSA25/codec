@@ -93,7 +93,8 @@ if MODE == "read_aloud":
 # ── Save: save to Apple Notes (primary) + local file backup ─────────────────
 if MODE == "save":
     save_text = text[:2000]
-    safe = save_text.replace('"', '\\"').replace("'", "")
+    import codec_applescript
+    safe = codec_applescript.escape(save_text)
     # Save to Apple Notes
     try:
         subprocess.run(["osascript", "-e",

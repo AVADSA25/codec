@@ -1,6 +1,8 @@
 """Chrome Tabs — list and switch between Chrome tabs via AppleScript"""
 import subprocess
 
+import codec_applescript
+
 SKILL_NAME = "chrome_tabs"
 SKILL_DESCRIPTION = "List all open Chrome tabs and switch between them"
 SKILL_MCP_EXPOSE = True
@@ -23,7 +25,7 @@ def run(task, app="", ctx=""):
         if switch_to:
             script = f'''
 tell application "Google Chrome"
-    set targetQuery to "{switch_to}"
+    set targetQuery to "{codec_applescript.escape(switch_to)}"
     repeat with w in windows
         set tabIndex to 1
         repeat with t in tabs of w

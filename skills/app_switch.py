@@ -130,8 +130,9 @@ def run(task, app="", ctx=""):
         app_name = target.title()
 
     try:
+        import codec_applescript
         r = subprocess.run(["osascript", "-e",
-            f'tell application "{app_name}" to activate'],
+            f'tell application "{codec_applescript.escape(app_name)}" to activate'],
             capture_output=True, text=True, timeout=5)
         if r.returncode == 0:
             return f"Switched to {app_name}."

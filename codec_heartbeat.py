@@ -600,8 +600,9 @@ def check_alerts():
         for msg in triggered:
             # macOS notification (visible immediately)
             try:
-                subprocess.run(["osascript", "-e",
-                    f'display notification "{msg[:120]}" with title "CODEC Alert" sound name "Glass"'],
+                import codec_applescript
+                subprocess.run(["osascript", "-e", codec_applescript.notification_script(
+                    msg[:120], "CODEC Alert", sound="Glass")],
                     capture_output=True, timeout=5)
             except Exception:
                 pass
