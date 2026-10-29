@@ -76,6 +76,12 @@ def run(task, app="", ctx=""):
         if not safe_url.startswith(('http://', 'https://', 'file://')):
             safe_url = 'https://' + safe_url
 
+        # P-101: http(s) only, public addresses unless browser_policy allows.
+        import codec_browser_policy
+        ok, refusal = codec_browser_policy.check_url(safe_url, "chrome_open")
+        if not ok:
+            return refusal
+
         # Use `open -a` for safety — no AppleScript string interpolation
         r = subprocess.run(
             ["open", "-a", "Google Chrome", safe_url],

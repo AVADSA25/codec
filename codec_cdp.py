@@ -69,7 +69,12 @@ class ChromeCDP:
         return resp.get("result", {})
 
     async def navigate(self, url: str) -> dict:
-        """Navigate to URL and wait for load."""
+        """Navigate to URL and wait for load. P-101: refused (ValueError)
+        unless codec_browser_policy allows the URL."""
+        import codec_browser_policy
+        ok, refusal = codec_browser_policy.check_url(url, "codec_cdp")
+        if not ok:
+            raise ValueError(refusal)
         result = await self.send("Page.navigate", {"url": url})
         await asyncio.sleep(1.5)  # Give page time to load
         return result

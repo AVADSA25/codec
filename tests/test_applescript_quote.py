@@ -115,7 +115,9 @@ def test_chrome_tabs(osa, payload):
     assert "do shell script" in text
 
 
-def test_chrome_automate(osa):
+def test_chrome_automate(osa, monkeypatch):
+    import codec_browser_policy  # this test is about escaping; P-101 is tested on its own
+    monkeypatch.setattr(codec_browser_policy, "check_url", lambda url, skill="": (True, ""))
     mod = _load("chrome_automate")
     evil = 'https://example.com/" & (do shell script "id") & "'
     mod.WORK_TABS[:] = [evil]
