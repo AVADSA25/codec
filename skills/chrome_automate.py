@@ -43,7 +43,11 @@ def run(task: str, context: str = "") -> str:
 
     # Open tabs via AppleScript (doesn't require CDP)
     import codec_applescript
+    import codec_browser_policy  # P-101
     for url in urls:
+        ok, refusal = codec_browser_policy.check_url(url, "chrome_automate")
+        if not ok:
+            return refusal
         subprocess.run(
             ["osascript", "-e", f'tell application "Google Chrome" to open location "{codec_applescript.escape(url)}"'],
             capture_output=True
