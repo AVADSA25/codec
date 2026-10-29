@@ -125,7 +125,8 @@ def _send_email(task):
         return f"Couldn't get send confirmation ({e}) — email NOT sent."
     sentinels = {getattr(codec_ask_user, "TIMEOUT_SENTINEL", ""),
                  getattr(codec_ask_user, "DISABLED_SENTINEL", "")}
-    if not answer or answer in sentinels or "send" not in answer.lower():
+    if (not answer or answer in sentinels
+            or not codec_ask_user.answer_consents(answer, "send")):
         return "Okay — email not sent."
     try:
         import base64
