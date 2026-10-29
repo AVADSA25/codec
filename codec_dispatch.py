@@ -47,11 +47,15 @@ def check_skill(task):
     }
 
 
-def run_skill(skill, task, app=""):
+def run_skill(skill, task, app="", consent=None):
     """Execute a skill and return its result.
 
     If the skill returns None (indicating it can't handle the task),
     falls through to the next matching skill.
+
+    `consent(skill_name, task) -> bool`, when given, is asked before each
+    candidate runs (P-080: the wake word); a refusal stops the dispatch with
+    codec_consent.LOCAL_CANCELLED and the skill never runs.
     """
     # License gate (paid edition only — fully inert for OSS/dev builds).
     # Wrapped so a licensing fault can NEVER break the core dispatch path.
@@ -81,6 +85,9 @@ def run_skill(skill, task, app=""):
     t0 = time.monotonic()
 
     for skill_name in all_matches:
+        if consent is not None and not consent(skill_name, task):
+            from codec_consent import LOCAL_CANCELLED
+            return LOCAL_CANCELLED
         try:
             # Wrap registry.run with the plugin hook surface (Phase 1 Step 2).
             # The cid generated above is the operation correlation_id; hooks
