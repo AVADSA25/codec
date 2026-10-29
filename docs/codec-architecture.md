@@ -211,6 +211,16 @@ Emitted by `codec_notes` (docs/NOTES-DESIGN.md), source `codec-notes`, level inf
 | `note_updated` | `id`, `source`, `chars` |
 | `note_deleted` | `id`, `source`, `chars` (the note moves to `.trash/`) |
 
+### Backup and retention events (2026-10, P-018, D-38)
+
+Emitted by `codec_backup` (source `codec-backup`) and `tools/codec_restore.py` (source `codec-restore`); docs/BACKUP-RETENTION-DESIGN.md. File names, item names and counts only: never content.
+
+| Event | Level | extra fields |
+|---|---|---|
+| `backup_check_failed` | warning | `prefix` (`memory`, `qchat`, `vibe`, `state`, ...), `reason` (the quick_check answer or an exception name): the new copy was thrown away, the older ones kept, one owner alert |
+| `retention_cleanup` | info | `kind` (`chats` \| `clipboard` \| `photos`), `deleted`, `days` (only when something was deleted) |
+| `backup_restored` | info | `backup` (file name), `mode` (`folder` \| `live`), `items`, `files`, `ok`, or `decision: refused` when the owner did not answer 'restore' |
+
 ### Voice events (2026-10)
 
 Emitted by `codec_tts` (docs/CODEC-VOICE-02-DESIGN.md), source `codec-tts`, level warning. The reason and the purpose only: never the text. At most one line per reason per minute.
@@ -245,7 +255,7 @@ only: never a fact's value, a rule's text or the About me text.
 
 | Event | Source | Level | Extra fields |
 |---|---|---|---|
-| `memory_changed` | `codec-dashboard` | info | `action` (`fact_edited` \| `fact_forgotten` \| `rule_added` \| `rule_removed` \| `rules_cleared` \| `about_saved` \| `fact_extract_switched` \| `nightly_switched`), then per action: `key`, `value_len`, `rows`, `rule_id`, `text_len`, `rules` (count), `on` |
+| `memory_changed` | `codec-dashboard` | info | `action` (`fact_edited` \| `fact_forgotten` \| `rule_added` \| `rule_removed` \| `rules_cleared` \| `about_saved` \| `fact_extract_switched` \| `nightly_switched` \| `retention_set`), then per action: `key`, `value_len`, `rows`, `rule_id`, `text_len`, `rules` (count), `on`, `chats_days` / `clipboard_days` / `photos_days` |
 | `skill_switched` | `codec-dashboard` | info | `tool` (the skill), `on` (UI P3.6: the Skills page's switch; `config.json:skills_off`) |
 | `observer_paused` | `codec-dashboard` | info | `until` (local, to the minute; UI P3.7, the header's eye) |
 | `observer_resumed` | `codec-dashboard` | info | — |
