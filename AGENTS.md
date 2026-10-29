@@ -392,6 +392,10 @@ Real adapter over `audit()` for lifecycle events (session start/end, scheduler t
 
 4. **Minimal env.** PATH=`/usr/bin:/bin`. PYTHONPATH, LD_LIBRARY_PATH, SHELL, HOME stripped — an attacker can't redirect the interpreter at a writable site-packages.
 
+### Crew shell sandbox + custom-agent tool check (P-030 parts 2-4, owner decision D-17, docs/CREW-SHELL-SANDBOX-DESIGN.md)
+
+The crew / custom-agent `shell_execute` tool runs `sandbox-exec -f <profile> /bin/sh -c <cmd>` with a profile from `codec_sandbox._write_sandbox_profile(home=, profile_path=, output_dir=, allow_shell=True)`: no network, the home's secret folders unreadable, writes only in `~/codec-workspace/agent-shell`, `/private/tmp` and `/dev/null`, programs from `/bin`, `/usr`, `/opt/homebrew` and the Python framework, a minimal environment, 30 s then the whole process group is stopped. One profile file per call in `~/.codec/crew_shell-*.sb`, deleted afterwards. Commands `is_dangerous` flags ask through `codec_consent.local_consent_ok(asked_from="crew")` (`shell_execute` is in `_LOCAL_CONSENT_REQUIRED`); with the gate off or longer than 200 characters they are refused. Without `/usr/bin/sandbox-exec` the tool refuses; never add an unsandboxed fallback. With no keyword arguments the builder writes exactly python_exec's old profile. Custom-agent saves (`/api/agents/custom/save`) refuse tool names outside `codec_agents.known_tool_names()`; older saved agents load with unknown names left out (`custom_agent_tools_dropped`).
+
 ### Dashboard session cookie (Sep 2026 audit follow-up)
 
 Logins (`routes/auth.py`) set the session as an **HttpOnly** `codec_session` cookie in the response, plus a separate random `codec_csrf` cookie that pages echo in `x-csrf-token`. The token is never in a response body, a URL (`?s=` is no longer accepted), sessionStorage, or a log line. Never reintroduce page-side token handling: same-origin fetches, images, streams and the WebSocket send the cookie by themselves. Touch ID verify is Mac-only (403 for tunnel requests). Details: `docs/SECURITY-HARDENING-2026-09.md`.

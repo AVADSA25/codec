@@ -376,31 +376,138 @@ def _google_docs_create(input_str: str) -> str:
             return f"Google Docs error: {e}"
 
 
-def _shell_execute(cmd: str) -> str:
-    import subprocess
-    cmd = cmd.strip()
-    from codec_config import is_dangerous
-    if is_dangerous(cmd):
-        _audit("shell_blocked", cmd=cmd[:200])
-        return "BLOCKED: dangerous command pattern detected. Command not executed."
-    # Print command for transparency before execution
-    log.info(f"[shell_execute] Running: {cmd[:200]}")
+# ── shell_execute: macOS sandbox + consent (P-030 part 2) ──
+# Owner decision D-17, 29 Oct 2026 (docs/CREW-SHELL-SANDBOX-DESIGN.md). The
+# crew / custom-agent shell runs `/bin/sh -c <cmd>` inside sandbox-exec with a
+# profile from codec_sandbox's template: no network, the home folder's secret
+# folders unreadable, writes only in the output folder and /private/tmp.
+# Commands codec_config.is_dangerous flags also need the owner's OK through
+# codec_consent. Where sandbox-exec does not exist the tool refuses: it never
+# runs a command unsandboxed.
+_SHELL_SANDBOX_EXEC = "/usr/bin/sandbox-exec"
+_SHELL_TIMEOUT_SECONDS = 30
+# The approval card shows the first 200 characters of the request
+# (codec_consent.local_consent_ok), so a flagged command must fit in them.
+_SHELL_CARD_CHARS = 200
+_SHELL_PATH = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin"
+_SHELL_OUTPUT_SUBDIR = os.path.join("codec-workspace", "agent-shell")
+_SHELL_DENIED_HINT = ("\n[sandbox] Something was refused: shell commands here have no network, "
+                      "cannot read secret folders and write only in {out} and /tmp.")
+
+
+def _shell_sandbox_available() -> bool:
+    return os.path.exists(_SHELL_SANDBOX_EXEC)
+
+
+def _shell_refused(reason: str, cmd: str) -> None:
+    """One audit line for a refusal by the tool itself. Lengths only, never
+    the command text (P-030 part 4)."""
+    _audit("shell_blocked", tool="shell_execute", outcome="denied",
+           reason=reason, cmd_chars=len(cmd))
+
+
+def _shell_is_flagged(cmd: str) -> bool:
     try:
-        r = subprocess.run(cmd, shell=True, capture_output=True, text=True,
-                           timeout=30, cwd=os.path.expanduser("~"))
-        out = r.stdout
-        if len(out) > 5000:
-            out = out[:5000] + f"\n[TRUNCATED: stdout was {len(r.stdout)} chars]"
-        if r.stderr:
-            stderr = r.stderr
-            if len(stderr) > 2000:
-                stderr = stderr[:2000] + f"\n[TRUNCATED: stderr was {len(r.stderr)} chars]"
-            out += "\nSTDERR: " + stderr
-        return out or "(no output)"
-    except subprocess.TimeoutExpired:
-        return "Command timed out (30s)"
+        from codec_config import is_dangerous
+        return bool(is_dangerous(cmd))
+    except Exception:
+        return True   # cannot check: treat as flagged (asks, never runs blind)
+
+
+def _run_shell_sandboxed(cmd: str, home: str, output_dir: str, profile_dir: str):
+    """Run `/bin/sh -c cmd` under sandbox-exec with a codec_sandbox profile.
+    Returns (stdout, stderr, timed_out). Raises on a setup failure."""
+    import signal
+    import subprocess
+    import tempfile
+
+    from codec_sandbox import _write_sandbox_profile
+    os.makedirs(profile_dir, exist_ok=True)
+    # One profile file per call, in a folder the sandbox cannot write
+    # (~/.codec by default): no race between two agents, no edit by a command.
+    fd, profile_path = tempfile.mkstemp(prefix="crew_shell-", suffix=".sb", dir=profile_dir)
+    os.close(fd)
+    try:
+        _write_sandbox_profile(allow_network=False, home=home, profile_path=profile_path,
+                               output_dir=output_dir, allow_shell=True)
+        env = {"PATH": _SHELL_PATH, "HOME": home, "TMPDIR": "/private/tmp",
+               "LANG": "en_US.UTF-8", "TERM": "dumb"}
+        p = subprocess.Popen([_SHELL_SANDBOX_EXEC, "-f", profile_path, "/bin/sh", "-c", cmd],
+                             cwd=output_dir, env=env, stdin=subprocess.DEVNULL,
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                             errors="replace", start_new_session=True)
+        try:
+            out, err = p.communicate(timeout=_SHELL_TIMEOUT_SECONDS)
+            return out, err, False
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(p.pid, signal.SIGKILL)   # the command and everything it started
+            except OSError:
+                pass
+            try:
+                out, err = p.communicate(timeout=5)
+            except subprocess.TimeoutExpired:      # a child that left the group holds the pipes
+                out, err = "", ""
+            return out, err, True
+    finally:
+        try:
+            os.unlink(profile_path)
+        except OSError:
+            pass
+
+
+def _shell_execute(cmd: str, *, home: str = None, output_dir: str = None,
+                   profile_dir: str = None) -> str:
+    """The crew / custom-agent shell tool. `home`, `output_dir` and
+    `profile_dir` default to the real home, ~/codec-workspace/agent-shell and
+    ~/.codec; the real-sandbox tests pass temp folders instead."""
+    cmd = (cmd or "").strip()
+    if not cmd:
+        _shell_refused("empty", cmd)
+        return "BLOCKED: no command given."
+    if not _shell_sandbox_available():
+        _shell_refused("no_sandbox", cmd)
+        return ("BLOCKED: shell_execute runs commands only inside the macOS sandbox "
+                f"({_SHELL_SANDBOX_EXEC}), which this machine does not have. Command not run.")
+    home = os.path.realpath(home or os.path.expanduser("~"))
+    output_dir = os.path.realpath(output_dir or os.path.join(home, _SHELL_OUTPUT_SUBDIR))
+    profile_dir = profile_dir or os.path.join(home, ".codec")
+
+    if _shell_is_flagged(cmd):
+        import codec_consent
+        if not codec_consent.gate_enabled():
+            _shell_refused("consent_gate_off", cmd)
+            return ("BLOCKED: dangerous command pattern detected and the consent gate is off "
+                    "(CONSENT_GATE_ENABLED=false), so it cannot be approved. Command not executed.")
+        if len(cmd) > _SHELL_CARD_CHARS:
+            _shell_refused("too_long_to_show", cmd)
+            return (f"BLOCKED: this command is flagged as dangerous and is longer than the "
+                    f"{_SHELL_CARD_CHARS} characters the approval card can show. Command not executed.")
+        # One audit line (local_consent_decision, asked_from=crew) either way.
+        if not codec_consent.local_consent_ok("shell_execute", cmd, "crew"):
+            return ("BLOCKED: this command is flagged as dangerous and needs the owner's OK; "
+                    "it was declined or not answered. Command not executed.")
+
+    # Print command for transparency before execution
+    log.info(f"[shell_execute] Running in the sandbox: {cmd[:200]}")
+    try:
+        stdout, stderr, timed_out = _run_shell_sandboxed(cmd, home, output_dir, profile_dir)
     except Exception as e:
-        return f"Shell error: {e}"
+        _shell_refused("sandbox_setup_failed", cmd)
+        return f"BLOCKED: the sandbox could not be set up ({type(e).__name__}). Command not executed."
+    if timed_out:
+        return f"Command timed out ({_SHELL_TIMEOUT_SECONDS}s); it and everything it started were stopped."
+    out = stdout or ""
+    if len(out) > 5000:
+        out = out[:5000] + f"\n[TRUNCATED: stdout was {len(stdout)} chars]"
+    if stderr:
+        err = stderr
+        if len(err) > 2000:
+            err = err[:2000] + f"\n[TRUNCATED: stderr was {len(stderr)} chars]"
+        out += "\nSTDERR: " + err
+        if "Operation not permitted" in stderr:
+            out += _SHELL_DENIED_HINT.format(out=output_dir)
+    return out or "(no output)"
 
 
 BUILTIN_TOOLS = [
@@ -409,7 +516,9 @@ BUILTIN_TOOLS = [
     Tool("file_read",         "Read a file from disk. Input: file path.",                             _file_read),
     Tool("file_write",        "Write a file. Input: 'path: /path\\ncontent: text'",                  _file_write),
     Tool("google_docs_create","Create a Google Doc. Input: 'title: Title\\ncontent: body text'",     _google_docs_create),
-    Tool("shell_execute",     "Run a shell command. Dangerous commands are blocked. Input: cmd",      _shell_execute),
+    Tool("shell_execute",     "Run a shell command in a macOS sandbox: no network, secret folders unreadable, "
+                              "writes only in ~/codec-workspace/agent-shell (the working folder) and /tmp. "
+                              "Dangerous commands need the owner's OK. Input: cmd",                    _shell_execute),
 ]
 
 
@@ -456,6 +565,38 @@ def load_skill_tools() -> List[Tool]:
 
 def get_all_tools() -> List[Tool]:
     return BUILTIN_TOOLS + load_skill_tools()
+
+
+# ── Custom-agent tool lists (P-030 part 3, owner decision D-17) ──
+# A saved custom agent may name only tools CODEC knows: the built-in tools and
+# the scanned skills (the same list /api/agents/tools shows). Saving refuses an
+# unknown name; an agent saved before this check still loads, with its unknown
+# names left out and one audit line (once per agent and dropped set, per process).
+_DROPPED_AUDITED: set = set()
+_DROPPED_LOCK = threading.Lock()
+
+
+def known_tool_names() -> set:
+    _agents_registry.scan()
+    return {t.name for t in BUILTIN_TOOLS} | set(_agents_registry.names())
+
+
+def known_tools_only(agent_id, tools, known: Optional[set] = None) -> List[str]:
+    """Return the names in `tools` that CODEC knows, in their saved order."""
+    if known is None:
+        known = known_tool_names()
+    raw = tools if isinstance(tools, list) else ([] if tools in (None, "") else [tools])
+    kept = [t for t in raw if isinstance(t, str) and t in known]
+    dropped = len(raw) - len(kept)
+    if dropped:
+        key = (str(agent_id), tuple(sorted(repr(t)[:120] for t in raw if t not in kept)))
+        with _DROPPED_LOCK:
+            first = key not in _DROPPED_AUDITED
+            _DROPPED_AUDITED.add(key)
+        if first:
+            _audit("custom_agent_tools_dropped", outcome="warning",
+                   agent_id=str(agent_id)[:100], dropped=dropped, kept=len(kept))
+    return kept
 
 
 # ═══════════════════════════════════════════════════════════════
