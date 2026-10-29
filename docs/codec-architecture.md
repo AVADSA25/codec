@@ -185,6 +185,14 @@ Emitted by `codec_vibe_agent` (docs/VIBE-AGENT-DESIGN.md), source `codec-vibe`, 
 | `vibe_agent_command` | `project`, `run`, `n`, `decision` (`once`\|`always`\|`stored`\|`declined`\|`refused`), `program` (the first word if it is plain ASCII, else empty; never the command), `network` (the web was allowed), `exit_code` (null when stopped, timed out or not run), `ms` |
 | `vibe_agent_allow` | `project`, `action` (`allow`\|`forget`), `network` |
 
+### Local consent events (2026-10, P-080)
+
+Emitted by `codec_consent.local_consent_ok`, source `codec-consent`. Never the request text.
+
+| Event | extra fields |
+|---|---|
+| `local_consent_decision` | `asked_from` (`wake`\|`voice`), `decision` (`allowed`\|`refused`), `task_chars`; top-level `tool` is the skill |
+
 ### Notes events (2026-10)
 
 Emitted by `codec_notes` (docs/NOTES-DESIGN.md), source `codec-notes`, level info. Ids, sizes and the source only: never a title or any note text.
