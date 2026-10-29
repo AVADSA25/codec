@@ -181,7 +181,18 @@ def settings() -> Dict[str, Any]:
         codec_scheduler.parse_when(NIGHTLY_WHEN))
     return {"fact_extract": mem.get("fact_extract", True) is not False,
             "nightly": bool(job and job.get("enabled")), "nightly_when": when,
-            "nightly_last_run": (job or {}).get("last_run")}
+            "nightly_last_run": (job or {}).get("last_run"), **_retention_view()}
+
+
+def _retention_view() -> Dict[str, Any]:
+    """How long chats, clipboard history and webcam photos are kept (D-38; docs/BACKUP-RETENTION-DESIGN.md),
+    and the counts of the last clean-up. 0 days = kept forever."""
+    import codec_backup
+    last = (codec_backup.load_status().get("retention") or {}).get("last_run") or {}
+    return {"retention": codec_backup.normalize_retention(_read_config().get("retention"))[0],
+            "retention_defaults": dict(codec_backup.RETENTION_DEFAULTS),
+            "retention_last": {k: {"at": v.get("at"), "deleted": v.get("deleted", 0),
+                                   "note": v.get("skipped") or v.get("error")} for k, v in last.items()}}
 
 
 def _set_nightly(on: bool) -> None:
@@ -216,6 +227,14 @@ def memory_settings():
 @router.put("/api/memory/settings")
 async def save_memory_settings(request: Request):
     body = await _body(request)
+    keep = None
+    if "retention" in body:  # checked before anything is saved, so a bad number changes nothing
+        import codec_backup
+        raw = body["retention"] if isinstance(body["retention"], dict) else {}
+        wanted, errors = codec_backup.normalize_retention(raw)
+        keep = {k: wanted[k] for k in raw if k in wanted}
+        if errors or not keep:
+            return _bad("Days: " + "; ".join(errors or ["give chats_days, clipboard_days or photos_days"]) + ".")
     if "fact_extract" in body:
         import codec_jsonstore
         with codec_jsonstore.file_lock(CONFIG_PATH):
@@ -228,4 +247,13 @@ async def save_memory_settings(request: Request):
     if "nightly" in body:
         _set_nightly(bool(body["nightly"]))
         _audit("nightly_switched", on=bool(body["nightly"]))
+    if keep:
+        import codec_jsonstore
+        with codec_jsonstore.file_lock(CONFIG_PATH):
+            cfg = _read_config()
+            cur = cfg.get("retention") if isinstance(cfg.get("retention"), dict) else {}
+            cur.update(keep)
+            cfg["retention"] = cur
+            codec_jsonstore.atomic_write_json(CONFIG_PATH, cfg)
+        _audit("retention_set", **keep)
     return settings()

@@ -944,6 +944,21 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
           <div class="push-msg" id="memSwitchMsg" role="status" aria-live="polite"></div>
         </div></div>
       </div>
+      <div class="settings-section" id="memKeepSection">
+        <div class="settings-title">How long CODEC keeps things</div>
+        <div class="settings-card"><div class="push-body">
+          <p class="push-intro">Older items are deleted once a day; 0 keeps them forever. Before the first clean-up with a new number, CODEC makes a checked copy of its memory. Every deletion is counted in backup status.</p>
+          <label class="voice-row"><span class="push-row-name">Conversation memory<span class="mem-sub">Days. What CODEC recalls from past chats and voice: 0, or 7 to 3650. The chat list itself is not trimmed.</span></span>
+            <input type="number" class="setting-input" id="memKeepChats" min="0" max="3650" style="max-width:90px" aria-label="Days conversation memory is kept"></label>
+          <label class="voice-row"><span class="push-row-name">Clipboard history<span class="mem-sub">Days: 0, or 1 to 3650.</span></span>
+            <input type="number" class="setting-input" id="memKeepClipboard" min="0" max="3650" style="max-width:90px" aria-label="Days clipboard history is kept"></label>
+          <label class="voice-row"><span class="push-row-name">Webcam photos<span class="mem-sub">Days: 0, or 1 to 3650.</span></span>
+            <input type="number" class="setting-input" id="memKeepPhotos" min="0" max="3650" style="max-width:90px" aria-label="Days webcam photos are kept"></label>
+          <div class="push-state" id="memKeepLast"></div>
+          <div class="mem-row-end"><button type="button" class="mcp-btn mcp-btn-primary" id="memKeepSave" onclick="saveRetention(this)">Save</button></div>
+          <div class="push-msg" id="memKeepMsg" role="status" aria-live="polite"></div>
+        </div></div>
+      </div>
       <div class="settings-section" id="memAboutSection">
         <div class="settings-title">About me</div>
         <div class="settings-card"><div class="push-body">
@@ -3102,7 +3117,35 @@ async function loadMemorySwitches() {
     document.getElementById('memNightlyNote').textContent = 'CODEC reads the last 24 hours of chats and saves the lasting facts it finds' +
       (d.fact_extract ? '' : ', once Save facts from text is on') + '. Runs ' + String(d.nightly_when || '').toLowerCase() + '.' +
       (d.nightly_last_run ? ' Last run ' + _memDate(d.nightly_last_run) + '.' : '');
+    _showRetention(d);
   } catch (e) { _memMsg('memSwitchMsg', 'Could not load: ' + e.message, true); }
+}
+// How long things are kept (D-38; docs/BACKUP-RETENTION-DESIGN.md). Lowering a number asks once more on the button.
+var MEM_KEEP = [['chats_days', 'memKeepChats', 'chats', 'conversations'], ['clipboard_days', 'memKeepClipboard', 'clipboard', 'clipboard items'],
+  ['photos_days', 'memKeepPhotos', 'photos', 'photos']], _memKeepLoaded = {};
+function _showRetention(d) {
+  var r = d.retention || {}, last = d.retention_last || {}, parts = [], at = '';
+  MEM_KEEP.forEach(function (k) {
+    document.getElementById(k[1]).value = r[k[0]];
+    _memKeepLoaded[k[0]] = r[k[0]];
+    var v = last[k[2]];
+    if (v) { parts.push((v.deleted || 0) + ' ' + k[3] + (v.note ? ' (' + v.note + ')' : '')); at = at || v.at; }
+  });
+  document.getElementById('memKeepLast').textContent = parts.length ?
+    'Last clean-up ' + _memDate(at) + ': deleted ' + parts.join(', ') + '.' : 'No clean-up has run yet.';
+}
+function saveRetention(btn) {
+  var body = { retention: {} }, keepsLess = false;
+  MEM_KEEP.forEach(function (k) {
+    var n = parseInt(document.getElementById(k[1]).value, 10), old = _memKeepLoaded[k[0]];
+    body.retention[k[0]] = isNaN(n) ? null : n;
+    if (n > 0 && (old === 0 || n < old)) keepsLess = true;
+  });
+  var send = async function () {
+    try { await _memSend('PUT', '/api/memory/settings', body); _memMsg('memKeepMsg', 'Saved. The next daily clean-up uses these numbers.'); loadMemorySwitches(); }
+    catch (e) { _memMsg('memKeepMsg', 'Could not save: ' + e.message, true); }
+  };
+  if (keepsLess) _memConfirm(btn, 'Keep less? Click again', send); else send();
 }
 async function saveMemorySwitch(name, on) {
   var body = {}; body[name] = on;
