@@ -7,6 +7,7 @@ Pins:
   - B6-P4: codec_voice_filters split + codec_voice back-compat re-exports
 """
 import pytest
+from route_table import route_methods
 
 
 # ── B6-P1: codec_plugin_trust ──────────────────────────────────────────────
@@ -101,7 +102,7 @@ class TestB6P3NotificationsRoute:
 
     def test_endpoints_registered_in_app(self):
         from codec_dashboard import app
-        paths = {route.path for route in app.routes if hasattr(route, "path")}
+        paths = set(route_methods(app))
         assert "/api/notifications" in paths
         assert "/api/notifications/count" in paths
         assert "/api/notifications/{notif_id}/read" in paths

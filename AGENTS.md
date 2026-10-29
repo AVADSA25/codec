@@ -305,10 +305,10 @@ Drop a `.py` file in `~/.codec/skills/` (user) or `skills/` (built-in). Restart 
 
 Single SQLite database at `~/.codec/memory.db`. Wrapper: `codec_memory.CodecMemory`.
 
-### Tiered retrieval (codec_memory_upgrade.py)
-- **L0/L1 — `identity.txt`:** always-loaded boot payload (<200 tokens). Persistent identity + preferences. Zero query cost
-- **L2 — recent rooms:** last N sessions from `conversations`, role-aware, single indexed query
-- **L3 — deep FTS:** on-demand FTS5 over full history, sub-200ms typical
+### Tiered retrieval (codec_memory_upgrade.py + codec_memory.py)
+- **L0/L1 — `identity.txt`:** `codec_memory_upgrade.load_identity()`, always-loaded boot payload (<200 tokens). Persistent identity + preferences. Zero query cost
+- **Recent sessions — `CodecMemory.get_sessions(limit=20, user_id=None)`:** one `GROUP BY session_id` query over `conversations`, newest session first: message count, first and last timestamp, and a 100-character preview of one user message (picked with `MAX(content)`, so alphabetical, not the latest). Used by `GET /api/memory/sessions` and Daybreak
+- **Deep search — `CodecMemory.search(query, limit=10, user_id=None)`:** FTS5 over the `conversations_fts` index, ranked by BM25. The query goes through `_sanitize_fts_query` first (FTS operators and `* " ( ) ^` stripped, 200 characters max); an empty query or an FTS error returns `[]`. `CodecMemory.get_context()` formats its top hits for the chat, voice and wake-word prompts; `GET /api/memory/search` and the MCP `search_memory` tool call it directly
 
 ### Facts table
 Temporal KV with `valid_from`, `valid_until`, `superseded_by`. NOTE (2026-06-09 correction): a `valid_at(timestamp)` time-travel query does NOT exist in code — currently-active facts are `valid_until IS NULL` (`query_valid_facts`); full timelines via `get_fact_history`; close-without-replace via `expire_fact` (added for Daybreak). Daybreak working threads live here as `key="thread:{kind}:{slug}"`, `fact_type="thread"` (docs/DAYBREAK-DESIGN.md).

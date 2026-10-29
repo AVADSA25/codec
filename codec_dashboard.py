@@ -476,7 +476,7 @@ from routes.health import router as health_router
 # E4 / SR-49: upload + upload_image + save_file extracted (with B1 helpers).
 from routes.upload import router as upload_router
 # F-series (SR-51..56): config, history+conversations, tts+response, vision,
-# vibe IDE preview+run_code, web_search, cdp status.
+# vibe IDE preview+run_code, cdp status.
 from routes.config import router as config_router
 from routes.history import router as history_router
 from routes.tts import router as tts_router
@@ -486,10 +486,7 @@ from routes.tts import router as tts_router
 from routes.tts import _latest_response_for_session  # noqa: F401  (back-compat re-export)
 from routes.vision import router as vision_router
 from routes.vibe_exec import router as vibe_exec_router
-from routes.web_search import router as web_search_router
 from routes.cdp import router as cdp_router
-# G-series (SR-57..58): cross-source memory search.
-from routes.memory_search import router as memory_search_router
 from routes.mcp import router as mcp_router
 # P3.13: Web Push devices, switches and the test send.
 from routes.push import router as push_router
@@ -561,9 +558,7 @@ app.include_router(history_router)
 app.include_router(tts_router)
 app.include_router(vision_router)
 app.include_router(vibe_exec_router)
-app.include_router(web_search_router)
 app.include_router(cdp_router)
-app.include_router(memory_search_router)
 app.include_router(mcp_router)
 app.include_router(push_router)
 app.include_router(transcribe_router)
@@ -854,9 +849,6 @@ async def chat_page():
 # D1 / SR-42: qchat endpoints + db helper moved to routes/qchat.py.
 
 
-# ── Cross-source memory search endpoint ──────────────────────────────────────
-
-# G1 memory_search → moved to routes/*.py
 # E4 upload_image → moved to routes/*.py
 # D2 / SR-43: vibe endpoints + db helper moved to routes/vibe.py.
 # (/vibe page route stays here — it serves the HTML template.)
