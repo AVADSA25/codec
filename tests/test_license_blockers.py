@@ -223,6 +223,29 @@ class TestLS7TelegramLogSanitization:
         result = codec_telegram._sanitize_log(42)
         assert "42" in result
 
+    def test_token_verification_failure_is_redacted(self, monkeypatch, caplog):
+        # The getMe failure at startup wrote the live token into PM2 logs
+        # (44 lines by 28 Oct 2026): the exception text carries the bot URL.
+        import logging
+        import codec_telegram
+        secret = "12345678:AAEhBP_LongSecret_abc-DEF123"
+        monkeypatch.setattr(codec_telegram, "load_config", lambda: {})
+        monkeypatch.setattr(codec_telegram, "get_telegram_config", lambda cfg: {"bot_token": secret})
+        monkeypatch.setattr(codec_telegram, "get_llm_config", lambda cfg: {"model": "x"})
+
+        class _Bot:
+            def __init__(self, token):
+                pass
+
+            def get_me(self):
+                raise RuntimeError(f"401 Client Error for url: https://api.telegram.org/bot{secret}/getMe")
+
+        monkeypatch.setattr(codec_telegram, "TelegramBot", _Bot)
+        with caplog.at_level(logging.ERROR, logger="codec-telegram"):
+            codec_telegram.main()
+        assert "Bot token verification failed" in caplog.text
+        assert secret not in caplog.text
+
 
 # ── SR-6: Env-aliased dangerous-binary detection ────────────────────────────
 class TestSR6EnvAliasedBinaryDetection:
