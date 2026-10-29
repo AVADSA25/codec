@@ -10,12 +10,7 @@
 <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
 <link rel="manifest" href="/manifest.json" crossorigin="use-credentials">
 <link rel="stylesheet" href="/static/codec.css?v=18a2f029">
-<!-- B5 / SR-29: crossorigin attribute added so SRI hash pinning can be
-     enabled by adding `integrity="sha384-..."` once the hash is computed.
-     Run `openssl dgst -sha384 -binary <file> | openssl base64 -A` against
-     the upstream files to mint the pinned hashes. Until then, browsers
-     still validate the TLS chain to cdnjs.cloudflare.com itself. -->
-<link rel="stylesheet" crossorigin="anonymous" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/editor/editor.main.min.css">
+<!-- The Monaco editor is a copy in the repo (static/vendor/monaco, D-24); it adds its own stylesheet when it loads. -->
 <script>
 /* Safe storage accessors — use these, never localStorage/sessionStorage directly.
 
@@ -361,7 +356,7 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx)}
 </div>
 <div class="op" id="op"><span style="color:var(--ac)">Vibe Coding</span></div>
 </div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
+<script src="/static/vendor/monaco/vs/loader.js"></script>
 <script src="/static/vibe-files.js?v=d056f202"></script>
 <script src="/static/vibe-projects.js?v=092f3bd5"></script>
 <script src="/static/vibe-agent.js?v=dffcd27d"></script>
@@ -521,7 +516,7 @@ function _histForSend(project) {
   });
 }
 
-require.config({paths:{vs:'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs'}});
+require.config({paths:{vs:'/static/vendor/monaco/vs'}});
 require(['vs/editor/editor.main'], function() {
   ed = monaco.editor.create(document.getElementById('eb'), {
     value: '// Ask CODEC to build something\n',

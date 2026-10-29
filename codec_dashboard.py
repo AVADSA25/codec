@@ -603,7 +603,8 @@ class _StaticAssets(StaticFiles):
     the real path and never lists a directory), dotfiles, and unknown types."""
 
     TYPES = {".css": "text/css", ".svg": "image/svg+xml", ".woff2": "font/woff2",
-             ".js": "text/javascript", ".png": "image/png"}
+             ".js": "text/javascript", ".png": "image/png",
+             ".ttf": "font/ttf"}  # Monaco's codicon icon font (static/vendor/monaco)
 
     async def get_response(self, path, scope):
         parts = path.replace("\\", "/").split("/")
