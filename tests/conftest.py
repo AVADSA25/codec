@@ -157,6 +157,25 @@ def _isolate_usage_stores() -> None:
 _isolate_usage_stores()
 
 
+def _isolate_backups() -> None:
+    """Keep the suite away from the owner's backups and retention (D-38, docs/BACKUP-RETENTION-DESIGN.md).
+
+    `codec_backup` writes ~/.codec/backups and deletes old chats, clipboard history and webcam photos.
+    `tests/test_heartbeat.py` runs a real heartbeat cycle, which calls both. Every path in the module
+    hangs off `codec_backup.CODEC_HOME`, so pointing it at an empty temp folder here, at conftest import
+    time like `_isolate_audit_log`, makes every unmocked call a no-op on temp files. Tests that need
+    files set `CODEC_HOME` to their own tmp_path.
+    """
+    try:
+        import codec_backup
+    except Exception:
+        return
+    codec_backup.CODEC_HOME = tempfile.mkdtemp(prefix="codec-test-backups-")
+
+
+_isolate_backups()
+
+
 def _install_pynput_stub_if_needed() -> None:
     """Stub `pynput` + `pynput.keyboard` if the real package can't import
     (headless Linux CI). On macOS the real package imports fine and this

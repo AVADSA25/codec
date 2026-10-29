@@ -118,74 +118,18 @@ def check_memory_stats():
         log.error(f"Memory stats failed: {e}")
 
 
-def _backup_one_db(prefix: str, db_path: str, backup_dir: str, today: str):
-    """Daily SQLite backup (safe under WAL via the backup API), keep last 7."""
-    backup_path = os.path.join(backup_dir, f"{prefix}_{today}.db")
-    if os.path.exists(backup_path) or not os.path.exists(db_path):
-        return
-    try:
-        src = sqlite3.connect(db_path, timeout=5.0)
-        src.execute("PRAGMA busy_timeout=5000")
-        dst = sqlite3.connect(backup_path, timeout=5.0)
-        dst.execute("PRAGMA busy_timeout=5000")
-        src.backup(dst)
-        dst.close()
-        src.close()
-
-        # Keep only last 7 backups per prefix
-        backups = sorted([f for f in os.listdir(backup_dir)
-                          if f.startswith(f"{prefix}_") and f.endswith(".db")])
-        for old in backups[:-7]:
-            try:
-                os.unlink(os.path.join(backup_dir, old))
-            except Exception:
-                pass
-
-        size_mb = os.path.getsize(backup_path) / (1024 * 1024)
-        log.info(f"{prefix} backup: {backup_path} ({size_mb:.1f} MB)")
-    except Exception as e:
-        log.warning(f"{prefix} backup failed: {e}")
-
-
-def _backup_agents_state(backup_dir: str, today: str):
-    """Daily tar.gz of ~/.codec/agents/ (plans, grants, state, messages),
-    keep last 7. Small (KBs) but irreplaceable after an agent run."""
-    agents_dir = os.path.expanduser("~/.codec/agents")
-    tar_path = os.path.join(backup_dir, f"agents_{today}.tar.gz")
-    if os.path.exists(tar_path) or not os.path.isdir(agents_dir):
-        return
-    try:
-        import tarfile
-        with tarfile.open(tar_path, "w:gz") as tf:
-            tf.add(agents_dir, arcname="agents")
-        tars = sorted([f for f in os.listdir(backup_dir)
-                       if f.startswith("agents_") and f.endswith(".tar.gz")])
-        for old in tars[:-7]:
-            try:
-                os.unlink(os.path.join(backup_dir, old))
-            except Exception:
-                pass
-        log.info(f"agents backup: {tar_path}")
-    except Exception as e:
-        log.warning(f"agents backup failed: {e}")
-
-
 def backup_memory_db():
-    """Daily backups to ~/.codec/backups/.
-
-    2026-07 log review: only memory.db was covered, but day-to-day chat
-    history actually lives in qchat.db (and Vibe IDE history in vibe.db) —
-    neither was backed up. Now all three SQLite stores + the agents/
-    runtime state get a dated backup, 7-day retention each.
-    """
-    backup_dir = os.path.expanduser("~/.codec/backups")
-    os.makedirs(backup_dir, exist_ok=True)
-    today = datetime.now().strftime("%Y-%m-%d")
-
-    _backup_one_db("memory", DB_PATH, backup_dir, today)
-    _backup_one_db("qchat", os.path.expanduser("~/.codec/qchat.db"), backup_dir, today)
-    _backup_one_db("vibe", os.path.expanduser("~/.codec/vibe.db"), backup_dir, today)
-    _backup_agents_state(backup_dir, today)
+    """Daily backups to ~/.codec/backups/ through codec_backup, the one writer
+    (docs/BACKUP-RETENTION-DESIGN.md): memory.db (30 kept), qchat.db and vibe.db
+    (7 kept), each copy checked with PRAGMA quick_check before it replaces
+    anything, plus the state tar (agents and settings files, 7 kept). 0600."""
+    try:
+        import codec_backup
+        for r in codec_backup.daily_backups():
+            if not r.get("ok") and not r.get("skipped"):
+                log.warning(f"{r['prefix']} backup rejected: {r.get('check')} (older copies kept)")
+    except Exception as e:
+        log.warning(f"Backups failed: {e}")
 
 # ── PM2 restart-storm detection (2026-07 log review) ─────────────────────────
 #
@@ -669,14 +613,18 @@ def heartbeat():
     backup_memory_db()
     now = datetime.now()
     if _last_cleanup is None or (now - _last_cleanup).days >= 1:
+        # Stated retention (config.json:retention, Settings > Memory; D-38 defaults chats 90,
+        # clipboard 30, webcam photos 30 days). Counts land in backup status.
         try:
-            from codec_memory import CodecMemory
-            mem = CodecMemory()
-            mem.cleanup()
+            import codec_backup
+            res = codec_backup.run_retention()
             _last_cleanup = now
-            log.info("Daily memory cleanup complete (90-day retention)")
+            log.info("Daily retention: " + ", ".join(
+                f"{k} {v.get('deleted', 0)} deleted" + (f" ({v.get('skipped') or v.get('error')})"
+                                                         if v.get('skipped') or v.get('error') else "")
+                for k, v in res.items()))
         except Exception as e:
-            log.warning(f"Memory cleanup failed: {e}")
+            log.warning(f"Retention clean-up failed: {e}")
     log.info("═══ Heartbeat complete ═══")
     log_event("heartbeat_tick", "codec-heartbeat",
               "Heartbeat tick completed",
