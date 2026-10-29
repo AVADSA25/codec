@@ -243,26 +243,34 @@ def _web_fetch(url: str) -> str:
         # of an internal/metadata host is an exfil path; _sync_http defaults to
         # follow_redirects=True, which would reach an internal target via a 302
         # the guard never saw — so we follow redirects manually here.
+        # P-008: the body is streamed and the whole fetch stops near 2 MB / 15 s.
         import codec_ssrf
         from urllib.parse import urljoin
         cur = url.strip()
+        budget = codec_ssrf.FetchBudget()
         try:
             for _ in range(6):  # initial request + up to 5 redirects
                 codec_ssrf.validate_url(cur)
-                r = _sync_http.get(cur, follow_redirects=False)
-                if r.is_redirect and r.headers.get("location"):
-                    cur = urljoin(cur, r.headers["location"])
-                    continue
+                with _sync_http.stream("GET", cur, follow_redirects=False,
+                                       timeout=budget.timeout()) as r:
+                    if r.is_redirect and r.headers.get("location"):
+                        cur = urljoin(cur, r.headers["location"])
+                        continue
+                    status = r.status_code
+                    if status < 400:
+                        body, _cut = codec_ssrf.read_capped(r.iter_bytes(), budget)
+                        text = body.decode(r.encoding or "utf-8", errors="replace")
                 break
             else:
                 return "Fetch error: blocked URL (too many redirects)"
         except codec_ssrf.SSRFError as e:
             return f"Fetch error: blocked URL ({e})"
-        if r.status_code in (401, 403):
-            return f"Blocked by site (HTTP {r.status_code}). Site requires JavaScript or blocks automated access."
-        if r.status_code >= 400:
-            return f"HTTP error {r.status_code} fetching {url}"
-        text = r.text
+        except TimeoutError:
+            return "Fetch error: the page took longer than 15 s"
+        if status in (401, 403):
+            return f"Blocked by site (HTTP {status}). Site requires JavaScript or blocks automated access."
+        if status >= 400:
+            return f"HTTP error {status} fetching {url}"
         text = re.sub(r'<script[^>]*>[\s\S]*?</script>', '', text)
         text = re.sub(r'<style[^>]*>[\s\S]*?</style>', '', text)
         text = re.sub(r'<[^>]+>', ' ', text)
