@@ -20,10 +20,13 @@ def run(task, app="", ctx=""):
     safe = re.sub(r'[^0-9+\-*/().%\s]', '', expr).strip()
     if not safe:
         return None  # Return None = skill can't handle it, pass to Q-Agent
+    from codec_math import TooLarge, safe_eval
     try:
-        result = eval(safe)
+        result = safe_eval(safe)
         if isinstance(result, float) and result == int(result):
             result = int(result)
         return f"{safe} = {result}"
+    except TooLarge:
+        return f"{safe}: that number is too large to calculate."
     except Exception:
         return None

@@ -669,7 +669,7 @@ def _try_skill_by_name(name: str, query: str, temporary: bool = False):
     #   "sum of Facebook (4900 + 6100), LinkedIn (4127 + 3900), ..."
     # The LLM almost always means "give me the total" → extract every number
     # and sum. If the query plainly contains a single arithmetic expression,
-    # we eval that instead.
+    # we evaluate that instead (codec_math, never eval()).
     if name == "calculator":
         try:
             import re as _re_calc
@@ -683,9 +683,12 @@ def _try_skill_by_name(name: str, query: str, temporary: bool = False):
                 and _re_calc.search(r"[+\-*/]", stripped)
             )
             if looks_like_clean_expression:
+                from codec_math import TooLarge, safe_eval
                 try:
-                    val = eval(stripped, {"__builtins__": {}}, {})  # noqa: S307
+                    val = safe_eval(stripped)
                     return name, f"{val:,}"
+                except TooLarge:
+                    return name, "That number is too large to calculate."
                 except Exception:
                     pass
 

@@ -7,12 +7,42 @@ SKILL_TRIGGERS = ["pm2 status", "pm2 restart", "pm2 list", "pm2 logs",
                    "pm2 info", "running services"]
 SKILL_MCP_EXPOSE = False  # Local management only
 
+import json
+import os
 import subprocess
 import re
 
-# Safety: only allow these PM2 subcommands
-ALLOWED_COMMANDS = {"list", "jlist", "restart", "logs", "info", "status", "describe"}
-# Never allow: delete, stop, kill, flush, dump, save, startup
+CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
+
+# Services a chat or voice sentence must never restart. The owner adds his own
+# in ~/.codec/config.json:pm2_protected_services; these defaults always apply.
+DEFAULT_PROTECTED = ("codec-dashboard", "codec-mcp-http", "cloudflared")
+
+_NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._@-]*")
+
+
+def _protected_services():
+    names = set(DEFAULT_PROTECTED)
+    try:
+        with open(CONFIG_PATH) as f:
+            extra = json.load(f).get("pm2_protected_services") or []
+        names.update(str(n).lower() for n in extra if isinstance(n, str))
+    except Exception:
+        pass
+    return names
+
+
+def _restart_refusal(name):
+    """Why `pm2 restart <name>` must not run from a sentence, or None."""
+    hint = f"Restart it yourself in the terminal: pm2 restart {name}"
+    if name == "all":
+        return "I don't restart every service at once. Name one service."
+    if not _NAME_RE.fullmatch(name):
+        return f"'{name}' is not a service name I can restart."
+    if name.lower() in _protected_services():
+        return (f"'{name}' is a protected service, so I don't restart it "
+                f"from chat or voice. {hint}")
+    return None
 
 
 def run(task, app="", ctx=""):
@@ -24,6 +54,9 @@ def run(task, app="", ctx=""):
         match = re.search(r'restart\s+(?:service\s+)?(\S+)', t)
         if match:
             name = match.group(1).strip()
+            refusal = _restart_refusal(name)
+            if refusal:
+                return refusal
             try:
                 r = subprocess.run(["pm2", "restart", name],
                                    capture_output=True, text=True, timeout=15)
@@ -59,7 +92,6 @@ def run(task, app="", ctx=""):
         r = subprocess.run(["pm2", "jlist"], capture_output=True, text=True, timeout=10)
         if r.returncode != 0:
             return f"pm2 error: {r.stderr.strip()[:200]}"
-        import json
         procs = json.loads(r.stdout)
         if not procs:
             return "No PM2 processes running."
