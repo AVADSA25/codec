@@ -1,25 +1,15 @@
 #!/usr/bin/env bash
-# Nightly backup of CODEC memory DB.
-# Uses sqlite3's online .backup command (safe even while DB is in use).
-# Keeps last 30 days; prunes older.
+# Nightly memory.db backup (launchd com.codec.memory-backup, 03:15).
+# It runs the same writer as the heartbeat, codec_backup.backup_memory
+# (docs/BACKUP-RETENTION-DESIGN.md): an online copy checked with PRAGMA
+# quick_check, 0600, the newest 30 days kept. A copy that fails the check is
+# thrown away, the older copies stay and the owner gets one alert. When the
+# heartbeat already made today's checked copy, this does nothing.
 set -euo pipefail
 
-DB="${HOME}/.codec/memory.db"
-DIR="${HOME}/.codec/backups"
-mkdir -p "$DIR"
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PY=/usr/local/bin/python3.13
+[ -x "$PY" ] || PY="$(command -v python3)"
 
-if [ ! -f "$DB" ]; then
-  echo "[backup] no DB at $DB — skipping" >&2
-  exit 0
-fi
-
-STAMP=$(date -u +%Y-%m-%d)
-DEST="${DIR}/memory-${STAMP}.db"
-
-sqlite3 "$DB" ".backup '${DEST}'"
-chmod 600 "$DEST"
-
-# Retain 30 days
-find "$DIR" -name 'memory-*.db' -type f -mtime +30 -delete 2>/dev/null || true
-
-echo "[backup] wrote ${DEST} ($(du -h "$DEST" | cut -f1))"
+cd "$REPO"
+exec "$PY" -m codec_backup memory
