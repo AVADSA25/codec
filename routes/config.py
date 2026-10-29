@@ -125,6 +125,35 @@ NESTED_BLOCKS = {
 # own record of the local model to go back to (AGENTS.md §10).
 _RAW_READ_ONLY = _SENSITIVE_FIELDS | {"llm_local_restore"}
 
+# P-005: login keys. auth_pin_hash is never set through the config routes
+# (routes/auth.py rehashes it by its own path); the other three can be changed
+# only from this Mac, so a stolen session cookie used through the tunnel
+# cannot turn off the login, stretch it or replace the dashboard token.
+_NEVER_PUT_KEYS = {"auth_pin_hash"}
+_MAC_ONLY_KEYS = {"auth_enabled", "auth_session_hours", "dashboard_token"}
+
+
+def _login_key_refusal(request, changes: dict, current: dict):
+    """A 403 response when `changes` touches a login key it may not, else None.
+    A masked secret ("****") or an unchanged value is not a change."""
+    from routes._shared import _is_remote_request
+
+    def changed(k):
+        v = changes[k]
+        if k in _SENSITIVE_FIELDS and isinstance(v, str) and v.startswith("*"):
+            return False
+        return current.get(k) != v
+
+    keys = [k for k in changes if k in _NEVER_PUT_KEYS | _MAC_ONLY_KEYS and changed(k)]
+    never = [k for k in keys if k in _NEVER_PUT_KEYS]
+    if never:
+        return JSONResponse({"error": f"{never[0]} is not set through the config page."},
+                            status_code=403)
+    if keys and _is_remote_request(request):
+        return JSONResponse({"error": "Login settings can be changed only on this Mac.",
+                             "fields": sorted(keys)}, status_code=403)
+    return None
+
 
 def _validate_block(block: str, values) -> list:
     if not isinstance(values, dict):
@@ -279,6 +308,10 @@ async def update_config(request: Request):
                 for k, v in section_vals.items():
                     flat[k] = v
 
+        refusal = _login_key_refusal(request, flat, config)
+        if refusal is not None:
+            return refusal
+
         # Validate all incoming values
         errors = _validate_config_updates(flat)
         for block, vals in nested.items():
@@ -337,6 +370,9 @@ async def put_config_raw(request: Request):
     if not isinstance(edited, dict):
         return JSONResponse({"error": "config must be a JSON object"}, status_code=400)
     config = _read_config()
+    refusal = _login_key_refusal(request, edited, config)
+    if refusal is not None:
+        return refusal
     changes = {k: v for k, v in edited.items() if k not in _RAW_READ_ONLY and config.get(k) != v}
     errors = _validate_config_updates({k: v for k, v in changes.items() if k not in NESTED_BLOCKS})
     for block in NESTED_BLOCKS:
