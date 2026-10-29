@@ -496,7 +496,7 @@ The MCP-exposed `file_write` skill (`skills/file_write.py`) refuses writes to se
 
 **Path resolution:** the parent directory is realpath-resolved before the blocklist comparison so symlink-into-blocked-root traversal attempts can't slip through. `/tmp` and `$HOME` are also realpath-resolved in the final sanity check (this fixed a pre-existing bug where macOS's `/tmp → /private/tmp` alias was tripping the `/private` block).
 
-**Contributor note:** users edit `~/.codec/triggers.json` or `~/.codec/config.json` through the dashboard PWA or a direct editor, NOT through `file_write`. Legitimate `file_write` targets are `~/Documents`, `~/Desktop`, `/tmp`, `~/Projects`, `~/codec-workspace`, etc. — the user-facing parts of `$HOME`.
+**Contributor note:** users edit `~/.codec/triggers.json` or `~/.codec/config.json` through the dashboard PWA or a direct editor, NOT through `file_write`. Since P-006 (Oct 2026) `codec_write_policy.check_write` is an allowlist on top of this blocklist, shared by `file_write`, the chat save-file route (`routes/upload.py`) and the crew `file_write` tool: writes go only to `~/Documents`, `~/Desktop`, `~/Downloads`, `~/Projects`, `~/codec-workspace` and `/tmp`, never into `~/Documents/Claude/Obsidian/_system`, and never to a file ending `.sh`, `.mjs`, `.command` or `.plist`. Widening the list is the owner's call.
 
 ### Skill creation flow — review-and-approve only (Phase 1 Wave 1, PR-1B — closes D-2 + D-3)
 

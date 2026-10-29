@@ -322,9 +322,11 @@ def _file_write(input_str: str) -> str:
         path = os.path.join(workspace, path)
     # Resolve symlinks and .. to prevent traversal
     path = os.path.realpath(path)
-    home = os.path.realpath(os.path.expanduser("~"))
-    if not path.startswith(home):
-        return "Error: cannot write outside home directory."
+    # P-006: only the allowed write folders, no scripts or launch files.
+    import codec_write_policy
+    ok, reason = codec_write_policy.check_write(path)
+    if not ok:
+        return f"Error: {reason}"
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w") as f:

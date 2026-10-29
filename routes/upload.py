@@ -107,8 +107,6 @@ def _save_file_blocked_roots():
 
 
 _SAVE_FILE_BLOCKED_ROOTS_CACHE = None
-_SAVE_FILE_TMP_REAL = os.path.realpath("/tmp")
-_SAVE_FILE_HOME_REAL = os.path.realpath(os.path.expanduser("~"))
 
 
 def _save_file_is_safe(path):
@@ -133,13 +131,9 @@ def _save_file_is_safe(path):
     for blocked in _SAVE_FILE_BLOCKED_ROOTS_CACHE:
         if real_path == blocked or real_path.startswith(blocked + os.sep):
             return False, f"Blocked path: {blocked}"
-    under_home = (real_path == _SAVE_FILE_HOME_REAL or
-                  real_path.startswith(_SAVE_FILE_HOME_REAL + os.sep))
-    under_tmp = (real_path == _SAVE_FILE_TMP_REAL or
-                 real_path.startswith(_SAVE_FILE_TMP_REAL + os.sep))
-    if not (under_home or under_tmp):
-        return False, f"Target must live under $HOME or /tmp (got: {real_path})"
-    return True, ""
+    # P-006: only the allowed write folders, no scripts or launch files.
+    import codec_write_policy
+    return codec_write_policy.check_write(real_path)
 
 
 # ── endpoints ──────────────────────────────────────────────────────────────

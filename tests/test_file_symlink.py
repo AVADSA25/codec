@@ -29,8 +29,8 @@ def test_file_write_is_safe_target_rejects_symlinked_basename(tmp_path, monkeypa
     link = docs / "notes.txt"
     link.symlink_to(blocked / "s.txt")  # final component is a symlink to a blocked target
 
-    monkeypatch.setattr(wf, "_HOME_REAL", os.path.realpath(str(tmp_path / "home")))
-    monkeypatch.setattr(wf, "_TMP_REAL", os.path.realpath("/tmp"))
+    import codec_write_policy
+    monkeypatch.setattr(codec_write_policy, "ALLOWED_ROOTS", [str(tmp_path / "home")])
     monkeypatch.setattr(wf, "_BLOCKED_ROOTS_REAL", [os.path.realpath(str(blocked))])
     monkeypatch.setattr(wf, "_BLOCKED_ROOTS", wf._BLOCKED_ROOTS_REAL)
 
@@ -60,8 +60,8 @@ def test_file_write_still_allows_plain_new_file(tmp_path, monkeypatch):
     wf = _load("file_write.py")
     home = tmp_path / "home"
     (home / "d").mkdir(parents=True)
-    monkeypatch.setattr(wf, "_HOME_REAL", os.path.realpath(str(home)))
-    monkeypatch.setattr(wf, "_TMP_REAL", os.path.realpath("/tmp"))
+    import codec_write_policy
+    monkeypatch.setattr(codec_write_policy, "ALLOWED_ROOTS", [str(home)])
     monkeypatch.setattr(wf, "_BLOCKED_ROOTS_REAL", [os.path.realpath(str(tmp_path / "blocked"))])
     monkeypatch.setattr(wf, "_BLOCKED_ROOTS", wf._BLOCKED_ROOTS_REAL)
     safe, reason = wf._is_safe_target(str(home / "d" / "newfile.txt"))
