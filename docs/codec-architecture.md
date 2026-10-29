@@ -220,6 +220,14 @@ Emitted by `codec_notes` (docs/NOTES-DESIGN.md), source `codec-notes`, level inf
 | `note_updated` | `id`, `source`, `chars` |
 | `note_deleted` | `id`, `source`, `chars` (the note moves to `.trash/`) |
 
+### Local-first events (2026-10, D-37)
+
+Emitted by `routes/chat._enrich_messages` (docs/LOCAL-FIRST-DEFAULTS-DESIGN.md), source `codec-dashboard`, level info (warning when the search raised). One line per web search, which runs only with the "Search the web" toggle. Lengths only: never the query or the message.
+
+| Event | extra fields |
+|---|---|
+| `web_search_sent` | `query_words` (at most 12), `query_chars`, `message_chars`, `results`, `temporary` |
+
 ### Voice events (2026-10)
 
 Emitted by `codec_tts` (docs/CODEC-VOICE-02-DESIGN.md), source `codec-tts`, level warning. The reason and the purpose only: never the text. At most one line per reason per minute.

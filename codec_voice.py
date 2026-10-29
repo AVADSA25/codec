@@ -259,7 +259,7 @@ try:
     # PR-2B-2 (D-15): Keychain-aware getter (cfg→Keychain migration + env fallback).
     from codec_config import get_gemini_api_key
     GEMINI_API_KEY = get_gemini_api_key()
-    VISION_PROVIDER = _cfg.get("vision_provider", "gemini" if GEMINI_API_KEY else "local")
+    VISION_PROVIDER = _cfg.get("vision_provider", "local")  # D-37: Gemini only when set
 except Exception:
     log.debug("voice: vision provider/Keychain bootstrap failed", exc_info=True)
 

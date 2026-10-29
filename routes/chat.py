@@ -211,15 +211,39 @@ def _note_memory(meta, source: str, kind: str, count: int) -> None:
         meta.setdefault("memory", []).append({"source": source, "kind": kind, "count": int(count)})
 
 
+# D-37 (docs/LOCAL-FIRST-DEFAULTS-DESIGN.md): what a web search sends is a short
+# query made from the message, never the message itself.
+SEARCH_QUERY_MAX_WORDS = 12
+_SEARCH_LEADIN = re.compile(
+    r"^(?:(?:hey|hi|ok|okay)\s+codec\W*\s*)?(?:(?:can|could|would|will)\s+you\s+|please\s+)*"
+    r"(?:search\s+(?:the\s+web|the\s+internet|online|google)(?:\s+for)?|search\s+for|search|google|"
+    r"look\s+up|find\s+out(?:\s+about)?)[\s:,]+",
+    re.IGNORECASE)
+
+
+def _derive_search_query(text: str, max_words: int = SEARCH_QUERY_MAX_WORDS) -> str:
+    """The words a web search sends: the first non-empty line of the message,
+    links and a lead-in such as "search the web for" removed, at most
+    `max_words` words. Pasted text below the first line stays on the Mac."""
+    first = next((ln for ln in str(text or "").splitlines() if ln.strip()), "")
+    first = re.sub(r"https?://\S+", " ", first).strip()
+    first = _SEARCH_LEADIN.sub("", first)
+    words = [w.strip(".,;:!?\"'()[]{}<>") for w in first.split()]
+    return " ".join([w for w in words if w][:max_words])
+
+
 def _enrich_messages(messages: list, config: dict, force_search: bool = False, meta: dict | None = None,
-                     temporary: bool = False) -> list:
+                     temporary: bool = False, web: bool = True) -> list:
     """
-    Auto-detect URLs, search intent, and memory recall in the last user message.
-    Injects context messages before the last user message when content is found.
-    force_search=True bypasses intent detection and always searches.
+    Auto-detect URLs and memory recall in the last user message, and search the
+    web when the page's "Search the web" toggle is on (force_search=True; D-37:
+    no search on trigger words). Injects context messages before the last user
+    message when content is found.
     Returns a (possibly modified) copy of the messages list. With `meta`, it also
-    records what memory it injected (_note_memory). A temporary chat (P2.11)
-    gets no memory recall; links and web search still work.
+    records what memory it injected (_note_memory) and, under "web", that a
+    search was sent. A temporary chat (P2.11) gets no memory recall; links and
+    the toggle's search still work. web=False (the Vibe page) fetches no link
+    and sends no search.
     """
     import re as _re
     if not messages:
@@ -360,22 +384,20 @@ def _enrich_messages(messages: list, config: dict, force_search: bool = False, m
                 log.warning(f"Memory enrichment (vibe) failed: {e}")
 
     # ── URL detection ──────────────────────────────────────────────────────────
-    urls = _re.findall(r'https?://[^\s\)\]>,"\']+', last_text)
+    # web=False (the Vibe page, D-37): project files go to the model, never a fetch.
+    urls = _re.findall(r'https?://[^\s\)\]>,"\']+', last_text) if web else []
     for url in urls[:3]:  # cap at 3 URLs per message
         content = _fetch_url_content(url)
         if content:
             context_parts.append(f"[URL CONTENT: {url}]\n{content}\n[END URL CONTENT]")
             log.info(f"Chat URL fetched: {url} ({len(content)} chars)")
 
-    # ── Search intent detection ────────────────────────────────────────────────
-    search_triggers = [
-        'search for', 'search the web', 'google', 'look up', 'find out',
-        'what is the latest', 'current news', 'recent', 'today\'s', 'right now',
-        'who won', 'stock price', 'weather in', 'news about'
-    ]
-    lower = last_text.lower()
-    should_search = (any(t in lower for t in search_triggers) or force_search) and not urls
-    if should_search:
+    # ── Web search: only with the "Search the web" toggle (D-37) ───────────────
+    # Trigger words ("recent", "google", "right now", ...) no longer search: a
+    # private sentence left the Mac on a substring. The toggle sends force_search.
+    query = _derive_search_query(last_text) if (web and force_search and not urls) else ""
+    if query:
+        results, outcome, error_type = [], "ok", None
         try:
             import sys
             import os as _os
@@ -386,12 +408,21 @@ def _enrich_messages(messages: list, config: dict, force_search: bool = False, m
             if repo_dir not in sys.path:
                 sys.path.insert(0, repo_dir)
             from codec_search import search, format_results
-            results = search(last_text, max_results=5)
+            results = search(query, max_results=5) or []
             if results:
                 context_parts.append(f"[WEB SEARCH RESULTS]\n{format_results(results, max_snippets=5)}\n[END WEB SEARCH RESULTS]")
-                log.info(f"Chat search injected for: {last_text[:80]}")
+                log.info(f"Chat search injected: {len(query.split())} words sent, {len(results)} results")
         except Exception as e:
-            log.warning(f"Chat search failed: {e}")
+            outcome, error_type = "error", type(e).__name__
+            log.warning(f"Chat search failed: {error_type}")
+        if meta is not None:  # the reply shows "Searched the web"
+            meta["web"] = {"searched": True, "results": len(results)}
+        # One line per search: lengths only, never the query or the message.
+        log_event("web_search_sent", "codec-dashboard", "Chat web search sent",
+                  extra={"query_words": len(query.split()), "query_chars": len(query),
+                         "message_chars": len(last_text), "results": len(results),
+                         "temporary": bool(temporary)},
+                  level="warning" if error_type else "info", outcome=outcome, error_type=error_type)
 
     if not context_parts and not memory_parts:
         return messages
@@ -1218,8 +1249,10 @@ async def chat_completion(request: Request):
         # gone — both chat POSTs now go through codec_llm, which builds its own.)
         force_search = body.get("force_search", False)
         _mem_meta: dict = {}  # what memory this turn used, for the reply's "Memory used" (P2.4)
+        # D-37: web:false (the Vibe page) means no link fetch and no web search.
+        _web = body.get("web", True) is not False
         messages = _enrich_messages(messages, config, force_search=bool(force_search), meta=_mem_meta,
-                                    temporary=_temporary)
+                                    temporary=_temporary, web=_web)
 
         # Build the system prompt (override + step-budget + attachment /
         # content-rewrite / observer suffixes) — extracted to a helper for
@@ -1228,6 +1261,7 @@ async def chat_completion(request: Request):
             config, _budget, has_attachment, last_user_text, meta=_mem_meta, temporary=_temporary
         )
         _mem_items = _mem_meta.get("memory", [])
+        _web_used = _mem_meta.get("web")  # D-37: a search was sent, the reply says so
 
         # Working folder allocated to this chat via the "+" button. Tell the model
         # so file operations (save/read with relative names) resolve there — the
@@ -1336,6 +1370,8 @@ async def chat_completion(request: Request):
                 _stream_actions: set[str] = set()
                 if _mem_items:  # before any token, so the page can show "Memory used" on the reply
                     yield f"data: {json.dumps({'memory': _mem_items})}\n\n"
+                if _web_used:  # D-37: "Searched the web" under the reply
+                    yield f"data: {json.dumps({'web': _web_used})}\n\n"
 
                 def _frame(tok):
                     if tok:
@@ -1652,6 +1688,8 @@ async def chat_completion(request: Request):
         out = {"response": answer, "model": model}
         if _mem_items:
             out["memory"] = _mem_items
+        if _web_used:
+            out["web"] = _web_used
         return out
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)

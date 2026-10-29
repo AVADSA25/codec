@@ -145,6 +145,15 @@ def classify(messages: list[dict], *, base_url: Optional[str] = None,
     cfg = _load_cfg()
     base_url = base_url or cfg.get("llm_base_url", "http://localhost:8083/v1")
     model = model or cfg.get("llm_model", "local-qwen")
+    # D-37: the inbox (senders, subjects, snippets) stays on the Mac even while
+    # chat is switched to a cloud model: a registered cloud entry becomes the
+    # local model it stands in for (read-only use of codec_cloud_models).
+    try:
+        import codec_cloud_models
+        base_url, model = codec_cloud_models.local_only(base_url, model, cfg)
+    except Exception as e:  # fail closed: the local server, never the cloud
+        log.warning("triage local-model lookup failed: %s", type(e).__name__)
+        base_url = "http://localhost:8083/v1"
     listing = "\n".join(
         f'{i}) From: {m["sender"]} | Subject: {m["subject"]} | {m["snippet"]}'
         for i, m in enumerate(messages)
