@@ -14,6 +14,7 @@ from routes.vibe_agent import router
 from vibe_agent_fakes import (  # noqa: F401  (fixtures are used by name)
     agent_env, audits, blocker, cfg, make_project, scripted, wait_for,
 )
+from route_table import route_methods
 
 
 @pytest.fixture
@@ -156,7 +157,7 @@ def test_a_run_started_through_the_tunnel_cannot_run_commands(client, scripted):
 
 def test_the_dashboard_registers_the_agent_routes_behind_its_login():
     import codec_dashboard
-    paths = {getattr(r, "path", "") for r in codec_dashboard.app.routes}
+    paths = set(route_methods(codec_dashboard.app))
     for path in ("/api/vibe/agent/models", "/api/vibe/projects/{pid}/agent/run", "/api/vibe/projects/{pid}/agent/runs",
                  "/api/vibe/projects/{pid}/agent/{run_id}", "/api/vibe/projects/{pid}/agent/{run_id}/stop",
                  "/api/vibe/projects/{pid}/agent/{run_id}/answer"):
