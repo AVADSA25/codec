@@ -38,6 +38,10 @@ def run(task, app="", ctx=""):
 
         encoded = urllib.parse.quote_plus(query)
         url = f"https://www.google.com/search?q={encoded}"
+        import codec_browser_policy  # P-101: same check as every browser skill
+        ok, refusal = codec_browser_policy.check_url(url, "chrome_search")
+        if not ok:
+            return refusal
 
         script = f'''
 tell application "Google Chrome"
