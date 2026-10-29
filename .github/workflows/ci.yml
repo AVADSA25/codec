@@ -5,29 +5,46 @@ on:
   pull_request:
     branches: [main]
 
+# Read-only token for every job (D-33, audit P-023). Nothing here writes to
+# the repo; uploading the test reports does not need a token scope.
+permissions:
+  contents: read
+
+env:
+  # The buyer hash lock: the exact package set the macOS app bundles. The
+  # macOS job installs it as is; the Linux job takes its versions as
+  # constraints, so CI tests the versions that ship. Dependabot updates the
+  # SHA pins below (it keeps the version comments).
+  BUYER_LOCK: packaging/macos/requirements-lock.txt
+
 jobs:
+  # Job id and name stay "smoke": main's branch protection requires that check.
   smoke:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.13"
-      - name: Install deps
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+            packaging/macos/requirements-lock.txt
+      - name: Install deps (requirements-dev.txt at the buyer lock's versions)
+        # requirements-dev.txt pulls requirements.txt plus pytest and ruff.
+        # The constraints come from the buyer lock minus the macOS-only
+        # packages (MLX, PyObjC), so every package the lock pins is installed
+        # at that version; no CI-only version pins. pytest-cov is CI only.
+        # pynput installs, but the conftest swaps in a stub when its import
+        # fails (headless Linux has no X11).
         run: |
           python -m pip install --upgrade pip
-          # Runtime deps the full suite needs to import codec_dashboard /
-          # routes/* / codec_voice without ModuleNotFoundError on the Ubuntu
-          # runner. pynput stays in the list, but the conftest installs a
-          # stub when its real import fails (headless Linux has no X11).
-          # fastapi/pydantic/starlette are PINNED to the versions running in
-          # production on the Mac (2026-07-02). Unpinned, the runner pulled
-          # fastapi 0.139 / pydantic 2.13 which broke route-registration
-          # tests on main-as-is (verified via a no-op canary PR) — CI was
-          # testing a dependency set production never runs. Bump these pins
-          # together with a production upgrade, not before.
-          pip install pytest fastmcp httpx requests pynput 'pydantic==2.11.10' ruff \
-                      'fastapi==0.129.0' 'starlette==0.52.1' numpy pyotp 'qrcode[pil]'
+          python tools/lock_to_constraints.py --neutral "$BUYER_LOCK" > "$RUNNER_TEMP/constraints.txt"
+          python -m pip install -c "$RUNNER_TEMP/constraints.txt" -r requirements-dev.txt pytest-cov
       - name: Lint (ruff) — F-4 gate, config in ruff.toml
         run: ruff check .
       - name: Skill import smoke (standalone script, not a pytest module)
@@ -45,6 +62,119 @@ jobs:
             --tb=short \
             --strict-markers \
             --strict-config \
-            -ra
+            -ra \
+            --junitxml=junit.xml \
+            --cov=. --cov-report=xml:coverage.xml
         env:
           CI: "true"
+      - name: Job summary (tests, coverage)
+        if: always()
+        run: python tools/ci_report_summary.py --label "ubuntu, Python 3.13, lock versions" junit.xml coverage.xml
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-reports-ubuntu
+          path: |
+            junit.xml
+            coverage.xml
+          if-no-files-found: warn
+          retention-days: 14
+
+  macos:
+    name: macos-14 (Python 3.12, buyer hash lock)
+    runs-on: macos-14
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          # The app bundles CPython 3.12 (packaging/macos/python-runtime.json).
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements-dev.txt
+            packaging/macos/requirements-lock.txt
+      - name: Install the buyer hash lock (what the app bundles)
+        # Every file must match a pinned hash and be a prebuilt wheel. Never
+        # drop --require-hashes or --only-binary to make this step pass.
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --require-hashes --only-binary=:all: -r "$BUYER_LOCK"
+      - name: Add the test tools, held to the lock's versions
+        # pytest, ruff and pytest-cov only; the constraints stop pip from
+        # changing any package the lock installed.
+        run: |
+          python tools/lock_to_constraints.py "$BUYER_LOCK" > "$RUNNER_TEMP/constraints.txt"
+          python -m pip install -c "$RUNNER_TEMP/constraints.txt" -r requirements-dev.txt pytest-cov
+          python -m pip check
+      - name: Skill import smoke (standalone script, not a pytest module)
+        run: python tests/test_skill_imports.py
+      - name: Run full pytest suite
+        run: |
+          python -m pytest tests/ \
+            --tb=short \
+            --strict-markers \
+            --strict-config \
+            -ra \
+            --junitxml=junit.xml \
+            --cov=. --cov-report=xml:coverage.xml
+        env:
+          CI: "true"
+      - name: Job summary (tests, coverage)
+        if: always()
+        run: python tools/ci_report_summary.py --label "macos-14, Python 3.12, buyer hash lock" junit.xml coverage.xml
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-reports-macos
+          path: |
+            junit.xml
+            coverage.xml
+          if-no-files-found: warn
+          retention-days: 14
+
+  pip-audit:
+    name: pip-audit (buyer lock, informational)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Known vulnerabilities in the buyer lock
+        # Informational first (D-33): a finding shows as a warning and in the
+        # job summary but does not fail CI. --disable-pip reads the hashed
+        # pins as they are, without installing anything, so it audits exactly
+        # what the lock ships on any runner.
+        continue-on-error: true
+        run: |
+          python -m venv "$RUNNER_TEMP/audit"
+          "$RUNNER_TEMP/audit/bin/python" -m pip install --quiet --upgrade pip pip-audit
+          set +e
+          "$RUNNER_TEMP/audit/bin/pip-audit" --requirement "$BUYER_LOCK" \
+            --require-hashes --disable-pip --progress-spinner off \
+            --desc on --format markdown --output "$RUNNER_TEMP/audit.md"
+          status=$?
+          set -e
+          {
+            echo "### pip-audit: $BUYER_LOCK"
+            echo
+            if [ "$status" -eq 0 ]; then
+              echo "No known vulnerabilities in the pinned packages."
+            elif [ -s "$RUNNER_TEMP/audit.md" ]; then
+              cat "$RUNNER_TEMP/audit.md"
+            else
+              echo "pip-audit did not finish (exit $status); see the step log."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$status" -ne 0 ]; then
+            echo "::warning title=pip-audit::pip-audit exit $status for $BUYER_LOCK (informational, see the job summary)"
+          fi
+          exit "$status"
