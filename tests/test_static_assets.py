@@ -66,7 +66,8 @@ def test_vendored_monaco_and_its_icon_font_are_served_without_login(pin_login_re
 
 def test_csp_drops_google_fonts_but_keeps_cdnjs(pin_login_required):
     # PR-C self-hosts IBM Plex (static/codec.css), so the CSP no longer needs
-    # the Google Fonts origins; cdnjs.cloudflare.com stays for Vibe's Monaco.
+    # the Google Fonts origins. cdnjs.cloudflare.com stays: Monaco is served from
+    # static/vendor (D-24), but AI-written Vibe preview pages load libraries from it.
     r = pin_login_required.get("/")
     csp = r.headers["content-security-policy"]
     assert "fonts.googleapis.com" not in csp

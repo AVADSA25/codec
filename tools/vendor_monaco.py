@@ -13,15 +13,13 @@ Kept: every file under package/min/vs that the editor can load, found by
 following the module names and the script and worker URLs from vs/loader.js and
 vs/editor/editor.main.js, plus package/LICENSE and package/ThirdPartyNotices.txt.
 
-Left out: the translated messages (nls/lang, the page is in English), the
-second copies of the language workers under language/ (nothing loads them), and
-the TypeScript language service worker (about 7 MB). The page switches the
-TypeScript and JavaScript language features off, so that worker is never
-started; JavaScript and TypeScript keep their colours.
+Left out: the translated messages (nls/lang, the page is in English) and the
+second copies of the language workers under language/ (nothing loads them).
 
 One file is changed: editor.main.css carries the codicon icon font as a data:
-URL, which the dashboard CSP (font-src 'self') refuses. The font is written,
-byte for byte, to vs/editor/codicon.ttf and the CSS points at it instead.
+URL, which the dashboard CSP refuses (its font-src allows no data: URLs). The
+font is written, byte for byte, to vs/editor/codicon.ttf and the CSS points at
+it instead.
 Every other file is the published file unchanged.
 """
 from __future__ import annotations
@@ -39,9 +37,8 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 OUT = REPO / "static" / "vendor" / "monaco"
-MAX_BYTES = 8_000_000
+MAX_BYTES = 16_000_000  # D-24: about 15 MB accepted, TypeScript language service included
 ENTRIES = ("loader.js", "editor/editor.main.js")
-LEFT_OUT = re.compile(r"^assets/ts\.worker-[\w-]+\.js$")
 NOTICES = ("LICENSE", "ThirdPartyNotices.txt")
 # A module name or relative URL in quotes: "./x", "../x", "vs/x", "vs/x!" (loader plugin).
 REF = re.compile(r"""["'`]((?:\.\.?/)+[\w.\-/]+|vs/[\w.\-/]+)!?["'`]""")
@@ -93,7 +90,7 @@ def reachable(vs: dict) -> set:
 def build(tgz: Path) -> tuple[dict, dict]:
     """The folder's expected files ({relative path: bytes}) and facts about it."""
     vs, other = read_package(tgz)
-    keep = {r for r in reachable(vs) if not LEFT_OUT.match(r)}
+    keep = reachable(vs)
     files = {"vs/" + r: vs[r] for r in sorted(keep)}
     css = files["vs/editor/editor.main.css"]
     fonts = FONT.findall(css)

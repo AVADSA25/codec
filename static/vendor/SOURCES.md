@@ -66,26 +66,21 @@ from `/static/vendor/monaco/vs`.
 | npm integrity | `sha512-5BkI9KGoqrNvBGUe15/QlZq3OooZ8WLg1AxTpaqHRCP3HNpzPPZKE2EDz8M7c+VRmCeUw1Brp4cx/PWm3kI/5A==` (the registry's `dist.integrity`, checked against the file) |
 | Tarball SHA-256 | `3ea1712fbacd3290cf4751007e3a5b57cc279767607812d4c3e57925fb0b05c2` |
 | Folder | `vendor/monaco/`: `vs/` (the package's `min/vs`, trimmed), `LICENSE`, `ThirdPartyNotices.txt` |
-| Size | 114 files, 7,908,119 bytes (the package's whole `min/vs` is 25,564,261 bytes in 151 files) |
+| Size | 115 files, 14,942,884 bytes (the package's whole `min/vs` is 25,564,261 bytes in 151 files) |
 
 `tools/vendor_monaco.py` builds the folder from the tarball, and with `--check`
 confirms the folder is exactly what it builds:
 
 - Kept: every file the AMD loader and `vs/editor/editor.main.js` can reach: the
   editor, every syntax colouring (Python, HTML, CSS, JavaScript, TypeScript,
-  JSON, Markdown, shell and the rest), and the CSS, HTML and JSON language
-  workers.
-- Left out: the translated messages (`nls/lang`; the page is in English), the
-  unused second copies of the workers under `language/`, and the TypeScript
-  language service worker (7.0 MB). The page switches the TypeScript and
-  JavaScript language features off before the editor opens (`codec_vibe.html`),
-  so that worker is never started: JavaScript and TypeScript keep their colours
-  and word suggestions, without TypeScript's error underlines and code
-  suggestions.
+  JSON, Markdown, shell and the rest), and the TypeScript/JavaScript, CSS, HTML
+  and JSON language workers (the TypeScript one alone is 7.0 MB).
+- Left out: the translated messages (`nls/lang`; the page is in English) and the
+  unused second copies of the workers under `language/`.
 - Changed: `vs/editor/editor.main.css` carries the codicon icon font as a
-  `data:` URL, which the dashboard CSP (`font-src 'self'`) refuses. The tool
-  writes the font byte for byte to `vs/editor/codicon.ttf` and points the CSS at
-  it. Every other file is the published file, unchanged.
+  `data:` URL, which the dashboard CSP refuses (its `font-src` allows no
+  `data:`). The tool writes the font byte for byte to `vs/editor/codicon.ttf` and
+  points the CSS at it. Every other file is the published file, unchanged.
 
 The MIT licence text is `vendor/monaco/LICENSE`. Monaco's own notices for the
 code it bundles (TypeScript, marked, the Node.js path library and others) are

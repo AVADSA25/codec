@@ -518,10 +518,6 @@ function _histForSend(project) {
 
 require.config({paths:{vs:'/static/vendor/monaco/vs'}});
 require(['vs/editor/editor.main'], function() {
-  // The copy leaves out the 7 MB TypeScript language service (tools/vendor_monaco.py): switch its
-  // features off before any file opens, so it is never started. JavaScript and TypeScript keep their colours.
-  var ts = monaco.languages.typescript;
-  if (ts) [ts.typescriptDefaults, ts.javascriptDefaults].forEach(function (d) { d.setModeConfiguration({}); });
   ed = monaco.editor.create(document.getElementById('eb'), {
     value: '// Ask CODEC to build something\n',
     language: 'plaintext',
