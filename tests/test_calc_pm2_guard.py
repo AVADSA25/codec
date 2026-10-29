@@ -50,14 +50,15 @@ def test_calculator_source_has_no_eval():
 
 
 def _timed_in_child(snippet):
-    """Run snippet in a child killed after 5 s; it prints JSON {elapsed, out}."""
+    """Run snippet in a child killed after 5 s; it prints JSON {elapsed, out}.
+
+    The snippet sets t0 itself after its imports, so only the call is timed."""
     code = textwrap.dedent(f"""
         import json, pathlib, sys, tempfile, time
         sys.path.insert(0, {REPO!r})
         import codec_audit  # never the owner's real audit log
         codec_audit._AUDIT_DIR = pathlib.Path(tempfile.mkdtemp())
         codec_audit._AUDIT_LOG = codec_audit._AUDIT_DIR / "audit.log"
-        t0 = time.monotonic()
         {snippet}
         print(json.dumps({{"elapsed": time.monotonic() - t0, "out": out}}))
     """)
@@ -72,6 +73,8 @@ def test_calculator_power_bomb_is_refused_fast():
         import importlib.util
         spec = importlib.util.spec_from_file_location("c", "skills/calculator.py")
         m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+        import codec_math
+        t0 = time.monotonic()
         out = m.run("9**9**8")
     """).replace("\n", "\n        "))
     assert res["elapsed"] < 0.5
@@ -84,6 +87,8 @@ def test_chat_fallback_power_bomb_is_refused_fast():
         import routes.chat as chat
         with mock.patch("codec_consent.chat_consent_ok", return_value=True), \\
              mock.patch("codec_dispatch.run_skill", return_value=None):
+            import codec_math
+            t0 = time.monotonic()
             out = chat._try_skill_by_name("calculator", "9**9**8")[1]
     """).replace("\n", "\n        "))
     assert res["elapsed"] < 0.5
