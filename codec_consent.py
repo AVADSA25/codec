@@ -61,7 +61,14 @@ _MCP_SELF_GUARDED = frozenset({"file_write"})
 # call, wake word) but are NOT destructive in the MCP sense: adding them to
 # _DESTRUCTIVE_BUILTINS would make mcp_allowed refuse them, while over HTTP MCP
 # they already ask per call through codec_config._HTTP_CONSENT_REQUIRED.
-_LOCAL_CONSENT_REQUIRED = frozenset({"chrome_fill", "chrome_click_cdp", "mouse_control"})
+#
+# P-030 part 2 (same decision): "shell_execute" is the crew / custom-agent
+# built-in tool, not a skill. codec_agents._shell_execute calls
+# local_consent_ok(asked_from="crew") only for the commands
+# codec_config.is_dangerous flags; every other command runs in the sandbox
+# without asking. No skill has that name, so chat, voice and MCP are unchanged.
+_LOCAL_CONSENT_REQUIRED = frozenset({"chrome_fill", "chrome_click_cdp", "mouse_control",
+                                     "shell_execute"})
 
 # The wake word and the voice call wait this long for the owner's OK (PWA card
 # or phone push), then cancel: a wake command must not hold the listener for

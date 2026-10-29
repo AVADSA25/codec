@@ -19,6 +19,10 @@ def call_qwen(text, mode):
     base = cfg.get("llm_base_url", "http://localhost:8083/v1")
     model = cfg.get("llm_model", "mlx-community/Qwen3.6-35B-A3B-4bit")
     kwargs = cfg.get("llm_kwargs", {})
+    # D-37: selected text stays on the Mac even while chat is switched to a
+    # cloud model (read-only use of codec_cloud_models.local_only).
+    import codec_cloud_models
+    base, model = codec_cloud_models.local_only(base, model, cfg)
     prompts = {
         "proofread": "Fix all spelling, grammar, and punctuation errors. Keep same tone. Output ONLY corrected text.",
         "elevate": "Rewrite to be more polished and professional. Keep same meaning. Output ONLY improved text.",

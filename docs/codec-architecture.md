@@ -199,7 +199,16 @@ Emitted by `codec_consent.local_consent_ok`, source `codec-consent`. Never the r
 
 | Event | extra fields |
 |---|---|
-| `local_consent_decision` | `asked_from` (`wake`\|`voice`), `decision` (`allowed`\|`refused`), `task_chars`; top-level `tool` is the skill |
+| `local_consent_decision` | `asked_from` (`wake`\|`voice`\|`crew`), `decision` (`allowed`\|`refused`), `task_chars`; top-level `tool` is the skill, or `shell_execute` for a flagged crew / custom-agent shell command (P-030, `asked_from` `crew`) |
+
+### Crew shell and custom-agent tool events (2026-10, P-030 parts 2-4)
+
+Emitted by `codec_agents` (docs/CREW-SHELL-SANDBOX-DESIGN.md), source `codec-agents`, transport `crew`. Lengths, counts and reasons only: never the command text or a dropped tool name. An owner approval or refusal of a flagged command is the `local_consent_decision` line above; a refusal by the tool itself is `shell_blocked`. A command that runs gets no extra line: the agent's existing `tool_call` / `tool_result` lines cover it (`tool_call` still keeps the first 200 characters of every tool's input, the shell command included: an open follow-up, see the design doc).
+
+| Event | extra fields |
+|---|---|
+| `shell_blocked` | `reason` (`empty`\|`no_sandbox`: no `/usr/bin/sandbox-exec`, so nothing runs\|`consent_gate_off`: a flagged command with `CONSENT_GATE_ENABLED=false`\|`too_long_to_show`: a flagged command longer than the 200 characters the approval card shows\|`sandbox_setup_failed`), `cmd_chars`; top-level `tool` `shell_execute`, `outcome` `denied`. Before P-030 this line carried `cmd` (the first 200 characters); it no longer does |
+| `custom_agent_tools_dropped` | `agent_id`, `dropped`, `kept` (counts): a saved custom agent named tools CODEC does not know; they are left out when it loads (`/api/agents/custom/list`, the '@' picker). Once per agent and dropped set per process; the saved file is not changed |
 
 ### Notes events (2026-10)
 
@@ -210,6 +219,14 @@ Emitted by `codec_notes` (docs/NOTES-DESIGN.md), source `codec-notes`, level inf
 | `note_saved` | `id`, `source` (`chat`\|`manual`), `chars` |
 | `note_updated` | `id`, `source`, `chars` |
 | `note_deleted` | `id`, `source`, `chars` (the note moves to `.trash/`) |
+
+### Local-first events (2026-10, D-37)
+
+Emitted by `routes/chat._enrich_messages` (docs/LOCAL-FIRST-DEFAULTS-DESIGN.md), source `codec-dashboard`, level info (warning when the search raised). One line per web search, which runs only with the "Search the web" toggle. Lengths only: never the query or the message.
+
+| Event | extra fields |
+|---|---|
+| `web_search_sent` | `query_words` (at most 12), `query_chars`, `message_chars`, `results`, `temporary` |
 
 ### Backup and retention events (2026-10, P-018, D-38)
 

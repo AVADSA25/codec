@@ -5,7 +5,8 @@ without depending on CrewAI.
 
 Usage:
     from codec_gdocs import create_google_doc
-    url = create_google_doc("My Title", markdown_content)
+    url = create_google_doc("My Title", markdown_content)              # private (D-37)
+    url = create_google_doc("My Title", markdown_content, share=True)  # anyone with the link can view
 """
 import os
 import re
@@ -417,7 +418,29 @@ def _insert_real_tables(svc, doc_id: str, tables: list, orange, dark):
                 pass
 
 
-def create_google_doc(title: str, content: str) -> str | None:
+def _share_with_link(creds, doc_id: str) -> None:
+    """Anyone with the link can view. Only when share=True was asked for (D-37)."""
+    from googleapiclient.discovery import build
+    build("drive", "v3", credentials=creds).permissions().create(
+        fileId=doc_id,
+        body={"type": "anyone", "role": "reader"},
+        fields="id",
+    ).execute()
+
+
+def _discard_doc(creds, doc_id: str) -> None:
+    """A run that failed removes the doc it made: moved to the Drive bin (D-37).
+    Never raises."""
+    try:
+        from googleapiclient.discovery import build
+        build("drive", "v3", credentials=creds).files().update(
+            fileId=doc_id, body={"trashed": True}).execute()
+        print("[GDocs] Removed the unfinished doc (moved to the Drive bin)")
+    except Exception as e:
+        print(f"[GDocs] Warning: could not remove the unfinished doc: {type(e).__name__}")
+
+
+def create_google_doc(title: str, content: str, share: bool = False) -> str | None:
     """
     Create a styled Google Doc with:
     - H1: 28pt, bold, centered, dark
@@ -429,6 +452,8 @@ def create_google_doc(title: str, content: str) -> str | None:
     - Inline bold preserved within body text
     - Up to 7 Pexels images (hero full-width, rest centered and consistent size)
     - Images skipped for invoices, meeting summaries, code reviews, etc.
+    The doc is private to the owner's Google account unless share=True (then
+    anyone with the link can view), D-37. A run that fails removes its own doc.
     Returns the doc URL or None on error.
     """
     from googleapiclient.discovery import build
@@ -438,6 +463,7 @@ def create_google_doc(title: str, content: str) -> str | None:
     ORANGE = {"red": 0.910, "green": 0.443, "blue": 0.102}
     SLATE  = {"red": 0.173, "green": 0.243, "blue": 0.314}
 
+    creds, doc_id = None, None
     try:
         # Ensure all CODEC docs start with "CODEC:" prefix (avoid "CODEC: CODEC ...")
         if not title.upper().startswith("CODEC"):
@@ -451,17 +477,6 @@ def create_google_doc(title: str, content: str) -> str | None:
         doc    = svc.documents().create(body={"title": title}).execute()
         doc_id  = doc["documentId"]
         doc_url = f"https://docs.google.com/document/d/{doc_id}/edit"
-
-        # Share doc as "anyone with link can view" so returned URLs are accessible
-        try:
-            drive_svc = build("drive", "v3", credentials=creds)
-            drive_svc.permissions().create(
-                fileId=doc_id,
-                body={"type": "anyone", "role": "reader"},
-                fields="id",
-            ).execute()
-        except Exception as share_err:
-            print(f"[GDocs] Warning: could not set sharing permissions: {share_err}")
 
         # Build plain text + position map
         blocks    = _parse_markdown(content)
@@ -769,12 +784,22 @@ def create_google_doc(title: str, content: str) -> str | None:
         if tables:
             _insert_real_tables(svc, doc_id, tables, ORANGE, DARK)
 
+        # D-37: private unless the caller asked to share (after the doc is
+        # complete, so an unfinished doc is never readable by link).
+        if share:
+            try:
+                _share_with_link(creds, doc_id)
+            except Exception as share_err:
+                print(f"[GDocs] Warning: could not set sharing permissions: {share_err}")
+
         print(f"[GDocs] Created: {doc_url} ({len(insert_points)} images, {len(tables)} tables)")
         return doc_url
 
     except Exception as e:
         print(f"[GDocs] Error: {e}")
         import traceback; traceback.print_exc()
+        if doc_id:
+            _discard_doc(creds, doc_id)
         return None
 
 
