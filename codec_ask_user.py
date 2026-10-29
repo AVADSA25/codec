@@ -89,6 +89,31 @@ _EXPLICIT_NO = frozenset({
     "no thanks", "no thank you",
 })
 
+# P-078: a negation before the destructive verb in the same clause ("don't
+# send it", "never delete this", "cancel the delete") is a refusal, not consent.
+# Clauses split on , ; . ! ? so "yes, send it, do not wait" still consents.
+_NEGATION = re.compile(
+    r"\b(?:not|no|never|nor|neither|without|cancel|stop|abort|"
+    r"don'?t|doesn'?t|didn'?t|won'?t|wouldn'?t|can'?t|cannot|shouldn'?t|"
+    r"mustn'?t|isn'?t|aren'?t)\b")
+_CLAUSE_SPLIT = re.compile(r"[,;.!?]+")
+
+
+def _verb_consents(low: str, verb: str) -> bool:
+    """True when some clause holds `verb` with no negation before it, and no
+    clause is a bare refusal ("no, send it" stays a refusal: fail closed)."""
+    low = low.replace("\u2019", "'")
+    clauses = [c.strip() for c in _CLAUSE_SPLIT.split(low) if c.strip()]
+    if any(c in _EXPLICIT_NO for c in clauses):
+        return False
+    verb_re = re.compile(rf"\b{re.escape(verb)}\b")
+    for clause in clauses:
+        m = verb_re.search(clause)
+        if m and not _NEGATION.search(clause[:m.start()]):
+            return True
+    return False
+
+
 # ── Lock + waiter registry ─────────────────────────────────────────────────────
 # Lock guards atomic file writes. Waiters dict maps pending_question_id →
 # threading.Event (caller signals via set() to unblock the agent thread).
@@ -306,7 +331,9 @@ def _is_consenting_answer(answer: str, *, destructive_verb: str,
     - Empty / whitespace → reject
     - Generic affirmative ("yes"/"ok"/"yeah" alone) → reject
     - Answer matches an option label exactly (case-insensitive) → accept
-    - Answer text contains destructive_verb (case-insensitive) → accept
+    - Answer text contains destructive_verb (case-insensitive) with no
+      negation before it in the same clause → accept (P-078: "don't send it",
+      "do not confirm", "no, cancel the delete" are refusals)
     - Anything else (incl. free-text refusals like "no" / "cancel") → reject
 
     Non-strict mode (destructive_verb empty — general question):
@@ -331,11 +358,18 @@ def _is_consenting_answer(answer: str, *, destructive_verb: str,
         # timeout → ask() returns TIMEOUT_SENTINEL → caller blocks the action.
         if low in _GENERIC_YES:
             return (False, "")
-        if re.search(rf"\b{re.escape(destructive_verb.lower())}\b", low):
+        if _verb_consents(low, destructive_verb.lower()):
             return (True, stripped)
         return (False, "")
     # Non-strict (general question): accept any non-empty answer.
     return (True, stripped)
+
+
+def answer_consents(answer: str, verb: str) -> bool:
+    """The strict-consent rule for a caller holding an answer and a verb
+    (e.g. skills/google_gmail.py), so no skill keeps its own looser test."""
+    return _is_consenting_answer(answer or "", destructive_verb=verb,
+                                 options=None)[0]
 
 
 # ── ID generation ─────────────────────────────────────────────────────────────
