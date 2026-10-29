@@ -53,6 +53,17 @@ def test_vendored_dompurify_is_served_without_login(pin_login_required):
     assert r.headers["content-type"].startswith("text/javascript")
 
 
+def test_vendored_monaco_and_its_icon_font_are_served_without_login(pin_login_required):
+    # D-24: Vibe loads Monaco from static/vendor/monaco; its codicon font is a .ttf file.
+    r = pin_login_required.get("/static/vendor/monaco/vs/loader.js")
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/javascript")
+    r = pin_login_required.get("/static/vendor/monaco/vs/editor/codicon.ttf")
+    assert r.status_code == 200 and r.headers["content-type"] == "font/ttf"
+    assert r.content[:4] == b"\x00\x01\x00\x00"  # a TrueType font
+    css = pin_login_required.get("/static/vendor/monaco/vs/editor/editor.main.css")
+    assert css.status_code == 200 and "url(codicon.ttf)" in css.text and "data:font" not in css.text
+
+
 def test_csp_drops_google_fonts_but_keeps_cdnjs(pin_login_required):
     # PR-C self-hosts IBM Plex (static/codec.css), so the CSP no longer needs
     # the Google Fonts origins; cdnjs.cloudflare.com stays for Vibe's Monaco.

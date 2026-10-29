@@ -21,6 +21,21 @@ def test_the_page_loads_both_scripts_with_a_version_stamp_before_its_own_script(
     assert (REPO / "static" / "vibe-files.js").is_file() and (REPO / "static" / "vibe-projects.js").is_file()
 
 
+def test_the_page_loads_monaco_from_the_repo_copy_and_never_starts_the_service_it_leaves_out():
+    # D-24: no CDN. The copy leaves out the TypeScript language service worker
+    # (tools/vendor_monaco.py), so its features are switched off before the editor exists.
+    assert "cdnjs" not in PAGE
+    assert '<script src="/static/vendor/monaco/vs/loader.js"></script>' in PAGE
+    assert "require.config({paths:{vs:'/static/vendor/monaco/vs'}});" in PAGE
+    off = PAGE.index("d.setModeConfiguration({})")
+    assert PAGE.index("require(['vs/editor/editor.main']") < off < PAGE.index("monaco.editor.create(")
+    vs = REPO / "static" / "vendor" / "monaco" / "vs"
+    assert (vs / "loader.js").is_file() and (vs / "editor" / "editor.main.js").is_file()
+    assert not list((vs / "assets").glob("ts.worker-*.js"))
+    for notice in ("LICENSE", "ThirdPartyNotices.txt"):
+        assert (vs.parent / notice).is_file()
+
+
 def test_the_page_has_the_undo_and_versions_controls_hidden_until_there_is_a_project():
     undo = re.search(r'<button[^>]*id="undoBtn"[^>]*>', PAGE).group(0)
     ver = re.search(r'<button[^>]*id="verBtn"[^>]*>', PAGE).group(0)
