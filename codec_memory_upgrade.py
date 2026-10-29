@@ -1,16 +1,15 @@
-"""CODEC Memory Upgrade — tiered boot, temporal facts, CCF compression.
-
-Three layers shipped together:
+"""CODEC Memory Upgrade — identity boot payload, temporal facts, CCF compression.
 
   L0/L1  identity.txt     →  always-loaded boot payload (<200 tok)
-  L2     recent rooms     →  last N sessions from conversations
-  L3     deep FTS search  →  on-demand query over full history
 
   facts  table            →  temporal key/value store with
                              valid_from / valid_until / superseded_by
 
   CCF    rule-based       →  entity abbreviation + filler stripping
                              for memory writes that need shrinking
+
+Conversation recall (recent sessions, FTS5 search over full history) lives
+in codec_memory.CodecMemory: get_sessions() and search().
 """
 from __future__ import annotations
 import json
@@ -18,7 +17,7 @@ import os
 import re
 import sqlite3
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Optional
 
 log = logging.getLogger("codec_memory_upgrade")
@@ -43,31 +42,6 @@ def load_identity() -> str:
             return f.read().strip()
     except FileNotFoundError:
         return ""
-
-
-def l2_room_recall(days: int = 7, limit: int = 10) -> list[dict]:
-    """Last N distinct sessions with previews."""
-    from codec_memory import CodecMemory
-    return CodecMemory().get_sessions(limit=limit)
-
-
-def l3_deep_search(query: str, limit: int = 5) -> list[dict]:
-    """FTS5 search over full history."""
-    from codec_memory import CodecMemory
-    return CodecMemory().search(query, limit=limit)
-
-
-def get_boot_context(include_rooms: bool = True) -> str:
-    """Compose the full boot payload: identity + optional recent rooms preview."""
-    parts = [load_identity()]
-    if include_rooms:
-        rooms = l2_room_recall(limit=5)
-        if rooms:
-            parts.append("\n## L2 — Recent sessions")
-            for r in rooms:
-                ts = (r.get("last_msg") or "")[:16].replace("T", " ")
-                parts.append(f"- [{ts}] {r.get('preview','')[:80]}")
-    return "\n".join(p for p in parts if p).strip()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -198,21 +172,6 @@ def find_contradictions(user_id: str = "default") -> list[dict]:
             (user_id,),
         ).fetchall()
         return [{"key": r[0], "active_versions": r[1]} for r in rows]
-    finally:
-        c.close()
-
-
-def cleanup_expired(older_than_days: int = 365, user_id: str = "default") -> int:
-    """Delete superseded facts older than N days."""
-    cutoff = (datetime.now() - timedelta(days=older_than_days)).isoformat()
-    c = _conn()
-    try:
-        cur = c.execute(
-            "DELETE FROM facts WHERE user_id=? AND valid_until IS NOT NULL AND valid_until<?",
-            (user_id, cutoff),
-        )
-        c.commit()
-        return cur.rowcount
     finally:
         c.close()
 

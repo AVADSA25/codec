@@ -407,12 +407,8 @@ def test_chat():
     else:
         FAIL(A, 13, "Agent crew scheduling from chat", detail)
 
-    # 14: Web search toggle
-    ok, detail = check_endpoint("/api/web_search", method="POST")
-    if "400" in detail or "422" in detail or ok or "query" in detail.lower():
-        PASS(A, 14, "Web search toggle", "Web search endpoint responsive")
-    else:
-        FAIL(A, 14, "Web search toggle", detail)
+    # 14: retired. POST /api/web_search had no caller and was removed (D-41);
+    # web search stays available as the web_search skill.
 
     # 15: Streaming typing indicator
     SKIP(A, 15, "Streaming typing indicator", "UI-only (frontend JS)")
