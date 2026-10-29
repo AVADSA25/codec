@@ -771,7 +771,7 @@ def main():
         me = bot.get_me()
         log.info(f"Bot: @{me['username']} ({me['first_name']})")
     except Exception as e:
-        log.error(f"Bot token verification failed: {e}")
+        log.error(_sanitize_log(f"Bot token verification failed: {e}"))
         return
 
     audit("service_start")
