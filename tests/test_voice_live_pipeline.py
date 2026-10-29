@@ -165,9 +165,8 @@ def test_without_live_loud_audio_while_speaking_still_sets_the_flag_and_sends_no
         c = Call(isolated, monkeypatch)
         c.p.processing, c.p.last_tts_end = True, 0.0
         loud = struct.pack("<4096h", *[int(12000 * math.sin(i / 3)) for i in range(4096)])
-        c.ws.receive = AsyncMock(side_effect=[{"type": "websocket.receive", "bytes": loud},
-                                              {"type": "websocket.receive", "bytes": loud},
-                                              {"type": "websocket.disconnect"}])
+        c.ws.receive = AsyncMock(side_effect=[{"type": "websocket.receive", "bytes": loud}] * 4  # a sentence
+                                             + [{"type": "websocket.disconnect"}])
         await c.p._audio_receiver()
         return c
     c = asyncio.run(go())
@@ -340,13 +339,13 @@ def test_an_interrupt_by_loud_audio_stops_the_stream_and_the_page_hears_about_it
                 break
         c.p.processing, c.p.last_tts_end = True, 0.0
         loud = struct.pack("<4096h", *[int(12000 * math.sin(i / 3)) for i in range(4096)])
-        c.ws.receive = AsyncMock(side_effect=[{"type": "websocket.receive", "bytes": loud}] * 3 + [{"type": "websocket.disconnect"}])
+        c.ws.receive = AsyncMock(side_effect=[{"type": "websocket.receive", "bytes": loud}] * 4 + [{"type": "websocket.disconnect"}])
         await c.p._audio_receiver()
         await asyncio.wait_for(turn, 10)
         return c
     c = asyncio.run(go())
     assert len(c.frames("pcm")) == 1, "nothing was sent after the interrupt"
-    assert c.jsons("audio_reset") == [{"type": "audio_reset"}], "three loud frames, one reset"
+    assert c.jsons("audio_reset") == [{"type": "audio_reset"}], "four loud frames (a sentence), one reset"
     assert c.jsons("transcript")[-1]["text"].endswith("[interrupted]")
 
 

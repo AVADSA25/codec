@@ -299,6 +299,10 @@ MAX_UTTERANCE_BYTES    = int(SAMPLE_RATE * BYTES_PER_SAMPLE * VAD_MAX_UTTERANCE_
 
 # RMS threshold for interrupt detection (slightly lower than VAD to catch early speech)
 INTERRUPT_THRESHOLD = 1500  # raised from 600 — too sensitive to background noise
+# Interrupt only on a sentence: energy above INTERRUPT_THRESHOLD for this long, with
+# pauses between words up to INTERRUPT_GAP_SECONDS allowed (config vad.interrupt_min_seconds).
+INTERRUPT_MIN_SECONDS = _vad_cfg.get("interrupt_min_seconds", 0.9)
+INTERRUPT_GAP_SECONDS = 0.35
 
 # A typed turn from the call's Type box (P2.9) is capped like a long spoken one.
 MAX_TYPED_CHARS = 2000
@@ -469,6 +473,8 @@ class VoicePipeline:
         self.last_speech_time = 0.0
         self.is_speaking      = False
         self.last_tts_end     = 0.0
+        self._barge_len       = 0.0   # sustained-speech interrupt (a sentence, not a noise):
+        self._barge_gap       = 0.0   # seconds of loud audio so far, and of quiet since
 
         # Concurrency
         self.utterance_queue = asyncio.Queue(maxsize=3)   # completed utterances ready to process
@@ -583,6 +589,20 @@ class VoicePipeline:
     def _rms(chunk: bytes) -> float:
         from codec_voice_filters import rms_int16
         return rms_int16(chunk)
+
+    def _sustained_barge(self, loud: bool, seconds: float) -> bool:
+        """True once loud audio has lasted INTERRUPT_MIN_SECONDS (measured in audio, not
+        wall time), pauses between words up to INTERRUPT_GAP_SECONDS included, so a
+        cough or a door does not cut CODEC off."""
+        if loud:
+            self._barge_len += seconds + (self._barge_gap if self._barge_len else 0.0)
+            self._barge_gap = 0.0
+            return self._barge_len >= INTERRUPT_MIN_SECONDS
+        if self._barge_len:
+            self._barge_gap += seconds
+            if self._barge_gap > INTERRUPT_GAP_SECONDS:
+                self._barge_len = self._barge_gap = 0.0
+        return False
 
     def feed_audio(self, chunk: bytes) -> Optional[bytes]:
         rms = self._rms(chunk)
@@ -1545,8 +1565,10 @@ class VoicePipeline:
                 # speech is captured, but also check for interrupt.
                 if self.processing:
                     rms = self._rms(raw_bytes)
-                    if (rms > INTERRUPT_THRESHOLD and
+                    seconds = len(raw_bytes) / float(SAMPLE_RATE * BYTES_PER_SAMPLE)
+                    if (self._sustained_barge(rms > INTERRUPT_THRESHOLD, seconds) and
                             time.monotonic() - self.last_tts_end > VAD_ECHO_COOLDOWN):
+                        self._barge_len = self._barge_gap = 0.0
                         log.info(f"Interrupt by audio energy (RMS {rms:.0f})")
                         first = not self.interrupted.is_set()
                         self.interrupted.set()
