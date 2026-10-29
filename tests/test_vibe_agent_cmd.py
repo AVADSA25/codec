@@ -246,3 +246,117 @@ def test_the_runner_refuses_without_the_sandbox(monkeypatch, tmp_path):
     monkeypatch.setattr(cmd, "available", lambda: False)
     with pytest.raises(cmd.Refused):
         cmd.run(tmp_path, tmp_path, "echo hi")
+
+
+# ── owner decision D-23: narrower reads in ~/.local, git's hooks and config closed, folders the agent may not
+#    change (docs/VIBE-SANDBOX-NARROW-DESIGN.md). The sandbox tests build the profile for a made-up home folder,
+#    so no real file under ~/.local is read or written. ──
+
+@pytest.fixture
+def home_box(tmp_path):
+    """A temporary home laid out like the real one: the Vibe folder inside it, the command's temp folder beside it."""
+    base = Path(os.path.realpath(tmp_path))
+    home = base / "home"
+    root = home / "codec-workspace" / "vibe"
+    proj = root / "proj-abc123"
+    (proj / ".vibe").mkdir(parents=True)
+    temp = base / "cmd-temp"
+    temp.mkdir()
+    return home, root, proj, temp
+
+
+def run_with_home(home_box, command):
+    """What cmd.run does, with the profile built for the temporary home. Returns (exit code, output)."""
+    import subprocess
+    home, root, proj, temp = home_box
+    prof_file = temp / "p.sb"
+    prof_file.write_text(cmd.profile(str(proj), str(root), str(home), str(temp), False))
+    p = subprocess.run(cmd.argv(str(prof_file), command, 20), cwd=proj, env=cmd.command_env(str(temp)), stdin=subprocess.DEVNULL,
+                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=40, start_new_session=True)
+    return p.returncode, p.stdout
+
+
+@needs_sandbox
+def test_of_dot_local_only_the_toolchain_folders_are_readable(home_box):
+    home = home_box[0]
+    files = {".local/share/canary.txt": "closed-share", ".local/state/canary.txt": "closed-state",
+             ".local/share/uv/credentials/credentials.toml": "closed-uv-login", ".local/bin/canary.txt": "open-bin"}
+    for rel, text in files.items():
+        (home / rel).parent.mkdir(parents=True, exist_ok=True)
+        (home / rel).write_text(text + "\n")
+    _, out = run_with_home(home_box, "; ".join(f"cat {home / rel}" for rel in files) + " # vibe-run-test")
+    assert "open-bin" in out
+    for closed in ("closed-share", "closed-state", "closed-uv-login"):
+        assert closed not in out, closed
+    assert out.count("Operation not permitted") == 3
+
+
+@needs_sandbox
+def test_pipx_and_uv_style_interpreters_under_dot_local_still_start(home_box):
+    """A pipx venv (pyvenv.cfg, a console script linked from ~/.local/bin) in the new and the old pipx home, and a
+    Python folder the way uv keeps one. Each must read its own folder to start: closed, Python fails to import site."""
+    import subprocess
+    import sys
+    home = home_box[0]
+    ver = f"python{sys.version_info[0]}.{sys.version_info[1]}"
+    calls = []
+    for name, venv in (("pipx-new", home / ".local/share/pipx/venvs/x"), ("pipx-old", home / ".local/pipx/venvs/y")):
+        subprocess.run([sys.executable, "-m", "venv", "--without-pip", str(venv)], check=True)
+        assert (venv / "pyvenv.cfg").is_file()
+        (venv / "lib" / ver / "site-packages" / "d23_probe.py").write_text(f"MARK = '{name}-started'\n")
+        script = venv / "bin" / name
+        script.write_text(f"#!{venv / 'bin' / 'python'}\nimport sys, d23_probe\nprint(d23_probe.MARK, sys.prefix == {str(venv)!r})\n")
+        script.chmod(0o755)
+        (home / ".local/bin").mkdir(parents=True, exist_ok=True)
+        (home / ".local/bin" / name).symlink_to(script)
+        calls.append(str(home / ".local/bin" / name))
+    uv_python = home / ".local/share/uv/python/cpython-3.13.0-macos-aarch64-none"
+    subprocess.run([sys.executable, "-m", "venv", "--without-pip", "--copies", str(uv_python)], check=True)
+    assert not (uv_python / "bin" / "python3").is_symlink()          # the interpreter itself lives in the folder
+    calls.append(f"{uv_python / 'bin' / 'python3'} -c 'import sys, json; print(\"uv-started\", sys.prefix)'")
+    code, out = run_with_home(home_box, "; ".join(calls) + " # vibe-run-test")
+    assert code == 0, out
+    for mark in ("pipx-new-started True", "pipx-old-started True", f"uv-started {uv_python}"):
+        assert mark in out, out
+
+
+@needs_sandbox
+def test_a_command_cannot_write_gits_hooks_or_config_nor_move_the_git_folder(home_box):
+    import shutil
+    proj = home_box[2]
+    (proj / ".git" / "hooks").mkdir(parents=True)
+    (proj / ".git" / "config").write_text("[core]\n")
+    _, out = run_with_home(home_box, "echo evil > .git/hooks/pre-commit; echo evil >> .git/config; echo evil >> .GIT/CONFIG; "
+                                     "ln .git/config hard-link; echo evil > .git/c2; mv .git/c2 .git/config; mv .git .git-away; "
+                                     "echo ok > .git/index-probe; echo ok > made.txt # vibe-run-test")
+    assert (proj / ".git" / "config").read_text() == "[core]\n" and os.listdir(proj / ".git" / "hooks") == []
+    assert not (proj / "hard-link").exists() and not (proj / ".git-away").exists()
+    assert out.count("Operation not permitted") >= 6, out
+    assert (proj / ".git" / "index-probe").read_text() == "ok\n" and (proj / "made.txt").exists()   # the rest of .git still works
+    shutil.rmtree(proj / ".git")
+    _, out = run_with_home(home_box, "mkdir -p prepared/hooks && echo evil > prepared/hooks/pre-commit && mv prepared .git; "
+                                     "mkdir .git # vibe-run-test")
+    assert not (proj / ".git").exists() and out.count("Operation not permitted") == 2, out
+
+
+def test_the_agents_file_tools_refuse_folders_that_run_code_later_but_the_owner_may_edit_them(tmp_path, monkeypatch):
+    import codec_vibe_projects as vp
+    monkeypatch.setenv("CODEC_VIBE_ROOT", str(tmp_path / "vibe"))
+    monkeypatch.setenv("CODEC_VIBE_TRASH", str(tmp_path / "trash"))
+    monkeypatch.delenv("VIBE_PROJECTS_ENABLED", raising=False)
+    pid = vp.create_project("Hooks")["id"]
+    for rel in (".vscode/tasks.json", ".idea/workspace.xml", ".husky/pre-commit", ".devcontainer/devcontainer.json",
+                ".github/workflows/ci.yml", ".mcp.json", ".claude/settings.json", "web/.VSCode/settings.json"):
+        with pytest.raises(vp.VibeError) as e:
+            vp.agent_write(pid, rel, "from the agent\n")
+        assert e.value.status == 400 and "may not change" in e.value.message, rel
+        assert vp.write_file(pid, rel, "from the owner\n")["path"] == rel          # the owner's edit (safe_rel) still works
+        with pytest.raises(vp.VibeError):
+            vp.agent_delete(pid, rel)
+        assert vp.read_file(pid, rel)["content"] == "from the owner\n"
+    for rel in (".git/config", ".git/hooks/pre-commit"):                          # .git stays refused for everyone
+        for write in (vp.agent_write, vp.write_file):
+            with pytest.raises(vp.VibeError):
+                write(pid, rel, "x\n")
+    assert vp.agent_write(pid, "src/app.js", "ok\n")["created"] and vp.agent_write(pid, "docs/github-notes.md", "ok\n")["created"]
+    assert vp.agent_delete(pid, "src/app.js") == {"path": "src/app.js"}
