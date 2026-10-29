@@ -42,9 +42,10 @@ def run(task: str, context: str = "") -> str:
         return "Try: 'morning tabs', 'work mode', 'research mode', or 'close everything'"
 
     # Open tabs via AppleScript (doesn't require CDP)
+    import codec_applescript
     for url in urls:
         subprocess.run(
-            ["osascript", "-e", f'tell application "Google Chrome" to open location "{url}"'],
+            ["osascript", "-e", f'tell application "Google Chrome" to open location "{codec_applescript.escape(url)}"'],
             capture_output=True
         )
 

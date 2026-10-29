@@ -152,7 +152,8 @@ def _save_to_apple(task: str):
         note = low.strip(" :,-").strip()
     if not note or len(note) < 1:
         return None
-    safe = note.replace('"', '\\"').replace("'", "")
+    import codec_applescript
+    safe = codec_applescript.escape(note)
     try:
         subprocess.run(["osascript", "-e",
             f'tell application "Notes" to make new note at folder "Notes" with properties {{body:"{safe}"}}'],

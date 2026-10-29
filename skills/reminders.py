@@ -71,7 +71,8 @@ def run(task, app="", ctx=""):
     reminder = reminder.strip().strip(":").strip()
     if not reminder or len(reminder) < 3:
         return None
-    safe = reminder.replace('"', '\\"').replace("'", "")
+    import codec_applescript
+    safe = codec_applescript.escape(reminder)
     try:
         subprocess.run(["osascript", "-e",
             f'tell application "Reminders" to make new reminder in default list with properties {{name:"{safe}"}}'],

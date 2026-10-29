@@ -160,8 +160,9 @@ def _notify(title, body, status="success", schedule_id=None):
     # 2. macOS notification
     mac_body = "Report ready — tap to view" if doc_url else body[:120]
     try:
-        _sp.run(["osascript", "-e",
-            f'display notification "{mac_body}" with title "CODEC Task" subtitle "{title}"'],
+        import codec_applescript
+        _sp.run(["osascript", "-e", codec_applescript.notification_script(
+            mac_body, "CODEC Task", subtitle=title)],
             capture_output=True, timeout=5)
     except Exception:
         pass
