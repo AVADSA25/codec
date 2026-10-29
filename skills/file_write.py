@@ -134,13 +134,6 @@ _BLOCKED_FILENAME_PATTERNS = [
 # Block extensions that could be executable shells / trust-sensitive.
 _BLOCKED_EXTS = [".pem", ".key", ".p12", ".pfx", ".keystore"]
 
-# Realpath-resolved allowable scope. `/tmp` realpaths to `/private/tmp` on
-# macOS — the home/tmp sanity check must compare against the resolved form
-# or every /tmp write trips the /private/var-style realpath.
-_TMP_REAL = os.path.realpath("/tmp")
-_HOME_REAL = os.path.realpath(os.path.expanduser("~"))
-
-
 def _is_safe_target(path: str):
     """Return (True, "") if safe to write; (False, reason) otherwise.
 
@@ -176,20 +169,11 @@ def _is_safe_target(path: str):
         if real_path == blocked or real_path.startswith(blocked + os.sep):
             return False, f"Blocked path: {blocked}"
 
-    # Final sanity: must be under realpath($HOME) or realpath(/tmp).
-    under_home = (
-        real_path == _HOME_REAL or real_path.startswith(_HOME_REAL + os.sep)
-    )
-    under_tmp = (
-        real_path == _TMP_REAL or real_path.startswith(_TMP_REAL + os.sep)
-    )
-    if not (under_home or under_tmp):
-        return False, (
-            f"Target must live under $HOME or /tmp (got: {real_path}). "
-            "Adjust file_write._BLOCKED_SYSTEM_ROOTS if you need wider scope."
-        )
-
-    return True, ""
+    # P-006: only the allowed write folders (Documents, Desktop, Downloads,
+    # Projects, codec-workspace, /tmp), and no scripts or launch files there.
+    # The blocklist above stays as a second check.
+    import codec_write_policy
+    return codec_write_policy.check_write(real_path)
 
 
 # ── Parsing ──
