@@ -185,6 +185,14 @@ Emitted by `codec_vibe_agent` (docs/VIBE-AGENT-DESIGN.md), source `codec-vibe`, 
 | `vibe_agent_command` | `project`, `run`, `n`, `decision` (`once`\|`always`\|`stored`\|`declined`\|`refused`), `program` (the first word if it is plain ASCII, else empty; never the command), `network` (the web was allowed), `exit_code` (null when stopped, timed out or not run), `ms` |
 | `vibe_agent_allow` | `project`, `action` (`allow`\|`forget`), `network` |
 
+### Vibe chat events (2026-10, P-042)
+
+Emitted by `codec_vibe_chat` (docs/VIBE-CHAT-ROUTE-DESIGN.md), source `codec-vibe`, level info, once per accepted `POST /api/vibe/chat`, before the model is called. Counts and booleans only: never a message, a file name, a path, the working folder or any code.
+
+| Event | extra fields |
+|---|---|
+| `vibe_chat_sent` | `route` (`own`), `messages` (turns sent), `files` (file blocks in the latest user turn, plus 1 for a `[CURRENT CODE]` block), `chars` (everything sent to the model, system prompt included), `project` (bool), `stream` (bool), `model` (`local`\|`cloud`), `workdir` (a working folder was set) |
+
 ### Browser URL policy events (2026-10, P-101)
 
 Emitted by `codec_browser_policy.check_url`, source `codec-browser-policy`, level warning. Never the URL.
