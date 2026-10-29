@@ -789,6 +789,12 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the skill template and trigger matchi
 
 ---
 
+## Acknowledgements
+
+- The iMessage integration reads the native macOS Messages database directly, inspired by [Photon's imessage-kit](https://github.com/photon-hq/imessage-kit) and extended with full LLM, vision, and multi-agent support.
+
+---
+
 ## Support the Project
 
 If CODEC saves you time:
