@@ -2,7 +2,8 @@
 
 The page never saves a temporary chat and sends temporary:true; the server then
 skips memory recall, open threads and the observer summary, and the
-memory-writing skills do not run on any chat path.
+memory-writing skills do not run on any chat path. Links and the "Search the
+web" toggle still work; trigger words never search, in any chat (D-37).
 """
 from __future__ import annotations
 
@@ -89,6 +90,22 @@ def test_no_memory_recall_in_a_temporary_chat(monkeypatch):
     assert asked, "a normal chat still recalls"
 
 
+def test_a_temporary_chat_searches_only_with_the_toggle_and_still_reads_links(monkeypatch):
+    import codec_search
+    sent = []
+    monkeypatch.setattr(codec_search, "search",
+                        lambda q, max_results=5: sent.append(q) or [{"title": "t", "url": "https://r.example", "snippet": "s"}])
+    monkeypatch.setattr(codec_search, "format_results", lambda r, max_snippets=5: "WEB RESULTS")
+    monkeypatch.setattr(chat, "_fetch_url_content", lambda url, max_chars=8000: "page text")
+    msgs = [{"role": "user", "content": "what is the recent news about the harbour"}]
+    assert chat._enrich_messages(msgs, {}, temporary=True) == msgs and sent == [], "a trigger word does not search"
+    out = chat._enrich_messages(msgs, {}, force_search=True, temporary=True)
+    assert sent == ["what is the recent news about the harbour"] and "WEB RESULTS" in out[0]["content"], \
+        "the toggle still searches"
+    out = chat._enrich_messages([{"role": "user", "content": "read https://example.org/a"}], {}, temporary=True)
+    assert "page text" in out[0]["content"], "links still work"
+
+
 class _Budget:
     def warn_now(self):
         return False
@@ -122,7 +139,7 @@ def test_the_route_passes_the_flag_to_every_path():
     for needle in ('_temporary = bool(body.get("temporary"))',
                    "asyncio.to_thread(_try_explicit_skill, _explicit, last_user_text, _temporary)",
                    "asyncio.to_thread(_try_skill, last_user_text, _temporary)",
-                   "temporary=_temporary)", "meta=_mem_meta, temporary=_temporary",
+                   "temporary=_temporary, web=_web)", "meta=_mem_meta, temporary=_temporary",
                    "_try_skill_by_name(s_name, s_query, _temporary)",
                    "asyncio.to_thread(_try_skill_by_name, s_name, s_query, _temporary)"):
         assert needle in SRC, needle

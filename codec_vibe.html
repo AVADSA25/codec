@@ -723,9 +723,10 @@ function doSend() {
     try {
       pm = window.VibeProj ? await VibeProj.begin(t) : false;
       var msgs = [{role: 'system', content: pm ? SYSP_PROJECT : SYSP}].concat(_histForSend(pm));
+      // web:false (D-37): the server fetches no link and sends no web search for Vibe.
       var r = await fetch('/api/chat', {
         method: 'POST', headers: {'Content-Type': 'application/json'}, credentials: 'same-origin',
-        body: JSON.stringify({messages: msgs, thinking: false, stream: true, workdir: _workdir}), signal: _vibeAbort.signal
+        body: JSON.stringify({messages: msgs, thinking: false, stream: true, workdir: _workdir, web: false}), signal: _vibeAbort.signal
       });
       if (r.status === 401 || r.redirected) { window.location.href = '/auth'; return; }
       if (!r.body) throw new Error('No stream body (status ' + r.status + ')');
