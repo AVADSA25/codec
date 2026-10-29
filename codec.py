@@ -103,7 +103,7 @@ def _is_wake_utterance(text: str) -> bool:
 # PR-2B-2 (D-15): key now sourced via Keychain-aware getter (cfg→Keychain
 # migration on first call), with GEMINI_API_KEY env fallback inside the getter.
 GEMINI_API_KEY    = get_gemini_api_key()
-VISION_PROVIDER   = _cfg.get("vision_provider", "gemini" if GEMINI_API_KEY else "local")
+VISION_PROVIDER   = _cfg.get("vision_provider", "local")  # D-37: Gemini only when set
 # A-17 (PR-3C): the dead `DRAFT_KEYWORDS_CFG` knob was removed here — user
 # `draft_keywords` overrides are now honored inside codec_core.is_draft().
 

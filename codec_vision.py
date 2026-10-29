@@ -9,8 +9,9 @@ Canonical API:
     describe_sync(image_b64, prompt, *, mime, max_tokens)        -> str
     await describe_async(image_b64, prompt, *, mime, max_tokens, http) -> str
 
-Both: try Gemini Flash first (when `vision_provider == "gemini"` and a key is
-present), fall back to the local Qwen-VL `/chat/completions` endpoint. Return
+Both: try Gemini Flash first (only when `vision_provider` is set to "gemini"
+and a key is present; unset means local, D-37), fall back to the local Qwen-VL
+`/chat/completions` endpoint. Return
 the description text, or "" on failure. Config is read live from codec_config
 (so provider/model/key changes + Keychain migration take effect without restart).
 """
@@ -30,7 +31,9 @@ def _vision_config() -> Tuple[str, str, str, str]:
     try:
         from codec_config import cfg, QWEN_VISION_URL, QWEN_VISION_MODEL, get_gemini_api_key
         gem = get_gemini_api_key() or ""
-        provider = cfg.get("vision_provider", "gemini" if gem else "local")
+        # D-37: local unless the owner sets vision_provider; a Gemini key alone
+        # no longer sends the screen or an image to Google.
+        provider = cfg.get("vision_provider", "local")
         return provider, gem, QWEN_VISION_URL, QWEN_VISION_MODEL
     except Exception as e:  # pragma: no cover — defensive
         log.warning("vision config unavailable: %s", e)
