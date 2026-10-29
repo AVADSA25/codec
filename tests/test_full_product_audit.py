@@ -323,10 +323,6 @@ class TestChatAPI:
         data = load_r.json()
         assert len(data) >= 2
 
-    def test_web_search_endpoint(self):
-        r = api_post("/api/web_search", json={"query": "CODEC voice assistant"})
-        assert r.status_code in [200, 500]  # May fail without API key
-
     def test_deep_research_start(self):
         r = api_post("/api/deep_research", json={
             "query": "test research query",
@@ -673,9 +669,12 @@ class TestAgentFramework:
         t = Tool(name="valid_tool", description="test", fn=lambda x: x)
         assert t.name == "valid_tool"
 
-    def test_dangerous_shell_blocked(self):
-        """Shell execute tool should block dangerous commands."""
+    def test_dangerous_shell_blocked(self, monkeypatch):
+        """Shell execute tool should block dangerous commands.
+        P-030: a flagged command asks the owner first; the test declines."""
         try:
+            import codec_consent
+            monkeypatch.setattr(codec_consent, "local_consent_ok", lambda *a, **kw: False)
             from codec_agents import _shell_execute
             result = _shell_execute("rm -rf /")
             assert "blocked" in result.lower() or "dangerous" in result.lower() or "denied" in result.lower()

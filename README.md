@@ -141,7 +141,7 @@ The multi-agent framework is under 800 lines. Zero dependencies. No CrewAI. No L
 
 ### 5. CODEC Vibe — AI Coding IDE
 
-Split-screen in the browser. Monaco editor on the left (same engine as VS Code, v0.45.0). AI chat on the right. Describe what's needed — CODEC writes it, click Apply, run it, live preview in browser.
+Split-screen in the browser. Monaco editor on the left (same engine as VS Code, v0.57.0, served from the repo). AI chat on the right. Describe what's needed — CODEC writes it, click Apply, run it, live preview in browser.
 
 New skills land through the human-review approval flow (`/api/skill/review` → `/api/skill/approve`) — staged, previewed, then written to disk only after explicit operator approval. Defense in depth pairs with the load-time AST gate in `SkillRegistry.load`. DOMPurify sanitization on all rendered content.
 
@@ -786,6 +786,12 @@ python3 -m pytest   # all tests must pass
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the skill template and trigger matching rules.
+
+---
+
+## Acknowledgements
+
+- The iMessage integration reads the native macOS Messages database directly, inspired by [Photon's imessage-kit](https://github.com/photon-hq/imessage-kit) and extended with full LLM, vision, and multi-agent support.
 
 ---
 

@@ -143,7 +143,7 @@ Overview, so CODEC ships as a **7-product system**.
 
 | # | Feature |
 |:-:|---|
-| 1 | Monaco Editor (full IDE, same engine as VS Code v0.45.0) |
+| 1 | Monaco Editor (full IDE, same engine as VS Code v0.57.0, served from the repo) |
 | 2 | Multi-language support (16+ languages + auto-detect) |
 | 3 | AI chat panel for vibe coding |
 | 4 | Voice input for code descriptions |

@@ -498,3 +498,20 @@ answers nothing else: pages, polls and the voice socket wait. Same class as the
 startup warmup fixed on 2026-10-07. Fix: `await asyncio.to_thread(requests.post, ...)`
 in each. Found by an AST scan of async routes. Revisit: the next item that touches
 photos or vision.
+
+## The `web_search` skill still searches on its own trigger phrases (2026-10-29)
+
+D-37 (docs/LOCAL-FIRST-DEFAULTS-DESIGN.md) made the chat's automatic search in
+`routes/chat._enrich_messages` wait for the "Search the web" toggle. The
+`web_search` skill is a separate path and is unchanged: its triggers
+(`skills/web_search.py`: "search for", "search the web", "google search",
+"look up", "who is", "who won", "latest news") fire it before the model through
+`_try_skill` (it is in `CHAT_SKILL_ALLOWLIST`), and the model can call it with a
+`[SKILL:web_search:...]` tag. It sends the message, lowercased with a few words
+removed (no word limit), to DuckDuckGo and then `codec_search`. "Who is" and
+"who won" are ordinary question phrasing, so a private question can still leave
+the Mac without the toggle. The Vibe page's `web: false` does not cover it
+either. Out of P-020's scope ("only the auto-trigger changes"). Fix (own PR,
+needs the owner's word on the default): run the skill on a trigger phrase or a
+model tag only when the toggle is on (or drop the question-phrase triggers),
+cap its query like `_derive_search_query`, and refuse it when `web` is false.

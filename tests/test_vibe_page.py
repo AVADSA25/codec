@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from route_table import route_methods
 
 REPO = Path(__file__).resolve().parent.parent
 PAGE = (REPO / "codec_vibe.html").read_text(encoding="utf-8")
@@ -19,6 +20,21 @@ def test_the_page_loads_both_scripts_with_a_version_stamp_before_its_own_script(
     projects = re.search(r'<script src="/static/vibe-projects\.js\?v=[0-9a-f]{8}"></script>', PAGE)
     assert files and projects and files.start() < projects.start() < PAGE.index("function doSend(")
     assert (REPO / "static" / "vibe-files.js").is_file() and (REPO / "static" / "vibe-projects.js").is_file()
+
+
+def test_the_page_loads_monaco_from_the_repo_copy_with_its_language_workers():
+    # D-24: the editor comes from static/vendor/monaco, never from a CDN, and the copy
+    # keeps the TypeScript/JavaScript language service (error underlines, hover, completion).
+    assert "cdnjs" not in PAGE
+    assert '<script src="/static/vendor/monaco/vs/loader.js"></script>' in PAGE
+    assert "require.config({paths:{vs:'/static/vendor/monaco/vs'}});" in PAGE
+    assert "setModeConfiguration" not in PAGE
+    vs = REPO / "static" / "vendor" / "monaco" / "vs"
+    assert (vs / "loader.js").is_file() and (vs / "editor" / "editor.main.js").is_file()
+    for worker in ("ts", "css", "html", "json", "editor"):
+        assert len(list((vs / "assets").glob(worker + ".worker-*.js"))) == 1, worker
+    for notice in ("LICENSE", "ThirdPartyNotices.txt"):
+        assert (vs.parent / notice).is_file()
 
 
 def test_the_page_has_the_undo_and_versions_controls_hidden_until_there_is_a_project():
@@ -61,7 +77,7 @@ def test_a_project_session_saves_its_project_and_deleting_it_moves_the_folder_to
 
 def test_the_router_is_registered_in_the_dashboard():
     from codec_dashboard import app
-    paths = {getattr(r, "path", "") for r in app.routes}
+    paths = set(route_methods(app))
     for p in ("/api/vibe/projects", "/api/vibe/projects/{pid}", "/api/vibe/projects/{pid}/apply",
               "/api/vibe/projects/{pid}/undo", "/api/vibe/projects/{pid}/restore", "/api/vibe/projects/{pid}/diff"):
         assert p in paths, p

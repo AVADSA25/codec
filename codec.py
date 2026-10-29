@@ -103,7 +103,7 @@ def _is_wake_utterance(text: str) -> bool:
 # PR-2B-2 (D-15): key now sourced via Keychain-aware getter (cfg→Keychain
 # migration on first call), with GEMINI_API_KEY env fallback inside the getter.
 GEMINI_API_KEY    = get_gemini_api_key()
-VISION_PROVIDER   = _cfg.get("vision_provider", "gemini" if GEMINI_API_KEY else "local")
+VISION_PROVIDER   = _cfg.get("vision_provider", "local")  # D-37: Gemini only when set
 # A-17 (PR-3C): the dead `DRAFT_KEYWORDS_CFG` knob was removed here — user
 # `draft_keywords` overrides are now honored inside codec_core.is_draft().
 
@@ -269,6 +269,9 @@ def _maybe_screen_context(task: str) -> str:
 
 # ── DISPATCH LOCK — only one dispatch at a time, prevents feedback loops ──
 _dispatch_lock = threading.Lock()
+# P-080: True while a wake command waits for the owner's OK on a high-power
+# skill (at most codec_consent.LOCAL_CONSENT_TIMEOUT_SEC).
+_waiting_for_consent = threading.Event()
 _dispatch_cooldown = 0.0  # timestamp: ignore wake words until this time
 _last_tts_text = ""  # last TTS output — used to strip echo from mic recordings
 
@@ -330,6 +333,8 @@ def dispatch(task):
     global _dispatch_cooldown
     if not _dispatch_lock.acquire(blocking=False):
         print(f"[CODEC] Dispatch BLOCKED (already processing): {task[:60]}")
+        if _waiting_for_consent.is_set():
+            speak_text("I'm still waiting for your OK on the CODEC screen.")
         return
     try:
         _dispatch_inner(task)
@@ -414,6 +419,20 @@ def _persist_voice_turn(task, answer, rid):
         log.warning(f"[CODEC] Memory save failed after LLM: {e}")
 
 
+def _wake_consent(skill_name, task):
+    """P-080: the wake word asks before a high-power skill (terminal,
+    pm2_control, process_manager, imessage_send, file_ops writes, ...)."""
+    import codec_consent
+    if not codec_consent.local_consent_needed(skill_name, task):
+        return True
+    _waiting_for_consent.set()
+    try:
+        speak_text("That needs your OK. Approve it on the CODEC screen or your phone.")
+        return codec_consent.local_consent_ok(skill_name, task, "wake")
+    finally:
+        _waiting_for_consent.clear()
+
+
 def _dispatch_inner(task):
     app = focused_app()
     log_event("wake_dispatch", "open-codec",
@@ -431,7 +450,7 @@ def _dispatch_inner(task):
     if len(task) < 500:
         skill = check_skill(task)
         if skill:
-            result = run_skill(skill, task, app)
+            result = run_skill(skill, task, app, consent=_wake_consent)
             if result is not None:
                 push(lambda: show_overlay('Skill: ' + skill['name'], '#E8711A', 2000))
                 global _last_tts_text

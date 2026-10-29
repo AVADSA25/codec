@@ -239,6 +239,23 @@ async def save_custom_agent(request: Request):
         if not name:
             return JSONResponse({"error": "Name required"}, status_code=400)
         safe_id = re.sub(r"[^\w\-]", "_", name.lower())
+        # P-030 part 3 (owner decision D-17): only tool names CODEC knows.
+        tools = body.get("tools")
+        if tools is None:
+            tools = []
+        if not isinstance(tools, list) or not all(isinstance(t, str) for t in tools):
+            return JSONResponse({"error": "tools must be a list of tool names"}, status_code=400)
+        from codec_agents import known_tool_names
+        known = known_tool_names()
+        unknown = sorted({t for t in tools if t not in known})
+        if unknown:
+            shown = ", ".join(t[:60] for t in unknown[:10]) + (" ..." if len(unknown) > 10 else "")
+            return JSONResponse(
+                {"error": f"Unknown tool name(s): {shown}. Pick tools from the list "
+                          "/api/agents/tools gives.",
+                 "unknown_tools": [t[:60] for t in unknown[:20]]},
+                status_code=400,
+            )
         # B-16: refuse to shadow an existing Project's storage namespace.
         if _custom_id_shadows_project(safe_id):
             return JSONResponse(
@@ -258,13 +275,22 @@ async def save_custom_agent(request: Request):
 async def list_custom_agents():
     """List saved custom agent definitions."""
     agents = []
+    known = None
     for f in sorted(os.listdir(_AGENTS_DIR)):
         if f.endswith(".json"):
             try:
                 with open(os.path.join(_AGENTS_DIR, f)) as fh:
-                    agents.append(json.load(fh))
+                    a = json.load(fh)
             except Exception:
-                pass
+                continue
+            # P-030 part 3: an agent saved before the save check still loads;
+            # tool names CODEC does not know are left out (one audit line).
+            if isinstance(a, dict) and "tools" in a:
+                from codec_agents import known_tool_names, known_tools_only
+                if known is None:
+                    known = known_tool_names()
+                a["tools"] = known_tools_only(a.get("id") or f[:-5], a.get("tools"), known)
+            agents.append(a)
     return {"agents": agents}
 
 

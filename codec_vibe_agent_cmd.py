@@ -5,7 +5,7 @@ This module only runs it, and runs it with the least it needs:
 
   reads    the system, the usual toolchains in the home folder, and this project; nothing else in the
            home folder, no other project, no keys, no CODEC state, not the project's own .vibe folder
-  writes   this project (never .vibe) and one temporary folder made for the command
+  writes   this project (never .vibe, nor .git's hooks and config) and one temporary folder made for the command
   network  none; or, when the owner ticked it, web ports and name lookups only, never this Mac
   apps     no Apple Events, no clipboard, no keychain service, no screen, no camera, no microphone
   limits   a time limit (the whole process group is stopped), no input, a size limit on files it writes,
@@ -37,8 +37,15 @@ MAX_COMMAND_CHARS = 500
 STOP_GRACE_SECONDS = 2.0
 _EXTRA_PATH = ("/opt/homebrew/bin", "/usr/local/bin")
 # Toolchains that live in the home folder: readable, so node, python, ruby and the like start from there.
-TOOLCHAINS = (".nvm", ".pyenv", ".volta", ".bun", ".deno", ".cargo", ".rustup", ".local", ".rbenv", ".asdf",
-              "Library/Python", "go")
+# Of ~/.local only the parts interpreters need (owner decision D-23, docs/VIBE-SANDBOX-NARROW-DESIGN.md):
+# the bin folder, Python's user packages, pipx's venvs (old and new home) and uv's Pythons and tools.
+# The rest of ~/.local/share and ~/.local/state (app logins, keys, uv's saved credentials) stays closed.
+TOOLCHAINS = (".nvm", ".pyenv", ".volta", ".bun", ".deno", ".cargo", ".rustup",
+              ".local/bin", ".local/lib",
+              ".local/pipx/venvs", ".local/pipx/shared", ".local/pipx/py",
+              ".local/share/pipx/venvs", ".local/share/pipx/shared", ".local/share/pipx/py",
+              ".local/share/uv/python", ".local/share/uv/tools",
+              ".rbenv", ".asdf", "Library/Python", "go")
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 _DENIED_HINT = re.compile(r"operation not permitted|not permitted|permission denied", re.I)
 
@@ -108,6 +115,12 @@ def profile(project: str, vibe_root: str, home: str, temp: str, network: bool) -
     (subpath {_q(temp)})
     (literal "/dev/null") (literal "/dev/tty") (regex #"^/dev/ttys[0-9]+$") (literal "/dev/dtracehelper"))
 (deny file-write* (subpath {_q(os.path.join(project, ".vibe"))}))
+;; nor the parts of its git folder that run code later or send git elsewhere: the hooks and the config, and the
+;; .git entry itself, so it cannot be created, renamed away or swapped for a prepared one (D-23)
+(deny file-write*
+    (literal {_q(os.path.join(project, ".git"))})
+    (literal {_q(os.path.join(project, ".git", "config"))})
+    (subpath {_q(os.path.join(project, ".git", "hooks"))}))
 
 ;; programs it may start, and the few system services a runtime asks for
 (allow process-exec*)

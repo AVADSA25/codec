@@ -438,7 +438,8 @@ def ask(
             "confirm". Caller-supplied verb wins.
         agent: Display name (e.g. "Writer"). Optional.
         crew_id: Originating crew name. Optional.
-        asked_from: "chat" | "voice" | "crew" | "mcp". Default "chat".
+        asked_from: "chat" | "voice" | "wake" | "crew" | "mcp". Default "chat".
+            "wake" = the wake-word path (codec.py, P-080).
         tool_name: Caller's tool name. If in codec_config._HTTP_BLOCKED,
             forces destructive=True even if caller didn't set the flag.
 

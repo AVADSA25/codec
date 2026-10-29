@@ -69,6 +69,7 @@ def _agents() -> list[dict]:
         names = sorted(os.listdir(shared._AGENTS_DIR))
     except OSError:
         return out
+    known = None
     for f in names:
         if not f.endswith(".json"):
             continue
@@ -78,9 +79,16 @@ def _agents() -> list[dict]:
         except (OSError, ValueError):
             continue
         if isinstance(a, dict) and a.get("name"):
+            # P-030 part 3: only tool names CODEC knows (unknown ones are left
+            # out with one audit line, codec_agents.known_tools_only).
+            from codec_agents import known_tool_names, known_tools_only
+            if known is None:
+                known = known_tool_names()
+            agent_id = str(a.get("id") or f[:-5])
             # The whole role: a picked agent runs as saved (the list trims it on screen).
-            out.append({"id": str(a.get("id") or f[:-5]), "name": str(a["name"]),
-                        "role": str(a.get("role") or "")[:4000], "tools": list(a.get("tools") or []),
+            out.append({"id": agent_id, "name": str(a["name"]),
+                        "role": str(a.get("role") or "")[:4000],
+                        "tools": known_tools_only(agent_id, a.get("tools"), known),
                         "max_iterations": int(a.get("max_iterations") or 8)})
     return out
 

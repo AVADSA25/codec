@@ -40,6 +40,10 @@ MAX_DIFF_FILES = 50
 
 # Folders no write may land in; they are never part of a project's files.
 _WRITE_BLOCKED_SEGMENTS = {META_DIR, ".git", "node_modules", ".ssh", ".gnupg", ".aws", ".kube", ".gcloud"}
+# Folders and files that editors, git tools and AI tools later run code from or take orders from (tasks, hooks,
+# workflows, tool settings). The owner may edit them; the agent's file tools may not (owner decision D-23,
+# docs/VIBE-SANDBOX-NARROW-DESIGN.md). Matched as any path segment, case-insensitively.
+_AGENT_BLOCKED_SEGMENTS = {".vscode", ".idea", ".husky", ".devcontainer", ".github", ".mcp.json", ".claude"}
 # Folders a scan skips (listing, checkpoints).
 _SCAN_IGNORED_DIRS = {META_DIR, ".git", "node_modules", "__pycache__", ".venv", "venv", ".next", ".cache",
                       ".pytest_cache", ".mypy_cache", ".ruff_cache", ".tox"}      # what test runs leave behind
@@ -775,10 +779,20 @@ def agent_checkpoint(pid: str, label: str, kind: str, run: str, step: int, *, fo
     return _public(rec) if rec else None
 
 
-def agent_write(pid: str, rel: str, content: str) -> dict:
-    """Write one project file. Same path, size and link rules as every other write."""
-    pdir = project_dir(pid)
+def _agent_rel(rel: str) -> str:
+    """safe_rel, plus the folders only the owner may change. For the agent's file tools only."""
     rel = safe_rel(rel)
+    for seg in rel.split("/"):
+        if seg.casefold() in _AGENT_BLOCKED_SEGMENTS:
+            raise VibeError(400, f"The agent may not change '{seg}': editors and tools run code or take settings "
+                                 "from it later. The owner can edit it in the editor.")
+    return rel
+
+
+def agent_write(pid: str, rel: str, content: str) -> dict:
+    """Write one project file. Same path, size and link rules as every other write, plus _agent_rel."""
+    pdir = project_dir(pid)
+    rel = _agent_rel(rel)
     with _lock(pid):
         existed = (pdir / rel).is_file()
         size = _write_file_locked(pdir, rel, content)
@@ -787,7 +801,7 @@ def agent_write(pid: str, rel: str, content: str) -> dict:
 
 def agent_delete(pid: str, rel: str) -> dict:
     pdir = project_dir(pid)
-    rel = safe_rel(rel)
+    rel = _agent_rel(rel)
     with _lock(pid):
         _no_symlinks(pdir, rel, include_last=True)
         target = pdir / rel

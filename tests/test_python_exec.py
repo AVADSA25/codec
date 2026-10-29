@@ -22,6 +22,7 @@ sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "skills"))
 
 import python_exec  # noqa: E402
+from route_table import route_methods
 
 
 # ── AST-validation tests (no sandbox subprocess needed) ──────────────────────
@@ -202,11 +203,7 @@ def test_no_api_execute_route_registered_in_app():
     in test mode) and proves at the routing layer that the endpoint is
     gone."""
     import codec_dashboard
-    paths = []
-    for route in codec_dashboard.app.routes:
-        path = getattr(route, "path", None)
-        if path:
-            paths.append(path)
+    paths = sorted(route_methods(codec_dashboard.app))
     assert "/api/execute" not in paths, (
         f"/api/execute must NOT be registered; routes: "
         f"{[p for p in paths if 'execute' in p or 'api' in p][:10]}"
