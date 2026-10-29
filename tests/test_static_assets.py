@@ -64,15 +64,14 @@ def test_vendored_monaco_and_its_icon_font_are_served_without_login(pin_login_re
     assert css.status_code == 200 and "url(codicon.ttf)" in css.text and "data:font" not in css.text
 
 
-def test_csp_names_no_font_or_script_cdn(pin_login_required):
-    # PR-C self-hosts IBM Plex (static/codec.css) and D-24 vendors Monaco, so
-    # the CSP needs neither the Google Fonts origins nor cdnjs.
+def test_csp_drops_google_fonts_but_keeps_cdnjs(pin_login_required):
+    # PR-C self-hosts IBM Plex (static/codec.css), so the CSP no longer needs
+    # the Google Fonts origins; cdnjs.cloudflare.com stays for Vibe's Monaco.
     r = pin_login_required.get("/")
     csp = r.headers["content-security-policy"]
     assert "fonts.googleapis.com" not in csp
     assert "fonts.gstatic.com" not in csp
-    assert "cdnjs.cloudflare.com" not in csp
-    assert "font-src 'self';" in csp
+    assert "cdnjs.cloudflare.com" in csp
 
 
 def test_the_login_still_guards_everything_else(pin_login_required):

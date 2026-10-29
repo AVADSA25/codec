@@ -230,10 +230,9 @@ class CSPMiddleware(BaseHTTPMiddleware):
 
     CSP = (
         "default-src 'self'; "
-        # Monaco is served from /static/vendor/monaco (D-24): no page loads code, styles or fonts from a CDN.
-        "script-src 'self' 'unsafe-inline'; "
-        "style-src 'self' 'unsafe-inline'; "
-        "font-src 'self'; "
+        "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; "
+        "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; "
+        "font-src 'self' https://cdnjs.cloudflare.com; "
         "img-src 'self' data: https:; "
         "connect-src 'self' ws: wss: http://localhost:* http://127.0.0.1:*; "
         # Vibe (step 2b) frames a project that runs on this Mac, always at 127.0.0.1.
