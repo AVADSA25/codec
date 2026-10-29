@@ -323,10 +323,6 @@ class TestChatAPI:
         data = load_r.json()
         assert len(data) >= 2
 
-    def test_web_search_endpoint(self):
-        r = api_post("/api/web_search", json={"query": "CODEC voice assistant"})
-        assert r.status_code in [200, 500]  # May fail without API key
-
     def test_deep_research_start(self):
         r = api_post("/api/deep_research", json={
             "query": "test research query",

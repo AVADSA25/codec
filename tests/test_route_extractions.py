@@ -124,7 +124,6 @@ class TestFSeriesRouteExtractions:
         "/api/preview",
         "/preview_frame",
         "/api/run_code",
-        "/api/web_search",
         "/api/cdp/status",
     ])
     def test_endpoint_registered(self, path):
@@ -133,21 +132,20 @@ class TestFSeriesRouteExtractions:
     def test_modules_exist_and_export_router(self):
         from pathlib import Path
         root = Path(__file__).resolve().parent.parent / "routes"
-        for name in ("config", "history", "tts", "vision", "vibe_exec",
-                     "web_search", "cdp"):
+        for name in ("config", "history", "tts", "vision", "vibe_exec", "cdp"):
             text = (root / f"{name}.py").read_text()
             assert "router = APIRouter()" in text, f"{name}.py must export router"
 
     def test_dashboard_does_not_redefine_endpoints(self):
         from pathlib import Path
         src = (Path(__file__).resolve().parent.parent / "codec_dashboard.py").read_text()
-        # All 11 endpoints below must NOT have an `@app.<method>("<path>")`
+        # All 10 endpoints below must NOT have an `@app.<method>("<path>")`
         # decorator inside codec_dashboard.py — they live in routes/*.py only.
         moved = [
             '/api/config")', '/api/history")', '/api/conversations")',
             '/api/tts")', '/api/response")', '/api/vision")',
             '/api/preview")', '/preview_frame"', '/api/run_code")',
-            '/api/web_search")', '/api/cdp/status")',
+            '/api/cdp/status")',
         ]
         for snippet in moved:
             for verb in ("@app.get(", "@app.post(", "@app.put(", "@app.delete("):
@@ -164,29 +162,19 @@ def test_dashboard_loc_below_2300():
     assert lines < 2300, f"codec_dashboard.py still has {lines} lines"
 
 
-# ── G-series (SR-57..58): memory_search (pilot_proxy removed in the v3.5 Pilot unhook) ──
+# ── G-series (SR-57..58): memory_search and pilot_proxy, both since removed ──
 class TestGSeriesRouteExtractions:
-    @pytest.mark.parametrize("path", [
-        "/api/memory/search",
-    ])
-    def test_endpoint_registered(self, path):
-        assert path in _registered_paths()
-
-    def test_modules_exist_and_export_router(self):
-        from pathlib import Path
-        root = Path(__file__).resolve().parent.parent / "routes"
-        for name in ("memory_search",):
-            text = (root / f"{name}.py").read_text()
-            assert "router = APIRouter()" in text, f"{name}.py must export router"
-
-    def test_memory_search_covers_all_four_sources(self):
-        """G1: the extracted endpoint must still query voice + chat + vibe + flash."""
-        from pathlib import Path
-        text = (Path(__file__).resolve().parent.parent / "routes" / "memory_search.py").read_text()
-        assert "from codec_memory import CodecMemory" in text          # voice FTS
-        assert "from routes.qchat import qchat_db" in text             # chat
-        assert "from routes.vibe import vibe_db" in text               # vibe
-        assert "FROM sessions" in text                                  # flash
+    def test_unused_post_routes_are_gone(self):
+        """D-41: POST /api/memory/search and POST /api/web_search had no caller
+        and were removed; the GET memory search the Memory page uses stays."""
+        from codec_dashboard import app
+        methods = {}
+        for route in app.routes:
+            if getattr(route, "path", None) in ("/api/memory/search", "/api/web_search"):
+                methods.setdefault(route.path, set()).update(getattr(route, "methods", None) or ())
+        assert "POST" not in methods.get("/api/memory/search", set())
+        assert "GET" in methods.get("/api/memory/search", set())
+        assert "/api/web_search" not in methods
 
     def test_pilot_route_is_gone(self):
         """The Pilot proxy was removed when the product was parked in v3.5."""
