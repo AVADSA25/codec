@@ -4,6 +4,28 @@ Intentionally-deferred bugs and test failures with documented status, so we don'
 
 ---
 
+## Route-table tests fail on every FastAPI that requirements.txt allows (found 2026-10-29, D-33 CI PR)
+
+| field | value |
+|---|---|
+| **failing tests** | 59 on both CI jobs (main @ ef055e7): `tests/test_route_extractions.py` (`test_endpoint_registered`, `test_unused_post_routes_are_gone`, `test_chat_endpoint_registered`), `test_route_extractions_d.py` and `test_route_extractions_e.py` (`test_endpoint_registered`), `test_b6_refactor.py`, `test_mcp_routes.py`, `test_skill_loader_unification.py::test_cortex_skills_endpoint_registered`, `test_vibe_agent_routes.py::test_the_dashboard_registers_the_agent_routes_behind_its_login`, `test_vibe_page.py::test_the_router_is_registered_in_the_dashboard` |
+| **what's broken** | The tests list routes with `{r.path for r in app.routes}`. In every FastAPI checked from the 0.143.2 floor to 0.162.0 (with Starlette 1.10.0), `include_router` adds one lazy `fastapi.routing._IncludedRouter` entry with no `path` instead of copying each route into `app.routes`, so the included routes are invisible to that set. The routes still work: a request returns 200 and `app.openapi()` lists them. No application code reads `app.routes`. |
+| **also affected** | `tests/test_python_exec.py::test_no_api_execute_route_registered_in_app` still passes, but only sees top-level routes, so it no longer proves `/api/execute` is absent from the included routers. |
+| **why it was hidden** | CI pinned fastapi 0.129.0 / starlette 0.52.1 / pydantic 2.11.10 (what the Mac Studio runs, below the `fastapi>=0.143.2` floor). The D-33 CI change installs the buyer lock's versions (fastapi 0.162.0) instead. |
+| **status** | deferred-not-fixed: the fix needs a test helper that reads FastAPI's route contexts (private API) and touches security-regression tests, so it gets its own PR. |
+| **revisit when** | Before merging the D-33 CI PR (the required `smoke` check stays red until then). |
+
+## Tests that need the owner's Mac, not a CI runner (found 2026-10-29, first macos-14 CI run)
+
+| field | value |
+|---|---|
+| **failing tests** | `tests/test_textassist.py::test_all_8_workflows_exist`, `::test_workflow_documents_valid`, `::test_read_aloud_workflow_script`, `::test_save_workflow_script`; `tests/test_self_improve_plugin.py::test_draft_and_write_produces_proposal_md_and_py` |
+| **what's broken** | The textassist tests read CODEC's Quick Action workflows from `~/Library/Services`; their skip guard only checks that the folder exists, which it does on a runner, without the workflows. The self_improve test drafts through the local model at `localhost:8083`, which a runner does not have ("no date dir created"). |
+| **status** | deferred-not-fixed: tightening the guards is a test change outside the CI PR. |
+| **revisit when** | With the route-table fix above. |
+
+---
+
 ## Pre-existing test failures from main (Phase 1 Step 1 audit)
 
 The 20 pre-existing failures from `pytest tests/ --ignore=tests/test_smoke.py` were classified in [`docs/PHASE1-STEP1-PREMERGE-AUDIT.md`](PHASE1-STEP1-PREMERGE-AUDIT.md). All are pre-existing on `main` and unrelated to the audit-unification work. They remain failing on `main` after the merge of PR #3.

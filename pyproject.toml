@@ -59,3 +59,11 @@ version = { file = "VERSION" }
 # README → "Professional Setup". (py-modules = [] keeps the metadata build valid without
 # triggering flat-layout auto-discovery errors.)
 py-modules = []
+
+[tool.coverage.run]
+# CI measures line coverage with pytest-cov, which is installed in CI only
+# (.github/workflows/ci.yml, D-33); it is not a runtime dependency. The test
+# files themselves are left out so the figure is about the code under test.
+source = ["."]
+omit = ["tests/*"]
+relative_files = true
