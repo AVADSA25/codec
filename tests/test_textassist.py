@@ -10,14 +10,7 @@ REPO = str(Path(__file__).resolve().parent.parent)
 TEXTASSIST = os.path.join(REPO, "codec_textassist.py")
 SERVICES_DIR = os.path.expanduser("~/Library/Services")
 
-# The macOS Quick Action workflows live on the host's ~/Library/Services
-# (installed by setup_codec.py). They don't ship in the repo, so any
-# workflow-presence test only makes sense on a configured macOS machine.
 import pytest
-_workflows_require_macos = pytest.mark.skipif(
-    sys.platform != "darwin" or not os.path.isdir(SERVICES_DIR),
-    reason="macOS Quick Action workflows live in ~/Library/Services (Mac-only)",
-)
 
 EXPECTED_WORKFLOWS = [
     "CODEC Proofread.workflow",
@@ -29,6 +22,17 @@ EXPECTED_WORKFLOWS = [
     "CODEC Read Aloud.workflow",
     "CODEC Save.workflow",
 ]
+
+# The macOS Quick Action workflows live on the host's ~/Library/Services
+# (installed by setup_codec.py). They don't ship in the repo, so these tests
+# run only where CODEC's Quick Actions are installed: on the owner's Mac they
+# run (and fail if one of the 8 is missing); on a CI runner, which has the
+# folder but none of the workflows, they skip.
+_workflows_require_macos = pytest.mark.skipif(
+    sys.platform != "darwin"
+    or not any(os.path.isdir(os.path.join(SERVICES_DIR, w)) for w in EXPECTED_WORKFLOWS),
+    reason="CODEC's Quick Actions are not installed in ~/Library/Services (setup_codec.py installs them)",
+)
 
 
 # ── Source code checks ────────────────────────────────────────────────────────

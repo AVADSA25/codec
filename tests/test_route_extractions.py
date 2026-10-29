@@ -12,12 +12,13 @@ app via the router include, and (b) the import surface lives in the
 right module.
 """
 import pytest
+from route_table import route_methods
 
 
 def _registered_paths():
     """Return the set of paths registered on the main FastAPI app."""
     from codec_dashboard import app
-    return {route.path for route in app.routes if hasattr(route, "path")}
+    return set(route_methods(app))
 
 
 # ── C1: approvals ──────────────────────────────────────────────────────────
@@ -168,10 +169,7 @@ class TestGSeriesRouteExtractions:
         """D-41: POST /api/memory/search and POST /api/web_search had no caller
         and were removed; the GET memory search the Memory page uses stays."""
         from codec_dashboard import app
-        methods = {}
-        for route in app.routes:
-            if getattr(route, "path", None) in ("/api/memory/search", "/api/web_search"):
-                methods.setdefault(route.path, set()).update(getattr(route, "methods", None) or ())
+        methods = route_methods(app)
         assert "POST" not in methods.get("/api/memory/search", set())
         assert "GET" in methods.get("/api/memory/search", set())
         assert "/api/web_search" not in methods

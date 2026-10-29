@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from route_table import route_methods
 
 REPO = Path(__file__).resolve().parent.parent
 PAGE = (REPO / "codec_vibe.html").read_text(encoding="utf-8")
@@ -76,7 +77,7 @@ def test_a_project_session_saves_its_project_and_deleting_it_moves_the_folder_to
 
 def test_the_router_is_registered_in_the_dashboard():
     from codec_dashboard import app
-    paths = {getattr(r, "path", "") for r in app.routes}
+    paths = set(route_methods(app))
     for p in ("/api/vibe/projects", "/api/vibe/projects/{pid}", "/api/vibe/projects/{pid}/apply",
               "/api/vibe/projects/{pid}/undo", "/api/vibe/projects/{pid}/restore", "/api/vibe/projects/{pid}/diff"):
         assert p in paths, p

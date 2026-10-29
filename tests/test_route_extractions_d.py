@@ -15,11 +15,12 @@ Each phase pins (a) endpoints reachable through the FastAPI app and
 from pathlib import Path
 
 import pytest
+from route_table import route_methods
 
 
 def _registered_paths():
     from codec_dashboard import app
-    return {route.path for route in app.routes if hasattr(route, "path")}
+    return set(route_methods(app))
 
 
 REPO = Path(__file__).resolve().parent.parent

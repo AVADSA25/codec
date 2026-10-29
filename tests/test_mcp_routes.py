@@ -9,6 +9,7 @@ import json
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from route_table import route_methods
 
 
 @pytest.fixture
@@ -32,7 +33,7 @@ def env(tmp_path, monkeypatch):
 
 def test_registered_on_main_app():
     from codec_dashboard import app
-    paths = {r.path for r in app.routes if hasattr(r, "path")}
+    paths = set(route_methods(app))
     assert "/api/mcp/servers" in paths
     assert "/api/mcp/servers/{name}/toggle" in paths
 
