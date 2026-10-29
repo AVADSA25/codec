@@ -104,9 +104,9 @@ def test_agents_web_fetch_tool_does_not_request_blocked_url(monkeypatch):
 
     def _boom(*a, **k):
         calls["n"] += 1
-        raise AssertionError("_sync_http.get must not be called for a blocked URL")
+        raise AssertionError("_sync_http.stream must not be called for a blocked URL")
 
-    monkeypatch.setattr(codec_agents._sync_http, "get", _boom)
+    monkeypatch.setattr(codec_agents._sync_http, "stream", _boom)
     result = codec_agents._web_fetch("http://127.0.0.1/internal")
     assert calls["n"] == 0, "_web_fetch reached the network for an SSRF-blocked URL"
     assert "block" in result.lower(), f"expected an SSRF-block message, got: {result!r}"
@@ -141,6 +141,12 @@ class _ReqResp:
     def raise_for_status(self):
         pass
 
+    def close(self):
+        pass
+
+    def iter_content(self, chunk_size=1):
+        yield self.text.encode()
+
 
 def test_web_fetch_revalidates_redirect_hop_to_internal(monkeypatch):
     web_fetch = _load_web_fetch_skill()
@@ -165,10 +171,20 @@ class _HxResp:
         self.status_code = status
         self.headers = {"location": location} if location else {}
         self.text = text
+        self.encoding = "utf-8"
 
     @property
     def is_redirect(self):
         return self.status_code in (301, 302, 303, 307, 308) and "location" in self.headers
+
+    def iter_bytes(self):
+        yield self.text.encode()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
 
 
 def test_agents_web_fetch_revalidates_redirect_hop_to_internal(monkeypatch):
@@ -176,7 +192,7 @@ def test_agents_web_fetch_revalidates_redirect_hop_to_internal(monkeypatch):
 
     _public_dns(monkeypatch)
 
-    def fake_get(u, follow_redirects=True, **k):
+    def fake_get(method, u, follow_redirects=True, **k):
         u = str(u)
         if "evil" in u:
             if follow_redirects:
@@ -184,7 +200,7 @@ def test_agents_web_fetch_revalidates_redirect_hop_to_internal(monkeypatch):
             return _HxResp(302, location="http://169.254.169.254/latest/meta-data/")
         return _HxResp(200, text="INTERNAL-METADATA-SECRET")
 
-    monkeypatch.setattr(codec_agents._sync_http, "get", fake_get)
+    monkeypatch.setattr(codec_agents._sync_http, "stream", fake_get)
     result = codec_agents._web_fetch("http://evil.example/redir")
     assert "INTERNAL-METADATA-SECRET" not in result, "crew fetch SSRF bypassed via redirect hop"
     assert "block" in result.lower(), f"expected an SSRF-block message, got: {result!r}"

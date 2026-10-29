@@ -65,28 +65,15 @@ def _url_host_is_public(url: str) -> bool:
     `~/.codec` services. CODEC is loopback-only by default, but this keeps the
     `dashboard_host: 0.0.0.0` opt-in safe. (Residual: DNS-rebinding TOCTOU
     between this check and httpx's own resolve is accepted for a local app.)
+
+    P-008: this is now the shared codec_ssrf guard (one rule set for every
+    fetcher: backslash / parser-mismatch URLs, 100.64.0.0/10, embedded IPv4).
     """
-    import ipaddress
-    import socket
-    from urllib.parse import urlparse
+    import codec_ssrf
     try:
-        parsed = urlparse(url)
-        if parsed.scheme not in ("http", "https"):
-            return False
-        host = parsed.hostname
-        if not host:
-            return False
-        infos = socket.getaddrinfo(host, parsed.port or (443 if parsed.scheme == "https" else 80),
-                                   proto=socket.IPPROTO_TCP)
-        if not infos:
-            return False
-        for info in infos:
-            ip = ipaddress.ip_address(info[4][0])
-            if (ip.is_private or ip.is_loopback or ip.is_link_local
-                    or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
-                return False
+        codec_ssrf.validate_url(url)
         return True
-    except Exception as e:
+    except codec_ssrf.SSRFError as e:
         log.warning(f"URL host validation failed ({url}): {e}")
         return False
 
@@ -122,29 +109,35 @@ def _fetch_url_content(url: str, max_chars: int = 8000) -> str:
 
         headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"}
+        import codec_ssrf
         cur = url
-        r = None
-        with httpx.Client(timeout=15, follow_redirects=False) as client:
+        body = None
+        budget = codec_ssrf.FetchBudget()   # P-008: near 2 MB / 15 s per fetch
+        with httpx.Client(follow_redirects=False) as client:
             for _hop in range(5):
                 if not _url_host_is_public(cur):
                     log.warning(f"URL fetch blocked (non-public host): {cur}")
                     return ""
-                r = client.get(cur, headers=headers)
-                if r.is_redirect and "location" in r.headers:
-                    cur = str(r.url.join(r.headers["location"]))
-                    continue
+                with client.stream("GET", cur, headers=headers,
+                                   timeout=budget.timeout()) as r:
+                    if r.is_redirect and "location" in r.headers:
+                        cur = str(r.url.join(r.headers["location"]))
+                        continue
+                    ctype = r.headers.get('content-type', '')
+                    raw, _cut = codec_ssrf.read_capped(r.iter_bytes(), budget)
+                    body = raw.decode(r.encoding or "utf-8", errors="replace")
                 break
             else:
                 log.warning(f"URL fetch aborted (too many redirects): {url}")
                 return ""
-        if r is None:
+        if body is None:
             return ""
-        if 'text/html' in r.headers.get('content-type', ''):
+        if 'text/html' in ctype:
             parser = _Stripper()
-            parser.feed(r.text)
+            parser.feed(body)
             text = ' '.join(parser.chunks)
         else:
-            text = r.text
+            text = body
         return text[:max_chars]
     except Exception as e:
         log.warning(f"URL fetch failed ({url}): {e}")

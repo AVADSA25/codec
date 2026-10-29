@@ -43,14 +43,24 @@ def _get_validating_redirects(url: str, max_redirects: int = 5):
     redirects MANUALLY, re-validating every hop — requests' default
     auto-redirect would otherwise reach an internal / loopback / cloud-metadata
     target via a 302 the guard never saw. Raises codec_ssrf.SSRFError on any
-    blocked hop or too many redirects."""
+    blocked hop or too many redirects.
+
+    P-008: the whole fetch, redirects included, stops near 2 MB and 15 s
+    (codec_ssrf.FetchBudget); the body is streamed, never read whole."""
     import codec_ssrf
+    budget = codec_ssrf.FetchBudget()
     for _ in range(max_redirects + 1):
         codec_ssrf.validate_url(url)
-        resp = requests.get(url, timeout=10, allow_redirects=False)
+        step = budget.timeout()
+        resp = requests.get(url, timeout=(step, step), allow_redirects=False, stream=True)
         if (resp.is_redirect or resp.is_permanent_redirect) and resp.headers.get("Location"):
+            resp.close()
             url = urljoin(url, resp.headers["Location"])
             continue
+        body, _cut = codec_ssrf.read_capped(resp.iter_content(65536), budget)
+        resp.close()
+        resp._content = body           # resp.text decodes it exactly as before
+        resp._content_consumed = True
         return resp
     raise codec_ssrf.SSRFError("too many redirects")
 
@@ -82,7 +92,7 @@ def run(task: str, context: str = "") -> str:
         else:
             return f"web_fetch failed: unsupported content type {content_type}"
             
-    except requests.exceptions.Timeout:
+    except (requests.exceptions.Timeout, TimeoutError):
         return "web_fetch failed: request timed out"
     except requests.exceptions.ConnectionError:
         return "web_fetch failed: connection refused"
