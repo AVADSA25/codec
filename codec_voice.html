@@ -492,6 +492,26 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
     /* ── Interrupt detection ── */
     var INTERRUPT_RMS   = 800;   // mic RMS threshold to trigger interrupt
     var lastInterruptAt = 0;     // debounce — ms timestamp
+    // Interrupt only on a sentence, not a noise: the mic must stay above INTERRUPT_RMS
+    // for INTERRUPT_MIN_MS, with pauses between words up to INTERRUPT_GAP_MS allowed.
+    var INTERRUPT_MIN_MS = 900;
+    var INTERRUPT_GAP_MS = 350;
+    var barge = { len: 0, gap: 0 };
+    /* BARGE-IN-START */
+    // Same rule as the server (codec_voice._sustained_barge), measured in audio milliseconds.
+    function bargeIn(state, loud, ms, minMs, gapMs) {
+        if (loud) {
+            state.len += ms + (state.len ? state.gap : 0);
+            state.gap = 0;
+            return state.len >= minMs;
+        }
+        if (state.len) {
+            state.gap += ms;
+            if (state.gap > gapMs) { state.len = 0; state.gap = 0; }
+        }
+        return false;
+    }
+    /* BARGE-IN-END */
 
     /* ── Streaming transcript ── */
     var streamLine  = null;
@@ -804,8 +824,11 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
                 /* ── Interrupt detection: if Q is speaking and user talks ── */
                 if (isPlaying) {
                     var now = Date.now();
-                    if (rms > INTERRUPT_RMS && (now - lastInterruptAt) > 1200) {
+                    var frameMs = f32.length * 1000 / (audioCtx.sampleRate || 16000);
+                    var sentence = bargeIn(barge, rms > INTERRUPT_RMS, frameMs, INTERRUPT_MIN_MS, INTERRUPT_GAP_MS);
+                    if (sentence && (now - lastInterruptAt) > 1200) {
                         lastInterruptAt = now;
+                        barge.len = 0; barge.gap = 0;
                         ws.send(JSON.stringify({ type: 'interrupt' }));
                         stopAudio();
                         setState('listening');
