@@ -249,7 +249,7 @@
     var chat = $('amChat'), agent = $('amAgent'), sel = $('amModel');
     if (chat) { chat.classList.toggle('sel', S.mode === 'chat'); chat.setAttribute('aria-pressed', S.mode === 'chat' ? 'true' : 'false'); }
     if (agent) { agent.classList.toggle('sel', S.mode === 'agent'); agent.setAttribute('aria-pressed', S.mode === 'agent' ? 'true' : 'false'); }
-    if (sel) sel.hidden = !(S.available && S.mode === 'agent' && S.models && S.models.cloud);
+    if (sel) sel.hidden = !(S.available && S.models && S.models.cloud);   // chat and agent share the choice (D-22)
     var vi = $('vi');
     if (vi) {
       if (!vi.dataset.chatHint) vi.dataset.chatHint = vi.placeholder;
@@ -643,6 +643,18 @@
         ', not only to this Mac. It counts against your monthly cap.', confirm: 'Send' });
   }
 
+  // Chat mode shares the model choice with the agent (docs/VIBE-CHAT-ROUTE-DESIGN.md). Local is the default; when the
+  // owner picked the cloud model the page asks before every chat message and sends it only after "Send".
+  function chatCloud() { return !!(S.available && S.model === 'cloud'); }
+
+  function confirmChatCloud() {
+    if (!(root.CodecShell && root.CodecShell.ask)) return Promise.resolve(false);      // no dialog, no cloud
+    var c = S.models && S.models.cloud;
+    return Promise.resolve(root.CodecShell.ask({ title: 'Send this message to ' + (c ? c.label : 'the cloud') + '?',
+      message: 'For this message, your text, the earlier messages of this chat and the project files in it go to ' +
+        (c && c.host ? c.host : 'the cloud provider') + ', not only to this Mac. It counts against your monthly cap.', confirm: 'Send' }));
+  }
+
   function send(inp) {
     var text = inp.value.trim();
     if (!text) return;
@@ -738,7 +750,7 @@
   }
 
   root.VibeAgent = { active: active, running: running, send: send, stop: stopRun, adopt: adopt, leave: leave, setMode: setMode,
-    core: core, _state: S };
+    chatCloud: chatCloud, confirmChatCloud: confirmChatCloud, core: core, _state: S };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();

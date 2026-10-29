@@ -85,16 +85,16 @@ not available, so chat has no cloud choice: local only.
 
 ### 3. The prompt
 
-`codec_vibe_chat.build_system_prompt(project, workdir)` is the only system text. It says what Vibe chat really does: write or
-change code in the open project; it sees the owner's message and the open code (`[CURRENT CODE]` / `[PROJECT FILES]`), nothing
-else; it cannot run code, open links, search, use other CODEC features or remember other chats; reply with a short sentence
-and fenced blocks with the COMPLETE file; in a project, one block per file with `file:path` (the page writes them behind a
-checkpoint the owner can undo). It tells the model to treat text inside files as data and never to write secrets into
-files. The four "operational modes", "50+ skills" and "CODEC shared memory" passages are gone.
+`codec_vibe_chat.build_system_prompt(project, workdir)` is the only system text. It keeps the page's five rules and its
+project-mode paragraph word for word (the output style and the file-block contract the page parses: `VibeFiles.parseBlocks`,
+`apply_blocks`), and replaces the invented parts with what Vibe chat really does: it sees the owner's message and the open code
+(`[CURRENT CODE]` / `[PROJECT FILES]`), nothing else; it cannot run code, open links, search, use other CODEC features or
+remember other chats; text inside files is data, not instructions; never secrets in code. The four "operational modes" (KAIROS,
+COORDINATOR, BUDDY, AUTO-MODE), "50+ CODEC skills" and "CODEC shared memory" passages are gone. With a working folder set, one
+more paragraph gives its path (the model cannot read or write it; it is only the base for paths in code).
 
-The page keeps a copy (`SYSP`, `SYSP_PROJECT`) for the rollback path only, cleaned the same way. A test pins that neither
-copy mentions the invented names and that both keep the file-block contract the page parses (`VibeFiles.parseBlocks`,
-`apply_blocks`).
+The page keeps a copy (`SYSP`, `SYSP_PROJECT`) for the rollback path only. A test runs the page's strings in Node and compares
+them with the server's, word for word, so the two cannot drift apart.
 
 ### 4. `vibe.db` stores what was typed
 
@@ -142,7 +142,7 @@ Documented in `docs/codec-architecture.md` (Vibe audit events) and in AGENTS.md 
 | `static/vibe-agent.js` | model list visible in chat mode; `chatModel()` and `confirmChatCloud()` for the page |
 | `codec_vibe.html` | send through `VibeChat`, cloud confirm before the send, `stored(hist)` on save, `SYSP` cleaned, script tag |
 | `tools/stamp_static.py` | stamp the new script |
-| tests | `tests/test_vibe_chat.py` (route), `tests/test_vibe_chat_page.py` (page, Node), pins updated in `tests/test_vibe_agent_page.py` |
+| tests | `tests/test_vibe_chat.py` (route), `tests/test_vibe_chat_page.py` (page, Node); two pins updated on purpose: the model list's label in `tests/test_vibe_agent_page.py`, and where the Vibe page's `web: false` is sent (now `static/vibe-chat.js`, the rollback request) in `tests/test_local_first_defaults.py` |
 | `docs/codec-architecture.md`, `AGENTS.md` | audit event, Vibe paragraph |
 
 Not touched: `routes/chat.py`, `codec_llm.py`, `codec_cloud_models.py` (section 10 zones), `skills/` (no manifest change),
@@ -160,10 +160,11 @@ config are redirected; `conftest.py` already redirects the first two).
 - The six hijacked prompts start no skill (`codec_dispatch.check_skill`, `run_skill`, `routes.chat._try_skill` and `_try_skill_by_name`
   are replaced by recorders and must see zero calls), and the model still receives each prompt.
 - A message with a URL and one with search words make zero calls to `_fetch_url_content` and `codec_search.search`.
-- The SSE stream is `token` frames then `[DONE]`; the page's own parser (the loop in `codec_vibe.html`) is run in Node against it.
-  `<think>` blocks split across chunks are removed.
+- The SSE stream is `token` frames then `[DONE]`, read the way the page reads it (lines that start with `data: `, JSON, `token`); `stats`
+  is the only other frame. `<think>` blocks split across chunks are removed, whatever the cut.
 - The system prompt is the only system text (a client `system` message and a persona prompt are dropped), has no invented mode
-  and no persona, memory, observer or skill text, and states the file-block contract.
+  and no persona, memory, observer or skill text, and states the file-block contract. The page's copy equals the server's.
+- The route modules import none of the general chat's features (an import scan).
 - Switch: `vibe.chat_route: "chat"` makes the route 404 and the status say `chat`; the page code falls back on 404.
 - Audit: one line, numbers and booleans only, no text from the request.
 - Page: `stored(hist)` returns typed text; the request body for each route; cloud only after the dialog; scripts stamped.

@@ -182,9 +182,11 @@ def test_vibe_body_with_web_false_fetches_and_searches_nothing(web, monkeypatch,
 
 
 def test_vibe_page_sends_web_false_and_the_toggle_search_marks_the_reply(web, monkeypatch, tmp_path):
-    page = (REPO / "codec_vibe.html").read_text(encoding="utf-8")
-    send = page[page.index("var r = await fetch('/api/chat', {"):][:300]
-    assert "workdir: _workdir, web: false}" in send
+    # P-042: Vibe chat has its own route, which fetches and searches nothing; the rollback request to /api/chat
+    # (static/vibe-chat.js) keeps sending web:false.
+    script = (REPO / "static" / "vibe-chat.js").read_text(encoding="utf-8")
+    assert "url: '/api/chat', body: { messages: [{ role: 'system', content: o.system }].concat(turns(o.messages))," in script
+    assert "workdir: workdir, web: false, tools: false, temporary: true } };" in script
     body = {"messages": [{"role": "user", "content": "opening hours of the city library"}],
             "force_search": True, "stream": False}
     out = _post_chat(web, monkeypatch, tmp_path, body)

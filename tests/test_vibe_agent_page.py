@@ -216,7 +216,7 @@ def test_the_mode_switch_is_reachable_labelled_and_hidden_until_the_agent_exists
     assert 'role="group"' in box and "aria-label=" in box and " hidden" in box
     for needed in ('id="amChat"', 'id="amAgent"', 'id="amModel"', 'aria-pressed="true"', 'aria-pressed="false"'):
         assert needed in PAGE[PAGE.index('id="amode"'):PAGE.index('id="vibeMic"')]
-    assert 'aria-label="Model for the agent"' in PAGE
+    assert 'aria-label="Model for the next message"' in PAGE, "chat and agent share the model list (D-22)"
     assert PAGE.index('id="amode"') < PAGE.index('id="vibeMic"') and PAGE.index('id="cm"') < PAGE.index('id="amode"')
     banner = re.search(r'<div class="abn" id="agentBanner"[^>]*>', PAGE).group(0)
     assert 'role="status"' in banner and " hidden" in banner
