@@ -31,14 +31,13 @@ _SANDBOX_PROFILE_TEMPLATE = """\
 ;; Allow writing ONLY to skill output dir and temp
 (allow file-write*
     (subpath "{skill_output}")
-    (subpath "/private/tmp")
-    (subpath "/private/var/folders"))
+    (subpath "/private/tmp"){extra_write})
 
 ;; Allow process execution (Python interpreter)
 (allow process-exec
     (subpath "/usr")
     (subpath "/opt/homebrew")
-    (subpath "/Library/Frameworks/Python.framework"))
+    (subpath "/Library/Frameworks/Python.framework"){shell_exec})
 
 ;; Allow fork (needed for subprocess within Python)
 (allow process-fork)
@@ -96,22 +95,66 @@ def _ensure_dirs():
     os.makedirs(os.path.dirname(SANDBOX_PROFILE_PATH), exist_ok=True)
 
 
-def _write_sandbox_profile(allow_network: bool = False) -> str:
-    """Write a sandbox.sb profile and return its path."""
-    _ensure_dirs()
+# The temp writes every profile had before P-030 (python_exec, sandboxed skills).
+_VAR_FOLDERS_WRITE = '\n    (subpath "/private/var/folders")'
+# The crew shell drops that and may write /dev/null only (`cmd > /dev/null`).
+_SHELL_WRITE = '\n    (literal "/dev/null")'
+
+# P-030 part 2 (owner decision D-17, 29 Oct 2026): the crew / custom-agent
+# shell_execute tool runs `/bin/sh -c <cmd>` inside this profile. /bin holds sh
+# and the basic tools (ls, cat, echo); /usr/bin is already covered by /usr.
+# Only that caller asks for it (allow_shell=True); python_exec never does.
+_SHELL_EXEC = '\n    ;; crew shell_execute only (P-030): /bin/sh and the /bin tools\n    (subpath "/bin")'
+
+
+def _sbpl_quote(path: str) -> str:
+    """Escape a path for an SBPL string, so a quote or backslash in a folder
+    name cannot end the string and add rules. A no-op for ordinary paths."""
+    return str(path).replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _write_sandbox_profile(allow_network: bool = False, *, home: str = None,
+                           profile_path: str = None, output_dir: str = None,
+                           allow_shell: bool = False) -> str:
+    """Write a sandbox.sb profile and return its path.
+
+    With no keyword arguments this writes exactly the profile python_exec and
+    the sandboxed skills always had: ~/.codec/sandbox.sb, writes in
+    ~/.codec/skill_output and the temp folders, the real home's secret folders
+    unreadable.
+
+    P-030 part 2 (owner decision D-17): the crew shell passes its own folders.
+      home         -- the folder whose .ssh, .aws, .gnupg, .config/gh,
+                      Library/Keychains and .codec secret files are unreadable
+      profile_path -- where the profile file is written
+      output_dir   -- the one folder (besides /private/tmp) that may be written
+      allow_shell  -- also lets /bin programs start (/bin/sh, ls, cat ...) and
+                      drops the /private/var/folders write, so a shell command
+                      writes only in output_dir, /private/tmp and /dev/null
+    """
+    if home is None:
+        home, codec_dir = os.path.expanduser("~"), _CODEC_DIR
+    else:
+        codec_dir = os.path.join(home, ".codec")
+    profile_path = profile_path or SANDBOX_PROFILE_PATH
+    output_dir = output_dir or SKILL_OUTPUT_DIR
+    os.makedirs(output_dir, exist_ok=True)
+    os.makedirs(os.path.dirname(profile_path) or ".", exist_ok=True)
     network_rules = _NETWORK_ALLOW if allow_network else _NETWORK_DENY
     read_deny_rules = _READ_DENY_TEMPLATE.format(
-        home=os.path.expanduser("~"),
-        codec_dir=_CODEC_DIR,
+        home=_sbpl_quote(home),
+        codec_dir=_sbpl_quote(codec_dir),
     )
     profile = _SANDBOX_PROFILE_TEMPLATE.format(
-        skill_output=SKILL_OUTPUT_DIR,
+        skill_output=_sbpl_quote(output_dir),
         network_rules=network_rules,
         read_deny_rules=read_deny_rules,
+        extra_write=_SHELL_WRITE if allow_shell else _VAR_FOLDERS_WRITE,
+        shell_exec=_SHELL_EXEC if allow_shell else "",
     )
-    with open(SANDBOX_PROFILE_PATH, "w") as f:
+    with open(profile_path, "w") as f:
         f.write(profile)
-    return SANDBOX_PROFILE_PATH
+    return profile_path
 
 
 def _parse_permissions(skill_path: str) -> list:
