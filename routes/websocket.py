@@ -1,6 +1,8 @@
 """CODEC Dashboard -- WebSocket routes (voice pipeline)."""
 import hmac
+import logging
 import os
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
@@ -8,6 +10,27 @@ from fastapi.responses import HTMLResponse
 from routes._shared import DASHBOARD_DIR, _NO_CACHE
 
 router = APIRouter()
+log = logging.getLogger("codec.ws")
+
+
+def _ws_origin_ok(websocket) -> bool:
+    """The cross-site rule AuthMiddleware applies to POST/PUT/DELETE/PATCH, for the WebSocket handshake.
+
+    A browser always sends Origin on a WebSocket handshake and a page cannot change it. The login cookie
+    does not stand in for this check: SameSite=Lax only keeps out other *sites*, so a page on another
+    port of 127.0.0.1 (a Vibe app in run mode), or on a sibling host of the tunnel domain, still sends
+    the cookie. No Origin header means not a browser (curl, tests, bridges); `_ws_authorized` still applies.
+    """
+    origin = websocket.headers.get("origin", "")
+    if not origin:
+        return True
+    if origin == "null":  # a sandboxed frame, such as the Vibe preview
+        return False
+    o_host = urlparse(origin).netloc.lower()
+    if o_host == (websocket.headers.get("host", "") or "").lower():
+        return True
+    from codec_dashboard import AuthMiddleware  # lazy: codec_dashboard imports this module
+    return o_host in AuthMiddleware.TRUSTED_ORIGIN_HOSTS
 
 
 def _ws_authorized(websocket) -> bool:
@@ -74,6 +97,10 @@ async def voice_websocket(websocket: WebSocket):
     # N1 (re-audit): authenticate the handshake — AuthMiddleware can't (it's
     # HTTP-scope only). Reject before accept() so the voice→skill pipeline is
     # never reachable unauthenticated when the dashboard is exposed.
+    if not _ws_origin_ok(websocket):
+        log.warning("CROSS-SITE WS REJECTED: origin=%s", websocket.headers.get("origin", "")[:80])
+        await websocket.close(code=4403)  # 4403 = application "Forbidden"
+        return
     if not _ws_authorized(websocket):
         await websocket.close(code=4401)  # 4401 = application "Unauthorized"
         return
