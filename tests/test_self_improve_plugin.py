@@ -350,7 +350,12 @@ SKILL_DESCRIPTION = "Frobnicates the widget"
 def run(task: str, context: str = "") -> str:
     return "ok"
 '''
+    # The plugin fixture already ran _load_helpers(), which copied the real
+    # _draft_skill into the plugin module; patch that copy too, or the test
+    # drafts through the local model (and fails where none is running).
     monkeypatch.setattr(codec_self_improve, "_draft_skill",
+                        lambda gap: ("frobnicate", canned_code, canned_code))
+    monkeypatch.setattr(plugin, "_draft_skill",
                         lambda gap: ("frobnicate", canned_code, canned_code))
     gap = {"kind": "missing_tool", "tool": "frobnicate", "count": 2,
            "examples": [{"ts": "2026-05-01T16:00", "error": None}]}
@@ -363,6 +368,7 @@ def run(task: str, context: str = "") -> str:
     py_files = [f for f in files if f.suffix == ".py"]
     assert md_files, "no .md proposal written"
     assert py_files, "no .py proposal written"
+    assert "Frobnicates the widget" in py_files[0].read_text(), "proposal did not come from the fake drafter"
     md_text = md_files[0].read_text()
     assert "frobnicate" in md_text
     assert "PASSED" in md_text or "REJECTED" in md_text

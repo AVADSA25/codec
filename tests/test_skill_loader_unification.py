@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from route_table import route_methods
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
@@ -132,7 +133,7 @@ def test_cortex_skills_endpoint_uses_registry():
 def test_cortex_skills_endpoint_registered():
     import codec_dashboard
     # The route stays registered post-migration (handler now reads the registry).
-    paths = [getattr(r, "path", None) for r in codec_dashboard.app.routes]
+    paths = set(route_methods(codec_dashboard.app))
     assert "/api/cortex/skills" in paths
 
 

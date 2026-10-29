@@ -1130,6 +1130,17 @@ class VoicePipeline:
             _skill_run = skill["run"]
             _voice_cid = getattr(self, "_cid", None) or _voice_correlation_id_var.get()
 
+            # P-080 / P-030: high-power skills ask the owner first (PWA card and
+            # phone push; a spoken answer is not taken here because this turn
+            # is awaited by the call loop). Decline or 60 s silence cancels.
+            import codec_consent
+            if codec_consent.local_consent_needed(_skill_name, user_text):
+                await self._speak("That needs your OK. Approve it on the CODEC screen or your phone.")
+                ok = await loop.run_in_executor(
+                    None, codec_consent.local_consent_ok, _skill_name, user_text, "voice")
+                if not ok:
+                    return codec_consent.LOCAL_CANCELLED
+
             def _run_with_hooks_sync():
                 def _inner(t, _c):
                     return _skill_run(t)

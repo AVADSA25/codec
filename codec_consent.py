@@ -27,7 +27,8 @@ import os
 
 __all__ = ["gate_enabled", "is_destructive_skill", "chat_consent_ok",
            "mcp_refuse_message", "mcp_allowed", "mcp_http_consent_required",
-           "mcp_http_consent_ok", "mcp_http_consent_refuse_message"]
+           "mcp_http_consent_ok", "mcp_http_consent_refuse_message",
+           "local_consent_needed", "local_consent_ok", "LOCAL_CANCELLED"]
 
 # How long a remote MCP call waits for the owner's PWA approval before it is
 # refused. Short on purpose: the claude.ai request is held open while we wait.
@@ -54,6 +55,19 @@ _DESTRUCTIVE_BUILTINS = frozenset({
 # delete/move (file_ops), shells (terminal/python_exec), messaging
 # (imessage_send) or browser control (pilot), which all remain refused over MCP.
 _MCP_SELF_GUARDED = frozenset({"file_write"})
+
+# P-030 / P-080 (owner decision D-17, Oct 2026): skills that act on the owner's
+# browser or screen. They ask once per call on the local paths (chat, voice
+# call, wake word) but are NOT destructive in the MCP sense: adding them to
+# _DESTRUCTIVE_BUILTINS would make mcp_allowed refuse them, while over HTTP MCP
+# they already ask per call through codec_config._HTTP_CONSENT_REQUIRED.
+_LOCAL_CONSENT_REQUIRED = frozenset({"chrome_fill", "chrome_click_cdp", "mouse_control"})
+
+# The wake word and the voice call wait this long for the owner's OK (PWA card
+# or phone push), then cancel: a wake command must not hold the listener for
+# ask()'s 600 s default.
+LOCAL_CONSENT_TIMEOUT_SEC = 60
+LOCAL_CANCELLED = "Cancelled: that needs your OK on the CODEC screen or your phone."
 
 
 def gate_enabled() -> bool:
@@ -95,7 +109,8 @@ def chat_consent_ok(tool_name, query, *, registry=None) -> bool:
     the chat handler invokes this via asyncio.to_thread, so the event loop isn't
     blocked. Fail-closed: any error → False (a destructive skill never
     auto-runs)."""
-    if not gate_enabled() or not is_destructive_skill(tool_name, registry=registry):
+    if not gate_enabled() or not (is_destructive_skill(tool_name, registry=registry)
+                                  or tool_name in _LOCAL_CONSENT_REQUIRED):
         return True
     try:
         import codec_ask_user
@@ -112,6 +127,72 @@ def chat_consent_ok(tool_name, query, *, registry=None) -> bool:
         )
     except Exception:
         return False
+
+
+def _file_ops_reads_only(task, registry=None) -> bool:
+    """file_ops list and read do not ask; write and append do. Uses the
+    skill's own parser; any error counts as a write (fail closed)."""
+    try:
+        reg = registry
+        if reg is None:
+            from codec_dispatch import registry as reg
+        mod = reg.load("file_ops")
+        if mod is None and not reg.names():   # a process that never scanned
+            reg.scan()
+            mod = reg.load("file_ops")
+        return mod._parse_action(task or "")[0] in ("list", "read")
+    except Exception:
+        return False
+
+
+def local_consent_needed(tool_name, task="", registry=None) -> bool:
+    """Does a wake-word or voice-call run of this skill need the owner's OK?"""
+    if tool_name in _LOCAL_CONSENT_REQUIRED:
+        return True
+    if not is_destructive_skill(tool_name, registry=registry):
+        return False
+    if tool_name == "file_ops":
+        return not _file_ops_reads_only(task, registry=registry)
+    return True
+
+
+def _audit_local(tool_name, asked_from, decision, task):
+    try:
+        from codec_audit import log_event
+        log_event("local_consent_decision", "codec-consent",
+                  f"{asked_from} consent for {tool_name}: {decision}",
+                  tool=tool_name, level="info" if decision == "allowed" else "warning",
+                  extra={"asked_from": asked_from, "decision": decision,
+                         "task_chars": len(task or "")})
+    except Exception:
+        pass
+
+
+def local_consent_ok(tool_name, task, asked_from, *, registry=None,
+                     timeout=LOCAL_CONSENT_TIMEOUT_SEC) -> bool:
+    """Wake word and voice call (P-080) and the browser/screen skills (P-030):
+    ask the owner through the PWA card (and a phone push) before a high-power
+    skill runs. True when it may run (no consent needed, gate disabled, or the
+    owner answered with the verb); False on decline, timeout or any error.
+    Blocks the calling thread for at most `timeout` seconds."""
+    if not gate_enabled() or not local_consent_needed(tool_name, task, registry=registry):
+        return True
+    try:
+        import codec_ask_user
+        answer = codec_ask_user.ask(
+            f"CODEC heard a request to run '{tool_name}' ({asked_from}): "
+            f"{(task or '')[:200]}",
+            destructive=True,
+            asked_from=asked_from,
+            tool_name=tool_name,
+            timeout=timeout,
+        )
+        ok = answer not in (codec_ask_user.TIMEOUT_SENTINEL,
+                            codec_ask_user.DISABLED_SENTINEL)
+    except Exception:
+        ok = False
+    _audit_local(tool_name, asked_from, "allowed" if ok else "refused", task)
+    return ok
 
 
 def mcp_allowed(tool_name, registry=None) -> bool:

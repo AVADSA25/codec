@@ -20,6 +20,8 @@
 | Step 10 plan | #21 | `0886429` | docs(phase3-step10): TDD implementation plan (11 tasks) | Auto-merged docs |
 | Step 10 impl | #22 | (pending merge) | feat(phase3-step10): Proactive Messaging + Auto-Escalation | T+0 ok; 25 new tests |
 
+Note (29 Oct 2026): the Step 8 task script (`docs/PHASE3-STEP8-PLAN.md`) moved to the owner's private folder; the Step 8 design lives in `docs/PHASE3-BLUEPRINT.md` (§2).
+
 **Main HEAD at Phase 3 close:** awaiting PR #22 merge → then Phase 3 backend complete.
 
 ---
