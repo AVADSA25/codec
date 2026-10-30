@@ -42,7 +42,8 @@ upload ran `pdftotext` (a missing program raised into a bare 500); document inpu
 
 ## Finding
 Running the new script on the installed v3.6.0 app finds `cv2/.dylibs/libx264` and `libx265`
-(GPL). See "Open finding" in docs/BUYER-LOCK-DESIGN.md. It needs the owner's decision.
+(GPL). Resolved by the owner's decision of 30 Oct 2026: opencv-python is removed and the webcam
+uses AVFoundation (docs/WEBCAM-AVFOUNDATION-DESIGN.md). The script will pass on a rebuilt app.
 
 ## Rollback
 Revert the PR. With sox present nothing changes; without it the recording and PDF features go back

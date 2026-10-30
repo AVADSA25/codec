@@ -39,6 +39,7 @@ def test_info_plist_parses_and_has_identity():
 def test_info_plist_has_all_tcc_usage_strings():
     p = _load("Info.plist")
     for key in ("NSMicrophoneUsageDescription",
+                "NSCameraUsageDescription",
                 "NSAppleEventsUsageDescription",
                 "NSScreenCaptureUsageDescription",
                 "NSDesktopFolderUsageDescription",
@@ -60,6 +61,8 @@ def test_entitlements_hardened_runtime_and_no_sandbox():
                 "com.apple.security.cs.allow-unsigned-executable-memory"):
         assert e.get(key) is True, f"hardened-runtime entitlement {key} must be true (bundled CPython/PyObjC)"
     assert e.get("com.apple.security.network.client") is True
+    assert e.get("com.apple.security.device.audio-input") is True, "microphone under hardened runtime"
+    assert e.get("com.apple.security.device.camera") is True, "webcam under hardened runtime (codec_webcam.py)"
     assert e.get("com.apple.security.network.server") is True
     # Direct distribution — sandbox would break 5 core capabilities (see §2).
     assert "com.apple.security.app-sandbox" not in e, (

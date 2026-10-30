@@ -39,6 +39,7 @@ IMPORT_TO_DIST = {
     "Foundation": "pyobjc-framework-cocoa",
     "Quartz": "pyobjc-framework-quartz",
     "AVFoundation": "pyobjc-framework-avfoundation",
+    "CoreMedia": "pyobjc-framework-coremedia",
     "google": "google-auth",
     "googleapiclient": "google-api-python-client",
     "google_auth_oauthlib": "google-auth-oauthlib",
