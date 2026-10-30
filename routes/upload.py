@@ -29,6 +29,7 @@ import requests as rq
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
+import codec_pdftext
 from codec_audit import log_event
 from routes._shared import CONFIG_PATH
 
@@ -38,6 +39,11 @@ log = logging.getLogger("codec_dashboard")
 
 # ── B1 / SR-15: upload size cap ────────────────────────────────────────────
 _UPLOAD_MAX_BYTES = 50 * 1024 * 1024  # 50 MB hard cap
+
+
+def _pdf_upload_path():
+    """Where an uploaded PDF is written before its text is read (tests point this at a temp folder)."""
+    return os.path.expanduser("~/.codec/pwa_upload.pdf")
 
 
 def _fence_user_document(text, filename):
@@ -182,12 +188,13 @@ async def upload_document(request: Request):
 
         # ── PDF ──
         if ext == ".pdf":
-            pdf_path = os.path.expanduser("~/.codec/pwa_upload.pdf")
+            pdf_path = _pdf_upload_path()
             with open(pdf_path, "wb") as f:
                 f.write(raw)
-            r = subprocess.run(["pdftotext", "-layout", pdf_path, "-"],
-                               capture_output=True, text=True, timeout=90)
-            text_content = r.stdout[:300000].strip()
+            try:
+                text_content = codec_pdftext.extract_text(pdf_path)[:300000].strip()
+            except codec_pdftext.PdfTextError as e:
+                return JSONResponse({"error": str(e)}, status_code=422)
             if not text_content:
                 return JSONResponse({"error": "Could not extract text from PDF (may be image-only)"}, status_code=422)
             return {"status": "ok", "text": _fence_user_document(text_content, filename), "filename": filename}

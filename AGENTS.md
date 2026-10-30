@@ -547,6 +547,7 @@ The macOS app installs its Python from `packaging/macos/requirements-lock.txt` o
 - **Licence rule:** permissive or LGPL packages only. Never add pyautogui (mouseinfo, GPLv3+), PyMuPDF/fitz (AGPL), or anything that pulls PyAV (faster-whisper: its wheel bundles GPL libx264/libx265). A test pins that none is in the lock.
 - **Paste** is `codec_paste.paste_clipboard()` (Quartz key events, Cmd always released). Do not add pyautogui back.
 - **Dictation** uses faster-whisper when installed (the Studio) and otherwise the `whisper-stt` server (`_ServerModel`, `pin_language=en`). **`whisper_server.py`** hands mlx_whisper the file path when `ffmpeg` exists and decoded samples when it does not.
+- **Microphone and PDFs (docs/MIC-AND-PDF-DESIGN.md):** `codec_record.py` runs `sox` with the exact old command lines when it is installed and records with sounddevice when it is not; `codec_pdftext.py` runs `pdftotext` first and PDFKit otherwise. Never add PyMuPDF/fitz, never bundle sox, poppler or ffmpeg, and keep sox first (the Studio's wake and F18 paths are hardened around it). `packaging/macos/verify/no_gpl_helpers.mjs` checks a built app.
 - **Models** in `packaging/macos/models.json` are pinned to 40-hex commits; `codec_setup.BUNDLED_LOCAL_REVISION` must equal the `qwen-7b-4bit` entry.
 
 ### Notes (2026-10, docs/NOTES-DESIGN.md)

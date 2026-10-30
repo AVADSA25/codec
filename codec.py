@@ -15,7 +15,6 @@ import time
 import json
 import re
 import base64
-import shutil
 import atexit
 from datetime import datetime
 from pynput import keyboard
@@ -30,7 +29,6 @@ from codec_audit import log_event
 _BREW = "/opt/homebrew/bin"
 if _BREW not in os.environ.get("PATH", ""):
     os.environ["PATH"] = _BREW + ":" + os.environ.get("PATH", "")
-SOX = shutil.which("sox") or "sox"
 
 # ── CONFIG (single source of truth: codec_config.py) ─────────────────────────
 from codec_config import (
@@ -141,6 +139,8 @@ from codec_identity import CODEC_VOICE_PROMPT
 # delegate kept for any caller of codec.vision_describe.
 import codec_vision
 import codec_llm  # A-12: canonical chat/completions caller
+import codec_pdftext  # PDF text via pdftotext or PDFKit, never PyMuPDF (P-033)
+import codec_record  # microphone: sox when installed, sounddevice otherwise (P-033)
 
 def vision_describe(img_b64, prompt="Read all visible text on this screen. Include app name, window title, and all message/content text. Output raw text only.", max_tokens=800):
     """Route vision to Gemini or local based on config (codec_vision)."""
@@ -596,11 +596,8 @@ def do_document_input():
                 print(f"[CODEC] Image vision error: {e}")
         elif ext == '.pdf':
             try:
-                import fitz
-                doc = fitz.open(filepath)
-                content_text = "\n".join(p.get_text() for p in doc[:5])[:5000]
-                doc.close()
-                print(f"[CODEC] PDF extracted: {len(content_text)} chars from {len(doc)} pages")
+                content_text = codec_pdftext.extract_text(filepath, max_pages=5)[:5000]
+                print(f"[CODEC] PDF extracted: {len(content_text)} chars (first 5 pages)")
             except Exception as e:
                 print(f"[CODEC] PDF extraction error: {e}")
 
@@ -674,9 +671,7 @@ def do_text():
 def do_start_recording():
     tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
     state["audio_path"] = tmp.name; tmp.close()
-    rec = subprocess.Popen(
-        [SOX, "-t", "coreaudio", "default", "-r", "16000", "-c", "1", "-b", "16", "-e", "signed-integer", state["audio_path"]],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    rec = codec_record.start_recording(state["audio_path"], 16000)   # sox, or sounddevice without it
     state["rec_proc"] = rec
     print("[CODEC] Recording...")
 
@@ -767,10 +762,7 @@ def wake_word_listener():
             time.sleep(0.3); continue
         try:
             tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False); tmp.close()
-            subprocess.run(
-                [SOX, "-t", "coreaudio", wake_device, "-r", str(sample_rate), "-c", "1",
-                 "-b", "16", "-e", "signed-integer", tmp.name, "trim", "0", str(chunk_sec)],
-                timeout=int(chunk_sec) + 3, capture_output=True)
+            codec_record.record_chunk(tmp.name, chunk_sec, sample_rate, wake_device)
             if not os.path.exists(tmp.name) or os.path.getsize(tmp.name) < 500:
                 try: os.unlink(tmp.name)
                 except Exception as e: log.debug("Wake temp file cleanup failed: %s", e)
@@ -896,12 +888,7 @@ def wake_word_listener():
                             # trim caps total length; silence stops ~1.5s after the
                             # user finishes (starts on first speech, so an ongoing
                             # sentence is captured immediately).
-                            subprocess.run(
-                                [SOX, "-t", "coreaudio", wake_device, "-r", str(sample_rate), "-c", "1",
-                                 "-b", "16", "-e", "signed-integer", tmp2.name,
-                                 "trim", "0", str(WAKE_FOLLOWUP_SEC),
-                                 "silence", "1", "0.1", "2%", "1", "1.5", "2%"],
-                                timeout=int(WAKE_FOLLOWUP_SEC) + 4, capture_output=True)
+                            codec_record.record_until_silence(tmp2.name, WAKE_FOLLOWUP_SEC, sample_rate, wake_device)
                             followup = _strip_wake_fluff(transcribe(tmp2.name) or "")
                             full = (command + " " + followup).strip() if command else followup.strip()
                             if full and len(full) > 2:
