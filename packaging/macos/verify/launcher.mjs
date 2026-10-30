@@ -15,6 +15,7 @@ const pkg = dirname(dirname(fileURLToPath(import.meta.url)));
 const repo = dirname(dirname(pkg));
 const app = join(repo, "dist", "Sovereign AI Workstation.app");
 const AUDIO = "com.apple.security.device.audio-input";
+const CAMERA = "com.apple.security.device.camera";
 const fail = [];
 
 // Source of truth: the entitlement must be declared, and the launcher must exist.
@@ -23,6 +24,7 @@ if (!existsSync(join(pkg, "launcher/codec_launcher.swift")))
 const ents = existsSync(join(pkg, "codec.entitlements"))
   ? readFileSync(join(pkg, "codec.entitlements"), "utf8") : "";
 if (!ents.includes(AUDIO)) fail.push(`codec.entitlements does not declare ${AUDIO}`);
+if (!ents.includes(CAMERA)) fail.push(`codec.entitlements does not declare ${CAMERA}`);
 
 if (!existsSync(app)) {
   fail.push("app not built yet");
@@ -37,6 +39,8 @@ if (!existsSync(app)) {
   const dumped = (r.stdout || "") + (r.stderr || "");
   if (!dumped.includes(AUDIO))
     fail.push(`the SIGNED app does not carry ${AUDIO} — its microphone will fail silently`);
+  if (!dumped.includes(CAMERA))
+    fail.push(`the SIGNED app does not carry ${CAMERA} — its webcam will fail silently`);
 }
 if (fail.length) { console.error("G3 FAILED:\n - " + fail.join("\n - ")); process.exit(1); }
 console.log("UNLAZY-G3-PASS");

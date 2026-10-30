@@ -9,7 +9,7 @@
 # mismatch) -> extract to <App>/Contents/Resources/python -> pip install the hash
 # lock (packaging/macos/requirements-lock.txt) into it. The lock is the only thing
 # installed: every file hash-pinned, wheels only, no dependency resolution (the lock
-# is the whole set; see its header for the five packages it leaves out on purpose).
+# is the whole set; see its header for the six packages it leaves out on purpose).
 #
 # Usage:
 #   bundle_python.sh --app "dist/Sovereign AI Workstation.app" [--arch aarch64|x86_64]

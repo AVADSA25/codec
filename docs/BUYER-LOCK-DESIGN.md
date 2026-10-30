@@ -15,7 +15,7 @@ check (`verify/deps.mjs`) tried 4 modules. Models were pinned to `main`.
   `google-auth`, `google-auth-oauthlib`, `zeroconf`, and the PyObjC frameworks used
   (`AVFoundation`, `Quartz`, `Cocoa`).
 - **requirements-lock.txt** is regenerated with `-c` on the old lock, so the 127 packages
-  already pinned keep their versions; 24 are added (151 total).
+  already pinned keep their versions; 24 are added (151 total; opencv-python was then taken out again, see below: 150).
 - **bundle_python.sh** installs only from the lock: `--require-hashes --only-binary=:all:
   --no-deps`. It refuses a file without hashes. `--requirements` became `--lock`.
 - **verify/bundle_imports.py** (called by `verify/deps.mjs`, and by `tests/test_buyer_lock.py`)
@@ -38,7 +38,7 @@ check (`verify/deps.mjs`) tried 4 modules. Models were pinned to `main`.
 2. **torch (580 MB) and four helper packages are left out of the lock.** `mlx-whisper` declares
    torch but imports it only in `torch_whisper.py` (conversion). Checked: a real transcription
    runs with torch absent. The lock header says so; CI installs with `--no-deps` and accepts
-   exactly one `pip check` line (`mlx-whisper requires torch`).
+   exactly two `pip check` lines (`mlx-whisper requires torch`, `mlx-vlm requires opencv-python`).
 3. **`whisper_server.py` decodes WAV itself when `ffmpeg` is missing.** `mlx_whisper` reads a
    file path by running the `ffmpeg` command, and a buyer's Mac has none. Where `ffmpeg` exists
    the path is passed through exactly as before; without it the file is read with `soundfile`
@@ -48,13 +48,13 @@ check (`verify/deps.mjs`) tried 4 modules. Models were pinned to `main`.
    buyer build until a Quartz replacement exists), `mlx_lm` (cookbook, P-012), `fitz` (AGPL),
    and the disk fallback of the MCP token store (the Keychain store is used on every Mac).
 
-## Open finding for the owner (found while building, not fixed here)
-`opencv-python` (module `cv2`) is in the lock, pulled in by `mlx-vlm`, and used by the webcam route
-(`routes/media.py`). Its wheel bundles an FFmpeg build with `libx264` and `libx265`, both GPL.
-The installed v3.6.0 app has the same two files (checked with `packaging/macos/verify/no_gpl_helpers.mjs`
-against /Applications/Sovereign AI Workstation.app). `mlx_vlm` imports fine with `cv2` absent, so the
-model server does not need it, but dropping it turns off webcam capture on the buyer build. The choice
-(drop it, replace the webcam capture with AVFoundation, or accept it with legal advice) is the owner's.
+## opencv-python (cv2) is out of the lock (owner decision 30 Oct 2026: replace, do not lose the webcam)
+`opencv-python` was in the lock (pulled in by `mlx-vlm`) and used by the webcam routes. Its wheel bundles
+an FFmpeg build with `libx264` and `libx265`, both GPL, and the installed v3.6.0 app has the same two
+files. It is now out: the webcam routes use AVFoundation through `codec_webcam.py`
+(docs/WEBCAM-AVFOUNDATION-DESIGN.md), and `mlx-vlm` uses cv2 only to read video files
+(`mlx_vlm/utils.py`, `video_generate.py`), which CODEC never sends. A rebuilt app has neither GPL file;
+`no_gpl_helpers.mjs` proves it on the built .app.
 
 ## Not done here
 - PDF text without `fitz` and `pdftotext`, and microphone recording without SoX: part 2 (P-033).

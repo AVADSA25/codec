@@ -16,8 +16,6 @@ import base64
 import json
 import os
 import subprocess
-import time
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
 from fastapi import APIRouter, Request
@@ -82,32 +80,25 @@ async def webcam_capture(request: Request):
 @router.get("/api/webcam/stream")
 async def webcam_stream():
     """MJPEG stream from the Mac's webcam — for remote viewing from phone/tablet."""
-    import cv2
-    cap = cv2.VideoCapture(0)
-    if not cap.isOpened():
-        return JSONResponse({"error": "Cannot open webcam"}, status_code=500)
-    _executor = ThreadPoolExecutor(max_workers=1)
+    import codec_webcam
 
-    def _read_frame():
-        ret, frame = cap.read()
-        if not ret:
-            return None
-        _, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
-        return jpeg.tobytes()
+    try:
+        cam = await asyncio.to_thread(codec_webcam.Camera().start)
+    except codec_webcam.WebcamError as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
 
     async def generate():
-        loop = asyncio.get_event_loop()
         try:
             while True:
-                data = await loop.run_in_executor(_executor, _read_frame)
-                if data is None:
+                try:
+                    data = await asyncio.to_thread(cam.read_jpeg, 0.7)
+                except codec_webcam.WebcamError:
                     break
                 yield (b"--frame\r\n"
                        b"Content-Type: image/jpeg\r\n\r\n" + data + b"\r\n")
                 await asyncio.sleep(0.066)  # ~15 fps
         finally:
-            cap.release()
-            _executor.shutdown(wait=False)
+            await asyncio.to_thread(cam.stop)
 
     return StreamingResponse(generate(), media_type="multipart/x-mixed-replace; boundary=frame")
 
@@ -115,45 +106,14 @@ async def webcam_stream():
 @router.get("/api/webcam/snapshot")
 async def webcam_snapshot():
     """Capture a single frame from the Mac's webcam and return as JPEG."""
-    import cv2
+    import codec_webcam
 
-    def _capture():
-        cap = cv2.VideoCapture(0)
-        if not cap.isOpened():
-            return None, None
-        try:
-            # Request a high-res frame. The cv2 default is often 640x480, which
-            # reads soft/blurry once scaled up for vision analysis.
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
-            try:
-                cap.set(cv2.CAP_PROP_AUTOFOCUS, 1)  # keep AF on (AVFoundation may ignore)
-            except Exception:
-                pass
-            # Warm up before grabbing the keeper frame: the first frames after
-            # opening the device are dark and out of focus while auto-exposure,
-            # white-balance and autofocus converge. Reading and discarding ~1.2s
-            # of frames lets the sensor settle so the still is sharp and correctly
-            # exposed — this is the root fix for the blurry webcam capture.
-            frame = None
-            for _ in range(25):
-                ret, f = cap.read()
-                if ret and f is not None:
-                    frame = f
-                time.sleep(0.05)
-            if frame is None:
-                return None, None
-            # High JPEG quality — this is a single still for vision, not a stream,
-            # so don't over-compress and throw away the detail we just waited for.
-            _, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 92])
-            return jpeg.tobytes(), True
-        finally:
-            cap.release()
-
-    loop = asyncio.get_event_loop()
-    data, ok = await loop.run_in_executor(ThreadPoolExecutor(1), _capture)
-    if not ok:
-        return JSONResponse({"error": "Cannot capture from webcam"}, status_code=500)
+    try:
+        # 1920x1080 and a settle time: the default 640x480 read soft once scaled up for
+        # vision analysis, and the first frames after the camera opens are dark and unfocused.
+        data = await asyncio.to_thread(codec_webcam.snapshot_jpeg)
+    except codec_webcam.WebcamError as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
     b64 = base64.b64encode(data).decode()
     # Save
     photo_dir = os.path.expanduser("~/.codec/photos")

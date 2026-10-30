@@ -1,20 +1,21 @@
 # CODEC buyer lock: the exact package set for the macOS app's bundled Python
-# (macOS 14+ on Apple silicon, CPython 3.12), 151 packages, every file hash-pinned.
+# (macOS 14+ on Apple silicon, CPython 3.12), 150 packages, every file hash-pinned.
 #
 # Made from requirements.txt (origin/main, 2026-10-30) with:
 #   uv pip compile requirements.txt --python-version 3.12 --generate-hashes \
 #     -c packaging/macos/requirements-lock.txt \
 #     --no-emit-package torch --no-emit-package sympy --no-emit-package mpmath \
-#     --no-emit-package networkx --no-emit-package setuptools
+#     --no-emit-package networkx --no-emit-package setuptools --no-emit-package opencv-python
 # (-c keeps every package already pinned here at its version; only new packages enter.)
 # Install:
 #   python -m pip install --require-hashes --only-binary=:all: --no-deps -r packaging/macos/requirements-lock.txt
-# --no-deps is needed because the lock leaves out five packages on purpose: mlx-whisper
-# declares torch, but imports it only in mlx_whisper/torch_whisper.py (model conversion
-# and tests), never in transcribe; torch (580 MB), sympy, mpmath, networkx and setuptools
-# exist only for that. The lock lists every other package the app imports, so a plain
-# install would find nothing missing. `pip check` therefore reports one line, "mlx-whisper
-# requires torch"; CI accepts that line and no other.
+# --no-deps is needed because the lock leaves out six packages on purpose. Five belong to
+# mlx-whisper: it declares torch, but imports it only in mlx_whisper/torch_whisper.py
+# (model conversion and tests), never in transcribe; torch (580 MB), sympy, mpmath,
+# networkx and setuptools exist only for that. The sixth is opencv-python (below). The
+# lock lists every other package the app imports, so a plain install would find nothing
+# missing. `pip check` therefore reports two lines, "mlx-whisper requires torch" and
+# "mlx-vlm requires opencv-python"; CI accepts those two and no other.
 # Checked 2026-10-30: installs into a clean Python 3.12 venv; all hashes pass for
 # macosx_14_0_arm64; every runtime import in tests/test_buyer_lock.py works. Not
 # installable on macOS 13 (mlx 0.32.4 and numpy 2.5.4 publish no macosx_13 wheel). Hashes
@@ -26,6 +27,10 @@
 #   - faster-whisper: needs PyAV, whose wheel bundles libx264 and libx265 (GPL).
 #     codec_dictate.py uses it only when it is installed and otherwise sends the
 #     recording to the whisper-stt server.
+#   - opencv-python (cv2): its wheel bundles FFmpeg with libx264 and libx265 (GPL). mlx-vlm
+#     declares it but imports it only to read video files (mlx_vlm/utils.py, video_generate.py);
+#     CODEC sends the vision model pictures, never video. The webcam uses AVFoundation
+#     (codec_webcam.py).
 #
 # Who uses it:
 #   - CI (.github/workflows/ci.yml): the macos-14 job installs this file as above and runs
@@ -1794,7 +1799,6 @@ numpy==2.5.4 \
     #   mlx-vlm
     #   mlx-whisper
     #   numba
-    #   opencv-python
     #   pandas
     #   scipy
     #   soundfile
@@ -1809,19 +1813,6 @@ openapi-pydantic==0.6.0 \
     # via
     #   -c packaging/macos/requirements-lock.txt
     #   fastmcp-slim
-opencv-python==5.0.0.93 \
-    --hash=sha256:08d5d91d967b58d6db86073b2ad3eaef88ca4ebdfd45c9059bf59f5ded0c7ad2 \
-    --hash=sha256:198a75138241810206a17c829dbcc40a7cb1841cda538ca86cbbfc6c7d95f898 \
-    --hash=sha256:4b4b1a34c79bf8d3738e3cfe9a9e67b51a79663f6b692cbdad8c31f570da4157 \
-    --hash=sha256:66aac3e5b5faa48d4025816592f3af19e4bfc2c68dec067bae2dbb4ca10aa9e2 \
-    --hash=sha256:6bbc32f59e1b1a7db7b39c81f63d00625f041d333037fd8702f6da52cc39108b \
-    --hash=sha256:c8de2dec111122a02e8beb28e16c31904992dfd6186560b142a92c71403c1039 \
-    --hash=sha256:e2b4272e736836f66c2d176e43ab8101f3a00d45654916399f52e150c58981ac \
-    --hash=sha256:f8b6d0a212253dd26ad338c812f1f23ca118fdf05a9c8c6b9444f161aa8c5881 \
-    --hash=sha256:f90ba04b8f73bc5c3814037699739f0156f597338a98f05956c684e7c3ca10d2
-    # via
-    #   -c packaging/macos/requirements-lock.txt
-    #   mlx-vlm
 opentelemetry-api==1.45.1 \
     --hash=sha256:aa38ed19bcc084ba42782a73255b3582283eced7ad6dddbd6695189e69adfb75 \
     --hash=sha256:b31553efa588ae44bc306f863c785c5333a9ecc091248c6ee68b4b6c87fdedfb

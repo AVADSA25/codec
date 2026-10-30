@@ -109,10 +109,10 @@ jobs:
         run: |
           python tools/lock_to_constraints.py "$BUYER_LOCK" > "$RUNNER_TEMP/constraints.txt"
           python -m pip install -c "$RUNNER_TEMP/constraints.txt" -r requirements-dev.txt pytest-cov
-          # The lock leaves out torch on purpose (its header says why), so pip check
-          # reports mlx-whisper's one missing requirement and nothing else.
+          # The lock leaves out torch and opencv-python on purpose (its header says why),
+          # so pip check reports mlx-whisper's and mlx-vlm's missing requirement and nothing else.
           python -m pip check > "$RUNNER_TEMP/pipcheck.txt" || true
-          grep -v -e '^No broken requirements' -e '^mlx-whisper .* requires torch, which is not installed' "$RUNNER_TEMP/pipcheck.txt" > "$RUNNER_TEMP/pipcheck-other.txt" || true
+          grep -v -e '^No broken requirements' -e '^mlx-whisper .* requires torch, which is not installed' -e '^mlx-vlm .* requires opencv-python, which is not installed' "$RUNNER_TEMP/pipcheck.txt" > "$RUNNER_TEMP/pipcheck-other.txt" || true
           if [ -s "$RUNNER_TEMP/pipcheck-other.txt" ]; then cat "$RUNNER_TEMP/pipcheck-other.txt"; exit 1; fi
       - name: Skill import smoke (standalone script, not a pytest module)
         run: python tests/test_skill_imports.py

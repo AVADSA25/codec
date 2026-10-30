@@ -62,6 +62,8 @@
          See the sandbox table in docs/APPLE-DISTRIBUTION.md §2. -->
     <key>NSMicrophoneUsageDescription</key>
     <string>CODEC uses the microphone for voice commands, dictation, and the "Hey CODEC" wake word. Audio is transcribed locally and never leaves your Mac.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>CODEC takes a photo with your webcam only when you ask it to (e.g. "take a photo", "what do you see"). Photos stay on your Mac and are analysed by the local model.</string>
     <key>NSAppleEventsUsageDescription</key>
     <string>CODEC controls apps like Messages, Notes, Reminders, and Music on your behalf when you ask it to. You approve each app individually.</string>
     <key>NSScreenCaptureUsageDescription</key>

@@ -43,7 +43,7 @@ Five core capabilities are **non-sandboxable**; an App Store (sandboxed) build w
 ## 4. The W5 bundle metadata (this PR — `packaging/macos/`)
 
 Decision-complete, no build required; consumed by the signing pipeline later:
-- **`Info.plist`** — `CFBundleIdentifier=ai.avadigital.codec`, version keys, `LSMinimumSystemVersion`, and every TCC usage string the §2 table implies (`NSMicrophoneUsageDescription`, `NSAppleEventsUsageDescription`, `NSScreenCaptureUsageDescription` (informational), `NSDesktopFolderUsageDescription`, `NSDocumentsFolderUsageDescription`, `NSDownloadsFolderUsageDescription`).
+- **`Info.plist`** — `CFBundleIdentifier=ai.avadigital.codec`, version keys, `LSMinimumSystemVersion`, and every TCC usage string the §2 table implies (`NSMicrophoneUsageDescription`, `NSCameraUsageDescription`, `NSAppleEventsUsageDescription`, `NSScreenCaptureUsageDescription` (informational), `NSDesktopFolderUsageDescription`, `NSDocumentsFolderUsageDescription`, `NSDownloadsFolderUsageDescription`).
 - **`codec.entitlements`** — the hardened-runtime set in §3 (no app-sandbox).
 - **`PrivacyInfo.xcprivacy`** — Required-Reasons APIs CODEC actually hits: `NSPrivacyAccessedAPICategoryFileTimestamp` (observer recent-files mtime, scheduler) reason `C617.1`, `NSPrivacyAccessedAPICategoryDiskSpace` (heartbeat health, `df`) reason `E174.1`; `NSPrivacyTracking=false`, empty `NSPrivacyTrackingDomains`, empty `NSPrivacyCollectedDataTypes` (local-first — nothing leaves the machine).
 
