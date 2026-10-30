@@ -19,6 +19,7 @@ import pyperclip
 from pynput import keyboard
 
 import codec_paste
+import codec_record
 
 # faster-whisper is not in the buyer lock (its PyAV wheel bundles GPL libx264/libx265).
 # Installed (the Studio): the local model below is used, as before. Not installed: the
@@ -196,11 +197,7 @@ def _live_record_loop():
             tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
             tmp.close()
             try:
-                subprocess.run(
-                    [SOX_PATH, "-t", "coreaudio", "default", "-r", "16000", "-c", "1",
-                     "-b", "16", "-e", "signed-integer", tmp.name, "trim", "0", str(chunk_sec)],
-                    timeout=chunk_sec + 3, capture_output=True
-                )
+                codec_record.record_chunk(tmp.name, chunk_sec)
                 if live_stop_event.is_set():
                     try: os.unlink(tmp.name)
                     except OSError: pass
@@ -340,8 +337,12 @@ def record_audio():
                 stderr=subprocess.DEVNULL
             )
         except FileNotFoundError:
-            print("[DICTATE] sox/rec not found. Install: brew install sox")
-            return None
+            # No sox on this Mac (a buyer's): record with sounddevice instead.
+            try:
+                proc = codec_record.start_recording(tmp_path, SAMPLE_RATE)
+            except Exception as e:
+                print(f"[DICTATE] cannot record: {e}")
+                return None
 
     return proc, tmp_path
 
@@ -533,11 +534,13 @@ def main():
 \u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d
 """)
 
-    # Check for sox
-    if not os.path.exists(SOX_PATH) and subprocess.run(["which", "sox"], capture_output=True).returncode != 0:
-        print("[DICTATE] \u26a0\ufe0f  sox not found \u2014 install with: brew install sox")
-        print("[DICTATE] sox is required for microphone recording")
-        sys.exit(1)
+    # Recording needs sox (the Studio) or sounddevice (shipped with the app).
+    if not os.path.exists(SOX_PATH) and codec_record.sox_command() is None:
+        try:
+            import sounddevice  # noqa: F401
+        except ImportError:
+            print("[DICTATE] cannot record: neither sox nor sounddevice is installed")
+            sys.exit(1)
 
     # Load whisper in background
     t = threading.Thread(target=load_model, daemon=True)
