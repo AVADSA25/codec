@@ -31,8 +31,10 @@ back to a python.org framework (or bumping versions) is a one-file change.
 - **`packaging/macos/bundle_python.sh`** — downloads the arch-correct tarball,
   **verifies sha256** (refuses on mismatch — no executing an unverified 30 MB
   binary), extracts it to `<App>.app/Contents/Frameworks/python/`, then
-  `pip install -r requirements.txt` into that interpreter. Flags: `--app`,
-  `--arch`, `--requirements`, `--skip-pip`, `--dry-run`.
+  installs `packaging/macos/requirements-lock.txt` into that interpreter
+  (`pip install --require-hashes --only-binary=:all: --no-deps`, see
+  docs/BUYER-LOCK-DESIGN.md). Flags: `--app`, `--arch`, `--lock`, `--skip-pip`,
+  `--dry-run`.
 - **`build_app.sh --with-python`** — assembles the bundle (W5-2) then invokes
   `bundle_python.sh` on it.
 - **launcher update** — `Contents/MacOS/codec` now prefers
@@ -55,8 +57,8 @@ typically self-built wheels) are fixed at sign time — tracked for W5-7.
 
 - **sha256-pinned** download (supply-chain: we never run an unverified binary —
   consistent with the repo's audit-HMAC / allowlist posture).
-- The bundled pip install uses the project `requirements.txt`; a future
-  lock-file (F-15) would pin transitive deps too.
+- The bundled pip install uses the hash lock `packaging/macos/requirements-lock.txt`
+  (the F-15 lock-file, made real in D-33 and D-35).
 
 ## Test plan (`tests/test_python_bundle.py`, hermetic — no network in CI)
 

@@ -1,35 +1,53 @@
 # CODEC buyer lock: the exact package set for the macOS app's bundled Python
-# (macOS 14+ on Apple silicon, CPython 3.12), 127 packages, every file hash-pinned.
+# (macOS 14+ on Apple silicon, CPython 3.12), 151 packages, every file hash-pinned.
 #
-# Made from requirements.txt (origin/main, 2026-10-25) with:
-#   uv pip compile requirements.txt --python-version 3.12 --generate-hashes
+# Made from requirements.txt (origin/main, 2026-10-30) with:
+#   uv pip compile requirements.txt --python-version 3.12 --generate-hashes \
+#     -c packaging/macos/requirements-lock.txt \
+#     --no-emit-package torch --no-emit-package sympy --no-emit-package mpmath \
+#     --no-emit-package networkx --no-emit-package setuptools
+# (-c keeps every package already pinned here at its version; only new packages enter.)
 # Install:
-#   python -m pip install --require-hashes --only-binary=:all: -r packaging/macos/requirements-lock.txt
-# Checked 2026-10-25: installs into a clean Python 3.12.13 venv; all 127 hashes pass for
-# macosx_14_0_arm64; pip-audit found no known vulnerabilities. Not installable on macOS 13
-# (mlx 0.32.4 and numpy 2.5.4 publish no macosx_13 wheel). Hashes cover every wheel and
-# sdist of each pinned version.
+#   python -m pip install --require-hashes --only-binary=:all: --no-deps -r packaging/macos/requirements-lock.txt
+# --no-deps is needed because the lock leaves out five packages on purpose: mlx-whisper
+# declares torch, but imports it only in mlx_whisper/torch_whisper.py (model conversion
+# and tests), never in transcribe; torch (580 MB), sympy, mpmath, networkx and setuptools
+# exist only for that. The lock lists every other package the app imports, so a plain
+# install would find nothing missing. `pip check` therefore reports one line, "mlx-whisper
+# requires torch"; CI accepts that line and no other.
+# Checked 2026-10-30: installs into a clean Python 3.12 venv; all hashes pass for
+# macosx_14_0_arm64; every runtime import in tests/test_buyer_lock.py works. Not
+# installable on macOS 13 (mlx 0.32.4 and numpy 2.5.4 publish no macosx_13 wheel). Hashes
+# cover every wheel and sdist of each pinned version.
+#
+# What is NOT in it, on purpose (licence gate: permissive or LGPL code only):
+#   - pyautogui (pulls mouseinfo, GPLv3+) and PyMuPDF/fitz (AGPL-3.0): the paste and the
+#     PDF text use Quartz, which is already in the lock (pyobjc-framework-quartz).
+#   - faster-whisper: needs PyAV, whose wheel bundles libx264 and libx265 (GPL).
+#     codec_dictate.py uses it only when it is installed and otherwise sends the
+#     recording to the whisper-stt server.
 #
 # Who uses it:
 #   - CI (.github/workflows/ci.yml): the macos-14 job installs this file as above and runs
 #     the test suite; the ubuntu job takes its versions as constraints
 #     (tools/lock_to_constraints.py --neutral), so CI tests the versions in this file.
-#   - packaging/macos/bundle_python.sh does NOT install from it yet (it still runs a plain
-#     pip install -r requirements.txt). Switching the bundle to this file, and adding the
-#     runtime imports requirements.txt leaves out (pyautogui, faster-whisper, mlx-whisper,
-#     PyMuPDF, google-api-python-client, zeroconf, pyobjc-framework-AVFoundation), is
-#     audit item P-011.
+#   - packaging/macos/bundle_python.sh installs the app's Python from it (pip with
+#     --require-hashes --only-binary=:all: --no-deps) and refuses to run without it.
 #
 # Update: re-run the uv command above after a requirements.txt change; CI fails when a
 # requirements.txt floor is above the version pinned here.
 aiofile==3.12.3 \
     --hash=sha256:5c1bcc9e929c50834608e8cc1a4cc1d7503eb60c15a535b779fd39e2f372c017 \
     --hash=sha256:caa6aa746b5e47e2165f7abd741b6415e49cf4d44fddc0f61844612cc3924d41
-    # via py-key-value-aio
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   py-key-value-aio
 aiohappyeyeballs==2.7.1 \
     --hash=sha256:065665c041c42a5938ed220bdcd7230f22527fbec085e1853d2402c8a3615d9d \
     --hash=sha256:9243213661e29250eb41368e5daa826fc017156c3b8a11440826b2e3ed376472
-    # via aiohttp
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   aiohttp
 aiohttp==3.14.5 \
     --hash=sha256:0133c3c3b54a0bf1e71fa5c1ad95c93f07fd54e24ef1fe182f5122e1573d2bf1 \
     --hash=sha256:038c2c7e8caa26b6c8423779b5eaf1893904048a512c19b32fe841ffa5592b50 \
@@ -192,25 +210,33 @@ aiohttp==3.14.5 \
     --hash=sha256:fbdc5ec49f9ca3cd24955cf3520b10a4d4c901ba2572094c84274e9e7eb30534 \
     --hash=sha256:fce9523df31cea6284f3e2c479876750d7687cf671d7b25d32b19effc0e86441 \
     --hash=sha256:ff75a7537413a86e7cafe98e0e1d6e3dc4b15c6349896e7d5c6b881bfdb6d550
-    # via fsspec
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   fsspec
 aiosignal==1.4.0 \
     --hash=sha256:053243f8b92b990551949e63930a839ff0cf0b0ebbe0597b0f3fb19e1a0fe82e \
     --hash=sha256:f47eecd9468083c2029cc99945502cb7708b082c232f9aca65da147157b251c7
-    # via aiohttp
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   aiohttp
 annotated-doc==0.0.5 \
     --hash=sha256:117bac03a25ede5df5440e855b32d556049ca169ead221505badf432fed4b101 \
     --hash=sha256:c7e58ce09192557605d8bbd92836d7e1d520ac9580096042c0bfd197efacf1bb
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   fastapi
     #   typer
 annotated-types==0.8.0 \
     --hash=sha256:13b2beaad985e05e2d6407ee4c4f35590b11f8d693a258a561055cac8f64cab7 \
     --hash=sha256:f072f4d804ea359e4eaf198b1af7a8b0943881a87f31bb764f8bf219bb9419e0
-    # via pydantic
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   pydantic
 anyio==4.15.1 \
     --hash=sha256:6152fdbbf9a77fdec97731721bebf7c4c44f7c29b424b0065826173efc7ed101 \
     --hash=sha256:9f28306018cbd6d329e64a36d58256edff76dd996fe423bc957326e578b82a94
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   httpx
     #   httpx2
     #   mcp
@@ -221,7 +247,9 @@ anyio==4.15.1 \
 argon2-cffi==25.1.0 \
     --hash=sha256:694ae5cc8a42f4c4e2bf2ca0e64e51e23a040c6a517a85074683d3959e1346c1 \
     --hash=sha256:fdc8b074db390fccb6eb4a3604ae7231f219aa669a2652e0f20e16ba513d5741
-    # via -r req-origin.txt
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   -r requirements.txt
 argon2-cffi-bindings==26.1.0 \
     --hash=sha256:061a6919145bbf282ebf1f9c59d3135d4833c25313c8595c0d68cf7712ddfce2 \
     --hash=sha256:0cc40f7b4050bb93eb67de95d2d759322fc7ce4930b9d645581ecf4913ec651e \
@@ -264,11 +292,14 @@ argon2-cffi-bindings==26.1.0 \
     --hash=sha256:f0c3103fcff20183e593459cfea6e012281c0e76ae3ed8b5565ad1b92eac3990 \
     --hash=sha256:f9c4420a7a864fe1b86ce35befc95b8e39fb852493b81cf798671ddc265de638 \
     --hash=sha256:ffff613aaa9ce6236766e2fc6dc560bb5abde7a2e2416e3db1f9ae395a2b4dd4
-    # via argon2-cffi
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   argon2-cffi
 attrs==26.1.0 \
     --hash=sha256:c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309 \
     --hash=sha256:d03ceb89cb322a8fd706d4fb91940737b6642aa36998fe130a9bc96c985eff32
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   aiohttp
     #   cyclopts
     #   jsonschema
@@ -277,15 +308,21 @@ attrs==26.1.0 \
 authlib==1.9.1 \
     --hash=sha256:5c7d9848f47cac340f060f76ae0bc09b59f5c8e89cc1bb032d4370a0c55b5974 \
     --hash=sha256:8b9be8b1e5174dcbf5520e984f1a22dc2edae5b6e40a61d4cedbf86b97e9e69b
-    # via fastmcp-slim
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   fastmcp-slim
 beartype==0.23.1 \
     --hash=sha256:4461b4dc57e3fdd6c8a8464b22cf118002eea107c33e9fef651c69068ab3cce3 \
     --hash=sha256:8b805f246b32931c74f2b321ea0939fe5bb2ff43c12a3eff19cc4c854b832e1d
-    # via py-key-value-aio
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   py-key-value-aio
 cachetools==7.2.5 \
     --hash=sha256:9033308cc26b678784a27b096aab1541b9e698d785c3e9918b691ccd458d88df \
     --hash=sha256:a2223b80de434291ddf4c105354e533bbaf4d29382f5d1bc3e4b9332cb31061e
-    # via py-key-value-aio
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   py-key-value-aio
 caio==0.12.10 \
     --hash=sha256:1140246b2bdd2e46c33826464fee66cc2244345e38462d96b8055081acca213e \
     --hash=sha256:1d8b6e9275d8f9608b8ecb4b97189e7f1d0b8ed948fb552eb06518d6342a1e53 \
@@ -330,11 +367,14 @@ caio==0.12.10 \
     --hash=sha256:edda39ac24b4cec74486a06afe7499fc9ddb2c3d5cb98494b2c9fdf95ed7aecd \
     --hash=sha256:f09366a7eaaa23f7dbf19c14802a3ba57b72e9efec463b89a8ff77bcbe3c8c09 \
     --hash=sha256:fbb4da4f763e03838106de1050e0db0d5e477008bab1bb26da1f0928b50d185f
-    # via aiofile
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   aiofile
 certifi==2026.10.23 \
     --hash=sha256:a9895e6e2758b371e0545e321a3a8fd1fcfd9829ada8824a936dfb16aaaf36cd \
     --hash=sha256:e9b54de76e530bb6cf0ccd036787103acb58fd42ba930ea8bf948ddbaa2f61d1
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   fastmcp-slim
     #   httpcore
     #   httpx
@@ -441,6 +481,7 @@ cffi==2.1.1 \
     --hash=sha256:fb92203a88b3d3053034db775110081c49d28be6551923805e039924093761e4 \
     --hash=sha256:fcd22650c908d7b7da162bbfaab594a1227a15d1643a98c68b122ac642fa2264
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   argon2-cffi-bindings
     #   cryptography
     #   miniaudio
@@ -619,11 +660,14 @@ charset-normalizer==3.5.2 \
     --hash=sha256:fcff63213e8e6e47770541a4607175404f47cbb3ebea7b6058cc82d524a0e424 \
     --hash=sha256:fd1fbe0f116b6e55da77aca2c6ddcddcfac2186cbf78bdebf40fc156efca389d \
     --hash=sha256:fe9753dfee015c570d73df76f899f18444d41388bffcde097deba51c4fadbb9f
-    # via requests
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   requests
 click==8.5.0 \
     --hash=sha256:255bc9599cf7748b4b1a446ccc735421bd08a2ae529a8b88597d3de5664ee360 \
     --hash=sha256:ba0d2089de75ea0310e2dde03160e6ca10009947fb95a182f9b54021bb272e34
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   huggingface-hub
     #   uvicorn
 cryptography==50.0.2 \
@@ -687,61 +731,83 @@ cryptography==50.0.2 \
     --hash=sha256:fa8f5efb344d6908a1ce62f4a24e2e5780f825d6f53f5f50ec5ffacac72936cb \
     --hash=sha256:fdd28f912fccfec1846a94e2e1e8f9b0012f557f0c46fe4f3eb0d7a87afcf90b
     # via
-    #   -r req-origin.txt
+    #   -c packaging/macos/requirements-lock.txt
+    #   -r requirements.txt
     #   authlib
+    #   google-auth
     #   joserfc
     #   mlx-vlm
     #   pyjwt
 cyclopts==5.3.0 \
     --hash=sha256:479f92942ea286b6c132f64262d82f12b4c71d003f3d3691f572cd6ad4528bb2 \
     --hash=sha256:a4ce5397b78023f238ab8cbaca9adb7e39636f34102f3080d8b62b9feca7e64d
-    # via fastmcp-slim
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   fastmcp-slim
 datasets==5.1.0 \
     --hash=sha256:1561347daa8841b51351ef2ad1647b4ee4af406852c0f7bd1df587ac1ca7888e \
     --hash=sha256:86fd08b280485aab82894d2c81842c4151d93b575efea0054315104cb7bc3cec
-    # via mlx-vlm
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   mlx-vlm
 dill==0.4.1 \
     --hash=sha256:1e1ce33e978ae97fcfcff5638477032b801c46c7c65cf717f95fbc2248f79a9d \
     --hash=sha256:423092df4182177d4d8ba8290c8a5b640c66ab35ec7da59ccfa00f6fa3eea5fa
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   datasets
     #   multiprocess
 dnspython==2.9.0 \
     --hash=sha256:9a4aedb833c3c1b49214d04d44d3032ab7a9135f7c1d29a549b4ff78fd82fda9 \
     --hash=sha256:b44dc6b18f07a8b1c56676a19fbfdb5209415b046a9cece286baafa87ff3f7f1
-    # via email-validator
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   email-validator
 docstring-parser==0.18.0 \
     --hash=sha256:292510982205c12b1248696f44959db3cdd1740237a968ea1e2e7a900eeb2015 \
     --hash=sha256:b3fcbed555c47d8479be0796ef7e19c2670d428d72e96da63f3a40122860374b
-    # via cyclopts
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   cyclopts
 email-validator==2.3.0 \
     --hash=sha256:80f13f623413e6b197ae73bb10bf4eb0908faf509ad8362c5edeb0be7fd450b4 \
     --hash=sha256:9fc05c37f2f6cf439ff414f8fc46d917929974a82244c20eb10231ba60c54426
-    # via pydantic
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   pydantic
 exceptiongroup==1.3.1 \
     --hash=sha256:8b412432c6055b0b7d14c310000ae93352ed6754f70fa8f7c34141f91c4e3219 \
     --hash=sha256:a7a39a3bd276781e98394987d3a5701d0c4edffb633bb7a5144577f82c773598
-    # via fastmcp-slim
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   fastmcp-slim
 fastapi==0.162.0 \
     --hash=sha256:3785963de305dd09912426cb81f2d230fce98ab3521cdfe97265c8d14983128c \
     --hash=sha256:6a22c1e2e6e32e0633ee7e170f00009a29b8228b16feb219ee42f32fd8d88a8f
     # via
-    #   -r req-origin.txt
+    #   -c packaging/macos/requirements-lock.txt
+    #   -r requirements.txt
     #   mlx-vlm
 fastmcp==4.1.3 \
     --hash=sha256:a1f79e9db929a1603c75331df603f74530fc236aa711e0ee2e185821c6d9888d \
     --hash=sha256:b983d8acc44ab1143e0c86fd6da843f25043ee0aeb64ab983b36c527bd1d33e9
-    # via -r req-origin.txt
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   -r requirements.txt
 fastmcp-slim==4.1.3 \
     --hash=sha256:81af8699331c33d438caf85b6947f36df6e2f04118e6f318ca00374fd9afea9a \
     --hash=sha256:d95277db0979e4cbfa84528cf9016ae079494b41ed8e88cc909fee8233db6035
-    # via fastmcp
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   fastmcp
 filelock==4.2.4 \
     --hash=sha256:301241438c57936ef93f4243a94f2559022268bfcf9b375a9a72eb0f8db8358e \
     --hash=sha256:c6d8663535e1650ee430507b4ffbac7b464dd64b7647ea0112a9f406499d163d
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   datasets
     #   huggingface-hub
+    #   torch
 frozenlist==1.8.0 \
     --hash=sha256:0325024fe97f94c41c08872db482cf8ac4800d80e79222c6b0b7b162d5b13686 \
     --hash=sha256:032efa2674356903cd0261c4317a561a6850f3ac864a63fc1583147fb05a79b0 \
@@ -874,22 +940,57 @@ frozenlist==1.8.0 \
     --hash=sha256:fb30f9626572a76dfe4293c7194a09fb1fe93ba94c7d4f720dfae3b646b45027 \
     --hash=sha256:fe3c58d2f5db5fbd18c2987cba06d51b0529f52bc3a6cdc33d3f4eab725104bd
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   aiohttp
     #   aiosignal
 fsspec==2026.7.0 \
     --hash=sha256:b57ddbafedfaef7018c1ecab32aa200a9d7ca26b77965f64e48b70061249d279 \
     --hash=sha256:c803c40f4cf860b49dea58ee3e1c33cb9c790520e233537e1340049f89b82a88
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   datasets
     #   huggingface-hub
+    #   torch
+google-api-core==2.43.2 \
+    --hash=sha256:5a9d21baab97fd3c0547ccfc186a9e64f4227d8d7026f393835316400b29a6d4 \
+    --hash=sha256:5dfc5e9d52982bcc03bd6af380a893365b5fdf907dc527f63d3a372833c33329
+    # via google-api-python-client
+google-api-python-client==2.201.0 \
+    --hash=sha256:2d9bf1ba3f12eee8ed3d0f1791ce0605d163432f496baa72d3677faa2cf097d6 \
+    --hash=sha256:d5691982abd7287f53cb0b0e0c6a9984d4103cf864ea0a88cb6e4347bbaf70de
+    # via -r requirements.txt
+google-auth==2.62.0 \
+    --hash=sha256:0bef0ce54bdf9ce226c5d66e4264413bd918141c31bbe49fb52eac882f513d69 \
+    --hash=sha256:4ff4319aeb4ad128409759d397a9fcafad126d0031d241cc0dd6b9a00b43e3f3
+    # via
+    #   -r requirements.txt
+    #   google-api-core
+    #   google-api-python-client
+    #   google-auth-httplib2
+    #   google-auth-oauthlib
+google-auth-httplib2==0.4.4 \
+    --hash=sha256:b931de392c20cfaa351cd789274922bd8cdc001e0e9e96de31b39d71347f8e16 \
+    --hash=sha256:bbe5d7b2401bb3a4017f4720e1e91bd273ab9a2bb60b84e65edbc0de127852da
+    # via google-api-python-client
+google-auth-oauthlib==1.5.0 \
+    --hash=sha256:71625fdea21c6c03217eb9ff13741c3096e6d257ebca0ad084dbd6e9f4aa4ef4 \
+    --hash=sha256:b351107c7dd9017f426cbb0272ea1bc04f469020fd18f4443c7d40362e0b1510
+    # via -r requirements.txt
+googleapis-common-protos==1.76.0 \
+    --hash=sha256:59e13344a9f3651aa201a03e2bee815a3bf43a4baf1f9ff8a9b62a840ce25fac \
+    --hash=sha256:71db0e44a1d4c2dd024ebad44ca67129cc1e2892e4861df466764749d5ef8642
+    # via google-api-core
 griffelib==2.4.1 \
     --hash=sha256:40c028dd2e623f464423f0e11e3c553158f1cf4f1368239a370534d73e1407ff \
     --hash=sha256:76bc562f936ad1ce198d2cf6d0731bd5c92a7d934b69ef828ef22ee0ffdb62ce
-    # via fastmcp-slim
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   fastmcp-slim
 h11==0.16.0 \
     --hash=sha256:4e35b956cf45792e4caa5885e69fba00bdbc6ffafbfa020300e549b208ee5ff1 \
     --hash=sha256:63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   httpcore
     #   httpcore2
     #   uvicorn
@@ -911,23 +1012,38 @@ hf-xet==1.7.0 \
     --hash=sha256:e3e88a7a75d7d95cbee1f37dc31341d6201124cf21c6c4b1dfab8ccba9b09e0f \
     --hash=sha256:fa029678be1ba7f953c409b0b27bf15cc69cd1c9b3a674fbd78856ebefca1052 \
     --hash=sha256:fcfd6c22418e57dd5b3aea649e813b2e2cfb2aebf317b210d90f1fe4b3018b52
-    # via huggingface-hub
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   huggingface-hub
 httpcore==1.0.9 \
     --hash=sha256:2d400746a40668fc9dec9810239072b40b4484b640a8c38fd654a024c7a1bf55 \
     --hash=sha256:6e34463af53fd2ab5d807f399a9b45ea31c3dfa2276f15a2c3f00afff6e176e8
-    # via httpx
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   httpx
 httpcore2==2.16.0 \
     --hash=sha256:5c4358319f2602d984ad93182c9fee5160f22e9da7babdda870a5e7c4e2dc34f \
     --hash=sha256:c72cd0413563b17e1cd8354677dff887466f8ec2551679759e93126534428643
-    # via httpx2
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   httpx2
+httplib2==0.32.1 \
+    --hash=sha256:37900eb8a74576bd99fc39ae1dc8409f95f965d45b56cbcb2194bb55f58a90e1 \
+    --hash=sha256:82e7a6ab08fcb27879864ddf63dbb529fb032ca336c331cb1597d6dd8b47c92e
+    # via
+    #   google-api-python-client
+    #   google-auth-httplib2
 httpx==0.28.1 \
     --hash=sha256:75e98c5f16b0f35b567856f597f06ff2270a374470a5c2392242528e3e3e42fc \
     --hash=sha256:d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad
-    # via -r req-origin.txt
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   -r requirements.txt
 httpx2==2.16.0 \
     --hash=sha256:0d54c98128e8f2ff7fbbde0fca8c359e5f032edeaaaac443cdb7f31f685bcd7f \
     --hash=sha256:fd2c5d7909e8d86fe92d53020c310ca0e4e431b838c207c5754b9bbf0308d49a
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   fastmcp-slim
     #   huggingface-hub
     #   mcp
@@ -935,64 +1051,90 @@ huggingface-hub==2.3.0 \
     --hash=sha256:0b783b37f200f1d25bef2344a997c7d410f4437fbe9d8fd965f958e75cec7aef \
     --hash=sha256:5da369600233568a126eb5578754935b2add9446b42d9e2fc0927d56840ac1a5
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   datasets
     #   mlx-audio
+    #   mlx-whisper
     #   tokenizers
     #   transformers
 idna==3.20 \
     --hash=sha256:a7db850025b95ded1eae8a46181a1a6c56c92c96f0e2b005d9ff8dc0210cab44 \
     --hash=sha256:ab7ae7122974553370f0bdb919e1a960b2cd1bc1ef0276416d896db81c14582c
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   anyio
     #   email-validator
     #   httpx
     #   httpx2
     #   requests
     #   yarl
+ifaddr==0.2.0 \
+    --hash=sha256:085e0305cfe6f16ab12d72e2024030f5d52674afad6911bb1eee207177b8a748 \
+    --hash=sha256:cc0cbfcaabf765d44595825fb96a99bb12c79716b73b44330ea38ee2b0c4aed4
+    # via zeroconf
 jaraco-classes==3.4.0 \
     --hash=sha256:47a024b51d0239c0dd8c8540c6c7f484be3b8fcf0b2d85c13825780d3b3f3acd \
     --hash=sha256:f662826b6bed8cace05e7ff873ce0f9283b5c924470fe664fff1c2f00f581790
-    # via keyring
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   keyring
 jaraco-context==6.1.2 \
     --hash=sha256:bf8150b79a2d5d91ae48629d8b427a8f7ba0e1097dd6202a9059f29a36379535 \
     --hash=sha256:f1a6c9d391e661cc5b8d39861ff077a7dc24dc23833ccee564b234b81c82dfe3
-    # via keyring
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   keyring
 jaraco-functools==4.6.0 \
     --hash=sha256:880c577ec9720b3a052d5bc611fb9f2269b3d87902ef42440df443b88e443280 \
     --hash=sha256:99e3dc0060c5cbe8fcd1cdb36258e2a65ca40f1566b2033b12abb1bb44dd3c30
-    # via keyring
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   keyring
 jinja2==3.1.6 \
     --hash=sha256:0137fb05990d35f1275a587e9aee6d56da821fc83491a0fb838183be43f66d6d \
     --hash=sha256:85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67
     # via
-    #   -r req-origin.txt
+    #   -c packaging/macos/requirements-lock.txt
+    #   -r requirements.txt
     #   mlx-vlm
+    #   torch
 joserfc==1.7.7 \
     --hash=sha256:06979cfbab78bc802f14c0358f32969826cc26720e13cb38926ffdc86bc0cb2c \
     --hash=sha256:471d0fd12a5a0d1c0942de280f39efe6f597878315033270b504d4d006d25510
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   authlib
     #   fastmcp-slim
 jsonref==1.1.0 \
     --hash=sha256:32fe8e1d85af0fdefbebce950af85590b22b60f9e95443176adbde4e1ecea552 \
     --hash=sha256:590dc7773df6c21cbf948b5dac07a72a251db28b0238ceecce0a2abfa8ec30a9
-    # via fastmcp-slim
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   fastmcp-slim
 jsonschema==4.26.0 \
     --hash=sha256:0c26707e2efad8aa1bfc5b7ce170f3fccc2e4918ff85989ba9ffa9facb2be326 \
     --hash=sha256:d489f15263b8d200f8387e64b4c3a75f06629559fb73deb8fdfb525f2dab50ce
-    # via mcp
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   mcp
 jsonschema-path==0.5.0 \
     --hash=sha256:2790a070bc7abb08ea3dbe4d340ece4efadf639223001f020c7503229ba068e2 \
     --hash=sha256:493b156ba895c97602655b620a8456caa2ce08c1aa389f5a7addec065e6e855c
-    # via fastmcp-slim
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   fastmcp-slim
 jsonschema-specifications==2025.9.1 \
     --hash=sha256:98802fee3a11ee76ecaca44429fda8a41bff98b00a0f2838151b113f210cc6fe \
     --hash=sha256:b540987f239e745613c7a9176f3edb72b832a4ac465cf02712288397832b5e8d
-    # via jsonschema
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   jsonschema
 keyring==25.7.0 \
     --hash=sha256:be4a0b195f149690c166e850609a477c532ddbfbaed96a404d4e43f8d5e2689f \
     --hash=sha256:fe01bd85eb3f8fb3dd0405defdeac9a5b4f6f0439edbb3149577f244a2e8245b
-    # via py-key-value-aio
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   py-key-value-aio
 llguidance==1.9.1 \
     --hash=sha256:0ab9d2681c0fcb4389f3c1c79697f1e724771d74d366bb5a22edae155252dfed \
     --hash=sha256:151a615f3d871fc096984b705daa211faccc78ed2f9e3a2a80e57283e16e2898 \
@@ -1012,11 +1154,53 @@ llguidance==1.9.1 \
     --hash=sha256:dd5c87df5e60a7d8f54f46bfd5e11abb10f93636712ace09a8c1d2a0c4aeade0 \
     --hash=sha256:dfac6021d9c4c5ef16b3a1d336c05ca5e8208ff30dec29d1c63ebcafbee3a346 \
     --hash=sha256:f824a817a841563d5b068a0dd22563e5f063cdbda382cf3f6e18c1c68c45db38
-    # via mlx-vlm
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   mlx-vlm
+llvmlite==0.50.0 \
+    --hash=sha256:0225351ad77ea30501fc5b4c09ff6868169fde50c5a576cdfda1645091157616 \
+    --hash=sha256:1cb21c420a47dcfa56223228d013c6f9d234e05e06e6819a41638d78bbd78e6c \
+    --hash=sha256:211da1b088d566aafa1e444d546f64fc7f13b1af56ff0207a1705d88607be6ab \
+    --hash=sha256:266a6a29be71c3e3a22960ddcedf66b4e0388e5abb6cc4991cc093d6df402ad7 \
+    --hash=sha256:33ddf12b1e12d7e551e1c1e6ca8087d0aacc931f480019eb33ef2ab77681da4d \
+    --hash=sha256:3f490c0f4800c8ddeee6a607acd037497bf6508586804f4e2f11f53a1ee7fe2d \
+    --hash=sha256:423c8d89d13f7eb4488933d5a86b0fa952927956298cfd0087f6753b5123b5df \
+    --hash=sha256:425845f415a06dc50db08db033c6b568e0d85c4937e932c605a4d49e1514b2da \
+    --hash=sha256:4b78a8b669eda09ca1ff4c1a75003023912092974d3e771d1da0777f1b383bdf \
+    --hash=sha256:4da0e8c6e6f144b433672a632f75d6b4da7bd4fdb5c3e9981d6ea6741319aeae \
+    --hash=sha256:51a4a716db98591f0a1bea34c6548cdb4017731ee5e678ded8cf842dca8af3c5 \
+    --hash=sha256:55f50a6b7c0b8de88b05d6bc407d70a60486ce024013997dc97e202bd187c75b \
+    --hash=sha256:6e8df54380110ea5e9127386e739d2b0829cc6dfa4a24a9195226336c91b06d5 \
+    --hash=sha256:7ae211012c6849528a5f7cd17a78d8b2421a2813c7b4184d6c0b2ffa89a7d296 \
+    --hash=sha256:7dde9836d144c446a303b57b2dd906c35308411eb07f1279c1db581d3d774048 \
+    --hash=sha256:818b3d4845ac8e126e23cb500867570d0602a42a43e67b14acec31f046e03130 \
+    --hash=sha256:944133e9621d1dfbfdaf0fed3234b99f85e6ba27c38f4045acc8f8a5e699a5c0 \
+    --hash=sha256:987600ce6f7bd6d808f4bb0ea61a8eff2fd17cf32355691e801eb0a65a7304f0 \
+    --hash=sha256:a1d5b6eac064f201b4aa091030282e6f240d8d322dddd7381840731455c3e664 \
+    --hash=sha256:a32980e3d727b0e56974ad89d0764920048602a75805b8917cc0298e798b0ced \
+    --hash=sha256:a6ffde00d4be8772a24e3e8b3af6bf86a79e7cf066d944ef56136b3957d707dc \
+    --hash=sha256:accfc36951230e0e694b41bbfc96ba554284e72f0eab2dde0cf273e4109e51ba \
+    --hash=sha256:afd7b438c60e0f60c4368ec603bb9f20d938a203b5f59b80bbe50c749b4b2f16 \
+    --hash=sha256:c20595cc3a76e3c85140fdafbf9246c732ddf8e0e646ba2f4e4881f87567300d \
+    --hash=sha256:c2b23236bd0d7ad56a94208263d791956f79c8c45f39458931df556206d4496a \
+    --hash=sha256:c7d4e2bbb29a860a6e85e22afdb96696241263942a5b214cac3e4b704e1d3abf \
+    --hash=sha256:cda14ab787e609c2c2c5d1386a6d5f8723e9d047d27341585f606c27dc5744ab \
+    --hash=sha256:d501e5103076b9a14be885d2574dc2f6793171aa54a853d1244e011d476f1399 \
+    --hash=sha256:d5447a6c39171368edfe28a71f605e6e3edd40a1dc31f5e5c9d50585718ae6d0 \
+    --hash=sha256:d88c9b325f5fbefc79d95b1daa8fb96018c40bd2958103eea7334e6c8f17fb40 \
+    --hash=sha256:e8cc203c1fd509131cd72b7554413d4a3e5527cc5558c5a7ebe19840018c57c1 \
+    --hash=sha256:e94f9066f1257a9cef6c832e6c9de0f140e2bb150de2db39f657b2a5996e0f6b \
+    --hash=sha256:ecdc9fae295da8ac793578a27020515e24d970513143efa227e696582aeb16e6 \
+    --hash=sha256:f1ac2b9f699c46219fbbd66b304105f5e1b218f05ffac6fe03cd851f93718e58 \
+    --hash=sha256:f2a2cd6ec9ffcc1b7147dea0d7a49efebf17a2b434e0c2844fe175999d571eb4 \
+    --hash=sha256:ffe46ef508df226e54b5fe1f7bf11122e5297bcdbb3902cc5b670a429d56ff47
+    # via numba
 markdown-it-py==4.2.0 \
     --hash=sha256:04a21681d6fbb623de53f6f364d352309d4094dd4194040a10fd51833e418d49 \
     --hash=sha256:9f7ebbcd14fe59494226453aed97c1070d83f8d24b6fc3a3bcf9a38092641c4a
-    # via rich
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   rich
 markupsafe==3.0.4 \
     --hash=sha256:007e1ffd9bf65bb6ee96df7b258fc632a4868dd5566037986c64781f35a36e98 \
     --hash=sha256:02fa4acbc6a3fc5c693c34d4dd8c1130b7fe99cc915181b0ddd6f72aeb296002 \
@@ -1169,21 +1353,28 @@ markupsafe==3.0.4 \
     --hash=sha256:fa95848c929b6a75f6848d3c9793e59db365ee436776e57db835cdbfa79ba977 \
     --hash=sha256:fd9f8797427910198f95bced71ddfed61130d7e349213bfb8466c9c99e2c46a8 \
     --hash=sha256:fdb4ca07ab75ffadab4a8b135ad59cdbb3156b99310f3d565370da74a15d6bd3
-    # via jinja2
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   jinja2
 mcp==2.3.0 \
     --hash=sha256:8b147a50441cf059dc88c684e0aeed3687f0aa0f39c6cde7b90330effd2b34d8 \
     --hash=sha256:dd0c44c089d16453e8ae31a3877a0054d7a2314caaa81f5e0541b9b1734b2377
-    # via fastmcp-slim
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   fastmcp-slim
 mcp-types==2.3.0 \
     --hash=sha256:968efdbdaedfab06adae40d378a34395f1090c5921d4be3c9cde283aaf76d91d \
     --hash=sha256:d1e46549edb35ee19a94940fcee6d1addd7e589ab7ea92dda83f5d84781fc362
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   fastmcp-slim
     #   mcp
 mdurl==0.1.2 \
     --hash=sha256:84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8 \
     --hash=sha256:bb413d29f5eea38f31dd4754dd7377d4465116fb207585f97bf925588687c1ba
-    # via markdown-it-py
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   markdown-it-py
 miniaudio==1.71 \
     --hash=sha256:06222d80b057ca4beccb6f97a134c2c2bf646ef7890e1759cfc09db7eecec44d \
     --hash=sha256:12bc33e7e61072b4b541c14e10ef76119d5643e6bbb98e2dec0c0738889438fb \
@@ -1217,6 +1408,7 @@ miniaudio==1.71 \
     --hash=sha256:f7042af3a4db5b90e5efaea257b6dfcff9389239ea643e6b0faa80169528e2e6 \
     --hash=sha256:ff51e2887bb673e2e757752b586b3dc924d59aa5fbcae9bbc45f4a111bd3262b
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   mlx-audio
     #   mlx-vlm
 mlx==0.32.4 \
@@ -1283,27 +1475,40 @@ mlx==0.32.4 \
     --hash=sha256:fc8bfe0478c96cdcf0c4786f13edaa20490fa1714fb145f254627bd66654d81d \
     --hash=sha256:ff1d7be54758ea3a875b8fe54eff13bed17ad9566505e301f5d7851bf869680f
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   mlx-audio
     #   mlx-vlm
+    #   mlx-whisper
 mlx-audio==0.6.1 \
     --hash=sha256:4c5e4ef3f2a453dcc1c84c9aaf1e43701f62f5a32632aff50bfa6be9047d0f10 \
     --hash=sha256:94259999694c707129c1f6a30cc1e164e525d0471c9311c5af88f37f20682300
-    # via mlx-vlm
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   mlx-vlm
 mlx-metal==0.32.4 \
     --hash=sha256:514df92d41a286895d2564b4b18f4da45096bd7a4a0c47e1042f345ad5a7f936 \
     --hash=sha256:8019b2db622599267d66cc168b2f0dbf5af929790a6c3b3913e00eabc42a7947 \
     --hash=sha256:9f0a3cc26d89724434d9684932fc6f3e4e83669d2a895d858ed2c8a55eb84e8b
-    # via mlx
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   mlx
 mlx-vlm==0.7.10 \
     --hash=sha256:89adc43235194e797b6ac6795fd275e8957a5d14a1e2760ba49e3a7fedf79f96 \
     --hash=sha256:f112ddaaf1bf0dd1efa702b5675a27df3345614e69e3996d3fbd09d838b8333d
-    # via -r req-origin.txt
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   -r requirements.txt
+mlx-whisper==0.4.3 \
+    --hash=sha256:6b82b6597a994643a3e5496c7bc229a672e5ca308458455bfe276e76ae024489
+    # via -r requirements.txt
 more-itertools==11.2.1 \
     --hash=sha256:35a7377edd1dd6608dcb2cdf534ded55ea32d49448875ad042cd3f879fb1ded0 \
     --hash=sha256:cbf08fd0af284dc69718b9b76a8e6203df624d70209ea511e4219d350c856f63
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   jaraco-classes
     #   jaraco-functools
+    #   mlx-whisper
 multidict==7.2.1 \
     --hash=sha256:02009b402129a73e1f3da68f48eb999afbacd29f25aef0d5052b84ff5c2786a2 \
     --hash=sha256:02d9c04d395a36eeebe89e45f2269614a4675b8e83fddcba15bba2be903971e5 \
@@ -1457,6 +1662,7 @@ multidict==7.2.1 \
     --hash=sha256:fcfebcb537f419e415b6e2bfc77ddbd33abe3c036f0105410a25a14741df9c31 \
     --hash=sha256:fd24c4425fdb8e822601335602375c6d0cb020f7a368e1d5842eb7925a9c8748
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   aiohttp
     #   yarl
 multiprocess==0.70.19 \
@@ -1476,7 +1682,43 @@ multiprocess==0.70.19 \
     --hash=sha256:e5e7dc3e3e1732e88c07aaec17eeb9917f9ed1107d9e60d5ab985cdc14bac43a \
     --hash=sha256:e6c0674d34b8adac22533f6786576b3de4e396aaeda9e0c15378af9b8ada2702 \
     --hash=sha256:e8cc7fbdff15c0613f0a1f1f8744bef961b0a164c0ca29bdff53e9d2d93c5e5f
-    # via datasets
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   datasets
+numba==0.68.1 \
+    --hash=sha256:0b8c2cdf8d52373814d9fe0fdd91a654b4607527657488487c58ac897c2596a3 \
+    --hash=sha256:10967c80d943d32fec1a28bad89b404c820778c5d472844661900399879cbe95 \
+    --hash=sha256:26064885ae0ffcd365e1801beacc524ac4a9bd306b7552749dcca42e0ef2fed3 \
+    --hash=sha256:44f56e7c1e77d3380986f42e187ff13516aeac1f1771fe3826e65f003053d308 \
+    --hash=sha256:4d1b544f37fc237d16698a4266bb3d5b3c40ec8aa4c925a191ff09ec6d115310 \
+    --hash=sha256:58fe7a3810261cf13797d8aa94c018cfe91e1e8adf634df60eb60ef834f9367b \
+    --hash=sha256:5d4bd6ff1923d0b32a2208eaf3e1940f4548a13fdba8bd1ee7893b8f4b8f55f8 \
+    --hash=sha256:674d9c19e591e4e706c85ed9c7129dfea02086096250cb957dbffb64ebf3dba4 \
+    --hash=sha256:6d115039768cc2eb3cc99b32355ca507e1bbc653eca5492c83ab6399f218df27 \
+    --hash=sha256:7abaf69f64cbbeecf0c2384d55d1249ede6206de06d905da48f943c065e51490 \
+    --hash=sha256:7de5e5d00e6c8967fc861be2a015eb8ad701ab3cf65d7f4a2c4d950990cf65d3 \
+    --hash=sha256:8b33fee239194b9b6cb9b176f3c2563b94e5882fd846748ad0cf960daeee5406 \
+    --hash=sha256:8b89ed029ec79d017af9101afd8f832b1f7eb1a366227a439437c17f38be6122 \
+    --hash=sha256:9550e3f84ddca05d3cad1f2f780beed004a9b6c62fa12e995fb5bcb871d0cd6c \
+    --hash=sha256:9de461812470173a14eeb7e0bbd27c897dffe835402a33861166842fc5f6ea57 \
+    --hash=sha256:a4bdbff6ac4ea52a647c758e78403489a1b01a7ee9c2977c92f931c10802c078 \
+    --hash=sha256:b206741270692578112600767ef5e4935b38484a9edbc8dd925389ac67d0e828 \
+    --hash=sha256:b4d210701b32d1d4ffe26d5fc4e96c6b47e2c5d6c4c1a0f76dc48c156ef295ea \
+    --hash=sha256:bd238734c5bd4a7db5dd2e935d60dd9d485a5fa15b37396a2dd690b8b1d51742 \
+    --hash=sha256:c6f43dbbdcaac98a75a539b7c79ba490bd7265f24f454ac203de37bc5710ee71 \
+    --hash=sha256:c8882360f6bf7c6ff59308dc0fe79508a613a6e92329d4064ddd3258462cef4d \
+    --hash=sha256:c9cc5e30f0ec71d1d6e706cd3f9f98218a0221ee8cf25bb2079bdc1a9c4ae65a \
+    --hash=sha256:d372139235fcf11e3d81d1f145584e38c75a839b4d02f1f999cda1b134965eba \
+    --hash=sha256:dc3f29d540be5fc60699dbac53fc04f246cbf503a4e2e8315f04b70fcd9f1ec7 \
+    --hash=sha256:dc54a2cb3ccd2ae30dbae56311bb397bbd1428d9cd8ccb82a70da3439360bb30 \
+    --hash=sha256:de5fbbd0bec5496dc0408bf1eeaad4ff64a2b1e3c66b4065e4c42523550ee3e1 \
+    --hash=sha256:e5a2d544d8a2da45f9cc5856ed794c31f133ada51ef7a734a9b7cd4596e1887f \
+    --hash=sha256:e8069ec8807764fdd355a578e3943132a0b8e053e5d61e7b3639ed371ceaa80c \
+    --hash=sha256:ed9e36c95b79b675ec2332951118c3b264921a5cc49e0e934be2663ddece1b69 \
+    --hash=sha256:f2170303a731542b5c16501a08b2b1cbb4596e5bb9ba6a661b65ed953e59b8a6 \
+    --hash=sha256:fb83f1043e53753503d303036065990ff48fe0ef901e897153f57b2aec12c38d \
+    --hash=sha256:fc764aa37deab88718de20151af0f53aa72d1c5cb3b54c6eb648473323f80a5c
+    # via mlx-whisper
 numpy==2.5.4 \
     --hash=sha256:067374eb538c34c745436365cf7b0112595c1d326f21ce4ff340f61230239fbb \
     --hash=sha256:0b4724a19de67bea8cfc4970798efa78bcbbe2ac2613cfac16721a42d44de2a5 \
@@ -1545,19 +1787,28 @@ numpy==2.5.4 \
     --hash=sha256:fe4d21ab149f15e4e6043dfb0de87e6e5f34ac176cde83060e9802981fca2ac2 \
     --hash=sha256:ffa6ce09a1c6a08e9667dd9c97aa0b14184e8d18f2a14b78b2a2328c9147f076
     # via
-    #   -r req-origin.txt
+    #   -c packaging/macos/requirements-lock.txt
+    #   -r requirements.txt
     #   datasets
     #   mlx-audio
     #   mlx-vlm
+    #   mlx-whisper
+    #   numba
     #   opencv-python
     #   pandas
     #   scipy
     #   soundfile
     #   transformers
+oauthlib==4.0.0 \
+    --hash=sha256:624c28c13a0a59cabf9747dfa52af63be3e512a7f2714df16e91b5b3a145e6cd \
+    --hash=sha256:efb274799819440f95b4ab3b818869f1ce9ae26c5beacba0201d1a1b76b54f86
+    # via requests-oauthlib
 openapi-pydantic==0.6.0 \
     --hash=sha256:11f3ac6ad41521fc156381ec587246b0c0ecea523bd9565ed74d3e7fac9d91cd \
     --hash=sha256:8bd6d548a250da37db96f461bcd52b3468e8834ad7d6db14b00a6b2ebbd163a3
-    # via fastmcp-slim
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   fastmcp-slim
 opencv-python==5.0.0.93 \
     --hash=sha256:08d5d91d967b58d6db86073b2ad3eaef88ca4ebdfd45c9059bf59f5ded0c7ad2 \
     --hash=sha256:198a75138241810206a17c829dbcc40a7cb1841cda538ca86cbbfc6c7d95f898 \
@@ -1568,18 +1819,23 @@ opencv-python==5.0.0.93 \
     --hash=sha256:e2b4272e736836f66c2d176e43ab8101f3a00d45654916399f52e150c58981ac \
     --hash=sha256:f8b6d0a212253dd26ad338c812f1f23ca118fdf05a9c8c6b9444f161aa8c5881 \
     --hash=sha256:f90ba04b8f73bc5c3814037699739f0156f597338a98f05956c684e7c3ca10d2
-    # via mlx-vlm
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   mlx-vlm
 opentelemetry-api==1.45.1 \
     --hash=sha256:aa38ed19bcc084ba42782a73255b3582283eced7ad6dddbd6695189e69adfb75 \
     --hash=sha256:b31553efa588ae44bc306f863c785c5333a9ecc091248c6ee68b4b6c87fdedfb
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   fastapi
     #   fastmcp-slim
+    #   google-api-core
     #   mcp
 packaging==26.3 \
     --hash=sha256:94edc256424af38762eb31306eed28beb9f0efc50a8837492c9d6fd6004aed79 \
     --hash=sha256:d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   datasets
     #   fastmcp-slim
     #   huggingface-hub
@@ -1643,11 +1899,15 @@ pandas==3.1.0 \
     --hash=sha256:eee72bba8a72f0bf9522132e5c87cd10fce9d77440b50f65326b093ec9fb8d43 \
     --hash=sha256:f1a93c24175129bfc9922ef748ddae1d8137c743ed835e2615be329f606fed4d \
     --hash=sha256:f4772320b7735d96dbbef437129f840dec4175f8a18a2391bd1222ed8943825c
-    # via datasets
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   datasets
 pathable==0.6.0 \
     --hash=sha256:6404b8b82aef5ff0fd478934137128b99b12212ba35afdde5525ca4f8388ea58 \
     --hash=sha256:82c4ca6c98c502ad12e0d4e9779b6210afee93c38990988c8c5d1b49bdcdf566
-    # via jsonschema-path
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   jsonschema-path
 pillow==13.0.0 \
     --hash=sha256:02464da86f561f410e13b061ec37c3068a9cb557a095494157742d07b3c24a27 \
     --hash=sha256:04a63720f79e22fd54d897c233a68314c50ca0603360f54ce2bd5db8f0f43782 \
@@ -1733,13 +1993,16 @@ pillow==13.0.0 \
     --hash=sha256:ff3fe9eb621fbb9db4c4be33ab946f6bac5f98ab50ca8d3260503653656c961b \
     --hash=sha256:ffea6b2986a797c84b6d1d27d4f43e0b83c73fc16281a930891cd237cf0d08fe
     # via
-    #   -r req-origin.txt
+    #   -c packaging/macos/requirements-lock.txt
+    #   -r requirements.txt
     #   mlx-vlm
     #   qrcode
 platformdirs==4.13.5 \
     --hash=sha256:05831adf87d392760f4b5c3a0a95579ab5a10b18b9b9bd43680dcb47544788a0 \
     --hash=sha256:53d3ec4280b815c1e0b02edad7f9ee8fda1ba9c0865dd9c2e6e63849ce82fc1e
-    # via fastmcp-slim
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   fastmcp-slim
 propcache==0.5.4 \
     --hash=sha256:004e685b315646c410771836e72a44f143bbe624f29653a42687815069a303d5 \
     --hash=sha256:02c0a34f16889cf800f10f0247a564d8ce6eeab6ffcd7c87198f769067eb8432 \
@@ -1880,12 +2143,32 @@ propcache==0.5.4 \
     --hash=sha256:fc2461ecc45f17893f8207e73b46ea8ba93e33630e51cf4af3fbc21d47462b1a \
     --hash=sha256:ff6b113f50bc066a698db5d944d2c6dc7507168dd3341e255a8892fd0715a558
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   aiohttp
     #   yarl
+proto-plus==1.29.0 \
+    --hash=sha256:8acd070469a7aaf43f440b022ef9757c8cac1a9f866e933f59ae98669ddc6c8b \
+    --hash=sha256:cfb4e62ad7e13dd18f346cabbda00cab39930d36a05791fd81ddb074d6ee884f
+    # via google-api-core
+protobuf==7.36.2 \
+    --hash=sha256:497d0463ff3316681da6c0b9e8d06cb465d61abce00b613ab42226175644d1bb \
+    --hash=sha256:89f23aa53c24553a2416fd4fd1ec06f74fa42b14b546d8883128813f775bbfd2 \
+    --hash=sha256:912c1221170e16c08d1f086762f563dd61ff83c18b5fa6652952dfaded66f728 \
+    --hash=sha256:a300819d441e078a5608c0d3c709796bb548136058fda017ae51d425b44fd353 \
+    --hash=sha256:bdb3a345d48db958e6ce1f18e508beb0cc981d64f24088427549c866cd039f1e \
+    --hash=sha256:cbc70b17ee27e28894c7fee8bb04be1abead49e936bc70eb60052531eee2079e \
+    --hash=sha256:e11e1f0180583a2af89db6a2ecd9e8dc40aa6d2988ca175bfd0e6d12ea72d74e \
+    --hash=sha256:f4fee11ec330d238b34a05c9b675f693c20415d1c5bd7d5320cc2f8a798eb9cf
+    # via
+    #   google-api-core
+    #   googleapis-common-protos
+    #   proto-plus
 py-key-value-aio==0.4.6 \
     --hash=sha256:267c03c3e24cb99d3097612f8a5cfd8e11785c6a2975e272db0e303ea1850bfd \
     --hash=sha256:820b30c7959fc738ea3d00160cdb10cd258f51e38737b2add530defeea1ded77
-    # via fastmcp-slim
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   fastmcp-slim
 pyarrow==26.0.0 \
     --hash=sha256:01c863a18bd9c8412453dd0d92de6d0ee7b2b3d6fb079d9734a4b2a3c8bd4453 \
     --hash=sha256:0cccd36e00ea3afeb52ded61f2721ce71f604853d70c45365c58324eb773d6ae \
@@ -1937,15 +2220,28 @@ pyarrow==26.0.0 \
     --hash=sha256:f800e9e722c145ccd18012d82a864cb21bfee4ba4ceffde77100d25eced511a9 \
     --hash=sha256:fcdd1e04982637c6042337d3e24d472f938f01fdc502e2b994844b726d12c3f4 \
     --hash=sha256:ff1e816af7abff71f289242e109217036723ce36aca74ad6691e52d964a74afa
-    # via datasets
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   datasets
+pyasn1==0.6.5 \
+    --hash=sha256:4017b0fce125096b8573b39c989fdb1a4b19cf761e683398184550fea0e66587 \
+    --hash=sha256:6b11616a6bcf3a40e635f082bb232fa57b5e0dd7f517bd7ddd69ec3794508a47
+    # via pyasn1-modules
+pyasn1-modules==0.4.2 \
+    --hash=sha256:29253a9207ce32b64c3ac6600edc75368f98473906e8fd1043bd6b5b1de2c14a \
+    --hash=sha256:677091de870a80aae844b1ca6134f54652fa2c8c5a52aa396440ac3106e941e6
+    # via google-auth
 pycparser==3.12 \
     --hash=sha256:a076f3f489b39b43ed13563a1dafe42447445bec2e294154ec5c57fcdda4c85e \
     --hash=sha256:f03387877eab82ce01bbdfd0ba7252ee55a90b1c708d5129e2ce915475cf1db6
-    # via cffi
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   cffi
 pydantic==2.14.1 \
     --hash=sha256:9195d967ec791692a04438115466764fb8b9a27b31f14a760437694f40d6b454 \
     --hash=sha256:94f478203dd03404682a1ada216965651dd74b1d2d5ffd62e00e0837caab5c26
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   fastapi
     #   fastmcp-slim
     #   mcp
@@ -2090,25 +2386,34 @@ pydantic-core==2.50.1 \
     --hash=sha256:f5187624823423e1d1b82b1072ac41dc837389e18d3d0572cc19bbee46cd550a \
     --hash=sha256:f77ac30b19221cd9bd3fcfa3d4614eff93140d0572ab730cded17b64adca05f3 \
     --hash=sha256:fe90228920fd8ff2be62622b6bb8a2b11acd65046d50c6b130614b5879605a20
-    # via pydantic
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   pydantic
 pydantic-settings==2.16.1 \
     --hash=sha256:30f5313340da4e8f1b440d1910b92a5bc3ccbb6b4ba70ec2b8395bc921f418f5 \
     --hash=sha256:aff602a1886338c2df3d1e958e2193a8dc33cec75b91f202e83fd98484b4b0da
-    # via fastmcp-slim
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   fastmcp-slim
 pygments==2.21.0 \
     --hash=sha256:2363c69b61c4a97c838da3b130dcd6468f4848992b21a82f2a63ec34377137d9 \
     --hash=sha256:610ca751c9bc2492b38eb9a38a7fbc93edbbb2d7182edaf34e66ae493dee5c8c
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   rich
     #   rich-rst
 pyjwt==2.15.1 \
     --hash=sha256:42d59d631f7768a1028a64c7ff581a9bf7519804daf91fc5b6c56e30eec5e193 \
     --hash=sha256:4f259e80cdfb6b3fc18a7de51fd1ef9ec79652f25019bae68975ca2468a34df8
-    # via mcp
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   mcp
 pynput==1.8.2 \
     --hash=sha256:8cc38cf13a6ab2749cb375678be8a0fd705d7ce49c8001ff5db4007a723bbef1 \
     --hash=sha256:f493c87157cd3861b4468f7f896857051762f44ed26f1b641e7cc5840a457087
-    # via -r req-origin.txt
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   -r requirements.txt
 pyobjc-core==12.2.2 \
     --hash=sha256:122e6ad302a2abf5d4d4adb0156db751600ddf2768441696cba17b31323085e7 \
     --hash=sha256:2062e8ad30a310441cd022544a897553408bebeaa7820d5edba3c96fd7fd693b \
@@ -2121,8 +2426,12 @@ pyobjc-core==12.2.2 \
     --hash=sha256:950bd2d9c74634398c4e3d24ef2f213d4e23d705083697464fa67afedc53c1ad \
     --hash=sha256:b9cdd686e32db8e451feb19f8a85bc4cd52c2893103881d04aca51e1f35371d1
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   pyobjc-framework-applicationservices
+    #   pyobjc-framework-avfoundation
     #   pyobjc-framework-cocoa
+    #   pyobjc-framework-coreaudio
+    #   pyobjc-framework-coremedia
     #   pyobjc-framework-coretext
     #   pyobjc-framework-quartz
 pyobjc-framework-applicationservices==12.2.2 \
@@ -2136,7 +2445,21 @@ pyobjc-framework-applicationservices==12.2.2 \
     --hash=sha256:93ba63aad6607f369c1b38bf91306731da6306fdde5eb67afa407b3f8a87dda7 \
     --hash=sha256:e525167b28560d1cbadadcaee4bcdd20c999f6af3e489cc63bacde4ed1a6b549 \
     --hash=sha256:fc861e14f78e7370e982202b21db8bcb562dc14cd4098e557a17961d3411de45
-    # via pynput
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   pynput
+pyobjc-framework-avfoundation==12.2.2 \
+    --hash=sha256:21a3c326455e5dce805e7440a3b7808c1e833e6d961279de88ab39cba70b821f \
+    --hash=sha256:248fd714f7a63535577cde3a5bd097f1e309011586b799c110fb9bab27e88f55 \
+    --hash=sha256:45b915a35d7fddb6c29a7a43e8b221bd2f2fe73eb0b1c174e843cfa6cbba57ac \
+    --hash=sha256:5b9f33bf382af9a84b2394c98e3603a8abf03f29b0d2036e29698806ea22851a \
+    --hash=sha256:60199c8271f28dbf3f1b1f4fcaec3fbd7d6787571be95b0a291e70f1dbd13807 \
+    --hash=sha256:6a1baf030b9c7997b99e38450e84ea7398c8ca9e762660ba9019c20837e733a0 \
+    --hash=sha256:73f34a9e7a5cc0ec6cc496ee10c133d14c4ddc768e17f09c684f95ac5b127408 \
+    --hash=sha256:9f9394180a7891085f8981ba2fcb2da292ee0608b46fa53d231d8a646a6a6bb8 \
+    --hash=sha256:b5feb1265d7a259f92e75c4bef791e047f2d4aa6b7faa3fd46077f135947adaf \
+    --hash=sha256:ca4976b18bee82142655b9dc1d6c0cd665627d9ef413694434e2ba5a187443f4
+    # via -r requirements.txt
 pyobjc-framework-cocoa==12.2.2 \
     --hash=sha256:0e8ace0d44a00d281281a723d17fcd05eea7544a38a6a512e1fd018ddb7aece2 \
     --hash=sha256:5a751c8033a3b51f7996f0327e0675eb44dcfdfe7920fae01e3d78b662723fff \
@@ -2149,9 +2472,38 @@ pyobjc-framework-cocoa==12.2.2 \
     --hash=sha256:de69c5933750f3a4599ed962eccd92b6a71914c7e4318dacc7895738a8ae60d7 \
     --hash=sha256:e106f395531e67694376b0f1184612cbeea3ec8b9bf56b55ef41d026171d2a2d
     # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   -r requirements.txt
     #   pyobjc-framework-applicationservices
+    #   pyobjc-framework-avfoundation
+    #   pyobjc-framework-coreaudio
+    #   pyobjc-framework-coremedia
     #   pyobjc-framework-coretext
     #   pyobjc-framework-quartz
+pyobjc-framework-coreaudio==12.2.2 \
+    --hash=sha256:2217911fb21cd6d8002d0895f6353a15fd6ce2c4e191b3f4cb6e16ad7a428591 \
+    --hash=sha256:29b6d2b0d415246348717e501b424da5ad4cfadc8bb3c465c16851446e6ff590 \
+    --hash=sha256:4cdc2be16ee481dea8ba1bad43c657bc02fcaeeb4a502d64e6bc28719b7cc103 \
+    --hash=sha256:4e332b0acb976e84b3730d90f1bce8c92f1e52009a07d35ee7d3f8d494055d8a \
+    --hash=sha256:7222c2b2317a6a350e08239b3b7ba7b4570b06ec8697b9bc53793bd6f85e3134 \
+    --hash=sha256:75bfc0de2b8f94521c9becb55d5dcf749b6ff479b6163cd1355b1f7c578166e4 \
+    --hash=sha256:880214f7328d6502a0c60ee744fa1eabe77a0d0c9ae276009453b69474eacf38 \
+    --hash=sha256:950e16f8c1cc21a76ca879d820b49795959fc6099eb8a41ccd1376951f42941e \
+    --hash=sha256:97ef7efc7f5c5d66ecb114050f76f029803a203b953103859bdfe1d4756de50d \
+    --hash=sha256:a19cc902a1eadb1b30d191d008e960768aaeeb7c027001820ef0cc01a4791422
+    # via pyobjc-framework-avfoundation
+pyobjc-framework-coremedia==12.2.2 \
+    --hash=sha256:0bf4cd65f87bd073e74b3ede2381dc9355529e6f1b12184da22090f016e68bf7 \
+    --hash=sha256:41142c919c557165df4a53ffe218e600ad0ccb7691bc9aed58a7839a88ba7c8b \
+    --hash=sha256:49b53bbe1eea893f94bbf05f1f5220fcef3ccac7310a96d78434c0df6318dc79 \
+    --hash=sha256:84f5deee8d366bf73069a0525509637aa578ccd0e6688923b09999a8bc3077a8 \
+    --hash=sha256:b80285a65465a5340f5806e9e293b46e22ac6f9c3132e79c8139a79b53b3f8c2 \
+    --hash=sha256:bb4c56edd411a5c0152a0a9eeb0138f9c173820041beff0cfaff291b9376bade \
+    --hash=sha256:c4430bda640c5427bf572f8b2a3281d8f4f16b962a499251cf553a0979d88a4e \
+    --hash=sha256:edc9d03e5230123c92d4f0413c48449a7f08fa747b9f304b2cc396239acfefe3 \
+    --hash=sha256:f6f8150428e6ae40d6b97714f6933b8c4322f3fb94de9bfcb206d00cb021f464 \
+    --hash=sha256:fe9f972438674893e941e9db5b62f8ba99a33f94a7f1c2ce49b14416f154cd10
+    # via pyobjc-framework-avfoundation
 pyobjc-framework-coretext==12.2.2 \
     --hash=sha256:1324d91305022b1de03a12cf82de2b42c87dafe9b12cde6237253658a8637139 \
     --hash=sha256:1dc50de18346c4d6c89a51df066f03beea81e3557e3090ddc2a7a59395332fd8 \
@@ -2163,7 +2515,9 @@ pyobjc-framework-coretext==12.2.2 \
     --hash=sha256:b585f0db77280930cb32e71cf8d27f5203d8c0f42a65fba690294530ab6e1aa6 \
     --hash=sha256:dbd0f288a859e359ee8e7ccf45bc2c489f38ae1087c21468b61d700433e0c91b \
     --hash=sha256:f1ad871d761bad9a0d461cceeeff7375a39f4d181c2a206dada6fc05307fec12
-    # via pyobjc-framework-applicationservices
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   pyobjc-framework-applicationservices
 pyobjc-framework-quartz==12.2.2 \
     --hash=sha256:0ec9751904ef975bf0789d760dc4fadcb400edc4ffe4a736eb54971968babe5c \
     --hash=sha256:1f7f3d9010e38f03ea1fa266664c10ea349cd7492bd603b403584f49d713dbed \
@@ -2176,31 +2530,47 @@ pyobjc-framework-quartz==12.2.2 \
     --hash=sha256:d89a5f47c079b5c340d2b1cbb83eb6c4c92d4bb17cd4daf7d8c02c91a49f5399 \
     --hash=sha256:ebf8167ca2096cf3a05199decfa517be0df4c56048f49cf132bd6b1a6ab9c086
     # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   -r requirements.txt
     #   pynput
     #   pyobjc-framework-applicationservices
+    #   pyobjc-framework-avfoundation
     #   pyobjc-framework-coretext
 pyotp==2.10.0 \
     --hash=sha256:1df2f6a1bcc3bb0716172a5215ddc2f8c7c7fd26a13df9927d52e1746934836c \
     --hash=sha256:d01e9703443616b03c57c700b5cbffd56a1f929c1b0f8f03131bc78c1fca9d3f
-    # via -r req-origin.txt
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   -r requirements.txt
+pyparsing==3.3.3 \
+    --hash=sha256:928ae7e20211f3b6f3915a72f06a0cfd29ab9d24279dd6346b6b1a7146397d36 \
+    --hash=sha256:ece8c00a69cf01b45d0b1dedabb469c90d8caf996d4fda40f147627a122849a4
+    # via httplib2
 pyperclip==1.11.0 \
     --hash=sha256:244035963e4428530d9e3a6101a1ef97209c6825edab1567beac148ccc1db1b6 \
     --hash=sha256:299403e9ff44581cb9ba2ffeed69c7aa96a008622ad0c46cb575ca75b5b84273
-    # via fastmcp-slim
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   -r requirements.txt
+    #   fastmcp-slim
 python-dateutil==3.0.0 \
     --hash=sha256:3c79630202e4152c6add678446984236efe4f57e84d8e892aab0637bab82e9fd \
     --hash=sha256:7ebcb3c29a92f3ceafe79a7a48a5c45677e9e004bbeec5742ac0bbb00560b7a2
-    # via pandas
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   pandas
 python-dotenv==1.2.4 \
     --hash=sha256:42269a8a5b3fd54ffa6f3d84b18abed50064717576b4ecf03dc4a55d8aa04fdc \
     --hash=sha256:f0d53e69935a851c0dcc78f3ab7aaccd8cabef0b92382b576b824212902873c0
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   fastmcp-slim
     #   pydantic-settings
 python-multipart==0.0.32 \
     --hash=sha256:be54b7f3fa167bb83e4fcd936b887b708f4e57fe75911c02aebf53efaf8d938e \
     --hash=sha256:ff6d3f776f16878c894e52e107296ffc890e913c611b1a4ec6c44e2821fe2e23
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   fastmcp-slim
     #   mcp
     #   mlx-vlm
@@ -2279,6 +2649,7 @@ pyyaml==6.0.3 \
     --hash=sha256:fa160448684b4e94d80416c0fa4aac48967a969efe22931448d853ada8baf926 \
     --hash=sha256:fc09d0aa354569bc501d4e787133afc08552722d3ab34836a80547331bb5d4a0
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   datasets
     #   fastmcp-slim
     #   huggingface-hub
@@ -2287,11 +2658,14 @@ pyyaml==6.0.3 \
 qrcode==8.2 \
     --hash=sha256:16e64e0716c14960108e85d853062c9e8bba5ca8252c0b4d0231b9df4060ff4f \
     --hash=sha256:35c3f2a4172b33136ab9f6b3ef1c00260dd2f66f858f24d88418a015f446506c
-    # via -r req-origin.txt
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   -r requirements.txt
 referencing==0.37.0 \
     --hash=sha256:381329a9f99628c9069361716891d34ad94af76e461dcb0335825aecc7692231 \
     --hash=sha256:44aefc3142c5b842538163acb373e24cce6632bd54bdb01b21ad5863489f50d8
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   jsonschema
     #   jsonschema-path
     #   jsonschema-specifications
@@ -2426,17 +2800,29 @@ regex==2026.9.29 \
     --hash=sha256:fb99cc9d45f48895d9d67f6a0b8a57f08d39c174d9f25ad97a313e0470267b1c \
     --hash=sha256:fdd88ed5e20b1bcdd234421e454962c971aa44b653bdb7f1ea9ef683e90fb649 \
     --hash=sha256:fe3fa1dd453ed5c7f5ea23a26218329790ed7197a99b90e94330e313959a7f52
-    # via transformers
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   tiktoken
+    #   transformers
 requests==2.34.2 \
     --hash=sha256:2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0 \
     --hash=sha256:f288924cae4e29463698d6d60bc6a4da69c89185ad1e0bcc4104f584e960b9ed
     # via
-    #   -r req-origin.txt
+    #   -c packaging/macos/requirements-lock.txt
+    #   -r requirements.txt
+    #   google-api-core
     #   mlx-vlm
+    #   requests-oauthlib
+    #   tiktoken
+requests-oauthlib==2.0.0 \
+    --hash=sha256:7dd8a5c40426b779b0868c404bdef9768deccf22749cde15852df527e6269b36 \
+    --hash=sha256:b3dffaebd884d8cd778494369603a9e7b58d29111bf6b41bdc2dcd87203af4e9
+    # via google-auth-oauthlib
 rich==15.0.0 \
     --hash=sha256:33bd4ef74232fb73fe9279a257718407f169c09b78a87ad3d296f548e27de0bb \
     --hash=sha256:edd07a4824c6b40189fb7ac9bc4c52536e9780fbbfbddf6f1e2502c31b068c36
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   cyclopts
     #   fastmcp-slim
     #   rich-rst
@@ -2444,7 +2830,9 @@ rich==15.0.0 \
 rich-rst==2.2.0 \
     --hash=sha256:1ea1c43813dc4a8d86475fce27ffb74e0ada3d4656c9f8130ba2a59868055fe9 \
     --hash=sha256:b1e6a67f8f694a6f36035624bf73e2b1a0a4be13edaf3ba5e654d9758b61073a
-    # via cyclopts
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   cyclopts
 rpds-py==2026.9.1 \
     --hash=sha256:00ba2d8c7dd4ee537978ddf4b3fbd712bef2d8751603f7f3146b3f4287768e25 \
     --hash=sha256:01445c8d194aa032a08e944f16567672da1c62dbdbefd8b6d0693032e290cf68 \
@@ -2575,6 +2963,7 @@ rpds-py==2026.9.1 \
     --hash=sha256:fdcd198979b4ecffcc1beba366a7fbcf4eb41243691a82fe52ceb0b902f09c12 \
     --hash=sha256:fe5ad0664ec772b02c45859041aa17655709cced7a31005817fbbbd988c25567
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   jsonschema
     #   referencing
 safetensors==0.8.0 \
@@ -2595,7 +2984,9 @@ safetensors==0.8.0 \
     --hash=sha256:fabaf3e0f18a6618d9b36560682562157f77c2b71fcffc7b432be2baed9d753d \
     --hash=sha256:fcdd41ec4628fee5799f807c73c353629130fbd942aa23d83c623dd6c9d52d78 \
     --hash=sha256:fd6f3f93c9a0a7cc2788ee63fb763353d4bd2e89b0751bc78fcf7dda00bea774
-    # via transformers
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   transformers
 scipy==1.18.1 \
     --hash=sha256:011413b7426b75012840e35649e00fe0a2c3bae89fed433876e3a99251572efc \
     --hash=sha256:0ac49ea97594532dd44b7136094d35f5440fa06e6d9c6384a74c01764df388c5 \
@@ -2658,7 +3049,10 @@ scipy==1.18.1 \
     --hash=sha256:f29633129f9fa7e88a3f0fca835de2d030bfc9643f7799e1a0c46cee24d38fc7 \
     --hash=sha256:f55fa87b6c612ecd6b058f167c53231b1d14e412efe361d3d6e38b3631c73218 \
     --hash=sha256:fdaf5ea890a6183d0565f51a61799d67081bd5b1cf03c5f4b3fd3732108625c9
-    # via mlx-audio
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   mlx-audio
+    #   mlx-whisper
 sentencepiece==0.2.2 \
     --hash=sha256:046b15ea22d8042e2e173561d464ec3b64a9c2081324df70ebce7bf7ebb3e497 \
     --hash=sha256:0e2aae42960392d6dcb9a72d8e1e65a97294c965071b43c7b3429a42f350250e \
@@ -2718,20 +3112,26 @@ sentencepiece==0.2.2 \
     --hash=sha256:fa9f5ef0e2a82233dd0b8b32ea3f5710e0c44afbc07ed3620219f32601e56090 \
     --hash=sha256:fd523c4992041faa5c2b3cde62253d11a96c30d73a34afe48a486e8e2254cd1c
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   mlx-audio
     #   mlx-vlm
 shellingham==1.5.4 \
     --hash=sha256:7ecfff8f2fd72616f7481040475a65b2bf8af90a56c89140852d1120324e8686 \
     --hash=sha256:8dbca0739d487e5bd35ab3ca4b36e11c4078f3a234bfce294b0a0291363404de
-    # via typer
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   typer
 simple-term-menu==1.6.6 \
     --hash=sha256:9813d36f5749d62d200a5599b1ec88469c71378312adc084c00c00bfbb383893 \
     --hash=sha256:c2a869efa7a9f7e4a9c25858b42ca6974034951c137d5e281f5339b06ed8c9c2
-    # via -r req-origin.txt
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   -r requirements.txt
 six==1.17.0 \
     --hash=sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274 \
     --hash=sha256:ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   pynput
     #   python-dateutil
 sounddevice==0.5.6 \
@@ -2742,7 +3142,8 @@ sounddevice==0.5.6 \
     --hash=sha256:de099612311ad81e55d31ccbd83f43ea6bf4d87b48f9b6ea55a1fbcde0eee4e0 \
     --hash=sha256:e3aef00ad8b1d1740eb66d9a7671eab88a4d2b8fa4ab33498d742e63b65c309c
     # via
-    #   -r req-origin.txt
+    #   -c packaging/macos/requirements-lock.txt
+    #   -r requirements.txt
     #   mlx-audio
 soundfile==0.14.0 \
     --hash=sha256:0a6ae43c50c71b4e020cc55382925cb89451c1ed1a0c3d0f5d802da269226849 \
@@ -2754,20 +3155,91 @@ soundfile==0.14.0 \
     --hash=sha256:d828d35a059626da52f1415b5faee610aeab393319cb3fc4a9aef47b619fc14c \
     --hash=sha256:e090704718e124e7c844695236f1fce8d18a5e761eaf7c82dfcd124620805f98 \
     --hash=sha256:e85724a90bc99a6e8062c0b4ddf725f53b2a3b70afd4da875e9d2cfc4e92f377
-    # via -r req-origin.txt
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   -r requirements.txt
 sse-starlette==3.5.1 \
     --hash=sha256:a6cdcfec47b952911b1d99a7b8056429b5984039b875bf6575174220364b551f \
     --hash=sha256:dbb1461cd53c1e284537c3ddcf92f54f24178519a3f1e335e49e5283993db0f7
-    # via mcp
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   mcp
 starlette==1.10.0 \
     --hash=sha256:478c0ab3b4ced6e82719849c118fa406f0278a3499c1a898cd15cd31bdc38ce4 \
     --hash=sha256:b8399098d4c1e3522734f7235dc79b1fc967f96cf139c81e0fa30479e0685f9b
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   fastapi
     #   fastmcp-slim
     #   mcp
     #   mlx-vlm
     #   sse-starlette
+tiktoken==0.14.0 \
+    --hash=sha256:087538c080e5ff421abd3a0785ed63c5111d06af98e6cd0d374dbe5969147ca3 \
+    --hash=sha256:10f31e63e40313f2e518d87f7086cfa44e45f64cc14d8ae14103b41220c30a14 \
+    --hash=sha256:11d8211b290855d2721334ff17dd9b3a17bfb26872be01f25d73612ef7ece890 \
+    --hash=sha256:144a3fc369f92b7d548995217c5d6e84038d3572157a0f6f34080d65291d0f78 \
+    --hash=sha256:149d97453c4c98c04b081d64a85e635921269b532710d6faf81e9e82b790e7d3 \
+    --hash=sha256:14b47e3674f2624803a8acc8fb367b7e24fc53055f9df3296482fe9a3a34a232 \
+    --hash=sha256:151d37a150c8f3dfc5f4345597b10e101876bd1bd13494e0185af6b508758d2e \
+    --hash=sha256:18a1b651c4b032004bf7b4f1713391a54b2a341a52c6e8a2b59acae9d16e13c7 \
+    --hash=sha256:19d643d701fdaa70e5b9c7f8f96abcaffe77ca5e482a3a1a7dde46feb4284695 \
+    --hash=sha256:1b6e4adcfd285c44502aed51df98aaaca4f0fea028165dbf8a9e857b9f98d8ea \
+    --hash=sha256:1f83081065ee5833d35b49e9180f3d8d15622a603dd1c435da0da6cc12b3662f \
+    --hash=sha256:2157f52e4b4d7ac5ecc7457b3716834706e7ef9a46f5144029bfeb7cf71f4e06 \
+    --hash=sha256:231dec90efcdccf1b565a1416107736f1e09b1a08fe736ef9d6363e626d03874 \
+    --hash=sha256:26cc4b4840fa0e9f4b72ed489883e12f57e00d1021ca794720e3c29a12f0edef \
+    --hash=sha256:26e60f6a956ee171ab728b37b8439905d7ea1db435c30f9822f291e9861c861d \
+    --hash=sha256:2cc19ac87b41c9493c9778ff5847f0c8bbcf5bd0ec6b87ce06c1c802adc8a771 \
+    --hash=sha256:2ea70afba6b9eddbf22c165142e5f0a2ad7aa36a452873c48b57bb2aeb8492ae \
+    --hash=sha256:2ec16eb585332c55d022d86354e209ddf27326b1ea3477585ab248e7776d3b1f \
+    --hash=sha256:2fc834fbe3f6a0736905c36ab709537e6840dbd63b982dc9e0216ae7d305ba1a \
+    --hash=sha256:380873f330b741c4435574f37edb20813d04603ace2d53e0a63560e1fec83010 \
+    --hash=sha256:3b12e54f8bec91433e41aff65d8d1f209a4f678081163747079806e5361f6c91 \
+    --hash=sha256:3c5349c9f916283bba32bec8af69b763e4faa304dc004d0eaaea66a3cf004c1f \
+    --hash=sha256:3de75343041a1c57333b1e707ac8a9769738241d7d6a55d39e12cf84548337c6 \
+    --hash=sha256:3fd7c14b1cb45b486c39fc9b3443bb341f3e2fc7e6f31247f3435a5836651632 \
+    --hash=sha256:447ada49af4898b5e992f0b5799d2f3af385921102c211947ce3fe960dd919da \
+    --hash=sha256:4d8d91d68353bd167fdf26467e5ff9e56aaa5f87d6410c0238608629e4dc0d33 \
+    --hash=sha256:50a7e5646cbac2a8f7c3e8c0934ffda1a4357ee9c44b652434b23c3ed54d0900 \
+    --hash=sha256:561e7580f84a79859af1ef6f676968e9030fcc3fe195700b15235bca64f009c9 \
+    --hash=sha256:60c47ca69ddda0dea8256fffd12e1b86f4b59734a20e4a70c61f63cc5f021df4 \
+    --hash=sha256:6eb94895c45f26bb8f5546e5fd8a069efcf6e3f108ea9d5cbe3bf6f7f3983438 \
+    --hash=sha256:728303a072163130c5b477b1f20d6211895569c1d5302c24ffc93a3009160871 \
+    --hash=sha256:78571efc311c30b73f31eb949a921d6dac39a5d9dc42d1cfa8f8db157b3447b1 \
+    --hash=sha256:7896eea257fe497a2b7134474d909156c6744ce8da35bce88011a960e008aa0d \
+    --hash=sha256:7aab286a020660a039097912a088236b985d18a3090d73f136c4413d29d37ca0 \
+    --hash=sha256:7b7acbb7a4b8383707bce22ad3c162006478c27b56368acd3e1fcb1658a80425 \
+    --hash=sha256:7db45b98e94adf4173a5cd7422b150999a7ee11ff847783a14f6e1b80cc38cb6 \
+    --hash=sha256:86951a971c53979ec857bd8c4a32dc227ab0fd33f6c12a3bd62d3fbf5f0bfcaa \
+    --hash=sha256:86f66c85e796f5d05d5c4a60ec1d40cbfebc47a32464053528c797163fa9ab89 \
+    --hash=sha256:8e947aefe98ef74cce94923f90e48c98fe34eb1ec0a6bfdfadfc5a96359bfc36 \
+    --hash=sha256:90a762670c7f968184723769a06ed51f5cf5ce5dcd1e30164f25c72d85c2d1f1 \
+    --hash=sha256:94f77b60a8ab23580db19ae822744c9716c1720020d2179ca5605112d12326f1 \
+    --hash=sha256:979c1524f753b662b0f3cd261b135afe6659cce33caaa7a5ea00dd1756b3055c \
+    --hash=sha256:a140e83317fef02faeeb78d9a8efac623887f2feaf0055c55dcdb2b17f0226ad \
+    --hash=sha256:aa428a559d5fd02ae619aacaace86c7474a1f2702d2c01fc828908dd60f20f7a \
+    --hash=sha256:b950248272f1b303dc32986396e2dccfa10cf6d1e83ec8f0bba1776660305482 \
+    --hash=sha256:c2edf09b381fafbc014ae8e018ed25087abb9a3dafa8465a0ea63c6558c47a79 \
+    --hash=sha256:c3093001ddce822b4587e6e94bf6de36a5f97b3f31de1c9fc8d4fda144c59ff4 \
+    --hash=sha256:c6cb9896a82b9ee44e15ba0b5c8044072f2e4d48acaa704c8d3feeef5ad9487c \
+    --hash=sha256:c77d4a3e1deb2707819df92046b89aad1ac81d27e07616b797cbff3f62c037da \
+    --hash=sha256:ca4db6ff5c5bf600f9b7761a0070ed44dfe5797a76bd432fb978bc480ef40c58 \
+    --hash=sha256:cbe2cc3bba939bcdaf103e03df9d5039d33887080b315624be28ec69059e5f94 \
+    --hash=sha256:cd8ca1305c1c902fe42c486165f2e4808d9997625c98ffb05b9e0366d99d3948 \
+    --hash=sha256:d0781223705199b289faa59601bb9c2441712d4c600dd13c43d8fd6a33d22cd5 \
+    --hash=sha256:d6cebe67765569df3dafac8474e4eccf5c19d24140492567a5e58a11445732a4 \
+    --hash=sha256:e067f4cbcc5d036e8aff7fe7a6b530a8f4de2e4616ad9005a24a1879e24e6450 \
+    --hash=sha256:e2eca764c53490f8930dbce329e0769f11108d87d908282a80c5c130e26e7037 \
+    --hash=sha256:e3442bbb2f0c588cec876061e37ae67b455b9df9978b003c8fe30e45f2ef5b42 \
+    --hash=sha256:e4ddf863b59347deaa92302dcd90e5eb003cdc9be06ec2b692c38d1bdd9efd49 \
+    --hash=sha256:e9c5fe393aab56469f04e432ff851216d3def3436cf5f07e442a240164bf500f \
+    --hash=sha256:eceeff0c62419bc78d4b6e70a4762a4d25df3ae8f2d5946e3853ce93e7a57098 \
+    --hash=sha256:f2af4a336ea56d6c14f27741a0e1d8294a35dd0b038bcf990d232ebb54eb994b \
+    --hash=sha256:f3d6cf93fbe2e7117eb7bedca684216fbe328a41f0843ce34245451d8eb2df1c \
+    --hash=sha256:f5e7665f6624e052e5e7f6a36919ab69279decdc976d7b16b4fa15e1897d0513 \
+    --hash=sha256:f702e0aeeb6506e57687e881c59e844ebe8f0a6a097ddafe20e3ab25f387be4e
+    # via mlx-whisper
 tokenizers==0.23.3 \
     --hash=sha256:114e2b55ed177179d59f4ab98200a4471e11e78f9e4b5a922d146740f96fcf52 \
     --hash=sha256:1554a6eed34d9d6a78d23360f4e06df8dffab1ae08c7e8488e0b3e3b36cc266f \
@@ -2793,36 +3265,45 @@ tokenizers==0.23.3 \
     --hash=sha256:e88646b8580c5ad7f4361477f1298e9cc01771a1ee9aecfe32c47b8ff614cc38 \
     --hash=sha256:ec82e80e65a862275b97c3d90b7a523df8d9519ee48aeb4e9625b2cc909274e0 \
     --hash=sha256:efa3d7318406b4d115dce61ad5061953f1f44b128e79c020ce4615d763e23b6e
-    # via transformers
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   transformers
 tqdm==4.70.1 \
     --hash=sha256:c293e525e6fef9c20e8728fd4612df02a0aa31bb5fe91ecd93e123b1b7bffa73 \
     --hash=sha256:cefd0eca11b2a37a3aee776544d4f4ae913f02688135b5556b8788dfa474afc4
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   datasets
     #   huggingface-hub
     #   mlx-audio
     #   mlx-vlm
+    #   mlx-whisper
     #   transformers
 transformers==5.20.2 \
     --hash=sha256:080871e061546d720be57f5846fce426f46b44d61574907cc7404c2cba49d180 \
     --hash=sha256:7ae75dbc1fb3922aff1b6c97b9e5479d6cf26fd86a8866bfb71324190479f807
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   mlx-audio
     #   mlx-vlm
 truststore==0.10.5 \
     --hash=sha256:30d36967ccaded5cbb38d602c433f53600036c79d502f4533a49b60a03bbefcd \
     --hash=sha256:9aaaedaefaf06d8b206278cf8b5012bc897f485a874503501e12d776df78951c
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   httpcore2
     #   httpx2
 typer==0.27.3 \
     --hash=sha256:d0396f770a560ab1b0a8504e13b5f254b728cedb05c61cf0359e944e50ce8901 \
     --hash=sha256:e50022f28b82a86313e54501317a1db64bf8f8d036ff8cfe5ca7e47675454aff
-    # via transformers
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   transformers
 typing-extensions==4.16.0 \
     --hash=sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8 \
     --hash=sha256:dc983d19a509c94dba722ee6abd33940f7c05a89e243c47e907eb4db6f1a43e5
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   aiohttp
     #   aiosignal
     #   anyio
@@ -2841,11 +3322,13 @@ typing-extensions==4.16.0 \
     #   referencing
     #   soundfile
     #   starlette
+    #   torch
     #   typing-inspection
 typing-inspection==0.4.4 \
     --hash=sha256:547274fa6b0a561ccf549cc9524b999a578e737d015d8709d021f9d0d13bea47 \
     --hash=sha256:65b8397ba37ccbce054456aaccddfc91e6e3083c92824df348d96ca832f3f147
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   fastapi
     #   mcp
     #   pydantic
@@ -2853,22 +3336,32 @@ typing-inspection==0.4.4 \
 tzdata==2026.5 \
     --hash=sha256:8cc73c0a0bfca7dbfa59235d60b2eff82231dee33f53d206db1acd9173cfc0a7 \
     --hash=sha256:b683bd1b6659ddcd810ff02ad09ba821d4bf1065072805063eb35c49617905ac
-    # via python-dateutil
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   python-dateutil
 uncalled-for==0.4.1 \
     --hash=sha256:6412b19d1b1e7d431981fee01f8b47be7802f48328a48cbe9603acee757ec553 \
     --hash=sha256:b611b38879d9fe5088297e7bb28f2ddd12d2d73dad933d93da107fb63eb4058e
-    # via fastmcp-slim
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   fastmcp-slim
+uritemplate==4.2.0 \
+    --hash=sha256:480c2ed180878955863323eea31b0ede668795de182617fef9c6ca09e6ec9d0e \
+    --hash=sha256:962201ba1c4edcab02e60f9a0d3821e82dfc5d2d6662a21abd533879bdb8a686
+    # via google-api-python-client
 urllib3==2.8.0 \
     --hash=sha256:0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3 \
     --hash=sha256:63bf2ead4c879426ebf22ef2a781eeb4aa3b4ae798a0435506f8687fd5bb9b63
     # via
-    #   -r req-origin.txt
+    #   -c packaging/macos/requirements-lock.txt
+    #   -r requirements.txt
     #   requests
 uvicorn==0.54.0 \
     --hash=sha256:505bdb0f318731d45f1f712071fc781a8981f6847a31c902c9f5e652d4f67faf \
     --hash=sha256:a2e33cbfaa0306f8e6b0c13e0cb89d7d7a2da3e62b90c66e18c33d9807b28620
     # via
-    #   -r req-origin.txt
+    #   -c packaging/macos/requirements-lock.txt
+    #   -r requirements.txt
     #   fastmcp-slim
     #   mcp
     #   mlx-vlm
@@ -2906,7 +3399,9 @@ watchfiles==1.3.0 \
     --hash=sha256:eb94e40b9a0db19636b5e3fed0a9803452ecc7381df13b385272abb779ee83ca \
     --hash=sha256:ec3cd4bb181a7b6329134204c2277c7144ab5f62cce9c5335d6f901ee7ce8d6a \
     --hash=sha256:f0c9865240e065a2247f4b5248528ae3d01e0e8ae071462c250c884dc16e3ee3
-    # via fastmcp-slim
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   fastmcp-slim
 websockets==17.3 \
     --hash=sha256:018fab26140ce221c3853454a608e4e7004f4f10641cb97819dcd5b917bb2e99 \
     --hash=sha256:07246d4f0293ef0b87eff3d7dd88c1f03dd9f678fa39f6de87b2af8504e7e0de \
@@ -3063,6 +3558,7 @@ websockets==17.3 \
     --hash=sha256:fdd00937f15f5f93c8e53d8060a8c4c010431ab595a9b5b50ddd569a04603944 \
     --hash=sha256:fe7a168d805c8a7bf1c2de55b7ab2bc958586bfd88d0e87235a92cac66b590a7
     # via
+    #   -c packaging/macos/requirements-lock.txt
     #   fastmcp-slim
     #   mlx-vlm
 xxhash==4.0.2 \
@@ -3290,7 +3786,9 @@ xxhash==4.0.2 \
     --hash=sha256:fe5a0d96cb339d383d3f720ffe94d8a7a51ccc8abf4d348a3ee058b5625f948e \
     --hash=sha256:fe765b3c7e7fcd14ef9b77836295847cb73229cdbe7eced958ed013d2f1c4025 \
     --hash=sha256:fe86ae86241d0aee7561b19bf892c9250a976e4a56fc052405cd537180e7af15
-    # via datasets
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   datasets
 yarl==1.25.1 \
     --hash=sha256:0136d640dfa9b0523853e411430a99f8a91eca85774c6420285a33b755bc6de3 \
     --hash=sha256:03dd38de09bc213e9a8b29761eec33ee1d5318dac0e49d8af36e4d27830e23a7 \
@@ -3430,4 +3928,84 @@ yarl==1.25.1 \
     --hash=sha256:f53dcd26694f148f738edc052b5a69234833e739f10f4c3287bdfd8ec0f7b326 \
     --hash=sha256:f61964f235a43738bfac50da46fc4254943a7eea3051aeb0b6fc7c992c29fadc \
     --hash=sha256:fe01645169a2112aa1d4ebc3e4c5f029c5c8f97adfc32e5d37c993b39a994d75
-    # via aiohttp
+    # via
+    #   -c packaging/macos/requirements-lock.txt
+    #   aiohttp
+zeroconf==0.151.5 \
+    --hash=sha256:00ee9d456519c45c94201334d5cbd2699d5de9cc9ceeb647203b85295640abab \
+    --hash=sha256:05cdec63c6bc2fde2086a174339b40947bc30eead775effaab90c20558835f89 \
+    --hash=sha256:09a933cd3a4bb6a5a0eaf84b58aa0d32af330aa81aa75fc0e300551ccb9b775b \
+    --hash=sha256:11cc483a2fb4a08c8f3456d574c4b64dd8413028fd0bafc8eae77987a63f04c7 \
+    --hash=sha256:137f3c5cf600fccd100513e6d22a265d1b0301278607b84b9eb2de1e54c72fde \
+    --hash=sha256:1ab36f829be85f6546476be525463879e11ce67c6eb18d0b01b1c2b989ba35d0 \
+    --hash=sha256:1ef99729ee6109f08ebee6ce7ef7bd4280747848550462d40275b059e3eaca57 \
+    --hash=sha256:1ff72dd4ba1549814dcd87104997f324989fc2319558e6f4461931c4fc7dacec \
+    --hash=sha256:2304c3fd4717422242cc78315b37d48613109963900e0c9a2b784a91fd6e9c0e \
+    --hash=sha256:23f5d281c130af8f4976a611a1db196d17395d69815aeff3537a599430b9ca5a \
+    --hash=sha256:244d853ec76620cd31c5c4657cff22fb34e181826d833134244135202f92888f \
+    --hash=sha256:28c2ec9d772007eedf11b41a9c9fd3d5c684c17b00721ff8f1ee31b20ad286a1 \
+    --hash=sha256:2e843fdb7249cbf612cf0bdb729d4581d057b78c45423bd46a6bf377832b4ffc \
+    --hash=sha256:35b908297f4a36b5a934aa25dbcf5078bd26fedd7203bf92506041e0bfe32616 \
+    --hash=sha256:37f8a073825a208878e994300c0feb7d6b253e2af3d258678a8beec6b020506a \
+    --hash=sha256:3cba88b0fb77ea1b4dceaebae577c8245852159c525201b2453cd3bd5715cf56 \
+    --hash=sha256:3d3d2f0eb51e605f2010e83ab49db34c70c51304ee88a980ed1c59c0ea20b82f \
+    --hash=sha256:3da652fc2d7ba788651b8713340b6470e7218f6fd8392755666a49636d9d3383 \
+    --hash=sha256:422592b2d7dbe8c82fb0ec38f33898fa4a580587a8ee9a1554d1d5c477cf7903 \
+    --hash=sha256:44b34921217c4387cdb0b4b08ae510d9adbf76e80a3b84ae3f7c1f8cdc60c436 \
+    --hash=sha256:470ec9d7056d8e4d22e22c699a6e2e544c3e0b7bb2d49b700ef516e18d5b67a4 \
+    --hash=sha256:475e527d371fdc8d29d10cd2300140e735a8562df041041465704cff63452d9f \
+    --hash=sha256:47b9f3f49860cb60dd5d1453c681dbcced4cac96960935f1b9f7c24d7f3993ce \
+    --hash=sha256:50f67bf880c28ddc1d8c5717d759ef955a04066e5c9dbfd2dabb0489d01b7239 \
+    --hash=sha256:532e28946f6b384369747771e71094f76aa75b4bc2dfba6c099286d90111caf0 \
+    --hash=sha256:56060316f3464c86c1fbd32287ffab28fbb9c539ffd6a6e070251c455252c50c \
+    --hash=sha256:5846416ae2bddacb1bbb755233dd13c4bd15d94dfd0feb23a4b1abe1e2312302 \
+    --hash=sha256:5cfb9d625a12bb6788c142bd238479444ba43b8cbb56d6e0fd2becc17ef8e4a3 \
+    --hash=sha256:5daadc4306a6def67187dd8a4ee15978d0c4d425bad4dfef7b2131e909edce02 \
+    --hash=sha256:6385a69307ee9ccd71d0d2374f0a822590e2468919acbd4ae6bf3ab5f501a1f3 \
+    --hash=sha256:667d8fb8f6cb02d9e28085759f5c336b26fc596ce427a36dbb20ecd440dfe029 \
+    --hash=sha256:6a4bde05914a6dc6a4de83fb9f85ebcbf7fb1c89d9021122b689ebb6aa9d717c \
+    --hash=sha256:720a872df2924faedd33c737c2b8a4ac43c045b0b278c58d8b32e1eadff4fa9f \
+    --hash=sha256:841b16e18846132fd555cba136fbca2ff33ccd5b332d2c54293ceba242851e7e \
+    --hash=sha256:849c312c7c2f23f1e681ad8d3d2ca4189fb4df9cf426ad1933b3ad0403a5b4f8 \
+    --hash=sha256:8905f5ccf8cfa7e767dc9b0dd009e2787f8d8e5595f2a6d9c3e956cbb1a397cb \
+    --hash=sha256:8b15a9ff99c33622daf4a9b3c0bd0aeac7532b86d62e80e03fc3fab7e154140c \
+    --hash=sha256:92d5f219f09a45bebf28ce40776dbc1f8a0697871ceda8b6b9f2ffe8209826fe \
+    --hash=sha256:92dc32ac2ce69967d288091106581da063136441bd22ad8efd5bb611d692b890 \
+    --hash=sha256:92e9a1494c5938ca4e426150a3ad575e9b2ca14cc8af9372124d8800d791b1b8 \
+    --hash=sha256:9583f52f51f08f7b14e9f09d99cc0e5ed29afd02bfef6f9d89f175a3e3582a33 \
+    --hash=sha256:965d9e92ad34896a2537352a37affcff2daeb8c7af2072451220e753f0de990d \
+    --hash=sha256:99162e67862c2f17aeb5a432c70757419573e33cfab925eed566f8bc2a346bcb \
+    --hash=sha256:9bfb0efd3d9259e3a5e9b2373f895900ea3951ca843be84772b6726b8f16dd60 \
+    --hash=sha256:a382205700aa8ea63634b4a92b41176a6033bef7ec2380bfd0503e3e11e6d598 \
+    --hash=sha256:a48fedd887c3bafe45cf24e08aaa06a1b641ec3403696f4a01701ae64c9088a0 \
+    --hash=sha256:a561c0d95c96aea326bbfd8577044b22499a6154c4ee6a74bc70cd0cc1185743 \
+    --hash=sha256:a941c82401ae04d8548cf3567b22347509b589a867adede2646eee9bdfd4f446 \
+    --hash=sha256:ab67bb2233a0d9ce7d71d01b6791dac50d56c5a814ef1553ac97ae9c43e7eabf \
+    --hash=sha256:b124e30e18f29690907f7f7ed8b79ab34fa8f40fe300a6f5a8f21b04148497e5 \
+    --hash=sha256:b2c0ec31fd0195b3f32dcfb4b6133189278ad18fb27f88a20857adaa8d1589ad \
+    --hash=sha256:b6715218b4348b306ec11799cbc6e365fb078b60e0e5a384c5a6d5f48a495025 \
+    --hash=sha256:bd773d22ddd60f696e0be063a925a9d34f8de7bcc40e4b9c9360c9e081f97ab0 \
+    --hash=sha256:be010daad6e60fbdbbd085c6873dd9b491b2cd1e93f64e4a58722b2db72c2b9b \
+    --hash=sha256:bf19169739ee8608748db3533670f1f8622727e4cf189a7619eadf0895ccf2dd \
+    --hash=sha256:c1f45df00d20918fc7a0c2a6229ae1f9b44fbbef6a161df96c7710098c82e019 \
+    --hash=sha256:c24366d4e60b72adbf6fc954fb8df6165dae44d137f5c8afd8f7272995580681 \
+    --hash=sha256:c3f34b0e863f20af95fca7ef5871536015c964ce07462b6462c3246f6a385177 \
+    --hash=sha256:c6f98dafac6bacb715fd6644921a9220c09499fcaedc308d27e6fd4fd157837e \
+    --hash=sha256:c967096138b7a38ef51b54d71966ec234e1c0353485ab1925b845106db938e47 \
+    --hash=sha256:d702be8e8b456470af59fb268b4756c96b4754c7c4ad8c38035c7f0336ac35c5 \
+    --hash=sha256:d81e8e2c70cc590573069fad9036d1ded7f135c92ada79c89fe547978acf2f90 \
+    --hash=sha256:dc7d125bd01eca9f63e7c65a3e52a81e385ef6ac25721bc67e15b99efc3ce6b0 \
+    --hash=sha256:effc02f3ac1b39828b47db5f7c386b57699e2f2292d9d773879a9d1f9ef137b3 \
+    --hash=sha256:f13dfaa9091daf9c30198149b5d414bc1e92f25aceb0d8d9c9ca3f7ea7a239f8 \
+    --hash=sha256:f346b414b882ac0dee5beb55bc8bd6ad8c7415f26d6ab4629d91bfd6c5f30f62 \
+    --hash=sha256:f5e17c8b93fa9da4e6b125e2dd844cec3c5fe60af223ab6e179ad8ef0674fdbd \
+    --hash=sha256:f8f7ec289a07acb9e272d0f2998759b76ec81dd23b15a7506e05689f630fafd1 \
+    --hash=sha256:faecc5a1f318a920a4f7052a14391ae6def8fd6035313886e88f53705ad9dc8e
+    # via -r requirements.txt
+
+# The following packages were excluded from the output:
+# torch
+# sympy
+# mpmath
+# networkx
+# setuptools

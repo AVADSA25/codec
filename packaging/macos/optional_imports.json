@@ -1,0 +1,8 @@
+{
+  "_comment": "Third-party modules the services import but the buyer app does not ship. Each needs a reason. bundle_imports.py skips these; anything else the services import must be in requirements-lock.txt.",
+  "pyautogui": "Vision Mouse scroll and screen size (skills/mouse_control.py, lazy); pyautogui pulls mouseinfo (GPLv3+)",
+  "mlx_lm": "cookbook model probe (codec_cookbook/probe.py); the cookbook is not in the bundle yet (audit P-012)",
+  "faster_whisper": "optional local dictation model; PyAV's wheel bundles GPL libx264/libx265, so dictation uses the whisper-stt server",
+  "fitz": "PDF text in codec.py document input; PyMuPDF is AGPL-3.0",
+  "key_value.aio.stores.disk": "fallback token store in skills/mcp_connect.py used only when the Keychain store fails; needs diskcache and pathvalidate, which are not in the lock (every Mac has a Keychain)"
+}

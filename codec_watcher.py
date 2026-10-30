@@ -9,6 +9,7 @@ import json
 import signal
 import re
 import base64
+import codec_paste
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, lambda *a: None)
     signal.signal(signal.SIGTERM, lambda *a: None)
@@ -146,27 +147,13 @@ def speak(text):
 def paste_text(text):
     subprocess.run(["pbcopy"], input=text.encode(), timeout=5)
     time.sleep(0.3)
-    import pyautogui
-    # 2026-07-07: bundled hotkey('command','v') dropped the modifier on a
-    # WhatsApp Web paste after the long screenshot→vision→LLM delay in
-    # handle_draft() — only the bare "v" landed in the message box. The
-    # identical hotkey() call is reliable in codec_dictate.py, but that one
-    # fires within ~50ms of the user's own keypress (field already focused,
-    # no elapsed gap for anything to disturb modifier/focus state). Here the
-    # draft can take several seconds, so explicit keyDown/keyUp with the
-    # modifier held across a real pause is a more robust primitive than the
-    # single bundled call for this specific "long delay before paste" shape.
-    # try/finally: keyDown/keyUp aren't atomic like hotkey() was — an
-    # exception between them would otherwise leave Cmd stuck held (every
-    # subsequent click/keypress becomes a Cmd-combo until something releases
-    # it), which is worse than the bug this is fixing.
-    pyautogui.keyDown('command')
-    try:
-        time.sleep(0.08)
-        pyautogui.press('v')
-        time.sleep(0.08)
-    finally:
-        pyautogui.keyUp('command')
+    # 2026-07-07: a one-shot Cmd+V dropped the modifier on a WhatsApp Web paste after
+    # the long screenshot→vision→LLM delay in handle_draft() — only the bare "v"
+    # landed in the message box. The draft can take several seconds, so Cmd goes
+    # down first and is held across a real pause before V. codec_paste releases Cmd
+    # even on an error (a Cmd left held turns every later click and keypress into a
+    # Cmd-combo) and falls back to osascript when Quartz is unavailable.
+    codec_paste.paste_clipboard(settle=0.08)
 
 def handle_draft(task, ctx, app):
     print(f"[Watcher] Drafting: {task[:60]}")

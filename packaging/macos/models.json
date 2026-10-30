@@ -1,12 +1,12 @@
 {
-  "_comment": "RECOMMENDED EXAMPLE model manifest for the paid app (W5-5, E-8). The exact list + revision pins are the open model-strategy decision (docs/HANDOFF-MICKAEL.md §2). 'bundled' = ship in installer / fetch on first run (works offline). 'on_demand' = download with consent on first use. TODO before launch: confirm repos + pin every 'revision' to a commit SHA for supply-chain integrity. Models install to ~/.codec/models/<name>/ (never inside the .app).",
+  "_comment": "RECOMMENDED EXAMPLE model manifest for the paid app (W5-5, E-8). The exact list + revision pins are the open model-strategy decision (docs/HANDOFF-MICKAEL.md §2). 'bundled' = ship in installer / fetch on first run (works offline). 'on_demand' = download with consent on first use. Every 'revision' is a 40-hex commit SHA (pinned 2026-10-30 from the Hub; the two the Studio runs, whisper-turbo and qwen-35b-4bit, match its cached copies). To move a pin: read the new SHA from the model page, test it, change it here (codec_setup reads the pin from there). Models install to ~/.codec/models/<name>/ (never inside the .app).",
   "dest_default": "~/.codec/models",
   "models": [
     {
       "name": "whisper-turbo",
       "kind": "stt",
       "repo": "mlx-community/whisper-large-v3-turbo",
-      "revision": "main",
+      "revision": "a4aaeec0636e6fef84abdcbe3544cb2bf7e9f6fb",
       "tier": "bundled",
       "approx_gb": 1.6
     },
@@ -14,7 +14,7 @@
       "name": "kokoro-82m",
       "kind": "tts",
       "repo": "hexgrad/Kokoro-82M",
-      "revision": "main",
+      "revision": "f3ff3571791e39611d31c381e3a41a3af07b4987",
       "tier": "bundled",
       "approx_gb": 0.4
     },
@@ -22,7 +22,7 @@
       "name": "qwen-7b-4bit",
       "kind": "llm",
       "repo": "mlx-community/Qwen2.5-7B-Instruct-4bit",
-      "revision": "main",
+      "revision": "c26a38f6a37d0a51b4e9a1eb3026530fa35d9fed",
       "tier": "bundled",
       "approx_gb": 4.3
     },
@@ -30,7 +30,7 @@
       "name": "qwen-35b-4bit",
       "kind": "llm",
       "repo": "mlx-community/Qwen3.6-35B-A3B-4bit",
-      "revision": "main",
+      "revision": "38740b847e4cb78f352aba30aa41c76e08e6eb46",
       "tier": "on_demand",
       "approx_gb": 20.0
     },
@@ -38,7 +38,7 @@
       "name": "qwen-vl-7b",
       "kind": "vision",
       "repo": "mlx-community/Qwen2.5-VL-7B-Instruct-4bit",
-      "revision": "main",
+      "revision": "fdcc572e8b05ba9daeaf71be8c9e4267c826ff9b",
       "tier": "on_demand",
       "approx_gb": 6.0
     }

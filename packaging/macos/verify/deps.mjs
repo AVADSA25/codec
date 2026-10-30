@@ -23,18 +23,22 @@ for (const need of ["fastapi", "uvicorn"])
 if (!existsSync(py)) {
   fail.push(`bundled interpreter missing at ${py} — build the app first`);
 } else {
-  // Import what the app imports at startup, in the bundle's own interpreter.
-  const modules = ["fastapi", "uvicorn", "requests", "pydantic"];
-  for (const m of modules) {
+  // Import, in the bundle's own interpreter, every third-party module the fleet's
+  // services (and the skills they load) import. The list is built from the services
+  // in the built app, not hard-coded: it was 4 modules while the services import 45.
+  // bundle_imports.py runs the bundle's python with -B (see below) and also checks
+  // that each module is in the hash lock.
+  const services = join(app, "Contents/Resources/services.json");
+  const args = [join(pkg, "verify/bundle_imports.py"), "--python", py];
+  if (existsSync(services)) args.push("--services", services);
+  try {
     // -B and PYTHONDONTWRITEBYTECODE: importing inside the bundle would write
     // __pycache__/*.pyc into it and BREAK THE CODE SIGNATURE ("a sealed
     // resource is missing or invalid"). A check that damages the artifact it
-    // measures is worse than no check — this one did exactly that once.
-    try {
-      execFileSync(py, ["-B", "-c", `import ${m}`],
-                   { stdio: "pipe", env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" } });
-    }
-    catch { fail.push(`bundled python cannot import ${m} — the app will die at startup`); }
+    // measures is worse than no check - this one did exactly that once.
+    execFileSync("python3", args, { stdio: "pipe", env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" } });
+  } catch (e) {
+    fail.push(String(e.stderr || e.message).trim().replace(/^BUNDLE-IMPORTS FAILED:\n?/, ""));
   }
 }
 

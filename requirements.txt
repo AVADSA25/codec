@@ -55,8 +55,29 @@ mlx-vlm>=0.7.10; sys_platform == "darwin" and platform_machine == "arm64"
 # that asks the bundled server a real question. Pure Python, tiny, unconditional.
 jinja2>=3.1.6
 
-# Optional: STT (Whisper via MLX)
-# mlx-whisper
+# Speech to text and dictation (D-35, audit P-011). whisper_server.py (PM2/launchd
+# `whisper-stt`) imports mlx_whisper and codec_dictate.py imports pyperclip; neither
+# was declared, so the bundled interpreter died at start with ModuleNotFoundError
+# while the Studio worked on packages installed by hand.
+# Apple Silicon only, like mlx-vlm above.
+mlx-whisper>=0.4.3; sys_platform == "darwin" and platform_machine == "arm64"
+pyperclip>=1.11.0; sys_platform == "darwin"
+# faster-whisper is NOT declared on purpose: it needs PyAV, whose wheel bundles the
+# GPL libraries libx264 and libx265, and the paid app ships permissive or LGPL code
+# only. codec_dictate.py uses it when it is installed (the Studio) and otherwise
+# sends the recording to the bundled whisper-stt server (mlx-whisper, above).
 
-# Optional: Google Workspace integration
-# google-auth google-auth-oauthlib google-api-python-client
+# Google Workspace skills (codec_google_auth.py, codec_gdocs.py, skills/google_*.py,
+# reauth_google.py). Imported lazily, so a missing package showed only when a buyer
+# first asked for a calendar or a doc.
+google-api-python-client>=2.200.0
+google-auth>=2.40.0
+google-auth-oauthlib>=1.2.2
+
+# macOS-only helpers imported at runtime: request_mic.py (microphone permission),
+# codec_observer.py and codec_overlays.py (AppKit, Quartz), setup_hue.py (mDNS
+# bridge discovery, falls back to a cloud lookup when absent).
+pyobjc-framework-AVFoundation>=12.2; sys_platform == "darwin"
+pyobjc-framework-Quartz>=12.2; sys_platform == "darwin"
+pyobjc-framework-Cocoa>=12.2; sys_platform == "darwin"
+zeroconf>=0.150.0

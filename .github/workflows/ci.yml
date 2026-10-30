@@ -102,14 +102,18 @@ jobs:
         # drop --require-hashes or --only-binary to make this step pass.
         run: |
           python -m pip install --upgrade pip
-          python -m pip install --require-hashes --only-binary=:all: -r "$BUYER_LOCK"
+          python -m pip install --require-hashes --only-binary=:all: --no-deps -r "$BUYER_LOCK"
       - name: Add the test tools, held to the lock's versions
         # pytest, ruff and pytest-cov only; the constraints stop pip from
         # changing any package the lock installed.
         run: |
           python tools/lock_to_constraints.py "$BUYER_LOCK" > "$RUNNER_TEMP/constraints.txt"
           python -m pip install -c "$RUNNER_TEMP/constraints.txt" -r requirements-dev.txt pytest-cov
-          python -m pip check
+          # The lock leaves out torch on purpose (its header says why), so pip check
+          # reports mlx-whisper's one missing requirement and nothing else.
+          python -m pip check > "$RUNNER_TEMP/pipcheck.txt" || true
+          grep -v -e '^No broken requirements' -e '^mlx-whisper .* requires torch, which is not installed' "$RUNNER_TEMP/pipcheck.txt" > "$RUNNER_TEMP/pipcheck-other.txt" || true
+          if [ -s "$RUNNER_TEMP/pipcheck-other.txt" ]; then cat "$RUNNER_TEMP/pipcheck-other.txt"; exit 1; fi
       - name: Skill import smoke (standalone script, not a pytest module)
         run: python tests/test_skill_imports.py
       - name: Run full pytest suite
