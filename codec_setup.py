@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import threading
 import time
 import urllib.error
@@ -48,6 +49,26 @@ HF_CACHE = os.path.expanduser("~/.cache/huggingface/hub")
 # default named a 20 GB model nobody had — the mismatch that made every first
 # chat fail. Keep these two in step: packaging/macos/models.json is the source.
 BUNDLED_LOCAL_MODEL = "mlx-community/Qwen2.5-7B-Instruct-4bit"
+
+
+def bundled_local_revision():
+    """The commit the model download is pinned to, read from models.json (a branch name can
+    change under us). In the repo that is packaging/macos/models.json; in the app it is
+    Resources/models.json, next to Resources/app. CODEC_MODELS_JSON overrides both.
+    Returns None when no manifest lists the model, and the download then follows the default branch."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    for path in (os.environ.get("CODEC_MODELS_JSON", ""),
+                 os.path.join(here, "packaging", "macos", "models.json"),
+                 os.path.join(os.path.dirname(here), "models.json")):
+        try:
+            with open(path, encoding="utf-8") as f:
+                models = json.load(f)["models"]
+        except (OSError, ValueError, KeyError):
+            continue
+        for m in models:
+            if m.get("repo") == BUNDLED_LOCAL_MODEL and re.fullmatch(r"[0-9a-f]{40}", str(m.get("revision", ""))):
+                return m["revision"]
+    return None
 LOCAL_BASE_URL = "http://localhost:8083/v1"
 
 AVA_PROXY_URL = "https://ava-proxy.lucyvpa.com"
@@ -406,7 +427,7 @@ def start_download(fetch=None) -> Dict[str, Any]:
                 fetch(BUNDLED_LOCAL_MODEL, dest)
             else:
                 from huggingface_hub import snapshot_download
-                snapshot_download(repo_id=BUNDLED_LOCAL_MODEL, local_dir=dest)
+                snapshot_download(repo_id=BUNDLED_LOCAL_MODEL, revision=bundled_local_revision(), local_dir=dest)
             if not _dir_has_weights(dest):
                 raise RuntimeError("download finished but no weights were written")
             with _DL_LOCK:

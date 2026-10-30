@@ -49,6 +49,7 @@ def call_qwen(text, mode):
     return re.sub(r'###\s*FINAL ANSWER:\s*', '', result).strip()
 
 import codec_overlays
+import codec_paste
 
 
 def overlay(text, color, duration):
@@ -231,29 +232,15 @@ r.mainloop()
         # Proofread / Elevate / Reply / Prompt: replace the selection in place.
         subprocess.run(["pbcopy"], input=result.encode(), check=True)
         time.sleep(0.3)
-        # 2026-07-08: paste via pyautogui keyDown/keyUp (CGEventPost, a
-        # hardware-level event) instead of `osascript System Events keystroke
-        # "v" using command down`. The osascript path routes through the
-        # Accessibility API to the frontmost app and is unreliable in
-        # FULL-SCREEN apps — it drops the modifier or misses focus, leaving the
-        # result stuck on the clipboard un-pasted (user report). CGEventPost
-        # posts to the HID stream and lands regardless of full-screen state.
-        # Same fix already applied to codec_watcher.py's draft paste.
-        # try/finally so an exception can't leave Cmd stuck held.
-        try:
-            import pyautogui
-            pyautogui.keyDown('command')
-            try:
-                time.sleep(0.05)
-                pyautogui.press('v')
-                time.sleep(0.05)
-            finally:
-                pyautogui.keyUp('command')
-        except Exception:
-            # Last-resort fallback to the old path if pyautogui is unavailable.
-            subprocess.run(["osascript", "-e",
-                'tell application "System Events" to keystroke "v" using command down'],
-                capture_output=True, timeout=5)
+        # 2026-07-08: paste with a hardware-level key event (CGEventPost) instead
+        # of `osascript System Events keystroke "v" using command down`. The
+        # osascript path routes through the Accessibility API to the frontmost app
+        # and is unreliable in FULL-SCREEN apps — it drops the modifier or misses
+        # focus, leaving the result stuck on the clipboard un-pasted (user report).
+        # CGEventPost posts to the HID stream and lands regardless of full-screen
+        # state. codec_paste releases Cmd even on an error, and falls back to
+        # osascript when Quartz is unavailable.
+        codec_paste.paste_clipboard(settle=0.05)
         overlay("✅ Text replaced!", "#44cc66", 2000)
 except Exception:
     codec_overlays.hide_overlay()

@@ -6,12 +6,14 @@
 # packaging/macos/python-runtime.json (single source of truth).
 #
 # Steps: resolve arch -> download the pinned tarball -> VERIFY sha256 (refuse on
-# mismatch) -> extract to <App>/Contents/Resources/python -> pip install the
-# project requirements into it.
+# mismatch) -> extract to <App>/Contents/Resources/python -> pip install the hash
+# lock (packaging/macos/requirements-lock.txt) into it. The lock is the only thing
+# installed: every file hash-pinned, wheels only, no dependency resolution (the lock
+# is the whole set; see its header for the five packages it leaves out on purpose).
 #
 # Usage:
 #   bundle_python.sh --app "dist/Sovereign AI Workstation.app" [--arch aarch64|x86_64]
-#                    [--requirements requirements.txt] [--skip-pip] [--dry-run]
+#                    [--lock packaging/macos/requirements-lock.txt] [--skip-pip] [--dry-run]
 # See docs/W5-4-PYTHON-BUNDLE-DESIGN.md.
 set -euo pipefail
 
@@ -21,7 +23,7 @@ MANIFEST="$HERE/python-runtime.json"
 
 APP=""
 ARCH=""
-REQS="$REPO/requirements.txt"
+LOCK="$HERE/requirements-lock.txt"
 SKIP_PIP=0
 DRY_RUN=0
 
@@ -29,7 +31,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --app) APP="$2"; shift 2 ;;
         --arch) ARCH="$2"; shift 2 ;;
-        --requirements) REQS="$2"; shift 2 ;;
+        --lock) LOCK="$2"; shift 2 ;;
         --manifest) MANIFEST="$2"; shift 2 ;;
         --skip-pip) SKIP_PIP=1; shift ;;
         --dry-run) DRY_RUN=1; shift ;;
@@ -74,7 +76,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
     echo "[dry-run] download: ${URL}"
     echo "[dry-run] sha256:   ${SHA}"
     echo "[dry-run] install into: ${DEST}"
-    echo "[dry-run] then: ${DEST}/bin/python3 -m pip install -r ${REQS}"
+    echo "[dry-run] then: ${DEST}/bin/python3 -m pip install --require-hashes --only-binary=:all: --no-deps -r ${LOCK}"
     exit 0
 fi
 
@@ -109,10 +111,11 @@ BUNDLED_PY="$DEST/bin/python3"
 echo "==> bundled interpreter: $("$BUNDLED_PY" --version 2>&1)"
 
 if [ "$SKIP_PIP" -eq 0 ]; then
-    [ -f "$REQS" ] || { echo "FATAL: requirements not found: $REQS" >&2; exit 1; }
-    echo "==> pip install -r $REQS into the bundle"
+    [ -f "$LOCK" ] || { echo "FATAL: hash lock not found: $LOCK" >&2; exit 1; }
+    grep -q -e '--hash=sha256:' "$LOCK" || { echo "FATAL: $LOCK has no --hash lines; the bundle installs from a hash lock only" >&2; exit 1; }
+    echo "==> pip install the hash lock $LOCK into the bundle"
     "$BUNDLED_PY" -m pip install --upgrade pip >/dev/null
-    "$BUNDLED_PY" -m pip install -r "$REQS"
+    "$BUNDLED_PY" -m pip install --require-hashes --only-binary=:all: --no-deps -r "$LOCK"
 fi
 
 echo "==> done. Bundled Python at $DEST"

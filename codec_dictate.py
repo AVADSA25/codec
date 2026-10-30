@@ -4,7 +4,8 @@ CODEC Dictate — Hold-to-Speak + Live Typing
 Hold ⌘R → speak → release → text pasted at cursor
 L → live typing mode (words appear in real-time wherever cursor is)
 
-Requirements: pynput, pyautogui, faster-whisper, Pillow, requests
+Requirements: pynput, pyperclip, Pillow, requests (faster-whisper is optional: without it the
+recording goes to the whisper-stt server)
 """
 
 import threading
@@ -13,11 +14,19 @@ import subprocess
 import sys
 import os
 import time
-import pyautogui
 import pyperclip
 
 from pynput import keyboard
-from faster_whisper import WhisperModel
+
+import codec_paste
+
+# faster-whisper is not in the buyer lock (its PyAV wheel bundles GPL libx264/libx265).
+# Installed (the Studio): the local model below is used, as before. Not installed: the
+# recording goes to the whisper-stt server (mlx-whisper), see _ServerModel.
+try:
+    from faster_whisper import WhisperModel
+except ImportError:
+    WhisperModel = None
 
 # ── CONFIG ──────────────────────────────────────────────────────────────────
 WHISPER_MODEL_SIZE = "base"          # tiny / base / small — base is best balance
@@ -70,10 +79,30 @@ def is_hallucination(text):
     return False
 
 # ── LOAD WHISPER ─────────────────────────────────────────────────────────────
+class _ServerModel:
+    """Stands in for faster_whisper.WhisperModel when that is not installed: the same
+    transcribe() call, answered by the whisper-stt server."""
+
+    def transcribe(self, audio_path, language="en", **_unused):
+        import requests
+        from types import SimpleNamespace
+        with open(audio_path, "rb") as f:
+            r = requests.post(WHISPER_SERVER, files={"file": ("dictate.wav", f, "audio/wav")},
+                              data={"pin_language": language}, timeout=60)
+        r.raise_for_status()
+        text = (r.json().get("text") or "").strip()
+        return ([SimpleNamespace(text=text)] if text else [],
+                SimpleNamespace(language=language, language_probability=1.0))
+
+
 def load_model():
     global model
-    print("[DICTATE] Loading Whisper model...")
-    model = WhisperModel(WHISPER_MODEL_SIZE, device=WHISPER_DEVICE, compute_type=WHISPER_COMPUTE)
+    if WhisperModel is None:
+        print("[DICTATE] faster-whisper not installed: using the whisper-stt server.")
+        model = _ServerModel()
+    else:
+        print("[DICTATE] Loading Whisper model...")
+        model = WhisperModel(WHISPER_MODEL_SIZE, device=WHISPER_DEVICE, compute_type=WHISPER_COMPUTE)
     model_loaded.set()
     print("[DICTATE] Whisper ready.")
 
@@ -224,10 +253,10 @@ def _live_record_loop():
                     paste_text = chunk_text + " "
                     pyperclip.copy(paste_text)
                     time.sleep(0.05)
-                    # Use pyautogui (CGEventPost) instead of osascript — does NOT
+                    # Quartz key event (CGEventPost) instead of osascript — does NOT
                     # activate System Events / shift focus. Paste lands in the
                     # field the user has focused, not the URL bar.
-                    pyautogui.hotkey('command', 'v')
+                    codec_paste.paste_clipboard()
                     print(f"[DICTATE] Live: '{chunk_text}'")
         except Exception as e:
             print(f"[DICTATE] Live chunk error: {e}")
@@ -403,7 +432,7 @@ def transcribe_and_type(audio_path):
         # Small delay to ensure focus is back on target window
         time.sleep(0.15)
 
-        # Paste via osascript — more reliable than pyautogui on macOS
+        # Paste via osascript — more reliable than a synthetic key event on macOS
         subprocess.run(["osascript", "-e",
             'tell application "System Events" to keystroke "v" using command down'],
             capture_output=True, timeout=5)
