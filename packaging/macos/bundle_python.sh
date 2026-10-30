@@ -10,6 +10,7 @@
 # lock (packaging/macos/requirements-lock.txt) into it. The lock is the only thing
 # installed: every file hash-pinned, wheels only, no dependency resolution (the lock
 # is the whole set; see its header for the six packages it leaves out on purpose).
+# Wheels are chosen for the app's macOS floor (Info.plist), not for the build Mac (D-34).
 #
 # Usage:
 #   bundle_python.sh --app "dist/Sovereign AI Workstation.app" [--arch aarch64|x86_64]
@@ -76,7 +77,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
     echo "[dry-run] download: ${URL}"
     echo "[dry-run] sha256:   ${SHA}"
     echo "[dry-run] install into: ${DEST}"
-    echo "[dry-run] then: ${DEST}/bin/python3 -m pip install --require-hashes --only-binary=:all: --no-deps -r ${LOCK}"
+    echo "[dry-run] then: ${DEST}/bin/python3 -m pip install --require-hashes --only-binary=:all: --no-deps --platform macosx_<floor>_0_<arch> --target <site-packages> -r ${LOCK}"
     exit 0
 fi
 
@@ -114,8 +115,16 @@ if [ "$SKIP_PIP" -eq 0 ]; then
     [ -f "$LOCK" ] || { echo "FATAL: hash lock not found: $LOCK" >&2; exit 1; }
     grep -q -e '--hash=sha256:' "$LOCK" || { echo "FATAL: $LOCK has no --hash lines; the bundle installs from a hash lock only" >&2; exit 1; }
     echo "==> pip install the hash lock $LOCK into the bundle"
+    # Pick the wheels built for the app's floor (Info.plist LSMinimumSystemVersion), not for this
+    # Mac: on a macOS 26 build Mac plain pip chose macosx_26_0 wheels (mlx needed macOS 26.2) and the
+    # app would not load on macOS 14 (D-34). --platform makes pip accept every wheel up to the floor;
+    # it needs --target, so the packages go straight into the bundled interpreter's site-packages.
+    FLOOR_MAJOR="$(python3 -c 'import plistlib,sys; print(plistlib.load(open(sys.argv[1], "rb"))["LSMinimumSystemVersion"].split(".")[0])' "$HERE/Info.plist")"
+    case "$ARCH" in aarch64) PIP_ARCH=arm64 ;; x86_64) PIP_ARCH=x86_64 ;; esac
+    SITE="$("$BUNDLED_PY" -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')"
     "$BUNDLED_PY" -m pip install --upgrade pip >/dev/null
-    "$BUNDLED_PY" -m pip install --require-hashes --only-binary=:all: --no-deps -r "$LOCK"
+    "$BUNDLED_PY" -m pip install --require-hashes --only-binary=:all: --no-deps --upgrade \
+        --platform "macosx_${FLOOR_MAJOR}_0_${PIP_ARCH}" --target "$SITE" -r "$LOCK"
 fi
 
 echo "==> done. Bundled Python at $DEST"

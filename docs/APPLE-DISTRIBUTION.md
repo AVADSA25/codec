@@ -47,6 +47,13 @@ Decision-complete, no build required; consumed by the signing pipeline later:
 - **`codec.entitlements`** — the hardened-runtime set in §3 (no app-sandbox).
 - **`PrivacyInfo.xcprivacy`** — Required-Reasons APIs CODEC actually hits: `NSPrivacyAccessedAPICategoryFileTimestamp` (observer recent-files mtime, scheduler) reason `C617.1`, `NSPrivacyAccessedAPICategoryDiskSpace` (heartbeat health, `df`) reason `E174.1`; `NSPrivacyTracking=false`, empty `NSPrivacyTrackingDomains`, empty `NSPrivacyCollectedDataTypes` (local-first — nothing leaves the machine).
 
+### Minimum macOS: 14 (Sonoma) (D-34, docs/MACOS-FLOOR-DESIGN.md)
+`LSMinimumSystemVersion` in `Info.plist` is the one place the floor is written. The README requirements line,
+the lock header and `tests/test_macos_floor.py` agree with it. The Swift launcher is built with
+`-target <arch>-apple-macos<floor>`; the bundle installs wheels for that floor
+(`pip --platform macosx_14_0_arm64`); `verify/macho_minos.py` walks the built app and fails the build if any
+Mach-O file needs a newer macOS. Reason: the MLX wheels start at macOS 14 (PyPI has no `macosx_13` mlx wheel).
+
 ## 5. Roadmap (Audit E checklist, decisions filled in)
 
 | Step | Finding | Status |

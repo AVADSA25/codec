@@ -364,7 +364,7 @@ cd codec
 The setup wizard handles everything in 9 steps: LLM, voice, vision, hotkeys, Google OAuth, remote access, and more.
 
 **Requirements:**
-- macOS Ventura or later
+- macOS 14 (Sonoma) or later
 - Python 3.10+
 - An LLM (Ollama, LM Studio, MLX, or any OpenAI-compatible API)
 - Whisper for voice input, Kokoro for voice output, a vision model for screen reading
