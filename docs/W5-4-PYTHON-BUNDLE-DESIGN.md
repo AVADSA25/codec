@@ -59,6 +59,9 @@ typically self-built wheels) are fixed at sign time — tracked for W5-7.
   consistent with the repo's audit-HMAC / allowlist posture).
 - The bundled pip install uses the hash lock `packaging/macos/requirements-lock.txt`
   (the F-15 lock-file, made real in D-33 and D-35).
+- The install asks pip for wheels built for the app's floor, not for the build Mac
+  (`--platform macosx_14_0_arm64 --target <site-packages>`, D-34), and `build_app.sh` then runs
+  `verify/macho_minos.py` over the whole app. See docs/MACOS-FLOOR-DESIGN.md.
 
 ## Test plan (`tests/test_python_bundle.py`, hermetic — no network in CI)
 

@@ -98,11 +98,13 @@ LAUNCHER_SWIFT="$PKG_DIR/launcher/codec_launcher.swift"
 LAUNCHER_SOURCES=("$PKG_DIR/launcher"/*.swift)
 if [ -f "$LAUNCHER_SWIFT" ]; then
     echo "==> compiling Mach-O launcher"
-    SWIFTC_ARGS=(-O -o "$CONTENTS/MacOS/codec" "${LAUNCHER_SOURCES[@]}")
-    [ -n "${ARCH:-}" ] && case "$ARCH" in
-        aarch64) SWIFTC_ARGS=(-target arm64-apple-macos13.0 "${SWIFTC_ARGS[@]}") ;;
-        x86_64)  SWIFTC_ARGS=(-target x86_64-apple-macos13.0 "${SWIFTC_ARGS[@]}") ;;
-    esac
+    # Always build for the oldest macOS the app supports (Info.plist LSMinimumSystemVersion), not for
+    # the build Mac's own OS: without -target the launcher got minos 26.0 on a macOS 26 build Mac and
+    # would not start on macOS 14 (D-34). The arch defaults to this Mac's.
+    MIN_MACOS="$(python3 -c 'import plistlib,sys; print(plistlib.load(open(sys.argv[1], "rb"))["LSMinimumSystemVersion"])' "$PKG_DIR/Info.plist")"
+    LAUNCHER_ARCH="${PY_ARCH:-$(uname -m)}"
+    case "$LAUNCHER_ARCH" in aarch64) LAUNCHER_ARCH=arm64 ;; esac
+    SWIFTC_ARGS=(-O -target "${LAUNCHER_ARCH}-apple-macos${MIN_MACOS}" -o "$CONTENTS/MacOS/codec" "${LAUNCHER_SOURCES[@]}")
     swiftc "${SWIFTC_ARGS[@]}"
     # Fail loudly: a script here silently disables every entitlement.
     file "$CONTENTS/MacOS/codec" | grep -q "Mach-O" || {
@@ -213,6 +215,13 @@ if [ "$WITH_PYTHON" -eq 1 ]; then
     BP_ARGS=(--app "$APP")
     [ -n "$PY_ARCH" ] && BP_ARGS+=(--arch "$PY_ARCH")
     bash "$PKG_DIR/bundle_python.sh" "${BP_ARGS[@]}"
+fi
+
+# --- no file in the app may need a newer macOS than the floor (D-34) -------
+if [ "$WITH_PYTHON" -eq 1 ]; then
+    echo "==> checking the macOS minimum of every Mach-O file"
+    python3 "$PKG_DIR/verify/macho_minos.py" --app "$APP" || {
+        echo "build_app.sh: the app needs a newer macOS than Info.plist promises (see the list above)" >&2; exit 1; }
 fi
 
 echo "==> done: $APP"
