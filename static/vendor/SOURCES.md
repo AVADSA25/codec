@@ -41,9 +41,13 @@ scripts from a third-party host. The `/static` mount serves only `.css .svg
 | `vendor/mermaid.min.js` | mermaid 12.0.0 (`dist/mermaid.min.js`) | MIT | `28fca7ae6ebc7ed7bb63bde63136a74bfef14f296a57e403657eeb8b32836073` |
 
 The IBM Plex licence text is in `fonts/LICENSE-IBM-Plex.txt`. marked, DOMPurify
-and highlight.js carry their licence in their banner comment; the KaTeX and
-Mermaid licence texts are `vendor/katex/LICENSE.txt` and
-`vendor/LICENSE-mermaid.txt`.
+and highlight.js carry their licence in their banner comment and, since P-056
+(2026-11-01), in `vendor/LICENSE-marked.txt`, `vendor/LICENSE-dompurify.txt`
+(the Apache-2.0 text DOMPurify is used under) and `vendor/LICENSE-highlightjs.txt`,
+each fetched from the same npm package version as the file it belongs to
+(`LICENSE` at the package root, via cdn.jsdelivr.net). The KaTeX and Mermaid
+licence texts are `vendor/katex/LICENSE.txt` and `vendor/LICENSE-mermaid.txt`.
+`THIRD-PARTY-NOTICES.md` at the repo root collects all of them.
 
 KaTeX and Mermaid were added on 2026-09-29 (MATH, docs/MATH-DESIGN.md), each file
 checked against the SHA-256 jsDelivr publishes for that package version. They

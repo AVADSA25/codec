@@ -507,6 +507,8 @@ from routes.skills_page import router as skills_page_router
 from routes.connections import router as connections_router
 from routes.compare import router as compare_router
 from routes.usage import router as usage_router
+# P-056: Settings > About (version + third-party notices).
+from routes.about import router as about_router
 from routes.learning import router as learning_router
 # H1 / SR-59: chat handler (POST /api/chat) + its helper cluster. The helpers
 # are re-exported back here (below) for the command-handler caller + the
@@ -575,6 +577,7 @@ app.include_router(skills_page_router)
 app.include_router(connections_router)
 app.include_router(compare_router)
 app.include_router(usage_router)
+app.include_router(about_router)
 app.include_router(learning_router)
 app.include_router(chat_router)
 if _has_triggers:

@@ -77,6 +77,14 @@ def test_build_assembles_bundle_and_selftest_passes():
         assert st.returncode == 0, f"--selftest failed: {st.stderr}\n{st.stdout}"
 
 
+def test_the_bundle_carries_the_third_party_notices():
+    with tempfile.TemporaryDirectory() as td:
+        r = subprocess.run(["bash", str(BUILD), "--out", td, "--clean"], capture_output=True, text=True, timeout=120)
+        assert r.returncode == 0, f"build_app.sh failed: {r.stderr}\n{r.stdout}"
+        copy = Path(td) / "Sovereign AI Workstation.app" / "Contents" / "Resources" / "THIRD-PARTY-NOTICES.md"
+        assert copy.read_bytes() == (REPO / "THIRD-PARTY-NOTICES.md").read_bytes()
+
+
 def test_the_bundle_carries_the_release_version_as_its_build_number():
     # Sparkle offers an update only when the appcast's sparkle:version (CFBundleVersion) is
     # higher than the installed one. It stayed "1" on every build, so no installed copy was

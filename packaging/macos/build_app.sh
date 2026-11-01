@@ -160,6 +160,9 @@ echo "==> copying first-run + launchd fleet installer"
 cp "$PKG_DIR/first_run.py"    "$CONTENTS/Resources/first_run.py"
 cp "$PKG_DIR/fetch_models.py" "$CONTENTS/Resources/fetch_models.py"
 cp "$PKG_DIR/models.json"     "$CONTENTS/Resources/models.json"
+# The notices the LGPL and attribution licences ask for (P-056); the app is sold, so a build without them fails.
+[ -f "$REPO/THIRD-PARTY-NOTICES.md" ] || { echo "THIRD-PARTY-NOTICES.md is missing: run tools/gen_third_party_notices.py" >&2; exit 1; }
+cp "$REPO/THIRD-PARTY-NOTICES.md" "$CONTENTS/Resources/THIRD-PARTY-NOTICES.md"
 cp -R "$PKG_DIR/launchd"      "$CONTENTS/Resources/launchd"
 rm -rf "$CONTENTS/Resources/launchd/__pycache__"
 chmod +x "$CONTENTS/Resources/launchd/"*.sh
