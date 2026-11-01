@@ -1,0 +1,36 @@
+{
+  "_comment": "Licence of each model in models.json, read from its model card (README front matter) at the pinned revision. When a pin in models.json moves, read the new card and change the revision and licence here; tests/test_third_party_notices.py fails until they match. A model whose licence is unverified, non-commercial or research-only blocks the release (P-014b) because the app is sold.",
+  "models": {
+    "whisper-turbo": {
+      "repo": "mlx-community/whisper-large-v3-turbo",
+      "revision": "a4aaeec0636e6fef84abdcbe3544cb2bf7e9f6fb",
+      "licence": "MIT (upstream OpenAI card; this card states none)",
+      "card_read": "2026-11-01",
+      "note": "The card at the pinned revision states no licence. It is a conversion to MLX of OpenAI Whisper large-v3-turbo, whose card (openai/whisper-large-v3-turbo) says MIT, read 2026-11-01. Treated as MIT; ask the repository owner to add the licence to the card."
+    },
+    "kokoro-82m": {
+      "repo": "hexgrad/Kokoro-82M",
+      "revision": "f3ff3571791e39611d31c381e3a41a3af07b4987",
+      "licence": "Apache-2.0",
+      "card_read": "2026-11-01"
+    },
+    "qwen-7b-4bit": {
+      "repo": "mlx-community/Qwen2.5-7B-Instruct-4bit",
+      "revision": "c26a38f6a37d0a51b4e9a1eb3026530fa35d9fed",
+      "licence": "Apache-2.0",
+      "card_read": "2026-11-01"
+    },
+    "qwen-35b-4bit": {
+      "repo": "mlx-community/Qwen3.6-35B-A3B-4bit",
+      "revision": "38740b847e4cb78f352aba30aa41c76e08e6eb46",
+      "licence": "Apache-2.0",
+      "card_read": "2026-11-01"
+    },
+    "qwen-vl-7b": {
+      "repo": "mlx-community/Qwen2.5-VL-7B-Instruct-4bit",
+      "revision": "fdcc572e8b05ba9daeaf71be8c9e4267c826ff9b",
+      "licence": "Apache-2.0",
+      "card_read": "2026-11-01"
+    }
+  }
+}

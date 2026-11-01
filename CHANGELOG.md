@@ -1,5 +1,28 @@
 # Changelog
 
+## v3.7.0 (2026-11-01)
+Vibe projects and a coding agent, Notes, a cloned voice, a security pass over the power skills, and a macOS app that installs only what it lists and runs on macOS 14 or later.
+
+### Added
+- **Vibe projects.** A project is a folder of files kept behind checkpoints: every AI change is saved before and after, with Undo AI change and Versions (#458). Chat, code and a live preview sit side by side, the code can be hidden, and a phone gets tabs (#459). A project can be shown on localhost, or a command run on this Mac, only when you ask (#460).
+- **Vibe coding agent.** The agent reads, edits and creates files in a project step by step (#461), with a Chat | Agent switch, a run card and Undo run on the page (#462). It runs checks and tests in a macOS sandbox, and only after you approve the exact command (#466). The Monaco code editor is served from a copy inside the app, not from a CDN (#489).
+- **Notes.** A Notes tab under Tasks and a Save to Notes button under each chat reply (#467). "Save a note: ..." in chat, voice or the bridges saves to it (#468).
+- **A cloned voice.** Read-aloud and announcements can speak in a voice cloned from a reference clip, and fall back to the standard voice whenever anything is wrong (#469). The live voice call can speak it too, streamed while it is made (#470).
+- **Phone.** Bigger text, Today opens on its tiles, and no pull-to-refresh (#457).
+- **Release documents.** THIRD-PARTY-NOTICES lists every Python package, model and web asset the app contains with its licence and licence text, and Settings > About shows the version and links to it (P-056).
+
+### Changed
+- **Voice call.** CODEC stops speaking only when you say a sentence, no longer for a cough or a door (#497).
+- **Local-first defaults** for web search, picture analysis, email triage, text assist and Google Docs sharing. Chat searches the web only when the Search the web switch is on (#490).
+- **Backups check themselves.** Each backup copy is verified before it counts, one writer makes them, a restore tool exists, and the retention you set (chats 90 days, clipboard 30, webcam photos 30 by default) is applied daily and shown in Settings > Memory (#496).
+- **Safer power skills.** The wake word and the voice call ask before high-power skills (#486). The crew shell runs in a macOS sandbox and custom-agent tools are checked (#493). Browser skills follow a URL policy (#485). The voice socket checks where a page comes from, and login keys cannot be changed through the config routes (#484). Every osascript call uses one AppleScript escape (#483). AI-driven file writes go only to the allowed folders (#482). A negated answer such as "don't delete" no longer counts as consent (#481). Every URL fetch goes through one guard (#479). The calculator no longer uses eval, and pm2_control refuses protected services (#478). The Telegram bot token is hidden when startup verification fails (#476).
+- **Vibe.** Chat runs on its own route and stays local unless you confirm the cloud model (#499). The agent sandbox reads less and protects hook folders (#494).
+- **macOS app.** Python packages install only from a hash-locked list in which every import is declared (#500). The microphone and PDFs work without Homebrew tools (#501). The webcam uses AVFoundation instead of OpenCV (#502). The app targets macOS 14 or later (#503). The build number follows VERSION, so Sparkle can offer updates (#452).
+
+### Internal (nothing you would notice)
+- Hash-locked macOS CI job, pinned actions and pip-audit (#487); route-table tests for newer FastAPI (#491); Vibe agent eval bar and result file (#498); calculator test timing (#480); two documents moved out of the public repo (#477, #488), which also dropped two unused routes and four unused memory functions (#488).
+- Dependency updates for fastapi, fastmcp, mlx-vlm, ruff and setuptools (#453, #463, #464, #465, #471, #472, #473, #474, #475).
+
 ## v3.6.0 (2026-10-08)
 UI phases 2 and 3: every page on one shell, and the features around it.
 

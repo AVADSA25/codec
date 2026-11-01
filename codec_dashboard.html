@@ -1206,6 +1206,13 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
         <p style="font-size:var(--fs-12);color:var(--text-dim);margin:0 0 8px;padding:0 4px">Trigger phrases now sit with each skill on the Skills page, with where it works and what it needs.</p>
         <button type="button" class="mcp-btn" onclick="showTab('skills')">Open Skills</button>
       </div>
+      <div class="settings-section" style="margin-top:20px" id="aboutSection">
+        <div class="settings-title">About</div>
+        <div class="settings-card"><div class="push-body">
+          <div class="voice-row"><span class="push-row-name">Version<span class="mem-sub">Sovereign AI Workstation (CODEC)</span></span><span id="aboutVersion" class="push-state"></span></div>
+          <div class="voice-row"><span class="push-row-name">Third-party notices<span class="mem-sub">The open-source software CODEC contains, with each licence.</span></span><a class="mcp-btn" id="aboutNotices" href="/api/about/notices" target="_blank" rel="noopener" style="display:inline-block;text-decoration:none" hidden>Open</a></div>
+        </div></div>
+      </div>
     </div>
   </div>
 
@@ -1409,7 +1416,7 @@ function showTab(id) {
   if (id === 'connector') { renderConnections(); renderConnectors(); }
   if (id === 'memory') loadMemoryPage();
   if (id === 'learning') loadLearning();
-  if (id === 'settings') { loadSettings(); renderUIToggles(); loadPrompts(); loadPush(); loadVoice(); loadBriefing(); loadCheckin(); loadUsage(); }
+  if (id === 'settings') { loadSettings(); renderUIToggles(); loadPrompts(); loadPush(); loadVoice(); loadBriefing(); loadVersionInfo(); loadCheckin(); loadUsage(); }
 }
 // Links such as /#settings (the shell's Settings row, other pages) open that panel.
 function _tabFromHash() {
@@ -2502,6 +2509,16 @@ function _pushDate(iso) {
 function _plural(n, word) { return n + ' ' + word + (n === 1 ? '' : 's'); }
 // ── Usage (P3.11; docs/P3.11-DESIGN.md): cloud spend against the cap, where CODEC
 // runs now, the automatic cloud fallback, replies and skills over 7 days, speed. ──
+async function loadVersionInfo() {
+  var v = document.getElementById('aboutVersion'), l = document.getElementById('aboutNotices');
+  if (!v || !l) return;
+  try {
+    var r = await fetch('/api/about'), d = await r.json();
+    if (!r.ok) throw new Error(r.status);
+    v.textContent = d.version || '';
+    l.hidden = !d.notices;
+  } catch (e) { v.textContent = 'not available'; l.hidden = true; }
+}
 async function loadUsage() {
   var card = document.getElementById('usageCard');
   if (!card) return;
