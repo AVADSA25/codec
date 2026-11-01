@@ -1416,7 +1416,7 @@ function showTab(id) {
   if (id === 'connector') { renderConnections(); renderConnectors(); }
   if (id === 'memory') loadMemoryPage();
   if (id === 'learning') loadLearning();
-  if (id === 'settings') { loadSettings(); renderUIToggles(); loadPrompts(); loadPush(); loadVoice(); loadBriefing(); loadCheckin(); loadUsage(); loadVersionInfo(); }
+  if (id === 'settings') { loadSettings(); renderUIToggles(); loadPrompts(); loadPush(); loadVoice(); loadBriefing(); loadVersionInfo(); loadCheckin(); loadUsage(); }
 }
 // Links such as /#settings (the shell's Settings row, other pages) open that panel.
 function _tabFromHash() {

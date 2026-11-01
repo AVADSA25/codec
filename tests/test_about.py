@@ -39,7 +39,7 @@ def test_without_the_file_the_route_says_so_and_the_flag_is_false(client, monkey
 def test_the_dashboard_serves_the_route_and_the_page_has_the_block():
     assert "app.include_router(about_router)" in (REPO / "codec_dashboard.py").read_text(encoding="utf-8")
     assert 'id="aboutSection"' in PAGE and 'href="/api/about/notices"' in PAGE and 'rel="noopener"' in PAGE
-    assert "loadUsage(); loadVersionInfo(); }" in PAGE, "the Settings tab does not load the About block"
+    assert "loadVersionInfo(); loadCheckin(); loadUsage(); }" in PAGE, "the Settings tab does not load the About block"
     assert PAGE.count("function loadVersionInfo(") == 1, "another function with this name would replace it"
     body = PAGE.split("async function loadVersionInfo()", 1)[1].split("async function loadUsage()", 1)[0]
     assert "textContent" in body and "innerHTML" not in body, "version text must be drawn as text"
