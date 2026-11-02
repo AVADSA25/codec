@@ -11,7 +11,7 @@
 -r requirements.txt
 
 # Test + lint toolchain (matches CI)
-pytest>=9.1.1
+pytest>=9.2.0
 # No upper bound needed: ruff.toml now pins `select` explicitly, so a release
 # that widens ruff's defaults can't silently change this repo's gate.
 # Verified clean on both 0.15.22 and 0.16.0.
