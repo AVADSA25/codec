@@ -821,8 +821,8 @@ class Run:
         with self._cond:
             self._decision = None
             self.status = "waiting"
+        asked = _mono()                           # before the event: an answer can come the moment it is out
         self._emit("approval", step=n, id=self._aid, command=command)
-        asked = _mono()
         end = asked + self.limits["wait_seconds"]
         with self._cond:
             while self._decision is None and not self.stop_event.is_set():
@@ -899,8 +899,8 @@ class Run:
         with self._cond:
             self._answer = None
             self.status = "waiting"
+        asked = _mono()                           # before the event, as for an approval
         self._emit("question", step=n, id=self._qid, text=call.args["question"], choices=call.args["choices"])
-        asked = _mono()
         end = asked + self.limits["wait_seconds"]
         with self._cond:
             while self._answer is None and not self.stop_event.is_set():
