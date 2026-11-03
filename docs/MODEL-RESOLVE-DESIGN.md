@@ -65,8 +65,12 @@ What changes, only where a key is missing from config: the 13 `llm_model` defaul
 35B to the bundled 7B (as `codec_models.get_active` and voice already do), and the three 35B
 `vision_model` defaults (`codec_config.QWEN_VISION_MODEL`, `/api/upload_image`, `codec_watcher`'s
 fallback) move to Qwen2.5-VL-7B like the other seven. A key set to `""` or `null` now gets the
-default instead of being sent as is. The Studio and an installed app write these keys, so neither
-sees a change.
+default instead of being sent as is. The Studio sets all of these keys, so it sees no change. An
+installed app (`codec_setup`) and `setup_codec.py` write `llm_model` but never `vision_model`, so
+there the callers that send `codec_config.QWEN_VISION_MODEL` as is (`codec_core`'s session scripts,
+`codec_watcher`, `codec_agent`) and `/api/upload_image` now name Qwen2.5-VL-7B instead of the 35B.
+Neither is bundled (both are on-demand downloads; the VL-7B is the smaller one). `codec_vision` is
+not affected there: with no `vision_model` it names the model the chat server holds (P-013).
 
 Left as literals, on an explicit allowlist the test reads: `setup_codec.py` (the setup wizard's
 prompts and values; it imports nothing from CODEC), and `codec_agent_runner.py` /
