@@ -244,7 +244,9 @@ def test_other_failures_are_not_treated_as_missing(fake_kc, clock, monkeypatch, 
     import codec_keychain as kc
     fake_kc.seed(GOLDEN_SECRET_HEX)
     if answer == "timeout":
-        monkeypatch.setattr(kc, "_SECURITY_TIMEOUT", 0.3)
+        # 1 s: the fake must start and log its call before the kill, even
+        # on a slow CI runner (it takes about 30 ms on the Studio).
+        monkeypatch.setattr(kc, "_SECURITY_TIMEOUT", 1.0)
         fake_kc.switch("sleep", "find-generic-password", 3)
     else:
         fake_kc.switch("exit", "find-generic-password", int(answer[4:]))
