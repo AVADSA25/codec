@@ -694,6 +694,71 @@ def check_alerts():
     return triggered
 
 
+# P-082: ~/.codec/overlay_events.jsonl is append-only and the Swift overlay re-reads the
+# whole file every 0.15 s. Once nothing has written to it for OVERLAY_QUIET_S, keep its
+# last OVERLAY_KEEP_LINES lines (atomic replace; the poller resets its offset when the
+# line count drops). The path is the writer's own, codec_overlays._EVENTS.
+# docs/ATOMIC-STATE-FILES-DESIGN.md
+OVERLAY_KEEP_LINES = 100
+OVERLAY_QUIET_S = 60
+_OVERLAY_TAIL_BYTES = 1 << 20  # read at most the last 1 MB, whatever the file's size
+
+
+def trim_overlay_events(path=None, now_ts=None) -> int:
+    """Cut the overlay events file to its last OVERLAY_KEEP_LINES lines.
+
+    Only when the file has not changed for OVERLAY_QUIET_S and holds more lines than
+    that. The new file is a temp file (0600) in the same folder put in place with
+    os.replace; no folder is created or chmodded. Returns the bytes removed, 0 when
+    nothing was done. Never raises."""
+    import tempfile
+    tmp = None
+    try:
+        if path is None:
+            import codec_overlays
+            path = codec_overlays._EVENTS
+        st = os.stat(path)
+        now_ts = time.time() if now_ts is None else now_ts
+        if now_ts - st.st_mtime < OVERLAY_QUIET_S:
+            return 0
+        start = max(0, st.st_size - _OVERLAY_TAIL_BYTES)
+        with open(path, "rb") as f:
+            f.seek(start)
+            parts = f.read(st.st_size - start).split(b"\n")
+        if start:
+            parts = parts[1:]  # the first line read may start mid-line
+        lines = [p for p in parts if p.strip()]
+        if not start and len(lines) <= OVERLAY_KEEP_LINES:
+            return 0
+        kept = b"\n".join(lines[-OVERLAY_KEEP_LINES:]) + b"\n" if lines else b""
+        fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path) or ".",
+                                   prefix=".overlay_events.", suffix=".tmp")
+        with os.fdopen(fd, "wb") as f:
+            f.write(kept)
+            f.flush()
+            os.fsync(f.fileno())
+        again = os.stat(path)
+        if (again.st_size, again.st_mtime_ns) != (st.st_size, st.st_mtime_ns):
+            return 0  # a writer appended meanwhile; the next heartbeat tries again
+        os.replace(tmp, path)
+        tmp = None
+        removed = st.st_size - len(kept)
+        log.info(f"Overlay events trimmed to the last {min(len(lines), OVERLAY_KEEP_LINES)} "
+                 f"lines ({removed} bytes removed)")
+        return removed
+    except FileNotFoundError:
+        return 0
+    except Exception as e:
+        log.warning(f"Overlay events trim failed: {e}")
+        return 0
+    finally:
+        if tmp:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+
+
 def heartbeat():
     """Run one heartbeat cycle."""
     global _last_cleanup
@@ -721,6 +786,7 @@ def heartbeat():
         execute_pending_tasks()
     # Configurable alerts (BTC price, etc.)
     check_alerts()
+    trim_overlay_events()  # P-082: keep the Swift overlay's events file short
     # P3.5: the proactive check-in (off unless switched on in Settings; docs/P3.5-DESIGN.md)
     try:
         import codec_checkin

@@ -331,7 +331,8 @@ def _isolate_notifications() -> None:
     codec_scheduler) and skill modules the registry loads later are covered by
     `_guard_live_state`. Tests that patch these per test keep doing so. Done at
     conftest import time, like `_isolate_audit_log`, after the memory isolation so
-    these imports cannot bind memory.db first.
+    these imports cannot bind memory.db first. The overlay events file goes there
+    too: every full heartbeat trims it (P-082).
     """
     tmp = Path(tempfile.mkdtemp(prefix="codec-test-notifications-"))
     notifs = tmp / "notifications.json"
@@ -343,6 +344,7 @@ def _isolate_notifications() -> None:
         ("codec_watchdog", {"NOTIFICATIONS_PATH": str(notifs)}),
         ("codec_daybreak", {"_NOTIFICATIONS_PATH": str(notifs)}),
         ("routes._shared", {"NOTIFICATIONS_PATH": str(notifs)}),
+        ("codec_overlays", {"_EVENTS": str(tmp / "overlay_events.jsonl")}),
     ):
         try:
             mod = importlib.import_module(module)
