@@ -67,9 +67,9 @@ word does not grow with the chat.
 ## The voice rule (done-when 3)
 
 Whether the model server stops work when a client disconnects is not measured.
-So the rule written down and enforced is: **a notes call starts only when no
-voice session is open** (`~/.codec/voice_session.json` absent), checked before
-every call. While a call is streaming, the marker is checked between tokens
+So the rule written down and enforced is:
+**a notes call starts only when no voice session is open**
+(`~/.codec/voice_session.json` absent), checked before every call. While a call is streaming, the marker is checked between tokens
 and the call is dropped if it appears (best effort: during the prompt read no
 token arrives). With a voice session open, the turn is sent as P-034 sends it.
 A marker left behind by a crashed voice process stops notes until it is gone.
