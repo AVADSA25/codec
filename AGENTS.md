@@ -527,6 +527,8 @@ The Skill Forge UI in `codec_vibe.html` (modal, toolbar buttons, JS handlers) wa
 
 **Implication for contributors:** any legitimate edit to a built-in skill file (or addition of a new built-in) requires regenerating the manifest. Run `python3 tools/generate_skill_manifest.py --write` after the source edit, commit `skills/.manifest.json` alongside. CI verifies no drift via `--check`.
 
+A pinned skill skips the AST gate, so `tests/test_skill_sinks.py` (P-091) reads every `skills/*.py` in CI instead: text built with an f-string, `%`, `.format()`, `+` or join that reaches a subprocess, os or osascript command must go through `codec_applescript` (P-007) or be listed, with a reason, in `tests/skill_sink_allowlist.json`.
+
 This is the chokepoint defense against the four enabling-path findings (D-2 `/api/forge`, D-3 `/api/save_skill`, D-4 `file_write`, D-5 `permission_gate`) per `docs/audits/PHASE-1-SECURITY.md`. Even if any of those paths drop a malicious file, the file's hash won't match the manifest → AST check runs → refused.
 
 ### Vibe projects (2026-10, docs/VIBE-PROJECTS-DESIGN.md)
