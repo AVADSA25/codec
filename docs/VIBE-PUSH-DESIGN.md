@@ -28,6 +28,8 @@ A Vibe agent run that waits for a command approval or an answer shows only a car
   - `Run._end`: after the end event, `vibe_done`, except when the owner pressed Stop (the stop flag is set): the
     owner did that himself. A run that stops because nobody answered in time does push.
   `notify` sends from a daemon thread and throttles to one push per kind per 60 s, as for every kind.
+  `tools/vibe_agent_eval.py` replaces `_push` with a no-op while it runs, as it does `_audit`: eval runs are not
+  the owner's and never reach his phone.
 - **The tap re-mounts the live run.** The service worker already opens any same-origin path, so `/vibe` needs no
   worker change. A fresh `/vibe` opens an empty session, though, so the page learns which run is live:
   - `codec_vibe_agent.live_run()` and `GET /api/vibe/agent/live` (behind the dashboard login like every route):

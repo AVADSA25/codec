@@ -564,9 +564,10 @@ def run_eval(args, work):
             return 2
     print(f"MODEL {llm.model}  at {llm.base_url}", flush=True)
 
-    saved = (va._audit, vp._audit, va._cfg)
+    saved = (va._audit, vp._audit, va._cfg, va._push)
     va._audit = lambda *a, **k: None
     vp._audit = lambda *a, **k: None
+    va._push = lambda kind: None                    # eval runs are not the owner's: no phone push (P-070)
     started_at = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
     wanted = {int(x) for x in args.only.split(",")} if args.only else None
 
@@ -578,7 +579,7 @@ def run_eval(args, work):
     try:
         results = run_suite(TASKS, attempt, features_available(cmdmod), wanted, MAX_TRIES, args.quiet, args.verbose)
     finally:
-        va._audit, vp._audit, va._cfg = saved
+        va._audit, vp._audit, va._cfg, va._push = saved
 
     bar = bar_status(results)
     print(f"EVAL (tasks 1 to 12): file tasks {bar['file_ok']}/{bar['file_n']}, behaviour tasks {bar['behaviour_ok']}/{bar['behaviour_n']}"
