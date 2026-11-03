@@ -548,7 +548,7 @@
     stop.type = 'button'; stop.setAttribute('aria-label', 'Stop the agent');
     stop.addEventListener('click', stopRun);
     var views = el('div', 'agc-views');                      // how the steps are shown (P-069)
-    var compact = el('button', 'agc-link agc-tog', 'Compact'); compact.type = 'button';
+    var compact = el('button', 'agc-link agc-tog agc-cmp', 'Compact'); compact.type = 'button';
     compact.title = 'One line per step';
     var raw = el('button', 'agc-link agc-tog', 'Raw replies'); raw.type = 'button';
     raw.title = 'Show the model\'s own reply under each step, as the run log keeps it';
@@ -560,7 +560,7 @@
     var end = el('div', 'agc-end'); end.hidden = true;
     card.appendChild(head); card.appendChild(steps); card.appendChild(liveLine); card.appendChild(end);
     var c = { root: card, goal: goal, st: st, model: model, step: step, time: time, stop: stop, steps: steps, live: liveLine, end: end,
-      rows: {}, atBottom: true, compactBtn: compact, rawBtn: raw, raw: false, replyStep: 0, replyBusy: false };
+      rows: {}, atBottom: true, compactBtn: compact, rawBtn: raw, raw: false, replyStep: 0, replyBusy: false, run: run };
     compact.addEventListener('click', function () { setCompact(!S.compact); });
     raw.addEventListener('click', function () { setRaw(c, !c.raw); });
     showViews(c);
@@ -574,26 +574,30 @@
     c.rawBtn.setAttribute('aria-pressed', c.raw ? 'true' : 'false');
   }
 
-  // Compact is remembered in this browser; it applies to every card on the page.
+  // Compact is remembered in this browser; it applies to every card on the page, an earlier run's card included.
   function setCompact(on) {
     S.compact = !!on;
     lsSet(COMPACT_KEY, S.compact ? '1' : '0');
-    if (S.card) showViews(S.card);
+    Array.prototype.forEach.call(document.querySelectorAll('.agc'), function (card) {
+      card.classList.toggle('agc-compact', S.compact);
+      var b = card.querySelector('.agc-cmp');
+      if (b) b.setAttribute('aria-pressed', S.compact ? 'true' : 'false');
+    });
   }
 
-  // Raw replies are off at every load. On, the card asks the server for the replies by name (?replies=N): the
-  // normal event stream never carries them.
+  // Raw replies are off at every load. On, the card asks the server for its own run's replies by name (?replies=N):
+  // the normal event stream never carries them. An earlier run's card asks for that run.
   function setRaw(c, on) {
     c.raw = !!on;
     showViews(c);
-    if (c.raw && S.card === c && S.run) fetchReplies(c, S.run);
+    if (c.raw && c.run && c.run.id) fetchReplies(c, c.run);
   }
 
   function fetchReplies(c, run) {
     if (c.replyBusy) return;
     c.replyBusy = true;
     api('GET', base(run.pid, '/' + run.id + '?since=' + run.since + '&replies=' + c.replyStep)).then(function (d) {
-      if (S.card === c) drawReplies(c, d.replies);
+      drawReplies(c, d.replies);
     }).catch(function (e) { toast('Could not load the replies: ' + e.message); })
       .then(function () { c.replyBusy = false; });
   }
@@ -603,7 +607,7 @@
       if (!r || typeof r.step !== 'number' || r.step <= c.replyStep) return;
       c.replyStep = r.step;
       var box = el('div', 'agc-raw');
-      box.appendChild(el('div', 'agc-rawh', 'Reply at step ' + Math.max(1, r.step - ((S.run && S.run.offset) || 0)) +
+      box.appendChild(el('div', 'agc-rawh', 'Reply at step ' + Math.max(1, r.step - ((c.run && c.run.offset) || 0)) +
         (r.cut ? ' (cut: ' + r.chars + ' characters in all)' : '') + (r.redacted ? ' (secrets hidden)' : '')));
       box.appendChild(el('pre', 'agc-out', r.text || ''));
       var row = c.rows[r.step];
@@ -1304,7 +1308,8 @@
     }
     if (act === 'pick') { e.preventDefault(); pickMention(M.sel); return ''; }
     if (act === 'close') { e.preventDefault(); e.stopImmediatePropagation(); closeMention(); return ''; }   // Esc closes the list only
-    return act === 'send' ? 'send' : '';
+    if (act === 'send') { closeMention(); return 'send'; }       // Cmd+Enter with the list open: the list goes with the text
+    return '';
   }
 
   // ── the composer: an editor selection as a block (P-069) ───────────────

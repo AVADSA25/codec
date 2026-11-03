@@ -191,6 +191,7 @@ def test_the_list_keys_move_pick_and_close():
     assert got == [want for _, want in cases]                     # Esc on an open list closes it and leaves the run alone
     act = part(SRC, "function keyAction(e) {", "// ── the composer: an editor selection")
     assert "e.stopImmediatePropagation(); closeMention();" in act and "pickMention(M.sel)" in act
+    assert "if (act === 'send') { closeMention(); return 'send'; }" in act         # Cmd+Enter does not leave the list open
 
 
 # ── the project link ────────────────────────────────────────────────────
@@ -272,6 +273,9 @@ def test_the_run_card_views_and_the_changes_entry_are_wired():
     poll = part(SRC, "function poll() {", "function releaseUi() {")
     assert "card && card.raw ? '&replies=' + card.replyStep : ''" in poll        # the default poll never asks for replies
     assert SRC.count("&replies=") == 2
+    views = part(SRC, "function setCompact(on) {", "function drawReplies(c, replies) {")
+    assert "document.querySelectorAll('.agc')" in views                       # Compact on any card applies to every card
+    assert "if (c.raw && c.run && c.run.id) fetchReplies(c, c.run);" in views    # an earlier run's card asks for its own run
     assert ".agc-ea[hidden]{display:none}" in PAGE and ".agc-raw-on .agc-raw{display:block}" in PAGE
     changes = part(PROJ, "function changesRow(newest) {", "function versionRow(cp, newest) {")
     assert "'&to=working'" in changes and "activate(f.path); closeVersions();" in changes and "innerHTML" not in changes
