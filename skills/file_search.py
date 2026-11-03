@@ -14,8 +14,15 @@ SKILL_DESCRIPTION = "Search for files by name or content"
 SKILL_MCP_EXPOSE = True
 
 import os
+import shlex
 import subprocess
 import re
+
+import codec_applescript
+import codec_terminal_text
+
+_HEADER = "\n\033[38;2;232;113;26m━━━ CODEC FILE SEARCH ━━━\033[0m\n\n"
+_FOOTER = "\n\n"
 
 
 def _is_remote_transport() -> bool:
@@ -56,6 +63,29 @@ def _extract_query(task: str) -> str:
     return q
 
 
+def _show_in_terminal(text):
+    """Open a Terminal window listing the result. The request and the found
+    paths go in a private file that Terminal prints with cat (S-01): the
+    AppleScript and the shell command hold only the quoted file and folder
+    paths."""
+    try:
+        folder, path = codec_terminal_text.write_private(text, _HEADER, _FOOTER)
+    except OSError:
+        return
+    qfile = codec_applescript.escape(shlex.quote(path))
+    qdir = codec_applescript.escape(shlex.quote(folder))
+    try:
+        subprocess.Popen([
+            "osascript", "-e",
+            f"""tell application "Terminal"
+                activate
+                do script "cat {qfile}; rm -f {qfile}; rmdir {qdir}"
+            end tell"""
+        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except OSError:
+        codec_terminal_text.remove(folder)
+
+
 def run(task, app="", ctx=""):
     query = _extract_query(task)
     if not query or len(query) < 2:
@@ -74,14 +104,7 @@ def run(task, app="", ctx=""):
             # No Terminal popup (the human user isn't here).
             return result
         # Local path: open in Terminal for copy-paste, return short summary.
-        safe = result.replace("'", "'\\''")
-        subprocess.Popen([
-            "osascript", "-e",
-            f"""tell application "Terminal"
-                activate
-                do script "echo ''; echo '\\033[38;2;232;113;26m━━━ CODEC FILE SEARCH ━━━\\033[0m'; echo ''; echo '{safe}'; echo ''"
-            end tell"""
-        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        _show_in_terminal(result)
         return f"Found {len(files)} files — opened in Terminal.\n" + "\n".join(files[:5])
     except subprocess.TimeoutExpired:
         return f"Search timed out for '{query}'."

@@ -51,14 +51,7 @@ def run(task, app="", ctx=""):
         info.append("Public IP: offline")
     info.append(_wifi_info())
 
-    result = "\n".join(info) if info else "Could not get network info"
-    # Open in Terminal
-    safe = result.replace("'", "'\\''").replace("\n", "\\n")
-    subprocess.Popen([
-        "osascript", "-e",
-        f"""tell application "Terminal"
-            activate
-            do script "echo ''; echo '\\033[38;2;232;113;26m━━━ CODEC NETWORK ━━━\\033[0m'; echo ''; printf '{safe}\\n'; echo ''"
-        end tell"""
-    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    return result
+    # The Wi-Fi name and the ipify reply are outside text: the result is only
+    # returned, never put in a Terminal or AppleScript command (S-01). The old
+    # Terminal window never opened (its script did not compile).
+    return "\n".join(info) if info else "Could not get network info"

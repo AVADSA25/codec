@@ -42,11 +42,6 @@
       "reason": "url is the Google search address plus urllib.parse.quote_plus(query): quotes, backslashes and line breaks are percent-encoded, so nothing leaves the literal."
     },
     {
-      "file": "skills/file_search.py",
-      "line": "do script \"echo ''; echo '\\\\033[38;2;232;113;26m━━━ CODEC FILE SEARCH ━━━\\\\033[0m'; echo ''; echo '{safe}'; echo ''\"",
-      "reason": "KNOWN GAP, follow-up: the request text and the found file paths are only shell-quoted; a double quote or backslash in either can end the AppleScript do script literal. Local path only (MCP returns before this)."
-    },
-    {
       "file": "skills/imessage_send.py",
       "line": "ok = _send(recipient, body)",
       "reason": "The only call of _send: recipient passed _validate_recipient just above and again at the top of _send (a phone number of + and digits, or an email of word characters, dot, plus, minus and @); no quote or backslash. The body goes through codec_applescript."
@@ -65,11 +60,6 @@
       "file": "skills/network_info.py",
       "line": "iface = f\"en{i}\"",
       "reason": "Constants only: en0 to en9 from range(10), one argv item, no shell."
-    },
-    {
-      "file": "skills/network_info.py",
-      "line": "do script \"echo ''; echo '\\\\033[38;2;232;113;26m━━━ CODEC NETWORK ━━━\\\\033[0m'; echo ''; printf '{safe}\\\\n'; echo ''\"",
-      "reason": "KNOWN GAP, follow-up: the result is only shell-quoted; a double quote or backslash in the joined Wi-Fi network's name (or the ipify reply) can end the AppleScript do script literal. Runs on every call, MCP included."
     },
     {
       "file": "skills/philips_hue.py",
@@ -95,11 +85,6 @@
       "file": "skills/timer.py",
       "line": "f'display notification \"Timer: {display} is up!\" with title \"CODEC\" sound name \"Glass\"'], timeout=5)",
       "reason": "display is built only from the integer seconds in this function (for example 5 minutes)."
-    },
-    {
-      "file": "skills/translate.py",
-      "line": "_show_in_terminal(f\"{target} Translation\", \"\\\\n\".join(body_parts))",
-      "reason": "KNOWN GAP, follow-up: the request text and the model's reply reach the Terminal do script literal with no escaping at all; a double quote ends the AppleScript literal and a single quote ends the shell quoting inside Terminal. Local path, non-Latin targets only (MCP returns before this)."
     },
     {
       "file": "skills/volume.py",
