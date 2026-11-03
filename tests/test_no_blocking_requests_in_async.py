@@ -11,7 +11,8 @@ non-stream reply froze the dashboard for up to 300 s. Put the call in
 The scan reads each async def's own body. A call to a sync function defined in
 the same file is followed one hop: that function's own body is checked too. A
 nested function or a lambda counts where it is called, so passing it to
-`asyncio.to_thread` is fine and calling it inline is reported. A sync generator
+`asyncio.to_thread` is fine and calling it inline is reported (a lambda called in
+place, `(lambda: ...)()`, is read as the caller's own body). A sync generator
 is not followed (calling it runs nothing; StreamingResponse iterates it in a
 worker thread). Two hops are not followed.
 """
@@ -97,17 +98,21 @@ def blocking_calls(path: Path, root: Path | None = None) -> list:
     rel = path.relative_to(root or REPO)
     hits = []
 
-    def check(fn, binds, defs):
-        for node in _own_nodes(fn):
+    def check(fn, binds, defs, body=None):
+        for node in _own_nodes(body or fn):
             if not isinstance(node, ast.Call):
                 continue
             name = _blocking_name(node, binds)
             if name:
                 hits.append(f"{rel}:{node.lineno} in {fn.name}(): {name}")
                 continue
-            if not isinstance(node.func, ast.Name) or node.func.id in binds or node.func.id not in defs:
+            if isinstance(node.func, ast.Lambda):  # (lambda: ...)() runs right here: its body is fn's own
+                check(fn, binds, defs, body=node.func)
                 continue
-            helper, helper_binds = defs[node.func.id]
+            if isinstance(node.func, ast.Name) and node.func.id not in binds and node.func.id in defs:
+                (helper, helper_binds), label = defs[node.func.id], f"{node.func.id}()"
+            else:
+                continue
             if _is_generator(helper):
                 continue
             helper_binds = {**helper_binds, **_imports(helper)}
@@ -115,14 +120,17 @@ def blocking_calls(path: Path, root: Path | None = None) -> list:
                 if isinstance(inner, ast.Call):
                     name = _blocking_name(inner, helper_binds)
                     if name:
-                        hits.append(f"{rel}:{inner.lineno} in {fn.name}() via {helper.name}() "
+                        hits.append(f"{rel}:{inner.lineno} in {fn.name}() via {label} "
                                     f"(called at line {node.lineno}): {name}")
 
     def visit(scope, binds, defs):
         if not isinstance(scope, ast.ClassDef):  # a method cannot call another by bare name
             binds = {**binds, **_imports(scope)}
-            defs = {**defs, **{n.name: (n, binds) for n in _own_nodes(scope)
-                               if isinstance(n, ast.FunctionDef)}}
+            local = {n.name: (n, binds) for n in _own_nodes(scope) if isinstance(n, ast.FunctionDef)}
+            for n in _own_nodes(scope):  # f = lambda: ... is called like a def
+                if isinstance(n, ast.Assign) and isinstance(n.value, ast.Lambda):
+                    local.update({t.id: (n.value, binds) for t in n.targets if isinstance(t, ast.Name)})
+            defs = {**defs, **local}
         if isinstance(scope, ast.AsyncFunctionDef):
             check(scope, binds, defs)
         for child in _own_nodes(scope):
@@ -177,6 +185,13 @@ CAUGHT = {
     "one hop: a nested def called inline": ("async def h():\n    import requests\n    def work():\n"
                                             "        return requests.get('x')\n    return work()\n",
                                             "via work()"),
+    "a lambda called inline": ("import codec_llm\nasync def h(m):\n    return (lambda: codec_llm.call(m))()\n",
+                               "in h(): codec_llm.call"),
+    "one hop through a lambda called inline": ("import subprocess\ndef helper():\n    subprocess.run(['x'])\n"
+                                               "async def h():\n    return (lambda: helper())()\n",
+                                               "via helper()"),
+    "a lambda bound to a name and called": ("import codec_llm\nasync def h(m):\n"
+                                            "    f = lambda: codec_llm.call(m)\n    return f()\n", "via f()"),
     "an argument of to_thread runs on the loop": ("import asyncio, codec_llm\nasync def h(m):\n"
                                                   "    return await asyncio.to_thread(str, codec_llm.call(m))\n",
                                                   "codec_llm.call"),
@@ -199,6 +214,9 @@ SAFE = {
                                     "    return await asyncio.to_thread(subprocess.run, ['x'], timeout=3)\n"),
     "to_thread with a lambda": ("import asyncio, codec_llm\nasync def h(m):\n"
                                 "    return await asyncio.to_thread(lambda: codec_llm.call(m))\n"),
+    "to_thread with a lambda bound to a name": ("import asyncio, codec_llm\nasync def h(m):\n"
+                                                "    f = lambda: codec_llm.call(m)\n"
+                                                "    return await asyncio.to_thread(f)\n"),
     "to_thread with a nested def": ("import asyncio, requests\nasync def h():\n    def work():\n"
                                     "        return requests.get('x')\n    return await asyncio.to_thread(work)\n"),
     "a sync generator": ("import codec_llm\ndef gen(m):\n    yield codec_llm.call(m)\n"
