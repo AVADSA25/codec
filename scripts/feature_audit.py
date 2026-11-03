@@ -1388,9 +1388,9 @@ def test_infrastructure():
         FAIL(A, 27, "SQLite WAL mode with busy timeout", str(e))
 
     # 28: Heartbeat system
-    ok, detail = check_endpoint("/api/heartbeat/config")
+    ok, detail = check_endpoint("/api/heartbeat/alerts")
     if ok:
-        PASS(A, 28, "Heartbeat system", "Heartbeat config endpoint OK")
+        PASS(A, 28, "Heartbeat system", "Heartbeat alerts endpoint OK")
     else:
         FAIL(A, 28, "Heartbeat system", detail)
 

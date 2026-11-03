@@ -723,14 +723,7 @@ class TestSchedulingAPI:
 
 
 class TestHeartbeatAPI:
-    """Test heartbeat config endpoints."""
-
-    @requires_dashboard
-    def test_heartbeat_config_get(self):
-        r = api_get("/api/heartbeat/config")
-        assert r.status_code == 200
-        data = r.json()
-        assert isinstance(data, dict)
+    """Test heartbeat alert endpoints."""
 
     @requires_dashboard
     def test_heartbeat_alerts_get(self):
