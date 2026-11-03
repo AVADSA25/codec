@@ -47,7 +47,8 @@ def run(task, app="", ctx=""):
         from codec_memory import CodecMemory
         mem = CodecMemory()
         session_id = f"claude-mcp-{datetime.now().strftime('%Y%m%d')}"
-        role = "untrusted" if origin == codec_fence.UNTRUSTED else "fact"
+        # P-037: an agent's save is role "agent", so no prompt's memory block reads it back.
+        role = origin if origin in (codec_fence.UNTRUSTED, codec_fence.AGENT) else "fact"
         row_id = mem.save(session_id, role=role, content=content, user_id="default")
         # Also try temporal-fact path if available
         try:

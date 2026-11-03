@@ -84,11 +84,12 @@ def _parse_facts(raw: str) -> list[str]:
 
 
 def _save(fact: str, origin: str = "derived") -> bool:
-    """`origin` (P-021) goes to facts.source; an untrusted fact's memory row gets role 'untrusted'."""
+    """`origin` (P-021) goes to facts.source; an untrusted or agent fact's memory row gets role
+    'untrusted' or 'agent' (P-037: no prompt's memory block reads those rows)."""
     try:
         from codec_memory import CodecMemory
         mem = CodecMemory()
-        role = "untrusted" if origin == "untrusted" else "fact"
+        role = origin if origin in ("untrusted", "agent") else "fact"
         mem.save(session_id="fact_extract", role=role, content=fact)  # the default user id, like every other memory write
         # The structured copy Settings > Learning lists, edits and forgets (UI P3.12). This used to
         # call CodecMemory.store_fact, which does not exist, so no learned fact reached the facts table.
