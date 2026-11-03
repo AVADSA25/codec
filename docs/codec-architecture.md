@@ -233,6 +233,7 @@ Emitted by `codec_fence.memory_origin` (docs/UNTRUSTED-TEXT-FENCE-DESIGN.md), so
 | Event | extra fields |
 |---|---|
 | `memory_write_untrusted` | `skill` (`memory_save`\|`fact_extract`\|`thread_note`\|`memory_history`), `reason` (`mcp`\|`scan`\|`mcp+scan`), `patterns` (names of the scan patterns that matched), `chars` |
+| `memory_write_flagged` | `skill`, `patterns`, `chars` (P-037, level warning): an owner-origin write the scan flagged; it is kept `owner`, so the scan alone never keeps the owner's own words out of the prompts (docs/MEMORY-PROVENANCE-DESIGN.md) |
 
 ### Notes events (2026-10)
 
@@ -304,7 +305,7 @@ only: never a fact's value, a rule's text or the About me text.
 
 | Event | Source | Level | Extra fields |
 |---|---|---|---|
-| `memory_changed` | `codec-dashboard` | info | `action` (`fact_edited` \| `fact_forgotten` \| `rule_added` \| `rule_removed` \| `rules_cleared` \| `about_saved` \| `fact_extract_switched` \| `nightly_switched` \| `retention_set`), then per action: `key`, `value_len`, `rows`, `rule_id`, `text_len`, `rules` (count), `on`, `chats_days` / `clipboard_days` / `photos_days` |
+| `memory_changed` | `codec-dashboard` | info | `action` (`fact_edited` \| `fact_forgotten` \| `fact_promoted` \| `rule_added` \| `rule_removed` \| `rules_cleared` \| `about_saved` \| `fact_extract_switched` \| `nightly_switched` \| `retention_set`), then per action: `key`, `value_len`, `origin` (the promoted fact's old origin), `rows`, `rule_id`, `text_len`, `rules` (count), `on`, `chats_days` / `clipboard_days` / `photos_days` |
 | `skill_switched` | `codec-dashboard` | info | `tool` (the skill), `on` (UI P3.6: the Skills page's switch; `config.json:skills_off`) |
 | `observer_paused` | `codec-dashboard` | info | `until` (local, to the minute; UI P3.7, the header's eye) |
 | `observer_resumed` | `codec-dashboard` | info | — |
