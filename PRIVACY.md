@@ -26,6 +26,7 @@ Everything below lives on your Mac's disk. Nothing is synced anywhere.
 | `~/.codec/config.json` | Settings | Provider API keys are in the Keychain (below). The paid app's licence key is in this file, and so is the e-mail alert password if you set one. |
 | `~/.codec/mcp_servers.json` | Connectors you added | Includes any API-key header you typed for one |
 | `~/.codec/backups/` | Checked copies of `memory.db` and a daily state archive | Made daily, and before a clean-up |
+| `~/.codec/pre_update/` | A copy of the databases and the state archive taken before each update | 0600; CODEC never deletes these: remove old ones by hand |
 | `~/.codec/audit.log` | Audit log (section 3) | 0600, one new file per day, 30 days kept |
 | `~/.codec/observer_buffer.json` | What the observer saw in the last 10 minutes: active window, screen text, recent files, idle time | 0600; the clipboard only as its type and length; deleted when the observer pauses or stops and after a long idle |
 | `~/.codec/images/`, `~/.codec/models/`, `~/.codec/skills/`, `~/.codec/plugins/` | Pictures you made, downloaded models, your own skills and plugins | |
@@ -133,7 +134,7 @@ also removes `~/.codec`.
 **By hand.**
 
 - `rm -rf ~/.codec` removes everything in the first table that is under `~/.codec`: `memory.db`, `qchat.db`,
-  `vibe.db`, `clipboard.db`, `notes/`, `agents/`, `google_token.json`, `config.json`, `backups/`, `audit.log` and
+  `vibe.db`, `clipboard.db`, `notes/`, `agents/`, `google_token.json`, `config.json`, `backups/`, `pre_update/`, `audit.log` and
   its dated files, `photos/`, `images/`, `models/`, `skills/` and `plugins/`.
 - `security delete-generic-password -s ai.avadigital.codec.<name>` removes one Keychain item. Run it for each name
   in the Keychain table and each `key_slot` you named; repeat it for `mcp_tokens` until it says the item could not
