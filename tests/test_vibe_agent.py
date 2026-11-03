@@ -20,6 +20,7 @@ from vibe_agent_fakes import (  # noqa: F401  (fixtures are used by name)
 
 CSS_EDIT = ("Make the heading blue.\n@@ edit_file style.css\n<<<<<<< SEARCH\nh1 { color: red; }\n=======\n"
             "h1 { color: blue; }\n>>>>>>> REPLACE\n")
+REAL_AUDIT = va._audit                               # taken at import, before the fixture puts its fake in
 
 
 def read(pid, rel):
@@ -163,8 +164,9 @@ def test_read_file_numbers_lines_pages_and_refuses_what_it_should():
     (vp.project_dir(pid) / ".env").write_text("KEY=1")
     run = tool_run(pid)
     r = va._t_read_file(run, "big.txt", 1, None)
-    assert r.ok and r.text.splitlines()[0] == "big.txt, lines 1-300 of 700"
-    assert r.text.splitlines()[1] == "  1| line 1" and "@@ read_file big.txt 301-" in r.text
+    assert r.ok and r.text.splitlines()[0] == "big.txt, lines 1-300 of 700 (more lines follow: @@ read_file big.txt 301-)"
+    assert r.text.splitlines()[1] == "  1| line 1" and r.text.splitlines()[-1] == "300| line 300"
+    assert r.summary == "Read big.txt, lines 1-300 of 700"
     r = va._t_read_file(run, "big.txt", 690, 700)
     assert "lines 690-700 of 700" in r.text and "more lines follow" not in r.text
     assert "only 2 lines" in va._t_read_file(run, "ok.txt", 9, None).text
@@ -176,6 +178,19 @@ def test_read_file_numbers_lines_pages_and_refuses_what_it_should():
     assert not esc.ok and esc.blocked == "path"
     assert va._t_read_file(run, ".vibe/project.json", 1, None).blocked == "path"
     assert va._t_read_file(run, "/etc/passwd", 1, None).blocked == "path"
+
+
+def test_a_read_of_long_lines_fits_what_the_model_sees_on_whole_lines():
+    pid = make_project({"wide.txt": "".join(f"row {i:03d} " + "x" * 100 + "\n" for i in range(1, 301))})
+    run = tool_run(pid)
+    r = va._t_read_file(run, "wide.txt", 1, None)
+    rows = r.text.splitlines()
+    last = int(rows[-1].split("|")[0])
+    assert len(r.text) <= va.MODEL_RESULT_CHARS and va._for_model(r.text) == r.text    # the model gets the whole read
+    assert 40 < last < 300 and rows[-1] == f"{last:>3}| row {last:03d} " + "x" * 100     # cut after a whole line
+    assert rows[0] == f"wide.txt, lines 1-{last} of 300 (more lines follow: @@ read_file wide.txt {last + 1}-)"
+    nxt = va._t_read_file(run, "wide.txt", last + 1, None)
+    assert nxt.text.startswith(f"wide.txt, lines {last + 1}-") and nxt.text.splitlines()[1].lstrip().startswith(f"{last + 1}| row ")
 
 
 def test_read_file_refuses_binary_and_empty_files_are_reported():
@@ -271,21 +286,41 @@ def test_the_same_call_three_times_warns_and_five_times_stops(scripted):
     assert "3 times in a row" not in model.calls[2][-1]["content"]
 
 
-def test_three_failed_edits_of_one_file_end_the_run(scripted):
+REWRITE = "rewrite the file with write_file"
+
+
+def bad_edit(i, path="style.css"):
+    return f"@@ edit_file {path}\n<<<<<<< SEARCH\nnot there {i}\n=======\nx\n>>>>>>> REPLACE\n"
+
+
+def test_the_third_failed_edit_says_rewrite_it_with_write_file_and_the_run_goes_on(scripted):
     pid = make_project()
-    edits = [f"@@ edit_file style.css\n<<<<<<< SEARCH\nnot there {i}\n=======\nx\n>>>>>>> REPLACE\n" for i in range(5)]
-    view, model = run_script(pid, edits, scripted)
+    write = "@@ write_file style.css\n<<<<<<< CONTENT\nbody { color: black; }\nh1 { color: blue; }\n>>>>>>> END\n"
+    view, model = run_script(pid, [bad_edit(1), bad_edit(2, "./style.css"), bad_edit(3), write, "@@ finish\nRewrote it.\n"], scripted)
     end = end_of(view)
-    assert end["status"] == "limit" and "style.css" in end["report"] and end["steps"] == 3
-    assert "matches nothing" in model.calls[1][-1]["content"]
-    assert read(pid, "style.css") == SITE["style.css"]
+    assert end["status"] == "done" and end["steps"] == 5                       # the run went on to the rewrite
+    assert REWRITE not in model.calls[2][-1]["content"]                         # after two failures: no advice yet
+    third = model.calls[3][-1]["content"]
+    assert "matches nothing" in third and REWRITE in third and "3 edits of style.css in a row" in third
+    shown = [e for e in view["events"] if e["type"] == "result" and e["step"] == 3][0]
+    assert REWRITE in shown["output"] and shown["summary"] == "SEARCH matches nothing in the file."
+    assert read(pid, "style.css") == "body { color: black; }\nh1 { color: blue; }\n"
+
+
+def test_a_file_too_long_for_one_reply_gets_copy_the_lines_advice(scripted, cfg):
+    cfg["vibe_agent"] = {"max_reply_tokens": 300}                                # rewrite advice only up to 525 characters
+    pid = make_project({"long.txt": "".join(f"line {i}\n" for i in range(300))})
+    view, model = run_script(pid, [bad_edit(i, "long.txt") for i in range(3)] + ["@@ finish\nok\n"], scripted)
+    third = model.calls[3][-1]["content"]
+    assert end_of(view)["status"] == "done"
+    assert "too long to write again in one reply" in third and "copy one or two of them exactly" in third and REWRITE not in third
 
 
 def test_a_good_edit_resets_the_failed_edit_count(scripted):
     pid = make_project()
-    bad = lambda i: f"@@ edit_file style.css\n<<<<<<< SEARCH\nnot there {i}\n=======\nx\n>>>>>>> REPLACE\n"  # noqa: E731
-    view, _ = run_script(pid, [bad(1), bad(2), CSS_EDIT, bad(3), bad(4), "@@ finish\nok\n"], scripted)
+    view, model = run_script(pid, [bad_edit(1), bad_edit(2), CSS_EDIT, bad_edit(3), bad_edit(4), "@@ finish\nok\n"], scripted)
     assert end_of(view)["status"] == "done"
+    assert not any(REWRITE in call[-1]["content"] for call in model.calls)      # two, then two again: never three
 
 
 def test_four_unreadable_replies_in_a_row_end_the_run(scripted):
@@ -660,6 +695,50 @@ def test_audit_events_carry_no_goal_path_or_file_text(scripted, audits):
     assert start["goal_chars"] == len(goal) and start["model"] == "local"
     end = [extra for ev, extra in agent if ev == "vibe_agent_end"][0]
     assert end["status"] == "done" and end["steps"] == 4
+
+
+def test_step_audit_lines_carry_the_tool_name_and_the_run_as_correlation_id(scripted, monkeypatch, tmp_path):
+    import codec_audit
+    import codec_keychain
+    log = tmp_path / "audit" / "audit.log"
+    log.parent.mkdir()
+    monkeypatch.setattr(codec_audit, "_AUDIT_DIR", log.parent)
+    monkeypatch.setattr(codec_audit, "_AUDIT_LOG", log)
+    monkeypatch.setattr(codec_keychain, "get_audit_hmac_secret", lambda: b"vibe-agent-test-hmac-secret-0001")  # never the Keychain
+    monkeypatch.setattr(va, "_audit", REAL_AUDIT)                   # the real filter in codec_audit, not the fake before it
+    pid = make_project()
+    view, _ = run_script(pid, ["Hmm.\n", "@@ read_file style.css\n", CSS_EDIT, "@@ finish\nok\n"], scripted)
+    lines = [json.loads(x) for x in log.read_text().splitlines()]
+    steps = [r for r in lines if r["event"] == "vibe_agent_step"]
+    assert [r["extra"]["tool_name"] for r in steps] == ["error", "read_file", "edit_file", "finish"]
+    assert all(r["extra"]["correlation_id"] == view["run"] == r["extra"]["run"] for r in steps)
+    assert all(r["source"] == "codec-vibe" and "tool" not in r["extra"] and r["hmac"] for r in steps)
+    rest = [r for r in lines if r["event"] in ("vibe_agent_start", "vibe_agent_end")]
+    assert len(rest) == 2 and all(r["extra"]["correlation_id"] == view["run"] for r in rest)
+
+
+def test_the_run_log_keeps_one_redacted_reply_per_step_and_the_page_never_gets_it(scripted):
+    pid = make_project()
+    token = "Bearer " + "q7" * 15                   # a secret shape, built here so that no key-like text sits in the repo
+    write = f"I will add the notes.\n@@ write_file notes.txt\n<<<<<<< CONTENT\nAuthorization: {token}\n>>>>>>> END\n"
+    replies = ["Hmm.\n", "@@ read_file style.css\n", write, "@@ finish\nAdded notes.txt.\n"]
+    view, _ = run_script(pid, replies, scripted)
+    run_id = view["run"]
+    logged = [json.loads(x) for x in (vp.project_dir(pid) / ".vibe" / "runs" / f"{run_id}.jsonl").read_text().splitlines()]
+    got = [e for e in logged if e["type"] == "reply"]
+    assert [e["step"] for e in got] == [1, 2, 3, 4] and all("seq" not in e for e in got)
+    assert [e["text"] for e in got] == [replies[0], replies[1], write.replace(token, "Bearer <REDACTED:bearer_token>"), replies[3]]
+    assert [e["redacted"] for e in got] == [False, False, True, False] and got[2]["chars"] == len(write)
+    assert token not in json.dumps(logged)
+    live = va.get_run(pid, run_id)
+    va._RUNS.clear()                                 # as after a restart: the view is read back from the file
+    again = va.get_run(pid, run_id)
+    for page in (live, again):
+        blob = json.dumps(page["events"])
+        assert all(e["type"] != "reply" for e in page["events"])
+        assert "Authorization:" not in blob and "REDACTED" not in blob and "q7q7" not in blob     # no part of the raw reply
+    assert [e["type"] for e in again["events"]] == [e["type"] for e in live["events"]] and again["status"] == "done"
+    assert va.list_runs(pid)[0]["steps"] == 3                 # the three tool calls; reply events are not counted
 
 
 # ── things a model might try ──

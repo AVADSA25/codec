@@ -331,14 +331,34 @@ _PM2_NAMES = {
 }
 
 
-def check_services_and_alert():
+def _starting(procs, name: str, now_ts: float) -> bool:
+    """Is this built-in service's PM2 app still in its 5-minute start grace?
+    The rule is codec_models.pm2_app_loading, applied to the heartbeat's own
+    `pm2 jlist` list (P-059). No list, no PM2 app, or any error: False."""
+    pm2_name = _PM2_NAMES.get(name)
+    if not pm2_name or not procs:
+        return False
+    try:
+        import codec_models
+        return codec_models.pm2_app_loading(procs, pm2_name, now_ts)
+    except Exception:
+        return False
+
+
+def check_services_and_alert(procs=None, now_ts: Optional[float] = None):
     """Check all services, attempt restart on failure, send alerts.
 
     Uses consecutive failure counting — alert fires after 2 consecutive failures.
+
+    `procs` is the `pm2 jlist` list the heartbeat already holds: a built-in
+    whose PM2 app started under 5 min ago is still loading, so its failed
+    probe is neither counted nor restarted (P-059). Without it every failed
+    probe counts, as before. `now_ts` (epoch seconds) is the clock, for tests.
     """
     cfg = _load_config()
     state = _load_state()
-    now = datetime.now().isoformat()
+    now_ts = time.time() if now_ts is None else now_ts
+    now = datetime.fromtimestamp(now_ts).isoformat()
 
     # On an automatic cloud fallback (codec_models.ensure_llm_available) the
     # local server is down by accident, not on purpose: keep probing it at its
@@ -398,6 +418,16 @@ def check_services_and_alert():
             if f"down_since_{name}" in state:
                 del state[f"down_since_{name}"]
         else:
+            # STARTING IS NOT DOWN (P-059). The model server binds its port only
+            # once its model is loaded; restarting it there threw the load away
+            # and began a second one. Inside its PM2 app's first 5 minutes a
+            # failed probe is not counted and restarts nothing. After that the
+            # rule below is unchanged: one failed probe restarts the app.
+            if _starting(procs, name, now_ts):
+                log.info("%s not answering yet; its PM2 app started under 5 min ago, "
+                         "so this probe is not counted and nothing is restarted", name)
+                continue
+
             failures[name] = failures.get(name, 0) + 1
 
             if failures[name] == 1:
@@ -470,24 +500,6 @@ def check_services_and_alert():
             alert_once("disk_low", "critical", f"CODEC ALERT: Disk space critically low — only {free_gb:.1f} GB free!")
         else:
             alert_resolved("disk_low", f"CODEC RECOVERED: disk space is back to {free_gb:.1f} GB free.")
-    except Exception:
-        pass
-
-    # PM2 exec_cwd check
-    expected_cwd = os.path.expanduser("~/codec-repo")
-    try:
-        env = os.environ.copy()
-        env["PATH"] = "/opt/homebrew/opt/node@22/bin:/opt/homebrew/bin:" + env.get("PATH", "")
-        out = subprocess.check_output(
-            ["/opt/homebrew/bin/pm2", "show", "codec", "--no-color"],
-            stderr=subprocess.STDOUT, timeout=10, env=env,
-        ).decode()
-        for line in out.splitlines():
-            if "exec cwd" in line.lower():
-                cwd = line.split("│")[-2].strip() if "│" in line else line.split()[-1]
-                if cwd != expected_cwd:
-                    alert_once("pm2_cwd", "warning", f"CODEC WARNING: PM2 exec_cwd is {cwd}, expected {expected_cwd}. Run sync_to_pm2.sh.")
-                break
     except Exception:
         pass
 

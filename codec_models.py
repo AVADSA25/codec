@@ -722,6 +722,23 @@ def _fallback_entry(cfg: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     return codec_cloud_models.entry_for_id(cfg.get("llm_auto_fallback"), cfg)
 
 
+def pm2_app_loading(procs: Any, name: str, now: Optional[float] = None) -> bool:
+    """True while PM2 app `name` in a `pm2 jlist` list is online but started
+    less than 5 min ago: a just-started server binds its port only once loaded.
+    Pure, so the heartbeat can apply it to the list it already holds (P-059);
+    a malformed list or entry gives False."""
+    now = time.time() if now is None else now
+    try:
+        for proc in procs or []:
+            if isinstance(proc, dict) and proc.get("name") == name:
+                env = proc.get("pm2_env") or {}
+                started = float(env.get("pm_uptime") or 0) / 1000.0
+                return env.get("status") == "online" and now - started < _LOADING_GRACE_S
+    except (AttributeError, TypeError, ValueError):
+        return False
+    return False
+
+
 def _server_loading(cfg: Dict[str, Any]) -> bool:
     """True while the PM2 model server is online but started less than 5 min
     ago: it binds its port only after the model has loaded."""
@@ -731,14 +748,9 @@ def _server_loading(cfg: Dict[str, Any]) -> bool:
     try:
         out = subprocess.run([pm2, "jlist"], capture_output=True, text=True,
                              timeout=20).stdout
-        for proc in json.loads(out):
-            if proc.get("name") == _pm2_process_name(cfg):
-                env = proc.get("pm2_env") or {}
-                started = float(env.get("pm_uptime") or 0) / 1000.0
-                return env.get("status") == "online" and time.time() - started < _LOADING_GRACE_S
+        return pm2_app_loading(json.loads(out), _pm2_process_name(cfg))
     except (OSError, ValueError, subprocess.SubprocessError):
         return False
-    return False
 
 
 def _fallback_alert(message: str, *, resolved: bool = False) -> None:
