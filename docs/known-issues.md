@@ -434,7 +434,7 @@ shell mounts `csSide, csScrim, csTop, csTabs` first. Since P2.8 the reading stri
 expected list is stale. Found while running the suite with jsdom for P2.7. **Revisit when:** the next item that edits
 tests/test_ui_shell.py (P2.13 accessibility): add `csPlayer` to the expected order.
 
-## A missing notifications file is refilled with four made-up reports (2026-10-06)
+## A missing notifications file is refilled with four made-up reports (2026-10-06) — FIXED in P-035 (a missing file reads as empty; an unreadable one is copied aside, docs/DEAD-CONTROLS-DESIGN.md)
 
 `routes/_shared._load_notifications` writes four sample reports ("Daily Morning
 Briefing", "Security Scan", "AI News Digest", "Weekly Code Review Summary") to
