@@ -210,6 +210,7 @@ button.msg-att{cursor:zoom-in}
 .msg-memory{border:0;background:none;padding:0 2px;margin-left:6px;font:inherit;font-size:var(--fs-12);color:var(--text-muted);text-decoration:underline;text-underline-offset:2px;cursor:pointer}
 .msg-memory:hover{color:var(--accent)}
 .msg-web{margin-left:6px;font-size:var(--fs-12);color:var(--text-muted)}
+.msg-trim{margin-left:6px;font-size:var(--fs-12);color:var(--text-muted);min-width:0;overflow-wrap:anywhere}
 .msg-memory-panel{margin:4px 0 0;padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius-8);background:var(--surface);font-size:var(--fs-13);color:var(--text-muted);max-width:420px}
 .msg-memory-panel ul{margin:0 0 6px;padding-left:18px}
 .msg-memory-panel a{color:var(--accent)}
@@ -749,6 +750,25 @@ function renderWebUsed(msgEl){
   }catch(e){}
 }
 
+// ── "Shortened to fit" (P-034): this reply was given a shortened chat ───────
+// /api/chat sends a `trim` event when the turn was over chat_prompt_token_budget:
+// how many earlier messages were left out and which files went as an excerpt.
+var _lastTrim = null;
+function renderTrimUsed(msgEl, t){
+  try{
+    var meta = msgEl.querySelector('.msg-meta'); if(!meta || !t) return;
+    var bits = [], ex = t.excerpts || [];
+    if(t.dropped) bits.push(t.dropped + ' earlier message' + (t.dropped === 1 ? '' : 's') + ' left out');
+    if(ex.length) bits.push('excerpt of ' + ex.slice(0, 2).join(', ') + (ex.length > 2 ? ' and ' + (ex.length - 2) + ' more' : ''));
+    if(!bits.length) return;
+    var s = document.createElement('span');
+    s.className = 'msg-trim'; s.textContent = 'Shortened to fit: ' + bits.join(', ');
+    s.title = 'Kept under the prompt budget (' + t.budget + ' tokens) so the reply stays fast. ' +
+              'A file sent as an excerpt was read in full when it was attached; attach it again to have all of it read.';
+    meta.appendChild(s);
+  }catch(e){}
+}
+
 // ── Model picker ──────────────────────────────────────────────────────────
 // All local models are served by ONE mlx_vlm.server holding a single model at a
 // time, so switching unloads the current model and loads the new one. That is a
@@ -1058,7 +1078,7 @@ function regenerateResponse(btn){
   if(!lastUser)return;
   // Re-run the chat call
   isProcessing=true;document.getElementById('sendBtn').disabled=true;_showStop();showTyping();
-  _currentAbort=new AbortController();_lastSkill=null;_lastWeb=null;
+  _currentAbort=new AbortController();_lastSkill=null;_lastWeb=null;_lastTrim=null;
   var msgs=_withSystem(chatHist);
   var raw='',div=null; // outside the .then so the .catch can keep a partial answer
   fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs,force_search:webSearchEnabled,thinking:false,show_thoughts:false,reason_scaffold:thinkingEnabled,stream:true,workdir:_workdir,temporary:temporaryChat||undefined}),signal:_currentAbort.signal}).then(async function(r){
@@ -1075,7 +1095,7 @@ function regenerateResponse(btn){
       for(var li=0;li<lines.length;li++){
         var line=lines[li].trim();if(!line.startsWith('data: '))continue;var payload=line.substring(6);
         if(payload==='[DONE]')break;
-        try{var j=JSON.parse(payload);if(j.stats){_lastStats=j.stats}if(j.memory){_lastMemory=j.memory}if(j.web){_lastWeb=j.web}if(j.skill){showToast('Skill: '+j.skill);_lastSkill=j.skill}if(j.token){raw+=j.token;var ps=parseScaffold(raw);if(thinkingEnabled&&ps.think){var tp=makeToT(div,'Reveal train of thought',true);totSet(tp,ps.think)}if(ps.answer){(answerStream||(answerStream=mdStream(bubble,{onRender:scrollBottom}))).update(ps.answer)}scrollBottom()}if(j.error){raw+='\nError: '+j.error}}catch(pe){}
+        try{var j=JSON.parse(payload);if(j.stats){_lastStats=j.stats}if(j.memory){_lastMemory=j.memory}if(j.web){_lastWeb=j.web}if(j.trim){_lastTrim=j.trim}if(j.skill){showToast('Skill: '+j.skill);_lastSkill=j.skill}if(j.token){raw+=j.token;var ps=parseScaffold(raw);if(thinkingEnabled&&ps.think){var tp=makeToT(div,'Reveal train of thought',true);totSet(tp,ps.think)}if(ps.answer){(answerStream||(answerStream=mdStream(bubble,{onRender:scrollBottom}))).update(ps.answer)}scrollBottom()}if(j.error){raw+='\nError: '+j.error}}catch(pe){}
       }
     }
     var pf=parseScaffold(raw);
@@ -1091,6 +1111,7 @@ function regenerateResponse(btn){
       if(md&&_lastStats)renderStats(md,_lastStats);_lastStats=null;
       if(md&&_lastMemory)renderMemoryUsed(md,_lastMemory);_lastMemory=null;
       if(md&&_lastWeb)renderWebUsed(md);_lastWeb=null;
+      if(md&&_lastTrim)renderTrimUsed(md,_lastTrim);_lastTrim=null;
       chatHist.push({role:'assistant',content:answer});saveMessages([{role:'assistant',content:answer}])
     }else{if(answerStream)answerStream.cancel();div.remove();_verRestore()}
     _currentAbort=null;isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false
@@ -2488,7 +2509,7 @@ async function sendMessage(queued){
     } else {
       if(pick)setPick(null); // the pick goes with this one message
       _lastSkill=(pick&&pick.kind!=='agent'&&pick.name)||null; // P2.7: the reply's skill, for feedback
-      _lastWeb=null;
+      _lastWeb=null;_lastTrim=null;
       r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs,force_search:webSearchEnabled,thinking:false,show_thoughts:false,reason_scaffold:thinkingEnabled,stream:true,workdir:_workdir,skill:pick?pick.name:undefined,temporary:temporaryChat||undefined}),signal:_currentAbort.signal});
       if(r.status===401||r.status===403){hideTyping();addMessage('assistant','Session expired — redirecting to login...');setTimeout(function(){window.location.href='/auth'},1500);isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false;return}
       hideTyping();_lastStats=null;
@@ -2507,7 +2528,7 @@ async function sendMessage(queued){
           if(!line.startsWith('data: '))continue;
           var payload=line.substring(6);
           if(payload==='[DONE]')break;
-          try{var j=JSON.parse(payload);if(j.stats){_lastStats=j.stats}if(j.memory){_lastMemory=j.memory}if(j.web){_lastWeb=j.web}if(j.skill){_lastSkill=j.skill}if(j.token){raw+=j.token;var ps=parseScaffold(raw);if(thinkingEnabled&&ps.think){var tp2=makeToT(div,'Reveal train of thought',true);totSet(tp2,ps.think)}if(ps.answer){(answerStream||(answerStream=mdStream(bubble,{onRender:scrollBottom}))).update(ps.answer)}scrollBottom()}if(j.escalate_project){renderEscalateChip(j.escalate_project,text)}if(j.skill_confirm){renderSkillConfirmChip(j.skill_confirm,text)}if(j.error){raw+='\n\nError: '+j.error}}catch(pe){}
+          try{var j=JSON.parse(payload);if(j.stats){_lastStats=j.stats}if(j.memory){_lastMemory=j.memory}if(j.web){_lastWeb=j.web}if(j.trim){_lastTrim=j.trim}if(j.skill){_lastSkill=j.skill}if(j.token){raw+=j.token;var ps=parseScaffold(raw);if(thinkingEnabled&&ps.think){var tp2=makeToT(div,'Reveal train of thought',true);totSet(tp2,ps.think)}if(ps.answer){(answerStream||(answerStream=mdStream(bubble,{onRender:scrollBottom}))).update(ps.answer)}scrollBottom()}if(j.escalate_project){renderEscalateChip(j.escalate_project,text)}if(j.skill_confirm){renderSkillConfirmChip(j.skill_confirm,text)}if(j.error){raw+='\n\nError: '+j.error}}catch(pe){}
         }
       }
       var pf2=parseScaffold(raw);
@@ -2515,7 +2536,7 @@ async function sendMessage(queued){
       // <thinking> tail into the bubble; keep reasoning in the reveal panel.
       var answer2=(pf2.answer&&pf2.answer.trim())||raw.replace(/<thinking>[\s\S]*?<\/thinking>/i,'').replace(/<thinking>[\s\S]*$/i,'').replace(/###\s*FINAL ANSWER:?/i,'').replace(/<\/?final\s*answer>/gi,'').trim();
       if(!answer2&&pf2.think&&pf2.think.trim()){answer2='*My reasoning ran on without reaching a final answer — a local-model glitch, not a real reply. The train of thought is below; please ask again.*'}
-      if(answer2){div.remove();var md2=addMessage('assistant',answer2);if(thinkingEnabled&&pf2.think&&pf2.think.trim()&&md2){var fp2=makeToT(md2,'Train of thought',false);totSet(fp2,pf2.think.trim())}if(md2&&_lastStats)renderStats(md2,_lastStats);_lastStats=null;if(md2&&_lastMemory)renderMemoryUsed(md2,_lastMemory);_lastMemory=null;if(md2&&_lastWeb)renderWebUsed(md2);_lastWeb=null;chatHist.push({role:'assistant',content:answer2});saveMessages([{role:'assistant',content:answer2}])}
+      if(answer2){div.remove();var md2=addMessage('assistant',answer2);if(thinkingEnabled&&pf2.think&&pf2.think.trim()&&md2){var fp2=makeToT(md2,'Train of thought',false);totSet(fp2,pf2.think.trim())}if(md2&&_lastStats)renderStats(md2,_lastStats);_lastStats=null;if(md2&&_lastMemory)renderMemoryUsed(md2,_lastMemory);_lastMemory=null;if(md2&&_lastWeb)renderWebUsed(md2);_lastWeb=null;if(md2&&_lastTrim)renderTrimUsed(md2,_lastTrim);_lastTrim=null;chatHist.push({role:'assistant',content:answer2});saveMessages([{role:'assistant',content:answer2}])}
       else{if(answerStream)answerStream.cancel();bubble.innerHTML='<em style="color:var(--text-dim)">No response</em>'}
     }
   }catch(e){
