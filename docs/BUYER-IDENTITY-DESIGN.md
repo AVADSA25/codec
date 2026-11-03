@@ -31,6 +31,12 @@ ran that prompt through `str.format`.
   threads, which Deep Chat already gets in their own Daybreak block). Voice and the wake word read
   About me and facts through the same `gather()` with no filter, so their prompts are byte for byte
   what they were until the memory-origin item (P-037) maps origins.
+  The tag names the writer, not the caller, so this is not a full origin filter: `memory_history`
+  ("set fact ...", tag `skill:memory_history`) and `fact_extract` / `auto_memorize` (tag
+  `fact_extract`) are MCP-exposed as well, and a fact a remote caller saves through them still
+  reaches Deep Chat (one line each, capped, inside the facts block). The other way round,
+  `memory_save` tags a local "remember that ..." `mcp` too, which is why the Studio's own facts
+  are mostly left out of Deep Chat. Recording the caller is P-037.
 - **One identity block.** The page's typed `SYS` block is deleted. The page sends a system message
   only when Think is off, and then only the concise-answer directive; the server prompt is the one
   identity. The page's "Never use emoji" rule moves into the single prompt: the chat-mode format

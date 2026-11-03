@@ -26,7 +26,9 @@ log = logging.getLogger("codec_runtime_context")
 FACTS_LIMIT = 20
 # Facts Deep Chat leaves out: mcp and untrusted can be written by a remote caller (memory_save is
 # MCP-exposed and tags every save "mcp"); daybreak facts are the open threads, which Deep Chat
-# already gets in their own block (codec_daybreak.get_working_context).
+# already gets in their own block (codec_daybreak.get_working_context). Not a full origin filter:
+# memory_history and fact_extract are MCP-exposed too and tag their own name whoever calls them,
+# so those facts still reach Deep Chat until the memory-origin item (P-037) records the caller.
 CHAT_EXCLUDED_SOURCES = ("mcp", "untrusted", "daybreak")
 # Deep Chat's limits: About me as long as Settings > Memory lets it be (routes.memory_page.ABOUT_MAX),
 # one fact line and the whole facts block (about 400 tokens).
