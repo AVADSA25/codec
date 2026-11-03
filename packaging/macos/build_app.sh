@@ -179,9 +179,12 @@ if command -v node >/dev/null 2>&1; then
     # generator substitutes the bundle's own Resources/app via --workdir.
     # Dev-only services never ship to a buyer: codec-watchdog is a developer
     # RAM guard for the PM2 fleet (a buyer Mac has no PM2 to exempt its PIDs).
+    # codec-mcp is the stdio MCP server: the MCP client that uses it starts it. As a
+    # LaunchAgent it reads end of file at once, exits, and launchd restarts it for
+    # ever (P-012). codec-mcp-http, the claude.ai connector, still ships.
     node -e '
       const [eco, repo] = process.argv.slice(1);
-      const DEV_ONLY = new Set(["codec-watchdog"]);
+      const DEV_ONLY = new Set(["codec-watchdog", "codec-mcp"]);
       const apps = require(eco).apps.filter(a => !DEV_ONLY.has(a.name)).map(a => {
         if (a.cwd === repo) delete a.cwd;   // -> --workdir applies
         return a;
