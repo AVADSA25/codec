@@ -26,7 +26,8 @@ import re
 import shlex
 from dataclasses import dataclass, field
 
-TOOLS = ("list_files", "read_file", "search", "edit_file", "write_file", "delete_file", "run_check", "ask", "finish")
+TOOLS = ("list_files", "read_file", "search", "edit_file", "write_file", "delete_file", "run_check", "ask", "finish",
+         "read_output")
 MAX_PAIRS = 5                   # SEARCH / REPLACE pairs in one edit_file
 MAX_CHOICES = 6
 MAX_REPORT_CHARS = 2000
@@ -34,6 +35,7 @@ MAX_QUESTION_CHARS = 600
 
 HEADER_RE = re.compile(r"^@@[ \t]*([A-Za-z_]+)(?![A-Za-z0-9_]):?[ \t]*(.*?)[ \t]*$")
 RANGE_RE = re.compile(r"^(\d{1,6})(?:-(\d{0,6}))?$")
+RESULT_NO_RE = re.compile(r"^[1-9]\d{0,5}$")
 _BARE_RE = re.compile(r"^(?:finish|ask):?[ \t]*$", re.I)
 _FENCE_RE = re.compile(r"^[ \t]*```[\w+.-]*[ \t]*$")
 _THINK_OPEN = "<think>"
@@ -64,6 +66,7 @@ FORMAT_HELP = (
     "Tool blocks start with @@ at the start of a line. One tool per reply, after one short sentence:\n"
     "@@ list_files [folder or glob]\n"
     "@@ read_file PATH [FIRST-LAST]\n"
+    "@@ read_output N [FIRST-LAST]\n"
     "@@ search [--regex] [--files] [--count] \"text\" [PATH]\n"
     "@@ edit_file PATH   then <<<<<<< SEARCH / ======= / >>>>>>> REPLACE\n"
     "@@ write_file PATH  then <<<<<<< CONTENT / >>>>>>> END\n"
@@ -109,6 +112,18 @@ def _split_args(rest: str):
         return shlex.split(rest), None
     except ValueError:
         return None, "I could not read the arguments (check the quotes)."
+
+
+def _line_range(word: str):
+    """(first, last or None, error) of a FIRST-LAST word, as read_file and read_output take it."""
+    rm = RANGE_RE.match(word)
+    if not rm:
+        return 1, None, "The line range must look like 10-80, or 10- to read on from line 10."
+    first = max(1, int(rm.group(1)))
+    last = int(rm.group(2)) if rm.group(2) else None
+    if last is not None and last < first:
+        return 1, None, "The last line must not come before the first line."
+    return first, last, ""
 
 
 def _search_flag(word: str):
@@ -292,7 +307,7 @@ def scan_reply(text: str, allowed=TOOLS, final: bool = False, lenient: bool = Fa
             return err(bad)
         return Scan("complete", Call(name, sargs, note), note=note, cut=True)
 
-    if name in ("list_files", "read_file", "delete_file", "edit_file", "write_file"):
+    if name in ("list_files", "read_file", "delete_file", "edit_file", "write_file", "read_output"):
         args, bad = _split_args(rest)
         if bad:
             return err(bad)
@@ -305,14 +320,20 @@ def scan_reply(text: str, allowed=TOOLS, final: bool = False, lenient: bool = Fa
                 return err("Use: @@ read_file PATH [FIRST-LAST]")
             first, last = 1, None
             if len(args) == 2:
-                rm = RANGE_RE.match(args[1])
-                if not rm:
-                    return err("The line range must look like 10-80, or 10- to read on from line 10.")
-                first = max(1, int(rm.group(1)))
-                last = int(rm.group(2)) if rm.group(2) else None
-                if last is not None and last < first:
-                    return err("The last line must not come before the first line.")
+                first, last, bad = _line_range(args[1])
+                if bad:
+                    return err(bad)
             return Scan("complete", Call(name, {"path": args[0], "first": first, "last": last}, note), note=note, cut=True)
+        if name == "read_output":                       # a result number, never a path (P-043)
+            num = args[0].lstrip("#") if args else ""
+            if not 1 <= len(args) <= 2 or not RESULT_NO_RE.match(num):
+                return err("Use: @@ read_output N [FIRST-LAST], where N is the number of a result.")
+            first, last = 1, None
+            if len(args) == 2:
+                first, last, bad = _line_range(args[1])
+                if bad:
+                    return err(bad)
+            return Scan("complete", Call(name, {"n": int(num), "first": first, "last": last}, note), note=note, cut=True)
         if len(args) != 1:
             return err(f"Use: @@ {name} PATH")
         path = args[0]
@@ -493,6 +514,7 @@ def system_prompt(allowed=TOOLS) -> str:
         "TOOLS. A tool block starts with @@ at the very start of a line:",
         "@@ list_files [folder or glob]        (a glob such as src/**/*.js lists only the matching files)",
         "@@ read_file PATH [FIRST-LAST]        (lines are numbered; read 300 lines at most per call)",
+        "@@ read_output N [FIRST-LAST]        (the numbered lines of result N, when it was shown in part or shortened)",
         '@@ search [--regex] [--files] [--count] "text" [PATH or glob]',
         "(plain text, any case; --regex: a Python regular expression; --files: only the names of matching files;"
         " --count: matching lines per file)",
