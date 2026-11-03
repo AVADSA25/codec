@@ -138,7 +138,8 @@ def test_installed_guard_refuses_live_path_opens():
             fd = os.open(os.path.join(LIVE, name), os.O_WRONLY | os.O_APPEND)
             os.close(fd)
         with guard.expected(), pytest.raises(lsg.LiveStateRefused):
-            open(os.path.join(LIVE, name), "a").close()
+            # "r+", not "a": a missing file is not created even if the guard failed.
+            open(os.path.join(LIVE, name), "r+").close()
     with guard.expected(), pytest.raises(lsg.LiveStateRefused):
         sqlite3.connect(f"file:{os.path.join(LIVE, 'memory.db')}?mode=ro", uri=True).close()
     if not guard.allow_real_keychain:  # CODEC_REAL_KEYCHAIN_TESTS=1 lets it run
