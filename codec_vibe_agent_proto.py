@@ -637,11 +637,16 @@ TODO_RULE = ("- For a goal with several parts you may write a short plan before 
              "step; the list is shown back to you after each result. Change it at most once every 3 steps.")
 
 
+def mark_notes_markers(text: str, where: str = "data") -> str:
+    """Text with the notes markers marked as inside it, so a result, a file name or a notes file cannot open or close
+    a [NOTES] block, which the prompt trusts more than data (P-046)."""
+    return text.replace("[END NOTES]", f"[END NOTES (inside the {where})]").replace("[NOTES ", f"[NOTES (inside the {where}) ")
+
+
 def _escape_markers(text: str) -> str:
     """Project text with the engine's own markers marked as inside the data, so it cannot close or open a block."""
     safe = text.replace("[END RESULT]", "[END RESULT (inside the data)]").replace("[RESULT ", "[RESULT (inside the data) ")
-    safe = safe.replace("[END NOTES]", "[END NOTES (inside the notes)]").replace("[NOTES ", "[NOTES (inside the notes) ")
-    return mark_owner_phrase(safe)
+    return mark_owner_phrase(mark_notes_markers(safe, "notes"))
 
 
 def notes_block(path: str, text: str, left_out: int = 0) -> str:
@@ -654,7 +659,7 @@ def wrap_result(n: int, tool: str, arg: str, text: str, ok: bool = True) -> str:
     """A tool result as the model sees it. The end marker, and the owner's line that may follow it, cannot be forged
     from file content (P-044)."""
     safe = text.replace("[END RESULT]", "[END RESULT (inside the data)]").replace("[RESULT ", "[RESULT (inside the data) ")
-    safe = mark_owner_phrase(safe)
+    safe = mark_owner_phrase(mark_notes_markers(safe))          # nor can it forge a [NOTES] block (P-046)
     tag = f"[RESULT {n} {tool} {arg}".rstrip() + ("]" if ok else ": FAILED]")
     return f"{tag}\n{safe}\n[END RESULT]"
 

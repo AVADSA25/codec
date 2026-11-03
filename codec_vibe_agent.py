@@ -1412,7 +1412,8 @@ class Run:
         shown = files[:MAP_LINES]
         more = f"\n... and {len(files) - len(shown)} more (list_files shows them)" if len(files) > len(shown) else ""
         # The map comes after the owner's note (P-044) and file names are data: one cannot pass for the owner's line.
-        return proto.mark_owner_phrase(f"PROJECT FILES ({len(files)}):\n" + "\n".join(f"{f['path']} ({_size(f['size'])})" for f in shown) + more)
+        return proto.mark_notes_markers(proto.mark_owner_phrase(      # nor for a [NOTES] block (P-046)
+            f"PROJECT FILES ({len(files)}):\n" + "\n".join(f"{f['path']} ({_size(f['size'])})" for f in shown) + more))
 
     @staticmethod
     def _result_text(t: _Turn, mode: str) -> str:
@@ -1638,7 +1639,7 @@ def _turn_from_log(n: int, tool, reply: str, ev: dict, pid: str = "", owner: str
     summary = str(ev.get("summary") or "")[:160]
     name, arg = tool if tool else (str(ev.get("tool") or "error"), "")
     if name == "error":
-        said = reply.strip() or "(no reply)"
+        said = proto.without_todo(reply).strip() or "(no reply)"       # as _bad_reply kept it (P-046)
         return _Turn(n, "error", "", said[:2000], said[:300], proto.wrap_result(n, "error", "", output, ok=False), summary, False)
     text, call, note = _replayed_reply(reply, name, arg)
     read_path = ""
