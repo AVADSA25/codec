@@ -23,13 +23,13 @@ Everything below lives on your Mac's disk. Nothing is synced anywhere.
 | `~/.codec/notes/` | Your CODEC Notes | Deleted notes go to `notes/.trash/` |
 | `~/.codec/agents/` | Project-mode agents: plans, grants, messages | Project files go to `~/codec-projects/`; Vibe projects to `~/codec-workspace/` |
 | `~/.codec/google_token.json`, `~/.codec/google_credentials.json` | Google sign-in token and OAuth client | On disk (0600), not in the Keychain |
-| `~/.codec/config.json` | Settings | Provider API keys are in the Keychain (below). The paid app's licence key is in this file. |
+| `~/.codec/config.json` | Settings | Provider API keys are in the Keychain (below). The paid app's licence key is in this file, and so is the e-mail alert password if you set one. |
 | `~/.codec/mcp_servers.json` | Connectors you added | Includes any API-key header you typed for one |
 | `~/.codec/backups/` | Checked copies of `memory.db` and a daily state archive | Made daily, and before a clean-up |
 | `~/.codec/audit.log` | Audit log (section 3) | 0600, one new file per day, 30 days kept |
 | `~/.codec/observer_buffer.json` | What the observer saw in the last 10 minutes: active window, screen text, recent files, idle time | 0600; the clipboard only as its type and length; deleted when the observer pauses or stops and after a long idle |
 | `~/.codec/images/`, `~/.codec/models/`, `~/.codec/skills/`, `~/.codec/plugins/` | Pictures you made, downloaded models, your own skills and plugins | |
-| `~/Library/Logs/CODEC/`, `~/.pm2/logs/codec-*` | Service logs (Mac app, source install) | |
+| `~/Library/Logs/CODEC/`, `~/.pm2/logs/codec-*` | Service logs (Mac app, source install) | A source install also writes `~/.pm2/logs/qwen3.6-*`, `whisper-stt-*` and `kokoro-82m-*` (the model servers) |
 | `~/Library/Caches/ai.avadigital.codec`, `~/Library/WebKit/ai.avadigital.codec` | The app window's cache and page storage (theme and layout) | |
 
 ### Secrets in the macOS Keychain
@@ -66,7 +66,7 @@ These two are the only requests that go out without you asking for something or 
 | Request | When | To | What it carries |
 |---|---|---|---|
 | **Update check** | When the dashboard page opens, then every 6 hours while it stays open | `https://github.com/AVADSA25/codec-updates/releases/latest/download/appcast.xml` (GitHub). `sparkle_feed_url` in `config.json` changes the address. | A plain GET: GitHub sees your IP address and that a copy of CODEC asked, nothing else. The update file is downloaded only when you click Download, checked against the release signing key (Ed25519) and saved to `~/Downloads`. There is no off switch yet. |
-| **Licence public key** (paid app only) | At most once an hour, when a skill, an agent or a cloud call checks the licence | `https://codec-license.avadigital.ai/public-key` (AVA Digital) | A plain GET for the public key. Your licence key is checked on the Mac against it and is not sent. |
+| **Licence public key** (paid app only, once a licence key is entered) | When a skill, an agent or a cloud call checks the licence: at most once an hour per CODEC process once the key has been fetched, and at most once a minute while the fetch keeps failing | `https://codec-license.avadigital.ai/public-key` (AVA Digital) | A plain GET for the public key. Your licence key is checked on the Mac against it and is not sent. |
 
 ### 2.2 Requests you ask for, or features you turn on
 
@@ -79,17 +79,19 @@ These two are the only requests that go out without you asking for something or 
 | **A cloud model** for chat, voice and agents | Your prompt, the conversation context and tool results | The local model (`http://localhost:8083/v1`) by default. A cloud provider only if you chose one at setup, picked a cloud model in the model list, or set `llm_auto_fallback` (used while the local model is down). Mail triage, text assist, the morning briefing and Project-mode agents always stay local; Vibe chat asks before each message it sends to a cloud model. | Per turn while a cloud model is selected |
 | **AVA cloud proxy** (paid app, if you pick it at setup) | The same, with your licence key as the sign-in | AVA Digital's proxy (`ava-proxy.lucyvpa.com`), which passes it to Google Gemini models (`gemini-2.5-flash-lite` by default) | Per turn |
 | **claude.ai connector** (MCP over HTTP) | The tool requests claude.ai makes and their results | Anthropic (claude.ai), through your own Cloudflare tunnel | While claude.ai is connected; tools with side effects wait for your Allow |
-| **Google skills** (Gmail, Calendar, Drive, Docs, Sheets, Slides, Tasks, Keep) | What the request needs | Google APIs (`www.googleapis.com`), as your own account | Per request. A Google Doc CODEC creates is private; it is shared only when a caller asks for it, and none does today. |
+| **Google skills** (Gmail, Calendar, Drive, Docs, Sheets, Slides, Tasks, Keep) | What the request needs | Google APIs (`*.googleapis.com`), as your own account | Per request. A Google Doc CODEC creates is private; it is shared only when a caller asks for it, and none does today. |
 | **Pictures in Google Docs** | Words from the doc's headings | Pexels (`api.pexels.com`) | When a Pexels key is set and CODEC writes a Google Doc |
 | **Connectors** (Settings > Connectors) | The tool calls you make through them | The servers you add (Notion, Linear, ...) | Per call, after you sign in |
 | **Telegram bridge and owner alerts** | The messages you exchange with your bot; alerts | Telegram (`api.telegram.org`). The bridge keeps asking Telegram for new messages while it runs. | After you add a bot token |
+| **Alerts by e-mail or Slack** | The alert text (which CODEC service failed or recovered) | The mail server or Slack webhook you set under `alerts` in `config.json` | After you turn `alerts.email` or `alerts.slack` on |
 | **iMessage bridge** | The messages you send and receive | Apple, through the Messages app | After you set it up |
 | **Phone notifications** (Web Push) | An encrypted fixed line per kind ("CODEC needs your approval"), never the question, the agent or any chat text | Your browser's push service: Google (`fcm.googleapis.com`), Apple (`*.push.apple.com`), Mozilla (`*.push.services.mozilla.com`) or Microsoft (`*.notify.windows.com`) | When an approval, a question or an agent result waits, on the devices you turned it on for |
-| **Skills that look something up** | The place, coin, query or page | weather: `wttr.in`; bitcoin price: `api.coingecko.com`; network info: `api.ipify.org` (shows your public IP); Philips Hue: `discovery.meethue.com`; AI news digest: public news feeds; `web_fetch` and the `chrome_*` skills: the page you name | When you ask |
+| **Skills that look something up** | The place, coin, query or page | weather: `wttr.in`; bitcoin price: `api.coingecko.com`, then `api.coindesk.com` if that fails; network info: `api.ipify.org` (shows your public IP); Philips Hue: `discovery.meethue.com`; AI news digest: public news feeds; `web_fetch` and the `chrome_*` skills: the page you name | When you ask |
 | **Morning briefing** (off by default) | Calendar and mail requests, the weather place | Google, `wttr.in` | On its schedule, after you switch it on in Settings |
-| **Price alerts** (`heartbeat_alerts` in `config.json`) | The coin name | `api.coingecko.com` | On every heartbeat, after you add one |
+| **Heartbeat alerts** (`heartbeat_alerts` in `config.json`) | A price alert: the coin name. A mail check: a Gmail request | `api.coingecko.com`; Google | On every heartbeat, after you add one |
 | **The dashboard from your phone** | The dashboard traffic | Your own Cloudflare tunnel (or Tailscale) to your Mac | While the tunnel runs |
-| **Model downloads** | The model name | Hugging Face | When you install or pick a model |
+| **Model downloads** | The model name | Hugging Face | When you install, pick or look up a model |
+| **Skill marketplace** (command line, `codec_marketplace.py`) | A request for the skill list or a skill file | GitHub (`raw.githubusercontent.com`) | When you run it |
 
 Speech recognition (Whisper), speech (Kokoro, voice 02), image making, the observer, memory, Notes, the morning
 briefing's script and Project-mode agents run on the Mac. Dictation's tidy-up step and fact extraction use the
@@ -124,7 +126,7 @@ See `SECURITY.md` and `AGENTS.md` for the full threat model.
 ## 5. Deleting your data
 
 **Uninstall.** `packaging/macos/uninstall_codec.sh` lists everything below and deletes nothing unless you pass
-`--yes`. `--yes` removes the app, its launchd agents, `~/Library/Logs/CODEC/`, `~/.pm2/logs/codec-*`, the app's
+`--yes`. `--yes` removes the app, its launchd agents, `~/Library/Logs/CODEC/`, CODEC's PM2 logs, the app's
 `Caches`, `WebKit` and `HTTPStorages` folders and every `ai.avadigital.codec.*` Keychain item. `--yes --purge-data`
 also removes `~/.codec`.
 
@@ -144,8 +146,9 @@ also removes `~/.codec`.
 day.
 
 **Staying offline.** Keep the local model, leave the "Search the web" toggle off, leave `vision_provider` unset,
-and do not connect Google, Telegram, connectors or claude.ai. The update check then remains the only request CODEC
-makes on its own (plus the licence key on the paid app).
+and do not connect Google, Telegram, connectors or claude.ai. A message with a phrase such as "who is" or "look up"
+still runs the `web_search` skill (section 2.2); switch that skill off on the Skills page if you want none. The
+update check then remains the only request CODEC makes on its own (plus the licence key on the paid app).
 
 ## 6. GDPR (paid tier) — Art. 13 disclosures
 

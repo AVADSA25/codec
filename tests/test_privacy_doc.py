@@ -125,7 +125,12 @@ def test_licence_key_fetch_matches_the_code():
     assert base and 'base.rstrip("/") + "/public-key"' in src
     t = _section("### 2.1")
     assert base.group(1) + "/public-key" in t
-    assert _const("codec_license.py", "_PUBKEY_CACHE_TTL") == 3600.0 and "At most once an hour" in t
+    assert _const("codec_license.py", "_PUBKEY_CACHE_TTL") == 3600.0
+    assert "at most once an hour per CODEC process once the key has been fetched" in t
+    # A failed fetch is not cached in memory, so the next licence check (the
+    # state is cached _LICENSE_STATE_CACHE_TTL seconds) asks again.
+    assert "_PUBKEY_CACHE_VALUE = pem" in src and _const("codec_license.py", "_LICENSE_STATE_CACHE_TTL") == 60.0
+    assert "at most once a minute while the fetch keeps failing" in t
     fetch = ast.get_source_segment(src, next(
         n for n in ast.parse(src).body if isinstance(n, ast.FunctionDef) and n.name == "_fetch_pubkey"))
     assert "_license_token" not in fetch and "Authorization" not in fetch, "the key fetch now sends the token"
@@ -175,6 +180,30 @@ def test_push_hosts_match_the_code():
         assert f"`*{suffix}`" in t
 
 
+def test_lookup_skills_alerts_and_marketplace_hosts_are_named():
+    t = _doc()
+    for host in sorted(set(re.findall(r'"https://([a-z.]+)/', _src("skills/bitcoin_price.py")))):
+        assert f"`{host}`" in t, f"PRIVACY.md does not name the bitcoin price host {host}"
+    registry = re.match(r"https://([a-z.]+)/", _const("codec_marketplace.py", "REGISTRY_URL")).group(1)
+    assert f"`{registry}`" in t
+    alerts = _src("codec_alerts.py")
+    assert 'alerts_cfg.get("email"' in alerts and 'alerts_cfg.get("slack"' in alerts
+    assert "**Alerts by e-mail or Slack**" in t and "`alerts.email` or `alerts.slack`" in t
+    assert 's.login(cfg["from"], cfg["password"])' in alerts and "the e-mail alert password" in t
+    assert 'atype == "email_check"' in _src("codec_heartbeat.py") and "A mail check: a Gmail request" in t
+
+
+def test_staying_offline_names_the_web_search_skill():
+    """The skill fires on a phrase, toggle or not, so 'staying offline' must say so."""
+    assert "web_search" in _const("routes/chat.py", "CHAT_SKILL_ALLOWLIST")
+    triggers = _const("skills/web_search.py", "SKILL_TRIGGERS")
+    offline = _doc()[_doc().index("**Staying offline.**"):]
+    offline = offline[:offline.index("## 6.")]
+    assert "`web_search` skill" in offline and "switch that skill off on the Skills page" in offline
+    for phrase in ("who is", "look up"):
+        assert phrase in triggers and f'"{phrase}"' in offline
+
+
 def test_every_host_named_is_called_by_the_code():
     """A host on the page that the code never calls is a stale or invented claim."""
     hosts = set(re.findall(r"`(?:https?://)?\*?\.?([a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|ai|in|org|dev|io))[/`:]",
@@ -206,6 +235,17 @@ def test_keychain_names_equal_the_code():
     code = _code_keychain_names()
     assert listed == code, (f"Keychain table and code disagree: only on the page {sorted(listed - code)}, "
                             f"only in the code {sorted(code - listed)}")
+
+
+def test_pm2_log_names_match_the_ecosystem_file():
+    names = re.findall(r'^\s+name: "([^"]+)"', _src("ecosystem.config.js"), re.M)
+    assert len(names) >= 10, f"ecosystem.config.js app names not found: {names}"
+    first = _section("## 1. What CODEC stores")
+    assert "`~/.pm2/logs/codec-*`" in first
+    for name in names:
+        if name != "codec" and not name.startswith("codec-"):
+            assert f"`{name}-*`" in first or f"`~/.pm2/logs/{name}-*`" in first, \
+                f"PRIVACY.md does not name the PM2 log of {name}"
 
 
 def test_google_token_is_named_as_a_file_on_disk():
