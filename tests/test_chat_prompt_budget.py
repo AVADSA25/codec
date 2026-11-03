@@ -115,7 +115,9 @@ def api(tmp_path, monkeypatch):
     client = TestClient(app)
 
     def post(messages, stream=True, **config):
-        cfg.write_text(json.dumps({"llm_base_url": "http://localhost:8083/v1", "llm_model": "test-model", **config}))
+        # P-038's notes have their own tests (test_chat_summary.py); these pin P-034 alone.
+        cfg.write_text(json.dumps({"llm_base_url": "http://localhost:8083/v1", "llm_model": "test-model",
+                                   "chat_summary": False, **config}))
         r = client.post("/api/chat", json={"messages": messages, "stream": stream, "thinking": False})
         assert r.status_code == 200, r.text
         frames = [json.loads(ln[6:]) for ln in r.text.splitlines()

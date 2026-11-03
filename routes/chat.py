@@ -44,6 +44,7 @@ from fastapi.responses import JSONResponse
 
 from codec_audit import log_event
 import codec_llm  # A-12 canonical LLM caller
+import codec_chat_summary  # P-038 notes on the earlier part of a long chat
 from codec_chat_stream import SkillTagBuffer, SKILL_TAG_RE  # A-6 token machine
 from codec_chat_pipeline import _StepBudget, _is_conversational  # B6-P2
 from codec_chat_pipeline import (  # Step 10 Q11 wiring (2026-07)
@@ -1187,6 +1188,9 @@ def _fit_prompt_budget(messages: list, budget: int):
         return messages, None
 
     head = [messages[0]] if last > 0 and messages[0].get("role") == "system" else []
+    # P-038: notes on the earlier part of the chat stay with the system message.
+    if len(head) < last and codec_chat_summary.is_notes_message(messages[len(head)]):
+        head = messages[:len(head) + 1]
     ctx_at = last
     before = messages[last - 1] if last - 1 >= len(head) else None
     if (before and before.get("role") == "user" and isinstance(before.get("content"), str)
@@ -1283,7 +1287,7 @@ def _maybe_escalate_suggestion(user_text: str, session_id: str):
 
 
 def _post_reply_checks(reply: str, actions: list, last_user_text: str, messages: list,
-                       session_id: str, stream: bool) -> tuple:
+                       session_id: str, stream: bool, notes_job=None) -> tuple:
     """The checks every finished chat reply goes through, stream:true and stream:false
     alike (P-099, docs/CHAT-REPLY-PARITY-DESIGN.md): the Project suggestion (Step 10
     Q11), the claim-to-artifact check and the premise check. A new rule for finished
@@ -1339,6 +1343,12 @@ def _post_reply_checks(reply: str, actions: list, last_user_text: str, messages:
             )
     except Exception as e:
         log.warning(f"[Chat] premise check skipped{where}: {e}")
+    # P-038: notes on a long chat are written after the reply, in the background.
+    if notes_job is not None:
+        try:
+            notes_job.start()
+        except Exception as e:
+            log.warning(f"[Chat] chat notes not started{where}: {e}")
     return suggestion, notes
 
 
@@ -1677,11 +1687,16 @@ async def chat_completion(request: Request):
         # P-034: what goes to the model this turn stays under
         # config.json:chat_prompt_token_budget (docs/CHAT-PROMPT-BUDGET-DESIGN.md).
         # The checks after the reply still read the untrimmed `messages`.
-        _llm_messages, _trim = _fit_prompt_budget(messages, _prompt_token_budget(config))
+        # P-038 (docs/CHAT-SUMMARY-DESIGN.md): turns left out come back as notes when
+        # there are some, and a notes job may be planned; it starts after the reply.
+        _llm_messages, _trim, _notes_job = codec_chat_summary.fit_with_notes(
+            messages, _prompt_token_budget(config), config, fit=_fit_prompt_budget,
+            llm={"base_url": base_url, "model": model, "api_key": api_key}, persona=_persona_active)
         if _trim:
             log.info("[Chat] prompt budget: %d of %d estimated tokens, %d earlier messages left out, "
-                     "%d file(s) as an excerpt%s", _trim["tokens"], _trim["budget"], _trim["dropped"],
-                     len(_trim["excerpts"]), " (over: the new file or the kept parts)" if _trim["over"] else "")
+                     "%d summarised, %d file(s) as an excerpt%s", _trim["tokens"], _trim["budget"],
+                     _trim["dropped"], _trim.get("summarised", 0), len(_trim["excerpts"]),
+                     " (over: the new file or the kept parts)" if _trim["over"] else "")
 
         stream_mode = body.get("stream", False)
         # Dashboard chat & Vibe benefit from thinking mode (deeper answers).
@@ -1919,7 +1934,7 @@ async def chat_completion(request: Request):
                     # check, premise check), shared with stream:false.
                     _sugg, _notes = _post_reply_checks(
                         "".join(_visible), _stream_actions, last_user_text, messages,
-                        _session_id, stream=True)
+                        _session_id, stream=True, notes_job=_notes_job)
                     if _sugg:
                         yield f"data: {json.dumps({'escalate_project': _sugg})}\n\n"
                     for _note in _notes:
@@ -1996,7 +2011,7 @@ async def chat_completion(request: Request):
         # thread because the Project suggestion may ask the local model.
         _sugg, _notes = await asyncio.to_thread(
             _post_reply_checks, answer, _turn_actions, last_user_text, messages,
-            _session_id, False)
+            _session_id, False, notes_job=_notes_job)
         answer += "".join(_notes)
 
         out = {"response": answer, "model": model}

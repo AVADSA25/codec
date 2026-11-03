@@ -759,6 +759,7 @@ function renderTrimUsed(msgEl, t){
   try{
     var meta = msgEl.querySelector('.msg-meta'); if(!meta || !t) return;
     var bits = [], ex = t.excerpts || [], out = t.not_sent || [];
+    if(t.summarised) bits.push(t.summarised + ' earlier message' + (t.summarised === 1 ? '' : 's') + ' summarised');
     if(t.dropped) bits.push(t.dropped + ' earlier message' + (t.dropped === 1 ? '' : 's') + ' left out');
     if(ex.length) bits.push('excerpt of ' + ex.slice(0, 2).join(', ') + (ex.length > 2 ? ' and ' + (ex.length - 2) + ' more' : ''));
     if(out.length) bits.push(out.slice(0, 2).join(', ') + (out.length > 2 ? ' and ' + (out.length - 2) + ' more' : '') + ' not sent');
