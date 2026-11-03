@@ -261,3 +261,78 @@ def test_the_only_call_that_approves_a_command_sits_in_the_cards_click_handlers(
     assert SRC.count("'/approve'") == 1
     body = SRC[SRC.index("function drawApproval(eff) {"):SRC.index("function drawDecision(eff) {")]
     assert body.count("addEventListener('click'") == 3 and body.count("decide('") == 3
+
+
+# ── P-044: Continue and the owner's queued message ────────────────────────
+
+CONTINUED_START = {"seq": 1, "t": 2000.0, "type": "start", "goal": "Add a form", "model": {"kind": "cloud", "label": "Cloud"},
+                   "limits": {"max_steps": 30, "max_seconds": 900}, "start_checkpoint": "c0005", "continues": "r1a2b3c4",
+                   "earlier_steps": 7}
+
+
+@node
+def test_a_continued_run_counts_its_own_steps_and_says_where_it_goes_on():
+    out = run("(function () { var r = A.newRun('p1'); var fx = A.applyEvent(r, C); "
+              "A.applyEvent(r, {seq: 2, type: 'tool', step: 9, name: 'read_file', arg: 'a.js'}); var live = A.stepText(r); "
+              "A.applyEvent(r, {seq: 3, type: 'end', status: 'done', steps: 2, report: 'ok'}); "
+              "return { offset: r.offset, kind: r.modelKind, continues: r.continues, live: live, done: A.stepText(r), "
+              "notes: fx.filter(function (x) { return x.t === 'note'; }).map(function (x) { return x.text; }) }; })()",
+              "var C = " + json.dumps(CONTINUED_START) + ";")
+    assert out == {"offset": 7, "kind": "cloud", "continues": "r1a2b3c4", "live": "Step 2 of 30", "done": "2 steps",
+                   "notes": ["This run goes on from where the last one stopped (7 steps done before)."]}
+    fresh = run("(function () { var r = A.newRun('p1'); A.applyEvent(r, E[0]); A.applyEvent(r, E[3]); "
+                "return [r.offset, r.continues, A.stepText(r)]; })()", "var E = " + json.dumps(EVENTS) + ";")
+    assert fresh == [0, None, "Step 1 of 30"]                                   # a new run is unchanged
+
+
+@node
+def test_continue_is_offered_only_when_the_server_says_so_and_posts_to_its_route():
+    out = run("['interrupted', 'stopped', 'limit', 'failed', 'done'].map(function (s) { "
+              "var yes = A.newRun('p1'); yes.finished = true; yes.status = s; yes.continuable = true; "
+              "var no = A.newRun('p1'); no.finished = true; no.status = s; "
+              "var live = A.newRun('p1'); live.status = s; live.continuable = true; "
+              "return [A.canContinue(yes), A.canContinue(no), A.canContinue(live)]; })")
+    assert out == [[True, False, False]] * 4 + [[False, False, False]]
+    assert run("A.continueLabel('  Add a form ')") == "Continue: Add a form"
+    poll = SRC[SRC.index("function poll() {"):SRC.index("function releaseUi() {")]
+    assert "if (d.finished) run.continuable = !!d.continuable;" in poll and poll.index("continuable") < poll.index("draw(effects)")
+    cont = SRC[SRC.index("function continueRun(old, btn) {"):SRC.index("function leave() {")]
+    assert "'/continue'" in cont and "{ confirm_cloud: cloud }" in cont and "confirmCloud()" in cont
+    assert "old.modelKind === 'cloud'" in cont                                  # a cloud run asks again, every time
+    end = SRC[SRC.index("function drawEnd(end) {"):SRC.index("function drawYou(text, state) {")]
+    assert "canContinue(r)" in end and "continueRun(r, go)" in end and "'Continue'" in end
+
+
+@node
+def test_an_owner_note_read_by_the_agent_is_shown_at_the_step_after_its_result():
+    out = run("(function () { var r = A.newRun('p1'); A.applyEvent(r, E[0]); "
+              "var a = A.applyEvent(r, {seq: 9, type: 'message', step: 2, id: 'm1a2b3', text: 'Use blue'}); "
+              "var c = A.newRun('p1'); A.applyEvent(c, C); "
+              "var b = A.applyEvent(c, {seq: 4, type: 'message', step: 9, id: 'm4d5e6', text: 'Keep it short'}); "
+              "return [a, b, r.since]; })()",
+              "var E = " + json.dumps(EVENTS) + "; var C = " + json.dumps(CONTINUED_START) + ";")
+    assert out == [[{"t": "message", "id": "m1a2b3", "text": "Use blue", "at": 3}],
+                   [{"t": "message", "id": "m4d5e6", "text": "Keep it short", "at": 3}], 9]
+    draw = SRC[SRC.index("function draw(effects) {"):SRC.index("function showPreview(paths) {")]
+    assert "eff.t === 'message') drawMessage(eff)" in draw
+    you = SRC[SRC.index("function drawYou(text, state) {"):SRC.index("function draw(effects) {")]
+    assert "el('div', 'agc-yt', 'You: ' + text)" in you and "innerHTML" not in you     # the owner's text goes in as text
+    assert ".agc-you{" in PAGE and ".agc-yt{" in PAGE
+
+
+@node
+def test_only_a_short_queued_message_is_sent_and_esc_stops_the_run():
+    out = run("[A.noteFits(''), A.noteFits('   '), A.noteFits('Use blue'), A.noteFits('x'.repeat(300)), "
+              "A.noteFits('x'.repeat(301)), A.noteFits('  ' + 'x'.repeat(300) + '  ')]")
+    assert out == [False, False, True, True, False, True]
+    send = SRC[SRC.index("function send(inp) {"):SRC.index("function queueNote(inp, text) {")]
+    assert "if (running()) return queueNote(inp, text);" in send and "startRun(text, inp)" in send
+    queue = SRC[SRC.index("function queueNote(inp, text) {"):SRC.index("function startRun(text, inp) {")]
+    assert "if (!noteFits(text))" in queue and queue.index("noteFits") < queue.index("clearInput(inp)")   # a long one stays in the box
+    assert "'/message'" in queue and "{ text: text }" in queue and "S.queue = q;" in queue
+    done = SRC[SRC.index("function finished(run) {"):SRC.index("function clearInput(inp) {")]
+    assert "startRun(q.text, null)" in done and "run.ownerStop" in done and "backToComposer(q.text)" in done
+    init = SRC[SRC.index("function init() {"):SRC.index("function active() {")]
+    assert "e.key === 'Escape' && !e.isComposing && running()" in init and "stopRun()" in init
+    assert "run.ownerStop = true;" in SRC[SRC.index("function stopRun() {"):SRC.index("function adopt(pid) {")]
+    assert SRC.count("'/message'") == 1 and SRC.count("'/continue'") == 1
