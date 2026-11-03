@@ -159,6 +159,24 @@ def _bootstrap_fleet(resources: Path) -> int:
     return proc.returncode
 
 
+def _repair_quick_actions(resources: Path) -> None:
+    """P-029: point CODEC's own Quick Actions at this app again (it may have moved).
+    Rewrites only workflows the app wrote, never recreates a deleted one, and never
+    fails the launch."""
+    script = resources / "first_run.py"
+    if not script.exists():
+        return
+    try:
+        proc = subprocess.run([sys.executable, str(script), "--home", str(_codec_dir()),
+                               "--quick-actions-repair"], capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError) as e:
+        _log(f"quick actions: repair did not run: {e}")
+        return
+    for line in (proc.stdout or "").splitlines():
+        if line.split()[:1] in (["updated"], ["failed:"]):
+            _log(f"  quick actions: {line.strip()}")
+
+
 def start_fleet(contents: Path) -> int:
     """Ensure the CODEC fleet is installed and running under launchd."""
     resources = contents / "Resources"
@@ -169,11 +187,13 @@ def start_fleet(contents: Path) -> int:
         rc = _run_first_run(resources)
         if rc != 0:
             return rc
-    elif _fleet_loaded() == 0:
-        _log("fleet not loaded in launchd — re-bootstrapping")
-        rc = _bootstrap_fleet(resources)
-        if rc != 0:
-            return rc
+    else:
+        _repair_quick_actions(resources)
+        if _fleet_loaded() == 0:
+            _log("fleet not loaded in launchd — re-bootstrapping")
+            rc = _bootstrap_fleet(resources)
+            if rc != 0:
+                return rc
 
     n = _fleet_loaded()
     if n == 0:

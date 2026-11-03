@@ -2,8 +2,9 @@
 """First-run orchestrator for the Sovereign AI Workstation (W5-6, E-9).
 
 Headless core the native onboarding wizard (W5-11) drives. On first launch it:
-installs the launchd fleet (W5-3), fetches the bundled model set (W5-5), and
-reports TCC permission status with deep links to the right System Settings pane.
+installs the launchd fleet (W5-3), fetches the bundled model set (W5-5), writes
+the eight Quick Actions (P-029, quick_actions.py), and reports TCC permission
+status with deep links to the right System Settings pane.
 Idempotent via a ~/.codec/.first_run_complete sentinel.
 
 macOS can't grant TCC permissions programmatically (by design), so this guides
@@ -187,8 +188,62 @@ def plan() -> list[str]:
     return [
         "Install launchd LaunchAgents (the CODEC service fleet)",
         "Fetch the bundled model set (Whisper + Kokoro + 7B LLM)",
+        "Write the eight CODEC Quick Actions (right-click text services)",
         "Check & guide TCC permissions (Accessibility, Mic, Screen Recording, ...)",
     ]
+
+
+# ---- Quick Actions (P-029) -------------------------------------------------
+
+def _quick_actions():
+    """quick_actions.py sits beside this file (packaging/macos, or Contents/Resources)."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("codec_quick_actions", os.path.join(HERE, "quick_actions.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _assist_off(home: str) -> bool:
+    """setup_codec.py records `assist_enabled: false` when the owner said no."""
+    try:
+        import json
+        with open(os.path.join(home, "config.json"), encoding="utf-8") as fh:
+            return json.load(fh).get("assist_enabled") is False
+    except Exception:
+        return False
+
+
+def install_quick_actions(contents: str | None, home: str, *, dry_run: bool = False,
+                          create: bool = True, services_dir: str | None = None) -> int:
+    """Write (first launch) or repair (later launches, create=False) the eight Quick
+    Actions so they run this bundle's interpreter. Never touches a workflow CODEC did
+    not write. Returns 1 only when a write failed."""
+    if not contents:
+        print("Quick Actions: skipped (CODEC is not running from the app).")
+        return 0
+    if _assist_off(home):
+        print("Quick Actions: skipped (assist_enabled is false in config.json).")
+        return 0
+    try:
+        refuse_if_ephemeral(contents)
+    except EphemeralLocationError as e:
+        print(f"Quick Actions: skipped ({e})")
+        return 0
+    try:  # never fatal: a first launch that stops here never starts the fleet
+        qa = _quick_actions()
+        interpreter, app_dir = qa.bundle_targets(contents)
+        target = services_dir or qa.SERVICES_DIR
+        results = qa.install(target, interpreter, app_dir, create=create, dry_run=dry_run)
+    except Exception as e:
+        print(f"  failed: Quick Actions not written ({type(e).__name__}: {e})")
+        return 1
+    print(f"Quick Actions ({target}):")
+    for name, action in results:
+        print(f"  {action:<13} {name}")
+    if not dry_run and qa.changed(results) and os.path.realpath(target) == os.path.realpath(qa.SERVICES_DIR):
+        qa.refresh_menu()
+    return 1 if any(action.startswith("failed") for _n, action in results) else 0
 
 
 def _run(cmd: list[str], dry_run: bool) -> None:
@@ -237,6 +292,9 @@ def run(home: str, *, dry_run: bool = False, yes: bool = False,
     fetch = [sys.executable, os.path.join(HERE, "fetch_models.py"), "--tier", "bundled"]
     _run(fetch + (["--dry-run"] if dry_run else (["--yes"] if yes else ["--dry-run"])), dry_run)
 
+    # A failed Quick Action write is reported, not fatal: the fleet is what matters.
+    install_quick_actions(bundle_contents(), home, dry_run=dry_run)
+
     _print_permissions(permission_report())
 
     if not dry_run:
@@ -254,7 +312,11 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--yes", action="store_true", help="consent to the real model download")
     ap.add_argument("--force", action="store_true", help="re-run even if already completed")
     ap.add_argument("--permissions-only", action="store_true", help="just re-check + report TCC")
+    ap.add_argument("--quick-actions-repair", action="store_true",
+                    help="every later launch: point CODEC's own Quick Actions at this app again")
     args = ap.parse_args(argv)
+    if args.quick_actions_repair:
+        return install_quick_actions(bundle_contents(), args.home, dry_run=args.dry_run, create=False)
     return run(args.home, dry_run=args.dry_run, yes=args.yes,
                force=args.force, permissions_only=args.permissions_only)
 

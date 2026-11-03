@@ -9,8 +9,11 @@ Reference: docs/W5-12-UNINSTALLER-DESIGN.md, docs/audits/PHASE-1-APPLE-APP.md (E
 """
 from __future__ import annotations
 
+import importlib.util
 import os
 import re
+import shlex
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -246,3 +249,58 @@ def test_keychain_scan_reads_no_secret_and_deletes_every_item_of_a_service():
     # --yes run scans again and names what is left.
     after = t[t.index("kc_delete_service \"$svc\""):]
     assert re.search(r'left="\$\(kc_scan', after) and "STILL PRESENT" in after
+
+
+# ── P-029: the eight Quick Actions the app writes on first launch ────────────
+# Written here with packaging/macos/quick_actions.py into the sandbox home only.
+
+def _quick_actions():
+    spec = importlib.util.spec_from_file_location("quick_actions_uninst", REPO / "packaging" / "macos" / "quick_actions.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _with_quick_actions(tmp_path: Path) -> tuple[Path, Path, list]:
+    home, app = _fixtures(tmp_path)
+    qa = _quick_actions()
+    res = app / "Contents" / "Resources"
+    services = home / "Library" / "Services"
+    qa.install(str(services), str(res / "python" / "bin" / "python3"), str(res / "app"))
+    hand = services / "CODEC Proofread.workflow"
+    shutil.rmtree(hand)
+    (hand / "Contents").mkdir(parents=True)  # a source install's own, without the marker
+    (hand / "Contents" / "Info.plist").write_text("<plist><dict><key>NSServices</key></dict></plist>")
+    other = services / "Word Count.workflow" / "Contents"
+    other.mkdir(parents=True)
+    (other / "Info.plist").write_text("<plist/>")
+    ours = [services / f"CODEC {t}.workflow" for t, _m in qa.SERVICES if t != "Proofread"]
+    return home, app, ours
+
+
+def test_uninstaller_titles_equal_the_quick_actions_the_app_writes():
+    m = re.search(r"^for title in (.+); do$", UNINSTALL.read_text(), re.M)
+    assert m, "the Quick Actions loop is missing from uninstall_codec.sh"
+    assert shlex.split(m.group(1)) == sorted(t for t, _m in _quick_actions().SERVICES)
+
+
+def test_dry_run_lists_the_apps_quick_actions_and_keeps_a_hand_made_one(tmp_path):
+    home, app, ours = _with_quick_actions(tmp_path)
+    before = sorted(str(p) for p in tmp_path.rglob("*"))
+    r = _run(home, app, "--dry-run")
+    assert r.returncode == 0, f"{r.stderr}\n{r.stdout}"
+    assert sorted(str(p) for p in tmp_path.rglob("*")) == before, "a dry run changed the sandbox"
+    for wf in ours:
+        assert f"would remove: {wf}" in r.stdout
+    assert f"kept (not written by the app): {home}/Library/Services/CODEC Proofread.workflow" in r.stdout
+    assert "Word Count" not in r.stdout
+
+
+def test_yes_removes_only_the_quick_actions_the_app_wrote(tmp_path):
+    home, app, ours = _with_quick_actions(tmp_path)
+    r = _run(home, app, "--yes")
+    assert r.returncode == 0, f"{r.stderr}\n{r.stdout}"
+    assert len(ours) == 7 and not any(wf.exists() for wf in ours)
+    services = home / "Library" / "Services"
+    assert (services / "CODEC Proofread.workflow" / "Contents" / "Info.plist").exists(), "a hand-made workflow was removed"
+    assert (services / "Word Count.workflow" / "Contents" / "Info.plist").exists()

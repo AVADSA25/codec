@@ -301,12 +301,17 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
 .set-num { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .set-num input { width: 84px; font-size: var(--fs-14); height: 34px; }
 .set-unit { font-size: var(--fs-12); color: var(--text-dim); }
+.set-presets { display: flex; flex-wrap: wrap; gap: 8px; flex: 0 1 46%; justify-content: flex-end; }
+.set-preset { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 7px 12px; font-family: var(--font-sans); font-size: var(--fs-13); cursor: pointer; }
+.set-preset:hover { border-color: var(--border-strong); }
+.set-preset.sel { border-color: var(--accent); background: var(--accent-dim); }
 .set-advanced > summary { cursor: pointer; list-style: revert; }
 .raw-config { width: 100%; max-width: 100%; text-align: left; font-size: var(--fs-13); line-height: 1.45; min-height: 240px; resize: vertical; margin-bottom: 10px; }
 @media (max-width: 767px) {
   .set-row { flex-wrap: wrap; }
   .set-row .set-text, .set-row .set-select, .set-row .set-range { flex: 1 1 100%; font-size: max(16px, var(--fs-14)); }
   .set-num input, .raw-config { font-size: max(16px, var(--fs-14)); }
+  .set-row .set-presets { flex: 1 1 100%; justify-content: flex-start; }
 }
 
 .save-config-btn {
@@ -647,6 +652,12 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
 .setup-dl{display:flex;flex-direction:column;gap:6px;margin-top:4px}
 .setup-dl[hidden]{display:none}
 .setup-skip{background:none;border:none;color:var(--text-dim);font-size:calc(12px * var(--fs-scale));cursor:pointer;text-decoration:underline}
+.setup-keys{display:flex;flex-direction:column;gap:8px;margin-top:18px;padding-top:16px;border-top:1px solid var(--border)}
+.setup-keys[hidden]{display:none}
+.setup-keys-t{font-size:calc(13px * var(--fs-scale));font-weight:600;color:var(--text)}
+.setup-keys-opts{display:flex;flex-wrap:wrap;gap:8px}
+.setup-key{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 12px;color:var(--text);font-size:calc(12px * var(--fs-scale));cursor:pointer}
+.setup-key.sel{border-color:var(--accent);background:var(--accent-dim)}
 
 
 @media (max-width: 768px), (max-height: 600px) and (pointer: coarse){
@@ -713,6 +724,14 @@ html, body { font-family: var(--font-sans); background: var(--bg); color: var(--
         <button class="setup-btn setup-btn-secondary" id="setupDlBtn">Download the local model (about 4.3 GB)</button>
         <div class="setup-opt-meta" id="setupDlMeta">Private, one-time, resumable. Runs on your Mac after that.</div>
       </div>
+    </div>
+
+    <!-- P-029: the keyboard presets (GET /api/hotkeys/presets). A MacBook stops at F12,
+         so the default F13/F18/F16 keys do not exist on it. -->
+    <div class="setup-keys" id="setupKeys" hidden>
+      <span class="setup-keys-t">Your keyboard</span>
+      <div class="setup-keys-opts" id="setupKeyOpts"></div>
+      <div class="setup-opt-meta" id="setupKeysMeta"></div>
     </div>
 
     <div class="setup-status" id="setupStatus"></div>
@@ -3623,6 +3642,9 @@ async function confirmTotpSetup(secret) {
 // control, and saves by itself (switches, dropdowns and sliders on change; text
 // on Enter or leaving the field). `put` is the section name PUT /api/config
 // expects: an old grouped section (flattened server-side) or a nested block.
+// P-029: the keys codec.py can hear (F1 to F20); the server refuses the rest.
+var _HOTKEY_OPTS = [];
+for (var _hk = 1; _hk <= 20; _hk++) _HOTKEY_OPTS.push(['f' + _hk, 'F' + _hk]);
 var SETTINGS_SCHEMA = [
   { title: 'Identity', sec: 'identity', put: 'Identity', fields: [
     { k: 'agent_name', label: 'Assistant name', help: 'The name CODEC uses for itself in replies and on screen.', c: 'text' } ] },
@@ -3645,10 +3667,10 @@ var SETTINGS_SCHEMA = [
     { k: 'stt_engine', label: 'Listening engine', help: 'How CODEC turns your voice into text. Whisper runs on this Mac.', c: 'select',
       opts: [['whisper_http', 'Whisper server (local)'], ['whisper_local', 'Whisper in CODEC'], ['disabled', 'Off']] },
     { k: 'stt_url', label: 'Whisper server address', help: 'The transcription endpoint of the Whisper server.', c: 'text', url: true } ] },
-  { title: 'Hotkeys', sec: 'keys', put: 'Hotkeys', fields: [
-    { k: 'key_toggle', label: 'Start / stop CODEC', help: 'The key that turns CODEC on and off (for example f13). Applies after a restart.', c: 'text' },
-    { k: 'key_voice', label: 'Push to talk', help: 'Hold this key to speak a command.', c: 'text' },
-    { k: 'key_text', label: 'Type a command', help: 'Press this key to type instead of speaking.', c: 'text' } ] },
+  { title: 'Hotkeys', sec: 'keys', put: 'Hotkeys', presets: true, fields: [
+    { k: 'key_toggle', label: 'Start / stop CODEC', help: 'The key that turns CODEC on and off. New keys apply when CODEC restarts.', c: 'select', opts: _HOTKEY_OPTS },
+    { k: 'key_voice', label: 'Push to talk', help: 'Hold this key to speak a command.', c: 'select', opts: _HOTKEY_OPTS },
+    { k: 'key_text', label: 'Type a command', help: 'Press this key to type instead of speaking.', c: 'select', opts: _HOTKEY_OPTS } ] },
   { title: 'Wake Word', sec: 'wake', put: 'Wake Word', fields: [
     { k: 'wake_word_enabled', label: 'Always-on mode', help: 'Wake when you say "Hey CODEC". Off: use the hotkey instead.', c: 'switch' },
     { k: 'wake_phrases', label: 'Wake phrases', help: 'Other phrases that wake CODEC, separated by commas.', c: 'list' },
@@ -3726,9 +3748,51 @@ function renderSettings(cfg) {
         '<div class="set-help" id="' + id + '-help">' + escHtml(f.help) + '</div><div class="set-status" role="status" aria-live="polite"></div></div>' +
         _setControl(sec.sec, f, vals[f.k]) + '</div>';
     });
+    if (sec.presets) {
+      html += '<div class="setting-row set-row"><div class="set-main"><span class="setting-label">Keyboard preset</span>' +
+        '<div class="set-help" id="hotkeyPresetHelp">Sets all three keys at once.</div>' +
+        '<div class="set-status" id="hotkeyPresetStatus" role="status" aria-live="polite"></div></div>' +
+        '<div class="set-presets" id="hotkeyPresets"></div></div>';
+    }
     html += '</div></div>';
   });
   document.getElementById('settingsContent').innerHTML = html;
+  loadHotkeyPresets();
+}
+// P-029: the keyboard presets (GET /api/hotkeys/presets). Labels from the server
+// go in with textContent, never as HTML.
+async function loadHotkeyPresets() {
+  var box = document.getElementById('hotkeyPresets');
+  if (!box) return;
+  try {
+    var d = await (await fetch('/api/hotkeys/presets')).json();
+    box.textContent = '';
+    (d.presets || []).forEach(function (p) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'set-preset' + (p.id === d.active ? ' sel' : '');
+      b.textContent = p.label;
+      b.title = p.help;
+      b.setAttribute('aria-pressed', p.id === d.active ? 'true' : 'false');
+      b.addEventListener('click', function () { applyHotkeyPreset(p.id); });
+      box.appendChild(b);
+    });
+    var active = (d.presets || []).filter(function (p) { return p.id === d.active; })[0];
+    document.getElementById('hotkeyPresetHelp').textContent = active ? active.help : 'Sets all three keys at once.';
+  } catch (e) { box.textContent = ''; }
+}
+async function applyHotkeyPreset(id) {
+  var st = document.getElementById('hotkeyPresetStatus');
+  try {
+    var r = await fetch('/api/hotkeys/preset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ preset: id }) });
+    var d = await r.json();
+    if (!r.ok || !d.saved) throw new Error((d && d.error) || ('HTTP ' + r.status));
+    await loadSettings();
+    st = document.getElementById('hotkeyPresetStatus');
+    if (st) { st.textContent = d.message; st.className = 'set-status ok'; }
+  } catch (e) {
+    if (st) { st.textContent = 'Not saved: ' + e.message; st.className = 'set-status err'; }
+  }
 }
 function _setField(el) {
   var sec = SETTINGS_SCHEMA.filter(function (s) { return s.sec === el.dataset.sec; })[0];
@@ -3780,7 +3844,7 @@ async function saveSetting(el) {
     if (f.c === 'password') { loadSettings(); return; }  // show the new masked value
     if (st) { st.textContent = 'Saved'; st.className = 'set-status ok'; setTimeout(function () { if (st.textContent === 'Saved') st.textContent = ''; }, 2000); }
     if (f.k === 'wake_word_enabled') {
-      showToast(v ? 'Always-on wake word: ON' : 'Always-on OFF — CODEC won’t wake on its name (use F13)');
+      showToast(v ? 'Always-on wake word: ON' : 'Always-on OFF — CODEC won’t wake on its name (use ' + String((_configData.keys && _configData.keys.key_toggle) || 'f13').toUpperCase() + ')');
       if (window.CodecShell) CodecShell.refreshWake();
     }
   } catch (e) {
@@ -4545,8 +4609,38 @@ setInterval(checkForUpdate, 6*60*60*1000);   // re-check every 6h
       dlTimer=setInterval(pollDl,2000);
     }).catch(function(e){dlMeta.textContent=e.message;dlBtn.disabled=false});
   });
-  window.openConnectSetup=function(){overlay.hidden=false;refresh()};
+  // P-029: keyboard presets. Choosing one writes the three hotkeys at once; server
+  // text goes in with textContent.
+  var keysBox=document.getElementById('setupKeys'), keyOpts=document.getElementById('setupKeyOpts'),
+      keysMeta=document.getElementById('setupKeysMeta');
+  function showKeys(){
+    return fetch('/api/hotkeys/presets').then(function(r){return r.json()}).then(function(d){
+      keyOpts.textContent='';
+      keysMeta.textContent='Your own keys are set in Settings > Hotkeys.';
+      (d.presets||[]).forEach(function(p){
+        var b=document.createElement('button');b.type='button';
+        b.className='setup-key'+(p.id===d.active?' sel':'');b.textContent=p.label;
+        b.setAttribute('aria-pressed',p.id===d.active?'true':'false');
+        b.addEventListener('click',function(){pickKeys(p.id)});
+        keyOpts.appendChild(b);
+        if(p.id===d.active)keysMeta.textContent=p.help;
+      });
+      keysBox.hidden=!(d.presets&&d.presets.length);
+    }).catch(function(){keysBox.hidden=true});
+  }
+  function pickKeys(id){
+    keysMeta.textContent='Saving…';
+    fetch('/api/hotkeys/preset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({preset:id})})
+      .then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d}})})
+      .then(function(x){
+        if(!x.ok||!x.d.saved)throw new Error((x.d&&x.d.error)||'Could not save the keys.');
+        return showKeys().then(function(){keysMeta.textContent+=' '+x.d.message});
+      })
+      .catch(function(e){keysMeta.textContent=e.message});
+  }
+  window.openConnectSetup=function(){overlay.hidden=false;refresh();showKeys()};
   refresh();
+  showKeys();
 })();
 
 </script>

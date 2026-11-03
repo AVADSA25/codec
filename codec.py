@@ -38,7 +38,18 @@ from codec_config import (
     TASK_QUEUE_FILE, DRAFT_TASK_FILE, SESSION_ALIVE, STREAMING, WAKE_WORD, WAKE_ENERGY, WAKE_CHUNK_SEC,
     WAKE_FOLLOWUP_SEC, WAKE_PHRASES,
     get_gemini_api_key,
+    KEY_TOGGLE, KEY_VOICE, KEY_TEXT,
 )
+import codec_hotkeys
+
+# P-029: the hotkeys Settings saved (codec_config resolved them from the same cfg).
+# Read once at start, so a changed key applies after open-codec restarts.
+_KEY_NAMES = codec_hotkeys.names(_cfg)
+
+
+def _key_labels():
+    """Upper-case labels (F13 and so on) of the toggle, voice and text keys."""
+    return tuple(codec_hotkeys.label(_KEY_NAMES[f]) for f in codec_hotkeys.FIELDS)
 
 
 # ── Live wake-word enable flag ───────────────────────────────────────────────
@@ -815,7 +826,8 @@ def wake_word_listener():
                                   "Wake word detected")
                         # Auto-activate if not already on (H-2: atomic vs the F13 toggle)
                         if _activate_if_off():
-                            push(lambda: show_toggle_overlay(True, "F18=voice | **=screen | --=chat"))
+                            _wake_hint = f"{_key_labels()[1]}=voice | **=screen | --=chat"
+                            push(lambda: show_toggle_overlay(True, _wake_hint))
                         def _strip_wake_fluff(s):
                             """Peel wake keywords ('codec', 'kodak', ...), lead-in
                             prefixes ('hey', 'okay', ...), and polite filler ('can
@@ -913,14 +925,16 @@ def wake_word_listener():
 # ── KEYBOARD ──────────────────────────────────────────────────────────────────
 def on_press(key):
     now = time.time()
-    if key == keyboard.Key.f13:
+    _, voice_key, text_key = _key_labels()
+    if key == KEY_TOGGLE:
         if now - state["last_f13"] < 1.5: return
         state["last_f13"] = now
         # H-2: atomic flip (the wake-word thread also writes state["active"]).
         if _toggle_active():          # now ON
             reset_voice_session()
-            push(lambda: show_toggle_overlay(True, "F18=voice  F16=text  **=screen  ++=doc  --=chat"))
-            print("[CODEC] ON -- F18=voice | F16=text | *=screen | +=doc | --=chat")
+            hint = f"{voice_key}=voice  {text_key}=text  **=screen  ++=doc  --=chat"
+            push(lambda: show_toggle_overlay(True, hint))
+            print(f"[CODEC] ON -- {voice_key}=voice | {text_key}=text | *=screen | +=doc | --=chat")
         else:                         # now OFF
             push(lambda: show_toggle_overlay(False))
             push(close_session)
@@ -928,21 +942,21 @@ def on_press(key):
             print("[CODEC] OFF")
         return
     if not state["active"]: return
-    if key == keyboard.Key.f16:
+    if key == KEY_TEXT:
         if not state["recording"]:
             # Run text dialog in its own thread so it opens instantly
             # (don't wait for work_queue which may be blocked by vision/LLM)
             threading.Thread(target=do_text, daemon=True).start()
         return
-    if key == keyboard.Key.f18:
+    if key == KEY_VOICE:
         if not state["recording"]:
             # Don't start recording while TTS is speaking — mic captures speaker output
             if _core.tts_playing:
-                print("[CODEC] F18 ignored — TTS still playing")
+                print(f"[CODEC] {voice_key} ignored — TTS still playing")
                 return
             # Don't start if dispatch is still processing (cooldown)
             if time.time() < _dispatch_cooldown:
-                print("[CODEC] F18 ignored — still processing")
+                print(f"[CODEC] {voice_key} ignored — still processing")
                 return
             # H-2: atomically claim the recording slot. If another thread (a
             # double-F18 or the wake-word path) already claimed it, bail instead
@@ -953,7 +967,7 @@ def on_press(key):
                 ['afplay', '/System/Library/Sounds/Glass.aiff'],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL), daemon=True).start()
             push(do_start_recording)
-            state["overlay_proc"] = show_recording_overlay('F18')
+            state["overlay_proc"] = show_recording_overlay(voice_key)
         return
     if hasattr(key, 'char') and key.char == '*':
         if now - state["last_star"] < 0.25 and now - state.get("last_screenshot_time", 0) > 8:
@@ -984,7 +998,7 @@ def on_press(key):
         return
 
 def on_release(key):
-    if key == keyboard.Key.f18 and state["recording"]:
+    if key == KEY_VOICE and state["recording"]:
         # Kill overlay immediately on release (don't wait for work queue)
         ovl = state.get("overlay_proc")
         if ovl:
@@ -1049,6 +1063,7 @@ def main():
     D = "\033[38;2;80;80;80m"
     W = "\033[38;2;200;200;200m"
     R = "\033[0m"
+    _tg, _vk, _tk = _key_labels()   # F1 to F20: at most 3 characters, so the box keeps its width
     print(f"""
 {O}    ╔═══════════════════════════════════════════╗
     ║                                           ║
@@ -1059,8 +1074,8 @@ def main():
     ║  ██████  ██████  ██████  ███████  ██████  ║
     ║                                   v2.1.0  ║
     ╠═══════════════════════════════════════════╣
-    ║{W}  F13 toggle   F18 voice   ** screen       {O}║
-    ║{W}  F16 text     ++ doc     -- chat          {O}║
+    ║{W}  {_tg:<3} toggle   {_vk:<3} voice   ** screen       {O}║
+    ║{W}  {_tk:<3} text     ++ doc     -- chat          {O}║
     ║{W}  Hey CODEC = wake word (hands-free)           {O}║
     ╠═══════════════════════════════════════════╣
     ║{D}  Stream={stream_label}  Wake={wake_label}  Skills=ON            {O}║
@@ -1074,7 +1089,7 @@ def main():
     convs = get_recent_conversations(10)
     if convs: print(f"[CODEC] Persistent memory: {len(convs)} messages from past sessions")
     print(f"[CODEC] Wake word: {'ON' if _wake_enabled_live() else 'OFF'} (toggle live in dashboard Settings)")
-    print("[CODEC] Online. Press F13 to activate.")
+    print(f"[CODEC] Online. Press {_tg} to activate.")
 
     threading.Thread(target=worker, daemon=True).start()
     # Always start the listener; it self-gates on the LIVE wake_word_enabled

@@ -5,7 +5,8 @@
 # User data (~/.codec) is double-gated behind --yes AND --purge-data.
 #
 # Auto-removes (CODEC-owned): launchd agents, the .app, ~/Library/Logs/CODEC,
-# CODEC's PM2 logs, the app's Caches / WebKit / HTTPStorages folders,
+# CODEC's PM2 logs, the app's Caches / WebKit / HTTPStorages folders, the eight
+# Quick Actions the app wrote in ~/Library/Services (only those carrying its marker),
 # every ai.avadigital.codec.* Keychain item (real $HOME only), and ~/.codec
 # (only with --purge-data). Prints guided manual steps for residue Apple/sharing
 # rules make unsafe to auto-delete (TCC grants, ~/.cloudflared, your project
@@ -126,6 +127,25 @@ echo "-- app caches and web data ($BUNDLE_ID) --"
 for d in "Library/Caches" "Library/WebKit" "Library/HTTPStorages"; do
     safe_rm "$HOME_DIR/$d/$BUNDLE_ID"
 done
+
+# 4b) Quick Actions the app wrote (packaging/macos/quick_actions.py, P-029) ----
+# Only a folder whose Info.plist carries the app's marker is removed; a hand-made
+# workflow of the same name (a source install's) is listed and kept.
+echo "-- Quick Actions (~/Library/Services) --"
+QA_MARKER="<key>CODECQuickAction</key>"
+qa_removed=0
+for title in Elevate Explain Prompt Proofread "Read Aloud" Reply Save Translate; do
+    wf="$HOME_DIR/Library/Services/CODEC $title.workflow"
+    if [ -e "$wf" ] && ! grep -qF "$QA_MARKER" "$wf/Contents/Info.plist" 2>/dev/null; then
+        echo "  kept (not written by the app): $wf"
+        continue
+    fi
+    if [ -e "$wf" ]; then qa_removed=1; fi
+    safe_rm "$wf"
+done
+if [ "$ACT" -eq 1 ] && [ "$REAL_HOME" -eq 1 ] && [ "$qa_removed" -eq 1 ] && [ -x /System/Library/CoreServices/pbs ]; then
+    /System/Library/CoreServices/pbs -update >/dev/null 2>&1 || true   # drop them from the Services menu now
+fi
 
 # 5) Keychain (real $HOME only — never touched in test/sandbox mode) ----------
 echo "-- Keychain items ($KC_PREFIX.*) --"
