@@ -356,14 +356,12 @@ async def totp_confirm(request: Request):
     totp = pyotp.TOTP(secret)
     if totp.verify(code, valid_window=1):
         try:
-            cfg_data = {}
-            if os.path.exists(CONFIG_PATH):
-                with open(CONFIG_PATH) as f:
-                    cfg_data = json.load(f)
-            cfg_data["totp_secret"] = secret
-            cfg_data.pop("totp_disabled", None)
-            with open(CONFIG_PATH, "w") as f:
-                json.dump(cfg_data, f, indent=2)
+            import codec_config
+
+            def _enroll(cfg_data):  # P-054: locked, refuses an unreadable file
+                cfg_data["totp_secret"] = secret
+                cfg_data.pop("totp_disabled", None)
+            codec_config.update_config(_enroll, path=CONFIG_PATH)
         except Exception as e:
             return JSONResponse({"error": f"Failed to save config: {e}"}, status_code=500)
         # Enrollment complete — clear the one-time pending secret.
@@ -444,13 +442,11 @@ async def totp_disable(request: Request):
     if not totp.verify(code, valid_window=1):
         return JSONResponse({"error": "Invalid code"}, status_code=400)
     try:
-        cfg_data = {}
-        if os.path.exists(CONFIG_PATH):
-            with open(CONFIG_PATH) as f:
-                cfg_data = json.load(f)
-        cfg_data["totp_disabled"] = True
-        with open(CONFIG_PATH, "w") as f:
-            json.dump(cfg_data, f, indent=2)
+        import codec_config
+
+        def _disable(cfg_data):  # P-054: locked, refuses an unreadable file
+            cfg_data["totp_disabled"] = True
+        codec_config.update_config(_disable, path=CONFIG_PATH)
     except Exception as e:
         return JSONResponse({"error": f"Failed to update config: {e}"}, status_code=500)
     with _auth_lock:
@@ -483,9 +479,11 @@ async def totp_enable(request: Request):
     totp = pyotp.TOTP(secret)
     if not totp.verify(code, valid_window=1):
         return JSONResponse({"error": "Invalid code"}, status_code=400)
-    cfg.pop("totp_disabled", None)
-    with open(CONFIG_PATH, "w") as f:
-        json.dump(cfg, f, indent=2)
+    import codec_config
+    try:  # P-054: locked, refuses an unreadable file
+        codec_config.update_config(lambda c: c.pop("totp_disabled", None), path=CONFIG_PATH)
+    except codec_config.ConfigUnreadable as e:
+        return JSONResponse({"error": str(e)}, status_code=409)
     return {"enabled": True}
 
 

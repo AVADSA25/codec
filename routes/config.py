@@ -191,9 +191,24 @@ def _read_config() -> dict:
         return {}
 
 
-def _write_config(config: dict) -> None:
-    with open(CONFIG_PATH, "w") as f:
-        json.dump(config, f, indent=2)
+class _NotSaved(Exception):
+    """Raised inside a config change to answer `response` and write nothing."""
+
+    def __init__(self, response):
+        super().__init__("not saved")
+        self.response = response
+
+
+def _save(change):
+    """Run `change(config)` under the config lock (P-054). Returns (result, None),
+    or (None, the JSONResponse to answer) when nothing was saved."""
+    import codec_config
+    try:
+        return codec_config.update_config(change, path=CONFIG_PATH), None
+    except _NotSaved as stop:
+        return None, stop.response
+    except codec_config.ConfigUnreadable as e:
+        return None, JSONResponse({"error": str(e)}, status_code=409)
 
 
 def _validate_config_updates(flat: dict) -> list:
@@ -289,13 +304,6 @@ async def update_config(request: Request):
     """Update config.json from Settings UI with input validation."""
     try:
         updates = await request.json()
-        config = {}
-        try:
-            with open(CONFIG_PATH) as f:
-                config = json.load(f)
-        except Exception:
-            pass
-
         if not isinstance(updates, dict):
             return JSONResponse({"error": "JSON object expected"}, status_code=400)
         # Flatten the old grouped sections for validation and merge; P2.10's
@@ -308,31 +316,36 @@ async def update_config(request: Request):
                 for k, v in section_vals.items():
                     flat[k] = v
 
-        refusal = _login_key_refusal(request, flat, config)
-        if refusal is not None:
-            return refusal
+        def _apply(config):  # runs under the config lock, on the file as it is now
+            refusal = _login_key_refusal(request, flat, config)
+            if refusal is not None:
+                raise _NotSaved(refusal)
 
-        # Validate all incoming values
-        errors = _validate_config_updates(flat)
-        for block, vals in nested.items():
-            errors += _validate_block(block, vals)
-        if errors:
-            return JSONResponse({"error": "Validation failed", "details": errors}, status_code=422)
+            # Validate all incoming values
+            errors = _validate_config_updates(flat)
+            for block, vals in nested.items():
+                errors += _validate_block(block, vals)
+            if errors:
+                raise _NotSaved(JSONResponse({"error": "Validation failed", "details": errors},
+                                             status_code=422))
 
-        # Merge validated values, skipping masked sensitive fields
-        changed_keys = []
-        for k, v in flat.items():
-            # If a sensitive field is still masked, the user did not change it — skip
-            if k in _SENSITIVE_FIELDS and isinstance(v, str) and v.startswith("*"):
-                continue
-            config[k] = v
-            changed_keys.append(k)
-        for block, vals in nested.items():
-            current = config.get(block) if isinstance(config.get(block), dict) else {}
-            config[block] = {**current, **vals}
-            changed_keys += [f"{block}.{k}" for k in vals]
+            # Merge validated values, skipping masked sensitive fields
+            changed = []
+            for k, v in flat.items():
+                # If a sensitive field is still masked, the user did not change it — skip
+                if k in _SENSITIVE_FIELDS and isinstance(v, str) and v.startswith("*"):
+                    continue
+                config[k] = v
+                changed.append(k)
+            for block, vals in nested.items():
+                current = config.get(block) if isinstance(config.get(block), dict) else {}
+                config[block] = {**current, **vals}
+                changed += [f"{block}.{k}" for k in vals]
+            return changed
 
-        _write_config(config)
+        changed_keys, not_saved = _save(_apply)
+        if not_saved is not None:
+            return not_saved
         return {
             "saved": True,
             "message": f"Configuration saved successfully ({len(changed_keys)} field(s) updated).",
@@ -369,18 +382,24 @@ async def put_config_raw(request: Request):
     edited = body.get("config") if isinstance(body, dict) else None
     if not isinstance(edited, dict):
         return JSONResponse({"error": "config must be a JSON object"}, status_code=400)
-    config = _read_config()
-    refusal = _login_key_refusal(request, edited, config)
-    if refusal is not None:
-        return refusal
-    changes = {k: v for k, v in edited.items() if k not in _RAW_READ_ONLY and config.get(k) != v}
-    errors = _validate_config_updates({k: v for k, v in changes.items() if k not in NESTED_BLOCKS})
-    for block in NESTED_BLOCKS:
-        if block in changes:
-            errors += _validate_block(block, changes[block])
-    if errors:
-        return JSONResponse({"error": "Validation failed", "details": errors}, status_code=422)
-    config.update(changes)
-    _write_config(config)
+
+    def _apply(config):  # runs under the config lock, on the file as it is now
+        refusal = _login_key_refusal(request, edited, config)
+        if refusal is not None:
+            raise _NotSaved(refusal)
+        changes = {k: v for k, v in edited.items() if k not in _RAW_READ_ONLY and config.get(k) != v}
+        errors = _validate_config_updates({k: v for k, v in changes.items() if k not in NESTED_BLOCKS})
+        for block in NESTED_BLOCKS:
+            if block in changes:
+                errors += _validate_block(block, changes[block])
+        if errors:
+            raise _NotSaved(JSONResponse({"error": "Validation failed", "details": errors},
+                                         status_code=422))
+        config.update(changes)
+        return changes
+
+    changes, not_saved = _save(_apply)
+    if not_saved is not None:
+        return not_saved
     return {"saved": True, "updated_fields": sorted(changes),
             "message": f"config.json saved ({len(changes)} key(s) changed)."}
