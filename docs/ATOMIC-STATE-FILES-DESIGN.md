@@ -75,6 +75,21 @@ overlay events file becomes 0600 on its first trim.
 - `tests/conftest.py` points `codec_overlays._EVENTS` at a temp folder, so the
   tests that run a full heartbeat never trim the owner's file.
 
+## Known limits
+
+- An overlay event appended in the 0.15 s after a trim, before the Swift poller
+  has read the shorter file, is skipped: the poller sees fewer lines than its
+  offset and resets to the new count without reading the new line. It needs a
+  write within that 0.15 s of a trim that only runs after 60 s with no write, so
+  it is rare; closing it needs a Swift change (read by byte offset), out of scope
+  here.
+- A line appended between the last size check and the `os.replace` (a few
+  microseconds) goes to the old file and is lost. Writers open, append and close
+  at once, so this window is the only one.
+- Each process keeps its old writer until it is restarted. `google_token.json`
+  is also refreshed by the processes that run Google skills (open-codec, the
+  bridges, the agent runner); they write in place until their next restart.
+
 ## Rollback
 
 Revert the PR and restart the same services. The files written by the new code
