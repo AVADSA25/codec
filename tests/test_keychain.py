@@ -207,6 +207,10 @@ def test_real_keychain_roundtrip_opt_in(_isolate_keychain, monkeypatch):
     deletes its item again."""
     kc = _isolate_keychain
     monkeypatch.setattr(kc, "_SECURITY_BIN", "/usr/bin/security")
+    # No audit emit: signing the line would read, and create, an audit HMAC secret
+    # under this test's prefix in the real Keychain and leave it there (how the 13
+    # `_test_*.audit_hmac_secret` leftovers on the Studio were made).
+    monkeypatch.setattr(kc, "_kc_log_event", lambda *a, **kw: None)
     try:
         assert kc.keychain_set("test_key", "real_keychain_value")
         assert kc.keychain_get("test_key") == "real_keychain_value"
