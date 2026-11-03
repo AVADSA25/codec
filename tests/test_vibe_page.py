@@ -2,8 +2,11 @@
 and the link between a saved session and its project folder."""
 from __future__ import annotations
 
+import json
 import re
+import shutil
 import sqlite3
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -105,7 +108,7 @@ def sessions(tmp_path, monkeypatch):
 
 
 def _save(client, **over):
-    body = {"session_id": "s1", "title": "t", "language": "python", "code": "x = 1\n", "messages": [], "full_sync": True}
+    body = {"session_id": "mhk3x2a1abcde", "title": "t", "language": "python", "code": "x = 1\n", "messages": [], "full_sync": True}
     body.update(over)
     return client.post("/api/vibe/save", json=body)
 
@@ -113,20 +116,38 @@ def _save(client, **over):
 def test_a_saved_session_keeps_its_project_and_a_page_that_sends_none_does_not_erase_it(sessions):
     client, _rv = sessions
     assert _save(client, project_id="make-it-blue-7bcaef").status_code == 200
-    assert client.get("/api/vibe/session/s1").json()["session"]["project_id"] == "make-it-blue-7bcaef"
+    assert client.get("/api/vibe/session/mhk3x2a1abcde").json()["session"]["project_id"] == "make-it-blue-7bcaef"
     assert client.get("/api/vibe/sessions").json()[0]["project_id"] == "make-it-blue-7bcaef"
     _save(client, code="x = 2\n")            # an older page: no project_id in the body
-    got = client.get("/api/vibe/session/s1").json()["session"]
+    got = client.get("/api/vibe/session/mhk3x2a1abcde").json()["session"]
     assert got["project_id"] == "make-it-blue-7bcaef" and got["code"] == "x = 2\n"
 
 
 def test_a_project_id_in_a_bad_shape_is_ignored_and_single_file_sessions_have_none(sessions):
     client, _rv = sessions
-    _save(client, session_id="s2", project_id="../../etc")
-    _save(client, session_id="s3", project_id=123)
-    _save(client, session_id="s4")
-    for sid in ("s2", "s3", "s4"):
+    _save(client, session_id="mhk3x2a2abcde", project_id="../../etc")
+    _save(client, session_id="mhk3x2a3abcde", project_id=123)
+    _save(client, session_id="mhk3x2a4abcde")
+    for sid in ("mhk3x2a2abcde", "mhk3x2a3abcde", "mhk3x2a4abcde"):
         assert client.get(f"/api/vibe/session/{sid}").json()["session"]["project_id"] is None
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+def test_ids_the_page_makes_save_and_any_other_session_id_is_refused(sessions):
+    # P-089 (GP04-4): the id expression the page itself uses, run 200 times in Node.
+    expr = re.search(r"^var sesId = (Date\.now\(\)[^;]+);$", PAGE, re.M).group(1)
+    out = subprocess.run(["node", "-e", f"var a=[];for(var i=0;i<200;i++)a.push({expr});console.log(JSON.stringify(a))"],
+                         capture_output=True, text=True, timeout=30)
+    ids = json.loads(out.stdout)
+    client, _rv = sessions
+    for sid in ids[:: 20]:
+        assert _save(client, session_id=sid).status_code == 200, sid
+        assert client.get(f"/api/vibe/session/{sid}").json()["session"]["id"] == sid
+    assert all(re.fullmatch(r"[a-z0-9]{8,40}", sid) for sid in ids)
+    for bad in ("", "s1", "../../etc", "ABCDEFGHJ", "abcdefgh-1", "a" * 41, "abcd efgh", 12345678, None):
+        r = _save(client, session_id=bad)
+        assert r.status_code == 400 and "session_id" in r.json()["error"], bad
+    assert len(client.get("/api/vibe/sessions").json()) == len(ids[:: 20])
 
 
 def test_an_old_database_without_the_column_is_upgraded_in_place(tmp_path, monkeypatch):

@@ -448,7 +448,7 @@ class TestVibeCode:
         assert isinstance(r.json(), list)
 
     def test_vibe_session_save_and_load(self):
-        sid = f"vibe_test_{int(time.time())}"
+        sid = f"vibetest{int(time.time())}"  # the page's id shape: lowercase letters and digits
         save_r = api_post("/api/vibe/save", json={
             "session_id": sid,
             "title": "Test Vibe Session",
