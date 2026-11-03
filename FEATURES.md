@@ -190,7 +190,7 @@ Overview, so CODEC ships as a **7-product system**.
 
 ---
 
-## 6. CODEC Skills — 79 features (75 skills + 4 infrastructure)
+## 6. CODEC Skills — 79 features (built-in skills + 4 infrastructure)
 
 ### Infrastructure
 
@@ -245,7 +245,7 @@ The table groups the main built-in skills; `skills/.manifest.json` lists all of 
 | 14 | MCP Server (skills as MCP tools for Claude Desktop, Claude Code, Cursor, VS Code) |
 | 15 | MCP input validation (type checks, 5KB task / 10KB context limits, audit logging) |
 | 16 | MCP opt-in/opt-out tool exposure per skill (blocklist for python_exec, terminal, pm2_control, process_manager) |
-| 17 | MCP full tool exposure — all 75 skills (plus approved Pilot skills) available as `mcp__codec__*` tools |
+| 17 | MCP full tool exposure — every skill with `SKILL_MCP_EXPOSE = True` (plus approved Pilot skills) available as `mcp__codec__*` tools |
 | 18 | MCP tool-name sanitization preserving original SKILL_NAME for registry lookup |
 | 19 | MCP memory search + recent memory tools |
 | 20 | **Tiered Memory Loading** — identity.txt L0/L1 boot payload injected into every session (<200 tokens) |

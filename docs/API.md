@@ -391,12 +391,6 @@ curl -X PUT -H "Authorization: Bearer $TOKEN" \
 
 ## Heartbeat
 
-### GET /api/heartbeat/config
-Get heartbeat configuration.
-
-### PUT /api/heartbeat/config
-Update heartbeat settings.
-
 ### GET /api/heartbeat/alerts
 Get configured heartbeat alerts.
 

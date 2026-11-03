@@ -165,9 +165,6 @@ a { color: var(--accent); text-decoration: none; }
 
 /* ── Heartbeat ── */
 .heartbeat-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
-.heartbeat-tasks { margin-top: 12px; }
-.heartbeat-task-item { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border); }
-.heartbeat-task-item:last-child { border-bottom: none; }
 
 /* ── Toast ── (above the shell's phone tab bar on the phone) */
 @media (max-width: 767px) { .toast-container { bottom: calc(72px + env(safe-area-inset-bottom, 0px)) !important; } }
@@ -364,7 +361,7 @@ a { color: var(--accent); text-decoration: none; }
     <div class="heartbeat-section" style="margin-bottom:16px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:20px;">
       <h2 style="font-size:calc(16px * var(--fs-scale)); font-weight:600; margin-bottom:10px;">How Heartbeat Works</h2>
       <p style="font-size:calc(13px * var(--fs-scale)); color:var(--text-muted); line-height:1.6; margin-bottom:12px;">
-        The heartbeat daemon runs in the background at your chosen interval. Each cycle it checks service health (LLM, Whisper, TTS, Vision, Dashboard), memory stats, pending tasks, and any alerts you configure below. Triggered alerts appear in the Reports tab and as dashboard notifications.
+        The heartbeat runs in the background every 30 minutes, inside the dashboard. Each cycle it checks service health (LLM, Whisper, TTS, Vision, Dashboard), memory stats, pending tasks, and any alerts you configure below. Triggered alerts appear in the Reports tab and as dashboard notifications.
       </p>
       <div style="font-size:calc(12px * var(--fs-scale)); color:var(--text-dim); line-height:1.6; background:var(--surface-2); border-radius:var(--radius-sm); padding:12px; font-family:var(--mono);">
         <strong style="color:var(--text-muted);">Alert types:</strong><br>
@@ -372,38 +369,6 @@ a { color: var(--accent); text-decoration: none; }
         <span style="color:var(--accent);">email_check</span> — Count unread emails in macOS Mail inbox<br>
         <span style="color:var(--accent);">disk_usage</span> — Warn when disk usage exceeds a threshold %<br>
         <span style="color:var(--text-dim); margin-top:6px; display:block;">Toggle alerts on/off without deleting them. Disabled alerts are skipped each cycle.</span>
-      </div>
-    </div>
-
-    <!-- Heartbeat config -->
-    <div class="heartbeat-section" style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:20px; margin-bottom:16px;">
-      <h2 style="font-size:calc(16px * var(--fs-scale)); font-weight:600; margin-bottom:16px;">Heartbeat Configuration</h2>
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">Interval (minutes)</label>
-          <input class="form-input" type="number" id="hbInterval" min="1" max="1440" value="5">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Status</label>
-          <div class="toggle-wrap" style="margin-top:8px;">
-            <label class="toggle">
-              <input type="checkbox" id="hbEnabled" checked>
-              <span class="toggle-slider"></span>
-            </label>
-            <span class="toggle-label" id="hbStatusLabel">Enabled</span>
-          </div>
-        </div>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Tasks</label>
-        <div class="heartbeat-tasks" id="hbTasksList"></div>
-        <div style="display:flex; gap:8px; margin-top:10px;">
-          <input class="form-input" id="newHbTask" placeholder="Add a task..." style="flex:1;">
-          <button class="btn btn-sm" onclick="addHbTask()">Add</button>
-        </div>
-      </div>
-      <div style="margin-top:16px; display:flex; justify-content:flex-end;">
-        <button class="btn btn-primary" onclick="saveHeartbeat()">Save Configuration</button>
       </div>
     </div>
 
@@ -876,67 +841,6 @@ async function deleteSchedule(id) {
     .catch(function(e){ showToast('Could not delete: ' + e); });
 }
 
-/* ── Heartbeat ── */
-var hbTasks = [];
-
-function loadHeartbeat() {
-  fetch('/api/heartbeat/config').then(function(r){ return r.json(); }).then(function(data) {
-    document.getElementById('hbInterval').value = data.interval_minutes || 5;
-    document.getElementById('hbEnabled').checked = data.enabled !== false;
-    document.getElementById('hbStatusLabel').textContent = data.enabled !== false ? 'Enabled' : 'Disabled';
-    hbTasks = data.tasks || ['status_check'];
-    renderHbTasks();
-  }).catch(function() {
-    hbTasks = ['status_check'];
-    renderHbTasks();
-  });
-}
-
-function renderHbTasks() {
-  var el = document.getElementById('hbTasksList');
-  if (!hbTasks.length) {
-    el.innerHTML = '<div style="font-size:calc(13px * var(--fs-scale));color:var(--text-dim);padding:8px 0;">No tasks configured</div>';
-    return;
-  }
-  var html = '';
-  hbTasks.forEach(function(task, i) {
-    html += '<div class="heartbeat-task-item">';
-    html += '<span style="font-family:var(--mono);font-size:calc(13px * var(--fs-scale));flex:1;">' + escHtml(task) + '</span>';
-    html += '<button class="btn btn-sm btn-danger" onclick="removeHbTask(' + i + ')" aria-label="Remove task" style="padding:3px 8px;display:inline-flex;align-items:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>';
-    html += '</div>';
-  });
-  el.innerHTML = html;
-}
-
-function addHbTask() {
-  var inp = document.getElementById('newHbTask');
-  var val = inp.value.trim();
-  if (!val) return;
-  hbTasks.push(val);
-  inp.value = '';
-  renderHbTasks();
-}
-
-function removeHbTask(i) {
-  hbTasks.splice(i, 1);
-  renderHbTasks();
-}
-
-function saveHeartbeat() {
-  var payload = {
-    enabled: document.getElementById('hbEnabled').checked,
-    interval_minutes: parseInt(document.getElementById('hbInterval').value) || 5,
-    tasks: hbTasks
-  };
-  fetch('/api/heartbeat/config', { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) })
-    .then(function(r){ return r.json(); })
-    .then(function(data) {
-      if (data.saved) showToast('Heartbeat configuration saved.');
-      else showToast('Error saving configuration.');
-    })
-    .catch(function(e){ showToast('Error: ' + e); });
-}
-
 /* ── Alerts ── */
 var hbAlerts = [];
 function loadAlerts() {
@@ -1313,7 +1217,6 @@ function escHtml(s) {
 /* ── Init ── */
 document.addEventListener('DOMContentLoaded', function() {
   loadSchedules();
-  loadHeartbeat();
   loadAlerts();
   loadHistory();
   // A tab named in the hash opens (Schedules, Activity, Heartbeat, History). The old
@@ -1328,15 +1231,6 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 
-/* ── Toggle label update ── */
-document.addEventListener('DOMContentLoaded', function() {
-  var hbCheck = document.getElementById('hbEnabled');
-  if (hbCheck) {
-    hbCheck.addEventListener('change', function() {
-      document.getElementById('hbStatusLabel').textContent = this.checked ? 'Enabled' : 'Disabled';
-    });
-  }
-});
 /* ── Canonical showTab — tab switching ── */
 function showTab(name) {
   document.querySelectorAll('.tab').forEach(function(t){ t.classList.remove('active'); });

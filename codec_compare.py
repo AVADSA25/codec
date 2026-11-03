@@ -13,11 +13,12 @@ Endpoint set = three canonical tiers + anything Cookbook is currently serving:
   3. cloud-pro       — a top cloud model via AVA (default gemini-2.5-pro)
   + cookbook-<id>    — each healthy model from codec_cookbook.serve.list_served()
 
-The two cloud tiers + their model ids are overridable in
-~/.codec/config.json:compare.cloud_tiers (a list of {label, model}); the
-defaults above are grounded in codec_ava_client.choose_model's fast/balanced/pro
-map. The fan-out is concurrent, per-endpoint timed, and never lets one
-endpoint's failure sink the others.
+The two cloud tiers are paid calls, so they are off unless
+~/.codec/config.json:compare.cloud_tiers is exactly true AND the AVA licence and
+proxy are ready (P-035); their model ids are grounded in
+codec_ava_client.choose_model's fast/balanced/pro map. The fan-out is
+concurrent, per-endpoint timed, and never lets one endpoint's failure sink the
+others.
 """
 from __future__ import annotations
 
@@ -50,10 +51,12 @@ def _load_cfg() -> dict:
 
 
 def _cloud_tiers(cfg: dict) -> list[dict]:
-    tiers = (cfg.get("compare") or {}).get("cloud_tiers")
-    if isinstance(tiers, list) and tiers:
-        return [t for t in tiers if t.get("model")]
-    return list(_DEFAULT_CLOUD_TIERS)
+    """The paid cloud tiers, only when the owner set compare.cloud_tiers to
+    exactly true (not "true", 1 or a list). Default: none."""
+    compare_cfg = cfg.get("compare")
+    if isinstance(compare_cfg, dict) and compare_cfg.get("cloud_tiers") is True:
+        return list(_DEFAULT_CLOUD_TIERS)
+    return []
 
 
 def _cookbook_endpoints() -> list[dict]:
@@ -90,12 +93,14 @@ def default_endpoints() -> list[dict]:
         "base_url": cfg.get("llm_base_url", "http://localhost:8083/v1"),
         "tier": "local",
     }]
-    # cloud tiers via AVA — only when the license/proxy is actually ready
+    # cloud tiers via AVA — only when switched on and the license/proxy is ready
+    # (is_ready is a property; calling it raised, so the tiers never appeared)
+    tiers = _cloud_tiers(cfg)
     try:
         import codec_ava_client
-        ava = codec_ava_client.load_config()
-        if ava and ava.is_ready():
-            for t in _cloud_tiers(cfg):
+        ava = codec_ava_client.load_config() if tiers else None
+        if ava and ava.is_ready:
+            for t in tiers:
                 eps.append({"label": t["label"], "kind": "ava",
                             "model": t["model"], "tier": "cloud"})
     except Exception as e:

@@ -110,7 +110,6 @@ def test_the_version_stamp_write_does_not_share_a_fixed_tmp_name(cfg):
 @pytest.mark.parametrize("url,body", [
     ("/api/config", {"tts": {"tts_voice": "bf_emma"}}),
     ("/api/config/raw", {"config": {"tts_voice": "bf_emma"}}),
-    ("/api/heartbeat/config", {"enabled": False}),
     ("/api/heartbeat/alerts", {"alerts": [{"name": "disk"}]}),
 ])
 def test_a_save_on_an_unreadable_file_answers_409_and_changes_nothing(client, cfg, url, body):
@@ -123,10 +122,8 @@ def test_a_save_on_an_unreadable_file_answers_409_and_changes_nothing(client, cf
 
 def test_settings_and_heartbeat_saves_still_merge(client, cfg):
     assert client.put("/api/config", json={"tts": {"tts_voice": "bf_emma"}}).status_code == 200
-    assert client.put("/api/heartbeat/config", json={"interval_minutes": 9}).json()["saved"]
     assert client.put("/api/heartbeat/alerts", json={"alerts": [{"name": "disk"}]}).json()["saved"]
-    assert _saved(cfg) == {**GOOD, "tts_voice": "bf_emma", "heartbeat_interval": 9,
-                           "heartbeat_alerts": [{"name": "disk"}]}
+    assert _saved(cfg) == {**GOOD, "tts_voice": "bf_emma", "heartbeat_alerts": [{"name": "disk"}]}
 
 
 @pytest.fixture
@@ -201,7 +198,7 @@ def test_two_threads_a_settings_save_and_a_heartbeat_save_keep_both_keys(cfg, mo
         if not settings_inside.wait(5):
             results["heartbeat"] = "the settings save never reached its write"
             return
-        results["heartbeat"] = asyncio.run(hb.update_heartbeat_config(_Req({"interval_minutes": 9})))
+        results["heartbeat"] = asyncio.run(hb.update_heartbeat_alerts(_Req({"alerts": [{"name": "disk"}]})))
 
     threads = [threading.Thread(target=settings, name="settings"),
                threading.Thread(target=heartbeat, name="heartbeat")]
@@ -212,5 +209,5 @@ def test_two_threads_a_settings_save_and_a_heartbeat_save_keep_both_keys(cfg, mo
     assert results["settings"]["saved"] is True, results
     assert results["heartbeat"]["saved"] is True, results
     saved = _saved(cfg)
-    assert saved["tts_voice"] == "bf_emma" and saved["heartbeat_interval"] == 9
+    assert saved["tts_voice"] == "bf_emma" and saved["heartbeat_alerts"] == [{"name": "disk"}]
     assert saved["llm_model"] == "local-a"

@@ -453,6 +453,8 @@ Schema:
 
 `type="question"` adds `pending_question_id`, `options`, `agent`, `deadline`, `consent_strict`. The PWA renders an inline answer panel when these fields are present (see `codec_dashboard.html` AskUserQuestion panel). Reply path: `POST /api/agents/answer/{pending_question_id}` (defined in `routes/agents.py`).
 
+A missing file reads as an empty list and no read creates it (no sample reports since P-035); a file that does not parse, or is not a list, is copied to `notifications.json.corrupt-<its mtime>` and read as empty. Mark-read and read-all hold `_notif_lock` and `codec_jsonstore.file_lock`, like every writer.
+
 API endpoints in `codec_dashboard.py`: `GET /api/notifications`, `GET /api/notifications/count`, `POST /api/notifications/read-all`, `POST /api/notifications/{id}/read`, `DELETE /api/notifications/{id}`. Frontend polls `/api/notifications/count` every ~30s, and the inline AskUserQuestion panel polls `/api/agents/pending_questions` every 8s.
 
 ### Pending questions (`~/.codec/pending_questions.json`)

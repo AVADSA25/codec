@@ -8,6 +8,7 @@ Reference: docs/audits/PHASE-1-INVESTOR-READINESS.md.
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -42,11 +43,46 @@ def test_live_ci_badge_present():
     assert "actions/workflows/ci.yml/badge.svg" in readme, "F-3: live CI status badge required"
 
 
-def test_skill_count_is_76_not_75():
+def _skill_file_count() -> int:
+    """The built-in skills: every skills/*.py that does not start with '_'."""
+    return sum(1 for p in (REPO / "skills").glob("*.py") if not p.name.startswith("_"))
+
+
+# "<n> skills", "<n> built-in skills", "<n> pluggable CODEC skills", "<n> Skills" ...
+_SKILL_CLAIM = re.compile(r"(\d[\d,]*)\s+(?:[A-Za-z-]+\s+){0,2}skills?\b", re.I)
+
+
+def _skill_claims(name: str) -> list[tuple[int, str]]:
+    """Every '<n> ... skills' claim with its line; the dated v3.2 snapshot line in
+    FEATURES.md is history, not a current claim."""
+    out = []
+    for line in _read(name).splitlines():
+        if "v3.2 snapshot" in line:
+            continue
+        out += [(int(m.group(1).replace(",", "")), line.strip()[:100]) for m in _SKILL_CLAIM.finditer(line)]
+    return out
+
+
+def test_every_skill_count_claim_matches_the_skills_folder():
+    """P-035: the count is computed from skills/, never typed into this test."""
+    n = _skill_file_count()
+    assert n > 0
     readme = _read("README.md")
-    assert "75 built-in skills" not in readme, "F-3: skills overstated/stale (75) — repo has 76"
-    assert "badge/skills-75" not in readme, "F-3: skills badge must read 76"
-    assert "76" in readme, "skill count (76) must appear"
+    badge = re.search(r'badge/skills-(\d+)-[a-z]+\?style=flat-square" alt="(\d+) Skills"', readme)
+    assert badge and int(badge.group(1)) == n and int(badge.group(2)) == n, "README skills badge"
+    for name in ("README.md", "CONTRIBUTING.md", "FEATURES.md"):
+        claims = _skill_claims(name)
+        assert claims, f"{name} no longer states a skill count"
+        wrong = [c for c in claims if c[0] != n]
+        assert not wrong, f"{name}: {wrong} (skills/ has {n})"
+    head = _read("FEATURES.md").splitlines()[2]
+    assert f"{n} skills" in head, "the FEATURES.md header states the count"
+
+
+def test_the_skill_claim_check_catches_a_wrong_number():
+    """The negative control for the check above: a stale number is found."""
+    found = [int(m.group(1)) for m in _SKILL_CLAIM.finditer("CODEC has 76 built-in skills and 3 tools; 89 Skills")]
+    assert found == [76, 89]
 
 
 # ---- F-9: stranger-readable value prop above the fold ---------------------

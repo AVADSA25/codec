@@ -43,11 +43,24 @@ class TestC1Approvals:
 # ── C2: heartbeat ──────────────────────────────────────────────────────────
 class TestC2Heartbeat:
     @pytest.mark.parametrize("path", [
-        "/api/heartbeat/config",
         "/api/heartbeat/alerts",
     ])
     def test_endpoint_registered(self, path):
         assert path in _registered_paths()
+
+    def test_the_settings_nothing_read_are_gone(self):
+        """P-035: heartbeat_enabled / _interval / _tasks were saved and read by nothing."""
+        from pathlib import Path
+        repo = Path(__file__).resolve().parent.parent
+        assert "/api/heartbeat/config" not in _registered_paths()
+        page = (repo / "codec_tasks.html").read_text(encoding="utf-8")
+        assert "/api/heartbeat/alerts" in page and "saveAlerts()" in page, "the alerts card stays"
+        for gone in ("/api/heartbeat/config", "hbInterval", "hbEnabled", "hbTasksList", "saveHeartbeat",
+                     "your chosen interval"):
+            assert gone not in page, gone
+        src = (repo / "routes" / "heartbeat.py").read_text(encoding="utf-8")
+        for key in ('"heartbeat_enabled"', '"heartbeat_interval"', '"heartbeat_tasks"'):
+            assert key not in src, key
 
     def test_module_uses_config_path(self):
         from pathlib import Path

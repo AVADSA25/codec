@@ -78,3 +78,14 @@ def test_crew_has_nonempty_allowed_tools(crew_name):
         "the tool scope guard")
     assert all(isinstance(t, str) for t in crew.allowed_tools), (
         f"{crew_name}.allowed_tools must be List[str]")
+
+
+def test_daily_briefing_does_not_offer_or_ask_for_google_keep():
+    """P-035 (DC-011): skills/google_keep.py only says Keep has no API, so the
+    briefing crew neither offers it as a tool nor tells its scout to check Keep."""
+    from codec_agents import CREW_REGISTRY
+    crew = CREW_REGISTRY["daily_briefing"]["builder"](**_STUB_KWARGS)
+    assert "google_keep" not in crew.allowed_tools
+    assert all(t.name != "google_keep" for a in crew.agents for t in a.tools)
+    words = " ".join([*crew.tasks, *(a.role for a in crew.agents)]).lower()
+    assert "google keep" not in words

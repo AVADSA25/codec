@@ -103,32 +103,58 @@ class TestDefaultEndpoints:
         eps = cc.default_endpoints()
         assert eps[0]["tier"] == "local" and eps[0]["kind"] == "openai"
 
-    def test_cloud_tiers_only_when_ava_ready(self, monkeypatch):
-        monkeypatch.setattr(cc, "_load_cfg", lambda: {})
+    # is_ready is a property on codec_ava_client.AvaConfig (P-035, DC-061): the
+    # fakes carry a bool, as the real class does, not a callable.
+    _ON = {"compare": {"cloud_tiers": True}}
+
+    def test_cloud_tiers_only_when_switched_on_and_ava_ready(self, monkeypatch):
+        monkeypatch.setattr(cc, "_load_cfg", lambda: self._ON)
         monkeypatch.setattr(cc, "_cookbook_endpoints", lambda: [])
-        ready = SimpleNamespace(is_ready=lambda: True)
+        ready = SimpleNamespace(is_ready=True)
         monkeypatch.setitem(sys.modules, "codec_ava_client",
                             SimpleNamespace(load_config=lambda: ready))
         labels = [e["label"] for e in cc.default_endpoints()]
         assert "cloud-balanced" in labels and "cloud-pro" in labels
 
     def test_cloud_tiers_absent_when_not_ready(self, monkeypatch):
-        monkeypatch.setattr(cc, "_load_cfg", lambda: {})
+        monkeypatch.setattr(cc, "_load_cfg", lambda: self._ON)
         monkeypatch.setattr(cc, "_cookbook_endpoints", lambda: [])
-        notready = SimpleNamespace(is_ready=lambda: False)
+        notready = SimpleNamespace(is_ready=False)
         monkeypatch.setitem(sys.modules, "codec_ava_client",
                             SimpleNamespace(load_config=lambda: notready))
         assert all(e["tier"] != "cloud" for e in cc.default_endpoints())
 
-    def test_config_overrides_cloud_tiers(self, monkeypatch):
-        cfg = {"compare": {"cloud_tiers": [{"label": "claude", "model": "claude-3-5-sonnet"}]}}
-        monkeypatch.setattr(cc, "_load_cfg", lambda: cfg)
+    def test_no_paid_tier_unless_the_switch_is_exactly_true(self, monkeypatch):
         monkeypatch.setattr(cc, "_cookbook_endpoints", lambda: [])
-        ready = SimpleNamespace(is_ready=lambda: True)
+        ready = SimpleNamespace(is_ready=True)
         monkeypatch.setitem(sys.modules, "codec_ava_client",
                             SimpleNamespace(load_config=lambda: ready))
+        for cfg in ({}, {"compare": {}}, {"compare": {"cloud_tiers": False}},
+                    {"compare": {"cloud_tiers": "true"}}, {"compare": {"cloud_tiers": 1}},
+                    {"compare": {"cloud_tiers": [{"label": "claude", "model": "claude-x"}]}},
+                    {"compare": True}):
+            monkeypatch.setattr(cc, "_load_cfg", lambda cfg=cfg: cfg)
+            assert all(e["tier"] != "cloud" for e in cc.default_endpoints()), cfg
+
+    def test_the_real_ava_config_class_turns_the_tiers_on(self, monkeypatch):
+        """The lambda fakes hid the bug: run against the real AvaConfig property."""
+        import importlib
+        monkeypatch.delitem(sys.modules, "codec_ava_client", raising=False)
+        ava_mod = importlib.import_module("codec_ava_client")
+
+        def cfg(enabled):
+            return ava_mod.AvaConfig(enabled=enabled, proxy_url="https://proxy.example",
+                                     license_key="k", default_cloud_model="m",
+                                     available_cloud_models=[])
+
+        monkeypatch.setattr(cc, "_load_cfg", lambda: self._ON)
+        monkeypatch.setattr(cc, "_cookbook_endpoints", lambda: [])
+        monkeypatch.setattr(ava_mod, "load_config", lambda: cfg(True))
         cloud = [e for e in cc.default_endpoints() if e["tier"] == "cloud"]
-        assert len(cloud) == 1 and cloud[0]["model"] == "claude-3-5-sonnet"
+        assert [e["label"] for e in cloud] == ["cloud-balanced", "cloud-pro"]
+        assert all(e["kind"] == "ava" for e in cloud)
+        monkeypatch.setattr(ava_mod, "load_config", lambda: cfg(False))
+        assert all(e["tier"] != "cloud" for e in cc.default_endpoints())
 
     def test_cookbook_endpoints_skip_unhealthy(self, monkeypatch):
         served = [
@@ -204,6 +230,7 @@ class TestSkill:
         assert "Compared 1 model" not in out
         assert "Only the local model" in out
         assert "AVA license" in out
+        assert '"cloud_tiers": true' in out, "a licence alone no longer turns the paid tiers on (P-035)"
         assert "Blue" in out               # the answer is still shown
 
     def test_two_models_still_uses_normal_header(self, monkeypatch):

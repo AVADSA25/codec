@@ -144,3 +144,16 @@ def test_home_has_the_skills_page_and_settings_points_to_it():
     assert "ta.id = 'ta-' + s.name;" in HOME and "renderSkillCards" not in HOME and 'id="skillsList"' not in HOME
     assert "onclick=\"showTab('skills')\">Open Skills</button>" in HOME
     assert 'href="/#skills"' in (REPO / "codec_cortex.html").read_text(encoding="utf-8")
+
+
+def test_the_page_count_is_the_registry_count(sk):
+    """P-035: the page lists one entry per registered skill and counts that list,
+    and the built-ins are every skills/*.py that does not start with '_'."""
+    from codec_dispatch import registry
+    if not registry.names():
+        registry.scan()
+    d = sk.client.get("/api/skills/catalog").json()
+    assert sorted(s["name"] for s in d["skills"]) == sorted(registry.names())
+    files = [p for p in Path(registry.skills_dir).glob("*.py") if not p.name.startswith("_")]
+    assert len([n for n in registry.names() if n not in registry._user_names]) == len(files)
+    assert "all.length + ' skills'" in HOME, "the page counts the catalog it was given"
