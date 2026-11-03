@@ -176,6 +176,39 @@ def _isolate_backups() -> None:
 _isolate_backups()
 
 
+def _isolate_memory_db() -> None:
+    """Keep the suite off the owner's memory.db, About me and standing rules (P-026).
+
+    Every chat prompt build reads the active facts and About me (codec_runtime_context, Daybreak's
+    open threads) and counts a standing-rule injection; voice and the wake word read facts too.
+    `codec_memory_upgrade._conn()` opens memory.db read-write and `prompt_block(record=True)`
+    rewrites standing_rules.json, so an unmocked prompt build in a test opened the owner's
+    ~/.codec/memory.db and bumped his rules' counts. `codec_config.DB_PATH` is set before any test
+    module imports codec_memory or codec_memory_upgrade, so their own DB_PATH (and CodecMemory's
+    default path) is the temp file too. Done at conftest import time, like `_isolate_audit_log`;
+    tests that need facts or rules point them at their own tmp paths.
+    """
+    tmp = Path(tempfile.mkdtemp(prefix="codec-test-memory-"))
+    try:
+        import codec_config
+        codec_config.DB_PATH = str(tmp / "memory.db")
+        import codec_memory_upgrade
+        codec_memory_upgrade.DB_PATH = codec_config.DB_PATH
+        codec_memory_upgrade.IDENTITY_PATH = str(tmp / "identity.txt")
+        import routes._shared as shared  # imported above by _isolate_usage_stores, with the real path
+        shared.DB_PATH = codec_config.DB_PATH
+    except Exception:
+        pass
+    try:
+        import codec_standing_rules
+        codec_standing_rules.RULES_PATH = tmp / "standing_rules.json"
+    except Exception:
+        pass
+
+
+_isolate_memory_db()
+
+
 def _install_pynput_stub_if_needed() -> None:
     """Stub `pynput` + `pynput.keyboard` if the real package can't import
     (headless Linux CI). On macOS the real package imports fine and this
