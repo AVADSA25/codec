@@ -7,6 +7,8 @@ import subprocess
 import re
 import time
 
+import codec_models
+
 MODE = sys.argv[1] if len(sys.argv) > 1 else "proofread"
 
 def get_config():
@@ -17,7 +19,7 @@ def get_config():
 def call_qwen(text, mode):
     cfg = get_config()
     base = cfg.get("llm_base_url", "http://localhost:8083/v1")
-    model = cfg.get("llm_model", "mlx-community/Qwen3.6-35B-A3B-4bit")
+    model = codec_models.resolve("chat", cfg)
     kwargs = cfg.get("llm_kwargs", {})
     # D-37: selected text stays on the Mac even while chat is switched to a
     # cloud model (read-only use of codec_cloud_models.local_only).
@@ -73,7 +75,7 @@ if MODE == "read_aloud":
     tts_text = text[:2000]
     cfg = get_config()
     tts_url   = cfg.get("tts_url",   "http://localhost:8085/v1/audio/speech")
-    tts_model = cfg.get("tts_model", "mlx-community/Kokoro-82M-bf16")
+    tts_model = codec_models.resolve("tts", cfg)
     tts_voice = cfg.get("tts_voice", "am_adam")
     tts_speed = float(cfg.get("tts_speed", 1.0))
     overlay("\U0001f50a Reading aloud...", "#E8711A", 6000)
@@ -133,7 +135,7 @@ try:
         cfg = get_config()
         _tts_env = {**os.environ,
             "_TTS_URL": cfg.get("tts_url", "http://localhost:8085/v1/audio/speech"),
-            "_TTS_MODEL": cfg.get("tts_model", "mlx-community/Kokoro-82M-bf16"),
+            "_TTS_MODEL": codec_models.resolve("tts", cfg),
             "_TTS_VOICE": cfg.get("tts_voice", "am_adam"),
             "_TTS_TEXT": result[:1500]}
         subprocess.Popen([sys.executable, "-c", """

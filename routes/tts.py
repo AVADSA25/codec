@@ -24,6 +24,7 @@ from typing import Optional
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse, Response
 
+import codec_models
 import codec_tts
 from routes._shared import CONFIG_PATH, get_db
 
@@ -95,7 +96,7 @@ async def get_response(session_id: str = "", after: str = "", after_id: str = ""
         return JSONResponse(content={"response": None}, headers=headers)
 
 
-_DEFAULT_MODEL = "mlx-community/Kokoro-82M-bf16"
+_DEFAULT_MODEL = codec_models.default_for("tts")
 _DEFAULT_VOICE = "am_adam"
 _DEFAULT_SPEED = 1.1
 POST_MAX_CHARS = 1000

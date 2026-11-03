@@ -142,12 +142,13 @@ def make_script(briefing: str) -> str:
         config = {}  # a fresh install: the defaults below
     try:
         import codec_cloud_models
+        import codec_models
         from codec_config import get_llm_api_key
         # The local model only, even while chat is switched to a cloud model: the
         # briefing holds the owner's calendar, threads and mail (plan P3.1).
         base_url, model = codec_cloud_models.local_only(
             config.get("llm_base_url", "http://localhost:8083/v1"),
-            config.get("llm_model", "mlx-community/Qwen3.6-35B-A3B-4bit"), config)
+            codec_models.resolve("chat", config), config)
         if not codec_cloud_models.is_local_url(base_url):
             raise RuntimeError("no local model configured")
         answer = codec_llm.call(
@@ -246,9 +247,10 @@ def _tts(text: str) -> Optional[bytes]:
             config = json.load(f)
     except (OSError, ValueError):
         config = {}
+    import codec_models
     import codec_tts
     spoken = codec_tts.speak(config.get("tts_url", "http://localhost:8085/v1/audio/speech"), text, "speak",
-                             {"model": config.get("tts_model", "mlx-community/Kokoro-82M-bf16"),
+                             {"model": codec_models.resolve("tts", config),
                               "voice": config.get("tts_voice", "am_adam"),
                               "speed": float(config.get("tts_speed", 1.0))}, cfg=config, timeout=120)
     return spoken.audio

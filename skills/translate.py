@@ -105,13 +105,14 @@ def run(task, app="", ctx=""):
         # A-12 (PR-3E-skills-misc): codec_llm.call (never-raise → "" → the final
         # "Translation failed." fallback below). codec_llm strips <think>.
         import codec_llm
+        import codec_models
         result = codec_llm.call(
             [
                 {"role": "system", "content": "You are a translator. You ONLY output what is asked. NEVER explain. NEVER add notes."},
                 {"role": "user", "content": prompt + "\n\nText: " + text},
             ],
             base_url="http://localhost:8083/v1",
-            model="mlx-community/Qwen3.6-35B-A3B-4bit",
+            model=codec_models.local_server_model()[1],   # the model the local server holds (P-057)
             max_tokens=300, temperature=0.3, timeout=30,
         )
         if result:

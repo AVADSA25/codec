@@ -19,7 +19,7 @@ from codec_config import (
     QWEN_BASE_URL, QWEN_MODEL, LLM_API_KEY, LLM_KWARGS, LLM_PROVIDER,
     QWEN_VISION_URL, QWEN_VISION_MODEL,
     TTS_ENGINE, KOKORO_URL, KOKORO_MODEL, TTS_VOICE, TTS_SPEED,
-    WHISPER_URL,
+    WHISPER_URL, STT_MODEL,
     DB_PATH, TASK_QUEUE_FILE, SESSION_ALIVE, STREAMING,
 )
 
@@ -172,7 +172,7 @@ def transcribe(path):
         with open(path, "rb") as f:
             r = requests.post(WHISPER_URL,
                 files={"file": ("audio.wav", f, "audio/wav")},
-                data={"model": "mlx-community/whisper-large-v3-turbo", "language": "en"},
+                data={"model": STT_MODEL, "language": "en"},
                 timeout=60)
         if r.status_code == 200:
             return r.json().get("text", "").strip()

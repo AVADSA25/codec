@@ -142,10 +142,13 @@ try:
     from codec_config import WHISPER_URL as WHISPER_SERVER
     from codec_config import QWEN_BASE_URL as _QWEN_BASE_URL
     from codec_config import QWEN_MODEL as _QWEN_MODEL
+    from codec_config import STT_MODEL as _STT_MODEL
 except ImportError:
+    import codec_models  # model ids by role (P-057)
     WHISPER_SERVER = "http://localhost:8084/v1/audio/transcriptions"
     _QWEN_BASE_URL = "http://localhost:8083/v1"
-    _QWEN_MODEL = "mlx-community/Qwen3.6-35B-A3B-4bit"
+    _QWEN_MODEL = codec_models.default_for("chat")
+    _STT_MODEL = codec_models.default_for("stt")
 SOX_PATH = "/opt/homebrew/bin/sox"
 
 
@@ -240,7 +243,7 @@ def _live_record_loop():
             with open(path, "rb") as f:
                 r = requests.post(WHISPER_SERVER,
                     files={"file": ("chunk.wav", f, "audio/wav")},
-                    data={"model": "mlx-community/whisper-large-v3-turbo",
+                    data={"model": _STT_MODEL,
                           "language": "en", "task": "transcribe"},
                     timeout=10)
             if r.status_code == 200:

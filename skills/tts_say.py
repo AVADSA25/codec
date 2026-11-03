@@ -17,6 +17,7 @@ import tempfile
 import subprocess
 import requests
 
+import codec_models
 import codec_tts
 
 _CFG_PATH = os.path.expanduser("~/.codec/config.json")
@@ -27,7 +28,7 @@ except Exception:
 
 KOKORO_URL   = _cfg.get("tts_url", "http://localhost:8085/v1/audio/speech")
 # Read "tts_model" (canonical key in config.json), fall back to legacy "kokoro_model"
-KOKORO_MODEL = _cfg.get("tts_model", _cfg.get("kokoro_model", "mlx-community/Kokoro-82M-bf16"))
+KOKORO_MODEL = _cfg.get("tts_model", _cfg.get("kokoro_model", codec_models.default_for("tts")))
 TTS_VOICE    = _cfg.get("tts_voice", "af_bella")
 TTS_SPEED    = float(_cfg.get("tts_speed", 1.0))
 

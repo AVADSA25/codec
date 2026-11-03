@@ -187,17 +187,18 @@ def _clear_voice_session_marker() -> None:
 
 # ── CONFIG — loaded from ~/.codec/config.json ─────────────────────────────
 WHISPER_URL   = "http://localhost:8084/v1/audio/transcriptions"
-WHISPER_MODEL = "mlx-community/whisper-large-v3-turbo"
+import codec_models  # noqa: E402  model ids by role (P-057, docs/MODEL-RESOLVE-DESIGN.md)
+WHISPER_MODEL = codec_models.default_for("stt")
 QWEN_BASE_URL = "http://localhost:8083/v1"   # A-12 (PR-3E-async): base for codec_llm.astream
 QWEN_URL      = "http://localhost:8083/v1/chat/completions"
-QWEN_MODEL    = "mlx-community/Qwen3.6-35B-A3B-4bit"
+QWEN_MODEL    = codec_models.default_for("chat")
 # Voice names the model the local server holds (config:llm_model, the hub id the
 # launcher preloads), so a call never makes it load another one; config:voice_model
 # pins a different one on purpose (P-013). With no config: the bundled model.
 from codec_models import DEFAULT_MODEL as VOICE_LLM_MODEL  # noqa: E402
 LLM_KWARGS    = {}
 KOKORO_URL    = "http://localhost:8085/v1/audio/speech"
-KOKORO_MODEL  = "mlx-community/Kokoro-82M-bf16"
+KOKORO_MODEL  = codec_models.default_for("tts")
 KOKORO_VOICE  = "am_adam"
 KOKORO_SPEED  = 1.15          # config:tts_speed overrides (normal mode; flash has its own)
 try:
@@ -213,19 +214,18 @@ try:
     _llm_base     = _cfg.get("llm_base_url", "http://localhost:8083/v1").rstrip("/")
     QWEN_BASE_URL = _llm_base
     QWEN_URL      = _llm_base + "/chat/completions"
-    QWEN_MODEL    = _cfg.get("llm_model", QWEN_MODEL)
+    QWEN_MODEL    = codec_models.resolve("chat", _cfg)
     LLM_KWARGS    = {k: v for k, v in _cfg.get("llm_kwargs", {}).items() if k != "enable_thinking"}
     KOKORO_URL    = _cfg.get("tts_url",   KOKORO_URL)
-    KOKORO_MODEL  = _cfg.get("tts_model", KOKORO_MODEL)
+    KOKORO_MODEL  = codec_models.resolve("tts", _cfg)
     KOKORO_VOICE  = _cfg.get("tts_voice", KOKORO_VOICE)
     KOKORO_SPEED  = float(_cfg.get("tts_speed", KOKORO_SPEED))
     WHISPER_URL   = _cfg.get("stt_url",   WHISPER_URL)
-    WHISPER_MODEL = _cfg.get("stt_model", WHISPER_MODEL)
+    WHISPER_MODEL = codec_models.resolve("stt", _cfg)
     # The fallback _resolve_voice_llm uses on a config error, marked local: never
     # a cloud model id (llm_model while chat is on the cloud), so the local model
     # the server holds. Last, so nothing it raised could skip the settings above.
-    from codec_models import local_server_model as _local_server_model
-    VOICE_LLM_MODEL = _cfg.get("voice_model") or _local_server_model(_cfg)[1]
+    VOICE_LLM_MODEL = codec_models.resolve("voice", _cfg)
 except Exception as _e:
     log.warning(f"Config load warning: {_e} — using defaults")
 
@@ -248,9 +248,8 @@ def _resolve_voice_llm() -> tuple:
         entry = codec_cloud_models.active_entry(cfg)
         if entry is not None:
             return entry["base_url"].strip().rstrip("/"), entry["id"], True
-        base, loaded = codec_models.local_server_model(cfg)
-        pinned = cfg.get("voice_model")
-        return base, (pinned if isinstance(pinned, str) and pinned else loaded), False
+        base, _ = codec_models.local_server_model(cfg)
+        return base, codec_models.resolve("voice", cfg), False
     except Exception:
         return QWEN_BASE_URL, VOICE_LLM_MODEL, False
 
@@ -269,12 +268,12 @@ def _warm_voice_llm(model: str, base_url: str, image_busy: bool,
 
 # ── Vision config ────────────────────────────────────────────────────────
 VISION_URL   = "http://localhost:8083/v1/chat/completions"
-VISION_MODEL = "mlx-community/Qwen2.5-VL-7B-Instruct-4bit"
+VISION_MODEL = codec_models.default_for("vision")
 GEMINI_API_KEY = ""
 VISION_PROVIDER = "local"
 try:
     VISION_URL   = _cfg.get("vision_base_url", "http://localhost:8083/v1").rstrip("/") + "/chat/completions"
-    VISION_MODEL = _cfg.get("vision_model", VISION_MODEL)
+    VISION_MODEL = codec_models.resolve("vision", _cfg)
     # PR-2B-2 (D-15): Keychain-aware getter (cfg→Keychain migration + env fallback).
     from codec_config import get_gemini_api_key
     GEMINI_API_KEY = get_gemini_api_key()

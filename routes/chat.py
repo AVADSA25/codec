@@ -808,7 +808,8 @@ def _chat_vision_response(body: dict, messages: list):
     except (OSError, json.JSONDecodeError) as e:
         log.warning(f"Config read failed; proceeding without overrides: {e}")
     vision_url = config2.get("vision_base_url", "http://localhost:8083/v1")
-    vision_model = config2.get("vision_model", "mlx-community/Qwen2.5-VL-7B-Instruct-4bit")
+    import codec_models
+    vision_model = codec_models.resolve("vision", config2)
     # Build multimodal message: last user text + all images
     last_text = ""
     for m in reversed(messages):
@@ -1612,7 +1613,8 @@ async def chat_completion(request: Request):
             _on_cloud = _ccm.active_entry(config) is not None
         except Exception:
             _on_cloud = False
-        model = config.get("llm_model", "mlx-community/Qwen3.6-35B-A3B-4bit")
+        import codec_models as _cm_role
+        model = _cm_role.resolve("chat", config)
         # PR-2B (D-15 partial): keychain-aware live read.
         from codec_config import get_llm_api_key as _kc_get_llm
         api_key = _kc_get_llm()

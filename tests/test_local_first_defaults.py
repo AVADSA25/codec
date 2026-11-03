@@ -264,7 +264,7 @@ def test_textassist_call_qwen_uses_the_local_model_while_on_cloud(llm):
     src = (REPO / "codec_textassist.py").read_text(encoding="utf-8")
     funcs = [n for n in ast.parse(src).body
              if isinstance(n, ast.FunctionDef) and n.name in ("get_config", "call_qwen")]
-    ns: dict = {"re": re}
+    ns: dict = {"re": re, "codec_models": _load("codec_models.py")}
     exec(compile(ast.Module(body=funcs, type_ignores=[]), "codec_textassist.py", "exec"), ns)
     ns["get_config"] = lambda: dict(CLOUD_CFG)
     ns["call_qwen"]("helo wrld", "proofread")
