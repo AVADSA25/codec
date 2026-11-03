@@ -212,6 +212,24 @@ def test_alert_state_keeps_both_counters_when_the_mail_check_saves_last(two_writ
     assert json.loads(w.path.read_text())["down_since_Whisper STT"] == "2026-11-03T10:00:00"
 
 
+def test_check_alerts_saves_to_the_same_file_as_codec_alerts(monkeypatch, tmp_path):
+    """One path for both writers, so they share one lock, and tests/conftest.py's redirect of
+    codec_alerts.ALERT_STATE_PATH keeps a real heartbeat cycle off the owner's alert_state.json."""
+    state_path, elsewhere = tmp_path / "alert_state.json", tmp_path / "home"
+    real = os.path.expanduser
+    monkeypatch.setattr(os.path, "expanduser",
+                        lambda p: str(elsewhere / p[2:]) if str(p).startswith("~/") else real(p))
+    monkeypatch.setattr(codec_alerts, "ALERT_STATE_PATH", str(state_path))
+    cfg = tmp_path / "hb_config.json"
+    cfg.write_text(json.dumps({"heartbeat_alerts": [{"type": "disk_usage", "name": "Disk",
+                                                     "threshold_pct": 101}]}))
+    monkeypatch.setattr(codec_heartbeat, "CONFIG_PATH", str(cfg))
+    state_path.write_text(json.dumps({"email_unread": 2}))
+    assert codec_heartbeat.check_alerts() == []
+    assert json.loads(state_path.read_text()) == {"email_unread": 2}
+    assert os.path.exists(str(state_path) + ".lock") and not elsewhere.exists()
+
+
 # ── draft_task.json: claimed by rename ──────────────────────────────────────
 
 

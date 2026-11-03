@@ -567,7 +567,11 @@ def check_alerts():
     alerts = cfg.get("heartbeat_alerts", [])
     if not alerts:
         return
-    alert_state_path = os.path.expanduser("~/.codec/alert_state.json")
+    try:  # P-083: the very file (and lock) codec_alerts writes, so the two merge, never race
+        import codec_alerts
+        alert_state_path = codec_alerts.ALERT_STATE_PATH
+    except ImportError:
+        alert_state_path = os.path.expanduser("~/.codec/alert_state.json")
     try:
         with open(alert_state_path) as f:
             state = json.load(f)
