@@ -64,13 +64,21 @@ class LLMQueue:
         async with self._lock:
             self._waiting[priority] += 1
 
-        await self._semaphore.acquire()
-
-        async with self._lock:
+        try:
+            await self._semaphore.acquire()
+        except BaseException:
+            # Cancelled (voice barge-in or hang-up cancels its task) or failed
+            # while waiting: this caller no longer waits. A count left above zero
+            # made every MEDIUM and LOW caller poll for ever (P-086).
             self._waiting[priority] -= 1
-            self._active[priority.name] += 1
-            self._total_requests[priority] += 1
-            self._total_wait_ms[priority] += (time.monotonic() - start) * 1000
+            raise
+
+        # No await from here to the return: a cancel cannot land after the slot
+        # is taken but before the caller's try/finally that releases it.
+        self._waiting[priority] -= 1
+        self._active[priority.name] += 1
+        self._total_requests[priority] += 1
+        self._total_wait_ms[priority] += (time.monotonic() - start) * 1000
 
     async def release(self, priority: Priority = Priority.MEDIUM):
         """Release an LLM slot."""

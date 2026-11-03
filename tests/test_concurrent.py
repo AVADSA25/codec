@@ -156,6 +156,37 @@ class TestLLMPriorityQueue:
 
         asyncio.run(run_test())
 
+    def test_cancelled_critical_waiter_does_not_block_medium(self):
+        """P-086: a CRITICAL waiter cancelled while the slots are full (voice
+        barge-in or hang-up) stops counting as waiting, so MEDIUM still gets in."""
+        from codec_llm_proxy import LLMQueue, Priority
+
+        async def run_test():
+            queue = LLMQueue(max_concurrent=1)
+            await queue.acquire(Priority.HIGH)  # the only slot is taken
+
+            waiter = asyncio.create_task(queue.acquire(Priority.CRITICAL))
+            for _ in range(100):  # let it reach the semaphore wait
+                await asyncio.sleep(0)
+                if queue._waiting[Priority.CRITICAL] == 1:
+                    break
+            assert queue._waiting[Priority.CRITICAL] == 1
+
+            waiter.cancel()
+            try:
+                await waiter
+            except asyncio.CancelledError:
+                pass
+            assert waiter.cancelled()
+
+            await queue.release(Priority.HIGH)
+            await asyncio.wait_for(queue.acquire(Priority.MEDIUM), timeout=1.0)
+            assert queue._waiting[Priority.CRITICAL] == 0
+            assert queue.stats["active"] == {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 1, "LOW": 0}
+            await queue.release(Priority.MEDIUM)
+
+        asyncio.run(run_test())
+
 
 class TestSyncLLMQueue:
     """Test synchronous queue wrapper for subprocess callers."""
