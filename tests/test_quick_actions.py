@@ -250,6 +250,30 @@ def test_first_run_skips_outside_the_app_when_switched_off_and_from_a_dmg(first_
     assert not services.exists()
 
 
+def test_first_launch_run_writes_them_and_a_failure_does_not_stop_it(first_run, qa, tmp_path, monkeypatch):
+    """run() itself (what the app's first launch calls) writes the eight; if that
+    breaks, the first launch still completes."""
+    contents = _bundle(tmp_path)
+    services = tmp_path / "Services"
+    refreshed = []
+    monkeypatch.setattr(qa, "SERVICES_DIR", str(services))
+    monkeypatch.setattr(qa, "refresh_menu", lambda *a, **k: refreshed.append(1))
+    monkeypatch.setattr(first_run, "bundle_contents", lambda: str(contents))
+    monkeypatch.setattr(first_run, "_run", lambda cmd, dry_run: None)  # no LaunchAgents, no model fetch
+    monkeypatch.setattr(first_run, "permission_report", lambda: {})
+    home = tmp_path / "codec_home"
+    assert first_run.run(str(home)) == 0
+    assert sorted(p.name for p in services.iterdir()) == sorted(f"CODEC {t}.workflow" for t in TITLES)
+    assert refreshed == [1], "the Services menu is refreshed after writing"
+
+    def _broken():
+        raise OSError("quick_actions.py is missing")
+    monkeypatch.setattr(first_run, "_quick_actions", _broken)
+    home2 = tmp_path / "codec_home2"
+    assert first_run.run(str(home2)) == 0
+    assert (home2 / first_run.SENTINEL).exists(), "the first launch completed anyway"
+
+
 def test_first_run_repair_flag_runs_and_touches_nothing_outside_the_app(tmp_path):
     home = tmp_path / "codec_home"
     r = subprocess.run([sys.executable, str(PKG / "first_run.py"), "--home", str(home), "--quick-actions-repair"],

@@ -230,10 +230,14 @@ def install_quick_actions(contents: str | None, home: str, *, dry_run: bool = Fa
     except EphemeralLocationError as e:
         print(f"Quick Actions: skipped ({e})")
         return 0
-    qa = _quick_actions()
-    interpreter, app_dir = qa.bundle_targets(contents)
-    target = services_dir or qa.SERVICES_DIR
-    results = qa.install(target, interpreter, app_dir, create=create, dry_run=dry_run)
+    try:  # never fatal: a first launch that stops here never starts the fleet
+        qa = _quick_actions()
+        interpreter, app_dir = qa.bundle_targets(contents)
+        target = services_dir or qa.SERVICES_DIR
+        results = qa.install(target, interpreter, app_dir, create=create, dry_run=dry_run)
+    except Exception as e:
+        print(f"  failed: Quick Actions not written ({type(e).__name__}: {e})")
+        return 1
     print(f"Quick Actions ({target}):")
     for name, action in results:
         print(f"  {action:<13} {name}")
