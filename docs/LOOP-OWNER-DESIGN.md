@@ -91,8 +91,9 @@ clears the stamp and memory state before each test, so no test writes
 
 Revert the PR. The three new files in `~/.codec` (`heartbeat.lock`,
 `heartbeat_last.json`, `memory_check.json`) are read by nothing else and can
-stay or be deleted. To quiet only the memory alert, set
-`config.json:memory_alert.swap_pct` to 100.
+stay or be deleted. To quiet the swap half of the memory alert, set
+`config.json:memory_alert.swap_pct` to 100 (swap can never be above 100%); the
+footprint half still alerts above `footprint_ratio` (at most 5).
 
 ## Not decided here
 
