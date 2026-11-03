@@ -197,6 +197,24 @@ def test_real_keychain_used_on_darwin(_isolate_keychain):
     assert Path(kc._SECURITY_BIN).exists()
 
 
+@pytest.mark.skipif(os.environ.get("CODEC_REAL_KEYCHAIN_TESTS") != "1"
+                    or platform.system() != "Darwin"
+                    or not Path("/usr/bin/security").exists(),
+                    reason="real Keychain only with CODEC_REAL_KEYCHAIN_TESTS=1 on a Mac (P-009)")
+def test_real_keychain_roundtrip_opt_in(_isolate_keychain, monkeypatch):
+    """The suite runs on a fake `security` (tests/conftest.py). This one test
+    talks to the real Keychain, under the per-test `_test_` service prefix, and
+    deletes its item again."""
+    kc = _isolate_keychain
+    monkeypatch.setattr(kc, "_SECURITY_BIN", "/usr/bin/security")
+    try:
+        assert kc.keychain_set("test_key", "real_keychain_value")
+        assert kc.keychain_get("test_key") == "real_keychain_value"
+    finally:
+        assert kc.keychain_delete("test_key")
+    assert kc.keychain_get("test_key") is None
+
+
 # ── OAuth state migration (PersistentOAuthProvider) ──────────────────────────
 
 

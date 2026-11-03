@@ -59,6 +59,10 @@ def _timed_in_child(snippet):
         import codec_audit  # never the owner's real audit log
         codec_audit._AUDIT_DIR = pathlib.Path(tempfile.mkdtemp())
         codec_audit._AUDIT_LOG = codec_audit._AUDIT_DIR / "audit.log"
+        import codec_keychain  # nor his Keychain (P-009): a temp fallback store
+        codec_keychain.is_keychain_available = lambda: False
+        codec_keychain._FALLBACK_KEY_PATH = codec_audit._AUDIT_DIR / "secret.key"
+        codec_keychain._FALLBACK_STORE_PATH = codec_audit._AUDIT_DIR / "secrets.enc.json"
         {snippet}
         print(json.dumps({{"elapsed": time.monotonic() - t0, "out": out}}))
     """)
