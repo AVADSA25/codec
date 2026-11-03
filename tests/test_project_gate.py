@@ -62,6 +62,14 @@ def test_gate_allows_the_granted_host(skill, task):
     _gate(skill, task)
 
 
+def test_domain_nudge_names_the_refused_task_host():
+    action = Action(skill="web_fetch", task="fetch https://evil.test/x")
+    with pytest.raises(PermissionViolation) as e:
+        permission_gate(action, ONLY_EXAMPLE, NO_GLOBAL)
+    nudge = car._build_correction_nudge(e.value, action, ONLY_EXAMPLE, NO_GLOBAL)
+    assert "'evil.test' is NOT" in nudge and "example.com" in nudge
+
+
 def test_gate_star_and_global_grants_still_allow():
     _gate("web_fetch", "fetch https://evil.test/x",
           grants=dict(ONLY_EXAMPLE, network_domains=["example.com", "*"]))

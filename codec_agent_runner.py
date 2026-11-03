@@ -945,10 +945,14 @@ def _build_correction_nudge(pv: "PermissionViolation",
     if reason == "domain_not_authorized":
         allowed = sorted(set(agent_grants.get("network_domains", [])) |
                          set(global_grants.get("network_domains", [])))
-        return (f"<domain_error: '{action.network_domain}' is NOT in "
+        # P-098: the refused host may come from the URL in the task, with no
+        # declared network_domain, so name what the gate refused.
+        refused = pv.needed or action.network_domain
+        return (f"<domain_error: '{refused}' is NOT in "
                 f"permission_manifest.network_domains. Allowed domains: "
                 f"{', '.join(allowed) or '(none)'}. Use one of those "
-                f"exact domains (no schema, no path).>")
+                f"exact domains (no schema, no path), in network_domain "
+                f"and in any URL in the task.>")
     return None
 
 
