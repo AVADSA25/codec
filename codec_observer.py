@@ -80,7 +80,6 @@ import os
 import re
 import secrets
 import subprocess
-import sys
 import threading
 import time
 from collections import deque
@@ -1119,15 +1118,14 @@ def _maybe_fire_shift_report(idle_seconds: float) -> None:
     Per-day dedup means whichever fires first wins; the other is suppressed.
     Manual invocations (via skill name from chat / voice / MCP) bypass this.
     """
+    # P-098: the skill comes through codec_dispatch (switch + load gate), and the
+    # fire runs through run_skill (hooks, a tool_result audit line).
     try:
-        import importlib
-        sys.path.insert(0, os.path.expanduser("~/.codec/skills"))
-        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)) + "/skills")
-        spec = importlib.util.find_spec("shift_report")
-        if spec is None:
-            return
-        sr_mod = importlib.import_module("shift_report")
+        import codec_dispatch
+        sr_mod = codec_dispatch.feature_module("shift_report")
     except Exception:
+        return
+    if sr_mod is None:
         return
     try:
         if not sr_mod._enabled():
@@ -1143,14 +1141,14 @@ def _maybe_fire_shift_report(idle_seconds: float) -> None:
         hh = int(cfg.get("daily_at_hour", 18))
         mm = int(cfg.get("daily_at_minute", 0))
         if now.hour == hh and now.minute == mm:
-            sr_mod.run_with_trigger_kind("time")
+            codec_dispatch.run_feature("shift_report", "shift report [trigger=time]", "shift_report")
             log.info("[observer] shift report fired (time trigger)")
             return
 
         # Idle path
         idle_minutes = int(cfg.get("idle_minutes", 30))
         if idle_seconds >= idle_minutes * 60:
-            sr_mod.run_with_trigger_kind("idle")
+            codec_dispatch.run_feature("shift_report", "shift report [trigger=idle]", "shift_report")
             log.info("[observer] shift report fired (idle trigger)")
     except Exception as e:
         log.debug("[observer] shift report invocation failed: %s", e)

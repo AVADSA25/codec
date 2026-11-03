@@ -467,7 +467,7 @@ def is_sender_allowed(sender, im_cfg):
 # A-19 (PR-3F): skill dispatch, the LLM call, and memory persistence are shared
 # with codec_telegram via codec_bridges. process_message stays local (the two
 # bridges' flows have intentionally drifted — goals/intent here, audio there).
-from codec_bridges import try_skill
+from codec_bridges import run_briefing_skill, try_skill
 
 
 # ── LLM call ────────────────────────────────────────────────────────────────
@@ -696,13 +696,9 @@ def _gather_briefing_data():
         ("google_tasks",    "pending tasks",                 500),
         ("google_gmail",    "unread emails summary",         400),
     ]:
-        try:
-            mod = __import__(f"skills.{skill_name}", fromlist=["run"])
-            result = mod.run(query)
-            if result:
-                data[skill_name] = str(result)[:limit]
-        except Exception as e:
-            log.debug(f"Briefing {skill_name}: {e}")
+        result = run_briefing_skill(skill_name, query)  # P-098: through codec_dispatch
+        if result:
+            data[skill_name] = str(result)[:limit]
 
     # ── Premium RSS headlines (9 sources, parallel fetch) ──
     try:

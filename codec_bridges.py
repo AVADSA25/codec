@@ -105,6 +105,21 @@ def try_skill(text):
     return (None, None)
 
 
+def run_briefing_skill(name, query):
+    """One source of the daily briefing (P-098): through codec_dispatch.run_feature,
+    so the skill switch, the registry's load gate, plugin hooks and a tool_result
+    audit line apply. None when dispatch is unavailable, the skill is switched
+    off or it fails (the briefing then skips that source)."""
+    if not load_dispatch():
+        return None
+    try:
+        from codec_dispatch import run_feature
+        return run_feature(name, query, "briefing")
+    except Exception as e:
+        log.debug("Briefing %s: %s", name, e)
+        return None
+
+
 # ── Canonical bridge LLM call ────────────────────────────────────────────────
 def call_llm(channel, text, llm_cfg, conversation_history=None,
              system_prompt_override=None):

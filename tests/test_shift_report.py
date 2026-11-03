@@ -351,7 +351,23 @@ def test_kill_switch_skips_audit_emit(temp_state, temp_audit_log,
 # Observer integration: _maybe_fire_shift_report (3)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def test_observer_idle_path_fires_shift_report(temp_state, monkeypatch):
+@pytest.fixture
+def dispatch_this_module(monkeypatch):
+    """P-098: the observer runs shift_report through codec_dispatch. Hand it this
+    test's (patched) module, with no plugins and no licence check."""
+    from types import SimpleNamespace
+    import codec_dispatch
+    import codec_hooks
+    import codec_license
+    codec_dispatch._known("shift_report")
+    monkeypatch.setitem(codec_dispatch.registry._modules, "shift_report", shift_report)
+    monkeypatch.setattr(codec_dispatch, "_skill_off", lambda name: False)
+    monkeypatch.setattr(codec_license, "feature_allowed", lambda *_a: True)
+    monkeypatch.setattr(codec_hooks, "_registry",
+                        SimpleNamespace(for_hook=lambda hook, tool=None: []))
+
+
+def test_observer_idle_path_fires_shift_report(temp_state, monkeypatch, dispatch_this_module):
     """When idle_seconds > idle_minutes*60 AND not already fired,
     observer fires the shift report with trigger_kind='idle'."""
     import codec_observer
@@ -379,7 +395,7 @@ def test_observer_idle_path_fires_shift_report(temp_state, monkeypatch):
     assert notifs[0]["trigger_kind"] == "idle"
 
 
-def test_observer_time_path_does_not_fire_off_window(temp_state):
+def test_observer_time_path_does_not_fire_off_window(temp_state, dispatch_this_module):
     """If wall-clock hour doesn't match daily_at_hour, idle threshold not
     met → no fire."""
     import codec_observer
@@ -391,7 +407,7 @@ def test_observer_time_path_does_not_fire_off_window(temp_state):
     assert not (temp_state / "notifications.json").exists()
 
 
-def test_observer_already_fired_today_suppresses(temp_state, monkeypatch):
+def test_observer_already_fired_today_suppresses(temp_state, monkeypatch, dispatch_this_module):
     """Observer's check honors per-day dedup."""
     import codec_observer
     # Set state to "fired today"

@@ -236,7 +236,7 @@ class TelegramBot:
 # A-19 (PR-3F): skill dispatch, the LLM call, and memory persistence are shared
 # with codec_imessage via codec_bridges. process_message stays local (the two
 # bridges' flows have intentionally drifted — audio/Gemini here, goals there).
-from codec_bridges import try_skill
+from codec_bridges import run_briefing_skill, try_skill
 
 
 # ── Daily Briefing: premium data gathering ───────────────────────────────
@@ -310,13 +310,9 @@ def _gather_briefing_data():
         ("google_tasks",    "pending tasks",                 500),
         ("google_gmail",    "unread emails summary",         400),
     ]:
-        try:
-            mod = __import__(f"skills.{skill_name}", fromlist=["run"])
-            result = mod.run(query)
-            if result:
-                data[skill_name] = str(result)[:limit]
-        except Exception as e:
-            log.debug(f"Briefing {skill_name}: {e}")
+        result = run_briefing_skill(skill_name, query)  # P-098: through codec_dispatch
+        if result:
+            data[skill_name] = str(result)[:limit]
 
     try:
         headlines = _fetch_rss_headlines()
