@@ -30,8 +30,10 @@ back for the /api/command caller and the existing test surface.
 from __future__ import annotations
 
 import asyncio
+import collections
 import json
 import logging
+import math
 import re
 import secrets
 import time
@@ -991,6 +993,237 @@ def _build_chat_system_prompt(config: dict, budget, has_attachment: bool,
     return sys_prompt
 
 
+# ── Prompt budget (P-034, docs/CHAT-PROMPT-BUDGET-DESIGN.md) ───────────────────
+# Deep Chat resends its whole history, and every attached file up to 80,000
+# characters, on every turn, and the local server reads all of it again each
+# time. _fit_prompt_budget keeps one turn's prompt under
+# config.json:chat_prompt_token_budget: the system prompt, this turn's context and
+# the latest message stay as they are, an older attachment becomes an excerpt
+# chosen by relevance to the latest message, and the oldest turns go first.
+# Per turn only: nothing is stored.
+CHAT_PROMPT_TOKEN_BUDGET = 12000
+_MIN_PROMPT_TOKEN_BUDGET = 2000
+CHARS_PER_TOKEN = 3.5            # 80,000 characters = about 23k tokens
+_TOKENS_PER_MESSAGE = 4
+_EXCERPT_WINDOW = 1500           # characters in one scored window of a file
+_EXCERPT_STEP = 1200             # windows overlap: a sentence on a boundary is whole in one
+_EXCERPT_GAP = "\n[...]\n"
+_INTERNAL_CONTEXT_START = "(INTERNAL CONTEXT"   # the message _enrich_messages adds this turn
+# The blocks codec_chat.html puts in a user message for an attached file or image.
+# A file name may hold "]" ("Invoice [2026].pdf"): the name runs to the first "]" + newline.
+_ATTACHMENT_RE = re.compile(
+    r"\[DOCUMENT: ([^\n]*?)\]\n(.*?)\n\[END DOCUMENT\]"
+    r"|\[IMAGE ANALYSIS of ([^\n]*?)\]\n(.*?)\n\[END IMAGE\]", re.DOTALL)
+_EXCERPT_STOP_WORDS = frozenset((
+    "the and for are was were with that this these those from what which who whom whose "
+    "when where why how does did done has have had into onto about there their they them "
+    "then than but not you your yours our ours its can could would should will shall may "
+    "might must also just only very more most some any all each tell say says said please "
+    "file document attached attach page text").split())
+_EXCERPT_NOTE = (
+    "(Files attached earlier in this chat. Only the parts of each file that best match the "
+    "latest message are repeated here, not the whole file. If the answer is not in these "
+    "parts, say it is not in the part of the file you can see and that attaching the file "
+    "again lets you read all of it. Do not guess.)")
+
+
+def estimate_prompt_tokens(messages: list) -> int:
+    """The one token estimate of the chat prompt budget (P-034), used for the cap and by its
+    tests: 3.5 characters a token, rounded up per message, plus 4 a message."""
+    total = 0
+    for m in messages or []:
+        content = m.get("content") if isinstance(m, dict) else ""
+        if isinstance(content, list):  # multimodal parts: count their text
+            content = " ".join(str(p.get("text", "")) for p in content if isinstance(p, dict))
+        size = len(content) if isinstance(content, str) else 0
+        total += math.ceil(size / CHARS_PER_TOKEN) + _TOKENS_PER_MESSAGE
+    return total
+
+
+def _prompt_token_budget(config: dict) -> int:
+    """config.json:chat_prompt_token_budget (P-034). 0 or below turns the cap off, a value
+    under 2,000 counts as 2,000, anything that is not a number means the default."""
+    raw = (config or {}).get("chat_prompt_token_budget", CHAT_PROMPT_TOKEN_BUDGET)
+    if isinstance(raw, bool):
+        return CHAT_PROMPT_TOKEN_BUDGET
+    try:
+        value = int(raw)
+    except (TypeError, ValueError, OverflowError):
+        return CHAT_PROMPT_TOKEN_BUDGET
+    if value <= 0:
+        return 0
+    return max(value, _MIN_PROMPT_TOKEN_BUDGET)
+
+
+def _excerpt_terms(text: str) -> list:
+    """The words an excerpt is matched on: lower case, 3+ letters or 2+ digits, no stop
+    words, and simple -s/-ed/-ing/-e endings removed so "keys" meets "key"."""
+    out = []
+    for w in re.findall(r"\w+", (text or "").lower()):
+        if w in _EXCERPT_STOP_WORDS or len(w) < 2 or (len(w) == 2 and not w.isdigit()):
+            continue
+        for end in ("ing", "ed", "s"):
+            if w.endswith(end) and len(w) - len(end) >= 3 and not w.endswith("ss"):
+                w = w[:-len(end)]
+                break
+        if w.endswith("e") and len(w) > 3:
+            w = w[:-1]
+        out.append(w)
+    return out
+
+
+def _merged(ranges: list) -> list:
+    """Character ranges joined where they touch or overlap, in file order."""
+    out: list = []
+    for start, end in sorted(ranges):
+        if out and start <= out[-1][1]:
+            out[-1][1] = max(out[-1][1], end)
+        else:
+            out.append([start, end])
+    return out
+
+
+def _attachment_excerpt(docs: list, question: str, cap_tokens: int) -> tuple:
+    """The excerpt message for older attachments `docs` [(name, text)] (P-034): the windows
+    of each file that best match `question` (rarer words weigh more), then the start of each
+    file if room is left, written in file order, at most about `cap_tokens`. Returns
+    (message text, names of the files with a part in it, names of the files left out)."""
+    reserve = sum(len(name) + 100 for name, _ in docs)
+    cap_chars = int(cap_tokens * CHARS_PER_TOKEN) - len(_EXCERPT_NOTE) - reserve
+    windows = []
+    for d, (_, text) in enumerate(docs):
+        start = 0
+        while True:
+            end = min(len(text), start + _EXCERPT_WINDOW)
+            windows.append((d, start, end))
+            if end >= len(text):
+                break
+            start += _EXCERPT_STEP
+    terms = set(_excerpt_terms(question))
+    scores = [0.0] * len(windows)
+    if terms and cap_chars > 0:
+        counts = [collections.Counter(_excerpt_terms(docs[d][1][s:e])) for d, s, e in windows]
+        for t in terms:
+            df = sum(1 for c in counts if c[t])
+            if df:
+                idf = math.log(1 + len(windows) / df)
+                for i, c in enumerate(counts):
+                    if c[t]:
+                        scores[i] += idf * (1 + math.log(c[t]))
+    best = sorted((i for i in range(len(windows)) if scores[i] > 0), key=lambda i: (-scores[i], i))
+    heads = [i for i, (_, s, _) in enumerate(windows) if s == 0]
+    chosen: dict = {d: [] for d in range(len(docs))}
+    used = 0
+    for i in best + heads:
+        d, s, e = windows[i]
+        before = sum(b - a for a, b in _merged(chosen[d]))
+        grown = sum(b - a for a, b in _merged(chosen[d] + [(s, e)])) - before
+        if grown and used + grown + len(_EXCERPT_GAP) <= cap_chars:
+            chosen[d].append((s, e))
+            used += grown + len(_EXCERPT_GAP)
+    parts = [_EXCERPT_NOTE] if cap_chars > 0 else []
+    shown_names: list = []
+    left_out: list = []
+    for d, (name, text) in enumerate(docs):
+        ranges = _merged(chosen[d])
+        if not ranges:
+            left_out.append(name)
+            parts.append(f"[{name}: attached earlier, not sent this turn: no room left in the prompt. "
+                         "Attach it again to have it read.]")
+            continue
+        shown_names.append(name)
+        body = _EXCERPT_GAP.join(text[a:b] for a, b in ranges)
+        if ranges[0][0] > 0:
+            body = "[...]\n" + body
+        if ranges[-1][1] < len(text):
+            body += "\n[...]"
+        shown = sum(b - a for a, b in ranges)
+        parts.append(f"[DOCUMENT EXCERPT: {name} ({shown:,} of {len(text):,} characters)]\n"
+                     f"{body}\n[END DOCUMENT EXCERPT]")
+    return "\n\n".join(parts), shown_names, left_out
+
+
+def _fit_prompt_budget(messages: list, budget: int):
+    """P-034: one turn's prompt under `budget` tokens by estimate_prompt_tokens. Returns
+    (messages to send, what was done) or (messages, None) when nothing changed.
+
+    Kept as they are: the system message, this turn's (INTERNAL CONTEXT ...) message and
+    the latest user message. The latest message's own attachment blocks are not counted,
+    so the turn that brings a file may go over once, by that file. An attachment in an
+    older message is cut out of it and comes back as one excerpt message just before the
+    latest message, chosen by relevance to it, at most a third of the budget. Older turns
+    (a user message and what follows it) come back newest first while they fit, so the
+    oldest go first and no gap is skipped. The input list and its dicts are not changed."""
+    if budget <= 0 or not messages:
+        return messages, None
+    last = next((i for i in range(len(messages) - 1, -1, -1) if messages[i].get("role") == "user"), None)
+    if last is None:
+        return messages, None
+    latest = messages[last].get("content")
+    latest = latest if isinstance(latest, str) else ""
+    allowance = sum(math.ceil(len(m.group(2) if m.group(1) is not None else m.group(4)) / CHARS_PER_TOKEN)
+                    for m in _ATTACHMENT_RE.finditer(latest))
+    limit = budget + allowance
+    if estimate_prompt_tokens(messages) <= limit:
+        return messages, None
+
+    head = [messages[0]] if last > 0 and messages[0].get("role") == "system" else []
+    ctx_at = last
+    before = messages[last - 1] if last - 1 >= len(head) else None
+    if (before and before.get("role") == "user" and isinstance(before.get("content"), str)
+            and before["content"].startswith(_INTERNAL_CONTEXT_START)):
+        ctx_at = last - 1
+    pinned, tail = messages[ctx_at:last], messages[last:]
+
+    docs: list = []
+    seen: set = set()
+
+    def _cut(m):
+        is_doc = m.group(1) is not None
+        name = (m.group(1) if is_doc else m.group(3)).strip() or "attachment"
+        body = m.group(2) if is_doc else m.group(4)
+        if (name, body) not in seen:
+            seen.add((name, body))
+            docs.append((name, body))
+        return (f"[File attached earlier: {name}. Its text is not repeated here; the parts that "
+                "match the latest message are just before it.]")
+
+    history = []
+    for m in messages[len(head):ctx_at]:
+        content = m.get("content")
+        if isinstance(content, str) and "[END " in content:
+            cut = _ATTACHMENT_RE.sub(_cut, content)
+            if cut != content:
+                m = {**m, "content": cut}
+        history.append(m)
+
+    kept = head + pinned + tail
+    excerpt, shown, left_out = [], [], []
+    if docs:
+        room = limit - estimate_prompt_tokens(kept) - _TOKENS_PER_MESSAGE - 2
+        question = _ATTACHMENT_RE.sub(" ", latest)
+        text, shown, left_out = _attachment_excerpt(docs, question, min(budget // 3, room))
+        excerpt = [{"role": "user", "content": text}]
+
+    groups: list = []
+    for m in history:
+        if m.get("role") == "user" or not groups:
+            groups.append([])
+        groups[-1].append(m)
+    used = estimate_prompt_tokens(kept + excerpt)
+    keep_from = len(groups)
+    while keep_from > 0:
+        cost = estimate_prompt_tokens(groups[keep_from - 1])
+        if used + cost > limit:
+            break
+        used += cost
+        keep_from -= 1
+    out = head + [m for g in groups[keep_from:] for m in g] + pinned + excerpt + tail
+    tokens = estimate_prompt_tokens(out)
+    return out, {"budget": budget, "tokens": tokens, "dropped": sum(len(g) for g in groups[:keep_from]),
+                 "excerpts": shown, "not_sent": left_out, "over": tokens > budget}
+
+
 
 
 import re as _re_esc
@@ -1362,6 +1595,15 @@ async def chat_completion(request: Request):
                 and messages and messages[0].get("role") == "system"):
             messages[0]["content"] += _REASON_SCAFFOLD
 
+        # P-034: what goes to the model this turn stays under
+        # config.json:chat_prompt_token_budget (docs/CHAT-PROMPT-BUDGET-DESIGN.md).
+        # The checks after the reply still read the untrimmed `messages`.
+        _llm_messages, _trim = _fit_prompt_budget(messages, _prompt_token_budget(config))
+        if _trim:
+            log.info("[Chat] prompt budget: %d of %d estimated tokens, %d earlier messages left out, "
+                     "%d file(s) as an excerpt%s", _trim["tokens"], _trim["budget"], _trim["dropped"],
+                     len(_trim["excerpts"]), " (over: the new file or the kept parts)" if _trim["over"] else "")
+
         stream_mode = body.get("stream", False)
         # Dashboard chat & Vibe benefit from thinking mode (deeper answers).
         # Frontend can send thinking=false to override for speed.
@@ -1426,6 +1668,8 @@ async def chat_completion(request: Request):
                     yield f"data: {json.dumps({'memory': _mem_items})}\n\n"
                 if _web_used:  # D-37: "Searched the web" under the reply
                     yield f"data: {json.dumps({'web': _web_used})}\n\n"
+                if _trim:  # P-034: "Shortened to fit" under the reply
+                    yield f"data: {json.dumps({'trim': _trim})}\n\n"
 
                 def _frame(tok):
                     if tok:
@@ -1488,7 +1732,7 @@ async def chat_completion(request: Request):
                     # took. usage arrives in the server's final chunk.
                     _t0 = time.time()
                     _usage = None
-                    for item in codec_llm.stream(messages, **_common,
+                    for item in codec_llm.stream(_llm_messages, **_common,
                                                  keepalive=True,
                                                  error_sentinel=True,
                                                  inline_reasoning=show_thoughts,
@@ -1650,7 +1894,7 @@ async def chat_completion(request: Request):
         # Skills that actually executed this turn. A claim of action with an
         # empty set is unbacked — see codec_claim_check.
         _turn_actions: set[str] = set()
-        answer = await asyncio.to_thread(codec_llm.call, messages, **_common, raise_on_error=True)
+        answer = await asyncio.to_thread(codec_llm.call, _llm_messages, **_common, raise_on_error=True)
         import codec_usage
         codec_usage.record_reply(model, base_url)  # UI P3.11: Settings > Usage counts this reply
         answer = re.sub(r'###\s*FINAL ANSWER:\s*', '', answer).strip()
@@ -1744,6 +1988,8 @@ async def chat_completion(request: Request):
             out["memory"] = _mem_items
         if _web_used:
             out["web"] = _web_used
+        if _trim:
+            out["trim"] = _trim
         return out
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
