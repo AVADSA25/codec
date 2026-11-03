@@ -69,6 +69,20 @@ Every test uses a stub in place of `sqlite3` (or a tmp database), a fake clock, 
 - Connections: `needs permission` from a fresh file over PM2 `online`; PM2 `stopped` wins; a stale file
   is ignored; the two modules name the same file.
 
+## Turning a stopped bridge back on (owner decision 14)
+
+The bridge skips the backlog only after it has seen a refusal itself (`denied_since` in the state
+file). A bridge that only ever ran the old code (the owner's, stopped since 29 Oct) has no state file
+yet, and its saved position in `~/.codec/imessage_state.json` is from before the refusals began. If
+it can read at its first start (Full Disk Access given while it was stopped), it would answer every
+"Hey CODEC" message from an allowed sender since the refusals began, oldest first, 20 every poll.
+So before turning it back on, move `~/.codec/imessage_state.json` aside (it holds only that old
+position and a start time): with no saved position the bridge starts from the newest message, as a
+first run does, whether it can read yet or not.
+
+If adding the named program does not help, macOS may be checking the program that started it
+(`bash` under launchd, `node` under PM2). That is a guess, like the cause itself.
+
 ## Rollback
 
 Revert the commit and restart `codec-imessage` and `codec-dashboard`. The state file can stay or be
