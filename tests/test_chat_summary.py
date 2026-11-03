@@ -231,7 +231,7 @@ def test_a_merge_cut_by_the_token_cap_is_not_used(monkeypatch):
     assert job.merges and all(after == before for before, after in job.merges)
 
 
-def test_notes_a_merge_cannot_shorten_stop_growing(monkeypatch):
+def test_notes_that_cannot_be_shortened_stop_growing(monkeypatch):
     """Notes sit with the system message, where P-034 never leaves anything out, so a model
     that cannot shorten them must not let them grow past twice the merge cap (half the budget)."""
     monkeypatch.setattr(notes, "_complete", lambda messages, llm, max_tokens, whole=False:
