@@ -76,6 +76,14 @@ def test_call_llm_history_and_override(monkeypatch):
 # ── try_skill (skip set + result) ─────────────────────────────────────────────
 
 
+@pytest.fixture(autouse=True)
+def _free_text_skills_on(monkeypatch):
+    """The allowlist tests run with the owner's bridges.free_text_skills switch on (P-098:
+    off by default, tests/test_one_loader.py covers that)."""
+    import codec_config
+    monkeypatch.setitem(codec_config.cfg, "bridges", {"free_text_skills": True})
+
+
 def test_try_skill_skips_blocked(monkeypatch):
     monkeypatch.setattr(codec_bridges, "_dispatch_loaded", True)
     monkeypatch.setattr(codec_bridges, "_check_skill", lambda t: {"name": "open_terminal"})

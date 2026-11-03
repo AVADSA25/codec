@@ -78,6 +78,14 @@ def load_dispatch() -> bool:
         return False
 
 
+def _free_text_skills() -> bool:
+    try:
+        from codec_config import cfg
+        return (cfg.get("bridges") or {}).get("free_text_skills") is True
+    except Exception:
+        return False
+
+
 def try_skill(text):
     """Match a CODEC skill for `text` and run it IF it is on BRIDGE_SAFE_SKILLS.
 
@@ -86,8 +94,12 @@ def try_skill(text):
     answer (graceful degradation, never a hard fail). C2 fail-closed: any skill
     not on the allowlist (every high-power skill included) is never dispatched
     from a bridge.
+
+    Off unless config.json `bridges.free_text_skills` is exactly true (P-098, my call under
+    the owner's go): the bridges never scanned the registry, so free text always went to
+    the model, and the briefing's scan must not change that.
     """
-    if not load_dispatch():
+    if not _free_text_skills() or not load_dispatch():
         return (None, None)
     try:
         skill = _check_skill(text)

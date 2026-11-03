@@ -99,6 +99,10 @@ def feat(tmp_path, monkeypatch):
     audit_log = tmp_path / "audit.log"
     audit_log.write_text("")
     monkeypatch.setattr(codec_audit, "_AUDIT_LOG", audit_log)
+    # Both modules bind log_event at import: if an earlier test imported them while
+    # codec_audit.log_event was patched, they would keep that stub.
+    monkeypatch.setattr(codec_dispatch, "log_event", codec_audit.log_event)
+    monkeypatch.setattr(codec_hooks, "_log_event", codec_audit.log_event)
     config = tmp_path / "config.json"
     config.write_text(json.dumps({"skills_off": ["google_gmail"]}))
     monkeypatch.setattr(codec_skill_switches, "CONFIG_PATH", str(config))
@@ -256,3 +260,18 @@ def test_auto_memorize_gets_fact_extract_through_dispatch(tmp_path, monkeypatch)
     assert "2 fact(s) saved" in mod.run("force") and len(seen) == 1
     monkeypatch.setattr(codec_dispatch, "feature_module", lambda name: None)
     assert "switched off" in mod.run("force") and len(seen) == 1
+
+
+def test_bridge_free_text_stays_with_the_model_unless_switched_on(monkeypatch):
+    import codec_bridges
+    import codec_config
+    seen = []
+    monkeypatch.setattr(codec_bridges, "_dispatch_loaded", True)
+    monkeypatch.setattr(codec_bridges, "_check_skill", lambda text: seen.append(text) or {"name": "time"})
+    monkeypatch.setattr(codec_bridges, "_run_skill", lambda skill, text: "10:00")
+    monkeypatch.setitem(codec_config.cfg, "bridges", {})
+    assert codec_bridges.try_skill("what time is it") == (None, None) and seen == []
+    monkeypatch.setitem(codec_config.cfg, "bridges", {"free_text_skills": "yes"})
+    assert codec_bridges.try_skill("what time is it") == (None, None) and seen == []
+    monkeypatch.setitem(codec_config.cfg, "bridges", {"free_text_skills": True})
+    assert codec_bridges.try_skill("what time is it") == ("time", "10:00") and seen == ["what time is it"]

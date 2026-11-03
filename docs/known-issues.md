@@ -539,22 +539,18 @@ pause is lost. Found while building P-010 (docs/AGENT-STOP-DESIGN.md, Known
 limits). Fix (own small PR, section 10 file): skip the spawn when
 `_atomic_set_status` returns False. Revisit: the next change to the daemon loop.
 
-## Telegram and iMessage free text starts running skills after the first briefing (2026-11-03, P-098 review)
+## Telegram and iMessage free text: skills only behind a switch (2026-11-03, P-098 review; decided before merge)
 
 The bridges' `codec_bridges.try_skill` matches a message against the skill
 registry and runs it when the skill is on `BRIDGE_SAFE_SKILLS`. Neither bridge
-process scans the registry (no `load_skills` call in their history), so it
-matched nothing and every free-text message went to the model. P-098 routes the briefing through
-`codec_dispatch.run_feature`, which scans the registry once, so after the first
-"good morning" / "briefing" in a bridge process, messages that hit a trigger of
-weather, time, calculator ("times", "plus", "how much is"), translate,
-bitcoin_price, web_search ("who is", "look up": the text goes to DuckDuckGo),
-json_formatter, password_generator or qr_generator get the skill's answer, a
-`wake_dispatch` line and an overlay toast instead of a model reply. Until that
-first briefing they do not. Owner decision: keep free-text skills in the
-bridges (then scan at bridge start so it does not depend on the briefing) or
-keep the bridges model-only (then `try_skill` should stop matching). Revisit:
-before P-098 (#541) is merged.
+process ever scanned the registry, so it matched nothing and every free-text
+message went to the model. P-098's briefing scans the registry once, which would
+have switched those skills on after the first briefing. Decision (session lead,
+under the owner's go of 3 Nov): the bridges stay model-only. `try_skill` returns
+(None, None) unless `config.json` `bridges.free_text_skills` is exactly true.
+Turning it on sends trigger-matching text to the skill (web_search sends it to
+DuckDuckGo). Status: decided, not a defect. Revisit: if the owner wants skill
+answers in Telegram or iMessage; then also scan at bridge start.
 
 ## Plan path blocklist: case, parent folders and anchoring (2026-11-03, P-098 review)
 
