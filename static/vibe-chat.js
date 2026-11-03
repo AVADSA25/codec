@@ -13,11 +13,28 @@
   var S = { route: null, pending: null };
 
   // The turns as vibe.db keeps them: what the owner typed, not the [PROJECT FILES] / [CURRENT CODE] block that went
-  // to the model with it. Assistant turns are kept as they are.
+  // to the model with it, and for an answer in a project its explanation plus "[Files written: ...]" (the files are in
+  // the project folder). A turn with no short text recorded is kept as it is.
   function stored(hist) {
     return (hist || []).map(function (m) {
-      var typed = m.role === 'user' && typeof m.plain === 'string' && m.plain !== '';
-      return { role: m.role, content: typed ? m.plain : (m.content == null ? '' : m.content) };
+      var short = typeof m.plain === 'string' && m.plain !== '';
+      return { role: m.role, content: short ? m.plain : (m.content == null ? '' : m.content) };
+    });
+  }
+
+  // The typed text of a user turn saved before P-042: the file block the page added after it is cut off.
+  var BLOCK = /\n\n\[(?:PROJECT FILES|CURRENT CODE)\]\n/;
+  function typedText(text) {
+    var s = text == null ? '' : String(text);
+    var m = BLOCK.exec(s);
+    return m ? s.slice(0, m.index) : s;
+  }
+
+  // The rows of a saved session as the page shows them and sends them on: no old file block in a user turn.
+  function loaded(rows) {
+    return (rows || []).map(function (m) {
+      var content = m.content == null ? '' : String(m.content);
+      return { role: m.role, content: m.role === 'user' ? typedText(content) : content };
     });
   }
 
@@ -75,7 +92,7 @@
     });
   }
 
-  var api = { stored: stored, request: request, routeFromStatus: routeFromStatus, route: route, send: send, _state: S };
+  var api = { stored: stored, typedText: typedText, loaded: loaded, request: request, routeFromStatus: routeFromStatus, route: route, send: send, _state: S };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.VibeChat = api;
   if (typeof document !== 'undefined') route();     // learn the switch while the page loads

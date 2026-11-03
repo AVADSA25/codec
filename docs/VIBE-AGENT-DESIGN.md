@@ -43,7 +43,7 @@ A run is one background thread in the dashboard. One run at a time on the Mac, b
 5. If files changed, save a checkpoint "Agent: <what changed>" tagged with the run and step.
 6. Go to 2, until `finish`, Stop, or a limit.
 
-Limits (all in `config.json:vibe_agent`, defaults shown): 30 steps, 15 minutes, 10k tokens of context, 3000 tokens per reply. A reply cut by the token cap is rejected and the model is told to use smaller edits; two cuts in a row end the run. From the third failed edit in a row on one file, the result tells the model to rewrite the file with `write_file` (or, for a file too long for one reply, to copy its lines exactly) and the run goes on (P-040, docs/VIBE-AGENT-RESULTS-DESIGN.md). The same call three times in a row warns the model; five times ends the run. A question or approval that waits more than 10 minutes ends the run as stopped.
+Limits (all in `config.json:vibe_agent`, defaults shown): 30 steps, 15 minutes of work (the time a question or approval waits for the owner is not counted, P-064), 10k tokens of context, 3000 tokens per reply. A reply cut by the token cap is rejected and the model is told to use smaller edits; two cuts in a row end the run. From the third failed edit in a row on one file, the result tells the model to rewrite the file with `write_file` (or, for a file too long for one reply, to copy its lines exactly) and the run goes on (P-040, docs/VIBE-AGENT-RESULTS-DESIGN.md). The same call three times in a row warns the model; five times ends the run. A question or approval that waits more than 10 minutes ends the run as stopped.
 
 ### 3. Tool format
 

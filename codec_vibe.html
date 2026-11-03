@@ -80,6 +80,7 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx)}
 @media (min-width:769px){.sp.code-off .ep{display:none}}
 #codeBtn[aria-pressed="true"]{border-color:var(--ac);color:var(--ac)}
 #eb{flex:1}
+.eb-fail{padding:16px;color:var(--text-muted);font-size:var(--fs-13)}
 .vtabs{display:none}
 .vtab{flex:1;padding:6px 10px;border:1px solid var(--bd);border-radius:6px;background:0;color:var(--tx2);font-size:var(--fs-12);font-weight:600;font-family:var(--ft);cursor:pointer}
 .vtab.sel{color:var(--ac);border-color:var(--ac);background:var(--accent-dim)}
@@ -351,16 +352,16 @@ body{font-family:var(--ft);background:var(--bg);color:var(--tx)}
 <div class="cp"><div class="hd" style="font-size:var(--fs-13);color:var(--tx2);font-weight:500">Vibe Coding</div><div class="ms" id="cm"><div class="mg ma">Tell me what to build!</div></div><div class="amode" id="amode" role="group" aria-label="How the next message is handled" hidden><button type="button" class="amb sel" id="amChat" aria-pressed="true" title="One answer: files are written behind a checkpoint">Chat</button><button type="button" class="amb" id="amAgent" aria-pressed="false" title="The agent reads, edits and checks files step by step">Agent</button><select id="amModel" aria-label="Model for the next message" hidden></select></div><div class="ia"><button class="vibe-mic" id="vibeMic" onclick="toggleVibeMic()" title="Voice input" aria-label="Voice input"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button><textarea id="vi" class="ii" rows="1" placeholder="Describe what to build..."></textarea><button class="vibe-mic" id="vibeFolder" onclick="pickWorkingFolder()" title="Allocate a working folder"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg><span class="on-mac">on Mac</span></button><button class="sb" id="sndb" title="Send" aria-label="Send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></button><button class="sb" id="stopb" onclick="doStop()" style="display:none;background:#c0392b" title="Stop" aria-label="Stop"><svg width="14" height="14" viewBox="0 0 24 24" fill="#fff" stroke="none"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></button></div></div>
 <div style="width:4px;cursor:col-resize;background:var(--bd)" id="rh"></div>
 <div class="vtabs" id="vtabs" role="tablist" aria-label="Panes"><button type="button" class="vtab sel" id="vtabChat" role="tab" aria-selected="true" onclick="_setVibeTab('chat')">Chat</button><button type="button" class="vtab" id="vtabPrev" role="tab" aria-selected="false" onclick="_setVibeTab('preview')">Preview<span class="vdot" hidden></span></button><button type="button" class="vtab" id="vtabCode" role="tab" aria-selected="false" onclick="_setVibeTab('code')">Code</button></div>
-<div class="ep"><div class="ftabs" id="ftabs" role="tablist" aria-label="Project files" hidden></div><div class="abn" id="agentBanner" role="status" hidden>The agent is working on these files. Stop it to edit them.</div><div id="eb"></div><div class="tb"><button class="bt primary" onclick="doRun()" title="Execute code"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5 3 19 12 5 21 5 3"/></svg>Run</button><button class="bt" onclick="doPrev()" title="Live preview"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>Preview</button><button class="bt inspect-btn" id="inspectBtn" onclick="toggleInspect()" title="Inspect elements"><svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Inspect</button><div class="tb-sep"></div><button class="bt" onclick="doSave()" title="Save file"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save</button><button class="bt" onclick="doCopy()" title="Copy code"><svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>Copy</button><span class="rs" id="rs"></span></div></div>
+<div class="ep"><div class="ftabs" id="ftabs" role="tablist" aria-label="Project files" hidden></div><div class="abn" id="agentBanner" role="status" hidden>The agent is working on these files. Stop it to edit them.</div><div id="eb"></div><div class="tb"><button class="bt primary" onclick="doRun()" title="Execute code"><svg class="ico ico-sm" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5 3 19 12 5 21 5 3"/></svg>Run</button><button class="bt" onclick="doPrev()" title="Live preview"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>Preview</button><button class="bt inspect-btn" id="inspectBtn" onclick="toggleInspect()" title="Inspect elements"><svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Inspect</button><div class="tb-sep"></div><button class="bt" id="saveBtn" onclick="doSave()" title="Save file"><svg class="ico ico-sm" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg><span id="saveLbl">Save</span></button><button class="bt" onclick="doCopy()" title="Copy code"><svg class="ico ico-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>Copy</button><span class="rs" id="rs"></span></div></div>
 <div class="pp" id="pp"><div class="ph"><span>Live Preview</span><div class="ph-acts"><span class="ph-live" id="liveState" role="status" hidden></span><button type="button" class="ph-b" id="stopLiveBtn" onclick="VibeProj.stopLive()" title="Stop" aria-label="Stop what is running" hidden><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"/></svg></button><button type="button" class="ph-b" id="runBtn" onclick="VibeProj.runDialog()" title="Show the project on localhost, or run it on this Mac" aria-label="Show on localhost or run the project" hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><polygon points="7 4 20 12 7 20 7 4"/></svg></button><button type="button" class="ph-b" onclick="doPrev()" title="Refresh the preview" aria-label="Refresh the preview"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg></button><button type="button" class="ph-b inspect-btn" onclick="toggleInspect()" title="Inspect elements" aria-label="Inspect elements"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button><button type="button" class="ph-b" onclick="closePrev()" aria-label="Close preview" title="Close the preview"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div></div><div class="pv-wrap"><iframe id="pf" sandbox="allow-scripts"></iframe><div class="pv-empty" id="pvEmpty">The preview appears here when there is a page to show.</div></div></div>
 </div>
 <div class="op" id="op"><span style="color:var(--ac)">Vibe Coding</span></div>
 </div>
 <script src="/static/vendor/monaco/vs/loader.js"></script>
 <script src="/static/vibe-files.js?v=d056f202"></script>
-<script src="/static/vibe-projects.js?v=092f3bd5"></script>
+<script src="/static/vibe-projects.js?v=eabcf2d4"></script>
 <script src="/static/vibe-agent.js?v=9e4f4490"></script>
-<script src="/static/vibe-chat.js?v=f1182c33"></script>
+<script src="/static/vibe-chat.js?v=099a27df"></script>
 <script>
 // Auth + CSRF: inject session token and CSRF header on all requests
 // On mobile (Android Chrome), cookies may not persist — fallback to sessionStorage
@@ -514,20 +515,36 @@ function _histForSend(project) {
   });
 }
 
-require.config({paths:{vs:'/static/vendor/monaco/vs'}});
-require(['vs/editor/editor.main'], function() {
-  ed = monaco.editor.create(document.getElementById('eb'), {
-    value: '// Ask CODEC to build something\n',
-    language: 'plaintext',
-    theme: (document.documentElement.getAttribute('data-theme') === 'light') ? 'vs' : 'vs-dark',
-    fontSize: 13,
-    minimap: {enabled: false},
-    automaticLayout: true,
-    tabSize: 4,
-    wordWrap: 'on',
-    padding: {top: 8}
-  });
-});
+// The editor is optional for the rest of the page: when its script does not load (a failed request, a broken copy),
+// the editor area says so and send, resize, the code pane and the folder chip below still run.
+function _editorFailed() {
+  var eb = document.getElementById('eb');
+  if (!eb) return;
+  eb.textContent = '';
+  var m = document.createElement('div');
+  m.className = 'eb-fail';
+  m.setAttribute('role', 'status');
+  m.textContent = 'The editor could not load. Reload the page to try again; chat still works.';
+  eb.appendChild(m);
+}
+if (typeof require === 'function' && typeof require.config === 'function') {
+  require.config({paths:{vs:'/static/vendor/monaco/vs'}});
+  require(['vs/editor/editor.main'], function() {
+    try {
+      ed = monaco.editor.create(document.getElementById('eb'), {
+        value: '// Ask CODEC to build something\n',
+        language: 'plaintext',
+        theme: (document.documentElement.getAttribute('data-theme') === 'light') ? 'vs' : 'vs-dark',
+        fontSize: 13,
+        minimap: {enabled: false},
+        automaticLayout: true,
+        tabSize: 4,
+        wordWrap: 'on',
+        padding: {top: 8}
+      });
+    } catch (e) { ed = null; _editorFailed(); }
+  }, function () { _editorFailed(); });
+} else _editorFailed();
 
 var LANG_EXT = {python:'.py',javascript:'.js',typescript:'.ts',html:'.html',css:'.css',json:'.json',bash:'.sh',go:'.go',rust:'.rs',java:'.java',cpp:'.cpp',swift:'.swift',ruby:'.rb',sql:'.sql',yaml:'.yml',markdown:'.md'};
 
@@ -575,6 +592,7 @@ function updateFilename(lang) {
 }
 
 function setDetectedLang(lang) {
+  if (!ed) return;     // the editor did not load
   monaco.editor.setModelLanguage(ed.getModel(), lang);
   updateFilename(lang);
   // Update dropdown if not on auto
@@ -624,6 +642,7 @@ function addOut(cls, text) {
 }
 
 var _vibeAbort = null;
+var _vibeBusy = false;   // a chat answer is on its way or being applied: Enter starts nothing else until it is done
 
 function doStop() {
   if (window.VibeAgent && VibeAgent.running()) { VibeAgent.stop(); return; }
@@ -665,6 +684,7 @@ function clearWorkingFolder() { _workdir = ''; _lsDel('codec_workdir'); _renderV
 // Otherwise the message goes to the local model. _vibeCloud carries that yes from here into one doSend().
 var _vibeCloud = false, _vibeAsking = false;
 function sendVibe() {
+  if (_vibeBusy) return;
   var inp = document.getElementById('vi');
   if (window.VibeAgent && !VibeAgent.active() && VibeAgent.chatCloud() && inp.value.trim()) {
     if (_vibeAsking) return;
@@ -679,6 +699,7 @@ function sendVibe() {
 function doSend() {
   var inp = document.getElementById('vi');
   var cloud = _vibeCloud; _vibeCloud = false;    // the owner's yes for this one message, if sendVibe got it
+  if (_vibeBusy) return;                          // one answer at a time; the typed text stays in the box
   if (window.VibeAgent && VibeAgent.active()) { VibeAgent.send(inp); return; }   // Agent mode: the run card takes it from here
   var t = inp.value.trim();
   if (!t) return;
@@ -727,6 +748,7 @@ function doSend() {
   _vibeAbort = new AbortController();
   var _fenceMap = {python:'python',py:'python',javascript:'javascript',js:'javascript',typescript:'typescript',ts:'typescript',html:'html',css:'css',json:'json',bash:'bash',sh:'bash',go:'go',rust:'rust',rs:'rust',java:'java',cpp:'cpp','c++':'cpp',swift:'swift',ruby:'ruby',rb:'ruby',sql:'sql',yaml:'yaml',yml:'yaml',markdown:'markdown',md:'markdown'};
   var _resetSend = function(){document.getElementById('sndb').style.display='';document.getElementById('stopb').style.display='none';clearInterval(thinkTmr);var tm=document.getElementById('tkmsg');if(tm)tm.remove();};
+  _vibeBusy = true;
   (async function() {
     var pm = false;   // true: the answer's files go into a project folder behind a checkpoint
     try {
@@ -802,7 +824,7 @@ function doSend() {
         if (after) h += '<br><br>' + esc(after).replace(/\n/g, '<br>');
         addMsg('assistant', h, true);
         det = _fenceMap[(m[1] || '').toLowerCase()] || detectLang(code); setDetectedLang(det);
-        if (ed.getValue().trim() !== code.trim()) ed.setValue(code);   // final sync (in case stream missed the close)
+        if (ed && ed.getValue().trim() !== code.trim()) ed.setValue(code);   // final sync (in case stream missed the close)
         addOut('sy', 'Code ready (' + det + ')'); doSaveSes();
         if (code.trim().startsWith('<!DOCTYPE') || code.includes('<canvas')) setTimeout(doPrev, 300);
       } else {
@@ -813,6 +835,8 @@ function doSend() {
       var undone = (pm && window.VibeProj) ? VibeProj.abort() : false;   // put the editor back as it was
       if (e.name !== 'AbortError') addMsg('assistant', 'Error: ' + e.message + (undone ? ' (nothing was applied)' : ''));
       else if (pm) addMsg('assistant', 'Stopped. Nothing was applied.');
+    } finally {
+      _vibeBusy = false;
     }
   })();
 }
@@ -853,16 +877,28 @@ function doRun() {
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({code: code, language: lang, filename: fn})
   })
-  .then(function(r) { return r.json(); })
-  .then(function(d) {
-    if (d.stdout) addOut('ot', d.stdout);
-    if (d.stderr) addOut('er', d.stderr);
-    document.getElementById('rs').textContent = (d.exit_code === 0 ? 'Done' : 'Exit:' + d.exit_code) + ' (' + d.elapsed + 's)';
+  .then(function(r) { return r.json().catch(function () { return {}; }).then(function (d) { return _runReport(r.ok, r.status, d); }); })
+  .then(function(rep) {
+    rep.lines.forEach(function (l) { addOut(l[0], l[1]); });
+    document.getElementById('rs').textContent = rep.rs;
   })
   .catch(function(e) {
     document.getElementById('rs').textContent = 'Error';
     addOut('er', e.message);
   });
+}
+
+// What Run shows for an answer of /api/run_code: the status text and the lines for the output pane. A refusal (403 at
+// the tunnel or for a blocked pattern, 400 for a language the server does not run) carries only the server's error.
+function _runReport(ok, status, d) {
+  d = d || {};
+  if (!ok || typeof d.exit_code !== 'number') {
+    return {rs: 'Error', lines: [['er', d.error ? String(d.error) : 'The server answered ' + status]]};
+  }
+  var lines = [];
+  if (d.stdout) lines.push(['ot', d.stdout]);
+  if (d.stderr) lines.push(['er', d.stderr]);
+  return {rs: (d.exit_code === 0 ? 'Done' : 'Exit:' + d.exit_code) + ' (' + d.elapsed + 's)', lines: lines};
 }
 
 // ── Preview frame ───────────────────────────────────────────────────────────
@@ -910,10 +946,10 @@ function _pvAgent() {
       if (!on) { unhl(); picked = null; }
     } else if (d.codecPreview === 'apply' && picked) {
       if (d.textChanged) picked.textContent = String(d.text);
-      picked.style.color = String(d.color);
-      picked.style.backgroundColor = String(d.bg);
-      picked.style.fontSize = parseFloat(d.fs) + 'px';
-      picked.style.padding = parseFloat(d.pad) + 'px';
+      if (d.color != null) picked.style.color = String(d.color);
+      if (d.bg != null) picked.style.backgroundColor = String(d.bg);
+      if (d.fs != null) picked.style.fontSize = parseFloat(d.fs) + 'px';
+      if (d.pad != null) picked.style.padding = parseFloat(d.pad) + 'px';
     }
   });
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { send('ready'); });
@@ -997,7 +1033,7 @@ function doPrev(silent) {
   silent = silent === true;
   // Showing the project on localhost (or running it): refresh that frame instead of the inline copy.
   if (window.VibeProj && VibeProj.liveActive()) { VibeProj.liveReload(); return; }
-  var c = (window.VibeProj && VibeProj.previewSource()) || ed.getValue();
+  var c = (window.VibeProj && VibeProj.previewSource()) || (ed ? ed.getValue() : '');
   if (c.trim().startsWith('<!DOCTYPE') || c.includes('<canvas') || c.includes('<body') || c.includes('<html')) {
     document.getElementById('pp').classList.remove('off');
     var wrap = document.querySelector('.pv-wrap');
@@ -1028,6 +1064,8 @@ function refreshPreview() {
 }
 
 function doSave() {
+  // In a project the files already save themselves: the button keeps them as a version (Versions shows it as Saved).
+  if (window.VibeProj && VibeProj.on()) { VibeProj.saveVersion(); return; }
   var code = ed.getValue();
   var fn = document.getElementById('fn').value;
   fetch('/api/save_file', {
@@ -1035,9 +1073,15 @@ function doSave() {
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({filename: fn, content: code, directory: '~/codec-workspace'})
   })
-  .then(function(r) { return r.json(); })
-  .then(function(d) { addOut('sy', 'Saved: ' + (d.path || fn)); })
+  .then(function(r) { return r.json().catch(function () { return {}; }).then(function (d) { var o = _saveReport(r.ok, r.status, d); addOut(o[0], o[1]); }); })
   .catch(function(e) { addOut('er', 'Save error: ' + e.message); });
+}
+
+// The output line for an answer of /api/save_file: "Saved" only when the server says where it wrote the file.
+function _saveReport(ok, status, d) {
+  d = d || {};
+  if (ok && d.path) return ['sy', 'Saved: ' + d.path];
+  return ['er', 'Not saved: ' + (d.error ? String(d.error) + (d.reason ? ' (' + d.reason + ')' : '') : 'the server answered ' + status)];
 }
 
 function doTestSkill() {
@@ -1144,8 +1188,10 @@ function ldSes(sid) {
     document.getElementById('cm').innerHTML = '';
     hist = [];
     if (d.messages) {
-      for (var i = 0; i < d.messages.length; i++) {
-        var m = d.messages[i];
+      // A row saved before P-042 carries the file block that went with it: cut off here, so it is not shown or sent.
+      var rows = window.VibeChat ? VibeChat.loaded(d.messages) : d.messages;
+      for (var i = 0; i < rows.length; i++) {
+        var m = rows[i];
         addMsg(m.role === 'user' ? 'user' : 'assistant', m.content || '');
         hist.push({role: m.role, content: m.content || ''});
       }
@@ -1183,7 +1229,7 @@ function doSaveSes() {
   fetch('/api/vibe/save', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({session_id: sesId, title: title, language: lang, code: code, messages: window.VibeChat ? VibeChat.stored(hist) : hist, full_sync: true,
+    body: JSON.stringify({session_id: sesId, title: title, language: lang, code: code, messages: window.VibeChat ? VibeChat.stored(hist) : hist.map(function (m) { return {role: m.role, content: m.plain || m.content}; }), full_sync: true,
                           project_id: inProject ? VibeProj.id() : null})
   }).catch(function(){});
 }
@@ -1240,7 +1286,9 @@ function handleInspectPick(d) {
   if (text.length > 5 && text.length < 50) searches.push(text);
   searches.push('<' + tag);
 
-  // Jump to first match in Monaco
+  // Jump to first match in Monaco, in the file the preview shows (not a css or js tab that happens to be open)
+  var vpath = _inspectPath();
+  if (vpath && VibeProj.active() !== vpath) VibeProj.activate(vpath);
   if (ed) {
     var content = ed.getModel().getValue();
     var found = false;
@@ -1290,7 +1338,40 @@ function showInspectTooltip(x, y, selector, preview) {
   tip._hide = setTimeout(function() { tip.style.display = 'none'; }, 3000);
 }
 
+// The project file the inline preview shows: Inspect reads and edits that one. null outside a project.
+function _inspectPath() { return window.VibeProj && VibeProj.on() ? VibeProj.previewPath() : null; }
+
 // ── Inline Edit Panel ────────────────────────────────────────────────────────
+// The declarations of a style attribute, split on the ; that are outside brackets and quotes (url(data:...;...)).
+function _styleDecls(s) {
+  var out = [], cur = '', depth = 0, q = '';
+  for (var i = 0; i < s.length; i++) {
+    var ch = s[i];
+    if (q) { if (ch === q) q = ''; }
+    else if (ch === '"' || ch === "'") q = ch;
+    else if (ch === '(') depth++;
+    else if (ch === ')') depth = Math.max(0, depth - 1);
+    else if (ch === ';' && !depth) { if (cur.trim()) out.push(cur.trim()); cur = ''; continue; }
+    cur += ch;
+  }
+  if (cur.trim()) out.push(cur.trim());
+  return out;
+}
+// An opening tag with props ([[css-name, value], ...]) set in its style attribute. Every other declaration is kept;
+// a tag with no style attribute gets one.
+function _tagWithStyle(openTag, props) {
+  var names = props.map(function (p) { return p[0]; });
+  var m = openTag.match(/\sstyle\s*=\s*(?:"([^"]*)"|'([^']*)')/i);
+  var keep = m ? _styleDecls(m[1] != null ? m[1] : m[2]).filter(function (d) {
+    return names.indexOf(d.split(':')[0].trim().toLowerCase()) === -1;
+  }) : [];
+  var style = keep.concat(props.map(function (p) { return p[0] + ':' + p[1]; })).join(';');
+  var attr = style.indexOf('"') === -1 ? ' style="' + style + '"' : " style='" + style + "'";
+  if (m) return openTag.slice(0, m.index) + attr + openTag.slice(m.index + m[0].length);
+  if (openTag.slice(-2) === '/>') return openTag.slice(0, -2) + attr + '/>';
+  return openTag.slice(0, -1) + attr + '>';
+}
+
 function rgbToHex(rgb) {
   if (!rgb || rgb === 'rgba(0, 0, 0, 0)') return '#000000';
   if (rgb.startsWith('#')) return rgb;
@@ -1341,6 +1422,14 @@ function showEditPanel(info, cs) {
 
   panel._info = info;
   panel._origText = info.text;
+  // Apply writes only what the owner touched: a colour box cannot hold "transparent", and the other values are the
+  // element's computed ones, which the source should not get as inline styles.
+  panel._touched = {};
+  ['ep-color', 'ep-bg', 'ep-fs', 'ep-pad'].forEach(function (id) {
+    var mark = function () { panel._touched[id] = true; };
+    document.getElementById(id).addEventListener('input', mark);
+    document.getElementById(id).addEventListener('change', mark);
+  });
   panel.style.display = 'block';
 }
 
@@ -1354,11 +1443,20 @@ function applyEdits() {
   var bg      = document.getElementById('ep-bg').value;
   var fs      = document.getElementById('ep-fs').value;
   var pad     = document.getElementById('ep-pad').value;
+  var touched = panel._touched || {};
+  var num = function (v) { var n = parseFloat(v); return isFinite(n) ? n : null; };
+  var set = {color: touched['ep-color'] ? color : null, bg: touched['ep-bg'] ? bg : null,
+             fs: touched['ep-fs'] ? num(fs) : null, pad: touched['ep-pad'] ? num(pad) : null};
+  var props = [];
+  if (set.color != null) props.push(['color', set.color]);
+  if (set.bg != null) props.push(['background-color', set.bg]);
+  if (set.fs != null) props.push(['font-size', set.fs + 'px']);
+  if (set.pad != null) props.push(['padding', set.pad + 'px']);
 
   // ── 1. Apply to live preview immediately ───────────────────────────────────
   var origText = panel._origText || '';
   _pvSend({codecPreview: 'apply', textChanged: newText !== origText, text: newText,
-           color: color, bg: bg, fs: fs, pad: pad});
+           color: set.color, bg: set.bg, fs: set.fs, pad: set.pad});
 
   // ── 2. Sync back to Monaco source code ────────────────────────────────────
   if (ed) {
@@ -1369,7 +1467,8 @@ function applyEdits() {
     if (rawClass) searches.push('class="' + rawClass + '"');
     searches.push('<' + tag);
 
-    var content  = ed.getModel().getValue();
+    var vpath    = _inspectPath();      // the file the preview shows, whichever tab is open
+    var content  = vpath ? VibeProj.fileText(vpath) : ed.getModel().getValue();
     var matchIdx = -1;
     for (var si = 0; si < searches.length; si++) {
       var fi = content.indexOf(searches[si]);
@@ -1385,23 +1484,8 @@ function applyEdits() {
       if (tagEnd !== -1) {
         var openTag = content.substring(tagStart, tagEnd + 1);
 
-        // Build minimal style string — only include properties we're setting
-        var styleStr = [
-          'color:'            + color,
-          'background-color:' + bg,
-          'font-size:'        + fs  + 'px',
-          'padding:'          + pad + 'px'
-        ].join(';');
-
-        // Replace existing style attr, or inject a new one
-        var newOpenTag;
-        if (/style="[^"]*"/.test(openTag)) {
-          newOpenTag = openTag.replace(/style="[^"]*"/, 'style="' + styleStr + '"');
-        } else if (openTag.endsWith('/>')) {
-          newOpenTag = openTag.slice(0, -2) + ' style="' + styleStr + '"/>';
-        } else {
-          newOpenTag = openTag.slice(0, -1) + ' style="' + styleStr + '">';
-        }
+        // Only the properties the owner touched, merged into the tag's style attribute (its other declarations stay)
+        var newOpenTag = props.length ? _tagWithStyle(openTag, props) : openTag;
 
         var newContent  = content.substring(0, tagStart) + newOpenTag;
         var afterOpen   = tagEnd + 1;
@@ -1415,7 +1499,8 @@ function applyEdits() {
           newContent += content.substring(afterOpen);
         }
 
-        if (window.VibeProj && VibeProj.on()) VibeProj.setActiveText(newContent); else ed.setValue(newContent);
+        if (vpath) { VibeProj.activate(vpath); VibeProj.setFileText(vpath, newContent); }
+        else if (window.VibeProj && VibeProj.on()) VibeProj.setActiveText(newContent); else ed.setValue(newContent);
         var linePos = ed.getModel().getPositionAt(tagStart);
         ed.revealLineInCenter(linePos.lineNumber);
         addOut('sy', 'Synced to editor — line ' + linePos.lineNumber);

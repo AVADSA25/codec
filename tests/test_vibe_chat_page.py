@@ -63,7 +63,7 @@ def test_stored_history_keeps_what_was_typed_not_the_file_dump():
     out = run(f"C.stored({json.dumps(HIST)})")
     assert [m["role"] for m in out] == ["user", "assistant", "user", "user"]
     assert out[0]["content"] == "make it blue"
-    assert out[1]["content"] == HIST[1]["content"], "an assistant turn is kept as it is"
+    assert out[1]["content"] == "Done.\n[Files written: index.html]", "a project answer keeps its short text (P-064)"
     assert out[2]["content"] == "a turn loaded from vibe.db"
     assert out[3]["content"] == HIST[3]["content"], "no typed text recorded: keep what there is rather than lose the turn"
     assert "[PROJECT FILES]" not in json.dumps(out[0]) and run("C.stored(null)") == []
@@ -72,7 +72,27 @@ def test_stored_history_keeps_what_was_typed_not_the_file_dump():
 def test_the_page_saves_through_stored_so_vibe_db_gets_the_typed_text():
     save = PAGE[PAGE.index("function doSaveSes() {"):PAGE.index("// Auto-save on navigation away")]
     assert "messages: window.VibeChat ? VibeChat.stored(hist) : hist" in save
+    assert "hist.map(function (m) { return {role: m.role, content: m.plain || m.content}; })" in save, \
+        "without the script the save still keeps the short text (P-064)"
     assert "plain: t" in PAGE, "the typed text is recorded on every user turn"
+
+
+OLD_ROWS = [  # as vibe.db holds a session saved before P-042
+    {"role": "user", "content": "make a page\n\n[PROJECT FILES]\nOpen file: index.html\nAll files: index.html\n"
+                                "```html file:index.html\n<h1>x</h1>\n```", "timestamp": "t"},
+    {"role": "assistant", "content": "Here.\n```html file:index.html\n<h1>y</h1>\n```"},
+    {"role": "user", "content": "fix it\n\n[CURRENT CODE]\n```\nprint(1)\n```"},
+    {"role": "user", "content": "typed only"},
+    {"role": "user", "content": None},
+]
+
+
+@node
+def test_a_loaded_session_shows_the_typed_text_without_an_old_file_block():
+    out = run(f"C.loaded({json.dumps(OLD_ROWS)})")
+    assert [m["content"] for m in out] == ["make a page", OLD_ROWS[1]["content"], "fix it", "typed only", ""]
+    assert all(set(m) == {"role", "content"} for m in out) and run("C.loaded(null)") == []
+    assert run("C.typedText('a [PROJECT FILES] b')") == "a [PROJECT FILES] b", "only the block the page added is cut"
 
 
 # ── the request on each route ───────────────────────────────────────────
