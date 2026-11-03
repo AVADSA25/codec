@@ -15,15 +15,18 @@
   var STATUS_TEXT = { running: 'Working', waiting: 'Waiting for you', stopping: 'Stopping', done: 'Done', stopped: 'Stopped',
     limit: 'Stopped at a limit', failed: 'Failed', interrupted: 'Interrupted' };
   var ACTIVE = { running: 1, waiting: 1, stopping: 1 };
+  var CONTINUABLE = { interrupted: 1, stopped: 1, limit: 1, failed: 1 };     // as codec_vibe_agent.CONTINUABLE (P-044)
   var LIVE_CHARS = 220;
   var HISTORY_TURNS = 4;
+  var MAX_NOTE = 300;                                                       // as codec_vibe_agent_proto.MAX_NOTE_CHARS
 
   // ── what a run looks like, from its events ─────────────────────────────
 
   function newRun(pid) {
     return { pid: pid, id: null, status: 'running', goal: '', model: '', maxSteps: 30, step: 0, since: 0, startedAt: 0,
       startCp: null, steps: {}, checkpoints: [], changed: [], live: '', liveStep: 0, question: null, approval: null, canRun: true,
-      ranCommands: false, end: null, finished: false };
+      ranCommands: false, end: null, finished: false, offset: 0, modelKind: 'local', continues: null, continuable: false,
+      ownerStop: false };
   }
 
   function addUnique(list, items) {
@@ -42,7 +45,14 @@
         run.startedAt = ev.t || run.startedAt;
         run.status = 'running';
         run.canRun = ev.can_run !== false;
-        return [{ t: 'meta' }].concat(run.canRun ? [] : [{ t: 'note', step: 0, text: 'Commands are off for this run: it was started away from this Mac.' }]);
+        run.modelKind = (ev.model && ev.model.kind) || run.modelKind;
+        run.continues = ev.continues || null;
+        run.offset = ev.continues ? (ev.earlier_steps || 0) : 0;      // a continued run counts its own steps from 1
+        return [{ t: 'meta' }].concat(run.continues ? [{ t: 'note', step: 0, text: 'This run goes on from where the last one stopped' +
+            (run.offset ? ' (' + run.offset + (run.offset === 1 ? ' step' : ' steps') + ' done before).' : '.') }] : [])
+          .concat(run.canRun ? [] : [{ t: 'note', step: 0, text: 'Commands are off for this run: it was started away from this Mac.' }]);
+      case 'message':
+        return [{ t: 'message', id: ev.id, text: ev.text || '', at: readAt(run, ev.step) }];
       case 'note':
         run.live = ''; run.liveStep = 0;
         return [{ t: 'live', text: '' }, { t: 'note', step: ev.step, text: ev.text }];
@@ -130,9 +140,22 @@
 
   function statusText(run) { return STATUS_TEXT[run.status] || run.status; }
   function stepText(run) {
-    if (run.finished) return run.step + (run.step === 1 ? ' step' : ' steps');
-    return run.step ? 'Step ' + Math.min(run.step, run.maxSteps) + ' of ' + run.maxSteps : 'Starting';
+    var own = Math.max(0, run.step - (run.offset || 0));
+    if (run.finished) return own + (own === 1 ? ' step' : ' steps');
+    return own ? 'Step ' + Math.min(own, run.maxSteps) + ' of ' + run.maxSteps : 'Starting';
   }
+
+  // The owner's note follows the result of step `step`, so the agent reads it at the next one (counted in this run).
+  function readAt(run, step) { return Math.max(1, (step || 0) + 1 - (run.offset || 0)); }
+
+  // Continue is offered when the server says so (the project's newest run, ended without reaching its goal).
+  function canContinue(run) { return !!(run && run.finished && run.continuable && CONTINUABLE[run.status]); }
+
+  // While a run works, a message of 1 to 300 characters is queued for it; a longer one waits in the box.
+  function noteFits(text) { var t = String(text || '').trim(); return t.length > 0 && t.length <= MAX_NOTE; }
+
+  // What Continue adds to the chat, so a reload still finds the run (see unreported()).
+  function continueLabel(goal) { return 'Continue: ' + String(goal || '').trim(); }
   function isActive(run) { return !!run && !run.finished && !!ACTIVE[run.status]; }
 
   function fmtElapsed(seconds) {
@@ -170,7 +193,7 @@
 
   var core = { newRun: newRun, synthEnd: synthEnd, applyEvent: applyEvent, describeLive: describeLive, toolLabel: toolLabel, statusText: statusText,
     stepText: stepText, isActive: isActive, fmtElapsed: fmtElapsed, canUndoRun: canUndoRun, historyFor: historyFor,
-    reportMessage: reportMessage };
+    reportMessage: reportMessage, readAt: readAt, canContinue: canContinue, noteFits: noteFits, continueLabel: continueLabel };
 
   if (typeof document === 'undefined') {            // Node: only the plain functions
     if (typeof module !== 'undefined' && module.exports) module.exports = core;
@@ -181,7 +204,8 @@
 
   var VP = root.VibeProj;
   var S = { available: false, mode: 'chat', model: 'local', models: null, run: null, pid: null, card: null, timer: null,
-    clock: null, reloadTimer: null, reloading: false, lost: 0 };
+    clock: null, reloadTimer: null, reloading: false, lost: 0, queue: null, lines: {} };
+  var RUN_HINT = 'Message the agent (it reads it at its next step). Esc stops it.';
   var KEY = 'vibeAgentMode';
 
   function $(id) { return document.getElementById(id); }
@@ -253,7 +277,7 @@
     var vi = $('vi');
     if (vi) {
       if (!vi.dataset.chatHint) vi.dataset.chatHint = vi.placeholder;
-      vi.placeholder = S.available && S.mode === 'agent' ? 'Tell the agent what to do...' : vi.dataset.chatHint;
+      vi.placeholder = running() ? RUN_HINT : S.available && S.mode === 'agent' ? 'Tell the agent what to do...' : vi.dataset.chatHint;
     }
   }
 
@@ -291,6 +315,10 @@
     if (chat) chat.addEventListener('click', function () { setMode('chat'); });
     if (agent) agent.addEventListener('click', function () { setMode('agent'); });
     if (sel) sel.addEventListener('change', function () { S.model = sel.value === 'cloud' ? 'cloud' : 'local'; });
+    var vi = $('vi');
+    if (vi) vi.addEventListener('keydown', function (e) {        // Esc in the composer stops a working agent (P-044)
+      if (e.key === 'Escape' && !e.isComposing && running()) { e.preventDefault(); stopRun(); }
+    });
     api('GET', '/api/vibe/agent/models').then(function (info) {
       S.available = true;
       setupModels(info);
@@ -524,6 +552,14 @@
     c.end.hidden = false;
     c.end.textContent = '';
     c.end.appendChild(el('p', 'agc-rep', end.report || statusText(r)));
+    if (canContinue(r)) {                                   // goes on from where it stopped, with a fresh step budget
+      var more = el('div', 'agc-ea');
+      var go = el('button', 'agc-btn', 'Continue'); go.type = 'button';
+      go.setAttribute('aria-label', 'Continue the run from where it stopped');
+      go.addEventListener('click', function () { continueRun(r, go); });
+      more.appendChild(go);
+      c.end.appendChild(more);
+    }
     if (canUndoRun(r)) {
       var acts = el('div', 'agc-ea');
       var undo = el('button', 'agc-btn', 'Undo run'); undo.type = 'button';
@@ -533,6 +569,29 @@
       acts.appendChild(undo); acts.appendChild(keep);
       c.end.appendChild(acts);
     }
+  }
+
+  // The owner's message in the timeline, with a line that says where it is.
+  function drawYou(text, state) {
+    var li = el('li', 'agc-you');
+    li.appendChild(el('div', 'agc-yt', 'You: ' + text));
+    var st = el('div', 'agc-qa', state);
+    li.appendChild(st);
+    S.card.steps.appendChild(li);
+    return st;
+  }
+
+  // The agent read one of the owner's messages. A line this page drew is updated; one sent from elsewhere (or
+  // seen again after a reload) gets its own line.
+  function drawMessage(eff) {
+    var said = 'The agent read this at step ' + eff.at + '.';
+    var q = S.queue;
+    if (q && q.run === S.run.id && (eff.id === q.id || (!q.id && eff.text === q.text))) S.queue = null;
+    else q = null;
+    var line = (q && q.line) || S.lines[eff.id];
+    delete S.lines[eff.id];
+    if (line) line.textContent = said;
+    else drawYou(eff.text, said);
   }
 
   function draw(effects) {
@@ -549,6 +608,7 @@
       else if (eff.t === 'approval') drawApproval(eff);
       else if (eff.t === 'decision') drawDecision(eff);
       else if (eff.t === 'note') drawNote(eff);
+      else if (eff.t === 'message') drawMessage(eff);
       else if (eff.t === 'live') { c.live.textContent = eff.text; c.live.hidden = !eff.text; }
       else if (eff.t === 'end') { drawEnd(eff.end); drawAllowed(); }
     });
@@ -585,6 +645,8 @@
     var sb = $('sndb'), xb = $('stopb');
     if (sb) sb.style.display = 'none';
     if (xb) xb.style.display = '';
+    S.lines = {};
+    renderMode();
     S.clock = setInterval(function () { if (S.run && isActive(S.run)) drawMeta(); }, 1000);
   }
 
@@ -603,6 +665,7 @@
       (d.events || []).forEach(function (ev) { effects = effects.concat(applyEvent(run, ev)); });
       var cut = synthEnd(run, d);
       if (cut) effects = effects.concat(applyEvent(run, cut));
+      if (d.finished) run.continuable = !!d.continuable;          // the server says whether Continue can work
       draw(effects);
       if (run.finished) return finished(run);
       S.timer = setTimeout(poll, 100);
@@ -623,6 +686,7 @@
     var sb = $('sndb'), xb = $('stopb');
     if (sb) sb.style.display = '';
     if (xb) xb.style.display = 'none';
+    renderMode();
   }
 
   function finished(run) {
@@ -634,6 +698,24 @@
     }).catch(function () { /* the editor catches up when the project is opened again */ });
     if (root.hist) root.hist.push({ role: 'assistant', content: reportMessage(run), plain: reportMessage(run) });
     if (typeof root.doSaveSes === 'function') root.doSaveSes();
+    var q = S.queue;                          // a message the agent never read becomes the next goal (P-044)
+    S.queue = null;
+    if (!q || q.run !== run.id) return;
+    if (run.ownerStop) {
+      q.line.textContent = 'Not sent: you stopped the run. It is back in the message box.';
+      backToComposer(q.text);
+    } else {
+      q.line.textContent = 'The run ended before reading this: it starts as the next goal.';
+      startRun(q.text, null);
+    }
+  }
+
+  function clearInput(inp) { if (inp) { inp.value = ''; inp.style.height = 'auto'; inp.rows = 1; } }
+
+  function backToComposer(text) {
+    var vi = $('vi');
+    if (!vi) return;
+    vi.value = vi.value.trim() ? text + '\n' + vi.value : text;
   }
 
   function confirmCloud() {
@@ -658,11 +740,43 @@
   function send(inp) {
     var text = inp.value.trim();
     if (!text) return;
-    if (running()) { toast('The agent is still working. Stop it first, or wait for it to finish.'); return; }
+    if (running()) return queueNote(inp, text);
+    return startRun(text, inp);
+  }
+
+  // While a run works, Enter sends one short message that the agent reads at its next step; a newer one replaces
+  // one not read yet. If the run ends before reading it, it becomes the next goal (P-044).
+  function queueNote(inp, text) {
+    var run = S.run;
+    if (!noteFits(text)) {
+      toast('A message to a working agent is at most ' + MAX_NOTE + ' characters. Shorten it, or wait for the run to end.');
+      return;
+    }
+    if (!S.card) return;
+    clearInput(inp);
+    var old = S.queue && S.queue.run === run.id ? S.queue : null;
+    var q = { run: run.id, text: text, id: null, line: drawYou(text, 'Sending...') };
+    S.queue = q;
+    keepInView();
+    return api('POST', base(run.pid, '/' + run.id + '/message'), { text: text }).then(function (res) {
+      if (old && res.replaced) { old.line.textContent = 'Replaced by your newer message.'; delete S.lines[old.id]; }
+      if (S.queue !== q) return;
+      q.id = res.id;
+      S.lines[res.id] = q.line;
+      q.line.textContent = 'The agent reads this at its next step.';
+    }).catch(function (e) {
+      if (S.queue !== q) return;
+      q.line.textContent = e.status === 409 ? 'The run is ending: this starts as the next goal.'
+        : 'Not sent (' + e.message + '). It starts as the next goal when the run ends.';
+    });
+  }
+
+  // Start a run on a goal. inp is the composer, or null for a queued message (put back if the owner says no).
+  function startRun(text, inp) {
     var go = S.model === 'cloud' ? confirmCloud() : Promise.resolve(true);
     return go.then(function (ok) {
-      if (!ok) return;
-      inp.value = ''; inp.style.height = 'auto'; inp.rows = 1;
+      if (!ok) { if (!inp) backToComposer(text); return; }
+      clearInput(inp);
       var h = root.hist || [];
       var earlier = historyFor(h);
       if (typeof root.addMsg === 'function') root.addMsg('user', text);
@@ -690,6 +804,7 @@
     var run = S.run;
     if (!isActive(run)) return Promise.resolve();
     run.status = 'stopping';
+    run.ownerStop = true;
     drawMeta();
     return api('POST', base(run.pid, '/' + run.id + '/stop')).catch(function (e) { toast('Could not stop: ' + e.message); });
   }
@@ -713,18 +828,48 @@
     }).catch(function () { /* no runs, or the agent is switched off */ });
   }
 
-  // True when the chat ends with the goal of this run and nothing after it: the page that started it never saw it end.
+  // True when the chat ends with the goal of this run (or its Continue line) and nothing after it: the page that
+  // started it never saw it end.
   function unreported(last) {
     var h = root.hist || [];
     var m = h[h.length - 1];
     if (!m || m.role !== 'user') return false;
-    return String(m.plain || m.content || '').trim().slice(0, 200) === String(last.goal || '').trim().slice(0, 200);
+    var said = String(m.plain || m.content || '').trim().slice(0, 200);
+    return said === String(last.goal || '').trim().slice(0, 200) || said === continueLabel(last.goal).slice(0, 200);
+  }
+
+  // Continue: a new run goes on from where this one stopped, with a fresh step budget. A cloud run asks again,
+  // and commands follow this page's own place (the server decides from the request).
+  function continueRun(old, btn) {
+    if (S.run !== old || running() || !canContinue(old)) return;
+    var cloud = old.modelKind === 'cloud';
+    var go = cloud ? confirmCloud() : Promise.resolve(true);
+    return go.then(function (ok) {
+      if (!ok || S.run !== old || running()) return;
+      btn.disabled = true;
+      return api('POST', base(old.pid, '/' + old.id + '/continue'), { confirm_cloud: cloud }).then(function (res) {
+        btn.hidden = true;
+        old.continuable = false;
+        var label = continueLabel(old.goal);
+        if (typeof root.addMsg === 'function') root.addMsg('user', label);
+        if (root.hist) root.hist.push({ role: 'user', content: label, plain: label });
+        var run = newRun(old.pid);
+        run.id = res.run; run.goal = old.goal; run.model = (res.model && res.model.label) || '';
+        run.modelKind = (res.model && res.model.kind) || old.modelKind;
+        run.maxSteps = (res.limits && res.limits.max_steps) || 30;
+        run.offset = res.earlier_steps || 0;
+        run.startedAt = Date.now() / 1000;
+        mount(run);
+        poll();
+        if (typeof root.doSaveSes === 'function') root.doSaveSes();
+      }).catch(function (e) { btn.disabled = false; toast('Could not continue: ' + e.message); });
+    });
   }
 
   function leave() {
     unmount();
     if (S.run && isActive(S.run) && VP) VP.setBusy(false);
-    S.run = null; S.card = null; S.pid = null;
+    S.run = null; S.card = null; S.pid = null; S.queue = null; S.lines = {};
   }
 
   function undoRun(btn) {

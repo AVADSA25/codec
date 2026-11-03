@@ -64,6 +64,14 @@ WAIT_STEP = 1.0              # how often a waiting run looks at the clock and th
 TEMPERATURE = 0.2
 REPLY_LOG_CHARS = 8000      # what the run log keeps of one model reply (the same as a turn keeps)
 LOG_ONLY = ("reply",)       # events kept in the run log on disk only: the page never gets them
+CONTINUABLE = ("interrupted", "stopped", "limit", "failed")    # a run that ended so can be continued (P-044)
+MAX_CHAIN = 3               # a continued run of a continued run: how many earlier runs Continue reads back
+MAX_REBUILT_TURNS = 40      # the newest turns a continued run starts with
+CUT_COMMAND = ("The run stopped before this command finished, so its result is not known. It is not run again by "
+               "itself. If you still need it, use run_check again.")
+CUT_WRITE = "The run stopped during this step, so it is not known whether the file changed. Read it again before you change it."
+CUT_ASK = "The run stopped while this question waited, so it has no answer. Ask again if you still need to."
+CUT_STEP = "The run stopped during this step, so its result is not known."
 
 RUN_ID_RE = re.compile(r"^r[0-9a-f]{8}$")
 
@@ -500,6 +508,7 @@ class _Turn:
     ok: bool
     read_path: str = ""
     stale: bool = False
+    after: str = ""             # engine-written lines after the result's [END RESULT]: the owner's note (P-044)
 
 
 @dataclass
@@ -541,14 +550,21 @@ def _signature(call: proto.Call) -> str:
 
 
 class Run:
-    def __init__(self, pid: str, goal: str, history: list, llm: _Llm, limits: dict, can_run: bool):
+    def __init__(self, pid: str, goal: str, history: list, llm: _Llm, limits: dict, can_run: bool, *,
+                 continues: str = "", turns=None, step0: int = 0, resume: str = "", left_out: int = 0, base_cp: str = ""):
         self.id = "r" + secrets.token_hex(4)
         self.pid, self.goal, self.history, self.llm, self.limits, self.can_run = pid, goal, history, llm, limits, can_run
         self.allowed = tuple(t for t in proto.TOOLS if t != "run_check" or (can_run and cmdmod.available()))
         self.status = "running"
         self.finished = False
-        self.step = 0
-        self.turns: list[_Turn] = []
+        self.continues, self._step0, self._left_out = continues, step0, left_out     # Continue (P-044)
+        self._base_cp = base_cp     # the files as the continued run left them: its newest checkpoint
+        self.step = step0           # steps are numbered on from the run this one continues; the budget is fresh
+        self.turns: list[_Turn] = list(turns or [])
+        if continues and self.turns:
+            t = self.turns[-1]
+            t.after = (t.after + "\n" if t.after else "") + f"(The earlier run stopped here: {resume} This run goes on from here.)"
+        self._note: dict | None = None
         self.events: list[dict] = []
         self.start_cp: str | None = None
         self.tokens = {"prompt": 0, "completion": 0}
@@ -638,6 +654,36 @@ class Run:
             self._answer = {"text": text}
             self._cond.notify_all()
 
+    def message(self, text: str) -> dict:
+        """Keep the owner's note for the next step (P-044). A note not read yet is replaced by the newer one."""
+        with self._cond:
+            if self.finished or self.stop_event.is_set():
+                raise VibeError(409, "The run is over")
+            replaced = self._note is not None
+            self._note = {"id": "m" + secrets.token_hex(3), "text": text}
+            return {"id": self._note["id"], "replaced": replaced}
+
+    def _take_note(self) -> "dict | None":
+        """The waiting note, put after the newest result, outside its [END RESULT]. None when there is none, or no
+        result yet for it to follow (a note sent during the first step waits for its result)."""
+        with self._cond:
+            note = self._note
+            if note is None or not self.turns:
+                return None
+            self._note = None
+        t = self.turns[-1]
+        got = {**note, "turn": t, "before": t.after}
+        t.after = (t.after + "\n" if t.after else "") + proto.owner_note(note["text"])
+        return got
+
+    def _give_back(self, got: "dict | None") -> None:
+        """The prompt with the note could not be built: the note goes back unread."""
+        if got:
+            got["turn"].after = got["before"]
+            with self._cond:
+                if self._note is None:
+                    self._note = {"id": got["id"], "text": got["text"]}
+
     def approve(self, aid, decision, network) -> None:
         if decision not in ("once", "always", "decline"):
             raise VibeError(400, "Choose once, always or decline")
@@ -660,11 +706,12 @@ class Run:
                 _ACTIVE = None
         self._trim_logs()
         seconds = round(_mono() - self._t0, 1)
+        steps = self.step - self._step0                      # this run's own steps
         _audit("vibe_agent_end", "Vibe agent run ended", {
-            "project": self.pid, "run": self.id, "status": status, "steps": self.step, "seconds": seconds,
+            "project": self.pid, "run": self.id, "status": status, "steps": steps, "seconds": seconds,
             "prompt_tokens": self.tokens["prompt"], "completion_tokens": self.tokens["completion"], "model": self.llm.kind})
         with self._cond:
-            self._emit("end", status=status, report=str(report)[:proto.MAX_REPORT_CHARS], steps=self.step, seconds=seconds,
+            self._emit("end", status=status, report=str(report)[:proto.MAX_REPORT_CHARS], steps=steps, seconds=seconds,
                        prompt_tokens=self.tokens["prompt"], completion_tokens=self.tokens["completion"],
                        start_checkpoint=self.start_cp)
             self.finished = True
@@ -707,19 +754,43 @@ class Run:
                 self._end("failed", "The agent stopped unexpectedly.")
 
     def _begin(self) -> None:
-        cp = vp.agent_checkpoint(self.pid, "Before agent: " + self.goal.replace("\n", " ")[:60], "before", self.id, 0, force=True)
+        head = "Before agent (continued): " if self.continues else "Before agent: "
+        cp = vp.agent_checkpoint(self.pid, head + self.goal.replace("\n", " ")[:60], "before", self.id, 0, force=True)
         self.start_cp = cp["id"] if cp else None
+        if self.continues:
+            self._changed_since_continued()
+        more = {"continues": self.continues, "earlier_steps": self._step0} if self.continues else {}
         self._emit("start", goal=self.goal, model={"kind": self.llm.kind, "label": self.llm.label}, can_run=self.can_run,
-                   limits={k: self.limits[k] for k in ("max_steps", "max_seconds")}, start_checkpoint=self.start_cp)
+                   limits={k: self.limits[k] for k in ("max_steps", "max_seconds")}, start_checkpoint=self.start_cp, **more)
         _audit("vibe_agent_start", "Vibe agent run started", {
             "project": self.pid, "run": self.id, "model": self.llm.kind, "goal_chars": len(self.goal)})
+
+    def _changed_since_continued(self) -> None:
+        """Files that changed after the continued run stopped (Undo run, a step undone, the owner's own edits): its
+        reads of them are stale, and the model is told, so it does not take an undone step as done (P-044)."""
+        if not (self.turns and self._base_cp and self.start_cp):
+            return
+        try:
+            changed = [f["path"] for f in vp.diff(self.pid, self._base_cp, self.start_cp)["files"]]
+        except (VibeError, OSError):
+            return
+        if not changed:
+            return
+        keys = {_edit_key(p) for p in changed}
+        for t in self.turns:
+            if t.read_path and _edit_key(t.read_path) in keys:
+                t.stale = True
+        names = ", ".join(changed[:10]) + (f" and {len(changed) - 10} more" if len(changed) > 10 else "")
+        t = self.turns[-1]
+        t.after += ("\n(These files changed after the earlier run's last saved step, for example by an undo or by hand: "
+                    + proto.mark_owner_phrase(names) + ". Earlier steps on them may no longer hold: read them again.)")
 
     def _loop(self) -> None:
         lim = self.limits
         while True:
             if self.stop_event.is_set():
                 return self._end("stopped", "Stopped.")
-            if self.step >= lim["max_steps"]:
+            if self.step - self._step0 >= lim["max_steps"]:
                 return self._end("limit", f"Stopped at the limit of {lim['max_steps']} steps. The files keep the work done so far.")
             if _mono() > self.deadline:
                 return self._end("limit", f"Stopped at the time limit of {_span(lim['max_seconds'])}. The files keep the work done so far.")
@@ -731,10 +802,14 @@ class Run:
                     return self._end("failed", why)
             self.step += 1
             n = self.step
+            note = self._take_note()
             try:
                 messages = self._messages()
             except _ContextTooBig:
+                self._give_back(note)
                 return self._end("limit", "The project is too big for the context limit. Raise max_context_tokens or use fewer files.")
+            if note:
+                self._emit("message", step=note["turn"].n, id=note["id"], text=note["text"])
             reply = self._stream(n, messages)
             self._drop_text(n)
             if reply.text.strip():
@@ -1015,6 +1090,13 @@ class Run:
         if self.history:
             lines = [f"{m['role']}: {m['content']}" for m in self.history]
             parts.append("EARLIER IN THIS CHAT (context only)\n" + "\n".join(lines))
+        if self.continues and not self._step0:
+            parts.append("This run continues an earlier run on this goal that stopped before its first step.")
+        elif self.continues:
+            gone = f" Its first {self._left_out} steps are left out to save space." if self._left_out else ""
+            parts.append("This run continues an earlier run on this goal that stopped before it was done. Its steps and "
+                         "their results follow." + gone + " Go on from where it stopped: do not repeat steps that worked, "
+                         "and read a file again before you change it.")
         parts.append("Work in the project folder. Start with the smallest step that moves toward the goal.")
         return "\n\n".join(parts)
 
@@ -1024,7 +1106,8 @@ class Run:
             return "PROJECT FILES: none yet"
         shown = files[:MAP_LINES]
         more = f"\n... and {len(files) - len(shown)} more (list_files shows them)" if len(files) > len(shown) else ""
-        return f"PROJECT FILES ({len(files)}):\n" + "\n".join(f"{f['path']} ({_size(f['size'])})" for f in shown) + more
+        # The map comes after the owner's note (P-044) and file names are data: one cannot pass for the owner's line.
+        return proto.mark_owner_phrase(f"PROJECT FILES ({len(files)}):\n" + "\n".join(f"{f['path']} ({_size(f['size'])})" for f in shown) + more)
 
     @staticmethod
     def _result_text(t: _Turn, mode: str) -> str:
@@ -1055,6 +1138,8 @@ class Run:
                 if shrink and i == len(self.turns) - 1 and len(body) > shrink:
                     half = shrink // 2
                     body = body[:half] + "\n... (cut to fit the context) ...\n" + body[-half:]
+                if t.after:                                     # after [END RESULT], never inside the data
+                    body += "\n\n" + t.after
                 users.append(body)
             msgs.append({"role": "user", "content": users[-1] + "\n\n" + site})
             if self._estimate(msgs) <= cap:
@@ -1131,7 +1216,6 @@ def _clean_history(history) -> list:
 
 
 def start_run(pid: str, goal, *, model: str = "local", confirm_cloud: bool = False, history=None, can_run: bool = False) -> dict:
-    global _ACTIVE
     if not vp.enabled() or not enabled():
         raise VibeError(404, "The agent is switched off")
     if not isinstance(goal, str) or not goal.strip():
@@ -1141,7 +1225,13 @@ def start_run(pid: str, goal, *, model: str = "local", confirm_cloud: bool = Fal
         raise VibeError(400, f"The goal is longer than {MAX_GOAL_CHARS} characters")
     vp.project_dir(pid)
     llm = _resolve_llm(model if isinstance(model, str) else "local", bool(confirm_cloud))
-    run = Run(pid, goal, _clean_history(history), llm, settings(), bool(can_run))
+    return _launch(Run(pid, goal, _clean_history(history), llm, settings(), bool(can_run)))
+
+
+def _launch(run: Run) -> dict:
+    """Hold the project for the run and start its thread (a new run, or a continued one)."""
+    global _ACTIVE
+    pid, llm = run.pid, run.llm
     with _GLOBAL:
         if _ACTIVE is not None and not _ACTIVE.finished:
             raise VibeError(409, "The agent is already working on a project. Stop it first.")
@@ -1186,11 +1276,180 @@ def get_run(pid: str, run_id: str, since: int = 0, wait: float = 0.0) -> dict:
     vp.project_dir(pid)
     run = _RUNS.get(run_id)
     if run is not None and run.pid == pid:
-        return run.view(since, wait)
+        view = run.view(since, wait)
+    else:
+        events = _file_events(pid, run_id)
+        evs = [e for e in events if e.get("type") not in LOG_ONLY and int(e.get("seq", 0)) > int(since or 0)]
+        view = {"run": run_id, "project": pid, "status": _status_of(events), "finished": True, "events": evs,
+                "next": evs[-1]["seq"] if evs else int(since or 0), "step": sum(1 for e in events if e.get("type") == "tool")}
+    if view["finished"]:                     # the page shows Continue when this is true (P-044)
+        view["continuable"] = view["status"] in CONTINUABLE and _newest_run(pid) == run_id
+    return view
+
+
+# ── Continue: a new run that starts with an ended run's turns (P-044, docs/VIBE-AGENT-CONTINUE-DESIGN.md) ──
+
+def _newest_run(pid: str) -> "str | None":
+    d = vp.project_dir(pid) / vp.META_DIR / RUNS_DIR
+    if not d.is_dir():
+        return None
+    files = [p for p in d.glob("r*.jsonl") if RUN_ID_RE.match(p.stem)]
+    return max(files, key=lambda p: p.stat().st_mtime).stem if files else None
+
+
+def _step_of(ev: dict):
+    n = ev.get("step")
+    return n if isinstance(n, int) and not isinstance(n, bool) else None
+
+
+def _short_text(text: str, note: str, name: str, arg: str) -> str:
+    return text if len(text) <= 600 else (note[:300] + "\n" + f"@@ {name} {arg}\n(content left out)")
+
+
+def _replayed_reply(text: str, name: str, arg: str):
+    """(assistant text, scanned call or None) for a logged step. A log without the reply text (written before P-040,
+    or when the redaction patterns could not load) gets the tool line back instead."""
+    if not text.strip():
+        text = f"@@ {name} {arg}".rstrip()
+    scan = proto.scan_reply(text, proto.TOOLS, final=True, lenient=True)
+    call = scan.call if scan.state == "complete" and scan.call is not None and scan.call.name == name else None
+    return text, call, (call.note if call else scan.note)
+
+
+def _turn_from_log(n: int, tool, reply: str, ev: dict) -> _Turn:
+    """One step of an ended run, as the model saw it then: its reply, and its result in the wrapper."""
+    ok = ev.get("ok") is not False
+    output = str(ev.get("output") or "")
+    summary = str(ev.get("summary") or "")[:160]
+    name, arg = tool if tool else (str(ev.get("tool") or "error"), "")
+    if name == "error":
+        said = reply.strip() or "(no reply)"
+        return _Turn(n, "error", "", said[:2000], said[:300], proto.wrap_result(n, "error", "", output, ok=False), summary, False)
+    text, call, note = _replayed_reply(reply, name, arg)
+    read_path = ""
+    if name == "read_file":
+        read_path = call.args.get("path", "") if call else arg.split(" ")[0]
+    return _Turn(n, name, arg, text[:8000], _short_text(text, note, name, arg),
+                 proto.wrap_result(n, name, arg, _for_model(output), ok), summary, ok, read_path=read_path)
+
+
+def _cut_turn(n: int, tool, reply: str, turns: list) -> _Turn:
+    """A step that has a tool event and no result: the run stopped in the middle of it. It is never run again."""
+    name, arg = tool
+    text, call, note = _replayed_reply(reply, name, arg)
+    if name == "run_check":
+        msg = CUT_COMMAND
+    elif name == "ask":
+        msg = CUT_ASK
+    elif name in ("edit_file", "write_file", "delete_file"):
+        msg = CUT_WRITE
+        path = _edit_key(call.args.get("path", "")) if call else ""
+        for t in turns:
+            if t.read_path and path and _edit_key(t.read_path) == path:
+                t.stale = True
+    else:
+        msg = CUT_STEP
+    return _Turn(n, name, arg, text[:8000], _short_text(text, note, name, arg),
+                 proto.wrap_result(n, name, arg, msg, ok=False), "The run stopped during this step", False)
+
+
+def _rebuild_one(events: list, turns: list, by_n: dict, notes: list) -> int:
+    """Append one run's turns from its log; the owner's notes are kept for later. Returns the last step number."""
+    replies, tools, done, last = {}, {}, set(), 0
+    for ev in events:
+        kind, n = ev.get("type"), _step_of(ev)
+        if kind == "reply" and n is not None and isinstance(ev.get("text"), str):
+            replies[n] = ev["text"]
+        elif kind == "tool" and n is not None:
+            tools[n] = (str(ev.get("name") or ""), str(ev.get("arg") or ""))
+            last = max(last, n)
+        elif kind == "result" and n is not None:
+            t = _turn_from_log(n, tools.get(n), replies.get(n, ""), ev)
+            turns.append(t)
+            by_n[n] = t
+            done.add(n)
+            last = max(last, n)
+        elif kind == "checkpoint":
+            changed = set(ev.get("changed") or [])
+            for t in turns:
+                if t.read_path and t.read_path in changed:
+                    t.stale = True
+        elif kind == "message":
+            notes.append(ev)
+    for n in sorted(set(tools) - done):
+        t = _cut_turn(n, tools[n], replies.get(n, ""), turns)
+        turns.append(t)
+        by_n[n] = t
+    return last
+
+
+def _rebuild(pid: str, run_id: str, events: list):
+    """(turns, last step, all turns count) of a run and of the runs it continued, oldest first."""
+    chain, rid, evs = [], run_id, events
+    while True:
+        chain.append(evs)
+        start = next((e for e in evs if e.get("type") == "start"), {})
+        rid = start.get("continues") if isinstance(start.get("continues"), str) else None
+        if not rid or len(chain) > MAX_CHAIN:
+            break
+        try:
+            evs = _file_events(pid, rid)
+        except VibeError:
+            break                                   # an older log was trimmed: start from what is left
+    turns, by_n, notes, last = [], {}, [], 0
+    for evs in reversed(chain):
+        last = max(last, _rebuild_one(evs, turns, by_n, notes))
+    for ev in notes:
+        t = by_n.get(_step_of(ev))
+        if t is not None and isinstance(ev.get("text"), str) and ev["text"].strip():
+            t.after = (t.after + "\n" if t.after else "") + proto.owner_note(ev["text"])
+    return turns[-MAX_REBUILT_TURNS:], last, len(turns)
+
+
+def continue_run(pid: str, run_id: str, *, confirm_cloud: bool = False, can_run: bool = False) -> dict:
+    """Start a run that goes on with an ended run's goal and turns, with a fresh step and time budget.
+
+    The old run's model kind is kept, so a cloud run needs the owner's confirmation again. can_run follows this
+    request, not the old run. Nothing of the old run is run again: a cut step is told to the model as cut."""
+    if not vp.enabled() or not enabled():
+        raise VibeError(404, "The agent is switched off")
+    vp.project_dir(pid)
+    live = _RUNS.get(run_id)
+    if live is not None and live.pid == pid and not live.finished:
+        raise VibeError(409, "That run is still going")
     events = _file_events(pid, run_id)
-    evs = [e for e in events if e.get("type") not in LOG_ONLY and int(e.get("seq", 0)) > int(since or 0)]
-    return {"run": run_id, "project": pid, "status": _status_of(events), "finished": True, "events": evs,
-            "next": evs[-1]["seq"] if evs else int(since or 0), "step": sum(1 for e in events if e.get("type") == "tool")}
+    status = _status_of(events)
+    if status not in CONTINUABLE:
+        raise VibeError(409, "That run finished its goal. Start a new one." if status == "done" else "That run cannot be continued")
+    if _newest_run(pid) != run_id:
+        raise VibeError(409, "Only the newest run of this project can be continued")
+    start = next((e for e in events if e.get("type") == "start"), {})
+    goal = start.get("goal")
+    if not isinstance(goal, str) or not goal.strip():
+        raise VibeError(409, "That run has no goal to go on with")
+    kind = "cloud" if (start.get("model") or {}).get("kind") == "cloud" else "local"
+    llm = _resolve_llm(kind, bool(confirm_cloud))
+    turns, last, total = _rebuild(pid, run_id, events)
+    end = next((e for e in reversed(events) if e.get("type") == "end"), None)
+    resume = str(end.get("report") or end.get("status") or "")[:300] if end else "CODEC was restarted."
+    cps = [e["id"] for e in events if e.get("type") == "checkpoint" and isinstance(e.get("id"), str)]
+    base = cps[-1] if cps else start.get("start_checkpoint")
+    run = Run(pid, goal.strip()[:MAX_GOAL_CHARS], [], llm, settings(), bool(can_run), continues=run_id, turns=turns,
+              step0=last, resume=resume, left_out=total - len(turns), base_cp=base if isinstance(base, str) else "")
+    out = _launch(run)
+    out.update(continues=run_id, earlier_steps=last)
+    return out
+
+
+def message_run(pid: str, run_id: str, text) -> dict:
+    """The owner's note to a running agent (P-044): read at its next step, after the newest result."""
+    run = _live(pid, run_id)
+    if not isinstance(text, str) or not text.strip():
+        raise VibeError(400, "Write the message first")
+    text = text.strip()
+    if len(text) > proto.MAX_NOTE_CHARS:
+        raise VibeError(400, f"A message to a running agent is at most {proto.MAX_NOTE_CHARS} characters")
+    return {"run": run_id, **run.message(text)}
 
 
 def list_runs(pid: str) -> list:

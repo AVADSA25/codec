@@ -123,6 +123,8 @@ All routes are under `/api/vibe/projects/{pid}/agent` and answer 404 when disabl
 | `POST /{run}/stop` | stops now: ends the stream, stops a running command's process group |
 | `POST /{run}/answer` `{id, choice\|text}` | answers an `ask` |
 | `POST /{run}/approve` `{id, decision, network}` | answers a command card; Mac only |
+| `POST /{run}/message` `{text}` | the owner's note (1-300 characters) for a running run, read at its next step after the newest result; not Mac only (P-044, docs/VIBE-AGENT-CONTINUE-DESIGN.md) |
+| `POST /{run}/continue` `{confirm_cloud}` | a new run that goes on with an ended run's turns, fresh step budget; the project's newest run only, and never a finished goal (P-044) |
 | `GET /runs` | recent runs of the project |
 
 Statuses: running, waiting, done, stopped, limit, failed, interrupted (the dashboard restarted while it ran; files stay at the last checkpoint and Undo run still works).

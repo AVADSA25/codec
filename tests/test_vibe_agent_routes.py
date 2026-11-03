@@ -160,7 +160,8 @@ def test_the_dashboard_registers_the_agent_routes_behind_its_login():
     paths = set(route_methods(codec_dashboard.app))
     for path in ("/api/vibe/agent/models", "/api/vibe/agent/live", "/api/vibe/projects/{pid}/agent/run", "/api/vibe/projects/{pid}/agent/runs",
                  "/api/vibe/projects/{pid}/agent/{run_id}", "/api/vibe/projects/{pid}/agent/{run_id}/stop",
-                 "/api/vibe/projects/{pid}/agent/{run_id}/answer"):
+                 "/api/vibe/projects/{pid}/agent/{run_id}/answer", "/api/vibe/projects/{pid}/agent/{run_id}/message",
+                 "/api/vibe/projects/{pid}/agent/{run_id}/continue"):
         assert path in paths
     # none of them is on the list of paths that skip the login
     auth = codec_dashboard.AuthMiddleware
@@ -237,3 +238,85 @@ def test_the_list_of_allowed_commands_can_be_read_and_a_command_forgotten(client
     assert client.post(f"{base}/forget", json={"command": 5}).status_code == 400
     assert client.post(f"{base}/forget", content=b"x").status_code == 400
     assert client.get("/api/vibe/projects/no-such-project/agent/commands").status_code == 404
+
+
+# ── Continue and the owner's note (P-044) ──
+
+def cut_log(pid, run_id, keep_step):
+    """As after a dashboard restart: the log keeps the steps up to keep_step and loses its end."""
+    import json
+    path = vp.project_dir(pid) / ".vibe" / "runs" / f"{run_id}.jsonl"
+    evs = [json.loads(x) for x in path.read_text().splitlines()]
+    evs = [e for e in evs if e["type"] != "end" and (e.get("step") is None or e["step"] <= keep_step)]
+    path.write_text("".join(json.dumps(e) + "\n" for e in evs))
+    va._RUNS.clear()
+
+
+def start_event(events):
+    return [e for e in events if e["type"] == "start"][0]
+
+
+def test_continue_route_can_run_follows_the_request_origin(client, scripted):
+    pid = make_project()
+    scripted(["@@ list_files\n", "@@ finish\nok\n"])
+    first = start(client, pid, goal="at the Mac").json()["run"]
+    finish_view(client, pid, first)
+    cut_log(pid, first, 1)
+    last, _ = finish_view(client, pid, first)
+    assert last["status"] == "interrupted" and last["continuable"] is True
+    scripted(["@@ list_files\n", "@@ finish\nok\n"])
+    r = client.post(f"/api/vibe/projects/{pid}/agent/{first}/continue", json={}, headers=REMOTE)
+    assert r.status_code == 200 and r.json()["continues"] == first and r.json()["earlier_steps"] == 1
+    away = r.json()["run"]
+    _, events = finish_view(client, pid, away)
+    assert start_event(events)["can_run"] is False and start_event(events)["continues"] == first
+    cut_log(pid, away, 2)
+    scripted(["@@ finish\nok\n"])
+    home = client.post(f"/api/vibe/projects/{pid}/agent/{away}/continue", json={}).json()["run"]
+    _, events = finish_view(client, pid, home)
+    assert start_event(events)["can_run"] is True
+    assert client.post(f"/api/vibe/projects/{pid}/agent/{home}/continue", json={}).status_code == 409    # a done run
+    assert client.post(f"/api/vibe/projects/{pid}/agent/{home}/continue", content=b"x").status_code == 400
+    assert client.post(f"/api/vibe/projects/{pid}/agent/r00000000/continue", json={}).status_code == 404
+
+
+def test_continue_route_needs_confirm_cloud_exactly_true_for_a_cloud_run(client, scripted, cfg, monkeypatch):
+    import codec_cloud_models as ccm
+    cfg["extra_models"] = [{"id": "mimo", "label": "MiMo", "base_url": "https://api.example.com/v1", "key_slot": "mimo_api_key",
+                            "price_in_per_m": 1, "price_out_per_m": 1}]
+    monkeypatch.setattr(ccm, "block_message", lambda entry: None)
+    pid = make_project()
+    scripted(["@@ list_files\n", "@@ finish\nok\n"])
+    first = start(client, pid, model="cloud", confirm_cloud=True).json()["run"]
+    finish_view(client, pid, first)
+    cut_log(pid, first, 1)
+    url = f"/api/vibe/projects/{pid}/agent/{first}/continue"
+    for value in (None, "yes", 1, False):
+        r = client.post(url, json={} if value is None else {"confirm_cloud": value})
+        assert r.status_code == 400 and "confirmation" in r.json()["error"]
+    scripted(["@@ finish\nok\n"])
+    r = client.post(url, json={"confirm_cloud": True})
+    assert r.status_code == 200 and r.json()["model"] == {"kind": "cloud", "label": "MiMo"}
+    finish_view(client, pid, r.json()["run"])
+
+
+def test_message_route_works_from_the_tunnel_and_checks_its_text(client, scripted):
+    pid = make_project()
+    model = scripted(["@@ list_files\n", "@@ finish\nok\n"])
+    gate = blocker()
+    model.pause_after = (1, gate)
+    run_id = start(client, pid).json()["run"]
+    wait_for(lambda: model.calls)
+    url = f"/api/vibe/projects/{pid}/agent/{run_id}/message"
+    assert client.post(url, content=b"x").status_code == 400
+    assert client.post(url, json={"text": "   "}).status_code == 400
+    assert client.post(url, json={"text": 7}).status_code == 400
+    assert client.post(url, json={"text": "x" * 301}).status_code == 400
+    assert client.post(f"/api/vibe/projects/{pid}/agent/r00000000/message", json={"text": "hi"}).status_code == 404
+    r = client.post(url, json={"text": "y" * 300}, headers=REMOTE)          # not Mac-only, like /answer
+    assert r.status_code == 200 and r.json()["replaced"] is False
+    gate.set()
+    _, events = finish_view(client, pid, run_id)
+    assert [e["text"] for e in events if e["type"] == "message"] == ["y" * 300]
+    assert "The owner says: " + "y" * 300 in model.calls[1][-1]["content"]
+    assert client.post(url, json={"text": "late"}).status_code == 409
