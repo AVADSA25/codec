@@ -75,6 +75,13 @@ def _copy_db(src: Path, dest: Path) -> str:
                 out.close()
         finally:
             con.close()
+        # Some SQLite builds (3.51 on the Studio) leave the copy's -shm behind after the switch to
+        # DELETE mode. The copy is ours and closed, so its side files hold nothing.
+        for side in ("-shm", "-wal"):
+            try:
+                os.unlink(f"{dest}{side}")
+            except FileNotFoundError:
+                pass
     except Exception as e:
         return f"error: {type(e).__name__}: {e}"[:200]
     return codec_backup.quick_check(dest)
