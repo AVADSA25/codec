@@ -338,6 +338,8 @@ Rule-based compressor for memory writes that need shrinking. Entity abbreviation
 
 **Keychain unavailable.** If `get_audit_hmac_secret()` returns None (Keychain locked + fallback failed), the line is written with `hmac=""` and `hmac_status="unsigned_keychain_unavailable"`. The verify utility counts these as `unsigned`, not `broken`. The operator sees a stdlib `WARNING` log line at the time of write.
 
+**The secret is never replaced (P-081, docs/AUDIT-SECRET-KEEP-DESIGN.md).** Only `security` exit 44 (not found) creates one, with `add-generic-password` without `-U` (exit 45 = another process made it first: use theirs); the fallback store reads and creates inside `codec_jsonstore.file_lock`. Locked (51), any other exit, a timeout or a non-hex value return None and are not asked again for 30 s. Lines `_write` cannot write are counted per process (`codec_audit.write_failures()`, stdlib warning at most once a minute; `GET /api/status` shows the dashboard's as `audit_write_failures`).
+
 **Secret redaction (D-19).** Before HMAC + write, `_redact_secrets` walks the entire record (top-level + nested in `extra`, lists, etc.) and applies 15 compiled regex patterns. Order is specific-first so the placeholder tag preserves the most-specific match:
 
 - `<REDACTED:anthropic_key>` — `sk-ant-\w{30,}`

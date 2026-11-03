@@ -112,6 +112,7 @@ async def status():
 
     return {
         "alive": alive,
+        "audit_write_failures": _audit_write_failures(),
         "config": {
             "llm_provider": config.get("llm_provider", "unknown"),
             "llm_model": config.get("llm_model", "unknown"),
@@ -124,3 +125,13 @@ async def status():
             "streaming": config.get("streaming", True),
         }
     }
+
+
+def _audit_write_failures():
+    """P-081: audit lines this dashboard process could not write since it
+    started (None if codec_audit cannot be read)."""
+    try:
+        import codec_audit
+        return int(codec_audit.write_failures())
+    except Exception:
+        return None
