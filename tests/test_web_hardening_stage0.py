@@ -51,6 +51,7 @@ def test_every_page_but_vibe_gets_the_tight_policy(client, path):
     assert r.status_code == 200 and "text/html" in r.headers["content-type"]
     d = directives(r.headers["content-security-policy"])
     assert d["img-src"] == ["'self'", "data:"]
+    assert d["media-src"] == ["'self'", "blob:"]      # Read aloud plays blob: audio
     assert d["font-src"] == ["'self'"]
     assert d["script-src"] == ["'self'", "'unsafe-inline'"] and d["style-src"] == ["'self'", "'unsafe-inline'"]
     assert d["connect-src"] == ["'self'", "ws://127.0.0.1:8090", "wss://127.0.0.1:8090"]
@@ -68,6 +69,7 @@ def test_vibe_keeps_its_frames_cdnjs_and_web_pictures_and_nothing_else(client):
     for name in ("script-src", "style-src", "font-src"):
         assert "https://cdnjs.cloudflare.com" in d[name]
     assert d["img-src"] == ["'self'", "data:", "https:"]
+    assert d["media-src"] == ["'self'", "blob:"]
     assert d["connect-src"] == ["'self'", "ws://localhost:8090", "wss://localhost:8090"]
     assert d["object-src"] == ["'none'"] and d["base-uri"] == ["'none'"] and d["form-action"] == ["'self'"]
     assert d["worker-src"] == ["'self'", "blob:"] and "permissions-policy" in r.headers

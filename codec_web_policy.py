@@ -16,6 +16,9 @@ CSP = (
     "style-src 'self' 'unsafe-inline'; "
     "font-src 'self'; "
     "img-src 'self' data:; "
+    # Read aloud and the voice preview play /api/tts audio from a blob: URL; without
+    # this, media-src falls back to default-src and the audio is refused silently.
+    "media-src 'self' blob:; "
     # Plus ws:// and wss:// for the request's own Host (for_request): the voice call.
     "connect-src 'self'; "
     "frame-src 'self'; "
