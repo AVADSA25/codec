@@ -270,6 +270,7 @@ _REOPEN = r"""
 var CASES = JSON.parse(process.argv[1]);
 async function one(c) {
   globalThis.sesId = 'fresh';
+  globalThis.hist = [];
   var opened = [];
   globalThis.ldSes = function (id) { opened.push(id); sesId = id; };
   globalThis.VibeProj = { on: function () { return !!c.projectOpen; } };
@@ -277,6 +278,7 @@ async function one(c) {
   globalThis.fetch = function (url) {
     if (c.down) return Promise.reject(new Error('offline'));
     if (url === '/api/vibe/sessions' && c.pickWhileLoading) sesId = 'picked';
+    if (url === '/api/vibe/sessions' && c.sendWhileLoading) hist.push({ role: 'user', content: 'a new idea' });
     var body = url === '/api/vibe/agent/live' ? c.live : url === '/api/vibe/sessions' ? c.sessions : null;
     return Promise.resolve({ ok: body !== null, json: function () { return Promise.resolve(body); } });
   };
@@ -300,11 +302,12 @@ def test_the_page_opened_from_a_push_reopens_the_live_runs_project_chat_and_noth
         {"live": live, "sessions": sessions, "projectOpen": True},               # a project is already open
         {"live": None, "sessions": sessions},                                    # the route answered an error
         {"live": live, "sessions": sessions, "down": True},                      # the request failed
+        {"live": live, "sessions": sessions, "sendWhileLoading": True},          # the owner sent a message first
     ]
     script = _page_fn("_reopenLiveRun") + _REOPEN
     out = subprocess.run(["node", "-e", script, json.dumps(cases)], capture_output=True, text=True, timeout=60)
     assert out.returncode == 0, out.stderr
-    assert json.loads(out.stdout.strip().splitlines()[-1]) == [["s2"], [], [], [], [], [], []]
+    assert json.loads(out.stdout.strip().splitlines()[-1]) == [["s2"], [], [], [], [], [], [], []]
 
 
 def test_the_page_looks_for_a_live_run_once_the_editor_exists():

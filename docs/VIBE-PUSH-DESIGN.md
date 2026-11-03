@@ -35,7 +35,7 @@ A Vibe agent run that waits for a command approval or an answer shows only a car
   - `codec_vibe_agent.live_run()` and `GET /api/vibe/agent/live` (behind the dashboard login like every route):
     `{"project", "run", "status"}` of the one run going on this Mac (running or waiting), or nulls. Ids only.
   - `codec_vibe.html` `_reopenLiveRun()`, called once the editor exists: when a run is live and the page still has
-    the session it opened with, it opens that project's newest chat session (`ldSes`), and `VibeProj.open` hands the
+    the session it opened with, with no message sent in it yet, it opens that project's newest chat session (`ldSes`), and `VibeProj.open` hands the
     project to `VibeAgent.adopt`, which mounts the run card with its question or approval. No session for the
     project (a run started without the page, such as the eval tool): nothing is opened. An ended run is not reopened
     on load, so a plain visit to `/vibe` stays as it is.
