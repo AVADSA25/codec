@@ -86,6 +86,9 @@ def still_running(marker: str) -> bool:
     ("@@ search -rni -e needle", {"pattern": "needle", "path": "", "regex": False, "mode": "lines"}),
     ('@@ search "-l" css', {"pattern": "-l", "path": "css", "regex": False, "mode": "lines"}),
     ('@@ search "--count"', {"pattern": "--count", "path": "", "regex": False, "mode": "lines"}),
+    (r"@@ search --regex \d+px css", {"pattern": r"\d+px", "path": "css", "regex": True, "mode": "lines"}),
+    (r'@@ search "\bfoo\b" --regex', {"pattern": r"\bfoo\b", "path": "", "regex": True, "mode": "lines"}),
+    (r'@@ search "class=\"btn\""', {"pattern": 'class="btn"', "path": "", "regex": False, "mode": "lines"}),
 ])
 def test_search_reads_its_flags_before_or_after_the_text(line, args):
     s = scan(line)

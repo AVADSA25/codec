@@ -121,6 +121,18 @@ def _search_flag(word: str):
     return None
 
 
+def _split_keep_backslashes(rest: str):
+    """Like _split_args, but a backslash stays as written: a regex such as \\d+ keeps its backslash."""
+    lex = shlex.shlex(rest, posix=True)
+    lex.whitespace_split = True
+    lex.commenters = ""
+    lex.escape = ""
+    try:
+        return list(lex), None
+    except ValueError:
+        return None, "I could not read the arguments (check the quotes)."
+
+
 def _search_args(rest: str):
     """(args, error) for a search header. Flags are bare words before or after the text; a quoted text stays text."""
     flags: set = set()
@@ -131,7 +143,8 @@ def _search_args(rest: str):
             break
         flags |= f
         rest = rest[m.end():]
-    args, bad = _split_args(rest)
+    regex = "regex" in flags or any("regex" in (_search_flag(w) or ()) for w in rest.split())
+    args, bad = _split_keep_backslashes(rest) if regex else _split_args(rest)
     if bad:
         return None, bad
     if not args:

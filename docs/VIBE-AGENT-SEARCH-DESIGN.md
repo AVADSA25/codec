@@ -29,7 +29,8 @@ catastrophic backtracking (CPython 3.9 and later). Secret-named files stay hidde
 - Flags are bare words before or after the text. The grep spellings `-E`/`-P` (regex), `-l` (files) and `-c`
   (count) are read too, `-r`, `-R`, `-n` and `-i` are accepted and change nothing (search is always recursive,
   numbered and any case), and short groups such as `-rl` work. A quoted text that looks like a flag (`"-l"`) stays
-  the text. `--count` wins over `--files`.
+  the text. `--count` wins over `--files`. With `--regex` a backslash stays as written (`\d+` unquoted is `\d+`);
+  without it the line is split as before.
 - The call's arguments gain `regex` (true or false) and `mode` (`lines`, `files` or `count`).
 - `lines`: as today, 40 matching lines, then "(more matches exist: narrow the search)".
 - `files`: the name of every file with a match, no cap message (a project has at most 200 files).
