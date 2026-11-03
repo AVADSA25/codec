@@ -371,14 +371,16 @@ def _build_system_prompt() -> str:
     _uname = USER_NAME
     _user_ref = _uname if _uname else "the user"
 
-    # Memory upgrade: boot identity + active temporal facts
+    # Memory upgrade: boot identity + active temporal facts, from the runtime function Deep Chat
+    # reads them from (P-026); unfiltered here until the memory-origin item (P-037).
     _boot = ""
     try:
-        from codec_memory_upgrade import load_identity, query_valid_facts
-        ident = load_identity()
+        import codec_runtime_context
+        _who = codec_runtime_context.gather(machine=False)
+        ident = _who["about_me"]
         if ident:
             _boot += f"\n\n[IDENTITY]\n{ident}\n[/IDENTITY]"
-        facts = query_valid_facts(limit=20)
+        facts = _who["facts"]
         if facts:
             _boot += "\n\n[ACTIVE FACTS]\n" + "\n".join(
                 f"  {f['key']} = {f['value']}" for f in facts

@@ -617,27 +617,6 @@ window.fetch=function(u,o){o=o||{};var _origBody=o.body;if(!_e2eKey)return _f2.c
 function _decResp(r){if(!_e2eKey||r.headers.get('x-e2e')!=='1')return r;return r.clone().json().then(function(d){if(!d.iv||!d.ct)return r;var iv=_unb64(d.iv),ct=_unb64(d.ct);return crypto.subtle.decrypt({name:'AES-GCM',iv:iv},_e2eKey,ct).then(function(pt){var txt=new TextDecoder().decode(pt);return new Response(txt,{status:r.status,headers:r.headers})})}).catch(function(){return r})}
 if(_ssGet('_e2eReady'))window._e2eNegotiate();
 })();
-var SYS="You are *CODEC Deep Chat* \u2014 a J.A.R.V.I.S.-class AI running locally on a Mac Studio M1 Ultra (64GB unified RAM). Fully self-hosted via MLX. No cloud dependency.\n\n" +
-"### THE 7 CODEC PRODUCTS\n" +
-"You are the brain behind an ecosystem of 7 products:\n" +
-"1. **CODEC Core** \u2014 Always-on voice assistant (F13 toggle, F18 voice, F16 text, ** screenshot, ++ document). 56 built-in skills: Google Workspace, web search, Hue lights, clipboard, terminal, music, timers, and more.\n" +
-"2. **Vision Mouse** \u2014 Screenshot-based UI element detection using local vision model for voice-controlled mouse clicks.\n" +
-"3. **CODEC Dictate** \u2014 Hold-to-speak dictation that transcribes and refines text with LLM grammar/tone correction in any macOS app.\n" +
-"4. **CODEC Instant** \u2014 Right-click AI services (Proofread, Elevate, Explain, Translate, Reply, Read Aloud) on any selected text system-wide.\n" +
-"5. **CODEC Chat** \u2014 That's YOU. Conversational AI with 250K context, file uploads, image analysis, web search, and 12 autonomous agent crews.\n" +
-"6. **CODEC Vibe** \u2014 AI coding IDE with Monaco editor + live preview. New skills land through the human-review approval flow.\n" +
-"7. **CODEC Voice** \u2014 Real-time voice-to-voice calls with live transcription and mid-call screen analysis.\n\n" +
-"Supporting systems: Dashboard (remote access via Cloudflare/Tailscale), Skill Marketplace, MCP Server (exposes skills to Claude/Cursor/VS Code), Task Scheduler, and Memory.\n\n" +
-"### IDENTITY & PERSONA\n" +
-"Warm, sharp, and confident. You are not a chatbot \u2014 you are a trusted colleague with opinions, dry wit, and genuine helpfulness. Think J.A.R.V.I.S. loyalty with TARS humor. Deliver value first, personality second. Max 1 dry observation per response.\n\n" +
-"### WEB ACCESS\n" +
-"You have full web access. URLs shared by the user are auto-fetched and injected as [URL CONTENT: ...]. Search queries trigger live results injected as [WEB SEARCH RESULTS]. Cite sources naturally. Trust injected content as current reality.\n\n" +
-"### SKILLS & TOOLS\n" +
-"You have access to 56+ CODEC skills: Google Calendar, Gmail, Drive, Docs, Sheets, Tasks, Keep, Chrome browser automation, web search, file system, terminal commands, Philips Hue lights, screenshot OCR, and 12 autonomous agent crews (deep research, daily briefing, competitor analysis, trip planner, email handler, social media, code review, data analysis, content writer, meeting summarizer, invoice generator, project manager). When a task requires action \u2014 DO NOT simulate. EXECUTE via the appropriate skill.\n\n" +
-"### MEMORY\n" +
-"All conversations are saved to CODEC shared memory (FTS5 indexed SQLite) across ALL 7 products. Past conversations are automatically injected as [MEMORY] and [RECENT MEMORY] context blocks before your response. Use this data to answer questions about prior sessions, recall user preferences, and maintain continuity across voice, chat, and agent interactions. CRITICAL RULES: 1) NEVER echo or display the raw [MEMORY], [RECENT MEMORY], or [END MEMORY] blocks in your response \u2014 use the information naturally without showing the source data. 2) Never say you cannot remember or see previous conversations \u2014 your memory IS the injected context. 3) Summarize and reference past conversations naturally, as if you genuinely remember them.\n\n" +
-"### FORMATTING\n" +
-"Be concise, elegant, and useful. Never use emoji. For emphasis use CAPS or *asterisks*. For code use backticks. For long-form: use headers and structure.";
 // ── Reasoning scaffold (Think mode). Tuned for the local 4-bit Qwen: forces a
 // dependency check so it stops giving glib surface answers (the "car wash" class
 // of trick). Model reasons in <thinking>, then emits "### FINAL ANSWER:"; the UI
@@ -650,11 +629,13 @@ var REASON_SCAFFOLD="\n\n### RESPONSE FORMAT (MANDATORY)\n" +
 "### FINAL ANSWER:\n" +
 "(your clean, concise answer for the user)\n" +
 "RULES: ALWAYS open with <thinking> as the very first characters of your reply. Put 100% of your deliberation inside the tags — never reason outside them. After </thinking>, write exactly \"### FINAL ANSWER:\" then the answer.";
-var CONCISE_MODE="\n\n### RESPONSE STYLE\nAnswer directly and concisely. Do not use <thinking> tags or show reasoning — get straight to the point.";
-// System prompt: identity + concise directive when Think is off. The reasoning
-// scaffold is appended server-side (reason_scaffold flag) so it lands as the
-// LAST instruction and isn't buried under the backend's base prompt.
-function buildSystem(){return SYS+(thinkingEnabled?'':CONCISE_MODE);}
+var CONCISE_MODE="### RESPONSE STYLE\nAnswer directly and concisely. Do not use <thinking> tags or show reasoning — get straight to the point.";
+// The server builds CODEC's one system prompt: identity, this Mac's hardware, the
+// skill count, About me and saved facts (P-026, routes/chat.py). The page adds only
+// the concise directive when Think is off. The reasoning scaffold is appended
+// server-side (reason_scaffold flag) so it lands as the LAST instruction.
+function buildSystem(){return thinkingEnabled?'':CONCISE_MODE;}
+function _withSystem(hist){var s=buildSystem();return s?[{role:'system',content:s}].concat(hist):hist.slice();}
 
 // Working folder allocated to this chat (like a working directory). Sent with
 // every message so file operations can be scoped to it. Persists per-browser.
@@ -728,7 +709,8 @@ var _MEM_LABEL = {  // [one, more than one]
   'chat:recent': ['recent chat message', 'recent chat messages'], 'chat:relevant': ['past chat message about this', 'past chat messages about this'],
   'voice:recent': ['recent voice line', 'recent voice lines'], 'voice:relevant': ['past voice line about this', 'past voice lines about this'],
   'vibe:relevant': ['past Vibe message about this', 'past Vibe messages about this'], 'rules:standing': ['standing rule', 'standing rules'],
-  'threads:open': ['open thread', 'open threads']
+  'threads:open': ['open thread', 'open threads'], 'about:me': ['note from About me', 'notes from About me'],
+  'facts:saved': ['saved fact', 'saved facts']
 };
 function renderMemoryUsed(msgEl, items){
   try{
@@ -1077,7 +1059,7 @@ function regenerateResponse(btn){
   // Re-run the chat call
   isProcessing=true;document.getElementById('sendBtn').disabled=true;_showStop();showTyping();
   _currentAbort=new AbortController();_lastSkill=null;_lastWeb=null;
-  var msgs=[{role:'system',content:buildSystem()}].concat(chatHist);
+  var msgs=_withSystem(chatHist);
   var raw='',div=null; // outside the .then so the .catch can keep a partial answer
   fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:msgs,force_search:webSearchEnabled,thinking:false,show_thoughts:false,reason_scaffold:thinkingEnabled,stream:true,workdir:_workdir,temporary:temporaryChat||undefined}),signal:_currentAbort.signal}).then(async function(r){
     if(r.status===401||r.status===403){hideTyping();addMessage('assistant','Session expired — redirecting to login...');setTimeout(function(){window.location.href='/auth'},1500);isProcessing=false;_showSend();document.getElementById('sendBtn').disabled=false;return}
@@ -2497,7 +2479,7 @@ async function sendMessage(queued){
   isProcessing=true;document.getElementById('sendBtn').disabled=true;_showStop();showTyping();
   _currentAbort=new AbortController();
   try{
-    var msgs=[{role:'system',content:buildSystem()}].concat(chatHist);var r;
+    var msgs=_withSystem(chatHist);var r;
     if(hasImages){
       r=await fetch('/api/vision',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:msgs[msgs.length-1].content||'Describe this image in detail',image:imageData[0]}),signal:_currentAbort.signal});
       var data=await r.json();hideTyping();

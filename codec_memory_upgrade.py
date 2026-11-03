@@ -105,23 +105,27 @@ def store_fact(key: str, value: str, fact_type: str = "generic",
 
 
 def query_valid_facts(key: Optional[str] = None, user_id: str = "default",
-                      limit: int = 50) -> list[dict]:
-    """Facts currently active (valid_until IS NULL)."""
+                      limit: int = 50, exclude_sources=()) -> list[dict]:
+    """Facts currently active (valid_until IS NULL). `exclude_sources` leaves out facts whose
+    source tag is one of these (P-026: Deep Chat leaves out mcp and untrusted facts); a missing
+    source counts as "". The default excludes nothing."""
+    ex = [str(s) for s in (exclude_sources or ())]
+    not_in = f" AND COALESCE(source,'') NOT IN ({','.join('?' * len(ex))})" if ex else ""
     c = _conn()
     try:
         if key:
             rows = c.execute(
                 "SELECT id,key,value,fact_type,confidence,valid_from,source "
-                "FROM facts WHERE key=? AND user_id=? AND valid_until IS NULL "
+                "FROM facts WHERE key=? AND user_id=? AND valid_until IS NULL" + not_in + " "
                 "ORDER BY id DESC LIMIT ?",
-                (key, user_id, limit),
+                (key, user_id, *ex, limit),
             ).fetchall()
         else:
             rows = c.execute(
                 "SELECT id,key,value,fact_type,confidence,valid_from,source "
-                "FROM facts WHERE user_id=? AND valid_until IS NULL "
+                "FROM facts WHERE user_id=? AND valid_until IS NULL" + not_in + " "
                 "ORDER BY id DESC LIMIT ?",
-                (user_id, limit),
+                (user_id, *ex, limit),
             ).fetchall()
         cols = ["id", "key", "value", "fact_type", "confidence", "valid_from", "source"]
         return [dict(zip(cols, r)) for r in rows]
