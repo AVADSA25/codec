@@ -324,30 +324,31 @@ def main():
 
     kb_type = ask("What keyboard do you have?", ["Extended (has F13-F18 keys)", "Laptop / Compact (F1-F12 only)"])
 
+    # P-029: the same two presets Settings and the app's first-run screen offer.
+    import codec_hotkeys
     if kb_type == 0:
-        config["key_toggle"] = "f13"
-        config["key_voice"] = "f18"
-        config["key_text"] = "f16"
+        config.update(codec_hotkeys.preset("extended"))
         print(f"\n  {G}✓{X} F13 = toggle | F18 = voice | F16 = text")
     else:
+        lap = codec_hotkeys.preset("laptop")
+        tg, vk, tk = (codec_hotkeys.label(lap[f]) for f in codec_hotkeys.FIELDS)
         print(f"\n{W}  Recommended laptop shortcuts:{X}")
-        print(f"  {O}F5{X}  = Toggle CODEC on/off")
-        print(f"  {O}F8{X}  = Hold to record voice")
-        print(f"  {O}F9{X}  = Text input dialog")
+        print(f"  {O}{tg}{X}  = Toggle CODEC on/off")
+        print(f"  {O}{vk}{X}  = Hold to record voice")
+        print(f"  {O}{tk}{X}  = Text input dialog")
+        print(f"  {D}(F5 stays free: Dictate uses it for live typing.){X}")
         print()
         print(f"  {D}Tip: Go to System Settings → Keyboard → enable{X}")
         print(f"  {D}'Use F1, F2, etc. as standard function keys'{X}")
         print(f"  {D}Or hold fn when pressing F-keys.{X}")
         print()
 
-        if ask_yn("Use recommended F5/F8/F9?", True):
-            config["key_toggle"] = "f5"
-            config["key_voice"] = "f8"
-            config["key_text"] = "f9"
+        if ask_yn(f"Use recommended {tg}/{vk}/{tk}?", True):
+            config.update(lap)
         else:
-            config["key_toggle"] = ask_text("Toggle key", "f5")
-            config["key_voice"] = ask_text("Voice key (hold to record)", "f8")
-            config["key_text"] = ask_text("Text input key", "f9")
+            config["key_toggle"] = ask_text("Toggle key", lap["key_toggle"])
+            config["key_voice"] = ask_text("Voice key (hold to record)", lap["key_voice"])
+            config["key_text"] = ask_text("Text input key", lap["key_text"])
 
         print(f"\n  {G}✓{X} {config['key_toggle'].upper()} = toggle | {config['key_voice'].upper()} = voice | {config['key_text'].upper()} = text")
         print(f"\n  {Y}⚠{X}  Disable conflicting macOS shortcuts:")

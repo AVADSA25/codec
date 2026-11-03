@@ -307,7 +307,7 @@ def _install_pynput_stub_if_needed() -> None:
     # of attribute names is open-ended (callers also use `f16`, `f17`).
     # Use a _Stub() instance so __getattr__ returns a fresh non-None _Stub
     # for ANY attribute, matching pynput's real keyboard.Key namespace
-    # closely enough for codec_config._resolve_key() to return non-None.
+    # closely enough for codec_config.resolve_hotkeys() to return non-None.
     keyboard_mod.Listener = _Stub
     keyboard_mod.KeyCode = _Stub
     keyboard_mod.Key = _Stub()

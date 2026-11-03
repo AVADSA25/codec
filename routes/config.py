@@ -20,6 +20,7 @@ import json
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
+import codec_hotkeys
 from routes._shared import CONFIG_PATH
 
 router = APIRouter()
@@ -55,9 +56,13 @@ _VALIDATION_RULES = {
     "tts_speed":           ((int, float), False, lambda v: (0.5 <= v <= 2.0, "tts_speed must be between 0.5 and 2.0")),
     "stt_engine":          (str,  False, None),
     "stt_url":             (str,  False, lambda v: (v == "" or v.startswith("http"), "stt_url must be a valid URL")),
-    "key_toggle":          (str,  True,  lambda v: (len(v.strip()) > 0, "key_toggle cannot be empty")),
-    "key_voice":           (str,  True,  lambda v: (len(v.strip()) > 0, "key_voice cannot be empty")),
-    "key_text":            (str,  True,  lambda v: (len(v.strip()) > 0, "key_text cannot be empty")),
+    # P-029: codec.py listens for these, so only keys it can hear (F1 to F20, not Dictate's F5).
+    "key_toggle":          (str,  True,  lambda v: (codec_hotkeys.field_problem("key_toggle", v) is None,
+                                                    codec_hotkeys.field_problem("key_toggle", v))),
+    "key_voice":           (str,  True,  lambda v: (codec_hotkeys.field_problem("key_voice", v) is None,
+                                                    codec_hotkeys.field_problem("key_voice", v))),
+    "key_text":            (str,  True,  lambda v: (codec_hotkeys.field_problem("key_text", v) is None,
+                                                    codec_hotkeys.field_problem("key_text", v))),
     "wake_word_enabled":   (bool, False, None),
     "wake_phrases":        (list, False, None),
     "wake_energy":         ((int, float), False, lambda v: (v >= 0, "wake_energy cannot be negative")),
@@ -211,6 +216,16 @@ def _save(change):
         return None, JSONResponse({"error": str(e)}, status_code=409)
 
 
+def _hotkey_clash(changes: dict, config: dict) -> list:
+    """P-029: refuse a save that would give two hotkeys the same key."""
+    if not any(k in changes for k in codec_hotkeys.FIELDS):
+        return []
+    keys = codec_hotkeys.names(config)
+    keys.update({k: codec_hotkeys.normalize(changes[k]) for k in codec_hotkeys.FIELDS if k in changes})
+    msg = codec_hotkeys.clash(keys)
+    return [msg] if msg else []
+
+
 def _validate_config_updates(flat: dict) -> list:
     """Validate flattened config values. Returns list of error strings."""
     errors = []
@@ -325,6 +340,8 @@ async def update_config(request: Request):
             errors = _validate_config_updates(flat)
             for block, vals in nested.items():
                 errors += _validate_block(block, vals)
+            if not errors:
+                errors = _hotkey_clash(flat, config)
             if errors:
                 raise _NotSaved(JSONResponse({"error": "Validation failed", "details": errors},
                                              status_code=422))
@@ -335,7 +352,7 @@ async def update_config(request: Request):
                 # If a sensitive field is still masked, the user did not change it — skip
                 if k in _SENSITIVE_FIELDS and isinstance(v, str) and v.startswith("*"):
                     continue
-                config[k] = v
+                config[k] = codec_hotkeys.normalize(v) if k in codec_hotkeys.FIELDS else v
                 changed.append(k)
             for block, vals in nested.items():
                 current = config.get(block) if isinstance(config.get(block), dict) else {}
@@ -392,6 +409,8 @@ async def put_config_raw(request: Request):
         for block in NESTED_BLOCKS:
             if block in changes:
                 errors += _validate_block(block, changes[block])
+        if not errors:
+            errors = _hotkey_clash(changes, config)
         if errors:
             raise _NotSaved(JSONResponse({"error": "Validation failed", "details": errors},
                                          status_code=422))
@@ -403,3 +422,34 @@ async def put_config_raw(request: Request):
         return not_saved
     return {"saved": True, "updated_fields": sorted(changes),
             "message": f"config.json saved ({len(changes)} key(s) changed)."}
+
+
+# ── P-029: keyboard presets (Settings > Hotkeys and the first-run screen) ────
+
+@router.get("/api/hotkeys/presets")
+async def hotkey_presets():
+    """The presets both pages offer, the three keys in use, and which preset that is."""
+    return codec_hotkeys.presets_payload(_read_config())
+
+
+@router.post("/api/hotkeys/preset")
+async def apply_hotkey_preset(request: Request):
+    """Write one preset's three keys at once, under the config lock."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = None
+    preset_id = str(body.get("preset") or "") if isinstance(body, dict) else ""
+    keys = codec_hotkeys.preset(preset_id)
+    if keys is None:
+        return JSONResponse({"error": "Unknown keyboard preset."}, status_code=400)
+
+    def _apply(config):  # runs under the config lock, on the file as it is now
+        config.update(keys)
+        return keys
+
+    _, not_saved = _save(_apply)
+    if not_saved is not None:
+        return not_saved
+    return {"saved": True, "preset": preset_id, "keys": keys,
+            "message": "Saved. CODEC uses these keys after it restarts."}

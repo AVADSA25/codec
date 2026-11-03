@@ -940,23 +940,20 @@ def needs_screen(t):
     return any(k in t.lower() for k in SCREEN_KEYWORDS)
 
 
-# Key resolution
-def _resolve_key(name):
-    name = name.lower().strip()
-    if keyboard is None:
-        # Headless: codec_config is being imported for its constants only,
-        # not for live keyboard listening. Skip key resolution.
-        return None
-    if name.startswith('f') and name[1:].isdigit():
-        return getattr(keyboard.Key, name, None)
-    if len(name) == 1:
-        return name
-    return getattr(keyboard.Key, name, None)
+# Key resolution (P-029: codec.py listens for these, so Settings > Hotkeys works)
+def resolve_hotkeys(config, kb=None):
+    """(toggle, voice, text) pynput keys for config's key_toggle / key_voice /
+    key_text. A missing or unusable name falls back to its default (F13, F18, F16;
+    codec_hotkeys). Headless (no pynput): three Nones, the constants are unused."""
+    import codec_hotkeys
+    kb = keyboard if kb is None else kb
+    if kb is None:
+        return (None, None, None)
+    names = codec_hotkeys.names(config)
+    return tuple(getattr(kb.Key, names[field], None) for field in codec_hotkeys.FIELDS)
 
 
-KEY_TOGGLE = _resolve_key(cfg.get("key_toggle", "f13"))
-KEY_VOICE  = _resolve_key(cfg.get("key_voice", "f18"))
-KEY_TEXT   = _resolve_key(cfg.get("key_text", "f16"))
+KEY_TOGGLE, KEY_VOICE, KEY_TEXT = resolve_hotkeys(cfg)
 
 
 def clean_transcript(text):
