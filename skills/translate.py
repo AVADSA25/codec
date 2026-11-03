@@ -1,6 +1,10 @@
 """CODEC Skill: Translate (any language via Qwen)"""
 import os
+import shlex
 import subprocess
+
+import codec_applescript
+import codec_terminal_text
 
 
 def _is_remote_transport() -> bool:
@@ -26,16 +30,32 @@ SKILL_TRIGGERS = ["translate", "in french", "in english", "en francais", "en ang
 _NON_LATIN = {"japanese", "chinese", "arabic", "russian", "korean", "hindi",
               "thai", "vietnamese", "hebrew", "persian", "ukrainian", "greek"}
 
+_BAR = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+_HEADER = f"\n{_BAR}\n  CODEC TRANSLATION\n{_BAR}\n\n"
+_FOOTER = f"\n\n{_BAR}\n\nPress any key to close...\n"
+
+
 def _show_in_terminal(title, body):
-    """Open a terminal window showing the translation result."""
-    # Use osascript to open Terminal with the result displayed
+    """Open a terminal window showing the translation result. The request
+    and the model's reply go in a private file that Terminal prints with cat
+    (S-01): the AppleScript and the shell command hold only the quoted file
+    and folder paths."""
+    try:
+        folder, path = codec_terminal_text.write_private(body, _HEADER, _FOOTER)
+    except OSError:
+        return
+    qfile = codec_applescript.escape(shlex.quote(path))
+    qdir = codec_applescript.escape(shlex.quote(folder))
     script = f'''
 tell application "Terminal"
     activate
-    do script "clear && echo '\\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━' && echo '  CODEC TRANSLATION' && echo '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━' && echo '' && echo '{body}' && echo '' && echo '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━' && echo '' && echo 'Press any key to close...' && read -n 1"
+    do script "clear && cat {qfile}; rm -f {qfile}; rmdir {qdir}; read -n 1"
 end tell'''
-    subprocess.Popen(["osascript", "-e", script],
-                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        subprocess.Popen(["osascript", "-e", script],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except OSError:
+        codec_terminal_text.remove(folder)
 
 
 def run(task, app="", ctx=""):
@@ -117,12 +137,10 @@ def run(task, app="", ctx=""):
                     # actual multiline text. No Terminal popup.
                     return "\n".join(body_parts)
 
-                # Local path: show full body in Terminal (osascript needs
-                # the literal "\n" escape sequence embedded in the do-script
-                # string, NOT a real newline character — that would break the
-                # osascript syntax), return TTS-friendly pronunciation so
-                # voice mode can speak it.
-                _show_in_terminal(f"{target} Translation", "\\n".join(body_parts))
+                # Local path: show full body in Terminal (it goes in a private
+                # file that Terminal prints, so real newlines), return
+                # TTS-friendly pronunciation so voice mode can speak it.
+                _show_in_terminal(f"{target} Translation", "\n".join(body_parts))
                 if romanized:
                     return f"In {target}, {text} is pronounced: {romanized}"
                 else:

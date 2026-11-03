@@ -91,7 +91,10 @@ SKIP_SKILLS = {
     #   in a fresh Terminal window.
     # - self_improve: writes Qwen-drafted markdown proposals to
     #   ~/.codec/skill_proposals/. Slow (LLM call) and audit-log noise.
-    "memory_search", "clipboard", "self_improve",
+    # - file_search: since S-01 its local path really opens a Terminal window
+    #   (its old script never compiled); tests/test_skill_terminal_text.py
+    #   covers it with subprocess faked.
+    "memory_search", "clipboard", "self_improve", "file_search",
     # Phase 1 Step 3: interactive — block on threading.Event waiting for a
     # user answer that this MCP smoke test will never provide. Default
     # timeout is 600s, so calling .run() here would hang the test for
