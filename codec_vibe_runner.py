@@ -25,7 +25,6 @@ import http.server
 import mimetypes
 import os
 import posixpath
-import re
 import resource
 import signal
 import socket
@@ -35,6 +34,7 @@ import time
 import urllib.parse
 from pathlib import Path
 
+import codec_envscrub
 import codec_vibe_projects as vp
 from codec_vibe_projects import VibeError
 
@@ -265,14 +265,9 @@ def _check_command(command) -> str:
 
 
 def _run_env(port: int) -> dict:
-    try:
-        from routes.vibe_exec import _hardened_run_env
-        env = _hardened_run_env()
-    except Exception:       # the same rule, if the route module cannot be loaded
-        pat = re.compile(r"(?i)(secret|password|passwd|token|credential|api[_-]?key|access[_-]?key|"
-                         r"private[_-]?key|bearer|session[_-]?token|auth[_-]?token|_key$|^key$)")
-        env = {k: v for k, v in os.environ.items() if k == "SSH_AUTH_SOCK" or not pat.search(k)}
-    path = [p for p in env.get("PATH", "").split(os.pathsep) if p]
+    env = codec_envscrub.scrub(os.environ, keep=("SSH_AUTH_SOCK",))   # the shared rule (P-084)
+    env.setdefault("LC_ALL", "C.UTF-8")
+    path =[p for p in env.get("PATH", "").split(os.pathsep) if p]
     for extra in _EXTRA_PATH:
         if extra not in path:
             path.append(extra)

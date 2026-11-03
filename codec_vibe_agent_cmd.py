@@ -28,6 +28,8 @@ import threading
 import time
 from dataclasses import dataclass
 
+import codec_envscrub
+
 SANDBOX_EXEC = "/usr/bin/sandbox-exec"
 DEFAULT_TIMEOUT = 60
 MAX_TIMEOUT = 300
@@ -164,13 +166,8 @@ def profile(project: str, vibe_root: str, home: str, temp: str, network: bool) -
 
 def command_env(temp: str) -> dict:
     """The environment of a command: secret-looking variables removed, tools told to stay quiet and local."""
-    try:
-        from routes.vibe_exec import _hardened_run_env
-        env = _hardened_run_env()
-    except Exception:
-        pat = re.compile(r"(?i)(secret|password|passwd|token|credential|api[_-]?key|access[_-]?key|private[_-]?key|bearer|"
-                         r"session[_-]?token|auth[_-]?token|_key$|^key$)")
-        env = {k: v for k, v in os.environ.items() if not pat.search(k)}
+    env = codec_envscrub.scrub(os.environ)       # the shared rule (P-084)
+    env.setdefault("LC_ALL", "C.UTF-8")
     env.pop("SSH_AUTH_SOCK", None)
     path = [p for p in env.get("PATH", "").split(os.pathsep) if p]
     for extra in _EXTRA_PATH:
