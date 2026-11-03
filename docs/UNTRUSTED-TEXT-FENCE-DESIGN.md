@@ -13,7 +13,13 @@ design gate came with the elevation build request.
    three places:
    - every crew tool result (`codec_agents.Agent.run`, the "Tool result from"
      message);
-   - the `web_fetch` skill's page text (chat, MCP, crews, clipboard_url_fetch);
+   - the `web_fetch` skill's page text (chat, MCP, crews, clipboard_url_fetch,
+     which closes the fence again after its own 2,000-character cut). Not when a
+     Project-mode agent calls it (context `agent:<id>`): `codec_agent_runner`
+     keeps the first 500 characters of a result and spots loops by its first 300,
+     so a fresh marker there would take a third of what the planner sees and make
+     every repeated page look new. Fencing that path is a runner change (section
+     10) and a follow-up;
    - the chat's URL fetch (`routes/chat.py`, inside the `[URL CONTENT]` block).
 2. **An origin for every agent-reachable memory write.** The existing
    `facts.source` column (no schema change) now gets one of five values:
@@ -96,8 +102,12 @@ patched paths, audit captured in memory):
 - 65,536-character hostile input is capped and fast; zero-width, full-width and
   tag-character evasions are caught;
 - fence: fresh marker per call, template tokens removed, fake markers defused,
-  own fence not re-wrapped (and closed again when a length cap cut it), kill
-  switch, the fence line itself does not trip the scan;
+  own fence not re-wrapped (and closed again when a length cap cut it), text
+  added after a footer wrapped again, kill switch, the fence line itself does
+  not trip the scan;
+- web_fetch for a Project-mode agent stays unfenced and the runner's loop
+  signature still matches a repeated page; clipboard_url_fetch closes its cut
+  fence;
 - a crew run with a stubbed model: the tool result reaches the model fenced, TOOL
   and FINAL still parse, the Google Docs guard still works, the stuck banner sits
   outside the fence, timeouts are not fenced;

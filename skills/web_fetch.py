@@ -65,6 +65,19 @@ def _get_validating_redirects(url: str, max_redirects: int = 5):
     raise codec_ssrf.SSRFError("too many redirects")
 
 
+def _fence_page(text: str, context) -> str:
+    """P-021: page text is data for whoever reads it next, never instructions.
+
+    Not for a Project-mode agent (context "agent:<id>", codec_agent_runner): the
+    runner keeps the first 500 characters of a result and spots loops by its first
+    300, which a fresh marker would take up and make unique every time. Fencing that
+    path is a change to the runner itself (AGENTS.md section 10)."""
+    if isinstance(context, str) and context.strip().lower().startswith("agent:"):
+        return text
+    import codec_fence
+    return codec_fence.fence(text, "Text fetched from a web page")
+
+
 def run(task: str, context: str = "") -> str:
     try:
         m = re.search(r"https?://\S+", (task or "") + " " + (context or ""))
@@ -84,15 +97,13 @@ def run(task: str, context: str = "") -> str:
         response.raise_for_status()
         
         content_type = response.headers.get("content-type", "")
-        # P-021: page text is data for whoever reads it next, never instructions.
-        import codec_fence
         if "html" in content_type:
-            return codec_fence.fence(_html_to_text(response.text), "Text fetched from a web page")
+            return _fence_page(_html_to_text(response.text), context)
         if "text" in content_type or "json" in content_type:
             body = response.text
-            return codec_fence.fence(
+            return _fence_page(
                 body[:_MAX_CHARS] + (f"\n...[truncated, {len(body)} raw chars]" if len(body) > _MAX_CHARS else ""),
-                "Text fetched from a web page")
+                context)
         else:
             return f"web_fetch failed: unsupported content type {content_type}"
             

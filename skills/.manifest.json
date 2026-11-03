@@ -25,7 +25,7 @@
     "chrome_search.py": "71b6f049fa055c615d2acaada8b63b2a020a222ef99b6c4d02394b56485a1832",
     "chrome_tabs.py": "ce0c203aecc6188b2d2012e17f6ed9d54b0669bf7839e926442e1bfc73842ec1",
     "clipboard.py": "f5ef9cc501fe38a3de95bf0b49896b928250c0e272060173668f6b195728d131",
-    "clipboard_url_fetch.py": "c2733a92d6e99a0346b91c67bb70698e491be9570305377a82096a0ceb153488",
+    "clipboard_url_fetch.py": "ec73b41c985a6014e2e55712573f04264aae7681d85d586a6337c36a7393a3dd",
     "compare.py": "7f1599bf7817e636e0a42726ef36df4f7069aa76e7af5be56dc8e6d10d558ff0",
     "cookbook_download.py": "8fd9c8a5b82f8e910cc0721904b908f2d201908ff0ac6373994be922598c382c",
     "cookbook_list.py": "23c19b92742bfd88a801e74bd79e8bbd70f88d49ac1951f1c30e4857cc693a79",
@@ -91,7 +91,7 @@
     "tts_say.py": "24633fc06068aa4f6210bdf0f040c2c5f583a0ae2e41efa1d70495d0d0050a1b",
     "volume.py": "cbd20b36ee7d4010a4a4d13829b2d7e96e5123bd112ccd5a17fe18ab85c18429",
     "weather.py": "d33a479119a23a26a485df230440a7e4e1beb04bb0bb68bd2a7444e3504a6b2e",
-    "web_fetch.py": "177d08fefb8aee46f7ca202f377f3aced1dcd68ab0ec1a0f73c7a15bca2acf15",
+    "web_fetch.py": "6af5d3b4bedf0529280f65434b2897ac3484804614e28591cb4d41302fa4db10",
     "web_search.py": "49023eef091cbedb7e099ad7a545e02eed68676f5c0de0e168625d51914d6462"
   }
 }

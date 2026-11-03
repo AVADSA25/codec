@@ -581,7 +581,7 @@ With `"live"` in `tts_clone.enabled_for` (the owner's machine only; without it t
 - Wake-word replies and Telegram briefings are not part of this. The measurements, scripts and checks are in `~/Documents/CODEC-private/voice-lab/` (`measure_stream.py`) and `live-checks/`.
 
 ### Untrusted text fence (P-021, docs/UNTRUSTED-TEXT-FENCE-DESIGN.md)
-`codec_fence.fence(text, what)` wraps outside text in a fresh 12-hex marker with a data-not-instructions line, after removing chat-template tokens and defusing look-alike markers. It wraps every crew tool result (`Agent.run`; CODEC's own timeout and veto notes are `_ToolNote` and stay unfenced, stuck banners go after the fence), the `web_fetch` skill's page text and the chat's URL fetch. A fence reduces injection, it does not stop it. Kill switches: `FENCE_ENABLED=false`, `MEMORY_SCAN_ENABLED=false`.
+`codec_fence.fence(text, what)` wraps outside text in a fresh 12-hex marker with a data-not-instructions line, after removing chat-template tokens and defusing look-alike markers. It wraps every crew tool result (`Agent.run`; CODEC's own timeout and veto notes are `_ToolNote` and stay unfenced, stuck banners go after the fence), the `web_fetch` skill's page text (not for a Project-mode agent, context `agent:<id>`: the runner's 500-character history and 300-character loop check would break; that path needs its own runner change) and the chat's URL fetch. A fence reduces injection, it does not stop it. Kill switches: `FENCE_ENABLED=false`, `MEMORY_SCAN_ENABLED=false`.
 
 ### Skill self-improvement
 `codec_self_improve.py` drafts skill proposals into `~/.codec/skill_proposals/YYYY-MM-DD/<name>.md`. **Never auto-deploys.** Human review required before promoting to `~/.codec/skills/`.

@@ -150,5 +150,9 @@ def run(task: str = "", context: str = "") -> str:
     full_len = len(content)
     if full_len > 2000:
         content = content[:2000] + f"\n... [truncated, full length: {full_len} chars]"
+        if content.startswith("[DATA "):
+            # P-021: the cut took web_fetch's fence footer off; close the fence again.
+            import codec_fence
+            content = codec_fence.fence(content)
 
     return f"Fetched {url}:\n\n{content}"
