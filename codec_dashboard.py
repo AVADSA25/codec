@@ -1066,10 +1066,11 @@ async def _bg_scheduler():
 
 
 async def _bg_heartbeat():
-    """Run heartbeat checks every 30 minutes."""
-    from codec_heartbeat import heartbeat
+    """Run heartbeat checks every 30 minutes, the first 2 minutes after start."""
+    from codec_heartbeat import heartbeat, FIRST_TICK_DELAY_S
     _bg_status["heartbeat"]["running"] = True
     log.info("[HEARTBEAT] Background service started")
+    await asyncio.sleep(FIRST_TICK_DELAY_S)  # P-059: not while the services are still starting
     while True:
         try:
             await asyncio.to_thread(heartbeat)
