@@ -45,6 +45,7 @@ import contextlib
 import fcntl
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -343,6 +344,92 @@ def probe(model_id: str, timeout: float = 240.0,
         return False, f"HTTP {e.code}: {detail}"
     except Exception as e:  # timeout, connection refused, ...
         return False, f"{type(e).__name__}: {e}"
+
+
+# ── The model the local server holds (P-013, docs/VOICE-VISION-LOADED-MODEL-DESIGN.md) ──
+# The server holds one model; a request naming another makes it unload the one
+# it has. Callers without a model of their own name the one config says it holds.
+
+_HUB_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*")
+_LOCAL_SERVER_HOSTS = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
+
+
+def local_server_model(cfg: Optional[Dict[str, Any]] = None) -> tuple[str, str]:
+    """(base_url, model) the local model server holds, by config: `llm_model`,
+    the hub id the launcher preloads, or while chat is on a registered cloud
+    model the local model it stands in for (`llm_local_restore`)."""
+    c = cfg if cfg is not None else _load_config()
+    return codec_cloud_models.local_only(
+        str(c.get("llm_base_url") or DEFAULT_BASE_URL).rstrip("/"), get_active(c), c)
+
+
+def same_server(a: Any, b: Any) -> bool:
+    """True when two base URLs name the same server (host and port; the
+    loopback names count as one host)."""
+    try:
+        pa, pb = urllib.parse.urlparse(str(a or "")), urllib.parse.urlparse(str(b or ""))
+        keys = []
+        for p in (pa, pb):
+            host = (p.hostname or "").lower()
+            if not host:
+                return False
+            keys.append(("localhost" if host in _LOCAL_SERVER_HOSTS else host,
+                         p.port or (443 if p.scheme == "https" else 80)))
+    except ValueError:
+        return False
+    return keys[0] == keys[1]
+
+
+def vision_model(cfg: Dict[str, Any], vision_base_url: str, default: str) -> str:
+    """The model a local vision request names: `vision_model` when config sets
+    one; otherwise, when vision goes to the chat model's server, the model that
+    server holds; otherwise `default` (a separate vision server)."""
+    pinned = cfg.get("vision_model")
+    if isinstance(pinned, str) and pinned:
+        return pinned
+    base, model = local_server_model(cfg)
+    return model if same_server(vision_base_url, base) else default
+
+
+def health_model(base_url: Optional[str] = None, timeout: float = 2.0) -> Optional[str]:
+    """`loaded_model` from GET /health on the local model server, or None.
+
+    Only a comparison value: no caller sends it. A server off this Mac is not
+    asked, and anything but a plain hub id (a snapshot path, a URL, more than
+    200 characters, not a string) counts as unknown.
+    """
+    base = base_url or _base_url(_load_config())
+    if not codec_cloud_models.is_local_url(base):
+        return None
+    try:
+        p = urllib.parse.urlparse(base)
+        with urllib.request.urlopen(f"{p.scheme}://{p.netloc}/health", timeout=timeout) as resp:
+            loaded = json.loads(resp.read(65536).decode("utf-8", "replace")).get("loaded_model")
+    except Exception:
+        return None
+    if (isinstance(loaded, str) and len(loaded) <= 200 and ".." not in loaded
+            and _HUB_ID_RE.fullmatch(loaded)):
+        return loaded
+    return None
+
+
+def note_swap(model_id: str, base_url: Optional[str] = None, caller: str = "",
+              correlation_id: Optional[str] = None) -> bool:
+    """One `model_swap` warning audit line when the local server holds another
+    model than `model_id`, the id the caller is about to send. True when it
+    wrote one; nothing when they match or /health cannot be read."""
+    loaded = health_model(base_url)
+    if loaded is None or loaded == model_id:
+        return False
+    try:
+        from codec_audit import audit
+        audit(event="model_swap", source="codec-models", outcome="warning", level="warning",
+              message="a call names another model than the model server holds",
+              correlation_id=correlation_id,
+              extra={"caller": caller, "requested": str(model_id)[:200], "loaded": loaded})
+    except Exception:
+        return False
+    return True
 
 
 def _pm2_process_name(cfg: Optional[Dict[str, Any]] = None) -> str:

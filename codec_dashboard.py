@@ -1132,9 +1132,17 @@ async def _warmup_vision():
             pass
         vision_url = config.get("vision_base_url", "http://localhost:8083/v1")
         import requests as rq
+        import codec_models
+        # P-013: one server holds one model. Warming another vision model on the
+        # chat model's server unloaded the chat model at every start: send nothing.
+        model = codec_models.vision_model(config, vision_url, "mlx-community/Qwen2.5-VL-7B-Instruct-4bit")
+        base, loaded = codec_models.local_server_model(config)
+        if model != loaded and codec_models.same_server(vision_url, base):
+            log.info("[WARMUP] Vision warm-up skipped: the chat model's server holds another model")
+            return
         # Tiny request just to load model weights into GPU memory
         payload = {
-            "model": config.get("vision_model", "mlx-community/Qwen2.5-VL-7B-Instruct-4bit"),
+            "model": model,
             "messages": [{"role": "user", "content": "Hi"}],
             "max_tokens": 1,
         }

@@ -34,7 +34,11 @@ def _vision_config() -> Tuple[str, str, str, str]:
         # D-37: local unless the owner sets vision_provider; a Gemini key alone
         # no longer sends the screen or an image to Google.
         provider = cfg.get("vision_provider", "local")
-        return provider, gem, QWEN_VISION_URL, QWEN_VISION_MODEL
+        # P-013: with no vision_model, name the model the chat server holds when
+        # vision goes to that server (asking it for another one unloads it).
+        import codec_models
+        model = codec_models.vision_model(cfg, QWEN_VISION_URL, QWEN_VISION_MODEL)
+        return provider, gem, QWEN_VISION_URL, model
     except Exception as e:  # pragma: no cover — defensive
         log.warning("vision config unavailable: %s", e)
         return "local", "", "http://localhost:8083/v1", "qwen-vl"
