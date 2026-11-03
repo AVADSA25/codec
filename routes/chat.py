@@ -1689,7 +1689,9 @@ async def chat_completion(request: Request):
         # The checks after the reply still read the untrimmed `messages`.
         # P-038 (docs/CHAT-SUMMARY-DESIGN.md): turns left out come back as notes when
         # there are some, and a notes job may be planned; it starts after the reply.
-        _llm_messages, _trim, _notes_job = codec_chat_summary.fit_with_notes(
+        # Up to four fits run here, so off the loop thread (P-016).
+        _llm_messages, _trim, _notes_job = await asyncio.to_thread(
+            codec_chat_summary.fit_with_notes,
             messages, _prompt_token_budget(config), config, fit=_fit_prompt_budget,
             llm={"base_url": base_url, "model": model, "api_key": api_key}, persona=_persona_active)
         if _trim:

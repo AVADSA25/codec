@@ -33,6 +33,10 @@ turn 40. Notes keep those facts in a few hundred words.
    cover); `dropped` is now only the messages left out with no notes. The page
    says "Shortened to fit: 40 earlier messages summarised".
 
+The route runs `fit_with_notes` in a worker thread: with planning it runs the
+fit up to four times, which takes about 250 ms with a 1 MB file, too long for
+the dashboard's event loop (P-016).
+
 The prompt is never bigger than P-034's budget, so the time before the first
 word does not grow with the chat.
 

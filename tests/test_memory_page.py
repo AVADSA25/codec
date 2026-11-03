@@ -173,7 +173,7 @@ def test_the_chat_passes_the_memory_on_and_the_pages_show_it():
     # P-034: the prompt budget counts the system prompt and this turn's memory, so it runs after both
     # (P-038: through codec_chat_summary.fit_with_notes, which runs the same fit).
     assert src.index("sys_prompt = _build_chat_system_prompt(") < src.index(
-        "codec_chat_summary.fit_with_notes(\n            messages, _prompt_token_budget(config), config, fit=_fit_prompt_budget,")
+        "codec_chat_summary.fit_with_notes,\n            messages, _prompt_token_budget(config), config, fit=_fit_prompt_budget,")
     assert "yield f\"data: {json.dumps({'memory': _mem_items})}\\n\\n\"" in src and 'out["memory"] = _mem_items' in src
     assert '_note_memory(meta, "rules", "standing"' in src and '_note_memory(meta, "threads", "open"' in src
     page = (REPO / "codec_chat.html").read_text(encoding="utf-8")

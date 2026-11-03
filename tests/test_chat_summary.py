@@ -300,6 +300,25 @@ def test_the_route_sends_notes_and_starts_the_job_after_the_reply(api, monkeypat
     assert not any(notes.is_notes_message(m) for m in off.sent) and len(off.started) == len(plain.started)
 
 
+def test_the_fit_runs_off_the_loop_thread(api, monkeypatch):
+    """Up to four fits run per turn (slow with a big file), so not on the dashboard's event loop (P-016)."""
+    import asyncio
+    real, on_loop = notes.fit_with_notes, []
+
+    def spy(*a, **k):
+        try:
+            asyncio.get_running_loop()
+            on_loop.append(True)
+        except RuntimeError:
+            on_loop.append(False)
+        return real(*a, **k)
+
+    monkeypatch.setattr(notes, "fit_with_notes", spy)
+    api(ev.messages_at(DATA, 30))
+    api(ev.messages_at(DATA, 30), stream=False)
+    assert on_loop == [False, False]
+
+
 def test_the_page_names_the_summarised_messages():
     fn = PAGE[PAGE.index("function renderTrimUsed(msgEl, t){"):PAGE.index("// ── Model picker")]
     assert "t.summarised" in fn and "innerHTML" not in fn
