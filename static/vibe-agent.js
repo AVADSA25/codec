@@ -130,6 +130,7 @@
     switch (name) {
       case 'list_files': return 'Listing files' + (arg ? ' in ' + arg : '');
       case 'read_file': return 'Reading' + a;
+      case 'read_output': return 'Reading kept output' + (arg ? ' of result ' + arg : '');
       case 'search': return 'Searching' + a;
       case 'edit_file': return 'Editing' + a;
       case 'write_file': return 'Writing' + a;
@@ -447,7 +448,7 @@
     svg.appendChild(p);
     return svg;
   }
-  var TOOL_ICON = { list_files: 'list', read_file: 'read', search: 'search', edit_file: 'edit', write_file: 'write', delete_file: 'trash',
+  var TOOL_ICON = { list_files: 'list', read_file: 'read', read_output: 'read', search: 'search', edit_file: 'edit', write_file: 'write', delete_file: 'trash',
     ask: 'ask', finish: 'done', run_check: 'step' };
 
   function ask(opts) {
