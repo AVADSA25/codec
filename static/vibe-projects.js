@@ -20,7 +20,7 @@
   // files[path] = { model, base, fresh }   base = what is on disk, fresh = made during this answer
   var P = { id: null, title: '', files: {}, active: null, canUndo: false, disabled: false,
     scratch: null, live: null, lastAi: null, saveTimer: null, tabTimer: null,
-    run: null, agent: false };   // run: what is live on this Mac { mode, url, since, timer, ready }
+    run: null, agent: false, changes: null };   // run: what is live on this Mac { mode, url, since, timer, ready }
   // Showing or running a project works only on this Mac (the server says no to anything else).
   var ON_MAC = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
 
@@ -150,7 +150,10 @@
         if (P.files[p]) P.files[p].base = text;
       });
     });
-    return Promise.all(jobs).then(function () { renderTabs(); });
+    return Promise.all(jobs).then(function () {
+      renderTabs();
+      if (jobs.length && P.changes && P.changes.id === id && versionsOpen()) loadChanges();   // Changes follows the autosave (P-069)
+    });
   }
 
   // ── opening, creating, leaving a project ───────────────────────────────
@@ -455,11 +458,66 @@
     listEl.appendChild(el('div', 'vmsg', 'Loading...'));
     drawer.classList.add('vo');
     var ov = $('vov'); if (ov) ov.classList.add('sh');
+    P.changes = null;
     return flush().catch(function () {}).then(function () { return api('GET', base('/checkpoints?limit=200')); }).then(function (cps) {
       listEl.textContent = '';
       if (!cps.length) { listEl.appendChild(el('div', 'vmsg', 'No versions yet.')); return; }
+      listEl.appendChild(changesRow(cps[0]));
       cps.forEach(function (cp, i) { listEl.appendChild(versionRow(cp, i === 0)); });
     }).catch(function (e) { listEl.textContent = ''; listEl.appendChild(el('div', 'vmsg', 'Could not load versions: ' + e.message)); });
+  }
+
+  function versionsOpen() { var d = $('vd'); return !!(d && d.classList.contains('vo')); }
+
+  // The first entry: the files as they are now against the newest version (P-069). Read again after each autosave.
+  function changesRow(newest) {
+    var row = el('div', 'vrow vchg');
+    var head = el('button', 'vrow-h');
+    head.type = 'button';
+    head.setAttribute('aria-expanded', 'true');
+    head.appendChild(el('span', 'vkind k-now', 'Now'));
+    head.appendChild(el('span', 'vlabel', 'Changes since the last version'));
+    var meta = el('span', 'vmeta', 'Loading...');
+    head.appendChild(meta);
+    var body = el('div', 'vbody');
+    head.addEventListener('click', function () {
+      body.hidden = !body.hidden;
+      head.setAttribute('aria-expanded', body.hidden ? 'false' : 'true');
+    });
+    row.appendChild(head); row.appendChild(body);
+    P.changes = { id: P.id, from: newest.id, meta: meta, body: body, seq: 0 };
+    loadChanges();
+    return row;
+  }
+
+  function loadChanges() {
+    var c = P.changes;
+    if (!c || c.id !== P.id) return Promise.resolve();
+    var seq = ++c.seq;
+    return api('GET', base('/diff?from=' + encodeURIComponent(c.from) + '&to=working')).then(function (d) {
+      if (P.changes !== c || c.seq !== seq) return;
+      var files = d.files || [];
+      c.meta.textContent = files.length ? files.length + (files.length === 1 ? ' file changed' : ' files changed') : 'No changes';
+      c.body.textContent = '';
+      if (!files.length) { c.body.appendChild(el('div', 'vmsg', 'The files are as the last version keeps them.')); return; }
+      files.forEach(function (f) {
+        var h = el('div', 'vfile');
+        h.appendChild(el('span', 'vfile-s s-' + f.status, f.status));
+        if (P.files[f.path]) {
+          var name = el('button', 'vfile-n vfile-open', f.path);
+          name.type = 'button'; name.title = 'Open ' + f.path;
+          name.addEventListener('click', function () { activate(f.path); closeVersions(); });
+          h.appendChild(name);
+        } else h.appendChild(el('span', 'vfile-n', f.path));
+        c.body.appendChild(h);
+        c.body.appendChild(diffNode(f.diff));
+      });
+    }).catch(function (e) {
+      if (P.changes !== c || c.seq !== seq) return;
+      c.meta.textContent = '';
+      c.body.textContent = '';
+      c.body.appendChild(el('div', 'vmsg', 'Could not load the changes: ' + e.message));
+    });
   }
 
   function versionRow(cp, newest) {
@@ -534,6 +592,7 @@
   }
 
   function closeVersions() {
+    P.changes = null;
     var d = $('vd'); if (d) d.classList.remove('vo');
     var ov = $('vov'); if (ov) ov.classList.remove('sh');
   }
@@ -647,11 +706,13 @@
     if (!P.id) return;
     var d = $('rd');
     if (!d) return;
+    // The chips after an agent run (P-069) pass { mode: 'serve' | 'run', command } to open it on their option.
+    var opts = arguments[0] && typeof arguments[0] === 'object' && typeof arguments[0].mode === 'string' ? arguments[0] : {};
     var s = suggestCommand();
-    $('rdCommand').value = s.command || '';
+    $('rdCommand').value = (opts.mode === 'run' && opts.command) || s.command || '';
     $('rdPort').value = s.port || '';
     $('rdErr').textContent = '';
-    var mode = (s.command && !P.files['index.html']) ? 'run' : 'serve';
+    var mode = opts.mode === 'run' || opts.mode === 'serve' ? opts.mode : (s.command && !P.files['index.html']) ? 'run' : 'serve';
     var sync = function () { $('rdRun').hidden = document.querySelector('input[name=rmode]:checked').value !== 'run'; };
     document.querySelectorAll('input[name=rmode]').forEach(function (x) { x.checked = x.value === mode; x.onchange = sync; });
     sync();
@@ -735,6 +796,8 @@
     liveReload: liveReload, reload: reload, activate: activate, restoreId: restoreId, setBusy: setBusy, diffNode: diffNode,
     id: function () { return P.id; }, title: function () { return P.title; }, active: function () { return P.active; },
     on: function () { return !!P.id; }, flush: flush,
+    paths: function () { return P.id ? order(Object.keys(P.files)) : []; },     // the open project's text files (P-069 @file)
+    onMac: function () { return ON_MAC; }, available: function () { return !P.disabled && !!VF; },
     _state: P   // for tests and debugging
   };
 })();

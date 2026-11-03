@@ -1466,6 +1466,19 @@ def get_run(pid: str, run_id: str, since: int = 0, wait: float = 0.0) -> dict:
     return view
 
 
+def run_replies(pid: str, run_id: str, after: int = 0) -> list:
+    """The model's replies after step `after`, as the run log keeps them (redacted, at most REPLY_LOG_CHARS), for the
+    page's Raw replies switch (P-069). Only asked for by name (?replies=N): get_run never returns them."""
+    vp.project_dir(pid)
+    after = int(after or 0)
+    out = []
+    for e in _file_events(pid, run_id):
+        n = _step_of(e)
+        if e.get("type") == "reply" and n is not None and n > after:
+            out.append({k: e[k] for k in ("step", "t", "chars", "cut", "redacted", "text") if k in e})
+    return out
+
+
 # ── Continue: a new run that starts with an ended run's turns (P-044, docs/VIBE-AGENT-CONTINUE-DESIGN.md) ──
 
 def _newest_run(pid: str) -> "str | None":

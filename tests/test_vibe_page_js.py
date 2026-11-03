@@ -138,7 +138,8 @@ def test_inspect_writes_only_what_the_owner_touched_in_the_file_the_preview_show
 # ── 5. one answer at a time ─────────────────────────────────────────────
 
 def test_enter_while_an_answer_streams_starts_no_second_request():
-    assert fn("sendVibe").startswith("function sendVibe() {\n  if (_vibeBusy) return;")
+    busy = "  if (_vibeBusy) { if (window.VibeAgent) VibeAgent.command(inp, true); return; }"     # only /stop runs (P-069)
+    assert fn("sendVibe").startswith("function sendVibe() {\n  var inp = document.getElementById('vi');\n" + busy)
     send = fn("doSend")
     assert send.index("if (_vibeBusy) return;") < send.index("var t = inp.value.trim();")
     assert send.index("_vibeBusy = true;") < send.index("(async function() {")
