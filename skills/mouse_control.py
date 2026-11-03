@@ -230,13 +230,14 @@ def _click_and_verify(x, y, target, kind="left"):
 # Mouse control uses the UI-TARS model, served by the unified mlx_vlm server
 # on :8083 (same endpoint as Qwen 3.6 — one multi-model server hosts Qwen,
 # Qwen-VL, and UI-TARS-1.5-7B together).
+import codec_models  # model ids by role (P-057)
 try:
     from codec_config import cfg
     VISION_URL = cfg.get("ui_tars_base_url", "http://localhost:8083/v1").rstrip("/") + "/chat/completions"
-    VISION_MODEL = cfg.get("ui_tars_model", "mlx-community/UI-TARS-1.5-7B-4bit")
+    VISION_MODEL = codec_models.resolve("ui_tars", cfg)
 except ImportError:
     VISION_URL = "http://localhost:8083/v1/chat/completions"
-    VISION_MODEL = "mlx-community/UI-TARS-1.5-7B-4bit"
+    VISION_MODEL = codec_models.default_for("ui_tars")
 
 _SCREENSHOT_PATH = os.path.expanduser("~/.codec/mouse_screen.png")
 _screen_size = None

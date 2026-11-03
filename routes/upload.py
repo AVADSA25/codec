@@ -29,6 +29,7 @@ import requests as rq
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
+import codec_models
 import codec_pdftext
 from codec_audit import log_event
 from routes._shared import CONFIG_PATH
@@ -268,7 +269,7 @@ async def upload_image(request: Request):
         except (OSError, json.JSONDecodeError) as e:
             log.warning(f"Config read failed; proceeding without overrides: {e}")
         vision_url = config.get("vision_base_url", "http://localhost:8083/v1")
-        vision_model = config.get("vision_model", "mlx-community/Qwen3.6-35B-A3B-4bit")
+        vision_model = codec_models.resolve("vision", config)
         payload = {
             "model": vision_model,
             "messages": [{"role": "user", "content": [

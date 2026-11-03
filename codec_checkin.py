@@ -211,10 +211,11 @@ _SYSTEM = ("You are CODEC's quiet check-in. Look at the snapshot of the owner's 
 def _ask_model(snap: Dict[str, Any]) -> str:
     import codec_cloud_models
     import codec_llm
+    import codec_models
     from codec_config import get_llm_api_key
     config = _read_config()
     base_url, model = codec_cloud_models.local_only(config.get("llm_base_url", "http://localhost:8083/v1"),
-                                                    config.get("llm_model", "mlx-community/Qwen3.6-35B-A3B-4bit"),
+                                                    codec_models.resolve("chat", config),
                                                     config)
     if not codec_cloud_models.is_local_url(base_url):
         raise RuntimeError("no local model")

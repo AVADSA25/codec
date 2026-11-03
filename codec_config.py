@@ -178,7 +178,8 @@ USER_NAME         = cfg.get('user_name', '')
 
 # LLM
 QWEN_BASE_URL     = cfg.get("llm_base_url", "http://localhost:8083/v1")
-QWEN_MODEL        = cfg.get("llm_model", "mlx-community/Qwen3.6-35B-A3B-4bit")
+import codec_models  # noqa: E402  model ids by role (P-057, docs/MODEL-RESOLVE-DESIGN.md)
+QWEN_MODEL        = codec_models.resolve("chat", cfg)
 
 
 # In-memory cache for the Keychain-backed secret helpers. PR-2B failure-mode
@@ -365,16 +366,16 @@ LLM_PROVIDER      = cfg.get("llm_provider", "mlx")
 
 # Vision (general — images, documents, screen reading)
 QWEN_VISION_URL   = cfg.get("vision_base_url", "http://localhost:8083/v1")
-QWEN_VISION_MODEL = cfg.get("vision_model", "mlx-community/Qwen3.6-35B-A3B-4bit")
+QWEN_VISION_MODEL = codec_models.resolve("vision", cfg)
 
 # UI-TARS (UI-specialist — mouse control coordinate extraction)
 UI_TARS_URL       = cfg.get("ui_tars_base_url", "http://localhost:8083/v1")
-UI_TARS_MODEL     = cfg.get("ui_tars_model", "mlx-community/UI-TARS-1.5-7B-4bit")
+UI_TARS_MODEL     = codec_models.resolve("ui_tars", cfg)
 
 # TTS
 TTS_ENGINE        = cfg.get("tts_engine", "kokoro")
 KOKORO_URL        = cfg.get("tts_url", "http://localhost:8085/v1/audio/speech")
-KOKORO_MODEL      = cfg.get("tts_model", "mlx-community/Kokoro-82M-bf16")
+KOKORO_MODEL      = codec_models.resolve("tts", cfg)
 TTS_VOICE         = cfg.get("tts_voice", "am_adam")
 # Kokoro speech speed for every non-live-voice caller (1.0 = server default).
 TTS_SPEED         = float(cfg.get("tts_speed", 1.0))
@@ -382,6 +383,7 @@ TTS_SPEED         = float(cfg.get("tts_speed", 1.0))
 # STT
 STT_ENGINE        = cfg.get("stt_engine", "whisper_http")
 WHISPER_URL       = cfg.get("stt_url", "http://localhost:8084/v1/audio/transcriptions")
+STT_MODEL         = codec_models.resolve("stt", cfg)
 
 # Paths
 # Migrate from legacy ~/.q_memory.db to ~/.codec/memory.db

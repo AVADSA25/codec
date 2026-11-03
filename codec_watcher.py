@@ -20,15 +20,17 @@ if __name__ == "__main__":
 # hardcoded localhost URLs that silently desynced on a non-default setup.
 try:
     from codec_config import QWEN_BASE_URL, QWEN_MODEL, QWEN_VISION_URL, QWEN_VISION_MODEL, KOKORO_URL, TTS_VOICE, TTS_SPEED
+    from codec_config import KOKORO_MODEL
 except ImportError:
+    import codec_models  # model ids by role (P-057)
     QWEN_BASE_URL  = "http://localhost:8083/v1"
-    QWEN_MODEL     = "mlx-community/Qwen3.6-35B-A3B-4bit"
+    QWEN_MODEL     = codec_models.default_for("chat")
     QWEN_VISION_URL = "http://localhost:8083/v1"
-    QWEN_VISION_MODEL = "mlx-community/Qwen3.6-35B-A3B-4bit"
+    QWEN_VISION_MODEL = codec_models.default_for("vision")
     KOKORO_URL     = "http://localhost:8085/v1/audio/speech"
     TTS_VOICE      = "am_adam"
     TTS_SPEED      = 1.0
-KOKORO_MODEL   = "mlx-community/Kokoro-82M-bf16"
+    KOKORO_MODEL   = codec_models.default_for("tts")
 try:
     import codec_tts as _codec_tts          # voice 02 (docs/CODEC-VOICE-02-DESIGN.md); absent when run apart from the repo
 except ImportError:

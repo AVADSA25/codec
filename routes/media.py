@@ -21,6 +21,7 @@ from datetime import datetime
 from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
+import codec_models
 from routes._shared import CONFIG_PATH, _audit_event
 
 router = APIRouter()
@@ -55,7 +56,7 @@ async def webcam_capture(request: Request):
                 except Exception:
                     pass
                 vision_url = config.get("vision_base_url", "http://localhost:8083/v1")
-                vision_model = config.get("vision_model", "mlx-community/Qwen2.5-VL-7B-Instruct-4bit")
+                vision_model = codec_models.resolve("vision", config)
                 payload = {
                     "model": vision_model,
                     "messages": [{"role": "user", "content": [

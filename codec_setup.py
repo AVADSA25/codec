@@ -39,6 +39,7 @@ import urllib.error
 import urllib.request
 from typing import Any, Dict, List, Optional
 
+import codec_models
 from codec_jsonstore import atomic_write_json
 
 CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
@@ -48,7 +49,8 @@ HF_CACHE = os.path.expanduser("~/.cache/huggingface/hub")
 # The model fetch_models.py actually downloads for a fresh install. The old
 # default named a 20 GB model nobody had — the mismatch that made every first
 # chat fail. Keep these two in step: packaging/macos/models.json is the source.
-BUNDLED_LOCAL_MODEL = "mlx-community/Qwen2.5-7B-Instruct-4bit"
+# The id itself is codec_models.DEFAULT_MODEL (P-057: one place for model ids).
+BUNDLED_LOCAL_MODEL = codec_models.DEFAULT_MODEL
 
 
 def bundled_local_revision():
