@@ -543,6 +543,40 @@ def _open_audit_log_append() -> "object":
     return open(_AUDIT_LOG, "a", encoding="utf-8")
 
 
+# P-081 (docs/AUDIT-SECRET-KEEP-DESIGN.md): lines _write could not write (full
+# disk, permissions, a value that does not serialize). Per process, in memory;
+# GET /api/status shows the dashboard's. One stdlib warning per
+# _FAIL_WARN_EVERY seconds at most — never audit(), which would re-enter _write.
+_write_failures = 0
+_last_fail_warning: Optional[float] = None
+_FAIL_WARN_EVERY = 60.0
+_FAIL_LOCK = threading.Lock()
+_fail_clock = time.monotonic  # tests replace it
+
+
+def _note_write_failure(stage: str, exc: BaseException) -> None:
+    """Count one dropped audit line; warn at most once a minute. Never raises."""
+    global _write_failures, _last_fail_warning
+    try:
+        with _FAIL_LOCK:
+            _write_failures += 1
+            count = _write_failures
+            now = _fail_clock()
+            warn = _last_fail_warning is None or now - _last_fail_warning >= _FAIL_WARN_EVERY
+            if warn:
+                _last_fail_warning = now
+        if warn:
+            log.warning("audit line not written (%s: %s %s); %d lost by this process so far",
+                        stage, type(exc).__name__, getattr(exc, "strerror", None) or "", count)
+    except Exception:
+        pass
+
+
+def write_failures() -> int:
+    """How many audit lines this process could not write since it started."""
+    return _write_failures
+
+
 def _write(record: dict) -> None:
     """Serialize one record to the audit log with secret redaction + HMAC
     signature + 0600 perm enforcement. Never raises.
@@ -566,7 +600,8 @@ def _write(record: dict) -> None:
             redacted["hmac"] = ""
             redacted["hmac_status"] = "unsigned_keychain_unavailable"
         line = _canonical_json(redacted) + "\n"
-    except Exception:
+    except Exception as e:
+        _note_write_failure("prepare", e)
         return
     try:
         with _LOCK:
@@ -584,8 +619,8 @@ def _write(record: dict) -> None:
                     f.write(line)
                 finally:
                     f.close()
-    except Exception:
-        pass
+    except Exception as e:
+        _note_write_failure("append", e)
 
 
 # ── Public emitters ────────────────────────────────────────────────────────────

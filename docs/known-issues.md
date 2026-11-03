@@ -15,6 +15,16 @@ Intentionally-deferred bugs and test failures with documented status, so we don'
 | **status** | deferred-not-fixed: the fix needs a test helper that reads FastAPI's route contexts (private API) and touches security-regression tests, so it gets its own PR. |
 | **revisit when** | Before merging the D-33 CI PR (the required `smoke` check stays red until then). |
 
+## Headless secret store: other keys are written without the lock (found 2026-11-03, P-081 review)
+
+| field | value |
+|---|---|
+| **where** | `codec_keychain._fallback_set`, `_fallback_delete` and `_fallback_key` (headless only: no `/usr/bin/security`, e.g. Linux CI) |
+| **what's broken** | P-081 puts the audit secret's read and create inside `codec_jsonstore.file_lock(secrets.enc.json)`, but every other key (`internal_token`, `dashboard_token`, provider keys) still does load, change, save with no lock. A daemon saving another key at the same moment can write back a store read before the audit secret was added, so the entry disappears; the next cache miss then finds it "missing" and creates a new one, and lines signed with the old one read as broken. Two processes creating `secret.key` at once share one `.key.tmp` name, so one may replace the key the other just used. |
+| **why deferred** | Outside P-081's brief (the audit secret's own bootstrap race). The fix puts every fallback write under the same lock, with an unlocked inner writer for the audit path (the lock is not re-entrant), which touches how every secret is stored headless. The Mac uses the Keychain and is not affected. |
+| **status** | deferred-not-fixed |
+| **revisit when** | Before CODEC is supported on a machine without the macOS Keychain. |
+
 ## Tests that need the owner's Mac, not a CI runner (found 2026-10-29, first macos-14 CI run)
 
 | field | value |
