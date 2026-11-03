@@ -12,7 +12,7 @@ releases. Same security model, same feed, no fragile framework embed.
 Flow:
     info = check_for_update()          # → UpdateInfo | None
     if info:
-        dmg = download_and_verify(info)   # Ed25519-verified .dmg on disk
+        dmg = download_and_verify(info)   # Ed25519-verified .dmg on disk, ~/.codec copied first
         # surface "Update to {info.version}" in the dashboard; user opens dmg
 
 Feed URL + public key come from ~/.codec/config.json (sparkle_feed_url /
@@ -23,8 +23,11 @@ from __future__ import annotations
 
 import base64
 import json
+import mmap
 import os
 import re
+import tempfile
+import time
 import urllib.request
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
@@ -41,6 +44,8 @@ DEFAULT_PUBLIC_KEY = "Az+iqcmusmWvyLEB7lW4j2J2kxGy6uLobNaH7ZIahys="
 
 _SPARKLE_NS = "http://www.andymatuschak.org/xml-namespaces/sparkle"
 _CONFIG_PATH = Path(os.path.expanduser("~/.codec/config.json"))
+_CHUNK = 1 << 20                 # download piece size (P-027: the DMG is never held in memory)
+_MAX_UNSIZED_BYTES = 4 << 30     # cap for an appcast item that gives no length
 
 
 @dataclass
@@ -157,8 +162,9 @@ def check_for_update(feed_url: Optional[str] = None, *, timeout: float = 8.0,
     return latest if is_newer(latest.version, _current_version()) else None
 
 
-def verify_ed25519(data: bytes, ed_signature_b64: str, public_key_b64: str) -> bool:
-    """Verify a Sparkle Ed25519 signature (base64) over `data`. False on any failure."""
+def verify_ed25519(data, ed_signature_b64: str, public_key_b64: str) -> bool:
+    """Verify a Sparkle Ed25519 signature (base64) over `data` (bytes or any buffer, e.g. an mmap of the
+    downloaded file). False on any failure."""
     try:
         pub = Ed25519PublicKey.from_public_bytes(base64.b64decode(public_key_b64))
         pub.verify(base64.b64decode(ed_signature_b64), data)
@@ -167,27 +173,81 @@ def verify_ed25519(data: bytes, ed_signature_b64: str, public_key_b64: str) -> b
         return False
 
 
+def _stream_to(r, f, expected: int) -> int:
+    """Copy the response into the file `f` in pieces; stop as soon as it is longer than allowed."""
+    limit = expected if expected else _MAX_UNSIZED_BYTES
+    total = 0
+    while True:
+        chunk = r.read(_CHUNK)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > limit:
+            if expected:
+                raise ValueError(f"length mismatch: got more than the expected {expected} bytes")
+            raise ValueError(f"download is larger than {limit} bytes and the appcast gives no length")
+        f.write(chunk)
+    return total
+
+
+def _remove_stale_partials(dest_dir: Path, fname: str) -> None:
+    """A crash mid-download leaves a hidden .partial file; remove ours that are more than a day old."""
+    now = time.time()
+    for p in dest_dir.glob(f".{fname}.*.partial"):
+        try:
+            if p.is_file() and not p.is_symlink() and now - p.stat().st_mtime > 86400:
+                p.unlink()
+        except OSError:
+            pass
+
+
 def download_and_verify(info: UpdateInfo, *, dest_dir: Optional[Path] = None,
-                        timeout: float = 120.0, cfg: Optional[dict] = None) -> Path:
+                        timeout: float = 120.0, cfg: Optional[dict] = None,
+                        state_dir: Optional[Path] = None, snapshot_dir: Optional[Path] = None) -> Path:
     """
-    Download the update, verify its Ed25519 signature against SUPublicEDKey, and
-    return the on-disk path. Raises ValueError if the signature doesn't verify —
-    a failed signature means the download is untrusted and MUST NOT be installed.
+    Download the update, verify its Ed25519 signature against SUPublicEDKey, copy CODEC's state, and
+    return the on-disk path. Raises ValueError if the signature doesn't verify — a failed signature
+    means the download is untrusted and MUST NOT be installed — and RuntimeError if the state copy
+    (codec_preupdate.snapshot of `state_dir`, default ~/.codec, into `snapshot_dir`) fails.
+
+    P-027: the file is streamed to a hidden .partial file in `dest_dir` and verified over an mmap of it,
+    so it is never held in memory; only a verified file with a state copy reaches its final name.
     """
     dest_dir = dest_dir or Path(os.path.expanduser("~/Downloads"))
     dest_dir.mkdir(parents=True, exist_ok=True)
     fname = info.url.rstrip("/").split("/")[-1] or "CODEC-update.dmg"
     out = dest_dir / fname
-
-    with urllib.request.urlopen(info.url, timeout=timeout) as r:
-        data = r.read()
-
-    if info.length and len(data) != info.length:
-        raise ValueError(f"length mismatch: got {len(data)}, expected {info.length}")
     if not info.ed_signature:
         raise ValueError("update has no Ed25519 signature — refusing (untrusted)")
-    if not verify_ed25519(data, info.ed_signature, _public_key(cfg)):
-        raise ValueError("Ed25519 signature verification FAILED — refusing (untrusted)")
+    _remove_stale_partials(dest_dir, fname)
 
-    out.write_bytes(data)
-    return out
+    fd, tmp = tempfile.mkstemp(dir=str(dest_dir), prefix=f".{fname}.", suffix=".partial")  # 0600
+    keep = False
+    try:
+        with os.fdopen(fd, "wb") as f:
+            with urllib.request.urlopen(info.url, timeout=timeout) as r:
+                size = _stream_to(r, f, info.length)
+        if info.length and size != info.length:
+            raise ValueError(f"length mismatch: got {size}, expected {info.length}")
+        if size == 0:
+            raise ValueError("the download is empty — refusing (untrusted)")
+        with open(tmp, "rb") as f, mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as data:
+            ok = verify_ed25519(data, info.ed_signature, _public_key(cfg))
+        if not ok:
+            raise ValueError("Ed25519 signature verification FAILED — refusing (untrusted)")
+
+        import codec_preupdate
+        snap = codec_preupdate.snapshot(state_dir, snapshot_dir,
+                                        label=f"app {_current_version()} -> {info.version}")
+        if not snap["ok"]:
+            raise RuntimeError("could not save a copy of CODEC's data before the update "
+                               f"({snap['error']}); the download was not kept")
+        os.replace(tmp, out)
+        keep = True
+        return out
+    finally:
+        if not keep:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
