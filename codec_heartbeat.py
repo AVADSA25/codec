@@ -50,12 +50,17 @@ def check_pending_tasks():
         log.error(f"Task check failed: {e}")
         return []
 
-def _check_one_service(name: str, url: str) -> tuple:
-    """Check a single service endpoint. Returns (name, status_string)."""
+def _check_one_service(name: str, url: str, starting: bool = False) -> tuple:
+    """Check a single service endpoint. Returns (name, status_string).
+
+    `starting` (P-059): the service's PM2 app started under 5 min ago and may
+    still be loading, so no answer reads "starting" and is no service_down."""
     try:
         r = requests.get(url, timeout=5)
         status = "ok" if r.status_code in (200, 404, 405) else f"HTTP {r.status_code}"
     except Exception:
+        if starting:
+            return name, "starting"
         status = "DOWN"
         log_event("service_down", "codec-heartbeat",
                   f"Service down: {name}",
@@ -64,12 +69,34 @@ def _check_one_service(name: str, url: str) -> tuple:
     return name, status
 
 
-def check_system_health():
+# The PM2 app behind each check_system_health probe, for the start grace (P-059).
+_HEALTH_PM2_APPS = {"LLM/Vision": "qwen3.6", "Whisper": "whisper-stt",
+                    "Kokoro": "kokoro-82m", "Dashboard": "codec-dashboard"}
+
+
+def _apps_starting(procs, now_ts=None) -> set:
+    """Probe names whose PM2 app started under 5 min ago, by the rule of
+    codec_models.pm2_app_loading on the heartbeat's `pm2 jlist` list."""
+    if not procs:
+        return set()
+    try:
+        import codec_models
+        return {name for name, app in _HEALTH_PM2_APPS.items()
+                if codec_models.pm2_app_loading(procs, app, now_ts)}
+    except Exception:
+        return set()
+
+
+def check_system_health(procs=None, now_ts=None):
     """Verify all CODEC services are running (checks run in parallel).
 
     Only HTTP-exposing services are probed here. PM2-supervised daemons
     (codec-observer, codec-agent-runner) rely on PM2's autorestart for
     crash recovery — see AGENTS.md §3 "Background Execution".
+
+    `procs` is the heartbeat's `pm2 jlist` list (P-059): a service whose PM2
+    app started under 5 min ago is still loading, so its silence is not a
+    service_down event. `now_ts` (epoch seconds) is the clock, for tests.
     """
     # NOTE: LLM and Vision are served by the same qwen process on :8083 —
     # probe it ONCE. The former duplicate "Vision" entry double-counted
@@ -81,9 +108,10 @@ def check_system_health():
         "Kokoro": "http://localhost:8085/v1/models",
         "Dashboard": "http://localhost:8090/",
     }
+    starting = _apps_starting(procs, now_ts)
     with ThreadPoolExecutor(max_workers=len(services)) as pool:
         futures = {
-            pool.submit(_check_one_service, name, url): name
+            pool.submit(_check_one_service, name, url, name in starting): name
             for name, url in services.items()
         }
         for future in as_completed(futures):
@@ -581,8 +609,8 @@ def heartbeat():
     """Run one heartbeat cycle."""
     global _last_cleanup
     log.info("═══ CODEC Heartbeat ═══")
-    check_system_health()
-    procs = _pm2_jlist()  # one `pm2 jlist` for the three PM2 checks
+    procs = _pm2_jlist()  # one `pm2 jlist` for the PM2 checks and the start grace (P-059)
+    check_system_health(procs)
     check_pm2_restart_storms(procs)
     for check in (lambda: check_errored_codec_apps(procs), lambda: maybe_send_daily_status(procs=procs)):
         try:
@@ -592,7 +620,7 @@ def heartbeat():
     # Run alert-based service monitoring (Telegram/Email/Slack)
     try:
         from codec_alerts import check_services_and_alert
-        check_services_and_alert()
+        check_services_and_alert(procs)
     except ImportError:
         pass
     except Exception as e:
@@ -631,9 +659,16 @@ def heartbeat():
               extra={"tasks_run": len(tasks) if hasattr(tasks, '__len__') else None})
     return tasks
 
+# P-059: after a boot or deploy the first check waits this long, so services
+# that start with the Mac are not probed (and restarted) while they load.
+# Used by this daemon and by codec-dashboard's _bg_heartbeat.
+FIRST_TICK_DELAY_S = 120
+
+
 def run_daemon(interval_minutes=20):
-    """Run heartbeat every N minutes."""
+    """Run heartbeat every N minutes, the first FIRST_TICK_DELAY_S after start."""
     log.info(f"Heartbeat daemon starting (every {interval_minutes}min)")
+    time.sleep(FIRST_TICK_DELAY_S)
     while True:
         heartbeat()
         time.sleep(interval_minutes * 60)
