@@ -48,7 +48,7 @@ def fresh(tmp_path, monkeypatch):
 
 def scripted(monkeypatch, calls: list):
     """_complete replaced by a fake: one note line per user line of the chunk; a merge halves the notes."""
-    def fake(messages, llm, max_tokens):
+    def fake(messages, llm, max_tokens, whole=False):
         calls.append(copy.deepcopy(messages))
         if "Rewrite them" in messages[0]["content"]:
             return "- merged: " + messages[-1]["content"][:400]
@@ -209,6 +209,26 @@ def test_long_notes_are_merged(monkeypatch):
     merges = [c for c in calls if "Rewrite them" in c[0]["content"]]
     assert merges and done.text.startswith("- merged: ")
     assert notes._lookup(notes._prefix_keys(hist)) == done
+    have = int(re.search(r"they are (\d+) words now", merges[0][0]["content"]).group(1))
+    assert have == len(merges[0][1]["content"].split()), "the merge is told how long the notes are now"
+    assert job.merges and job.merges[0][1] < job.merges[0][0]
+
+
+def test_a_merge_cut_by_the_token_cap_is_not_used(monkeypatch):
+    import codec_llm
+    monkeypatch.setattr(codec_llm, "stream",
+                        lambda messages, **kw: iter(["- one\n", "- two\n- thr", codec_llm.FINISH_LENGTH]))
+    msg = [{"role": "user", "content": "x"}]
+    assert REAL_COMPLETE(msg, LOCAL, 10) == "- one\n- two", "a cut segment keeps its whole lines"
+    assert REAL_COMPLETE(msg, LOCAL, 10, whole=True) == "", "a cut merge would lose the newest notes"
+    monkeypatch.setattr(notes, "_complete", lambda messages, llm, max_tokens, whole=False:
+                        "" if whole else "- a new note")
+    msgs = ev.messages_at(DATA, 40)
+    hist = history_of(msgs)
+    long = "- an earlier note\n" * 400
+    job = notes.NotesJob(hist, notes._prefix_keys(hist), 0, long, 4000, LOCAL)
+    assert job.run().text.startswith(long.strip()), "the notes stay as they were, not cut"
+    assert job.merges and all(after == before for before, after in job.merges)
 
 
 @pytest.fixture

@@ -60,10 +60,12 @@ _SEGMENT_RULES = (
     "anything that is not in the messages. At most {words} words. Write only the notes.")
 _MERGE_RULES = (
     "These are notes on a long chat between a user and CODEC, written part by part. Rewrite them in at "
-    "most {words} words. Keep every specific detail exactly as written: names, numbers, amounts, dates, "
-    "times, codes, decisions, preferences and open questions. Drop general advice and repeats. Where a later "
-    "line changes an earlier one, keep only the later value. One fact per line, each starting with \"- \". "
-    "Write only the notes.")
+    "most {words} words; they are {have} words now. To get there, put the facts about one subject (an "
+    "event, a person, a trip, a pet, a budget) together on one line; where a later line changes an earlier "
+    "one, keep only the later value; for drafts, posts and lists CODEC wrote, keep only what they were for; "
+    "drop general advice and repeats. Keep every remaining specific detail exactly as written: names, "
+    "numbers, amounts, dates, times, codes, decisions, preferences and open questions. One line per "
+    "subject, each starting with \"- \". Write only the notes.")
 _NOTES_INTRO = (
     NOTES_START + ". The chat is too long to send in full, so CODEC wrote these notes on its first {n} "
     "messages, in the order of the chat; where a later note changes an earlier one, the later note is right. "
@@ -261,8 +263,9 @@ def _plain(m: dict) -> str:
     return f"{who}: {text.strip()}"
 
 
-def _complete(messages: list, llm: dict, max_tokens: int) -> str:
-    """One notes call on the local model. "" when it failed or a voice session opened."""
+def _complete(messages: list, llm: dict, max_tokens: int, whole: bool = False) -> str:
+    """One notes call on the local model. "" when it failed or a voice session opened, and with
+    `whole` also when the token cap cut the reply (a cut merge would lose the newest notes)."""
     import codec_llm
     if voice_session_open():
         return ""           # the voice rule: no notes call starts while a voice session is open
@@ -290,6 +293,8 @@ def _complete(messages: list, llm: dict, max_tokens: int) -> str:
         if hasattr(gen, "close"):
             gen.close()     # closes the connection when the loop stopped early
     text = codec_llm.strip_think("".join(out)).strip()
+    if cut and whole:
+        return ""
     if cut and "\n" in text:
         text = text[:text.rfind("\n")].strip()   # the last line was cut off by the token cap
     return text
@@ -303,6 +308,7 @@ class NotesJob:
         self.history, self.keys, self.start_at, self.end = history, keys, start, len(history)
         self.notes, self.budget, self.llm = notes, budget, llm
         self.stopped: Optional[str] = None
+        self.merges: List[Tuple[int, int]] = []     # (words before, words after; after == before: not used)
 
     def chunks(self) -> List[Tuple[int, int]]:
         """Whole turns from start to end, about CHUNK_TOKENS of text each (one turn at least)."""
@@ -362,10 +368,13 @@ class NotesJob:
             text = (text + "\n" + segment).strip() if text else segment
             if _tokens(text) > cap:
                 target = int(cap * MERGE_SHARE * CHARS_PER_TOKEN / 6)
-                merged = _complete([{"role": "system", "content": _MERGE_RULES.format(words=target)},
-                                    {"role": "user", "content": text}], self.llm, int(target * 2) + 64)
+                rules = _MERGE_RULES.format(words=target, have=len(text.split()))
+                merged = _complete([{"role": "system", "content": rules}, {"role": "user", "content": text}],
+                                   self.llm, cap + 64, whole=True)
+                before = len(text.split())
                 if merged and len(merged) < len(text):
                     text = merged
+                self.merges.append((before, len(text.split())))
             done = Notes(b, text)
             _store(self.keys[b], done)
             log.info("[chat notes] notes on messages 1-%d: %d words", b, len(text.split()))

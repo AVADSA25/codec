@@ -251,7 +251,7 @@ def run(data: dict, llm: dict, log: ServerLog, verbose: bool = True) -> dict:
             done = job.run()
             row["job"] = {"from": job.start_at, "to": job.end, "chunks": len(job.chunks()),
                           "seconds": round(time.monotonic() - t0, 1), "stopped": job.stopped,
-                          "notes_words": len(done.text.split()) if done else 0}
+                          "notes_words": len(done.text.split()) if done else 0, "merges": job.merges}
         turns.append(row)
         if verbose:
             print(f"turn {t:2d}: {row['estimated_tokens']:6d} est. tokens, {row['summarised']:3d} summarised, "
