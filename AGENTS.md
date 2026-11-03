@@ -428,7 +428,7 @@ The crew / custom-agent `shell_execute` tool runs `sandbox-exec -f <profile> /bi
 
 ### Dashboard session cookie (Sep 2026 audit follow-up)
 
-Logins (`routes/auth.py`) set the session as an **HttpOnly** `codec_session` cookie in the response, plus a separate random `codec_csrf` cookie that pages echo in `x-csrf-token`. The token is never in a response body, a URL (`?s=` is no longer accepted), sessionStorage, or a log line. Never reintroduce page-side token handling: same-origin fetches, images, streams and the WebSocket send the cookie by themselves. Touch ID verify is Mac-only (403 for tunnel requests). Details: `docs/SECURITY-HARDENING-2026-09.md`.
+Logins (`routes/auth.py`) set the session as an **HttpOnly** `codec_session` cookie in the response, plus a separate random `codec_csrf` cookie that pages echo in `x-csrf-token`. The token is never in a response body, a URL (`?s=` is no longer accepted), sessionStorage, or a log line. Never reintroduce page-side token handling: same-origin fetches, images, streams and the WebSocket send the cookie by themselves. Touch ID verify is Mac-only (403 for tunnel requests). Every session id comes from `secrets.token_hex(32)` in the route; the Touch ID helper's own `token` is ignored (P-088). Details: `docs/SECURITY-HARDENING-2026-09.md`.
 
 ### Host allowlist + Mac-only code execution (Sep 2026 audit follow-up)
 
