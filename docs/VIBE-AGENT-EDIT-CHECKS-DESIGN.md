@@ -46,6 +46,12 @@ Rules:
 - The Python grammar is the one of the Python that runs the dashboard; the note names that version.
 - A check that raises (recursion, a parser bug) gives no note; a step is never broken by its check.
 
+- Time: the check runs in the dashboard process on files of up to 1 MB, so no check may be quadratic. HTML is
+  fed to the parser and not closed: before the gh-135462 fix (the dashboard's Python 3.13.2) `close()` is quadratic
+  on an unfinished tag or comment (100 KB of `<a b=` took 54 s), while `feed()` alone stops there, as a browser
+  reads it. A JS regex literal is looked for up to 512 characters, and once failed tries have scanned 256 KB in one
+  file `/` counts as division (100 KB of `(/[` took 78 s without that cap). A 1 MB file checks in well under 1 s.
+
 Cost: up to 1 KB per edit in the 10k context window, only when the file fails. A result longer than 6 KB reaches the
 model as head and tail (P-040); the tail keeps the last 4 KB whole, so the note always survives the cut.
 

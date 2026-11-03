@@ -48,6 +48,10 @@ OPTIONAL_END_TAGS = frozenset("html head body p li dt dd option optgroup rb rt r
 _JS_TOKEN_RE = re.compile(r'//[^\n]*|/\*.*?(?:\*/|\Z)|"(?:\\.|[^"\\\n])*"?|\'(?:\\.|[^\'\\\n])*\'?|`(?:\\.|[^`\\])*`?'
                           r'|[A-Za-z_$][\w$]*|\d[\w.]*|\S', re.S)
 _JS_REGEX_RE = re.compile(r'/(?:\\.|\[(?:\\.|[^\]\\\n])*\]|[^/\\\n\[])+/[A-Za-z]*')
+_JS_REGEX_MAX_CHARS = 512          # the longest regex literal looked for; a longer one is counted as code
+_JS_REGEX_BUDGET = 256 * 1024      # characters failed regex tries may scan in one file, then `/` is division:
+#                                    a try that fails scans to its line end, so one long line of `(/[` would otherwise
+#                                    cost (size / 3) x line length steps in the dashboard process
 _JS_REGEX_AFTER = frozenset("( , = : [ ! & | ? { } ; + - * % < > ~ ^".split())
 _JS_REGEX_AFTER_WORDS = frozenset("return typeof case do else in of new delete void throw yield await instanceof".split())
 _CSS_TOKEN_RE = re.compile(r'/\*.*?(?:\*/|\Z)|"(?:\\.|[^"\\\n])*"?|\'(?:\\.|[^\'\\\n])*\'?|[(){}\[\]]', re.S)
@@ -208,8 +212,9 @@ class _TagBalance(HTMLParser):
 
 def _html(path: str, text: str) -> "Note | None":
     parser = _TagBalance()
-    parser.feed(text)
-    parser.close()
+    parser.feed(text)       # no close(): before the gh-135462 fix (3.13.2 runs the dashboard) close() is quadratic on an
+    #                         unfinished tag or comment (100 KB of `<a b=` took 54 s); feed() alone stops there, as a
+    #                         browser does, and every complete tag before it has been counted
     problems = parser.stack.finish()
     if not problems:
         return None
@@ -240,6 +245,7 @@ def _js(path: str, text: str) -> "Note | None":
     line_at = _line_finder(text)
     stack = _bracket_stack()
     prev, pos = "", 0                               # prev: the last token that is not a comment ("" at the start)
+    budget = _JS_REGEX_BUDGET
     while True:
         m = _JS_TOKEN_RE.search(text, pos)
         if not m:
@@ -250,11 +256,13 @@ def _js(path: str, text: str) -> "Note | None":
         if tok[0] in "\"'`":
             prev = '"'
             continue
-        if tok == "/" and (prev == "" or prev in _JS_REGEX_AFTER or prev in _JS_REGEX_AFTER_WORDS):
-            r = _JS_REGEX_RE.match(text, start)
+        if tok == "/" and budget > 0 and (prev == "" or prev in _JS_REGEX_AFTER or prev in _JS_REGEX_AFTER_WORDS):
+            r = _JS_REGEX_RE.match(text, start, start + _JS_REGEX_MAX_CHARS)
             if r:
                 prev, pos = "/x/", r.end()
                 continue
+            nl = text.find("\n", start, start + _JS_REGEX_MAX_CHARS)      # a try never scans past its line
+            budget -= (nl if nl != -1 else min(len(text), start + _JS_REGEX_MAX_CHARS)) - start
         if tok in _CLOSE_OF:
             stack.open(tok, line_at(start))
         elif tok in _OPEN_OF:

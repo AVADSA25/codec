@@ -5,6 +5,7 @@ Pure text in, a note or None out: no files, no programs, no network.
 from __future__ import annotations
 
 import sys
+import time
 
 import pytest
 
@@ -107,6 +108,17 @@ def test_a_note_stays_within_one_kilobyte_and_lists_at_most_three_problems():
     assert n.text.count("\n- <div>") == vc.MAX_PROBLEMS and "- and 2997 more" in n.text
     long_line = note("app.py", "x = (" + "é" * 5000 + "\n")
     assert len(long_line.text.encode("utf-8")) <= vc.MAX_NOTE_BYTES
+
+
+def test_files_built_to_make_a_check_slow_still_check_in_seconds_not_minutes():
+    for path, text in (("app.js", "(/[" * 30000),          # a failed regex try on every `/`: 60 s without the cap
+                       ("index.html", "<a b=" * 20000),     # an unfinished tag: 54 s in close() before gh-135462
+                       ("page.html", "<!--" + "<a>" * 30000)):
+        t0 = time.perf_counter()
+        vc.check_file(path, text)
+        assert time.perf_counter() - t0 < 5, path
+    assert note("app.js", "(/[" * 30000).advisory                   # the count still runs to the end
+    assert note("index.html", "<div>\n<a b=\"x") is not None        # tags before an unfinished one are still counted
 
 
 @pytest.mark.parametrize("path", ["README.md", "notes.txt", "Makefile", "app.ts", "data.yaml", ".json"])
