@@ -753,12 +753,8 @@ def test_vibe():
     else:
         FAIL(A, 5, "Code execution", detail)
 
-    # 6: Live Preview
-    ok, detail = check_endpoint("/api/preview", method="POST")
-    if "400" in detail or "422" in detail or ok:
-        PASS(A, 6, "Live Preview panel", "Preview endpoint responsive")
-    else:
-        FAIL(A, 6, "Live Preview panel", detail)
+    # 6: Live Preview: a sandboxed srcdoc frame in the page; the old /api/preview route is gone (P-089)
+    SKIP(A, 6, "Live Preview panel", "UI-only (srcdoc frame)")
 
     # 7-9: UI features
     SKIP(A, 7, "Inspect mode for element inspection", "UI-only")

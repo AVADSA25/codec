@@ -82,3 +82,10 @@ def test_other_answers_get_no_page_policy(client):
     assert r.status_code == 200
     assert "content-security-policy" not in r.headers and "permissions-policy" not in r.headers
     assert r.headers["x-content-type-options"] == "nosniff"
+
+
+def test_the_old_preview_routes_are_gone(client):
+    assert client.post("/api/preview", json={"code": "<h1>x</h1>"}).status_code == 404
+    assert client.get("/preview_frame").status_code == 404
+    paths = {getattr(r, "path", "") for r in app.routes}
+    assert "/api/preview" not in paths and "/preview_frame" not in paths

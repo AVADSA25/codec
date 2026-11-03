@@ -859,8 +859,7 @@ async def vibe_page():
     with open(vibe_path) as f:
         return HTMLResponse(f.read(), headers=_NO_CACHE)
 
-# F5 preview → moved to routes/*.py
-# F5 preview_frame → moved to routes/*.py
+# F5 preview + preview_frame: removed (P-089); the Vibe preview is a sandboxed srcdoc frame.
 # F5 run_code → moved to routes/*.py
 # /api/save_file safety check — mirrors PR-1C's `file_write` skill blocklist.
 # A1 / SR-8: previously `~/.codec` was in the allowlist, which let any

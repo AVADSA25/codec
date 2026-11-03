@@ -123,15 +123,6 @@ class TestDashboardPages:
             csp = r.headers.get("content-security-policy", "")
             assert "unsafe-eval" not in csp, f"unsafe-eval found in CSP for {path}: {csp}"
 
-    def test_preview_frame_csp_no_unsafe_eval(self):
-        """Preview frame should also have no unsafe-eval."""
-        # Create a preview first
-        api_post("/api/preview", json={"code": "<h1>Test</h1>"})
-        r = api_get("/preview_frame")
-        if r.status_code == 200:
-            csp = r.headers.get("content-security-policy", "")
-            assert "unsafe-eval" not in csp, f"unsafe-eval in preview CSP: {csp}"
-
     def test_csp_has_no_outside_connect_sources(self):
         """P-089: connect-src is this origin and its own ws/wss host only."""
         for path in ["/", "/chat", "/vibe", "/voice", "/tasks"]:
@@ -470,14 +461,10 @@ class TestVibeCode:
         load_r = api_get(f"/api/vibe/session/{sid}")
         assert load_r.status_code == 200
 
-    def test_preview_html(self):
-        """Save and render HTML preview."""
-        r = api_post("/api/preview", json={"code": "<h1>Test Preview</h1>"})
-        assert r.status_code == 200
-
-        r2 = api_get("/preview_frame")
-        assert r2.status_code == 200
-        assert "Test Preview" in r2.text
+    def test_old_preview_routes_are_gone(self):
+        """P-089: the Vibe preview is a srcdoc frame; the server no longer stores or serves HTML."""
+        assert api_post("/api/preview", json={"code": "<h1>Test Preview</h1>"}).status_code == 404
+        assert api_get("/preview_frame").status_code == 404
 
 
 # ============================================================================

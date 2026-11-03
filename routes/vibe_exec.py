@@ -1,14 +1,15 @@
-"""CODEC Vibe IDE execution API — preview + run_code.
+"""CODEC Vibe IDE execution API — run_code.
 
-F5 / SR-54 (was E5): extracted from codec_dashboard.py. The 3 endpoints
-that back the Vibe IDE's live-preview + code-execution panel.
+F5 / SR-54 (was E5): extracted from codec_dashboard.py. The endpoint that
+backs the Vibe IDE's code-execution panel.
 
-  - /api/preview      writes user HTML to ~/.codec/preview.html
-  - /preview_frame    serves it inside a sandboxed iframe
-                      (CSP restricted: no dashboard APIs, no external resources)
   - /api/run_code     spawns a language-specific compiler/interpreter on a
                       tempfile, gates the source through `is_dangerous`,
                       cleans up the Rust `.out` binary in finally (H-8 fix).
+
+/api/preview and /preview_frame were removed in P-089: they wrote and served
+any HTML on the dashboard origin, and nothing but an audit script called them.
+The Vibe preview is a sandboxed srcdoc frame in the page (codec_vibe.html).
 """
 from __future__ import annotations
 
@@ -20,7 +21,7 @@ import tempfile
 import time as _time
 
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import JSONResponse
 
 import codec_envscrub
 
@@ -82,31 +83,6 @@ def _hardened_run_env() -> dict:
     env = codec_envscrub.scrub(os.environ, keep=_ENV_KEEP)
     env.setdefault("LC_ALL", "C.UTF-8")
     return env
-
-
-@router.post("/api/preview")
-async def preview_code(request: Request):
-    body = await request.json()
-    code = body.get("code", "")
-    preview_path = os.path.expanduser("~/.codec/preview.html")
-    with open(preview_path, "w") as f:
-        f.write(code)
-    return {"url": "/preview_frame", "path": preview_path}
-
-
-@router.get("/preview_frame", response_class=HTMLResponse)
-async def preview_frame():
-    try:
-        with open(os.path.expanduser("~/.codec/preview.html")) as f:
-            content = f.read()
-        # Restrict preview with CSP — no access to dashboard APIs or external resources
-        return HTMLResponse(content, headers={
-            "Content-Security-Policy": "default-src 'self' 'unsafe-inline' data: blob:; connect-src 'none'; form-action 'none'",
-            "X-Frame-Options": "SAMEORIGIN",
-        })
-    except OSError as e:
-        log.warning(f"Preview file read failed; showing placeholder: {e}")
-        return HTMLResponse("<html><body style='background:#0a0a0a;color:#888;padding:40px;font-family:sans-serif'><h2>No preview available</h2><p>Write some HTML and click Preview.</p></body></html>")
 
 
 _RUNCODE_TIMEOUT_S = 30
