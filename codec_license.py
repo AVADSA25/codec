@@ -261,9 +261,13 @@ def _read_grace() -> dict:
 
 def _write_grace(last_good_ts: float, tier: str, expires_at: str) -> None:
     try:
-        GRACE_STATE_PATH.write_text(json.dumps({
+        import os
+        import codec_jsonstore
+        # P-082: atomic replace, 0600; a folder made here is 0700.
+        os.makedirs(GRACE_STATE_PATH.parent, mode=0o700, exist_ok=True)
+        codec_jsonstore.atomic_write_json(GRACE_STATE_PATH, {
             "last_good_ts": last_good_ts, "tier": tier, "expires_at": expires_at,
-        }), encoding="utf-8")
+        })
     except Exception:
         pass
 

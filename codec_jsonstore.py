@@ -30,6 +30,7 @@ def atomic_write_json(
     *,
     default: Any = None,
     sort_keys: bool = False,
+    indent: Any = 2,
 ) -> None:
     """Atomically write `data` as JSON to `path` (tmp + fsync + replace, 0600).
 
@@ -37,6 +38,8 @@ def atomic_write_json(
     values — Fix #9 Phase 0, so this primitive subsumes the hand-rolled
     `default=str` helpers). `sort_keys` forces deterministic key ordering for
     callers that need stable diffs/hashes. Both default to the prior behavior.
+    `indent=None` writes compact JSON, byte for byte what a plain
+    `json.dump(data, f)` wrote (P-082: the auth sessions and E2E key files).
     """
     path = str(path)
     directory = os.path.dirname(path) or "."
@@ -44,7 +47,7 @@ def atomic_write_json(
     fd, tmp = tempfile.mkstemp(dir=directory, suffix=".tmp")
     try:
         with os.fdopen(fd, "w") as f:
-            json.dump(data, f, indent=2, default=default, sort_keys=sort_keys)
+            json.dump(data, f, indent=indent, default=default, sort_keys=sort_keys)
             f.flush()
             os.fsync(f.fileno())
         os.replace(tmp, path)
