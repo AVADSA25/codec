@@ -435,6 +435,9 @@ def test_the_doctor_buttons_sit_in_the_permissions_section():
     assert 'id="connDoctor"' in sec and "no keys, no file contents, no home-folder path" in sec
     block = HOME[HOME.index("// ── Connections (P3.9"):HOME.index("// ── Connector (external MCP) tab ──")]
     assert "_connJSON('/api/connections/doctor')" in block and "btn.addEventListener('click', connDoctorRun)" in block
+    perms = block[block.index("async function loadConnPerms("):block.index("function connDoctorHtml(")]
+    assert perms.index("addEventListener('click', connDoctorRun)") < perms.index("_connJSON('/api/connections/permissions')"), \
+        "the button is wired before the permission list loads, so it works when that list fails"
 
 
 _DOCTOR_CARD = r"""
