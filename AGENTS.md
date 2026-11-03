@@ -387,6 +387,7 @@ codec-imessage, codec-telegram and codec-autopilot call `codec_health.beat(name,
 
 ### Model swap warning (P-013)
 One local model server holds one model. Voice names the one config says it holds (`codec_models.local_server_model`: `llm_model`, the launcher's hub id, sent byte for byte) unless `config.json:voice_model` pins another; vision with no `vision_model` does the same on that server, and the dashboard's vision warm-up sends nothing when its model differs from the chat model on the same server. A voice call that names another model than `GET /health` reports writes one `model_swap` warning line (source `codec-models`; extra `caller`, `requested`, `loaded`). The `/health` value is only compared, never sent, and only when it is a plain hub id. Design: docs/VOICE-VISION-LOADED-MODEL-DESIGN.md.
+Default model ids live only in `codec_models` (P-057, docs/MODEL-RESOLVE-DESIGN.md): callers send `resolve(role, cfg)` or `default_for(role)` (roles chat, agent, plan, voice, vision, ui_tars, stt, tts, research), never a hub id of their own; `tests/test_model_resolve.py` fails on a new `mlx-community/` id outside its allowlist.
 
 ### log_event (`codec_audit.log_event`)
 Real adapter over `audit()` for lifecycle events (session start/end, scheduler tick, dispatch decision, heartbeat alert). Defined in `codec_audit.py`. Call sites in `codec_session.py`, `codec_scheduler.py`, `codec_dispatch.py`, `codec_heartbeat.py`, `codec_dashboard.py`, `codec.py`, `routes/auth.py`.
