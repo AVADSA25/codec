@@ -551,13 +551,14 @@ def _signature(call: proto.Call) -> str:
 
 class Run:
     def __init__(self, pid: str, goal: str, history: list, llm: _Llm, limits: dict, can_run: bool, *,
-                 continues: str = "", turns=None, step0: int = 0, resume: str = "", left_out: int = 0):
+                 continues: str = "", turns=None, step0: int = 0, resume: str = "", left_out: int = 0, base_cp: str = ""):
         self.id = "r" + secrets.token_hex(4)
         self.pid, self.goal, self.history, self.llm, self.limits, self.can_run = pid, goal, history, llm, limits, can_run
         self.allowed = tuple(t for t in proto.TOOLS if t != "run_check" or (can_run and cmdmod.available()))
         self.status = "running"
         self.finished = False
         self.continues, self._step0, self._left_out = continues, step0, left_out     # Continue (P-044)
+        self._base_cp = base_cp     # the files as the continued run left them: its newest checkpoint
         self.step = step0           # steps are numbered on from the run this one continues; the budget is fresh
         self.turns: list[_Turn] = list(turns or [])
         if continues and self.turns:
@@ -756,11 +757,33 @@ class Run:
         head = "Before agent (continued): " if self.continues else "Before agent: "
         cp = vp.agent_checkpoint(self.pid, head + self.goal.replace("\n", " ")[:60], "before", self.id, 0, force=True)
         self.start_cp = cp["id"] if cp else None
+        if self.continues:
+            self._changed_since_continued()
         more = {"continues": self.continues, "earlier_steps": self._step0} if self.continues else {}
         self._emit("start", goal=self.goal, model={"kind": self.llm.kind, "label": self.llm.label}, can_run=self.can_run,
                    limits={k: self.limits[k] for k in ("max_steps", "max_seconds")}, start_checkpoint=self.start_cp, **more)
         _audit("vibe_agent_start", "Vibe agent run started", {
             "project": self.pid, "run": self.id, "model": self.llm.kind, "goal_chars": len(self.goal)})
+
+    def _changed_since_continued(self) -> None:
+        """Files that changed after the continued run stopped (Undo run, a step undone, the owner's own edits): its
+        reads of them are stale, and the model is told, so it does not take an undone step as done (P-044)."""
+        if not (self.turns and self._base_cp and self.start_cp):
+            return
+        try:
+            changed = [f["path"] for f in vp.diff(self.pid, self._base_cp, self.start_cp)["files"]]
+        except (VibeError, OSError):
+            return
+        if not changed:
+            return
+        keys = {_edit_key(p) for p in changed}
+        for t in self.turns:
+            if t.read_path and _edit_key(t.read_path) in keys:
+                t.stale = True
+        names = ", ".join(changed[:10]) + (f" and {len(changed) - 10} more" if len(changed) > 10 else "")
+        t = self.turns[-1]
+        t.after += ("\n(These files changed after the earlier run's last saved step, for example by an undo or by hand: "
+                    + proto.mark_owner_phrase(names) + ". Earlier steps on them may no longer hold: read them again.)")
 
     def _loop(self) -> None:
         lim = self.limits
@@ -1409,8 +1432,10 @@ def continue_run(pid: str, run_id: str, *, confirm_cloud: bool = False, can_run:
     turns, last, total = _rebuild(pid, run_id, events)
     end = next((e for e in reversed(events) if e.get("type") == "end"), None)
     resume = str(end.get("report") or end.get("status") or "")[:300] if end else "CODEC was restarted."
+    cps = [e["id"] for e in events if e.get("type") == "checkpoint" and isinstance(e.get("id"), str)]
+    base = cps[-1] if cps else start.get("start_checkpoint")
     run = Run(pid, goal.strip()[:MAX_GOAL_CHARS], [], llm, settings(), bool(can_run), continues=run_id, turns=turns,
-              step0=last, resume=resume, left_out=total - len(turns))
+              step0=last, resume=resume, left_out=total - len(turns), base_cp=base if isinstance(base, str) else "")
     out = _launch(run)
     out.update(continues=run_id, earlier_steps=last)
     return out

@@ -180,6 +180,28 @@ def test_continue_is_refused_for_a_done_run_a_live_one_and_an_older_one(scripted
     assert e.value.status == 404
 
 
+def test_files_changed_after_the_run_stopped_make_its_reads_stale_and_are_named(scripted):
+    pid = make_project()
+    view, _ = run_script(pid, [READ, CSS_EDIT, "@@ read_file app.js\n", "@@ finish\nok\n"], scripted)
+    old = view["run"]
+    cut(pid, old, 3)
+    start_cp = next(e for e in logged(pid, old) if e["type"] == "start")["start_checkpoint"]
+    vp.restore(pid, start_cp)                                  # the owner pressed Undo run, then Continue
+    model = scripted(["@@ finish\nok\n"])
+    wait_finished(pid, va.continue_run(pid, old)["run"])
+    users = [t for r, t in roles_and_texts(model.calls[0]) if r == "user"]
+    tail = users[-1].split("[END RESULT]", 1)[1]
+    assert "These files changed after the earlier run's last saved step" in tail and "style.css" in tail
+    assert users[3].startswith("[RESULT 3 read_file app.js]") and "has changed since" not in users[3]   # app.js kept
+    vp.write_file(pid, "app.js", "// by hand\n")               # nothing undone this time: only the hand edit is named
+    cut(pid, wait_finished(pid, va.list_runs(pid)[0]["run"])["run"], 99)
+    model = scripted(["@@ finish\nok\n"])
+    wait_finished(pid, va.continue_run(pid, va.list_runs(pid)[0]["run"])["run"])
+    users = [t for r, t in roles_and_texts(model.calls[0]) if r == "user"]
+    assert "last saved step, for example by an undo or by hand: app.js." in users[-1]
+    assert users[3].startswith("[RESULT 3 read_file app.js] The file has changed since")
+
+
 def test_a_chain_of_continues_keeps_the_first_runs_turns(scripted):
     pid = make_project()
     first, _ = run_script(pid, [READ, "@@ finish\nok\n"], scripted, goal="Fix the page")

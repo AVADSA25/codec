@@ -28,6 +28,9 @@ goal that begins with the old run's turns rebuilt from its log:
   logged output. Bad replies become the same error turns as live; reads of a file changed later are marked stale;
   an owner's message is put back after the result it followed. A log without reply text (an old log, or one written
   when the redaction patterns could not load) falls back to the tool line (`@@ read_file a.css`).
+- Files that changed after the old run's last saved step (Undo run, a step undone, the owner's own edits) are found
+  by comparing that checkpoint with the new run's start checkpoint: reads of them are marked stale and the line after
+  the last old result names them, so the model does not take an undone step as done.
 - A step that was cut off (a `tool` event with no `result`) becomes a failed turn that says so. For `run_check` it
   says the command was cut off, its result is unknown and it is not run again by itself. **No command is ever
   replayed:** Continue runs nothing; if the model asks for the command again, it goes through the normal gate (a
