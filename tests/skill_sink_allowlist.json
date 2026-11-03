@@ -27,6 +27,11 @@
       "reason": "One argv item for open -a Google Chrome, no shell; quotes and backslashes are stripped above and codec_browser_policy.check_url (P-101) runs before the call."
     },
     {
+      "file": "skills/chrome_open.py",
+      "line": "url = \"https://\" + word",
+      "reason": "Becomes safe_url below: one argv item for open -a Google Chrome, no shell; quotes and backslashes are stripped and codec_browser_policy.check_url (P-101) runs before the call."
+    },
+    {
       "file": "skills/chrome_search.py",
       "line": "set URL of active tab of front window to \"{url}\"",
       "reason": "url is the Google search address plus urllib.parse.quote_plus(query): quotes, backslashes and line breaks are percent-encoded, so nothing leaves the literal."
@@ -39,17 +44,12 @@
     {
       "file": "skills/file_search.py",
       "line": "do script \"echo ''; echo '\\\\033[38;2;232;113;26m━━━ CODEC FILE SEARCH ━━━\\\\033[0m'; echo ''; echo '{safe}'; echo ''\"",
-      "reason": "KNOWN GAP, follow-up: the result is only shell-quoted; a double quote or backslash in a found file path can end the AppleScript do script literal. Local path only (MCP returns before this)."
+      "reason": "KNOWN GAP, follow-up: the request text and the found file paths are only shell-quoted; a double quote or backslash in either can end the AppleScript do script literal. Local path only (MCP returns before this)."
     },
     {
       "file": "skills/imessage_send.py",
-      "line": "set targetBuddy to buddy \"{recipient}\" of targetService",
-      "reason": "recipient passed _validate_recipient just above: a phone number (+ and digits) or an email of word characters, dot, plus, minus and @, with whitespace stripped; no quote or backslash. The body goes through codec_applescript."
-    },
-    {
-      "file": "skills/imessage_send.py",
-      "line": "send \"{escaped}\" to (1st chat whose participants contains (buddy \"{recipient}\" of (1st account whose service type = iMessage)))",
-      "reason": "recipient passed _validate_recipient just above: a phone number (+ and digits) or an email of word characters, dot, plus, minus and @, with whitespace stripped; no quote or backslash. The body goes through codec_applescript."
+      "line": "ok = _send(recipient, body)",
+      "reason": "The only call of _send: recipient passed _validate_recipient just above and again at the top of _send (a phone number of + and digits, or an email of word characters, dot, plus, minus and @); no quote or backslash. The body goes through codec_applescript."
     },
     {
       "file": "skills/memory_search.py",
@@ -62,11 +62,6 @@
       "reason": "Screen rectangle for screencapture -R as one argv item, no shell: left and top are int(), w and h are integer defaults."
     },
     {
-      "file": "skills/music.py",
-      "line": "f'tell application \"Spotify\" to {cmd}'], capture_output=True, text=True, timeout=5)",
-      "reason": "Constants only: the callers in this file pass next track, previous track, pause or play."
-    },
-    {
       "file": "skills/network_info.py",
       "line": "iface = f\"en{i}\"",
       "reason": "Constants only: en0 to en9 from range(10), one argv item, no shell."
@@ -77,14 +72,24 @@
       "reason": "KNOWN GAP, follow-up: the result is only shell-quoted; a double quote or backslash in the joined Wi-Fi network's name (or the ipify reply) can end the AppleScript do script literal. Runs on every call, MCP included."
     },
     {
-      "file": "skills/notes.py",
-      "line": "set lim to {limit}",
-      "reason": "limit is an int; the only caller in this file passes limit=20."
-    },
-    {
       "file": "skills/philips_hue.py",
       "line": "out = \"/tmp/.codec_hue_%d_%d.json\" % (_os.getpid(), int(_t.time() * 1000) % 1000000)",
       "reason": "%d of two integers (process id and a time counter): a fixed /tmp file name passed as one argv item, no shell."
+    },
+    {
+      "file": "skills/philips_hue.py",
+      "line": "result = _apply_state(ip, user, target_type, target_id, state)",
+      "reason": "The light or group id goes only into the bridge URL, one sys.argv item of the python -c relay in _launchctl_request whose program is a constant; no shell or AppleScript."
+    },
+    {
+      "file": "skills/philips_hue.py",
+      "line": "return _run_once(task, ip, user)",
+      "reason": "The bridge address and user from the Hue config go only into the bridge URL, one sys.argv item of the python -c relay in _launchctl_request whose program is a constant; no shell or AppleScript."
+    },
+    {
+      "file": "skills/philips_hue.py",
+      "line": "return _run_once(task, new_ip, user)",
+      "reason": "The address from codec_hue_discovery and the configured user go only into the bridge URL, one sys.argv item of the python -c relay whose program is a constant; no shell or AppleScript."
     },
     {
       "file": "skills/timer.py",
@@ -93,8 +98,8 @@
     },
     {
       "file": "skills/translate.py",
-      "line": "do script \"clear && echo '\\\\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━' && echo '  CODEC TRANSLATION' && echo '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━' && echo '' && echo '{body}' && echo '' && echo '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━' && echo '' && echo 'Press any key to close...' && read -n 1\"",
-      "reason": "KNOWN GAP, follow-up: the request text and the model's reply go into the do script literal with no escaping; a double quote ends it. Local path, non-Latin targets only (MCP returns before this)."
+      "line": "_show_in_terminal(f\"{target} Translation\", \"\\\\n\".join(body_parts))",
+      "reason": "KNOWN GAP, follow-up: the request text and the model's reply reach the Terminal do script literal with no escaping at all; a double quote ends the AppleScript literal and a single quote ends the shell quoting inside Terminal. Local path, non-Latin targets only (MCP returns before this)."
     },
     {
       "file": "skills/volume.py",

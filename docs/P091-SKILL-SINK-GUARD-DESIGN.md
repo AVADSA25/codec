@@ -37,16 +37,31 @@ literals included), a call to `codec_applescript.escape` or
 whose every `return` is one of those, or a name, list or nested string built
 only from safe pieces.
 
-**Following text:** a name is followed to every assignment, `+=` and `for`
-loop that binds it in its function, enclosing functions and the module. A
-parameter that reaches a command is followed to the calls of that function in
-the same file (wrappers such as `def _osa(script)`). A piece that is a
-parameter, an attribute, a subscript or any other call is not safe.
+**Following text:** a name is followed to every assignment, `+=`, `for` loop,
+`.append`, `.extend` and `.insert` that binds or fills it in its function,
+enclosing functions and the module. A command item that is `.strip()`,
+`.replace()`, `.encode()` and similar, or `textwrap.dedent`, of built text
+counts as that text; a call of a function in the same file counts as what it
+returns (builders such as `def _script(app): return f'...'`). A parameter that
+reaches a command is followed to the calls of that function in the same file
+(wrappers such as `def _osa(script)`).
+
+A parameter used **inside** built text is safe only when its function is
+private (name starts with `_`), is not a method, and is only ever called
+directly in this file, and every call passes a safe piece (or leaves the
+default). The unsafe pieces are then reported on those calls, not on the
+function's own line: allowlisting `def _run_spotify(cmd)`'s line would
+otherwise let a later `_run_spotify(f'play track "{task}"')` through unseen.
+Any other parameter (`run(task)` is called by the registry), an attribute, a
+subscript or any other call is not safe.
 
 **Not covered** (stated in the test docstring and here): methods called
 through `self`, text handed to a helper in another module, and values whose
 safety depends on their type (an `int` in an f-string). The last kind goes in
-the allowlist with that reason.
+the allowlist with that reason. An entry is keyed to the line where the piece
+enters, not to the command, so reusing an already reviewed variable as the
+whole item of a new command is not a new finding; a reviewer reading a new
+command call still sees it in the diff.
 
 ## Data: `tests/skill_sink_allowlist.json`
 
@@ -83,12 +98,18 @@ until the line is escaped or reviewed.
 - A temporary copy of the pinned `volume.py` (hash checked against the
   manifest) with one new `f'tell application "{app_name}" to quit'` osascript
   call produces exactly that one new finding.
-- One case per rule: 15 snippets that must be flagged (inline, variable, `%`,
+- One case per rule: 21 snippets that must be flagged (inline, variable, `%`,
   `.format`, `+`, `+=`, join, command list in a variable, wrapper parameter,
   loop over built scripts, `os.system`, aliased module, `from` import, osascript
-  stdin, escaped-then-changed) and 9 that must pass (inline and stored escape,
-  imported alias, same-file wrapper, `notification_script`, literal-only
-  pieces, plain argv items, constant script, f-string outside the command).
+  stdin, escaped-then-changed, appended to the command list, a str method on
+  the script, `textwrap.dedent`, `import os.path`, a builder in the same file,
+  a wrapper also used as a thread target) and 11 that must pass (inline and
+  stored escape, imported alias, same-file wrapper, `notification_script`,
+  literal-only pieces, plain argv items, constant script, f-string outside the
+  command, a private wrapper called with constants, a parameter left at its
+  default).
+- A new call of a private wrapper with unescaped text is reported on that
+  call, not on the wrapper's (reviewable) line.
 - The allowlist test: fields present, reasons given, no duplicates, no stale
   lines.
 

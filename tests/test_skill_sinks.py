@@ -11,10 +11,14 @@ call (or the stdin of an osascript or shell call) through an f-string,
 % formatting, .format(), "+" or str.join, unless every interpolated piece is a
 literal or goes through codec_applescript (escape, notification_script, or a
 function in the same file that only returns one of them). Names are followed
-to their assignments in the same function and module, and a parameter that
-reaches a command is followed to the calls of that function in the same file.
-Not followed: methods called through self, and text handed to a helper in
-another module.
+to their assignments (and .append / .extend / .insert) in the same function
+and module, a call of a builder in the same file to what it returns, and a
+parameter that reaches a command to the calls of that function in the same
+file. A parameter of a private function (name starting with _) that is used
+inside built text is judged, and reported, where those calls pass it, so a new
+call that passes unescaped text is a new finding even when the function's own
+line is reviewed. Not followed: methods called through self, and text handed
+to a helper in another module.
 
 Reviewed exceptions are in tests/skill_sink_allowlist.json: file, the line
 text where the piece enters the string, and the reason it is safe (or the
@@ -44,6 +48,9 @@ _ASYNCIO_ALL = {"create_subprocess_exec"}
 _STDIN_PROGRAMS = {"osascript", "bash", "sh", "zsh"}
 _HELPER_MODULE = "codec_applescript"
 _HELPER_FUNCS = {"escape", "notification_script"}
+# str methods whose result still carries the text they are called on
+_KEEPS_TEXT = {"encode", "strip", "lstrip", "rstrip", "replace", "lower", "upper",
+               "removeprefix", "removesuffix", "expandtabs"}
 _SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
 _NESTED = _SCOPES + (ast.ClassDef,)
 _NOT_SOURCE = {"__pycache__", "node_modules", "venv", "site-packages", "build", "dist"}
@@ -79,7 +86,9 @@ class _Module:
         for node in ast.walk(self.tree):
             if isinstance(node, ast.Import):
                 for a in node.names:
-                    self.mod_alias[a.asname or a.name.split(".")[0]] = a.name
+                    # "import os.path" binds the name os to the os module
+                    top = a.name.split(".")[0]
+                    self.mod_alias[a.asname or top] = a.name if a.asname else top
             elif isinstance(node, ast.ImportFrom) and node.module:
                 for a in node.names:
                     self.func_alias[a.asname or a.name] = (node.module, a.name)
@@ -87,6 +96,7 @@ class _Module:
         for node in ast.walk(self.tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 defs.setdefault(node.name, []).append(node)
+        self.defs = defs
         self.wrappers = {n for n, ds in defs.items() if all(self._is_wrapper(d) for d in ds)}
         self.helper_hits = set()
 
@@ -131,7 +141,9 @@ class _Module:
     def bindings(self, name, scope):
         """(kind, expr, scope) for each place `name` is bound, looking in the
         enclosing scopes when the nearest one does not bind it. kind is value,
-        concat (+=), for (expr = the iterable), param (expr = the def) or opaque."""
+        concat (+=), for (expr = the iterable), param (expr = the def), item
+        (name.append / extend / insert: expr = what is added) or opaque."""
+        items = []  # a mutation does not bind the name: keep looking outwards
         while True:
             found, is_global = [], False
             if isinstance(scope, _SCOPES):
@@ -167,11 +179,15 @@ class _Module:
                         found.append(("opaque", n, scope))
                 elif isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and n.name == name:
                     found.append(("opaque", n, scope))
+                elif (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.args
+                        and isinstance(n.func.value, ast.Name) and n.func.value.id == name
+                        and n.func.attr in ("append", "extend", "insert")):
+                    items.append(("item", n.args[-1], scope))
             if is_global and scope is not self.tree:
                 scope = self.tree
                 continue
             if found or scope is self.tree:
-                return found
+                return found + items
             scope = self.scope_of(scope)
 
     # --- what counts as built text -----------------------------------------
@@ -224,23 +240,76 @@ class _Module:
                 return True
             seen = seen | {key}
             found = self.bindings(e.id, scope)
-            return bool(found) and all(
-                kind in ("value", "concat", "for") and self.piece_ok(expr, sc, seen)
-                for kind, expr, sc in found)
+            return any(kind != "item" for kind, _, _ in found) and all(
+                self._binding_ok(kind, expr, sc, e.id, seen) for kind, expr, sc in found)
         return False
 
-    def bad_pieces(self, e, scope):
-        """The pieces of a built string that are not escaped."""
+    def _binding_ok(self, kind, expr, sc, name, seen):
+        if kind in ("value", "concat", "for", "item"):
+            return self.piece_ok(expr, sc, seen)
+        if kind == "param":  # safe only when every call in this file passes safe text
+            passed = self._passed(expr, name)
+            return passed is not None and all(self.piece_ok(a, s, seen) for a, s in passed)
+        return False
+
+    def _passed(self, fdef, pname):
+        """(expression, scope) for what each call of a private function in
+        this file passes as `pname`, or its default when a call leaves it out.
+        None when that cannot be read: a public function (run is called by
+        the registry), a method or lambda, *args / **kwargs, a function with
+        no call in this file or used other than by a direct call."""
+        if (isinstance(fdef, ast.Lambda) or not fdef.name.startswith("_")
+                or isinstance(self.parent.get(fdef), ast.ClassDef)):
+            return None
+        a = fdef.args
+        names = [p.arg for p in a.posonlyargs + a.args]
+        if pname not in names + [p.arg for p in a.kwonlyargs]:
+            return None
+        defaults = dict(zip(names[len(names) - len(a.defaults):], a.defaults))
+        defaults.update({p.arg: d for p, d in zip(a.kwonlyargs, a.kw_defaults) if d is not None})
+        idx = names.index(pname) if pname in names else None
+        out, calls = [], 0
+        for node in ast.walk(self.tree):
+            if not (isinstance(node, ast.Name) and node.id == fdef.name and isinstance(node.ctx, ast.Load)):
+                continue
+            call = self.parent.get(node)
+            if not (isinstance(call, ast.Call) and call.func is node):
+                return None  # passed around (a thread target, a callback): callers unknown
+            if any(isinstance(x, ast.Starred) for x in call.args) or any(k.arg is None for k in call.keywords):
+                return None
+            calls += 1
+            arg = next((k.value for k in call.keywords if k.arg == pname), None)
+            if arg is None and idx is not None and idx < len(call.args):
+                arg = call.args[idx]
+            if arg is None:
+                arg = defaults.get(pname)
+            if arg is not None:
+                out.append((arg, self.scope_of(call)))
+        return out if calls else None
+
+    def bad_pieces(self, e, scope, seen=frozenset()):
+        """The pieces of a built string that are not escaped. A parameter of a
+        private function is reported where this file's calls pass it, so a
+        new call that passes unescaped text is a new finding."""
         if isinstance(e, ast.JoinedStr):
-            return [v.value for v in e.values
-                    if isinstance(v, ast.FormattedValue) and not self.piece_ok(v.value, scope)]
+            return [b for v in e.values if isinstance(v, ast.FormattedValue)
+                    for b in self.bad_pieces(v.value, scope, seen)]
         if isinstance(e, ast.IfExp):
-            return self.bad_pieces(e.body, scope) + self.bad_pieces(e.orelse, scope)
+            return self.bad_pieces(e.body, scope, seen) + self.bad_pieces(e.orelse, scope, seen)
         if isinstance(e, (ast.List, ast.Tuple)):
-            return [b for x in e.elts for b in self.bad_pieces(x, scope)]
+            return [b for x in e.elts for b in self.bad_pieces(x, scope, seen)]
         parts = self.parts(e)
         if parts is not None:
-            return [b for x in parts for b in self.bad_pieces(x, scope)]
+            return [b for x in parts for b in self.bad_pieces(x, scope, seen)]
+        if isinstance(e, ast.Name):
+            found = self.bindings(e.id, scope)
+            if len(found) == 1 and found[0][0] == "param":
+                key = (e.id, id(found[0][2]))
+                if key in seen:
+                    return []
+                passed = self._passed(found[0][1], e.id)
+                if passed is not None:
+                    return [b for a, s in passed for b in self.bad_pieces(a, s, seen | {key})]
         return [] if self.piece_ok(e, scope) else [e]
 
     def elem(self, e, scope, seen, out):
@@ -255,8 +324,19 @@ class _Module:
             self.elem(e.orelse, scope, seen, out)
         elif isinstance(e, (ast.ListComp, ast.GeneratorExp)):
             self.elem(e.elt, scope, seen, out)
-        elif isinstance(e, ast.Call) and isinstance(e.func, ast.Attribute) and e.func.attr == "encode":
-            self.elem(e.func.value, scope, seen, out)
+        elif isinstance(e, ast.Call) and isinstance(e.func, ast.Attribute) and e.func.attr in _KEEPS_TEXT:
+            self.elem(e.func.value, scope, seen, out)  # script.strip(), script.encode() ...
+        elif isinstance(e, ast.Call) and e.args and self._is_dedent(e):
+            self.elem(e.args[0], scope, seen, out)
+        elif (isinstance(e, ast.Call) and isinstance(e.func, ast.Name) and e.func.id in self.defs
+                and not self._is_helper(e)):
+            key = ("return", e.func.id)  # a builder in this file: check what it returns
+            if key in seen:
+                return
+            for fdef in self.defs[e.func.id]:
+                for r in self._walk_scope(fdef):
+                    if isinstance(r, ast.Return) and r.value is not None:
+                        self.elem(r.value, fdef, seen | {key}, out)
         elif isinstance(e, ast.BinOp) and isinstance(e.op, ast.Add) and any(
                 isinstance(x, (ast.List, ast.Tuple, ast.ListComp)) for x in self.parts(e)):
             for x in self.parts(e):  # an argv list joined to another list
@@ -269,12 +349,18 @@ class _Module:
                 return
             seen = seen | {key}
             for kind, expr, sc in self.bindings(e.id, scope):
-                if kind in ("value", "for"):
+                if kind in ("value", "for", "item"):
                     self.elem(expr, sc, seen, out)
                 elif kind == "concat":
                     out.extend(self.bad_pieces(expr, sc))
                 elif kind == "param":
                     self._follow_param(expr, e.id, seen, out)
+
+    def _is_dedent(self, call):
+        f = call.func
+        if isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name):
+            return self.mod_alias.get(f.value.id) == "textwrap" and f.attr == "dedent"
+        return isinstance(f, ast.Name) and self.func_alias.get(f.id) == ("textwrap", "dedent")
 
     def _follow_param(self, fdef, pname, seen, out):
         """A parameter that reaches a command: check what this file passes."""
@@ -514,6 +600,34 @@ def f(x):
 def f(x):
     safe = codec_applescript.escape(x).replace("a", "b")
     subprocess.run(["osascript", "-e", f'display dialog "{safe}"'])''',
+    "appended to the command list": '''
+def f(name):
+    cmd = ["osascript", "-e"]
+    cmd.append(f'tell application "{name}" to quit')
+    subprocess.run(cmd)''',
+    "str method on the script": '''
+def f(name):
+    subprocess.run(["osascript", "-e", f'tell application "{name}" to quit'.strip()])''',
+    "textwrap.dedent": '''
+import textwrap
+def f(name):
+    subprocess.run(["osascript", "-e", textwrap.dedent(f'tell application "{name}" to quit')])''',
+    "import os.path": '''
+import os.path
+def f(text):
+    os.system(f"say {text}")''',
+    "builder in the same file": '''
+def _script(name):
+    return f'tell application "{name}" to quit'
+def f(name):
+    subprocess.run(["osascript", "-e", _script(name)])''',
+    "wrapper also used as a thread target": '''
+import threading
+def _say(text):
+    subprocess.run(["osascript", "-e", f'say "{text}"'])
+def run(task):
+    _say("hello")
+    threading.Thread(target=_say, args=(task,)).start()''',
 }
 
 PASSES = {
@@ -550,6 +664,17 @@ def f():
 def f(x):
     r = subprocess.run(["pbpaste"], capture_output=True, text=True)
     return f"{x}: {r.stdout}"''',
+    "private wrapper called with constants": '''
+def _spotify(cmd):
+    subprocess.run(["osascript", "-e", f'tell application "Spotify" to {cmd}'])
+def run(task):
+    _spotify("pause")
+    _spotify(cmd="play")''',
+    "parameter left at its default": '''
+def _notes(limit=20):
+    subprocess.run(["osascript", "-e", f"set lim to {limit}"])
+def run(task):
+    return _notes()''',
 }
 
 
@@ -570,3 +695,15 @@ def test_built_command_text_is_flagged(tmp_path, case):
 def test_escaped_or_plain_command_text_passes(tmp_path, case):
     census = _scan_source(tmp_path, PASSES[case])
     assert census.sites and census.findings == []
+
+
+def test_a_wrapper_parameter_is_checked_where_it_is_passed(tmp_path):
+    # Reviewing the wrapper's line must not let a new call through: the
+    # finding sits on the call that passes the unescaped text.
+    census = _scan_source(tmp_path, '''
+def _spotify(cmd):
+    subprocess.run(["osascript", "-e", f'tell application "Spotify" to {cmd}'])
+def run(task):
+    _spotify("pause")
+    _spotify(f'play track "{task}"')''')
+    assert [f.line for f in census.findings] == ["_spotify(f'play track \"{task}\"')"]
