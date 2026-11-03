@@ -359,7 +359,7 @@ def _build_voice_system_prompt(task):
         targeted = cm.get_context(task, n=5)
         if targeted:
             mem_ctx += f"\n\n[MEMORY — RELEVANT PAST CONVERSATIONS]\n{targeted}\n[END MEMORY]"
-        recent = cm.search_recent(days=3, limit=5)
+        recent = cm.search_recent(days=3, limit=5, for_prompt=True)  # P-037: no crew or untrusted rows
         if recent:
             lines = ["[RECENT MEMORY — LAST 3 DAYS]"]
             for r in recent:

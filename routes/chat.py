@@ -299,7 +299,7 @@ def _recall_memory(messages: list, meta: dict | None = None, temporary: bool = F
                     memory_parts.append(f"[MEMORY — RELEVANT PAST CONVERSATIONS (VOICE)]\n{mem_context}\n[END MEMORY]")
                     _note_memory(meta, "voice", "relevant", len([ln for ln in mem_context.splitlines() if ln.strip()]))
                     log.info(f"Memory recall injected (voice targeted): {len(mem_context)} chars")
-            recent = mem.search_recent(days=3, limit=5)
+            recent = mem.search_recent(days=3, limit=5, for_prompt=True)  # P-037: no crew or untrusted rows
             if recent:
                 lines = ["[RECENT MEMORY — VOICE (LAST 3 DAYS)]"]
                 for r in recent:

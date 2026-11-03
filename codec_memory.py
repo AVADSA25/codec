@@ -121,6 +121,25 @@ def _like_escape(word: str) -> str:
     return word.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
+# P-037 (docs/MEMORY-PROVENANCE-DESIGN.md): rows a prompt never carries. Crew and scheduled crew
+# results are saved with role "agent" (codec_agents.save_to_memory), an untrusted memory write gets
+# role "untrusted" (P-021), and crew sessions have always been named "agents_<crew>_<time>", which
+# also covers crew rows saved as user / assistant before this. Read at query time; no row changes.
+PROMPT_LEFT_OUT_ROLES = ("agent", "untrusted")
+AGENT_SESSION_PREFIX = "agents_"
+
+
+def _prompt_clause(for_prompt: bool) -> tuple[str, list]:
+    """The extra WHERE condition (and its values) that leaves out PROMPT_LEFT_OUT_ROLES and crew
+    sessions, or ("", []) when `for_prompt` is off."""
+    if not for_prompt:
+        return "", []
+    roles = list(PROMPT_LEFT_OUT_ROLES)
+    sql = (f" AND COALESCE(role,'') NOT IN ({','.join('?' * len(roles))})"
+           " AND COALESCE(session_id,'') NOT LIKE ? ESCAPE '\\'")
+    return sql, roles + [_like_escape(AGENT_SESSION_PREFIX) + "%"]
+
+
 class CodecMemory:
     """Wraps ~/.codec/memory.db with an FTS5 virtual table for instant search."""
 
@@ -293,9 +312,11 @@ class CodecMemory:
 
     # ── Search ───────────────────────────────────────────────────────────────
 
-    def search(self, query: str, limit: int = 10, user_id: str = None) -> list[dict]:
+    def search(self, query: str, limit: int = 10, user_id: str = None,
+               for_prompt: bool = False) -> list[dict]:
         """Full-text search ranked by BM25. Returns list of row dicts.
         If user_id is provided, only return results for that user.
+        `for_prompt` leaves out agent and untrusted rows and crew sessions (P-037).
 
         Every word is quoted, so nothing in the query is FTS5 syntax. Rows come
         from the passes of _fts_queries (every word, then every content word,
@@ -310,30 +331,32 @@ class CodecMemory:
         with self._lock:
             conn = self._get_conn()
             try:
-                return self._fts_search(conn, words, content, limit, user_id=user_id)
+                return self._fts_search(conn, words, content, limit, user_id=user_id,
+                                        for_prompt=for_prompt)
             except sqlite3.OperationalError as e:
                 log.warning("Memory search: full-text index failed (%s); searching the "
                             "conversations table with LIKE", type(e).__name__)
             try:
-                return self._like_query(conn, words, content, limit, user_id=user_id)
+                return self._like_query(conn, words, content, limit, user_id=user_id,
+                                        for_prompt=for_prompt)
             except sqlite3.OperationalError as e:
                 log.warning("Memory search: LIKE fallback failed too (%s)", type(e).__name__)
                 return []
 
     def _fts_search(self, conn, words: list[str], content: list[str], limit: int,
-                    user_id: str = None) -> list[dict]:
+                    user_id: str = None, for_prompt: bool = False) -> list[dict]:
         found, seen = [], set()
         for match in _fts_queries(words, content):
             if len(found) >= limit:
                 break
-            for row in self._fts_query(conn, match, limit, user_id=user_id):
+            for row in self._fts_query(conn, match, limit, user_id=user_id, for_prompt=for_prompt):
                 if row["id"] not in seen:
                     seen.add(row["id"])
                     found.append(row)
         return found[:limit]
 
     def _like_query(self, conn, words: list[str], content: list[str], limit: int,
-                    user_id: str = None) -> list[dict]:
+                    user_id: str = None, for_prompt: bool = False) -> list[dict]:
         """Fallback when the FTS index fails: substring match on the message
         text. Rows holding any content word, more of them first, then newest;
         with only common words, rows holding all of them. At most
@@ -350,6 +373,9 @@ class CodecMemory:
         if user_id is not None:
             sql += " AND user_id = ?"
             params.append(user_id)
+        left_out, left_out_params = _prompt_clause(for_prompt)
+        sql += left_out
+        params.extend(left_out_params)
         sql += " ORDER BY hits DESC, id DESC LIMIT ?"
         params.append(limit)
         rows = conn.execute(sql, params).fetchall()
@@ -359,62 +385,70 @@ class CodecMemory:
             for r in rows
         ]
 
-    def _fts_query(self, conn, query: str, limit: int, user_id: str = None) -> list[dict]:
+    def _fts_query(self, conn, query: str, limit: int, user_id: str = None,
+                   for_prompt: bool = False) -> list[dict]:
+        left_out, left_out_params = _prompt_clause(for_prompt)
         if user_id is not None:
             rows = conn.execute("""
                 SELECT src_id, session_id, timestamp, role, content,
                        bm25(conversations_fts) AS score
                 FROM conversations_fts
-                WHERE conversations_fts MATCH ? AND user_id = ?
+                WHERE conversations_fts MATCH ? AND user_id = ?""" + left_out + """
                 ORDER BY score
                 LIMIT ?
-            """, (query, user_id, limit)).fetchall()
+            """, (query, user_id, *left_out_params, limit)).fetchall()
         else:
             rows = conn.execute("""
                 SELECT src_id, session_id, timestamp, role, content,
                        bm25(conversations_fts) AS score
                 FROM conversations_fts
-                WHERE conversations_fts MATCH ?
+                WHERE conversations_fts MATCH ?""" + left_out + """
                 ORDER BY score
                 LIMIT ?
-            """, (query, limit)).fetchall()
+            """, (query, *left_out_params, limit)).fetchall()
         return [
             {"id": r[0], "session_id": r[1], "timestamp": r[2],
              "role": r[3], "content": r[4], "score": round(r[5], 4)}
             for r in rows
         ]
 
-    def search_recent(self, days: int = 7, limit: int = 50, user_id: str = None) -> list[dict]:
+    def search_recent(self, days: int = 7, limit: int = 50, user_id: str = None,
+                      for_prompt: bool = False) -> list[dict]:
         """Return recent conversations from the past N days.
-        If user_id is provided, only return results for that user."""
+        If user_id is provided, only return results for that user.
+        `for_prompt` leaves out agent and untrusted rows and crew sessions (P-037)."""
         since = (datetime.now() - timedelta(days=days)).isoformat()
+        left_out, left_out_params = _prompt_clause(for_prompt)
         with self._lock:
             conn = self._get_conn()
             if user_id is not None:
                 rows = conn.execute("""
                     SELECT id, session_id, timestamp, role, content
                     FROM conversations
-                    WHERE timestamp >= ? AND user_id = ?
+                    WHERE timestamp >= ? AND user_id = ?""" + left_out + """
                     ORDER BY id DESC
                     LIMIT ?
-                """, (since, user_id, limit)).fetchall()
+                """, (since, user_id, *left_out_params, limit)).fetchall()
             else:
                 rows = conn.execute("""
                     SELECT id, session_id, timestamp, role, content
                     FROM conversations
-                    WHERE timestamp >= ?
+                    WHERE timestamp >= ?""" + left_out + """
                     ORDER BY id DESC
                     LIMIT ?
-                """, (since, limit)).fetchall()
+                """, (since, *left_out_params, limit)).fetchall()
             return [
                 {"id": r[0], "session_id": r[1], "timestamp": r[2],
                  "role": r[3], "content": r[4]}
                 for r in rows
             ]
 
-    def get_context(self, query: str, n: int = 5, user_id: str = None) -> str:
-        """Return a formatted string of top-N matching snippets for LLM injection."""
-        hits = self.search(query, limit=n, user_id=user_id)
+    def get_context(self, query: str, n: int = 5, user_id: str = None,
+                    for_prompt: bool = True) -> str:
+        """Return a formatted string of top-N matching snippets for LLM injection.
+        Every caller builds a prompt, so agent and untrusted rows and crew sessions are left
+        out by default (P-037)."""
+        hits = self.search(query, limit=n, user_id=user_id, for_prompt=for_prompt)
         if not hits:
             return ""
         lines = ["[Memory context]"]

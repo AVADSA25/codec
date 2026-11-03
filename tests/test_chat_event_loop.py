@@ -102,7 +102,7 @@ def env(tmp_path, monkeypatch):
         def get_context(self, text, n=8):
             return "an old talk about the tower"
 
-        def search_recent(self, days=3, limit=5):
+        def search_recent(self, days=3, limit=5, **kw):
             return [{"timestamp": "2026-11-01T10:00:00", "role": "user", "content": "the tower is tall"}]
 
     monkeypatch.setattr(codec_llm, "call", fake_llm)
