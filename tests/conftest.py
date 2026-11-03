@@ -41,6 +41,8 @@ os.environ.setdefault("CODEC_DASHBOARD_EXTRA_HOSTS", "testserver")
 # owner's approved skills (tests that need user skills use their own tmp dirs).
 os.environ.setdefault("CODEC_USER_SKILLS_DIR", tempfile.mkdtemp(prefix="codec-test-user-skills-"))
 os.environ.setdefault("CODEC_NOTES_DIR", tempfile.mkdtemp(prefix="codec-test-notes-"))
+# P-017: the bridges' main() loops write a health beat a round (codec_health); keep them off ~/.codec/health.
+os.environ.setdefault("CODEC_HEALTH_DIR", tempfile.mkdtemp(prefix="codec-test-health-"))
 
 
 def _isolate_audit_log() -> None:

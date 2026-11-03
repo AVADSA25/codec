@@ -278,6 +278,84 @@ def check_errored_codec_apps(procs=None) -> list:
     return errored
 
 
+# ── Health beats (P-017, docs/HEALTH-BEATS-DESIGN.md) ────────────────────────
+# PM2 shows a bridge "online" while every round of its loop fails or while it hangs. Each bridge writes
+# a beat a round (codec_health); the observer's beat is its newest observation_tick audit line.
+
+_OBSERVER_APP = "codec-observer"
+_OFF = ("false", "0", "no", "off")
+
+
+def _pm2_app(procs, name):
+    return next((p for p in procs or [] if p.get("name") == name), None)
+
+
+def _observer_should_tick(procs) -> bool:
+    """codec-observer is online in PM2, switched on (PM2 env and config) and not paused."""
+    env = (_pm2_app(procs, _OBSERVER_APP) or {}).get("pm2_env") or {}
+    if env.get("status") != "online":
+        return False
+    flag = env.get("OBSERVER_ENABLED", (env.get("env") or {}).get("OBSERVER_ENABLED", "true"))
+    if str(flag).strip().lower() in _OFF:
+        return False
+    try:
+        import codec_observer
+        return (codec_observer._load_config().get("enabled", True) is not False
+                and codec_observer.paused_until() is None)
+    except Exception:
+        return False
+
+
+def check_health_beats(procs=None, now_ts=None) -> list:
+    """Alert when a beat is silent (older than 3x its cadence, at least 15 min) or failing (20 rounds
+    in a row ended in an error): once, again at most every 6 h, and one message when it clears.
+
+    `procs` is the heartbeat's `pm2 jlist` list: an app it does not show online is stopped and not
+    checked, an app in its 5-minute start grace is skipped this round (P-059). Without a list the
+    files alone decide (a stop on purpose marks its file). Returns the open problem keys."""
+    import codec_audit
+    import codec_health
+    import codec_models
+    from codec_alerts import alert_once, alert_resolved
+    now_ts = time.time() if now_ts is None else now_ts
+    beats = codec_health.read_beats()
+    if _observer_should_tick(procs):
+        obs = codec_health.observer_beat(str(codec_audit._AUDIT_LOG), now_ts)
+        if obs is not None:
+            beats[_OBSERVER_APP] = obs
+    problems = []
+    for name, beat in sorted(beats.items()):
+        verdict = codec_health.verdict(beat, now_ts)
+        if procs:
+            status = ((_pm2_app(procs, name) or {}).get("pm2_env") or {}).get("status")
+            if status != "online":
+                verdict = "stopped"
+            elif codec_models.pm2_app_loading(procs, name, now_ts):
+                continue
+        silent, failing = f"silent:{name}", f"failing:{name}"
+        if verdict == "stopped":
+            for key in (silent, failing):
+                alert_resolved(key, f"CODEC: {name} is stopped, so it is no longer checked.")
+        elif verdict == "silent":
+            problems.append(silent)
+            age_min = int((now_ts - float(beat["ts"])) // 60)
+            alert_once(silent, "critical",
+                       f"CODEC ALERT: {name} has not reported for {age_min} min "
+                       f"(it reports every {int(float(beat.get('cadence_s') or 60))} s). "
+                       f"It may be stuck: check pm2 logs {name}.")
+        else:
+            alert_resolved(silent, f"CODEC RECOVERED: {name} reports again.")
+            if verdict == "failing":
+                problems.append(failing)
+                alert_once(failing, "warning",
+                           f"CODEC ALERT: {name} is running but failing: its last "
+                           f"{int(beat.get('consecutive_errors') or 0)} rounds ended in an error "
+                           f"({beat.get('last_error_class') or 'Error'}). Check pm2 logs {name}.")
+            else:
+                alert_resolved(failing, f"CODEC RECOVERED: {name} works again.")
+    return problems
+
+
 def _last_auto_pull() -> str:
     """'06:00 up_to_date' from the last line of auto_pull.log, or why not."""
     try:
@@ -306,7 +384,8 @@ def daily_status_text(procs=None) -> str:
     for key in open_problems():
         kind, _, what = key.partition(":")
         labels.append(f"{what} errored" if kind == "pm2_errored" else
-                      f"{what} down" if kind == "down" else key.replace("_", " "))
+                      f"{what} down" if kind == "down" else
+                      f"{what} {kind}" if kind in ("silent", "failing") else key.replace("_", " "))
     return (f"CODEC daily, {datetime.now().strftime('%d %b')}: {online}/{len(apps)} apps online, "
             f"auto-pull {_last_auto_pull()}, {free_gb:.0f} GB free, "
             + (f"open problems: {', '.join(labels)}." if labels else "no open problems."))
@@ -612,7 +691,8 @@ def heartbeat():
     procs = _pm2_jlist()  # one `pm2 jlist` for the PM2 checks and the start grace (P-059)
     check_system_health(procs)
     check_pm2_restart_storms(procs)
-    for check in (lambda: check_errored_codec_apps(procs), lambda: maybe_send_daily_status(procs=procs)):
+    for check in (lambda: check_errored_codec_apps(procs), lambda: check_health_beats(procs),  # P-017
+                  lambda: maybe_send_daily_status(procs=procs)):
         try:
             check()
         except Exception as e:

@@ -25,6 +25,8 @@ import logging
 import requests
 from datetime import datetime
 
+import codec_health
+
 # ── Logging ──────────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
@@ -124,6 +126,7 @@ class TelegramBot:
         self.token = token
         self.api = f"https://api.telegram.org/bot{token}"
         self.offset = 0  # last update_id + 1
+        self.last_error = None  # what the last getUpdates failed with, for the health beat (P-017)
 
     def get_me(self):
         """Verify bot token and get bot info."""
@@ -135,6 +138,7 @@ class TelegramBot:
 
     def get_updates(self, timeout=30):
         """Long-poll for new messages."""
+        self.last_error = None
         try:
             r = requests.get(
                 f"{self.api}/getUpdates",
@@ -143,12 +147,14 @@ class TelegramBot:
             )
             data = r.json()
             if not data.get("ok"):
+                self.last_error = "TelegramApiError"
                 log.error(_sanitize_log(f"getUpdates error: {data}"))
                 return []
             return data.get("result", [])
         except requests.exceptions.Timeout:
             return []  # Normal for long polling
         except Exception as e:
+            self.last_error = type(e).__name__
             log.error(_sanitize_log(f"getUpdates failed: {e}"))
             time.sleep(3)
             return []
@@ -785,6 +791,7 @@ def main():
     # in-memory (Telegram re-delivers un-acked updates), so there's no position
     # to persist — emit the SERVICE_STOP audit the Ctrl-C path already emits.
     def _tg_cleanup():
+        codec_health.stopped("codec-telegram")  # P-017: a stop on purpose is not "silent"
         audit("service_stop")
         log.info("codec-telegram graceful shutdown")
     import codec_lifecycle
@@ -793,6 +800,9 @@ def main():
     try:
         while True:
             updates = bot.get_updates(timeout=30)
+            # P-017: one health beat a round (30 s long poll + 10 s); the heartbeat alerts when it goes
+            # quiet or keeps failing.
+            codec_health.beat("codec-telegram", cadence_s=40, error=bot.last_error)
             for update in updates:
                 bot.offset = update["update_id"] + 1
                 try:

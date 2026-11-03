@@ -41,6 +41,7 @@ sys.path.insert(0, str(_REPO / "skills"))
 from codec_skill_registry import SkillRegistry
 from codec_config import SKILLS_DIR, USER_SKILLS_DIR
 from codec_audit import audit
+import codec_health
 
 log = logging.getLogger("codec-autopilot")
 logging.basicConfig(
@@ -222,18 +223,26 @@ def main():
     # H-1 (PR-4A-2): graceful shutdown on PM2 SIGTERM. State.json is written
     # per-fire so there's nothing to flush — a clean exit log is enough.
     import codec_lifecycle
-    codec_lifecycle.install_handlers(
-        lambda: log.info("CODEC Autopilot graceful shutdown"),
-        name="codec-autopilot")
+
+    def _cleanup():
+        codec_health.stopped("codec-autopilot")  # P-017: a stop on purpose is not "silent"
+        log.info("CODEC Autopilot graceful shutdown")
+    codec_lifecycle.install_handlers(_cleanup, name="codec-autopilot")
     registry = SkillRegistry(SKILLS_DIR, USER_SKILLS_DIR)
     registry.scan()
     while True:
+        error = None
         try:
             cfg = _load_config()
             state = _load_state()
             _tick(cfg, state, registry)
+            if cfg.get("enabled") and state.get("__corrupt__"):
+                error = "StateFileCorrupt"  # _tick refuses to fire every trigger until it is fixed
         except Exception as e:
+            error = e
             log.exception("tick error: %s", e)
+        # P-017: one health beat a round; the heartbeat alerts when it goes quiet or keeps failing.
+        codec_health.beat("codec-autopilot", cadence_s=POLL_SEC, error=error)
         time.sleep(POLL_SEC)
 
 
