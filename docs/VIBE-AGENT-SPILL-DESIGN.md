@@ -22,8 +22,9 @@ command can neither read nor write `.vibe` (`profile()` is unchanged). A write e
 reading of the output. The head and tail kept for the result are as before.
 
 **When the file is kept.** Only when the model sees part of the result (it is longer than the 6 KB window of
-P-040). A short output's file is deleted at once. A run keeps at most 8 MB of such files (`SPILL_RUN_BYTES`); past
-that a long result is not copied to a file and read_output falls back to the text the run holds.
+P-040). A short output's file is deleted at once. Once a run keeps 8 MB of such files (`SPILL_RUN_BYTES`) it starts
+no new copy, so a run keeps at most 8 MB plus one file; past that a long result is not copied to a file and
+read_output falls back to the text the run holds.
 
 **What the model sees.** The P-040 window, unchanged (first 1.5 KB and last 4 KB, so the failing test at the end
 stays visible and still ends the result), plus one pointer line put right after the `... (N characters left out)
