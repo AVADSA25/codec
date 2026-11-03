@@ -4,7 +4,8 @@ Settings > Connectors gains four sections: Google Workspace (status and a
 Mac-only Reconnect), the AI apps signed in to CODEC's MCP server (with a
 per-app Revoke the MCP server applies itself), the Telegram and iMessage
 bridges (status, and a test message sent only on click to a recipient the owner
-configured), and a best-effort list of the dashboard's macOS permissions.
+configured), and a best-effort list of the dashboard's macOS permissions, with
+Check my Mac and its redacted support zip (codec_doctor, read only; P-022).
 Nothing here returns a token, a secret or a full phone number.
 """
 from __future__ import annotations
@@ -20,7 +21,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Request
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 router = APIRouter()
 
@@ -373,19 +374,43 @@ _PERMS = [("screen", "Screen Recording", "Privacy_ScreenCapture"),
           ("microphone", "Microphone", "Privacy_Microphone"),
           ("automation", "Automation", "Privacy_Automation")]
 PERMISSIONS_NOTE = ("These are the dashboard's own permissions: it runs Chat's skills. The voice call, the wake word "
-                    "and the bridges run in their own processes, which have their own.")
+                    "and the bridges run in their own processes, which have their own; the dashboard cannot read "
+                    "their grants.")
 
 
 @router.get("/api/connections/permissions")
 def permissions():
+    import codec_doctor  # Microphone and Automation: reads that never prompt (P-022)
     from routes.skills_page import accessibility_ok, screen_recording_ok
+    auto = codec_doctor.automation_states()
     state = {"screen": screen_recording_ok(), "accessibility": accessibility_ok(), "full_disk": messages_db_readable(),
-             "microphone": None, "automation": None}
+             "microphone": codec_doctor.microphone_ok(), "automation": codec_doctor.automation_ok(auto)}
     items = []
     for key, name, anchor in _PERMS:
         v = state[key]
-        items.append({"key": key, "name": name,
-                      "state": "ok" if v is True else "missing" if v is False else "unknown",
-                      "where": "System Settings > Privacy & Security > " + name,
-                      "url": "x-apple.systempreferences:com.apple.preference.security?" + anchor})
+        item = {"key": key, "name": name,
+                "state": "ok" if v is True else "missing" if v is False else "unknown",
+                "where": "System Settings > Privacy & Security > " + name,
+                "url": "x-apple.systempreferences:com.apple.preference.security?" + anchor}
+        if key == "automation" and codec_doctor.automation_detail(auto):
+            item["detail"] = codec_doctor.automation_detail(auto)
+        items.append(item)
     return {"items": items, "note": PERMISSIONS_NOTE}
+
+
+# ── Check my Mac (P-022, docs/DOCTOR-DESIGN.md): codec_doctor, read only ─────
+
+@router.get("/api/connections/doctor")
+async def doctor():
+    import codec_doctor
+    return await run_in_threadpool(codec_doctor.run)
+
+
+@router.get("/api/connections/doctor/report")
+async def doctor_report():
+    """The redacted support zip: counts and setting names, no key, no file contents, no home-folder path."""
+    import codec_doctor
+    report = await run_in_threadpool(codec_doctor.run)
+    name = "codec-doctor-" + datetime.now().strftime("%Y-%m-%d") + ".zip"
+    return Response(codec_doctor.build_zip(report), media_type="application/zip",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"', "Cache-Control": "no-store"})
