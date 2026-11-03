@@ -22,6 +22,7 @@ sparkle_public_ed_key), falling back to the shipped defaults below.
 from __future__ import annotations
 
 import base64
+import glob
 import json
 import mmap
 import os
@@ -191,9 +192,10 @@ def _stream_to(r, f, expected: int) -> int:
 
 
 def _remove_stale_partials(dest_dir: Path, fname: str) -> None:
-    """A crash mid-download leaves a hidden .partial file; remove ours that are more than a day old."""
+    """A crash mid-download leaves a hidden .partial file; remove ours that are more than a day old.
+    `fname` comes from the appcast URL, so it is escaped: a `*` or `[` in it matches only itself."""
     now = time.time()
-    for p in dest_dir.glob(f".{fname}.*.partial"):
+    for p in dest_dir.glob(f".{glob.escape(fname)}.*.partial"):
         try:
             if p.is_file() and not p.is_symlink() and now - p.stat().st_mtime > 86400:
                 p.unlink()

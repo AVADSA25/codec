@@ -272,6 +272,20 @@ def test_download_removes_only_old_partial_files(upd, keypair, tmp_path):
     assert _left(dl) == [".CODEC-3.9.0.dmg.bbbb.partial", ".other.dmg.cccc.partial", "CODEC-3.9.0.dmg"]
 
 
+def test_a_wildcard_in_the_url_name_removes_only_its_own_partials(upd, tmp_path):
+    # The name comes from the appcast URL: "*" must not turn the clean-up into a sweep of other .partial files.
+    dl = tmp_path / "dl"
+    dl.mkdir()
+    other, own = dl / ".other.dmg.cccc.partial", dl / ".CODEC-*.dmg.aaaa.partial"
+    for p in (other, own):
+        p.write_bytes(b"x")
+        os.utime(p, (1, 1))
+    upd._remove_stale_partials(dl, "*")
+    assert other.exists()
+    upd._remove_stale_partials(dl, "CODEC-*.dmg")
+    assert _left(dl) == [".other.dmg.cccc.partial"]
+
+
 _CHILD = r'''
 import base64, sys
 sys.path.insert(0, sys.argv[1])
