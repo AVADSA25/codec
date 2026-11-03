@@ -77,7 +77,8 @@ So the rule written down and enforced is:
 **a notes call starts only when no voice session is open**
 (`~/.codec/voice_session.json` absent), checked before every call. While a call is streaming, the marker is checked between tokens
 and the call is dropped if it appears (best effort: during the prompt read no
-token arrives). With a voice session open, the turn is sent as P-034 sends it.
+token arrives). With a voice session open, the turn is sent as P-034 sends it
+(notes written earlier are not used either) and no job is planned.
 A marker left behind by a crashed voice process stops notes until it is gone.
 
 ## API and data

@@ -205,8 +205,8 @@ def fit_with_notes(messages: list, budget: int, config: Optional[dict], *, fit: 
     the notes do not reach far enough; the caller starts it after the reply. `llm` holds
     base_url, model and api_key; no job unless the URL is on this Mac and no persona is on."""
     sent, trim = fit(messages, budget)
-    if budget <= 0 or not enabled(config):
-        return sent, trim, None
+    if budget <= 0 or not enabled(config) or voice_session_open():
+        return sent, trim, None     # during a voice call the turn goes as P-034 sends it
     start, end = _bounds(messages)
     history = messages[start:end]
     if len(history) < 2:

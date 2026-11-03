@@ -243,6 +243,16 @@ def test_notes_a_merge_cannot_shorten_stop_growing(monkeypatch):
     assert notes._lookup(notes._prefix_keys(hist)) is None, "nothing over the bound is kept"
 
 
+def test_a_turn_during_a_voice_call_goes_as_p034_sends_it(monkeypatch):
+    scripted(monkeypatch, [])
+    fit(ev.messages_at(DATA, 40))[2].run()
+    msgs = ev.messages_at(DATA, 50)
+    assert notes.is_notes_message(fit(msgs)[0][1]), "notes exist for this chat"
+    Path(notes.VOICE_SESSION_PATH).write_text("{}")
+    sent, trim, job = fit(msgs)
+    assert (sent, trim) == chat._fit_prompt_budget(msgs, BUDGET) and job is None
+
+
 @pytest.fixture
 def api(tmp_path, monkeypatch):
     """POST /api/chat in process; the model, memory and skills are fakes; NotesJob.start records."""
