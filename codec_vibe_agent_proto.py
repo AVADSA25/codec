@@ -51,11 +51,20 @@ REPLACE_MARK = ">>>>>>> REPLACE"
 CONTENT_MARK = "<<<<<<< CONTENT"
 END_MARK = ">>>>>>> END"
 
+SEARCH_USE = 'Use: @@ search [--regex] [--files] [--count] "text" [PATH]'
+# search flags (P-066). The grep spellings are read too; -r -R -n -i -e -F -I change nothing (search is always
+# recursive, numbered and any case). A value of "" is such a no-op.
+_SEARCH_LONG = {"--regex": "regex", "--files": "files", "--files-only": "files", "--files-with-matches": "files",
+                "--count": "count", "--recursive": "", "--ignore-case": "", "--line-number": ""}
+_SEARCH_SHORT = {"E": "regex", "P": "regex", "l": "files", "c": "count",
+                 "r": "", "R": "", "n": "", "i": "", "e": "", "F": "", "I": ""}
+_FLAG_RE = re.compile(r"^(-{1,2}[A-Za-z][A-Za-z-]*)(?:[ \t]+|$)")
+
 FORMAT_HELP = (
     "Tool blocks start with @@ at the start of a line. One tool per reply, after one short sentence:\n"
-    "@@ list_files [folder]\n"
+    "@@ list_files [folder or glob]\n"
     "@@ read_file PATH [FIRST-LAST]\n"
-    "@@ search \"text\" [PATH]\n"
+    "@@ search [--regex] [--files] [--count] \"text\" [PATH]\n"
     "@@ edit_file PATH   then <<<<<<< SEARCH / ======= / >>>>>>> REPLACE\n"
     "@@ write_file PATH  then <<<<<<< CONTENT / >>>>>>> END\n"
     "@@ delete_file PATH\n"
@@ -100,6 +109,57 @@ def _split_args(rest: str):
         return shlex.split(rest), None
     except ValueError:
         return None, "I could not read the arguments (check the quotes)."
+
+
+def _search_flag(word: str):
+    """The flags one word stands for (a set, maybe empty for a no-op flag), or None when it is not a search flag."""
+    if word.startswith("--"):
+        f = _SEARCH_LONG.get(word.lower())
+        return None if f is None else {f} - {""}
+    if len(word) > 1 and word[0] == "-" and all(c in _SEARCH_SHORT for c in word[1:]):
+        return {_SEARCH_SHORT[c] for c in word[1:]} - {""}
+    return None
+
+
+def _split_keep_backslashes(rest: str):
+    """Like _split_args, but a backslash stays as written: a regex such as \\d+ keeps its backslash."""
+    lex = shlex.shlex(rest, posix=True)
+    lex.whitespace_split = True
+    lex.commenters = ""
+    lex.escape = ""
+    try:
+        return list(lex), None
+    except ValueError:
+        return None, "I could not read the arguments (check the quotes)."
+
+
+def _search_args(rest: str):
+    """(args, error) for a search header. Flags are bare words before or after the text; a quoted text stays text."""
+    flags: set = set()
+    while True:                                         # before the text: read from the raw line, so "-l" stays text
+        m = _FLAG_RE.match(rest)
+        f = _search_flag(m.group(1)) if m else None
+        if f is None:
+            break
+        flags |= f
+        rest = rest[m.end():]
+    regex = "regex" in flags or any("regex" in (_search_flag(w) or ()) for w in rest.split())
+    args, bad = _split_keep_backslashes(rest) if regex else _split_args(rest)
+    if bad:
+        return None, bad
+    if not args:
+        return None, SEARCH_USE
+    others = []
+    for word in args[1:]:
+        f = _search_flag(word)
+        if f is None:
+            others.append(word)
+        else:
+            flags |= f
+    if len(others) > 1:
+        return None, SEARCH_USE
+    mode = "count" if "count" in flags else "files" if "files" in flags else "lines"
+    return {"pattern": args[0], "path": others[0] if others else "", "regex": "regex" in flags, "mode": mode}, None
 
 
 def _trim_fences(lines: list[str]) -> list[str]:
@@ -226,7 +286,13 @@ def scan_reply(text: str, allowed=TOOLS, final: bool = False, lenient: bool = Fa
     if name not in TOOLS or name not in allowed:
         return err(f"There is no tool called '{name}'.\n{FORMAT_HELP}")
 
-    if name in ("list_files", "read_file", "search", "delete_file", "edit_file", "write_file"):
+    if name == "search":
+        sargs, bad = _search_args(rest)
+        if bad:
+            return err(bad)
+        return Scan("complete", Call(name, sargs, note), note=note, cut=True)
+
+    if name in ("list_files", "read_file", "delete_file", "edit_file", "write_file"):
         args, bad = _split_args(rest)
         if bad:
             return err(bad)
@@ -247,11 +313,6 @@ def scan_reply(text: str, allowed=TOOLS, final: bool = False, lenient: bool = Fa
                 if last is not None and last < first:
                     return err("The last line must not come before the first line.")
             return Scan("complete", Call(name, {"path": args[0], "first": first, "last": last}, note), note=note, cut=True)
-        if name == "search":
-            if not 1 <= len(args) <= 2:
-                return err('Use: @@ search "text" [PATH]')
-            return Scan("complete", Call(name, {"pattern": args[0], "path": args[1] if len(args) == 2 else ""}, note),
-                        note=note, cut=True)
         if len(args) != 1:
             return err(f"Use: @@ {name} PATH")
         path = args[0]
@@ -430,9 +491,11 @@ def system_prompt(allowed=TOOLS) -> str:
         "You work in small steps. Each reply is ONE short sentence about what you do next, then exactly ONE tool block. The tool runs and you get its result, then you continue.",
         "",
         "TOOLS. A tool block starts with @@ at the very start of a line:",
-        "@@ list_files [folder]",
+        "@@ list_files [folder or glob]        (a glob such as src/**/*.js lists only the matching files)",
         "@@ read_file PATH [FIRST-LAST]        (lines are numbered; read 300 lines at most per call)",
-        '@@ search "text" [PATH]               (plain text, any case)',
+        '@@ search [--regex] [--files] [--count] "text" [PATH or glob]',
+        "(plain text, any case; --regex: a Python regular expression; --files: only the names of matching files;"
+        " --count: matching lines per file)",
         "@@ edit_file PATH",
         SEARCH_MARK,
         "lines exactly as they are now in the file",

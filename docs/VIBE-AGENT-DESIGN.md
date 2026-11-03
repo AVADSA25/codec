@@ -60,9 +60,9 @@ Plain text, the same for local and cloud models. The model writes one short sent
 
 | tool | block | limits |
 |---|---|---|
-| `list_files` | `@@ list_files [folder]` | 200 entries; hides `.vibe`, `.git`, `node_modules` |
+| `list_files` | `@@ list_files [folder or glob]` | 200 entries; hides `.vibe`, `.git`, `node_modules`; a glob such as `src/**/*.js` lists only matching names (P-066) |
 | `read_file` | `@@ read_file path [first-last]` | up to 300 numbered lines per call, cut on whole lines to the 6 KB the model sees, the next line named in the header; secret-named files refused by `safe_rel` |
-| `search` | `@@ search "text" [path]` | plain text, any case (no regex: Python cannot time-limit one, so a bad pattern could hang the dashboard), 40 matches, no shell |
+| `search` | `@@ search [--regex] [--files] [--count] "text" [path or glob]` | plain text, any case, 40 matching lines, no shell; `--files` and `--count` list every file with a match; `--regex` runs in a child Python stopped after 2 s, never in the dashboard, because Python cannot time-limit a regex (P-066, docs/VIBE-AGENT-SEARCH-DESIGN.md) |
 | `edit_file` | one to five SEARCH / REPLACE pairs as above, all or none | each SEARCH must match exactly one place (line endings and trailing spaces ignored; a different indentation is accepted when it still matches one place); otherwise the model gets the closest lines and tries again |
 | `write_file` | `@@ write_file path`, then the whole file between `<<<<<<< CONTENT` and `>>>>>>> END` | 1 MB per file, 200 files per project |
 | `delete_file` | `@@ delete_file path` | project files only |
