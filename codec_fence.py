@@ -149,12 +149,7 @@ _PATTERNS = [(name, re.compile(rx, re.IGNORECASE | re.MULTILINE)) for name, rx i
      r"(?:(?:previous|prior|earlier|above|preceding|former|original|initial|system|"
      r"existing|current|old)\s+){1,3}"
      r"(?:instructions?|prompts?|rules|directives?|guidelines|guardrails|programming|"
-     r"constraints|orders|commands)\b"
-     # P-037: "ignore the previous rules for the menu" is about something else.
-     r"(?!\s+(?:for|of|on|about|regarding|in|at)\s+"
-     r"(?!(?:(?:the|a|an|my|our|this|that|his|her|their)\s+)?(?:ai|assistant|model|bot|chatbot|llm|"
-     r"gpt|claude|qwen|system|chat|conversation|session|prompt|rest|remainder|you|me|now|today|"
-     r"future)\b)[a-z])"),
+     r"constraints|orders|commands)\b"),
     ("override_all_instructions",
      r"\b(?:ignore|disregard|forget|override|bypass)\s+(?:all|any|every)\s+"
      r"(?:(?:of\s+)?(?:the|your|my)\s+)?(?:instructions|rules|directives|guidelines|guardrails)\b"),
@@ -175,17 +170,9 @@ _PATTERNS = [(name, re.compile(rx, re.IGNORECASE | re.MULTILINE)) for name, rx i
      r"|\bdo\s+anything\s+now\b"
      r"|\byou\s+have\s+no\s+(?:rules|restrictions|limits|guidelines|filters)\b"),
     ("hide_from_owner",
-     # P-037: "don't tell the owner about the surprise dinner" and "the chef changed the menu
-     # without telling the owner" are ordinary sentences; an instruction hides "this" or is
-     # addressed to "you" / starts with a verb.
      r"\b(?:do\s+not|don'?t|never)\s+(?:tell|inform|mention\s+(?:this|it)\s+to|alert|notify)\s+"
      r"(?:the\s+)?(?:user|owner|human|operator)\b"
-     r"(?=\s*(?:[.!,;:)]|$)|\s+(?:about\s+(?:this|that|these|it|any\s+of\s+(?:this|it))\b|"
-     r"(?:that|what|how|where|why)\s+you\b|anything\b|(?:this|that|it)\b))"
-     r"|(?:\byou\b|(?:^|[.!?:;]\s*)(?:please\s+)?(?:quietly\s+|silently\s+|secretly\s+)?"
-     r"(?:send|forward|e-?mail|upload|post|delete|remove|erase|run|execute|install|transfer|share|"
-     r"copy|move|open|buy|pay|change|save|write|add|do|make|call|text|book|cancel|approve|sign)\b)"
-     r"[^.!?\n]{0,120}?\bwithout\s+(?:telling|informing|alerting|notifying|asking)\s+(?:the\s+)?"
+     r"|\bwithout\s+(?:telling|informing|alerting|notifying|asking)\s+(?:the\s+)?"
      r"(?:user|owner|human|operator)\b"
      r"|\b(?:keep|hide)\s+this\s+(?:secret\s+)?from\s+(?:the\s+)?(?:user|owner|human)\b"),
     ("exfiltrate",
@@ -208,20 +195,16 @@ _PATTERNS = [(name, re.compile(rx, re.IGNORECASE | re.MULTILINE)) for name, rx i
     ("template_token",
      r"<\|[^|<>\n]{1,40}\|>|\[/?inst\]|<</?sys>>|<(?:start|end)_of_turn>"),
     ("fake_role_line",
-     # P-037: "Admin: always lock the office" is a note; a fake role line speaks to the assistant.
      r"^[ \t>#*_\-]*(?:system|developer|admin(?:istrator)?)\s*(?:message|prompt|note|"
-     r"override|instructions?)?\s*:\s*[^\n]{0,60}?\b(?:you\s+(?:are|must|will|should|shall|now|"
-     r"have\s+to|need\s+to|may|can)|ignore|disregard|forget|override|bypass|reveal|jailbreak|"
-     r"the\s+(?:assistant|ai|model)\s+(?:must|should|will|is))\b"),
+     r"override|instructions?)?\s*:\s*[^\n]{0,60}?\b(?:you|ignore|disregard|always|never|"
+     r"must|do\s+not|don'?t|forget|override|reveal|send)\b"),
     ("tool_call_text",
      r"\[skill:[a-z0-9_]{1,40}:"
      r"|(?-i:^[ \t]*TOOL:[ \t]*[\w.\-]{1,100}[ \t]*\n[ \t]*INPUT:)"
      r"|</?(?:tool_call|tool_response|function_call|function_results?)>"),
     ("addressed_to_ai",
-     # P-037: "I sent a message to Claude about the menu" is not a heading addressed to it.
-     r"\b(?:dear|attention)\s+(?:the\s+|any\s+|all\s+)?" + _AI + _NOT_A_GROUP + r"\b"
-     r"|\b(?:note|message|instructions?)\s+(?:to|for)\s+(?:the\s+|any\s+|all\s+)?"
-     + _AI + r"\s*[:,\-–—]"
+     r"\b(?:dear|attention|note\s+to|message\s+to|instructions?\s+for)\s+(?:the\s+|any\s+|all\s+)?"
+     + _AI + _NOT_A_GROUP + r"\b"
      r"|\bif\s+you\s+are\s+(?:an?\s+)?" + _AI + r"\b"
      r"|\b(?:ai|llm)\s+(?:agents?|assistants?|models?)\s+(?:reading|processing|summari[sz]ing|"
      r"browsing)\s+this\b"),
