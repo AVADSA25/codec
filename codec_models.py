@@ -69,6 +69,31 @@ HF_CACHE = os.path.expanduser("~/.cache/huggingface/hub")
 DEFAULT_MODEL = "mlx-community/Qwen2.5-7B-Instruct-4bit"
 DEFAULT_BASE_URL = "http://localhost:8083/v1"
 
+# Every other default model id CODEC sends lives here (P-057, docs/MODEL-RESOLVE-DESIGN.md):
+# callers ask resolve(role) or default_for(role) instead of writing a hub id.
+# role -> (config key or None, default id). chat, agent and plan share llm_model today.
+_ROLES: Dict[str, tuple] = {
+    "chat": ("llm_model", DEFAULT_MODEL),
+    "agent": ("llm_model", DEFAULT_MODEL),
+    "plan": ("llm_model", DEFAULT_MODEL),
+    "voice": ("voice_model", DEFAULT_MODEL),   # unset: the model the local server holds (P-013)
+    "vision": ("vision_model", "mlx-community/Qwen2.5-VL-7B-Instruct-4bit"),   # qwen-vl-7b in models.json
+    "ui_tars": ("ui_tars_model", "mlx-community/UI-TARS-1.5-7B-4bit"),
+    "stt": ("stt_model", "mlx-community/whisper-large-v3-turbo"),
+    "tts": ("tts_model", "mlx-community/Kokoro-82M-bf16"),
+    "research": (None, "mlx-community/Qwen3.6-35B-A3B-4bit"),
+}
+
+# Deep Research runs only on strong general models (codec_agents): UI key -> id.
+RESEARCH_MODELS: Dict[str, str] = {
+    "35b": _ROLES["research"][1],
+    "27b": "mlx-community/Qwen3.8-27B-4bit",
+}
+
+# Models CODEC ships or offers that read text only (packaging/macos/models.json, kind "llm"
+# without image input): codec_vision sends them no screenshot.
+TEXT_ONLY_MODELS = frozenset({DEFAULT_MODEL})
+
 # PM2 process that serves the models. Overridable via config.json so a second
 # machine with a different service name does not need a code change.
 DEFAULT_PM2_PROCESS = "qwen3.6"
@@ -389,6 +414,35 @@ def vision_model(cfg: Dict[str, Any], vision_base_url: str, default: str) -> str
         return pinned
     base, model = local_server_model(cfg)
     return model if same_server(vision_base_url, base) else default
+
+
+def default_for(role: str) -> str:
+    """The built-in default model id for `role` (see _ROLES), config not read.
+    Raises ValueError for an unknown role."""
+    try:
+        return _ROLES[role][1]
+    except KeyError:
+        raise ValueError(f"unknown model role: {role!r}") from None
+
+
+def resolve(role: str, cfg: Optional[Dict[str, Any]] = None) -> str:
+    """The model id a caller with `role` sends (P-057, docs/MODEL-RESOLVE-DESIGN.md).
+
+    The role's config key when it holds a non-empty string, byte for byte; else
+    for "voice" the model the local server holds (P-013); else default_for(role).
+    `cfg` is the config the caller already read; None reads CONFIG_PATH.
+    """
+    default = default_for(role)
+    key = _ROLES[role][0]
+    if key is None:
+        return default
+    c = cfg if cfg is not None else _load_config()
+    value = c.get(key)
+    if isinstance(value, str) and value:
+        return value
+    if role == "voice":
+        return local_server_model(c)[1]
+    return default
 
 
 def health_model(base_url: Optional[str] = None, timeout: float = 2.0) -> Optional[str]:
