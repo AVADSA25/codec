@@ -1,9 +1,12 @@
 """CODEC Search — DuckDuckGo (free, no API key) or Serper (better results, needs key)"""
 import httpx
+import logging
 import os
 import re
 import time
 import threading
+
+log = logging.getLogger(__name__)
 
 # Kept for back-compat with any external importer; the serper key is now read
 # via codec_config.get_serper_api_key() (PR-2B-2, Keychain-aware).
@@ -14,6 +17,11 @@ _cache: dict[str, tuple[float, list]] = {}  # key -> (timestamp, results)
 _cache_lock = threading.Lock()
 _CACHE_TTL = 300  # 5 minutes
 _CACHE_MAX = 100
+_ERROR_TITLE = "Search error"  # the row search_ddg / search_serper return on failure
+
+
+class SerperStatusError(Exception):
+    """Serper answered with a status other than 200 (429 = out of credit)."""
 
 
 def _cache_get(key: str) -> list | None:
@@ -96,11 +104,14 @@ def search_ddg(query: str, max_results: int = 10) -> list:
             })
         return results
     except Exception as e:
-        return [{"title": "Search error", "link": "", "snippet": str(e)}]
+        return [{"title": _ERROR_TITLE, "link": "", "snippet": str(e)}]
 
 
-def search_serper(query: str, api_key: str, max_results: int = 10) -> list:
-    """Search via Serper.dev — better results, needs API key ($10 for 100k queries)"""
+def search_serper(query: str, api_key: str, max_results: int = 10, *,
+                  raise_errors: bool = False) -> list:
+    """Search via Serper.dev — better results, needs API key ($10 for 100k queries).
+    A network error or a status other than 200 (429 = out of credit) gives the error
+    row, or raises with raise_errors=True so search() can fall back (P-097)."""
     try:
         r = httpx.post(
             "https://google.serper.dev/search",
@@ -108,6 +119,8 @@ def search_serper(query: str, api_key: str, max_results: int = 10) -> list:
             headers={"X-API-KEY": api_key, "Content-Type": "application/json"},
             timeout=10,
         )
+        if r.status_code != 200:
+            raise SerperStatusError(f"Serper answered HTTP {r.status_code}")
         data = r.json()
         results = []
 
@@ -129,29 +142,43 @@ def search_serper(query: str, api_key: str, max_results: int = 10) -> list:
 
         return results
     except Exception as e:
-        return [{"title": "Search error", "link": "", "snippet": str(e)}]
+        if raise_errors:
+            raise
+        return [{"title": _ERROR_TITLE, "link": "", "snippet": str(e)}]
+
+
+def _cacheable(results: list) -> bool:
+    """P-097: an empty list or an error row is an outage, not an answer."""
+    return bool(results) and not any(
+        isinstance(r, dict) and r.get("title") == _ERROR_TITLE for r in results)
 
 
 def search(query: str, max_results: int = 10) -> list:
     """Auto-select: use Serper if API key configured, otherwise DuckDuckGo.
-    Results are cached for 5 minutes keyed on (query, max_results)."""
+    If Serper raises or answers other than 200, DuckDuckGo answers instead (P-097).
+    Real results are cached for 5 minutes keyed on (query, max_results); an error
+    row or an empty list is never cached."""
     cache_key = f"{query}||{max_results}"
     cached = _cache_get(cache_key)
     if cached is not None:
         return cached
 
+    results = None
     try:
         # PR-2B-2 (D-15): Keychain-aware getter (cfg→Keychain migration + env).
         from codec_config import get_serper_api_key
         serper_key = (get_serper_api_key() or "").strip()
         if serper_key:
-            results = search_serper(query, serper_key, max_results)
-            _cache_put(cache_key, results)
-            return results
-    except Exception:
-        pass
-    results = search_ddg(query, max_results)
-    _cache_put(cache_key, results)
+            results = search_serper(query, serper_key, max_results, raise_errors=True)
+    except Exception as e:
+        # The HTTP status or the error type only, never the query.
+        log.warning("Serper search failed (%s); using DuckDuckGo",
+                    e if isinstance(e, SerperStatusError) else type(e).__name__)
+        results = None
+    if results is None:
+        results = search_ddg(query, max_results)
+    if _cacheable(results):
+        _cache_put(cache_key, results)
     return results
 
 
