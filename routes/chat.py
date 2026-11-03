@@ -413,6 +413,8 @@ def _enrich_messages(messages: list, config: dict, force_search: bool = False, m
     for url in urls[:3]:  # cap at 3 URLs per message
         content = _fetch_url_content(url)
         if content:
+            import codec_fence  # P-021: page text is data for the model, not instructions
+            content = codec_fence.fence(content, "Text fetched from a web page")
             context_parts.append(f"[URL CONTENT: {url}]\n{content}\n[END URL CONTENT]")
             log.info(f"Chat URL fetched: {url} ({len(content)} chars)")
 

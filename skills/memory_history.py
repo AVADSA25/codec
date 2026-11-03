@@ -25,7 +25,9 @@ def run(task: str, app: str = "", ctx: str = "") -> str:
     m = re.match(r'(?:set|record|remember)\s+fact\s+(.+?)\s*(?:=|is|:)\s*(.+)', task, re.I)
     if m:
         key, value = m.group(1).strip(), m.group(2).strip()
-        fid = store_fact(key, value, source="skill:memory_history")
+        import codec_fence  # P-021: origin of the write (owner / agent / untrusted)
+        fid = store_fact(key, value, source=codec_fence.memory_origin(
+            "memory_history", f"{key} = {value}", codec_fence.OWNER, app))
         return f"Stored fact #{fid}: {key} = {value}"
 
     if "contradict" in low:

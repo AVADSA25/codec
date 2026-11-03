@@ -160,7 +160,9 @@ def _fire(trigger: dict, registry: SkillRegistry):
                   extra={"trigger_name": name, "skill": skill},
                   correlation_id=cid)
             return
-        result = mod.run(task, "")
+        import codec_fence  # P-021: a scheduled rule's memory writes are agent-origin
+        with codec_fence.caller("agent"):
+            result = mod.run(task, "")
         dur_ms = (time.time() - t0) * 1000
         log.info("trigger %s → %s (%.0fms) : %s", name, skill, dur_ms, str(result)[:120])
         audit(f"autopilot:{name}", event="autopilot_fire",

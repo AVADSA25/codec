@@ -41,17 +41,21 @@ def run(task, app="", ctx=""):
     if not content or len(content) < 2:
         return "What should I remember? (e.g. 'remember that MF prefers espresso after 3pm')"
     try:
+        # P-021: origin of this write (owner / agent / untrusted for MCP or a scan hit).
+        import codec_fence
+        origin = codec_fence.memory_origin("memory_save", content, codec_fence.OWNER, app)
         from codec_memory import CodecMemory
         mem = CodecMemory()
         session_id = f"claude-mcp-{datetime.now().strftime('%Y%m%d')}"
-        row_id = mem.save(session_id, role="fact", content=content, user_id="default")
+        role = "untrusted" if origin == codec_fence.UNTRUSTED else "fact"
+        row_id = mem.save(session_id, role=role, content=content, user_id="default")
         # Also try temporal-fact path if available
         try:
             from codec_memory_upgrade import store_fact
             # Heuristic: if content looks like "X = Y" or "X is Y", store as fact
             m = re.match(r'^(.+?)\s*(?:=|is|are|equals)\s*(.+)$', content, re.IGNORECASE)
             if m:
-                store_fact(m.group(1).strip(), m.group(2).strip(), source="mcp")
+                store_fact(m.group(1).strip(), m.group(2).strip(), source=origin)
         except Exception:
             pass
         return f"✅ Saved to memory (id={row_id}): {content[:100]}"

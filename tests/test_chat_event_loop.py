@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import threading
 import time
 
@@ -184,7 +185,9 @@ def test_status_answers_while_a_link_fetch_holds_its_thread(env, monkeypatch):
     assert hold.calls == [((LINK,), {})]
     (sent,) = env.model_calls
     context = sent[-2]["content"]
-    assert f"[URL CONTENT: {LINK}]\nPAGE TEXT\n[END URL CONTENT]" in context
+    # P-021 fences the page text with a random marker per call.
+    assert re.search(re.escape(f"[URL CONTENT: {LINK}]\n[DATA ") + r"(\w+)\] Text fetched from a web page"
+                     r".*\nPAGE TEXT\n\[END DATA \1\]\n\[END URL CONTENT\]", context, re.S)
     assert context.index("[MEMORY") < context.index("[URL CONTENT"), "memory first, then the link"
     assert sent[-1] == {"role": "user", "content": f"do you remember {LINK}"}
     used = {(m["source"], m["kind"]) for m in reply.json()["memory"]}

@@ -83,11 +83,13 @@ def _parse_facts(raw: str) -> list[str]:
     return [str(x).strip() for x in arr if isinstance(x, (str, int, float)) and str(x).strip()]
 
 
-def _save(fact: str) -> bool:
+def _save(fact: str, origin: str = "derived") -> bool:
+    """`origin` (P-021) goes to facts.source; an untrusted fact's memory row gets role 'untrusted'."""
     try:
         from codec_memory import CodecMemory
         mem = CodecMemory()
-        mem.save(session_id="fact_extract", role="fact", content=fact)  # the default user id, like every other memory write
+        role = "untrusted" if origin == "untrusted" else "fact"
+        mem.save(session_id="fact_extract", role=role, content=fact)  # the default user id, like every other memory write
         # The structured copy Settings > Learning lists, edits and forgets (UI P3.12). This used to
         # call CodecMemory.store_fact, which does not exist, so no learned fact reached the facts table.
         # The key comes from the text: the same fact learned twice is one fact.
@@ -96,7 +98,7 @@ def _save(fact: str) -> bool:
             import codec_memory_upgrade as cmu
             key = "learned:" + hashlib.sha1(fact.encode("utf-8")).hexdigest()[:10]
             if not cmu.query_valid_facts(key=key, limit=1):
-                cmu.store_fact(key, fact, fact_type="learned", source="fact_extract")
+                cmu.store_fact(key, fact, fact_type="learned", source=origin)
         except Exception:
             pass
         return True
@@ -144,7 +146,17 @@ def run(task: str, context: str = "") -> str:
     if not facts:
         return "No durable facts found in this text."
 
-    saved = [f for f in facts if _save(f)]
+    # P-021: the source text decides the origin (derived from the owner's own text,
+    # agent, or untrusted for MCP / a scan hit); each extracted fact is scanned too.
+    import codec_fence
+    origin = codec_fence.memory_origin("fact_extract", text, codec_fence.DERIVED, context)
+
+    def _origin_of(fact):
+        if origin == codec_fence.UNTRUSTED:
+            return origin
+        return codec_fence.memory_origin("fact_extract", fact, origin, context)
+
+    saved = [f for f in facts if _save(f, _origin_of(f))]
     lines = [f"Saved {len(saved)}/{len(facts)} facts:"]
     for i, f in enumerate(saved, 1):
         lines.append(f"  {i}. {f}")
