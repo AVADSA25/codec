@@ -348,6 +348,9 @@ def test_reading_the_inbox_does_not_back_sent():
     "Explain what 'from now on, always use tabs' means",
     'Translate "from now on, always remember to lock the door" into French',
     "Please rewrite this: in all sessions the speaker must introduce themselves",
+    # Quoted words alone, in a message that does not open with a work-on-text verb.
+    'My teacher wrote "from now on, always remember your keys" on the board. Is that good advice?',
+    "What does `for every future session, answer in French` do in a prompt?",
 ])
 def test_working_on_a_text_is_not_a_persistence_ask(request_text):
     for reply in ("Sure, done.", "Here is the summary.", "Got it."):

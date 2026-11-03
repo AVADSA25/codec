@@ -1282,7 +1282,7 @@ def _maybe_escalate_suggestion(user_text: str, session_id: str):
         return None
 
 
-def _post_reply_checks(reply: str, actions: set, last_user_text: str, messages: list,
+def _post_reply_checks(reply: str, actions: list, last_user_text: str, messages: list,
                        session_id: str, stream: bool) -> tuple:
     """The checks every finished chat reply goes through, stream:true and stream:false
     alike (P-099, docs/CHAT-REPLY-PARITY-DESIGN.md): the Project suggestion (Step 10
