@@ -9,6 +9,7 @@ import pytest
 
 import codec_vibe_agent as va
 import codec_vibe_agent_cmd as cmd
+import codec_vibe_agent_proto as proto
 import codec_vibe_projects as vp
 from vibe_agent_fakes import (  # noqa: F401  (fixtures are used by name)
     agent_env, audits, blocker, cfg, end_of, kinds, make_project, scripted, wait_finished, wait_for,
@@ -254,6 +255,30 @@ def test_a_failing_command_is_a_result_not_an_error_and_a_timeout_says_so(script
     wait_finished(pid, run_id)
     text = model.calls[1][-1]["content"]
     assert "Timed out after 60 s" in text and "Do not start servers" in text and "(no output)" in text
+
+
+def test_a_long_output_reaches_the_model_with_its_last_4_kb_whole(fake):
+    lines = [f"test_case_{i:04d} ... ok" for i in range(950)] + ["FAILED test_add: AssertionError: 5 != -1", "1 failed, 950 passed in 3.2 s"]
+    out = "\n".join(lines) + "\n"
+    assert len(out) > 20 * 1024
+    box = cmd._Collector()                                            # what the sandbox runner keeps: the first 4 KB and the last 12 KB
+    for i in range(0, len(out), 1000):
+        box.add(out[i:i + 1000].encode())
+    text, cut = box.text()
+    fake.result = cmd.Result(1, text, 3.2, cut_bytes=cut)
+    pid = make_project()
+    vp.allow_command(pid, "npm test", False)                          # stored, so the step runs without waiting for the owner
+    run = va.Run(pid, "Make the tests pass", [], va._Llm("local", "http://localhost:1/v1", "m", "Local"), va.settings(), True)
+    assert run._run_call(1, RUN, proto.scan_reply(RUN, run.allowed, final=True).call) is False
+    seen = run.turns[-1].result                                       # the result exactly as the model gets it
+    assert out.rstrip("\n")[-4096:] in seen and seen.endswith("1 failed, 950 passed in 3.2 s\n[END RESULT]")
+    assert seen.splitlines()[1] == "Exit code 1 after 3.2 s." and "characters left out) ..." in seen
+    assert len(seen.split("\n... (")[0]) <= len("[RESULT 1 run_check npm test: FAILED]\n") + va.MODEL_HEAD_CHARS
+    assert len(seen) < va.MODEL_RESULT_CHARS + 300
+    shown = [e for e in run.events if e["type"] == "result"][0]["output"]
+    assert shown == "Exit code 1 after 3.2 s.\n" + text.strip("\n")             # the page keeps what the collector kept
+    short = "Exit code 0 after 0.1 s.\n" + "y" * (va.MODEL_RESULT_CHARS - 30)
+    assert va._for_model(short) == short
 
 
 def test_a_blocked_action_in_the_sandbox_is_explained_to_the_model(scripted, monkeypatch):
