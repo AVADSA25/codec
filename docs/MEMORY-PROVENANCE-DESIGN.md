@@ -34,9 +34,9 @@ every later prompt (and be learned again by the nightly run).
    facts through `gather()`, so all three are filtered; Deep Chat still also leaves
    out the `daybreak` threads (they have their own block). That block,
    `codec_daybreak.get_working_context()`, keeps only threads of the same three
-   origins (`get_open_threads(origins=...)`); the owner's thread lists (Today, Settings
-   > Memory, the briefing card) still show every thread. Learned facts from the
-   owner's own local chats are `derived` and stay in.
+   origins (`get_open_threads(origins=...)`); the owner's thread lists (Today,
+   Settings > Memory, the briefing card) still show every thread. Learned facts from
+   the owner's own local chats are `derived` and stay in.
 
 3. **Settings > Memory shows each fact's origin and offers Promote** for agent and
    untrusted facts. `POST /api/memory/facts/promote {key, id}` writes the same value with
@@ -83,8 +83,11 @@ asks `codec_fence.memory_origin` with the caller's app value; only an MCP call o
 - `codec_memory_upgrade.query_valid_facts(..., origins=None)`; `None` keeps every fact.
 - `codec_runtime_context.gather(..., origins=PROMPT_ORIGINS)`; `origins=None` reads all.
 - `CodecMemory.search/search_recent(..., for_prompt=False)`, `get_context(..., for_prompt=True)`.
+- `codec_daybreak.get_open_threads(..., origins=None)`; `get_working_context()` passes
+  `PROMPT_ORIGINS`.
+- `memory_save` and `fact_extract` write an agent-origin memory row with role `agent`.
 - `GET /api/memory/facts` rows carry `origin` and `in_prompts`; history versions carry
-  `origin`; new `POST /api/memory/facts/promote`.
+  `origin`; new `POST /api/memory/facts/promote {key, id}` (409 when `id` is stale).
 - New audit event `memory_write_flagged`; new `memory_changed` action `fact_promoted`.
 - No memory.db schema change, no backfill, no `_HTTP_CONSENT_REQUIRED` change.
 
