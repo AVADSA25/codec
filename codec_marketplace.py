@@ -11,7 +11,9 @@ Usage:
     python3 codec_marketplace.py info <skill-name>
     python3 codec_marketplace.py publish <file.py>
 
-Or via CODEC voice: "Hey CODEC, install bitcoin price skill"
+Command line only. The old voice entry (SKILL_* constants and run()) was removed
+(P-035): the skill registry never scans this root module, so it could not be
+reached, and it installed downloads without the sha256 check used here.
 """
 import hashlib
 import json
@@ -415,81 +417,6 @@ skill.json template:""")
         "verified": False
     }, indent=2))
     print("\n  Guidelines: https://github.com/AVADSA25/codec-skills/blob/main/CONTRIBUTING.md")
-
-
-# ── CODEC Skill (voice-accessible) ──────────────────────────────────────────
-
-SKILL_NAME        = "marketplace"
-SKILL_TRIGGERS    = [
-    "install skill", "marketplace", "skill marketplace", "search skills",
-    "browse skills", "available skills", "codec install", "skill store",
-    "download skill", "find skill"
-]
-SKILL_DESCRIPTION = "Browse and install skills from the CODEC Skill Marketplace"
-
-
-def run(task: str, context: str = "") -> str:
-    """Voice-accessible marketplace entry point."""
-    lower = task.lower()
-
-    if any(w in lower for w in ["install ", "download "]):
-        for prefix in ["install skill ", "install ", "download skill ", "download "]:
-            if prefix in lower:
-                name = lower.split(prefix, 1)[1].strip().rstrip(".").replace(" ", "-")
-                registry = _fetch_registry(silent=True)
-                match = next(
-                    (s for s in registry.get("skills", []) if s["name"] == name or name in s["name"]),
-                    None
-                )
-                if not match:
-                    return f"Skill '{name}' not found in marketplace. Say 'search skills {name}' to browse."
-                code = _download_skill(match, registry)
-                if not code:
-                    return f"Failed to download '{name}' — check your internet connection."
-                py_name = match["name"].replace("-", "_") + ".py"
-                dest    = os.path.join(SKILLS_DIR, py_name)
-                with open(dest, "w") as f:
-                    f.write(code)
-                meta = _load_marketplace_meta()
-                meta["installed"][match["name"]] = {
-                    "version":      match["version"],
-                    "file":         py_name,
-                    "installed_at": datetime.now().isoformat(),
-                    "author":       match["author"],
-                    "verified":     match.get("verified", False),
-                }
-                _save_marketplace_meta(meta)
-                return f"Installed {match.get('display_name', match.get('name', 'unknown'))} v{match['version']}. Restart CODEC to activate."
-
-    if any(w in lower for w in ["search ", "find ", "browse "]):
-        for prefix in ["search skills ", "search skill ", "search ", "find skill ", "find ", "browse skills ", "browse "]:
-            if prefix in lower:
-                query    = lower.split(prefix, 1)[1].strip().rstrip(".")
-                registry = _fetch_registry(silent=True)
-                results  = [
-                    s for s in registry.get("skills", [])
-                    if query in f"{s['name']} {s.get('description','')} {' '.join(s.get('triggers',[]))}".lower()
-                ]
-                if results:
-                    lines = [f"Found {len(results)} skill(s) for '{query}':"]
-                    for s in results[:5]:
-                        v = " (verified)" if s.get("verified") else ""
-                        lines.append(f"  {s['name']} — {s['description']}{v}")
-                    lines.append("Say 'install [name]' to install one.")
-                    return "\n".join(lines)
-                return f"No skills found for '{query}'. Try a broader search term."
-
-    # Default: marketplace summary
-    registry = _fetch_registry(silent=True)
-    total    = len(registry.get("skills", []))
-    meta     = _load_marketplace_meta()
-    inst     = len(meta.get("installed", {}))
-    cats     = registry.get("categories", [])
-    return (
-        f"CODEC Skill Marketplace: {total} skills available, {inst} installed.\n"
-        f"Categories: {', '.join(cats[:6])}.\n"
-        f"Say 'search skills [topic]' or 'install skill [name]'."
-    )
 
 
 # ── CLI Entry Point ──────────────────────────────────────────────────────────

@@ -11,9 +11,6 @@ from codec_marketplace import (
     _save_marketplace_meta,
     _load_cached_registry,
     _verify_sha256,
-    SKILL_TRIGGERS,
-    SKILL_DESCRIPTION,
-    run,
 )
 
 
@@ -68,64 +65,15 @@ def test_cached_registry_reads_file(tmp_path, monkeypatch):
     assert result["skills"][0]["name"] == "test-skill"
 
 
-# ── CODEC skill interface ─────────────────────────────────────────────────────
+# ── No voice entry (P-035, DC-050) ───────────────────────────────────────────
 
-def test_skill_triggers_not_empty():
-    assert len(SKILL_TRIGGERS) > 0
-
-
-def test_skill_description_not_empty():
-    assert SKILL_DESCRIPTION
-
-
-def test_run_returns_string_for_unknown_task(monkeypatch):
-    """run() always returns a string even with no network."""
+def test_the_unreachable_voice_entry_is_gone():
+    """The registry never scans this root module, and its run() installed
+    downloads without the sha256 check: only the command line remains."""
     import codec_marketplace as cm
-    monkeypatch.setattr(cm, "_fetch_registry", lambda silent=False: {"skills": [], "categories": []})
-    monkeypatch.setattr(cm, "_load_marketplace_meta", lambda: {"installed": {}})
-    result = run("show marketplace")
-    assert isinstance(result, str)
-    assert len(result) > 0
-
-
-def test_run_search_no_results(monkeypatch):
-    """run('search xyz') returns helpful message when nothing found."""
-    import codec_marketplace as cm
-    monkeypatch.setattr(cm, "_fetch_registry", lambda silent=False: {"skills": [], "categories": []})
-    result = run("search xyznonexistent")
-    assert isinstance(result, str)
-    assert "not found" in result.lower() or "no skill" in result.lower()
-
-
-def test_run_install_not_found(monkeypatch):
-    """run('install nonexistent') returns error string, not exception."""
-    import codec_marketplace as cm
-    monkeypatch.setattr(cm, "_fetch_registry", lambda silent=False: {"skills": [], "categories": []})
-    result = run("install skill nonexistent-skill-xyz")
-    assert isinstance(result, str)
-    assert "not found" in result.lower()
-
-
-def test_run_search_finds_match(monkeypatch):
-    """run('search bitcoin') returns skill info when it exists."""
-    import codec_marketplace as cm
-    fake_registry = {
-        "skills": [{
-            "name": "bitcoin-price",
-            "display_name": "Bitcoin Price",
-            "description": "Check crypto prices",
-            "version": "1.0.0",
-            "author": "AVA Digital",
-            "triggers": ["bitcoin price", "crypto price"],
-            "category": "finance",
-            "verified": True,
-        }],
-        "categories": ["finance"]
-    }
-    monkeypatch.setattr(cm, "_fetch_registry", lambda silent=False: fake_registry)
-    result = run("search skills bitcoin")
-    assert "bitcoin" in result.lower()
-    assert "Found" in result
+    for name in ("SKILL_NAME", "SKILL_TRIGGERS", "SKILL_DESCRIPTION", "run"):
+        assert not hasattr(cm, name), name
+    assert callable(cm.cmd_install) and callable(cm._download_skill)
 
 
 # ── CLI plumbing ──────────────────────────────────────────────────────────────
