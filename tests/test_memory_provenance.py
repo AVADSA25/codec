@@ -238,18 +238,23 @@ def test_the_nightly_run_learns_from_the_owners_chats_and_every_prompt_keeps_it(
 
 
 def test_promote_makes_an_untrusted_fact_the_owners_without_deleting_anything(env):
-    cmu.store_fact("gate code", "4321", source="mcp")
+    older = cmu.store_fact("gate code", "1234", source="mcp")   # what the page showed
+    newer = cmu.store_fact("gate code", "4321", source="mcp")   # an MCP call replaced it before the click
     cmu.store_fact("home city", "Porto", source="memory page")
     assert "4321" not in _prompts("hello")["wake"]
-    out = asyncio.run(memory_page.promote_fact(_Req({"key": "gate code"})))
+    stale = asyncio.run(memory_page.promote_fact(_Req({"key": "gate code", "id": older})))
+    assert stale.status_code == 409, "a value the owner did not see is never promoted"
+    assert cmu.query_valid_facts(key="gate code")[0]["source"] == "mcp"
+    out = asyncio.run(memory_page.promote_fact(_Req({"key": "gate code", "id": newer})))
     assert out == {"ok": True, "changed": True, "origin": "owner"}
     (row,) = cmu.query_valid_facts(key="gate code")
     assert row["source"] == "owner" and row["value"] == "4321"
     history = memory_page.fact_history("gate code")["versions"]
-    assert [(v["value"], v["origin"]) for v in history] == [("4321", "owner"), ("4321", "untrusted")]
+    assert [(v["value"], v["origin"]) for v in history] == [
+        ("4321", "owner"), ("4321", "untrusted"), ("1234", "untrusted")]
     assert history[1]["superseded_by"] == history[0]["id"], "the old row is superseded, not deleted"
     with sqlite3.connect(cmu.DB_PATH) as c:
-        assert c.execute("SELECT COUNT(*) FROM facts").fetchone()[0] == 3
+        assert c.execute("SELECT COUNT(*) FROM facts").fetchone()[0] == 4
     for where, text in _prompts("hello").items():
         assert "4321" in text, where
     (audit,) = [kw for a, kw in env.audit if a and a[0] == "memory_changed"]
@@ -265,7 +270,7 @@ def test_promote_makes_an_untrusted_fact_the_owners_without_deleting_anything(en
 def test_the_memory_page_offers_promote_only_for_facts_the_prompts_leave_out():
     page = (REPO / "codec_dashboard.html").read_text(encoding="utf-8")
     assert "if (f.in_prompts === false) acts.appendChild(_memBtn('Promote'" in page
-    assert "_memSend('POST', '/api/memory/facts/promote', { key: f.key })" in page
+    assert "_memSend('POST', '/api/memory/facts/promote', { key: f.key, id: f.id })" in page
     assert "untrusted: 'untrusted, not used in replies'" in page
     assert "_memBtn('Forget'" in page, "Forget stays"
 

@@ -39,10 +39,12 @@ every later prompt (and be learned again by the nightly run).
    owner's own local chats are `derived` and stay in.
 
 3. **Settings > Memory shows each fact's origin and offers Promote** for agent and
-   untrusted facts. `POST /api/memory/facts/promote {key}` writes the same value with
+   untrusted facts. `POST /api/memory/facts/promote {key, id}` writes the same value with
    source `owner` through `store_fact(..., supersede=True)`: the old row stays in the
-   fact history, nothing is deleted. Forget and Edit are unchanged. One
-   `memory_changed` audit line with action `fact_promoted` (key and the old origin).
+   fact history, nothing is deleted. If the active version is no longer the `id` the
+   page showed (another write replaced it), it answers 409 and promotes nothing.
+   Forget and Edit are unchanged. One `memory_changed` audit line with action
+   `fact_promoted` (key and the old origin).
 
 4. **Crew and scheduled crew results are role `agent`.** `codec_agents.save_to_memory`
    writes the task and result rows with role `agent` instead of `user` / `assistant`

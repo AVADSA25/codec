@@ -3227,7 +3227,7 @@ function _factRow(f) {
   main.appendChild(_memEl('span', 'mem-meta', (f.fact_type || 'fact') + ' · since ' + _memDate(f.valid_from) + ' · ' + _memOrigin(f.origin)));
   var acts = _memEl('div', 'mem-acts');
   if (f.in_prompts === false) acts.appendChild(_memBtn('Promote', async function () {
-    try { var d = await _memSend('POST', '/api/memory/facts/promote', { key: f.key }); _memMsg('memFactsMsg', d.changed ? 'Promoted. CODEC now uses it as your own fact; the old version is in the history.' : 'Already in use.'); loadFacts(); }
+    try { var d = await _memSend('POST', '/api/memory/facts/promote', { key: f.key, id: f.id }); _memMsg('memFactsMsg', d.changed ? 'Promoted. CODEC now uses it as your own fact; the old version is in the history.' : 'Already in use.'); loadFacts(); }
     catch (e) { _memMsg('memFactsMsg', 'Could not promote: ' + e.message, true); }
   }, 'mcp-btn-primary'));
   acts.appendChild(_memBtn('Edit', function () {
