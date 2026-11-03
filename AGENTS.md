@@ -625,6 +625,7 @@ No agent task chains more than 8 steps without breaking. Hardcoded in `Crew.max_
 - No new dependencies without explicit approval — local-first means small dependency surface
 - Prefer stdlib (`sqlite3`, `json`, `pathlib`, `subprocess`) over third-party
 - Module names: `codec_<area>.py` for engine modules, `routes/<area>.py` for HTTP routes
+- An `async def` in `codec_dashboard.py` or `routes/` never makes a blocking call (HTTP, `subprocess`, `codec_llm.call`, search, PDF text) on the event loop: wrap it in `asyncio.to_thread` (P-016, docs/EVENT-LOOP-OFFLOAD-DESIGN.md; `tests/test_no_blocking_requests_in_async.py` follows same-file helpers one hop). The qchat and vibe SQLite connections are shared without a lock: use them on the loop thread only (`routes.chat._recall_memory` stays there).
 
 ### Commits
 - One concern per commit

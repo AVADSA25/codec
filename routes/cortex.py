@@ -6,6 +6,7 @@ health, skill list, PM2 logs, and restart actions.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import subprocess
 
@@ -36,7 +37,8 @@ async def cortex_health():
                 results[c["id"]] = "err"
     # Also check PM2 processes
     try:
-        out = subprocess.check_output(
+        out = await asyncio.to_thread(
+            subprocess.check_output,
             ["/opt/homebrew/bin/pm2", "jlist"], timeout=5, stderr=subprocess.DEVNULL
         )
         procs = json.loads(out)
@@ -84,10 +86,11 @@ async def cortex_logs(service: str):
     }
     pm2_name = PM2_MAP.get(service, f"codec-{service}")
     try:
-        result = subprocess.check_output(
+        result = (await asyncio.to_thread(
+            subprocess.check_output,
             ["/opt/homebrew/bin/pm2", "logs", pm2_name, "--lines", "30", "--nostream"],
             timeout=5, stderr=subprocess.STDOUT
-        ).decode("utf-8", errors="replace")
+        )).decode("utf-8", errors="replace")
         return {"service": service, "pm2_name": pm2_name, "logs": result}
     except Exception as e:
         return {"service": service, "pm2_name": pm2_name, "logs": f"Error: {e}"}
@@ -105,7 +108,8 @@ async def cortex_restart(service: str):
     if not pm2_name:
         return {"ok": False, "error": f"Unknown service: {service}"}
     try:
-        subprocess.check_output(
+        await asyncio.to_thread(
+            subprocess.check_output,
             ["/opt/homebrew/bin/pm2", "restart", pm2_name],
             timeout=10, stderr=subprocess.STDOUT
         )

@@ -14,6 +14,7 @@ hooks.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import subprocess
@@ -104,7 +105,8 @@ async def status():
 
     # Check if CODEC process is alive
     try:
-        r = subprocess.run(["pgrep", "-f", "codec.py"], capture_output=True, text=True, timeout=3)
+        r = await asyncio.to_thread(subprocess.run, ["pgrep", "-f", "codec.py"],
+                                    capture_output=True, text=True, timeout=3)
         alive = bool(r.stdout.strip())
     except (OSError, subprocess.SubprocessError) as e:
         log.warning(f"pgrep failed; assuming process not alive: {e}")

@@ -192,7 +192,7 @@ async def upload_document(request: Request):
             with open(pdf_path, "wb") as f:
                 f.write(raw)
             try:
-                text_content = codec_pdftext.extract_text(pdf_path)[:300000].strip()
+                text_content = (await asyncio.to_thread(codec_pdftext.extract_text, pdf_path))[:300000].strip()
             except codec_pdftext.PdfTextError as e:
                 return JSONResponse({"error": str(e)}, status_code=422)
             if not text_content:

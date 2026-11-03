@@ -130,7 +130,7 @@ async def screenshot():
     """Take screenshot of Mac Studio and return image."""
     try:
         path = os.path.expanduser("~/.codec/pwa_screenshot.png")
-        subprocess.run(["screencapture", "-x", path], timeout=5)
+        await asyncio.to_thread(subprocess.run, ["screencapture", "-x", path], timeout=5)
         if os.path.exists(path):
             return FileResponse(path, media_type="image/png")
         return JSONResponse({"error": "Screenshot failed"}, status_code=500)
@@ -142,7 +142,7 @@ async def screenshot():
 async def get_clipboard():
     """Get Mac Studio clipboard content."""
     try:
-        r = subprocess.run(["pbpaste"], capture_output=True, text=True, timeout=3)
+        r = await asyncio.to_thread(subprocess.run, ["pbpaste"], capture_output=True, text=True, timeout=3)
         return {"content": r.stdout[:2000]}
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
@@ -154,8 +154,10 @@ async def set_clipboard(request: Request):
     body = await request.json()
     text = body.get("text", "")
     try:
-        p = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
-        p.communicate(text.encode())
+        def _copy():  # one worker call: a cancel between the two lines would leave pbcopy half-fed
+            p = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
+            p.communicate(text.encode())
+        await asyncio.to_thread(_copy)
         return {"status": "copied"}
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
