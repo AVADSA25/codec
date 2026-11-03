@@ -213,6 +213,10 @@ def test_build_app_services_json_excludes_the_dev_only_watchdog():
     names = [a["name"] for a in json.loads(r.stdout)]
     assert "codec-watchdog" not in names
     assert "codec-dashboard" in names  # positive control: the rest still ships
+    # codec-mcp is the stdio MCP server: as a LaunchAgent it exits at once and is
+    # restarted for ever (P-012). The claude.ai connector, codec-mcp-http, ships.
+    assert "codec-mcp" not in names
+    assert "codec-mcp-http" in names
 
 
 def test_generator_substitutes_workdir_when_cwd_is_the_repo_root():

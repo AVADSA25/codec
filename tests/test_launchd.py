@@ -136,3 +136,29 @@ def test_from_ecosystem_emits_all_services():
         # :8082 servers into one unified qwen3.6 service.)
         labels = [ln for ln in r.stdout.splitlines() if "ai.avadigital.codec." in ln]
         assert len(labels) >= 14, f"expected >=14 services, saw {len(labels)}:\n{r.stdout}"  # 15->14: pilot-runner removed (v3.5 Pilot unhook)
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="needs node to dump ecosystem.config.js")
+def test_buyer_fleet_has_no_stdio_mcp_agent(tmp_path):
+    """The LaunchAgents a buyer gets come from build_app.sh's services.json, which leaves
+    out the two dev-only services (codec-watchdog, codec-mcp: P-012) and nothing else."""
+    import re
+    build = (REPO / "packaging" / "macos" / "build_app.sh").read_text()
+    m = re.search(r"node -e '(.*?)' \"\$REPO/ecosystem\.config\.js\"", build, re.S)
+    assert m, "build_app.sh must dump services.json with an inline node program"
+    dump = subprocess.run(["node", "-e", m.group(1), str(REPO / "ecosystem.config.js"), str(REPO)],
+                          capture_output=True, text=True, timeout=60)
+    assert dump.returncode == 0, dump.stderr
+    services = tmp_path / "services.json"
+    services.write_text(dump.stdout)
+    every = subprocess.run(["node", "-e", 'console.log(require(process.argv[1]).apps.length)',
+                            str(REPO / "ecosystem.config.js")], capture_output=True, text=True, timeout=60)
+    out = tmp_path / "agents"
+    r = subprocess.run([sys.executable, str(GEN), "--from-json", str(services), "--out", str(out),
+                        "--log-dir", str(tmp_path / "logs"), "--workdir", "/App/Resources/app"],
+                       capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, f"generator failed: {r.stderr}\n{r.stdout}"
+    labels = sorted(p.stem for p in out.glob("*.plist"))
+    assert "ai.avadigital.codec.codec-mcp" not in labels
+    assert "ai.avadigital.codec.codec-mcp-http" in labels
+    assert len(labels) == int(every.stdout) - 2, labels

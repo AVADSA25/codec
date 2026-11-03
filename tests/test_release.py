@@ -47,6 +47,18 @@ def test_release_dry_run_names_all_stages_in_order():
     assert out.index("build_app.sh") < out.index("sign_app.sh") < out.index("notarize_app.sh") < out.index("make_dmg.sh")
 
 
+def test_release_checks_the_app_contents_after_signing_before_notarizing():
+    # P-012: the Cookbook, the signed Touch ID helper and services.json without codec-mcp.
+    r = subprocess.run(
+        ["bash", str(RELEASE), "--identity", "TEST", "--keychain-profile", "p", "--dry-run"],
+        capture_output=True, text=True, timeout=60,
+    )
+    assert r.returncode == 0, f"{r.stderr}\n{r.stdout}"
+    out = r.stdout
+    assert "verify/app_contents.py" in out and "--signed" in out[out.index("verify/app_contents.py"):]
+    assert out.index("sign_app.sh") < out.index("verify/app_contents.py") < out.index("notarize_app.sh")
+
+
 def test_release_honors_skips():
     r = subprocess.run(
         ["bash", str(RELEASE), "--identity", "TEST", "--skip-notarize", "--skip-dmg", "--dry-run"],

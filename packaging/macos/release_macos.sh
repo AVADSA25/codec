@@ -78,6 +78,9 @@ run "${BUILD[@]}"
 
 echo "-- 2/5 sign --"
 run bash "$HERE/sign_app.sh" --app "$APP" --identity "$IDENTITY"
+# The Cookbook, the signed Touch ID helper and services.json without codec-mcp (P-012),
+# checked before anything is sent to Apple.
+run python3 "$HERE/verify/app_contents.py" --app "$APP" --signed
 
 if [ "$SKIP_NOTARIZE" -eq 0 ]; then
     echo "-- 3/5 notarize + staple app --"
