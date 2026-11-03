@@ -49,6 +49,7 @@ Sites:
 | `codec_checkin.py` (unread count) | loaded the Gmail skill for its `_get_service` | `codec_google_auth.build_service` directly (no skill load); skipped when `google_gmail` is off. The calendar read passes `feature="checkin"` |
 | `codec_observer.py` (shift report) | own `sys.path` + `import_module` | `feature_module` for the day check, `run_feature("shift_report", "shift report [trigger=time\|idle]", "shift_report")` to fire |
 | `routes/mcp.py` | loads `skills/mcp_connect.py` by path | unchanged, one documented line: it calls the skill's connection helpers, not `run` |
+| `skills/auto_memorize.py` (review fix) | bare `from fact_extract import run`, which worked in the dashboard only after Daybreak's `sys.path` insert | `feature_module("fact_extract")`; manifest regenerated |
 
 Consequences, intended: a skill switched off on the Skills page is skipped by these
 features; the user folder can no longer shadow a built-in in Daybreak (built-in name
@@ -98,7 +99,9 @@ stops a fetch only for an agent without `"*"`, for example one that reaches
 AGENTS.md section 4 says what the loader is: one class (`SkillRegistry`, manifest +
 AST gate), the shared instance in `codec_dispatch`, the other instances (MCP, voice
 call, crews, autopilot, slash commands) built from the same class, `run_feature` for
-built-in features, and the two exemptions (`routes/mcp.py`, `codec_sandbox`).
+built-in features, the two exemptions (`routes/mcp.py`, `codec_sandbox`), and the
+two bare-name imports left outside this item (`codec_agent_messaging`'s iMessage
+notice, `clipboard_url_fetch`), logged in docs/known-issues.md.
 docs/codec-architecture.md gets the feature `tool_result` line.
 
 ## Tests
