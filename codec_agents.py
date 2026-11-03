@@ -21,8 +21,14 @@ import httpx
 from codec_audit import audit as _audit_core
 from codec_hooks import HookVeto, run_with_hooks
 from codec_llm_proxy import llm_queue, Priority
+import codec_fence
 
 log = logging.getLogger("codec_agents")
+
+
+class _ToolNote(str):
+    """A message CODEC writes in place of a tool result (timeout, plugin veto).
+    It is CODEC's own text, so Agent.run does not fence it (P-021)."""
 
 # ── Tool-call validation ──
 _VALID_TOOL_NAME_RE = re.compile(r'^[A-Za-z0-9_.\-]+$')
@@ -669,7 +675,9 @@ class Agent:
 
         def _run_tool_with_hooks():
             def _inner(t, _c):
-                return _real_tool.run(t)
+                # P-021: memory writes made by this tool call are agent-origin.
+                with codec_fence.caller("agent"):
+                    return _real_tool.run(t)
             return run_with_hooks(
                 tool_name=_tool_name_local,
                 task=_tool_input_local,
@@ -691,12 +699,12 @@ class Agent:
             # loop can recover (try a different tool / FINAL) instead of hanging.
             _audit("tool_result", tool=tool_name, agent=self.name, outcome="timeout",
                    error=f"tool exceeded {_TOOL_CALL_TIMEOUT_SECONDS}s budget")
-            return (f"Tool '{tool_name}' timed out after "
-                    f"{_TOOL_CALL_TIMEOUT_SECONDS}s. Try a different approach or "
-                    f"give your FINAL answer.")
+            return _ToolNote(f"Tool '{tool_name}' timed out after "
+                             f"{_TOOL_CALL_TIMEOUT_SECONDS}s. Try a different approach or "
+                             f"give your FINAL answer.")
         if isinstance(result, HookVeto):
-            result = (f"Tool '{tool_name}' was vetoed by plugin "
-                      f"'{result.plugin_name}': {result.reason}")
+            result = _ToolNote(f"Tool '{tool_name}' was vetoed by plugin "
+                               f"'{result.plugin_name}': {result.reason}")
         return result
 
     async def run(self, task: str, context: str = "", callback: Optional[Callable] = None) -> str:
@@ -825,6 +833,11 @@ Rules:
                     tool_calls_made += 1
                     _audit("tool_result", agent=self.name, tool=tool_name,
                            result_len=len(result))
+                    # P-021: a tool's output is data for the model, never instructions.
+                    # Fenced before the stuck banner, so CODEC's own banners and the
+                    # owner's escalation answer stay outside the fence.
+                    if not isinstance(result, _ToolNote):
+                        result = codec_fence.fence(result, f"Result of the {tool_name} tool")
 
                     # Phase 1 Step 3 §2.2 — stuck detection.
                     # Run in the executor so the worker thread can call

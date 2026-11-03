@@ -84,11 +84,15 @@ def run(task: str, context: str = "") -> str:
         response.raise_for_status()
         
         content_type = response.headers.get("content-type", "")
+        # P-021: page text is data for whoever reads it next, never instructions.
+        import codec_fence
         if "html" in content_type:
-            return _html_to_text(response.text)
+            return codec_fence.fence(_html_to_text(response.text), "Text fetched from a web page")
         if "text" in content_type or "json" in content_type:
             body = response.text
-            return body[:_MAX_CHARS] + (f"\n...[truncated, {len(body)} raw chars]" if len(body) > _MAX_CHARS else "")
+            return codec_fence.fence(
+                body[:_MAX_CHARS] + (f"\n...[truncated, {len(body)} raw chars]" if len(body) > _MAX_CHARS else ""),
+                "Text fetched from a web page")
         else:
             return f"web_fetch failed: unsupported content type {content_type}"
             
