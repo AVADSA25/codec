@@ -42,7 +42,7 @@
 | # | Feature | TRY (live) | EXPECT | Status |
 |---|---|---|---|---|
 | 13 | Cortex neural map | Open Cortex *(pinned as an OBS corner overlay all demo — see § Recording setup)* | Pulsing zones update live as tools fire | 🧑 |
-| 14 | Forensic audit log (16 categories) | Open Audit → filter by category | Every vision click / clipboard hit / LLM call logged locally — zero hidden telemetry | 🧑 |
+| 14 | Forensic audit log (16 categories) | Open Audit → filter by category | Skill runs (vision clicks, clipboard reads), consent answers and refusals logged locally, every line HMAC-signed. Say it plainly: it is not a network log (model calls have no line), there is no analytics, and the only requests CODEC makes on its own are the update check and, on the paid app, the licence key (PRIVACY.md) | 🧑 |
 | 15 | Deep Research → real **Google Doc** | Open the doc from beat 9 | A real docs.google.com doc: report, citations, native tables | ✅ confirmed working |
 
 ## Act 5 — Bidirectional MCP (the differentiator)
