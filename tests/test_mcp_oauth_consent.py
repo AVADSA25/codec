@@ -190,3 +190,19 @@ def test_client_name_is_html_escaped(tmp_path):
     rid = _rid(_start_authorize(client, r.json()["client_id"])[0])
     page = client.get("/oauth/consent", params={"rid": rid}).text
     assert "<script>x</script>" not in page and "&lt;script&gt;" in page
+
+
+def test_the_consent_form_may_post_only_here_and_return_to_the_client(tmp_path):
+    # P-089: form-action 'self'. Chrome also checks form-action on the 303 that
+    # follows the POST, so the form page names the redirect_uri's origin too.
+    provider, client = _app(tmp_path)
+    rid = _rid(_start_authorize(client, _register(client))[0])
+    form = client.get("/oauth/consent", params={"rid": rid})
+    assert form.headers["content-security-policy"] == (
+        "default-src 'none'; style-src 'unsafe-inline'; form-action 'self' https://claude.ai; frame-ancestors 'none'")
+    wrong = client.post("/oauth/consent", data={"rid": rid, "pin": "0000", "action": "approve"})
+    assert "form-action 'self' https://claude.ai;" in wrong.headers["content-security-policy"]
+    gone = client.get("/oauth/consent", params={"rid": "nope"})
+    assert "form-action 'self'; frame-ancestors 'none'" in gone.headers["content-security-policy"]
+    assert codec_mcp_consent._form_headers("https://x.test;script-src *")["Content-Security-Policy"] == \
+        codec_mcp_consent._CSP
