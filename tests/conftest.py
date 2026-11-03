@@ -41,6 +41,7 @@ _spec = importlib.util.spec_from_file_location(
 live_state_guard = importlib.util.module_from_spec(_spec)
 sys.modules["live_state_guard"] = live_state_guard
 _spec.loader.exec_module(live_state_guard)
+live_state_guard.OWNER_HOME_EXISTED = _OWNER_CODEC_HOME_EXISTED
 
 # Order matters: insert(0) prepends. Last insert wins → worktree at sys.path[0].
 sys.path.insert(0, os.path.expanduser("~/codec-repo"))

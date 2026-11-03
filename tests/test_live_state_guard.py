@@ -122,13 +122,16 @@ def test_guard_knows_the_real_security_program(tmp_path):
 
 # ── Installed guard on the owner's real paths (his Mac only) ─────────────────
 
-needs_owner_home = pytest.mark.skipif(lsg.ACTIVE is None,
+# Keyed on the folder, not on lsg.ACTIVE: if conftest stopped installing the
+# guard, this must fail on the owner's Mac, not skip.
+needs_owner_home = pytest.mark.skipif(not lsg.OWNER_HOME_EXISTED,
                                       reason="no owner ~/.codec before this run (CI)")
 
 
 @needs_owner_home
 def test_installed_guard_refuses_live_path_opens():
     guard = lsg.ACTIVE
+    assert guard is not None, "tests/conftest.py did not install the live-state guard"
     for name in ("notifications.json", "pending_questions.json", "audit.log"):
         with guard.expected(), pytest.raises(lsg.LiveStateRefused):
             # No O_CREAT and no write: even an unguarded open would change nothing.
@@ -138,8 +141,9 @@ def test_installed_guard_refuses_live_path_opens():
             open(os.path.join(LIVE, name), "a").close()
     with guard.expected(), pytest.raises(lsg.LiveStateRefused):
         sqlite3.connect(f"file:{os.path.join(LIVE, 'memory.db')}?mode=ro", uri=True).close()
-    with guard.expected(), pytest.raises(lsg.LiveStateRefused):
-        subprocess.run(["/usr/bin/security", "-h"], capture_output=True)
+    if not guard.allow_real_keychain:  # CODEC_REAL_KEYCHAIN_TESTS=1 lets it run
+        with guard.expected(), pytest.raises(lsg.LiveStateRefused):
+            subprocess.run(["/usr/bin/security", "-h"], capture_output=True)
     with guard.expected(), pytest.raises(lsg.LiveStateRefused):
         os.replace(os.path.join(LIVE, "no-such-p009-file"), os.path.join(LIVE, "notifications.json"))
     # Reading stays allowed.

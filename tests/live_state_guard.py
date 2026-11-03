@@ -28,6 +28,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 ACTIVE = None  # the installed Guard, or None (no owner ~/.codec, e.g. CI)
+OWNER_HOME_EXISTED = False  # set by tests/conftest.py: the owner's ~/.codec was there before the run
 
 REAL_SECURITY = "/usr/bin/security"
 
