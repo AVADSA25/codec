@@ -48,7 +48,10 @@ every later prompt (and be learned again by the nightly run).
    roles `agent` and `untrusted` and the crew sessions (`agents_...`, the label crews
    have always used, which also covers rows saved before this change).
    `get_context` is only used to build prompts, so `for_prompt` is on by default
-   there; the wake word, Deep Chat and `auto_memorize` pass it to `search_recent`.
+   there; the wake word, Deep Chat and `auto_memorize` pass it to `search_recent`, and
+   Flash chat's "earlier conversations today" block (`/api/command`) uses the same
+   condition. A crew's own `memory_save` or `fact_extract` call writes its memory row
+   with role `agent` too (it used to be `fact`, which the prompts read).
    The terminal session window already replays only `user`, `assistant` and `system`
    rows, so it skips `agent` rows too. Memory search, the MCP memory tools and the
    Memory page still see every row.
@@ -100,7 +103,9 @@ per-test path), audit captured in memory, no network:
   history, the fact then reaches the prompts; a trusted fact is left as it is;
 - a crew result holding an injection is saved with role `agent` and is absent from the
   memory blocks of the next wake, voice and chat prompt, while an owner voice row is
-  present; a legacy `agents_` row is absent too;
+  present; a legacy `agents_` row is absent too; Flash chat's earlier-conversations
+  block leaves out crew and untrusted rows; a crew's own `memory_save` and
+  `fact_extract` saves are absent from the three prompts;
 - local `memory_save` (voice, wake word, chat tag) reaches the prompts, an MCP call
   does not; the owner sentences from the P-021 review are stored `owner` and reach the
   prompts; derived text with a real injection is still `untrusted`, including the

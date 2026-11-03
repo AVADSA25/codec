@@ -291,6 +291,42 @@ def test_a_crew_result_with_an_injection_is_absent_from_the_next_prompts(env):
         assert "evil.example" not in text and "AGENT RESULT" not in text and "OLD CREW" not in text, where
 
 
+def test_flash_chat_leaves_crew_and_untrusted_rows_out_of_its_earlier_conversations(env, monkeypatch):
+    import codec_config
+    import codec_dashboard
+    import codec_llm
+    mem = env.mem()
+    mem.save("quickchat-older", "user", "Robin asked about the tower report on Friday")
+    codec_agents.save_to_memory("deep_research", "summarise the tower report", "The tower report says: " + INJECTION)
+    mem.save("agents_news_20261101_070000", "assistant", "OLD CREW ROW " + INJECTION)
+    mem.save("claude-mcp-20261103", "untrusted", "UNTRUSTED ROW from a remote call")
+    conn = sqlite3.connect(env.db, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    monkeypatch.setattr(codec_dashboard, "get_db", lambda: conn)
+    monkeypatch.setattr(codec_dashboard, "_try_skill", lambda task: (None, None))
+    monkeypatch.setattr(codec_dashboard, "CONFIG_PATH", str(env.tmp / "no-config.json"))
+    monkeypatch.setattr(codec_dashboard, "log_event", lambda *a, **k: None)
+    monkeypatch.setattr(codec_dashboard, "_audit_write", lambda line: None)
+    monkeypatch.setattr(codec_config, "get_llm_api_key", lambda: "")
+    sent = []
+    monkeypatch.setattr(codec_llm, "call", lambda messages, **k: sent.append(messages) or "ok")
+
+    async def run():
+        out = await codec_dashboard.send_command(_Req({"task": "what did we talk about",
+                                                        "session_id": "quickchat-now"}))
+        await asyncio.gather(*(t for t in asyncio.all_tasks() if t is not asyncio.current_task()))
+        return out
+
+    try:
+        assert asyncio.run(run())["status"] == "processing"
+    finally:
+        conn.close()
+    system = sent[0][0]["content"]
+    assert "Robin asked about the tower report" in system, "control: the owner's earlier chat is there"
+    assert "evil.example" not in system and "[AGENT" not in system and "OLD CREW" not in system
+    assert "UNTRUSTED ROW" not in system
+
+
 def test_what_a_crew_saves_through_memory_skills_is_absent_from_the_next_prompts(env, monkeypatch):
     """A crew agent that read a poisoned page can call memory_save or fact_extract itself. The text
     passes the scan, so only the origin keeps it out: the fact is agent and so is its memory row."""
