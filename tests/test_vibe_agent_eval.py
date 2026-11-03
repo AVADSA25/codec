@@ -93,6 +93,22 @@ def test_needs_flagged_task_is_skipped_and_not_counted():
     assert 4 in ev.bar_status(out)["missing"]
 
 
+def test_task_13_the_syntax_error_task_is_outside_the_bar_and_its_check_reads_the_files(tmp_path):
+    import codec_vibe_agent_check as vc
+    task = next(t for t in ev.TASKS if t["id"] == 13)
+    assert ev.BAR_IDS == tuple(range(1, 13)) and not task.get("needs")
+    assert vc.check_file("app.py", task["files"]["app.py"]).line == 1      # the seed is what the note is for
+    for name, content in task["files"].items():
+        (tmp_path / name).write_text(content)
+    ok, detail = task["check"](dict(task["files"]), [], "", tmp_path)
+    assert not ok and "does not parse (line 1)" in detail
+    fixed = task["files"]["app.py"].replace("def total(prices)\n", "def total(prices):\n") + "\n\ndef count(prices):\n    return len(prices)\n"
+    (tmp_path / "app.py").write_text(fixed)
+    noted = [{"type": "result", "tool": "edit_file", "output": "Check: app.py does not parse as Python 3.11: line 1: expected ':'."}]
+    ok, detail = task["check"](dict(task["files"], **{"app.py": fixed}), noted, "", tmp_path)
+    assert ok and "after a check note" in detail
+
+
 # ── two tries ──
 
 def test_second_try_sees_the_failure_and_either_try_passes_the_task():
