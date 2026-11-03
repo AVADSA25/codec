@@ -295,6 +295,15 @@ def _is_test_named(entry: dict) -> bool:
                for k in ("agent_id", "agent"))
 
 
+# What the inbox changes on an entry that is already there: it marks entries read
+# and gives an entry written without an id an `auto_` one (routes/inbox.py). Both
+# are left out of the fingerprint, so the owner reading his inbox during a run is
+# not a change; a real id stays in.
+def _stable(entry: dict) -> dict:
+    return {k: v for k, v in entry.items()
+            if k != "read" and not (k == "id" and str(v).startswith("auto_"))}
+
+
 def _notification_sets(path) -> dict:
     """Fingerprints of the manual shift reports, the scheduled (time or idle) ones
     and the test-named entries; None each when the list cannot be read."""
@@ -309,7 +318,8 @@ def _notification_sets(path) -> dict:
     for e in entries:
         if not isinstance(e, dict):
             continue
-        fp = hashlib.sha256(json.dumps(e, sort_keys=True, default=str).encode()).hexdigest()
+        fp = hashlib.sha256(json.dumps(_stable(e), sort_keys=True,
+                                       default=str).encode()).hexdigest()
         if e.get("type") == "shift_report":
             sets["manual" if e.get("trigger_kind") == "manual" else "scheduled"].add(fp)
         if _is_test_named(e):

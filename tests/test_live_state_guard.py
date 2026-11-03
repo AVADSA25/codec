@@ -222,3 +222,15 @@ def test_watch_list_ignores_live_daemon_changes(tmp_path):
                          {"id": "t1", "type": "task_report"}] + old[:1])
     (home / ".codec" / "shift_report_state.json").write_text('{"last_trigger_kind": "idle"}')
     assert lsg.watch_changes(before, lsg.watch_snapshot(home)) == []
+
+
+def test_watch_list_ignores_the_owner_reading_his_inbox(tmp_path):
+    """Marking entries read (and the inbox giving an id-less banner an id) is the
+    owner's doing, not a test's: the run must not fail on it."""
+    home = _home(tmp_path)
+    manual = {"id": "m0", "type": "shift_report", "trigger_kind": "manual", "read": False}
+    banner = {"type": "agent_update", "agent_id": "test_agent", "title": "x", "_post_ts": 1.0}
+    _write_notifs(home, [manual, banner])
+    before = lsg.watch_snapshot(home)
+    _write_notifs(home, [dict(manual, read=True), dict(banner, id="auto_1", read=True)])
+    assert lsg.watch_changes(before, lsg.watch_snapshot(home)) == []

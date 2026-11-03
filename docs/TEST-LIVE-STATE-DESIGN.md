@@ -23,7 +23,7 @@ A full `pytest` run on the Mac Studio reaches the owner's real state:
 4. `_owner_watch_list` (session, autouse, macOS only): a read-only before/after look at a named list, not whole folders (live daemons write `audit.log` and the observer files every minute; Syncthing and other sessions write `~/Documents`):
    - `~/Documents/plan.md`, `~/Desktop/scratch.md`, `~/Downloads/note.txt`: never created, changed or removed;
    - `~/.codec/agents/test_agent/`: not created, recreated or grown;
-   - `~/.codec/notifications.json`: no new or changed manual shift report entry and no new or changed test-named entry (an `agent_id` or `agent` field containing "test"); daily and idle reports from the live observer are not counted, and a live service trimming old entries is not a change;
+   - `~/.codec/notifications.json`: no new or changed manual shift report entry and no new or changed test-named entry (an `agent_id` or `agent` field containing "test"); daily and idle reports from the live observer are not counted, and a live service trimming old entries is not a change, nor is the owner reading his inbox (the `read` flag and the `auto_` id the inbox gives an entry written without one are left out of the comparison);
    - `~/.codec/shift_report_state.json`: unchanged, compared only when no scheduled (time or idle) shift report was added during the run.
    It stats, hashes in memory and counts; it writes nothing and its message gives counts only, never file names.
 
