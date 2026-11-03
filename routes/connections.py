@@ -231,10 +231,15 @@ async def revoke_app(request: Request):
 # ── Bridges: Telegram and iMessage ───────────────────────────────────────────
 
 def pm2_status() -> dict:
-    """{process name: status}; nothing else from PM2's list (it carries environments)."""
+    """{process name: status}; nothing else from PM2's list (it carries environments). On a Mac that
+    runs CODEC as LaunchAgents, launchd's list in the same shape (P-032, codec_supervisor)."""
     try:
-        r = subprocess.run([PM2, "jlist"], capture_output=True, timeout=5)
-        procs = json.loads(r.stdout or b"[]")
+        import codec_supervisor
+        if codec_supervisor.kind() == "launchd":
+            procs = codec_supervisor.launchd_jlist()
+        else:
+            r = subprocess.run([PM2, "jlist"], capture_output=True, timeout=5)
+            procs = json.loads(r.stdout or b"[]")
     except Exception:
         return {}
     return {p.get("name"): (p.get("pm2_env") or {}).get("status") for p in procs if isinstance(p, dict)}
