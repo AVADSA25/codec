@@ -50,18 +50,28 @@ _HEADERS = {
 }
 # An origin the policy may name: http(s), a hostname or IPv6 literal, an optional port.
 _ORIGIN_RE = re.compile(r"^https?://(?:[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*|\[[0-9A-Fa-f:.]+\])(?::[0-9]{1,5})?$")
+# A native app's own redirect scheme (RFC 8252 7.1, e.g. cursor:), named as a CSP scheme source.
+_APP_SCHEME_RE = re.compile(r"[a-z][a-z0-9+.-]{0,63}")
+_NOT_APP_SCHEMES = frozenset({"http", "https", "ws", "wss", "javascript", "vbscript", "data", "blob", "file",
+                              "filesystem", "about"})
 
 
 def _form_headers(redirect_uri: str) -> dict:
     """The consent form's headers. Chrome checks form-action on the redirect that
-    follows the POST too, so the policy also names the origin the 303 goes to
-    (the client's registered redirect_uri); 'self' alone would block the
-    return to claude.ai."""
+    follows the POST too, so the policy also names where the 303 goes (the
+    client's registered redirect_uri): its origin, or a native app's own scheme;
+    'self' alone would block the return to claude.ai or the app."""
     u = urlparse(redirect_uri or "")
-    origin = f"{u.scheme}://{u.netloc}".lower()
-    if not _ORIGIN_RE.match(origin):
+    scheme = (u.scheme or "").lower()
+    if scheme in ("http", "https"):
+        source = f"{scheme}://{u.netloc}".lower()
+        if not _ORIGIN_RE.match(source):
+            return _HEADERS
+    elif _APP_SCHEME_RE.fullmatch(scheme) and scheme not in _NOT_APP_SCHEMES:
+        source = f"{scheme}:"
+    else:
         return _HEADERS
-    return {**_HEADERS, "Content-Security-Policy": _CSP.replace("form-action 'self';", f"form-action 'self' {origin};")}
+    return {**_HEADERS, "Content-Security-Policy": _CSP.replace("form-action 'self';", f"form-action 'self' {source};")}
 
 
 def _read_pin_hash() -> str:
