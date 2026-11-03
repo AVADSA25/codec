@@ -197,7 +197,9 @@ async def auth_verify(request: Request):
             if result.get("authenticated"):
                 method = result.get("method", "unknown")
                 log_event("auth_success", "codec-auth", f"Auth success: {method}", extra={"method": method})
-                token = result.get("token", secrets.token_hex(32))
+                # P-088: the session id comes from the OS random source here. The helper's own
+                # token is ignored: it does not check that its random call worked.
+                token = secrets.token_hex(32)
                 with _auth_lock:
                     _auth_sessions[token] = {
                         "created": datetime.now(),

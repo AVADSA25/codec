@@ -187,6 +187,19 @@ def test_touchid_verify_prompts_for_tunnel_when_remote_switch_on(monkeypatch):
     assert _value(_cookies(r)["codec_session"]) in shared._auth_sessions
 
 
+def test_touchid_session_id_is_made_here_not_taken_from_the_helper(monkeypatch):
+    """P-088: the helper's token is ignored; a helper whose random call failed answers 64 zeros."""
+    zeros = "0" * 64
+    _touchid_binary(monkeypatch, json.dumps({"authenticated": True, "method": "touchID", "token": zeros}))
+    client = TestClient(app, client=("127.0.0.1", 5000))
+    ids = [_value(_cookies(client.post("/api/auth/verify"))["codec_session"]) for _ in range(2)]
+    for sid in ids:
+        assert sid != zeros and len(sid) == 64 and int(sid, 16) >= 0
+        assert sid in shared._auth_sessions
+    assert zeros not in shared._auth_sessions
+    assert ids[0] != ids[1]
+
+
 def test_touchid_rate_limit_applies_to_tunnel_requests(monkeypatch):
     monkeypatch.setattr(auth, "AUTH_TOUCHID_REMOTE", True)
     calls = _touchid_binary(monkeypatch, '{"authenticated": false, "error": "cancelled"}')
