@@ -151,7 +151,8 @@ def _isolate_owner_alerts() -> None:
     once-per-6-h state, so a second run's dedupe swallowed the alert a test
     expected, and live state gained test entries. The real channels are switched
     off too: a test run must never pop a macOS banner or send a Telegram
-    message. Tests that assert on alerts monkeypatch these per test, as before.
+    message, and the auto-restart never calls PM2. Tests that assert on alerts
+    monkeypatch these per test, as before.
 
     Done at conftest import time, like `_isolate_audit_log`.
     """
@@ -166,6 +167,8 @@ def _isolate_owner_alerts() -> None:
     codec_alerts._send_telegram = lambda bot_token, chat_id, message: False
     codec_alerts._send_email = lambda cfg, subject, body: False
     codec_alerts._send_slack = lambda webhook_url, message: False
+    # A heartbeat test whose probe fails must never `pm2 restart` a live service.
+    codec_alerts._try_restart = lambda service_pm2_name: False
 
 
 _isolate_owner_alerts()
