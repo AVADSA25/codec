@@ -58,7 +58,7 @@ CODEC's moat is the *combination* — local-first **and** voice **and** MCP-as-a
 - **Cursor and Claude Desktop talk to LLMs. CODEC turns your Mac into a tool the LLM can use** — over MCP. Claude (or Cursor, or VS Code) gets your screen, your apps, your 76 skills, and your memory. CODEC is both an MCP *client* and an MCP *server*, so two CODECs can even peer — agent-to-agent — on the open protocol Anthropic standardized.
 - **CrewAI / LangChain orchestrate. CODEC orchestrates _and_ executes on your hardware** — with a ~795-line multi-agent runtime that has zero dependency on either framework.
 
-And all of it runs on *your* machine: no data leaves unless you explicitly route a request through a cloud model.
+And all of it runs on *your* machine: no data leaves unless you ask for something that needs the network, such as a cloud model or a web search ([`PRIVACY.md`](PRIVACY.md) lists every request, including the update check).
 
 ---
 
@@ -161,7 +161,7 @@ Private dashboard accessible from any device, anywhere. Cloudflare Tunnel or Tai
 Visual command center showing all 7 CODEC products in an interactive grid. Neural network SVG map, real-time activity feed, searchable skills panel, and detailed event log viewer. The single-pane-of-glass view of the entire system.
 
 **Audit — Full Event Trail**
-Every action CODEC takes is logged across 16 categories: command, skill, llm, auth, error, scheduled, voice, vision, tts, stt, system, security, hotkey, screenshot, config, draft. Filterable by category pills, searchable, with colored timeline dots and expandable event details. JSON-line storage with 50MB rotation. Default 24h time range with 1h/6h/24h/7d quick filters.
+CODEC logs skill runs, tool calls, consent answers, security refusals, scheduled jobs and agent steps (it is not a network log: model calls have no line of their own). The Audit view sorts them into 16 categories: command, skill, llm, auth, error, scheduled, voice, vision, tts, stt, system, security, hotkey, screenshot, config, draft. Filterable by category pills, searchable, with colored timeline dots and expandable event details. JSON-line storage, every line HMAC-signed, a new file each day and 30 days kept. Default 24h time range with 1h/6h/24h/7d quick filters.
 
 ### Project mode (part of CODEC Overview) — Drop-a-Project Autonomy
 
@@ -325,7 +325,7 @@ Three smart agents ship built-in: Daily Briefing, Restaurant Decider (location-a
 | Vector databases | FTS5 SQLite (simpler, faster, private) |
 | Datadog / Sentry | **Overview** — dashboard + cortex + 16-category audit |
 
-**External services:** DuckDuckGo for web search. Cloudflare free tier for the tunnel (or Tailscale). Everything else runs on local hardware.
+**External services:** DuckDuckGo (or Serper) for web search when you ask for one. Cloudflare free tier for the tunnel (or Tailscale). GitHub for the update check. Google, Telegram and cloud models only if you connect them. The models run on local hardware; [`PRIVACY.md`](PRIVACY.md) lists every outbound request.
 
 ---
 
@@ -425,9 +425,9 @@ Custom shortcuts in `~/.codec/config.json`. Restart after changes: `pm2 restart 
 | Encryption | AES-256-GCM + ECDH P-256 key exchange, per-session keys, key persistence across restarts |
 | Execution | Subprocess isolation, resource limits (512MB RAM, 120s CPU), 46+ dangerous command patterns, human review gate |
 | Data | Local SQLite with WAL, parameterized queries, FTS5 full-text search with injection prevention — searchable, private, yours |
-| Audit | Full event trail across 16 categories, 50MB rotating JSON-line logs, every action tracked |
+| Audit | HMAC-signed JSON-line log of tool calls, consent answers and security refusals, secrets redacted, a new file each day, 30 days kept, 16 filter categories |
 
-Every conversation is stored locally in SQLite with FTS5 full-text search. No cloud sync. No analytics. No telemetry. **See [`PRIVACY.md`](PRIVACY.md)** for the plain-English breakdown — what stays local, what goes outbound when, and the controls you have over both.
+Every conversation is stored locally in SQLite with FTS5 full-text search. No cloud sync. No analytics SDK, no crash reporter, no usage reporting. Two requests go out on their own: the update check (GitHub, while the dashboard page is open) and, on the paid app only, the licence public key (AVA Digital). **See [`PRIVACY.md`](PRIVACY.md)** for the plain-English breakdown — what stays local, every request that goes outbound and when, and the controls you have over both.
 
 **Pilot subsystem hardening (v3.1, now parked).** The browser-automation pillar went through a dedicated adversarial security audit (15 findings, remediated PP-1…PP-12): per-request token auth + loopback-only bind, an AST safety gate at skill-approval time, prompt-injection fencing of untrusted page content, SSRF/scheme guards on navigation, destructive-action default-deny on replay, secret redaction in traces, randomized CDP debug port, and a forensic audit trail. 67 security tests cover it.
 
@@ -688,7 +688,7 @@ codec_dashboard.html  — Dashboard UI (Flash Chat, History, Audit, Settings, St
 codec_chat.html       — Chat UI (agents, file upload, voice input)
 codec_vibe.html       — Vibe Code IDE (Monaco editor + live preview)
 codec_cortex.html     — Cortex system overview (neural map, product grid)
-codec_audit.py        — Audit logger (JSON-line, 50MB rotation, thread-safe)
+codec_audit.py        — Audit logger (JSON-line, HMAC-signed, daily rotation, 30 days kept, thread-safe)
 codec_auth.html       — Authentication (Touch ID + PIN + TOTP 2FA)
 codec_textassist.py   — 8 right-click services
 codec_search.py       — DuckDuckGo + Serper search

@@ -60,21 +60,60 @@ def _migrate_config(cfg: dict) -> tuple:
 
 
 def _write_config_atomic(cfg: dict) -> bool:
-    """Atomic tmp+rename write of the full config at 0600. Returns success.
-    Mirrors `_blank_config_field`'s write discipline."""
+    """Atomic write of the full config at 0600. Returns success.
+    P-054: a unique temporary file (codec_jsonstore), never a shared fixed
+    `config.json.tmp` that another writer could swap in half written."""
     try:
-        tmp = CONFIG_PATH + ".tmp"
-        with open(tmp, "w") as f:
-            json.dump(cfg, f, indent=2)
-        os.replace(tmp, CONFIG_PATH)
-        try:
-            os.chmod(CONFIG_PATH, 0o600)
-        except Exception:
-            pass
+        import codec_jsonstore
+        codec_jsonstore.atomic_write_json(CONFIG_PATH, cfg)
         return True
     except Exception as e:
         print(f"[CODEC] Warning: failed to write migrated config: {e}")
         return False
+
+
+class ConfigUnreadable(Exception):
+    """config.json exists but is not a readable, non-empty JSON object.
+    `update_config` raises it before writing anything (P-054)."""
+
+
+_UNREAD = object()
+_UNREADABLE_MESSAGE = ("config.json could not be read (it is not valid JSON, or it is empty), "
+                       "so nothing was saved. Fix or restore the file, then save again.")
+
+
+def update_config(mutate_fn, path=None):
+    """Change config.json as one locked read-modify-write; return mutate_fn's result.
+
+    P-054 (docs/CONFIG-WRITER-DESIGN.md). Holds codec_jsonstore's file lock across
+    the read, the change and the atomic write, so writers that use it cannot lose
+    each other's keys. `mutate_fn(cfg)` changes the dict in place; if it raises,
+    nothing is written. A missing file starts from {}. A file that exists but
+    cannot be read, does not parse, is not a JSON object or is empty raises
+    ConfigUnreadable and keeps its exact bytes. `path` defaults to CONFIG_PATH.
+    """
+    import codec_jsonstore
+    path = str(path or CONFIG_PATH)
+    box = {}
+
+    def _mutate(data):
+        box["read"] = True
+        if data is _UNREAD:
+            if os.path.exists(path):
+                raise ConfigUnreadable(_UNREADABLE_MESSAGE)
+            data = {}
+        elif not isinstance(data, dict) or not data:
+            raise ConfigUnreadable(_UNREADABLE_MESSAGE)
+        box["result"] = mutate_fn(data)
+        return data
+
+    try:
+        codec_jsonstore.read_modify_write(path, _mutate, default_factory=lambda: _UNREAD)
+    except UnicodeDecodeError as e:
+        if box.get("read"):
+            raise
+        raise ConfigUnreadable(_UNREADABLE_MESSAGE) from e  # bytes that are not UTF-8
+    return box.get("result")
 
 
 def load_config():

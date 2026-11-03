@@ -31,6 +31,8 @@ GOOGLE_CREDS = os.path.join(CODEC_DIR, "google_credentials.json")
 MCP_CLIENTS = os.path.join(CODEC_DIR, "mcp_clients.json")   # written by codec-mcp-http
 MCP_REVOKE = os.path.join(CODEC_DIR, "mcp_revoke.json")     # read by codec-mcp-http
 MESSAGES_DB = os.path.expanduser("~/Library/Messages/chat.db")
+IMESSAGE_HEALTH = os.path.join(CODEC_DIR, "imessage_health.json")  # written by codec-imessage (P-058)
+IMESSAGE_HEALTH_FRESH = 900  # seconds; the bridge rewrites it at least every 5 minutes while it cannot read
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REAUTH_SCRIPT = os.path.join(REPO, "reauth_google.py")
 PM2 = "/opt/homebrew/bin/pm2"
@@ -281,6 +283,19 @@ def messages_db_readable():
     return True
 
 
+def imessage_running(pm2_state):
+    """The iMessage bridge's status for the page (P-058). PM2 says "online" for a bridge that
+    cannot read the Messages database, so the bridge's own state file says "needs permission"
+    while it is fresh and PM2 does not report the process as down (no PM2: a buyer's launchd)."""
+    if pm2_state not in (None, "online"):
+        return pm2_state
+    h = _read_json(IMESSAGE_HEALTH, {})
+    checked = h.get("checked")
+    fresh = isinstance(checked, (int, float)) and not isinstance(checked, bool) \
+        and time.time() - checked <= IMESSAGE_HEALTH_FRESH
+    return "needs permission" if fresh and h.get("state") == "needs_permission" else pm2_state
+
+
 @router.get("/api/connections/bridges")
 def bridges():
     cfg = _config()
@@ -294,7 +309,8 @@ def bridges():
         "telegram": {"token": token, "running": pm2.get("codec-telegram"), "allowed": len(tg.get("allowed_chat_ids") or []),
                      "alerts_chat": bool(str((((cfg.get("alerts") or {}).get("telegram") or {}).get("chat_id")) or "").strip()),
                      "can_test": token and bool(chats)},
-        "imessage": {"running": pm2.get("codec-imessage"), "enabled": im.get("enabled", True) is not False,
+        "imessage": {"running": imessage_running(pm2.get("codec-imessage")),
+                     "enabled": im.get("enabled", True) is not False,
                      "allowed": len(im.get("allowed_senders") or []), "messages_db": messages_db_readable(),
                      "recipients": [_mask(h) for h in handles], "can_test": bool(handles)},
     }

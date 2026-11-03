@@ -27,7 +27,8 @@ data by accident and is **fully testable in a sandbox**:
 | launchd agents `ai.avadigital.codec.*` (bootout + plist rm) | `--yes` |
 | The `.app` bundle (`--app`, default `/Applications/Sovereign AI Workstation.app`) | `--yes` |
 | `~/Library/Logs/CODEC/` | `--yes` |
-| Keychain items `ai.avadigital.codec.*` (audit HMAC, internal token, oauth_state, dashboard/llm/gemini/pexels/serper/telegram keys, license) | `--yes`, real-`$HOME` only |
+| Keychain items `ai.avadigital.codec.*`: the names the code uses (`KC_SERVICES`, pinned to the code by `tests/test_uninstaller.py`) plus any other item with that prefix (`security dump-keychain`, attributes only), each deleted until none is left | `--yes`, real-`$HOME` only |
+| CODEC's PM2 logs (`~/.pm2/logs/` `codec-*`, `qwen3.6-*`, `whisper-stt-*`, `kokoro-82m-*`; `PM2_LOG_NAMES`) and the app's `Caches`, `WebKit`, `HTTPStorages` folders (bundle id `ai.avadigital.codec`) (P-019, docs/PRIVACY-TRUTH-DESIGN.md) | `--yes` |
 | `~/.codec/` (all user state) | `--yes` **and** `--purge-data` |
 
 ## What it does NOT auto-delete (printed as guided manual steps)

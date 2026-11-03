@@ -36,7 +36,8 @@ def cn(tmp_path, monkeypatch):
     import routes.connections as c
     for name, file in (("GOOGLE_TOKEN", "google_token.json"), ("GOOGLE_CREDS", "google_credentials.json"),
                        ("MCP_CLIENTS", "mcp_clients.json"), ("MCP_REVOKE", "mcp_revoke.json"),
-                       ("CONFIG_PATH", "config.json"), ("MESSAGES_DB", "chat.db")):
+                       ("CONFIG_PATH", "config.json"), ("MESSAGES_DB", "chat.db"),
+                       ("IMESSAGE_HEALTH", "imessage_health.json")):
         monkeypatch.setattr(c, name, str(tmp_path / file))
     monkeypatch.setattr(c, "_ACCOUNT", {"key": None, "value": None, "at": 0.0})
     monkeypatch.setattr(c, "_REAUTH", {"proc": None, "started": 0.0})
@@ -290,6 +291,38 @@ def test_bridge_status_without_numbers_or_tokens(cn, monkeypatch):
     assert im["running"] == "stopped" and im["enabled"] is True and im["allowed"] == 2 and im["can_test"] is True
     assert im["recipients"] == ["+34" + "•" * 7 + "22"], "only valid handles, masked"
     assert "SECRET" not in r.text and "600111" not in r.text
+
+
+def test_imessage_needs_permission_comes_from_the_bridge_state_not_pm2(cn, monkeypatch):
+    """P-058: PM2 said "online" for a bridge that could not read the Messages database for 33 days."""
+    import sqlite3
+    import codec_imessage
+    assert os.path.basename(cn.c.IMESSAGE_HEALTH) == os.path.basename(codec_imessage.HEALTH_FILE)
+    _bridge_config(cn)
+    pm2 = {"codec-imessage": "online"}
+    monkeypatch.setattr(cn.c, "pm2_status", lambda: dict(pm2))
+    monkeypatch.setattr(cn.c, "messages_db_readable", lambda: True)
+
+    def imessage():
+        return cn.client.get("/api/connections/bridges").json()["imessage"]
+
+    assert imessage()["running"] == "online", "no state file: PM2's word"
+    # The bridge writes the file the dashboard reads (tmp paths; a refused read, no real chat.db).
+    monkeypatch.setattr(codec_imessage, "HEALTH_FILE", cn.c.IMESSAGE_HEALTH)
+    monkeypatch.setattr(codec_imessage, "MESSAGES_DB", cn.c.MESSAGES_DB)
+    health = codec_imessage.DbReadHealth()
+    health.failed(sqlite3.DatabaseError("authorization denied"))
+    im = imessage()
+    assert im["running"] == "needs permission" and im["messages_db"] is True, "the dashboard's own check stays"
+    pm2.clear()
+    assert imessage()["running"] == "needs permission", "no PM2 (a buyer's launchd): the bridge's own word"
+    pm2["codec-imessage"] = "stopped"
+    assert imessage()["running"] == "stopped", "stopped on purpose: PM2 wins"
+    pm2["codec-imessage"] = "online"
+    Path(cn.c.IMESSAGE_HEALTH).write_text(json.dumps({"state": "needs_permission", "checked": time.time() - 3600}))
+    assert imessage()["running"] == "online", "a stale file (the bridge died without a word) is ignored"
+    health.stopped()
+    assert imessage()["running"] == "online"
 
 
 def test_the_test_message_goes_only_to_configured_recipients(cn, monkeypatch):

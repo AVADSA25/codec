@@ -125,7 +125,7 @@ Six new event names exported from `codec_audit.py` as module constants. All `out
 | Event | Source | extra fields |
 |---|---|---|
 | `ask_user_question_emit` | `codec-ask-user` | `pending_question_id`, `question_preview`, `options`, `timeout_seconds`, `agent`, `crew_id`, `asked_from`, `consent_strict`, `destructive_verb` |
-| `ask_user_question_answer` | `codec-ask-user` | `pending_question_id`, `answered_via` (pwa\|voice), `answer_len`, `elapsed_seconds` |
+| `ask_user_question_answer` | `codec-ask-user` | `pending_question_id`, `answered_via` (pwa\|voice\|dialog), `answer_len`, `elapsed_seconds` |
 | `ask_user_question_timeout` | `codec-ask-user` | `pending_question_id`, `elapsed_seconds`, `timeout_seconds`, `reason` (`deadline`\|`ambiguous_consent`), `consent_rejection_count` (only on `ambiguous_consent`) |
 | `stuck_warning` | `codec-agents` | `tool` (top-level), `repeat_count`, `agent` (in message line) |
 | `stuck_escalated` | `codec-agents` | `tool` (top-level), `repeat_count`, `agent`, `action` (`ask_user`\|`abort`\|`warn_only`) |
@@ -174,12 +174,12 @@ Emitted by `codec_vibe_projects` (docs/VIBE-PROJECTS-DESIGN.md), source `codec-v
 
 ### Vibe agent events (2026-10)
 
-Emitted by `codec_vibe_agent` (docs/VIBE-AGENT-DESIGN.md), source `codec-vibe`, level info. Counts, tool names and statuses only: never the goal, a path, a file's text or a model reply.
+Emitted by `codec_vibe_agent` (docs/VIBE-AGENT-DESIGN.md), source `codec-vibe`, level info. Counts, tool names and statuses only: never the goal, a path, a file's text or a model reply. Every line of one run carries the run id as `correlation_id`.
 
 | Event | extra fields |
 |---|---|
 | `vibe_agent_start` | `project`, `run`, `model` (`local`\|`cloud`), `goal_chars` |
-| `vibe_agent_step` | `project`, `run`, `n` (step number), `tool`, `ok`, `ms` |
+| `vibe_agent_step` | `project`, `run`, `n` (step number), `tool_name`, `ok`, `ms` |
 | `vibe_agent_blocked` | `project`, `run`, `n`, `reason` (`path`\|`secret`: a safety rule refused the step) |
 | `vibe_agent_end` | `project`, `run`, `status` (`done`\|`stopped`\|`limit`\|`failed`), `steps`, `seconds`, `prompt_tokens`, `completion_tokens`, `model` |
 | `vibe_agent_command` | `project`, `run`, `n`, `decision` (`once`\|`always`\|`stored`\|`declined`\|`refused`), `program` (the first word if it is plain ASCII, else empty; never the command), `network` (the web was allowed), `exit_code` (null when stopped, timed out or not run), `ms` |
@@ -208,6 +208,14 @@ Emitted by `codec_consent.local_consent_ok`, source `codec-consent`. Never the r
 | Event | extra fields |
 |---|---|
 | `local_consent_decision` | `asked_from` (`wake`\|`voice`\|`crew`), `decision` (`allowed`\|`refused`), `task_chars`; top-level `tool` is the skill, or `shell_execute` for a flagged crew / custom-agent shell command (P-030, `asked_from` `crew`) |
+
+### Session command approval events (2026-11, P-060)
+
+Emitted by `codec_session` (docs/SESSION-PHONE-APPROVALS-DESIGN.md), source `codec-session`. A Terminal session asks for a command's approval through `codec_ask_user` (`asked_from` `session`, options Allow / Deny, strict) beside its Mac dialog; a Mac click is recorded on the same question with `answered_via` `dialog`. Only the exact Allow label approves. Never the command text.
+
+| Event | extra fields |
+|---|---|
+| `session_approval_decision` | `decision` (`allowed`\|`denied`), `decided_by` (`phone`\|`mac`\|`both`\|`none`), `reason` (`allow`\|`deny`\|`reply`\|`closed`\|`timeout`), `phone` (`asked`\|`disabled`\|`error`), `dangerous`, `cmd_hash`, `pending_question_id` |
 
 ### Crew shell and custom-agent tool events (2026-10, P-030 parts 2-4)
 
@@ -292,7 +300,7 @@ only: never a fact's value, a rule's text or the About me text.
 | `compare_run` | `codec-dashboard` | info | `target` (Model B's id), `kind` (`local` \| `cloud`), `ok` (per leg); never the question or the answers (UI P3.10) |
 
 ### Watchdog events (2026-07 log review)
-One event name, emitted by the heartbeat's PM2 restart-storm detector (`codec_heartbeat.check_pm2_restart_storms`). Fires when an `autorestart:true` PM2 process burned ≥5 restarts since the previous heartbeat (~20 min) — the signature of a crash loop hiding behind PM2 status "online" (incident: `ava-litellm` restarted 34,207× over 3 weeks unnoticed). Cron-style jobs (`autorestart:false`) are excluded; a persisting storm re-alerts at most every 6h. State: `~/.codec/pm2_restart_state.json`. Related (no new event): `codec_alerts` supports read-only `alerts.extra_services` probes in `~/.codec/config.json` (`http(s)://` or `tcp://host:port`) with the same consecutive-failure alerting as built-ins but NEVER auto-restart.
+One event name, emitted by the heartbeat's PM2 restart-storm detector (`codec_heartbeat.check_pm2_restart_storms`). Fires when an `autorestart:true` PM2 process burned ≥5 restarts since the previous heartbeat (~20 min) — the signature of a crash loop hiding behind PM2 status "online" (incident: `ava-litellm` restarted 34,207× over 3 weeks unnoticed). Cron-style jobs (`autorestart:false`) are excluded; a persisting storm re-alerts at most every 6h. State: `~/.codec/pm2_restart_state.json`. Related (no new event): `codec_alerts` supports read-only `alerts.extra_services` probes in `~/.codec/config.json` (`http(s)://` or `tcp://host:port`) with the same consecutive-failure alerting as built-ins but NEVER auto-restart. Boot grace (P-059, docs/BOOT-GRACE-DESIGN.md, no new event): the heartbeat's first tick comes 120 s after start, and a built-in whose PM2 app started under 5 min ago (`codec_models.pm2_app_loading` on the heartbeat's one `pm2 jlist`) is not counted, restarted, alerted or logged as `service_down`.
 
 | Event | Source | level | extra fields |
 |---|---|---|---|
@@ -307,6 +315,8 @@ One event name, emitted by the heartbeat's PM2 restart-storm detector (`codec_he
 | `bridge_message_received` | same | info | `bridge`, `sender` (iMessage) or `chat` + `user` (Telegram), `length` |
 | `bridge_reply_sent` | same | info | `bridge`, `to` (iMessage) or `chat` (Telegram), `length` |
 | `bridge_photo_received` | `codec-telegram` | info | `bridge`, `chat`, `user` |
+
+No audit event for a refused Messages database (P-058, docs/IMESSAGE-PERMISSION-BACKOFF-DESIGN.md): `codec-imessage` logs it once, then at most every 5 minutes, polls every 5 minutes after 10 failed reads, posts one Inbox entry through `routes._shared._save_notification` naming the interpreter that needs Full Disk Access, and keeps `~/.codec/imessage_health.json` (0600: state, times, failure count, interpreter path; no message text), from which Settings > Connectors shows "needs permission".
 
 ### Phase 2 Step 6 audit events (Trigger System)
 Four event names. `trigger_evaluated` fires only when a pattern matches (pre-cooldown, pre-consent — silent on no-match to avoid audit spam). `trigger_fired` is the actual dispatch. `trigger_blocked` fires for any non-firing reason except `killed` (silent). `trigger_muted` fires when an otherwise-eligible match is suppressed by the runtime mute config (`~/.codec/triggers.json` — see `docs/PHASE2-STEP6-TRIGGER-MUTE.md`). All inherit the wrapping observer poll's `correlation_id`.
@@ -438,9 +448,9 @@ Canonical state file for AskUserQuestion. Atomic write via tmp+rename. Schema:
       "timeout_seconds": 600,
       "status": "pending|answered|timed_out",
       "answered_at": "ISO8601 | null",
-      "answered_via": "pwa|voice | null",
+      "answered_via": "pwa|voice|dialog | null",
       "answer": "...",
-      "asked_from": "chat|voice|crew|mcp",
+      "asked_from": "chat|voice|crew|mcp|session",
       "consent_strict": false,
       "destructive_verb": "delete | null",
       "timeout_reason": "deadline|ambiguous_consent | null"
@@ -459,4 +469,5 @@ Canonical state file for AskUserQuestion. Atomic write via tmp+rename. Schema:
 ### Config schema versioning (A-15)
 - `~/.codec/config.json` carries a `config_version` stamp; `codec_config.CONFIG_SCHEMA_VERSION` is the current generation (currently **1**).
 - `codec_config.load_config()` runs an ordered migration ladder (`_CONFIG_MIGRATIONS`) on first load after an upgrade, writing back **only** when the file exists AND a migration changed something (idempotent, atomic 0600). It never creates a config file just to stamp a version, and never overwrites an unparseable one.
+- **Writing config.json (P-054, docs/CONFIG-WRITER-DESIGN.md):** `codec_config.update_config(mutate_fn, path=None)` is the locked read-modify-write (`codec_jsonstore.read_modify_write` on the `config.json.lock` sidecar). A file that exists but is unreadable, not a JSON object or empty raises `ConfigUnreadable` and is left byte for byte; a missing file starts from `{}`. Settings (`/api/config`, `/api/config/raw`), heartbeat and the TOTP routes use it; Settings, heartbeat and TOTP enable answer 409 on that refusal, TOTP confirm and disable keep their 500 "Failed to ... config" answer. New writers should use it too.
 - **When you add/rename/restructure a config key in a way old configs can't satisfy via `.get(k, default)`**: bump `CONFIG_SCHEMA_VERSION`, append a `_migrate_vN_to_vN+1(cfg) -> cfg` step to `_CONFIG_MIGRATIONS`, and add a round-trip test. Purely additive keys with safe defaults need **no** migration (that's why v0→v1 only stamps the version).

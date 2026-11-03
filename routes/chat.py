@@ -232,22 +232,11 @@ def _derive_search_query(text: str, max_words: int = SEARCH_QUERY_MAX_WORDS) -> 
     return " ".join([w for w in words if w][:max_words])
 
 
-def _enrich_messages(messages: list, config: dict, force_search: bool = False, meta: dict | None = None,
-                     temporary: bool = False, web: bool = True) -> list:
-    """
-    Auto-detect URLs and memory recall in the last user message, and search the
-    web when the page's "Search the web" toggle is on (force_search=True; D-37:
-    no search on trigger words). Injects context messages before the last user
-    message when content is found.
-    Returns a (possibly modified) copy of the messages list. With `meta`, it also
-    records what memory it injected (_note_memory) and, under "web", that a
-    search was sent. A temporary chat (P2.11) gets no memory recall; links and
-    the toggle's search still work. web=False (the Vibe page) fetches no link
-    and sends no search.
-    """
-    import re as _re
+def _last_user_message(messages: list) -> tuple:
+    """(index, text) of the last user message; (None, None) when there is none
+    or its content is not plain text."""
     if not messages:
-        return messages
+        return None, None
 
     # Find last user message
     last_user_idx = None
@@ -256,14 +245,24 @@ def _enrich_messages(messages: list, config: dict, force_search: bool = False, m
             last_user_idx = i
             break
     if last_user_idx is None:
-        return messages
+        return None, None
 
     last_text = messages[last_user_idx].get("content", "")
     if not isinstance(last_text, str):
-        return messages
+        return None, None
+    return last_user_idx, last_text
 
-    context_parts = []
+
+def _recall_memory(messages: list, meta: dict | None = None, temporary: bool = False) -> list:
+    """The memory part of _enrich_messages: the [MEMORY ...] blocks for the last
+    user message (voice, chat and Vibe history), and _note_memory into `meta`.
+    P-016: it reads the qchat and vibe connections, which are shared and used on
+    the loop thread only, so chat_completion calls this on the loop and runs the
+    rest of _enrich_messages (link fetch, web search) in a worker thread."""
     memory_parts = []
+    _, last_text = _last_user_message(messages)
+    if last_text is None:
+        return memory_parts
 
     # P2.11: a temporary chat recalls nothing from memory.
     if not temporary:
@@ -382,6 +381,31 @@ def _enrich_messages(messages: list, config: dict, force_search: bool = False, m
                     log.info(f"Memory recall injected (vibe targeted): {len(vrows)} msgs")
             except Exception as e:
                 log.warning(f"Memory enrichment (vibe) failed: {e}")
+    return memory_parts
+
+
+def _enrich_messages(messages: list, config: dict, force_search: bool = False, meta: dict | None = None,
+                     temporary: bool = False, web: bool = True, memory_parts: list | None = None) -> list:
+    """
+    Auto-detect URLs and memory recall in the last user message, and search the
+    web when the page's "Search the web" toggle is on (force_search=True; D-37:
+    no search on trigger words). Injects context messages before the last user
+    message when content is found.
+    Returns a (possibly modified) copy of the messages list. With `meta`, it also
+    records what memory it injected (_note_memory) and, under "web", that a
+    search was sent. A temporary chat (P2.11) gets no memory recall; links and
+    the toggle's search still work. web=False (the Vibe page) fetches no link
+    and sends no search. memory_parts (P-016): what _recall_memory returned on
+    the loop thread; None means recall here.
+    """
+    import re as _re
+    last_user_idx, last_text = _last_user_message(messages)
+    if last_user_idx is None:
+        return messages
+
+    context_parts = []
+    if memory_parts is None:
+        memory_parts = _recall_memory(messages, meta=meta, temporary=temporary)
 
     # ── URL detection ──────────────────────────────────────────────────────────
     # web=False (the Vibe page, D-37): project files go to the model, never a fetch.
@@ -1234,7 +1258,7 @@ async def chat_completion(request: Request):
                     return {"response": f"**{skill_name}**: {skill_result}", "skill": skill_name}
 
     # Check for images — route to vision model (extracted, Fix #8)
-    vision_resp = _chat_vision_response(body, messages)
+    vision_resp = await asyncio.to_thread(_chat_vision_response, body, messages)
     if vision_resp is not None:
         return vision_resp
 
@@ -1272,8 +1296,12 @@ async def chat_completion(request: Request):
         _mem_meta: dict = {}  # what memory this turn used, for the reply's "Memory used" (P2.4)
         # D-37: web:false (the Vibe page) means no link fetch and no web search.
         _web = body.get("web", True) is not False
-        messages = _enrich_messages(messages, config, force_search=bool(force_search), meta=_mem_meta,
-                                    temporary=_temporary, web=_web)
+        # P-016: memory recall on the loop thread (shared qchat/vibe connections),
+        # the link fetch and web search in a worker thread.
+        _memory_parts = _recall_memory(messages, meta=_mem_meta, temporary=_temporary)
+        messages = await asyncio.to_thread(
+            _enrich_messages, messages, config, force_search=bool(force_search), meta=_mem_meta,
+            memory_parts=_memory_parts, temporary=_temporary, web=_web)
 
         # Build the system prompt (override + step-budget + attachment /
         # content-rewrite / observer suffixes) — extracted to a helper for
@@ -1617,7 +1645,7 @@ async def chat_completion(request: Request):
         # Skills that actually executed this turn. A claim of action with an
         # empty set is unbacked — see codec_claim_check.
         _turn_actions: set[str] = set()
-        answer = codec_llm.call(messages, **_common, raise_on_error=True)
+        answer = await asyncio.to_thread(codec_llm.call, messages, **_common, raise_on_error=True)
         import codec_usage
         codec_usage.record_reply(model, base_url)  # UI P3.11: Settings > Usage counts this reply
         answer = re.sub(r'###\s*FINAL ANSWER:\s*', '', answer).strip()

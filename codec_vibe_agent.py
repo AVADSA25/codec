@@ -42,14 +42,16 @@ KEEP_RUNS = 20
 RUNS_DIR = "runs"
 FULL_RESULTS = 6            # newest results the model sees in full
 DISPLAY_CHARS = 24 * 1024   # what the page keeps of one result
-MODEL_RESULT_CHARS = 6 * 1024
+MODEL_RESULT_CHARS = 6 * 1024   # a longer result reaches the model as its head and its tail
+MODEL_HEAD_CHARS = 1536
+MODEL_TAIL_CHARS = 4 * 1024
+CUT_SLACK = 200             # how much earlier the tail may start, so that it starts at a line
 READ_LINES = 300
-READ_BYTES = 24 * 1024
 LIST_ENTRIES = 200
 MAP_LINES = 60
 SEARCH_MATCHES = 40
 MAX_QUESTIONS = 3
-FAIL_EDITS = 3              # failed edits of one file in a row
+FAIL_EDITS = 3              # failed edits of one file in a row: from this one on, the result says to rewrite it
 FAIL_FORMAT = 4             # unreadable replies in a row
 REPEAT_WARN = 3
 REPEAT_STOP = 5
@@ -59,6 +61,8 @@ TEXT_FLUSH_SECONDS = 0.25
 MAX_WAIT_SECONDS = 25.0
 WAIT_STEP = 1.0              # how often a waiting run looks at the clock and the stop flag
 TEMPERATURE = 0.2
+REPLY_LOG_CHARS = 8000      # what the run log keeps of one model reply (the same as a turn keeps)
+LOG_ONLY = ("reply",)       # events kept in the run log on disk only: the page never gets them
 
 RUN_ID_RE = re.compile(r"^r[0-9a-f]{8}$")
 
@@ -99,12 +103,23 @@ def enabled() -> bool:
 
 
 def _audit(event: str, message: str, extra: dict) -> None:
-    """Counts, tool names and statuses only. Never a goal, a path, a file or a model reply."""
+    """Counts, tool names and statuses only. Never a goal, a path, a file or a model reply.
+
+    The run id goes in as the correlation_id too, so every line of one run can be found together."""
     try:
         from codec_audit import log_event
-        log_event(event, "codec-vibe", message, extra=extra)
+        log_event(event, "codec-vibe", message, extra=extra, correlation_id=extra.get("run"))
     except Exception:
         pass
+
+
+def _redact(text: str) -> "str | None":
+    """Secret-shaped text replaced with the audit log's own patterns. None when they cannot be loaded."""
+    try:
+        from codec_audit import _redact_string
+        return _redact_string(text)
+    except Exception:
+        return None
 
 
 def _mono() -> float:
@@ -206,6 +221,32 @@ def _fail(msg: str, blocked: str = "") -> Result:
     return Result(False, msg, msg.split("\n", 1)[0][:160], blocked=blocked)
 
 
+def _for_model(text: str) -> str:
+    """What the model sees of one result: all of it up to MODEL_RESULT_CHARS, else its head and its tail.
+
+    A failing test, an error and a summary come at the end of a command's output, so the last MODEL_TAIL_CHARS
+    are always kept whole. Both cuts move to a line end when one is close."""
+    if len(text) <= MODEL_RESULT_CHARS:
+        return text
+    head = text[:MODEL_HEAD_CHARS]
+    nl = head.rfind("\n")
+    if nl >= MODEL_HEAD_CHARS // 2:
+        head = head[:nl]
+    start = len(text) - MODEL_TAIL_CHARS
+    nl = text.rfind("\n", start - CUT_SLACK, start)
+    if nl != -1:
+        start = nl + 1
+    return f"{head}\n... ({start - len(head)} characters left out) ...\n{text[start:]}"
+
+
+def _edit_key(path: str) -> str:
+    """One path, however the model wrote it (./a.css and a.css are the same file)."""
+    try:
+        return vp.safe_rel(path)
+    except VibeError:
+        return path
+
+
 def _path_failure(e: VibeError, rel: str = "") -> Result:
     msg = e.message
     if "looks like a secret" in msg:
@@ -263,15 +304,18 @@ def _t_read_file(run: "Run", path: str, first: int, last) -> Result:
     if first > total:
         return _fail(f"The file has only {total} lines.")
     end = min(last or total, total, first + READ_LINES - 1)
-    chunk = lines[first - 1:end]
-    body = proto.numbered(chunk, first, width_to=total)
-    while len(body.encode("utf-8", "replace")) > READ_BYTES and len(chunk) > 1:
-        chunk = chunk[:max(1, len(chunk) * 3 // 4)]
-        end = first + len(chunk) - 1
-        body = proto.numbered(chunk, first, width_to=total)
-    more = f"\n(more lines follow: @@ read_file {path} {end + 1}-)" if end < total else ""
+    rows = proto.numbered(lines[first - 1:end], first, width_to=total).split("\n")
+    room = MODEL_RESULT_CHARS - 2 * len(path) - 80      # whole lines that fit in what the model sees, beside the header
+    keep = size = 0
+    for row in rows:
+        size += len(row) + 1
+        if size > room and keep:
+            break
+        keep += 1
+    end = first + keep - 1
     head = f"{path}, lines {first}-{end} of {total}"
-    return Result(True, head + "\n" + body + more, f"Read {head}")
+    more = f" (more lines follow: @@ read_file {path} {end + 1}-)" if end < total else ""
+    return Result(True, head + more + "\n" + "\n".join(rows[:keep]), f"Read {head}")
 
 
 def _t_search(run: "Run", pattern: str, path: str) -> Result:
@@ -447,22 +491,38 @@ class Run:
     def _log_path(self) -> Path:
         return vp.project_dir(self.pid) / vp.META_DIR / RUNS_DIR / f"{self.id}.jsonl"
 
+    def _write_log(self, ev: dict) -> None:
+        try:
+            path = self._log_path()
+            path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+            with os.fdopen(fd, "a", encoding="utf-8") as f:
+                f.write(json.dumps(ev, ensure_ascii=False) + "\n")
+        except (OSError, VibeError):
+            log.warning("vibe agent: could not write the run log", exc_info=True)
+
     def _emit(self, kind: str, **fields) -> dict:
         with self._cond:
             self._seq += 1
             ev = {"seq": self._seq, "t": round(time.time(), 3), "type": kind, **fields}
             self.events.append(ev)
             if kind != "text":
-                try:
-                    path = self._log_path()
-                    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-                    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
-                    with os.fdopen(fd, "a", encoding="utf-8") as f:
-                        f.write(json.dumps(ev, ensure_ascii=False) + "\n")
-                except (OSError, VibeError):
-                    log.warning("vibe agent: could not write the run log", exc_info=True)
+                self._write_log(ev)
             self._cond.notify_all()
             return ev
+
+    def _log_reply(self, n: int, reply: "_Reply") -> None:
+        """The model's reply, for the run log on disk only: it never goes into self.events, so the page never gets it.
+
+        Secret shapes are replaced first with the audit log's own patterns; without them only the counts are kept.
+        No seq: the event is not part of the page's sequence (get_run also leaves it out)."""
+        ev = {"t": round(time.time(), 3), "type": "reply", "step": n, "chars": len(reply.text), "cut": reply.cut}
+        clean = _redact(reply.text)
+        if clean is not None:
+            ev["text"] = clean[:REPLY_LOG_CHARS]
+            ev["redacted"] = clean != reply.text
+        with self._cond:
+            self._write_log(ev)
 
     def _drop_text(self, step: int) -> None:
         with self._cond:
@@ -586,6 +646,8 @@ class Run:
                 return self._end("limit", "The project is too big for the context limit. Raise max_context_tokens or use fewer files.")
             reply = self._stream(n, messages)
             self._drop_text(n)
+            if reply.text.strip():
+                self._log_reply(n, reply)
             if reply.stopped:
                 return self._end("stopped", "Stopped.")
             if reply.timed_out:
@@ -625,7 +687,7 @@ class Run:
         self._emit("result", step=n, ok=False, summary=message.split("\n", 1)[0][:160], output=message[:DISPLAY_CHARS], tool="error")
         said = text.strip() or "(no reply)"
         self.turns.append(_Turn(n, "error", "", said[:2000], said[:300], wrapped, message.split("\n", 1)[0][:160], False))
-        _audit("vibe_agent_step", "Vibe agent step", {"project": self.pid, "run": self.id, "n": n, "tool": "error", "ok": False, "ms": 0})
+        _audit("vibe_agent_step", "Vibe agent step", {"project": self.pid, "run": self.id, "n": n, "tool_name": "error", "ok": False, "ms": 0})
 
     def _run_call(self, n: int, text: str, call: proto.Call) -> bool:
         """Run one tool. True when the run is over."""
@@ -647,7 +709,7 @@ class Run:
             if report == "Done." and call.note:             # the summary went into the sentence before the block
                 report = call.note
             self._emit("result", step=n, ok=True, summary="Finished", output=report, tool="finish")
-            _audit("vibe_agent_step", "Vibe agent step", {"project": self.pid, "run": self.id, "n": n, "tool": "finish", "ok": True, "ms": 0})
+            _audit("vibe_agent_step", "Vibe agent step", {"project": self.pid, "run": self.id, "n": n, "tool_name": "finish", "ok": True, "ms": 0})
             self._end("done", report)
             return True
         if call.name == "ask":
@@ -666,17 +728,18 @@ class Run:
             warn = f"\nYou have made this same call {streak} times in a row. Do something different, or use finish."
         if result.blocked:
             _audit("vibe_agent_blocked", "Vibe agent step refused", {"project": self.pid, "run": self.id, "n": n, "reason": result.blocked})
-        if not result.ok and call.name == "edit_file":
-            key = call.args["path"]
+        advice = ""
+        if not result.ok and call.name == "edit_file" and not result.blocked:
+            key = _edit_key(call.args["path"])
             self._edit_fails[key] = self._edit_fails.get(key, 0) + 1
+            if self._edit_fails[key] >= FAIL_EDITS:
+                advice = self._edit_advice(key, self._edit_fails[key])
         elif result.ok and result.changed:
             for p in result.changed:
                 self._edit_fails.pop(p, None)
-        model_text = result.text if len(result.text) <= MODEL_RESULT_CHARS else (
-            result.text[:MODEL_RESULT_CHARS] + f"\n... (cut: {len(result.text) - MODEL_RESULT_CHARS} more characters)")
-        wrapped = proto.wrap_result(n, call.name, arg, model_text + warn, result.ok)
-        self._emit("result", step=n, ok=result.ok, summary=result.summary, output=result.text[:DISPLAY_CHARS], tool=call.name)
-        _audit("vibe_agent_step", "Vibe agent step", {"project": self.pid, "run": self.id, "n": n, "tool": call.name, "ok": result.ok, "ms": ms})
+        wrapped = proto.wrap_result(n, call.name, arg, _for_model(result.text) + advice + warn, result.ok)
+        self._emit("result", step=n, ok=result.ok, summary=result.summary, output=(result.text + advice)[:DISPLAY_CHARS], tool=call.name)
+        _audit("vibe_agent_step", "Vibe agent step", {"project": self.pid, "run": self.id, "n": n, "tool_name": call.name, "ok": result.ok, "ms": ms})
         short = text if len(text) <= 600 else (call.note[:300] + "\n" + f"@@ {call.name} {arg}\n(content left out)")
         self.turns.append(_Turn(n, call.name, arg, text[:8000], short, wrapped, result.summary, result.ok,
                                 read_path=call.args.get("path", "") if call.name == "read_file" else ""))
@@ -684,11 +747,23 @@ class Run:
             self._checkpoint(n, f"Agent: {call.name} {result.changed[0]}", result.changed)
         elif call.name == "run_check":
             self._checkpoint(n, "Agent: ran " + call.args["command"][:60], ())
-        if call.name == "edit_file" and self._edit_fails.get(call.args["path"], 0) >= FAIL_EDITS:
-            self._end("limit", f"I could not apply an edit to {call.args['path']} after {FAIL_EDITS} tries. "
-                               "The files keep the work done so far.")
-            return True
         return False
+
+    def _edit_advice(self, rel: str, fails: int) -> str:
+        """From the FAIL_EDITS-th edit of one file in a row that did not apply: what to do instead. The run goes on.
+
+        A file one reply can hold is rewritten with write_file. A longer one is not: a write_file cut at the reply
+        limit is refused, so the advice is to copy fewer lines exactly."""
+        try:
+            size = next((f["size"] for f in vp.list_files(self.pid) if f["path"] == rel), 0)
+        except VibeError:
+            size = 0
+        if size > self.limits["max_reply_tokens"] * CHARS_PER_TOKEN / 2:
+            return (f"\n\nThat is {fails} edits of {rel} in a row that did not apply, and the file is too long to write again "
+                    "in one reply. Read the lines you want to change again with read_file, then copy one or two of them "
+                    "exactly into SEARCH.")
+        return (f"\n\nThat is {fails} edits of {rel} in a row that did not apply. Stop editing it: read it again with "
+                "read_file, then rewrite the file with write_file, with its whole content.")
 
     def _checkpoint(self, n: int, label: str, paths) -> None:
         """Save the files as a step of this run, when they changed, and tell the page."""
@@ -1016,7 +1091,7 @@ def get_run(pid: str, run_id: str, since: int = 0, wait: float = 0.0) -> dict:
     if run is not None and run.pid == pid:
         return run.view(since, wait)
     events = _file_events(pid, run_id)
-    evs = [e for e in events if int(e.get("seq", 0)) > int(since or 0)]
+    evs = [e for e in events if e.get("type") not in LOG_ONLY and int(e.get("seq", 0)) > int(since or 0)]
     return {"run": run_id, "project": pid, "status": _status_of(events), "finished": True, "events": evs,
             "next": evs[-1]["seq"] if evs else int(since or 0), "step": sum(1 for e in events if e.get("type") == "tool")}
 
