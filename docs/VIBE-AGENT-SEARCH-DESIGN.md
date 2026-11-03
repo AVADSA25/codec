@@ -18,8 +18,9 @@ like `(a+)+$` could hang the dashboard. That stays true: the pattern never runs 
 
 ## What changes
 
-**list_files.** `@@ list_files [folder or glob]`. An argument with `*`, `?` or `[` is a glob; anything else is a
-folder, as before. Rules: `/` separates folders; `**` is any number of folders, none included; `*`, `?` and `[...]`
+**list_files.** `@@ list_files [folder or glob]`. An argument with `*`, `?` or `[` is a glob, unless it names a
+file or folder that exists (a framework route such as `pages/[id].js` stays a path); anything else is a folder, as
+before. The same rule applies to the PATH of `search`. Rules: `/` separates folders; `**` is any number of folders, none included; `*`, `?` and `[...]`
 match inside one name; a glob without `/` matches the file name in any folder (`*.css`); case does not matter. The
 glob must be at most 200 characters, relative, with no `..`, backslash or control character. Matching is pure
 Python: one step per path segment, each name compared with `fnmatch.fnmatchcase`, whose translation has no

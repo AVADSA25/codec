@@ -287,11 +287,16 @@ def _read_text(pid: str, rel: str):
     return info["content"], None
 
 
+def _names_a_path(files, where: str) -> bool:
+    """True when `where` is a file or folder of the project: then a name such as pages/[id].js stays a path."""
+    return any(f["path"] == where or f["path"].startswith(where + "/") for f in files)
+
+
 def _t_list_files(run: "Run", folder: str) -> Result:
     files = [f for f in vp.list_files(run.pid) if not vp.looks_secret(f["path"])]
     folder = (folder or "").strip().strip("/")
     where = f" in {folder}"
-    if folder and vsearch.is_glob(folder):          # a glob such as src/**/*.js (P-066)
+    if folder and vsearch.is_glob(folder) and not _names_a_path(files, folder):   # a glob such as src/**/*.js (P-066)
         try:
             match = vsearch.matcher(folder)
         except vsearch.GlobError as e:
@@ -390,7 +395,7 @@ def _t_search(run: "Run", pattern: str, path: str, regex: bool = False, mode: st
     mode = mode if mode in ("files", "count") else "lines"
     where = (path or "").strip().strip("/")
     match = None
-    if where and vsearch.is_glob(where):            # PATH may be a glob (P-066)
+    if where and vsearch.is_glob(where) and not _names_a_path(vp.list_files(run.pid), where):   # PATH may be a glob (P-066)
         try:
             match = vsearch.matcher(where)
         except vsearch.GlobError as e:

@@ -145,6 +145,15 @@ def test_list_files_with_a_glob_lists_only_matching_names():
     assert va._t_list_files(run, "src").summary == "3 file(s) in src"           # a folder works as before
 
 
+def test_a_real_folder_or_file_with_brackets_in_its_name_is_still_a_path():
+    pid = make_project({"pages/[slug]/index.js": "needle\n", "pages/[id].js": "needle\n", "pages/i.js": "needle\n"})
+    run = tool_run(pid)
+    assert va._t_list_files(run, "pages/[slug]").summary == "1 file(s) in pages/[slug]"
+    assert va._t_search(run, "needle", "pages/[id].js").text == "pages/[id].js:1: needle"
+    assert va._t_search(run, "needle", "pages/[id].js", regex=True).text == "pages/[id].js:1: needle"
+    assert va._t_list_files(run, "pages/[i].js").summary == "1 file(s) matching pages/[i].js"   # no such name: a glob
+
+
 # ── search modes ──
 
 def test_files_and_count_modes_answer_past_the_40_match_cap():
