@@ -1083,10 +1083,11 @@ def _merged(ranges: list) -> list:
     return out
 
 
-def _attachment_excerpt(docs: list, question: str, cap_tokens: int) -> str:
+def _attachment_excerpt(docs: list, question: str, cap_tokens: int) -> tuple:
     """The excerpt message for older attachments `docs` [(name, text)] (P-034): the windows
     of each file that best match `question` (rarer words weigh more), then the start of each
-    file if room is left, written in file order, at most about `cap_tokens`."""
+    file if room is left, written in file order, at most about `cap_tokens`. Returns
+    (message text, names of the files with a part in it, names of the files left out)."""
     reserve = sum(len(name) + 100 for name, _ in docs)
     cap_chars = int(cap_tokens * CHARS_PER_TOKEN) - len(_EXCERPT_NOTE) - reserve
     windows = []
@@ -1121,12 +1122,16 @@ def _attachment_excerpt(docs: list, question: str, cap_tokens: int) -> str:
             chosen[d].append((s, e))
             used += grown + len(_EXCERPT_GAP)
     parts = [_EXCERPT_NOTE] if cap_chars > 0 else []
+    shown_names: list = []
+    left_out: list = []
     for d, (name, text) in enumerate(docs):
         ranges = _merged(chosen[d])
         if not ranges:
+            left_out.append(name)
             parts.append(f"[{name}: attached earlier, not sent this turn: no room left in the prompt. "
                          "Attach it again to have it read.]")
             continue
+        shown_names.append(name)
         body = _EXCERPT_GAP.join(text[a:b] for a, b in ranges)
         if ranges[0][0] > 0:
             body = "[...]\n" + body
@@ -1135,7 +1140,7 @@ def _attachment_excerpt(docs: list, question: str, cap_tokens: int) -> str:
         shown = sum(b - a for a, b in ranges)
         parts.append(f"[DOCUMENT EXCERPT: {name} ({shown:,} of {len(text):,} characters)]\n"
                      f"{body}\n[END DOCUMENT EXCERPT]")
-    return "\n\n".join(parts)
+    return "\n\n".join(parts), shown_names, left_out
 
 
 def _fit_prompt_budget(messages: list, budget: int):
@@ -1193,11 +1198,12 @@ def _fit_prompt_budget(messages: list, budget: int):
         history.append(m)
 
     kept = head + pinned + tail
-    excerpt = []
+    excerpt, shown, left_out = [], [], []
     if docs:
         room = limit - estimate_prompt_tokens(kept) - _TOKENS_PER_MESSAGE - 2
         question = _ATTACHMENT_RE.sub(" ", latest)
-        excerpt = [{"role": "user", "content": _attachment_excerpt(docs, question, min(budget // 3, room))}]
+        text, shown, left_out = _attachment_excerpt(docs, question, min(budget // 3, room))
+        excerpt = [{"role": "user", "content": text}]
 
     groups: list = []
     for m in history:
@@ -1215,7 +1221,7 @@ def _fit_prompt_budget(messages: list, budget: int):
     out = head + [m for g in groups[keep_from:] for m in g] + pinned + excerpt + tail
     tokens = estimate_prompt_tokens(out)
     return out, {"budget": budget, "tokens": tokens, "dropped": sum(len(g) for g in groups[:keep_from]),
-                 "excerpts": [name for name, _ in docs], "over": tokens > budget}
+                 "excerpts": shown, "not_sent": left_out, "over": tokens > budget}
 
 
 

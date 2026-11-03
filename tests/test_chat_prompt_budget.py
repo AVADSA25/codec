@@ -162,7 +162,7 @@ def test_turn_30_is_sent_within_the_budget_with_the_planted_fact(api):
     assert not any(doc[:200] in m["content"] for m in sent[1:-3]), "the file is out of its old turn"
     (trim,) = [f["trim"] for f in out.frames if "trim" in f]
     assert trim == {"budget": BUDGET, "tokens": chat.estimate_prompt_tokens(sent),
-                    "dropped": trim["dropped"], "excerpts": ["report.pdf"], "over": False}
+                    "dropped": trim["dropped"], "excerpts": ["report.pdf"], "not_sent": [], "over": False}
     assert 0 < trim["dropped"] < len(hist) - 1
     kept = sent[1:-3]
     assert kept == hist[-1 - len(kept):-1], "the newest turns stay, the oldest went first"
@@ -239,6 +239,15 @@ def test_a_file_name_with_brackets_is_still_an_attachment():
     assert without_file <= BUDGET and len(sent) > 2, "the new file is not counted, history stays"
 
 
+def test_a_file_with_no_room_left_is_named_as_not_sent():
+    hist = [{"role": "system", "content": "You are CODEC."},
+            {"role": "user", "content": attach("Look.", report())}, {"role": "assistant", "content": "Done."},
+            {"role": "user", "content": "y " * 30_000 + QUESTION}]
+    sent, trim = chat._fit_prompt_budget(hist, BUDGET)
+    assert trim["excerpts"] == [] and trim["not_sent"] == ["report.pdf"] and trim["over"] is True
+    assert "not sent this turn" in sent[-2]["content"] and PLANTED not in sent[-2]["content"]
+
+
 def test_the_page_says_when_a_reply_was_shortened():
     assert PAGE.count("if(j.trim){_lastTrim=j.trim}") == 2, "send and regenerate"
     assert "if(md&&_lastTrim)renderTrimUsed(md,_lastTrim);_lastTrim=null;" in PAGE
@@ -259,9 +268,11 @@ const msg = {querySelector: () => meta};
 renderTrimUsed(msg, {budget: 12000, dropped: 24, excerpts: ['report.pdf'], over: false});
 renderTrimUsed(msg, {budget: 12000, dropped: 1, excerpts: ['a.pdf', 'b.pdf', 'c.pdf'], over: false});
 renderTrimUsed(msg, {budget: 12000, dropped: 0, excerpts: [], over: true});
+renderTrimUsed(msg, {budget: 12000, dropped: 2, excerpts: [], not_sent: ['report.pdf'], over: true});
 console.log(JSON.stringify(made.map(e => e.textContent)));
 """
     r = subprocess.run(["node", "-e", script], capture_output=True, text=True, timeout=20)
     assert r.returncode == 0, r.stderr
     assert json.loads(r.stdout) == ["Shortened to fit: 24 earlier messages left out, excerpt of report.pdf",
-                                    "Shortened to fit: 1 earlier message left out, excerpt of a.pdf, b.pdf and 1 more"]
+                                    "Shortened to fit: 1 earlier message left out, excerpt of a.pdf, b.pdf and 1 more",
+                                    "Shortened to fit: 2 earlier messages left out, report.pdf not sent"]

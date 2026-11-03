@@ -79,11 +79,12 @@ prompt is over the budget.
   turns the cap off; values under 2,000 count as 2,000; anything else invalid
   means the default. Read per request, no restart.
 - Streamed replies: one `data: {"trim": {...}}` frame before the tokens when the
-  turn was shortened (`budget`, `tokens`, `dropped`, `excerpts`, `over`); the
+  turn was shortened (`budget`, `tokens`, `dropped`, `excerpts`: files with a
+  part in the excerpt, `not_sent`: earlier files with no room left, `over`); the
   non-streamed reply gets the same dict under `trim`. File names go only to the
   page that sent them, never into a log line (the log has counts only).
 - The page shows "Shortened to fit: N earlier messages left out, excerpt of
-  name" in the reply's meta line (textContent), with a tooltip saying how to get
+  name" (and "name not sent" for a file with no room) in the reply's meta line (textContent), with a tooltip saying how to get
   the whole file read again.
 - No stored state, no new audit event, no schema change. The premise check and
   the attachment detection keep reading the untrimmed messages.
