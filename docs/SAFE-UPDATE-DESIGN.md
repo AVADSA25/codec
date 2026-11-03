@@ -45,6 +45,13 @@ source with `ast`, because importing `codec.py` starts the voice loop) on a mixe
 `CODEC_STATE` (default `~/.codec`), the name `scripts/auto_pull.sh` already uses. `sync_to_pm2.sh`'s closing
 hint points at `scripts/smoke.py` instead of the missing file.
 
+**Installs still on the old `install.sh`.** The copy of `install.sh --update` that runs is the one already on
+disk, read whole by bash before its pull. On a checkout older than this change that copy still runs the missing
+`codec_smoke_test.py` after the pull and goes back with `reset --hard`, so `install.sh --update` cannot bring this
+fix in by itself. Such an install needs one `git pull --ff-only` by hand (save or commit local edits first); every
+later `install.sh --update` runs the new steps. The old `update.sh` only warned and did not roll back, so
+`update.sh` installs get the fix on their next run.
+
 **`codec_preupdate.py` (new, standard library plus `codec_backup`'s checks).** `snapshot(src, dest_root, label)`
 writes `~/.codec/pre_update/<YYYYmmdd-HHMMSS>/`:
 - every top-level `*.db` that is a SQLite file, copied with the sqlite backup API while CODEC runs (the same
