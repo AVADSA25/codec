@@ -65,6 +65,12 @@ KINDS: Dict[str, Tuple[Optional[str], str, str, str, int, str]] = {
     "agent_blocked": ("agents", "An agent needs your go-ahead", "Tap to see what it needs.", "/#inbox",
                       86400, "high"),
     "agent_stopped": ("agents", "An agent stopped", "Tap to see why.", "/#inbox=agents", 86400, "normal"),
+    # Vibe agent runs (P-070, docs/VIBE-PUSH-DESIGN.md): commands are approved only at the Mac.
+    "vibe_approval": ("approvals", "Vibe wants to run a command", "Approve or decline it on your Mac.", "/vibe",
+                      600, "high"),
+    "vibe_question": ("questions", "Vibe has a question for you", "Tap to answer it.", "/vibe", 600, "high"),
+    "vibe_done": ("agents", "A Vibe run has ended", "Open its project in Vibe to see the report.", "/vibe",
+                  86400, "normal"),
     "test": (None, "Notifications are on", "CODEC can reach this device.", "/", 300, "normal"),
 }
 

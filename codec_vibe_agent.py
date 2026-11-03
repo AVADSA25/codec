@@ -113,6 +113,19 @@ def _audit(event: str, message: str, extra: dict) -> None:
         pass
 
 
+def _push(kind: str) -> None:
+    """Tell the owner's phone that a run waits or ended (P-070, docs/VIBE-PUSH-DESIGN.md).
+
+    Only a kind goes out: codec_push sends the fixed line of codec_push.KINDS, never a goal, project, command,
+    question or file text. notify() sends from its own thread; any error here is swallowed, so a run is the same
+    with push off, not set up or broken. Tests replace this."""
+    try:
+        import codec_push
+        codec_push.notify(kind)
+    except Exception:
+        log.debug("vibe agent: push %s not sent", kind, exc_info=True)
+
+
 def _redact(text: str) -> "str | None":
     """Secret-shaped text replaced with the audit log's own patterns. None when they cannot be loaded."""
     try:
@@ -586,6 +599,8 @@ class Run:
                        start_checkpoint=self.start_cp)
             self.finished = True
             self._cond.notify_all()
+        if not self.stop_event.is_set():          # the owner's own Stop needs no push
+            _push("vibe_done")
 
     def _trim_logs(self) -> None:
         try:
@@ -823,6 +838,7 @@ class Run:
             self.status = "waiting"
         asked = _mono()                           # before the event: an answer can come the moment it is out
         self._emit("approval", step=n, id=self._aid, command=command)
+        _push("vibe_approval")
         end = asked + self.limits["wait_seconds"]
         with self._cond:
             while self._decision is None and not self.stop_event.is_set():
@@ -901,6 +917,7 @@ class Run:
             self.status = "waiting"
         asked = _mono()                           # before the event, as for an approval
         self._emit("question", step=n, id=self._qid, text=call.args["question"], choices=call.args["choices"])
+        _push("vibe_question")
         end = asked + self.limits["wait_seconds"]
         with self._cond:
             while self._answer is None and not self.stop_event.is_set():
@@ -1126,6 +1143,17 @@ def list_runs(pid: str) -> list:
                     "model": (start.get("model") or {}).get("label", ""), "start_checkpoint": start.get("start_checkpoint"),
                     "seconds": end.get("seconds")})
     return out
+
+
+def live_run() -> dict:
+    """The one run going on this Mac now (running or waiting), ids only, or nulls (P-070).
+
+    The page opened from a phone notification (/vibe, a fixed URL) uses it to show that run again."""
+    with _GLOBAL:
+        run = _ACTIVE
+    if run is None or run.finished:
+        return {"project": None, "run": None, "status": None}
+    return {"project": run.pid, "run": run.id, "status": run.status}
 
 
 def _live(pid: str, run_id: str) -> Run:

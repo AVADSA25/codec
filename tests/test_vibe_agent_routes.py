@@ -158,7 +158,7 @@ def test_a_run_started_through_the_tunnel_cannot_run_commands(client, scripted):
 def test_the_dashboard_registers_the_agent_routes_behind_its_login():
     import codec_dashboard
     paths = set(route_methods(codec_dashboard.app))
-    for path in ("/api/vibe/agent/models", "/api/vibe/projects/{pid}/agent/run", "/api/vibe/projects/{pid}/agent/runs",
+    for path in ("/api/vibe/agent/models", "/api/vibe/agent/live", "/api/vibe/projects/{pid}/agent/run", "/api/vibe/projects/{pid}/agent/runs",
                  "/api/vibe/projects/{pid}/agent/{run_id}", "/api/vibe/projects/{pid}/agent/{run_id}/stop",
                  "/api/vibe/projects/{pid}/agent/{run_id}/answer"):
         assert path in paths
@@ -166,7 +166,7 @@ def test_the_dashboard_registers_the_agent_routes_behind_its_login():
     auth = codec_dashboard.AuthMiddleware
     sample = "/api/vibe/projects/some-project/agent/r0123abcd"
     assert sample not in auth.PUBLIC_ROUTES and not any(sample.startswith(p) for p in auth.PUBLIC_PREFIXES)
-    assert "/api/vibe/agent/models" not in auth.PUBLIC_ROUTES
+    assert "/api/vibe/agent/models" not in auth.PUBLIC_ROUTES and "/api/vibe/agent/live" not in auth.PUBLIC_ROUTES
 
 
 # ── commands: approval and the list of allowed ones (Mac only) ──
