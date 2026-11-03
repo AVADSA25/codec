@@ -372,7 +372,7 @@ def _build_voice_system_prompt(task):
         log.warning("Memory context retrieval failed: %s", e)
 
     # ── Memory upgrade: L0/L1 identity + active temporal facts ──────────
-    # From the runtime function Deep Chat reads them from (P-026); unfiltered here until P-037.
+    # From the runtime function Deep Chat reads them from (P-026); owner, derived and system facts only (P-037).
     try:
         import codec_runtime_context
         from codec_memory_upgrade import compress_rule_based

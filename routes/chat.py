@@ -851,8 +851,8 @@ _REASON_SCAFFOLD = (
 def _identity_block(meta: dict | None, temporary: bool) -> str:
     """P-026: this Mac's hardware, the skill count, About me and the saved facts, from the one
     runtime function voice and the wake word read About me and facts from
-    (codec_runtime_context.gather). Deep Chat leaves out facts whose source is mcp, untrusted or
-    daybreak; a temporary chat gets no facts (memory recall, P2.11). "" when there is nothing."""
+    (codec_runtime_context.gather): owner, derived and system facts only (P-037), and not the
+    daybreak threads; a temporary chat gets no facts (memory recall, P2.11). "" when there is nothing."""
     try:
         import codec_runtime_context as crc
         ctx = crc.gather(facts=not temporary, exclude_sources=crc.CHAT_EXCLUDED_SOURCES)

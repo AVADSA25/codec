@@ -4,8 +4,8 @@
    About me and the saved facts; Deep Chat also gets this Mac's hardware and the registry's skill
    count, and the page no longer types any of them.
 2. A Settings chat prompt with braces gives a normal reply.
-3. Deep Chat leaves out facts saved over MCP, untrusted ones and the Daybreak threads; voice and
-   the wake word still get every fact, in their old format.
+3. Every prompt reads only owner, derived and system facts (P-037); Deep Chat also leaves out the
+   Daybreak threads. Voice and the wake word keep their old format.
 
 Every memory store is a tmp file and every model call is replaced: nothing here reads or writes
 the owner's ~/.codec. The names and facts are made up.
@@ -72,7 +72,7 @@ class _NoMemory:
     def get_context(self, text, n=8):
         return ""
 
-    def search_recent(self, days=3, limit=5):
+    def search_recent(self, days=3, limit=5, **kw):
         return []
 
 
@@ -136,7 +136,7 @@ def test_a_stubbed_gather_reaches_chat_voice_and_wake(quiet, monkeypatch):
     assert "[IDENTITY]\nABOUT-ME-MARKER\n[/IDENTITY]" in voice and "  colour = FACT-MARKER" in voice
     wake = codec._build_voice_system_prompt("hi")
     assert "ABOUT-ME-MARKER" in wake and "  colour = FACT-MARKER" in wake
-    assert calls[-2:] == [{"machine": False}, {"machine": False}], "voice and wake: About me and every fact"
+    assert calls[-2:] == [{"machine": False}, {"machine": False}], "voice and wake: About me and gather's facts"
 
 
 def test_hardware_is_read_from_the_machine(monkeypatch):
@@ -243,7 +243,7 @@ def test_a_settings_prompt_with_braces_gives_a_normal_reply(quiet, monkeypatch):
     assert system.count("You are CODEC") == 0, "the Settings prompt replaces the base, the page adds none"
 
 
-# ── 3. Fact sources: Deep Chat filters, voice and wake do not ───────────────
+# ── 3. Fact sources: every prompt reads trusted origins, Deep Chat skips threads ──
 
 def test_query_valid_facts_leaves_out_sources(quiet):
     _save_facts(quiet)
@@ -255,22 +255,25 @@ def test_query_valid_facts_leaves_out_sources(quiet):
     assert cmu.query_valid_facts("remote:note", exclude_sources=("mcp",)) == []
 
 
-def test_deep_chat_leaves_out_mcp_facts_voice_and_wake_keep_them(quiet):
+# P-037: memory page -> owner, fact_extract -> derived, daybreak -> system; the rest stay out.
+TRUSTED = ("memory page", "fact_extract", "daybreak")
+
+
+def test_every_prompt_reads_only_trusted_facts_deep_chat_skips_threads(quiet):
     _save_facts(quiet)
     meta: dict = {}
     text = _chat_prompt(meta=meta)
     assert f"[ABOUT THE USER — their own words, from Settings > Memory > About me]\n{ABOUT}\n[END ABOUT THE USER]" in text
-    for line in ("- pref:tea: drinks green tea", "- city: lives in Porto", "- owns a delivery van",
-                 "- pet: has a cat called Pixel"):
+    for line in ("- pref:tea: drinks green tea", "- owns a delivery van"):
         assert line in text, line
-    for hidden in HIDDEN_FROM_CHAT:
+    for hidden in HIDDEN_FROM_CHAT + ("lives in Porto", "has a cat called Pixel"):
         assert hidden not in text, hidden
     assert "Hardware: Mac Testbook, Apple M9, 8 GB memory (read from this Mac)." in text
     assert "Skills: 7 installed and switched on." in text
     assert {"source": "about", "kind": "me", "count": 1} in meta["memory"]
-    assert {"source": "facts", "kind": "saved", "count": 4} in meta["memory"]
+    assert {"source": "facts", "kind": "saved", "count": 2} in meta["memory"]
 
-    newest_first = [f"  {k} = {v}" for k, v, _ in reversed(FACTS)]
+    newest_first = [f"  {k} = {v}" for k, v, s in reversed(FACTS) if s in TRUSTED]
     voice = codec_voice._build_system_prompt()
     assert f"\n\n[IDENTITY]\n{ABOUT}\n[/IDENTITY]\n\n[ACTIVE FACTS]\n" + "\n".join(newest_first) + "\n[/FACTS]" in voice
     wake = codec._build_voice_system_prompt("hi")

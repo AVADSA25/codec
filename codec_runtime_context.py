@@ -6,13 +6,14 @@
             serial numbers), once per process; "" when it cannot be read (Linux, a failed probe)
   skills    how many skills the registry lists that are switched on; never a typed number
   about_me  the owner's own text from Settings > Memory > About me (codec_memory_upgrade)
-  facts     active saved facts, newest first, at most FACTS_LIMIT; `exclude_sources` leaves out
-            facts by their source tag (codec_memory_upgrade.query_valid_facts)
+  facts     active saved facts, newest first, at most FACTS_LIMIT, only those whose origin is
+            owner, derived or system (codec_fence.PROMPT_ORIGINS, P-037); `exclude_sources` also
+            leaves out facts by their source tag (codec_memory_upgrade.query_valid_facts)
 
 Deep Chat renders all four with `chat_block()` and leaves out CHAT_EXCLUDED_SOURCES. Voice
 (codec_voice._build_system_prompt) and the wake word (codec._build_voice_system_prompt) render
-About me and the facts in their own blocks, unfiltered, until the memory-origin item (P-037).
-Nothing here writes anything. Design: docs/BUYER-IDENTITY-DESIGN.md.
+About me and the facts in their own blocks. Nothing here writes anything.
+Design: docs/BUYER-IDENTITY-DESIGN.md, docs/MEMORY-PROVENANCE-DESIGN.md.
 """
 from __future__ import annotations
 
@@ -20,15 +21,18 @@ import logging
 import subprocess
 import sys
 
+import codec_fence
+
 log = logging.getLogger("codec_runtime_context")
 
 # As many facts as voice and the wake word have always injected.
 FACTS_LIMIT = 20
-# Facts Deep Chat leaves out: mcp and untrusted can be written by a remote caller (memory_save is
-# MCP-exposed and tags every save "mcp"); daybreak facts are the open threads, which Deep Chat
-# already gets in their own block (codec_daybreak.get_working_context). Not a full origin filter:
-# memory_history and fact_extract are MCP-exposed too and tag their own name whoever calls them,
-# so those facts still reach Deep Chat until the memory-origin item (P-037) records the caller.
+# The origins every prompt's facts come from (P-037): agent and untrusted facts, and any source
+# CODEC does not know, stay out until the owner promotes them in Settings > Memory.
+PROMPT_ORIGINS = codec_fence.PROMPT_ORIGINS
+# Facts Deep Chat also leaves out by source tag: daybreak facts are the open threads, which Deep Chat
+# already gets in their own block (codec_daybreak.get_working_context). mcp and untrusted are kept
+# out by the origin filter as well.
 CHAT_EXCLUDED_SOURCES = ("mcp", "untrusted", "daybreak")
 # Deep Chat's limits: About me as long as Settings > Memory lets it be (routes.memory_page.ABOUT_MAX),
 # one fact line and the whole facts block (about 400 tokens).
@@ -106,10 +110,12 @@ def skill_count() -> int:
     return sum(1 for n in names if n not in off)
 
 
-def gather(*, machine: bool = True, facts: bool = True, exclude_sources=()) -> dict:
+def gather(*, machine: bool = True, facts: bool = True, exclude_sources=(),
+           origins=PROMPT_ORIGINS) -> dict:
     """{"hardware", "skills", "about_me", "facts"} for a prompt. `machine=False` skips the hardware
     and the skill count (voice and the wake word do not use them); `facts=False` skips the facts
-    (a temporary chat); `exclude_sources` leaves out facts by source. Never raises."""
+    (a temporary chat); `exclude_sources` leaves out facts by source; `origins` keeps only facts of
+    these origins (default PROMPT_ORIGINS; None reads every fact). Never raises."""
     ctx = {"hardware": "", "skills": 0, "about_me": "", "facts": []}
     if machine:
         ctx["hardware"] = hardware()
@@ -125,10 +131,13 @@ def gather(*, machine: bool = True, facts: bool = True, exclude_sources=()) -> d
         log.warning("About me unreadable: %s", e)
     if facts:
         ex = tuple(s for s in (exclude_sources or ()) if s)
+        kw = {}
+        if ex:
+            kw["exclude_sources"] = ex
+        if origins is not None:
+            kw["origins"] = tuple(origins)
         try:
-            # Without an exclusion the call is exactly the one voice and the wake word always made.
-            rows = (cmu.query_valid_facts(limit=FACTS_LIMIT, exclude_sources=ex) if ex
-                    else cmu.query_valid_facts(limit=FACTS_LIMIT))
+            rows = cmu.query_valid_facts(limit=FACTS_LIMIT, **kw)
             ctx["facts"] = list(rows or [])
         except Exception as e:
             log.warning("facts unreadable: %s", e)

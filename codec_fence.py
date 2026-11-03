@@ -13,6 +13,10 @@ Two jobs, stdlib only:
    runs is ``"untrusted"``, and so is text the bounded ``scan`` flags unless it
    is the owner's own words (P-037: kept ``"owner"``, with an audit line).
 
+3. ``fact_origin(source)`` reads a stored ``facts.source`` value back as an
+   origin, older values included (P-037). The prompts carry only
+   ``PROMPT_ORIGINS``.
+
 Design: docs/UNTRUSTED-TEXT-FENCE-DESIGN.md, docs/MEMORY-PROVENANCE-DESIGN.md.
 """
 from __future__ import annotations
@@ -36,8 +40,38 @@ SYSTEM = "system"        # written by CODEC itself
 AGENT = "agent"          # crew tool calls, scheduled jobs, Project-mode agents
 UNTRUSTED = "untrusted"  # any MCP-origin write, any scan hit
 ORIGINS = (OWNER, DERIVED, SYSTEM, AGENT, UNTRUSTED)
+# The origins whose facts the wake word, voice and Deep Chat prompts carry (P-037).
+PROMPT_ORIGINS = (OWNER, DERIVED, SYSTEM)
+# facts.source values written before P-021, read as an origin at query time (P-037).
+# No row is changed; any other value, or none, reads as untrusted.
+LEGACY_SOURCES = {
+    "memory page": OWNER,
+    "fact_extract": DERIVED,
+    "daybreak": SYSTEM,
+    "skill:memory_history": AGENT,
+    "mcp": UNTRUSTED,
+}
 
 SCAN_MAX_CHARS = 65_536
+
+
+def fact_origin(source) -> str:
+    """The origin of a stored fact from its facts.source value, one of ORIGINS:
+    the five values as themselves, LEGACY_SOURCES as mapped, anything else untrusted."""
+    if isinstance(source, str):
+        if source in ORIGINS:
+            return source
+        if source in LEGACY_SOURCES:
+            return LEGACY_SOURCES[source]
+    return UNTRUSTED
+
+
+def sources_of(origins) -> tuple:
+    """Every known facts.source value that reads as one of ``origins`` (for a SQL
+    filter). Unknown values are not listed: they read as untrusted."""
+    want = set(origins or ())
+    known = list(ORIGINS) + list(LEGACY_SOURCES)
+    return tuple(s for s in known if fact_origin(s) in want)
 
 # ── Who is calling (set by codec_mcp and codec_agents around a skill call) ────
 _CALLER: contextvars.ContextVar[str] = contextvars.ContextVar("codec_fence_caller", default="")
