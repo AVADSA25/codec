@@ -238,8 +238,16 @@ def _scan(pdir: Path) -> dict[str, tuple[int, str]]:
 
 
 def list_files(pid: str) -> list[dict]:
+    """Names and sizes, without reading any file (P-066): the same files _scan finds, and the same 413."""
     pdir = project_dir(pid)
-    return [{"path": p, "size": s} for p, (s, _h) in sorted(_scan(pdir).items())]
+    out: list[dict] = []
+    for rel, full, size in _walk(pdir):
+        if not os.access(full, os.R_OK):            # _scan leaves out a file it cannot open
+            continue
+        out.append({"path": rel, "size": size})
+        if len(out) > MAX_FILES:
+            raise VibeError(413, f"A project can hold at most {MAX_FILES} files")
+    return sorted(out, key=lambda f: f["path"])
 
 
 # ── storage ──────────────────────────────────────────────────────────────

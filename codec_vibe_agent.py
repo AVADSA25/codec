@@ -26,6 +26,7 @@ from pathlib import Path
 
 import codec_vibe_agent_cmd as cmdmod
 import codec_vibe_agent_proto as proto
+import codec_vibe_agent_search as vsearch
 import codec_vibe_projects as vp
 from codec_vibe_projects import VibeError
 
@@ -289,18 +290,26 @@ def _read_text(pid: str, rel: str):
 def _t_list_files(run: "Run", folder: str) -> Result:
     files = [f for f in vp.list_files(run.pid) if not vp.looks_secret(f["path"])]
     folder = (folder or "").strip().strip("/")
-    if folder:
+    where = f" in {folder}"
+    if folder and vsearch.is_glob(folder):          # a glob such as src/**/*.js (P-066)
+        try:
+            match = vsearch.matcher(folder)
+        except vsearch.GlobError as e:
+            return _fail(str(e), "path" if e.unsafe else "")
+        files = [f for f in files if match(f["path"])]
+        where = f" matching {folder}"
+    elif folder:
         try:
             vp.safe_rel(folder)
         except VibeError as e:
             return _path_failure(e)
         files = [f for f in files if f["path"].startswith(folder + "/")]
     if not files:
-        return Result(True, "No files." if not folder else f"No files in {folder}.", "No files")
+        return Result(True, "No files." if not folder else f"No files{where}.", "No files")
     shown = files[:LIST_ENTRIES]
     lines = [f"{f['path']}  ({_size(f['size'])})" for f in shown]
     more = f"\n... and {len(files) - len(shown)} more" if len(files) > len(shown) else ""
-    head = f"{len(files)} file(s)" + (f" in {folder}" if folder else "")
+    head = f"{len(files)} file(s)" + (where if folder else "")
     return Result(True, head + ":\n" + "\n".join(lines) + more, head)
 
 
@@ -331,44 +340,99 @@ def _t_read_file(run: "Run", path: str, first: int, last) -> Result:
     return Result(True, head + more + "\n" + "\n".join(rows[:keep]), f"Read {head}")
 
 
-def _t_search(run: "Run", pattern: str, path: str) -> Result:
-    pat = (pattern or "").strip()
-    if not pat or len(pat) > 200:
-        return _fail("Give a search text of 1 to 200 characters.")
-    low = pat.lower()
-    where = (path or "").strip().strip("/")
-    if where:
-        try:
-            vp.safe_rel(where)
-        except VibeError as e:
-            return _path_failure(e)
-    hits: list[str] = []
-    more = False
+def _search_texts(run: "Run", where: str, match):
+    """(path, text) of every text file the search covers: no secret names, inside `where` or matching the glob."""
     for f in vp.list_files(run.pid):
         rel = f["path"]
         if vp.looks_secret(rel):
             continue
-        if where and rel != where and not rel.startswith(where + "/"):
+        if match is not None:
+            if not match(rel):
+                continue
+        elif where and rel != where and not rel.startswith(where + "/"):
             continue
         try:
             info = vp.read_file(run.pid, rel)
         except VibeError:
             continue
         text = info.get("content")
-        if not isinstance(text, str):
-            continue
-        for n, line in enumerate(text.split("\n"), 1):
-            if low in line.lower():
-                if len(hits) >= SEARCH_MATCHES:
-                    more = True
+        if isinstance(text, str):
+            yield rel, text
+
+
+def _plain_search(texts, low: str, mode: str) -> vsearch.Found:
+    """Plain text, any case, in this process. The same rules as the regex child's loop."""
+    found = vsearch.Found()
+    for rel, text in texts:
+        n = 0
+        for no, line in enumerate(text.split("\n"), 1):
+            if low not in line.lower():
+                continue
+            n += 1
+            if mode == "files":
+                break
+            if mode == "lines":
+                if len(found.hits) >= SEARCH_MATCHES:
+                    found.more = True
                     break
-                hits.append(f"{rel}:{n}: {line.strip()[:200]}")
-        if more:
+                found.hits.append((rel, no, line.strip()[:200]))
+        if n:
+            found.counts.append((rel, n))
+        if found.more:
             break
-    if not hits:
-        return Result(True, f'No matches for "{pat}".', f'No matches for "{pat[:40]}"')
-    tail = "\n(more matches exist: narrow the search)" if more else ""
-    return Result(True, "\n".join(hits) + tail, f'{len(hits)}{"+" if more else ""} match(es) for "{pat[:40]}"')
+    return found
+
+
+def _t_search(run: "Run", pattern: str, path: str, regex: bool = False, mode: str = "lines") -> Result:
+    pat = (pattern or "").strip()
+    if not pat or len(pat) > 200:
+        return _fail("Give a search text of 1 to 200 characters.")
+    mode = mode if mode in ("files", "count") else "lines"
+    where = (path or "").strip().strip("/")
+    match = None
+    if where and vsearch.is_glob(where):            # PATH may be a glob (P-066)
+        try:
+            match = vsearch.matcher(where)
+        except vsearch.GlobError as e:
+            return _fail(str(e), "path" if e.unsafe else "")
+    elif where:
+        try:
+            vp.safe_rel(where)
+        except VibeError as e:
+            return _path_failure(e)
+    note = ""
+    if regex:                                       # never compiled here: a child process runs it (P-066)
+        batch, size, left = [], 0, 0
+        for rel, text in _search_texts(run, where, match):
+            cost = len(text.encode("utf-8", "replace"))
+            if left or size + cost > vsearch.REGEX_MAX_BYTES:
+                left += 1
+                continue
+            size += cost
+            batch.append((rel, text))
+        if left:
+            note = (f"\n(the regex search read only the first {len(batch)} files, {vsearch.REGEX_MAX_BYTES // 1048576} MB "
+                    f"of text; {left} more were not searched: give a PATH to search them)")
+        try:
+            found = vsearch.run_regex(pat, mode, batch, SEARCH_MATCHES)
+        except vsearch.RegexFailed as e:
+            return _fail(str(e))
+    else:
+        found = _plain_search(_search_texts(run, where, match), pat.lower(), mode)
+    if not found.counts and not found.hits:
+        return Result(True, f'No matches for "{pat}".' + note, f'No matches for "{pat[:40]}"')
+    if mode == "files":
+        head = f'{len(found.counts)} file(s) match "{pat}"'
+        return Result(True, head + ":\n" + "\n".join(rel for rel, _n in found.counts) + note,
+                      f'{len(found.counts)} file(s) match "{pat[:40]}"')
+    if mode == "count":
+        total = sum(n for _rel, n in found.counts)
+        head = f'{total} matching line(s) in {len(found.counts)} file(s) for "{pat}"'
+        return Result(True, head + ":\n" + "\n".join(f"{rel}: {n}" for rel, n in found.counts) + note,
+                      f'{total} matching line(s) in {len(found.counts)} file(s) for "{pat[:40]}"')
+    hits = [f"{rel}:{n}: {line}" for rel, n, line in found.hits]
+    tail = "\n(more matches exist: narrow the search)" if found.more else ""
+    return Result(True, "\n".join(hits) + tail + note, f'{len(hits)}{"+" if found.more else ""} match(es) for "{pat[:40]}"')
 
 
 def _changed_region(old: str, new: str) -> str:
@@ -456,7 +520,8 @@ def _tool_arg(call: proto.Call) -> str:
         rng = f" {a['first']}-{a['last'] or ''}" if (a["first"] != 1 or a["last"]) else ""
         return a["path"] + rng
     if call.name == "search":
-        return f'"{a["pattern"][:60]}"' + (f" in {a['path']}" if a["path"] else "")
+        flags = ("--regex " if a.get("regex") else "") + {"files": "--files ", "count": "--count "}.get(a.get("mode"), "")
+        return flags + f'"{a["pattern"][:60]}"' + (f" in {a['path']}" if a["path"] else "")
     if call.name == "edit_file":
         return f"{a['path']} ({len(a['pairs'])} edit{'s' if len(a['pairs']) != 1 else ''})"
     if call.name in ("write_file", "delete_file"):
@@ -808,7 +873,7 @@ class Run:
             if call.name == "read_file":
                 return _t_read_file(self, a["path"], a["first"], a["last"])
             if call.name == "search":
-                return _t_search(self, a["pattern"], a["path"])
+                return _t_search(self, a["pattern"], a["path"], a.get("regex", False), a.get("mode", "lines"))
             if call.name == "edit_file":
                 return _t_edit_file(self, a["path"], a["pairs"])
             if call.name == "write_file":

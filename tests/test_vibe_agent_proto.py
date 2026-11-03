@@ -35,8 +35,8 @@ def test_read_file_bad_arguments_are_errors(line):
 
 def test_search_takes_quoted_text_and_a_path():
     s = scan('@@ search "hello world" css\n')
-    assert s.call.args == {"pattern": "hello world", "path": "css"}
-    assert scan("@@ search needle\n").call.args == {"pattern": "needle", "path": ""}
+    assert s.call.args == {"pattern": "hello world", "path": "css", "regex": False, "mode": "lines"}
+    assert scan("@@ search needle\n").call.args == {"pattern": "needle", "path": "", "regex": False, "mode": "lines"}
 
 
 def test_unbalanced_quotes_are_an_error():
