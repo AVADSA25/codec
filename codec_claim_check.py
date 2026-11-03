@@ -127,13 +127,44 @@ _NEEDS_ACTION = [
     (re.compile(r"\bI(?:'ve| have)?\s*(?:just\s+)?sent\b[^.]{0,30}"
                 r"\b(?:email|message|imessage|telegram)\b", re.I),
      "sending a message",
-     {"google_gmail", "imessage_send", "telegram", "email_triage"}),
+     # P-097: email_triage only reads the inbox, so it cannot back "sent".
+     {"google_gmail", "imessage_send", "telegram"}),
     (re.compile(r"\bI(?:'ve| have)?\s*(?:just\s+)?"
                 r"(?:added|created|scheduled)\b[^.]{0,30}"
                 r"\b(?:calendar|event|reminder|task)\b", re.I),
      "creating a calendar item",
      {"google_calendar", "google_tasks", "reminders", "scheduler"}),
 ]
+
+
+# ── A skill that was called but did not act backs nothing ─────────────────────
+# P-097: the chat paths record every [SKILL:...] tag they resolved together with
+# its result. A refusal, an empty result or no result means nothing was done, so
+# "I've saved it" stays unbacked. Each refusal is matched by the fixed words it
+# opens with (tests build each one from the code that writes it). A timeout is
+# not here on purpose: the skill may still be acting.
+_NOT_RUN = re.compile(
+    r"^\s*(?:"
+    r"Warning: '[^']*' is a destructive operation and wasn't confirmed"  # chat consent declined
+    r"|Not saved: this is a temporary chat"                              # temporary chat
+    r"|The skill '[^']*' is turned off\."                                # Skills page switch
+    r"|Skill '[^']*' was vetoed by plugin"                               # plugin pre_tool veto
+    r"|\W*Skill execution requires an active CODEC license"              # licence lock
+    r"|Cancelled: that needs your OK"                                    # consent not given
+    r")")
+
+
+def result_backs_claim(result) -> bool:
+    """True when a skill's result shows it really did its job this turn."""
+    if result is None:
+        return False
+    text = str(result)
+    return bool(text.strip()) and not _NOT_RUN.match(text)
+
+
+def backed_actions(ran: Iterable) -> Set[str]:
+    """Names of the skills that really ran, from (skill name, result) pairs."""
+    return {name for name, result in (ran or ()) if result_backs_claim(result)}
 
 
 def _sentences(text: str) -> Iterable[str]:
@@ -164,6 +195,24 @@ _PERSIST_REQUEST = re.compile(
     r"|add\s+(?:a\s+)?standing\s+rule"
     r")", re.I)
 
+# P-097: only the user's own words can ask for persistence. Quoted text is left
+# out ("Explain what 'from now on, always use tabs' means"), and a message that
+# opens by asking to work on a text ("Summarise this: ... for every session the
+# trainer must ...") is about that text, not a request to CODEC. The reply-side
+# patterns still apply to those turns.
+_QUOTED = re.compile(
+    r"\"[^\"\n]*\"|“[^”\n]*”|‘[^’\n]*’|`[^`\n]*`|(?<!\w)'[^'\n]*'(?!\w)")
+_WORK_ON_TEXT = re.compile(
+    r"^\W*(?:(?:please|pls|can you|could you|would you)\s+)?"
+    r"(?:summari[sz]e|translate|explain|rewrite|rephrase|paraphrase|proofread|"
+    r"shorten|simplify|analy[sz]e|critique)\b", re.I)
+
+
+def _asks_to_persist(user_request: str) -> bool:
+    if _WORK_ON_TEXT.search(user_request):
+        return False
+    return bool(_PERSIST_REQUEST.search(_QUOTED.sub(" ", user_request)))
+
 # Reply already admits it can't — don't pile a correction on an honest answer.
 _ALREADY_HONEST = re.compile(
     r"\b(?:I\s+(?:can(?:no|')t|am unable to|do(?:n't| not) have|have no)\b"
@@ -188,7 +237,7 @@ def find_unbacked_claims(reply: str, actions_taken: Optional[Set[str]] = None,
 
     done_now = {a.lower() for a in (actions_taken or set())}
     if (user_request
-            and _PERSIST_REQUEST.search(user_request)
+            and _asks_to_persist(user_request)
             and not (done_now & _PERSISTENCE_SKILLS)
             and not _ALREADY_HONEST.search(reply)):
         return [Claim("impossible",
