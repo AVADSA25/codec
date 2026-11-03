@@ -178,6 +178,7 @@ find "$REPO" -maxdepth 1 -name '*.html' -exec cp {} "$CONTENTS/Resources/app/" \
 # which is why a buyer's app opened and immediately exited.
 echo "==> copying first-run + launchd fleet installer"
 cp "$PKG_DIR/first_run.py"    "$CONTENTS/Resources/first_run.py"
+cp "$PKG_DIR/quick_actions.py" "$CONTENTS/Resources/quick_actions.py"   # first_run writes the 8 Quick Actions with it (P-029)
 cp "$PKG_DIR/fetch_models.py" "$CONTENTS/Resources/fetch_models.py"
 cp "$PKG_DIR/models.json"     "$CONTENTS/Resources/models.json"
 # The notices the LGPL and attribution licences ask for (P-056); the app is sold, so a build without them fails.
