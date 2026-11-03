@@ -31,7 +31,9 @@ showed four reports CODEC never wrote. Each item is fixed or removed, each with 
    appeared. The call is fixed, and the tiers now also need `config.json:compare.cloud_tiers` to be
    exactly `true` (default: absent, so off). No paid cloud path is switched on by this change. The old
    list form of `cloud_tiers` (custom labels and models) is no longer read: it never took effect,
-   because of the bug.
+   because of the bug. The `compare` skill's local-only answer used to say that an AVA licence
+   brings in "Claude, GPT and Gemini"; it now names the switch and the AVA cloud tiers
+   (`skills/compare.py`, manifest regenerated).
 5. **Marketplace voice entry removed (DC-050).** `codec_marketplace.py` carried `SKILL_*` constants and
    a `run()` that installed a downloaded skill without the sha256 check the command line uses. Root
    modules are not scanned by the skill registry, so it could not be reached. The constants, `run()`

@@ -230,6 +230,7 @@ class TestSkill:
         assert "Compared 1 model" not in out
         assert "Only the local model" in out
         assert "AVA license" in out
+        assert '"cloud_tiers": true' in out, "a licence alone no longer turns the paid tiers on (P-035)"
         assert "Blue" in out               # the answer is still shown
 
     def test_two_models_still_uses_normal_header(self, monkeypatch):

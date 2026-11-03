@@ -58,8 +58,10 @@ def run(task, app="", ctx=""):
         body = r.get("response", "") if r.get("ok") else f"✗ {r.get('error', 'failed')}"
         return (
             "Only the local model is available on this machine, so there's "
-            "nothing to compare it against yet. Connect an AVA license and the "
-            "same prompt lines up side by side against Claude, GPT and Gemini.\n\n"
+            "nothing to compare it against yet. With an AVA license, set "
+            "\"compare\": {\"cloud_tiers\": true} in ~/.codec/config.json (paid "
+            "cloud calls) and the same prompt lines up side by side against the "
+            "AVA cloud tiers.\n\n"
             f"### local  ({r.get('elapsed_ms')}ms)\n{body}"
         )
 
