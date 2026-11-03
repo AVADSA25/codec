@@ -9,6 +9,7 @@ temp folder: nothing touches ~/.codec, Google or the network.
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import re
@@ -237,3 +238,21 @@ def test_observer_shift_report_fires_through_dispatch(feat):
     feat.config.write_text(json.dumps({"skills_off": ["shift_report"]}))
     codec_observer._maybe_fire_shift_report(idle_seconds=120.0)
     assert feat.calls("shift_report") == ["shift report [trigger=idle]"]
+
+
+def test_auto_memorize_gets_fact_extract_through_dispatch(tmp_path, monkeypatch):
+    # Daybreak no longer puts the skills folder on sys.path, so auto_memorize's
+    # old bare `from fact_extract import run` failed in the dashboard.
+    import codec_dispatch
+    spec = importlib.util.spec_from_file_location("p098_auto_memorize", REPO / "skills" / "auto_memorize.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    mod._MARKER = tmp_path / "auto_memorize_last.json"
+    mod._pull_conversations = lambda: [{"role": "user", "content": "x" * 300, "session_id": "s"}]
+    seen = []
+    fake = SimpleNamespace(run=lambda blob, ctx: seen.append(blob) or "Saved 2/2 facts")
+    monkeypatch.setattr(codec_dispatch, "feature_module", lambda name: fake if name == "fact_extract" else None)
+
+    assert "2 fact(s) saved" in mod.run("force") and len(seen) == 1
+    monkeypatch.setattr(codec_dispatch, "feature_module", lambda name: None)
+    assert "switched off" in mod.run("force") and len(seen) == 1
