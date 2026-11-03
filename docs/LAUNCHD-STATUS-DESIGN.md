@@ -99,8 +99,8 @@ alert itself (the owner's notification) is unchanged.
 ## Approval
 
 New architecture next to a section 10 zone (AGENTS.md section 11). Mickael's
-word, 3 Nov 2026, on finishing the 25 Oct audit plan: "go go build i trust ur
-judgment here".
+word, 3 Nov 2026, on finishing the 25 Oct audit plan:
+"go go build i trust ur judgment here".
 
 ## Test plan
 
