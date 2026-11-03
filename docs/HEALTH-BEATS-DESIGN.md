@@ -21,8 +21,10 @@ reached the owner. A bridge that hangs inside a call (no timeout) looks the same
   launchd unload is not reported as silent.
 - `HEALTH_DIR` is `~/.codec/health`, or `CODEC_HEALTH_DIR` (tests/conftest.py points it at a temp folder).
 - `verdict(beat, now)`: `silent` when the beat is older than 3x its cadence, never less than 15 minutes
-  (the heartbeat looks every 30 minutes, so the floor costs no detection time, and one long round, a deep
-  report or a slow model reply, must not page him); `failing` when `consecutive_errors >= 20`; else `ok`.
+  (one long round, a deep report or a slow model reply, must not page him; the heartbeat looks only every
+  30 minutes, so the floor costs about 12 minutes of detection time on average, at most 30, against a
+  bare 3x rule); `failing` when `consecutive_errors >= 20`; else `ok`. The floor is stricter than the
+  plan's bare "3x its cadence": a beat 3 to 15 minutes old does not alert.
 - `observer_beat(audit_path, now)`: the observer gets no new call. Its beat is the newest
   `observation_tick` / `observation_tick_slow` line in the last 2 MB of `audit.log` (about four days of
   log), with that line's `cadence_used_s`. No tick in the tail counts as silent only when the tail itself
@@ -45,7 +47,12 @@ with the one `pm2 jlist` list, before the daily status. Since D-29 the heartbeat
 codec-dashboard (`_bg_heartbeat`, every 30 minutes); `run_daemon` is unchanged. For each beat:
 - With a PM2 list: an app that is not listed or not `online` is skipped as stopped (errored apps already
   alert through `check_errored_codec_apps`); an app in its 5-minute start grace
-  (`codec_models.pm2_app_loading`, P-059) is skipped this round.
+  (`codec_models.pm2_app_loading`, P-059) is skipped this round; an app PM2 shows online again whose file
+  still holds the last run's stop mark is checked by age only (silent or ok), so a new run that never
+  reports is not hidden by the old mark. Without a PM2 list (pm2 missing, as with the buyer app's
+  launchd services, or `pm2 jlist` failed) the files alone decide and a stop mark is not checked.
+- A beat file the check cannot use (a hand edit, an odd value) is skipped with one log line; the other
+  beats are still checked.
 - `silent` -> `alert_once("silent:<name>", "critical", ...)`; `failing` -> `alert_once("failing:<name>",
   "warning", ...)`; ok -> `alert_resolved` for both; stopped -> `alert_resolved` with "no longer checked".
 - The observer is checked only when the PM2 list shows codec-observer online, its PM2 env does not say
@@ -85,7 +92,8 @@ it. `alerts.telegram.chat_id` is already set in his config (checked 3 Nov, value
 `tests/test_health_beats.py`, every path in tmp (never a fake HOME): the file and its modes, the
 once-a-minute write, the error count and class names, `beat` never raising; with a fixture folder, one
 alert for a stale beat and none for a fresh one, one for 20 errors and none for 19, a recovery, skips for
-a stopped mark, a PM2-stopped app and the start grace; the observer from fixture audit lines (old tick,
+a stopped mark, a PM2-stopped app and the start grace, an old stop mark that does not hide an app PM2
+runs again, a bad file that does not stop the other checks; the observer from fixture audit lines (old tick,
 recent tick, paused, a short tail, no PM2 app); each daemon's loop writes its beat (main() run with fakes).
 Existing: test_imessage_backoff, test_remote_alerts, test_boot_grace, test_heartbeat, test_lifecycle,
 test_small_reliability.

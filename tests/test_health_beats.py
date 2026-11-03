@@ -184,14 +184,41 @@ def test_twenty_failed_rounds_alert_once_nineteen_do_not(codec_dir, sent):
 
 
 def test_a_stopped_beat_or_a_stopped_pm2_app_is_not_checked(codec_dir, sent):
-    _beat_file(codec_dir, "codec-autopilot", ts=T - 86400, stopped=True)
+    _beat_file(codec_dir, "codec-autopilot", ts=T - 86400, stopped=True, consecutive_errors=25)
     _beat_file(codec_dir, "codec-imessage", ts=T - 86400)
     _beat_file(codec_dir, "codec-old-bridge", ts=T - 86400)
-    procs = [_app("codec-imessage", status="stopped"), _app("codec-autopilot")]
+    procs = [_app("codec-imessage", status="stopped"), _app("codec-autopilot", status="stopped")]
     assert codec_heartbeat.check_health_beats(procs=procs, now_ts=T) == []
-    assert sent == [], "stopped mark, PM2 'stopped', and an app PM2 does not run"
+    assert sent == [], "PM2 'stopped' (with or without a stop mark), and an app PM2 does not run"
+    assert "silent:codec-autopilot" not in codec_heartbeat.check_health_beats(procs=[], now_ts=T), \
+        "without a PM2 list the stop mark decides"
+    sent.clear()
     # Positive control: the same stale file with the app online in PM2 does alert.
     assert codec_heartbeat.check_health_beats(procs=[_app("codec-imessage")], now_ts=T) == ["silent:codec-imessage"]
+
+
+def test_a_stop_mark_does_not_hide_an_app_pm2_runs_again(codec_dir, sent):
+    # The last run wrote its stop mark a day ago; PM2 shows a new run online for 2 h that never reported.
+    _beat_file(codec_dir, "codec-autopilot", ts=T - 86400, stopped=True, consecutive_errors=25)
+    assert codec_heartbeat.check_health_beats(procs=[_app("codec-autopilot")], now_ts=T) == ["silent:codec-autopilot"]
+    assert len(sent) == 1 and sent[0][0] == "critical", "silent only: the last run's error count is not this run's"
+    # A stop mark younger than the stale window, with the app back online, is not a problem.
+    _beat_file(codec_dir, "codec-telegram", ts=T - 400, stopped=True)
+    assert "silent:codec-telegram" not in codec_heartbeat.check_health_beats(
+        procs=[_app("codec-autopilot"), _app("codec-telegram", started=T - 360)], now_ts=T)
+
+
+def test_a_bad_beat_file_is_skipped_and_the_others_are_still_checked(codec_dir, sent):
+    _beat_file(codec_dir, "codec-autopilot", ts=T - 3600, cadence_s="soon")
+    _beat_file(codec_dir, "codec-broken", consecutive_errors=float("inf"), ok=False)  # json writes Infinity
+    _beat_file(codec_dir, "codec-imessage", consecutive_errors=25, ok=False, last_error_class="Bad <b>\nclass")
+    _beat_file(codec_dir, "codec-telegram", ts=T - 3600)
+    assert codec_heartbeat.check_health_beats(procs=[], now_ts=T) == [
+        "silent:codec-autopilot", "failing:codec-imessage", "silent:codec-telegram"]
+    msgs = [m for _, m in sent]
+    assert len(msgs) == 3 and "codec-telegram has not reported for 60 min" in msgs[2], msgs
+    assert "(it reports every 60 s)" in msgs[0]
+    assert "(Badbclass)" in msgs[1], "the class name from the file is cleaned before it is sent"
 
 
 def test_an_app_in_its_start_grace_is_skipped_for_the_round(codec_dir, sent):

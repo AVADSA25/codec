@@ -311,8 +311,10 @@ def check_health_beats(procs=None, now_ts=None) -> list:
     in a row ended in an error): once, again at most every 6 h, and one message when it clears.
 
     `procs` is the heartbeat's `pm2 jlist` list: an app it does not show online is stopped and not
-    checked, an app in its 5-minute start grace is skipped this round (P-059). Without a list the
-    files alone decide (a stop on purpose marks its file). Returns the open problem keys."""
+    checked, an app in its 5-minute start grace is skipped this round (P-059), and an app it shows
+    online again is checked by age even when its file still holds the stop mark of the run before.
+    Without a list the files alone decide (a stop on purpose marks its file). A bad file is skipped
+    and the others are still checked. Returns the open problem keys."""
     import codec_audit
     import codec_health
     import codec_models
@@ -325,34 +327,42 @@ def check_health_beats(procs=None, now_ts=None) -> list:
             beats[_OBSERVER_APP] = obs
     problems = []
     for name, beat in sorted(beats.items()):
-        verdict = codec_health.verdict(beat, now_ts)
-        if procs:
-            status = ((_pm2_app(procs, name) or {}).get("pm2_env") or {}).get("status")
-            if status != "online":
-                verdict = "stopped"
-            elif codec_models.pm2_app_loading(procs, name, now_ts):
-                continue
-        silent, failing = f"silent:{name}", f"failing:{name}"
-        if verdict == "stopped":
-            for key in (silent, failing):
-                alert_resolved(key, f"CODEC: {name} is stopped, so it is no longer checked.")
-        elif verdict == "silent":
-            problems.append(silent)
-            age_min = int((now_ts - float(beat["ts"])) // 60)
-            alert_once(silent, "critical",
-                       f"CODEC ALERT: {name} has not reported for {age_min} min "
-                       f"(it reports every {int(float(beat.get('cadence_s') or 60))} s). "
-                       f"It may be stuck: check pm2 logs {name}.")
-        else:
-            alert_resolved(silent, f"CODEC RECOVERED: {name} reports again.")
-            if verdict == "failing":
-                problems.append(failing)
-                alert_once(failing, "warning",
-                           f"CODEC ALERT: {name} is running but failing: its last "
-                           f"{int(beat.get('consecutive_errors') or 0)} rounds ended in an error "
-                           f"({beat.get('last_error_class') or 'Error'}). Check pm2 logs {name}.")
+        try:
+            verdict = codec_health.verdict(beat, now_ts)
+            if procs:
+                status = ((_pm2_app(procs, name) or {}).get("pm2_env") or {}).get("status")
+                if status != "online":
+                    verdict = "stopped"
+                elif codec_models.pm2_app_loading(procs, name, now_ts):
+                    continue
+                elif verdict == "stopped":
+                    # PM2 runs it again, past its start grace, and this run has not reported yet:
+                    # the stop mark is the last run's, so only its age counts (silent or ok).
+                    verdict = codec_health.verdict(dict(beat, stopped=False, consecutive_errors=0), now_ts)
+            silent, failing = f"silent:{name}", f"failing:{name}"
+            if verdict == "stopped":
+                for key in (silent, failing):
+                    alert_resolved(key, f"CODEC: {name} is stopped, so it is no longer checked.")
+            elif verdict == "silent":
+                age_min = int((now_ts - float(beat["ts"])) // 60)
+                cadence = int(codec_health._num(beat.get("cadence_s")) or codec_health.WRITE_EVERY_S)
+                msg = (f"CODEC ALERT: {name} has not reported for {age_min} min "
+                       f"(it reports every {cadence} s). It may be stuck: check pm2 logs {name}.")
+                problems.append(silent)
+                alert_once(silent, "critical", msg)
             else:
-                alert_resolved(failing, f"CODEC RECOVERED: {name} works again.")
+                alert_resolved(silent, f"CODEC RECOVERED: {name} reports again.")
+                if verdict == "failing":
+                    msg = (f"CODEC ALERT: {name} is running but failing: its last "
+                           f"{int(codec_health._num(beat.get('consecutive_errors')) or 0)} rounds ended in an "
+                           f"error ({codec_health.error_class(beat.get('last_error_class')) or 'Error'}). "
+                           f"Check pm2 logs {name}.")
+                    problems.append(failing)
+                    alert_once(failing, "warning", msg)
+                else:
+                    alert_resolved(failing, f"CODEC RECOVERED: {name} works again.")
+        except Exception as e:
+            log.warning(f"health beat check failed for {name}: {type(e).__name__}")
     return problems
 
 
