@@ -349,6 +349,29 @@ def test_guard_download_disk_space_and_the_pinned_revision(mac, monkeypatch):
     assert "already on this Mac" in offer.start_download("qwen25-7b", total_gb=SIXTEEN, resident_gb=0.0)["error"]
 
 
+def test_guard_a_running_download_is_not_on_this_mac_yet(mac, monkeypatch):
+    # A finished shard can already pass discover_local's size check mid-download.
+    mac["active"] = "mlx-community/Other-4bit"
+    mac["local"] = {SEVEN_B: 2.1}
+    started = []
+    monkeypatch.setattr(download, "start", lambda *a: started.append(a) or {"state": "starting"})
+    os.makedirs(download.DL_DIR)
+    Path(download._status_file(SEVEN_B)).write_text(
+        json.dumps({"repo": SEVEN_B, "state": "running", "pid": os.getpid()}))
+    best = offer.build(total_gb=SIXTEEN, resident_gb=0.0)["best"]
+    assert best["installed"] is False and best["download"]["state"] == "running"
+    r = offer.start_download("qwen25-7b", total_gb=SIXTEEN, resident_gb=0.0)
+    assert r["ok"] is True and r["state"] == "running" and started == []
+    r = offer.use("qwen25-7b", total_gb=SIXTEEN, resident_gb=0.0)
+    assert r["ok"] is False and "not downloaded" in r["error"] and mac["switched"] == []
+    # control: once the job is done, the same files are the model on this Mac
+    Path(download._status_file(SEVEN_B)).write_text(
+        json.dumps({"repo": SEVEN_B, "state": "done", "pid": os.getpid()}))
+    assert offer.build(total_gb=SIXTEEN, resident_gb=0.0)["best"]["installed"] is True
+    assert offer.use("qwen25-7b", total_gb=SIXTEEN, resident_gb=0.0)["ok"] is True
+    assert mac["switched"] == [SEVEN_B]
+
+
 def test_guard_download_writes_one_audit_line(mac, monkeypatch, tmp_path):
     import codec_audit
     monkeypatch.setattr(codec_audit, "_AUDIT_LOG", tmp_path / "audit.log")

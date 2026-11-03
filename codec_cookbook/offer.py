@@ -111,6 +111,12 @@ def _size_gb(entry: dict) -> float:
     return float(entry.get("size_gb") or entry.get("anchor_gb") or 0.0)
 
 
+def _downloading(repo: str) -> bool:
+    """True while a download job for `repo` runs. Its finished shards can already
+    pass discover_local's size check, so the model is not on this Mac yet."""
+    return download.status(repo).get("state") in ("starting", "running")
+
+
 def progress(entry: dict) -> dict:
     """Download state of a catalog entry, with bytes on disk and a percent."""
     repo = entry["hf_repo"]
@@ -134,7 +140,8 @@ def _item(row: dict, active: str, local: dict, mem: dict,
             "size_gb": _size_gb(e), "need_gb": row["need_gb"],
             "headroom_gb": row["headroom_gb"], "roles": list(e.get("roles") or []),
             "licence": catalog.licence(e), "active": repo == active,
-            "installed": repo in local or repo == active, "download": None,
+            "installed": repo == active or (repo in local and not _downloading(repo)),
+            "download": None,
             "image_note": ""}
     if not item["installed"]:
         item["download"] = progress(e)
@@ -201,10 +208,10 @@ def start_download(model_id: str, *, total_gb: Optional[float] = None,
     if entry is None:
         return {"ok": False, "error": err}
     repo = entry["hf_repo"]
+    if _downloading(repo):
+        return {"ok": True, **progress(entry)}
     if repo in _local_sizes() or repo == _active_model():
         return {"ok": False, "error": f"{entry.get('label') or entry['id']} is already on this Mac."}
-    if download.status(repo).get("state") in ("starting", "running"):
-        return {"ok": True, **progress(entry)}
     size = _size_gb(entry)
     free = _disk_free_gb(download.HF_CACHE)
     if free is None:
@@ -237,7 +244,7 @@ def use(model_id: str, *, total_gb: Optional[float] = None,
     repo = entry["hf_repo"]
     if repo == _active_model():
         return {"ok": True, "changed": False, "active": repo, "detail": "already active"}
-    if repo not in _local_sizes():
+    if repo not in _local_sizes() or _downloading(repo):
         return {"ok": False, "error": f"{entry.get('label') or entry['id']} is not downloaded yet."}
     import codec_models
     return codec_models.set_active(repo)
