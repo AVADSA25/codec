@@ -799,6 +799,26 @@ def trim_overlay_events(path=None, now_ts=None) -> int:
                 pass
 
 
+def trim_service_logs(folder=None) -> list:
+    """P-032: launchd never rotates the services' logs (~/Library/Logs/CODEC/<name>.out|.err), so on
+    launchd each log file over 10 MB keeps its last 5 MB (codec_log_trim). PM2 keeps its own logs:
+    there this does nothing unless `folder` is given. Returns [(name, before, after)]. Never raises."""
+    try:
+        if folder is None:
+            if _supervisor() != "launchd":
+                return []
+            import codec_supervisor
+            folder = codec_supervisor.LOG_DIR
+        import codec_log_trim
+        done = codec_log_trim.trim_folder(folder)
+        for name, before, after in done:
+            log.info(f"Log trimmed: {name} {before} -> {after} bytes")
+        return done
+    except Exception as e:
+        log.warning(f"Log trim failed: {type(e).__name__}")
+        return []
+
+
 # ── Memory pressure (P-083, docs/LOOP-OWNER-DESIGN.md) ───────────────────────
 # The model server's memory is GPU-backed: PM2's RSS shows ~60 MB while it holds 20 GB, and it grows
 # when it is not restarted. `footprint` (phys_footprint) is the honest figure; swap is the Mac's.
@@ -1011,6 +1031,7 @@ def _heartbeat_cycle():
     # Configurable alerts (BTC price, etc.)
     check_alerts()
     trim_overlay_events()  # P-082: keep the Swift overlay's events file short
+    trim_service_logs()  # P-032: launchd's service logs at most 10 MB (nothing on PM2)
     # P3.5: the proactive check-in (off unless switched on in Settings; docs/P3.5-DESIGN.md)
     try:
         import codec_checkin
