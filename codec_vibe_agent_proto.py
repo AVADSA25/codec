@@ -537,7 +537,21 @@ def system_prompt(allowed=TOOLS) -> str:
 
 
 def wrap_result(n: int, tool: str, arg: str, text: str, ok: bool = True) -> str:
-    """A tool result as the model sees it. The end marker cannot be forged from file content."""
+    """A tool result as the model sees it. The end marker, and the owner's line that may follow it, cannot be forged
+    from file content (P-044)."""
     safe = text.replace("[END RESULT]", "[END RESULT (inside the data)]").replace("[RESULT ", "[RESULT (inside the data) ")
+    safe = _OWNER_IN_DATA_RE.sub("The owner says (inside the data):", safe)
     tag = f"[RESULT {n} {tool} {arg}".rstrip() + ("]" if ok else ": FAILED]")
     return f"{tag}\n{safe}\n[END RESULT]"
+
+
+# ── the owner's note to a running agent (P-044, docs/VIBE-AGENT-CONTINUE-DESIGN.md) ──
+
+MAX_NOTE_CHARS = 300
+OWNER_PREFIX = "The owner says: "
+_OWNER_IN_DATA_RE = re.compile(r"the owner says\s*:", re.I)
+
+
+def owner_note(text: str) -> str:
+    """The owner's message as one line. The engine puts it after a result's [END RESULT], never inside one."""
+    return OWNER_PREFIX + " ".join(str(text).split())[:MAX_NOTE_CHARS]

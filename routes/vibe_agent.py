@@ -118,3 +118,24 @@ async def answer(pid: str, run_id: str, request: Request):
         return _BAD_BODY
     text = body.get("text") if isinstance(body.get("text"), str) and body.get("text").strip() else body.get("choice")
     return await _call(va.answer_run, pid, run_id, body.get("id"), text)
+
+
+@router.post("/api/vibe/projects/{pid}/agent/{run_id}/message")
+async def message(pid: str, run_id: str, request: Request):
+    """The owner's note to a running agent, read at its next step (P-044). Answerable from anywhere, like /answer."""
+    body = await _json(request)
+    if body is None:
+        return _BAD_BODY
+    return await _call(va.message_run, pid, run_id, body.get("text"))
+
+
+@router.post("/api/vibe/projects/{pid}/agent/{run_id}/continue")
+async def continue_(pid: str, run_id: str, request: Request):
+    """A new run that goes on with an ended run's turns (P-044). A cloud run needs confirm_cloud true again;
+    commands follow this request's origin, as for /run."""
+    body = await _json(request)
+    if body is None:
+        return _BAD_BODY
+    from routes._shared import _is_remote_request
+    return await _call(va.continue_run, pid, run_id, confirm_cloud=body.get("confirm_cloud") is True,
+                       can_run=not _is_remote_request(request))
