@@ -608,9 +608,15 @@ class Run:
         try:
             self._begin()
             self._loop()
-        except Exception:
-            log.exception("vibe agent run failed")
-            self._end("failed", "The agent stopped because of an internal error.")
+        except Exception as e:
+            # A 413 that gets this far is the file scan (start checkpoint or per-step file map): tool writes are
+            # answered in _exec. The cap and the scan stay; the run says why it stopped (P-064).
+            if isinstance(e, VibeError) and e.status == 413:
+                self._end("failed", f"The project has more than {vp.MAX_FILES} files, which is more than the agent can "
+                                    "work with. Remove some files, then start again.")
+            else:
+                log.exception("vibe agent run failed")
+                self._end("failed", "The agent stopped because of an internal error.")
         finally:
             if not self.finished:
                 self._end("failed", "The agent stopped unexpectedly.")
@@ -816,7 +822,8 @@ class Run:
             self._decision = None
             self.status = "waiting"
         self._emit("approval", step=n, id=self._aid, command=command)
-        end = _mono() + self.limits["wait_seconds"]
+        asked = _mono()
+        end = asked + self.limits["wait_seconds"]
         with self._cond:
             while self._decision is None and not self.stop_event.is_set():
                 left = end - _mono()
@@ -825,6 +832,7 @@ class Run:
                 self._cond.wait(min(left, WAIT_STEP))
             got = self._decision
             self.status = "running" if (got is not None and not self.stop_event.is_set()) else self.status
+        self.deadline += _mono() - asked          # the owner's time is not work time: max_seconds is the work budget
         if self.stop_event.is_set():
             self._end("stopped", "Stopped.")
             return None
@@ -892,7 +900,8 @@ class Run:
             self._answer = None
             self.status = "waiting"
         self._emit("question", step=n, id=self._qid, text=call.args["question"], choices=call.args["choices"])
-        end = _mono() + self.limits["wait_seconds"]
+        asked = _mono()
+        end = asked + self.limits["wait_seconds"]
         with self._cond:
             while self._answer is None and not self.stop_event.is_set():
                 left = end - _mono()
@@ -901,6 +910,7 @@ class Run:
                 self._cond.wait(min(left, WAIT_STEP))
             answer = self._answer
             self.status = "running" if (answer is not None and not self.stop_event.is_set()) else self.status
+        self.deadline += _mono() - asked          # as for an approval: waiting for the owner is not work time
         if self.stop_event.is_set():
             self._end("stopped", "Stopped.")
             return None

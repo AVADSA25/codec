@@ -277,6 +277,53 @@ def test_the_time_limit_ends_the_run(scripted, cfg, monkeypatch):
     assert end_of(view)["status"] == "limit" and "time limit" in end_of(view)["report"]
 
 
+def test_the_minutes_spent_waiting_for_the_owner_do_not_count_against_the_time_limit(scripted, cfg, monkeypatch):
+    # P-064: an answer that comes after the 15-minute mark lets the run go on; max_seconds is the work budget.
+    cfg["vibe_agent"] = {"max_seconds": 900, "wait_seconds": 1200}
+    pid = make_project()
+    now = [0.0]
+    monkeypatch.setattr(va, "_mono", lambda: now[0])
+    model = scripted(["@@ ask\nWhich colour?\n", "@@ list_files\n", "@@ finish\nUsed the answer.\n"])
+    run_id = va.start_run(pid, "colour")["run"]
+    q = question_of(pid, run_id)
+    now[0] = 1000.0                                  # 16 min 40 s after the start, all of it spent waiting
+    va.answer_run(pid, run_id, q["id"], "Blue")
+    end = end_of(wait_finished(pid, run_id))
+    assert end["status"] == "done" and end["report"] == "Used the answer." and len(model.calls) == 3
+
+
+def test_a_project_of_more_than_200_files_ends_the_run_failed_with_the_reason(scripted):
+    # P-064: files dropped into the folder by hand, past the cap. The scan refuses them; the run says why.
+    pid = make_project()
+    pdir = vp.project_dir(pid)
+    for i in range(vp.MAX_FILES + 1 - len(SITE)):
+        (pdir / f"extra{i:03d}.txt").write_text("x\n")
+    view, model = run_script(pid, ["@@ list_files\n"], scripted)
+    end = end_of(view)
+    assert end["status"] == "failed" and "more than 200 files" in end["report"]
+    assert "internal error" not in end["report"] and "\n" not in end["report"] and model.calls == []
+
+
+def test_files_that_pass_200_during_a_run_end_it_failed_with_the_reason(scripted, monkeypatch):
+    # The same past the start: something the run started (a build, a command) left the folder over the cap.
+    pid = make_project()
+    pdir = vp.project_dir(pid)
+    real = va._t_list_files
+
+    def list_then_flood(run, folder):
+        out = real(run, folder)
+        (pdir / "dist").mkdir(exist_ok=True)
+        for i in range(vp.MAX_FILES):
+            (pdir / "dist" / f"chunk{i:03d}.js").write_text("x\n")
+        return out
+
+    monkeypatch.setattr(va, "_t_list_files", list_then_flood)
+    view, model = run_script(pid, ["@@ list_files\n", "@@ finish\nnever\n"], scripted)
+    end = end_of(view)
+    assert end["status"] == "failed" and "more than 200 files" in end["report"] and "internal error" not in end["report"]
+    assert len(model.calls) == 1
+
+
 def test_the_same_call_three_times_warns_and_five_times_stops(scripted):
     pid = make_project()
     view, model = run_script(pid, ["@@ list_files\n"] * 8, scripted)

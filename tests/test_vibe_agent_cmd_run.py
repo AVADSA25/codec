@@ -235,6 +235,22 @@ def test_stopping_or_waiting_too_long_for_an_approval_ends_the_run_without_runni
     assert end_of(view)["status"] == "stopped" and "No answer" in end_of(view)["report"] and fake.calls == []
 
 
+def test_an_approval_given_after_the_time_limit_mark_lets_the_run_go_on(scripted, fake, cfg, monkeypatch):
+    # P-064: the minutes the owner takes to decide are not work time, so the command gets its whole time.
+    cfg["vibe_agent"] = {"max_seconds": 900, "wait_seconds": 1200}
+    pid = make_project()
+    now = [0.0]
+    monkeypatch.setattr(va, "_mono", lambda: now[0])
+    scripted([RUN, "@@ finish\nTests pass.\n"])
+    run_id = start(pid)
+    ev = approval_of(pid, run_id)
+    now[0] = 1000.0
+    va.approve_run(pid, run_id, ev["id"], "once", False)
+    end = end_of(wait_finished(pid, run_id))
+    assert end["status"] == "done" and end["report"] == "Tests pass."
+    assert len(fake.calls) == 1 and fake.calls[0]["timeout"] == float(cmd.DEFAULT_TIMEOUT)
+
+
 # ── what comes back ──
 
 def test_a_failing_command_is_a_result_not_an_error_and_a_timeout_says_so(scripted, monkeypatch):
