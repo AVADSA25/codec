@@ -308,6 +308,8 @@ One event name, emitted by the heartbeat's PM2 restart-storm detector (`codec_he
 | `bridge_reply_sent` | same | info | `bridge`, `to` (iMessage) or `chat` (Telegram), `length` |
 | `bridge_photo_received` | `codec-telegram` | info | `bridge`, `chat`, `user` |
 
+No audit event for a refused Messages database (P-058, docs/IMESSAGE-PERMISSION-BACKOFF-DESIGN.md): `codec-imessage` logs it once, then at most every 5 minutes, polls every 5 minutes after 10 failed reads, posts one Inbox entry through `routes._shared._save_notification` naming the interpreter that needs Full Disk Access, and keeps `~/.codec/imessage_health.json` (0600: state, times, failure count, interpreter path; no message text), from which Settings > Connectors shows "needs permission".
+
 ### Phase 2 Step 6 audit events (Trigger System)
 Four event names. `trigger_evaluated` fires only when a pattern matches (pre-cooldown, pre-consent — silent on no-match to avoid audit spam). `trigger_fired` is the actual dispatch. `trigger_blocked` fires for any non-firing reason except `killed` (silent). `trigger_muted` fires when an otherwise-eligible match is suppressed by the runtime mute config (`~/.codec/triggers.json` — see `docs/PHASE2-STEP6-TRIGGER-MUTE.md`). All inherit the wrapping observer poll's `correlation_id`.
 
