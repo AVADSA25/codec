@@ -112,7 +112,7 @@ def deep_research_crew(**kwargs) -> Crew:
 def daily_briefing_crew(**kwargs) -> Crew:
     all_tools = get_all_tools()
     scout_tools = [t for t in all_tools if t.name in (
-        "google_calendar", "weather", "web_search", "google_tasks", "google_keep"
+        "google_calendar", "weather", "web_search", "google_tasks"
     )]
     write_tools = [t for t in all_tools if t.name in ("google_docs_create",)]
     scout = Agent(
@@ -122,9 +122,8 @@ def daily_briefing_crew(**kwargs) -> Crew:
             "Check ALL of these sources — do not skip any:\n"
             "1. Google Calendar — get today's full schedule\n"
             "2. Google Tasks — list all pending/overdue items\n"
-            "3. Google Keep — any recent notes or reminders\n"
-            "4. Weather — current conditions AND forecast\n"
-            "5. Web search — search 'top news today', 'stock market today', 'S&P 500', 'tech news today'\n"
+            "3. Weather — current conditions AND forecast\n"
+            "4. Web search — search 'top news today', 'stock market today', 'S&P 500', 'tech news today'\n"
             "Be EXHAUSTIVE. Include exact event times, task names with details, temperatures, "
             "specific stock prices, headline details with sources. The more data the better."
         ),
@@ -162,15 +161,14 @@ def daily_briefing_crew(**kwargs) -> Crew:
             "Gather ALL daily briefing data — use every tool available:\n"
             "1. Check Google Calendar for today's events\n"
             "2. Check Google Tasks for pending items\n"
-            "3. Check Google Keep for recent notes\n"
-            "4. Get current weather and forecast\n"
-            "5. Search 'top news today' AND 'stock market today S&P 500 Dow Jones'\n"
+            "3. Get current weather and forecast\n"
+            "4. Search 'top news today' AND 'stock market today S&P 500 Dow Jones'\n"
             "Be thorough — search at least 3 different queries for news/markets.",
             f"Write a comprehensive Daily Briefing report (1500-3000 words) using ALL gathered data.\n"
             f"Save to Google Docs with title: 'CODEC: Daily Briefing — {today}'\n"
             f"After saving, your FINAL response MUST begin with the Google Docs URL on its own line."
         ],
-        allowed_tools=["google_calendar", "weather", "web_search", "google_tasks", "google_keep", "google_docs_create"],
+        allowed_tools=["google_calendar", "weather", "web_search", "google_tasks", "google_docs_create"],
     )
 
 
