@@ -18,6 +18,10 @@ HARD SAFETY CONTRACT (enforced in serve.py):
   * Its own serve range is 8110-8119.
   * It never issues docker stop/rm, never changes an existing service's port,
     never restarts a running service.
+  * One exception, outside serve.py: offer.use() (Settings > Language model,
+    the owner's click only; no skill, agent or MCP tool calls it) switches the
+    chat model through codec_models.set_active, which restarts the model server
+    exactly as the Chat model picker does.
 """
 
 __all__ = ["catalog", "probe", "fit", "serve", "download", "offer"]
