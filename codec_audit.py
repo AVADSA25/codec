@@ -175,10 +175,10 @@ ASKUSER_EXTRA_FIELDS = (
     "timeout_seconds",         # int
     "agent",                   # str | None (null for solo skill use)
     "crew_id",                 # str | None
-    "asked_from",              # "chat" | "voice" | "crew" | "mcp"
+    "asked_from",              # "chat" | "voice" | "crew" | "mcp" | "session"
     "consent_strict",          # bool — §1.7 strict-consent gate flag
     "destructive_verb",        # str | None — only when consent_strict=True
-    "answered_via",            # "pwa" | "voice"
+    "answered_via",            # "pwa" | "voice" | "dialog" (the session's Mac dialog)
     "answer_len",              # int
     "elapsed_seconds",         # float
     "reason",                  # "deadline" | "ambiguous_consent" — on timeout

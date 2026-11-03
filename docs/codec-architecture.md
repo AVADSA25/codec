@@ -125,7 +125,7 @@ Six new event names exported from `codec_audit.py` as module constants. All `out
 | Event | Source | extra fields |
 |---|---|---|
 | `ask_user_question_emit` | `codec-ask-user` | `pending_question_id`, `question_preview`, `options`, `timeout_seconds`, `agent`, `crew_id`, `asked_from`, `consent_strict`, `destructive_verb` |
-| `ask_user_question_answer` | `codec-ask-user` | `pending_question_id`, `answered_via` (pwa\|voice), `answer_len`, `elapsed_seconds` |
+| `ask_user_question_answer` | `codec-ask-user` | `pending_question_id`, `answered_via` (pwa\|voice\|dialog), `answer_len`, `elapsed_seconds` |
 | `ask_user_question_timeout` | `codec-ask-user` | `pending_question_id`, `elapsed_seconds`, `timeout_seconds`, `reason` (`deadline`\|`ambiguous_consent`), `consent_rejection_count` (only on `ambiguous_consent`) |
 | `stuck_warning` | `codec-agents` | `tool` (top-level), `repeat_count`, `agent` (in message line) |
 | `stuck_escalated` | `codec-agents` | `tool` (top-level), `repeat_count`, `agent`, `action` (`ask_user`\|`abort`\|`warn_only`) |
@@ -208,6 +208,14 @@ Emitted by `codec_consent.local_consent_ok`, source `codec-consent`. Never the r
 | Event | extra fields |
 |---|---|
 | `local_consent_decision` | `asked_from` (`wake`\|`voice`\|`crew`), `decision` (`allowed`\|`refused`), `task_chars`; top-level `tool` is the skill, or `shell_execute` for a flagged crew / custom-agent shell command (P-030, `asked_from` `crew`) |
+
+### Session command approval events (2026-11, P-060)
+
+Emitted by `codec_session` (docs/SESSION-PHONE-APPROVALS-DESIGN.md), source `codec-session`. A Terminal session asks for a command's approval through `codec_ask_user` (`asked_from` `session`, options Allow / Deny, strict) beside its Mac dialog; a Mac click is recorded on the same question with `answered_via` `dialog`. Only the exact Allow label approves. Never the command text.
+
+| Event | extra fields |
+|---|---|
+| `session_approval_decision` | `decision` (`allowed`\|`denied`), `decided_by` (`phone`\|`mac`\|`both`\|`none`), `reason` (`allow`\|`deny`\|`reply`\|`closed`\|`timeout`), `phone` (`asked`\|`disabled`\|`error`), `dangerous`, `cmd_hash`, `pending_question_id` |
 
 ### Crew shell and custom-agent tool events (2026-10, P-030 parts 2-4)
 
@@ -438,9 +446,9 @@ Canonical state file for AskUserQuestion. Atomic write via tmp+rename. Schema:
       "timeout_seconds": 600,
       "status": "pending|answered|timed_out",
       "answered_at": "ISO8601 | null",
-      "answered_via": "pwa|voice | null",
+      "answered_via": "pwa|voice|dialog | null",
       "answer": "...",
-      "asked_from": "chat|voice|crew|mcp",
+      "asked_from": "chat|voice|crew|mcp|session",
       "consent_strict": false,
       "destructive_verb": "delete | null",
       "timeout_reason": "deadline|ambiguous_consent | null"

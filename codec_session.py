@@ -22,7 +22,7 @@ from datetime import datetime
 
 # Audit emits route through the unified envelope (schema:1) per
 # docs/PHASE1-STEP1-DESIGN.md. log_event is now a real adapter, not a no-op.
-from codec_audit import log_event, _cmd_hash, _truncate, _PREVIEW_MAX
+from codec_audit import log_event, _cmd_hash, _truncate, _PREVIEW_MAX, _correlation_id_var, _new_correlation_id
 
 log = logging.getLogger("codec_session")
 
@@ -34,6 +34,11 @@ MAX_RECENT_CONTEXT = 5        # Recent messages kept raw during compaction
 SELECT_TIMEOUT_SEC = 0.3      # stdin select() polling interval
 MEMORY_LIMIT_MB = 512         # RLIMIT_AS cap (Linux only)
 CPU_LIMIT_SEC = 120           # RLIMIT_CPU hard cap
+APPROVAL_TIMEOUT_SEC = 60     # a command approval waits this long (phone and Mac dialog)
+APPROVAL_ALLOW = "Allow"      # the only answer that approves: its button label (P-060)
+APPROVAL_DENY = "Deny"
+_APPROVAL_POLL_MS = 300       # the Mac dialog looks for the phone's answer this often
+_APPROVAL_GRACE_SEC = 3       # the dialog's own clock runs this much longer than the question
 
 
 # ── Resource Limits ──────────────────────────────────────────────────────────
@@ -95,6 +100,154 @@ def clean_resp(text):
     if t.startswith("[") and t.endswith("]"):
         t = t[1:-1].strip()
     return t or text
+
+
+# ── Command approval on the phone (P-060, docs/SESSION-PHONE-APPROVALS-DESIGN.md) ──
+# The session is its own process, so the approval goes through codec_ask_user:
+# its question file is shared with the dashboard, which lists it in the Inbox,
+# pushes a content-free "approval" notice and writes the phone's answer back.
+# The Mac dialog decides beside it; the question record decides which answer
+# came first.
+
+class _PhoneApproval:
+    """One command approval asked through codec_ask_user on a worker thread."""
+
+    def __init__(self, question, *, dangerous, cmd_hash):
+        self.question = question
+        self.dangerous = bool(dangerous)
+        self.cmd_hash = cmd_hash
+        self.timeout = APPROVAL_TIMEOUT_SEC
+        self.cid = _new_correlation_id()
+        self.qid = None
+        self.phone = "asked"          # "asked" | "disabled" | "error"
+        self._answer = None
+        self._done = threading.Event()
+
+    def start(self):
+        threading.Thread(target=self._ask, name="codec-session-approval", daemon=True).start()
+        deadline = time.monotonic() + _APPROVAL_GRACE_SEC
+        while self.qid is None and not self._done.is_set() and time.monotonic() < deadline:
+            rec = self._record()
+            if rec is not None:
+                self.qid = rec.get("id")
+                break
+            self._done.wait(0.02)
+        return self
+
+    def _ask(self):
+        _correlation_id_var.set(self.cid)
+        try:
+            import codec_ask_user
+            answer = codec_ask_user.ask(
+                self.question, options=[APPROVAL_ALLOW, APPROVAL_DENY],
+                timeout=self.timeout, destructive=True, destructive_verb="allow",
+                asked_from="session")
+            if answer == codec_ask_user.DISABLED_SENTINEL:
+                self.phone = "disabled"
+            else:
+                self._answer = answer
+        except Exception as e:
+            log.warning("Phone approval failed: %s", type(e).__name__)
+            self.phone = "error"
+        finally:
+            self._done.set()
+
+    def _record(self):
+        """This approval's question record, found by its correlation id."""
+        try:
+            import codec_ask_user
+            for rec in codec_ask_user._load_pending_questions().get("pending_questions", []):
+                if rec.get("correlation_id") == self.cid:
+                    return rec
+        except Exception:
+            pass
+        return None
+
+    def state(self):
+        """'pending' while the phone may still answer; 'off' when nothing was
+        asked or ask() failed; 'allow' only for the exact Allow label; else 'deny'."""
+        if not self._done.is_set():
+            return "pending"
+        if self.phone != "asked":
+            return "off"
+        a = self._answer
+        if isinstance(a, str) and a.strip().lower() == APPROVAL_ALLOW.lower():
+            return "allow"
+        return "deny"
+
+    def window_ms(self):
+        return int((self.timeout + _APPROVAL_GRACE_SEC) * 1000)
+
+    def finish(self, local=None):
+        """The decision. local is the Mac dialog's answer ('allow', 'deny',
+        'closed', 'timeout') or None when the phone's answer closed it."""
+        if local is None and self.state() not in ("allow", "deny"):
+            local = "closed"
+        by = "phone"
+        if local:
+            st = self.state()
+            if st == "pending":
+                by = self._answer_from_mac(local)
+            elif st == "off":
+                by = "mac"
+        if by == "mac":
+            allowed, reason = local == "allow", local
+        elif by == "both":
+            # Both answers were recorded at the same moment: allow only if both allow.
+            allowed = local == "allow" and self.state() == "allow"
+            reason = "allow" if allowed else "deny"
+        else:
+            allowed, reason = self.state() == "allow", self._phone_reason()
+        if reason == "timeout":
+            by = "none"
+        self._audit(allowed, by, reason)
+        return allowed
+
+    def _answer_from_mac(self, local):
+        """Record the Mac's answer on the question, so the card leaves the Inbox
+        and a later phone answer is refused. Returns who decided."""
+        label = APPROVAL_ALLOW if local == "allow" else APPROVAL_DENY
+        res = {}
+        try:
+            import codec_ask_user
+            qid = self.qid or (self._record() or {}).get("id")
+            if qid:
+                self.qid = qid
+                res = codec_ask_user.submit_answer(qid, label, answered_via="dialog") or {}
+        except Exception as e:
+            log.warning("Could not record the Mac's answer: %s", type(e).__name__)
+        self._done.wait(_APPROVAL_GRACE_SEC)
+        st = self.state()
+        if st in ("pending", "off"):
+            return "mac"
+        if not res.get("ok"):
+            return "phone"     # the phone's answer (or the timeout) was recorded first
+        if (self._answer or "").strip().lower() == label.lower():
+            return "mac"
+        return "both"
+
+    def _phone_reason(self):
+        import codec_ask_user
+        a = self._answer
+        if self.state() == "allow":
+            return "allow"
+        if isinstance(a, str) and a.strip().lower() == APPROVAL_DENY.lower():
+            return "deny"
+        if a == codec_ask_user.TIMEOUT_SENTINEL:
+            rec = self._record() or {}
+            return "deny" if rec.get("status") == "declined" else "timeout"
+        return "reply"
+
+    def _audit(self, allowed, by, reason):
+        decision = "allowed" if allowed else "denied"
+        log_event("session_approval_decision", "codec-session",
+                  f"Command {decision} ({by}: {reason})",
+                  extra={"decision": decision, "decided_by": by, "reason": reason,
+                         "phone": self.phone, "dangerous": self.dangerous,
+                         "cmd_hash": self.cmd_hash, "pending_question_id": self.qid},
+                  outcome="ok" if allowed else "denied",
+                  level="info" if allowed else "warning",
+                  correlation_id=self.cid)
 
 
 # ── Session Class ────────────────────────────────────────────────────────────
@@ -479,51 +632,14 @@ SAFETY RULES:
 
         return explanation + suffix
 
-    def _register_remote_approval(self, action, code, is_danger=False):
-        """Register approval in shared state + push notification. Returns approval_id."""
-        import uuid as _uuid
-        approval_id = _uuid.uuid4().hex[:12]
+    def _ask_phone(self, action, code, is_danger=False):
+        """Ask for this command's approval in the Inbox and on the phone
+        (codec_ask_user, P-060). Returns the running _PhoneApproval."""
         explanation = self._explain_command(code)
-        try:
-            from routes._shared import _pending_approvals, _approval_lock, _save_notification
-            with _approval_lock:
-                _pending_approvals[approval_id] = {
-                    "command": code[:300],
-                    "action": action,
-                    "is_dangerous": is_danger,
-                    "explanation": explanation,
-                    "timestamp": time.time(),
-                    "status": "pending",
-                }
-            prefix = "DANGEROUS" if is_danger else "Approval needed"
-            title = f"CODEC — {prefix}"
-            body = f"Command: {code[:120]}\nThis will: {explanation}"
-            _save_notification(title, body, status="warning")
-            log.info("Remote approval registered: %s", approval_id)
-        except Exception as e:
-            log.debug("Could not register remote approval: %s", e)
-        return approval_id
-
-    def _check_remote_approval(self, approval_id):
-        """Check if remote approval was granted. Returns 'pending', 'allowed', or 'denied'."""
-        try:
-            from routes._shared import _pending_approvals, _approval_lock
-            with _approval_lock:
-                a = _pending_approvals.get(approval_id)
-                if a:
-                    return a["status"]
-        except Exception:
-            pass
-        return "pending"
-
-    def _cleanup_approval(self, approval_id):
-        """Remove approval from pending list."""
-        try:
-            from routes._shared import _pending_approvals, _approval_lock
-            with _approval_lock:
-                _pending_approvals.pop(approval_id, None)
-        except Exception:
-            pass
+        what = (f"a DANGEROUS {action} command that can delete data" if is_danger
+                else f"this {action} command")
+        question = f"Your CODEC session wants to run {what}:\n{code[:300]}\nThis will: {explanation}"
+        return _PhoneApproval(question, dangerous=is_danger, cmd_hash=_cmd_hash(code)).start()
 
     # ── Command Execution ────────────────────────────────────────────────
 
@@ -532,10 +648,10 @@ SAFETY RULES:
             import tkinter as tk
         except ImportError:
             return True  # auto-approve if no tkinter available
-        approval_id = self._register_remote_approval(action, code, is_danger=False)
         explanation = self._explain_command(code)
-        result = {"allow": False, "decided": False}
+        result = {"decided": False, "local": None}
         root = tk.Tk()
+        phone = self._ask_phone(action, code, is_danger=False)  # Inbox + phone (P-060)
         root.title("CODEC")
         root.overrideredirect(True)
         root.attributes("-topmost", True)
@@ -558,38 +674,35 @@ SAFETY RULES:
         cv.create_text(w // 2, 115, text="This will:", fill="#E8711A", font=("Helvetica", 11, "bold"), anchor="n")
         cv.create_text(w // 2, 138, text=explanation[:120], fill="#aaddff", font=("Helvetica", 12), width=w - 50, anchor="n")
 
-        def _close(allowed):
+        def _close(local=None):
             if result["decided"]:
                 return
             result["decided"] = True
-            result["allow"] = allowed
+            result["local"] = local
             try:
                 root.quit()
             except Exception:
                 pass
 
-        # Poll for remote approval every 2 seconds
+        # Close on the phone's answer (first answer wins)
         def _poll_remote():
             if result["decided"]:
                 return
-            status = self._check_remote_approval(approval_id)
-            if status == "allowed":
-                _close(True)
-            elif status == "denied":
-                _close(False)
+            if phone.state() in ("allow", "deny"):
+                _close()
             else:
-                root.after(2000, _poll_remote)
+                root.after(_APPROVAL_POLL_MS, _poll_remote)
 
         # Bottom section: buttons in a frame
         btn_frame = tk.Frame(root, bg="#0a0a0a")
         btn_frame.pack(side="top", pady=15)
-        abtn = tk.Button(btn_frame, text="\u2713 Allow", bg="#00cc55", fg="#000", font=("Helvetica", 13, "bold"), border=0, padx=20, pady=6, command=lambda: _close(True))
+        abtn = tk.Button(btn_frame, text="\u2713 Allow", bg="#00cc55", fg="#000", font=("Helvetica", 13, "bold"), border=0, padx=20, pady=6, command=lambda: _close("allow"))
         abtn.pack(side="left", padx=10)
-        dbtn = tk.Button(btn_frame, text="\u2717 Deny", bg="#888", fg="#000", font=("Helvetica", 13, "bold"), border=0, padx=20, pady=6, command=lambda: _close(False))
+        dbtn = tk.Button(btn_frame, text="\u2717 Deny", bg="#888", fg="#000", font=("Helvetica", 13, "bold"), border=0, padx=20, pady=6, command=lambda: _close("deny"))
         dbtn.pack(side="left", padx=10)
-        root.protocol("WM_DELETE_WINDOW", lambda: _close(False))
-        root.after(60000, lambda: _close(False))  # 60s timeout
-        root.after(1000, _poll_remote)  # start polling for remote approval
+        root.protocol("WM_DELETE_WINDOW", lambda: _close("closed"))
+        root.after(phone.window_ms(), lambda: _close("timeout"))  # 60s question + grace
+        root.after(_APPROVAL_POLL_MS, _poll_remote)
         try:
             root.mainloop()
         except Exception as e:
@@ -599,8 +712,7 @@ SAFETY RULES:
             root.destroy()
         except Exception:
             pass
-        self._cleanup_approval(approval_id)
-        return result["allow"]
+        return phone.finish(result["local"] if result["decided"] else "closed")
 
     def _danger_preview(self, action, code):
         """Show a RED warning preview for dangerous commands. Returns True if user approves."""
@@ -608,10 +720,10 @@ SAFETY RULES:
             import tkinter as tk
         except ImportError:
             return False  # deny dangerous commands if no tkinter for safety
-        approval_id = self._register_remote_approval(action, code, is_danger=True)
         explanation = self._explain_command(code)
-        result = {"allow": False, "decided": False}
+        result = {"decided": False, "local": None}
         root = tk.Tk()
+        phone = self._ask_phone(action, code, is_danger=True)  # Inbox + phone (P-060)
         root.title("CODEC — DANGER")
         root.overrideredirect(True)
         root.attributes("-topmost", True)
@@ -634,39 +746,36 @@ SAFETY RULES:
         cv.create_text(w // 2, 143, text=explanation[:140], fill="#ffaaaa", font=("Helvetica", 12), width=w - 50, anchor="n")
         cv.create_text(w // 2, 178, text="This command can delete data. Are you sure?", fill="#ff9999", font=("Helvetica", 11))
 
-        def _close(allowed):
+        def _close(local=None):
             if result["decided"]:
                 return
             result["decided"] = True
-            result["allow"] = allowed
+            result["local"] = local
             try:
                 root.quit()
             except Exception:
                 pass
 
-        # Poll for remote approval every 2 seconds
+        # Close on the phone's answer (first answer wins)
         def _poll_remote():
             if result["decided"]:
                 return
-            status = self._check_remote_approval(approval_id)
-            if status == "allowed":
-                _close(True)
-            elif status == "denied":
-                _close(False)
+            if phone.state() in ("allow", "deny"):
+                _close()
             else:
-                root.after(2000, _poll_remote)
+                root.after(_APPROVAL_POLL_MS, _poll_remote)
 
         btn_frame = tk.Frame(root, bg="#0a0a0a")
         btn_frame.pack(side="top", pady=15)
         abtn = tk.Button(btn_frame, text="\u2713 Allow", bg="#ff3333", fg="#fff",
-                         font=("Helvetica", 13, "bold"), border=0, padx=20, pady=6, command=lambda: _close(True))
+                         font=("Helvetica", 13, "bold"), border=0, padx=20, pady=6, command=lambda: _close("allow"))
         abtn.pack(side="left", padx=10)
         dbtn = tk.Button(btn_frame, text="\u2717 Deny", bg="#444", fg="#fff",
-                         font=("Helvetica", 13, "bold"), border=0, padx=20, pady=6, command=lambda: _close(False))
+                         font=("Helvetica", 13, "bold"), border=0, padx=20, pady=6, command=lambda: _close("deny"))
         dbtn.pack(side="left", padx=10)
-        root.protocol("WM_DELETE_WINDOW", lambda: _close(False))
-        root.after(60000, lambda: _close(False))  # 60s timeout
-        root.after(1000, _poll_remote)  # start polling for remote approval
+        root.protocol("WM_DELETE_WINDOW", lambda: _close("closed"))
+        root.after(phone.window_ms(), lambda: _close("timeout"))  # 60s question + grace
+        root.after(_APPROVAL_POLL_MS, _poll_remote)
         try:
             root.mainloop()
         except Exception as e:
@@ -675,8 +784,7 @@ SAFETY RULES:
             root.destroy()
         except Exception:
             pass
-        self._cleanup_approval(approval_id)
-        return result["allow"]
+        return phone.finish(result["local"] if result["decided"] else "closed")
 
     def run_code(self, action, code):
         try:
