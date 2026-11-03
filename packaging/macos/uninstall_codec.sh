@@ -5,7 +5,7 @@
 # User data (~/.codec) is double-gated behind --yes AND --purge-data.
 #
 # Auto-removes (CODEC-owned): launchd agents, the .app, ~/Library/Logs/CODEC,
-# ~/.pm2/logs/codec-*, the app's Caches / WebKit / HTTPStorages folders,
+# CODEC's PM2 logs, the app's Caches / WebKit / HTTPStorages folders,
 # every ai.avadigital.codec.* Keychain item (real $HOME only), and ~/.codec
 # (only with --purge-data). Prints guided manual steps for residue Apple/sharing
 # rules make unsafe to auto-delete (TCC grants, ~/.cloudflared, your project
@@ -39,6 +39,9 @@ REAL_HOME=0; [ "$HOME_DIR" = "$HOME" ] && REAL_HOME=1
 SECURITY=/usr/bin/security
 KC_PREFIX="ai.avadigital.codec"
 BUNDLE_ID="ai.avadigital.codec"   # CFBundleIdentifier in packaging/macos/Info.plist
+# PM2 log prefixes: every app name in ecosystem.config.js is codec-* or one of
+# the model servers (tests/test_uninstaller.py checks it).
+PM2_LOG_NAMES="codec qwen3.6 whisper-stt kokoro-82m"
 # Every Keychain name the code uses: the KEY_* constants in codec_keychain.py,
 # KEYCHAIN_KEY in codec_push.py and _TOKEN_SERVICE in skills/mcp_connect.py.
 # tests/test_uninstaller.py fails when this list and the code disagree. A real
@@ -59,13 +62,15 @@ safe_rm() {
 # Every Keychain service to delete: the code's names, then any other item whose
 # service starts with $KC_PREFIX. dump-keychain without -d prints attributes
 # only: it reads no secret value and shows no prompt.
+kc_scan() {
+    [ -x "$SECURITY" ] || return 0
+    { "$SECURITY" dump-keychain 2>/dev/null || true; } \
+        | sed -n 's/^.*"svce"<blob>="\('"$KC_PREFIX"'\.[A-Za-z0-9_.-]*\)".*$/\1/p'
+}
 kc_all_services() {
     local svc
     for svc in $KC_SERVICES; do echo "$KC_PREFIX.$svc"; done
-    if [ -x "$SECURITY" ]; then
-        { "$SECURITY" dump-keychain 2>/dev/null || true; } \
-            | sed -n 's/^.*"svce"<blob>="\('"$KC_PREFIX"'\.[A-Za-z0-9_.-]*\)".*$/\1/p'
-    fi
+    kc_scan
 }
 
 # One delete-generic-password call removes one item; a service can hold
@@ -105,12 +110,13 @@ safe_rm "$APP"
 # 3) logs ---------------------------------------------------------------------
 echo "-- logs (~/Library/Logs/CODEC) --"
 safe_rm "$HOME_DIR/Library/Logs/CODEC"
-echo "-- PM2 logs (~/.pm2/logs/codec-*, source installs) --"
+echo "-- PM2 logs (~/.pm2/logs, source installs) --"
 shopt -s nullglob
-pm2_logs=("$HOME_DIR/.pm2/logs"/codec-*)
+pm2_logs=()
+for name in $PM2_LOG_NAMES; do pm2_logs+=("$HOME_DIR/.pm2/logs/$name"-*); done
 shopt -u nullglob
 if [ "${#pm2_logs[@]}" -eq 0 ]; then
-    echo "  (absent)  $HOME_DIR/.pm2/logs/codec-*"
+    echo "  (absent)  $HOME_DIR/.pm2/logs/{$(echo $PM2_LOG_NAMES | tr ' ' ',')}-*"
 else
     for f in "${pm2_logs[@]}"; do safe_rm "$f"; done
 fi
@@ -132,6 +138,14 @@ if [ "$REAL_HOME" -eq 1 ]; then
             echo "  [dry-run] would delete keychain item: $svc"
         fi
     done
+    # Check, do not trust: a locked keychain or a refused delete leaves items.
+    if [ "$ACT" -eq 1 ]; then
+        left="$(kc_scan | sort -u)"
+        if [ -n "$left" ]; then
+            echo "  STILL PRESENT (keychain locked, or a delete was refused):" >&2
+            echo "$left" | sed 's/^/    /' >&2
+        fi
+    fi
 else
     echo "  [skipped] non-default --home (sandbox/test): Keychain left untouched. A real run deletes:"
     for svc in $KC_SERVICES; do echo "  [sandbox, not touched] keychain item: $KC_PREFIX.$svc"; done

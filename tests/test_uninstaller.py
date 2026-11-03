@@ -167,6 +167,7 @@ def _sandbox(tmp_path: Path) -> tuple[Path, Path]:
     logs = home / ".pm2" / "logs"
     logs.mkdir(parents=True)
     (logs / "codec-dashboard-out.log").write_text("log")
+    (logs / "whisper-stt-out.log").write_text("log")
     (logs / "other-app-out.log").write_text("log")
     for d in ("Caches", "WebKit", "HTTPStorages"):
         (home / "Library" / d / _bundle_id()).mkdir(parents=True)
@@ -202,6 +203,7 @@ def test_dry_run_itemises_user_data_logs_and_caches_and_deletes_nothing(tmp_path
     for name in _user_data_names():
         assert re.search(rf"^\s+{re.escape(name)}\s+present\s", r.stdout, re.M), f"dry run does not list {name}"
     assert f"would remove: {home}/.pm2/logs/codec-dashboard-out.log" in r.stdout
+    assert f"would remove: {home}/.pm2/logs/whisper-stt-out.log" in r.stdout
     assert "other-app-out.log" not in r.stdout, "only CODEC's PM2 logs may be listed"
     for d in ("Caches", "WebKit", "HTTPStorages"):
         assert f"would remove: {home}/Library/{d}/{_bundle_id()}" in r.stdout
@@ -212,11 +214,23 @@ def test_yes_removes_pm2_logs_and_caches_but_keeps_user_data(tmp_path):
     r = _run(home, app, "--yes")
     assert r.returncode == 0, f"{r.stderr}\n{r.stdout}"
     assert not (home / ".pm2" / "logs" / "codec-dashboard-out.log").exists()
+    assert not (home / ".pm2" / "logs" / "whisper-stt-out.log").exists()
     assert (home / ".pm2" / "logs" / "other-app-out.log").exists(), "another app's PM2 log was removed"
     for d in ("Caches", "WebKit", "HTTPStorages"):
         assert not (home / "Library" / d / _bundle_id()).exists()
     for name in _user_data_names():
         assert (home / ".codec" / name).exists(), f"--yes alone must keep ~/.codec/{name}"
+
+
+def test_pm2_log_names_cover_every_app_in_the_ecosystem_file():
+    m = re.search(r'^PM2_LOG_NAMES="([^"]*)"$', UNINSTALL.read_text(), re.M)
+    assert m, "PM2_LOG_NAMES not found in uninstall_codec.sh"
+    prefixes = m.group(1).split()
+    apps = re.findall(r'^\s+name: "([^"]+)"', _src("ecosystem.config.js"), re.M)
+    assert len(apps) >= 10, f"ecosystem.config.js app names not found: {apps}"
+    for app in apps:
+        assert any(app == p or app.startswith(p + "-") for p in prefixes), \
+            f"the uninstaller leaves the PM2 logs of {app} behind"
 
 
 def test_keychain_scan_reads_no_secret_and_deletes_every_item_of_a_service():
@@ -228,3 +242,7 @@ def test_keychain_scan_reads_no_secret_and_deletes_every_item_of_a_service():
             f"the uninstaller must never read a secret value: {ln.strip()}"
     assert re.search(r'while .*"\$SECURITY" delete-generic-password -s "\$svc"', t), \
         "one delete removes one item; mcp_tokens holds several, so the delete must loop"
+    # A locked keychain or a refused delete must not read as "(absent)": a real
+    # --yes run scans again and names what is left.
+    after = t[t.index("kc_delete_service \"$svc\""):]
+    assert re.search(r'left="\$\(kc_scan', after) and "STILL PRESENT" in after

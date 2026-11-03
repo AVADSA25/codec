@@ -42,8 +42,11 @@ The local-first promise is sold on these pages, and several sentences on them ar
      `security dump-keychain` (attributes only, no `-d`, so no secret is read and no prompt is shown) and deletes
      each service until none is left (one `delete-generic-password` removes one item; `mcp_tokens` holds several).
    - With a test `--home` it prints the names a real run would delete and never calls `security`.
-   - New steps under `--yes`: `~/.pm2/logs/codec-*` and the app's `Caches`, `WebKit` and `HTTPStorages` folders
-     named after the bundle id `ai.avadigital.codec`.
+   - New steps under `--yes`: CODEC's PM2 logs (`codec-*` and the model servers `qwen3.6-*`, `whisper-stt-*`,
+     `kokoro-82m-*`, every app name in `ecosystem.config.js`) and the app's `Caches`, `WebKit` and `HTTPStorages`
+     folders named after the bundle id `ai.avadigital.codec`. After a real `--yes` the Keychain is scanned again
+     (attributes only) and any item still there is printed as STILL PRESENT, so a locked keychain or a refused
+     delete does not read as done.
    - The `~/.codec` step lists what is in it (memory.db, clipboard.db, notes, agents, Google token, config,
      backups, ...) with present/absent, then keeps it unless `--purge-data`. Manual steps add `~/codec-projects`,
      `~/codec-workspace`, PM2 apps and Google access. Dry run stays the default.
