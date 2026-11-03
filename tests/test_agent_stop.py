@@ -255,6 +255,34 @@ def test_abort_during_skill_beats_the_loop_breaker(iso, monkeypatch):
     _assert_interrupted_once(iso)
 
 
+def test_abort_between_checkpoints_starts_no_model_call(iso, monkeypatch):
+    """An abort that lands after checkpoint 1 finished, before checkpoint 2 asks the
+    model: checkpoint 2 makes no model call at all (the check before each call)."""
+    _setup(num_checkpoints=2)
+    model = FakeModel([_done(), _call("b"), _done()])
+    skill = FakeSkill()
+    monkeypatch.setattr(car, "_qwen_next_action", model)
+    monkeypatch.setattr(car, "_run_skill", skill)
+    client, drains, real_drain = _client(), [], car._drain_user_replies
+
+    def drain_then_abort(agent_id, since_index):
+        drains.append(since_index)
+        if len(drains) == 2:  # the start of checkpoint 2
+            _post(client, "abort")
+        return real_drain(agent_id, since_index)
+    monkeypatch.setattr(car, "_drain_user_replies", drain_then_abort)
+
+    _join(_start_run())
+
+    assert len(drains) == 2 and model.calls == 1 and skill.tasks == []
+    assert cap.load_state(AGENT)["current_checkpoint"] == 1, "only checkpoint 1 completed"
+    assert cap.load_manifest(AGENT)["status"] == "aborted"
+    msgs = _messages(iso.tmp)
+    assert [m["title"] for m in msgs if m["type"] == "agent_aborted"] == ["Interrupted"]
+    assert not [m for m in msgs if m["type"] == "agent_done"]
+    assert iso.pushes == ["agent_stopped"]
+
+
 def test_pause_exits_and_resume_continues_through_daemon(iso, monkeypatch):
     """Pause stops at the next boundary and the thread exits; Resume re-enters through
     the daemon's crash-resume branch and continues from the saved step."""
