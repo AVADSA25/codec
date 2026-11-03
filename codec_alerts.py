@@ -473,24 +473,6 @@ def check_services_and_alert():
     except Exception:
         pass
 
-    # PM2 exec_cwd check
-    expected_cwd = os.path.expanduser("~/codec-repo")
-    try:
-        env = os.environ.copy()
-        env["PATH"] = "/opt/homebrew/opt/node@22/bin:/opt/homebrew/bin:" + env.get("PATH", "")
-        out = subprocess.check_output(
-            ["/opt/homebrew/bin/pm2", "show", "codec", "--no-color"],
-            stderr=subprocess.STDOUT, timeout=10, env=env,
-        ).decode()
-        for line in out.splitlines():
-            if "exec cwd" in line.lower():
-                cwd = line.split("│")[-2].strip() if "│" in line else line.split()[-1]
-                if cwd != expected_cwd:
-                    alert_once("pm2_cwd", "warning", f"CODEC WARNING: PM2 exec_cwd is {cwd}, expected {expected_cwd}. Run sync_to_pm2.sh.")
-                break
-    except Exception:
-        pass
-
     state["consecutive_failures"] = failures
     state["last_check"] = now
     _save_state(state)
