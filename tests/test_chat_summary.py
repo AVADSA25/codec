@@ -225,10 +225,22 @@ def test_a_merge_cut_by_the_token_cap_is_not_used(monkeypatch):
                         "" if whole else "- a new note")
     msgs = ev.messages_at(DATA, 40)
     hist = history_of(msgs)
-    long = "- an earlier note\n" * 400
+    long = "- an earlier note\n" * 300
     job = notes.NotesJob(hist, notes._prefix_keys(hist), 0, long, 4000, LOCAL)
     assert job.run().text.startswith(long.strip()), "the notes stay as they were, not cut"
     assert job.merges and all(after == before for before, after in job.merges)
+
+
+def test_notes_a_merge_cannot_shorten_stop_growing(monkeypatch):
+    """Notes sit with the system message, where P-034 never leaves anything out, so a model
+    that cannot shorten them must not let them grow past twice the merge cap (half the budget)."""
+    monkeypatch.setattr(notes, "_complete", lambda messages, llm, max_tokens, whole=False:
+                        "" if whole else "- a new note")
+    msgs = ev.messages_at(DATA, 40)
+    hist = history_of(msgs)
+    job = notes.NotesJob(hist, notes._prefix_keys(hist), 0, "- an earlier note\n" * 600, 4000, LOCAL)
+    assert job.run() is None and job.stopped == "notes too long"
+    assert notes._lookup(notes._prefix_keys(hist)) is None, "nothing over the bound is kept"
 
 
 @pytest.fixture

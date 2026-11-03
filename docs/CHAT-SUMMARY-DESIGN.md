@@ -57,7 +57,9 @@ word does not grow with the chat.
   that quarter, and how to get there (one line per subject, a changed value kept
   only in its later form, drafts reduced to what they were for). A merge reply
   cut by the token cap, or not shorter, is not used (a cut one would lose the
-  newest notes). Thinking off, temperature 0.2, 240 s cap.
+  newest notes). Notes still over twice that quarter after a merge are not
+  kept and the job stops, so notes never grow past half the budget (P-034
+  never leaves out the notes message). Thinking off, temperature 0.2, 240 s cap.
 - **Where kept:** in the dashboard's memory only, keyed by a SHA-256 of the
   exact messages covered (role and text, in order). Newest 64 entries. A
   dashboard restart forgets them; the next long turn writes them again. Editing

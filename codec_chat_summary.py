@@ -375,6 +375,9 @@ class NotesJob:
                 if merged and len(merged) < len(text):
                     text = merged
                 self.merges.append((before, len(text.split())))
+                if _tokens(text) > 2 * cap:
+                    self.stopped = "notes too long"     # never keep notes P-034 cannot leave out
+                    break
             done = Notes(b, text)
             _store(self.keys[b], done)
             log.info("[chat notes] notes on messages 1-%d: %d words", b, len(text.split()))
