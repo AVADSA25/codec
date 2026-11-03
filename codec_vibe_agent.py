@@ -103,10 +103,12 @@ def enabled() -> bool:
 
 
 def _audit(event: str, message: str, extra: dict) -> None:
-    """Counts, tool names and statuses only. Never a goal, a path, a file or a model reply."""
+    """Counts, tool names and statuses only. Never a goal, a path, a file or a model reply.
+
+    The run id goes in as the correlation_id too, so every line of one run can be found together."""
     try:
         from codec_audit import log_event
-        log_event(event, "codec-vibe", message, extra=extra)
+        log_event(event, "codec-vibe", message, extra=extra, correlation_id=extra.get("run"))
     except Exception:
         pass
 
@@ -685,7 +687,7 @@ class Run:
         self._emit("result", step=n, ok=False, summary=message.split("\n", 1)[0][:160], output=message[:DISPLAY_CHARS], tool="error")
         said = text.strip() or "(no reply)"
         self.turns.append(_Turn(n, "error", "", said[:2000], said[:300], wrapped, message.split("\n", 1)[0][:160], False))
-        _audit("vibe_agent_step", "Vibe agent step", {"project": self.pid, "run": self.id, "n": n, "tool": "error", "ok": False, "ms": 0})
+        _audit("vibe_agent_step", "Vibe agent step", {"project": self.pid, "run": self.id, "n": n, "tool_name": "error", "ok": False, "ms": 0})
 
     def _run_call(self, n: int, text: str, call: proto.Call) -> bool:
         """Run one tool. True when the run is over."""
@@ -707,7 +709,7 @@ class Run:
             if report == "Done." and call.note:             # the summary went into the sentence before the block
                 report = call.note
             self._emit("result", step=n, ok=True, summary="Finished", output=report, tool="finish")
-            _audit("vibe_agent_step", "Vibe agent step", {"project": self.pid, "run": self.id, "n": n, "tool": "finish", "ok": True, "ms": 0})
+            _audit("vibe_agent_step", "Vibe agent step", {"project": self.pid, "run": self.id, "n": n, "tool_name": "finish", "ok": True, "ms": 0})
             self._end("done", report)
             return True
         if call.name == "ask":
@@ -737,7 +739,7 @@ class Run:
                 self._edit_fails.pop(p, None)
         wrapped = proto.wrap_result(n, call.name, arg, _for_model(result.text) + advice + warn, result.ok)
         self._emit("result", step=n, ok=result.ok, summary=result.summary, output=(result.text + advice)[:DISPLAY_CHARS], tool=call.name)
-        _audit("vibe_agent_step", "Vibe agent step", {"project": self.pid, "run": self.id, "n": n, "tool": call.name, "ok": result.ok, "ms": ms})
+        _audit("vibe_agent_step", "Vibe agent step", {"project": self.pid, "run": self.id, "n": n, "tool_name": call.name, "ok": result.ok, "ms": ms})
         short = text if len(text) <= 600 else (call.note[:300] + "\n" + f"@@ {call.name} {arg}\n(content left out)")
         self.turns.append(_Turn(n, call.name, arg, text[:8000], short, wrapped, result.summary, result.ok,
                                 read_path=call.args.get("path", "") if call.name == "read_file" else ""))

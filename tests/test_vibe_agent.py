@@ -20,6 +20,7 @@ from vibe_agent_fakes import (  # noqa: F401  (fixtures are used by name)
 
 CSS_EDIT = ("Make the heading blue.\n@@ edit_file style.css\n<<<<<<< SEARCH\nh1 { color: red; }\n=======\n"
             "h1 { color: blue; }\n>>>>>>> REPLACE\n")
+REAL_AUDIT = va._audit                               # taken at import, before the fixture puts its fake in
 
 
 def read(pid, rel):
@@ -694,6 +695,26 @@ def test_audit_events_carry_no_goal_path_or_file_text(scripted, audits):
     assert start["goal_chars"] == len(goal) and start["model"] == "local"
     end = [extra for ev, extra in agent if ev == "vibe_agent_end"][0]
     assert end["status"] == "done" and end["steps"] == 4
+
+
+def test_step_audit_lines_carry_the_tool_name_and_the_run_as_correlation_id(scripted, monkeypatch, tmp_path):
+    import codec_audit
+    import codec_keychain
+    log = tmp_path / "audit" / "audit.log"
+    log.parent.mkdir()
+    monkeypatch.setattr(codec_audit, "_AUDIT_DIR", log.parent)
+    monkeypatch.setattr(codec_audit, "_AUDIT_LOG", log)
+    monkeypatch.setattr(codec_keychain, "get_audit_hmac_secret", lambda: b"vibe-agent-test-hmac-secret-0001")  # never the Keychain
+    monkeypatch.setattr(va, "_audit", REAL_AUDIT)                   # the real filter in codec_audit, not the fake before it
+    pid = make_project()
+    view, _ = run_script(pid, ["Hmm.\n", "@@ read_file style.css\n", CSS_EDIT, "@@ finish\nok\n"], scripted)
+    lines = [json.loads(x) for x in log.read_text().splitlines()]
+    steps = [r for r in lines if r["event"] == "vibe_agent_step"]
+    assert [r["extra"]["tool_name"] for r in steps] == ["error", "read_file", "edit_file", "finish"]
+    assert all(r["extra"]["correlation_id"] == view["run"] == r["extra"]["run"] for r in steps)
+    assert all(r["source"] == "codec-vibe" and "tool" not in r["extra"] and r["hmac"] for r in steps)
+    rest = [r for r in lines if r["event"] in ("vibe_agent_start", "vibe_agent_end")]
+    assert len(rest) == 2 and all(r["extra"]["correlation_id"] == view["run"] for r in rest)
 
 
 def test_the_run_log_keeps_one_redacted_reply_per_step_and_the_page_never_gets_it(scripted):
