@@ -49,8 +49,9 @@ goal that begins with the old run's turns rebuilt from its log:
 (not Mac-only, like `/answer`; 1 to 300 characters, else 400; 409 when the run is over; a second note before the
 first is read replaces it). At the top of the next step the note is put after the newest result, **outside** the
 `[RESULT ...] ... [END RESULT]` wrapper, as `The owner says: <text>`, and a `message` event `{step, id, text}`
-goes to the page and the log. `wrap_result` now also marks the phrase `The owner says:` inside data as inside the
-data, so file text or command output cannot forge the owner's line. A note sent during a long prefill waits for the
+goes to the page and the log. `wrap_result` now also marks the phrase `The owner says:` (any case and spacing)
+inside data as inside the data, and so does the file map that follows the note, so file text, command output or a
+file name cannot forge the owner's line. A note sent during a long prefill waits for the
 next step (15 to 25 s locally). If the run ends before it reads the note, nothing reaches the model.
 
 **Page.** While a run is going, Enter in the composer queues the text: the page keeps one queued message, sends it

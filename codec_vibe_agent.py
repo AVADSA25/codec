@@ -1083,7 +1083,8 @@ class Run:
             return "PROJECT FILES: none yet"
         shown = files[:MAP_LINES]
         more = f"\n... and {len(files) - len(shown)} more (list_files shows them)" if len(files) > len(shown) else ""
-        return f"PROJECT FILES ({len(files)}):\n" + "\n".join(f"{f['path']} ({_size(f['size'])})" for f in shown) + more
+        # The map comes after the owner's note (P-044) and file names are data: one cannot pass for the owner's line.
+        return proto.mark_owner_phrase(f"PROJECT FILES ({len(files)}):\n" + "\n".join(f"{f['path']} ({_size(f['size'])})" for f in shown) + more)
 
     @staticmethod
     def _result_text(t: _Turn, mode: str) -> str:
