@@ -333,6 +333,7 @@ def test_pm2_list_only_from_a_live_daemon_and_without_env(tmp_path, monkeypatch)
         return title["now"] if "ps" in os.path.basename(cmd[0]) else json.dumps(jlist)
 
     monkeypatch.setattr(cd, "_pm2_bin", lambda: "/fake/pm2")
+    monkeypatch.setattr(cd.shutil, "which", lambda name: "/usr/bin/ps" if name == "ps" else None)  # no /bin/ps
     monkeypatch.setattr(cd, "_run", fake_run)
     p = cd.Paths(home="", codec_dir="", zshrc="", pm2_home=str(tmp_path), app_logs="", repo="", health_dir="",
                  messages_db="")
