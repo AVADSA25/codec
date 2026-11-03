@@ -94,6 +94,32 @@ def file_lock(path: Any) -> Iterator[None]:
                 pass
 
 
+_MISSING = object()
+
+
+def merge_changes(current: Any, base: Any, new: Any) -> Any:
+    """`current` with only what changed from `base` to `new` applied (P-083).
+
+    For a writer that loads a state file, works for a long time, then saves: run
+    it inside `read_modify_write` with `base` = the state it loaded and `new` =
+    the state it ends with. Keys it removed are removed, keys it added or changed
+    are written, every other key keeps the value in the file now (a concurrent
+    writer's update), and dicts on both sides are merged key by key. A file that is
+    not a JSON object is replaced by `new`. Pure."""
+    if not isinstance(new, dict) or not isinstance(base, dict) or not isinstance(current, dict):
+        return new
+    out = dict(current)
+    for key in base.keys() - new.keys():
+        out.pop(key, None)
+    for key, value in new.items():
+        old = base.get(key, _MISSING)
+        if isinstance(value, dict) and isinstance(old, dict) and isinstance(out.get(key), dict):
+            out[key] = merge_changes(out[key], old, value)
+        elif old is _MISSING or old != value:
+            out[key] = value
+    return out
+
+
 def read_modify_write(
     path: Any,
     mutate_fn,

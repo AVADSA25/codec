@@ -41,7 +41,7 @@ def svc(monkeypatch, tmp_path):
     out = {"restarts": [], "alerts": [], "state": {}, "down": set()}
     monkeypatch.setattr(codec_alerts, "_load_config", lambda: {"alerts": {}})
     monkeypatch.setattr(codec_alerts, "_load_state", lambda: dict(out["state"]))
-    monkeypatch.setattr(codec_alerts, "_save_state", lambda s: out.update(state=s))
+    monkeypatch.setattr(codec_alerts, "_save_state", lambda s, base=None: out.update(state=s))
     monkeypatch.setattr(codec_alerts, "ALERTS_SENT_PATH", str(tmp_path / "alerts_sent.json"))
     monkeypatch.setattr(codec_alerts, "send_alert",
                         lambda level, msg, subject=None: out["alerts"].append((level, msg)))

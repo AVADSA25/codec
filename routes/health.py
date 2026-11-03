@@ -115,6 +115,7 @@ async def status():
     return {
         "alive": alive,
         "audit_write_failures": _audit_write_failures(),
+        "memory": _memory_figure(),
         "config": {
             "llm_provider": config.get("llm_provider", "unknown"),
             "llm_model": config.get("llm_model", "unknown"),
@@ -127,6 +128,16 @@ async def status():
             "streaming": config.get("streaming", True),
         }
     }
+
+
+def _memory_figure():
+    """P-083: the heartbeat's last memory reading (swap, the model server's
+    footprint, level ok / high / unknown), read from its file."""
+    try:
+        import codec_heartbeat
+        return codec_heartbeat.memory_status()
+    except Exception:
+        return {"level": "unknown", "checked_at": None}
 
 
 def _audit_write_failures():

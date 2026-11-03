@@ -97,7 +97,7 @@ def alert_harness(monkeypatch, tmp_path):
     monkeypatch.setattr(codec_alerts, "_load_state",
                         lambda: dict(state_holder["state"]))
     monkeypatch.setattr(codec_alerts, "_save_state",
-                        lambda s: state_holder.update(state=s))
+                        lambda s, base=None: state_holder.update(state=s))
     monkeypatch.setattr(codec_alerts, "send_alert",
                         lambda level, msg, subject=None: calls["alerts"].append((level, msg)))
     monkeypatch.setattr(codec_alerts, "_try_restart",
