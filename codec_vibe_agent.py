@@ -24,6 +24,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import codec_vibe_agent_check as vcheck
 import codec_vibe_agent_cmd as cmdmod
 import codec_vibe_agent_proto as proto
 import codec_vibe_agent_search as vsearch
@@ -457,6 +458,17 @@ def _changed_region(old: str, new: str) -> str:
     return proto.numbered(b[start:start + 12], start + 1)
 
 
+def _with_check(res: Result, path: str, text: str) -> Result:
+    """An edit result with the syntax note at its end, when the saved file does not check clean (P-045).
+
+    The file stays saved and checkpointed: the note only reports, and the summary keeps a few words of it."""
+    note = vcheck.check_file(path, text)
+    if note is not None:
+        res.text += "\n\n" + note.text
+        res.summary += f" ({note.short})"
+    return res
+
+
 def _t_edit_file(run: "Run", path: str, pairs) -> Result:
     content, bad = _read_text(run.pid, path)
     if bad:
@@ -472,7 +484,8 @@ def _t_edit_file(run: "Run", path: str, pairs) -> Result:
         return _path_failure(e)
     added, removed = proto.line_stats(content, new)
     head = f"Edited {done['path']} (+{added} -{removed})"
-    return Result(True, head + ". The changed part now reads:\n" + _changed_region(content, new), head, changed=(done["path"],))
+    return _with_check(Result(True, head + ". The changed part now reads:\n" + _changed_region(content, new), head,
+                              changed=(done["path"],)), done["path"], new)
 
 
 def _t_write_file(run: "Run", path: str, content: str) -> Result:
@@ -483,7 +496,7 @@ def _t_write_file(run: "Run", path: str, content: str) -> Result:
         return _path_failure(e)
     n = text.count("\n")
     head = f"Wrote {done['path']} ({'new' if done['created'] else 'replaced'}, {n} lines, {_size(done['size'])})"
-    return Result(True, head + ".", head, changed=(done["path"],))
+    return _with_check(Result(True, head + ".", head, changed=(done["path"],)), done["path"], text)
 
 
 def _t_delete_file(run: "Run", path: str) -> Result:

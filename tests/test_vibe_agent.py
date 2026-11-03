@@ -248,6 +248,35 @@ def test_write_file_creates_replaces_and_keeps_a_final_newline():
     assert not (vp.project_dir(pid).parent / "escape.txt").exists()
 
 
+def test_an_edit_that_breaks_a_file_shows_the_check_note_inside_its_result_and_a_clean_one_does_not(scripted):
+    pid = make_project({"app.py": "def total(prices):\n    return sum(prices)\n"})
+    view, model = run_script(pid, [
+        "Rename.\n@@ edit_file app.py\n<<<<<<< SEARCH\ndef total(prices):\n=======\ndef total(items)\n>>>>>>> REPLACE\n",
+        "Fix.\n@@ edit_file app.py\n<<<<<<< SEARCH\ndef total(items)\n=======\ndef total(prices):\n>>>>>>> REPLACE\n",
+        "Done.\n@@ finish\nFixed the colon.\n",
+    ], scripted)
+    seen = model.calls[1][-1]["content"]
+    result = seen[seen.index("[RESULT 1 edit_file app.py"):seen.index("[END RESULT]")]
+    assert "Check: app.py does not parse as Python" in result and "line 1: expected ':'" in result
+    assert "   1| def total(items)" in result
+    broken, fixed = [e for e in view["events"] if e["type"] == "result" and e["tool"] == "edit_file"]
+    assert broken["ok"] and broken["summary"] == "Edited app.py (+1 -1) (Python syntax error at line 1)"
+    assert "Check:" in broken["output"] and "Check:" not in fixed["output"] and fixed["summary"] == "Edited app.py (+1 -1)"
+    assert [e["step"] for e in view["events"] if e["type"] == "checkpoint"] == [1, 2]     # the broken edit was saved too
+    assert end_of(view)["status"] == "done" and read(pid, "app.py").startswith("def total(prices):")
+
+
+def test_write_file_gets_the_note_only_when_the_file_it_saved_is_broken():
+    pid = make_project()
+    run = tool_run(pid)
+    clean = va._t_write_file(run, "data.json", '{"port": 8000}')
+    assert clean.ok and "Check:" not in clean.text and "error" not in clean.summary
+    bad = va._t_write_file(run, "data.json", '{"port": 8000,}')
+    assert bad.ok and "Check: data.json does not load as JSON: line 1" in bad.text
+    assert bad.summary.endswith("(JSON error at line 1)") and read(pid, "data.json") == '{"port": 8000,}\n'
+    assert "Check:" not in va._t_write_file(run, "notes.txt", "{{{ (((").text           # not a checked kind
+
+
 def test_delete_file_removes_the_file_and_an_empty_folder():
     pid = make_project({"keep.txt": "k", "sub/gone.txt": "g"})
     run = tool_run(pid)
