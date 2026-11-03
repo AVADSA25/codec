@@ -7,6 +7,7 @@ during update check reports up-to-date instead of disrupting the PWA.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import subprocess
 
@@ -23,7 +24,7 @@ async def update_check():
     Best-effort: any failure (offline, no feed yet) reports up-to-date."""
     try:
         import codec_update
-        info = codec_update.check_for_update()
+        info = await asyncio.to_thread(codec_update.check_for_update)
         if info is None:
             return {"update_available": False, "current": codec_update._current_version()}
         return {"update_available": True,
@@ -41,12 +42,12 @@ async def update_download():
     any download whose signature doesn't match SUPublicEDKey."""
     try:
         import codec_update
-        info = codec_update.check_for_update()
+        info = await asyncio.to_thread(codec_update.check_for_update)
         if info is None:
             return {"ok": False, "error": "no update available"}
-        dmg = codec_update.download_and_verify(info)   # raises if signature bad
+        dmg = await asyncio.to_thread(codec_update.download_and_verify, info)   # raises if signature bad
         try:
-            subprocess.Popen(["open", "-R", str(dmg)])  # reveal in Finder
+            await asyncio.to_thread(subprocess.Popen, ["open", "-R", str(dmg)])  # reveal in Finder
         except Exception:
             pass
         return {"ok": True, "path": str(dmg), "version": info.version}

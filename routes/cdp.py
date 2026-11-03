@@ -6,6 +6,8 @@ returns the tab summary. Used by the Pilot status pill in the dashboard.
 """
 from __future__ import annotations
 
+import asyncio
+
 import httpx as _httpx
 from fastapi import APIRouter
 
@@ -16,7 +18,7 @@ router = APIRouter()
 async def cdp_status():
     """Check if Chrome is running with CDP enabled."""
     try:
-        r = _httpx.get("http://localhost:9222/json", timeout=2)
+        r = await asyncio.to_thread(_httpx.get, "http://localhost:9222/json", timeout=2)
         tabs = r.json()
         page_tabs = [t for t in tabs if t.get("type") == "page"]
         return {

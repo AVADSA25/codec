@@ -14,6 +14,7 @@ hooks.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import subprocess
@@ -104,7 +105,8 @@ async def status():
 
     # Check if CODEC process is alive
     try:
-        r = subprocess.run(["pgrep", "-f", "codec.py"], capture_output=True, text=True, timeout=3)
+        r = await asyncio.to_thread(subprocess.run, ["pgrep", "-f", "codec.py"],
+                                    capture_output=True, text=True, timeout=3)
         alive = bool(r.stdout.strip())
     except (OSError, subprocess.SubprocessError) as e:
         log.warning(f"pgrep failed; assuming process not alive: {e}")
@@ -112,6 +114,7 @@ async def status():
 
     return {
         "alive": alive,
+        "audit_write_failures": _audit_write_failures(),
         "config": {
             "llm_provider": config.get("llm_provider", "unknown"),
             "llm_model": config.get("llm_model", "unknown"),
@@ -124,3 +127,13 @@ async def status():
             "streaming": config.get("streaming", True),
         }
     }
+
+
+def _audit_write_failures():
+    """P-081: audit lines this dashboard process could not write since it
+    started (None if codec_audit cannot be read)."""
+    try:
+        import codec_audit
+        return int(codec_audit.write_failures())
+    except Exception:
+        return None

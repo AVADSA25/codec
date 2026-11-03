@@ -16,6 +16,7 @@ Requirements:
 """
 
 import os
+import sys
 import json
 import time
 import sqlite3
@@ -41,6 +42,7 @@ MESSAGES_DB = os.path.expanduser("~/Library/Messages/chat.db")
 CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
 MEMORY_DB   = os.path.expanduser("~/.codec/memory.db")
 STATE_FILE  = os.path.expanduser("~/.codec/imessage_state.json")
+HEALTH_FILE = os.path.expanduser("~/.codec/imessage_health.json")  # read by Settings > Connectors (P-058)
 
 # ── Config ───────────────────────────────────────────────────────────────────
 def load_config():
@@ -144,6 +146,179 @@ def _extract_attributed_body(blob):
     return None
 
 
+# ── Messages database read failures (P-058, docs/IMESSAGE-PERMISSION-BACKOFF-DESIGN.md) ──
+# A refused read (most likely macOS Full Disk Access) used to be logged and retried every
+# 3 s forever (27.7k lines a day) while PM2 showed "online" and nobody was told.
+FAIL_LOG_EVERY = 300      # seconds: a failure that keeps happening is logged at most this often
+FAIL_SLOW_AFTER = 10      # failed reads in a row before the poll slows down
+FAIL_SLOW_POLL = 300      # seconds between polls once slowed down
+DENIED_NOTIFY_AFTER = 10  # refused reads in a row before the one owner notification
+FDA_WHERE = "System Settings > Privacy & Security > Full Disk Access"
+_DENIED_TEXT = ("authorization denied", "not permitted", "permission denied")
+
+
+def _program():
+    """The interpreter macOS has to allow: Full Disk Access is granted per program."""
+    try:
+        return os.path.realpath(sys.executable or "python3")
+    except Exception:
+        return str(sys.executable)
+
+
+def _is_denied(exc):
+    """True when access was refused (macOS or the file mode), not a busy or broken database."""
+    if isinstance(exc, PermissionError):
+        return True
+    text = str(exc).lower()
+    if any(t in text for t in _DENIED_TEXT):
+        return True
+    if "unable to open database file" in text:
+        try:
+            fd = os.open(MESSAGES_DB, os.O_RDONLY)
+        except PermissionError:
+            return True
+        except OSError:
+            return False
+        os.close(fd)
+    return False
+
+
+def _num(value):
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+def _notify_needs_access(program, failures):
+    """The one Inbox entry for a refused Messages database, through the dashboard's locked
+    notifications writer (routes/_shared.py). True when it was written."""
+    title = "iMessage bridge needs Full Disk Access"
+    body = (f"macOS refused to let the iMessage bridge read the Messages database ({failures} times in a row). "
+            f"Most likely this program needs Full Disk Access:\n\n{program}\n\n"
+            f"Add it in {FDA_WHERE} (the + button; Cmd-Shift-G lets you paste the path). The bridge tries "
+            "again every 5 minutes and starts answering once it can read; restart codec-imessage if it does "
+            "not. If you do not use iMessage with CODEC, stop codec-imessage instead.")
+    try:
+        from routes._shared import _save_notification
+        _save_notification(title, body, status="warning", schedule_id="imessage")
+    except Exception as e:
+        log.warning(f"Could not post the Full Disk Access notification: {e}")
+        return False
+    log.warning(f"Posted one notification: {program} needs Full Disk Access")
+    return True
+
+
+class DbReadHealth:
+    """Failed reads of the Messages database in a row: rate-limited log lines, a slower poll,
+    one owner notification, and HEALTH_FILE for Settings > Connectors. `clock` is for tests."""
+
+    def __init__(self, clock=time.time):
+        self.clock = clock
+        self.program = _program()
+        self.failures = 0          # failed reads in a row
+        self.logged_at = None      # when a failure was last logged
+        self.state = None          # what HEALTH_FILE says: ok, needs_permission, error, stopped
+        self.since = None          # when that state began
+        self.denied_since = None   # first refused read not yet followed by a fresh start
+        self.notified_at = None    # when the owner was told that self.program needs access
+        self.fresh_start = False   # start from the newest message once reading works
+
+    def restore(self):
+        """A previous run's refusal: a restart neither notifies again nor answers the backlog."""
+        try:
+            with open(HEALTH_FILE, encoding="utf-8") as f:
+                saved = json.load(f)
+        except (OSError, ValueError):
+            return
+        if not isinstance(saved, dict):
+            return
+        self.state = saved.get("state") if isinstance(saved.get("state"), str) else None
+        self.since = _num(saved.get("since"))
+        self.denied_since = _num(saved.get("denied_since"))
+        if self.denied_since is not None:
+            self.fresh_start = True
+            if saved.get("program") == self.program:
+                self.notified_at = _num(saved.get("notified_at"))
+
+    def failed(self, exc, start_unknown=False):
+        now = self.clock()
+        self.failures += 1
+        denied = _is_denied(exc)
+        if denied or start_unknown:
+            self.fresh_start = True
+        if denied and self.denied_since is None:
+            self.denied_since = now
+        state = "needs_permission" if denied else "error"
+        write = state != self.state
+        if self.logged_at is None or now - self.logged_at >= FAIL_LOG_EVERY:
+            self.logged_at = now
+            write = True
+            line = f"DB read error: {str(exc)[:200]}"
+            if self.failures > 1:
+                line += f" ({self.failures} failed reads in a row; logged at most every {FAIL_LOG_EVERY // 60} minutes)"
+            if denied:
+                line += f" — macOS refused access; most likely {self.program} needs Full Disk Access ({FDA_WHERE})"
+            log.error(line)
+        if denied and self.failures >= DENIED_NOTIFY_AFTER and self.notified_at is None:
+            if _notify_needs_access(self.program, self.failures):
+                self.notified_at = now
+                write = True
+        if write:
+            self._write(state, now)
+
+    def succeeded(self):
+        if self.failures == 0 and self.state in (None, "ok"):
+            return
+        if self.failures:
+            log.info(f"Messages database readable again after {self.failures} failed reads")
+        self.failures = 0
+        self.logged_at = None
+        self.notified_at = None
+        if not self.fresh_start:
+            self._write("ok", self.clock())
+
+    def wants_fresh_start(self):
+        """True once reading works after a refusal (or an unread start position): the caller
+        starts from the newest message instead of answering what came in meanwhile."""
+        return self.fresh_start and self.failures == 0
+
+    def started_fresh(self):
+        self.fresh_start = False
+        self.denied_since = None
+        self.notified_at = None
+        self._write("ok", self.clock())
+
+    def next_sleep(self, poll_interval):
+        if self.failures >= FAIL_SLOW_AFTER:
+            return max(poll_interval, FAIL_SLOW_POLL)
+        return poll_interval
+
+    def stopped(self):
+        self._write("stopped", self.clock())
+
+    def _write(self, state, now):
+        if state != self.state or self.since is None:
+            self.state, self.since = state, now
+        data = {"state": state, "since": self.since, "checked": now, "failures": self.failures,
+                "program": self.program, "denied_since": self.denied_since, "notified_at": self.notified_at}
+        try:
+            import codec_jsonstore
+            codec_jsonstore.atomic_write_json(HEALTH_FILE, data)
+        except Exception as e:
+            log.debug(f"Health state write failed: {e}")
+
+
+_db_health = DbReadHealth()
+
+
+def _newest_rowid():
+    """The newest message's ROWID (0 for an empty database). Raises when it cannot be read."""
+    conn = sqlite3.connect(f"file:{MESSAGES_DB}?mode=ro", uri=True)
+    try:
+        row = conn.execute("SELECT MAX(ROWID) FROM message").fetchone()
+    finally:
+        conn.close()
+    return row[0] if row and row[0] else 0
+
+
 def get_new_messages(last_rowid):
     """Poll chat.db for messages newer than last_rowid.
 
@@ -224,8 +399,9 @@ def get_new_messages(last_rowid):
             messages.append(msg)
 
         conn.close()
+        _db_health.succeeded()
     except Exception as e:
-        log.error(f"DB read error: {e}")
+        _db_health.failed(e)  # P-058: logged once, then at most every 5 minutes
 
     return messages
 
@@ -983,21 +1159,17 @@ def main():
         log.info("iMessage integration disabled in config. Set imessage.enabled=true to activate.")
         return
 
+    _db_health.restore()
     state = load_state()
     last_rowid = state.get("last_rowid", 0)
 
     # If first run, start from current max ROWID (don't process old messages)
     if last_rowid == 0:
         try:
-            conn = sqlite3.connect(f"file:{MESSAGES_DB}?mode=ro", uri=True)
-            c = conn.cursor()
-            c.execute("SELECT MAX(ROWID) FROM message")
-            row = c.fetchone()
-            last_rowid = row[0] if row and row[0] else 0
-            conn.close()
+            last_rowid = _newest_rowid()
             log.info(f"First run — starting from ROWID {last_rowid}")
         except Exception as e:
-            log.warning(f"Could not get max ROWID: {e}")
+            _db_health.failed(e, start_unknown=True)  # P-058: start from the newest once readable
 
     poll_interval = im_cfg.get("poll_interval", 3)
 
@@ -1023,6 +1195,7 @@ def main():
             save_state(state)
         except Exception as e:
             log.warning(f"shutdown state save failed: {e}")
+        _db_health.stopped()  # P-058: the state file says the bridge stopped
         audit("service_stop")
         log.info("codec-imessage graceful shutdown")
     import codec_lifecycle
@@ -1032,6 +1205,22 @@ def main():
         while True:
             try:
                 new_msgs = get_new_messages(last_rowid)
+                if _db_health.wants_fresh_start():
+                    # P-058: readable again after a refusal (or the start position was never read).
+                    # Start from the newest message, as a first run does: what came in while the
+                    # bridge could not read is not answered now.
+                    try:
+                        last_rowid = _newest_rowid()
+                    except Exception as e:
+                        _db_health.failed(e)
+                    else:
+                        _live["rowid"] = last_rowid
+                        state["last_rowid"] = last_rowid
+                        save_state(state)
+                        _db_health.started_fresh()
+                        log.info(f"Starting from ROWID {last_rowid}; messages from while it could not read "
+                                 "are not answered")
+                    new_msgs = []
 
                 for msg in new_msgs:
                     # Update ROWID tracker regardless of processing
@@ -1057,7 +1246,7 @@ def main():
             except Exception as e:
                 log.error(f"Poll cycle error: {e}")
 
-            time.sleep(poll_interval)
+            time.sleep(_db_health.next_sleep(poll_interval))  # P-058: 5 minutes after 10 failed reads
 
     except KeyboardInterrupt:
         log.info("Shutting down...")

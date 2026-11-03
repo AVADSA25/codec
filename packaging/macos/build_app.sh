@@ -139,6 +139,26 @@ find "$REPO" -maxdepth 1 -name '*.py' -exec cp {} "$CONTENTS/Resources/app/" \;
 for d in routes skills static; do
     [ -d "$REPO/$d" ] && cp -R "$REPO/$d" "$CONTENTS/Resources/app/$d"
 done
+# The Cookbook package (P-012): codec_compare and the six skills/cookbook_*.py import it.
+rm -rf "$CONTENTS/Resources/app/codec_cookbook"
+cp -R "$REPO/codec_cookbook" "$CONTENTS/Resources/app/codec_cookbook"
+rm -rf "$CONTENTS/Resources/app/codec_cookbook/__pycache__"
+# The Touch ID helper (P-012): routes/_shared.AUTH_BINARY is Resources/app/codec_auth/codec_auth.
+# Compiled here from main.swift for the app's macOS floor, like the launcher. The checked-in
+# codec_auth/codec_auth is never shipped: it is built for the developer's own macOS and nothing ties it
+# to the source. sign_app.sh signs it with the other Mach-O files before the outer seal.
+AUTH_SRC="$REPO/codec_auth/main.swift"
+AUTH_OUT="$CONTENTS/Resources/app/codec_auth/codec_auth"
+[ -f "$AUTH_SRC" ] || { echo "build_app.sh: Touch ID helper source missing: $AUTH_SRC" >&2; exit 1; }
+echo "==> compiling the Touch ID helper"
+rm -rf "$CONTENTS/Resources/app/codec_auth"
+mkdir -p "$CONTENTS/Resources/app/codec_auth"
+swiftc -O -target "${LAUNCHER_ARCH}-apple-macos${MIN_MACOS}" -o "$AUTH_OUT" "$AUTH_SRC" \
+    -framework LocalAuthentication -framework Foundation
+file "$AUTH_OUT" | grep -q "Mach-O" || {
+    echo "build_app.sh: the Touch ID helper is not Mach-O" >&2; exit 1; }
+chmod 755 "$AUTH_OUT"
+echo "    ✓ Touch ID helper (macOS ${MIN_MACOS}+)"
 # The model-server launcher. services.json runs `bash scripts/start_model_server.sh`
 # from Resources/app; without this copy the qwen3.6 service has nothing to run.
 mkdir -p "$CONTENTS/Resources/app/scripts"
@@ -179,9 +199,12 @@ if command -v node >/dev/null 2>&1; then
     # generator substitutes the bundle's own Resources/app via --workdir.
     # Dev-only services never ship to a buyer: codec-watchdog is a developer
     # RAM guard for the PM2 fleet (a buyer Mac has no PM2 to exempt its PIDs).
+    # codec-mcp is the stdio MCP server: the MCP client that uses it starts it. As a
+    # LaunchAgent it reads end of file at once, exits, and launchd restarts it for
+    # ever (P-012). codec-mcp-http, the claude.ai connector, still ships.
     node -e '
       const [eco, repo] = process.argv.slice(1);
-      const DEV_ONLY = new Set(["codec-watchdog"]);
+      const DEV_ONLY = new Set(["codec-watchdog", "codec-mcp"]);
       const apps = require(eco).apps.filter(a => !DEV_ONLY.has(a.name)).map(a => {
         if (a.cwd === repo) delete a.cwd;   // -> --workdir applies
         return a;
