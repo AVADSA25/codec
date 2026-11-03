@@ -319,7 +319,8 @@ def main(argv=None) -> int:
     except (OSError, ValueError):
         cfg = {}
     base_url = cfg.get("llm_base_url") or "http://localhost:8083/v1"
-    model = cfg.get("llm_model") or "mlx-community/Qwen3.6-35B-A3B-4bit"
+    import codec_models
+    model = codec_models.resolve("chat", cfg)
     try:
         require_local(base_url)
         require_idle()

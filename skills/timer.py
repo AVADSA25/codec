@@ -72,10 +72,11 @@ def run(task, app="", ctx=""):
                 _c = json.load(open(os.path.expanduser("~/.codec/config.json")))
             except Exception:
                 _c = {}
+            import codec_models
             import codec_tts
             spoken = codec_tts.speak(_c.get("tts_url", "http://localhost:8085/v1/audio/speech"),
                 f"Your {display} timer is done.", "speak",
-                {"model": _c.get("tts_model", "mlx-community/Kokoro-82M-bf16"),
+                {"model": codec_models.resolve("tts", _c),
                  "voice": _c.get("tts_voice", "am_adam"),
                  "speed": float(_c.get("tts_speed", 1.0))},
                 cfg=_c, timeout=20)

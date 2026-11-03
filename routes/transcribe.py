@@ -17,6 +17,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from starlette.datastructures import UploadFile
 
+import codec_models
 from codec_voice_filters import discard_reason
 
 router = APIRouter()
@@ -25,7 +26,7 @@ log = logging.getLogger("codec_dashboard")
 MAX_BYTES = 8 * 1024 * 1024          # about 8 minutes of Opus; the recorder stops at 2
 _BODY_LIMIT = MAX_BYTES + 64 * 1024  # room for the multipart framing
 WHISPER_TIMEOUT = 120.0
-DEFAULT_MODEL = "mlx-community/whisper-large-v3-turbo"
+DEFAULT_MODEL = codec_models.default_for("stt")
 _AUDIO_TYPES = ("audio/", "video/webm", "video/mp4")  # Chrome can label WebM audio as video/webm
 _SUFFIX = (("mp4", ".m4a"), ("aac", ".m4a"), ("ogg", ".ogg"), ("wav", ".wav"), ("mpeg", ".mp3"), ("webm", ".webm"))
 _TRANSPORT = None  # tests swap in an httpx.MockTransport

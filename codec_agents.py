@@ -22,6 +22,7 @@ from codec_audit import audit as _audit_core
 from codec_hooks import HookVeto, run_with_hooks
 from codec_llm_proxy import llm_queue, Priority
 import codec_fence
+import codec_models
 
 log = logging.getLogger("codec_agents")
 
@@ -75,10 +76,7 @@ _MODEL_OVERRIDE: contextvars.ContextVar = contextvars.ContextVar(
 # Deep Research is restricted to strong general models. 35B is the default;
 # 27B is user-selectable. Everything else (voice fine-tunes, 4B/8B) is rejected
 # — research on a small/voice model is exactly what produced the bad report.
-DEEP_RESEARCH_MODELS = {
-    "35b": "mlx-community/Qwen3.6-35B-A3B-4bit",
-    "27b": "mlx-community/Qwen3.8-27B-4bit",
-}
+DEEP_RESEARCH_MODELS = dict(codec_models.RESEARCH_MODELS)   # ids live in codec_models (P-057)
 DEEP_RESEARCH_DEFAULT = DEEP_RESEARCH_MODELS["35b"]
 
 
@@ -97,7 +95,7 @@ def resolve_deep_research_model(requested) -> str:
 
 
 def _qwen_model():
-    return _MODEL_OVERRIDE.get() or _cfg().get("llm_model", "mlx-community/Qwen3.6-35B-A3B-4bit")
+    return _MODEL_OVERRIDE.get() or codec_models.resolve("agent", _cfg())
 
 # PR-2B-2 (D-15): Keychain-aware getter (cfg→Keychain migration + env fallback).
 def _serper_api_key() -> str:

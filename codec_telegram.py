@@ -26,6 +26,7 @@ import requests
 from datetime import datetime
 
 import codec_health
+import codec_models
 
 # ── Logging ──────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -97,11 +98,11 @@ def get_llm_config(cfg):
     from codec_config import get_llm_api_key as _kc_get_llm
     return {
         "base_url": cfg.get("llm_base_url", "http://localhost:8083/v1"),
-        "model": cfg.get("llm_model", "mlx-community/Qwen3.6-35B-A3B-4bit"),
+        "model": codec_models.resolve("chat", cfg),
         "api_key": _kc_get_llm(),
         "kwargs": cfg.get("llm_kwargs", {}),
         "vision_url": cfg.get("vision_base_url", "http://localhost:8083/v1"),
-        "vision_model": cfg.get("vision_model", "mlx-community/Qwen2.5-VL-7B-Instruct-4bit"),
+        "vision_model": codec_models.resolve("vision", cfg),
         "whisper_url": cfg.get("stt_url", "http://localhost:8084/v1/audio/transcriptions"),
     }
 
@@ -352,7 +353,7 @@ def _generate_voice_briefing(text, chat_id):
     try:
         cfg = load_config()
         tts_url = cfg.get("tts_url", "http://localhost:8085/v1/audio/speech")
-        tts_model = cfg.get("tts_model", "mlx-community/Kokoro-82M-bf16")
+        tts_model = codec_models.resolve("tts", cfg)
         tts_voice = cfg.get("briefing_voice", "af_heart")  # Female voice for briefings
 
         # Strip markdown/formatting for cleaner speech

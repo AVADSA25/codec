@@ -321,6 +321,7 @@ def _run_textassist(tmp_path: Path, mode: str) -> tuple[list, str]:
         "codec_paste.py": f"import json\ndef paste_clipboard(**k):\n    open({str(rec)!r}, 'a').write(json.dumps('paste') + '\\n')\n",
         "codec_llm.py": "def call(messages, **k):\n    return 'RESULT'\n",
         "codec_cloud_models.py": "def local_only(base, model, cfg):\n    return base, model\n",
+        "codec_models.py": "def resolve(role, cfg=None):\n    return 'org/model'\n",
     }
     for name, body in stubs.items():
         (work / name).write_text(body)

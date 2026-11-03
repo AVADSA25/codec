@@ -13,8 +13,10 @@ import tempfile
 import os
 import uvicorn
 
+import codec_models  # the default id lives there (P-057); this file ships next to it
+
 app = FastAPI()
-MODEL = os.environ.get("WHISPER_MODEL", "mlx-community/whisper-large-v3-turbo")
+MODEL = os.environ.get("WHISPER_MODEL", codec_models.default_for("stt"))
 SAMPLE_RATE = 16000
 
 

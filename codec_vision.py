@@ -20,14 +20,16 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional, Tuple
 
+import codec_models
+
 log = logging.getLogger("codec.vision")
 
 _GEMINI_MODEL = "gemini-2.0-flash"
 
-# Models CODEC ships or offers that read text only (packaging/macos/models.json,
-# kind "llm" without image input). A screenshot sent to one is not seen, so the
-# reply would be a guess: vision answers "" (the callers' failure path) instead.
-_TEXT_ONLY_MODELS = frozenset({"mlx-community/Qwen2.5-7B-Instruct-4bit"})
+# Models CODEC ships or offers that read text only (codec_models.TEXT_ONLY_MODELS).
+# A screenshot sent to one is not seen, so the reply would be a guess: vision
+# answers "" (the callers' failure path) instead.
+_TEXT_ONLY_MODELS = codec_models.TEXT_ONLY_MODELS
 
 
 def _sees_images(model: str) -> bool:
