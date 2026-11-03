@@ -194,7 +194,7 @@ def test_a_moved_app_gives_one_notice_no_shell_text_and_exit_0(qa, tmp_path):
 
 
 @pytest.mark.skipif(BASH is None, reason="needs bash")
-def test_the_script_copies_the_selection_and_runs_textassist_from_the_app_folder(qa, tmp_path):
+def test_the_script_copies_the_selection_and_runs_the_assistant_from_the_app_folder(qa, tmp_path):
     tools, calls = _fake_tools(tmp_path)
     app_dir = tmp_path / "My App" / "app"
     app_dir.mkdir(parents=True)
