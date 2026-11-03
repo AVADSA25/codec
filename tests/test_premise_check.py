@@ -117,11 +117,16 @@ def test_named_third_party_reads_naturally():
 
 
 def test_wired_into_both_chat_paths():
-    """Guard the wiring against a refactor silently dropping it."""
+    """Guard the wiring against a refactor silently dropping it. P-099: both chat
+    paths call one helper (behaviour: tests/test_chat_reply_parity.py)."""
     src = (_REPO / "routes" / "chat.py").read_text()
-    assert src.count("codec_premise_check") >= 4, "must be wired in stream AND non-stream"
+    helper = src[src.index("def _post_reply_checks("):]
+    helper = helper[:helper.index("\n@router")]
+    assert "codec_premise_check.find_misattributions" in helper, "the helper must run the premise check"
     gen = src[src.index("def _stream_gen("):]
     gen = gen[:gen.index("from starlette.responses import StreamingResponse")]
-    assert "codec_premise_check" in gen, "streaming path must run the premise check"
-    assert gen.index("codec_premise_check") < gen.index('"data: [DONE]'), \
+    assert "_post_reply_checks(" in gen, "streaming path must run the premise check"
+    assert gen.index("_post_reply_checks(") < gen.index('"data: [DONE]'), \
         "the check must run before [DONE]"
+    rest = src[src.index("from starlette.responses import StreamingResponse as _SR"):]
+    assert "_post_reply_checks," in rest, "the non-stream path must run it too"
