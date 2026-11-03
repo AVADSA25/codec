@@ -47,7 +47,7 @@ def check_pending_tasks():
         if rows:
             log.info(f"Found {len(rows)} pending items in memory")
             for content, ts in rows:
-                log.info(f"  [{ts[:16]}] {content[:100]}")
+                log.info(f"  [{ts[:16]}] {len(content or '')} characters")  # P-032: lengths, never the text
         return rows
     except Exception as e:
         log.error(f"Task check failed: {e}")
@@ -548,11 +548,11 @@ def execute_pending_tasks():
 
             # ── Safety gate: check extracted task against dangerous patterns ──
             if _is_dangerous(task):
-                log.warning(f"  🛑 BLOCKED dangerous auto-task: {task[:80]}")
+                log.warning(f"  🛑 BLOCKED dangerous auto-task ({len(task)} characters)")
                 executed.append(row_id)  # mark as handled so we don't retry
                 continue
 
-            log.info(f"  🚀 Auto-executing: {task[:80]}")
+            log.info(f"  🚀 Auto-executing a task ({len(task)} characters)")
             try:
                 r = requests.post(
                     "http://localhost:8090/api/command",
@@ -662,7 +662,7 @@ def check_alerts():
                     if first_line:
                         preview = f" — {first_line.group(1)[:60]}"
                     msg = f"{name}: {count} unread email{'s' if count != 1 else ''}{preview}"
-                    log.info(f"  {msg}")
+                    log.info(f"  {name}: {count} unread email{'s' if count != 1 else ''}")  # P-032: no preview
                     triggered.append(msg)
                 elif count == 0:
                     log.info(f"  {name}: Inbox clear")
