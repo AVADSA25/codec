@@ -483,11 +483,14 @@ class ImageQueue:
 
     def _finish(self, job: Dict[str, Any], state: str, error: str = "") -> None:
         now = time.time()
-        job.update(state=state, stage=state, error=error, finished=now)
-        if job.get("started"):
-            job["seconds"] = round(now - job["started"], 1)
-        _save(job)
-        _audit(job)
+        final = {**job, "state": state, "stage": state, "error": error, "finished": now}
+        if final.get("started"):
+            final["seconds"] = round(now - final["started"], 1)
+        # job.json and the audit line come first: a reader that sees the final state must also
+        # find them, and the job's audit must not arrive after the next job has started.
+        _save(final)
+        _audit(final)
+        job.update(final)
 
 
 def _stop(proc: subprocess.Popen) -> None:
