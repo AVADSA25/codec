@@ -98,6 +98,14 @@ SKIP_SKILLS = {
     # 10 min. The dedicated tests/test_ask_user.py + tests/test_voice_ask_
     # user.py exercise this skill with proper waiter mocks.
     "ask_user", "stuck",
+    # P-009: posts a manual shift report to the owner's notifications and marks
+    # today as fired, which suppressed his real idle report.
+    "shift_report",
+    # P-009: open the owner's memory.db and call the live dashboard with the
+    # internal token (the test's token is a fake one, so the dashboard refuses).
+    # daily_kickoff reaches the dashboard through notification_reader; it has
+    # its own tests in tests/test_daybreak.py.
+    "health_check", "notification_reader", "daily_kickoff",
 }
 
 
