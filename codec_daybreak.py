@@ -61,8 +61,10 @@ def _slug(text: str) -> str:
     return s or "thread"
 
 
-def save_thread(kind: str, text: str, user_id: str = "default") -> int:
-    """Track an open thread. Same kind+text re-save supersedes the old row."""
+def save_thread(kind: str, text: str, user_id: str = "default",
+                source: str = "daybreak") -> int:
+    """Track an open thread. Same kind+text re-save supersedes the old row.
+    `source` is the write's origin (P-021: thread_note passes codec_fence's value)."""
     if kind not in THREAD_KINDS:
         kind = "working_on"
     text = (text or "").strip()[:300]
@@ -70,7 +72,7 @@ def save_thread(kind: str, text: str, user_id: str = "default") -> int:
     key = f"{THREAD_KEY_PREFIX}{kind}:{_slug(text)}"
     superseded = bool(cmu.query_valid_facts(key=key, user_id=user_id))
     new_id = cmu.store_fact(key, text, fact_type="thread",
-                            user_id=user_id, source="daybreak", supersede=True)
+                            user_id=user_id, source=source, supersede=True)
     _emit("daybreak_thread_saved",
           extra={"kind": kind, "key": key, "superseded": superseded,
                  "text_len": len(text)})

@@ -149,8 +149,8 @@ def test_fact_extract_now_keeps_a_structured_fact(monkeypatch):
     assert fe._save("Juan is launching NovaPay in Q3") is True
     assert fe._save("Juan is launching NovaPay in Q3") is True
     key = "learned:" + hashlib.sha1(b"Juan is launching NovaPay in Q3").hexdigest()[:10]
-    assert stored == [(key, "Juan is launching NovaPay in Q3", {"fact_type": "learned", "source": "fact_extract"})], \
-        "one structured fact for the same text"
+    assert stored == [(key, "Juan is launching NovaPay in Q3", {"fact_type": "learned", "source": "derived"})], \
+        "one structured fact for the same text (P-021: origin 'derived')"
     assert [s["role"] for s in saved] == ["fact", "fact"], "the conversation row is still written, as before"
     assert all("user_id" not in s for s in saved), "the default user id, no personal name"
 

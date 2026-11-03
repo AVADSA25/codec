@@ -67,7 +67,9 @@ def run(task, app="", ctx=""):
             return ("Usage: 'note a thread <what you're working on / waiting on>', "
                     "'open threads', or 'close thread <match>'.")
         kind = _infer_kind(text)
-        db.save_thread(kind, text)
+        import codec_fence  # P-021: origin of the write (owner / agent / untrusted)
+        db.save_thread(kind, text, source=codec_fence.memory_origin(
+            "thread_note", text, codec_fence.OWNER, app))
         return f"Tracked ({kind.replace('_', ' ')}): {text[:90]}"
     except Exception as e:
         return f"Thread note error: {e}"

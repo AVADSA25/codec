@@ -267,7 +267,10 @@ def _load_skill_tools_into(mcp):
                         mod = registry.load(rkey)
                         if mod is None or not hasattr(mod, "run"):
                             raise _SkillLoadError("load_failed")
-                        return mod.run(t, c)
+                        # P-021: memory writes made during an MCP call are untrusted.
+                        import codec_fence
+                        with codec_fence.caller("mcp"):
+                            return mod.run(t, c)
                     # C4 fix: run_with_timeout actually bounds wall-clock time.
                     # The old `with ThreadPoolExecutor() as ex` exit blocked on
                     # shutdown(wait=True), so a hung skill defeated the timeout.
