@@ -278,8 +278,11 @@ def run(data: dict, llm: dict, log: ServerLog, verbose: bool = True) -> dict:
 
 def _git_sha() -> str:
     try:
-        return subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True,
-                              timeout=10).stdout.strip()
+        sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True,
+                             timeout=10).stdout.strip()
+        dirty = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=REPO,
+                               capture_output=True, text=True, timeout=10).stdout.strip()
+        return sha + ("+uncommitted changes" if dirty and sha else "")
     except (OSError, subprocess.SubprocessError):
         return ""
 
@@ -328,12 +331,13 @@ def main(argv=None) -> int:
         return 2
     llm = {"base_url": base_url, "model": model, "api_key": ""}
     started = datetime.datetime.now().isoformat(timespec="seconds")
+    sha = _git_sha()        # the code this run loads, taken before it starts
     try:
         result = run(load_fixture(), llm, ServerLog(), verbose=not args.quiet)
     except Busy as e:
         print(f"STOPPED: {e}")
         return 2
-    result.update({"schema": SCHEMA, "model": model, "base_url": base_url, "git_sha": _git_sha(),
+    result.update({"schema": SCHEMA, "model": model, "base_url": base_url, "git_sha": sha,
                    "started": started, "finished": datetime.datetime.now().isoformat(timespec="seconds"),
                    "budget": BUDGET, "recall": recall_verdict(result["questions"]),
                    "prefill": prefill_verdict(result["turns"])})
