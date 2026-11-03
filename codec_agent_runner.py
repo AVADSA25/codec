@@ -631,6 +631,7 @@ def _qwen_next_action(plan_dict: Dict[str, Any], checkpoint: Dict[str, Any],
     if d is None:
         # One retry with a shorter, sharper prompt.
         log.warning("_qwen_next_action: parse failed, retrying. raw=%r", raw[:120])
+        _raise_if_stopped(str(plan_dict.get("agent_id") or ""))  # P-010: the retry is a new model call
         recent = history[-max_history:] if history else []
         budget = max(int(checkpoint.get("step_budget", DEFAULT_STEP_BUDGET_PER_CHECKPOINT)),
                      DEFAULT_STEP_BUDGET_PER_CHECKPOINT)
@@ -767,6 +768,38 @@ class NoProgressDetected(Exception):
     "return checkpoint_done" self-check never caught it. This is a
     deterministic backstop that doesn't depend on the model noticing its own
     loop."""
+
+
+class StopRequested(Exception):
+    """P-010: the owner paused or aborted the agent while it ran (its manifest now
+    reads `paused` or `aborted`). Raised at a step boundary (before a model call,
+    after one, and after a destructive confirmation) so the step that is running
+    finishes, nothing new starts, and _run_agent returns without advancing the
+    checkpoint cursor or announcing completion. See docs/AGENT-STOP-DESIGN.md."""
+
+    def __init__(self, status: str):
+        self.status = status
+        super().__init__(f"stop requested: manifest status is {status!r}")
+
+
+_STOP_STATUSES = frozenset({"paused", "aborted"})
+
+
+def _raise_if_stopped(agent_id: str) -> None:
+    """P-010: re-read the manifest and raise StopRequested when the owner paused or
+    aborted this agent (the routes only write the status; this is where the runner
+    honours it). An empty id or an unreadable manifest does not stop the run, which
+    is the behaviour from before this check."""
+    if not agent_id:
+        return
+    try:
+        from codec_agent_plan import load_manifest
+        status = load_manifest(agent_id).get("status")
+    except Exception as e:
+        log.warning("[%s] stop check could not read the manifest: %s", agent_id, e)
+        return
+    if status in _STOP_STATUSES:
+        raise StopRequested(status)
 
 
 _REPEAT_THRESHOLD = 3   # this many near-identical results for one call =>
@@ -950,6 +983,7 @@ def _execute_checkpoint(plan_dict: Dict[str, Any],
         DestructiveOpRejected — abort the agent
         StepBudgetExhausted — escalate to status=blocked_on_budget
         QwenUnavailableError — daemon retries
+        StopRequested — the owner paused or aborted (P-010); stop, keep progress
     """
     if history is None:
         history = []
@@ -999,11 +1033,16 @@ def _execute_checkpoint(plan_dict: Dict[str, Any],
 
     def _next_action():
         nonlocal _qwen_calls
+        # P-010: no new model call once the owner paused or aborted; and a stop that
+        # arrived while the model was answering wins, so its answer is not acted on.
+        _raise_if_stopped(agent_id)
         _qwen_calls += 1
         if _qwen_calls > budget:
             raise StepBudgetExhausted(
                 f"qwen_call_budget {budget} exhausted in checkpoint {cp_id}")
-        return _qwen_next_action(plan_dict, checkpoint, history)
+        action = _qwen_next_action(plan_dict, checkpoint, history)
+        _raise_if_stopped(agent_id)
+        return action
 
     for step in range(budget):
         action = _next_action()
@@ -1089,6 +1128,9 @@ def _execute_checkpoint(plan_dict: Dict[str, Any],
                 _persist_checkpoint_progress(agent_id, cp_id, history, executed_destructive)
                 continue
             consent = _enforce_destructive_gate(action)
+            # P-010: a pause or abort that arrived while the confirmation was open wins
+            # over the answer: nothing runs and no marker is written, so a resume asks again.
+            _raise_if_stopped(agent_id)
             if consent.timed_out:
                 # Q7: timeout overnight — caller transitions to blocked_on_destructive
                 raise StepBudgetExhausted(
@@ -1155,6 +1197,9 @@ def _execute_checkpoint(plan_dict: Dict[str, Any],
             "is_destructive": action.is_destructive,
         })
         _persist_checkpoint_progress(agent_id, cp_id, history, executed_destructive)
+        # P-010: a stop that arrived while the skill ran is honoured as soon as it ends,
+        # before the loop-breaker or the end-of-budget pause below can take its place.
+        _raise_if_stopped(agent_id)
 
         # Loop-breaker with recovery: this exact (skill, result) pair has now
         # come back _REPEAT_THRESHOLD times. Rather than pause immediately, first
@@ -1531,6 +1576,31 @@ def _run_agent(agent_id: str, cid: Optional[str] = None) -> None:
                                  correlation_id=cid)
                 else:
                     log.info("[%s] no-progress pause not announced — status superseded externally", agent_id)
+                return
+            except StopRequested as stop:
+                # P-010: the owner paused or aborted while this checkpoint ran. What
+                # was running finished; nothing new started. Save the progress (a
+                # resume continues from here), skip the cursor advance below and never
+                # announce completion. The route already wrote the status, so there is
+                # no transition to make: the runner posts the stop message itself.
+                _persist_checkpoint_progress(agent_id, cp.id, history, cp_executed)
+                if stop.status == "aborted":
+                    _audit(AGENT_ABORTED, message="stopped by the owner",
+                           correlation_id=cid, outcome="warning", level="warning",
+                           extra={"agent_id": agent_id, "checkpoint_id": cp.id,
+                                  "reason": "user_aborted"})
+                    post_message(agent_id=agent_id, type="agent_aborted",
+                                 title="Interrupted",
+                                 body=(f"Stopped by you during checkpoint {idx + 1} of "
+                                       f"{len(plan.checkpoints)} ({cp.title}). What was "
+                                       f"already running finished; nothing new was started."),
+                                 actions=[],
+                                 correlation_id=cid)
+                else:
+                    _audit(AGENT_PAUSED, message="paused by the owner",
+                           correlation_id=cid, outcome="warning", level="warning",
+                           extra={"agent_id": agent_id, "checkpoint_id": cp.id,
+                                  "reason": "user_paused"})
                 return
 
             # Checkpoint complete: atomic state save (resume guarantee).

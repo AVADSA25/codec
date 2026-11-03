@@ -19,6 +19,7 @@ Where it checks (all inside `_execute_checkpoint`, plus one line in `_qwen_next_
 | Before every model call (`_next_action`, which also covers the permission-correction retry) | no new model call after a stop |
 | After every model call returns | a stop that arrived during a ~20 s model call wins; its answer is not acted on |
 | Before the JSON-format retry inside `_qwen_next_action` | that retry is a second model call |
+| After every skill call, once its result is saved | the stop wins over the loop-breaker (`NoProgressDetected`) and the end-of-budget pause, whose transitions would otherwise fail quietly after an abort and post nothing |
 | After a destructive confirmation returns, before the at-most-once marker is written | the confirmation can stay open for 10 minutes; a stop that arrived meanwhile wins, nothing runs, and no marker is written, so a resume asks again |
 
 The skill call that is running when the stop arrives finishes; the runner never kills a skill mid-way (it could leave work half done). Nothing new starts after it.
@@ -40,6 +41,7 @@ A quick Pause then Resume before the next boundary is seen as `running`, so the 
 - Audit: no new event and no envelope change. `agent_aborted` and `agent_paused` gain the reason values `user_aborted` and `user_paused` (the same words the routes already store in `status_reason`).
 - The at-most-once ledger (`executed_destructive`): unchanged. A destructive step that ran before a pause is skipped on resume, as after a crash.
 - Routes, pages, state.json keys: unchanged.
+- Abort or Pause of an agent that is not running (paused, blocked, waiting for approval) has no thread to stop; the route's status change is the whole effect, as before, and no Interrupted message is posted.
 
 An unreadable manifest does not stop a run (same as today); only a manifest that reads `paused` or `aborted` does.
 
@@ -53,7 +55,7 @@ An unreadable manifest does not stop a run (same as today); only a manifest that
 New `tests/test_agent_stop.py`. Every path is in `tmp_path`: `codec_agent_plan._CODEC_DIR`, `_AGENTS_DIR`, `_GLOBAL_GRANTS_PATH`, `codec_agent_messaging._CODEC_DIR`, `_AGENTS_DIR`, `_NOTIFICATIONS_PATH` and the audit log; `codec_push.notify` is replaced by a recorder, so the live inbox, `~/.codec/agents` and the phone are never touched. A fake slow skill and a fake model, both held on events, stand in for the real ones; the routes are called through FastAPI's TestClient.
 
 1. Abort while step 1's skill runs: after it ends, no model or skill call starts; `current_checkpoint` stays 0; the manifest reads `aborted`; exactly one `agent_aborted` message, titled `Interrupted`; no checkpoint or `agent_done` message; one `agent_stopped` push.
-2. Abort while the model call runs: its answer is not acted on (no skill call).
+2. Abort while the model call runs: its answer is not acted on (no skill call). Abort while a skill runs whose result would trip the loop-breaker: the stop still wins and posts Interrupted.
 3. Pause halts at the next boundary and the thread exits; a daemon tick while paused starts nothing; Resume plus a daemon tick re-enters through the crash-resume branch (`agent_resumed`, recovery true) and continues from the saved step (step 1 is not replayed).
 4. A destructive step that ran before a pause is not run again after resume (ledger); a pause that lands while its confirmation is open runs nothing and writes no marker, so the resume asks again and runs it once.
 5. The JSON-format retry is not sent after a stop.
