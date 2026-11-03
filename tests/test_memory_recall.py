@@ -48,9 +48,13 @@ def _plain_fts(mem, query, limit=10):
 
 
 def _drop_fts(mem, *tables):
-    with sqlite3.connect(mem.db_path) as c:
+    c = sqlite3.connect(mem.db_path)
+    try:
         for table in tables or ("conversations_fts",):
             c.execute(f"DROP TABLE {table}")
+        c.commit()
+    finally:
+        c.close()
 
 
 def _ids(rows):
