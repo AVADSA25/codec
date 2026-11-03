@@ -12,6 +12,7 @@ This module owns the full chat pipeline:
   - `_try_explicit_skill`    — the skill picked with '@' (the `skill` body field, P2.3)
   - `_chat_vision_response`  — image → vision-model branch (A-11 pending)
   - `_build_chat_system_prompt` — override + step-budget + observer suffixes
+  - `_post_reply_checks`     — Project suggestion + claim + premise checks, both paths (P-099)
   - `chat_completion`        — the POST /api/chat endpoint itself
 
 Safety-critical surfaces preserved verbatim from the in-dashboard original:
@@ -189,6 +190,24 @@ def _degenerate_tail(text: str) -> bool:
     if len(probe.strip()) < 12:
         return False
     return text[-2400:].count(probe) >= 5
+
+
+# The note both chat paths append when they cut a repetition loop (P-099).
+_LOOP_NOTE = ("\n\n*I caught myself repeating the same text in a loop and stopped — that was "
+              "a local-model glitch, not a real answer. Please ask again (rephrasing slightly "
+              "usually fixes it).*")
+
+
+def _cut_repetition(text: str, step: int = 160) -> tuple:
+    """The stream:false twin of the stream's repetition cut (P-099,
+    docs/CHAT-REPLY-PARITY-DESIGN.md). The stream checks `_degenerate_tail` every 40
+    deltas; this checks a whole reply every `step` characters (about 40 deltas) and
+    returns (the text up to the first point the tail repeats, True), or (text, False)."""
+    for end in range(900, len(text) + step, step):
+        end = min(end, len(text))
+        if _degenerate_tail(text[max(0, end - 2400):end]):
+            return text[:end], True
+    return text, False
 
 
 # P2.11 (docs/P2.11-DESIGN.md): a temporary chat is not saved to history (the page
@@ -1263,6 +1282,64 @@ def _maybe_escalate_suggestion(user_text: str, session_id: str):
         return None
 
 
+def _post_reply_checks(reply: str, actions: set, last_user_text: str, messages: list,
+                       session_id: str, stream: bool) -> tuple:
+    """The checks every finished chat reply goes through, stream:true and stream:false
+    alike (P-099, docs/CHAT-REPLY-PARITY-DESIGN.md): the Project suggestion (Step 10
+    Q11), the claim-to-artifact check and the premise check. A new rule for finished
+    replies goes here, not in one path.
+
+    `reply` is the text the user sees, `actions` the skills that ran this turn.
+    Returns (suggestion dict or None, [notes to append, in order]). Never raises: a
+    check that fails is logged and skipped. Blocking (the suggestion may ask the local
+    model), so an async caller runs it in a worker thread."""
+    where = " (stream)" if stream else ""
+    suggestion = _maybe_escalate_suggestion(last_user_text, session_id)
+    notes: list = []
+    # Claim-to-artifact check: CODEC may not claim what it did not do. A reply
+    # saying "I've ingested your rules" or "saved to your Desktop" is false unless
+    # something in this turn actually did it. The correction is appended rather
+    # than editing the model's words: the user sees both the claim and that it
+    # didn't happen.
+    try:
+        import codec_claim_check
+        unbacked = codec_claim_check.find_unbacked_claims(
+            reply, actions_taken=actions, user_request=last_user_text)
+        if unbacked:
+            notes.append(codec_claim_check.correction_note(unbacked))
+            extra = {"kinds": [c.kind for c in unbacked], "needs": [c.needs for c in unbacked]}
+            if stream:
+                extra["transport"] = "stream"
+            log_event(
+                "unbacked_claim_corrected", source="codec-dashboard",
+                message=f"{len(unbacked)} unbacked claim(s) corrected{where}",
+                level="warning", outcome="warning", extra=extra,
+            )
+    except Exception as e:
+        log.warning(f"[Chat] claim check skipped{where}: {e}")
+    # Premise check: an attribution the USER supplied that a source they pasted
+    # contradicts. The other direction from the claim check; scope is
+    # deliberately tiny, see codec_premise_check.
+    try:
+        import codec_premise_check
+        flags = codec_premise_check.find_misattributions(
+            [m.get("content", "") for m in messages
+             if m.get("role") == "user" and isinstance(m.get("content"), str)])
+        if flags:
+            notes.append(codec_premise_check.premise_note(flags))
+            extra = {"credited_to": flags[0].credited_to}
+            if stream:
+                extra["transport"] = "stream"
+            log_event(
+                "premise_misattribution_flagged", source="codec-dashboard",
+                message="user attribution contradicts a pasted source",
+                level="warning", outcome="warning", extra=extra,
+            )
+    except Exception as e:
+        log.warning(f"[Chat] premise check skipped{where}: {e}")
+    return suggestion, notes
+
+
 @router.post("/api/chat/escalate_silence")
 async def escalate_silence(request: Request):
     """Q11: user said "No thanks" to a Project suggestion — silence the
@@ -1800,12 +1877,7 @@ async def chat_completion(request: Request):
                         for t in buf.drain_think():
                             yield f"data: {json.dumps({'think': t})}\n\n"
                     if degenerate:
-                        yield _frame(
-                            "\n\n*I caught myself repeating the same text in a "
-                            "loop and stopped — that was a local-model glitch, not "
-                            "a real answer. Please ask again (rephrasing slightly "
-                            "usually fixes it).*"
-                        )
+                        yield _frame(_LOOP_NOTE)
                     if hit_token_cap:
                         yield _frame(
                             "\n\n*Warning: reply truncated — the model hit the "
@@ -1841,44 +1913,15 @@ async def chat_completion(request: Request):
                                 "busy, restarting, or out of context. Please try "
                                 "again in a moment.*"
                             )
-                    # Step 10 Q11 (2026-07): post-reply Project suggestion.
-                    _sugg = _maybe_escalate_suggestion(last_user_text, _session_id)
+                    # P-099: the post-reply checks (Project suggestion, claim
+                    # check, premise check), shared with stream:false.
+                    _sugg, _notes = _post_reply_checks(
+                        "".join(_visible), _stream_actions, last_user_text, messages,
+                        _session_id, stream=True)
                     if _sugg:
                         yield f"data: {json.dumps({'escalate_project': _sugg})}\n\n"
-                    # Claim-to-artifact check on the assembled reply.
-                    try:
-                        import codec_claim_check
-                        _unbacked = codec_claim_check.find_unbacked_claims(
-                            "".join(_visible), actions_taken=_stream_actions,
-                            user_request=last_user_text)
-                        if _unbacked:
-                            _note = codec_claim_check.correction_note(_unbacked)
-                            yield f"data: {json.dumps({'token': _note})}\n\n"
-                            log_event(
-                                "unbacked_claim_corrected", source="codec-dashboard",
-                                message=f"{len(_unbacked)} unbacked claim(s) corrected (stream)",
-                                level="warning", outcome="warning",
-                                extra={"kinds": [c.kind for c in _unbacked],
-                                       "needs": [c.needs for c in _unbacked],
-                                       "transport": "stream"},
-                            )
-                    except Exception as e:
-                        log.warning(f"[Chat] claim check skipped (stream): {e}")
-                    try:
-                        import codec_premise_check
-                        _pf = codec_premise_check.find_misattributions(
-                            [m.get("content", "") for m in messages
-                             if m.get("role") == "user" and isinstance(m.get("content"), str)])
-                        if _pf:
-                            yield f"data: {json.dumps({'token': codec_premise_check.premise_note(_pf)})}\n\n"
-                            log_event(
-                                "premise_misattribution_flagged", source="codec-dashboard",
-                                message="user attribution contradicts a pasted source",
-                                level="warning", outcome="warning",
-                                extra={"credited_to": _pf[0].credited_to, "transport": "stream"},
-                            )
-                    except Exception as e:
-                        log.warning(f"[Chat] premise check skipped (stream): {e}")
+                    for _note in _notes:
+                        yield f"data: {json.dumps({'token': _note})}\n\n"
                     yield "data: [DONE]\n\n"
                 except Exception as e:
                     yield f"data: {json.dumps({'error': str(e)})}\n\n"
@@ -1898,6 +1941,11 @@ async def chat_completion(request: Request):
         import codec_usage
         codec_usage.record_reply(model, base_url)  # UI P3.11: Settings > Usage counts this reply
         answer = re.sub(r'###\s*FINAL ANSWER:\s*', '', answer).strip()
+        # P-099: the stream's repetition cut, on the whole reply.
+        answer, _looped = _cut_repetition(answer)
+        if _looped:
+            log.warning("[Chat] degenerate repetition loop detected — cutting reply (non-stream)")
+            answer += _LOOP_NOTE
 
         # ── Post-LLM skill routing ──
         # If the LLM outputs [SKILL:name:query], execute and inline the result.
@@ -1942,46 +1990,12 @@ async def chat_completion(request: Request):
                 log.info(f"[Chat] LLM tried disallowed skill {s_name!r} (non-stream) — dropping tag")
                 answer = answer.replace(skill_tag.group(0), "")
 
-        # Claim-to-artifact check: CODEC may not claim what it did not do.
-        # A reply saying "I've ingested your rules" or "saved to your Desktop"
-        # is false unless something in this turn actually did it. Appends a
-        # correction rather than editing the model's words — the user sees both
-        # what was claimed and that it didn't happen. Never fails the response.
-        try:
-            import codec_claim_check
-            _unbacked = codec_claim_check.find_unbacked_claims(
-                answer, actions_taken=_turn_actions,
-                user_request=last_user_text)
-            if _unbacked:
-                answer += codec_claim_check.correction_note(_unbacked)
-                log_event(
-                    "unbacked_claim_corrected", source="codec-dashboard",
-                    message=f"{len(_unbacked)} unbacked claim(s) corrected",
-                    level="warning", outcome="warning",
-                    extra={"kinds": [c.kind for c in _unbacked],
-                           "needs": [c.needs for c in _unbacked]},
-                )
-        except Exception as e:
-            log.warning(f"[Chat] claim check skipped: {e}")
-
-        # Premise check: an attribution the USER supplied that a source they
-        # pasted contradicts. The other direction from claim-check — scope is
-        # deliberately tiny, see codec_premise_check.
-        try:
-            import codec_premise_check
-            _pf = codec_premise_check.find_misattributions(
-                [m.get("content", "") for m in messages
-                 if m.get("role") == "user" and isinstance(m.get("content"), str)])
-            if _pf:
-                answer += codec_premise_check.premise_note(_pf)
-                log_event(
-                    "premise_misattribution_flagged", source="codec-dashboard",
-                    message="user attribution contradicts a pasted source",
-                    level="warning", outcome="warning",
-                    extra={"credited_to": _pf[0].credited_to},
-                )
-        except Exception as e:
-            log.warning(f"[Chat] premise check skipped: {e}")
+        # P-099: the post-reply checks, shared with the stream path; in a worker
+        # thread because the Project suggestion may ask the local model.
+        _sugg, _notes = await asyncio.to_thread(
+            _post_reply_checks, answer, _turn_actions, last_user_text, messages,
+            _session_id, False)
+        answer += "".join(_notes)
 
         out = {"response": answer, "model": model}
         if _mem_items:
@@ -1990,6 +2004,8 @@ async def chat_completion(request: Request):
             out["web"] = _web_used
         if _trim:
             out["trim"] = _trim
+        if _sugg:
+            out["escalate_project"] = _sugg
         return out
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)

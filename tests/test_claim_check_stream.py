@@ -95,6 +95,10 @@ def test_stream_generator_is_actually_wired():
     gen = gen[:gen.index("from starlette.responses import StreamingResponse")]
     assert "_visible.append(tok)" in gen, "stream must accumulate visible text"
     assert "_stream_actions.add(s_name)" in gen, "stream must record skills that ran"
-    assert "codec_claim_check" in gen, "stream must run the claim check"
-    assert gen.index("codec_claim_check") < gen.index('"data: [DONE]'), \
+    # P-099: the check lives in the helper both chat paths call.
+    assert "_post_reply_checks(" in gen, "stream must run the post-reply checks"
+    assert gen.index("_post_reply_checks(") < gen.index('"data: [DONE]'), \
         "the check must run before [DONE]"
+    helper = src[src.index("def _post_reply_checks("):]
+    helper = helper[:helper.index("\n@router")]
+    assert "codec_claim_check.find_unbacked_claims" in helper, "the helper must run the claim check"

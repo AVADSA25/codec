@@ -25,6 +25,16 @@ Intentionally-deferred bugs and test failures with documented status, so we don'
 | **status** | deferred-not-fixed |
 | **revisit when** | Before CODEC is supported on a machine without the macOS Keychain. |
 
+## Chat: the JSON reply handles `[SKILL:...]` tags differently from the stream (found 2026-11-03, P-099)
+
+| field | value |
+|---|---|
+| **where** | `routes/chat.py:chat_completion`, the stream:false tag block (regex) against the stream's `_resolve_skill_tag` (`SkillTagBuffer`) |
+| **what's broken** | Three gaps P-099 left alone (its brief covered the post-reply checks only): a disallowed tag uses one step of the budget on the stream path and none on the JSON path; on the JSON path a tag whose skill fails or returns nothing stays visible, while the stream drops it (the module docstring says both drop it); the JSON path resolves only the first tag, the stream every tag. |
+| **why deferred** | Outside P-099 (docs/CHAT-REPLY-PARITY-DESIGN.md); changing what stream:false shows needs its own brief. No page in the repo sends stream:false. |
+| **status** | deferred-not-fixed |
+| **revisit when** | The next item that edits the tag handling in `routes/chat.py`, or when a client starts using stream:false. |
+
 ## Tests that need the owner's Mac, not a CI runner (found 2026-10-29, first macos-14 CI run)
 
 | field | value |
