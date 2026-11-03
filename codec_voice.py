@@ -1154,6 +1154,7 @@ class VoicePipeline:
             # phone push; a spoken answer is not taken here because this turn
             # is awaited by the call loop). Decline or 60 s silence cancels.
             import codec_consent
+            import codec_dispatch  # P-087: the time limit for one skill run
             if codec_consent.local_consent_needed(_skill_name, user_text):
                 await self._speak("That needs your OK. Approve it on the CODEC screen or your phone.")
                 ok = await loop.run_in_executor(
@@ -1163,7 +1164,9 @@ class VoicePipeline:
 
             def _run_with_hooks_sync():
                 def _inner(t, _c):
-                    return _skill_run(t)
+                    # P-087: a hung skill (osascript behind an unanswered macOS
+                    # prompt) cannot hold the call; the executor thread comes back.
+                    return codec_dispatch.run_bounded(_skill_name, _skill_run, t)
                 return _voice_run_with_hooks(
                     tool_name=_skill_name,
                     task=user_text,
@@ -1174,7 +1177,10 @@ class VoicePipeline:
                 )
 
             ctx = contextvars.copy_context()
-            result = await loop.run_in_executor(None, ctx.run, _run_with_hooks_sync)
+            try:
+                result = await loop.run_in_executor(None, ctx.run, _run_with_hooks_sync)
+            except codec_dispatch.SkillTimedOut as e:
+                return codec_dispatch.note_timeout(e, "voice", correlation_id=_voice_cid)
             if isinstance(result, HookVeto):
                 return (f"Skill '{_skill_name}' was vetoed by plugin "
                         f"'{result.plugin_name}': {result.reason}")

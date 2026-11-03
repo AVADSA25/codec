@@ -296,6 +296,9 @@ Required: `SKILL_NAME`, `SKILL_TRIGGERS`, `SKILL_DESCRIPTION`. Optional: `SKILL_
 ### Switching a skill off (UI P3.6)
 `config.json:skills_off` is the owner's deny list, written by the Skills page (`PUT /api/skills/switch`) and `/skills enable|disable` through `codec_skill_switches` (one `skill_switched` audit line, no values). Every path checks `codec_skill_switches.is_off` before running a skill: `codec_dispatch.check_skill` skips it and `run_skill` refuses it (wake word, chat, sessions, bridges, agent runner), the MCP tools, the voice call's matcher, crew tools, autopilot rules and the '@' list. Features that call a skill internally (the briefing's sources, Save to Google Doc) are not switched by it. A new skill is on until turned off; the old `skills` allow list is ignored. The file is re-read on change, so no restart is needed for a switch.
 
+### Time limit for chat, voice and wake-word runs (P-087, docs/SKILL-TIMEOUTS-DESIGN.md)
+A skill run from the chat (`_try_skill`, the '@' pick, the `[SKILL:]` tag), the voice call (`VoicePipeline.dispatch_skill`) or the wake word (`codec._dispatch_inner`) is waited for at most `codec_dispatch.SKILL_TIMEOUT_S` (60 s); slow-by-design skills keep their own wait from `SLOW_SKILL_TIMEOUTS` (`None` = no limit), and `config.json:skill_timeouts` (`{"<skill>": s, "default": s}`, 0 = none) overrides. Past the limit the caller answers one short line and writes one `skill_timeout` audit line; the run goes on in a daemon thread. Only callers inside `codec_dispatch.time_limited(...)` are limited: the agent runner, scheduler, crews, triggers, sessions and bridges are not, and must stay that way.
+
 ### Adding a new skill
 Drop a `.py` file in `~/.codec/skills/` (user) or `skills/` (built-in). Restart `codec-dashboard` and the main `open-codec` process. Hot-reload is not currently supported.
 
