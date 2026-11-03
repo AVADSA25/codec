@@ -119,7 +119,7 @@ from codec_core import (
 )
 from codec_agent import run_session_in_terminal
 # A-4: canonical skill dispatch (lazy SkillRegistry + safety gate + run_with_hooks).
-from codec_dispatch import check_skill, run_skill, load_skills
+from codec_dispatch import check_skill, run_skill, load_skills, time_limited
 
 from codec_overlays import show_overlay, show_recording_overlay, show_recording_stop, show_processing_overlay, show_toggle_overlay
 from codec_identity import CODEC_VOICE_PROMPT
@@ -453,7 +453,8 @@ def _dispatch_inner(task):
     if len(task) < 500:
         skill = check_skill(task)
         if skill:
-            result = run_skill(skill, task, app, consent=_wake_consent)
+            with time_limited("wake"):  # P-087: a hung skill cannot hold the wake word
+                result = run_skill(skill, task, app, consent=_wake_consent)
             if result is not None:
                 push(lambda: show_overlay('Skill: ' + skill['name'], '#E8711A', 2000))
                 global _last_tts_text

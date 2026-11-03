@@ -601,7 +601,7 @@ def _try_skill(user_text: str, temporary: bool = False):
     Before this, questions like "what was I doing?" were skipped entirely and the
     LLM answered from memory (and fabricated)."""
     try:
-        from codec_dispatch import check_skill, run_skill
+        from codec_dispatch import check_skill, run_skill, time_limited
         # A long paste is a document, not a command. Pasting a spec, an article,
         # or a set of instructions would otherwise hijack the turn: a 6.3k-char
         # paste of standing rules mentioning "write ... to <path>" matched
@@ -626,7 +626,8 @@ def _try_skill(user_text: str, temporary: bool = False):
                     f"Warning: '{skill['name']}' is a destructive operation and wasn't "
                     "confirmed — skipped."
                 )
-            result = run_skill(skill, user_text, app="CODEC Chat")
+            with time_limited("chat"):  # P-087: a hung skill cannot hold the chat
+                result = run_skill(skill, user_text, app="CODEC Chat")
             if result is not None:
                 return skill["name"], str(result)
     except Exception as e:
@@ -677,10 +678,11 @@ def _try_explicit_skill(target: str, user_text: str, temporary: bool = False):
         if not codec_consent.chat_consent_ok(name, task):
             return name, (f"Warning: '{name}' is a destructive operation and wasn't "
                           "confirmed — skipped.")
-        from codec_dispatch import registry, run_skill
+        from codec_dispatch import registry, run_skill, time_limited
         skill = {"name": name, "triggers": registry.get_triggers(name), "_all_matches": [name],
                  "run": lambda t, app="", **kw: registry.run(name, t, app)}
-        result = run_skill(skill, task, app="CODEC Chat")
+        with time_limited("chat"):  # P-087
+            result = run_skill(skill, task, app="CODEC Chat")
     except Exception as e:
         log.warning(f"[Chat] explicit skill {name} failed: {e}")
         return name, f"{name} failed: {type(e).__name__}"
@@ -699,7 +701,7 @@ def _try_skill_by_name(name: str, query: str, temporary: bool = False):
     if _temporary_blocks(name, temporary):
         return name, TEMPORARY_REFUSAL
     try:
-        from codec_dispatch import run_skill
+        from codec_dispatch import run_skill, time_limited
         skill = {"name": name}
         # re-audit A2: a destructive skill emitted via a post-LLM [SKILL:...] tag
         # (the prompt-injection vector) needs explicit consent before it runs —
@@ -709,7 +711,8 @@ def _try_skill_by_name(name: str, query: str, temporary: bool = False):
             return name, (
                 f"Warning: '{name}' is a destructive operation and wasn't confirmed — skipped."
             )
-        result = run_skill(skill, query, app="CODEC Chat (LLM-routed)")
+        with time_limited("chat"):  # P-087
+            result = run_skill(skill, query, app="CODEC Chat (LLM-routed)")
         if result is not None:
             return name, str(result)
     except Exception as e:

@@ -262,6 +262,14 @@ Emitted by `codec_backup` (source `codec-backup`) and `tools/codec_restore.py` (
 | `retention_cleanup` | info | `kind` (`chats` \| `clipboard` \| `photos`), `deleted`, `days` (only when something was deleted) |
 | `backup_restored` | info | `backup` (file name), `mode` (`folder` \| `live`), `items`, `files`, `ok`, or `decision: refused` when the owner did not answer 'restore' |
 
+### Skill time limit events (2026-11, P-087)
+
+Emitted by `codec_dispatch.note_timeout` (source `codec-dispatch`, outcome `timeout`, `error_type` `SkillTimeout`); docs/SKILL-TIMEOUTS-DESIGN.md. Never the request text.
+
+| Event | Level | Fields |
+|---|---|---|
+| `skill_timeout` | warning | top level `tool` (the skill), `transport` (`chat` \| `voice` \| `dispatch` for the wake word), `duration_ms`; extra `limit_s`, `via` (`chat` \| `voice` \| `wake`), `correlation_id`: a chat, voice or wake-word skill run passed its limit and the caller stopped waiting |
+
 ### Voice events (2026-10)
 
 Emitted by `codec_tts` (docs/CODEC-VOICE-02-DESIGN.md), source `codec-tts`, level warning. The reason and the purpose only: never the text. At most one line per reason per minute.
