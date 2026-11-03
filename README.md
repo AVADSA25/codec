@@ -58,7 +58,7 @@ CODEC's moat is the *combination* — local-first **and** voice **and** MCP-as-a
 - **Cursor and Claude Desktop talk to LLMs. CODEC turns your Mac into a tool the LLM can use** — over MCP. Claude (or Cursor, or VS Code) gets your screen, your apps, your 76 skills, and your memory. CODEC is both an MCP *client* and an MCP *server*, so two CODECs can even peer — agent-to-agent — on the open protocol Anthropic standardized.
 - **CrewAI / LangChain orchestrate. CODEC orchestrates _and_ executes on your hardware** — with a ~795-line multi-agent runtime that has zero dependency on either framework.
 
-And all of it runs on *your* machine: no data leaves unless you explicitly route a request through a cloud model.
+And all of it runs on *your* machine: no data leaves unless you ask for something that needs the network, such as a cloud model or a web search ([`PRIVACY.md`](PRIVACY.md) lists every request, including the update check).
 
 ---
 

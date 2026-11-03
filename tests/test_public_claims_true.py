@@ -133,7 +133,8 @@ def test_audit_category_count_matches_the_audit_view(doc):
 def test_docs_do_not_claim_zero_telemetry_or_every_call_logged(doc):
     text = _flat(doc).lower()
     for claim in ("no telemetry", "zero hidden telemetry", "zero telemetry", "every action tracked",
-                  "every action codec takes is logged", "llm call logged"):
+                  "every action codec takes is logged", "llm call logged",
+                  "no data leaves unless you explicitly route a request through a cloud model"):
         assert claim not in text, f"{doc} still says {claim!r}"
     for rel in ("codec_update.py", "codec_license.py", "codec_llm.py"):
         src = (REPO / rel).read_text()
