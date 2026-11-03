@@ -49,6 +49,18 @@ above zero for good.
 - `codec_voice.py`, `codec_agents.py`, `codec_llm.py` and
   `scripts/start_model_server.sh` are not edited.
 
+## Found, not fixed here (follow-up)
+
+The `llm_queue` singleton holds one `asyncio.Semaphore`, but voice waits on it in the
+dashboard's event loop while crews wait on it in their own loop on a thread
+(`routes/agents.py` `_run`, `asyncio.new_event_loop()`). Checked on a copy (Python
+3.11 and 3.13): once the semaphore has had to wait in one loop, a wait from the other
+loop raises `RuntimeError: ... is bound to a different event loop`, and a waiter in
+one loop released from the other thread is not woken until its loop runs again for
+another reason (2.8 s after the release in the check, when its own 3 s timeout ran). The
+old code also left `_waiting` raised after that error; with this change the count goes
+back to 0. A queue that is safe across loops and threads needs its own design.
+
 ## Test plan
 
 - `tests/test_concurrent.py::TestLLMPriorityQueue::test_cancelled_critical_waiter_does_not_block_medium`:
