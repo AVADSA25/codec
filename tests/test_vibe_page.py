@@ -144,7 +144,7 @@ def test_ids_the_page_makes_save_and_any_other_session_id_is_refused(sessions):
         assert _save(client, session_id=sid).status_code == 200, sid
         assert client.get(f"/api/vibe/session/{sid}").json()["session"]["id"] == sid
     assert all(re.fullmatch(r"[a-z0-9]{8,40}", sid) for sid in ids)
-    for bad in ("", "s1", "../../etc", "ABCDEFGHJ", "abcdefgh-1", "a" * 41, "abcd efgh", 12345678, None):
+    for bad in ("", "s1", "../../etc", "ABCDEFGHJ", "abcdefgh-1", "a" * 41, "abcd efgh", "abcdefgh\n", 12345678, None):
         r = _save(client, session_id=bad)
         assert r.status_code == 400 and "session_id" in r.json()["error"], bad
     assert len(client.get("/api/vibe/sessions").json()) == len(ids[:: 20])

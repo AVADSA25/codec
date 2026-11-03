@@ -77,14 +77,14 @@ async def vibe_session(sid: str):
 
 # The ids the Vibe page makes (Date.now() and Math.random() in base 36, 9 to 13
 # characters). Anything else is refused before it is stored (P-089, GP04-4).
-_SESSION_ID_RE = re.compile(r"^[a-z0-9]{8,40}$")
+_SESSION_ID_RE = re.compile(r"[a-z0-9]{8,40}")  # fullmatch: '$' alone lets a trailing newline through
 
 
 @router.post("/api/vibe/save")
 async def vibe_save(request: Request):
     body = await request.json()
     sid = body.get("session_id", "")
-    if not (isinstance(sid, str) and _SESSION_ID_RE.match(sid)):
+    if not (isinstance(sid, str) and _SESSION_ID_RE.fullmatch(sid)):
         return JSONResponse({"error": "session_id must be 8 to 40 lowercase letters or digits"}, status_code=400)
     title = body.get("title", "Untitled")
     language = body.get("language", "python")
