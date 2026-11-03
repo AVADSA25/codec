@@ -3,10 +3,15 @@
 # Usage:
 #   ./install.sh           # Fresh install
 #   ./install.sh --update  # Pull latest, migrate, restart (preserves config & skills)
+#
+# --update (docs/SAFE-UPDATE-DESIGN.md): pull, copy ~/.codec (codec_preupdate.py), check the new code with
+# scripts/smoke.py, and only then deploy skills and restart PM2. A failed copy or smoke check goes back to the
+# commit recorded before the pull with `git reset --keep` (uncommitted work is kept) and exits non-zero.
+# CODEC_STATE overrides the state folder (default ~/.codec).
 set -e
 
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
-CODEC_DIR="$HOME/.codec"
+CODEC_DIR="${CODEC_STATE:-$HOME/.codec}"
 VENV_DIR="$CODEC_DIR/venv"
 MIN_DISK_GB=2
 MIN_PY_MAJOR=3
@@ -24,6 +29,7 @@ echo "  https://opencodec.org"
 echo ""
 
 # ── Update mode ─────────────────────────────────────────────────────────
+# This whole branch is one `if` block, so bash has read all of it before `git pull` can rewrite this file.
 if [ "$1" = "--update" ]; then
     echo "═══ CODEC Update Mode ═══"
     cd "$REPO_DIR"
@@ -31,6 +37,18 @@ if [ "$1" = "--update" ]; then
     # Save rollback point
     ROLLBACK_COMMIT=$(git rev-parse HEAD)
     echo "  Rollback point: $ROLLBACK_COMMIT"
+
+    # Back to the rollback point, keeping uncommitted work; exit 2 if git refuses (a local edit to a file
+    # the update changed), with the checkout left at the new commit.
+    rollback() {
+        if git reset --keep "$ROLLBACK_COMMIT"; then
+            echo "  Rolled back to $ROLLBACK_COMMIT"
+            exit 1
+        fi
+        echo "❌ Rollback refused: a file the update changed has local edits. The checkout is at $(git rev-parse HEAD)."
+        echo "   Save your edits, then run: git reset --keep $ROLLBACK_COMMIT"
+        exit 2
+    }
 
     # Pull latest
     echo "→ Pulling latest code..."
@@ -42,8 +60,27 @@ if [ "$1" = "--update" ]; then
     # Activate venv if exists
     if [ -f "$VENV_DIR/bin/activate" ]; then
         source "$VENV_DIR/bin/activate"
+    fi
+
+    # Copy CODEC's data before the new code touches it
+    if [ "$(git rev-parse HEAD)" != "$ROLLBACK_COMMIT" ]; then
+        echo "→ Saving a copy of CODEC's data..."
+        if ! python3 codec_preupdate.py --src "$CODEC_DIR" --label "git $ROLLBACK_COMMIT"; then
+            echo "⚠️  Could not save a copy of CODEC's data. Rolling back..."
+            rollback
+        fi
+    fi
+
+    if [ -f "$VENV_DIR/bin/activate" ]; then
         echo "→ Updating dependencies..."
         pip install -r requirements.txt -q
+    fi
+
+    # Smoke test, before anything is deployed or restarted
+    echo "→ Running smoke test..."
+    if ! python3 scripts/smoke.py; then
+        echo "⚠️  Some smoke checks failed. Rolling back..."
+        rollback
     fi
 
     # Deploy skills (preserves user customizations)
@@ -58,16 +95,7 @@ if [ "$1" = "--update" ]; then
         ./sync_to_pm2.sh
     fi
 
-    # Smoke test
-    echo "→ Running smoke test..."
-    if python3 codec_smoke_test.py; then
-        echo "✅ Update complete"
-    else
-        echo "⚠️  Some smoke checks failed. Rolling back..."
-        git reset --hard "$ROLLBACK_COMMIT"
-        echo "  Rolled back to $ROLLBACK_COMMIT"
-        exit 1
-    fi
+    echo "✅ Update complete"
     exit 0
 fi
 
