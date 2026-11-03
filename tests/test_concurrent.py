@@ -186,30 +186,3 @@ class TestLLMPriorityQueue:
             await queue.release(Priority.MEDIUM)
 
         asyncio.run(run_test())
-
-
-class TestSyncLLMQueue:
-    """Test synchronous queue wrapper for subprocess callers."""
-
-    def test_sync_slot(self):
-        from codec_llm_proxy import llm_queue_sync, Priority
-
-        with llm_queue_sync(Priority.MEDIUM):
-            pass  # Should not raise
-
-    def test_sync_concurrent(self):
-        from codec_llm_proxy import _SyncLLMSlot, Priority
-
-        slot = _SyncLLMSlot(max_concurrent=2)
-        results = []
-
-        def worker(i):
-            with slot(Priority.MEDIUM):
-                results.append(i)
-
-        threads = [threading.Thread(target=worker, args=(i,)) for i in range(5)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join(timeout=10)
-        assert len(results) == 5

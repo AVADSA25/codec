@@ -10,16 +10,11 @@ Usage (manual acquire/release):
         response = await httpx_client.post(url, json=payload)
     finally:
         await llm_queue.release(Priority.MEDIUM)
-
-Usage (sync wrapper for subprocess callers):
-    with llm_queue_sync(Priority.MEDIUM):
-        response = requests.post(url, json=payload)
 """
 import asyncio
 import logging
-import threading
 import time
-from contextlib import asynccontextmanager, contextmanager
+from contextlib import asynccontextmanager
 from enum import IntEnum
 
 log = logging.getLogger(__name__)
@@ -112,27 +107,3 @@ class LLMQueue:
 
 # Singleton
 llm_queue = LLMQueue(max_concurrent=2)
-
-
-# ── Sync wrapper for subprocess/thread callers ─────────────────────────
-
-class _SyncLLMSlot:
-    """Thread-safe semaphore for synchronous callers (codec_session, skills)."""
-
-    def __init__(self, max_concurrent: int = 2):
-        self._sem = threading.Semaphore(max_concurrent)
-        self._high_waiting = threading.Event()
-        self._high_waiting.set()  # initially no high-priority waiting
-
-    @contextmanager
-    def __call__(self, priority: Priority = Priority.MEDIUM):
-        if priority >= Priority.MEDIUM:
-            self._high_waiting.wait(timeout=5)
-        self._sem.acquire()
-        try:
-            yield
-        finally:
-            self._sem.release()
-
-
-llm_queue_sync = _SyncLLMSlot(max_concurrent=2)
