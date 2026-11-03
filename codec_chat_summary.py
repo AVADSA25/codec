@@ -263,6 +263,8 @@ def _plain(m: dict) -> str:
 def _complete(messages: list, llm: dict, max_tokens: int) -> str:
     """One notes call on the local model. "" when it failed or a voice session opened."""
     import codec_llm
+    if voice_session_open():
+        return ""           # the voice rule: no notes call starts while a voice session is open
     out: List[str] = []
     gen = codec_llm.stream(messages, base_url=llm["base_url"], model=llm["model"],
                            api_key=llm.get("api_key") or "", max_tokens=max_tokens, temperature=0.2,

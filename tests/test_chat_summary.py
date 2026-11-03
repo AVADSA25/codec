@@ -161,9 +161,13 @@ def test_an_open_voice_session_stops_notes_before_and_during_a_call(monkeypatch)
     marker.write_text("{}")
     assert job.start() is False, "never started during a voice call (the autouse fake fails on any call)"
     assert job.run() is None and job.stopped == "voice"
+    import codec_llm
+    started: list = []
+    monkeypatch.setattr(codec_llm, "stream", lambda messages, **kw: started.append(1) or iter(["- x\n"]))
+    assert REAL_COMPLETE([{"role": "user", "content": "x"}], LOCAL, 100) == "" and started == [], \
+        "every notes call (a merge too) checks first and starts nothing"
     marker.unlink()
 
-    import codec_llm
     closed: list = []
 
     def fake_stream(messages, **kw):
