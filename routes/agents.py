@@ -591,6 +591,8 @@ def approve_agent(agent_id: str, request: Request = None):
         grants = _cap.approve_plan(agent_id)
     except _cap.InvalidStatusTransition as e:
         raise HTTPException(status_code=409, detail=str(e))
+    except _cap.PlanValidationError as e:  # P-098: blocked path or missing skill
+        raise HTTPException(status_code=400, detail=f"plan invalid: {e}")
     return {"agent_id": agent_id, "status": "approved", "grants": grants}
 
 
