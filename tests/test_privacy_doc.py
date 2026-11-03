@@ -250,7 +250,8 @@ def test_pm2_log_names_match_the_ecosystem_file():
 
 def test_google_token_is_named_as_a_file_on_disk():
     token = os.path.basename(_const("codec_google_auth.py", "TOKEN_PATH").replace("~", ""))
-    assert "os.chmod(TOKEN_PATH, 0o600)" in _src("codec_google_auth.py")
+    # P-082: written by atomic replace, which makes the file 0600 (codec_jsonstore).
+    assert "codec_jsonstore.atomic_write_json(TOKEN_PATH" in _src("codec_google_auth.py")
     assert f"`~/.codec/{token}`" in _doc() and "On disk (0600), not in the Keychain" in _doc()
 
 

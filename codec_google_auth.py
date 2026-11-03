@@ -85,12 +85,14 @@ def _save_token(creds):
     into the saved token so no scope is ever lost.
     """
     try:
+        import codec_jsonstore
         token_data = json.loads(creds.to_json())
         # Force all scopes into the saved token
         token_data["scopes"] = ALL_SCOPES
-        with open(TOKEN_PATH, "w") as f:
-            json.dump(token_data, f, indent=2)
-        os.chmod(TOKEN_PATH, 0o600)
+        # P-082: several processes refresh the token; an atomic replace (temp file
+        # 0600 from creation, then os.replace) never leaves half a token behind.
+        os.makedirs(os.path.dirname(TOKEN_PATH), mode=0o700, exist_ok=True)
+        codec_jsonstore.atomic_write_json(TOKEN_PATH, token_data)
     except Exception as e:
         log.error("[Google Auth] Token save failed: %s", e)
 
