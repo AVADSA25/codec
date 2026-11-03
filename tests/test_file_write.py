@@ -293,12 +293,20 @@ def test_sensitive_targets_refused(path):
     "~/Desktop/scratch.md",
     "~/Documents/plan.md",
 ])
-def test_safe_targets_still_allowed(tmp_path, path):
-    import os
-    out = _fw.run(f"save to {path} content: ok-{os.getpid()}")
-    p = os.path.expanduser(path)
+def test_safe_targets_still_allowed(path):
+    # A check only: nothing is written in the owner's folders (P-009).
+    safe, reason = _fw._is_safe_target(path)
+    assert safe, f"{path} must stay writable: {reason}"
+
+
+@pytest.mark.parametrize("name", ["note.txt", "scratch.md", "plan.md"])
+def test_skill_saves_into_an_allowed_folder(name):
+    import shutil
+    import tempfile
+    folder = tempfile.mkdtemp(prefix="codec-test-file-write-", dir="/tmp")
+    p = os.path.join(folder, name)
     try:
+        out = _fw.run(f"save to {p} content: ok-{os.getpid()}")
         assert "saved" in out.lower() and os.path.exists(p), out
     finally:
-        if os.path.exists(p):
-            os.remove(p)
+        shutil.rmtree(folder, ignore_errors=True)

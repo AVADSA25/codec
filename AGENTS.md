@@ -646,6 +646,7 @@ No agent task chains more than 8 steps without breaking. Hardcoded in `Crew.max_
 - `pytest` from repo root. **1,300+ tests collected** (live count via `pytest --collect-only` — currently 1,685 collected / 1,386 `def test_` functions across 99 files); all must pass before merge except known pre-existing failures documented in `docs/known-issues.md`
 - Skill changes: add a smoke test that imports and calls `run("test")` with empty args
 - Audit-log changes: add a parser round-trip test
+- The suite never touches the owner's state (P-009, docs/TEST-LIVE-STATE-DESIGN.md): `tests/conftest.py` points `codec_keychain` at a fake `security` program and the notification paths at temp files, and on a Mac with `~/.codec` it refuses (and fails the test for) any write to `memory.db`, `notifications.*`, `pending_questions.*`, `audit.log*` or `shift_report_state.*` there, any SQLite open of them, and any run of the real `/usr/bin/security`; a session check fails the run if a named hazard changed. Point new tests at `tmp_path`; never a fake HOME. `CODEC_REAL_KEYCHAIN_TESTS=1` runs the one real-Keychain test.
 
 ### Personal data
 - **Never commit user-specific data** (name, location, employer, language preference, custom rules)

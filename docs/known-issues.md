@@ -4,6 +4,16 @@ Intentionally-deferred bugs and test failures with documented status, so we don'
 
 ---
 
+## Two backup tests fail on the Mac Studio from `.partial-shm` leftovers (found 2026-11-01, P-056; listed 2026-11-03, P-009)
+
+| field | value |
+|---|---|
+| **failing tests** | `tests/test_codec_backup.py::test_backup_sqlite_writes_a_checked_0600_copy_and_keeps_n` and `::test_status_report_shows_old_copies_removed_by_the_keep_rule`, on the Studio only (CI passes) |
+| **what's broken** | After the backup copy, the test's temp `backups/` folder also holds `.memory_<random>.partial-shm` files, so the name list and the count (61 instead of 30) do not match. The `.partial` copy is removed but its SQLite `-shm` side file stays. |
+| **why it was deferred** | Seen on clean main on the Studio before P-009; P-009 only changes test isolation and does not touch `codec_backup.py`. |
+| **status** | deferred-not-fixed |
+| **revisit when** | The next change to `codec_backup.backup_sqlite`; check whether a WAL-mode source leaves the side file and remove it with the `.partial` copy. |
+
 ## Route-table tests fail on every FastAPI that requirements.txt allows (found 2026-10-29, D-33 CI PR)
 
 | field | value |

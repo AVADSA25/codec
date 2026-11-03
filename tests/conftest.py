@@ -17,13 +17,31 @@ so it applies session-wide instead of per-test.
 """
 import sys
 import os
+import importlib
+import importlib.util
 import tempfile
 import types
 from pathlib import Path
 
+import pytest
+
 # Worktree's repo root = parent of `tests/`. When running from main repo
 # directly, this resolves to ~/codec-repo (same as the next insert) — harmless.
 _WORKTREE_REPO = Path(__file__).resolve().parent.parent
+
+# P-009: the owner's ~/.codec is only guarded where it existed before this run
+# (not on a CI runner). Read before anything below can create the folder.
+_OWNER_CODEC_HOME = os.path.expanduser("~/.codec")
+_OWNER_CODEC_HOME_EXISTED = os.path.isdir(_OWNER_CODEC_HOME)
+
+# P-009 helpers (fake `security`, guard, watch-list), loaded by path so every test
+# module shares this one copy.
+_spec = importlib.util.spec_from_file_location(
+    "live_state_guard", Path(__file__).resolve().parent / "live_state_guard.py")
+live_state_guard = importlib.util.module_from_spec(_spec)
+sys.modules["live_state_guard"] = live_state_guard
+_spec.loader.exec_module(live_state_guard)
+live_state_guard.OWNER_HOME_EXISTED = _OWNER_CODEC_HOME_EXISTED
 
 # Order matters: insert(0) prepends. Last insert wins → worktree at sys.path[0].
 sys.path.insert(0, os.path.expanduser("~/codec-repo"))
@@ -72,6 +90,54 @@ def _isolate_audit_log() -> None:
 
 
 _isolate_audit_log()
+
+
+def _isolate_keychain() -> None:
+    """Point codec_keychain at a fake `security` program and a temp fallback store (P-009).
+
+    Every unmocked secret read went to the owner's real Keychain through
+    /usr/bin/security (importing codec_config alone reads three entries, the
+    audit HMAC secret among them), and the Keychain tests created and deleted
+    real `ai.avadigital.codec._test_*` items. The fake (tests/live_state_guard.py)
+    keeps its items in a temp JSON file and answers 0/44/45/51 like the tool, so
+    the Keychain code path still runs on a Mac; on Linux `is_keychain_available()`
+    stays false and the fallback store is the temp one. Done at conftest import
+    time, before anything imports codec_config. A real-Keychain test runs only
+    with CODEC_REAL_KEYCHAIN_TESTS=1 (tests/test_keychain.py).
+    """
+    try:
+        import codec_keychain
+    except Exception:
+        return
+    tmp = Path(tempfile.mkdtemp(prefix="codec-test-keychain-"))
+    codec_keychain._SECURITY_BIN = str(live_state_guard.write_fake_security(tmp))
+    codec_keychain._FALLBACK_KEY_PATH = tmp / "secret.key"
+    codec_keychain._FALLBACK_STORE_PATH = tmp / "secrets.enc.json"
+
+
+_isolate_keychain()
+
+
+def _guard_live_state() -> None:
+    """Refuse this process's writes to the owner's live state (P-009).
+
+    Only where the owner's ~/.codec existed before the run, so it does nothing on
+    CI. Write opens, replace, rename and delete of ~/.codec memory.db*,
+    notifications.*, pending_questions.*, audit.log* and shift_report_state.*,
+    any sqlite3.connect to them, and any run of the real /usr/bin/security raise
+    LiveStateRefused; `_live_state_untouched` then fails the test even if the code
+    swallowed the error. Installed early so a write made while the helpers below
+    import their modules is caught too.
+    """
+    if not _OWNER_CODEC_HOME_EXISTED:
+        return
+    live_state_guard.Guard(
+        _OWNER_CODEC_HOME,
+        allow_real_keychain=os.environ.get("CODEC_REAL_KEYCHAIN_TESTS") == "1",
+    ).install()
+
+
+_guard_live_state()
 
 
 def _isolate_owner_alerts() -> None:
@@ -251,3 +317,70 @@ def _install_pynput_stub_if_needed() -> None:
 
 
 _install_pynput_stub_if_needed()
+
+
+def _isolate_notifications() -> None:
+    """Keep the suite out of the owner's notifications and pending questions (P-009).
+
+    Every module-level notifications.json / pending_questions.json path points at
+    one temp folder: an unpatched agent-message test grew ~/.codec/agents/test_agent
+    and added test banners to the owner's list, and ask_user's questions landed in
+    the live files. Paths built inside a function (codec_heartbeat,
+    codec_scheduler) and skill modules the registry loads later are covered by
+    `_guard_live_state`. Tests that patch these per test keep doing so. Done at
+    conftest import time, like `_isolate_audit_log`, after the memory isolation so
+    these imports cannot bind memory.db first.
+    """
+    tmp = Path(tempfile.mkdtemp(prefix="codec-test-notifications-"))
+    notifs = tmp / "notifications.json"
+    for module, paths in (
+        ("codec_ask_user", {"PENDING_QUESTIONS_PATH": tmp / "pending_questions.json",
+                            "NOTIFICATIONS_PATH": notifs}),
+        ("codec_agent_messaging", {"_CODEC_DIR": tmp, "_AGENTS_DIR": tmp / "agents",
+                                   "_NOTIFICATIONS_PATH": notifs}),
+        ("codec_watchdog", {"NOTIFICATIONS_PATH": str(notifs)}),
+        ("codec_daybreak", {"_NOTIFICATIONS_PATH": str(notifs)}),
+        ("routes._shared", {"NOTIFICATIONS_PATH": str(notifs)}),
+    ):
+        try:
+            mod = importlib.import_module(module)
+        except Exception:
+            continue
+        for name, value in paths.items():
+            setattr(mod, name, value)
+
+
+_isolate_notifications()
+
+
+@pytest.fixture(autouse=True)
+def _live_state_untouched():
+    """Fail the test during (or just before) which the P-009 guard refused something."""
+    yield
+    guard = live_state_guard.ACTIVE
+    new = guard.unreported() if guard else []
+    if not new:
+        return
+    pytest.fail(f"test isolation (P-009): {len(new)} access(es) to the owner's live state "
+                f"refused ({live_state_guard.describe(new)}); point the test at tmp_path",
+                pytrace=False)
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _owner_watch_list():
+    """macOS only: fail the run if a named hazard changed (P-009, read-only, counts only).
+
+    Watches three test file names in Documents, Desktop and Downloads, the
+    agents/test_agent folder, the manual shift report and test-named entries of
+    notifications.json, and shift_report_state.json (only when no scheduled report
+    fired). Never whole folders: live daemons and Syncthing write there all the time.
+    """
+    if sys.platform != "darwin":
+        yield
+        return
+    before = live_state_guard.watch_snapshot()
+    yield
+    changes = live_state_guard.watch_changes(before, live_state_guard.watch_snapshot())
+    if changes:
+        pytest.fail("test isolation (P-009): the owner's watch-list changed during this run: "
+                    + "; ".join(changes), pytrace=False)

@@ -18,7 +18,6 @@ This test suite covers:
 import os
 import sys
 import time
-import sqlite3
 import importlib
 import subprocess
 import re
@@ -34,7 +33,6 @@ import pytest
 _REPO_FROM_TESTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REPO = _REPO_FROM_TESTS
 SKILLS_DIR = os.path.join(REPO, "skills")  # Single source of truth — repo is runtime
-DB_PATH = os.path.expanduser("~/.codec/memory.db")
 CONFIG_PATH = os.path.expanduser("~/.codec/config.json")
 AUDIT_LOG = os.path.expanduser("~/.codec/audit.log")
 
@@ -79,19 +77,9 @@ _test_schedule_ids = []
 
 @pytest.fixture(autouse=True, scope="session")
 def cleanup_test_data():
-    """Clean up test artifacts after all tests complete."""
+    """Clean up test artifacts after all tests complete. Never the owner's
+    memory.db: this ran DELETEs on the live conversations table (P-009)."""
     yield
-    # Clean up test sessions from memory DB
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        conn.execute("DELETE FROM conversations WHERE session_id LIKE 'audit_test_%'")
-        conn.execute("DELETE FROM conversations WHERE session_id LIKE 'test_%'")
-        conn.execute("DELETE FROM conversations WHERE session_id LIKE 'vibe_test_%'")
-        conn.execute("DELETE FROM conversations WHERE session_id LIKE 'e2e_%'")
-        conn.commit()
-        conn.close()
-    except Exception:
-        pass
     # Clean up test schedules
     for sid in _test_schedule_ids:
         try:
