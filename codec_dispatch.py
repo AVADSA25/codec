@@ -9,6 +9,7 @@ import contextvars
 import logging
 import math
 import secrets
+import threading
 import time
 
 # Audit emits route through the unified log_event adapter (real, not no-op)
@@ -179,7 +180,7 @@ def check_skill(task):
     }
 
 
-def run_skill(skill, task, app="", consent=None):
+def run_skill(skill, task, app="", consent=None, feature=None):
     """Execute a skill and return its result.
 
     If the skill returns None (indicating it can't handle the task),
@@ -188,6 +189,10 @@ def run_skill(skill, task, app="", consent=None):
     `consent(skill_name, task) -> bool`, when given, is asked before each
     candidate runs (P-080: the wake word); a refusal stops the dispatch with
     codec_consent.LOCAL_CANCELLED and the skill never runs.
+
+    `feature`, when given, names the built-in feature asking (run_feature, P-098):
+    the run's audit line is `tool_result` with extra.feature instead of
+    wake_dispatch, and nothing is shown on the overlay (the owner did not ask).
     """
     # License gate (paid edition only — fully inert for OSS/dev builds).
     # Wrapped so a licensing fault can NEVER break the core dispatch path.
@@ -249,6 +254,15 @@ def run_skill(skill, task, app="", consent=None):
             if result is None:
                 log.info("Skill '%s' returned None — trying next match", skill_name)
                 continue
+            if feature:
+                log_event("tool_result", "codec-dispatch",
+                          f"Skill: {skill_name} for {feature}",
+                          tool=skill_name,
+                          duration_ms=(time.monotonic() - t0) * 1000.0,
+                          extra={"feature": feature,
+                                 "result_len": len(str(result)) if result else 0},
+                          correlation_id=cid)
+                return result
             log_event("wake_dispatch", "codec-dispatch",
                       f"Skill: {skill.get('name', '?')}",
                       tool=skill_name,
@@ -281,3 +295,40 @@ def run_skill(skill, task, app="", consent=None):
             continue
 
     return None  # No skill could handle it
+
+
+# ── Built-in features (P-098, docs/PROJECT-MODE-GATE-DESIGN.md) ──────────────
+# The bridges' briefings, the heartbeat's mail alert, Daybreak, the check-in and
+# the observer's shift report run skills by name. They go through run_skill like
+# every other path, so the skill switch, the registry's load gate, plugin hooks
+# and an audit line apply. Never load a skill file by hand for a feature.
+_SCAN_LOCK = threading.Lock()
+
+
+def _known(name):
+    """True when the registry lists `name`. A process that never scanned (the
+    bridges, the heartbeat, the observer) scans once, metadata only."""
+    if registry.get_meta(name) is not None:
+        return True
+    with _SCAN_LOCK:
+        if registry.get_meta(name) is None and not registry.names():
+            registry.scan()
+        return registry.get_meta(name) is not None
+
+
+def feature_module(name):
+    """The skill's module through the registry's load gate, for a feature that
+    reads the skill's own helpers before it runs it; None when the skill is
+    switched off or unknown."""
+    if not _known(name) or _skill_off(name):
+        return None
+    return registry.load(name)
+
+
+def run_feature(name, task, feature, app=""):
+    """Run the named skill for the built-in `feature` through run_skill. Returns
+    its result, or None when the skill is switched off or unknown (the feature
+    skips that source)."""
+    if not _known(name) or _skill_off(name):
+        return None
+    return run_skill({"name": name, "_all_matches": [name]}, task, app=app, feature=feature)

@@ -81,7 +81,7 @@ def _mcp_connect():
     import importlib.util
     from codec_config import SKILLS_DIR
     path = os.path.join(SKILLS_DIR, "mcp_connect.py")
-    spec = importlib.util.spec_from_file_location("mcp_connect_rt", path)
+    spec = importlib.util.spec_from_file_location("mcp_connect_rt", path)  # loader exemption (P-098): helpers, not run()
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod

@@ -216,7 +216,7 @@ def test_draft_plan_via_qwen_returns_valid_plan(monkeypatch):
              "expected_output": "Listings JSON written", "step_budget": 60},
         ],
         "permission_manifest": {
-            "read_paths": [], "write_paths": ["~/.codec/agents/{agent_id}/artifacts/**"],
+            "read_paths": [], "write_paths": ["~/codec-projects/test-agent/**"],
             "network_domains": ["idealista.com", "fotocasa.es"],
             "skills": ["file_ops", "chrome_open"], "destructive_ops": [],
         },
@@ -892,7 +892,7 @@ def test_e2e_full_lifecycle(monkeypatch, temp_codec_dir):
         ],
         "permission_manifest": {
             "read_paths": [],
-            "write_paths": ["~/.codec/agents/{agent_id}/artifacts/**"],
+            "write_paths": ["~/codec-projects/test-agent/**"],
             "network_domains": ["idealista.com", "fotocasa.es"],
             "skills": ["file_ops", "chrome_open"], "destructive_ops": [],
         },

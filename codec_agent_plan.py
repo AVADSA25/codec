@@ -169,6 +169,10 @@ def plan_from_dict(d: Dict[str, Any]) -> Plan:
     try:
         cps = [_checkpoint_from_dict(cp) for cp in d.get("checkpoints", [])]
         pm = _manifest_from_dict(d["permission_manifest"])
+        blocked = _blocked_manifest_paths(pm)
+        if blocked:
+            # P-098: a drafted or edited plan never asks for a blocklisted path.
+            raise ValueError(f"plan asks for a blocked path: {blocked[0]}")
         return Plan(
             schema=int(d["schema"]),
             agent_id=str(d["agent_id"]),
@@ -448,7 +452,7 @@ You return ONLY a JSON object matching this schema:
   ],
   "permission_manifest": {
     "read_paths":      [<glob — use ~/path/to/dir/** or ~/path/to/dir/*.ext, NOT ~/path/**/*.ext because ** alone already covers all depths>, ...],
-    "write_paths":     [<glob — MUST be under ~/.codec/agents/{agent_id}/artifacts/ unless user grants more>, ...],
+    "write_paths":     [<glob — MUST be under the project folder named in the request unless user grants more>, ...],
     "network_domains": [<domain>, ...],
     "skills":          [<union of all checkpoints.skills_needed>, ...],
     "destructive_ops": [<op-id>, ...]
@@ -467,7 +471,7 @@ Rules:
   • `file_search` is for finding a file BY NAME across the whole Mac (uses macOS Spotlight). It opens a Terminal window and returns at most 5 results. Do NOT use it to list all files in a directory — use `file_ops` for that (e.g. "list all .md files in ~/codec-repo/docs/").
   • For reading or writing files in a known directory: use `file_ops`, not `file_search`.
 - step_budget MUST be at least 60 per checkpoint. The runtime will floor to 60 anyway, so values below 60 are useless. Use 60 for simple single-skill work, 80 for multi-step, 100+ for complex tasks.
-- write_paths default to ~/.codec/agents/{agent_id}/artifacts/** unless the project explicitly requires writing elsewhere.
+- write_paths default to the project folder named in the request (folder/**). Never list a path under ~/.codec, ~/.ssh or another system folder: such a plan is refused.
 - destructive_ops list any irreversible operations (deletes, payments, sending emails on user's behalf). They will require additional consent at runtime.
 - estimated_duration_minutes is your best honest guess.
 """
@@ -991,6 +995,17 @@ def _is_path_blocklisted(path: str) -> bool:
     return any(_path_segments_match(path, b) for b in _PATH_BLOCKLIST_SUBSTRINGS)
 
 
+def _blocked_manifest_paths(pm: "PermissionManifest") -> List[str]:
+    """P-098: the read_paths / write_paths entries of a manifest that are on the
+    blocklist (same segment match as typed paths)."""
+    out = []
+    for kind in ("read_paths", "write_paths"):
+        for p in getattr(pm, kind, None) or []:
+            if _is_path_blocklisted(str(p)):
+                out.append(str(p))
+    return out
+
+
 def _normalize_path(p: str) -> str:
     p = p.rstrip(".,;:!?\"')\n")
     if p.endswith("/"):
@@ -1194,9 +1209,17 @@ def approve_plan(agent_id: str) -> Dict[str, Any]:
     """Transition awaiting_approval → approved. Computes plan_hash for
     Step 9 tamper detection. Writes grants.json (= full manifest by
     default — Step 8 doesn't yet support partial grants; approve == all)."""
-    plan = load_plan(agent_id)
+    try:
+        plan = load_plan(agent_id)
+    except ValueError as e:
+        # P-098: a plan.json that asks for a blocked path (or is malformed) is
+        # refused before any grant is written.
+        raise PlanValidationError(str(e)) from e
     if plan is None:
         raise ValueError(f"no plan found for {agent_id!r}")
+    blocked = _blocked_manifest_paths(plan.permission_manifest)
+    if blocked:
+        raise PlanValidationError(f"plan asks for a blocked path: {blocked[0]}")
 
     # Re-validate skills against registry (skills may have been deleted between draft & approval)
     ok, missing = validate_plan_skills(plan)

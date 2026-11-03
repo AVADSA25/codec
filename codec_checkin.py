@@ -151,7 +151,7 @@ def _observer_apps(now: datetime) -> Dict[str, Any]:
 def _calendar_next_hours() -> str:
     try:
         import codec_daybreak
-        text = codec_daybreak._run_source("google_calendar", "what's on my calendar today")
+        text = codec_daybreak._run_source("google_calendar", "what's on my calendar today", feature="checkin")
         return str(text or "")[:1500]
     except Exception:
         return ""
@@ -167,12 +167,13 @@ def _follow_ups() -> List[str]:
 
 def _important_unread() -> Optional[int]:
     try:
-        import importlib.util
-        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "skills", "google_gmail.py")
-        spec = importlib.util.spec_from_file_location("google_gmail_checkin", path)
-        gmail = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(gmail)
-        res = gmail._get_service().users().messages().list(
+        # P-098: no skill file loaded by hand; Google's own sign-in, and nothing
+        # read while the Gmail skill is switched off on the Skills page.
+        import codec_skill_switches
+        if codec_skill_switches.is_off("google_gmail"):
+            return None
+        from codec_google_auth import build_service
+        res = build_service("gmail", "v1").users().messages().list(
             userId="me", q="is:unread is:important in:inbox", maxResults=50).execute()
         return len(res.get("messages") or [])
     except Exception:

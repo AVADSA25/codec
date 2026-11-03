@@ -29,6 +29,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlsplit
 
 log = logging.getLogger("codec_agent_runner")
 
@@ -265,6 +266,58 @@ def _skill_capabilities(skill: str) -> set:
     return set(SKILL_CAPABILITIES.get(skill, set()))
 
 
+# P-098: the host a web_fetch or chrome_open task will reach, read from the task
+# the way the skill reads it. tests/test_project_gate.py runs the real skills on
+# the same tasks so the two stay in step; same order as chrome_open's SHORTCUTS.
+_CHROME_OPEN_SHORTCUT_HOSTS = (
+    ("gmail", "mail.google.com"), ("calendar", "calendar.google.com"),
+    ("drive", "drive.google.com"), ("youtube", "youtube.com"),
+    ("github", "github.com"), ("reddit", "reddit.com"),
+    ("twitter", "twitter.com"), ("x", "x.com"), ("google", "google.com"),
+    ("docs", "docs.google.com"), ("sheets", "sheets.google.com"),
+    ("slack", "app.slack.com"), ("notion", "notion.so"),
+    ("linkedin", "linkedin.com"), ("news", "news.google.com"),
+    ("maps", "maps.google.com"),
+)
+
+
+def _norm_domain(value: Any) -> str:
+    """A host or a granted domain for comparison: no brackets, no trailing dot, lower case."""
+    return str(value or "").strip().strip("[]").rstrip(".").lower()
+
+
+def _url_host(url: str) -> str:
+    """The host of `url`; the URL itself when it has none (never matches a grant)."""
+    try:
+        host = urlsplit(url).hostname or ""
+    except ValueError:
+        host = ""
+    return _norm_domain(host) or url
+
+
+def _task_hosts(action: Action) -> List[str]:
+    """P-098: the host the skill will reach, from the task text (web_fetch and
+    chrome_open only); [] when the task names none."""
+    task = action.task or ""
+    if action.skill == "web_fetch":
+        m = re.search(r"https?://\S+", task)
+        return [_url_host(m.group(0).rstrip(").,;'\""))] if m else []
+    if action.skill == "chrome_open":
+        for word in task.split():
+            is_url = word.startswith(("http://", "https://"))
+            if is_url or ("." in word and len(word) > 4):
+                url = word if is_url else "https://" + word
+                url = url.replace('"', '').replace('\\', '').replace("'", '')
+                if not url.startswith(("http://", "https://", "file://")):
+                    url = "https://" + url
+                return [_url_host(url)]
+        low = task.lower()
+        for name, host in _CHROME_OPEN_SHORTCUT_HOSTS:
+            if name in low:
+                return [host]
+    return []
+
+
 def permission_gate(action: Action, agent_grants: Dict[str, Any],
                     global_grants: Dict[str, Any]) -> None:
     """The core Step 9 enforcement. Walks the action's resource use,
@@ -294,7 +347,11 @@ def permission_gate(action: Action, agent_grants: Dict[str, Any],
     # flag on a sensitive declared value can't bypass; an undeclared value is the
     # documented residual (needs task-arg parsing). This also avoids over-gating
     # no-arg calls of multi-function skills (e.g. a file_ops "list", a chrome tab
-    # close) which carry no path/domain.
+    # close) which carry no path/domain. P-098: for web_fetch and chrome_open the
+    # host of the URL in the task is read and gated too, declared or not.
+    # Redirect-hop residual: where a redirect leads is decided during the fetch,
+    # after this gate; web_fetch re-checks every hop against the fetch guard
+    # (codec_ssrf), not against the plan's domains.
     caps = _skill_capabilities(action.skill)
     wants_write = bool(action.touches_path) or ("writes_path" in caps)
     wants_read = bool(action.reads_path) or ("reads_path" in caps)
@@ -320,13 +377,17 @@ def permission_gate(action: Action, agent_grants: Dict[str, Any],
             _emit_gate_blocked(action.read_path, reason)
             raise PermissionViolation("read_path_not_authorized", action.read_path)
 
-    if wants_net and action.network_domain:
+    needed = ([action.network_domain] if action.network_domain else []) + _task_hosts(action)
+    if wants_net and needed:
         domains = (set(agent_grants.get("network_domains", [])) |
                    set(global_grants.get("network_domains", [])))
         # "*" is a broad-web grant (issued at approval for plans that browse), so
         # the agent doesn't block on every new domain it visits. Explicit opt-in.
-        if "*" not in domains and action.network_domain not in domains:
-            raise PermissionViolation("domain_not_authorized", action.network_domain)
+        if "*" not in domains:
+            granted = {_norm_domain(d) for d in domains}
+            for host in needed:
+                if _norm_domain(host) not in granted:
+                    raise PermissionViolation("domain_not_authorized", host)
 
 
 # ── Qwen-3.6 client (mirrors codec_agent_plan pattern) ────────────────────────
@@ -884,10 +945,14 @@ def _build_correction_nudge(pv: "PermissionViolation",
     if reason == "domain_not_authorized":
         allowed = sorted(set(agent_grants.get("network_domains", [])) |
                          set(global_grants.get("network_domains", [])))
-        return (f"<domain_error: '{action.network_domain}' is NOT in "
+        # P-098: the refused host may come from the URL in the task, with no
+        # declared network_domain, so name what the gate refused.
+        refused = pv.needed or action.network_domain
+        return (f"<domain_error: '{refused}' is NOT in "
                 f"permission_manifest.network_domains. Allowed domains: "
                 f"{', '.join(allowed) or '(none)'}. Use one of those "
-                f"exact domains (no schema, no path).>")
+                f"exact domains (no schema, no path), in network_domain "
+                f"and in any URL in the task.>")
     return None
 
 

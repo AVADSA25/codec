@@ -16,7 +16,6 @@ Kill switch: DAYBREAK_ENABLED env (default true; false on false|0|no|off).
 from __future__ import annotations
 
 import glob
-import importlib
 import json
 import logging
 import os
@@ -146,41 +145,22 @@ def get_working_context(user_id: str = "default") -> str:
     return block if lines else ""
 
 
-# ── Skill sub-call seam (importlib, codec_observer precedent) ────────────────
-
-_SKILL_CACHE: dict = {}
-_PATHS_READY = False
-
-
-def _ensure_skill_paths():
-    global _PATHS_READY
-    if _PATHS_READY:
-        return
-    import sys
-    repo_skills = os.path.join(os.path.dirname(os.path.abspath(__file__)), "skills")
-    user_skills = os.path.expanduser("~/.codec/skills")
-    for p in (repo_skills, user_skills):  # user inserted last → wins (shadows built-in)
-        if os.path.isdir(p) and p not in sys.path:
-            sys.path.insert(0, p)
-    _PATHS_READY = True
-
+# ── Skill sub-call seam (codec_dispatch, P-098) ──────────────────────────────
+# Sources run through codec_dispatch.run_feature: the skill switch, the
+# registry's load gate (a built-in name always wins over the user folder),
+# plugin hooks and a tool_result audit line apply.
 
 def _skill_module(name: str):
-    if name in _SKILL_CACHE:
-        return _SKILL_CACHE[name]
-    _ensure_skill_paths()
-    mod = importlib.import_module(name)
-    _SKILL_CACHE[name] = mod
-    return mod
+    """Load a source's module on the calling thread; None when switched off."""
+    import codec_dispatch
+    return codec_dispatch.feature_module(name)
 
 
-def _run_source(skill_name: str, task: str) -> str:
-    """All external skill calls go through here (THE mock seam)."""
-    mod = _skill_module(skill_name)
-    try:
-        return mod.run(task)
-    except TypeError:
-        return mod.run(task, "")  # notification_reader's run(task, context)
+def _run_source(skill_name: str, task: str, feature: str = "daybreak") -> str:
+    """All external skill calls go through here (THE mock seam). None when the
+    skill is switched off or missing."""
+    import codec_dispatch
+    return codec_dispatch.run_feature(skill_name, task, feature)
 
 
 # ── Local readers (each a seam; each never raises) ───────────────────────────

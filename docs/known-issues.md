@@ -548,3 +548,49 @@ between the tick's scan and that status change, the change is refused
 pause is lost. Found while building P-010 (docs/AGENT-STOP-DESIGN.md, Known
 limits). Fix (own small PR, section 10 file): skip the spawn when
 `_atomic_set_status` returns False. Revisit: the next change to the daemon loop.
+
+## Telegram and iMessage free text: skills only behind a switch (2026-11-03, P-098 review; decided before merge)
+
+The bridges' `codec_bridges.try_skill` matches a message against the skill
+registry and runs it when the skill is on `BRIDGE_SAFE_SKILLS`. Neither bridge
+process ever scanned the registry, so it matched nothing and every free-text
+message went to the model. P-098's briefing scans the registry once, which would
+have switched those skills on after the first briefing. Decision (session lead,
+under the owner's go of 3 Nov): the bridges stay model-only. `try_skill` returns
+(None, None) unless `config.json` `bridges.free_text_skills` is exactly true.
+Turning it on sends trigger-matching text to the skill (web_search sends it to
+DuckDuckGo). Status: decided, not a defect. Revisit: if the owner wants skill
+answers in Telegram or iMessage; then also scan at bridge start.
+
+## Plan path blocklist: case, parent folders and anchoring (2026-11-03, P-098 review)
+
+`codec_agent_plan._is_path_blocklisted` (typed paths, `/grant`, and since P-098
+drafted and edited plans) compares path segments exactly. On macOS's
+case-insensitive disk `~/.SSH/**` is `~/.ssh` and passes. A parent folder passes
+too: `~/**`, `~/.codec/**` or `~/.codec/notes/**` are not refused, and the
+runtime gate (`_path_allowed`, realpath prefix) then allows `~/.ssh/...` under a
+`~/**` grant. The system entries (`/etc/`, `/var/`, `/private/`, `/System/`)
+match a folder of that name anywhere, so a project in `~/work/var/site` is
+refused. Fix (own PR, section 10 file, owner's word on which parents to refuse):
+compare case-folded, refuse a grant whose root contains a blocked location, and
+anchor the system entries at `/`.
+
+## The shift report counts background feature runs as completed work (2026-11-03, P-098 review)
+
+Since P-098 every skill a built-in feature runs writes a `tool_result` line
+with `extra.feature` (briefing, heartbeat, daybreak, checkin, shift_report).
+`skills/shift_report._COMPLETED_TASK_EVENTS` counts every `tool_result`, so the
+heartbeat's mail check (every heartbeat round when that alert is set: 30
+minutes in the dashboard) shows up as dozens of `google_gmail` runs a day
+under "Completed tasks". Fix (small, skill
+file + manifest): leave lines with `extra.feature` out of section 1.
+
+## Two skills are still imported by bare name (2026-11-03, P-098 review)
+
+`codec_agent_messaging._dispatch_to_channel` (the iMessage notice) puts the repo's
+`skills/` folder first on `sys.path` and imports `imessage_send` for its
+`_send`; `skills/clipboard_url_fetch.py` does the same for `web_fetch`. Neither
+goes through the registry's load gate, the skill switch or the hooks, and the
+`sys.path` insert lets a skill file shadow a module of the same name in that
+process. Outside P-098's seven files. Fix: `codec_dispatch.feature_module`
+(helpers) or `run_feature` (a run), as P-098 did for the others.

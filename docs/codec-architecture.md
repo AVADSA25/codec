@@ -278,6 +278,10 @@ Emitted by `codec_dispatch.note_timeout` (source `codec-dispatch`, outcome `time
 |---|---|---|
 | `skill_timeout` | warning | top level `tool` (the skill), `transport` (`chat` \| `voice` \| `dispatch` for the wake word), `duration_ms`; extra `limit_s`, `via` (`chat` \| `voice` \| `wake`), `correlation_id`: a chat, voice or wake-word skill run passed its limit and the caller stopped waiting |
 
+### Built-in feature skill runs (2026-11, P-098)
+
+`codec_dispatch.run_feature` (docs/PROJECT-MODE-GATE-DESIGN.md) writes one `tool_result` line per skill a built-in feature ran, in place of `wake_dispatch`: source `codec-dispatch`, level info, top level `tool` and `duration_ms`; extra `feature` (`briefing` \| `heartbeat` \| `daybreak` \| `checkin` \| `shift_report`), `result_len`, `correlation_id` (shared with the run's `hook_fired` lines). Never the task or the result.
+
 ### Voice events (2026-10)
 
 Emitted by `codec_tts` (docs/CODEC-VOICE-02-DESIGN.md), source `codec-tts`, level warning. The reason and the purpose only: never the text. At most one line per reason per minute.

@@ -605,12 +605,12 @@ def check_alerts():
 
         elif atype == "email_check":
             try:
-                import importlib.util
-                _gmail_path = os.path.join(os.path.dirname(__file__), "skills", "google_gmail.py")
-                _spec = importlib.util.spec_from_file_location("google_gmail", _gmail_path)
-                _gmail = importlib.util.module_from_spec(_spec)
-                _spec.loader.exec_module(_gmail)
-                result = _gmail.run("check unread emails")
+                # P-098: through codec_dispatch (switch, load gate, hooks, audit).
+                from codec_dispatch import run_feature
+                result = run_feature("google_gmail", "check unread emails", "heartbeat")
+                if result is None:
+                    log.info(f"  {name}: skipped (google_gmail is switched off or missing)")
+                    continue
                 # Count emails from "Found N emails:" pattern
                 import re as _re
                 count_match = _re.search(r'Found (\d+) emails?:', str(result))

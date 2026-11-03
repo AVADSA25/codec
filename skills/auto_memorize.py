@@ -99,8 +99,14 @@ def run(task: str = "", context: str = "") -> str:
         _save_marker(now.isoformat())
         return f"Pulled {len(turns)} turns but no chunk met the {MIN_CHUNK}-char threshold."
 
-    # Defer to fact_extract for the heavy lifting
-    from fact_extract import run as extract
+    # Defer to fact_extract for the heavy lifting, through the registry's load
+    # gate (P-098). A bare `from fact_extract import` only worked once another
+    # feature had put the skills folder on sys.path.
+    import codec_dispatch
+    fx = codec_dispatch.feature_module("fact_extract")
+    if fx is None or not hasattr(fx, "run"):
+        return "auto_memorize: fact_extract is switched off or missing; nothing memorized."
+    extract = fx.run
     total_saved = 0
     per_chunk = []
     for i, blob in enumerate(chunks, 1):

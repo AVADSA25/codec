@@ -9,7 +9,6 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 import sqlite3
-import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -220,7 +219,8 @@ def test_the_nightly_run_learns_from_the_owners_chats_and_every_prompt_keeps_it(
     seen = []
     monkeypatch.setattr(fe, "_saving_on", lambda: True)
     monkeypatch.setattr(fe, "_call_llm", lambda prompt: seen.append(prompt) or '["Robin keeps two beehives on the roof"]')
-    monkeypatch.setitem(sys.modules, "fact_extract", fe)
+    import codec_dispatch  # P-098: auto_memorize gets fact_extract through the registry
+    monkeypatch.setattr(codec_dispatch, "feature_module", lambda name: fe if name == "fact_extract" else None)
     am = _skill("auto_memorize")
     monkeypatch.setattr(am, "_MARKER", env.tmp / "auto_memorize_last.json")
 

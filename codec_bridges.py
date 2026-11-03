@@ -78,6 +78,14 @@ def load_dispatch() -> bool:
         return False
 
 
+def _free_text_skills() -> bool:
+    try:
+        from codec_config import cfg
+        return (cfg.get("bridges") or {}).get("free_text_skills") is True
+    except Exception:
+        return False
+
+
 def try_skill(text):
     """Match a CODEC skill for `text` and run it IF it is on BRIDGE_SAFE_SKILLS.
 
@@ -86,8 +94,12 @@ def try_skill(text):
     answer (graceful degradation, never a hard fail). C2 fail-closed: any skill
     not on the allowlist (every high-power skill included) is never dispatched
     from a bridge.
+
+    Off unless config.json `bridges.free_text_skills` is exactly true (P-098, my call under
+    the owner's go): the bridges never scanned the registry, so free text always went to
+    the model, and the briefing's scan must not change that.
     """
-    if not load_dispatch():
+    if not _free_text_skills() or not load_dispatch():
         return (None, None)
     try:
         skill = _check_skill(text)
@@ -103,6 +115,21 @@ def try_skill(text):
     except Exception as e:
         log.warning(f"Skill error: {e}")
     return (None, None)
+
+
+def run_briefing_skill(name, query):
+    """One source of the daily briefing (P-098): through codec_dispatch.run_feature,
+    so the skill switch, the registry's load gate, plugin hooks and a tool_result
+    audit line apply. None when dispatch is unavailable, the skill is switched
+    off or it fails (the briefing then skips that source)."""
+    if not load_dispatch():
+        return None
+    try:
+        from codec_dispatch import run_feature
+        return run_feature(name, query, "briefing")
+    except Exception as e:
+        log.debug("Briefing %s: %s", name, e)
+        return None
 
 
 # ── Canonical bridge LLM call ────────────────────────────────────────────────
