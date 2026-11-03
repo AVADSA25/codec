@@ -266,6 +266,8 @@ def crew_model(monkeypatch, audit_lines):
     monkeypatch.setattr(codec_llm, "acall", fake_acall)
     monkeypatch.setattr(codec_agents, "llm_queue", _Queue())
     monkeypatch.setattr(codec_agents, "_audit", lambda *a, **kw: None)
+    # No plugin from ~/.codec/plugins fires: the tool is called directly.
+    monkeypatch.setattr(codec_agents, "run_with_hooks", lambda **kw: kw["invoke"](kw["task"], kw["context"]))
     return SimpleNamespace(sent=sent, replies=replies)
 
 
@@ -322,7 +324,10 @@ def test_crew_timeout_note_is_not_fenced(crew_model, monkeypatch):
     assert "timed out" in turn and "[DATA " not in turn
 
 
-def test_crew_tool_call_runs_as_agent_and_an_mcp_call_stays_mcp():
+def test_crew_tool_call_runs_as_agent_and_an_mcp_call_stays_mcp(tmp_path, monkeypatch):
+    import codec_hooks
+    # The real hooks path, with an empty plugin folder instead of ~/.codec/plugins.
+    monkeypatch.setattr(codec_hooks, "_registry", codec_hooks.PluginRegistry(str(tmp_path / "plugins")))
     tool = Tool(name="probe", description="", fn=lambda s: codec_fence.write_origin(codec_fence.OWNER))
     agent = Agent(name="T", role="r", tools=[tool])
     assert asyncio.run(agent._execute_tool_with_hooks(tool, "probe", "x")) == codec_fence.AGENT
