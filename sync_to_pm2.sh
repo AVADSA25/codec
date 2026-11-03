@@ -38,4 +38,4 @@ echo "✅ $PROCESS_NAME restarted"
 sleep 1
 $PM2 show "$PROCESS_NAME" --no-color | head -25
 echo ""
-echo "Done. Run: python3 $REPO_DIR/codec_smoke_test.py"
+echo "Done. Run: python3 $REPO_DIR/scripts/smoke.py"

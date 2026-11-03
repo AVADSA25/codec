@@ -1,22 +1,29 @@
 #!/usr/bin/env python3
 """CODEC Smoke Test — catches import errors, NameErrors, and path mismatches.
 
-Manual sanity-check script, not a pytest module. Run by hand after ANY change
-to codec.py, codec_overlays.py, codec_watcher.py, or codec_dashboard.py:
+A script, not a pytest module (it prints and exits). install.sh --update and update.sh run it after a pull and
+roll back with `git reset --keep` when it exits 1 (docs/SAFE-UPDATE-DESIGN.md, P-027). Run it by hand after a
+change to codec.py, codec_core.py, codec_overlays.py, codec_watcher.py or codec_dashboard.py:
     python3.13 scripts/smoke.py
 
-Lives in scripts/ rather than tests/ because it uses sys.exit(1) on failure
-and prints to stdout — incompatible with pytest collection. Full pytest
-coverage handles regression protection.
+Every section runs inside a guard: a crash in one is one failed line, and the rest still run.
+Exit 0 = every check passed, 1 = at least one failed.
 """
-import sys
+import ast
+import importlib
+import inspect
 import os
+import re
+import sys
 
-# Ensure repo root is on path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# The checkout this script belongs to wins over anything else on the path.
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, REPO)
 
 PASSED = 0
 FAILED = 0
+MODS = {}
+
 
 def check(name, ok, detail=""):
     global PASSED, FAILED
@@ -28,158 +35,170 @@ def check(name, ok, detail=""):
         print(f"  \033[31m✗\033[0m {name} — {detail}")
 
 
+def section(title):
+    """Run the decorated function now; an exception becomes one failed check, not a traceback."""
+    def run(fn):
+        print(f"\n== {title} ==")
+        try:
+            fn()
+        except Exception as e:
+            check(f"{title}: finished", False, f"{type(e).__name__}: {e}")
+        return fn
+    return run
+
+
+def mod(name):
+    m = MODS.get(name)
+    if m is None:
+        raise RuntimeError(f"{name} did not import (see Import checks)")
+    return m
+
+
+def src(rel):
+    with open(os.path.join(REPO, rel), encoding="utf-8") as f:
+        return f.read()
+
+
 # ── 1. IMPORTS ───────────────────────────────────────────────────────────────
-print("\n== Import checks ==")
+NEEDED = {
+    "codec_overlays": ("show_overlay", "show_recording_overlay", "show_processing_overlay", "show_toggle_overlay"),
+    "codec_watcher": ("TASK_FILE", "handle_draft", "clean_draft", "extract_content"),
+    "codec_identity": ("CODEC_IDENTITY", "CODEC_VOICE_PROMPT", "CODEC_CHAT_PROMPT"),
+    "codec_config": ("DRAFT_TASK_FILE",),
+    "codec_core": ("is_draft", "DRAFT_KEYWORDS"),
+}
 
-try:
-    from codec_overlays import show_overlay, show_recording_overlay, show_processing_overlay, show_toggle_overlay
-    check("codec_overlays imports", True)
-except ImportError as e:
-    check("codec_overlays imports", False, str(e))
 
-try:
-    from codec_watcher import TASK_FILE, handle_draft, clean_draft, extract_content
-    check("codec_watcher imports", True)
-except ImportError as e:
-    check("codec_watcher imports", False, str(e))
+@section("Import checks")
+def _imports():
+    for name, attrs in NEEDED.items():
+        try:
+            m = importlib.import_module(name)
+        except (Exception, SystemExit) as e:
+            check(f"{name} imports", False, f"{type(e).__name__}: {e}")
+            continue
+        missing = [a for a in attrs if not hasattr(m, a)]
+        check(f"{name} imports", not missing, f"missing {', '.join(missing)}")
+        if not missing:
+            MODS[name] = m
 
-try:
-    from codec_identity import CODEC_IDENTITY, CODEC_VOICE_PROMPT, CODEC_CHAT_PROMPT
-    check("codec_identity imports", True)
-    # Operating-principles prompt rewrite (April 2026): assert the new
-    # principles are present + the skill invocation mechanic is taught.
-    check("Identity opens with 'You are CODEC'", CODEC_IDENTITY.startswith("You are CODEC"))
-    check("Identity contains 'Stability first'", "Stability first" in CODEC_IDENTITY)
-    check("Identity contains 'Plan before blast radius'", "Plan before blast radius" in CODEC_IDENTITY)
-    check("Identity contains 'Sovereign by default'", "Sovereign by default" in CODEC_IDENTITY)
-    check("Identity teaches [SKILL:...] tag mechanic", "[SKILL:" in CODEC_IDENTITY)
-    check("Identity references memory injection", "[MEMORY]" in CODEC_IDENTITY)
-    check("Identity has {date} placeholder", "{date}" in CODEC_IDENTITY)
-    check("Voice prompt enforces 1-3 sentence brevity", "1–3 plain sentences" in CODEC_VOICE_PROMPT or "1-3 plain sentences" in CODEC_VOICE_PROMPT)
-    check("Voice prompt forbids markdown",
-          "No markdown" in CODEC_VOICE_PROMPT or "no markdown" in CODEC_VOICE_PROMPT)
-    check("Chat prompt allows markdown",
-          "Use markdown" in CODEC_CHAT_PROMPT or "markdown" in CODEC_CHAT_PROMPT.lower())
-except ImportError as e:
-    check("codec_identity imports", False, str(e))
+
+@section("Identity prompts")
+def _identity():
+    ident = mod("codec_identity")
+    identity, voice, chat = ident.CODEC_IDENTITY, ident.CODEC_VOICE_PROMPT, ident.CODEC_CHAT_PROMPT
+    # Operating-principles prompt rewrite (April 2026): the principles are present and the skill tag is taught.
+    check("Identity opens with 'You are CODEC'", identity.startswith("You are CODEC"))
+    check("Identity contains 'Stability first'", "Stability first" in identity)
+    check("Identity contains 'Plan before blast radius'", "Plan before blast radius" in identity)
+    check("Identity contains 'Sovereign by default'", "Sovereign by default" in identity)
+    check("Identity teaches [SKILL:...] tag mechanic", "[SKILL:" in identity)
+    check("Identity references memory injection", "[MEMORY]" in identity)
+    check("Identity has {date} placeholder", "{date}" in identity)
+    check("Voice prompt enforces 1-3 sentence brevity",
+          "1–3 plain sentences" in voice or "1-3 plain sentences" in voice)
+    check("Voice prompt forbids markdown", "No markdown" in voice or "no markdown" in voice)
+    check("Chat prompt allows markdown", "markdown" in chat.lower())
 
 
 # ── 2. PATH ALIGNMENT ───────────────────────────────────────────────────────
-print("\n== Path alignment ==")
+# codec.py is read, never imported: importing it starts the voice loop (signal handlers, pynput).
+CODEC_SRC = ""
 
-# Load DRAFT_TASK_FILE from codec.py without running it (it has signal handlers + pynput)
-codec_src = open(os.path.join(os.path.dirname(__file__), "..", "codec.py")).read()
 
-# Extract DRAFT_TASK_FILE value
-import re
-m = re.search(r'DRAFT_TASK_FILE\s*=\s*(.+)', codec_src)
-if m:
-    # Evaluate the expression safely
-    expr = m.group(1).strip()
-    codec_draft_path = eval(expr)  # e.g. os.path.expanduser("~/.codec/draft_task.json")
-    watcher_draft_path = TASK_FILE
-    check("Draft task file path matches",
-          codec_draft_path == watcher_draft_path,
-          f"codec.py={codec_draft_path} vs watcher={watcher_draft_path}")
-else:
-    check("Draft task file path matches", False, "Could not find DRAFT_TASK_FILE in codec.py")
+@section("Path alignment")
+def _paths():
+    global CODEC_SRC
+    CODEC_SRC = src("codec.py")
+    draft = mod("codec_config").DRAFT_TASK_FILE
+    watcher = mod("codec_watcher").TASK_FILE
+    check("Draft task file path matches", draft == watcher, f"codec_config={draft} vs watcher={watcher}")
+    check("codec.py takes DRAFT_TASK_FILE from codec_config",
+          "DRAFT_TASK_FILE" in CODEC_SRC and not re.search(r"^DRAFT_TASK_FILE\s*=", CODEC_SRC, re.M),
+          "codec.py defines its own DRAFT_TASK_FILE")
 
 
 # ── 3. NO UNDEFINED REFERENCES ──────────────────────────────────────────────
-print("\n== Undefined reference checks ==")
-
-# Check codec.py doesn't use `log.` without importing logging
-has_log_calls = bool(re.search(r'^\s+log\.(info|error|warning|debug)\(', codec_src, re.MULTILINE))
-has_log_import = bool(re.search(r'^(import logging|from logging import|log\s*=\s*logging)', codec_src, re.MULTILINE))
-check("No bare log.xxx() without import",
-      not has_log_calls or has_log_import,
-      "Found log.info()/log.error() but no logging import")
-
-# Check banner doesn't reference undefined variables (kt, kv, etc.)
-# Find the banner/main function area and check for f-string variables
-banner_area = re.findall(r'f["\'].*?\{(\w+)\}.*?["\']', codec_src)
-# Known safe variables in codec.py
-safe_vars = {'W', 'O', 'stream_label', 'wake_label', 'self', 'e', 'task', 'app',
-             'name', 'result', 'audio', 'question', 'ctx', 'summary', 'w', 'h',
-             'duration', 'text', 'rid', 'session_id', 'ts', 'mem', 'sys_p',
-             'safe_sys', 'CONFIG_PATH', 'Q_TERMINAL_TITLE', 'DB_PATH'}
-# Check all top-level constants
-constants = set(re.findall(r'^([A-Z_]+)\s*=', codec_src, re.MULTILINE))
-safe_vars.update(constants)
-# Check for kt, kv which caused the crash loop
-check("No {kt} in banner", 'kt' not in banner_area, "Found {kt} — variable was removed")
-check("No {kv} in banner", 'kv' not in banner_area, "Found {kv} — variable was removed")
-
-# Check codec.py uses shared identity, not hardcoded prompt
-check("codec.py imports CODEC_VOICE_PROMPT",
-      "from codec_identity import" in codec_src,
-      "codec.py should import from codec_identity.py")
-check("codec.py uses CODEC_VOICE_PROMPT in dispatch",
-      "CODEC_VOICE_PROMPT" in codec_src,
-      "dispatch() should use shared identity prompt")
+@section("Undefined reference checks")
+def _refs():
+    code = CODEC_SRC or src("codec.py")
+    has_log_calls = bool(re.search(r'^\s+log\.(info|error|warning|debug)\(', code, re.MULTILINE))
+    has_log_import = bool(re.search(r'^(import logging|from logging import|log\s*=\s*logging)', code, re.MULTILINE))
+    check("No bare log.xxx() without import", not has_log_calls or has_log_import,
+          "Found log.info()/log.error() but no logging import")
+    # {kt} / {kv} in the banner caused a crash loop once.
+    banner_vars = re.findall(r'f["\'].*?\{(\w+)\}.*?["\']', code)
+    check("No {kt} in banner", "kt" not in banner_vars, "Found {kt} — variable was removed")
+    check("No {kv} in banner", "kv" not in banner_vars, "Found {kv} — variable was removed")
+    check("codec.py imports CODEC_VOICE_PROMPT", "from codec_identity import" in code,
+          "codec.py should import from codec_identity.py")
+    check("codec.py uses CODEC_VOICE_PROMPT in dispatch", "CODEC_VOICE_PROMPT" in code,
+          "dispatch() should use shared identity prompt")
 
 
-# ── 4. OVERLAY FUNCTIONS RETURN POPEN ────────────────────────────────────────
-print("\n== Overlay function signatures ==")
+# ── 4. OVERLAY FUNCTIONS ────────────────────────────────────────────────────
+@section("Overlay function signatures")
+def _overlays():
+    ov = mod("codec_overlays")
+    sig = inspect.signature(ov.show_recording_overlay)
+    check("show_recording_overlay accepts key_label", "key_label" in sig.parameters, str(sig))
+    check("show_recording_overlay is callable", callable(ov.show_recording_overlay))
+    check("show_processing_overlay is callable", callable(ov.show_processing_overlay))
+    check("show_toggle_overlay is callable", callable(ov.show_toggle_overlay))
 
-import inspect
-sig = inspect.signature(show_recording_overlay)
-check("show_recording_overlay accepts key_label", 'key_label' in sig.parameters, str(sig))
-# show_recording_overlay should return a Popen (can't test without display, just verify it's callable)
-check("show_recording_overlay is callable", callable(show_recording_overlay))
-check("show_processing_overlay is callable", callable(show_processing_overlay))
-check("show_toggle_overlay is callable", callable(show_toggle_overlay))
 
-
-# ── 5. CODEC.PY DISPATCH FLOW ───────────────────────────────────────────────
-print("\n== Dispatch flow checks ==")
-
-# Verify is_draft works
-exec_ns = {}
-exec(compile("from codec_watcher import TASK_FILE\n" +
-             re.search(r'(DRAFT_KEYWORDS\s*=\s*\[.*?\])', codec_src, re.DOTALL).group(1) + "\n" +
-             re.search(r'(def is_draft\(.*?\):.*?)(?=\ndef )', codec_src, re.DOTALL).group(1),
-             '<test>', 'exec'), exec_ns)
-is_draft = exec_ns['is_draft']
-check("is_draft('draft a message') = True", is_draft("draft a message saying hello"))
-check("is_draft('what time is it') = False", not is_draft("what time is it"))
-check("is_draft('reply to this email') = True", is_draft("reply to this email"))
+# ── 5. DISPATCH FLOW ────────────────────────────────────────────────────────
+@section("Dispatch flow checks")
+def _dispatch():
+    is_draft = mod("codec_core").is_draft  # codec.py imports it from codec_core
+    check("codec.py imports is_draft from codec_core",
+          bool(re.search(r"from codec_core import \([^)]*\bis_draft\b", CODEC_SRC or src("codec.py"))),
+          "codec.py no longer takes is_draft from codec_core")
+    check("is_draft('draft a message') = True", is_draft("draft a message saying hello"))
+    check("is_draft('what time is it') = False", not is_draft("what time is it"))
+    check("is_draft('reply to this email') = True", is_draft("reply to this email"))
 
 
 # ── 6. WATCHER CLEAN_DRAFT ──────────────────────────────────────────────────
-print("\n== Watcher clean_draft ==")
-
-check("Strips preamble", clean_draft("Here is the message:\nHello there") == "Hello there")
-check("Strips quotes", clean_draft('"Hello there"') == "Hello there")
-check("Passes clean text", clean_draft("Hello there") == "Hello there")
+@section("Watcher clean_draft")
+def _clean():
+    clean_draft = mod("codec_watcher").clean_draft
+    check("Strips preamble", clean_draft("Here is the message:\nHello there") == "Hello there")
+    check("Strips quotes", clean_draft('"Hello there"') == "Hello there")
+    check("Passes clean text", clean_draft("Hello there") == "Hello there")
 
 
 # ── 7. DASHBOARD WATCHER INTEGRATION ────────────────────────────────────────
-print("\n== Dashboard integration ==")
-
-dashboard_src = open(os.path.join(os.path.dirname(__file__), "..", "codec_dashboard.py")).read()
-check("Dashboard imports TASK_FILE from watcher",
-      "from codec_watcher import TASK_FILE" in dashboard_src or
-      "from codec_watcher import" in dashboard_src)
-check("Dashboard has _bg_watcher function",
-      "async def _bg_watcher" in dashboard_src)
-check("Dashboard starts watcher on startup",
-      "_bg_watcher()" in dashboard_src)
+@section("Dashboard integration")
+def _dashboard():
+    dash = src("codec_dashboard.py")
+    check("Dashboard imports from codec_watcher", "from codec_watcher import" in dash)
+    check("Dashboard has _bg_watcher function", "async def _bg_watcher" in dash)
+    check("Dashboard starts watcher on startup", "_bg_watcher()" in dash)
 
 
-# ── 8. WAKE WORD CASE SENSITIVITY ────────────────────────────────────────────
-print("\n== Wake word checks ==")
-
-# The wake word comparison must be case-insensitive
-# codec.py lowers the transcribed text, so phrases must also be lowered for matching
-wake_match_code = re.search(r'any\(phrase(\.lower\(\))? in text', codec_src)
-check("Wake word matching is case-insensitive",
-      wake_match_code and '.lower()' in wake_match_code.group(0),
-      "Wake phrase comparison must use phrase.lower() since text is already lowered")
+# ── 8. WAKE WORD CASE SENSITIVITY ───────────────────────────────────────────
+@section("Wake word checks")
+def _wake():
+    tree = ast.parse(CODEC_SRC or src("codec.py"))
+    fn = next((n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "_is_wake_utterance"), None)
+    defaults = next((n.value for n in tree.body if isinstance(n, ast.Assign)
+                     and any(getattr(t, "id", "") == "_WAKE_KEYWORD_DEFAULTS" for t in n.targets)), None)
+    check("codec.py defines _is_wake_utterance", fn is not None, "function not found")
+    check("codec.py defines _WAKE_KEYWORD_DEFAULTS", defaults is not None, "constant not found")
+    if fn is None or defaults is None:
+        return
+    ns = {"WAKE_PHRASES": ["Okay Smoke Helper"], "_WAKE_KEYWORD_DEFAULTS": ast.literal_eval(defaults)}
+    exec(compile(ast.Module(body=[fn], type_ignores=[]), "codec.py:_is_wake_utterance", "exec"), ns)
+    wake = ns["_is_wake_utterance"]
+    check("Wake phrase matching is case-insensitive", wake("okay smoke helper, open mail"),
+          "a configured phrase with capitals did not match the lowered text")
+    check("Wake keyword matches in any case", wake("HEY CODEC"))
+    check("Ordinary speech does not wake", not wake("what time is it"))
 
 
 # ── RESULTS ──────────────────────────────────────────────────────────────────
-print(f"\n{'='*40}")
+print(f"\n{'=' * 40}")
 total = PASSED + FAILED
 if FAILED == 0:
     print(f"\033[32m All {total} checks passed.\033[0m\n")
