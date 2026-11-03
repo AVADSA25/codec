@@ -81,55 +81,37 @@ _notif_lock = threading.Lock()
 
 
 def _load_notifications():
-    """Load notifications from disk, seeding sample data on first access."""
+    """Load notifications from disk. A missing file is an empty list and nothing
+    is written (P-035: no invented sample reports). A file that does not parse,
+    or is not a list, is copied aside and read as empty; the file itself is left
+    for the next real write."""
     try:
         with open(NOTIFICATIONS_PATH) as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        samples = [
-            {
-                "id": f"notif_{uuid.uuid4().hex[:10]}",
-                "type": "task_report",
-                "title": "Daily Morning Briefing",
-                "body": "Completed successfully. 5 action items identified, market overview compiled, calendar conflicts flagged.",
-                "status": "success",
-                "created": "2026-03-29T08:00:00",
-                "read": True,
-                "schedule_id": "daily_briefing"
-            },
-            {
-                "id": f"notif_{uuid.uuid4().hex[:10]}",
-                "type": "task_report",
-                "title": "Security Scan",
-                "body": "No vulnerabilities found. All 142 dependencies are up to date, no CVEs detected.",
-                "status": "success",
-                "created": "2026-03-29T12:00:00",
-                "read": True,
-                "schedule_id": "security_scan"
-            },
-            {
-                "id": f"notif_{uuid.uuid4().hex[:10]}",
-                "type": "task_report",
-                "title": "AI News Digest",
-                "body": "33 stories collected from 5 sources. Top story: new open-weight model benchmarks released.",
-                "status": "success",
-                "created": "2026-03-29T18:30:00",
-                "read": False,
-                "schedule_id": "ai_news_digest"
-            },
-            {
-                "id": f"notif_{uuid.uuid4().hex[:10]}",
-                "type": "task_report",
-                "title": "Weekly Code Review Summary",
-                "body": "Analyzed 12 PRs across 3 repos. 2 require attention: stale dependency warnings in codec-core and missing tests in dashboard module.",
-                "status": "success",
-                "created": "2026-03-28T09:00:00",
-                "read": True,
-                "schedule_id": "weekly_code_review"
-            }
-        ]
-        _write_notifications(samples)
-        return samples
+            data = json.load(f)
+    except FileNotFoundError:
+        return []
+    except ValueError:   # not JSON, or not UTF-8
+        _set_aside_unreadable_notifications()
+        return []
+    if not isinstance(data, list):
+        _set_aside_unreadable_notifications()
+        return []
+    return data
+
+
+def _set_aside_unreadable_notifications() -> None:
+    """Copy an unreadable notifications file to `<file>.corrupt-<its mtime>`. The
+    name comes from the file's own time, so every poll of the same file makes one
+    copy. Never raises."""
+    try:
+        import shutil
+        stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(os.path.getmtime(NOTIFICATIONS_PATH)))
+        dest = f"{NOTIFICATIONS_PATH}.corrupt-{stamp}"
+        if not os.path.exists(dest):
+            shutil.copy2(NOTIFICATIONS_PATH, dest)
+            log.warning("notifications file could not be read; a copy is at %s", dest)
+    except OSError as e:
+        log.warning("notifications file could not be read or copied aside: %s", e)
 
 
 _NOTIF_CAP = 500   # M-1: keep the most recent N (list is newest-first)

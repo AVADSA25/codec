@@ -18,6 +18,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
+import codec_jsonstore
+from routes import _shared
 from routes._shared import (
     _notif_lock,
     _load_notifications,
@@ -52,8 +54,9 @@ async def get_notification_count():
 
 @router.post("/api/notifications/{notif_id}/read")
 async def mark_notification_read(notif_id: str):
-    """Mark a single notification as read."""
-    with _notif_lock:
+    """Mark a single notification as read. Holds the cross-process lock too, so an
+    append from the scheduler, heartbeat or an agent is not written over (P-035)."""
+    with _notif_lock, codec_jsonstore.file_lock(_shared.NOTIFICATIONS_PATH):
         notifications = _load_notifications()
         for n in notifications:
             if n.get("id") == notif_id:  # agent messages are written without an id
@@ -65,13 +68,14 @@ async def mark_notification_read(notif_id: str):
 
 @router.post("/api/notifications/read-all")
 async def mark_all_notifications_read():
-    """Mark all notifications as read."""
-    with _notif_lock:
+    """Mark all notifications as read (same locks as one; writes only when it marked one)."""
+    with _notif_lock, codec_jsonstore.file_lock(_shared.NOTIFICATIONS_PATH):
         notifications = _load_notifications()
         count = 0
         for n in notifications:
             if not n.get("read", False):
                 n["read"] = True
                 count += 1
-        _write_notifications(notifications)
+        if count:
+            _write_notifications(notifications)
     return {"status": "ok", "marked": count}
