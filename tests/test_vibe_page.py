@@ -52,7 +52,7 @@ def test_the_page_has_the_undo_and_versions_controls_hidden_until_there_is_a_pro
 def test_the_send_flow_goes_through_a_project_and_keeps_the_single_file_flow():
     assert "pm = window.VibeProj ? await VibeProj.begin(t) : false;" in PAGE
     assert "VibeProj.finish(rp, t)" in PAGE and "VibeProj.abort()" in PAGE
-    assert "(window.VibeProj && VibeProj.previewSource()) || ed.getValue()" in PAGE
+    assert "(window.VibeProj && VibeProj.previewSource()) || (ed ? ed.getValue() : '')" in PAGE
     # single-file flow untouched: the live fence handling still runs when there is no project
     assert "var f = pm ? null : _vibeFence(clean);" in PAGE
     assert "ed.setValue(f.code)" in PAGE and "function doApply(btn)" in PAGE

@@ -111,6 +111,9 @@
     if (undo) { undo.hidden = !P.id; undo.disabled = !P.canUndo || P.agent; }
     if (ver) ver.hidden = !P.id;
     if (runb) runb.hidden = !(P.id && ON_MAC);
+    var sv = $('saveLbl'), svb = $('saveBtn');      // in a project, Save keeps the files as a version
+    if (sv) sv.textContent = P.id ? 'Save version' : 'Save';
+    if (svb) svb.title = P.id ? 'Keep the files as they are now as a version (see Versions)' : 'Save file';
   }
   function scheduleTabs() { clearTimeout(P.tabTimer); P.tabTimer = setTimeout(renderTabs, 250); }
 
@@ -518,6 +521,18 @@
     });
   }
 
+  // The Save button in a project: pending edits go to disk, then the files as they are now become a version.
+  function saveVersion() {
+    if (!P.id) return Promise.resolve(null);
+    if (P.agent) { toast('The agent is working on these files. Stop it to save a version.'); return Promise.resolve(null); }
+    return flush().then(function () { return api('POST', base('/checkpoint'), { label: 'Saved version' }); })
+      .then(function (d) {
+        var cp = d && d.checkpoint, msg = cp ? 'Saved a version' : 'Nothing changed since the last version';
+        toast(msg); out('sy', msg);
+        return cp || null;
+      }, function (e) { toast('Could not save a version: ' + e.message); out('er', 'Could not save a version: ' + e.message); return null; });
+  }
+
   function closeVersions() {
     var d = $('vd'); if (d) d.classList.remove('vo');
     var ov = $('vov'); if (ov) ov.classList.remove('sh');
@@ -682,17 +697,30 @@
   }
 
   // ── small hooks for the page ───────────────────────────────────────────
-  function previewSource() {
+  // The page the inline preview shows: the open file when it is a page, else index.html.
+  function previewPath() {
     if (!P.id) return null;
+    return P.active && /\.html?$/i.test(P.active) && P.files[P.active] ? P.active : (P.files['index.html'] ? 'index.html' : null);
+  }
+
+  function previewSource() {
+    var root = previewPath();
+    if (!root) return null;
     var texts = {};
     Object.keys(P.files).forEach(function (p) { texts[p] = P.files[p].model.getValue(); });
-    var root = P.active && /\.html?$/i.test(P.active) ? P.active : (texts['index.html'] != null ? 'index.html' : null);
-    return root ? VF.inlineAssets(texts[root], texts) : null;
+    return VF.inlineAssets(texts[root], texts);
   }
 
   function setActiveText(text) {
     var f = P.files[P.active];
     if (f) setText(f.model, text); else if (window.ed) window.ed.setValue(text);
+  }
+
+  // Inspect reads and edits the file the preview shows, whichever tab is open.
+  function fileText(path) { return P.files[path] ? P.files[path].model.getValue() : null; }
+  function setFileText(path, text) {
+    var f = P.files[path];
+    if (f) setText(f.model, text);
   }
 
   document.addEventListener('visibilitychange', function () { if (document.hidden && P.id) flush(true).catch(function () {}); });
@@ -701,7 +729,8 @@
   window.VibeProj = {
     begin: begin, contextBlock: contextBlock, live: live, finish: finish, abort: abort, open: open,
     detach: detach, undo: undo, versions: versions, closeVersions: closeVersions, messageNode: messageNode,
-    previewSource: previewSource, setActiveText: setActiveText,
+    previewSource: previewSource, setActiveText: setActiveText, previewPath: previewPath, fileText: fileText,
+    setFileText: setFileText, saveVersion: saveVersion,
     runDialog: runDialog, closeRun: closeRun, runGo: runGo, stopLive: stopLive, liveActive: liveActive,
     liveReload: liveReload, reload: reload, activate: activate, restoreId: restoreId, setBusy: setBusy, diffNode: diffNode,
     id: function () { return P.id; }, title: function () { return P.title; }, active: function () { return P.active; },
