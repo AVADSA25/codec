@@ -64,7 +64,7 @@ def web(monkeypatch):
         def get_context(self, text, n=8):
             return ""
 
-        def search_recent(self, days=3, limit=5):
+        def search_recent(self, days=3, limit=5, **kw):
             return []
 
     class _NoRows:

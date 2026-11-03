@@ -1162,8 +1162,10 @@ def save_to_memory(session_name: str, task: str, result: str):
             task_text += f" [TRUNCATED from {len(task)} chars]"
         if len(result) > 2000:
             result_text += f" [TRUNCATED from {len(result)} chars]"
-        mem.save(sid, "user",      f"[AGENT TASK] {task_text}")
-        mem.save(sid, "assistant", f"[AGENT RESULT] {result_text}")
+        # P-037: role "agent", not user / assistant: a crew result can carry web text, so no
+        # prompt reads it back as the owner's conversation (codec_memory.PROMPT_LEFT_OUT_ROLES).
+        mem.save(sid, "agent", f"[AGENT TASK] {task_text}")
+        mem.save(sid, "agent", f"[AGENT RESULT] {result_text}")
         print(f"[Agents] Saved to memory: {sid}")
     except Exception as e:
         print(f"[Agents] Memory save error: {e}")

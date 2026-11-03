@@ -10,10 +10,14 @@ Two jobs, stdlib only:
 
 2. ``memory_origin(skill, text, default, app)`` returns the ``facts.source``
    value for a memory write, one of ``ORIGINS``. A write made while an MCP call
-   runs, or text the bounded ``scan`` flags, is ``"untrusted"``. Filtering on
-   the value is the memory-origin item's job (P-037), not this module's.
+   runs is ``"untrusted"``, and so is text the bounded ``scan`` flags unless it
+   is the owner's own words (P-037: kept ``"owner"``, with an audit line).
 
-Design: docs/UNTRUSTED-TEXT-FENCE-DESIGN.md.
+3. ``fact_origin(source)`` reads a stored ``facts.source`` value back as an
+   origin, older values included (P-037). The prompts carry only
+   ``PROMPT_ORIGINS``.
+
+Design: docs/UNTRUSTED-TEXT-FENCE-DESIGN.md, docs/MEMORY-PROVENANCE-DESIGN.md.
 """
 from __future__ import annotations
 
@@ -36,8 +40,38 @@ SYSTEM = "system"        # written by CODEC itself
 AGENT = "agent"          # crew tool calls, scheduled jobs, Project-mode agents
 UNTRUSTED = "untrusted"  # any MCP-origin write, any scan hit
 ORIGINS = (OWNER, DERIVED, SYSTEM, AGENT, UNTRUSTED)
+# The origins whose facts the wake word, voice and Deep Chat prompts carry (P-037).
+PROMPT_ORIGINS = (OWNER, DERIVED, SYSTEM)
+# facts.source values written before P-021, read as an origin at query time (P-037).
+# No row is changed; any other value, or none, reads as untrusted.
+LEGACY_SOURCES = {
+    "memory page": OWNER,
+    "fact_extract": DERIVED,
+    "daybreak": SYSTEM,
+    "skill:memory_history": AGENT,
+    "mcp": UNTRUSTED,
+}
 
 SCAN_MAX_CHARS = 65_536
+
+
+def fact_origin(source) -> str:
+    """The origin of a stored fact from its facts.source value, one of ORIGINS:
+    the five values as themselves, LEGACY_SOURCES as mapped, anything else untrusted."""
+    if isinstance(source, str):
+        if source in ORIGINS:
+            return source
+        if source in LEGACY_SOURCES:
+            return LEGACY_SOURCES[source]
+    return UNTRUSTED
+
+
+def sources_of(origins) -> tuple:
+    """Every known facts.source value that reads as one of ``origins`` (for a SQL
+    filter). Unknown values are not listed: they read as untrusted."""
+    want = set(origins or ())
+    known = list(ORIGINS) + list(LEGACY_SOURCES)
+    return tuple(s for s in known if fact_origin(s) in want)
 
 # ── Who is calling (set by codec_mcp and codec_agents around a skill call) ────
 _CALLER: contextvars.ContextVar[str] = contextvars.ContextVar("codec_fence_caller", default="")
@@ -212,9 +246,14 @@ def memory_origin(skill: str, text, default: str = OWNER, app="") -> str:
     """The facts.source value for a memory write by ``skill`` of ``text``.
 
     MCP caller or a scan hit -> "untrusted" (one metadata-only audit line);
-    otherwise the caller's origin (see write_origin)."""
+    otherwise the caller's origin (see write_origin). P-037: the owner's own words
+    stay "owner" on a scan hit (one memory_write_flagged line): the scan alone never
+    keeps them out of the prompts."""
     origin = write_origin(default, app)
     hits = scan(text)
+    if hits and origin == OWNER:
+        _emit_flagged(skill, hits, len(text) if isinstance(text, str) else 0)
+        return origin
     if hits:
         origin = UNTRUSTED
     if origin == UNTRUSTED:
@@ -235,6 +274,19 @@ def _emit_untrusted(skill: str, reason: str, hits: list[str], chars: int) -> Non
         )
     except Exception as e:  # an audit failure never blocks the write
         log.warning("memory_write_untrusted audit failed: %s", e)
+
+
+def _emit_flagged(skill: str, hits: list[str], chars: int) -> None:
+    try:
+        from codec_audit import log_event
+        log_event(
+            "memory_write_flagged", "codec-fence",
+            f"{skill} write flagged by the scan, kept as the owner's own",
+            extra={"skill": skill, "patterns": hits, "chars": chars},
+            level="warning",
+        )
+    except Exception as e:  # an audit failure never blocks the write
+        log.warning("memory_write_flagged audit failed: %s", e)
 
 
 # ── Fence ─────────────────────────────────────────────────────────────────────

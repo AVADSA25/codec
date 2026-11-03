@@ -372,7 +372,7 @@ def _build_system_prompt() -> str:
     _user_ref = _uname if _uname else "the user"
 
     # Memory upgrade: boot identity + active temporal facts, from the runtime function Deep Chat
-    # reads them from (P-026); unfiltered here until the memory-origin item (P-037).
+    # reads them from (P-026); owner, derived and system facts only (P-037).
     _boot = ""
     try:
         import codec_runtime_context

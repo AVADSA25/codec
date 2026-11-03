@@ -761,11 +761,15 @@ async def send_command(request: Request):
                     sys_msg = {"role": "system", "content": f"You are CODEC Flash, a fast local AI assistant running on the user's Mac. Today is {now_str}. Be concise and direct. Answer in 1-3 sentences max. You DO have memory of this conversation — the chat history is included in these messages. Refer to previous messages naturally when the user asks follow-up questions."}
                     # Build messages: system + cross-session context + current session
                     # Keep it compact — Flash Chat has max_tokens=300, don't overload context
+                    # P-037: never crew results or untrusted rows (codec_memory, for_prompt).
+                    import codec_memory as _cm
+                    _left_out, _left_out_params = _cm._prompt_clause(True)
                     _cross_rows = c.execute(
                         "SELECT role, content, timestamp FROM conversations "
-                        "WHERE session_id != ? AND timestamp >= ? "
+                        "WHERE session_id != ? AND timestamp >= ?" + _left_out + " "
                         "ORDER BY timestamp DESC LIMIT 10",
-                        (session_id, (datetime.now() - timedelta(hours=12)).isoformat())
+                        (session_id, (datetime.now() - timedelta(hours=12)).isoformat(),
+                         *_left_out_params)
                     ).fetchall()
                     if _cross_rows:
                         _cross_lines = ["[EARLIER CONVERSATIONS TODAY — you DO remember these]"]

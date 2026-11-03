@@ -104,13 +104,34 @@ def store_fact(key: str, value: str, fact_type: str = "generic",
         c.close()
 
 
+def _origin_filter(origins) -> tuple[str, list]:
+    """SQL condition keeping facts whose source reads as one of `origins` (codec_fence.fact_origin,
+    P-037). Unknown sources read as untrusted, so with untrusted wanted the other origins' sources
+    are left out instead of the wanted ones listed."""
+    import codec_fence
+    want = {o for o in origins if o in codec_fence.ORIGINS}
+    if codec_fence.UNTRUSTED in want:
+        other = codec_fence.sources_of(set(codec_fence.ORIGINS) - want)
+        return ((f" AND COALESCE(source,'') NOT IN ({','.join('?' * len(other))})", list(other))
+                if other else ("", []))
+    keep = codec_fence.sources_of(want)
+    if not keep:
+        return " AND 0", []
+    return f" AND COALESCE(source,'') IN ({','.join('?' * len(keep))})", list(keep)
+
+
 def query_valid_facts(key: Optional[str] = None, user_id: str = "default",
-                      limit: int = 50, exclude_sources=()) -> list[dict]:
+                      limit: int = 50, exclude_sources=(), origins=None) -> list[dict]:
     """Facts currently active (valid_until IS NULL). `exclude_sources` leaves out facts whose
-    source tag is one of these (P-026: Deep Chat leaves out mcp and untrusted facts); a missing
-    source counts as "". The default excludes nothing."""
+    source tag is one of these (P-026: Deep Chat leaves out the daybreak threads); a missing
+    source counts as "". `origins` (P-037) keeps only facts whose source reads as one of these
+    origins (codec_fence.fact_origin); None keeps every origin. The defaults leave nothing out."""
     ex = [str(s) for s in (exclude_sources or ())]
     not_in = f" AND COALESCE(source,'') NOT IN ({','.join('?' * len(ex))})" if ex else ""
+    if origins is not None:
+        cond, keep = _origin_filter(origins)
+        not_in += cond
+        ex += keep
     c = _conn()
     try:
         if key:

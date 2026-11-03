@@ -3252,12 +3252,21 @@ function clearRules(btn) {
   });
 }
 
+// P-037: where a fact came from. Agent and untrusted facts stay out of chat, voice and the
+// wake word until the owner promotes them (a new owner version; the old one stays in the history).
+var MEM_ORIGIN = { owner: 'from you', derived: 'learned from your chats', system: 'saved by CODEC',
+  agent: 'saved by an agent, not used in replies', untrusted: 'untrusted, not used in replies' };
+function _memOrigin(o) { return MEM_ORIGIN[o] || MEM_ORIGIN.untrusted; }
 function _factRow(f) {
   var row = _memEl('div', 'mem-fact'), head = _memEl('div', 'mem-fact-head'), main = _memEl('div', 'mem-fact-main');
   var val = _memEl('span', 'mem-val', f.value), extra = _memEl('div', 'mem-extra');
   main.appendChild(_memEl('span', 'mem-key', f.key)); main.appendChild(val);
-  main.appendChild(_memEl('span', 'mem-meta', (f.fact_type || 'fact') + ' · since ' + _memDate(f.valid_from) + (f.source ? ' · from ' + f.source : '')));
+  main.appendChild(_memEl('span', 'mem-meta', (f.fact_type || 'fact') + ' · since ' + _memDate(f.valid_from) + ' · ' + _memOrigin(f.origin)));
   var acts = _memEl('div', 'mem-acts');
+  if (f.in_prompts === false) acts.appendChild(_memBtn('Promote', async function () {
+    try { var d = await _memSend('POST', '/api/memory/facts/promote', { key: f.key, id: f.id }); _memMsg('memFactsMsg', d.changed ? 'Promoted. CODEC now uses it as your own fact; the old version is in the history.' : 'Already in use.'); loadFacts(); }
+    catch (e) { _memMsg('memFactsMsg', 'Could not promote: ' + e.message, true); }
+  }, 'mcp-btn-primary'));
   acts.appendChild(_memBtn('Edit', function () {
     extra.innerHTML = '';
     var ta = _memEl('textarea', 'setting-input'); ta.value = f.value; ta.maxLength = 1000; ta.setAttribute('aria-label', 'New value for ' + f.key);
@@ -3275,7 +3284,7 @@ function _factRow(f) {
       var d = await _memJSON('/api/memory/facts/history?key=' + encodeURIComponent(f.key)), ul = _memEl('ul', 'mem-hist');
       (d.versions || []).forEach(function (v) {
         var li = _memEl('li'); li.appendChild(_memEl('span', 'mem-val', v.value));
-        li.appendChild(_memEl('span', 'mem-meta', _memDate(v.valid_from) + ' to ' + (v.valid_until ? _memDate(v.valid_until) : 'now') + (v.superseded_by ? ' · replaced' : (v.valid_until ? ' · forgotten' : ' · current'))));
+        li.appendChild(_memEl('span', 'mem-meta', _memDate(v.valid_from) + ' to ' + (v.valid_until ? _memDate(v.valid_until) : 'now') + (v.superseded_by ? ' · replaced' : (v.valid_until ? ' · forgotten' : ' · current')) + ' · ' + _memOrigin(v.origin)));
         ul.appendChild(li);
       });
       extra.innerHTML = ''; extra.appendChild(ul); extra.dataset.open = 'hist';

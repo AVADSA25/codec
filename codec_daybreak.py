@@ -79,11 +79,14 @@ def save_thread(kind: str, text: str, user_id: str = "default",
     return new_id
 
 
-def get_open_threads(user_id: str = "default") -> list[dict]:
+def get_open_threads(user_id: str = "default", origins=None) -> list[dict]:
+    """Open threads, newest first. `origins` (P-037) keeps only threads whose source reads as
+    one of these origins (codec_memory_upgrade.query_valid_facts); None lists every thread."""
     import codec_memory_upgrade as cmu
     out = []
+    kw = {} if origins is None else {"origins": tuple(origins)}
     try:
-        for f in cmu.query_valid_facts(user_id=user_id, limit=200):
+        for f in cmu.query_valid_facts(user_id=user_id, limit=200, **kw):
             key = f.get("key", "")
             if not key.startswith(THREAD_KEY_PREFIX):
                 continue
@@ -119,10 +122,12 @@ def close_thread(match: str, user_id: str = "default") -> str:
 
 def get_working_context(user_id: str = "default") -> str:
     """Compact [WORKING THREADS] block for prompt injection. "" when empty
-    or when Daybreak is disabled."""
+    or when Daybreak is disabled. Only owner, derived and system threads (P-037): one an
+    agent or an MCP call saved stays on the owner's lists but out of the prompt."""
     if not _enabled():
         return ""
-    threads = get_open_threads(user_id)
+    import codec_fence
+    threads = get_open_threads(user_id, origins=codec_fence.PROMPT_ORIGINS)
     if not threads:
         return ""
     threads.sort(key=lambda t: (t["kind"] != "priority", t["since"]), reverse=False)

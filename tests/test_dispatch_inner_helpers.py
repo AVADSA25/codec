@@ -23,7 +23,7 @@ class _FakeCM:
     def get_context(self, task, n=5):
         return ""
 
-    def search_recent(self, days=3, limit=5):
+    def search_recent(self, days=3, limit=5, **kw):
         return []
 
     def save(self, *a):
@@ -38,7 +38,7 @@ def _silence_memory(monkeypatch):
     monkeypatch.setattr(codec, "get_memory", lambda n=5: "")
     monkeypatch.setattr(codec_memory, "CodecMemory", _FakeCM)
     monkeypatch.setattr(codec_memory_upgrade, "load_identity", lambda: "")
-    monkeypatch.setattr(codec_memory_upgrade, "query_valid_facts", lambda limit=20: [])
+    monkeypatch.setattr(codec_memory_upgrade, "query_valid_facts", lambda limit=20, **kw: [])
     monkeypatch.setattr(codec_memory_upgrade, "compress_rule_based", lambda x: x)
 
 
@@ -63,7 +63,7 @@ def test_build_voice_system_prompt_includes_facts(monkeypatch):
     _silence_memory(monkeypatch)
     import codec_memory_upgrade
     monkeypatch.setattr(codec_memory_upgrade, "query_valid_facts",
-                        lambda limit=20: [{"key": "city", "value": "Marbella"}])
+                        lambda limit=20, **kw: [{"key": "city", "value": "Marbella"}])
     out = codec._build_voice_system_prompt("hi")
     assert "[ACTIVE FACTS]" in out and "city = Marbella" in out
 

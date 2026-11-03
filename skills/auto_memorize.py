@@ -47,7 +47,8 @@ def _pull_conversations() -> list[dict]:
     """Return list of conversation turns from the last 24h."""
     from codec_memory import CodecMemory
     mem = CodecMemory()
-    turns = mem.search_recent(days=1, limit=500) or []
+    # P-037: never crew sessions or untrusted rows, so a crew result is not learned as the owner's.
+    turns = mem.search_recent(days=1, limit=500, for_prompt=True) or []
     # Only keep user+assistant turns that look like real conversation
     return [
         t for t in turns

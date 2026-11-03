@@ -143,7 +143,7 @@ def test_enrich_messages_reports_what_memory_it_used(monkeypatch):
         def get_context(self, text, n=8):
             return "line one\nline two"
 
-        def search_recent(self, days=3, limit=5):
+        def search_recent(self, days=3, limit=5, **kw):
             return [{"timestamp": "2026-09-28T10:00:00", "role": "user", "content": "the garden needs water"}]
 
     db = sqlite3.connect(":memory:", check_same_thread=False)

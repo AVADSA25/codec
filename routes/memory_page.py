@@ -42,11 +42,20 @@ def _bad(message: str, status: int = 400) -> JSONResponse:
 
 
 # ── Facts and working threads ─────────────────────────────────────────────────
+def _with_origin(row: Dict[str, Any]) -> Dict[str, Any]:
+    """P-037: the fact's origin read from its source (codec_fence.fact_origin), and whether the
+    chat, voice and wake prompts carry it."""
+    import codec_fence
+    origin = codec_fence.fact_origin(row.get("source"))
+    return {**row, "origin": origin, "in_prompts": origin in codec_fence.PROMPT_ORIGINS}
+
+
 @router.get("/api/memory/facts")
 def facts():
     import codec_daybreak
     import codec_memory_upgrade as cmu
-    rows = [f for f in cmu.query_valid_facts(limit=500) if not str(f.get("key") or "").startswith("thread:")]
+    rows = [_with_origin(f) for f in cmu.query_valid_facts(limit=500)
+            if not str(f.get("key") or "").startswith("thread:")]
     return {"facts": rows, "threads": codec_daybreak.get_open_threads()}
 
 
@@ -86,12 +95,39 @@ async def forget_fact(request: Request):
     return {"ok": True}
 
 
+@router.post("/api/memory/facts/promote")
+async def promote_fact(request: Request):
+    """P-037: the owner vouches for an agent or untrusted fact. The same value is stored again with
+    source "owner", superseding the active row, which stays in the history; nothing is deleted. A fact
+    the prompts already carry is left as it is."""
+    import codec_fence
+    import codec_memory_upgrade as cmu
+    body = await _body(request)
+    key = str(body.get("key") or "")
+    if not key or key.startswith("thread:"):
+        return _bad("Pick a fact to promote.")
+    current = cmu.query_valid_facts(key=key, limit=1)
+    if not current:
+        return _bad("That fact is no longer active.", 404)
+    # The owner vouches for the version he saw: if another write replaced it since the page
+    # loaded (an MCP call can), nothing is promoted.
+    if "id" in body and str(body.get("id")) != str(current[0].get("id")):
+        return _bad("That fact changed since the page loaded. Reload and check it again.", 409)
+    origin = codec_fence.fact_origin(current[0].get("source"))
+    if origin in codec_fence.PROMPT_ORIGINS:
+        return {"ok": True, "changed": False, "origin": origin}
+    cmu.store_fact(key, current[0]["value"], fact_type=current[0].get("fact_type") or "generic",
+                   source=codec_fence.OWNER, supersede=True)
+    _audit("fact_promoted", key=key, origin=origin)
+    return {"ok": True, "changed": True, "origin": codec_fence.OWNER}
+
+
 @router.get("/api/memory/facts/history")
 def fact_history(key: str = ""):
     import codec_memory_upgrade as cmu
     if not key:
         return _bad("Pick a fact.")
-    return {"key": key, "versions": cmu.get_fact_history(key)[:50]}
+    return {"key": key, "versions": [_with_origin(v) for v in cmu.get_fact_history(key)[:50]]}
 
 
 # ── Standing rules ────────────────────────────────────────────────────────────
