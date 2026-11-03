@@ -11,7 +11,10 @@ Status: approved for build 2026-11-03 (owner: "go go build i trust ur judgment h
    `codec_models.DEFAULT_MODEL` (the bundled 7B), no longer the 35B.
 2. **Vision follows it too when it has no model of its own.** With no `vision_model` and a vision server
    that is the chat model's server, `codec_vision` names the loaded model. A pinned `vision_model`, or a
-   separate vision server, is used as before.
+   separate vision server, is used as before. When the model it would name reads text only (the
+   bundled `Qwen2.5-7B-Instruct-4bit`, listed in `codec_vision._TEXT_ONLY_MODELS`), vision sends
+   nothing and answers "" (the callers' existing "could not read the screen" path) instead of a guess
+   from a model that cannot see the image. Installing `qwen-vl-7b` and setting `vision_model` fixes it.
 3. **The dashboard's vision warm-up sends nothing** when the vision model it would warm differs from the
    chat model on the same server (one server holds one model; the warm-up was unloading the chat model at
    every dashboard start).

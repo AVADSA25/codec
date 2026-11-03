@@ -234,14 +234,26 @@ def test_vision_rule(server):
     assert codec_models.vision_model(on_7b, "http://localhost:8099/v1", VL) == VL, "own server"
 
 
-def test_one_vision_request_on_the_bundled_7b_uses_it(cfg, server, monkeypatch):
+def test_vision_on_the_bundled_text_only_7b_sends_nothing_and_swaps_nothing(cfg, server, monkeypatch):
     import codec_config
     import codec_vision
     monkeypatch.setattr(codec_config, "cfg", cfg(llm_model=SEVEN_B))
     monkeypatch.setattr(codec_config, "QWEN_VISION_URL", server.base)
     monkeypatch.setattr(codec_config, "QWEN_VISION_MODEL", BIG)   # the old default
+    assert codec_vision.describe_sync("b64", "what is on my screen?") == "", "no guess from a text model"
+    assert asyncio.run(codec_vision.describe_async("b64", "what is on my screen?")) == ""
+    assert server.posts == [] and server.swaps == 0
+
+
+def test_one_vision_request_on_a_vision_model_held_by_the_chat_server_uses_it(cfg, server, monkeypatch):
+    import codec_config
+    import codec_vision
+    server.loaded = VL
+    monkeypatch.setattr(codec_config, "cfg", cfg(llm_model=VL))
+    monkeypatch.setattr(codec_config, "QWEN_VISION_URL", server.base)
+    monkeypatch.setattr(codec_config, "QWEN_VISION_MODEL", BIG)
     assert codec_vision.describe_sync("b64", "what is on my screen?") == "a screen"
-    assert [b["model"] for b in server.posts] == [SEVEN_B] and server.swaps == 0
+    assert [b["model"] for b in server.posts] == [VL] and server.swaps == 0
 
 
 # ── The dashboard's vision warm-up ───────────────────────────────────────────
