@@ -218,6 +218,14 @@ Emitted by `codec_agents` (docs/CREW-SHELL-SANDBOX-DESIGN.md), source `codec-age
 | `shell_blocked` | `reason` (`empty`\|`no_sandbox`: no `/usr/bin/sandbox-exec`, so nothing runs\|`consent_gate_off`: a flagged command with `CONSENT_GATE_ENABLED=false`\|`too_long_to_show`: a flagged command longer than the 200 characters the approval card shows\|`sandbox_setup_failed`), `cmd_chars`; top-level `tool` `shell_execute`, `outcome` `denied`. Before P-030 this line carried `cmd` (the first 200 characters); it no longer does |
 | `custom_agent_tools_dropped` | `agent_id`, `dropped`, `kept` (counts): a saved custom agent named tools CODEC does not know; they are left out when it loads (`/api/agents/custom/list`, the '@' picker). Once per agent and dropped set per process; the saved file is not changed |
 
+### Untrusted memory-write events (2026-11, P-021)
+
+Emitted by `codec_fence.memory_origin` (docs/UNTRUSTED-TEXT-FENCE-DESIGN.md), source `codec-fence`, when a memory write is stored with origin `untrusted`. Level warning on a scan hit, info for a plain MCP-origin write. Pattern names and a count only: never the text.
+
+| Event | extra fields |
+|---|---|
+| `memory_write_untrusted` | `skill` (`memory_save`\|`fact_extract`\|`thread_note`\|`memory_history`), `reason` (`mcp`\|`scan`\|`mcp+scan`), `patterns` (names of the scan patterns that matched), `chars` |
+
 ### Notes events (2026-10)
 
 Emitted by `codec_notes` (docs/NOTES-DESIGN.md), source `codec-notes`, level info. Ids, sizes and the source only: never a title or any note text.
