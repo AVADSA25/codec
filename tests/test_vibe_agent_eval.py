@@ -174,6 +174,20 @@ def test_refuses_a_model_url_that_is_not_on_this_mac(monkeypatch, capsys):
         ev.main(["--cloud"])
 
 
+def test_an_eval_run_sends_no_phone_push_and_puts_the_hook_back(monkeypatch, capsys):
+    pushed = []
+    hook = pushed.append
+    monkeypatch.setattr(va, "_push", hook)
+    monkeypatch.setattr(va, "_resolve_llm", lambda kind, confirm_cloud=False: va._Llm("local", LOCAL, "m1", "Local"))
+
+    def suite(tasks, attempt, *a, **k):
+        va._push("vibe_done")                                        # what a run's end calls
+        return []
+    monkeypatch.setattr(ev, "run_suite", suite)
+    ev.main([])
+    assert pushed == [] and va._push is hook
+
+
 # ── the regression rule ──
 
 def test_a_task_regresses_only_if_it_fails_both_tries():

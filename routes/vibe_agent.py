@@ -42,6 +42,12 @@ async def models():
     return await _call(va.models_info)
 
 
+@router.get("/api/vibe/agent/live")
+async def live():
+    """The run going on this Mac, ids only: the page opened from a phone push shows it again (P-070)."""
+    return await _call(va.live_run)
+
+
 @router.post("/api/vibe/projects/{pid}/agent/run")
 async def run(pid: str, request: Request):
     body = await _json(request)

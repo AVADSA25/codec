@@ -543,6 +543,7 @@ if (typeof require === 'function' && typeof require.config === 'function') {
         padding: {top: 8}
       });
     } catch (e) { ed = null; _editorFailed(); }
+    if (ed) _reopenLiveRun();
   }, function () { _editorFailed(); });
 } else _editorFailed();
 
@@ -1198,6 +1199,23 @@ function ldSes(sid) {
     }
     addOut('sy', 'Loaded: ' + (d.session ? d.session.title : ''));
   }).catch(function() { addOut('er', 'Load error'); });
+}
+
+// A tap on a phone notification opens /vibe with nothing chosen (P-070, docs/VIBE-PUSH-DESIGN.md). While an agent run
+// is going on this Mac, its project's newest chat is opened, and VibeProj.open hands the run to VibeAgent.adopt, which
+// puts its question or approval card back. Nothing is opened when that project has no chat here, or once the owner
+// has chosen a session or sent a message himself.
+function _reopenLiveRun() {
+  var first = sesId;
+  var untouched = function () { return sesId === first && !hist.length && !(window.VibeProj && VibeProj.on()); };
+  return fetch('/api/vibe/agent/live').then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+    var pid = d && typeof d.project === 'string' ? d.project : '';
+    if (!pid || !untouched()) return;
+    return fetch('/api/vibe/sessions').then(function (r) { return r.ok ? r.json() : []; }).then(function (list) {
+      var s = (Array.isArray(list) ? list : []).filter(function (x) { return x && x.project_id === pid; })[0];
+      if (s && untouched()) ldSes(s.id);
+    });
+  }).catch(function () { /* nothing live, or the agent is switched off */ });
 }
 
 async function delSes(sid, pid) {

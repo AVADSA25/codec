@@ -81,6 +81,7 @@ def agent_env(tmp_path, monkeypatch, cfg):
     monkeypatch.setattr(va, "_audit", lambda event, message, extra: audits.append((event, dict(extra))))
     monkeypatch.setattr(vp, "_audit", lambda event, message, extra: audits.append((event, dict(extra))))
     monkeypatch.setattr(va, "_llm_stream", ScriptedModel([]))
+    monkeypatch.setattr(va, "_push", lambda kind: None)        # no test reaches codec_push unless it asks (P-070)
     yield audits
     for run in list(va._RUNS.values()):
         run.stop()
