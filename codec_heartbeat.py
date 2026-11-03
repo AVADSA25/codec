@@ -178,7 +178,28 @@ _RESTART_STORM_DELTA = 5           # restarts per heartbeat interval
 _RESTART_STORM_REALERT_S = 6 * 3600  # re-alert a persisting storm every 6h
 
 
+def _supervisor() -> str:
+    """'pm2' or 'launchd' (P-032, codec_supervisor.kind); 'pm2' if that cannot be read."""
+    try:
+        import codec_supervisor
+        return codec_supervisor.kind()
+    except Exception:
+        return "pm2"
+
+
+def _logs_hint(name: str) -> str:
+    """Where an alert text sends the owner to read a service's output (P-032)."""
+    try:
+        import codec_supervisor
+        return codec_supervisor.logs_hint(name)
+    except Exception:
+        return f"pm2 logs {name}"
+
+
 def _pm2_jlist() -> list:
+    if _supervisor() == "launchd":  # P-032: a buyer's Mac runs the fleet as LaunchAgents, in PM2's shape
+        import codec_supervisor
+        return codec_supervisor.launchd_jlist()
     try:
         env = os.environ.copy()
         env["PATH"] = "/opt/homebrew/opt/node@22/bin:/opt/homebrew/bin:" + env.get("PATH", "")
@@ -205,6 +226,7 @@ def check_pm2_restart_storms(procs=None) -> list:
     last_alert = state.get("last_alert", {})
     now = datetime.now()
     storms = []
+    launchd = _supervisor() == "launchd"  # P-032: launchd's own words, and a line for each restart
 
     for p in procs:
         env = p.get("pm2_env", {}) or {}
@@ -225,7 +247,7 @@ def check_pm2_restart_storms(procs=None) -> list:
                     pass
             if realert_ok:
                 last_alert[name] = now.isoformat()
-                msg = (f"🔁 PM2 restart storm: '{name}' restarted {delta}× since "
+                msg = (f"🔁 {'launchd' if launchd else 'PM2'} restart storm: '{name}' restarted {delta}× since "
                        f"the last heartbeat ({n} total) — likely crash-looping.")
                 log.warning(f"  {msg}")
                 log_event("pm2_restart_storm", "codec-heartbeat", msg,
@@ -236,6 +258,10 @@ def check_pm2_restart_storms(procs=None) -> list:
                     send_alert("warning", msg)
                 except Exception:
                     pass
+        elif launchd and prev is not None and n > prev:
+            # KeepAlive brought it back: it was down since the last heartbeat (P-032)
+            log.warning(f"  launchd restarted {name} {n - prev}x since the last heartbeat "
+                        f"(last exit code {env.get('exit_code', 'unknown')})")
         counts[name] = n
 
     try:
@@ -273,9 +299,12 @@ def check_errored_codec_apps(procs=None) -> list:
         key = f"pm2_errored:{name}"
         if status == "errored":
             errored.append(name)
+            # P-032: under launchd, "errored" is a KeepAlive service launchd is not starting again
+            what = ("is down and launchd is not starting it again" if _supervisor() == "launchd"
+                    else "crashed repeatedly and PM2 gave up restarting it")
             alert_once(key, "critical",
-                       f"CODEC ALERT: {name} crashed repeatedly and PM2 gave up restarting it. "
-                       f"It needs a look (pm2 logs {name}).")
+                       f"CODEC ALERT: {name} {what}. "
+                       f"It needs a look ({_logs_hint(name)}).")
         elif status == "online":
             alert_resolved(key, f"CODEC RECOVERED: {name} is running again.")
     return errored
@@ -350,7 +379,7 @@ def check_health_beats(procs=None, now_ts=None) -> list:
                 age_min = int((now_ts - float(beat["ts"])) // 60)
                 cadence = int(codec_health._num(beat.get("cadence_s")) or codec_health.WRITE_EVERY_S)
                 msg = (f"CODEC ALERT: {name} has not reported for {age_min} min "
-                       f"(it reports every {cadence} s). It may be stuck: check pm2 logs {name}.")
+                       f"(it reports every {cadence} s). It may be stuck: check {_logs_hint(name)}.")
                 problems.append(silent)
                 alert_once(silent, "critical", msg)
             else:
@@ -359,7 +388,7 @@ def check_health_beats(procs=None, now_ts=None) -> list:
                     msg = (f"CODEC ALERT: {name} is running but failing: its last "
                            f"{int(codec_health._num(beat.get('consecutive_errors')) or 0)} rounds ended in an "
                            f"error ({codec_health.error_class(beat.get('last_error_class')) or 'Error'}). "
-                           f"Check pm2 logs {name}.")
+                           f"Check {_logs_hint(name)}.")
                     problems.append(failing)
                     alert_once(failing, "warning", msg)
                 else:

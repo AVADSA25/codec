@@ -35,13 +35,17 @@ async def cortex_health():
                 results[c["id"]] = "ok" if r.status_code in (200, 404) else "err"
             except Exception:
                 results[c["id"]] = "err"
-    # Also check PM2 processes
+    # Also check PM2 processes (P-032: or the LaunchAgents, in PM2's shape, on a launchd Mac)
     try:
-        out = await asyncio.to_thread(
-            subprocess.check_output,
-            ["/opt/homebrew/bin/pm2", "jlist"], timeout=5, stderr=subprocess.DEVNULL
-        )
-        procs = json.loads(out)
+        import codec_supervisor
+        if await asyncio.to_thread(codec_supervisor.kind) == "launchd":
+            procs = await asyncio.to_thread(codec_supervisor.launchd_jlist)
+        else:
+            out = await asyncio.to_thread(
+                subprocess.check_output,
+                ["/opt/homebrew/bin/pm2", "jlist"], timeout=5, stderr=subprocess.DEVNULL
+            )
+            procs = json.loads(out)
         pm2_map = {p["name"]: p["pm2_env"]["status"] for p in procs}
         for name, status in pm2_map.items():
             if "codec" in name.lower() or name in ("qwen3.6", "whisper-stt", "kokoro-82m"):
