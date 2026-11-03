@@ -307,6 +307,7 @@ Single SQLite database at `~/.codec/memory.db`. Wrapper: `codec_memory.CodecMemo
 
 ### Tiered retrieval (codec_memory_upgrade.py + codec_memory.py)
 - **L0/L1 — `identity.txt`:** `codec_memory_upgrade.load_identity()`, always-loaded boot payload (<200 tokens). Persistent identity + preferences. Zero query cost
+- **One reader for the prompts (P-026):** Deep Chat, voice and the wake word read About me and the active facts through `codec_runtime_context.gather()`; Deep Chat's block also carries this Mac's hardware (ioreg/sysctl) and the registry's skill count, and leaves out facts with source `mcp`, `untrusted` or `daybreak` (`query_valid_facts(exclude_sources=...)`). The chat page sends no identity of its own (docs/BUYER-IDENTITY-DESIGN.md)
 - **Recent sessions — `CodecMemory.get_sessions(limit=20, user_id=None)`:** one `GROUP BY session_id` query over `conversations`, newest session first: message count, first and last timestamp, and a 100-character preview of one user message (picked with `MAX(content)`, so alphabetical, not the latest). Used by `GET /api/memory/sessions` and Daybreak
 - **Deep search — `CodecMemory.search(query, limit=10, user_id=None)`:** FTS5 over the `conversations_fts` index, ranked by BM25. The query goes through `_sanitize_fts_query` first (FTS operators and `* " ( ) ^` stripped, 200 characters max); an empty query or an FTS error returns `[]`. `CodecMemory.get_context()` formats its top hits for the chat, voice and wake-word prompts; `GET /api/memory/search` and the MCP `search_memory` tool call it directly
 
