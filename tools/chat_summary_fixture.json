@@ -1,0 +1,575 @@
+{
+ "about": "A made-up 60-turn Deep Chat for the P-038 notes eval (tools/chat_summary_eval.py) and tests. Every person, place, business and number in it is invented. CODEC's reply to a turn is its own text followed by four paragraphs of its topic's general advice (see reply()).",
+ "paragraphs": {
+  "fair": [
+   "A good rule for any outdoor event is to walk the site at the same time of day a week before. You see where the sun falls, where people will naturally gather, where the ground is soft and which paths get blocked first. Make notes on a printed map and share it with whoever sets up on the morning.",
+   "Keep one master checklist and give each line a single owner. Shared tasks tend to be done by nobody. A short weekly check-in, ten minutes at most, is usually enough to catch what slipped. Put the checklist where everyone can see it, and tick things off as they happen rather than at the end.",
+   "Stallholders appreciate clear information early: the arrival window, where to unload, what they must bring themselves and who to call on the day. A one-page sheet sent a fortnight before, and again two days before, saves many phone calls on the morning.",
+   "Plan the flow of people before you plan the decorations. Entrances, the busiest stalls and the toilets should not sit on top of each other. Leave wide gaps between rows so prams and wheelchairs can pass, and keep an emergency lane clear from the road to the middle of the site.",
+   "Volunteers stay longer when their shifts are short and clearly described. Two or three hours each, with a named lead per area, works better than asking people to help all day. A small thank-you, even just a drink and a sticker, makes a difference to whether they come back next year.",
+   "Keep a small cash float and a charged card reader at the information tent, even if stalls handle their own payments. Someone will always need change, and a broken card reader at a stall is easier to solve when you have a spare.",
+   "Signs matter more than people expect. Large, simple arrows to the toilets, first aid and the exit cut down questions at the information tent. Laminate them or use plastic sleeves, and bring cable ties and tape; the wind tends to win against string.",
+   "It helps to write a short plan for the end of the day as well as the start: who collects the bins, who checks the lawn, who returns borrowed tables and when the last car must leave. Tired volunteers in the late afternoon are much happier with a clear list.",
+   "Local radio, school newsletters and the noticeboard at the supermarket still reach many people who never see social media. A simple poster with the date, the place and three highlights is enough; too much text makes people walk past it.",
+   "Weather plans work best when they are decided in advance: set a time on the day before when you will make the call, agree who makes it, and prepare the message you will send. Nothing causes more confusion than a late decision made by several people at once.",
+   "Photographs of an earlier event, or of similar fairs nearby, help stallholders and volunteers picture the day. A handful of pictures on the invitation often does more than a long description, and people like to see that the event is friendly and well run.",
+   "Think about rubbish early. Bins with clear labels for recycling and food waste, placed next to the food stalls rather than at the edge of the site, keep the grass clean. Ask one volunteer to empty them in the middle of the day before they overflow.",
+   "Accessibility is easier to plan than to fix on the day. Firm paths for wheelchairs, a few chairs along the route, a quiet spot away from the music and toilets that everyone can use make the fair welcoming to more of the neighbourhood.",
+   "A short conversation with the people who run the park pays off. They know where the water taps, power points and soft ground are, and they can tell you their rules about stakes, vehicles and music before you have printed anything."
+  ],
+  "trip": [
+   "For a short coastal stay, layers work better than one heavy coat: a light waterproof, a warm jumper and a scarf cover most weather by the sea. Comfortable shoes that can handle wet stone paths are worth more than anything fashionable.",
+   "Small towns often have shorter opening hours outside the summer, so it is worth checking which days museums and cafes open before you go. Many places close one weekday, and the last boat of the day can leave earlier than you expect.",
+   "Booking a table for the first evening takes away the hunt for food after a long journey. Ask the place you are staying for their favourite local spot; they usually know which ones are good and which are aimed at visitors.",
+   "A paper map or an offline map on the phone helps along the coast, where the signal can drop between villages. Keep a little cash too, as small harbour kiosks and boat trips sometimes do not take cards.",
+   "Travelling outside the busy season has real advantages: quieter streets, easier tables and lower prices. The trade-off is that some services run less often, so a little planning around timetables goes a long way.",
+   "Leave one half-day without a plan. Small towns are often best discovered by wandering, and a free afternoon gives you room for whatever you find, or for a long lunch if the weather turns."
+  ],
+  "dog": [
+   "Retired racing dogs are often calm indoors and sleep a lot, but they can be new to stairs, glass doors and other everyday things in a home. Give them a quiet corner with a soft bed and let them explore at their own pace for the first days.",
+   "A fixed routine helps a new dog settle: meals, walks and bedtime at about the same times each day. Keep visitors few in the first week, and let the dog come to people rather than the other way round.",
+   "Sighthounds have thin skin and little body fat, so a coat in cold or wet weather is a kindness rather than a fashion choice. A wide collar or a harness is safer than a narrow collar, because their neck is wider than their head.",
+   "Most rescues give new owners a short guide and a phone number for questions in the first weeks. It is worth using it: small worries early on, such as eating less or sleeping in an odd place, are usually normal and easy to answer.",
+   "Introduce the garden on a lead first and walk the fence line together. Check for gaps, because a dog that is new to a place may try to follow a smell or a sound before it has learned where home is."
+  ],
+  "general": [
+   "When several projects run at the same time, it helps to keep one running list of open questions, separate from the to-do list. Many tasks stall not because they are hard but because one small question is waiting for an answer.",
+   "Writing decisions down in one place, with the date, saves a lot of going back and forth later. It does not need to be formal; a single note with a line per decision is enough for most small projects.",
+   "If you feel stretched, choose the three things that matter most this week and let the rest wait. Most plans survive a few days of delay, while the people working on them tend not to survive constant rushing.",
+   "It is fine to say no to new tasks while a big project is running. A short, friendly answer such as 'not this month, but ask me again after the fair' keeps goodwill without adding to the load.",
+   "A walk, a proper meal and a full night's sleep do more for a long to-do list than another hour of work late in the evening. Planning goes better with a rested head."
+  ]
+ },
+ "turns": [
+  {
+   "topic": "fair",
+   "user": "Hello! I'm organising the Wrenford Harvest Fair for our neighbourhood association this year and I'd like your help to plan it over the coming weeks. I'll tell you the details as we go.",
+   "codec": "Gladly. Planning the Wrenford Harvest Fair step by step is a good approach: share the details as they come and I'll help you keep them together, from the site and the budget to the timetable on the day."
+  },
+  {
+   "topic": "fair",
+   "user": "The fair is planned for Saturday 14 June, in Pellam Park, on the big lawn next to the bandstand.",
+   "codec": "Noted: Saturday 14 June, on the lawn by the bandstand in Pellam Park. A lawn next to a bandstand is handy, because the bandstand can serve as the stage and as a natural meeting point."
+  },
+  {
+   "topic": "fair",
+   "user": "The association has given us a total budget of 4,750 euros for everything.",
+   "codec": "A total budget of 4,750 euros. I suggest splitting it into a few headings, such as music, insurance, equipment hire, printing and a reserve of about a tenth for surprises."
+  },
+  {
+   "topic": "fair",
+   "user": "My co-organiser is Tobias Henmarsh. He'll look after the volunteers, and I take care of the stalls and the programme.",
+   "codec": "Good split: Tobias Henmarsh leads the volunteers, and you handle the stalls and the programme. It helps if each of you keeps one list and you compare them once a week."
+  },
+  {
+   "topic": "fair",
+   "user": "We're aiming for 32 stalls in total, in two rows along the main path.",
+   "codec": "32 stalls in two rows means 16 per row. Placing them along the main path keeps the layout simple; just leave space behind the stalls for stallholders to store their boxes."
+  },
+  {
+   "topic": "fair",
+   "user": "Could you draft a short invitation I can send to possible stallholders?",
+   "codec": "Here is a short draft: 'Dear neighbour, the Wrenford Harvest Fair is looking for stallholders: local food, crafts, plants and games are all welcome. Reply to this message to book your place, and we will send you all the practical details.'"
+  },
+  {
+   "topic": "fair",
+   "user": "The stall fee will be 35 euros for a normal stall, and food stalls will pay 50 euros because they need more space and electricity.",
+   "codec": "Clear: 35 euros for a normal stall and 50 euros for a food stall. Ask the food stalls early how much power they need, so you can plan cables and sockets."
+  },
+  {
+   "topic": "fair",
+   "user": "For music, we've booked a folk band called The Copper Kettles. They'll play on the bandstand.",
+   "codec": "The Copper Kettles on the bandstand sound like a good fit for a harvest fair. Agree with them early on their arrival time, their power needs and where they can park."
+  },
+  {
+   "topic": "fair",
+   "user": "If it rains, our backup plan is to move indoors to the gym hall of Brookmere Primary School, two streets away.",
+   "codec": "A solid backup: the gym hall of Brookmere Primary School, two streets from the park. Fix the time you will make the call, and tell the stallholders in advance that this is the wet-weather plan."
+  },
+  {
+   "topic": "trip",
+   "user": "Something different: I'm also planning a short weekend trip in the autumn with my partner. Any tips on packing light?",
+   "codec": "Of course. For a weekend, one small bag each is plenty if you choose clothes that all go together and plan to wear things twice."
+  },
+  {
+   "topic": "trip",
+   "user": "We've picked the town of Lindhaven on the coast, and we'll stay two nights at a guesthouse called the Gull's Rest.",
+   "codec": "Lindhaven for two nights at the Gull's Rest guesthouse sounds lovely. Guesthouses like that often have good tips for walks and places to eat nearby."
+  },
+  {
+   "topic": "fair",
+   "user": "Back to the fair. Where should the first-aid point go?",
+   "codec": "Put the first-aid point somewhere easy to find and easy to reach by car: near the main entrance or the information tent, with a clear sign and a free lane from the road."
+  },
+  {
+   "topic": "fair",
+   "user": "Our first-aider will be a retired nurse from our street, Margit Oyelaran. She has done big events before.",
+   "codec": "Having Margit Oyelaran, a retired nurse with event experience, is reassuring. Give her a chair, shade, water and a phone number everyone on the team knows."
+  },
+  {
+   "topic": "fair",
+   "user": "For the raffle, the top prize is a cast-iron dutch oven donated by the hardware shop on Fenn Street.",
+   "codec": "A cast-iron dutch oven from the hardware shop on Fenn Street is a great top prize. Display it near the raffle table so people can see what they could win."
+  },
+  {
+   "topic": "fair",
+   "user": "How many volunteers do you think we'll need on the day?",
+   "codec": "For 32 stalls, a bandstand and a kids' corner, I would plan for about 18 volunteers across the day, in shifts: set-up, the information tent, the kids' corner, litter and pack-down."
+  },
+  {
+   "topic": "fair",
+   "user": "Tobias says he can get 14 volunteers, so we're four short of your suggestion.",
+   "codec": "Fourteen is a good start. The last four could come from the stallholders' families, the school, or a short call-out in the association newsletter."
+  },
+  {
+   "topic": "fair",
+   "user": "Write me a short social media post announcing the fair.",
+   "codec": "Here you go: 'The Wrenford Harvest Fair is coming to Pellam Park! Local food, crafts, folk music and games for the children. Bring your friends, your neighbours and your appetite.'"
+  },
+  {
+   "topic": "fair",
+   "user": "The opening speech will be given by our association chair, Dorothea Vance. She wants to keep it under five minutes.",
+   "codec": "Dorothea Vance opening the fair with a short speech is a nice touch. Five minutes is ideal; ask her to thank the volunteers and the sponsors by name."
+  },
+  {
+   "topic": "dog",
+   "user": "Personal news: we're adopting a dog next month, a three-year-old retired greyhound called Biscuit.",
+   "codec": "Congratulations! Biscuit, a three-year-old retired greyhound, will be lucky to have you. Greyhounds are often gentle and calm at home."
+  },
+  {
+   "topic": "dog",
+   "user": "What should we buy before Biscuit arrives?",
+   "codec": "A soft bed, a wide collar or a harness, a lead, food and water bowls, a coat for cold days and a few toys. Ask the rescue which food Biscuit is used to."
+  },
+  {
+   "topic": "fair",
+   "user": "For the kids' corner we'll have face painting all afternoon and a sack race at 3 pm.",
+   "codec": "Face painting through the afternoon and a sack race at 3 pm will keep families around. Mark the race area with rope and keep it away from the food stalls."
+  },
+  {
+   "topic": "fair",
+   "user": "Can you sketch a timetable for the day?",
+   "codec": "A first sketch: set-up in the morning, the opening and the speech, music sets on the bandstand, the sack race in the afternoon, the raffle draw near the end, then pack-down. Tell me the opening and closing times and I'll fill in the hours."
+  },
+  {
+   "topic": "fair",
+   "user": "The fair opens at 10:30 and closes at 17:00.",
+   "codec": "Opening at 10:30 and closing at 17:00 gives six and a half hours. I'd put the speech just after opening and the raffle draw at about 16:15, before people start to leave."
+  },
+  {
+   "topic": "fair",
+   "user": "Help me write a thank-you note to the hardware shop for the raffle prize.",
+   "codec": "Here is a draft: 'Thank you so much for donating the dutch oven for our raffle. Your support helps make the Harvest Fair a day for the whole neighbourhood, and we will thank you from the stage.'"
+  },
+  {
+   "topic": "fair",
+   "user": "Good news on parking: the Corrin Road car park will let us use 60 spaces for free on the day.",
+   "codec": "60 free spaces at the Corrin Road car park is a big help. Keep a few near the entrance for stallholders unloading and for anyone with limited mobility."
+  },
+  {
+   "topic": "fair",
+   "user": "What permits do you think we need from the council?",
+   "codec": "Usually an event permit for using the park, and sometimes separate permission for amplified music, food sales or road signs. Your council's events office can tell you exactly which ones apply."
+  },
+  {
+   "topic": "fair",
+   "user": "The council approved our event permit. The reference number is WHF-2291, and they want it shown at the information tent.",
+   "codec": "Well done. Print the permit with reference WHF-2291 and keep a copy at the information tent, as the council asked, plus one in your bag."
+  },
+  {
+   "topic": "trip",
+   "user": "Trip question: what's worth doing in a small coastal town like Lindhaven?",
+   "codec": "Walks along the harbour and the cliffs, a local museum, fresh fish, and a boat trip if the weather allows. Early mornings at the harbour are often the best time for photos."
+  },
+  {
+   "topic": "trip",
+   "user": "In Lindhaven we want to see the lighthouse museum and take the ferry over to Puffin Isle.",
+   "codec": "The lighthouse museum and the ferry to Puffin Isle make a good pair: the museum for a grey morning and the island for the brightest day. Check the ferry times before you go."
+  },
+  {
+   "topic": "fair",
+   "user": "Should the stalls take tokens or let people pay directly?",
+   "codec": "Tokens make counting easy for organisers but add a queue at the token desk. Direct payment at each stall is simpler for visitors; most small fairs choose that now."
+  },
+  {
+   "topic": "fair",
+   "user": "Decision made: no tokens. Each stall takes cash or card itself.",
+   "codec": "Noted: no tokens; every stall takes cash or card directly. Remind the stallholders to bring their own float and a charged card reader."
+  },
+  {
+   "topic": "fair",
+   "user": "How do we stop the lawn from getting damaged?",
+   "codec": "Keep vehicles off the grass, use boards under heavy stalls and spread the busiest stalls out. After the fair, walk the lawn with the park staff to agree on its condition."
+  },
+  {
+   "topic": "fair",
+   "user": "Change of plan: the fair moves from 14 June to Saturday 21 June, because the park has a cricket match on the 14th.",
+   "codec": "Understood: the fair is now on Saturday 21 June, not 14 June, because of the cricket match. We should update the invitation, the post and the permit details with the new date."
+  },
+  {
+   "topic": "fair",
+   "user": "Can you update the invitation with the new date?",
+   "codec": "Here it is: 'Dear neighbour, the Wrenford Harvest Fair on Saturday 21 June in Pellam Park is looking for stallholders. Local food, crafts, plants and games are all welcome. Reply to book your place.'"
+  },
+  {
+   "topic": "fair",
+   "user": "The bread stall will be run by my neighbour Ruairi Pell, who bakes sourdough in his garden oven.",
+   "codec": "Ruairi Pell's sourdough will draw a crowd. Put the bread stall where a queue won't block the path, perhaps at the end of a row."
+  },
+  {
+   "topic": "dog",
+   "user": "How often should a greyhound like Biscuit be walked?",
+   "codec": "Most greyhounds are happy with two or three walks of about twenty to thirty minutes a day. They are sprinters, not marathon runners, and they love a long nap afterwards."
+  },
+  {
+   "topic": "fair",
+   "user": "The insurance quote came in: 380 euros from Hartwell Mutual, for public liability on the day.",
+   "codec": "380 euros from Hartwell Mutual for public liability is reasonable for an event of this size. Check that it covers the volunteers and the rain plan at the school as well."
+  },
+  {
+   "topic": "fair",
+   "user": "The band's fee is 600 euros for two sets of an hour each.",
+   "codec": "So The Copper Kettles cost 600 euros for two one-hour sets. With the insurance at 380 euros, that's 980 euros of the budget already committed."
+  },
+  {
+   "topic": "general",
+   "user": "I feel a bit overwhelmed with everything going on. Any advice?",
+   "codec": "That's understandable with a fair, a trip and a new dog at the same time. Pick the three things that matter most this week and let Tobias take over anything to do with the volunteers."
+  },
+  {
+   "topic": "fair",
+   "user": "Please draft a short briefing email for the volunteers.",
+   "codec": "Draft: 'Thank you for volunteering at the Harvest Fair! Please arrive fifteen minutes before your shift, come to the information tent to collect your badge, and ask Tobias if anything is unclear. Comfortable shoes recommended.'"
+  },
+  {
+   "topic": "fair",
+   "user": "We ordered 200 paper cups and 200 plates from a supplier called Greenleaf Packaging; they are compostable.",
+   "codec": "200 compostable cups and 200 plates from Greenleaf Packaging. Ask them for the delivery date, and keep the boxes somewhere dry until the morning of the fair."
+  },
+  {
+   "topic": "fair",
+   "user": "Any idea for a fun competition for the grown-ups?",
+   "codec": "Classic harvest options: a biggest-vegetable contest, a jam tasting, or a scarecrow-making competition. They are cheap to run and give people a reason to come back at a set time."
+  },
+  {
+   "topic": "fair",
+   "user": "Let's do a biggest-marrow contest. The judge will be Mr. Albrecht Sowerby, who has won it three times in the next village.",
+   "codec": "A biggest-marrow contest judged by Albrecht Sowerby, a three-time winner, is perfect. Give the weigh-in a fixed time and a table near the bandstand so people can watch."
+  },
+  {
+   "topic": "dog",
+   "user": "Biscuit arrives on a Thursday. Should we take a few days off work?",
+   "codec": "If you can, yes: two or three quiet days at home help a lot. Biscuit will learn the house, the garden and the daily routine with you nearby."
+  },
+  {
+   "topic": "fair",
+   "user": "What should go in the information tent?",
+   "codec": "A table, chairs, the master checklist, the permit, a first-aid kit, a lost-property box, spare signs and tape, a charged phone, water, and a list of everyone's numbers."
+  },
+  {
+   "topic": "trip",
+   "user": "Should we hire a car in Lindhaven or rely on buses?",
+   "codec": "For a small coastal town, buses and walking are often enough; a car helps only if you want to explore the villages further along the coast."
+  },
+  {
+   "topic": "fair",
+   "user": "Do we need a sound system, or can the band bring theirs?",
+   "codec": "Ask The Copper Kettles first; many folk bands bring a small system. You might still want a microphone and a speaker for the speech and the announcements."
+  },
+  {
+   "topic": "trip",
+   "user": "The trip is booked: we'll be in Lindhaven from 17 to 19 October.",
+   "codec": "Lovely, 17 to 19 October in Lindhaven. Mid-October can be fresh on the coast, so pack a warm layer and check the ferry timetable for the autumn season."
+  },
+  {
+   "topic": "fair",
+   "user": "How do I handle stallholders who cancel at the last minute?",
+   "codec": "Keep a short waiting list, ask for the fee up front, and state your cancellation rule in the booking message. A spare table can always become an extra activity for the children."
+  },
+  {
+   "topic": "fair",
+   "user": "The lost-and-found will be at the information tent, and my daughter Clementine will look after it.",
+   "codec": "Clementine running the lost-and-found at the information tent is a good job to give someone reliable. A notebook to record what was found and when helps a lot."
+  },
+  {
+   "topic": "fair",
+   "user": "Should we have a quiet area for people who need a break from the noise?",
+   "codec": "Yes, a quiet corner with a few chairs in the shade, away from the bandstand, is a kind idea. Mark it clearly and ask a volunteer to keep an eye on it."
+  },
+  {
+   "topic": "dog",
+   "user": "Is it fine to let Biscuit off the lead in the park?",
+   "codec": "Many greyhounds have a strong chase instinct, so only let Biscuit off the lead in a fully fenced area until you know how he reacts to small animals."
+  },
+  {
+   "topic": "fair",
+   "user": "What should we do with the money from the raffle?",
+   "codec": "Agree in advance where it goes, write it on the raffle sign, and have two people count it together at the end. Many fairs give it to a local cause, which people like to support."
+  },
+  {
+   "topic": "fair",
+   "user": "We decided the raffle money goes to the Wrenford food bank.",
+   "codec": "A good cause: the raffle money goes to the Wrenford food bank. Put that on the raffle sign, so people know where their money is going."
+  },
+  {
+   "topic": "fair",
+   "user": "We'll end the day with a lantern walk around the pond at 16:40, just before closing.",
+   "codec": "A lantern walk around the pond at 16:40 is a lovely way to close. Check that the path around the pond is safe for children in the late afternoon."
+  },
+  {
+   "topic": "general",
+   "user": "Can you remind me what I should do this week?",
+   "codec": "This week: confirm the band's arrival time, send the updated invitation, chase the last four volunteers and check the Greenleaf delivery date."
+  },
+  {
+   "topic": "fair",
+   "user": "How early should set-up start on the day?",
+   "codec": "For a 10:30 opening, start set-up at about 7:30. Stalls arrive in a window, the band later, and keep the last half hour for a calm walk round."
+  },
+  {
+   "topic": "trip",
+   "user": "Any suggestion for a restaurant in a town like Lindhaven?",
+   "codec": "Ask at the Gull's Rest for their favourite fish restaurant by the harbour; local guesthouses usually know the best places and can book a table for you."
+  },
+  {
+   "topic": "fair",
+   "user": "Do we need to tell the neighbours of the park about the noise?",
+   "codec": "A short note through the doors of the nearest houses a week before is good manners: the date, the hours and a phone number for problems."
+  },
+  {
+   "topic": "fair",
+   "user": "Thanks for all the help so far. Let's keep going next week.",
+   "codec": "You're welcome. The fair is in good shape. Next week we can go through the volunteer rota and the final timetable together."
+  }
+ ],
+ "questions": [
+  {
+   "q": "Where will the fair be held?",
+   "turn": 2,
+   "answers": [
+    [
+     "pellam"
+    ]
+   ]
+  },
+  {
+   "q": "What is the total budget the association gave us?",
+   "turn": 3,
+   "answers": [
+    [
+     "4,750"
+    ],
+    [
+     "4750"
+    ],
+    [
+     "4 750"
+    ],
+    [
+     "4.750"
+    ]
+   ]
+  },
+  {
+   "q": "Who is looking after the volunteers?",
+   "turn": 4,
+   "answers": [
+    [
+     "tobias"
+    ],
+    [
+     "henmarsh"
+    ]
+   ]
+  },
+  {
+   "q": "How many stalls are we aiming for in total?",
+   "turn": 5,
+   "answers": [
+    [
+     "32"
+    ],
+    [
+     "thirty-two"
+    ],
+    [
+     "thirty two"
+    ]
+   ]
+  },
+  {
+   "q": "How much does a food stall pay?",
+   "turn": 7,
+   "answers": [
+    [
+     "50"
+    ],
+    [
+     "fifty"
+    ]
+   ]
+  },
+  {
+   "q": "What is the name of the folk band we booked?",
+   "turn": 8,
+   "answers": [
+    [
+     "copper kettle"
+    ]
+   ]
+  },
+  {
+   "q": "Where do we go if it rains?",
+   "turn": 9,
+   "answers": [
+    [
+     "brookmere"
+    ]
+   ]
+  },
+  {
+   "q": "What is the name of the guesthouse in Lindhaven?",
+   "turn": 11,
+   "answers": [
+    [
+     "gull"
+    ]
+   ]
+  },
+  {
+   "q": "Who is our first-aider?",
+   "turn": 13,
+   "answers": [
+    [
+     "margit"
+    ],
+    [
+     "oyelaran"
+    ]
+   ]
+  },
+  {
+   "q": "What is the raffle's top prize?",
+   "turn": 14,
+   "answers": [
+    [
+     "dutch oven"
+    ]
+   ]
+  },
+  {
+   "q": "How many volunteers did you suggest we need?",
+   "turn": 15,
+   "answers": [
+    [
+     "18"
+    ],
+    [
+     "eighteen"
+    ]
+   ]
+  },
+  {
+   "q": "Who will give the opening speech?",
+   "turn": 18,
+   "answers": [
+    [
+     "dorothea"
+    ],
+    [
+     "vance"
+    ]
+   ]
+  },
+  {
+   "q": "What time does the fair open?",
+   "turn": 23,
+   "answers": [
+    [
+     "10:30"
+    ],
+    [
+     "10.30"
+    ],
+    [
+     "half past ten"
+    ]
+   ]
+  },
+  {
+   "q": "What is the council permit reference number?",
+   "turn": 27,
+   "answers": [
+    [
+     "whf-2291"
+    ],
+    [
+     "whf 2291"
+    ],
+    [
+     "whf2291"
+    ]
+   ]
+  },
+  {
+   "q": "What is the date of the fair now?",
+   "turn": 33,
+   "answers": [
+    [
+     "21",
+     "june"
+    ]
+   ]
+  },
+  {
+   "q": "How much is the insurance quote?",
+   "turn": 37,
+   "answers": [
+    [
+     "380"
+    ]
+   ]
+  },
+  {
+   "q": "Who will judge the biggest-marrow contest?",
+   "turn": 43,
+   "answers": [
+    [
+     "sowerby"
+    ],
+    [
+     "albrecht"
+    ]
+   ]
+  },
+  {
+   "q": "When is our trip to Lindhaven?",
+   "turn": 48,
+   "answers": [
+    [
+     "17",
+     "19",
+     "oct"
+    ]
+   ]
+  },
+  {
+   "q": "Who will look after the lost-and-found?",
+   "turn": 50,
+   "answers": [
+    [
+     "clementine"
+    ]
+   ]
+  },
+  {
+   "q": "Where does the raffle money go?",
+   "turn": 54,
+   "answers": [
+    [
+     "food bank"
+    ]
+   ]
+  }
+ ]
+}
