@@ -26,6 +26,8 @@ import requests
 from datetime import datetime
 from pathlib import Path
 
+import codec_health
+
 # ── Logging ──────────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
@@ -220,6 +222,7 @@ class DbReadHealth:
         self.denied_since = None   # first refused read not yet followed by a fresh start
         self.notified_at = None    # when the owner was told that self.program needs access
         self.fresh_start = False   # start from the newest message once reading works
+        self.last_error = None     # class name of the last failed read, for the health beat (P-017)
 
     def restore(self):
         """A previous run's refusal: a restart neither notifies again nor answers the backlog."""
@@ -242,6 +245,7 @@ class DbReadHealth:
         now = self.clock()
         self.failures += 1
         denied = _is_denied(exc)
+        self.last_error = "PermissionDenied" if denied else type(exc).__name__
         if denied or start_unknown:
             self.fresh_start = True
         if denied and self.denied_since is None:
@@ -265,6 +269,7 @@ class DbReadHealth:
             self._write(state, now)
 
     def succeeded(self):
+        self.last_error = None
         if self.failures == 0 and self.state in (None, "ok"):
             return
         if self.failures:
@@ -1196,6 +1201,7 @@ def main():
         except Exception as e:
             log.warning(f"shutdown state save failed: {e}")
         _db_health.stopped()  # P-058: the state file says the bridge stopped
+        codec_health.stopped("codec-imessage")  # P-017: a stop on purpose is not "silent"
         audit("service_stop")
         log.info("codec-imessage graceful shutdown")
     import codec_lifecycle
@@ -1203,6 +1209,7 @@ def main():
 
     try:
         while True:
+            cycle_error = None
             try:
                 new_msgs = get_new_messages(last_rowid)
                 if _db_health.wants_fresh_start():
@@ -1244,9 +1251,13 @@ def main():
                     save_state(state)
 
             except Exception as e:
+                cycle_error = e
                 log.error(f"Poll cycle error: {e}")
 
-            time.sleep(_db_health.next_sleep(poll_interval))  # P-058: 5 minutes after 10 failed reads
+            sleep_s = _db_health.next_sleep(poll_interval)  # P-058: 5 minutes after 10 failed reads
+            # P-017: one health beat a round; the heartbeat alerts when it goes quiet or keeps failing.
+            codec_health.beat("codec-imessage", cadence_s=sleep_s, error=cycle_error or _db_health.last_error)
+            time.sleep(sleep_s)
 
     except KeyboardInterrupt:
         log.info("Shutting down...")

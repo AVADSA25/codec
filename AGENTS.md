@@ -375,6 +375,9 @@ Redaction runs **BEFORE** truncation: a secret near the 500-char `message` cap i
 ### Inbox (UI P3.2)
 `GET /api/inbox` (`routes/inbox.py`) is the one list the PWA polls for what needs the owner or reports back: pending approvals (`routes/_shared._pending_approvals`), open `codec_ask_user` questions, and the report, agent and suggestion entries of `~/.codec/notifications.json` (question entries are left out; id-less agent entries get a stable `auto_` id). The server picks each item's actions and only offers `/api/agents/<id>/pause|resume|grant` and `/api/proactive/acknowledge|dismiss`; there is no "always allow". `POST /api/inbox/read` marks items read under the same two locks as every notifications writer. The shell's drawer is the only poller; Home's Flash question panel subscribes to it. Design: docs/P3.2-DESIGN.md.
 
+### Health beats (P-017)
+codec-imessage, codec-telegram and codec-autopilot call `codec_health.beat(name, cadence_s=, error=)` once a loop round and `codec_health.stopped(name)` in their shutdown cleanup; it writes `~/.codec/health/<name>.json` (`CODEC_HEALTH_DIR` overrides; names, times, counts and an exception class name only) and never raises. The observer has no call: its beat is its newest `observation_tick` audit line. The heartbeat (`check_health_beats`, inside codec-dashboard) alerts once when a beat is older than 3x its cadence (at least 15 min) or 20 rounds in a row failed. `codec_agent_runner.py` has no beat (section 10). Design: docs/HEALTH-BEATS-DESIGN.md.
+
 ### log_event (`codec_audit.log_event`)
 Real adapter over `audit()` for lifecycle events (session start/end, scheduler tick, dispatch decision, heartbeat alert). Defined in `codec_audit.py`. Call sites in `codec_session.py`, `codec_scheduler.py`, `codec_dispatch.py`, `codec_heartbeat.py`, `codec_dashboard.py`, `codec.py`, `routes/auth.py`.
 
