@@ -37,11 +37,12 @@ as the reply says. This is the one visible change.
 
 ## New module: `codec_terminal_text.py`
 
-- `write_private(text, header="") -> (folder, path)`: a fresh folder from
-  `tempfile.mkdtemp(prefix="codec_show_")` (0700) holding one file `text.txt`
-  created with `O_CREAT | O_EXCL | O_NOFOLLOW`, mode 0600. `header` is the
-  skill's own constant title (it may hold the colour escape); `text` goes
-  through `clean()` first.
+- `write_private(text, header="", footer="") -> (folder, path)`: a fresh
+  folder from `tempfile.mkdtemp(prefix="codec_show_")` (0700) holding one file
+  `text.txt` created with `O_CREAT | O_EXCL | O_NOFOLLOW`, mode 0600. `header`
+  and `footer` are the skill's own constant lines (the title, which may hold
+  the colour escape, and translate's "Press any key to close..."), written as
+  is; `text` goes through `clean()` first.
 - `clean(text)`: control characters other than newline and tab become `?`, so
   outside text cannot send terminal escape sequences (colour, title, cursor
   moves that hide lines) to the window it is printed in.
