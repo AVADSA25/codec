@@ -32,7 +32,10 @@ every later prompt (and be learned again by the nightly run).
    `codec_memory_upgrade.query_valid_facts(origins=...)` (SQL filter, so the 20-fact
    limit still counts trusted facts only). The wake word, voice and Deep Chat all read
    facts through `gather()`, so all three are filtered; Deep Chat still also leaves
-   out the `daybreak` threads (they have their own block). Learned facts from the
+   out the `daybreak` threads (they have their own block). That block,
+   `codec_daybreak.get_working_context()`, keeps only threads of the same three
+   origins (`get_open_threads(origins=...)`); the owner's thread lists (Today, Settings
+   > Memory, the briefing card) still show every thread. Learned facts from the
    owner's own local chats are `derived` and stay in.
 
 3. **Settings > Memory shows each fact's origin and offers Promote** for agent and
@@ -104,7 +107,8 @@ per-test path), audit captured in memory, no network:
 - a crew result holding an injection is saved with role `agent` and is absent from the
   memory blocks of the next wake, voice and chat prompt, while an owner voice row is
   present; a legacy `agents_` row is absent too; Flash chat's earlier-conversations
-  block leaves out crew and untrusted rows; a crew's own `memory_save` and
+  block leaves out crew and untrusted rows; Deep Chat's working-threads block leaves
+  out a thread an MCP call or a crew saved; a crew's own `memory_save` and
   `fact_extract` saves are absent from the three prompts;
 - local `memory_save` (voice, wake word, chat tag) reaches the prompts, an MCP call
   does not; the owner sentences from the P-021 review are stored `owner` and reach the
