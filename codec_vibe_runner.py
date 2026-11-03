@@ -267,7 +267,7 @@ def _check_command(command) -> str:
 def _run_env(port: int) -> dict:
     env = codec_envscrub.scrub(os.environ, keep=("SSH_AUTH_SOCK",))   # the shared rule (P-084)
     env.setdefault("LC_ALL", "C.UTF-8")
-    path =[p for p in env.get("PATH", "").split(os.pathsep) if p]
+    path = [p for p in env.get("PATH", "").split(os.pathsep) if p]
     for extra in _EXTRA_PATH:
         if extra not in path:
             path.append(extra)
