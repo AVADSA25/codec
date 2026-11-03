@@ -27,6 +27,7 @@ The four `osascript` calls in `chrome_scroll` and `chrome_automate` get `timeout
   | `email_triage` | 180 s | mail fetch, then a 60 s model call |
   | `AI News Digest` | 180 s | about a dozen feeds and searches in a row |
   | `prompt_feeder` | 720 s | up to 12 prompts, 30 s each, in the browser |
+  | `cookbook_serve` | 150 s | pm2 start up to 30 s, then a health check up to 90 s while the model loads |
   | `model_switch` | none | server restart and model load, each step bounded in `codec_models` |
   | `ask_user`, `stuck` | none | wait for the owner's answer (`ask_user.timeout_seconds`) |
   | `google_gmail` | none | sending waits for the owner's "send" |

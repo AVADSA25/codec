@@ -226,6 +226,7 @@ def test_slow_by_design_skills_keep_their_wait(world):
     assert codec_dispatch.skill_timeout(SLOW) == 1.0
     assert codec_dispatch.skill_timeout("delegate") == 330
     assert codec_dispatch.skill_timeout("prompt_feeder") == 720
+    assert codec_dispatch.skill_timeout("cookbook_serve") == 150  # pm2 start + 90 s health check
     for name in ("ask_user", "stuck", "google_gmail", "model_switch"):
         assert codec_dispatch.skill_timeout(name) is None
     world.runs["delegate"] = world.taking(1.5, "handed over")
